@@ -46,7 +46,7 @@ object WvletScanner extends LogSupport:
   private def isNumberSeparator(ch: Char): Boolean = ch == '_'
 
   /**
-    * Convert a charactor to an integer value using the given base. Returns -1 upon failures
+    * Convert a character to an integer value using the given base. Returns -1 upon failures
     */
   def digit2int(ch: Char, base: Int): Int =
     val num =
@@ -62,7 +62,9 @@ class WvletScanner(source: ScannerSource) extends LogSupport:
   // The last read character
   private var ch: Char = _
   // The 1-character ahead offset of the last read character
-  private var offset: Int = 0
+  private var offset: Int          = 0
+  private var lineStartOffset: Int = 0
+  private var indentLevel          = 0
 
   // THe offset before the last read character
   private var lastOffset: Int = 0
@@ -96,13 +98,29 @@ class WvletScanner(source: ScannerSource) extends LogSupport:
     lastOffset = index
     offset = index + 1
     if index >= source.length then ch = SU
-    else ch = source.text.charAt(index)
+    else
+      ch = source.text.charAt(index)
+      if ch < ' ' then fetchLineEnd()
+
+  private def fetchLineEnd(): Unit =
+    // skip CR
+    if ch == CR then
+      if offset < source.length && source.text.charAt(offset) == LF then
+        offset += 1
+        ch = LF
+      else ch = LF
+
+    if ch == LF || ch == FF then
+      trace("fetchLineEnd")
+      lineOffset = offset
+      lineStartOffset = offset
+      indentLevel = 0
 
   private def putChar(ch: Char): Unit =
     tokenBuffer.append(ch)
 
   private def fetchToken(): TokenData =
-    trace(s"fetchToken ch[${offset}]: '${String.valueOf(ch)}'")
+    trace(s"fetchToken col:${offset - lineStartOffset} (offset:${offset}): '${String.valueOf(ch)}'")
     (ch: @switch) match
       case ' ' | '\t' | CR | LF | FF =>
         // Skip white space characters
@@ -248,6 +266,7 @@ class WvletScanner(source: ScannerSource) extends LogSupport:
 
     val strVal = getAndClearTokenBuffer()
     TokenData(tokenType, strVal, offset - strVal.length, offset)
+  end getNumber
 
   private def getFraction(): Token =
     var tokenType = Token.DECIMAL_LITERAL
@@ -283,3 +302,4 @@ class WvletScanner(source: ScannerSource) extends LogSupport:
       tokenType = Token.FLOAT_LITERAL
     // checkNoLetter()
     tokenType
+  end getFraction
