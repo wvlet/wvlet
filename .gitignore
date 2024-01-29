@@ -3,3 +3,35 @@
 
 # virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
 hs_err_pid*
+
+logs/
+
+*~
+.metals
+.idea
+tmp
+
+*~
+build
+.bundle
+vendor/bundle
+*.iml
+.idea
+atlassian-ide-plugin.xml
+target
+result
+log-test.properties
+.DS_Store
+project/ts-importer
+.metals
+.bloop
+metals.sbt
+.bsp
+log
+node_modules
+venv
+dist
+
+.ipynb_checkpoints
+.cache
+.scala-build

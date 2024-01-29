@@ -1,0 +1,25 @@
+name: Scala Steward
+
+on:
+  schedule:
+    - cron: '0 */4 * * *'
+  workflow_dispatch:
+
+jobs:
+  scala-steward:
+    runs-on: ubuntu-latest
+    name: Scala Steward
+    env:
+      # Necessary for resolving dependencies at private repositories
+      TD_ARTIFACTORY_USERNAME: ${{ secrets.TD_ARTIFACTORY_USERNAME }}
+      TD_ARTIFACTORY_PASSWORD: ${{ secrets.TD_ARTIFACTORY_PASSWORD }}
+    steps:
+      # Need to checkout the repo for reading repos.md
+      - uses: actions/checkout@v3
+      - name: Launch Scala Steward
+        uses: scala-steward-org/scala-steward-action@v2
+        with:
+          github-token: ${{ secrets.TD_SCALA_STEWARD_TOKEN }}
+          author-name: 'td-scala-steward'
+          author-email: 'dev+ctoo@treasure-data.com'
+          other-args: '--add-labels'

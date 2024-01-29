@@ -1,0 +1,21 @@
+on:
+  pull_request:
+    types:
+      - opened
+      - edited
+      - reopened
+      - synchronize
+
+jobs:
+  newJira:
+    uses: treasure-data/backend-github-workflows/.github/workflows/call-new-jira.yml@main
+    with:
+      project-id: CTOO
+      fields: >
+        {
+          "components": [ {"name": "treasure-flow"} ]
+        }
+      rewrite-first-commit: true
+    secrets:
+      token: ${{ secrets.TD_ACTIONS_REPO_TOKEN }}
+      jira-api-token: ${{ secrets.JIRA_API_TOKEN }}

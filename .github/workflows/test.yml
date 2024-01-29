@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - release
+      - 'releases/**'
+  workflow_dispatch:
+
+jobs:
+  code_format:
+    name: Code format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: scalafmt
+        run: ./sbt scalafmtCheckAll
+  test_scala_3:
+    name: Scala 3
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: sbt
+      - name: Scala 3.x test
+        env:
+          TD_ARTIFACTORY_USERNAME: '${{ secrets.TD_ARTIFACTORY_USERNAME }}'
+          TD_ARTIFACTORY_PASSWORD: '${{ secrets.TD_ARTIFACTORY_PASSWORD }}'
+        run: ./sbt projectJVM/test
+      - name: Publish Test Report
+        uses: mikepenz/action-junit-report@v4
+        if: always() # always run even if the previous step fails
+        with:
+          report_paths: '**/target/test-reports/TEST-*.xml'
+          check_name: Test Report Scala 3.x
+          annotate_only: true
+          detailed_summary: true
+  test_js:
+    name: Scala.js
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache ScalablyTyped artifacts
+        id: cache-scalablytyped
+        uses: actions/cache@v4
+        with:
+          key: ${{ runner.os }}-scalablytyped
+          path: |
+            ~/.ivy2/local
+            ~/.sbt
+            ~/.cache
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: sbt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: npm
+          cache-dependency-path: ./flow-ui-main/package-lock.json
+      - name: Install npm dependencies for root
+        run: npm install
+      - name: Install npm dependencies for ui-main
+        run: npm install
+        working-directory: ./flow-ui-main
+      - name: Scala.js test
+        run: JVM_OPTS=-Xmx4g ./sbt "projectJS/test"
+      - name: Publish Test Report
+        uses: mikepenz/action-junit-report@v4
+        if: always() # always run even if the previous step fails
+        with:
+          report_paths: '**/target/test-reports/TEST-*.xml'
+          check_name: Test Report Scala.js
+          annotate_only: true
+          detailed_summary: true
