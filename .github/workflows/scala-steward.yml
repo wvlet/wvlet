@@ -15,7 +15,7 @@ jobs:
       TD_ARTIFACTORY_PASSWORD: ${{ secrets.TD_ARTIFACTORY_PASSWORD }}
     steps:
       # Need to checkout the repo for reading repos.md
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Launch Scala Steward
         uses: scala-steward-org/scala-steward-action@v2
         with:
