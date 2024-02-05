@@ -13,13 +13,15 @@ jobs:
       # Necessary for resolving dependencies at private repositories
       TD_ARTIFACTORY_USERNAME: ${{ secrets.TD_ARTIFACTORY_USERNAME }}
       TD_ARTIFACTORY_PASSWORD: ${{ secrets.TD_ARTIFACTORY_PASSWORD }}
+      SBT_OPTS: -Xmx2048m -XX:+UseG1GC
     steps:
       # Need to checkout the repo for reading repos.md
       - uses: actions/checkout@v4
       - name: Launch Scala Steward
         uses: scala-steward-org/scala-steward-action@v2
         with:
+          # Need to use a different user from TD_ACTIONS_REPO_TOKEN for auto-approval of PRs
           github-token: ${{ secrets.TD_SCALA_STEWARD_TOKEN }}
           author-name: 'td-scala-steward'
           author-email: 'dev+ctoo@treasure-data.com'
-          other-args: '--add-labels'
+          other-args: '--do-not-fork --add-labels'
