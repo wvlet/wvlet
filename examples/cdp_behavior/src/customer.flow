@@ -1,0 +1,78 @@
+schema weblog_users:
+  td_client_id: string,
+  name: string,
+  age: int,
+  gender: string,
+  email: string,
+  phone: string,
+  address: string,
+  naid: string,
+  time: int,
+end
+
+schema weblog_user_attr3:
+  td_client_id: string,
+  age: int,
+  very_long_attr_for_test_cdp_465: string,
+  time: int,
+end
+
+schema weblog_user_attr2:
+  td_client_id: string,
+  td_language: string,
+  td_os: string,
+  time: int,
+end
+
+schema weblog_users_first_purchased_at:
+  naid: string,
+  first_purchased_at: int,
+  time: int,
+end
+
+from weblog_users
+-- override only a subset of the columns and report the rest as is
+select override
+  td_client_id.or_else('dummy-' + hex(floor(rand() * 4294966016))),
+  naid.or_else('dummy-' + hex(floor(rand() * 4294966016)))
+group by
+  cdp_customer_id: sha1([td_client_id.or_else(''), naid.or_else('')].join('.'))
+select as m:
+  max_by(1, time)
+
+from weblog_user_attr3
+group by
+  td_client_id
+select as a0:
+  max_by(1, time)
+
+from weblog_user_attr2
+group by
+  td_client_id
+select as a1:
+  max_by(1, time)
+
+from weblog_users_first_purchased_at
+group by
+  naid
+select as a2:
+  max_by(1, time)
+
+from m
+left join a0 on td_client_id
+left join a1 on td_client_id
+left join a2 on naid
+select as cdp_customers
+  m.cdp_customer_id,
+  m.td_client_id,
+  m.name,
+  m.gender,
+  m.email,
+  m.phone,
+  m.address,
+  m.naid,
+  a0.age,
+  a0.very_long_attr_for_test_cdp_465,
+  a1.td_language,
+  a1.td_os,
+  a2.first_purchased_at,

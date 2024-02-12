@@ -54,15 +54,16 @@ type url(self: string):
   def utm_source = parse_url(self, 'QUERY', 'utm_source')
 end
 
+from weblogs
+where
+  time != null and
+  td_client_id != null and
+  td_user_agent.category != 'crawler' and
+  td_client_id != '00000000-0000-4000-8000-000000000000' and
+  (td_browser != null or
+    not td_browser.regexp_like '^(?:Googlebot(?:-.*)?|BingPreview|bingbot|YandexBot|PingdomBot)$') and
+  td_host != 'gtm-msr.appspot.com'
+select as behavior_weblogs
 
-model behavior:
-  for w in weblogs
-  where
-    w.time != null and
-    w.td_client_id != null and
-    w.td_user_agent.category != 'crawler' and
-    w.td_client_id != '00000000-0000-4000-8000-000000000000' and
-    (w.td_browser != null or
-      not w.td_browser.regexp_like '^(?:Googlebot(?:-.*)?|BingPreview|bingbot|YandexBot|PingdomBot)$') and
-    w.td_host != 'gtm-msr.appspot.com'
-  select w
+-- TODO: Repeat this for each behavior table
+
