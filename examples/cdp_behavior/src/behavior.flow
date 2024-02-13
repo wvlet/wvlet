@@ -30,7 +30,7 @@ type ip_address(self: string):
   def city_latitude = td_ip_to_latitude(self)
   def city_longitude = td_ip_to_longitude(self)
   def city_metro_code = td_ip_to_metro_code(self)
-  def city_time_zone: = td_ip_to_time_zone(self)
+  def city_time_zone = td_ip_to_time_zone(self)
   def city_postal_code =  td_ip_to_postal_code(self)
   def least_specific_subdivision_name = td_ip_to_least_specific_subdivision_name(self)
   def most_specific_subdivision_name = td_ip_to_most_specific_subdivision_name(self)
@@ -61,7 +61,7 @@ where
   td_user_agent.category != 'crawler' and
   td_client_id != '00000000-0000-4000-8000-000000000000' and
   (td_browser != null or
-    not td_browser.regexp_like '^(?:Googlebot(?:-.*)?|BingPreview|bingbot|YandexBot|PingdomBot)$') and
+    not td_browser.regexp_like('^(?:Googlebot(?:-.*)?|BingPreview|bingbot|YandexBot|PingdomBot)$') and
   td_host != 'gtm-msr.appspot.com'
 select as behavior_weblogs
 

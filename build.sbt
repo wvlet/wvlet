@@ -38,6 +38,7 @@ val buildSettings = Seq[Setting[_]](
 lazy val jvmProjects: Seq[ProjectReference] = Seq(
   api.jvm,
   server,
+  lang,
   client.jvm
 )
 lazy val jsProjects: Seq[ProjectReference] = Seq(
@@ -96,6 +97,24 @@ lazy val api =
         "org.wvlet.airframe" %%% "airframe-http"    % AIRFRAME_VERSION,
         "org.wvlet.airframe" %%% "airframe-metrics" % AIRFRAME_VERSION
       )
+    )
+
+lazy val lang =
+  project
+    .enablePlugins(Antlr4Plugin)
+    .in(file("flow-lang"))
+    .settings(
+      buildSettings,
+      name                       := "flow-lang",
+      Antlr4 / antlr4Version     := "4.13.1",
+      Antlr4 / antlr4PackageName := Some("com.treasuredata.flow.lang.parser"),
+      Antlr4 / antlr4GenListener := true,
+      Antlr4 / antlr4GenVisitor  := true,
+      libraryDependencies ++= Seq(
+        "org.wvlet.airframe" %% "airframe" % AIRFRAME_VERSION
+      ),
+      // Watch changes of example .flow files upon testing
+      Test / watchSources ++= ((ThisBuild / baseDirectory).value / "examples" ** "*.flow").get
     )
 
 lazy val server =
