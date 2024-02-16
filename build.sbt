@@ -111,7 +111,9 @@ lazy val lang =
       Antlr4 / antlr4GenListener := true,
       Antlr4 / antlr4GenVisitor  := true,
       libraryDependencies ++= Seq(
-        "org.wvlet.airframe" %% "airframe" % AIRFRAME_VERSION
+        "org.wvlet.airframe" %% "airframe" % AIRFRAME_VERSION,
+        // Add sql parser for testing purpose
+        "org.wvlet.airframe" %% "airframe-sql" % AIRFRAME_VERSION % Test
       ),
       // Watch changes of example .flow files upon testing
       Test / watchSources ++= ((ThisBuild / baseDirectory).value / "examples" ** "*.flow").get
