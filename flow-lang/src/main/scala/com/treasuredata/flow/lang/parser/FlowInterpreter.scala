@@ -6,16 +6,21 @@ import com.treasuredata.flow.lang.model.*
 import org.antlr.v4.runtime.{ParserRuleContext, Token}
 import org.antlr.v4.runtime.tree.TerminalNode
 import wvlet.log.LogSupport
+import scala.jdk.CollectionConverters.*
 
+object FlowInterpreter:
+  private val parserRules = FlowLangParser.ruleNames.toList.asJava
+
+  private def unquote(s: String): String =
+    s.substring(1, s.length - 1)
+
+/**
+  * Translate ANTLR4's parse tree into LogicalPlan and Expression nodes
+  */
 class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
+  import FlowInterpreter.*
   import FlowLangParser.*
-  import Expression.*
   import com.treasuredata.flow.lang.model.*
-
-  import scala.jdk.CollectionConverters.*
-
-  private val parserRules            = FlowLangParser.ruleNames.toList.asJava
-  private var parameterPosition: Int = 0
 
   private def print(ctx: ParserRuleContext): String =
     ctx.toStringTree(parserRules)
@@ -30,11 +35,11 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
 
   private def getLocation(node: TerminalNode): Option[NodeLocation] = getLocation(node.getSymbol)
 
-  def interpret(ctx: ParserRuleContext): LogicalPlan =
+  def interpret(ctx: ParserRuleContext): FlowPlan =
     trace(s"interpret: ${print(ctx)}")
     val m = ctx.accept(this)
     trace(m)
-    m.asInstanceOf[LogicalPlan]
+    m.asInstanceOf[FlowPlan]
 
   def interpretExpression(ctx: ParserRuleContext): Expression =
     trace(s"interpret: ${print(ctx)}")
@@ -42,18 +47,34 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
     trace(m)
     m.asInstanceOf[Expression]
 
-  override def visitStatements(ctx: StatementsContext): Seq[LogicalPlan] =
-    ctx.singleStatement().asScala.map(s => visitSingleStatement(s)).toSeq
+  private def visitIdentifier(ctx: IdentifierContext): Identifier =
+    visit(ctx).asInstanceOf[Identifier]
 
-  override def visitSingleStatement(ctx: SingleStatementContext): LogicalPlan =
-    visit(ctx).asInstanceOf[LogicalPlan]
+  override def visitUnquotedIdentifier(ctx: UnquotedIdentifierContext): Identifier =
+    UnquotedIdentifier(ctx.getText, getLocation(ctx))
 
-//  override def visitSchemaDef(ctx: SchemaDefContext): SchemaDef =
-//    super.visitSchemaDef(ctx)
+  override def visitBackQuotedIdentifier(ctx: BackQuotedIdentifierContext): Identifier =
+    BackQuotedIdentifier(unquote(ctx.getText), getLocation(ctx))
+
+  override def visitStatements(ctx: StatementsContext): FlowPlan =
+    val plans = ctx.singleStatement().asScala.map(s => visit(s).asInstanceOf[LogicalPlan]).toSeq
+    FlowPlan(plans)
+
+  override def visitSchemaDef(ctx: SchemaDefContext): SchemaDef =
+    val schemaName = ctx.identifier().getText
+    val columns = ctx
+      .schemaElement().asScala
+      .map { x =>
+        val key   = visitIdentifier(x.identifier(0))
+        val value = ColumnType(x.identifier(1).getText, getLocation(x.identifier(1)))
+        ColumnDef(key, value, getLocation(x))
+      }.toSeq
+    SchemaDef(schemaName, columns, getLocation(ctx))
 
   override def visitQuery(ctx: QueryContext): Relation =
-    val inputRelation = visit(ctx.flowerExpr()).asInstanceOf[Relation]
-    Query(inputRelation, getLocation(ctx))
+    // val inputRelation = visit(ctx.flowerExpr()).asInstanceOf[Relation]
+    // Query(inputRelation, getLocation(ctx))
+    null
 
 //  private def visitIdentifier(ctx: IdentifierContext): Identifier =
 //    visit(ctx).asInstanceOf[Identifier]

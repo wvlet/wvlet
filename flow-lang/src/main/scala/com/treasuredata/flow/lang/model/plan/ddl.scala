@@ -10,8 +10,9 @@ sealed trait DDL extends LogicalPlan with LeafPlan
 
 case class SchemaDef(
     name: String,
-    columns: Seq[ColumnDef]
-)
+    columns: Seq[ColumnDef],
+    nodeLocation: Option[NodeLocation]
+) extends DDL
 
 case class CreateSchema(
     schema: QName,

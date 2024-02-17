@@ -48,8 +48,8 @@ qualifiedName
     ;
 
 identifier:
-    IDENTIFIER
-    | BACKQUOTED_IDENTIFIER
+    IDENTIFIER # unquotedIdentifier
+    | BACKQUOTED_IDENTIFIER # backQuotedIdentifier
     ;
 
 expression:

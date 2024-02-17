@@ -28,6 +28,9 @@ object FlowParser extends LogSupport:
     val ctx = parser.statements()
     trace(ctx.toStringTree(parser))
 
+    val interpreter = new FlowInterpreter
+    interpreter.interpret(ctx)
+
   private def tokenStream(text: String): CommonTokenStream =
     val lexer       = new FlowLangLexer(new CaseInsensitiveStream(CharStreams.fromString(text)))
     val tokenStream = new CommonTokenStream(lexer)
