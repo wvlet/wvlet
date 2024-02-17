@@ -6,10 +6,10 @@ tokens {
 
 
 statements:
-    statement (statement)*
+    singleStatement (singleStatement)*
     ;
 
-statement:
+singleStatement:
     schemaDef
     | typeDef
     | query
@@ -40,7 +40,7 @@ param:
     ;
 
 typeDefElem:
-    DEF identifier (COLON identifier)? EQ expr
+    DEF identifier (COLON identifier)? EQ expression
     ;
 
 qualifiedName
@@ -52,13 +52,13 @@ identifier:
     | BACKQUOTED_IDENTIFIER
     ;
 
-expr:
+expression:
     NULL             # nullLiteral
     | number         # numberLiteral
     | str            # stringLiteral
     | function       # functionCall
     | '[' exprList ']' # arrayConstructor
-    | expr '[' expr ']' # arrayAccess
+    | expression '[' expression ']' # arrayAccess
     | identifier # columnReference
     ;
 
@@ -70,7 +70,7 @@ booleanExpression
     ;
 
 valueExpression
-    : expr
+    : expression
     ;
 
 
@@ -81,7 +81,7 @@ function:
     ;
 
 exprList:
-    expr (COMMA expr)* COMMA?
+    expression (COMMA expression)* COMMA?
     ;
 
 
@@ -122,8 +122,8 @@ flowerExpr:
     ;
 
 forExpr:
-    FOR identifier IN expr
-    | FROM expr
+    FOR identifier IN expression
+    | FROM relation
     ;
 
 selectExpr:
@@ -135,7 +135,48 @@ selectItemList:
     ;
 
 selectItem:
-    (identifier COLON)? expr
+    (identifier COLON)? expression
+    ;
+
+
+relation
+    : left=aliasedRelation
+      ( CROSS JOIN right=aliasedRelation
+      | joinType JOIN rightRelation=relation joinCriteria
+      | NATURAL joinType JOIN right=aliasedRelation
+      )                                           #joinRelation
+//    | left=relation
+//      LATERAL VIEW EXPLODE '(' expression (',' expression)* ')' tableAlias=identifier
+//      AS identifier (',' identifier)*  #lateralView
+    | aliasedRelation #relationDefault
+    ;
+
+aliasedRelation
+    : relationPrimary (AS? identifier columnAliases?)?
+    ;
+
+columnAliases
+    : '(' identifier (',' identifier)* ')'
+    ;
+
+relationPrimary
+    : qualifiedName                                                   #tableName
+    | '(' query ')'                                                   #subqueryRelation
+    | UNNEST '(' expression (',' expression)* ')' (WITH ORDINALITY)?  #unnest
+    | LATERAL '(' query ')'                                           #lateral
+    | '(' relation ')'                                                #parenthesizedRelation
+    ;
+
+joinType
+    : INNER?
+    | LEFT OUTER?
+    | RIGHT OUTER?
+    | FULL OUTER?
+    ;
+
+joinCriteria
+    : ON booleanExpression
+    | ON '(' identifier (',' identifier)* ')'
     ;
 
 
@@ -152,6 +193,21 @@ SCHEMA: 'SCHEMA';
 SELECT: 'SELECT';
 TYPE: 'TYPE';
 WHERE: 'WHERE';
+
+UNNEST: 'UNNEST';
+LATERAL: 'LATERAL';
+WITH: 'WITH';
+ORDINALITY: 'ORDINALITY';
+
+CROSS: 'CROSS';
+FULL: 'FULL';
+INNER: 'INNER';
+JOIN: 'JOIN';
+LEFT: 'LEFT';
+NATURAL: 'NATURAL';
+OUTER: 'OUTER';
+RIGHT: 'RIGHT';
+
 
 NULL: 'NULL';
 AND: 'AND';

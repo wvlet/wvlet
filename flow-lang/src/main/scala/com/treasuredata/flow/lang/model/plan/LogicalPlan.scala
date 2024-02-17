@@ -1,7 +1,9 @@
-package com.treasuredata.flow.lang.model
+package com.treasuredata.flow.lang.model.plan
+
+import com.treasuredata.flow.lang.model.expr.Expression
+import com.treasuredata.flow.lang.model.TreeNode
 
 trait LogicalPlan extends TreeNode[LogicalPlan] with Product:
-
   def modelName: String =
     val n = this.getClass.getSimpleName
     n.stripSuffix("$")
@@ -342,3 +344,16 @@ trait LogicalPlan extends TreeNode[LogicalPlan] with Product:
         case null           =>
 
     productIterator.foreach(recursiveTraverse)
+
+trait LeafPlan extends LogicalPlan:
+  override def children: Seq[LogicalPlan] = Nil
+
+trait UnaryPlan extends LogicalPlan:
+  def child: LogicalPlan
+
+  override def children: Seq[LogicalPlan] = child :: Nil
+
+trait BinaryPlan extends LogicalPlan:
+  def left: LogicalPlan
+  def right: LogicalPlan
+  override def children: Seq[LogicalPlan] = Seq(left, right)
