@@ -528,6 +528,7 @@ sealed trait TableElement extends Expression
 case class ColumnDef(columnName: Identifier, tpe: ColumnType, nodeLocation: Option[NodeLocation])
     extends TableElement
     with UnaryExpression:
+  override def toString: String  = s"${columnName.value}:${tpe.tpe}"
   override def child: Expression = columnName
 
 case class ColumnType(tpe: String, nodeLocation: Option[NodeLocation]) extends LeafExpression

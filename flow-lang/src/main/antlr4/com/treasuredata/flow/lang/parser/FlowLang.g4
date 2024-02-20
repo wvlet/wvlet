@@ -26,7 +26,7 @@ schemaElement:
     ;
 
 typeDef:
-    TYPE identifier '(' paramList ')' COLON
+    TYPE identifier ('(' paramList ')')? COLON
       typeDefElem*
     END?
     ;
@@ -189,6 +189,7 @@ END: 'END';
 FOR: 'FOR';
 FROM: 'FROM';
 IN: 'IN';
+ON: 'ON';
 SCHEMA: 'SCHEMA';
 SELECT: 'SELECT';
 TYPE: 'TYPE';
@@ -227,6 +228,8 @@ MINUS: '-';
 ASTERISK: '*';
 SLASH: '/';
 PERCENT: '%';
+
+SELF: 'self';
 
 STRING
     : '\'' ( ~'\'' | '\'\'' )* '\''

@@ -14,6 +14,21 @@ case class SchemaDef(
     nodeLocation: Option[NodeLocation]
 ) extends DDL
 
+case class TypeDef(
+    name: String,
+    params: Seq[TypeParam],
+    defs: Seq[TypeDefDef],
+    nodeLocation: Option[NodeLocation]
+) extends DDL
+
+case class TypeParam(name: String, value: String, nodeLocation: Option[NodeLocation]) extends Expression:
+  override def toString: String          = s"${name}:${value}"
+  override def children: Seq[Expression] = Seq.empty
+
+case class TypeDefDef(name: String, tpe: Option[String], expr: Expression, nodeLocation: Option[NodeLocation])
+    extends Expression:
+  override def children: Seq[Expression] = Seq.empty
+
 case class CreateSchema(
     schema: QName,
     ifNotExists: Boolean,

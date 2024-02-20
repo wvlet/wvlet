@@ -38,7 +38,7 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
   def interpret(ctx: ParserRuleContext): FlowPlan =
     trace(s"interpret: ${print(ctx)}")
     val m = ctx.accept(this)
-    trace(m)
+    debug(m)
     m.asInstanceOf[FlowPlan]
 
   def interpretExpression(ctx: ParserRuleContext): Expression =
@@ -70,6 +70,34 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
         ColumnDef(key, value, getLocation(x))
       }.toSeq
     SchemaDef(schemaName, columns, getLocation(ctx))
+
+  override def visitTypeDef(ctx: TypeDefContext): TypeDef =
+    val name: String = visitIdentifier(ctx.identifier()).value
+    val paramList: Seq[TypeParam] =
+      Option(ctx.paramList())
+        .flatMap(p => Option(p.param()).map(_.asScala.toSeq))
+        .getOrElse(Seq.empty[ParamContext])
+        .map { p =>
+          TypeParam(
+            name = visitIdentifier(p.identifier(0)).value,
+            value = visitIdentifier(p.identifier(1)).value,
+            nodeLocation = getLocation(p)
+          )
+        }
+
+    val typeDefs: Seq[TypeDefDef] = ctx.typeDefElem().asScala.map(visitTypeDefElem).toSeq
+    TypeDef(name, paramList, typeDefs, getLocation(ctx))
+
+  override def visitTypeDefElem(ctx: TypeDefElemContext): TypeDefDef =
+    val expr: Expression = interpretExpression(ctx.expression())
+    ctx.identifier().asScala.toList match
+      case head :: Nil =>
+        TypeDefDef(visitIdentifier(head).value, None, expr, getLocation(ctx))
+      case head :: tpe :: Nil =>
+        TypeDefDef(visitIdentifier(head).value, Option(visitIdentifier(tpe)).map(_.value), expr, getLocation(ctx))
+      case _ =>
+        // unexpected
+        TypeDefDef("", None, expr, getLocation(ctx))
 
   override def visitQuery(ctx: QueryContext): Relation =
     // val inputRelation = visit(ctx.flowerExpr()).asInstanceOf[Relation]

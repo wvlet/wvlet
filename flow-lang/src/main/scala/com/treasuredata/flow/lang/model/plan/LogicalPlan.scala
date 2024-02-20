@@ -9,8 +9,7 @@ trait LogicalPlan extends TreeNode[LogicalPlan] with Product:
     n.stripSuffix("$")
 
   def pp: String =
-    // LogicalPlanPrinter.print(this)
-    ""
+    LogicalPlanPrinter.print(this)
 
   /**
     * All child nodes of this plan node

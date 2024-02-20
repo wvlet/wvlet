@@ -33,9 +33,10 @@ trait Attribute extends LeafExpression with LogSupport:
   override def attributeName: String = name
 
   def name: String
-
   def fullName: String =
     s"${prefix}${name}"
+
+  def typeDescription: String = dataTypeName
 
   def prefix: String = qualifier.map(q => s"${q}.").getOrElse("")
 
