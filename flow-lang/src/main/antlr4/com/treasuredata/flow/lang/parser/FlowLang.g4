@@ -52,6 +52,10 @@ identifier:
     | BACKQUOTED_IDENTIFIER # backQuotedIdentifier
     ;
 
+expression
+    : booleanExpression
+    ;
+
 booleanExpression
     : '!' booleanExpression                                        #logicalNot
     | valueExpression                                                   #booleanDeafault
@@ -61,6 +65,8 @@ booleanExpression
 
 valueExpression
     : primaryExpression #valueExpressionDefault
+    | left=valueExpression operator=(ASTERISK | SLASH | PERCENT) right=valueExpression  #arithmeticBinary
+    | left=valueExpression operator=(PLUS | MINUS) right=valueExpression                #arithmeticBinary
     | left=valueExpression comparisonOperator right=valueExpression                     #comparison
     ;
 
@@ -103,7 +109,7 @@ primaryExpression
 //    | SUBSTRING '(' valueExpression FROM valueExpression (FOR valueExpression)? ')'       #substring
 //    | NORMALIZE '(' valueExpression (',' normalForm)? ')'                                 #normalize
 //    | EXTRACT '(' identifier FROM valueExpression ')'                                     #extract
-    | '(' booleanExpression ')'                                                                  #parenthesizedExpression
+    | '(' expression ')'                                                                  #parenthesizedExpression
 //    | GROUPING '(' (qualifiedName (',' qualifiedName)*)? ')'                              #groupingOperation
     ;
 

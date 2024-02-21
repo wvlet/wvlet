@@ -163,9 +163,9 @@ case class WindowFrame(
 case class FunctionCall(
     name: String,
     args: Seq[Expression],
-    isDistinct: Boolean,
-    filter: Option[Expression],
-    window: Option[Window],
+    // isDistinct: Boolean,
+    // filter: Option[Expression],
+    // window: Option[Window],
     nodeLocation: Option[NodeLocation]
 ) extends Expression:
 
@@ -175,10 +175,11 @@ case class FunctionCall(
       // TODO: Resolve the function return type using a function catalog
       DataType.UnknownType
 
-  override def children: Seq[Expression] = args ++ filter.toSeq ++ window.toSeq
+  override def children: Seq[Expression] = args // ++ filter.toSeq ++ window.toSeq
   def functionName: String               = name.toString.toLowerCase(Locale.US)
 
-  override def toString = s"FunctionCall(${name}, ${args.mkString(", ")}, distinct:${isDistinct}, window:${window})"
+  override def toString =
+    s"FunctionCall(${name}, ${args.mkString(", ")})" // , distinct:${isDistinct}, window:${window})"
 
 case class LambdaExpr(body: Expression, args: Seq[String], nodeLocation: Option[NodeLocation])
     extends Expression
