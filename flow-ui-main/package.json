@@ -9,7 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "monaco-editor": "^0.45.0",
+    "monaco-editor": "^0.46.0",
     "rollup": "^4.9.6"
   },
   "devDependencies": {
