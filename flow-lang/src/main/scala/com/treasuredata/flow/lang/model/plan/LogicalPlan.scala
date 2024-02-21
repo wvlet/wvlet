@@ -329,6 +329,7 @@ trait LogicalPlan extends TreeNode[LogicalPlan] with Product:
 
       override def apply(v1: Expression): Unit =
         if cond.apply(v1) then l += v1
+
     )
     l.result()
 

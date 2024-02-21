@@ -159,6 +159,7 @@ trait Expression extends TreeNode[Expression] with Product:
       override def isDefinedAt(x: Expression): Boolean = cond.isDefinedAt(x)
       override def apply(v1: Expression): Unit =
         if cond.apply(v1) then l += v1
+
     )
     l.result()
 

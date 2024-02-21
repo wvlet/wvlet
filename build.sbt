@@ -13,6 +13,7 @@ val jfrogCredential = Credentials(
   sys.env.getOrElse("TD_ARTIFACTORY_USERNAME", ""),
   sys.env.getOrElse("TD_ARTIFACTORY_PASSWORD", "")
 )
+
 val TD_MAVEN_REPO          = "release" at "https://treasuredata.jfrog.io/treasuredata/libs-release"
 val TD_MAVEN_SNAPSHOT_REPO = "snapshot" at "https://treasuredata.jfrog.io/treasuredata/libs-snapshot"
 ThisBuild / credentials += jfrogCredential
@@ -41,6 +42,7 @@ lazy val jvmProjects: Seq[ProjectReference] = Seq(
   lang,
   client.jvm
 )
+
 lazy val jsProjects: Seq[ProjectReference] = Seq(
   api.js,
   client.js,
