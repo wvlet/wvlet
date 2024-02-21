@@ -61,7 +61,7 @@ where
   td_user_agent.category != 'crawler' and
   td_client_id != '00000000-0000-4000-8000-000000000000' and
   (td_browser != null or
-    not td_browser.regexp_like('^(?:Googlebot(?:-.*)?|BingPreview|bingbot|YandexBot|PingdomBot)$') and
+    !td_browser.regexp_like('^(?:Googlebot(?:-.*)?|BingPreview|bingbot|YandexBot|PingdomBot)$')) and
   td_host != 'gtm-msr.appspot.com'
 select as behavior_weblogs
 

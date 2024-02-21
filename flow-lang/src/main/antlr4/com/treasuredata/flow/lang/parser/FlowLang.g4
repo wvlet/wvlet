@@ -40,7 +40,7 @@ param:
     ;
 
 typeDefElem:
-    DEF identifier (COLON identifier)? EQ expression
+    DEF identifier (COLON identifier)? EQ primaryExpression
     ;
 
 qualifiedName
@@ -52,16 +52,6 @@ identifier:
     | BACKQUOTED_IDENTIFIER # backQuotedIdentifier
     ;
 
-expression:
-    NULL             # nullLiteral
-    | number         # numberLiteral
-    | str            # stringLiteral
-    | function       # functionCall
-    | '[' exprList ']' # arrayConstructor
-    | expression '[' expression ']' # arrayAccess
-    | identifier # columnReference
-    ;
-
 booleanExpression
     : '!' booleanExpression                                        #logicalNot
     | valueExpression                                                   #booleanDeafault
@@ -70,18 +60,56 @@ booleanExpression
     ;
 
 valueExpression
-    : expression
+    : primaryExpression #valueExpressionDefault
+    | left=valueExpression comparisonOperator right=valueExpression                     #comparison
     ;
 
-
-
-
-function:
-    identifier '(' exprList ')'
+primaryExpression
+    : NULL                                                                                #nullLiteral
+//    | interval                                                                            #intervalLiteral
+//    | identifier str                                                                   #typeConstructor
+//    | DOUBLE_PRECISION str                                                             #typeConstructor
+    | number                                                                              #numericLiteral
+    | booleanValue                                                                        #booleanLiteral
+    | str                                                                              #stringLiteral
+    | BINARY_LITERAL                                                                      #binaryLiteral
+    | SELF                                                                                #selfLiteral
+    | '?'                                                                                 #parameter
+//    | POSITION '(' valueExpression IN valueExpression ')'                                 #position
+//    | '(' expression (',' expression)+ ')'                                                #rowConstructor
+//    | ROW '(' expression (',' expression)* ')'                                            #rowConstructor
+    | qualifiedName '(' ASTERISK ')'                                                      #functionCall
+    | qualifiedName '(' (valueExpression (',' valueExpression)*) ')'                         #functionCall
+//        (ORDER BY sortItem (',' sortItem)*)? ')' filter? over?                            #functionCall
+//    | identifier '->' expression                                                          #lambda
+//    | '(' (identifier (',' identifier)*)? ')' '->' expression                             #lambda
+    | '(' query ')'                                                                       #subqueryExpression
+    // This is an extension to ANSI SQL, which considers EXISTS to be a <boolean expression>
+//    | EXISTS '(' query ')'                                                                #exists
+//    | CASE valueExpression whenClause+ (ELSE elseExpression=expression)? END              #simpleCase
+//    | CASE whenClause+ (ELSE elseExpression=expression)? END                              #searchedCase
+//    | CAST '(' expression AS type ')'                                                     #cast
+//    | TRY_CAST '(' expression AS type ')'                                                 #cast
+//    | ARRAY '[' (expression (',' expression)*)? ']'                                       #arrayConstructor
+    | value=primaryExpression '[' index=valueExpression ']'                               #subscript
+    | identifier                                                                          #columnReference
+    | base=primaryExpression '.' fieldName=identifier                                     #dereference
+//    | name=CURRENT_DATE                                                                   #specialDateTimeFunction
+//    | name=CURRENT_TIME ('(' precision=INTEGER_VALUE ')')?                                #specialDateTimeFunction
+//    | name=CURRENT_TIMESTAMP ('(' precision=INTEGER_VALUE ')')?                           #specialDateTimeFunction
+//    | name=LOCALTIME ('(' precision=INTEGER_VALUE ')')?                                   #specialDateTimeFunction
+//    | name=LOCALTIMESTAMP ('(' precision=INTEGER_VALUE ')')?                              #specialDateTimeFunction
+//    | name=CURRENT_USER                                                                   #currentUser
+//    | SUBSTRING '(' valueExpression FROM valueExpression (FOR valueExpression)? ')'       #substring
+//    | NORMALIZE '(' valueExpression (',' normalForm)? ')'                                 #normalize
+//    | EXTRACT '(' identifier FROM valueExpression ')'                                     #extract
+    | '(' booleanExpression ')'                                                                  #parenthesizedExpression
+//    | GROUPING '(' (qualifiedName (',' qualifiedName)*)? ')'                              #groupingOperation
     ;
+
 
 exprList:
-    expression (COMMA expression)* COMMA?
+    primaryExpression (COMMA primaryExpression)* COMMA?
     ;
 
 
@@ -112,22 +140,18 @@ number
     ;
 
 query:
-   flowerExpr
-   ;
-
-flowerExpr:
     forExpr
     (WHERE booleanExpression)?
     selectExpr?
     ;
 
 forExpr:
-    FOR identifier IN expression
-    | FROM relation
+    FOR identifier IN primaryExpression  # forInput
+    | FROM relation               # fromInput
     ;
 
 selectExpr:
-    SELECT (AS identifier)? selectItemList
+    SELECT (AS identifier)? selectItemList?
     ;
 
 selectItemList:
@@ -135,7 +159,7 @@ selectItemList:
     ;
 
 selectItem:
-    (identifier COLON)? expression
+    (identifier COLON)? primaryExpression
     ;
 
 
@@ -162,7 +186,7 @@ columnAliases
 relationPrimary
     : qualifiedName                                                   #tableName
     | '(' query ')'                                                   #subqueryRelation
-    | UNNEST '(' expression (',' expression)* ')' (WITH ORDINALITY)?  #unnest
+    | UNNEST '(' primaryExpression (',' primaryExpression)* ')' (WITH ORDINALITY)?  #unnest
     | LATERAL '(' query ')'                                           #lateral
     | '(' relation ')'                                                #parenthesizedRelation
     ;

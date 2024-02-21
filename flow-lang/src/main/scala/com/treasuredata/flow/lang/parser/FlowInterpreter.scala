@@ -89,7 +89,7 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
     TypeDef(name, paramList, typeDefs, getLocation(ctx))
 
   override def visitTypeDefElem(ctx: TypeDefElemContext): TypeDefDef =
-    val expr: Expression = interpretExpression(ctx.expression())
+    val expr: Expression = interpretExpression(ctx.primaryExpression())
     ctx.identifier().asScala.toList match
       case head :: Nil =>
         TypeDefDef(visitIdentifier(head).value, None, expr, getLocation(ctx))
@@ -100,12 +100,89 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
         TypeDefDef("", None, expr, getLocation(ctx))
 
   override def visitQuery(ctx: QueryContext): Relation =
-    // val inputRelation = visit(ctx.flowerExpr()).asInstanceOf[Relation]
-    // Query(inputRelation, getLocation(ctx))
+    val filterExpr: Option[Expression] = Option(ctx.booleanExpression()).map { cond =>
+      interpretExpression(cond)
+    }
+    val inputRelation: Relation = ctx.forExpr() match
+      case f: ForInputContext =>
+        null
+      case f: FromInputContext =>
+        interpretRelation(f.relation())
+
+    var r: Relation = inputRelation
+    if filterExpr.isDefined then r = Filter(r, filterExpr.get, getLocation(ctx.booleanExpression()))
+    if Option(ctx.selectExpr()).isDefined then r = interpretSelect(r, ctx.selectExpr())
+
+    Query(r, getLocation(ctx))
+
+  private def interpretSelect(r: Relation, ctx: SelectExprContext): Relation =
+    val selectItems: List[Attribute] =
+      Option(ctx.selectItemList()) match
+        case Some(lst) =>
+          lst.selectItem().asScala.map { si => visitSelectItem(si) }.toList
+        case None =>
+          List.empty
+    val alias: Option[Identifier] = Option(ctx.identifier()).map { alias =>
+      visitIdentifier(alias)
+    }
+    val p = Project(r, selectItems, getLocation(ctx))
+    if alias.isDefined then AliasedRelation(p, alias.get, None, getLocation(ctx))
+    else p
+
+  override def visitSelectItem(ctx: SelectItemContext): Attribute =
     null
 
-//  private def visitIdentifier(ctx: IdentifierContext): Identifier =
-//    visit(ctx).asInstanceOf[Identifier]
+  private def interpretRelation(ctx: RelationContext): Relation =
+    ctx match
+      case r: RelationDefaultContext =>
+        visitRelationDefault(r)
+//      case r: JoinRelationContext =>
+//        visitJoinRelation(r)
+//      // case r: LateralViewContext =>
+//      //        visitLateralView(r)
+//      case r: ParenthesizedRelationContext =>
+//        visitParenthesizedRelation(r)
+//      case r: UnnestContext =>
+//        visitUnnest(r)
+//      case r: SubqueryRelationContext =>
+//        visitSubqueryRelation(r)
+//      case r: TableNameContext =>
+//        visitTableName(r)
+//      case r: LateralContext =>
+//        visitLateral(r)
+      case _ =>
+        throw unknown(ctx)
+
+  override def visitRelationDefault(ctx: RelationDefaultContext): Relation =
+    visitAliasedRelation(ctx.aliasedRelation())
+
+  override def visitAliasedRelation(ctx: AliasedRelationContext): Relation =
+    val r: Relation = ctx.relationPrimary() match
+      case p: ParenthesizedRelationContext =>
+        ParenthesizedRelation(visit(p.relation()).asInstanceOf[Relation], getLocation(ctx))
+      case u: UnnestContext =>
+        val ord = Option(u.ORDINALITY()).map(x => true).getOrElse(false)
+        Unnest(
+          u.primaryExpression().asScala.toSeq.map(x => interpretExpression(x)),
+          withOrdinality = ord,
+          getLocation(ctx)
+        )
+      case s: SubqueryRelationContext =>
+        visitQuery(s.query())
+      case l: LateralContext =>
+        Lateral(visitQuery(l.query()), getLocation(ctx))
+      case t: TableNameContext =>
+        TableRef(QName(t.qualifiedName().getText, getLocation(t)), getLocation(ctx))
+      case other =>
+        throw unknown(other)
+
+    ctx.identifier() match
+      case i: IdentifierContext =>
+        val columnNames = Option(ctx.columnAliases()).map(_.identifier().asScala.map(_.getText).toSeq)
+        // table alias name is always resolved identifier
+        AliasedRelation(r, visitIdentifier(i).toResolved, columnNames, getLocation(ctx))
+      case other =>
+        r
 
 /*
   override def visitQuerySpecification(ctx: QuerySpecificationContext): LogicalPlan =
@@ -202,9 +279,6 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
         }
       }
 
-  override def visitRelationDefault(ctx: RelationDefaultContext): Relation =
-    visitAliasedRelation(ctx.aliasedRelation())
-
   override def visitLateralView(ctx: LateralViewContext): Relation =
     val left          = visit(ctx.left).asInstanceOf[Relation]
     val exprs         = ctx.expression().asScala.map(expression).toSeq
@@ -270,9 +344,6 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
     val j = Join(joinType, l, r, joinCriteria, getLocation(ctx))
     j
 
-  override def visitTableName(ctx: TableNameContext): TableRef =
-    val tableName = visitQualifiedName(ctx.qualifiedName())
-    TableRef(tableName, getLocation(ctx))
 
   override def visitQualifiedName(ctx: QualifiedNameContext): QName =
     QName(ctx.identifier().asScala.map(_.getText).toList, getLocation(ctx))
