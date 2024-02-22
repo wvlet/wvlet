@@ -31,8 +31,7 @@ case class NamedRelation(
     child: Relation,
     name: Identifier,
     nodeLocation: Option[NodeLocation]
-) extends Relation
-    with LeafPlan:
+) extends UnaryRelation:
   override def toString: String = s"NamedRelation[${name.value}](${child})"
 
 case class Values(rows: Seq[Expression], nodeLocation: Option[NodeLocation]) extends Relation with LeafPlan:
