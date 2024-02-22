@@ -1,7 +1,7 @@
-package com.treasuredata.flow.lang.model
+package com.treasuredata.flow.lang.model.plan
 
+import com.treasuredata.flow.lang.model.NodeLocation
 import com.treasuredata.flow.lang.model.expr.*
-import com.treasuredata.flow.lang.model.plan.*
 
 /*
  * SQL statements for changing the table schema or catalog

@@ -20,13 +20,20 @@ case class AliasedRelation(
     columnNames: Option[Seq[String]],
     nodeLocation: Option[NodeLocation]
 ) extends UnaryRelation:
-
   override def toString: String =
     columnNames match
       case Some(columnNames) =>
         s"AliasedRelation[${alias}](Select[${columnNames.mkString(", ")}](${child}))"
       case None =>
         s"AliasedRelation[${alias}](${child})"
+
+case class NamedRelation(
+    child: Relation,
+    name: Identifier,
+    nodeLocation: Option[NodeLocation]
+) extends Relation
+    with LeafPlan:
+  override def toString: String = s"NamedRelation[${name.value}](${child})"
 
 case class Values(rows: Seq[Expression], nodeLocation: Option[NodeLocation]) extends Relation with LeafPlan:
   override def toString: String = s"Values(${rows.mkString(", ")})"

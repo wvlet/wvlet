@@ -1,5 +1,6 @@
 package com.treasuredata.flow.lang.parser
 
+import com.treasuredata.flow.lang.model.plan.FlowPlan
 import org.antlr.v4.runtime.{
   BaseErrorListener,
   CharStreams,
@@ -14,7 +15,7 @@ import org.antlr.v4.runtime.{
 import wvlet.log.LogSupport
 
 object FlowParser extends LogSupport:
-  def parse(code: String): Unit =
+  def parse(code: String): FlowPlan =
     val parser = new FlowLangParser(tokenStream(code))
     // Do not drop mismatched token
     parser.setErrorHandler(

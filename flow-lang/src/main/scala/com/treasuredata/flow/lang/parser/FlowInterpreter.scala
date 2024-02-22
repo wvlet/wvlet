@@ -121,12 +121,12 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
         case Some(lst) =>
           lst.selectItem().asScala.map { si => visitSelectItem(si) }.toList
         case None =>
-          List.empty
+          List(AllColumns(None, None, None, getLocation(ctx)))
     val alias: Option[Identifier] = Option(ctx.identifier()).map { alias =>
       visitIdentifier(alias)
     }
     val p = Project(r, selectItems, getLocation(ctx))
-    if alias.isDefined then AliasedRelation(p, alias.get, None, getLocation(ctx))
+    if alias.isDefined then NamedRelation(p, alias.get, getLocation(ctx))
     else p
 
   override def visitSelectItem(ctx: SelectItemContext): Attribute =
