@@ -1,3 +1,5 @@
+name: JIRA
+
 on:
   pull_request:
     types:
@@ -8,6 +10,7 @@ on:
 
 jobs:
   newJira:
+    name: Create a new JIRA ticket
     uses: treasure-data/backend-github-workflows/.github/workflows/call-new-jira.yml@main
     with:
       project-id: CTOO

@@ -6,6 +6,7 @@ permissions:
 
 jobs:
   approve_pr:
+    name: Approve Bot PRs
     runs-on: ubuntu-latest
     # Scala Steward runs with td-scala-steward user
     if: ${{ github.actor == 'td-scala-steward' || github.actor == 'dependabot[bot]' }}
