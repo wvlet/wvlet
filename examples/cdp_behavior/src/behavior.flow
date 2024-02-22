@@ -54,6 +54,14 @@ type url(self: string):
   def utm_source = parse_url(self, 'QUERY', 'utm_source')
 end
 
+-- TODO Support parting this syntax
+-- type string(self: string):
+--   def regexp_like(regex: string): string = engine() match
+--      case 'duckdb' then regexp_matches(self, regex)
+--      case _ then regexp_like(self, regex)
+--   end
+-- end
+
 from weblogs
 where
   time != null and
