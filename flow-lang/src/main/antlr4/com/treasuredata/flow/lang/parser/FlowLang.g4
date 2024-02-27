@@ -79,7 +79,6 @@ primaryExpression
     | booleanValue                                                                        #booleanLiteral
     | str                                                                              #stringLiteral
     | BINARY_LITERAL                                                                      #binaryLiteral
-    | SELF                                                                                #selfLiteral
     | '?'                                                                                 #parameter
 //    | POSITION '(' valueExpression IN valueExpression ')'                                 #position
 //    | '(' expression (',' expression)+ ')'                                                #rowConstructor
@@ -213,38 +212,38 @@ joinCriteria
 COLON: ':';
 COMMA: ',';
 
-AS: 'AS';
-DEF: 'DEF';
-END: 'END';
-FOR: 'FOR';
-FROM: 'FROM';
-IN: 'IN';
-ON: 'ON';
-SCHEMA: 'SCHEMA';
-SELECT: 'SELECT';
-TYPE: 'TYPE';
-WHERE: 'WHERE';
+AS: 'as';
+DEF: 'def';
+END: 'end';
+FOR: 'for';
+FROM: 'from';
+IN: 'in';
+ON: 'on';
+SCHEMA: 'schema';
+SELECT: 'select';
+TYPE: 'type';
+WHERE: 'where';
 
-UNNEST: 'UNNEST';
-LATERAL: 'LATERAL';
-WITH: 'WITH';
-ORDINALITY: 'ORDINALITY';
+UNNEST: 'unnest';
+LATERAL: 'lateral';
+WITH: 'with';
+ORDINALITY: 'ordinality';
 
-CROSS: 'CROSS';
-FULL: 'FULL';
-INNER: 'INNER';
-JOIN: 'JOIN';
-LEFT: 'LEFT';
-NATURAL: 'NATURAL';
-OUTER: 'OUTER';
-RIGHT: 'RIGHT';
+CROSS: 'cross';
+FULL: 'full';
+INNER: 'inner';
+JOIN: 'join';
+LEFT: 'left';
+NATURAL: 'natural';
+OUTER: 'outer';
+RIGHT: 'right';
 
 
-NULL: 'NULL';
-AND: 'AND';
-OR: 'OR';
-TRUE: 'TRUE';
-FALSE: 'FALSE';
+NULL: 'null';
+AND: 'and';
+OR: 'or';
+TRUE: 'true';
+FALSE: 'false';
 
 EQ  : '=';
 NEQ : '!=';
@@ -259,21 +258,19 @@ ASTERISK: '*';
 SLASH: '/';
 PERCENT: '%';
 
-SELF: 'self';
-
 STRING
     : '\'' ( ~'\'' | '\'\'' )* '\''
     ;
 
 UNICODE_STRING
-    : 'U&\'' ( ~'\'' | '\'\'' )* '\''
+    : 'u&\'' ( ~'\'' | '\'\'' )* '\''
     ;
 
 // Note: we allow any character inside the binary literal and validate
 // its a correct literal when the AST is being constructed. This
 // allows us to provide more meaningful error messages to the user
 BINARY_LITERAL
-    :  'X\'' (~'\'')* '\''
+    :  'x\'' (~'\'')* '\''
     ;
 
 INTEGER_VALUE
@@ -308,7 +305,7 @@ BACKQUOTED_IDENTIFIER
 
 
 fragment EXPONENT
-    : 'E' [+-]? DIGIT+
+    : 'e' [+-]? DIGIT+
     ;
 
 fragment DIGIT
@@ -316,7 +313,7 @@ fragment DIGIT
     ;
 
 fragment LETTER
-    : [A-Z]
+    : [A-Za-z]
     ;
 
 SIMPLE_COMMENT

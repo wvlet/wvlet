@@ -2,6 +2,7 @@ package com.treasuredata.flow.lang.parser
 
 import com.treasuredata.flow.lang.model.plan.FlowPlan
 import org.antlr.v4.runtime.{
+  ANTLRInputStream,
   BaseErrorListener,
   CharStreams,
   CommonTokenStream,
@@ -34,7 +35,7 @@ object FlowParser extends LogSupport:
     interpreter.interpret(ctx)
 
   private def tokenStream(text: String): CommonTokenStream =
-    val lexer       = new FlowLangLexer(new CaseInsensitiveStream(CharStreams.fromString(text)))
+    val lexer       = new FlowLangLexer(new ANTLRInputStream(text))
     val tokenStream = new CommonTokenStream(lexer)
     tokenStream
 
