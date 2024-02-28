@@ -113,9 +113,15 @@ lazy val lang =
       Antlr4 / antlr4GenListener := true,
       Antlr4 / antlr4GenVisitor  := true,
       libraryDependencies ++= Seq(
-        "org.wvlet.airframe" %% "airframe" % AIRFRAME_VERSION,
+        "org.wvlet.airframe" %% "airframe"      % AIRFRAME_VERSION,
+        "org.wvlet.airframe" %% "airframe-ulid" % AIRFRAME_VERSION,
         // Add sql parser for testing purpose
-        "org.wvlet.airframe" %% "airframe-sql" % AIRFRAME_VERSION % Test
+        "org.wvlet.airframe" %% "airframe-sql" % AIRFRAME_VERSION % Test,
+        // Add Spark as a reference impl (Scala 2)
+        "org.apache.spark" %% "spark-sql" % "3.5.0" % Test excludeAll (
+          // exclude sbt-parser-combinators as it conflicts with Scala 3
+          ExclusionRule(organization = "org.scala-lang.modules", name = "scala-parser-combinators_2.13")
+        ) cross (CrossVersion.for3Use2_13)
       ),
       // Watch changes of example .flow files upon testing
       Test / watchSources ++= ((ThisBuild / baseDirectory).value / "examples" ** "*.flow").get

@@ -6,7 +6,8 @@ import com.treasuredata.flow.lang.model.expr.*
 /*
  * SQL statements for changing the table schema or catalog
  */
-sealed trait DDL extends LogicalPlan with LeafPlan
+sealed trait DDL extends LogicalPlan with LeafPlan:
+  override def outputAttributes: Seq[Attribute] = Nil
 
 case class SchemaDef(
     name: String,
@@ -89,6 +90,9 @@ case class InsertInto(
     with UnaryRelation:
   override def child: Relation = query
 
+  override def outputAttributes: Seq[Attribute] = Nil
+
 case class Delete(table: QName, where: Option[Expression], nodeLocation: Option[NodeLocation])
     extends Update
-    with LeafPlan {}
+    with LeafPlan:
+  override def outputAttributes: Seq[Attribute] = Nil

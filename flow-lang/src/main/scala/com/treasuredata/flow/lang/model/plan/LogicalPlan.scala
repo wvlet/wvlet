@@ -1,6 +1,6 @@
 package com.treasuredata.flow.lang.model.plan
 
-import com.treasuredata.flow.lang.model.expr.Expression
+import com.treasuredata.flow.lang.model.expr.{Attribute, AttributeList, Expression}
 import com.treasuredata.flow.lang.model.TreeNode
 
 trait LogicalPlan extends TreeNode[LogicalPlan] with Product:
@@ -10,6 +10,23 @@ trait LogicalPlan extends TreeNode[LogicalPlan] with Product:
 
   def pp: String =
     LogicalPlanPrinter.print(this)
+
+  // True if all input attributes are resolved.
+  lazy val resolved: Boolean = childExpressions.forall(_.resolved) && resolvedChildren
+
+  def resolvedChildren: Boolean = children.forall(_.resolved)
+
+  def unresolvedExpressions: Seq[Expression] =
+    collectExpressions { case x: Expression => !x.resolved }
+
+  // Input attributes (column names) of the relation
+  def inputAttributeList: AttributeList  = AttributeList.fromSeq(inputAttributes)
+  def outputAttributeList: AttributeList = AttributeList.fromSeq(outputAttributes)
+
+  // Input attributes (column names) of the relation
+  def inputAttributes: Seq[Attribute] = children.flatMap(_.outputAttributes)
+  // Output attributes (column names) of the relation
+  def outputAttributes: Seq[Attribute]
 
   /**
     * All child nodes of this plan node
@@ -346,12 +363,13 @@ trait LogicalPlan extends TreeNode[LogicalPlan] with Product:
     productIterator.foreach(recursiveTraverse)
 
 trait LeafPlan extends LogicalPlan:
-  override def children: Seq[LogicalPlan] = Nil
+  override def children: Seq[LogicalPlan]      = Nil
+  override def inputAttributes: Seq[Attribute] = Nil
 
 trait UnaryPlan extends LogicalPlan:
   def child: LogicalPlan
-
-  override def children: Seq[LogicalPlan] = child :: Nil
+  override def children: Seq[LogicalPlan]      = child :: Nil
+  override def inputAttributes: Seq[Attribute] = child.outputAttributes
 
 trait BinaryPlan extends LogicalPlan:
   def left: LogicalPlan

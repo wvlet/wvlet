@@ -2,29 +2,8 @@ package com.treasuredata.flow.lang.model.expr
 
 import com.treasuredata.flow.lang.model.DataType.{EmbeddedRecordType, NamedType}
 import com.treasuredata.flow.lang.model.{DataType, NodeLocation}
+import wvlet.airframe.ulid.ULID
 import wvlet.log.LogSupport
-
-/**
-  * Used for matching column name with Attribute
-  *
-  * @param database
-  * @param table
-  * @param columnName
-  */
-case class ColumnPath(database: Option[String], table: Option[String], columnName: String)
-
-object ColumnPath:
-  def fromQName(fullName: String): Option[ColumnPath] =
-    // TODO Should we handle quotation in the name or just reject such strings?
-    fullName.split("\\.").toList match
-      case List(db, t, c) =>
-        Some(ColumnPath(Some(db), Some(t), c))
-      case List(t, c) =>
-        Some(ColumnPath(None, Some(t), c))
-      case List(c) =>
-        Some(ColumnPath(None, None, c))
-      case _ =>
-        None
 
 /**
   * Attribute is used for column names of relational table inputs and outputs
@@ -38,14 +17,18 @@ trait Attribute extends LeafExpression with LogSupport:
 
   def typeDescription: String = dataTypeName
 
-  def prefix: String = qualifier.map(q => s"${q}.").getOrElse("")
+  def prefix: String = qualifier.prefix
 
-  // (database name)?.(table name) given in the original SQL
-  def qualifier: Option[String]
+  // Optional qualifier for the attribute, given in the user query.
+  //
+  // - 1: empty  (no qualifier)
+  // - 2: (table name or table alias)
+  // - 3: (database name).(table name)
+  // - 4: (catalog name).(database name).(table name)
+  def qualifier: Qualifier
 
-  def withQualifier(newQualifier: String): Attribute = withQualifier(Some(newQualifier))
-
-  def withQualifier(newQualifier: Option[String]): Attribute
+  def withQualifier(newQualifier: String): Attribute = withQualifier(Qualifier.parse(newQualifier))
+  def withQualifier(newQualifier: Qualifier): Attribute
 
   def alias: Option[String] =
     this match
@@ -66,69 +49,120 @@ trait Attribute extends LeafExpression with LogSupport:
             // No need to have alias
             other
           case other =>
-            Alias(qualifier, alias, other, other.tableAlias, None)
-
-  def tableAlias: Option[String]
-
-  def withTableAlias(tableAlias: String): Attribute = withTableAlias(Some(tableAlias))
-
-  def withTableAlias(tableAlias: Option[String]): Attribute
+            Alias(qualifier, alias, other, None)
 
   /**
-    * Return columns used for generating this attribute
-    */
-  def inputColumns: Seq[Attribute]
-
-  /**
-    * Return columns generated from this attribute
-    */
-  def outputColumns: Seq[Attribute]
-
-  /**
-    * Return true if this Attribute matches with a given column path
-    *
-    * @param columnPath
+    * * Returns the index of this attribute in the input or output columns
     * @return
     */
-  def matchesWith(columnPath: ColumnPath): Boolean =
-    def matchesWith(columnName: String): Boolean =
-      this match
-        case a: AllColumns =>
-          a.inputColumns.exists(_.name == columnName)
-        case a: Attribute if a.name == columnName =>
-          true
-        case _ =>
-          false
+  lazy val attributeIndex: AttributeIndex = AttributeIndex.fromAttribute(this)
 
-    columnPath.table match
-      // TODO handle (catalog).(database).(table) names in the qualifier
-      case Some(tableName) =>
-        (qualifier.contains(tableName) || tableAlias.contains(tableName)) && matchesWith(columnPath.columnName)
-      case None =>
-        matchesWith(columnPath.columnName)
+  /**
+    * Return columns (attributes) used for generating this attribute
+    */
+  def inputAttributes: Seq[Attribute]
+
+  /**
+    * Return columns (attributes) generated from this attribute
+    */
+  def outputAttributes: Seq[Attribute]
+
+  def sourceColumns: Seq[SourceColumn] = Seq.empty
+
+//  /**
+//    * Return true if this Attribute matches with a given column path
+//    *
+//    * @param columnPath
+//    * @return
+//    */
+//  def matchesWith(columnPath: ColumnPath): Boolean =
+//    def matchesWith(columnName: String): Boolean =
+//      this match
+//        case a: AllColumns =>
+//          a.inputAttributes.exists(_.name == columnName)
+//        case a: Attribute if a.name == columnName =>
+//          true
+//        case _ =>
+//          false
+//
+//    columnPath.table match
+//      // TODO handle (catalog).(database).(table) names in the qualifier
+//      case Some(tableName) =>
+//        (qualifier.contains(tableName) || tableAlias.contains(tableName)) && matchesWith(columnPath.columnName)
+//      case None =>
+//        matchesWith(columnPath.columnName)
+
+/**
+  * A reference to an [[Attribute]] object with an globally unique ID
+  *
+  * @param attr
+  */
+case class AttributeRef(attr: Attribute)(val exprId: ULID = ULID.newULID) extends Attribute:
+  override def name: String     = attr.name
+  override def toString: String = s"AttributeRef(${attr})"
+
+  override def nodeLocation: Option[NodeLocation] = attr.nodeLocation
+
+  /**
+    * Optional qualifier for the attribute
+    * @return
+    */
+  override def qualifier: Qualifier = attr.qualifier
+  override def withQualifier(newQualifier: Qualifier): Attribute =
+    AttributeRef(attr.withQualifier(newQualifier))(exprId = exprId)
+
+  override def inputAttributes: Seq[Attribute]  = attr.inputAttributes
+  override def outputAttributes: Seq[Attribute] = attr.inputAttributes
+
+  override def hashCode(): Int = super.hashCode()
+  override def equals(obj: Any): Boolean = obj match
+    case that: AttributeRef => that.attr == this.attr
+    case _                  => false
+
+/**
+  * An attribute that produces a single column value with a given expression.
+  *
+  * @param expr
+  * @param qualifier
+  * @param nodeLocation
+  */
+case class SingleColumn(
+    expr: Expression,
+    qualifier: Qualifier,
+    nodeLocation: Option[NodeLocation]
+) extends Attribute:
+  override def name: String = expr.attributeName
+
+  override def dataType: DataType = expr.dataType
+
+  override def inputAttributes: Seq[Attribute] = Seq(this)
+
+  override def outputAttributes: Seq[Attribute] = inputAttributes
+
+  override def children: Seq[Expression] = Seq(expr)
+
+  override def toString = s"${fullName}:${dataTypeName} := ${expr}"
+
+  override def withQualifier(newQualifier: Qualifier): Attribute =
+    this.copy(qualifier = newQualifier)
 
 case class UnresolvedAttribute(
-    override val qualifier: Option[String],
+    override val qualifier: Qualifier,
     name: String,
-    tableAlias: Option[String],
     nodeLocation: Option[NodeLocation]
 ) extends Attribute:
   override def toString: String = s"UnresolvedAttribute(${fullName})"
   override lazy val resolved    = false
 
-  override def withQualifier(newQualifier: Option[String]): UnresolvedAttribute =
+  override def withQualifier(newQualifier: Qualifier): UnresolvedAttribute =
     this.copy(qualifier = newQualifier)
 
-  override def withTableAlias(tableAlias: Option[String]): Attribute =
-    this.copy(tableAlias = tableAlias)
-
-  override def inputColumns: Seq[Attribute]  = Seq.empty
-  override def outputColumns: Seq[Attribute] = Seq.empty
+  override def inputAttributes: Seq[Attribute]  = Seq.empty
+  override def outputAttributes: Seq[Attribute] = Seq.empty
 
 case class AllColumns(
-    override val qualifier: Option[String],
+    override val qualifier: Qualifier,
     columns: Option[Seq[Attribute]],
-    tableAlias: Option[String],
     nodeLocation: Option[NodeLocation]
 ) extends Attribute
     with LogSupport:
@@ -139,28 +173,25 @@ case class AllColumns(
     // Return empty so as not to traverse children from here.
     Seq.empty
 
-  override def inputColumns: Seq[Attribute] =
+  override def inputAttributes: Seq[Attribute] =
     columns match
       case Some(columns) =>
         columns.flatMap {
-          case a: AllColumns => a.inputColumns
+          case a: AllColumns => a.inputAttributes
           case a             => Seq(a)
         }
       case None => Nil
 
-  override def outputColumns: Seq[Attribute] =
-    inputColumns.map(_.withTableAlias(tableAlias).withQualifier(qualifier))
+  override def outputAttributes: Seq[Attribute] =
+    inputAttributes.map(_.withQualifier(qualifier))
 
   override def dataType: DataType =
     columns
       .map(cols => EmbeddedRecordType(cols.map(x => NamedType(x.name, x.dataType))))
       .getOrElse(DataType.UnknownType)
 
-  override def withQualifier(newQualifier: Option[String]): Attribute =
+  override def withQualifier(newQualifier: Qualifier): Attribute =
     this.copy(qualifier = newQualifier)
-
-  override def withTableAlias(tableAlias: Option[String]): Attribute =
-    this.copy(tableAlias = tableAlias)
 
   override def toString =
     columns match
@@ -174,55 +205,23 @@ case class AllColumns(
   override lazy val resolved = columns.isDefined
 
 case class Alias(
-    qualifier: Option[String],
+    qualifier: Qualifier,
     name: String,
     expr: Expression,
-    tableAlias: Option[String],
     nodeLocation: Option[NodeLocation]
 ) extends Attribute:
-  override def inputColumns: Seq[Attribute]  = Seq(this)
-  override def outputColumns: Seq[Attribute] = inputColumns
+  override def inputAttributes: Seq[Attribute]  = Seq(this)
+  override def outputAttributes: Seq[Attribute] = inputAttributes
 
   override def children: Seq[Expression] = Seq(expr)
 
-  override def withQualifier(newQualifier: Option[String]): Attribute =
+  override def withQualifier(newQualifier: Qualifier): Attribute =
     this.copy(qualifier = newQualifier)
-
-  override def withTableAlias(tableAlias: Option[String]): Attribute =
-    this.copy(tableAlias = tableAlias)
 
   override def toString: String =
     s"<${fullName}> := ${expr}"
 
   override def dataType: DataType = expr.dataType
-
-/**
-  * An attribute that produces a single column value with a given expression.
-  *
-  * @param expr
-  * @param qualifier
-  * @param nodeLocation
-  */
-case class SingleColumn(
-    expr: Expression,
-    qualifier: Option[String],
-    tableAlias: Option[String],
-    nodeLocation: Option[NodeLocation]
-) extends Attribute:
-  override def name: String       = expr.attributeName
-  override def dataType: DataType = expr.dataType
-
-  override def inputColumns: Seq[Attribute]  = Seq(this)
-  override def outputColumns: Seq[Attribute] = inputColumns
-
-  override def children: Seq[Expression] = Seq(expr)
-  override def toString                  = s"${fullName}:${dataTypeName} := ${expr}"
-
-  override def withQualifier(newQualifier: Option[String]): Attribute =
-    this.copy(qualifier = newQualifier)
-
-  override def withTableAlias(tableAlias: Option[String]): Attribute =
-    this.copy(tableAlias = tableAlias)
 
 /**
   * A single column merged from multiple input expressions (e.g., union, join)
@@ -232,22 +231,21 @@ case class SingleColumn(
   */
 case class MultiSourceColumn(
     inputs: Seq[Expression],
-    qualifier: Option[String],
-    tableAlias: Option[String],
+    qualifier: Qualifier,
     nodeLocation: Option[NodeLocation]
 ) extends Attribute:
   // require(inputs.nonEmpty, s"The inputs of MultiSourceColumn should not be empty: ${this}", nodeLocation)
 
   override def toString: String = s"${fullName}:${dataTypeName} := {${inputs.mkString(", ")}}"
 
-  override def inputColumns: Seq[Attribute] =
+  override def inputAttributes: Seq[Attribute] =
     inputs.map {
       case a: Attribute => a
       case e: Expression =>
-        SingleColumn(e, qualifier, None, e.nodeLocation)
+        SingleColumn(e, qualifier, e.nodeLocation)
     }
 
-  override def outputColumns: Seq[Attribute] = Seq(this)
+  override def outputAttributes: Seq[Attribute] = Seq(this)
 
   override def children: Seq[Expression] =
     // MultiSourceColumn is a reference to the multiple columns. Do not traverse here
@@ -259,8 +257,5 @@ case class MultiSourceColumn(
   override def dataType: DataType =
     inputs.head.dataType
 
-  override def withQualifier(newQualifier: Option[String]): Attribute =
+  override def withQualifier(newQualifier: Qualifier): Attribute =
     this.copy(qualifier = newQualifier)
-
-  override def withTableAlias(tableAlias: Option[String]): Attribute =
-    this.copy(tableAlias = tableAlias)

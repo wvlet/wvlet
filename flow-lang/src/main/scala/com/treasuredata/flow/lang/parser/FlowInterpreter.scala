@@ -121,7 +121,7 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
         case Some(lst) =>
           lst.selectItem().asScala.map { si => visitSelectItem(si) }.toList
         case None =>
-          List(AllColumns(None, None, None, getLocation(ctx)))
+          List(AllColumns(Qualifier.empty, None, getLocation(ctx)))
     val alias: Option[Identifier] = Option(ctx.identifier()).map { alias =>
       visitIdentifier(alias)
     }
@@ -220,13 +220,9 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
     QName(ctx.identifier().asScala.map(_.getText).toList, getLocation(ctx))
 
   override def visitDereference(ctx: DereferenceContext): Attribute =
-    val qualifier = {
-      if ctx.base.getText.isEmpty then None else Some(ctx.base.getText)
-    }.map(x => QName(x, None).fullName)
-
-    val name = QName.unquote(ctx.fieldName.getText)
-
-    UnresolvedAttribute(qualifier, name, None, getLocation(ctx))
+    val qualifier = if ctx.base.getText.isEmpty then Qualifier.empty else Qualifier.parse(ctx.base.getText)
+    val name      = QName.unquote(ctx.fieldName.getText)
+    UnresolvedAttribute(qualifier, name, getLocation(ctx))
 
   private def expression(ctx: ParserRuleContext): Expression =
     ctx.accept(this).asInstanceOf[Expression]

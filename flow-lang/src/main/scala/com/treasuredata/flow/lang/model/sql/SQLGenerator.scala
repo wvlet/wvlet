@@ -164,12 +164,12 @@ class SQLGenerator(config: SQLGeneratorConfig = SQLGeneratorConfig()) extends Lo
         val r = printRelation(relation, context)
         val c = columnNames.map(x => s"(${x.mkString(", ")})").getOrElse("")
         relation match
-          case TableRef(x, _) => s"${r} AS ${alias.sqlExpr}${c}"
+          case TableRef(x, _) => s"${r} AS ${alias.value}${c}"
 //          case TableScan(x, _, _, _)       => s"${r} AS ${alias.sqlExpr}${c}"
-          case ParenthesizedRelation(x, _) => s"${r} AS ${alias.sqlExpr}${c}"
-          case Unnest(_, _, _)             => s"${r} AS ${alias.sqlExpr}${c}"
-          case Lateral(_, _)               => s"${r} AS ${alias.sqlExpr}${c}"
-          case _                           => s"(${r}) AS ${alias.sqlExpr}${c}"
+          case ParenthesizedRelation(x, _) => s"${r} AS ${alias.value}${c}"
+          case Unnest(_, _, _)             => s"${r} AS ${alias.value}${c}"
+          case Lateral(_, _)               => s"${r} AS ${alias.value}${c}"
+          case _                           => s"(${r}) AS ${alias.value}${c}"
       case Join(joinType, left, right, cond, _) =>
         val l = printRelationWithParenthesesIfNecessary(left)
         val r = printRelationWithParenthesesIfNecessary(right)
@@ -337,7 +337,7 @@ class SQLGenerator(config: SQLGeneratorConfig = SQLGeneratorConfig()) extends Lo
       case a: Alias =>
         val e = a.expr.sqlExpr
         s"${e} AS ${printNameWithQuotationsIfNeeded(a.name)}"
-      case s @ SingleColumn(ex, _, _, _) =>
+      case s @ SingleColumn(ex, _, _) =>
         s.fullName
       case m: MultiSourceColumn =>
         m.fullName
