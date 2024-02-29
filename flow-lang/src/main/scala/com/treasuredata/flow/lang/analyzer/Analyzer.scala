@@ -1,49 +1,30 @@
 package com.treasuredata.flow.lang.analyzer
 
+import com.treasuredata.flow.lang.CompileUnit
 import com.treasuredata.flow.lang.catalog.Catalog
 import com.treasuredata.flow.lang.model.expr.Attribute
-import com.treasuredata.flow.lang.model.plan.LogicalPlan
+import com.treasuredata.flow.lang.model.plan.{FlowPlan, LogicalPlan}
 import com.treasuredata.flow.lang.parser.{FlowLangParser, FlowParser}
 import wvlet.log.LogSupport
 
 /**
-  * Propagate context
-  *
-  * @param database
-  *   context database
-  * @param catalog
-  * @param parentAttributes
-  *   attributes used in the parent relation. This is used for pruning unnecessary columns output attributes
   */
-case class AnalyzerContext(
-    database: String,
-    catalog: Catalog,
-    parentAttributes: Option[Seq[Attribute]] = None,
-    outerQueries: Map[String, LogicalPlan] = Map.empty
-):
+object Analyzer extends LogSupport:
+  def analyze(compileUnit: CompileUnit): FlowPlan =
+    val code = compileUnit.readAsString
+    trace(s"analyze:\n${code}")
+    val plan: FlowPlan = FlowParser.parse(code)
 
-  /**
-    * Update the relation attributes used in the plan.
-    *
-    * @param parentAttributes
-    * @return
-    */
-  def withAttributes(parentAttributes: Seq[Attribute]): AnalyzerContext =
-    this.copy(parentAttributes = Some(parentAttributes))
+    val context = AnalyzerContext(Scope.Global, compileUnit)
+    TypeResolver.resolveSchemaAndTypes(context, plan)
 
-  /**
-    * Add an outer query (e.g., WITH query) to the context
-    */
-  def withOuterQuery(name: String, relation: LogicalPlan): AnalyzerContext =
-    this.copy(outerQueries = outerQueries + (name -> relation))
+    debug(context.getSchemas)
+    debug(context.getTypes)
 
-///**
-//  */
-//object Analyzer extends LogSupport:
-//
-//  def analyze(sql: String, database: String, catalog: Catalog): LogicalPlan =
-//    trace(s"analyze:\n${sql}")
-//    analyze(FlowParser.parse(sql), database, catalog)
+    // TODO
+    val resolvedPlan: FlowPlan = plan
+    resolvedPlan
+
 //
 //  def analyze(plan: LogicalPlan, database: String, catalog: Catalog): LogicalPlan =
 //    if plan.resolved then plan

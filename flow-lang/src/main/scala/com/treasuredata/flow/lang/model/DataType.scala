@@ -2,8 +2,6 @@ package com.treasuredata.flow.lang.model
 
 import wvlet.log.LogSupport
 
-import scala.util.Try
-
 abstract class DataType(val typeName: String, val typeParams: Seq[DataType]):
   override def toString: String = typeDescription
 
@@ -91,6 +89,8 @@ object DataType extends LogSupport:
         "smallint" -> ShortType
       )
 
+  def getPrimitiveTypeTable: Map[String, DataType] = primitiveTypeTable
+
   /**
     * data type names that will be mapped to GenericType
     */
@@ -165,6 +165,8 @@ object DataType extends LogSupport:
   case class ArrayType(elemType: DataType)                   extends DataType(s"array", Seq(elemType))
   case class MapType(keyType: DataType, valueType: DataType) extends DataType(s"map", Seq(keyType, valueType))
   case class RecordType(elems: Seq[DataType])                extends DataType("record", elems)
+
+  case class UserDefinedType(override val typeName: String) extends DataType(typeName, Seq.empty)
 
   /**
     * For describing the type of 'select *'
