@@ -110,6 +110,18 @@ case class Project(child: Relation, selectItems: Seq[Attribute], nodeLocation: O
 
 case class Aggregate(
     child: Relation,
+    groupingKeys: List[GroupingKey],
+    having: Option[Expression],
+    nodeLocation: Option[NodeLocation]
+) extends UnaryRelation:
+  override def toString: String = s"Aggregate[${groupingKeys.mkString(",")}](${child})"
+  override def outputAttributes: Seq[Attribute] =
+    val keyAttrs = groupingKeys.map(key => SingleColumn(key, Qualifier.empty, key.nodeLocation))
+    // TODO change type as ((k1, k2) -> Seq[c1, c2, c3, ...]) type
+    keyAttrs ++ child.outputAttributes
+
+case class AggregateSelect(
+    child: Relation,
     selectItems: List[Attribute],
     groupingKeys: List[GroupingKey],
     having: Option[Expression],

@@ -1,39 +1,35 @@
 from weblog_users
 -- override only a subset of the columns and report the rest as is
-select override as tmp
+select override
   td_client_id.or_else('dummy-' + hex(floor(rand() * 4294966016))),
   naid.or_else('dummy-' + hex(floor(rand() * 4294966016))),
-
-
-from tmp
 group by
   cdp_customer_id: sha1([td_client_id.or_else(''), naid.or_else('')]) --.join('.'))
 select as m
-  max_by(cdp_customer_id, time)
+  _.max_by(time)
 
 from weblog_user_attr3
 group by
   td_client_id
 select as a0
-  max_by(1, time)
+  _.max_by(time)
 
 from weblog_user_attr2
 group by
   td_client_id
 select as a1
-  max_by(1, time)
+  _.max_by(time)
 
 from weblog_users_first_purchased_at
 group by
   naid
 select as a2
-  max_by(1, time)
-
+  _.max_by(time)
 
 from m
 left join a0 on td_client_id
--- left join a1 on td_client_id
--- left join a2 on naid
+left join a1 on td_client_id
+left join a2 on naid
 select as cdp_customers
   m.cdp_customer_id,
   m.td_client_id,

@@ -104,7 +104,7 @@ class SQLGenerator(config: SQLGeneratorConfig = SQLGeneratorConfig()) extends Lo
       case Project(_, _, _) =>
         // Merge parent and child Filters
         collectFilterExpression(context) ++ collectFilterExpression(childFilters)
-      case Aggregate(_, _, _, _, _) =>
+      case AggregateSelect(_, _, _, _, _) =>
         // We cannot push down parent Filters
         collectFilterExpression(childFilters)
     if filterSet.nonEmpty then
@@ -113,7 +113,7 @@ class SQLGenerator(config: SQLGeneratorConfig = SQLGeneratorConfig()) extends Lo
       b += printExpression(cond)
 
     s match
-      case Aggregate(_, _, groupingKeys, having, _) =>
+      case AggregateSelect(_, _, groupingKeys, having, _) =>
         if groupingKeys.nonEmpty then b += s"GROUP BY ${groupingKeys.map(printExpression).mkString(", ")}"
         having.map { h =>
           b += "HAVING"
@@ -135,7 +135,7 @@ class SQLGenerator(config: SQLGeneratorConfig = SQLGeneratorConfig()) extends Lo
         printRelation(in, r :: context)
       case p @ Project(in, selectItems, _) =>
         printSelection(p, context)
-      case a @ Aggregate(in, selectItems, groupingKeys, having, _) =>
+      case a @ AggregateSelect(in, selectItems, groupingKeys, having, _) =>
         printSelection(a, context)
       case Query(body, _) =>
         printRelation(body)
