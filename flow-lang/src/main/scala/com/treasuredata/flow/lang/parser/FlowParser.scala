@@ -26,7 +26,7 @@ object FlowParser extends LogSupport:
     else Seq.empty
 
   def parse(compileUnit: CompileUnit): FlowPlan =
-    info(s"Parsing ${compileUnit}")
+    trace(s"Parsing ${compileUnit}")
     parse(compileUnit.readAsString).withCompileUnit(compileUnit)
 
   def parse(code: String): FlowPlan =

@@ -84,6 +84,7 @@ primaryExpression
 //    | '(' expression (',' expression)+ ')'                                                #rowConstructor
 //    | ROW '(' expression (',' expression)* ')'                                            #rowConstructor
     | qualifiedName '(' ASTERISK ')'                                                      #functionCall
+    | qualifiedName '(' ')'                                                               #functionCall
     | qualifiedName '(' (valueExpression (',' valueExpression)*) ')'                         #functionCall
 //        (ORDER BY sortItem (',' sortItem)*)? ')' filter? over?                            #functionCall
 //    | identifier '->' expression                                                          #lambda
@@ -95,10 +96,10 @@ primaryExpression
 //    | CASE whenClause+ (ELSE elseExpression=expression)? END                              #searchedCase
 //    | CAST '(' expression AS type ')'                                                     #cast
 //    | TRY_CAST '(' expression AS type ')'                                                 #cast
-//    | ARRAY '[' (expression (',' expression)*)? ']'                                       #arrayConstructor
+    | '[' (expression (',' expression)*)? ']'                                       #arrayConstructor
     | value=primaryExpression '[' index=valueExpression ']'                               #subscript
     | identifier                                                                          #columnReference
-    | base=primaryExpression '.' fieldName=identifier                                     #dereference
+    | base=primaryExpression '.' fieldName=primaryExpression                                  #dereference
 //    | name=CURRENT_DATE                                                                   #specialDateTimeFunction
 //    | name=CURRENT_TIME ('(' precision=INTEGER_VALUE ')')?                                #specialDateTimeFunction
 //    | name=CURRENT_TIMESTAMP ('(' precision=INTEGER_VALUE ')')?                           #specialDateTimeFunction
@@ -147,6 +148,7 @@ number
 query:
     forExpr
     (WHERE booleanExpression)?
+    groupBy?
     selectExpr?
     ;
 
@@ -156,17 +158,31 @@ forExpr:
     ;
 
 selectExpr:
-    SELECT (AS identifier)? selectItemList?
+    SELECT OVERRIDE? (AS identifier)? selectItemList?
     ;
 
 selectItemList:
     selectItem (COMMA selectItem)* COMMA?
     ;
 
-selectItem:
-    (identifier COLON)? primaryExpression
+selectItem
+    : (identifier COLON)? expression #selectSingle
+    | qualifiedName '.' ASTERISK    #selectAll
+    | ASTERISK                      #selectAll
     ;
 
+
+groupBy:
+    GROUP BY groupByItemList
+    ;
+
+groupByItemList:
+    groupByItem (COMMA groupByItem)* COMMA?
+    ;
+
+groupByItem
+    : (identifier COLON)? expression
+    ;
 
 relation
     : left=aliasedRelation
@@ -221,8 +237,11 @@ IN: 'in';
 ON: 'on';
 SCHEMA: 'schema';
 SELECT: 'select';
+GROUP: 'group';
+BY: 'by';
 TYPE: 'type';
 WHERE: 'where';
+OVERRIDE: 'override';
 
 UNNEST: 'unnest';
 LATERAL: 'lateral';
@@ -274,7 +293,7 @@ BINARY_LITERAL
     ;
 
 INTEGER_VALUE
-    : (DIGIT | '_') +
+    : DIGIT (DIGIT | '_')*
     ;
 
 DECIMAL_VALUE
