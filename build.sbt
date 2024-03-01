@@ -118,7 +118,7 @@ lazy val lang =
         // Add sql parser for testing purpose
         "org.wvlet.airframe" %% "airframe-sql" % AIRFRAME_VERSION % Test,
         // Add Spark as a reference impl (Scala 2)
-        "org.apache.spark" %% "spark-sql" % "3.5.0" % Test excludeAll (
+        "org.apache.spark" %% "spark-sql" % "3.5.1" % Test excludeAll (
           // exclude sbt-parser-combinators as it conflicts with Scala 3
           ExclusionRule(organization = "org.scala-lang.modules", name = "scala-parser-combinators_2.13")
         ) cross (CrossVersion.for3Use2_13)
