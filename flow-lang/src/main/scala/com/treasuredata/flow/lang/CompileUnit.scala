@@ -9,3 +9,6 @@ case class CompileUnit(sourceFile: String):
 
   def toSourceLocation(nodeLocation: Option[NodeLocation]) =
     SourceLocation(this, nodeLocation)
+
+object CompileUnit:
+  val empty: CompileUnit = CompileUnit("<empty>")

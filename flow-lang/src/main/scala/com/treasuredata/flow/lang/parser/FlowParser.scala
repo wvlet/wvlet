@@ -1,21 +1,34 @@
 package com.treasuredata.flow.lang.parser
 
+import com.treasuredata.flow.lang.CompileUnit
 import com.treasuredata.flow.lang.model.plan.FlowPlan
-import org.antlr.v4.runtime.{
-  ANTLRInputStream,
-  BaseErrorListener,
-  CharStreams,
-  CommonTokenStream,
-  DefaultErrorStrategy,
-  InputMismatchException,
-  Parser,
-  RecognitionException,
-  Recognizer,
-  Token
-}
+import org.antlr.v4.runtime.*
 import wvlet.log.LogSupport
 
 object FlowParser extends LogSupport:
+
+  def parseSourceFolder(path: String): Seq[FlowPlan] =
+    // List all *.flow files under the path
+    val files = listFiles(path)
+    val plans = files.map { file =>
+      val plan = FlowParser.parse(CompileUnit(file))
+      plan
+    }
+    plans
+
+  private def listFiles(path: String): Seq[String] =
+    val f = new java.io.File(path)
+    if f.isDirectory then
+      f.listFiles().flatMap { file =>
+        listFiles(file.getPath)
+      }
+    else if f.isFile && f.getName.endsWith(".flow") then Seq(f.getPath)
+    else Seq.empty
+
+  def parse(compileUnit: CompileUnit): FlowPlan =
+    info(s"Parsing ${compileUnit}")
+    parse(compileUnit.readAsString).withCompileUnit(compileUnit)
+
   def parse(code: String): FlowPlan =
     val parser = new FlowLangParser(tokenStream(code))
     // Do not drop mismatched token
