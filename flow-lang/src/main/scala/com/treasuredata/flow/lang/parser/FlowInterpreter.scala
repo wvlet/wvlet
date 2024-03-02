@@ -143,8 +143,10 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
         throw unknown(ctx)
 
   override def visitGroupByItem(ctx: GroupByItemContext): GroupingKey =
-    val alias = Option(ctx.identifier()).map(visitIdentifier)
-    var expr  = expression(ctx.expression())
+    var expr = expression(ctx.expression())
+    Option(ctx.identifier()).map(visitIdentifier).foreach { id =>
+      expr = Alias(Qualifier.empty, id.value, expr, getLocation(ctx))
+    }
     UnresolvedGroupingKey(expr, getLocation(ctx))
 
   override def visitSelectSingle(ctx: SelectSingleContext): Attribute =
