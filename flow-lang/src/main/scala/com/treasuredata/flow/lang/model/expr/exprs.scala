@@ -23,6 +23,10 @@ object QName:
     if s.startsWith("\"") && s.endsWith("\"") then s.substring(1, s.length - 1)
     else s
 
+case class Dereference(base: Expression, next: Expression, nodeLocation: Option[NodeLocation]) extends Expression:
+  override def toString: String          = s"Dereference(${base} => ${next})"
+  override def children: Seq[Expression] = Seq(base, next)
+
 sealed trait Identifier extends LeafExpression:
   def value: String
   override def attributeName: String  = value

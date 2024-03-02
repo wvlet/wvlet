@@ -4,7 +4,7 @@ select override
   td_client_id.or_else('dummy-' + hex(floor(rand() * 4294966016))),
   naid.or_else('dummy-' + hex(floor(rand() * 4294966016))),
 group by
-  cdp_customer_id: sha1([td_client_id.or_else(''), naid.or_else('')]) --.join('.'))
+  cdp_customer_id: sha1([td_client_id.or_else(''), naid.or_else('')].join('.'))
 select as m
   _.max_by(time)
 

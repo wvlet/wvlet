@@ -20,8 +20,8 @@ object LogicalPlanPrinter extends LogSupport:
       case _ =>
         val ws = "  " * level
 
-        val inputAttrs  = Seq.empty // m.inputAttributes
-        val outputAttrs = Seq.empty // m.outputAttributes
+        val inputAttrs  = m.inputAttributes
+        val outputAttrs = m.outputAttributes
         val attr        = m.childExpressions.map(_.toString)
         val functionSig =
           if inputAttrs.isEmpty && outputAttrs.isEmpty then ""

@@ -50,13 +50,20 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
     m.asInstanceOf[Expression]
 
   private def visitIdentifier(ctx: IdentifierContext): Identifier =
-    visit(ctx).asInstanceOf[Identifier]
+    ctx match
+      case u: UnquotedIdentifierContext     => visitUnquotedIdentifier(u)
+      case b: BackQuotedIdentifierContext   => visitBackQuotedIdentifier(b)
+      case j: ReservedWordIdentifierContext => visitReservedWordIdentifier(j)
+      case _                                => throw unknown(ctx)
 
   override def visitUnquotedIdentifier(ctx: UnquotedIdentifierContext): Identifier =
     UnquotedIdentifier(ctx.getText, getLocation(ctx))
 
   override def visitBackQuotedIdentifier(ctx: BackQuotedIdentifierContext): Identifier =
     BackQuotedIdentifier(unquote(ctx.getText), getLocation(ctx))
+
+  override def visitReservedWordIdentifier(ctx: ReservedWordIdentifierContext): Identifier =
+    UnquotedIdentifier(ctx.getText, getLocation(ctx))
 
   override def visitStatements(ctx: StatementsContext): FlowPlan =
     val plans = ctx.singleStatement().asScala.map(s => visit(s).asInstanceOf[LogicalPlan]).toSeq
@@ -185,15 +192,15 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
     val rightRelation = interpretRelation(ctx.relation())
 
     val (joinType, joinCriteria) = Option(ctx.joinCriteria()) match
-      case Some(c) if c.ON() != null =>
-        (
-          tmpJoinType.getOrElse(InnerJoin),
-          JoinUsing(c.identifier().asScala.toSeq.map(visitIdentifier), getLocation(ctx))
-        )
-      case Some(c) if c.booleanExpression() != null =>
+      case Some(c) if c.ON() != null && c.booleanExpression() != null =>
         (
           tmpJoinType.getOrElse(InnerJoin),
           JoinOn(expression(c.booleanExpression()), getLocation(ctx))
+        )
+      case Some(c) if c.ON() != null && c.identifier() != null =>
+        (
+          tmpJoinType.getOrElse(InnerJoin),
+          JoinUsing(c.identifier().asScala.map(visitIdentifier).toList, getLocation(ctx))
         )
       case _ =>
         (CrossJoin, NaturalJoin(getLocation(ctx)))
@@ -204,10 +211,10 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
   override def visitQualifiedName(ctx: QualifiedNameContext): QName =
     QName(ctx.identifier().asScala.map(_.getText).toList, getLocation(ctx))
 
-  override def visitDereference(ctx: DereferenceContext): Attribute =
-    val qualifier = if ctx.base.getText.isEmpty then Qualifier.empty else Qualifier.parse(ctx.base.getText)
-    val name      = QName.unquote(ctx.fieldName.getText)
-    UnresolvedAttribute(qualifier, name, getLocation(ctx))
+  override def visitDereference(ctx: DereferenceContext): Expression =
+    val base = expression(ctx.base)
+    val next = expression(ctx.next)
+    Dereference(base, next, getLocation(ctx))
 
   private def expression(ctx: ParserRuleContext): Expression =
     ctx.accept(this).asInstanceOf[Expression]
@@ -226,24 +233,6 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
       case other =>
         warn(s"Unknown expression: ${other.getClass}")
         visit(ctx.booleanExpression()).asInstanceOf[Expression]
-
-  /*
-  override def visitSelectAll(ctx: SelectAllContext): Attribute =
-    // TODO parse qName
-    val qualifier = Option(ctx.qualifiedName()).map(_.getText)
-    AllColumns(qualifier, None, None, getLocation(ctx))
-
-  override def visitSelectSingle(ctx: SelectSingleContext): Attribute =
-    val alias = Option(ctx.AS())
-      .map(_ => visitIdentifier(ctx.identifier()))
-      .orElse(Option(ctx.identifier()).map(visitIdentifier))
-    val child = expression(ctx.expression())
-    val qualifier = child match
-      case a: Attribute => a.qualifier
-      case _            => None
-    SingleColumn(child, qualifier, None, getLocation(ctx))
-      .withAlias(alias.map(_.value))
-   */
 
   override def visitLogicalNot(ctx: LogicalNotContext): Expression =
     Not(expression(ctx.booleanExpression()), getLocation(ctx))
@@ -269,11 +258,11 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
 //          GenericLiteral(tpe, v, getLocation(ctx))
 
   override def visitBasicStringLiteral(ctx: BasicStringLiteralContext): StringLiteral =
-    StringLiteral(unquote(ctx.STRING().getText), getLocation(ctx))
+    StringLiteral(unquote(ctx.getText), getLocation(ctx))
 
-  override def visitUnicodeStringLiteral(ctx: UnicodeStringLiteralContext): StringLiteral =
-    // Decode unicode literal
-    StringLiteral(ctx.getText, getLocation(ctx))
+//  override def visitUnicodeStringLiteral(ctx: UnicodeStringLiteralContext): StringLiteral =
+//    // Decode unicode literal
+//    StringLiteral(ctx.getText, getLocation(ctx))
 
   override def visitBinaryLiteral(ctx: BinaryLiteralContext): Expression =
     BinaryLiteral(ctx.BINARY_LITERAL().getText, getLocation(ctx))
@@ -312,9 +301,10 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
   override def visitSubqueryExpression(ctx: SubqueryExpressionContext): Expression =
     SubQueryExpression(visitQuery(ctx.query()), getLocation(ctx))
 
-//  override def visitSubquery(ctx: SubqueryContext): LogicalPlan =
-//    visitQueryNoWith(ctx.queryNoWith())
-//
+  override def visitArrayConstructor(ctx: ArrayConstructorContext): Expression =
+    val values = ctx.expression().asScala.map(expression(_)).toSeq
+    ArrayConstructor(values, getLocation(ctx))
+
 //  override def visitConcatenation(ctx: ConcatenationContext): Expression =
 //    FunctionCall(
 //      "concat",
@@ -401,12 +391,6 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
       case FlowLangParser.NEQ =>
         NotEq(left, right, op.getText, getLocation(ctx.comparisonOperator()))
 
-//  override def visitExists(ctx: ExistsContext): Expression =
-//    Exists(
-//      SubQueryExpression(visitQuery(ctx.query()), getLocation(ctx)),
-//      getLocation(ctx)
-//    )
-
   override def visitBooleanLiteral(ctx: BooleanLiteralContext): Literal =
     if ctx.booleanValue().TRUE() != null then TrueLiteral(getLocation(ctx))
     else FalseLiteral(getLocation(ctx))
@@ -433,203 +417,9 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
 //  override def visitDigitIdentifier(ctx: DigitIdentifierContext): Identifier =
 //    DigitId(ctx.getText, getLocation(ctx))
 
-//  override def visitOver(ctx: OverContext): Window =
-//    // PARTITION BY
-//    val partition = Option(ctx.PARTITION())
-//      .map { p =>
-//        ctx.partition.asScala.map(expression(_)).toSeq
-//      }
-//      .getOrElse(Seq.empty)
-//    val orderBy = Option(ctx.ORDER())
-//      .map { o =>
-//        ctx.sortItem().asScala.map(visitSortItem(_)).toSeq
-//      }
-//      .getOrElse(Seq.empty)
-//    val windowFrame = Option(ctx.windowFrame()).map(visitWindowFrame(_))
-//
-//    Window(partition, orderBy, windowFrame, getLocation(ctx))
-//
-//  override def visitWindowFrame(ctx: WindowFrameContext): WindowFrame =
-//    val s = visitFrameBound(ctx.start)
-//    val e = Option(ctx.BETWEEN()).map { x =>
-//      visitFrameBound(ctx.end)
-//    }
-//    if ctx.RANGE() != null then WindowFrame(RangeFrame, s, e, getLocation(ctx))
-//    else WindowFrame(RowsFrame, s, e, getLocation(ctx))
-
-//  private def visitFrameBound(ctx: FrameBoundContext): FrameBound =
-//    ctx match
-//      case bf: BoundedFrameContext =>
-//        val bound: Long = expression(bf.expression()) match
-//          case l: LongLiteral =>
-//            l.value
-//          case other =>
-//            throw new IllegalArgumentException(s"Unknown bound context: ${other}")
-//        if bf.PRECEDING() != null then Preceding(bound)
-//        else if bf.FOLLOWING() != null then Following(bound)
-//        else throw unknown(bf)
-//      case ub: UnboundedFrameContext =>
-//        if ub.PRECEDING() != null then UnboundedPreceding
-//        else if ub.FOLLOWING() != null then UnboundedFollowing
-//        else throw unknown(ctx)
-//      case cb: CurrentRowBoundContext =>
-//        CurrentRow
-//
-//  override def visitBoundedFrame(ctx: BoundedFrameContext): Expression =
-//    super.visitBoundedFrame(ctx).asInstanceOf[Expression]
-
   override def visitFunctionCall(ctx: FunctionCallContext): FunctionCall =
-    val name = ctx.qualifiedName().getText
+    val name = visitIdentifier(ctx.identifier()).value
     val args = ctx.valueExpression().asScala.map(expression(_)).toSeq
     FunctionCall(name, args, getLocation(ctx))
 
-//  override def visitSubstring(ctx: SubstringContext): Any =
-//    FunctionCall(
-//      ctx.SUBSTRING().getText,
-//      ctx.valueExpression.asScala.map(expression(_)).toSeq,
-//      getLocation(ctx)
-//    )
-
-//  override def visitSetQuantifier(ctx: SetQuantifierContext): SetQuantifier =
-//    if ctx.DISTINCT() != null then DistinctSet(getLocation(ctx))
-//    else All(getLocation(ctx))
-
   override def visitNullLiteral(ctx: NullLiteralContext): Literal = NullLiteral(getLocation(ctx))
-
-//  override def visitInterval(ctx: IntervalContext): IntervalLiteral =
-//    val sign =
-//      if ctx.MINUS() != null then Negative
-//      else Positive
-//
-//    val value = ctx.str().getText
-//
-//    val from = visitIntervalField(ctx.from)
-//    val to   = Option(ctx.TO()).map(x => visitIntervalField(ctx.intervalField(0)))
-//
-//    IntervalLiteral(unquote(value), sign, from, to, getLocation(ctx))
-//
-//  override def visitIntervalField(ctx: IntervalFieldContext): IntervalField =
-//    if ctx.YEAR() != null then Year(getLocation(ctx.YEAR()))
-//    else if ctx.MONTH() != null then Month(getLocation(ctx.MONTH()))
-//    else if ctx.DAY() != null then Day(getLocation(ctx.DAY()))
-//    else if ctx.HOUR() != null then Hour(getLocation(ctx.HOUR()))
-//    else if ctx.MINUTE() != null then Minute(getLocation(ctx.MINUTE()))
-//    else if ctx.SECOND() != null then Second(getLocation(ctx.SECOND()))
-//    else throw unknown(ctx)
-//
-//  override def visitArrayConstructor(ctx: ArrayConstructorContext): Expression =
-//    val elems = ctx.expression().asScala.map(expression(_)).toSeq
-//    ArrayConstructor(elems, getLocation(ctx))
-//
-//  override def visitCreateSchema(ctx: CreateSchemaContext): LogicalPlan =
-//    val schemaName  = visitQualifiedName(ctx.qualifiedName())
-//    val ifNotExists = Option(ctx.EXISTS()).map(_ => true).getOrElse(false)
-//    val props = Option(ctx.properties())
-//      .map(
-//        _.property().asScala
-//          .map { p =>
-//            val key   = visitIdentifier(p.identifier())
-//            val value = expression(p.expression())
-//            SchemaProperty(key, value, getLocation(p))
-//          }.toSeq
-//      )
-//    CreateSchema(schemaName, ifNotExists, props, getLocation(ctx))
-//
-//  override def visitDropSchema(ctx: DropSchemaContext): LogicalPlan =
-//    val schemaName = visitQualifiedName(ctx.qualifiedName())
-//    val ifExists   = Option(ctx.EXISTS()).map(x => true).getOrElse(false)
-//    val cascade =
-//      Option(ctx.CASCADE()).map(x => true).getOrElse(false)
-//    DropSchema(schemaName, ifExists, cascade, getLocation(ctx))
-//
-//  override def visitRenameSchema(ctx: RenameSchemaContext): LogicalPlan =
-//    val schemaName = visitQualifiedName(ctx.qualifiedName())
-//    val renameTo   = visitIdentifier(ctx.identifier())
-//    RenameSchema(schemaName, renameTo, getLocation(ctx))
-//
-//  override def visitCreateTable(ctx: CreateTableContext): LogicalPlan =
-//    val ifNotExists = Option(ctx.EXISTS()).map(x => true).getOrElse(false)
-//    val tableName   = visitQualifiedName(ctx.qualifiedName())
-//    val tableElements =
-//      ctx.tableElement().asScala.toSeq.map(x => visitTableElement(x))
-//    CreateTable(tableName, ifNotExists, tableElements, getLocation(ctx))
-//
-//  override def visitCreateTableAsSelect(ctx: CreateTableAsSelectContext): LogicalPlan =
-//    val ifNotExists = Option(ctx.EXISTS()).map(x => true).getOrElse(false)
-//    val tableName   = visitQualifiedName(ctx.qualifiedName())
-//    val columnAliases = Option(ctx.columnAliases())
-//      .map(_.identifier().asScala.toSeq.map(visitIdentifier(_)))
-//    val q = visitQuery(ctx.query())
-//    CreateTableAs(tableName, ifNotExists, columnAliases, q, getLocation(ctx))
-//
-//  override def visitTableElement(ctx: TableElementContext): TableElement =
-//    Option(ctx.columnDefinition())
-//      .map(x => visitColumnDefinition(x))
-//      .getOrElse {
-//        val l         = ctx.likeClause()
-//        val tableName = visitQualifiedName(l.qualifiedName())
-//        val includingProps =
-//          Option(l.EXCLUDING()).map(x => false).getOrElse(true)
-//        ColumnDefLike(tableName, includingProps, getLocation(ctx))
-//      }
-//
-//  override def visitColumnDefinition(ctx: ColumnDefinitionContext): ColumnDef =
-//    val name = visitIdentifier(ctx.identifier())
-//    val tpe  = visitType(ctx.`type`())
-//    ColumnDef(name, tpe, getLocation(ctx))
-//
-//  override def visitType(ctx: TypeContext): ColumnType =
-//    ColumnType(ctx.getText, getLocation(ctx))
-//
-//  override def visitDropTable(ctx: DropTableContext): LogicalPlan =
-//    val table    = visitQualifiedName(ctx.qualifiedName())
-//    val ifExists = Option(ctx.EXISTS()).map(x => true).getOrElse(false)
-//    DropTable(table, ifExists, getLocation(ctx))
-//
-//  override def visitInsertInto(ctx: InsertIntoContext): LogicalPlan =
-//    val table = visitQualifiedName(ctx.qualifiedName())
-//    val aliases = Option(ctx.columnAliases())
-//      .map(x => x.identifier().asScala.toSeq)
-//      .map(x => x.map(visitIdentifier(_)))
-//    val query = visitQuery(ctx.query())
-//    InsertInto(table, aliases, query, getLocation(ctx))
-//
-//  override def visitDelete(ctx: DeleteContext): LogicalPlan =
-//    val table = visitQualifiedName(ctx.qualifiedName())
-//    val cond = Option(ctx.booleanExpression()).map { x =>
-//      expression(x)
-//    }
-//    Delete(table, cond, getLocation(ctx))
-//
-//  override def visitRenameTable(ctx: RenameTableContext): LogicalPlan =
-//    val from = visitQualifiedName(ctx.qualifiedName(0))
-//    val to   = visitQualifiedName(ctx.qualifiedName(1))
-//    RenameTable(from, to, getLocation(ctx))
-//
-//  override def visitRenameColumn(ctx: RenameColumnContext): LogicalPlan =
-//    val table = visitQualifiedName(ctx.tableName)
-//    val from  = visitIdentifier(ctx.from)
-//    val to    = visitIdentifier(ctx.to)
-//    RenameColumn(table, from, to, getLocation(ctx))
-//
-//  override def visitDropColumn(ctx: DropColumnContext): LogicalPlan =
-//    val table = visitQualifiedName(ctx.tableName)
-//    val c     = visitIdentifier(ctx.column)
-//    DropColumn(table, c, getLocation(ctx))
-//
-//  override def visitAddColumn(ctx: AddColumnContext): LogicalPlan =
-//    val table  = visitQualifiedName(ctx.tableName)
-//    val coldef = visitColumnDefinition(ctx.column)
-//    AddColumn(table, coldef, getLocation(ctx))
-//
-//  override def visitCreateView(ctx: CreateViewContext): LogicalPlan =
-//    val viewName = visitQualifiedName(ctx.qualifiedName())
-//    val replace  = Option(ctx.REPLACE()).map(x => true).getOrElse(false)
-//    val query    = visitQuery(ctx.query())
-//    CreateView(viewName, replace, query, getLocation(ctx))
-//
-//  override def visitDropView(ctx: DropViewContext): LogicalPlan =
-//    val viewName = visitQualifiedName(ctx.qualifiedName())
-//    val ifExists = Option(ctx.EXISTS()).map(x => true).getOrElse(false)
-//    DropView(viewName, ifExists, getLocation(ctx))
-//

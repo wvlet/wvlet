@@ -6,6 +6,7 @@ class Qualifier(val parts: Seq[String]):
   def prefix: String                      = parts.mkString(".")
   def qualifiedName(name: String): String = if parts.isEmpty then name else s"${prefix}.$name"
   def isEmpty: Boolean                    = parts.isEmpty
+  def +(other: Qualifier): Qualifier      = Qualifier(parts ++ other.parts)
 
 object Qualifier:
   val empty = Qualifier(Seq.empty)

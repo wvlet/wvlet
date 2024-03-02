@@ -50,6 +50,8 @@ qualifiedName
 identifier:
     IDENTIFIER # unquotedIdentifier
     | BACKQUOTED_IDENTIFIER # backQuotedIdentifier
+    // A workaround for using reserved words (join, select, etc.) as function name
+    | (SELECT | JOIN)  # reservedWordIdentifier
     ;
 
 expression
@@ -72,20 +74,17 @@ valueExpression
 
 primaryExpression
     : NULL                                                                             #nullLiteral
-    | '_'                                                                              #currentReference
     | number                                                                           #numericLiteral
     | booleanValue                                                                     #booleanLiteral
     | str                                                                              #stringLiteral
     | BINARY_LITERAL                                                                   #binaryLiteral
     | '?'                                                                              #parameter
-    | qualifiedName '(' ASTERISK ')'                                                   #functionCall
-    | qualifiedName '(' ')'                                                            #functionCall
-    | qualifiedName '(' (valueExpression (',' valueExpression)*) ')'                   #functionCall
+    | identifier '(' (valueExpression (',' valueExpression)*)? ')'                     #functionCall
     | '(' query ')'                                                                    #subqueryExpression
     | '[' (expression (',' expression)*)? ']'                                          #arrayConstructor
     | value=primaryExpression '[' index=valueExpression ']'                            #subscript
-    | identifier                                                                       #columnReference
-    | base=primaryExpression '.' fieldName=primaryExpression                           #dereference
+    | qualifiedName                                                                    #columnReference
+    | base=primaryExpression '.' next=primaryExpression                                #dereference
     | '(' expression ')'                                                               #parenthesizedExpression
     ;
 
@@ -102,8 +101,8 @@ arrayExpr:
 
 // Can't use string as a rule name because it's Java keyword
 str
-    : STRING               #basicStringLiteral
-    | UNICODE_STRING       #unicodeStringLiteral
+    : (SINGLE_QUOTED_STRING | DOUBLE_QUOTED_STRING)     #basicStringLiteral
+//  | UNICODE_STRING                                    #unicodeStringLiteral
     ;
 
 comparisonOperator
@@ -165,22 +164,22 @@ columnAliases
 
 relationPrimary
     : qualifiedName                                                   #tableName
-    | '(' query ')'                                                   #subqueryRelation
+    | '{' query '}'                                                   #subqueryRelation
+    | '(' relation ')'                                                #parenthesizedRelation
 //    | UNNEST '(' primaryExpression (',' primaryExpression)* ')' (WITH ORDINALITY)?  #unnest
 //    | LATERAL '(' query ')'                                           #lateral
-    | '(' relation ')'                                                #parenthesizedRelation
     ;
 
 join
-    : joinType JOIN relation joinCriteria
+    : joinType? JOIN relation joinCriteria
     | CROSS JOIN relation
     ;
 
 joinType
-    : INNER?
-    | LEFT OUTER?
-    | RIGHT OUTER?
-    | FULL OUTER?
+    : INNER
+    | LEFT
+    | RIGHT
+    | FULL
     ;
 
 joinCriteria
@@ -218,7 +217,6 @@ INNER: 'inner';
 JOIN: 'join';
 LEFT: 'left';
 NATURAL: 'natural';
-OUTER: 'outer';
 RIGHT: 'right';
 
 
@@ -241,13 +239,17 @@ ASTERISK: '*';
 SLASH: '/';
 PERCENT: '%';
 
-STRING
+SINGLE_QUOTED_STRING
     : '\'' ( ~'\'' | '\'\'' )* '\''
     ;
 
-UNICODE_STRING
-    : 'u&\'' ( ~'\'' | '\'\'' )* '\''
+DOUBLE_QUOTED_STRING
+    : '"' ( ~'"' | '""' )* '"'
     ;
+
+//UNICODE_STRING
+//    : 'u&\'' ( ~'\'' | '\'\'' )* '\''
+//    ;
 
 // Note: we allow any character inside the binary literal and validate
 // its a correct literal when the AST is being constructed. This
@@ -278,9 +280,6 @@ DIGIT_IDENTIFIER
     : DIGIT (LETTER | DIGIT | '_' | '@' | ':')+
     ;
 
-QUOTED_IDENTIFIER
-    : '"' ( ~'"' | '""' )* '"'
-    ;
 
 BACKQUOTED_IDENTIFIER
     : '`' ( ~'`' | '``' )* '`'

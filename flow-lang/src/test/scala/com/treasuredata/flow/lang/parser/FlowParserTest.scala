@@ -9,9 +9,10 @@ class FlowParserTest extends AirSpec:
     FlowParser.parse("from A select _")
 
   test("parse behavior.flow"):
-    FlowParser.parse(CompileUnit("examples/cdp_behavior/src/behavior.flow"))
+    val plan = FlowParser.parse(CompileUnit("examples/cdp_behavior/src/behavior.flow"))
+    debug(plan)
 
   test("parse customer.flow"):
     val plan = FlowParser.parse(CompileUnit("examples/cdp_behavior/src/customer.flow"))
     // debug(plan)
-    debug(plan.plans.mkString("\n"))
+    debug(plan)

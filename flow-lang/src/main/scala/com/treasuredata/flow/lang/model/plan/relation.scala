@@ -129,7 +129,7 @@ case class AggregateSelect(
 ) extends UnaryRelation
     with Selection:
   override def toString =
-    s"Aggregate[${groupingKeys.mkString(",")}](Select[${selectItems.mkString(", ")}](${child}))"
+    s"AggregateSelect[${groupingKeys.mkString(",")}](Select[${selectItems.mkString(", ")}](${child}))"
 
   override def outputAttributes: Seq[Attribute] = selectItems
 
