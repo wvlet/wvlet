@@ -426,9 +426,17 @@ class SQLGenerator(config: SQLGeneratorConfig = SQLGeneratorConfig()) extends Lo
     c match
       case NoOp(_) => ""
       case Eq(a, b, _) =>
-        s"${a.sqlExpr} = ${b.sqlExpr}"
+        b match
+          case n: NullLiteral =>
+            s"${a.sqlExpr} IS ${b.sqlExpr}"
+          case _ =>
+            s"${a.sqlExpr} = ${b.sqlExpr}"
       case NotEq(a, b, operatorName, _) =>
-        s"${a.sqlExpr} ${operatorName} ${b.sqlExpr}"
+        b match
+          case n: NullLiteral =>
+            s"${a.sqlExpr} IS NOT ${b.sqlExpr}"
+          case _ =>
+            s"${a.sqlExpr} ${operatorName} ${b.sqlExpr}"
       case And(a, b, _) =>
         s"${a.sqlExpr} AND ${b.sqlExpr}"
       case Or(a, b, _) =>
