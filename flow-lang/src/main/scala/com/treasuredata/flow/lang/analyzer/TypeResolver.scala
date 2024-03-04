@@ -1,52 +1,75 @@
 package com.treasuredata.flow.lang.analyzer
 
 import com.treasuredata.flow.lang.StatusCode
+import com.treasuredata.flow.lang.analyzer.RewriteRule.PlanRewriter
 import com.treasuredata.flow.lang.analyzer.Type.{ExtensionType, NamedType, RecordType, UnresolvedType}
-import com.treasuredata.flow.lang.model.expr.ColumnType
-import com.treasuredata.flow.lang.model.plan.{FlowPlan, SchemaDef, TypeDef, TypeParam}
+import com.treasuredata.flow.lang.model.expr.{AttributeIndex, AttributeList, ColumnType, Expression}
+import com.treasuredata.flow.lang.model.plan.{
+  Filter,
+  FlowPlan,
+  LogicalPlan,
+  Query,
+  Relation,
+  SchemaDef,
+  TableRef,
+  TableScan,
+  TypeDef,
+  TypeParam
+}
 import wvlet.log.LogSupport
+
+import scala.util.control.NonFatal
 
 object TypeResolver extends LogSupport:
 
-  def resolveSchemaAndTypes(context: AnalyzerContext, flow: FlowPlan): Unit =
-    flow.plans.collect {
-      case schema: SchemaDef =>
-        val resolvedSchema = resolveSchema(context, schema)
-        context.addSchema(resolvedSchema)
-      case td: TypeDef =>
-        context.addType(resolveTypeDef(context, td))
+  def defaultRules: List[RewriteRule] =
+    resolveTableRef ::
+      resolveRelation ::
+      Nil
+
+  def resolve(plan: LogicalPlan, context: AnalyzerContext): LogicalPlan =
+    val resolvedPlan = defaultRules.foldLeft(plan) { (p, rule) =>
+      try rule.transform(p, context)
+      catch
+        case NonFatal(e) =>
+          debug(s"Failed to resolve with: ${rule.name}\n${p.pp}")
+          throw e
+    }
+    resolvedPlan
+
+  def resolveRelation(plan: LogicalPlan, context: AnalyzerContext): Relation =
+    val resolvedPlan = resolve(plan, context)
+    resolvedPlan match
+      case r: Relation => r
+      case _ =>
+        throw StatusCode.NOT_A_RELATION.newException(s"Not a relation:\n${resolvedPlan.pp}")
+
+  /**
+    * Resolve TableRefs with concrete TableScans using the table schema in the catalog.
+    */
+  object resolveTableRef extends RewriteRule:
+    def apply(context: AnalyzerContext): PlanRewriter = { case ref: TableRef =>
+      context.findSchema(ref.name.fullName) match
+        case Some(schema) =>
+          TableScan(schema.typeName, schema, schema.typeDefs, ref.nodeLocation)
+        case None =>
+          ref
     }
 
-  private def resolveSchema(context: AnalyzerContext, schemaDef: SchemaDef): RecordType =
-    val resolvedFields = schemaDef.columns.map { field =>
-      NamedType(field.columnName.value, resolveDataType(context, field.tpe))
+  object resolveRelation extends RewriteRule:
+    def apply(context: AnalyzerContext): PlanRewriter = {
+      case q: Query =>
+        q.copy(body = resolveRelation(q.body, context))
+      case r: Relation => // Regular relation and Filter etc.
+        r.transformUpExpressions { case x: Expression =>
+          resolveExpression(x, context, r.inputAttributeList)
+        }
     }
-    RecordType(schemaDef.name, resolvedFields)
 
-  private def resolveDataType(context: AnalyzerContext, columnType: ColumnType): Type =
-    context
-      .findType(columnType.tpe)
-      .getOrElse(UnresolvedType(columnType.tpe))
-
-  private def resolveTypeDef(context: AnalyzerContext, typeDef: TypeDef): ExtensionType =
-    val typeParams = typeDef.params.collect { case p: TypeParam =>
-      val resolvedType: Type = context.findType(p.value).getOrElse(UnresolvedType(p.value))
-      NamedType(p.name, resolvedType)
-    }
-    // TODO resolve defs
-    val defs: Seq[Def] = Seq.empty // typeDef.defs.collect { case tpe: TypeDefDef =>
-
-    val selfType = typeParams.filter(_.name == "self")
-    selfType.size match
-      case 0 =>
-        throw StatusCode.SYNTAX_ERROR.newException(
-          "Missing self parameter in type definition",
-          context.compileUnit.toSourceLocation(typeDef.nodeLocation)
-        )
-      case n if n > 1 =>
-        throw StatusCode.SYNTAX_ERROR.newException(
-          "Multiple self parameters are found in type definition",
-          context.compileUnit.toSourceLocation(typeDef.nodeLocation)
-        )
-      case 1 =>
-        ExtensionType(typeDef.name, selfType.head, defs)
+  private def resolveExpression(
+      expr: Expression,
+      context: AnalyzerContext,
+      inputAttributes: AttributeList
+  ): Expression =
+    trace(s"resolve ${expr} using ${inputAttributes}")
+    expr

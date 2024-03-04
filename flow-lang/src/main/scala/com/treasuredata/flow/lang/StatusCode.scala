@@ -13,4 +13,6 @@ enum StatusCode(statusType: StatusType):
 
   case OK               extends StatusCode(StatusType.Success)
   case SYNTAX_ERROR     extends StatusCode(StatusType.UserError)
+  case TABLE_NOT_FOUND  extends StatusCode(StatusType.UserError)
   case COLUMN_NOT_FOUND extends StatusCode(StatusType.UserError)
+  case NOT_A_RELATION   extends StatusCode(StatusType.UserError)

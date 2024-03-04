@@ -1,3 +1,37 @@
+schema weblog_users:
+  td_client_id: string,
+  name: string,
+  age: int,
+  gender: string,
+  email: string,
+  phone: string,
+  address: string,
+  naid: string,
+  time: int,
+end
+
+schema weblog_user_attr3:
+  td_client_id: string,
+  age: int,
+  very_long_attr_for_test_cdp_465: string,
+  time: int,
+end
+
+schema weblog_user_attr2:
+  td_client_id: string,
+  td_language: string,
+  td_os: string,
+  time: int,
+end
+
+schema weblog_users_first_purchased_at:
+  naid: string,
+  first_purchased_at: int,
+  time: int,
+end
+
+
+
 from weblog_users
 -- override only a subset of the columns and report the rest as is
 select override

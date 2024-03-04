@@ -15,12 +15,16 @@ import scala.collection.mutable
   * @param parentAttributes
   *   attributes used in the parent relation. This is used for pruning unnecessary columns output attributes
   */
-case class AnalyzerContext(scope: Scope, compileUnit: CompileUnit):
+case class AnalyzerContext(scope: Scope):
   private val schemas = mutable.Map.empty[String, RecordType]
   private val types   = mutable.Map.empty[String, Type].addAll(knownPrimitiveTypes.iterator)
 
+  private var _compileUnit: CompileUnit = CompileUnit.empty
+
+  def compileUnit: CompileUnit = _compileUnit
+
   def getSchemas: Map[String, RecordType] = schemas.toMap
-  def getTypes: Map[String, Type]         = types.toMap
+  def getTypes: Map[String, Type]         = types.toMap ++ schemas.toMap
 
   def addSchema(schema: RecordType): Unit =
     schemas.put(schema.typeName, schema)
@@ -28,8 +32,18 @@ case class AnalyzerContext(scope: Scope, compileUnit: CompileUnit):
   def addType(dataType: Type): Unit =
     types.put(dataType.typeName, dataType)
 
+  def findSchema(name: String): Option[RecordType] =
+    schemas.get(name)
+
   def findType(name: String): Option[Type] =
-    types.get(name).orElse(schemas.get(name))
+    types.get(name).orElse(findSchema(name))
+
+  def withCompileUnit[U](newCompileUnit: CompileUnit)(block: AnalyzerContext => U): U =
+    val prev = _compileUnit
+    try
+      _compileUnit = newCompileUnit
+      block(this)
+    finally _compileUnit = prev
 
 /**
   * Scope of the context
@@ -37,8 +51,8 @@ case class AnalyzerContext(scope: Scope, compileUnit: CompileUnit):
 sealed trait Scope
 
 object Scope:
-  case object Global                                   extends Scope
-  case class Local(parent: Scope, contextName: String) extends Scope
+  case object Global                    extends Scope
+  case class Local(contextName: String) extends Scope
 
 sealed trait Type:
   def typeName: String

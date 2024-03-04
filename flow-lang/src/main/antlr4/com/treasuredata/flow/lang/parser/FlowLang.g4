@@ -31,6 +31,16 @@ typeDef:
     END?
     ;
 
+moduleDef:
+    MODULE identifier COLON
+      (moduleElement (COMMA moduleElement)* COMMA?)?
+    END?
+    ;
+
+moduleElement:
+    DEF identifier (COLON identifier)? EQ primaryExpression
+    ;
+
 paramList:
     param (COMMA param)* COMMA?
     ;
@@ -198,6 +208,7 @@ FOR: 'for';
 FROM: 'from';
 IN: 'in';
 ON: 'on';
+MODULE: 'module';
 SCHEMA: 'schema';
 SELECT: 'select';
 GROUP: 'group';

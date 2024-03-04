@@ -1,9 +1,14 @@
 package com.treasuredata.flow.lang.analyzer
 
+import com.treasuredata.flow.lang.model.plan.Query
 import wvlet.airspec.AirSpec
 
 class AnalyzerTest extends AirSpec:
-  test("analyze plan") {
-    val plan = Analyzer.analyzeSourceFolder("examples/cdp_behavior/src")
-    debug(plan)
+  test("analyze behavior plan") {
+    val plan = Analyzer.analyzeSourceFolder("examples/cdp_behavior/src/behavior")
+    plan.flatMap { plan =>
+      plan.logicalPlans.collect { case p =>
+        debug(p.pp)
+      }
+    }
   }

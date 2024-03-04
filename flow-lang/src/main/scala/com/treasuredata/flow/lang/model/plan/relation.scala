@@ -1,5 +1,6 @@
 package com.treasuredata.flow.lang.model.plan
 
+import com.treasuredata.flow.lang.analyzer.Type.{NamedType, RecordType}
 import com.treasuredata.flow.lang.catalog.Catalog
 import com.treasuredata.flow.lang.model.expr.*
 import com.treasuredata.flow.lang.model.*
@@ -108,6 +109,13 @@ case class Project(child: Relation, selectItems: Seq[Attribute], nodeLocation: O
   override def toString: String                 = s"Project[${selectItems.mkString(", ")}](${child})"
   override def outputAttributes: Seq[Attribute] = selectItems
 
+/**
+  * Aggregation operator that merges records by grouping keys and create a list of records for each group
+  * @param child
+  * @param groupingKeys
+  * @param having
+  * @param nodeLocation
+  */
 case class Aggregate(
     child: Relation,
     groupingKeys: List[GroupingKey],
@@ -120,6 +128,14 @@ case class Aggregate(
     // TODO change type as ((k1, k2) -> Seq[c1, c2, c3, ...]) type
     keyAttrs ++ child.outputAttributes
 
+/**
+  * Tradtional aggregation node with SELECT clause
+  * @param child
+  * @param selectItems
+  * @param groupingKeys
+  * @param having
+  * @param nodeLocation
+  */
 case class AggregateSelect(
     child: Relation,
     selectItems: List[Attribute],
@@ -318,25 +334,25 @@ case class LateralView(
   *   projectec columns
   */
 case class TableScan(
-    fullName: String,
-    table: Catalog.Table,
-    columns: Seq[Catalog.TableColumn],
+    name: String,
+    schema: RecordType,
+    columns: Seq[NamedType],
     nodeLocation: Option[NodeLocation]
 ) extends Relation
     with LeafPlan:
-  override def inputAttributes: Seq[Attribute] = Seq.empty
-  override def outputAttributes: Seq[Attribute] =
-    columns.map { col =>
-      ResolvedAttribute(
-        col.name,
-        col.dataType,
-        Qualifier.empty, // This must be empty first
-        Some(SourceColumn(table, col)),
-        None // ResolvedAttribute always has no NodeLocation
-      )
-    }
-
+  override def inputAttributes: Seq[Attribute]  = Seq.empty
+  override def outputAttributes: Seq[Attribute] = Seq.empty
+//    columns.map { col =>
+//      ResolvedAttribute(
+//        col.name,
+//        col.dataType,
+//        Qualifier.empty, // This must be empty first
+//        None,            // TODO Some(SourceColumn(table, col)),
+//        None             // ResolvedAttribute always has no NodeLocation
+//      )
+//    }
+//
   override def toString: String =
-    s"TableScan(name:${fullName}, table:${table.fullName}, columns:[${columns.mkString(", ")}])"
+    s"TableScan(name:${name}, columns:[${columns.mkString(", ")}])"
 
   override lazy val resolved = true
