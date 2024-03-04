@@ -1,6 +1,6 @@
 package com.treasuredata.flow.lang.model.plan
 
-import com.treasuredata.flow.lang.model.NodeLocation
+import com.treasuredata.flow.lang.model.{NodeLocation, RelationType}
 import com.treasuredata.flow.lang.model.expr.*
 
 /*
@@ -81,6 +81,8 @@ case class CreateTableAs(
     with UnaryRelation:
   override def child: Relation = query
 
+  override def relationType: RelationType = query.relationType
+
 case class InsertInto(
     table: QName,
     columnAliases: Option[Seq[Identifier]],
@@ -91,6 +93,7 @@ case class InsertInto(
   override def child: Relation = query
 
   override def outputAttributes: Seq[Attribute] = Nil
+  override def relationType: RelationType       = query.relationType
 
 case class Delete(table: QName, where: Option[Expression], nodeLocation: Option[NodeLocation])
     extends Update

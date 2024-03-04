@@ -1,7 +1,8 @@
 package com.treasuredata.flow.lang.analyzer
 
 import com.treasuredata.flow.lang.StatusCode
-import com.treasuredata.flow.lang.analyzer.Type.{ExtensionType, NamedType, RecordType, UnresolvedType}
+import com.treasuredata.flow.lang.model.DataType
+import com.treasuredata.flow.lang.model.DataType.{ExtensionType, FunctionType, NamedType, SchemaType, UnresolvedType}
 import com.treasuredata.flow.lang.model.expr.ColumnType
 import com.treasuredata.flow.lang.model.plan.{FlowPlan, SchemaDef, TypeDef, TypeParam}
 import wvlet.log.LogSupport
@@ -17,24 +18,24 @@ object TypeScanner extends LogSupport:
         context.addType(scanTypeDef(td, context))
     }
 
-  private def scanSchema(schemaDef: SchemaDef, context: AnalyzerContext): RecordType =
+  private def scanSchema(schemaDef: SchemaDef, context: AnalyzerContext): SchemaType =
     val resolvedFields = schemaDef.columns.map { field =>
       NamedType(field.columnName.value, scanDataType(field.tpe, context))
     }
-    RecordType(schemaDef.name, resolvedFields)
+    SchemaType(schemaDef.name, resolvedFields)
 
-  private def scanDataType(columnType: ColumnType, context: AnalyzerContext): Type =
+  private def scanDataType(columnType: ColumnType, context: AnalyzerContext): DataType =
     context
       .findType(columnType.tpe)
       .getOrElse(UnresolvedType(columnType.tpe))
 
   private def scanTypeDef(typeDef: TypeDef, context: AnalyzerContext): ExtensionType =
     val typeParams = typeDef.params.collect { case p: TypeParam =>
-      val resolvedType: Type = context.findType(p.value).getOrElse(UnresolvedType(p.value))
+      val resolvedType: DataType = context.findType(p.value).getOrElse(UnresolvedType(p.value))
       NamedType(p.name, resolvedType)
     }
     // TODO resolve defs
-    val defs: Seq[Def] = Seq.empty // typeDef.defs.collect { case tpe: TypeDefDef =>
+    val defs: Seq[FunctionType] = Seq.empty // typeDef.defs.collect { case tpe: TypeDefDef =>
 
     val selfType = typeParams.filter(_.name == "self")
     selfType.size match

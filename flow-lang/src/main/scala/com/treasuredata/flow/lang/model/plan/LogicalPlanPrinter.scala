@@ -20,19 +20,21 @@ object LogicalPlanPrinter extends LogSupport:
       case _ =>
         val ws = "  " * level
 
+        def wrap[A](s: Seq[A]): String =
+          if s.length <= 1 then s.mkString(", ") else s"(${s.mkString(", ")})"
+
+        val inputType = m match
+          case r: Relation => wrap(r.inputRelationTypes)
+          case _           => wrap(m.inputAttributes.map(_.typeDescription))
+
+        val outputType = m match
+          case r: Relation => r.relationType
+          case _           => wrap(m.outputAttributes.map(_.typeDescription))
+
         val inputAttrs  = m.inputAttributes
         val outputAttrs = m.outputAttributes
         val attr        = m.childExpressions.map(_.toString)
-        val functionSig =
-          if inputAttrs.isEmpty && outputAttrs.isEmpty then ""
-          else
-            def printAttr(s: Seq[Attribute]): String =
-              val lst = s
-                .map(_.typeDescription)
-                .mkString(", ")
-              if s.size >= 1 then s"(${lst})"
-              else lst
-            s": ${printAttr(inputAttrs)} => ${printAttr(outputAttrs)}"
+        val functionSig = if inputAttrs.isEmpty && outputAttrs.isEmpty then "" else s": ${inputType} => ${outputType}"
 
         val prefix = m match
 //          case t: TableScan =>
