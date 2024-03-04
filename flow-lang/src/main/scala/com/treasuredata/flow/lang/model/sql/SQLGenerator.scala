@@ -107,6 +107,9 @@ class SQLGenerator(config: SQLGeneratorConfig = SQLGeneratorConfig()) extends Lo
       case AggregateSelect(_, _, _, _, _) =>
         // We cannot push down parent Filters
         collectFilterExpression(childFilters)
+      case n: NamedRelation =>
+        collectFilterExpression(childFilters)
+
     if filterSet.nonEmpty then
       b += "WHERE"
       val cond = filterSet.reduce((f1, f2) => And(f1, f2, None))
@@ -157,7 +160,7 @@ class SQLGenerator(config: SQLGeneratorConfig = SQLGeneratorConfig()) extends Lo
         s += orderBy.map(x => printExpression(x)).mkString(", ")
         s.result().mkString(" ")
       case n: NamedRelation =>
-        s"SELECT * FROM (${printRelation(n.child)}) as ${n.name.sqlExpr}"
+        s"SELECT * FROM (${printSelection(n, r :: context)}) as ${n.name.sqlExpr}"
       case ParenthesizedRelation(r, _) =>
         s"(${printRelation(r, context)})"
       case AliasedRelation(relation, alias, columnNames, _) =>

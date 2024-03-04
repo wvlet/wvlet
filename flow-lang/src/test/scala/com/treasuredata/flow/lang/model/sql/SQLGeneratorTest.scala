@@ -12,5 +12,6 @@ class SQLGeneratorTest extends AirSpec:
     val queries = plan.logicalPlans.collect { case q: Query => q }
     queries.map { q =>
       val sql = SQLGenerator.toSQL(q)
+      debug(q)
       debug(sql)
     }

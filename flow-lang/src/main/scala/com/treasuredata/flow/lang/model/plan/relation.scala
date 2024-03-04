@@ -81,11 +81,16 @@ case class NamedRelation(
     child: Relation,
     name: Identifier,
     nodeLocation: Option[NodeLocation]
-) extends UnaryRelation:
+) extends UnaryRelation
+    with Selection:
   override def toString: String = s"NamedRelation[${name.value}](${child})"
   override def outputAttributes: Seq[Attribute] =
     val qual = Qualifier.parse(name.value)
     child.outputAttributes.map(_.withQualifier(qual))
+
+  override def selectItems: Seq[Attribute] =
+    // Produce a dummy AllColumns node for SQLGenerator
+    Seq(AllColumns(Qualifier.empty, None, None))
 
   override def relationType: RelationType = AliasedType(name.value, child.relationType)
 

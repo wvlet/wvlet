@@ -7,8 +7,10 @@ abstract class DataType(val typeName: String, val typeParams: Seq[DataType]):
   override def toString: String = typeDescription
 
   def typeDescription: String =
-    if typeParams.isEmpty then typeName
-    else s"${typeName}(${typeParams.mkString(", ")})"
+    val typeStr =
+      if typeParams.isEmpty then typeName
+      else s"${typeName}(${typeParams.mkString(", ")})"
+    if isResolved then typeStr else s"${typeStr}?"
 
   def baseTypeName: String = typeName
 
@@ -67,7 +69,7 @@ object DataType extends LogSupport:
     override def isResolved: Boolean     = projectedColumns.forall(_.isResolved)
 
   /**
-    * Aggregateed record types: (key1, key2, ...) -> [record1, record2, ...]
+    * Aggregateed record types: (key1, key2, ...) -> [record1*]
     * @param typeName
     * @param groupingKeyTypes
     * @param valueType

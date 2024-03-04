@@ -113,8 +113,8 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
     var r: Relation             = inputRelation
 
     Option(ctx.queryBlock()).foreach { queryBlock =>
-      r = queryBlock.asScala.foldLeft(r) { (r, qb) =>
-        interpretQueryBlock(r, qb)
+      r = queryBlock.asScala.foldLeft(r) { (rel, qb) =>
+        interpretQueryBlock(rel, qb)
       }
     }
     Query(r, getLocation(ctx))
@@ -125,13 +125,18 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
         val filterExpr = expression(f.booleanExpression())
         Filter(inputRelation, filterExpr, getLocation(f))
       case p: ProjectRelationContext =>
-        val selectItems: List[Attribute] =
-          Option(p.selectExpr().selectItemList()) match
-            case Some(lst) =>
-              lst.selectItem().asScala.map { si => visit(si).asInstanceOf[Attribute] }.toList
-            case None =>
-              List(AllColumns(Qualifier.empty, None, getLocation(p)))
-        Project(inputRelation, selectItems, getLocation(p))
+        val r = Option(p.selectExpr().selectItemList()) match
+          case Some(lst) =>
+            val selectItems = lst.selectItem().asScala.map { si => visit(si).asInstanceOf[Attribute] }.toList
+            Project(inputRelation, selectItems, getLocation(p))
+          case None =>
+            inputRelation
+        Option(p.selectExpr().identifier()) match
+          case Some(id) =>
+            val alias = visitIdentifier(id)
+            NamedRelation(r, alias, getLocation(p))
+          case None =>
+            r
       case a: AggregateRelationContext =>
         val groupingKeys: List[GroupingKey] =
           a.groupByItemList().groupByItem().asScala.map { gi => visitGroupByItem(gi) }.toList
