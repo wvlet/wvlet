@@ -23,3 +23,10 @@ limit 10
 from person
 limit 10
 order by time asc
+
+
+from person
+transform
+  -- Add a new column for aggregation
+  age_group: age / 10
+group by age_group

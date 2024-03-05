@@ -177,7 +177,7 @@ trait UnaryExpression extends Expression:
 trait BinaryExpression extends Expression:
   def left: Expression
   def right: Expression
-  protected def operatorName: String
+  def operatorName: String
 
   override def children: Seq[Expression] = Seq(left, right)
   override def toString: String          = s"${getClass.getSimpleName}(left:${left}, right:${right})"

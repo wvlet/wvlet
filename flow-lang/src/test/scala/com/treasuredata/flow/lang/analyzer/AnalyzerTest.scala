@@ -12,3 +12,12 @@ class AnalyzerTest extends AirSpec:
       }
     }
   }
+
+  test("analyze customer plan") {
+    val plan = Analyzer.analyzeSourceFolder("examples/cdp_behavior/src/customer")
+    plan.flatMap { plan =>
+      plan.logicalPlans.collect { case p =>
+        debug(p.pp)
+      }
+    }
+  }

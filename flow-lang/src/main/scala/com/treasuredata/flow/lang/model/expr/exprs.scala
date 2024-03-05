@@ -29,26 +29,33 @@ case class Dereference(base: Expression, next: Expression, nodeLocation: Option[
 
 sealed trait Identifier extends LeafExpression:
   def value: String
+  def expr: String
   override def attributeName: String  = value
   override lazy val resolved: Boolean = false
   def toResolved: ResolvedIdentifier  = ResolvedIdentifier(this)
 
 case class ResolvedIdentifier(id: Identifier) extends Identifier:
   override def value: String                      = id.value
+  override def expr: String                       = id.expr
+  override def toResolved: ResolvedIdentifier     = super.toResolved
   override def nodeLocation: Option[NodeLocation] = id.nodeLocation
   override lazy val resolved: Boolean             = true
 
 case class DigitId(value: String, nodeLocation: Option[NodeLocation]) extends Identifier:
   override def toString: String = s"Id(${value})"
+  override def expr: String     = value
 
 case class UnquotedIdentifier(value: String, nodeLocation: Option[NodeLocation]) extends Identifier:
   override def toString: String = s"Id(${value})"
+  override def expr: String     = value
 
 case class BackQuotedIdentifier(value: String, nodeLocation: Option[NodeLocation]) extends Identifier:
-  override def toString = s"Id(`${value}`)"
+  override def toString     = s"Id(`${value}`)"
+  override def expr: String = s"`${value}`"
 
 case class QuotedIdentifier(value: String, nodeLocation: Option[NodeLocation]) extends Identifier:
-  override def toString = s"""Id("${value}")"""
+  override def toString     = s"""Id("${value}")"""
+  override def expr: String = s"\"${value}\""
 
 sealed trait JoinCriteria extends Expression
 

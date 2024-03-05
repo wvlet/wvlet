@@ -1,6 +1,7 @@
 schema person:
   id: string,
   name: string,
+  age: int,
   time: int,
 end
 

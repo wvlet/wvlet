@@ -1,5 +1,21 @@
 package com.treasuredata.flow.lang.model.plan
 
+import com.treasuredata.flow.lang.model.expr.{
+  Alias,
+  ArithmeticBinaryExpr,
+  ArrayConstructor,
+  Attribute,
+  BinaryExprType,
+  BinaryExpression,
+  Dereference,
+  Expression,
+  FunctionCall,
+  GroupingKey,
+  Identifier,
+  Literal,
+  SingleColumn,
+  SortItem
+}
 import wvlet.log.LogSupport
 
 import java.io.{PrintWriter, StringWriter}
@@ -33,7 +49,7 @@ object LogicalPlanPrinter extends LogSupport:
         val inputAttrs  = m.inputAttributes
         val outputAttrs = m.outputAttributes
 
-        val attr        = m.childExpressions.map(expr => expr.toString)
+        val attr        = m.childExpressions.map(expr => printExpression(expr))
         val functionSig = if inputAttrs.isEmpty && outputAttrs.isEmpty then "" else s": ${inputType} => ${outputType}"
 
         val prefix = m match
@@ -51,3 +67,32 @@ object LogicalPlanPrinter extends LogSupport:
             val attrStr = attr.map(x => s"${attrWs}- ${x}").mkString("\n")
             out.println(attrStr)
         for c <- m.children do print(c, out, level + 1)
+
+  private def printExpression(e: Expression): String =
+    e match
+      case i: Identifier => i.expr
+      case f: FunctionCall =>
+        val args = f.args.map(printExpression).mkString(", ")
+        s"${f.name}(${args})"
+      case d: Dereference =>
+        s"${printExpression(d.base)}.${printExpression(d.next)}"
+      case s: SingleColumn =>
+        s"${s.fullName}:${s.dataTypeName} := ${printExpression(s.expr)}"
+      case a: Alias =>
+        s"<${a.fullName}> ${printExpression(a.expr)}"
+      case g: GroupingKey =>
+        printExpression(g.child)
+      case b: ArithmeticBinaryExpr =>
+        s"${printExpression(b.left)} ${b.exprType.symbol} ${printExpression(b.right)}"
+      case l: Literal =>
+        l.stringValue
+      case s: SortItem =>
+        s"sort key:${printExpression(s.sortKey)}${s.ordering.map(x => s" ${x}").getOrElse("")}"
+      case a: ArrayConstructor =>
+        s"[${a.children.map(printExpression).mkString(", ")}]"
+      case t: TypeDefDef =>
+        s"def ${t.name}: ${t.tpe.getOrElse("?")} = ${printExpression(t.expr)}"
+      case b: BinaryExpression =>
+        s"${b.operatorName}(${printExpression(b.left)}, ${printExpression(b.right)})"
+      case null  => "null"
+      case other => e.toString
