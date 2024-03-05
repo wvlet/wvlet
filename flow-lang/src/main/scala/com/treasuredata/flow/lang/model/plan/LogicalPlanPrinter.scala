@@ -14,7 +14,8 @@ import com.treasuredata.flow.lang.model.expr.{
   Identifier,
   Literal,
   SingleColumn,
-  SortItem
+  SortItem,
+  StringLiteral
 }
 import wvlet.log.LogSupport
 
@@ -84,6 +85,8 @@ object LogicalPlanPrinter extends LogSupport:
         printExpression(g.child)
       case b: ArithmeticBinaryExpr =>
         s"${printExpression(b.left)} ${b.exprType.symbol} ${printExpression(b.right)}"
+      case s: StringLiteral =>
+        s"\"${s.stringValue}\""
       case l: Literal =>
         l.stringValue
       case s: SortItem =>
