@@ -58,10 +58,10 @@ qualifiedName
     ;
 
 identifier:
-    IDENTIFIER # unquotedIdentifier
-    | BACKQUOTED_IDENTIFIER # backQuotedIdentifier
-    // A workaround for using reserved words (join, select, etc.) as function name
-    | (SELECT | JOIN)  # reservedWordIdentifier
+    IDENTIFIER                # unquotedIdentifier
+    | BACKQUOTED_IDENTIFIER   # backQuotedIdentifier
+    // A workaround for using reserved words (join, select, etc.) as function names
+    | (SELECT | JOIN)         # reservedWordIdentifier
     ;
 
 expression
@@ -69,7 +69,7 @@ expression
     ;
 
 booleanExpression
-    : '!' booleanExpression                                        #logicalNot
+    : ('!' | NOT) booleanExpression                                #logicalNot
     | valueExpression                                              #booleanDeafault
     | left=booleanExpression operator=AND right=booleanExpression  #logicalBinary
     | left=booleanExpression operator=OR right=booleanExpression   #logicalBinary
@@ -116,7 +116,13 @@ str
     ;
 
 comparisonOperator
-    : EQ | NEQ | LT | LTE | GT | GTE
+    : EQ
+    | IS NOT?
+    | NEQ
+    | LT
+    | LTE
+    | GT
+    | GTE
     ;
 
 booleanValue
@@ -190,6 +196,7 @@ joinType
     | LEFT
     | RIGHT
     | FULL
+
     ;
 
 joinCriteria
@@ -207,6 +214,7 @@ END: 'end';
 FOR: 'for';
 FROM: 'from';
 IN: 'in';
+IS: 'is';
 ON: 'on';
 MODULE: 'module';
 SCHEMA: 'schema';
@@ -232,6 +240,7 @@ RIGHT: 'right';
 
 
 NULL: 'null';
+NOT: 'not';
 AND: 'and';
 OR: 'or';
 TRUE: 'true';

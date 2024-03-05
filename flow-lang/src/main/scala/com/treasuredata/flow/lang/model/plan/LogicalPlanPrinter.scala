@@ -1,6 +1,5 @@
 package com.treasuredata.flow.lang.model.plan
 
-import com.treasuredata.flow.lang.model.expr.Attribute
 import wvlet.log.LogSupport
 
 import java.io.{PrintWriter, StringWriter}
@@ -33,7 +32,8 @@ object LogicalPlanPrinter extends LogSupport:
 
         val inputAttrs  = m.inputAttributes
         val outputAttrs = m.outputAttributes
-        val attr        = m.childExpressions.map(_.toString)
+
+        val attr        = m.childExpressions.map(expr => expr.toString)
         val functionSig = if inputAttrs.isEmpty && outputAttrs.isEmpty then "" else s": ${inputType} => ${outputType}"
 
         val prefix = m match

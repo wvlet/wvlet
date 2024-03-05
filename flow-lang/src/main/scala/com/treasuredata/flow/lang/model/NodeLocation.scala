@@ -4,4 +4,5 @@ case class NodeLocation(
     line: Int,
     // column position in the line (1-origin)
     column: Int
-)
+):
+  override def toString: String = s"$line:$column"

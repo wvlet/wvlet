@@ -384,19 +384,26 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
     val left  = expression(ctx.left)
     val right = expression(ctx.right)
     val op    = ctx.comparisonOperator().getChild(0).asInstanceOf[TerminalNode]
+    val loc   = getLocation(ctx.comparisonOperator())
     op.getSymbol.getType match
       case FlowLangParser.EQ =>
-        Eq(left, right, getLocation(ctx.comparisonOperator()))
+        Eq(left, right, getLocation(ctx))
+      case FlowLangParser.IS =>
+        Option(ctx.getChild(1)) match
+          case None =>
+            Eq(left, right, getLocation(ctx))
+          case Some(op) =>
+            NotEq(left, right, op.getText, getLocation(ctx))
       case FlowLangParser.LT =>
-        LessThan(left, right, getLocation(ctx.comparisonOperator()))
+        LessThan(left, right, getLocation(ctx))
       case FlowLangParser.LTE =>
-        LessThanOrEq(left, right, getLocation(ctx.comparisonOperator()))
+        LessThanOrEq(left, right, getLocation(ctx))
       case FlowLangParser.GT =>
-        GreaterThan(left, right, getLocation(ctx.comparisonOperator()))
+        GreaterThan(left, right, getLocation(ctx))
       case FlowLangParser.GTE =>
-        GreaterThanOrEq(left, right, getLocation(ctx.comparisonOperator()))
+        GreaterThanOrEq(left, right, getLocation(ctx))
       case FlowLangParser.NEQ =>
-        NotEq(left, right, op.getText, getLocation(ctx.comparisonOperator()))
+        NotEq(left, right, op.getText, getLocation(ctx))
 
   override def visitBooleanLiteral(ctx: BooleanLiteralContext): Literal =
     if ctx.booleanValue().TRUE() != null then TrueLiteral(getLocation(ctx))
