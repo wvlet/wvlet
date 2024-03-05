@@ -49,9 +49,11 @@ jobs:
         id: cache-scalablytyped
         uses: actions/cache@v4
         with:
-          key: ${{ runner.os }}-scalablytyped
+          key: ${{ runner.os }}-scalablytyped-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: ${{ runner.os }}-scalablytyped-node-
           path: |
             ~/.ivy2/local
+            ~/.ivy2/cache
             ~/.sbt
             ~/.cache
       - uses: actions/setup-java@v4
