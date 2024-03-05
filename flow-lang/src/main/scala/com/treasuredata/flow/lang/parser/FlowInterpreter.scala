@@ -142,6 +142,10 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
           a.groupByItemList().groupByItem().asScala.map { gi => visitGroupByItem(gi) }.toList
         // TODO parse having
         Aggregate(inputRelation, groupingKeys, having = None, getLocation(a))
+      case t: TransformRelationContext =>
+        val transformItems = t.transformExpr().selectItemList().selectItem().asScala
+        val lst            = transformItems.map { ti => visit(ti).asInstanceOf[Attribute] }.toList
+        Transform(inputRelation, lst, getLocation(t))
       case j: JoinRelationContext =>
         interpretJoin(inputRelation, j.join())
       case _ =>

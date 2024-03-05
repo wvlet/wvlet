@@ -69,9 +69,7 @@ case class AliasedRelation(
     val result = columnNames match
       case Some(columnNames) =>
         attrs.zip(columnNames).map { case (a, columnName) =>
-          a match
-            case a: Attribute => a.withAlias(columnName)
-            case others       => others
+          a.withAlias(columnName)
         }
       case None =>
         attrs
@@ -160,7 +158,7 @@ case class Project(child: Relation, selectItems: Seq[Attribute], nodeLocation: O
   override def toString: String                 = s"Project[${selectItems.mkString(", ")}](${child})"
   override def outputAttributes: Seq[Attribute] = selectItems
 
-  override def relationType: RelationType =
+  override lazy val relationType: RelationType =
     ProjectedType(
       RelationType.newRelationTypeName,
       selectItems.map {
@@ -170,6 +168,18 @@ case class Project(child: Relation, selectItems: Seq[Attribute], nodeLocation: O
       },
       child.relationType
     )
+
+case class Transform(child: Relation, transformItems: Seq[Attribute], nodeLocation: Option[NodeLocation])
+    extends UnaryRelation
+    with Selection:
+  override def toString: String                 = s"Transform[${transformItems.mkString(", ")}](${child})"
+  override def outputAttributes: Seq[Attribute] = transformItems ++ child.outputAttributes
+
+  override def selectItems: Seq[Attribute] = outputAttributes
+
+  override def relationType: RelationType =
+    // TODO detect newly added columns and overriden columns
+    child.relationType
 
 /**
   * Aggregation operator that merges records by grouping keys and create a list of records for each group
@@ -190,7 +200,7 @@ case class Aggregate(
     // TODO change type as ((k1, k2) -> Seq[c1, c2, c3, ...]) type
     keyAttrs ++ child.outputAttributes
 
-  override def relationType: RelationType =
+  override lazy val relationType: RelationType =
     AggregationType(
       RelationType.newRelationTypeName,
       groupingKeys.map(k => k.dataType),
@@ -217,7 +227,7 @@ case class AggregateSelect(
     s"AggregateSelect[${groupingKeys.mkString(",")}](Select[${selectItems.mkString(", ")}](${child}))"
 
   override def outputAttributes: Seq[Attribute] = selectItems
-  override def relationType: RelationType =
+  override lazy val relationType: RelationType =
     ProjectedType(
       RelationType.newRelationTypeName,
       selectItems.map {
@@ -273,7 +283,7 @@ case class Join(
         // Report including duplicated name columns
         inputAttributes
 
-  override def relationType: RelationType =
+  override lazy val relationType: RelationType =
     ConcatType(RelationType.newRelationTypeName, Seq(left.relationType, right.relationType))
 
 sealed abstract class JoinType(val symbol: String)
@@ -302,7 +312,7 @@ sealed trait SetOperation extends Relation with LogSupport:
 
   override def outputAttributes: Seq[Attribute] = mergeOutputAttributes
 
-  override def relationType: RelationType =
+  override lazy val relationType: RelationType =
     children.headOption.map(_.relationType).getOrElse(UnresolvedRelationType(RelationType.newRelationTypeName))
 
   protected def mergeOutputAttributes: Seq[Attribute] =
@@ -384,7 +394,7 @@ case class Unnest(columns: Seq[Expression], withOrdinality: Boolean, nodeLocatio
   override def toString =
     s"Unnest(withOrdinality:${withOrdinality}, ${columns.mkString(",")})"
 
-  override def relationType: RelationType =
+  override lazy val relationType: RelationType =
     // TODO
     UnresolvedRelationType(RelationType.newRelationTypeName)
 
@@ -400,7 +410,7 @@ case class Unnest(columns: Seq[Expression], withOrdinality: Boolean, nodeLocatio
 case class Lateral(query: Relation, nodeLocation: Option[NodeLocation]) extends UnaryRelation:
   override def child: Relation = query
 
-  override def relationType: RelationType =
+  override lazy val relationType: RelationType =
     // TODO
     UnresolvedRelationType(RelationType.newRelationTypeName)
 
@@ -415,7 +425,7 @@ case class LateralView(
     nodeLocation: Option[NodeLocation]
 ) extends UnaryRelation:
 
-  override def relationType: RelationType =
+  override lazy val relationType: RelationType =
     // TODO
     UnresolvedRelationType(RelationType.newRelationTypeName)
 

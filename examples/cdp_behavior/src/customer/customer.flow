@@ -34,7 +34,7 @@ end
 
 from weblog_users
 -- override only a subset of the columns and report the rest as is
-select override
+transform
   td_client_id.or_else('dummy-' + hex(floor(rand() * 4294966016))),
   naid.or_else('dummy-' + hex(floor(rand() * 4294966016))),
 group by

@@ -61,7 +61,7 @@ identifier:
     IDENTIFIER                # unquotedIdentifier
     | BACKQUOTED_IDENTIFIER   # backQuotedIdentifier
     // A workaround for using reserved words (join, select, etc.) as function names
-    | (SELECT | JOIN)         # reservedWordIdentifier
+    | (SELECT | JOIN | TRANSFORM)         # reservedWordIdentifier
     ;
 
 expression
@@ -145,11 +145,16 @@ queryBlock
     : join                        #joinRelation
     | GROUP BY groupByItemList    #aggregateRelation
     | WHERE booleanExpression     #filterRelation
+    | transformExpr               #transformRelation
     | selectExpr                  #projectRelation
     ;
 
 selectExpr:
-    SELECT OVERRIDE? (AS identifier)? selectItemList?
+    SELECT (AS identifier)? selectItemList?
+    ;
+
+transformExpr:
+    TRANSFORM selectItemList
     ;
 
 selectItemList:
@@ -219,11 +224,11 @@ ON: 'on';
 MODULE: 'module';
 SCHEMA: 'schema';
 SELECT: 'select';
+TRANSFORM: 'transform';
 GROUP: 'group';
 BY: 'by';
 TYPE: 'type';
 WHERE: 'where';
-OVERRIDE: 'override';
 
 UNNEST: 'unnest';
 LATERAL: 'lateral';
