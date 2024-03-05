@@ -1,0 +1,6 @@
+schema person:
+  id: string,
+  name: string,
+  time: int,
+end
+

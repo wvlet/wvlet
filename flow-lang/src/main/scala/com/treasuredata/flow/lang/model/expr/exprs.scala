@@ -92,21 +92,23 @@ case class SortItem(
 // Sort ordering
 sealed trait SortOrdering
 
-case object Ascending extends SortOrdering:
-  override def toString = "ASC"
+object SortOrdering:
+  case object Ascending extends SortOrdering:
+    override def toString = "ASC"
 
-case object Descending extends SortOrdering:
-  override def toString = "DESC"
+  case object Descending extends SortOrdering:
+    override def toString = "DESC"
 
 sealed trait NullOrdering
 
-case object NullIsFirst extends NullOrdering:
-  override def toString = "NULLS FIRST"
+object NullOrdering:
+  case object NullIsFirst extends NullOrdering:
+    override def toString = "NULLS FIRST"
 
-case object NullIsLast extends NullOrdering:
-  override def toString = "NULLS LAST"
+  case object NullIsLast extends NullOrdering:
+    override def toString = "NULLS LAST"
 
-case object UndefinedOrder extends NullOrdering
+  case object UndefinedOrder extends NullOrdering
 
 // Window functions
 case class Window(

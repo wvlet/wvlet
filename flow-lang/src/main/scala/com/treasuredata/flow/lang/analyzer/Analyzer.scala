@@ -24,7 +24,7 @@ object Analyzer extends LogSupport:
     // Post-process to resolve unresolved typesa
     typeScan
 
-    debug(context.getTypes.map(t => s"[${t._1}]: ${t._2}").mkString("\n"))
+    trace(context.getTypes.map(t => s"[${t._1}]: ${t._2}").mkString("\n"))
 
     // resolve plans
     val resolvedPlans = for plan <- plans yield analyzeSingle(plan, context)

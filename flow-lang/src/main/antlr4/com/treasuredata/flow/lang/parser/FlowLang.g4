@@ -9,11 +9,90 @@ statements:
     singleStatement (singleStatement)*
     ;
 
-singleStatement:
-    schemaDef
+singleStatement
+    : query
+    | schemaDef
     | typeDef
-    | query
     ;
+
+query:
+    FROM relation
+    queryBlock*
+    // As most of the relational database has no notion of sorted relation in the middle of query stages
+    // limit the usage of ORDER BY to the end of the query
+    (ORDER BY sortItem (COMMA sortItem)* COMMA?)?
+    (LIMIT limit=INTEGER_VALUE)?
+    ;
+
+queryBlock
+    : join                        #joinRelation
+    | GROUP BY groupByItemList    #aggregateRelation
+    | WHERE booleanExpression     #filterRelation
+    | transformExpr               #transformRelation
+    | selectExpr                  #projectRelation
+    | LIMIT limit=INTEGER_VALUE   #limitRelation
+    ;
+
+selectExpr:
+    SELECT (AS identifier)? selectItemList?
+    ;
+
+transformExpr:
+    TRANSFORM selectItemList
+    ;
+
+selectItemList:
+    selectItem (COMMA selectItem)* COMMA?
+    ;
+
+selectItem
+    : (identifier COLON)? expression #selectSingle
+    | (qualifiedName COLON)? ASTERISK  #selectAll
+    ;
+
+groupByItemList:
+    groupByItem (COMMA groupByItem)* COMMA?
+    ;
+
+groupByItem
+    : (identifier COLON)? expression
+    ;
+
+
+relation
+    : relationPrimary (AS? identifier columnAliases?)?
+    ;
+
+columnAliases
+    : '(' identifier ('.' identifier)* ')'
+    ;
+
+relationPrimary
+    : qualifiedName                                                   #tableName
+    | '{' query '}'                                                   #subqueryRelation
+    | '(' relation ')'                                                #parenthesizedRelation
+//    | UNNEST '(' primaryExpression (',' primaryExpression)* ')' (WITH ORDINALITY)?  #unnest
+//    | LATERAL '(' query ')'                                           #lateral
+    ;
+
+join
+    : joinType? JOIN relation joinCriteria
+    | CROSS JOIN relation
+    ;
+
+joinType
+    : INNER
+    | LEFT
+    | RIGHT
+    | FULL
+
+    ;
+
+joinCriteria
+    : ON booleanExpression
+    | ON '(' identifier (COMMA identifier)* ')'
+    ;
+
 
 schemaDef:
     SCHEMA identifier COLON
@@ -50,7 +129,7 @@ param:
     ;
 
 typeDefElem:
-    DEF identifier (COLON identifier)? EQ primaryExpression
+    DEF identifier ('.' identifier)? EQ primaryExpression
     ;
 
 qualifiedName
@@ -62,6 +141,10 @@ identifier:
     | BACKQUOTED_IDENTIFIER   # backQuotedIdentifier
     // A workaround for using reserved words (join, select, etc.) as function names
     | (SELECT | JOIN | TRANSFORM)         # reservedWordIdentifier
+    ;
+
+sortItem
+    : expression ordering=(ASC | DESC)? // (NULLS nullOrdering=(FIRST | LAST))?
     ;
 
 expression
@@ -136,78 +219,6 @@ number
     | INTEGER_VALUE  #integerLiteral
     ;
 
-query:
-    FROM relation
-    queryBlock*
-    ;
-
-queryBlock
-    : join                        #joinRelation
-    | GROUP BY groupByItemList    #aggregateRelation
-    | WHERE booleanExpression     #filterRelation
-    | transformExpr               #transformRelation
-    | selectExpr                  #projectRelation
-    ;
-
-selectExpr:
-    SELECT (AS identifier)? selectItemList?
-    ;
-
-transformExpr:
-    TRANSFORM selectItemList
-    ;
-
-selectItemList:
-    selectItem (COMMA selectItem)* COMMA?
-    ;
-
-selectItem
-    : (identifier COLON)? expression #selectSingle
-    | (qualifiedName '.')? ASTERISK  #selectAll
-    ;
-
-groupByItemList:
-    groupByItem (COMMA groupByItem)* COMMA?
-    ;
-
-groupByItem
-    : (identifier COLON)? expression
-    ;
-
-
-relation
-    : relationPrimary (AS? identifier columnAliases?)?
-    ;
-
-columnAliases
-    : '(' identifier (',' identifier)* ')'
-    ;
-
-relationPrimary
-    : qualifiedName                                                   #tableName
-    | '{' query '}'                                                   #subqueryRelation
-    | '(' relation ')'                                                #parenthesizedRelation
-//    | UNNEST '(' primaryExpression (',' primaryExpression)* ')' (WITH ORDINALITY)?  #unnest
-//    | LATERAL '(' query ')'                                           #lateral
-    ;
-
-join
-    : joinType? JOIN relation joinCriteria
-    | CROSS JOIN relation
-    ;
-
-joinType
-    : INNER
-    | LEFT
-    | RIGHT
-    | FULL
-
-    ;
-
-joinCriteria
-    : ON booleanExpression
-    | ON '(' identifier (',' identifier)* ')'
-    ;
 
 
 COLON: ':';
@@ -227,8 +238,13 @@ SELECT: 'select';
 TRANSFORM: 'transform';
 GROUP: 'group';
 BY: 'by';
+ORDER: 'order';
+LIMIT: 'limit';
 TYPE: 'type';
 WHERE: 'where';
+
+ASC: 'asc';
+DESC: 'desc';
 
 UNNEST: 'unnest';
 LATERAL: 'lateral';
@@ -283,6 +299,7 @@ BINARY_LITERAL
     :  'x\'' (~'\'')* '\''
     ;
 
+// Allow underscroe like 100_000_000 for readability
 INTEGER_VALUE
     : DIGIT (DIGIT | '_')*
     ;
@@ -305,11 +322,9 @@ DIGIT_IDENTIFIER
     : DIGIT (LETTER | DIGIT | '_' | '@' | ':')+
     ;
 
-
 BACKQUOTED_IDENTIFIER
     : '`' ( ~'`' | '``' )* '`'
     ;
-
 
 fragment EXPONENT
     : 'e' [+-]? DIGIT+

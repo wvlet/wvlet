@@ -1,0 +1,25 @@
+-- just scan a table
+from person
+
+-- limit
+from person
+limit 5
+
+-- sorting
+from person
+order by id
+
+--- ascending order
+from person
+order by id asc
+
+-- sort & limit
+from person
+order by time desc
+limit 10
+
+
+-- limit & sort
+from person
+limit 10
+order by time asc

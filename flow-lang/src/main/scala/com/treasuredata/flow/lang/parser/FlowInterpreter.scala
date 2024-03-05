@@ -8,6 +8,7 @@ import org.antlr.v4.runtime.{ParserRuleContext, Token}
 import org.antlr.v4.runtime.tree.TerminalNode
 import wvlet.log.LogSupport
 
+import javax.swing.SortOrder
 import scala.jdk.CollectionConverters.*
 
 object FlowInterpreter:
@@ -44,10 +45,7 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
     m.asInstanceOf[FlowPlan]
 
   def interpretExpression(ctx: ParserRuleContext): Expression =
-    trace(s"interpret: ${print(ctx)}")
-    val m = ctx.accept(this)
-    trace(m)
-    m.asInstanceOf[Expression]
+    ctx.accept(this).asInstanceOf[Expression]
 
   private def visitIdentifier(ctx: IdentifierContext): Identifier =
     ctx match
@@ -98,7 +96,7 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
     TypeDef(name, paramList, typeDefs, getLocation(ctx))
 
   override def visitTypeDefElem(ctx: TypeDefElemContext): TypeDefDef =
-    val expr: Expression = expression(ctx.primaryExpression())
+    val expr: Expression = interpretExpression(ctx.primaryExpression())
     ctx.identifier().asScala.toList match
       case head :: Nil =>
         TypeDefDef(visitIdentifier(head).value, None, expr, getLocation(ctx))
@@ -117,12 +115,27 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
         interpretQueryBlock(rel, qb)
       }
     }
+    val sortItems: List[SortItem] = ctx.sortItem().asScala.map(interpretSortItem).toList
+    if sortItems.nonEmpty then r = Sort(r, sortItems, getLocation(ctx.sortItem(0)))
+
+    Option(ctx.INTEGER_VALUE()).foreach { iv =>
+      val limit = interpretIntegerValue(iv, ctx)
+      r = Limit(r, limit, getLocation(ctx))
+    }
     Query(r, getLocation(ctx))
+
+  private def interpretSortItem(ctx: SortItemContext): SortItem =
+    val expr = interpretExpression(ctx.expression())
+    val ordering: Option[SortOrdering] = Option(ctx.ordering).map { x =>
+      if ctx.ASC() != null then SortOrdering.Ascending
+      else SortOrdering.Descending
+    }
+    SortItem(expr, ordering, None, getLocation(ctx))
 
   private def interpretQueryBlock(inputRelation: Relation, ctx: QueryBlockContext): Relation =
     ctx match
       case f: FilterRelationContext =>
-        val filterExpr = expression(f.booleanExpression())
+        val filterExpr = interpretExpression(f.booleanExpression())
         Filter(inputRelation, filterExpr, getLocation(f))
       case p: ProjectRelationContext =>
         val r = Option(p.selectExpr().selectItemList()) match
@@ -148,11 +161,14 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
         Transform(inputRelation, lst, getLocation(t))
       case j: JoinRelationContext =>
         interpretJoin(inputRelation, j.join())
+      case l: LimitRelationContext =>
+        val limit = interpretIntegerValue(l.INTEGER_VALUE(), l)
+        Limit(inputRelation, limit, getLocation(l))
       case _ =>
         throw unknown(ctx)
 
   override def visitGroupByItem(ctx: GroupByItemContext): GroupingKey =
-    var expr = expression(ctx.expression())
+    var expr = interpretExpression(ctx.expression())
     Option(ctx.identifier()).map(visitIdentifier).foreach { id =>
       expr = Alias(Qualifier.empty, id.value, expr, getLocation(ctx))
     }
@@ -161,7 +177,7 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
   override def visitSelectSingle(ctx: SelectSingleContext): Attribute =
     val alias = Option(ctx.identifier())
       .map(visitIdentifier(_))
-    val child = expression(ctx.expression())
+    val child = interpretExpression(ctx.expression())
     val qualifier = child match
       case a: Attribute => a.qualifier
       case _            => Qualifier.empty
@@ -206,7 +222,7 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
       case Some(c) if c.ON() != null && c.booleanExpression() != null =>
         (
           tmpJoinType.getOrElse(InnerJoin),
-          JoinOn(expression(c.booleanExpression()), getLocation(ctx))
+          JoinOn(interpretExpression(c.booleanExpression()), getLocation(ctx))
         )
       case Some(c) if c.ON() != null && c.identifier() != null =>
         (
@@ -223,33 +239,30 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
     QName(ctx.identifier().asScala.map(_.getText).toList, getLocation(ctx))
 
   override def visitDereference(ctx: DereferenceContext): Expression =
-    val base = expression(ctx.base)
-    val next = expression(ctx.next)
+    val base = interpretExpression(ctx.base)
+    val next = interpretExpression(ctx.next)
     Dereference(base, next, getLocation(ctx))
-
-  private def expression(ctx: ParserRuleContext): Expression =
-    ctx.accept(this).asInstanceOf[Expression]
 
   override def visitExpression(ctx: ExpressionContext): Expression =
     val b: BooleanExpressionContext = ctx.booleanExpression()
     b match
       case lb: LogicalBinaryContext =>
-        if lb.AND() != null then And(expression(lb.left), expression(lb.right), getLocation(ctx))
-        else if lb.OR() != null then Or(expression(lb.left), expression(lb.right), getLocation(ctx))
+        if lb.AND() != null then And(interpretExpression(lb.left), interpretExpression(lb.right), getLocation(ctx))
+        else if lb.OR() != null then Or(interpretExpression(lb.left), interpretExpression(lb.right), getLocation(ctx))
         else throw unknown(lb)
       case ln: LogicalNotContext =>
         visitLogicalNot(ln)
       case bd: BooleanDeafaultContext =>
-        expression(bd.valueExpression())
+        interpretExpression(bd.valueExpression())
       case other =>
         warn(s"Unknown expression: ${other.getClass}")
         visit(ctx.booleanExpression()).asInstanceOf[Expression]
 
   override def visitLogicalNot(ctx: LogicalNotContext): Expression =
-    Not(expression(ctx.booleanExpression()), getLocation(ctx))
+    Not(interpretExpression(ctx.booleanExpression()), getLocation(ctx))
 
   override def visitValueExpressionDefault(ctx: ValueExpressionDefaultContext): Expression =
-    expression(ctx.primaryExpression())
+    interpretExpression(ctx.primaryExpression())
 
 //  override def visitTypeConstructor(ctx: TypeConstructorContext): Expression =
 //    val v = expression(ctx.str()).asInstanceOf[StringLiteral].value
@@ -307,13 +320,13 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
 //    else throw unknown(ctx)
 
   override def visitParenthesizedExpression(ctx: ParenthesizedExpressionContext): Expression =
-    ParenthesizedExpression(expression(ctx.expression()), getLocation(ctx))
+    ParenthesizedExpression(interpretExpression(ctx.expression()), getLocation(ctx))
 
   override def visitSubqueryExpression(ctx: SubqueryExpressionContext): Expression =
     SubQueryExpression(visitQuery(ctx.query()), getLocation(ctx))
 
   override def visitArrayConstructor(ctx: ArrayConstructorContext): Expression =
-    val values = ctx.expression().asScala.map(expression(_)).toSeq
+    val values = ctx.expression().asScala.map(interpretExpression(_)).toSeq
     ArrayConstructor(values, getLocation(ctx))
 
 //  override def visitConcatenation(ctx: ConcatenationContext): Expression =
@@ -361,8 +374,8 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
 //    else e
 
   override def visitLogicalBinary(ctx: LogicalBinaryContext): Expression =
-    val left  = expression(ctx.left)
-    val right = expression(ctx.right)
+    val left  = interpretExpression(ctx.left)
+    val right = interpretExpression(ctx.right)
     ctx.operator.getType match
       case FlowLangParser.AND =>
         And(left, right, getLocation(ctx))
@@ -370,8 +383,8 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
         Or(left, right, getLocation(ctx))
 
   override def visitArithmeticBinary(ctx: ArithmeticBinaryContext): Expression =
-    val left  = expression(ctx.left)
-    val right = expression(ctx.right)
+    val left  = interpretExpression(ctx.left)
+    val right = interpretExpression(ctx.right)
     val binaryExprType: BinaryExprType =
       ctx.operator match
         case op if ctx.PLUS() != null     => Add
@@ -385,8 +398,8 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
 
   override def visitComparison(ctx: ComparisonContext): Expression =
     trace(s"comparison: ${print(ctx)}")
-    val left  = expression(ctx.left)
-    val right = expression(ctx.right)
+    val left  = interpretExpression(ctx.left)
+    val right = interpretExpression(ctx.right)
     val op    = ctx.comparisonOperator().getChild(0).asInstanceOf[TerminalNode]
     val loc   = getLocation(ctx.comparisonOperator())
     op.getSymbol.getType match
@@ -423,11 +436,14 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
     DecimalLiteral(ctx.getText, getLocation(ctx))
 
   override def visitIntegerLiteral(ctx: IntegerLiteralContext): Literal =
-    LongLiteral(ctx.getText.replaceAll("_", "").toLong, getLocation(ctx))
+    interpretIntegerValue(ctx.INTEGER_VALUE(), ctx)
 
   override def visitStringLiteral(ctx: StringLiteralContext): Literal =
     val text = ctx.str().getText.replaceAll("(^'|'$)", "")
     StringLiteral(text, getLocation(ctx))
+
+  private def interpretIntegerValue(v: TerminalNode, ctx: ParserRuleContext): LongLiteral =
+    LongLiteral(v.getText.replaceAll("_", "").toLong, getLocation(ctx))
 
 //  override def visitQuotedIdentifier(ctx: QuotedIdentifierContext): Identifier =
 //    QuotedIdentifier(ctx.getText.replaceAll("(^\"|\"$)", ""), getLocation(ctx))
@@ -437,7 +453,7 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
 
   override def visitFunctionCall(ctx: FunctionCallContext): FunctionCall =
     val name = visitIdentifier(ctx.identifier()).value
-    val args = ctx.valueExpression().asScala.map(expression(_)).toSeq
+    val args = ctx.valueExpression().asScala.map(interpretExpression(_)).toSeq
     FunctionCall(name, args, getLocation(ctx))
 
   override def visitNullLiteral(ctx: NullLiteralContext): Literal = NullLiteral(getLocation(ctx))
