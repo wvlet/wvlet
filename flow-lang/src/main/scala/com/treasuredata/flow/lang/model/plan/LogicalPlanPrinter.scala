@@ -1,27 +1,14 @@
 package com.treasuredata.flow.lang.model.plan
 
-import com.treasuredata.flow.lang.model.expr.{
-  Alias,
-  ArithmeticBinaryExpr,
-  ArrayConstructor,
-  Attribute,
-  BinaryExprType,
-  BinaryExpression,
-  Dereference,
-  Expression,
-  FunctionCall,
-  GroupingKey,
-  Identifier,
-  Literal,
-  SingleColumn,
-  SortItem,
-  StringLiteral
-}
+import com.treasuredata.flow.lang.model.expr.*
 import wvlet.log.LogSupport
 
 import java.io.{PrintWriter, StringWriter}
 
 object LogicalPlanPrinter extends LogSupport:
+
+  extension (expr: Expression) def sqlExpr: String = printExpression(expr)
+
   def print(m: LogicalPlan): String =
     val s = new StringWriter()
     val p = new PrintWriter(s)
@@ -76,7 +63,7 @@ object LogicalPlanPrinter extends LogSupport:
         val args = f.args.map(printExpression).mkString(", ")
         s"${f.name}(${args})"
       case d: Dereference =>
-        s"${printExpression(d.base)}.${printExpression(d.next)}"
+        s"Dereference(${printExpression(d.base)}, ${printExpression(d.next)})"
       case s: SingleColumn =>
         s"${s.fullName}:${s.dataTypeName} := ${printExpression(s.expr)}"
       case a: Alias =>
@@ -95,7 +82,68 @@ object LogicalPlanPrinter extends LogSupport:
         s"[${a.children.map(printExpression).mkString(", ")}]"
       case t: TypeDefDef =>
         s"def ${t.name}: ${t.tpe.getOrElse("?")} = ${printExpression(t.expr)}"
+      case c: ConditionalExpression =>
+        printConditionalExpression(c)
       case b: BinaryExpression =>
         s"${b.operatorName}(${printExpression(b.left)}, ${printExpression(b.right)})"
+      case p: ParenthesizedExpression =>
+        s"(${p.child.sqlExpr})"
       case null  => "null"
       case other => e.toString
+
+  def printConditionalExpression(c: ConditionalExpression): String =
+    c match
+      case NoOp(_) => ""
+      case Eq(a, b, _) =>
+        b match
+          case n: NullLiteral =>
+            s"${a.sqlExpr} IS ${b.sqlExpr}"
+          case _ =>
+            s"${a.sqlExpr} = ${b.sqlExpr}"
+      case n @ NotEq(a, b, _) =>
+        b match
+          case n: NullLiteral =>
+            s"${a.sqlExpr} IS NOT ${b.sqlExpr}"
+          case _ =>
+            s"${a.sqlExpr} != ${b.sqlExpr}"
+      case And(a, b, _) =>
+        s"${a.sqlExpr} AND ${b.sqlExpr}"
+      case Or(a, b, _) =>
+        s"${a.sqlExpr} OR ${b.sqlExpr}"
+      case Not(e, _) =>
+        s"NOT ${e.sqlExpr}"
+      case LessThan(a, b, _) =>
+        s"${a.sqlExpr} < ${b.sqlExpr}"
+      case LessThanOrEq(a, b, _) =>
+        s"${a.sqlExpr} <= ${b.sqlExpr}"
+      case GreaterThan(a, b, _) =>
+        s"${a.sqlExpr} > ${b.sqlExpr}"
+      case GreaterThanOrEq(a, b, _) =>
+        s"${a.sqlExpr} >= ${b.sqlExpr}"
+      case Between(e, a, b, _) =>
+        s"${e.sqlExpr} BETWEEN ${a.sqlExpr} and ${b.sqlExpr}"
+      case NotBetween(e, a, b, _) =>
+        s"${e.sqlExpr} NOT BETWEEN ${a.sqlExpr} and ${b.sqlExpr}"
+      case IsNull(a, _) =>
+        s"${a.sqlExpr} IS NULL"
+      case IsNotNull(a, _) =>
+        s"${a.sqlExpr} IS NOT NULL"
+      case In(a, list, _) =>
+        val in = list.map(x => x.sqlExpr).mkString(", ")
+        s"${a.sqlExpr} IN (${in})"
+      case NotIn(a, list, _) =>
+        val in = list.map(x => x.sqlExpr).mkString(", ")
+        s"${a.sqlExpr} NOT IN (${in})"
+//      case InSubQuery(a, in, _) =>
+//        s"${a.sqlExpr} IN (${printRelation(in)})"
+//      case NotInSubQuery(a, in, _) =>
+//        s"${a.sqlExpr} NOT IN (${printRelation(in)})"
+      case Like(a, e, _) =>
+        s"${a.sqlExpr} LIKE ${e.sqlExpr}"
+      case NotLike(a, e, _) =>
+        s"${a.sqlExpr} NOT LIKE ${e.sqlExpr}"
+      case DistinctFrom(a, e, _) =>
+        s"${a.sqlExpr} IS DISTINCT FROM ${e.sqlExpr}"
+      case NotDistinctFrom(a, e, _) =>
+        s"${a.sqlExpr} IS NOT DISTINCT FROM ${e.sqlExpr}"
+      case other => other.toString

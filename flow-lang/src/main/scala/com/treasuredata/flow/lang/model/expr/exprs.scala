@@ -210,11 +210,11 @@ case class Eq(left: Expression, right: Expression, nodeLocation: Option[NodeLoca
     with BinaryExpression:
   override def operatorName: String = "="
 
-case class NotEq(left: Expression, right: Expression, operatorName: String, nodeLocation: Option[NodeLocation])
+case class NotEq(left: Expression, right: Expression, nodeLocation: Option[NodeLocation])
     extends ConditionalExpression
-    with BinaryExpression {
+    with BinaryExpression:
+  override def operatorName: String = "!="
   // require(operatorName == "<>" || operatorName == "!=", "NotEq.operatorName must be either <> or !=", nodeLocation)
-}
 
 case class And(left: Expression, right: Expression, nodeLocation: Option[NodeLocation])
     extends ConditionalExpression

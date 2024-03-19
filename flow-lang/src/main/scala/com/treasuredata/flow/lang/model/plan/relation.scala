@@ -169,6 +169,12 @@ case class Project(child: Relation, selectItems: Seq[Attribute], nodeLocation: O
       child.relationType
     )
 
+/**
+  * Transform a subset of columns in the input relation
+  * @param child
+  * @param transformItems
+  * @param nodeLocation
+  */
 case class Transform(child: Relation, transformItems: Seq[Attribute], nodeLocation: Option[NodeLocation])
     extends UnaryRelation
     with Selection:
@@ -378,6 +384,11 @@ case class Except(left: Relation, right: Relation, nodeLocation: Option[NodeLoca
 
   override def outputAttributes: Seq[Attribute] = left.outputAttributes
 
+/**
+  * Union operation without involving duplicate elimination
+  * @param relations
+  * @param nodeLocation
+  */
 case class Union(
     relations: Seq[Relation],
     nodeLocation: Option[NodeLocation]

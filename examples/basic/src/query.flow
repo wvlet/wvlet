@@ -30,3 +30,20 @@ transform
   -- Add a new column for aggregation
   age_group: age / 10
 group by age_group
+
+-- rename output
+from person
+select as person_copy
+
+
+-- projection
+from person
+select
+  id,
+  name
+
+-- rename column
+from person
+select
+  person_id: id,
+  person_name: name

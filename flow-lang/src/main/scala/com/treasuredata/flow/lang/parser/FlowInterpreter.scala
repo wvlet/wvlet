@@ -410,7 +410,7 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
           case None =>
             Eq(left, right, getLocation(ctx))
           case Some(op) =>
-            NotEq(left, right, op.getText, getLocation(ctx))
+            NotEq(left, right, getLocation(ctx))
       case FlowLangParser.LT =>
         LessThan(left, right, getLocation(ctx))
       case FlowLangParser.LTE =>
@@ -420,7 +420,7 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
       case FlowLangParser.GTE =>
         GreaterThanOrEq(left, right, getLocation(ctx))
       case FlowLangParser.NEQ =>
-        NotEq(left, right, op.getText, getLocation(ctx))
+        NotEq(left, right, getLocation(ctx))
 
   override def visitBooleanLiteral(ctx: BooleanLiteralContext): Literal =
     if ctx.booleanValue().TRUE() != null then TrueLiteral(getLocation(ctx))
