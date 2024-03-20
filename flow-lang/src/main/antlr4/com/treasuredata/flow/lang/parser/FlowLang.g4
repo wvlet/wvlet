@@ -33,6 +33,7 @@ queryBlock
     | transformExpr               #transformRelation
     | selectExpr                  #projectRelation
     | LIMIT limit=INTEGER_VALUE   #limitRelation
+    | subscribeExpr               #subscribeRelation
     ;
 
 selectExpr:
@@ -42,6 +43,16 @@ selectExpr:
 transformExpr:
     TRANSFORM selectItemList
     ;
+
+
+subscribeExpr:
+    SUBSCRIBE AS identifier COLON subscribeParam+
+    ;
+
+subscribeParam:
+    identifier COLON primaryExpression
+    ;
+
 
 selectItemList:
     selectItem (COMMA selectItem)* COMMA?
@@ -263,6 +274,7 @@ LIMIT: 'limit';
 TYPE: 'type';
 WHERE: 'where';
 TABLE: 'table';
+SUBSCRIBE: 'subscribe';
 
 ASC: 'asc';
 DESC: 'desc';

@@ -52,8 +52,8 @@ object TypeResolver extends LogSupport:
     def apply(context: AnalyzerContext): PlanRewriter = { case ref: TableRef =>
       context.findType(ref.name.fullName) match
         case Some(schema: SchemaType) =>
-          TableScan(schema.typeName, schema, schema.columnTypes, ref.nodeLocation)
-        case None =>
+          TableScan(ref.name.fullName, schema, schema.columnTypes, ref.nodeLocation)
+        case _ =>
           ref
     }
 

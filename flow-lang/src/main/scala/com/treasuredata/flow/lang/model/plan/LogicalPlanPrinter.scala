@@ -47,8 +47,8 @@ object LogicalPlanPrinter extends LogSupport:
         val functionSig = if inputAttrs.isEmpty && outputAttrs.isEmpty then "" else s": ${inputType} => ${outputType}"
 
         val prefix = m match
-//          case t: TableScan =>
-//            s"${ws}[${m.modelName}] ${t.table.fullName}${functionSig}"
+          case t: TableScan =>
+            s"${ws}[${m.modelName}] ${t.name}${functionSig}"
           case _ =>
             s"${ws}[${m.modelName}]${functionSig}"
 

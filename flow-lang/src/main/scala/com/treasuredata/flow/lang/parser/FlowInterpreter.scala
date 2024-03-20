@@ -205,6 +205,15 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
       case l: LimitRelationContext =>
         val limit = interpretIntegerValue(l.INTEGER_VALUE(), l)
         Limit(inputRelation, limit, getLocation(l))
+      case s: SubscribeRelationContext =>
+        val name = visitIdentifier(s.subscribeExpr().identifier()).value
+        val params = s
+          .subscribeExpr().subscribeParam().asScala.map { p =>
+            val name = visitIdentifier(p.identifier()).value
+            val expr = interpretExpression(p.primaryExpression())
+            SubscribeParam(name, expr, getLocation(p))
+          }.toSeq
+        Subscribe(inputRelation, name, params, getLocation(s))
       case _ =>
         throw unknown(ctx)
 

@@ -473,9 +473,24 @@ case class TableScan(
     }
 
   override def relationType: RelationType =
-    ProjectedType(name, columns, schema)
+    ProjectedType(schema.typeName, columns, schema)
 
   override def toString: String =
     s"TableScan(name:${name}, columns:[${columns.mkString(", ")}])"
 
   override lazy val resolved = true
+
+case class Subscribe(
+    child: Relation,
+    name: String,
+    params: Seq[SubscribeParam],
+    nodeLocation: Option[NodeLocation]
+) extends Relation:
+  override def children: Seq[LogicalPlan] = Seq(child)
+  override def relationType: RelationType = child.relationType
+
+  override def inputAttributeList: AttributeList = child.inputAttributeList
+  override def outputAttributes: Seq[Attribute]  = child.outputAttributes
+
+case class SubscribeParam(name: String, value: Expression, nodeLocation: Option[NodeLocation]) extends Expression:
+  override def children: Seq[Expression] = Seq(value)
