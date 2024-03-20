@@ -2,6 +2,7 @@ package com.treasuredata.flow.lang.analyzer
 
 import com.treasuredata.flow.lang.StatusCode
 import com.treasuredata.flow.lang.analyzer.RewriteRule.PlanRewriter
+import com.treasuredata.flow.lang.model.DataType.SchemaType
 import com.treasuredata.flow.lang.model.expr.{Attribute, AttributeIndex, AttributeList, ColumnType, Expression}
 import com.treasuredata.flow.lang.model.plan.{
   Filter,
@@ -10,7 +11,6 @@ import com.treasuredata.flow.lang.model.plan.{
   Project,
   Query,
   Relation,
-  SchemaDef,
   TableRef,
   TableScan,
   TypeDef,
@@ -50,8 +50,8 @@ object TypeResolver extends LogSupport:
     */
   object resolveTableRef extends RewriteRule:
     def apply(context: AnalyzerContext): PlanRewriter = { case ref: TableRef =>
-      context.findSchema(ref.name.fullName) match
-        case Some(schema) =>
+      context.findType(ref.name.fullName) match
+        case Some(schema: SchemaType) =>
           TableScan(schema.typeName, schema, schema.columnTypes, ref.nodeLocation)
         case None =>
           ref

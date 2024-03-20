@@ -1,7 +1,7 @@
-schema person:
-  id: string,
-  name: string,
-  age: int,
-  time: int,
+type person:
+  id: string
+  name: string
+  age: int
+  time: int
 end
 

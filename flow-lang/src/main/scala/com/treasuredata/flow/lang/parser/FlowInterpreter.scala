@@ -67,16 +67,23 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
     val plans = ctx.singleStatement().asScala.map(s => visit(s).asInstanceOf[LogicalPlan]).toSeq
     FlowPlan(plans)
 
-  override def visitSchemaDef(ctx: SchemaDefContext): SchemaDef =
-    val schemaName = ctx.identifier().getText
-    val columns = ctx
-      .schemaElement().asScala
-      .map { x =>
-        val key   = visitIdentifier(x.identifier(0))
-        val value = ColumnType(x.identifier(1).getText, getLocation(x.identifier(1)))
-        ColumnDef(key, value, getLocation(x))
-      }.toSeq
-    SchemaDef(schemaName, columns, getLocation(ctx))
+  override def visitTypeAlias(ctx: TypeAliasContext): TypeAlias =
+    TypeAlias(
+      alias = visitIdentifier(ctx.alias).value,
+      sourceTypeName = visitIdentifier(ctx.sourceType).value,
+      getLocation(ctx)
+    )
+
+//  override def visitSchemaDef(ctx: SchemaDefContext): SchemaDef =
+//    val schemaName = ctx.identifier().getText
+//    val columns = ctx
+//      .schemaElement().asScala
+//      .map { x =>
+//        val key   = visitIdentifier(x.identifier(0))
+//        val value = ColumnType(x.identifier(1).getText, getLocation(x.identifier(1)))
+//        ColumnDef(key, value, getLocation(x))
+//      }.toSeq
+//    SchemaDef(schemaName, columns, getLocation(ctx))
 
   override def visitTypeDef(ctx: TypeDefContext): TypeDef =
     val name: String = visitIdentifier(ctx.identifier()).value
@@ -92,10 +99,14 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
           )
         }
 
-    val typeDefs: Seq[TypeDefDef] = ctx.typeDefElem().asScala.map(visitTypeDefElem).toSeq
-    TypeDef(name, paramList, typeDefs, getLocation(ctx))
+    val typeElems: Seq[TypeElem] = ctx
+      .typeElem().asScala
+      .map(e => e.accept(this))
+      .collect { case e: TypeElem => e }
+      .toSeq
+    TypeDef(name, paramList, typeElems, getLocation(ctx))
 
-  override def visitTypeDefElem(ctx: TypeDefElemContext): TypeDefDef =
+  override def visitTypeDefDef(ctx: TypeDefDefContext): TypeDefDef =
     val expr: Expression = interpretExpression(ctx.primaryExpression())
     ctx.identifier().asScala.toList match
       case head :: Nil =>
@@ -105,6 +116,13 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
       case _ =>
         // unexpected
         TypeDefDef("", None, expr, getLocation(ctx))
+
+  override def visitTypeValDef(ctx: TypeValDefContext): TypeValDef =
+    TypeValDef(
+      visitIdentifier(ctx.columnName).value,
+      visitIdentifier(ctx.typeName).value,
+      getLocation(ctx)
+    )
 
   override def visitQuery(ctx: QueryContext): Relation =
     val inputRelation: Relation = interpretRelation(ctx.relation())

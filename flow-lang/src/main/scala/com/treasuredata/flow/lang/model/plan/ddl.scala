@@ -9,16 +9,16 @@ import com.treasuredata.flow.lang.model.expr.*
 sealed trait DDL extends LogicalPlan with LeafPlan:
   override def outputAttributes: Seq[Attribute] = Nil
 
-case class SchemaDef(
-    name: String,
-    columns: Seq[ColumnDef],
+case class TypeAlias(
+    alias: String,
+    sourceTypeName: String,
     nodeLocation: Option[NodeLocation]
 ) extends DDL
 
 case class TypeDef(
     name: String,
     params: Seq[TypeParam],
-    defs: Seq[TypeDefDef],
+    elems: Seq[TypeElem],
     nodeLocation: Option[NodeLocation]
 ) extends DDL
 
@@ -26,8 +26,14 @@ case class TypeParam(name: String, value: String, nodeLocation: Option[NodeLocat
   override def toString: String          = s"${name}:${value}"
   override def children: Seq[Expression] = Seq.empty
 
+// type elements (def or column definition)
+sealed trait TypeElem extends Expression
+
 case class TypeDefDef(name: String, tpe: Option[String], expr: Expression, nodeLocation: Option[NodeLocation])
-    extends Expression:
+    extends TypeElem:
+  override def children: Seq[Expression] = Seq.empty
+
+case class TypeValDef(name: String, tpe: String, nodeLocation: Option[NodeLocation]) extends TypeElem:
   override def children: Seq[Expression] = Seq.empty
 
 case class CreateSchema(

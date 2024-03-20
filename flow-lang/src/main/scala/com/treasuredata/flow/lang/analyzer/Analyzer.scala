@@ -15,7 +15,7 @@ object Analyzer extends LogSupport:
 
     def typeScan: Unit = for plan <- plans do
       context.withCompileUnit(plan.compileUnit) { context =>
-        TypeScanner.scanSchemaAndTypes(plan, context)
+        TypeScanner.scanTypeDefs(plan, context)
       }
 
     // Pre-process to collect all schema and typs

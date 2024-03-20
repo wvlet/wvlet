@@ -16,27 +16,23 @@ import scala.collection.mutable
   *   attributes used in the parent relation. This is used for pruning unnecessary columns output attributes
   */
 case class AnalyzerContext(scope: Scope):
-  private val schemas = mutable.Map.empty[String, SchemaType]
   private val types   = mutable.Map.empty[String, DataType].addAll(DataType.knownPrimitiveTypes)
+  private val aliases = mutable.Map.empty[String, String]
 
   private var _compileUnit: CompileUnit = CompileUnit.empty
 
   def compileUnit: CompileUnit = _compileUnit
 
-  def getSchemas: Map[String, SchemaType] = schemas.toMap
-  def getTypes: Map[String, DataType]     = types.toMap ++ schemas.toMap
+  def getTypes: Map[String, DataType] = types.toMap
 
-  def addSchema(schema: SchemaType): Unit =
-    schemas.put(schema.typeName, schema)
+  def addAlias(alias: String, typeName: String): Unit =
+    aliases.put(alias, typeName)
 
   def addType(dataType: DataType): Unit =
     types.put(dataType.typeName, dataType)
 
-  def findSchema(name: String): Option[SchemaType] =
-    schemas.get(name)
-
   def findType(name: String): Option[DataType] =
-    types.get(name).orElse(findSchema(name))
+    types.get(name).orElse(aliases.get(name).flatMap(types.get))
 
   def withCompileUnit[U](newCompileUnit: CompileUnit)(block: AnalyzerContext => U): U =
     val prev = _compileUnit

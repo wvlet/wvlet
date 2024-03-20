@@ -11,7 +11,7 @@ statements:
 
 singleStatement
     : query
-    | schemaDef
+    | typeAlias
     | typeDef
     ;
 
@@ -85,7 +85,6 @@ joinType
     | LEFT
     | RIGHT
     | FULL
-
     ;
 
 joinCriteria
@@ -94,20 +93,19 @@ joinCriteria
     ;
 
 
-schemaDef:
-    SCHEMA identifier COLON
-      (schemaElement (COMMA schemaElement)* COMMA?)?
-    END?
-    ;
-
-schemaElement:
-    identifier COLON identifier
+typeAlias:
+    TYPE alias=identifier EQ sourceType=identifier
     ;
 
 typeDef:
-    TYPE identifier ('(' paramList ')')? COLON
-      typeDefElem*
+    TYPE identifier ('(' paramList ')')?
+    (COLON typeElem*)?
     END?
+    ;
+
+typeElem
+    : DEF identifier ('.' identifier)? EQ primaryExpression   #typeDefDef
+    | columnName=identifier COLON typeName=identifier         #typeValDef
     ;
 
 moduleDef:
@@ -128,9 +126,6 @@ param:
     identifier COLON identifier
     ;
 
-typeDefElem:
-    DEF identifier ('.' identifier)? EQ primaryExpression
-    ;
 
 qualifiedName
     : identifier ('.' identifier)*
@@ -233,7 +228,6 @@ IN: 'in';
 IS: 'is';
 ON: 'on';
 MODULE: 'module';
-SCHEMA: 'schema';
 SELECT: 'select';
 TRANSFORM: 'transform';
 GROUP: 'group';
