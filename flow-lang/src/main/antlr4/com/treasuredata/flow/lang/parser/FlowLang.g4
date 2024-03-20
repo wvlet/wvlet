@@ -14,6 +14,7 @@ singleStatement
     | typeAlias
     | typeDef
     | functionDef
+    | tableDef
     ;
 
 query:
@@ -116,6 +117,17 @@ functionDef:
     END
     ;
 
+tableDef:
+    TABLE identifier COLON
+    tableParam*
+    END
+    ;
+
+tableParam:
+    identifier COLON primaryExpression
+    ;
+
+
 moduleDef:
     MODULE identifier COLON
       (moduleElement (COMMA moduleElement)* COMMA?)?
@@ -143,8 +155,14 @@ identifier:
     IDENTIFIER                # unquotedIdentifier
     | BACKQUOTED_IDENTIFIER   # backQuotedIdentifier
     // A workaround for using reserved words (join, select, etc.) as function names
-    | (SELECT | JOIN | TRANSFORM)         # reservedWordIdentifier
+    | reserved                # reservedWordIdentifier
     ;
+
+
+reserved
+    : SELECT | JOIN | TRANSFORM | TYPE
+    ;
+
 
 sortItem
     : expression ordering=(ASC | DESC)? // (NULLS nullOrdering=(FIRST | LAST))?
@@ -244,6 +262,7 @@ ORDER: 'order';
 LIMIT: 'limit';
 TYPE: 'type';
 WHERE: 'where';
+TABLE: 'table';
 
 ASC: 'asc';
 DESC: 'desc';

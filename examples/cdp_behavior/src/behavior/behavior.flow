@@ -24,9 +24,6 @@ type td_sdk_log:
   time: int
 end
 
-type weblogs = td_sdk_log
-type weblog_fluentd_ja = td_sdk_log
-
 type ip_address(self: string):
   def country_name = td_ip_to_country_name(self)
   def city_name = td_ip_to_city_name(self)
@@ -66,6 +63,19 @@ def behavior_filter(l:td_sdk_log): boolean =
   and (l.td_browser is not null
     or not regexp_like(l.td_browser, '^(?:Googlebot(?:-.*)?|BingPreview|bingbot|YandexBot|PingdomBot)$'))
   and l.td_host is not 'gtm-msr.appspot.com'
+end
+
+-- Define source tables for behavior logs
+table weblogs:
+  connection: duckdb
+  type: td_sdk_log
+  path: 'data/weblogs'
+end
+
+table weblog_fluentd_ja:
+  connection: duckdb
+  type: td_sdk_log
+  path: 'data/weblog_fluentd_ja'
 end
 
 -- CDP behavior table ETL example

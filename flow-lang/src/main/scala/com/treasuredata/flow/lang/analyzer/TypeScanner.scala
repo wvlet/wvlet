@@ -3,7 +3,7 @@ package com.treasuredata.flow.lang.analyzer
 import com.treasuredata.flow.lang.StatusCode
 import com.treasuredata.flow.lang.model.DataType
 import com.treasuredata.flow.lang.model.DataType.{ExtensionType, FunctionType, NamedType, SchemaType, UnresolvedType}
-import com.treasuredata.flow.lang.model.expr.ColumnType
+import com.treasuredata.flow.lang.model.expr.{ColumnType, Literal}
 import com.treasuredata.flow.lang.model.plan.*
 import wvlet.log.LogSupport
 
@@ -15,6 +15,8 @@ object TypeScanner extends LogSupport:
         context.addAlias(alias.alias, alias.sourceTypeName)
       case td: TypeDef =>
         context.addType(scanTypeDef(td, context))
+      case tbl: TableDef =>
+        context.addTableDef(tbl)
     }
 
   private def scanTypeDef(typeDef: TypeDef, context: AnalyzerContext): DataType =

@@ -136,6 +136,17 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
     val body = interpretExpression(ctx.body)
     FunctionDef(name, params, resultType, body, getLocation(ctx))
 
+  override def visitTableDef(ctx: TableDefContext): TableDef =
+    val tableName = visitIdentifier(ctx.identifier()).value
+    val params = ctx
+      .tableParam().asScala
+      .map { x =>
+        val key   = visitIdentifier(x.identifier()).value
+        val value = interpretExpression(x.primaryExpression())
+        TableDefParam(key, value, getLocation(x))
+      }.toSeq
+    TableDef(tableName, params, getLocation(ctx))
+
   override def visitQuery(ctx: QueryContext): Relation =
     val inputRelation: Relation = interpretRelation(ctx.relation())
     var r: Relation             = inputRelation

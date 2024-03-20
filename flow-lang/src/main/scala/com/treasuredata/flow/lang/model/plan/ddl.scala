@@ -42,11 +42,31 @@ case class FunctionDef(
     resultType: Option[String],
     bodyExpr: Expression,
     nodeLocation: Option[NodeLocation]
-) extends DDL:
-  override def outputAttributes: Seq[Attribute] = Nil
+) extends DDL
 
 case class FunctionArg(name: String, tpe: String, nodeLocation: Option[NodeLocation]) extends Expression:
   override def children: Seq[Expression] = Seq.empty
+
+case class TableDef(
+    name: String,
+    params: Seq[TableDefParam],
+    nodeLocation: Option[NodeLocation]
+) extends DDL:
+  def getType: Option[String] =
+    params
+      .find(_.name == "type")
+      .map(_.paramValue)
+      .collect {
+        case l: Literal => l.stringValue
+        case q: QName   => q.fullName
+      }
+
+case class TableDefParam(
+    name: String,
+    paramValue: Expression,
+    nodeLocation: Option[NodeLocation]
+) extends Expression:
+  override def children: Seq[Expression] = Seq(paramValue)
 
 case class CreateSchema(
     schema: QName,
