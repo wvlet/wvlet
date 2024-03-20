@@ -57,28 +57,24 @@ type url(self: string):
   def utm_source = parse_url(self, 'QUERY', 'utm_source')
 end
 
+-- Reuse a common filtering pattern for the same type table
+def behavior_filter(l:td_sdk_log): boolean =
+  l.time is not null
+  and l.td_client_id is not null
+  and l.td_user_agent.category is not 'crawler'
+  and l.td_client_id is not '00000000-0000-4000-8000-000000000000'
+  and (l.td_browser is not null
+    or not regexp_like(l.td_browser, '^(?:Googlebot(?:-.*)?|BingPreview|bingbot|YandexBot|PingdomBot)$'))
+  and l.td_host is not 'gtm-msr.appspot.com'
+end
+
 -- CDP behavior table ETL example
 from weblogs
-where
-  time is not null
-  and td_client_id is not null
-  and td_user_agent.category is not 'crawler'
-  and td_client_id is not '00000000-0000-4000-8000-000000000000'
-  and (td_browser is not null
-    or not regexp_like(td_browser, '^(?:Googlebot(?:-.*)?|BingPreview|bingbot|YandexBot|PingdomBot)$'))
-  and td_host is not 'gtm-msr.appspot.com'
+where behavior_filter(_)
 select as behavior_weblogs
 
--- TODO: Repeat this for each behavior table
-
 from weblog_fluentd_ja
--- TODO Reuse this filter block
-where
-  time is not null
-  and td_client_id is not null
-  and td_user_agent.category is not 'crawler'
-  and td_client_id is not '00000000-0000-4000-8000-000000000000'
-  and (td_browser is not null
-    or not regexp_like(td_browser, '^(?:Googlebot(?:-.*)?|BingPreview|bingbot|YandexBot|PingdomBot)$'))
-  and td_host is not 'gtm-msr.appspot.com'
+where behavior_filter(_)
 select as behavior_weblog_fluentd_ja
+
+-- TODO: Repeat this for each behavior table

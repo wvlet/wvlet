@@ -20,6 +20,12 @@ object LogicalPlanPrinter extends LogSupport:
     m match
       case EmptyRelation(_) =>
       // print nothing
+      case f: FunctionDef =>
+        val rt = f.resultType.map(x => s": ${x}").getOrElse("")
+        out.println(s"[FunctionDef] ${f.name}")
+        out.println(
+          s"  def ${f.name}(${f.args.map(x => s"${x.name}: ${x.tpe}").mkString(", ")})${rt} = ${printExpression(f.bodyExpr)}"
+        )
       case _ =>
         val ws = "  " * level
 

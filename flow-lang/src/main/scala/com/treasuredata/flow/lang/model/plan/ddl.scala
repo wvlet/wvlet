@@ -36,6 +36,18 @@ case class TypeDefDef(name: String, tpe: Option[String], expr: Expression, nodeL
 case class TypeValDef(name: String, tpe: String, nodeLocation: Option[NodeLocation]) extends TypeElem:
   override def children: Seq[Expression] = Seq.empty
 
+case class FunctionDef(
+    name: String,
+    args: Seq[FunctionArg],
+    resultType: Option[String],
+    bodyExpr: Expression,
+    nodeLocation: Option[NodeLocation]
+) extends DDL:
+  override def outputAttributes: Seq[Attribute] = Nil
+
+case class FunctionArg(name: String, tpe: String, nodeLocation: Option[NodeLocation]) extends Expression:
+  override def children: Seq[Expression] = Seq.empty
+
 case class CreateSchema(
     schema: QName,
     ifNotExists: Boolean,

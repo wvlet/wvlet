@@ -13,6 +13,7 @@ singleStatement
     : query
     | typeAlias
     | typeDef
+    | functionDef
     ;
 
 query:
@@ -106,6 +107,13 @@ typeDef:
 typeElem
     : DEF identifier ('.' identifier)? EQ primaryExpression   #typeDefDef
     | columnName=identifier COLON typeName=identifier         #typeValDef
+    ;
+
+
+functionDef:
+    DEF name=identifier ('(' paramList ')')? (COLON resultTypeName=identifier)? EQ
+        body=expression
+    END
     ;
 
 moduleDef:
