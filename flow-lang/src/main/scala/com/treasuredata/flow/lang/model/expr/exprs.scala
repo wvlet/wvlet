@@ -192,7 +192,15 @@ case class FunctionCall(
   def functionName: String               = name.toString.toLowerCase(Locale.US)
 
   override def toString =
-    s"FunctionCall(${name}, ${args.mkString(", ")})" // , distinct:${isDistinct}, window:${window})"
+    s"${name}(${args.mkString(", ")})" // , distinct:${isDistinct}, window:${window})"
+
+case class ApplyFunction(
+    target: Expression,
+    args: Seq[Expression],
+    nodeLocation: Option[NodeLocation]
+) extends Expression:
+  override def children: Seq[Expression] = Seq(target) ++ args
+  override def toString: String          = s"${target}.apply(${args.mkString(", ")})"
 
 case class LambdaExpr(body: Expression, args: Seq[String], nodeLocation: Option[NodeLocation])
     extends Expression

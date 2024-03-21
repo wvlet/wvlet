@@ -204,10 +204,10 @@ primaryExpression
     | str                                                                              #stringLiteral
     | BINARY_LITERAL                                                                   #binaryLiteral
     | '?'                                                                              #parameter
-    | identifier '(' (valueExpression (',' valueExpression)*)? ')'                     #functionCall
+    | primaryExpression '(' (valueExpression (',' valueExpression)*)? ')'              #functionCall
     | '(' query ')'                                                                    #subqueryExpression
     | '[' (expression (',' expression)*)? ']'                                          #arrayConstructor
-    | value=primaryExpression '[' index=valueExpression ']'                            #subscript
+    // | value=primaryExpression '[' index=valueExpression ']'                            #subscript
     | qualifiedName                                                                    #columnReference
     | base=primaryExpression '.' next=primaryExpression                                #dereference
     | '(' expression ')'                                                               #parenthesizedExpression

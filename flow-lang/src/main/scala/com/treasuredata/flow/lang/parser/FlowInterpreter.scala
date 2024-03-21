@@ -501,9 +501,19 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
 //  override def visitDigitIdentifier(ctx: DigitIdentifierContext): Identifier =
 //    DigitId(ctx.getText, getLocation(ctx))
 
-  override def visitFunctionCall(ctx: FunctionCallContext): FunctionCall =
-    val name = visitIdentifier(ctx.identifier()).value
+  private def interpretPrimaryExpression(ctx: PrimaryExpressionContext): Expression =
+    ctx.accept(this) match
+      case e: Expression => e
+      case other         => throw unknown(ctx)
+
+  override def visitFunctionCall(ctx: FunctionCallContext): Expression =
     val args = ctx.valueExpression().asScala.map(interpretExpression(_)).toSeq
-    FunctionCall(name, args, getLocation(ctx))
+    interpretPrimaryExpression(ctx.primaryExpression()) match
+      case i: Identifier =>
+        FunctionCall(i.value, args, getLocation(ctx))
+      case q: QName =>
+        FunctionCall(q.fullName, args, getLocation(ctx))
+      case expr: Expression =>
+        ApplyFunction(expr, args, getLocation(ctx))
 
   override def visitNullLiteral(ctx: NullLiteralContext): Literal = NullLiteral(getLocation(ctx))
