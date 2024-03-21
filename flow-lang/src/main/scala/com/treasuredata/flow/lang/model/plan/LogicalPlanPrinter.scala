@@ -66,8 +66,7 @@ object LogicalPlanPrinter extends LogSupport:
     e match
       case i: Identifier => i.expr
       case f: FunctionCall =>
-        val args = f.args.map(printExpression).mkString(", ")
-        s"${f.name}(${args})"
+        f.toString
       case d: Dereference =>
         s"Dereference(${printExpression(d.base)}, ${printExpression(d.next)})"
       case s: SingleColumn =>

@@ -83,6 +83,11 @@ from weblogs
 where behavior_filter(_)
 select as behavior_weblogs
 
+-- Another behavior table example
+from weblog_fluentd_ja
+where behavior_filter(_)
+select as behavior_weblog_fluentd_ja
+
 -- Subscribe to the behavior table
 from behavior_weblogs
 subscribe as behavior_weblogs_1h:
@@ -95,7 +100,3 @@ subscribe as behavior_weblogs_15m:
   watermark_column: time
   window_size: '15m'
 
--- Another behavior table example
-from weblog_fluentd_ja
-where behavior_filter(_)
-select as behavior_weblog_fluentd_ja

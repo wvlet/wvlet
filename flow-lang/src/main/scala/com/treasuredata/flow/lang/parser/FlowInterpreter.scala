@@ -510,10 +510,11 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
     val args = ctx.valueExpression().asScala.map(interpretExpression(_)).toSeq
     interpretPrimaryExpression(ctx.primaryExpression()) match
       case i: Identifier =>
-        FunctionCall(i.value, args, getLocation(ctx))
+        FunctionCall(None, i.value, args, getLocation(ctx))
       case q: QName =>
-        FunctionCall(q.fullName, args, getLocation(ctx))
+        FunctionCall(None, q.fullName, args, getLocation(ctx))
       case expr: Expression =>
-        ApplyFunction(expr, args, getLocation(ctx))
+        // ctx(args, ...) is a syntax sugar for ctx.apply(xxx)
+        FunctionCall(Some(expr), "apply", args, getLocation(ctx))
 
   override def visitNullLiteral(ctx: NullLiteralContext): Literal = NullLiteral(getLocation(ctx))

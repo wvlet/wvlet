@@ -174,6 +174,7 @@ case class WindowFrame(
 
 // Function
 case class FunctionCall(
+    context: Option[Expression],
     name: String,
     args: Seq[Expression],
     // isDistinct: Boolean,
@@ -192,15 +193,8 @@ case class FunctionCall(
   def functionName: String               = name.toString.toLowerCase(Locale.US)
 
   override def toString =
-    s"${name}(${args.mkString(", ")})" // , distinct:${isDistinct}, window:${window})"
-
-case class ApplyFunction(
-    target: Expression,
-    args: Seq[Expression],
-    nodeLocation: Option[NodeLocation]
-) extends Expression:
-  override def children: Seq[Expression] = Seq(target) ++ args
-  override def toString: String          = s"${target}.apply(${args.mkString(", ")})"
+    val c = context.map(x => s"${x}.").getOrElse("")
+    s"${c}${name}(${args.mkString(", ")})" // , distinct:${isDistinct}, window:${window})"
 
 case class LambdaExpr(body: Expression, args: Seq[String], nodeLocation: Option[NodeLocation])
     extends Expression
