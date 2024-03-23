@@ -2,7 +2,7 @@ package com.treasuredata.flow.lang.analyzer
 
 import com.treasuredata.flow.lang.CompileUnit
 import com.treasuredata.flow.lang.model.DataType
-import com.treasuredata.flow.lang.model.DataType.SchemaType
+import com.treasuredata.flow.lang.model.DataType.{AliasedType, SchemaType}
 import com.treasuredata.flow.lang.model.plan.TableDef
 import wvlet.log.LogSupport
 
@@ -26,7 +26,8 @@ case class AnalyzerContext(scope: Scope) extends LogSupport:
 
   def compileUnit: CompileUnit = _compileUnit
 
-  def getTypes: Map[String, DataType] = types.toMap
+  def getTypes: Map[String, DataType]    = types.toMap
+  def getTableDef: Map[String, TableDef] = tableDef.toMap
 
   def addAlias(alias: String, typeName: String): Unit =
     aliases.put(alias, typeName)
@@ -35,10 +36,22 @@ case class AnalyzerContext(scope: Scope) extends LogSupport:
     tableDef.put(tbl.name, tbl)
 
   def addType(dataType: DataType): Unit =
+    trace(s"Add type: ${dataType.typeName}")
     types.put(dataType.typeName, dataType)
 
-  def findType(name: String): Option[DataType] =
-    types
+  def resolveType(name: String, seen: Set[String] = Set.empty): Option[DataType] =
+    if seen.contains(name) then None
+    else
+      findType(name).map(_.resolved) match
+        case Some(r) =>
+          if r.isResolved then Some(r)
+          else resolveType(r.baseTypeName, seen + name)
+        case other =>
+          other
+
+  def findType(name: String, seen: Set[String] = Set.empty): Option[DataType] =
+    if seen.contains(name) then None
+    val tpe = types
       .get(name)
       // search aliases
       .orElse(aliases.get(name).flatMap(types.get))
@@ -49,6 +62,7 @@ case class AnalyzerContext(scope: Scope) extends LogSupport:
           .flatMap(_.getType)
           .flatMap(findType(_))
       }
+    tpe
 
   def withCompileUnit[U](newCompileUnit: CompileUnit)(block: AnalyzerContext => U): U =
     val prev = _compileUnit

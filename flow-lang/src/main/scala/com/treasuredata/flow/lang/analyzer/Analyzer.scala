@@ -27,7 +27,10 @@ object Analyzer extends LogSupport:
     trace(context.getTypes.map(t => s"[${t._1}]: ${t._2}").mkString("\n"))
 
     // resolve plans
-    val resolvedPlans = for plan <- plans yield analyzeSingle(plan, context)
+    var resolvedPlans: Seq[FlowPlan] = for plan <- plans yield analyzeSingle(plan, context)
+    // resolve again to resolve unresolved relation types
+    resolvedPlans = for plan <- resolvedPlans yield analyzeSingle(plan, context)
+
     resolvedPlans
 
   def analyzeSingle(plan: FlowPlan, globalContext: AnalyzerContext): FlowPlan =

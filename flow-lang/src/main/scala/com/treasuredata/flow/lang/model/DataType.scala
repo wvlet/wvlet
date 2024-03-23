@@ -19,6 +19,7 @@ abstract class DataType(val typeName: String, val typeParams: Seq[DataType]):
 
   def isFunctionType: Boolean = false
   def isResolved: Boolean
+  def resolved: DataType = this
 
 /**
   * A base type for representing LogicalPlan node types, which return table records
@@ -39,6 +40,11 @@ object DataType extends LogSupport:
   case class UnresolvedType(override val typeName: String) extends DataType(typeName, Seq.empty):
     override def isResolved: Boolean = false
 
+  /**
+    * Used for named column types or parameter types
+    * @param name
+    * @param dataType
+    */
   case class NamedType(name: String, dataType: DataType) extends DataType(s"${name}:${dataType}", Seq.empty):
     override def isResolved: Boolean = dataType.isResolved
 
@@ -60,8 +66,12 @@ object DataType extends LogSupport:
 
   case class AliasedType(override val typeName: String, baseType: RelationType)
       extends RelationType(typeName, Seq.empty):
+    override def toString = s"${typeName}:=${baseType}"
+
+    override def baseTypeName: String    = baseType.typeName
     override def typeDescription: String = typeName
     override def isResolved: Boolean     = baseType.isResolved
+    override def resolved: RelationType  = baseType
 
   case class ProjectedType(override val typeName: String, projectedColumns: Seq[NamedType], baseType: RelationType)
       extends RelationType(typeName, Seq.empty):

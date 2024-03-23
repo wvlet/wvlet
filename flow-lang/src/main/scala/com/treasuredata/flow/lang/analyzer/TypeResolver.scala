@@ -2,7 +2,8 @@ package com.treasuredata.flow.lang.analyzer
 
 import com.treasuredata.flow.lang.StatusCode
 import com.treasuredata.flow.lang.analyzer.RewriteRule.PlanRewriter
-import com.treasuredata.flow.lang.model.DataType.SchemaType
+import com.treasuredata.flow.lang.model.DataType.{AliasedType, NamedType, SchemaType, UnresolvedType}
+import com.treasuredata.flow.lang.model.{DataType, RelationType}
 import com.treasuredata.flow.lang.model.expr.{Attribute, AttributeIndex, AttributeList, ColumnType, Expression}
 import com.treasuredata.flow.lang.model.plan.{
   Filter,
@@ -49,13 +50,18 @@ object TypeResolver extends LogSupport:
     * Resolve TableRefs with concrete TableScans using the table schema in the catalog.
     */
   object resolveTableRef extends RewriteRule:
-    def apply(context: AnalyzerContext): PlanRewriter = { case ref: TableRef =>
-      context.findType(ref.name.fullName) match
-        case Some(schema: SchemaType) =>
-          TableScan(ref.name.fullName, schema, schema.columnTypes, ref.nodeLocation)
-        case _ =>
-          ref
-    }
+    def apply(context: AnalyzerContext): PlanRewriter =
+      case ref: TableRef =>
+        context.findType(ref.name.fullName) match
+          case Some(tpe: RelationType) =>
+            context.resolveType(tpe.typeName) match
+              case Some(schema: SchemaType) =>
+                TableScan(ref.name.fullName, tpe, schema.columnTypes, ref.nodeLocation)
+              case other =>
+                ref
+          case _ =>
+            trace(s"Unresolved type: ${ref}")
+            ref
 
   /**
     * Resolve expression in relation nodes

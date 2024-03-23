@@ -17,6 +17,8 @@ object TypeScanner extends LogSupport:
         context.addType(scanTypeDef(td, context))
       case tbl: TableDef =>
         context.addTableDef(tbl)
+      case q: Query =>
+        context.addType(q.relationType)
     }
 
   private def scanTypeDef(typeDef: TypeDef, context: AnalyzerContext): DataType =

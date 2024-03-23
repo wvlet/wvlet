@@ -15,6 +15,7 @@ singleStatement
     | typeDef
     | functionDef
     | tableDef
+    | subscribeDef
     ;
 
 query:
@@ -33,7 +34,6 @@ queryBlock
     | transformExpr               #transformRelation
     | selectExpr                  #projectRelation
     | LIMIT limit=INTEGER_VALUE   #limitRelation
-    | subscribeExpr               #subscribeRelation
     ;
 
 selectExpr:
@@ -45,8 +45,10 @@ transformExpr:
     ;
 
 
-subscribeExpr:
-    SUBSCRIBE AS identifier COLON subscribeParam+
+subscribeDef:
+    SUBSCRIBE FROM src=identifier AS name=identifier COLON
+    subscribeParam+
+    END?
     ;
 
 subscribeParam:

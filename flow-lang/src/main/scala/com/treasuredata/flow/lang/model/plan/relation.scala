@@ -455,7 +455,7 @@ case class LateralView(
   */
 case class TableScan(
     name: String,
-    schema: SchemaType,
+    schema: RelationType,
     columns: Seq[NamedType],
     nodeLocation: Option[NodeLocation]
 ) extends Relation
@@ -482,11 +482,10 @@ case class TableScan(
 
 case class Subscribe(
     child: Relation,
-    name: String,
+    name: Identifier,
     params: Seq[SubscribeParam],
     nodeLocation: Option[NodeLocation]
-) extends Relation:
-  override def children: Seq[LogicalPlan] = Seq(child)
+) extends UnaryRelation:
   override def relationType: RelationType = child.relationType
 
   override def inputAttributeList: AttributeList = child.inputAttributeList

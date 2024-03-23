@@ -1,5 +1,6 @@
 package com.treasuredata.flow.lang.model.plan
 
+import com.treasuredata.flow.lang.model.RelationType
 import com.treasuredata.flow.lang.model.expr.*
 import wvlet.log.LogSupport
 
@@ -32,25 +33,29 @@ object LogicalPlanPrinter extends LogSupport:
         def wrap[A](s: Seq[A]): String =
           if s.length <= 1 then s.mkString(", ") else s"(${s.mkString(", ")})"
 
+        def printRelationType(r: RelationType): String =
+          s"<${r}${if r.isResolved then ">" else ">?"}"
+
         val inputType = m match
-          case r: Relation => wrap(r.inputRelationTypes)
+          case r: Relation => wrap(r.inputRelationTypes.map(printRelationType))
           case _           => wrap(m.inputAttributes.map(_.typeDescription))
 
         val outputType = m match
-          case r: Relation => r.relationType
+          case r: Relation => printRelationType(r.relationType)
           case _           => wrap(m.outputAttributes.map(_.typeDescription))
 
         val inputAttrs  = m.inputAttributes
         val outputAttrs = m.outputAttributes
 
         val attr        = m.childExpressions.map(expr => printExpression(expr))
-        val functionSig = if inputAttrs.isEmpty && outputAttrs.isEmpty then "" else s": ${inputType} => ${outputType}"
+        val functionSig = s" ${inputType} => ${outputType}"
 
+        val loc = m.nodeLocation.map(l => s" (${l})").getOrElse("")
         val prefix = m match
           case t: TableScan =>
-            s"${ws}[${m.modelName}] ${t.name}${functionSig}"
+            s"${ws}[${m.modelName}${loc}] ${t.name}${functionSig}"
           case _ =>
-            s"${ws}[${m.modelName}]${functionSig}"
+            s"${ws}[${m.modelName}${loc}]${functionSig}"
 
         attr.length match
           case 0 =>
