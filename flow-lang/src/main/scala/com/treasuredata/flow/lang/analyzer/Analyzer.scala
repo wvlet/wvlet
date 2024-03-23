@@ -5,11 +5,16 @@ import com.treasuredata.flow.lang.model.plan.{FlowPlan, LogicalPlan, Relation}
 import com.treasuredata.flow.lang.parser.FlowParser
 import wvlet.log.LogSupport
 
+case class AnalysisResult(
+    context: AnalyzerContext,
+    plans: Seq[FlowPlan]
+)
+
 /**
   */
 object Analyzer extends LogSupport:
 
-  def analyzeSourceFolder(path: String): Seq[FlowPlan] =
+  def analyzeSourceFolder(path: String): AnalysisResult =
     val plans   = FlowParser.parseSourceFolder(path)
     val context = AnalyzerContext(Scope.Global)
 
@@ -31,7 +36,11 @@ object Analyzer extends LogSupport:
     // resolve again to resolve unresolved relation types
     resolvedPlans = for plan <- resolvedPlans yield analyzeSingle(plan, context)
 
-    resolvedPlans
+    // Return the context and resolved plans
+    AnalysisResult(
+      context = context,
+      plans = resolvedPlans
+    )
 
   def analyzeSingle(plan: FlowPlan, globalContext: AnalyzerContext): FlowPlan =
     // Resolve schema and types first.
