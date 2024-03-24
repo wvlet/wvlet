@@ -18,7 +18,8 @@ enum Token(val str: String):
   case ERROR   extends Token("<erroneous token>")
   case EOF     extends Token("<eof>")
   case NEWLINE extends Token("<newline>")
-  case INDENT  extends Token("  ")
+  case INDENT  extends Token("<indent>")
+  case OUTDENT extends Token("<outdent>")
 
   case COLON extends Token(":")
   case COMMA extends Token(",")

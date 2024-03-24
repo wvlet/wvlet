@@ -111,7 +111,6 @@ class WvletScanner(source: ScannerSource) extends LogSupport:
       else ch = LF
 
     if ch == LF || ch == FF then
-      trace("fetchLineEnd")
       lineOffset = offset
       lineStartOffset = offset
       indentLevel = 0
