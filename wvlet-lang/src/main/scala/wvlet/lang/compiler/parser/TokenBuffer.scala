@@ -22,13 +22,13 @@ class TokenBuffer(initialSize: Int = 1024) extends LogSupport:
   def append(ch: Char): Unit =
     if len == buf.length then
       // Double the buffer size
-      val buf2 = new Array[Char](buf.length * 2)
-      Array.copy(buf, 0, buf2, 0, len)
-      buf = buf2
+      val newBuffer = new Array[Char](buf.length * 2)
+      Array.copy(buf, 0, newBuffer, 0, len)
+      buf = newBuffer
     buf(len) = ch
     len += 1
+  end append
 
-  def chars             = buf
   def length            = len
   def isEmpty: Boolean  = len == 0
   def nonEmpty: Boolean = !isEmpty

@@ -1,13 +1,3 @@
 return
-    i: 1,
-    h: 0x00ff,
-    f1: 1.0,
-    f2: 1.1f,
-    d1: 1.0d,
-    d2: 1.1d,
-    e1: 1.23e-10,
-    e2: 1.23e+10,
-    b1: true,
-    b2: false,
-    n1: null,
-    s1: "hello"
+  x: 1
+
