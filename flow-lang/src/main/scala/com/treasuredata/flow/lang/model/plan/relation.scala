@@ -110,6 +110,11 @@ case class Values(rows: Seq[Expression], nodeLocation: Option[NodeLocation]) ext
     }
     columns
 
+/**
+  * Reference to a table structured data (tables or other query results)
+  * @param name
+  * @param nodeLocation
+  */
 case class TableRef(name: QName, nodeLocation: Option[NodeLocation]) extends Relation with LeafPlan:
   override def toString: String                 = s"TableRef(${name})"
   override def outputAttributes: Seq[Attribute] = Nil
@@ -477,6 +482,37 @@ case class TableScan(
 
   override def toString: String =
     s"TableScan(name:${name}, columns:[${columns.mkString(", ")}])"
+
+  override lazy val resolved = true
+
+/**
+  * Scan a table-structured data reference, such as a query result or table
+  * @param name
+  * @param schema
+  * @param columns
+  * @param nodeLocation
+  */
+case class RelScan(
+    name: String,
+    schema: RelationType,
+    columns: Seq[NamedType],
+    nodeLocation: Option[NodeLocation]
+) extends Relation
+    with LeafPlan:
+  override def inputAttributes: Seq[Attribute] = Seq.empty
+  override def outputAttributes: Seq[Attribute] = columns.map { col =>
+    ResolvedAttribute(
+      col.name,
+      col,
+      Qualifier.empty, // This must be empty first
+      None,            // TODO Some(SourceColumn(table, col)),
+      None             // ResolvedAttribute always has no NodeLocation
+    )
+  }
+
+  override def relationType: RelationType = schema
+  override def toString: String =
+    s"RelScan(name:${name}, schema:${schema})"
 
   override lazy val resolved = true
 

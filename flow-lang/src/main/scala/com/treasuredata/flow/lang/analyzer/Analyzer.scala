@@ -29,7 +29,7 @@ object Analyzer extends LogSupport:
     // Post-process to resolve unresolved typesa
     typeScan
 
-    trace(context.getTypes.map(t => s"[${t._1}]: ${t._2}").mkString("\n"))
+    trace(context.getAllTypes.map(t => s"[${t._1}]: ${t._2}").mkString("\n"))
 
     // resolve plans
     var resolvedPlans: Seq[FlowPlan] = for plan <- plans yield analyzeSingle(plan, context)

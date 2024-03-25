@@ -11,6 +11,7 @@ import com.treasuredata.flow.lang.model.plan.{
   LogicalPlan,
   Project,
   Query,
+  RelScan,
   Relation,
   TableRef,
   TableScan,
@@ -56,7 +57,11 @@ object TypeResolver extends LogSupport:
           case Some(tpe: RelationType) =>
             context.resolveType(tpe.typeName) match
               case Some(schema: SchemaType) =>
-                TableScan(ref.name.fullName, tpe, schema.columnTypes, ref.nodeLocation)
+                context.getTableDef(ref.name.fullName) match
+                  case Some(tbl) =>
+                    TableScan(ref.name.fullName, tpe, schema.columnTypes, ref.nodeLocation)
+                  case None =>
+                    RelScan(ref.name.fullName, tpe, schema.columnTypes, ref.nodeLocation)
               case other =>
                 ref
           case _ =>

@@ -26,8 +26,8 @@ case class AnalyzerContext(scope: Scope) extends LogSupport:
 
   def compileUnit: CompileUnit = _compileUnit
 
-  def getTypes: Map[String, DataType]    = types.toMap
-  def getTableDef: Map[String, TableDef] = tableDef.toMap
+  def getAllTypes: Map[String, DataType]     = types.toMap
+  def getAllTableDefs: Map[String, TableDef] = tableDef.toMap
 
   def addAlias(alias: String, typeName: String): Unit =
     aliases.put(alias, typeName)
@@ -38,6 +38,9 @@ case class AnalyzerContext(scope: Scope) extends LogSupport:
   def addType(dataType: DataType): Unit =
     trace(s"Add type: ${dataType.typeName}")
     types.put(dataType.typeName, dataType)
+
+  def getTableDef(name: String): Option[TableDef] =
+    tableDef.get(name)
 
   def resolveType(name: String, seen: Set[String] = Set.empty): Option[DataType] =
     if seen.contains(name) then None
