@@ -34,8 +34,8 @@ end
 from weblog_users
 -- override only a subset of the columns and report the rest as is
 transform
-  td_client_id.or_else('dummy-' + hex(floor(rand() * 4294966016))),
-  naid.or_else('dummy-' + hex(floor(rand() * 4294966016))),
+  td_client_id or ('dummy-' + hex(floor(rand() * 4294966016))),
+  naid or ('dummy-' + hex(floor(rand() * 4294966016))),
 group by
   cdp_customer_id: sha1([td_client_id.or_else(''), naid.or_else('')].join('.'))
 select as m
@@ -77,3 +77,8 @@ select as cdp_customers
   a1.td_language,
   a1.td_os,
   a2.first_purchased_at,
+
+
+subscribe cdp_customers as cdp_customers_1h:
+  watermark_column: time
+  window_size: '1h'

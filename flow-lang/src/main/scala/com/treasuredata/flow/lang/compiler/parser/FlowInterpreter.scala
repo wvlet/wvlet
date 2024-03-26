@@ -1,9 +1,10 @@
-package com.treasuredata.flow.lang.parser
+package com.treasuredata.flow.lang.compiler.parser
 
 import com.treasuredata.flow.lang.StatusCode
 import com.treasuredata.flow.lang.model.expr.*
 import com.treasuredata.flow.lang.model.plan.*
 import com.treasuredata.flow.lang.model.*
+import com.treasuredata.flow.lang.compiler.parser.{FlowLangBaseVisitor, FlowLangParser}
 import org.antlr.v4.runtime.{ParserRuleContext, Token}
 import org.antlr.v4.runtime.tree.TerminalNode
 import wvlet.log.LogSupport
@@ -22,7 +23,7 @@ object FlowInterpreter:
   */
 class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
   import FlowInterpreter.*
-  import FlowLangParser.*
+  import com.treasuredata.flow.lang.compiler.parser.FlowLangParser.*
   import com.treasuredata.flow.lang.model.*
 
   private def print(ctx: ParserRuleContext): String =

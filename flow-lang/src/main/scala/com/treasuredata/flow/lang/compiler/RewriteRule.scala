@@ -1,5 +1,6 @@
-package com.treasuredata.flow.lang.analyzer
+package com.treasuredata.flow.lang.compiler
 
+import com.treasuredata.flow.lang.compiler.Context
 import com.treasuredata.flow.lang.model.plan.LogicalPlan
 import wvlet.log.{LogLevel, LogSupport, Logger}
 
@@ -11,9 +12,9 @@ trait RewriteRule extends LogSupport:
   private val localLogger = Logger("com.treasuredata.flow.lang.analyzer.RewriteRule")
 
   def name: String = this.getClass.getSimpleName.stripSuffix("$")
-  def apply(context: AnalyzerContext): RewriteRule.PlanRewriter
+  def apply(context: Context): RewriteRule.PlanRewriter
 
-  def transform(plan: LogicalPlan, context: AnalyzerContext): LogicalPlan =
+  def transform(plan: LogicalPlan, context: Context): LogicalPlan =
     val rule = this.apply(context)
     // Recursively transform the tree form bottom to up
     val resolved = plan.transformUp(rule)

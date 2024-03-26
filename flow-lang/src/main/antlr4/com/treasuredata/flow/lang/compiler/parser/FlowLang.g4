@@ -46,7 +46,7 @@ transformExpr:
 
 
 subscribeDef:
-    SUBSCRIBE FROM src=identifier AS name=identifier COLON
+    SUBSCRIBE src=identifier AS name=identifier COLON
     subscribeParam+
     END?
     ;

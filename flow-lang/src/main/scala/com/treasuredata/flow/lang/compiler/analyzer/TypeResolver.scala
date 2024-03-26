@@ -1,7 +1,8 @@
-package com.treasuredata.flow.lang.analyzer
+package com.treasuredata.flow.lang.compiler.analyzer
 
 import com.treasuredata.flow.lang.StatusCode
-import com.treasuredata.flow.lang.analyzer.RewriteRule.PlanRewriter
+import com.treasuredata.flow.lang.compiler.RewriteRule.PlanRewriter
+import com.treasuredata.flow.lang.compiler.{Context, RewriteRule}
 import com.treasuredata.flow.lang.model.DataType.{AliasedType, NamedType, SchemaType, UnresolvedType}
 import com.treasuredata.flow.lang.model.{DataType, RelationType}
 import com.treasuredata.flow.lang.model.expr.{Attribute, AttributeIndex, AttributeList, ColumnType, Expression}
@@ -30,7 +31,7 @@ object TypeResolver extends LogSupport:
       resolveProjectedColumns ::
       Nil
 
-  def resolve(plan: LogicalPlan, context: AnalyzerContext): LogicalPlan =
+  def resolve(plan: LogicalPlan, context: Context): LogicalPlan =
     val resolvedPlan = defaultRules.foldLeft(plan) { (p, rule) =>
       try rule.transform(p, context)
       catch
@@ -40,7 +41,7 @@ object TypeResolver extends LogSupport:
     }
     resolvedPlan
 
-  def resolveRelation(plan: LogicalPlan, context: AnalyzerContext): Relation =
+  def resolveRelation(plan: LogicalPlan, context: Context): Relation =
     val resolvedPlan = resolve(plan, context)
     resolvedPlan match
       case r: Relation => r
@@ -51,13 +52,13 @@ object TypeResolver extends LogSupport:
     * Resolve TableRefs with concrete TableScans using the table schema in the catalog.
     */
   object resolveTableRef extends RewriteRule:
-    def apply(context: AnalyzerContext): PlanRewriter =
+    def apply(context: Context): PlanRewriter =
       case ref: TableRef =>
-        context.findType(ref.name.fullName) match
+        context.scope.findType(ref.name.fullName) match
           case Some(tpe: RelationType) =>
-            context.resolveType(tpe.typeName) match
+            context.scope.resolveType(tpe.typeName) match
               case Some(schema: SchemaType) =>
-                context.getTableDef(ref.name.fullName) match
+                context.scope.getTableDef(ref.name.fullName) match
                   case Some(tbl) =>
                     TableScan(ref.name.fullName, tpe, schema.columnTypes, ref.nodeLocation)
                   case None =>
@@ -72,7 +73,7 @@ object TypeResolver extends LogSupport:
     * Resolve expression in relation nodes
     */
   object resolveRelation extends RewriteRule:
-    def apply(context: AnalyzerContext): PlanRewriter = {
+    def apply(context: Context): PlanRewriter = {
       case q: Query =>
         q.copy(body = resolveRelation(q.body, context))
       case r: Relation => // Regular relation and Filter etc.
@@ -85,7 +86,7 @@ object TypeResolver extends LogSupport:
     * Resolve select items (projected attributes) in Project nodes
     */
   object resolveProjectedColumns extends RewriteRule:
-    def apply(context: AnalyzerContext): PlanRewriter = { case p: Project =>
+    def apply(context: Context): PlanRewriter = { case p: Project =>
       val resolvedChild = resolveRelation(p.child, context)
       val resolvedColumns: Seq[Attribute] =
         resolveAttributes(p.selectItems, resolvedChild.outputAttributeList, context)
@@ -102,7 +103,7 @@ object TypeResolver extends LogSupport:
   private def resolveAttributes(
       attributes: Seq[Attribute],
       knownAttributes: AttributeList,
-      context: AnalyzerContext
+      context: Context
   ): Seq[Attribute] =
     attributes.map { a =>
       val resolvedExpr = resolveExpression(a, knownAttributes, context)
@@ -117,7 +118,7 @@ object TypeResolver extends LogSupport:
   private def resolveExpression(
       expr: Expression,
       knownAttributes: AttributeList,
-      context: AnalyzerContext
+      context: Context
   ): Expression =
     trace(s"resolve ${expr} using ${knownAttributes}")
     expr

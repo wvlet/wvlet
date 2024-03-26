@@ -1,7 +1,7 @@
 package com.treasuredata.flow.lang.model.sql
 
+import com.treasuredata.flow.lang.compiler.parser.FlowParser
 import com.treasuredata.flow.lang.model.plan.Query
-import com.treasuredata.flow.lang.parser.FlowParser
 import wvlet.airspec.AirSpec
 import wvlet.log.io.IOUtil
 

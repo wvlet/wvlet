@@ -109,7 +109,7 @@ lazy val lang =
       buildSettings,
       name                       := "flow-lang",
       Antlr4 / antlr4Version     := "4.13.1",
-      Antlr4 / antlr4PackageName := Some("com.treasuredata.flow.lang.parser"),
+      Antlr4 / antlr4PackageName := Some("com.treasuredata.flow.lang.compiler.parser"),
       Antlr4 / antlr4GenListener := true,
       Antlr4 / antlr4GenVisitor  := true,
       libraryDependencies ++= Seq(

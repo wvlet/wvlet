@@ -1,5 +1,7 @@
 package com.treasuredata.flow.lang
 
+import com.treasuredata.flow.lang.compiler.SourceLocation
+
 class FlowLangException(
     val statusCode: StatusCode,
     message: String,

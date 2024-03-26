@@ -1,6 +1,7 @@
-package com.treasuredata.flow.lang.analyzer
+package com.treasuredata.flow.lang.compiler.analyzer
 
 import com.treasuredata.flow.lang.StatusCode
+import com.treasuredata.flow.lang.compiler.Context
 import com.treasuredata.flow.lang.model.DataType
 import com.treasuredata.flow.lang.model.DataType.{ExtensionType, FunctionType, NamedType, SchemaType, UnresolvedType}
 import com.treasuredata.flow.lang.model.expr.{ColumnType, Literal}
@@ -9,21 +10,21 @@ import wvlet.log.LogSupport
 
 object TypeScanner extends LogSupport:
 
-  def scanTypeDefs(flow: FlowPlan, context: AnalyzerContext): Unit =
+  def scanTypeDefs(flow: FlowPlan, context: Context): Unit =
     flow.logicalPlans.collect {
       case alias: TypeAlias =>
-        context.addAlias(alias.alias, alias.sourceTypeName)
+        context.scope.addAlias(alias.alias, alias.sourceTypeName)
       case td: TypeDef =>
-        context.addType(scanTypeDef(td, context))
+        context.scope.addType(scanTypeDef(td, context))
       case tbl: TableDef =>
-        context.addTableDef(tbl)
+        context.scope.addTableDef(tbl)
       case q: Query =>
-        context.addType(q.relationType)
+        context.scope.addType(q.relationType)
     }
 
-  private def scanTypeDef(typeDef: TypeDef, context: AnalyzerContext): DataType =
+  private def scanTypeDef(typeDef: TypeDef, context: Context): DataType =
     val typeParams = typeDef.params.collect { case p: TypeParam =>
-      val resolvedType: DataType = context.findType(p.value).getOrElse(UnresolvedType(p.value))
+      val resolvedType: DataType = context.scope.findType(p.value).getOrElse(UnresolvedType(p.value))
       NamedType(p.name, resolvedType)
     }
     // TODO resolve defs
@@ -51,7 +52,7 @@ object TypeScanner extends LogSupport:
         case 1 =>
           ExtensionType(typeDef.name, selfType.head, defs)
 
-  private def scanDataType(columnType: ColumnType, context: AnalyzerContext): DataType =
-    context
+  private def scanDataType(columnType: ColumnType, context: Context): DataType =
+    context.scope
       .findType(columnType.tpe)
       .getOrElse(UnresolvedType(columnType.tpe))

@@ -1,5 +1,7 @@
 package com.treasuredata.flow.lang
 
+import com.treasuredata.flow.lang.compiler.SourceLocation
+
 enum StatusType:
   case Success
   case UserError

@@ -84,12 +84,12 @@ where behavior_filter(_)
 select as behavior_weblogs
 
 -- Subscribe to the behavior table
-subscribe from behavior_weblogs as behavior_weblogs_1h:
+subscribe behavior_weblogs as behavior_weblogs_1h:
   watermark_column: time
   window_size: '1h'
 
 -- Use a different time window
-subscribe from behavior_weblogs as behavior_weblogs_15m:
+subscribe behavior_weblogs as behavior_weblogs_15m:
   watermark_column: time
   window_size: '15m'
 

@@ -522,7 +522,17 @@ case class Subscribe(
     params: Seq[SubscribeParam],
     nodeLocation: Option[NodeLocation]
 ) extends UnaryRelation:
-  override def relationType: RelationType = child.relationType
+  override val relationType: RelationType = AliasedType(name.value, child.relationType)
+
+  def watermarkColumn: Option[String] =
+    params.find(_.name == "watermark_column").map(_.value).collectFirst { case q: QName =>
+      q.fullName
+    }
+
+  def windowSize: Option[String] =
+    params.find(_.name == "window_size").map(_.value).collectFirst { case l: Literal =>
+      l.stringValue
+    }
 
   override def inputAttributeList: AttributeList = child.inputAttributeList
   override def outputAttributes: Seq[Attribute]  = child.outputAttributes
