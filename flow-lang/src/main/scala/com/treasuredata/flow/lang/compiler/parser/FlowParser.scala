@@ -5,6 +5,9 @@ import com.treasuredata.flow.lang.model.plan.FlowPlan
 import org.antlr.v4.runtime.*
 import wvlet.log.LogSupport
 
+/**
+  * Parse *.flow files and create untyped plans
+  */
 object FlowParser extends Phase("parser") with LogSupport:
 
   override def run(unit: CompilationUnit, context: Context): CompilationUnit =

@@ -1,8 +1,7 @@
 package com.treasuredata.flow.lang.compiler.analyzer
 
-import com.treasuredata.flow.lang.compiler.{CompilationUnit, Context, Phase, Scope}
-import com.treasuredata.flow.lang.compiler.parser.FlowParser
-import com.treasuredata.flow.lang.model.plan.{FlowPlan, LogicalPlan, Relation}
+import com.treasuredata.flow.lang.compiler.{CompilationUnit, Context, Phase}
+import com.treasuredata.flow.lang.model.plan.{FlowPlan, LogicalPlan}
 import wvlet.log.LogSupport
 
 case class AnalysisResult(
@@ -10,7 +9,10 @@ case class AnalysisResult(
     plans: Seq[FlowPlan]
 )
 
-object TypeScan extends Phase("type-scan") with LogSupport:
+/**
+  * Scan imported and defined types
+  */
+object ScanTypes extends Phase("scan-types") with LogSupport:
   override def run(unit: CompilationUnit, context: Context): CompilationUnit =
     // Pre-process to collect all schema and types
     TypeScanner.scanTypeDefs(unit.untypedPlan, context)
@@ -19,6 +21,7 @@ object TypeScan extends Phase("type-scan") with LogSupport:
     unit
 
 /**
+  * Resolve data types of LogicalPlan nodes
   */
 object Resolver extends Phase("resolve-types") with LogSupport:
 

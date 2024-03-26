@@ -1,24 +1,30 @@
 package com.treasuredata.flow.lang.compiler
 
-import com.treasuredata.flow.lang.compiler.analyzer.{Resolver, TypeScan}
+import com.treasuredata.flow.lang.compiler.analyzer.{Resolver, ScanTypes}
 import com.treasuredata.flow.lang.compiler.parser.FlowParser
 import com.treasuredata.flow.lang.compiler.transform.Transform
 import com.treasuredata.flow.lang.model.plan.LogicalPlan
 
 object Compiler:
 
-  def firstPhases: List[Phase] = List(
+  /**
+    * Phases for text-based analysis of the source code
+    */
+  def analysisPhases: List[Phase] = List(
     FlowParser,
-    TypeScan,
+    ScanTypes,
     Resolver
   )
 
+  /**
+    * Phases for transforming the logical plan trees
+    */
   def transformPhases: List[Phase] = List(
     Transform
   )
 
   def allPhases: List[List[Phase]] = List(
-    firstPhases,
+    analysisPhases,
     transformPhases
   )
 
@@ -45,17 +51,3 @@ case class CompileResult(
 ):
   def typedPlans: List[LogicalPlan] =
     units.flatMap(_.typedPlan.logicalPlans)
-
-trait Phase(
-    // The name of the phase
-    val name: String
-):
-  def runOn(units: List[CompilationUnit], context: Context): List[CompilationUnit] =
-    val buf = List.newBuilder[CompilationUnit]
-    for unit <- units do
-      context.setCompilationUnit(unit)
-      buf += run(unit, context)
-
-    buf.result()
-
-  def run(unit: CompilationUnit, context: Context): CompilationUnit

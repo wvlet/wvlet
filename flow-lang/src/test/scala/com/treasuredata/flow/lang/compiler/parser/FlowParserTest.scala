@@ -1,9 +1,7 @@
-package com.treasuredata.flow.lang.parser
+package com.treasuredata.flow.lang.compiler.parser
 
 import com.treasuredata.flow.lang.compiler.CompilationUnit
-import com.treasuredata.flow.lang.compiler.parser.FlowParser
 import wvlet.airspec.AirSpec
-import wvlet.log.io.IOUtil
 
 class FlowParserTest extends AirSpec:
   test("parse"):

@@ -1,14 +1,12 @@
-package com.treasuredata.flow.lang.transform
+package com.treasuredata.flow.lang.compiler.transform
 
 import com.treasuredata.flow.lang.compiler.Compiler
-import com.treasuredata.flow.lang.compiler.analyzer.Resolver
-import com.treasuredata.flow.lang.compiler.transform.Transform
 import com.treasuredata.flow.lang.model.plan.Subscribe
 import wvlet.airspec.AirSpec
 
 class TransformTest extends AirSpec:
 
-  private val c = Compiler(List(Compiler.firstPhases, Compiler.transformPhases))
+  private val c = Compiler(List(Compiler.analysisPhases, Compiler.transformPhases))
 
   test("transform") {
     val result = c.compile("examples/cdp_behavior/src/behavior")

@@ -1,4 +1,4 @@
-package com.treasuredata.flow.lang.analyzer
+package com.treasuredata.flow.lang.compiler.analyzer
 
 import com.treasuredata.flow.lang.compiler.Compiler
 import com.treasuredata.flow.lang.compiler.analyzer.Resolver
@@ -7,7 +7,7 @@ import wvlet.airspec.AirSpec
 
 class AnalyzerTest extends AirSpec:
 
-  private val compiler = Compiler(List(Compiler.firstPhases))
+  private val compiler = Compiler(List(Compiler.analysisPhases))
 
   test("analyze behavior plan") {
     val result = compiler.compile("examples/cdp_behavior/src/behavior/behavior.flow")

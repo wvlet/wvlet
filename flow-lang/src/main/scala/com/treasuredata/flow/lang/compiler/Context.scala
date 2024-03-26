@@ -1,41 +1,28 @@
 package com.treasuredata.flow.lang.compiler
 
 import com.treasuredata.flow.lang.model.DataType
-import com.treasuredata.flow.lang.model.DataType.{AliasedType, SchemaType}
 import com.treasuredata.flow.lang.model.plan.TableDef
 import wvlet.log.LogSupport
 
 import scala.collection.mutable
 
 /**
-  * Propagate context
-  *
-  * @param database
-  *   context database
-  * @param catalog
-  * @param parentAttributes
-  *   attributes used in the parent relation. This is used for pruning unnecessary columns output attributes
+  * Context conveys the current state of the compilation, including defined types, table definitions, and the current
+  * compilation unit.
   */
 case class Context() extends LogSupport:
   private var _compileUnit: CompilationUnit = CompilationUnit.empty
+  private var _scope: Scope                 = Scope()
 
-  private var _scope: Scope = Scope()
-
-  def scope: Scope = _scope
-  def setScope(s: Scope): Unit =
-    _scope = s
-
+  def scope: Scope                 = _scope
   def compileUnit: CompilationUnit = _compileUnit
-  def setCompilationUnit(unit: CompilationUnit): Unit =
-    _compileUnit = unit
 
-//
-//  def withCompileUnit[U](newCompileUnit: CompilationUnit)(block: AnalyzerContext => U): U =
-//    val prev = _compileUnit
-//    try
-//      _compileUnit = newCompileUnit
-//      block(this)
-//    finally _compileUnit = prev
+  def withCompilationUnit[U](newCompileUnit: CompilationUnit)(block: Context => U): U =
+    val prev = _compileUnit
+    try
+      _compileUnit = newCompileUnit
+      block(this)
+    finally _compileUnit = prev
 
 /**
   * Scope of the context
