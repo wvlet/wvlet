@@ -3,11 +3,22 @@ package com.treasuredata.flow.lang.compiler
 import com.treasuredata.flow.lang.compiler.SourceFile.NoSourceFile
 import com.treasuredata.flow.lang.model.NodeLocation
 import com.treasuredata.flow.lang.model.plan.FlowPlan
+import wvlet.airframe.ulid.ULID
 import wvlet.log.io.IOUtil
 
+/**
+  * Represents a unit for compilation (= source file) and records intermediate data (e.g., plan trees) for the source
+  * file
+  * @param sourceFile
+  */
 case class CompilationUnit(sourceFile: SourceFile):
-  var untypedPlan: FlowPlan = null
-  var typedPlan: FlowPlan   = null
+  // Untyped plan tree
+  var unresolvedPlan: FlowPlan = null
+  // Fully-typed plan tree
+  var resolvedPlan: FlowPlan = null
+
+  // Plans generated for subscriptions
+  var subscriptionPlan: FlowPlan = null
 
   def toSourceLocation(nodeLocation: Option[NodeLocation]) =
     SourceLocation(this, nodeLocation)
@@ -36,7 +47,8 @@ object CompilationUnit:
 
 object SourceFile:
   object NoSourceFile extends SourceFile("<empty>", _ => "")
-  def fromFile(file: String): SourceFile = SourceFile(file, IOUtil.readAsString)
+  def fromFile(file: String): SourceFile      = SourceFile(file, IOUtil.readAsString)
+  def fromString(content: String): SourceFile = SourceFile(s"${ULID.newULIDString}.flow", _ => content)
 
 class SourceFile(val file: String, readContent: (file: String) => String):
   def toCompileUnit: CompilationUnit = CompilationUnit(this)

@@ -1,6 +1,6 @@
 package com.treasuredata.flow.lang.compiler
 
-import com.treasuredata.flow.lang.compiler.analyzer.{Resolver, ScanTypes}
+import com.treasuredata.flow.lang.compiler.analyzer.{TypeScanner, TypeResolver}
 import com.treasuredata.flow.lang.compiler.parser.FlowParser
 import com.treasuredata.flow.lang.compiler.transform.Transform
 import com.treasuredata.flow.lang.model.plan.LogicalPlan
@@ -12,8 +12,8 @@ object Compiler:
     */
   def analysisPhases: List[Phase] = List(
     FlowParser,
-    ScanTypes,
-    Resolver
+    TypeScanner,
+    TypeResolver
   )
 
   /**
@@ -36,7 +36,7 @@ class Compiler(phases: List[List[Phase]] = Compiler.allPhases):
     var units: List[CompilationUnit] = sourceFolders.flatMap { folder =>
       CompilationUnit.fromPath(folder)
     }
-    var ctx = Context()
+    val ctx = Context()
     for
       phaseGroup <- phases
       phase      <- phaseGroup
@@ -50,4 +50,13 @@ case class CompileResult(
     ctx: Context
 ):
   def typedPlans: List[LogicalPlan] =
-    units.flatMap(_.typedPlan.logicalPlans)
+    units
+      .map(_.resolvedPlan)
+      .filter(_ != null)
+      .flatMap(_.logicalPlans)
+
+  def subscriptionPlans: List[LogicalPlan] =
+    units
+      .map(_.subscriptionPlan)
+      .filter(_ != null)
+      .flatMap(_.logicalPlans)

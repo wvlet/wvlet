@@ -2,7 +2,7 @@ package com.treasuredata.flow.lang.compiler.analyzer
 
 import com.treasuredata.flow.lang.StatusCode
 import com.treasuredata.flow.lang.compiler.RewriteRule.PlanRewriter
-import com.treasuredata.flow.lang.compiler.{Context, RewriteRule}
+import com.treasuredata.flow.lang.compiler.{CompilationUnit, Context, Phase, RewriteRule}
 import com.treasuredata.flow.lang.model.DataType.{AliasedType, NamedType, SchemaType, UnresolvedType}
 import com.treasuredata.flow.lang.model.{DataType, RelationType}
 import com.treasuredata.flow.lang.model.expr.{Attribute, AttributeIndex, AttributeList, ColumnType, Expression}
@@ -23,7 +23,23 @@ import wvlet.log.LogSupport
 
 import scala.util.control.NonFatal
 
-object TypeResolver extends LogSupport:
+object TypeResolver extends Phase("type-resolver") with LogSupport:
+
+  override def run(unit: CompilationUnit, context: Context): CompilationUnit =
+    trace(context.scope.getAllTypes.map(t => s"[${t._1}]: ${t._2}").mkString("\n"))
+
+    // resolve plans
+    var resolvedPlan: FlowPlan = analyzeSingle(unit.unresolvedPlan, context)
+    // resolve again to resolve unresolved relation types
+    resolvedPlan = analyzeSingle(resolvedPlan, context)
+    unit.resolvedPlan = resolvedPlan
+    unit
+
+  private def analyzeSingle(plan: FlowPlan, context: Context): FlowPlan =
+    val resolvedPlan: Seq[LogicalPlan] = plan.logicalPlans.map { p =>
+      TypeResolver.resolve(p, context)
+    }
+    FlowPlan(resolvedPlan, plan.compileUnit)
 
   def defaultRules: List[RewriteRule] =
     resolveTableRef ::

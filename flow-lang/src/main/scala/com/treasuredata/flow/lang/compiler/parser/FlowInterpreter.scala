@@ -155,9 +155,16 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
       .subscribeParam().asScala.map { p =>
         val name = visitIdentifier(p.identifier()).value
         val expr = interpretExpression(p.primaryExpression())
-        SubscribeParam(name, expr, getLocation(p))
+        val strValue = expr match
+          case q: QName      => q.fullName
+          case i: Identifier => i.value
+          case l: Literal    => l.stringValue
+          case other         => other.toString
+        SubscribeParam(name, strValue, getLocation(p))
       }.toSeq
-    Subscribe(src, name, params, getLocation(ctx))
+    val watermarkColumn = Option(ctx.watermarkColumn).map(visitIdentifier(_).value)
+    val windowSize      = Option(ctx.windowSize).map(x => unquote(x.getText))
+    Subscribe(src, name, watermarkColumn = watermarkColumn, windowSize = windowSize, params, getLocation(ctx))
 
   override def visitQuery(ctx: QueryContext): Relation =
     val inputRelation: Relation = interpretRelation(ctx.relation())

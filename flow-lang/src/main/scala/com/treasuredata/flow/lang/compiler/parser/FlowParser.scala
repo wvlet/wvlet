@@ -11,7 +11,7 @@ import wvlet.log.LogSupport
 object FlowParser extends Phase("parser") with LogSupport:
 
   override def run(unit: CompilationUnit, context: Context): CompilationUnit =
-    unit.untypedPlan = parse(unit)
+    unit.unresolvedPlan = parse(unit)
     unit
 
   def parseSourceFolder(path: String): Seq[FlowPlan] =

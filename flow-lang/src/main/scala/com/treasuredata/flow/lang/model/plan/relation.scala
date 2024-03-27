@@ -519,23 +519,21 @@ case class RelScan(
 case class Subscribe(
     child: Relation,
     name: Identifier,
+    watermarkColumn: Option[String],
+    windowSize: Option[String],
     params: Seq[SubscribeParam],
     nodeLocation: Option[NodeLocation]
 ) extends UnaryRelation:
   override val relationType: RelationType = AliasedType(name.value, child.relationType)
 
-  def watermarkColumn: Option[String] =
-    params.find(_.name == "watermark_column").map(_.value).collectFirst { case q: QName =>
-      q.fullName
-    }
-
-  def windowSize: Option[String] =
-    params.find(_.name == "window_size").map(_.value).collectFirst { case l: Literal =>
-      l.stringValue
-    }
+//  def watermarkColumn: Option[String] =
+//    params.find(_.name == "watermark_column").map(_.value)
+//
+//  def windowSize: Option[String] =
+//    params.find(_.name == "window_size").map(_.value)
 
   override def inputAttributeList: AttributeList = child.inputAttributeList
   override def outputAttributes: Seq[Attribute]  = child.outputAttributes
 
-case class SubscribeParam(name: String, value: Expression, nodeLocation: Option[NodeLocation]) extends Expression:
-  override def children: Seq[Expression] = Seq(value)
+case class SubscribeParam(name: String, value: String, nodeLocation: Option[NodeLocation]) extends Expression:
+  override def children: Seq[Expression] = Seq.empty

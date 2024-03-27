@@ -47,7 +47,9 @@ transformExpr:
 
 subscribeDef:
     SUBSCRIBE src=identifier AS name=identifier COLON
-    subscribeParam+
+    ('watermark_column' COLON watermarkColumn=identifier)?
+    ('window_size' COLON windowSize=str)?
+    subscribeParam*
     END?
     ;
 

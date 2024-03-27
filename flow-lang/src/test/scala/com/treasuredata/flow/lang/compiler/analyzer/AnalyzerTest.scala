@@ -1,7 +1,6 @@
 package com.treasuredata.flow.lang.compiler.analyzer
 
 import com.treasuredata.flow.lang.compiler.Compiler
-import com.treasuredata.flow.lang.compiler.analyzer.Resolver
 import com.treasuredata.flow.lang.model.plan.{Query, Subscribe}
 import wvlet.airspec.AirSpec
 
