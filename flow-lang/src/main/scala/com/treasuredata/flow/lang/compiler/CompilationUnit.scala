@@ -2,7 +2,7 @@ package com.treasuredata.flow.lang.compiler
 
 import com.treasuredata.flow.lang.compiler.SourceFile.NoSourceFile
 import com.treasuredata.flow.lang.model.NodeLocation
-import com.treasuredata.flow.lang.model.plan.FlowPlan
+import com.treasuredata.flow.lang.model.plan.LogicalPlan
 import wvlet.airframe.ulid.ULID
 import wvlet.log.io.IOUtil
 
@@ -13,12 +13,12 @@ import wvlet.log.io.IOUtil
   */
 case class CompilationUnit(sourceFile: SourceFile):
   // Untyped plan tree
-  var unresolvedPlan: FlowPlan = null
+  var unresolvedPlan: LogicalPlan = LogicalPlan.empty
   // Fully-typed plan tree
-  var resolvedPlan: FlowPlan = null
+  var resolvedPlan: LogicalPlan = LogicalPlan.empty
 
   // Plans generated for subscriptions
-  var subscriptionPlan: FlowPlan = null
+  var subscriptionPlan: LogicalPlan = LogicalPlan.empty
 
   def toSourceLocation(nodeLocation: Option[NodeLocation]) =
     SourceLocation(this, nodeLocation)

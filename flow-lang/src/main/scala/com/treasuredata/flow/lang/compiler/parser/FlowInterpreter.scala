@@ -39,11 +39,11 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
 
   private def getLocation(node: TerminalNode): Option[NodeLocation] = getLocation(node.getSymbol)
 
-  def interpret(ctx: ParserRuleContext): FlowPlan =
+  def interpret(ctx: ParserRuleContext): LogicalPlan =
     trace(s"interpret: ${print(ctx)}")
     val m = ctx.accept(this)
     debug(m)
-    m.asInstanceOf[FlowPlan]
+    m.asInstanceOf[LogicalPlan]
 
   def interpretExpression(ctx: ParserRuleContext): Expression =
     ctx.accept(this).asInstanceOf[Expression]
@@ -64,9 +64,9 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
   override def visitReservedWordIdentifier(ctx: ReservedWordIdentifierContext): Identifier =
     UnquotedIdentifier(ctx.getText, getLocation(ctx))
 
-  override def visitStatements(ctx: StatementsContext): FlowPlan =
+  override def visitStatements(ctx: StatementsContext): PackageDef =
     val plans = ctx.singleStatement().asScala.map(s => visit(s).asInstanceOf[LogicalPlan]).toSeq
-    FlowPlan(plans)
+    PackageDef(plans, getLocation(ctx))
 
   override def visitTypeAlias(ctx: TypeAliasContext): TypeAlias =
     TypeAlias(

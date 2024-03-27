@@ -1,9 +1,12 @@
 package com.treasuredata.flow.lang.model.plan
 
 import com.treasuredata.flow.lang.model.expr.{Attribute, AttributeList, Expression}
-import com.treasuredata.flow.lang.model.TreeNode
+import com.treasuredata.flow.lang.model.{NodeLocation, TreeNode}
 
 trait LogicalPlan extends TreeNode[LogicalPlan] with Product:
+  def isEmpty: Boolean  = false
+  def nonEmpty: Boolean = !isEmpty
+
   def modelName: String =
     val n = this.getClass.getSimpleName
     n.stripSuffix("$")
@@ -375,3 +378,12 @@ trait BinaryPlan extends LogicalPlan:
   def left: LogicalPlan
   def right: LogicalPlan
   override def children: Seq[LogicalPlan] = Seq(left, right)
+
+// Top-level definition for each source file
+case class PackageDef(statements: Seq[LogicalPlan], nodeLocation: Option[NodeLocation]) extends LogicalPlan:
+  override def isEmpty: Boolean                 = statements.isEmpty
+  override def children: Seq[LogicalPlan]       = statements
+  override def outputAttributes: Seq[Attribute] = Nil
+
+object LogicalPlan:
+  val empty = PackageDef(Nil, None)

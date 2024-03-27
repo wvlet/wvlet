@@ -19,8 +19,8 @@ object TypeScanner extends Phase("scan-types") with LogSupport:
     TypeScanner.scanTypeDefs(unit.unresolvedPlan, context)
     unit
 
-  private def scanTypeDefs(flow: FlowPlan, context: Context): Unit =
-    flow.logicalPlans.collect {
+  private def scanTypeDefs(plan: LogicalPlan, context: Context): Unit =
+    plan.traverse {
       case alias: TypeAlias =>
         context.scope.addAlias(alias.alias, alias.sourceTypeName)
       case td: TypeDef =>

@@ -1,8 +1,8 @@
 package com.treasuredata.flow.lang.compiler
 
-import com.treasuredata.flow.lang.compiler.analyzer.{TypeScanner, TypeResolver}
+import com.treasuredata.flow.lang.compiler.analyzer.{TypeResolver, TypeScanner}
 import com.treasuredata.flow.lang.compiler.parser.FlowParser
-import com.treasuredata.flow.lang.compiler.transform.Transform
+import com.treasuredata.flow.lang.compiler.transform.{Incrementalize}
 import com.treasuredata.flow.lang.model.plan.LogicalPlan
 
 object Compiler:
@@ -20,7 +20,7 @@ object Compiler:
     * Phases for transforming the logical plan trees
     */
   def transformPhases: List[Phase] = List(
-    Transform
+    Incrementalize
   )
 
   def allPhases: List[List[Phase]] = List(
@@ -52,11 +52,9 @@ case class CompileResult(
   def typedPlans: List[LogicalPlan] =
     units
       .map(_.resolvedPlan)
-      .filter(_ != null)
-      .flatMap(_.logicalPlans)
+      .filter(_.nonEmpty)
 
   def subscriptionPlans: List[LogicalPlan] =
     units
       .map(_.subscriptionPlan)
-      .filter(_ != null)
-      .flatMap(_.logicalPlans)
+      .filter(_.nonEmpty)

@@ -8,7 +8,6 @@ import com.treasuredata.flow.lang.model.{DataType, RelationType}
 import com.treasuredata.flow.lang.model.expr.{Attribute, AttributeIndex, AttributeList, ColumnType, Expression}
 import com.treasuredata.flow.lang.model.plan.{
   Filter,
-  FlowPlan,
   LogicalPlan,
   Project,
   Query,
@@ -29,17 +28,11 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
     trace(context.scope.getAllTypes.map(t => s"[${t._1}]: ${t._2}").mkString("\n"))
 
     // resolve plans
-    var resolvedPlan: FlowPlan = analyzeSingle(unit.unresolvedPlan, context)
+    var resolvedPlan: LogicalPlan = TypeResolver.resolve(unit.unresolvedPlan, context)
     // resolve again to resolve unresolved relation types
-    resolvedPlan = analyzeSingle(resolvedPlan, context)
+    resolvedPlan = TypeResolver.resolve(resolvedPlan, context)
     unit.resolvedPlan = resolvedPlan
     unit
-
-  private def analyzeSingle(plan: FlowPlan, context: Context): FlowPlan =
-    val resolvedPlan: Seq[LogicalPlan] = plan.logicalPlans.map { p =>
-      TypeResolver.resolve(p, context)
-    }
-    FlowPlan(resolvedPlan, plan.compileUnit)
 
   def defaultRules: List[RewriteRule] =
     resolveTableRef ::
