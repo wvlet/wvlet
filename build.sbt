@@ -24,7 +24,7 @@ ThisBuild / resolvers ++= Resolver.sonatypeOssRepos("snapshots") ++ Seq(
 
 Global / onChangedBuildSource := ReloadOnSourceChanges
 
-val buildSettings = Seq[Setting[_]](
+val buildSettings = Seq[Setting[?]](
   organization       := "com.treasuredata.flow",
   description        := "Incremental Query Compiler and Scheduler",
   crossPaths         := true,
@@ -68,7 +68,7 @@ lazy val projectJVM =
       // Use a stable coverage directory name without containing scala version
       // coverageDataDir := target.value
     )
-    .aggregate(jvmProjects*)
+    .aggregate(jvmProjects *)
 
 lazy val projectJS =
   project
@@ -77,7 +77,7 @@ lazy val projectJS =
       // Skip importing aggregated projects in IntelliJ IDEA
       ideSkipProject := true
     )
-    .aggregate(jsProjects*)
+    .aggregate(jsProjects *)
 
 lazy val api =
   crossProject(JVMPlatform, JSPlatform)

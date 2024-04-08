@@ -29,7 +29,6 @@ object FlowParser extends Phase("parser") with LogSupport:
         override def recoverInline(recognizer: Parser): Token =
           if nextTokensContext == null then throw new InputMismatchException(recognizer)
           else throw new InputMismatchException(recognizer, nextTokensState, nextTokensContext)
-
     )
     parser.removeErrorListeners()
     parser.addErrorListener(createLexerErrorListener)
