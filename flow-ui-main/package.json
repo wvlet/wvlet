@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "monaco-editor": "^0.47.0",
-    "rollup": "^4.14.1"
+    "rollup": "^4.14.3"
   },
   "devDependencies": {
     "typescript": "^5.4.5",
