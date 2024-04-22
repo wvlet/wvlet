@@ -135,7 +135,7 @@ lazy val server =
       name := "flow-server",
       libraryDependencies ++= Seq(
         // For redirecting slf4j logs to airframe-log
-        "org.slf4j"           % "slf4j-jdk14"         % "2.0.12",
+        "org.slf4j"           % "slf4j-jdk14"         % "2.0.13",
         "org.wvlet.airframe" %% "airframe-http-netty" % AIRFRAME_VERSION
       ),
       reStart / baseDirectory := (ThisBuild / baseDirectory).value
