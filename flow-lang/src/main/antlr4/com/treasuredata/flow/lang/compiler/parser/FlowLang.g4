@@ -16,6 +16,7 @@ singleStatement
     | functionDef
     | tableDef
     | subscribeDef
+    | moduleDef
     ;
 
 query:

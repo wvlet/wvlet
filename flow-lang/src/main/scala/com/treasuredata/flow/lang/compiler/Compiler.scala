@@ -28,13 +28,16 @@ object Compiler:
     transformPhases
   )
 
-class Compiler(phases: List[List[Phase]] = Compiler.allPhases):
+class Compiler(
+    phases: List[List[Phase]] = Compiler.allPhases
+):
   def compile(sourceFolder: String): CompileResult =
     compile(List(sourceFolder))
 
   def compile(sourceFolders: List[String]): CompileResult =
     var units: List[CompilationUnit] = sourceFolders.flatMap { folder =>
-      CompilationUnit.fromPath(folder)
+      val srcPath = s"${folder}/src"
+      CompilationUnit.fromPath(srcPath)
     }
     val ctx = Context()
     for

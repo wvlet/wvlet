@@ -384,5 +384,7 @@ case class PackageDef(statements: Seq[LogicalPlan], nodeLocation: Option[NodeLoc
   override def children: Seq[LogicalPlan]       = statements
   override def outputAttributes: Seq[Attribute] = Nil
 
+  override def inputAttributes: Seq[Attribute] = Nil
+
 object LogicalPlan:
   val empty = PackageDef(Nil, None)

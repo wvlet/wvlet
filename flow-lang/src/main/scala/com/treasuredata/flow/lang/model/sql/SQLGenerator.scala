@@ -109,6 +109,8 @@ class SQLGenerator(config: SQLGeneratorConfig = SQLGeneratorConfig()) extends Lo
         collectFilterExpression(childFilters)
       case n: NamedRelation =>
         collectFilterExpression(childFilters)
+      case t: Transform =>
+        collectFilterExpression(childFilters)
 
     if filterSet.nonEmpty then
       b += "WHERE"
@@ -481,7 +483,6 @@ class SQLGenerator(config: SQLGeneratorConfig = SQLGeneratorConfig()) extends Lo
         s"${a.sqlExpr} IS DISTINCT FROM ${e.sqlExpr}"
       case NotDistinctFrom(a, e, _) =>
         s"${a.sqlExpr} IS NOT DISTINCT FROM ${e.sqlExpr}"
-      case other => unknown(other)
 
   private def printNameWithQuotationsIfNeeded(name: String): String =
     QName.apply(name, None).sqlExpr

@@ -1,8 +1,0 @@
--- define UDF list
-
-module trino:
-  def td_ip_to_country_name(ip_addr: string): string
-  def td_ip_to_city_name(ip_addr: string): string
-end
-
--- define functions for aggregated types (e.g., sum, avg, etc.)

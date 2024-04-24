@@ -19,7 +19,7 @@ object LogicalPlanPrinter extends LogSupport:
 
   def print(m: LogicalPlan, out: PrintWriter, level: Int): Unit =
     m match
-      case EmptyRelation(_) =>
+      case null | EmptyRelation(_) =>
       // print nothing
       case f: FunctionDef =>
         val rt = f.resultType.map(x => s": ${x}").getOrElse("")
