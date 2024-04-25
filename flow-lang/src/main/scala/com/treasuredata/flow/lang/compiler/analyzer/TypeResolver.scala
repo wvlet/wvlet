@@ -41,14 +41,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
       Nil
 
   def resolve(plan: LogicalPlan, context: Context): LogicalPlan =
-    val resolvedPlan = defaultRules.foldLeft(plan) { (p, rule) =>
-      try rule.transform(p, context)
-      catch
-        case NonFatal(e) =>
-          debug(s"Failed to resolve with: ${rule.name}\n${p.pp}")
-          throw e
-    }
-    resolvedPlan
+    RewriteRule.rewrite(plan, defaultRules, context)
 
   def resolveRelation(plan: LogicalPlan, context: Context): Relation =
     val resolvedPlan = resolve(plan, context)

@@ -8,18 +8,18 @@ import com.treasuredata.flow.lang.model.expr.{ColumnType, Literal}
 import com.treasuredata.flow.lang.model.plan.*
 import wvlet.log.LogSupport
 
+object PreTypeScan  extends TypeScanner("collect-types")
+object PostTypeScan extends TypeScanner("post-type-scan")
+
 /**
   * Scan all referenced types in the code, including imported and defined ones
   */
-object TypeScanner extends Phase("scan-types") with LogSupport:
+class TypeScanner(name: String) extends Phase(name) with LogSupport:
   override def run(unit: CompilationUnit, context: Context): CompilationUnit =
-    // Pre-process to collect all schema and types
-    TypeScanner.scanTypeDefs(unit.unresolvedPlan, context)
-    // Post-process to resolve unresolved types
-    TypeScanner.scanTypeDefs(unit.unresolvedPlan, context)
+    scanTypeDefs(unit.unresolvedPlan, context)
     unit
 
-  private def scanTypeDefs(plan: LogicalPlan, context: Context): Unit =
+  protected def scanTypeDefs(plan: LogicalPlan, context: Context): Unit =
     plan.traverse {
       case alias: TypeAlias =>
         context.scope.addAlias(alias.alias, alias.sourceTypeName)

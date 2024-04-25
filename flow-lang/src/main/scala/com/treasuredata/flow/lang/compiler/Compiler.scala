@@ -1,26 +1,26 @@
 package com.treasuredata.flow.lang.compiler
 
-import com.treasuredata.flow.lang.compiler.analyzer.{TypeResolver, TypeScanner}
+import com.treasuredata.flow.lang.compiler.analyzer.{PreTypeScan, PostTypeScan, TypeResolver, TypeScanner}
 import com.treasuredata.flow.lang.compiler.parser.FlowParser
-import com.treasuredata.flow.lang.compiler.transform.{Incrementalize}
+import com.treasuredata.flow.lang.compiler.transform.Incrementalize
 import com.treasuredata.flow.lang.model.plan.LogicalPlan
 
 object Compiler:
-
   /**
     * Phases for text-based analysis of the source code
     */
   def analysisPhases: List[Phase] = List(
-    FlowParser,
-    TypeScanner,
-    TypeResolver
+    FlowParser,   // Parse *.flow files and create untyped plans
+    PreTypeScan,  // Collect all schema and types in the source paths
+    PostTypeScan, // Post-process to resolve unresolved types, which cannot be found in the first type scan
+    TypeResolver  // Resolve concrete types for each LogicalPlan node
   )
 
   /**
     * Phases for transforming the logical plan trees
     */
   def transformPhases: List[Phase] = List(
-    Incrementalize
+    Incrementalize // Create an incrementalized plan for a subscription
   )
 
   def allPhases: List[List[Phase]] = List(
@@ -57,7 +57,12 @@ case class CompileResult(
       .map(_.resolvedPlan)
       .filter(_.nonEmpty)
 
-  def subscriptionPlans: List[LogicalPlan] =
+  /**
+    * Extract compilation results for a specific file name
+    * @param fileName
+    * @return
+    */
+  def inFile(fileName: String): Option[CompilationUnit] =
     units
-      .map(_.subscriptionPlan)
-      .filter(_.nonEmpty)
+      .filter(_.sourceFile.fileName == fileName)
+      .headOption

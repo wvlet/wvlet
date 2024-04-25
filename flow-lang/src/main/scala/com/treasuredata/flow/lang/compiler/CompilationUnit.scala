@@ -2,9 +2,11 @@ package com.treasuredata.flow.lang.compiler
 
 import com.treasuredata.flow.lang.compiler.SourceFile.NoSourceFile
 import com.treasuredata.flow.lang.model.NodeLocation
-import com.treasuredata.flow.lang.model.plan.LogicalPlan
+import com.treasuredata.flow.lang.model.plan.{LogicalPlan, NamedRelation, Relation}
 import wvlet.airframe.ulid.ULID
 import wvlet.log.io.IOUtil
+
+import java.io.File
 
 /**
   * Represents a unit for compilation (= source file) and records intermediate data (e.g., plan trees) for the source
@@ -18,10 +20,18 @@ case class CompilationUnit(sourceFile: SourceFile):
   var resolvedPlan: LogicalPlan = LogicalPlan.empty
 
   // Plans generated for subscriptions
-  var subscriptionPlan: LogicalPlan = LogicalPlan.empty
+  var subscriptionPlans: List[LogicalPlan] = List.empty[LogicalPlan]
 
   def toSourceLocation(nodeLocation: Option[NodeLocation]) =
     SourceLocation(this, nodeLocation)
+
+  def findRelationRef(name: String): Option[LogicalPlan] =
+    var result: Option[Relation] = None
+    resolvedPlan.traverse {
+      case r: NamedRelation if r.name.value == name =>
+        result = Some(r)
+    }
+    result
 
 object CompilationUnit:
   val empty: CompilationUnit = CompilationUnit(NoSourceFile)
@@ -51,5 +61,6 @@ object SourceFile:
   def fromString(content: String): SourceFile = SourceFile(s"${ULID.newULIDString}.flow", _ => content)
 
 class SourceFile(val file: String, readContent: (file: String) => String):
+  def fileName: String               = new File(file).getName
   def toCompileUnit: CompilationUnit = CompilationUnit(this)
   lazy val content: String           = readContent(file)

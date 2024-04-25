@@ -537,3 +537,37 @@ case class Subscribe(
 
 case class SubscribeParam(name: String, value: String, nodeLocation: Option[NodeLocation]) extends Expression:
   override def children: Seq[Expression] = Seq.empty
+
+case class IncrementalTableScan(
+    name: String,
+    schema: RelationType,
+    columns: Seq[NamedType],
+    nodeLocation: Option[NodeLocation]
+) extends Relation
+    with LeafPlan:
+  override def inputAttributes: Seq[Attribute] = Seq.empty
+
+  override def outputAttributes: Seq[Attribute] =
+    columns.map { col =>
+      ResolvedAttribute(
+        col.name,
+        col,
+        Qualifier.empty,
+        None,
+        None
+      )
+    }
+
+  override def relationType: RelationType =
+    ProjectedType(schema.typeName, columns, schema)
+
+  override def toString: String =
+    s"IncrementalScan(name:${name}, columns:[${columns.mkString(", ")}])"
+
+case class IncrementalAppend(
+    // Differential query
+    child: Relation,
+    nodeLocation: Option[NodeLocation]
+) extends UnaryRelation:
+  override def relationType: RelationType       = child.relationType
+  override def outputAttributes: Seq[Attribute] = child.outputAttributes

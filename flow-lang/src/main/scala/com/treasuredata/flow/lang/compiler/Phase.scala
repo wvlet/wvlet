@@ -7,6 +7,7 @@ trait Phase(
     val name: String
 ) extends LogSupport:
   def runOn(units: List[CompilationUnit], context: Context): List[CompilationUnit] =
+    debug(s"Running phase ${name}")
     val buf = List.newBuilder[CompilationUnit]
     for unit <- units do
       context.withCompilationUnit(unit) { ctx =>

@@ -10,7 +10,7 @@ object Scope:
   def empty = Scope()
 
 /**
-  * Scope of the context
+  * Scope manages a list of table, alias, function definitions that are available in the current context.
   */
 class Scope extends LogSupport:
   private val types    = mutable.Map.empty[String, DataType].addAll(DataType.knownPrimitiveTypes)
