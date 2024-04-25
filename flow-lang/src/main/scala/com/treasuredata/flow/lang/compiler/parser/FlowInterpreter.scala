@@ -66,7 +66,7 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
 
   override def visitStatements(ctx: StatementsContext): PackageDef =
     val plans = ctx.singleStatement().asScala.map(s => visit(s).asInstanceOf[LogicalPlan]).toSeq
-    PackageDef(plans, getLocation(ctx))
+    PackageDef(statements = plans, nodeLocation = getLocation(ctx))
 
   override def visitTypeAlias(ctx: TypeAliasContext): TypeAlias =
     TypeAlias(

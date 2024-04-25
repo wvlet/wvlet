@@ -1,7 +1,7 @@
 package com.treasuredata.flow.lang.compiler.parser
 
-import com.treasuredata.flow.lang.compiler.{CompilationUnit, Context, Phase}
-import com.treasuredata.flow.lang.model.plan.LogicalPlan
+import com.treasuredata.flow.lang.compiler.{CompilationUnit, Context, Phase, SourceFile}
+import com.treasuredata.flow.lang.model.plan.{LogicalPlan, PackageDef}
 import org.antlr.v4.runtime.*
 import wvlet.log.LogSupport
 
@@ -19,10 +19,10 @@ object FlowParser extends Phase("parser") with LogSupport:
 
   def parse(compileUnit: CompilationUnit): LogicalPlan =
     trace(s"Parsing ${compileUnit}")
-    parse(compileUnit.sourceFile.content)
+    parse(compileUnit.sourceFile)
 
-  def parse(code: String): LogicalPlan =
-    val parser = new FlowLangParser(tokenStream(code))
+  def parse(sourceFile: SourceFile): LogicalPlan =
+    val parser = new FlowLangParser(tokenStream(sourceFile.content))
     // Do not drop mismatched token
     parser.setErrorHandler(
       new DefaultErrorStrategy:
@@ -36,7 +36,9 @@ object FlowParser extends Phase("parser") with LogSupport:
     trace(ctx.toStringTree(parser))
 
     val interpreter = new FlowInterpreter
-    interpreter.interpret(ctx)
+    interpreter.interpret(ctx) match
+      case p: PackageDef => p.copy(sourceFile = sourceFile)
+      case other         => other
 
   private def tokenStream(text: String): CommonTokenStream =
     val lexer       = new FlowLangLexer(new ANTLRInputStream(text))

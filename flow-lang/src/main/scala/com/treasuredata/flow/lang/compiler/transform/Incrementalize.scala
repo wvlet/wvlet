@@ -47,7 +47,7 @@ object Incrementalize extends Phase("incrementalize"):
           // TODO Exclude filter with correlated sub-queries
           true
         case _: Project =>
-          // TODO Exclude projection with window functions or sub queries
+          // TODO Exclude projection with window functions or sub que`ries
           true
         case _: Transform             => true
         case n: NamedRelation         => isSimpleScan(n.child, context)
