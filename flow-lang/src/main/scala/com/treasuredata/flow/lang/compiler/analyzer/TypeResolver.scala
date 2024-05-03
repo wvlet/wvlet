@@ -56,11 +56,12 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
   object resolveJsonFileScan extends RewriteRule:
     override def apply(context: Context): PlanRewriter =
       case r: FileScan if r.path.endsWith(".json") =>
-        val jsonRelationType = JSONAnalyzer.analyzeJSONFile(r.path, context)
+        val file             = context.getDataFile(r.path)
+        val jsonRelationType = JSONAnalyzer.analyzeJSONFile(file)
         val cols = jsonRelationType.typeParams.collect { case n: NamedType =>
           n
         }
-        JSONFileScan(r.path, jsonRelationType, cols, r.nodeLocation)
+        JSONFileScan(file, jsonRelationType, cols, r.nodeLocation)
 
   /**
     * Resolve TableRefs with concrete TableScans using the table schema in the catalog.

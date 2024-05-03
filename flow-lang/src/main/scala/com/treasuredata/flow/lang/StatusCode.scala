@@ -19,3 +19,5 @@ enum StatusCode(statusType: StatusType):
   case COLUMN_NOT_FOUND extends StatusCode(StatusType.UserError)
   case NOT_A_RELATION   extends StatusCode(StatusType.UserError)
   case FILE_NOT_FOUND   extends StatusCode(StatusType.UserError)
+
+  case NOT_IMPLEMENTED extends StatusCode(StatusType.UserError)

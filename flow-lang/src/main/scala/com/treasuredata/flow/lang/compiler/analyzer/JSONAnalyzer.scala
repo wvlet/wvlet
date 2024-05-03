@@ -22,9 +22,8 @@ import wvlet.log.LogSupport
 import java.io.File
 
 object JSONAnalyzer extends LogSupport:
-  def analyzeJSONFile(path: String, context: Context): RelationType =
-    val file = context.getDataFile(path)
-    val json = IO.readAsString(new File(file))
+  def analyzeJSONFile(path: String): RelationType =
+    val json = IO.readAsString(new File(path))
     debug(json)
     val jsonValue = JSON.parse(json)
 

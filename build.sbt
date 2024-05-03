@@ -121,7 +121,8 @@ lazy val lang =
         "org.wvlet.airframe" %% "airframe-ulid"     % AIRFRAME_VERSION,
         // Add sql parser for testing purpose
         "org.wvlet.airframe" %% "airframe-sql" % AIRFRAME_VERSION % Test,
-        "org.apache.arrow"    % "arrow-vector" % "9.0.0"
+        "org.apache.arrow"    % "arrow-vector" % "9.0.0",
+        "org.duckdb"          % "duckdb_jdbc"  % "0.10.2"
 //        // Add Spark as a reference impl (Scala 2)
 //        "org.apache.spark" %% "spark-sql" % "3.5.1" % Test excludeAll (
 //          // exclude sbt-parser-combinators as it conflicts with Scala 3
@@ -129,7 +130,7 @@ lazy val lang =
 //        ) cross (CrossVersion.for3Use2_13)
       ),
       // To enable JVM options
-      Test / fork := true,
+      // Test / fork := true,
       // When forking, the base directory should be set to the root directory
       Test / baseDirectory := (ThisBuild / baseDirectory).value,
       // Watch changes of example .flow files upon testing

@@ -22,9 +22,8 @@ class InMemoryExecutor extends LogSupport:
       case q: Query =>
         execute(q.body, context)
       case r: JSONFileScan =>
-        val file = context.getDataFile(r.path)
-        val json = IO.readAsString(new File(file))
-        info(json)
+        val json = IO.readAsString(new File(r.path))
+        trace(json)
         val codec = MessageCodec.of[Seq[Map[String, Any]]]
         val data  = codec.fromJson(json)
         TableRows(r.schema, data)

@@ -213,6 +213,8 @@ class SQLGenerator(config: SQLGeneratorConfig = SQLGeneratorConfig()) extends Lo
         b += "AS"
         b += columnAliases.map(printExpression).mkString(", ")
         b.result().mkString(" ")
+      case j: JSONFileScan =>
+        s"from '${j.path}'"
       case other => unknown(other)
 
   def printRelationWithParenthesesIfNecessary(r: Relation): String =

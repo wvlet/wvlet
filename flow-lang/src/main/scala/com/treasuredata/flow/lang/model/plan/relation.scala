@@ -150,7 +150,7 @@ case class JSONFileScan(
     ProjectedType(schema.typeName, columns, schema)
 
   override def toString: String =
-    s"ResolvedFileScan(path:${path}, columns:[${columns.mkString(", ")}])"
+    s"JSONFileScan(path:${path}, columns:[${columns.mkString(", ")}])"
 
   override lazy val resolved = true
 

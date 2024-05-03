@@ -7,6 +7,9 @@ import wvlet.log.LogSupport
 
 trait QueryResult
 
+object QueryResult:
+  object empty extends QueryResult
+
 case class QueryResultList(list: Seq[QueryResult]) extends QueryResult
 
 case class PlanResult(plan: LogicalPlan, result: QueryResult) extends QueryResult

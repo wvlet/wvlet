@@ -42,7 +42,7 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
   def interpret(ctx: ParserRuleContext): LogicalPlan =
     trace(s"interpret: ${print(ctx)}")
     val m = ctx.accept(this)
-    debug(m)
+    trace(m)
     m.asInstanceOf[LogicalPlan]
 
   def interpretExpression(ctx: ParserRuleContext): Expression =

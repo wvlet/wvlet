@@ -53,7 +53,7 @@ class Compiler(
 case class CompileResult(
     units: List[CompilationUnit],
     compiler: Compiler,
-    ctx: Context
+    context: Context
 ):
   def typedPlans: List[LogicalPlan] =
     units
