@@ -1,5 +1,6 @@
 package com.treasuredata.flow.lang.compiler
 
+import com.treasuredata.flow.lang.StatusCode
 import wvlet.log.LogSupport
 
 /**
@@ -8,7 +9,9 @@ import wvlet.log.LogSupport
   *
   * Context and Scope are mutable, and the compiler will update them as it processes the source code.
   */
-case class Context() extends LogSupport:
+case class Context(
+    sourceFolders: List[String] = List.empty
+) extends LogSupport:
   private var _compileUnit: CompilationUnit = CompilationUnit.empty
   private var _scope: Scope                 = Scope()
 
@@ -21,3 +24,14 @@ case class Context() extends LogSupport:
       _compileUnit = newCompileUnit
       block(this)
     finally _compileUnit = prev
+
+  def findDataFile(path: String): Option[String] =
+    sourceFolders
+      .map(folder => s"${folder}/data/${path}")
+      .find(file => new java.io.File(file).exists())
+
+  def getDataFile(path: String): String =
+    findDataFile(path) match
+      case None =>
+        throw StatusCode.FILE_NOT_FOUND.newException(s"${path} is not found")
+      case Some(f) => f

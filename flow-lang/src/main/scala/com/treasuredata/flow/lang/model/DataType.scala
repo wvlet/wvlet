@@ -27,7 +27,8 @@ abstract class DataType(val typeName: String, val typeParams: Seq[DataType]):
   * @param typeParams
   */
 sealed abstract class RelationType(override val typeName: String, override val typeParams: Seq[DataType])
-    extends DataType(typeName, typeParams)
+    extends DataType(typeName, typeParams):
+  def fields: Seq[DataType]
 
 object RelationType:
   def newRelationTypeName: String = ULID.newULIDString
@@ -54,20 +55,24 @@ object DataType extends LogSupport:
   case class SchemaType(override val typeName: String, columnTypes: Seq[NamedType])
       extends RelationType(typeName, Seq.empty):
     override def typeDescription: String = typeName
+    override def fields: Seq[DataType]   = columnTypes
 
     override def isResolved: Boolean = columnTypes.forall(_.isResolved)
 
   case object EmptyRelationType extends RelationType(RelationType.newRelationTypeName, Seq.empty):
-    override def isResolved: Boolean = true
+    override def isResolved: Boolean   = true
+    override def fields: Seq[DataType] = Seq.empty
 
   case class UnresolvedRelationType(override val typeName: String) extends RelationType(typeName, Seq.empty):
     override def typeDescription: String = typeName
     override def isResolved: Boolean     = false
+    override def fields: Seq[DataType]   = Seq.empty
 
   case class AliasedType(override val typeName: String, baseType: RelationType)
       extends RelationType(typeName, Seq.empty):
     override def toString = s"${typeName}:=${baseType}"
 
+    override def fields: Seq[DataType]   = baseType.fields
     override def baseTypeName: String    = baseType.typeName
     override def typeDescription: String = typeName
     override def isResolved: Boolean     = baseType.isResolved
@@ -75,6 +80,8 @@ object DataType extends LogSupport:
 
   case class ProjectedType(override val typeName: String, projectedColumns: Seq[NamedType], baseType: RelationType)
       extends RelationType(typeName, Seq.empty):
+
+    override def fields: Seq[DataType]   = projectedColumns
     override def typeDescription: String = typeName
     override def isResolved: Boolean     = projectedColumns.forall(_.isResolved)
 
@@ -86,11 +93,15 @@ object DataType extends LogSupport:
     */
   case class AggregationType(override val typeName: String, groupingKeyTypes: Seq[DataType], valueType: RelationType)
       extends RelationType(typeName, Seq.empty):
+
+    override def fields: Seq[DataType]   = groupingKeyTypes ++ valueType.fields
     override def typeDescription: String = typeName
     override def isResolved: Boolean     = groupingKeyTypes.forall(_.isResolved) && valueType.isResolved
 
   case class ConcatType(override val typeName: String, inputTypes: Seq[RelationType])
       extends RelationType(typeName, Seq.empty):
+
+    override def fields: Seq[DataType]   = inputTypes.flatMap(_.fields)
     override def typeDescription: String = typeName
     override def isResolved: Boolean     = inputTypes.forall(_.isResolved)
 
@@ -102,6 +113,11 @@ object DataType extends LogSupport:
     */
   case class ExtensionType(override val typeName: String, selfType: DataType, defs: Seq[FunctionType])
       extends RelationType(typeName, Seq.empty):
+
+    override def fields: Seq[DataType] = selfType match
+      case r: RelationType => r.fields
+      case _               => Seq(selfType)
+
     override def typeDescription: String = typeName
     override def isResolved              = selfType.isResolved && defs.forall(_.isResolved)
 

@@ -1,11 +1,14 @@
 package com.treasuredata.flow.lang.compiler
 
-import com.treasuredata.flow.lang.compiler.analyzer.{PreTypeScan, PostTypeScan, TypeResolver, TypeScanner}
+import com.treasuredata.flow.lang.compiler.analyzer.{PostTypeScan, PreTypeScan, TypeResolver, TypeScanner}
 import com.treasuredata.flow.lang.compiler.parser.FlowParser
 import com.treasuredata.flow.lang.compiler.transform.Incrementalize
 import com.treasuredata.flow.lang.model.plan.LogicalPlan
+import wvlet.log.LogSupport
 
 object Compiler:
+  def default: Compiler = Compiler(phases = allPhases)
+
   /**
     * Phases for text-based analysis of the source code
     */
@@ -30,7 +33,7 @@ object Compiler:
 
 class Compiler(
     phases: List[List[Phase]] = Compiler.allPhases
-):
+) extends LogSupport:
   def compile(sourceFolder: String): CompileResult =
     compile(List(sourceFolder))
 
@@ -39,7 +42,7 @@ class Compiler(
       val srcPath = s"${folder}/src"
       CompilationUnit.fromPath(srcPath)
     }
-    val ctx = Context()
+    val ctx = Context(sourceFolders = sourceFolders)
     for
       phaseGroup <- phases
       phase      <- phaseGroup

@@ -6,7 +6,7 @@ import wvlet.airspec.AirSpec
 
 class TransformTest extends AirSpec:
 
-  private val c = Compiler(phases = List(Compiler.analysisPhases, Compiler.transformPhases))
+  private val c = Compiler.default
 
   test("transform") {
     val result = c.compile("examples/cdp_behavior")

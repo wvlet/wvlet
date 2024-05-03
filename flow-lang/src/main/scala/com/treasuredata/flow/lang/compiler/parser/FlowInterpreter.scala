@@ -264,6 +264,8 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
         visitQuery(s.query())
       case t: TableNameContext =>
         TableRef(QName(t.qualifiedName().getText, getLocation(t)), getLocation(ctx))
+      case t: FileScanContext =>
+        FileScan(unquote(t.str().getText), getLocation(t))
       case other =>
         throw unknown(other)
 

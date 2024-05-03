@@ -7,12 +7,14 @@ import com.treasuredata.flow.lang.model.DataType.{AliasedType, NamedType, Schema
 import com.treasuredata.flow.lang.model.{DataType, RelationType}
 import com.treasuredata.flow.lang.model.expr.{Attribute, AttributeIndex, AttributeList, ColumnType, Expression}
 import com.treasuredata.flow.lang.model.plan.{
+  FileScan,
   Filter,
   LogicalPlan,
   Project,
   Query,
   RelScan,
   Relation,
+  JSONFileScan,
   TableRef,
   TableScan,
   TypeDef,
@@ -35,7 +37,8 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
     unit
 
   def defaultRules: List[RewriteRule] =
-    resolveTableRef ::
+    resolveJsonFileScan ::
+      resolveTableRef ::
       resolveRelation ::
       resolveProjectedColumns ::
       Nil
@@ -50,11 +53,20 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
       case _ =>
         throw StatusCode.NOT_A_RELATION.newException(s"Not a relation:\n${resolvedPlan.pp}")
 
+  object resolveJsonFileScan extends RewriteRule:
+    override def apply(context: Context): PlanRewriter =
+      case r: FileScan if r.path.endsWith(".json") =>
+        val jsonRelationType = JSONAnalyzer.analyzeJSONFile(r.path, context)
+        val cols = jsonRelationType.typeParams.collect { case n: NamedType =>
+          n
+        }
+        JSONFileScan(r.path, jsonRelationType, cols, r.nodeLocation)
+
   /**
     * Resolve TableRefs with concrete TableScans using the table schema in the catalog.
     */
   object resolveTableRef extends RewriteRule:
-    def apply(context: Context): PlanRewriter =
+    override def apply(context: Context): PlanRewriter =
       case ref: TableRef =>
         context.scope.findType(ref.name.fullName) match
           case Some(tpe: RelationType) =>
@@ -75,7 +87,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
     * Resolve expression in relation nodes
     */
   object resolveRelation extends RewriteRule:
-    def apply(context: Context): PlanRewriter = {
+    override def apply(context: Context): PlanRewriter = {
       case q: Query =>
         q.copy(body = resolveRelation(q.body, context))
       case r: Relation => // Regular relation and Filter etc.

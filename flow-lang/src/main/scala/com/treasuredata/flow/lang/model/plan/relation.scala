@@ -15,6 +15,7 @@ import com.treasuredata.flow.lang.model.DataType.{
   SchemaType,
   UnresolvedRelationType
 }
+import wvlet.airframe.json.JSON
 import wvlet.airframe.ulid.ULID
 import wvlet.log.LogSupport
 
@@ -119,6 +120,39 @@ case class TableRef(name: QName, nodeLocation: Option[NodeLocation]) extends Rel
   override def toString: String                 = s"TableRef(${name})"
   override def outputAttributes: Seq[Attribute] = Nil
   override def relationType: RelationType       = UnresolvedRelationType(name.fullName)
+
+case class FileScan(path: String, nodeLocation: Option[NodeLocation]) extends Relation with LeafPlan:
+  override def toString: String                 = s"FileScan(${path})"
+  override def outputAttributes: Seq[Attribute] = Nil
+  override def relationType: RelationType       = UnresolvedRelationType(RelationType.newRelationTypeName)
+
+case class JSONFileScan(
+    path: String,
+    schema: RelationType,
+    columns: Seq[NamedType],
+    nodeLocation: Option[NodeLocation]
+) extends Relation
+    with LeafPlan:
+  override def inputAttributes: Seq[Attribute] = Seq.empty
+
+  override def outputAttributes: Seq[Attribute] =
+    columns.map { col =>
+      ResolvedAttribute(
+        col.name,
+        col,
+        Qualifier.empty, // This must be empty first
+        None,            // TODO Some(SourceColumn(table, col)),
+        None             // ResolvedAttribute always has no NodeLocation
+      )
+    }
+
+  override def relationType: RelationType =
+    ProjectedType(schema.typeName, columns, schema)
+
+  override def toString: String =
+    s"ResolvedFileScan(path:${path}, columns:[${columns.mkString(", ")}])"
+
+  override lazy val resolved = true
 
 case class RawSQL(sql: String, nodeLocation: Option[NodeLocation]) extends Relation with LeafPlan:
   override def outputAttributes: Seq[Attribute] = Nil
@@ -456,7 +490,7 @@ case class LateralView(
   * @param table
   *   source table
   * @param columns
-  *   projected columns
+  *   projected colfumns
   */
 case class TableScan(
     name: String,

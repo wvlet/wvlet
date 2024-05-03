@@ -91,6 +91,7 @@ relationPrimary
     | '(' relation ')'                                                #parenthesizedRelation
 //    | UNNEST '(' primaryExpression (',' primaryExpression)* ')' (WITH ORDINALITY)?  #unnest
 //    | LATERAL '(' query ')'                                           #lateral
+    | str                                                             #fileScan
     ;
 
 join
