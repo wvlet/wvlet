@@ -1,0 +1,3 @@
+-- just scan a json file
+from 'person.json'
+where id = 1

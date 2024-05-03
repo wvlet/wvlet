@@ -81,10 +81,47 @@ class SQLGenerator(config: SQLGeneratorConfig = SQLGeneratorConfig()) extends Lo
       case other =>
         Nil
 
-  private def printSelection(s: Selection, context: List[Relation]): String =
+  private def printQuery(q: Query, context: List[Relation]): String =
     // We need to pull-up Filter operators from child relations to build WHERE clause
     // e.g., Selection(in:Filter(Filter( ...)), ...)
+    val childFilters: List[Filter] = collectChildFilters(q.child)
+    val nonFilterChild =
+      if childFilters.nonEmpty then childFilters.last.child
+      else q.child
 
+    val b = Seq.newBuilder[String]
+    b += "SELECT *"
+    findNonEmpty(nonFilterChild).map { f =>
+      b += "FROM"
+      b += printRelationWithParenthesesIfNecessary(f)
+    }
+
+    val filterSet = q.child match
+      case Project(_, _, _) =>
+        // Merge parent and child Filters
+        collectFilterExpression(context) ++ collectFilterExpression(childFilters)
+      case AggregateSelect(_, _, _, _, _) =>
+        // We cannot push down parent Filters
+        collectFilterExpression(childFilters)
+      case n: NamedRelation =>
+        collectFilterExpression(childFilters)
+      case f: Filter =>
+        collectFilterExpression(List(f))
+      case t: Transform =>
+        collectFilterExpression(childFilters)
+      case other =>
+        Nil
+
+    if filterSet.nonEmpty then
+      b += "WHERE"
+      val cond = filterSet.reduce((f1, f2) => And(f1, f2, None))
+      b += printExpression(cond)
+
+    b.result().mkString(" ")
+
+  private def printSelection(s: UnaryRelation, context: List[Relation]): String =
+    // We need to pull-up Filter operators from child relations to build WHERE clause
+    // e.g., Selection(in:Filter(Filter( ...)), ...)
     val childFilters: List[Filter] = collectChildFilters(s.child)
     val nonFilterChild =
       if childFilters.nonEmpty then childFilters.last.child
@@ -93,7 +130,12 @@ class SQLGenerator(config: SQLGeneratorConfig = SQLGeneratorConfig()) extends Lo
     val b = Seq.newBuilder[String]
     b += "SELECT"
     if containsDistinctPlan(context) then b += "DISTINCT"
-    b += (s.selectItems.map(printSelectItem).mkString(", "))
+
+    s match
+      case s: Selection =>
+        b += (s.selectItems.map(printSelectItem).mkString(", "))
+      case other =>
+        b += "*"
 
     findNonEmpty(nonFilterChild).map { f =>
       b += "FROM"
@@ -108,6 +150,8 @@ class SQLGenerator(config: SQLGeneratorConfig = SQLGeneratorConfig()) extends Lo
         // We cannot push down parent Filters
         collectFilterExpression(childFilters)
       case n: NamedRelation =>
+        collectFilterExpression(childFilters)
+      case f: Filter =>
         collectFilterExpression(childFilters)
       case t: Transform =>
         collectFilterExpression(childFilters)
@@ -134,16 +178,16 @@ class SQLGenerator(config: SQLGeneratorConfig = SQLGeneratorConfig()) extends Lo
       case s: SetOperation =>
         // Need to pass the context to disginguish union/union all, etc.
         printSetOperation(s, context)
-      case Filter(in, filterExpr, _) =>
-        printRelation(in, r :: context)
+      case q: Query =>
+        q.body match
+          case s: Selection => printSelection(s, q :: context)
+          case _            => printQuery(q, q :: context)
       case Distinct(in, _) =>
         printRelation(in, r :: context)
       case p @ Project(in, selectItems, _) =>
         printSelection(p, context)
       case a @ AggregateSelect(in, selectItems, groupingKeys, having, _) =>
         printSelection(a, context)
-      case Query(body, _) =>
-        printRelation(body)
 //      case c: CTERelationRef =>
 //        c.name
       case TableRef(t, _) =>
@@ -214,7 +258,7 @@ class SQLGenerator(config: SQLGeneratorConfig = SQLGeneratorConfig()) extends Lo
         b += columnAliases.map(printExpression).mkString(", ")
         b.result().mkString(" ")
       case j: JSONFileScan =>
-        s"from '${j.path}'"
+        s"'${j.path}'"
       case other => unknown(other)
 
   def printRelationWithParenthesesIfNecessary(r: Relation): String =

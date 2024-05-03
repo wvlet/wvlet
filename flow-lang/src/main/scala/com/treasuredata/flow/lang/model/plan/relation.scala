@@ -283,7 +283,8 @@ case class AggregateSelect(
       child.relationType
     )
 
-case class Query(body: Relation, nodeLocation: Option[NodeLocation]) extends Relation:
+case class Query(body: Relation, nodeLocation: Option[NodeLocation]) extends UnaryRelation:
+  override def child: Relation  = body
   override def toString: String = s"Query(body:${body})"
   override def children: Seq[LogicalPlan] =
     val b = Seq.newBuilder[LogicalPlan]

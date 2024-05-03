@@ -6,7 +6,7 @@ import com.treasuredata.flow.lang.model.plan.LogicalPlan
 import com.treasuredata.flow.lang.model.plan.*
 import com.treasuredata.flow.lang.model.sql.SQLGenerator
 import org.duckdb.DuckDBConnection
-import wvlet.airframe.codec.JDBCCodec
+import wvlet.airframe.codec.{JDBCCodec, MessageCodec}
 import wvlet.log.{LogSupport, Logger}
 
 import java.sql.DriverManager
@@ -35,25 +35,25 @@ class DuckDBExecutor extends LogSupport:
         }
         QueryResultList(results)
       case q: Query =>
-        val sql = SQLGenerator.toSQL(q.body)
-        debug(sql)
-        val json = DuckDBDriver.withConnection: conn =>
-          Using.resource(conn.createStatement()) { stmt =>
-            Using.resource(stmt.executeQuery(sql)) { rs =>
-              val codec = JDBCCodec(rs)
-              val json  = codec.toJsonSeq.toSeq
-              debug(json)
-              json
-            }
-          }
-        QueryResult.empty
+        val sql = SQLGenerator.toSQL(q)
+        debug(s"Executing SQL:\n${sql}")
+        val result = DuckDBDriver.withConnection: conn =>
+          Using.resource(conn.createStatement()): stmt =>
+            Using.resource(stmt.executeQuery(sql)): rs =>
+              val codec       = JDBCCodec(rs)
+              val recordCodec = MessageCodec.of[Map[String, Any]]
+              val results: Seq[Map[String, Any]] = codec
+                .mapMsgPackMapRows: msgpack =>
+                  recordCodec.fromMsgPack(msgpack)
+                .toSeq
+              TableRows(q.relationType, results)
+        result
       case other =>
         throw StatusCode.NOT_IMPLEMENTED.newException(s"Unsupported plan: ${other}")
 
 object DuckDBDriver:
   def withConnection[U](f: DuckDBConnection => U): U =
     Class.forName("org.duckdb.DuckDBDriver")
-
     DriverManager.getConnection("jdbc:duckdb:") match
       case conn: DuckDBConnection =>
         try

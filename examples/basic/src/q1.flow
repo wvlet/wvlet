@@ -1,2 +1,2 @@
--- just scan a json file
+-- Scan a json file
 from 'person.json'
