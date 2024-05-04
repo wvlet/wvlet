@@ -48,6 +48,9 @@ class DuckDBExecutor extends LogSupport:
                 .toSeq
               TableRows(q.relationType, results)
         result
+      case t: TestDef =>
+        debug(s"Executing test: ${t}")
+        QueryResult.empty
       case other =>
         throw StatusCode.NOT_IMPLEMENTED.newException(s"Unsupported plan: ${other}")
 

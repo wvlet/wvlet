@@ -1,7 +1,7 @@
 package com.treasuredata.flow.lang.compiler.runner
 
 import com.treasuredata.flow.lang.compiler.Context
-import com.treasuredata.flow.lang.model.plan.{FileScan, JSONFileScan, LogicalPlan, PackageDef, Query}
+import com.treasuredata.flow.lang.model.plan.{FileScan, JSONFileScan, LogicalPlan, PackageDef, Query, TestDef}
 import wvlet.airframe.codec.MessageCodec
 import wvlet.airframe.control.IO
 import wvlet.log.LogSupport
@@ -21,6 +21,9 @@ class InMemoryExecutor extends LogSupport:
         QueryResultList(results)
       case q: Query =>
         execute(q.body, context)
+      case t: TestDef =>
+        warn(s"Test execution is not supported yet: ${t}")
+        QueryResult.empty
       case r: JSONFileScan =>
         val json = IO.readAsString(new File(r.path))
         trace(json)

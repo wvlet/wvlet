@@ -30,6 +30,11 @@ trait UnaryRelation extends Relation with UnaryPlan:
   def inputRelation: Relation = child
   override def child: Relation
 
+case class TestRelation(child: Relation, textExprs: Seq[Expression], nodeLocation: Option[NodeLocation])
+    extends UnaryRelation:
+  override def outputAttributes: Seq[Attribute] = child.outputAttributes
+  override def relationType: RelationType       = child.relationType
+
 case class ParenthesizedRelation(child: Relation, nodeLocation: Option[NodeLocation]) extends UnaryRelation:
   override def outputAttributes: Seq[Attribute] = child.outputAttributes
   override def relationType: RelationType       = child.relationType

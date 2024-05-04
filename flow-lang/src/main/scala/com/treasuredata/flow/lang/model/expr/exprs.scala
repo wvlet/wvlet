@@ -404,10 +404,23 @@ case class FalseLiteral(nodeLocation: Option[NodeLocation]) extends BooleanLiter
   override def toString: String      = "Literal(FALSE)"
   override def booleanValue: Boolean = false
 
+case class ContextRef(nodeLocation: Option[NodeLocation]) extends LeafExpression:
+  override def toString: String = "_"
+
 case class StringLiteral(value: String, nodeLocation: Option[NodeLocation]) extends Literal with LeafExpression:
   override def dataType: DataType  = DataType.StringType
   override def stringValue: String = value
   override def toString            = s"StringLiteral('${value}')"
+
+case class TripleQuoteLiteral(value: String, nodeLocation: Option[NodeLocation]) extends Literal with LeafExpression:
+  override def dataType: DataType  = DataType.StringType
+  override def stringValue: String = value
+  override def toString            = s"TripleQuoteLiteral('${value}')"
+
+case class JsonLiteral(value: String, nodeLocation: Option[NodeLocation]) extends Literal with LeafExpression:
+  override def dataType: DataType  = DataType.JsonType
+  override def stringValue: String = value
+  override def toString            = s"JsonLiteral('${value}')"
 
 case class TimeLiteral(value: String, nodeLocation: Option[NodeLocation]) extends Literal with LeafExpression:
   override def dataType: DataType  = DataType.TimestampType(TimestampField.TIME, false)

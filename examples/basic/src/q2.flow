@@ -1,3 +1,7 @@
--- just scan a json file
+-- Scan and filter a json file
 from 'person.json'
 where id = 1
+
+test:
+  _.size shouldBe 1
+  _.json shouldBe """[{"id":1,"name":"alice","age":10}]"""

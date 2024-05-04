@@ -68,6 +68,13 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
     val plans = ctx.singleStatement().asScala.map(s => visit(s).asInstanceOf[LogicalPlan]).toSeq
     PackageDef(statements = plans, nodeLocation = getLocation(ctx))
 
+  override def visitTest(ctx: TestContext): LogicalPlan =
+    val tests = ctx.testItem.asScala
+      .map: x =>
+        interpretExpression(x.primaryExpression())
+      .toSeq
+    TestDef(tests, getLocation(ctx))
+
   override def visitTypeAlias(ctx: TypeAliasContext): TypeAlias =
     TypeAlias(
       alias = visitIdentifier(ctx.alias).value,
@@ -343,9 +350,6 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
 //        case other =>
 //          GenericLiteral(tpe, v, getLocation(ctx))
 
-  override def visitBasicStringLiteral(ctx: BasicStringLiteralContext): StringLiteral =
-    StringLiteral(unquote(ctx.getText), getLocation(ctx))
-
 //  override def visitUnicodeStringLiteral(ctx: UnicodeStringLiteralContext): StringLiteral =
 //    // Decode unicode literal
 //    StringLiteral(ctx.getText, getLocation(ctx))
@@ -501,8 +505,19 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
     interpretIntegerValue(ctx.INTEGER_VALUE(), ctx)
 
   override def visitStringLiteral(ctx: StringLiteralContext): Literal =
-    val text = ctx.str().getText.replaceAll("(^'|'$)", "")
-    StringLiteral(text, getLocation(ctx))
+    visit(ctx.str()) match
+      case l: Literal => l
+      case other      => throw unknown(ctx.str())
+
+  override def visitBasicStringLiteral(ctx: BasicStringLiteralContext): StringLiteral =
+    StringLiteral(unquote(ctx.getText), getLocation(ctx))
+
+  override def visitTripleQuoteStringLiteral(ctx: TripleQuoteStringLiteralContext): Literal =
+    val text = ctx.getText.trim().stripPrefix("\"\"\"").stripSuffix("\"\"\"")
+    TripleQuoteLiteral(text, getLocation(ctx))
+
+  override def visitContextRef(ctx: ContextRefContext): ContextRef =
+    ContextRef(getLocation(ctx))
 
   private def interpretIntegerValue(v: TerminalNode, ctx: ParserRuleContext): LongLiteral =
     LongLiteral(v.getText.replaceAll("_", "").toLong, getLocation(ctx))
@@ -528,5 +543,12 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
       case expr: Expression =>
         // ctx(args, ...) is a syntax sugar for ctx.apply(xxx)
         FunctionCall(Some(expr), "apply", args, getLocation(ctx))
+
+  override def visitFunctionCallApply(ctx: FunctionCallApplyContext): Expression =
+    // primaryExpression qualifiedName valueExpression
+    val functionName = visitQualifiedName(ctx.qualifiedName()).fullName
+    val args         = Seq(interpretExpression(ctx.valueExpression()))
+    val context      = Some(interpretPrimaryExpression(ctx.primaryExpression()))
+    FunctionCall(context, functionName, args, getLocation(ctx))
 
   override def visitNullLiteral(ctx: NullLiteralContext): Literal = NullLiteral(getLocation(ctx))

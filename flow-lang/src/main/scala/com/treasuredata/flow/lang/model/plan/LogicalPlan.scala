@@ -379,17 +379,5 @@ trait BinaryPlan extends LogicalPlan:
   def right: LogicalPlan
   override def children: Seq[LogicalPlan] = Seq(left, right)
 
-// Top-level definition for each source file
-case class PackageDef(
-    statements: Seq[LogicalPlan],
-    sourceFile: SourceFile = SourceFile.NoSourceFile,
-    nodeLocation: Option[NodeLocation]
-) extends LogicalPlan:
-  override def isEmpty: Boolean                 = statements.isEmpty
-  override def children: Seq[LogicalPlan]       = statements
-  override def outputAttributes: Seq[Attribute] = Nil
-
-  override def inputAttributes: Seq[Attribute] = Nil
-
 object LogicalPlan:
   val empty = PackageDef(statements = Nil, nodeLocation = None)

@@ -17,6 +17,7 @@ singleStatement
     | tableDef
     | subscribeDef
     | moduleDef
+    | test
     ;
 
 query:
@@ -41,10 +42,26 @@ selectExpr:
     SELECT (AS identifier)? selectItemList?
     ;
 
+selectItemList:
+    selectItem (COMMA selectItem)* COMMA?
+    ;
+
+selectItem
+    : (identifier COLON)? expression   #selectSingle
+    | (qualifiedName COLON)? ASTERISK  #selectAll
+    ;
+
 transformExpr:
     TRANSFORM selectItemList
     ;
 
+test:
+    'test' COLON testItem*
+    ;
+
+testItem:
+    primaryExpression
+    ;
 
 subscribeDef:
     SUBSCRIBE src=identifier AS name=identifier COLON
@@ -58,15 +75,6 @@ subscribeParam:
     identifier COLON primaryExpression
     ;
 
-
-selectItemList:
-    selectItem (COMMA selectItem)* COMMA?
-    ;
-
-selectItem
-    : (identifier COLON)? expression #selectSingle
-    | (qualifiedName COLON)? ASTERISK  #selectAll
-    ;
 
 groupByItemList:
     groupByItem (COMMA groupByItem)* COMMA?
@@ -211,12 +219,14 @@ primaryExpression
     | BINARY_LITERAL                                                                   #binaryLiteral
     | '?'                                                                              #parameter
     | primaryExpression '(' (valueExpression (',' valueExpression)*)? ')'              #functionCall
+    | primaryExpression qualifiedName valueExpression                                  #functionCallApply
     | '(' query ')'                                                                    #subqueryExpression
     | '[' (expression (',' expression)*)? ']'                                          #arrayConstructor
     // | value=primaryExpression '[' index=valueExpression ']'                            #subscript
     | qualifiedName                                                                    #columnReference
     | base=primaryExpression '.' next=primaryExpression                                #dereference
     | '(' expression ')'                                                               #parenthesizedExpression
+    | '_'                                                                              #contextRef
     ;
 
 
@@ -232,8 +242,9 @@ arrayExpr:
 
 // Can't use string as a rule name because it's Java keyword
 str
-    : (SINGLE_QUOTED_STRING | DOUBLE_QUOTED_STRING)     #basicStringLiteral
-//  | UNICODE_STRING                                    #unicodeStringLiteral
+    : TRIPLE_QUOTED_STRING                              #tripleQuoteStringLiteral
+    | (SINGLE_QUOTED_STRING | DOUBLE_QUOTED_STRING)     #basicStringLiteral
+    //  | UNICODE_STRING                                    #unicodeStringLiteral
     ;
 
 comparisonOperator
@@ -327,6 +338,11 @@ DOUBLE_QUOTED_STRING
     : '"' ( ~'"' | '""' )* '"'
     ;
 
+
+TRIPLE_QUOTED_STRING
+    : '"""' .* '"""'
+    ;
+
 //UNICODE_STRING
 //    : 'u&\'' ( ~'\'' | '\'\'' )* '\''
 //    ;
@@ -395,3 +411,5 @@ WS
 UNRECOGNIZED
     : .
     ;
+
+
