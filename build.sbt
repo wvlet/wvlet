@@ -121,7 +121,7 @@ lazy val lang =
         "org.wvlet.airframe" %% "airframe-ulid"     % AIRFRAME_VERSION,
         // Add sql parser for testing purpose
         "org.wvlet.airframe" %% "airframe-sql" % AIRFRAME_VERSION % Test,
-        "org.apache.arrow"    % "arrow-vector" % "9.0.0",
+        "org.apache.arrow"    % "arrow-vector" % "16.0.0",
         "org.duckdb"          % "duckdb_jdbc"  % "0.10.2"
 //        // Add Spark as a reference impl (Scala 2)
 //        "org.apache.spark" %% "spark-sql" % "3.5.1" % Test excludeAll (
