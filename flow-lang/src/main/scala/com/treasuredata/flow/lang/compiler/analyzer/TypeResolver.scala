@@ -17,8 +17,7 @@ import com.treasuredata.flow.lang.model.plan.{
   JSONFileScan,
   TableRef,
   TableScan,
-  TypeDef,
-  TypeParam
+  TypeDef
 }
 import wvlet.log.LogSupport
 

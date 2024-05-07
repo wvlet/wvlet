@@ -9,7 +9,6 @@ import org.antlr.v4.runtime.{ParserRuleContext, Token}
 import org.antlr.v4.runtime.tree.TerminalNode
 import wvlet.log.LogSupport
 
-import javax.swing.SortOrder
 import scala.jdk.CollectionConverters.*
 
 object FlowInterpreter:
@@ -65,8 +64,32 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
     UnquotedIdentifier(ctx.getText, getLocation(ctx))
 
   override def visitStatements(ctx: StatementsContext): PackageDef =
-    val plans = ctx.singleStatement().asScala.map(s => visit(s).asInstanceOf[LogicalPlan]).toSeq
-    PackageDef(statements = plans, nodeLocation = getLocation(ctx))
+    val packageName = Option(ctx.packageDef()).map(x => visitIdentifier(x.identifier()).value)
+    val plans = ctx
+      .singleStatement().asScala.flatMap { s =>
+        visit(s) match
+          case l: LogicalPlan        => Seq(l)
+          case lst: Seq[LogicalPlan] => lst
+          case _                     => throw unknown(s)
+      }.toSeq
+    PackageDef(name = packageName, statements = plans, nodeLocation = getLocation(ctx))
+
+  override def visitImportStatement(ctx: ImportStatementContext): Seq[ImportDef] =
+    ctx
+      .importExpr().asScala.map { x =>
+        var names: Seq[String] = x
+          .importRef()
+          .qualifiedName()
+          .identifier()
+          .asScala
+          .map(visitIdentifier)
+          .map(_.value)
+          .toSeq
+        if x.importRef().ASTERISK() != null then names = names :+ "*"
+        val alias      = Option(x.importRef().alias).map(visitIdentifier).map(_.value)
+        val fromSource = Option(x.fromRef).map(s => unquote(s.getText))
+        ImportDef(importRef = names.mkString("."), alias = alias, fromSource = fromSource, getLocation(x))
+      }.toSeq
 
   override def visitTest(ctx: TestContext): LogicalPlan =
     val tests = ctx.testItem.asScala
@@ -82,6 +105,15 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
       getLocation(ctx)
     )
 
+  override def visitModuleDef(ctx: ModuleDefContext): ModuleDef =
+    val moduleName = visitIdentifier(ctx.identifier()).value
+    val elems: Seq[TypeElem] = ctx
+      .typeElem().asScala
+      .map: f =>
+        visitTypeElem(f)
+      .toSeq
+    ModuleDef(name = moduleName, elems = elems, getLocation(ctx))
+
 //  override def visitSchemaDef(ctx: SchemaDefContext): SchemaDef =
 //    val schemaName = ctx.identifier().getText
 //    val columns = ctx
@@ -93,16 +125,22 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
 //      }.toSeq
 //    SchemaDef(schemaName, columns, getLocation(ctx))
 
+  private def visitTypeElem(ctx: TypeElemContext): TypeElem =
+    ctx match
+      case t: TypeDefDefContext => visitTypeDefDef(t)
+      case t: TypeValDefContext => visitTypeValDef(t)
+      case _                    => throw unknown(ctx)
+
   override def visitTypeDef(ctx: TypeDefContext): TypeDef =
     val name: String = visitIdentifier(ctx.identifier()).value
-    val paramList: Seq[TypeParam] =
+    val paramList: Seq[TypeElem] =
       Option(ctx.paramList())
         .flatMap(p => Option(p.param()).map(_.asScala.toSeq))
         .getOrElse(Seq.empty[ParamContext])
         .map { p =>
-          TypeParam(
+          TypeValDef(
             name = visitIdentifier(p.identifier(0)).value,
-            value = visitIdentifier(p.identifier(1)).value,
+            tpe = visitIdentifier(p.identifier(1)).value,
             nodeLocation = getLocation(p)
           )
         }
@@ -112,7 +150,7 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
       .map(e => e.accept(this))
       .collect { case e: TypeElem => e }
       .toSeq
-    TypeDef(name, paramList, typeElems, getLocation(ctx))
+    TypeDef(name, paramList ++ typeElems, getLocation(ctx))
 
   override def visitTypeDefDef(ctx: TypeDefDefContext): TypeDefDef =
     val expr: Expression = interpretExpression(ctx.primaryExpression())

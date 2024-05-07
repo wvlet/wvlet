@@ -6,11 +6,18 @@ tokens {
 
 
 statements:
-    singleStatement (singleStatement)*
+    packageDef?
+    singleStatement+
+    ;
+
+
+packageDef:
+    'package' identifier
     ;
 
 singleStatement
-    : query
+    : importStatement
+    | query
     | typeAlias
     | typeDef
     | functionDef
@@ -19,6 +26,20 @@ singleStatement
     | moduleDef
     | test
     ;
+
+importStatement:
+    'import' importExpr (COMMA importExpr)*
+    ;
+
+importExpr
+    : importRef (FROM fromRef=str)?
+    ;
+
+importRef
+    : qualifiedName ('.' ASTERISK)?
+    | qualifiedName AS alias=identifier
+    ;
+
 
 query:
     FROM relation
@@ -139,7 +160,7 @@ typeElem
 functionDef:
     DEF name=identifier ('(' paramList ')')? (COLON resultTypeName=identifier)? EQ
         body=expression
-    END
+    END?
     ;
 
 tableDef:
@@ -155,12 +176,8 @@ tableParam:
 
 moduleDef:
     MODULE identifier COLON
-      (moduleElement (COMMA moduleElement)* COMMA?)?
+      typeElem*
     END?
-    ;
-
-moduleElement:
-    DEF identifier (COLON identifier)? EQ primaryExpression
     ;
 
 paramList:

@@ -1,0 +1,11 @@
+package example
+
+-- In-line type parameter definitions
+type person(id: int, name: string)
+
+-- Multi-line parameter definitions
+type person2:
+  id: int
+  name: string
+end
+

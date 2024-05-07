@@ -1,0 +1,6 @@
+import example.*
+import example.person
+import example.person, example.person2
+import example.person2 as p2
+-- import a package from GitHub repository and folder
+import example.* from "github.com/treasure-data/treasure-flow/examples/basic"

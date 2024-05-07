@@ -32,10 +32,6 @@ class TypeScanner(name: String) extends Phase(name) with LogSupport:
     }
 
   private def scanTypeDef(typeDef: TypeDef, context: Context): DataType =
-    val typeParams = typeDef.params.collect { case p: TypeParam =>
-      val resolvedType: DataType = context.scope.findType(p.value).getOrElse(UnresolvedType(p.value))
-      NamedType(p.name, resolvedType)
-    }
     // TODO resolve defs
     val defs: Seq[FunctionType] = Seq.empty // typeDef.defs.collect { case tpe: TypeDefDef =>
 
@@ -43,7 +39,7 @@ class TypeScanner(name: String) extends Phase(name) with LogSupport:
       val resolvedType = scanDataType(ColumnType(v.tpe, v.nodeLocation), context)
       NamedType(v.name, resolvedType)
     }
-    val selfType = typeParams.filter(_.name == "self")
+    val selfType = valDefs.filter(_.name == "self")
 
     if valDefs.nonEmpty then SchemaType(typeDef.name, valDefs)
     else

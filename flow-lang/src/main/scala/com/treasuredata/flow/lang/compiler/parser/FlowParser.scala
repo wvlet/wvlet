@@ -18,7 +18,7 @@ object FlowParser extends Phase("parser") with LogSupport:
     CompilationUnit.fromPath(path).map(parse)
 
   def parse(compileUnit: CompilationUnit): LogicalPlan =
-    trace(s"Parsing ${compileUnit}")
+    debug(s"Parsing ${compileUnit.sourceFile}")
     parse(compileUnit.sourceFile)
 
   def parse(sourceFile: SourceFile): LogicalPlan =

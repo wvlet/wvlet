@@ -4,7 +4,8 @@ val TRINO_VERSION       = "418"
 val AWS_SDK_VERSION     = "2.20.146"
 val SCALAJS_DOM_VERSION = "2.8.0"
 
-ThisBuild / scalaVersion := IO.read(file("SCALA_VERSION")).trim
+val SCALA_3 = IO.read(file("SCALA_VERSION")).trim
+ThisBuild / scalaVersion := SCALA_3
 
 // For using the internal Maven repo at jfrog.io
 val jfrogCredential = Credentials(
@@ -119,6 +120,8 @@ lazy val lang =
         "org.wvlet.airframe" %% "airframe"          % AIRFRAME_VERSION,
         "org.wvlet.airframe" %% "airframe-launcher" % AIRFRAME_VERSION,
         "org.wvlet.airframe" %% "airframe-ulid"     % AIRFRAME_VERSION,
+        // Add a reference implementation of the compiler
+        "org.scala-lang" %% "scala3-compiler" % SCALA_3 % Test,
         // Add sql parser for testing purpose
         "org.wvlet.airframe" %% "airframe-sql" % AIRFRAME_VERSION % Test,
         "org.apache.arrow"    % "arrow-vector" % "16.0.0",

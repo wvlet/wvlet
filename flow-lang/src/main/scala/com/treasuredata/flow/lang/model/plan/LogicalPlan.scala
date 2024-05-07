@@ -380,4 +380,4 @@ trait BinaryPlan extends LogicalPlan:
   override def children: Seq[LogicalPlan] = Seq(left, right)
 
 object LogicalPlan:
-  val empty = PackageDef(statements = Nil, nodeLocation = None)
+  val empty = PackageDef(name = None, statements = Nil, nodeLocation = None)

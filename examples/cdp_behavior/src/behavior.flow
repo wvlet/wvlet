@@ -1,69 +1,4 @@
-type td_sdk_log:
-  td_client_id: string
-  td_host: string
-  td_path: string
-  td_title: string
-  td_description: string
-  td_ip: ip_address
-  td_url: url
-  td_charset: string
-  td_browser_version: string
-  td_os: string
-  td_browser: string
-  td_referrer: string
-  td_version: string
-  td_language: string
-  td_color: string
-  td_os_version: string
-  td_user_agent: user_agent
-  td_platform: string
-  td_screen: string
-  td_global_id: string
-  td_viewport: string
-  _col0: int
-  time: int
-end
-
-type ip_address(self: string):
-  def country_name = td_ip_to_country_name(self)
-  def city_name = td_ip_to_city_name(self)
-  def city_latitude = td_ip_to_latitude(self)
-  def city_longitude = td_ip_to_longitude(self)
-  def city_metro_code = td_ip_to_metro_code(self)
-  def city_time_zone = td_ip_to_time_zone(self)
-  def city_postal_code =  td_ip_to_postal_code(self)
-  def least_specific_subdivision_name = td_ip_to_least_specific_subdivision_name(self)
-  def most_specific_subdivision_name = td_ip_to_most_specific_subdivision_name(self)
-  def subdivision_names = td_ip_to_subdivision_names(self)
-  def connection_type = td_ip_to_connection_type(self)
-  def domain = td_ip_to_domain(self)
-end
-
-type user_agent(self: string):
-  def category = td_parse_agent(self)('category')
-  def name = td_parse_agent(self)('name')
-  def os = td_parse_agent(self)('os')
-  def os_version =  td_parse_agent(self)('os_version')
-  def vendor = td_parse_agent(self)('vendor')
-  def version = td_parse_agent(self)('version')
-end
-
-type url(self: string):
-  def utm_campaign = parse_url(self, 'QUERY', 'utm_campaign')
-  def utm_medium = parse_url(self, 'QUERY', 'utm_medium')
-  def utm_source = parse_url(self, 'QUERY', 'utm_source')
-end
-
--- Reuse a common filtering pattern for the same type table
-def behavior_filter(l:td_sdk_log): boolean =
-  l.time is not null
-  and l.td_client_id is not null
-  and l.td_user_agent.category is not 'crawler'
-  and l.td_client_id is not '00000000-0000-4000-8000-000000000000'
-  and (l.td_browser is not null
-    or not regexp_like(l.td_browser, '^(?:Googlebot(?:-.*)?|BingPreview|bingbot|YandexBot|PingdomBot)$'))
-  and l.td_host is not 'gtm-msr.appspot.com'
-end
+package cdp
 
 -- Define source tables for behavior logs
 table weblogs:
@@ -99,3 +34,13 @@ where behavior_filter(_)
 select as behavior_weblog_fluentd_ja
 
 
+-- Reuse a common filtering pattern for the same type table
+def behavior_filter(l:td_sdk_log): boolean =
+  l.time is not null
+  and l.td_client_id is not null
+  and l.td_user_agent.category is not 'crawler'
+  and l.td_client_id is not '00000000-0000-4000-8000-000000000000'
+  and (l.td_browser is not null
+  or not regexp_like(l.td_browser, '^(?:Googlebot(?:-.*)?|BingPreview|bingbot|YandexBot|PingdomBot)$'))
+  and l.td_host is not 'gtm-msr.appspot.com'
+end
