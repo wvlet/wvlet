@@ -1,6 +1,7 @@
 package com.treasuredata.flow.lang.compiler
 
 import com.treasuredata.flow.lang.StatusCode
+import com.treasuredata.flow.lang.catalog.Catalog
 import wvlet.log.LogSupport
 
 /**
@@ -17,6 +18,10 @@ case class Context(
 
   def scope: Scope                 = _scope
   def compileUnit: CompilationUnit = _compileUnit
+
+  // Get the context catalog
+  // TODO support multiple catalogs
+  def catalog: Catalog = ???
 
   def withCompilationUnit[U](newCompileUnit: CompilationUnit)(block: Context => U): U =
     val prev = _compileUnit

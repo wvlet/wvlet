@@ -14,21 +14,21 @@ case class TableDef(
     params: Seq[TableDefParam],
     nodeLocation: Option[NodeLocation]
 ) extends DDL:
+
+  def getParam(paramName: String): Option[String] =
+    params.find(_.name == paramName).map(_.paramValue)
+
   def getType: Option[String] =
     params
       .find(_.name == "type")
       .map(_.paramValue)
-      .collect {
-        case l: Literal => l.stringValue
-        case q: QName   => q.fullName
-      }
 
 case class TableDefParam(
     name: String,
-    paramValue: Expression,
+    paramValue: String,
     nodeLocation: Option[NodeLocation]
 ) extends Expression:
-  override def children: Seq[Expression] = Seq(paramValue)
+  override def children: Seq[Expression] = Nil
 
 case class CreateSchema(
     schema: QName,

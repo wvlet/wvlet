@@ -131,6 +131,13 @@ case class FileScan(path: String, nodeLocation: Option[NodeLocation]) extends Re
   override def outputAttributes: Seq[Attribute] = Nil
   override def relationType: RelationType       = UnresolvedRelationType(RelationType.newRelationTypeName)
 
+case class PathScan(name: String, path: String, schema: RelationType, nodeLocation: Option[NodeLocation])
+    extends Relation
+    with LeafPlan:
+  override def toString: String                 = s"PathScan(${path})"
+  override def outputAttributes: Seq[Attribute] = Nil
+  override def relationType: RelationType       = UnresolvedRelationType(RelationType.newRelationTypeName)
+
 case class JSONFileScan(
     path: String,
     schema: RelationType,

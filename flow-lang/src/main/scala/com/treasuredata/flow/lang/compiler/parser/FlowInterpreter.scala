@@ -15,7 +15,10 @@ object FlowInterpreter:
   private val parserRules = FlowLangParser.ruleNames.toList.asJava
 
   private def unquote(s: String): String =
-    s.substring(1, s.length - 1)
+    if (s.startsWith("'") && s.endsWith("'")) ||
+      s.startsWith("\"") && s.endsWith("\"")
+    then s.substring(1, s.length - 1)
+    else s
 
 /**
   * Translate ANTLR4's parse tree into LogicalPlan and Expression nodes
@@ -187,8 +190,8 @@ class FlowInterpreter extends FlowLangBaseVisitor[Any] with LogSupport:
     val params = ctx
       .tableParam().asScala
       .map { x =>
-        val key   = visitIdentifier(x.identifier()).value
-        val value = interpretExpression(x.primaryExpression())
+        val key           = visitIdentifier(x.identifier()).value
+        val value: String = unquote(x.primaryExpression().getText)
         TableDefParam(key, value, getLocation(x))
       }.toSeq
     TableDef(tableName, params, getLocation(ctx))

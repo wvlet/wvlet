@@ -17,14 +17,17 @@ case class PlanResult(plan: LogicalPlan, result: QueryResult) extends QueryResul
 case class TableRows(schema: RelationType, rows: Seq[Map[String, Any]]) extends QueryResult
 
 object QueryResultPrinter extends LogSupport:
-  def print(result: QueryResult): String =
+  def print(result: QueryResult, limit: Option[Int] = None): String =
     result match
       case QueryResultList(list) =>
-        list.map(print).mkString("\n\n")
+        list.map(x => print(x, limit)).mkString("\n\n")
       case PlanResult(plan, result) =>
-        s"[plan]:\n${plan.pp}\n[result]\n${print(result)}"
+        s"[plan]:\n${plan.pp}\n[result]\n${print(result, limit)}"
       case TableRows(schema, rows) =>
         val header = schema.fields.map(_.typeName).mkString(", ")
-        rows.map(_.toString()).mkString("\n")
+        val resultRows = limit match
+          case Some(limit) => rows.take(limit)
+          case None        => rows
+        resultRows.map(_.toString()).mkString("\n")
       case _ =>
         result.toString

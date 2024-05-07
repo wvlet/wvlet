@@ -22,8 +22,9 @@ object DuckDBExecutor extends LogSupport:
         execute(u, result.context)
 
   def execute(u: CompilationUnit, context: Context): Unit =
+    debug(s"Execute:\n${u.resolvedPlan.pp}")
     val result       = default.execute(u.resolvedPlan, context)
-    val resultString = QueryResultPrinter.print(result)
+    val resultString = QueryResultPrinter.print(result, limit = Some(10))
     debug(resultString)
 
 class DuckDBExecutor extends LogSupport:
@@ -41,15 +42,19 @@ class DuckDBExecutor extends LogSupport:
           Using.resource(conn.createStatement()): stmt =>
             Using.resource(stmt.executeQuery(sql)): rs =>
               val codec       = JDBCCodec(rs)
-              val recordCodec = MessageCodec.of[Map[String, Any]]
-              val results: Seq[Map[String, Any]] = codec
-                .mapMsgPackMapRows: msgpack =>
-                  recordCodec.fromMsgPack(msgpack)
-                .toSeq
+              val resultCodec = MessageCodec.of[Seq[Map[String, Any]]]
+              val results     = resultCodec.fromMsgPack(codec.toMsgPack)
               TableRows(q.relationType, results)
         result
+      case t: TableDef =>
+        QueryResult.empty
       case t: TestDef =>
         debug(s"Executing test: ${t}")
+        QueryResult.empty
+      case s: Subscribe =>
+        debug(s"Executing subscribe: ${s}")
+        QueryResult.empty
+      case f: LanguageStatement =>
         QueryResult.empty
       case other =>
         throw StatusCode.NOT_IMPLEMENTED.newException(s"Unsupported plan: ${other}")

@@ -259,6 +259,8 @@ class SQLGenerator(config: SQLGeneratorConfig = SQLGeneratorConfig()) extends Lo
         b.result().mkString(" ")
       case j: JSONFileScan =>
         s"'${j.path}'"
+      case p: PathScan =>
+        s"select * from '${p.path}'"
       case other => unknown(other)
 
   def printRelationWithParenthesesIfNecessary(r: Relation): String =

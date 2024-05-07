@@ -4,18 +4,29 @@ package cdp
 table weblogs:
   connection: duckdb
   type: td_sdk_log
-  path: 'data/weblogs'
+  path: 'examples/cdp_behavior/data/weblogs/*.parquet'
 end
 
 table weblog_fluentd_ja:
   connection: duckdb
   type: td_sdk_log
-  path: 'data/weblog_fluentd_ja'
+  path: 'examples/cdp_behavior/data/weblog_fluentd_ja/*.parquet'
 end
 
 -- CDP behavior table ETL example
-from weblogs
-where behavior_filter(_)
+from weblogs as l
+where
+  l.time is not null
+  and l.td_client_id is not null
+  --and l.td_user_agent.category is not 'crawler'
+  and l.td_client_id is not '00000000-0000-4000-8000-000000000000'
+  and (
+    l.td_browser is not null
+    -- TODO: Use regexp_like in Trino, regexp_matches in DuckDB
+    or not regexp_matches(l.td_browser, '^(?:Googlebot(?:-.*)?|BingPreview|bingbot|YandexBot|PingdomBot)$')
+  )
+  and l.td_host is not 'gtm-msr.appspot.com'
+-- where behavior_filter(_)
 select as behavior_weblogs
 
 -- Subscribe to the behavior table
@@ -28,11 +39,11 @@ subscribe behavior_weblogs as behavior_weblogs_15m:
   watermark_column: time
   window_size: '15m'
 
--- Another behavior table example
-from weblog_fluentd_ja
-where behavior_filter(_)
-select as behavior_weblog_fluentd_ja
-
+-- -- Another behavior table example
+-- from weblog_fluentd_ja
+-- where behavior_filter(_)
+-- select as behavior_weblog_fluentd_ja
+--
 
 -- Reuse a common filtering pattern for the same type table
 def behavior_filter(l:td_sdk_log): boolean =

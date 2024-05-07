@@ -3,25 +3,11 @@ package com.treasuredata.flow.lang.compiler.analyzer
 import com.treasuredata.flow.lang.StatusCode
 import com.treasuredata.flow.lang.compiler.RewriteRule.PlanRewriter
 import com.treasuredata.flow.lang.compiler.{CompilationUnit, Context, Phase, RewriteRule}
-import com.treasuredata.flow.lang.model.DataType.{AliasedType, NamedType, SchemaType, UnresolvedType}
+import com.treasuredata.flow.lang.model.DataType.{NamedType, SchemaType}
+import com.treasuredata.flow.lang.model.expr.{Attribute, AttributeList, Expression}
+import com.treasuredata.flow.lang.model.plan.*
 import com.treasuredata.flow.lang.model.{DataType, RelationType}
-import com.treasuredata.flow.lang.model.expr.{Attribute, AttributeIndex, AttributeList, ColumnType, Expression}
-import com.treasuredata.flow.lang.model.plan.{
-  FileScan,
-  Filter,
-  LogicalPlan,
-  Project,
-  Query,
-  RelScan,
-  Relation,
-  JSONFileScan,
-  TableRef,
-  TableScan,
-  TypeDef
-}
 import wvlet.log.LogSupport
-
-import scala.util.control.NonFatal
 
 object TypeResolver extends Phase("type-resolver") with LogSupport:
 
@@ -74,13 +60,17 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
               case Some(schema: SchemaType) =>
                 context.scope.getTableDef(ref.name.fullName) match
                   case Some(tbl) =>
-                    TableScan(ref.name.fullName, tpe, schema.columnTypes, ref.nodeLocation)
+                    (tbl.getParam("connection"), tbl.getParam("path")) match
+                      case (Some("duckdb"), Some(path)) =>
+                        PathScan(ref.name.fullName, path, schema, ref.nodeLocation)
+                      case _ =>
+                        TableScan(ref.name.fullName, tpe, schema.columnTypes, ref.nodeLocation)
                   case None =>
                     RelScan(ref.name.fullName, tpe, schema.columnTypes, ref.nodeLocation)
               case other =>
                 ref
           case _ =>
-            trace(s"Unresolved type: ${ref}")
+            trace(s"Unresolved table ref: ${ref}")
             ref
 
   /**
