@@ -1,9 +1,8 @@
-grammar FlowLang;
+parser grammar FlowLangParser;
 
-tokens {
-    DELIMITER
+options {
+    tokenVocab = FlowLangLexer;
 }
-
 
 statements:
     packageDef?
@@ -12,7 +11,7 @@ statements:
 
 
 packageDef:
-    'package' identifier
+    PACKAGE identifier
     ;
 
 singleStatement
@@ -28,7 +27,7 @@ singleStatement
     ;
 
 importStatement:
-    'import' importExpr (COMMA importExpr)*
+    IMPORT importExpr (COMMA importExpr)*
     ;
 
 importExpr
@@ -36,7 +35,7 @@ importExpr
     ;
 
 importRef
-    : qualifiedName ('.' ASTERISK)?
+    : qualifiedName (DOT ASTERISK)?
     | qualifiedName AS alias=identifier
     ;
 
@@ -77,7 +76,7 @@ transformExpr:
     ;
 
 test:
-    'test' COLON testItem*
+    TEST COLON testItem*
     ;
 
 testItem:
@@ -86,8 +85,8 @@ testItem:
 
 subscribeDef:
     SUBSCRIBE src=identifier AS name=identifier COLON
-    ('watermark_column' COLON watermarkColumn=identifier)?
-    ('window_size' COLON windowSize=str)?
+    (WATERMARK_COLUMN COLON watermarkColumn=identifier)?
+    (WINDOW_SIZE COLON windowSize=str)?
     subscribeParam*
     END?
     ;
@@ -111,15 +110,15 @@ relation
     ;
 
 columnAliases
-    : '(' identifier ('.' identifier)* ')'
+    : LPAREN identifier (DOT identifier)* RPAREN
     ;
 
 relationPrimary
     : qualifiedName                                                   #tableName
-    | '{' query '}'                                                   #subqueryRelation
-    | '(' relation ')'                                                #parenthesizedRelation
-//    | UNNEST '(' primaryExpression (',' primaryExpression)* ')' (WITH ORDINALITY)?  #unnest
-//    | LATERAL '(' query ')'                                           #lateral
+    | LBRACE query RBRACE                                             #subqueryRelation
+    | LPAREN relation RPAREN                                          #parenthesizedRelation
+//    | UNNEST LPAREN primaryExpression (COMMA primaryExpression)* RPAREN (WITH ORDINALITY)?  #unnest
+//    | LATERAL LPAREN query RPAREN                                           #lateral
     | str                                                             #fileScan
     ;
 
@@ -137,7 +136,7 @@ joinType
 
 joinCriteria
     : ON booleanExpression
-    | ON '(' identifier (COMMA identifier)* ')'
+    | ON LPAREN identifier (COMMA identifier)* RPAREN
     ;
 
 
@@ -146,19 +145,19 @@ typeAlias:
     ;
 
 typeDef:
-    TYPE identifier ('(' paramList ')')?
+    TYPE identifier (LPAREN paramList RPAREN)?
     (COLON typeElem*)?
     END?
     ;
 
 typeElem
-    : DEF identifier ('.' identifier)? EQ primaryExpression   #typeDefDef
+    : DEF identifier (DOT identifier)? EQ primaryExpression   #typeDefDef
     | columnName=identifier COLON typeName=identifier         #typeValDef
     ;
 
 
 functionDef:
-    DEF name=identifier ('(' paramList ')')? (COLON resultTypeName=identifier)? EQ
+    DEF name=identifier (LPAREN paramList RPAREN)? (COLON resultTypeName=identifier)? EQ
         body=expression
     END?
     ;
@@ -190,7 +189,7 @@ param:
 
 
 qualifiedName
-    : identifier ('.' identifier)*
+    : identifier (DOT identifier)*
     ;
 
 identifier:
@@ -215,7 +214,7 @@ expression
     ;
 
 booleanExpression
-    : ('!' | NOT) booleanExpression                                #logicalNot
+    : (EXCLAMATION | NOT) booleanExpression                        #logicalNot
     | valueExpression                                              #booleanDeafault
     | left=booleanExpression operator=AND right=booleanExpression  #logicalBinary
     | left=booleanExpression operator=OR right=booleanExpression   #logicalBinary
@@ -234,16 +233,16 @@ primaryExpression
     | booleanValue                                                                     #booleanLiteral
     | str                                                                              #stringLiteral
     | BINARY_LITERAL                                                                   #binaryLiteral
-    | '?'                                                                              #parameter
-    | primaryExpression '(' (valueExpression (',' valueExpression)*)? ')'              #functionCall
+    | QUESTION                                                                         #parameter
+    | primaryExpression LPAREN (valueExpression (COMMA valueExpression)*)? RPAREN      #functionCall
     | primaryExpression qualifiedName valueExpression                                  #functionCallApply
-    | '(' query ')'                                                                    #subqueryExpression
-    | '[' (expression (',' expression)*)? ']'                                          #arrayConstructor
-    // | value=primaryExpression '[' index=valueExpression ']'                            #subscript
+    | LPAREN query RPAREN                                                              #subqueryExpression
+    | LBRACKET (expression (COMMA expression)*)? RBRACKET                              #arrayConstructor
+    // | value=primaryExpression LBRACKET index=valueExpression RBRACKET               #subscript
     | qualifiedName                                                                    #columnReference
-    | base=primaryExpression '.' next=primaryExpression                                #dereference
-    | '(' expression ')'                                                               #parenthesizedExpression
-    | '_'                                                                              #contextRef
+    | base=primaryExpression DOT next=primaryExpression                                #dereference
+    | LPAREN expression RPAREN                                                         #parenthesizedExpression
+    | UNDERSCORE                                                                       #contextRef
     ;
 
 
@@ -253,7 +252,7 @@ exprList:
 
 
 arrayExpr:
-    '[' exprList ']'
+    LBRACKET exprList RBRACKET
     ;
 
 
@@ -285,148 +284,5 @@ number
     | INTEGER_VALUE  #integerLiteral
     ;
 
-
-
-COLON: ':';
-COMMA: ',';
-
-AS: 'as';
-DEF: 'def';
-END: 'end';
-FOR: 'for';
-FROM: 'from';
-IN: 'in';
-IS: 'is';
-ON: 'on';
-MODULE: 'module';
-SELECT: 'select';
-TRANSFORM: 'transform';
-GROUP: 'group';
-BY: 'by';
-ORDER: 'order';
-LIMIT: 'limit';
-TYPE: 'type';
-WHERE: 'where';
-TABLE: 'table';
-SUBSCRIBE: 'subscribe';
-
-ASC: 'asc';
-DESC: 'desc';
-
-UNNEST: 'unnest';
-LATERAL: 'lateral';
-WITH: 'with';
-ORDINALITY: 'ordinality';
-
-CROSS: 'cross';
-FULL: 'full';
-INNER: 'inner';
-JOIN: 'join';
-LEFT: 'left';
-NATURAL: 'natural';
-RIGHT: 'right';
-
-
-NULL: 'null';
-NOT: 'not';
-AND: 'and';
-OR: 'or';
-TRUE: 'true';
-FALSE: 'false';
-
-EQ  : '=';
-NEQ : '!=';
-LT  : '<';
-LTE : '<=';
-GT  : '>';
-GTE : '>=';
-
-PLUS: '+';
-MINUS: '-';
-ASTERISK: '*';
-SLASH: '/';
-PERCENT: '%';
-
-SINGLE_QUOTED_STRING
-    : '\'' ( ~'\'' | '\'\'' )* '\''
-    ;
-
-DOUBLE_QUOTED_STRING
-    : '"' ( ~'"' | '""' )* '"'
-    ;
-
-
-TRIPLE_QUOTED_STRING
-    : '"""' .* '"""'
-    ;
-
-//UNICODE_STRING
-//    : 'u&\'' ( ~'\'' | '\'\'' )* '\''
-//    ;
-
-// Note: we allow any character inside the binary literal and validate
-// its a correct literal when the AST is being constructed. This
-// allows us to provide more meaningful error messages to the user
-BINARY_LITERAL
-    :  'x\'' (~'\'')* '\''
-    ;
-
-// Allow underscroe like 100_000_000 for readability
-INTEGER_VALUE
-    : DIGIT (DIGIT | '_')*
-    ;
-
-DECIMAL_VALUE
-    : DIGIT+ '.' DIGIT*
-    | '.' DIGIT+
-    ;
-
-DOUBLE_VALUE
-    : DIGIT+ ('.' DIGIT*)? EXPONENT
-    | '.' DIGIT+ EXPONENT
-    ;
-
-IDENTIFIER
-    : (LETTER | '_') (LETTER | DIGIT | '_' | '@')*
-    ;
-
-DIGIT_IDENTIFIER
-    : DIGIT (LETTER | DIGIT | '_' | '@' | ':')+
-    ;
-
-BACKQUOTED_IDENTIFIER
-    : '`' ( ~'`' | '``' )* '`'
-    ;
-
-fragment EXPONENT
-    : 'e' [+-]? DIGIT+
-    ;
-
-fragment DIGIT
-    : [0-9]
-    ;
-
-fragment LETTER
-    : [A-Za-z]
-    ;
-
-SIMPLE_COMMENT
-    : '--' ~[\r\n]* '\r'? '\n'? -> channel(HIDDEN)
-    ;
-
-BRACKETED_COMMENT
-    : '/*' .*? '*/' -> channel(HIDDEN)
-    ;
-
-WS
-    : [ \r\n\t]+ -> channel(HIDDEN)
-    ;
-
-// Catch-all for anything we can't recognize.
-// We use this to be able to ignore and recover all the text
-// when splitting statements with DelimiterLexer
-UNRECOGNIZED
-    : .
-    ;
 
 

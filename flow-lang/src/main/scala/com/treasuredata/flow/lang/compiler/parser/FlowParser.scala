@@ -22,7 +22,9 @@ object FlowParser extends Phase("parser") with LogSupport:
     parse(compileUnit.sourceFile)
 
   def parse(sourceFile: SourceFile): LogicalPlan =
-    val parser = new FlowLangParser(tokenStream(sourceFile.content))
+    val lexer       = new FlowLangLexer(new ANTLRInputStream(sourceFile.content))
+    val tokenStream = new CommonTokenStream(lexer)
+    val parser      = new FlowLangParser(tokenStream)
     // Do not drop mismatched token
     parser.setErrorHandler(
       new DefaultErrorStrategy:
@@ -30,6 +32,9 @@ object FlowParser extends Phase("parser") with LogSupport:
           if nextTokensContext == null then throw new InputMismatchException(recognizer)
           else throw new InputMismatchException(recognizer, nextTokensState, nextTokensContext)
     )
+    lexer.removeErrorListeners()
+    lexer.addErrorListener(createLexerErrorListener)
+
     parser.removeErrorListeners()
     parser.addErrorListener(createLexerErrorListener)
     val ctx = parser.statements()
@@ -39,11 +44,6 @@ object FlowParser extends Phase("parser") with LogSupport:
     interpreter.interpret(ctx) match
       case p: PackageDef => p.copy(sourceFile = sourceFile)
       case other         => other
-
-  private def tokenStream(text: String): CommonTokenStream =
-    val lexer       = new FlowLangLexer(new ANTLRInputStream(text))
-    val tokenStream = new CommonTokenStream(lexer)
-    tokenStream
 
   private def createLexerErrorListener =
     new BaseErrorListener:

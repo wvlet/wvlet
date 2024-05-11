@@ -19,6 +19,8 @@ case class TableRows(schema: RelationType, rows: Seq[Map[String, Any]]) extends 
 object QueryResultPrinter extends LogSupport:
   def print(result: QueryResult, limit: Option[Int] = None): String =
     result match
+      case QueryResult.empty =>
+        "<empty>"
       case QueryResultList(list) =>
         list.map(x => print(x, limit)).mkString("\n\n")
       case PlanResult(plan, result) =>
@@ -28,6 +30,20 @@ object QueryResultPrinter extends LogSupport:
         val resultRows = limit match
           case Some(limit) => rows.take(limit)
           case None        => rows
-        resultRows.map(_.toString()).mkString("\n")
+        resultRows.map(print).mkString("\n")
       case _ =>
         result.toString
+
+  private def print(row: Any): String =
+    row match
+      case m: Map[?, ?] =>
+        m.map: (k, v) =>
+          s"${k}: ${print(v)}"
+        .mkString(", ")
+      case a: Array[?] =>
+        a.map(print).mkString(", ")
+      case null => "null"
+      case s: String =>
+        s""""${s}""""
+      case x =>
+        x.toString

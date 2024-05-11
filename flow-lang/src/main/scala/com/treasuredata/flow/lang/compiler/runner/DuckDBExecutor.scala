@@ -25,7 +25,7 @@ object DuckDBExecutor extends LogSupport:
     debug(s"Execute:\n${u.resolvedPlan.pp}")
     val result       = default.execute(u.resolvedPlan, context)
     val resultString = QueryResultPrinter.print(result, limit = Some(10))
-    debug(resultString)
+    trace(resultString)
 
 class DuckDBExecutor extends LogSupport:
   def execute(plan: LogicalPlan, context: Context): QueryResult =
