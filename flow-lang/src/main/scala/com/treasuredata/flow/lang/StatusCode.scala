@@ -23,5 +23,7 @@ enum StatusCode(statusType: StatusType):
   case FILE_NOT_FOUND          extends StatusCode(StatusType.UserError)
   case DATABASE_ALREADY_EXISTS extends StatusCode(StatusType.UserError)
   case TABLE_ALREADY_EXISTS    extends StatusCode(StatusType.UserError)
+  case UNAUTHENTICATED         extends StatusCode(StatusType.UserError)
+  case PERMISSION_DENIED       extends StatusCode(StatusType.UserError)
 
   case NOT_IMPLEMENTED extends StatusCode(StatusType.UserError)

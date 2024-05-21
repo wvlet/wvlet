@@ -1,6 +1,6 @@
 val AIRFRAME_VERSION    = "24.5.0"
 val AIRSPEC_VERSION     = "24.5.0"
-val TRINO_VERSION       = "418"
+val TRINO_VERSION       = "423"
 val AWS_SDK_VERSION     = "2.20.146"
 val SCALAJS_DOM_VERSION = "2.8.0"
 
@@ -113,8 +113,11 @@ lazy val lang =
       Antlr4 / antlr4PackageName := Some("com.treasuredata.flow.lang.compiler.parser"),
       Antlr4 / antlr4GenListener := true,
       Antlr4 / antlr4GenVisitor  := true,
-      javaOptions ++= Seq(
-        "--add-opens=java.base/java.nio=org.apache.arrow.memory.core,ALL-UNNAMED"
+      Test / javaOptions ++= Seq(
+        // "--add-opens=java.base/java.nio=org.apache.arrow.memory.core,ALL-UNNAMED",
+        // Add JVM options for suppress warnings in TestTrinoServer
+        "-Djdk.attach.allowAttachSelf=true",
+        "-XX:+EnableDynamicAgentLoading"
       ),
       libraryDependencies ++= Seq(
         "org.wvlet.airframe" %% "airframe"          % AIRFRAME_VERSION,
@@ -125,7 +128,12 @@ lazy val lang =
         // Add sql parser for testing purpose
         "org.wvlet.airframe" %% "airframe-sql" % AIRFRAME_VERSION % Test,
         "org.apache.arrow"    % "arrow-vector" % "16.0.0",
-        "org.duckdb"          % "duckdb_jdbc"  % "0.10.2"
+        "org.duckdb"          % "duckdb_jdbc"  % "0.10.2",
+        "io.trino"            % "trino-jdbc"   % TRINO_VERSION,
+        // exclude() and jar() are necessary to avoid https://github.com/sbt/sbt/issues/7407
+        "io.trino" % "trino-testing" % TRINO_VERSION % Test exclude ("io.trino", "trino-tpch"),
+        "io.trino" % "trino-memory"  % TRINO_VERSION % Test exclude ("io.trino", "trino-tpch") jar ()
+
 //        // Add Spark as a reference impl (Scala 2)
 //        "org.apache.spark" %% "spark-sql" % "3.5.1" % Test excludeAll (
 //          // exclude sbt-parser-combinators as it conflicts with Scala 3
@@ -133,7 +141,7 @@ lazy val lang =
 //        ) cross (CrossVersion.for3Use2_13)
       ),
       // To enable JVM options
-      // Test / fork := true,
+      Test / fork := true,
       // When forking, the base directory should be set to the root directory
       Test / baseDirectory := (ThisBuild / baseDirectory).value,
       // Watch changes of example .flow files upon testing
