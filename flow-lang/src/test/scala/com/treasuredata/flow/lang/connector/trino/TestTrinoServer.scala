@@ -4,7 +4,6 @@ import io.trino.plugin.memory.MemoryPlugin
 import io.trino.server.testing.TestingTrinoServer
 import wvlet.log.{LogSupport, Logger}
 
-import java.time.Duration
 import java.util.logging.Level
 import scala.jdk.CollectionConverters.*
 
@@ -15,13 +14,13 @@ class TestTrinoServer extends AutoCloseable with LogSupport:
 
   private val server =
     Logger.rootLogger.suppressLogs {
+      setLogLevel("io.airlift", Level.WARNING)
       val trino = TestingTrinoServer.create()
       setLogLevel("io.trino", Level.WARNING)
-      setLogLevel("io.airlift", Level.WARNING)
+      setLogLevel("Bootstrap", Level.WARNING)
 
       trino.installPlugin(new MemoryPlugin())
       trino.createCatalog("memory", "memory")
-      trino.waitForNodeRefresh(Duration.ofSeconds(10))
       trino
     }
 
