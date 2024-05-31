@@ -128,7 +128,7 @@ lazy val lang =
         // Add sql parser for testing purpose
         "org.wvlet.airframe" %% "airframe-sql" % AIRFRAME_VERSION % Test,
         "org.apache.arrow"    % "arrow-vector" % "16.0.0",
-        "org.duckdb"          % "duckdb_jdbc"  % "0.10.2",
+        "org.duckdb"          % "duckdb_jdbc"  % "0.10.3",
         "io.trino"            % "trino-jdbc"   % TRINO_VERSION,
         // exclude() and jar() are necessary to avoid https://github.com/sbt/sbt/issues/7407
         "io.trino" % "trino-testing" % TRINO_VERSION % Test exclude ("io.trino", "trino-tpch"),
