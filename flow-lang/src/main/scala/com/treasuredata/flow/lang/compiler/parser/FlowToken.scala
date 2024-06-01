@@ -1,7 +1,7 @@
 package com.treasuredata.flow.lang.compiler.parser
 
 enum TokenType:
-  case Control, Literal, Identifier, Op, Keyword
+  case Control, Literal, Identifier, Quote, Op, Keyword
 
 import TokenType.*
 
@@ -11,6 +11,10 @@ enum FlowToken(val tokenType: TokenType, val str: String):
   case ERROR   extends FlowToken(Control, "<erroneous token>")
   case EOF     extends FlowToken(Control, "<eof>")
   case NEWLINE extends FlowToken(Control, "<newline>")
+
+  // For indentation
+  case INDENT  extends FlowToken(Control, "<indent>")
+  case OUTDENT extends FlowToken(Control, "<outdent>")
 
   // Literals
   case INTEGER_LITERAL extends FlowToken(Literal, "<integer literal>")
@@ -28,6 +32,9 @@ enum FlowToken(val tokenType: TokenType, val str: String):
   // Identifier wrapped in backquotes `....`
   case BACKQUOTED_IDENTIFIER extends FlowToken(Identifier, "<quoted identifier>")
 
+  case SINGLE_QUOTE extends FlowToken(Quote, "'")
+  case DOUBLE_QUOTE extends FlowToken(Quote, "\"")
+
   // Parentheses
   case L_PAREN   extends FlowToken(Op, "(")
   case R_PAREN   extends FlowToken(Op, ")")
@@ -35,10 +42,6 @@ enum FlowToken(val tokenType: TokenType, val str: String):
   case R_BRACE   extends FlowToken(Op, "}")
   case L_BRACKET extends FlowToken(Op, "[")
   case R_BRACKET extends FlowToken(Op, "]")
-
-  // For indentation
-  case INDENT  extends FlowToken(Control, "<indent>")
-  case OUTDENT extends FlowToken(Control, "<outdent>")
 
   // Special symbols
   case COLON      extends FlowToken(Op, ":")
@@ -54,9 +57,6 @@ enum FlowToken(val tokenType: TokenType, val str: String):
   case R_ARROW        extends FlowToken(Op, "->")
   case R_DOUBLE_ARROW extends FlowToken(Op, "=>")
 
-  case SINGLE_QUOTE extends FlowToken(Op, "'")
-  case DOUBLE_QUOTE extends FlowToken(Op, "\"")
-
   // Special keywords
   case EQ   extends FlowToken(Op, "=")
   case NEQ  extends FlowToken(Op, "!=")
@@ -65,11 +65,10 @@ enum FlowToken(val tokenType: TokenType, val str: String):
   case LTEQ extends FlowToken(Op, "<=")
   case GTEQ extends FlowToken(Op, ">=")
 
-  case PLUS     extends FlowToken(Op, "+")
-  case MINUS    extends FlowToken(Op, "-")
-  case ASTERISK extends FlowToken(Op, "*")
-  case DIV      extends FlowToken(Op, "/")
-  case MOD      extends FlowToken(Op, "%")
+  case PLUS  extends FlowToken(Op, "+")
+  case MINUS extends FlowToken(Op, "-")
+  case DIV   extends FlowToken(Op, "/")
+  case MOD   extends FlowToken(Op, "%")
 
   case EXCLAMATION extends FlowToken(Op, "!")
 
@@ -90,16 +89,17 @@ enum FlowToken(val tokenType: TokenType, val str: String):
   case WITH   extends FlowToken(Keyword, "with")
 
   case IN extends FlowToken(Keyword, "in")
+  case BY extends FlowToken(Keyword, "by")
 
-  case FROM     extends FlowToken(Keyword, "from")
-  case SELECT   extends FlowToken(Keyword, "select")
-  case FOR      extends FlowToken(Keyword, "for")
-  case LET      extends FlowToken(Keyword, "let")
-  case WHERE    extends FlowToken(Keyword, "where")
-  case GROUP_BY extends FlowToken(Keyword, "group by")
-  case HAVING   extends FlowToken(Keyword, "having")
-  case ORDER_BY extends FlowToken(Keyword, "order by")
-  case JOIN     extends FlowToken(Keyword, "join")
+  case FROM   extends FlowToken(Keyword, "from")
+  case SELECT extends FlowToken(Keyword, "select")
+  case FOR    extends FlowToken(Keyword, "for")
+  case LET    extends FlowToken(Keyword, "let")
+  case WHERE  extends FlowToken(Keyword, "where")
+  case GROUP  extends FlowToken(Keyword, "group")
+  case HAVING extends FlowToken(Keyword, "having")
+  case ORDER  extends FlowToken(Keyword, "order")
+  case JOIN   extends FlowToken(Keyword, "join")
 
   case RUN    extends FlowToken(Keyword, "run")
   case IMPORT extends FlowToken(Keyword, "import")
@@ -114,11 +114,10 @@ enum FlowToken(val tokenType: TokenType, val str: String):
   case OR  extends FlowToken(Keyword, "or")
   case NOT extends FlowToken(Keyword, "not")
 
-object Tokens:
-  import FlowToken.*
+object FlowToken:
   val keywords       = FlowToken.values.filter(_.tokenType == Keyword).toSeq
   val specialSymbols = FlowToken.values.filter(_.tokenType == Op).toSeq
 
-  val allKeywords = keywords ++ specialSymbols
+  val allKeywordAndSymbol = keywords ++ specialSymbols
 
-  val keywordTable = allKeywords.map(x => x.str -> x).toMap
+  val keywordAndSymbolTable = allKeywordAndSymbol.map(x => x.str -> x).toMap

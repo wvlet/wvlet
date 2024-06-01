@@ -71,8 +71,8 @@ class ScanState(startFrom: Int = 0):
     lastOffset = s.lastOffset
     lineOffset = s.lineOffset
 
-  // def toTokenData: TokenData  = TokenData(token, str, lastOffset, offset - lastOffset)
-  def isAfterLineEnd: Boolean = lineOffset >= 0
+  def toTokenData(lastCharOffset: Int): TokenData = TokenData(token, str, offset, lastCharOffset - offset)
+  def isAfterLineEnd: Boolean                     = lineOffset >= 0
 
 import Scanner.*
 
@@ -132,7 +132,22 @@ class Scanner(source: ScannerSource, startFrom: Int = 0) extends LogSupport:
       reportError(s"expected '${expectedChar}', but found '${ch}'", source.sourcePositionAt(offset))
     nextChar()
 
-  private def peekChar(): Char = source.charAt(offset)
+  def peekAhead(): Unit =
+    prev.copyFrom(current)
+    getNextToken(current.token)
+//    if current.token == FlowToken.END && isEndMaker then
+//      current.token = FlowToken.IDENTIFIER
+
+  def shiftTokenHistory(): Unit =
+    next.copyFrom(current)
+    current.copyFrom(prev)
+
+  def lookAhead(): TokenData =
+    if next.token == FlowToken.EMPTY then
+      peekAhead()
+      shiftTokenHistory()
+
+    next.toTokenData(lastCharOffset)
 
   private def putChar(ch: Char): Unit = tokenBuffer.append(ch)
 
@@ -140,7 +155,9 @@ class Scanner(source: ScannerSource, startFrom: Int = 0) extends LogSupport:
     val index = charOffset
     lastCharOffset = index
     charOffset = index + 1
-    if index >= source.length then ch = SU
+    if index >= source.length then
+      // Set SU to represent the end of the file
+      ch = SU
     else
       val c = source.charAt(index)
       ch = c
@@ -160,8 +177,7 @@ class Scanner(source: ScannerSource, startFrom: Int = 0) extends LogSupport:
     val lastToken = current.token
     getNextToken(lastToken)
     debug(s"token [${current}], charOffset: ${charOffset}, lastCharOffset:${lastCharOffset}")
-    val tokenData = TokenData(current.token, current.str, current.offset, lastCharOffset - current.offset)
-    tokenData
+    current.toTokenData(lastCharOffset)
 
   private def getNextToken(lastToken: FlowToken): Unit =
     if next.token == FlowToken.EMPTY then
@@ -189,13 +205,18 @@ class Scanner(source: ScannerSource, startFrom: Int = 0) extends LogSupport:
         putChar(ch)
         nextChar()
         getIdentRest()
-      case '~' | '!' | '@' | '#' | '%' | '^' | '*' | '+' | '-' | '>' | '?' | ':' | '=' | '&' | '|' | '\\' =>
+      case '~' | '!' | '@' | '#' | '%' | '^' | '*' | '+' | '<' | '>' | '?' | ':' | '=' | '&' | '|' | '\\' =>
         putChar(ch)
         nextChar()
         getOperatorRest()
+      case '-' =>
+        nextChar()
+        if ch == '-' then skipComment()
+        else
+          putChar('-')
+          getOperatorRest()
       case '0' =>
         var base: Int = 10
-
         def fetchLeadingZero(): Unit =
           putChar(ch)
           nextChar()
@@ -212,11 +233,38 @@ class Scanner(source: ScannerSource, startFrom: Int = 0) extends LogSupport:
         getNumber(base)
       case '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' =>
         getNumber(base = 10)
-      case ',' =>
+      case '.' =>
         nextChar()
-        current.token = FlowToken.COMMA
+        if '0' <= ch && ch <= '9' then
+          putChar('.')
+          getFraction()
+          setTokenStringValue()
+        else
+          putChar('.')
+          getOperatorRest()
       case '\"' =>
         getDoubleQuoteString()
+//      case ',' =>
+//        nextChar()
+//        current.token = FlowToken.COMMA
+//      case '(' =>
+//        nextChar()
+//        current.token = FlowToken.L_PAREN
+//      case ')' =>
+//        nextChar()
+//        current.token = FlowToken.R_PAREN
+//      case '[' =>
+//        nextChar()
+//        current.token = FlowToken.L_BRACKET
+//      case ']' =>
+//        nextChar()
+//        current.token = FlowToken.R_BRACKET
+//      case '{' =>
+//        nextChar()
+//        current.token = FlowToken.L_BRACE
+//      case '}' =>
+//        nextChar()
+//        current.token = FlowToken.R_BRACE
       case SU =>
         current.token = FlowToken.EOF
         current.str = ""
@@ -224,6 +272,20 @@ class Scanner(source: ScannerSource, startFrom: Int = 0) extends LogSupport:
         putChar(ch)
         nextChar()
         finishNamedToken()
+
+  /**
+    * Skip the comment and return true if the comment is skipped
+    */
+  private def skipComment(): Boolean =
+    def skipLine(): Unit =
+      nextChar()
+      if (ch != CR) && (ch != LF) && (ch != SU) then skipLine()
+
+    // Skip `-- line comment`
+    if ch == '-' then
+      skipLine()
+      true
+    else false
 
   private def getDoubleQuoteString(): Unit =
     // TODO Support unicode and escape characters
@@ -283,7 +345,7 @@ class Scanner(source: ScannerSource, startFrom: Int = 0) extends LogSupport:
   private def finishNamedToken(target: ScanState = current): Unit =
     val currentTokenStr = setTokenStringValue()
     trace(s"finishNamedToken at ${current}: '${currentTokenStr}'")
-    val token = Tokens.keywordTable.get(currentTokenStr) match
+    val token = FlowToken.keywordAndSymbolTable.get(currentTokenStr) match
       case Some(tokenType) =>
         target.token = tokenType
       case None =>

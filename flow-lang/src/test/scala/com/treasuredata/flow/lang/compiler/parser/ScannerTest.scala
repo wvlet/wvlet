@@ -27,3 +27,25 @@ class ScannerTest extends AirSpec:
     token3.str shouldBe ""
     token3.length shouldBe 0
   }
+
+  inline def testSingle(txt: String, expectedToken: FlowToken): Unit =
+    test(s"scan ${txt}") {
+      val src     = ScannerSource.fromText(txt)
+      val scanner = Scanner(src)
+      val token   = scanner.nextToken()
+      debug(token)
+      token.token shouldBe expectedToken
+      token.offset shouldBe 0
+      token.str shouldBe expectedToken.str
+      token.length shouldBe expectedToken.str.length
+
+      val token2 = scanner.nextToken()
+      debug(token2)
+      token2.token shouldBe FlowToken.EOF
+      token2.offset shouldBe token.length
+      token2.str shouldBe ""
+      token2.length shouldBe 0
+    }
+
+  FlowToken.allKeywordAndSymbol.foreach: t =>
+    testSingle(t.str, t)
