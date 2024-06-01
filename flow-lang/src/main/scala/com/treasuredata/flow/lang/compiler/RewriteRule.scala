@@ -60,7 +60,6 @@ trait RewriteRule extends LogSupport:
       val resolved = plan.transformUp(rule)
       if localLogger.isEnabled(LogLevel.TRACE) && !(plan eq resolved) && plan != resolved then
         localLogger.trace(s"transformed with ${name}:\n[before]\n${plan.pp}\n[after]\n${resolved.pp}")
-      resolved
 
       // Apply post-process filter
       postProcess(resolved, context)

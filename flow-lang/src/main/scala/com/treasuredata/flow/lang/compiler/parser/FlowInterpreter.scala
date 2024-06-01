@@ -71,9 +71,9 @@ class FlowInterpreter extends FlowLangParserBaseVisitor[Any] with LogSupport:
     val plans = ctx
       .singleStatement().asScala.flatMap { s =>
         visit(s) match
-          case l: LogicalPlan        => Seq(l)
-          case lst: Seq[LogicalPlan] => lst
-          case _                     => throw unknown(s)
+          case l: LogicalPlan                   => Seq(l)
+          case lst: Seq[LogicalPlan] @unchecked => lst
+          case _                                => throw unknown(s)
       }.toSeq
     PackageDef(name = packageName, statements = plans, nodeLocation = getLocation(ctx))
 
