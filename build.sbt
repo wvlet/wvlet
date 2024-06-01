@@ -127,7 +127,7 @@ lazy val lang =
         "org.scala-lang" %% "scala3-compiler" % SCALA_3 % Test,
         // Add sql parser for testing purpose
         "org.wvlet.airframe" %% "airframe-sql" % AIRFRAME_VERSION % Test,
-        "org.apache.arrow"    % "arrow-vector" % "16.0.0",
+        "org.apache.arrow"    % "arrow-vector" % "16.1.0",
         "org.duckdb"          % "duckdb_jdbc"  % "0.10.3",
         "io.trino"            % "trino-jdbc"   % TRINO_VERSION,
         // exclude() and jar() are necessary to avoid https://github.com/sbt/sbt/issues/7407
