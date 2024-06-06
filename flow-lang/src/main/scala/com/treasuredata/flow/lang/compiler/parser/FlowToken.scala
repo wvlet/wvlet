@@ -1,7 +1,7 @@
 package com.treasuredata.flow.lang.compiler.parser
 
 enum TokenType:
-  case Control, Literal, Identifier, Quote, Op, Keyword
+  case Control, Doc, Literal, Identifier, Quote, Op, Keyword
 
 import TokenType.*
 
@@ -11,6 +11,9 @@ enum FlowToken(val tokenType: TokenType, val str: String):
   case ERROR   extends FlowToken(Control, "<erroneous token>")
   case EOF     extends FlowToken(Control, "<eof>")
   case NEWLINE extends FlowToken(Control, "<newline>")
+
+  // doc or comments
+  case COMMENT extends FlowToken(Doc, "<comment>")
 
   // For indentation
   case INDENT  extends FlowToken(Control, "<indent>")

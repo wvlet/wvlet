@@ -1,6 +1,7 @@
 package com.treasuredata.flow.lang.compiler.parser
 
 import wvlet.airspec.AirSpec
+import wvlet.log.io.IOUtil
 
 class ScannerTest extends AirSpec:
   test("scan text") {
@@ -28,7 +29,7 @@ class ScannerTest extends AirSpec:
     token3.length shouldBe 0
   }
 
-  inline def testSingle(txt: String, expectedToken: FlowToken): Unit =
+  inline def testScanToken(txt: String, expectedToken: FlowToken): Unit =
     test(s"scan ${txt}") {
       val src     = ScannerSource.fromText(txt)
       val scanner = Scanner(src)
@@ -48,4 +49,26 @@ class ScannerTest extends AirSpec:
     }
 
   FlowToken.allKeywordAndSymbol.foreach: t =>
-    testSingle(t.str, t)
+    testScanToken(t.str, t)
+
+  test("read comments") {
+    val src =
+      """-- line comment
+        |from A""".stripMargin
+    val scanner = Scanner(ScannerSource.fromText(src))
+    var token   = scanner.nextToken()
+    debug(token)
+    token.token shouldBe FlowToken.COMMENT
+    token.str shouldBe "-- line comment"
+
+    token = scanner.nextToken()
+    debug(token)
+    token.token shouldBe FlowToken.FROM
+    token = scanner.nextToken()
+    debug(token)
+    token.token shouldBe FlowToken.IDENTIFIER
+    token.str shouldBe "A"
+    token = scanner.nextToken()
+    debug(token)
+    token.token shouldBe FlowToken.EOF
+  }

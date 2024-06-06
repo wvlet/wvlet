@@ -1,5 +1,6 @@
 package com.treasuredata.flow.lang.compiler.parser
 
+import com.treasuredata.flow.lang.compiler.parser.FlowToken.FROM
 import wvlet.log.LogSupport
 
 import scala.annotation.{switch, tailrec}
@@ -210,11 +211,10 @@ class Scanner(source: ScannerSource, startFrom: Int = 0) extends LogSupport:
         nextChar()
         getOperatorRest()
       case '-' =>
+        putChar(ch)
         nextChar()
-        if ch == '-' then skipComment()
-        else
-          putChar('-')
-          getOperatorRest()
+        if ch == '-' then getLineComment()
+        else getOperatorRest()
       case '0' =>
         var base: Int = 10
         def fetchLeadingZero(): Unit =
@@ -273,10 +273,22 @@ class Scanner(source: ScannerSource, startFrom: Int = 0) extends LogSupport:
         nextChar()
         finishNamedToken()
 
+  private def getLineComment(): Unit =
+    @tailrec
+    def readToLineEnd(): Unit =
+      putChar(ch)
+      nextChar()
+      if (ch != CR) && (ch != LF) && (ch != SU) then readToLineEnd()
+
+    readToLineEnd()
+    current.token = FlowToken.COMMENT
+    current.str = setTokenStringValue()
+
   /**
     * Skip the comment and return true if the comment is skipped
     */
   private def skipComment(): Boolean =
+    @tailrec
     def skipLine(): Unit =
       nextChar()
       if (ch != CR) && (ch != LF) && (ch != SU) then skipLine()
