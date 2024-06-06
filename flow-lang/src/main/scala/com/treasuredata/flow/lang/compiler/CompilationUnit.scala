@@ -3,8 +3,6 @@ package com.treasuredata.flow.lang.compiler
 import com.treasuredata.flow.lang.compiler.SourceFile.NoSourceFile
 import com.treasuredata.flow.lang.model.NodeLocation
 import com.treasuredata.flow.lang.model.plan.{LogicalPlan, NamedRelation, Relation}
-import wvlet.airframe.ulid.ULID
-import wvlet.log.io.IOUtil
 
 import java.io.File
 
@@ -54,15 +52,3 @@ object CompilationUnit:
       }
     else if f.isFile && f.getName.endsWith(".flow") then Seq(f.getPath)
     else Seq.empty
-
-object SourceFile:
-  object NoSourceFile extends SourceFile("<empty>", _ => "")
-  def fromFile(file: String): SourceFile      = SourceFile(file, IOUtil.readAsString)
-  def fromString(content: String): SourceFile = SourceFile(s"${ULID.newULIDString}.flow", _ => content)
-  def fromResource(path: String): SourceFile  = SourceFile(path, IOUtil.readAsString)
-
-class SourceFile(val file: String, readContent: (file: String) => String):
-  override def toString: String      = s"SourceFile($file)"
-  def fileName: String               = new File(file).getName
-  def toCompileUnit: CompilationUnit = CompilationUnit(this)
-  lazy val content: String           = readContent(file)

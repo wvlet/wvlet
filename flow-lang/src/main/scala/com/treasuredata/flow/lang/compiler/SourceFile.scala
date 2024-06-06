@@ -1,16 +1,29 @@
-package com.treasuredata.flow.lang.compiler.parser
+package com.treasuredata.flow.lang.compiler
 
+import com.treasuredata.flow.lang.compiler.parser.{Scanner, SourcePosition, Span}
 import com.treasuredata.flow.lang.compiler.parser.Scanner.*
-import wvlet.airframe.control.IO
+import wvlet.airframe.ulid.ULID
+import wvlet.log.io.IOUtil
 
+import java.io.File
 import scala.collection.mutable.ArrayBuffer
 
-trait ScannerSource:
-  def text: String
-  def length: Int
+object SourceFile:
+  object NoSourceFile extends SourceFile("<empty>", _ => "")
+  def fromFile(file: String): SourceFile      = SourceFile(file, IOUtil.readAsString)
+  def fromString(content: String): SourceFile = SourceFile(s"${ULID.newULIDString}.flow", _ => content)
+  def fromResource(path: String): SourceFile  = SourceFile(path, IOUtil.readAsString)
+
+class SourceFile(val file: String, readContent: (file: String) => String):
+  override def toString: String      = s"SourceFile($file)"
+  def fileName: String               = new File(file).getName
+  def toCompileUnit: CompilationUnit = CompilationUnit(this)
+
+  lazy val content: String = readContent(file)
+  def length: Int          = content.length
 
   private val lineIndexes: Array[Int] =
-    val txt = text
+    val txt = content
     val buf = new ArrayBuffer[Int]
     buf += 0
     var i = 0
@@ -18,7 +31,7 @@ trait ScannerSource:
       val isLineBreak =
         val ch = txt(i)
         // CR LF
-        if ch == CR then i + 1 == txt.length || text(i + 1) != LF
+        if ch == CR then i + 1 == txt.length || content(i + 1) != LF
         else Scanner.isLineBreakChar(ch)
       if isLineBreak then buf += i + 1
       i += 1
@@ -31,9 +44,10 @@ trait ScannerSource:
     else -idx - 2
 
   def sourcePositionAt(offset: Int): SourcePosition = SourcePosition(this, Span.at(offset))
-  def offsetToLine(offset: Int): Int                = findLineIndex(offset)
 
-  inline def charAt(pos: Int): Char = text.charAt(pos)
+  def offsetToLine(offset: Int): Int = findLineIndex(offset)
+
+  inline def charAt(pos: Int): Char = content.charAt(pos)
 
   /**
     * Find the start of the line (offset) for the given offset
@@ -49,14 +63,3 @@ trait ScannerSource:
   def offsetToColumn(offset: Int): Int =
     val lineStart = findLineIndex(offset)
     offset - lineIndexes(lineStart) + 1
-
-object ScannerSource:
-  def fromText(text: String): ScannerSource = StringSource(text)
-  def fromFile(path: String): ScannerSource = SourceFile(path)
-
-case class SourceFile(path: String) extends ScannerSource:
-  override lazy val text: String = IO.readAsString(new java.io.File(path))
-  override def length: Int       = text.length
-
-case class StringSource(override val text: String) extends ScannerSource:
-  override val length: Int = text.length

@@ -1,10 +1,11 @@
 package com.treasuredata.flow.lang.compiler.parser
 
+import com.treasuredata.flow.lang.compiler.SourceFile
 import wvlet.airspec.AirSpec
 
 class ScannerSourceTest extends AirSpec:
   test("find line and column positions") {
-    val src = ScannerSource.fromText("a\nb\nc")
+    val src = SourceFile.fromString("a\nb\nc")
     src.length shouldBe 5
 
     test("find line index") {

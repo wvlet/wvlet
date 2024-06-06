@@ -1,5 +1,6 @@
 package com.treasuredata.flow.lang.compiler.parser
 
+import com.treasuredata.flow.lang.compiler.SourceFile
 import com.treasuredata.flow.lang.compiler.parser.FlowToken.FROM
 import wvlet.log.LogSupport
 
@@ -80,7 +81,7 @@ import Scanner.*
 /**
   * Scan *.flow files
   */
-class Scanner(source: ScannerSource, startFrom: Int = 0) extends LogSupport:
+class Scanner(source: SourceFile, startFrom: Int = 0) extends LogSupport:
   // The last read character
   private var ch: Char = _
   // The offset +1 of the last read character
