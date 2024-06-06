@@ -67,7 +67,7 @@ class FlowInterpreter extends FlowLangParserBaseVisitor[Any] with LogSupport:
     UnquotedIdentifier(ctx.getText, getLocation(ctx))
 
   override def visitStatements(ctx: StatementsContext): PackageDef =
-    val packageName = Option(ctx.packageDef()).map(x => visitIdentifier(x.identifier()).value)
+    val packageName = Option(ctx.packageDef()).map(x => visitIdentifier(x.identifier()))
     val plans = ctx
       .singleStatement().asScala.flatMap { s =>
         visit(s) match

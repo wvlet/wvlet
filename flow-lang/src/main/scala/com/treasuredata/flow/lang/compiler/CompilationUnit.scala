@@ -34,6 +34,8 @@ case class CompilationUnit(sourceFile: SourceFile):
 object CompilationUnit:
   val empty: CompilationUnit = CompilationUnit(NoSourceFile)
 
+  def fromString(text: String) = CompilationUnit(SourceFile.fromString(text))
+
   def fromFile(path: String) = CompilationUnit(SourceFile.fromFile(path))
 
   def fromPath(path: String): List[CompilationUnit] =

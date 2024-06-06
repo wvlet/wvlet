@@ -104,9 +104,10 @@ enum FlowToken(val tokenType: TokenType, val str: String):
   case ORDER  extends FlowToken(Keyword, "order")
   case JOIN   extends FlowToken(Keyword, "join")
 
-  case RUN    extends FlowToken(Keyword, "run")
-  case IMPORT extends FlowToken(Keyword, "import")
-  case EXPORT extends FlowToken(Keyword, "export")
+  case RUN     extends FlowToken(Keyword, "run")
+  case IMPORT  extends FlowToken(Keyword, "import")
+  case EXPORT  extends FlowToken(Keyword, "export")
+  case PACKAGE extends FlowToken(Keyword, "package")
 
   case IF   extends FlowToken(Keyword, "if")
   case THEN extends FlowToken(Keyword, "then")

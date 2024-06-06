@@ -13,7 +13,7 @@ sealed trait LanguageStatement extends LogicalPlan with LeafPlan:
 
 // Top-level definition for each source file
 case class PackageDef(
-    name: Option[String],
+    name: Option[Expression],
     statements: Seq[LogicalPlan],
     sourceFile: SourceFile = SourceFile.NoSourceFile,
     nodeLocation: Option[NodeLocation]

@@ -27,6 +27,10 @@ case class Dereference(base: Expression, next: Expression, nodeLocation: Option[
   override def toString: String          = s"Dereference(${base} => ${next})"
   override def children: Seq[Expression] = Seq(base, next)
 
+case class Ref(base: Expression, name: Identifier, nodeLocation: Option[NodeLocation]) extends Expression:
+  override def toString: String          = s"Ref(${base},${name})"
+  override def children: Seq[Expression] = Seq(base)
+
 sealed trait Identifier extends LeafExpression:
   def value: String
   def expr: String
@@ -201,7 +205,7 @@ case class LambdaExpr(body: Expression, args: Seq[String], nodeLocation: Option[
     with UnaryExpression:
   def child = body
 
-case class Ref(name: QName, nodeLocation: Option[NodeLocation]) extends Expression with LeafExpression
+//case class Ref(name: QName, nodeLocation: Option[NodeLocation]) extends Expression with LeafExpression
 
 // Conditional expression
 sealed trait ConditionalExpression                  extends Expression

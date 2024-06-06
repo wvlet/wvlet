@@ -181,6 +181,8 @@ class Scanner(source: SourceFile, startFrom: Int = 0) extends LogSupport:
     debug(s"token [${current}], charOffset: ${charOffset}, lastCharOffset:${lastCharOffset}")
     current.toTokenData(lastCharOffset)
 
+  def currentToken: TokenData = current.toTokenData(lastCharOffset)
+
   private def getNextToken(lastToken: FlowToken): Unit =
     // If the next token is already set, use it, otherwise fetch the next token
     if next.token == FlowToken.EMPTY then
