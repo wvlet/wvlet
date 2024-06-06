@@ -72,3 +72,25 @@ class ScannerTest extends AirSpec:
     debug(token)
     token.token shouldBe FlowToken.EOF
   }
+
+  test("read block comment") {
+    val src =
+      """/* block comment */
+        |from A""".stripMargin
+    val scanner = Scanner(ScannerSource.fromText(src))
+    var token   = scanner.nextToken()
+    debug(token)
+    token.token shouldBe FlowToken.COMMENT
+    token.str shouldBe "/* block comment */"
+
+    token = scanner.nextToken()
+    debug(token)
+    token.token shouldBe FlowToken.FROM
+    token = scanner.nextToken()
+    debug(token)
+    token.token shouldBe FlowToken.IDENTIFIER
+    token.str shouldBe "A"
+    token = scanner.nextToken()
+    debug(token)
+    token.token shouldBe FlowToken.EOF
+  }

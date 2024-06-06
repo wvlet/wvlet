@@ -181,6 +181,7 @@ class Scanner(source: ScannerSource, startFrom: Int = 0) extends LogSupport:
     current.toTokenData(lastCharOffset)
 
   private def getNextToken(lastToken: FlowToken): Unit =
+    // If the next token is already set, use it, otherwise fetch the next token
     if next.token == FlowToken.EMPTY then
       current.lastOffset = lastCharOffset
       fetchToken()
@@ -188,6 +189,9 @@ class Scanner(source: ScannerSource, startFrom: Int = 0) extends LogSupport:
       current.copyFrom(next)
       next.token = FlowToken.EMPTY
 
+  /**
+    * Fetch the next token and set it to the current ScannerState
+    */
   private def fetchToken(): Unit =
     current.offset = charOffset - 1
     current.lineOffset = if current.lastOffset < lineStartOffset then lineStartOffset else -1
@@ -244,6 +248,12 @@ class Scanner(source: ScannerSource, startFrom: Int = 0) extends LogSupport:
           getOperatorRest()
       case '\"' =>
         getDoubleQuoteString()
+      case '/' =>
+        putChar(ch)
+        nextChar()
+        if ch == '*' then getBlockComment()
+        else getOperatorRest()
+
 //      case ',' =>
 //        nextChar()
 //        current.token = FlowToken.COMMA
@@ -281,6 +291,24 @@ class Scanner(source: ScannerSource, startFrom: Int = 0) extends LogSupport:
       if (ch != CR) && (ch != LF) && (ch != SU) then readToLineEnd()
 
     readToLineEnd()
+    current.token = FlowToken.COMMENT
+    current.str = setTokenStringValue()
+
+  private def getBlockComment(): Unit =
+    @tailrec
+    def readToCommentEnd(): Unit =
+      putChar(ch)
+      nextChar()
+      if ch == '*' then
+        putChar(ch)
+        nextChar()
+        if ch == '/' then
+          putChar(ch)
+          nextChar()
+        else readToCommentEnd()
+      else readToCommentEnd()
+
+    readToCommentEnd()
     current.token = FlowToken.COMMENT
     current.str = setTokenStringValue()
 
