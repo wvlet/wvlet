@@ -86,23 +86,28 @@ class ScanState(startFrom: Int = 0):
 
 import Scanner.*
 
+case class ScannerConfig(
+    startFrom: Int = 0,
+    skipComments: Boolean = false
+)
+
 /**
   * Scan *.flow files
   */
-class Scanner(source: SourceFile, startFrom: Int = 0) extends LogSupport:
+class Scanner(source: SourceFile, config: ScannerConfig = ScannerConfig()) extends LogSupport:
   // The last read character
   private var ch: Char = _
   // The offset +1 of the last read character
-  private var charOffset: Int = startFrom
+  private var charOffset: Int = config.startFrom
   // The offset before the last read character
-  private var lastCharOffset: Int = startFrom
+  private var lastCharOffset: Int = config.startFrom
   // The start offset of the current line
-  private var lineStartOffset: Int = startFrom
+  private var lineStartOffset: Int = config.startFrom
 
   // Preserve token history
-  private var current: ScanState = ScanState()
-  private var prev: ScanState    = ScanState()
-  private var next: ScanState    = ScanState()
+  private var current: ScanState = ScanState(startFrom = config.startFrom)
+  private var prev: ScanState    = ScanState(startFrom = config.startFrom)
+  private var next: ScanState    = ScanState(startFrom = config.startFrom)
 
   // Is the current token the first one after a newline?
 
@@ -212,7 +217,7 @@ class Scanner(source: SourceFile, startFrom: Int = 0) extends LogSupport:
 
     (ch: @switch) match
       case ' ' | '\t' | CR | LF | FF =>
-        // Skip white space characters
+        // Skip white space characters without pushing them into the buffer
         nextChar()
         fetchToken()
       case 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'I' | 'J' | 'K' | 'L' | 'M' | 'N' | 'O' | 'P' | 'Q' | 'R' |
@@ -257,6 +262,8 @@ class Scanner(source: SourceFile, startFrom: Int = 0) extends LogSupport:
         else
           putChar('.')
           getOperatorRest()
+      case '\'' =>
+        getSingleQuoteString()
       case '\"' =>
         getDoubleQuoteString()
       case '/' =>
@@ -302,8 +309,10 @@ class Scanner(source: SourceFile, startFrom: Int = 0) extends LogSupport:
       if (ch != CR) && (ch != LF) && (ch != SU) then readToLineEnd()
 
     readToLineEnd()
-    current.token = FlowToken.COMMENT
-    current.str = setTokenStringValue()
+    val commentLine = setTokenStringValue()
+    if !config.skipComments then
+      current.token = FlowToken.COMMENT
+      current.str = commentLine
 
   private def getBlockComment(): Unit =
     @tailrec
@@ -337,6 +346,15 @@ class Scanner(source: SourceFile, startFrom: Int = 0) extends LogSupport:
       skipLine()
       true
     else false
+
+  private def getSingleQuoteString(): Unit =
+    consume('\'')
+    while ch != '\'' && ch != SU do
+      putChar(ch)
+      nextChar()
+    consume('\'')
+    current.token = FlowToken.STRING_LITERAL
+    current.str = tokenBuffer.toString
 
   private def getDoubleQuoteString(): Unit =
     // TODO Support unicode and escape characters

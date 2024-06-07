@@ -17,3 +17,10 @@ class ParserTest extends AirSpec:
       }
     }
   }
+
+  test("parse json scan") {
+    val p = Parsers(CompilationUnit.fromString("""-- sample query
+        |from 'sample.json'""".stripMargin))
+    val plan = p.parse()
+    debug(plan)
+  }

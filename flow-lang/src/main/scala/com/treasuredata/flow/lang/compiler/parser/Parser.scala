@@ -1,8 +1,7 @@
 package com.treasuredata.flow.lang.compiler.parser
 
 import com.treasuredata.flow.lang.StatusCode
-import com.treasuredata.flow.lang.compiler.{CompilationUnit, SourceFile, SourceLocation}
-import com.treasuredata.flow.lang.model.NodeLocation
+import com.treasuredata.flow.lang.compiler.{CompilationUnit, SourceFile}
 import com.treasuredata.flow.lang.model.expr.*
 import com.treasuredata.flow.lang.model.plan.*
 import wvlet.log.LogSupport
@@ -12,13 +11,15 @@ class Parsers(unit: CompilationUnit) extends LogSupport:
   given src: SourceFile                  = unit.sourceFile
   given compilationUnit: CompilationUnit = unit
 
-  private val scanner = Scanner(unit.sourceFile)
+  private val scanner = Scanner(unit.sourceFile, ScannerConfig(skipComments = true))
 
   def parse(): LogicalPlan =
-    val token = scanner.lookAhead()
-    token.token match
+    val t = scanner.lookAhead()
+    t.token match
       case FlowToken.PACKAGE => packageDef()
-      case _                 => LogicalPlan.empty
+      case _ =>
+        val stmts = statements()
+        PackageDef(None, stmts, unit.sourceFile, t.nodeLocation)
 
   // private def sourceLocation: SourceLocation = SourceLocation(unit.sourceFile, nodeLocation())
 
@@ -27,12 +28,16 @@ class Parsers(unit: CompilationUnit) extends LogSupport:
     if t.token == expected then t
     else throw StatusCode.SYNTAX_ERROR.newException(s"Expected ${expected}, but found ${t.token}", t.sourceLocation)
 
+  private def unexpected(t: TokenData): Nothing =
+    throw StatusCode.SYNTAX_ERROR.newException(s"Unexpected token: ${t}", t.sourceLocation)
+
   def identifier(): Identifier =
     val t = scanner.nextToken()
     t.token match
       case FlowToken.IDENTIFIER =>
         UnquotedIdentifier(t.str, t.nodeLocation)
-      case _ => ???
+      case _ =>
+        unexpected(t)
 
   /**
     * PackageDef := 'package' qualifiedId (statement)*
@@ -54,7 +59,8 @@ class Parsers(unit: CompilationUnit) extends LogSupport:
     * @return
     */
   def statements(): List[LogicalPlan] =
-    scanner.lookAhead().token match
+    val t = scanner.lookAhead()
+    t.token match
       case FlowToken.EOF =>
         List.empty
       case _ =>
@@ -111,6 +117,7 @@ class Parsers(unit: CompilationUnit) extends LogSupport:
         consume(FlowToken.R_PAREN)
         ParenthesizedRelation(q, t.nodeLocation)
       case FlowToken.STRING_LITERAL =>
+        consume(FlowToken.STRING_LITERAL)
         FileScan(t.str, t.nodeLocation)
       case _ => ???
 
