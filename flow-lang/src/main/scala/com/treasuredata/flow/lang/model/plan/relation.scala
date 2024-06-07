@@ -121,7 +121,7 @@ case class Values(rows: Seq[Expression], nodeLocation: Option[NodeLocation]) ext
   * @param name
   * @param nodeLocation
   */
-case class TableRef(name: QName, nodeLocation: Option[NodeLocation]) extends Relation with LeafPlan:
+case class TableRef(name: Name, nodeLocation: Option[NodeLocation]) extends Relation with LeafPlan:
   override def toString: String                 = s"TableRef(${name})"
   override def outputAttributes: Seq[Attribute] = Nil
   override def relationType: RelationType       = UnresolvedRelationType(name.fullName)

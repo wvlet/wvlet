@@ -74,24 +74,29 @@ class FlowInterpreter extends FlowLangParserBaseVisitor[Any] with LogSupport:
           case l: LogicalPlan                   => Seq(l)
           case lst: Seq[LogicalPlan] @unchecked => lst
           case _                                => throw unknown(s)
-      }.toSeq
+      }.toList
     PackageDef(name = packageName, statements = plans, nodeLocation = getLocation(ctx))
 
   override def visitImportStatement(ctx: ImportStatementContext): Seq[ImportDef] =
     ctx
       .importExpr().asScala.map { x =>
-        var names: Seq[String] = x
+        var names: List[Identifier] = x
           .importRef()
           .qualifiedName()
           .identifier()
           .asScala
           .map(visitIdentifier)
-          .map(_.value)
-          .toSeq
-        if x.importRef().ASTERISK() != null then names = names :+ "*"
+          .toList
+
+        if x.importRef().ASTERISK() != null then
+          names = names :+ UnquotedIdentifier("*", getLocation(x.importRef().ASTERISK()))
         val alias      = Option(x.importRef().alias).map(visitIdentifier).map(_.value)
         val fromSource = Option(x.fromRef).map(s => unquote(s.getText))
-        ImportDef(importRef = names.mkString("."), alias = alias, fromSource = fromSource, getLocation(x))
+
+        val importRef = names.tail.foldLeft[Name](names.head) { (node, id) =>
+          Ref(node, id, id.nodeLocation)
+        }
+        ImportDef(importRef = importRef, alias = alias, fromSource = fromSource, getLocation(x))
       }.toSeq
 
   override def visitTest(ctx: TestContext): LogicalPlan =
@@ -197,7 +202,7 @@ class FlowInterpreter extends FlowLangParserBaseVisitor[Any] with LogSupport:
     TableDef(tableName, params, getLocation(ctx))
 
   override def visitSubscribeDef(ctx: SubscribeDefContext): Any =
-    val src  = TableRef(QName(visitIdentifier(ctx.src).value, getLocation(ctx.src)), getLocation(ctx.src))
+    val src  = TableRef(visitIdentifier(ctx.src), getLocation(ctx.src))
     val name = visitIdentifier(ctx.name)
     val params = ctx
       .subscribeParam().asScala.map { p =>

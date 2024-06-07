@@ -1,7 +1,8 @@
 package com.treasuredata.flow.lang.compiler.parser
 
-import com.treasuredata.flow.lang.compiler.SourceFile
+import com.treasuredata.flow.lang.compiler.{CompilationUnit, SourceFile, SourceLocation}
 import com.treasuredata.flow.lang.compiler.parser.FlowToken.FROM
+import com.treasuredata.flow.lang.model.NodeLocation
 import wvlet.log.LogSupport
 
 import scala.annotation.{switch, tailrec}
@@ -48,7 +49,14 @@ case class TokenData(
     str: String,
     offset: Int,
     length: Int
-)
+):
+  def sourceLocation(using unit: CompilationUnit): SourceLocation =
+    SourceLocation(unit, nodeLocation(using unit.sourceFile))
+
+  def nodeLocation(using src: SourceFile): Option[NodeLocation] =
+    val line = src.offsetToLine(offset)
+    val col  = src.offsetToColumn(offset)
+    Some(NodeLocation(line, col))
 
 class ScanState(startFrom: Int = 0):
   override def toString: String =

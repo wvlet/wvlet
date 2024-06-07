@@ -2,7 +2,7 @@ package com.treasuredata.flow.lang.model.plan
 
 import com.treasuredata.flow.lang.compiler.SourceFile
 import com.treasuredata.flow.lang.model.NodeLocation
-import com.treasuredata.flow.lang.model.expr.{Attribute, Expression}
+import com.treasuredata.flow.lang.model.expr.{Attribute, Expression, Name}
 import com.treasuredata.flow.lang.model.plan.LogicalPlan
 
 sealed trait LanguageStatement extends LogicalPlan with LeafPlan:
@@ -14,7 +14,7 @@ sealed trait LanguageStatement extends LogicalPlan with LeafPlan:
 // Top-level definition for each source file
 case class PackageDef(
     name: Option[Expression],
-    statements: Seq[LogicalPlan],
+    statements: List[LogicalPlan],
     sourceFile: SourceFile = SourceFile.NoSourceFile,
     nodeLocation: Option[NodeLocation]
 ) extends LanguageStatement:
@@ -30,7 +30,7 @@ case class TestDef(
 ) extends LanguageStatement
 
 case class ImportDef(
-    importRef: String,
+    importRef: Name,
     alias: Option[String],
     fromSource: Option[String],
     nodeLocation: Option[NodeLocation]

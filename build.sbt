@@ -1,5 +1,5 @@
 val AIRFRAME_VERSION    = "24.6.0"
-val AIRSPEC_VERSION     = "24.5.2"
+val AIRSPEC_VERSION     = "24.6.0"
 val TRINO_VERSION       = "449"
 val AWS_SDK_VERSION     = "2.20.146"
 val SCALAJS_DOM_VERSION = "2.8.0"
@@ -141,8 +141,7 @@ lazy val lang =
 //        ) cross (CrossVersion.for3Use2_13)
       ),
       // To enable JVM options
-      // TODO: Fix AirSpec -L option doesn't work for forked JVM.
-      // Test / fork := true,
+      Test / fork := true,
       // When forking, the base directory should be set to the root directory
       Test / baseDirectory := (ThisBuild / baseDirectory).value,
       // Watch changes of example .flow files upon testing

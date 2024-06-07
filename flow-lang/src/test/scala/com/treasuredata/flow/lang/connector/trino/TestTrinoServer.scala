@@ -32,3 +32,5 @@ class TestTrinoServer extends AutoCloseable with LogSupport:
     Logger.rootLogger.suppressLogs {
       server.close()
     }
+    // io.airlift redirects stdout/stderr to loggers, so we need to clear all handlers
+    Logger.init

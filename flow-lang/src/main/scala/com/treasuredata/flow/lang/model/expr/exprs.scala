@@ -10,9 +10,12 @@ import java.util.Locale
   */
 case class ParenthesizedExpression(child: Expression, nodeLocation: Option[NodeLocation]) extends UnaryExpression
 
+sealed trait Name extends Expression:
+  def fullName: String
+
 // Qualified name (QName), such as table and column names
-case class QName(parts: List[String], nodeLocation: Option[NodeLocation]) extends LeafExpression:
-  def fullName: String          = parts.mkString(".")
+case class QName(parts: List[String], nodeLocation: Option[NodeLocation]) extends LeafExpression with Name:
+  override def fullName: String = parts.mkString(".")
   override def toString: String = fullName
 
 object QName:
@@ -27,11 +30,13 @@ case class Dereference(base: Expression, next: Expression, nodeLocation: Option[
   override def toString: String          = s"Dereference(${base} => ${next})"
   override def children: Seq[Expression] = Seq(base, next)
 
-case class Ref(base: Expression, name: Identifier, nodeLocation: Option[NodeLocation]) extends Expression:
+case class Ref(base: Name, name: Identifier, nodeLocation: Option[NodeLocation]) extends Name:
+  override def fullName: String          = s"${base.fullName}.${name.value}"
   override def toString: String          = s"Ref(${base},${name})"
   override def children: Seq[Expression] = Seq(base)
 
-sealed trait Identifier extends LeafExpression:
+sealed trait Identifier extends LeafExpression with Name:
+  override def fullName: String = value
   def value: String
   def expr: String
   override def attributeName: String  = value
