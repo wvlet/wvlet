@@ -12,6 +12,13 @@ case class ParenthesizedExpression(child: Expression, nodeLocation: Option[NodeL
 
 sealed trait Name extends Expression:
   def fullName: String
+  def value: String = fullName
+
+case class Wildcard(nodeLocation: Option[NodeLocation]) extends LeafExpression with Name:
+  override def fullName: String = "*"
+
+case class ContextRef(nodeLocation: Option[NodeLocation]) extends LeafExpression with Name:
+  override def fullName: String = "_"
 
 // Qualified name (QName), such as table and column names
 case class QName(parts: List[String], nodeLocation: Option[NodeLocation]) extends LeafExpression with Name:
@@ -30,14 +37,14 @@ case class Dereference(base: Expression, next: Expression, nodeLocation: Option[
   override def toString: String          = s"Dereference(${base} => ${next})"
   override def children: Seq[Expression] = Seq(base, next)
 
-case class Ref(base: Name, name: Identifier, nodeLocation: Option[NodeLocation]) extends Name:
-  override def fullName: String          = s"${base.fullName}.${name.value}"
+case class Ref(base: Name, name: Name, nodeLocation: Option[NodeLocation]) extends Name:
+  override def fullName: String          = s"${base.fullName}.${name.fullName}"
   override def toString: String          = s"Ref(${base},${name})"
   override def children: Seq[Expression] = Seq(base)
 
 sealed trait Identifier extends LeafExpression with Name:
   override def fullName: String = value
-  def value: String
+  override def value: String
   def expr: String
   override def attributeName: String  = value
   override lazy val resolved: Boolean = false
@@ -50,19 +57,19 @@ case class ResolvedIdentifier(id: Identifier) extends Identifier:
   override def nodeLocation: Option[NodeLocation] = id.nodeLocation
   override lazy val resolved: Boolean             = true
 
-case class DigitId(value: String, nodeLocation: Option[NodeLocation]) extends Identifier:
+case class DigitId(override val value: String, nodeLocation: Option[NodeLocation]) extends Identifier:
   override def toString: String = s"Id(${value})"
   override def expr: String     = value
 
-case class UnquotedIdentifier(value: String, nodeLocation: Option[NodeLocation]) extends Identifier:
+case class UnquotedIdentifier(override val value: String, nodeLocation: Option[NodeLocation]) extends Identifier:
   override def toString: String = s"Id(${value})"
   override def expr: String     = value
 
-case class BackQuotedIdentifier(value: String, nodeLocation: Option[NodeLocation]) extends Identifier:
+case class BackQuotedIdentifier(override val value: String, nodeLocation: Option[NodeLocation]) extends Identifier:
   override def toString     = s"Id(`${value}`)"
   override def expr: String = s"`${value}`"
 
-case class QuotedIdentifier(value: String, nodeLocation: Option[NodeLocation]) extends Identifier:
+case class QuotedIdentifier(override val value: String, nodeLocation: Option[NodeLocation]) extends Identifier:
   override def toString     = s"""Id("${value}")"""
   override def expr: String = s"\"${value}\""
 
@@ -182,6 +189,13 @@ case class WindowFrame(
     s.result().mkString(" ")
 
 // Function
+case class FunctionApply(
+    context: Expression,
+    args: List[Expression],
+    nodeLocation: Option[NodeLocation]
+) extends Expression:
+  override def children: Seq[Expression] = context +: args
+
 case class FunctionCall(
     context: Option[Expression],
     name: String,
@@ -412,9 +426,6 @@ case class FalseLiteral(nodeLocation: Option[NodeLocation]) extends BooleanLiter
   override def stringValue: String   = "false"
   override def toString: String      = "Literal(FALSE)"
   override def booleanValue: Boolean = false
-
-case class ContextRef(nodeLocation: Option[NodeLocation]) extends LeafExpression:
-  override def toString: String = "_"
 
 case class StringLiteral(value: String, nodeLocation: Option[NodeLocation]) extends Literal with LeafExpression:
   override def dataType: DataType  = DataType.StringType

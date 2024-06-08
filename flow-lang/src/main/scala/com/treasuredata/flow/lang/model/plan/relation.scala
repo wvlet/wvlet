@@ -41,7 +41,7 @@ case class ParenthesizedRelation(child: Relation, nodeLocation: Option[NodeLocat
 
 case class AliasedRelation(
     child: Relation,
-    alias: Identifier,
+    alias: Name,
     columnNames: Option[Seq[String]],
     nodeLocation: Option[NodeLocation]
 ) extends UnaryRelation:
