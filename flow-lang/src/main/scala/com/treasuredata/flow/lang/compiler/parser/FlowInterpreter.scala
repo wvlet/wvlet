@@ -499,11 +499,11 @@ class FlowInterpreter extends FlowLangParserBaseVisitor[Any] with LogSupport:
     val right = interpretExpression(ctx.right)
     val binaryExprType: BinaryExprType =
       ctx.operator match
-        case op if ctx.PLUS() != null     => Add
-        case op if ctx.MINUS() != null    => Subtract
-        case op if ctx.ASTERISK() != null => Multiply
-        case op if ctx.SLASH() != null    => Divide
-        case op if ctx.PERCENT() != null  => Modulus
+        case op if ctx.PLUS() != null     => BinaryExprType.Add
+        case op if ctx.MINUS() != null    => BinaryExprType.Subtract
+        case op if ctx.ASTERISK() != null => BinaryExprType.Multiply
+        case op if ctx.SLASH() != null    => BinaryExprType.Divide
+        case op if ctx.PERCENT() != null  => BinaryExprType.Modulus
         case _ =>
           throw unknown(ctx)
     ArithmeticBinaryExpr(binaryExprType, left, right, getLocation(ctx))

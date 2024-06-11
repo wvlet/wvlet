@@ -86,7 +86,7 @@ class Parsers(unit: CompilationUnit) extends LogSupport:
       case FlowToken.FROM =>
         query()
       case FlowToken.SELECT =>
-        select()
+        Query(select(), t.nodeLocation)
       case _ => ???
 
   /**
@@ -186,23 +186,23 @@ class Parsers(unit: CompilationUnit) extends LogSupport:
       case FlowToken.PLUS =>
         consume(FlowToken.PLUS)
         val right = valueExpression()
-        ArithmeticBinaryExpr(Add, expression, right, t.nodeLocation)
+        ArithmeticBinaryExpr(BinaryExprType.Add, expression, right, t.nodeLocation)
       case FlowToken.MINUS =>
         consume(FlowToken.MINUS)
         val right = valueExpression()
-        ArithmeticBinaryExpr(Subtract, expression, right, t.nodeLocation)
+        ArithmeticBinaryExpr(BinaryExprType.Subtract, expression, right, t.nodeLocation)
       case FlowToken.STAR =>
         consume(FlowToken.STAR)
         val right = valueExpression()
-        ArithmeticBinaryExpr(Multiply, expression, right, t.nodeLocation)
+        ArithmeticBinaryExpr(BinaryExprType.Multiply, expression, right, t.nodeLocation)
       case FlowToken.DIV =>
         consume(FlowToken.DIV)
         val right = valueExpression()
-        ArithmeticBinaryExpr(Divide, expression, right, t.nodeLocation)
+        ArithmeticBinaryExpr(BinaryExprType.Divide, expression, right, t.nodeLocation)
       case FlowToken.MOD =>
         consume(FlowToken.MOD)
         val right = valueExpression()
-        ArithmeticBinaryExpr(Modulus, expression, right, t.nodeLocation)
+        ArithmeticBinaryExpr(BinaryExprType.Modulus, expression, right, t.nodeLocation)
       case _ =>
         expression
 

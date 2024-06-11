@@ -356,12 +356,12 @@ case class WhenClause(condition: Expression, result: Expression, nodeLocation: O
 case class Exists(child: Expression, nodeLocation: Option[NodeLocation]) extends Expression with UnaryExpression
 
 // Arithmetic expr
-abstract sealed class BinaryExprType(val symbol: String)
-case object Add      extends BinaryExprType("+")
-case object Subtract extends BinaryExprType("-")
-case object Multiply extends BinaryExprType("*")
-case object Divide   extends BinaryExprType("/")
-case object Modulus  extends BinaryExprType("%")
+enum BinaryExprType(val symbol: String):
+  case Add      extends BinaryExprType("+")
+  case Subtract extends BinaryExprType("-")
+  case Multiply extends BinaryExprType("*")
+  case Divide   extends BinaryExprType("/")
+  case Modulus  extends BinaryExprType("%")
 
 sealed trait ArithmeticExpression extends Expression
 

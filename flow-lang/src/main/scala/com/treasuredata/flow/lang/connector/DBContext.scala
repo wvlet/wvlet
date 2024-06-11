@@ -1,7 +1,11 @@
 package com.treasuredata.flow.lang.connector
 
-import com.treasuredata.flow.lang.connector.common.exprs.Expr
 import wvlet.airframe.control.Control.withResource
+import com.treasuredata.flow.lang.connector.DBContext.*
+import com.treasuredata.flow.lang.model.plan.LogicalPlan
+import com.treasuredata.flow.lang.model.plan.*
+import com.treasuredata.flow.lang.model.sql.SqlExpr
+import com.treasuredata.flow.lang.model.sql.SqlExpr.ExprInterpreter
 
 import java.sql.Connection
 
@@ -9,16 +13,33 @@ object DBContext:
   case class Table(catalog: String, schema: String, table: String)
   case class Schema(catalog: String, schema: String)
 
-import com.treasuredata.flow.lang.connector.DBContext.*
+enum QueryScope:
+  case Global, InQuery, InExpr
 
-trait DBContext extends AutoCloseable:
-  private var _self: Expr[Any] = _
-  def self: Expr[Any]          = ???
-  def withSelf(self: Expr[Any]): this.type =
-    _self = self
+trait DBContext extends ExprInterpreter with AutoCloseable:
+  private var _self: SqlExpr     = _
+  private var _plan: LogicalPlan = _
+
+  private var queryScope: QueryScope = QueryScope.Global
+
+  def self: SqlExpr = _self
+
+  def plan: LogicalPlan = ???
+  def withSelf(newSelf: SqlExpr): this.type =
+    _self = newSelf
+    this
+
+  def withPlan(plan: LogicalPlan): this.type =
+    _plan = plan
+    this
+
+  def withQueryScope(scope: QueryScope): this.type =
+    queryScope = scope
     this
 
   protected def newConnection: Connection
+
+  def IString: IString
 
   def withConnection[U](body: Connection => U): U =
     val conn = newConnection

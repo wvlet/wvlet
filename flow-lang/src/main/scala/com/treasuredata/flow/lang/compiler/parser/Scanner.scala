@@ -354,7 +354,7 @@ class Scanner(source: SourceFile, config: ScannerConfig = ScannerConfig()) exten
       nextChar()
     consume('\'')
     current.token = FlowToken.STRING_LITERAL
-    current.str = tokenBuffer.toString
+    current.str = setTokenStringValue()
 
   private def getDoubleQuoteString(): Unit =
     // TODO Support unicode and escape characters
@@ -364,7 +364,7 @@ class Scanner(source: SourceFile, config: ScannerConfig = ScannerConfig()) exten
       nextChar()
     consume('\"')
     current.token = FlowToken.STRING_LITERAL
-    current.str = tokenBuffer.toString
+    current.str = setTokenStringValue()
 
   private def getIdentRest(): Unit =
     trace(s"getIdentRest[${offset}]: ch: '${String.valueOf(ch)}'")

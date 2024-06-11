@@ -1,6 +1,7 @@
 package com.treasuredata.flow.lang.connector.trino
 
 import com.treasuredata.flow.lang.connector.DBContext
+import com.treasuredata.flow.lang.model.sql.*
 import io.trino.jdbc.TrinoDriver
 
 import java.sql.Connection
@@ -16,7 +17,7 @@ case class TrinoConfig(
 )
 
 class TrinoContext(config: TrinoConfig) extends DBContext:
-  private val driver = new TrinoDriver()
+  private lazy val driver = new TrinoDriver()
 
   override protected def newConnection: Connection =
     val jdbcUrl =
@@ -29,3 +30,17 @@ class TrinoContext(config: TrinoConfig) extends DBContext:
 
   override def close(): Unit =
     driver.close()
+
+  override def IString: IString = TrinoString(using this)
+
+  class TrinoString(using ctx: TrinoContext) extends IString:
+    override def toInt     = sql"cast(${self} as int)"
+    override def toLong    = sql"cast(${self} as bigint)"
+    override def toFloat   = sql"cast(${self} as real)"
+    override def toDouble  = sql"cast(${self} as double)"
+    override def toBoolean = sql"cast(${self} as boolean)"
+    override def length    = sql"length(${self})"
+
+    override def substring(start: SqlExpr)               = sql"substring(${self}, ${start})"
+    override def substring(start: SqlExpr, end: SqlExpr) = sql"substring(${self}, ${start}, ${end})"
+    override def regexpContains(pattern: SqlExpr)        = sql"regexp_like(${self}, ${pattern})"

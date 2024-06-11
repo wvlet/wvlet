@@ -391,7 +391,8 @@ class SQLGenerator(config: SQLGeneratorConfig = SQLGeneratorConfig()) extends Lo
         val e = a.expr.sqlExpr
         s"${e} AS ${printNameWithQuotationsIfNeeded(a.name)}"
       case s @ SingleColumn(ex, _, _) =>
-        s.fullName
+        if s.fullName != "?" then s"${printExpression(s.expr)} AS ${s.fullName}"
+        else printExpression(s.expr)
       case m: MultiSourceColumn =>
         m.fullName
       case a: AllColumns =>
