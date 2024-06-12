@@ -2,6 +2,7 @@ package com.treasuredata.flow.lang.connector.trino
 
 import com.treasuredata.flow.lang.connector.DBContext
 import com.treasuredata.flow.lang.model.sql.*
+import com.treasuredata.flow.lang.model.sql.SqlExpr.*
 import io.trino.jdbc.TrinoDriver
 
 import java.sql.Connection
@@ -31,7 +32,12 @@ class TrinoContext(config: TrinoConfig) extends DBContext:
   override def close(): Unit =
     driver.close()
 
-  override def IString: IString = TrinoString(using this)
+  override def IString: IString   = TrinoString(using this)
+  override def IBoolean: IBoolean = TrinoBoolean(using this)
+  override def IInt: IInt         = TrinoInt(using this)
+  override def ILong: ILong       = TrinoLong(using this)
+  override def IFloat: IFloat     = TrinoFloat(using this)
+  override def IDouble: IDouble   = TrinoDouble(using this)
 
   class TrinoString(using ctx: TrinoContext) extends IString:
     override def toInt     = sql"cast(${self} as int)"
@@ -44,3 +50,9 @@ class TrinoContext(config: TrinoConfig) extends DBContext:
     override def substring(start: SqlExpr)               = sql"substring(${self}, ${start})"
     override def substring(start: SqlExpr, end: SqlExpr) = sql"substring(${self}, ${start}, ${end})"
     override def regexpContains(pattern: SqlExpr)        = sql"regexp_like(${self}, ${pattern})"
+
+  class TrinoBoolean(using ctx: TrinoContext) extends IBoolean
+  class TrinoInt(using ctx: TrinoContext)     extends IInt
+  class TrinoLong(using ctx: TrinoContext)    extends ILong
+  class TrinoFloat(using ctx: TrinoContext)   extends IFloat
+  class TrinoDouble(using ctx: TrinoContext)  extends IDouble

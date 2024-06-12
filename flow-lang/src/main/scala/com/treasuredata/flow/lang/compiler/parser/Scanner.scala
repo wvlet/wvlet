@@ -271,28 +271,6 @@ class Scanner(source: SourceFile, config: ScannerConfig = ScannerConfig()) exten
         nextChar()
         if ch == '*' then getBlockComment()
         else getOperatorRest()
-
-//      case ',' =>
-//        nextChar()
-//        current.token = FlowToken.COMMA
-//      case '(' =>
-//        nextChar()
-//        current.token = FlowToken.L_PAREN
-//      case ')' =>
-//        nextChar()
-//        current.token = FlowToken.R_PAREN
-//      case '[' =>
-//        nextChar()
-//        current.token = FlowToken.L_BRACKET
-//      case ']' =>
-//        nextChar()
-//        current.token = FlowToken.R_BRACKET
-//      case '{' =>
-//        nextChar()
-//        current.token = FlowToken.L_BRACE
-//      case '}' =>
-//        nextChar()
-//        current.token = FlowToken.R_BRACE
       case SU =>
         current.token = FlowToken.EOF
         current.str = ""

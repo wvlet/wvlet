@@ -5,7 +5,7 @@ import com.treasuredata.flow.lang.connector.DBContext.*
 import com.treasuredata.flow.lang.model.plan.LogicalPlan
 import com.treasuredata.flow.lang.model.plan.*
 import com.treasuredata.flow.lang.model.sql.SqlExpr
-import com.treasuredata.flow.lang.model.sql.SqlExpr.ExprInterpreter
+import com.treasuredata.flow.lang.model.sql.SqlExpr.*
 
 import java.sql.Connection
 
@@ -16,7 +16,7 @@ object DBContext:
 enum QueryScope:
   case Global, InQuery, InExpr
 
-trait DBContext extends ExprInterpreter with AutoCloseable:
+trait DBContext extends AutoCloseable:
   private var _self: SqlExpr     = _
   private var _plan: LogicalPlan = _
 
@@ -40,6 +40,11 @@ trait DBContext extends ExprInterpreter with AutoCloseable:
   protected def newConnection: Connection
 
   def IString: IString
+  def IBoolean: IBoolean
+  def IInt: IInt
+  def ILong: ILong
+  def IFloat: IFloat
+  def IDouble: IDouble
 
   def withConnection[U](body: Connection => U): U =
     val conn = newConnection

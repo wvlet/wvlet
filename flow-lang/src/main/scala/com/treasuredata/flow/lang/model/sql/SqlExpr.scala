@@ -36,16 +36,6 @@ object SqlExpr:
   def join(exprs: SqlExpr*): SqlExpr =
     SqlExprList(exprs.filterNot(_.toSQL.isEmpty), separator = " ")
 
-  abstract class ExprInterpreter:
-    type IRelation  = SqlExpr.IRelation
-    type IString    = SqlExpr.IString
-    type IBoolean   = SqlExpr.IBoolean
-    type IInt       = SqlExpr.IInt
-    type ILong      = SqlExpr.ILong
-    type IFloat     = SqlExpr.IFloat
-    type IDouble    = SqlExpr.IDouble
-    type IAttribute = SqlExpr.IAttribute
-
   class IRelation(using ctx: DBContext) extends SqlExpr:
     export ctx.self
 
