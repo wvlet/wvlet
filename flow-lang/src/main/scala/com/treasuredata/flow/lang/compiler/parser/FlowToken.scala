@@ -5,6 +5,8 @@ enum TokenType:
 
 import TokenType.*
 
+import scala.annotation.switch
+
 enum FlowToken(val tokenType: TokenType, val str: String):
   // special tokens
   case EMPTY   extends FlowToken(Control, "<empty>")
@@ -27,8 +29,10 @@ enum FlowToken(val tokenType: TokenType, val str: String):
   case FLOAT_LITERAL   extends FlowToken(Literal, "<float literal>")
   case DOUBLE_LITERAL  extends FlowToken(Literal, "<double literal>")
   case STRING_LITERAL  extends FlowToken(Literal, "<string literal>")
-  // For interpolated string parts
-  case STRING_PART extends FlowToken(Literal, "<string part>")
+
+  // For interpolated string, e.g., sql"...${expr}..."
+  case STRING_INTERPOLATION extends FlowToken(Literal, "<string interpolation>")
+  case STRING_PART          extends FlowToken(Literal, "<string part>")
 
   // Identifiers
   case IDENTIFIER extends FlowToken(Identifier, "<identifier>")
@@ -90,6 +94,10 @@ enum FlowToken(val tokenType: TokenType, val str: String):
   case SCHEMA extends FlowToken(Keyword, "schema")
   case TYPE   extends FlowToken(Keyword, "type")
   case WITH   extends FlowToken(Keyword, "with")
+  case TEST   extends FlowToken(Keyword, "test")
+
+  case THIS  extends FlowToken(Keyword, "this")
+  case USING extends FlowToken(Keyword, "using")
 
   case IN extends FlowToken(Keyword, "in")
   case BY extends FlowToken(Keyword, "by")
@@ -109,6 +117,7 @@ enum FlowToken(val tokenType: TokenType, val str: String):
   case IMPORT  extends FlowToken(Keyword, "import")
   case EXPORT  extends FlowToken(Keyword, "export")
   case PACKAGE extends FlowToken(Keyword, "package")
+  case MODEL   extends FlowToken(Keyword, "model")
 
   case IF   extends FlowToken(Keyword, "if")
   case THEN extends FlowToken(Keyword, "then")
@@ -126,3 +135,40 @@ object FlowToken:
   val allKeywordAndSymbol = keywords ++ specialSymbols
 
   val keywordAndSymbolTable = allKeywordAndSymbol.map(x => x.str -> x).toMap
+
+  // Line Feed '\n'
+  inline val LF = '\u000A'
+  // Form Feed '\f'
+  inline val FF = '\u000C'
+  // Carriage Return '\r'
+  inline val CR = '\u000D'
+  // Substitute (SUB), which is used as the EOF marker in Windows
+  inline val SU = '\u001A'
+
+  def isLineBreakChar(c: Char): Boolean = (c: @switch) match
+    case LF | FF | CR | SU => true
+    case _                 => false
+
+  /**
+    * White space character but not a new line (\n)
+    *
+    * @param c
+    * @return
+    */
+  def isWhiteSpaceChar(c: Char): Boolean = (c: @switch) match
+    case ' ' | '\t' | CR => true
+    case _               => false
+
+  def isNumberSeparator(ch: Char): Boolean = ch == '_'
+
+  /**
+    * Convert a character to an integer value using the given base. Returns -1 upon failures
+    */
+  def digit2int(ch: Char, base: Int): Int =
+    val num =
+      if ch <= '9' then ch - '0'
+      else if 'a' <= ch && ch <= 'z' then ch - 'a' + 10
+      else if 'A' <= ch && ch <= 'Z' then ch - 'A' + 10
+      else -1
+    if 0 <= num && num < base then num
+    else -1

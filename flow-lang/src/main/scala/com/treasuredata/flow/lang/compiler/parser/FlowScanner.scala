@@ -1,48 +1,11 @@
 package com.treasuredata.flow.lang.compiler.parser
 
+import com.treasuredata.flow.lang.compiler.parser.FlowScanner.{InString, Indented, Region}
 import com.treasuredata.flow.lang.compiler.{CompilationUnit, SourceFile, SourceLocation}
-import com.treasuredata.flow.lang.compiler.parser.FlowToken.FROM
 import com.treasuredata.flow.lang.model.NodeLocation
 import wvlet.log.LogSupport
 
 import scala.annotation.{switch, tailrec}
-
-object Scanner:
-  // Line Feed '\n'
-  inline val LF = '\u000A'
-  // Form Feed '\f'
-  inline val FF = '\u000C'
-  // Carriage Return '\r'
-  inline val CR = '\u000D'
-  // Substitute (SUB), which is used as the EOF marker in Windows
-  inline val SU = '\u001A'
-
-  def isLineBreakChar(c: Char): Boolean = (c: @switch) match
-    case LF | FF | CR | SU => true
-    case _                 => false
-
-  /**
-    * White space character but not a new line (\n)
-    * @param c
-    * @return
-    */
-  def isWhiteSpaceChar(c: Char): Boolean = (c: @switch) match
-    case ' ' | '\t' | CR => true
-    case _               => false
-
-  def isNumberSeparator(ch: Char): Boolean = ch == '_'
-
-  /**
-    * Convert a character to an integer value using the given base. Returns -1 upon failures
-    */
-  def digit2int(ch: Char, base: Int): Int =
-    val num =
-      if ch <= '9' then ch - '0'
-      else if 'a' <= ch && ch <= 'z' then ch - 'a' + 10
-      else if 'A' <= ch && ch <= 'Z' then ch - 'A' + 10
-      else -1
-    if 0 <= num && num < base then num
-    else -1
 
 case class TokenData(
     token: FlowToken,
@@ -50,6 +13,9 @@ case class TokenData(
     offset: Int,
     length: Int
 ):
+  override def toString: String =
+    f"[${offset}%3d:${length}%2d] ${token}%10s: ${str}"
+
   def sourceLocation(using unit: CompilationUnit): SourceLocation =
     SourceLocation(unit, nodeLocation(using unit.sourceFile))
 
@@ -60,7 +26,7 @@ case class TokenData(
 
 class ScanState(startFrom: Int = 0):
   override def toString: String =
-    s"ScanState(offset: ${offset}, lastOffset: ${lastOffset}, token: ${token}, str: ${str})"
+    s"'${str}' <${token}> (${lastOffset}-${offset})"
 
   // Token type
   var token: FlowToken = FlowToken.EMPTY
@@ -84,8 +50,6 @@ class ScanState(startFrom: Int = 0):
   def toTokenData(lastCharOffset: Int): TokenData = TokenData(token, str, offset, lastCharOffset - offset)
   def isAfterLineEnd: Boolean                     = lineOffset >= 0
 
-import Scanner.*
-
 case class ScannerConfig(
     startFrom: Int = 0,
     skipComments: Boolean = false
@@ -94,7 +58,9 @@ case class ScannerConfig(
 /**
   * Scan *.flow files
   */
-class Scanner(source: SourceFile, config: ScannerConfig = ScannerConfig()) extends LogSupport:
+class FlowScanner(source: SourceFile, config: ScannerConfig = ScannerConfig()) extends LogSupport:
+  import FlowToken.*
+
   // The last read character
   private var ch: Char = _
   // The offset +1 of the last read character
@@ -112,6 +78,8 @@ class Scanner(source: SourceFile, config: ScannerConfig = ScannerConfig()) exten
   // Is the current token the first one after a newline?
 
   private val tokenBuffer = TokenBuffer()
+
+  private var currentRegion: Region = Indented(0, null)
 
   inline private def offset = current.offset
 
@@ -191,8 +159,9 @@ class Scanner(source: SourceFile, config: ScannerConfig = ScannerConfig()) exten
   def nextToken(): TokenData =
     val lastToken = current.token
     getNextToken(lastToken)
-    debug(s"token [${current}], charOffset: ${charOffset}, lastCharOffset:${lastCharOffset}")
-    current.toTokenData(lastCharOffset)
+    val t = current.toTokenData(lastCharOffset)
+    debug(t)
+    t
 
   def currentToken: TokenData = current.toTokenData(lastCharOffset)
 
@@ -200,7 +169,9 @@ class Scanner(source: SourceFile, config: ScannerConfig = ScannerConfig()) exten
     // If the next token is already set, use it, otherwise fetch the next token
     if next.token == FlowToken.EMPTY then
       current.lastOffset = lastCharOffset
-      fetchToken()
+      currentRegion match
+        case InString(_) => fetchInterpolatedString()
+        case _           => fetchToken()
     else
       current.copyFrom(next)
       next.token = FlowToken.EMPTY
@@ -279,6 +250,23 @@ class Scanner(source: SourceFile, config: ScannerConfig = ScannerConfig()) exten
         nextChar()
         finishNamedToken()
 
+  private def fetchInterpolatedString(): Unit =
+    getStringPart()
+    // TODO
+    current.token = FlowToken.STRING_PART
+    current.str = ""
+
+  private def getStringPart(): Unit =
+    ch match
+      case '"' =>
+        nextChar()
+        current.token = STRING_LITERAL
+      case '$' =>
+        nextChar()
+        if ch == '{' then
+          nextChar()
+          current.token = FlowToken.STRING_PART
+
   private def getLineComment(): Unit =
     @tailrec
     def readToLineEnd(): Unit =
@@ -350,10 +338,15 @@ class Scanner(source: SourceFile, config: ScannerConfig = ScannerConfig()) exten
       case 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'I' | 'J' | 'K' | 'L' | 'M' | 'N' | 'O' | 'P' | 'Q' | 'R' |
           'S' | 'T' | 'U' | 'V' | 'W' | 'X' | 'Y' | 'Z' | '$' | 'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g' | 'h' | 'i' |
           'j' | 'k' | 'l' | 'm' | 'n' | 'o' | 'p' | 'q' | 'r' | 's' | 't' | 'u' | 'v' | 'w' | 'x' | 'y' | 'z' | '0' |
-          '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' =>
+          '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | '_' =>
         putChar(ch)
         nextChar()
         getIdentRest()
+      case '"' =>
+        // string interpolation
+        current.token = FlowToken.STRING_INTERPOLATION
+        current.str = setTokenStringValue()
+        currentRegion = InString(currentRegion)
       case _ =>
         finishNamedToken()
 
@@ -459,3 +452,13 @@ class Scanner(source: SourceFile, config: ScannerConfig = ScannerConfig()) exten
     // checkNoLetter()
     tokenType
   end getFraction
+
+object FlowScanner:
+  sealed trait Region:
+    def outer: Region
+
+  // Inside an interpolated string
+  case class InString(outer: Region) extends Region
+  case class InBraces(outer: Region) extends Region
+  // Inside an indented region
+  case class Indented(level: Int, outer: Region | Null) extends Region

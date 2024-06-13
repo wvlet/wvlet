@@ -49,7 +49,7 @@ case class TypeAlias(
 ) extends LanguageStatement
 
 case class TypeDef(
-    name: String,
+    name: Name,
     elems: Seq[TypeElem],
     nodeLocation: Option[NodeLocation]
 ) extends LanguageStatement
@@ -57,11 +57,12 @@ case class TypeDef(
 // type elements (def or column definition)
 sealed trait TypeElem extends Expression
 
-case class TypeDefDef(name: String, tpe: Option[String], expr: Expression, nodeLocation: Option[NodeLocation])
+case class TypeDefDef(name: Name, tpe: Option[Name], expr: Option[Expression], nodeLocation: Option[NodeLocation])
     extends TypeElem:
   override def children: Seq[Expression] = Seq.empty
 
-case class TypeValDef(name: String, tpe: String, nodeLocation: Option[NodeLocation]) extends TypeElem:
+case class TypeValDef(name: Name, tpe: Name, body: Option[Expression], nodeLocation: Option[NodeLocation])
+    extends TypeElem:
   override def children: Seq[Expression] = Seq.empty
 
 case class FunctionDef(

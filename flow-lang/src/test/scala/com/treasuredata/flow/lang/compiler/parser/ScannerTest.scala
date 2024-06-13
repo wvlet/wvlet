@@ -7,7 +7,7 @@ import wvlet.log.io.IOUtil
 class ScannerTest extends AirSpec:
   test("scan text") {
     val src     = SourceFile.fromString("from A")
-    val scanner = Scanner(src)
+    val scanner = FlowScanner(src)
     val token   = scanner.nextToken()
     debug(token)
     token.token shouldBe FlowToken.FROM
@@ -33,7 +33,7 @@ class ScannerTest extends AirSpec:
   inline def testScanToken(txt: String, expectedToken: FlowToken): Unit =
     test(s"scan ${txt}") {
       val src     = SourceFile.fromString(txt)
-      val scanner = Scanner(src)
+      val scanner = FlowScanner(src)
       val token   = scanner.nextToken()
       debug(token)
       token.token shouldBe expectedToken
@@ -56,7 +56,7 @@ class ScannerTest extends AirSpec:
     val src =
       """-- line comment
         |from A""".stripMargin
-    val scanner = Scanner(SourceFile.fromString(src))
+    val scanner = FlowScanner(SourceFile.fromString(src))
     var token   = scanner.nextToken()
     debug(token)
     token.token shouldBe FlowToken.COMMENT
@@ -78,7 +78,7 @@ class ScannerTest extends AirSpec:
     val src =
       """/* block comment */
         |from A""".stripMargin
-    val scanner = Scanner(SourceFile.fromString(src))
+    val scanner = FlowScanner(SourceFile.fromString(src))
     var token   = scanner.nextToken()
     debug(token)
     token.token shouldBe FlowToken.COMMENT

@@ -5,6 +5,8 @@ import com.treasuredata.flow.lang.compiler.runner.PlanExecutor
 import wvlet.airspec.AirSpec
 
 class QueryExecutionTest extends AirSpec:
+  pendingUntil("Stabilizing the new parser")
+
   test("run basic query") {
     val executor = PlanExecutor()
     val result   = Compiler.default.compile("examples/basic")

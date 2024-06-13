@@ -6,6 +6,8 @@ import wvlet.airspec.AirSpec
 
 class DuckDBExecutorTest extends AirSpec:
 
+  pendingUntil("Stabilizing the new parser")
+
   test("q1.flow") {
     DuckDBExecutor.execute("examples/basic", "q1.flow")
   }

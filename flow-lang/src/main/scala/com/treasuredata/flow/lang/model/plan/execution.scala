@@ -15,7 +15,7 @@ object ExecutionPlan:
   case class Tasks(
       name: String,
       tasks: List[ExecutionPlan]
-  )
+  ) extends ExecutionPlan
 
   /**
     * Materialize a model using a logical plan
@@ -24,4 +24,4 @@ object ExecutionPlan:
   case class MaterializeModel(
       modelName: Name,
       plan: LogicalPlan
-  )
+  ) extends ExecutionPlan

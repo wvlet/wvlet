@@ -1,7 +1,7 @@
 package com.treasuredata.flow.lang.compiler.runner
 
 import com.treasuredata.flow.lang.compiler.CompilationUnit
-import com.treasuredata.flow.lang.compiler.parser.Parsers
+import com.treasuredata.flow.lang.compiler.parser.FlowParser
 import com.treasuredata.flow.lang.connector.DBContext
 import com.treasuredata.flow.lang.connector.duckdb.DuckDBContext
 import com.treasuredata.flow.lang.connector.trino.{TrinoConfig, TrinoContext}
@@ -19,7 +19,7 @@ class ExecutionPlanTest extends AirSpec:
       test(s"query: ${q}") {
         val unit: CompilationUnit = CompilationUnit.fromString(q)
 
-        val parser = Parsers(unit)
+        val parser = FlowParser(unit)
         val plan   = parser.parse()
         debug(plan)
 

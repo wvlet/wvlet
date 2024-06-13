@@ -1,7 +1,7 @@
 package com.treasuredata.flow.lang.compiler
 
 import com.treasuredata.flow.lang.compiler.analyzer.{PostTypeScan, PreTypeScan, TypeResolver, TypeScanner}
-import com.treasuredata.flow.lang.compiler.parser.FlowParser
+import com.treasuredata.flow.lang.compiler.parser.{FlowParser, ParserPhase}
 import com.treasuredata.flow.lang.compiler.transform.Incrementalize
 import com.treasuredata.flow.lang.model.plan.LogicalPlan
 import wvlet.log.LogSupport
@@ -13,7 +13,7 @@ object Compiler:
     * Phases for text-based analysis of the source code
     */
   def analysisPhases: List[Phase] = List(
-    FlowParser,   // Parse *.flow files and create untyped plans
+    ParserPhase,  // Parse *.flow files and create untyped plans
     PreTypeScan,  // Collect all schema and types in the source paths
     PostTypeScan, // Post-process to resolve unresolved types, which cannot be found in the first type scan
     TypeResolver  // Resolve concrete types for each LogicalPlan node

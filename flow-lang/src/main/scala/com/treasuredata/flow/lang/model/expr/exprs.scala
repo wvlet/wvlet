@@ -600,3 +600,8 @@ case class UnresolvedGroupingKey(child: Expression, nodeLocation: Option[NodeLoc
 case class Extract(interval: IntervalField, expr: Expression, nodeLocation: Option[NodeLocation]) extends Expression:
   override def children: Seq[Expression] = Seq(expr)
   override def toString                  = s"Extract(interval:${interval}, ${expr})"
+
+case class InterpolatedString(prefix: Name, parts: List[Expression], nodeLocation: Option[NodeLocation])
+    extends Expression:
+  override def children: Seq[Expression] = parts
+  override def toString: String          = s"InterpolatedString(${prefix}, ${parts.mkString(", ")})"

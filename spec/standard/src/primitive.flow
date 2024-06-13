@@ -1,0 +1,26 @@
+package flow.standard
+
+type string:
+  def to_int: int = sql"cast(${this} as bigint)"
+  def to_long: long = sql"cast(${this} as bigint)"
+  def to_float: float = sql"cast(${this} as double)"
+  def to_double: double = sql"cast(${this} as double)"
+  def to_boolean: boolean = sql"cast(${this} as boolean)"
+
+  -- if the string is null, return the default value
+  def or_else(other:sql): string = sql"coalesce(${this},${other})"
+
+  def +(other:string): string = sql"${this} || ${other}"
+  def length: int = sql"length(${this})"
+  def trim: string = sql"trim(${this})"
+
+  def substring(start:int,end:int): string = sql"substring(${this},${start},${end})"
+
+  -- Using query engine specific dialects
+  def substring(start:int)(using trino): string = sql"substring(${this},${start})"
+  def substring(start:int)(using duckdb): string = sql"substring(${this},${start},strlen(${this}))"
+
+  -- Using query engine specific functions
+  def regexp_like(pattern:string)(using trino): boolean = sql"regexp_like(${this},${pattern})"
+  def regexp_like(pattern:string)(using duckdb): boolean = sql"regexp_matches(${this},${pattern})"
+end

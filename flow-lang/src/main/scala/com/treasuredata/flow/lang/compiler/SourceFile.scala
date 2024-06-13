@@ -1,7 +1,7 @@
 package com.treasuredata.flow.lang.compiler
 
-import com.treasuredata.flow.lang.compiler.parser.{Scanner, SourcePosition, Span}
-import com.treasuredata.flow.lang.compiler.parser.Scanner.*
+import com.treasuredata.flow.lang.compiler.parser.{FlowScanner, FlowToken, SourcePosition, Span}
+import com.treasuredata.flow.lang.compiler.parser.FlowToken.*
 import wvlet.airframe.ulid.ULID
 import wvlet.log.io.IOUtil
 
@@ -32,7 +32,7 @@ class SourceFile(val file: String, readContent: (file: String) => String):
         val ch = txt(i)
         // CR LF
         if ch == CR then i + 1 == txt.length || content(i + 1) != LF
-        else Scanner.isLineBreakChar(ch)
+        else FlowToken.isLineBreakChar(ch)
       if isLineBreak then buf += i + 1
       i += 1
     buf += txt.length // sentinel, so that findLine below works smoother

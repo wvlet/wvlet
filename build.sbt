@@ -104,15 +104,15 @@ lazy val api =
 
 lazy val lang =
   project
-    .enablePlugins(Antlr4Plugin)
+//    .enablePlugins(Antlr4Plugin)
     .in(file("flow-lang"))
     .settings(
       buildSettings,
-      name                       := "flow-lang",
-      Antlr4 / antlr4Version     := "4.13.1",
-      Antlr4 / antlr4PackageName := Some("com.treasuredata.flow.lang.compiler.parser"),
-      Antlr4 / antlr4GenListener := true,
-      Antlr4 / antlr4GenVisitor  := true,
+      name := "flow-lang",
+//      Antlr4 / antlr4Version     := "4.13.1",
+//      Antlr4 / antlr4PackageName := Some("com.treasuredata.flow.lang.compiler.parser"),
+//      Antlr4 / antlr4GenListener := true,
+//      Antlr4 / antlr4GenVisitor  := true,
       Test / javaOptions ++= Seq(
         // "--add-opens=java.base/java.nio=org.apache.arrow.memory.core,ALL-UNNAMED",
         // Add JVM options for suppress warnings in TestTrinoServer

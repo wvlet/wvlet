@@ -36,12 +36,12 @@ class TypeScanner(name: String) extends Phase(name) with LogSupport:
     val defs: Seq[FunctionType] = Seq.empty // typeDef.defs.collect { case tpe: TypeDefDef =>
 
     val valDefs = typeDef.elems.collect { case v: TypeValDef =>
-      val resolvedType = scanDataType(ColumnType(v.tpe, v.nodeLocation), context)
-      NamedType(v.name, resolvedType)
+      val resolvedType = scanDataType(ColumnType(v.tpe.fullName, v.nodeLocation), context)
+      NamedType(v.name.fullName, resolvedType)
     }
     val selfType = valDefs.filter(_.name == "self")
 
-    if valDefs.nonEmpty then SchemaType(typeDef.name, valDefs)
+    if valDefs.nonEmpty then SchemaType(typeDef.name.fullName, valDefs)
     else
       selfType.size match
         case 0 =>
@@ -55,7 +55,7 @@ class TypeScanner(name: String) extends Phase(name) with LogSupport:
             context.compileUnit.toSourceLocation(typeDef.nodeLocation)
           )
         case 1 =>
-          ExtensionType(typeDef.name, selfType.head, defs)
+          ExtensionType(typeDef.name.fullName, selfType.head, defs)
 
   private def scanDataType(columnType: ColumnType, context: Context): DataType =
     context.scope
