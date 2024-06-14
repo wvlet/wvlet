@@ -22,7 +22,7 @@ addSbtPlugin("org.jetbrains.scala" % "sbt-ide-settings" % "1.1.2")
 addSbtPlugin("io.spray" % "sbt-revolver" % "0.10.0")
 
 // For Scala.js
-val SCALAJS_VERSION = sys.env.getOrElse("SCALAJS_VERSION", "1.16.0")
+val SCALAJS_VERSION                    = sys.env.getOrElse("SCALAJS_VERSION", "1.16.0")
 addSbtPlugin("org.scala-js"       % "sbt-scalajs"              % SCALAJS_VERSION)
 addSbtPlugin("org.portable-scala" % "sbt-scalajs-crossproject" % "1.3.2")
 
@@ -42,6 +42,6 @@ addSbtPlugin("org.xerial.sbt" % "sbt-pack" % "0.20")
 
 // For compiling model classes from SQL templates
 libraryDependencies += "org.duckdb" % "duckdb_jdbc" % "1.0.0"
-addSbtPlugin("org.xerial.sbt"       % "sbt-sql"     % "0.19")
+addSbtPlugin("org.xerial.sbt" % "sbt-sql" % "0.19")
 
 scalacOptions ++= Seq("-deprecation", "-feature")
