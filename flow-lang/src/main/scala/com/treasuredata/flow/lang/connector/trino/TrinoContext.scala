@@ -17,7 +17,7 @@ case class TrinoConfig(
     password: Option[String] = None
 )
 
-class TrinoContext(config: TrinoConfig) extends DBContext:
+class TrinoContext(val config: TrinoConfig) extends DBContext:
   private lazy val driver = new TrinoDriver()
 
   override protected def newConnection: Connection =
@@ -31,6 +31,9 @@ class TrinoContext(config: TrinoConfig) extends DBContext:
 
   override def close(): Unit =
     driver.close()
+
+  def withConfig(newConfig: TrinoConfig): TrinoContext =
+    new TrinoContext(newConfig)
 
   override def IString: IString   = TrinoString(using this)
   override def IBoolean: IBoolean = TrinoBoolean(using this)

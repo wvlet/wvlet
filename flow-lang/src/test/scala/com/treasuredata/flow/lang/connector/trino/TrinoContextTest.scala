@@ -1,6 +1,12 @@
 package com.treasuredata.flow.lang.connector.trino
 
+import wvlet.airframe.codec.JDBCCodec
+import wvlet.airframe.codec.JDBCCodec.ResultSetCodec
+import wvlet.airframe.control.Control
+import wvlet.airframe.control.Control.withResource
 import wvlet.airspec.AirSpec
+
+import java.io.File
 
 class TrinoContextTest extends AirSpec:
 
@@ -34,3 +40,33 @@ class TrinoContextTest extends AirSpec:
 
     test("drop schema"):
       trino.dropSchema("memory", "main")
+
+    test("Create delta Lake table"):
+      val baseDir = new File(sys.props("user.dir")).getAbsolutePath
+
+      val trinoDelta = trino.withConfig(trino.config.copy(catalog = "delta", schema = "delta_db"))
+      trinoDelta.createSchema("delta", "delta_db")
+      test("create a local delta lake file"):
+        trinoDelta.withConnection { conn =>
+          withResource(conn.createStatement()): stmt =>
+            stmt.execute("create table a as select 1 as id, 'leo' as name")
+
+            // For some reason, insert into fails ` Writes are not enabled on the file filesystem in order to avoid eventual data corruption`
+            // stmt.execute("insert into a values(1, 'leo')")
+
+            withResource(stmt.executeQuery("select * from a")): rs =>
+              val queryResultJson = ResultSetCodec(rs).toJson
+              debug(queryResultJson)
+        }
+
+      test("register a local delta lake table"):
+        trinoDelta.withConnection: conn =>
+          withResource(conn.createStatement()) { stmt =>
+            stmt.execute(
+              s"call delta.system.register_table(schema_name => 'delta_db', table_name => 'www_access', table_location => 'file://${baseDir}/spec/delta/data/www_access')"
+            )
+            withResource(stmt.executeQuery("select * from www_access limit 5")) { rs =>
+              val queryResultJson = ResultSetCodec(rs).toJson
+              debug(queryResultJson)
+            }
+          }

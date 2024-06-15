@@ -1,9 +1,14 @@
 package com.treasuredata.flow.lang.connector.trino
 
+import io.trino.plugin.deltalake.{DeltaLakeConnectorFactory, DeltaLakePlugin}
 import io.trino.plugin.memory.MemoryPlugin
 import io.trino.server.testing.TestingTrinoServer
+import wvlet.airframe.control.Resource
+import wvlet.airframe.ulid.ULID
 import wvlet.log.{LogSupport, Logger}
 
+import java.io.File
+import java.nio.file.{Files, Path}
 import java.util.logging.Level
 import scala.jdk.CollectionConverters.*
 
@@ -11,6 +16,11 @@ class TestTrinoServer extends AutoCloseable with LogSupport:
   private def setLogLevel(loggerName: String, level: Level): Unit =
     val l = java.util.logging.Logger.getLogger(loggerName)
     l.setLevel(level)
+
+  private val tempMetastoreDir =
+    val dir = new File("target/trino-hive-metastore")
+    dir.mkdirs()
+    new File(dir, ULID.newULIDString)
 
   private val server =
     Logger.rootLogger.suppressLogs {
@@ -21,6 +31,22 @@ class TestTrinoServer extends AutoCloseable with LogSupport:
 
       trino.installPlugin(new MemoryPlugin())
       trino.createCatalog("memory", "memory")
+      trino.installPlugin(new DeltaLakePlugin())
+
+      info(s"Using metastore dir: $tempMetastoreDir")
+      trino.createCatalog(
+        "delta",
+        DeltaLakeConnectorFactory.CONNECTOR_NAME,
+        Map[String, String](
+          "hive.metastore"                         -> "file",
+          "hive.metastore.catalog.dir"             -> s"file://${tempMetastoreDir.getAbsolutePath}",
+          "hive.metastore.disable-location-checks" -> "true",
+          "fs.hadoop.enabled"                      -> "true",
+          // Allow call delta system.register_table
+          "delta.register-table-procedure.enabled" -> "true",
+          "delta.enable-non-concurrent-writes"     -> "true"
+        ).asJava
+      )
       trino
     }
 
@@ -32,5 +58,19 @@ class TestTrinoServer extends AutoCloseable with LogSupport:
     Logger.rootLogger.suppressLogs {
       server.close()
     }
+
+    // clean up tempMetastoreDir files and dirs recursively
+
+    def delete(f: File): Unit =
+      if f.isFile then f.delete()
+      else if f.isDirectory then
+        f.listFiles() match
+          case lst: Array[File] =>
+            lst.foreach(delete)
+          case null =>
+        f.delete()
+
+    delete(tempMetastoreDir)
+
     // io.airlift redirects stdout/stderr to loggers, so we need to clear all handlers
     Logger.init

@@ -131,8 +131,17 @@ lazy val lang =
         "org.duckdb"          % "duckdb_jdbc"  % "1.0.0",
         "io.trino"            % "trino-jdbc"   % TRINO_VERSION,
         // exclude() and jar() are necessary to avoid https://github.com/sbt/sbt/issues/7407
+        // tpc-h connector neesd to download GB's of jar, so excluding it
         "io.trino" % "trino-testing" % TRINO_VERSION % Test exclude ("io.trino", "trino-tpch"),
-        "io.trino" % "trino-memory"  % TRINO_VERSION % Test exclude ("io.trino", "trino-tpch") jar ()
+        // Trino uses trino-plugin packaging name in pom.xml, so we need to specify jar() package explicitly
+        "io.trino" % "trino-delta-lake" % TRINO_VERSION % Test exclude ("io.trino", "trino-tpch") exclude (
+          "io.trino",
+          "trino-hive"
+        ) jar (),
+        // hive and hdfs are necessary for accessing delta lake tables
+        "io.trino" % "trino-hive"   % TRINO_VERSION % Test exclude ("io.trino", "trino-tpch") jar (),
+        "io.trino" % "trino-hdfs"   % TRINO_VERSION % Test jar (),
+        "io.trino" % "trino-memory" % TRINO_VERSION % Test exclude ("io.trino", "trino-tpch") jar ()
 
 //        // Add Spark as a reference impl (Scala 2)
 //        "org.apache.spark" %% "spark-sql" % "3.5.1" % Test excludeAll (
