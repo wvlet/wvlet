@@ -51,8 +51,7 @@ class TrinoContextTest extends AirSpec:
           withResource(conn.createStatement()): stmt =>
             stmt.execute("create table a as select 1 as id, 'leo' as name")
 
-            // For some reason, insert into fails ` Writes are not enabled on the file filesystem in order to avoid eventual data corruption`
-            // stmt.execute("insert into a values(1, 'leo')")
+            stmt.execute("insert into a values(2, 'yui')")
 
             withResource(stmt.executeQuery("select * from a")): rs =>
               val queryResultJson = ResultSetCodec(rs).toJson

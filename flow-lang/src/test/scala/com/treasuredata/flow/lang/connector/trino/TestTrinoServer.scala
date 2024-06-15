@@ -18,9 +18,9 @@ class TestTrinoServer extends AutoCloseable with LogSupport:
     l.setLevel(level)
 
   private val tempMetastoreDir =
-    val dir = new File("target/trino-hive-metastore")
+    val dir = new File(s"target/trino-hive-metastore/${ULID.newULIDString}")
     dir.mkdirs()
-    new File(dir, ULID.newULIDString)
+    dir
 
   private val server =
     Logger.rootLogger.suppressLogs {
@@ -31,7 +31,8 @@ class TestTrinoServer extends AutoCloseable with LogSupport:
 
       trino.installPlugin(new MemoryPlugin())
       trino.createCatalog("memory", "memory")
-      trino.installPlugin(new DeltaLakePlugin())
+      // For supporting insert into to Delta Lake, need to provide TransactionLogSynchronizer implementation to the plugin
+      trino.installPlugin(new TestingDeltaLakePlugin(tempMetastoreDir.toPath))
 
       info(s"Using metastore dir: $tempMetastoreDir")
       trino.createCatalog(
