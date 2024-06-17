@@ -387,6 +387,9 @@ class FlowScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
     if !config.skipComments then
       current.token = FlowToken.COMMENT
       current.str = commentLine
+    else
+      debug(s"skip comment: ${commentLine}")
+      fetchToken()
 
   private def getBlockComment(): Unit =
     @tailrec

@@ -44,12 +44,12 @@ object LogicalPlanPrinter extends LogSupport:
     m match
       case null | EmptyRelation(_) =>
       // print nothing
-      case f: FunctionDef =>
-        val rt = f.resultType.map(x => s": ${x}").getOrElse("")
-        out.println(s"[FunctionDef] ${f.name}")
-        out.println(
-          s"  def ${f.name}(${f.args.map(x => s"${x.name}: ${x.tpe}").mkString(", ")})${rt} = ${printExpression(f.bodyExpr)}"
-        )
+//      case f: FunctionDef =>
+//        val rt = f.resultType.map(x => s": ${x}").getOrElse("")
+//        out.println(s"[FunctionDef] ${f.name}")
+//        out.println(
+//          s"  def ${f.name}(${f.args.map(x => s"${x.name}").mkString(", ")})${rt} = ${printExpression(f.bodyExpr)}"
+//        )
       case t: TypeDef =>
         val s = concat(
           List(
@@ -105,8 +105,17 @@ object LogicalPlanPrinter extends LogSupport:
   private def printExpression(e: Expression): String =
     e match
       case i: Identifier => i.expr
-      case f: FunctionCall =>
-        f.toString
+//      case f: FunctionCall =>
+//        f.toString
+      case d: DefArg =>
+        concat(
+          List(
+            d.name,
+            ": ",
+            d.tpe,
+            if d.defaultValue.isEmpty then Nil else List(" = ", d.defaultValue)
+          )
+        )
       case d: Dereference =>
         s"Dereference(${printExpression(d.base)}, ${printExpression(d.next)})"
       case s: SingleColumn =>
@@ -153,8 +162,11 @@ object LogicalPlanPrinter extends LogSupport:
         s"(${p.child.sqlExpr})"
       case null => "null"
       case arg: FunctionArg =>
-        s"${printExpression(arg.name)}: ${printExpression(arg.tpe)}${arg.defaultValue
-            .map(printExpression).map(x => s" = ${x}").getOrElse("")}"
+        arg.name match
+          case Some(name) =>
+            concat(List(name, " = ", arg.value))
+          case None =>
+            concat(List(arg.value))
       case id: Identifier => id.value
       case i: InterpolatedString =>
         s"${printExpression(i.prefix)}{${i.parts.map(printExpression).mkString(", ")}}"

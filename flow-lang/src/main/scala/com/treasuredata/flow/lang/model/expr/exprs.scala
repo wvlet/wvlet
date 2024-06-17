@@ -37,8 +37,12 @@ case class Dereference(base: Expression, next: Expression, nodeLocation: Option[
   override def toString: String          = s"Dereference(${base} => ${next})"
   override def children: Seq[Expression] = Seq(base, next)
 
-case class Ref(base: Name, name: Name, nodeLocation: Option[NodeLocation]) extends Name:
-  override def fullName: String          = s"${base.fullName}.${name.fullName}"
+case class Ref(base: Expression, name: Name, nodeLocation: Option[NodeLocation]) extends Name:
+  override def fullName: String =
+    base match
+      case n: Name => s"${n.fullName}.${name.fullName}"
+      case _       => s"${base}.${name.fullName}"
+
   override def toString: String          = s"Ref(${base},${name})"
   override def children: Seq[Expression] = Seq(base)
 
@@ -190,34 +194,37 @@ case class WindowFrame(
 
 // Function
 case class FunctionApply(
-    context: Expression,
-    args: List[Expression],
+    base: Expression,
+    args: List[FunctionArg],
     nodeLocation: Option[NodeLocation]
 ) extends Expression:
-  override def children: Seq[Expression] = context +: args
+  override def children: Seq[Expression] = args
 
-case class FunctionCall(
+case class FunctionArg(name: Option[Name], value: Expression, nodeLocation: Option[NodeLocation]) extends Expression:
+  override def children: Seq[Expression] = Seq.empty
+
+case class FunctionSelect(
     context: Option[Expression],
-    name: String,
-    args: Seq[Expression],
+    name: Name,
     // isDistinct: Boolean,
     // filter: Option[Expression],
     // window: Option[Window],
     nodeLocation: Option[NodeLocation]
 ) extends Expression:
-
+  override def children: Seq[Expression] = Seq(name)
+  def functionName: String               = name.toString.toLowerCase(Locale.US)
   override def dataType: DataType =
     if functionName == "count" then DataType.LongType
     else
       // TODO: Resolve the function return type using a function catalog
       DataType.UnknownType
 
-  override def children: Seq[Expression] = args // ++ filter.toSeq ++ window.toSeq
-  def functionName: String               = name.toString.toLowerCase(Locale.US)
-
-  override def toString =
-    val c = context.map(x => s"${x}.").getOrElse("")
-    s"${c}${name}(${args.mkString(", ")})" // , distinct:${isDistinct}, window:${window})"
+//
+//  override def children: Seq[Expression] = args // ++ filter.toSeq ++ window.toSeq
+//
+//  override def toString =
+//    val c = context.map(x => s"${x}.").getOrElse("")
+//    s"${c}${name}(${args.mkString(", ")})" // , distinct:${isDistinct}, window:${window})"
 
 case class LambdaExpr(body: Expression, args: Seq[String], nodeLocation: Option[NodeLocation])
     extends Expression

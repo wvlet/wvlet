@@ -32,8 +32,7 @@ import wvlet.log.LogSupport
   *            | functionDef
   *            | test
   *
-  *   importStatement: 'import' importExpr (',' importExpr)*
-  *   importExpr     : importRef (from str)?
+  *   importStatement: 'import' importRef (from str)?
   *   importRef      : qualifiedId ('.' '*')?
   *                  | qualifiedId 'as' identifier
   *
@@ -45,12 +44,18 @@ import wvlet.log.LogSupport
   *   query: 'from' relation
   *          queryBlock*
   *          ('order' 'by' sortItem (',' sortItem)* comma?)?
-  *          ('limit' INTEGER_VALUE)?
   *
   *   relation       : relationPrimary ('as' identifier)?
   *   relationPrimary: qualifiedId
   *                  | '(' relation ')'
   *                  | str
+  *
+  *   queryBlock: join
+  *             | 'group' 'by' groupByItemList
+  *             | 'where' booleanExpression
+  *             | transformExpr
+  *             | selectExpr
+  *             | 'limit' INTEGER_VALUE
   *
   *   typeDef    : 'type' identifier typeParams? context? typeExtends? ':' typeElem* 'end'
   *   typeParams : '[' typeParam (',' typeParam)* ']'
@@ -59,11 +64,11 @@ import wvlet.log.LogSupport
   *   typeElem   : valDef | funDef
   *
   *   valDef     : identifier ':' identifier ('=' expression)?
-  *   funDef:    : 'def' identifier defParams? (':' identifier)? ('=' expression)?
+  *   funDef:    : 'def' funName defParams? (':' identifier)? ('=' expression)?
   *   funName    : identifier | symbol
   *   symbol     : '+' | '-' | '*' | '/' | '%' | '&' | '|' | '=' | '==' | '!=' | '<' | '<=' | '>' | '>=' | '&&' | '||'
-  *   funParams  : '(' defParam (',' defParam)* ')'
-  *   funParam   : identifier ':' identifier ('=' expression)?
+  *   defParams  : '(' defParam (',' defParam)* ')'
+  *   defParam   : identifier ':' identifier ('=' expression)?
   *
   *   context    : '(' 'in' contextItem (',' contextItem)* ')'
   *   contextItem: identifier (':' identifier)?
@@ -140,9 +145,6 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
       case FlowToken.IDENTIFIER =>
         consume(FlowToken.IDENTIFIER)
         UnquotedIdentifier(t.str, t.nodeLocation)
-      case FlowToken.STAR =>
-        consume(FlowToken.STAR)
-        Wildcard(t.nodeLocation)
       case FlowToken.UNDERSCORE =>
         consume(FlowToken.UNDERSCORE)
         ContextRef(t.nodeLocation)
@@ -187,22 +189,70 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
         val stmt: LogicalPlan = statement()
         stmt :: statements()
 
-  /**
-    * statement := importStatement \| query \| functionDef \| tableDef \| subscribeDef \| moduleDef \| test
-    */
   def statement(): LogicalPlan =
     val t = scanner.lookAhead()
     t.token match
-//      case FlowToken.IMPORT =>
-//        parseImportStatement()
+      case FlowToken.IMPORT =>
+        importStatement()
       case FlowToken.FROM =>
         query()
       case FlowToken.SELECT =>
         Query(select(), t.nodeLocation)
       case FlowToken.TYPE =>
         typeDef()
+      case FlowToken.MODEL =>
+        modelDef()
       case _ =>
         unexpected(t)
+
+  def modelDef(): ModelDef =
+    val t    = consume(FlowToken.MODEL)
+    val name = identifier()
+    val params = scanner.lookAhead().token match
+      case FlowToken.L_PAREN =>
+        consume(FlowToken.L_PAREN)
+        val args = defArgs()
+        consume(FlowToken.R_PAREN)
+        args
+      case _ => Nil
+    val tpe: Option[Name] = scanner.lookAhead().token match
+      case FlowToken.COLON =>
+        // model type
+        consume(FlowToken.COLON)
+        Some(identifier())
+      case _ =>
+        None
+    consume(FlowToken.EQ)
+    val q = query()
+    consume(FlowToken.END)
+    ModelDef(name, params, tpe, q, t.nodeLocation)
+
+  def importStatement(): ImportDef =
+    val i            = consume(FlowToken.IMPORT)
+    val d: ImportDef = importRef()
+    scanner.lookAhead().token match
+      case FlowToken.FROM =>
+        consume(FlowToken.FROM)
+        val fromSource = consume(FlowToken.STRING_LITERAL)
+        d.copy(fromSource = Some(StringLiteral(fromSource.str, fromSource.nodeLocation)))
+      case _ =>
+        d
+
+  def importRef(): ImportDef =
+    val qid: Name = qualifiedId()
+    val t         = scanner.lookAhead()
+    t.token match
+      case FlowToken.DOT =>
+        consume(FlowToken.DOT)
+        val w = consume(FlowToken.STAR)
+        ImportDef(Ref(qid, Wildcard(w.nodeLocation), qid.nodeLocation), None, None, qid.nodeLocation)
+      case FlowToken.AS =>
+        // alias
+        consume(FlowToken.AS)
+        val alias = identifier()
+        ImportDef(qid, Some(alias), None, qid.nodeLocation)
+      case _ =>
+        ImportDef(qid, None, None, qid.nodeLocation)
 
   def typeDef(): TypeDef =
     val t       = consume(FlowToken.TYPE)
@@ -272,10 +322,10 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
   def funDef(): TypeDefDef =
     val t    = consume(FlowToken.DEF)
     val name = funName()
-    val args: List[FunctionArg] = scanner.lookAhead().token match
+    val args: List[DefArg] = scanner.lookAhead().token match
       case FlowToken.L_PAREN =>
         consume(FlowToken.L_PAREN)
-        val args = argExprs()
+        val args = defArgs()
         consume(FlowToken.R_PAREN)
         args
       case _ =>
@@ -306,6 +356,30 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
       case _ =>
         symbol()
 
+  def defArgs(): List[DefArg] =
+    val t = scanner.lookAhead()
+    t.token match
+      case FlowToken.R_PAREN | FlowToken.COLON | FlowToken.EQ =>
+        List.empty
+      case FlowToken.COMMA =>
+        consume(FlowToken.COMMA)
+        defArgs()
+      case _ =>
+        val e = defArg()
+        e :: defArgs()
+
+  def defArg(): DefArg =
+    val name = identifier()
+    consume(FlowToken.COLON)
+    val tpe = identifier()
+    val defaultValue = scanner.lookAhead().token match
+      case FlowToken.EQ =>
+        consume(FlowToken.EQ)
+        Some(expression())
+      case _ =>
+        None
+    DefArg(name, tpe, defaultValue, name.nodeLocation)
+
   def context(): List[DefScope] = scanner.lookAhead().token match
     case FlowToken.L_PAREN =>
       consume(FlowToken.L_PAREN)
@@ -330,6 +404,7 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
               case FlowToken.COMMA | FlowToken.R_PAREN =>
                 scopes += DefScope(None, nameOrType, t.nodeLocation)
                 nextScope
+              case _ =>
       nextScope
       consume(FlowToken.R_PAREN)
       scopes.result()
@@ -360,13 +435,24 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
   def fromRelation(): Relation =
     val primary = relationPrimary()
     val t       = scanner.lookAhead()
-    t.token match
+    var rel = t.token match
       case FlowToken.AS =>
         consume(FlowToken.AS)
         val alias = identifier()
         AliasedRelation(primary, alias, None, t.nodeLocation)
       case _ =>
         primary
+
+    val t2 = scanner.lookAhead()
+    rel = t2.token match
+      case FlowToken.WHERE =>
+        consume(FlowToken.WHERE)
+        val cond = booleanExpression()
+        Filter(rel, cond, t2.nodeLocation)
+      case _ =>
+        rel
+
+    rel
 
   /**
     * relationPrimary := qualifiedId \| '(' query ')' \| stringLiteral
@@ -411,7 +497,7 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
     val t = scanner.lookAhead()
     t.token match
       case FlowToken.EXCLAMATION | FlowToken.NOT =>
-        consume(FlowToken.EXCLAMATION)
+        consume(t.token)
         val e = booleanExpression()
         Not(e, t.nodeLocation)
       case _ =>
@@ -459,6 +545,44 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
         consume(FlowToken.MOD)
         val right = valueExpression()
         ArithmeticBinaryExpr(BinaryExprType.Modulus, expression, right, t.nodeLocation)
+      case FlowToken.EQ =>
+        consume(FlowToken.EQ)
+        scanner.lookAhead().token match
+          case FlowToken.EQ =>
+            consume(FlowToken.EQ)
+          case _ =>
+        val right = valueExpression()
+        Eq(expression, right, t.nodeLocation)
+      case FlowToken.NEQ =>
+        consume(FlowToken.NEQ)
+        val right = valueExpression()
+        NotEq(expression, right, t.nodeLocation)
+      case FlowToken.IS =>
+        consume(FlowToken.IS)
+        scanner.lookAhead().token match
+          case FlowToken.NOT =>
+            consume(FlowToken.NOT)
+            val right = valueExpression()
+            NotEq(expression, right, t.nodeLocation)
+          case _ =>
+            val right = valueExpression()
+            Eq(expression, right, t.nodeLocation)
+      case FlowToken.LT =>
+        consume(FlowToken.LT)
+        val right = valueExpression()
+        LessThan(expression, right, t.nodeLocation)
+      case FlowToken.GT =>
+        consume(FlowToken.GT)
+        val right = valueExpression()
+        GreaterThan(expression, right, t.nodeLocation)
+      case FlowToken.LTEQ =>
+        consume(FlowToken.LTEQ)
+        val right = valueExpression()
+        LessThanOrEq(expression, right, t.nodeLocation)
+      case FlowToken.GTEQ =>
+        consume(FlowToken.GTEQ)
+        val right = valueExpression()
+        GreaterThanOrEq(expression, right, t.nodeLocation)
       case _ =>
         expression
 
@@ -550,20 +674,31 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
     val t = scanner.lookAhead()
     t.token match
       case FlowToken.DOT =>
+        consume(FlowToken.DOT)
+        val next = identifier()
+        scanner.lookAhead().token match
+          case FlowToken.L_PAREN =>
+            val sel = FunctionSelect(Some(expr), next, t.nodeLocation)
+            consume(FlowToken.L_PAREN)
+            val args = functionArgs()
+            consume(FlowToken.R_PAREN)
+            FunctionApply(sel, args, t.nodeLocation)
+          case _ =>
+            primaryExpressionRest(Ref(expr, next, t.nodeLocation))
+      case FlowToken.L_PAREN =>
         expr match
           case n: Name =>
-            val next = nameExpression()
-            Ref(n, next, t.nodeLocation)
+            consume(FlowToken.L_PAREN)
+            val args = functionArgs()
+            consume(FlowToken.R_PAREN)
+            // Global function call
+            FunctionApply(FunctionSelect(None, n, t.nodeLocation), args, t.nodeLocation)
           case _ =>
             unexpected(expr)
-
-      case FlowToken.L_PAREN | FlowToken.L_BRACE =>
-        val args = argExprs()
-        FunctionApply(expr, args, t.nodeLocation)
       case _ =>
         expr
 
-  def argExprs(): List[FunctionArg] =
+  def functionArgs(): List[FunctionArg] =
     val args = List.newBuilder[FunctionArg]
 
     def nextArg: Unit =
@@ -582,43 +717,19 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
     args.result()
 
   def functionArg(): FunctionArg =
-    val name = identifier()
-    val t    = scanner.lookAhead()
-    t.token match
-      case FlowToken.COLON =>
-        consume(FlowToken.COLON)
-        val tpe = identifier()
-        val defaultValue = scanner.lookAhead().token match
-          case FlowToken.EQ =>
-            consume(FlowToken.EQ)
-            Some(expression())
+    val t         = scanner.lookAhead()
+    val nameOrArg = expression()
+    scanner.lookAhead().token match
+      case FlowToken.EQ =>
+        consume(FlowToken.EQ)
+        val expr = expression()
+        nameOrArg match
+          case n: Name =>
+            FunctionArg(Some(n), expr, t.nodeLocation)
           case _ =>
-            None
-        FunctionArg(name, tpe, defaultValue, t.nodeLocation)
+            unexpected(t)
       case _ =>
-        unexpected(t)
-
-//  /**
-//   * importStatement := 'import' importExr
-//   * @return
-//   */
-//  def parseImportStatement(): LogicalPlan =
-//    val t = scanner.nextToken()
-//    val loc = nodeLocation()
-//    val packageName = qualifiedId()
-//    ImportDef(packageName, unit.sourceFile, loc)
-//
-//  /**
-//   * importExpr :=
-//   * @return
-//   */
-//  def importExpr(): Expression =
-//    val t = scanner.lookAhead()
-//    t.token match
-//      case FlowToken.IDENTIFIER =>
-//        val id = identifier()
-//        dotRef(id)
-//      case _ => ???
+        FunctionArg(None, nameOrArg, t.nodeLocation)
 
   /**
     * qualifiedId := identifier ('.' identifier)*
@@ -631,11 +742,11 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
     * @return
     */
   def dotRef(expr: Name): Name =
-    val t = scanner.lookAhead()
-    t.token match
+    val token = scanner.lookAhead()
+    token.token match
       case FlowToken.DOT =>
         scanner.nextToken()
         val id = identifier()
-        dotRef(Ref(expr, id, t.nodeLocation))
+        dotRef(Ref(expr, id, token.nodeLocation))
       case _ =>
         expr

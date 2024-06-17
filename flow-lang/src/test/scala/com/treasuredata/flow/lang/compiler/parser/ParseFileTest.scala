@@ -15,3 +15,9 @@ class ParseFileTest extends AirSpec:
     val plan = p.parse()
     debug(plan.pp)
   }
+
+  test("parse behavior.flow") {
+    val p    = FlowParser(CompilationUnit.fromFile("spec/basic/src/behavior.flow"))
+    val plan = p.parse()
+    debug(plan.pp)
+  }

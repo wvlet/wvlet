@@ -2,7 +2,7 @@ package com.treasuredata.flow.lang.model.plan
 
 import com.treasuredata.flow.lang.compiler.SourceFile
 import com.treasuredata.flow.lang.model.NodeLocation
-import com.treasuredata.flow.lang.model.expr.{Attribute, Expression, Name}
+import com.treasuredata.flow.lang.model.expr.{Attribute, Expression, Name, StringLiteral}
 import com.treasuredata.flow.lang.model.plan.LogicalPlan
 
 sealed trait LanguageStatement extends LogicalPlan with LeafPlan:
@@ -31,10 +31,19 @@ case class TestDef(
 
 case class ImportDef(
     importRef: Name,
-    alias: Option[String],
-    fromSource: Option[String],
+    alias: Option[Name],
+    fromSource: Option[StringLiteral],
     nodeLocation: Option[NodeLocation]
 ) extends LanguageStatement
+
+case class ModelDef(
+    name: Name,
+    params: List[DefArg],
+    tpe: Option[Name],
+    query: Relation,
+    nodeLocation: Option[NodeLocation]
+) extends LanguageStatement:
+  override def children: Seq[LogicalPlan] = Seq(query)
 
 case class ModuleDef(
     name: String,
@@ -61,7 +70,7 @@ sealed trait TypeElem extends Expression
 
 case class TypeDefDef(
     name: Name,
-    args: List[FunctionArg],
+    args: List[DefArg],
     scopes: List[DefScope],
     retType: Option[Name],
     expr: Option[Expression],
@@ -69,21 +78,13 @@ case class TypeDefDef(
 ) extends TypeElem:
   override def children: Seq[Expression] = Seq.empty
 
+case class DefArg(name: Name, tpe: Name, defaultValue: Option[Expression], nodeLocation: Option[NodeLocation])
+    extends Expression:
+  override def children: Seq[Expression] = Seq.empty
+
 case class TypeValDef(name: Name, tpe: Name, body: Option[Expression], nodeLocation: Option[NodeLocation])
     extends TypeElem:
   override def children: Seq[Expression] = Seq.empty
 
 case class DefScope(name: Option[Name], tpe: Name, nodeLocation: Option[NodeLocation]) extends Expression:
-  override def children: Seq[Expression] = Seq.empty
-
-case class FunctionDef(
-    name: String,
-    args: Seq[FunctionArg],
-    resultType: Option[String],
-    bodyExpr: Expression,
-    nodeLocation: Option[NodeLocation]
-) extends LanguageStatement
-
-case class FunctionArg(name: Name, tpe: Name, defaultValue: Option[Expression], nodeLocation: Option[NodeLocation])
-    extends Expression:
   override def children: Seq[Expression] = Seq.empty

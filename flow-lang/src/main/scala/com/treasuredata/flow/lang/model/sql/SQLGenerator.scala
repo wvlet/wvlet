@@ -404,8 +404,8 @@ class SQLGenerator(config: SQLGeneratorConfig = SQLGeneratorConfig()) extends Lo
         val o  = ordering.map(x => s" ${x}").getOrElse("")
         val no = nullOrdering.map(x => s" ${x}").getOrElse("")
         s"${k}${o}${no}"
-      case FunctionCall(ctx, name, args, _) =>
-        val argList = args.map(_.sqlExpr).mkString(", ")
+//      case FunctionCall(ctx, name, args, _) =>
+//        val argList = args.map(_.sqlExpr).mkString(", ")
 //        val d       = if (distinct) "DISTINCT " else ""
 //        val wd = window
 //                .map { w =>
@@ -423,8 +423,8 @@ class SQLGenerator(config: SQLGeneratorConfig = SQLGeneratorConfig()) extends Lo
 //                }
 //                .getOrElse("")
 //        val f = filter.map(x => s" FILTER (WHERE ${printExpression(x)})").getOrElse("")
-        val prefix = ctx.map { c => s"${c.sqlExpr}." }.getOrElse("")
-        s"${prefix}${name}(${argList})"
+//        val prefix = ctx.map { c => s"${c.sqlExpr}." }.getOrElse("")
+//        s"${prefix}${name}(${argList})"
       case Extract(interval, expr, _) =>
         s"EXTRACT(${interval} FROM ${printExpression(expr)})"
       case QName(parts, _) =>

@@ -90,6 +90,10 @@ enum FlowToken(val tokenType: TokenType, val str: String):
   case TRUE  extends FlowToken(Keyword, "true")
   case FALSE extends FlowToken(Keyword, "false")
 
+  // For testing
+  case SHOULD extends FlowToken(Keyword, "should")
+  case BE     extends FlowToken(Keyword, "be")
+
   // Alphabectic keywords
   case DEF     extends FlowToken(Keyword, "def")
   case SCHEMA  extends FlowToken(Keyword, "schema")
@@ -129,6 +133,7 @@ enum FlowToken(val tokenType: TokenType, val str: String):
   case AND extends FlowToken(Keyword, "and")
   case OR  extends FlowToken(Keyword, "or")
   case NOT extends FlowToken(Keyword, "not")
+  case IS  extends FlowToken(Keyword, "is")
 
 object FlowToken:
   val keywords       = FlowToken.values.filter(_.tokenType == Keyword).toSeq
