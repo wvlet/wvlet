@@ -13,7 +13,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.TD_ACTIONS_REPO_TOKEN }}
       - name: Dependabot metadata
         id: metadata
-        uses: dependabot/fetch-metadata@v1.3.6
+        uses: dependabot/fetch-metadata@v2.1.0
       - name: Approve a PR
         run: gh pr review --approve "${{ github.event.pull_request.html_url }}"
         if: steps.metadata.outputs.update-type != 'version-update:semver-major'
