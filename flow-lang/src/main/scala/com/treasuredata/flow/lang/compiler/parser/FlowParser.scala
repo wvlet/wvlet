@@ -93,16 +93,14 @@ import wvlet.log.LogSupport
   *   primaryExpression : 'this'
   *                     | '_'
   *                     | literal
-  *                     | functionCall
   *                     | '(' query ')'                                                 # subquery
   *                     | '(' expression ')'                                            # parenthesized expression
   *                     | '[' expression (',' expression)* ']'                          # array
   *                     | qualifiedId
   *                     | primaryExpression '.' primaryExpression
-  *
-  *   functionCall      | primaryExpression '(' functionArg? (',' functionArg)* ')'     # function call
+  *                     | primaryExpression '(' functionArg? (',' functionArg)* ')'     # function call
   *                     | primaryExpression identifier expression                       # function infix
-  *                     |
+  *
   *   functionArg       | (identifier '=')? expression
   *
   *   literal           : 'null' | '-'? integerLiteral | '-'? floatLiteral | booleanLiteral | stringLiteral
@@ -678,11 +676,11 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
         val next = identifier()
         scanner.lookAhead().token match
           case FlowToken.L_PAREN =>
-            val sel = FunctionSelect(Some(expr), next, t.nodeLocation)
-            consume(FlowToken.L_PAREN)
+            val sel  = Ref(expr, next, next.nodeLocation)
+            val p    = consume(FlowToken.L_PAREN)
             val args = functionArgs()
             consume(FlowToken.R_PAREN)
-            FunctionApply(sel, args, t.nodeLocation)
+            FunctionApply(sel, args, p.nodeLocation)
           case _ =>
             primaryExpressionRest(Ref(expr, next, t.nodeLocation))
       case FlowToken.L_PAREN =>
@@ -692,7 +690,7 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
             val args = functionArgs()
             consume(FlowToken.R_PAREN)
             // Global function call
-            FunctionApply(FunctionSelect(None, n, t.nodeLocation), args, t.nodeLocation)
+            FunctionApply(n, args, t.nodeLocation)
           case _ =>
             unexpected(expr)
       case _ =>

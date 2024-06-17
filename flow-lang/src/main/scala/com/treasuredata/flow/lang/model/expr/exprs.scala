@@ -203,29 +203,6 @@ case class FunctionApply(
 case class FunctionArg(name: Option[Name], value: Expression, nodeLocation: Option[NodeLocation]) extends Expression:
   override def children: Seq[Expression] = Seq.empty
 
-case class FunctionSelect(
-    context: Option[Expression],
-    name: Name,
-    // isDistinct: Boolean,
-    // filter: Option[Expression],
-    // window: Option[Window],
-    nodeLocation: Option[NodeLocation]
-) extends Expression:
-  override def children: Seq[Expression] = Seq(name)
-  def functionName: String               = name.toString.toLowerCase(Locale.US)
-  override def dataType: DataType =
-    if functionName == "count" then DataType.LongType
-    else
-      // TODO: Resolve the function return type using a function catalog
-      DataType.UnknownType
-
-//
-//  override def children: Seq[Expression] = args // ++ filter.toSeq ++ window.toSeq
-//
-//  override def toString =
-//    val c = context.map(x => s"${x}.").getOrElse("")
-//    s"${c}${name}(${args.mkString(", ")})" // , distinct:${isDistinct}, window:${window})"
-
 case class LambdaExpr(body: Expression, args: Seq[String], nodeLocation: Option[NodeLocation])
     extends Expression
     with UnaryExpression:

@@ -184,21 +184,21 @@ object LogicalPlanPrinter extends LogSupport:
       case Eq(a, b, _) =>
         b match
           case n: NullLiteral =>
-            s"${a.sqlExpr} IS ${b.sqlExpr}"
+            s"IsNull(${a.sqlExpr})"
           case _ =>
-            s"${a.sqlExpr} = ${b.sqlExpr}"
+            s"Eq(${a.sqlExpr}, ${b.sqlExpr})"
       case n @ NotEq(a, b, _) =>
         b match
           case n: NullLiteral =>
-            s"${a.sqlExpr} IS NOT ${b.sqlExpr}"
+            s"NotNull(${a.sqlExpr})"
           case _ =>
-            s"${a.sqlExpr} != ${b.sqlExpr}"
+            s"NotEq(${a.sqlExpr}, ${b.sqlExpr})"
       case And(a, b, _) =>
-        s"${a.sqlExpr} AND ${b.sqlExpr}"
+        s"And(${a.sqlExpr}, ${b.sqlExpr})"
       case Or(a, b, _) =>
-        s"${a.sqlExpr} OR ${b.sqlExpr}"
+        s"Or(${a.sqlExpr}, ${b.sqlExpr})"
       case Not(e, _) =>
-        s"NOT ${e.sqlExpr}"
+        s"Not(${e.sqlExpr})"
       case LessThan(a, b, _) =>
         s"${a.sqlExpr} < ${b.sqlExpr}"
       case LessThanOrEq(a, b, _) =>
@@ -208,29 +208,29 @@ object LogicalPlanPrinter extends LogSupport:
       case GreaterThanOrEq(a, b, _) =>
         s"${a.sqlExpr} >= ${b.sqlExpr}"
       case Between(e, a, b, _) =>
-        s"${e.sqlExpr} BETWEEN ${a.sqlExpr} and ${b.sqlExpr}"
+        s"${e.sqlExpr} between ${a.sqlExpr} and ${b.sqlExpr}"
       case NotBetween(e, a, b, _) =>
-        s"${e.sqlExpr} NOT BETWEEN ${a.sqlExpr} and ${b.sqlExpr}"
+        s"${e.sqlExpr} not between ${a.sqlExpr} and ${b.sqlExpr}"
       case IsNull(a, _) =>
-        s"${a.sqlExpr} IS NULL"
+        s"IsNull(${a.sqlExpr})"
       case IsNotNull(a, _) =>
-        s"${a.sqlExpr} IS NOT NULL"
+        s"IsNotNull(${a.sqlExpr})"
       case In(a, list, _) =>
         val in = list.map(x => x.sqlExpr).mkString(", ")
-        s"${a.sqlExpr} IN (${in})"
+        s"${a.sqlExpr} in (${in})"
       case NotIn(a, list, _) =>
         val in = list.map(x => x.sqlExpr).mkString(", ")
-        s"${a.sqlExpr} NOT IN (${in})"
+        s"${a.sqlExpr} not in (${in})"
 //      case InSubQuery(a, in, _) =>
 //        s"${a.sqlExpr} IN (${printRelation(in)})"
 //      case NotInSubQuery(a, in, _) =>
 //        s"${a.sqlExpr} NOT IN (${printRelation(in)})"
       case Like(a, e, _) =>
-        s"${a.sqlExpr} LIKE ${e.sqlExpr}"
+        s"${a.sqlExpr} like ${e.sqlExpr}"
       case NotLike(a, e, _) =>
-        s"${a.sqlExpr} NOT LIKE ${e.sqlExpr}"
+        s"${a.sqlExpr} not like ${e.sqlExpr}"
       case DistinctFrom(a, e, _) =>
-        s"${a.sqlExpr} IS DISTINCT FROM ${e.sqlExpr}"
+        s"${a.sqlExpr} is distinct from ${e.sqlExpr}"
       case NotDistinctFrom(a, e, _) =>
-        s"${a.sqlExpr} IS NOT DISTINCT FROM ${e.sqlExpr}"
+        s"${a.sqlExpr} is not distinct from ${e.sqlExpr}"
       case other => other.toString
