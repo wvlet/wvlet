@@ -343,16 +343,16 @@ class FlowScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
           current.token = STRING_PART
           current.str = flushTokenString()
           currentRegion = currentRegion.outer
-      case '$' =>
+      case '{' =>
         lookAheadChar() match
           case '{' =>
-            current.token = FlowToken.STRING_PART
-            current.str = flushTokenString()
-            currentRegion = InBraces(currentRegion)
-          case _ =>
             putChar(ch)
             nextChar()
             getStringPart(multiline)
+          case _ =>
+            current.token = FlowToken.STRING_PART
+            current.str = flushTokenString()
+            currentRegion = InBraces(currentRegion)
       case _ =>
         putChar(ch)
         nextRawChar()

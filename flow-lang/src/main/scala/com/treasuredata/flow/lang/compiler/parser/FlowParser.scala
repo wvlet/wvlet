@@ -500,8 +500,7 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
           val part = consume(FlowToken.STRING_PART)
           parts += StringLiteral(part.str, part.nodeLocation)
           nextPart()
-        case FlowToken.DOLLAR =>
-          consume(FlowToken.DOLLAR)
+        case FlowToken.L_BRACE =>
           consume(FlowToken.L_BRACE)
           val expr = expression()
           consume(FlowToken.R_BRACE)

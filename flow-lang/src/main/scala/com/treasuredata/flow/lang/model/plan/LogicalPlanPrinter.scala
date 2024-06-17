@@ -91,7 +91,9 @@ object LogicalPlanPrinter extends LogSupport:
       case a: ArrayConstructor =>
         s"[${a.children.map(printExpression).mkString(", ")}]"
       case t: TypeDefDef =>
-        val defdef = s"def ${t.name}: ${t.retType.getOrElse("?")}"
+        val defdef =
+          s"def ${printExpression(t.name)}(${t.args.map(printExpression).mkString(", ")}): ${t.retType
+              .map(printExpression).getOrElse("?")}"
         t.expr match
           case Some(expr) => s"${defdef} = ${printExpression(expr)}"
           case None       => defdef
@@ -101,7 +103,17 @@ object LogicalPlanPrinter extends LogSupport:
         s"${b.operatorName}(${printExpression(b.left)}, ${printExpression(b.right)})"
       case p: ParenthesizedExpression =>
         s"(${p.child.sqlExpr})"
-      case null  => "null"
+      case null => "null"
+      case arg: FunctionArg =>
+        s"${printExpression(arg.name)}: ${printExpression(arg.tpe)}${arg.defaultValue
+            .map(printExpression).map(x => s" = ${x}").getOrElse("")}"
+      case id: Identifier => id.value
+      case i: InterpolatedString =>
+        s"${printExpression(i.prefix)}{${i.parts.map(printExpression).mkString(", ")}}"
+      case r: Ref =>
+        s"${printExpression(r.base)}.${printExpression(r.name)}"
+      case t: This =>
+        "this"
       case other => e.toString
 
   def printConditionalExpression(c: ConditionalExpression): String =

@@ -7,5 +7,5 @@ class ParseFileTest extends AirSpec:
   test("parse primitive.flow") {
     val p    = FlowParser(CompilationUnit.fromFile("spec/standard/src/primitive.flow"))
     val plan = p.parse()
-    debug(plan)
+    debug(plan.pp)
   }
