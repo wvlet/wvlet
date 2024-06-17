@@ -10,6 +10,23 @@ object LogicalPlanPrinter extends LogSupport:
 
   extension (expr: Expression) def sqlExpr: String = printExpression(expr)
 
+  def concat(lst: Seq[Any], sep: String = ""): String =
+    val s = List.newBuilder[String]
+
+    def add(x: Any): Unit = x match
+      case str: String   => s += str
+      case e: Expression => s += printExpression(e)
+
+      case Some(e)                     => add(e)
+      case None                        =>
+      case Nil                         =>
+      case lst: Seq[?] if lst.nonEmpty => lst.foreach(add)
+      case null                        =>
+      case _                           => s += x.toString
+
+    lst.foreach(add)
+    s.result().mkString(sep)
+
   def print(m: LogicalPlan): String =
     val s = new StringWriter()
     val p = new PrintWriter(s)
@@ -18,6 +35,12 @@ object LogicalPlanPrinter extends LogSupport:
     s.toString
 
   def print(m: LogicalPlan, out: PrintWriter, level: Int): Unit =
+    def printChildExprs(children: Seq[Expression]): Unit =
+      val attr    = children.map(x => printExpression(x))
+      val ws      = "  " * (level + 1)
+      val attrStr = attr.map(x => s"${ws}- ${x}").mkString("\n")
+      out.println(attrStr)
+
     m match
       case null | EmptyRelation(_) =>
       // print nothing
@@ -27,6 +50,20 @@ object LogicalPlanPrinter extends LogSupport:
         out.println(
           s"  def ${f.name}(${f.args.map(x => s"${x.name}: ${x.tpe}").mkString(", ")})${rt} = ${printExpression(f.bodyExpr)}"
         )
+      case t: TypeDef =>
+        val s = concat(
+          List(
+            "  " * level,
+            "[TypeDef (",
+            t.nodeLocation,
+            ")] ",
+            t.name,
+            if t.scopes.isEmpty then Nil else List("(in ", concat(t.scopes, ", "), ")"),
+            if t.parents.isEmpty then Nil else List(" extends ", concat(t.parents, ", "))
+          )
+        )
+        out.println(s)
+        printChildExprs(t.elems)
       case _ =>
         val ws = "  " * level
 
@@ -62,9 +99,7 @@ object LogicalPlanPrinter extends LogSupport:
             out.println(prefix)
           case _ =>
             out.println(s"${prefix}")
-            val attrWs  = "  " * (level + 1)
-            val attrStr = attr.map(x => s"${attrWs}- ${x}").mkString("\n")
-            out.println(attrStr)
+            printChildExprs(m.childExpressions)
         for c <- m.children do print(c, out, level + 1)
 
   private def printExpression(e: Expression): String =
@@ -91,12 +126,25 @@ object LogicalPlanPrinter extends LogSupport:
       case a: ArrayConstructor =>
         s"[${a.children.map(printExpression).mkString(", ")}]"
       case t: TypeDefDef =>
-        val defdef =
-          s"def ${printExpression(t.name)}(${t.args.map(printExpression).mkString(", ")}): ${t.retType
-              .map(printExpression).getOrElse("?")}"
-        t.expr match
-          case Some(expr) => s"${defdef} = ${printExpression(expr)}"
-          case None       => defdef
+        concat(
+          List(
+            "def ",
+            t.name.sqlExpr,
+            if t.args.isEmpty then Nil else List("(", concat(t.args, ", "), ")"),
+            if t.retType.isEmpty then Nil else List(": ", t.retType),
+            if t.expr.isEmpty then Nil else List(" = ", t.expr)
+          )
+        )
+      case t: TypeValDef =>
+        concat(
+          List(
+            "val ",
+            t.name,
+            ": ",
+            t.tpe,
+            if t.body.isEmpty then Nil else List(" = ", t.body)
+          )
+        )
       case c: ConditionalExpression =>
         printConditionalExpression(c)
       case b: BinaryExpression =>
@@ -114,6 +162,8 @@ object LogicalPlanPrinter extends LogSupport:
         s"${printExpression(r.base)}.${printExpression(r.name)}"
       case t: This =>
         "this"
+      case d: DefScope =>
+        if d.name.isEmpty then concat(List(d.tpe)) else concat(List(d.name, ": ", d.tpe), ", ")
       case other => e.toString
 
   def printConditionalExpression(c: ConditionalExpression): String =

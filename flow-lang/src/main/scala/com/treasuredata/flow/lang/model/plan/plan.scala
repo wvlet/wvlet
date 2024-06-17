@@ -50,6 +50,8 @@ case class TypeAlias(
 
 case class TypeDef(
     name: Name,
+    scopes: List[DefScope],
+    parents: List[Name],
     elems: Seq[TypeElem],
     nodeLocation: Option[NodeLocation]
 ) extends LanguageStatement

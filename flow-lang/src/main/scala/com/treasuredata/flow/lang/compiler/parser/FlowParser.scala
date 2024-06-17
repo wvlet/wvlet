@@ -52,9 +52,10 @@ import wvlet.log.LogSupport
   *                  | '(' relation ')'
   *                  | str
   *
-  *   typeDef    : 'type' identifier typeParams? context? ':' typeElem* 'end'
+  *   typeDef    : 'type' identifier typeParams? context? typeExtends? ':' typeElem* 'end'
   *   typeParams : '[' typeParam (',' typeParam)* ']'
   *   typeParam  : identifier (':' identifier)?
+  *   typeExtends: 'extends' qualifiedId (',' qualifiedId)*
   *   typeElem   : valDef | funDef
   *
   *   valDef     : identifier ':' identifier ('=' expression)?
@@ -204,12 +205,35 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
         unexpected(t)
 
   def typeDef(): TypeDef =
-    val t    = consume(FlowToken.TYPE)
-    val name = identifier()
+    val t       = consume(FlowToken.TYPE)
+    val name    = identifier()
+    val scopes  = context()
+    val parents = typeExtends()
     consume(FlowToken.COLON)
     val elems = typeElems()
     consume(FlowToken.END)
-    TypeDef(name, elems, t.nodeLocation)
+    TypeDef(name, scopes, parents, elems, t.nodeLocation)
+
+  def typeExtends(): List[Name] =
+    scanner.lookAhead().token match
+      case FlowToken.EXTENDS =>
+        consume(FlowToken.EXTENDS)
+        val parents = List.newBuilder[Name]
+        def nextParent: Unit =
+          val t = scanner.lookAhead()
+          t.token match
+            case FlowToken.COMMA =>
+              consume(FlowToken.COMMA)
+              nextParent
+            case FlowToken.COLON =>
+            // ok
+            case _ =>
+              parents += identifier()
+              nextParent
+        nextParent
+        parents.result()
+      case _ =>
+        Nil
 
   def typeElems(): List[TypeElem] =
     val t = scanner.lookAhead()
@@ -257,34 +281,7 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
       case _ =>
         Nil
 
-    val defScope: List[DefScope] = scanner.lookAhead().token match
-      case FlowToken.L_PAREN =>
-        consume(FlowToken.L_PAREN)
-        consume(FlowToken.IN)
-        val scopes = List.newBuilder[DefScope]
-        def nextScope: Unit =
-          val t = scanner.lookAhead()
-          t.token match
-            case FlowToken.COMMA =>
-              consume(FlowToken.COMMA)
-              nextScope
-            case FlowToken.R_PAREN =>
-            // ok
-            case _ =>
-              val nameOrType = identifier()
-              scanner.lookAhead().token match
-                case FlowToken.COLON =>
-                  consume(FlowToken.COLON)
-                  val tpe = identifier()
-                  scopes += DefScope(Some(nameOrType), tpe, t.nodeLocation)
-                  nextScope
-                case FlowToken.COMMA | FlowToken.R_PAREN =>
-                  scopes += DefScope(None, nameOrType, t.nodeLocation)
-                  nextScope
-        nextScope
-        consume(FlowToken.R_PAREN)
-        scopes.result()
-      case _ => Nil
+    val defScope: List[DefScope] = context()
 
     val retType: Option[Name] = scanner.lookAhead().token match
       case FlowToken.COLON =>
@@ -308,6 +305,35 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
         identifier()
       case _ =>
         symbol()
+
+  def context(): List[DefScope] = scanner.lookAhead().token match
+    case FlowToken.L_PAREN =>
+      consume(FlowToken.L_PAREN)
+      consume(FlowToken.IN)
+      val scopes = List.newBuilder[DefScope]
+      def nextScope: Unit =
+        val t = scanner.lookAhead()
+        t.token match
+          case FlowToken.COMMA =>
+            consume(FlowToken.COMMA)
+            nextScope
+          case FlowToken.R_PAREN =>
+          // ok
+          case _ =>
+            val nameOrType = identifier()
+            scanner.lookAhead().token match
+              case FlowToken.COLON =>
+                consume(FlowToken.COLON)
+                val tpe = identifier()
+                scopes += DefScope(Some(nameOrType), tpe, t.nodeLocation)
+                nextScope
+              case FlowToken.COMMA | FlowToken.R_PAREN =>
+                scopes += DefScope(None, nameOrType, t.nodeLocation)
+                nextScope
+      nextScope
+      consume(FlowToken.R_PAREN)
+      scopes.result()
+    case _ => Nil
 
   def symbol(): Name =
     val t = scanner.nextToken()
