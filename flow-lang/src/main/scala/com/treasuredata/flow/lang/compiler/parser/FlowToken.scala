@@ -31,8 +31,9 @@ enum FlowToken(val tokenType: TokenType, val str: String):
   case STRING_LITERAL  extends FlowToken(Literal, "<string literal>")
 
   // For interpolated string, e.g., sql"...${expr}..."
-  case STRING_INTERPOLATION extends FlowToken(Literal, "<string interpolation>")
-  case STRING_PART          extends FlowToken(Literal, "<string part>")
+  case STRING_INTERPOLATION_PREFIX extends FlowToken(Literal, "<string interpolation>")
+  // A part in the string interpolation
+  case STRING_PART extends FlowToken(Literal, "<string part>")
 
   // Identifiers
   case IDENTIFIER extends FlowToken(Identifier, "<identifier>")
@@ -90,14 +91,14 @@ enum FlowToken(val tokenType: TokenType, val str: String):
   case FALSE extends FlowToken(Keyword, "false")
 
   // Alphabectic keywords
-  case DEF    extends FlowToken(Keyword, "def")
-  case SCHEMA extends FlowToken(Keyword, "schema")
-  case TYPE   extends FlowToken(Keyword, "type")
-  case WITH   extends FlowToken(Keyword, "with")
-  case TEST   extends FlowToken(Keyword, "test")
+  case DEF     extends FlowToken(Keyword, "def")
+  case SCHEMA  extends FlowToken(Keyword, "schema")
+  case TYPE    extends FlowToken(Keyword, "type")
+  case EXTENDS extends FlowToken(Keyword, "extends")
+  case WITH    extends FlowToken(Keyword, "with")
+  case TEST    extends FlowToken(Keyword, "test")
 
-  case THIS  extends FlowToken(Keyword, "this")
-  case USING extends FlowToken(Keyword, "using")
+  case THIS extends FlowToken(Keyword, "this")
 
   case IN extends FlowToken(Keyword, "in")
   case BY extends FlowToken(Keyword, "by")
@@ -112,6 +113,7 @@ enum FlowToken(val tokenType: TokenType, val str: String):
   case HAVING extends FlowToken(Keyword, "having")
   case ORDER  extends FlowToken(Keyword, "order")
   case JOIN   extends FlowToken(Keyword, "join")
+  case LIMIT  extends FlowToken(Keyword, "limit")
 
   case RUN     extends FlowToken(Keyword, "run")
   case IMPORT  extends FlowToken(Keyword, "import")

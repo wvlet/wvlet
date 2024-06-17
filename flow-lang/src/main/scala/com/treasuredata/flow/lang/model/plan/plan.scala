@@ -57,12 +57,21 @@ case class TypeDef(
 // type elements (def or column definition)
 sealed trait TypeElem extends Expression
 
-case class TypeDefDef(name: Name, tpe: Option[Name], expr: Option[Expression], nodeLocation: Option[NodeLocation])
-    extends TypeElem:
+case class TypeDefDef(
+    name: Name,
+    args: List[FunctionArg],
+    scopes: List[DefScope],
+    retType: Option[Name],
+    expr: Option[Expression],
+    nodeLocation: Option[NodeLocation]
+) extends TypeElem:
   override def children: Seq[Expression] = Seq.empty
 
 case class TypeValDef(name: Name, tpe: Name, body: Option[Expression], nodeLocation: Option[NodeLocation])
     extends TypeElem:
+  override def children: Seq[Expression] = Seq.empty
+
+case class DefScope(name: Option[Name], tpe: Name, nodeLocation: Option[NodeLocation]) extends Expression:
   override def children: Seq[Expression] = Seq.empty
 
 case class FunctionDef(
@@ -73,5 +82,6 @@ case class FunctionDef(
     nodeLocation: Option[NodeLocation]
 ) extends LanguageStatement
 
-case class FunctionArg(name: String, tpe: String, nodeLocation: Option[NodeLocation]) extends Expression:
+case class FunctionArg(name: Name, tpe: Name, defaultValue: Option[Expression], nodeLocation: Option[NodeLocation])
+    extends Expression:
   override def children: Seq[Expression] = Seq.empty

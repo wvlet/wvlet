@@ -8,7 +8,7 @@ type string:
   def to_boolean: boolean = sql"cast(${this} as boolean)"
 
   -- if the string is null, return the default value
-  def or_else(other:sql): string = sql"coalesce(${this},${other})"
+  def or_else(other:string): string = sql"coalesce(${this},${other})"
 
   def +(other:string): string = sql"${this} || ${other}"
   def length: int = sql"length(${this})"
@@ -17,10 +17,10 @@ type string:
   def substring(start:int,end:int): string = sql"substring(${this},${start},${end})"
 
   -- Using query engine specific dialects
-  def substring(start:int)(using trino): string = sql"substring(${this},${start})"
-  def substring(start:int)(using duckdb): string = sql"substring(${this},${start},strlen(${this}))"
+  def substring(start:int)(in trino): string = sql"substring(${this},${start})"
+  def substring(start:int)(in duckdb): string = sql"substring(${this},${start},strlen(${this}))"
 
   -- Using query engine specific functions
-  def regexp_like(pattern:string)(using trino): boolean = sql"regexp_like(${this},${pattern})"
-  def regexp_like(pattern:string)(using duckdb): boolean = sql"regexp_matches(${this},${pattern})"
+  def regexp_like(pattern:string)(in trino): boolean = sql"regexp_like(${this},${pattern})"
+  def regexp_like(pattern:string)(in duckdb): boolean = sql"regexp_matches(${this},${pattern})"
 end

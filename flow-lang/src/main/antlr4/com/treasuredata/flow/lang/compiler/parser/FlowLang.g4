@@ -1,19 +1,13 @@
-parser grammar FlowLangParser;
-
-options {
-    tokenVocab = FlowLangLexer;
-}
+parser grammar FlowLang;
 
 tokens {
     DELIMITER
 }
 
-
 statements:
     packageDef?
     singleStatement+
     ;
-
 
 packageDef:
     PACKAGE identifier

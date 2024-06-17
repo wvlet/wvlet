@@ -404,6 +404,8 @@ case class DistinctSet(nodeLocation: Option[NodeLocation]) extends SetQuantifier
   override def toString: String    = "DISTINCT"
   override def isDistinct: Boolean = true
 
+case class This(nodeLocation: Option[NodeLocation]) extends LeafExpression
+
 // Literal
 sealed trait Literal extends Expression:
   def stringValue: String

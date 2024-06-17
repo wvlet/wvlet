@@ -19,8 +19,8 @@ class SourceFile(val file: String, readContent: (file: String) => String):
   def fileName: String               = new File(file).getName
   def toCompileUnit: CompilationUnit = CompilationUnit(this)
 
-  lazy val content: String = readContent(file)
-  def length: Int          = content.length
+  lazy val content: IArray[Char] = IArray.unsafeFromArray(readContent(file).toCharArray)
+  def length: Int                = content.length
 
   private val lineIndexes: Array[Int] =
     val txt = content
@@ -47,7 +47,7 @@ class SourceFile(val file: String, readContent: (file: String) => String):
 
   def offsetToLine(offset: Int): Int = findLineIndex(offset)
 
-  inline def charAt(pos: Int): Char = content.charAt(pos)
+  inline def charAt(pos: Int): Char = content(pos)
 
   /**
     * Find the start of the line (offset) for the given offset

@@ -91,7 +91,7 @@ object LogicalPlanPrinter extends LogSupport:
       case a: ArrayConstructor =>
         s"[${a.children.map(printExpression).mkString(", ")}]"
       case t: TypeDefDef =>
-        val defdef = s"def ${t.name}: ${t.tpe.getOrElse("?")}"
+        val defdef = s"def ${t.name}: ${t.retType.getOrElse("?")}"
         t.expr match
           case Some(expr) => s"${defdef} = ${printExpression(expr)}"
           case None       => defdef

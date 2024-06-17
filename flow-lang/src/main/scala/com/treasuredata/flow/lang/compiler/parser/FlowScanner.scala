@@ -1,6 +1,7 @@
 package com.treasuredata.flow.lang.compiler.parser
 
-import com.treasuredata.flow.lang.compiler.parser.FlowScanner.{InString, Indented, Region}
+import com.treasuredata.flow.lang.compiler.parser.FlowScanner.{InBraces, InString, Indented, Region}
+import com.treasuredata.flow.lang.compiler.parser.FlowToken.{LF, SU}
 import com.treasuredata.flow.lang.compiler.{CompilationUnit, SourceFile, SourceLocation}
 import com.treasuredata.flow.lang.model.NodeLocation
 import wvlet.log.LogSupport
@@ -55,33 +56,73 @@ case class ScannerConfig(
     skipComments: Boolean = false
 )
 
+abstract class ScannerBase(buf: IArray[Char], startFrom: Int = 0):
+  import FlowToken.*
+
+  protected var current: ScanState = ScanState(startFrom = startFrom)
+
+  // The last read character
+  protected var ch: Char = _
+  // The offset +1 of the last read character
+  protected var charOffset: Int = startFrom
+  // The offset before the last read character
+  protected var lastCharOffset: Int = startFrom
+  // The start offset of the current line
+  protected var lineStartOffset: Int = startFrom
+
+  inline protected def offset: Int = current.offset
+  inline private def length: Int   = buf.length
+
+  protected def nextChar(): Unit =
+    val index = charOffset
+    lastCharOffset = index
+    charOffset = index + 1
+    if index >= length then
+      // Set SU to represent the end of the file
+      ch = SU
+    else
+      val c = buf(index)
+      ch = c
+      if c < ' ' then fetchLineEnd()
+
+  protected def nextRawChar(): Unit =
+    val index = charOffset
+    lastCharOffset = index
+    charOffset = index + 1
+    if index >= length then ch = SU
+    else ch = buf(index)
+
+  private def fetchLineEnd(): Unit =
+    // Handle CR LF as a single LF
+    if ch == CR then
+      if charOffset < length && buf(offset) == LF then
+        current.offset += 1
+        ch = LF
+
+    // Found a new line. Update the line start offset
+    if ch == LF || ch == FF then lineStartOffset = charOffset
+
+  protected def lookAheadChar(): Char =
+    val index = charOffset
+    if index >= length then SU
+    else buf(index)
+
 /**
   * Scan *.flow files
   */
-class FlowScanner(source: SourceFile, config: ScannerConfig = ScannerConfig()) extends LogSupport:
+class FlowScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
+    extends ScannerBase(source.content, config.startFrom)
+    with LogSupport:
   import FlowToken.*
 
-  // The last read character
-  private var ch: Char = _
-  // The offset +1 of the last read character
-  private var charOffset: Int = config.startFrom
-  // The offset before the last read character
-  private var lastCharOffset: Int = config.startFrom
-  // The start offset of the current line
-  private var lineStartOffset: Int = config.startFrom
-
   // Preserve token history
-  private var current: ScanState = ScanState(startFrom = config.startFrom)
-  private var prev: ScanState    = ScanState(startFrom = config.startFrom)
-  private var next: ScanState    = ScanState(startFrom = config.startFrom)
+  private var prev: ScanState = ScanState(startFrom = config.startFrom)
+  private var next: ScanState = ScanState(startFrom = config.startFrom)
 
   // Is the current token the first one after a newline?
 
-  private val tokenBuffer = TokenBuffer()
-
+  private val tokenBuffer           = TokenBuffer()
   private var currentRegion: Region = Indented(0, null)
-
-  inline private def offset = current.offset
 
   // Initialization for populating the first character
   nextChar()
@@ -134,44 +175,34 @@ class FlowScanner(source: SourceFile, config: ScannerConfig = ScannerConfig()) e
 
   private def putChar(ch: Char): Unit = tokenBuffer.append(ch)
 
-  private def nextChar(): Unit =
-    val index = charOffset
-    lastCharOffset = index
-    charOffset = index + 1
-    if index >= source.length then
-      // Set SU to represent the end of the file
-      ch = SU
-    else
-      val c = source.charAt(index)
-      ch = c
-      if c < ' ' then fetchLineEnd()
-
-  private def fetchLineEnd(): Unit =
-    // Handle CR LF as a single LF
-    if ch == CR then
-      if charOffset < source.length && source.charAt(offset) == LF then
-        current.offset += 1
-        ch = LF
-
-    // Found a new line. Update the line start offset
-    if ch == LF || ch == FF then lineStartOffset = charOffset
-
   def nextToken(): TokenData =
     val lastToken = current.token
     getNextToken(lastToken)
     val t = current.toTokenData(lastCharOffset)
-    debug(t)
+    debug(s"${currentRegion} ${t}")
     t
 
   def currentToken: TokenData = current.toTokenData(lastCharOffset)
+
+  def inStringInterpolation: Boolean =
+    currentRegion match
+      case InString(_, _) => true
+      case _              => false
+
+  private def inMultiLineStringInterpolation: Boolean =
+    currentRegion match
+      case InBraces(InString(true, _)) => true
+      case _                           => false
 
   private def getNextToken(lastToken: FlowToken): Unit =
     // If the next token is already set, use it, otherwise fetch the next token
     if next.token == FlowToken.EMPTY then
       current.lastOffset = lastCharOffset
       currentRegion match
-        case InString(_) => fetchInterpolatedString()
-        case _           => fetchToken()
+        case InString(multiline, _) =>
+          getStringPart(multiline)
+        case _ =>
+          fetchToken()
     else
       current.copyFrom(next)
       next.token = FlowToken.EMPTY
@@ -197,6 +228,9 @@ class FlowScanner(source: SourceFile, config: ScannerConfig = ScannerConfig()) e
         putChar(ch)
         nextChar()
         getIdentRest()
+        if ch == '"' && current.token == FlowToken.IDENTIFIER then
+          // Switch the behavior of getDoubleQuotedString
+          current.token = FlowToken.STRING_INTERPOLATION_PREFIX
       case '~' | '!' | '@' | '#' | '%' | '^' | '*' | '+' | '<' | '>' | '?' | ':' | '=' | '&' | '|' | '\\' =>
         putChar(ch)
         nextChar()
@@ -229,10 +263,22 @@ class FlowScanner(source: SourceFile, config: ScannerConfig = ScannerConfig()) e
         if '0' <= ch && ch <= '9' then
           putChar('.')
           getFraction()
-          setTokenStringValue()
+          flushTokenString()
         else
           putChar('.')
           getOperatorRest()
+      case '{' =>
+        putChar(ch)
+        nextChar()
+        finishNamedToken()
+      case '}' =>
+        putChar(ch)
+        if inMultiLineStringInterpolation then nextRawChar() else nextChar()
+        currentRegion match
+          case InBraces(outer) =>
+            currentRegion = outer
+          case _ =>
+        finishNamedToken()
       case '\'' =>
         getSingleQuoteString()
       case '\"' =>
@@ -250,22 +296,84 @@ class FlowScanner(source: SourceFile, config: ScannerConfig = ScannerConfig()) e
         nextChar()
         finishNamedToken()
 
-  private def fetchInterpolatedString(): Unit =
-    getStringPart()
-    // TODO
-    current.token = FlowToken.STRING_PART
-    current.str = ""
-
-  private def getStringPart(): Unit =
-    ch match
-      case '"' =>
-        nextChar()
-        current.token = STRING_LITERAL
-      case '$' =>
-        nextChar()
-        if ch == '{' then
+  private def getDoubleQuoteString(): Unit =
+    if current.token == FlowToken.STRING_INTERPOLATION_PREFIX then
+      currentRegion = InString(false, currentRegion)
+      nextRawChar()
+      if ch == '"' then
+        if lookAheadChar() == '"' then
+          nextRawChar()
+          nextRawChar()
+          // Triple quote strings
+          getStringPart(multiline = true)
+        else
           nextChar()
-          current.token = FlowToken.STRING_PART
+          // Empty string interpolation
+          current.token = FlowToken.STRING_LITERAL
+          current.str = flushTokenString()
+      else
+        // Single-line string interpolation
+        getStringPart(multiline = false)
+    else
+      // Regular double quoted string
+      // TODO Support unicode and escape characters
+      consume('"')
+      while ch != '"' && ch != SU do
+        putChar(ch)
+        nextChar()
+      consume('"')
+      current.token = FlowToken.STRING_LITERAL
+      current.str = flushTokenString()
+
+  private def getStringPart(multiline: Boolean): Unit =
+    ch match
+      case '"' => // end of string
+        if multiline then
+          nextRawChar()
+          if isTripleQuote then
+            current.token = FlowToken.STRING_PART
+            current.str = flushTokenString()
+            currentRegion = InString(multiline, currentRegion)
+          else
+            getStringPart(multiline)
+            currentRegion = InString(multiline, currentRegion)
+        else
+          // Last part of the interpolated string
+          nextChar()
+          current.token = STRING_PART
+          current.str = flushTokenString()
+          currentRegion = currentRegion.outer
+      case '$' =>
+        lookAheadChar() match
+          case '{' =>
+            current.token = FlowToken.STRING_PART
+            current.str = flushTokenString()
+            currentRegion = InBraces(currentRegion)
+          case _ =>
+            putChar(ch)
+            nextChar()
+            getStringPart(multiline)
+      case _ =>
+        putChar(ch)
+        nextRawChar()
+        getStringPart(multiline)
+
+  private def isTripleQuote: Boolean =
+    if ch == '"' then
+      nextRawChar()
+      if ch == '"' then
+        nextRawChar()
+        while ch == '"' do
+          putChar('"')
+          nextChar()
+        true
+      else
+        putChar('"')
+        putChar('"')
+        false
+    else
+      putChar('"')
+      false
 
   private def getLineComment(): Unit =
     @tailrec
@@ -275,7 +383,7 @@ class FlowScanner(source: SourceFile, config: ScannerConfig = ScannerConfig()) e
       if (ch != CR) && (ch != LF) && (ch != SU) then readToLineEnd()
 
     readToLineEnd()
-    val commentLine = setTokenStringValue()
+    val commentLine = flushTokenString()
     if !config.skipComments then
       current.token = FlowToken.COMMENT
       current.str = commentLine
@@ -296,7 +404,7 @@ class FlowScanner(source: SourceFile, config: ScannerConfig = ScannerConfig()) e
 
     readToCommentEnd()
     current.token = FlowToken.COMMENT
-    current.str = setTokenStringValue()
+    current.str = flushTokenString()
 
   /**
     * Skip the comment and return true if the comment is skipped
@@ -320,19 +428,9 @@ class FlowScanner(source: SourceFile, config: ScannerConfig = ScannerConfig()) e
       nextChar()
     consume('\'')
     current.token = FlowToken.STRING_LITERAL
-    current.str = setTokenStringValue()
+    current.str = flushTokenString()
 
-  private def getDoubleQuoteString(): Unit =
-    // TODO Support unicode and escape characters
-    consume('\"')
-    while ch != '\"' && ch != SU do
-      putChar(ch)
-      nextChar()
-    consume('\"')
-    current.token = FlowToken.STRING_LITERAL
-    current.str = setTokenStringValue()
-
-  private def getIdentRest(): Unit =
+  @tailrec private def getIdentRest(): Unit =
     trace(s"getIdentRest[${offset}]: ch: '${String.valueOf(ch)}'")
     (ch: @switch) match
       case 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'I' | 'J' | 'K' | 'L' | 'M' | 'N' | 'O' | 'P' | 'Q' | 'R' |
@@ -342,11 +440,6 @@ class FlowScanner(source: SourceFile, config: ScannerConfig = ScannerConfig()) e
         putChar(ch)
         nextChar()
         getIdentRest()
-      case '"' =>
-        // string interpolation
-        current.token = FlowToken.STRING_INTERPOLATION
-        current.str = setTokenStringValue()
-        currentRegion = InString(currentRegion)
       case _ =>
         finishNamedToken()
 
@@ -376,14 +469,14 @@ class FlowScanner(source: SourceFile, config: ScannerConfig = ScannerConfig()) e
   /**
     * Set the token string and clear the buffer
     */
-  private def setTokenStringValue(): String =
+  private def flushTokenString(): String =
     val str = tokenBuffer.toString
     current.str = str
     tokenBuffer.clear()
     str
 
   private def finishNamedToken(target: ScanState = current): Unit =
-    val currentTokenStr = setTokenStringValue()
+    val currentTokenStr = flushTokenString()
     trace(s"finishNamedToken at ${current}: '${currentTokenStr}'")
     val token = FlowToken.keywordAndSymbolTable.get(currentTokenStr) match
       case Some(tokenType) =>
@@ -413,7 +506,7 @@ class FlowScanner(source: SourceFile, config: ScannerConfig = ScannerConfig()) e
 
     checkNoTrailingNumberSeparator()
 
-    setTokenStringValue()
+    flushTokenString()
     current.token = tokenType
   end getNumber
 
@@ -458,7 +551,7 @@ object FlowScanner:
     def outer: Region
 
   // Inside an interpolated string
-  case class InString(outer: Region) extends Region
-  case class InBraces(outer: Region) extends Region
+  case class InString(multiline: Boolean, outer: Region) extends Region
+  case class InBraces(outer: Region)                     extends Region
   // Inside an indented region
   case class Indented(level: Int, outer: Region | Null) extends Region

@@ -2,12 +2,12 @@ package cdp
 
 import td_sdk_log
 
-model weblogs[td_sdk_log]:
+model weblogs: td_sdk_log =
   from 'weblogs/*.parquet'
 end
 
 --@config(watermark_column:time, window_size:'1h')
-model behabior_weblogs:
+model behavior_weblogs =
   from weblogs
   where
     time is not null
