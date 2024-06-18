@@ -1,7 +1,7 @@
 package com.treasuredata.flow.lang.compiler.parser
 
 import com.treasuredata.flow.lang.StatusCode
-import com.treasuredata.flow.lang.compiler.parser.FlowToken.{FOR, FROM, R_PAREN}
+import com.treasuredata.flow.lang.compiler.parser.FlowToken.{EQ, FOR, FROM, R_PAREN}
 import com.treasuredata.flow.lang.compiler.{CompilationUnit, SourceFile}
 import com.treasuredata.flow.lang.model.expr.*
 import com.treasuredata.flow.lang.model.plan.*
@@ -20,8 +20,9 @@ import wvlet.log.LogSupport
   *               | reserved  # Necessary to use reserved words as identifiers
   *   IDENTIFIER  : (LETTER | '_') (LETTER | DIGIT | '_')*
   *   BACKQUOTED_IDENTIFIER: '`' (~'`' | '``')+ '`'
-  *   reserved   : 'from' | 'select' | 'where' | 'group' | 'by' | 'having'
+  *   reserved   : 'from' | 'select' | 'where' | 'group' | 'by' | 'having' | 'join'
   *              | 'order' | 'limit' | 'as' | 'model' | 'type' | 'def' | 'end'
+  *
   *
   *   statements: statement+
   *
@@ -53,9 +54,25 @@ import wvlet.log.LogSupport
   *   queryBlock: join
   *             | 'group' 'by' groupByItemList
   *             | 'where' booleanExpression
-  *             | transformExpr
-  *             | selectExpr
+  *             | 'transform' transformExpr
+  *             | 'select' selectExpr
   *             | 'limit' INTEGER_VALUE
+  *
+  *   join        : joinType? 'join' relation joinCriteria
+  *               | 'cross' 'join' relation
+  *   joinType    : 'inner' | 'left' | 'right' | 'full'
+  *   joinCriteria: 'on' booleanExpression
+  *               // using equi join keys
+  *               | 'on' identifier (',' identifier)*
+  *
+  *   groupByItemList: groupByItem (',' groupByItem)* ','?
+  *   groupByItem    : (identifier ':')? expression
+  *
+  *   transformExpr: transformItem (',' transformItem)* ','?
+  *   transformItem: qualifiedId '=' expression
+  *
+  *   selectExpr: selectItem (',' selectItem)* ','?
+  *   selectItem: (identifier ':')? expression
   *
   *   typeDef    : 'type' identifier typeParams? context? typeExtends? ':' typeElem* 'end'
   *   typeParams : '[' typeParam (',' typeParam)* ']'
@@ -153,8 +170,8 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
     val t = scanner.nextToken()
     t.token match
       case FlowToken.FROM | FlowToken.SELECT | FlowToken.WHERE | FlowToken.GROUP | FlowToken.BY | FlowToken.HAVING |
-          FlowToken.ORDER | FlowToken.LIMIT | FlowToken.AS | FlowToken.MODEL | FlowToken.TYPE | FlowToken.DEF |
-          FlowToken.END =>
+          FlowToken.JOIN | FlowToken.ORDER | FlowToken.LIMIT | FlowToken.AS | FlowToken.MODEL | FlowToken.TYPE |
+          FlowToken.DEF | FlowToken.END =>
         UnquotedIdentifier(t.str, t.nodeLocation)
       case _ =>
         unexpected(t)
@@ -260,7 +277,12 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
     consume(FlowToken.COLON)
     val elems = typeElems()
     consume(FlowToken.END)
-    TypeDef(name, scopes, parents, elems, t.nodeLocation)
+    if parents.size > 1 then
+      throw StatusCode.SYNTAX_ERROR.newException(
+        s"extending multiple types is not supported: ${name.fullName} extends ${parents.map(_.fullName).mkString(", ")}",
+        t.sourceLocation
+      )
+    TypeDef(name, scopes, parents.headOption, elems, t.nodeLocation)
 
   def typeExtends(): List[Name] =
     scanner.lookAhead().token match
@@ -440,17 +462,161 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
         AliasedRelation(primary, alias, None, t.nodeLocation)
       case _ =>
         primary
+    rel = queryBlock(rel)
+    rel
 
-    val t2 = scanner.lookAhead()
-    rel = t2.token match
+  def queryBlock(input: Relation): Relation =
+    val t = scanner.lookAhead()
+    t.token match
+      case FlowToken.LEFT | FlowToken.RIGHT | FlowToken.INNER | FlowToken.FULL | FlowToken.CROSS | FlowToken.JOIN =>
+        val joinRel = join(input)
+        queryBlock(joinRel)
       case FlowToken.WHERE =>
         consume(FlowToken.WHERE)
-        val cond = booleanExpression()
-        Filter(rel, cond, t2.nodeLocation)
+        val cond   = booleanExpression()
+        val filter = Filter(input, cond, t.nodeLocation)
+        queryBlock(filter)
+      case FlowToken.TRANSFORM =>
+        val transform = transformExpr(input)
+        queryBlock(transform)
+      case FlowToken.GROUP =>
+        val groupBy = groupByExpr(input)
+        queryBlock(groupBy)
+      case FlowToken.SELECT =>
+        val select = selectExpr(input)
+        queryBlock(select)
       case _ =>
-        rel
+        input
 
-    rel
+  def join(input: Relation): Relation =
+    val t = scanner.lookAhead()
+    t.token match
+      case FlowToken.CROSS =>
+        consume(FlowToken.CROSS)
+        consume(FlowToken.JOIN)
+        val right = relationPrimary()
+        Join(JoinType.CrossJoin, input, right, NoJoinCriteria, t.nodeLocation)
+      case FlowToken.JOIN =>
+        consume(FlowToken.JOIN)
+        val right  = relationPrimary()
+        val joinOn = joinCriteria()
+        Join(JoinType.InnerJoin, input, right, joinOn, t.nodeLocation)
+      case FlowToken.LEFT | FlowToken.RIGHT | FlowToken.INNER | FlowToken.FULL =>
+        val joinType = t.token match
+          case FlowToken.LEFT  => JoinType.LeftOuterJoin
+          case FlowToken.RIGHT => JoinType.RightOuterJoin
+          case FlowToken.INNER => JoinType.InnerJoin
+          case FlowToken.FULL  => JoinType.FullOuterJoin
+          case _               => unexpected(t)
+        consume(t.token)
+        consume(FlowToken.JOIN)
+        val right  = relationPrimary()
+        val joinOn = joinCriteria()
+        Join(joinType, input, right, joinOn, t.nodeLocation)
+
+  def joinCriteria(): JoinCriteria =
+    val t = scanner.lookAhead()
+    t.token match
+      case FlowToken.ON =>
+        consume(FlowToken.ON)
+        scanner.lookAhead().token match
+          case FlowToken.IDENTIFIER =>
+            val joinKeys = List.newBuilder[Name]
+            def nextKey: Unit =
+              val key = identifier()
+              joinKeys += key
+              scanner.lookAhead().token match
+                case FlowToken.COMMA =>
+                  consume(FlowToken.COMMA)
+                  nextKey
+                case _ =>
+            nextKey
+            JoinUsing(joinKeys.result(), t.nodeLocation)
+          case _ =>
+            val cond = booleanExpression()
+            JoinOn(cond, t.nodeLocation)
+      case _ =>
+        NoJoinCriteria
+
+  def transformExpr(input: Relation): Transform =
+    val t     = consume(FlowToken.TRANSFORM)
+    val items = List.newBuilder[SingleColumn]
+    def nextItem: Unit =
+      val t = scanner.lookAhead()
+      t.token match
+        case FlowToken.COMMA =>
+          consume(FlowToken.COMMA)
+          nextItem
+        case t if t.tokenType == TokenType.Keyword =>
+        // finish
+        case _ =>
+          val name = identifier()
+          consume(FlowToken.COLON)
+          val expr = expression()
+          items += SingleColumn(name, expr, t.nodeLocation)
+          nextItem
+    nextItem
+    Transform(input, items.result, t.nodeLocation)
+
+  def groupByExpr(input: Relation): Aggregate =
+    val t = consume(FlowToken.GROUP)
+    consume(FlowToken.BY)
+    val items = groupByItemList()
+    Aggregate(input, items, t.nodeLocation)
+
+  def groupByItemList(): List[GroupingKey] =
+    val t = scanner.lookAhead()
+    t.token match
+      case FlowToken.IDENTIFIER =>
+        val keyName = identifier()
+        val key = if scanner.lookAhead().token == FlowToken.COLON then
+          // (identifier ':')? expression
+          consume(FlowToken.COLON)
+          val aggr = expression()
+          UnresolvedGroupingKey(keyName, aggr, t.nodeLocation)
+        else UnresolvedGroupingKey(keyName, keyName, t.nodeLocation)
+        key :: groupByItemList()
+      case FlowToken.COMMA =>
+        consume(FlowToken.COMMA)
+        groupByItemList()
+      case t if t.tokenType == TokenType.Keyword =>
+        Nil
+      case _ =>
+        // expression only
+        val e   = expression()
+        val key = UnresolvedGroupingKey(NoName, e, e.nodeLocation)
+        key :: groupByItemList()
+
+  def selectExpr(input: Relation): Project =
+    val t     = consume(FlowToken.SELECT)
+    val items = selectItems()
+    Project(input, items, t.nodeLocation)
+
+  def selectItems(): List[Attribute] =
+    val t = scanner.lookAhead()
+    t.token match
+      case FlowToken.COMMA =>
+        consume(FlowToken.COMMA)
+        selectItems()
+      case FlowToken.EOF | FlowToken.END =>
+        Nil
+      case t if t.tokenType == TokenType.Keyword =>
+        Nil
+      case FlowToken.IDENTIFIER =>
+        val exprOrColumName = expression()
+        if scanner.lookAhead().token == FlowToken.COLON then
+          consume(FlowToken.COLON)
+          val expr = expression()
+          exprOrColumName match
+            case columnName: Name =>
+              SingleColumn(columnName, expr, t.nodeLocation) :: selectItems()
+            case other =>
+              unexpected(t)
+        else SingleColumn(NoName, exprOrColumName, t.nodeLocation) :: selectItems()
+      case _ =>
+        val e          = expression()
+        val selectItem = SingleColumn(NoName, e, t.nodeLocation)
+        selectItem :: selectItems()
 
   /**
     * relationPrimary := qualifiedId \| '(' query ')' \| stringLiteral
@@ -487,7 +653,7 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
 
   def attribute(): Attribute =
     val t = scanner.lookAhead()
-    SingleColumn(expression(), Qualifier.empty, t.nodeLocation)
+    SingleColumn(NoName, expression(), t.nodeLocation)
 
   def expression(): Expression = booleanExpression()
 
@@ -610,11 +776,31 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
             val e = expression()
             consume(FlowToken.R_PAREN)
             ParenthesizedExpression(e, t.nodeLocation)
+      case FlowToken.L_BRACKET =>
+        array()
       case FlowToken.IDENTIFIER | FlowToken.STAR | FlowToken.END =>
         identifier()
       case _ =>
         unexpected(t)
     primaryExpressionRest(expr)
+
+  def array(): ArrayConstructor =
+    val t        = consume(FlowToken.L_BRACKET)
+    val elements = List.newBuilder[Expression]
+    def nextElement: Unit =
+      val t = scanner.lookAhead()
+      t.token match
+        case FlowToken.COMMA =>
+          consume(FlowToken.COMMA)
+          nextElement
+        case FlowToken.R_BRACKET =>
+        // ok
+        case _ =>
+          elements += expression()
+          nextElement
+    nextElement
+    consume(FlowToken.R_BRACKET)
+    ArrayConstructor(elements.result(), t.nodeLocation)
 
   def literal(): Literal =
     val t = scanner.nextToken()
@@ -622,7 +808,7 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
       case FlowToken.NULL =>
         NullLiteral(t.nodeLocation)
       case FlowToken.INTEGER_LITERAL =>
-        LongLiteral(t.str.toInt, t.nodeLocation)
+        LongLiteral(t.str.toLong, t.nodeLocation)
       case FlowToken.DOUBLE_LITERAL =>
         DoubleLiteral(t.str.toDouble, t.nodeLocation)
       case FlowToken.FLOAT_LITERAL =>

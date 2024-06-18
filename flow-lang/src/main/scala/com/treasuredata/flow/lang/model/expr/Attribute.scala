@@ -9,35 +9,21 @@ import wvlet.log.LogSupport
   * Attribute is used for column names of relational table inputs and outputs
   */
 trait Attribute extends LeafExpression with LogSupport:
-  override def attributeName: String = name
+  override def attributeName: String = name.leafName
 
-  def name: String
-  def fullName: String =
-    s"${prefix}${name}"
+  def name: Name
+  def fullName: String = name.fullName
 
   def typeDescription: String = dataTypeName
 
-  def prefix: String = qualifier.prefix
-
-  // Optional qualifier for the attribute, given in the user query.
-  //
-  // - 1: empty  (no qualifier)
-  // - 2: (table name or table alias)
-  // - 3: (database name).(table name)
-  // - 4: (catalog name).(database name).(table name)
-  def qualifier: Qualifier
-
-  def withQualifier(newQualifier: String): Attribute = withQualifier(Qualifier.parse(newQualifier))
-  def withQualifier(newQualifier: Qualifier): Attribute
-
-  def alias: Option[String] =
+  def alias: Option[Name] =
     this match
       case a: Alias => Some(a.name)
       case _        => None
 
-  def withAlias(newAlias: String): Attribute = withAlias(Some(newAlias))
+  def withAlias(newAlias: Name): Attribute = withAlias(Some(newAlias))
 
-  def withAlias(newAlias: Option[String]): Attribute =
+  def withAlias(newAlias: Option[Name]): Attribute =
     newAlias match
       case None => this
       case Some(alias) =>
@@ -49,7 +35,7 @@ trait Attribute extends LeafExpression with LogSupport:
             // No need to have alias
             other
           case other =>
-            Alias(qualifier, alias, other, None)
+            Alias(alias, other, None)
 
   /**
     * * Returns the index of this attribute in the input or output columns
@@ -98,18 +84,10 @@ trait Attribute extends LeafExpression with LogSupport:
   * @param attr
   */
 case class AttributeRef(attr: Attribute)(val exprId: ULID = ULID.newULID) extends Attribute:
-  override def name: String     = attr.name
+  override def name: Name       = attr.name
   override def toString: String = s"AttributeRef(${attr})"
 
   override def nodeLocation: Option[NodeLocation] = attr.nodeLocation
-
-  /**
-    * Optional qualifier for the attribute
-    * @return
-    */
-  override def qualifier: Qualifier = attr.qualifier
-  override def withQualifier(newQualifier: Qualifier): Attribute =
-    AttributeRef(attr.withQualifier(newQualifier))(exprId = exprId)
 
   override def inputAttributes: Seq[Attribute]  = attr.inputAttributes
   override def outputAttributes: Seq[Attribute] = attr.inputAttributes
@@ -127,12 +105,10 @@ case class AttributeRef(attr: Attribute)(val exprId: ULID = ULID.newULID) extend
   * @param nodeLocation
   */
 case class SingleColumn(
+    override val name: Name,
     expr: Expression,
-    qualifier: Qualifier,
     nodeLocation: Option[NodeLocation]
 ) extends Attribute:
-  override def name: String = expr.attributeName
-
   override def dataType: DataType = expr.dataType
 
   override def inputAttributes: Seq[Attribute] = Seq(this)
@@ -143,30 +119,22 @@ case class SingleColumn(
 
   override def toString = s"${fullName}:${dataTypeName} := ${expr}"
 
-  override def withQualifier(newQualifier: Qualifier): Attribute =
-    this.copy(qualifier = newQualifier)
-
 case class UnresolvedAttribute(
-    override val qualifier: Qualifier,
-    name: String,
+    override val name: Name,
     nodeLocation: Option[NodeLocation]
 ) extends Attribute:
   override def toString: String = s"UnresolvedAttribute(${fullName})"
   override lazy val resolved    = false
 
-  override def withQualifier(newQualifier: Qualifier): UnresolvedAttribute =
-    this.copy(qualifier = newQualifier)
-
   override def inputAttributes: Seq[Attribute]  = Seq.empty
   override def outputAttributes: Seq[Attribute] = Seq.empty
 
 case class AllColumns(
-    override val qualifier: Qualifier,
+    override val name: Name,
     columns: Option[Seq[Attribute]],
     nodeLocation: Option[NodeLocation]
 ) extends Attribute
     with LogSupport:
-  override def name: String = "*"
 
   override def children: Seq[Expression] =
     // AllColumns is a reference to the input attributes.
@@ -182,16 +150,12 @@ case class AllColumns(
         }
       case None => Nil
 
-  override def outputAttributes: Seq[Attribute] =
-    inputAttributes.map(_.withQualifier(qualifier))
+  override def outputAttributes: Seq[Attribute] = inputAttributes
 
   override def dataType: DataType =
     columns
       .map(cols => EmbeddedRecordType(cols.map(x => NamedType(x.name, x.dataType))))
       .getOrElse(DataType.UnknownType)
-
-  override def withQualifier(newQualifier: Qualifier): Attribute =
-    this.copy(qualifier = newQualifier)
 
   override def toString =
     columns match
@@ -205,8 +169,7 @@ case class AllColumns(
   override lazy val resolved = columns.isDefined
 
 case class Alias(
-    qualifier: Qualifier,
-    name: String,
+    name: Name,
     expr: Expression,
     nodeLocation: Option[NodeLocation]
 ) extends Attribute:
@@ -214,9 +177,6 @@ case class Alias(
   override def outputAttributes: Seq[Attribute] = inputAttributes
 
   override def children: Seq[Expression] = Seq(expr)
-
-  override def withQualifier(newQualifier: Qualifier): Attribute =
-    this.copy(qualifier = newQualifier)
 
   override def toString: String =
     s"<${fullName}> := ${expr}"
@@ -230,8 +190,8 @@ case class Alias(
   * @param nodeLocation
   */
 case class MultiSourceColumn(
+    name: Name,
     inputs: Seq[Expression],
-    qualifier: Qualifier,
     nodeLocation: Option[NodeLocation]
 ) extends Attribute:
   // require(inputs.nonEmpty, s"The inputs of MultiSourceColumn should not be empty: ${this}", nodeLocation)
@@ -242,7 +202,7 @@ case class MultiSourceColumn(
     inputs.map {
       case a: Attribute => a
       case e: Expression =>
-        SingleColumn(e, qualifier, e.nodeLocation)
+        SingleColumn(name, e, e.nodeLocation)
     }
 
   override def outputAttributes: Seq[Attribute] = Seq(this)
@@ -251,11 +211,5 @@ case class MultiSourceColumn(
     // MultiSourceColumn is a reference to the multiple columns. Do not traverse here
     Seq.empty
 
-  override def name: String =
-    inputs.head.attributeName
-
   override def dataType: DataType =
     inputs.head.dataType
-
-  override def withQualifier(newQualifier: Qualifier): Attribute =
-    this.copy(qualifier = newQualifier)

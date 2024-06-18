@@ -45,22 +45,22 @@ case class ModelDef(
 ) extends LanguageStatement:
   override def children: Seq[LogicalPlan] = Seq(query)
 
-case class ModuleDef(
-    name: String,
-    elems: Seq[TypeElem],
-    nodeLocation: Option[NodeLocation]
-) extends LanguageStatement
+//case class ModuleDef(
+//    name: Name,
+//    elems: Seq[TypeElem],
+//    nodeLocation: Option[NodeLocation]
+//) extends LanguageStatement
 
 case class TypeAlias(
-    alias: String,
-    sourceTypeName: String,
+    alias: Name,
+    sourceTypeName: Name,
     nodeLocation: Option[NodeLocation]
 ) extends LanguageStatement
 
 case class TypeDef(
     name: Name,
     scopes: List[DefScope],
-    parents: List[Name],
+    parent: Option[Name],
     elems: Seq[TypeElem],
     nodeLocation: Option[NodeLocation]
 ) extends LanguageStatement

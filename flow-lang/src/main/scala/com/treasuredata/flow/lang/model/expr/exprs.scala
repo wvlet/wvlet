@@ -13,31 +13,46 @@ case class ParenthesizedExpression(child: Expression, nodeLocation: Option[NodeL
 sealed trait Name extends Expression:
   def fullName: String
   def value: String = fullName
+  def leafName: String
+
+object Name:
+  def fromString(s: String): Name = UnquotedIdentifier(s, None)
+
+case object NoName extends Name:
+  override def fullName: String = ""
+  override def value: String    = ""
+  override def leafName: String = ""
+
+  override def children: Seq[Expression]          = Nil
+  override def nodeLocation: Option[NodeLocation] = None
 
 case class Wildcard(nodeLocation: Option[NodeLocation]) extends LeafExpression with Name:
   override def fullName: String = "*"
+  override def leafName: String = "*"
 
 case class ContextRef(nodeLocation: Option[NodeLocation]) extends LeafExpression with Name:
   override def fullName: String = "_"
+  override def leafName: String = "_"
 
-// Qualified name (QName), such as table and column names
-case class QName(parts: List[String], nodeLocation: Option[NodeLocation]) extends LeafExpression with Name:
-  override def fullName: String = parts.mkString(".")
-  override def toString: String = fullName
+//// Qualified name (QName), such as table and column names
+//case class QName(parts: List[String], nodeLocation: Option[NodeLocation]) extends LeafExpression with Name:
+//  override def fullName: String = parts.mkString(".")
+//  override def toString: String = fullName
+//
+//object QName:
+//  def apply(s: String, nodeLocation: Option[NodeLocation]): QName =
+//    QName(s.split("\\.").map(unquote).toList, nodeLocation)
+//
+//  def unquote(s: String): String =
+//    if s.startsWith("\"") && s.endsWith("\"") then s.substring(1, s.length - 1)
+//    else s
 
-object QName:
-  def apply(s: String, nodeLocation: Option[NodeLocation]): QName =
-    QName(s.split("\\.").map(unquote).toList, nodeLocation)
-
-  def unquote(s: String): String =
-    if s.startsWith("\"") && s.endsWith("\"") then s.substring(1, s.length - 1)
-    else s
-
-case class Dereference(base: Expression, next: Expression, nodeLocation: Option[NodeLocation]) extends Expression:
-  override def toString: String          = s"Dereference(${base} => ${next})"
-  override def children: Seq[Expression] = Seq(base, next)
+//case class Dereference(base: Expression, next: Expression, nodeLocation: Option[NodeLocation]) extends Expression:
+//  override def toString: String          = s"Dereference(${base} => ${next})"
+//  override def children: Seq[Expression] = Seq(base, next)
 
 case class Ref(base: Expression, name: Name, nodeLocation: Option[NodeLocation]) extends Name:
+  override def leafName: String = name.leafName
   override def fullName: String =
     base match
       case n: Name => s"${n.fullName}.${name.fullName}"
@@ -48,6 +63,7 @@ case class Ref(base: Expression, name: Name, nodeLocation: Option[NodeLocation])
 
 sealed trait Identifier extends LeafExpression with Name:
   override def fullName: String = value
+  override def leafName: String = value
   override def value: String
   def expr: String
   override def attributeName: String  = value
@@ -78,11 +94,13 @@ case class QuotedIdentifier(override val value: String, nodeLocation: Option[Nod
   override def expr: String = s"\"${value}\""
 
 sealed trait JoinCriteria extends Expression
+case object NoJoinCriteria extends JoinCriteria with LeafExpression:
+  override def nodeLocation: Option[NodeLocation] = None
 
 case class NaturalJoin(nodeLocation: Option[NodeLocation]) extends JoinCriteria with LeafExpression:
   override def toString: String = "NaturalJoin"
 
-case class JoinUsing(columns: Seq[Identifier], nodeLocation: Option[NodeLocation]) extends JoinCriteria:
+case class JoinUsing(columns: Seq[Name], nodeLocation: Option[NodeLocation]) extends JoinCriteria:
   override def children: Seq[Expression] = columns
   override def toString: String          = s"JoinUsing(${columns.mkString(",")})"
 
@@ -551,24 +569,24 @@ case class Parameter(index: Int, nodeLocation: Option[NodeLocation]) extends Lea
 case class SubQueryExpression(query: Relation, nodeLocation: Option[NodeLocation]) extends Expression:
   override def children: Seq[Expression] = query.childExpressions
 
-case class Cast(expr: Expression, tpe: String, tryCast: Boolean = false, nodeLocation: Option[NodeLocation])
+case class Cast(expr: Name, tpe: Name, tryCast: Boolean = false, nodeLocation: Option[NodeLocation])
     extends UnaryExpression:
   override def child: Expression = expr
 
-case class SchemaProperty(key: Identifier, value: Expression, nodeLocation: Option[NodeLocation]) extends Expression:
+case class SchemaProperty(key: Name, value: Expression, nodeLocation: Option[NodeLocation]) extends Expression:
   override def children: Seq[Expression] = Seq(key, value)
 
 sealed trait TableElement extends Expression
 
-case class ColumnDef(columnName: Identifier, tpe: ColumnType, nodeLocation: Option[NodeLocation])
+case class ColumnDef(columnName: Name, tpe: ColumnType, nodeLocation: Option[NodeLocation])
     extends TableElement
     with UnaryExpression:
   override def toString: String  = s"${columnName.value}:${tpe.tpe}"
   override def child: Expression = columnName
 
-case class ColumnType(tpe: String, nodeLocation: Option[NodeLocation]) extends LeafExpression
+case class ColumnType(tpe: Name, nodeLocation: Option[NodeLocation]) extends LeafExpression
 
-case class ColumnDefLike(tableName: QName, includeProperties: Boolean, nodeLocation: Option[NodeLocation])
+case class ColumnDefLike(tableName: Name, includeProperties: Boolean, nodeLocation: Option[NodeLocation])
     extends TableElement
     with UnaryExpression:
   override def child: Expression = tableName
@@ -578,7 +596,7 @@ trait GroupingKey extends UnaryExpression:
   def index: Option[Int]
   override def child: Expression
 
-case class UnresolvedGroupingKey(child: Expression, nodeLocation: Option[NodeLocation]) extends GroupingKey:
+case class UnresolvedGroupingKey(name: Name, child: Expression, nodeLocation: Option[NodeLocation]) extends GroupingKey:
   override def index: Option[Int]     = None
   override def toString: String       = s"GroupingKey(${index.map(i => s"${i}:").getOrElse("")}${child})"
   override lazy val resolved: Boolean = false

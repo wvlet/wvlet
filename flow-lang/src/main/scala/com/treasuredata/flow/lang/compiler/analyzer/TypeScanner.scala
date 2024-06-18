@@ -12,9 +12,9 @@ object PreTypeScan  extends TypeScanner("collect-types")
 object PostTypeScan extends TypeScanner("post-type-scan")
 
 /**
-  * Scan all referenced types in the code, including imported and defined ones
+  * Scan all defined types in the code, including imported and defined ones
   */
-class TypeScanner(name: String) extends Phase(name) with LogSupport:
+class TypeScanner(phaseName: String) extends Phase(phaseName) with LogSupport:
   override def run(unit: CompilationUnit, context: Context): CompilationUnit =
     scanTypeDefs(unit.unresolvedPlan, context)
     unit
@@ -35,29 +35,20 @@ class TypeScanner(name: String) extends Phase(name) with LogSupport:
     // TODO resolve defs
     val defs: Seq[FunctionType] = Seq.empty // typeDef.defs.collect { case tpe: TypeDefDef =>
 
+    // Scan SchemaType parameters
     val valDefs = typeDef.elems.collect { case v: TypeValDef =>
-      val resolvedType = scanDataType(ColumnType(v.tpe.fullName, v.nodeLocation), context)
-      NamedType(v.name.fullName, resolvedType)
+      val resolvedType = scanDataType(ColumnType(v.tpe, v.nodeLocation), context)
+      NamedType(v.name, resolvedType)
     }
-    val selfType = valDefs.filter(_.name == "self")
 
-    if valDefs.nonEmpty then SchemaType(typeDef.name.fullName, valDefs)
+    if valDefs.nonEmpty then
+      // TODO: Add parent fields
+      SchemaType(typeDef.name.fullName, valDefs)
     else
-      selfType.size match
-        case 0 =>
-          throw StatusCode.SYNTAX_ERROR.newException(
-            "Missing self parameter in type definition",
-            context.compileUnit.toSourceLocation(typeDef.nodeLocation)
-          )
-        case n if n > 1 =>
-          throw StatusCode.SYNTAX_ERROR.newException(
-            "Multiple self parameters are found in type definition",
-            context.compileUnit.toSourceLocation(typeDef.nodeLocation)
-          )
-        case 1 =>
-          ExtensionType(typeDef.name.fullName, selfType.head, defs)
+      // TODO: Add parent fields
+      ExtensionType(typeDef.name.fullName, typeDef.parent.map(p => UnresolvedType(p.fullName)), defs)
 
   private def scanDataType(columnType: ColumnType, context: Context): DataType =
     context.scope
-      .findType(columnType.tpe)
-      .getOrElse(UnresolvedType(columnType.tpe))
+      .findType(columnType.tpe.fullName)
+      .getOrElse(UnresolvedType(columnType.tpe.fullName))

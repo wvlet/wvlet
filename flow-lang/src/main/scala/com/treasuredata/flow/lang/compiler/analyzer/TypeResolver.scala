@@ -58,13 +58,9 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
           case Some(tpe: RelationType) =>
             context.scope.resolveType(tpe.typeName) match
               case Some(schema: SchemaType) =>
-                context.scope.getTableDef(ref.name.fullName) match
+                context.scope.getTableDef(ref.name) match
                   case Some(tbl) =>
-                    (tbl.getParam("connection"), tbl.getParam("path")) match
-                      case (Some("duckdb"), Some(path)) =>
-                        PathScan(ref.name.fullName, path, schema, ref.nodeLocation)
-                      case _ =>
-                        TableScan(ref.name.fullName, tpe, schema.columnTypes, ref.nodeLocation)
+                    TableScan(ref.name.fullName, tpe, schema.columnTypes, ref.nodeLocation)
                   case None =>
                     RelScan(ref.name.fullName, tpe, schema.columnTypes, ref.nodeLocation)
               case other =>

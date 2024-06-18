@@ -2,6 +2,7 @@ package com.treasuredata.flow.lang.model
 
 import wvlet.airframe.ulid.{PrefixedULID, ULID}
 import wvlet.log.LogSupport
+import com.treasuredata.flow.lang.model.expr.Name
 
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -49,7 +50,7 @@ object DataType extends LogSupport:
     * @param name
     * @param dataType
     */
-  case class NamedType(name: String, dataType: DataType) extends DataType(s"${name}:${dataType}", Seq.empty):
+  case class NamedType(name: Name, dataType: DataType) extends DataType(s"${name}:${dataType}", Seq.empty):
     override def isResolved: Boolean = dataType.isResolved
 
   /**
@@ -111,18 +112,17 @@ object DataType extends LogSupport:
   /**
     * Type extension
     * @param typeName
-    * @param selfType
     * @param defs
     */
-  case class ExtensionType(override val typeName: String, selfType: DataType, defs: Seq[FunctionType])
+  case class ExtensionType(override val typeName: String, parent: Option[DataType], defs: Seq[FunctionType])
       extends RelationType(typeName, Seq.empty):
 
-    override def fields: Seq[DataType] = selfType match
-      case r: RelationType => r.fields
-      case _               => Seq(selfType)
+    override def fields: Seq[DataType] = parent match
+      case Some(r: RelationType) => r.fields
+      case _                     => Nil
 
     override def typeDescription: String = typeName
-    override def isResolved              = selfType.isResolved && defs.forall(_.isResolved)
+    override def isResolved              = parent.exists(_.isResolved) && defs.forall(_.isResolved)
 
   case class FunctionType(name: String, args: Seq[NamedType], returnType: DataType) extends DataType(name, Seq.empty):
     override def typeDescription: String =

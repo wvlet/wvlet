@@ -1,4 +1,4 @@
-package flow.standard
+package flow.standard.types
 
 type string:
   def to_int: int = sql"cast({this} as bigint)"
@@ -15,12 +15,15 @@ type string:
   def trim: string = sql"trim({this})"
 
   def substring(start:int,end:int): string = sql"substring({this},{start},{end})"
+end
 
-  -- Using query engine specific dialects
-  def substring(start:int)(in trino): string = sql"substring({this},{start})"
-  def substring(start:int)(in duckdb): string = sql"substring({this},{start},strlen({this}))"
+-- Using query engine specific dialects
+type string(in trino):
+  def substring(start:int,end:int): string = sql"substring({this},{start},{end})"
+  def regexp_like(pattern:string): boolean = sql"regexp_like({this},{pattern})"
+end
 
-  -- Using query engine specific functions
-  def regexp_like(pattern:string)(in trino): boolean = sql"regexp_like({this},{pattern})"
-  def regexp_like(pattern:string)(in duckdb): boolean = sql"regexp_matches({this},{pattern})"
+type string(in duckdb):
+  def substring(start:int): string = sql"substring({this},{start},strlen({this}))"
+  def regexp_like(pattern:string): boolean = sql"regexp_matches({this},{pattern})"
 end

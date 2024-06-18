@@ -42,7 +42,7 @@ case class ParenthesizedRelation(child: Relation, nodeLocation: Option[NodeLocat
 case class AliasedRelation(
     child: Relation,
     alias: Name,
-    columnNames: Option[Seq[String]],
+    columnNames: Option[Seq[Name]],
     nodeLocation: Option[NodeLocation]
 ) extends UnaryRelation:
   override def toString: String =
@@ -70,8 +70,7 @@ case class AliasedRelation(
         )
 
   override def outputAttributes: Seq[Attribute] =
-    val qualifier = Qualifier.parse(alias.value)
-    val attrs     = child.outputAttributes.map(_.withQualifier(qualifier))
+    val attrs = child.outputAttributes
     val result = columnNames match
       case Some(columnNames) =>
         attrs.zip(columnNames).map { case (a, columnName) =>
@@ -83,18 +82,18 @@ case class AliasedRelation(
 
 case class NamedRelation(
     child: Relation,
-    name: Identifier,
+    name: Name,
     nodeLocation: Option[NodeLocation]
 ) extends UnaryRelation
     with Selection:
   override def toString: String = s"NamedRelation[${name.value}](${child})"
   override def outputAttributes: Seq[Attribute] =
     val qual = Qualifier.parse(name.value)
-    child.outputAttributes.map(_.withQualifier(qual))
+    child.outputAttributes
 
   override def selectItems: Seq[Attribute] =
     // Produce a dummy AllColumns node for SQLGenerator
-    Seq(AllColumns(Qualifier.empty, None, None))
+    Seq(AllColumns(Wildcard(None), None, None))
 
   override def relationType: RelationType = AliasedType(name.value, child.relationType)
 
@@ -112,7 +111,7 @@ case class Values(rows: Seq[Expression], nodeLocation: Option[NodeLocation]) ext
         case other             => Seq(other)
     }
     val columns = (0 until values.head.size).map { i =>
-      MultiSourceColumn(values.map(_(i)), Qualifier.empty, None)
+      MultiSourceColumn(NoName, values.map(_(i)), None)
     }
     columns
 
@@ -152,9 +151,8 @@ case class JSONFileScan(
       ResolvedAttribute(
         col.name,
         col,
-        Qualifier.empty, // This must be empty first
-        None,            // TODO Some(SourceColumn(table, col)),
-        None             // ResolvedAttribute always has no NodeLocation
+        None, // TODO Some(SourceColumn(table, col)),
+        None  // ResolvedAttribute always has no NodeLocation
       )
     }
 
@@ -248,12 +246,11 @@ case class Transform(child: Relation, transformItems: Seq[Attribute], nodeLocati
 case class Aggregate(
     child: Relation,
     groupingKeys: List[GroupingKey],
-    having: Option[Expression],
     nodeLocation: Option[NodeLocation]
 ) extends UnaryRelation:
   override def toString: String = s"Aggregate[${groupingKeys.mkString(",")}](${child})"
   override def outputAttributes: Seq[Attribute] =
-    val keyAttrs = groupingKeys.map(key => SingleColumn(key, Qualifier.empty, key.nodeLocation))
+    val keyAttrs = groupingKeys.map(key => SingleColumn(NoName, key, key.nodeLocation))
     // TODO change type as ((k1, k2) -> Seq[c1, c2, c3, ...]) type
     keyAttrs ++ child.outputAttributes
 
@@ -344,26 +341,20 @@ case class Join(
   override lazy val relationType: RelationType =
     ConcatType(RelationType.newRelationTypeName, Seq(left.relationType, right.relationType))
 
-sealed abstract class JoinType(val symbol: String)
-
-// Exact match (= equi join)
-case object InnerJoin extends JoinType("J")
-
-// Joins for preserving left table entries
-case object LeftOuterJoin extends JoinType("LJ")
-
-// Joins for preserving right table entries
-case object RightOuterJoin extends JoinType("RJ")
-
-// Joins for preserving both table entries
-case object FullOuterJoin extends JoinType("FJ")
-
-// Cartesian product of two tables
-case object CrossJoin extends JoinType("CJ")
-
-// From clause contains only table names, and
-// Where clause specifies join criteria
-case object ImplicitJoin extends JoinType("J")
+enum JoinType(val symbol: String):
+  // Exact match (= equi join)
+  case InnerJoin extends JoinType("J")
+  // Joins for preserving left table entries
+  case LeftOuterJoin extends JoinType("LJ")
+  // Joins for preserving right table entries
+  case RightOuterJoin extends JoinType("RJ")
+  // Joins for preserving both table entries
+  case FullOuterJoin extends JoinType("FJ")
+  // Cartesian product of two tables
+  case CrossJoin extends JoinType("CJ")
+  // From clause contains only table names, and
+  // Where clause specifies join criteria
+  case ImplicitJoin extends JoinType("J")
 
 sealed trait SetOperation extends Relation with LogSupport:
   override def children: Seq[Relation]
@@ -384,7 +375,7 @@ sealed trait SetOperation extends Relation with LogSupport:
             case other =>
               other.inputAttributes match
                 case x if x.length <= 1 => x
-                case inputs             => Seq(MultiSourceColumn(inputs, Qualifier.empty, None))
+                case inputs             => Seq(MultiSourceColumn(NoName, inputs, None))
           })
       }
 
@@ -402,20 +393,19 @@ sealed trait SetOperation extends Relation with LogSupport:
     // column lists: ((a1, b1, ...), (a2, b2, ...)
     val sameColumnList = outputAttributes.transpose
     sameColumnList.map { columns =>
-      val head       = columns.head
-      val qualifiers = columns.map(_.qualifier).distinct
+      val head = columns.head
+      // val qualifiers = columns.m
+      val distinctColumnNames = columns.map(_.name).distinctBy(_.leafName)
       val col = MultiSourceColumn(
+        // If all column has the same name, use it
+        if distinctColumnNames.size == 1 then distinctColumnNames.head else NoName,
         inputs = columns.toSeq,
-        qualifier =
-          // If all of the qualifiers are the same, use it.
-          if qualifiers.size == 1 then qualifiers.head
-          else Qualifier.empty,
         None
       )
         // In set operations, if different column names are merged into one column, the first column name will be used
         .withAlias(head.name)
       col
-    }.toSeq
+    }
 
 case class Intersect(
     relations: Seq[Relation],
@@ -465,9 +455,9 @@ case class Unnest(columns: Seq[Expression], withOrdinality: Boolean, nodeLocatio
   override def outputAttributes: Seq[Attribute] =
     columns.map {
       case arr: ArrayConstructor =>
-        ResolvedAttribute(ULID.newULIDString, arr.elementType, Qualifier.empty, None, arr.nodeLocation)
+        ResolvedAttribute(UnquotedIdentifier(ULID.newULIDString, None), arr.elementType, None, arr.nodeLocation)
       case other =>
-        SingleColumn(other, Qualifier.empty, other.nodeLocation)
+        SingleColumn(NoName, other, other.nodeLocation)
     }
 
 case class Lateral(query: Relation, nodeLocation: Option[NodeLocation]) extends UnaryRelation:
@@ -483,8 +473,8 @@ case class Lateral(query: Relation, nodeLocation: Option[NodeLocation]) extends 
 case class LateralView(
     child: Relation,
     exprs: Seq[Expression],
-    tableAlias: Identifier,
-    columnAliases: Seq[Identifier],
+    tableAlias: Name,
+    columnAliases: Seq[Name],
     nodeLocation: Option[NodeLocation]
 ) extends UnaryRelation:
 
@@ -493,7 +483,7 @@ case class LateralView(
     UnresolvedRelationType(RelationType.newRelationTypeName)
 
   override def outputAttributes: Seq[Attribute] =
-    columnAliases.map(x => UnresolvedAttribute(Qualifier.parse(tableAlias.value), x.value, None))
+    columnAliases.map(x => UnresolvedAttribute(Ref(tableAlias, x, None), None))
 
 /**
   * The lowest level operator to access a table
@@ -518,9 +508,8 @@ case class TableScan(
       ResolvedAttribute(
         col.name,
         col,
-        Qualifier.empty, // This must be empty first
-        None,            // TODO Some(SourceColumn(table, col)),
-        None             // ResolvedAttribute always has no NodeLocation
+        None, // TODO Some(SourceColumn(table, col)),
+        None  // ResolvedAttribute always has no NodeLocation
       )
     }
 
@@ -551,9 +540,8 @@ case class RelScan(
     ResolvedAttribute(
       col.name,
       col,
-      Qualifier.empty, // This must be empty first
-      None,            // TODO Some(SourceColumn(table, col)),
-      None             // ResolvedAttribute always has no NodeLocation
+      None, // TODO Some(SourceColumn(table, col)),
+      None  // ResolvedAttribute always has no NodeLocation
     )
   }
 
@@ -599,7 +587,6 @@ case class IncrementalTableScan(
       ResolvedAttribute(
         col.name,
         col,
-        Qualifier.empty,
         None,
         None
       )

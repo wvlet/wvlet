@@ -4,6 +4,7 @@ import com.treasuredata.flow.lang.StatusCode
 import com.treasuredata.flow.lang.compiler.Context
 import com.treasuredata.flow.lang.model.DataType.{EmptyRelationType, NamedType, RecordType, SchemaType}
 import com.treasuredata.flow.lang.model.{DataType, RelationType}
+import com.treasuredata.flow.lang.model.expr.Name
 import wvlet.airframe.control.IO
 import wvlet.airframe.json.JSON
 import wvlet.airframe.json.JSON.{
@@ -59,7 +60,7 @@ object JSONAnalyzer extends LogSupport:
     traverse("", json)
     val dataTypes = schema.map: (k, typeMap) =>
       val mostFrequentType = typeMap.mostFrequentType
-      NamedType(k, mostFrequentType)
+      NamedType(Name.fromString(k), mostFrequentType)
 
     SchemaType(ULID.newULIDString, dataTypes.toSeq)
 

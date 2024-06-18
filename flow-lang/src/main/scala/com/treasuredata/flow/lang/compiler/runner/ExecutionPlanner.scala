@@ -52,7 +52,7 @@ class ExecutionPlanner(using compilationUnit: CompilationUnit, ctx: DBContext) e
   def attribute(a: Attribute): SqlExpr =
     a match
       case s: SingleColumn =>
-        if s.name == "?" then expression(s.expr)
+        if s.name == NoName then expression(s.expr)
         else sql"${expression(s.expr)} as ${s.fullName}"
       case a: AttributeRef =>
         sql"${a.name}"

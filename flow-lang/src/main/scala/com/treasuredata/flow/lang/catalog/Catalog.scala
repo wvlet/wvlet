@@ -23,8 +23,8 @@ trait Catalog extends LogSupport:
   def tableExists(database: String, table: String): Boolean
   def createTable(table: Catalog.Table, createMode: CreateMode): Unit
 
-  def findFromQName(contextDatabase: String, qname: QName): Option[Catalog.Table] =
-    qname.parts match
+  def findFromQName(contextDatabase: String, qname: Name): Option[Catalog.Table] =
+    qname.fullName.split(".").toList match
       case catalog :: db :: tbl :: Nil =>
         if catalog == catalogName then findTable(db, tbl)
         else None

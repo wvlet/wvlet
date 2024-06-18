@@ -59,7 +59,7 @@ object LogicalPlanPrinter extends LogSupport:
             ")] ",
             t.name,
             if t.scopes.isEmpty then Nil else List("(in ", concat(t.scopes, ", "), ")"),
-            if t.parents.isEmpty then Nil else List(" extends ", concat(t.parents, ", "))
+            if t.parent.isEmpty then Nil else List(" extends ", t.parent)
           )
         )
         out.println(s)
@@ -116,8 +116,8 @@ object LogicalPlanPrinter extends LogSupport:
             if d.defaultValue.isEmpty then Nil else List(" = ", d.defaultValue)
           )
         )
-      case d: Dereference =>
-        s"Dereference(${printExpression(d.base)}, ${printExpression(d.next)})"
+//      case d: Dereference =>
+//        s"Dereference(${printExpression(d.base)}, ${printExpression(d.next)})"
       case s: SingleColumn =>
         s"${s.fullName}:${s.dataTypeName} := ${printExpression(s.expr)}"
       case a: Alias =>

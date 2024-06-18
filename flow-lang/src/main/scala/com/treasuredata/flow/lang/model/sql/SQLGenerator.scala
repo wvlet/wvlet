@@ -4,6 +4,7 @@ import com.treasuredata.flow.lang.model.plan.LogicalPlan
 import wvlet.log.LogSupport
 import com.treasuredata.flow.lang.model.expr.*
 import com.treasuredata.flow.lang.model.plan.*
+import com.treasuredata.flow.lang.model.plan.JoinType.*
 
 case class SQLGeneratorConfig(
     indent: Int = 2
@@ -191,7 +192,7 @@ class SQLGenerator(config: SQLGeneratorConfig = SQLGeneratorConfig()) extends Lo
 //      case c: CTERelationRef =>
 //        c.name
       case TableRef(t, _) =>
-        printNameWithQuotationsIfNeeded(t.fullName)
+        t.fullName
 //      case t: TableScan =>
 //        printNameWithQuotationsIfNeeded(t.fullName)
       case Limit(in, l, _) =>
@@ -240,7 +241,7 @@ class SQLGenerator(config: SQLGeneratorConfig = SQLGeneratorConfig()) extends Lo
       case Unnest(cols, ord, _) =>
         val b = seqBuilder
         b += s"UNNEST (${cols.map(printExpression).mkString(", ")})"
-        if ord then b += "WITH ORDINALITY"
+        if ord then b += "WITH ORDIpNALITY"
         b.result().mkString(" ")
       case Lateral(q, _) =>
         val b = seqBuilder
@@ -389,7 +390,7 @@ class SQLGenerator(config: SQLGeneratorConfig = SQLGeneratorConfig()) extends Lo
         s"(${expr.sqlExpr})"
       case a: Alias =>
         val e = a.expr.sqlExpr
-        s"${e} AS ${printNameWithQuotationsIfNeeded(a.name)}"
+        s"${e} AS ${a.name.leafName}"
       case s @ SingleColumn(ex, _, _) =>
         if s.fullName != "?" then s"${printExpression(s.expr)} AS ${s.fullName}"
         else printExpression(s.expr)
@@ -398,7 +399,7 @@ class SQLGenerator(config: SQLGeneratorConfig = SQLGeneratorConfig()) extends Lo
       case a: AllColumns =>
         a.fullName
       case a: Attribute =>
-        printNameWithQuotationsIfNeeded(a.fullName)
+        a.fullName
       case SortItem(key, ordering, nullOrdering, _) =>
         val k  = key.sqlExpr
         val o  = ordering.map(x => s" ${x}").getOrElse("")
@@ -427,8 +428,8 @@ class SQLGenerator(config: SQLGeneratorConfig = SQLGeneratorConfig()) extends Lo
 //        s"${prefix}${name}(${argList})"
       case Extract(interval, expr, _) =>
         s"EXTRACT(${interval} FROM ${printExpression(expr)})"
-      case QName(parts, _) =>
-        parts.mkString(".")
+//      case QName(parts, _) =>
+//        parts.mkString(".")
       case Cast(expr, tpe, tryCast, _) =>
         val cmd = if tryCast then "TRY_CAST" else "CAST"
         s"${cmd}(${expr.sqlExpr} AS ${tpe})"
@@ -465,7 +466,7 @@ class SQLGenerator(config: SQLGeneratorConfig = SQLGeneratorConfig()) extends Lo
       case ColumnDef(name, tpe, _) =>
         s"${name.sqlExpr} ${tpe.sqlExpr}"
       case ColumnType(tpe, _) =>
-        tpe
+        tpe.fullName
       case ColumnDefLike(table, includeProperties, _) =>
         val inc = if includeProperties then "INCLUDING" else "EXCLUDING"
         s"LIKE ${printExpression(table)} ${inc} PROPERTIES"
@@ -533,5 +534,5 @@ class SQLGenerator(config: SQLGeneratorConfig = SQLGeneratorConfig()) extends Lo
       case NotDistinctFrom(a, e, _) =>
         s"${a.sqlExpr} IS NOT DISTINCT FROM ${e.sqlExpr}"
 
-  private def printNameWithQuotationsIfNeeded(name: String): String =
-    QName.apply(name, None).sqlExpr
+//  private def printNameWithQuotationsIfNeeded(name: String): String =
+//    QName.apply(name, None).sqlExpr
