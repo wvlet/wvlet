@@ -23,10 +23,13 @@ class InMemoryExecutor extends LogSupport:
   def execute(plan: LogicalPlan, context: Context): QueryResult =
     plan match
       case p: PackageDef =>
-        val results = p.statements.map: stmt =>
-          PlanResult(stmt, execute(stmt, context))
+        val results = p
+          .statements
+          .map: stmt =>
+            PlanResult(stmt, execute(stmt, context))
         QueryResultList(results)
-      case q: Query => execute(q.body, context)
+      case q: Query =>
+        execute(q.body, context)
       case t: TestDef =>
         warn(s"Test execution is not supported yet: ${t}")
         QueryResult.empty

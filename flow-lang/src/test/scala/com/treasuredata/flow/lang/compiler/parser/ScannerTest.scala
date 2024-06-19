@@ -49,8 +49,10 @@ class ScannerTest extends AirSpec:
       token2.length shouldBe 0
     }
 
-  FlowToken.allKeywordAndSymbol.foreach: t =>
-    testScanToken(t.str, t)
+  FlowToken
+    .allKeywordAndSymbol
+    .foreach: t =>
+      testScanToken(t.str, t)
 
   test("read comments") {
     val src =

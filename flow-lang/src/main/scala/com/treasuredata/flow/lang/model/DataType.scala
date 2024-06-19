@@ -12,9 +12,14 @@ abstract class DataType(val typeName: String, val typeParams: Seq[DataType]):
 
   def typeDescription: String =
     val typeStr =
-      if typeParams.isEmpty then typeName
-      else s"${typeName}(${typeParams.mkString(", ")})"
-    if isResolved then typeStr else s"${typeStr}?"
+      if typeParams.isEmpty then
+        typeName
+      else
+        s"${typeName}(${typeParams.mkString(", ")})"
+    if isResolved then
+      typeStr
+    else
+      s"${typeStr}?"
 
   def baseTypeName: String = typeName
 
@@ -132,8 +137,10 @@ object DataType extends LogSupport:
 
     override def fields: Seq[DataType] =
       parent match
-        case Some(r: RelationType) => r.fields
-        case _                     => Nil
+        case Some(r: RelationType) =>
+          r.fields
+        case _ =>
+          Nil
 
     override def typeDescription: String = typeName
     override def isResolved              = parent.exists(_.isResolved) && defs.forall(_.isResolved)
@@ -165,8 +172,10 @@ object DataType extends LogSupport:
 
     override def bind(typeArgMap: Map[String, DataType]): DataType =
       typeArgMap.get(name) match
-        case Some(t) => t
-        case None    => this
+        case Some(t) =>
+          t
+        case None =>
+          this
 
   case class GenericType(
       override val typeName: String,
@@ -199,8 +208,10 @@ object DataType extends LogSupport:
   ) extends DataType(field.toString.toLowerCase, precision.toSeq):
     override def toString: String =
       val base = super.toString
-      if withTimeZone then s"${base} with time zone"
-      else base
+      if withTimeZone then
+        s"${base} with time zone"
+      else
+        base
 
     override def isResolved: Boolean = true
 
@@ -259,14 +270,14 @@ object DataType extends LogSupport:
 
   def isPrimitiveTypeName(s: String): Boolean = primitiveTypeTable.contains(s)
 
-  def getPrimitiveType(s: String): DataType = primitiveTypeTable.getOrElse(
-    s,
-    throw new IllegalArgumentException(s"Unknown primitive type name: ${s}")
-  )
+  def getPrimitiveType(s: String): DataType = primitiveTypeTable
+    .getOrElse(s, throw new IllegalArgumentException(s"Unknown primitive type name: ${s}"))
 
-  def knownPrimitiveTypes: Map[String, DataType] = DataType.getPrimitiveTypeTable.map {
-    case (name, dataType) => name -> dataType
-  }
+  def knownPrimitiveTypes: Map[String, DataType] = DataType
+    .getPrimitiveTypeTable
+    .map { case (name, dataType) =>
+      name -> dataType
+    }
 
   abstract class PrimitiveType(name: String) extends DataType(name, Seq.empty):
     override def isResolved: Boolean = true
@@ -315,7 +326,8 @@ object DataType extends LogSupport:
 
     def of(precision: DataType, scale: DataType): DecimalType =
       (precision, scale) match
-        case (p: TypeParameter, s: TypeParameter) => DecimalType(p, s)
+        case (p: TypeParameter, s: TypeParameter) =>
+          DecimalType(p, s)
         case _ =>
           throw IllegalArgumentException(s"Invalid DecimalType parameters (${precision}, ${scale})")
 

@@ -1,7 +1,13 @@
 package com.treasuredata.flow.lang.compiler.parser
 
 enum TokenType:
-  case Control, Doc, Literal, Identifier, Quote, Op, Keyword
+  case Control,
+    Doc,
+    Literal,
+    Identifier,
+    Quote,
+    Op,
+    Keyword
 
 import TokenType.*
 
@@ -163,8 +169,10 @@ object FlowToken:
 
   def isLineBreakChar(c: Char): Boolean =
     (c: @switch) match
-      case LF | FF | CR | SU => true
-      case _                 => false
+      case LF | FF | CR | SU =>
+        true
+      case _ =>
+        false
 
   /**
     * White space character but not a new line (\n)
@@ -174,8 +182,10 @@ object FlowToken:
     */
   def isWhiteSpaceChar(c: Char): Boolean =
     (c: @switch) match
-      case ' ' | '\t' | CR => true
-      case _               => false
+      case ' ' | '\t' | CR =>
+        true
+      case _ =>
+        false
 
   def isNumberSeparator(ch: Char): Boolean = ch == '_'
 
@@ -184,9 +194,15 @@ object FlowToken:
     */
   def digit2int(ch: Char, base: Int): Int =
     val num =
-      if ch <= '9' then ch - '0'
-      else if 'a' <= ch && ch <= 'z' then ch - 'a' + 10
-      else if 'A' <= ch && ch <= 'Z' then ch - 'A' + 10
-      else -1
-    if 0 <= num && num < base then num
-    else -1
+      if ch <= '9' then
+        ch - '0'
+      else if 'a' <= ch && ch <= 'z' then
+        ch - 'a' + 10
+      else if 'A' <= ch && ch <= 'Z' then
+        ch - 'A' + 10
+      else
+        -1
+    if 0 <= num && num < base then
+      num
+    else
+      -1

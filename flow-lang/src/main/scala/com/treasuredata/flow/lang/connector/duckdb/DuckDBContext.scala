@@ -22,7 +22,8 @@ class DuckDBContext extends DBContext:
   override def close(): Unit = conn.close()
 
   override def withConnection[U](body: Connection => U): U =
-    try body(conn)
+    try
+      body(conn)
     catch
       case e: SQLException if e.getMessage.contains("403") =>
         throw StatusCode.PERMISSION_DENIED.newException(e.getMessage, e)

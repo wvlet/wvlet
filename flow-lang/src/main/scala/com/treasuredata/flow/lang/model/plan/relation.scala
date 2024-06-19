@@ -22,7 +22,9 @@ import wvlet.log.LogSupport
 sealed trait Relation extends LogicalPlan:
   def relationType: RelationType
   def inputRelationTypes: Seq[RelationType] = children
-    .collect { case r: Relation => r }
+    .collect { case r: Relation =>
+      r
+    }
     .map(_.relationType)
 
 // A relation that takes a single input relation
@@ -53,7 +55,8 @@ case class AliasedRelation(
     columnNames match
       case Some(columnNames) =>
         s"AliasedRelation[${alias}](Select[${columnNames.mkString(", ")}](${child}))"
-      case None => s"AliasedRelation[${alias}](${child})"
+      case None =>
+        s"AliasedRelation[${alias}](${child})"
 
   override def relationType: RelationType =
     columnNames match
@@ -61,32 +64,34 @@ case class AliasedRelation(
         ProjectedType(
           alias.value,
           cols.map { col =>
-            val colType = child.outputAttributes
-              .find(_.name == col).map(_.dataType).getOrElse(DataType.UnknownType)
+            val colType = child
+              .outputAttributes
+              .find(_.name == col)
+              .map(_.dataType)
+              .getOrElse(DataType.UnknownType)
             NamedType(col, colType)
           },
           child.relationType
         )
       case None =>
-        AliasedType(
-          alias.value,
-          child.relationType
-        )
+        AliasedType(alias.value, child.relationType)
 
   override def outputAttributes: Seq[Attribute] =
     val attrs = child.outputAttributes
     val result =
       columnNames match
         case Some(columnNames) =>
-          attrs.zip(columnNames).map { case (a, columnName) => a.withAlias(columnName) }
-        case None => attrs
+          attrs
+            .zip(columnNames)
+            .map { case (a, columnName) =>
+              a.withAlias(columnName)
+            }
+        case None =>
+          attrs
     result
 
-case class NamedRelation(
-    child: Relation,
-    name: Name,
-    nodeLocation: Option[NodeLocation]
-) extends UnaryRelation
+case class NamedRelation(child: Relation, name: Name, nodeLocation: Option[NodeLocation])
+    extends UnaryRelation
     with Selection:
   override def toString: String = s"NamedRelation[${name.value}](${child})"
   override def outputAttributes: Seq[Attribute] =
@@ -111,8 +116,10 @@ case class Values(rows: Seq[Expression], nodeLocation: Option[NodeLocation])
   override def outputAttributes: Seq[Attribute] =
     val values = rows.map { row =>
       row match
-        case r: RowConstructor => r.values
-        case other             => Seq(other)
+        case r: RowConstructor =>
+          r.values
+        case other =>
+          Seq(other)
     }
     val columns = (0 until values.head.size).map { i =>
       MultiSourceColumn(NoName, values.map(_(i)), None)
@@ -220,8 +227,10 @@ case class Project(child: Relation, selectItems: Seq[Attribute], nodeLocation: O
   override lazy val relationType: RelationType = ProjectedType(
     RelationType.newRelationTypeName,
     selectItems.map {
-      case n: NamedType => n
-      case a            => NamedType(a.name, a.dataType)
+      case n: NamedType =>
+        n
+      case a =>
+        NamedType(a.name, a.dataType)
     },
     child.relationType
   )
@@ -295,8 +304,10 @@ case class AggregateSelect(
   override lazy val relationType: RelationType = ProjectedType(
     RelationType.newRelationTypeName,
     selectItems.map {
-      case n: NamedType => n
-      case a            => NamedType(a.name, a.dataType)
+      case n: NamedType =>
+        n
+      case a =>
+        NamedType(a.name, a.dataType)
     },
     child.relationType
   )
@@ -371,21 +382,31 @@ sealed trait SetOperation extends Relation with LogSupport:
 
   override def outputAttributes: Seq[Attribute] = mergeOutputAttributes
 
-  override lazy val relationType: RelationType = children.headOption
-    .map(_.relationType).getOrElse(UnresolvedRelationType(RelationType.newRelationTypeName))
+  override lazy val relationType: RelationType = children
+    .headOption
+    .map(_.relationType)
+    .getOrElse(UnresolvedRelationType(RelationType.newRelationTypeName))
 
   protected def mergeOutputAttributes: Seq[Attribute] =
     // Collect all input attributes
     def collectInputAttributes(rels: Seq[Relation]): Seq[Seq[Attribute]] = rels.flatMap {
-      case s: SetOperation => collectInputAttributes(s.children)
+      case s: SetOperation =>
+        collectInputAttributes(s.children)
       case other =>
-        Seq(other.outputAttributes.flatMap {
-          case a: AllColumns => a.inputAttributes
-          case other =>
-            other.inputAttributes match
-              case x if x.length <= 1 => x
-              case inputs             => Seq(MultiSourceColumn(NoName, inputs, None))
-        })
+        Seq(
+          other
+            .outputAttributes
+            .flatMap {
+              case a: AllColumns =>
+                a.inputAttributes
+              case other =>
+                other.inputAttributes match
+                  case x if x.length <= 1 =>
+                    x
+                  case inputs =>
+                    Seq(MultiSourceColumn(NoName, inputs, None))
+            }
+        )
     }
 
     val outputAttributes: Seq[Seq[Attribute]] = collectInputAttributes(children)
@@ -407,7 +428,11 @@ sealed trait SetOperation extends Relation with LogSupport:
       val distinctColumnNames = columns.map(_.name).distinctBy(_.leafName)
       val col = MultiSourceColumn(
         // If all column has the same name, use it
-        if distinctColumnNames.size == 1 then distinctColumnNames.head else NoName,
+        if distinctColumnNames.size == 1 then
+          distinctColumnNames.head
+        else
+          NoName
+        ,
         inputs = columns.toSeq,
         None
       )
@@ -416,10 +441,8 @@ sealed trait SetOperation extends Relation with LogSupport:
       col
     }
 
-case class Intersect(
-    relations: Seq[Relation],
-    nodeLocation: Option[NodeLocation]
-) extends SetOperation:
+case class Intersect(relations: Seq[Relation], nodeLocation: Option[NodeLocation])
+    extends SetOperation:
   override def children: Seq[Relation] = relations
 
   override def toString = s"Intersect(${relations.mkString(", ")})"
@@ -439,10 +462,7 @@ case class Except(left: Relation, right: Relation, nodeLocation: Option[NodeLoca
   * @param relations
   * @param nodeLocation
   */
-case class Union(
-    relations: Seq[Relation],
-    nodeLocation: Option[NodeLocation]
-) extends SetOperation:
+case class Union(relations: Seq[Relation], nodeLocation: Option[NodeLocation]) extends SetOperation:
   override def children: Seq[Relation] = relations
 
   override def toString = s"Union(${relations.mkString(",")})"
@@ -469,7 +489,8 @@ case class Unnest(
         None,
         arr.nodeLocation
       )
-    case other => SingleColumn(NoName, other, other.nodeLocation)
+    case other =>
+      SingleColumn(NoName, other, other.nodeLocation)
   }
 
 case class Lateral(query: Relation, nodeLocation: Option[NodeLocation]) extends UnaryRelation:
@@ -493,9 +514,8 @@ case class LateralView(
     // TODO
     UnresolvedRelationType(RelationType.newRelationTypeName)
 
-  override def outputAttributes: Seq[Attribute] = columnAliases.map(x =>
-    UnresolvedAttribute(Ref(tableAlias, x, None), None)
-  )
+  override def outputAttributes: Seq[Attribute] = columnAliases
+    .map(x => UnresolvedAttribute(Ref(tableAlias, x, None), None))
 
 /**
   * The lowest level operator to access a table
@@ -592,12 +612,7 @@ case class IncrementalTableScan(
   override def inputAttributes: Seq[Attribute] = Seq.empty
 
   override def outputAttributes: Seq[Attribute] = columns.map { col =>
-    ResolvedAttribute(
-      col.name,
-      col,
-      None,
-      None
-    )
+    ResolvedAttribute(col.name, col, None, None)
   }
 
   override def relationType: RelationType = ProjectedType(schema.typeName, columns, schema)

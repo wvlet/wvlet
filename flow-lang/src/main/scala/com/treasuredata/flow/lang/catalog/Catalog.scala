@@ -26,10 +26,14 @@ trait Catalog extends LogSupport:
   def findFromQName(contextDatabase: String, qname: Name): Option[Catalog.Table] =
     qname.fullName.split(".").toList match
       case catalog :: db :: tbl :: Nil =>
-        if catalog == catalogName then findTable(db, tbl)
-        else None
-      case db :: tbl :: Nil => findTable(db, tbl)
-      case _                => findTable(contextDatabase, qname.toString)
+        if catalog == catalogName then
+          findTable(db, tbl)
+        else
+          None
+      case db :: tbl :: Nil =>
+        findTable(db, tbl)
+      case _ =>
+        findTable(contextDatabase, qname.toString)
 
   def listFunctions: Seq[SQLFunction]
 
@@ -73,9 +77,14 @@ object Catalog:
     def withDatabase(db: String): Table = copy(database = Some(db))
     def fullName: String                = s"${database.map(db => s"${db}.").getOrElse("")}${name}"
 
-    def column(name: String): TableColumn = schema.columns.find(_.name == name).getOrElse {
-      throw StatusCode.COLUMN_NOT_FOUND.newException(s"Column ${name} is not found in ${fullName}")
-    }
+    def column(name: String): TableColumn = schema
+      .columns
+      .find(_.name == name)
+      .getOrElse {
+        throw StatusCode
+          .COLUMN_NOT_FOUND
+          .newException(s"Column ${name} is not found in ${fullName}")
+      }
 
   case class TableSchema(columns: Seq[TableColumn]):
     def addColumn(c: TableColumn): TableSchema = this.copy(columns = columns :+ c)
@@ -84,8 +93,7 @@ object Catalog:
         name: String,
         dataType: DataType,
         properties: Map[String, Any] = Map.empty
-    ): TableSchema = this
-      .copy(columns = columns :+ TableColumn(name, dataType, properties))
+    ): TableSchema = this.copy(columns = columns :+ TableColumn(name, dataType, properties))
 
   case class TableColumn(name: String, dataType: DataType, properties: Map[String, Any] = Map.empty)
 
@@ -119,7 +127,8 @@ class InMemoryCatalog(
 
   private def getDatabaseHolder(name: String): DatabaseHolder = synchronized {
     databases.get(name) match
-      case Some(d) => d
+      case Some(d) =>
+        d
       case None =>
         throw StatusCode.DATABASE_NOT_FOUND.newException(s"database ${name} is not found")
   }
@@ -136,10 +145,11 @@ class InMemoryCatalog(
             case CreateMode.CREATE_IF_NOT_EXISTS =>
             // ok
             case CreateMode.FAIL_IF_EXISTS =>
-              throw StatusCode.DATABASE_ALREADY_EXISTS.newException(
-                s"database ${newDatabase.name} already exists"
-              )
-        case None => databases += newDatabase.name -> DatabaseHolder(newDatabase)
+              throw StatusCode
+                .DATABASE_ALREADY_EXISTS
+                .newException(s"database ${newDatabase.name} already exists")
+        case None =>
+          databases += newDatabase.name -> DatabaseHolder(newDatabase)
     }
 
   override def listTables(database: String): Seq[String] = synchronized {
@@ -148,31 +158,38 @@ class InMemoryCatalog(
   }
 
   override def findTable(database: String, table: String): Option[Catalog.Table] = synchronized {
-    databases.get(database).flatMap { d =>
-      d.tables.get(table)
-    }
+    databases
+      .get(database)
+      .flatMap { d =>
+        d.tables.get(table)
+      }
   }
 
   override def getTable(database: String, table: String): Catalog.Table = synchronized {
     val db = getDatabaseHolder(database)
     db.tables.get(table) match
-      case Some(tbl) => tbl
+      case Some(tbl) =>
+        tbl
       case None =>
         throw StatusCode.TABLE_NOT_FOUND.newException(s"table ${database}.${table} is not found")
   }
 
   override def tableExists(database: String, table: String): Boolean = synchronized {
     databases.get(database) match
-      case None    => false
-      case Some(d) => d.tables.contains(table)
+      case None =>
+        false
+      case Some(d) =>
+        d.tables.contains(table)
   }
 
   override def createTable(table: Catalog.Table, createMode: CreateMode): Unit =
-    val database = table.database.getOrElse {
-      throw StatusCode.INVALID_ARGUMENT.newException(
-        s"Missing database for create table request: ${table.name}"
-      )
-    }
+    val database = table
+      .database
+      .getOrElse {
+        throw StatusCode
+          .INVALID_ARGUMENT
+          .newException(s"Missing database for create table request: ${table.name}")
+      }
     synchronized {
       val d = getDatabaseHolder(database)
       d.tables.get(table.name) match
@@ -181,10 +198,11 @@ class InMemoryCatalog(
             case CreateMode.CREATE_IF_NOT_EXISTS =>
             // ok
             case CreateMode.FAIL_IF_EXISTS =>
-              throw StatusCode.TABLE_ALREADY_EXISTS.newException(
-                s"table ${database}.${table.name} already exists"
-              )
-        case None => d.tables += table.name -> table
+              throw StatusCode
+                .TABLE_ALREADY_EXISTS
+                .newException(s"table ${database}.${table.name} already exists")
+        case None =>
+          d.tables += table.name -> table
     }
 
   override def listFunctions: Seq[SQLFunction] = functions
@@ -194,7 +212,8 @@ class InMemoryCatalog(
   ): Unit = synchronized {
     val d = getDatabaseHolder(database)
     d.tables.get(table) match
-      case Some(oldTbl) => d.tables += table -> updater(oldTbl)
+      case Some(oldTbl) =>
+        d.tables += table -> updater(oldTbl)
       case None =>
         throw StatusCode.TABLE_NOT_FOUND.newException(s"table ${database}.${table} is not found")
   }

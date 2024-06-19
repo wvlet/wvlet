@@ -12,20 +12,20 @@ import wvlet.log.LogSupport
 class ExecutionPlanner(using compilationUnit: CompilationUnit, ctx: DBContext) extends LogSupport:
   def plan(l: LogicalPlan): SqlExpr =
     l match
-      case p: PackageDef => statements(p.statements)
-      case other         => unknown(other)
+      case p: PackageDef =>
+        statements(p.statements)
+      case other =>
+        unknown(other)
 
   inline private def unknown(l: LogicalPlan): Nothing =
-    throw StatusCode.SYNTAX_ERROR.newException(
-      s"Unknown logical plan: ${l} (${l.getClass.getName})",
-      l.sourceLocation
-    )
+    throw StatusCode
+      .SYNTAX_ERROR
+      .newException(s"Unknown logical plan: ${l} (${l.getClass.getName})", l.sourceLocation)
 
   inline private def unknown(e: Expression): Nothing =
-    throw StatusCode.SYNTAX_ERROR.newException(
-      s"Unknown expression: ${e} (${e.getClass.getName})",
-      e.sourceLocation
-    )
+    throw StatusCode
+      .SYNTAX_ERROR
+      .newException(s"Unknown expression: ${e} (${e.getClass.getName})", e.sourceLocation)
 
   def statements(statements: Seq[LogicalPlan]): SqlExprList =
     val exprs: List[SqlExpr] =
@@ -37,27 +37,31 @@ class ExecutionPlanner(using compilationUnit: CompilationUnit, ctx: DBContext) e
 
   def statement(stmt: LogicalPlan): SqlExpr =
     stmt match
-      case q: Query => relation(q.body)
-      case _        => unknown(stmt)
+      case q: Query =>
+        relation(q.body)
+      case _ =>
+        unknown(stmt)
 
   def relation(r: Relation): SqlExpr =
     r match
       case p: Project =>
-        SqlExpr.join(
-          sql"select",
-          SqlExprList(p.selectItems.map(attribute)),
-          relation(p.child)
-        )
-      case e: EmptyRelation => sql""
-      case other            => unknown(other)
+        SqlExpr.join(sql"select", SqlExprList(p.selectItems.map(attribute)), relation(p.child))
+      case e: EmptyRelation =>
+        sql""
+      case other =>
+        unknown(other)
 
   def attribute(a: Attribute): SqlExpr =
     a match
       case s: SingleColumn =>
-        if s.name == NoName then expression(s.expr)
-        else sql"${expression(s.expr)} as ${s.fullName}"
-      case a: AttributeRef => sql"${a.name}"
-      case _               => unknown(a)
+        if s.name == NoName then
+          expression(s.expr)
+        else
+          sql"${expression(s.expr)} as ${s.fullName}"
+      case a: AttributeRef =>
+        sql"${a.name}"
+      case _ =>
+        unknown(a)
 
   def expression(e: Expression): SqlExpr =
     e match
@@ -67,12 +71,18 @@ class ExecutionPlanner(using compilationUnit: CompilationUnit, ctx: DBContext) e
         a.left.dataType match
           case DataType.StringType =>
             a.exprType match
-              case BinaryExprType.Add => left.asString.+(right)
-              case _                  => unknown(a)
-          case _ => sql"${left} ${a.exprType.symbol} ${right}"
-      case s: StringLiteral  => sql"'${s.stringValue}'"
-      case l: Literal        => sql"${l.stringValue}"
-      case other: Expression => unknown(other)
+              case BinaryExprType.Add =>
+                left.asString.+(right)
+              case _ =>
+                unknown(a)
+          case _ =>
+            sql"${left} ${a.exprType.symbol} ${right}"
+      case s: StringLiteral =>
+        sql"'${s.stringValue}'"
+      case l: Literal =>
+        sql"${l.stringValue}"
+      case other: Expression =>
+        unknown(other)
 
 //      case f: FileScan =>
 //        fileScan(f)

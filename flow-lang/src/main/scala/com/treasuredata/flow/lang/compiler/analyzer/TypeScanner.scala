@@ -26,10 +26,14 @@ class TypeScanner(phaseName: String) extends Phase(phaseName) with LogSupport:
     unit
 
   protected def scanTypeDefs(plan: LogicalPlan, context: Context): Unit = plan.traverse {
-    case alias: TypeAlias => context.scope.addAlias(alias.alias, alias.sourceTypeName)
-    case td: TypeDef      => context.scope.addType(scanTypeDef(td, context))
-    case tbl: TableDef    => context.scope.addTableDef(tbl)
-    case q: Query         => context.scope.addType(q.relationType)
+    case alias: TypeAlias =>
+      context.scope.addAlias(alias.alias, alias.sourceTypeName)
+    case td: TypeDef =>
+      context.scope.addType(scanTypeDef(td, context))
+    case tbl: TableDef =>
+      context.scope.addTableDef(tbl)
+    case q: Query =>
+      context.scope.addType(q.relationType)
   }
 
   private def scanTypeDef(typeDef: TypeDef, context: Context): DataType =
@@ -37,10 +41,12 @@ class TypeScanner(phaseName: String) extends Phase(phaseName) with LogSupport:
     val defs: Seq[FunctionType] = Seq.empty // typeDef.defs.collect { case tpe: TypeDefDef =>
 
     // Scan SchemaType parameters
-    val valDefs = typeDef.elems.collect { case v: TypeValDef =>
-      val resolvedType = scanDataType(ColumnType(v.tpe, v.nodeLocation), context)
-      NamedType(v.name, resolvedType)
-    }
+    val valDefs = typeDef
+      .elems
+      .collect { case v: TypeValDef =>
+        val resolvedType = scanDataType(ColumnType(v.tpe, v.nodeLocation), context)
+        NamedType(v.name, resolvedType)
+      }
 
     if valDefs.nonEmpty then
       // TODO: Add parent fields
@@ -53,6 +59,7 @@ class TypeScanner(phaseName: String) extends Phase(phaseName) with LogSupport:
         defs
       )
 
-  private def scanDataType(columnType: ColumnType, context: Context): DataType = context.scope
+  private def scanDataType(columnType: ColumnType, context: Context): DataType = context
+    .scope
     .findType(columnType.tpe.fullName)
     .getOrElse(UnresolvedType(columnType.tpe.fullName))

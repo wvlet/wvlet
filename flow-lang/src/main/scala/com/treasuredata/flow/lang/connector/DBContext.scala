@@ -14,7 +14,9 @@ object DBContext:
   case class Schema(catalog: String, schema: String)
 
 enum QueryScope:
-  case Global, InQuery, InExpr
+  case Global,
+    InQuery,
+    InExpr
 
 trait DBContext extends AutoCloseable:
   private var _self: SqlExpr     = _
@@ -56,17 +58,17 @@ trait DBContext extends AutoCloseable:
 
     withConnection: conn =>
       val rs = conn
-        .createStatement().executeQuery(
-          s"""select * from information_schema.tables
+        .createStatement()
+        .executeQuery(s"""select * from information_schema.tables
              |where table_catalog = '${catalog}' and table_schema = '${schema}' and table_name = '${table}'
-             |""".stripMargin
-        )
+             |""".stripMargin)
       while rs.next() do
-        foundTables += DBContext.Table(
-          catalog = rs.getString("table_catalog"),
-          schema = rs.getString("table_schema"),
-          table = rs.getString("table_name")
-        )
+        foundTables +=
+          DBContext.Table(
+            catalog = rs.getString("table_catalog"),
+            schema = rs.getString("table_schema"),
+            table = rs.getString("table_name")
+          )
 
     foundTables.result().headOption
 
@@ -76,17 +78,15 @@ trait DBContext extends AutoCloseable:
     withConnection: conn =>
       withResource(
         conn
-          .createStatement().executeQuery(
-            s"""select * from information_schema.schemata
+          .createStatement()
+          .executeQuery(s"""select * from information_schema.schemata
              |where catalog_name = '${catalog}' and schema_name = '${schema}'
-             |""".stripMargin
-          )
+             |""".stripMargin)
       ) { rs =>
         while rs.next() do
-          foundSchemas += DBContext.Schema(
-            catalog = rs.getString("catalog_name"),
-            schema = rs.getString("schema_name")
-          )
+          foundSchemas +=
+            DBContext
+              .Schema(catalog = rs.getString("catalog_name"), schema = rs.getString("schema_name"))
       }
 
     foundSchemas.result().headOption

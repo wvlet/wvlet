@@ -24,10 +24,8 @@ case class PackageDef(
 
   override def inputAttributes: Seq[Attribute] = Nil
 
-case class TestDef(
-    testExprs: Seq[Expression],
-    nodeLocation: Option[NodeLocation]
-) extends LanguageStatement
+case class TestDef(testExprs: Seq[Expression], nodeLocation: Option[NodeLocation])
+    extends LanguageStatement
 
 case class ImportDef(
     importRef: Name,
@@ -51,11 +49,8 @@ case class ModelDef(
 //    nodeLocation: Option[NodeLocation]
 //) extends LanguageStatement
 
-case class TypeAlias(
-    alias: Name,
-    sourceTypeName: Name,
-    nodeLocation: Option[NodeLocation]
-) extends LanguageStatement
+case class TypeAlias(alias: Name, sourceTypeName: Name, nodeLocation: Option[NodeLocation])
+    extends LanguageStatement
 
 case class TypeDef(
     name: Name,

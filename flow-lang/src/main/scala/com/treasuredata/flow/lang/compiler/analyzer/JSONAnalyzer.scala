@@ -50,12 +50,18 @@ object JSONAnalyzer extends LogSupport:
     def traverse(path: String, v: JSONValue): Unit =
       v match
         case a: JSONArray =>
-          a.v.foreach: x =>
-            traverse(path, x)
+          a.v
+            .foreach: x =>
+              traverse(path, x)
         case o: JSONObject =>
-          o.v.foreach: (k, v) =>
-            val nextPath = if path.isEmpty then k else s"${path}.${k}"
-            traverse(nextPath, v)
+          o.v
+            .foreach: (k, v) =>
+              val nextPath =
+                if path.isEmpty then
+                  k
+                else
+                  s"${path}.${k}"
+              traverse(nextPath, v)
         case _ =>
           val dataType     = guessDataType(v)
           val typeCountMap = schema.getOrElse(path, TypeCountMap())
@@ -71,9 +77,15 @@ object JSONAnalyzer extends LogSupport:
 
   private def guessDataType(v: JSONValue): DataType =
     v match
-      case JSONNull       => DataType.NullType
-      case b: JSONBoolean => DataType.BooleanType
-      case s: JSONString  => DataType.StringType
-      case i: JSONLong    => DataType.LongType
-      case d: JSONDouble  => DataType.DoubleType
-      case _              => DataType.AnyType
+      case JSONNull =>
+        DataType.NullType
+      case b: JSONBoolean =>
+        DataType.BooleanType
+      case s: JSONString =>
+        DataType.StringType
+      case i: JSONLong =>
+        DataType.LongType
+      case d: JSONDouble =>
+        DataType.DoubleType
+      case _ =>
+        DataType.AnyType

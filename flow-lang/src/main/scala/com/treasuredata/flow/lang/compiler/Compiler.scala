@@ -31,14 +31,9 @@ object Compiler:
     Incrementalize // Create an incrementalized plan for a subscription
   )
 
-  def allPhases: List[List[Phase]] = List(
-    analysisPhases,
-    transformPhases
-  )
+  def allPhases: List[List[Phase]] = List(analysisPhases, transformPhases)
 
-class Compiler(
-    phases: List[List[Phase]] = Compiler.allPhases
-) extends LogSupport:
+class Compiler(phases: List[List[Phase]] = Compiler.allPhases) extends LogSupport:
   def compile(sourceFolder: String): CompileResult = compile(List(sourceFolder))
 
   def compile(sourceFolders: List[String]): CompileResult =
@@ -50,18 +45,13 @@ class Compiler(
     for
       phaseGroup <- phases
       phase      <- phaseGroup
-    do units = phase.runOn(units, ctx)
+    do
+      units = phase.runOn(units, ctx)
 
     CompileResult(units, this, ctx)
 
-case class CompileResult(
-    units: List[CompilationUnit],
-    compiler: Compiler,
-    context: Context
-):
-  def typedPlans: List[LogicalPlan] = units
-    .map(_.resolvedPlan)
-    .filter(_.nonEmpty)
+case class CompileResult(units: List[CompilationUnit], compiler: Compiler, context: Context):
+  def typedPlans: List[LogicalPlan] = units.map(_.resolvedPlan).filter(_.nonEmpty)
 
   /**
     * Extract compilation results for a specific file name
@@ -69,6 +59,4 @@ case class CompileResult(
     * @return
     */
   def inFile(fileName: String): Option[CompilationUnit] =
-    units
-      .filter(_.sourceFile.fileName == fileName)
-      .headOption
+    units.filter(_.sourceFile.fileName == fileName).headOption

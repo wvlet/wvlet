@@ -11,9 +11,7 @@ import wvlet.log.LogSupport
   * Context and Scope are mutable, and the compiler will update them as it processes the source
   * code.
   */
-case class Context(
-    sourceFolders: List[String] = List.empty
-) extends LogSupport:
+case class Context(sourceFolders: List[String] = List.empty) extends LogSupport:
   private var _compileUnit: CompilationUnit = CompilationUnit.empty
   private var _scope: Scope                 = Scope()
 
@@ -29,7 +27,8 @@ case class Context(
     try
       _compileUnit = newCompileUnit
       block(this)
-    finally _compileUnit = prev
+    finally
+      _compileUnit = prev
 
   def findDataFile(path: String): Option[String] = sourceFolders
     .map(folder => s"${folder}/data/${path}")
@@ -37,5 +36,7 @@ case class Context(
 
   def getDataFile(path: String): String =
     findDataFile(path) match
-      case None    => throw StatusCode.FILE_NOT_FOUND.newException(s"${path} is not found")
-      case Some(f) => f
+      case None =>
+        throw StatusCode.FILE_NOT_FOUND.newException(s"${path} is not found")
+      case Some(f) =>
+        f

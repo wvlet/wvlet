@@ -18,23 +18,29 @@ trait Attribute extends LeafExpression with LogSupport:
 
   def alias: Option[Name] =
     this match
-      case a: Alias => Some(a.name)
-      case _        => None
+      case a: Alias =>
+        Some(a.name)
+      case _ =>
+        None
 
   def withAlias(newAlias: Name): Attribute = withAlias(Some(newAlias))
 
   def withAlias(newAlias: Option[Name]): Attribute =
     newAlias match
-      case None => this
+      case None =>
+        this
       case Some(alias) =>
         this match
           case a: Alias =>
-            if name != alias then a.copy(name = alias)
-            else a
+            if name != alias then
+              a.copy(name = alias)
+            else
+              a
           case other if other.name == alias =>
             // No need to have alias
             other
-          case other => Alias(alias, other, None)
+          case other =>
+            Alias(alias, other, None)
 
   /**
     * * Returns the index of this attribute in the input or output columns
@@ -94,8 +100,10 @@ case class AttributeRef(attr: Attribute)(val exprId: ULID = ULID.newULID) extend
   override def hashCode(): Int = super.hashCode()
   override def equals(obj: Any): Boolean =
     obj match
-      case that: AttributeRef => that.attr == this.attr
-      case _                  => false
+      case that: AttributeRef =>
+        that.attr == this.attr
+      case _ =>
+        false
 
 /**
   * An attribute that produces a single column value with a given expression.
@@ -119,10 +127,8 @@ case class SingleColumn(
 
   override def toString = s"${fullName}:${dataTypeName} := ${expr}"
 
-case class UnresolvedAttribute(
-    override val name: Name,
-    nodeLocation: Option[NodeLocation]
-) extends Attribute:
+case class UnresolvedAttribute(override val name: Name, nodeLocation: Option[NodeLocation])
+    extends Attribute:
   override def toString: String = s"UnresolvedAttribute(${fullName})"
   override lazy val resolved    = false
 
@@ -145,10 +151,13 @@ case class AllColumns(
     columns match
       case Some(columns) =>
         columns.flatMap {
-          case a: AllColumns => a.inputAttributes
-          case a             => Seq(a)
+          case a: AllColumns =>
+            a.inputAttributes
+          case a =>
+            Seq(a)
         }
-      case None => Nil
+      case None =>
+        Nil
 
   override def outputAttributes: Seq[Attribute] = inputAttributes
 
@@ -159,18 +168,15 @@ case class AllColumns(
   override def toString =
     columns match
       case Some(attrs) if attrs.nonEmpty =>
-        val inputs = attrs
-          .map(a => s"${a.fullName}:${a.dataTypeName}").mkString(", ")
+        val inputs = attrs.map(a => s"${a.fullName}:${a.dataTypeName}").mkString(", ")
         s"AllColumns(${inputs})"
-      case _ => s"AllColumns(${fullName})"
+      case _ =>
+        s"AllColumns(${fullName})"
 
   override lazy val resolved = columns.isDefined
 
-case class Alias(
-    name: Name,
-    expr: Expression,
-    nodeLocation: Option[NodeLocation]
-) extends Attribute:
+case class Alias(name: Name, expr: Expression, nodeLocation: Option[NodeLocation])
+    extends Attribute:
   override def inputAttributes: Seq[Attribute]  = Seq(this)
   override def outputAttributes: Seq[Attribute] = inputAttributes
 
@@ -196,8 +202,10 @@ case class MultiSourceColumn(
   override def toString: String = s"${fullName}:${dataTypeName} := {${inputs.mkString(", ")}}"
 
   override def inputAttributes: Seq[Attribute] = inputs.map {
-    case a: Attribute  => a
-    case e: Expression => SingleColumn(name, e, e.nodeLocation)
+    case a: Attribute =>
+      a
+    case e: Expression =>
+      SingleColumn(name, e, e.nodeLocation)
   }
 
   override def outputAttributes: Seq[Attribute] = Seq(this)

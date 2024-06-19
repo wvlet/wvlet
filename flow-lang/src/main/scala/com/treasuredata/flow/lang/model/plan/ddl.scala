@@ -9,23 +9,15 @@ import com.treasuredata.flow.lang.model.expr.*
 sealed trait DDL extends LogicalPlan with LeafPlan:
   override def outputAttributes: Seq[Attribute] = Nil
 
-case class TableDef(
-    name: Name,
-    params: Seq[TableDefParam],
-    nodeLocation: Option[NodeLocation]
-) extends DDL:
+case class TableDef(name: Name, params: Seq[TableDefParam], nodeLocation: Option[NodeLocation])
+    extends DDL:
 
   def getParam(paramName: Name): Option[Name] = params.find(_.name == paramName).map(_.paramValue)
 
-  def getType: Option[Name] = params
-    .find(_.name.fullName == "type")
-    .map(_.paramValue)
+  def getType: Option[Name] = params.find(_.name.fullName == "type").map(_.paramValue)
 
-case class TableDefParam(
-    name: Name,
-    paramValue: Name,
-    nodeLocation: Option[NodeLocation]
-) extends Expression:
+case class TableDefParam(name: Name, paramValue: Name, nodeLocation: Option[NodeLocation])
+    extends Expression:
   override def children: Seq[Expression] = Nil
 
 case class CreateSchema(

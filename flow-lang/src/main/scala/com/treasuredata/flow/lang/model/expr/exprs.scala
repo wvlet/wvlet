@@ -62,8 +62,10 @@ case class Ref(base: Expression, name: Name, nodeLocation: Option[NodeLocation])
   override def leafName: String = name.leafName
   override def fullName: String =
     base match
-      case n: Name => s"${n.fullName}.${name.fullName}"
-      case _       => s"${base}.${name.fullName}"
+      case n: Name =>
+        s"${n.fullName}.${name.fullName}"
+      case _ =>
+        s"${base}.${name.fullName}"
 
   override def toString: String          = s"Ref(${base},${name})"
   override def children: Seq[Expression] = Seq(base)
@@ -220,7 +222,8 @@ case class WindowFrame(
   override def toString: String =
     val s = Seq.newBuilder[String]
     s += frameType.toString
-    if end.isDefined then s += "BETWEEN"
+    if end.isDefined then
+      s += "BETWEEN"
     s += start.toString
     if end.isDefined then
       s += "AND"
@@ -408,7 +411,8 @@ case class ArithmeticBinaryExpr(
     with BinaryExpression:
 
   override def dataType: DataType =
-    if left.dataType == right.dataType then left.dataType
+    if left.dataType == right.dataType then
+      left.dataType
     else
       // TODO type escalation e.g., (Double) op (Long) -> (Double)
       DataType.UnknownType
@@ -504,10 +508,8 @@ case class TimestampLiteral(value: String, nodeLocation: Option[NodeLocation])
 case class DecimalLiteral(value: String, nodeLocation: Option[NodeLocation])
     extends Literal
     with LeafExpression:
-  override def dataType: DataType = DataType.DecimalType(
-    TypeVariable("precision"),
-    TypeVariable("scale")
-  )
+  override def dataType: DataType = DataType
+    .DecimalType(TypeVariable("precision"), TypeVariable("scale"))
 
   override def stringValue: String = value
   override def toString            = s"Literal(DECIMAL '${value}')"
@@ -590,8 +592,10 @@ case class ArrayConstructor(values: Seq[Expression], nodeLocation: Option[NodeLo
 
   def elementType: DataType =
     val elemTypes = values.map(_.dataType).distinct
-    if elemTypes.size == 1 then elemTypes.head
-    else AnyType
+    if elemTypes.size == 1 then
+      elemTypes.head
+    else
+      AnyType
 
   override def dataType: DataType        = ArrayType(elementType)
   override def children: Seq[Expression] = values

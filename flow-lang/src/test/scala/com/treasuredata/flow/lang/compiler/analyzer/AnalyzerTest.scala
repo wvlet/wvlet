@@ -12,6 +12,9 @@ class AnalyzerTest extends AirSpec:
 
   test("analyze behavior plan") {
     val result = compiler.compile("examples/cdp_behavior")
-    result.typedPlans.collect:
-      case p => debug(p.pp)
+    result
+      .typedPlans
+      .collect:
+        case p =>
+          debug(p.pp)
   }

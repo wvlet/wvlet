@@ -13,7 +13,8 @@ class TrinoContextTest extends AirSpec:
   initDesign {
     _.bind[TestTrinoServer]
       .toInstance(new TestTrinoServer())
-      .bind[TrinoConfig].toProvider { (server: TestTrinoServer) =>
+      .bind[TrinoConfig]
+      .toProvider { (server: TestTrinoServer) =>
         TrinoConfig(
           catalog = "memory",
           schema = "main",

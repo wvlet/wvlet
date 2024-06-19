@@ -23,7 +23,10 @@ class TrinoContext(val config: TrinoConfig) extends DBContext:
   override protected def newConnection: Connection =
     val jdbcUrl =
       s"jdbc:trino://${config.hostAndPort}/${config.catalog}/${config.schema}${
-          if config.useSSL then "?SSL=true" else ""
+          if config.useSSL then
+            "?SSL=true"
+          else
+            ""
         }"
     val properties = new Properties()
     config.user.foreach(x => properties.put("user", x))

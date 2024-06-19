@@ -36,8 +36,7 @@ class TestDeltaLakeModule extends com.google.inject.Module:
     binder,
     classOf[String],
     classOf[TransactionLogSynchronizer]
-  )
-    .addBinding("file").to(classOf[FileTestingTransactionLogSynchronizer]).in(Scopes.SINGLETON)
+  ).addBinding("file").to(classOf[FileTestingTransactionLogSynchronizer]).in(Scopes.SINGLETON)
 
 class FileTestingTransactionLogSynchronizer @Inject (fileSystemFactory: TrinoFileSystemFactory)
     extends TransactionLogSynchronizer:
@@ -53,4 +52,6 @@ class FileTestingTransactionLogSynchronizer @Inject (fileSystemFactory: TrinoFil
       val fileSystem = fileSystemFactory.create(session)
       val outputFile = fileSystem.newOutputFile(newLogEntryPath)
       outputFile.createOrOverwrite(entryContents)
-    catch case e: IOException => throw new UncheckedIOException(e)
+    catch
+      case e: IOException =>
+        throw new UncheckedIOException(e)

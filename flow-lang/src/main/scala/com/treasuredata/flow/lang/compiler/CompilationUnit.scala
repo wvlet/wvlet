@@ -25,7 +25,8 @@ case class CompilationUnit(sourceFile: SourceFile):
   def findRelationRef(name: String): Option[LogicalPlan] =
     var result: Option[Relation] = None
     resolvedPlan.traverse {
-      case r: NamedRelation if r.name.value == name => result = Some(r)
+      case r: NamedRelation if r.name.value == name =>
+        result = Some(r)
     }
     result
 
@@ -40,16 +41,21 @@ object CompilationUnit:
     // List all *.flow files under the path
     val files = listFiles(path)
     val units =
-      files.map { file =>
-        CompilationUnit(SourceFile.fromFile(file))
-      }.toList
+      files
+        .map { file =>
+          CompilationUnit(SourceFile.fromFile(file))
+        }
+        .toList
     units
 
   private def listFiles(path: String): Seq[String] =
     val f = new java.io.File(path)
     if f.isDirectory then
-      f.listFiles().flatMap { file =>
-        listFiles(file.getPath)
-      }
-    else if f.isFile && f.getName.endsWith(".flow") then Seq(f.getPath)
-    else Seq.empty
+      f.listFiles()
+        .flatMap { file =>
+          listFiles(file.getPath)
+        }
+    else if f.isFile && f.getName.endsWith(".flow") then
+      Seq(f.getPath)
+    else
+      Seq.empty

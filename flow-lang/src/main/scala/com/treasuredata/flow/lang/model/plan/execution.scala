@@ -12,16 +12,10 @@ sealed trait ExecutionPlan
 end ExecutionPlan
 
 object ExecutionPlan:
-  case class Tasks(
-      name: String,
-      tasks: List[ExecutionPlan]
-  ) extends ExecutionPlan
+  case class Tasks(name: String, tasks: List[ExecutionPlan]) extends ExecutionPlan
 
   /**
     * Materialize a model using a logical plan
     * @param name
     */
-  case class MaterializeModel(
-      modelName: Name,
-      plan: LogicalPlan
-  ) extends ExecutionPlan
+  case class MaterializeModel(modelName: Name, plan: LogicalPlan) extends ExecutionPlan

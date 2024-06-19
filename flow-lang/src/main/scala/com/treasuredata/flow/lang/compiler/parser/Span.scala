@@ -10,8 +10,15 @@ package com.treasuredata.flow.lang.compiler.parser
   */
 class Span(val coordinate: Long) extends AnyVal:
   override def toString: String =
-    if exists then s"[${start}..${if point == start then "" else s"${point}.."}${end})"
-    else "[NoSpan]"
+    if exists then
+      s"[${start}..${
+          if point == start then
+            ""
+          else
+            s"${point}.."
+        }${end})"
+    else
+      "[NoSpan]"
 
   /**
     * Is this span different from NoSpan?
@@ -36,8 +43,17 @@ class Span(val coordinate: Long) extends AnyVal:
   def ==(other: Span): Boolean = coordinate == other.coordinate
   def !=(other: Span): Boolean = coordinate != other.coordinate
 
-  def withStart(start: Int): Span = if exists then Span(start, end, this.point - start) else this
-  def withEnd(end: Int): Span     = if exists then Span(start, end, this.point - start) else this
+  def withStart(start: Int): Span =
+    if exists then
+      Span(start, end, this.point - start)
+    else
+      this
+
+  def withEnd(end: Int): Span =
+    if exists then
+      Span(start, end, this.point - start)
+    else
+      this
 
 object Span:
   private inline val POSITION_BITS          = 26
@@ -56,5 +72,6 @@ object Span:
     new Span(
       (start & POSITION_MASK).toLong |
         (end & POSITION_MASK).toLong << POSITION_BITS |
-        pointDelta.toLong << (POSITION_BITS * 2)
+        pointDelta.toLong <<
+        (POSITION_BITS * 2)
     )

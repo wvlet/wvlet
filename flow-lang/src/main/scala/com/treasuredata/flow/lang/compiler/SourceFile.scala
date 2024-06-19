@@ -35,17 +35,22 @@ class SourceFile(val file: String, readContent: (file: String) => String):
       val isLineBreak =
         val ch = txt(i)
         // CR LF
-        if ch == CR then i + 1 == txt.length || content(i + 1) != LF
-        else FlowToken.isLineBreakChar(ch)
-      if isLineBreak then buf += i + 1
+        if ch == CR then
+          i + 1 == txt.length || content(i + 1) != LF
+        else
+          FlowToken.isLineBreakChar(ch)
+      if isLineBreak then
+        buf += i + 1
       i += 1
     buf += txt.length // sentinel, so that findLine below works smoother
     buf.toArray
 
   private def findLineIndex(offset: Int, hint: Int = -1): Int =
     val idx = java.util.Arrays.binarySearch(lineIndexes, offset)
-    if idx >= 0 then idx
-    else -idx - 2
+    if idx >= 0 then
+      idx
+    else
+      -idx - 2
 
   def sourcePositionAt(offset: Int): SourcePosition = SourcePosition(this, Span.at(offset))
 

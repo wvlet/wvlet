@@ -29,8 +29,10 @@ case class FlowCliOption(
 )
 
 class FlowCli(opts: FlowCliOption) extends LogSupport:
-  opts.logLevel.foreach: l =>
-    Logger("com.treasuredata.flow.lang").setLogLevel(l)
+  opts
+    .logLevel
+    .foreach: l =>
+      Logger("com.treasuredata.flow.lang").setLogLevel(l)
 
   @command(isDefault = true)
   def default: Unit = info(s"treasure-flow version: ${BuildInfo.version}")
@@ -43,5 +45,8 @@ class FlowCli(opts: FlowCliOption) extends LogSupport:
     debug(s"source folders: ${sourceFolders.mkString(", ")}")
     debug(s"current directory: ${new File(".").getAbsolutePath}")
     val compileResult = Compiler(Compiler.allPhases).compile(sourceFolders.toList)
-    compileResult.typedPlans.collect:
-      case p => debug(p.pp)
+    compileResult
+      .typedPlans
+      .collect:
+        case p =>
+          debug(p.pp)

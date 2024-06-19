@@ -36,25 +36,27 @@ class Scope extends LogSupport:
   def getTableDef(name: Name): Option[TableDef] = tableDef.get(name.fullName)
 
   def resolveType(name: String, seen: Set[String] = Set.empty): Option[DataType] =
-    if seen.contains(name) then None
+    if seen.contains(name) then
+      None
     else
       findType(name).map(_.resolved) match
         case Some(r) =>
-          if r.isResolved then Some(r)
-          else resolveType(r.baseTypeName, seen + name)
-        case other => other
+          if r.isResolved then
+            Some(r)
+          else
+            resolveType(r.baseTypeName, seen + name)
+        case other =>
+          other
 
   def findType(name: String, seen: Set[String] = Set.empty): Option[DataType] =
-    if seen.contains(name) then None
+    if seen.contains(name) then
+      None
     val tpe = types
       .get(name)
       // search aliases
       .orElse(aliases.get(name).flatMap(x => types.get(x.fullName)))
       // search table def
       .orElse {
-        tableDef
-          .get(name)
-          .flatMap(_.getType)
-          .flatMap(x => findType(x.fullName, seen + name))
+        tableDef.get(name).flatMap(_.getType).flatMap(x => findType(x.fullName, seen + name))
       }
     tpe
