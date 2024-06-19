@@ -9,10 +9,20 @@ enum StatusType:
   case ExternalError
 
 enum StatusCode(statusType: StatusType):
-  def newException(msg: String): FlowLangException                   = FlowLangException(this, msg)
-  def newException(msg: String, cause: Throwable): FlowLangException = FlowLangException(this, msg, None, cause)
+  def newException(msg: String): FlowLangException = FlowLangException(this, msg)
+  def newException(msg: String, cause: Throwable): FlowLangException = FlowLangException(
+    this,
+    msg,
+    None,
+    cause
+  )
+
   def newException(msg: String, sourceLocation: SourceLocation): FlowLangException =
-    FlowLangException(this, msg, Some(sourceLocation))
+    FlowLangException(
+      this,
+      msg,
+      Some(sourceLocation)
+    )
 
   case OK                      extends StatusCode(StatusType.Success)
   case SYNTAX_ERROR            extends StatusCode(StatusType.UserError)

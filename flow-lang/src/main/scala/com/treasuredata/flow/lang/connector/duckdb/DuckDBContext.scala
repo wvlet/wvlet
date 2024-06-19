@@ -19,8 +19,7 @@ class DuckDBContext extends DBContext:
   // Reuse the same connection for preserving in-memory tables
   private lazy val conn = newConnection
 
-  override def close(): Unit =
-    conn.close()
+  override def close(): Unit = conn.close()
 
   override def withConnection[U](body: Connection => U): U =
     try body(conn)
@@ -43,11 +42,15 @@ class DuckDBContext extends DBContext:
     override def toBoolean = sql"${self}::boolean"
     override def length    = sql"length(${self})"
 
-    override def substring(start: SqlExpr): SqlExpr = sql"substring(${self}, ${start}, strlen(${self}))"
+    override def substring(start: SqlExpr): SqlExpr =
+      sql"substring(${self}, ${start}, strlen(${self}))"
+
     override def substring(start: SqlExpr, end: SqlExpr): SqlExpr =
       sql"substring(${self}, ${start}, ${end})"
 
-    override def regexpContains(pattern: SqlExpr): SqlExpr = sql"regexp_matches(${self}, ${pattern})"
+    override def regexpContains(pattern: SqlExpr): SqlExpr =
+      sql"regexp_matches(${self}, ${pattern})"
+
   end DuckDBString
 
   class DuckDBBoolean(using ctx: DuckDBContext) extends IBoolean

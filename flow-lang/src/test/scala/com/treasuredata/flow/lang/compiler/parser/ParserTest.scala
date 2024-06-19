@@ -12,9 +12,7 @@ class ParserTest extends AirSpec:
     val plan = p.parse()
     debug(plan)
     plan shouldMatch { case p: PackageDef =>
-      p.statements shouldMatch { case List(Query(t: TableRef, _)) =>
-        t.name.fullName shouldBe "A"
-      }
+      p.statements shouldMatch { case List(Query(t: TableRef, _)) => t.name.fullName shouldBe "A" }
     }
   }
 

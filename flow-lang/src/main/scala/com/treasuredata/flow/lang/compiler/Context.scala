@@ -5,10 +5,11 @@ import com.treasuredata.flow.lang.catalog.Catalog
 import wvlet.log.LogSupport
 
 /**
-  * Context conveys the current state of the compilation, including defined types, table definitions, and the current
-  * compilation unit.
+  * Context conveys the current state of the compilation, including defined types, table
+  * definitions, and the current compilation unit.
   *
-  * Context and Scope are mutable, and the compiler will update them as it processes the source code.
+  * Context and Scope are mutable, and the compiler will update them as it processes the source
+  * code.
   */
 case class Context(
     sourceFolders: List[String] = List.empty
@@ -30,13 +31,11 @@ case class Context(
       block(this)
     finally _compileUnit = prev
 
-  def findDataFile(path: String): Option[String] =
-    sourceFolders
-      .map(folder => s"${folder}/data/${path}")
-      .find(file => new java.io.File(file).exists())
+  def findDataFile(path: String): Option[String] = sourceFolders
+    .map(folder => s"${folder}/data/${path}")
+    .find(file => new java.io.File(file).exists())
 
   def getDataFile(path: String): String =
     findDataFile(path) match
-      case None =>
-        throw StatusCode.FILE_NOT_FOUND.newException(s"${path} is not found")
+      case None    => throw StatusCode.FILE_NOT_FOUND.newException(s"${path} is not found")
       case Some(f) => f

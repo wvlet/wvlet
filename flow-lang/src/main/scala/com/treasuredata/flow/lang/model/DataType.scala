@@ -30,8 +30,10 @@ abstract class DataType(val typeName: String, val typeParams: Seq[DataType]):
   * @param typeName
   * @param typeParams
   */
-sealed abstract class RelationType(override val typeName: String, override val typeParams: Seq[DataType])
-    extends DataType(typeName, typeParams):
+sealed abstract class RelationType(
+    override val typeName: String,
+    override val typeParams: Seq[DataType]
+) extends DataType(typeName, typeParams):
   def fields: Seq[DataType]
 
 object RelationType:
@@ -50,7 +52,8 @@ object DataType extends LogSupport:
     * @param name
     * @param dataType
     */
-  case class NamedType(name: Name, dataType: DataType) extends DataType(s"${name}:${dataType}", Seq.empty):
+  case class NamedType(name: Name, dataType: DataType)
+      extends DataType(s"${name}:${dataType}", Seq.empty):
     override def isResolved: Boolean = dataType.isResolved
 
   /**
@@ -67,7 +70,8 @@ object DataType extends LogSupport:
     override def isResolved: Boolean   = true
     override def fields: Seq[DataType] = Seq.empty
 
-  case class UnresolvedRelationType(override val typeName: String) extends RelationType(typeName, Seq.empty):
+  case class UnresolvedRelationType(override val typeName: String)
+      extends RelationType(typeName, Seq.empty):
     override def typeDescription: String = typeName
     override def isResolved: Boolean     = false
     override def fields: Seq[DataType]   = Seq.empty
@@ -82,8 +86,11 @@ object DataType extends LogSupport:
     override def isResolved: Boolean     = baseType.isResolved
     override def resolved: RelationType  = baseType
 
-  case class ProjectedType(override val typeName: String, projectedColumns: Seq[NamedType], baseType: RelationType)
-      extends RelationType(typeName, Seq.empty):
+  case class ProjectedType(
+      override val typeName: String,
+      projectedColumns: Seq[NamedType],
+      baseType: RelationType
+  ) extends RelationType(typeName, Seq.empty):
 
     override def fields: Seq[DataType]   = projectedColumns
     override def typeDescription: String = typeName
@@ -95,12 +102,15 @@ object DataType extends LogSupport:
     * @param groupingKeyTypes
     * @param valueType
     */
-  case class AggregationType(override val typeName: String, groupingKeyTypes: Seq[DataType], valueType: RelationType)
-      extends RelationType(typeName, Seq.empty):
+  case class AggregationType(
+      override val typeName: String,
+      groupingKeyTypes: Seq[DataType],
+      valueType: RelationType
+  ) extends RelationType(typeName, Seq.empty):
 
     override def fields: Seq[DataType]   = groupingKeyTypes ++ valueType.fields
     override def typeDescription: String = typeName
-    override def isResolved: Boolean     = groupingKeyTypes.forall(_.isResolved) && valueType.isResolved
+    override def isResolved: Boolean = groupingKeyTypes.forall(_.isResolved) && valueType.isResolved
 
   case class ConcatType(override val typeName: String, inputTypes: Seq[RelationType])
       extends RelationType(typeName, Seq.empty):
@@ -114,28 +124,34 @@ object DataType extends LogSupport:
     * @param typeName
     * @param defs
     */
-  case class ExtensionType(override val typeName: String, parent: Option[DataType], defs: Seq[FunctionType])
-      extends RelationType(typeName, Seq.empty):
+  case class ExtensionType(
+      override val typeName: String,
+      parent: Option[DataType],
+      defs: Seq[FunctionType]
+  ) extends RelationType(typeName, Seq.empty):
 
-    override def fields: Seq[DataType] = parent match
-      case Some(r: RelationType) => r.fields
-      case _                     => Nil
+    override def fields: Seq[DataType] =
+      parent match
+        case Some(r: RelationType) => r.fields
+        case _                     => Nil
 
     override def typeDescription: String = typeName
     override def isResolved              = parent.exists(_.isResolved) && defs.forall(_.isResolved)
 
-  case class FunctionType(name: String, args: Seq[NamedType], returnType: DataType) extends DataType(name, Seq.empty):
-    override def typeDescription: String =
-      s"${name}(${args.mkString(", ")}): ${returnType}"
+  case class FunctionType(name: String, args: Seq[NamedType], returnType: DataType)
+      extends DataType(name, Seq.empty):
+    override def typeDescription: String = s"${name}(${args.mkString(", ")}): ${returnType}"
 
     override def isFunctionType: Boolean = true
 
     override def isResolved: Boolean = args.forall(_.isResolved) && returnType.isResolved
 
   /**
-    * DataType parameter for representing concrete types like timestamp(2), and abstract types like timestamp(p).
+    * DataType parameter for representing concrete types like timestamp(2), and abstract types like
+    * timestamp(p).
     */
-  sealed abstract class TypeParameter(name: String) extends DataType(typeName = name, typeParams = Seq.empty)
+  sealed abstract class TypeParameter(name: String)
+      extends DataType(typeName = name, typeParams = Seq.empty)
 
   /**
     * Constant type used for arguments of varchar(n), char(n), decimal(p, q), etc.
@@ -152,12 +168,16 @@ object DataType extends LogSupport:
         case Some(t) => t
         case None    => this
 
-  case class GenericType(override val typeName: String, override val typeParams: Seq[DataType] = Seq.empty)
-      extends DataType(typeName, typeParams):
+  case class GenericType(
+      override val typeName: String,
+      override val typeParams: Seq[DataType] = Seq.empty
+  ) extends DataType(typeName, typeParams):
     override def isBound: Boolean = typeParams.forall(_.isBound)
 
-    override def bind(typeArgMap: Map[String, DataType]): DataType =
-      GenericType(typeName, typeParams.map(_.bind(typeArgMap)))
+    override def bind(typeArgMap: Map[String, DataType]): DataType = GenericType(
+      typeName,
+      typeParams.map(_.bind(typeArgMap))
+    )
 
     override def isResolved: Boolean = typeParams.forall(_.isResolved)
 
@@ -172,8 +192,11 @@ object DataType extends LogSupport:
     case object TIME      extends TimestampField
     case object TIMESTAMP extends TimestampField
 
-  case class TimestampType(field: TimestampField, withTimeZone: Boolean, precision: Option[DataType] = None)
-      extends DataType(field.toString.toLowerCase, precision.toSeq):
+  case class TimestampType(
+      field: TimestampField,
+      withTimeZone: Boolean,
+      precision: Option[DataType] = None
+  ) extends DataType(field.toString.toLowerCase, precision.toSeq):
     override def toString: String =
       val base = super.toString
       if withTimeZone then s"${base} with time zone"
@@ -232,17 +255,17 @@ object DataType extends LogSupport:
     "function"
   )
 
-  def isKnownGenericTypeName(s: String): Boolean =
-    knownGenericTypeNames.contains(s)
+  def isKnownGenericTypeName(s: String): Boolean = knownGenericTypeNames.contains(s)
 
-  def isPrimitiveTypeName(s: String): Boolean =
-    primitiveTypeTable.contains(s)
+  def isPrimitiveTypeName(s: String): Boolean = primitiveTypeTable.contains(s)
 
-  def getPrimitiveType(s: String): DataType =
-    primitiveTypeTable.getOrElse(s, throw new IllegalArgumentException(s"Unknown primitive type name: ${s}"))
+  def getPrimitiveType(s: String): DataType = primitiveTypeTable.getOrElse(
+    s,
+    throw new IllegalArgumentException(s"Unknown primitive type name: ${s}")
+  )
 
-  def knownPrimitiveTypes: Map[String, DataType] = DataType.getPrimitiveTypeTable.map { case (name, dataType) =>
-    name -> dataType
+  def knownPrimitiveTypes: Map[String, DataType] = DataType.getPrimitiveTypeTable.map {
+    case (name, dataType) => name -> dataType
   }
 
   abstract class PrimitiveType(name: String) extends DataType(name, Seq.empty):
@@ -285,7 +308,10 @@ object DataType extends LogSupport:
     override def isResolved: Boolean = precision.isResolved && scale.isResolved
 
   object DecimalType:
-    def of(precision: Int, scale: Int): DecimalType = DecimalType(IntConstant(precision), IntConstant(scale))
+    def of(precision: Int, scale: Int): DecimalType = DecimalType(
+      IntConstant(precision),
+      IntConstant(scale)
+    )
 
     def of(precision: DataType, scale: DataType): DecimalType =
       (precision, scale) match
@@ -299,7 +325,8 @@ object DataType extends LogSupport:
   case class ArrayType(elemType: DataType) extends DataType(s"array", Seq(elemType)):
     override def isResolved: Boolean = elemType.isResolved
 
-  case class MapType(keyType: DataType, valueType: DataType) extends DataType(s"map", Seq(keyType, valueType)):
+  case class MapType(keyType: DataType, valueType: DataType)
+      extends DataType(s"map", Seq(keyType, valueType)):
     override def isResolved: Boolean = keyType.isResolved && valueType.isResolved
 
   case class RecordType(elems: Seq[DataType]) extends DataType("record", elems):
@@ -309,8 +336,7 @@ object DataType extends LogSupport:
     * For describing the type of 'select *'
     */
   case class EmbeddedRecordType(elems: Seq[DataType]) extends DataType("*", elems):
-    override def typeDescription: String =
-      elems.map(_.typeDescription).mkString(", ")
+    override def typeDescription: String = elems.map(_.typeDescription).mkString(", ")
 
     override def isResolved: Boolean = elems.forall(_.isResolved)
 

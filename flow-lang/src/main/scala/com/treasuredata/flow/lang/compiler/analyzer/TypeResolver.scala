@@ -28,24 +28,24 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
       resolveProjectedColumns ::
       Nil
 
-  def resolve(plan: LogicalPlan, context: Context): LogicalPlan =
-    RewriteRule.rewrite(plan, defaultRules, context)
+  def resolve(plan: LogicalPlan, context: Context): LogicalPlan = RewriteRule.rewrite(
+    plan,
+    defaultRules,
+    context
+  )
 
   def resolveRelation(plan: LogicalPlan, context: Context): Relation =
     val resolvedPlan = resolve(plan, context)
     resolvedPlan match
       case r: Relation => r
-      case _ =>
-        throw StatusCode.NOT_A_RELATION.newException(s"Not a relation:\n${resolvedPlan.pp}")
+      case _ => throw StatusCode.NOT_A_RELATION.newException(s"Not a relation:\n${resolvedPlan.pp}")
 
   object resolveJsonFileScan extends RewriteRule:
     override def apply(context: Context): PlanRewriter =
       case r: FileScan if r.path.endsWith(".json") =>
         val file             = context.getDataFile(r.path)
         val jsonRelationType = JSONAnalyzer.analyzeJSONFile(file)
-        val cols = jsonRelationType.typeParams.collect { case n: NamedType =>
-          n
-        }
+        val cols             = jsonRelationType.typeParams.collect { case n: NamedType => n }
         JSONFileScan(file, jsonRelationType, cols, r.nodeLocation)
 
   /**
@@ -61,10 +61,8 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
                 context.scope.getTableDef(ref.name) match
                   case Some(tbl) =>
                     TableScan(ref.name.fullName, tpe, schema.columnTypes, ref.nodeLocation)
-                  case None =>
-                    RelScan(ref.name.fullName, tpe, schema.columnTypes, ref.nodeLocation)
-              case other =>
-                ref
+                  case None => RelScan(ref.name.fullName, tpe, schema.columnTypes, ref.nodeLocation)
+              case other => ref
           case _ =>
             trace(s"Unresolved table ref: ${ref}")
             ref
@@ -74,8 +72,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
     */
   object resolveRelation extends RewriteRule:
     override def apply(context: Context): PlanRewriter = {
-      case q: Query =>
-        q.copy(body = resolveRelation(q.body, context))
+      case q: Query => q.copy(body = resolveRelation(q.body, context))
       case r: Relation => // Regular relation and Filter etc.
         r.transformUpExpressions { case x: Expression =>
           resolveExpression(x, r.inputAttributeList, context)
@@ -88,13 +85,17 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
   object resolveProjectedColumns extends RewriteRule:
     def apply(context: Context): PlanRewriter = { case p: Project =>
       val resolvedChild = resolveRelation(p.child, context)
-      val resolvedColumns: Seq[Attribute] =
-        resolveAttributes(p.selectItems, resolvedChild.outputAttributeList, context)
+      val resolvedColumns: Seq[Attribute] = resolveAttributes(
+        p.selectItems,
+        resolvedChild.outputAttributeList,
+        context
+      )
       Project(resolvedChild, resolvedColumns, p.nodeLocation)
     }
 
   /**
-    * Resolve the given list of attribute types using known attributes from the child plan nodes as hints
+    * Resolve the given list of attribute types using known attributes from the child plan nodes as
+    * hints
     * @param attributes
     * @param knownAttributes
     * @param context
@@ -104,11 +105,10 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
       attributes: Seq[Attribute],
       knownAttributes: AttributeList,
       context: Context
-  ): Seq[Attribute] =
-    attributes.map { a =>
-      val resolvedExpr = resolveExpression(a, knownAttributes, context)
-      a
-    }
+  ): Seq[Attribute] = attributes.map { a =>
+    val resolvedExpr = resolveExpression(a, knownAttributes, context)
+    a
+  }
 
   /**
     * Resolve the given expression type using the input attributes from child plan nodes

@@ -11,7 +11,8 @@ object Scope:
   def empty = Scope()
 
 /**
-  * Scope manages a list of table, alias, function definitions that are available in the current context.
+  * Scope manages a list of table, alias, function definitions that are available in the current
+  * context.
   */
 class Scope extends LogSupport:
   private val types    = mutable.Map.empty[String, DataType].addAll(DataType.knownPrimitiveTypes)
@@ -24,18 +25,15 @@ class Scope extends LogSupport:
 
   def getAllTableDefs: Map[String, TableDef] = tableDef.toMap
 
-  def addAlias(alias: Name, typeName: Name): Unit =
-    aliases.put(alias.fullName, typeName)
+  def addAlias(alias: Name, typeName: Name): Unit = aliases.put(alias.fullName, typeName)
 
-  def addTableDef(tbl: TableDef): Unit =
-    tableDef.put(tbl.name.fullName, tbl)
+  def addTableDef(tbl: TableDef): Unit = tableDef.put(tbl.name.fullName, tbl)
 
   def addType(dataType: DataType): Unit =
     trace(s"Add type: ${dataType.typeName}")
     types.put(dataType.typeName, dataType)
 
-  def getTableDef(name: Name): Option[TableDef] =
-    tableDef.get(name.fullName)
+  def getTableDef(name: Name): Option[TableDef] = tableDef.get(name.fullName)
 
   def resolveType(name: String, seen: Set[String] = Set.empty): Option[DataType] =
     if seen.contains(name) then None
@@ -44,8 +42,7 @@ class Scope extends LogSupport:
         case Some(r) =>
           if r.isResolved then Some(r)
           else resolveType(r.baseTypeName, seen + name)
-        case other =>
-          other
+        case other => other
 
   def findType(name: String, seen: Set[String] = Set.empty): Option[DataType] =
     if seen.contains(name) then None

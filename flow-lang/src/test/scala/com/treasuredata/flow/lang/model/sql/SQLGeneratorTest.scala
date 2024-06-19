@@ -8,7 +8,9 @@ import wvlet.airspec.AirSpec
 class SQLGeneratorTest extends AirSpec:
   pendingUntil("Stabilizing the new parser")
   test("generate SQL from behavior.flow"):
-    val plan = FlowParser(CompilationUnit(SourceFile.fromResource("examples/cdp_behavior/src/behavior.flow"))).parse()
+    val plan = FlowParser(
+      CompilationUnit(SourceFile.fromResource("examples/cdp_behavior/src/behavior.flow"))
+    ).parse()
     plan.traverse { case q: Query =>
       val sql = SQLGenerator.toSQL(q)
       debug(q)

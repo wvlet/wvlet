@@ -78,13 +78,22 @@ case class TypeDefDef(
 ) extends TypeElem:
   override def children: Seq[Expression] = Seq.empty
 
-case class DefArg(name: Name, tpe: Name, defaultValue: Option[Expression], nodeLocation: Option[NodeLocation])
+case class DefArg(
+    name: Name,
+    tpe: Name,
+    defaultValue: Option[Expression],
+    nodeLocation: Option[NodeLocation]
+) extends Expression:
+  override def children: Seq[Expression] = Seq.empty
+
+case class TypeValDef(
+    name: Name,
+    tpe: Name,
+    body: Option[Expression],
+    nodeLocation: Option[NodeLocation]
+) extends TypeElem:
+  override def children: Seq[Expression] = Seq.empty
+
+case class DefScope(name: Option[Name], tpe: Name, nodeLocation: Option[NodeLocation])
     extends Expression:
-  override def children: Seq[Expression] = Seq.empty
-
-case class TypeValDef(name: Name, tpe: Name, body: Option[Expression], nodeLocation: Option[NodeLocation])
-    extends TypeElem:
-  override def children: Seq[Expression] = Seq.empty
-
-case class DefScope(name: Option[Name], tpe: Name, nodeLocation: Option[NodeLocation]) extends Expression:
   override def children: Seq[Expression] = Seq.empty

@@ -33,8 +33,7 @@ class FlowCli(opts: FlowCliOption) extends LogSupport:
     Logger("com.treasuredata.flow.lang").setLogLevel(l)
 
   @command(isDefault = true)
-  def default: Unit =
-    info(s"treasure-flow version: ${BuildInfo.version}")
+  def default: Unit = info(s"treasure-flow version: ${BuildInfo.version}")
 
   @command(description = "Compile flow files")
   def compile(

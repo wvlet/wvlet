@@ -14,11 +14,12 @@ case class TokenData(
     offset: Int,
     length: Int
 ):
-  override def toString: String =
-    f"[${offset}%3d:${length}%2d] ${token}%10s: ${str}"
+  override def toString: String = f"[${offset}%3d:${length}%2d] ${token}%10s: ${str}"
 
-  def sourceLocation(using unit: CompilationUnit): SourceLocation =
-    SourceLocation(unit, nodeLocation(using unit.sourceFile))
+  def sourceLocation(using unit: CompilationUnit): SourceLocation = SourceLocation(
+    unit,
+    nodeLocation(using unit.sourceFile)
+  )
 
   def nodeLocation(using src: SourceFile): Option[NodeLocation] =
     val line = src.offsetToLine(offset)
@@ -26,8 +27,7 @@ case class TokenData(
     Some(NodeLocation(line, col))
 
 class ScanState(startFrom: Int = 0):
-  override def toString: String =
-    s"'${str}' <${token}> (${lastOffset}-${offset})"
+  override def toString: String = s"'${str}' <${token}> (${lastOffset}-${offset})"
 
   // Token type
   var token: FlowToken = FlowToken.EMPTY
@@ -48,8 +48,14 @@ class ScanState(startFrom: Int = 0):
     lastOffset = s.lastOffset
     lineOffset = s.lineOffset
 
-  def toTokenData(lastCharOffset: Int): TokenData = TokenData(token, str, offset, lastCharOffset - offset)
-  def isAfterLineEnd: Boolean                     = lineOffset >= 0
+  def toTokenData(lastCharOffset: Int): TokenData = TokenData(
+    token,
+    str,
+    offset,
+    lastCharOffset - offset
+  )
+
+  def isAfterLineEnd: Boolean = lineOffset >= 0
 
 case class ScannerConfig(
     startFrom: Int = 0,
@@ -140,16 +146,14 @@ class FlowScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
     debug(s"handle new line: ${offset}, indentWidth:${indent}")
 
   private def indentWidth(offset: Int): Int =
-    def loop(index: Int, ch: Char): Int =
-      0
+    def loop(index: Int, ch: Char): Int = 0
     loop(offset - 1, ' ')
 
   private def checkNoTrailingNumberSeparator(): Unit =
     if tokenBuffer.nonEmpty && isNumberSeparator(tokenBuffer.last) then
       reportError("trailing number separator", source.sourcePositionAt(offset))
 
-  private def reportError(msg: String, loc: SourcePosition): Unit =
-    error(s"${msg} at ${loc}")
+  private def reportError(msg: String, loc: SourcePosition): Unit = error(s"${msg} at ${loc}")
 
   private def consume(expectedChar: Char): Unit =
     if ch != expectedChar then
@@ -199,10 +203,8 @@ class FlowScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
     if next.token == FlowToken.EMPTY then
       current.lastOffset = lastCharOffset
       currentRegion match
-        case InString(multiline, _) =>
-          getStringPart(multiline)
-        case _ =>
-          fetchToken()
+        case InString(multiline, _) => getStringPart(multiline)
+        case _                      => fetchToken()
     else
       current.copyFrom(next)
       next.token = FlowToken.EMPTY
@@ -222,16 +224,18 @@ class FlowScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
         // Skip white space characters without pushing them into the buffer
         nextChar()
         fetchToken()
-      case 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'I' | 'J' | 'K' | 'L' | 'M' | 'N' | 'O' | 'P' | 'Q' | 'R' |
-          'S' | 'T' | 'U' | 'V' | 'W' | 'X' | 'Y' | 'Z' | '$' | '_' | 'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g' | 'h' |
-          'i' | 'j' | 'k' | 'l' | 'm' | 'n' | 'o' | 'p' | 'q' | 'r' | 's' | 't' | 'u' | 'v' | 'w' | 'x' | 'y' | 'z' =>
+      case 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'I' | 'J' | 'K' | 'L' | 'M' | 'N' | 'O' |
+          'P' | 'Q' | 'R' | 'S' | 'T' | 'U' | 'V' | 'W' | 'X' | 'Y' | 'Z' | '$' | '_' | 'a' | 'b' |
+          'c' | 'd' | 'e' | 'f' | 'g' | 'h' | 'i' | 'j' | 'k' | 'l' | 'm' | 'n' | 'o' | 'p' | 'q' |
+          'r' | 's' | 't' | 'u' | 'v' | 'w' | 'x' | 'y' | 'z' =>
         putChar(ch)
         nextChar()
         getIdentRest()
         if ch == '"' && current.token == FlowToken.IDENTIFIER then
           // Switch the behavior of getDoubleQuotedString
           current.token = FlowToken.STRING_INTERPOLATION_PREFIX
-      case '~' | '!' | '@' | '#' | '%' | '^' | '*' | '+' | '<' | '>' | '?' | ':' | '=' | '&' | '|' | '\\' =>
+      case '~' | '!' | '@' | '#' | '%' | '^' | '*' | '+' | '<' | '>' | '?' | ':' | '=' | '&' | '|' |
+          '\\' =>
         putChar(ch)
         nextChar()
         getOperatorRest()
@@ -250,14 +254,13 @@ class FlowScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
               base = 16
               putChar(ch)
               nextChar()
-            case _ =>
-              base = 10
-          if base != 10 && !isNumberSeparator(ch) && digit2int(ch, base) < 0 then error("invalid literal number")
+            case _ => base = 10
+          if base != 10 && !isNumberSeparator(ch) && digit2int(ch, base) < 0 then
+            error("invalid literal number")
 
         fetchLeadingZero()
         getNumber(base)
-      case '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' =>
-        getNumber(base = 10)
+      case '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' => getNumber(base = 10)
       case '.' =>
         nextChar()
         if '0' <= ch && ch <= '9' then
@@ -275,14 +278,11 @@ class FlowScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
         putChar(ch)
         if inMultiLineStringInterpolation then nextRawChar() else nextChar()
         currentRegion match
-          case InBraces(outer) =>
-            currentRegion = outer
-          case _ =>
+          case InBraces(outer) => currentRegion = outer
+          case _               =>
         finishNamedToken()
-      case '\'' =>
-        getSingleQuoteString()
-      case '\"' =>
-        getDoubleQuoteString()
+      case '\'' => getSingleQuoteString()
+      case '\"' => getDoubleQuoteString()
       case '/' =>
         putChar(ch)
         nextChar()
@@ -436,20 +436,21 @@ class FlowScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
   @tailrec private def getIdentRest(): Unit =
     trace(s"getIdentRest[${offset}]: ch: '${String.valueOf(ch)}'")
     (ch: @switch) match
-      case 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'I' | 'J' | 'K' | 'L' | 'M' | 'N' | 'O' | 'P' | 'Q' | 'R' |
-          'S' | 'T' | 'U' | 'V' | 'W' | 'X' | 'Y' | 'Z' | '$' | 'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g' | 'h' | 'i' |
-          'j' | 'k' | 'l' | 'm' | 'n' | 'o' | 'p' | 'q' | 'r' | 's' | 't' | 'u' | 'v' | 'w' | 'x' | 'y' | 'z' | '0' |
-          '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | '_' =>
+      case 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'I' | 'J' | 'K' | 'L' | 'M' | 'N' | 'O' |
+          'P' | 'Q' | 'R' | 'S' | 'T' | 'U' | 'V' | 'W' | 'X' | 'Y' | 'Z' | '$' | 'a' | 'b' | 'c' |
+          'd' | 'e' | 'f' | 'g' | 'h' | 'i' | 'j' | 'k' | 'l' | 'm' | 'n' | 'o' | 'p' | 'q' | 'r' |
+          's' | 't' | 'u' | 'v' | 'w' | 'x' | 'y' | 'z' | '0' | '1' | '2' | '3' | '4' | '5' | '6' |
+          '7' | '8' | '9' | '_' =>
         putChar(ch)
         nextChar()
         getIdentRest()
-      case _ =>
-        finishNamedToken()
+      case _ => finishNamedToken()
 
   @tailrec private def getOperatorRest(): Unit =
     trace(s"getOperatorRest[${offset}]: ch: '${String.valueOf(ch)}'")
     (ch: @switch) match
-      case '~' | '!' | '@' | '#' | '%' | '^' | '*' | '+' | '-' | '<' | '>' | '?' | ':' | '=' | '&' | '|' | '\\' =>
+      case '~' | '!' | '@' | '#' | '%' | '^' | '*' | '+' | '-' | '<' | '>' | '?' | ':' | '=' | '&' |
+          '|' | '\\' =>
         putChar(ch)
         nextChar()
         getOperatorRest()
@@ -459,10 +460,8 @@ class FlowScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
       //      else {
       //        putChar(ch); nextChar(); getOperatorRest()
       //      }
-      case SU =>
-        finishNamedToken()
-      case _ =>
-        finishNamedToken()
+      case SU => finishNamedToken()
+      case _  => finishNamedToken()
   //      if isSpecial(ch) then {
   //        putChar(ch); nextChar(); getOperatorRest()
   //      }
@@ -481,11 +480,10 @@ class FlowScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
   private def finishNamedToken(target: ScanState = current): Unit =
     val currentTokenStr = flushTokenString()
     trace(s"finishNamedToken at ${current}: '${currentTokenStr}'")
-    val token = FlowToken.keywordAndSymbolTable.get(currentTokenStr) match
-      case Some(tokenType) =>
-        target.token = tokenType
-      case None =>
-        target.token = FlowToken.IDENTIFIER
+    val token =
+      FlowToken.keywordAndSymbolTable.get(currentTokenStr) match
+        case Some(tokenType) => target.token = tokenType
+        case None            => target.token = FlowToken.IDENTIFIER
 
   private def getNumber(base: Int): Unit =
     while isNumberSeparator(ch) || digit2int(ch, base) >= 0 do
@@ -500,8 +498,7 @@ class FlowScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
       if '0' <= ch && ch <= '9' then tokenType = getFraction()
     else
       (ch: @switch) match
-        case 'e' | 'E' | 'f' | 'F' | 'd' | 'D' =>
-          if base == 10 then tokenType = getFraction()
+        case 'e' | 'E' | 'f' | 'F' | 'd' | 'D' => if base == 10 then tokenType = getFraction()
         case 'l' | 'L' =>
           nextChar()
           tokenType = FlowToken.LONG_LITERAL

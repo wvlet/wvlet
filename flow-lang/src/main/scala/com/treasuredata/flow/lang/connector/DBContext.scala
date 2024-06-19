@@ -91,15 +91,12 @@ trait DBContext extends AutoCloseable:
 
     foundSchemas.result().headOption
 
-  def createSchema(catalog: String, schema: String): DBContext.Schema =
-    withConnection: conn =>
-      conn.createStatement().executeUpdate(s"""create schema if not exists ${catalog}.${schema}""")
-      DBContext.Schema(catalog, schema)
+  def createSchema(catalog: String, schema: String): DBContext.Schema = withConnection: conn =>
+    conn.createStatement().executeUpdate(s"""create schema if not exists ${catalog}.${schema}""")
+    DBContext.Schema(catalog, schema)
 
-  def dropTable(catalog: String, schema: String, table: String): Unit =
-    withConnection: conn =>
-      conn.createStatement().executeUpdate(s"""drop table if exists ${catalog}.${schema}.${table}""")
+  def dropTable(catalog: String, schema: String, table: String): Unit = withConnection: conn =>
+    conn.createStatement().executeUpdate(s"""drop table if exists ${catalog}.${schema}.${table}""")
 
-  def dropSchema(catalog: String, schema: String): Unit =
-    withConnection: conn =>
-      conn.createStatement().executeUpdate(s"""drop schema if exists ${catalog}.${schema}""")
+  def dropSchema(catalog: String, schema: String): Unit = withConnection: conn =>
+    conn.createStatement().executeUpdate(s"""drop schema if exists ${catalog}.${schema}""")

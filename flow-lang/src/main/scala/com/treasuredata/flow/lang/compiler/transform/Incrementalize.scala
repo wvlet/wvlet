@@ -29,8 +29,7 @@ object Incrementalize extends Phase("incrementalize"):
     override def apply(context: Context): PlanRewriter =
       case r: RelScan =>
         context.compileUnit.findRelationRef(r.name) match
-          case Some(relation) =>
-            relation
+          case Some(relation) => relation
           case None =>
             warn(s"Relation ${r.name} not found in the context")
             r
@@ -61,12 +60,15 @@ object Incrementalize extends Phase("incrementalize"):
             case _         => false
         case _ => false
 
-    override def isTargetPlan(plan: LogicalPlan, context: Context): Boolean =
-      isSimpleScan(plan, context)
+    override def isTargetPlan(plan: LogicalPlan, context: Context): Boolean = isSimpleScan(
+      plan,
+      context
+    )
 
     override def apply(context: Context): PlanRewriter =
-      case t: TableScan =>
-        IncrementalTableScan(t.name, t.schema, t.columns, t.nodeLocation)
+      case t: TableScan => IncrementalTableScan(t.name, t.schema, t.columns, t.nodeLocation)
 
-    override def postProcess(plan: LogicalPlan, context: Context): LogicalPlan =
-      IncrementalAppend(plan.asInstanceOf[Relation], plan.nodeLocation)
+    override def postProcess(plan: LogicalPlan, context: Context): LogicalPlan = IncrementalAppend(
+      plan.asInstanceOf[Relation],
+      plan.nodeLocation
+    )

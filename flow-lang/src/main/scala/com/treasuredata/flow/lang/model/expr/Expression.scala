@@ -157,8 +157,7 @@ trait Expression extends TreeNode[Expression] with Product:
     val l = List.newBuilder[Expression]
     traverseExpressions(new PartialFunction[Expression, Unit]:
       override def isDefinedAt(x: Expression): Boolean = cond.isDefinedAt(x)
-      override def apply(v1: Expression): Unit =
-        if cond.apply(v1) then l += v1
+      override def apply(v1: Expression): Unit         = if cond.apply(v1) then l += v1
     )
     l.result()
 
@@ -179,16 +178,13 @@ trait BinaryExpression extends Expression:
   def operatorName: String
 
   override def children: Seq[Expression] = Seq(left, right)
-  override def toString: String          = s"${getClass.getSimpleName}(left:${left}, right:${right})"
+  override def toString: String = s"${getClass.getSimpleName}(left:${left}, right:${right})"
 
 object Expression:
   def concat(expr: Seq[Expression])(merger: (Expression, Expression) => Expression): Expression =
     require(expr.length > 0, None)
     if expr.length == 1 then expr.head
-    else
-      expr.tail.foldLeft(expr.head) { case (prev, next) =>
-        merger(prev, next)
-      }
+    else expr.tail.foldLeft(expr.head) { case (prev, next) => merger(prev, next) }
 
   def concatWithAnd(expr: Seq[Expression]): Expression =
     concat(expr) { case (a, b) => And(a, b, None) }
@@ -197,8 +193,10 @@ object Expression:
     concat(expr) { case (a, b) => Eq(a, b, None) }
 
   def newIdentifier(x: String): Identifier =
-    if x.startsWith("`") && x.endsWith("`") then BackQuotedIdentifier(x.stripPrefix("`").stripSuffix("`"), None)
-    else if x.startsWith("\"") && x.endsWith("\"") then QuotedIdentifier(x.stripPrefix("\"").stripSuffix("\""), None)
+    if x.startsWith("`") && x.endsWith("`") then
+      BackQuotedIdentifier(x.stripPrefix("`").stripSuffix("`"), None)
+    else if x.startsWith("\"") && x.endsWith("\"") then
+      QuotedIdentifier(x.stripPrefix("\"").stripSuffix("\""), None)
     else if x.matches("[0-9]+") then DigitId(x, None)
     else if !x.matches("[0-9a-zA-Z_]*") then
       // Quotations are needed with special characters to generate valid SQL

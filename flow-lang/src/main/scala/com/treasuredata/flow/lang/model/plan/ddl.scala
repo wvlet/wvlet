@@ -15,13 +15,11 @@ case class TableDef(
     nodeLocation: Option[NodeLocation]
 ) extends DDL:
 
-  def getParam(paramName: Name): Option[Name] =
-    params.find(_.name == paramName).map(_.paramValue)
+  def getParam(paramName: Name): Option[Name] = params.find(_.name == paramName).map(_.paramValue)
 
-  def getType: Option[Name] =
-    params
-      .find(_.name.fullName == "type")
-      .map(_.paramValue)
+  def getType: Option[Name] = params
+    .find(_.name.fullName == "type")
+    .map(_.paramValue)
 
 case class TableDefParam(
     name: Name,
@@ -37,10 +35,15 @@ case class CreateSchema(
     nodeLocation: Option[NodeLocation]
 ) extends DDL
 
-case class DropDatabase(database: Name, ifExists: Boolean, cascade: Boolean, nodeLocation: Option[NodeLocation])
-    extends DDL
+case class DropDatabase(
+    database: Name,
+    ifExists: Boolean,
+    cascade: Boolean,
+    nodeLocation: Option[NodeLocation]
+) extends DDL
 
-case class RenameDatabase(database: Name, renameTo: Name, nodeLocation: Option[NodeLocation]) extends DDL
+case class RenameDatabase(database: Name, renameTo: Name, nodeLocation: Option[NodeLocation])
+    extends DDL
 
 case class CreateTable(
     table: Name,
@@ -53,15 +56,26 @@ case class DropTable(table: Name, ifExists: Boolean, nodeLocation: Option[NodeLo
 
 case class RenameTable(table: Name, renameTo: Name, nodeLocation: Option[NodeLocation]) extends DDL
 
-case class RenameColumn(table: Name, column: Name, renameTo: Name, nodeLocation: Option[NodeLocation]) extends DDL
+case class RenameColumn(
+    table: Name,
+    column: Name,
+    renameTo: Name,
+    nodeLocation: Option[NodeLocation]
+) extends DDL
 
 case class DropColumn(table: Name, column: Name, nodeLocation: Option[NodeLocation]) extends DDL
 
 case class AddColumn(table: Name, column: ColumnDef, nodeLocation: Option[NodeLocation]) extends DDL
 
-case class CreateView(viewName: Name, replace: Boolean, query: Relation, nodeLocation: Option[NodeLocation]) extends DDL
+case class CreateView(
+    viewName: Name,
+    replace: Boolean,
+    query: Relation,
+    nodeLocation: Option[NodeLocation]
+) extends DDL
 
-case class DropView(viewName: Name, ifExists: Boolean, nodeLocation: Option[NodeLocation]) extends DDL
+case class DropView(viewName: Name, ifExists: Boolean, nodeLocation: Option[NodeLocation])
+    extends DDL
 
 /**
   * A base trait for all update operations (e.g., add/delete the table contents).

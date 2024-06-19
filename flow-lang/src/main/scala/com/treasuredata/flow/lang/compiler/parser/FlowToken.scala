@@ -161,9 +161,10 @@ object FlowToken:
   // Substitute (SUB), which is used as the EOF marker in Windows
   inline val SU = '\u001A'
 
-  def isLineBreakChar(c: Char): Boolean = (c: @switch) match
-    case LF | FF | CR | SU => true
-    case _                 => false
+  def isLineBreakChar(c: Char): Boolean =
+    (c: @switch) match
+      case LF | FF | CR | SU => true
+      case _                 => false
 
   /**
     * White space character but not a new line (\n)
@@ -171,9 +172,10 @@ object FlowToken:
     * @param c
     * @return
     */
-  def isWhiteSpaceChar(c: Char): Boolean = (c: @switch) match
-    case ' ' | '\t' | CR => true
-    case _               => false
+  def isWhiteSpaceChar(c: Char): Boolean =
+    (c: @switch) match
+      case ' ' | '\t' | CR => true
+      case _               => false
 
   def isNumberSeparator(ch: Char): Boolean = ch == '_'
 

@@ -3,7 +3,13 @@ package com.treasuredata.flow.lang.compiler.analyzer
 import com.treasuredata.flow.lang.StatusCode
 import com.treasuredata.flow.lang.compiler.{CompilationUnit, Context, Phase}
 import com.treasuredata.flow.lang.model.DataType
-import com.treasuredata.flow.lang.model.DataType.{ExtensionType, FunctionType, NamedType, SchemaType, UnresolvedType}
+import com.treasuredata.flow.lang.model.DataType.{
+  ExtensionType,
+  FunctionType,
+  NamedType,
+  SchemaType,
+  UnresolvedType
+}
 import com.treasuredata.flow.lang.model.expr.{ColumnType, Literal}
 import com.treasuredata.flow.lang.model.plan.*
 import wvlet.log.LogSupport
@@ -19,17 +25,12 @@ class TypeScanner(phaseName: String) extends Phase(phaseName) with LogSupport:
     scanTypeDefs(unit.unresolvedPlan, context)
     unit
 
-  protected def scanTypeDefs(plan: LogicalPlan, context: Context): Unit =
-    plan.traverse {
-      case alias: TypeAlias =>
-        context.scope.addAlias(alias.alias, alias.sourceTypeName)
-      case td: TypeDef =>
-        context.scope.addType(scanTypeDef(td, context))
-      case tbl: TableDef =>
-        context.scope.addTableDef(tbl)
-      case q: Query =>
-        context.scope.addType(q.relationType)
-    }
+  protected def scanTypeDefs(plan: LogicalPlan, context: Context): Unit = plan.traverse {
+    case alias: TypeAlias => context.scope.addAlias(alias.alias, alias.sourceTypeName)
+    case td: TypeDef      => context.scope.addType(scanTypeDef(td, context))
+    case tbl: TableDef    => context.scope.addTableDef(tbl)
+    case q: Query         => context.scope.addType(q.relationType)
+  }
 
   private def scanTypeDef(typeDef: TypeDef, context: Context): DataType =
     // TODO resolve defs
@@ -46,9 +47,12 @@ class TypeScanner(phaseName: String) extends Phase(phaseName) with LogSupport:
       SchemaType(typeDef.name.fullName, valDefs)
     else
       // TODO: Add parent fields
-      ExtensionType(typeDef.name.fullName, typeDef.parent.map(p => UnresolvedType(p.fullName)), defs)
+      ExtensionType(
+        typeDef.name.fullName,
+        typeDef.parent.map(p => UnresolvedType(p.fullName)),
+        defs
+      )
 
-  private def scanDataType(columnType: ColumnType, context: Context): DataType =
-    context.scope
-      .findType(columnType.tpe.fullName)
-      .getOrElse(UnresolvedType(columnType.tpe.fullName))
+  private def scanDataType(columnType: ColumnType, context: Context): DataType = context.scope
+    .findType(columnType.tpe.fullName)
+    .getOrElse(UnresolvedType(columnType.tpe.fullName))

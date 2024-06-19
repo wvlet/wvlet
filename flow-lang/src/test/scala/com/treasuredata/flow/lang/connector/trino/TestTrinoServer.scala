@@ -22,34 +22,33 @@ class TestTrinoServer extends AutoCloseable with LogSupport:
     dir.mkdirs()
     dir
 
-  private val server =
-    Logger.rootLogger.suppressLogs {
-      setLogLevel("io.airlift", Level.WARNING)
-      val trino = TestingTrinoServer.create()
-      setLogLevel("io.trino", Level.WARNING)
-      setLogLevel("Bootstrap", Level.WARNING)
+  private val server = Logger.rootLogger.suppressLogs {
+    setLogLevel("io.airlift", Level.WARNING)
+    val trino = TestingTrinoServer.create()
+    setLogLevel("io.trino", Level.WARNING)
+    setLogLevel("Bootstrap", Level.WARNING)
 
-      trino.installPlugin(new MemoryPlugin())
-      trino.createCatalog("memory", "memory")
-      // For supporting insert into to Delta Lake, need to provide TransactionLogSynchronizer implementation to the plugin
-      trino.installPlugin(new TestingDeltaLakePlugin(tempMetastoreDir.toPath))
+    trino.installPlugin(new MemoryPlugin())
+    trino.createCatalog("memory", "memory")
+    // For supporting insert into to Delta Lake, need to provide TransactionLogSynchronizer implementation to the plugin
+    trino.installPlugin(new TestingDeltaLakePlugin(tempMetastoreDir.toPath))
 
-      info(s"Using metastore dir: $tempMetastoreDir")
-      trino.createCatalog(
-        "delta",
-        DeltaLakeConnectorFactory.CONNECTOR_NAME,
-        Map[String, String](
-          "hive.metastore"                         -> "file",
-          "hive.metastore.catalog.dir"             -> s"file://${tempMetastoreDir.getAbsolutePath}",
-          "hive.metastore.disable-location-checks" -> "true",
-          "fs.hadoop.enabled"                      -> "true",
-          // Allow call delta system.register_table
-          "delta.register-table-procedure.enabled" -> "true",
-          "delta.enable-non-concurrent-writes"     -> "true"
-        ).asJava
-      )
-      trino
-    }
+    info(s"Using metastore dir: $tempMetastoreDir")
+    trino.createCatalog(
+      "delta",
+      DeltaLakeConnectorFactory.CONNECTOR_NAME,
+      Map[String, String](
+        "hive.metastore"                         -> "file",
+        "hive.metastore.catalog.dir"             -> s"file://${tempMetastoreDir.getAbsolutePath}",
+        "hive.metastore.disable-location-checks" -> "true",
+        "fs.hadoop.enabled"                      -> "true",
+        // Allow call delta system.register_table
+        "delta.register-table-procedure.enabled" -> "true",
+        "delta.enable-non-concurrent-writes"     -> "true"
+      ).asJava
+    )
+    trino
+  }
 
   def address: String = server.getAddress.toString
 
@@ -66,9 +65,8 @@ class TestTrinoServer extends AutoCloseable with LogSupport:
       if f.isFile then f.delete()
       else if f.isDirectory then
         f.listFiles() match
-          case lst: Array[File] =>
-            lst.foreach(delete)
-          case null =>
+          case lst: Array[File] => lst.foreach(delete)
+          case null             =>
         f.delete()
 
     delete(tempMetastoreDir)

@@ -25,8 +25,7 @@ class Span(val coordinate: Long) extends AnyVal:
     * The offset of the point from the start
     * @return
     */
-  def pointOffset: Int =
-    (coordinate >>> (Span.POSITION_BITS * 2)).toInt
+  def pointOffset: Int = (coordinate >>> (Span.POSITION_BITS * 2)).toInt
 
   /**
     * The point of the span

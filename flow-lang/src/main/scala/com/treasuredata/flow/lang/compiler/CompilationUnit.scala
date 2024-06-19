@@ -7,8 +7,8 @@ import com.treasuredata.flow.lang.model.plan.{LogicalPlan, NamedRelation, Relati
 import java.io.File
 
 /**
-  * Represents a unit for compilation (= source file) and records intermediate data (e.g., plan trees) for the source
-  * file
+  * Represents a unit for compilation (= source file) and records intermediate data (e.g., plan
+  * trees) for the source file
   * @param sourceFile
   */
 case class CompilationUnit(sourceFile: SourceFile):
@@ -20,14 +20,12 @@ case class CompilationUnit(sourceFile: SourceFile):
   // Plans generated for subscriptions
   var subscriptionPlans: List[LogicalPlan] = List.empty[LogicalPlan]
 
-  def toSourceLocation(nodeLocation: Option[NodeLocation]) =
-    SourceLocation(this, nodeLocation)
+  def toSourceLocation(nodeLocation: Option[NodeLocation]) = SourceLocation(this, nodeLocation)
 
   def findRelationRef(name: String): Option[LogicalPlan] =
     var result: Option[Relation] = None
     resolvedPlan.traverse {
-      case r: NamedRelation if r.name.value == name =>
-        result = Some(r)
+      case r: NamedRelation if r.name.value == name => result = Some(r)
     }
     result
 
@@ -41,9 +39,10 @@ object CompilationUnit:
   def fromPath(path: String): List[CompilationUnit] =
     // List all *.flow files under the path
     val files = listFiles(path)
-    val units = files.map { file =>
-      CompilationUnit(SourceFile.fromFile(file))
-    }.toList
+    val units =
+      files.map { file =>
+        CompilationUnit(SourceFile.fromFile(file))
+      }.toList
     units
 
   private def listFiles(path: String): Seq[String] =

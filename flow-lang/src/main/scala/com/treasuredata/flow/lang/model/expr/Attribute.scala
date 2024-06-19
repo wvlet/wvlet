@@ -34,8 +34,7 @@ trait Attribute extends LeafExpression with LogSupport:
           case other if other.name == alias =>
             // No need to have alias
             other
-          case other =>
-            Alias(alias, other, None)
+          case other => Alias(alias, other, None)
 
   /**
     * * Returns the index of this attribute in the input or output columns
@@ -93,9 +92,10 @@ case class AttributeRef(attr: Attribute)(val exprId: ULID = ULID.newULID) extend
   override def outputAttributes: Seq[Attribute] = attr.inputAttributes
 
   override def hashCode(): Int = super.hashCode()
-  override def equals(obj: Any): Boolean = obj match
-    case that: AttributeRef => that.attr == this.attr
-    case _                  => false
+  override def equals(obj: Any): Boolean =
+    obj match
+      case that: AttributeRef => that.attr == this.attr
+      case _                  => false
 
 /**
   * An attribute that produces a single column value with a given expression.
@@ -152,10 +152,9 @@ case class AllColumns(
 
   override def outputAttributes: Seq[Attribute] = inputAttributes
 
-  override def dataType: DataType =
-    columns
-      .map(cols => EmbeddedRecordType(cols.map(x => NamedType(x.name, x.dataType))))
-      .getOrElse(DataType.UnknownType)
+  override def dataType: DataType = columns
+    .map(cols => EmbeddedRecordType(cols.map(x => NamedType(x.name, x.dataType))))
+    .getOrElse(DataType.UnknownType)
 
   override def toString =
     columns match
@@ -163,8 +162,7 @@ case class AllColumns(
         val inputs = attrs
           .map(a => s"${a.fullName}:${a.dataTypeName}").mkString(", ")
         s"AllColumns(${inputs})"
-      case _ =>
-        s"AllColumns(${fullName})"
+      case _ => s"AllColumns(${fullName})"
 
   override lazy val resolved = columns.isDefined
 
@@ -178,8 +176,7 @@ case class Alias(
 
   override def children: Seq[Expression] = Seq(expr)
 
-  override def toString: String =
-    s"<${fullName}> := ${expr}"
+  override def toString: String = s"<${fullName}> := ${expr}"
 
   override def dataType: DataType = expr.dataType
 
@@ -198,12 +195,10 @@ case class MultiSourceColumn(
 
   override def toString: String = s"${fullName}:${dataTypeName} := {${inputs.mkString(", ")}}"
 
-  override def inputAttributes: Seq[Attribute] =
-    inputs.map {
-      case a: Attribute => a
-      case e: Expression =>
-        SingleColumn(name, e, e.nodeLocation)
-    }
+  override def inputAttributes: Seq[Attribute] = inputs.map {
+    case a: Attribute  => a
+    case e: Expression => SingleColumn(name, e, e.nodeLocation)
+  }
 
   override def outputAttributes: Seq[Attribute] = Seq(this)
 
@@ -211,5 +206,4 @@ case class MultiSourceColumn(
     // MultiSourceColumn is a reference to the multiple columns. Do not traverse here
     Seq.empty
 
-  override def dataType: DataType =
-    inputs.head.dataType
+  override def dataType: DataType = inputs.head.dataType

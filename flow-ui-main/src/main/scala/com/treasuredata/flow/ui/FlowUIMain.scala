@@ -5,7 +5,6 @@ import wvlet.airframe.rx.html.all.*
 
 object FlowUIMain:
 
-  def main(args: Array[String]): Unit =
-    render
+  def main(args: Array[String]): Unit = render
 
   def render: Unit = new MainFrame().renderTo("main")

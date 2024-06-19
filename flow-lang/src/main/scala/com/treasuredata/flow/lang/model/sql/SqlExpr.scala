@@ -2,7 +2,15 @@ package com.treasuredata.flow.lang.model.sql
 
 import com.treasuredata.flow.lang.connector.{DBContext, QueryScope}
 import com.treasuredata.flow.lang.model.DataType
-import com.treasuredata.flow.lang.model.plan.{Distinct, Filter, JoinType, Limit, Selection, SetOperation, Sort}
+import com.treasuredata.flow.lang.model.plan.{
+  Distinct,
+  Filter,
+  JoinType,
+  Limit,
+  Selection,
+  SetOperation,
+  Sort
+}
 import com.treasuredata.flow.lang.model.sql.SqlExpr.IString
 
 /**
@@ -27,26 +35,28 @@ class SqlExprList(exprs: Seq[SqlExpr], separator: String = ", ") extends SqlExpr
 extension (sc: StringContext)
   def sql(args: Any*): SqlExpr =
     new SqlExpr:
-      override def toSQL: String = sc.parts.zipAll(args, "", "").foldLeft("") { case (acc, (part, arg)) =>
-        acc + part + arg
-      }
+      override def toSQL: String =
+        sc.parts.zipAll(args, "", "").foldLeft("") { case (acc, (part, arg)) => acc + part + arg }
 
 object SqlExpr:
 
-  def join(exprs: SqlExpr*): SqlExpr =
-    SqlExprList(exprs.filterNot(_.toSQL.isEmpty), separator = " ")
+  def join(exprs: SqlExpr*): SqlExpr = SqlExprList(
+    exprs.filterNot(_.toSQL.isEmpty),
+    separator = " "
+  )
 
   class IRelation(using ctx: DBContext) extends SqlExpr:
     export ctx.self
 
-    private def needToWrapSQL: Boolean = ctx.plan match
-      case s: Selection    => true
-      case s: SetOperation => true
-      case l: Limit        => true
-      case f: Filter       => true
-      case s: Sort         => true
-      case d: Distinct     => true
-      case _               => false
+    private def needToWrapSQL: Boolean =
+      ctx.plan match
+        case s: Selection    => true
+        case s: SetOperation => true
+        case l: Limit        => true
+        case f: Filter       => true
+        case s: Sort         => true
+        case d: Distinct     => true
+        case _               => false
 
     override def toSQL: String = ???
 
@@ -58,7 +68,8 @@ object SqlExpr:
     def join(joinType: JoinType, right: IRelation, on: SqlExpr) =
       sql"""select * from ${self} ${joinType} join ${right} on ${on}"""
 
-    def groupBy(keys: SqlExprList, attrs: SqlExprList) = sql"""select ${attrs} from ${self} group by ${keys}"""
+    def groupBy(keys: SqlExprList, attrs: SqlExprList) =
+      sql"""select ${attrs} from ${self} group by ${keys}"""
 
   end IRelation
 

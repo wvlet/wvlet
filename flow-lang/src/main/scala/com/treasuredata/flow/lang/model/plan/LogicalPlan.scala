@@ -12,16 +12,16 @@ trait LogicalPlan extends TreeNode[LogicalPlan] with Product:
     val n = this.getClass.getSimpleName
     n.stripSuffix("$")
 
-  def pp: String =
-    LogicalPlanPrinter.print(this)
+  def pp: String = LogicalPlanPrinter.print(this)
 
   // True if all input attributes are resolved.
   lazy val resolved: Boolean = childExpressions.forall(_.resolved) && resolvedChildren
 
   def resolvedChildren: Boolean = children.forall(_.resolved)
 
-  def unresolvedExpressions: Seq[Expression] =
-    collectExpressions { case x: Expression => !x.resolved }
+  def unresolvedExpressions: Seq[Expression] = collectExpressions { case x: Expression =>
+    !x.resolved
+  }
 
   // Input attributes (column names) of the relation
   def inputAttributeList: AttributeList  = AttributeList.fromSeq(inputAttributes)
@@ -64,9 +64,7 @@ trait LogicalPlan extends TreeNode[LogicalPlan] with Product:
     def transformElement(arg: Any): AnyRef =
       arg match
         case e: Expression =>
-          val newExpr = e.transformPlan { case x =>
-            f(x)
-          }
+          val newExpr = e.transformPlan { case x => f(x) }
           if !newExpr.eq(e) then changed = true
           newExpr
         case l: LogicalPlan =>
@@ -101,16 +99,16 @@ trait LogicalPlan extends TreeNode[LogicalPlan] with Product:
     *
     * @param rule
     */
-  def traverse[U](rule: PartialFunction[LogicalPlan, U]): Unit =
-    recursiveTraverse(rule)(this)
+  def traverse[U](rule: PartialFunction[LogicalPlan, U]): Unit = recursiveTraverse(rule)(this)
 
   /**
     * Recursively traverse the child plan nodes and apply the given function to LogicalPlan nodes
     *
     * @param rule
     */
-  def traverseChildren[U](rule: PartialFunction[LogicalPlan, U]): Unit =
-    productIterator.foreach(child => recursiveTraverse(rule)(child))
+  def traverseChildren[U](rule: PartialFunction[LogicalPlan, U]): Unit = productIterator.foreach(
+    child => recursiveTraverse(rule)(child)
+  )
 
   private def recursiveTraverseOnce[U](f: PartialFunction[LogicalPlan, U])(arg: Any): Unit =
     def loop(v: Any): Unit =
@@ -141,12 +139,12 @@ trait LogicalPlan extends TreeNode[LogicalPlan] with Product:
     * @param rule
     * @tparam U
     */
-  def traverseChildrenOnce[U](rule: PartialFunction[LogicalPlan, U]): Unit =
-    productIterator.foreach(child => recursiveTraverseOnce(rule)(child))
+  def traverseChildrenOnce[U](rule: PartialFunction[LogicalPlan, U]): Unit = productIterator
+    .foreach(child => recursiveTraverseOnce(rule)(child))
 
   /**
-    * Iterate through LogicalPlans and apply matching rules for transformation. The transformation will be applied to
-    * the current node as well.
+    * Iterate through LogicalPlans and apply matching rules for transformation. The transformation
+    * will be applied to the current node as well.
     *
     * @param rule
     * @return
@@ -161,8 +159,8 @@ trait LogicalPlan extends TreeNode[LogicalPlan] with Product:
     rule.applyOrElse(newNode, identity[LogicalPlan])
 
   /**
-    * Traverse the tree until finding the nodes matching the pattern. All nodes found from the root will be transformed,
-    * and no further recursive match will occur from the transformed nodes.
+    * Traverse the tree until finding the nodes matching the pattern. All nodes found from the root
+    * will be transformed, and no further recursive match will occur from the transformed nodes.
     *
     * If you want to continue the transformation for the child nodes, use [[transformChildren]] or
     * [[transformChildrenOnce]] inside the rule.
@@ -348,8 +346,7 @@ trait LogicalPlan extends TreeNode[LogicalPlan] with Product:
     traverseExpressions(new PartialFunction[Expression, Unit]:
       override def isDefinedAt(x: Expression): Boolean = cond.isDefinedAt(x)
 
-      override def apply(v1: Expression): Unit =
-        if cond.apply(v1) then l += v1
+      override def apply(v1: Expression): Unit = if cond.apply(v1) then l += v1
     )
     l.result()
 

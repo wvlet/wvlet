@@ -12,7 +12,10 @@ class ExecutionPlanTest extends AirSpec:
 
   test("create an execution plan") {
     val duckdb = new DuckDBContext()
-    val trino  = new TrinoContext(TrinoConfig(catalog = "memory", schema = "main", hostAndPort = "localhost:8080"))
+    val trino =
+      new TrinoContext(
+        TrinoConfig(catalog = "memory", schema = "main", hostAndPort = "localhost:8080")
+      )
 
     inline def query(q: String)(body: String => Unit)(using ctx: DBContext): Unit =
       var expr: SqlExpr = null

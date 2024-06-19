@@ -2,7 +2,12 @@ package com.treasuredata.flow.lang.compiler.analyzer
 
 import com.treasuredata.flow.lang.StatusCode
 import com.treasuredata.flow.lang.compiler.Context
-import com.treasuredata.flow.lang.model.DataType.{EmptyRelationType, NamedType, RecordType, SchemaType}
+import com.treasuredata.flow.lang.model.DataType.{
+  EmptyRelationType,
+  NamedType,
+  RecordType,
+  SchemaType
+}
 import com.treasuredata.flow.lang.model.{DataType, RelationType}
 import com.treasuredata.flow.lang.model.expr.Name
 import wvlet.airframe.control.IO

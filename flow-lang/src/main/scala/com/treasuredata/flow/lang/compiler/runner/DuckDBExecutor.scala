@@ -46,27 +46,22 @@ class DuckDBExecutor extends LogSupport:
               val results     = resultCodec.fromMsgPack(codec.toMsgPack)
               TableRows(q.relationType, results)
         result
-      case t: TableDef =>
-        QueryResult.empty
+      case t: TableDef => QueryResult.empty
       case t: TestDef =>
         debug(s"Executing test: ${t}")
         QueryResult.empty
       case s: Subscribe =>
         debug(s"Executing subscribe: ${s}")
         QueryResult.empty
-      case f: LanguageStatement =>
-        QueryResult.empty
-      case other =>
-        throw StatusCode.NOT_IMPLEMENTED.newException(s"Unsupported plan: ${other}")
+      case f: LanguageStatement => QueryResult.empty
+      case other => throw StatusCode.NOT_IMPLEMENTED.newException(s"Unsupported plan: ${other}")
 
 object DuckDBDriver:
   def withConnection[U](f: DuckDBConnection => U): U =
     Class.forName("org.duckdb.DuckDBDriver")
     DriverManager.getConnection("jdbc:duckdb:") match
       case conn: DuckDBConnection =>
-        try
-          f(conn)
-        finally
-          conn.close()
+        try f(conn)
+        finally conn.close()
       case other =>
         throw StatusCode.NOT_IMPLEMENTED.newException("duckdb connection is unavailable")

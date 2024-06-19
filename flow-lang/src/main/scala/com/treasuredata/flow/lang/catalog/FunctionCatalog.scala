@@ -16,13 +16,18 @@ trait SQLFunction:
 trait SQLFunctionType:
   def dataType: DataType
 
-case class BoundFunction(name: String, args: Seq[DataType], returnType: DataType) extends SQLFunction:
+case class BoundFunction(name: String, args: Seq[DataType], returnType: DataType)
+    extends SQLFunction:
   require(args.forall(_.isBound), s"Found unbound arguments: ${this}")
   require(returnType.isBound, s"return type: ${returnType} is not bound")
 
-case class UnboundFunction(name: String, args: Seq[DataType], returnType: DataType) extends SQLFunction:
-  def bind(typeArgMap: Map[String, DataType]): BoundFunction =
-    BoundFunction(name, args.map(_.bind(typeArgMap)), returnType.bind(typeArgMap))
+case class UnboundFunction(name: String, args: Seq[DataType], returnType: DataType)
+    extends SQLFunction:
+  def bind(typeArgMap: Map[String, DataType]): BoundFunction = BoundFunction(
+    name,
+    args.map(_.bind(typeArgMap)),
+    returnType.bind(typeArgMap)
+  )
 
 //object UnboundFunction {
 //  def parse(name: String, argTypeStr: String, returnTypeStr: String): SQLFunction = {

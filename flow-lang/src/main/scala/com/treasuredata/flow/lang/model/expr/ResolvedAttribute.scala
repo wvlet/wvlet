@@ -24,10 +24,7 @@ case class ResolvedAttribute(
 
   override def toString =
     sourceColumn match
-      case Some(c) =>
-        s"*${typeDescription} <- ${c.fullName}"
-      case None =>
-        s"*${typeDescription}"
+      case Some(c) => s"*${typeDescription} <- ${c.fullName}"
+      case None    => s"*${typeDescription}"
 
-  override def sourceColumns: Seq[SourceColumn] =
-    sourceColumn.toSeq
+  override def sourceColumns: Seq[SourceColumn] = sourceColumn.toSeq

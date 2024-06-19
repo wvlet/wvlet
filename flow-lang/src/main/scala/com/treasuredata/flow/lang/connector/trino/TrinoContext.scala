@@ -22,18 +22,18 @@ class TrinoContext(val config: TrinoConfig) extends DBContext:
 
   override protected def newConnection: Connection =
     val jdbcUrl =
-      s"jdbc:trino://${config.hostAndPort}/${config.catalog}/${config.schema}${if config.useSSL then "?SSL=true" else ""}"
+      s"jdbc:trino://${config.hostAndPort}/${config.catalog}/${config.schema}${
+          if config.useSSL then "?SSL=true" else ""
+        }"
     val properties = new Properties()
     config.user.foreach(x => properties.put("user", x))
     config.password.foreach(x => properties.put("password", x))
 
     driver.connect(jdbcUrl, properties)
 
-  override def close(): Unit =
-    driver.close()
+  override def close(): Unit = driver.close()
 
-  def withConfig(newConfig: TrinoConfig): TrinoContext =
-    new TrinoContext(newConfig)
+  def withConfig(newConfig: TrinoConfig): TrinoContext = new TrinoContext(newConfig)
 
   override def IString: IString   = TrinoString(using this)
   override def IBoolean: IBoolean = TrinoBoolean(using this)
