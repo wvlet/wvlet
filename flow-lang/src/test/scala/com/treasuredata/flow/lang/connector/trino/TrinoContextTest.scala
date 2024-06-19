@@ -10,11 +10,9 @@ import java.io.File
 
 class TrinoContextTest extends AirSpec:
 
-  initDesign {
-    _.bind[TestTrinoServer]
-      .toInstance(new TestTrinoServer())
-      .bind[TrinoConfig]
-      .toProvider { (server: TestTrinoServer) =>
+  initDesign:
+    _.bindInstance[TestTrinoServer](new TestTrinoServer())
+      .bindProvider { (server: TestTrinoServer) =>
         TrinoConfig(
           catalog = "memory",
           schema = "main",
@@ -24,7 +22,6 @@ class TrinoContextTest extends AirSpec:
           password = Some("")
         )
       }
-  }
 
   test("Create an in-memory schema and table"): (trino: TrinoContext) =>
     trino.createSchema("memory", "main")
