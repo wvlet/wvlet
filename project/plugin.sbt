@@ -1,12 +1,13 @@
 // Ignore binary incompatible errors for libraries using scala-xml.
 // sbt-scoverage upgraded to scala-xml 2.1.0, but other sbt-plugins and Scala compilier 2.12 uses scala-xml 1.x.x
-ThisBuild / libraryDependencySchemes ++= Seq(
-  "org.scala-lang.modules" %% "scala-xml"                % "always",
-  "org.scala-lang.modules" %% "scala-parser-combinators" % "always"
-)
+ThisBuild / libraryDependencySchemes ++=
+  Seq(
+    "org.scala-lang.modules" %% "scala-xml"                % "always",
+    "org.scala-lang.modules" %% "scala-parser-combinators" % "always"
+  )
 
 // ThisBuild / resolvers ++= Resolver.sonatypeOssRepos("snapshots")
-val AIRFRAME_VERSION = sys.env.getOrElse("AIRFRAME_VERSION", "24.6.0")
+val AIRFRAME_VERSION = sys.env.getOrElse("AIRFRAME_VERSION", "24.6.1")
 
 addSbtPlugin("org.scalameta"      % "sbt-scalafmt"  % "2.5.2")
 addSbtPlugin("com.eed3si9n"       % "sbt-buildinfo" % "0.12.0")
