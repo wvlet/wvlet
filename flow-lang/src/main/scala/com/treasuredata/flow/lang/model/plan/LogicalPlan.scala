@@ -4,7 +4,21 @@ import com.treasuredata.flow.lang.compiler.SourceFile
 import com.treasuredata.flow.lang.model.expr.{Attribute, AttributeList, Expression}
 import com.treasuredata.flow.lang.model.{NodeLocation, TreeNode}
 
+enum PlanProperty:
+  // Used for recording a Symbol defined for the tree
+  case SymbolOfTree
+
 trait LogicalPlan extends TreeNode[LogicalPlan] with Product:
+  // Ephemeral properties of the plan node, which will be used during compilation phases
+  private var properties = Map.empty[PlanProperty, Any]
+
+  def setProperty[A](key: PlanProperty, value: A): this.type =
+    properties += key -> value
+    this
+
+  def hasProperty(key: PlanProperty): Boolean      = properties.contains(key)
+  def getProperty[A](key: PlanProperty): Option[A] = properties.get(key).map(_.asInstanceOf[A])
+
   def isEmpty: Boolean  = false
   def nonEmpty: Boolean = !isEmpty
 

@@ -160,6 +160,10 @@ object DataType extends LogSupport:
   sealed abstract class TypeParameter(name: String)
       extends DataType(typeName = name, typeParams = Seq.empty)
 
+  case class UnresolvedTypeParameter(name: String, typeBound: Option[Name])
+      extends TypeParameter(name):
+    override def isResolved: Boolean = false
+
   /**
     * Constant type used for arguments of varchar(n), char(n), decimal(p, q), etc.
     */

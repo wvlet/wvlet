@@ -110,6 +110,7 @@ enum FlowToken(val tokenType: TokenType, val str: String):
 
   case THIS extends FlowToken(Keyword, "this")
 
+  case OF extends FlowToken(Keyword, "of")
   case IN extends FlowToken(Keyword, "in")
   case BY extends FlowToken(Keyword, "by")
   case AS extends FlowToken(Keyword, "as")

@@ -22,16 +22,10 @@ sealed trait Name extends Expression:
   def value: String = fullName
   def leafName: String
 
+val NoName: Name = UnquotedIdentifier("<NoName>", None)
+
 object Name:
   def fromString(s: String): Name = UnquotedIdentifier(s, None)
-
-case object NoName extends Name:
-  override def fullName: String = ""
-  override def value: String    = ""
-  override def leafName: String = ""
-
-  override def children: Seq[Expression]          = Nil
-  override def nodeLocation: Option[NodeLocation] = None
 
 case class Wildcard(nodeLocation: Option[NodeLocation]) extends LeafExpression with Name:
   override def fullName: String = "*"

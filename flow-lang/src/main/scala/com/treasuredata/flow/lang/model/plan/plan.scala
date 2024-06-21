@@ -1,6 +1,7 @@
 package com.treasuredata.flow.lang.model.plan
 
 import com.treasuredata.flow.lang.compiler.SourceFile
+import com.treasuredata.flow.lang.model.DataType.TypeParameter
 import com.treasuredata.flow.lang.model.NodeLocation
 import com.treasuredata.flow.lang.model.expr.{Attribute, Expression, Name, StringLiteral}
 import com.treasuredata.flow.lang.model.plan.LogicalPlan
@@ -54,6 +55,7 @@ case class TypeAlias(alias: Name, sourceTypeName: Name, nodeLocation: Option[Nod
 
 case class TypeDef(
     name: Name,
+    params: List[TypeParameter],
     scopes: List[DefScope],
     parent: Option[Name],
     elems: Seq[TypeElem],
@@ -63,6 +65,7 @@ case class TypeDef(
 // type elements (def or column definition)
 sealed trait TypeElem extends Expression
 
+// def ... { ... } in the type definition
 case class TypeDefDef(
     name: Name,
     args: List[DefArg],

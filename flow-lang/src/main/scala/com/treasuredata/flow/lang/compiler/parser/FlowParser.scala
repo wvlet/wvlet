@@ -3,6 +3,11 @@ package com.treasuredata.flow.lang.compiler.parser
 import com.treasuredata.flow.lang.StatusCode
 import com.treasuredata.flow.lang.compiler.parser.FlowToken.{EQ, FOR, FROM, R_PAREN}
 import com.treasuredata.flow.lang.compiler.{CompilationUnit, SourceFile}
+import com.treasuredata.flow.lang.model.DataType.{
+  TypeParameter,
+  UnresolvedType,
+  UnresolvedTypeParameter
+}
 import com.treasuredata.flow.lang.model.expr.*
 import com.treasuredata.flow.lang.model.plan.*
 import wvlet.log.LogSupport
@@ -76,7 +81,7 @@ import wvlet.log.LogSupport
   *
   *   typeDef    : 'type' identifier typeParams? context? typeExtends? ':' typeElem* 'end'
   *   typeParams : '[' typeParam (',' typeParam)* ']'
-  *   typeParam  : identifier (':' identifier)?
+  *   typeParam  : identifier ('of' identifier)?
   *   typeExtends: 'extends' qualifiedId (',' qualifiedId)*
   *   typeElem   : valDef | funDef
   *
@@ -154,7 +159,7 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
         .newException(s"Expected ${expected}, but found ${t.token}", t.sourceLocation)
 
   private def unexpected(t: TokenData): Nothing =
-    throw StatusCode.SYNTAX_ERROR.newException(s"Unexpected token: ${t}", t.sourceLocation)
+    throw StatusCode.SYNTAX_ERROR.newException(s"Unexpected token ${t.token}", t.sourceLocation)
 
   private def unexpected(expr: Expression): Nothing =
     throw StatusCode
@@ -288,6 +293,7 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
   def typeDef(): TypeDef =
     val t       = consume(FlowToken.TYPE)
     val name    = identifier()
+    val tp      = typeParams()
     val scopes  = context()
     val parents = typeExtends()
     consume(FlowToken.COLON)
@@ -301,7 +307,37 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
               .fullName} extends ${parents.map(_.fullName).mkString(", ")}",
           t.sourceLocation
         )
-    TypeDef(name, scopes, parents.headOption, elems, t.nodeLocation)
+    TypeDef(name, tp, scopes, parents.headOption, elems, t.nodeLocation)
+
+  def typeParams(): List[TypeParameter] =
+    scanner.lookAhead().token match
+      case FlowToken.L_BRACKET =>
+        consume(FlowToken.L_BRACKET)
+        val params = List.newBuilder[TypeParameter]
+        def nextParam: Unit =
+          val t = scanner.lookAhead()
+          t.token match
+            case FlowToken.COMMA =>
+              consume(FlowToken.COMMA)
+              nextParam
+            case FlowToken.R_BRACKET =>
+            // ok
+            case _ =>
+              val name = identifier()
+              val tpe =
+                scanner.lookAhead().token match
+                  case FlowToken.OF =>
+                    consume(FlowToken.OF)
+                    Some(identifier())
+                  case _ =>
+                    None
+              params += UnresolvedTypeParameter(name.fullName, tpe)
+              nextParam
+        nextParam
+        consume(FlowToken.R_BRACKET)
+        params.result()
+      case _ =>
+        Nil
 
   def typeExtends(): List[Name] =
     scanner.lookAhead().token match
@@ -427,8 +463,7 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
 
   def context(): List[DefScope] =
     scanner.lookAhead().token match
-      case FlowToken.L_PAREN =>
-        consume(FlowToken.L_PAREN)
+      case FlowToken.IN =>
         consume(FlowToken.IN)
         val scopes = List.newBuilder[DefScope]
         def nextScope: Unit =
@@ -437,22 +472,13 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
             case FlowToken.COMMA =>
               consume(FlowToken.COMMA)
               nextScope
-            case FlowToken.R_PAREN =>
+            case FlowToken.COLON | FlowToken.EQ | FlowToken.EXTENDS =>
             // ok
             case _ =>
               val nameOrType = identifier()
-              scanner.lookAhead().token match
-                case FlowToken.COLON =>
-                  consume(FlowToken.COLON)
-                  val tpe = identifier()
-                  scopes += DefScope(Some(nameOrType), tpe, t.nodeLocation)
-                  nextScope
-                case FlowToken.COMMA | FlowToken.R_PAREN =>
-                  scopes += DefScope(None, nameOrType, t.nodeLocation)
-                  nextScope
-                case _ =>
+              scopes += DefScope(None, nameOrType, t.nodeLocation)
+              nextScope
         nextScope
-        consume(FlowToken.R_PAREN)
         scopes.result()
       case _ =>
         Nil
@@ -548,6 +574,8 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
         val right  = relationPrimary()
         val joinOn = joinCriteria()
         Join(joinType, input, right, joinOn, t.nodeLocation)
+      case _ =>
+        unexpected(t)
 
   def joinCriteria(): JoinCriteria =
     val t = scanner.lookAhead()

@@ -19,7 +19,7 @@ case class TokenData(token: FlowToken, str: String, offset: Int, length: Int):
   def nodeLocation(using src: SourceFile): Option[NodeLocation] =
     val line = src.offsetToLine(offset)
     val col  = src.offsetToColumn(offset)
-    Some(NodeLocation(line, col))
+    Some(NodeLocation(line + 1, col))
 
 class ScanState(startFrom: Int = 0):
   override def toString: String = s"'${str}' <${token}> (${lastOffset}-${offset})"

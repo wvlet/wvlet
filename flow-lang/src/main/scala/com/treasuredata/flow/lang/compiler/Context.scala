@@ -2,6 +2,8 @@ package com.treasuredata.flow.lang.compiler
 
 import com.treasuredata.flow.lang.StatusCode
 import com.treasuredata.flow.lang.catalog.Catalog
+import com.treasuredata.flow.lang.model.expr.UnquotedIdentifier
+import com.treasuredata.flow.lang.model.plan.ImportDef
 import wvlet.log.LogSupport
 
 /**
@@ -11,24 +13,32 @@ import wvlet.log.LogSupport
   * Context and Scope are mutable, and the compiler will update them as it processes the source
   * code.
   */
-case class Context(sourceFolders: List[String] = List.empty) extends LogSupport:
-  private var _compileUnit: CompilationUnit = CompilationUnit.empty
-  private var _scope: Scope                 = Scope()
+case class Context(
+    outer: Context = Context.NoContext,
+    owner: Symbol = Symbol.NoSymbol,
+    scope: Scope = Scope.empty,
+    compilationUnit: CompilationUnit = CompilationUnit.empty,
+    sourceFolders: List[String] = List.empty
+) extends LogSupport:
 
-  def scope: Scope                 = _scope
-  def compileUnit: CompilationUnit = _compileUnit
+  private var symbolCount = 0
+
+  def newSymbol: Symbol =
+    symbolCount += 1
+    Symbol(UnquotedIdentifier(s"s${symbolCount}", None))
+
+  private var importDefs = List.empty[ImportDef]
 
   // Get the context catalog
   // TODO support multiple catalogs
   def catalog: Catalog = ???
 
-  def withCompilationUnit[U](newCompileUnit: CompilationUnit)(block: Context => U): U =
-    val prev = _compileUnit
-    try
-      _compileUnit = newCompileUnit
-      block(this)
-    finally
-      _compileUnit = prev
+  def addImport(i: ImportDef): Context =
+    importDefs = i :: importDefs
+    this
+
+  def withCompilationUnit[U](newCompileUnit: CompilationUnit): Context = this
+    .copy(outer = this, compilationUnit = newCompileUnit)
 
   def findDataFile(path: String): Option[String] = sourceFolders
     .map(folder => s"${folder}/data/${path}")
@@ -40,3 +50,6 @@ case class Context(sourceFolders: List[String] = List.empty) extends LogSupport:
         throw StatusCode.FILE_NOT_FOUND.newException(s"${path} is not found")
       case Some(f) =>
         f
+
+object Context:
+  val NoContext: Context = Context()

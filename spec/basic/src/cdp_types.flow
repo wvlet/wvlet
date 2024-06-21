@@ -26,7 +26,7 @@ type td_sdk_log:
   time: int
 end
 
-type ip_address(in trino) extends string:
+type ip_address in trino extends string:
   def country_name = sql"td_ip_to_country_name({this})"
   def city_name = sql"td_ip_to_city_name({this})"
   def city_latitude = sql"td_ip_to_latitude({this})"
@@ -41,7 +41,7 @@ type ip_address(in trino) extends string:
   def domain = sql"td_ip_to_domain({this})"
 end
 
-type ip_address(in duckdb) extends string:
+type ip_address in duckdb extends string:
   def country_name = sql"'N/A'"
   def city_name = sql"'N/A'"
   def city_latitude = sql"'N/A'"
@@ -56,7 +56,7 @@ type ip_address(in duckdb) extends string:
   def domain = sql"'N/A'"
 end
 
-type user_agent(in trino) extends string:
+type user_agent in trino extends string:
   def category = sql"td_parse_agent({this})('category')"
   def name = sql"td_parse_agent({this})('name')"
   def os = sql"td_parse_agent({this})('os')"
@@ -65,7 +65,7 @@ type user_agent(in trino) extends string:
   def version = sql"td_parse_agent({this})('version')"
 end
 
-type user_agent(in duckdb) extends string:
+type user_agent in duckdb extends string:
   def category = sql"'N/A'"
   def name = sql"'N/A'"
   def os = sql"'N/A'"
@@ -74,14 +74,14 @@ type user_agent(in duckdb) extends string:
   def version = sql"'N/A'"
 end
 
-type url(in trino) extends string:
+type url in trino extends string:
   def utm_campaign = sql"parse_url({this}, 'QUERY', 'utm_campaign')"
   def utm_medium = sql"parse_url({this}, 'QUERY', 'utm_medium')"
   def utm_source = sql"parse_url({this}, 'QUERY', 'utm_source')"
 end
 
 
-type url(in duckdb) extends string:
+type url in duckdb extends string:
   def utm_campaign = sql"'N/A'"
   def utm_medium = sql"'N/A'"
   def utm_source = sql"'N/A'"

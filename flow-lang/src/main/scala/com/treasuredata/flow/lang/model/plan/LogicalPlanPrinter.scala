@@ -65,10 +65,15 @@ object LogicalPlanPrinter extends LogSupport:
             t.nodeLocation,
             ")] ",
             t.name,
+            if t.params.isEmpty then
+              Nil
+            else
+              List("[", t.params.map(_.typeDescription).mkString(", "), "]")
+            ,
             if t.scopes.isEmpty then
               Nil
             else
-              List("(in ", concat(t.scopes, ", "), ")")
+              List(" in ", concat(t.scopes, ", "))
             ,
             if t.parent.isEmpty then
               Nil
@@ -216,8 +221,6 @@ object LogicalPlanPrinter extends LogSupport:
             concat(List(name, " = ", arg.value))
           case None =>
             concat(List(arg.value))
-      case id: Identifier =>
-        id.value
       case i: InterpolatedString =>
         s"${printExpression(i.prefix)}{${i.parts.map(printExpression).mkString(", ")}}"
       case r: Ref =>

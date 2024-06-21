@@ -259,6 +259,8 @@ class SQLGenerator(config: SQLGeneratorConfig = SQLGeneratorConfig()) extends Lo
         val r = printRelationWithParenthesesIfNecessary(right)
         val c =
           cond match
+            case NoJoinCriteria =>
+              ""
             case NaturalJoin(_) =>
               ""
             case JoinUsing(columns, _) =>

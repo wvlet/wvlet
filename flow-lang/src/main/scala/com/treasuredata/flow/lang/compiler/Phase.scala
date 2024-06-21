@@ -10,9 +10,8 @@ trait Phase(
     debug(s"Running phase ${name}")
     val buf = List.newBuilder[CompilationUnit]
     for unit <- units do
-      context.withCompilationUnit(unit) { ctx =>
-        buf += run(unit, ctx)
-      }
+      val newContext = context.withCompilationUnit(unit)
+      buf += run(unit, newContext)
     buf.result()
 
   def run(unit: CompilationUnit, context: Context): CompilationUnit

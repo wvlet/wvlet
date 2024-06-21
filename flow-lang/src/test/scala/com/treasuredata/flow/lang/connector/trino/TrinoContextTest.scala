@@ -1,5 +1,6 @@
 package com.treasuredata.flow.lang.connector.trino
 
+import wvlet.airframe.Design
 import wvlet.airframe.codec.JDBCCodec
 import wvlet.airframe.codec.JDBCCodec.ResultSetCodec
 import wvlet.airframe.control.Control
@@ -10,8 +11,8 @@ import java.io.File
 
 class TrinoContextTest extends AirSpec:
 
-  initDesign:
-    _.bindInstance[TestTrinoServer](new TestTrinoServer())
+  initDesign { d =>
+    d.bindInstance[TestTrinoServer](new TestTrinoServer())
       .bindProvider { (server: TestTrinoServer) =>
         TrinoConfig(
           catalog = "memory",
@@ -22,6 +23,7 @@ class TrinoContextTest extends AirSpec:
           password = Some("")
         )
       }
+  }
 
   test("Create an in-memory schema and table"): (trino: TrinoContext) =>
     trino.createSchema("memory", "main")
