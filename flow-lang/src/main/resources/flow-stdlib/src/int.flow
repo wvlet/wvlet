@@ -1,0 +1,22 @@
+package flow.standard
+
+type int:
+  def to_int: int = sql"cast({this} as bigint)"
+  def to_long: long = sql"cast({this} as bigint)"
+  def to_float: float = sql"cast({this} as double)"
+  def to_double: double = sql"cast({this} as double)"
+  def to_boolean: boolean = sql"cast({this} as boolean)"
+  def to_string: string = sql"cast({this} as varchar)"
+
+  def or_else(other:int): int = sql"coalesce({this},{other})"
+end
+
+type int in td_trino:
+  def td_interval(duration:string): boolean = sql"td_interval({this}, {duration})"
+  def td_time_string(format:string): string = sql"td_time_string({this}, {format})"
+end
+
+type int in td_hive:
+  def td_interval(duration:string): boolean = sql"td_interval({this}, {duration})"
+  def td_time_string(format:string): string = sql"td_time_string({this}, {format})"
+end
