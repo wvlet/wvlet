@@ -16,20 +16,18 @@ object Scope:
   */
 class Scope(outer: Option[Scope]) extends LogSupport:
   private val types    = mutable.Map.empty[String, DataType].addAll(DataType.knownPrimitiveTypes)
-  private val aliases  = mutable.Map.empty[String, Name]
+  private val aliases  = mutable.Map.empty[String, String]
   private val tableDef = mutable.Map.empty[String, TableDef]
 
   def getAllTypes: Map[String, DataType] = types.toMap
 
   def getAllTableDefs: Map[String, TableDef] = tableDef.toMap
 
-  def addAlias(alias: Name, typeName: Name): Unit = aliases.put(alias.fullName, typeName)
+  def addAlias(alias: Name, typeName: String): Unit = aliases.put(alias.fullName, typeName)
 
   def addTableDef(tbl: TableDef): Unit = tableDef.put(tbl.name.fullName, tbl)
 
-  def addType(dataType: DataType): Unit =
-    trace(s"Add type: ${dataType.typeName}")
-    types.put(dataType.typeName, dataType)
+  def addType(dataType: DataType): Unit = types.put(dataType.typeName, dataType)
 
   def getTableDef(name: Name): Option[TableDef] = tableDef.get(name.fullName)
 
@@ -54,7 +52,7 @@ class Scope(outer: Option[Scope]) extends LogSupport:
     val tpe = types
       .get(name)
       // search aliases
-      .orElse(aliases.get(name).flatMap(x => types.get(x.fullName)))
+      .orElse(aliases.get(name).flatMap(x => types.get(x)))
       // search table def
       .orElse {
         tableDef.get(name).flatMap(_.getType).flatMap(x => findType(x.fullName, seen + name))

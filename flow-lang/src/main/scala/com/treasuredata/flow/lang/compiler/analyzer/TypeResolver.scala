@@ -22,7 +22,8 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
     unit
 
   def defaultRules: List[RewriteRule] =
-    resolveJsonFileScan :: resolveTableRef :: resolveRelation :: resolveProjectedColumns :: Nil
+    resolveLocalFileScan :: resolveTableRef :: resolveRelation :: resolveProjectedColumns ::
+      resolveModelDef :: Nil
 
   def resolve(plan: LogicalPlan, context: Context): LogicalPlan = RewriteRule
     .rewrite(plan, defaultRules, context)
@@ -35,7 +36,10 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
       case _ =>
         throw StatusCode.NOT_A_RELATION.newException(s"Not a relation:\n${resolvedPlan.pp}")
 
-  object resolveJsonFileScan extends RewriteRule:
+  /**
+    * Resolve schema of local file scans (e.g., JSON, Parquet)
+    */
+  object resolveLocalFileScan extends RewriteRule:
     override def apply(context: Context): PlanRewriter =
       case r: FileScan if r.path.endsWith(".json") =>
         val file             = context.getDataFile(r.path)
@@ -46,6 +50,15 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
             n
           }
         JSONFileScan(file, jsonRelationType, cols, r.nodeLocation)
+      case r: FileScan if r.path.endsWith(".parquet") =>
+        val file                = context.dataFilePath(r.path)
+        val parquetRelationType = ParquetAnalyzer.guessSchema(file)
+        val cols = parquetRelationType
+          .typeParams
+          .collect { case n: NamedType =>
+            n
+          }
+        ParquetFileScan(file, parquetRelationType, cols, r.nodeLocation)
 
   /**
     * Resolve TableRefs with concrete TableScans using the table schema in the catalog.
@@ -55,6 +68,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
       case ref: TableRef =>
         context.scope.findType(ref.name.fullName) match
           case Some(tpe: RelationType) =>
+            // warn(s"Resolved table ref: ${ref} -> ${tpe.typeName}")
             context.scope.resolveType(tpe.typeName) match
               case Some(schema: SchemaType) =>
                 context.scope.getTableDef(ref.name) match
@@ -63,6 +77,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
                   case None =>
                     RelScan(ref.name.fullName, tpe, schema.columnTypes, ref.nodeLocation)
               case other =>
+                // warn(s"Unresolved table ref: ${ref} -> ${other}")
                 ref
           case _ =>
             trace(s"Unresolved table ref: ${ref}")
@@ -124,3 +139,12 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
   ): Expression =
     trace(s"resolve ${expr} using ${knownAttributes}")
     expr
+
+  object resolveModelDef extends RewriteRule:
+    override def apply(context: Context): PlanRewriter = { case m: ModelDef =>
+      context.scope.resolveType(m.relationType.typeName) match
+        case Some(r: RelationType) =>
+          m.copy(relationType = r)
+        case _ =>
+          m
+    }

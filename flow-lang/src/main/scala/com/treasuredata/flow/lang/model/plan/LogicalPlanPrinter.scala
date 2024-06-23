@@ -81,6 +81,7 @@ object LogicalPlanPrinter extends LogSupport:
               List(" extends ", t.parent)
           )
         )
+        out.println("")
         out.println(s)
         printChildExprs(t.elems)
       case _ =>
@@ -125,8 +126,20 @@ object LogicalPlanPrinter extends LogSupport:
           m match
             case t: TableScan =>
               s"${ws}[${m.modelName}${loc}] ${t.name}${functionSig}"
+            case src: HasSourceFile =>
+              s"${ws}[${m.modelName} ${src.sourceFile.file}${loc}]${functionSig} "
             case _ =>
               s"${ws}[${m.modelName}${loc}]${functionSig}"
+
+        m match
+          case p: PackageDef =>
+          // do not add new line
+          case m: ModelDef =>
+            out.println()
+          case l: LanguageStatement =>
+            // add a new line for language statement
+            out.println()
+          case _ =>
 
         attr.length match
           case 0 =>
@@ -135,6 +148,7 @@ object LogicalPlanPrinter extends LogSupport:
             out.println(s"${prefix}")
             printChildExprs(m.childExpressions)
         for c <- m.children do
+          // Add indent for child releations
           print(c, out, level + 1)
 
   private def printExpression(e: Expression): String =

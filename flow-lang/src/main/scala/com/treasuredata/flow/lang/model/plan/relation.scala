@@ -32,6 +32,16 @@ trait UnaryRelation extends Relation with UnaryPlan:
   def inputRelation: Relation = child
   override def child: Relation
 
+case class ModelDef(
+    name: Name,
+    params: List[DefArg],
+    relationType: RelationType,
+    child: Relation,
+    nodeLocation: Option[NodeLocation]
+) extends UnaryRelation:
+  override def outputAttributes: Seq[Attribute] = child.outputAttributes
+  override def inputAttributes: Seq[Attribute]  = child.inputAttributes
+
 case class TestRelation(
     child: Relation,
     textExprs: Seq[Expression],
@@ -109,7 +119,7 @@ case class Values(rows: Seq[Expression], nodeLocation: Option[NodeLocation])
     with LeafPlan:
   override def toString: String = s"Values(${rows.mkString(", ")})"
 
-  override def relationType: RelationType =
+  override val relationType: RelationType =
     // TODO Resolve column types
     UnresolvedRelationType(RelationType.newRelationTypeName)
 
@@ -134,14 +144,14 @@ case class Values(rows: Seq[Expression], nodeLocation: Option[NodeLocation])
 case class TableRef(name: Name, nodeLocation: Option[NodeLocation]) extends Relation with LeafPlan:
   override def toString: String                 = s"TableRef(${name})"
   override def outputAttributes: Seq[Attribute] = Nil
-  override def relationType: RelationType       = UnresolvedRelationType(name.fullName)
+  override val relationType: RelationType       = UnresolvedRelationType(name.fullName)
 
 case class FileScan(path: String, nodeLocation: Option[NodeLocation])
     extends Relation
     with LeafPlan:
   override def toString: String                 = s"FileScan(${path})"
   override def outputAttributes: Seq[Attribute] = Nil
-  override def relationType: RelationType = UnresolvedRelationType(RelationType.newRelationTypeName)
+  override val relationType: RelationType = UnresolvedRelationType(RelationType.newRelationTypeName)
 
 case class PathScan(
     name: String,
@@ -152,7 +162,7 @@ case class PathScan(
     with LeafPlan:
   override def toString: String                 = s"PathScan(${path})"
   override def outputAttributes: Seq[Attribute] = Nil
-  override def relationType: RelationType = UnresolvedRelationType(RelationType.newRelationTypeName)
+  override val relationType: RelationType = UnresolvedRelationType(RelationType.newRelationTypeName)
 
 case class JSONFileScan(
     path: String,
@@ -173,14 +183,36 @@ case class JSONFileScan(
   }
 
   override def relationType: RelationType = ProjectedType(schema.typeName, columns, schema)
-
   override def toString: String = s"JSONFileScan(path:${path}, columns:[${columns.mkString(", ")}])"
+  override lazy val resolved    = true
+
+case class ParquetFileScan(
+    path: String,
+    schema: RelationType,
+    columns: Seq[NamedType],
+    nodeLocation: Option[NodeLocation]
+) extends Relation
+    with LeafPlan:
+  override def inputAttributes: Seq[Attribute] = Seq.empty
+
+  override def outputAttributes: Seq[Attribute] = columns.map { col =>
+    ResolvedAttribute(
+      col.name,
+      col,
+      None, // TODO Some(SourceColumn(table, col)),
+      None  // ResolvedAttribute always has no NodeLocation
+    )
+  }
+
+  override def relationType: RelationType = ProjectedType(schema.typeName, columns, schema)
+  override def toString: String =
+    s"ParquetFileScan(path:${path}, columns:[${columns.mkString(", ")}])"
 
   override lazy val resolved = true
 
 case class RawSQL(sql: String, nodeLocation: Option[NodeLocation]) extends Relation with LeafPlan:
   override def outputAttributes: Seq[Attribute] = Nil
-  override def relationType: RelationType = UnresolvedRelationType(RelationType.newRelationTypeName)
+  override val relationType: RelationType = UnresolvedRelationType(RelationType.newRelationTypeName)
 
 // Deduplicate (duplicate elimination) the input relation
 case class Distinct(child: Relation, nodeLocation: Option[NodeLocation]) extends UnaryRelation:
@@ -544,7 +576,7 @@ case class TableScan(
     )
   }
 
-  override def relationType: RelationType = ProjectedType(schema.typeName, columns, schema)
+  override val relationType: RelationType = ProjectedType(schema.typeName, columns, schema)
 
   override def toString: String = s"TableScan(name:${name}, columns:[${columns.mkString(", ")}])"
 
@@ -615,7 +647,7 @@ case class IncrementalTableScan(
     ResolvedAttribute(col.name, col, None, None)
   }
 
-  override def relationType: RelationType = ProjectedType(schema.typeName, columns, schema)
+  override val relationType: RelationType = ProjectedType(schema.typeName, columns, schema)
 
   override def toString: String =
     s"IncrementalScan(name:${name}, columns:[${columns.mkString(", ")}])"

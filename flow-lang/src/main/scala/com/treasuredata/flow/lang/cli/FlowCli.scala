@@ -43,8 +43,9 @@ class FlowCli(opts: FlowCliOption) extends LogSupport:
       sourceFolders: Array[String]
   ): Unit =
     debug(s"source folders: ${sourceFolders.mkString(", ")}")
-    debug(s"current directory: ${new File(".").getAbsolutePath}")
-    val compileResult = Compiler(Compiler.allPhases).compile(sourceFolders.toList)
+    val contextDirectory = sourceFolders.headOption.getOrElse(new File(".").getAbsolutePath)
+    debug(s"context directory: ${contextDirectory}")
+    val compileResult = Compiler(Compiler.allPhases).compile(sourceFolders.toList, contextDirectory)
     compileResult
       .typedPlans
       .collect:

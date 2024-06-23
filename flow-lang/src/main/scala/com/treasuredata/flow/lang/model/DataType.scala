@@ -31,7 +31,7 @@ abstract class DataType(val typeName: String, val typeParams: Seq[DataType]):
   def resolved: DataType = this
 
 /**
-  * A base type for representing LogicalPlan node types, which return table records
+  * p A base type for representing LogicalPlan node types, which return table records
   * @param typeName
   * @param typeParams
   */
@@ -42,7 +42,11 @@ sealed abstract class RelationType(
   def fields: Seq[DataType]
 
 object RelationType:
-  def newRelationTypeName: String = ULID.newULIDString
+  private var typeCount: Int = 0
+  def newRelationTypeName: String =
+    typeCount += 1
+    // ULID.newULIDString
+    s"_t${typeCount}"
 
 object DataType extends LogSupport:
 
@@ -242,7 +246,8 @@ object DataType extends LogSupport:
         "int"      -> IntegerType,
         "bigint"   -> LongType,
         "tinyint"  -> ByteType,
-        "smallint" -> ShortType
+        "smallint" -> ShortType,
+        "varchar"  -> StringType
       )
 
   def getPrimitiveTypeTable: Map[String, DataType] = primitiveTypeTable

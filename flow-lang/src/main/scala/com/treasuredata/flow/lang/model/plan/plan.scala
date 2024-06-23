@@ -2,7 +2,7 @@ package com.treasuredata.flow.lang.model.plan
 
 import com.treasuredata.flow.lang.compiler.SourceFile
 import com.treasuredata.flow.lang.model.DataType.TypeParameter
-import com.treasuredata.flow.lang.model.NodeLocation
+import com.treasuredata.flow.lang.model.{NodeLocation, RelationType}
 import com.treasuredata.flow.lang.model.expr.{Attribute, Expression, Name, StringLiteral}
 import com.treasuredata.flow.lang.model.plan.LogicalPlan
 
@@ -12,13 +12,17 @@ sealed trait LanguageStatement extends LogicalPlan with LeafPlan:
   override def outputAttributes: Seq[Attribute] = Nil
   override def inputAttributes: Seq[Attribute]  = Nil
 
+trait HasSourceFile:
+  def sourceFile: SourceFile
+
 // Top-level definition for each source file
 case class PackageDef(
     name: Option[Expression],
     statements: List[LogicalPlan],
     sourceFile: SourceFile = SourceFile.NoSourceFile,
     nodeLocation: Option[NodeLocation]
-) extends LanguageStatement:
+) extends LanguageStatement
+    with HasSourceFile:
   override def isEmpty: Boolean                 = statements.isEmpty
   override def children: Seq[LogicalPlan]       = statements
   override def outputAttributes: Seq[Attribute] = Nil
@@ -31,15 +35,6 @@ case class ImportDef(
     fromSource: Option[StringLiteral],
     nodeLocation: Option[NodeLocation]
 ) extends LanguageStatement
-
-case class ModelDef(
-    name: Name,
-    params: List[DefArg],
-    tpe: Option[Name],
-    query: Relation,
-    nodeLocation: Option[NodeLocation]
-) extends LanguageStatement:
-  override def children: Seq[LogicalPlan] = Seq(query)
 
 //case class ModuleDef(
 //    name: Name,

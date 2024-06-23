@@ -34,14 +34,19 @@ object Compiler:
   def allPhases: List[List[Phase]] = List(analysisPhases, transformPhases)
 
 class Compiler(phases: List[List[Phase]] = Compiler.allPhases) extends LogSupport:
-  def compile(sourceFolder: String): CompileResult = compile(List(sourceFolder))
+  /**
+    * @param sourceFolder
+    *   A folder containing src and data folders
+    * @return
+    */
+  def compile(sourceFolder: String): CompileResult = compile(List(sourceFolder), sourceFolder)
 
-  def compile(sourceFolders: List[String]): CompileResult =
+  def compile(sourceFolders: List[String], contextFolder: String): CompileResult =
     var units: List[CompilationUnit] = sourceFolders.flatMap { folder =>
       val srcPath = s"${folder}/src"
       CompilationUnit.fromPath(srcPath)
     }
-    val ctx = Context(sourceFolders = sourceFolders)
+    val ctx = Context(sourceFolders = sourceFolders, workingFolder = contextFolder)
     for
       phaseGroup <- phases
       phase      <- phaseGroup

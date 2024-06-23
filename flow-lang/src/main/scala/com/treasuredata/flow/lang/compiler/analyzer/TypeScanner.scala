@@ -8,9 +8,10 @@ import com.treasuredata.flow.lang.model.DataType.{
   FunctionType,
   NamedType,
   SchemaType,
+  UnresolvedRelationType,
   UnresolvedType
 }
-import com.treasuredata.flow.lang.model.expr.{ColumnType, Literal}
+import com.treasuredata.flow.lang.model.expr.{ColumnType, Literal, Name}
 import com.treasuredata.flow.lang.model.plan.*
 import wvlet.log.LogSupport
 
@@ -23,22 +24,29 @@ object PostTypeScan extends TypeScanner("post-type-scan")
 class TypeScanner(phaseName: String) extends Phase(phaseName) with LogSupport:
   override def run(unit: CompilationUnit, context: Context): CompilationUnit =
     scanTypeDefs(unit.unresolvedPlan, context)
+    // debug(context.scope.getAllTypes.map(t => s"[${t._1}]: ${t._2.typeDescription}").mkString("\n"))
     unit
 
   protected def scanTypeDefs(plan: LogicalPlan, context: Context): Unit = plan.traverse {
     case alias: TypeAlias =>
-      context.scope.addAlias(alias.alias, alias.sourceTypeName)
+      context.scope.addAlias(alias.alias, alias.sourceTypeName.fullName)
     case td: TypeDef =>
-      context.scope.addType(scanTypeDef(td, context))
+      val dataType = scanTypeDef(td, context)
+      // debug(s"add type ${dataType} resolved:${dataType.isResolved}")
+      context.scope.addType(dataType)
     case tbl: TableDef =>
       context.scope.addTableDef(tbl)
     case imp: ImportDef =>
-      debug(s"add import ${imp.importRef}")
+      // debug(s"add import ${imp.importRef}")
       context.addImport(imp)
     case m: ModelDef =>
-      debug(s"add model ${m.name}")
+      m.relationType match
+        case u: UnresolvedRelationType =>
+          // debug(s"Add alias ${m.name} -> ${u.typeName}")
+          context.scope.addAlias(m.name, u.typeName)
+        case _ =>
     case q: Query =>
-      context.scope.addType(q.relationType)
+    // context.scope.addType(q.relationType)
   }
 
   private def scanTypeDef(typeDef: TypeDef, context: Context): DataType =
@@ -60,7 +68,9 @@ class TypeScanner(phaseName: String) extends Phase(phaseName) with LogSupport:
       // TODO: Add parent fields
       ExtensionType(
         typeDef.name.fullName,
-        typeDef.parent.map(p => UnresolvedType(p.fullName)),
+        typeDef
+          .parent
+          .map(p => context.scope.resolveType(p.fullName).getOrElse(UnresolvedType(p.fullName))),
         defs
       )
 

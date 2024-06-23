@@ -10,6 +10,7 @@ trait Phase(
     debug(s"Running phase ${name}")
     val buf = List.newBuilder[CompilationUnit]
     for unit <- units do
+      debug(s"Running phase ${name} on ${unit.sourceFile.file}")
       val newContext = context.withCompilationUnit(unit)
       buf += run(unit, newContext)
     buf.result()

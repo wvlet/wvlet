@@ -18,7 +18,8 @@ case class Context(
     owner: Symbol = Symbol.NoSymbol,
     scope: Scope = Scope.empty,
     compilationUnit: CompilationUnit = CompilationUnit.empty,
-    sourceFolders: List[String] = List.empty
+    sourceFolders: List[String] = List.empty,
+    workingFolder: String
 ) extends LogSupport:
 
   private var symbolCount = 0
@@ -41,8 +42,10 @@ case class Context(
     .copy(outer = this, compilationUnit = newCompileUnit)
 
   def findDataFile(path: String): Option[String] = sourceFolders
-    .map(folder => s"${folder}/data/${path}")
+    .map(folder => dataFilePath(path))
     .find(file => new java.io.File(file).exists())
+
+  def dataFilePath(relativePath: String): String = s"${workingFolder}/data/${relativePath}"
 
   def getDataFile(path: String): String =
     findDataFile(path) match
@@ -52,4 +55,4 @@ case class Context(
         f
 
 object Context:
-  val NoContext: Context = Context()
+  val NoContext: Context = Context(workingFolder = ".")

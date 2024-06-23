@@ -106,6 +106,8 @@ lazy val lang = project
         "org.wvlet.airframe" %% "airframe"          % AIRFRAME_VERSION,
         "org.wvlet.airframe" %% "airframe-launcher" % AIRFRAME_VERSION,
         "org.wvlet.airframe" %% "airframe-ulid"     % AIRFRAME_VERSION,
+        // For resolving parquet file schema
+        "org.duckdb" % "duckdb_jdbc" % "1.0.0",
         // Add airframe's sql parser for testing purpose
         "org.wvlet.airframe" %% "airframe-sql" % AIRFRAME_VERSION % Test,
         // Add a reference implementation of the compiler
