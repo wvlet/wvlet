@@ -25,9 +25,6 @@ case class PackageDef(
 
   override def inputAttributes: Seq[Attribute] = Nil
 
-case class TestDef(testExprs: Seq[Expression], nodeLocation: Option[NodeLocation])
-    extends LanguageStatement
-
 case class ImportDef(
     importRef: Name,
     alias: Option[Name],
@@ -65,8 +62,11 @@ case class TypeDef(
 // type elements (def or column definition)
 sealed trait TypeElem extends Expression
 
+case class TopLevelFunctionDef(functionDef: FunctionDef, nodeLocation: Option[NodeLocation])
+    extends LanguageStatement
+
 // def ... { ... } in the type definition
-case class TypeDefDef(
+case class FunctionDef(
     name: Name,
     args: List[DefArg],
     scopes: List[DefScope],

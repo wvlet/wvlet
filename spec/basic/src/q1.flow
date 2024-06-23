@@ -2,7 +2,9 @@
 from 'person.json'
 
 test:
+  _.size should not be 0
   _.size should be 3
-  _.json should contain json"""{"id":1, "name":"alice", "age":10 }"""
-  _.json should contain json"""{"id":2, "name":"bob",   "age":20 }"""
-  _.json should contain json"""{"id":3, "name":"clark", "age":30 }"""
+  _.json should contain '{"id":1, "name":"alice", "age":10 }'
+  _.json should contain '{"id":2, "name":"bob",   "age":20 }'
+  _.json should contain '{"id":3, "name":"clark", "age":30 }'
+  _.json should not contain '{"id":4, "name":"david", "age":40 }'

@@ -50,7 +50,7 @@ class DuckDBExecutor extends LogSupport:
         result
       case t: TableDef =>
         QueryResult.empty
-      case t: TestDef =>
+      case t: TestRelation =>
         debug(s"Executing test: ${t}")
         QueryResult.empty
       case s: Subscribe =>

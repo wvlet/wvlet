@@ -8,5 +8,4 @@ class FlowCliTest extends AirSpec:
   }
 
   test("query"):
-    pending("stabilizing the new parser")
-    FlowCli.main("compile examples/basic")
+    FlowCli.main("compile spec/basic")

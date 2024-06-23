@@ -97,8 +97,9 @@ enum FlowToken(val tokenType: TokenType, val str: String):
   case FALSE extends FlowToken(Keyword, "false")
 
   // For testing
-  case SHOULD extends FlowToken(Keyword, "should")
-  case BE     extends FlowToken(Keyword, "be")
+  case SHOULD  extends FlowToken(Keyword, "should")
+  case BE      extends FlowToken(Keyword, "be")
+  case CONTAIN extends FlowToken(Keyword, "contain")
 
   // Alphabectic keywords
   case DEF     extends FlowToken(Keyword, "def")
@@ -125,6 +126,9 @@ enum FlowToken(val tokenType: TokenType, val str: String):
   case ORDER     extends FlowToken(Keyword, "order")
   case LIMIT     extends FlowToken(Keyword, "limit")
   case TRANSFORM extends FlowToken(Keyword, "transform")
+
+  case ASC  extends FlowToken(Keyword, "asc")
+  case DESC extends FlowToken(Keyword, "desc")
 
   // join keywords
   case JOIN  extends FlowToken(Keyword, "join")
@@ -158,6 +162,31 @@ object FlowToken:
   val allKeywordAndSymbol = keywords ++ specialSymbols
 
   val keywordAndSymbolTable = allKeywordAndSymbol.map(x => x.str -> x).toMap
+
+  val joinKeywords = List(
+    FlowToken.JOIN,
+    FlowToken.ON,
+    FlowToken.LEFT,
+    FlowToken.RIGHT,
+    FlowToken.FULL,
+    FlowToken.INNER,
+    FlowToken.CROSS
+  )
+
+  val queryBlockKeywords =
+    List(
+      FlowToken.FROM,
+      FlowToken.SELECT,
+      FlowToken.FOR,
+      FlowToken.LET,
+      FlowToken.WHERE,
+      FlowToken.GROUP,
+      FlowToken.HAVING,
+      FlowToken.ORDER,
+      FlowToken.LIMIT,
+      FlowToken.TRANSFORM,
+      FlowToken.TEST
+    ) ++ joinKeywords
 
   // Line Feed '\n'
   inline val LF = '\u000A'

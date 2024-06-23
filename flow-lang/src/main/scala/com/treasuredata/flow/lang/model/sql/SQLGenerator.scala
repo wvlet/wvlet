@@ -307,6 +307,8 @@ class SQLGenerator(config: SQLGeneratorConfig = SQLGeneratorConfig()) extends Lo
         b += "AS"
         b += columnAliases.map(printExpression).mkString(", ")
         b.result().mkString(" ")
+      case f: FileScan =>
+        s"'${f.path}'"
       case j: JSONFileScan =>
         s"'${j.path}'"
       case p: PathScan =>

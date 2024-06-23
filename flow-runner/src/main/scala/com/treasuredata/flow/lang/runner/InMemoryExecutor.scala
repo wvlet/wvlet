@@ -23,7 +23,7 @@ class InMemoryExecutor extends LogSupport:
         QueryResultList(results)
       case q: Query =>
         execute(q.body, context)
-      case t: TestDef =>
+      case t: TestRelation =>
         warn(s"Test execution is not supported yet: ${t}")
         QueryResult.empty
       case r: JSONFileScan =>

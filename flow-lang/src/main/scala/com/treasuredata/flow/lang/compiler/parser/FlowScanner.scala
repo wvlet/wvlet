@@ -477,8 +477,8 @@ class FlowScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
   private def getOperatorRest(): Unit =
     trace(s"getOperatorRest[${offset}]: ch: '${String.valueOf(ch)}'")
     (ch: @switch) match
-      case '~' | '!' | '@' | '#' | '%' | '^' | '*' | '+' | '-' | '<' | '>' | '?' | ':' | '=' | '&' |
-          '|' | '\\' =>
+      case '~' | '!' | '@' | '#' | '%' | '^' | '+' | '-' | '<' | '>' | '?' | ':' | '=' | '&' | '|' |
+          '\\' =>
         putChar(ch)
         nextChar()
         getOperatorRest()

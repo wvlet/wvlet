@@ -386,6 +386,20 @@ case class Exists(child: Expression, nodeLocation: Option[NodeLocation])
     extends Expression
     with UnaryExpression
 
+enum TestType:
+  case ShouldBe
+  case ShouldNotBe
+  case ShouldContain
+  case ShouldNotContain
+
+case class ShouldExpr(
+    testType: TestType,
+    left: Expression,
+    right: Expression,
+    nodeLocation: Option[NodeLocation]
+) extends Expression:
+  override def children: Seq[Expression] = Seq(left, right)
+
 // Arithmetic expr
 enum BinaryExprType(val symbol: String):
   case Add      extends BinaryExprType("+")

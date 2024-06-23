@@ -34,4 +34,4 @@ def behavior_filter(l:td_sdk_log): boolean =
     or not t.td_browser.regexp_like('^(?:Googlebot(?:-.*)?|BingPreview|bingbot|YandexBot|PingdomBot)$')
   )
   and l.td_host is not 'gtm-msr.appspot.com'
-end
+

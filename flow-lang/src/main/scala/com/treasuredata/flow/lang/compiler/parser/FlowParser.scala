@@ -49,7 +49,6 @@ import wvlet.log.LogSupport
   *
   *   query: 'from' relation
   *          queryBlock*
-  *          ('order' 'by' sortItem (',' sortItem)* comma?)?
   *
   *   relation       : relationPrimary ('as' identifier)?
   *   relationPrimary: qualifiedId
@@ -62,6 +61,8 @@ import wvlet.log.LogSupport
   *             | 'transform' transformExpr
   *             | 'select' selectExpr
   *             | 'limit' INTEGER_VALUE
+  *             | 'order' 'by' sortItem (',' sortItem)* comma?)?
+  *             | 'test' COLON testExpr*
   *
   *   join        : joinType? 'join' relation joinCriteria
   *               | 'cross' 'join' relation
@@ -78,6 +79,10 @@ import wvlet.log.LogSupport
   *
   *   selectExpr: selectItem (',' selectItem)* ','?
   *   selectItem: (identifier ':')? expression
+  *
+  *   testExpr: booleanExpression
+  *
+  *   sortItem:: expression ('asc' | 'desc')?
   *
   *   typeDef    : 'type' identifier typeParams? context? typeExtends? ':' typeElem* 'end'
   *   typeParams : '[' typeParam (',' typeParam)* ']'
@@ -108,8 +113,11 @@ import wvlet.log.LogSupport
   *   valueExpression   : primaryExpression
   *                     | valueExpression arithmeticOperator valueExpression
   *                     | valueExpression comparisonOperator valueExpression
+  *                     | valueExpression testOperator valueExpression
+  *
   *   arithmeticOperator: '+' | '-' | '*' | '/' | '%'
   *   comparisonOperator: '=' | '==' | 'is' | '!=' | 'is' 'not' | '<' | '<=' | '>' | '>='
+  *   testOperator      : 'should' 'not'? ('be' | 'contain')
   *
   *   // Expresion that can be chained with '.' operator
   *   primaryExpression : 'this'
@@ -159,7 +167,9 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
         .newException(s"Expected ${expected}, but found ${t.token}", t.sourceLocation)
 
   private def unexpected(t: TokenData): Nothing =
-    throw StatusCode.SYNTAX_ERROR.newException(s"Unexpected token ${t.token}", t.sourceLocation)
+    throw StatusCode
+      .SYNTAX_ERROR
+      .newException(s"Unexpected token ${t.token} '${t.str}'", t.sourceLocation)
 
   private def unexpected(expr: Expression): Nothing =
     throw StatusCode
@@ -230,6 +240,9 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
         typeDef()
       case FlowToken.MODEL =>
         modelDef()
+      case FlowToken.DEF =>
+        val d = funDef()
+        TopLevelFunctionDef(d, t.nodeLocation)
       case _ =>
         unexpected(t)
 
@@ -396,7 +409,7 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
       case _ =>
         unexpected(t)
 
-  def funDef(): TypeDefDef =
+  def funDef(): FunctionDef =
     val t    = consume(FlowToken.DEF)
     val name = funName()
     val args: List[DefArg] =
@@ -426,7 +439,7 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
           Some(expression())
         case _ =>
           None
-    TypeDefDef(name, args, defScope, retType, body, t.nodeLocation)
+    FunctionDef(name, args, defScope, retType, body, t.nodeLocation)
 
   def funName(): Name =
     val t = scanner.lookAhead()
@@ -499,7 +512,37 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
   def query(): Relation =
     val t = consume(FlowToken.FROM)
     val r = fromRelation()
-    Query(r, t.nodeLocation)
+    val q = Query(r, t.nodeLocation)
+    q
+
+  def orderExpr(input: Relation): Sort =
+    val t = consume(FlowToken.ORDER)
+    consume(FlowToken.BY)
+    val items = sortItems()
+    Sort(input, items, t.nodeLocation)
+
+  def sortItems(): List[SortItem] =
+    val t = scanner.lookAhead()
+    t.token match
+      case FlowToken.IDENTIFIER =>
+        val expr = expression()
+        val order =
+          scanner.lookAhead().token match
+            case FlowToken.ASC =>
+              consume(FlowToken.ASC)
+              Some(SortOrdering.Ascending)
+            case FlowToken.DESC =>
+              consume(FlowToken.DESC)
+              Some(SortOrdering.Descending)
+            case _ =>
+              None
+        // TODO: Support NullOrdering
+        SortItem(expr, order, None, expr.nodeLocation) :: sortItems()
+      case FlowToken.COMMA =>
+        consume(FlowToken.COMMA)
+        sortItems()
+      case _ =>
+        Nil
 
   /**
     * fromRelation := relationPrimary ('as' identifier)?
@@ -540,6 +583,15 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
       case FlowToken.SELECT =>
         val select = selectExpr(input)
         queryBlock(select)
+      case FlowToken.LIMIT =>
+        val limit = limitExpr(input)
+        queryBlock(limit)
+      case FlowToken.ORDER =>
+        val order = orderExpr(input)
+        queryBlock(order)
+      case FlowToken.TEST =>
+        val test = testExpr(input)
+        queryBlock(test)
       case _ =>
         input
 
@@ -684,6 +736,27 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
         val selectItem = SingleColumn(NoName, e, t.nodeLocation)
         selectItem :: selectItems()
 
+  def limitExpr(input: Relation): Limit =
+    val t = consume(FlowToken.LIMIT)
+    val n = consume(FlowToken.INTEGER_LITERAL)
+    Limit(input, LongLiteral(n.str.toLong, t.nodeLocation), t.nodeLocation)
+
+  def testExpr(input: Relation): Relation =
+    val t = consume(FlowToken.TEST)
+    consume(FlowToken.COLON)
+    val items = List.newBuilder[Expression]
+    def nextItem: Unit =
+      val t = scanner.lookAhead()
+      t.token match
+        case FlowToken.END | FlowToken.EOF                           =>
+        case t if FlowToken.queryBlockKeywords.contains(t.tokenType) =>
+        case _ =>
+          val e = expression()
+          items += e
+          nextItem
+    nextItem
+    TestRelation(input, items.result(), t.nodeLocation)
+
   /**
     * relationPrimary := qualifiedId \| '(' query ')' \| stringLiteral
     * @return
@@ -814,6 +887,33 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
         consume(FlowToken.GTEQ)
         val right = valueExpression()
         GreaterThanOrEq(expression, right, t.nodeLocation)
+      case FlowToken.SHOULD =>
+        consume(FlowToken.SHOULD)
+        val not =
+          scanner.lookAhead().token match
+            case FlowToken.NOT =>
+              consume(FlowToken.NOT)
+              true
+            case _ =>
+              false
+        val testType =
+          scanner.lookAhead().token match
+            case FlowToken.BE =>
+              consume(FlowToken.BE)
+              if not then
+                TestType.ShouldNotBe
+              else
+                TestType.ShouldBe
+            case FlowToken.CONTAIN =>
+              consume(FlowToken.CONTAIN)
+              if not then
+                TestType.ShouldNotContain
+              else
+                TestType.ShouldContain
+            case _ =>
+              unexpected(t)
+        val right = valueExpression()
+        ShouldExpr(testType, left = expression, right, t.nodeLocation)
       case _ =>
         expression
 
@@ -1001,8 +1101,13 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
     val token = scanner.lookAhead()
     token.token match
       case FlowToken.DOT =>
-        scanner.nextToken()
-        val id = identifier()
-        dotRef(Ref(expr, id, token.nodeLocation))
+        val dt = consume(FlowToken.DOT)
+        scanner.lookAhead().token match
+          case FlowToken.STAR =>
+            val t = consume(FlowToken.STAR)
+            Ref(expr, Wildcard(t.nodeLocation), dt.nodeLocation)
+          case _ =>
+            val id = identifier()
+            dotRef(Ref(expr, id, token.nodeLocation))
       case _ =>
         expr

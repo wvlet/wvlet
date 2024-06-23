@@ -173,7 +173,7 @@ object LogicalPlanPrinter extends LogSupport:
         s"sort key:${printExpression(s.sortKey)}${s.ordering.map(x => s" ${x}").getOrElse("")}"
       case a: ArrayConstructor =>
         s"[${a.children.map(printExpression).mkString(", ")}]"
-      case t: TypeDefDef =>
+      case t: FunctionDef =>
         concat(
           List(
             "def ",

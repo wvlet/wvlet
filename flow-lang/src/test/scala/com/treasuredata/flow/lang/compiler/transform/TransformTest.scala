@@ -6,20 +6,15 @@ import wvlet.airspec.AirSpec
 
 class TransformTest extends AirSpec:
 
-  pendingUntil("Stabilizing the new parser")
-
   private val c = Compiler.default
 
   test("transform") {
-    val result = c.compile("examples/cdp_behavior")
-    val subscriptions: List[LogicalPlan] = result
+    val result = c.compile("spec/cdp_behavior")
+    val resolvedPlan: Option[LogicalPlan] = result
       .inFile("behavior.flow")
       .map: x =>
-        // debug(x.resolvedPlan.pp)
-        x.subscriptionPlans
-      .getOrElse(Nil)
+        debug(x.resolvedPlan.pp)
+        x.resolvedPlan
 
-    subscriptions shouldNotBe empty
-    subscriptions.foreach: plan =>
-      debug(plan.pp)
+    resolvedPlan shouldBe defined
   }

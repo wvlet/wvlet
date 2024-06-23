@@ -8,18 +8,14 @@ class FlowParserTest extends AirSpec:
     FlowParser(CompilationUnit.fromString("from A select _")).parse()
 
   test("parse behavior.flow"):
-    pending("stabilizing the new parser")
     val plan = FlowParser(CompilationUnit.fromFile("spec/cdp_behavior/src/behavior.flow")).parse()
-    debug(plan)
+    debug(plan.pp)
 
   test("parse customer.flow"):
-    pending("stabilizing the new parser")
     val plan = FlowParser(CompilationUnit.fromFile("spec/cdp_behavior/src/customer.flow")).parse()
-    // debug(plan)
-    debug(plan)
+    debug(plan.pp)
 
   test("parse basic queries"):
-    pending("stabilizing the new parser")
     val plan = ParserPhase.parseSourceFolder("spec/basic/src")
     plan.foreach: p =>
-      debug(p)
+      debug(p.pp)

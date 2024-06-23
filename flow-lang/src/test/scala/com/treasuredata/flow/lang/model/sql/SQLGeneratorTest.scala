@@ -6,10 +6,10 @@ import com.treasuredata.flow.lang.model.plan.Query
 import wvlet.airspec.AirSpec
 
 class SQLGeneratorTest extends AirSpec:
-  pendingUntil("Stabilizing the new parser")
+  pending("context-based sql generation for FunctionApply needs to be supported")
   test("generate SQL from behavior.flow"):
     val plan = FlowParser(
-      CompilationUnit(SourceFile.fromResource("examples/cdp_behavior/src/behavior.flow"))
+      CompilationUnit(SourceFile.fromResource("spec/cdp_behavior/src/behavior.flow"))
     ).parse()
     plan.traverse { case q: Query =>
       val sql = SQLGenerator.toSQL(q)

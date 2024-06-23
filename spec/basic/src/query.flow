@@ -32,7 +32,7 @@ transform
 group by age_group
 
 -- rename output
-model person_copy
+model person_copy =
   from person
 end
 
