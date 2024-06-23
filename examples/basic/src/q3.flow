@@ -1,5 +1,0 @@
-package my_example
-
-from 'person.json'
-select as person
-

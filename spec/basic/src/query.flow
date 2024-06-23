@@ -32,9 +32,9 @@ transform
 group by age_group
 
 -- rename output
-from person
-select as person_copy
-
+model person_copy
+  from person
+end
 
 -- projection
 from person

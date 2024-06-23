@@ -8,8 +8,8 @@ class AnalyzerTest extends AirSpec:
 
   private val compiler = Compiler(List(Compiler.analysisPhases))
 
-  test("analyze behavior plan") {
-    val result = compiler.compile("spec/basic")
+  test("analyze cdp-basic plan") {
+    val result = compiler.compile("spec/cdp-basic")
     result
       .typedPlans
       .collect:

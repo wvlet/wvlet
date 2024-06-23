@@ -4,4 +4,4 @@ where id = 1
 
 test:
   _.size should be 1
-  _.json should be """[{"id":1,"name":"alice","age":10}]"""
+  _.json should contain json"""{"id":1,"name":"alice","age":10}"""

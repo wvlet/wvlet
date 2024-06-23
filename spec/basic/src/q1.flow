@@ -1,0 +1,8 @@
+-- Scan a json file
+from 'person.json'
+
+test:
+  _.size should be 3
+  _.json should contain json"""{"id":1, "name":"alice", "age":10 }"""
+  _.json should contain json"""{"id":2, "name":"bob",   "age":20 }"""
+  _.json should contain json"""{"id":3, "name":"clark", "age":30 }"""
