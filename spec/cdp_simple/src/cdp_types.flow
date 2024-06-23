@@ -24,6 +24,19 @@ type td_sdk_log:
   td_viewport: string
   _col0: int
   time: int
+
+  -- Reuse a common filtering pattern for the same type table
+  def is_valid_behavior: boolean =
+    time is not null
+    and td_client_id is not null
+    and td_user_agent.category is not 'crawler'
+    and td_client_id is not '00000000-0000-4000-8000-000000000000'
+    and (
+      td_browser is not null
+      or not td_browser.regexp_like('^(?:Googlebot(?:-.*)?|BingPreview|bingbot|YandexBot|PingdomBot)$')
+    )
+    and td_host is not 'gtm-msr.appspot.com'
+
 end
 
 type ip_address in trino extends string:

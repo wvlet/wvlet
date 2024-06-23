@@ -24,16 +24,18 @@ from person
 limit 10
 order by time asc
 
-
-from person
-transform
-  -- Add a new column for aggregation
-  age_group: age / 10
-group by age_group
-
--- rename output
-model person_copy =
+model person_with_age_group =
   from person
+  transform
+    -- Add a new column for aggregation
+    age_group: age / 10
+  group by age_group
+end
+
+model person_filer =
+  -- reference another model
+  from person_with_age_group
+  where age_group >= 2
 end
 
 -- projection

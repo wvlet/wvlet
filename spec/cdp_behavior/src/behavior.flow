@@ -4,34 +4,21 @@ import td_sdk_log
 
 -- Define source tables for behavior logs
 model weblogs: td_sdk_log =
-  from 'examples/cdp_behavior/data/weblogs/*.parquet'
+  from 'data/weblogs/*.parquet'
 end
 
 model weblog_fluentd_ja: td_sdk_log =
-  from 'examples/cdp_behavior/data/weblog_fluentd_ja/*.parquet'
+  from 'data/weblog_fluentd_ja/*.parquet'
 end
 
 -- CDP behavior table ETL example
 --@config(watermark_column='time', window_size='1h')
 model behavior_weblogs =
   from weblogs
-  where behavior_filter(_)
+  where _.is_valid_behavior
 end
 
 model behavior_weblog_fluentd_ja =
   from weblog_fluentd_ja
-  where behavior_filter(_)
+  where _.is_valid_behavior
 end
-
--- Reuse a common filtering pattern for the same type table
-def behavior_filter(l:td_sdk_log): boolean =
-  l.time is not null
-  and l.td_client_id is not null
-  and l.td_user_agent.category is not 'crawler'
-  and l.td_client_id is not '00000000-0000-4000-8000-000000000000'
-  and (
-    l.td_browser is not null
-    or not t.td_browser.regexp_like('^(?:Googlebot(?:-.*)?|BingPreview|bingbot|YandexBot|PingdomBot)$')
-  )
-  and l.td_host is not 'gtm-msr.appspot.com'
-

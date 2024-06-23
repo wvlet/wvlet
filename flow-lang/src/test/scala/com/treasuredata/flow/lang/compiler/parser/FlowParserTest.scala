@@ -7,15 +7,17 @@ class FlowParserTest extends AirSpec:
   test("parse"):
     FlowParser(CompilationUnit.fromString("from A select _")).parse()
 
-  test("parse behavior.flow"):
-    val plan = FlowParser(CompilationUnit.fromFile("spec/cdp_behavior/src/behavior.flow")).parse()
-    debug(plan.pp)
-
-  test("parse customer.flow"):
-    val plan = FlowParser(CompilationUnit.fromFile("spec/cdp_behavior/src/customer.flow")).parse()
-    debug(plan.pp)
-
   test("parse basic queries"):
-    val plan = ParserPhase.parseSourceFolder("spec/basic/src")
-    plan.foreach: p =>
+    val plans = ParserPhase.parseSourceFolder("spec/basic/src")
+    plans.foreach: p =>
+      debug(p.pp)
+
+  test("parse cdp_simple queries"):
+    val plans = ParserPhase.parseSourceFolder("spec/cdp_simple/src")
+    plans.foreach: p =>
+      debug(p.pp)
+
+  test("parse cdp_behavior queries"):
+    val plans = ParserPhase.parseSourceFolder("spec/cdp_behavior/src")
+    plans.foreach: p =>
       debug(p.pp)
