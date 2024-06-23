@@ -33,7 +33,10 @@ class TypeScanner(phaseName: String) extends Phase(phaseName) with LogSupport:
     case tbl: TableDef =>
       context.scope.addTableDef(tbl)
     case imp: ImportDef =>
+      debug(s"add import ${imp.importRef}")
       context.addImport(imp)
+    case m: ModelDef =>
+      debug(s"add model ${m.name}")
     case q: Query =>
       context.scope.addType(q.relationType)
   }

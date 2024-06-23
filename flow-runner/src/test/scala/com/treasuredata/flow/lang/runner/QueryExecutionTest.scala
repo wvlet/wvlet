@@ -1,7 +1,7 @@
-package com.treasuredata.flow.lang.compiler.runner
+package com.treasuredata.flow.lang.runner
 
 import com.treasuredata.flow.lang.compiler.Compiler
-import com.treasuredata.flow.lang.compiler.runner.PlanExecutor
+import com.treasuredata.flow.lang.runner.PlanExecutor
 import wvlet.airspec.AirSpec
 
 class QueryExecutionTest extends AirSpec:

@@ -1,14 +1,7 @@
-package com.treasuredata.flow.lang.compiler.runner
+package com.treasuredata.flow.lang.runner
 
 import com.treasuredata.flow.lang.compiler.Context
-import com.treasuredata.flow.lang.model.plan.{
-  FileScan,
-  JSONFileScan,
-  LogicalPlan,
-  PackageDef,
-  Query,
-  TestDef
-}
+import com.treasuredata.flow.lang.model.plan.*
 import wvlet.airframe.codec.MessageCodec
 import wvlet.airframe.control.IO
 import wvlet.log.LogSupport

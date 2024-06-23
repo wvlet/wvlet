@@ -1,4 +1,4 @@
-package com.treasuredata.flow.lang.connector.trino
+package com.treasuredata.flow.lang.runner.connector.trino
 
 import io.trino.plugin.deltalake.{DeltaLakeConnectorFactory, DeltaLakePlugin}
 import io.trino.plugin.memory.MemoryPlugin

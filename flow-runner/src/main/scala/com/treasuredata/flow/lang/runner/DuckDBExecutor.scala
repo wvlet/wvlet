@@ -1,8 +1,7 @@
-package com.treasuredata.flow.lang.compiler.runner
+package com.treasuredata.flow.lang.runner
 
 import com.treasuredata.flow.lang.StatusCode
 import com.treasuredata.flow.lang.compiler.{CompilationUnit, Compiler, Context}
-import com.treasuredata.flow.lang.model.plan.LogicalPlan
 import com.treasuredata.flow.lang.model.plan.*
 import com.treasuredata.flow.lang.model.sql.SQLGenerator
 import org.duckdb.DuckDBConnection

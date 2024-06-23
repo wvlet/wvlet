@@ -3,5 +3,5 @@ from 'person.json'
 where id = 1
 
 test:
-  _.size shouldBe 1
-  _.json shouldBe """[{"id":1,"name":"alice","age":10}]"""
+  _.size should be 1
+  _.json should be """[{"id":1,"name":"alice","age":10}]"""

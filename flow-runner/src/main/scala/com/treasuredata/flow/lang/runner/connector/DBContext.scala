@@ -1,11 +1,9 @@
-package com.treasuredata.flow.lang.connector
+package com.treasuredata.flow.lang.runner.connector
 
 import wvlet.airframe.control.Control.withResource
-import com.treasuredata.flow.lang.connector.DBContext.*
+import DBContext.*
 import com.treasuredata.flow.lang.model.plan.LogicalPlan
 import com.treasuredata.flow.lang.model.plan.*
-import com.treasuredata.flow.lang.model.sql.SqlExpr
-import com.treasuredata.flow.lang.model.sql.SqlExpr.*
 
 import java.sql.Connection
 
@@ -19,17 +17,10 @@ enum QueryScope:
     InExpr
 
 trait DBContext extends AutoCloseable:
-  private var _self: SqlExpr     = _
-  private var _plan: LogicalPlan = _
-
+  private var _plan: LogicalPlan     = _
   private var queryScope: QueryScope = QueryScope.Global
 
-  def self: SqlExpr = _self
-
   def plan: LogicalPlan = ???
-  def withSelf(newSelf: SqlExpr): this.type =
-    _self = newSelf
-    this
 
   def withPlan(plan: LogicalPlan): this.type =
     _plan = plan
@@ -40,13 +31,6 @@ trait DBContext extends AutoCloseable:
     this
 
   protected def newConnection: Connection
-
-  def IString: IString
-  def IBoolean: IBoolean
-  def IInt: IInt
-  def ILong: ILong
-  def IFloat: IFloat
-  def IDouble: IDouble
 
   def withConnection[U](body: Connection => U): U =
     val conn = newConnection

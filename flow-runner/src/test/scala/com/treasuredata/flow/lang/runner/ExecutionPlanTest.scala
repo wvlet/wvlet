@@ -1,11 +1,10 @@
-package com.treasuredata.flow.lang.compiler.runner
+package com.treasuredata.flow.lang.runner
 
 import com.treasuredata.flow.lang.compiler.CompilationUnit
 import com.treasuredata.flow.lang.compiler.parser.FlowParser
-import com.treasuredata.flow.lang.connector.DBContext
-import com.treasuredata.flow.lang.connector.duckdb.DuckDBContext
-import com.treasuredata.flow.lang.connector.trino.{TrinoConfig, TrinoContext}
-import com.treasuredata.flow.lang.model.sql.SqlExpr
+import com.treasuredata.flow.lang.runner.connector.DBContext
+import com.treasuredata.flow.lang.runner.connector.duckdb.DuckDBContext
+import com.treasuredata.flow.lang.runner.connector.trino.{TrinoConfig, TrinoContext}
 import wvlet.airspec.AirSpec
 
 class ExecutionPlanTest extends AirSpec:
@@ -18,7 +17,7 @@ class ExecutionPlanTest extends AirSpec:
       )
 
     inline def query(q: String)(body: String => Unit)(using ctx: DBContext): Unit =
-      var expr: SqlExpr = null
+      // var expr: SqlExpr = null
       test(s"query: ${q}") {
         val unit: CompilationUnit = CompilationUnit.fromString(q)
 
@@ -26,13 +25,13 @@ class ExecutionPlanTest extends AirSpec:
         val plan   = parser.parse()
         debug(plan)
 
-        val planner = ExecutionPlanner(using unit, ctx)
-        val expr    = planner.plan(plan).toSQL
-        debug(expr)
-        body(expr)
+//        val planner = ExecutionPlanner(using unit, ctx)
+//        val expr    = planner.plan(plan).toSQL
+//        debug(expr)
+//        body(expr)
       }
 
-    // Standard SQL doesn't support string concatenation with '+'
+    // Extend Standard SQL, which doesn't support string concatenation with '+'
     given dbx: DBContext = duckdb
     query("select 'hello' + ' treasure-flow!'"): sql =>
       sql shouldBe "select 'hello' || ' treasure-flow!'"

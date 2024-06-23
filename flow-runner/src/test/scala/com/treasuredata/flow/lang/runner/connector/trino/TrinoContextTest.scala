@@ -1,4 +1,4 @@
-package com.treasuredata.flow.lang.connector.trino
+package com.treasuredata.flow.lang.runner.connector.trino
 
 import wvlet.airframe.Design
 import wvlet.airframe.codec.JDBCCodec

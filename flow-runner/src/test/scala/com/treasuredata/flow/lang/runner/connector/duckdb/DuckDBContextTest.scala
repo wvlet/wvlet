@@ -1,4 +1,4 @@
-package com.treasuredata.flow.lang.connector.duckdb
+package com.treasuredata.flow.lang.runner.connector.duckdb
 
 import wvlet.airspec.AirSpec
 

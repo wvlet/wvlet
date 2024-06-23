@@ -2,8 +2,8 @@
 from 'person.json'
 
 test:
-  _.size shouldBe 3
-  _.json shouldBe """[
+  _.size should be 3
+  _.json should be """[
     {"id":1, "name":"alice", "age":10 },
     {"id":2, "name":"bob",   "age":24 },
     {"id":3, "name":"clark", "age":40 }

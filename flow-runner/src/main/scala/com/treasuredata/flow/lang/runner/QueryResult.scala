@@ -1,4 +1,4 @@
-package com.treasuredata.flow.lang.compiler.runner
+package com.treasuredata.flow.lang.runner
 
 import com.treasuredata.flow.lang.model.RelationType
 import com.treasuredata.flow.lang.model.plan.LogicalPlan

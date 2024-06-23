@@ -1,4 +1,4 @@
-package com.treasuredata.flow.lang.connector.trino
+package com.treasuredata.flow.lang.runner.connector.trino
 
 import com.google.common.collect.ImmutableList
 import com.google.inject.multibindings.MapBinder.newMapBinder

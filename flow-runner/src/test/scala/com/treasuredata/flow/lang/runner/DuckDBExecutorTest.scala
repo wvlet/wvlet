@@ -1,7 +1,7 @@
-package com.treasuredata.flow.lang.compiler.runner
+package com.treasuredata.flow.lang.runner
 
 import com.treasuredata.flow.lang.catalog.Catalog
-import wvlet.airframe.sql.catalog.InMemoryCatalog
+import com.treasuredata.flow.lang.catalog.InMemoryCatalog
 import wvlet.airspec.AirSpec
 
 class DuckDBExecutorTest extends AirSpec:
