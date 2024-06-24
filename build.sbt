@@ -25,6 +25,9 @@ ThisBuild / resolvers ++= Resolver.sonatypeOssRepos("snapshots") ++
 
 Global / onChangedBuildSource := ReloadOnSourceChanges
 
+import scala.concurrent.duration.FiniteDuration
+import java.util.concurrent.TimeUnit
+
 val buildSettings = Seq[Setting[?]](
   organization       := "com.treasuredata.flow",
   description        := "Incremental Query Compiler and Scheduler",
@@ -32,7 +35,9 @@ val buildSettings = Seq[Setting[?]](
   publishMavenStyle  := true,
   Test / logBuffered := false,
   libraryDependencies ++= Seq("org.wvlet.airframe" %%% "airspec" % AIRSPEC_VERSION % Test),
-  testFrameworks += new TestFramework("wvlet.airspec.Framework")
+  testFrameworks += new TestFramework("wvlet.airspec.Framework"),
+  // Prevent double trigger due to scalafmt run in IntelliJ by adding a small delay (default is 500ms)
+  watchAntiEntropy := FiniteDuration(700, TimeUnit.MILLISECONDS)
 )
 
 lazy val jvmProjects: Seq[ProjectReference] = Seq(api.jvm, server, lang, client.jvm)
@@ -199,8 +204,11 @@ lazy val client = crossProject(JVMPlatform, JSPlatform)
   )
   .dependsOn(api)
 
-import org.scalajs.linker.interface.{StandardConfig, OutputPatterns}
+import org.scalajs.linker.interface.{OutputPatterns, StandardConfig}
 import org.scalajs.linker.interface.{ModuleKind, ModuleSplitStyle}
+
+import java.util.concurrent.TimeUnit
+import scala.concurrent.duration.FiniteDuration
 
 lazy val ui = project
   .enablePlugins(ScalaJSPlugin)

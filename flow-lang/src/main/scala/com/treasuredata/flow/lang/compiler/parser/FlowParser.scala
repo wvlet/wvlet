@@ -5,6 +5,7 @@ import com.treasuredata.flow.lang.compiler.parser.FlowToken.{EQ, FOR, FROM, R_PA
 import com.treasuredata.flow.lang.compiler.{CompilationUnit, SourceFile}
 import com.treasuredata.flow.lang.model.DataType
 import com.treasuredata.flow.lang.model.DataType.{
+  NoType,
   TypeParameter,
   UnresolvedRelationType,
   UnresolvedType,
@@ -938,7 +939,7 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
       t.token match
         case FlowToken.THIS =>
           consume(FlowToken.THIS)
-          This(t.nodeLocation)
+          This(DataType.UnknownType, t.nodeLocation)
         case FlowToken.UNDERSCORE =>
           consume(FlowToken.UNDERSCORE)
           ContextRef(DataType.UnknownType, t.nodeLocation)
@@ -1008,7 +1009,7 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
 
   def interpolatedString(): InterpolatedString =
     val prefix     = consume(FlowToken.STRING_INTERPOLATION_PREFIX)
-    val prefixNode = UnquotedIdentifier(prefix.str, prefix.nodeLocation)
+    val prefixNode = ResolvedIdentifier(prefix.str, NoType, prefix.nodeLocation)
     val parts      = List.newBuilder[Expression]
 
     def nextPart(): Unit =

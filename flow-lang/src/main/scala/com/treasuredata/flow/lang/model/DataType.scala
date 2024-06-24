@@ -57,6 +57,10 @@ object DataType extends LogSupport:
   case class UnresolvedType(override val typeName: String) extends DataType(typeName, Seq.empty):
     override def isResolved: Boolean = false
 
+  val NoType =
+    new DataType("<NoType>", Seq.empty):
+      override def isResolved: Boolean = true
+
   /**
     * Used for named column types or parameter types
     * @param name

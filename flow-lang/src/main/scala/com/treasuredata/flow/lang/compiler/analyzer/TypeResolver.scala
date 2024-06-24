@@ -15,6 +15,7 @@ import com.treasuredata.flow.lang.model.expr.{
   NoName,
   Ref,
   ResolvedAttribute,
+  This,
   UnresolvedAttribute
 }
 import com.treasuredata.flow.lang.model.plan.*
@@ -39,6 +40,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
       resolveModelDef ::              // resolve ModelDef
       resolveScan ::                  // resolve model/ref scan nodes
       resolveUnderscore ::            // resolve underscore in relation nodes
+      resolveThis ::                  // resolve `this` in type definitions
       resolveFunctionBodyInTypeDef :: //
       Nil
 
@@ -181,6 +183,24 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
         updated
     }
 
+  /**
+    * Resolve the type of `this` in the type definition
+    */
+  object resolveThis extends RewriteRule:
+    override def apply(context: Context): PlanRewriter = { case t: TypeDef =>
+      val parent = context.scope.findType(t.name.fullName)
+      parent match
+        case Some(r: DataType) =>
+          // TODO Handle nested definition (e.g., nested type definition)
+          t.transformUpExpressions { case th: This =>
+            val newThis = th.copy(dataType = r)
+            // trace(s"Resolved this: ${th} as ${newThis}")
+            newThis
+          }
+        case _ =>
+          t
+    }
+
   object resolveFunctionBodyInTypeDef extends RewriteRule:
     override def apply(context: Context): PlanRewriter = { case td: TypeDef =>
       val attrs = td
@@ -271,9 +291,9 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
         case None =>
           trace(s"Failed to resolve identifier: ${i} from ${knownAttributes}")
           i
-    case other: Expression if !other.dataType.isResolved =>
-      trace(s"TODO: resolve expression: ${other} using ${knownAttributes}")
-      other
+//    case other: Expression if !other.dataType.isResolved =>
+//      trace(s"TODO: resolve expression: ${other} using ${knownAttributes}")
+//      other
 
   private def resolveExpression(
       expr: Expression,

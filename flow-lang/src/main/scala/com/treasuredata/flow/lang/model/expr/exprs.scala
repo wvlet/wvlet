@@ -77,21 +77,27 @@ sealed trait Identifier extends LeafExpression with Name:
   override def leafName: String = value
   override def value: String
   def expr: String
-  override def attributeName: String                     = value
-  override lazy val resolved: Boolean                    = false
-  def toResolved(dataType: DataType): ResolvedIdentifier = ResolvedIdentifier(this, dataType)
+  override def attributeName: String  = value
+  override lazy val resolved: Boolean = false
+  def toResolved(dataType: DataType): ResolvedIdentifier = ResolvedIdentifier(
+    this.value,
+    dataType,
+    nodeLocation
+  )
 
-case class ResolvedIdentifier(id: Identifier, override val dataType: DataType) extends Identifier:
-  override def value: String = id.value
-  override def expr: String  = id.expr
+case class ResolvedIdentifier(
+    override val value: String,
+    override val dataType: DataType,
+    nodeLocation: Option[NodeLocation]
+) extends Identifier:
+  override def expr: String = value
   override def toResolved(dataType: DataType) =
     if this.dataType == dataType then
       this
     else
-      ResolvedIdentifier(id, dataType)
+      this.copy(dataType = dataType)
 
-  override def nodeLocation: Option[NodeLocation] = id.nodeLocation
-  override lazy val resolved: Boolean             = true
+  override lazy val resolved: Boolean = true
 
 case class DigitId(override val value: String, nodeLocation: Option[NodeLocation])
     extends Identifier:
@@ -538,7 +544,8 @@ case class DistinctSet(nodeLocation: Option[NodeLocation]) extends SetQuantifier
   override def toString: String    = "DISTINCT"
   override def isDistinct: Boolean = true
 
-case class This(nodeLocation: Option[NodeLocation]) extends LeafExpression
+case class This(override val dataType: DataType, nodeLocation: Option[NodeLocation])
+    extends LeafExpression
 
 // Literal
 sealed trait Literal extends Expression:
