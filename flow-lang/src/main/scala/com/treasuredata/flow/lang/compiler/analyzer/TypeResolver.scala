@@ -213,7 +213,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
             case None =>
               UnresolvedAttribute(v.name, v.nodeLocation)
         }
-      val attrList = AttributeList(attrs)
+
       val newElems: List[TypeElem] = td
         .elems
         .map {
@@ -227,6 +227,14 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
                   case None =>
                     t
               }
+            // Function arguments that will be used inside the expression
+            val argAttrs = f
+              .args
+              .map { arg =>
+                ResolvedAttribute(arg.name, arg.dataType, None, arg.nodeLocation)
+              }
+            // vals and function args
+            val attrList = AttributeList(attrs ++ argAttrs)
             // warn(s"resolve function body: ${f.expr} using ${attrList}")
             val newF = f.copy(
               retType = retType,

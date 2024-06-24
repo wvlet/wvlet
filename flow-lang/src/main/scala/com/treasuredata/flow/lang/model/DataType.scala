@@ -250,7 +250,8 @@ object DataType extends LogSupport:
         "bigint"   -> LongType,
         "tinyint"  -> ByteType,
         "smallint" -> ShortType,
-        "varchar"  -> StringType
+        "varchar"  -> StringType,
+        "sql"      -> SQLExprType
       )
 
   def getPrimitiveTypeTable: Map[String, DataType] = primitiveTypeTable
@@ -363,6 +364,9 @@ object DataType extends LogSupport:
     override def typeDescription: String = elems.map(_.typeDescription).mkString(", ")
 
     override def isResolved: Boolean = elems.forall(_.isResolved)
+
+  case object SQLExprType extends DataType("sql", Nil):
+    override def isResolved: Boolean = true
 
 //  def parse(typeName: String): DataType =
 //    DataTypeParser.parse(typeName)

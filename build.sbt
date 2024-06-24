@@ -207,9 +207,6 @@ lazy val client = crossProject(JVMPlatform, JSPlatform)
 import org.scalajs.linker.interface.{OutputPatterns, StandardConfig}
 import org.scalajs.linker.interface.{ModuleKind, ModuleSplitStyle}
 
-import java.util.concurrent.TimeUnit
-import scala.concurrent.duration.FiniteDuration
-
 lazy val ui = project
   .enablePlugins(ScalaJSPlugin)
   .in(file("flow-ui"))

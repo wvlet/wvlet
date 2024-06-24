@@ -3,8 +3,8 @@ package flow.standard
 -- A list created by 'group by' clause
 type list[A]:
   def length: int = sql"length({this})"
-  def size: int = length
-  def get(index: int): A = sql"{this}[index]"
+  def size: int = sql"length({this})"
+  def get(index: int): A = sql"{this}[{index}]"
   def count: int = sql"count({this})"
   def count_distinct: int = sql"count(distinct {this})"
 
@@ -15,8 +15,8 @@ type list[A]:
   def min: A = sql"min({this})"
   def max: A = sql"max({this})"
 
-  def min_by(f: sql): A = sql"min_by({this}, {f})"
-  def max_by(f: sql): A = sql"max_by({this}, {f})"
+  def min_by(expr: sql): A = sql"min_by({this}, {expr})"
+  def max_by(expr: sql): A = sql"max_by({this}, {expr})"
 end
 
 -- list functions specific to numeric elements
