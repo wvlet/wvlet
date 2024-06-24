@@ -19,6 +19,7 @@ object RewriteRule extends LogSupport:
     val rewrittenPlan =
       rules.foldLeft(plan) { (p, rule) =>
         try
+          debug(s"Rewriting with: ${rule.name}")
           rule.transform(p, context)
         catch
           case NonFatal(e) =>
@@ -29,7 +30,7 @@ object RewriteRule extends LogSupport:
 
 trait RewriteRule extends LogSupport:
   // Prepare a stable logger for debugging purpose
-  private val localLogger = Logger("com.treasuredata.flow.lang.analyzer.RewriteRule")
+  private val localLogger = Logger("com.treasuredata.flow.lang.compiler.RewriteRule")
 
   def name: String = this.getClass.getSimpleName.stripSuffix("$")
 
@@ -65,7 +66,7 @@ trait RewriteRule extends LogSupport:
       val resolved = plan.transformUp(rule)
       if localLogger.isEnabled(LogLevel.TRACE) && !(plan eq resolved) && plan != resolved then
         localLogger
-          .trace(s"transformed with ${name}:\n[before]\n${plan.pp}\n[after]\n${resolved.pp}")
+          .trace(s"Transformed with ${name}:\n[before]\n${plan.pp}\n[after]\n${resolved.pp}")
 
       // Apply post-process filter
       postProcess(resolved, context)

@@ -12,7 +12,7 @@ trait Attribute extends LeafExpression with LogSupport:
   override def attributeName: String = name.leafName
 
   def name: Name
-  def fullName: String = name.fullName
+  def fullName: String
 
   def typeDescription: String = dataTypeName
 
@@ -89,6 +89,7 @@ trait Attribute extends LeafExpression with LogSupport:
   * @param attr
   */
 case class AttributeRef(attr: Attribute)(val exprId: ULID = ULID.newULID) extends Attribute:
+  override def fullName: String = attr.fullName
   override def name: Name       = attr.name
   override def toString: String = s"AttributeRef(${attr})"
 
@@ -117,6 +118,7 @@ case class SingleColumn(
     expr: Expression,
     nodeLocation: Option[NodeLocation]
 ) extends Attribute:
+  override def fullName: String   = name.fullName
   override def dataType: DataType = expr.dataType
 
   override def inputAttributes: Seq[Attribute] = Seq(this)
@@ -129,6 +131,7 @@ case class SingleColumn(
 
 case class UnresolvedAttribute(override val name: Name, nodeLocation: Option[NodeLocation])
     extends Attribute:
+  override def fullName: String = name.fullName
   override def toString: String = s"UnresolvedAttribute(${fullName})"
   override lazy val resolved    = false
 
@@ -141,6 +144,7 @@ case class AllColumns(
     nodeLocation: Option[NodeLocation]
 ) extends Attribute
     with LogSupport:
+  override def fullName: String = name.fullName
 
   override def children: Seq[Expression] =
     // AllColumns is a reference to the input attributes.
@@ -177,6 +181,8 @@ case class AllColumns(
 
 case class Alias(name: Name, expr: Expression, nodeLocation: Option[NodeLocation])
     extends Attribute:
+  override def fullName: String = name.fullName
+
   override def inputAttributes: Seq[Attribute]  = Seq(this)
   override def outputAttributes: Seq[Attribute] = inputAttributes
 
@@ -198,7 +204,7 @@ case class MultiSourceColumn(
     nodeLocation: Option[NodeLocation]
 ) extends Attribute:
   // require(inputs.nonEmpty, s"The inputs of MultiSourceColumn should not be empty: ${this}", nodeLocation)
-
+  override def fullName: String = name.fullName
   override def toString: String = s"${fullName}:${dataTypeName} := {${inputs.mkString(", ")}}"
 
   override def inputAttributes: Seq[Attribute] = inputs.map {

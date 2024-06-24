@@ -3,6 +3,7 @@ package com.treasuredata.flow.lang.compiler.parser
 import com.treasuredata.flow.lang.StatusCode
 import com.treasuredata.flow.lang.compiler.parser.FlowToken.{EQ, FOR, FROM, R_PAREN}
 import com.treasuredata.flow.lang.compiler.{CompilationUnit, SourceFile}
+import com.treasuredata.flow.lang.model.DataType
 import com.treasuredata.flow.lang.model.DataType.{
   TypeParameter,
   UnresolvedRelationType,
@@ -185,7 +186,7 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
         UnquotedIdentifier(t.str, t.nodeLocation)
       case FlowToken.UNDERSCORE =>
         consume(FlowToken.UNDERSCORE)
-        ContextRef(t.nodeLocation)
+        ContextRef(DataType.UnknownType, t.nodeLocation)
       case _ =>
         reserved()
 
@@ -432,11 +433,12 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
 
     val defScope: List[DefScope] = context()
 
-    val retType: Option[Name] =
+    val retType: Option[DataType] =
       scanner.lookAhead().token match
         case FlowToken.COLON =>
           consume(FlowToken.COLON)
-          Some(identifier())
+          val id = identifier()
+          Some(UnresolvedType(id.fullName))
         case _ =>
           None
 
@@ -934,7 +936,7 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
           This(t.nodeLocation)
         case FlowToken.UNDERSCORE =>
           consume(FlowToken.UNDERSCORE)
-          ContextRef(t.nodeLocation)
+          ContextRef(DataType.UnknownType, t.nodeLocation)
         case FlowToken.NULL | FlowToken.INTEGER_LITERAL | FlowToken.DOUBLE_LITERAL |
             FlowToken.FLOAT_LITERAL | FlowToken.DECIMAL_LITERAL | FlowToken.EXP_LITERAL | FlowToken
               .STRING_LITERAL =>

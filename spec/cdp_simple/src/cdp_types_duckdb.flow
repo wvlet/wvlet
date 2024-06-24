@@ -1,0 +1,70 @@
+package cdp
+
+type td_sdk_log:
+  td_client_id: string
+  td_host: string
+  td_path: string
+  td_title: string
+  td_description: string
+  td_ip: ip_address
+  td_url: url
+  td_charset: string
+  td_browser_version: string
+  td_os: string
+  td_browser: string
+  td_referrer: string
+  td_version: string
+  td_language: string
+  td_color: string
+  td_os_version: string
+  td_user_agent: user_agent
+  td_platform: string
+  td_screen: string
+  td_global_id: string
+  td_viewport: string
+  _col0: int
+  time: int
+
+  -- Reuse a common filtering pattern for the same type table
+  def is_valid_behavior: boolean =
+    time is not null
+    and td_client_id is not null
+    and td_user_agent.category is not 'crawler'
+    and td_client_id is not '00000000-0000-4000-8000-000000000000'
+    and (
+      td_browser is not null
+      or not td_browser.regexp_like('^(?:Googlebot(?:-.*)?|BingPreview|bingbot|YandexBot|PingdomBot)$')
+    )
+    and td_host is not 'gtm-msr.appspot.com'
+
+end
+
+type ip_address in duckdb extends string:
+  def country_name: string = sql"'N/A'"
+  def city_name: string = sql"'N/A'"
+  def city_latitude: string = sql"'N/A'"
+  def city_longitude: string = sql"'N/A'"
+  def city_metro_code: string = sql"'N/A'"
+  def city_time_zone: string = sql"'N/A'"
+  def city_postal_code: string =  sql"'N/A'"
+  def least_specific_subdivision_name: string = sql"'N/A'"
+  def most_specific_subdivision_name: string = sql"'N/A'"
+  def subdivision_names: string = sql"'N/A'"
+  def connection_type: string = sql"'N/A'"
+  def domain: string = sql"'N/A'"
+end
+
+type user_agent in duckdb extends string:
+  def category: string = sql"'N/A'"
+  def name: string = sql"'N/A'"
+  def os: string = sql"'N/A'"
+  def os_version: string =  sql"'N/A'"
+  def vendor: string = sql"'N/A'"
+  def version: string = sql"'N/A'"
+end
+
+type url in duckdb extends string:
+  def utm_campaign: string = sql"'N/A'"
+  def utm_medium: string = sql"'N/A'"
+  def utm_source: string = sql"'N/A'"
+end

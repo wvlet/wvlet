@@ -219,6 +219,8 @@ trait BinaryExpression extends Expression:
   def right: Expression
   def operatorName: String
 
+  override def dataType: DataType = DataType.BooleanType
+
   override def children: Seq[Expression] = Seq(left, right)
   override def toString: String = s"${getClass.getSimpleName}(left:${left}, right:${right})"
 

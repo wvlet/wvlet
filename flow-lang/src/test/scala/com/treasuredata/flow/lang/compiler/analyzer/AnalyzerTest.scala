@@ -12,7 +12,7 @@ class AnalyzerTest extends AirSpec:
     val result     = compiler.compile("spec/cdp_simple")
     val typedPlans = result.typedPlans
     typedPlans.map: p =>
-      debug(p.pp)
+      trace(p.pp)
   }
 
   test("analyze basic") {

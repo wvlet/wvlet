@@ -17,7 +17,8 @@ case class ResolvedAttribute(
 ) extends Attribute
     with LogSupport:
 
-  override lazy val resolved = true
+  override def fullName: String = name.fullName
+  override lazy val resolved    = true
 
   override def inputAttributes: Seq[Attribute]  = Seq(this)
   override def outputAttributes: Seq[Attribute] = inputAttributes

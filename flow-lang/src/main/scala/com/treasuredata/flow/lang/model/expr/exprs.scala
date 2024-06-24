@@ -31,7 +31,9 @@ case class Wildcard(nodeLocation: Option[NodeLocation]) extends LeafExpression w
   override def fullName: String = "*"
   override def leafName: String = "*"
 
-case class ContextRef(nodeLocation: Option[NodeLocation]) extends LeafExpression with Name:
+case class ContextRef(override val dataType: DataType, nodeLocation: Option[NodeLocation])
+    extends LeafExpression
+    with Name:
   override def fullName: String = "_"
   override def leafName: String = "_"
 
@@ -49,8 +51,8 @@ case class ContextRef(nodeLocation: Option[NodeLocation]) extends LeafExpression
 //    else s
 
 //case class Dereference(base: Expression, next: Expression, nodeLocation: Option[NodeLocation]) extends Expression:
-//  override def toString: String          = s"Dereference(${base} => ${next})"
-//  override def children: Seq[Expression] = Seq(base, next)
+//  override def toString: String          = s"Derefperence(${base} => ${next})"
+//  override def children: Seq[Expression] = Seq  xf(base, next)
 
 case class Ref(base: Expression, name: Name, nodeLocation: Option[NodeLocation]) extends Name:
   override def leafName: String = name.leafName
@@ -69,14 +71,19 @@ sealed trait Identifier extends LeafExpression with Name:
   override def leafName: String = value
   override def value: String
   def expr: String
-  override def attributeName: String  = value
-  override lazy val resolved: Boolean = false
-  def toResolved: ResolvedIdentifier  = ResolvedIdentifier(this)
+  override def attributeName: String                     = value
+  override lazy val resolved: Boolean                    = false
+  def toResolved(dataType: DataType): ResolvedIdentifier = ResolvedIdentifier(this, dataType)
 
-case class ResolvedIdentifier(id: Identifier) extends Identifier:
-  override def value: String                      = id.value
-  override def expr: String                       = id.expr
-  override def toResolved: ResolvedIdentifier     = super.toResolved
+case class ResolvedIdentifier(id: Identifier, override val dataType: DataType) extends Identifier:
+  override def value: String = id.value
+  override def expr: String  = id.expr
+  override def toResolved(dataType: DataType) =
+    if this.dataType == dataType then
+      this
+    else
+      ResolvedIdentifier(id, dataType)
+
   override def nodeLocation: Option[NodeLocation] = id.nodeLocation
   override lazy val resolved: Boolean             = true
 

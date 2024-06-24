@@ -2,7 +2,7 @@ package com.treasuredata.flow.lang.model.plan
 
 import com.treasuredata.flow.lang.compiler.SourceFile
 import com.treasuredata.flow.lang.model.DataType.TypeParameter
-import com.treasuredata.flow.lang.model.{NodeLocation, RelationType}
+import com.treasuredata.flow.lang.model.{DataType, NodeLocation, RelationType}
 import com.treasuredata.flow.lang.model.expr.{Attribute, Expression, Name, StringLiteral}
 import com.treasuredata.flow.lang.model.plan.LogicalPlan
 
@@ -50,7 +50,7 @@ case class TypeDef(
     params: List[TypeParameter],
     scopes: List[DefScope],
     parent: Option[Name],
-    elems: Seq[TypeElem],
+    elems: List[TypeElem],
     nodeLocation: Option[NodeLocation]
 ) extends LanguageStatement
 
@@ -65,7 +65,7 @@ case class FunctionDef(
     name: Name,
     args: List[DefArg],
     scopes: List[DefScope],
-    retType: Option[Name],
+    retType: Option[DataType],
     expr: Option[Expression],
     nodeLocation: Option[NodeLocation]
 ) extends TypeElem:

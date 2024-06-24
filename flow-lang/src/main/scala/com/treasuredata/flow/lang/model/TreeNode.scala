@@ -14,3 +14,4 @@ trait TreeNode[Elem <: TreeNode[Elem]]:
     */
   def nodeLocation: Option[NodeLocation]
   def sourceLocation(using cu: CompilationUnit): SourceLocation = SourceLocation(cu, nodeLocation)
+  def locationString(using cu: CompilationUnit): String         = sourceLocation.locationString

@@ -4,7 +4,18 @@ import com.treasuredata.flow.lang.StatusCode
 import com.treasuredata.flow.lang.compiler.RewriteRule.PlanRewriter
 import com.treasuredata.flow.lang.compiler.{CompilationUnit, Context, Phase, RewriteRule}
 import com.treasuredata.flow.lang.model.DataType.{NamedType, SchemaType}
-import com.treasuredata.flow.lang.model.expr.{Attribute, AttributeList, Expression}
+import com.treasuredata.flow.lang.model.expr.{
+  NoName,
+  Attribute,
+  AttributeList,
+  ContextRef,
+  Expression,
+  Identifier,
+  InterpolatedString,
+  Ref,
+  ResolvedAttribute,
+  UnresolvedAttribute
+}
 import com.treasuredata.flow.lang.model.plan.*
 import com.treasuredata.flow.lang.model.{DataType, RelationType}
 import wvlet.log.LogSupport
@@ -12,8 +23,6 @@ import wvlet.log.LogSupport
 object TypeResolver extends Phase("type-resolver") with LogSupport:
 
   override def run(unit: CompilationUnit, context: Context): CompilationUnit =
-    trace(context.scope.getAllTypes.map(t => s"[${t._1}]: ${t._2}").mkString("\n"))
-
     // resolve plans
     var resolvedPlan: LogicalPlan = TypeResolver.resolve(unit.unresolvedPlan, context)
     // resolve again to resolve unresolved relation types
@@ -22,8 +31,15 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
     unit
 
   def defaultRules: List[RewriteRule] =
-    resolveLocalFileScan :: resolveTableRef :: resolveRelation :: resolveProjectedColumns ::
-      resolveModelDef :: resolveScan :: Nil
+    resolveLocalFileScan :: // resolve local file scans for DuckDb
+      resolveTableRef ::    // resolve table reference (model or schema) types
+      resolveRelation ::    //
+      // resolveProjectedColumns ::   // TODO: Fix StackOverflowError for attr.fullName
+      resolveModelDef ::              // resolve ModelDef
+      resolveScan ::                  // resolve model/ref scan nodes
+      resolveUnderscore ::            // resolve underscore in relation nodes
+      resolveFunctionBodyInTypeDef :: //
+      Nil
 
   def resolve(plan: LogicalPlan, context: Context): LogicalPlan = RewriteRule
     .rewrite(plan, defaultRules, context)
@@ -103,9 +119,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
       case q: Query =>
         q.copy(body = resolveRelation(q.body, context))
       case r: Relation => // Regular relation and Filter etc.
-        r.transformUpExpressions { case x: Expression =>
-          resolveExpression(x, r.inputAttributeList, context)
-        }
+        r.transformExpressions(resolveExpression(r.inputAttributeList, context))
     }
 
   /**
@@ -121,36 +135,6 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
       )
       Project(resolvedChild, resolvedColumns, p.nodeLocation)
     }
-
-  /**
-    * Resolve the given list of attribute types using known attributes from the child plan nodes as
-    * hints
-    * @param attributes
-    * @param knownAttributes
-    * @param context
-    * @return
-    */
-  private def resolveAttributes(
-      attributes: Seq[Attribute],
-      knownAttributes: AttributeList,
-      context: Context
-  ): Seq[Attribute] = attributes.map { a =>
-    val resolvedExpr = resolveExpression(a, knownAttributes, context)
-    a
-  }
-
-  /**
-    * Resolve the given expression type using the input attributes from child plan nodes
-    * @param expr
-    * @param knownAttributes
-    */
-  private def resolveExpression(
-      expr: Expression,
-      knownAttributes: AttributeList,
-      context: Context
-  ): Expression =
-    trace(s"resolve ${expr} using ${knownAttributes}")
-    expr
 
   object resolveModelDef extends RewriteRule:
     override def apply(context: Context): PlanRewriter = { case m: ModelDef =>
@@ -168,3 +152,120 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
         case _ =>
           m
     }
+
+  /**
+    * Resolve underscore (_) from the parent relation node
+    */
+  object resolveUnderscore extends RewriteRule:
+    private def hasUnderscore(r: Relation): Boolean =
+      var found = false
+      r.childExpressions
+        .map { e =>
+          e.traverseExpressions { case c: ContextRef =>
+            found = true
+          }
+        }
+      found
+
+    override def apply(context: Context): PlanRewriter = {
+      case u: UnaryRelation if hasUnderscore(u) =>
+        given CompilationUnit = context.compilationUnit
+        val contextType       = u.inputRelation.relationType
+        // trace(s"Resolve underscore (_) as ${contextType} in ${u.locationString}")
+        val updated = u.transformChildExpressions { case ref: ContextRef =>
+          ref.copy(dataType = contextType)
+        }
+        updated
+    }
+
+  object resolveFunctionBodyInTypeDef extends RewriteRule:
+    override def apply(context: Context): PlanRewriter = { case td: TypeDef =>
+      val attrs = td
+        .elems
+        .collect { case v: TypeValDef =>
+          val name = v.name.fullName
+          context.scope.resolveType(v.tpe.fullName) match
+            case Some(resolvedType) =>
+              ResolvedAttribute(v.name, resolvedType, None, v.nodeLocation)
+            case None =>
+              UnresolvedAttribute(v.name, v.nodeLocation)
+        }
+      val attrList = AttributeList(attrs)
+      val newElems: List[TypeElem] = td
+        .elems
+        .map {
+          case f: FunctionDef =>
+            val retType = f
+              .retType
+              .map { t =>
+                context.scope.resolveType(t.typeName) match
+                  case Some(resolvedType) =>
+                    resolvedType
+                  case None =>
+                    t
+              }
+
+            val newF = f.copy(
+              retType = retType,
+              expr = f.expr.map(x => resolveExpression(x, attrList, context))
+            )
+            // newF.expr.map(x => trace(s"${f.name}: ${x.dataType}"))
+            newF
+          case other =>
+            other
+        }
+      td.copy(elems = newElems)
+    }
+
+  end resolveFunctionBodyInTypeDef
+
+  /**
+    * Resolve the given expression type using the input attributes from child plan nodes
+    *
+    * @param expr
+    * @param knownAttributes
+    */
+  private def resolveExpression(
+      knownAttributes: AttributeList,
+      context: Context
+  ): PartialFunction[Expression, Expression] =
+    case id: Identifier if id != NoName =>
+      val name = id.fullName
+      knownAttributes.attrs.find(x => x.fullName == name) match
+        case Some(attr) =>
+          attr
+        case None =>
+          id
+    case ref: Ref =>
+      warn(s"TODO: resolve ref: ${ref.fullName} in ${knownAttributes}")
+      ref
+    case i: InterpolatedString if i.prefix.fullName == "sql" =>
+      // Ignore it because we can't resolve embedded SQL expressions
+      i
+    case expr: Expression if !expr.dataType.isResolved =>
+      trace(s"unresolved expression type: ${expr}")
+      expr
+
+  private def resolveExpression(
+      expr: Expression,
+      knownAttributes: AttributeList,
+      context: Context
+  ): Expression = resolveExpression(knownAttributes, context)
+    .applyOrElse[Expression, Expression](expr, _ => expr)
+
+  /**
+    * Resolve the given list of attribute types using known attributes from the child plan nodes as
+    * hints
+    *
+    * @param attributes
+    * @param knownAttributes
+    * @param context
+    * @return
+    */
+  private def resolveAttributes(
+      attributes: Seq[Attribute],
+      knownAttributes: AttributeList,
+      context: Context
+  ): Seq[Attribute] = attributes.map { a =>
+    a.transformExpression(resolveExpression(knownAttributes, context)).asInstanceOf[Attribute]
+  }
