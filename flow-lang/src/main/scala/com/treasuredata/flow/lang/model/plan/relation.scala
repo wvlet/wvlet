@@ -165,12 +165,13 @@ case class PathScan(
   override val relationType: RelationType = UnresolvedRelationType(RelationType.newRelationTypeName)
 
 case class JSONFileScan(
-    path: String,
+    name: String,
     schema: RelationType,
     columns: Seq[NamedType],
     nodeLocation: Option[NodeLocation]
 ) extends Relation
-    with LeafPlan:
+    with LeafPlan
+    with HasName:
   override def inputAttributes: Seq[Attribute] = Seq.empty
 
   override def outputAttributes: Seq[Attribute] = columns.map { col =>
@@ -183,16 +184,17 @@ case class JSONFileScan(
   }
 
   override def relationType: RelationType = ProjectedType(schema.typeName, columns, schema)
-  override def toString: String = s"JSONFileScan(path:${path}, columns:[${columns.mkString(", ")}])"
+  override def toString: String = s"JSONFileScan(path:${name}, columns:[${columns.mkString(", ")}])"
   override lazy val resolved    = true
 
 case class ParquetFileScan(
-    path: String,
+    name: String,
     schema: RelationType,
     columns: Seq[NamedType],
     nodeLocation: Option[NodeLocation]
 ) extends Relation
-    with LeafPlan:
+    with LeafPlan
+    with HasName:
   override def inputAttributes: Seq[Attribute] = Seq.empty
 
   override def outputAttributes: Seq[Attribute] = columns.map { col =>
@@ -206,7 +208,7 @@ case class ParquetFileScan(
 
   override def relationType: RelationType = ProjectedType(schema.typeName, columns, schema)
   override def toString: String =
-    s"ParquetFileScan(path:${path}, columns:[${columns.mkString(", ")}])"
+    s"ParquetFileScan(path:${name}, columns:[${columns.mkString(", ")}])"
 
   override lazy val resolved = true
 
@@ -309,7 +311,12 @@ case class Aggregate(
 
   override lazy val relationType: RelationType = AggregationType(
     RelationType.newRelationTypeName,
-    groupingKeys.map(k => k.dataType),
+    groupingKeys.map {
+      case g: UnresolvedGroupingKey =>
+        NamedType(g.name, g.dataType)
+      case k =>
+        NamedType(NoName, k.dataType)
+    },
     child.relationType
   )
 
@@ -549,6 +556,9 @@ case class LateralView(
   override def outputAttributes: Seq[Attribute] = columnAliases
     .map(x => UnresolvedAttribute(Ref(tableAlias, x, None), None))
 
+trait HasName:
+  def name: String
+
 /**
   * The lowest level operator to access a table
   *
@@ -565,7 +575,8 @@ case class TableScan(
     columns: Seq[NamedType],
     nodeLocation: Option[NodeLocation]
 ) extends Relation
-    with LeafPlan:
+    with LeafPlan
+    with HasName:
   override def inputAttributes: Seq[Attribute] = Seq.empty
   override def outputAttributes: Seq[Attribute] = columns.map { col =>
     ResolvedAttribute(
@@ -595,7 +606,8 @@ case class RelScan(
     columns: Seq[NamedType],
     nodeLocation: Option[NodeLocation]
 ) extends Relation
-    with LeafPlan:
+    with LeafPlan
+    with HasName:
   override def inputAttributes: Seq[Attribute] = Seq.empty
   override def outputAttributes: Seq[Attribute] = columns.map { col =>
     ResolvedAttribute(

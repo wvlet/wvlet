@@ -1,5 +1,6 @@
 package com.treasuredata.flow.lang.model
 
+import com.treasuredata.flow.lang.model.DataType.NamedType
 import wvlet.airframe.ulid.{PrefixedULID, ULID}
 import wvlet.log.LogSupport
 import com.treasuredata.flow.lang.model.expr.Name
@@ -39,7 +40,7 @@ sealed abstract class RelationType(
     override val typeName: String,
     override val typeParams: Seq[DataType]
 ) extends DataType(typeName, typeParams):
-  def fields: Seq[DataType]
+  def fields: Seq[NamedType]
 
 object RelationType:
   private var typeCount: Int = 0
@@ -70,26 +71,24 @@ object DataType extends LogSupport:
     */
   case class SchemaType(override val typeName: String, columnTypes: Seq[NamedType])
       extends RelationType(typeName, Seq.empty):
-    override def typeDescription: String = typeName
-    override def fields: Seq[DataType]   = columnTypes
+    override def fields: Seq[NamedType] = columnTypes
 
     override def isResolved: Boolean = columnTypes.forall(_.isResolved)
 
   case object EmptyRelationType extends RelationType(RelationType.newRelationTypeName, Seq.empty):
-    override def isResolved: Boolean   = true
-    override def fields: Seq[DataType] = Seq.empty
+    override def isResolved: Boolean    = true
+    override def fields: Seq[NamedType] = Seq.empty
 
   case class UnresolvedRelationType(override val typeName: String)
       extends RelationType(typeName, Seq.empty):
-    override def typeDescription: String = typeName
-    override def isResolved: Boolean     = false
-    override def fields: Seq[DataType]   = Seq.empty
+    override def isResolved: Boolean    = false
+    override def fields: Seq[NamedType] = Seq.empty
 
   case class AliasedType(override val typeName: String, baseType: RelationType)
       extends RelationType(typeName, Seq.empty):
     override def toString = s"${typeName}:=${baseType}"
 
-    override def fields: Seq[DataType]   = baseType.fields
+    override def fields: Seq[NamedType]  = baseType.fields
     override def baseTypeName: String    = baseType.typeName
     override def typeDescription: String = typeName
     override def isResolved: Boolean     = baseType.isResolved
@@ -101,9 +100,8 @@ object DataType extends LogSupport:
       baseType: RelationType
   ) extends RelationType(typeName, Seq.empty):
 
-    override def fields: Seq[DataType]   = projectedColumns
-    override def typeDescription: String = typeName
-    override def isResolved: Boolean     = projectedColumns.forall(_.isResolved)
+    override def fields: Seq[NamedType] = projectedColumns
+    override def isResolved: Boolean    = projectedColumns.forall(_.isResolved)
 
   /**
     * Aggregateed record types: (key1, key2, ...) -> [record1*]
@@ -113,20 +111,18 @@ object DataType extends LogSupport:
     */
   case class AggregationType(
       override val typeName: String,
-      groupingKeyTypes: Seq[DataType],
+      groupingKeyTypes: Seq[NamedType],
       valueType: RelationType
   ) extends RelationType(typeName, Seq.empty):
 
-    override def fields: Seq[DataType]   = groupingKeyTypes ++ valueType.fields
-    override def typeDescription: String = typeName
+    override def fields: Seq[NamedType] = groupingKeyTypes ++ valueType.fields
     override def isResolved: Boolean = groupingKeyTypes.forall(_.isResolved) && valueType.isResolved
 
   case class ConcatType(override val typeName: String, inputTypes: Seq[RelationType])
       extends RelationType(typeName, Seq.empty):
 
-    override def fields: Seq[DataType]   = inputTypes.flatMap(_.fields)
-    override def typeDescription: String = typeName
-    override def isResolved: Boolean     = inputTypes.forall(_.isResolved)
+    override def fields: Seq[NamedType] = inputTypes.flatMap(_.fields)
+    override def isResolved: Boolean    = inputTypes.forall(_.isResolved)
 
   /**
     * Type extension
@@ -139,15 +135,14 @@ object DataType extends LogSupport:
       defs: Seq[FunctionType]
   ) extends RelationType(typeName, Seq.empty):
 
-    override def fields: Seq[DataType] =
+    override def fields: Seq[NamedType] =
       parent match
         case Some(r: RelationType) =>
           r.fields
         case _ =>
           Nil
 
-    override def typeDescription: String = typeName
-    override def isResolved              = parent.exists(_.isResolved) && defs.forall(_.isResolved)
+    override def isResolved = parent.exists(_.isResolved) && defs.forall(_.isResolved)
 
   case class FunctionType(name: String, args: Seq[NamedType], returnType: DataType)
       extends DataType(name, Seq.empty):

@@ -32,7 +32,6 @@ class TypeScanner(phaseName: String) extends Phase(phaseName) with LogSupport:
       context.scope.addAlias(alias.alias, alias.sourceTypeName.fullName)
     case td: TypeDef =>
       val dataType = scanTypeDef(td, context)
-      // debug(s"add type ${dataType} resolved:${dataType.isResolved}")
       context.scope.addType(dataType)
     case tbl: TableDef =>
       context.scope.addTableDef(tbl)
@@ -40,11 +39,7 @@ class TypeScanner(phaseName: String) extends Phase(phaseName) with LogSupport:
       // debug(s"add import ${imp.importRef}")
       context.addImport(imp)
     case m: ModelDef =>
-      m.relationType match
-        case u: UnresolvedRelationType =>
-          // debug(s"Add alias ${m.name} -> ${u.typeName}")
-          context.scope.addAlias(m.name, u.typeName)
-        case _ =>
+      context.scope.addType(m.name, m.relationType)
     case q: Query =>
     // context.scope.addType(q.relationType)
   }

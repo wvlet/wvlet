@@ -1,6 +1,7 @@
 package com.treasuredata.flow.lang.compiler
 
 import com.treasuredata.flow.lang.model.DataType
+import com.treasuredata.flow.lang.model.DataType.NamedType
 import com.treasuredata.flow.lang.model.expr.Name
 import com.treasuredata.flow.lang.model.plan.TableDef
 import wvlet.log.LogSupport
@@ -20,6 +21,7 @@ class Scope(outer: Option[Scope]) extends LogSupport:
   private val tableDef = mutable.Map.empty[String, TableDef]
 
   def getAllTypes: Map[String, DataType] = types.toMap
+  def getAliases: Map[String, String]    = aliases.toMap
 
   def getAllTableDefs: Map[String, TableDef] = tableDef.toMap
 
@@ -27,7 +29,15 @@ class Scope(outer: Option[Scope]) extends LogSupport:
 
   def addTableDef(tbl: TableDef): Unit = tableDef.put(tbl.name.fullName, tbl)
 
-  def addType(dataType: DataType): Unit = types.put(dataType.typeName, dataType)
+  def addType(dataType: DataType): Unit             = addType(dataType.typeName, dataType)
+  def addType(name: Name, dataType: DataType): Unit = addType(name.fullName, dataType)
+  def addType(name: String, dataType: DataType): Unit =
+    findType(name) match
+      case Some(t) if t.isResolved =>
+        trace(s"Type ${name} is already defined: ${t.typeDescription}")
+      case _ =>
+        trace(s"Add type mapping: ${name} -> ${dataType.typeDescription}")
+        types.put(name, dataType)
 
   def getTableDef(name: Name): Option[TableDef] = tableDef.get(name.fullName)
 
@@ -42,6 +52,7 @@ class Scope(outer: Option[Scope]) extends LogSupport:
           if r.isResolved then
             Some(r)
           else
+            trace(s"${name} -> ${r} is not resolved")
             resolveType(r.baseTypeName, seen + name)
         case other =>
           other
@@ -52,7 +63,14 @@ class Scope(outer: Option[Scope]) extends LogSupport:
     val tpe = types
       .get(name)
       // search aliases
-      .orElse(aliases.get(name).flatMap(x => types.get(x)))
+      .orElse {
+        aliases
+          .get(name)
+          .flatMap { x =>
+            trace(s"Found alias ${name} -> ${x}")
+            types.get(x)
+          }
+      }
       // search table def
       .orElse {
         tableDef.get(name).flatMap(_.getType).flatMap(x => findType(x.fullName, seen + name))

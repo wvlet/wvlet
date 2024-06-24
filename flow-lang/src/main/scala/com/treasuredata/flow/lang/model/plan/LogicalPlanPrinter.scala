@@ -93,13 +93,7 @@ object LogicalPlanPrinter extends LogSupport:
           else
             s"(${s.mkString(", ")})"
 
-        def printRelationType(r: RelationType): String =
-          s"<${r}${
-              if r.isResolved then
-                ">"
-              else
-                ">?"
-            }"
+        def printRelationType(r: RelationType): String = s"<${r}>"
 
         val inputType =
           m match
@@ -124,7 +118,7 @@ object LogicalPlanPrinter extends LogSupport:
         val loc = m.nodeLocation.map(l => s" (${l})").getOrElse("")
         val prefix =
           m match
-            case t: TableScan =>
+            case t: HasName =>
               s"${ws}[${m.modelName}${loc}] ${t.name}${functionSig}"
             case src: HasSourceFile =>
               s"${ws}[${m.modelName} ${src.sourceFile.file}${loc}]${functionSig} "
@@ -246,6 +240,10 @@ object LogicalPlanPrinter extends LogSupport:
           concat(List(d.tpe))
         else
           concat(List(d.name, ": ", d.tpe), ", ")
+      case ShouldExpr(testType, left, right, _) =>
+        s"${left.sqlExpr} ${testType.expr} ${right.sqlExpr}"
+      case c: ContextRef =>
+        "_"
       case other =>
         e.toString
 

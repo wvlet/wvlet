@@ -27,7 +27,7 @@ class InMemoryExecutor extends LogSupport:
         warn(s"Test execution is not supported yet: ${t}")
         QueryResult.empty
       case r: JSONFileScan =>
-        val json = IO.readAsString(new File(r.path))
+        val json = IO.readAsString(new File(r.name))
         trace(json)
         val codec = MessageCodec.of[Seq[Map[String, Any]]]
         val data  = codec.fromJson(json)

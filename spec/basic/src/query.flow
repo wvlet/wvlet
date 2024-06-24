@@ -1,6 +1,7 @@
--- just scan a table
-from person
-
+-- Define a table from json file
+model person =
+  from 'person.json'
+end
 -- limit
 from person
 limit 5
@@ -32,10 +33,10 @@ model person_with_age_group =
   group by age_group
 end
 
-model person_filer =
+model person_filer(bound:int) =
   -- reference another model
   from person_with_age_group
-  where age_group >= 2
+  where age_group >= bound
 end
 
 -- projection

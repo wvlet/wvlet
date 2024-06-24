@@ -23,7 +23,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
 
   def defaultRules: List[RewriteRule] =
     resolveLocalFileScan :: resolveTableRef :: resolveRelation :: resolveProjectedColumns ::
-      resolveModelDef :: Nil
+      resolveModelDef :: resolveScan :: Nil
 
   def resolve(plan: LogicalPlan, context: Context): LogicalPlan = RewriteRule
     .rewrite(plan, defaultRules, context)
@@ -68,20 +68,32 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
       case ref: TableRef =>
         context.scope.findType(ref.name.fullName) match
           case Some(tpe: RelationType) =>
-            // warn(s"Resolved table ref: ${ref} -> ${tpe.typeName}")
-            context.scope.resolveType(tpe.typeName) match
-              case Some(schema: SchemaType) =>
-                context.scope.getTableDef(ref.name) match
-                  case Some(tbl) =>
-                    TableScan(ref.name.fullName, tpe, schema.columnTypes, ref.nodeLocation)
-                  case None =>
-                    RelScan(ref.name.fullName, tpe, schema.columnTypes, ref.nodeLocation)
-              case other =>
-                // warn(s"Unresolved table ref: ${ref} -> ${other}")
-                ref
+            context.scope.getTableDef(ref.name) match
+              case Some(tbl) =>
+                TableScan(ref.name.fullName, tpe, tpe.fields, ref.nodeLocation)
+              case None =>
+                RelScan(ref.name.fullName, tpe, tpe.fields, ref.nodeLocation)
           case _ =>
-            trace(s"Unresolved table ref: ${ref}")
+            trace(s"Unresolved table ref: ${ref.name.fullName}")
             ref
+
+  object resolveScan extends RewriteRule:
+    override def apply(context: Context): PlanRewriter = {
+      case s: TableScan if !s.relationType.isResolved =>
+        context.scope.findType(s.name) match
+          case Some(r: RelationType) if r.isResolved =>
+            s.copy(schema = r)
+          case _ =>
+            trace(s"Unresolved relation type: ${s.relationType.typeName}")
+            s
+      case s: RelScan if !s.relationType.isResolved =>
+        context.scope.findType(s.name) match
+          case Some(r: RelationType) if r.isResolved =>
+            s.copy(schema = r)
+          case _ =>
+            trace(s"Unresolved relation type: ${s.relationType.typeName}")
+            s
+    }
 
   /**
     * Resolve expression in relation nodes
@@ -144,7 +156,15 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
     override def apply(context: Context): PlanRewriter = { case m: ModelDef =>
       context.scope.resolveType(m.relationType.typeName) match
         case Some(r: RelationType) =>
+          // given model type is already resolved
+          context.scope.addType(m.name, r)
+          // context.scope.addType(r.typeName, r)
           m.copy(relationType = r)
+        case _ if m.child.relationType.isResolved =>
+          // If the child query relation is already resolved, use this type
+          val childType = m.child.relationType
+          context.scope.addType(m.name, childType)
+          m.copy(relationType = childType)
         case _ =>
           m
     }

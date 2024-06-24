@@ -8,9 +8,21 @@ class AnalyzerTest extends AirSpec:
 
   private val compiler = Compiler(List(Compiler.analysisPhases))
 
-  test("analyze cdp-basic plan") {
+  test("analyze cdp_simple plan") {
     val result     = compiler.compile("spec/cdp_simple")
     val typedPlans = result.typedPlans
     typedPlans.map: p =>
       debug(p.pp)
+  }
+
+  test("analyze basic") {
+    val result     = compiler.compile("spec/basic")
+    val typedPlans = result.typedPlans
+    typedPlans.map: p =>
+      debug(p.pp)
+    debug(result.context.scope.getAllTypes)
+
+    val tpe = result.context.scope.findType("person")
+    debug(tpe.get.typeDescription)
+
   }

@@ -386,11 +386,11 @@ case class Exists(child: Expression, nodeLocation: Option[NodeLocation])
     extends Expression
     with UnaryExpression
 
-enum TestType:
-  case ShouldBe
-  case ShouldNotBe
-  case ShouldContain
-  case ShouldNotContain
+enum TestType(val expr: String):
+  case ShouldBe         extends TestType("should be")
+  case ShouldNotBe      extends TestType("should not be")
+  case ShouldContain    extends TestType("should contain")
+  case ShouldNotContain extends TestType("should not contain")
 
 case class ShouldExpr(
     testType: TestType,
