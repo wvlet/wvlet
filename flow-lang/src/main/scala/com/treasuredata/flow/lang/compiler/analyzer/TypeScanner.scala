@@ -4,7 +4,6 @@ import com.treasuredata.flow.lang.StatusCode
 import com.treasuredata.flow.lang.compiler.{CompilationUnit, Context, Phase}
 import com.treasuredata.flow.lang.model.DataType
 import com.treasuredata.flow.lang.model.DataType.{
-  ExtensionType,
   FunctionType,
   NamedType,
   SchemaType,
@@ -46,7 +45,19 @@ class TypeScanner(phaseName: String) extends Phase(phaseName) with LogSupport:
 
   private def scanTypeDef(typeDef: TypeDef, context: Context): DataType =
     // TODO resolve defs
-    val defs: Seq[FunctionType] = Seq.empty // typeDef.defs.collect { case tpe: TypeDefDef =>
+    val defs: List[FunctionType] = typeDef
+      .elems
+      .collect { case f: FunctionDef =>
+        FunctionType(
+          f.name.fullName,
+          f.args.map(arg => NamedType(arg.name, arg.dataType)),
+          f.retType.getOrElse(DataType.UnknownType)
+        )
+      }
+
+    val parent = typeDef
+      .parent
+      .map(p => context.scope.resolveType(p.fullName).getOrElse(UnresolvedType(p.fullName)))
 
     // Scan SchemaType parameters
     val valDefs = typeDef
@@ -56,18 +67,8 @@ class TypeScanner(phaseName: String) extends Phase(phaseName) with LogSupport:
         NamedType(v.name, resolvedType)
       }
 
-    if valDefs.nonEmpty then
-      // TODO: Add parent fields
-      SchemaType(typeDef.name.fullName, valDefs)
-    else
-      // TODO: Add parent fields
-      ExtensionType(
-        typeDef.name.fullName,
-        typeDef
-          .parent
-          .map(p => context.scope.resolveType(p.fullName).getOrElse(UnresolvedType(p.fullName))),
-        defs
-      )
+    // TODO: Add parent fields
+    SchemaType(parent, typeDef.name.fullName, valDefs, defs)
 
   private def scanDataType(columnType: ColumnType, context: Context): DataType = context
     .scope

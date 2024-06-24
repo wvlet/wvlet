@@ -69,8 +69,12 @@ object DataType extends LogSupport:
   /**
     * A type for representing relational table schemas
     */
-  case class SchemaType(override val typeName: String, columnTypes: Seq[NamedType])
-      extends RelationType(typeName, Seq.empty):
+  case class SchemaType(
+      parent: Option[DataType],
+      override val typeName: String,
+      columnTypes: Seq[NamedType],
+      defs: List[FunctionType]
+  ) extends RelationType(typeName, Seq.empty):
     override def fields: Seq[NamedType] = columnTypes
 
     override def isResolved: Boolean = columnTypes.forall(_.isResolved)
@@ -124,25 +128,25 @@ object DataType extends LogSupport:
     override def fields: Seq[NamedType] = inputTypes.flatMap(_.fields)
     override def isResolved: Boolean    = inputTypes.forall(_.isResolved)
 
-  /**
-    * Type extension
-    * @param typeName
-    * @param defs
-    */
-  case class ExtensionType(
-      override val typeName: String,
-      parent: Option[DataType],
-      defs: Seq[FunctionType]
-  ) extends RelationType(typeName, Seq.empty):
-
-    override def fields: Seq[NamedType] =
-      parent match
-        case Some(r: RelationType) =>
-          r.fields
-        case _ =>
-          Nil
-
-    override def isResolved = parent.exists(_.isResolved) && defs.forall(_.isResolved)
+//  /**
+//    * Type extension
+//    * @param typeName
+//    * @param defs
+//    */
+//  case class ExtensionType(
+//      override val typeName: String,
+//      parent: Option[DataType],
+//      defs: Seq[FunctionType]
+//  ) extends RelationType(typeName, Seq.empty):
+//
+//    override def fields: Seq[NamedType] =
+//      parent match
+//        case Some(r: RelationType) =>
+//          r.fields
+//        case _ =>
+//          Nil
+//
+//    override def isResolved = parent.exists(_.isResolved) && defs.forall(_.isResolved)
 
   case class FunctionType(name: String, args: Seq[NamedType], returnType: DataType)
       extends DataType(name, Seq.empty):

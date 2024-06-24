@@ -3,15 +3,15 @@ package com.treasuredata.flow.lang.compiler.analyzer
 import com.treasuredata.flow.lang.StatusCode
 import com.treasuredata.flow.lang.compiler.RewriteRule.PlanRewriter
 import com.treasuredata.flow.lang.compiler.{CompilationUnit, Context, Phase, RewriteRule}
-import com.treasuredata.flow.lang.model.DataType.{NamedType, SchemaType}
+import com.treasuredata.flow.lang.model.DataType.{FunctionType, NamedType, SchemaType}
 import com.treasuredata.flow.lang.model.expr.{
-  NoName,
   Attribute,
   AttributeList,
   ContextRef,
   Expression,
   Identifier,
   InterpolatedString,
+  NoName,
   Ref,
   ResolvedAttribute,
   UnresolvedAttribute
@@ -171,9 +171,13 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
       case u: UnaryRelation if hasUnderscore(u) =>
         given CompilationUnit = context.compilationUnit
         val contextType       = u.inputRelation.relationType
-        // trace(s"Resolve underscore (_) as ${contextType} in ${u.locationString}")
-        val updated = u.transformChildExpressions { case ref: ContextRef =>
-          ref.copy(dataType = contextType)
+        trace(s"Resolve underscore (_) as ${contextType} in ${u.locationString}")
+        val updated = u.transformChildExpressions { case expr: Expression =>
+          expr.transformExpression {
+            case ref: ContextRef if !ref.dataType.isResolved =>
+              val c = ContextRef(dataType = contextType, ref.nodeLocation)
+              c
+          }
         }
         updated
     }
@@ -237,8 +241,24 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
         case None =>
           id
     case ref: Ref =>
-      warn(s"TODO: resolve ref: ${ref.fullName} in ${knownAttributes}")
-      ref
+      // Resolve types after following . (dot)
+      ref.base.dataType match
+        case t: SchemaType =>
+          trace(s"Find reference from ${t} -> ${ref.name}")
+          t.columnTypes.find(_.name == ref.name) match
+            case Some(col) =>
+              ResolvedAttribute(ref.name, col.dataType, None, ref.nodeLocation)
+            case None =>
+              t.defs.find(_.name == ref.name.fullName) match
+                case Some(f: FunctionType) =>
+                  trace(s"${t}.${ref.name.fullName} is a function")
+                  ref.copy(dataType = f.returnType)
+                case _ =>
+                  warn(s"${t}.${ref.name.fullName} is not found")
+                  ref
+        case other =>
+          trace(s"TODO: resolve ref: ${ref.fullName} as ${other.getClass}")
+          ref
     case i: InterpolatedString if i.prefix.fullName == "sql" =>
       // Ignore it because we can't resolve embedded SQL expressions
       i

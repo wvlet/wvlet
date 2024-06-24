@@ -554,7 +554,7 @@ case class LateralView(
     UnresolvedRelationType(RelationType.newRelationTypeName)
 
   override def outputAttributes: Seq[Attribute] = columnAliases
-    .map(x => UnresolvedAttribute(Ref(tableAlias, x, None), None))
+    .map(x => UnresolvedAttribute(Ref(tableAlias, x, DataType.UnknownType, None), None))
 
 trait HasName:
   def name: String

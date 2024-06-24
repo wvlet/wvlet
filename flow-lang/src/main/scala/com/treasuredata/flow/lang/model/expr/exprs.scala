@@ -54,7 +54,12 @@ case class ContextRef(override val dataType: DataType, nodeLocation: Option[Node
 //  override def toString: String          = s"Derefperence(${base} => ${next})"
 //  override def children: Seq[Expression] = Seq  xf(base, next)
 
-case class Ref(base: Expression, name: Name, nodeLocation: Option[NodeLocation]) extends Name:
+case class Ref(
+    base: Expression,
+    name: Name,
+    override val dataType: DataType,
+    nodeLocation: Option[NodeLocation]
+) extends Name:
   override def leafName: String = name.leafName
   override def fullName: String =
     base match
