@@ -15,7 +15,8 @@ import java.util.Locale
 /**
   */
 case class ParenthesizedExpression(child: Expression, nodeLocation: Option[NodeLocation])
-    extends UnaryExpression
+    extends UnaryExpression:
+  override def dataType: DataType = child.dataType
 
 sealed trait Name extends Expression:
   def fullName: String
@@ -154,7 +155,8 @@ case class SortItem(
     nodeLocation: Option[NodeLocation]
 ) extends Expression
     with UnaryExpression:
-  override def child: Expression = sortKey
+  override def dataType: DataType = sortKey.dataType
+  override def child: Expression  = sortKey
 
   override def toString: String =
     s"SortItem(sortKey:${sortKey}, ordering:${ordering}, nullOrdering:${nullOrdering})"
@@ -243,10 +245,12 @@ case class FunctionApply(
     nodeLocation: Option[NodeLocation]
 ) extends Expression:
   override def children: Seq[Expression] = args
+  override def dataType: DataType        = base.dataType
 
 case class FunctionArg(name: Option[Name], value: Expression, nodeLocation: Option[NodeLocation])
     extends Expression:
   override def children: Seq[Expression] = Seq.empty
+  override def dataType: DataType        = value.dataType
 
 case class LambdaExpr(body: Expression, args: Seq[String], nodeLocation: Option[NodeLocation])
     extends Expression
@@ -256,7 +260,9 @@ case class LambdaExpr(body: Expression, args: Seq[String], nodeLocation: Option[
 //case class Ref(name: QName, nodeLocation: Option[NodeLocation]) extends Expression with LeafExpression
 
 // Conditional expression
-sealed trait ConditionalExpression extends Expression
+sealed trait ConditionalExpression extends Expression:
+  override def dataType: DataType = DataType.BooleanType
+
 case class NoOp(nodeLocation: Option[NodeLocation])
     extends ConditionalExpression
     with LeafExpression
@@ -410,6 +416,7 @@ case class ShouldExpr(
     right: Expression,
     nodeLocation: Option[NodeLocation]
 ) extends Expression:
+  override def dataType: DataType        = DataType.BooleanType
   override def children: Seq[Expression] = Seq(left, right)
 
 // Arithmetic expr
@@ -431,11 +438,81 @@ case class ArithmeticBinaryExpr(
     with BinaryExpression:
 
   override def dataType: DataType =
-    if left.dataType == right.dataType then
-      left.dataType
-    else
-      // TODO type escalation e.g., (Double) op (Long) -> (Double)
-      DataType.UnknownType
+    left.dataType match
+      case l if l == right.dataType =>
+        l
+      case DataType.IntegerType =>
+        right.dataType match
+          case DataType.BooleanType =>
+            DataType.IntegerType
+          case DataType.LongType =>
+            DataType.LongType
+          case DataType.FloatType =>
+            DataType.FloatType
+          case DataType.DoubleType =>
+            DataType.DoubleType
+          case DataType.DecimalType(_, _) =>
+            right.dataType
+          case _ =>
+            DataType.UnknownType
+      case DataType.LongType =>
+        right.dataType match
+          case DataType.BooleanType =>
+            DataType.LongType
+          case DataType.IntegerType =>
+            DataType.LongType
+          case DataType.FloatType =>
+            DataType.FloatType
+          case DataType.DoubleType =>
+            DataType.DoubleType
+          case DataType.DecimalType(_, _) =>
+            right.dataType
+          case _ =>
+            DataType.UnknownType
+      case DataType.FloatType =>
+        right.dataType match
+          case DataType.BooleanType =>
+            DataType.FloatType
+          case DataType.IntegerType =>
+            DataType.FloatType
+          case DataType.LongType =>
+            DataType.FloatType
+          case DataType.DoubleType =>
+            DataType.DoubleType
+          case DataType.DecimalType(_, _) =>
+            right.dataType
+          case _ =>
+            DataType.UnknownType
+      case DataType.DoubleType =>
+        right.dataType match
+          case DataType.BooleanType =>
+            DataType.DoubleType
+          case DataType.IntegerType =>
+            DataType.DoubleType
+          case DataType.LongType =>
+            DataType.DoubleType
+          case DataType.FloatType =>
+            DataType.DoubleType
+          case DataType.DecimalType(_, _) =>
+            right.dataType
+          case _ =>
+            DataType.UnknownType
+      case DataType.BooleanType =>
+        right.dataType match
+          case DataType.IntegerType =>
+            DataType.IntegerType
+          case DataType.LongType =>
+            DataType.LongType
+          case DataType.FloatType =>
+            DataType.FloatType
+          case DataType.DoubleType =>
+            DataType.DoubleType
+          case DataType.DecimalType(_, _) =>
+            right.dataType
+          case _ =>
+            DataType.UnknownType
+      case _ =>
+        DataType.UnknownType
 
   override def operatorName: String = exprType.symbol
 
@@ -686,6 +763,7 @@ trait GroupingKey extends UnaryExpression:
 
 case class UnresolvedGroupingKey(name: Name, child: Expression, nodeLocation: Option[NodeLocation])
     extends GroupingKey:
+  override def dataType: DataType = child.dataType
   override def index: Option[Int] = None
   override def toString: String = s"GroupingKey(${index.map(i => s"${i}:").getOrElse("")}${child})"
   override lazy val resolved: Boolean = false

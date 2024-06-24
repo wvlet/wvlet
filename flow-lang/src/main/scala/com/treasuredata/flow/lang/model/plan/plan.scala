@@ -73,7 +73,7 @@ case class FunctionDef(
 
 case class DefArg(
     name: Name,
-    tpe: Name,
+    override val dataType: DataType,
     defaultValue: Option[Expression],
     nodeLocation: Option[NodeLocation]
 ) extends Expression:

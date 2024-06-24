@@ -1,5 +1,6 @@
 package com.treasuredata.flow.lang.compiler
 
+import com.treasuredata.flow.lang.compiler.Compiler.presetLibraries
 import com.treasuredata.flow.lang.compiler.analyzer.{
   PostTypeScan,
   PreTypeScan,
@@ -33,6 +34,9 @@ object Compiler:
 
   def allPhases: List[List[Phase]] = List(analysisPhases, transformPhases)
 
+  def presetLibraries: List[CompilationUnit] = CompilationUnit
+    .fromPath("flow-lang/src/main/resources/flow-stdlib")
+
 class Compiler(phases: List[List[Phase]] = Compiler.allPhases) extends LogSupport:
   /**
     * @param sourceFolder
@@ -42,10 +46,12 @@ class Compiler(phases: List[List[Phase]] = Compiler.allPhases) extends LogSuppor
   def compile(sourceFolder: String): CompileResult = compile(List(sourceFolder), sourceFolder)
 
   def compile(sourceFolders: List[String], contextFolder: String): CompileResult =
-    var units: List[CompilationUnit] = sourceFolders.flatMap { folder =>
-      val srcPath = s"${folder}/src"
-      CompilationUnit.fromPath(srcPath)
-    }
+    var units: List[CompilationUnit] =
+      presetLibraries ++
+        sourceFolders.flatMap { folder =>
+          val srcPath = s"${folder}/src"
+          CompilationUnit.fromPath(srcPath)
+        }
     val ctx = Context(sourceFolders = sourceFolders, workingFolder = contextFolder)
     for
       phaseGroup <- phases

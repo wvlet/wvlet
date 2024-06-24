@@ -482,7 +482,12 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
           Some(expression())
         case _ =>
           None
-    DefArg(name, tpe, defaultValue, name.nodeLocation)
+    val dt =
+      if DataType.isPrimitiveTypeName(tpe.fullName) then
+        DataType.getPrimitiveType(tpe.fullName)
+      else
+        UnresolvedType(tpe.fullName)
+    DefArg(name, dt, defaultValue, name.nodeLocation)
 
   def context(): List[DefScope] =
     scanner.lookAhead().token match

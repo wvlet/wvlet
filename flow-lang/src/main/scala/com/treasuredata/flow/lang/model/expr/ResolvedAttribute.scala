@@ -28,6 +28,6 @@ case class ResolvedAttribute(
       case Some(c) =>
         s"*${typeDescription} <- ${c.fullName}"
       case None =>
-        s"*${typeDescription}"
+        s"${name.fullName}: *${typeDescription}"
 
   override def sourceColumns: Seq[SourceColumn] = sourceColumn.toSeq

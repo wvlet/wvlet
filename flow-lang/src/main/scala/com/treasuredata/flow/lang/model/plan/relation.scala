@@ -177,7 +177,7 @@ case class JSONFileScan(
   override def outputAttributes: Seq[Attribute] = columns.map { col =>
     ResolvedAttribute(
       col.name,
-      col,
+      col.dataType,
       None, // TODO Some(SourceColumn(table, col)),
       None  // ResolvedAttribute always has no NodeLocation
     )
@@ -282,7 +282,11 @@ case class Transform(
 ) extends UnaryRelation
     with Selection:
   override def toString: String = s"Transform[${transformItems.mkString(", ")}](${child})"
-  override def outputAttributes: Seq[Attribute] = transformItems ++ child.outputAttributes
+  override def outputAttributes: Seq[Attribute] =
+    // TODO Fix duplicate columns
+    transformItems ++ child.outputAttributes
+
+  override def inputAttributes: Seq[Attribute] = child.outputAttributes
 
   override def selectItems: Seq[Attribute] = outputAttributes
 

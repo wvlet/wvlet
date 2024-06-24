@@ -1,5 +1,6 @@
 package com.treasuredata.flow.lang.model.expr
 
+import com.treasuredata.flow.lang.StatusCode
 import com.treasuredata.flow.lang.model.*
 import com.treasuredata.flow.lang.model.DataType.*
 import com.treasuredata.flow.lang.model.plan.LogicalPlan
@@ -7,7 +8,7 @@ import wvlet.log.LogSupport
 
 /**
   */
-trait Expression extends TreeNode[Expression] with Product:
+trait Expression extends TreeNode[Expression] with Product with LogSupport:
   /**
     * Column name without qualifier
     * @return
@@ -17,9 +18,19 @@ trait Expression extends TreeNode[Expression] with Product:
   def dataType: DataType    = DataType.UnknownType
 
   protected def copyInstance(newArgs: Seq[AnyRef]): this.type =
-    val primaryConstructor = this.getClass.getDeclaredConstructors()(0)
-    val newObj             = primaryConstructor.newInstance(newArgs*)
-    newObj.asInstanceOf[this.type]
+    try
+      val primaryConstructor = this.getClass.getDeclaredConstructors()(0)
+      val newObj             = primaryConstructor.newInstance(newArgs*)
+      newObj.asInstanceOf[this.type]
+    catch
+      case e: IllegalArgumentException =>
+        throw StatusCode
+          .NON_RETRYABLE_INTERNAL_ERROR
+          .newException(
+            s"Failed to create a new instance for ${this.getClass.getSimpleName} with args [${newArgs
+                .mkString(", ")}]",
+            e
+          )
 
   def transformPlan(rule: PartialFunction[LogicalPlan, LogicalPlan]): Expression =
     def recursiveTransform(arg: Any): AnyRef =

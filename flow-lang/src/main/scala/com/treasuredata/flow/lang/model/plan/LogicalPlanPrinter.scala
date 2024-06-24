@@ -156,7 +156,7 @@ object LogicalPlanPrinter extends LogSupport:
           List(
             d.name,
             ": ",
-            d.tpe,
+            d.dataType.typeDescription,
             if d.defaultValue.isEmpty then
               Nil
             else

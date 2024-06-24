@@ -9,6 +9,7 @@ import com.treasuredata.flow.lang.model.expr.{
   AttributeList,
   ContextRef,
   Expression,
+  GroupingKey,
   Identifier,
   InterpolatedString,
   NoName,
@@ -116,8 +117,6 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
     */
   object resolveRelation extends RewriteRule:
     override def apply(context: Context): PlanRewriter = {
-      case q: Query =>
-        q.copy(body = resolveRelation(q.body, context))
       case r: Relation => // Regular relation and Filter etc.
         r.transformExpressions(resolveExpression(r.inputAttributeList, context))
     }
@@ -171,7 +170,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
       case u: UnaryRelation if hasUnderscore(u) =>
         given CompilationUnit = context.compilationUnit
         val contextType       = u.inputRelation.relationType
-        trace(s"Resolve underscore (_) as ${contextType} in ${u.locationString}")
+        trace(s"Resolved underscore (_) as ${contextType} in ${u.locationString}")
         val updated = u.transformChildExpressions { case expr: Expression =>
           expr.transformExpression {
             case ref: ContextRef if !ref.dataType.isResolved =>
@@ -208,12 +207,11 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
                   case None =>
                     t
               }
-
+            // warn(s"resolve function body: ${f.expr} using ${attrList}")
             val newF = f.copy(
               retType = retType,
-              expr = f.expr.map(x => resolveExpression(x, attrList, context))
+              expr = f.expr.map(x => x.transformUpExpression(resolveExpression(attrList, context)))
             )
-            // newF.expr.map(x => trace(s"${f.name}: ${x.dataType}"))
             newF
           case other =>
             other
@@ -233,13 +231,14 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
       knownAttributes: AttributeList,
       context: Context
   ): PartialFunction[Expression, Expression] =
-    case id: Identifier if id != NoName =>
-      val name = id.fullName
+    case a: Attribute if !a.dataType.isResolved =>
+      val name = a.fullName
+      debug(s"Find ${name} in ${knownAttributes}")
       knownAttributes.attrs.find(x => x.fullName == name) match
         case Some(attr) =>
           attr
         case None =>
-          id
+          a
     case ref: Ref =>
       // Resolve types after following . (dot)
       ref.base.dataType match
@@ -247,6 +246,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
           trace(s"Find reference from ${t} -> ${ref.name}")
           t.columnTypes.find(_.name == ref.name) match
             case Some(col) =>
+              trace(s"${t}.${col.name.fullName} is a column")
               ResolvedAttribute(ref.name, col.dataType, None, ref.nodeLocation)
             case None =>
               t.defs.find(_.name == ref.name.fullName) match
@@ -257,21 +257,30 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
                   warn(s"${t}.${ref.name.fullName} is not found")
                   ref
         case other =>
-          trace(s"TODO: resolve ref: ${ref.fullName} as ${other.getClass}")
+          // trace(s"TODO: resolve ref: ${ref.fullName} as ${other.getClass}")
           ref
     case i: InterpolatedString if i.prefix.fullName == "sql" =>
-      // Ignore it because we can't resolve embedded SQL expressions
+      // Ignore it because embedded SQL expressions have no static type
       i
-    case expr: Expression if !expr.dataType.isResolved =>
-      trace(s"unresolved expression type: ${expr}")
-      expr
+    case i: Identifier if !i.dataType.isResolved =>
+      knownAttributes.find(_.fullName == i.fullName) match
+        case Some(attr) =>
+          val ri = i.toResolved(attr.dataType)
+          trace(s"Resolved identifier: ${ri}")
+          ri
+        case None =>
+          trace(s"Failed to resolve identifier: ${i} from ${knownAttributes}")
+          i
+    case other: Expression if !other.dataType.isResolved =>
+      trace(s"TODO: resolve expression: ${other} using ${knownAttributes}")
+      other
 
   private def resolveExpression(
       expr: Expression,
       knownAttributes: AttributeList,
       context: Context
   ): Expression = resolveExpression(knownAttributes, context)
-    .applyOrElse[Expression, Expression](expr, _ => expr)
+    .applyOrElse(expr, identity[Expression])
 
   /**
     * Resolve the given list of attribute types using known attributes from the child plan nodes as

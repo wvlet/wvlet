@@ -34,4 +34,5 @@ enum StatusCode(statusType: StatusType):
   case UNAUTHENTICATED         extends StatusCode(StatusType.UserError)
   case PERMISSION_DENIED       extends StatusCode(StatusType.UserError)
 
-  case NOT_IMPLEMENTED extends StatusCode(StatusType.UserError)
+  case NOT_IMPLEMENTED              extends StatusCode(StatusType.UserError)
+  case NON_RETRYABLE_INTERNAL_ERROR extends StatusCode(StatusType.UserError)

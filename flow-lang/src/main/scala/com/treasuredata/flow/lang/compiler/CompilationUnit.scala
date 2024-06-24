@@ -3,6 +3,8 @@ package com.treasuredata.flow.lang.compiler
 import com.treasuredata.flow.lang.compiler.SourceFile.NoSourceFile
 import com.treasuredata.flow.lang.model.NodeLocation
 import com.treasuredata.flow.lang.model.plan.{LogicalPlan, NamedRelation, Relation}
+import wvlet.log.LogSupport
+import wvlet.log.io.{IOUtil, Resource}
 
 import java.io.File
 
@@ -30,7 +32,7 @@ case class CompilationUnit(sourceFile: SourceFile):
     }
     result
 
-object CompilationUnit:
+object CompilationUnit extends LogSupport:
   val empty: CompilationUnit = CompilationUnit(NoSourceFile)
 
   def fromString(text: String) = CompilationUnit(SourceFile.fromString(text))
@@ -47,6 +49,15 @@ object CompilationUnit:
         }
         .toList
     units
+
+  def fromResourcePath(path: String): List[CompilationUnit] =
+    val files = Resource.listResources(path, _.endsWith(".flow"))
+    files
+      .map { f =>
+        warn(f)
+        CompilationUnit(SourceFile.fromResource(f.logicalPath))
+      }
+      .toList
 
   private def listFiles(path: String): Seq[String] =
     val f = new java.io.File(path)
