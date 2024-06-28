@@ -9,7 +9,7 @@ import wvlet.log.LogSupport
 import scala.collection.mutable
 
 object Scope:
-  def empty = Scope(None)
+  val NoScope = Scope(None)
 
 /**
   * Scope manages a list of table, alias, function definitions that are available in the current
@@ -19,6 +19,8 @@ class Scope(outer: Option[Scope]) extends LogSupport:
   private val types    = mutable.Map.empty[String, DataType].addAll(DataType.knownPrimitiveTypes)
   private val aliases  = mutable.Map.empty[String, String]
   private val tableDef = mutable.Map.empty[String, TableDef]
+
+  def isNoScope: Boolean = this eq Scope.NoScope
 
   def getAllTypes: Map[String, DataType] = types.toMap
   def getAliases: Map[String, String]    = aliases.toMap
@@ -31,12 +33,14 @@ class Scope(outer: Option[Scope]) extends LogSupport:
 
   def addType(dataType: DataType): Unit             = addType(dataType.typeName, dataType)
   def addType(name: Name, dataType: DataType): Unit = addType(name.fullName, dataType)
+
+  // TODO manage scopes
   def addType(name: String, dataType: DataType): Unit =
     findType(name) match
-      case Some(t) if t.isResolved =>
+      case Some(t) if t.isResolved && dataType == t =>
         trace(s"Type ${name} is already defined: ${t.typeDescription}")
       case _ =>
-        trace(s"Add type mapping: ${name} -> ${dataType.typeDescription}")
+        debug(s"Add type mapping: ${name} -> ${dataType.typeDescription}")
         types.put(name, dataType)
 
   def getTableDef(name: Name): Option[TableDef] = tableDef.get(name.fullName)

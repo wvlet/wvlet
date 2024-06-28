@@ -3,7 +3,12 @@ package com.treasuredata.flow.lang.compiler.analyzer
 import com.treasuredata.flow.lang.StatusCode
 import com.treasuredata.flow.lang.compiler.RewriteRule.PlanRewriter
 import com.treasuredata.flow.lang.compiler.{CompilationUnit, Context, Phase, RewriteRule}
-import com.treasuredata.flow.lang.model.DataType.{FunctionType, NamedType, SchemaType}
+import com.treasuredata.flow.lang.model.DataType.{
+  FunctionType,
+  NamedType,
+  PrimitiveType,
+  SchemaType
+}
 import com.treasuredata.flow.lang.model.expr.{
   Attribute,
   AttributeList,
@@ -279,11 +284,26 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
             case None =>
               t.defs.find(_.name == ref.name.fullName) match
                 case Some(f: FunctionType) =>
-                  trace(s"${t}.${ref.name.fullName} is a function")
+                  trace(s"Resolved ${t}.${ref.name.fullName} as a function")
                   ref.copy(dataType = f.returnType)
                 case _ =>
                   warn(s"${t}.${ref.name.fullName} is not found")
                   ref
+        case p: PrimitiveType =>
+          trace(s"Find reference from ${p} -> ${ref.name}")
+          context.scope.findType(p.typeName) match
+            case Some(pt: SchemaType) =>
+              pt.defs.find(_.name == ref.fullName) match
+                case Some(m: FunctionType) =>
+                  // TODO Handling context-specific methods
+                  trace(s"Resolved ${p}.${ref.name.fullName} as a primitive function")
+                  ref.copy(dataType = m.returnType)
+                case _ =>
+                  trace(s"Failed to resolve ${p}.${ref.name.fullName}")
+                  ref
+            case _ =>
+              trace(s"Failed to resolve ${p}.${ref.name.fullName}")
+              ref
         case other =>
           // trace(s"TODO: resolve ref: ${ref.fullName} as ${other.getClass}")
           ref

@@ -16,7 +16,7 @@ import wvlet.log.LogSupport
 case class Context(
     outer: Context = Context.NoContext,
     owner: Symbol = Symbol.NoSymbol,
-    scope: Scope = Scope.empty,
+    scope: Scope = Scope.NoScope,
     compilationUnit: CompilationUnit = CompilationUnit.empty,
     sourceFolders: List[String] = List.empty,
     workingFolder: String
