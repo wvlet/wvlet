@@ -284,9 +284,9 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
 
   end modelDef
 
-  def importStatement(): ImportDef =
-    val i            = consume(FlowToken.IMPORT)
-    val d: ImportDef = importRef()
+  def importStatement(): Import =
+    val i         = consume(FlowToken.IMPORT)
+    val d: Import = importRef()
     scanner.lookAhead().token match
       case FlowToken.FROM =>
         consume(FlowToken.FROM)
@@ -295,14 +295,14 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
       case _ =>
         d
 
-  def importRef(): ImportDef =
+  def importRef(): Import =
     val qid: Name = qualifiedId()
     val t         = scanner.lookAhead()
     t.token match
       case FlowToken.DOT =>
         consume(FlowToken.DOT)
         val w = consume(FlowToken.STAR)
-        ImportDef(
+        Import(
           DotRef(qid, Wildcard(w.nodeLocation), DataType.UnknownType, qid.nodeLocation),
           None,
           None,
@@ -312,9 +312,9 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
         // alias
         consume(FlowToken.AS)
         val alias = identifier()
-        ImportDef(qid, Some(alias), None, qid.nodeLocation)
+        Import(qid, Some(alias), None, qid.nodeLocation)
       case _ =>
-        ImportDef(qid, None, None, qid.nodeLocation)
+        Import(qid, None, None, qid.nodeLocation)
 
   def typeDef(): TypeDef =
     val t       = consume(FlowToken.TYPE)

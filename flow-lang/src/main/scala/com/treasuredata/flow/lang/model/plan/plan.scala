@@ -29,7 +29,7 @@ case class PackageDef(
 
   override def inputAttributes: Seq[Attribute] = Nil
 
-case class ImportDef(
+case class Import(
     importRef: Name,
     alias: Option[Name],
     fromSource: Option[StringLiteral],

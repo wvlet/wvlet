@@ -10,7 +10,8 @@ import scala.collection.mutable.ArrayBuffer
 
 object SourceFile:
   object NoSourceFile extends SourceFile("<empty>", _ => "")
-  def fromFile(file: String): SourceFile = SourceFile(file, IOUtil.readAsString)
+  def fromFile(v: VirtualFile): SourceFile = SourceFile(v.path, IOUtil.readAsString)
+  def fromFile(file: String): SourceFile   = SourceFile(file, IOUtil.readAsString)
   def fromString(content: String): SourceFile = SourceFile(
     s"${ULID.newULIDString}.flow",
     _ => content

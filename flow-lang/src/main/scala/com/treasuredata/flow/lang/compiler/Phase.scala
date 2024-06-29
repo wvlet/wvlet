@@ -12,8 +12,8 @@ trait Phase(
     val buf = List.newBuilder[CompilationUnit]
     for unit <- units do
       trace(s"Running phase ${name} on ${unit.sourceFile.file}")
-      val newContext = context.withCompilationUnit(unit)
-      buf += run(unit, newContext)
+      val sourceContext = context.withCompilationUnit(unit)
+      buf += run(unit, sourceContext)
     buf.result()
 
   def run(unit: CompilationUnit, context: Context): CompilationUnit
