@@ -15,6 +15,7 @@ import com.treasuredata.flow.lang.model.DataType.{
   SchemaType,
   UnresolvedRelationType
 }
+import com.treasuredata.flow.lang.model.expr.Name.NoName
 import wvlet.airframe.json.JSON
 import wvlet.airframe.ulid.ULID
 import wvlet.log.LogSupport
@@ -72,7 +73,7 @@ case class AliasedRelation(
     columnNames match
       case Some(cols) =>
         ProjectedType(
-          alias.value,
+          alias.strExpr,
           cols.map { col =>
             val colType = child
               .outputAttributes
@@ -84,7 +85,7 @@ case class AliasedRelation(
           child.relationType
         )
       case None =>
-        AliasedType(alias.value, child.relationType)
+        AliasedType(alias.strExpr, child.relationType)
 
   override def outputAttributes: Seq[Attribute] =
     val attrs = child.outputAttributes
@@ -103,16 +104,16 @@ case class AliasedRelation(
 case class NamedRelation(child: Relation, name: Name, nodeLocation: Option[NodeLocation])
     extends UnaryRelation
     with Selection:
-  override def toString: String = s"NamedRelation[${name.value}](${child})"
+  override def toString: String = s"NamedRelation[${name.strExpr}](${child})"
   override def outputAttributes: Seq[Attribute] =
-    val qual = Qualifier.parse(name.value)
+    val qual = Qualifier.parse(name.strExpr)
     child.outputAttributes
 
   override def selectItems: Seq[Attribute] =
     // Produce a dummy AllColumns node for SQLGenerator
     Seq(AllColumns(Wildcard(None), None, None))
 
-  override def relationType: RelationType = AliasedType(name.value, child.relationType)
+  override def relationType: RelationType = AliasedType(name.strExpr, child.relationType)
 
 case class Values(rows: Seq[Expression], nodeLocation: Option[NodeLocation])
     extends Relation
@@ -558,7 +559,7 @@ case class LateralView(
     UnresolvedRelationType(RelationType.newRelationTypeName)
 
   override def outputAttributes: Seq[Attribute] = columnAliases
-    .map(x => UnresolvedAttribute(Ref(tableAlias, x, DataType.UnknownType, None), None))
+    .map(x => UnresolvedAttribute(DotRef(tableAlias, x, DataType.UnknownType, None), None))
 
 trait HasName:
   def name: String
@@ -635,7 +636,7 @@ case class Subscribe(
     params: Seq[SubscribeParam],
     nodeLocation: Option[NodeLocation]
 ) extends UnaryRelation:
-  override val relationType: RelationType = AliasedType(name.value, child.relationType)
+  override val relationType: RelationType = AliasedType(name.strExpr, child.relationType)
 
 //  def watermarkColumn: Option[String] =
 //    params.find(_.name == "watermark_column").map(_.value)

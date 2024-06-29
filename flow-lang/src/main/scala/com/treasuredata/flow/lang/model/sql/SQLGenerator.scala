@@ -244,16 +244,16 @@ class SQLGenerator(config: SQLGeneratorConfig = SQLGeneratorConfig()) extends Lo
         val c = columnNames.map(x => s"(${x.mkString(", ")})").getOrElse("")
         relation match
           case TableRef(x, _) =>
-            s"${r} AS ${alias.value}${c}"
+            s"${r} AS ${alias.strExpr}${c}"
 //          case TableScan(x, _, _, _)       => s"${r} AS ${alias.sqlExpr}${c}"
           case ParenthesizedRelation(x, _) =>
-            s"${r} AS ${alias.value}${c}"
+            s"${r} AS ${alias.strExpr}${c}"
           case Unnest(_, _, _) =>
-            s"${r} AS ${alias.value}${c}"
+            s"${r} AS ${alias.strExpr}${c}"
           case Lateral(_, _) =>
-            s"${r} AS ${alias.value}${c}"
+            s"${r} AS ${alias.strExpr}${c}"
           case _ =>
-            s"(${r}) AS ${alias.value}${c}"
+            s"(${r}) AS ${alias.strExpr}${c}"
       case Join(joinType, left, right, cond, _) =>
         val l = printRelationWithParenthesesIfNecessary(left)
         val r = printRelationWithParenthesesIfNecessary(right)
@@ -431,14 +431,8 @@ class SQLGenerator(config: SQLGeneratorConfig = SQLGeneratorConfig()) extends Lo
 
   def printExpression(e: Expression): String =
     e match
-      case i: UnquotedIdentifier =>
-        i.value
-      case i: BackQuotedIdentifier =>
-        s"`${i.value}`"
-      case i: QuotedIdentifier =>
-        s"'${i.value}'"
       case i: Identifier =>
-        i.value
+        i.strExpr
       case s: StringLiteral =>
         s"'${s.value}'"
       case l: Literal =>
@@ -501,7 +495,7 @@ class SQLGenerator(config: SQLGeneratorConfig = SQLGeneratorConfig()) extends Lo
       case c: ConditionalExpression =>
         printConditionalExpression(c)
       case ArithmeticBinaryExpr(tpe, left, right, _) =>
-        s"${left.sqlExpr} ${tpe.symbol} ${right.sqlExpr}"
+        s"${left.sqlExpr} ${tpe.expr} ${right.sqlExpr}"
       case ArithmeticUnaryExpr(sign, value, _) =>
         s"${sign.symbol} ${value.sqlExpr}"
       case Exists(subQuery, _) =>

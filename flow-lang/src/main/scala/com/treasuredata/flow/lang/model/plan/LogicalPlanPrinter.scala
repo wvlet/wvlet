@@ -148,7 +148,7 @@ object LogicalPlanPrinter extends LogSupport:
   private def printExpression(e: Expression): String =
     e match
       case i: Identifier =>
-        i.expr
+        i.strExpr
 //      case f: FunctionCall =>
 //        f.toString
       case d: DefArg =>
@@ -172,7 +172,7 @@ object LogicalPlanPrinter extends LogSupport:
       case g: GroupingKey =>
         printExpression(g.child)
       case b: ArithmeticBinaryExpr =>
-        s"${printExpression(b.left)} ${b.exprType.symbol} ${printExpression(b.right)}"
+        s"${printExpression(b.left)} ${b.exprType.expr} ${printExpression(b.right)}"
       case s: StringLiteral =>
         s"\"${s.stringValue}\""
       case l: Literal =>
@@ -231,7 +231,7 @@ object LogicalPlanPrinter extends LogSupport:
             concat(List(arg.value))
       case i: InterpolatedString =>
         s"${printExpression(i.prefix)}{${i.parts.map(printExpression).mkString(", ")}}"
-      case r: Ref =>
+      case r: DotRef =>
         s"${printExpression(r.base)}.${printExpression(r.name)}"
       case t: This =>
         "this"
@@ -242,7 +242,7 @@ object LogicalPlanPrinter extends LogSupport:
           concat(List(d.name, ": ", d.tpe), ", ")
       case ShouldExpr(testType, left, right, _) =>
         s"${left.sqlExpr} ${testType.expr} ${right.sqlExpr}"
-      case c: ContextRef =>
+      case c: ContextInputRef =>
         "_"
       case other =>
         e.toString

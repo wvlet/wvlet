@@ -12,13 +12,12 @@ import com.treasuredata.flow.lang.model.DataType.{
 import com.treasuredata.flow.lang.model.expr.{
   Attribute,
   AttributeList,
-  ContextRef,
+  ContextInputRef,
   Expression,
   GroupingKey,
   Identifier,
   InterpolatedString,
-  NoName,
-  Ref,
+  DotRef,
   ResolvedAttribute,
   This,
   UnresolvedAttribute
@@ -167,7 +166,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
       var found = false
       r.childExpressions
         .map { e =>
-          e.traverseExpressions { case c: ContextRef =>
+          e.traverseExpressions { case c: ContextInputRef =>
             found = true
           }
         }
@@ -180,8 +179,8 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
         trace(s"Resolved underscore (_) as ${contextType} in ${u.locationString}")
         val updated = u.transformChildExpressions { case expr: Expression =>
           expr.transformExpression {
-            case ref: ContextRef if !ref.dataType.isResolved =>
-              val c = ContextRef(dataType = contextType, ref.nodeLocation)
+            case ref: ContextInputRef if !ref.dataType.isResolved =>
+              val c = ContextInputRef(dataType = contextType, ref.nodeLocation)
               c
           }
         }
@@ -272,7 +271,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
           attr
         case None =>
           a
-    case ref: Ref =>
+    case ref: DotRef =>
       // Resolve types after following . (dot)
       ref.base.dataType match
         case t: SchemaType =>

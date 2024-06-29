@@ -27,7 +27,7 @@ case class CompilationUnit(sourceFile: SourceFile):
   def findRelationRef(name: String): Option[LogicalPlan] =
     var result: Option[Relation] = None
     resolvedPlan.traverse {
-      case r: NamedRelation if r.name.value == name =>
+      case r: NamedRelation if r.name.leafName == name =>
         result = Some(r)
     }
     result

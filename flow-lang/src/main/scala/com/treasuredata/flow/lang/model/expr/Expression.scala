@@ -260,13 +260,11 @@ object Expression:
   def newIdentifier(x: String): Identifier =
     if x.startsWith("`") && x.endsWith("`") then
       BackQuotedIdentifier(x.stripPrefix("`").stripSuffix("`"), None)
-    else if x.startsWith("\"") && x.endsWith("\"") then
-      QuotedIdentifier(x.stripPrefix("\"").stripSuffix("\""), None)
     else if x.matches("[0-9]+") then
-      DigitId(x, None)
+      DigitIdentifier(x, None)
     else if !x.matches("[0-9a-zA-Z_]*") then
       // Quotations are needed with special characters to generate valid SQL
-      QuotedIdentifier(x, None)
+      BackQuotedIdentifier(x, None)
     else
       UnquotedIdentifier(x, None)
 

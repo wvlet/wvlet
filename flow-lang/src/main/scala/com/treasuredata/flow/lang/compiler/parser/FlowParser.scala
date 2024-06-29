@@ -12,6 +12,7 @@ import com.treasuredata.flow.lang.model.DataType.{
   UnresolvedTypeParameter
 }
 import com.treasuredata.flow.lang.model.expr.*
+import com.treasuredata.flow.lang.model.expr.Name.NoName
 import com.treasuredata.flow.lang.model.plan.*
 import wvlet.log.LogSupport
 
@@ -187,7 +188,7 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
         UnquotedIdentifier(t.str, t.nodeLocation)
       case FlowToken.UNDERSCORE =>
         consume(FlowToken.UNDERSCORE)
-        ContextRef(DataType.UnknownType, t.nodeLocation)
+        ContextInputRef(DataType.UnknownType, t.nodeLocation)
       case _ =>
         reserved()
 
@@ -300,7 +301,7 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
         consume(FlowToken.DOT)
         val w = consume(FlowToken.STAR)
         ImportDef(
-          Ref(qid, Wildcard(w.nodeLocation), DataType.UnknownType, qid.nodeLocation),
+          DotRef(qid, Wildcard(w.nodeLocation), DataType.UnknownType, qid.nodeLocation),
           None,
           None,
           qid.nodeLocation
@@ -942,7 +943,7 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
           This(DataType.UnknownType, t.nodeLocation)
         case FlowToken.UNDERSCORE =>
           consume(FlowToken.UNDERSCORE)
-          ContextRef(DataType.UnknownType, t.nodeLocation)
+          ContextInputRef(DataType.UnknownType, t.nodeLocation)
         case FlowToken.NULL | FlowToken.INTEGER_LITERAL | FlowToken.DOUBLE_LITERAL |
             FlowToken.FLOAT_LITERAL | FlowToken.DECIMAL_LITERAL | FlowToken.EXP_LITERAL | FlowToken
               .STRING_LITERAL =>
@@ -1050,13 +1051,13 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
         val next = identifier()
         scanner.lookAhead().token match
           case FlowToken.L_PAREN =>
-            val sel  = Ref(expr, next, DataType.UnknownType, next.nodeLocation)
+            val sel  = DotRef(expr, next, DataType.UnknownType, next.nodeLocation)
             val p    = consume(FlowToken.L_PAREN)
             val args = functionArgs()
             consume(FlowToken.R_PAREN)
             FunctionApply(sel, args, p.nodeLocation)
           case _ =>
-            primaryExpressionRest(Ref(expr, next, DataType.UnknownType, t.nodeLocation))
+            primaryExpressionRest(DotRef(expr, next, DataType.UnknownType, t.nodeLocation))
       case FlowToken.L_PAREN =>
         expr match
           case n: Name =>
@@ -1121,9 +1122,9 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
         scanner.lookAhead().token match
           case FlowToken.STAR =>
             val t = consume(FlowToken.STAR)
-            Ref(expr, Wildcard(t.nodeLocation), DataType.UnknownType, dt.nodeLocation)
+            DotRef(expr, Wildcard(t.nodeLocation), DataType.UnknownType, dt.nodeLocation)
           case _ =>
             val id = identifier()
-            dotRef(Ref(expr, id, DataType.UnknownType, token.nodeLocation))
+            dotRef(DotRef(expr, id, DataType.UnknownType, token.nodeLocation))
       case _ =>
         expr

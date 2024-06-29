@@ -18,44 +18,42 @@ case class ParenthesizedExpression(child: Expression, nodeLocation: Option[NodeL
     extends UnaryExpression:
   override def dataType: DataType = child.dataType
 
+/**
+  * variable name, function name, type name, etc. The name might have a qualifier.
+  */
 sealed trait Name extends Expression:
   def fullName: String
-  def value: String = fullName
+  /* string expression of the name */
+  def strExpr: String = fullName
   def leafName: String
 
-val NoName: Name = UnquotedIdentifier("<NoName>", None)
-
 object Name:
+  val NoName: Name                = UnquotedIdentifier("<NoName>", None)
   def fromString(s: String): Name = UnquotedIdentifier(s, None)
 
 case class Wildcard(nodeLocation: Option[NodeLocation]) extends LeafExpression with Name:
   override def fullName: String = "*"
   override def leafName: String = "*"
 
-case class ContextRef(override val dataType: DataType, nodeLocation: Option[NodeLocation])
+/**
+  * Reference to the current input, denoted by '_'
+  * @param dataType
+  * @param nodeLocation
+  */
+case class ContextInputRef(override val dataType: DataType, nodeLocation: Option[NodeLocation])
     extends LeafExpression
     with Name:
   override def fullName: String = "_"
   override def leafName: String = "_"
 
-//// Qualified name (QName), such as table and column names
-//case class QName(parts: List[String], nodeLocation: Option[NodeLocation]) extends LeafExpression with Name:
-//  override def fullName: String = parts.mkString(".")
-//  override def toString: String = fullName
-//
-//object QName:
-//  def apply(s: String, nodeLocation: Option[NodeLocation]): QName =
-//    QName(s.split("\\.").map(unquote).toList, nodeLocation)
-//
-//  def unquote(s: String): String =
-//    if s.startsWith("\"") && s.endsWith("\"") then s.substring(1, s.length - 1)
-//    else s
-
-//case class Dereference(base: Expression, next: Expression, nodeLocation: Option[NodeLocation]) extends Expression:
-//  override def toString: String          = s"Derefperence(${base} => ${next})"
-//  override def children: Seq[Expression] = Seq  xf(base, next)
-
-case class Ref(
+/**
+  * Refer to the name that can be from the base expression: (base).(name)
+  * @param base
+  * @param name
+  * @param dataType
+  * @param nodeLocation
+  */
+case class DotRef(
     base: Expression,
     name: Name,
     override val dataType: DataType,
@@ -73,24 +71,25 @@ case class Ref(
   override def children: Seq[Expression] = Seq(base)
 
 sealed trait Identifier extends LeafExpression with Name:
-  override def fullName: String = value
-  override def leafName: String = value
-  override def value: String
-  def expr: String
-  override def attributeName: String  = value
+  override def fullName: String = strExpr
+  override def leafName: String = strExpr
+  // Unquoted value
+  def unquotedValue: String
+
+  override def attributeName: String  = strExpr
   override lazy val resolved: Boolean = false
   def toResolved(dataType: DataType): ResolvedIdentifier = ResolvedIdentifier(
-    this.value,
+    this.strExpr,
     dataType,
     nodeLocation
   )
 
 case class ResolvedIdentifier(
-    override val value: String,
+    override val unquotedValue: String,
     override val dataType: DataType,
     nodeLocation: Option[NodeLocation]
 ) extends Identifier:
-  override def expr: String = value
+  override def strExpr: String = unquotedValue
   override def toResolved(dataType: DataType) =
     if this.dataType == dataType then
       this
@@ -99,25 +98,30 @@ case class ResolvedIdentifier(
 
   override lazy val resolved: Boolean = true
 
-case class DigitId(override val value: String, nodeLocation: Option[NodeLocation])
+// Used for group by 1, 2, 3 ...
+case class DigitIdentifier(override val unquotedValue: String, nodeLocation: Option[NodeLocation])
     extends Identifier:
-  override def toString: String = s"Id(${value})"
-  override def expr: String     = value
+  override def strExpr          = unquotedValue
+  override def toString: String = s"Id(${unquotedValue})"
 
-case class UnquotedIdentifier(override val value: String, nodeLocation: Option[NodeLocation])
-    extends Identifier:
-  override def toString: String = s"Id(${value})"
-  override def expr: String     = value
+case class UnquotedIdentifier(
+    override val unquotedValue: String,
+    nodeLocation: Option[NodeLocation]
+) extends Identifier:
+  override def strExpr          = unquotedValue
+  override def toString: String = s"Id(${unquotedValue})"
 
-case class BackQuotedIdentifier(override val value: String, nodeLocation: Option[NodeLocation])
-    extends Identifier:
-  override def toString     = s"Id(`${value}`)"
-  override def expr: String = s"`${value}`"
-
-case class QuotedIdentifier(override val value: String, nodeLocation: Option[NodeLocation])
-    extends Identifier:
-  override def toString     = s"""Id("${value}")"""
-  override def expr: String = s"\"${value}\""
+/**
+  * Backquote is used for table or column names that conflicts with reserved words
+  * @param unquotedValue
+  * @param nodeLocation
+  */
+case class BackQuotedIdentifier(
+    override val unquotedValue: String,
+    nodeLocation: Option[NodeLocation]
+) extends Identifier:
+  override def strExpr: String = s"`${unquotedValue}`"
+  override def toString        = s"Id(`${unquotedValue}`)"
 
 sealed trait JoinCriteria extends Expression
 case object NoJoinCriteria extends JoinCriteria with LeafExpression:
@@ -168,25 +172,14 @@ case class SortItem(
     s"SortItem(sortKey:${sortKey}, ordering:${ordering}, nullOrdering:${nullOrdering})"
 
 // Sort ordering
-sealed trait SortOrdering
+enum SortOrdering(val expr: String):
+  case Ascending  extends SortOrdering("asc")
+  case Descending extends SortOrdering("desc")
 
-object SortOrdering:
-  case object Ascending extends SortOrdering:
-    override def toString = "ASC"
-
-  case object Descending extends SortOrdering:
-    override def toString = "DESC"
-
-sealed trait NullOrdering
-
-object NullOrdering:
-  case object NullIsFirst extends NullOrdering:
-    override def toString = "NULLS FIRST"
-
-  case object NullIsLast extends NullOrdering:
-    override def toString = "NULLS LAST"
-
-  case object UndefinedOrder extends NullOrdering
+enum NullOrdering(val expr: String):
+  case NullIsFirst    extends NullOrdering("nulls first")
+  case NullIsLast     extends NullOrdering("nulls last")
+  case UndefinedOrder extends NullOrdering("")
 
 // Window functions
 case class Window(
@@ -200,30 +193,16 @@ case class Window(
   override def toString: String =
     s"Window(partitionBy:${partitionBy.mkString(", ")}, orderBy:${orderBy.mkString(", ")}, frame:${frame})"
 
-sealed trait FrameType
+enum FrameType(val expr: String):
+  case RangeFrame extends FrameType("range")
+  case RowsFrame  extends FrameType("rows")
 
-case object RangeFrame extends FrameType:
-  override def toString = "RANGE"
-
-case object RowsFrame extends FrameType:
-  override def toString = "ROWS"
-
-sealed trait FrameBound
-
-case object UnboundedPreceding extends FrameBound:
-  override def toString: String = "UNBOUNDED PRECEDING"
-
-case object UnboundedFollowing extends FrameBound:
-  override def toString: String = "UNBOUNDED FOLLOWING"
-
-case class Preceding(n: Long) extends FrameBound:
-  override def toString: String = s"${n} PRECEDING"
-
-case class Following(n: Long) extends FrameBound:
-  override def toString: String = s"${n} FOLLOWING"
-
-case object CurrentRow extends FrameBound:
-  override def toString: String = "CURRENT ROW"
+enum FrameBound(val expr: String):
+  case UnboundedPreceding extends FrameBound("unbounded preceding")
+  case UnboundedFollowing extends FrameBound("unbounded following")
+  case Preceding(n: Long) extends FrameBound(s"${n} preceding")
+  case Following(n: Long) extends FrameBound(s"${n} following")
+  case CurrentRow         extends FrameBound("current row")
 
 case class WindowFrame(
     frameType: FrameType,
@@ -426,7 +405,7 @@ case class ShouldExpr(
   override def children: Seq[Expression] = Seq(left, right)
 
 // Arithmetic expr
-enum BinaryExprType(val symbol: String):
+enum BinaryExprType(val expr: String):
   case Add      extends BinaryExprType("+")
   case Subtract extends BinaryExprType("-")
   case Multiply extends BinaryExprType("*")
@@ -520,7 +499,7 @@ case class ArithmeticBinaryExpr(
       case _ =>
         DataType.UnknownType
 
-  override def operatorName: String = exprType.symbol
+  override def operatorName: String = exprType.expr
 
   override def toString: String = s"${exprType}(left:$left, right:$right)"
 
@@ -750,7 +729,7 @@ sealed trait TableElement extends Expression
 case class ColumnDef(columnName: Name, tpe: ColumnType, nodeLocation: Option[NodeLocation])
     extends TableElement
     with UnaryExpression:
-  override def toString: String  = s"${columnName.value}:${tpe.tpe}"
+  override def toString: String  = s"${columnName.strExpr}:${tpe.tpe}"
   override def child: Expression = columnName
 
 case class ColumnType(tpe: Name, nodeLocation: Option[NodeLocation]) extends LeafExpression
