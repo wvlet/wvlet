@@ -503,6 +503,8 @@ case class ArithmeticBinaryExpr(
 
   override def toString: String = s"${exprType}(left:$left, right:$right)"
 
+end ArithmeticBinaryExpr
+
 case class ArithmeticUnaryExpr(sign: Sign, child: Expression, nodeLocation: Option[NodeLocation])
     extends ArithmeticExpression
     with UnaryExpression

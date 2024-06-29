@@ -69,3 +69,5 @@ class TrinoContextTest extends AirSpec:
               debug(queryResultJson)
             }
           }
+
+end TrinoContextTest

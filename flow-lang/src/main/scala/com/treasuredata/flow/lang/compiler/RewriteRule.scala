@@ -70,3 +70,5 @@ trait RewriteRule extends LogSupport:
 
       // Apply post-process filter
       postProcess(resolved, context)
+
+end RewriteRule

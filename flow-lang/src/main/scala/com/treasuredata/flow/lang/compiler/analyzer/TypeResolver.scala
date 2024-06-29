@@ -318,6 +318,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
         case None =>
           trace(s"Failed to resolve identifier: ${i} from ${knownAttributes}")
           i
+  end resolveExpression
 //    case other: Expression if !other.dataType.isResolved =>
 //      trace(s"TODO: resolve expression: ${other} using ${knownAttributes}")
 //      other
@@ -345,3 +346,5 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
   ): Seq[Attribute] = attributes.map { a =>
     a.transformExpression(resolveExpression(knownAttributes, context)).asInstanceOf[Attribute]
   }
+
+end TypeResolver

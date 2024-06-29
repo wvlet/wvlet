@@ -52,6 +52,8 @@ class ScanState(startFrom: Int = 0):
 
   def isAfterLineEnd: Boolean = lineOffset >= 0
 
+end ScanState
+
 case class ScannerConfig(startFrom: Int = 0, skipComments: Boolean = false)
 
 abstract class ScannerBase(buf: IArray[Char], startFrom: Int = 0):
@@ -110,6 +112,8 @@ abstract class ScannerBase(buf: IArray[Char], startFrom: Int = 0):
       SU
     else
       buf(index)
+
+end ScannerBase
 
 /**
   * Scan *.flow files
@@ -315,6 +319,10 @@ class FlowScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
         putChar(ch)
         nextChar()
         finishNamedToken()
+
+    end match
+
+  end fetchToken
 
   private def getDoubleQuoteString(): Unit =
     if current.token == FlowToken.STRING_INTERPOLATION_PREFIX then
@@ -580,6 +588,8 @@ class FlowScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
     // checkNoLetter()
     tokenType
   end getFraction
+
+end FlowScanner
 
 object FlowScanner:
   sealed trait Region:

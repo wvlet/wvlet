@@ -61,6 +61,8 @@ class DuckDBExecutor extends LogSupport:
       case other =>
         throw StatusCode.NOT_IMPLEMENTED.newException(s"Unsupported plan: ${other}")
 
+end DuckDBExecutor
+
 object DuckDBDriver:
   def withConnection[U](f: DuckDBConnection => U): U =
     Class.forName("org.duckdb.DuckDBDriver")

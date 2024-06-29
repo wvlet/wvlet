@@ -75,6 +75,8 @@ object JSONAnalyzer extends LogSupport:
 
     SchemaType(None, RelationType.newRelationTypeName, dataTypes.toSeq, Nil)
 
+  end guessSchema
+
   private def guessDataType(v: JSONValue): DataType =
     v match
       case JSONNull =>
@@ -89,3 +91,5 @@ object JSONAnalyzer extends LogSupport:
         DataType.DoubleType
       case _ =>
         DataType.AnyType
+
+end JSONAnalyzer

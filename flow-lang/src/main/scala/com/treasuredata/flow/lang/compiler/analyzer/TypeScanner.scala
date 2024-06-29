@@ -74,3 +74,5 @@ class TypeScanner(phaseName: String) extends Phase(phaseName) with LogSupport:
     .scope
     .findType(columnType.tpe.fullName)
     .getOrElse(UnresolvedType(columnType.tpe.fullName))
+
+end TypeScanner

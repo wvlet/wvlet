@@ -282,6 +282,8 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
       t.nodeLocation
     )
 
+  end modelDef
+
   def importStatement(): ImportDef =
     val i            = consume(FlowToken.IMPORT)
     val d: ImportDef = importRef()
@@ -453,6 +455,8 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
           None
     FunctionDef(name, args, defScope, retType, body, t.nodeLocation)
 
+  end funDef
+
   def funName(): Name =
     val t = scanner.lookAhead()
     t.token match
@@ -612,6 +616,10 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
       case _ =>
         input
 
+    end match
+
+  end queryBlock
+
   def join(input: Relation): Relation =
     val t = scanner.lookAhead()
     t.token match
@@ -645,6 +653,10 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
         Join(joinType, input, right, joinOn, t.nodeLocation)
       case _ =>
         unexpected(t)
+
+    end match
+
+  end join
 
   def joinCriteria(): JoinCriteria =
     val t = scanner.lookAhead()
@@ -934,6 +946,10 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
       case _ =>
         expression
 
+    end match
+
+  end valueExpressionRest
+
   def primaryExpression(): Expression =
     val t = scanner.lookAhead()
     val expr: Expression =
@@ -969,6 +985,8 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
         case _ =>
           unexpected(t)
     primaryExpressionRest(expr)
+
+  end primaryExpression
 
   def array(): ArrayConstructor =
     val t        = consume(FlowToken.L_BRACKET)
@@ -1128,3 +1146,5 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
             dotRef(DotRef(expr, id, DataType.UnknownType, token.nodeLocation))
       case _ =>
         expr
+
+end FlowParser

@@ -97,3 +97,5 @@ class ScannerTest extends AirSpec:
     debug(token)
     token.token shouldBe FlowToken.EOF
   }
+
+end ScannerTest

@@ -86,3 +86,7 @@ object Incrementalize extends Phase("incrementalize"):
       plan.asInstanceOf[Relation],
       plan.nodeLocation
     )
+
+  end IncrementalizeSimpleScan
+
+end Incrementalize

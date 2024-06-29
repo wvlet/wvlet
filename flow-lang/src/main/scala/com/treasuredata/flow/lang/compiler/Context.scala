@@ -23,10 +23,9 @@ case class Context(
 ) extends LogSupport:
 
   private var symbolCount = 0
-
-  def newSymbol: Symbol =
+  def newSymbolId: Int =
     symbolCount += 1
-    Symbol(UnquotedIdentifier(s"s${symbolCount}", None))
+    symbolCount
 
   private var importDefs = List.empty[ImportDef]
 
@@ -53,6 +52,8 @@ case class Context(
         throw StatusCode.FILE_NOT_FOUND.newException(s"${path} is not found")
       case Some(f) =>
         f
+
+end Context
 
 object Context:
   val NoContext: Context = Context(workingFolder = ".")

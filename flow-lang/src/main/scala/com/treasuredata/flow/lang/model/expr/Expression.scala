@@ -123,6 +123,8 @@ trait Expression extends TreeNode[Expression] with Product with LogSupport:
     else
       newExpr
 
+  end transformExpression
+
   /**
     * Recursively transform the expression in depth-first order
     * @param rule
@@ -165,6 +167,8 @@ trait Expression extends TreeNode[Expression] with Product with LogSupport:
 
     // Finally, apply the rule to itself
     rule.applyOrElse(newExpr, identity[Expression])
+
+  end transformUpExpression
 
   def collectSubExpressions: List[Expression] =
     def recursiveCollect(arg: Any): List[Expression] =
@@ -217,6 +221,8 @@ trait Expression extends TreeNode[Expression] with Product with LogSupport:
   lazy val resolved: Boolean    = resolvedChildren
   def resolvedChildren: Boolean = children.forall(_.resolved) && resolvedInputs
   def resolvedInputs: Boolean   = true
+
+end Expression
 
 trait LeafExpression extends Expression:
   override def children: Seq[Expression] = Nil

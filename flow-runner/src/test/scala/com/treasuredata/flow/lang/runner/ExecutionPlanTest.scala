@@ -37,3 +37,5 @@ class ExecutionPlanTest extends AirSpec:
       sql shouldBe "select 'hello' || ' treasure-flow!'"
 
   }
+
+end ExecutionPlanTest

@@ -368,6 +368,8 @@ object DataType extends LogSupport:
   case object SQLExprType extends DataType("sql", Nil):
     override def isResolved: Boolean = true
 
+end DataType
+
 //  def parse(typeName: String): DataType =
 //    DataTypeParser.parse(typeName)
 //

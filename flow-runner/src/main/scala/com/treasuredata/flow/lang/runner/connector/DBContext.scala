@@ -84,3 +84,5 @@ trait DBContext extends AutoCloseable:
 
   def dropSchema(catalog: String, schema: String): Unit = withConnection: conn =>
     conn.createStatement().executeUpdate(s"""drop schema if exists ${catalog}.${schema}""")
+
+end DBContext

@@ -55,6 +55,8 @@ class Span(val coordinate: Long) extends AnyVal:
     else
       this
 
+end Span
+
 object Span:
   private inline val POSITION_BITS          = 26
   private inline val POSITION_MASK          = (1L << POSITION_BITS) - 1

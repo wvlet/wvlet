@@ -60,6 +60,8 @@ trait Attribute extends LeafExpression with LogSupport:
 
   def sourceColumns: Seq[SourceColumn] = Seq.empty
 
+end Attribute
+
 //  /**
 //    * Return true if this Attribute matches with a given column path
 //    *
@@ -178,6 +180,8 @@ case class AllColumns(
         s"AllColumns(${fullName})"
 
   override lazy val resolved = columns.isDefined
+
+end AllColumns
 
 case class Alias(name: Name, expr: Expression, nodeLocation: Option[NodeLocation])
     extends Attribute:

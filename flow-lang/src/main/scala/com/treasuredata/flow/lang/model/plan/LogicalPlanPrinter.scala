@@ -145,6 +145,10 @@ object LogicalPlanPrinter extends LogSupport:
           // Add indent for child releations
           print(c, out, level + 1)
 
+    end match
+
+  end print
+
   private def printExpression(e: Expression): String =
     e match
       case i: Identifier =>
@@ -305,3 +309,5 @@ object LogicalPlanPrinter extends LogSupport:
         s"${a.sqlExpr} is not distinct from ${e.sqlExpr}"
       case other =>
         other.toString
+
+end LogicalPlanPrinter

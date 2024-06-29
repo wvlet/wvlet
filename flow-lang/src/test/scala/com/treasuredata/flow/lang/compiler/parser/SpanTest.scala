@@ -38,3 +38,5 @@ class SpanTest extends AirSpec:
     span.exists shouldBe false
     span.toString shouldBe "[NoSpan]"
   }
+
+end SpanTest

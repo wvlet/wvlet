@@ -72,3 +72,5 @@ class SourceFile(val file: String, readContent: (file: String) => String):
   def offsetToColumn(offset: Int): Int =
     val lineStart = findLineIndex(offset)
     offset - lineIndexes(lineStart) + 1
+
+end SourceFile

@@ -155,6 +155,8 @@ enum FlowToken(val tokenType: TokenType, val str: String):
   case NOT extends FlowToken(Keyword, "not")
   case IS  extends FlowToken(Keyword, "is")
 
+end FlowToken
+
 object FlowToken:
   val keywords       = FlowToken.values.filter(_.tokenType == Keyword).toSeq
   val specialSymbols = FlowToken.values.filter(_.tokenType == Op).toSeq
@@ -236,3 +238,5 @@ object FlowToken:
       num
     else
       -1
+
+end FlowToken

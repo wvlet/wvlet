@@ -70,3 +70,5 @@ object CompilationUnit extends LogSupport:
       Seq(f.getPath)
     else
       Seq.empty
+
+end CompilationUnit

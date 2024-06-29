@@ -41,6 +41,8 @@ trait Catalog extends LogSupport:
   def updateTableProperties(database: String, table: String, properties: Map[String, Any]): Unit
   def updateDatabaseProperties(database: String, properties: Map[String, Any]): Unit
 
+end Catalog
+
 //case class DatabaseIdentifier(database: String, catalog: Option[String])
 //case class TableIdentifier(table: String, database: Option[String], catalog: Option[String])
 
@@ -102,6 +104,8 @@ object Catalog:
   object CreateMode:
     object CREATE_IF_NOT_EXISTS extends CreateMode
     object FAIL_IF_EXISTS       extends CreateMode
+
+end Catalog
 
 class InMemoryCatalog(
     val catalogName: String,
@@ -238,3 +242,5 @@ class InMemoryCatalog(
         case None =>
           throw StatusCode.DATABASE_NOT_FOUND.newException(s"database ${database} is not found")
     }
+
+end InMemoryCatalog

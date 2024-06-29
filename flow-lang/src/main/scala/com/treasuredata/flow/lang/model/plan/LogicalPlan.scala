@@ -111,6 +111,8 @@ trait LogicalPlan extends TreeNode[LogicalPlan] with Product:
     else
       this
 
+  end mapChildren
+
   private def recursiveTraverse[U](f: PartialFunction[LogicalPlan, U])(arg: Any): Unit =
     def loop(v: Any): Unit =
       v match
@@ -320,6 +322,8 @@ trait LogicalPlan extends TreeNode[LogicalPlan] with Product:
     else
       newPlan
 
+  end transformExpressions
+
   /**
     * Depth-first transformation of expression
     *
@@ -359,6 +363,8 @@ trait LogicalPlan extends TreeNode[LogicalPlan] with Product:
       copyInstance(newArgs)
     else
       this
+
+  end transformUpExpressions
 
   /**
     * Transform only child expressions
@@ -456,6 +462,8 @@ trait LogicalPlan extends TreeNode[LogicalPlan] with Product:
         case null          =>
 
     productIterator.foreach(recursiveTraverse)
+
+end LogicalPlan
 
 trait LeafPlan extends LogicalPlan:
   override def children: Seq[LogicalPlan]      = Nil

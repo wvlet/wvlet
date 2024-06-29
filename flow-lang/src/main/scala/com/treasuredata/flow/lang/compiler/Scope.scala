@@ -80,3 +80,5 @@ class Scope(outer: Option[Scope]) extends LogSupport:
         tableDef.get(name).flatMap(_.getType).flatMap(x => findType(x.fullName, seen + name))
       }
     tpe
+
+end Scope

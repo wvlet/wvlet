@@ -142,6 +142,8 @@ class SQLGenerator(config: SQLGeneratorConfig = SQLGeneratorConfig()) extends Lo
 
     b.result().mkString(" ")
 
+  end printQuery
+
   private def printSelection(s: UnaryRelation, context: List[Relation]): String =
     // We need to pull-up Filter operators from child relations to build WHERE clause
     // e.g., Selection(in:Filter(Filter( ...)), ...)
@@ -198,6 +200,8 @@ class SQLGenerator(config: SQLGeneratorConfig = SQLGeneratorConfig()) extends Lo
         }
       case _ =>
     b.result().mkString(" ")
+
+  end printSelection
 
   def printRelation(r: Relation): String = printRelation(r, List.empty)
 
@@ -598,6 +602,8 @@ class SQLGenerator(config: SQLGeneratorConfig = SQLGeneratorConfig()) extends Lo
         s"${a.sqlExpr} IS DISTINCT FROM ${e.sqlExpr}"
       case NotDistinctFrom(a, e, _) =>
         s"${a.sqlExpr} IS NOT DISTINCT FROM ${e.sqlExpr}"
+
+end SQLGenerator
 
 //  private def printNameWithQuotationsIfNeeded(name: String): String =
 //    QName.apply(name, None).sqlExpr

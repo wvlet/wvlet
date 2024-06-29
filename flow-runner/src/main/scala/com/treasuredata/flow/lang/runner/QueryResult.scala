@@ -51,3 +51,5 @@ object QueryResultPrinter extends LogSupport:
         s""""${s}""""
       case x =>
         x.toString
+
+end QueryResultPrinter

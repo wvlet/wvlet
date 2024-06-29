@@ -101,6 +101,8 @@ case class AliasedRelation(
           attrs
     result
 
+end AliasedRelation
+
 case class NamedRelation(child: Relation, name: Name, nodeLocation: Option[NodeLocation])
     extends UnaryRelation
     with Selection:
@@ -406,6 +408,8 @@ case class Join(
     Seq(left.relationType, right.relationType)
   )
 
+end Join
+
 enum JoinType(val symbol: String):
   // Exact match (= equi join)
   case InnerJoin extends JoinType("J")
@@ -484,6 +488,10 @@ sealed trait SetOperation extends Relation with LogSupport:
         .withAlias(head.name)
       col
     }
+
+  end mergeOutputAttributes
+
+end SetOperation
 
 case class Intersect(relations: Seq[Relation], nodeLocation: Option[NodeLocation])
     extends SetOperation:
