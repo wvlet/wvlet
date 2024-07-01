@@ -1,6 +1,6 @@
 package com.treasuredata.flow.lang.compiler.analyzer
 
-import com.treasuredata.flow.lang.compiler.Compiler
+import com.treasuredata.flow.lang.compiler.{Compiler, Name}
 import com.treasuredata.flow.lang.model.plan.{Query, Subscribe}
 import wvlet.airspec.AirSpec
 
@@ -20,9 +20,8 @@ class AnalyzerTest extends AirSpec:
     val typedPlans = result.typedPlans
     typedPlans.map: p =>
       debug(p.pp)
-    debug(result.context.scope.getAllTypes)
+    debug(result.context.scope.getAllEntries)
 
-    val tpe = result.context.scope.findType("person")
-    debug(tpe.get.typeDescription)
-
+    val tpe = result.context.scope.lookupSymbol(Name.typeName("person"))
+    debug(tpe.get)
   }

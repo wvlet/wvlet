@@ -38,14 +38,14 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
 
   def defaultRules: List[RewriteRule] =
     resolveLocalFileScan :: // resolve local file scans for DuckDb
-      resolveTableRef ::    // resolve table reference (model or schema) types
-      resolveRelation ::    //
+      // resolveTableRef ::    // resolve table reference (model or schema) types
+      resolveRelation :: //
       // resolveProjectedColumns ::   // TODO: Fix StackOverflowError for attr.fullName
-      resolveModelDef ::              // resolve ModelDef
-      resolveScan ::                  // resolve model/ref scan nodes
-      resolveUnderscore ::            // resolve underscore in relation nodes
-      resolveThis ::                  // resolve `this` in type definitions
-      resolveFunctionBodyInTypeDef :: //
+      // resolveModelDef ::              // resolve ModelDef
+      // resolveScan ::                  // resolve model/ref scan nodes
+      resolveUnderscore :: // resolve underscore in relation nodes
+      // resolveThis ::                  // resolve `this` in type definitions
+      // resolveFunctionBodyInTypeDef :: //
       Nil
 
   def resolve(plan: LogicalPlan, context: Context): LogicalPlan = RewriteRule
@@ -83,40 +83,41 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
           }
         ParquetFileScan(file, parquetRelationType, cols, r.nodeLocation)
 
-  /**
-    * Resolve TableRefs with concrete TableScans using the table schema in the catalog.
-    */
-  object resolveTableRef extends RewriteRule:
-    override def apply(context: Context): PlanRewriter =
-      case ref: TableRef =>
-        context.scope.findType(ref.name.fullName) match
-          case Some(tpe: RelationType) =>
-            context.scope.getTableDef(ref.name) match
-              case Some(tbl) =>
-                TableScan(ref.name.fullName, tpe, tpe.fields, ref.nodeLocation)
-              case None =>
-                RelScan(ref.name.fullName, tpe, tpe.fields, ref.nodeLocation)
-          case _ =>
-            trace(s"Unresolved table ref: ${ref.name.fullName}")
-            ref
-
-  object resolveScan extends RewriteRule:
-    override def apply(context: Context): PlanRewriter = {
-      case s: TableScan if !s.relationType.isResolved =>
-        context.scope.findType(s.name) match
-          case Some(r: RelationType) if r.isResolved =>
-            s.copy(schema = r)
-          case _ =>
-            trace(s"Unresolved relation type: ${s.relationType.typeName}")
-            s
-      case s: RelScan if !s.relationType.isResolved =>
-        context.scope.findType(s.name) match
-          case Some(r: RelationType) if r.isResolved =>
-            s.copy(schema = r)
-          case _ =>
-            trace(s"Unresolved relation type: ${s.relationType.typeName}")
-            s
-    }
+//
+//  /**
+//    * Resolve TableRefs with concrete TableScans using the table schema in the catalog.
+//    */
+//  object resolveTableRef extends RewriteRule:
+//    override def apply(context: Context): PlanRewriter =
+//      case ref: TableRef =>
+//        context.scope.findType(ref.name.fullName) match
+//          case Some(tpe: RelationType) =>
+//            context.scope.getTableDef(ref.name) match
+//              case Some(tbl) =>
+//                TableScan(ref.name.fullName, tpe, tpe.fields, ref.nodeLocation)
+//              case None =>
+//                RelScan(ref.name.fullName, tpe, tpe.fields, ref.nodeLocation)
+//          case _ =>
+//            trace(s"Unresolved table ref: ${ref.name.fullName}")
+//            ref
+//
+//  object resolveScan extends RewriteRule:
+//    override def apply(context: Context): PlanRewriter = {
+//      case s: TableScan if !s.relationType.isResolved =>
+//        context.scope.findType(s.name) match
+//          case Some(r: RelationType) if r.isResolved =>
+//            s.copy(schema = r)
+//          case _ =>
+//            trace(s"Unresolved relation type: ${s.relationType.typeName}")
+//            s
+//      case s: RelScan if !s.relationType.isResolved =>
+//        context.scope.findType(s.name) match
+//          case Some(r: RelationType) if r.isResolved =>
+//            s.copy(schema = r)
+//          case _ =>
+//            trace(s"Unresolved relation type: ${s.relationType.typeName}")
+//            s
+//    }
 
   /**
     * Resolve expression in relation nodes
@@ -141,22 +142,22 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
       Project(resolvedChild, resolvedColumns, p.nodeLocation)
     }
 
-  object resolveModelDef extends RewriteRule:
-    override def apply(context: Context): PlanRewriter = { case m: ModelDef =>
-      context.scope.resolveType(m.relationType.typeName) match
-        case Some(r: RelationType) =>
-          // given model type is already resolved
-          context.scope.addType(m.name, r)
-          // context.scope.addType(r.typeName, r)
-          m.copy(relationType = r)
-        case _ if m.child.relationType.isResolved =>
-          // If the child query relation is already resolved, use this type
-          val childType = m.child.relationType
-          context.scope.addType(m.name, childType)
-          m.copy(relationType = childType)
-        case _ =>
-          m
-    }
+//  object resolveModelDef extends RewriteRule:
+//    override def apply(context: Context): PlanRewriter = { case m: ModelDef =>
+//      context.scope.resolveType(m.relationType.typeName) match
+//        case Some(r: RelationType) =>
+//          // given model type is already resolved
+//          context.scope.addType(m.name, r)
+//          // context.scope.addType(r.typeName, r)
+//          m.copy(relationType = r)
+//        case _ if m.child.relationType.isResolved =>
+//          // If the child query relation is already resolved, use this type
+//          val childType = m.child.relationType
+//          context.scope.addType(m.name, childType)
+//          m.copy(relationType = childType)
+//        case _ =>
+//          m
+//    }
 
   /**
     * Resolve underscore (_) from the parent relation node
@@ -187,72 +188,72 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
         updated
     }
 
-  /**
-    * Resolve the type of `this` in the type definition
-    */
-  object resolveThis extends RewriteRule:
-    override def apply(context: Context): PlanRewriter = { case t: TypeDef =>
-      val parent = context.scope.findType(t.name.fullName)
-      parent match
-        case Some(r: DataType) =>
-          // TODO Handle nested definition (e.g., nested type definition)
-          t.transformUpExpressions { case th: This =>
-            val newThis = th.copy(dataType = r)
-            // trace(s"Resolved this: ${th} as ${newThis}")
-            newThis
-          }
-        case _ =>
-          t
-    }
-
-  object resolveFunctionBodyInTypeDef extends RewriteRule:
-    override def apply(context: Context): PlanRewriter = { case td: TypeDef =>
-      val attrs = td
-        .elems
-        .collect { case v: TypeValDef =>
-          val name = v.name.fullName
-          context.scope.resolveType(v.tpe.fullName) match
-            case Some(resolvedType) =>
-              ResolvedAttribute(v.name, resolvedType, None, v.nodeLocation)
-            case None =>
-              UnresolvedAttribute(v.name, v.nodeLocation)
-        }
-
-      val newElems: List[TypeElem] = td
-        .elems
-        .map {
-          case f: FunctionDef =>
-            val retType = f
-              .retType
-              .map { t =>
-                context.scope.resolveType(t.typeName) match
-                  case Some(resolvedType) =>
-                    resolvedType
-                  case None =>
-                    t
-              }
-            // Function arguments that will be used inside the expression
-            val argAttrs = f
-              .args
-              .map { arg =>
-                ResolvedAttribute(arg.name, arg.dataType, None, arg.nodeLocation)
-              }
-            // vals and function args
-            val attrList = AttributeList(attrs ++ argAttrs)
-            // warn(s"resolve function body: ${f.expr} using ${attrList}")
-            val newF = f.copy(
-              retType = retType,
-              expr = f.expr.map(x => x.transformUpExpression(resolveExpression(attrList, context)))
-            )
-            newF
-          case other =>
-            other
-        }
-      td.copy(elems = newElems)
-    }
-
-  end resolveFunctionBodyInTypeDef
-
+//  /**
+//    * Resolve the type of `this` in the type definition
+//    */
+//  object resolveThis extends RewriteRule:
+//    override def apply(context: Context): PlanRewriter = { case t: TypeDef =>
+//      val parent = context.scope.findType(t.name.fullName)
+//      parent match
+//        case Some(r: DataType) =>
+//          // TODO Handle nested definition (e.g., nested type definition)
+//          t.transformUpExpressions { case th: This =>
+//            val newThis = th.copy(dataType = r)
+//            // trace(s"Resolved this: ${th} as ${newThis}")
+//            newThis
+//          }
+//        case _ =>
+//          t
+//    }
+//
+//  object resolveFunctionBodyInTypeDef extends RewriteRule:
+//    override def apply(context: Context): PlanRewriter = { case td: TypeDef =>
+//      val attrs = td
+//        .elems
+//        .collect { case v: TypeValDef =>
+//          val name = v.name.fullName
+//          context.scope.resolveType(v.tpe.fullName) match
+//            case Some(resolvedType) =>
+//              ResolvedAttribute(v.name, resolvedType, None, v.nodeLocation)
+//            case None =>
+//              UnresolvedAttribute(v.name, v.nodeLocation)
+//        }
+//
+//      val newElems: List[TypeElem] = td
+//        .elems
+//        .map {
+//          case f: FunctionDef =>
+//            val retType = f
+//              .retType
+//              .map { t =>
+//                context.scope.resolveType(t.typeName) match
+//                  case Some(resolvedType) =>
+//                    resolvedType
+//                  case None =>
+//                    t
+//              }
+//            // Function arguments that will be used inside the expression
+//            val argAttrs = f
+//              .args
+//              .map { arg =>
+//                ResolvedAttribute(arg.name, arg.dataType, None, arg.nodeLocation)
+//              }
+//            // vals and function args
+//            val attrList = AttributeList(attrs ++ argAttrs)
+//            // warn(s"resolve function body: ${f.expr} using ${attrList}")
+//            val newF = f.copy(
+//              retType = retType,
+//              expr = f.expr.map(x => x.transformUpExpression(resolveExpression(attrList, context)))
+//            )
+//            newF
+//          case other =>
+//            other
+//        }
+//      td.copy(elems = newElems)
+//    }
+//
+//  end resolveFunctionBodyInTypeDef
+//
   /**
     * Resolve the given expression type using the input attributes from child plan nodes
     *
@@ -273,7 +274,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
           a
     case ref: DotRef =>
       // Resolve types after following . (dot)
-      ref.base.dataType match
+      ref.qualifier.dataType match
         case t: SchemaType =>
           trace(s"Find reference from ${t} -> ${ref.name}")
           t.columnTypes.find(_.name == ref.name) match
@@ -288,21 +289,21 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
                 case _ =>
                   warn(s"${t}.${ref.name.fullName} is not found")
                   ref
-        case p: PrimitiveType =>
-          trace(s"Find reference from ${p} -> ${ref.name}")
-          context.scope.findType(p.typeName) match
-            case Some(pt: SchemaType) =>
-              pt.defs.find(_.name == ref.fullName) match
-                case Some(m: FunctionType) =>
-                  // TODO Handling context-specific methods
-                  trace(s"Resolved ${p}.${ref.name.fullName} as a primitive function")
-                  ref.copy(dataType = m.returnType)
-                case _ =>
-                  trace(s"Failed to resolve ${p}.${ref.name.fullName}")
-                  ref
-            case _ =>
-              trace(s"Failed to resolve ${p}.${ref.name.fullName}")
-              ref
+//        case p: PrimitiveType =>
+//          trace(s"Find reference from ${p} -> ${ref.name}")
+//          context.scope.findType(p.typeName) match
+//            case Some(pt: SchemaType) =>
+//              pt.defs.find(_.name == ref.fullName) match
+//                case Some(m: FunctionType) =>
+//                  // TODO Handling context-specific methods
+//                  trace(s"Resolved ${p}.${ref.name.fullName} as a primitive function")
+//                  ref.copy(dataType = m.returnType)
+//                case _ =>
+//                  trace(s"Failed to resolve ${p}.${ref.name.fullName}")
+//                  ref
+//            case _ =>
+//              trace(s"Failed to resolve ${p}.${ref.name.fullName}")
+//              ref
         case other =>
           // trace(s"TODO: resolve ref: ${ref.fullName} as ${other.getClass}")
           ref

@@ -53,7 +53,10 @@ class Compiler(phases: List[List[Phase]] = Compiler.allPhases) extends LogSuppor
     }
 
     val global      = GlobalContext(sourceFolders = sourceFolders, workingFolder = contextFolder)
-    val rootContext = global.getContextOf(CompilationUnit.empty)
+    val rootContext = global.getContextOf(unit = CompilationUnit.empty, scope = Scope.newScope(0))
+    // Need to initialize the global context before running the analysis phases
+    global.init(using rootContext)
+
     for
       phaseGroup <- phases
       phase      <- phaseGroup

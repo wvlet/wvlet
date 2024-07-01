@@ -15,7 +15,7 @@ import com.treasuredata.flow.lang.model.DataType.{
   SchemaType,
   UnresolvedRelationType
 }
-import com.treasuredata.flow.lang.model.expr.Name.NoName
+import com.treasuredata.flow.lang.model.expr.NameExpr.EmptyName
 import wvlet.airframe.json.JSON
 import wvlet.airframe.ulid.ULID
 import wvlet.log.LogSupport
@@ -34,7 +34,7 @@ trait UnaryRelation extends Relation with UnaryPlan:
   override def child: Relation
 
 case class ModelDef(
-    name: Name,
+    name: NameExpr,
     params: List[DefArg],
     relationType: RelationType,
     child: Relation,
@@ -58,8 +58,8 @@ case class ParenthesizedRelation(child: Relation, nodeLocation: Option[NodeLocat
 
 case class AliasedRelation(
     child: Relation,
-    alias: Name,
-    columnNames: Option[Seq[Name]],
+    alias: NameExpr,
+    columnNames: Option[Seq[NameExpr]],
     nodeLocation: Option[NodeLocation]
 ) extends UnaryRelation:
   override def toString: String =
@@ -103,7 +103,7 @@ case class AliasedRelation(
 
 end AliasedRelation
 
-case class NamedRelation(child: Relation, name: Name, nodeLocation: Option[NodeLocation])
+case class NamedRelation(child: Relation, name: NameExpr, nodeLocation: Option[NodeLocation])
     extends UnaryRelation
     with Selection:
   override def toString: String = s"NamedRelation[${name.strExpr}](${child})"
@@ -135,7 +135,7 @@ case class Values(rows: Seq[Expression], nodeLocation: Option[NodeLocation])
           Seq(other)
     }
     val columns = (0 until values.head.size).map { i =>
-      MultiSourceColumn(NoName, values.map(_(i)), None)
+      MultiSourceColumn(EmptyName, values.map(_(i)), None)
     }
     columns
 
@@ -144,7 +144,9 @@ case class Values(rows: Seq[Expression], nodeLocation: Option[NodeLocation])
   * @param name
   * @param nodeLocation
   */
-case class TableRef(name: Name, nodeLocation: Option[NodeLocation]) extends Relation with LeafPlan:
+case class TableRef(name: NameExpr, nodeLocation: Option[NodeLocation])
+    extends Relation
+    with LeafPlan:
   override def toString: String                 = s"TableRef(${name})"
   override def outputAttributes: Seq[Attribute] = Nil
   override val relationType: RelationType       = UnresolvedRelationType(name.fullName)
@@ -312,7 +314,7 @@ case class Aggregate(
 ) extends UnaryRelation:
   override def toString: String = s"Aggregate[${groupingKeys.mkString(",")}](${child})"
   override def outputAttributes: Seq[Attribute] =
-    val keyAttrs = groupingKeys.map(key => SingleColumn(NoName, key, key.nodeLocation))
+    val keyAttrs = groupingKeys.map(key => SingleColumn(EmptyName, key, key.nodeLocation))
     // TODO change type as ((k1, k2) -> Seq[c1, c2, c3, ...]) type
     keyAttrs ++ child.outputAttributes
 
@@ -322,7 +324,7 @@ case class Aggregate(
       case g: UnresolvedGroupingKey =>
         NamedType(g.name, g.dataType)
       case k =>
-        NamedType(NoName, k.dataType)
+        NamedType(EmptyName, k.dataType)
     },
     child.relationType
   )
@@ -452,7 +454,7 @@ sealed trait SetOperation extends Relation with LogSupport:
                   case x if x.length <= 1 =>
                     x
                   case inputs =>
-                    Seq(MultiSourceColumn(NoName, inputs, None))
+                    Seq(MultiSourceColumn(EmptyName, inputs, None))
             }
         )
     }
@@ -479,7 +481,7 @@ sealed trait SetOperation extends Relation with LogSupport:
         if distinctColumnNames.size == 1 then
           distinctColumnNames.head
         else
-          NoName
+          EmptyName
         ,
         inputs = columns.toSeq,
         None
@@ -542,7 +544,7 @@ case class Unnest(
         arr.nodeLocation
       )
     case other =>
-      SingleColumn(NoName, other, other.nodeLocation)
+      SingleColumn(EmptyName, other, other.nodeLocation)
   }
 
 case class Lateral(query: Relation, nodeLocation: Option[NodeLocation]) extends UnaryRelation:
@@ -557,8 +559,8 @@ case class Lateral(query: Relation, nodeLocation: Option[NodeLocation]) extends 
 case class LateralView(
     child: Relation,
     exprs: Seq[Expression],
-    tableAlias: Name,
-    columnAliases: Seq[Name],
+    tableAlias: NameExpr,
+    columnAliases: Seq[NameExpr],
     nodeLocation: Option[NodeLocation]
 ) extends UnaryRelation:
 

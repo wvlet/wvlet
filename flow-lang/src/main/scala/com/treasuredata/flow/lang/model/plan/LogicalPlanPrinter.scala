@@ -236,7 +236,7 @@ object LogicalPlanPrinter extends LogSupport:
       case i: InterpolatedString =>
         s"${printExpression(i.prefix)}{${i.parts.map(printExpression).mkString(", ")}}"
       case r: DotRef =>
-        s"${printExpression(r.base)}.${printExpression(r.name)}"
+        s"${printExpression(r.qualifier)}.${printExpression(r.name)}"
       case t: This =>
         "this"
       case d: DefScope =>
@@ -246,8 +246,6 @@ object LogicalPlanPrinter extends LogSupport:
           concat(List(d.name, ": ", d.tpe), ", ")
       case ShouldExpr(testType, left, right, _) =>
         s"${left.sqlExpr} ${testType.expr} ${right.sqlExpr}"
-      case c: ContextInputRef =>
-        "_"
       case other =>
         e.toString
 

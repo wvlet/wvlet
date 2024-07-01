@@ -1,84 +1,74 @@
 package com.treasuredata.flow.lang.compiler
 
-import com.treasuredata.flow.lang.model.DataType
-import com.treasuredata.flow.lang.model.DataType.NamedType
-import com.treasuredata.flow.lang.model.expr.Name
-import com.treasuredata.flow.lang.model.plan.TableDef
+import com.treasuredata.flow.lang.StatusCode
 import wvlet.log.LogSupport
 
-import scala.collection.mutable
-
 object Scope:
-  val NoScope = Scope(None)
+  val NoScope = Scope(null, 0)
+
+  /**
+    * Create a new empty scope (e.g., for global package symbol)
+    * @param nestingLevel
+    * @return
+    */
+  def newScope(nestingLevel: Int): Scope = Scope(NoScope, nestingLevel)
+
+case class ScopeEntry(name: Name, symbol: Symbol, owner: Scope)
 
 /**
-  * Scope manages a list of table, alias, function definitions that are available in the current
-  * context.
+  * Scope holds a list of [[Symbol]]s that are available in the current context.
   */
-class Scope(outer: Option[Scope]) extends LogSupport:
-  private val types    = mutable.Map.empty[String, DataType].addAll(DataType.knownPrimitiveTypes)
-  private val aliases  = mutable.Map.empty[String, String]
-  private val tableDef = mutable.Map.empty[String, TableDef]
+class Scope(outer: Scope | Null, val nestingLevel: Int) extends LogSupport:
+  // Initialize entries from the outer scope entries.
+  // The outer scope might add more entries, but these new entries will not be visible from this Scope
+  private var entries: List[ScopeEntry] =
+    if outer != null then
+      outer.getAllEntries
+    else
+      Nil
+
+  def isEmpty: Boolean                = entries.isEmpty
+  def getAllEntries: List[ScopeEntry] = entries
+
+  /**
+    * Get all symbols in this scope except outer symbols in the order they were entered.
+    * @return
+    */
+  def getLocalSymbols: List[Symbol] = entries.filter(_.owner == this).map(_.symbol).reverse
+
+  /**
+    * Find all local symbols matching with the predicate
+    * @param p
+    * @return
+    */
+  def filter(p: Symbol => Boolean): List[Symbol] = entries
+    .filter(e => e.owner == this)
+    .filter(e => p(e.symbol))
+    .map(_.symbol)
+
+  def size: Int = entries.size
 
   def isNoScope: Boolean = this eq Scope.NoScope
 
-  def getAllTypes: Map[String, DataType] = types.toMap
-  def getAliases: Map[String, String]    = aliases.toMap
+  def lookupEntry(name: Name): Option[ScopeEntry] = entries.find(_.name == name)
+  def lookupSymbol(name: Name): Option[Symbol]    = lookupEntry(name).map(_.symbol)
 
-  def getAllTableDefs: Map[String, TableDef] = tableDef.toMap
+  /**
+    * Add a new mapping from the name to Symbol in the current scope
+    * @param name
+    * @param symbol
+    * @return
+    *   the entered symbol
+    */
+  def add(name: Name, symbol: Symbol): Symbol =
+    if this.isNoScope then
+      throw StatusCode
+        .UNEXPECTED_STATE
+        .newException(s"Cannot add an entry ${name} -> ${symbol.id} to NoScope")
+    entries = ScopeEntry(name, symbol, this) :: entries
+    symbol
 
-  def addAlias(alias: Name, typeName: String): Unit = aliases.put(alias.fullName, typeName)
-
-  def addTableDef(tbl: TableDef): Unit = tableDef.put(tbl.name.fullName, tbl)
-
-  def addType(dataType: DataType): Unit             = addType(dataType.typeName, dataType)
-  def addType(name: Name, dataType: DataType): Unit = addType(name.fullName, dataType)
-
-  // TODO manage scopes
-  def addType(name: String, dataType: DataType): Unit =
-    findType(name) match
-      case Some(t) if t.isResolved && dataType == t =>
-        trace(s"Type ${name} is already defined: ${t.typeDescription}")
-      case _ =>
-        debug(s"Add type mapping: ${name} -> ${dataType.typeDescription}")
-        types.put(name, dataType)
-
-  def getTableDef(name: Name): Option[TableDef] = tableDef.get(name.fullName)
-
-  def newScope: Scope = Scope(Some(this))
-
-  def resolveType(name: String, seen: Set[String] = Set.empty): Option[DataType] =
-    if seen.contains(name) then
-      None
-    else
-      findType(name).map(_.resolved) match
-        case Some(r) =>
-          if r.isResolved then
-            Some(r)
-          else
-            trace(s"${name} -> ${r} is not resolved")
-            resolveType(r.baseTypeName, seen + name)
-        case other =>
-          other
-
-  def findType(name: String, seen: Set[String] = Set.empty): Option[DataType] =
-    if seen.contains(name) then
-      None
-    val tpe = types
-      .get(name)
-      // search aliases
-      .orElse {
-        aliases
-          .get(name)
-          .flatMap { x =>
-            trace(s"Found alias ${name} -> ${x}")
-            types.get(x)
-          }
-      }
-      // search table def
-      .orElse {
-        tableDef.get(name).flatMap(_.getType).flatMap(x => findType(x.fullName, seen + name))
-      }
-    tpe
+  def newChildScope: Scope = Scope(outer = this, nestingLevel + 1)
+  def cloneScope: Scope    = Scope(outer = outer, nestingLevel)
 
 end Scope

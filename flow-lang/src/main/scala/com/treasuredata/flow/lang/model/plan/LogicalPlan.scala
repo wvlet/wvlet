@@ -1,14 +1,15 @@
 package com.treasuredata.flow.lang.model.plan
 
 import com.treasuredata.flow.lang.compiler.SourceFile
-import com.treasuredata.flow.lang.model.expr.{Attribute, AttributeList, Expression}
+import com.treasuredata.flow.lang.model.expr.NameExpr.EmptyName
+import com.treasuredata.flow.lang.model.expr.{Attribute, AttributeList, Expression, NameExpr}
 import com.treasuredata.flow.lang.model.{NodeLocation, TreeNode}
 
 enum PlanProperty:
   // Used for recording a Symbol defined for the tree
   case SymbolOfTree
 
-trait LogicalPlan extends TreeNode[LogicalPlan] with Product:
+trait LogicalPlan extends TreeNode with Product:
   // Ephemeral properties of the plan node, which will be used during compilation phases
   private var properties = Map.empty[PlanProperty, Any]
 
@@ -480,4 +481,4 @@ trait BinaryPlan extends LogicalPlan:
   override def children: Seq[LogicalPlan] = Seq(left, right)
 
 object LogicalPlan:
-  val empty = PackageDef(name = None, statements = Nil, nodeLocation = None)
+  val empty = PackageDef(name = EmptyName, statements = Nil, nodeLocation = None)

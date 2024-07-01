@@ -21,19 +21,19 @@ case class ParenthesizedExpression(child: Expression, nodeLocation: Option[NodeL
 /**
   * variable name, function name, type name, etc. The name might have a qualifier.
   */
-sealed trait Name extends Expression:
-  def fullName: String
+sealed trait NameExpr extends Expression:
   /* string expression of the name */
   def strExpr: String = fullName
   def leafName: String
+  def fullName: String
 
-object Name:
-  val NoName: Name                = UnquotedIdentifier("<NoName>", None)
-  def fromString(s: String): Name = UnquotedIdentifier(s, None)
+object NameExpr:
+  val EmptyName: Identifier           = UnquotedIdentifier("<empty>", None)
+  def fromString(s: String): NameExpr = UnquotedIdentifier(s, None)
 
-case class Wildcard(nodeLocation: Option[NodeLocation]) extends LeafExpression with Name:
-  override def fullName: String = "*"
+case class Wildcard(nodeLocation: Option[NodeLocation]) extends LeafExpression with NameExpr:
   override def leafName: String = "*"
+  override def fullName: String = "*"
 
 /**
   * Reference to the current input, denoted by '_'
@@ -42,37 +42,46 @@ case class Wildcard(nodeLocation: Option[NodeLocation]) extends LeafExpression w
   */
 case class ContextInputRef(override val dataType: DataType, nodeLocation: Option[NodeLocation])
     extends LeafExpression
-    with Name:
-  override def fullName: String = "_"
-  override def leafName: String = "_"
+    with Identifier:
+  override def leafName: String      = "_"
+  override def fullName: String      = "_"
+  override def unquotedValue: String = "_"
 
 /**
-  * Refer to the name that can be from the base expression: (base).(name)
-  * @param base
+  * Name with qualifier
+  */
+abstract trait QualifiedName extends NameExpr:
+  def qualifier: Expression
+
+/**
+  * Refer to the name that can be from the base expression: (qualifier).(name)
+  * @param qualifier
   * @param name
   * @param dataType
   * @param nodeLocation
   */
 case class DotRef(
-    base: Expression,
-    name: Name,
+    qualifier: Expression,
+    name: NameExpr,
     override val dataType: DataType,
     nodeLocation: Option[NodeLocation]
-) extends Name:
+) extends QualifiedName:
   override def leafName: String = name.leafName
   override def fullName: String =
-    base match
-      case n: Name =>
-        s"${n.fullName}.${name.fullName}"
+    qualifier match
+      case q: NameExpr =>
+        s"${q.fullName}.${name.fullName}"
       case _ =>
-        s"${base}.${name.fullName}"
+        // TODO print right expr
+        s"${qualifier}.${name.fullName}"
 
-  override def toString: String          = s"Ref(${base},${name})"
-  override def children: Seq[Expression] = Seq(base)
+  override def toString: String          = s"Ref(${qualifier},${name})"
+  override def children: Seq[Expression] = Seq(qualifier)
 
-sealed trait Identifier extends LeafExpression with Name:
-  override def fullName: String = strExpr
-  override def leafName: String = strExpr
+sealed trait Identifier extends QualifiedName with LeafExpression:
+  override def qualifier: Expression = NameExpr.EmptyName
+  override def fullName: String      = leafName
+  override def leafName: String      = strExpr
   // Unquoted value
   def unquotedValue: String
 
@@ -130,7 +139,8 @@ case object NoJoinCriteria extends JoinCriteria with LeafExpression:
 case class NaturalJoin(nodeLocation: Option[NodeLocation]) extends JoinCriteria with LeafExpression:
   override def toString: String = "NaturalJoin"
 
-case class JoinUsing(columns: Seq[Name], nodeLocation: Option[NodeLocation]) extends JoinCriteria:
+case class JoinUsing(columns: Seq[NameExpr], nodeLocation: Option[NodeLocation])
+    extends JoinCriteria:
   override def children: Seq[Expression] = columns
   override def toString: String          = s"JoinUsing(${columns.mkString(",")})"
 
@@ -232,8 +242,11 @@ case class FunctionApply(
   override def children: Seq[Expression] = args
   override def dataType: DataType        = base.dataType
 
-case class FunctionArg(name: Option[Name], value: Expression, nodeLocation: Option[NodeLocation])
-    extends Expression:
+case class FunctionArg(
+    name: Option[NameExpr],
+    value: Expression,
+    nodeLocation: Option[NodeLocation]
+) extends Expression:
   override def children: Seq[Expression] = Seq.empty
   override def dataType: DataType        = value.dataType
 
@@ -718,26 +731,30 @@ case class SubQueryExpression(query: Relation, nodeLocation: Option[NodeLocation
     extends Expression:
   override def children: Seq[Expression] = query.childExpressions
 
-case class Cast(expr: Name, tpe: Name, tryCast: Boolean = false, nodeLocation: Option[NodeLocation])
-    extends UnaryExpression:
+case class Cast(
+    expr: NameExpr,
+    tpe: NameExpr,
+    tryCast: Boolean = false,
+    nodeLocation: Option[NodeLocation]
+) extends UnaryExpression:
   override def child: Expression = expr
 
-case class SchemaProperty(key: Name, value: Expression, nodeLocation: Option[NodeLocation])
+case class SchemaProperty(key: NameExpr, value: Expression, nodeLocation: Option[NodeLocation])
     extends Expression:
   override def children: Seq[Expression] = Seq(key, value)
 
 sealed trait TableElement extends Expression
 
-case class ColumnDef(columnName: Name, tpe: ColumnType, nodeLocation: Option[NodeLocation])
+case class ColumnDef(columnName: NameExpr, tpe: ColumnType, nodeLocation: Option[NodeLocation])
     extends TableElement
     with UnaryExpression:
   override def toString: String  = s"${columnName.strExpr}:${tpe.tpe}"
   override def child: Expression = columnName
 
-case class ColumnType(tpe: Name, nodeLocation: Option[NodeLocation]) extends LeafExpression
+case class ColumnType(tpe: NameExpr, nodeLocation: Option[NodeLocation]) extends LeafExpression
 
 case class ColumnDefLike(
-    tableName: Name,
+    tableName: NameExpr,
     includeProperties: Boolean,
     nodeLocation: Option[NodeLocation]
 ) extends TableElement
@@ -749,8 +766,11 @@ trait GroupingKey extends UnaryExpression:
   def index: Option[Int]
   override def child: Expression
 
-case class UnresolvedGroupingKey(name: Name, child: Expression, nodeLocation: Option[NodeLocation])
-    extends GroupingKey:
+case class UnresolvedGroupingKey(
+    name: NameExpr,
+    child: Expression,
+    nodeLocation: Option[NodeLocation]
+) extends GroupingKey:
   override def dataType: DataType = child.dataType
   override def index: Option[Int] = None
   override def toString: String = s"GroupingKey(${index.map(i => s"${i}:").getOrElse("")}${child})"
@@ -762,7 +782,7 @@ case class Extract(interval: IntervalField, expr: Expression, nodeLocation: Opti
   override def toString                  = s"Extract(interval:${interval}, ${expr})"
 
 case class InterpolatedString(
-    prefix: Name,
+    prefix: NameExpr,
     parts: List[Expression],
     nodeLocation: Option[NodeLocation]
 ) extends Expression:

@@ -1,12 +1,16 @@
 package com.treasuredata.flow.lang.model
 
-import com.treasuredata.flow.lang.compiler.{CompilationUnit, SourceFile, SourceLocation}
+import com.treasuredata.flow.lang.compiler.{CompilationUnit, SourceFile, SourceLocation, Symbol}
 
 /**
   * A base class for LogicalPlan and Expression
   */
-trait TreeNode[Elem <: TreeNode[Elem]]:
-  def children: Seq[Elem]
+trait TreeNode:
+
+  private var _symbol: Symbol = Symbol.NoSymbol
+
+  def symbol: Symbol            = _symbol
+  def symbol_=(s: Symbol): Unit = _symbol = s
 
   /**
     * @return

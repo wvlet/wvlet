@@ -2,7 +2,7 @@ package com.treasuredata.flow.lang.compiler
 
 import com.treasuredata.flow.lang.StatusCode
 import com.treasuredata.flow.lang.catalog.Catalog
-import com.treasuredata.flow.lang.model.expr.{Name, UnquotedIdentifier}
+import com.treasuredata.flow.lang.model.expr.{NameExpr, UnquotedIdentifier}
 import com.treasuredata.flow.lang.model.plan.Import
 import wvlet.log.LogSupport
 
@@ -21,20 +21,24 @@ case class GlobalContext(sourceFolders: List[String] = List.empty, workingFolder
   private var symbolCount = 0
 
   // Loaded data files, etc.
-  private val files = new ConcurrentHashMap[Name, VirtualFile]().asScala
+  private val files = new ConcurrentHashMap[NameExpr, VirtualFile]().asScala
 
   // Loaded contexts for source .flow files
   private val contextTable = new ConcurrentHashMap[SourceFile, Context]().asScala
+
+  var defs: GlobalDefinitions = _
+
+  def init(using rootContext: Context): Unit = defs = GlobalDefinitions(using rootContext)
 
   def newSymbolId: Int =
     symbolCount += 1
     symbolCount
 
-  def getFile(name: Name): VirtualFile = files
+  def getFile(name: NameExpr): VirtualFile = files
     .getOrElseUpdate(name, LocalFile(name.leafName, name.fullName))
 
-  def getContextOf(unit: CompilationUnit): Context = contextTable
-    .getOrElseUpdate(unit.sourceFile, Context(global = this, compilationUnit = unit))
+  def getContextOf(unit: CompilationUnit, scope: Scope = Scope.NoScope): Context = contextTable
+    .getOrElseUpdate(unit.sourceFile, Context(global = this, scope = scope, compilationUnit = unit))
 
 /**
   * Context conveys the current state of the compilation, including defined types, table
@@ -49,21 +53,34 @@ case class Context(
     outer: Context = Context.NoContext,
     owner: Symbol = Symbol.NoSymbol,
     scope: Scope = Scope.NoScope,
-    compilationUnit: CompilationUnit = CompilationUnit.empty
+    compilationUnit: CompilationUnit = CompilationUnit.empty,
+    importDefs: List[Import] = Nil
 ) extends LogSupport:
-
-  private var importDefs = List.empty[Import]
 
   // Get the context catalog
   // TODO support multiple catalogs
   def catalog: Catalog = ???
 
-  def addImport(i: Import): Context =
-    importDefs = i :: importDefs
+  /**
+    * Create a new context with an additional import
+    * @param i
+    * @return
+    */
+  def withImport(i: Import): Context =
+    this.copy(importDefs = i :: importDefs)
     this
 
   def withCompilationUnit[U](newCompileUnit: CompilationUnit): Context = global
     .getContextOf(newCompileUnit)
+
+  def newContext(owner: Symbol): Context = Context(
+    global = global,
+    outer = this,
+    owner = owner,
+    scope = scope.newChildScope,
+    compilationUnit = compilationUnit,
+    importDefs = Nil
+  )
 
   def findDataFile(path: String): Option[String] = global
     .sourceFolders

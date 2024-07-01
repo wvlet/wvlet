@@ -9,7 +9,7 @@ import com.treasuredata.flow.lang.model.DataType.{
   SchemaType
 }
 import com.treasuredata.flow.lang.model.{DataType, RelationType}
-import com.treasuredata.flow.lang.model.expr.Name
+import com.treasuredata.flow.lang.model.expr.NameExpr
 import wvlet.airframe.control.IO
 import wvlet.airframe.json.JSON
 import wvlet.airframe.json.JSON.{
@@ -71,7 +71,7 @@ object JSONAnalyzer extends LogSupport:
     traverse("", json)
     val dataTypes = schema.map: (k, typeMap) =>
       val mostFrequentType = typeMap.mostFrequentType
-      NamedType(Name.fromString(k), mostFrequentType)
+      NamedType(NameExpr.fromString(k), mostFrequentType)
 
     SchemaType(None, RelationType.newRelationTypeName, dataTypes.toSeq, Nil)
 

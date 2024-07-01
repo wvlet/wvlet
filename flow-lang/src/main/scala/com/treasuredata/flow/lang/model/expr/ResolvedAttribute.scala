@@ -9,7 +9,7 @@ case class SourceColumn(table: Catalog.Table, column: Catalog.TableColumn):
   def fullName: String = s"${table.name}.${column.name}"
 
 case class ResolvedAttribute(
-    name: Name,
+    name: NameExpr,
     override val dataType: DataType,
     // If this attribute directly refers to a table column, its source column will be set.
     sourceColumn: Option[SourceColumn],

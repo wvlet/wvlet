@@ -9,64 +9,73 @@ import com.treasuredata.flow.lang.model.expr.*
 sealed trait DDL extends LogicalPlan with LeafPlan:
   override def outputAttributes: Seq[Attribute] = Nil
 
-case class TableDef(name: Name, params: Seq[TableDefParam], nodeLocation: Option[NodeLocation])
+case class TableDef(name: NameExpr, params: Seq[TableDefParam], nodeLocation: Option[NodeLocation])
     extends DDL:
 
-  def getParam(paramName: Name): Option[Name] = params.find(_.name == paramName).map(_.paramValue)
+  def getParam(paramName: NameExpr): Option[NameExpr] = params
+    .find(_.name == paramName)
+    .map(_.paramValue)
 
-  def getType: Option[Name] = params.find(_.name.fullName == "type").map(_.paramValue)
+  def getType: Option[NameExpr] = params.find(_.name.fullName == "type").map(_.paramValue)
 
-case class TableDefParam(name: Name, paramValue: Name, nodeLocation: Option[NodeLocation])
+case class TableDefParam(name: NameExpr, paramValue: NameExpr, nodeLocation: Option[NodeLocation])
     extends Expression:
   override def children: Seq[Expression] = Nil
 
 case class CreateSchema(
-    schema: Name,
+    schema: NameExpr,
     ifNotExists: Boolean,
     properties: Option[Seq[SchemaProperty]],
     nodeLocation: Option[NodeLocation]
 ) extends DDL
 
 case class DropDatabase(
-    database: Name,
+    database: NameExpr,
     ifExists: Boolean,
     cascade: Boolean,
     nodeLocation: Option[NodeLocation]
 ) extends DDL
 
-case class RenameDatabase(database: Name, renameTo: Name, nodeLocation: Option[NodeLocation])
-    extends DDL
+case class RenameDatabase(
+    database: NameExpr,
+    renameTo: NameExpr,
+    nodeLocation: Option[NodeLocation]
+) extends DDL
 
 case class CreateTable(
-    table: Name,
+    table: NameExpr,
     ifNotExists: Boolean,
     tableElems: Seq[TableElement],
     nodeLocation: Option[NodeLocation]
 ) extends DDL
 
-case class DropTable(table: Name, ifExists: Boolean, nodeLocation: Option[NodeLocation]) extends DDL
+case class DropTable(table: NameExpr, ifExists: Boolean, nodeLocation: Option[NodeLocation])
+    extends DDL
 
-case class RenameTable(table: Name, renameTo: Name, nodeLocation: Option[NodeLocation]) extends DDL
+case class RenameTable(table: NameExpr, renameTo: NameExpr, nodeLocation: Option[NodeLocation])
+    extends DDL
 
 case class RenameColumn(
-    table: Name,
-    column: Name,
-    renameTo: Name,
+    table: NameExpr,
+    column: NameExpr,
+    renameTo: NameExpr,
     nodeLocation: Option[NodeLocation]
 ) extends DDL
 
-case class DropColumn(table: Name, column: Name, nodeLocation: Option[NodeLocation]) extends DDL
+case class DropColumn(table: NameExpr, column: NameExpr, nodeLocation: Option[NodeLocation])
+    extends DDL
 
-case class AddColumn(table: Name, column: ColumnDef, nodeLocation: Option[NodeLocation]) extends DDL
+case class AddColumn(table: NameExpr, column: ColumnDef, nodeLocation: Option[NodeLocation])
+    extends DDL
 
 case class CreateView(
-    viewName: Name,
+    viewName: NameExpr,
     replace: Boolean,
     query: Relation,
     nodeLocation: Option[NodeLocation]
 ) extends DDL
 
-case class DropView(viewName: Name, ifExists: Boolean, nodeLocation: Option[NodeLocation])
+case class DropView(viewName: NameExpr, ifExists: Boolean, nodeLocation: Option[NodeLocation])
     extends DDL
 
 /**
@@ -75,7 +84,7 @@ case class DropView(viewName: Name, ifExists: Boolean, nodeLocation: Option[Node
 trait Update extends LogicalPlan
 
 case class CreateTableAs(
-    table: Name,
+    table: NameExpr,
     ifNotEotExists: Boolean,
     columnAliases: Option[Seq[Identifier]],
     query: Relation,
@@ -88,8 +97,8 @@ case class CreateTableAs(
   override def relationType: RelationType = query.relationType
 
 case class InsertInto(
-    table: Name,
-    columnAliases: Option[Seq[Name]],
+    table: NameExpr,
+    columnAliases: Option[Seq[NameExpr]],
     query: Relation,
     nodeLocation: Option[NodeLocation]
 ) extends Update
@@ -99,7 +108,7 @@ case class InsertInto(
   override def outputAttributes: Seq[Attribute] = Nil
   override def relationType: RelationType       = query.relationType
 
-case class Delete(table: Name, where: Option[Expression], nodeLocation: Option[NodeLocation])
+case class Delete(table: NameExpr, where: Option[Expression], nodeLocation: Option[NodeLocation])
     extends Update
     with LeafPlan:
   override def outputAttributes: Seq[Attribute] = Nil

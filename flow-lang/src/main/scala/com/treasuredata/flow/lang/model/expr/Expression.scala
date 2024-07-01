@@ -8,7 +8,9 @@ import wvlet.log.LogSupport
 
 /**
   */
-trait Expression extends TreeNode[Expression] with Product with LogSupport:
+trait Expression extends TreeNode with Product with LogSupport:
+  def children: Seq[Expression]
+
   /**
     * Column name without qualifier
     * @return

@@ -11,21 +11,21 @@ import wvlet.log.LogSupport
 trait Attribute extends LeafExpression with LogSupport:
   override def attributeName: String = name.leafName
 
-  def name: Name
+  def name: NameExpr
   def fullName: String
 
   def typeDescription: String = dataTypeName
 
-  def alias: Option[Name] =
+  def alias: Option[NameExpr] =
     this match
       case a: Alias =>
         Some(a.name)
       case _ =>
         None
 
-  def withAlias(newAlias: Name): Attribute = withAlias(Some(newAlias))
+  def withAlias(newAlias: NameExpr): Attribute = withAlias(Some(newAlias))
 
-  def withAlias(newAlias: Option[Name]): Attribute =
+  def withAlias(newAlias: Option[NameExpr]): Attribute =
     newAlias match
       case None =>
         this
@@ -92,7 +92,7 @@ end Attribute
   */
 case class AttributeRef(attr: Attribute)(val exprId: ULID = ULID.newULID) extends Attribute:
   override def fullName: String = attr.fullName
-  override def name: Name       = attr.name
+  override def name: NameExpr   = attr.name
   override def toString: String = s"AttributeRef(${attr})"
 
   override def nodeLocation: Option[NodeLocation] = attr.nodeLocation
@@ -116,7 +116,7 @@ case class AttributeRef(attr: Attribute)(val exprId: ULID = ULID.newULID) extend
   * @param nodeLocation
   */
 case class SingleColumn(
-    override val name: Name,
+    override val name: NameExpr,
     expr: Expression,
     nodeLocation: Option[NodeLocation]
 ) extends Attribute:
@@ -131,7 +131,7 @@ case class SingleColumn(
 
   override def toString = s"${fullName}:${dataTypeName} := ${expr}"
 
-case class UnresolvedAttribute(override val name: Name, nodeLocation: Option[NodeLocation])
+case class UnresolvedAttribute(override val name: NameExpr, nodeLocation: Option[NodeLocation])
     extends Attribute:
   override def fullName: String = name.fullName
   override def toString: String = s"UnresolvedAttribute(${fullName})"
@@ -141,7 +141,7 @@ case class UnresolvedAttribute(override val name: Name, nodeLocation: Option[Nod
   override def outputAttributes: Seq[Attribute] = Seq.empty
 
 case class AllColumns(
-    override val name: Name,
+    override val name: NameExpr,
     columns: Option[Seq[Attribute]],
     nodeLocation: Option[NodeLocation]
 ) extends Attribute
@@ -183,7 +183,7 @@ case class AllColumns(
 
 end AllColumns
 
-case class Alias(name: Name, expr: Expression, nodeLocation: Option[NodeLocation])
+case class Alias(name: NameExpr, expr: Expression, nodeLocation: Option[NodeLocation])
     extends Attribute:
   override def fullName: String = name.fullName
 
@@ -203,7 +203,7 @@ case class Alias(name: Name, expr: Expression, nodeLocation: Option[NodeLocation
   * @param nodeLocation
   */
 case class MultiSourceColumn(
-    name: Name,
+    name: NameExpr,
     inputs: Seq[Expression],
     nodeLocation: Option[NodeLocation]
 ) extends Attribute:

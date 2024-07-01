@@ -3,12 +3,12 @@ package com.treasuredata.flow.lang.model
 import com.treasuredata.flow.lang.model.DataType.NamedType
 import wvlet.airframe.ulid.{PrefixedULID, ULID}
 import wvlet.log.LogSupport
-import com.treasuredata.flow.lang.model.expr.Name
+import com.treasuredata.flow.lang.model.expr.NameExpr
 
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
-abstract class DataType(val typeName: String, val typeParams: Seq[DataType]):
+abstract class DataType(val typeName: String, val typeParams: Seq[DataType]) extends Type:
   override def toString: String = typeDescription
 
   def typeDescription: String =
@@ -66,7 +66,7 @@ object DataType extends LogSupport:
     * @param name
     * @param dataType
     */
-  case class NamedType(name: Name, dataType: DataType)
+  case class NamedType(name: NameExpr, dataType: DataType)
       extends DataType(s"${name}:${dataType}", Seq.empty):
     override def isResolved: Boolean = dataType.isResolved
 
@@ -167,7 +167,7 @@ object DataType extends LogSupport:
   sealed abstract class TypeParameter(name: String)
       extends DataType(typeName = name, typeParams = Seq.empty)
 
-  case class UnresolvedTypeParameter(name: String, typeBound: Option[Name])
+  case class UnresolvedTypeParameter(name: String, typeBound: Option[NameExpr])
       extends TypeParameter(name):
     override def isResolved: Boolean = false
 

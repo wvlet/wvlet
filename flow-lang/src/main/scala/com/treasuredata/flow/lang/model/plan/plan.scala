@@ -3,7 +3,13 @@ package com.treasuredata.flow.lang.model.plan
 import com.treasuredata.flow.lang.compiler.SourceFile
 import com.treasuredata.flow.lang.model.DataType.TypeParameter
 import com.treasuredata.flow.lang.model.{DataType, NodeLocation, RelationType}
-import com.treasuredata.flow.lang.model.expr.{Attribute, Expression, Name, StringLiteral}
+import com.treasuredata.flow.lang.model.expr.{
+  Attribute,
+  Expression,
+  NameExpr,
+  QualifiedName,
+  StringLiteral
+}
 import com.treasuredata.flow.lang.model.plan.LogicalPlan
 
 sealed trait LanguageStatement extends LogicalPlan with LeafPlan:
@@ -17,7 +23,7 @@ trait HasSourceFile:
 
 // Top-level definition for each source file
 case class PackageDef(
-    name: Option[Expression],
+    name: QualifiedName,
     statements: List[LogicalPlan],
     sourceFile: SourceFile = SourceFile.NoSourceFile,
     nodeLocation: Option[NodeLocation]
@@ -30,8 +36,8 @@ case class PackageDef(
   override def inputAttributes: Seq[Attribute] = Nil
 
 case class Import(
-    importRef: Name,
-    alias: Option[Name],
+    importRef: NameExpr,
+    alias: Option[NameExpr],
     fromSource: Option[StringLiteral],
     nodeLocation: Option[NodeLocation]
 ) extends LanguageStatement
@@ -42,14 +48,14 @@ case class Import(
 //    nodeLocation: Option[NodeLocation]
 //) extends LanguageStatement
 
-case class TypeAlias(alias: Name, sourceTypeName: Name, nodeLocation: Option[NodeLocation])
+case class TypeAlias(alias: NameExpr, sourceTypeName: NameExpr, nodeLocation: Option[NodeLocation])
     extends LanguageStatement
 
 case class TypeDef(
-    name: Name,
+    name: NameExpr,
     params: List[TypeParameter],
     scopes: List[DefScope],
-    parent: Option[Name],
+    parent: Option[NameExpr],
     elems: List[TypeElem],
     nodeLocation: Option[NodeLocation]
 ) extends LanguageStatement
@@ -62,7 +68,7 @@ case class TopLevelFunctionDef(functionDef: FunctionDef, nodeLocation: Option[No
 
 // def ... { ... } in the type definition
 case class FunctionDef(
-    name: Name,
+    name: NameExpr,
     args: List[DefArg],
     scopes: List[DefScope],
     retType: Option[DataType],
@@ -72,7 +78,7 @@ case class FunctionDef(
   override def children: Seq[Expression] = Seq.empty
 
 case class DefArg(
-    name: Name,
+    name: NameExpr,
     override val dataType: DataType,
     defaultValue: Option[Expression],
     nodeLocation: Option[NodeLocation]
@@ -80,13 +86,13 @@ case class DefArg(
   override def children: Seq[Expression] = Seq.empty
 
 case class TypeValDef(
-    name: Name,
-    tpe: Name,
+    name: NameExpr,
+    tpe: NameExpr,
     body: Option[Expression],
     nodeLocation: Option[NodeLocation]
 ) extends TypeElem:
   override def children: Seq[Expression] = Seq.empty
 
-case class DefScope(name: Option[Name], tpe: Name, nodeLocation: Option[NodeLocation])
+case class DefScope(name: Option[NameExpr], tpe: NameExpr, nodeLocation: Option[NodeLocation])
     extends Expression:
   override def children: Seq[Expression] = Seq.empty

@@ -1,7 +1,7 @@
 package com.treasuredata.flow.lang.model.plan
 
 import com.treasuredata.flow.lang.model.NodeLocation
-import com.treasuredata.flow.lang.model.expr.{Attribute, Name}
+import com.treasuredata.flow.lang.model.expr.{Attribute, NameExpr}
 import wvlet.airframe.ulid.ULID
 
 /**
@@ -18,4 +18,4 @@ object ExecutionPlan:
     * Materialize a model using a logical plan
     * @param name
     */
-  case class MaterializeModel(modelName: Name, plan: LogicalPlan) extends ExecutionPlan
+  case class MaterializeModel(modelName: NameExpr, plan: LogicalPlan) extends ExecutionPlan

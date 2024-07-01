@@ -2,7 +2,7 @@ package com.treasuredata.flow.lang.compiler.analyzer
 
 import com.treasuredata.flow.lang.StatusCode
 import com.treasuredata.flow.lang.model.DataType.{NamedType, SchemaType}
-import com.treasuredata.flow.lang.model.expr.Name
+import com.treasuredata.flow.lang.model.expr.NameExpr
 import com.treasuredata.flow.lang.model.{DataType, RelationType}
 import org.duckdb.DuckDBConnection
 import wvlet.airframe.control.Control
@@ -32,7 +32,7 @@ object ParquetAnalyzer:
           val name     = metadata.getColumnName(i)
           val dataType = metadata.getColumnTypeName(i).toLowerCase
           // TODO support non-primitive type parsing
-          NamedType(Name.fromString(name), DataType.getPrimitiveType(dataType))
+          NamedType(NameExpr.fromString(name), DataType.getPrimitiveType(dataType))
         }
         SchemaType(None, RelationType.newRelationTypeName, columns, Nil)
       }
