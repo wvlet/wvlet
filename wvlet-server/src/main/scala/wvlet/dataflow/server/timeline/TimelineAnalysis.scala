@@ -34,7 +34,8 @@ object TimelineAnalysis extends LogSupport:
       val sorted = list.sortBy(_.startAt).toIndexedSeq
       val length = sorted.length
       // sorted intervals on endAt values
-      val overlappedIntervals = new mutable.PriorityQueue[TimeInterval]()(TimeInterval.intervalSweepOrdering)
+      val overlappedIntervals =
+        new mutable.PriorityQueue[TimeInterval]()(TimeInterval.intervalSweepOrdering)
       overlappedIntervals += sorted(0)
       var sweepLine = sorted(0).startAt
       var index     = 1

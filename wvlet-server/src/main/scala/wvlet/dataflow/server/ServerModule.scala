@@ -150,7 +150,9 @@ object ServerModule extends LogSupport:
     ports
 
   def standaloneDesign(coordinatorPort: Int, workerPort: Int, frontendServerPort: Int): Design =
-    coordinatorDesign(CoordinatorConfig(serverAddress = ServerAddress(s"localhost:${coordinatorPort}")))
+    coordinatorDesign(
+      CoordinatorConfig(serverAddress = ServerAddress(s"localhost:${coordinatorPort}"))
+    )
       .add(
         workerDesign(
           WorkerConfig(
@@ -171,7 +173,9 @@ object ServerModule extends LogSupport:
         ApiClient(Http.client.withName("api-client").newSyncClient(s"localhost:${coordinatorPort}"))
       }
       .bind[CoordinatorClient].toInstance {
-        CoordinatorClient(Http.client.withName("coordinator-client").newSyncClient(s"localhost:${coordinatorPort}"))
+        CoordinatorClient(
+          Http.client.withName("coordinator-client").newSyncClient(s"localhost:${coordinatorPort}")
+        )
       }
 
   /**
@@ -180,7 +184,9 @@ object ServerModule extends LogSupport:
     */
   def testServerAndClient: Design =
     val Seq(coordinatorPort, workerPort) = randomPort(2)
-    coordinatorDesign(CoordinatorConfig(serverAddress = ServerAddress(s"localhost:${coordinatorPort}")))
+    coordinatorDesign(
+      CoordinatorConfig(serverAddress = ServerAddress(s"localhost:${coordinatorPort}"))
+    )
       .add(
         workerDesign(
           WorkerConfig(
@@ -190,7 +196,9 @@ object ServerModule extends LogSupport:
         )
       )
       .bind[CoordinatorClient].toProvider { (server: CoordinatorServer) =>
-        CoordinatorClient(Http.client.withName("coordinator-client").newSyncClient(server.localAddress))
+        CoordinatorClient(
+          Http.client.withName("coordinator-client").newSyncClient(server.localAddress)
+        )
       }
       .bind[ApiClient].toProvider { (server: CoordinatorServer) =>
         ApiClient(Http.client.withName("api-client").newSyncClient(server.localAddress))

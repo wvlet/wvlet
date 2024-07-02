@@ -35,7 +35,14 @@ case class TaskInput(
 
 object TaskInput:
   def apply(taskId: TaskId, request: TaskRequest): TaskInput =
-    TaskInput(taskId, request.taskPlugin, request.methodName, request.taskBody, request.tags, request.idempotentKey)
+    TaskInput(
+      taskId,
+      request.taskPlugin,
+      request.methodName,
+      request.taskBody,
+      request.tags,
+      request.idempotentKey
+    )
 
 trait TaskPlugin extends LogSupport:
   def pluginName: String

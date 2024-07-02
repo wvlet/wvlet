@@ -24,8 +24,9 @@ object ServerMain:
     Logger.init
     Launcher.of[ServerMain].execute(args)
 
-class ServerMain(@option(prefix = "-h,--help", description = "Show help messages", isHelp = true) help: Boolean)
-    extends LogSupport:
+class ServerMain(
+    @option(prefix = "-h,--help", description = "Show help messages", isHelp = true) help: Boolean
+) extends LogSupport:
 
   @command(isDefault = true)
   def default: Unit =

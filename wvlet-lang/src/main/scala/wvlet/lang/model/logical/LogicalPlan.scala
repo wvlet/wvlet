@@ -98,4 +98,5 @@ object LogicalPlan:
     override def toExpr(context: PrintContext): String = s"where ${filterExpr.toExpr(context)}"
 
   case class Select(exprs: Seq[SelectItem])(nodeLocation: Option[SourceLocation]) extends Expression:
-    override def toExpr(context: PrintContext): String = s"return ${exprs.map(_.toExpr(context)).mkString(", ")}"
+    override def toExpr(context: PrintContext): String =
+      s"return ${exprs.map(_.toExpr(context)).mkString(", ")}"

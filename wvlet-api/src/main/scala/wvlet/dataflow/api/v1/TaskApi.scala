@@ -88,7 +88,8 @@ case class TaskRef(
   def isDone: Boolean    = status.isDone
   def hasError: Boolean  = taskError.isDefined
 
-  def withStatus(newStatus: TaskStatus): TaskRef = this.copy(status = newStatus, updatedAt = Instant.now())
+  def withStatus(newStatus: TaskStatus): TaskRef =
+    this.copy(status = newStatus, updatedAt = Instant.now())
   def withError(error: TaskError): TaskRef =
     this.copy(taskError = Some(error), status = TaskStatus.FAILED, updatedAt = Instant.now())
   def withError(errorCode: RPCStatus, message: String): TaskRef =

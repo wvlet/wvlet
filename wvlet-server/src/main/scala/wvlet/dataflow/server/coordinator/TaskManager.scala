@@ -102,9 +102,10 @@ class TaskManager(
       taskRef
     else
       info(s"[${taskRef.id}] Dispatch task")
-      val nodeIndex         = Random.nextInt(activeWorkerNodes.size)
-      val targetWorkerNode  = activeWorkerNodes(nodeIndex)
-      val workerClient      = rpcClientProvider.getWorkerClient("task-manager", targetWorkerNode.serverAddress)
+      val nodeIndex        = Random.nextInt(activeWorkerNodes.size)
+      val targetWorkerNode = activeWorkerNodes(nodeIndex)
+      val workerClient =
+        rpcClientProvider.getWorkerClient("task-manager", targetWorkerNode.serverAddress)
       val updatedTask       = updateTask(taskRef.id)(_.withStatus(TaskStatus.STARTING))
       val taskExecutionInfo = workerClient.WorkerApi.runTask(taskRef.id, taskRequest)
       debug(taskExecutionInfo)

@@ -28,7 +28,12 @@ class NodeManager(coordinatorConfig: CoordinatorConfig) extends LogSupport:
   private val self: Node =
     val localHost = InetAddress.getLocalHost
     val localAddr = s"${localHost.getHostAddress}:${coordinatorConfig.serverAddress.port}"
-    Node(name = coordinatorConfig.name, address = localAddr, isCoordinator = true, startedAt = Instant.now())
+    Node(
+      name = coordinatorConfig.name,
+      address = localAddr,
+      isCoordinator = true,
+      startedAt = Instant.now()
+    )
 
   private val heartBeatRecord = new ConcurrentHashMap[Node, Instant]().asScala
 

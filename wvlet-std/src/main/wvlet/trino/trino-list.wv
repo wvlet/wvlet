@@ -1,0 +1,33 @@
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+
+extend List[A](context Trino):
+  def count: Expr[Long] = q"count(1)"
+  def countIf(f: A => Boolean): Expr[Long] = q"count_if(${this}, ${f})"
+  def countDistinct: Expr[Long] = q"count(distinct $self)"
+  def countCountDistinct: Expr[Long] = q"approx_distinct(${this})"
+
+  def any: Expr[A] = q"arbitrary($this)"
+  def maxBy[K: Comparable](f: A => K): Expr[A] = q"max_by($this, ${f})"
+  def minBy[K: Comparable](f: A => K): Expr[A] = q"min_by($this, ${f})"
+end
+
+// Numeric operators
+extend List[A](context Numeric[A], Trino):
+  def sum: Expr[A] = q"sum($this)"
+  def avg: Expr[A] = q"avg($this)"
+  def max: Expr[A] = q"max($this)"
+  def min: Expr[A] = q"min($this)"
+end

@@ -1,0 +1,47 @@
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package wvlet.standard
+
+/**
+ * Note: We will not use this definition as there seems no practical benefit of
+        defining relational operators in wvlet language itself.
+ */
+class Relation[R](name: String, fields: List[Field]) extends List[R]:
+  def select[R1*](f: R => R1*): Relation[R1*]
+  def groupBy[K*](keys: R => K*): Relation[K* :: List[R]]
+  def where(cond: R => Boolean): Relation[R]
+  def transform[R1*](f: R => R1*): Relaltion[R1*]
+  def append[R1*](newFields: R => R1*): Reation[R1*]
+  def drop[R.*](fields: R.*): Relation[R - R.*]
+
+  def orderBy[K*](f: R => K*): Relation[R]
+
+  def leftJoin[R1](other: Relation[R1], on: (R, R1) => Boolean): Relation[R :: List[R1]]
+  def rightJoin[R1](other: Relation[R1], on (R, R1) => Boolean): Relaltion[List[R] :: R]
+  def innerJoin[R1](other: Relation[R1], on: (R, R1) => Boolean): Relation[R :: R1]
+  def crossJoin[R1](other: Relation[R1]): Relation[R :: R1]
+
+  /**
+   * Run a raw SQL query
+   */
+  static def sql[R1](sql: String): Relation[R1]
+
+
+
+
+
+class Field(name: String, dataType: DataType, description: String | Null)
+
+class DataType
+

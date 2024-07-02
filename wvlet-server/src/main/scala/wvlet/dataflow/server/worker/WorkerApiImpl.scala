@@ -30,14 +30,19 @@ import java.time.Instant
 
 /**
   */
-class WorkerApiImpl(node: WorkerSelf, coordinatorClient: CoordinatorClient, pluginManager: PluginManager)
-    extends WorkerApi
+class WorkerApiImpl(
+    node: WorkerSelf,
+    coordinatorClient: CoordinatorClient,
+    pluginManager: PluginManager
+) extends WorkerApi
     with LogSupport:
   override def runTask(taskId: TaskId, task: TaskRequest): WorkerApi.TaskExecutionInfo =
     debug(s"run task: ${task}")
     pluginManager.getPlugin(task.taskPlugin) match
       case Some(plugin) =>
-        coordinatorClient.CoordinatorApi.updateTaskStatus(UpdateTaskRequest(taskId, TaskStatus.RUNNING))
+        coordinatorClient.CoordinatorApi.updateTaskStatus(
+          UpdateTaskRequest(taskId, TaskStatus.RUNNING)
+        )
         debug(s"Running ${task.taskPlugin}:${task.methodName}")
         runTaskInternal(plugin, TaskInput(taskId, task))
       case None =>

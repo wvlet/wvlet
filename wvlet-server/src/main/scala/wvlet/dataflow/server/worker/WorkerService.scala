@@ -61,7 +61,12 @@ object WorkerService:
     .bind[WorkerSelf].toProvider { (workerConfig: WorkerConfig) =>
       val localHost = InetAddress.getLocalHost
       val localAddr = s"${localHost.getHostAddress}:${workerConfig.serverAddress.port}"
-      Node(name = workerConfig.name, address = localAddr, isCoordinator = false, startedAt = Instant.now())
+      Node(
+        name = workerConfig.name,
+        address = localAddr,
+        isCoordinator = false,
+        startedAt = Instant.now()
+      )
     }
     .bind[WorkerBackgroundExecutor].toInstance(
       Executors.newSingleThreadScheduledExecutor()

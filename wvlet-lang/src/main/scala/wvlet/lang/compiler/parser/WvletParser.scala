@@ -78,7 +78,7 @@ class WvletParser(tokenScanner: TokenScanner) extends LogSupport:
 
   def parseFLOWRQuery: FLOWRQuery =
     val currentToken = peekNextToken
-    currentToken.token match
+    currentToken.token match    
       case Token.FOR =>
         nextToken
         val forItems: Seq[ForItem] = parseForItems
@@ -257,18 +257,28 @@ class WvletParser(tokenScanner: TokenScanner) extends LogSupport:
         nextToken
         currentToken.text match
           case hex if hex.startsWith("0x") || hex.startsWith("0X") =>
-            Expression.IntegerLiteral(hex, Integer.parseInt(hex.substring(2), 16))(currentToken.getSourceLocation)
+            Expression.IntegerLiteral(hex, Integer.parseInt(hex.substring(2), 16))(
+              currentToken.getSourceLocation
+            )
           case _ =>
-            Expression.IntegerLiteral(currentToken.text, currentToken.text.toInt)(currentToken.getSourceLocation)
+            Expression.IntegerLiteral(currentToken.text, currentToken.text.toInt)(
+              currentToken.getSourceLocation
+            )
       case Token.DECIMAL_LITERAL =>
         nextToken
-        Expression.DecimalLiteral(currentToken.text, BigDecimal(currentToken.text))(currentToken.getSourceLocation)
+        Expression.DecimalLiteral(currentToken.text, BigDecimal(currentToken.text))(
+          currentToken.getSourceLocation
+        )
       case Token.FLOAT_LITERAL =>
         nextToken
-        Expression.FloatLiteral(currentToken.text, currentToken.text.toFloat)(currentToken.getSourceLocation)
+        Expression.FloatLiteral(currentToken.text, currentToken.text.toFloat)(
+          currentToken.getSourceLocation
+        )
       case Token.DOUBLE_LITERAL =>
         nextToken
-        Expression.DoubleLiteral(currentToken.text, currentToken.text.toDouble)(currentToken.getSourceLocation)
+        Expression.DoubleLiteral(currentToken.text, currentToken.text.toDouble)(
+          currentToken.getSourceLocation
+        )
       case Token.EXP_LITERAL =>
         nextToken
         Expression.ExpLiteral(currentToken.text, java.lang.Double.parseDouble(currentToken.text))(

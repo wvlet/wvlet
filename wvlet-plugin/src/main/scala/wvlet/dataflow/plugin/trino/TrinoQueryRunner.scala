@@ -64,7 +64,9 @@ object TrinoQueryRunner:
   */
 class TrinoQueryRunner(okHttpClient: OkHttpClient):
   def startQuery(r: TrinoQueryRequest): TrinoQueryContext =
-    new TrinoQueryContext(StatementClientFactory.newStatementClient(okHttpClient, r.toClientSession, r.sql))
+    new TrinoQueryContext(
+      StatementClientFactory.newStatementClient(okHttpClient, r.toClientSession, r.sql)
+    )
 
 class TrinoQueryContext(private val statementClient: StatementClient) extends AutoCloseable with LogSupport:
 
@@ -95,7 +97,8 @@ class TrinoQueryContext(private val statementClient: StatementClient) extends Au
       val status = statementClient.currentStatusInfo()
       if !readSchema then
         Option(status.getColumns).foreach { columns =>
-          val schema = status.getColumns.asScala.toSeq.map(x => s"${x.getName}:${x.getType}").mkString(", ")
+          val schema =
+            status.getColumns.asScala.toSeq.map(x => s"${x.getName}:${x.getType}").mkString(", ")
           info(schema)
           readSchema = true
         }

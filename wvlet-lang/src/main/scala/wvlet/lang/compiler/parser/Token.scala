@@ -14,9 +14,11 @@
 package wvlet.lang.compiler.parser
 
 enum TokenType:
-  case Control, Literal, Identifier, Op, Keyword
+  case Control, Literal, Identifier, Quote, Op, Keyword
 
 import TokenType.*
+
+import scala.annotation.switch
 
 enum Token(val tokenType: TokenType, val str: String):
   // special tokens
@@ -40,6 +42,11 @@ enum Token(val tokenType: TokenType, val str: String):
   case IDENTIFIER extends Token(Identifier, "<identifier>")
   // Identifier wrapped in backquotes `....`
   case BACKQUOTED_IDENTIFIER extends Token(Identifier, "<quoted identifier>")
+
+  // Quote characters
+  case SINGLE_QUOTE extends Token(Quote, "'")
+  case DOUBLE_QUOTE extends Token(Quote, "\"")
+  case BACK_QUOTE   extends Token(Quote, "`")
 
   // Parentheses
   case L_PAREN   extends Token(Op, "(")
@@ -65,9 +72,6 @@ enum Token(val tokenType: TokenType, val str: String):
   case R_ARROW        extends Token(Op, "->")
   case R_DOUBLE_ARROW extends Token(Op, "=>")
 
-  case SINGLE_QUOTE extends Token(Op, "'")
-  case DOUBLE_QUOTE extends Token(Op, "\"")
-
   // Special keywords
   case EQ   extends Token(Op, "=")
   case NEQ  extends Token(Op, "!=")
@@ -76,14 +80,18 @@ enum Token(val tokenType: TokenType, val str: String):
   case LTEQ extends Token(Op, "<=")
   case GTEQ extends Token(Op, ">=")
 
+  case LOGICAL_AND extends Token(Op, "&&")
+  case LOGICAL_OR  extends Token(Op, "||")
+  case LOGICAL_NOT extends Token(Op, "!")
+
   case PLUS     extends Token(Op, "+")
   case MINUS    extends Token(Op, "-")
   case ASTERISK extends Token(Op, "*")
   case DIV      extends Token(Op, "/")
   case MOD      extends Token(Op, "%")
 
-  case AMP  extends Token(Op, "&")
-  case PIPE extends Token(Op, "|")
+  case BITWISE_AND extends Token(Op, "&")
+  case BITWISE_OR  extends Token(Op, "|")
 
   case HASH extends Token(Op, "#")
 
@@ -99,15 +107,22 @@ enum Token(val tokenType: TokenType, val str: String):
   case WITH   extends Token(Keyword, "with")
 
   case IN extends Token(Keyword, "in")
+  case BY extends Token(Keyword, "by")
 
-  case SELECT   extends Token(Keyword, "select")
-  case FOR      extends Token(Keyword, "for")
-  case LET      extends Token(Keyword, "let")
-  case WHERE    extends Token(Keyword, "where")
-  case GROUP_BY extends Token(Keyword, "group by")
-  case HAVING   extends Token(Keyword, "having")
-  case ORDER_BY extends Token(Keyword, "order by")
-  case JOIN     extends Token(Keyword, "join")
+  case SELECT extends Token(Keyword, "select")
+  case FOR    extends Token(Keyword, "for")
+  case LET    extends Token(Keyword, "let")
+  case WHERE  extends Token(Keyword, "where")
+  case GROUP  extends Token(Keyword, "group")
+  case HAVING extends Token(Keyword, "having")
+  case ORDER  extends Token(Keyword, "order")
+  case JOIN   extends Token(Keyword, "join")
+
+  // Join type keywords
+  case LEFT  extends Token(Keyword, "left")
+  case RIGHT extends Token(Keyword, "right")
+  case CROSS extends Token(Keyword, "cross")
+  case FULL  extends Token(Keyword, "full")
 
   case RUN    extends Token(Keyword, "run")
   case IMPORT extends Token(Keyword, "import")
@@ -122,11 +137,25 @@ enum Token(val tokenType: TokenType, val str: String):
   case OR  extends Token(Keyword, "or")
   case NOT extends Token(Keyword, "not")
 
-object Tokens:
+object Token:
   import Token.*
   val keywords       = Token.values.filter(_.tokenType == Keyword).toSeq
   val specialSymbols = Token.values.filter(_.tokenType == Op).toSeq
 
-  val allKeywords = keywords ++ specialSymbols
+  val allKeywordsAndSymbols = keywords ++ specialSymbols
 
-  val keywordTable = allKeywords.map(x => x.str -> x).toMap
+  val keywordTable = allKeywordsAndSymbols.map(x => x.str -> x).toMap
+
+  // Line feed (\n)
+  inline val LF = '\u000A'
+  // Form feed (\f)
+  inline val FF = '\u000C'
+  // Carriage return (\r)
+  inline val CR = '\u000D'
+  // Substitute character for representing the end of token stream
+  inline val SU = '\u001A'
+
+  def isNumberSeparator(ch: Char): Boolean = ch == '_'
+  def isLineBreakChar(ch: Char): Boolean = (ch: @switch) match
+    case LF | FF | CR | SU => true
+    case _                 => false

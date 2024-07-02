@@ -22,14 +22,18 @@ object TrinoPlugin extends TaskPlugin:
   override def pluginName: String = "trino"
 
   override def run(input: TaskInput): Cancelable =
-    require(input.taskPlugin == "trino", s"Invalid plugin name: ${input.taskPlugin}. Expected trino")
+    require(
+      input.taskPlugin == "trino",
+      s"Invalid plugin name: ${input.taskPlugin}. Expected trino"
+    )
 
     input.methodName match
       case "runQuery" =>
         // TODO Call method with MethodSurface
-        val service = input.taskBody.getOrElse("service", new AssertionError("missing service parameter")).toString
-        val query   = input.taskBody.getOrElse("query", new AssertionError("missing query")).toString
-        val schema  = input.taskBody.get("schema").map(_.toString)
+        val service = input.taskBody
+          .getOrElse("service", new AssertionError("missing service parameter")).toString
+        val query  = input.taskBody.getOrElse("query", new AssertionError("missing query")).toString
+        val schema = input.taskBody.get("schema").map(_.toString)
         runQuery(service, query, schema)
       case other =>
         throw RPCStatus.NOT_FOUND_U5.newException(s"unknown method: ${other}")

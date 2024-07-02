@@ -68,7 +68,9 @@ class ScheduledThreadManager(name: String, numThreads: Int = 1) extends AutoClos
       unit
     )
 
-  def scheduleWithFixedDelay[U](initialDelay: Long, period: Long, unit: TimeUnit)(body: () => U): Unit =
+  def scheduleWithFixedDelay[U](initialDelay: Long, period: Long, unit: TimeUnit)(
+      body: () => U
+  ): Unit =
     scheduledExecutorService.scheduleWithFixedDelay(
       new Runnable:
         override def run(): Unit =

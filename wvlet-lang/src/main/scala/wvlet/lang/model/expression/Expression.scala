@@ -39,32 +39,41 @@ object Expression:
     override def toExpr(context: PrintContext) = stringValue
     def stringValue: String
 
-  case class IntegerLiteral(stringValue: String, value: Int)(sourceLocation: Option[SourceLocation])   extends Literal
-  case class LongLiteral(stringValue: String, value: Long)(sourceLocation: Option[SourceLocation])     extends Literal
-  case class FloatLiteral(stringValue: String, value: Float)(sourceLocation: Option[SourceLocation])   extends Literal
-  case class DoubleLiteral(stringValue: String, value: Double)(sourceLocation: Option[SourceLocation]) extends Literal
-  case class ExpLiteral(stringValue: String, value: Double)(sourceLocation: Option[SourceLocation])    extends Literal
-  case class NullLiteral(stringValue: String)(sourceLocation: Option[SourceLocation])                  extends Literal
+  case class IntegerLiteral(stringValue: String, value: Int)(sourceLocation: Option[SourceLocation]) extends Literal
+  case class LongLiteral(stringValue: String, value: Long)(sourceLocation: Option[SourceLocation])   extends Literal
+  case class FloatLiteral(stringValue: String, value: Float)(sourceLocation: Option[SourceLocation]) extends Literal
+  case class DoubleLiteral(stringValue: String, value: Double)(
+      sourceLocation: Option[SourceLocation]
+  ) extends Literal
+  case class ExpLiteral(stringValue: String, value: Double)(sourceLocation: Option[SourceLocation]) extends Literal
+  case class NullLiteral(stringValue: String)(sourceLocation: Option[SourceLocation])               extends Literal
   sealed trait BooleanLiteral extends Literal:
     def booleanValue: Boolean
   case class TrueLiteral(stringValue: String)(sourceLocation: Option[SourceLocation]) extends BooleanLiteral:
     override def booleanValue = true
   case class FalseLiteral(stringValue: String)(soruceLocation: Option[SourceLocation]) extends BooleanLiteral:
     override def booleanValue = false
-  case class DecimalLiteral(stringValue: String, value: BigDecimal)(sourceLocation: Option[SourceLocation])
-      extends Literal
+  case class DecimalLiteral(stringValue: String, value: BigDecimal)(
+      sourceLocation: Option[SourceLocation]
+  ) extends Literal
   case class StringLiteral(stringValue: String)(sourceLocation: Option[SourceLocation]) extends Literal
 
   sealed trait ConditionalExpression extends Expression
   case class Equal(left: Expression, right: Expression) extends ConditionalExpression:
-    override def toExpr(context: PrintContext) = s"${left.toExpr(context)} = ${right.toExpr(context)}"
+    override def toExpr(context: PrintContext) =
+      s"${left.toExpr(context)} = ${right.toExpr(context)}"
   case class NotEqual(left: Expression, right: Expression) extends ConditionalExpression:
-    override def toExpr(context: PrintContext) = s"${left.toExpr(context)} != ${right.toExpr(context)}"
+    override def toExpr(context: PrintContext) =
+      s"${left.toExpr(context)} != ${right.toExpr(context)}"
   case class LessThan(left: Expression, right: Expression) extends ConditionalExpression:
-    override def toExpr(context: PrintContext) = s"${left.toExpr(context)} < ${right.toExpr(context)}"
+    override def toExpr(context: PrintContext) =
+      s"${left.toExpr(context)} < ${right.toExpr(context)}"
   case class LessThanOrEqual(left: Expression, right: Expression) extends ConditionalExpression:
-    override def toExpr(context: PrintContext) = s"${left.toExpr(context)} <= ${right.toExpr(context)}"
+    override def toExpr(context: PrintContext) =
+      s"${left.toExpr(context)} <= ${right.toExpr(context)}"
   case class GreaterThan(left: Expression, right: Expression) extends ConditionalExpression:
-    override def toExpr(context: PrintContext) = s"${left.toExpr(context)} > ${right.toExpr(context)}"
+    override def toExpr(context: PrintContext) =
+      s"${left.toExpr(context)} > ${right.toExpr(context)}"
   case class GreaterThanOrEqual(left: Expression, right: Expression) extends ConditionalExpression:
-    override def toExpr(context: PrintContext) = s"${left.toExpr(context)} >= ${right.toExpr(context)}"
+    override def toExpr(context: PrintContext) =
+      s"${left.toExpr(context)} >= ${right.toExpr(context)}"
