@@ -7,7 +7,7 @@ ThisBuild / libraryDependencySchemes ++=
   )
 
 // ThisBuild / resolvers ++= Resolver.sonatypeOssRepos("snapshots")
-val AIRFRAME_VERSION = sys.env.getOrElse("AIRFRAME_VERSION", "24.6.1")
+val AIRFRAME_VERSION = sys.env.getOrElse("AIRFRAME_VERSION", "24.7.0")
 
 addSbtPlugin("org.scalameta"      % "sbt-scalafmt"  % "2.5.2")
 addSbtPlugin("com.eed3si9n"       % "sbt-buildinfo" % "0.12.0")
