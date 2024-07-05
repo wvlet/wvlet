@@ -16,7 +16,7 @@ package com.treasuredata.flow.lang.compiler
   *   - From the [[Symbol]], check its [[SymbolInfo]] ([[DataType]], TypeDef, etc.), which will be
   *     refined as compiler phases proceed.
   */
-sealed abstract class Name(name: String) derives CanEqual:
+sealed abstract class Name(val name: String) derives CanEqual:
   override def toString: String = name
   def isTermName: Boolean
   def isTypeName: Boolean
@@ -26,22 +26,24 @@ sealed abstract class Name(name: String) derives CanEqual:
   override def equals(that: Any): Boolean = this eq that.asInstanceOf[AnyRef]
 end Name
 
-case class TermName private[compiler] (name: String) extends Name(name):
+case class TermName private[compiler] (override val name: String) extends Name(name):
   private lazy val _typeName = TypeName(name)
   def toTypeName: TypeName   = _typeName
 
   override def isTermName: Boolean = true
   override def isTypeName: Boolean = false
 
-case class TypeName private[compiler] (name: String) extends Name(name):
+case class TypeName private[compiler] (override val name: String) extends Name(name):
   override def isTermName: Boolean = false
   override def isTypeName: Boolean = true
+  def toTermName: TermName         = Name.termName(name)
 
 object Name:
   // Manages a set of unique TermName objects
   private val nameTable = collection.mutable.Map.empty[String, TermName]
 
-  val NoName = termName("")
+  val NoName     = termName("<NoName>")
+  val NoTypeName = typeName("<NoType>")
 
   def termName(s: String): TermName = nameTable.getOrElseUpdate(s, TermName(s))
   def typeName(s: String): TypeName =

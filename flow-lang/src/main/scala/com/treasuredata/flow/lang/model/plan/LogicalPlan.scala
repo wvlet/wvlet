@@ -1,9 +1,11 @@
 package com.treasuredata.flow.lang.model.plan
 
-import com.treasuredata.flow.lang.compiler.SourceFile
+import com.treasuredata.flow.lang.compiler.{Name, SourceFile}
+import com.treasuredata.flow.lang.model.DataType.EmptyRelationType
 import com.treasuredata.flow.lang.model.expr.NameExpr.EmptyName
 import com.treasuredata.flow.lang.model.expr.{Attribute, AttributeList, Expression, NameExpr}
-import com.treasuredata.flow.lang.model.{NodeLocation, TreeNode}
+import com.treasuredata.flow.lang.model.{NodeLocation, RelationType, RelationTypeList, TreeNode}
+import wvlet.airframe.ulid.ULID
 
 enum PlanProperty:
   // Used for recording a Symbol defined for the tree
@@ -38,14 +40,13 @@ trait LogicalPlan extends TreeNode with Product:
     !x.resolved
   }
 
-  // Input attributes (column names) of the relation
-  def inputAttributeList: AttributeList  = AttributeList.fromSeq(inputAttributes)
-  def outputAttributeList: AttributeList = AttributeList.fromSeq(outputAttributes)
+  // def inputAttributeList: AttributeList  = AttributeList.fromSeq(inputAttributes)
+  // def outputAttributeList: AttributeList = AttributeList.fromSeq(outputAttributes)
 
   // Input attributes (column names) of the relation
-  def inputAttributes: Seq[Attribute] = children.flatMap(_.outputAttributes)
+  // def inputAttributes: Seq[Attribute] = children.flatMap(_.outputAttributes)
   // Output attributes (column names) of the relation
-  def outputAttributes: Seq[Attribute]
+  // def outputAttributes: Seq[Attribute]
 
   /**
     * All child nodes of this plan node
@@ -53,6 +54,10 @@ trait LogicalPlan extends TreeNode with Product:
     * @return
     */
   def children: Seq[LogicalPlan]
+
+  // Input attributes (column names) of the relation
+  def relationType: RelationType
+  def inputRelationType: RelationType
 
   /**
     * Return child expressions associated to this LogicalPlan node
@@ -468,12 +473,17 @@ end LogicalPlan
 
 trait LeafPlan extends LogicalPlan:
   override def children: Seq[LogicalPlan]      = Nil
-  override def inputAttributes: Seq[Attribute] = Nil
+  override def inputRelationType: RelationType = EmptyRelationType
 
 trait UnaryPlan extends LogicalPlan:
   def child: LogicalPlan
-  override def children: Seq[LogicalPlan]      = child :: Nil
-  override def inputAttributes: Seq[Attribute] = child.outputAttributes
+  override def children: Seq[LogicalPlan] = child :: Nil
+  override def inputRelationType: RelationType =
+    child match
+      case r: Relation =>
+        r.relationType
+      case _ =>
+        EmptyRelationType
 
 trait BinaryPlan extends LogicalPlan:
   def left: LogicalPlan

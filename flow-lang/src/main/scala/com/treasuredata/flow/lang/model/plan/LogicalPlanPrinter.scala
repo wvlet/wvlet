@@ -98,19 +98,19 @@ object LogicalPlanPrinter extends LogSupport:
         val inputType =
           m match
             case r: Relation =>
-              wrap(r.inputRelationTypes.map(printRelationType))
+              wrap(printRelationType(r.inputRelationType))
             case _ =>
-              wrap(m.inputAttributes.map(_.typeDescription))
+              wrap(m.inputRelationType.fields.map(_.typeDescription))
 
         val outputType =
           m match
             case r: Relation =>
               printRelationType(r.relationType)
             case _ =>
-              wrap(m.outputAttributes.map(_.typeDescription))
+              wrap(m.relationType.fields.map(_.typeDescription))
 
-        val inputAttrs  = m.inputAttributes
-        val outputAttrs = m.outputAttributes
+        val inputAttrs  = m.inputRelationType.fields
+        val outputAttrs = m.relationType.fields
 
         val attr        = m.childExpressions.map(expr => printExpression(expr))
         val functionSig = s" ${inputType} => ${outputType}"
@@ -239,7 +239,7 @@ object LogicalPlanPrinter extends LogSupport:
         s"${printExpression(r.qualifier)}.${printExpression(r.name)}"
       case t: This =>
         "this"
-      case d: DefScope =>
+      case d: DefContext =>
         if d.name.isEmpty then
           concat(List(d.tpe))
         else

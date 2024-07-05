@@ -26,6 +26,7 @@ case class GlobalContext(sourceFolders: List[String] = List.empty, workingFolder
   // Loaded contexts for source .flow files
   private val contextTable = new ConcurrentHashMap[SourceFile, Context]().asScala
 
+  // Globally available definitions (Name and Symbols)
   var defs: GlobalDefinitions = _
 
   def init(using rootContext: Context): Unit = defs = GlobalDefinitions(using rootContext)
@@ -37,6 +38,12 @@ case class GlobalContext(sourceFolders: List[String] = List.empty, workingFolder
   def getFile(name: NameExpr): VirtualFile = files
     .getOrElseUpdate(name, LocalFile(name.leafName, name.fullName))
 
+  /**
+    * Get the context corresponding to the specific source file in the CompilationUnit
+    * @param unit
+    * @param scope
+    * @return
+    */
   def getContextOf(unit: CompilationUnit, scope: Scope = Scope.NoScope): Context = contextTable
     .getOrElseUpdate(unit.sourceFile, Context(global = this, scope = scope, compilationUnit = unit))
 

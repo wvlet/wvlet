@@ -103,6 +103,7 @@ enum FlowToken(val tokenType: TokenType, val str: String):
 
   // Alphabectic keywords
   case DEF     extends FlowToken(Keyword, "def")
+  case INLINE  extends FlowToken(Keyword, "inline")
   case SCHEMA  extends FlowToken(Keyword, "schema")
   case TYPE    extends FlowToken(Keyword, "type")
   case EXTENDS extends FlowToken(Keyword, "extends")

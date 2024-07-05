@@ -1,5 +1,6 @@
 package com.treasuredata.flow.lang.model.plan
 
+import com.treasuredata.flow.lang.model.DataType.EmptyRelationType
 import com.treasuredata.flow.lang.model.{NodeLocation, RelationType}
 import com.treasuredata.flow.lang.model.expr.*
 
@@ -7,7 +8,7 @@ import com.treasuredata.flow.lang.model.expr.*
  * SQL statements for changing the table schema or catalog
  */
 sealed trait DDL extends LogicalPlan with LeafPlan:
-  override def outputAttributes: Seq[Attribute] = Nil
+  override def relationType: RelationType = EmptyRelationType
 
 case class TableDef(name: NameExpr, params: Seq[TableDefParam], nodeLocation: Option[NodeLocation])
     extends DDL:
@@ -103,12 +104,10 @@ case class InsertInto(
     nodeLocation: Option[NodeLocation]
 ) extends Update
     with UnaryRelation:
-  override def child: Relation = query
-
-  override def outputAttributes: Seq[Attribute] = Nil
-  override def relationType: RelationType       = query.relationType
+  override def child: Relation            = query
+  override def relationType: RelationType = query.relationType
 
 case class Delete(table: NameExpr, where: Option[Expression], nodeLocation: Option[NodeLocation])
     extends Update
     with LeafPlan:
-  override def outputAttributes: Seq[Attribute] = Nil
+  override def relationType: RelationType = EmptyRelationType

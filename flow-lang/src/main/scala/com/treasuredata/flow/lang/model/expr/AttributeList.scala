@@ -10,3 +10,4 @@ class AttributeList(val attrs: Seq[Attribute]):
 
 object AttributeList:
   def fromSeq(attrs: Seq[Attribute]): AttributeList = new AttributeList(attrs)
+  val empty: AttributeList                          = new AttributeList(Seq.empty)

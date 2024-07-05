@@ -447,7 +447,7 @@ class SQLGenerator(config: SQLGeneratorConfig = SQLGeneratorConfig()) extends Lo
         s"(${expr.sqlExpr})"
       case a: Alias =>
         val e = a.expr.sqlExpr
-        s"${e} AS ${a.name.leafName}"
+        s"${e} AS ${a.nameExpr.leafName}"
       case s @ SingleColumn(ex, _, _) =>
         if s.fullName != "?" then
           s"${printExpression(s.expr)} AS ${s.fullName}"

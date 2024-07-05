@@ -4,7 +4,6 @@ import com.treasuredata.flow.lang.StatusCode
 import com.treasuredata.flow.lang.compiler.{CompilationUnit, Context, Phase}
 import com.treasuredata.flow.lang.model.DataType
 import com.treasuredata.flow.lang.model.DataType.{
-  FunctionType,
   NamedType,
   SchemaType,
   UnresolvedRelationType,

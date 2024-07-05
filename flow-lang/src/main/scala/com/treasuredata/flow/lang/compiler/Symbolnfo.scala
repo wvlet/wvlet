@@ -1,6 +1,7 @@
 package com.treasuredata.flow.lang.compiler
 
-import com.treasuredata.flow.lang.model.{DataType, PackageType, Type}
+import com.treasuredata.flow.lang.model.{DataType, Type}
+import Type.PackageType
 
 /**
   * SymbolInfo is the result of resolving a name (Symbol) during the compilation phase.

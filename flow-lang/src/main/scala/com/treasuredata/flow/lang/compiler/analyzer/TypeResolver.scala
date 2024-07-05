@@ -2,22 +2,18 @@ package com.treasuredata.flow.lang.compiler.analyzer
 
 import com.treasuredata.flow.lang.StatusCode
 import com.treasuredata.flow.lang.compiler.RewriteRule.PlanRewriter
-import com.treasuredata.flow.lang.compiler.{CompilationUnit, Context, Phase, RewriteRule}
-import com.treasuredata.flow.lang.model.DataType.{
-  FunctionType,
-  NamedType,
-  PrimitiveType,
-  SchemaType
-}
+import com.treasuredata.flow.lang.compiler.{CompilationUnit, Context, Name, Phase, RewriteRule}
+import com.treasuredata.flow.lang.model.DataType.{NamedType, PrimitiveType, SchemaType}
+import com.treasuredata.flow.lang.model.Type.FunctionType
 import com.treasuredata.flow.lang.model.expr.{
   Attribute,
   AttributeList,
   ContextInputRef,
+  DotRef,
   Expression,
   GroupingKey,
   Identifier,
   InterpolatedString,
-  DotRef,
   ResolvedAttribute,
   This,
   UnresolvedAttribute
@@ -125,7 +121,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
   object resolveRelation extends RewriteRule:
     override def apply(context: Context): PlanRewriter = {
       case r: Relation => // Regular relation and Filter etc.
-        r.transformExpressions(resolveExpression(r.inputAttributeList, context))
+        r.transformExpressions(resolveExpression(r.inputAttributes, context))
     }
 
   /**
@@ -136,7 +132,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
       val resolvedChild = resolveRelation(p.child, context)
       val resolvedColumns: Seq[Attribute] = resolveAttributes(
         p.selectItems,
-        resolvedChild.outputAttributeList,
+        resolvedChild.outputAttributes,
         context
       )
       Project(resolvedChild, resolvedColumns, p.nodeLocation)
@@ -277,12 +273,17 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
       ref.qualifier.dataType match
         case t: SchemaType =>
           trace(s"Find reference from ${t} -> ${ref.name}")
-          t.columnTypes.find(_.name == ref.name) match
+          t.columnTypes.find(_.name.name == ref.name.leafName) match
             case Some(col) =>
-              trace(s"${t}.${col.name.fullName} is a column")
-              ResolvedAttribute(ref.name, col.dataType, None, ref.nodeLocation)
+              trace(s"${t}.${col.name} is a column")
+              ResolvedAttribute(
+                Name.termName(ref.name.leafName),
+                col.dataType,
+                None,
+                ref.nodeLocation
+              )
             case None =>
-              t.defs.find(_.name == ref.name.fullName) match
+              t.defs.find(_.name.name == ref.name.fullName) match
                 case Some(f: FunctionType) =>
                   trace(s"Resolved ${t}.${ref.name.fullName} as a function")
                   ref.copy(dataType = f.returnType)

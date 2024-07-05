@@ -1,7 +1,7 @@
 package com.treasuredata.flow.lang.compiler.analyzer
 
 import com.treasuredata.flow.lang.StatusCode
-import com.treasuredata.flow.lang.compiler.Context
+import com.treasuredata.flow.lang.compiler.{Context, Name}
 import com.treasuredata.flow.lang.model.DataType.{
   EmptyRelationType,
   NamedType,
@@ -71,9 +71,9 @@ object JSONAnalyzer extends LogSupport:
     traverse("", json)
     val dataTypes = schema.map: (k, typeMap) =>
       val mostFrequentType = typeMap.mostFrequentType
-      NamedType(NameExpr.fromString(k), mostFrequentType)
+      NamedType(Name.termName(k), mostFrequentType)
 
-    SchemaType(None, RelationType.newRelationTypeName, dataTypes.toSeq, Nil)
+    SchemaType(None, Name.typeName(RelationType.newRelationTypeName), dataTypes.toSeq, Nil)
 
   end guessSchema
 

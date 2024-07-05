@@ -1,6 +1,7 @@
 package com.treasuredata.flow.lang.compiler
 
-import com.treasuredata.flow.lang.model.{DataType, TreeNode, Type, PackageType}
+import com.treasuredata.flow.lang.model.{DataType, TreeNode, Type}
+import com.treasuredata.flow.lang.model.Type.PackageType
 import com.treasuredata.flow.lang.model.expr.NameExpr
 import com.treasuredata.flow.lang.model.expr.NameExpr.EmptyName
 import com.treasuredata.flow.lang.model.plan.LogicalPlan
@@ -22,13 +23,6 @@ object Symbol:
   def newImportSymbol(owner: Symbol, tpe: Type)(using context: Context): Symbol =
     val symbol = Symbol(context.global.newSymbolId)
     symbol.symbolInfo = NamedSymbolInfo(symbol, NoSymbol, importName, tpe)
-    symbol
-
-  def newTypeDefSymbol(owner: Symbol, name: Name, dataType: DataType)(using
-      context: Context
-  ): Symbol =
-    val symbol = Symbol(context.global.newSymbolId)
-    symbol.symbolInfo = TypeSymbolInfo(symbol, owner, name, dataType)
     symbol
 
 end Symbol
@@ -63,6 +57,8 @@ class Symbol(val id: Int):
     else
       _tree
 
+  def tree_=(t: TreeNode): Unit = _tree = t
+
   def symbolInfo(using Context): SymbolInfo =
     if _symbolInfo == null then
       _symbolInfo = computeSymbolInfo
@@ -74,3 +70,5 @@ class Symbol(val id: Int):
   def computeSymbolInfo(using Context): SymbolInfo = ???
 
 end Symbol
+
+class TypeSymbol(id: Int, file: SourceFile) extends Symbol(id)

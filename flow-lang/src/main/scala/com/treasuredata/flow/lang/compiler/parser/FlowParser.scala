@@ -435,7 +435,7 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
         case _ =>
           Nil
 
-    val defScope: List[DefScope] = context()
+    val defScope: List[DefContext] = context()
 
     val retType: Option[DataType] =
       scanner.lookAhead().token match
@@ -495,11 +495,11 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
         UnresolvedType(tpe.fullName)
     DefArg(name, dt, defaultValue, name.nodeLocation)
 
-  def context(): List[DefScope] =
+  def context(): List[DefContext] =
     scanner.lookAhead().token match
       case FlowToken.IN =>
         consume(FlowToken.IN)
-        val scopes = List.newBuilder[DefScope]
+        val scopes = List.newBuilder[DefContext]
         def nextScope: Unit =
           val t = scanner.lookAhead()
           t.token match
@@ -510,7 +510,7 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
             // ok
             case _ =>
               val nameOrType = identifier()
-              scopes += DefScope(None, nameOrType, t.nodeLocation)
+              scopes += DefContext(None, nameOrType, t.nodeLocation)
               nextScope
         nextScope
         scopes.result()
