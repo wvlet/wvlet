@@ -73,9 +73,8 @@ case class Context(
     * @param i
     * @return
     */
-  def withImport(i: Import): Context =
-    this.copy(importDefs = i :: importDefs)
-    this
+  def withImport(i: Import): Context = this
+    .copy(outer = this, scope = scope, importDefs = i :: importDefs)
 
   def withCompilationUnit[U](newCompileUnit: CompilationUnit): Context = global
     .getContextOf(newCompileUnit)

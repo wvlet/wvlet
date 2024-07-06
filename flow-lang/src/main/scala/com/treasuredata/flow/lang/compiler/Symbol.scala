@@ -44,6 +44,8 @@ class Symbol(val id: Int):
     else
       _symbolInfo.toString
 
+  def name(using Context): Name = symbolInfo.name
+
   def isNoSymbol: Boolean = this == Symbol.NoSymbol
 
   def dataType: DataType            = _dataType

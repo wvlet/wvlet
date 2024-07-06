@@ -49,7 +49,7 @@ trait UnaryRelation extends Relation with UnaryPlan:
   override def child: Relation
 
 case class ModelDef(
-    name: NameExpr,
+    name: Identifier,
     params: List[DefArg],
     relationType: RelationType,
     child: Relation,

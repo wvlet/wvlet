@@ -192,6 +192,15 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
       case _ =>
         reserved()
 
+  def identifierSingle(): Identifier =
+    val t = scanner.lookAhead()
+    t.token match
+      case FlowToken.IDENTIFIER =>
+        consume(FlowToken.IDENTIFIER)
+        UnquotedIdentifier(t.str, t.nodeLocation)
+      case _ =>
+        reserved()
+
   def reserved(): Identifier =
     val t = scanner.nextToken()
     t.token match
@@ -252,7 +261,7 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
 
   def modelDef(): ModelDef =
     val t    = consume(FlowToken.MODEL)
-    val name = identifier()
+    val name = identifierSingle()
     val params =
       scanner.lookAhead().token match
         case FlowToken.L_PAREN =>

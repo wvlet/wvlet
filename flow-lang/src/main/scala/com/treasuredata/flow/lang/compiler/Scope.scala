@@ -54,6 +54,20 @@ class Scope(outer: Scope | Null, val nestingLevel: Int) extends LogSupport:
   def lookupSymbol(name: Name): Option[Symbol]    = lookupEntry(name).map(_.symbol)
 
   /**
+    * Register the symbol and its name if it is not already registered in the current scope.
+    * @param sym
+    * @param x$2
+    * @return
+    */
+  def enter(sym: Symbol)(using Context): Symbol =
+    val nme = sym.name
+    lookupSymbol(nme) match
+      case Some(sym) =>
+        sym
+      case None =>
+        add(nme, sym)
+
+  /**
     * Add a new mapping from the name to Symbol in the current scope
     * @param name
     * @param symbol
