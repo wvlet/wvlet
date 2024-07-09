@@ -91,7 +91,7 @@ object DataType extends LogSupport:
   case class NamedType(name: TermName, dataType: DataType)
       extends DataType(dataType.typeName, Seq.empty):
     override def isResolved: Boolean     = dataType.isResolved
-    override def typeDescription: String = s"${name}:${super.typeDescription}"
+    override def typeDescription: String = s"${name}:${dataType.typeDescription}"
 
   /**
     * A type for representing relational table schemas
@@ -149,7 +149,9 @@ object DataType extends LogSupport:
       valueType: RelationType
   ) extends RelationType(typeName, Seq.empty):
 
-    override def fields: Seq[NamedType] = groupingKeyTypes ++ valueType.fields
+    override def fields: Seq[NamedType] =
+      groupingKeyTypes :+ NamedType(Name.termName("_"), ArrayType(valueType))
+
     override def isResolved: Boolean = groupingKeyTypes.forall(_.isResolved) && valueType.isResolved
 
   case class ConcatType(override val typeName: TypeName, inputTypes: Seq[RelationType])
@@ -248,7 +250,7 @@ object DataType extends LogSupport:
     BooleanType,
     ByteType,
     ShortType,
-    IntegerType,
+    IntType,
     LongType,
     FloatType,
     RealType,
@@ -262,7 +264,7 @@ object DataType extends LogSupport:
   private val primitiveTypeTable: Map[TypeName, DataType] =
     primitiveTypes.map(x => x.typeName -> x).toMap ++
       Map(
-        "int"      -> IntegerType,
+        "integer"  -> IntType,
         "bigint"   -> LongType,
         "tinyint"  -> ByteType,
         "smallint" -> ShortType,
@@ -328,10 +330,10 @@ object DataType extends LogSupport:
   abstract class NumericType(name: String) extends PrimitiveType(name):
     override def isResolved: Boolean = true
 
-  case object ByteType    extends NumericType("byte")
-  case object ShortType   extends NumericType("short")
-  case object IntegerType extends NumericType("integer")
-  case object LongType    extends NumericType("long")
+  case object ByteType  extends NumericType("byte")
+  case object ShortType extends NumericType("short")
+  case object IntType   extends NumericType("int")
+  case object LongType  extends NumericType("long")
 
   abstract class FractionType(name: String) extends NumericType(name):
     override def isResolved: Boolean = true

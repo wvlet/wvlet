@@ -443,10 +443,10 @@ case class ArithmeticBinaryExpr(
     left.dataType match
       case l if l == right.dataType =>
         l
-      case DataType.IntegerType =>
+      case DataType.IntType =>
         right.dataType match
           case DataType.BooleanType =>
-            DataType.IntegerType
+            DataType.IntType
           case DataType.LongType =>
             DataType.LongType
           case DataType.FloatType =>
@@ -461,7 +461,7 @@ case class ArithmeticBinaryExpr(
         right.dataType match
           case DataType.BooleanType =>
             DataType.LongType
-          case DataType.IntegerType =>
+          case DataType.IntType =>
             DataType.LongType
           case DataType.FloatType =>
             DataType.FloatType
@@ -475,7 +475,7 @@ case class ArithmeticBinaryExpr(
         right.dataType match
           case DataType.BooleanType =>
             DataType.FloatType
-          case DataType.IntegerType =>
+          case DataType.IntType =>
             DataType.FloatType
           case DataType.LongType =>
             DataType.FloatType
@@ -489,7 +489,7 @@ case class ArithmeticBinaryExpr(
         right.dataType match
           case DataType.BooleanType =>
             DataType.DoubleType
-          case DataType.IntegerType =>
+          case DataType.IntType =>
             DataType.DoubleType
           case DataType.LongType =>
             DataType.DoubleType
@@ -501,8 +501,8 @@ case class ArithmeticBinaryExpr(
             DataType.UnknownType
       case DataType.BooleanType =>
         right.dataType match
-          case DataType.IntegerType =>
-            DataType.IntegerType
+          case DataType.IntType =>
+            DataType.IntType
           case DataType.LongType =>
             DataType.LongType
           case DataType.FloatType =>

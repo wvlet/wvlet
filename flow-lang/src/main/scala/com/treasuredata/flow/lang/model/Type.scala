@@ -31,7 +31,12 @@ object Type:
   abstract class LazyType extends (Symbol => LazyType):
     def apply(symbol: Symbol): LazyType
 
-  case class FunctionType(name: Name, args: Seq[NamedType], returnType: DataType) extends Type:
+  case class FunctionType(
+      name: Name,
+      args: Seq[NamedType],
+      returnType: DataType,
+      scopes: List[Name]
+  ) extends Type:
     override def typeDescription: String = s"${name}(${args.mkString(", ")}): ${returnType}"
     override def isFunctionType: Boolean = true
     override def isResolved: Boolean     = args.forall(_.isResolved) && returnType.isResolved

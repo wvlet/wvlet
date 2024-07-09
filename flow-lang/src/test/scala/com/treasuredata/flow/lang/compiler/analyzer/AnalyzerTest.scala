@@ -8,6 +8,13 @@ class AnalyzerTest extends AirSpec:
 
   private val compiler = Compiler(List(Compiler.analysisPhases))
 
+  test("analyze stdlib") {
+    val result     = compiler.compile(Nil, ".")
+    val typedPlans = result.typedPlans
+    typedPlans.map: p =>
+      trace(p.pp)
+  }
+
   test("analyze cdp_simple plan") {
     val result     = compiler.compile("spec/cdp_simple")
     val typedPlans = result.typedPlans

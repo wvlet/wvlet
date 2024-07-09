@@ -17,6 +17,7 @@ import com.treasuredata.flow.lang.model.DataType.{NamedType, SchemaType, Unresol
 import com.treasuredata.flow.lang.model.Type.FunctionType
 import com.treasuredata.flow.lang.model.{DataType, Type}
 import Type.{ImportType, PackageType}
+import com.treasuredata.flow.lang.StatusCode
 import com.treasuredata.flow.lang.model.expr.{DotRef, Identifier, NameExpr, QualifiedName}
 import com.treasuredata.flow.lang.model.plan.{
   FunctionDef,
@@ -106,9 +107,43 @@ object SymbolLabeler extends Phase("symbol-labeler"):
   private def registerTypeDefSymbol(t: TypeDef)(using ctx: Context): Symbol =
     val typeName = Name.typeName(t.name.leafName)
 
+    def toFunctionType(f: FunctionDef): FunctionType = FunctionType(
+      name = Name.termName(f.name.leafName),
+      args = f
+        .args
+        .map { a =>
+          val paramName = Name.termName(a.name.leafName)
+          val paramType = a.dataType
+          NamedType(paramName, paramType)
+        },
+      returnType = f.dataType,
+      // TODO resolve qualified name
+      scopes = t.scopes.map(x => Name.typeName(x.tpe.leafName))
+    )
+
     ctx.scope.lookupSymbol(typeName) match
-      case Some(s) =>
-        s
+      case Some(sym) =>
+        // Attach the already generated symbol to the node
+        t.symbol = sym
+        if t.scopes.nonEmpty then
+          // Add scope-specific functions
+          val si = sym.symbolInfo
+          si.dataType match
+            case st: SchemaType =>
+              val defs = t
+                .elems
+                .collect { case f: FunctionDef =>
+                  toFunctionType(f)
+                }
+              si.dataType = st.copy(defs = st.defs ++ defs)
+            case _ =>
+              throw StatusCode
+                .UNEXPECTED_STATE
+                .newException(
+                  s"Unexpected type symbol info: ${si}",
+                  t.sourceLocation(using ctx.compilationUnit)
+                )
+        sym
       case None =>
         // Create a new type symbol
         val sym = TypeSymbol(ctx.global.newSymbolId, ctx.compilationUnit.sourceFile)
@@ -119,18 +154,9 @@ object SymbolLabeler extends Phase("symbol-labeler"):
         val defs = t
           .elems
           .collect { case f: FunctionDef =>
-            FunctionType(
-              name = Name.termName(f.name.leafName),
-              args = f
-                .args
-                .map { a =>
-                  val paramName = Name.termName(a.name.leafName)
-                  val paramType = a.dataType
-                  NamedType(paramName, paramType)
-                },
-              returnType = f.dataType
-            )
+            toFunctionType(f)
           }
+
         val columns = t
           .elems
           .collect { case v: TypeValDef =>
@@ -146,7 +172,7 @@ object SymbolLabeler extends Phase("symbol-labeler"):
 
         // Associate TypeSymbolInfo with the symbol
         sym.symbolInfo = TypeSymbolInfo(sym, owner = parentSymbol.get, typeName, tpe)
-        trace(s"Created type symbol ${sym}")
+        trace(s"Created type symbol ${sym}: ${tpe}")
         sym.tree = t
 
         t.symbol = sym

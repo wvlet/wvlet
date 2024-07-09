@@ -451,7 +451,7 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
         case FlowToken.COLON =>
           consume(FlowToken.COLON)
           val id = identifier()
-          Some(UnresolvedType(id.fullName))
+          Some(DataType.parse(id.fullName))
         case _ =>
           None
 
