@@ -10,9 +10,15 @@ import com.treasuredata.flow.lang.compiler.{
   Phase,
   RewriteRule,
   Symbol,
+  TypeName,
   TypeSymbolInfo
 }
-import com.treasuredata.flow.lang.model.DataType.{NamedType, PrimitiveType, SchemaType}
+import com.treasuredata.flow.lang.model.DataType.{
+  NamedType,
+  PrimitiveType,
+  SchemaType,
+  UnresolvedType
+}
 import com.treasuredata.flow.lang.model.Type.FunctionType
 import com.treasuredata.flow.lang.model.expr.*
 import com.treasuredata.flow.lang.model.plan.*
@@ -30,18 +36,18 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
     unit
 
   def defaultRules: List[RewriteRule] =
-    resolveTypeDef ::         // resolve known types in TypeDef
-      resolveLocalFileScan :: // resolve local file scans for DuckDb
-      resolveTableRef ::      // resolve table reference (model or schema) types
-      resolveModelDef ::      // resolve ModelDef
-      resolveTransformItem :: // resolve transform items prefixed with column name
-      resolveSelectItem ::    // resolve select items (projected columns)
-      resolveGroupingKey ::   // resolve Aggregate keys
-      resolveRelation ::      // resolve expressions inside relation nodes
-      resolveUnderscore ::    // resolve underscore in relation nodes
-      resolveThis ::          // resolve `this` in type definitions
-      // resolveFunctionBodyInTypeDef :: //
-      resolveModelDef :: // Resolve models again to use the updated types
+    resolveTypeDef ::                 // resolve known types in TypeDef
+      resolveLocalFileScan ::         // resolve local file scans for DuckDb
+      resolveTableRef ::              // resolve table reference (model or schema) types
+      resolveModelDef ::              // resolve ModelDef
+      resolveTransformItem ::         // resolve transform items prefixed with column name
+      resolveSelectItem ::            // resolve select items (projected columns)
+      resolveGroupingKey ::           // resolve Aggregate keys
+      resolveRelation ::              // resolve expressions inside relation nodes
+      resolveUnderscore ::            // resolve underscore in relation nodes
+      resolveThis ::                  // resolve `this` in type definitions
+      resolveFunctionBodyInTypeDef :: //
+      resolveModelDef ::              // Resolve models again to use the updated types
       Nil
 
   def resolve(plan: LogicalPlan, context: Context): LogicalPlan =
@@ -81,7 +87,9 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
           .foreach { stmt =>
             val newStmt = RewriteRule.rewrite(stmt, defaultRules, ctx)
             stmts += newStmt
-            debug(newStmt.pp)
+
+            if !ctx.compilationUnit.isPreset then
+              debug(newStmt.pp)
 
             ctx = nextContext(newStmt, ctx)
           }
@@ -93,17 +101,11 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
             s"Unexpected plan type: ${other.getClass.getName}",
             other.sourceLocation(using context.compilationUnit)
           )
+    end match
 
   end resolve
 
-//  def resolveRelation(plan: LogicalPlan, context: Context): Relation =
-//    val resolvedPlan = resolve(plan, context)
-//    resolvedPlan match
-//      case r: Relation =>
-//        r
-//      case _ =>
-//        throw StatusCode.NOT_A_RELATION.newException(s"Not a relation:\n${resolvedPlan.pp}")
-
+  // Resolve the type of TypeDef
   object resolveTypeDef extends RewriteRule:
     override def apply(context: Context): PlanRewriter =
       case t: TypeDef if !t.symbol.dataType.isResolved =>
@@ -135,9 +137,10 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
               s
           case other =>
             warn(
-              s"Unresolved type ${t.name.fullName}: ${other} (${t.locationString(using context)})"
+              f"Unresolved type ${t.name.fullName}: ${other} (${t.locationString(using context)})"
             )
         end match
+        // No tree rewrite is required
         t
 
     end apply
@@ -223,6 +226,23 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
                       foundSym = Some(s)
                   }
           }
+
+        if foundSym.isEmpty then
+          // Search for preset contexts
+          for
+            ctx <- context.global.getAllContexts.filter(_.compilationUnit.isPreset)
+            if foundSym.isEmpty
+          do
+            trace(s"Searching ${name} in ${ctx.compilationUnit.sourceFile.fileName}")
+            ctx
+              .compilationUnit
+              .knownSymbols
+              .collectFirst {
+                case s: Symbol if s.name(using ctx) == name =>
+                  trace(s"Found ${s.name(using ctx)} in ${ctx.compilationUnit}")
+                  foundSym = Some(s)
+              }
+
         foundSym
 
   /**
@@ -281,9 +301,11 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
         .selectItems
         .map {
           case s: SingleColumn =>
-            s.copy(expr =
-              s.expr.transformExpression(resolveExpression(p.child.relationType, context))
-            )
+            val resolvedExpr: Expression = s
+              .expr
+              .transformExpression(resolveExpression(p.child.relationType, context))
+            s.copy(expr = resolvedExpr)
+
           case x: Attribute =>
             x.transformExpression(resolveExpression(p.child.relationType, context))
               .asInstanceOf[Attribute]
@@ -358,55 +380,57 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
           t
     }
 
-//
-//  object resolveFunctionBodyInTypeDef extends RewriteRule:
-//    override def apply(context: Context): PlanRewriter = { case td: TypeDef =>
-//      val attrs = td
-//        .elems
-//        .collect { case v: TypeValDef =>
-//          val name = v.name.fullName
-//          context.scope.resolveType(v.tpe.fullName) match
-//            case Some(resolvedType) =>
-//              ResolvedAttribute(v.name, resolvedType, None, v.nodeLocation)
-//            case None =>
-//              UnresolvedAttribute(v.name, v.nodeLocation)
-//        }
-//
-//      val newElems: List[TypeElem] = td
-//        .elems
-//        .map {
-//          case f: FunctionDef =>
-//            val retType = f
-//              .retType
-//              .map { t =>
-//                context.scope.resolveType(t.typeName) match
-//                  case Some(resolvedType) =>
-//                    resolvedType
-//                  case None =>
-//                    t
-//              }
-//            // Function arguments that will be used inside the expression
-//            val argAttrs = f
-//              .args
-//              .map { arg =>
-//                ResolvedAttribute(arg.name, arg.dataType, None, arg.nodeLocation)
-//              }
-//            // vals and function args
-//            val attrList = AttributeList(attrs ++ argAttrs)
-//            // warn(s"resolve function body: ${f.expr} using ${attrList}")
-//            val newF = f.copy(
-//              retType = retType,
-//              expr = f.expr.map(x => x.transformUpExpression(resolveExpression(attrList, context)))
-//            )
-//            newF
-//          case other =>
-//            other
-//        }
-//      td.copy(elems = newElems)
-//    }
-//
-//  end resolveFunctionBodyInTypeDef
-//
+  object resolveFunctionBodyInTypeDef extends RewriteRule:
+    override def apply(context: Context): PlanRewriter = { case td: TypeDef =>
+      // Collect fields defined in the type
+      val fields: List[NamedType] =
+        td.symbol.dataType match
+          case r: RelationType =>
+            r.fields.toList
+          case _ =>
+            throw StatusCode
+              .UNEXPECTED_STATE
+              .newException(s"TypeDef ${td.name} is not resolved with RelationType")
+
+      val newElems: List[TypeElem] = td
+        .elems
+        .map {
+          case f: FunctionDef =>
+            val retType = f
+              .retType
+              .map { t =>
+                context.scope.lookupSymbol(t.typeName) match
+                  case Some(sym) =>
+                    sym.dataType
+                  case None =>
+                    t
+              }
+            // Function arguments that will be used inside the expression
+            val argFields: List[NamedType] = f
+              .args
+              .map { arg =>
+                NamedType(Name.termName(arg.name.leafName), arg.dataType)
+              }
+            // create a type that includes function arguments
+            val knownFields = fields ++ argFields
+            val inputType   = SchemaType(None, Name.NoTypeName, knownFields, Nil)
+            debug(s"resolve function body: ${f.name} using ${inputType}")
+            val newF = f.copy(
+              retType = retType,
+              expr = f.expr.map(x => x.transformUpExpression(resolveExpression(inputType, context)))
+            )
+            newF
+          case other =>
+            other
+        }
+      val newTypeDef = td.copy(elems = newElems)
+      // TODO Embed Symbol to TypeDef param
+      newTypeDef.symbol = td.symbol
+      newTypeDef
+    }
+
+  end resolveFunctionBodyInTypeDef
+
   /**
     * Resolve the given expression type using the input attributes from child plan nodes
     *
@@ -447,24 +471,25 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
                 case _ =>
                   warn(s"${t}.${ref.name.fullName} is not found")
                   ref
-//        case p: PrimitiveType =>
-//          trace(s"Find reference from ${p} -> ${ref.name}")
-//          context.scope.findType(p.typeName) match
-//            case Some(pt: SchemaType) =>
-//              pt.defs.find(_.name == ref.fullName) match
-//                case Some(m: FunctionType) =>
-//                  // TODO Handling context-specific methods
-//                  trace(s"Resolved ${p}.${ref.name.fullName} as a primitive function")
-//                  ref.copy(dataType = m.returnType)
-//                case _ =>
-//                  trace(s"Failed to resolve ${p}.${ref.name.fullName}")
-//                  ref
-//            case _ =>
-//              trace(s"Failed to resolve ${p}.${ref.name.fullName}")
-//              ref
         case other =>
-          // trace(s"TODO: resolve ref: ${ref.fullName} as ${other.getClass}")
-          ref
+          // TODO Support multiple context-specific functions
+          lookupType(other.typeName, context) match
+            case Some(sym) =>
+              sym.symbolInfo(using context).dataType match
+                case s: SchemaType =>
+                  s.defs.find(_.name.name == ref.name.leafName) match
+                    case Some(f) =>
+                      trace(s"Resolved ${ref} as ${f}")
+                      ref.copy(dataType = f.returnType)
+                    case None =>
+                      trace(s"Failed to resolve ${ref} as ${other}")
+                      ref
+                case other =>
+                  trace(s"Failed to resolve ${ref} as ${other}")
+                  ref
+            case None =>
+              trace(s"TODO: resolve ref: ${ref.fullName} as ${other}")
+              ref
     case i: InterpolatedString if i.prefix.fullName == "sql" =>
       // Ignore it because embedded SQL expressions have no static type
       i
@@ -480,9 +505,6 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
           )
           i
   end resolveExpression
-//    case other: Expression if !other.dataType.isResolved =>
-//      trace(s"TODO: resolve expression: ${other} using ${knownAttributes}")
-//      other
 
   private def resolveExpression(
       expr: Expression,

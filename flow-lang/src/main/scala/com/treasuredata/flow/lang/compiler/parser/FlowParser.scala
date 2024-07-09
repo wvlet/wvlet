@@ -764,15 +764,24 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
           val expr = expression()
           exprOrColumName match
             case columnName: NameExpr =>
+              // Rename the column
               SingleColumn(columnName, expr, t.nodeLocation) :: selectItems()
             case other =>
               unexpected(t)
         else
-          SingleColumn(EmptyName, exprOrColumName, t.nodeLocation) :: selectItems()
+          exprOrColumName match
+            case i: Identifier =>
+              // Propagate the column name for a single column reference
+              SingleColumn(i, exprOrColumName, t.nodeLocation) :: selectItems()
+            case _ =>
+              SingleColumn(EmptyName, exprOrColumName, t.nodeLocation) :: selectItems()
       case _ =>
         val e          = expression()
         val selectItem = SingleColumn(EmptyName, e, t.nodeLocation)
         selectItem :: selectItems()
+    end match
+
+  end selectItems
 
   def limitExpr(input: Relation): Limit =
     val t = consume(FlowToken.LIMIT)

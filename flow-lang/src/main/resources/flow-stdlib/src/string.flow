@@ -18,13 +18,14 @@ type string:
 end
 
 -- Using query engine specific dialects
-type string in trino:
-  def substring(start:int, end:int): string = sql"substring({this},{start},{end})"
-  def regexp_like(pattern:string): boolean = sql"regexp_like({this},{pattern})"
-end
-
 type string in duckdb:
   def substring(start:int): string = sql"substring({this},{start},strlen({this}))"
   def regexp_like(pattern:string): boolean = sql"regexp_matches({this},{pattern})"
+end
+
+
+type string in trino:
+  def substring(start:int, end:int): string = sql"substring({this},{start},{end})"
+  def regexp_like(pattern:string): boolean = sql"regexp_like({this},{pattern})"
 end
 

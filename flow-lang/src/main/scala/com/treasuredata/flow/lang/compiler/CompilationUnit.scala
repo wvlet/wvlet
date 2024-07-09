@@ -13,7 +13,7 @@ import java.io.File
   * trees) for the source file
   * @param sourceFile
   */
-case class CompilationUnit(sourceFile: SourceFile):
+case class CompilationUnit(sourceFile: SourceFile, isPreset: Boolean = false) extends LogSupport:
   // Untyped plan tree
   var unresolvedPlan: LogicalPlan = LogicalPlan.empty
   // Fully-typed plan tree
@@ -43,13 +43,13 @@ object CompilationUnit extends LogSupport:
 
   def fromFile(path: String) = CompilationUnit(SourceFile.fromFile(path))
 
-  def fromPath(path: String): List[CompilationUnit] =
+  def fromPath(path: String, isPreset: Boolean = false): List[CompilationUnit] =
     // List all *.flow files under the path
     val files = listFiles(path)
     val units =
       files
         .map { file =>
-          CompilationUnit(SourceFile.fromFile(file))
+          CompilationUnit(SourceFile.fromFile(file), isPreset)
         }
         .toList
     units

@@ -1,5 +1,6 @@
 package com.treasuredata.flow.lang.compiler
 
+import com.treasuredata.flow.lang.compiler.Compiler.presetLibraryPaths
 import com.treasuredata.flow.lang.compiler.analyzer.{
   PostTypeScan,
   PreTypeScan,
@@ -24,7 +25,6 @@ object Compiler:
     TypeResolver // Assign a concrete DataType to each LogicalPlan and Expression nodes
     // PreTypeScan, // Collect all schema and types in the source paths
     // PostTypeScan, // Post-process to resolve unresolved types, which cannot be found in the first type scan
-    // TypeResolver // Resolve concrete types for each LogicalPlan node
   )
 
   /**
@@ -50,7 +50,7 @@ class Compiler(phases: List[List[Phase]] = Compiler.allPhases) extends LogSuppor
     val sourcePaths = Compiler.presetLibraryPaths ++ sourceFolders
     var units: List[CompilationUnit] = sourcePaths.flatMap { path =>
       val srcPath = s"${path}/src"
-      CompilationUnit.fromPath(srcPath)
+      CompilationUnit.fromPath(srcPath, isPreset = presetLibraryPaths.contains(path))
     }
 
     val global      = GlobalContext(sourceFolders = sourceFolders, workingFolder = contextFolder)

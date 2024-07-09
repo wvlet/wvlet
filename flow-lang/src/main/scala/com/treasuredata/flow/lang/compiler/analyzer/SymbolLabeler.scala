@@ -125,6 +125,7 @@ object SymbolLabeler extends Phase("symbol-labeler"):
       case Some(sym) =>
         // Attach the already generated symbol to the node
         t.symbol = sym
+        debug(s"Attach symbol ${sym} to ${t.name} ${t.locationString(using ctx)}")
         if t.scopes.nonEmpty then
           // Add scope-specific functions
           val si = sym.symbolInfo
