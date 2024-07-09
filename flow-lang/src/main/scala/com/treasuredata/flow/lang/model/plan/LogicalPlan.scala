@@ -410,6 +410,10 @@ trait LogicalPlan extends TreeNode with Product:
   protected def copyInstance(newArgs: Seq[AnyRef]): this.type =
     val primaryConstructor = this.getClass.getDeclaredConstructors()(0)
     val newObj             = primaryConstructor.newInstance(newArgs*)
+    newObj match
+      case t: TreeNode =>
+        t.symbol = this.symbol
+      case _ =>
     newObj.asInstanceOf[this.type]
 
   /**

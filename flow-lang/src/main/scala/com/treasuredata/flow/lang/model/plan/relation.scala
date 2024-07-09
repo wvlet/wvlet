@@ -39,22 +39,24 @@ sealed trait Relation extends LogicalPlan:
         else
           RelationTypeList(Name.typeName(ULID.newULIDString), inputs)
 
-  def outputAttributes: AttributeList = AttributeList.empty
-  def inputAttributes: AttributeList  = AttributeList.empty
-
 // A relation that takes a single input relation
 trait UnaryRelation extends Relation with UnaryPlan:
   def inputRelation: Relation                  = child
   override def inputRelationType: RelationType = child.inputRelationType
   override def child: Relation
 
+trait HasName:
+  def name: Name
+
 case class ModelDef(
-    name: Identifier,
+    name: Name,
     params: List[DefArg],
-    relationType: RelationType,
+    givenRelationType: Option[RelationType],
     child: Relation,
     nodeLocation: Option[NodeLocation]
 ) extends UnaryRelation
+    with HasName:
+  override def relationType: RelationType = givenRelationType.getOrElse(child.relationType)
 
 case class TestRelation(
     child: Relation,
@@ -150,30 +152,28 @@ case class PathScan(
   override val relationType: RelationType = UnresolvedRelationType(RelationType.newRelationTypeName)
 
 case class JSONFileScan(
-    name: String,
+    path: String,
     schema: RelationType,
     columns: Seq[NamedType],
     nodeLocation: Option[NodeLocation]
 ) extends Relation
-    with LeafPlan
-    with HasName:
+    with LeafPlan:
   override def relationType: RelationType =
     if columns.isEmpty then
       schema
     else
       ProjectedType(schema.typeName, columns, schema)
 
-  override def toString: String = s"JSONFileScan(path:${name}, columns:[${columns.mkString(", ")}])"
+  override def toString: String = s"JSONFileScan(path:${path}, columns:[${columns.mkString(", ")}])"
   override lazy val resolved    = true
 
 case class ParquetFileScan(
-    name: String,
+    path: String,
     schema: RelationType,
     columns: Seq[NamedType],
     nodeLocation: Option[NodeLocation]
 ) extends Relation
-    with LeafPlan
-    with HasName:
+    with LeafPlan:
   override def relationType: RelationType =
     if columns.isEmpty then
       schema
@@ -181,7 +181,7 @@ case class ParquetFileScan(
       ProjectedType(schema.typeName, columns, schema)
 
   override def toString: String =
-    s"ParquetFileScan(path:${name}, columns:[${columns.mkString(", ")}])"
+    s"ParquetFileScan(path:${path}, columns:[${columns.mkString(", ")}])"
 
   override lazy val resolved = true
 
@@ -246,13 +246,25 @@ case class Transform(
     transformItems: Seq[Attribute],
     nodeLocation: Option[NodeLocation]
 ) extends UnaryRelation
-    with Selection:
+    with Selection
+    with LogSupport:
   override def toString: String = s"Transform[${transformItems.mkString(", ")}](${child})"
   override def selectItems: Seq[Attribute] = transformItems
 
-  override def relationType: RelationType =
-    // TODO detect newly added columns and overriden columns
-    child.relationType
+  override lazy val relationType: RelationType =
+    val inputRelation = child.relationType
+    val newColumns    = Seq.newBuilder[NamedType]
+    // Detect newly added columns
+    transformItems.foreach { x =>
+      if inputRelation.fields.exists(p => p.name.name != x.fullName) then
+        newColumns += NamedType(Name.termName(x.nameExpr.leafName), x.dataType)
+    }
+    val pt = ProjectedType(
+      Name.typeName(RelationType.newRelationTypeName),
+      newColumns.result() ++ child.relationType.fields,
+      child.relationType
+    )
+    pt
 
 /**
   * Aggregation operator that merges records by grouping keys and create a list of records for each
@@ -273,7 +285,7 @@ case class Aggregate(
     Name.typeName(RelationType.newRelationTypeName),
     groupingKeys.map {
       case g: UnresolvedGroupingKey =>
-        NamedType(Name.termName(g.name.leafName), g.dataType)
+        NamedType(Name.termName(g.name.leafName), g.child.dataType)
       case k =>
         NamedType(Name.NoName, k.dataType)
     },
@@ -501,9 +513,6 @@ case class LateralView(
     // TODO
     UnresolvedRelationType(RelationType.newRelationTypeName)
 
-trait HasName:
-  def name: String
-
 /**
   * The lowest level operator to access a table
   *
@@ -515,7 +524,7 @@ trait HasName:
   *   projected columns
   */
 case class TableScan(
-    name: String,
+    name: Name,
     schema: RelationType,
     columns: Seq[NamedType],
     nodeLocation: Option[NodeLocation]
@@ -541,7 +550,7 @@ case class TableScan(
   * @param nodeLocation
   */
 case class RelScan(
-    name: String,
+    name: Name,
     schema: RelationType,
     columns: Seq[NamedType],
     nodeLocation: Option[NodeLocation]
@@ -583,12 +592,13 @@ case class SubscribeParam(name: String, value: String, nodeLocation: Option[Node
   override def children: Seq[Expression] = Seq.empty
 
 case class IncrementalTableScan(
-    name: String,
+    name: Name,
     schema: RelationType,
     columns: Seq[NamedType],
     nodeLocation: Option[NodeLocation]
 ) extends Relation
-    with LeafPlan:
+    with LeafPlan
+    with HasName:
 
   override val relationType: RelationType = ProjectedType(schema.typeName, columns, schema)
 

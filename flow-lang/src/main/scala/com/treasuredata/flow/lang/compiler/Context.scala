@@ -79,6 +79,8 @@ case class Context(
   def withCompilationUnit[U](newCompileUnit: CompilationUnit): Context = global
     .getContextOf(newCompileUnit)
 
+  def enter(sym: Symbol): Unit = scope.enter(sym)(using this)
+
   def newContext(owner: Symbol): Context = Context(
     global = global,
     outer = this,

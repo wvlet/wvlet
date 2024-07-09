@@ -314,7 +314,7 @@ class SQLGenerator(config: SQLGeneratorConfig = SQLGeneratorConfig()) extends Lo
       case f: FileScan =>
         s"'${f.path}'"
       case j: JSONFileScan =>
-        s"'${j.name}'"
+        s"'${j.path}'"
       case p: PathScan =>
         s"select * from '${p.path}'"
       case other =>

@@ -24,6 +24,8 @@ trait Attribute extends LeafExpression with LogSupport:
       case _ =>
         None
 
+  // def withDataType(newDataType: DataType): Attribute
+
   def withAlias(newAlias: NameExpr): Attribute = withAlias(Some(newAlias))
 
   def withAlias(newAlias: Option[NameExpr]): Attribute =
@@ -97,6 +99,8 @@ case class AttributeRef(attr: Attribute)(val exprId: ULID = ULID.newULID) extend
   override def toString: String   = s"AttributeRef(${attr})"
 
   override def nodeLocation: Option[NodeLocation] = attr.nodeLocation
+
+  // override def withDataType(newDataType: DataType): Attribute = this.copy(attr = attr.withDataType(newDataType))
 
   override def inputAttributes: Seq[Attribute]  = attr.inputAttributes
   override def outputAttributes: Seq[Attribute] = attr.inputAttributes

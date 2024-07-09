@@ -21,9 +21,10 @@ object Compiler:
   def analysisPhases: List[Phase] = List(
     ParserPhase, // Parse *.flow files and create untyped plans
     SymbolLabeler, // Assign unique Symbol to each LogicalPlan and Expression nodes, a and assign a lazy DataType
-    PreTypeScan, // Collect all schema and types in the source paths
-    PostTypeScan, // Post-process to resolve unresolved types, which cannot be found in the first type scan
-    TypeResolver // Resolve concrete types for each LogicalPlan node
+    TypeResolver // Assign a concrete DataType to each LogicalPlan and Expression nodes
+    // PreTypeScan, // Collect all schema and types in the source paths
+    // PostTypeScan, // Post-process to resolve unresolved types, which cannot be found in the first type scan
+    // TypeResolver // Resolve concrete types for each LogicalPlan node
   )
 
   /**

@@ -11,10 +11,21 @@ import Type.PackageType
   * @param name
   * @param dataType
   */
-class SymbolInfo(symbol: Symbol, val name: Name, val tpe: Type):
+class SymbolInfo(val symbol: Symbol, val name: Name, private var _tpe: Type):
   private var _declScope: Scope | Null = null
   def declScope_=(scope: Scope): Unit  = _declScope = scope
   def declScope: Scope                 = _declScope
+
+  def tpe: Type            = _tpe
+  def tpe_=(t: Type): Unit = _tpe = t
+  def dataType =
+    tpe match
+      case t: DataType =>
+        t
+      case _ =>
+        DataType.UnknownType
+
+  def dataType_=(d: DataType): Unit = tpe = d
 
 class PackageSymbolInfo(symbol: Symbol, owner: Symbol, name: Name, tpe: PackageType, scope: Scope)
     extends SymbolInfo(symbol, name, tpe):
@@ -36,14 +47,14 @@ object NoSymbolInfo extends SymbolInfo(Symbol.NoSymbol, Name.NoName, Type.Unknow
 
 class NamedSymbolInfo(symbol: Symbol, owner: Symbol, name: Name, tpe: Type)
     extends SymbolInfo(symbol, name, tpe):
-  override def toString: String = s"${owner}.${name}: ${tpe}"
+  override def toString: String = s"${owner}.${name}: ${dataType}"
 
-case class TypeSymbolInfo(
-    symbol: Symbol,
-    owner: Symbol,
-    override val name: Name,
-    var dataType: DataType
-) extends NamedSymbolInfo(symbol, owner, name, dataType)
+class TypeSymbolInfo(symbol: Symbol, owner: Symbol, name: Name, tpe: DataType)
+    extends NamedSymbolInfo(symbol, owner, name, tpe)
+
+class ModelSymbolInfo(symbol: Symbol, owner: Symbol, name: Name, tpe: DataType)
+    extends NamedSymbolInfo(symbol, owner, name, tpe):
+  override def toString: String = s"model ${owner}.${name}: ${dataType}"
 
 //class TypeInfo(symbol: Symbol, tpe: Type) extends SymbolInfo(symbol, tpe)
 //

@@ -1,6 +1,12 @@
 package com.treasuredata.flow.lang.model
 
-import com.treasuredata.flow.lang.compiler.{CompilationUnit, SourceFile, SourceLocation, Symbol}
+import com.treasuredata.flow.lang.compiler.{
+  Context,
+  CompilationUnit,
+  SourceFile,
+  SourceLocation,
+  Symbol
+}
 
 /**
   * A base class for LogicalPlan and Expression
@@ -18,4 +24,5 @@ trait TreeNode:
     */
   def nodeLocation: Option[NodeLocation]
   def sourceLocation(using cu: CompilationUnit): SourceLocation = SourceLocation(cu, nodeLocation)
-  def locationString(using cu: CompilationUnit): String         = sourceLocation.locationString
+  def locationString(using ctx: Context): String =
+    sourceLocation(using ctx.compilationUnit).locationString

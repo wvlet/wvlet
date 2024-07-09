@@ -7,6 +7,6 @@ case class SourceLocation(compileUnit: CompilationUnit, nodeLocation: Option[Nod
   def locationString: String =
     nodeLocation match
       case Some(loc) =>
-        s"${compileUnit.sourceFile.file}:${loc.line}:${loc.column}"
+        s"${compileUnit.sourceFile.fileName}:${loc.line}:${loc.column}"
       case None =>
         compileUnit.sourceFile.file

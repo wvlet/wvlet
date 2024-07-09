@@ -1,6 +1,7 @@
 package com.treasuredata.flow.lang.model.plan
 
-import com.treasuredata.flow.lang.model.RelationType
+import com.treasuredata.flow.lang.model.DataType.EmptyRelationType
+import com.treasuredata.flow.lang.model.{DataType, RelationType}
 import com.treasuredata.flow.lang.model.expr.*
 import wvlet.log.LogSupport
 
@@ -87,27 +88,30 @@ object LogicalPlanPrinter extends LogSupport:
       case _ =>
         val ws = "  " * level
 
-        def wrap[A](s: Seq[A]): String =
-          if s.length <= 1 then
-            s.mkString(", ")
-          else
-            s"(${s.mkString(", ")})"
+        def wrap[A](v: A): String =
+          v match
+            case s: Seq[String] if s.length <= 1 =>
+              s.headOption.map(_.toString).getOrElse("empty")
+            case s: Seq[String] =>
+              s"(${s.mkString(", ")})"
+            case other =>
+              other.toString
 
-        def printRelationType(r: RelationType): String = s"<${r}>"
+        def printRelationType(r: RelationType): String = s"<${r.typeDescription}>"
 
         val inputType =
-          m match
-            case r: Relation =>
-              wrap(printRelationType(r.inputRelationType))
-            case _ =>
-              wrap(m.inputRelationType.fields.map(_.typeDescription))
+          m.inputRelationType match
+            case EmptyRelationType =>
+              ""
+            case other: RelationType =>
+              wrap(printRelationType(other))
 
         val outputType =
-          m match
-            case r: Relation =>
-              printRelationType(r.relationType)
-            case _ =>
-              wrap(m.relationType.fields.map(_.typeDescription))
+          m.relationType match
+            case DataType.EmptyRelationType =>
+              ""
+            case r: RelationType =>
+              wrap(printRelationType(r))
 
         val inputAttrs  = m.inputRelationType.fields
         val outputAttrs = m.relationType.fields
@@ -121,7 +125,7 @@ object LogicalPlanPrinter extends LogSupport:
             case t: HasName =>
               s"${ws}[${m.modelName}${loc}] ${t.name}${functionSig}"
             case src: HasSourceFile =>
-              s"${ws}[${m.modelName} ${src.sourceFile.file}${loc}]${functionSig} "
+              s"${ws}[${m.modelName} ${src.sourceFile.fileName}${loc}]${functionSig} "
             case _ =>
               s"${ws}[${m.modelName}${loc}]${functionSig}"
 

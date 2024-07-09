@@ -26,6 +26,10 @@ sealed trait NameExpr extends Expression:
   def strExpr: String = fullName
   def leafName: String
   def fullName: String
+  def isEmpty: Boolean =
+    // TODO: This part is a bit ad-hoc as EmptyName can be copied during the tree transformation, so
+    // we can't use the object equality like this eq EmptyName
+    this.leafName == "<empty>"
 
 object NameExpr:
   val EmptyName: Identifier           = UnquotedIdentifier("<empty>", None)
@@ -774,7 +778,7 @@ case class UnresolvedGroupingKey(
   override def dataType: DataType = child.dataType
   override def index: Option[Int] = None
   override def toString: String = s"GroupingKey(${index.map(i => s"${i}:").getOrElse("")}${child})"
-  override lazy val resolved: Boolean = false
+  override lazy val resolved: Boolean = child.dataType.isResolved
 
 case class Extract(interval: IntervalField, expr: Expression, nodeLocation: Option[NodeLocation])
     extends Expression:

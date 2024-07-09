@@ -35,7 +35,6 @@ end Symbol
   */
 class Symbol(val id: Int):
   private var _symbolInfo: SymbolInfo | Null = null
-  private var _dataType: DataType            = DataType.UnknownType
   private var _tree: TreeNode | Null         = null
 
   override def toString =
@@ -48,8 +47,11 @@ class Symbol(val id: Int):
 
   def isNoSymbol: Boolean = this == Symbol.NoSymbol
 
-  def dataType: DataType            = _dataType
-  def dataType_=(d: DataType): Unit = _dataType = d
+  def dataType: DataType =
+    if _symbolInfo == null then
+      DataType.UnknownType
+    else
+      _symbolInfo.dataType
 
   private def isResolved: Boolean = dataType.isResolved
 

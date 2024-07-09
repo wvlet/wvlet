@@ -3,6 +3,7 @@ package com.treasuredata.flow.lang.compiler.analyzer
 import com.treasuredata.flow.lang.compiler.{
   CompilationUnit,
   Context,
+  ModelSymbolInfo,
   Name,
   NamedSymbolInfo,
   PackageSymbolInfo,
@@ -161,14 +162,14 @@ object SymbolLabeler extends Phase("symbol-labeler"):
         sym
 
   private def createModelSymbol(m: ModelDef)(using ctx: Context): Symbol =
-    val modelName = Name.termName(m.name.leafName)
+    val modelName = m.name
     ctx.scope.lookupSymbol(modelName) match
       case Some(s) =>
         s
       case None =>
         val sym = Symbol(ctx.global.newSymbolId)
         sym.tree = m
-        sym.symbolInfo = TypeSymbolInfo(sym, ctx.owner, modelName, m.relationType)
+        sym.symbolInfo = ModelSymbolInfo(sym, ctx.owner, modelName, m.relationType)
         m.symbol = sym
         trace(s"Created a new model symbol ${sym}")
         ctx.scope.add(modelName, sym)

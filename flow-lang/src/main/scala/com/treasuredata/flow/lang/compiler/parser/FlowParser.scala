@@ -2,7 +2,7 @@ package com.treasuredata.flow.lang.compiler.parser
 
 import com.treasuredata.flow.lang.StatusCode
 import com.treasuredata.flow.lang.compiler.parser.FlowToken.{EQ, FOR, FROM, R_PAREN}
-import com.treasuredata.flow.lang.compiler.{CompilationUnit, SourceFile}
+import com.treasuredata.flow.lang.compiler.{CompilationUnit, SourceFile, Name}
 import com.treasuredata.flow.lang.model.DataType
 import com.treasuredata.flow.lang.model.DataType.{
   NoType,
@@ -283,10 +283,10 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
     val q = query()
     consume(FlowToken.END)
     ModelDef(
-      name,
+      Name.termName(name.leafName),
       params,
       // resolve the model type from the query if no type is given
-      tpe.map(x => UnresolvedRelationType(x.fullName)).getOrElse(q.relationType),
+      tpe.map(x => UnresolvedRelationType(x.fullName)),
       q,
       t.nodeLocation
     )

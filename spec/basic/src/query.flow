@@ -33,7 +33,7 @@ model person_with_age_group =
   group by age_group
 end
 
-model person_filer(bound:int) =
+model person_filter(bound:int) =
   -- reference another model
   from person_with_age_group
   where age_group >= bound

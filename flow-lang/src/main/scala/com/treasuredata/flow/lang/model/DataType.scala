@@ -42,6 +42,16 @@ sealed abstract class RelationType(
     override val typeParams: Seq[DataType]
 ) extends DataType(typeName, typeParams):
   def fields: Seq[NamedType]
+  def find(f: Name => Boolean): Option[NamedType] = fields.find(x => f(x.name))
+
+  override def typeDescription: String =
+    val fieldDesc = fields.map(_.typeDescription).mkString(", ")
+    s"${typeName}(${fieldDesc})${
+        if isResolved then
+          ""
+        else
+          "?"
+      }"
 
 object RelationType:
   private var typeCount: Int = 0
@@ -93,8 +103,9 @@ object DataType extends LogSupport:
     override def isResolved: Boolean = columnTypes.forall(_.isResolved)
 
   case object EmptyRelationType extends RelationType(Name.typeName("<empty>"), Seq.empty):
-    override def isResolved: Boolean    = true
-    override def fields: Seq[NamedType] = Seq.empty
+    override def typeDescription: String = "empty"
+    override def isResolved: Boolean     = true
+    override def fields: Seq[NamedType]  = Seq.empty
 
   case class UnresolvedRelationType(fullName: String)
       extends RelationType(Name.NoTypeName, Seq.empty):
