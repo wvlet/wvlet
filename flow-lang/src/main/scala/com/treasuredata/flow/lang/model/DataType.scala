@@ -68,11 +68,15 @@ case class RelationTypeList(override val typeName: TypeName, inputRelationTypes:
 
 object DataType extends LogSupport:
 
+  def parse(s: String): DataType =
+    // TODO parse array, map types
+    primitiveTypeTable.getOrElse(Name.typeName(s), UnresolvedType(s))
+
 //  def unapply(str: String): Option[DataType] =
 //    Try(DataTypeParser.parse(str)).toOption
 
-  case class UnresolvedType(fullName: String) extends DataType(Name.NoTypeName, Seq.empty):
-    override def typeDescription: String = s"${fullName}?"
+  case class UnresolvedType(leafName: String) extends DataType(Name.typeName(leafName), Seq.empty):
+    override def typeDescription: String = s"${leafName}?"
     override def isResolved: Boolean     = false
 
   val NoType =
@@ -107,8 +111,10 @@ object DataType extends LogSupport:
     override def isResolved: Boolean     = true
     override def fields: Seq[NamedType]  = Seq.empty
 
-  case class UnresolvedRelationType(fullName: String)
-      extends RelationType(Name.NoTypeName, Seq.empty):
+  case class UnresolvedRelationType(
+      fullName: String,
+      override val typeName: TypeName = Name.NoTypeName
+  ) extends RelationType(typeName, Seq.empty):
     override def typeDescription: String = s"${fullName}?"
     override def isResolved: Boolean     = false
     override def fields: Seq[NamedType]  = Seq.empty

@@ -19,8 +19,12 @@ case class CompilationUnit(sourceFile: SourceFile):
   // Fully-typed plan tree
   var resolvedPlan: LogicalPlan = LogicalPlan.empty
 
+  var knownSymbols: List[Symbol] = List.empty
+
   // Plans generated for subscriptions
   var subscriptionPlans: List[LogicalPlan] = List.empty[LogicalPlan]
+
+  def enter(symbol: Symbol): Unit = knownSymbols = symbol :: knownSymbols
 
   def toSourceLocation(nodeLocation: Option[NodeLocation]) = SourceLocation(this, nodeLocation)
 

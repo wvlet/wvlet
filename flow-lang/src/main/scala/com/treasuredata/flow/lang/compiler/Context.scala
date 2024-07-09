@@ -47,6 +47,10 @@ case class GlobalContext(sourceFolders: List[String] = List.empty, workingFolder
   def getContextOf(unit: CompilationUnit, scope: Scope = Scope.NoScope): Context = contextTable
     .getOrElseUpdate(unit.sourceFile, Context(global = this, scope = scope, compilationUnit = unit))
 
+  def getAllContexts: List[Context] = contextTable.values.toList
+
+end GlobalContext
+
 /**
   * Context conveys the current state of the compilation, including defined types, table
   * definitions, and the current compilation unit.

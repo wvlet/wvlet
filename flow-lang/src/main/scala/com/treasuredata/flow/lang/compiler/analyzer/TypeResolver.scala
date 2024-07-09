@@ -30,7 +30,8 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
     unit
 
   def defaultRules: List[RewriteRule] =
-    resolveLocalFileScan ::   // resolve local file scans for DuckDb
+    resolveTypeDef ::         // resolve known types in TypeDef
+      resolveLocalFileScan :: // resolve local file scans for DuckDb
       resolveTableRef ::      // resolve table reference (model or schema) types
       resolveModelDef ::      // resolve ModelDef
       resolveTransformItem :: // resolve transform items prefixed with column name
@@ -103,6 +104,46 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
 //      case _ =>
 //        throw StatusCode.NOT_A_RELATION.newException(s"Not a relation:\n${resolvedPlan.pp}")
 
+  object resolveTypeDef extends RewriteRule:
+    override def apply(context: Context): PlanRewriter =
+      case t: TypeDef if !t.symbol.dataType.isResolved =>
+        t.symbol.dataType match
+          case s: SchemaType =>
+            var updated = false
+            val newCols = s
+              .columnTypes
+              .map { ct =>
+                if ct.dataType.isResolved then
+                  ct
+                else
+                  lookupType(ct.dataType.typeName, context) match
+                    case Some(sym) =>
+                      val si = sym.symbolInfo(using context)
+                      // trace(s"Resolved ${ct.dataType} as ${si.dataType}")
+                      updated = true
+                      ct.copy(dataType = si.dataType)
+                    case None =>
+                      warn(s"Cannot resolve type: ${ct.dataType.typeName}")
+                      ct
+              }
+            if updated then
+              val newType = s.copy(columnTypes = newCols)
+              trace(s"Resolved ${t.name.fullName} as ${newType}")
+              t.symbol.symbolInfo(using context).dataType = newType
+              newType
+            else
+              s
+          case other =>
+            warn(
+              s"Unresolved type ${t.name.fullName}: ${other} (${t.locationString(using context)})"
+            )
+        end match
+        t
+
+    end apply
+
+  end resolveTypeDef
+
   /**
     * Resolve schema of local file scans (e.g., JSON, Parquet)
     */
@@ -120,19 +161,69 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
         ParquetFileScan(file, parquetRelationType, cols, r.nodeLocation)
 
   object resolveModelDef extends RewriteRule:
-    override def apply(context: Context): PlanRewriter = { case m: ModelDef =>
-      m.relationType match
-        case r: RelationType if r.isResolved =>
-          // given model type is already resolved
-          m.symbol.symbolInfo(using context) match
-            case t: ModelSymbolInfo =>
-              t.dataType = r
-              debug(s"Resolved ${t}")
-            case other =>
-          m
-        case _ =>
-          m
+    override def apply(context: Context): PlanRewriter = {
+      case m: ModelDef if m.givenRelationType.isEmpty && !m.symbol.dataType.isResolved =>
+        m.relationType match
+          case r: RelationType if r.isResolved =>
+            // given model type is already resolved
+            m.symbol.symbolInfo(using context) match
+              case t: ModelSymbolInfo =>
+                t.dataType = r
+                debug(s"Resolved ${t}")
+              case other =>
+          case other =>
+            trace(
+              s"Unresolved model type for ${m.name}: ${other} (${m.locationString(using context)})"
+            )
+        m
+      case m: ModelDef if m.givenRelationType.isDefined && !m.symbol.dataType.isResolved =>
+        val modelType = m.givenRelationType.get
+        lookupType(modelType.typeName, context) match
+          case Some(sym) =>
+            val si              = sym.symbolInfo(using context)
+            val modelSymbolInfo = m.symbol.symbolInfo(using context)
+
+            si.dataType match
+              case r: RelationType =>
+                trace(s"Resolved model type: ${m.name} as ${r}")
+                modelSymbolInfo.dataType = r
+                m.copy(givenRelationType = Some(r))
+              case other =>
+                warn(s"Unexpected model type: ${other} ${m.locationString(using context)}")
+                m
+          case None =>
+            warn(s"Cannot resolve model type: ${modelType.typeName}")
+            m
     }
+
+  end resolveModelDef
+
+  private def lookupType(name: Name, context: Context): Option[Symbol] =
+    context.scope.lookupSymbol(name) match
+      case Some(s) =>
+        Some(s)
+      case None =>
+        var foundSym: Option[Symbol] = None
+        context
+          .importDefs
+          .collectFirst {
+            case i: Import if i.importRef.leafName == name.name =>
+              // trace(s"Found import ${i}")
+              for
+                ctx <- context.global.getAllContexts
+                if foundSym.isEmpty
+              do
+                // trace(s"Lookup ${name} in ${ctx.compilationUnit.sourceFile.fileName}")
+                ctx
+                  .compilationUnit
+                  .knownSymbols
+                  .collectFirst {
+                    case s: Symbol if s.name(using ctx) == name =>
+                      trace(s"Found ${s.name(using ctx)} in ${ctx.compilationUnit}")
+                      foundSym = Some(s)
+                  }
+          }
+        foundSym
 
   /**
     * Resolve TableRefs with concrete TableScans using the table schema in the catalog.
@@ -260,7 +351,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
           val r = s.symbolInfo(using context).dataType
           t.transformUpExpressions { case th: This =>
             val newThis = th.copy(dataType = r)
-            trace(s"Resolved this: ${th} as ${newThis}")
+            // trace(s"Resolved this: ${th} as ${newThis}")
             newThis
           }
         case _ =>

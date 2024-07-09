@@ -286,7 +286,7 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
       Name.termName(name.leafName),
       params,
       // resolve the model type from the query if no type is given
-      tpe.map(x => UnresolvedRelationType(x.fullName)),
+      tpe.map(x => UnresolvedRelationType(x.fullName, Name.typeName(x.leafName))),
       q,
       t.nodeLocation
     )
