@@ -1,6 +1,7 @@
 package com.treasuredata.flow.lang.runner
 
 import com.treasuredata.flow.lang.StatusCode
+import com.treasuredata.flow.lang.compiler.codegen.GenSQL
 import com.treasuredata.flow.lang.compiler.{CompilationUnit, Compiler, Context}
 import com.treasuredata.flow.lang.model.plan.*
 import com.treasuredata.flow.lang.model.sql.SQLGenerator
@@ -8,7 +9,7 @@ import org.duckdb.DuckDBConnection
 import wvlet.airframe.codec.{JDBCCodec, MessageCodec}
 import wvlet.log.{LogSupport, Logger}
 
-import java.sql.DriverManager
+import java.sql.{DriverManager, SQLException}
 import scala.util.Using
 
 object DuckDBExecutor extends LogSupport:
@@ -38,20 +39,29 @@ class DuckDBExecutor extends LogSupport:
           }
         QueryResultList(results)
       case q: Query =>
-        val sql = SQLGenerator.toSQL(q)
+        val sql = GenSQL.generateSQL(q, context)
         debug(s"Executing SQL:\n${sql}")
-        val result = DuckDBDriver.withConnection: conn =>
-          Using.resource(conn.createStatement()): stmt =>
-            Using.resource(stmt.executeQuery(sql)): rs =>
-              val codec       = JDBCCodec(rs)
-              val resultCodec = MessageCodec.of[Seq[Map[String, Any]]]
-              val results     = resultCodec.fromMsgPack(codec.toMsgPack)
-              TableRows(q.relationType, results)
-        result
+        try
+          val result = DuckDBDriver.withConnection { conn =>
+            Using.resource(conn.createStatement()) { stmt =>
+              Using.resource(stmt.executeQuery(sql)) { rs =>
+                val codec       = JDBCCodec(rs)
+                val resultCodec = MessageCodec.of[Seq[Map[String, Any]]]
+                val results     = resultCodec.fromMsgPack(codec.toMsgPack)
+                TableRows(q.relationType, results)
+              }
+            }
+          }
+          result
+        catch
+          case e: SQLException =>
+            throw StatusCode.INVALID_ARGUMENT.newException(s"Failed to execute SQL: ${sql}", e)
       case t: TableDef =>
         QueryResult.empty
       case t: TestRelation =>
         debug(s"Executing test: ${t}")
+        QueryResult.empty
+      case m: ModelDef =>
         QueryResult.empty
       case s: Subscribe =>
         debug(s"Executing subscribe: ${s}")

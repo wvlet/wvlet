@@ -461,8 +461,8 @@ class SQLGenerator(config: SQLGeneratorConfig = SQLGeneratorConfig()) extends Lo
         a.fullName
       case SortItem(key, ordering, nullOrdering, _) =>
         val k  = key.sqlExpr
-        val o  = ordering.map(x => s" ${x}").getOrElse("")
-        val no = nullOrdering.map(x => s" ${x}").getOrElse("")
+        val o  = ordering.map(x => s" ${x.expr}").getOrElse("")
+        val no = nullOrdering.map(x => s" ${x.expr}").getOrElse("")
         s"${k}${o}${no}"
 //      case FunctionCall(ctx, name, args, _) =>
 //        val argList = args.map(_.sqlExpr).mkString(", ")

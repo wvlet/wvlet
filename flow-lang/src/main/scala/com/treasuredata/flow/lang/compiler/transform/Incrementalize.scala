@@ -29,7 +29,7 @@ object Incrementalize extends Phase("incrementalize"):
 
   object ResolveRef extends RewriteRule:
     override def apply(context: Context): PlanRewriter =
-      case r: RelScan =>
+      case r: ModelScan =>
         context.compilationUnit.findRelationRef(r.name.name) match
           case Some(relation) =>
             relation
@@ -64,7 +64,7 @@ object Incrementalize extends Phase("incrementalize"):
           isSimpleScan(p.child, context)
         case a: AliasedRelation =>
           isSimpleScan(a.child, context)
-        case r: RelScan =>
+        case r: ModelScan =>
           context.compilationUnit.findRelationRef(r.name.name) match
             case Some(rel) =>
               isSimpleScan(rel, context)

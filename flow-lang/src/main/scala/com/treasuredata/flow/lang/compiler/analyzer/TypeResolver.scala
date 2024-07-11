@@ -172,6 +172,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
             m.symbol.symbolInfo(using context) match
               case t: ModelSymbolInfo =>
                 t.dataType = r
+                t.plan = m
                 debug(s"Resolved ${t}")
               case other =>
           case other =>
@@ -183,8 +184,10 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
         val modelType = m.givenRelationType.get
         lookupType(modelType.typeName, context) match
           case Some(sym) =>
-            val si              = sym.symbolInfo(using context)
+            val si = sym.symbolInfo(using context)
+
             val modelSymbolInfo = m.symbol.symbolInfo(using context)
+            modelSymbolInfo.plan = m
 
             si.dataType match
               case r: RelationType =>
@@ -268,7 +271,8 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
             si.tpe match
               case r: RelationType =>
                 debug(s"resolved ${sym} ${ref.locationString(using context)}")
-                RelScan(sym.name(using context), r, r.fields, ref.nodeLocation)
+                // TODO: Resolve model parameters if given
+                ModelScan(sym.name(using context), r, r.fields, ref.nodeLocation)
               case _ =>
                 ref
           case None =>
@@ -414,7 +418,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
             // create a type that includes function arguments
             val knownFields = fields ++ argFields
             val inputType   = SchemaType(None, Name.NoTypeName, knownFields, Nil)
-            debug(s"resolve function body: ${f.name} using ${inputType}")
+            trace(s"resolve function body: ${f.name} using ${inputType}")
             val newF = f.copy(
               retType = retType,
               expr = f.expr.map(x => x.transformUpExpression(resolveExpression(inputType, context)))

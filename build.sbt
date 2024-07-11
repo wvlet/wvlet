@@ -40,7 +40,7 @@ val buildSettings = Seq[Setting[?]](
   watchAntiEntropy := FiniteDuration(700, TimeUnit.MILLISECONDS)
 )
 
-lazy val jvmProjects: Seq[ProjectReference] = Seq(api.jvm, server, lang, client.jvm)
+lazy val jvmProjects: Seq[ProjectReference] = Seq(api.jvm, server, lang, runner, client.jvm)
 
 lazy val jsProjects: Seq[ProjectReference] = Seq(api.js, client.js, ui, uiMain)
 
@@ -99,30 +99,15 @@ lazy val lang = project
 //      Antlr4 / antlr4PackageName := Some("com.treasuredata.flow.lang.compiler.parser"),
 //      Antlr4 / antlr4GenListener := true,
 //      Antlr4 / antlr4GenVisitor  := true,
-    Test / javaOptions ++=
-      Seq(
-        // "--add-opens=java.base/java.nio=org.apache.arrow.memory.core,ALL-UNNAMED",
-        // Add JVM options for suppress warnings in TestTrinoServer
-        "-Djdk.attach.allowAttachSelf=true",
-        "-XX:+EnableDynamicAgentLoading"
-      ),
     libraryDependencies ++=
       Seq(
-        "org.wvlet.airframe" %% "airframe"          % AIRFRAME_VERSION,
-        "org.wvlet.airframe" %% "airframe-launcher" % AIRFRAME_VERSION,
-        "org.wvlet.airframe" %% "airframe-ulid"     % AIRFRAME_VERSION,
+        "org.wvlet.airframe" %% "airframe"      % AIRFRAME_VERSION,
+        "org.wvlet.airframe" %% "airframe-ulid" % AIRFRAME_VERSION,
         // For resolving parquet file schema
         "org.duckdb" % "duckdb_jdbc" % "1.0.0",
-        // Add airframe's sql parser for testing purpose
-        "org.wvlet.airframe" %% "airframe-sql" % AIRFRAME_VERSION % Test,
         // Add a reference implementation of the compiler
         "org.scala-lang" %% "scala3-compiler" % SCALA_3 % Test
       ),
-    // To enable JVM options
-    Test / fork := true,
-    // When forking, the base directory should be set to the root directory
-    Test / baseDirectory :=
-      (ThisBuild / baseDirectory).value,
     // Watch changes of example .flow files upon testing
     Test / watchSources ++=
       ((ThisBuild / baseDirectory).value / "spec" ** "*.flow").get ++
@@ -132,10 +117,12 @@ lazy val lang = project
 
 lazy val runner = project
   .in(file("flow-runner"))
+  .enablePlugins(PackPlugin)
   .settings(
     buildSettings,
     name        := "flow-runner",
     description := "flow program executor using trino, duckdb, etc.",
+    packMain    := Map("flow" -> "com.treasuredata.flow.lang.cli.FlowCli"),
     Test / javaOptions ++=
       Seq(
         // "--add-opens=java.base/java.nio=org.apache.arrow.memory.core,ALL-UNNAMED",
@@ -145,9 +132,10 @@ lazy val runner = project
       ),
     libraryDependencies ++=
       Seq(
-        "org.apache.arrow" % "arrow-vector" % "16.1.0",
-        "org.duckdb"       % "duckdb_jdbc"  % "1.0.0",
-        "io.trino"         % "trino-jdbc"   % TRINO_VERSION,
+        "org.wvlet.airframe" %% "airframe-launcher" % AIRFRAME_VERSION,
+        "org.apache.arrow"    % "arrow-vector"      % "16.1.0",
+        "org.duckdb"          % "duckdb_jdbc"       % "1.0.0",
+        "io.trino"            % "trino-jdbc"        % TRINO_VERSION,
         // exclude() and jar() are necessary to avoid https://github.com/sbt/sbt/issues/7407
         // tpc-h connector neesd to download GB's of jar, so excluding it
         "io.trino" % "trino-testing" % TRINO_VERSION % Test exclude ("io.trino", "trino-tpch"),

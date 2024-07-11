@@ -2,6 +2,7 @@ package com.treasuredata.flow.lang.compiler
 
 import com.treasuredata.flow.lang.model.{DataType, Type}
 import Type.PackageType
+import com.treasuredata.flow.lang.model.plan.{EmptyRelation, LogicalPlan}
 
 /**
   * SymbolInfo is the result of resolving a name (Symbol) during the compilation phase.
@@ -15,6 +16,10 @@ class SymbolInfo(val symbol: Symbol, val name: Name, private var _tpe: Type):
   private var _declScope: Scope | Null = null
   def declScope_=(scope: Scope): Unit  = _declScope = scope
   def declScope: Scope                 = _declScope
+
+  private var _plan: LogicalPlan | Null = null
+  def plan: LogicalPlan                 = _plan
+  def plan_=(p: LogicalPlan): Unit      = _plan = p
 
   def tpe: Type            = _tpe
   def tpe_=(t: Type): Unit = _tpe = t

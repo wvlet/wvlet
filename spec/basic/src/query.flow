@@ -2,6 +2,7 @@
 model person =
   from 'person.json'
 end
+
 -- limit
 from person
 limit 5
@@ -16,14 +17,14 @@ order by id asc
 
 -- sort & limit
 from person
-order by time desc
+order by id desc
 limit 10
 
 
 -- limit & sort
 from person
 limit 10
-order by time asc
+order by id asc
 
 model person_with_age_group =
   from person

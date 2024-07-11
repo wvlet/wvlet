@@ -1,13 +1,7 @@
 package com.treasuredata.flow.lang.compiler
 
 import com.treasuredata.flow.lang.compiler.Compiler.presetLibraryPaths
-import com.treasuredata.flow.lang.compiler.analyzer.{
-  PostTypeScan,
-  PreTypeScan,
-  SymbolLabeler,
-  TypeResolver,
-  TypeScanner
-}
+import com.treasuredata.flow.lang.compiler.analyzer.{SymbolLabeler, TypeResolver}
 import com.treasuredata.flow.lang.compiler.parser.{FlowParser, ParserPhase}
 import com.treasuredata.flow.lang.compiler.transform.Incrementalize
 import com.treasuredata.flow.lang.model.plan.LogicalPlan
@@ -34,9 +28,17 @@ object Compiler:
     Incrementalize // Create an incrementalized plan for a subscription
   )
 
-  def allPhases: List[List[Phase]] = List(analysisPhases, transformPhases)
+  /**
+    * Generate SQL, Scala, or other code from the logical plan
+    * @return
+    */
+  def codeGenPhases: List[Phase] = List()
+
+  def allPhases: List[List[Phase]] = List(analysisPhases, transformPhases, codeGenPhases)
 
   def presetLibraryPaths: List[String] = List("flow-lang/src/main/resources/flow-stdlib")
+
+end Compiler
 
 class Compiler(phases: List[List[Phase]] = Compiler.allPhases) extends LogSupport:
   /**
@@ -62,6 +64,7 @@ class Compiler(phases: List[List[Phase]] = Compiler.allPhases) extends LogSuppor
       phaseGroup <- phases
       phase      <- phaseGroup
     do
+      debug(s"Running phase ${phase.name}")
       units = phase.runOn(units, rootContext)
 
     CompileResult(units, this, rootContext)

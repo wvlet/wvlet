@@ -543,13 +543,13 @@ case class TableScan(
   override lazy val resolved = true
 
 /**
-  * Scan a table-structured data reference, such as a query result or table
+  * Scan a model
   * @param name
   * @param schema
   * @param columns
   * @param nodeLocation
   */
-case class RelScan(
+case class ModelScan(
     name: Name,
     schema: RelationType,
     columns: Seq[NamedType],
