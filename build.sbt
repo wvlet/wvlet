@@ -133,7 +133,7 @@ lazy val runner = project
     libraryDependencies ++=
       Seq(
         "org.wvlet.airframe" %% "airframe-launcher" % AIRFRAME_VERSION,
-        "org.apache.arrow"    % "arrow-vector"      % "16.1.0",
+        "org.apache.arrow"    % "arrow-vector"      % "17.0.0",
         "org.duckdb"          % "duckdb_jdbc"       % "1.0.0",
         "io.trino"            % "trino-jdbc"        % TRINO_VERSION,
         // exclude() and jar() are necessary to avoid https://github.com/sbt/sbt/issues/7407
