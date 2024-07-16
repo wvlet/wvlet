@@ -135,6 +135,12 @@ case class TableRef(name: NameExpr, nodeLocation: Option[NodeLocation])
   override def toString: String           = s"TableRef(${name})"
   override val relationType: RelationType = UnresolvedRelationType(name.fullName)
 
+case class ModelRef(name: NameExpr, args: List[FunctionArg], nodeLocation: Option[NodeLocation])
+    extends Relation
+    with LeafPlan:
+  override def toString: String           = s"ModelRef(${name}, ${args})"
+  override val relationType: RelationType = UnresolvedRelationType(name.fullName)
+
 case class FileScan(path: String, nodeLocation: Option[NodeLocation])
     extends Relation
     with LeafPlan:
@@ -551,6 +557,7 @@ case class TableScan(
   */
 case class ModelScan(
     name: Name,
+    modelArgs: List[FunctionArg],
     schema: RelationType,
     columns: Seq[NamedType],
     nodeLocation: Option[NodeLocation]
@@ -564,7 +571,7 @@ case class ModelScan(
     else
       ProjectedType(schema.typeName, columns, schema)
 
-  override def toString: String = s"RelScan(name:${name}, schema:${schema})"
+  override def toString: String = s"ModelScan(name:${name}, schema:${schema})"
 
   override lazy val resolved = true
 

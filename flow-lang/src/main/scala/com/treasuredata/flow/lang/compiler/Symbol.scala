@@ -5,6 +5,7 @@ import com.treasuredata.flow.lang.model.Type.PackageType
 import com.treasuredata.flow.lang.model.expr.NameExpr
 import com.treasuredata.flow.lang.model.expr.NameExpr.EmptyName
 import com.treasuredata.flow.lang.model.plan.LogicalPlan
+import wvlet.log.LogSupport
 
 object Symbol:
   val NoSymbol: Symbol =
@@ -33,7 +34,7 @@ end Symbol
   *
   * @param name
   */
-class Symbol(val id: Int):
+class Symbol(val id: Int) extends LogSupport:
   private var _symbolInfo: SymbolInfo | Null = null
   private var _tree: TreeNode | Null         = null
 
@@ -61,12 +62,16 @@ class Symbol(val id: Int):
     else
       _tree
 
-  def tree_=(t: TreeNode): Unit = _tree = t
+  def tree_=(t: TreeNode): Unit =
+    t match
+      case l: LogicalPlan =>
+        trace(s"Set Symbol(${id}) to ${l.pp}")
+      case _ =>
+    _tree = t
 
   def symbolInfo(using Context): SymbolInfo =
     if _symbolInfo == null then
       _symbolInfo = computeSymbolInfo
-
     _symbolInfo
 
   def symbolInfo_=(info: SymbolInfo): Unit = _symbolInfo = info

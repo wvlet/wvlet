@@ -1,0 +1,19 @@
+model person =
+  from 'person.json'
+end
+
+model person_with_age_group =
+  from person
+  transform
+    -- Add a new column for aggregation
+    age_group: age / 10
+end
+
+model person_filter(bound:int) =
+  -- reference another model
+  from person_with_age_group
+  where age_group >= bound
+end
+
+
+from person_filter(bound = 2)

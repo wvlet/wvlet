@@ -18,27 +18,13 @@ order by id asc
 -- sort & limit
 from person
 order by id desc
-limit 10
+limit 2
 
 
 -- limit & sort
 from person
-limit 10
+limit 2
 order by id asc
-
-model person_with_age_group =
-  from person
-  transform
-    -- Add a new column for aggregation
-    age_group: age / 10
-  group by age_group
-end
-
-model person_filter(bound:int) =
-  -- reference another model
-  from person_with_age_group
-  where age_group >= bound
-end
 
 -- projection
 from person

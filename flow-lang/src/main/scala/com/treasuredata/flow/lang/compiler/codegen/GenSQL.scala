@@ -15,24 +15,28 @@ object GenSQL extends Phase("generate-sql"):
     unit
 
   def generateSQL(q: Query, ctx: Context): String =
-    val expanded = expand(q, ctx)
+    val expanded = expand(q, ctx).asInstanceOf[Query]
     // val sql      = SQLGenerator.toSQL(expanded)
     val sql = printRelation(expanded, ctx)
     trace(s"[plan]\n${expanded.pp}\n[SQL]\n${sql}")
     sql
 
-  def expand(q: Query, ctx: Context): Query =
+  def expand(q: Relation, ctx: Context): Relation =
     // expand referenced models
     // TODO expand expressions and inline macros as well
     q.transformUp { case m: ModelScan =>
+        // TODO add model args to the context scope
         lookupType(m.name, ctx) match
           case Some(sym) =>
-            sym.symbolInfo(using ctx).plan match
-              case m: ModelDef =>
-                m.child
-              case _ =>
+            sym.tree match
+              case md: ModelDef =>
+                trace(s"Replace ${md.name} with ${md.child.pp}")
+                expand(md.child, ctx)
+              case other =>
+                warn(s"Unknown model tree for ${m.name}: ${other}")
                 m
           case _ =>
+            warn(s"unknown model: ${m.name}")
             m
       }
       .asInstanceOf[Query]
@@ -72,6 +76,9 @@ object GenSQL extends Phase("generate-sql"):
         val input = printRelation(s.inputRelation, ctx)
         s"""(select * from ${input}
            |order by ${s.orderBy.map(e => printExpression(e, ctx)).mkString(", ")})""".stripMargin
+      case t: Transform =>
+        val transformItems = t.transformItems.map(x => printExpression(x, ctx)).mkString(", ")
+        s"""(select ${transformItems}, * from ${printRelation(t.inputRelation, ctx)})"""
       case other =>
         warn(s"unknown relaation type: ${other}")
         other.toString

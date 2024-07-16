@@ -17,10 +17,6 @@ class SymbolInfo(val symbol: Symbol, val name: Name, private var _tpe: Type):
   def declScope_=(scope: Scope): Unit  = _declScope = scope
   def declScope: Scope                 = _declScope
 
-  private var _plan: LogicalPlan | Null = null
-  def plan: LogicalPlan                 = _plan
-  def plan_=(p: LogicalPlan): Unit      = _plan = p
-
   def tpe: Type            = _tpe
   def tpe_=(t: Type): Unit = _tpe = t
   def dataType =

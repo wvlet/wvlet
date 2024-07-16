@@ -55,7 +55,7 @@ import wvlet.log.LogSupport
   *          queryBlock*
   *
   *   relation       : relationPrimary ('as' identifier)?
-  *   relationPrimary: qualifiedId
+  *   relationPrimary: qualifiedId ('(' functionArg (',' functionArg)* ')')?
   *                  | '(' relation ')'
   *                  | str
   *
@@ -581,12 +581,21 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
   def fromRelation(): Relation =
     val primary = relationPrimary()
     val t       = scanner.lookAhead()
-    var rel =
+    var rel: Relation =
       t.token match
         case FlowToken.AS =>
           consume(FlowToken.AS)
           val alias = identifier()
           AliasedRelation(primary, alias, None, t.nodeLocation)
+        case FlowToken.L_PAREN =>
+          consume(FlowToken.L_PAREN)
+          val relationArgs = functionArgs()
+          consume(FlowToken.R_PAREN)
+          primary match
+            case r: TableRef =>
+              ModelRef(r.name, relationArgs, t.nodeLocation)
+            case other =>
+              unexpected(t)
         case _ =>
           primary
     rel = queryBlock(rel)
@@ -1126,18 +1135,19 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
     args.result()
 
   def functionArg(): FunctionArg =
-    val t         = scanner.lookAhead()
-    val nameOrArg = expression()
+    val t = scanner.lookAhead()
     scanner.lookAhead().token match
-      case FlowToken.EQ =>
-        consume(FlowToken.EQ)
-        val expr = expression()
-        nameOrArg match
-          case n: NameExpr =>
-            FunctionArg(Some(n), expr, t.nodeLocation)
+      case FlowToken.IDENTIFIER =>
+        val nameOrArg = identifier()
+        scanner.lookAhead().token match
+          case FlowToken.EQ =>
+            consume(FlowToken.EQ)
+            val expr = expression()
+            FunctionArg(Some(nameOrArg), expr, t.nodeLocation)
           case _ =>
-            unexpected(t)
+            FunctionArg(None, nameOrArg, t.nodeLocation)
       case _ =>
+        val nameOrArg = expression()
         FunctionArg(None, nameOrArg, t.nodeLocation)
 
   /**

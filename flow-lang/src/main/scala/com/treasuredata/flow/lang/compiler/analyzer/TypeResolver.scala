@@ -91,6 +91,11 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
             if !ctx.compilationUnit.isPreset then
               debug(newStmt.pp)
 
+            newStmt match
+              case m: ModelDef =>
+                m.symbol.tree = m
+              case _ =>
+
             ctx = nextContext(newStmt, ctx)
           }
         p.copy(statements = stmts.result())
@@ -172,7 +177,6 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
             m.symbol.symbolInfo(using context) match
               case t: ModelSymbolInfo =>
                 t.dataType = r
-                t.plan = m
                 debug(s"Resolved ${t}")
               case other =>
           case other =>
@@ -184,11 +188,8 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
         val modelType = m.givenRelationType.get
         lookupType(modelType.typeName, context) match
           case Some(sym) =>
-            val si = sym.symbolInfo(using context)
-
+            val si              = sym.symbolInfo(using context)
             val modelSymbolInfo = m.symbol.symbolInfo(using context)
-            modelSymbolInfo.plan = m
-
             si.dataType match
               case r: RelationType =>
                 trace(s"Resolved model type: ${m.name} as ${r}")
@@ -271,13 +272,29 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
             si.tpe match
               case r: RelationType =>
                 debug(s"resolved ${sym} ${ref.locationString(using context)}")
-                // TODO: Resolve model parameters if given
-                ModelScan(sym.name(using context), r, r.fields, ref.nodeLocation)
+                ModelScan(sym.name(using context), Nil, r, r.fields, ref.nodeLocation)
               case _ =>
                 ref
           case None =>
             trace(s"Unresolved table ref: ${ref.name.fullName}")
             ref
+      case ref: ModelRef if !ref.relationType.isResolved =>
+        lookup(ref.name, context) match
+          case Some(sym) =>
+            val si = sym.symbolInfo(using context)
+            si.tpe match
+              case r: RelationType =>
+                trace(s"Resolved model ref: ${ref.name.fullName} as ${r}")
+                ModelScan(sym.name(using context), ref.args, r, r.fields, ref.nodeLocation)
+              case _ =>
+                ref
+          case None =>
+            trace(s"Unresolved model ref: ${ref.name.fullName}")
+            ref
+
+    end apply
+
+  end resolveTableRef
 
   object resolveTransformItem extends RewriteRule:
     override def apply(context: Context): PlanRewriter = { case t: Transform =>
