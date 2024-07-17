@@ -86,6 +86,7 @@ case class DefArg(
 case class TypeValDef(
     name: NameExpr,
     tpe: NameExpr,
+    params: List[TypeParameter],
     body: Option[Expression],
     nodeLocation: Option[NodeLocation]
 ) extends TypeElem:

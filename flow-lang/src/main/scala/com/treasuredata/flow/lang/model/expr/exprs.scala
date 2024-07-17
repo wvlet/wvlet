@@ -36,12 +36,15 @@ object NameExpr:
   val EmptyName: Identifier           = UnquotedIdentifier("<empty>", None)
   def fromString(s: String): NameExpr = UnquotedIdentifier(s, None)
 
-case class Wildcard(nodeLocation: Option[NodeLocation]) extends LeafExpression with NameExpr:
+case class Wildcard(nodeLocation: Option[NodeLocation]) extends LeafExpression with QualifiedName:
   override def leafName: String = "*"
   override def fullName: String = "*"
 
+  override def qualifier: Expression = NameExpr.EmptyName
+
 /**
   * Reference to the current input, denoted by '_'
+  *
   * @param dataType
   * @param nodeLocation
   */

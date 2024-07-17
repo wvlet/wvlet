@@ -2,9 +2,10 @@ package com.treasuredata.flow.lang.compiler.parser
 
 import com.treasuredata.flow.lang.StatusCode
 import com.treasuredata.flow.lang.compiler.parser.FlowToken.{EQ, FOR, FROM, R_PAREN}
-import com.treasuredata.flow.lang.compiler.{CompilationUnit, SourceFile, Name}
+import com.treasuredata.flow.lang.compiler.{CompilationUnit, Name, SourceFile}
 import com.treasuredata.flow.lang.model.DataType
 import com.treasuredata.flow.lang.model.DataType.{
+  IntConstant,
   NoType,
   TypeParameter,
   UnresolvedRelationType,
@@ -26,6 +27,7 @@ import wvlet.log.LogSupport
   *
   *   identifier  : IDENTIFIER
   *               | BACKQUOTED_IDENTIFIER
+  *               | '*'
   *               | reserved  # Necessary to use reserved words as identifiers
   *   IDENTIFIER  : (LETTER | '_') (LETTER | DIGIT | '_')*
   *   BACKQUOTED_IDENTIFIER: '`' (~'`' | '``')+ '`'
@@ -51,7 +53,7 @@ import wvlet.log.LogSupport
   *   modelParams: '(' modelParam (',' modelParam)* ')'
   *   modelParam : identifier ':' identifier ('=' expression)?
   *
-  *   query: 'from' relation
+  *   query: 'from' relation (',' relation)* ','?
   *          queryBlock*
   *
   *   relation       : relationPrimary ('as' identifier)?
@@ -94,7 +96,7 @@ import wvlet.log.LogSupport
   *   typeExtends: 'extends' qualifiedId (',' qualifiedId)*
   *   typeElem   : valDef | funDef
   *
-  *   valDef     : identifier ':' identifier ('=' expression)?
+  *   valDef     : identifier ':' identifier typeParams? ('=' expression)?
   *   funDef:    : 'def' funName defParams? (':' identifier)? ('=' expression)?
   *   funName    : identifier | symbol
   *   symbol     : '+' | '-' | '*' | '/' | '%' | '&' | '|' | '=' | '==' | '!=' | '<' | '<=' | '>' | '>=' | '&&' | '||'
@@ -120,7 +122,7 @@ import wvlet.log.LogSupport
   *                     | valueExpression testOperator valueExpression
   *
   *   arithmeticOperator: '+' | '-' | '*' | '/' | '%'
-  *   comparisonOperator: '=' | '==' | 'is' | '!=' | 'is' 'not' | '<' | '<=' | '>' | '>='
+  *   comparisonOperator: '=' | '==' | 'is' | '!=' | 'is' 'not' | '<' | '<=' | '>' | '>=' | 'like'
   *   testOperator      : 'should' 'not'? ('be' | 'contain')
   *
   *   // Expresion that can be chained with '.' operator
@@ -189,6 +191,9 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
       case FlowToken.UNDERSCORE =>
         consume(FlowToken.UNDERSCORE)
         ContextInputRef(DataType.UnknownType, t.nodeLocation)
+      case FlowToken.STAR =>
+        consume(FlowToken.STAR)
+        Wildcard(t.nodeLocation)
       case _ =>
         reserved()
 
@@ -357,6 +362,11 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
               nextParam
             case FlowToken.R_BRACKET =>
             // ok
+            case FlowToken.INTEGER_LITERAL =>
+              // e.g., decimal[15, 2]
+              val i = consume(FlowToken.INTEGER_LITERAL)
+              params += IntConstant(i.str.toInt)
+              nextParam
             case _ =>
               val name = identifier()
               val tpe =
@@ -420,6 +430,7 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
         val name = identifier()
         consume(FlowToken.COLON)
         val valType = identifier()
+        val tp      = typeParams()
         val defaultValue =
           scanner.lookAhead().token match
             case FlowToken.EQ =>
@@ -427,7 +438,7 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
               Some(expression())
             case _ =>
               None
-        TypeValDef(name, valType, defaultValue, t.nodeLocation)
+        TypeValDef(name, valType, tp, defaultValue, t.nodeLocation)
       case _ =>
         unexpected(t)
 
@@ -542,7 +553,18 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
     */
   def query(): Relation =
     val t = consume(FlowToken.FROM)
-    val r = fromRelation()
+    var r = fromRelation()
+
+    def readRest(): Unit =
+      scanner.lookAhead().token match
+        case FlowToken.COMMA =>
+          val ct    = consume(FlowToken.COMMA)
+          val rNext = fromRelation()
+          r = Join(JoinType.ImplicitJoin, r, rNext, NoJoinCriteria, ct.nodeLocation)
+          readRest()
+        case _ =>
+
+    readRest()
     val q = Query(r, t.nodeLocation)
     q
 
@@ -765,6 +787,9 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
         selectItems()
       case FlowToken.EOF | FlowToken.END =>
         Nil
+      case FlowToken.R_PAREN =>
+        // sub-query end
+        Nil
       case t if t.tokenType == TokenType.Keyword =>
         Nil
       case FlowToken.IDENTIFIER =>
@@ -918,6 +943,10 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
         consume(FlowToken.NEQ)
         val right = valueExpression()
         NotEq(expression, right, t.nodeLocation)
+      case FlowToken.LIKE =>
+        consume(FlowToken.LIKE)
+        val right = valueExpression()
+        Like(expression, right, t.nodeLocation)
       case FlowToken.IS =>
         consume(FlowToken.IS)
         scanner.lookAhead().token match
@@ -1139,13 +1168,17 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
     val t = scanner.lookAhead()
     scanner.lookAhead().token match
       case FlowToken.IDENTIFIER =>
-        val nameOrArg = identifier()
-        scanner.lookAhead().token match
-          case FlowToken.EQ =>
-            consume(FlowToken.EQ)
-            val expr = expression()
-            FunctionArg(Some(Name.termName(nameOrArg.leafName)), expr, t.nodeLocation)
-          case _ =>
+        val nameOrArg = expression()
+        nameOrArg match
+          case i: Identifier =>
+            scanner.lookAhead().token match
+              case FlowToken.EQ =>
+                consume(FlowToken.EQ)
+                val expr = expression()
+                FunctionArg(Some(Name.termName(i.leafName)), expr, t.nodeLocation)
+              case _ =>
+                FunctionArg(None, nameOrArg, t.nodeLocation)
+          case expr: Expression =>
             FunctionArg(None, nameOrArg, t.nodeLocation)
       case _ =>
         val nameOrArg = expression()

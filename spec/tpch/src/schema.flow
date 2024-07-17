@@ -1,0 +1,18 @@
+type lineitem:
+  l_orderkey: int
+  l_partkey: int
+  l_suppkey: int
+  l_linenumber: int
+  l_quantity: decimal[15,2]
+  l_extendedprice: decimal[15,2]
+  l_discount: decimal[15,2]
+  l_tax: decimal[15,2]
+  l_returnflag: string
+  l_linestatus: string
+  l_shipdate: date
+  l_commitdate: date
+  l_receiptdate: date
+  l_shipinstruct: string
+  l_shipmode: string
+  l_comment: string
+end

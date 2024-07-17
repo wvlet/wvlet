@@ -64,7 +64,9 @@ case class RelationTypeList(override val typeName: TypeName, inputRelationTypes:
     extends RelationType(typeName, Seq.empty):
   override def isResolved: Boolean = inputRelationTypes.forall(_.isResolved)
 
-  override def fields: Seq[NamedType] = ???
+  override def fields: Seq[NamedType] = inputRelationTypes.flatMap { r =>
+    r.fields
+  }
 
 object DataType extends LogSupport:
 

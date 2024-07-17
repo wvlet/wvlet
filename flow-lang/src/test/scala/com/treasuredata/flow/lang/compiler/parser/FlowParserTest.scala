@@ -21,3 +21,9 @@ class FlowParserTest extends AirSpec:
     val plans = ParserPhase.parseSourceFolder("spec/cdp_behavior/src")
     plans.foreach: p =>
       debug(p.pp)
+
+  test("tpch") {
+    val plans = ParserPhase.parseSourceFolder("spec/tpch/src")
+    plans.foreach: p =>
+      debug(p.pp)
+  }

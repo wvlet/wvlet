@@ -6,6 +6,7 @@ type string:
   def to_float: float = sql"cast({this} as double)"
   def to_double: double = sql"cast({this} as double)"
   def to_boolean: boolean = sql"cast({this} as boolean)"
+  def to_date: date = sql"cast({this} as date)"
 
   -- if the string is null, return the default value
   def or_else(other:string): string = sql"coalesce({this},{other})"
