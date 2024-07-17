@@ -25,7 +25,7 @@ object GenSQL extends Phase("generate-sql"):
   def generateSQL(q: Query, ctx: Context): String =
     val expanded = expand(q, ctx)
     // val sql      = SQLGenerator.toSQL(expanded)
-    val sql = printRelation(expanded, ctx)
+    val sql = printRelation(expanded, ctx, 0)
     trace(s"[plan]\n${expanded.pp}\n[SQL]\n${sql}")
     sql
 
@@ -103,34 +103,65 @@ object GenSQL extends Phase("generate-sql"):
       result
     }
 
-  def printRelation(r: Relation, ctx: Context): String =
+  def printRelation(r: Relation, ctx: Context, nestingLevel: Int): String =
+    def indent(s: String): String =
+      if nestingLevel == 0 then
+        s
+      else
+        val str = s.split("\n").map(x => s"  ${x}").mkString("\n")
+        s"\n${str}"
+
     r match
       case p: Project =>
         val selectItems = p.selectItems.map(x => printExpression(x, ctx)).mkString(", ")
-        s"""(select ${selectItems} from ${printRelation(p.inputRelation, ctx)})"""
+        indent(
+          s"""(select ${selectItems} from ${printRelation(
+              p.inputRelation,
+              ctx,
+              nestingLevel + 1
+            )})"""
+        )
       case j: JSONFileScan =>
-        s"(select * from '${j.path}')"
+        indent(s"(select * from '${j.path}')")
       case f: Filter =>
-        s"""(select * from ${printRelation(f.inputRelation, ctx)}
-           |where ${printExpression(f.filterExpr, ctx)})""".stripMargin
+        indent(
+          s"""(select * from ${printRelation(
+              f.inputRelation,
+              ctx,
+              nestingLevel + 1
+            )} where ${printExpression(f.filterExpr, ctx)})"""
+        )
       case t: TestRelation =>
-        printRelation(t.inputRelation, ctx)
+        printRelation(t.inputRelation, ctx, nestingLevel + 1)
       case l: Limit =>
-        val input = printRelation(l.inputRelation, ctx)
-        s"""(select * from ${input}
-           |limit ${l.limit.stringValue})""".stripMargin
+        val input = printRelation(l.inputRelation, ctx, nestingLevel + 1)
+        indent(s"""(select * from ${input} limit ${l.limit.stringValue})""")
       case q: Query =>
-        printRelation(q.body, ctx)
+        printRelation(q.body, ctx, nestingLevel)
       case s: Sort =>
-        val input = printRelation(s.inputRelation, ctx)
-        s"""(select * from ${input}
-           |order by ${s.orderBy.map(e => printExpression(e, ctx)).mkString(", ")})""".stripMargin
+        val input = printRelation(s.inputRelation, ctx, nestingLevel + 1)
+        indent(
+          s"""(select * from ${input} order by ${s
+              .orderBy
+              .map(e => printExpression(e, ctx))
+              .mkString(", ")})"""
+        )
       case t: Transform =>
         val transformItems = t.transformItems.map(x => printExpression(x, ctx)).mkString(", ")
-        s"""(select ${transformItems}, * from ${printRelation(t.inputRelation, ctx)})"""
+        indent(
+          s"""(select ${transformItems}, * from ${printRelation(
+              t.inputRelation,
+              ctx,
+              nestingLevel + 1
+            )})"""
+        )
       case other =>
-        warn(s"unknown relaation type: ${other}")
+        warn(s"unknown relation type: ${other}")
         other.toString
+
+    end match
+
+  end printRelation
 
   def printExpression(expression: Expression, context: Context): String =
     expression match
@@ -141,7 +172,7 @@ object GenSQL extends Phase("generate-sql"):
       case i: Identifier =>
         i.strExpr
       case s: SortItem =>
-        s"${printExpression(s.sortKey, context)} ${s.ordering.map(_.expr).getOrElse("")}"
+        s"${printExpression(s.sortKey, context)}${s.ordering.map(x => s" ${x.expr}").getOrElse("")}"
       case s: SingleColumn =>
         if s.nameExpr.isEmpty then
           printExpression(s.expr, context)

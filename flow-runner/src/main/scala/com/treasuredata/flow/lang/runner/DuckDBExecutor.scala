@@ -7,7 +7,7 @@ import com.treasuredata.flow.lang.model.plan.*
 import com.treasuredata.flow.lang.model.sql.SQLGenerator
 import org.duckdb.DuckDBConnection
 import wvlet.airframe.codec.{JDBCCodec, MessageCodec}
-import wvlet.log.{LogSupport, Logger}
+import wvlet.log.{LogLevel, LogSupport, Logger}
 
 import java.sql.{DriverManager, SQLException}
 import scala.util.Using
@@ -22,11 +22,9 @@ object DuckDBExecutor extends LogSupport:
       .foreach: u =>
         execute(u, result.context)
 
-  def execute(u: CompilationUnit, context: Context): Unit =
-    debug(s"Execute:\n${u.resolvedPlan.pp}")
-    val result       = default.execute(u.resolvedPlan, context)
-    val resultString = QueryResultPrinter.print(result, limit = Some(10))
-    trace(resultString)
+  def execute(u: CompilationUnit, context: Context): QueryResult =
+    val result = default.execute(u.resolvedPlan, context)
+    result
 
 class DuckDBExecutor extends LogSupport:
   def execute(plan: LogicalPlan, context: Context): QueryResult =
@@ -52,6 +50,9 @@ class DuckDBExecutor extends LogSupport:
               }
             }
           }
+          if logger.isEnabled(LogLevel.TRACE) then
+            val resultString = QueryResultPrinter.print(result, limit = Some(10))
+            trace(resultString)
           result
         catch
           case e: SQLException =>
