@@ -1,6 +1,14 @@
 package com.treasuredata.flow.lang.compiler.codegen
 
-import com.treasuredata.flow.lang.compiler.{CompilationUnit, Context, Name, Phase, Symbol}
+import com.treasuredata.flow.lang.compiler.{
+  BoundedSymbolInfo,
+  CompilationUnit,
+  Context,
+  Name,
+  Phase,
+  Symbol,
+  TermName
+}
 import com.treasuredata.flow.lang.model.expr.*
 import com.treasuredata.flow.lang.model.plan.*
 import com.treasuredata.flow.lang.model.sql.SQLGenerator
@@ -15,7 +23,7 @@ object GenSQL extends Phase("generate-sql"):
     unit
 
   def generateSQL(q: Query, ctx: Context): String =
-    val expanded = expand(q, ctx).asInstanceOf[Query]
+    val expanded = expand(q, ctx)
     // val sql      = SQLGenerator.toSQL(expanded)
     val sql = printRelation(expanded, ctx)
     trace(s"[plan]\n${expanded.pp}\n[SQL]\n${sql}")
@@ -23,23 +31,64 @@ object GenSQL extends Phase("generate-sql"):
 
   def expand(q: Relation, ctx: Context): Relation =
     // expand referenced models
-    // TODO expand expressions and inline macros as well
-    q.transformUp { case m: ModelScan =>
-        // TODO add model args to the context scope
-        lookupType(m.name, ctx) match
+
+    def transformExpr(r: Relation, ctx: Context): Relation = r
+      .transformUpExpressions { case i: Identifier =>
+        val nme = Name.termName(i.leafName)
+        ctx.scope.lookupSymbol(nme) match
           case Some(sym) =>
-            sym.tree match
-              case md: ModelDef =>
-                trace(s"Replace ${md.name} with ${md.child.pp}")
-                expand(md.child, ctx)
-              case other =>
-                warn(s"Unknown model tree for ${m.name}: ${other}")
-                m
-          case _ =>
-            warn(s"unknown model: ${m.name}")
-            m
+            sym.symbolInfo(using ctx) match
+              case b: BoundedSymbolInfo =>
+                // Replace to the bounded expression
+                b.expr
+              case _ =>
+                i
+          case None =>
+            i
       }
-      .asInstanceOf[Query]
+      .asInstanceOf[Relation]
+
+    def transformModelScan(m: ModelScan, sym: Symbol): Relation =
+      sym.tree match
+        case md: ModelDef =>
+          val newCtx = ctx.newContext(sym)
+          // TODO add model args to the context sco
+          m.modelArgs
+            .zipWithIndex
+            .foreach { (arg, index) =>
+              val argName: TermName = arg.name.getOrElse(md.params(index).name)
+              val argValue          = arg.value
+
+              // Register function arguments to the current scope
+              val argSym    = Symbol(ctx.global.newSymbolId)
+              given Context = ctx
+              argSym.symbolInfo = BoundedSymbolInfo(argSym, argName, argValue.dataType, argValue)
+              newCtx.scope.add(argName, argSym)
+              argSym
+            }
+
+          // Replace function argument references in the model body with the actual expressions
+          val modelBody = transformExpr(md.child, newCtx)
+          expand(modelBody, newCtx)
+        case other =>
+          warn(s"Unknown model tree for ${m.name}: ${other}")
+          m
+
+    // TODO expand expressions and inline macros as well
+    q.transformUp {
+        case m: ModelScan =>
+          lookupType(m.name, ctx) match
+            case Some(sym) =>
+              transformModelScan(m, sym)
+            case None =>
+              warn(s"unknown model: ${m.name}")
+              m
+        case q: Query =>
+          q.child
+      }
+      .asInstanceOf[Relation]
+
+  end expand
 
   private def lookupType(name: Name, ctx: Context): Option[Symbol] = ctx
     .scope

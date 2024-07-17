@@ -112,7 +112,7 @@ object SymbolLabeler extends Phase("symbol-labeler"):
       args = f
         .args
         .map { a =>
-          val paramName = Name.termName(a.name.leafName)
+          val paramName = a.name
           val paramType = a.dataType
           NamedType(paramName, paramType)
         },

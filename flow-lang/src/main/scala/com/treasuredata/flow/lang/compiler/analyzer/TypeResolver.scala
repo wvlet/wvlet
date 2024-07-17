@@ -430,7 +430,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
             val argFields: List[NamedType] = f
               .args
               .map { arg =>
-                NamedType(Name.termName(arg.name.leafName), arg.dataType)
+                NamedType(arg.name, arg.dataType)
               }
             // create a type that includes function arguments
             val knownFields = fields ++ argFields

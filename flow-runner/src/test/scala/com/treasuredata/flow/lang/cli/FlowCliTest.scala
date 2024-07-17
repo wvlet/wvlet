@@ -17,5 +17,4 @@ class FlowCliTest extends AirSpec:
     FlowCli.main("run spec/basic/src/query.flow")
 
   test("model1-q1"):
-    pending("Resolve function args")
     FlowCli.main("run spec/model1/src/q1.flow")

@@ -502,7 +502,8 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
         DataType.getPrimitiveType(tpe.fullName)
       else
         UnresolvedType(tpe.fullName)
-    DefArg(name, dt, defaultValue, name.nodeLocation)
+    // TODO check the name is a leaf name
+    DefArg(Name.termName(name.leafName), dt, defaultValue, name.nodeLocation)
 
   def context(): List[DefContext] =
     scanner.lookAhead().token match
@@ -1143,7 +1144,7 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
           case FlowToken.EQ =>
             consume(FlowToken.EQ)
             val expr = expression()
-            FunctionArg(Some(nameOrArg), expr, t.nodeLocation)
+            FunctionArg(Some(Name.termName(nameOrArg.leafName)), expr, t.nodeLocation)
           case _ =>
             FunctionArg(None, nameOrArg, t.nodeLocation)
       case _ =>

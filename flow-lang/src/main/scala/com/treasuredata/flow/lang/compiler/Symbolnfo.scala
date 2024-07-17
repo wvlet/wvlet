@@ -2,6 +2,7 @@ package com.treasuredata.flow.lang.compiler
 
 import com.treasuredata.flow.lang.model.{DataType, Type}
 import Type.PackageType
+import com.treasuredata.flow.lang.model.expr.Expression
 import com.treasuredata.flow.lang.model.plan.{EmptyRelation, LogicalPlan}
 
 /**
@@ -56,6 +57,10 @@ class TypeSymbolInfo(symbol: Symbol, owner: Symbol, name: Name, tpe: DataType)
 class ModelSymbolInfo(symbol: Symbol, owner: Symbol, name: Name, tpe: DataType)
     extends NamedSymbolInfo(symbol, owner, name, tpe):
   override def toString: String = s"model ${owner}.${name}: ${dataType}"
+
+class BoundedSymbolInfo(symbol: Symbol, name: Name, tpe: DataType, val expr: Expression)
+    extends SymbolInfo(symbol, name, tpe):
+  override def toString: String = s"bounded ${name}: ${dataType} = ${expr}"
 
 //class TypeInfo(symbol: Symbol, tpe: Type) extends SymbolInfo(symbol, tpe)
 //

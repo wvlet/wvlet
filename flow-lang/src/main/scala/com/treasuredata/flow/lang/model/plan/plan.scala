@@ -1,6 +1,6 @@
 package com.treasuredata.flow.lang.model.plan
 
-import com.treasuredata.flow.lang.compiler.SourceFile
+import com.treasuredata.flow.lang.compiler.{SourceFile, TermName}
 import com.treasuredata.flow.lang.model.DataType.{EmptyRelationType, TypeParameter}
 import com.treasuredata.flow.lang.model.{DataType, NodeLocation, RelationType}
 import com.treasuredata.flow.lang.model.expr.{
@@ -76,7 +76,7 @@ case class FunctionDef(
   override def children: Seq[Expression] = Seq.empty
 
 case class DefArg(
-    name: NameExpr,
+    name: TermName,
     override val dataType: DataType,
     defaultValue: Option[Expression],
     nodeLocation: Option[NodeLocation]

@@ -1,5 +1,6 @@
 package com.treasuredata.flow.lang.model.expr
 
+import com.treasuredata.flow.lang.compiler.TermName
 import com.treasuredata.flow.lang.model.DataType.{
   AnyType,
   ArrayType,
@@ -247,7 +248,7 @@ case class FunctionApply(
   override def dataType: DataType        = base.dataType
 
 case class FunctionArg(
-    name: Option[NameExpr],
+    name: Option[TermName],
     value: Expression,
     nodeLocation: Option[NodeLocation]
 ) extends Expression:
