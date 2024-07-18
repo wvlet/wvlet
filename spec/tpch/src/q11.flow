@@ -1,0 +1,28 @@
+from
+    partsupp,
+    supplier,
+    nation
+where
+    ps_suppkey = s_suppkey
+    and s_nationkey = n_nationkey
+    and n_name = 'GERMANY'
+group by
+    ps_partkey
+where
+    (ps_supplycost * ps_availqty).sum > (
+        from
+            partsupp,
+            supplier,
+            nation
+        where
+            ps_suppkey = s_suppkey
+            and s_nationkey = n_nationkey
+            and n_name = 'GERMANY'
+        select
+            (ps_supplycost * ps_availqty).sum * 0.0001000000
+       )
+select
+    ps_partkey,
+    value: (ps_supplycost * ps_availqty).sum
+order by
+    value desc

@@ -1,0 +1,16 @@
+from orders
+where
+    o_orderdate >= '1993-07-01'.to_date
+    and o_orderdate < '1993-10-01'.to_date
+    and (
+        from lineitem
+        where
+            l_orderkey = o_orderkey
+            and l_commitdate < l_receiptdate
+        ).non_empty
+group by o_orderpriority
+select
+    o_orderpriority,
+    order_count: _.count
+order by
+    o_orderpriority

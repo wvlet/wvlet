@@ -100,7 +100,6 @@ enum FlowToken(val tokenType: TokenType, val str: String):
   case SHOULD  extends FlowToken(Keyword, "should")
   case BE      extends FlowToken(Keyword, "be")
   case CONTAIN extends FlowToken(Keyword, "contain")
-  case LIKE    extends FlowToken(Keyword, "like")
 
   // Alphabectic keywords
   case DEF     extends FlowToken(Keyword, "def")

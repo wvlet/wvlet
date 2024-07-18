@@ -1,7 +1,7 @@
 package com.treasuredata.flow.lang.compiler.parser
 
 import com.treasuredata.flow.lang.StatusCode
-import com.treasuredata.flow.lang.compiler.parser.FlowToken.{EQ, FOR, FROM, R_PAREN}
+import com.treasuredata.flow.lang.compiler.parser.FlowToken.{EQ, FLOAT_LITERAL, FOR, FROM, R_PAREN}
 import com.treasuredata.flow.lang.compiler.{CompilationUnit, Name, SourceFile}
 import com.treasuredata.flow.lang.model.DataType
 import com.treasuredata.flow.lang.model.DataType.{
@@ -32,7 +32,7 @@ import wvlet.log.LogSupport
   *   IDENTIFIER  : (LETTER | '_') (LETTER | DIGIT | '_')*
   *   BACKQUOTED_IDENTIFIER: '`' (~'`' | '``')+ '`'
   *   reserved   : 'from' | 'select' | 'where' | 'group' | 'by' | 'having' | 'join'
-  *              | 'order' | 'limit' | 'as' | 'model' | 'type' | 'def' | 'end'
+  *              | 'order' | 'limit' | 'as' | 'model' | 'type' | 'def' | 'end' | 'in'
   *
   *
   *   statements: statement+
@@ -132,6 +132,7 @@ import wvlet.log.LogSupport
   *                     | '(' query ')'                                                 # subquery
   *                     | '(' expression ')'                                            # parenthesized expression
   *                     | '[' expression (',' expression)* ']'                          # array
+  *                     | 'if' booleanExpresssion 'then' expression 'else' expression   # if-then-else
   *                     | qualifiedId
   *                     | primaryExpression '.' primaryExpression
   *                     | primaryExpression '(' functionArg? (',' functionArg)* ')'     # function call
@@ -211,7 +212,7 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
     t.token match
       case FlowToken.FROM | FlowToken.SELECT | FlowToken.WHERE | FlowToken.GROUP | FlowToken.BY |
           FlowToken.HAVING | FlowToken.JOIN | FlowToken.ORDER | FlowToken.LIMIT | FlowToken.AS |
-          FlowToken.MODEL | FlowToken.TYPE | FlowToken.DEF | FlowToken.END =>
+          FlowToken.MODEL | FlowToken.TYPE | FlowToken.DEF | FlowToken.END | FlowToken.IN =>
         UnquotedIdentifier(t.str, t.nodeLocation)
       case _ =>
         unexpected(t)
@@ -943,10 +944,6 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
         consume(FlowToken.NEQ)
         val right = valueExpression()
         NotEq(expression, right, t.nodeLocation)
-      case FlowToken.LIKE =>
-        consume(FlowToken.LIKE)
-        val right = valueExpression()
-        Like(expression, right, t.nodeLocation)
       case FlowToken.IS =>
         consume(FlowToken.IS)
         scanner.lookAhead().token match
@@ -1021,6 +1018,14 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
             FlowToken.FLOAT_LITERAL | FlowToken.DECIMAL_LITERAL | FlowToken.EXP_LITERAL | FlowToken
               .STRING_LITERAL =>
           literal()
+        case FlowToken.IF =>
+          consume(FlowToken.IF)
+          val cond = booleanExpression()
+          consume(FlowToken.THEN)
+          val thenExpr = expression()
+          consume(FlowToken.ELSE)
+          val elseExpr = expression()
+          IfExpr(cond, thenExpr, elseExpr, t.nodeLocation)
         case FlowToken.STRING_INTERPOLATION_PREFIX =>
           interpolatedString()
         case FlowToken.L_PAREN =>

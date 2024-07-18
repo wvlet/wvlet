@@ -15,6 +15,8 @@ type string:
   def length: int = sql"length({this})"
   def trim: string = sql"trim({this})"
 
+  def like(pattern:string): boolean = sql"{this} like {pattern}"
+
   def substring(start:int,end:int): string = sql"substring({this},{start},{end})"
 end
 

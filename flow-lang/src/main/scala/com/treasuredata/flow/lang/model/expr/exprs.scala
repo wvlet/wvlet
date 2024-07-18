@@ -381,7 +381,7 @@ case class NotDistinctFrom(left: Expression, right: Expression, nodeLocation: Op
   override def operatorName: String = "IS NOT DISTINCT FROM"
 
 case class IfExpr(
-    cond: ConditionalExpression,
+    cond: Expression,
     onTrue: Expression,
     onFalse: Expression,
     nodeLocation: Option[NodeLocation]
