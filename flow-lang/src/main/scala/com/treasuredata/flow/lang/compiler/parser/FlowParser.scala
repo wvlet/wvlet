@@ -129,6 +129,7 @@ import wvlet.log.LogSupport
   *   primaryExpression : 'this'
   *                     | '_'
   *                     | literal
+  *                     | query
   *                     | '(' query ')'                                                 # subquery
   *                     | '(' expression ')'                                            # parenthesized expression
   *                     | '[' expression (',' expression)* ']'                          # array
@@ -705,21 +706,24 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
     t.token match
       case FlowToken.ON =>
         consume(FlowToken.ON)
-        scanner.lookAhead().token match
-          case FlowToken.IDENTIFIER =>
+        val cond = booleanExpression()
+        cond match
+          case i: Identifier =>
             val joinKeys = List.newBuilder[NameExpr]
+            joinKeys += i
             def nextKey: Unit =
-              val key = identifier()
-              joinKeys += key
-              scanner.lookAhead().token match
+              val la = scanner.lookAhead()
+              la.token match
                 case FlowToken.COMMA =>
                   consume(FlowToken.COMMA)
+                  val k = identifier()
+                  joinKeys += k
                   nextKey
-                case _ =>
+                case other =>
+                // stop the search
             nextKey
             JoinUsing(joinKeys.result(), t.nodeLocation)
           case _ =>
-            val cond = booleanExpression()
             JoinOn(cond, t.nodeLocation)
       case _ =>
         NoJoinCriteria
@@ -1028,6 +1032,9 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
           IfExpr(cond, thenExpr, elseExpr, t.nodeLocation)
         case FlowToken.STRING_INTERPOLATION_PREFIX =>
           interpolatedString()
+        case FlowToken.FROM =>
+          val q: Relation = query()
+          SubQueryExpression(q, t.nodeLocation)
         case FlowToken.L_PAREN =>
           consume(FlowToken.L_PAREN)
           val t2 = scanner.lookAhead()
@@ -1135,7 +1142,8 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
             val p    = consume(FlowToken.L_PAREN)
             val args = functionArgs()
             consume(FlowToken.R_PAREN)
-            FunctionApply(sel, args, p.nodeLocation)
+            val f = FunctionApply(sel, args, p.nodeLocation)
+            primaryExpressionRest(f)
           case _ =>
             primaryExpressionRest(DotRef(expr, next, DataType.UnknownType, t.nodeLocation))
       case FlowToken.L_PAREN =>
@@ -1145,7 +1153,8 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
             val args = functionArgs()
             consume(FlowToken.R_PAREN)
             // Global function call
-            FunctionApply(n, args, t.nodeLocation)
+            val f = FunctionApply(n, args, t.nodeLocation)
+            primaryExpressionRest(f)
           case _ =>
             unexpected(expr)
       case _ =>

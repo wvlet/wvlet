@@ -1,0 +1,18 @@
+from (
+    from customer
+    left join orders
+      on c_custkey = o_custkey and !o_comment.like('%special%requests%')
+    group by
+      c_custkey
+    select
+      c_custkey,
+      c_count: o_orderkey.count
+) as c_orders
+group by
+    c_count
+select
+    c_count,
+    custdist: _.count
+order by
+    custdist desc,
+    c_count desc

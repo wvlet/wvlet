@@ -1,0 +1,25 @@
+from
+  customer
+where
+  c_phone.substring(1, 3).in('13', '31', '23', '29', '30', '18', '17')
+  and c_acctbal > (
+     from customer
+     where c_acctbal > 0.00
+       and c_phone.substring(1, 3).in('13', '31', '23', '29', '30', '18', '17')
+     select c_acctbal.avg
+  )
+  and (
+     from orders
+     where o_custkey = c_custkey
+  ).is_empty
+select
+  country_code: c_phone.substring(1, 3),
+  c_acctbal
+group by
+    cntrycode
+select
+    cntrycode,
+    numcust: count(),
+    totacctbal: c_acctbal.sum
+order by
+    cntrycode
