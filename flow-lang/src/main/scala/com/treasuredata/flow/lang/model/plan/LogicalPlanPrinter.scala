@@ -90,7 +90,7 @@ object LogicalPlanPrinter extends LogSupport:
 
         def wrap[A](v: A): String =
           v match
-            case s: Seq[String] if s.length <= 1 =>
+            case s: Seq[String] @unchecked if s.length <= 1 =>
               s.headOption.map(_.toString).getOrElse("empty")
             case s: Seq[String] =>
               s"(${s.mkString(", ")})"

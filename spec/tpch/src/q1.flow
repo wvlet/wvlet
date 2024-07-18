@@ -4,14 +4,14 @@ group by l_returnflag, l_linestatus
 select
   l_returnflag,
   l_linestatus,
-  sum_qty       : l_quantity.sum,
-  sum_base_price: l_extendedprice.sum,
-  sum_disc_price: (l_extendedprice * (1 - l_discount)).sum,
-  sum_charge    : (l_extendedprice * (1 - l_discount) * (1 + l_tax)).sum,
-  avg_qty       : l_quantity.avg,
-  avg_price     : l_extendedprice.avg,
-  avg_disc      : l_discount.avg,
-  count_order   : _.count,
+  sum_qty        : l_quantity.sum,
+  sum_base_price : l_extendedprice.sum,
+  sum_disc_price : (l_extendedprice * (1 - l_discount)).sum,
+  sum_charge     : (l_extendedprice * (1 - l_discount) * (1 + l_tax)).sum,
+  avg_qty        : l_quantity.avg,
+  avg_price      : l_extendedprice.avg,
+  avg_disc       : l_discount.avg,
+  count_order    : _.count
 order by
   l_returnflag,
   l_linestatus

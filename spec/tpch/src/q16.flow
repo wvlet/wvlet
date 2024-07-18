@@ -7,13 +7,10 @@ where
     and !p_type.like('MEDIUM POLISHED%')
     and p_size.in(49, 14, 23, 45, 19, 3, 36, 9)
     and ps_suppkey.not_in(
-        from
-            supplier
-        where
-            s_comment.like('%Customer%Complaints%')
-        select
-            s_suppkey
-        )
+        from supplier
+        where s_comment.like('%Customer%Complaints%')
+        select s_suppkey
+    )
 group by
     p_brand,
     p_type,

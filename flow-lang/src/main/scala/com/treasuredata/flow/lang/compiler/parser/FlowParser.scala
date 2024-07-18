@@ -550,26 +550,6 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
       case _ =>
         unexpected(t)
 
-  /**
-    * query := 'from' fromRelation queryBlock*
-    */
-  def query(): Relation =
-    val t = consume(FlowToken.FROM)
-    var r = fromRelation()
-
-    def readRest(): Unit =
-      scanner.lookAhead().token match
-        case FlowToken.COMMA =>
-          val ct    = consume(FlowToken.COMMA)
-          val rNext = fromRelation()
-          r = Join(JoinType.ImplicitJoin, r, rNext, NoJoinCriteria, ct.nodeLocation)
-          readRest()
-        case _ =>
-
-    readRest()
-    val q = Query(r, t.nodeLocation)
-    q
-
   def orderExpr(input: Relation): Sort =
     val t = consume(FlowToken.ORDER)
     consume(FlowToken.BY)
@@ -600,6 +580,28 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
         Nil
 
   /**
+    * query := 'from' fromRelation queryBlock*
+    */
+  def query(): Relation =
+    val t = consume(FlowToken.FROM)
+    var r = fromRelation()
+
+    def readRest(): Unit =
+      scanner.lookAhead().token match
+        case FlowToken.COMMA =>
+          val ct    = consume(FlowToken.COMMA)
+          val rNext = fromRelation()
+          r = Join(JoinType.ImplicitJoin, r, rNext, NoJoinCriteria, ct.nodeLocation)
+          readRest()
+        case _ =>
+
+    readRest()
+
+    r = queryBlock(r)
+    val q = Query(r, t.nodeLocation)
+    q
+
+  /**
     * fromRelation := relationPrimary ('as' identifier)?
     * @return
     */
@@ -623,7 +625,6 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
               unexpected(t)
         case _ =>
           primary
-    rel = queryBlock(rel)
     rel
 
   def queryBlock(input: Relation): Relation =

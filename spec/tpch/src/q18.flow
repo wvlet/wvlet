@@ -4,14 +4,10 @@ from
     lineitem
 where
     o_orderkey.in(
-        from
-            lineitem
-        select
-            l_orderkey
-        group by
-            l_orderkey
-        where
-            l_quantity.sum > 300
+        from lineitem
+        group by l_orderkey
+        where l_quantity.sum > 300
+        select l_orderkey
     )
     and c_custkey = o_custkey
     and o_orderkey = l_orderkey
