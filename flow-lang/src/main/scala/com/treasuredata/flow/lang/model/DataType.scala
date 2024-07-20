@@ -70,9 +70,19 @@ case class RelationTypeList(override val typeName: TypeName, inputRelationTypes:
 
 object DataType extends LogSupport:
 
-  def parse(s: String): DataType =
-    // TODO parse array, map types
-    primitiveTypeTable.getOrElse(Name.typeName(s), UnresolvedType(s))
+  def parse(s: String, typeParams: List[TypeParameter]): DataType =
+    s match
+      case "decimal" if typeParams.length == 2 =>
+        DecimalType(typeParams(0), typeParams(1))
+      case "list" if typeParams.length == 1 =>
+        ListType(typeParams(0))
+      case "array" if typeParams.length == 1 =>
+        ArrayType(typeParams(0))
+      case "map" if typeParams.length == 2 =>
+        MapType(typeParams(0), typeParams(1))
+      case _ =>
+        // TODO parse more generic types
+        primitiveTypeTable.getOrElse(Name.typeName(s), UnresolvedType(s))
 
 //  def unapply(str: String): Option[DataType] =
 //    Try(DataTypeParser.parse(str)).toOption
@@ -101,8 +111,7 @@ object DataType extends LogSupport:
   case class SchemaType(
       parent: Option[DataType],
       override val typeName: TypeName,
-      columnTypes: Seq[NamedType],
-      defs: List[FunctionType]
+      columnTypes: Seq[NamedType]
   ) extends RelationType(typeName, Seq.empty):
     override def fields: Seq[NamedType] = columnTypes
 
@@ -372,6 +381,9 @@ object DataType extends LogSupport:
 
   case object JsonType   extends PrimitiveType("json")
   case object BinaryType extends PrimitiveType("binary")
+
+  case class ListType(elemType: DataType) extends DataType(Name.typeName("list"), Seq(elemType)):
+    override def isResolved: Boolean = elemType.isResolved
 
   case class ArrayType(elemType: DataType) extends DataType(Name.typeName("array"), Seq(elemType)):
     override def isResolved: Boolean = elemType.isResolved

@@ -155,6 +155,8 @@ object GenSQL extends Phase("generate-sql"):
               nestingLevel + 1
             )})"""
         )
+      case t: TableRef =>
+        indent(s"""(select * from ${t.name.fullName})""")
       case other =>
         warn(s"unknown relation type: ${other}")
         other.toString
@@ -167,6 +169,10 @@ object GenSQL extends Phase("generate-sql"):
     expression match
       case b: BinaryExpression =>
         s"${printExpression(b.left, context)} ${b.operatorName} ${printExpression(b.right, context)}"
+      case s: StringPart =>
+        s.stringValue
+      case s: StringLiteral =>
+        s"'${s.stringValue}'"
       case l: Literal =>
         l.stringValue
       case i: Identifier =>
@@ -180,6 +186,14 @@ object GenSQL extends Phase("generate-sql"):
           s"${printExpression(s.expr, context)} AS ${s.nameExpr.fullName}"
       case a: Attribute =>
         a.fullName
+      case p: ParenthesizedExpression =>
+        s"(${printExpression(p.child, context)})"
+      case i: InterpolatedString =>
+        i.parts
+          .map { e =>
+            printExpression(e, context)
+          }
+          .mkString
       case other =>
         warn(s"unknown expression type: ${other}")
         other.toString

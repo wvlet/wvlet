@@ -3,7 +3,9 @@ package com.treasuredata.flow.lang.compiler.analyzer
 import com.treasuredata.flow.lang.compiler.{
   CompilationUnit,
   Context,
+  MethodSymbolInfo,
   ModelSymbolInfo,
+  MultipleSymbolInfo,
   Name,
   NamedSymbolInfo,
   PackageSymbolInfo,
@@ -20,13 +22,13 @@ import Type.{ImportType, PackageType}
 import com.treasuredata.flow.lang.StatusCode
 import com.treasuredata.flow.lang.model.expr.{DotRef, Identifier, NameExpr, QualifiedName}
 import com.treasuredata.flow.lang.model.plan.{
+  FieldDef,
   FunctionDef,
   Import,
   LogicalPlan,
   ModelDef,
   PackageDef,
-  TypeDef,
-  TypeValDef
+  TypeDef
 }
 
 /**
@@ -105,10 +107,10 @@ object SymbolLabeler extends Phase("symbol-labeler"):
   end registerPackageSymbol
 
   private def registerTypeDefSymbol(t: TypeDef)(using ctx: Context): Symbol =
-    val typeName = Name.typeName(t.name.leafName)
+    val typeName = t.name
 
     def toFunctionType(f: FunctionDef): FunctionType = FunctionType(
-      name = Name.termName(f.name.leafName),
+      name = f.name,
       args = f
         .args
         .map { a =>
@@ -118,61 +120,87 @@ object SymbolLabeler extends Phase("symbol-labeler"):
         },
       returnType = f.dataType,
       // TODO resolve qualified name
-      scopes = t.scopes.map(x => Name.typeName(x.tpe.leafName))
+      contextNames = t.defContexts.map(x => Name.typeName(x.tpe.leafName))
     )
 
     ctx.scope.lookupSymbol(typeName) match
       case Some(sym) =>
-        // Attach the already generated symbol to the node
+        // Symbol is already assigned if context-specific types and functions (e.g., in duckdb, in trino) are defined
         t.symbol = sym
         trace(s"Attach symbol ${sym} to ${t.name} ${t.locationString(using ctx)}")
-        if t.scopes.nonEmpty then
-          // Add scope-specific functions
-          val si = sym.symbolInfo
-          si.dataType match
-            case st: SchemaType =>
-              val defs = t
-                .elems
-                .collect { case f: FunctionDef =>
-                  toFunctionType(f)
-                }
-              si.dataType = st.copy(defs = st.defs ++ defs)
-            case _ =>
-              throw StatusCode
-                .UNEXPECTED_STATE
-                .newException(
-                  s"Unexpected type symbol info: ${si}",
-                  t.sourceLocation(using ctx.compilationUnit)
+        sym.symbolInfo match
+          case ts: TypeSymbolInfo =>
+            val typeScope = ts.declScope
+            t.elems
+              .collect { case f: FunctionDef =>
+                val ft = toFunctionType(f)
+                val funSym: Symbol =
+                  typeScope.lookupSymbol(f.name) match
+                    case Some(funSym) =>
+                      funSym
+                    case None =>
+                      val funSym = Symbol(ctx.global.newSymbolId)
+                      f.symbol = funSym
+                      typeScope.add(ft.name, funSym)
+                      funSym
+
+                val methodSymbolInfo = MethodSymbolInfo(
+                  funSym,
+                  sym,
+                  f.name,
+                  ft,
+                  f.expr,
+                  t.defContexts ++ f.defContexts
                 )
+                if funSym.symbolInfo == null then
+                  funSym.symbolInfo = methodSymbolInfo
+                else
+                  funSym.symbolInfo = MultipleSymbolInfo(methodSymbolInfo, funSym.symbolInfo)
+              }
+          case _ =>
+        end match
         sym
       case None =>
         // Create a new type symbol
         val sym = TypeSymbol(ctx.global.newSymbolId, ctx.compilationUnit.sourceFile)
         ctx.compilationUnit.enter(sym)
-        val typeScope = ctx.newContext(sym)
+        val typeCtx   = ctx.newContext(sym)
+        val typeScope = typeCtx.scope
 
-        // Check type members
-        val defs = t
-          .elems
+        // Register method defs to the type scope
+        t.elems
           .collect { case f: FunctionDef =>
-            toFunctionType(f)
+            val ft     = toFunctionType(f)
+            val funSym = Symbol(ctx.global.newSymbolId)
+            f.symbol = funSym
+            funSym.symbolInfo = MethodSymbolInfo(
+              funSym,
+              sym,
+              f.name,
+              ft,
+              f.expr,
+              t.defContexts ++ f.defContexts
+            )
+            typeScope.add(ft.name, funSym)
+            ft
           }
 
         val columns = t
           .elems
-          .collect { case v: TypeValDef =>
+          .collect { case v: FieldDef =>
             // Resolve simple primitive types earlier.
             // TODO: DataType.parse(typeName) for complex types, including UnknownTypes
-            val dt = DataType.parse(v.tpe.fullName)
-            NamedType(Name.termName(v.name.leafName), dt)
+            val dt = DataType.parse(v.tpe.fullName, v.params)
+            NamedType(v.name, dt)
           }
 
         val parentSymbol = t.parent.map(registerParentSymbols).orElse(Some(ctx.owner))
         val parentTpe    = parentSymbol.map(_.dataType)
-        val tpe          = SchemaType(parent = parentTpe, typeName, columns, defs)
+        val tpe          = SchemaType(parent = parentTpe, typeName, columns)
 
         // Associate TypeSymbolInfo with the symbol
-        sym.symbolInfo = TypeSymbolInfo(sym, owner = parentSymbol.get, typeName, tpe)
+        sym.symbolInfo = TypeSymbolInfo(sym, owner = parentSymbol.get, typeName, tpe, typeScope)
+
         trace(s"Created type symbol ${sym}: ${tpe}")
         sym.tree = t
 
@@ -191,7 +219,13 @@ object SymbolLabeler extends Phase("symbol-labeler"):
         s
       case None =>
         val sym = Symbol(ctx.global.newSymbolId)
-        sym.symbolInfo = TypeSymbolInfo(sym, Symbol.NoSymbol, typeName, DataType.UnknownType)
+        sym.symbolInfo = TypeSymbolInfo(
+          sym,
+          Symbol.NoSymbol,
+          typeName,
+          DataType.UnknownType,
+          ctx.scope
+        )
         parent.symbol = sym
         sym
 
@@ -204,7 +238,8 @@ object SymbolLabeler extends Phase("symbol-labeler"):
         val sym = Symbol(ctx.global.newSymbolId)
         ctx.compilationUnit.enter(sym)
         sym.tree = m
-        sym.symbolInfo = ModelSymbolInfo(sym, ctx.owner, modelName, m.relationType)
+        val tpe = m.givenRelationType.getOrElse(m.relationType)
+        sym.symbolInfo = ModelSymbolInfo(sym, ctx.owner, modelName, tpe)
         m.symbol = sym
         trace(s"Created a new model symbol ${sym}")
         ctx.scope.add(modelName, sym)

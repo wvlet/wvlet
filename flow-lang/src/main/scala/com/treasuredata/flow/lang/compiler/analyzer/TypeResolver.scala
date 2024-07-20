@@ -5,6 +5,7 @@ import com.treasuredata.flow.lang.compiler.RewriteRule.PlanRewriter
 import com.treasuredata.flow.lang.compiler.{
   CompilationUnit,
   Context,
+  MethodSymbolInfo,
   ModelSymbolInfo,
   Name,
   Phase,
@@ -47,6 +48,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
       resolveUnderscore ::            // resolve underscore in relation nodes
       resolveThis ::                  // resolve `this` in type definitions
       resolveFunctionBodyInTypeDef :: //
+      resolveInlineRef ::             // Resolve inline-expression expansion
       resolveModelDef ::              // Resolve models again to use the updated types
       Nil
 
@@ -135,14 +137,14 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
               }
             if updated then
               val newType = s.copy(columnTypes = newCols)
-              trace(s"Resolved ${t.name.fullName} as ${newType}")
+              trace(s"Resolved ${t.name} as ${newType}")
               t.symbol.symbolInfo(using context).dataType = newType
               newType
             else
               s
           case other =>
             warn(
-              f"Unresolved type ${t.name.fullName}: ${other} (${t.locationString(using context)})"
+              f"Unresolved type ${t}[${t.params}]: ${other} (${t.locationString(using context)})"
             )
         end match
         // No tree rewrite is required
@@ -188,13 +190,19 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
         val modelType = m.givenRelationType.get
         lookupType(modelType.typeName, context) match
           case Some(sym) =>
-            val si              = sym.symbolInfo(using context)
+            val si = sym.symbolInfo(using context)
+            trace(
+              s"${modelType.typeName} -> ${m.symbol.id} -> ${m.symbol.symbolInfo(using context)}"
+            )
             val modelSymbolInfo = m.symbol.symbolInfo(using context)
             si.dataType match
               case r: RelationType =>
                 trace(s"Resolved model type: ${m.name} as ${r}")
                 modelSymbolInfo.dataType = r
-                m.copy(givenRelationType = Some(r))
+                // TODO Develop safe copy or embed Symbol as Plan parameter
+                val newModel = m.copy(givenRelationType = Some(r))
+                newModel.symbol = m.symbol
+                newModel
               case other =>
                 warn(s"Unexpected model type: ${other} ${m.locationString(using context)}")
                 m
@@ -387,7 +395,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
     */
   object resolveThis extends RewriteRule:
     override def apply(context: Context): PlanRewriter = { case t: TypeDef =>
-      val enclosing = context.scope.lookupSymbol(Name.typeName(t.name.leafName))
+      val enclosing = context.scope.lookupSymbol(t.name)
       enclosing match
         case Some(s: Symbol) =>
           // TODO Handle nested definition (e.g., nested type definition)
@@ -400,6 +408,40 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
         case _ =>
           t
     }
+
+  object resolveInlineRef extends RewriteRule:
+    private def resolveRef(using ctx: Context): PartialFunction[Expression, Expression] =
+      case ref @ DotRef(qual, name: Identifier, _, _) if qual.dataType.isResolved =>
+        trace(s"resolve ${qual.dataType}.${name.leafName} (${ref.locationString})")
+        val methodName = Name.termName(name.leafName)
+        lookupType(qual.dataType.typeName, ctx) match
+          case Some(sym) =>
+            sym.symbolInfo.findMember(methodName) match
+              case funSym: Symbol if !funSym.isNoSymbol =>
+                funSym.symbolInfo match
+                  case fun: MethodSymbolInfo =>
+                    trace(s"found ${fun.name} = ${fun.body}")
+                    // Replace {this} -> {qual}
+                    fun
+                      .body
+                      .map { body =>
+                        body.transformExpression { case th: This =>
+                          qual
+                        }
+                      }
+                      .getOrElse(ref)
+                  case _ =>
+                    ref
+              case _ =>
+                ref
+          case _ =>
+            ref
+
+    override def apply(context: Context): PlanRewriter =
+      case r: Relation =>
+        r.transformUpExpressions(resolveRef(using context))
+
+  end resolveInlineRef
 
   object resolveFunctionBodyInTypeDef extends RewriteRule:
     override def apply(context: Context): PlanRewriter = { case td: TypeDef =>
@@ -434,7 +476,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
               }
             // create a type that includes function arguments
             val knownFields = fields ++ argFields
-            val inputType   = SchemaType(None, Name.NoTypeName, knownFields, Nil)
+            val inputType   = SchemaType(None, Name.NoTypeName, knownFields)
             trace(s"resolve function body: ${f.name} using ${inputType}")
             val newF = f.copy(
               retType = retType,
@@ -471,6 +513,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
         case None =>
           a
     case ref: DotRef =>
+      val refName = Name.termName(ref.name.leafName)
       // Resolve types after following . (dot)
       ref.qualifier.dataType match
         case t: SchemaType =>
@@ -485,32 +528,34 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
                 ref.nodeLocation
               )
             case None =>
-              t.defs.find(_.name.name == ref.name.fullName) match
-                case Some(f: FunctionType) =>
-                  trace(s"Resolved ${t}.${ref.name.fullName} as a function")
-                  ref.copy(dataType = f.returnType)
+              // Lookup functions
+              lookupType(t.typeName, context).map(_.symbolInfo(using context)) match
+                case Some(tpe: TypeSymbolInfo) =>
+                  tpe.declScope.lookupSymbol(refName).map(_.symbolInfo(using context)) match
+                    case Some(method: MethodSymbolInfo) =>
+                      trace(s"Resolved ${t}.${ref.name.fullName} as a function")
+                      ref.copy(dataType = method.ft.returnType)
+                    case _ =>
+                      warn(s"${t}.${ref.name.fullName} is not found")
+                      ref
                 case _ =>
                   warn(s"${t}.${ref.name.fullName} is not found")
                   ref
         case other =>
           // TODO Support multiple context-specific functions
-          lookupType(other.typeName, context) match
-            case Some(sym) =>
-              sym.symbolInfo(using context).dataType match
-                case s: SchemaType =>
-                  s.defs.find(_.name.name == ref.name.leafName) match
-                    case Some(f) =>
-                      trace(s"Resolved ${ref} as ${f}")
-                      ref.copy(dataType = f.returnType)
-                    case None =>
-                      trace(s"Failed to resolve ${ref} as ${other}")
-                      ref
-                case other =>
+          lookupType(other.typeName, context).map(_.symbolInfo(using context)) match
+            case Some(tpe: TypeSymbolInfo) =>
+              tpe.declScope.lookupSymbol(refName).map(_.symbolInfo(using context)) match
+                case Some(method: MethodSymbolInfo) =>
+                  trace(s"Resolved ${ref} as ${method.ft}")
+                  ref.copy(dataType = method.ft.returnType)
+                case _ =>
                   trace(s"Failed to resolve ${ref} as ${other}")
                   ref
-            case None =>
+            case _ =>
               trace(s"TODO: resolve ref: ${ref.fullName} as ${other}")
               ref
+      end match
     case i: InterpolatedString if i.prefix.fullName == "sql" =>
       // Ignore it because embedded SQL expressions have no static type
       i

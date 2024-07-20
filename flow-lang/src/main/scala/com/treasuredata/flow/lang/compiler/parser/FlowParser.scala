@@ -334,7 +334,7 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
 
   def typeDef(): TypeDef =
     val t       = consume(FlowToken.TYPE)
-    val name    = identifier()
+    val name    = Name.typeName(identifier().leafName)
     val tp      = typeParams()
     val scopes  = context()
     val parents = typeExtends()
@@ -345,8 +345,7 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
       throw StatusCode
         .SYNTAX_ERROR
         .newException(
-          s"extending multiple types is not supported: ${name
-              .fullName} extends ${parents.map(_.fullName).mkString(", ")}",
+          s"extending multiple types is not supported: ${name} extends ${parents.map(_.fullName).mkString(", ")}",
           t.sourceLocation
         )
     TypeDef(name, tp, scopes, parents.headOption, elems, t.nodeLocation)
@@ -440,7 +439,7 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
               Some(expression())
             case _ =>
               None
-        TypeValDef(name, valType, tp, defaultValue, t.nodeLocation)
+        FieldDef(Name.termName(name.leafName), valType, tp, defaultValue, t.nodeLocation)
       case _ =>
         unexpected(t)
 
@@ -464,7 +463,8 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
         case FlowToken.COLON =>
           consume(FlowToken.COLON)
           val id = identifier()
-          Some(DataType.parse(id.fullName))
+          val tp = typeParams()
+          Some(DataType.parse(id.fullName, tp))
         case _ =>
           None
 
@@ -475,7 +475,7 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
           Some(expression())
         case _ =>
           None
-    FunctionDef(name, args, defScope, retType, body, t.nodeLocation)
+    FunctionDef(Name.termName(name.leafName), args, defScope, retType, body, t.nodeLocation)
 
   end funDef
 
@@ -1106,7 +1106,7 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
       t.token match
         case FlowToken.STRING_PART =>
           val part = consume(FlowToken.STRING_PART)
-          parts += StringLiteral(part.str, part.nodeLocation)
+          parts += StringPart(part.str, part.nodeLocation)
           nextPart()
         case FlowToken.L_BRACE =>
           consume(FlowToken.L_BRACE)
@@ -1120,7 +1120,7 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
       nextPart()
     if scanner.lookAhead().token == FlowToken.STRING_LITERAL then
       val part = consume(FlowToken.STRING_PART)
-      parts += StringLiteral(part.str, part.nodeLocation)
+      parts += StringPart(part.str, part.nodeLocation)
 
     InterpolatedString(prefixNode, parts.result(), prefix.nodeLocation)
 
@@ -1193,6 +1193,8 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
                 FunctionArg(Some(Name.termName(i.leafName)), expr, t.nodeLocation)
               case _ =>
                 FunctionArg(None, nameOrArg, t.nodeLocation)
+          case Eq(i: Identifier, v: Expression, nodeLocation) =>
+            FunctionArg(Some(Name.termName(i.leafName)), v, t.nodeLocation)
           case expr: Expression =>
             FunctionArg(None, nameOrArg, t.nodeLocation)
       case _ =>

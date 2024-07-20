@@ -1,6 +1,6 @@
 package com.treasuredata.flow.lang.model.plan
 
-import com.treasuredata.flow.lang.compiler.{SourceFile, TermName}
+import com.treasuredata.flow.lang.compiler.{SourceFile, TermName, TypeName}
 import com.treasuredata.flow.lang.model.DataType.{EmptyRelationType, TypeParameter}
 import com.treasuredata.flow.lang.model.{DataType, NodeLocation, RelationType}
 import com.treasuredata.flow.lang.model.expr.{
@@ -50,9 +50,9 @@ case class TypeAlias(alias: NameExpr, sourceTypeName: NameExpr, nodeLocation: Op
     extends LanguageStatement
 
 case class TypeDef(
-    name: NameExpr,
+    name: TypeName,
     params: List[TypeParameter],
-    scopes: List[DefContext],
+    defContexts: List[DefContext],
     parent: Option[NameExpr],
     elems: List[TypeElem],
     nodeLocation: Option[NodeLocation]
@@ -66,9 +66,9 @@ case class TopLevelFunctionDef(functionDef: FunctionDef, nodeLocation: Option[No
 
 // def ... { ... } in the type definition
 case class FunctionDef(
-    name: NameExpr,
+    name: TermName,
     args: List[DefArg],
-    scopes: List[DefContext],
+    defContexts: List[DefContext],
     retType: Option[DataType],
     expr: Option[Expression],
     nodeLocation: Option[NodeLocation]
@@ -83,8 +83,8 @@ case class DefArg(
 ) extends Expression:
   override def children: Seq[Expression] = Seq.empty
 
-case class TypeValDef(
-    name: NameExpr,
+case class FieldDef(
+    name: TermName,
     tpe: NameExpr,
     params: List[TypeParameter],
     body: Option[Expression],

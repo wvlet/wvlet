@@ -35,7 +35,7 @@ object Type:
       name: Name,
       args: Seq[NamedType],
       returnType: DataType,
-      scopes: List[Name]
+      contextNames: List[Name]
   ) extends Type:
     override def typeDescription: String = s"${name}(${args.mkString(", ")}): ${returnType}"
     override def isFunctionType: Boolean = true

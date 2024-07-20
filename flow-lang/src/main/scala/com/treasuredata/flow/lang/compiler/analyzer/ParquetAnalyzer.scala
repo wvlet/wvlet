@@ -35,6 +35,6 @@ object ParquetAnalyzer:
           // TODO support non-primitive type parsing
           NamedType(Name.termName(name), DataType.getPrimitiveType(dataType))
         }
-        SchemaType(None, Name.typeName(RelationType.newRelationTypeName), columns, Nil)
+        SchemaType(None, Name.typeName(RelationType.newRelationTypeName), columns)
       }
     }

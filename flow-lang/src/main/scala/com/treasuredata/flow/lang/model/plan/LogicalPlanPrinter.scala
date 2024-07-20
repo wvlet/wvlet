@@ -71,10 +71,10 @@ object LogicalPlanPrinter extends LogSupport:
             else
               List("[", t.params.map(_.typeDescription).mkString(", "), "]")
             ,
-            if t.scopes.isEmpty then
+            if t.defContexts.isEmpty then
               Nil
             else
-              List(" in ", concat(t.scopes, ", "))
+              List(" in ", concat(t.defContexts, ", "))
             ,
             if t.parent.isEmpty then
               Nil
@@ -193,7 +193,7 @@ object LogicalPlanPrinter extends LogSupport:
         concat(
           List(
             "def ",
-            t.name.sqlExpr,
+            t.name,
             if t.args.isEmpty then
               Nil
             else
@@ -210,7 +210,7 @@ object LogicalPlanPrinter extends LogSupport:
               List(" = ", t.expr)
           )
         )
-      case t: TypeValDef =>
+      case t: FieldDef =>
         concat(
           List(
             "val ",

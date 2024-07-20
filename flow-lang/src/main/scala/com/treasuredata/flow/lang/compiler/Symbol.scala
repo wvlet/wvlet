@@ -9,7 +9,7 @@ import wvlet.log.LogSupport
 
 object Symbol:
   val NoSymbol: Symbol =
-    new Symbol(0):
+    new Symbol(-1):
       override def computeSymbolInfo(using Context): SymbolInfo = NoSymbolInfo
 
   private val importName = Name.termName("<import>")
@@ -70,8 +70,8 @@ class Symbol(val id: Int) extends LogSupport:
     _tree = t
 
   def symbolInfo(using Context): SymbolInfo =
-    if _symbolInfo == null then
-      _symbolInfo = computeSymbolInfo
+//    if _symbolInfo == null then
+//      _symbolInfo = computeSymbolInfo
     _symbolInfo
 
   def symbolInfo_=(info: SymbolInfo): Unit = _symbolInfo = info

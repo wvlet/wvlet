@@ -4,6 +4,7 @@ import com.treasuredata.flow.lang.StatusCode
 import com.treasuredata.flow.lang.model.*
 import com.treasuredata.flow.lang.model.DataType.*
 import com.treasuredata.flow.lang.model.plan.LogicalPlan
+import wvlet.airframe.surface.reflect.ReflectTypeUtil
 import wvlet.log.LogSupport
 
 /**
@@ -22,7 +23,12 @@ trait Expression extends TreeNode with Product with LogSupport:
   protected def copyInstance(newArgs: Seq[AnyRef]): this.type =
     try
       val primaryConstructor = this.getClass.getDeclaredConstructors()(0)
-      val newObj             = primaryConstructor.newInstance(newArgs*)
+      val newObj =
+        if primaryConstructor.getParameterCount == 0 && this.getClass.getSimpleName.endsWith("$")
+        then
+          ReflectTypeUtil.companionObject(this.getClass).get
+        else
+          primaryConstructor.newInstance(newArgs*)
       newObj.asInstanceOf[this.type]
     catch
       case e: IllegalArgumentException =>

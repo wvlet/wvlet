@@ -83,7 +83,7 @@ case class DotRef(
         // TODO print right expr
         s"${qualifier}.${name.fullName}"
 
-  override def toString: String          = s"Ref(${qualifier},${name})"
+  override def toString: String          = s"DotRef(${qualifier},${name})"
   override def children: Seq[Expression] = Seq(qualifier)
 
 sealed trait Identifier extends QualifiedName with LeafExpression:
@@ -582,6 +582,13 @@ case class StringLiteral(value: String, nodeLocation: Option[NodeLocation])
   override def dataType: DataType  = DataType.StringType
   override def stringValue: String = value
   override def toString            = s"StringLiteral('${value}')"
+
+case class StringPart(value: String, nodeLocation: Option[NodeLocation])
+    extends Literal
+    with LeafExpression:
+  override def dataType: DataType  = DataType.StringType
+  override def stringValue: String = value
+  override def toString            = s"StringPart('${value}')"
 
 case class TripleQuoteLiteral(value: String, nodeLocation: Option[NodeLocation])
     extends Literal
