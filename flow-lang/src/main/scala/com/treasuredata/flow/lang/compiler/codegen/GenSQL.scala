@@ -157,6 +157,8 @@ object GenSQL extends Phase("generate-sql"):
         )
       case t: TableRef =>
         indent(s"""(select * from ${t.name.fullName})""")
+      case t: TableScan =>
+        indent(s"""(select * from ${t.name})""")
       case other =>
         warn(s"unknown relation type: ${other}")
         other.toString

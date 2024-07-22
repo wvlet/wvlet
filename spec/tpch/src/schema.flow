@@ -17,7 +17,7 @@ type lineitem:
   l_comment: string
 end
 
-type custoemr:
+type customer:
   c_custkey: int
   c_name: string
   c_address: string

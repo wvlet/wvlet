@@ -52,6 +52,51 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
       resolveModelDef ::              // Resolve models again to use the updated types
       Nil
 
+  private def lookupType(name: Name, context: Context): Option[Symbol] =
+    context.scope.lookupSymbol(name) match
+      case Some(s) =>
+        Some(s)
+      case None =>
+        var foundSym: Option[Symbol] = None
+        context
+          .importDefs
+          .collectFirst {
+            case i: Import if i.importRef.leafName == name.name =>
+              // trace(s"Found import ${i}")
+              for
+                ctx <- context.global.getAllContexts
+                if foundSym.isEmpty
+              do
+                // trace(s"Lookup ${name} in ${ctx.compilationUnit.sourceFile.fileName}")
+                ctx
+                  .compilationUnit
+                  .knownSymbols
+                  .collectFirst {
+                    case s: Symbol if s.name(using ctx) == name =>
+                      trace(s"Found ${s.name(using ctx)} in ${ctx.compilationUnit}")
+                      foundSym = Some(s)
+                  }
+          }
+
+        if foundSym.isEmpty then
+          // Search for global and preset contexts
+          for
+            // TODO Search global scope
+            ctx <- context.global.getAllContexts.filter(_.compilationUnit.isPreset)
+            if foundSym.isEmpty
+          do
+            trace(s"Searching ${name} in ${ctx.compilationUnit.sourceFile.fileName}")
+            ctx
+              .compilationUnit
+              .knownSymbols
+              .collectFirst {
+                case s: Symbol if s.name(using ctx) == name =>
+                  trace(s"Found ${s.name(using ctx)} in ${ctx.compilationUnit}")
+                  foundSym = Some(s)
+              }
+
+        foundSym
+
   def resolve(plan: LogicalPlan, context: Context): LogicalPlan =
 
     def preScan(p: LogicalPlan, ctx: Context): Context =
@@ -91,11 +136,14 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
             stmts += newStmt
 
             if !ctx.compilationUnit.isPreset then
-              debug(newStmt.pp)
+              trace(newStmt.pp)
 
+            // Update the tree reference from the symbol
             newStmt match
               case m: ModelDef =>
                 m.symbol.tree = m
+              case t: TypeDef =>
+                t.symbol.tree = t
               case _ =>
 
             ctx = nextContext(newStmt, ctx)
@@ -213,50 +261,6 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
 
   end resolveModelDef
 
-  private def lookupType(name: Name, context: Context): Option[Symbol] =
-    context.scope.lookupSymbol(name) match
-      case Some(s) =>
-        Some(s)
-      case None =>
-        var foundSym: Option[Symbol] = None
-        context
-          .importDefs
-          .collectFirst {
-            case i: Import if i.importRef.leafName == name.name =>
-              // trace(s"Found import ${i}")
-              for
-                ctx <- context.global.getAllContexts
-                if foundSym.isEmpty
-              do
-                // trace(s"Lookup ${name} in ${ctx.compilationUnit.sourceFile.fileName}")
-                ctx
-                  .compilationUnit
-                  .knownSymbols
-                  .collectFirst {
-                    case s: Symbol if s.name(using ctx) == name =>
-                      trace(s"Found ${s.name(using ctx)} in ${ctx.compilationUnit}")
-                      foundSym = Some(s)
-                  }
-          }
-
-        if foundSym.isEmpty then
-          // Search for preset contexts
-          for
-            ctx <- context.global.getAllContexts.filter(_.compilationUnit.isPreset)
-            if foundSym.isEmpty
-          do
-            trace(s"Searching ${name} in ${ctx.compilationUnit.sourceFile.fileName}")
-            ctx
-              .compilationUnit
-              .knownSymbols
-              .collectFirst {
-                case s: Symbol if s.name(using ctx) == name =>
-                  trace(s"Found ${s.name(using ctx)} in ${ctx.compilationUnit}")
-                  foundSym = Some(s)
-              }
-
-        foundSym
-
   /**
     * Resolve TableRefs with concrete TableScans using the table schema in the catalog.
     */
@@ -284,8 +288,15 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
               case _ =>
                 ref
           case None =>
-            trace(s"Unresolved table ref: ${ref.name.fullName}")
-            ref
+            // Lookup known types
+            val tblType = Name.typeName(ref.name.leafName)
+            lookupType(tblType, context).map(_.symbolInfo(using context).dataType) match
+              case Some(tpe: SchemaType) =>
+                trace(s"Found a table type for ${tblType}: ${tpe}")
+                TableScan(tblType.toTermName, tpe, tpe.fields, ref.nodeLocation)
+              case _ =>
+                warn(s"Unresolved table ref: ${ref.name.fullName}: ${context.scope.getAllEntries}")
+                ref
       case ref: ModelRef if !ref.relationType.isResolved =>
         lookup(ref.name, context) match
           case Some(sym) =>
@@ -506,7 +517,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
   ): PartialFunction[Expression, Expression] =
     case a: Attribute if !a.dataType.isResolved && !a.nameExpr.isEmpty =>
       val name = a.fullName
-      debug(s"Find ${name} in ${inputRelationType.fields} ${a.locationString(using context)}")
+      trace(s"Find ${name} in ${inputRelationType.fields} ${a.locationString(using context)}")
       inputRelationType.find(x => x.name == name) match
         case Some(tpe) =>
           a // a.withDataType(tpe.dataType)
@@ -543,6 +554,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
                   ref
         case other =>
           // TODO Support multiple context-specific functions
+          // warn(s"qualifier's type name: ${other.typeName}: ${ref.qualifier}")
           lookupType(other.typeName, context).map(_.symbolInfo(using context)) match
             case Some(tpe: TypeSymbolInfo) =>
               tpe.declScope.lookupSymbol(refName).map(_.symbolInfo(using context)) match
