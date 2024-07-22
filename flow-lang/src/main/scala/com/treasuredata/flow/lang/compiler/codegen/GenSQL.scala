@@ -185,7 +185,7 @@ object GenSQL extends Phase("generate-sql"):
         if s.nameExpr.isEmpty then
           printExpression(s.expr, context)
         else
-          s"${printExpression(s.expr, context)} AS ${s.nameExpr.fullName}"
+          s"${printExpression(s.expr, context)} as ${s.nameExpr.fullName}"
       case a: Attribute =>
         a.fullName
       case p: ParenthesizedExpression =>

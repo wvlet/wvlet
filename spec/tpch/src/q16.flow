@@ -19,7 +19,7 @@ select
     p_brand,
     p_type,
     p_size,
-    supplier_cnt: ps_suppkey.count_distinct
+    supplier_cnt = ps_suppkey.count_distinct
 order by
     supplier_cnt desc,
     p_brand,

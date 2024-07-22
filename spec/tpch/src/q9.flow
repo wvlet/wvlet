@@ -15,9 +15,9 @@ from (
         and s_nationkey = n_nationkey
         and p_name.like('%green%')
     select
-        nation: n_name,
-        o_yeare: o_orderdate.extract('year'),
-        amount: l_extendedprice * (1 - l_discount) - ps_supplycost * l_quantity
+        nation = n_name,
+        o_yeare = o_orderdate.extract('year'),
+        amount = l_extendedprice * (1 - l_discount) - ps_supplycost * l_quantity
     ) as profit
 group by
     nation,
@@ -25,7 +25,7 @@ group by
 select
     nation,
     o_year,
-    sum_profit: amount.sum
+    sum_profit = amount.sum
 order by
     nation,
     o_year desc

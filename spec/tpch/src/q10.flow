@@ -21,7 +21,7 @@ group by
 select
     c_custkey,
     c_name,
-    revenue: (l_extendedprice * (1 - l_discount)).sum,
+    revenue = (l_extendedprice * (1 - l_discount)).sum,
     c_acctbal,
     n_name,
     c_address,

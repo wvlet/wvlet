@@ -11,4 +11,4 @@ where
         select 0.2 * l_quantity.avg
     )
 select
-    avg_yearly: l_extendedprice.sum / 7.0
+    avg_yearly = l_extendedprice.sum / 7.0

@@ -12,9 +12,9 @@ group by
     l_shipmode
 select
     l_shipmode,
-    high_line_count:
+    high_line_count =
       (if o_orderpriority = '1-URGENT' or o_orderpriority = '2-HIGH' then 1 else 0).sum,
-    low_line_count:
+    low_line_count =
       (if o_orderpriority != '1-URGENT' and o_orderpriority != '2-HIGH' then 1 else 0).sum,
 order by
     l_shipmode

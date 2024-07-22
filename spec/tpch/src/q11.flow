@@ -23,6 +23,6 @@ where
        )
 select
     ps_partkey,
-    value: (ps_supplycost * ps_availqty).sum
+    value = (ps_supplycost * ps_availqty).sum
 order by
     value desc

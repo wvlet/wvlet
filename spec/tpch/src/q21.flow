@@ -27,7 +27,7 @@ group by
     s_name
 select
     s_name,
-    numwait: count(*)
+    numwait = count(*)
 order by
     numwait desc,
     s_name

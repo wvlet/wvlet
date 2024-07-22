@@ -9,6 +9,6 @@ where
 group by o_orderpriority
 select
     o_orderpriority,
-    order_count: _.count
+    order_count = _.count
 order by
     o_orderpriority

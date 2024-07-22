@@ -26,4 +26,4 @@ where (p_partkey = l_partkey
         and l_shipmode.in('AIR', 'AIR REG')
         and l_shipinstruct = 'DELIVER.inPERSON')
 select
-    revenue: (l_extendedprice * (1 - l_discount)).sum
+    revenue = (l_extendedprice * (1 - l_discount)).sum

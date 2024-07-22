@@ -14,7 +14,7 @@ group by
     o_shippriority
 select
     l_orderkey,
-    revenue: (l_extendedprice * (1 - l_discount)).sum,
+    revenue = (l_extendedprice * (1 - l_discount)).sum,
     o_orderdate,
     o_shippriority
 order by

@@ -84,7 +84,7 @@ import wvlet.log.LogSupport
   *   transformItem: qualifiedId '=' expression
   *
   *   selectExpr: selectItem (',' selectItem)* ','?
-  *   selectItem: (identifier ':')? expression
+  *   selectItem: (identifier (':' identifier)? '=')? expression
   *
   *   testExpr: booleanExpression
   *
@@ -741,10 +741,7 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
         case t if t.tokenType == TokenType.Keyword =>
         // finish
         case _ =>
-          val name = identifier()
-          consume(FlowToken.COLON)
-          val expr = expression()
-          items += SingleColumn(name, expr, t.nodeLocation)
+          items += selectItem()
           nextItem
     nextItem
     Transform(input, items.result, t.nodeLocation)
@@ -761,9 +758,9 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
       case FlowToken.IDENTIFIER =>
         val keyName = identifier()
         val key =
-          if scanner.lookAhead().token == FlowToken.COLON then
+          if scanner.lookAhead().token == FlowToken.EQ then
             // (identifier ':')? expression
-            consume(FlowToken.COLON)
+            consume(FlowToken.EQ)
             val aggr = expression()
             UnresolvedGroupingKey(keyName, aggr, t.nodeLocation)
           else
@@ -798,31 +795,28 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
         Nil
       case t if t.tokenType == TokenType.Keyword =>
         Nil
-      case FlowToken.IDENTIFIER =>
-        val exprOrColumName = expression()
-        if scanner.lookAhead().token == FlowToken.COLON then
-          consume(FlowToken.COLON)
-          val expr = expression()
-          exprOrColumName match
-            case columnName: NameExpr =>
-              // Rename the column
-              SingleColumn(columnName, expr, t.nodeLocation) :: selectItems()
-            case other =>
-              unexpected(t)
-        else
-          exprOrColumName match
-            case i: Identifier =>
-              // Propagate the column name for a single column reference
-              SingleColumn(i, exprOrColumName, t.nodeLocation) :: selectItems()
-            case _ =>
-              SingleColumn(EmptyName, exprOrColumName, t.nodeLocation) :: selectItems()
       case _ =>
-        val e          = expression()
-        val selectItem = SingleColumn(EmptyName, e, t.nodeLocation)
-        selectItem :: selectItems()
+        selectItem() :: selectItems()
     end match
 
   end selectItems
+
+  def selectItem(): SingleColumn =
+    val t = scanner.lookAhead()
+    t.token match
+      case FlowToken.IDENTIFIER =>
+        val exprOrColumName = expression()
+        exprOrColumName match
+          case Eq(columnName: Identifier, expr: Expression, nodeLocation) =>
+            SingleColumn(columnName, expr, t.nodeLocation)
+          case i: Identifier =>
+            // Propagate the column name for a single column reference
+            SingleColumn(i, exprOrColumName, t.nodeLocation)
+          case _ =>
+            SingleColumn(EmptyName, exprOrColumName, t.nodeLocation)
+      case _ =>
+        val e = expression()
+        SingleColumn(EmptyName, e, t.nodeLocation)
 
   def limitExpr(input: Relation): Limit =
     val t = consume(FlowToken.LIMIT)

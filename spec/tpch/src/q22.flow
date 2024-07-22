@@ -13,13 +13,13 @@ where
      where o_custkey = c_custkey
   )
 select
-  country_code: c_phone.substring(1, 3),
+  country_code = c_phone.substring(1, 3),
   c_acctbal
 group by
     cntrycode
 select
     cntrycode,
-    numcust: count(),
-    totacctbal: c_acctbal.sum
+    numcust = _.count,
+    totacctbal = c_acctbal.sum
 order by
     cntrycode

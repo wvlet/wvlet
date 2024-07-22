@@ -20,10 +20,10 @@ model m =
   from weblog_users
   -- override only a subset of the columns and report the rest as is
   transform
-    td_client_id: td_client_id.or_else('dummy-' + hex(floor(rand() * 4294966016))),
-    naid: naid.or_else('dummy-' + hex(floor(rand() * 4294966016))),
+    td_client_id = td_client_id.or_else('dummy-' + hex(floor(rand() * 4294966016))),
+    naid = naid.or_else('dummy-' + hex(floor(rand() * 4294966016))),
   group by
-    cdp_customer_id: sha1([td_client_id.or_else(''), naid.or_else('')].join('.'))
+    cdp_customer_id = sha1([td_client_id.or_else(''), naid.or_else('')].join('.'))
   select
     _.max_by(time)
 end

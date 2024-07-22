@@ -35,5 +35,5 @@ select
 -- rename column
 from person
 select
-  person_id: id,
-  person_name: name
+  person_id = id,
+  person_name = name

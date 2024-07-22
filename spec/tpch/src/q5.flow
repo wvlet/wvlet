@@ -19,6 +19,6 @@ group by
     n_name
 select
     n_name,
-    revenue: (l_extendedprice * (1 - l_discount)).sum
+    revenue = (l_extendedprice * (1 - l_discount)).sum
 order by
     revenue desc
