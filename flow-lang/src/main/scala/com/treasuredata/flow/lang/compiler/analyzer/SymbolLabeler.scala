@@ -118,7 +118,7 @@ object SymbolLabeler extends Phase("symbol-labeler"):
           val paramType = a.dataType
           NamedType(paramName, paramType)
         },
-      returnType = f.dataType,
+      returnType = f.retType.getOrElse(DataType.UnknownType),
       // TODO resolve qualified name
       contextNames = t.defContexts.map(x => Name.typeName(x.tpe.leafName))
     )

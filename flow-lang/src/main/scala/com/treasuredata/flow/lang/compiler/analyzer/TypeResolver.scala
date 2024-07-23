@@ -49,7 +49,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
       resolveThis ::                  // resolve `this` in type definitions
       resolveFunctionBodyInTypeDef :: //
       resolveInlineRef ::             // Resolve inline-expression expansion
-      resolveImplicitAggregation ::   // Resolve aggregation expression without group by
+      resolveAggregationFunctions ::  // Resolve aggregation expression without group by
       resolveModelDef ::              // Resolve models again to use the updated types
       Nil
 
@@ -510,12 +510,12 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
   end resolveFunctionBodyInTypeDef
 
   /**
-    * For implicit aggregation, which has no Aggregate plan node, a simple expression like
+    * For aggregation, which has no Aggregate plan node, a simple expression like
     * {{{(l_extendedprice * l_discount)}}} can be an aggregation expression if aggregation function
     * is applied like {{{(l_extendedprice * l_discount).sum}}}.
     */
-  private object resolveImplicitAggregation extends RewriteRule:
-    private def resolveImplicitAggregationExpr(p: Project, ctx: Context): LogicalPlan =
+  private object resolveAggregationFunctions extends RewriteRule:
+    private def resolveAggregationExpr(p: Project, ctx: Context): LogicalPlan =
       // TODO Cache aggregation function lists
       val aggFunctions: List[Symbol] = lookupType(Name.typeName("array"), ctx)
         .map(_.symbolInfo(using ctx))
@@ -538,8 +538,12 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
                   case m: MethodSymbolInfo =>
                     // inline aggregation function body
                     val newExpr = m.body.getOrElse(s.expr)
-                    val expandedExpr: Expression = newExpr.transformExpression { case th: This =>
-                      qual
+                    var expandedExpr: Expression = newExpr.transformExpression {
+                      case th: This =>
+                        qual
+                      case i: InterpolatedString =>
+                        // Resolve interpolated string from function argument type
+                        i.copy(dataType = m.ft.returnType)
                     }
                     s.copy(expr = expandedExpr)
                   case _ =>
@@ -550,23 +554,13 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
             s
       }
 
-    end resolveImplicitAggregationExpr
+    end resolveAggregationExpr
 
-    private def hasAggregation(r: Relation): Boolean =
-      r match
-        case a: Aggregate =>
-          true
-        case u: UnaryRelation =>
-          hasAggregation(u.child)
-        case _ =>
-          false
-
-    override def apply(context: Context): PlanRewriter = {
-      case p: Project => // if !hasAggregation(p) =>
-        resolveImplicitAggregationExpr(p, context)
+    override def apply(context: Context): PlanRewriter = { case p: Project =>
+      resolveAggregationExpr(p, context)
     }
 
-  end resolveImplicitAggregation
+  end resolveAggregationFunctions
 
   /**
     * Resolve the given expression type using the input attributes from child plan nodes

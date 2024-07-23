@@ -802,6 +802,7 @@ case class Extract(interval: IntervalField, expr: Expression, nodeLocation: Opti
 case class InterpolatedString(
     prefix: NameExpr,
     parts: List[Expression],
+    override val dataType: DataType,
     nodeLocation: Option[NodeLocation]
 ) extends Expression:
   override def children: Seq[Expression] = parts

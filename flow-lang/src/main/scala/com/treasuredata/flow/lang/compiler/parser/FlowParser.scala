@@ -1116,7 +1116,7 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
       val part = consume(FlowToken.STRING_PART)
       parts += StringPart(part.str, part.nodeLocation)
 
-    InterpolatedString(prefixNode, parts.result(), prefix.nodeLocation)
+    InterpolatedString(prefixNode, parts.result(), DataType.UnknownType, prefix.nodeLocation)
 
   def nameExpression(): NameExpr =
     primaryExpression() match
