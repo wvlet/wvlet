@@ -8,14 +8,18 @@ class DuckDBExecutorTest extends AirSpec:
 
   pendingUntil("Stabilizing the new parser")
 
+  private val duckDB = DuckDBExecutor(prepareTPCH = false)
+
+  override def afterAll: Unit = duckDB.close()
+
   test("q1.flow") {
-    DuckDBExecutor.execute("examples/basic", "q1.flow")
+    duckDB.execute("examples/basic", "q1.flow")
   }
 
   test("q2.flow") {
-    DuckDBExecutor.execute("examples/basic", "q2.flow")
+    duckDB.execute("examples/basic", "q2.flow")
   }
 
   test("weblog") {
-    DuckDBExecutor.execute("examples/cdp_behavior", "behavior.flow")
+    duckDB.execute("examples/cdp_behavior", "behavior.flow")
   }

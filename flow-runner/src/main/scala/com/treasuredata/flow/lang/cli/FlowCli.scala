@@ -53,6 +53,8 @@ class FlowCli(opts: FlowCliOption) extends LogSupport:
 
   @command(description = "Run queries in a given file")
   def run(
+      @option(prefix = "--tpch", description = "Prepare TPC-H data (scale factor 0.01) for testing")
+      prepareTPCH: Boolean = false,
       @argument(description = "target query file to run")
       targetFile: String
   ): Unit =
@@ -71,11 +73,14 @@ class FlowCli(opts: FlowCliOption) extends LogSupport:
             throw StatusCode.INVALID_ARGUMENT.newException(s"Invalid file path: ${targetFile}")
 
       info(s"context directory: ${contextDirectory}")
+
+      val duckdb = DuckDBExecutor(prepareTPCH = prepareTPCH)
+
       val compilationResult = Compiler(Compiler.allPhases).compile(contextDirectory)
       compilationResult.units.find(_.sourceFile.fileName == flowFile) match
         case Some(unit) =>
           val ctx      = compilationResult.context.global.getContextOf(unit)
-          val executor = DuckDBExecutor.execute(unit, ctx)
+          val executor = duckdb.execute(unit, ctx)
         case None =>
           throw StatusCode.INVALID_ARGUMENT.newException(s"File not found: ${targetFile}")
     catch

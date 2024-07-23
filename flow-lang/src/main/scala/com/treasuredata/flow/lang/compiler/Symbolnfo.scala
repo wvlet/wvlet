@@ -58,6 +58,7 @@ class TypeSymbolInfo(symbol: Symbol, owner: Symbol, name: Name, tpe: DataType, t
     extends NamedSymbolInfo(symbol, owner, name, tpe):
   this.declScope = typeScope
   override def findMember(name: Name): Symbol = typeScope.lookupSymbol(name).getOrElse(NoSymbol)
+  def members: List[Symbol]                   = typeScope.getLocalSymbols
 
 class MethodSymbolInfo(
     symbol: Symbol,

@@ -5,7 +5,9 @@ import com.treasuredata.flow.lang.compiler.codegen.GenSQL
 import com.treasuredata.flow.lang.compiler.{CompilationUnit, Compiler, Context}
 import com.treasuredata.flow.lang.model.plan.*
 import com.treasuredata.flow.lang.model.sql.SQLGenerator
+import com.treasuredata.flow.lang.runner.DuckDBExecutor.default
 import org.duckdb.DuckDBConnection
+import wvlet.airframe.codec.JDBCCodec.ResultSetCodec
 import wvlet.airframe.codec.{JDBCCodec, MessageCodec}
 import wvlet.log.{LogLevel, LogSupport, Logger}
 
@@ -15,6 +17,28 @@ import scala.util.Using
 object DuckDBExecutor extends LogSupport:
   def default: DuckDBExecutor = DuckDBExecutor()
 
+class DuckDBExecutor(prepareTPCH: Boolean = false) extends LogSupport with AutoCloseable:
+
+  private val conn: DuckDBConnection =
+    Class.forName("org.duckdb.DuckDBDriver")
+    DriverManager.getConnection("jdbc:duckdb:") match
+      case conn: DuckDBConnection =>
+        if prepareTPCH then
+          Using.resource(conn.createStatement()): stmt =>
+            stmt.execute("install tpch")
+            stmt.execute("load tpch")
+            stmt.execute("call dbgen(sf = 0.01)")
+        conn
+      case _ =>
+        throw StatusCode.NOT_IMPLEMENTED.newException("duckdb connection is unavailable")
+
+  override def close(): Unit =
+    try
+      conn.close()
+    catch
+      case e: Throwable =>
+        warn(e)
+
   def execute(sourceFolder: String, file: String): Unit =
     val result = Compiler.default.compile(sourceFolder)
     result
@@ -23,10 +47,9 @@ object DuckDBExecutor extends LogSupport:
         execute(u, result.context)
 
   def execute(u: CompilationUnit, context: Context): QueryResult =
-    val result = default.execute(u.resolvedPlan, context)
+    val result = execute(u.resolvedPlan, context)
     result
 
-class DuckDBExecutor extends LogSupport:
   def execute(plan: LogicalPlan, context: Context): QueryResult =
     plan match
       case p: PackageDef =>
@@ -40,7 +63,7 @@ class DuckDBExecutor extends LogSupport:
         val sql = GenSQL.generateSQL(q, context)
         debug(s"Executing SQL:\n${sql}")
         try
-          val result = DuckDBDriver.withConnection { conn =>
+          val result =
             Using.resource(conn.createStatement()) { stmt =>
               Using.resource(stmt.executeQuery(sql)) { rs =>
                 val codec       = JDBCCodec(rs)
@@ -49,7 +72,7 @@ class DuckDBExecutor extends LogSupport:
                 TableRows(q.relationType, results)
               }
             }
-          }
+
           if logger.isEnabled(LogLevel.TRACE) then
             val resultString = QueryResultPrinter.print(result, limit = Some(10))
             trace(resultString)
@@ -73,13 +96,3 @@ class DuckDBExecutor extends LogSupport:
         throw StatusCode.NOT_IMPLEMENTED.newException(s"Unsupported plan: ${other}")
 
 end DuckDBExecutor
-
-object DuckDBDriver:
-  def withConnection[U](f: DuckDBConnection => U): U =
-    Class.forName("org.duckdb.DuckDBDriver")
-    DriverManager.getConnection("jdbc:duckdb:") match
-      case conn: DuckDBConnection =>
-        try f(conn)
-        finally conn.close()
-      case other =>
-        throw StatusCode.NOT_IMPLEMENTED.newException("duckdb connection is unavailable")

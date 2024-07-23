@@ -1,6 +1,6 @@
 package com.treasuredata.flow.lang.model.expr
 
-import com.treasuredata.flow.lang.compiler.TermName
+import com.treasuredata.flow.lang.compiler.{Name, TermName, TypeName}
 import com.treasuredata.flow.lang.model.DataType.{
   AnyType,
   ArrayType,
@@ -90,6 +90,9 @@ sealed trait Identifier extends QualifiedName with LeafExpression:
   override def qualifier: Expression = NameExpr.EmptyName
   override def fullName: String      = leafName
   override def leafName: String      = strExpr
+
+  def toTermName: TermName = Name.termName(leafName)
+  def toTypeName: TypeName = Name.typeName(leafName)
   // Unquoted value
   def unquotedValue: String
 
@@ -287,12 +290,12 @@ case class NotEq(left: Expression, right: Expression, nodeLocation: Option[NodeL
 case class And(left: Expression, right: Expression, nodeLocation: Option[NodeLocation])
     extends ConditionalExpression
     with BinaryExpression:
-  override def operatorName: String = "AND"
+  override def operatorName: String = "and"
 
 case class Or(left: Expression, right: Expression, nodeLocation: Option[NodeLocation])
     extends ConditionalExpression
     with BinaryExpression:
-  override def operatorName: String = "OR"
+  override def operatorName: String = "or"
 
 case class Not(child: Expression, nodeLocation: Option[NodeLocation])
     extends ConditionalExpression
@@ -363,22 +366,22 @@ case class NotInSubQuery(a: Expression, in: Relation, nodeLocation: Option[NodeL
 case class Like(left: Expression, right: Expression, nodeLocation: Option[NodeLocation])
     extends ConditionalExpression
     with BinaryExpression:
-  override def operatorName: String = "LIKE"
+  override def operatorName: String = "like"
 
 case class NotLike(left: Expression, right: Expression, nodeLocation: Option[NodeLocation])
     extends ConditionalExpression
     with BinaryExpression:
-  override def operatorName: String = "NOT LIKE"
+  override def operatorName: String = "not like"
 
 case class DistinctFrom(left: Expression, right: Expression, nodeLocation: Option[NodeLocation])
     extends ConditionalExpression
     with BinaryExpression:
-  override def operatorName: String = "IS DISTINCT FROM"
+  override def operatorName: String = "is distinct from"
 
 case class NotDistinctFrom(left: Expression, right: Expression, nodeLocation: Option[NodeLocation])
     extends ConditionalExpression
     with BinaryExpression:
-  override def operatorName: String = "IS NOT DISTINCT FROM"
+  override def operatorName: String = "is not distinct from"
 
 case class IfExpr(
     cond: Expression,
@@ -520,7 +523,7 @@ case class ArithmeticBinaryExpr(
       case _ =>
         DataType.UnknownType
 
-  override def operatorName: String = exprType.expr
+  override def operatorName: String = exprType.expr.toLowerCase
 
   override def toString: String = s"${exprType}(left:$left, right:$right)"
 

@@ -49,6 +49,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
       resolveThis ::                  // resolve `this` in type definitions
       resolveFunctionBodyInTypeDef :: //
       resolveInlineRef ::             // Resolve inline-expression expansion
+      resolveImplicitAggregation ::   // Resolve aggregation expression without group by
       resolveModelDef ::              // Resolve models again to use the updated types
       Nil
 
@@ -82,7 +83,10 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
           // Search for global and preset contexts
           for
             // TODO Search global scope
-            ctx <- context.global.getAllContexts.filter(_.compilationUnit.isPreset)
+            ctx <- context
+              .global
+              .getAllContexts
+              .filter(_.isGlobalContext) // preset libraries or global symbols
             if foundSym.isEmpty
           do
             trace(s"Searching ${name} in ${ctx.compilationUnit.sourceFile.fileName}")
@@ -161,7 +165,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
   end resolve
 
   // Resolve the type of TypeDef
-  object resolveTypeDef extends RewriteRule:
+  private object resolveTypeDef extends RewriteRule:
     override def apply(context: Context): PlanRewriter =
       case t: TypeDef if !t.symbol.dataType.isResolved =>
         t.symbol.dataType match
@@ -205,7 +209,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
   /**
     * Resolve schema of local file scans (e.g., JSON, Parquet)
     */
-  object resolveLocalFileScan extends RewriteRule:
+  private object resolveLocalFileScan extends RewriteRule:
     override def apply(context: Context): PlanRewriter =
       case r: FileScan if r.path.endsWith(".json") =>
         val file             = context.getDataFile(r.path)
@@ -218,7 +222,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
         val cols                = parquetRelationType.fields
         ParquetFileScan(file, parquetRelationType, cols, r.nodeLocation)
 
-  object resolveModelDef extends RewriteRule:
+  private object resolveModelDef extends RewriteRule:
     override def apply(context: Context): PlanRewriter = {
       case m: ModelDef if m.givenRelationType.isEmpty && !m.symbol.dataType.isResolved =>
         m.relationType match
@@ -264,7 +268,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
   /**
     * Resolve TableRefs with concrete TableScans using the table schema in the catalog.
     */
-  object resolveTableRef extends RewriteRule:
+  private object resolveTableRef extends RewriteRule:
     private def lookup(qName: NameExpr, context: Context): Option[Symbol] =
       qName match
         case i: Identifier =>
@@ -315,7 +319,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
 
   end resolveTableRef
 
-  object resolveTransformItem extends RewriteRule:
+  private object resolveTransformItem extends RewriteRule:
     override def apply(context: Context): PlanRewriter = { case t: Transform =>
       val newItems: Seq[Attribute] = t
         .transformItems
@@ -334,7 +338,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
       * Resolve select items (projected attributes) in Project nodes
       */
 
-  object resolveSelectItem extends RewriteRule:
+  private object resolveSelectItem extends RewriteRule:
     def apply(context: Context): PlanRewriter = { case p: Project =>
       val resolvedChild = p.child.transform(resolveRelation(context)).asInstanceOf[Relation]
       val resolvedColumns: Seq[Attribute] = p
@@ -353,7 +357,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
       Project(resolvedChild, resolvedColumns, p.nodeLocation)
     }
 
-  object resolveGroupingKey extends RewriteRule:
+  private object resolveGroupingKey extends RewriteRule:
     override def apply(context: Context): PlanRewriter = { case g: Aggregate =>
       val newKeys = g
         .groupingKeys
@@ -367,7 +371,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
   /**
     * Resolve expression in relation nodes
     */
-  object resolveRelation extends RewriteRule:
+  private object resolveRelation extends RewriteRule:
     override def apply(context: Context): PlanRewriter = {
       case r: Relation => // Regular relation and Filter etc.
         r.transformExpressions(resolveExpression(r.inputRelationType, context))
@@ -376,7 +380,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
   /**
     * Resolve underscore (_) from the parent relation node
     */
-  object resolveUnderscore extends RewriteRule:
+  private object resolveUnderscore extends RewriteRule:
     private def hasUnderscore(r: Relation): Boolean =
       var found = false
       r.childExpressions
@@ -404,7 +408,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
   /**
     * Resolve the type of `this` in the type definition
     */
-  object resolveThis extends RewriteRule:
+  private object resolveThis extends RewriteRule:
     override def apply(context: Context): PlanRewriter = { case t: TypeDef =>
       val enclosing = context.scope.lookupSymbol(t.name)
       enclosing match
@@ -420,7 +424,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
           t
     }
 
-  object resolveInlineRef extends RewriteRule:
+  private object resolveInlineRef extends RewriteRule:
     private def resolveRef(using ctx: Context): PartialFunction[Expression, Expression] =
       case ref @ DotRef(qual, name: Identifier, _, _) if qual.dataType.isResolved =>
         trace(s"resolve ${qual.dataType}.${name.leafName} (${ref.locationString})")
@@ -454,7 +458,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
 
   end resolveInlineRef
 
-  object resolveFunctionBodyInTypeDef extends RewriteRule:
+  private object resolveFunctionBodyInTypeDef extends RewriteRule:
     override def apply(context: Context): PlanRewriter = { case td: TypeDef =>
       // Collect fields defined in the type
       val fields: List[NamedType] =
@@ -504,6 +508,65 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
     }
 
   end resolveFunctionBodyInTypeDef
+
+  /**
+    * For implicit aggregation, which has no Aggregate plan node, a simple expression like
+    * {{{(l_extendedprice * l_discount)}}} can be an aggregation expression if aggregation function
+    * is applied like {{{(l_extendedprice * l_discount).sum}}}.
+    */
+  private object resolveImplicitAggregation extends RewriteRule:
+    private def resolveImplicitAggregationExpr(p: Project, ctx: Context): LogicalPlan =
+      // TODO Cache aggregation function lists
+      val aggFunctions: List[Symbol] = lookupType(Name.typeName("array"), ctx)
+        .map(_.symbolInfo(using ctx))
+        .map {
+          case t: TypeSymbolInfo =>
+            t.members
+          case _ =>
+            Nil
+        }
+        .getOrElse(Nil)
+
+      p.transformChildExpressions { case s: SingleColumn =>
+        s.expr match
+          case DotRef(qual, name: Identifier, _, _) =>
+            val nme = name.toTermName
+            aggFunctions
+              .find(_.name(using ctx) == nme)
+              .map { aggFun =>
+                aggFun.symbolInfo(using ctx) match
+                  case m: MethodSymbolInfo =>
+                    // inline aggregation function body
+                    val newExpr = m.body.getOrElse(s.expr)
+                    val expandedExpr: Expression = newExpr.transformExpression { case th: This =>
+                      qual
+                    }
+                    s.copy(expr = expandedExpr)
+                  case _ =>
+                    s
+              }
+              .getOrElse(s)
+          case _ =>
+            s
+      }
+
+    end resolveImplicitAggregationExpr
+
+    private def hasAggregation(r: Relation): Boolean =
+      r match
+        case a: Aggregate =>
+          true
+        case u: UnaryRelation =>
+          hasAggregation(u.child)
+        case _ =>
+          false
+
+    override def apply(context: Context): PlanRewriter = {
+      case p: Project if !hasAggregation(p) =>
+        resolveImplicitAggregationExpr(p, context)
+    }
+
+  end resolveImplicitAggregation
 
   /**
     * Resolve the given expression type using the input attributes from child plan nodes

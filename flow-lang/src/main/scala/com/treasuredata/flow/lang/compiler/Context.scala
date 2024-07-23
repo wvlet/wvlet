@@ -62,11 +62,15 @@ case class Context(
     // The global context, which will be shared by all Context objects in the same compilation run
     global: GlobalContext,
     outer: Context = Context.NoContext,
+    // The owner of the current context. If it is NoSymbol, this is a global context.
+    // Usually this is a package symbol
     owner: Symbol = Symbol.NoSymbol,
     scope: Scope = Scope.NoScope,
     compilationUnit: CompilationUnit = CompilationUnit.empty,
     importDefs: List[Import] = Nil
 ) extends LogSupport:
+
+  def isGlobalContext: Boolean = compilationUnit.isPreset || owner.isNoSymbol
 
   // Get the context catalog
   // TODO support multiple catalogs

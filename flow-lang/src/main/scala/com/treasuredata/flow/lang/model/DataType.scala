@@ -1,15 +1,9 @@
 package com.treasuredata.flow.lang.model
 
-import com.treasuredata.flow.lang.model.DataType.NamedType
 import com.treasuredata.flow.lang.compiler.{Name, TermName, TypeName}
-import com.treasuredata.flow.lang.model.Type.FunctionType
-import wvlet.airframe.ulid.{PrefixedULID, ULID}
+import com.treasuredata.flow.lang.model.DataType.NamedType
+import com.treasuredata.flow.lang.model.expr.NameExpr
 import wvlet.log.LogSupport
-import com.treasuredata.flow.lang.model.expr.{AttributeList, NameExpr}
-import com.treasuredata.flow.lang.model.plan.AliasedRelation
-
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 
 abstract class DataType(val typeName: TypeName, val typeParams: Seq[Type]) extends Type:
   override def toString: String = typeDescription
@@ -74,8 +68,6 @@ object DataType extends LogSupport:
     s match
       case "decimal" if typeParams.length == 2 =>
         DecimalType(typeParams(0), typeParams(1))
-      case "list" if typeParams.length == 1 =>
-        ListType(typeParams(0))
       case "array" if typeParams.length == 1 =>
         ArrayType(typeParams(0))
       case "map" if typeParams.length == 2 =>
@@ -382,9 +374,6 @@ object DataType extends LogSupport:
   case object JsonType   extends PrimitiveType("json")
   case object BinaryType extends PrimitiveType("binary")
 
-  case class ListType(elemType: DataType) extends DataType(Name.typeName("list"), Seq(elemType)):
-    override def isResolved: Boolean = elemType.isResolved
-
   case class ArrayType(elemType: DataType) extends DataType(Name.typeName("array"), Seq(elemType)):
     override def isResolved: Boolean = elemType.isResolved
 
@@ -407,9 +396,3 @@ object DataType extends LogSupport:
     override def isResolved: Boolean = true
 
 end DataType
-
-//  def parse(typeName: TypeName): DataType =
-//    DataTypeParser.parse(typeName)
-//
-//  def parseArgs(typeArgs: String): List[DataType] =
-//    DataTypeParser.parseTypeList(typeArgs)
