@@ -111,16 +111,54 @@ object GenSQL extends Phase("generate-sql"):
         val str = s.split("\n").map(x => s"  ${x}").mkString("\n")
         s"\n${str}"
 
+    def toAggregateSelect(agg: AggregateSelect, r: Relation): AggregateSelect =
+      def collectFilter(plan: Relation): (List[Filter], Relation) =
+        plan match
+          case f: Filter =>
+            val (filters, child) = collectFilter(f.inputRelation)
+            (f :: filters, child)
+          case other =>
+            (Nil, other)
+      end collectFilter
+
+      r match
+        case f: Filter =>
+          val (filters, lastNode) = collectFilter(f)
+          lastNode match
+            case a: Aggregate =>
+              agg.copy(child = a.child, groupingKeys = a.groupingKeys, having = filters)
+            case other =>
+              agg.copy(child = other, filters = filters)
+        case p: Project =>
+          agg
+        case a: Aggregate =>
+          agg.copy(child = a.child, groupingKeys = a.groupingKeys)
+        case _ =>
+          agg
+
+    end toAggregateSelect
+
     r match
       case p: Project =>
-        val selectItems = p.selectItems.map(x => printExpression(x, ctx)).mkString(", ")
-        indent(
-          s"""(select ${selectItems} from ${printRelation(
-              p.inputRelation,
-              ctx,
-              nestingLevel + 1
-            )})"""
+        // pull-up filter nodes to build where clause
+        // pull-up an Aggregate node to build group by clause
+        val agg = toAggregateSelect(
+          AggregateSelect(p.child, p.selectItems.toList, Nil, Nil, Nil, p.nodeLocation),
+          p.child
         )
+        val selectItems = agg.selectItems.map(x => printExpression(x, ctx)).mkString(", ")
+        val s           = Seq.newBuilder[String]
+        s += s"select ${selectItems}"
+        s += s"from ${printRelation(agg.child, ctx, nestingLevel + 1)}"
+        if agg.filters.nonEmpty then
+          val filterExpr = Expression.concatWithAnd(agg.filters.map(x => x.filterExpr))
+          s += s"where ${printExpression(filterExpr, ctx)}"
+        if agg.groupingKeys.nonEmpty then
+          s += s"group by ${agg.groupingKeys.map(x => printExpression(x, ctx)).mkString(", ")}"
+        if agg.having.nonEmpty then
+          s += s"having ${agg.having.map(x => printExpression(x.filterExpr, ctx)).mkString(", ")}"
+
+        indent(s"(${s.result().mkString("\n")})")
       case j: JSONFileScan =>
         indent(s"(select * from '${j.path}')")
       case f: Filter =>
@@ -129,19 +167,19 @@ object GenSQL extends Phase("generate-sql"):
               f.inputRelation,
               ctx,
               nestingLevel + 1
-            )} where ${printExpression(f.filterExpr, ctx)})"""
+            )}\nwhere ${printExpression(f.filterExpr, ctx)})"""
         )
       case t: TestRelation =>
         printRelation(t.inputRelation, ctx, nestingLevel + 1)
       case l: Limit =>
         val input = printRelation(l.inputRelation, ctx, nestingLevel + 1)
-        indent(s"""(select * from ${input} limit ${l.limit.stringValue})""")
+        indent(s"""(select * from ${input}\nlimit ${l.limit.stringValue})""")
       case q: Query =>
         printRelation(q.body, ctx, nestingLevel)
       case s: Sort =>
         val input = printRelation(s.inputRelation, ctx, nestingLevel + 1)
         indent(
-          s"""(select * from ${input} order by ${s
+          s"""(select * from ${input}\norder by ${s
               .orderBy
               .map(e => printExpression(e, ctx))
               .mkString(", ")})"""
@@ -169,6 +207,15 @@ object GenSQL extends Phase("generate-sql"):
 
   def printExpression(expression: Expression, context: Context): String =
     expression match
+      case g: UnresolvedGroupingKey =>
+        printExpression(g.child, context)
+      case f: FunctionApply =>
+        val base = printExpression(f.base, context)
+        val args = f.args.map(x => printExpression(x, context)).mkString(", ")
+        s"${base}(${args})"
+      case f: FunctionArg =>
+        // TODO handle arg name mapping
+        printExpression(f.value, context)
       case b: BinaryExpression =>
         s"${printExpression(b.left, context)} ${b.operatorName} ${printExpression(b.right, context)}"
       case s: StringPart =>

@@ -310,7 +310,8 @@ case class AggregateSelect(
     child: Relation,
     selectItems: List[Attribute],
     groupingKeys: List[GroupingKey],
-    having: Option[Expression],
+    having: List[Filter],
+    filters: List[Filter],
     nodeLocation: Option[NodeLocation]
 ) extends UnaryRelation
     with Selection:

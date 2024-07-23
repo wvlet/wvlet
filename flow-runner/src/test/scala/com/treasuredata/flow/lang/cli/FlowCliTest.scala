@@ -19,5 +19,8 @@ class FlowCliTest extends AirSpec:
   test("model1-q1"):
     FlowCli.main("run spec/model1/src/q1.flow")
 
+  test("tpch-q1"):
+    FlowCli.main("run --tpch spec/tpch/src/q1.flow")
+
   test("tpch-q6"):
     FlowCli.main("run --tpch spec/tpch/src/q6.flow")

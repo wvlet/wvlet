@@ -5,7 +5,7 @@ type array[A]:
   def length: int = sql"length({this})"
   def size: int = sql"length({this})"
   def get(index: int): A = sql"{this}[{index}]"
-  def count: int = sql"count({this})"
+  def count: int = sql"count(*)"
   def count_distinct: int = sql"count(distinct {this})"
 
   -- Fast and memory-efficient approximate counting of distinct elements

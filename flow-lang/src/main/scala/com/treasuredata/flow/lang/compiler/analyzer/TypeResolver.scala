@@ -562,7 +562,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
           false
 
     override def apply(context: Context): PlanRewriter = {
-      case p: Project if !hasAggregation(p) =>
+      case p: Project => // if !hasAggregation(p) =>
         resolveImplicitAggregationExpr(p, context)
     }
 
