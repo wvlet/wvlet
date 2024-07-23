@@ -23,7 +23,7 @@ class FlowCliTest extends AirSpec:
     FlowCli.main("run --tpch spec/tpch/src/q1.flow")
 
   test("tpch-q2"):
-    pending("support join")
+    pending("resolve inline function with args")
     FlowCli.main("run --tpch spec/tpch/src/q2.flow")
 
   test("tpch-q6"):

@@ -19,8 +19,8 @@ object RewriteRule extends LogSupport:
     val rewrittenPlan =
       rules.foldLeft(plan) { (p, rule) =>
         try
-          debug(s"Rewriting with: ${rule.name}")
-          rule.transform(p, context)
+          val rewritten = rule.transform(p, context)
+          rewritten
         catch
           case NonFatal(e) =>
             debug(s"Failed to rewrite with: ${rule.name}\n${p.pp}")
@@ -65,8 +65,9 @@ trait RewriteRule extends LogSupport:
       // Recursively transform the tree form bottom to up
       val resolved = plan.transformUp(rule)
       if localLogger.isEnabled(LogLevel.TRACE) && !(plan eq resolved) && plan != resolved then
-        localLogger
-          .trace(s"Transformed with ${name}:\n[before]\n${plan.pp}\n[after]\n${resolved.pp}")
+        if context.compilationUnit.sourceFile.fileName == "q2.flow" then
+          localLogger
+            .trace(s"Transformed with ${name}:\n[before]\n${plan.pp}\n[after]\n${resolved.pp}")
 
       // Apply post-process filter
       postProcess(resolved, context)

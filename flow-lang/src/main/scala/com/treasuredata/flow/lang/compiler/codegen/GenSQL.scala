@@ -11,6 +11,14 @@ import com.treasuredata.flow.lang.compiler.{
 }
 import com.treasuredata.flow.lang.model.expr.*
 import com.treasuredata.flow.lang.model.plan.*
+import com.treasuredata.flow.lang.model.plan.JoinType.{
+  CrossJoin,
+  FullOuterJoin,
+  ImplicitJoin,
+  InnerJoin,
+  LeftOuterJoin,
+  RightOuterJoin
+}
 import com.treasuredata.flow.lang.model.sql.SQLGenerator
 
 import scala.annotation.tailrec
@@ -159,6 +167,43 @@ object GenSQL extends Phase("generate-sql"):
           s += s"having ${agg.having.map(x => printExpression(x.filterExpr, ctx)).mkString(", ")}"
 
         indent(s"(${s.result().mkString("\n")})")
+      case j: Join =>
+        def printRel(r: Relation): String =
+          r match
+            case t: TableScan =>
+              t.name.name
+            case other =>
+              printRelation(other, ctx, nestingLevel + 1)
+
+        val l = printRel(j.left)
+        val r = printRel(j.right)
+        val c =
+          j.cond match
+            case NoJoinCriteria =>
+              ""
+            case NaturalJoin(_) =>
+              ""
+            case JoinUsing(columns, _) =>
+              s" using(${columns.map(_.fullName).mkString(", ")})"
+            case ResolvedJoinUsing(columns, _) =>
+              s" using(${columns.map(_.fullName).mkString(", ")})"
+            case JoinOn(expr, _) =>
+              s" on ${printExpression(expr, ctx)}"
+            case JoinOnEq(keys, _) =>
+              s" on ${printExpression(Expression.concatWithEq(keys), ctx)}"
+        j.joinType match
+          case InnerJoin =>
+            s"${l} join ${r}${c}"
+          case LeftOuterJoin =>
+            s"${l} left join ${r}${c}"
+          case RightOuterJoin =>
+            s"${l} right join ${r}${c}"
+          case FullOuterJoin =>
+            s"${l} full outer join ${r}${c}"
+          case CrossJoin =>
+            s"${l} cross join ${r}${c}"
+          case ImplicitJoin =>
+            s"${l}, ${r}${c}"
       case j: JSONFileScan =>
         indent(s"(select * from '${j.path}')")
       case f: Filter =>
@@ -243,6 +288,8 @@ object GenSQL extends Phase("generate-sql"):
             printExpression(e, context)
           }
           .mkString
+      case s: SubQueryExpression =>
+        s"(${printRelation(s.query, context, 0)})"
       case other =>
         warn(s"unknown expression type: ${other}")
         other.toString

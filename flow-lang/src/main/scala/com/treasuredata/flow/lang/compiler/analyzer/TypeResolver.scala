@@ -30,9 +30,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
 
   override def run(unit: CompilationUnit, context: Context): CompilationUnit =
     // resolve plans
-    var resolvedPlan: LogicalPlan = TypeResolver.resolve(unit.unresolvedPlan, context)
-    // resolve again to resolve unresolved relation types
-    resolvedPlan = TypeResolver.resolve(resolvedPlan, context)
+    val resolvedPlan: LogicalPlan = TypeResolver.resolve(unit.unresolvedPlan, context)
     unit.resolvedPlan = resolvedPlan
     unit
 
@@ -429,31 +427,31 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
       case ref @ DotRef(qual, name: Identifier, _, _) if qual.dataType.isResolved =>
         trace(s"resolve ${qual.dataType}.${name.leafName} (${ref.locationString})")
         val methodName = Name.termName(name.leafName)
-        lookupType(qual.dataType.typeName, ctx) match
-          case Some(sym) =>
-            sym.symbolInfo.findMember(methodName) match
-              case funSym: Symbol if !funSym.isNoSymbol =>
-                funSym.symbolInfo match
-                  case fun: MethodSymbolInfo =>
-                    trace(s"found ${fun.name} = ${fun.body}")
-                    // Replace {this} -> {qual}
-                    fun
-                      .body
-                      .map { body =>
-                        body.transformExpression { case th: This =>
-                          qual
-                        }
+        val newExpr =
+          lookupType(qual.dataType.typeName, ctx) match
+            case Some(sym) =>
+              sym.symbolInfo.findMember(methodName).symbolInfo(using ctx) match
+                case fun: MethodSymbolInfo =>
+                  trace(s"found ${fun.name} = ${fun.body}")
+                  // Replace {this} -> {qual}
+                  fun
+                    .body
+                    .map { body =>
+                      body.transformExpression { case th: This =>
+                        qual
                       }
-                      .getOrElse(ref)
-                  case _ =>
-                    ref
-              case _ =>
-                ref
-          case _ =>
-            ref
+                    }
+                    .getOrElse(ref)
+                case _ =>
+                  ref
+            case _ =>
+              ref
+        newExpr
+
+    end resolveRef
 
     override def apply(context: Context): PlanRewriter =
-      case r: Relation =>
+      case r: Query =>
         r.transformUpExpressions(resolveRef(using context))
 
   end resolveInlineRef
@@ -581,9 +579,10 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
         case None =>
           a
     case ref: DotRef =>
-      val refName = Name.termName(ref.name.leafName)
+      val refName      = Name.termName(ref.name.leafName)
+      val resolvedQual = resolveExpression(ref.qualifier, inputRelationType, context)
       // Resolve types after following . (dot)
-      ref.qualifier.dataType match
+      resolvedQual.dataType match
         case t: SchemaType =>
           trace(s"Find reference from ${t} -> ${ref.name}")
           t.columnTypes.find(_.name.name == ref.name.leafName) match
