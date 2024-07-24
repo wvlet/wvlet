@@ -214,6 +214,12 @@ object GenSQL extends Phase("generate-sql"):
               nestingLevel + 1
             )}\nwhere ${printExpression(f.filterExpr, ctx)})"""
         )
+      case a: AliasedRelation =>
+        indent(
+          s"${printRelation(a.inputRelation, ctx, nestingLevel + 1)} as ${printExpression(a.alias, ctx)}"
+        )
+      case p: ParenthesizedRelation =>
+        indent(s"(${printRelation(p.child, ctx, nestingLevel + 1)})")
       case t: TestRelation =>
         printRelation(t.inputRelation, ctx, nestingLevel + 1)
       case l: Limit =>
@@ -292,6 +298,10 @@ object GenSQL extends Phase("generate-sql"):
         s"(${printRelation(s.query, context, 0)})"
       case i: IfExpr =>
         s"if(${printExpression(i.cond, context)}, ${printExpression(i.onTrue, context)}, ${printExpression(i.onFalse, context)})"
+      case n: NameExpr =>
+        n.strExpr
+      case n: Not =>
+        s"not ${printExpression(n.child, context)}"
       case other =>
         warn(s"unknown expression type: ${other}")
         other.toString

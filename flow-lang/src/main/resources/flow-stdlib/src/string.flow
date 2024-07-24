@@ -18,6 +18,11 @@ type string:
   def like(pattern:string): boolean = sql"{this} like {pattern}"
 
   def substring(start:int,end:int): string = sql"substring({this},{start},{end})"
+
+  -- TODO support varargs
+  def in(v1:any, v2:any): boolean = sql"{this} in ({v1},{v2})"
+  def in(v1:any, v2:any, v3:any, v4:any): boolean = sql"{this} in ({v1},{v2},{v3},{v4})"
+  def not_in(expr:any): boolean = sql"{this} not in ({expr})"
 end
 
 -- Using query engine specific dialects

@@ -484,8 +484,14 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
     t.token match
       case FlowToken.IDENTIFIER =>
         identifier()
+      case FlowToken.PLUS | FlowToken.MINUS | FlowToken.STAR | FlowToken.DIV | FlowToken.MOD |
+          FlowToken.AMP | FlowToken.PIPE | FlowToken.EQ | FlowToken.NEQ | FlowToken.LT | FlowToken
+            .LTEQ | FlowToken.GT | FlowToken.GTEQ =>
+        // symbols
+        consume(t.token)
+        UnquotedIdentifier(t.str, t.nodeLocation)
       case _ =>
-        symbol()
+        reserved()
 
   def defArgs(): List[DefArg] =
     val t = scanner.lookAhead()
@@ -539,16 +545,6 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
         scopes.result()
       case _ =>
         Nil
-
-  def symbol(): NameExpr =
-    val t = scanner.nextToken()
-    t.token match
-      case FlowToken.PLUS | FlowToken.MINUS | FlowToken.STAR | FlowToken.DIV | FlowToken.MOD |
-          FlowToken.AMP | FlowToken.PIPE | FlowToken.EQ | FlowToken.NEQ | FlowToken.LT | FlowToken
-            .LTEQ | FlowToken.GT | FlowToken.GTEQ =>
-        UnquotedIdentifier(t.str, t.nodeLocation)
-      case _ =>
-        unexpected(t)
 
   def orderExpr(input: Relation): Sort =
     val t = consume(FlowToken.ORDER)

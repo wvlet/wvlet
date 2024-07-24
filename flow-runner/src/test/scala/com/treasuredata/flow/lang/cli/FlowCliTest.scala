@@ -19,16 +19,21 @@ class FlowCliTest extends AirSpec:
   test("model1-q1"):
     FlowCli.main("run spec/model1/src/q1.flow")
 
-  test("tpch-q1"):
-    FlowCli.main("run --tpch spec/tpch/src/q1.flow")
-
-  test("tpch-q2"):
-    FlowCli.main("run --tpch spec/tpch/src/q2.flow")
-
-  test("tpch-q6"):
-    FlowCli.main("run --tpch spec/tpch/src/q6.flow")
-
-  test("tpch-q14"):
-    FlowCli.main("run --tpch spec/tpch/src/q14.flow")
+  for i <- 1 to 22 do
+    test(s"tpch-q${i}"):
+      info(s"Running tpch-q${i}")
+      if i == 16 then
+        pending("Support not_in")
+      if i == 18 then
+        pending("in.(sub query)")
+      if i == 19 then
+        pending("in.(var args)")
+      if i == 20 then
+        pending("in.(sub query)")
+      if i == 21 then
+        pending("exists, is_empty")
+      if i == 22 then
+        pending("function chain substring(...).in(...)")
+      FlowCli.main(s"run --tpch spec/tpch/src/q${i}.flow")
 
 end FlowCliTest

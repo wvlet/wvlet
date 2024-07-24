@@ -1,0 +1,6 @@
+package flow.standard
+
+
+type date:
+  def extract(field:string): int = sql"extract({field} from {this})"
+end
