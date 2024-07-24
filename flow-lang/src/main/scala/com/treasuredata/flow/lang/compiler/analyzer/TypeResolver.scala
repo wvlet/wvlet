@@ -446,6 +446,8 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
                   ref
             case _ =>
               ref
+//        if !(newExpr eq ref) then
+//          warn(s"Resolved ${ref} as ${newExpr} in ${ctx.compilationUnit.sourceFile}")
         newExpr
 
     end resolveRef
@@ -535,16 +537,22 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
                 aggFun.symbolInfo(using ctx) match
                   case m: MethodSymbolInfo =>
                     // inline aggregation function body
-                    val newExpr = m.body.getOrElse(s.expr)
-                    var expandedExpr: Expression = newExpr.transformExpression {
-                      case th: This =>
-                        qual
-                      case i: InterpolatedString =>
-                        // Resolve interpolated string from function argument type
-                        i.copy(dataType = m.ft.returnType)
-                    }
-                    s.copy(expr = expandedExpr)
+                    m.body
+                      .map { body =>
+                        body.transformUpExpression {
+                          case th: This =>
+                            qual
+                          case i: InterpolatedString =>
+                            // Resolve interpolated string from function argument type
+                            i.copy(dataType = m.ft.returnType)
+                        }
+                      }
+                      .map { newExpr =>
+                        s.copy(expr = newExpr)
+                      }
+                      .getOrElse(s)
                   case _ =>
+                    warn(s"Unknown function: ${aggFun}")
                     s
               }
               .getOrElse(s)

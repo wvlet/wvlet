@@ -44,7 +44,8 @@ class FlowCli(opts: FlowCliOption) extends LogSupport:
     debug(s"source folders: ${sourceFolders.mkString(", ")}")
     val contextDirectory = sourceFolders.headOption.getOrElse(new File(".").getAbsolutePath)
     debug(s"context directory: ${contextDirectory}")
-    val compileResult = Compiler(Compiler.allPhases).compile(sourceFolders.toList, contextDirectory)
+    val compileResult = Compiler(Compiler.allPhases)
+      .compile(sourceFolders.toList, contextDirectory, None)
     compileResult
       .typedPlans
       .collect:
@@ -76,7 +77,8 @@ class FlowCli(opts: FlowCliOption) extends LogSupport:
 
       val duckdb = DuckDBExecutor(prepareTPCH = prepareTPCH)
 
-      val compilationResult = Compiler(Compiler.allPhases).compile(contextDirectory)
+      val compilationResult = Compiler(Compiler.allPhases)
+        .compile(List(contextDirectory), contextDirectory, Some(flowFile))
       compilationResult.units.find(_.sourceFile.fileName == flowFile) match
         case Some(unit) =>
           val ctx      = compilationResult.context.global.getContextOf(unit)

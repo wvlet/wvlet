@@ -1,7 +1,11 @@
 package com.treasuredata.flow.lang.compiler
 
 import com.treasuredata.flow.lang.compiler.Compiler.presetLibraryPaths
-import com.treasuredata.flow.lang.compiler.analyzer.{SymbolLabeler, TypeResolver}
+import com.treasuredata.flow.lang.compiler.analyzer.{
+  RemoveQueryOnlyUnits,
+  SymbolLabeler,
+  TypeResolver
+}
 import com.treasuredata.flow.lang.compiler.parser.{FlowParser, ParserPhase}
 import com.treasuredata.flow.lang.compiler.transform.Incrementalize
 import com.treasuredata.flow.lang.model.plan.LogicalPlan
@@ -16,9 +20,8 @@ object Compiler:
   def analysisPhases: List[Phase] = List(
     ParserPhase, // Parse *.flow files and create untyped plans
     SymbolLabeler, // Assign unique Symbol to each LogicalPlan and Expression nodes, a and assign a lazy DataType
-    TypeResolver // Assign a concrete DataType to each LogicalPlan and Expression nodes
-    // PreTypeScan, // Collect all schema and types in the source paths
-    // PostTypeScan, // Post-process to resolve unresolved types, which cannot be found in the first type scan
+    new RemoveQueryOnlyUnits, // Check if any compilation units are unused
+    TypeResolver              // Assign a concrete DataType to each LogicalPlan and Expression nodes
   )
 
   /**
@@ -46,16 +49,24 @@ class Compiler(phases: List[List[Phase]] = Compiler.allPhases) extends LogSuppor
     *   A folder containing src and data folders
     * @return
     */
-  def compile(sourceFolder: String): CompileResult = compile(List(sourceFolder), sourceFolder)
+  def compile(sourceFolder: String): CompileResult = compile(List(sourceFolder), sourceFolder, None)
 
-  def compile(sourceFolders: List[String], contextFolder: String): CompileResult =
+  def compile(
+      sourceFolders: List[String],
+      contextFolder: String,
+      contextFile: Option[String]
+  ): CompileResult =
     val sourcePaths = Compiler.presetLibraryPaths ++ sourceFolders
     var units: List[CompilationUnit] = sourcePaths.flatMap { path =>
       val srcPath = s"${path}/src"
       CompilationUnit.fromPath(srcPath, isPreset = presetLibraryPaths.contains(path))
     }
 
-    val global      = GlobalContext(sourceFolders = sourceFolders, workingFolder = contextFolder)
+    val global = GlobalContext(
+      contextFile = contextFile,
+      sourceFolders = sourceFolders,
+      workingFolder = contextFolder
+    )
     val rootContext = global.getContextOf(unit = CompilationUnit.empty, scope = Scope.newScope(0))
     // Need to initialize the global context before running the analysis phases
     global.init(using rootContext)

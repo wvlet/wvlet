@@ -17,7 +17,12 @@ import scala.jdk.CollectionConverters.*
   * @param sourceFolders
   * @param workingFolder
   */
-case class GlobalContext(sourceFolders: List[String] = List.empty, workingFolder: String):
+case class GlobalContext(
+    // Used for specifying a context file to lookup queries, types, and models
+    contextFile: Option[String],
+    sourceFolders: List[String] = List.empty,
+    workingFolder: String
+):
   private var symbolCount = 0
 
   // Loaded data files, etc.
