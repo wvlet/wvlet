@@ -22,16 +22,14 @@ class FlowCliTest extends AirSpec:
   for i <- 1 to 22 do
     test(s"tpch-q${i}"):
       info(s"Running tpch-q${i}")
-      if i == 16 then
-        pending("Support not_in")
+      if i == 12 then
+        pending("support multiple function bindings with different args")
       if i == 18 then
-        pending("in.(sub query)")
+        pending("support multiple function bindings with different args")
       if i == 19 then
-        pending("in.(var args)")
+        pending("support multiple function bindings with different args")
       if i == 20 then
-        pending("in.(sub query)")
-      if i == 21 then
-        pending("exists, is_empty")
+        pending("support multiple function bindings with different args")
       if i == 22 then
         pending("function chain substring(...).in(...)")
       FlowCli.main(s"run --tpch spec/tpch/src/q${i}.flow")

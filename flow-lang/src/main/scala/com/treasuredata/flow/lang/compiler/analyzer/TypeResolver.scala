@@ -24,7 +24,7 @@ import com.treasuredata.flow.lang.model.DataType.{
 import com.treasuredata.flow.lang.model.Type.FunctionType
 import com.treasuredata.flow.lang.model.expr.*
 import com.treasuredata.flow.lang.model.plan.*
-import com.treasuredata.flow.lang.model.{DataType, RelationType}
+import com.treasuredata.flow.lang.model.{DataType, RelationType, RelationTypeList}
 import wvlet.log.LogSupport
 
 object TypeResolver extends Phase("type-resolver") with LogSupport:
@@ -374,7 +374,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
   private object resolveRelation extends RewriteRule:
     override def apply(context: Context): PlanRewriter = {
       case r: Relation => // Regular relation and Filter etc.
-        r.transformUpExpressions(resolveExpression(r.inputRelationType, context))
+        r.transformUpExpressions(resolveExpression(r.relationType, context))
     }
 
   /**
@@ -458,57 +458,56 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
 
     override def apply(context: Context): PlanRewriter = { case q: Query =>
       q.transformUpExpressions { case f: FunctionApply =>
-        resolveFunction(f)(using context) match
-          case Some(m: MethodSymbolInfo) =>
-            val functionArgTypes = m.ft.args
-            // Mapping function arguments aligned to the function definition
-            var index        = 0
-            val resolvedArgs = List.newBuilder[(TermName, Expression)]
-            f.args
-              .foreach {
-                case FunctionArg(None, expr, loc) =>
-                  if index >= functionArgTypes.length then
-                    throw StatusCode
-                      .SYNTAX_ERROR
-                      .newException(
-                        "Too many arguments",
-                        context.compilationUnit.toSourceLocation(loc)
-                      )
-                  val argType = functionArgTypes(index)
-                  index += 1
-                  resolvedArgs += argType.name -> expr
-                case FunctionArg(Some(argName), expr, _) =>
-                  functionArgTypes.find(_.name == argName) match
-                    case Some(argType) =>
-                      resolvedArgs += argName -> expr
-                    case None =>
-                      warn(s"Unknown argument name: ${argName}")
-              }
-
-            trace(s"Resolved args ${resolvedArgs.result()} for ${f}")
-            // Resolve identifiers in the function body with the given function arguments
-            m.body
-              .map {
-                _.transformUpExpression:
-                  case th: This =>
-                    f.base match
-                      case d: DotRef =>
-                        d.qualifier
-                      case _ =>
-                        th
-                  case i: Identifier =>
-                    resolvedArgs.result().find(_._1 == i.toTermName) match
-                      case Some((_, expr)) =>
-                        expr
-                      case None =>
-                        i
-              }
-              .getOrElse(f)
-
-          case _ =>
-            f
+        resolveFunApply(f)(using context)
       }
     }
+
+    private def resolveFunApply(f: FunctionApply)(using ctx: Context): Expression =
+      resolveFunction(f) match
+        case Some(m: MethodSymbolInfo) =>
+          val functionArgTypes = m.ft.args
+          // Mapping function arguments aligned to the function definition
+          var index        = 0
+          val resolvedArgs = List.newBuilder[(TermName, Expression)]
+          f.args
+            .foreach {
+              case FunctionArg(None, expr, loc) =>
+                if index >= functionArgTypes.length then
+                  throw StatusCode
+                    .SYNTAX_ERROR
+                    .newException("Too many arguments", ctx.compilationUnit.toSourceLocation(loc))
+                val argType = functionArgTypes(index)
+                index += 1
+                resolvedArgs += argType.name -> expr
+              case FunctionArg(Some(argName), expr, _) =>
+                functionArgTypes.find(_.name == argName) match
+                  case Some(argType) =>
+                    resolvedArgs += argName -> expr
+                  case None =>
+                    warn(s"Unknown argument name: ${argName}")
+            }
+
+          trace(s"Resolved args for ${m.name}: ${resolvedArgs.result()}")
+          // Resolve identifiers in the function body with the given function arguments
+          m.body
+            .map {
+              _.transformUpExpression:
+                case th: This =>
+                  f.base match
+                    case d: DotRef =>
+                      d.qualifier
+                    case _ =>
+                      th
+                case i: Identifier =>
+                  resolvedArgs.result().find(_._1 == i.toTermName) match
+                    case Some((_, expr)) =>
+                      expr
+                    case None =>
+                      i
+            }
+            .getOrElse(f)
+        case _ =>
+          f
 
   end resolveFunctionApply
 
@@ -648,6 +647,15 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
       inputRelationType: RelationType,
       context: Context
   ): PartialFunction[Expression, Expression] =
+//    case s: SubQueryExpression =>
+//      // Resolve subquery expression
+//      val rt = RelationTypeList(
+//        Name.typeName(RelationType.newRelationTypeName),
+//        List(inputRelationType, s.query.relationType)
+//      )
+//      s.transformUpExpression {
+//        resolveExpression(rt, context)
+//      }
     case a: Attribute if !a.dataType.isResolved && !a.nameExpr.isEmpty =>
       val name = a.fullName
       trace(s"Find ${name} in ${inputRelationType.fields} ${a.locationString(using context)}")
