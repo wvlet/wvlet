@@ -290,6 +290,8 @@ object GenSQL extends Phase("generate-sql"):
           .mkString
       case s: SubQueryExpression =>
         s"(${printRelation(s.query, context, 0)})"
+      case i: IfExpr =>
+        s"if(${printExpression(i.cond, context)}, ${printExpression(i.onTrue, context)}, ${printExpression(i.onFalse, context)})"
       case other =>
         warn(s"unknown expression type: ${other}")
         other.toString

@@ -23,14 +23,12 @@ class FlowCliTest extends AirSpec:
     FlowCli.main("run --tpch spec/tpch/src/q1.flow")
 
   test("tpch-q2"):
-    pending("resolve string.like function args")
     FlowCli.main("run --tpch spec/tpch/src/q2.flow")
 
   test("tpch-q6"):
     FlowCli.main("run --tpch spec/tpch/src/q6.flow")
 
   test("tpch-q14"):
-    pending("resolve functions")
     FlowCli.main("run --tpch spec/tpch/src/q14.flow")
 
 end FlowCliTest

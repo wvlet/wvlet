@@ -11,6 +11,7 @@ import com.treasuredata.flow.lang.compiler.{
   Phase,
   RewriteRule,
   Symbol,
+  TermName,
   TypeName,
   TypeSymbolInfo
 }
@@ -46,6 +47,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
       resolveUnderscore ::            // resolve underscore in relation nodes
       resolveThis ::                  // resolve `this` in type definitions
       resolveFunctionBodyInTypeDef :: //
+      resolveFunctionApply ::         // Resolve function args
       resolveInlineRef ::             // Resolve inline-expression expansion
       resolveAggregationFunctions ::  // Resolve aggregation expression without group by
       resolveModelDef ::              // Resolve models again to use the updated types
@@ -87,7 +89,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
               .filter(_.isGlobalContext) // preset libraries or global symbols
             if foundSym.isEmpty
           do
-            trace(s"Searching ${name} in ${ctx.compilationUnit.sourceFile.fileName}")
+            // trace(s"Searching ${name} in ${ctx.compilationUnit.sourceFile.fileName}")
             ctx
               .compilationUnit
               .knownSymbols
@@ -372,7 +374,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
   private object resolveRelation extends RewriteRule:
     override def apply(context: Context): PlanRewriter = {
       case r: Relation => // Regular relation and Filter etc.
-        r.transformExpressions(resolveExpression(r.inputRelationType, context))
+        r.transformUpExpressions(resolveExpression(r.inputRelationType, context))
     }
 
   /**
@@ -422,39 +424,114 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
           t
     }
 
+  /**
+    * Find a corresponding MethodSymbolInfo for the given function expression
+    * @param f
+    * @param context
+    * @return
+    */
+  private def resolveFunction(f: Expression)(using context: Context): Option[MethodSymbolInfo] =
+    f match
+      case fa: FunctionApply =>
+        resolveFunction(fa.base)
+      case i: Identifier =>
+        lookupType(i.toTermName, context)
+          .map(_.symbolInfo)
+          .collect { case m: MethodSymbolInfo =>
+            m
+          }
+      case DotRef(qual, method: Identifier, _, _) if qual.dataType.isResolved =>
+        val methodName = method.toTermName
+        lookupType(qual.dataType.typeName, context)
+          .map(_.symbolInfo.findMember(methodName).symbolInfo)
+          .collect { case m: MethodSymbolInfo =>
+            m
+          }
+      case _ =>
+        None
+  end resolveFunction
+
+  /**
+    * Evaluate FunctionApply nodes with the given function definition
+    */
+  private object resolveFunctionApply extends RewriteRule:
+
+    override def apply(context: Context): PlanRewriter = { case q: Query =>
+      q.transformUpExpressions { case f: FunctionApply =>
+        resolveFunction(f)(using context) match
+          case Some(m: MethodSymbolInfo) =>
+            val functionArgTypes = m.ft.args
+            // Mapping function arguments aligned to the function definition
+            var index        = 0
+            val resolvedArgs = List.newBuilder[(TermName, Expression)]
+            f.args
+              .foreach {
+                case FunctionArg(None, expr, loc) =>
+                  if index >= functionArgTypes.length then
+                    throw StatusCode
+                      .SYNTAX_ERROR
+                      .newException(
+                        "Too many arguments",
+                        context.compilationUnit.toSourceLocation(loc)
+                      )
+                  val argType = functionArgTypes(index)
+                  index += 1
+                  resolvedArgs += argType.name -> expr
+                case FunctionArg(Some(argName), expr, _) =>
+                  functionArgTypes.find(_.name == argName) match
+                    case Some(argType) =>
+                      resolvedArgs += argName -> expr
+                    case None =>
+                      warn(s"Unknown argument name: ${argName}")
+              }
+
+            trace(s"Resolved args ${resolvedArgs.result()} for ${f}")
+            // Resolve identifiers in the function body with the given function arguments
+            m.body
+              .map {
+                _.transformUpExpression:
+                  case th: This =>
+                    f.base match
+                      case d: DotRef =>
+                        d.qualifier
+                      case _ =>
+                        th
+                  case i: Identifier =>
+                    resolvedArgs.result().find(_._1 == i.toTermName) match
+                      case Some((_, expr)) =>
+                        expr
+                      case None =>
+                        i
+              }
+              .getOrElse(f)
+
+          case _ =>
+            f
+      }
+    }
+
+  end resolveFunctionApply
+
   private object resolveInlineRef extends RewriteRule:
     private def resolveRef(using ctx: Context): PartialFunction[Expression, Expression] =
-      case ref @ DotRef(qual, name: Identifier, _, _) if qual.dataType.isResolved =>
-        trace(s"resolve ${qual.dataType}.${name.leafName} (${ref.locationString})")
-        val methodName = Name.termName(name.leafName)
-        val newExpr =
-          lookupType(qual.dataType.typeName, ctx) match
-            case Some(sym) =>
-              sym.symbolInfo.findMember(methodName).symbolInfo(using ctx) match
-                case fun: MethodSymbolInfo =>
-                  trace(s"found ${fun.name} = ${fun.body}")
-                  // Replace {this} -> {qual}
-                  fun
-                    .body
-                    .map { body =>
-                      body.transformExpression { case th: This =>
-                        qual
-                      }
-                    }
-                    .getOrElse(ref)
-                case _ =>
-                  ref
-            case _ =>
-              ref
-//        if !(newExpr eq ref) then
-//          warn(s"Resolved ${ref} as ${newExpr} in ${ctx.compilationUnit.sourceFile}")
-        newExpr
-
+      case ref: DotRef =>
+        resolveFunction(ref) match
+          case Some(m: MethodSymbolInfo) =>
+            // Replace {this} -> {qual}
+            m.body
+              .map { body =>
+                body.transformExpression { case th: This =>
+                  ref.qualifier
+                }
+              }
+              .getOrElse(ref)
+          case _ =>
+            ref
     end resolveRef
 
-    override def apply(context: Context): PlanRewriter =
-      case r: Query =>
-        r.transformUpExpressions(resolveRef(using context))
+    override def apply(context: Context): PlanRewriter = { case r: Query =>
+      r.transformUpExpressions(resolveRef(using context))
+    }
 
   end resolveInlineRef
 
@@ -492,7 +569,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
             // create a type that includes function arguments
             val knownFields = fields ++ argFields
             val inputType   = SchemaType(None, Name.NoTypeName, knownFields)
-            trace(s"resolve function body: ${f.name} using ${inputType}")
+            // trace(s"resolve function body: ${f.name} using ${inputType}")
             val newF = f.copy(
               retType = retType,
               expr = f.expr.map(x => x.transformUpExpression(resolveExpression(inputType, context)))
@@ -515,55 +592,48 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
     * is applied like {{{(l_extendedprice * l_discount).sum}}}.
     */
   private object resolveAggregationFunctions extends RewriteRule:
-    private def resolveAggregationExpr(p: Project, ctx: Context): LogicalPlan =
-      // TODO Cache aggregation function lists
-      val aggFunctions: List[Symbol] = lookupType(Name.typeName("array"), ctx)
-        .map(_.symbolInfo(using ctx))
-        .map {
-          case t: TypeSymbolInfo =>
+
+    private var aggregationFunctions: List[Symbol] = Nil
+
+    private def init(ctx: Context): Unit =
+      // TODO Support adding more methods to the array type
+      if aggregationFunctions.isEmpty then
+        aggregationFunctions = lookupType(Name.typeName("array"), ctx)
+          .map(_.symbolInfo(using ctx))
+          .collect { case t: TypeSymbolInfo =>
             t.members
-          case _ =>
-            Nil
-        }
-        .getOrElse(Nil)
+          }
+          .getOrElse(Nil)
 
-      p.transformChildExpressions { case s: SingleColumn =>
-        s.expr match
-          case DotRef(qual, name: Identifier, _, _) =>
-            val nme = name.toTermName
-            aggFunctions
-              .find(_.name(using ctx) == nme)
-              .map { aggFun =>
-                aggFun.symbolInfo(using ctx) match
-                  case m: MethodSymbolInfo =>
-                    // inline aggregation function body
-                    m.body
-                      .map { body =>
-                        body.transformUpExpression {
-                          case th: This =>
-                            qual
-                          case i: InterpolatedString =>
-                            // Resolve interpolated string from function argument type
-                            i.copy(dataType = m.ft.returnType)
-                        }
-                      }
-                      .map { newExpr =>
-                        s.copy(expr = newExpr)
-                      }
-                      .getOrElse(s)
-                  case _ =>
-                    warn(s"Unknown function: ${aggFun}")
-                    s
+    private def resolveAggregationExpr(using Context): PartialFunction[Expression, Expression] =
+      case d @ DotRef(qual, name: Identifier, _, _) =>
+        val nme = name.toTermName
+        aggregationFunctions
+          .find(_.name == nme)
+          .map(_.symbolInfo)
+          .collect { case m: MethodSymbolInfo =>
+            m
+          }
+          .map { m =>
+            // inline aggregation function body
+            m.body
+              .map { body =>
+                body.transformUpExpression {
+                  case th: This =>
+                    qual
+                  case i: InterpolatedString =>
+                    // Resolve interpolated string from function argument type
+                    i.copy(dataType = m.ft.returnType)
+                }
               }
-              .getOrElse(s)
-          case _ =>
-            s
-      }
-
+              .getOrElse(d)
+          }
+          .getOrElse(d)
     end resolveAggregationExpr
 
-    override def apply(context: Context): PlanRewriter = { case p: Project =>
-      resolveAggregationExpr(p, context)
+    override def apply(context: Context): PlanRewriter = { case q: Query =>
+      init(context)
+      q.transformUpExpressions(resolveAggregationExpr(using context))
     }
 
   end resolveAggregationFunctions
