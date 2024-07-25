@@ -35,8 +35,7 @@ trait Expression extends TreeNode with Product with LogSupport:
         throw StatusCode
           .NON_RETRYABLE_INTERNAL_ERROR
           .newException(
-            s"Failed to create a new instance for ${this.getClass.getSimpleName} with args [${newArgs
-                .mkString(", ")}]",
+            s"Failed to create a new instance for ${this.getClass.getSimpleName} with args [${newArgs.mkString(", ")}]",
             e
           )
 
