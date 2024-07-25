@@ -22,8 +22,6 @@ class FlowCliTest extends AirSpec:
   for i <- 1 to 22 do
     test(s"tpch-q${i}"):
       info(s"Running tpch-q${i}")
-      if i == 22 then
-        pending("resolve ambiguous substring function matching")
       FlowCli.main(s"run --tpch spec/tpch/src/q${i}.flow")
 
 end FlowCliTest

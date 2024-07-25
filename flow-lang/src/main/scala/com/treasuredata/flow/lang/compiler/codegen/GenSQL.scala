@@ -298,12 +298,14 @@ object GenSQL extends Phase("generate-sql"):
         s"(${printRelation(s.query, context, 0)})"
       case i: IfExpr =>
         s"if(${printExpression(i.cond, context)}, ${printExpression(i.onTrue, context)}, ${printExpression(i.onFalse, context)})"
-      case n: NameExpr =>
-        n.strExpr
+      case i: Wildcard =>
+        i.strExpr
       case n: Not =>
         s"not ${printExpression(n.child, context)}"
       case l: ListExpr =>
         l.exprs.map(x => printExpression(x, context)).mkString(", ")
+      case d @ DotRef(qual: Expression, name: NameExpr, _, _) =>
+        s"${printExpression(qual, context)}.${printExpression(name, context)}"
       case other =>
         warn(s"unknown expression type: ${other}")
         other.toString

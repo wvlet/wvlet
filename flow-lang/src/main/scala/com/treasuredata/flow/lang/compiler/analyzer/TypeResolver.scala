@@ -450,20 +450,25 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
                 .SYNTAX_ERROR
                 .newException(s"Ambiguous function call for ${i}", i.nodeLocation)
           }
-      case d @ DotRef(qual, method: Identifier, _, _) if qual.dataType.isResolved =>
+      case d @ DotRef(qual, method: Identifier, _, _) =>
         val methodName = method.toTermName
-        lookupType(qual.dataType.typeName, context)
-          .map(_.symbolInfo.findMember(methodName).symbolInfo)
-          .collect {
-            case m: MethodSymbolInfo =>
-              m
-            case m: MultipleSymbolInfo =>
-              // TODO resolve one of the function type
-              throw StatusCode
-                .SYNTAX_ERROR
-                .newException(s"Ambiguous function call for ${method}", d.nodeLocation)
-          }
+        if qual.dataType.isResolved then
+          lookupType(qual.dataType.typeName, context)
+            .map(_.symbolInfo.findMember(methodName).symbolInfo)
+            .collect {
+              case m: MethodSymbolInfo =>
+                m
+              case m: MultipleSymbolInfo =>
+                // TODO resolve one of the function type
+                throw StatusCode
+                  .SYNTAX_ERROR
+                  .newException(s"Ambiguous function call for ${method}", d.nodeLocation)
+            }
+        else
+          trace(s"Failed to find function `${methodName}` for ${qual}")
+          None
       case _ =>
+        trace(s"Failed to find function definition for ${f}")
         None
   end resolveFunction
 
@@ -522,7 +527,8 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
 
           trace(s"Resolved args for ${m.name}: ${resolvedArgs.result()}")
           // Resolve identifiers in the function body with the given function arguments
-          m.body
+          val expr = m
+            .body
             .map {
               _.transformUpExpression:
                 case th: This =>
@@ -539,6 +545,13 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
                       i
             }
             .getOrElse(f)
+          expr match
+            case i: InterpolatedString =>
+              // TODO Support adding DataType to arbitrary expressions
+              // Resolve interpolated string from function argument type
+              i.copy(dataType = m.ft.returnType)
+            case _ =>
+              expr
         case _ =>
           f
 

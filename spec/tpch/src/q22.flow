@@ -13,7 +13,7 @@ where
      where o_custkey = c_custkey
   ).not_exists
 select
-  country_code = c_phone.substring(1, 3),
+  cntrycode = c_phone.substring(1, 3),
   c_acctbal
 group by
     cntrycode

@@ -10,6 +10,7 @@ enum StatusType:
   case ExternalError
 
 enum StatusCode(statusType: StatusType):
+  def name: String                                 = this.toString
   def newException(msg: String): FlowLangException = FlowLangException(this, msg)
   def newException(msg: String, cause: Throwable): FlowLangException = FlowLangException(
     this,
@@ -19,7 +20,7 @@ enum StatusCode(statusType: StatusType):
   )
 
   def newException(msg: String, sourceLocation: SourceLocation): FlowLangException =
-    val err = s"${msg} (${sourceLocation.locationString})"
+    val err = s"[${this.name}] ${msg} (${sourceLocation.locationString})"
     FlowLangException(this, err, Some(sourceLocation))
 
   def newException(msg: String, nodeLocation: Option[NodeLocation])(using

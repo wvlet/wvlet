@@ -10,7 +10,6 @@ type int:
 
   def or_else(other:int): int = sql"coalesce({this},{other})"
 
-  -- TODo support varargs
   def in(v:any*): boolean = sql"{this} in ({v})"
   def not_in(v:any*): boolean = sql"{this} not in ({v})"
 

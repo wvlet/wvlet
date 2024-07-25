@@ -77,7 +77,7 @@ class BoundedSymbolInfo(symbol: Symbol, name: Name, tpe: DataType, val expr: Exp
     extends SymbolInfo(symbol, name, tpe):
   override def toString: String = s"bounded ${name}: ${dataType} = ${expr}"
 
-class MultipleSymbolInfo(s1: SymbolInfo, s2: SymbolInfo)
+case class MultipleSymbolInfo(s1: SymbolInfo, s2: SymbolInfo)
     extends SymbolInfo(s1.symbol, s1.name, s1.tpe)
 
 //class TypeInfo(symbol: Symbol, tpe: Type) extends SymbolInfo(symbol, tpe)
