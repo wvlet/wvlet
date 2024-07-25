@@ -266,6 +266,9 @@ case class LambdaExpr(body: Expression, args: Seq[String], nodeLocation: Option[
     with UnaryExpression:
   def child = body
 
+case class ListExpr(exprs: List[Expression], nodeLocation: Option[NodeLocation]) extends Expression:
+  override def children: Seq[Expression] = exprs
+
 //case class Ref(name: QName, nodeLocation: Option[NodeLocation]) extends Expression with LeafExpression
 
 // Conditional expression

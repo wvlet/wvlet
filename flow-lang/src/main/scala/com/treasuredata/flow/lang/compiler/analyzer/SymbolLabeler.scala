@@ -170,10 +170,17 @@ object SymbolLabeler extends Phase("symbol-labeler"):
         // Register method defs to the type scope
         t.elems
           .collect { case f: FunctionDef =>
-            val ft     = toFunctionType(f)
-            val funSym = Symbol(ctx.global.newSymbolId)
+            val ft = toFunctionType(f)
+            val funSym =
+              typeScope.lookupSymbol(f.name) match
+                case Some(sym) =>
+                  sym
+                case None =>
+                  val newSym = Symbol(ctx.global.newSymbolId)
+                  typeScope.add(ft.name, newSym)
+                  newSym
             f.symbol = funSym
-            funSym.symbolInfo = MethodSymbolInfo(
+            val newSymbolInfo = MethodSymbolInfo(
               funSym,
               sym,
               f.name,
@@ -181,7 +188,10 @@ object SymbolLabeler extends Phase("symbol-labeler"):
               f.expr,
               t.defContexts ++ f.defContexts
             )
-            typeScope.add(ft.name, funSym)
+            if funSym.symbolInfo == null then
+              funSym.symbolInfo = newSymbolInfo
+            else
+              funSym.symbolInfo = MultipleSymbolInfo(newSymbolInfo, funSym.symbolInfo)
             ft
           }
 

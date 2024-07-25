@@ -302,6 +302,8 @@ object GenSQL extends Phase("generate-sql"):
         n.strExpr
       case n: Not =>
         s"not ${printExpression(n.child, context)}"
+      case l: ListExpr =>
+        l.exprs.map(x => printExpression(x, context)).mkString(", ")
       case other =>
         warn(s"unknown expression type: ${other}")
         other.toString

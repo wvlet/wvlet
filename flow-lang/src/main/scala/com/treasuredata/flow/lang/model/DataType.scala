@@ -97,6 +97,10 @@ object DataType extends LogSupport:
     override def isResolved: Boolean     = dataType.isResolved
     override def typeDescription: String = s"${name}:${dataType.typeDescription}"
 
+  case class VarArgType(elemType: DataType) extends DataType(elemType.typeName, Seq(elemType)):
+    override def isResolved: Boolean     = elemType.isResolved
+    override def typeDescription: String = s"${elemType.typeDescription}*"
+
   /**
     * A type for representing relational table schemas
     */

@@ -7,6 +7,7 @@ import com.treasuredata.flow.lang.compiler.{
   Context,
   MethodSymbolInfo,
   ModelSymbolInfo,
+  MultipleSymbolInfo,
   Name,
   Phase,
   RewriteRule,
@@ -19,7 +20,8 @@ import com.treasuredata.flow.lang.model.DataType.{
   NamedType,
   PrimitiveType,
   SchemaType,
-  UnresolvedType
+  UnresolvedType,
+  VarArgType
 }
 import com.treasuredata.flow.lang.model.Type.FunctionType
 import com.treasuredata.flow.lang.model.expr.*
@@ -430,22 +432,36 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
     * @param context
     * @return
     */
-  private def resolveFunction(f: Expression)(using context: Context): Option[MethodSymbolInfo] =
+  private def resolveFunction(f: Expression, knownArgs: List[FunctionArg] = Nil)(using
+      context: Context
+  ): Option[MethodSymbolInfo] =
     f match
       case fa: FunctionApply =>
-        resolveFunction(fa.base)
+        resolveFunction(fa.base, fa.args)
       case i: Identifier =>
         lookupType(i.toTermName, context)
           .map(_.symbolInfo)
-          .collect { case m: MethodSymbolInfo =>
-            m
+          .collect {
+            case m: MethodSymbolInfo =>
+              m
+            case m: MultipleSymbolInfo =>
+              // TODO resolve one of the function type
+              throw StatusCode
+                .SYNTAX_ERROR
+                .newException(s"Ambiguous function call for ${i}", i.nodeLocation)
           }
-      case DotRef(qual, method: Identifier, _, _) if qual.dataType.isResolved =>
+      case d @ DotRef(qual, method: Identifier, _, _) if qual.dataType.isResolved =>
         val methodName = method.toTermName
         lookupType(qual.dataType.typeName, context)
           .map(_.symbolInfo.findMember(methodName).symbolInfo)
-          .collect { case m: MethodSymbolInfo =>
-            m
+          .collect {
+            case m: MethodSymbolInfo =>
+              m
+            case m: MultipleSymbolInfo =>
+              // TODO resolve one of the function type
+              throw StatusCode
+                .SYNTAX_ERROR
+                .newException(s"Ambiguous function call for ${method}", d.nodeLocation)
           }
       case _ =>
         None
@@ -469,23 +485,40 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
           // Mapping function arguments aligned to the function definition
           var index        = 0
           val resolvedArgs = List.newBuilder[(TermName, Expression)]
-          f.args
-            .foreach {
-              case FunctionArg(None, expr, loc) =>
-                if index >= functionArgTypes.length then
-                  throw StatusCode
-                    .SYNTAX_ERROR
-                    .newException("Too many arguments", ctx.compilationUnit.toSourceLocation(loc))
-                val argType = functionArgTypes(index)
-                index += 1
-                resolvedArgs += argType.name -> expr
-              case FunctionArg(Some(argName), expr, _) =>
-                functionArgTypes.find(_.name == argName) match
-                  case Some(argType) =>
-                    resolvedArgs += argName -> expr
-                  case None =>
-                    warn(s"Unknown argument name: ${argName}")
-            }
+
+          def mapArg(args: List[FunctionArg]): Unit =
+            if !args.isEmpty then
+              args.head match
+                case FunctionArg(None, expr, loc) =>
+                  if index >= functionArgTypes.length then
+                    throw StatusCode.SYNTAX_ERROR.newException("Too many arguments", loc)
+                  val argType = functionArgTypes(index)
+                  argType.dataType match
+                    case VarArgType(elemType) =>
+                      index += 1
+                      resolvedArgs += argType.name -> ListExpr(args, loc)
+                    // all args are consumed
+                    case _ =>
+                      index += 1
+                      resolvedArgs += argType.name -> expr
+                      mapArg(args.tail)
+                case FunctionArg(Some(argName), expr, loc) =>
+                  functionArgTypes.find(_.name == argName) match
+                    case Some(argType) =>
+                      argType.dataType match
+                        case VarArgType(elemType) =>
+                          resolvedArgs += argName -> ListExpr(args, expr.nodeLocation)
+                        // all args are consumed
+                        case _ =>
+                          resolvedArgs += argName -> expr
+                          mapArg(args.tail)
+                    case None =>
+                      throw StatusCode
+                        .SYNTAX_ERROR
+                        .newException("Unknown argument name: ${argName}", loc)
+
+          // Resolve function arguments
+          mapArg(f.args)
 
           trace(s"Resolved args for ${m.name}: ${resolvedArgs.result()}")
           // Resolve identifiers in the function body with the given function arguments

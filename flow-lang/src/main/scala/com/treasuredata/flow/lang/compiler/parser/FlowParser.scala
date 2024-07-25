@@ -10,7 +10,8 @@ import com.treasuredata.flow.lang.model.DataType.{
   TypeParameter,
   UnresolvedRelationType,
   UnresolvedType,
-  UnresolvedTypeParameter
+  UnresolvedTypeParameter,
+  VarArgType
 }
 import com.treasuredata.flow.lang.model.expr.*
 import com.treasuredata.flow.lang.model.expr.NameExpr.EmptyName
@@ -41,7 +42,7 @@ import wvlet.log.LogSupport
   *   statement: importStatement
   *            | modelDef
   *            | query
-  *            | functionDef
+  *            | funDef
   *            | test
   *
   *   importStatement: 'import' importRef (from str)?
@@ -97,7 +98,7 @@ import wvlet.log.LogSupport
   *   typeElem   : valDef | funDef
   *
   *   valDef     : identifier ':' identifier typeParams? ('=' expression)?
-  *   funDef:    : 'def' funName defParams? (':' identifier)? ('=' expression)?
+  *   funDef:    : 'def' funName defParams? (':' identifier '*'?)? ('=' expression)?
   *   funName    : identifier | symbol
   *   symbol     : '+' | '-' | '*' | '/' | '%' | '&' | '|' | '=' | '==' | '!=' | '<' | '<=' | '>' | '>=' | '&&' | '||'
   *   defParams  : '(' defParam (',' defParam)* ')'
@@ -509,6 +510,14 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
     val name = identifier()
     consume(FlowToken.COLON)
     val tpe = identifier()
+    val isVarArg =
+      scanner.lookAhead().token match
+        case FlowToken.STAR =>
+          consume(FlowToken.STAR)
+          true
+        case _ =>
+          false
+
     val defaultValue =
       scanner.lookAhead().token match
         case FlowToken.EQ =>
@@ -516,13 +525,20 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
           Some(expression())
         case _ =>
           None
-    val dt =
+    var dt =
       if DataType.isPrimitiveTypeName(tpe.fullName) then
         DataType.getPrimitiveType(tpe.fullName)
       else
         UnresolvedType(tpe.fullName)
+    dt =
+      if isVarArg then
+        VarArgType(dt)
+      else
+        dt
     // TODO check the name is a leaf name
     DefArg(Name.termName(name.leafName), dt, defaultValue, name.nodeLocation)
+
+  end defArg
 
   def context(): List[DefContext] =
     scanner.lookAhead().token match

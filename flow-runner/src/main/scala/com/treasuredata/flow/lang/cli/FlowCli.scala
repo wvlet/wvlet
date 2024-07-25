@@ -87,6 +87,6 @@ class FlowCli(opts: FlowCliOption) extends LogSupport:
           throw StatusCode.INVALID_ARGUMENT.newException(s"File not found: ${targetFile}")
     catch
       case e: FlowLangException =>
-        error(e.getMessage, e)
+        error(e.getMessage, e.getCause)
 
 end FlowCli

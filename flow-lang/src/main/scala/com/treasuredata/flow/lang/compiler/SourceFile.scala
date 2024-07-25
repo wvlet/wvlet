@@ -59,6 +59,18 @@ class SourceFile(val file: String, readContent: (file: String) => String):
 
   inline def charAt(pos: Int): Char = content(pos)
 
+  def sourceLine(line: Int): String =
+    val lineIndex = line - 1
+    if lineIndex < 0 || lineIndex >= lineIndexes.length - 1 then
+      ""
+    else
+      val start = lineIndexes(lineIndex)
+      val end   = lineIndexes(lineIndex + 1) - 1
+      if start <= end then
+        content.slice(start, end).mkString
+      else
+        ""
+
   /**
     * Find the start of the line (offset) for the given offset
     */
