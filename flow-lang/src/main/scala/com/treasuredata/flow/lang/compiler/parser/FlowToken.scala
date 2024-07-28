@@ -15,10 +15,11 @@ import scala.annotation.switch
 
 enum FlowToken(val tokenType: TokenType, val str: String):
   // special tokens
-  case EMPTY   extends FlowToken(Control, "<empty>")
-  case ERROR   extends FlowToken(Control, "<erroneous token>")
-  case EOF     extends FlowToken(Control, "<eof>")
-  case NEWLINE extends FlowToken(Control, "<newline>")
+  case EMPTY      extends FlowToken(Control, "<empty>")
+  case ERROR      extends FlowToken(Control, "<erroneous token>")
+  case EOF        extends FlowToken(Control, "<eof>")
+  case NEWLINE    extends FlowToken(Control, "<newline>")
+  case WHITESPACE extends FlowToken(Control, "<whitespace>")
 
   // doc or comments
   case COMMENT extends FlowToken(Doc, "<comment>")

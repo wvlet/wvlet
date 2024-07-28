@@ -39,8 +39,10 @@ enum StatusCode(statusType: StatusType):
       case _ =>
         newException(msg)
 
-  case OK                      extends StatusCode(StatusType.Success)
-  case SYNTAX_ERROR            extends StatusCode(StatusType.UserError)
+  case OK               extends StatusCode(StatusType.Success)
+  case SYNTAX_ERROR     extends StatusCode(StatusType.UserError)
+  case UNEXPECTED_TOKEN extends StatusCode(StatusType.UserError)
+
   case INVALID_ARGUMENT        extends StatusCode(StatusType.UserError)
   case DATABASE_NOT_FOUND      extends StatusCode(StatusType.UserError)
   case TABLE_NOT_FOUND         extends StatusCode(StatusType.UserError)

@@ -1,11 +1,13 @@
 package com.treasuredata.flow.lang.compiler.parser
 
+import com.treasuredata.flow.lang.{FlowLangException, StatusCode}
 import com.treasuredata.flow.lang.compiler.parser.FlowScanner.{InBraces, InString, Indented, Region}
 import com.treasuredata.flow.lang.compiler.parser.FlowToken.{LF, SU}
 import com.treasuredata.flow.lang.compiler.{CompilationUnit, SourceFile, SourceLocation}
 import com.treasuredata.flow.lang.model.NodeLocation
 import wvlet.log.LogSupport
 
+import java.io.ObjectInputFilter.Status
 import scala.annotation.{switch, tailrec}
 
 case class TokenData(token: FlowToken, str: String, offset: Int, length: Int):
@@ -54,9 +56,14 @@ class ScanState(startFrom: Int = 0):
 
 end ScanState
 
-case class ScannerConfig(startFrom: Int = 0, skipComments: Boolean = false)
+case class ScannerConfig(
+    startFrom: Int = 0,
+    skipComments: Boolean = false,
+    skipWhiteSpace: Boolean = true,
+    reportErrorToken: Boolean = false
+)
 
-abstract class ScannerBase(buf: IArray[Char], startFrom: Int = 0):
+abstract class ScannerBase(protected val buf: IArray[Char], startFrom: Int = 0):
   import FlowToken.*
 
   protected var current: ScanState = ScanState(startFrom = startFrom)
@@ -155,7 +162,11 @@ class FlowScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
     if tokenBuffer.nonEmpty && isNumberSeparator(tokenBuffer.last) then
       reportError("trailing number separator", source.sourcePositionAt(offset))
 
-  private def reportError(msg: String, loc: SourcePosition): Unit = error(s"${msg} at ${loc}")
+  private def reportError(msg: String, loc: SourcePosition): Unit =
+    if config.reportErrorToken then
+      throw StatusCode.UNEXPECTED_TOKEN.newException(msg)
+    else
+      error(s"${msg} at ${loc}")
 
   private def consume(expectedChar: Char): Unit =
     if ch != expectedChar then
@@ -183,10 +194,19 @@ class FlowScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
 
   def nextToken(): TokenData =
     val lastToken = current.token
-    getNextToken(lastToken)
-    val t = current.toTokenData(lastCharOffset)
-    debug(s"${currentRegion} ${t}")
-    t
+    try
+      getNextToken(lastToken)
+      val t = current.toTokenData(lastCharOffset)
+      debug(s"${currentRegion} ${t}")
+      t
+    catch
+      case e: FlowLangException
+          if e.statusCode == StatusCode.UNEXPECTED_TOKEN && config.reportErrorToken =>
+        current.token = FlowToken.ERROR
+        currentRegion = Indented(0, null)
+        val t = current.toTokenData(lastCharOffset)
+        nextChar()
+        t
 
   def currentToken: TokenData = current.toTokenData(lastCharOffset)
 
@@ -233,9 +253,23 @@ class FlowScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
 
     (ch: @switch) match
       case ' ' | '\t' | CR | LF | FF =>
-        // Skip white space characters without pushing them into the buffer
-        nextChar()
-        fetchToken()
+        def getWSRest(): Unit =
+          if isWhiteSpaceChar(ch) then
+            putChar(ch)
+            nextChar()
+            getWSRest()
+          else
+            current.token = FlowToken.WHITESPACE
+            flushTokenString()
+
+        if config.skipWhiteSpace then
+          // Skip white space characters without pushing them into the buffer
+          nextChar()
+          fetchToken()
+        else
+          putChar(ch)
+          nextChar()
+          getWSRest()
       case 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'I' | 'J' | 'K' | 'L' | 'M' | 'N' | 'O' |
           'P' | 'Q' | 'R' | 'S' | 'T' | 'U' | 'V' | 'W' | 'X' | 'Y' | 'Z' | '$' | '_' | 'a' | 'b' |
           'c' | 'd' | 'e' | 'f' | 'g' | 'h' | 'i' | 'j' | 'k' | 'l' | 'm' | 'n' | 'o' | 'p' | 'q' |
@@ -381,6 +415,11 @@ class FlowScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
             current.token = FlowToken.STRING_PART
             current.str = flushTokenString()
             currentRegion = InBraces(currentRegion)
+      case SU =>
+        reportError(
+          s"unexpected end of file in string interpolation",
+          source.sourcePositionAt(offset)
+        )
       case _ =>
         putChar(ch)
         nextRawChar()

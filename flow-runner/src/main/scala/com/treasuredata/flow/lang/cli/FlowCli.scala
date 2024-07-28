@@ -36,6 +36,12 @@ class FlowCli(opts: FlowCliOption) extends LogSupport:
   @command(isDefault = true)
   def default: Unit = info(s"treasure-flow version: ${BuildInfo.version}")
 
+  @command(description = "Start a REPL")
+  def repl(): Unit =
+    val repl = FlowREPL()
+    try repl.start()
+    finally repl.close()
+
   @command(description = "Compile flow files")
   def compile(
       @argument(description = "source folders to compile")
