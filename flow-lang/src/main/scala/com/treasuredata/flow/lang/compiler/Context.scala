@@ -17,13 +17,11 @@ import scala.jdk.CollectionConverters.*
   * @param sourceFolders
   * @param workingFolder
   */
-case class GlobalContext(
-    // Used for specifying a context file to lookup queries, types, and models
-    contextFile: Option[String],
-    sourceFolders: List[String] = List.empty,
-    workingFolder: String
-):
-  private var symbolCount = 0
+case class GlobalContext(sourceFolders: List[String] = List.empty, workingFolder: String):
+  // Used for specifying a context file to lookup queries, types, and models
+  private var contextUnit: Option[CompilationUnit] = None
+  private var symbolCount                          = 0
+  private var rootContext: Context                 = null
 
   // Loaded data files, etc.
   private val files = new ConcurrentHashMap[NameExpr, VirtualFile]().asScala
@@ -34,7 +32,13 @@ case class GlobalContext(
   // Globally available definitions (Name and Symbols)
   var defs: GlobalDefinitions = _
 
-  def init(using rootContext: Context): Unit = defs = GlobalDefinitions(using rootContext)
+  def init(using rootContext: Context): Unit =
+    this.rootContext = rootContext
+    defs = GlobalDefinitions(using rootContext)
+
+  def getRootContext: Context                             = rootContext
+  def getContextUnit: Option[CompilationUnit]             = contextUnit
+  def setContextUnit(unit: Option[CompilationUnit]): Unit = contextUnit = unit
 
   def newSymbolId: Int =
     symbolCount += 1
@@ -108,7 +112,11 @@ case class Context(
     .map(folder => dataFilePath(path))
     .find(file => new java.io.File(file).exists())
 
-  def dataFilePath(relativePath: String): String = s"${global.workingFolder}/data/${relativePath}"
+  def dataFilePath(relativePath: String): String =
+    if relativePath.startsWith("s3://") || relativePath.startsWith("https://") then
+      relativePath
+    else
+      s"${global.workingFolder}/data/${relativePath}"
 
   def getDataFile(path: String): String =
     findDataFile(path) match

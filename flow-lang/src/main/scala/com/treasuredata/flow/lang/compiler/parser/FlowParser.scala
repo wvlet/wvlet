@@ -869,7 +869,7 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
         consume(FlowToken.STRING_LITERAL)
         FileScan(t.str, t.nodeLocation)
       case _ =>
-        ???
+        unexpected(t)
 
   def select(): Relation =
     val t     = consume(FlowToken.SELECT)

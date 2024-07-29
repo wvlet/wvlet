@@ -14,9 +14,9 @@ class RemoveQueryOnlyUnits extends Phase("check-unused"):
   override protected def init(units: List[CompilationUnit], context: Context): Unit =
     contextUnit = context
       .global
-      .contextFile
-      .flatMap { file =>
-        units.find(_.sourceFile.fileName == file)
+      .getContextUnit
+      .flatMap { unit =>
+        units.find(_ eq unit)
       }
     usedUnits = List.empty
 

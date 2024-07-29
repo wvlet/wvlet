@@ -271,12 +271,13 @@ object DataType extends LogSupport:
   private val primitiveTypeTable: Map[TypeName, DataType] =
     primitiveTypes.map(x => x.typeName -> x).toMap ++
       Map(
-        "integer"  -> IntType,
-        "bigint"   -> LongType,
-        "tinyint"  -> ByteType,
-        "smallint" -> ShortType,
-        "varchar"  -> StringType,
-        "sql"      -> SQLExprType
+        "integer"   -> IntType,
+        "bigint"    -> LongType,
+        "tinyint"   -> ByteType,
+        "smallint"  -> ShortType,
+        "varchar"   -> StringType,
+        "sql"       -> SQLExprType,
+        "timestamp" -> TimestampType(TimestampField.TIMESTAMP, withTimeZone = false)
       ).map { case (k, v) =>
         Name.typeName(k) -> v
       }

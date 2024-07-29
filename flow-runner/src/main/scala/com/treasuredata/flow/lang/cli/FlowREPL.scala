@@ -28,7 +28,7 @@ import wvlet.log.LogSupport
 import java.io.File
 import java.util.regex.Pattern
 
-class FlowREPL() extends AutoCloseable with LogSupport:
+class FlowREPL(runner: FlowScriptRunner) extends AutoCloseable with LogSupport:
   import FlowREPL.*
 
   private val terminal    = TerminalBuilder.builder().name("Treasure Flow").build()
@@ -85,8 +85,8 @@ class FlowREPL() extends AutoCloseable with LogSupport:
           case "help" =>
             println(helpMessage)
           case stmt =>
-            // TODO Support
-            info(s"Run: ${cmd}")
+            if stmt.nonEmpty then
+              runner.runStatement(stmt)
       catch
         case e: UserInterruptException =>
           toContinue = false

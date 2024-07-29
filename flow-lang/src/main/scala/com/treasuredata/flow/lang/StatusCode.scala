@@ -10,6 +10,11 @@ enum StatusType:
   case ExternalError
 
 enum StatusCode(statusType: StatusType):
+  def isUserError: Boolean     = statusType == StatusType.UserError
+  def isSystemError: Boolean   = statusType == StatusType.SystemError
+  def isExternalError: Boolean = statusType == StatusType.ExternalError
+  def isSuccess: Boolean       = statusType == StatusType.Success
+
   def name: String                                 = this.toString
   def newException(msg: String): FlowLangException = FlowLangException(this, msg)
   def newException(msg: String, cause: Throwable): FlowLangException = FlowLangException(

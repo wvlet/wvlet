@@ -248,6 +248,8 @@ object GenSQL extends Phase("generate-sql"):
         indent(s"""(select * from ${t.name.fullName})""")
       case t: TableScan =>
         indent(s"""(select * from ${t.name})""")
+      case t: ParquetFileScan =>
+        indent(s"""(select * from '${t.path}')""")
       case other =>
         warn(s"unknown relation type: ${other}")
         other.toString

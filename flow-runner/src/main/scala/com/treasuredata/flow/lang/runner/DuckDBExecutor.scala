@@ -79,7 +79,9 @@ class DuckDBExecutor(prepareTPCH: Boolean = false) extends LogSupport with AutoC
           result
         catch
           case e: SQLException =>
-            throw StatusCode.INVALID_ARGUMENT.newException(s"Failed to execute SQL: ${sql}", e)
+            throw StatusCode
+              .INVALID_ARGUMENT
+              .newException(s"Failed to execute SQL: ${sql}\n${e.getMessage}", e)
       case t: TableDef =>
         QueryResult.empty
       case t: TestRelation =>

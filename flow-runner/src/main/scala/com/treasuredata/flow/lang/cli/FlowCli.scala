@@ -2,8 +2,9 @@ package com.treasuredata.flow.lang.cli
 
 import com.treasuredata.flow.BuildInfo
 import com.treasuredata.flow.lang.{FlowLangException, StatusCode}
-import com.treasuredata.flow.lang.compiler.Compiler
+import com.treasuredata.flow.lang.compiler.{CompilationUnit, Compiler}
 import com.treasuredata.flow.lang.runner.DuckDBExecutor
+import wvlet.airframe.Design
 import wvlet.airframe.launcher.{Launcher, argument, command, option}
 import wvlet.log.{LogLevel, LogSupport, Logger}
 
@@ -38,9 +39,11 @@ class FlowCli(opts: FlowCliOption) extends LogSupport:
 
   @command(description = "Start a REPL")
   def repl(): Unit =
-    val repl = FlowREPL()
-    try repl.start()
-    finally repl.close()
+    val design = Design.newSilentDesign.bindSingleton[FlowREPL]
+
+    design.build[FlowREPL] { repl =>
+      repl.start()
+    }
 
   @command(description = "Compile flow files")
   def compile(
@@ -51,7 +54,7 @@ class FlowCli(opts: FlowCliOption) extends LogSupport:
     val contextDirectory = sourceFolders.headOption.getOrElse(new File(".").getAbsolutePath)
     debug(s"context directory: ${contextDirectory}")
     val compileResult = Compiler(Compiler.allPhases)
-      .compile(sourceFolders.toList, contextDirectory, None)
+      .compileSingle(sourceFolders.toList, contextDirectory, None)
     compileResult
       .typedPlans
       .collect:
@@ -79,18 +82,22 @@ class FlowCli(opts: FlowCliOption) extends LogSupport:
           case _ =>
             throw StatusCode.INVALID_ARGUMENT.newException(s"Invalid file path: ${targetFile}")
 
-      info(s"context directory: ${contextDirectory}")
+      info(s"context directory: ${contextDirectory}, flow file: ${flowFile}")
 
       val duckdb = DuckDBExecutor(prepareTPCH = prepareTPCH)
-
       val compilationResult = Compiler(Compiler.allPhases)
-        .compile(List(contextDirectory), contextDirectory, Some(flowFile))
-      compilationResult.units.find(_.sourceFile.fileName == flowFile) match
-        case Some(unit) =>
-          val ctx      = compilationResult.context.global.getContextOf(unit)
-          val executor = duckdb.execute(unit, ctx)
+        .compileSingle(List(contextDirectory), contextDirectory, Some(flowFile))
+      compilationResult
+        .context
+        .global
+        .getAllContexts
+        .map(_.compilationUnit)
+        .find(_.sourceFile.fileName == flowFile) match
+        case Some(contextUnit) =>
+          val ctx      = compilationResult.context.global.getContextOf(contextUnit)
+          val executor = duckdb.execute(contextUnit, ctx)
         case None =>
-          throw StatusCode.INVALID_ARGUMENT.newException(s"File not found: ${targetFile}")
+          throw StatusCode.INVALID_ARGUMENT.newException(s"Cannot find the context for ${flowFile}")
     catch
       case e: FlowLangException =>
         error(e.getMessage, e.getCause)
