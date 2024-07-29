@@ -39,6 +39,6 @@ class RemoveQueryOnlyUnits extends Phase("check-unused"):
 
   override protected def refineUnits(units: List[CompilationUnit]): List[CompilationUnit] =
     debug(s"Compiling ${usedUnits.size} files out of ${units.size} files")
-    usedUnits
+    usedUnits.reverse
 
 end RemoveQueryOnlyUnits

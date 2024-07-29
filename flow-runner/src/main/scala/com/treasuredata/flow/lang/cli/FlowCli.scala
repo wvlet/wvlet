@@ -38,11 +38,19 @@ class FlowCli(opts: FlowCliOption) extends LogSupport:
   def default: Unit = info(s"treasure-flow version: ${BuildInfo.version}")
 
   @command(description = "Start a REPL")
-  def repl(): Unit =
-    val design = Design.newSilentDesign.bindSingleton[FlowREPL]
+  def repl(
+      @option(prefix = "-c", description = "Run a command and exit")
+      command: Option[String] = None,
+      @option(prefix = "-w", description = "Working folder")
+      workFolder: String = "."
+  ): Unit =
+    val design = Design
+      .newSilentDesign
+      .bindSingleton[FlowREPL]
+      .bindInstance[FlowScriptRunnerConfig](FlowScriptRunnerConfig(workingFolder = workFolder))
 
     design.build[FlowREPL] { repl =>
-      repl.start()
+      repl.start(command)
     }
 
   @command(description = "Compile flow files")

@@ -57,7 +57,7 @@ class FlowREPL(runner: FlowScriptRunner) extends AutoCloseable with LogSupport:
   private def isRealTerminal() =
     terminal.getType != Terminal.TYPE_DUMB && terminal.getType != Terminal.TYPE_DUMB_COLOR
 
-  def start(): Unit =
+  def start(command: Option[String] = None): Unit =
     // Set the default size when opening a new window
     if terminal.getWidth == 0 || terminal.getHeight == 0 then
       terminal.setSize(Size(120, 40))
@@ -72,9 +72,17 @@ class FlowREPL(runner: FlowScriptRunner) extends AutoCloseable with LogSupport:
 
     var toContinue = true
     while toContinue do
-      var line: String = null;
+      var line: String = null
+
       try
-        line = reader.readLine("flow> ")
+        // If a command is given, run it and exist
+        if command.isDefined then
+          line = command.get
+          println(s"flow> ${line}")
+          toContinue = false
+        else
+          line = reader.readLine("flow> ")
+
         val cmd = line.trim.stripSuffix(";")
         cmd match
           case "exit" | "quit" =>
@@ -94,6 +102,7 @@ class FlowREPL(runner: FlowScriptRunner) extends AutoCloseable with LogSupport:
           toContinue = false
         case e: Exception =>
           error(e)
+    end while
   end start
 
 end FlowREPL

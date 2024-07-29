@@ -5,7 +5,7 @@ import com.treasuredata.flow.lang.model.plan.LogicalPlan
 import org.msgpack.core.MessagePack
 import wvlet.log.LogSupport
 
-trait QueryResult
+sealed trait QueryResult
 
 object QueryResult:
   object empty extends QueryResult

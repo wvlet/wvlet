@@ -274,7 +274,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
     private def lookup(qName: NameExpr, context: Context): Option[Symbol] =
       qName match
         case i: Identifier =>
-          context.scope.lookupSymbol(Name.termName(i.leafName))
+          lookupType(i.toTermName, context)
         case d: DotRef =>
           // TODO
           warn(s"TODO: resolve ${d}")
