@@ -13,7 +13,13 @@ import com.treasuredata.flow.lang.model.plan.Query
 import org.jline.builtins.SyntaxHighlighter
 import org.jline.reader.Parser.ParseContext
 import org.jline.reader.impl.{DefaultHighlighter, DefaultParser}
-import org.jline.reader.{EOFError, LineReader, LineReaderBuilder, UserInterruptException}
+import org.jline.reader.{
+  EOFError,
+  EndOfFileException,
+  LineReader,
+  LineReaderBuilder,
+  UserInterruptException
+}
 import org.jline.terminal.Terminal.Signal
 import org.jline.terminal.{Size, Terminal, TerminalBuilder}
 import org.jline.utils.{AttributedString, AttributedStringBuilder, AttributedStyle, InfoCmp}
@@ -59,7 +65,6 @@ class FlowREPL() extends AutoCloseable with LogSupport:
     // Handle ctrl-c (int) or ctrl-d (quit) to interrupt the current thread
     val currentThread = Thread.currentThread()
     terminal.handle(Signal.INT, _ => currentThread.interrupt())
-    terminal.handle(Signal.QUIT, _ => currentThread.interrupt())
 
     // Load the command history so that we can use ctrl-r (keyword), ctrl+p/n (previous/next) for history search
     val history = reader.getHistory
@@ -84,6 +89,8 @@ class FlowREPL() extends AutoCloseable with LogSupport:
             info(s"Run: ${cmd}")
       catch
         case e: UserInterruptException =>
+          toContinue = false
+        case e: EndOfFileException =>
           toContinue = false
         case e: Exception =>
           error(e)
