@@ -1006,7 +1006,7 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
                 TestType.ShouldContain
             case _ =>
               unexpected(t)
-        val right = valueExpression()
+        val right = booleanExpression()
         ShouldExpr(testType, left = expression, right, t.nodeLocation)
       case _ =>
         expression

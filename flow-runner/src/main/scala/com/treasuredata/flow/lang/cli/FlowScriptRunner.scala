@@ -14,7 +14,7 @@ import wvlet.log.LogSupport
 case class FlowScriptRunnerConfig(workingFolder: String = ".")
 
 class FlowScriptRunner(config: FlowScriptRunnerConfig) extends AutoCloseable with LogSupport:
-  private val duckDBExecutor               = new DuckDBExecutor()
+  private lazy val duckDBExecutor          = new DuckDBExecutor()
   private var units: List[CompilationUnit] = Nil
 
   override def close(): Unit = duckDBExecutor.close()

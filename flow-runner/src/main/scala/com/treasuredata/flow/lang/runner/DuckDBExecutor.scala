@@ -12,6 +12,7 @@ import wvlet.airframe.codec.{JDBCCodec, MessageCodec}
 import wvlet.log.{LogLevel, LogSupport, Logger}
 
 import java.sql.{DriverManager, SQLException}
+import scala.collection.immutable.ListMap
 import scala.util.Using
 
 object DuckDBExecutor extends LogSupport:
@@ -67,7 +68,7 @@ class DuckDBExecutor(prepareTPCH: Boolean = false) extends LogSupport with AutoC
             Using.resource(conn.createStatement()) { stmt =>
               Using.resource(stmt.executeQuery(sql)) { rs =>
                 val codec       = JDBCCodec(rs)
-                val resultCodec = MessageCodec.of[Seq[Map[String, Any]]]
+                val resultCodec = MessageCodec.of[Seq[ListMap[String, Any]]]
                 val results     = resultCodec.fromMsgPack(codec.toMsgPack)
                 TableRows(q.relationType, results)
               }

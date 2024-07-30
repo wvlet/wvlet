@@ -8,6 +8,7 @@ import wvlet.log.LogSupport
 import wvlet.log.io.IOUtil
 
 import java.io.File
+import scala.collection.immutable.ListMap
 
 object InMemoryExecutor:
   def default = InMemoryExecutor()
@@ -29,6 +30,6 @@ class InMemoryExecutor extends LogSupport:
       case r: JSONFileScan =>
         val json = IO.readAsString(new File(r.path))
         trace(json)
-        val codec = MessageCodec.of[Seq[Map[String, Any]]]
+        val codec = MessageCodec.of[Seq[ListMap[String, Any]]]
         val data  = codec.fromJson(json)
         TableRows(r.schema, data)
