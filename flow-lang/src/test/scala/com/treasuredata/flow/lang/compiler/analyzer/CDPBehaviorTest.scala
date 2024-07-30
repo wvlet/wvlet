@@ -6,9 +6,8 @@ import wvlet.airspec.AirSpec
 
 class CDPBehaviorTest extends AirSpec:
 
-  private val c = Compiler.default
   test("cdp_behavior") {
-    val result = c.compile("spec/cdp_behavior")
+    val result = Compiler.default("spec/cdp_behavior").compile()
     val resolvedPlan: List[LogicalPlan] = result
       .units
       .map: x =>

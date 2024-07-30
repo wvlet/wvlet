@@ -22,7 +22,7 @@ object QueryResultPrinter extends LogSupport:
   def print(result: QueryResult, limit: Option[Int] = None): String =
     result match
       case QueryResult.empty =>
-        "<empty>"
+        ""
       case QueryResultList(list) =>
         list.map(x => print(x, limit)).mkString("\n\n")
       case PlanResult(plan, result) =>

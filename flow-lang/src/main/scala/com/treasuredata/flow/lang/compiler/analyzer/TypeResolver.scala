@@ -91,7 +91,9 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
               .filter(_.isGlobalContext) // preset libraries or global symbols
             if foundSym.isEmpty
           do
-            // trace(s"Searching ${name} in ${ctx.compilationUnit.sourceFile.fileName}")
+            // trace(
+            //  s"Searching ${name} in ${ctx.compilationUnit.sourceFile.fileName}\n${ctx.compilationUnit.knownSymbols} ${ctx.hashCode()}"
+            // )
             ctx
               .compilationUnit
               .knownSymbols

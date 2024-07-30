@@ -40,7 +40,7 @@ class FlowCli(opts: FlowCliOption) extends LogSupport:
   @command(description = "Start a REPL")
   def repl(
       @option(prefix = "-c", description = "Run a command and exit")
-      command: Option[String] = None,
+      commands: List[String] = Nil,
       @option(prefix = "-w", description = "Working folder")
       workFolder: String = "."
   ): Unit =
@@ -50,7 +50,7 @@ class FlowCli(opts: FlowCliOption) extends LogSupport:
       .bindInstance[FlowScriptRunnerConfig](FlowScriptRunnerConfig(workingFolder = workFolder))
 
     design.build[FlowREPL] { repl =>
-      repl.start(command)
+      repl.start(commands)
     }
 
   @command(description = "Compile flow files")
@@ -61,8 +61,12 @@ class FlowCli(opts: FlowCliOption) extends LogSupport:
     debug(s"source folders: ${sourceFolders.mkString(", ")}")
     val contextDirectory = sourceFolders.headOption.getOrElse(new File(".").getAbsolutePath)
     debug(s"context directory: ${contextDirectory}")
-    val compileResult = Compiler(Compiler.allPhases)
-      .compileSingle(sourceFolders.toList, contextDirectory, None)
+    val compileResult = Compiler(
+      phases = Compiler.allPhases,
+      sourceFolders = sourceFolders.toList,
+      contextFolder = contextDirectory
+    ).compile()
+
     compileResult
       .typedPlans
       .collect:
@@ -93,8 +97,11 @@ class FlowCli(opts: FlowCliOption) extends LogSupport:
       info(s"context directory: ${contextDirectory}, flow file: ${flowFile}")
 
       val duckdb = DuckDBExecutor(prepareTPCH = prepareTPCH)
-      val compilationResult = Compiler(Compiler.allPhases)
-        .compileSingle(List(contextDirectory), contextDirectory, Some(flowFile))
+      val compilationResult = Compiler(
+        phases = Compiler.allPhases,
+        sourceFolders = List(contextDirectory),
+        contextFolder = contextDirectory
+      ).compileSingle(Some(flowFile))
       compilationResult
         .context
         .global

@@ -12,7 +12,9 @@ import com.treasuredata.flow.lang.model.plan.LogicalPlan
 import wvlet.log.LogSupport
 
 object Compiler:
-  def default: Compiler = Compiler(phases = allPhases)
+
+  def default(sourcePath: String): Compiler =
+    new Compiler(sourceFolders = List(sourcePath), contextFolder = sourcePath)
 
   /**
     * Phases for text-based analysis of the source code
@@ -43,17 +45,21 @@ object Compiler:
 
 end Compiler
 
-class Compiler(phases: List[List[Phase]] = Compiler.allPhases) extends LogSupport:
-  /**
-    * @param sourceFolder
-    *   A folder containing src and data folders
-    * @return
-    */
-  def compile(sourceFolder: String): CompileResult = compileSingle(
-    List(sourceFolder),
-    sourceFolder,
-    None
-  )
+class Compiler(
+    phases: List[List[Phase]] = Compiler.allPhases,
+    sourceFolders: List[String] = List("."),
+    contextFolder: String = "."
+) extends LogSupport:
+
+  private lazy val globalContext         = newGlobalContext(sourceFolders, contextFolder)
+  private lazy val localCompilationUnits = listCompilationUnits(sourceFolders)
+
+  private def newGlobalContext(sourceFolders: List[String], contextFolder: String): GlobalContext =
+    val global      = GlobalContext(sourceFolders = sourceFolders, workingFolder = contextFolder)
+    val rootContext = global.getContextOf(unit = CompilationUnit.empty, scope = Scope.newScope(0))
+    // Need to initialize the global context before running the analysis phases
+    global.init(using rootContext)
+    global
 
   private def listCompilationUnits(sourceFolders: List[String]): List[CompilationUnit] =
     val sourcePaths = Compiler.presetLibraryPaths ++ sourceFolders
@@ -63,52 +69,38 @@ class Compiler(phases: List[List[Phase]] = Compiler.allPhases) extends LogSuppor
     }
     units
 
-  def compileSingle(
-      sourceFolders: List[String],
-      contextFolder: String,
-      contextFile: Option[String]
-  ): CompileResult =
-    val units: List[CompilationUnit] = listCompilationUnits(sourceFolders)
+  /**
+    * @param sourceFolder
+    *   A folder containing src and data folders
+    * @return
+    */
+  def compile(): CompileResult = compileSingle(None)
+
+  def compileSingle(contextFile: Option[String]): CompileResult =
     val contextUnit: Option[CompilationUnit] = contextFile
-      .flatMap(f => units.find(_.sourceFile.fileName == f))
+      .flatMap(f => localCompilationUnits.find(_.sourceFile.fileName == f))
 
-    val global = newGlobalContext(sourceFolders, contextFolder)
+    compileInternal(localCompilationUnits, contextUnit = contextUnit)
 
-    compileInternal(global, units, contextUnit = contextUnit)
-
-  def compileSingle(
-      contextUnit: CompilationUnit,
-      sourceFolders: List[String] = List("."),
-      contextFolder: String = "."
-  ): CompileResult =
-    val units: List[CompilationUnit] = listCompilationUnits(sourceFolders) :+ contextUnit
-    val global                       = newGlobalContext(sourceFolders, contextFolder)
-
-    compileInternal(global, units, contextUnit = Some(contextUnit))
-
-  private def newGlobalContext(sourceFolders: List[String], contextFolder: String): GlobalContext =
-    val global      = GlobalContext(sourceFolders = sourceFolders, workingFolder = contextFolder)
-    val rootContext = global.getContextOf(unit = CompilationUnit.empty, scope = Scope.newScope(0))
-    // Need to initialize the global context before running the analysis phases
-    global.init(using rootContext)
-
-    global
+  def compileSingle(contextUnit: CompilationUnit): CompileResult =
+    val units: List[CompilationUnit] = localCompilationUnits :+ contextUnit
+    compileInternal(units, contextUnit = Some(contextUnit))
 
   def compileInternal(
-      global: GlobalContext,
       units: List[CompilationUnit],
       contextUnit: Option[CompilationUnit]
   ): CompileResult =
-    global.setContextUnit(contextUnit)
+    globalContext.setContextUnit(contextUnit)
+    val rootContext  = globalContext.getRootContext
     var refinedUnits = units
     for
       phaseGroup <- phases
       phase      <- phaseGroup
     do
       debug(s"Running phase ${phase.name}")
-      refinedUnits = phase.runOn(refinedUnits, global.getRootContext)
+      refinedUnits = phase.runOn(refinedUnits, rootContext)
 
-    CompileResult(refinedUnits, this, global.getRootContext)
+    CompileResult(refinedUnits, this, rootContext)
 
 end Compiler
 

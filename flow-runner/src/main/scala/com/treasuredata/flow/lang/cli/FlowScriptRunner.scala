@@ -19,20 +19,20 @@ class FlowScriptRunner(config: FlowScriptRunnerConfig) extends AutoCloseable wit
 
   override def close(): Unit = duckDBExecutor.close()
 
+  private val compiler = Compiler(
+    sourceFolders = List(config.workingFolder),
+    contextFolder = config.workingFolder
+  )
+
   def runStatement(line: String): Unit =
     val newUnit = CompilationUnit.fromString(line)
     units = newUnit :: units
 
     try
-      val compileResult = Compiler
-        .default
-        .compileSingle(
-          contextUnit = newUnit,
-          sourceFolders = List(config.workingFolder),
-          contextFolder = config.workingFolder
-        )
-      val ctx         = compileResult.context.global.getContextOf(newUnit)
-      val queryResult = duckDBExecutor.execute(newUnit, ctx)
+      val compileResult = compiler.compileSingle(contextUnit = newUnit)
+      val ctx           = compileResult.context.global.getContextOf(newUnit)
+      val queryResult   = duckDBExecutor.execute(newUnit, ctx)
+      trace(s"ctx: ${ctx.hashCode()} ${ctx.compilationUnit.knownSymbols}")
 
       def resultString(q: QueryResult): String =
         q match
@@ -43,9 +43,14 @@ class FlowScriptRunner(config: FlowScriptRunnerConfig) extends AutoCloseable wit
           case other =>
             QueryResultPrinter.print(other, limit = Some(10))
 
-      println(resultString(queryResult))
+      val str = resultString(queryResult)
+      if str.nonEmpty then
+        println(str)
     catch
       case e: FlowLangException if e.statusCode.isUserError =>
         error(s"${e.getMessage}")
+    end try
+
+  end runStatement
 
 end FlowScriptRunner

@@ -10,3 +10,8 @@ class FlowREPLTest extends AirSpec:
   test("model in the working folder") {
     FlowCli.main("repl -w spec/model1 -c 'from person_filter(2)'")
   }
+
+  test("def new model") {
+    FlowCli
+      .main("repl -w spec/model1 -c 'model m(v:int) = from person where id = v end' -c 'from m(1)'")
+  }

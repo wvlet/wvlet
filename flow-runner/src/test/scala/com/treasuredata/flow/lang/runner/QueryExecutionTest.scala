@@ -9,7 +9,7 @@ class QueryExecutionTest extends AirSpec:
 
   test("run basic query") {
     val executor = PlanExecutor()
-    val result   = Compiler.default.compile("examples/basic")
+    val result   = Compiler.default("examples/basic").compile()
     result
       .inFile("q1.flow")
       .map: u =>

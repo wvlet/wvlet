@@ -6,24 +6,22 @@ import wvlet.airspec.AirSpec
 
 class AnalyzerTest extends AirSpec:
 
-  private val compiler = Compiler(List(Compiler.analysisPhases))
-
   test("analyze stdlib") {
-    val result     = compiler.compileSingle(Nil, ".", None)
+    val result     = Compiler.default(".").compile()
     val typedPlans = result.typedPlans
     typedPlans.map: p =>
       trace(p.pp)
   }
 
   test("analyze cdp_simple plan") {
-    val result     = compiler.compile("spec/cdp_simple")
+    val result     = Compiler.default("spec/cdp_simple").compile()
     val typedPlans = result.typedPlans
     typedPlans.map: p =>
       trace(p.pp)
   }
 
   test("analyze basic") {
-    val result     = compiler.compile("spec/basic")
+    val result     = Compiler.default("spec/basic").compile()
     val typedPlans = result.typedPlans
     typedPlans.map: p =>
       debug(p.pp)

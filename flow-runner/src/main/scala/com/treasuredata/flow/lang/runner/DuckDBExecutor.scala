@@ -41,7 +41,8 @@ class DuckDBExecutor(prepareTPCH: Boolean = false) extends LogSupport with AutoC
         warn(e)
 
   def execute(sourceFolder: String, file: String): Unit =
-    val result = Compiler.default.compile(sourceFolder)
+    val result = Compiler(sourceFolders = List(sourceFolder), contextFolder = sourceFolder)
+      .compileSingle(Some(file))
     result
       .inFile(file)
       .foreach: u =>
