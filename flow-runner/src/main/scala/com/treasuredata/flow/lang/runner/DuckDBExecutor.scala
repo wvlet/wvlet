@@ -61,16 +61,16 @@ class DuckDBExecutor(prepareTPCH: Boolean = false) extends LogSupport with AutoC
           }
         QueryResultList(results)
       case q: Query =>
-        val sql = GenSQL.generateSQL(q, context)
-        debug(s"Executing SQL:\n${sql}")
+        val generatedSQL = GenSQL.generateSQL(q, context)
+        debug(s"Executing SQL:\n${generatedSQL.sql}")
         try
           val result =
             Using.resource(conn.createStatement()) { stmt =>
-              Using.resource(stmt.executeQuery(sql)) { rs =>
+              Using.resource(stmt.executeQuery(generatedSQL.sql)) { rs =>
                 val codec       = JDBCCodec(rs)
                 val resultCodec = MessageCodec.of[Seq[ListMap[String, Any]]]
                 val results     = resultCodec.fromMsgPack(codec.toMsgPack)
-                TableRows(q.relationType, results)
+                TableRows(generatedSQL.plan.relationType, results)
               }
             }
 
@@ -82,7 +82,7 @@ class DuckDBExecutor(prepareTPCH: Boolean = false) extends LogSupport with AutoC
           case e: SQLException =>
             throw StatusCode
               .INVALID_ARGUMENT
-              .newException(s"Failed to execute SQL: ${sql}\n${e.getMessage}", e)
+              .newException(s"Failed to execute SQL: ${generatedSQL.sql}\n${e.getMessage}", e)
       case t: TableDef =>
         QueryResult.empty
       case t: TestRelation =>

@@ -23,6 +23,8 @@ import com.treasuredata.flow.lang.model.sql.SQLGenerator
 
 import scala.annotation.tailrec
 
+case class GeneratedSQL(sql: String, plan: Relation)
+
 object GenSQL extends Phase("generate-sql"):
   override def run(unit: CompilationUnit, context: Context): CompilationUnit =
     // Generate SQL from the resolved plan
@@ -30,12 +32,12 @@ object GenSQL extends Phase("generate-sql"):
     // Attach the generated SQL to the CompilationUnit
     unit
 
-  def generateSQL(q: Query, ctx: Context): String =
+  def generateSQL(q: Query, ctx: Context): GeneratedSQL =
     val expanded = expand(q, ctx)
     // val sql      = SQLGenerator.toSQL(expanded)
     val sql = printRelation(expanded, ctx, 0)
     trace(s"[plan]\n${expanded.pp}\n[SQL]\n${sql}")
-    sql
+    GeneratedSQL(sql, expanded)
 
   def expand(q: Relation, ctx: Context): Relation =
     // expand referenced models
