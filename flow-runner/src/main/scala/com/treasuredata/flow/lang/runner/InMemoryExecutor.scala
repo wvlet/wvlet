@@ -32,4 +32,4 @@ class InMemoryExecutor extends LogSupport:
         trace(json)
         val codec = MessageCodec.of[Seq[ListMap[String, Any]]]
         val data  = codec.fromJson(json)
-        TableRows(r.schema, data)
+        TableRows(r.schema, data, data.size)

@@ -48,17 +48,17 @@ class DuckDBExecutor(prepareTPCH: Boolean = false) extends LogSupport with AutoC
       .foreach: u =>
         execute(u, result.context)
 
-  def execute(u: CompilationUnit, context: Context): QueryResult =
-    val result = execute(u.resolvedPlan, context)
+  def execute(u: CompilationUnit, context: Context, limit: Int = 40): QueryResult =
+    val result = execute(u.resolvedPlan, context, limit)
     result
 
-  def execute(plan: LogicalPlan, context: Context): QueryResult =
+  def execute(plan: LogicalPlan, context: Context, limit: Int): QueryResult =
     plan match
       case p: PackageDef =>
         val results = p
           .statements
           .map { stmt =>
-            PlanResult(stmt, execute(stmt, context))
+            PlanResult(stmt, execute(stmt, context, limit))
           }
         QueryResultList(results)
       case q: Query =>
@@ -68,16 +68,23 @@ class DuckDBExecutor(prepareTPCH: Boolean = false) extends LogSupport with AutoC
           val result =
             Using.resource(conn.createStatement()) { stmt =>
               Using.resource(stmt.executeQuery(generatedSQL.sql)) { rs =>
-                val codec       = JDBCCodec(rs)
-                val resultCodec = MessageCodec.of[Seq[ListMap[String, Any]]]
-                val results     = resultCodec.fromMsgPack(codec.toMsgPack)
-                TableRows(generatedSQL.plan.relationType, results)
+                val codec    = JDBCCodec(rs)
+                val rowCodec = MessageCodec.of[ListMap[String, Any]]
+                val it = codec.mapMsgPackMapRows { msgpack =>
+                  rowCodec.fromMsgPack(msgpack)
+                }
+                var rowCount = 0
+                val rows     = Seq.newBuilder[ListMap[String, Any]]
+                while it.hasNext do
+                  val row = it.next()
+                  if rowCount < limit then
+                    rows += row
+                  rowCount += 1
+
+                TableRows(generatedSQL.plan.relationType, rows.result(), rowCount)
               }
             }
 
-          if logger.isEnabled(LogLevel.TRACE) then
-            val resultString = QueryResultPrinter.print(result, limit = Some(10))
-            trace(resultString)
           result
         catch
           case e: SQLException =>

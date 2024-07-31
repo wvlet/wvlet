@@ -16,30 +16,34 @@ case class QueryResultList(list: Seq[QueryResult]) extends QueryResult
 
 case class PlanResult(plan: LogicalPlan, result: QueryResult) extends QueryResult
 
-case class TableRows(schema: RelationType, rows: Seq[ListMap[String, Any]]) extends QueryResult
+case class TableRows(schema: RelationType, rows: Seq[ListMap[String, Any]], totalRows: Int)
+    extends QueryResult:
+  def isTruncated: Boolean = rows.size < totalRows
 
 object QueryResultPrinter extends LogSupport:
-  def print(result: QueryResult, limit: Option[Int] = None): String =
+  def print(result: QueryResult): String =
     result match
       case QueryResult.empty =>
         ""
       case QueryResultList(list) =>
-        list.map(x => print(x, limit)).mkString("\n\n")
+        list.map(x => print(x)).mkString("\n\n")
       case PlanResult(plan, result) =>
-        s"[plan]:\n${plan.pp}\n[result]\n${print(result, limit)}"
-      case t @ TableRows(schema, rows) =>
+        s"[plan]:\n${plan.pp}\n[result]\n${print(result)}"
+      case t: TableRows =>
         printTableRows(t)
 
   private def printTableRows(tableRows: TableRows): String =
     val tbl: Seq[Seq[String]] =
       val rows = Seq.newBuilder[Seq[String]]
       rows += tableRows.schema.fields.map(_.name.name)
+      var rowCount = 0
       tableRows
         .rows
         .foreach { row =>
           val sanitizedRow = row.map { (k, v) =>
             Option(v).map(_.toString).getOrElse("")
           }
+          rowCount += 1
           rows += sanitizedRow.toSeq
         }
       rows.result()
@@ -60,7 +64,8 @@ object QueryResultPrinter extends LogSupport:
     val header = tbl.head
     val data   = tbl.tail
 
-    val rows = Seq.newBuilder[String]
+    val rows  = Seq.newBuilder[String]
+    val width = maxColSize.sum + (maxColSize.size - 1) * 3
 
     rows +=
       maxColSize
@@ -93,12 +98,30 @@ object QueryResultPrinter extends LogSupport:
           .mkString("│ ", " │ ", " │")
       }
 
-    rows +=
-      maxColSize
-        .map { maxSize =>
-          "─".padTo(maxSize, "─").mkString
-        }
-        .mkString("└─", "─┴─", "─┘")
+    if tableRows.isTruncated then
+      rows +=
+        maxColSize
+          .map { s =>
+            "─" * s
+          }
+          .mkString("├─", "─┴─", "─┤")
+      rows +=
+        f"${tableRows.totalRows}%,d (${tableRows.rows.size}%,d shown)"
+          .padTo(width, " ")
+          .mkString("│ ", "", " │")
+      rows +=
+        maxColSize
+          .map { maxSize =>
+            "─".padTo(maxSize, "─").mkString
+          }
+          .mkString("└─", "───", "─┘")
+    else
+      rows +=
+        maxColSize
+          .map { maxSize =>
+            "─".padTo(maxSize, "─").mkString
+          }
+          .mkString("└─", "─┴─", "─┘")
 
     rows.result().mkString("\n")
 
