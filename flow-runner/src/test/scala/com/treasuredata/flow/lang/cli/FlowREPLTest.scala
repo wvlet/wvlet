@@ -18,6 +18,6 @@ class FlowREPLTest extends AirSpec:
 
   test("limit shown rows") {
     FlowCli.main(
-      """repl -c "from 'https://shell.duckdb.org/data/tpch/0_01/parquet/customer.parquet' select c_custkey, c_name, c_nationkey" """
+      """repl -c "from 'https://shell.duckdb.org/data/tpch/0_01/parquet/customer.parquet'" """
     )
   }

@@ -4,14 +4,22 @@ import com.treasuredata.flow.lang.FlowLangException
 import com.treasuredata.flow.lang.compiler.{CompilationUnit, CompileResult, Compiler}
 import com.treasuredata.flow.lang.runner.{
   DuckDBExecutor,
-  QueryResult,
   PlanResult,
+  QueryResult,
   QueryResultList,
   QueryResultPrinter
 }
+import org.jline.terminal.Terminal
+import wvlet.airframe.control.{Control, Shell}
 import wvlet.log.LogSupport
 
-case class FlowScriptRunnerConfig(workingFolder: String = ".", resultLimit: Int = 40)
+import java.io.{BufferedWriter, FilterOutputStream, OutputStreamWriter}
+
+case class FlowScriptRunnerConfig(
+    workingFolder: String = ".",
+    interactive: Boolean,
+    resultLimit: Int = 40
+)
 
 class FlowScriptRunner(config: FlowScriptRunnerConfig) extends AutoCloseable with LogSupport:
   private lazy val duckDBExecutor          = new DuckDBExecutor()
@@ -24,7 +32,7 @@ class FlowScriptRunner(config: FlowScriptRunnerConfig) extends AutoCloseable wit
     contextFolder = config.workingFolder
   )
 
-  def runStatement(line: String): Unit =
+  def runStatement(line: String, terminal: Terminal): Unit =
     val newUnit = CompilationUnit.fromString(line)
     units = newUnit :: units
 
@@ -45,7 +53,28 @@ class FlowScriptRunner(config: FlowScriptRunnerConfig) extends AutoCloseable wit
 
       val str = resultString(queryResult)
       if str.nonEmpty then
-        println(str)
+
+        val maxWidth = str.split("\n").map(_.size).max
+        if !config.interactive || maxWidth <= terminal.getWidth then
+          println(str)
+        else
+          val proc = ProcessBuilder("less", "-FXRSn")
+            .redirectError(ProcessBuilder.Redirect.INHERIT)
+            .redirectOutput(ProcessBuilder.Redirect.INHERIT)
+            .start()
+          val out =
+            new BufferedWriter(
+              new OutputStreamWriter(
+                // Need to use a FilterOutputStream to accept keyboard events for less command
+                new FilterOutputStream(proc.getOutputStream())
+              )
+            )
+          out.write(str)
+          out.flush()
+          out.close()
+          // Blocking
+          proc.waitFor()
+
     catch
       case e: FlowLangException if e.statusCode.isUserError =>
         error(s"${e.getMessage}")

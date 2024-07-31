@@ -106,7 +106,7 @@ object QueryResultPrinter extends LogSupport:
           }
           .mkString("├─", "─┴─", "─┤")
       rows +=
-        f"${tableRows.totalRows}%,d (${tableRows.rows.size}%,d shown)"
+        f"${tableRows.totalRows}%,d rows (${tableRows.rows.size}%,d shown)"
           .padTo(width, " ")
           .mkString("│ ", "", " │")
       rows +=

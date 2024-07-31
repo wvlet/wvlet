@@ -84,7 +84,7 @@ class FlowREPL(runner: FlowScriptRunner) extends AutoCloseable with LogSupport:
             println(helpMessage)
           case stmt =>
             if stmt.nonEmpty then
-              runner.runStatement(stmt)
+              runner.runStatement(stmt, terminal)
 
       try
         // If a command is given, run it and exist
@@ -100,6 +100,8 @@ class FlowREPL(runner: FlowScriptRunner) extends AutoCloseable with LogSupport:
         case e: UserInterruptException =>
           toContinue = false
         case e: EndOfFileException =>
+          toContinue = false
+        case e: InterruptedException =>
           toContinue = false
         case e: Exception =>
           error(e)

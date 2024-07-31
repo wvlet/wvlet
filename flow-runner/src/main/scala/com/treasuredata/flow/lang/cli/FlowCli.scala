@@ -47,7 +47,9 @@ class FlowCli(opts: FlowCliOption) extends LogSupport:
     val design = Design
       .newSilentDesign
       .bindSingleton[FlowREPL]
-      .bindInstance[FlowScriptRunnerConfig](FlowScriptRunnerConfig(workingFolder = workFolder))
+      .bindInstance[FlowScriptRunnerConfig](
+        FlowScriptRunnerConfig(workingFolder = workFolder, interactive = commands.isEmpty)
+      )
 
     design.build[FlowREPL] { repl =>
       repl.start(commands)
