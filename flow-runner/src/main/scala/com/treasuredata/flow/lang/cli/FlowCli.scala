@@ -34,8 +34,8 @@ case class FlowCliOption(
 class FlowCli(opts: FlowCliOption) extends LogSupport:
   Logger("com.treasuredata.flow.lang").setLogLevel(opts.logLevel)
 
-  @command(isDefault = true)
-  def default: Unit = info(s"treasure-flow version: ${BuildInfo.version}")
+  @command(description = "Show the version", isDefault = true)
+  def version: Unit = info(s"treasure-flow version: ${BuildInfo.version}")
 
   @command(description = "Start a REPL")
   def repl(
