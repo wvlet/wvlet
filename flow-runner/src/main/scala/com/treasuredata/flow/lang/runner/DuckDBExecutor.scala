@@ -2,7 +2,8 @@ package com.treasuredata.flow.lang.runner
 
 import com.treasuredata.flow.lang.StatusCode
 import com.treasuredata.flow.lang.compiler.codegen.GenSQL
-import com.treasuredata.flow.lang.compiler.{CompilationUnit, Compiler, Context}
+import com.treasuredata.flow.lang.compiler.{CompilationUnit, Compiler, Context, Name}
+import com.treasuredata.flow.lang.model.DataType.{NamedType, SchemaType, UnresolvedType}
 import com.treasuredata.flow.lang.model.plan.*
 import org.duckdb.DuckDBConnection
 import wvlet.airframe.codec.{JDBCCodec, MessageCodec}
@@ -91,6 +92,15 @@ class DuckDBExecutor(prepareTPCH: Boolean = false) extends LogSupport with AutoC
           val result =
             Using.resource(getConnection.createStatement()) { stmt =>
               Using.resource(stmt.executeQuery(generatedSQL.sql)) { rs =>
+                val metadata = rs.getMetaData
+                val fields =
+                  for i <- 1 to metadata.getColumnCount
+                  yield NamedType(
+                    Name.termName(metadata.getColumnName(i)),
+                    UnresolvedType(metadata.getColumnTypeName(i))
+                  )
+                val outputType = SchemaType(None, Name.NoTypeName, fields)
+
                 val codec    = JDBCCodec(rs)
                 val rowCodec = MessageCodec.of[ListMap[String, Any]]
                 val it = codec.mapMsgPackMapRows { msgpack =>
@@ -104,7 +114,7 @@ class DuckDBExecutor(prepareTPCH: Boolean = false) extends LogSupport with AutoC
                     rows += row
                   rowCount += 1
 
-                TableRows(generatedSQL.plan.relationType, rows.result(), rowCount)
+                TableRows(outputType, rows.result(), rowCount)
               }
             }
 
@@ -114,6 +124,7 @@ class DuckDBExecutor(prepareTPCH: Boolean = false) extends LogSupport with AutoC
             throw StatusCode
               .INVALID_ARGUMENT
               .newException(s"Failed to execute SQL: ${generatedSQL.sql}\n${e.getMessage}", e)
+        end try
       case t: TableDef =>
         QueryResult.empty
       case t: TestRelation =>

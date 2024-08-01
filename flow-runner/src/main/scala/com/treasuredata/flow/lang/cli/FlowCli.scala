@@ -32,7 +32,7 @@ case class FlowCliOption(
 )
 
 class FlowCli(opts: FlowCliOption) extends LogSupport:
-  Logger("com.treasuredata.flow.lang").setLogLevel(opts.logLevel)
+  Logger("com.treasuredata.flow.lang.runner").setLogLevel(opts.logLevel)
 
   @command(description = "Show the version", isDefault = true)
   def version: Unit = info(s"treasure-flow version: ${BuildInfo.version}")

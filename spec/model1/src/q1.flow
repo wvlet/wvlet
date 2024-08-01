@@ -17,3 +17,10 @@ end
 
 
 from person_filter(bound = 2)
+
+from person_with_age_group
+group by age_group
+
+from person_with_age_group
+group by age_group
+where _.count >= 1

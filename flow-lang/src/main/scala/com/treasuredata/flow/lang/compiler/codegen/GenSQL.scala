@@ -12,17 +12,8 @@ import com.treasuredata.flow.lang.compiler.{
 }
 import com.treasuredata.flow.lang.model.expr.*
 import com.treasuredata.flow.lang.model.plan.*
-import com.treasuredata.flow.lang.model.plan.JoinType.{
-  CrossJoin,
-  FullOuterJoin,
-  ImplicitJoin,
-  InnerJoin,
-  LeftOuterJoin,
-  RightOuterJoin
-}
-import com.treasuredata.flow.lang.model.sql.SQLGenerator
+import com.treasuredata.flow.lang.model.plan.JoinType.*
 
-import scala.annotation.tailrec
 import scala.collection.immutable.ListMap
 
 case class GeneratedSQL(sql: String, plan: Relation)
@@ -150,6 +141,28 @@ object GenSQL extends Phase("generate-sql"):
 
     end toAggregateSelect
 
+    def printAggregate(a: Aggregate): String =
+      // Aggregation without any projection (select)
+      val agg = toAggregateSelect(
+        AggregateSelect(a.child, Nil, a.groupingKeys, Nil, Nil, a.nodeLocation),
+        a.child
+      )
+      val s           = Seq.newBuilder[String]
+      val selectItems = Seq.newBuilder[String]
+      selectItems ++= agg.groupingKeys.map(x => printExpression(x, ctx))
+      selectItems ++=
+        a.inputRelationType
+          .fields
+          .map { f =>
+            // TODO: This should generate a nested relation, but use arbitrary(expr) for efficiency
+            s"arbitrary(${f.name})"
+          }
+
+      s += s"select ${selectItems.result().mkString(", ")}"
+      s += s"from ${printRelation(agg.child, ctx, nestingLevel + 1)}"
+      s += s"group by ${agg.groupingKeys.map(x => printExpression(x, ctx)).mkString(", ")}"
+      s.result().mkString("\n")
+
     r match
       case p: Project =>
         // pull-up filter nodes to build where clause
@@ -171,6 +184,8 @@ object GenSQL extends Phase("generate-sql"):
           s += s"having ${agg.having.map(x => printExpression(x.filterExpr, ctx)).mkString(", ")}"
 
         indent(s"(${s.result().mkString("\n")})")
+      case a: Aggregate =>
+        indent(s"(${printAggregate(a)})")
       case j: Join =>
         def printRel(r: Relation): String =
           r match
@@ -205,19 +220,27 @@ object GenSQL extends Phase("generate-sql"):
           case FullOuterJoin =>
             s"${l} full outer join ${r}${c}"
           case CrossJoin =>
-            s"${l} cross join ${r}${c}"
+            s"${l} cross join p${r}${c}"
           case ImplicitJoin =>
             s"${l}, ${r}${c}"
       case j: JSONFileScan =>
         indent(s"(select * from '${j.path}')")
       case f: Filter =>
-        indent(
-          s"""(select * from ${printRelation(
-              f.inputRelation,
-              ctx,
-              nestingLevel + 1
-            )}\nwhere ${printExpression(f.filterExpr, ctx)})"""
-        )
+        f.child match
+          case a: Aggregate =>
+            val body = List(
+              s"${printAggregate(a)}",
+              s"having ${printExpression(f.filterExpr, ctx)}"
+            ).mkString("\n")
+            indent(s"(${body})")
+          case _ =>
+            indent(
+              s"""(select * from ${printRelation(
+                  f.inputRelation,
+                  ctx,
+                  nestingLevel + 1
+                )}\nwhere ${printExpression(f.filterExpr, ctx)})"""
+            )
       case a: AliasedRelation =>
         indent(
           s"${printRelation(a.inputRelation, ctx, nestingLevel + 1)} as ${printExpression(a.alias, ctx)}"

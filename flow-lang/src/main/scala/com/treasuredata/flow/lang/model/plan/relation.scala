@@ -42,7 +42,7 @@ sealed trait Relation extends LogicalPlan:
 // A relation that takes a single input relation
 trait UnaryRelation extends Relation with UnaryPlan:
   def inputRelation: Relation                  = child
-  override def inputRelationType: RelationType = child.inputRelationType
+  override def inputRelationType: RelationType = child.relationType
   override def child: Relation
 
 trait HasName:

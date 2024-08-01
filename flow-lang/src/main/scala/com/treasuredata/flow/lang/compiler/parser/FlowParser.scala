@@ -801,6 +801,8 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
         groupByItemList()
       case t if t.tokenType == TokenType.Keyword =>
         Nil
+      case FlowToken.EOF =>
+        Nil
       case _ =>
         // expression only
         val e   = expression()
