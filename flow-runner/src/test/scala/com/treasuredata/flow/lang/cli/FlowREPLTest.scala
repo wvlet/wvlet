@@ -21,3 +21,9 @@ class FlowREPLTest extends AirSpec:
       """repl -c "from 'https://shell.duckdb.org/data/tpch/0_01/parquet/customer.parquet'" """
     )
   }
+
+  test("show models") {
+    FlowCli.main("repl -w spec/model1 -c 'show models'")
+    FlowCli.main("repl -w spec/model1 -c 'show models limit 1'")
+    FlowCli.main("repl -w spec/model1 -c 'show models' -c 'show models limit 5'")
+  }

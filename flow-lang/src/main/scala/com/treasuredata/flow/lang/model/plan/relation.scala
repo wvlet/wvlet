@@ -619,3 +619,22 @@ case class IncrementalAppend(
     nodeLocation: Option[NodeLocation]
 ) extends UnaryRelation:
   override def relationType: RelationType = child.relationType
+
+enum ShowType:
+  case models
+
+case class Show(showType: ShowType, nodeLocation: Option[NodeLocation])
+    extends Relation
+    with LeafPlan:
+  override def relationType: RelationType =
+    showType match
+      case ShowType.models =>
+        SchemaType(
+          parent = None,
+          typeName = Name.typeName("model"),
+          columnTypes = Seq[NamedType](
+            NamedType(Name.termName("name"), DataType.StringType),
+            NamedType(Name.termName("args"), DataType.StringType),
+            NamedType(Name.termName("package_name"), DataType.StringType)
+          )
+        )

@@ -2,7 +2,13 @@ package com.treasuredata.flow.lang.runner
 
 import com.treasuredata.flow.lang.StatusCode
 import com.treasuredata.flow.lang.compiler.codegen.GenSQL
-import com.treasuredata.flow.lang.compiler.{CompilationUnit, Compiler, Context}
+import com.treasuredata.flow.lang.compiler.{
+  CompilationUnit,
+  Compiler,
+  Context,
+  GlobalDefinitions,
+  ModelSymbolInfo
+}
 import com.treasuredata.flow.lang.model.plan.*
 import com.treasuredata.flow.lang.model.sql.SQLGenerator
 import com.treasuredata.flow.lang.runner.DuckDBExecutor.default

@@ -110,6 +110,7 @@ enum FlowToken(val tokenType: TokenType, val str: String):
   case EXTENDS extends FlowToken(Keyword, "extends")
   case WITH    extends FlowToken(Keyword, "with")
   case TEST    extends FlowToken(Keyword, "test")
+  case SHOW    extends FlowToken(Keyword, "show")
 
   case THIS extends FlowToken(Keyword, "this")
 

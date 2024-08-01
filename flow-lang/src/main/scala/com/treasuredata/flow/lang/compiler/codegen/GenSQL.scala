@@ -4,6 +4,7 @@ import com.treasuredata.flow.lang.compiler.{
   BoundedSymbolInfo,
   CompilationUnit,
   Context,
+  ModelSymbolInfo,
   Name,
   Phase,
   Symbol,
@@ -22,6 +23,7 @@ import com.treasuredata.flow.lang.model.plan.JoinType.{
 import com.treasuredata.flow.lang.model.sql.SQLGenerator
 
 import scala.annotation.tailrec
+import scala.collection.immutable.ListMap
 
 case class GeneratedSQL(sql: String, plan: Relation)
 
@@ -252,6 +254,55 @@ object GenSQL extends Phase("generate-sql"):
         indent(s"""(select * from ${t.name})""")
       case t: ParquetFileScan =>
         indent(s"""(select * from '${t.path}')""")
+      case s: Show if s.showType == ShowType.models =>
+        val models: Seq[ListMap[String, Any]] = ctx
+          .global
+          .getAllContexts
+          .flatMap { ctx =>
+            ctx
+              .compilationUnit
+              .knownSymbols
+              .map(_.symbolInfo(using ctx))
+              .collect { case m: ModelSymbolInfo =>
+                m
+              }
+              // TODO remove duplicates (different Symbols are generated)
+              .distinctBy(_.name)
+              .map { m =>
+                val e = ListMap.newBuilder[String, Any]
+                e += "name" -> s"'${m.name.name}'"
+
+                // model argument types
+                m.symbol.tree match
+                  case md: ModelDef if md.params.nonEmpty =>
+                    val args = md.params.map(arg => s"${arg.name}:${arg.dataType.typeDescription}")
+                    e += "args" -> args.mkString("'", ", ", "'")
+                  case _ =>
+                    e += "args" -> "cast(null as varchar)"
+
+                // package_name
+                if !m.owner.isNoSymbol && m.owner != ctx.global.defs.RootPackage then
+                  e += "package_name" -> s"'${m.owner.name(using ctx).name}'"
+                else
+                  e += "package_name" -> "cast(null as varchar)"
+
+                e.result()
+              }
+          }
+
+        val modelValues = models
+          .map { x =>
+            List(x("name"), x.getOrElse("args", ""), x.getOrElse("package_name", "")).mkString(",")
+          }
+          .map(x => s"(${x})")
+        if modelValues.isEmpty then
+          indent(
+            "(select null::varchar as name, null::varchar as args, null::varchar as package_name limit 0)"
+          )
+        else
+          indent(
+            s"(select * from values ${indent(modelValues.mkString(", "))} as __models(name, args, package_name))"
+          )
       case other =>
         warn(s"unknown relation type: ${other}")
         other.toString

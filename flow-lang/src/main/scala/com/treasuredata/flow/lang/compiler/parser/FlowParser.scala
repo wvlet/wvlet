@@ -42,8 +42,9 @@ import wvlet.log.LogSupport
   *   statement: importStatement
   *            | modelDef
   *            | query
+  *            | typeDef
   *            | funDef
-  *            | test
+  *            | showCommand queryBlock*
   *
   *   importStatement: 'import' importRef (from str)?
   *   importRef      : qualifiedId ('.' '*')?
@@ -70,6 +71,7 @@ import wvlet.log.LogSupport
   *             | 'limit' INTEGER_VALUE
   *             | 'order' 'by' sortItem (',' sortItem)* comma?)?
   *             | 'test' COLON testExpr*
+  *             | 'show' identifier
   *
   *   join        : joinType? 'join' relation joinCriteria
   *               | 'cross' 'join' relation
@@ -87,7 +89,10 @@ import wvlet.log.LogSupport
   *   selectExpr: selectItem (',' selectItem)* ','?
   *   selectItem: (identifier (':' identifier)? '=')? expression
   *
+  *   test: 'test' COLON testExpr*
   *   testExpr: booleanExpression
+  *
+  *   showCommand: 'show' identifier
   *
   *   sortItem:: expression ('asc' | 'desc')?
   *
@@ -264,8 +269,21 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
       case FlowToken.DEF =>
         val d = funDef()
         TopLevelFunctionDef(d, t.nodeLocation)
+      case FlowToken.SHOW =>
+        Query(queryBlock(show()), t.nodeLocation)
       case _ =>
         unexpected(t)
+
+  def show(): Show =
+    val t    = consume(FlowToken.SHOW)
+    val name = identifier()
+    try
+      Show(ShowType.valueOf(name.leafName), t.nodeLocation)
+    catch
+      case e: IllegalArgumentException =>
+        throw StatusCode
+          .SYNTAX_ERROR
+          .newException(s"Unknown argument for show: ${name.leafName}", t.sourceLocation)
 
   def modelDef(): ModelDef =
     val t    = consume(FlowToken.MODEL)

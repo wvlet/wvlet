@@ -69,7 +69,7 @@ class MethodSymbolInfo(
     defContexts: List[DefContext]
 ) extends NamedSymbolInfo(symbol, owner, name, ft)
 
-class ModelSymbolInfo(symbol: Symbol, owner: Symbol, name: Name, tpe: DataType)
+class ModelSymbolInfo(symbol: Symbol, val owner: Symbol, name: Name, tpe: DataType)
     extends NamedSymbolInfo(symbol, owner, name, tpe):
   override def toString: String = s"model ${owner}.${name}: ${dataType}"
 
