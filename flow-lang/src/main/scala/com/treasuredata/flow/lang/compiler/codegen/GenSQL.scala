@@ -266,8 +266,6 @@ object GenSQL extends Phase("generate-sql"):
               .collect { case m: ModelSymbolInfo =>
                 m
               }
-              // TODO remove duplicates (different Symbols are generated)
-              .distinctBy(_.name)
               .map { m =>
                 val e = ListMap.newBuilder[String, Any]
                 e += "name" -> s"'${m.name.name}'"

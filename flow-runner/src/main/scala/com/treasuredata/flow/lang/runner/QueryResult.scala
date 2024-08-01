@@ -28,7 +28,8 @@ object QueryResultPrinter extends LogSupport:
       case QueryResultList(list) =>
         list.map(x => print(x)).mkString("\n\n")
       case PlanResult(plan, result) =>
-        s"[plan]:\n${plan.pp}\n[result]\n${print(result)}"
+        // s"[plan]:\n${plan.pp}\n[result]\n${print(result)}"
+        print(result)
       case t: TableRows =>
         printTableRows(t)
 

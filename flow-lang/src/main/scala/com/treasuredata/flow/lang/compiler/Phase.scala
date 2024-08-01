@@ -13,11 +13,15 @@ abstract class Phase(
 
   def runOn(units: List[CompilationUnit], context: Context): List[CompilationUnit] =
     init(units, context)
-    val buf = List.newBuilder[CompilationUnit]
+    val completedUnits = List.newBuilder[CompilationUnit]
     for unit <- units do
       trace(s"Running phase ${name} on ${unit.sourceFile.file}")
       val sourceContext = context.withCompilationUnit(unit)
-      buf += run(unit, sourceContext)
-    refineUnits(buf.result())
+      if unit.isFinished(this) then
+        completedUnits += unit
+      else
+        completedUnits += run(unit, sourceContext)
+        unit.setFinished(this)
+    refineUnits(completedUnits.result())
 
   def run(unit: CompilationUnit, context: Context): CompilationUnit

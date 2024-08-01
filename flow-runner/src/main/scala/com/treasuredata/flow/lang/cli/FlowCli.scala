@@ -3,7 +3,7 @@ package com.treasuredata.flow.lang.cli
 import com.treasuredata.flow.BuildInfo
 import com.treasuredata.flow.lang.{FlowLangException, StatusCode}
 import com.treasuredata.flow.lang.compiler.{CompilationUnit, Compiler}
-import com.treasuredata.flow.lang.runner.DuckDBExecutor
+import com.treasuredata.flow.lang.runner.{DuckDBExecutor, QueryResultPrinter}
 import wvlet.airframe.Design
 import wvlet.airframe.launcher.{Launcher, argument, command, option}
 import wvlet.log.{LogLevel, LogSupport, Logger}
@@ -111,8 +111,11 @@ class FlowCli(opts: FlowCliOption) extends LogSupport:
         .map(_.compilationUnit)
         .find(_.sourceFile.fileName == flowFile) match
         case Some(contextUnit) =>
-          val ctx      = compilationResult.context.global.getContextOf(contextUnit)
-          val executor = duckdb.execute(contextUnit, ctx)
+          val ctx    = compilationResult.context.global.getContextOf(contextUnit)
+          val result = duckdb.execute(contextUnit, ctx)
+          val str    = QueryResultPrinter.print(result)
+          if str.nonEmpty then
+            println(str)
         case None =>
           throw StatusCode.INVALID_ARGUMENT.newException(s"Cannot find the context for ${flowFile}")
     catch

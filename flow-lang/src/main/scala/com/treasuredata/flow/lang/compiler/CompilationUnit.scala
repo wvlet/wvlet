@@ -24,6 +24,11 @@ case class CompilationUnit(sourceFile: SourceFile, isPreset: Boolean = false) ex
   // Plans generated for subscriptions
   var subscriptionPlans: List[LogicalPlan] = List.empty[LogicalPlan]
 
+  private var finishedPhases: Set[String] = Set.empty
+
+  def isFinished(phase: Phase): Boolean = finishedPhases.contains(phase.name)
+  def setFinished(phase: Phase): Unit   = finishedPhases += phase.name
+
   def enter(symbol: Symbol): Unit = knownSymbols = symbol :: knownSymbols
 
   def toSourceLocation(nodeLocation: Option[NodeLocation]) = SourceLocation(this, nodeLocation)
