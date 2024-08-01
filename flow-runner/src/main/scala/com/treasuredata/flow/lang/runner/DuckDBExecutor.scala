@@ -2,19 +2,11 @@ package com.treasuredata.flow.lang.runner
 
 import com.treasuredata.flow.lang.StatusCode
 import com.treasuredata.flow.lang.compiler.codegen.GenSQL
-import com.treasuredata.flow.lang.compiler.{
-  CompilationUnit,
-  Compiler,
-  Context,
-  GlobalDefinitions,
-  ModelSymbolInfo
-}
+import com.treasuredata.flow.lang.compiler.{CompilationUnit, Compiler, Context}
 import com.treasuredata.flow.lang.model.plan.*
-import com.treasuredata.flow.lang.model.sql.SQLGenerator
-import com.treasuredata.flow.lang.runner.DuckDBExecutor.default
 import org.duckdb.DuckDBConnection
-import wvlet.airframe.codec.JDBCCodec.ResultSetCodec
 import wvlet.airframe.codec.{JDBCCodec, MessageCodec}
+import wvlet.airframe.metrics.ElapsedTime
 import wvlet.log.{LogLevel, LogSupport, Logger}
 
 import java.sql.{DriverManager, SQLException}
@@ -26,7 +18,24 @@ object DuckDBExecutor extends LogSupport:
 
 class DuckDBExecutor(prepareTPCH: Boolean = false) extends LogSupport with AutoCloseable:
 
-  private val conn: DuckDBConnection =
+  private var conn: DuckDBConnection = null
+
+  private val initThread =
+    new Thread(
+      new Runnable:
+        override def run(): Unit =
+          val nano = System.nanoTime()
+          logger.trace("Initializing DuckDB connection")
+          conn = prepareConnection
+          logger.trace(s"Finished initializing DuckDB. ${ElapsedTime.nanosSince(nano)}")
+    )
+
+  // Initialize DuckDB in the background thread
+  init()
+
+  private def init(): Unit = initThread.start
+
+  private def prepareConnection: DuckDBConnection =
     Class.forName("org.duckdb.DuckDBDriver")
     DriverManager.getConnection("jdbc:duckdb:") match
       case conn: DuckDBConnection =>
@@ -41,10 +50,18 @@ class DuckDBExecutor(prepareTPCH: Boolean = false) extends LogSupport with AutoC
 
   override def close(): Unit =
     try
-      conn.close()
+      Option(conn).foreach(_.close())
     catch
       case e: Throwable =>
         warn(e)
+
+  private def getConnection: DuckDBConnection =
+    initThread.join()
+    if conn == null then
+      throw StatusCode
+        .NON_RETRYABLE_INTERNAL_ERROR
+        .newException("Failed to initialize DuckDB connection")
+    conn
 
   def execute(sourceFolder: String, file: String): Unit =
     val result = Compiler(sourceFolders = List(sourceFolder), contextFolder = sourceFolder)
@@ -72,7 +89,7 @@ class DuckDBExecutor(prepareTPCH: Boolean = false) extends LogSupport with AutoC
         debug(s"Executing SQL:\n${generatedSQL.sql}")
         try
           val result =
-            Using.resource(conn.createStatement()) { stmt =>
+            Using.resource(getConnection.createStatement()) { stmt =>
               Using.resource(stmt.executeQuery(generatedSQL.sql)) { rs =>
                 val codec    = JDBCCodec(rs)
                 val rowCodec = MessageCodec.of[ListMap[String, Any]]
