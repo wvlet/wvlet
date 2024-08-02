@@ -3,6 +3,7 @@ package com.treasuredata.flow.lang.runner
 import com.treasuredata.flow.lang.StatusCode
 import com.treasuredata.flow.lang.compiler.codegen.GenSQL
 import com.treasuredata.flow.lang.compiler.{CompilationUnit, Compiler, Context, Name}
+import com.treasuredata.flow.lang.model.DataType
 import com.treasuredata.flow.lang.model.DataType.{NamedType, SchemaType, UnresolvedType}
 import com.treasuredata.flow.lang.model.plan.*
 import com.treasuredata.flow.lang.runner.connector.duckdb.DuckDBContext
@@ -13,7 +14,7 @@ import wvlet.log.{LogLevel, LogSupport, Logger}
 
 import java.sql.{DriverManager, SQLException}
 import scala.collection.immutable.ListMap
-import scala.util.Using
+import scala.util.{Try, Using}
 
 object DuckDBExecutor extends LogSupport:
   def default: DuckDBExecutor = DuckDBExecutor()
@@ -57,7 +58,9 @@ class DuckDBExecutor(dbContext: DuckDBContext = DuckDBContext())
                   for i <- 1 to metadata.getColumnCount
                   yield NamedType(
                     Name.termName(metadata.getColumnName(i)),
-                    UnresolvedType(metadata.getColumnTypeName(i))
+                    Try(DataType.parse(metadata.getColumnTypeName(i))).getOrElse {
+                      UnresolvedType(metadata.getColumnTypeName(i))
+                    }
                   )
                 val outputType = SchemaType(None, Name.NoTypeName, fields)
 

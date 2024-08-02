@@ -33,7 +33,7 @@ object ParquetAnalyzer:
           val name     = metadata.getColumnName(i)
           val dataType = metadata.getColumnTypeName(i).toLowerCase
           // TODO support non-primitive type parsing
-          NamedType(Name.termName(name), DataType.getPrimitiveType(dataType))
+          NamedType(Name.termName(name), DataType.parse(dataType))
         }
         SchemaType(None, Name.typeName(RelationType.newRelationTypeName), columns)
       }

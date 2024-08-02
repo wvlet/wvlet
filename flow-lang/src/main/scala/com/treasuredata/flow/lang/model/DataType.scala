@@ -6,6 +6,8 @@ import com.treasuredata.flow.lang.model.DataType.NamedType
 import com.treasuredata.flow.lang.model.expr.NameExpr
 import wvlet.log.LogSupport
 
+import scala.util.Try
+
 abstract class DataType(val typeName: TypeName, val typeParams: Seq[Type]) extends Type:
   override def toString: String = typeDescription
 
@@ -67,20 +69,10 @@ object DataType extends LogSupport:
 
   def parse(s: String): DataType = DataTypeParser.parse(s)
 
-  def parse(s: String, typeParams: List[TypeParameter]): DataType =
-    s match
-      case "decimal" if typeParams.length == 2 =>
-        DecimalType(typeParams(0), typeParams(1))
-      case "array" if typeParams.length == 1 =>
-        ArrayType(typeParams(0))
-      case "map" if typeParams.length == 2 =>
-        MapType(typeParams(0), typeParams(1))
-      case _ =>
-        // TODO parse more generic types
-        primitiveTypeTable.getOrElse(Name.typeName(s), UnresolvedType(s))
+  def parse(s: String, typeParams: List[TypeParameter]): DataType = DataTypeParser
+    .parse(s, typeParams)
 
-//  def unapply(str: String): Option[DataType] =
-//    Try(DataTypeParser.parse(str)).toOption
+  def unapply(str: String): Option[DataType] = Try(DataTypeParser.parse(str)).toOption
 
   case class UnresolvedType(leafName: String) extends DataType(Name.typeName(leafName), Seq.empty):
     override def typeDescription: String = s"${leafName}?"

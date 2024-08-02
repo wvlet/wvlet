@@ -26,11 +26,31 @@ import wvlet.log.LogSupport
   * @param sourceFile
   */
 object DataTypeParser:
-  def parse(str: String): DataType = DataTypeParser(SourceFile.fromString(str)).parse()
+  def parse(str: String): DataType = DataTypeParser(FlowScanner(SourceFile.fromString(str))).parse()
+  def parse(str: String, typeParams: List[DataType]): DataType = toDataType(str, typeParams)
 
-class DataTypeParser(sourceFile: SourceFile) extends LogSupport:
+  private def unexpected(msg: String): FlowLangException = StatusCode.SYNTAX_ERROR.newException(msg)
+  private def toDataType(typeName: String, params: List[DataType]): DataType =
+    typeName match
+      case p if params.isEmpty && DataType.isPrimitiveTypeName(p) =>
+        DataType.getPrimitiveType(typeName)
+      case "array" if params.size == 1 =>
+        ArrayType(params(0))
+      case "map" if params.size == 2 =>
+        MapType(params(0), params(1))
+      case "decimal" =>
+        if params.size != 2 then
+          throw unexpected(s"decimal type requires two parameters: ${params}")
+        (params(0), params(1)) match
+          case (p: IntConstant, s: IntConstant) =>
+            DecimalType(p, s)
+          case _ =>
+            throw unexpected(s"Invalid decimal type parameters: ${params}")
+      case _ =>
+        GenericType(Name.typeName(typeName), params)
 
-  private val scanner = FlowScanner(sourceFile)
+class DataTypeParser(scanner: FlowScanner) extends LogSupport:
+  import DataTypeParser.*
 
   private def consume(expected: FlowToken): TokenData =
     val t = scanner.nextToken()
@@ -44,11 +64,9 @@ class DataTypeParser(sourceFile: SourceFile) extends LogSupport:
       throw unexpected(s"Expected ${expected} but found ${t.token}")
     t
 
-  private def unexpected(msg: String): FlowLangException = StatusCode.SYNTAX_ERROR.newException(msg)
-
   def parse(): DataType = dataType()
 
-  def dataType(): DataType =
+  private def dataType(): DataType =
     val t = scanner.lookAhead()
     t.token match
       case FlowToken.NULL =>
@@ -69,23 +87,7 @@ class DataTypeParser(sourceFile: SourceFile) extends LogSupport:
               params = typeParams()
               consume(FlowToken.R_PAREN)
 
-            typeName match
-              case p if params.isEmpty && DataType.isPrimitiveTypeName(p) =>
-                DataType.getPrimitiveType(typeName)
-              case "array" if params.size == 1 =>
-                ArrayType(params(0))
-              case "map" if params.size == 2 =>
-                MapType(params(0), params(1))
-              case "decimal" =>
-                if params.size != 2 then
-                  throw unexpected(s"decimal type requires two parameters: ${params}")
-                (params(0), params(1)) match
-                  case (p: IntConstant, s: IntConstant) =>
-                    DecimalType(p, s)
-                  case _ =>
-                    throw unexpected(s"Invalid decimal type parameters: ${params}")
-              case _ =>
-                GenericType(Name.typeName(typeName), params)
+            toDataType(typeName, params)
       case _ =>
         throw unexpected(s"Unexpected token ${t.token}")
 
