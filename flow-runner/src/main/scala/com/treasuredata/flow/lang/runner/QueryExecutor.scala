@@ -6,6 +6,7 @@ import com.treasuredata.flow.lang.compiler.{CompilationUnit, Compiler, Context, 
 import com.treasuredata.flow.lang.model.DataType
 import com.treasuredata.flow.lang.model.DataType.{NamedType, SchemaType, UnresolvedType}
 import com.treasuredata.flow.lang.model.plan.*
+import com.treasuredata.flow.lang.runner.connector.DBContext
 import com.treasuredata.flow.lang.runner.connector.duckdb.DuckDBContext
 import org.duckdb.DuckDBConnection
 import wvlet.airframe.codec.{JDBCCodec, MessageCodec}
@@ -16,12 +17,10 @@ import java.sql.{DriverManager, SQLException}
 import scala.collection.immutable.ListMap
 import scala.util.{Try, Using}
 
-object DuckDBExecutor extends LogSupport:
-  def default: DuckDBExecutor = DuckDBExecutor()
+object QueryExecutor extends LogSupport:
+  def default: QueryExecutor = QueryExecutor(dbContext = DuckDBContext())
 
-class DuckDBExecutor(dbContext: DuckDBContext = DuckDBContext())
-    extends LogSupport
-    with AutoCloseable:
+class QueryExecutor(dbContext: DBContext) extends LogSupport with AutoCloseable:
 
   override def close(): Unit = dbContext.close()
 
@@ -104,4 +103,4 @@ class DuckDBExecutor(dbContext: DuckDBContext = DuckDBContext())
       case other =>
         throw StatusCode.NOT_IMPLEMENTED.newException(s"Unsupported plan: ${other}")
 
-end DuckDBExecutor
+end QueryExecutor

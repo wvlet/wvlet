@@ -3,8 +3,9 @@ package com.treasuredata.flow.lang.cli
 import com.treasuredata.flow.BuildInfo
 import com.treasuredata.flow.lang.{FlowLangException, StatusCode}
 import com.treasuredata.flow.lang.compiler.{CompilationUnit, Compiler}
+import com.treasuredata.flow.lang.runner.connector.DBContext
 import com.treasuredata.flow.lang.runner.connector.duckdb.DuckDBContext
-import com.treasuredata.flow.lang.runner.{DuckDBExecutor, QueryResultPrinter}
+import com.treasuredata.flow.lang.runner.{QueryExecutor, QueryResultPrinter}
 import wvlet.airframe.Design
 import wvlet.airframe.launcher.{Launcher, argument, command, option}
 import wvlet.log.{LogLevel, LogSupport, Logger}
@@ -51,6 +52,7 @@ class FlowCli(opts: FlowCliOption) extends LogSupport:
       .bindInstance[FlowScriptRunnerConfig](
         FlowScriptRunnerConfig(workingFolder = workFolder, interactive = commands.isEmpty)
       )
+      .bindInstance[DBContext](DuckDBContext())
 
     design.build[FlowREPL] { repl =>
       repl.start(commands)
@@ -99,7 +101,7 @@ class FlowCli(opts: FlowCliOption) extends LogSupport:
 
       info(s"context directory: ${contextDirectory}, flow file: ${flowFile}")
 
-      val duckdb = DuckDBExecutor(DuckDBContext(prepareTPCH = prepareTPCH))
+      val duckdb = QueryExecutor(dbContext = DuckDBContext(prepareTPCH = prepareTPCH))
       val compilationResult = Compiler(
         phases = Compiler.allPhases,
         sourceFolders = List(contextDirectory),

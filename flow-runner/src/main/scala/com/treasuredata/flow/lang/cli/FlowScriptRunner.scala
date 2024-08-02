@@ -3,7 +3,7 @@ package com.treasuredata.flow.lang.cli
 import com.treasuredata.flow.lang.FlowLangException
 import com.treasuredata.flow.lang.compiler.{CompilationUnit, CompileResult, Compiler}
 import com.treasuredata.flow.lang.runner.{
-  DuckDBExecutor,
+  QueryExecutor,
   PlanResult,
   QueryResult,
   QueryResultList,
@@ -23,12 +23,12 @@ case class FlowScriptRunnerConfig(
 
 class FlowScriptRunner(
     config: FlowScriptRunnerConfig,
-    duckDBExecutor: DuckDBExecutor = DuckDBExecutor()
+    queryExecutor: QueryExecutor = QueryExecutor.default
 ) extends AutoCloseable
     with LogSupport:
   private var units: List[CompilationUnit] = Nil
 
-  override def close(): Unit = duckDBExecutor.close()
+  override def close(): Unit = queryExecutor.close()
 
   private val compiler = Compiler(
     sourceFolders = List(config.workingFolder),
@@ -42,7 +42,7 @@ class FlowScriptRunner(
     try
       val compileResult = compiler.compileSingle(contextUnit = newUnit)
       val ctx           = compileResult.context.global.getContextOf(newUnit)
-      val queryResult   = duckDBExecutor.execute(newUnit, ctx, limit = config.resultLimit)
+      val queryResult   = queryExecutor.execute(newUnit, ctx, limit = config.resultLimit)
       trace(s"ctx: ${ctx.hashCode()} ${ctx.compilationUnit.knownSymbols}")
 
       def resultString(q: QueryResult): String =
