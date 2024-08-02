@@ -1,5 +1,6 @@
 package com.treasuredata.flow.lang.model
 
+import com.treasuredata.flow.lang.compiler.parser.DataTypeParser
 import com.treasuredata.flow.lang.compiler.{Name, TermName, TypeName}
 import com.treasuredata.flow.lang.model.DataType.NamedType
 import com.treasuredata.flow.lang.model.expr.NameExpr
@@ -63,6 +64,8 @@ case class RelationTypeList(override val typeName: TypeName, inputRelationTypes:
   }
 
 object DataType extends LogSupport:
+
+  def parse(s: String): DataType = DataTypeParser.parse(s)
 
   def parse(s: String, typeParams: List[TypeParameter]): DataType =
     s match

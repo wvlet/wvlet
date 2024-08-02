@@ -1,10 +1,11 @@
 package com.treasuredata.flow.lang.compiler.parser
 
-import com.treasuredata.flow.lang.StatusCode
+import com.treasuredata.flow.lang.{FlowLangException, StatusCode}
 import com.treasuredata.flow.lang.compiler.{Name, SourceFile}
 import com.treasuredata.flow.lang.model.DataType
 import com.treasuredata.flow.lang.model.DataType.{
   ArrayType,
+  DecimalType,
   GenericType,
   IntConstant,
   MapType,
@@ -34,14 +35,16 @@ class DataTypeParser(sourceFile: SourceFile) extends LogSupport:
   private def consume(expected: FlowToken): TokenData =
     val t = scanner.nextToken()
     if t.token != expected then
-      throw StatusCode.SYNTAX_ERROR.newException(s"Expected ${expected} but found ${t.token}")
+      throw unexpected(s"Expected ${expected} but found ${t.token}")
     t
 
   private def consumeIdentifier(expected: String): TokenData =
     val t = scanner.nextToken()
     if t.token != FlowToken.IDENTIFIER || t.str != expected then
-      throw StatusCode.SYNTAX_ERROR.newException(s"Expected ${expected} but found ${t.token}")
+      throw unexpected(s"Expected ${expected} but found ${t.token}")
     t
+
+  private def unexpected(msg: String): FlowLangException = StatusCode.SYNTAX_ERROR.newException(msg)
 
   def parse(): DataType = dataType()
 
@@ -73,10 +76,18 @@ class DataTypeParser(sourceFile: SourceFile) extends LogSupport:
                 ArrayType(params(0))
               case "map" if params.size == 2 =>
                 MapType(params(0), params(1))
+              case "decimal" =>
+                if params.size != 2 then
+                  throw unexpected(s"decimal type requires two parameters: ${params}")
+                (params(0), params(1)) match
+                  case (p: IntConstant, s: IntConstant) =>
+                    DecimalType(p, s)
+                  case _ =>
+                    throw unexpected(s"Invalid decimal type parameters: ${params}")
               case _ =>
                 GenericType(Name.typeName(typeName), params)
       case _ =>
-        throw StatusCode.SYNTAX_ERROR.newException(s"Unexpected token ${t.token}")
+        throw unexpected(s"Unexpected token ${t.token}")
 
     end match
 
@@ -128,7 +139,5 @@ class DataTypeParser(sourceFile: SourceFile) extends LogSupport:
         IntConstant(i.str.toInt)
       case _ =>
         dataType()
-      case _ =>
-        throw StatusCode.SYNTAX_ERROR.newException(s"Unexpected token ${t.token}")
 
 end DataTypeParser
