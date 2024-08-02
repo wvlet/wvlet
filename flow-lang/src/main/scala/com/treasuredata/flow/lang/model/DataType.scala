@@ -243,7 +243,13 @@ object DataType extends LogSupport:
       precision: Option[DataType] = None
   ) extends DataType(Name.typeName(field.toString.toLowerCase), precision.toSeq):
     override def toString: String =
-      val base = super.toString
+      val base =
+        precision match
+          case Some(p) =>
+            s"${field.toString.toLowerCase}(${p.typeDescription})"
+          case None =>
+            field.toString.toLowerCase
+
       if withTimeZone then
         s"${base} with time zone"
       else
@@ -276,6 +282,7 @@ object DataType extends LogSupport:
         "tinyint"   -> ByteType,
         "smallint"  -> ShortType,
         "varchar"   -> StringType,
+        "varbinary" -> BinaryType,
         "sql"       -> SQLExprType,
         "timestamp" -> TimestampType(TimestampField.TIMESTAMP, withTimeZone = false)
       ).map { case (k, v) =>
@@ -287,14 +294,11 @@ object DataType extends LogSupport:
   /**
     * data type names that will be mapped to GenericType
     */
-  private val knownGenericTypeNames: Set[TypeName] = Set(
+  val knownGenericTypeNames: Set[TypeName] = Set(
     "char",
-    "varchar",
-    "varbinary",
     // trino-specific types
     "bingtile",
     "ipaddress",
-    "json",
     "jsonpath",
     "joniregexp",
     "tdigest",
@@ -307,9 +311,11 @@ object DataType extends LogSupport:
     "function"
   ).map(x => Name.typeName(x))
 
+  def isKnownGenericTypeName(s: String): Boolean   = isKnownGenericTypeName(Name.typeName(s))
   def isKnownGenericTypeName(s: TypeName): Boolean = knownGenericTypeNames.contains(s)
 
-  def isPrimitiveTypeName(s: String): Boolean = primitiveTypeTable.contains(Name.typeName(s))
+  def isPrimitiveTypeName(s: String): Boolean         = isPrimitiveTypeName(Name.typeName(s))
+  def isPrimitiveTypeName(tpeName: TypeName): Boolean = primitiveTypeTable.contains(tpeName)
 
   def getPrimitiveType(s: String): DataType = primitiveTypeTable.getOrElse(
     Name.typeName(s),

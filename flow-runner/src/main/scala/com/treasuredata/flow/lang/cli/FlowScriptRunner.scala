@@ -21,8 +21,11 @@ case class FlowScriptRunnerConfig(
     resultLimit: Int = 40
 )
 
-class FlowScriptRunner(config: FlowScriptRunnerConfig) extends AutoCloseable with LogSupport:
-  private val duckDBExecutor               = new DuckDBExecutor()
+class FlowScriptRunner(
+    config: FlowScriptRunnerConfig,
+    duckDBExecutor: DuckDBExecutor = DuckDBExecutor()
+) extends AutoCloseable
+    with LogSupport:
   private var units: List[CompilationUnit] = Nil
 
   override def close(): Unit = duckDBExecutor.close()
