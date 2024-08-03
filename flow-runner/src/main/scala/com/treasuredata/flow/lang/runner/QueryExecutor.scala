@@ -62,6 +62,7 @@ class QueryExecutor(dbContext: DBContext) extends LogSupport with AutoCloseable:
                     }
                   )
                 val outputType = SchemaType(None, Name.NoTypeName, fields)
+                trace(outputType)
 
                 val codec    = JDBCCodec(rs)
                 val rowCodec = MessageCodec.of[ListMap[String, Any]]

@@ -132,7 +132,8 @@ lazy val runner = project
       ),
     libraryDependencies ++=
       Seq(
-        "org.jline" % "jline" % "3.26.3",
+        "org.jline"           % "jline"             % "3.26.3",
+        "org.wvlet.airframe" %% "airframe-config"   % AIRFRAME_VERSION,
         "org.wvlet.airframe" %% "airframe-launcher" % AIRFRAME_VERSION,
         "org.apache.arrow"    % "arrow-vector"      % "17.0.0",
         "org.duckdb"          % "duckdb_jdbc"       % "1.0.0",

@@ -1,0 +1,10 @@
+type accounts:
+  td_account_id: string
+  data_center: string
+  account_id: int
+  company_name: string
+  mrr: double
+  subscription_status: string
+  profiles: int
+  time: int
+end

@@ -27,3 +27,10 @@ class FlowREPLTest extends AirSpec:
     FlowCli.main("repl -w spec/model1 -c 'show models limit 1'")
     FlowCli.main("repl -w spec/model1 -c 'show models' -c 'show models limit 5'")
   }
+
+  test("trino") {
+    skip(s"Trino td-dev is not available in CI")
+    FlowCli.main("repl -w spec/trino --profile td-dev -c 'from accounts'")
+  }
+
+end FlowREPLTest

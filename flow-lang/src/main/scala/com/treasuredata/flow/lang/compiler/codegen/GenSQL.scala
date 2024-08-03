@@ -318,7 +318,7 @@ object GenSQL extends Phase("generate-sql"):
           .map(x => s"(${x})")
         if modelValues.isEmpty then
           indent(
-            "(select null::varchar as name, null::varchar as args, null::varchar as package_name limit 0)"
+            "(select cast(null as varchar) as name, cast(null as varchar) as args, cast(null as varchar) as package_name limit 0)"
           )
         else
           indent(

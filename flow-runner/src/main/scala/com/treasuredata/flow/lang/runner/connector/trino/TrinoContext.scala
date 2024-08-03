@@ -3,6 +3,7 @@ package com.treasuredata.flow.lang.runner.connector.trino
 import com.treasuredata.flow.lang.model.sql.*
 import com.treasuredata.flow.lang.runner.connector.DBContext
 import io.trino.jdbc.TrinoDriver
+import wvlet.log.LogSupport
 
 import java.sql.Connection
 import java.util.Properties
@@ -16,7 +17,7 @@ case class TrinoConfig(
     password: Option[String] = None
 )
 
-class TrinoContext(val config: TrinoConfig) extends DBContext:
+class TrinoContext(val config: TrinoConfig) extends DBContext with LogSupport:
   private lazy val driver = new TrinoDriver()
 
   override protected def newConnection: Connection =
@@ -27,6 +28,7 @@ class TrinoContext(val config: TrinoConfig) extends DBContext:
           else
             ""
         }"
+    trace(s"Connecting to Trino: ${jdbcUrl}")
     val properties = new Properties()
     config.user.foreach(x => properties.put("user", x))
     config.password.foreach(x => properties.put("password", x))

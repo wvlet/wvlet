@@ -21,10 +21,8 @@ case class FlowScriptRunnerConfig(
     resultLimit: Int = 40
 )
 
-class FlowScriptRunner(
-    config: FlowScriptRunnerConfig,
-    queryExecutor: QueryExecutor = QueryExecutor.default
-) extends AutoCloseable
+class FlowScriptRunner(config: FlowScriptRunnerConfig, queryExecutor: QueryExecutor)
+    extends AutoCloseable
     with LogSupport:
   private var units: List[CompilationUnit] = Nil
 

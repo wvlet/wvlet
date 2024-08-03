@@ -5,6 +5,7 @@ import com.treasuredata.flow.lang.{FlowLangException, StatusCode}
 import com.treasuredata.flow.lang.compiler.{CompilationUnit, Compiler}
 import com.treasuredata.flow.lang.runner.connector.DBContext
 import com.treasuredata.flow.lang.runner.connector.duckdb.DuckDBContext
+import com.treasuredata.flow.lang.runner.connector.trino.{TrinoConfig, TrinoContext}
 import com.treasuredata.flow.lang.runner.{QueryExecutor, QueryResultPrinter}
 import wvlet.airframe.Design
 import wvlet.airframe.launcher.{Launcher, argument, command, option}
@@ -41,22 +42,51 @@ class FlowCli(opts: FlowCliOption) extends LogSupport:
 
   @command(description = "Start a REPL")
   def repl(
+      @option(prefix = "--profile", description = "Profile to use")
+      profile: Option[String] = None,
       @option(prefix = "-c", description = "Run a command and exit")
       commands: List[String] = Nil,
       @option(prefix = "-w", description = "Working folder")
       workFolder: String = "."
   ): Unit =
+
+    val currentProfile: Option[Profile] = profile.flatMap { targetProfile =>
+      Profile.getProfile(targetProfile) match
+        case Some(p) =>
+          debug(s"Using profile: ${targetProfile}")
+          Some(p)
+        case None =>
+          error(s"No profile ${targetProfile} found")
+          None
+    }
+
     val design = Design
       .newSilentDesign
       .bindSingleton[FlowREPL]
       .bindInstance[FlowScriptRunnerConfig](
         FlowScriptRunnerConfig(workingFolder = workFolder, interactive = commands.isEmpty)
       )
-      .bindInstance[DBContext](DuckDBContext())
+      .bindInstance[DBContext] {
+        currentProfile.flatMap(_.connector.headOption) match
+          case Some(connector) if connector.`type` == "trino" =>
+            TrinoContext(
+              TrinoConfig(
+                catalog = connector.database,
+                schema = connector.schema.getOrElse("default"),
+                hostAndPort = connector.host.getOrElse("localhost"),
+                user = connector.user,
+                password = connector.password
+              )
+            )
+          case _ =>
+            DuckDBContext()
+      }
 
     design.build[FlowREPL] { repl =>
       repl.start(commands)
     }
+
+  end repl
 
   @command(description = "Compile flow files")
   def compile(
