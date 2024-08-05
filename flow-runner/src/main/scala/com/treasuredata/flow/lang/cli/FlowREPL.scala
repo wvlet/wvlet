@@ -1,5 +1,6 @@
 package com.treasuredata.flow.lang.cli
 
+import com.treasuredata.flow.BuildInfo
 import com.treasuredata.flow.lang.FlowLangException
 import com.treasuredata.flow.lang.compiler.{CompilationUnit, SourceFile}
 import com.treasuredata.flow.lang.compiler.parser.{
@@ -10,6 +11,9 @@ import com.treasuredata.flow.lang.compiler.parser.{
   TokenType
 }
 import com.treasuredata.flow.lang.model.plan.Query
+import com.treasuredata.flow.lang.runner.connector.DBContext
+import com.treasuredata.flow.lang.runner.connector.duckdb.DuckDBContext
+import com.treasuredata.flow.lang.runner.connector.trino.{TrinoConfig, TrinoContext}
 import org.jline.builtins.SyntaxHighlighter
 import org.jline.reader.Parser.ParseContext
 import org.jline.reader.impl.{DefaultHighlighter, DefaultParser}
@@ -23,10 +27,75 @@ import org.jline.reader.{
 import org.jline.terminal.Terminal.Signal
 import org.jline.terminal.{Size, Terminal, TerminalBuilder}
 import org.jline.utils.{AttributedString, AttributedStringBuilder, AttributedStyle, InfoCmp}
-import wvlet.log.LogSupport
+import wvlet.airframe.launcher.{Launcher, command, option}
+import wvlet.log.{LogSupport, Logger}
+import wvlet.airframe.*
 
 import java.io.File
 import java.util.regex.Pattern
+
+object FlowREPLCli:
+
+  private def launcher: Launcher = Launcher.of[FlowREPLCli]
+
+  def main(args: Array[String]): Unit = launcher.execute(args)
+
+  def main(argLine: String): Unit = launcher.execute(argLine)
+
+class FlowREPLCli(
+    opts: FlowCliOption,
+    @option(prefix = "--profile", description = "Profile to use")
+    profile: Option[String] = None,
+    @option(prefix = "-c", description = "Run a command and exit")
+    commands: List[String] = Nil,
+    @option(prefix = "-w", description = "Working folder")
+    workFolder: String = "."
+) extends LogSupport:
+  Logger("com.treasuredata.flow.lang.runner").setLogLevel(opts.logLevel)
+
+  @command(description = "Show the version")
+  def version: Unit = info(s"treasure-flow version: ${BuildInfo.version}")
+
+  @command(description = "Start a REPL", isDefault = true)
+  def repl(): Unit =
+    val currentProfile: Option[Profile] = profile.flatMap { targetProfile =>
+      Profile.getProfile(targetProfile) match
+        case Some(p) =>
+          debug(s"Using profile: ${targetProfile}")
+          Some(p)
+        case None =>
+          error(s"No profile ${targetProfile} found")
+          None
+    }
+
+    val design = Design
+      .newSilentDesign
+      .bindSingleton[FlowREPL]
+      .bindInstance[FlowScriptRunnerConfig](
+        FlowScriptRunnerConfig(workingFolder = workFolder, interactive = commands.isEmpty)
+      )
+      .bindInstance[DBContext] {
+        currentProfile.flatMap(_.connector.headOption) match
+          case Some(connector) if connector.`type` == "trino" =>
+            TrinoContext(
+              TrinoConfig(
+                catalog = connector.database,
+                schema = connector.schema.getOrElse("default"),
+                hostAndPort = connector.host.getOrElse("localhost"),
+                user = connector.user,
+                password = connector.password
+              )
+            )
+          case _ =>
+            DuckDBContext()
+      }
+
+    design.build[FlowREPL] { repl =>
+      repl.start(commands)
+    }
+  end repl
+
+end FlowREPLCli
 
 class FlowREPL(runner: FlowScriptRunner) extends AutoCloseable with LogSupport:
   import FlowREPL.*

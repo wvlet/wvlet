@@ -122,7 +122,11 @@ lazy val runner = project
     buildSettings,
     name        := "flow-runner",
     description := "flow program executor using trino, duckdb, etc.",
-    packMain    := Map("flow" -> "com.treasuredata.flow.lang.cli.FlowCli"),
+    packMain :=
+      Map(
+        "flowc" -> "com.treasuredata.flow.lang.cli.FlowCli",
+        "flow"  -> "com.treasuredata.flow.lang.cli.FlowREPLCli"
+      ),
     Test / javaOptions ++=
       Seq(
         // "--add-opens=java.base/java.nio=org.apache.arrow.memory.core,ALL-UNNAMED",

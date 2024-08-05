@@ -37,57 +37,6 @@ case class FlowCliOption(
 class FlowCli(opts: FlowCliOption) extends LogSupport:
   Logger("com.treasuredata.flow.lang.runner").setLogLevel(opts.logLevel)
 
-  @command(description = "Show the version", isDefault = true)
-  def version: Unit = info(s"treasure-flow version: ${BuildInfo.version}")
-
-  @command(description = "Start a REPL")
-  def repl(
-      @option(prefix = "--profile", description = "Profile to use")
-      profile: Option[String] = None,
-      @option(prefix = "-c", description = "Run a command and exit")
-      commands: List[String] = Nil,
-      @option(prefix = "-w", description = "Working folder")
-      workFolder: String = "."
-  ): Unit =
-
-    val currentProfile: Option[Profile] = profile.flatMap { targetProfile =>
-      Profile.getProfile(targetProfile) match
-        case Some(p) =>
-          debug(s"Using profile: ${targetProfile}")
-          Some(p)
-        case None =>
-          error(s"No profile ${targetProfile} found")
-          None
-    }
-
-    val design = Design
-      .newSilentDesign
-      .bindSingleton[FlowREPL]
-      .bindInstance[FlowScriptRunnerConfig](
-        FlowScriptRunnerConfig(workingFolder = workFolder, interactive = commands.isEmpty)
-      )
-      .bindInstance[DBContext] {
-        currentProfile.flatMap(_.connector.headOption) match
-          case Some(connector) if connector.`type` == "trino" =>
-            TrinoContext(
-              TrinoConfig(
-                catalog = connector.database,
-                schema = connector.schema.getOrElse("default"),
-                hostAndPort = connector.host.getOrElse("localhost"),
-                user = connector.user,
-                password = connector.password
-              )
-            )
-          case _ =>
-            DuckDBContext()
-      }
-
-    design.build[FlowREPL] { repl =>
-      repl.start(commands)
-    }
-
-  end repl
-
   @command(description = "Compile flow files")
   def compile(
       @argument(description = "source folders to compile")
