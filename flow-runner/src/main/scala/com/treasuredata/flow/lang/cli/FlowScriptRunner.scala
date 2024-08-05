@@ -2,17 +2,12 @@ package com.treasuredata.flow.lang.cli
 
 import com.treasuredata.flow.lang.FlowLangException
 import com.treasuredata.flow.lang.compiler.{CompilationUnit, CompileResult, Compiler}
-import com.treasuredata.flow.lang.runner.{
-  QueryExecutor,
-  PlanResult,
-  QueryResult,
-  QueryResultList,
-  QueryResultPrinter
-}
+import com.treasuredata.flow.lang.runner.*
 import org.jline.terminal.Terminal
 import wvlet.airframe.control.{Control, Shell}
 import wvlet.log.LogSupport
 
+import java.awt.Toolkit
 import java.io.{BufferedWriter, FilterOutputStream, OutputStreamWriter}
 
 case class FlowScriptRunnerConfig(
@@ -20,6 +15,8 @@ case class FlowScriptRunnerConfig(
     interactive: Boolean,
     resultLimit: Int = 40
 )
+
+case class LastOutput(line: String, output: String) {}
 
 class FlowScriptRunner(config: FlowScriptRunnerConfig, queryExecutor: QueryExecutor)
     extends AutoCloseable
@@ -33,7 +30,7 @@ class FlowScriptRunner(config: FlowScriptRunnerConfig, queryExecutor: QueryExecu
     contextFolder = config.workingFolder
   )
 
-  def runStatement(line: String, terminal: Terminal): Unit =
+  def runStatement(line: String, terminal: Terminal): LastOutput =
     val newUnit = CompilationUnit.fromString(line)
     units = newUnit :: units
 
@@ -54,7 +51,6 @@ class FlowScriptRunner(config: FlowScriptRunnerConfig, queryExecutor: QueryExecu
 
       val str = resultString(queryResult)
       if str.nonEmpty then
-
         val maxWidth = str.split("\n").map(_.size).max
         if !config.interactive || maxWidth <= terminal.getWidth then
           println(str)
@@ -73,9 +69,11 @@ class FlowScriptRunner(config: FlowScriptRunnerConfig, queryExecutor: QueryExecu
           // Blocking
           proc.waitFor()
 
+      LastOutput(line, str)
     catch
       case e: FlowLangException if e.statusCode.isUserError =>
         error(s"${e.getMessage}")
+        LastOutput(line, e.getMessage)
     end try
 
   end runStatement

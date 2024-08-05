@@ -2,38 +2,24 @@ package com.treasuredata.flow.lang.cli
 
 import com.treasuredata.flow.BuildInfo
 import com.treasuredata.flow.lang.FlowLangException
+import com.treasuredata.flow.lang.compiler.parser.*
 import com.treasuredata.flow.lang.compiler.{CompilationUnit, SourceFile}
-import com.treasuredata.flow.lang.compiler.parser.{
-  FlowParser,
-  FlowScanner,
-  FlowToken,
-  ScannerConfig,
-  TokenType
-}
 import com.treasuredata.flow.lang.model.plan.Query
 import com.treasuredata.flow.lang.runner.connector.DBContext
 import com.treasuredata.flow.lang.runner.connector.duckdb.DuckDBContext
 import com.treasuredata.flow.lang.runner.connector.trino.{TrinoConfig, TrinoContext}
-import org.jline.builtins.SyntaxHighlighter
 import org.jline.reader.Parser.ParseContext
-import org.jline.reader.impl.{DefaultHighlighter, DefaultParser}
-import org.jline.reader.{
-  EOFError,
-  EndOfFileException,
-  LineReader,
-  LineReaderBuilder,
-  ParsedLine,
-  UserInterruptException
-}
+import org.jline.reader.impl.DefaultParser
+import org.jline.reader.*
 import org.jline.terminal.Terminal.Signal
 import org.jline.terminal.{Size, Terminal, TerminalBuilder}
 import org.jline.utils.{AttributedString, AttributedStringBuilder, AttributedStyle, InfoCmp}
-import wvlet.airframe.launcher.{Launcher, command, option}
-import wvlet.log.{LogSupport, Logger}
 import wvlet.airframe.*
 import wvlet.airframe.control.{CommandLineTokenizer, Shell}
+import wvlet.airframe.launcher.{Launcher, command, option}
+import wvlet.log.{LogSupport, Logger}
 
-import java.io.File
+import java.io.{BufferedWriter, File, OutputStreamWriter}
 import java.util.regex.Pattern
 
 object FlowREPLCli:
@@ -102,8 +88,9 @@ end FlowREPLCli
 class FlowREPL(runner: FlowScriptRunner) extends AutoCloseable with LogSupport:
   import FlowREPL.*
 
-  private val terminal    = TerminalBuilder.builder().name("Treasure Flow").build()
-  private val historyFile = new File(sys.props("user.home"), ".cache/flow/.flow_history")
+  private val terminal         = TerminalBuilder.builder().name("Treasure Flow").build()
+  private val historyFile      = new File(sys.props("user.home"), ".cache/flow/.flow_history")
+  private val isMacOS: Boolean = sys.props.get("os.name").exists(_.toLowerCase.contains("mac"))
 
   private val reader = LineReaderBuilder
     .builder()
@@ -141,7 +128,8 @@ class FlowREPL(runner: FlowScriptRunner) extends AutoCloseable with LogSupport:
     val history = reader.getHistory
     history.attach(reader)
 
-    var toContinue = true
+    var toContinue                     = true
+    var lastOutput: Option[LastOutput] = None
     while toContinue do
       def eval(line: String): Unit =
         val cmd = line.trim.stripSuffix(";")
@@ -155,9 +143,28 @@ class FlowREPL(runner: FlowScriptRunner) extends AutoCloseable with LogSupport:
             println(helpMessage)
           case _ if cmd.startsWith("git") || cmd.startsWith("gh") =>
             Shell.exec(cmd)
+          case "clip" =>
+            lastOutput match
+              case Some(output) =>
+                // Save query and result to clipboard (only for Mac OS, now)
+                if isMacOS then
+                  val proc = ProcessUtil.launchInteractiveProcess("pbcopy")
+                  val out  = new BufferedWriter(new OutputStreamWriter(proc.getOutputStream()))
+                  out.write(s"""[flow:query]\n${output.line}\n\n${output.output}""")
+                  out.flush()
+                  out.close()
+                  proc.waitFor()
+                  info(s"Clipped the output to the clipboard")
+                else
+                  warn("clip command is not supported other than Mac OS")
+              case None =>
+                warn("No output to clip")
           case stmt =>
             if stmt.nonEmpty then
-              runner.runStatement(stmt, terminal)
+              val result = runner.runStatement(stmt, terminal)
+              lastOutput = Some(result)
+        end match
+      end eval
 
       try
         // If a command is given, run it and exist
@@ -184,13 +191,13 @@ class FlowREPL(runner: FlowScriptRunner) extends AutoCloseable with LogSupport:
 end FlowREPL
 
 object FlowREPL:
-  private def knownCommands = Set("exit", "quit", "clear", "help", "git", "gh")
+  private def knownCommands = Set("exit", "quit", "clear", "help", "git", "gh", "clip")
   private def helpMessage: String =
     """[commands]
-      | help   : Show this help message
-      | quit   : Exit the REPL
-      | exit   : Exit the REPL
-      | clear  : Clear the screen
+      | help      : Show this help message
+      | quit/exit : Exit the REPL
+      | clear     : Clear the screen
+      | clip      : Clip the current result to the clipboard
       |""".stripMargin
 
   /**
