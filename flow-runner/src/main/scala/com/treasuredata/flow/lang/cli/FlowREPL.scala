@@ -18,6 +18,7 @@ import org.jline.builtins.SyntaxHighlighter
 import org.jline.reader.Parser.ParseContext
 import org.jline.reader.impl.{DefaultHighlighter, DefaultParser}
 import org.jline.reader.{
+  ParsedLine,
   EOFError,
   EndOfFileException,
   LineReader,
@@ -192,20 +193,18 @@ object FlowREPL:
   /**
     * A custom parser to enable receiving multiline inputs in REPL
     */
-  private class ReplParser extends org.jline.reader.Parser:
+  private class ReplParser extends org.jline.reader.Parser with LogSupport:
     private val parser = new DefaultParser()
 
-    override def parse(line: String, cursor: Int, context: ParseContext) =
+    override def parse(line: String, cursor: Int, context: ParseContext): ParsedLine =
+      def incomplete = throw EOFError(-1, -1, null)
+
       val cmd = line.trim
       if cmd.isEmpty || knownCommands.contains(cmd) || context == ParseContext.COMPLETE then
         parser.parse(line, cursor, context)
-      else if cmd.endsWith(";") then
-        // Finish reading a query
+      else if cmd.endsWith(";") && cursor >= line.length then
         parser.parse(line, cursor, context)
       else
-
-        def incomplete = throw EOFError(-1, -1, null)
-
         val unit       = CompilationUnit.fromString(line)
         val flowParser = FlowParser(unit)
         try
