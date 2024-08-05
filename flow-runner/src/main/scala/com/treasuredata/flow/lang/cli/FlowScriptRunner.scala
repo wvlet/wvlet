@@ -1,7 +1,12 @@
 package com.treasuredata.flow.lang.cli
 
 import com.treasuredata.flow.lang.FlowLangException
-import com.treasuredata.flow.lang.compiler.{CompilationUnit, CompileResult, Compiler}
+import com.treasuredata.flow.lang.compiler.{
+  CompilationUnit,
+  CompileResult,
+  Compiler,
+  CompilerOptions
+}
 import com.treasuredata.flow.lang.runner.*
 import org.jline.terminal.Terminal
 import wvlet.airframe.control.{Control, Shell}
@@ -13,7 +18,8 @@ import java.io.{BufferedWriter, FilterOutputStream, OutputStreamWriter}
 case class FlowScriptRunnerConfig(
     workingFolder: String = ".",
     interactive: Boolean,
-    resultLimit: Int = 40
+    resultLimit: Int = 40,
+    schema: Option[String]
 )
 
 case class LastOutput(line: String, output: String) {}
@@ -26,8 +32,11 @@ class FlowScriptRunner(config: FlowScriptRunnerConfig, queryExecutor: QueryExecu
   override def close(): Unit = queryExecutor.close()
 
   private val compiler = Compiler(
-    sourceFolders = List(config.workingFolder),
-    contextFolder = config.workingFolder
+    CompilerOptions(
+      sourceFolders = List(config.workingFolder),
+      workingFolder = config.workingFolder,
+      schema = config.schema
+    )
   )
 
   def runStatement(line: String, terminal: Terminal): LastOutput =

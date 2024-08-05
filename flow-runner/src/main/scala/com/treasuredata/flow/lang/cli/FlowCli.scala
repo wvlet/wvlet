@@ -2,7 +2,7 @@ package com.treasuredata.flow.lang.cli
 
 import com.treasuredata.flow.BuildInfo
 import com.treasuredata.flow.lang.{FlowLangException, StatusCode}
-import com.treasuredata.flow.lang.compiler.{CompilationUnit, Compiler}
+import com.treasuredata.flow.lang.compiler.{CompilationUnit, Compiler, CompilerOptions}
 import com.treasuredata.flow.lang.runner.connector.DBContext
 import com.treasuredata.flow.lang.runner.connector.duckdb.DuckDBContext
 import com.treasuredata.flow.lang.runner.connector.trino.{TrinoConfig, TrinoContext}
@@ -46,9 +46,11 @@ class FlowCli(opts: FlowCliOption) extends LogSupport:
     val contextDirectory = sourceFolders.headOption.getOrElse(new File(".").getAbsolutePath)
     debug(s"context directory: ${contextDirectory}")
     val compileResult = Compiler(
-      phases = Compiler.allPhases,
-      sourceFolders = sourceFolders.toList,
-      contextFolder = contextDirectory
+      CompilerOptions(
+        phases = Compiler.allPhases,
+        sourceFolders = sourceFolders.toList,
+        workingFolder = contextDirectory
+      )
     ).compile()
 
     compileResult
@@ -82,9 +84,11 @@ class FlowCli(opts: FlowCliOption) extends LogSupport:
 
       val duckdb = QueryExecutor(dbContext = DuckDBContext(prepareTPCH = prepareTPCH))
       val compilationResult = Compiler(
-        phases = Compiler.allPhases,
-        sourceFolders = List(contextDirectory),
-        contextFolder = contextDirectory
+        CompilerOptions(
+          phases = Compiler.allPhases,
+          sourceFolders = List(contextDirectory),
+          workingFolder = contextDirectory
+        )
       ).compileSingle(Some(flowFile))
       compilationResult
         .context

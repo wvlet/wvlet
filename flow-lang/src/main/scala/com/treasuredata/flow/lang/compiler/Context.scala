@@ -17,7 +17,7 @@ import scala.jdk.CollectionConverters.*
   * @param sourceFolders
   * @param workingFolder
   */
-case class GlobalContext(sourceFolders: List[String] = List.empty, workingFolder: String):
+case class GlobalContext(compilerOptions: CompilerOptions):
   // Used for specifying a context file to lookup queries, types, and models
   private var contextUnit: Option[CompilationUnit] = None
   private var symbolCount                          = 0
@@ -108,6 +108,7 @@ case class Context(
   )
 
   def findDataFile(path: String): Option[String] = global
+    .compilerOptions
     .sourceFolders
     .map(folder => dataFilePath(path))
     .find(file => new java.io.File(file).exists())
@@ -116,7 +117,7 @@ case class Context(
     if relativePath.startsWith("s3://") || relativePath.startsWith("https://") then
       relativePath
     else
-      s"${global.workingFolder}/data/${relativePath}"
+      s"${global.compilerOptions.workingFolder}/data/${relativePath}"
 
   def getDataFile(path: String): String =
     findDataFile(path) match

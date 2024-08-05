@@ -622,6 +622,7 @@ case class IncrementalAppend(
 
 enum ShowType:
   case models
+  case tables
 
 case class Show(showType: ShowType, nodeLocation: Option[NodeLocation])
     extends Relation
@@ -637,4 +638,10 @@ case class Show(showType: ShowType, nodeLocation: Option[NodeLocation])
             NamedType(Name.termName("args"), DataType.StringType),
             NamedType(Name.termName("package_name"), DataType.StringType)
           )
+        )
+      case ShowType.tables =>
+        SchemaType(
+          parent = None,
+          typeName = Name.typeName("table"),
+          columnTypes = Seq[NamedType](NamedType(Name.termName("name"), DataType.StringType))
         )

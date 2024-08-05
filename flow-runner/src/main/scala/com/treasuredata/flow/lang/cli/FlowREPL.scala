@@ -37,7 +37,9 @@ class FlowREPLCli(
     @option(prefix = "-c", description = "Run a command and exit")
     commands: List[String] = Nil,
     @option(prefix = "-w", description = "Working folder")
-    workFolder: String = "."
+    workFolder: String = ".",
+    @option(prefix = "--schema", description = "Context database schema to use")
+    schema: Option[String] = None
 ) extends LogSupport:
   Logger("com.treasuredata.flow.lang.runner").setLogLevel(opts.logLevel)
 
@@ -60,7 +62,11 @@ class FlowREPLCli(
       .newSilentDesign
       .bindSingleton[FlowREPL]
       .bindInstance[FlowScriptRunnerConfig](
-        FlowScriptRunnerConfig(workingFolder = workFolder, interactive = commands.isEmpty)
+        FlowScriptRunnerConfig(
+          workingFolder = workFolder,
+          interactive = commands.isEmpty,
+          schema = schema
+        )
       )
       .bindInstance[DBContext] {
         currentProfile.flatMap(_.connector.headOption) match

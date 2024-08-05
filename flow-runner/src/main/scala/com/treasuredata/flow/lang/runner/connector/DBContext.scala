@@ -47,6 +47,22 @@ trait DBContext extends AutoCloseable with LogSupport:
           showWarnings(w.getNextWarning)
     showWarnings(w)
 
+  def getTables(catalog: String, schema: String): List[Table] =
+    val foundTables = List.newBuilder[DBContext.Table]
+    withConnection: conn =>
+      val rs = conn
+        .createStatement()
+        .executeQuery(s"""select * from information_schema.tables
+             |where table_catalog = '${catalog}' and table_schema = '${schema}'""".stripMargin)
+      while rs.next() do
+        foundTables +=
+          DBContext.Table(
+            catalog = rs.getString("table_catalog"),
+            schema = rs.getString("table_schema"),
+            table = rs.getString("table_name")
+          )
+    foundTables.result()
+
   def getTable(catalog: String, schema: String, table: String): Option[Table] =
     val foundTables = Seq.newBuilder[DBContext.Table]
 

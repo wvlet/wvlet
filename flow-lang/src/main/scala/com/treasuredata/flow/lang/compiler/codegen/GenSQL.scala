@@ -304,6 +304,15 @@ object GenSQL extends Phase("generate-sql"):
         selectAllWithIndent(s"'${j.path}'")
       case t: ParquetFileScan =>
         selectAllWithIndent(s"'${t.path}'")
+      case s: Show if s.showType == ShowType.tables =>
+        var sql = s"select table_name from information_schema.tables"
+        sql =
+          ctx.global.compilerOptions.schema match
+            case Some(schema) =>
+              s"${sql} where table_schema='${schema}'"
+            case _ =>
+              sql
+        selectWithIndent(s"${sql} order by table_name")
       case s: Show if s.showType == ShowType.models =>
         val models: Seq[ListMap[String, Any]] = ctx
           .global

@@ -2,7 +2,13 @@ package com.treasuredata.flow.lang.runner
 
 import com.treasuredata.flow.lang.StatusCode
 import com.treasuredata.flow.lang.compiler.codegen.GenSQL
-import com.treasuredata.flow.lang.compiler.{CompilationUnit, Compiler, Context, Name}
+import com.treasuredata.flow.lang.compiler.{
+  CompilationUnit,
+  Compiler,
+  CompilerOptions,
+  Context,
+  Name
+}
 import com.treasuredata.flow.lang.model.DataType
 import com.treasuredata.flow.lang.model.DataType.{NamedType, SchemaType, UnresolvedType}
 import com.treasuredata.flow.lang.model.plan.*
@@ -25,8 +31,9 @@ class QueryExecutor(dbContext: DBContext) extends LogSupport with AutoCloseable:
   override def close(): Unit = dbContext.close()
 
   def execute(sourceFolder: String, file: String): Unit =
-    val result = Compiler(sourceFolders = List(sourceFolder), contextFolder = sourceFolder)
-      .compileSingle(Some(file))
+    val result = Compiler(
+      CompilerOptions(sourceFolders = List(sourceFolder), workingFolder = sourceFolder)
+    ).compileSingle(Some(file))
     result
       .inFile(file)
       .foreach: u =>

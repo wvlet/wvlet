@@ -14,7 +14,7 @@ import wvlet.log.LogSupport
 object Compiler:
 
   def default(sourcePath: String): Compiler =
-    new Compiler(sourceFolders = List(sourcePath), contextFolder = sourcePath)
+    new Compiler(CompilerOptions(sourceFolders = List(sourcePath), workingFolder = sourcePath))
 
   /**
     * Phases for text-based analysis of the source code
@@ -45,17 +45,21 @@ object Compiler:
 
 end Compiler
 
-class Compiler(
+case class CompilerOptions(
     phases: List[List[Phase]] = Compiler.allPhases,
     sourceFolders: List[String] = List("."),
-    contextFolder: String = "."
-) extends LogSupport:
+    workingFolder: String = ".",
+    // context database schema
+    schema: Option[String] = None
+)
 
-  private lazy val globalContext         = newGlobalContext(sourceFolders, contextFolder)
-  private lazy val localCompilationUnits = listCompilationUnits(sourceFolders)
+class Compiler(compilerOptions: CompilerOptions) extends LogSupport:
 
-  private def newGlobalContext(sourceFolders: List[String], contextFolder: String): GlobalContext =
-    val global      = GlobalContext(sourceFolders = sourceFolders, workingFolder = contextFolder)
+  private lazy val globalContext         = newGlobalContext
+  private lazy val localCompilationUnits = listCompilationUnits(compilerOptions.sourceFolders)
+
+  private def newGlobalContext: GlobalContext =
+    val global      = GlobalContext(compilerOptions)
     val rootContext = global.getContextOf(unit = CompilationUnit.empty, scope = Scope.newScope(0))
     // Need to initialize the global context before running the analysis phases
     global.init(using rootContext)
@@ -94,7 +98,7 @@ class Compiler(
     val rootContext  = globalContext.getRootContext
     var refinedUnits = units
     for
-      phaseGroup <- phases
+      phaseGroup <- compilerOptions.phases
       phase      <- phaseGroup
     do
       debug(s"Running phase ${phase.name}")
