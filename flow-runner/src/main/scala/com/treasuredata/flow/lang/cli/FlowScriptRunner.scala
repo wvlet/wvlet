@@ -19,6 +19,7 @@ case class FlowScriptRunnerConfig(
     workingFolder: String = ".",
     interactive: Boolean,
     resultLimit: Int = 40,
+    catalog: Option[String],
     schema: Option[String]
 )
 
@@ -35,6 +36,7 @@ class FlowScriptRunner(config: FlowScriptRunnerConfig, queryExecutor: QueryExecu
     CompilerOptions(
       sourceFolders = List(config.workingFolder),
       workingFolder = config.workingFolder,
+      catalog = config.catalog,
       schema = config.schema
     )
   )

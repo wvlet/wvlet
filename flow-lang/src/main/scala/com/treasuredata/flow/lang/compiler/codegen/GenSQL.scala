@@ -305,14 +305,28 @@ object GenSQL extends Phase("generate-sql"):
       case t: ParquetFileScan =>
         selectAllWithIndent(s"'${t.path}'")
       case s: Show if s.showType == ShowType.tables =>
-        var sql = s"select table_name from information_schema.tables"
-        sql =
-          ctx.global.compilerOptions.schema match
-            case Some(schema) =>
-              s"${sql} where table_schema='${schema}'"
-            case _ =>
-              sql
-        selectWithIndent(s"${sql} order by table_name")
+        val sql  = s"select table_name from information_schema.tables"
+        val cond = List.newBuilder[Expression]
+        val opts = ctx.global.compilerOptions
+        opts
+          .catalog
+          .map { catalog =>
+            cond +=
+              Eq(UnquotedIdentifier("table_catalog", None), StringLiteral(catalog, None), None)
+          }
+        opts
+          .schema
+          .map { schema =>
+            cond += Eq(UnquotedIdentifier("table_schema", None), StringLiteral(schema, None), None)
+          }
+
+        val conds = cond.result()
+        val body =
+          if conds.size == 0 then
+            sql
+          else
+            s"${sql} where ${printExpression(Expression.concatWithAnd(conds), ctx)}"
+        selectWithIndent(s"${body} order by table_name")
       case s: Show if s.showType == ShowType.models =>
         val models: Seq[ListMap[String, Any]] = ctx
           .global

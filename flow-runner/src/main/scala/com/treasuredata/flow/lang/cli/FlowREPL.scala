@@ -38,6 +38,8 @@ class FlowREPLCli(
     commands: List[String] = Nil,
     @option(prefix = "-w", description = "Working folder")
     workFolder: String = ".",
+    @option(prefix = "--catalog", description = "Context database catalog to use")
+    catalog: Option[String] = None,
     @option(prefix = "--schema", description = "Context database schema to use")
     schema: Option[String] = None
 ) extends LogSupport:
@@ -58,6 +60,9 @@ class FlowREPLCli(
           None
     }
 
+    val selectedCatalog = catalog.orElse(currentProfile.flatMap(_.catalog))
+    val selectedSchema  = schema.orElse(currentProfile.flatMap(_.schema))
+
     val design = Design
       .newSilentDesign
       .bindSingleton[FlowREPL]
@@ -65,19 +70,20 @@ class FlowREPLCli(
         FlowScriptRunnerConfig(
           workingFolder = workFolder,
           interactive = commands.isEmpty,
-          schema = schema
+          catalog = selectedCatalog,
+          schema = selectedSchema
         )
       )
       .bindInstance[DBContext] {
-        currentProfile.flatMap(_.connector.headOption) match
-          case Some(connector) if connector.`type` == "trino" =>
+        currentProfile match
+          case Some(p) if p.`type` == "trino" =>
             TrinoContext(
               TrinoConfig(
-                catalog = connector.database,
-                schema = connector.schema.getOrElse("default"),
-                hostAndPort = connector.host.getOrElse("localhost"),
-                user = connector.user,
-                password = connector.password
+                catalog = selectedCatalog.getOrElse("default"),
+                schema = selectedSchema.getOrElse("default"),
+                hostAndPort = p.host.getOrElse("localhost"),
+                user = p.user,
+                password = p.password
               )
             )
           case _ =>

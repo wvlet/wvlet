@@ -9,16 +9,14 @@ import wvlet.log.io.IOUtil
 import java.io.File
 import scala.jdk.CollectionConverters.*
 
-case class Profile(connector: List[Connector])
-
-case class Connector(
+case class Profile(
     name: String,
     `type`: String,
     user: Option[String] = Some("user"),
     password: Option[String] = None,
-    database: String = "default",
     host: Option[String] = None,
     port: Option[Int] = None,
+    catalog: Option[String] = None,
     schema: Option[String] = None
 )
 
@@ -46,9 +44,26 @@ object Profile extends LogSupport:
           .asInstanceOf[java.util.Map[AnyRef, AnyRef]]
           .asScala
           .toMap
-      val msgpack  = YamlReader(yamlMap).toMsgpack
-      val codec    = MessageCodec.of[Map[String, Profile]]
-      val profiles = codec.fromMsgPack(msgpack)
-      profiles.get(profile)
+      yamlMap.get("profiles") match
+        case Some(profs: java.util.List[?]) =>
+          val codec = MessageCodec.of[Profile]
+          profs
+            .asScala
+            .collect { case p: java.util.HashMap[?, ?] =>
+              p.asScala
+                .map { case (k, v) =>
+                  k.toString -> v
+                }
+                .toMap[String, Any]
+            }
+            .map { (m: Map[String, Any]) =>
+              codec.fromMap(m)
+            }
+            .find(_.name == profile)
+        case _ =>
+          None
+    end if
+
+  end getProfile
 
 end Profile

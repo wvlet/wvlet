@@ -49,6 +49,8 @@ case class CompilerOptions(
     phases: List[List[Phase]] = Compiler.allPhases,
     sourceFolders: List[String] = List("."),
     workingFolder: String = ".",
+    // Context database catalog
+    catalog: Option[String] = None,
     // context database schema
     schema: Option[String] = None
 )
