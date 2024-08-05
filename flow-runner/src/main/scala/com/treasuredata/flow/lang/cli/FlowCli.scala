@@ -28,7 +28,7 @@ object FlowCli:
     l.execute(args)
 
 case class FlowCliOption(
-    @option(prefix = "-h,--help", description = "Display help message")
+    @option(prefix = "-h,--help", description = "Display help message", isHelp = true)
     displayHelp: Boolean = false,
     @option(prefix = "-l", description = "log level")
     logLevel: LogLevel = LogLevel.INFO
