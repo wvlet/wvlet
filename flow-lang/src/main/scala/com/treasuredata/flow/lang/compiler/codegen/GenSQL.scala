@@ -343,6 +343,10 @@ object GenSQL extends Phase("generate-sql"):
       case f: FunctionArg =>
         // TODO handle arg name mapping
         printExpression(f.value, context)
+      case Eq(left, n: NullLiteral, _) =>
+        s"${printExpression(left, context)} is null"
+      case NotEq(left, n: NullLiteral, _) =>
+        s"${printExpression(left, context)} is not null"
       case b: BinaryExpression =>
         s"${printExpression(b.left, context)} ${b.operatorName} ${printExpression(b.right, context)}"
       case s: StringPart =>
