@@ -4,8 +4,9 @@ import wvlet.airframe.control.Control.withResource
 import DBContext.*
 import com.treasuredata.flow.lang.model.plan.LogicalPlan
 import com.treasuredata.flow.lang.model.plan.*
+import wvlet.log.LogSupport
 
-import java.sql.Connection
+import java.sql.{Connection, SQLWarning}
 
 object DBContext:
   case class Table(catalog: String, schema: String, table: String)
@@ -16,7 +17,7 @@ enum QueryScope:
     InQuery,
     InExpr
 
-trait DBContext extends AutoCloseable:
+trait DBContext extends AutoCloseable with LogSupport:
   private var _plan: LogicalPlan     = _
   private var queryScope: QueryScope = QueryScope.Global
 
@@ -36,6 +37,15 @@ trait DBContext extends AutoCloseable:
     val conn = newConnection
     try body(conn)
     finally conn.close()
+
+  def processWarning(w: java.sql.SQLWarning): Unit =
+    def showWarnings(w: SQLWarning): Unit =
+      w match
+        case null =>
+        case _ =>
+          warn(w.getMessage)
+          showWarnings(w.getNextWarning)
+    showWarnings(w)
 
   def getTable(catalog: String, schema: String, table: String): Option[Table] =
     val foundTables = Seq.newBuilder[DBContext.Table]

@@ -2,10 +2,10 @@ package com.treasuredata.flow.lang.runner.connector.trino
 
 import com.treasuredata.flow.lang.model.sql.*
 import com.treasuredata.flow.lang.runner.connector.DBContext
-import io.trino.jdbc.TrinoDriver
+import io.trino.jdbc.{TrinoDriver, TrinoResultSet}
 import wvlet.log.LogSupport
 
-import java.sql.Connection
+import java.sql.{Connection, ResultSet, SQLWarning}
 import java.util.Properties
 
 case class TrinoConfig(

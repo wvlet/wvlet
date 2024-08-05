@@ -52,6 +52,8 @@ class QueryExecutor(dbContext: DBContext) extends LogSupport with AutoCloseable:
           val result = dbContext.withConnection { conn =>
             Using.resource(conn.createStatement()) { stmt =>
               Using.resource(stmt.executeQuery(generatedSQL.sql)) { rs =>
+                dbContext.processWarning(stmt.getWarnings())
+
                 val metadata = rs.getMetaData
                 val fields =
                   for i <- 1 to metadata.getColumnCount
