@@ -19,6 +19,21 @@ import scala.collection.immutable.ListMap
 case class GeneratedSQL(sql: String, plan: Relation)
 
 object GenSQL extends Phase("generate-sql"):
+
+  sealed trait SQLGenContext:
+    def nestingLevel: Int
+    def nested: SQLGenContext    = Indented(nestingLevel + 1)
+    def enterFrom: SQLGenContext = InFromClause(nestingLevel + 1)
+    def withinFrom: Boolean =
+      this match
+        case InFromClause(_) =>
+          true
+        case _ =>
+          false
+
+  case class Indented(nestingLevel: Int)     extends SQLGenContext
+  case class InFromClause(nestingLevel: Int) extends SQLGenContext
+
   override def run(unit: CompilationUnit, context: Context): CompilationUnit =
     // Generate SQL from the resolved plan
     // generateSQL(unit.resolvedPlan, context)
@@ -28,7 +43,7 @@ object GenSQL extends Phase("generate-sql"):
   def generateSQL(q: Query, ctx: Context): GeneratedSQL =
     val expanded = expand(q, ctx)
     // val sql      = SQLGenerator.toSQL(expanded)
-    val sql = printRelation(expanded, ctx, 0)
+    val sql = printRelation(expanded, ctx, Indented(0))
     trace(s"[plan]\n${expanded.pp}\n[SQL]\n${sql}")
     GeneratedSQL(sql, expanded)
 
@@ -106,13 +121,25 @@ object GenSQL extends Phase("generate-sql"):
       result
     }
 
-  def printRelation(r: Relation, ctx: Context, nestingLevel: Int): String =
+  def printRelation(r: Relation, ctx: Context, sqlContext: SQLGenContext): String =
     def indent(s: String): String =
-      if nestingLevel == 0 then
+      if sqlContext.nestingLevel == 0 then
         s
       else
         val str = s.split("\n").map(x => s"  ${x}").mkString("\n")
         s"\n${str}"
+
+    def selectWithIndent(body: String): String =
+      if sqlContext.nestingLevel == 0 then
+        body
+      else
+        indent(s"(${body})")
+
+    def selectAllWithIndent(tableExpr: String): String =
+      if sqlContext.withinFrom then
+        s"${tableExpr}"
+      else
+        indent(s"(select * from ${tableExpr})")
 
     def toAggregateSelect(agg: AggregateSelect, r: Relation): AggregateSelect =
       def collectFilter(plan: Relation): (List[Filter], Relation) =
@@ -159,7 +186,7 @@ object GenSQL extends Phase("generate-sql"):
           }
 
       s += s"select ${selectItems.result().mkString(", ")}"
-      s += s"from ${printRelation(agg.child, ctx, nestingLevel + 1)}"
+      s += s"from ${printRelation(agg.child, ctx, sqlContext.enterFrom)}"
       s += s"group by ${agg.groupingKeys.map(x => printExpression(x, ctx)).mkString(", ")}"
       s.result().mkString("\n")
 
@@ -174,7 +201,7 @@ object GenSQL extends Phase("generate-sql"):
         val selectItems = agg.selectItems.map(x => printExpression(x, ctx)).mkString(", ")
         val s           = Seq.newBuilder[String]
         s += s"select ${selectItems}"
-        s += s"from ${printRelation(agg.child, ctx, nestingLevel + 1)}"
+        s += s"from ${printRelation(agg.child, ctx, sqlContext.enterFrom)}"
         if agg.filters.nonEmpty then
           val filterExpr = Expression.concatWithAnd(agg.filters.map(x => x.filterExpr))
           s += s"where ${printExpression(filterExpr, ctx)}"
@@ -183,16 +210,16 @@ object GenSQL extends Phase("generate-sql"):
         if agg.having.nonEmpty then
           s += s"having ${agg.having.map(x => printExpression(x.filterExpr, ctx)).mkString(", ")}"
 
-        indent(s"(${s.result().mkString("\n")})")
+        selectWithIndent(s"${s.result().mkString("\n")}")
       case a: Aggregate =>
-        indent(s"(${printAggregate(a)})")
+        selectWithIndent(s"${printAggregate(a)}")
       case j: Join =>
         def printRel(r: Relation): String =
           r match
             case t: TableScan =>
               t.name.name
             case other =>
-              printRelation(other, ctx, nestingLevel + 1)
+              printRelation(other, ctx, sqlContext.nested)
 
         val l = printRel(j.left)
         val r = printRel(j.right)
@@ -223,8 +250,6 @@ object GenSQL extends Phase("generate-sql"):
             s"${l} cross join p${r}${c}"
           case ImplicitJoin =>
             s"${l}, ${r}${c}"
-      case j: JSONFileScan =>
-        indent(s"(select * from '${j.path}')")
       case f: Filter =>
         f.child match
           case a: Aggregate =>
@@ -232,51 +257,53 @@ object GenSQL extends Phase("generate-sql"):
               s"${printAggregate(a)}",
               s"having ${printExpression(f.filterExpr, ctx)}"
             ).mkString("\n")
-            indent(s"(${body})")
+            selectWithIndent(s"${body}")
           case _ =>
-            indent(
-              s"""(select * from ${printRelation(
+            selectWithIndent(
+              s"""select * from ${printRelation(
                   f.inputRelation,
                   ctx,
-                  nestingLevel + 1
-                )}\nwhere ${printExpression(f.filterExpr, ctx)})"""
+                  sqlContext.enterFrom
+                )}\nwhere ${printExpression(f.filterExpr, ctx)}"""
             )
       case a: AliasedRelation =>
         indent(
-          s"${printRelation(a.inputRelation, ctx, nestingLevel + 1)} as ${printExpression(a.alias, ctx)}"
+          s"${printRelation(a.inputRelation, ctx, sqlContext.nested)} as ${printExpression(a.alias, ctx)}"
         )
       case p: ParenthesizedRelation =>
-        indent(s"(${printRelation(p.child, ctx, nestingLevel + 1)})")
+        selectWithIndent(s"${printRelation(p.child, ctx, sqlContext.nested)}")
       case t: TestRelation =>
-        printRelation(t.inputRelation, ctx, nestingLevel + 1)
+        printRelation(t.inputRelation, ctx, sqlContext.nested)
       case l: Limit =>
-        val input = printRelation(l.inputRelation, ctx, nestingLevel + 1)
-        indent(s"""(select * from ${input}\nlimit ${l.limit.stringValue})""")
+        val input = printRelation(l.inputRelation, ctx, sqlContext.enterFrom)
+        selectWithIndent(s"""select * from ${input}\nlimit ${l.limit.stringValue}""")
       case q: Query =>
-        printRelation(q.body, ctx, nestingLevel)
+        printRelation(q.body, ctx, sqlContext)
       case s: Sort =>
-        val input = printRelation(s.inputRelation, ctx, nestingLevel + 1)
-        indent(
-          s"""(select * from ${input}\norder by ${s
+        val input = printRelation(s.inputRelation, ctx, sqlContext.enterFrom)
+        val body =
+          s"""select * from ${input}\norder by ${s
               .orderBy
               .map(e => printExpression(e, ctx))
-              .mkString(", ")})"""
-        )
+              .mkString(", ")}"""
+        selectWithIndent(body)
       case t: Transform =>
         val transformItems = t.transformItems.map(x => printExpression(x, ctx)).mkString(", ")
-        indent(
-          s"""(select ${transformItems}, * from ${printRelation(
+        selectWithIndent(
+          s"""select ${transformItems}, * from ${printRelation(
               t.inputRelation,
               ctx,
-              nestingLevel + 1
-            )})"""
+              sqlContext.enterFrom
+            )}"""
         )
       case t: TableRef =>
-        indent(s"""(select * from ${t.name.fullName})""")
+        selectAllWithIndent(s"${t.name.fullName}")
       case t: TableScan =>
-        indent(s"""(select * from ${t.name})""")
+        selectAllWithIndent(s"${t.name}")
+      case j: JSONFileScan =>
+        selectAllWithIndent(s"'${j.path}'")
       case t: ParquetFileScan =>
-        indent(s"""(select * from '${t.path}')""")
+        selectAllWithIndent(s"'${t.path}'")
       case s: Show if s.showType == ShowType.models =>
         val models: Seq[ListMap[String, Any]] = ctx
           .global
@@ -317,12 +344,12 @@ object GenSQL extends Phase("generate-sql"):
           }
           .map(x => s"(${x})")
         if modelValues.isEmpty then
-          indent(
-            "(select cast(null as varchar) as name, cast(null as varchar) as args, cast(null as varchar) as package_name limit 0)"
+          selectWithIndent(
+            "select cast(null as varchar) as name, cast(null as varchar) as args, cast(null as varchar) as package_name limit 0"
           )
         else
-          indent(
-            s"(select * from values ${indent(modelValues.mkString(", "))} as __models(name, args, package_name))"
+          selectWithIndent(
+            s"select * from values ${indent(modelValues.mkString(", "))} as __models(name, args, package_name)"
           )
       case other =>
         warn(s"unknown relation type: ${other}")
@@ -375,7 +402,7 @@ object GenSQL extends Phase("generate-sql"):
           }
           .mkString
       case s: SubQueryExpression =>
-        s"(${printRelation(s.query, context, 0)})"
+        s"(${printRelation(s.query, context, Indented(0))})"
       case i: IfExpr =>
         s"if(${printExpression(i.cond, context)}, ${printExpression(i.onTrue, context)}, ${printExpression(i.onFalse, context)})"
       case i: Wildcard =>

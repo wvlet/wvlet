@@ -20,7 +20,7 @@ class FlowCliTest extends AirSpec:
     FlowCli.main("run spec/model1/src/q1.flow")
 
   for i <- 1 to 22 do
-    test(s"tpch-q${i}"):
+    test(s"tpch-q${i}.flow"):
       info(s"Running tpch-q${i}.flow")
       FlowCli.main(s"run --tpch spec/tpch/src/q${i}.flow")
 
