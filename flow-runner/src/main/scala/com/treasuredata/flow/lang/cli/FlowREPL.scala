@@ -18,11 +18,11 @@ import org.jline.builtins.SyntaxHighlighter
 import org.jline.reader.Parser.ParseContext
 import org.jline.reader.impl.{DefaultHighlighter, DefaultParser}
 import org.jline.reader.{
-  ParsedLine,
   EOFError,
   EndOfFileException,
   LineReader,
   LineReaderBuilder,
+  ParsedLine,
   UserInterruptException
 }
 import org.jline.terminal.Terminal.Signal
@@ -31,6 +31,7 @@ import org.jline.utils.{AttributedString, AttributedStringBuilder, AttributedSty
 import wvlet.airframe.launcher.{Launcher, command, option}
 import wvlet.log.{LogSupport, Logger}
 import wvlet.airframe.*
+import wvlet.airframe.control.{CommandLineTokenizer, Shell}
 
 import java.io.File
 import java.util.regex.Pattern
@@ -152,6 +153,8 @@ class FlowREPL(runner: FlowScriptRunner) extends AutoCloseable with LogSupport:
             terminal.flush()
           case "help" =>
             println(helpMessage)
+          case _ if cmd.startsWith("git") || cmd.startsWith("gh") =>
+            Shell.exec(cmd)
           case stmt =>
             if stmt.nonEmpty then
               runner.runStatement(stmt, terminal)
@@ -181,7 +184,7 @@ class FlowREPL(runner: FlowScriptRunner) extends AutoCloseable with LogSupport:
 end FlowREPL
 
 object FlowREPL:
-  private def knownCommands = Set("exit", "quit", "clear", "help")
+  private def knownCommands = Set("exit", "quit", "clear", "help", "git", "gh")
   private def helpMessage: String =
     """[commands]
       | help   : Show this help message
@@ -199,8 +202,9 @@ object FlowREPL:
     override def parse(line: String, cursor: Int, context: ParseContext): ParsedLine =
       def incomplete = throw EOFError(-1, -1, null)
 
-      val cmd = line.trim
-      if cmd.isEmpty || knownCommands.contains(cmd) || context == ParseContext.COMPLETE then
+      val cmd     = line.trim
+      val cmdName = cmd.split("\\s").headOption.getOrElse("")
+      if cmdName.isEmpty || knownCommands.contains(cmdName) || context == ParseContext.COMPLETE then
         parser.parse(line, cursor, context)
       else if cmd.endsWith(";") && cursor >= line.length then
         parser.parse(line, cursor, context)

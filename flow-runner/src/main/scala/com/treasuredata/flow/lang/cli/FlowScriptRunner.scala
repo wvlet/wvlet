@@ -59,10 +59,7 @@ class FlowScriptRunner(config: FlowScriptRunnerConfig, queryExecutor: QueryExecu
         if !config.interactive || maxWidth <= terminal.getWidth then
           println(str)
         else
-          val proc = ProcessBuilder("less", "-FXRSn")
-            .redirectError(ProcessBuilder.Redirect.INHERIT)
-            .redirectOutput(ProcessBuilder.Redirect.INHERIT)
-            .start()
+          val proc = ProcessUtil.launchInteractiveProcess("less", "-FXRSn")
           val out =
             new BufferedWriter(
               new OutputStreamWriter(
