@@ -274,11 +274,21 @@ object GenSQL extends Phase("generate-sql"):
         selectWithIndent(s"${printRelation(p.child, ctx, sqlContext.nested)}")
       case t: TestRelation =>
         printRelation(t.inputRelation, ctx, sqlContext.nested)
-      case l: Limit =>
-        val input = printRelation(l.inputRelation, ctx, sqlContext.enterFrom)
-        selectWithIndent(s"""select * from ${input}\nlimit ${l.limit.stringValue}""")
       case q: Query =>
         printRelation(q.body, ctx, sqlContext)
+      case l: Limit =>
+        l.inputRelation match
+          case s: Sort =>
+            // order by needs to be compresed with limit as subexpression query ordering will be ignored in Trino
+            val input = printRelation(s.inputRelation, ctx, sqlContext.enterFrom)
+            val body =
+              s"""select * from ${input}
+                 |order by ${s.orderBy.map(e => printExpression(e, ctx)).mkString(", ")}
+                 |limit ${l.limit.stringValue}""".stripMargin
+            selectWithIndent(body)
+          case _ =>
+            val input = printRelation(l.inputRelation, ctx, sqlContext.enterFrom)
+            selectWithIndent(s"""select * from ${input}\nlimit ${l.limit.stringValue}""")
       case s: Sort =>
         val input = printRelation(s.inputRelation, ctx, sqlContext.enterFrom)
         val body =
