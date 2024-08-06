@@ -4,7 +4,7 @@ import com.treasuredata.flow.BuildInfo
 import com.treasuredata.flow.lang.FlowLangException
 import com.treasuredata.flow.lang.compiler.parser.*
 import com.treasuredata.flow.lang.compiler.{CompilationUnit, SourceFile}
-import com.treasuredata.flow.lang.model.plan.Query
+import com.treasuredata.flow.lang.model.plan.{ModelDef, Query}
 import com.treasuredata.flow.lang.runner.connector.DBContext
 import com.treasuredata.flow.lang.runner.connector.duckdb.DuckDBContext
 import com.treasuredata.flow.lang.runner.connector.trino.{TrinoConfig, TrinoContext}
@@ -220,13 +220,14 @@ object FlowREPL:
 
     override def parse(line: String, cursor: Int, context: ParseContext): ParsedLine =
       def incomplete = throw EOFError(-1, -1, null)
+      def accept     = parser.parse(line, cursor, context)
 
       val cmd     = line.trim
       val cmdName = cmd.split("\\s").headOption.getOrElse("")
       if cmdName.isEmpty || knownCommands.contains(cmdName) || context == ParseContext.COMPLETE then
-        parser.parse(line, cursor, context)
+        accept
       else if cmd.endsWith(";") && cursor >= line.length then
-        parser.parse(line, cursor, context)
+        accept
       else
         val unit       = CompilationUnit.fromString(line)
         val flowParser = FlowParser(unit)
@@ -238,12 +239,17 @@ object FlowREPL:
               // Query might have additional operators, so it needs to end with ";"
               incomplete
             case _ =>
-              // If statement can be parsed successfully, complete the input
-              parser.parse(line, cursor, context)
+              if cursor >= line.length then
+                // Accept model only when the cursor is at the end of the input
+                accept
+              else
+                incomplete
         catch
           case e: FlowLangException =>
             // Move to the secondary prompt until seeing a semicolon
             incomplete
+
+    end parse
 
   end ReplParser
 
