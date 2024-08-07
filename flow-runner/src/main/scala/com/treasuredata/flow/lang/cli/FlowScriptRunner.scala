@@ -30,6 +30,10 @@ class FlowScriptRunner(config: FlowScriptRunnerConfig, queryExecutor: QueryExecu
     with LogSupport:
   private var units: List[CompilationUnit] = Nil
 
+  private var resultRowLimits: Int = config.resultLimit
+
+  def setResultRowLimit(limit: Int): Unit = resultRowLimits = limit
+
   override def close(): Unit = queryExecutor.close()
 
   private val compiler = Compiler(
@@ -48,7 +52,7 @@ class FlowScriptRunner(config: FlowScriptRunnerConfig, queryExecutor: QueryExecu
     try
       val compileResult = compiler.compileSingle(contextUnit = newUnit)
       val ctx           = compileResult.context.global.getContextOf(newUnit)
-      val queryResult   = queryExecutor.execute(newUnit, ctx, limit = config.resultLimit)
+      val queryResult   = queryExecutor.execute(newUnit, ctx, limit = resultRowLimits)
       trace(s"ctx: ${ctx.hashCode()} ${ctx.compilationUnit.knownSymbols}")
 
       def resultString(q: QueryResult): String =

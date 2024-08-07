@@ -2,7 +2,6 @@ package com.treasuredata.flow.lang.runner
 
 import com.treasuredata.flow.lang.model.RelationType
 import com.treasuredata.flow.lang.model.plan.LogicalPlan
-import org.msgpack.core.MessagePack
 import wvlet.log.LogSupport
 
 import scala.collection.immutable.ListMap
@@ -99,30 +98,27 @@ object QueryResultPrinter extends LogSupport:
           .mkString("│ ", " │ ", " │")
       }
 
+    // result footer
+    rows +=
+      maxColSize
+        .map { s =>
+          "─" * s
+        }
+        .mkString("├─", "─┴─", "─┤")
     if tableRows.isTruncated then
-      rows +=
-        maxColSize
-          .map { s =>
-            "─" * s
-          }
-          .mkString("├─", "─┴─", "─┤")
       rows +=
         f"${tableRows.totalRows}%,d rows (${tableRows.rows.size}%,d shown)"
           .padTo(width, " ")
           .mkString("│ ", "", " │")
-      rows +=
-        maxColSize
-          .map { maxSize =>
-            "─".padTo(maxSize, "─").mkString
-          }
-          .mkString("└─", "───", "─┘")
     else
-      rows +=
-        maxColSize
-          .map { maxSize =>
-            "─".padTo(maxSize, "─").mkString
-          }
-          .mkString("└─", "─┴─", "─┘")
+      rows += f"${tableRows.totalRows}%,d rows".padTo(width, " ").mkString("│ ", "", " │")
+
+    rows +=
+      maxColSize
+        .map { maxSize =>
+          "─".padTo(maxSize, "─").mkString
+        }
+        .mkString("└─", "───", "─┘")
 
     rows.result().mkString("\n")
 

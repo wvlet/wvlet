@@ -144,7 +144,8 @@ class FlowREPL(runner: FlowScriptRunner) extends AutoCloseable with LogSupport:
     var lastOutput: Option[LastOutput] = None
     while toContinue do
       def eval(line: String): Unit =
-        val cmd = line.trim.stripSuffix(";")
+        val trimmedLine = line.trim.stripSuffix(";")
+        val cmd         = trimmedLine.split("\\s+").headOption.getOrElse("")
         cmd match
           case "exit" | "quit" =>
             toContinue = false
@@ -153,8 +154,8 @@ class FlowREPL(runner: FlowScriptRunner) extends AutoCloseable with LogSupport:
             terminal.flush()
           case "help" =>
             println(helpMessage)
-          case _ if cmd.startsWith("git") || cmd.startsWith("gh") =>
-            Shell.exec(cmd)
+          case "git" | "gh" =>
+            Shell.exec(trimmedLine)
           case "clip" =>
             lastOutput match
               case Some(output) =>
@@ -171,9 +172,16 @@ class FlowREPL(runner: FlowScriptRunner) extends AutoCloseable with LogSupport:
                   warn("clip command is not supported other than Mac OS")
               case None =>
                 warn("No output to clip")
+          case "rows" =>
+            val limit = trimmedLine.split("\\s+").lastOption.getOrElse("40").toInt
+            if limit <= 0 then
+              error("The limit must be a positive number")
+            else
+              runner.setResultRowLimit(limit)
+              info(s"Set the result row limit to: ${limit}")
           case stmt =>
-            if stmt.nonEmpty then
-              val result = runner.runStatement(stmt, terminal)
+            if trimmedLine.nonEmpty then
+              val result = runner.runStatement(trimmedLine, terminal)
               lastOutput = Some(result)
         end match
       end eval
@@ -203,13 +211,14 @@ class FlowREPL(runner: FlowScriptRunner) extends AutoCloseable with LogSupport:
 end FlowREPL
 
 object FlowREPL:
-  private def knownCommands = Set("exit", "quit", "clear", "help", "git", "gh", "clip")
+  private def knownCommands = Set("exit", "quit", "clear", "help", "git", "gh", "clip", "rows")
   private def helpMessage: String =
     """[commands]
       | help      : Show this help message
       | quit/exit : Exit the REPL
       | clear     : Clear the screen
       | clip      : Clip the current result to the clipboard
+      | rows      : Set the maximum number of query result rows to display (default: 40)
       |""".stripMargin
 
   /**

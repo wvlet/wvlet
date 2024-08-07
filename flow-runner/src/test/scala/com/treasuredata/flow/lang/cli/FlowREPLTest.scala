@@ -28,8 +28,10 @@ class FlowREPLTest extends AirSpec:
   }
 
   test("trino") {
-    skip(s"Trino td-dev is not available in CI")
-    FlowREPLCli.main("-w spec/trino --profile td-dev -c 'show tables'")
+    if inCI then
+      skip(s"Trino td-dev profile is not available in CI")
+
+    FlowREPLCli.main("--profile td-dev -c 'show tables'")
   }
 
 end FlowREPLTest
