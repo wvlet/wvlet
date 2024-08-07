@@ -14,6 +14,9 @@ import TokenType.*
 import scala.annotation.switch
 
 enum FlowToken(val tokenType: TokenType, val str: String):
+
+  def isRightParenOrBracket: Boolean = this == FlowToken.R_PAREN || this == FlowToken.R_BRACKET
+
   // special tokens
   case EMPTY      extends FlowToken(Control, "<empty>")
   case ERROR      extends FlowToken(Control, "<erroneous token>")

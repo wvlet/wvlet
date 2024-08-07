@@ -6,6 +6,7 @@ import com.treasuredata.flow.lang.model.DataType
 import com.treasuredata.flow.lang.model.DataType.{
   ArrayType,
   DecimalType,
+  FixedSizeArrayType,
   GenericType,
   IntConstant,
   MapType,
@@ -82,15 +83,27 @@ class DataTypeParser(scanner: FlowScanner) extends LogSupport:
             timestampType(TimestampField.TIME)
           case other =>
             var params: List[DataType] = Nil
-            if scanner.lookAhead().token == FlowToken.L_PAREN then
-              consume(FlowToken.L_PAREN)
-              params = typeParams()
-              consume(FlowToken.R_PAREN)
-
-            toDataType(typeName, params)
+            val tt                     = scanner.lookAhead()
+            tt.token match
+              case FlowToken.L_PAREN =>
+                consume(FlowToken.L_PAREN)
+                params = typeParams()
+                consume(FlowToken.R_PAREN)
+                toDataType(typeName, params)
+              case FlowToken.L_BRACKET =>
+                // duckdb list types: integer[], varchar[], ...
+                consume(FlowToken.L_BRACKET)
+                if scanner.lookAhead().token == FlowToken.R_BRACKET then
+                  consume(FlowToken.R_BRACKET)
+                  ArrayType(toDataType(typeName, Nil))
+                else
+                  val size = consume(FlowToken.INTEGER_LITERAL)
+                  consume(FlowToken.R_BRACKET)
+                  FixedSizeArrayType(toDataType(typeName, Nil), size.str.toInt)
+              case _ => // do nothing
+                toDataType(typeName, params)
       case _ =>
         throw unexpected(s"Unexpected token ${t.token}")
-
     end match
 
   end dataType
@@ -127,7 +140,7 @@ class DataTypeParser(scanner: FlowScanner) extends LogSupport:
 
   def typeParams(): List[DataType] =
     val params = List.newBuilder[DataType]
-    while scanner.lookAhead().token != FlowToken.R_PAREN do
+    while !scanner.lookAhead().token.isRightParenOrBracket do
       params += typeParam()
       if scanner.lookAhead().token == FlowToken.COMMA then
         consume(FlowToken.COMMA)

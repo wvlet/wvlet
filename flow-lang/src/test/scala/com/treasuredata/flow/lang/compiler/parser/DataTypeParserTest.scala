@@ -4,6 +4,7 @@ import com.treasuredata.flow.lang.FlowLangException
 import com.treasuredata.flow.lang.model.DataType
 import com.treasuredata.flow.lang.model.DataType.{
   ArrayType,
+  FixedSizeArrayType,
   GenericType,
   IntConstant,
   MapType,
@@ -87,6 +88,11 @@ class DataTypeParserTest extends AirSpec:
 
   test("parse map") {
     parse("map(string,any)") shouldBe MapType(DataType.StringType, DataType.AnyType)
+  }
+
+  test("parse duckdb list type") {
+    parse("integer[]") shouldBe ArrayType(DataType.IntType)
+    parse("integer[10]") shouldBe FixedSizeArrayType(DataType.IntType, 10)
   }
 
 end DataTypeParserTest

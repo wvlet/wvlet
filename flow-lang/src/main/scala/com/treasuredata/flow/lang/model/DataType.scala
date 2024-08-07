@@ -383,6 +383,10 @@ object DataType extends LogSupport:
   case class ArrayType(elemType: DataType) extends DataType(Name.typeName("array"), Seq(elemType)):
     override def isResolved: Boolean = elemType.isResolved
 
+  case class FixedSizeArrayType(elemType: DataType, size: Int)
+      extends DataType(Name.typeName("array"), Seq(elemType)):
+    override def isResolved: Boolean = elemType.isResolved
+
   case class MapType(keyType: DataType, valueType: DataType)
       extends DataType(Name.typeName(s"map"), Seq(keyType, valueType)):
     override def isResolved: Boolean = keyType.isResolved && valueType.isResolved

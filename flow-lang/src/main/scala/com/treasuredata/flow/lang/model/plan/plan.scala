@@ -58,7 +58,7 @@ case class TypeDef(
     nodeLocation: Option[NodeLocation]
 ) extends LanguageStatement
 
-// type elements (def or column definition)
+// type elements (def or column (field) definition)
 sealed trait TypeElem extends Expression
 
 case class TopLevelFunctionDef(functionDef: FunctionDef, nodeLocation: Option[NodeLocation])
