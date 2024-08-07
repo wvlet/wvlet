@@ -96,7 +96,7 @@ class QueryExecutor(dbContext: DBContext) extends LogSupport with AutoCloseable:
           case e: SQLException =>
             throw StatusCode
               .INVALID_ARGUMENT
-              .newException(s"Failed to execute SQL: ${generatedSQL.sql}\n${e.getMessage}", e)
+              .newException(s"Failed to execute SQL:\n${generatedSQL.sql}", e)
         end try
       case t: TableDef =>
         QueryResult.empty

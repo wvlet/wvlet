@@ -15,11 +15,13 @@ import org.jline.terminal.Terminal.Signal
 import org.jline.terminal.{Size, Terminal, TerminalBuilder}
 import org.jline.utils.{AttributedString, AttributedStringBuilder, AttributedStyle, InfoCmp}
 import wvlet.airframe.*
-import wvlet.airframe.control.{CommandLineTokenizer, Shell}
+import wvlet.airframe.control.{CommandLineTokenizer, Shell, ThreadUtil}
 import wvlet.airframe.launcher.{Launcher, command, option}
 import wvlet.log.{LogSupport, Logger}
 
 import java.io.{BufferedWriter, File, OutputStreamWriter}
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicReference
 import java.util.regex.Pattern
 
 object FlowREPLCli:
@@ -120,9 +122,13 @@ class FlowREPL(runner: FlowScriptRunner) extends AutoCloseable with LogSupport:
     // Coloring keywords
     .highlighter(new ReplHighlighter).build()
 
+  private val executorThreadManager = Executors
+    .newCachedThreadPool(ThreadUtil.newDaemonThreadFactory("flow-repl-executor"))
+
   override def close(): Unit =
     reader.getHistory.save()
     terminal.close()
+    executorThreadManager.shutdown()
 
   private def isRealTerminal() =
     terminal.getType != Terminal.TYPE_DUMB && terminal.getType != Terminal.TYPE_DUMB_COLOR
@@ -133,8 +139,18 @@ class FlowREPL(runner: FlowScriptRunner) extends AutoCloseable with LogSupport:
       terminal.setSize(Size(120, 40))
 
     // Handle ctrl-c (int) or ctrl-d (quit) to interrupt the current thread
-    val currentThread = Thread.currentThread()
-    terminal.handle(Signal.INT, _ => currentThread.interrupt())
+    val currentThread = new AtomicReference[Thread](Thread.currentThread())
+    def withNewThread[Result](body: => Result): Result =
+      val lastThread = Thread.currentThread()
+      try executorThreadManager
+          .submit { () =>
+            currentThread.set(Thread.currentThread())
+            body
+          }
+          .get()
+      finally currentThread.set(lastThread)
+
+    terminal.handle(Signal.INT, _ => currentThread.get().interrupt())
 
     // Load the command history so that we can use ctrl-r (keyword), ctrl+p/n (previous/next) for history search
     val history = reader.getHistory
@@ -181,19 +197,26 @@ class FlowREPL(runner: FlowScriptRunner) extends AutoCloseable with LogSupport:
               info(s"Set the result row limit to: ${limit}")
           case stmt =>
             if trimmedLine.nonEmpty then
-              val result = runner.runStatement(trimmedLine, terminal)
-              lastOutput = Some(result)
+              withNewThread {
+                try
+                  val result = runner.runStatement(trimmedLine, terminal)
+                  lastOutput = Some(result)
+                catch
+                  case e: InterruptedException =>
+                    logger.error("Cancelled the query")
+              }
         end match
       end eval
 
       try
-        // If a command is given, run it and exist
         if commands.nonEmpty then
+          // If a command is given, run it and exist
           for line <- commands do
             println(s"flow> ${line}")
             eval(line)
           toContinue = false
         else
+          // Or read from the user input
           val line = reader.readLine("flow> ")
           eval(line)
       catch

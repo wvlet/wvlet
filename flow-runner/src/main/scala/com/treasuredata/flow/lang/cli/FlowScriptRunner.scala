@@ -70,6 +70,7 @@ class FlowScriptRunner(config: FlowScriptRunnerConfig, queryExecutor: QueryExecu
         if !config.interactive || maxWidth <= terminal.getWidth then
           println(str)
         else
+          // Launch less command to enable scrolling of query results in the terminal
           val proc = ProcessUtil.launchInteractiveProcess("less", "-FXRSn")
           val out =
             new BufferedWriter(
