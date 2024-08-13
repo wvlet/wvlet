@@ -203,6 +203,9 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
       case FlowToken.STAR =>
         consume(FlowToken.STAR)
         Wildcard(t.nodeLocation)
+      case FlowToken.INTEGER_LITERAL =>
+        consume(FlowToken.INTEGER_LITERAL)
+        DigitIdentifier(t.str, t.nodeLocation)
       case _ =>
         reserved()
 
@@ -787,15 +790,8 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
     val t = scanner.lookAhead()
     t.token match
       case FlowToken.IDENTIFIER =>
-        val keyName = identifier()
-        val key =
-          if scanner.lookAhead().token == FlowToken.EQ then
-            // (identifier ':')? expression
-            consume(FlowToken.EQ)
-            val aggr = expression()
-            UnresolvedGroupingKey(keyName, aggr, t.nodeLocation)
-          else
-            UnresolvedGroupingKey(keyName, keyName, t.nodeLocation)
+        val item = selectItem()
+        val key  = UnresolvedGroupingKey(item.nameExpr, item.expr, t.nodeLocation)
         key :: groupByItemList()
       case FlowToken.COMMA =>
         consume(FlowToken.COMMA)
@@ -1197,6 +1193,8 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
             unexpected(expr)
       case _ =>
         expr
+
+  end primaryExpressionRest
 
   def functionArgs(): List[FunctionArg] =
     val args = List.newBuilder[FunctionArg]

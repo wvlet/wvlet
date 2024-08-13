@@ -32,6 +32,8 @@ sealed trait NameExpr extends Expression:
     // we can't use the object equality like this eq EmptyName
     this.leafName == "<empty>"
 
+  def isGroupingKeyIndex: Boolean = "_[0-9]+".r.matches(fullName)
+
 object NameExpr:
   val EmptyName: Identifier           = UnquotedIdentifier("<empty>", None)
   def fromString(s: String): NameExpr = UnquotedIdentifier(s, None)
@@ -784,6 +786,7 @@ case class ColumnDefLike(
 
 // Aggregation
 trait GroupingKey extends UnaryExpression:
+  def name: NameExpr
   def index: Option[Int]
   override def child: Expression
 

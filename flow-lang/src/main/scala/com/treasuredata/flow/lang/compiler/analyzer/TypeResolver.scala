@@ -45,6 +45,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
       resolveTransformItem ::         // resolve transform items prefixed with column name
       resolveSelectItem ::            // resolve select items (projected columns)
       resolveGroupingKey ::           // resolve Aggregate keys
+      resolveGroupingKeyIndexes ::    // resolve grouping key indexes, _1, _2, .. in select clauses
       resolveRelation ::              // resolve expressions inside relation nodes
       resolveUnderscore ::            // resolve underscore in relation nodes
       resolveThis ::                  // resolve `this` in type definitions
@@ -369,6 +370,50 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
         }
       g.copy(groupingKeys = newKeys)
     }
+
+  /**
+    * Resolve grouping key indexes _1, _2, .... in select clauses
+    */
+  private object resolveGroupingKeyIndexes extends RewriteRule:
+    // Find the first Aggregate node
+    private def findAggregate(r: Relation): Option[Aggregate] =
+      r match
+        case a: Aggregate =>
+          Some(a)
+        case f: Filter =>
+          findAggregate(f.child)
+        case p: Project =>
+          findAggregate(p.child)
+        case _ =>
+          None
+
+    override def apply(context: Context): PlanRewriter = {
+      case p: Project if p.selectItems.exists(_.nameExpr.isGroupingKeyIndex) =>
+        findAggregate(p.child) match
+          case Some(agg) =>
+            p.transformChildExpressions {
+              case attr: SingleColumn if attr.nameExpr.isGroupingKeyIndex =>
+                val index = attr.nameExpr.fullName.stripPrefix("_").toInt - 1
+                if index >= agg.groupingKeys.length then
+                  throw StatusCode
+                    .SYNTAX_ERROR
+                    .newException(
+                      s"Invalid grouping key index: ${attr.nameExpr}",
+                      attr.nodeLocation
+                    )(using context)
+
+                val referencedGroupingKey = agg.groupingKeys(index)
+                SingleColumn(
+                  referencedGroupingKey.name,
+                  expr = referencedGroupingKey,
+                  attr.nodeLocation
+                )
+            }
+          case None =>
+            p
+    }
+
+  end resolveGroupingKeyIndexes
 
   /**
     * Resolve expression in relation nodes
