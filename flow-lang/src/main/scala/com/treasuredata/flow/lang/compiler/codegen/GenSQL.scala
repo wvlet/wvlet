@@ -55,7 +55,7 @@ object GenSQL extends Phase("generate-sql"):
         val nme = Name.termName(i.leafName)
         ctx.scope.lookupSymbol(nme) match
           case Some(sym) =>
-            sym.symbolInfo(using ctx) match
+            sym.symbolInfo match
               case b: BoundedSymbolInfo =>
                 // Replace to the bounded expression
                 b.expr
@@ -80,7 +80,12 @@ object GenSQL extends Phase("generate-sql"):
               // Register function arguments to the current scope
               val argSym    = Symbol(ctx.global.newSymbolId)
               given Context = ctx
-              argSym.symbolInfo = BoundedSymbolInfo(argSym, argName, argValue.dataType, argValue)
+              argSym.symbolInfo = BoundedSymbolInfo(
+                symbol = argSym,
+                name = argName,
+                tpe = argValue.dataType,
+                expr = argValue
+              )
               newCtx.scope.add(argName, argSym)
               argSym
             }
@@ -117,7 +122,7 @@ object GenSQL extends Phase("generate-sql"):
         c <- ctx.global.getAllContexts
         if result.isEmpty
       do
-        result = c.compilationUnit.knownSymbols.find(_.name(using c) == name)
+        result = c.compilationUnit.knownSymbols.find(_.name == name)
       result
     }
 
@@ -345,7 +350,7 @@ object GenSQL extends Phase("generate-sql"):
             ctx
               .compilationUnit
               .knownSymbols
-              .map(_.symbolInfo(using ctx))
+              .map(_.symbolInfo)
               .collect { case m: ModelSymbolInfo =>
                 m
               }
@@ -363,7 +368,7 @@ object GenSQL extends Phase("generate-sql"):
 
                 // package_name
                 if !m.owner.isNoSymbol && m.owner != ctx.global.defs.RootPackage then
-                  e += "package_name" -> s"'${m.owner.name(using ctx).name}'"
+                  e += "package_name" -> s"'${m.owner.name}'"
                 else
                   e += "package_name" -> "cast(null as varchar)"
 

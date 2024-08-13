@@ -2,7 +2,7 @@ package com.treasuredata.flow.lang.compiler
 
 import com.treasuredata.flow.lang.compiler.Compiler.presetLibraryPaths
 import com.treasuredata.flow.lang.compiler.analyzer.{
-  RemoveQueryOnlyUnits,
+  RemoveUnusedQueries,
   SymbolLabeler,
   TypeResolver
 }
@@ -22,8 +22,8 @@ object Compiler:
   def analysisPhases: List[Phase] = List(
     ParserPhase, // Parse *.flow files and create untyped plans
     SymbolLabeler, // Assign unique Symbol to each LogicalPlan and Expression nodes, a and assign a lazy DataType
-    new RemoveQueryOnlyUnits, // Check if any compilation units are unused
-    TypeResolver              // Assign a concrete DataType to each LogicalPlan and Expression nodes
+    RemoveUnusedQueries(), // Exclude unused compilation units (e.g., out of scope queries) from the following phases
+    TypeResolver // Assign a concrete DataType to each LogicalPlan and Expression nodes
   )
 
   /**

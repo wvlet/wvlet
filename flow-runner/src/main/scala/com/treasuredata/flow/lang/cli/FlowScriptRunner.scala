@@ -75,7 +75,7 @@ class FlowScriptRunner(config: FlowScriptRunnerConfig, queryExecutor: QueryExecu
           val out =
             new BufferedWriter(
               new OutputStreamWriter(
-                // Need to use a FilterOutputStream to accept keyboard events for less command
+                // Need to use a FilterOutputStream to accept keyboard events for less command along with the query result string
                 new FilterOutputStream(proc.getOutputStream())
               )
             )

@@ -1,25 +1,19 @@
 package com.treasuredata.flow.lang.runner
 
 import com.treasuredata.flow.lang.StatusCode
+import com.treasuredata.flow.lang.compiler.*
 import com.treasuredata.flow.lang.compiler.codegen.GenSQL
-import com.treasuredata.flow.lang.compiler.{
-  CompilationUnit,
-  Compiler,
-  CompilerOptions,
-  Context,
-  Name
-}
 import com.treasuredata.flow.lang.model.DataType
 import com.treasuredata.flow.lang.model.DataType.{NamedType, SchemaType, UnresolvedType}
 import com.treasuredata.flow.lang.model.plan.*
 import com.treasuredata.flow.lang.runner.connector.DBContext
 import com.treasuredata.flow.lang.runner.connector.duckdb.DuckDBContext
-import org.duckdb.DuckDBConnection
 import wvlet.airframe.codec.{JDBCCodec, MessageCodec}
-import wvlet.airframe.metrics.ElapsedTime
-import wvlet.log.{LogLevel, LogSupport, Logger}
+import wvlet.airframe.control.Control
+import wvlet.airframe.control.Control.withResource
+import wvlet.log.{LogLevel, LogSupport}
 
-import java.sql.{DriverManager, SQLException}
+import java.sql.SQLException
 import scala.collection.immutable.ListMap
 import scala.util.{Try, Using}
 
@@ -57,8 +51,8 @@ class QueryExecutor(dbContext: DBContext) extends LogSupport with AutoCloseable:
         debug(s"Executing SQL:\n${generatedSQL.sql}")
         try
           val result = dbContext.withConnection { conn =>
-            Using.resource(conn.createStatement()) { stmt =>
-              Using.resource(stmt.executeQuery(generatedSQL.sql)) { rs =>
+            withResource(conn.createStatement()) { stmt =>
+              withResource(stmt.executeQuery(generatedSQL.sql)) { rs =>
                 dbContext.processWarning(stmt.getWarnings())
 
                 val metadata = rs.getMetaData
@@ -75,14 +69,18 @@ class QueryExecutor(dbContext: DBContext) extends LogSupport with AutoCloseable:
 
                 val codec    = JDBCCodec(rs)
                 val rowCodec = MessageCodec.of[ListMap[String, Any]]
-                val it = codec.mapMsgPackMapRows { msgpack =>
-                  rowCodec.fromMsgPack(msgpack)
-                }
                 var rowCount = 0
-                val rows     = Seq.newBuilder[ListMap[String, Any]]
+                val it = codec.mapMsgPackMapRows { msgpack =>
+                  if rowCount < limit then
+                    rowCodec.fromMsgPack(msgpack)
+                  else
+                    null
+                }
+
+                val rows = Seq.newBuilder[ListMap[String, Any]]
                 while it.hasNext do
                   val row = it.next()
-                  if rowCount < limit then
+                  if row != null && rowCount < limit then
                     rows += row
                   rowCount += 1
 

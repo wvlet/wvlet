@@ -75,8 +75,8 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
                   .compilationUnit
                   .knownSymbols
                   .collectFirst {
-                    case s: Symbol if s.name(using ctx) == name =>
-                      trace(s"Found ${s.name(using ctx)} in ${ctx.compilationUnit}")
+                    case s: Symbol if s.name == name =>
+                      trace(s"Found ${s.name} in ${ctx.compilationUnit}")
                       foundSym = Some(s)
                   }
           }
@@ -98,8 +98,8 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
               .compilationUnit
               .knownSymbols
               .collectFirst {
-                case s: Symbol if s.name(using ctx) == name =>
-                  trace(s"Found ${s.name(using ctx)} in ${ctx.compilationUnit}")
+                case s: Symbol if s.name == name =>
+                  trace(s"Found ${s.name} in ${ctx.compilationUnit}")
                   foundSym = Some(s)
               }
 
@@ -183,7 +183,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
                 else
                   lookupType(ct.dataType.typeName, context) match
                     case Some(sym) =>
-                      val si = sym.symbolInfo(using context)
+                      val si = sym.symbolInfo
                       // trace(s"Resolved ${ct.dataType} as ${si.dataType}")
                       updated = true
                       ct.copy(dataType = si.dataType)
@@ -194,7 +194,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
             if updated then
               val newType = s.copy(columnTypes = newCols)
               trace(s"Resolved ${t.name} as ${newType}")
-              t.symbol.symbolInfo(using context).dataType = newType
+              t.symbol.symbolInfo.dataType = newType
               newType
             else
               s
@@ -232,7 +232,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
         m.relationType match
           case r: RelationType if r.isResolved =>
             // given model type is already resolved
-            m.symbol.symbolInfo(using context) match
+            m.symbol.symbolInfo match
               case t: ModelSymbolInfo =>
                 t.dataType = r
                 debug(s"Resolved ${t}")
@@ -246,11 +246,9 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
         val modelType = m.givenRelationType.get
         lookupType(modelType.typeName, context) match
           case Some(sym) =>
-            val si = sym.symbolInfo(using context)
-            trace(
-              s"${modelType.typeName} -> ${m.symbol.id} -> ${m.symbol.symbolInfo(using context)}"
-            )
-            val modelSymbolInfo = m.symbol.symbolInfo(using context)
+            val si = sym.symbolInfo
+            trace(s"${modelType.typeName} -> ${m.symbol.id} -> ${m.symbol.symbolInfo}")
+            val modelSymbolInfo = m.symbol.symbolInfo
             si.dataType match
               case r: RelationType =>
                 trace(s"Resolved model type: ${m.name} as ${r}")
@@ -288,17 +286,17 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
       case ref: TableRef if !ref.relationType.isResolved =>
         lookup(ref.name, context) match
           case Some(sym) =>
-            val si = sym.symbolInfo(using context)
+            val si = sym.symbolInfo
             si.tpe match
               case r: RelationType =>
                 debug(s"resolved ${sym} ${ref.locationString(using context)}")
-                ModelScan(sym.name(using context), Nil, r, r.fields, ref.nodeLocation)
+                ModelScan(sym.name, Nil, r, r.fields, ref.nodeLocation)
               case _ =>
                 ref
           case None =>
             // Lookup known types
             val tblType = Name.typeName(ref.name.leafName)
-            lookupType(tblType, context).map(_.symbolInfo(using context).dataType) match
+            lookupType(tblType, context).map(_.symbolInfo.dataType) match
               case Some(tpe: SchemaType) =>
                 trace(s"Found a table type for ${tblType}: ${tpe}")
                 TableScan(tblType.toTermName, tpe, tpe.fields, ref.nodeLocation)
@@ -308,11 +306,11 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
       case ref: ModelRef if !ref.relationType.isResolved =>
         lookup(ref.name, context) match
           case Some(sym) =>
-            val si = sym.symbolInfo(using context)
+            val si = sym.symbolInfo
             si.tpe match
               case r: RelationType =>
                 trace(s"Resolved model ref: ${ref.name.fullName} as ${r}")
-                ModelScan(sym.name(using context), ref.args, r, r.fields, ref.nodeLocation)
+                ModelScan(sym.name, ref.args, r, r.fields, ref.nodeLocation)
               case _ =>
                 ref
           case None =>
@@ -418,7 +416,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
       enclosing match
         case Some(s: Symbol) =>
           // TODO Handle nested definition (e.g., nested type definition)
-          val r = s.symbolInfo(using context).dataType
+          val r = s.symbolInfo.dataType
           t.transformUpExpressions { case th: This =>
             val newThis = th.copy(dataType = r)
             // trace(s"Resolved this: ${th} as ${newThis}")
@@ -646,7 +644,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
       // TODO Support adding more methods to the array type
       if aggregationFunctions.isEmpty then
         aggregationFunctions = lookupType(Name.typeName("array"), ctx)
-          .map(_.symbolInfo(using ctx))
+          .map(_.symbolInfo)
           .collect { case t: TypeSymbolInfo =>
             t.members
           }
@@ -730,9 +728,9 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
               )
             case None =>
               // Lookup functions
-              lookupType(t.typeName, context).map(_.symbolInfo(using context)) match
+              lookupType(t.typeName, context).map(_.symbolInfo) match
                 case Some(tpe: TypeSymbolInfo) =>
-                  tpe.declScope.lookupSymbol(refName).map(_.symbolInfo(using context)) match
+                  tpe.declScope.lookupSymbol(refName).map(_.symbolInfo) match
                     case Some(method: MethodSymbolInfo) =>
                       trace(s"Resolved ${t}.${ref.name.fullName} as a function")
                       ref.copy(dataType = method.ft.returnType)
@@ -745,9 +743,9 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
         case other =>
           // TODO Support multiple context-specific functions
           // warn(s"qualifier's type name: ${other.typeName}: ${ref.qualifier}")
-          lookupType(other.typeName, context).map(_.symbolInfo(using context)) match
+          lookupType(other.typeName, context).map(_.symbolInfo) match
             case Some(tpe: TypeSymbolInfo) =>
-              tpe.declScope.lookupSymbol(refName).map(_.symbolInfo(using context)) match
+              tpe.declScope.lookupSymbol(refName).map(_.symbolInfo) match
                 case Some(method: MethodSymbolInfo) =>
                   trace(s"Resolved ${ref} as ${method.ft}")
                   ref.copy(dataType = method.ft.returnType)

@@ -44,7 +44,7 @@ class Symbol(val id: Int) extends LogSupport:
     else
       _symbolInfo.toString
 
-  def name(using Context): Name = symbolInfo.name
+  def name: Name = symbolInfo.name
 
   def isNoSymbol: Boolean = this == Symbol.NoSymbol
 
@@ -69,7 +69,7 @@ class Symbol(val id: Int) extends LogSupport:
       case _ =>
     _tree = t
 
-  def symbolInfo(using Context): SymbolInfo =
+  def symbolInfo: SymbolInfo =
 //    if _symbolInfo == null then
 //      _symbolInfo = computeSymbolInfo
     _symbolInfo

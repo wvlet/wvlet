@@ -1,6 +1,6 @@
 package com.treasuredata.flow.lang.runner
 
-import com.treasuredata.flow.lang.model.RelationType
+import com.treasuredata.flow.lang.model.{DataType, RelationType}
 import com.treasuredata.flow.lang.model.plan.LogicalPlan
 import wvlet.log.LogSupport
 
@@ -33,6 +33,8 @@ object QueryResultPrinter extends LogSupport:
         printTableRows(t)
 
   private def printTableRows(tableRows: TableRows): String =
+    val alignRight = tableRows.schema.fields.map(_.isNumeric).toIndexedSeq
+
     val tbl: Seq[Seq[String]] =
       val rows = Seq.newBuilder[Seq[String]]
       rows += tableRows.schema.fields.map(_.name.name)
@@ -92,8 +94,12 @@ object QueryResultPrinter extends LogSupport:
       data.map { row =>
         row
           .zip(maxColSize)
-          .map { case (x, maxSize) =>
-            x.padTo(maxSize, " ").mkString
+          .zipWithIndex
+          .map { case ((x, maxSize), colIndex) =>
+            if alignRight(colIndex) then
+              x.reverse.padTo(maxSize, " ").reverse.mkString
+            else
+              x.padTo(maxSize, " ").mkString
           }
           .mkString("│ ", " │ ", " │")
       }

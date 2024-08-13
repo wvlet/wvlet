@@ -24,6 +24,12 @@ abstract class DataType(val typeName: TypeName, val typeParams: Seq[Type]) exten
 
   def baseTypeName: TypeName    = typeName
   override def isBound: Boolean = typeParams.forall(_.isBound)
+  def isNumeric: Boolean =
+    this match
+      case _: DataType.NumericType =>
+        true
+      case _ =>
+        false
 
   override def isFunctionType: Boolean = false
   override def isResolved: Boolean
@@ -67,7 +73,7 @@ case class RelationTypeList(override val typeName: TypeName, inputRelationTypes:
 
 object DataType extends LogSupport:
 
-  def parse(s: String): DataType = DataTypeParser.parse(s)
+  def parse(s: String): DataType = DataTypeParser.parse(s.toLowerCase)
 
   def parse(s: String, typeParams: List[TypeParameter]): DataType = DataTypeParser
     .parse(s, typeParams)
@@ -89,6 +95,7 @@ object DataType extends LogSupport:
     */
   case class NamedType(name: TermName, dataType: DataType)
       extends DataType(dataType.typeName, Seq.empty):
+    override def isNumeric: Boolean      = dataType.isNumeric
     override def isResolved: Boolean     = dataType.isResolved
     override def typeDescription: String = s"${name}:${dataType.typeDescription}"
 
@@ -362,6 +369,7 @@ object DataType extends LogSupport:
 
   case class DecimalType(precision: TypeParameter, scale: TypeParameter)
       extends DataType(Name.typeName("decimal"), Seq(precision, scale)):
+    override def isNumeric: Boolean  = true
     override def isResolved: Boolean = precision.isResolved && scale.isResolved
 
   object DecimalType:

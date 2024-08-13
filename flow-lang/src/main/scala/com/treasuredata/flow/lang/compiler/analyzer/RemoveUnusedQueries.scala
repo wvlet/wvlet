@@ -6,7 +6,7 @@ import com.treasuredata.flow.lang.model.plan.{ModelDef, TypeDef}
 /**
   * Check unused compilation units and exclude them
   */
-class RemoveQueryOnlyUnits extends Phase("check-unused"):
+class RemoveUnusedQueries extends Phase("check-unused"):
 
   private var contextUnit: Option[CompilationUnit] = None
   private var usedUnits                            = List.empty[CompilationUnit]
@@ -41,4 +41,4 @@ class RemoveQueryOnlyUnits extends Phase("check-unused"):
     debug(s"Compiling ${usedUnits.size} files out of ${units.size} files")
     usedUnits.reverse
 
-end RemoveQueryOnlyUnits
+end RemoveUnusedQueries
