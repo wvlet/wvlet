@@ -451,6 +451,14 @@ object GenSQL extends Phase("generate-sql"):
         l.exprs.map(x => printExpression(x, context)).mkString(", ")
       case d @ DotRef(qual: Expression, name: NameExpr, _, _) =>
         s"${printExpression(qual, context)}.${printExpression(name, context)}"
+      case in: In =>
+        val left  = printExpression(in.a, context)
+        val right = in.list.map(x => printExpression(x, context)).mkString(", ")
+        s"${left} in (${right})"
+      case notIn: NotIn =>
+        val left  = printExpression(notIn.a, context)
+        val right = notIn.list.map(x => printExpression(x, context)).mkString(", ")
+        s"${left} not in (${right})"
       case other =>
         warn(s"unknown expression type: ${other}")
         other.toString

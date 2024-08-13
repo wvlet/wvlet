@@ -33,7 +33,7 @@ import wvlet.log.LogSupport
   *   IDENTIFIER  : (LETTER | '_') (LETTER | DIGIT | '_')*
   *   BACKQUOTED_IDENTIFIER: '`' (~'`' | '``')+ '`'
   *   reserved   : 'from' | 'select' | 'where' | 'group' | 'by' | 'having' | 'join'
-  *              | 'order' | 'limit' | 'as' | 'model' | 'type' | 'def' | 'end' | 'in'
+  *              | 'order' | 'limit' | 'as' | 'model' | 'type' | 'def' | 'end' | 'in' | 'like'
   *
   *
   *   statements: statement+
@@ -223,7 +223,8 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
     t.token match
       case FlowToken.FROM | FlowToken.SELECT | FlowToken.WHERE | FlowToken.GROUP | FlowToken.BY |
           FlowToken.HAVING | FlowToken.JOIN | FlowToken.ORDER | FlowToken.LIMIT | FlowToken.AS |
-          FlowToken.MODEL | FlowToken.TYPE | FlowToken.DEF | FlowToken.END | FlowToken.IN =>
+          FlowToken.MODEL | FlowToken.TYPE | FlowToken.DEF | FlowToken.END | FlowToken.IN |
+          FlowToken.LIKE =>
         UnquotedIdentifier(t.str, t.nodeLocation)
       case _ =>
         unexpected(t)
@@ -1008,6 +1009,28 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
         consume(FlowToken.GTEQ)
         val right = valueExpression()
         GreaterThanOrEq(expression, right, t.nodeLocation)
+      case FlowToken.IN =>
+        consume(FlowToken.IN)
+        val valueList = inExprList()
+        In(expression, valueList, t.nodeLocation)
+      case FlowToken.LIKE =>
+        consume(FlowToken.LIKE)
+        val right = valueExpression()
+        Like(expression, right, t.nodeLocation)
+      case FlowToken.NOT =>
+        consume(FlowToken.NOT)
+        val t2 = scanner.lookAhead()
+        t2.token match
+          case FlowToken.LIKE =>
+            consume(FlowToken.LIKE)
+            val right = valueExpression()
+            NotLike(expression, right, t.nodeLocation)
+          case FlowToken.IN =>
+            consume(FlowToken.IN)
+            val valueList = inExprList()
+            NotIn(expression, valueList, t.nodeLocation)
+          case other =>
+            unexpected(t2)
       case FlowToken.SHOULD =>
         consume(FlowToken.SHOULD)
         val not =
@@ -1090,6 +1113,23 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
     primaryExpressionRest(expr)
 
   end primaryExpression
+
+  def inExprList(): List[Expression] =
+    def rest: List[Expression] =
+      val t = scanner.lookAhead()
+      t.token match
+        case FlowToken.R_PAREN =>
+          consume(FlowToken.R_PAREN)
+          Nil
+        case FlowToken.COMMA =>
+          consume(FlowToken.COMMA)
+          rest
+        case _ =>
+          val e = valueExpression()
+          e :: rest
+
+    consume(FlowToken.L_PAREN)
+    rest
 
   def array(): ArrayConstructor =
     val t        = consume(FlowToken.L_BRACKET)

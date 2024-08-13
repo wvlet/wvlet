@@ -156,10 +156,11 @@ enum FlowToken(val tokenType: TokenType, val str: String):
   case ELSE extends FlowToken(Keyword, "else")
   case END  extends FlowToken(Keyword, "end")
 
-  case AND extends FlowToken(Keyword, "and")
-  case OR  extends FlowToken(Keyword, "or")
-  case NOT extends FlowToken(Keyword, "not")
-  case IS  extends FlowToken(Keyword, "is")
+  case AND  extends FlowToken(Keyword, "and")
+  case OR   extends FlowToken(Keyword, "or")
+  case NOT  extends FlowToken(Keyword, "not")
+  case IS   extends FlowToken(Keyword, "is")
+  case LIKE extends FlowToken(Keyword, "like")
 
 end FlowToken
 
