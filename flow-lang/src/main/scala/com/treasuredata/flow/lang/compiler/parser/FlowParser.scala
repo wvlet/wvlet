@@ -81,13 +81,14 @@ import wvlet.log.LogSupport
   *               | 'on' identifier (',' identifier)*
   *
   *   groupByItemList: groupByItem (',' groupByItem)* ','?
-  *   groupByItem    : (identifier ':')? expression
+  *   groupByItem    : expression ('as' identifier (':' identifier)?)?
   *
   *   transformExpr: transformItem (',' transformItem)* ','?
   *   transformItem: qualifiedId '=' expression
   *
   *   selectExpr: selectItem (',' selectItem)* ','?
-  *   selectItem: (identifier (':' identifier)? '=')? expression
+  *   selectItem: (identifier '=')? expression
+  *             | expression ('as' identifier)?
   *
   *   test: 'test' COLON testExpr*
   *   testExpr: booleanExpression
@@ -834,6 +835,16 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
   end selectItems
 
   def selectItem(): SingleColumn =
+    def selectItemWithAlias(item: Expression): SingleColumn =
+      val t = scanner.lookAhead()
+      t.token match
+        case FlowToken.AS =>
+          consume(FlowToken.AS)
+          val alias = identifier()
+          SingleColumn(alias, item, item.nodeLocation)
+        case _ =>
+          SingleColumn(EmptyName, item, item.nodeLocation)
+
     val t = scanner.lookAhead()
     t.token match
       case FlowToken.IDENTIFIER =>
@@ -845,10 +856,10 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
             // Propagate the column name for a single column reference
             SingleColumn(i, exprOrColumName, t.nodeLocation)
           case _ =>
-            SingleColumn(EmptyName, exprOrColumName, t.nodeLocation)
+            selectItemWithAlias(exprOrColumName)
       case _ =>
-        val e = expression()
-        SingleColumn(EmptyName, e, t.nodeLocation)
+        val expr = expression()
+        selectItemWithAlias(expr)
 
   def limitExpr(input: Relation): Limit =
     val t = consume(FlowToken.LIMIT)
