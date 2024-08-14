@@ -6,7 +6,7 @@ import com.treasuredata.flow.lang.model.{DataType, NodeLocation}
 import com.treasuredata.flow.lang.model.plan.*
 import wvlet.log.LogSupport
 
-case class SourceColumn(table: Catalog.Table, column: Catalog.TableColumn):
+case class SourceColumn(table: Catalog.TableDef, column: Catalog.TableColumn):
   def fullName: String = s"${table.name}.${column.name}"
 
 case class ResolvedAttribute(
