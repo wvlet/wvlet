@@ -1,13 +1,9 @@
 package com.treasuredata.flow.lang.cli
 
-import com.treasuredata.flow.BuildInfo
-import com.treasuredata.flow.lang.{FlowLangException, StatusCode}
 import com.treasuredata.flow.lang.compiler.{CompilationUnit, Compiler, CompilerOptions}
-import com.treasuredata.flow.lang.runner.connector.DBConnector
 import com.treasuredata.flow.lang.runner.connector.duckdb.DuckDBConnector
-import com.treasuredata.flow.lang.runner.connector.trino.{TrinoConfig, TrinoConnector}
 import com.treasuredata.flow.lang.runner.{QueryExecutor, QueryResultPrinter}
-import wvlet.airframe.Design
+import com.treasuredata.flow.lang.{FlowLangException, StatusCode}
 import wvlet.airframe.launcher.{Launcher, argument, command, option}
 import wvlet.log.{LogLevel, LogSupport, Logger}
 

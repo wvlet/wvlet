@@ -115,24 +115,30 @@ lazy val lang = project
   )
   .dependsOn(api.jvm)
 
+val specRunnerSettings = Seq(
+  // To enable JVM options
+  Test / fork := true,
+  // When forking, the base directory should be set to the root directory
+  Test / baseDirectory :=
+    (ThisBuild / baseDirectory).value,
+  // Watch changes of example .flow files upon testing
+  Test / watchSources ++=
+    ((ThisBuild / baseDirectory).value / "spec" ** "*.flow").get ++
+      ((ThisBuild / baseDirectory).value / "flow-lang" ** "*.flow").get
+)
+
 lazy val runner = project
   .in(file("flow-runner"))
   .enablePlugins(PackPlugin)
   .settings(
     buildSettings,
+    specRunnerSettings,
     name        := "flow-runner",
     description := "flow program executor using trino, duckdb, etc.",
     packMain :=
       Map(
         "flowc" -> "com.treasuredata.flow.lang.cli.FlowCli",
         "flow"  -> "com.treasuredata.flow.lang.cli.FlowREPLCli"
-      ),
-    Test / javaOptions ++=
-      Seq(
-        // "--add-opens=java.base/java.nio=org.apache.arrow.memory.core,ALL-UNNAMED",
-        // Add JVM options for suppress warnings in TestTrinoServer
-        "-Djdk.attach.allowAttachSelf=true",
-        "-XX:+EnableDynamicAgentLoading"
       ),
     libraryDependencies ++=
       Seq(
@@ -155,24 +161,19 @@ lazy val runner = project
         "io.trino" % "trino-hive" % TRINO_VERSION % Test exclude ("io.trino", "trino-tpch") jar (),
         "io.trino" % "trino-hdfs" % TRINO_VERSION % Test jar (),
         "io.trino" % "trino-memory" % TRINO_VERSION % Test exclude ("io.trino", "trino-tpch") jar ()
-
         //        // Add Spark as a reference impl (Scala 2)
         //        "org.apache.spark" %% "spark-sql" % "3.5.1" % Test excludeAll (
         //          // exclude sbt-parser-combinators as it conflicts with Scala 3
         //          ExclusionRule(organization = "org.scala-lang.modules", name = "scala-parser-combinators_2.13")
         //        ) cross (CrossVersion.for3Use2_13)
-      ),
-    // To enable JVM options
-    Test / fork := true,
-    // When forking, the base directory should be set to the root directory
-    Test / baseDirectory :=
-      (ThisBuild / baseDirectory).value,
-    // Watch changes of example .flow files upon testing
-    Test / watchSources ++=
-      ((ThisBuild / baseDirectory).value / "spec" ** "*.flow").get ++
-        ((ThisBuild / baseDirectory).value / "flow-lang" ** "*.flow").get
+      )
   )
   .dependsOn(lang)
+
+lazy val spec = project
+  .in(file("flow-spec"))
+  .settings(buildSettings, specRunnerSettings, noPublish, name := "flow-spec")
+  .dependsOn(runner)
 
 lazy val server = project
   .in(file("flow-server"))

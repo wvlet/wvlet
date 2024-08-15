@@ -1,7 +1,7 @@
 package com.treasuredata.flow.lang.cli
 
 import com.treasuredata.flow.BuildInfo
-import com.treasuredata.flow.lang.FlowLangException
+import com.treasuredata.flow.lang.{FlowLangException, StatusCode}
 import com.treasuredata.flow.lang.compiler.parser.*
 import com.treasuredata.flow.lang.compiler.{CompilationUnit, SourceFile}
 import com.treasuredata.flow.lang.model.plan.{ModelDef, Query}
@@ -17,6 +17,7 @@ import org.jline.utils.{AttributedString, AttributedStringBuilder, AttributedSty
 import wvlet.airframe.*
 import wvlet.airframe.control.{CommandLineTokenizer, Shell, ThreadUtil}
 import wvlet.airframe.launcher.{Launcher, command, option}
+import wvlet.log.io.IOUtil
 import wvlet.log.{LogSupport, Logger}
 
 import java.io.{BufferedWriter, File, OutputStreamWriter}
@@ -38,6 +39,8 @@ class FlowREPLCli(
     profile: Option[String] = None,
     @option(prefix = "-c", description = "Run a command and exit")
     commands: List[String] = Nil,
+    @option(prefix = "--file", description = "Run commands in a file and exit")
+    inputFile: Option[String] = None,
     @option(prefix = "-w", description = "Working folder")
     workFolder: String = ".",
     @option(prefix = "--catalog", description = "Context database catalog to use")
@@ -92,8 +95,19 @@ class FlowREPLCli(
             DuckDBConnector()
       }
 
+    val inputCommands = List.newBuilder[String]
+    inputCommands ++= commands
+    inputFile.foreach { file =>
+      val f = new File(workFolder, file)
+      if f.exists() then
+        val contents = IOUtil.readAsString(f)
+        inputCommands += contents
+      else
+        throw StatusCode.FILE_NOT_FOUND.newException(s"File not found: ${f.getAbsolutePath()}")
+    }
+
     design.build[FlowREPL] { repl =>
-      repl.start(commands)
+      repl.start(inputCommands.result())
     }
   end repl
 
