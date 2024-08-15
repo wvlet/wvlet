@@ -135,10 +135,13 @@ case class TableRef(name: NameExpr, nodeLocation: Option[NodeLocation])
   override def toString: String           = s"TableRef(${name})"
   override val relationType: RelationType = UnresolvedRelationType(name.fullName)
 
-case class ModelRef(name: NameExpr, args: List[FunctionArg], nodeLocation: Option[NodeLocation])
-    extends Relation
+case class TableFunctionCall(
+    name: NameExpr,
+    args: List[FunctionArg],
+    nodeLocation: Option[NodeLocation]
+) extends Relation
     with LeafPlan:
-  override def toString: String           = s"ModelRef(${name}, ${args})"
+  override def toString: String           = s"TableFunctionCall(${name}, ${args})"
   override val relationType: RelationType = UnresolvedRelationType(name.fullName)
 
 case class FileScan(path: String, nodeLocation: Option[NodeLocation])

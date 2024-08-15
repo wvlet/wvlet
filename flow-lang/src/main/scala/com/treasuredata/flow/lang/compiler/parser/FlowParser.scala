@@ -655,7 +655,7 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
           consume(FlowToken.R_PAREN)
           primary match
             case r: TableRef =>
-              ModelRef(r.name, relationArgs, t.nodeLocation)
+              TableFunctionCall(r.name, relationArgs, t.nodeLocation)
             case other =>
               unexpected(t)
         case _ =>

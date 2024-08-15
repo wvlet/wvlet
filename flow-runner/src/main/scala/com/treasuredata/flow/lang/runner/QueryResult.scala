@@ -6,7 +6,8 @@ import wvlet.log.LogSupport
 
 import scala.collection.immutable.ListMap
 
-sealed trait QueryResult
+sealed trait QueryResult:
+  override def toString: String = QueryResultPrinter.print(this)
 
 object QueryResult:
   object empty extends QueryResult

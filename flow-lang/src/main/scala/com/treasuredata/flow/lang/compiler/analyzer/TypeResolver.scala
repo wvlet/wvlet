@@ -304,7 +304,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
               case _ =>
                 warn(s"Unresolved table ref: ${ref.name.fullName}: ${context.scope.getAllEntries}")
                 ref
-      case ref: ModelRef if !ref.relationType.isResolved =>
+      case ref: TableFunctionCall if !ref.relationType.isResolved =>
         lookup(ref.name, context) match
           case Some(sym) =>
             val si = sym.symbolInfo

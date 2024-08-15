@@ -33,16 +33,9 @@ enum QueryScope:
     InExpr
 
 trait DBConnector extends AutoCloseable with LogSupport:
-  private var _plan: LogicalPlan     = _
   private var queryScope: QueryScope = QueryScope.Global
 
-  private var catalogs = new ConcurrentHashMap[String, ConnectorCatalog]().asScala
-
-  def plan: LogicalPlan = ???
-
-  def withPlan(plan: LogicalPlan): this.type =
-    _plan = plan
-    this
+  private val catalogs = new ConcurrentHashMap[String, ConnectorCatalog]().asScala
 
   def withQueryScope(scope: QueryScope): this.type =
     queryScope = scope

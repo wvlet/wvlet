@@ -1,0 +1,2 @@
+from duckdb_functions()
+select function_name, function_type, return_type

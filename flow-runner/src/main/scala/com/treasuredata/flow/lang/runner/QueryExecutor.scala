@@ -24,14 +24,12 @@ class QueryExecutor(dbContext: DBConnector) extends LogSupport with AutoCloseabl
 
   override def close(): Unit = dbContext.close()
 
-  def execute(sourceFolder: String, file: String): Unit =
-    val result = Compiler(
+  def execute(sourceFolder: String, file: String): QueryResult =
+    val compileResult = Compiler(
       CompilerOptions(sourceFolders = List(sourceFolder), workingFolder = sourceFolder)
     ).compileSingle(Some(file))
-    result
-      .inFile(file)
-      .foreach: u =>
-        execute(u, result.context)
+    val ret = compileResult.inFile(file).map(unit => execute(unit, compileResult.context))
+    ret.getOrElse(QueryResult.empty)
 
   def execute(u: CompilationUnit, context: Context, limit: Int = 40): QueryResult =
     val result = execute(u.resolvedPlan, context, limit)
