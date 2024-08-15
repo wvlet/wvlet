@@ -1,5 +1,6 @@
 package com.treasuredata.flow.lang.model
 
+import com.treasuredata.flow.lang.{FlowLangException, StatusCode}
 import com.treasuredata.flow.lang.compiler.parser.DataTypeParser
 import com.treasuredata.flow.lang.compiler.{Name, TermName, TypeName}
 import com.treasuredata.flow.lang.model.DataType.NamedType
@@ -7,6 +8,7 @@ import com.treasuredata.flow.lang.model.expr.NameExpr
 import wvlet.log.LogSupport
 
 import scala.util.Try
+import scala.util.control.NonFatal
 
 abstract class DataType(val typeName: TypeName, val typeParams: Seq[Type]) extends Type:
   override def toString: String = typeDescription
@@ -72,13 +74,20 @@ case class RelationTypeList(override val typeName: TypeName, inputRelationTypes:
   }
 
 object DataType extends LogSupport:
+  def parse(s: String): DataType =
+    try
+      if s == null || s.isEmpty then
+        NullType
+      else
+        DataTypeParser.parse(s.toLowerCase)
+    catch
+      case NonFatal(e) =>
+        throw StatusCode.SYNTAX_ERROR.newException(s"Invalid data type: ${s}", e)
 
-  def parse(s: String): DataType = DataTypeParser.parse(s.toLowerCase)
-
-  def parse(s: String, typeParams: List[TypeParameter]): DataType = DataTypeParser
+  private[lang] def parse(s: String, typeParams: List[TypeParameter]): DataType = DataTypeParser
     .parse(s, typeParams)
 
-  def unapply(str: String): Option[DataType] = Try(DataTypeParser.parse(str)).toOption
+  def unapply(str: String): Option[DataType] = Try(parse(str)).toOption
 
   case class UnresolvedType(leafName: String) extends DataType(Name.typeName(leafName), Seq.empty):
     override def typeDescription: String = s"${leafName}?"

@@ -2,14 +2,14 @@ package com.treasuredata.flow.lang.runner
 
 import com.treasuredata.flow.lang.catalog.Catalog
 import com.treasuredata.flow.lang.catalog.InMemoryCatalog
-import com.treasuredata.flow.lang.runner.connector.duckdb.DuckDBContext
+import com.treasuredata.flow.lang.runner.connector.duckdb.DuckDBConnector
 import wvlet.airspec.AirSpec
 
 class DuckDBExecutorTest extends AirSpec:
 
   pendingUntil("Stabilizing the new parser")
 
-  private val duckDB = QueryExecutor(DuckDBContext(prepareTPCH = false))
+  private val duckDB = QueryExecutor(DuckDBConnector(prepareTPCH = false))
 
   override def afterAll: Unit = duckDB.close()
 

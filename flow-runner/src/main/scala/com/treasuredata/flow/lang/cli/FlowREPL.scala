@@ -5,9 +5,9 @@ import com.treasuredata.flow.lang.FlowLangException
 import com.treasuredata.flow.lang.compiler.parser.*
 import com.treasuredata.flow.lang.compiler.{CompilationUnit, SourceFile}
 import com.treasuredata.flow.lang.model.plan.{ModelDef, Query}
-import com.treasuredata.flow.lang.runner.connector.DBContext
-import com.treasuredata.flow.lang.runner.connector.duckdb.DuckDBContext
-import com.treasuredata.flow.lang.runner.connector.trino.{TrinoConfig, TrinoContext}
+import com.treasuredata.flow.lang.runner.connector.DBConnector
+import com.treasuredata.flow.lang.runner.connector.duckdb.DuckDBConnector
+import com.treasuredata.flow.lang.runner.connector.trino.{TrinoConfig, TrinoConnector}
 import org.jline.reader.Parser.ParseContext
 import org.jline.reader.impl.DefaultParser
 import org.jline.reader.*
@@ -76,10 +76,10 @@ class FlowREPLCli(
           schema = selectedSchema
         )
       )
-      .bindInstance[DBContext] {
+      .bindInstance[DBConnector] {
         currentProfile match
           case Some(p) if p.`type` == "trino" =>
-            TrinoContext(
+            TrinoConnector(
               TrinoConfig(
                 catalog = selectedCatalog.getOrElse("default"),
                 schema = selectedSchema.getOrElse("default"),
@@ -89,7 +89,7 @@ class FlowREPLCli(
               )
             )
           case _ =>
-            DuckDBContext()
+            DuckDBConnector()
       }
 
     design.build[FlowREPL] { repl =>

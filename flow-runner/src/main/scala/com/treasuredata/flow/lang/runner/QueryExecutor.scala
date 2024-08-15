@@ -6,8 +6,8 @@ import com.treasuredata.flow.lang.compiler.codegen.GenSQL
 import com.treasuredata.flow.lang.model.DataType
 import com.treasuredata.flow.lang.model.DataType.{NamedType, SchemaType, UnresolvedType}
 import com.treasuredata.flow.lang.model.plan.*
-import com.treasuredata.flow.lang.runner.connector.DBContext
-import com.treasuredata.flow.lang.runner.connector.duckdb.DuckDBContext
+import com.treasuredata.flow.lang.runner.connector.DBConnector
+import com.treasuredata.flow.lang.runner.connector.duckdb.DuckDBConnector
 import wvlet.airframe.codec.{JDBCCodec, MessageCodec}
 import wvlet.airframe.control.Control
 import wvlet.airframe.control.Control.withResource
@@ -18,9 +18,9 @@ import scala.collection.immutable.ListMap
 import scala.util.{Try, Using}
 
 object QueryExecutor extends LogSupport:
-  def default: QueryExecutor = QueryExecutor(dbContext = DuckDBContext())
+  def default: QueryExecutor = QueryExecutor(dbContext = DuckDBConnector())
 
-class QueryExecutor(dbContext: DBContext) extends LogSupport with AutoCloseable:
+class QueryExecutor(dbContext: DBConnector) extends LogSupport with AutoCloseable:
 
   override def close(): Unit = dbContext.close()
 

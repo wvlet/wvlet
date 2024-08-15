@@ -10,6 +10,7 @@ import com.treasuredata.flow.lang.model.DataType.{
   GenericType,
   IntConstant,
   MapType,
+  NamedType,
   NullType,
   TimestampField,
   TimestampType
@@ -40,13 +41,17 @@ object DataTypeParser:
       case "map" if params.size == 2 =>
         MapType(params(0), params(1))
       case "decimal" =>
-        if params.size != 2 then
+        if params.size == 0 then
+          // Use the default precision and scale of DuckDb
+          DecimalType(IntConstant(18), IntConstant(3))
+        else if params.size != 2 then
           throw unexpected(s"decimal type requires two parameters: ${params}")
-        (params(0), params(1)) match
-          case (p: IntConstant, s: IntConstant) =>
-            DecimalType(p, s)
-          case _ =>
-            throw unexpected(s"Invalid decimal type parameters: ${params}")
+        else
+          (params(0), params(1)) match
+            case (p: IntConstant, s: IntConstant) =>
+              DecimalType(p, s)
+            case _ =>
+              throw unexpected(s"Invalid decimal type parameters: ${params}")
       case _ =>
         GenericType(Name.typeName(typeName), params)
 
@@ -73,6 +78,9 @@ class DataTypeParser(scanner: FlowScanner) extends LogSupport:
       case FlowToken.NULL =>
         consume(FlowToken.NULL)
         NullType
+      case FlowToken.STRING_LITERAL if t.str == "null" =>
+        consume(FlowToken.STRING_LITERAL)
+        NullType
       case FlowToken.IDENTIFIER =>
         val id       = consume(FlowToken.IDENTIFIER)
         val typeName = id.str
@@ -93,17 +101,26 @@ class DataTypeParser(scanner: FlowScanner) extends LogSupport:
               case FlowToken.L_BRACKET =>
                 // duckdb list types: integer[], varchar[], ...
                 consume(FlowToken.L_BRACKET)
-                if scanner.lookAhead().token == FlowToken.R_BRACKET then
-                  consume(FlowToken.R_BRACKET)
-                  ArrayType(toDataType(typeName, Nil))
-                else
-                  val size = consume(FlowToken.INTEGER_LITERAL)
-                  consume(FlowToken.R_BRACKET)
-                  FixedSizeArrayType(toDataType(typeName, Nil), size.str.toInt)
+                val t2 = scanner.lookAhead()
+                t2.token match
+                  case FlowToken.R_BRACKET =>
+                    consume(FlowToken.R_BRACKET)
+                    ArrayType(toDataType(typeName, Nil))
+                  case FlowToken.IDENTIFIER =>
+                    consume(FlowToken.IDENTIFIER)
+                    consume(FlowToken.R_BRACKET)
+                    ArrayType(toDataType(typeName, Nil))
+                  case FlowToken.INTEGER_LITERAL =>
+                    val size = consume(FlowToken.INTEGER_LITERAL)
+                    consume(FlowToken.R_BRACKET)
+                    FixedSizeArrayType(toDataType(typeName, Nil), size.str.toInt)
+                  case _ =>
+                    throw unexpected(s"Unexpected token ${t2}")
               case _ => // do nothing
                 toDataType(typeName, params)
+        end match
       case _ =>
-        throw unexpected(s"Unexpected token ${t.token}")
+        throw unexpected(s"Unexpected token ${t}")
     end match
 
   end dataType
@@ -152,6 +169,11 @@ class DataTypeParser(scanner: FlowScanner) extends LogSupport:
       case FlowToken.INTEGER_LITERAL =>
         val i = consume(FlowToken.INTEGER_LITERAL)
         IntConstant(i.str.toInt)
+      case FlowToken.STRING_LITERAL =>
+        val ts        = consume(FlowToken.STRING_LITERAL)
+        val paramName = ts.str.toLowerCase
+        val paramType = dataType()
+        NamedType(Name.termName(paramName), paramType)
       case _ =>
         dataType()
 

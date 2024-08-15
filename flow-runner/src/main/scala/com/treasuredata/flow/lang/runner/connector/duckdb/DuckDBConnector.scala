@@ -1,18 +1,24 @@
 package com.treasuredata.flow.lang.runner.connector.duckdb
 
 import com.treasuredata.flow.lang.StatusCode
+import com.treasuredata.flow.lang.catalog.SQLFunction
+import com.treasuredata.flow.lang.catalog.SQLFunction.FunctionType
+import com.treasuredata.flow.lang.model.DataType
+import com.treasuredata.flow.lang.model.DataType.NamedType
 import com.treasuredata.flow.lang.model.sql.*
-import com.treasuredata.flow.lang.runner.connector.DBContext
+import com.treasuredata.flow.lang.runner.connector.DBConnector
+import com.treasuredata.flow.lang.compiler.Name
 import org.duckdb.DuckDBConnection
+import wvlet.airframe.codec.MessageCodec
 import wvlet.airframe.metrics.ElapsedTime
 import wvlet.log.LogSupport
 
 import java.sql.{Connection, DriverManager, SQLException}
 import java.util.Properties
-import scala.util.Using
+import scala.util.{Try, Using}
 
-class DuckDBContext(prepareTPCH: Boolean = false)
-    extends DBContext
+class DuckDBConnector(prepareTPCH: Boolean = false)
+    extends DBConnector
     with AutoCloseable
     with LogSupport:
 
@@ -68,4 +74,46 @@ class DuckDBContext(prepareTPCH: Boolean = false)
       case e: SQLException if e.getMessage.contains("403") =>
         throw StatusCode.PERMISSION_DENIED.newException(e.getMessage, e)
 
-end DuckDBContext
+  override def listFunctions(catalog: String): List[SQLFunction] =
+    val functionList = List.newBuilder[SQLFunction]
+
+    val jsonArrayCodec = MessageCodec.of[Seq[String]]
+    runQuery("""select function_name, function_type,
+        |parameters::json as parameters, parameter_types::json parameter_types,
+        |return_type,
+        |description
+        |from duckdb_functions()""".stripMargin) { rs =>
+      while rs.next() do
+        val argNames = jsonArrayCodec.fromJson(rs.getString("parameters"))
+        val argTypes = jsonArrayCodec.fromJson(rs.getString("parameter_types"))
+        val args: Seq[DataType] = argNames
+          .zipAll(argTypes, "", "")
+          .map {
+            case ("", argType) =>
+              DataType.parse(argType)
+            case (argName, argType) =>
+              NamedType(Name.termName(argName.toLowerCase), DataType.parse(argType))
+          }
+        val props = Map.newBuilder[String, Any]
+        rs.getString("description") match
+          case null =>
+          case desc =>
+            props += "description" -> desc
+
+        functionList +=
+          SQLFunction(
+            name = rs.getString("function_name"),
+            functionType = Try(FunctionType.valueOf(rs.getString("function_type").toUpperCase))
+              .toOption
+              .getOrElse(FunctionType.UNKNOWN),
+            args = args,
+            returnType = DataType.parse(rs.getString("return_type")),
+            properties = props.result()
+          )
+    }
+
+    functionList.result()
+
+  end listFunctions
+
+end DuckDBConnector

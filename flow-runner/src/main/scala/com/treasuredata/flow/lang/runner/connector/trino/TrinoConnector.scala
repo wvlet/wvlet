@@ -1,7 +1,8 @@
 package com.treasuredata.flow.lang.runner.connector.trino
 
+import com.treasuredata.flow.lang.catalog.SQLFunction
 import com.treasuredata.flow.lang.model.sql.*
-import com.treasuredata.flow.lang.runner.connector.DBContext
+import com.treasuredata.flow.lang.runner.connector.DBConnector
 import io.trino.jdbc.{TrinoDriver, TrinoResultSet}
 import wvlet.log.LogSupport
 
@@ -17,7 +18,7 @@ case class TrinoConfig(
     password: Option[String] = None
 )
 
-class TrinoContext(val config: TrinoConfig) extends DBContext with LogSupport:
+class TrinoConnector(val config: TrinoConfig) extends DBConnector with LogSupport:
   private lazy val driver = new TrinoDriver()
 
   override protected def newConnection: Connection =
@@ -37,4 +38,6 @@ class TrinoContext(val config: TrinoConfig) extends DBContext with LogSupport:
 
   override def close(): Unit = driver.close()
 
-  def withConfig(newConfig: TrinoConfig): TrinoContext = new TrinoContext(newConfig)
+  def withConfig(newConfig: TrinoConfig): TrinoConnector = new TrinoConnector(newConfig)
+
+  override def listFunctions(catalog: String): List[SQLFunction] = ???

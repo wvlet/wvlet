@@ -9,7 +9,7 @@ import wvlet.airspec.AirSpec
 
 import java.io.File
 
-class TrinoContextTest extends AirSpec:
+class TrinoConnectorTest extends AirSpec:
 
   initDesign { d =>
     d.bindInstance[TestTrinoServer](new TestTrinoServer())
@@ -25,18 +25,18 @@ class TrinoContextTest extends AirSpec:
       }
   }
 
-  test("Create an in-memory schema and table"): (trino: TrinoContext) =>
+  test("Create an in-memory schema and table"): (trino: TrinoConnector) =>
     trino.createSchema("memory", "main")
     trino.getSchema("memory", "main") shouldBe defined
 
     trino.withConnection: conn =>
       conn.createStatement().execute("create table a(id bigint)")
 
-    trino.getTable("memory", "main", "a") shouldBe defined
+    trino.getTableDef("memory", "main", "a") shouldBe defined
 
     test("drop table"):
       trino.dropTable("memory", "main", "a")
-      trino.getTable("memory", "main", "a") shouldBe empty
+      trino.getTableDef("memory", "main", "a") shouldBe empty
 
     test("drop schema"):
       trino.dropSchema("memory", "main")
@@ -70,4 +70,4 @@ class TrinoContextTest extends AirSpec:
             }
           }
 
-end TrinoContextTest
+end TrinoConnectorTest

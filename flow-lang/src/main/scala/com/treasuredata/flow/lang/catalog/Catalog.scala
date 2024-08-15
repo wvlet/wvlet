@@ -4,8 +4,9 @@ import wvlet.log.LogSupport
 import com.treasuredata.flow.lang.model.expr.*
 import com.treasuredata.flow.lang.StatusCode
 import com.treasuredata.flow.lang.model.DataType
-
 import Catalog.*
+import com.treasuredata.flow.lang.model.DataType.{NamedType, SchemaType}
+import com.treasuredata.flow.lang.compiler.Name
 
 /**
   * connector -> catalog* -> schema* -> table* -> column*
@@ -66,10 +67,21 @@ object Catalog:
     * @param metadata
     */
   case class TableSchema(
+      catalog: Option[String],
       name: String,
       description: String = "",
       properties: Map[String, Any] = Map.empty
   )
+
+  case class TableName(catalog: Option[String], schema: Option[String], name: String):
+    def fullName: String =
+      (catalog, schema) match
+        case (Some(c), Some(s)) =>
+          s"${c}.${s}.${name}"
+        case (None, Some(s)) =>
+          s"${s}.${name}"
+        case (_, _) =>
+          name
 
   /**
     * Table and its column definition
@@ -80,13 +92,25 @@ object Catalog:
     * @param properties
     */
   case class TableDef(
-      schema: Option[String],
-      name: String,
+      tableName: TableName,
       columns: Seq[TableColumn],
       description: String = "",
       properties: Map[String, Any] = Map.empty
   ):
-    def fullName: String = s"${schema.map(db => s"${db}.").getOrElse("")}${name}"
+    def fullName: String       = tableName.fullName
+    def name                   = tableName.name
+    def schema: Option[String] = tableName.schema
+
+    lazy val schemaType: SchemaType =
+      val fields = columns.map { c =>
+        NamedType(Name.termName(c.name), c.dataType)
+      }
+      SchemaType(
+        // TODO resolve parent schema catalog types
+        None,
+        Name.typeName(name),
+        fields
+      )
 
     def column(name: String): TableColumn = columns
       .find(_.name == name)
