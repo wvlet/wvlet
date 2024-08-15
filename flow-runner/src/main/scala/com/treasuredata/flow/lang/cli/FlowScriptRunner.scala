@@ -36,14 +36,31 @@ class FlowScriptRunner(config: FlowScriptRunnerConfig, queryExecutor: QueryExecu
 
   override def close(): Unit = queryExecutor.close()
 
-  private val compiler = Compiler(
-    CompilerOptions(
-      sourceFolders = List(config.workingFolder),
-      workingFolder = config.workingFolder,
-      catalog = config.catalog,
-      schema = config.schema
+  private val compiler =
+    val c = Compiler(
+      CompilerOptions(
+        sourceFolders = List(config.workingFolder),
+        workingFolder = config.workingFolder,
+        catalog = config.catalog,
+        schema = config.schema
+      )
     )
-  )
+
+    // Set the default catalog given in the configuration
+    config
+      .catalog
+      .foreach { catalog =>
+        c.setDefaultCatalog(
+          queryExecutor.getDBConnector.getCatalog(catalog, config.schema.getOrElse("main"))
+        )
+      }
+    config
+      .schema
+      .foreach { schema =>
+        c.setDefaultSchema(schema)
+      }
+
+    c
 
   def runStatement(line: String, terminal: Terminal): LastOutput =
     val newUnit = CompilationUnit.fromString(line)

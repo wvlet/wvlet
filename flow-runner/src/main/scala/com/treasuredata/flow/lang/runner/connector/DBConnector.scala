@@ -43,9 +43,13 @@ trait DBConnector extends AutoCloseable with LogSupport:
 
   protected def newConnection: Connection
 
-  def getCatalog(catalogName: String): Catalog = catalogs.getOrElseUpdate(
+  def getCatalog(catalogName: String, defaultSchema: String): Catalog = catalogs.getOrElseUpdate(
     catalogName,
-    new ConnectorCatalog(catalogName = catalogName, dbConnector = this)
+    new ConnectorCatalog(
+      catalogName = catalogName,
+      defaultSchema = defaultSchema,
+      dbConnector = this
+    )
   )
 
   def withConnection[U](body: Connection => U): U =

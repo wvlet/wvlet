@@ -18,11 +18,13 @@ import scala.collection.immutable.ListMap
 import scala.util.{Try, Using}
 
 object QueryExecutor extends LogSupport:
-  def default: QueryExecutor = QueryExecutor(dbContext = DuckDBConnector())
+  def default: QueryExecutor = QueryExecutor(dbConnector = DuckDBConnector())
 
-class QueryExecutor(dbContext: DBConnector) extends LogSupport with AutoCloseable:
+class QueryExecutor(dbConnector: DBConnector) extends LogSupport with AutoCloseable:
 
-  override def close(): Unit = dbContext.close()
+  def getDBConnector: DBConnector = dbConnector
+
+  override def close(): Unit = dbConnector.close()
 
   def execute(sourceFolder: String, file: String): QueryResult =
     val compileResult = Compiler(
@@ -48,10 +50,10 @@ class QueryExecutor(dbContext: DBConnector) extends LogSupport with AutoCloseabl
         val generatedSQL = GenSQL.generateSQL(q, context)
         debug(s"Executing SQL:\n${generatedSQL.sql}")
         try
-          val result = dbContext.withConnection { conn =>
+          val result = dbConnector.withConnection { conn =>
             withResource(conn.createStatement()) { stmt =>
               withResource(stmt.executeQuery(generatedSQL.sql)) { rs =>
-                dbContext.processWarning(stmt.getWarnings())
+                dbConnector.processWarning(stmt.getWarnings())
 
                 val metadata = rs.getMetaData
                 val fields =

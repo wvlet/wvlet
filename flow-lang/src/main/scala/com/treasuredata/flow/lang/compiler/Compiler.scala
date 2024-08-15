@@ -1,5 +1,6 @@
 package com.treasuredata.flow.lang.compiler
 
+import com.treasuredata.flow.lang.catalog.Catalog
 import com.treasuredata.flow.lang.compiler.Compiler.presetLibraryPaths
 import com.treasuredata.flow.lang.compiler.analyzer.{
   RemoveUnusedQueries,
@@ -59,6 +60,9 @@ class Compiler(compilerOptions: CompilerOptions) extends LogSupport:
 
   private lazy val globalContext         = newGlobalContext
   private lazy val localCompilationUnits = listCompilationUnits(compilerOptions.sourceFolders)
+
+  def setDefaultCatalog(catalog: Catalog): Unit = globalContext.defaultCatalog = catalog
+  def setDefaultSchema(schema: String): Unit    = globalContext.defaultSchema = schema
 
   private def newGlobalContext: GlobalContext =
     val global      = GlobalContext(compilerOptions)

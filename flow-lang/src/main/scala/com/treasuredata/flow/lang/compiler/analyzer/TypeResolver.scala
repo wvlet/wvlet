@@ -302,8 +302,19 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
                 trace(s"Found a table type for ${tblType}: ${tpe}")
                 TableScan(tblType.toTermName, tpe, tpe.fields, ref.nodeLocation)
               case _ =>
-                warn(s"Unresolved table ref: ${ref.name.fullName}: ${context.scope.getAllEntries}")
-                ref
+                context.catalog.findTable(context.defaultSchema, ref.name.leafName) match
+                  case Some(tbl) =>
+                    TableScan(
+                      ref.name.toTermName,
+                      tbl.schemaType,
+                      tbl.schemaType.fields,
+                      ref.nodeLocation
+                    )
+                  case None =>
+                    warn(
+                      s"Unresolved table ref: ${ref.name.fullName}: ${context.scope.getAllEntries}"
+                    )
+                    ref
       case ref: TableFunctionCall if !ref.relationType.isResolved =>
         lookup(ref.name, context) match
           case Some(sym) =>

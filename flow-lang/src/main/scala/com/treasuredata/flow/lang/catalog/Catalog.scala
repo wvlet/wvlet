@@ -18,8 +18,6 @@ import com.treasuredata.flow.lang.compiler.Name
 trait Catalog extends LogSupport:
   def catalogName: String
 
-  def namespace: Option[String]
-
   def listSchemaNames: Seq[String]
   def listSchemas: Seq[Catalog.TableSchema]
   def getSchema(schemaName: String): Catalog.TableSchema

@@ -34,6 +34,9 @@ sealed trait NameExpr extends Expression:
 
   def isGroupingKeyIndex: Boolean = "_[0-9]+".r.matches(fullName)
 
+  def toTermName: TermName = Name.termName(leafName)
+  def toTypeName: TypeName = Name.typeName(leafName)
+
 object NameExpr:
   val EmptyName: Identifier           = UnquotedIdentifier("<empty>", None)
   def fromString(s: String): NameExpr = UnquotedIdentifier(s, None)
@@ -93,8 +96,6 @@ sealed trait Identifier extends QualifiedName with LeafExpression:
   override def fullName: String      = leafName
   override def leafName: String      = strExpr
 
-  def toTermName: TermName = Name.termName(leafName)
-  def toTypeName: TypeName = Name.typeName(leafName)
   // Unquoted value
   def unquotedValue: String
 

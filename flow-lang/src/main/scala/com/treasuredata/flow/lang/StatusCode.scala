@@ -51,6 +51,7 @@ enum StatusCode(statusType: StatusType):
   case INVALID_ARGUMENT      extends StatusCode(StatusType.UserError)
   case SCHEMA_NOT_FOUND      extends StatusCode(StatusType.UserError)
   case TABLE_NOT_FOUND       extends StatusCode(StatusType.UserError)
+  case CATALOG_NOT_FOUND     extends StatusCode(StatusType.UserError)
   case COLUMN_NOT_FOUND      extends StatusCode(StatusType.UserError)
   case NOT_A_RELATION        extends StatusCode(StatusType.UserError)
   case FILE_NOT_FOUND        extends StatusCode(StatusType.UserError)

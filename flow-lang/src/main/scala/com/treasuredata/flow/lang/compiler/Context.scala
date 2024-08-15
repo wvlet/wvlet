@@ -1,7 +1,7 @@
 package com.treasuredata.flow.lang.compiler
 
 import com.treasuredata.flow.lang.StatusCode
-import com.treasuredata.flow.lang.catalog.Catalog
+import com.treasuredata.flow.lang.catalog.{Catalog, InMemoryCatalog}
 import com.treasuredata.flow.lang.model.expr.{NameExpr, UnquotedIdentifier}
 import com.treasuredata.flow.lang.model.plan.Import
 import wvlet.log.LogSupport
@@ -31,6 +31,9 @@ case class GlobalContext(compilerOptions: CompilerOptions):
 
   // Globally available definitions (Name and Symbols)
   var defs: GlobalDefinitions = _
+
+  var defaultCatalog: Catalog = InMemoryCatalog(catalogName = "memory", functions = Nil)
+  var defaultSchema: String   = "main"
 
   def init(using rootContext: Context): Unit =
     this.rootContext = rootContext
@@ -83,7 +86,9 @@ case class Context(
 
   // Get the context catalog
   // TODO support multiple catalogs
-  def catalog: Catalog = ???
+  def catalog: Catalog = global.defaultCatalog
+
+  def defaultSchema: String = global.defaultSchema
 
   /**
     * Create a new context with an additional import

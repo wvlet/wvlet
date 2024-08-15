@@ -1,9 +1,29 @@
 package com.treasuredata.flow.lang.runner.connector
 
+import com.github.benmanes.caffeine.cache.{CacheLoader, Caffeine}
 import com.treasuredata.flow.lang.StatusCode
+import com.treasuredata.flow.lang.catalog.Catalog.TableName
 import com.treasuredata.flow.lang.catalog.{Catalog, SQLFunction}
+import wvlet.log.LogSupport
 
-class ConnectorCatalog(val catalogName: String, dbConnector: DBConnector) extends Catalog:
+import java.util.concurrent.TimeUnit
+
+class ConnectorCatalog(val catalogName: String, defaultSchema: String, dbConnector: DBConnector)
+    extends Catalog
+    with LogSupport:
+
+  private val tablesInSchemaCache = Caffeine
+    .newBuilder()
+    .expireAfterWrite(5, TimeUnit.MINUTES)
+    .build { (schema: String) =>
+      debug(s"Loading tables in schema ${catalogName}.${schema}")
+      dbConnector.listTableDefs(catalogName, schema)
+    }
+
+  init()
+
+  private def init(): Unit = tablesInSchemaCache.get(defaultSchema)
+
   // implement Catalog interface
   override def listSchemaNames: Seq[String] = dbConnector.listSchemaNames(catalogName)
 
@@ -29,17 +49,21 @@ class ConnectorCatalog(val catalogName: String, dbConnector: DBConnector) extend
       // ok
     dbConnector.createSchema(schema.catalog.getOrElse(catalogName), schema.name)
 
-  override def namespace: Option[String] = None
-
-  override def listTableNames(schemaName: String): Seq[String] = dbConnector
-    .listTables(catalogName, schemaName)
+  override def listTableNames(schemaName: String): Seq[String] = tablesInSchemaCache
+    .get(schemaName)
     .map(_.name)
 
-  override def listTables(schemaName: String): Seq[Catalog.TableDef] = dbConnector
-    .listTableDefs(catalogName, schemaName)
+  override def listTables(schemaName: String): Seq[Catalog.TableDef] = tablesInSchemaCache
+    .get(schemaName)
 
   override def findTable(schemaName: String, tableName: String): Option[Catalog.TableDef] =
-    dbConnector.getTableDef(catalogName, schemaName, tableName)
+    tablesInSchemaCache
+      .get(schemaName)
+      .find(_.name == tableName)
+      .orElse {
+        // If an entry is not found in the cache, check again
+        dbConnector.getTableDef(catalogName, schemaName, tableName)
+      }
 
   override def getTable(schemaName: String, tableName: String): Catalog.TableDef = findTable(
     schemaName,

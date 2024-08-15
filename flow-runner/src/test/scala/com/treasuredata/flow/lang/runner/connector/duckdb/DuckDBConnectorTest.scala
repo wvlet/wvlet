@@ -35,7 +35,7 @@ class DuckDBConnectorTest extends AirSpec:
       )
 
   test("read catalog"): (duckdb: DuckDBConnector) =>
-    val catalog = duckdb.getCatalog("memory")
+    val catalog = duckdb.getCatalog("memory", "main")
     catalog.catalogName shouldBe "memory"
     catalog.listSchemaNames shouldContain "main"
     catalog.listTableNames("main") shouldBe Seq.empty

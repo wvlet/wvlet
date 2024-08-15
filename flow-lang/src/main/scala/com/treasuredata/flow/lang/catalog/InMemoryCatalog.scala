@@ -3,11 +3,7 @@ package com.treasuredata.flow.lang.catalog
 import com.treasuredata.flow.lang.StatusCode
 import com.treasuredata.flow.lang.catalog.Catalog.CreateMode
 
-class InMemoryCatalog(
-    val catalogName: String,
-    val namespace: Option[String],
-    functions: Seq[SQLFunction]
-) extends Catalog:
+class InMemoryCatalog(val catalogName: String, functions: Seq[SQLFunction]) extends Catalog:
 
   // schemaName name -> DatabaseHolder
   private val schemas = collection.mutable.Map.empty[String, SchemaHolder]

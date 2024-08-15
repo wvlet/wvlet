@@ -136,12 +136,13 @@ lazy val runner = project
       ),
     libraryDependencies ++=
       Seq(
-        "org.jline"           % "jline"             % "3.26.3",
-        "org.wvlet.airframe" %% "airframe-config"   % AIRFRAME_VERSION,
-        "org.wvlet.airframe" %% "airframe-launcher" % AIRFRAME_VERSION,
-        "org.apache.arrow"    % "arrow-vector"      % "17.0.0",
-        "org.duckdb"          % "duckdb_jdbc"       % "1.0.0",
-        "io.trino"            % "trino-jdbc"        % TRINO_VERSION,
+        "org.jline"                     % "jline"             % "3.26.3",
+        "org.wvlet.airframe"           %% "airframe-config"   % AIRFRAME_VERSION,
+        "org.wvlet.airframe"           %% "airframe-launcher" % AIRFRAME_VERSION,
+        "com.github.ben-manes.caffeine" % "caffeine"          % "3.1.8",
+        "org.apache.arrow"              % "arrow-vector"      % "17.0.0",
+        "org.duckdb"                    % "duckdb_jdbc"       % "1.0.0",
+        "io.trino"                      % "trino-jdbc"        % TRINO_VERSION,
         // exclude() and jar() are necessary to avoid https://github.com/sbt/sbt/issues/7407
         // tpc-h connector neesd to download GB's of jar, so excluding it
         "io.trino" % "trino-testing" % TRINO_VERSION % Test exclude ("io.trino", "trino-tpch"),

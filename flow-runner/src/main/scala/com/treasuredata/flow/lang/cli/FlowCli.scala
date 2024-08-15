@@ -82,7 +82,7 @@ class FlowCli(opts: FlowCliOption) extends LogSupport:
 
       info(s"context directory: ${contextDirectory}, flow file: ${flowFile}")
 
-      val duckdb = QueryExecutor(dbContext = DuckDBConnector(prepareTPCH = prepareTPCH))
+      val duckdb = QueryExecutor(dbConnector = DuckDBConnector(prepareTPCH = prepareTPCH))
       val compilationResult = Compiler(
         CompilerOptions(
           phases = Compiler.allPhases,
