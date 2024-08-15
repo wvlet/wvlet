@@ -194,7 +194,9 @@ case class ParquetFileScan(
 
   override lazy val resolved = true
 
-case class RawSQL(sql: String, nodeLocation: Option[NodeLocation]) extends Relation with LeafPlan:
+case class RawSQL(sql: Expression, nodeLocation: Option[NodeLocation])
+    extends Relation
+    with LeafPlan:
   override val relationType: RelationType = UnresolvedRelationType(RelationType.newRelationTypeName)
 
 // Deduplicate (duplicate elimination) the input relation

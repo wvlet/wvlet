@@ -316,6 +316,8 @@ object GenSQL extends Phase("generate-sql"):
       case t: TableFunctionCall =>
         val args = t.args.map(x => printExpression(x, ctx)).mkString(", ")
         selectAllWithIndent(s"${t.name.strExpr}(${args})")
+      case r: RawSQL =>
+        selectWithIndent(printExpression(r.sql, ctx))
       case t: TableScan =>
         selectAllWithIndent(s"${t.name}")
       case j: JSONFileScan =>

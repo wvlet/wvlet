@@ -1,18 +1,10 @@
 package com.treasuredata.flow.lang.compiler.parser
 
 import com.treasuredata.flow.lang.StatusCode
-import com.treasuredata.flow.lang.compiler.parser.FlowToken.{EQ, FLOAT_LITERAL, FOR, FROM, R_PAREN}
+import com.treasuredata.flow.lang.compiler.parser.FlowToken.*
 import com.treasuredata.flow.lang.compiler.{CompilationUnit, Name, SourceFile}
 import com.treasuredata.flow.lang.model.DataType
-import com.treasuredata.flow.lang.model.DataType.{
-  IntConstant,
-  NoType,
-  TypeParameter,
-  UnresolvedRelationType,
-  UnresolvedType,
-  UnresolvedTypeParameter,
-  VarArgType
-}
+import com.treasuredata.flow.lang.model.DataType.*
 import com.treasuredata.flow.lang.model.expr.*
 import com.treasuredata.flow.lang.model.expr.NameExpr.EmptyName
 import com.treasuredata.flow.lang.model.plan.*
@@ -61,7 +53,8 @@ import wvlet.log.LogSupport
   *   relation       : relationPrimary ('as' identifier)?
   *   relationPrimary: qualifiedId ('(' functionArg (',' functionArg)* ')')?
   *                  | '(' relation ')'
-  *                  | str
+  *                  | str               // file scan
+  *                  | strInterpolation  // embedded raw SQL
   *
   *   queryBlock: join
   *             | 'group' 'by' groupByItemList
@@ -896,6 +889,9 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
       case FlowToken.STRING_LITERAL =>
         consume(FlowToken.STRING_LITERAL)
         FileScan(t.str, t.nodeLocation)
+      case FlowToken.STRING_INTERPOLATION_PREFIX if t.str == "sql" =>
+        val rawSQL = interpolatedString()
+        RawSQL(rawSQL, t.nodeLocation)
       case _ =>
         unexpected(t)
 

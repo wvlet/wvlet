@@ -24,6 +24,11 @@ class DuckDBExecutorTest extends AirSpec:
     debug(result)
   }
 
+  test("raw sql") {
+    val result = duckDB.execute("spec/duckdb", "raw_sql.flow")
+    debug(result)
+  }
+
   test("weblog") {
     pendingUntil("Stabilizing the new parser")
     duckDB.execute("examples/cdp_behavior", "behavior.flow")
