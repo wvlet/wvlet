@@ -79,7 +79,7 @@ object DataType extends LogSupport:
       if s == null || s.isEmpty then
         NullType
       else
-        DataTypeParser.parse(s.toLowerCase)
+        DataTypeParser.parse(s)
     catch
       case NonFatal(e) =>
         throw StatusCode.SYNTAX_ERROR.newException(s"Invalid data type: ${s}", e)
@@ -321,6 +321,14 @@ object DataType extends LogSupport:
     // lambda
     "function"
   ).map(x => Name.typeName(x))
+
+  val knownTypeNames: Set[String] =
+    (
+      primitiveTypeTable.map(_._1.name) ++ knownGenericTypeNames.map(_.name) ++
+        Set("array", "map", "row", "struct")
+    ).toSet
+
+  def isKnownTypeName(s: String): Boolean = knownTypeNames.contains(s)
 
   def isKnownGenericTypeName(s: String): Boolean   = isKnownGenericTypeName(Name.typeName(s))
   def isKnownGenericTypeName(s: TypeName): Boolean = knownGenericTypeNames.contains(s)

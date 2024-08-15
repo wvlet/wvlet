@@ -1,6 +1,7 @@
 package com.treasuredata.flow.lang.runner.connector.trino
 
 import com.treasuredata.flow.lang.catalog.SQLFunction
+import com.treasuredata.flow.lang.model.DataType
 import com.treasuredata.flow.lang.model.sql.*
 import com.treasuredata.flow.lang.runner.connector.DBConnector
 import io.trino.jdbc.{TrinoDriver, TrinoResultSet}
@@ -40,4 +41,25 @@ class TrinoConnector(val config: TrinoConfig) extends DBConnector with LogSuppor
 
   def withConfig(newConfig: TrinoConfig): TrinoConnector = new TrinoConnector(newConfig)
 
-  override def listFunctions(catalog: String): List[SQLFunction] = ???
+  override def listFunctions(catalog: String): List[SQLFunction] =
+    val functionList = List.newBuilder[SQLFunction]
+    runQuery("show functions") { rs =>
+      while rs.next() do
+        val returnType    = DataType.parse(rs.getString("Return Type"))
+        val argumentTypes = rs.getString("Argument Types").split(", ").map(DataType.parse).toList
+        val prop          = Map.newBuilder[String, Any]
+        Option(rs.getString("description")).foreach(x => prop += "description" -> x)
+        functionList +=
+          SQLFunction(
+            name = rs.getString("Function"),
+            functionType = SQLFunction
+              .FunctionType
+              .valueOf(rs.getString("Function Type").toUpperCase),
+            returnType = returnType,
+            args = argumentTypes,
+            properties = prop.result()
+          )
+    }
+    functionList.result()
+
+end TrinoConnector

@@ -55,7 +55,7 @@ class ConnectorCatalog(val catalogName: String, dbConnector: DBConnector) extend
 
   override def createTable(tableName: Catalog.TableDef, createMode: Catalog.CreateMode): Unit = ???
 
-  override def listFunctions: Seq[SQLFunction] = ???
+  override def listFunctions: Seq[SQLFunction] = dbConnector.listFunctions(catalogName)
 
   override def updateColumns(
       schemaName: String,

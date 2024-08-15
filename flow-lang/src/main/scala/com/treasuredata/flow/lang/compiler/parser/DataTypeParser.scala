@@ -13,7 +13,10 @@ import com.treasuredata.flow.lang.model.DataType.{
   NamedType,
   NullType,
   TimestampField,
-  TimestampType
+  TimestampType,
+  TypeParameter,
+  TypeVariable,
+  VarcharType
 }
 import com.treasuredata.flow.lang.model.expr.Identifier
 import wvlet.log.LogSupport
@@ -36,6 +39,11 @@ object DataTypeParser:
     typeName match
       case p if params.isEmpty && DataType.isPrimitiveTypeName(p) =>
         DataType.getPrimitiveType(typeName)
+      case "varchar" if params.size <= 1 =>
+        if params.isEmpty then
+          DataType.getPrimitiveType("varchar")
+        else
+          VarcharType(params.headOption)
       case "array" if params.size == 1 =>
         ArrayType(params(0))
       case "map" if params.size == 2 =>
@@ -48,12 +56,14 @@ object DataTypeParser:
           throw unexpected(s"decimal type requires two parameters: ${params}")
         else
           (params(0), params(1)) match
-            case (p: IntConstant, s: IntConstant) =>
+            case (p: TypeParameter, s: TypeParameter) =>
               DecimalType(p, s)
             case _ =>
               throw unexpected(s"Invalid decimal type parameters: ${params}")
       case _ =>
         GenericType(Name.typeName(typeName), params)
+
+end DataTypeParser
 
 class DataTypeParser(scanner: FlowScanner) extends LogSupport:
   import DataTypeParser.*
@@ -66,7 +76,7 @@ class DataTypeParser(scanner: FlowScanner) extends LogSupport:
 
   private def consumeIdentifier(expected: String): TokenData =
     val t = scanner.nextToken()
-    if t.token != FlowToken.IDENTIFIER || t.str != expected then
+    if t.token != FlowToken.IDENTIFIER || t.str.toLowerCase != expected then
       throw unexpected(s"Expected ${expected} but found ${t.token}")
     t
 
@@ -78,12 +88,12 @@ class DataTypeParser(scanner: FlowScanner) extends LogSupport:
       case FlowToken.NULL =>
         consume(FlowToken.NULL)
         NullType
-      case FlowToken.STRING_LITERAL if t.str == "null" =>
+      case FlowToken.STRING_LITERAL if t.str.toLowerCase == "null" =>
         consume(FlowToken.STRING_LITERAL)
         NullType
       case FlowToken.IDENTIFIER =>
         val id       = consume(FlowToken.IDENTIFIER)
-        val typeName = id.str
+        val typeName = id.str.toLowerCase
         typeName match
           case "timestamp" =>
             timestampType(TimestampField.TIMESTAMP)
@@ -174,6 +184,9 @@ class DataTypeParser(scanner: FlowScanner) extends LogSupport:
         val paramName = ts.str.toLowerCase
         val paramType = dataType()
         NamedType(Name.termName(paramName), paramType)
+      case FlowToken.IDENTIFIER if !DataType.isKnownTypeName(t.str.toLowerCase) =>
+        val id = consume(FlowToken.IDENTIFIER)
+        TypeVariable(id.str.trim)
       case _ =>
         dataType()
 

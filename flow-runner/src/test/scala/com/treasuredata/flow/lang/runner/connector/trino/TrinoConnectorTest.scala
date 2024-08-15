@@ -25,7 +25,7 @@ class TrinoConnectorTest extends AirSpec:
       }
   }
 
-  test("Create an in-memory schema and table"): (trino: TrinoConnector) =>
+  test("Create an in-memory schema and table") { (trino: TrinoConnector) =>
     trino.createSchema("memory", "main")
     trino.getSchema("memory", "main") shouldBe defined
 
@@ -34,19 +34,21 @@ class TrinoConnectorTest extends AirSpec:
 
     trino.getTableDef("memory", "main", "a") shouldBe defined
 
-    test("drop table"):
+    test("drop table") {
       trino.dropTable("memory", "main", "a")
       trino.getTableDef("memory", "main", "a") shouldBe empty
+    }
 
-    test("drop schema"):
+    test("drop schema") {
       trino.dropSchema("memory", "main")
+    }
 
-    test("Create delta Lake table"):
+    test("Create delta Lake table") {
       val baseDir = new File(sys.props("user.dir")).getAbsolutePath
 
       val trinoDelta = trino.withConfig(trino.config.copy(catalog = "delta", schema = "delta_db"))
       trinoDelta.createSchema("delta", "delta_db")
-      test("create a local delta lake file"):
+      test("create a local delta lake file") {
         trinoDelta.withConnection { conn =>
           withResource(conn.createStatement()): stmt =>
             stmt.execute("create table a as select 1 as id, 'leo' as name")
@@ -57,8 +59,9 @@ class TrinoConnectorTest extends AirSpec:
               val queryResultJson = ResultSetCodec(rs).toJson
               debug(queryResultJson)
         }
+      }
 
-      test("register a local delta lake table"):
+      test("register a local delta lake table") {
         trinoDelta.withConnection: conn =>
           withResource(conn.createStatement()) { stmt =>
             stmt.execute(
@@ -69,5 +72,13 @@ class TrinoConnectorTest extends AirSpec:
               debug(queryResultJson)
             }
           }
+      }
+    }
+
+    test("list functions") {
+      val functions = trino.listFunctions("memory")
+      debug(functions.mkString("\n"))
+    }
+  }
 
 end TrinoConnectorTest

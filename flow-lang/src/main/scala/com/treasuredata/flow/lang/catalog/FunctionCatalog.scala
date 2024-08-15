@@ -10,6 +10,7 @@ object SQLFunction:
       TABLE,
       PRAGMA,
       MACRO,
+      WINDOW,
       UNKNOWN
 
 case class SQLFunction(
