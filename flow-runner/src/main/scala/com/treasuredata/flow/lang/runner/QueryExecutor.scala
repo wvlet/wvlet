@@ -49,6 +49,7 @@ class QueryExecutor(dbConnector: DBConnector) extends LogSupport with AutoClosea
       case q: Query =>
         val generatedSQL = GenSQL.generateSQL(q, context)
         debug(s"Executing SQL:\n${generatedSQL.sql}")
+        trace(s"[plan]:\n${generatedSQL.plan.pp}")
         try
           val result = dbConnector.withConnection { conn =>
             withResource(conn.createStatement()) { stmt =>

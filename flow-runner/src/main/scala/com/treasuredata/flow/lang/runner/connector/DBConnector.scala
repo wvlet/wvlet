@@ -58,6 +58,7 @@ trait DBConnector extends AutoCloseable with LogSupport:
     finally conn.close()
 
   protected def runQuery[U](sql: String)(handler: ResultSet => U): U = withConnection: conn =>
+    trace(s"Running SQL: ${sql}")
     withResource(conn.createStatement()): stmt =>
       withResource(stmt.executeQuery(sql)): rs =>
         handler(rs)

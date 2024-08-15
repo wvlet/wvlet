@@ -16,12 +16,3 @@ type int:
   def between(l:int, r:int): boolean = sql"{this} between {l} and {r}"
 end
 
-type int in td_trino:
-  def td_interval(duration:string): boolean = sql"td_interval({this}, {duration})"
-  def td_time_string(format:string): string = sql"td_time_string({this}, {format})"
-end
-
-type int in td_hive:
-  def td_interval(duration:string): boolean = sql"td_interval({this}, {duration})"
-  def td_time_string(format:string): string = sql"td_time_string({this}, {format})"
-end
