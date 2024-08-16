@@ -1,6 +1,7 @@
 package com.treasuredata.flow.lang.compiler.analyzer
 
 import com.treasuredata.flow.lang.StatusCode
+import com.treasuredata.flow.lang.catalog.Catalog.TableName
 import com.treasuredata.flow.lang.compiler.RewriteRule.PlanRewriter
 import com.treasuredata.flow.lang.compiler.{
   CompilationUnit,
@@ -302,7 +303,13 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
                 trace(s"Found a table type for ${tblType}: ${tpe}")
                 TableScan(tblType.toTermName, tpe, tpe.fields, ref.nodeLocation)
               case _ =>
-                context.catalog.findTable(context.defaultSchema, ref.name.leafName) match
+                val tableName = TableName.parse(ref.name.fullName)
+                context
+                  .catalog
+                  .findTable(
+                    tableName.schema.getOrElse(context.defaultSchema),
+                    tableName.name
+                  ) match
                   case Some(tbl) =>
                     TableScan(
                       ref.name.toTermName,

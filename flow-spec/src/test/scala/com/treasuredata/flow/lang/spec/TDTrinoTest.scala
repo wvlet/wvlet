@@ -18,3 +18,7 @@ class TDTrinoTest extends AirSpec:
   test("time.within") {
     FlowREPLCli.main("""--profile td-dev -w spec/trino --file src/within.flow""")
   }
+
+  test("sfdc.account") {
+    FlowREPLCli.main("""--profile td-dev -w spec/trino --file src/sfdc_accounts.flow""")
+  }

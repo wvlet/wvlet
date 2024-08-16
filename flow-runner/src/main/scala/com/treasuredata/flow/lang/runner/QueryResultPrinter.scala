@@ -1,37 +1,88 @@
 package com.treasuredata.flow.lang.runner
 
+import org.jline.utils.WCWidth
 import wvlet.log.LogSupport
+import QueryResultFormat.*
 
-trait QueryResultFormat:
-  def fitToWidth(s: String, colSize: Int): String =
-    if s.length > colSize then
-      if colSize > 1 then
-        s"${s.substring(0, colSize - 1)}…"
-      else
-        s.substring(0, colSize)
-    else
+object QueryResultFormat:
+  /**
+    * Estimate the width of a UTF-16 character
+    * @param ch
+    * @return
+    */
+  def wcWidth(ch: Char): Int  = WCWidth.wcwidth(ch)
+  def wcWidth(s: String): Int = s.map(wcWidth).sum
+
+  def trimToWidth(s: String, colSize: Int): String =
+    val wclen = wcWidth(s)
+
+    def truncate(s: String, colSize: Int): String =
+      var len    = 0
+      val result = new StringBuilder(colSize)
+      for
+        c <- s
+        w = wcWidth(c)
+        if len + w <= colSize - 1
+      do
+        result += c
+        len += w
+
+      // pad the rest of the column with spaces or dots
+      if len < colSize && len < wclen then
+        result += '…'
+
+      result.toString
+
+    if wclen <= colSize then
       s
+    else
+      truncate(s, colSize)
+  end trimToWidth
 
-  protected def center(s: String, colSize: Int): String =
-    val padding      = (colSize - s.length).max(0)
+  def center(s: String, colSize: Int): String =
+    val ws           = trimToWidth(s, colSize)
+    val padding      = (colSize - wcWidth(ws)).max(0)
     val leftPadding  = padding / 2
     val rightPadding = padding - leftPadding
-    fitToWidth(" " * leftPadding + s + " " * rightPadding, colSize)
+    " " * leftPadding + ws + " " * rightPadding
 
-  protected def alignRight(s: String, colSize: Int): String =
-    val padding = (colSize - s.length).max(0)
-    fitToWidth(" " * padding + s, colSize)
+  def alignRight(s: String, colSize: Int): String =
+    val ws      = trimToWidth(s, colSize)
+    val padding = (colSize - wcWidth(ws)).max(0)
+    " " * padding + ws
 
-  protected def alignLeft(s: String, colSize: Int): String =
-    val padding = (colSize - s.length).max(0)
-    fitToWidth(s + " " * padding, colSize)
+  def alignLeft(s: String, colSize: Int): String =
+    val ws      = trimToWidth(s, colSize)
+    val padding = (colSize - wcWidth(ws)).max(0)
+    ws + " " * padding
+
+  def replaceEscapeChars(s: String): String =
+    s.map {
+        case '\b' =>
+          "\\b"
+        case '\f' =>
+          "\\f"
+        case '\n' =>
+          "\\n"
+        case '\r' =>
+          "\\r"
+        case '\t' =>
+          "\\t"
+        case ch =>
+          ch
+      }
+      .mkString
+
+end QueryResultFormat
+
+trait QueryResultFormat:
 
   protected def printElem(elem: Any): String =
     elem match
       case null =>
         ""
       case s: String =>
-        s
+        replaceEscapeChars(s)
       case m: Map[?, ?] =>
         val elems = m
           .map { (k, v) =>
@@ -42,7 +93,7 @@ trait QueryResultFormat:
       case a: Array[?] =>
         s"[${a.map(v => printElem(v)).mkString(", ")}"
       case x =>
-        x.toString
+        replaceEscapeChars(x.toString)
 
   def printTableRows(tableRows: TableRows): String
 
@@ -206,7 +257,7 @@ class PrettyBoxFormat(maxWidth: Option[Int], maxColWidth: Int)
     val formattedRows = rows
       .result()
       .map { row =>
-        fitToWidth(row, maxWidth.getOrElse(row.size))
+        trimToWidth(row, maxWidth.getOrElse(row.size))
       }
     formattedRows.mkString("\n")
 

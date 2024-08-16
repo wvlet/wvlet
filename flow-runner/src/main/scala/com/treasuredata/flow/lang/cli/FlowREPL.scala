@@ -68,13 +68,25 @@ class FlowREPLCli(
     val selectedCatalog = catalog.orElse(currentProfile.flatMap(_.catalog))
     val selectedSchema  = schema.orElse(currentProfile.flatMap(_.schema))
 
+    val commandInputs = List.newBuilder[String]
+    commandInputs ++= commands
+    inputFile.foreach { file =>
+      val f = new File(workFolder, file)
+      if f.exists() then
+        val contents = IOUtil.readAsString(f)
+        commandInputs += contents
+      else
+        throw StatusCode.FILE_NOT_FOUND.newException(s"File not found: ${f.getAbsolutePath()}")
+    }
+    val inputScripts = commandInputs.result()
+
     val design = Design
       .newSilentDesign
       .bindSingleton[FlowREPL]
       .bindInstance[FlowScriptRunnerConfig](
         FlowScriptRunnerConfig(
           workingFolder = workFolder,
-          interactive = commands.isEmpty,
+          interactive = inputScripts.isEmpty,
           catalog = selectedCatalog,
           schema = selectedSchema
         )
@@ -95,19 +107,8 @@ class FlowREPLCli(
             DuckDBConnector()
       }
 
-    val inputCommands = List.newBuilder[String]
-    inputCommands ++= commands
-    inputFile.foreach { file =>
-      val f = new File(workFolder, file)
-      if f.exists() then
-        val contents = IOUtil.readAsString(f)
-        inputCommands += contents
-      else
-        throw StatusCode.FILE_NOT_FOUND.newException(s"File not found: ${f.getAbsolutePath()}")
-    }
-
     design.build[FlowREPL] { repl =>
-      repl.start(inputCommands.result())
+      repl.start(inputScripts)
     }
   end repl
 

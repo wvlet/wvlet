@@ -82,6 +82,18 @@ object Catalog:
         case (_, _) =>
           name
 
+  object TableName:
+    def parse(s: String): TableName =
+      s.split("\\.").toList match
+        case Nil =>
+          TableName(None, None, s)
+        case c :: Nil =>
+          TableName(Some(c), None, s)
+        case c :: s :: Nil =>
+          TableName(Some(c), Some(s), s)
+        case _ =>
+          throw StatusCode.SYNTAX_ERROR.newException(s"Invalid table name: ${s}")
+
   /**
     * Table and its column definition
     * @param schema
