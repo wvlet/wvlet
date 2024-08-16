@@ -147,7 +147,7 @@ class FlowREPL(runner: FlowScriptRunner) extends AutoCloseable with LogSupport:
     terminal.getType != Terminal.TYPE_DUMB && terminal.getType != Terminal.TYPE_DUMB_COLOR
 
   def start(commands: List[String] = Nil): Unit =
-    // Set the default size when opening a new window
+    // Set the default size when opening a new window or inside sbt console
     if terminal.getWidth == 0 || terminal.getHeight == 0 then
       terminal.setSize(Size(120, 40))
 
@@ -204,6 +204,13 @@ class FlowREPL(runner: FlowScriptRunner) extends AutoCloseable with LogSupport:
             else
               runner.setResultRowLimit(limit)
               info(s"Set the result row limit to: ${limit}")
+          case "col-width" =>
+            val width = trimmedLine.split("\\s+").lastOption.getOrElse("150").toInt
+            if width <= 0 then
+              error("The column width must be a positive number")
+            else
+              info(s"Set the column width to: ${width}")
+              runner.setMaxColWidth(width)
           case stmt =>
             if trimmedLine.nonEmpty then
               withNewThread {
@@ -263,6 +270,7 @@ object FlowREPL:
       | clip       : Clip the last query and result to the clipboard
       | clip-result: Clip the last result to the clipboard in TSV format
       | rows       : Set the maximum number of query result rows to display (default: 40)
+      | col-width  : Set the maximum column width to display (default: 150)
       |""".stripMargin
 
   /**

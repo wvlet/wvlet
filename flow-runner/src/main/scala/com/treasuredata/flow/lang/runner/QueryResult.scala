@@ -7,9 +7,11 @@ import wvlet.log.LogSupport
 import scala.collection.immutable.ListMap
 
 sealed trait QueryResult:
-  override def toString: String = toPrettyBox
-  def toPrettyBox: String       = QueryResultPrinter.print(this, PrettyBoxFormat)
-  def toTSV: String             = QueryResultPrinter.print(this, TSVFormat)
+  override def toString: String = toPrettyBox()
+  def toPrettyBox(maxWidth: Option[Int] = None, maxColWidth: Int = 150): String = QueryResultPrinter
+    .print(this, PrettyBoxFormat(maxWidth, maxColWidth))
+
+  def toTSV: String = QueryResultPrinter.print(this, TSVFormat)
 
 object QueryResult:
   object empty extends QueryResult

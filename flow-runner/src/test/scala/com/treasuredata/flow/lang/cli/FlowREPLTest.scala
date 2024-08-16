@@ -39,4 +39,14 @@ class FlowREPLTest extends AirSpec:
     FlowREPLCli.main("-w spec/model1 -c 'from person' -c 'clip-result'")
   }
 
+  test("rows") {
+    FlowREPLCli.main("-w spec/model1 -c 'rows 2' -c 'from person'")
+  }
+
+  test("col-width") {
+    FlowREPLCli.main(
+      """-c 'col-width 10' -c "from 'https://shell.duckdb.org/data/tpch/0_01/parquet/customer.parquet'""""
+    )
+  }
+
 end FlowREPLTest

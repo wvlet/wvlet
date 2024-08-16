@@ -18,6 +18,7 @@ case class FlowScriptRunnerConfig(
     workingFolder: String = ".",
     interactive: Boolean,
     resultLimit: Int = 40,
+    maxColWidth: Int = 150,
     catalog: Option[String],
     schema: Option[String]
 )
@@ -29,9 +30,11 @@ class FlowScriptRunner(config: FlowScriptRunnerConfig, queryExecutor: QueryExecu
     with LogSupport:
   private var units: List[CompilationUnit] = Nil
 
-  private var resultRowLimits: Int = config.resultLimit
+  private var resultRowLimits: Int   = config.resultLimit
+  private var resultMaxColWidth: Int = config.maxColWidth
 
   def setResultRowLimit(limit: Int): Unit = resultRowLimits = limit
+  def setMaxColWidth(size: Int): Unit     = resultMaxColWidth = size
 
   override def close(): Unit = queryExecutor.close()
 
@@ -71,11 +74,14 @@ class FlowScriptRunner(config: FlowScriptRunnerConfig, queryExecutor: QueryExecu
       val queryResult   = queryExecutor.execute(newUnit, ctx, limit = resultRowLimits)
       trace(s"ctx: ${ctx.hashCode()} ${ctx.compilationUnit.knownSymbols}")
 
-      val str = queryResult.toString
+      val str = queryResult.toPrettyBox(maxColWidth = resultMaxColWidth)
       if str.nonEmpty then
-        val maxWidth = str.split("\n").map(_.size).max
-        if !config.interactive || maxWidth <= terminal.getWidth then
-          println(str)
+        val resultMaxWidth = str.split("\n").map(_.size).max
+        if !config.interactive || resultMaxWidth <= terminal.getWidth then
+          println(
+            queryResult
+              .toPrettyBox(maxWidth = Some(terminal.getWidth), maxColWidth = resultMaxColWidth)
+          )
         else
           // Launch less command to enable scrolling of query results in the terminal
           val proc = ProcessUtil.launchInteractiveProcess("less", "-FXRSn")

@@ -3,9 +3,12 @@ package com.treasuredata.flow.lang.runner
 import wvlet.log.LogSupport
 
 trait QueryResultFormat:
-  private def fitToWidth(s: String, colSize: Int): String =
+  def fitToWidth(s: String, colSize: Int): String =
     if s.length > colSize then
-      s.substring(0, colSize)
+      if colSize > 1 then
+        s"${s.substring(0, colSize - 1)}…"
+      else
+        s.substring(0, colSize)
     else
       s
 
@@ -37,7 +40,7 @@ trait QueryResultFormat:
           .mkString(", ")
         s"${elems}"
       case a: Array[?] =>
-        s"[${a.map(printElem).mkString(", ")}"
+        s"[${a.map(v => printElem(v)).mkString(", ")}"
       case x =>
         x.toString
 
@@ -54,7 +57,7 @@ object TSVFormat extends QueryResultFormat:
       .map { row =>
         fieldNames
           .map { fieldName =>
-            row.get(fieldName).map(printElem).getOrElse("")
+            row.get(fieldName).map(x => printElem(x)).getOrElse("")
           }
           .mkString("\t")
       }
@@ -77,7 +80,9 @@ object QueryResultPrinter extends LogSupport:
 
 end QueryResultPrinter
 
-object PrettyBoxFormat extends QueryResultFormat:
+class PrettyBoxFormat(maxWidth: Option[Int], maxColWidth: Int)
+    extends QueryResultFormat
+    with LogSupport:
 
   def printTableRows(tableRows: TableRows): String =
     val isNumeric = tableRows.schema.fields.map(_.isNumeric).toIndexedSeq
@@ -100,7 +105,7 @@ object PrettyBoxFormat extends QueryResultFormat:
         .rows
         .foreach { row =>
           val sanitizedRow = row.map { (k, v) =>
-            Option(v).map(printElem).getOrElse("")
+            Option(v).map(v => printElem(v)).getOrElse("")
           }
           rowCount += 1
           rows += sanitizedRow.toSeq
@@ -118,6 +123,7 @@ object PrettyBoxFormat extends QueryResultFormat:
               l1.max(l2)
             }
         }
+        .map(_.min(maxColWidth))
         .toIndexedSeq
 
     assert(tbl.size >= 2)
@@ -197,7 +203,12 @@ object PrettyBoxFormat extends QueryResultFormat:
         }
         .mkString("└─", "───", "─┘")
 
-    rows.result().mkString("\n")
+    val formattedRows = rows
+      .result()
+      .map { row =>
+        fitToWidth(row, maxWidth.getOrElse(row.size))
+      }
+    formattedRows.mkString("\n")
 
   end printTableRows
 
