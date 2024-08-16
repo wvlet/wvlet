@@ -4,6 +4,7 @@ import com.github.benmanes.caffeine.cache.{CacheLoader, Caffeine}
 import com.treasuredata.flow.lang.StatusCode
 import com.treasuredata.flow.lang.catalog.Catalog.TableName
 import com.treasuredata.flow.lang.catalog.{Catalog, SQLFunction}
+import com.treasuredata.flow.lang.compiler.DBType
 import com.treasuredata.flow.lang.runner.ThreadUtil
 import wvlet.log.LogSupport
 
@@ -24,6 +25,8 @@ class ConnectorCatalog(val catalogName: String, defaultSchema: String, dbConnect
   ThreadUtil.runBackgroundTask(() => init())
 
   private def init(): Unit = tablesInSchemaCache.get(defaultSchema)
+
+  override def dbType: DBType = dbConnector.dbType
 
   // implement Catalog interface
   override def listSchemaNames: Seq[String] = dbConnector.listSchemaNames(catalogName)

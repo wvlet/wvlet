@@ -3,6 +3,7 @@ package com.treasuredata.flow.lang.runner.connector.duckdb
 import com.treasuredata.flow.lang.StatusCode
 import com.treasuredata.flow.lang.catalog.SQLFunction
 import com.treasuredata.flow.lang.catalog.SQLFunction.FunctionType
+import com.treasuredata.flow.lang.compiler.DBType.DuckDB
 import com.treasuredata.flow.lang.compiler.Name
 import com.treasuredata.flow.lang.model.DataType
 import com.treasuredata.flow.lang.model.DataType.NamedType
@@ -17,7 +18,7 @@ import java.sql.{Connection, DriverManager, SQLException}
 import scala.util.{Try, Using}
 
 class DuckDBConnector(prepareTPCH: Boolean = false)
-    extends DBConnector
+    extends DBConnector(DuckDB)
     with AutoCloseable
     with LogSupport:
 

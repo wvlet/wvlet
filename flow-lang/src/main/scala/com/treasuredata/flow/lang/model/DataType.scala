@@ -18,7 +18,7 @@ abstract class DataType(val typeName: TypeName, val typeParams: Seq[Type]) exten
       if typeParams.isEmpty then
         typeName.name
       else
-        s"${typeName}(${typeParams.mkString(", ")})"
+        s"${typeName}(${typeParams.mkString(",")})"
     if isResolved then
       typeStr
     else

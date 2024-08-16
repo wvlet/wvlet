@@ -4,6 +4,7 @@ import com.treasuredata.flow.lang.compiler.{
   BoundedSymbolInfo,
   CompilationUnit,
   Context,
+  DBType,
   ModelSymbolInfo,
   Name,
   Phase,
@@ -181,19 +182,31 @@ object GenSQL extends Phase("generate-sql"):
       )
       val s           = Seq.newBuilder[String]
       val selectItems = Seq.newBuilder[String]
-      selectItems ++= agg.groupingKeys.map(x => printExpression(x, ctx))
+      selectItems ++=
+        agg
+          .groupingKeys
+          .map { x =>
+            val key = printExpression(x, ctx)
+            s"""${key} as "${key}""""
+          }
       selectItems ++=
         a.inputRelationType
           .fields
           .map { f =>
             // TODO: This should generate a nested relation, but use arbitrary(expr) for efficiency
-            s"arbitrary(${f.name})"
+            val expr = s"arbitrary(${f.name})"
+            ctx.dbType match
+              case DBType.DuckDB =>
+                // DuckDB generates human-friendly column name
+                expr
+              case _ =>
+                s"""${expr} as "${expr}""""
           }
-
       s += s"select ${selectItems.result().mkString(", ")}"
       s += s"from ${printRelation(agg.child, ctx, sqlContext.enterFrom)}"
       s += s"group by ${agg.groupingKeys.map(x => printExpression(x, ctx)).mkString(", ")}"
       s.result().mkString("\n")
+    end printAggregate
 
     r match
       case p: Project =>

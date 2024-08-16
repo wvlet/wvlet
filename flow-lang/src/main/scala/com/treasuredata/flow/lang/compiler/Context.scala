@@ -87,6 +87,7 @@ case class Context(
   // Get the context catalog
   // TODO support multiple catalogs
   def catalog: Catalog = global.defaultCatalog
+  def dbType: DBType   = catalog.dbType
 
   def defaultSchema: String = global.defaultSchema
 

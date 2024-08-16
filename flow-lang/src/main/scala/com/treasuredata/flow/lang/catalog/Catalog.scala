@@ -6,7 +6,7 @@ import com.treasuredata.flow.lang.StatusCode
 import com.treasuredata.flow.lang.model.DataType
 import Catalog.*
 import com.treasuredata.flow.lang.model.DataType.{NamedType, SchemaType}
-import com.treasuredata.flow.lang.compiler.Name
+import com.treasuredata.flow.lang.compiler.{DBType, Name}
 
 /**
   * connector -> catalog* -> schema* -> table* -> column*
@@ -16,6 +16,7 @@ import com.treasuredata.flow.lang.compiler.Name
   *   - column
   */
 trait Catalog extends LogSupport:
+  def dbType: DBType
   def catalogName: String
 
   def listSchemaNames: Seq[String]

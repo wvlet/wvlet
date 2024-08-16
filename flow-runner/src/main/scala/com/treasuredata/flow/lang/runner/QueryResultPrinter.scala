@@ -3,7 +3,47 @@ package com.treasuredata.flow.lang.runner
 import wvlet.log.LogSupport
 
 trait QueryResultFormat:
+  private def fitToWidth(s: String, colSize: Int): String =
+    if s.length > colSize then
+      s.substring(0, colSize)
+    else
+      s
+
+  protected def center(s: String, colSize: Int): String =
+    val padding      = (colSize - s.length).max(0)
+    val leftPadding  = padding / 2
+    val rightPadding = padding - leftPadding
+    fitToWidth(" " * leftPadding + s + " " * rightPadding, colSize)
+
+  protected def alignRight(s: String, colSize: Int): String =
+    val padding = (colSize - s.length).max(0)
+    fitToWidth(" " * padding + s, colSize)
+
+  protected def alignLeft(s: String, colSize: Int): String =
+    val padding = (colSize - s.length).max(0)
+    fitToWidth(s + " " * padding, colSize)
+
+  protected def printElem(elem: Any): String =
+    elem match
+      case null =>
+        ""
+      case s: String =>
+        s
+      case m: Map[?, ?] =>
+        val elems = m
+          .map { (k, v) =>
+            s"${k} => ${printElem(v)}"
+          }
+          .mkString(", ")
+        s"${elems}"
+      case a: Array[?] =>
+        s"[${a.map(printElem).mkString(", ")}"
+      case x =>
+        x.toString
+
   def printTableRows(tableRows: TableRows): String
+
+end QueryResultFormat
 
 object TSVFormat extends QueryResultFormat:
   def printTableRows(tableRows: TableRows): String =
@@ -14,15 +54,7 @@ object TSVFormat extends QueryResultFormat:
       .map { row =>
         fieldNames
           .map { fieldName =>
-            row
-              .get(fieldName)
-              .map {
-                case null =>
-                  ""
-                case other =>
-                  other.toString
-              }
-              .getOrElse("")
+            row.get(fieldName).map(printElem).getOrElse("")
           }
           .mkString("\t")
       }
@@ -46,18 +78,29 @@ object QueryResultPrinter extends LogSupport:
 end QueryResultPrinter
 
 object PrettyBoxFormat extends QueryResultFormat:
-  def printTableRows(tableRows: TableRows): String =
-    val alignRight = tableRows.schema.fields.map(_.isNumeric).toIndexedSeq
 
-    val tbl: Seq[Seq[String]] =
-      val rows = Seq.newBuilder[Seq[String]]
+  def printTableRows(tableRows: TableRows): String =
+    val isNumeric = tableRows.schema.fields.map(_.isNumeric).toIndexedSeq
+
+    val tbl: List[Seq[String]] =
+      val rows = List.newBuilder[Seq[String]]
+      // Column names
       rows += tableRows.schema.fields.map(_.name.name)
+      // Column types
+      rows +=
+        tableRows
+          .schema
+          .fields
+          .map {
+            _.dataType.typeDescription
+          }
+
       var rowCount = 0
       tableRows
         .rows
         .foreach { row =>
           val sanitizedRow = row.map { (k, v) =>
-            Option(v).map(_.toString).getOrElse("")
+            Option(v).map(printElem).getOrElse("")
           }
           rowCount += 1
           rows += sanitizedRow.toSeq
@@ -77,8 +120,11 @@ object PrettyBoxFormat extends QueryResultFormat:
         }
         .toIndexedSeq
 
-    val header = tbl.head
-    val data   = tbl.tail
+    assert(tbl.size >= 2)
+    val columnLabels = tbl.head
+    val columnTypes  = tbl.tail.head
+
+    val data = tbl.tail.tail
 
     val rows  = Seq.newBuilder[String]
     val width = maxColSize.sum + (maxColSize.size - 1) * 3
@@ -90,13 +136,24 @@ object PrettyBoxFormat extends QueryResultFormat:
         }
         .mkString("┌─", "─┬─", "─┐")
 
+    // header
     rows +=
-      header
+      columnLabels
         .zip(maxColSize)
         .map { case (h, maxSize) =>
-          h.padTo(maxSize, " ").mkString
+          center(h, maxSize)
         }
         .mkString("│ ", " │ ", " │")
+    // column types
+    rows +=
+      columnTypes
+        .zip(maxColSize)
+        .map { case (h, maxSize) =>
+          center(h, maxSize)
+        }
+        .mkString("│ ", " │ ", " │")
+
+    // header separator
     rows +=
       maxColSize
         .map { s =>
@@ -104,16 +161,17 @@ object PrettyBoxFormat extends QueryResultFormat:
         }
         .mkString("├─", "─┼─", "─┤")
 
+    // rows
     rows ++=
       data.map { row =>
         row
           .zip(maxColSize)
           .zipWithIndex
           .map { case ((x, maxSize), colIndex) =>
-            if alignRight(colIndex) then
-              x.reverse.padTo(maxSize, " ").reverse.mkString
+            if isNumeric(colIndex) then
+              alignRight(x, maxSize)
             else
-              x.padTo(maxSize, " ").mkString
+              alignLeft(x, maxSize)
           }
           .mkString("│ ", " │ ", " │")
       }
@@ -127,11 +185,10 @@ object PrettyBoxFormat extends QueryResultFormat:
         .mkString("├─", "─┴─", "─┤")
     if tableRows.isTruncated then
       rows +=
-        f"${tableRows.totalRows}%,d rows (${tableRows.rows.size}%,d shown)"
-          .padTo(width, " ")
+        alignLeft(f"${tableRows.totalRows}%,d rows (${tableRows.rows.size}%,d shown)", width)
           .mkString("│ ", "", " │")
     else
-      rows += f"${tableRows.totalRows}%,d rows".padTo(width, " ").mkString("│ ", "", " │")
+      rows += alignLeft(f"${tableRows.totalRows}%,d rows", width).mkString("│ ", "", " │")
 
     rows +=
       maxColSize

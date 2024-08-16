@@ -4,7 +4,7 @@ import wvlet.airframe.control.Control.withResource
 import DBConnector.*
 import com.treasuredata.flow.lang.catalog.{Catalog, SQLFunction}
 import com.treasuredata.flow.lang.catalog.Catalog.{TableColumn, TableName, TableSchema}
-import com.treasuredata.flow.lang.compiler.Name
+import com.treasuredata.flow.lang.compiler.{DBType, Name}
 import com.treasuredata.flow.lang.model.DataType.{NamedType, SchemaType}
 import com.treasuredata.flow.lang.model.{DataType, RelationType}
 import com.treasuredata.flow.lang.model.plan.LogicalPlan
@@ -32,7 +32,7 @@ enum QueryScope:
     InQuery,
     InExpr
 
-trait DBConnector extends AutoCloseable with LogSupport:
+trait DBConnector(val dbType: DBType) extends AutoCloseable with LogSupport:
   private var queryScope: QueryScope = QueryScope.Global
 
   private val catalogs = new ConcurrentHashMap[String, ConnectorCatalog]().asScala

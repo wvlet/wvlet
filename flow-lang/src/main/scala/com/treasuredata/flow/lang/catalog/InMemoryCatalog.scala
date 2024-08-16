@@ -2,9 +2,9 @@ package com.treasuredata.flow.lang.catalog
 
 import com.treasuredata.flow.lang.StatusCode
 import com.treasuredata.flow.lang.catalog.Catalog.CreateMode
+import com.treasuredata.flow.lang.compiler.DBType
 
 class InMemoryCatalog(val catalogName: String, functions: Seq[SQLFunction]) extends Catalog:
-
   // schemaName name -> DatabaseHolder
   private val schemas = collection.mutable.Map.empty[String, SchemaHolder]
 
@@ -16,6 +16,8 @@ class InMemoryCatalog(val catalogName: String, functions: Seq[SQLFunction]) exte
       val newDb = SchemaHolder(schemaName)
       newDb.tables ++= tables
       newDb
+
+  override def dbType: DBType = DBType.InMemory
 
   override def listSchemaNames: Seq[String] = synchronized {
     schemas.values.map(_.schema.name).toSeq

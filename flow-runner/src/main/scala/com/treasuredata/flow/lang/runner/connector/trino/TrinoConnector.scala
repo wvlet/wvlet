@@ -1,6 +1,7 @@
 package com.treasuredata.flow.lang.runner.connector.trino
 
 import com.treasuredata.flow.lang.catalog.SQLFunction
+import com.treasuredata.flow.lang.compiler.DBType
 import com.treasuredata.flow.lang.model.DataType
 import com.treasuredata.flow.lang.model.sql.*
 import com.treasuredata.flow.lang.runner.connector.DBConnector
@@ -19,7 +20,7 @@ case class TrinoConfig(
     password: Option[String] = None
 )
 
-class TrinoConnector(val config: TrinoConfig) extends DBConnector with LogSupport:
+class TrinoConnector(val config: TrinoConfig) extends DBConnector(DBType.Trino) with LogSupport:
   private lazy val driver = new TrinoDriver()
 
   override protected def newConnection: Connection =
