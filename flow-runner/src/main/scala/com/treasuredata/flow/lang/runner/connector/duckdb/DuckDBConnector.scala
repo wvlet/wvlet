@@ -3,18 +3,17 @@ package com.treasuredata.flow.lang.runner.connector.duckdb
 import com.treasuredata.flow.lang.StatusCode
 import com.treasuredata.flow.lang.catalog.SQLFunction
 import com.treasuredata.flow.lang.catalog.SQLFunction.FunctionType
+import com.treasuredata.flow.lang.compiler.Name
 import com.treasuredata.flow.lang.model.DataType
 import com.treasuredata.flow.lang.model.DataType.NamedType
-import com.treasuredata.flow.lang.model.sql.*
+import com.treasuredata.flow.lang.runner.ThreadUtil
 import com.treasuredata.flow.lang.runner.connector.DBConnector
-import com.treasuredata.flow.lang.compiler.Name
 import org.duckdb.DuckDBConnection
 import wvlet.airframe.codec.MessageCodec
 import wvlet.airframe.metrics.ElapsedTime
 import wvlet.log.LogSupport
 
 import java.sql.{Connection, DriverManager, SQLException}
-import java.util.Properties
 import scala.util.{Try, Using}
 
 class DuckDBConnector(prepareTPCH: Boolean = false)
@@ -25,20 +24,13 @@ class DuckDBConnector(prepareTPCH: Boolean = false)
   // We need to reuse he same connection for preserving in-memory tables
   private var conn: DuckDBConnection = null
 
-  private val initThread =
-    new Thread(
-      new Runnable:
-        override def run(): Unit =
-          val nano = System.nanoTime()
-          logger.trace("Initializing DuckDB connection")
-          conn = newConnection
-          logger.trace(s"Finished initializing DuckDB. ${ElapsedTime.nanosSince(nano)}")
-    )
-
   // Initialize DuckDB in the background thread as it may take several seconds
-  init()
-
-  private def init(): Unit = initThread.start
+  private val initThread = ThreadUtil.runBackgroundTask { () =>
+    val nano = System.nanoTime()
+    logger.trace("Initializing DuckDB connection")
+    conn = newConnection
+    logger.trace(s"Finished initializing DuckDB. ${ElapsedTime.nanosSince(nano)}")
+  }
 
   override def newConnection: DuckDBConnection =
     Class.forName("org.duckdb.DuckDBDriver")

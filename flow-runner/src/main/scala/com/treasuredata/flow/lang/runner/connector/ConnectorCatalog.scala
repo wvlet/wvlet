@@ -4,6 +4,7 @@ import com.github.benmanes.caffeine.cache.{CacheLoader, Caffeine}
 import com.treasuredata.flow.lang.StatusCode
 import com.treasuredata.flow.lang.catalog.Catalog.TableName
 import com.treasuredata.flow.lang.catalog.{Catalog, SQLFunction}
+import com.treasuredata.flow.lang.runner.ThreadUtil
 import wvlet.log.LogSupport
 
 import java.util.concurrent.TimeUnit
@@ -20,7 +21,7 @@ class ConnectorCatalog(val catalogName: String, defaultSchema: String, dbConnect
       dbConnector.listTableDefs(catalogName, schema)
     }
 
-  init()
+  ThreadUtil.runBackgroundTask(() => init())
 
   private def init(): Unit = tablesInSchemaCache.get(defaultSchema)
 
