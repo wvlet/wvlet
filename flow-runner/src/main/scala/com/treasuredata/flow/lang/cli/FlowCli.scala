@@ -95,7 +95,7 @@ class FlowCli(opts: FlowCliOption) extends LogSupport:
         case Some(contextUnit) =>
           val ctx    = compilationResult.context.global.getContextOf(contextUnit)
           val result = duckdb.execute(contextUnit, ctx)
-          val str    = QueryResultPrinter.print(result)
+          val str    = result.toPrettyBox
           if str.nonEmpty then
             println(str)
         case None =>

@@ -31,4 +31,12 @@ class FlowREPLTest extends AirSpec:
     FlowREPLCli.main("-w spec/model1 -c 'from person group by age / 10 select _1'")
   }
 
+  test("clip") {
+    FlowREPLCli.main("-w spec/model1 -c 'from person' -c 'clip'")
+  }
+
+  test("clip-result") {
+    FlowREPLCli.main("-w spec/model1 -c 'from person' -c 'clip-result'")
+  }
+
 end FlowREPLTest

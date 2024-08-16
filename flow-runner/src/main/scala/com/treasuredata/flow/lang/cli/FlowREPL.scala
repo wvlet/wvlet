@@ -1,26 +1,26 @@
 package com.treasuredata.flow.lang.cli
 
 import com.treasuredata.flow.BuildInfo
-import com.treasuredata.flow.lang.{FlowLangException, StatusCode}
 import com.treasuredata.flow.lang.compiler.parser.*
 import com.treasuredata.flow.lang.compiler.{CompilationUnit, SourceFile}
-import com.treasuredata.flow.lang.model.plan.{ModelDef, Query}
+import com.treasuredata.flow.lang.model.plan.Query
 import com.treasuredata.flow.lang.runner.connector.DBConnector
 import com.treasuredata.flow.lang.runner.connector.duckdb.DuckDBConnector
 import com.treasuredata.flow.lang.runner.connector.trino.{TrinoConfig, TrinoConnector}
+import com.treasuredata.flow.lang.{FlowLangException, StatusCode}
+import org.jline.reader.*
 import org.jline.reader.Parser.ParseContext
 import org.jline.reader.impl.DefaultParser
-import org.jline.reader.*
 import org.jline.terminal.Terminal.Signal
 import org.jline.terminal.{Size, Terminal, TerminalBuilder}
 import org.jline.utils.{AttributedString, AttributedStringBuilder, AttributedStyle, InfoCmp}
 import wvlet.airframe.*
-import wvlet.airframe.control.{CommandLineTokenizer, Shell, ThreadUtil}
+import wvlet.airframe.control.{Shell, ThreadUtil}
 import wvlet.airframe.launcher.{Launcher, command, option}
 import wvlet.log.io.IOUtil
 import wvlet.log.{LogSupport, Logger}
 
-import java.io.{BufferedWriter, File, OutputStreamWriter}
+import java.io.File
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicReference
 import java.util.regex.Pattern
@@ -116,9 +116,8 @@ end FlowREPLCli
 class FlowREPL(runner: FlowScriptRunner) extends AutoCloseable with LogSupport:
   import FlowREPL.*
 
-  private val terminal         = TerminalBuilder.builder().name("Treasure Flow").build()
-  private val historyFile      = new File(sys.props("user.home"), ".cache/flow/.flow_history")
-  private val isMacOS: Boolean = sys.props.get("os.name").exists(_.toLowerCase.contains("mac"))
+  private val terminal    = TerminalBuilder.builder().name("Treasure Flow").build()
+  private val historyFile = new File(sys.props("user.home"), ".cache/flow/.flow_history")
 
   private val reader = LineReaderBuilder
     .builder()
@@ -189,17 +188,13 @@ class FlowREPL(runner: FlowScriptRunner) extends AutoCloseable with LogSupport:
           case "clip" =>
             lastOutput match
               case Some(output) =>
-                // Save query and result to clipboard (only for Mac OS, now)
-                if isMacOS then
-                  val proc = ProcessUtil.launchInteractiveProcess("pbcopy")
-                  val out  = new BufferedWriter(new OutputStreamWriter(proc.getOutputStream()))
-                  out.write(s"""[flow:query]\n${output.line}\n\n${output.output}""")
-                  out.flush()
-                  out.close()
-                  proc.waitFor()
-                  info(s"Clipped the output to the clipboard")
-                else
-                  warn("clip command is not supported other than Mac OS")
+                Clipboard.saveToClipboard(s"""[flow:query]\n${output.line}\n\n${output.output}""")
+              case None =>
+                warn("No output to clip")
+          case "clip-result" =>
+            lastOutput match
+              case Some(output) =>
+                Clipboard.saveToClipboard(output.result.toTSV)
               case None =>
                 warn("No output to clip")
           case "rows" =>
@@ -248,14 +243,26 @@ class FlowREPL(runner: FlowScriptRunner) extends AutoCloseable with LogSupport:
 end FlowREPL
 
 object FlowREPL:
-  private def knownCommands = Set("exit", "quit", "clear", "help", "git", "gh", "clip", "rows")
+  private def knownCommands = Set(
+    "exit",
+    "quit",
+    "clear",
+    "help",
+    "git",
+    "gh",
+    "clip",
+    "clip-result",
+    "rows"
+  )
+
   private def helpMessage: String =
     """[commands]
-      | help      : Show this help message
-      | quit/exit : Exit the REPL
-      | clear     : Clear the screen
-      | clip      : Clip the current result to the clipboard
-      | rows      : Set the maximum number of query result rows to display (default: 40)
+      | help       : Show this help message
+      | quit/exit  : Exit the REPL
+      | clear      : Clear the screen
+      | clip       : Clip the last query and result to the clipboard
+      | clip-result: Clip the last result to the clipboard in TSV format
+      | rows       : Set the maximum number of query result rows to display (default: 40)
       |""".stripMargin
 
   /**

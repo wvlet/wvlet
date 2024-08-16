@@ -12,7 +12,6 @@ import org.jline.terminal.Terminal
 import wvlet.airframe.control.{Control, Shell}
 import wvlet.log.LogSupport
 
-import java.awt.Toolkit
 import java.io.{BufferedWriter, FilterOutputStream, OutputStreamWriter}
 
 case class FlowScriptRunnerConfig(
@@ -23,7 +22,7 @@ case class FlowScriptRunnerConfig(
     schema: Option[String]
 )
 
-case class LastOutput(line: String, output: String) {}
+case class LastOutput(line: String, output: String, result: QueryResult) {}
 
 class FlowScriptRunner(config: FlowScriptRunnerConfig, queryExecutor: QueryExecutor)
     extends AutoCloseable
@@ -72,16 +71,7 @@ class FlowScriptRunner(config: FlowScriptRunnerConfig, queryExecutor: QueryExecu
       val queryResult   = queryExecutor.execute(newUnit, ctx, limit = resultRowLimits)
       trace(s"ctx: ${ctx.hashCode()} ${ctx.compilationUnit.knownSymbols}")
 
-      def resultString(q: QueryResult): String =
-        q match
-          case PlanResult(plan, result) =>
-            QueryResultPrinter.print(result)
-          case QueryResultList(list) =>
-            list.map(x => resultString(x)).mkString("\n\n")
-          case other =>
-            QueryResultPrinter.print(other)
-
-      val str = resultString(queryResult)
+      val str = queryResult.toString
       if str.nonEmpty then
         val maxWidth = str.split("\n").map(_.size).max
         if !config.interactive || maxWidth <= terminal.getWidth then
@@ -102,11 +92,11 @@ class FlowScriptRunner(config: FlowScriptRunnerConfig, queryExecutor: QueryExecu
           // Blocking
           proc.waitFor()
 
-      LastOutput(line, str)
+      LastOutput(line, str, queryResult)
     catch
       case e: FlowLangException if e.statusCode.isUserError =>
         error(s"${e.getMessage}")
-        LastOutput(line, e.getMessage)
+        LastOutput(line, e.getMessage, QueryResult.empty)
     end try
 
   end runStatement
