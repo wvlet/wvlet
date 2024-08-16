@@ -1193,6 +1193,8 @@ class FlowParser(unit: CompilationUnit) extends LogSupport:
 
     InterpolatedString(prefixNode, parts.result(), DataType.UnknownType, prefix.nodeLocation)
 
+  end interpolatedString
+
   def nameExpression(): NameExpr =
     primaryExpression() match
       case n: NameExpr =>

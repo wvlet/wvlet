@@ -405,6 +405,17 @@ class FlowScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
           current.token = STRING_PART
           current.str = flushTokenString()
           currentRegion = currentRegion.outer
+      case '\\' =>
+        // escape character
+        lookAheadChar() match
+          case '{' | '}' | '"' =>
+            nextRawChar() // skip '\'
+            putChar(ch)
+            nextRawChar()
+          case _ =>
+            putChar(ch)
+            nextRawChar()
+        getStringPart(multiline)
       case '{' =>
         lookAheadChar() match
           case '{' =>

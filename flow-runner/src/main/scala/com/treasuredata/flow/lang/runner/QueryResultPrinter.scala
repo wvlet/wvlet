@@ -89,9 +89,11 @@ trait QueryResultFormat:
             s"${k} => ${printElem(v)}"
           }
           .mkString(", ")
-        s"${elems}"
+        s"{${elems}}"
+      case a: Seq[?] =>
+        s"[${a.map(v => printElem(v)).mkString(", ")}]"
       case a: Array[?] =>
-        s"[${a.map(v => printElem(v)).mkString(", ")}"
+        s"[${a.map(v => printElem(v)).mkString(", ")}]"
       case x =>
         replaceEscapeChars(x.toString)
 

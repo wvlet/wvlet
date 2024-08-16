@@ -29,7 +29,19 @@ class DuckDBExecutorTest extends AirSpec:
     debug(result)
   }
 
+  test("array_value") {
+    val result = duckDB.execute("spec/duckdb", "array_value.flow")
+    debug(result)
+  }
+
+  test("map_value") {
+    val result = duckDB.execute("spec/duckdb", "map_value.flow")
+    debug(result)
+  }
+
   test("weblog") {
     pendingUntil("Stabilizing the new parser")
     duckDB.execute("examples/cdp_behavior", "behavior.flow")
   }
+
+end DuckDBExecutorTest

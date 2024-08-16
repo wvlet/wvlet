@@ -52,6 +52,7 @@ enum FlowToken(val tokenType: TokenType, val str: String):
 
   case SINGLE_QUOTE extends FlowToken(Quote, "'")
   case DOUBLE_QUOTE extends FlowToken(Quote, "\"")
+  case BACK_QUOTE   extends FlowToken(Quote, "`")
 
   // Parentheses
   case L_PAREN   extends FlowToken(Op, "(")
