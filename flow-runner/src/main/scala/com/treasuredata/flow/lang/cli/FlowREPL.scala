@@ -259,7 +259,8 @@ object FlowREPL:
     "gh",
     "clip",
     "clip-result",
-    "rows"
+    "rows",
+    "col-width"
   )
 
   private def helpMessage: String =
