@@ -11,6 +11,7 @@ import com.treasuredata.flow.lang.compiler.{
   Symbol,
   TermName
 }
+import com.treasuredata.flow.lang.catalog.Catalog.TableName
 import com.treasuredata.flow.lang.model.expr.*
 import com.treasuredata.flow.lang.model.plan.*
 import com.treasuredata.flow.lang.model.plan.JoinType.*
@@ -101,7 +102,7 @@ object GenSQL extends Phase("generate-sql"):
     // TODO expand expressions and inline macros as well
     q.transformUp {
         case m: ModelScan =>
-          lookupType(m.name, ctx) match
+          lookupType(Name.termName(m.name.name), ctx) match
             case Some(sym) =>
               transformModelScan(m, sym)
             case None =>
@@ -111,7 +112,6 @@ object GenSQL extends Phase("generate-sql"):
           q.child
       }
       .asInstanceOf[Relation]
-
   end expand
 
   private def lookupType(name: Name, ctx: Context): Option[Symbol] = ctx
@@ -332,7 +332,7 @@ object GenSQL extends Phase("generate-sql"):
       case r: RawSQL =>
         selectWithIndent(printExpression(r.sql, ctx))
       case t: TableScan =>
-        selectAllWithIndent(s"${t.name}")
+        selectAllWithIndent(s"${t.name.fullName}")
       case j: JSONFileScan =>
         selectAllWithIndent(s"'${j.path}'")
       case t: ParquetFileScan =>

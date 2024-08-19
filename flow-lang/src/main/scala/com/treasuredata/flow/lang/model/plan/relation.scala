@@ -1,6 +1,7 @@
 package com.treasuredata.flow.lang.model.plan
 
 import com.treasuredata.flow.lang.catalog.Catalog
+import com.treasuredata.flow.lang.catalog.Catalog.TableName
 import com.treasuredata.flow.lang.compiler.{Name, TypeName}
 import com.treasuredata.flow.lang.model.expr.*
 import com.treasuredata.flow.lang.model.*
@@ -45,17 +46,17 @@ trait UnaryRelation extends Relation with UnaryPlan:
   override def inputRelationType: RelationType = child.relationType
   override def child: Relation
 
-trait HasName:
-  def name: Name
+trait HasTableName:
+  def name: TableName
 
 case class ModelDef(
-    name: Name,
+    name: TableName,
     params: List[DefArg],
     givenRelationType: Option[RelationType],
     child: Relation,
     nodeLocation: Option[NodeLocation]
 ) extends UnaryRelation
-    with HasName:
+    with HasTableName:
   override def relationType: RelationType = givenRelationType.getOrElse(child.relationType)
 
 case class TestRelation(
@@ -536,13 +537,13 @@ case class LateralView(
   *   projected columns
   */
 case class TableScan(
-    name: Name,
+    name: TableName,
     schema: RelationType,
     columns: Seq[NamedType],
     nodeLocation: Option[NodeLocation]
 ) extends Relation
     with LeafPlan
-    with HasName:
+    with HasTableName:
 
   override def relationType: RelationType =
     if columns.isEmpty then
@@ -562,14 +563,14 @@ case class TableScan(
   * @param nodeLocation
   */
 case class ModelScan(
-    name: Name,
+    name: TableName,
     modelArgs: List[FunctionArg],
     schema: RelationType,
     columns: Seq[NamedType],
     nodeLocation: Option[NodeLocation]
 ) extends Relation
     with LeafPlan
-    with HasName:
+    with HasTableName:
 
   override def relationType: RelationType =
     if columns.isEmpty then
@@ -605,13 +606,13 @@ case class SubscribeParam(name: String, value: String, nodeLocation: Option[Node
   override def children: Seq[Expression] = Seq.empty
 
 case class IncrementalTableScan(
-    name: Name,
+    name: TableName,
     schema: RelationType,
     columns: Seq[NamedType],
     nodeLocation: Option[NodeLocation]
 ) extends Relation
     with LeafPlan
-    with HasName:
+    with HasTableName:
 
   override val relationType: RelationType = ProjectedType(schema.typeName, columns, schema)
 

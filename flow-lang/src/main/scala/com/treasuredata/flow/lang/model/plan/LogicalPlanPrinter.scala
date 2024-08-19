@@ -122,7 +122,7 @@ object LogicalPlanPrinter extends LogSupport:
         val loc = m.nodeLocation.map(l => s" (${l})").getOrElse("")
         val prefix =
           m match
-            case t: HasName =>
+            case t: HasTableName =>
               s"${ws}[${m.modelName}${loc}] ${t.name}${functionSig}"
             case src: HasSourceFile =>
               s"${ws}[${m.modelName} ${src.sourceFile.fileName}${loc}]${functionSig} "

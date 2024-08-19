@@ -30,6 +30,8 @@ import com.treasuredata.flow.lang.model.plan.*
 import com.treasuredata.flow.lang.model.{DataType, RelationType, RelationTypeList}
 import wvlet.log.LogSupport
 
+import scala.util.Try
+
 object TypeResolver extends Phase("type-resolver") with LogSupport:
 
   override def run(unit: CompilationUnit, context: Context): CompilationUnit =
@@ -274,12 +276,16 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
     */
   private object resolveTableRef extends RewriteRule:
     private def lookup(qName: NameExpr, context: Context): Option[Symbol] =
+      def getTableName(d: DotRef): Option[TableName] = Try(TableName(d.fullName)).toOption
+
       qName match
         case i: Identifier =>
           lookupType(i.toTermName, context)
         case d: DotRef =>
-          // TODO
-          warn(s"TODO: resolve ${d}")
+          // TODO Load table schema from the given qualified name
+//          getTableName(d).flatMap { tbl =>
+//            context.catalog.getTable(tbl)
+//          }
           None
         case _ =>
           None
@@ -292,7 +298,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
             si.tpe match
               case r: RelationType =>
                 debug(s"resolved ${sym} ${ref.locationString(using context)}")
-                ModelScan(sym.name, Nil, r, r.fields, ref.nodeLocation)
+                ModelScan(TableName(sym.name.name), Nil, r, r.fields, ref.nodeLocation)
               case _ =>
                 ref
           case None =>
@@ -301,7 +307,8 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
             lookupType(tblType, context).map(_.symbolInfo.dataType) match
               case Some(tpe: SchemaType) =>
                 trace(s"Found a table type for ${tblType}: ${tpe}")
-                TableScan(tblType.toTermName, tpe, tpe.fields, ref.nodeLocation)
+                val tableName = TableName.parse(tblType.toTermName.name)
+                TableScan(tableName, tpe, tpe.fields, ref.nodeLocation)
               case _ =>
                 val tableName = TableName.parse(ref.name.fullName)
                 context
@@ -311,12 +318,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
                     tableName.name
                   ) match
                   case Some(tbl) =>
-                    TableScan(
-                      ref.name.toTermName,
-                      tbl.schemaType,
-                      tbl.schemaType.fields,
-                      ref.nodeLocation
-                    )
+                    TableScan(tableName, tbl.schemaType, tbl.schemaType.fields, ref.nodeLocation)
                   case None =>
                     warn(
                       s"Unresolved table ref: ${ref.name.fullName}: ${context.scope.getAllEntries}"
@@ -329,7 +331,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
             si.tpe match
               case r: RelationType =>
                 trace(s"Resolved model ref: ${ref.name.fullName} as ${r}")
-                ModelScan(sym.name, ref.args, r, r.fields, ref.nodeLocation)
+                ModelScan(TableName(sym.name.name), ref.args, r, r.fields, ref.nodeLocation)
               case _ =>
                 ref
           case None =>

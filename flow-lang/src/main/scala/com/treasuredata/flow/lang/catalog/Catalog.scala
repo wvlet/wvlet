@@ -28,6 +28,17 @@ trait Catalog extends LogSupport:
   def listTableNames(schemaName: String): Seq[String]
   def listTables(schemaName: String): Seq[Catalog.TableDef]
   def findTable(schemaName: String, tableName: String): Option[Catalog.TableDef]
+
+  def getTable(tableName: TableName): Option[Catalog.TableDef] =
+    tableName.catalog.exists(_ == catalogName) match
+      case true =>
+        if tableName.schema.isDefined then
+          findTable(tableName.schema.get, tableName.name)
+        else
+          None
+      case false =>
+        None
+
   def getTable(schemaName: String, tableName: String): Catalog.TableDef
   def tableExists(schemaName: String, tableName: String): Boolean
   def createTable(tableName: Catalog.TableDef, createMode: Catalog.CreateMode): Unit
@@ -73,6 +84,15 @@ object Catalog:
   )
 
   case class TableName(catalog: Option[String], schema: Option[String], name: String):
+    def qName: List[String] =
+      (catalog, schema) match
+        case (Some(c), Some(s)) =>
+          List(c, s, name)
+        case (None, Some(s)) =>
+          List(s, name)
+        case _ =>
+          List(name)
+
     def fullName: String =
       (catalog, schema) match
         case (Some(c), Some(s)) =>
@@ -83,14 +103,15 @@ object Catalog:
           name
 
   object TableName:
+    def apply(s: String): TableName = parse(s)
     def parse(s: String): TableName =
       s.split("\\.").toList match
-        case Nil =>
-          TableName(None, None, s)
-        case c :: Nil =>
-          TableName(Some(c), None, s)
-        case c :: s :: Nil =>
-          TableName(Some(c), Some(s), s)
+        case tbl :: Nil =>
+          TableName(None, None, tbl)
+        case sc :: tbl :: Nil =>
+          TableName(None, Some(sc), tbl)
+        case ct :: sc :: tbl :: Nil =>
+          TableName(Some(ct), Some(sc), tbl)
         case _ =>
           throw StatusCode.SYNTAX_ERROR.newException(s"Invalid table name: ${s}")
 
@@ -109,7 +130,7 @@ object Catalog:
       properties: Map[String, Any] = Map.empty
   ):
     def fullName: String       = tableName.fullName
-    def name                   = tableName.name
+    def name: String           = tableName.name
     def schema: Option[String] = tableName.schema
 
     lazy val schemaType: SchemaType =

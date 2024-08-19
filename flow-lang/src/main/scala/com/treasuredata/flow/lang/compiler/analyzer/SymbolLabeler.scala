@@ -240,7 +240,7 @@ object SymbolLabeler extends Phase("symbol-labeler"):
         sym
 
   private def registerModelSymbol(m: ModelDef)(using ctx: Context): Symbol =
-    val modelName = m.name
+    val modelName = Name.termName(m.name.name)
     ctx.scope.lookupSymbol(modelName) match
       case Some(s) =>
         s

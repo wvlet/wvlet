@@ -12,6 +12,9 @@ type array[A]:
   def count_approx_distinct in trino: int = sql"approx_distinct({this})"
   def count_approx_distinct in duckdb: int = sql"approx_count_distinct({this})"
 
+  def arbitrary: A = sql"arbitrary({this})"
+  def any: A = sql"arbitrary({this})"
+
   def min: A = sql"min({this})"
   def max: A = sql"max({this})"
 

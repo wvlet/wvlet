@@ -1,5 +1,6 @@
 package com.treasuredata.flow.lang.compiler.transform
 
+import com.treasuredata.flow.lang.catalog.Catalog.TableName
 import com.treasuredata.flow.lang.compiler.RewriteRule.PlanRewriter
 import com.treasuredata.flow.lang.compiler.{CompilationUnit, Context, Phase, RewriteRule}
 import com.treasuredata.flow.lang.model.plan.*
@@ -80,7 +81,7 @@ object Incrementalize extends Phase("incrementalize"):
 
     override def apply(context: Context): PlanRewriter =
       case t: TableScan =>
-        IncrementalTableScan(t.name, t.schema, t.columns, t.nodeLocation)
+        IncrementalTableScan(TableName.parse(t.name.fullName), t.schema, t.columns, t.nodeLocation)
 
     override def postProcess(plan: LogicalPlan, context: Context): LogicalPlan = IncrementalAppend(
       plan.asInstanceOf[Relation],
