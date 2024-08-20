@@ -4,11 +4,11 @@ import td_sdk_log
 
 -- Define source tables for behavior logs
 model weblogs: td_sdk_log =
-  from 'weblogs/*.parquet'
+  from 'data/weblogs/*.parquet'
 end
 
 model weblog_fluentd_ja: td_sdk_log =
-  from 'weblog_fluentd_ja/*.parquet'
+  from 'data/weblog_fluentd_ja/*.parquet'
 end
 
 -- CDP behavior table ETL example

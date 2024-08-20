@@ -123,7 +123,7 @@ case class Context(
     if relativePath.startsWith("s3://") || relativePath.startsWith("https://") then
       relativePath
     else
-      s"${global.compilerOptions.workingFolder}/data/${relativePath}"
+      s"${global.compilerOptions.workingFolder}/${relativePath}"
 
   def getDataFile(path: String): String =
     findDataFile(path) match

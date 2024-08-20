@@ -7,7 +7,7 @@ import wvlet.airspec.AirSpec
 class AnalyzerTest extends AirSpec:
 
   test("analyze stdlib") {
-    val result     = Compiler.default(".").compile()
+    val result     = Compiler.default("spec/empty").compile()
     val typedPlans = result.typedPlans
     typedPlans.map: p =>
       trace(p.pp)

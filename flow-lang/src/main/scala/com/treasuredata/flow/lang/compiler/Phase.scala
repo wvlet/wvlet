@@ -1,11 +1,12 @@
 package com.treasuredata.flow.lang.compiler
 
-import wvlet.log.{LogSupport, Logger}
+import wvlet.log.{LogSource, LogSupport, Logger}
 
 abstract class Phase(
     // The name of the phase
     val name: String
 ) extends LogSupport:
+  private val logger = Logger.of[Phase]
 
   protected def init(units: List[CompilationUnit], context: Context): Unit = {}
 
@@ -15,7 +16,7 @@ abstract class Phase(
     init(units, context)
     val completedUnits = List.newBuilder[CompilationUnit]
     for unit <- units do
-      trace(s"Running phase ${name} on ${unit.sourceFile.file}")
+      logger.trace(s"Running phase ${name} on ${unit.sourceFile.file}")
       val sourceContext = context.withCompilationUnit(unit)
       if unit.isFinished(this) then
         completedUnits += unit

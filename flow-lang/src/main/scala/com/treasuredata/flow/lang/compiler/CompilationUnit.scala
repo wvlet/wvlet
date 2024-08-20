@@ -49,8 +49,10 @@ object CompilationUnit extends LogSupport:
   def fromFile(path: String) = CompilationUnit(SourceFile.fromFile(path))
 
   def fromPath(path: String, isPreset: Boolean = false): List[CompilationUnit] =
+    // Ignore the spec folder by default
+    val ignoreRootSpecFolder = !path.startsWith("spec/")
     // List all *.flow files under the path
-    val files = listFiles(path)
+    val files = listFiles(path, 0, ignoreRootSpecFolder)
     val units =
       files
         .map { file =>
@@ -68,13 +70,16 @@ object CompilationUnit extends LogSupport:
       }
       .toList
 
-  private def listFiles(path: String): Seq[String] =
+  private def listFiles(path: String, level: Int, ignoreSpecFolder: Boolean): Seq[String] =
     val f = new java.io.File(path)
     if f.isDirectory then
-      f.listFiles()
-        .flatMap { file =>
-          listFiles(file.getPath)
-        }
+      if ignoreSpecFolder && level == 1 && f.getName == "spec" then
+        Seq.empty
+      else
+        f.listFiles()
+          .flatMap { file =>
+            listFiles(file.getPath, level + 1, ignoreSpecFolder)
+          }
     else if f.isFile && f.getName.endsWith(".flow") then
       Seq(f.getPath)
     else

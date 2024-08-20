@@ -3,7 +3,7 @@ package cdp
 import td_sdk_log
 
 model weblogs: td_sdk_log =
-  from 'weblogs/*.parquet'
+  from 'data/weblogs/*.parquet'
 end
 
 --@config(watermark_column:time, window_size:'1h')

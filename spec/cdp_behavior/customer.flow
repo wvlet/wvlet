@@ -1,19 +1,19 @@
 package cdp
 
 model weblog_users =
-  from 'weblog_users/*.parquet'
+  from 'data/weblog_users/*.parquet'
 end
 
 model weblog_user_attr3 =
-  from 'weblog_user_attr3/*.parquet'
+  from 'data/weblog_user_attr3/*.parquet'
 end
 
 model weblog_user_attr2 =
-  from 'weblog_user_attr2/*.parquet'
+  from 'data/weblog_user_attr2/*.parquet'
 end
 
 model weblog_users_first_purchased_at =
-  from 'weblog_users_first_purchased_at/*.parquet'
+  from 'data/weblog_users_first_purchased_at/*.parquet'
 end
 
 model m =

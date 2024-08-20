@@ -74,8 +74,7 @@ class Compiler(compilerOptions: CompilerOptions) extends LogSupport:
   private def listCompilationUnits(sourceFolders: List[String]): List[CompilationUnit] =
     val sourcePaths = Compiler.presetLibraryPaths ++ sourceFolders
     val units = sourcePaths.flatMap { path =>
-      val srcPath = s"${path}/src"
-      CompilationUnit.fromPath(srcPath, isPreset = presetLibraryPaths.contains(path))
+      CompilationUnit.fromPath(path, isPreset = presetLibraryPaths.contains(path))
     }
     units
 
