@@ -1,0 +1,6 @@
+from 'person.json'
+select (1 / 0.3).round(2) as div
+limit 1
+
+test:
+  _.json should be '{"div":3.33}'
