@@ -1,4 +1,4 @@
-package com.treasuredata.flow.lang.cli
+package com.treasuredata.flow.lang.runner.cli
 
 import wvlet.airframe.codec.MessageCodec
 import wvlet.airframe.codec.PrimitiveCodec.AnyCodec

@@ -1,5 +1,6 @@
 package com.treasuredata.flow.lang.compiler
 
+import com.treasuredata.flow.lang.compiler
 import com.treasuredata.flow.lang.compiler.SourceFile.NoSourceFile
 import com.treasuredata.flow.lang.model.NodeLocation
 import com.treasuredata.flow.lang.model.plan.{LogicalPlan, NamedRelation, Relation}
@@ -7,6 +8,9 @@ import wvlet.log.LogSupport
 import wvlet.log.io.{IOUtil, Resource}
 
 import java.io.File
+import java.net.URLClassLoader
+import java.net.{URI, URL}
+import java.util.jar.JarFile
 
 /**
   * Represents a unit for compilation (= source file) and records intermediate data (e.g., plan
@@ -25,6 +29,8 @@ case class CompilationUnit(sourceFile: SourceFile, isPreset: Boolean = false) ex
   var subscriptionPlans: List[LogicalPlan] = List.empty[LogicalPlan]
 
   private var finishedPhases: Set[String] = Set.empty
+
+  def isEmpty: Boolean = this eq CompilationUnit.empty
 
   def isFinished(phase: Phase): Boolean = finishedPhases.contains(phase.name)
   def setFinished(phase: Phase): Unit   = finishedPhases += phase.name
@@ -48,7 +54,7 @@ object CompilationUnit extends LogSupport:
 
   def fromFile(path: String) = CompilationUnit(SourceFile.fromFile(path))
 
-  def fromPath(path: String, isPreset: Boolean = false): List[CompilationUnit] =
+  def fromPath(path: String): List[CompilationUnit] =
     // Ignore the spec folder by default
     val ignoreRootSpecFolder = !path.startsWith("spec/")
     // List all *.flow files under the path
@@ -56,19 +62,40 @@ object CompilationUnit extends LogSupport:
     val units =
       files
         .map { file =>
-          CompilationUnit(SourceFile.fromFile(file), isPreset)
+          CompilationUnit(SourceFile.fromFile(file), isPreset = false)
         }
         .toList
     units
 
-  def fromResourcePath(path: String): List[CompilationUnit] =
-    val files = Resource.listResources(path, _.endsWith(".flow"))
-    files
-      .map { f =>
-        warn(f)
-        CompilationUnit(SourceFile.fromResource(f.logicalPath))
-      }
-      .toList
+  private def listFlowFiles(path: String): List[URL] =
+    val urls = List.newBuilder[URL]
+    import scala.jdk.CollectionConverters.*
+    Option(this.getClass.getResource(path)).foreach: r =>
+      r.getProtocol match
+        case "file" =>
+          val files = listFiles(r.getPath, 0, ignoreSpecFolder = true)
+          urls ++= files.map(File(_).toURI.toURL)
+        case "jar" =>
+          val jarPath       = r.getPath.split("!")(0).replaceAll("%20", " ").replaceAll("%25", "%")
+          val jarFilePath   = jarPath.replace("file:", "")
+          val jf            = new JarFile(jarFilePath)
+          val flowFilePaths = jf.entries().asScala.filter(_.getName.endsWith(".flow"))
+          urls ++=
+            flowFilePaths
+              .map { j =>
+                val url = s"jar:${jarPath}!/${j.getName}"
+                URI(url).toURL
+              }
+              .toList
+        case _ =>
+
+    urls.result()
+
+  def fromResourcePath(path: String, isPreset: Boolean): List[CompilationUnit] =
+    val urls = listFlowFiles(path)
+    urls.map { url =>
+      CompilationUnit(SourceFile.fromResource(url), isPreset = isPreset)
+    }
 
   private def listFiles(path: String, level: Int, ignoreSpecFolder: Boolean): Seq[String] =
     val f = new java.io.File(path)

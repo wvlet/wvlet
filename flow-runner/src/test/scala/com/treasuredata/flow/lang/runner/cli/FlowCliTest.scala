@@ -1,5 +1,6 @@
-package com.treasuredata.flow.lang.cli
+package com.treasuredata.flow.lang.runner.cli
 
+import com.treasuredata.flow.lang.runner.cli.FlowCli
 import wvlet.airspec.AirSpec
 
 class FlowCliTest extends AirSpec:

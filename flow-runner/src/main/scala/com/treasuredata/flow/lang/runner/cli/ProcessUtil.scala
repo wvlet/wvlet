@@ -1,4 +1,4 @@
-package com.treasuredata.flow.lang.cli
+package com.treasuredata.flow.lang.runner.cli
 
 object ProcessUtil:
 

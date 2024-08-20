@@ -16,7 +16,7 @@ abstract class Phase(
     init(units, context)
     val completedUnits = List.newBuilder[CompilationUnit]
     for unit <- units do
-      logger.trace(s"Running phase ${name} on ${unit.sourceFile.file}")
+      logger.trace(s"Running phase ${name} on ${unit.sourceFile.filePath}")
       val sourceContext = context.withCompilationUnit(unit)
       if unit.isFinished(this) then
         completedUnits += unit

@@ -1,4 +1,4 @@
-package com.treasuredata.flow.lang.cli
+package com.treasuredata.flow.lang.runner.cli
 
 import com.treasuredata.flow.lang.FlowLangException
 import com.treasuredata.flow.lang.compiler.{

@@ -1,5 +1,6 @@
-package com.treasuredata.flow.lang.cli
+package com.treasuredata.flow.lang.runner.cli
 
+import com.treasuredata.flow.BuildInfo
 import com.treasuredata.flow.lang.compiler.{CompilationUnit, Compiler, CompilerOptions}
 import com.treasuredata.flow.lang.runner.connector.duckdb.DuckDBConnector
 import com.treasuredata.flow.lang.runner.{QueryExecutor, QueryResultPrinter}
@@ -26,13 +27,38 @@ object FlowCli:
 case class FlowCliOption(
     @option(prefix = "-h,--help", description = "Display help message", isHelp = true)
     displayHelp: Boolean = false,
+    @option(prefix = "--debug", description = "Enable debug log")
+    debugMode: Boolean = false,
     @option(prefix = "-l", description = "log level")
-    logLevel: LogLevel = LogLevel.INFO
-)
+    logLevel: LogLevel = LogLevel.INFO,
+    @option(prefix = "-L", description = "log level for a class pattern")
+    logLevelPatterns: List[String] = List.empty
+) extends LogSupport:
+
+  Logger("com.treasuredata.flow.lang.runner").setLogLevel {
+    if debugMode then
+      LogLevel.DEBUG
+    else
+      logLevel
+  }
+
+  def versionString =
+    s"treasure-flow version: ${BuildInfo.version} (Built at: ${BuildInfo.builtAtString})"
+
+  debug(versionString)
+
+  logLevelPatterns.foreach { p =>
+    p.split("=") match
+      case Array(pattern, level) =>
+        debug(s"Set the log level for ${pattern} to ${level}")
+        Logger.setLogLevel(pattern, LogLevel(level))
+      case _ =>
+        error(s"Invalid log level pattern: ${p}")
+  }
+
+end FlowCliOption
 
 class FlowCli(opts: FlowCliOption) extends LogSupport:
-  Logger("com.treasuredata.flow.lang.runner").setLogLevel(opts.logLevel)
-
   @command(description = "Compile flow files")
   def compile(
       @argument(description = "source folders to compile")

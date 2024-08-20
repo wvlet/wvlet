@@ -1,6 +1,6 @@
 package com.treasuredata.flow.lang.spec
 
-import com.treasuredata.flow.lang.cli.{FlowREPLCli, FlowCli}
+import com.treasuredata.flow.lang.runner.cli.{FlowCli, FlowREPLCli}
 import wvlet.airspec.AirSpec
 
 class TDTrinoTest extends AirSpec:

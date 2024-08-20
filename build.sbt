@@ -99,6 +99,9 @@ lazy val lang = project
 //      Antlr4 / antlr4PackageName := Some("com.treasuredata.flow.lang.compiler.parser"),
 //      Antlr4 / antlr4GenListener := true,
 //      Antlr4 / antlr4GenVisitor  := true,
+    // Embed the standard library in the jar
+    Compile / unmanagedResourceDirectories +=
+      (ThisBuild / baseDirectory).value / "flow-stdlib",
     libraryDependencies ++=
       Seq(
         "org.wvlet.airframe" %% "airframe"      % AIRFRAME_VERSION,
@@ -111,7 +114,7 @@ lazy val lang = project
     // Watch changes of example .flow files upon testing
     Test / watchSources ++=
       ((ThisBuild / baseDirectory).value / "spec" ** "*.flow").get ++
-        ((ThisBuild / baseDirectory).value / "flow-lang" ** "*.flow").get
+        ((ThisBuild / baseDirectory).value / "flow-stdlib" ** "*.flow").get
   )
   .dependsOn(api.jvm)
 
@@ -137,8 +140,8 @@ lazy val runner = project
     description := "flow program executor using trino, duckdb, etc.",
     packMain :=
       Map(
-        "flowc" -> "com.treasuredata.flow.lang.cli.FlowCli",
-        "flow"  -> "com.treasuredata.flow.lang.cli.FlowREPLCli"
+        "flowc" -> "com.treasuredata.flow.lang.runner.cli.FlowCli",
+        "flow"  -> "com.treasuredata.flow.lang.runner.cli.FlowREPLCli"
       ),
     libraryDependencies ++=
       Seq(

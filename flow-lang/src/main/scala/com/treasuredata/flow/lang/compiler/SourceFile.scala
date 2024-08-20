@@ -6,6 +6,7 @@ import wvlet.airframe.ulid.ULID
 import wvlet.log.io.IOUtil
 
 import java.io.File
+import java.net.URL
 import scala.collection.mutable.ArrayBuffer
 
 object SourceFile:
@@ -17,14 +18,20 @@ object SourceFile:
     _ => content
   )
 
+  def fromResource(url: URL): SourceFile = SourceFile(url.getPath, _ => IOUtil.readAsString(url))
   def fromResource(path: String): SourceFile = SourceFile(path, IOUtil.readAsString)
 
-class SourceFile(val file: String, readContent: (file: String) => String):
-  override def toString: String      = s"SourceFile($file)"
-  def fileName: String               = new File(file).getName
+class SourceFile(val filePath: String, readContent: (file: String) => String):
+  override def toString: String = s"SourceFile($filePath)"
+
+  /**
+    * Returns the leaf file name
+    * @return
+    */
+  def fileName: String               = new File(filePath).getName
   def toCompileUnit: CompilationUnit = CompilationUnit(this)
 
-  lazy val content: IArray[Char] = IArray.unsafeFromArray(readContent(file).toCharArray)
+  lazy val content: IArray[Char] = IArray.unsafeFromArray(readContent(filePath).toCharArray)
   def length: Int                = content.length
 
   private val lineIndexes: Array[Int] =

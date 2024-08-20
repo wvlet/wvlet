@@ -1,4 +1,4 @@
-package com.treasuredata.flow.lang.cli
+package com.treasuredata.flow.lang.runner.cli
 
 import com.treasuredata.flow.BuildInfo
 import com.treasuredata.flow.lang.compiler.parser.*
@@ -48,10 +48,9 @@ class FlowREPLCli(
     @option(prefix = "--schema", description = "Context database schema to use")
     schema: Option[String] = None
 ) extends LogSupport:
-  Logger("com.treasuredata.flow.lang.runner").setLogLevel(opts.logLevel)
 
   @command(description = "Show the version")
-  def version: Unit = info(s"treasure-flow version: ${BuildInfo.version}")
+  def version: Unit = info(opts.versionString)
 
   @command(description = "Start a REPL", isDefault = true)
   def repl(): Unit =

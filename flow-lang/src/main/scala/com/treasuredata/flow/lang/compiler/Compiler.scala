@@ -1,7 +1,7 @@
 package com.treasuredata.flow.lang.compiler
 
 import com.treasuredata.flow.lang.catalog.Catalog
-import com.treasuredata.flow.lang.compiler.Compiler.presetLibraryPaths
+import com.treasuredata.flow.lang.compiler.Compiler.presetLibraries
 import com.treasuredata.flow.lang.compiler.analyzer.{
   RemoveUnusedQueries,
   SymbolLabeler,
@@ -12,7 +12,7 @@ import com.treasuredata.flow.lang.compiler.transform.Incrementalize
 import com.treasuredata.flow.lang.model.plan.LogicalPlan
 import wvlet.log.LogSupport
 
-object Compiler:
+object Compiler extends LogSupport:
 
   def default(sourcePath: String): Compiler =
     new Compiler(CompilerOptions(sourceFolders = List(sourcePath), workingFolder = sourcePath))
@@ -42,7 +42,8 @@ object Compiler:
 
   def allPhases: List[List[Phase]] = List(analysisPhases, transformPhases, codeGenPhases)
 
-  def presetLibraryPaths: List[String] = List("flow-lang/src/main/resources/flow-stdlib")
+  lazy val presetLibraries: List[CompilationUnit] = CompilationUnit
+    .fromResourcePath("/flow", isPreset = true)
 
 end Compiler
 
@@ -72,10 +73,12 @@ class Compiler(compilerOptions: CompilerOptions) extends LogSupport:
     global
 
   private def listCompilationUnits(sourceFolders: List[String]): List[CompilationUnit] =
-    val sourcePaths = Compiler.presetLibraryPaths ++ sourceFolders
-    val units = sourcePaths.flatMap { path =>
-      CompilationUnit.fromPath(path, isPreset = presetLibraryPaths.contains(path))
-    }
+    val sourcePaths = sourceFolders
+    val units =
+      presetLibraries ++
+        sourcePaths.flatMap { path =>
+          CompilationUnit.fromPath(path)
+        }
     units
 
   /**

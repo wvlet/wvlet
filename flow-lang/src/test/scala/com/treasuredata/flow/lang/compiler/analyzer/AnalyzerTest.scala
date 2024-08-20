@@ -11,6 +11,12 @@ class AnalyzerTest extends AirSpec:
     val typedPlans = result.typedPlans
     typedPlans.map: p =>
       trace(p.pp)
+
+    val units = result.context.global.getAllCompilationUnits
+    units shouldNotBe empty
+    val files = units.map(_.sourceFile.fileName)
+    files shouldContain "int.flow"
+    files shouldContain "string.flow"
   }
 
   test("analyze cdp_simple plan") {
@@ -30,3 +36,5 @@ class AnalyzerTest extends AirSpec:
     val tpe = result.context.scope.lookupSymbol(Name.typeName("person"))
     debug(tpe.get)
   }
+
+end AnalyzerTest
