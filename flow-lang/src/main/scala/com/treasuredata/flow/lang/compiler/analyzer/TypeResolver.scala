@@ -442,7 +442,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
   private object resolveRelation extends RewriteRule:
     override def apply(context: Context): PlanRewriter = {
       case r: Relation => // Regular relation and Filter etc.
-        r.transformUpExpressions(resolveExpression(r.relationType, context))
+        r.transformUpExpressions(resolveExpression(r.inputRelationType, context))
     }
 
   /**
@@ -857,9 +857,10 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
             trace(s"Resolved identifier: ${ri}")
           ri
         case None =>
-          trace(
-            s"Failed to resolve identifier: ${i} (${i.locationString(using context)}) from ${inputRelationType.fields}"
-          )
+          if context.isContextCompilationUnit then
+            trace(
+              s"Failed to resolve identifier: ${i} (${i.locationString(using context)}) from ${inputRelationType.fields}"
+            )
           i
   end resolveExpression
 

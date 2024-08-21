@@ -7,6 +7,7 @@ type array[A]:
   def get(index: int): A = sql"{this}[{index}]"
   def count: int = sql"count(*)"
   def count_distinct: int = sql"count(distinct {this})"
+  def count_if(cond:boolean): int = sql"count_if({cond})"
 
   -- Fast and memory-efficient approximate counting of distinct elements
   def count_approx_distinct in trino: int = sql"approx_distinct({this})"

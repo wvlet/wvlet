@@ -1,0 +1,8 @@
+from 'person.json'
+where name.like('alice')
+group by id
+select _1, age.max
+
+test:
+  _.fields should be ["id", "max(age)"]
+  _.json should be '{"id":1,"max(age)":10}'
