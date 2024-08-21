@@ -62,6 +62,8 @@ class FlowScriptRunner(config: FlowScriptRunnerConfig, queryExecutor: QueryExecu
         c.setDefaultSchema(schema)
       }
 
+    // Pre-compile files in the source paths
+    c.compileSourcePaths(None)
     c
 
   def runStatement(line: String, terminal: Terminal): LastOutput =
@@ -69,9 +71,9 @@ class FlowScriptRunner(config: FlowScriptRunnerConfig, queryExecutor: QueryExecu
     units = newUnit :: units
 
     try
-      val compileResult = compiler.compileSingle(contextUnit = newUnit)
+      val compileResult = compiler.compileSingleUnit(contextUnit = newUnit)
       val ctx           = compileResult.context.global.getContextOf(newUnit)
-      val queryResult   = queryExecutor.execute(newUnit, ctx, limit = resultRowLimits)
+      val queryResult   = queryExecutor.executeSingle(newUnit, ctx, limit = resultRowLimits)
       trace(s"ctx: ${ctx.hashCode()} ${ctx.compilationUnit.knownSymbols}")
 
       val str = queryResult.toPrettyBox(maxColWidth = resultMaxColWidth)

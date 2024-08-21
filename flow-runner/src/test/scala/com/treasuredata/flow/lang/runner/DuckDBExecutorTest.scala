@@ -13,7 +13,7 @@ class DuckDBExecutorTest extends AirSpec:
 
   test("weblog") {
     pendingUntil("Stabilizing the new parser")
-    duckDB.execute("examples/cdp_behavior", "behavior.flow")
+    duckDB.executeSingleSpec("examples/cdp_behavior", "behavior.flow")
   }
 
 end DuckDBExecutorTest

@@ -25,12 +25,16 @@ case class CompilationUnit(sourceFile: SourceFile, isPreset: Boolean = false) ex
 
   var knownSymbols: List[Symbol] = List.empty
 
+  var lastError: Option[Throwable] = None
+
   // Plans generated for subscriptions
   var subscriptionPlans: List[LogicalPlan] = List.empty[LogicalPlan]
 
   private var finishedPhases: Set[String] = Set.empty
 
   def isEmpty: Boolean = this eq CompilationUnit.empty
+
+  def isFailed: Boolean = lastError.isDefined
 
   def isFinished(phase: Phase): Boolean = finishedPhases.contains(phase.name)
   def setFinished(phase: Phase): Unit   = finishedPhases += phase.name
@@ -46,6 +50,8 @@ case class CompilationUnit(sourceFile: SourceFile, isPreset: Boolean = false) ex
         result = Some(r)
     }
     result
+
+end CompilationUnit
 
 object CompilationUnit extends LogSupport:
   val empty: CompilationUnit = CompilationUnit(NoSourceFile)

@@ -26,14 +26,18 @@ class QueryExecutor(dbConnector: DBConnector) extends LogSupport with AutoClosea
 
   override def close(): Unit = dbConnector.close()
 
-  def execute(sourceFolder: String, file: String): QueryResult =
-    val compileResult = Compiler(
+  def executeSingleSpec(sourceFolder: String, file: String): QueryResult =
+    val compiler = Compiler(
       CompilerOptions(sourceFolders = List(sourceFolder), workingFolder = sourceFolder)
-    ).compileSingle(Some(file))
-    val ret = compileResult.inFile(file).map(unit => execute(unit, compileResult.context))
-    ret.getOrElse(QueryResult.empty)
+    )
+    compiler.compilationUnitsInSourcePaths.find(_.sourceFile.fileName == file) match
+      case Some(unit) =>
+        val result = compiler.compileSingleUnit(unit)
+        executeSingle(unit, result.context)
+      case None =>
+        throw StatusCode.FILE_NOT_FOUND.newException(s"File not found: ${file}")
 
-  def execute(u: CompilationUnit, context: Context, limit: Int = 40): QueryResult =
+  def executeSingle(u: CompilationUnit, context: Context, limit: Int = 40): QueryResult =
     val result = execute(u.resolvedPlan, context, limit)
     result
 

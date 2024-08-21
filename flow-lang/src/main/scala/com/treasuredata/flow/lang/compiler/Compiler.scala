@@ -59,8 +59,10 @@ case class CompilerOptions(
 
 class Compiler(compilerOptions: CompilerOptions) extends LogSupport:
 
-  private lazy val globalContext         = newGlobalContext
-  private lazy val localCompilationUnits = listCompilationUnits(compilerOptions.sourceFolders)
+  private lazy val globalContext = newGlobalContext
+  // Compilation units in the given source folders (except preset-libraries)
+  lazy val localCompilationUnits    = listLocalCompilationUnits(compilerOptions.sourceFolders)
+  def compilationUnitsInSourcePaths = presetLibraries ++ localCompilationUnits
 
   def setDefaultCatalog(catalog: Catalog): Unit = globalContext.defaultCatalog = catalog
   def setDefaultSchema(schema: String): Unit    = globalContext.defaultSchema = schema
@@ -72,13 +74,11 @@ class Compiler(compilerOptions: CompilerOptions) extends LogSupport:
     global.init(using rootContext)
     global
 
-  private def listCompilationUnits(sourceFolders: List[String]): List[CompilationUnit] =
+  private def listLocalCompilationUnits(sourceFolders: List[String]): List[CompilationUnit] =
     val sourcePaths = sourceFolders
-    val units =
-      presetLibraries ++
-        sourcePaths.flatMap { path =>
-          CompilationUnit.fromPath(path)
-        }
+    val units = sourcePaths.flatMap { path =>
+      CompilationUnit.fromPath(path)
+    }
     units
 
   /**
@@ -86,16 +86,27 @@ class Compiler(compilerOptions: CompilerOptions) extends LogSupport:
     *   A folder containing src and data folders
     * @return
     */
-  def compile(): CompileResult = compileSingle(None)
+  def compile(): CompileResult = compileSourcePaths(None)
 
-  def compileSingle(contextFile: Option[String]): CompileResult =
+  /**
+    * Compile all files in the source paths
+    * @param contextFile
+    * @return
+    */
+  def compileSourcePaths(contextFile: Option[String]): CompileResult =
     val contextUnit: Option[CompilationUnit] = contextFile
-      .flatMap(f => localCompilationUnits.find(_.sourceFile.fileName == f))
+      .flatMap(f => compilationUnitsInSourcePaths.find(_.sourceFile.fileName == f))
 
-    compileInternal(localCompilationUnits, contextUnit = contextUnit)
+    compileInternal(compilationUnitsInSourcePaths, contextUnit = contextUnit)
 
-  def compileSingle(contextUnit: CompilationUnit): CompileResult =
-    val units: List[CompilationUnit] = localCompilationUnits :+ contextUnit
+  /**
+    * Compile only a single file without reading any other files. This method is useful for
+    * incremental compilation or running test suites
+    * @param contextUnit
+    * @return
+    */
+  def compileSingleUnit(contextUnit: CompilationUnit): CompileResult =
+    val units: List[CompilationUnit] = compilationUnitsInSourcePaths :+ contextUnit
     compileInternal(units, contextUnit = Some(contextUnit))
 
   def compileInternal(
@@ -112,7 +123,15 @@ class Compiler(compilerOptions: CompilerOptions) extends LogSupport:
       debug(s"Running phase ${phase.name}")
       refinedUnits = phase.runOn(refinedUnits, rootContext)
 
-    CompileResult(refinedUnits, this, rootContext)
+    units
+      .filter(_.isFailed)
+      .foreach { failedUnit =>
+        if contextUnit.exists(_ eq failedUnit) then
+          throw failedUnit.lastError.get
+      }
+
+    val result = CompileResult(refinedUnits, this, rootContext)
+    result
 
 end Compiler
 

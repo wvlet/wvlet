@@ -111,7 +111,7 @@ class FlowCli(opts: FlowCliOption) extends LogSupport:
           sourceFolders = List(contextDirectory),
           workingFolder = contextDirectory
         )
-      ).compileSingle(Some(flowFile))
+      ).compileSourcePaths(Some(flowFile))
       compilationResult
         .context
         .global
@@ -120,7 +120,7 @@ class FlowCli(opts: FlowCliOption) extends LogSupport:
         .find(_.sourceFile.fileName == flowFile) match
         case Some(contextUnit) =>
           val ctx    = compilationResult.context.global.getContextOf(contextUnit)
-          val result = duckdb.execute(contextUnit, ctx)
+          val result = duckdb.executeSingle(contextUnit, ctx)
           val str    = result.toPrettyBox()
           if str.nonEmpty then
             println(str)

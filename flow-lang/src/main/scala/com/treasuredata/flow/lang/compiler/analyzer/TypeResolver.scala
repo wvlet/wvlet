@@ -831,9 +831,6 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
               // trace(s"TODO: resolve ref: ${ref.fullName} as ${refDataType}")
               resolvedRef
       end match
-    case i: InterpolatedString if i.prefix.fullName == "sql" =>
-      // Ignore it because embedded SQL expressions have no static type
-      i
     case i: Identifier if !i.resolved =>
       inputRelationType.find(x => x.name == i.fullName) match
         case Some(attr) =>

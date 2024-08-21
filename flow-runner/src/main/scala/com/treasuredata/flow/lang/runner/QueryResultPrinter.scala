@@ -125,7 +125,7 @@ object QueryResultPrinter extends LogSupport:
       case QueryResult.empty =>
         ""
       case QueryResultList(list) =>
-        list.map(x => print(x, format)).mkString("\n\n")
+        list.map(x => print(x, format)).filter(_.nonEmpty).mkString("\n\n")
       case PlanResult(plan, result) =>
         print(result, format)
       case t: TableRows =>

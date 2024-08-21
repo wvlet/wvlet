@@ -21,17 +21,21 @@ object SourceFile:
   def fromResource(url: URL): SourceFile = SourceFile(url.getPath, _ => IOUtil.readAsString(url))
   def fromResource(path: String): SourceFile = SourceFile(path, IOUtil.readAsString)
 
-class SourceFile(val filePath: String, readContent: (file: String) => String):
-  override def toString: String = s"SourceFile($filePath)"
+class SourceFile(
+    // Relative path of the source from the working folder
+    val relativeFilePath: String,
+    readContent: (file: String) => String
+):
+  override def toString: String = s"SourceFile($relativeFilePath)"
 
   /**
     * Returns the leaf file name
     * @return
     */
-  def fileName: String               = new File(filePath).getName
+  def fileName: String               = new File(relativeFilePath).getName
   def toCompileUnit: CompilationUnit = CompilationUnit(this)
 
-  lazy val content: IArray[Char] = IArray.unsafeFromArray(readContent(filePath).toCharArray)
+  lazy val content: IArray[Char] = IArray.unsafeFromArray(readContent(relativeFilePath).toCharArray)
   def length: Int                = content.length
 
   private val lineIndexes: Array[Int] =

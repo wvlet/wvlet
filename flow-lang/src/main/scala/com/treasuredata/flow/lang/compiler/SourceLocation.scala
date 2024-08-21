@@ -16,4 +16,4 @@ case class SourceLocation(compileUnit: CompilationUnit, nodeLocation: Option[Nod
       case Some(loc) =>
         s"${compileUnit.sourceFile.fileName}:${loc.line}:${loc.column}"
       case None =>
-        compileUnit.sourceFile.filePath
+        compileUnit.sourceFile.relativeFilePath

@@ -20,6 +20,10 @@ class RemoveUnusedQueries extends Phase("check-unused"):
       }
     usedUnits = List.empty
 
+  override def runAlways: Boolean =
+    // Need to run this phase always to check unused queries depending on the context unit
+    true
+
   override def run(unit: CompilationUnit, context: Context): CompilationUnit =
     if contextUnit.exists(_ eq unit) then
       usedUnits = unit :: usedUnits
