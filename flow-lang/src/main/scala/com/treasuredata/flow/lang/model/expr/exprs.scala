@@ -262,7 +262,7 @@ case class FunctionArg(
     value: Expression,
     nodeLocation: Option[NodeLocation]
 ) extends Expression:
-  override def children: Seq[Expression] = Seq.empty
+  override def children: Seq[Expression] = Seq(value)
   override def dataType: DataType        = value.dataType
 
 case class LambdaExpr(body: Expression, args: Seq[String], nodeLocation: Option[NodeLocation])

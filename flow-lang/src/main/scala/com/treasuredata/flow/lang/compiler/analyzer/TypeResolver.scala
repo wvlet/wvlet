@@ -442,7 +442,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
   private object resolveRelation extends RewriteRule:
     override def apply(context: Context): PlanRewriter = {
       case r: Relation => // Regular relation and Filter etc.
-        r.transformUpExpressions(resolveExpression(r.inputRelationType, context))
+        r.transformChildExpressions(resolveExpression(r.inputRelationType, context))
     }
 
   /**
@@ -766,38 +766,23 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
       inputRelationType: RelationType,
       context: Context
   ): PartialFunction[Expression, Expression] =
-//    case s: SubQueryExpression =>
-//      // Resolve subquery expression
-//      val rt = RelationTypeList(
-//        Name.typeName(RelationType.newRelationTypeName),
-//        List(inputRelationType, s.query.relationType)
-//      )
-//      s.transformUpExpression {
-//        resolveExpression(rt, context)
-//      }
-    case a: Attribute if !a.dataType.isResolved && !a.nameExpr.isEmpty =>
-      val name = a.fullName
-      trace(s"Find ${name} in ${inputRelationType.fields} ${a.locationString(using context)}")
-      inputRelationType.find(x => x.name == name) match
-        case Some(tpe) =>
-          a // a.withDataType(tpe.dataType)
-        case None =>
-          a
-    case ref: DotRef =>
-      val refName      = Name.termName(ref.name.leafName)
-      val resolvedQual = resolveExpression(ref.qualifier, inputRelationType, context)
+    case ref: DotRef if !ref.resolved =>
+      val resolvedRef = ref
+        .transformChildExpressions(resolveExpression(inputRelationType, context))
+        .asInstanceOf[DotRef]
+      val refName = Name.termName(resolvedRef.name.leafName)
       // Resolve types after following . (dot)
-      resolvedQual.dataType match
+      resolvedRef.qualifier.dataType match
         case t: SchemaType =>
-          trace(s"Find reference from ${t} -> ${ref.name}")
-          t.columnTypes.find(_.name.name == ref.name.leafName) match
+          trace(s"Find reference from ${t} -> ${resolvedRef.name}")
+          t.columnTypes.find(_.name.name == resolvedRef.name.leafName) match
             case Some(col) =>
               trace(s"${t}.${col.name} is a column")
               ResolvedAttribute(
-                Name.termName(ref.name.leafName),
+                Name.termName(resolvedRef.name.leafName),
                 col.dataType,
                 None,
-                ref.nodeLocation
+                resolvedRef.nodeLocation
               )
             case None =>
               // Lookup functions
@@ -805,14 +790,14 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
                 case Some(tpe: TypeSymbolInfo) =>
                   tpe.declScope.lookupSymbol(refName).map(_.symbolInfo) match
                     case Some(method: MethodSymbolInfo) =>
-                      trace(s"Resolved ${t}.${ref.name.fullName} as a function")
-                      ref.copy(dataType = method.ft.returnType)
+                      trace(s"Resolved ${t}.${resolvedRef.name.fullName} as a function")
+                      resolvedRef.copy(dataType = method.ft.returnType)
                     case _ =>
-                      warn(s"${t}.${ref.name.fullName} is not found")
-                      ref
+                      warn(s"${t}.${resolvedRef.name.fullName} is not found")
+                      resolvedRef
                 case _ =>
-                  warn(s"${t}.${ref.name.fullName} is not found")
-                  ref
+                  warn(s"${t}.${resolvedRef.name.fullName} is not found")
+                  resolvedRef
         case refDataType =>
           // TODO Support multiple context-specific functions
           // warn(s"qualifier's type name: ${other.typeName}: ${ref.qualifier}")
@@ -835,21 +820,21 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
 
                   val retType = method.ft.returnType.bind(typeMap)
                   if context.isContextCompilationUnit then
-                    trace(s"Resolved ${ref} as ${retType}")
+                    trace(s"Resolved ${resolvedRef} as ${retType}")
 
-                  ref.copy(dataType = retType)
+                  resolvedRef.copy(dataType = retType)
                 case _ =>
                   if context.isContextCompilationUnit then
-                    trace(s"Failed to resolve ${ref} as ${refDataType}")
-                  ref
+                    trace(s"Failed to resolve ${resolvedRef} as ${refDataType}")
+                  resolvedRef
             case _ =>
-              // trace(s"TODO: resolve ref: ${ref.fullName} as ${other}")
-              ref
+              // trace(s"TODO: resolve ref: ${ref.fullName} as ${refDataType}")
+              resolvedRef
       end match
     case i: InterpolatedString if i.prefix.fullName == "sql" =>
       // Ignore it because embedded SQL expressions have no static type
       i
-    case i: Identifier if !i.dataType.isResolved =>
+    case i: Identifier if !i.resolved =>
       inputRelationType.find(x => x.name == i.fullName) match
         case Some(attr) =>
           val ri = i.toResolved(attr.dataType)
@@ -857,11 +842,9 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
             trace(s"Resolved identifier: ${ri}")
           ri
         case None =>
-          if context.isContextCompilationUnit then
-            trace(
-              s"Failed to resolve identifier: ${i} (${i.locationString(using context)}) from ${inputRelationType.fields}"
-            )
           i
+    case other if !other.resolved =>
+      other.transformChildExpressions(resolveExpression(inputRelationType, context))
   end resolveExpression
 
   private def resolveExpression(
@@ -885,7 +868,8 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
       inputRelationType: RelationType,
       context: Context
   ): Seq[Attribute] = attributes.map { a =>
-    a.transformExpression(resolveExpression(inputRelationType, context)).asInstanceOf[Attribute]
+    a.transformChildExpressions(resolveExpression(inputRelationType, context))
+      .asInstanceOf[Attribute]
   }
 
 end TypeResolver

@@ -1,0 +1,5 @@
+from 'person.json'
+where age.between(10, 30)
+group by id
+where _.count = 1
+select _1

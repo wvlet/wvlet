@@ -177,6 +177,42 @@ trait Expression extends TreeNode with Product with LogSupport:
 
   end transformUpExpression
 
+  def transformChildExpressions(rule: PartialFunction[Expression, Expression]): Expression =
+    var changed = false
+
+    def iterOnce(arg: Any): AnyRef =
+      arg match
+        case e: Expression =>
+          val newExpr = e.transformUpExpression(rule)
+          if e eq newExpr then
+            e
+          else
+            changed = true
+            newExpr
+        case l: LogicalPlan =>
+          val newPlan = l.transformChildExpressions(rule)
+          if l eq newPlan then
+            l
+          else
+            changed = true
+            newPlan
+        case Some(x) =>
+          Some(iterOnce(x))
+        case s: Seq[?] =>
+          s.map(iterOnce)
+        case other: AnyRef =>
+          other
+        case null =>
+          null
+
+    val newArgs = productIterator.map(iterOnce).toIndexedSeq
+    if changed then
+      copyInstance(newArgs)
+    else
+      this
+
+  end transformChildExpressions
+
   def collectSubExpressions: List[Expression] =
     def recursiveCollect(arg: Any): List[Expression] =
       arg match
@@ -227,7 +263,7 @@ trait Expression extends TreeNode with Product with LogSupport:
 
   lazy val resolved: Boolean    = resolvedChildren
   def resolvedChildren: Boolean = children.forall(_.resolved) && resolvedInputs
-  def resolvedInputs: Boolean   = true
+  def resolvedInputs: Boolean   = dataType.isResolved
 
 end Expression
 

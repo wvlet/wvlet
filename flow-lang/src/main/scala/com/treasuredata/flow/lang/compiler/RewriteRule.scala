@@ -65,7 +65,7 @@ trait RewriteRule extends LogSupport:
       // Recursively transform the tree form bottom to up
       val resolved = plan.transformUp(rule)
       if localLogger.isEnabled(LogLevel.TRACE) && !(plan eq resolved) && plan != resolved then
-        if context.compilationUnit.sourceFile.fileName == "q2.flow" then
+        if context.isContextCompilationUnit then
           localLogger
             .trace(s"Transformed with ${name}:\n[before]\n${plan.pp}\n[after]\n${resolved.pp}")
 

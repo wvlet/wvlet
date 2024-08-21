@@ -238,7 +238,7 @@ object LogicalPlanPrinter extends LogSupport:
           case None =>
             concat(List(arg.value))
       case i: InterpolatedString =>
-        s"${printExpression(i.prefix)}{${i.parts.map(printExpression).mkString(", ")}}"
+        s"${printExpression(i.prefix)}\"${i.parts.map(printExpression).mkString}\""
       case r: DotRef =>
         s"${printExpression(r.qualifier)}.${printExpression(r.name)}"
       case t: This =>
