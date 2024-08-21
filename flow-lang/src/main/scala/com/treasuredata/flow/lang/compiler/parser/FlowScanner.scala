@@ -342,10 +342,15 @@ class FlowScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
       case '/' =>
         putChar(ch)
         nextChar()
-        if ch == '*' then
-          getBlockComment()
-        else
-          getOperatorRest()
+        ch match
+          case '/' =>
+            putChar(ch)
+            nextChar()
+            getOperatorRest()
+          case '*' =>
+            getBlockComment()
+          case _ =>
+            getOperatorRest()
       case SU =>
         current.token = FlowToken.EOF
         current.str = ""

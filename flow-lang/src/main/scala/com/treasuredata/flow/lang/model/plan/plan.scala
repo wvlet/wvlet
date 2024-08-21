@@ -40,12 +40,6 @@ case class Import(
     nodeLocation: Option[NodeLocation]
 ) extends LanguageStatement
 
-//case class MpoduleDef(
-//    name: Name,
-//    elems: Seq[TypeElem],
-//    nodeLocation: Option[NodeLocation]
-//) extends LanguageStatement
-
 case class TypeAlias(alias: NameExpr, sourceTypeName: NameExpr, nodeLocation: Option[NodeLocation])
     extends LanguageStatement
 

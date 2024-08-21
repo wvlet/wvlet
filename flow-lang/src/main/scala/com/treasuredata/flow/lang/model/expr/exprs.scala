@@ -8,6 +8,7 @@ import com.treasuredata.flow.lang.model.DataType.{
   TimestampField,
   TypeVariable
 }
+import com.treasuredata.flow.lang.model.expr.BinaryExprType.DivideInt
 import com.treasuredata.flow.lang.model.{DataType, NodeLocation}
 import com.treasuredata.flow.lang.model.plan.*
 
@@ -88,7 +89,7 @@ case class DotRef(
         // TODO print right expr
         s"${qualifier}.${name.fullName}"
 
-  override def toString: String          = s"DotRef(${qualifier},${name})"
+  override def toString: String          = s"DotRef(${qualifier}:${qualifier.dataType},${name})"
   override def children: Seq[Expression] = Seq(qualifier)
 
 sealed trait Identifier extends QualifiedName with LeafExpression:
@@ -436,11 +437,12 @@ case class ShouldExpr(
 
 // Arithmetic expr
 enum BinaryExprType(val expr: String):
-  case Add      extends BinaryExprType("+")
-  case Subtract extends BinaryExprType("-")
-  case Multiply extends BinaryExprType("*")
-  case Divide   extends BinaryExprType("/")
-  case Modulus  extends BinaryExprType("%")
+  case Add       extends BinaryExprType("+")
+  case Subtract  extends BinaryExprType("-")
+  case Multiply  extends BinaryExprType("*")
+  case Divide    extends BinaryExprType("/")
+  case DivideInt extends BinaryExprType("//")
+  case Modulus   extends BinaryExprType("%")
 
 sealed trait ArithmeticExpression extends Expression
 
@@ -460,6 +462,8 @@ case class ArithmeticBinaryExpr(
         right.dataType match
           case DataType.BooleanType =>
             DataType.IntType
+          case DataType.IntType =>
+            DataType.IntType
           case DataType.LongType =>
             DataType.LongType
           case DataType.FloatType =>
@@ -475,6 +479,8 @@ case class ArithmeticBinaryExpr(
           case DataType.BooleanType =>
             DataType.LongType
           case DataType.IntType =>
+            DataType.IntType
+          case DataType.LongType =>
             DataType.LongType
           case DataType.FloatType =>
             DataType.FloatType
@@ -631,7 +637,7 @@ case class DecimalLiteral(value: String, nodeLocation: Option[NodeLocation])
     extends Literal
     with LeafExpression:
   override def dataType: DataType = DataType
-    .DecimalType(TypeVariable("precision"), TypeVariable("scale"))
+    .DecimalType(TypeVariable(Name.typeName("precision")), TypeVariable(Name.typeName("scale")))
 
   override def stringValue: String = value
   override def toString            = s"Literal(DECIMAL '${value}')"

@@ -103,7 +103,8 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
               .knownSymbols
               .collectFirst {
                 case s: Symbol if s.name == name =>
-                  trace(s"Found ${s.name} in ${ctx.compilationUnit}")
+                  if ctx.isContextCompilationUnit then
+                    trace(s"Found ${s.name} in ${ctx.compilationUnit}")
                   foundSym = Some(s)
               }
 
@@ -147,7 +148,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
             val newStmt = RewriteRule.rewrite(stmt, defaultRules, ctx)
             stmts += newStmt
 
-            if !ctx.compilationUnit.isPreset then
+            if !ctx.compilationUnit.isPreset && ctx.isContextCompilationUnit then
               trace(newStmt.pp)
 
             // Update the tree reference from the symbol
@@ -239,7 +240,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
             m.symbol.symbolInfo match
               case t: ModelSymbolInfo =>
                 t.dataType = r
-                debug(s"Resolved ${t}")
+              // trace(s"Resolved ${t}")
               case other =>
           case other =>
             trace(
@@ -297,7 +298,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
             val si = sym.symbolInfo
             si.tpe match
               case r: RelationType =>
-                debug(s"resolved ${sym} ${ref.locationString(using context)}")
+                // trace(s"resolved ${sym} ${ref.locationString(using context)}")
                 ModelScan(TableName(sym.name.name), Nil, r, r.fields, ref.nodeLocation)
               case _ =>
                 ref
@@ -519,7 +520,10 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
         val methodName = method.toTermName
         if qual.dataType.isResolved then
           lookupType(qual.dataType.typeName, context)
-            .map(_.symbolInfo.findMember(methodName).symbolInfo)
+            .map { sym =>
+              // TODO: Resolve member with different arg types
+              sym.symbolInfo.findMember(methodName).symbolInfo
+            }
             .collect {
               case m: MethodSymbolInfo =>
                 m
@@ -530,7 +534,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
                   .newException(s"Ambiguous function call for ${method}", d.nodeLocation)
             }
         else
-          trace(s"Failed to find function `${methodName}` for ${qual}")
+          trace(s"Failed to find function `${methodName}` for ${qual}:${qual.dataType}")
           None
       case _ =>
         trace(s"Failed to find function definition for ${f}")
@@ -619,6 +623,10 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
               expr
         case _ =>
           f
+
+      end match
+
+    end resolveFunApply
 
   end resolveFunctionApply
 
@@ -805,20 +813,37 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
                 case _ =>
                   warn(s"${t}.${ref.name.fullName} is not found")
                   ref
-        case other =>
+        case refDataType =>
           // TODO Support multiple context-specific functions
           // warn(s"qualifier's type name: ${other.typeName}: ${ref.qualifier}")
-          lookupType(other.typeName, context).map(_.symbolInfo) match
-            case Some(tpe: TypeSymbolInfo) =>
-              tpe.declScope.lookupSymbol(refName).map(_.symbolInfo) match
+          lookupType(refDataType.typeName, context).map(_.symbolInfo) match
+            case Some(functionBaseType: TypeSymbolInfo) =>
+              functionBaseType.declScope.lookupSymbol(refName).map(_.symbolInfo) match
                 case Some(method: MethodSymbolInfo) =>
-                  trace(s"Resolved ${ref} as ${method.ft}")
-                  ref.copy(dataType = method.ft.returnType)
+                  // Resolve generic types
+                  val typeMap: Map[TypeName, DataType] =
+                    if refDataType.typeParams.isEmpty then
+                      Map.empty
+                    else
+                      functionBaseType
+                        .typeParams
+                        .zipAll(refDataType.typeParams, DataType.UnknownType, DataType.UnknownType)
+                        .map { (a, b) =>
+                          a.typeName -> b
+                        }
+                        .toMap
+
+                  val retType = method.ft.returnType.bind(typeMap)
+                  if context.isContextCompilationUnit then
+                    trace(s"Resolved ${ref} as ${retType}")
+
+                  ref.copy(dataType = retType)
                 case _ =>
-                  trace(s"Failed to resolve ${ref} as ${other}")
+                  if context.isContextCompilationUnit then
+                    trace(s"Failed to resolve ${ref} as ${refDataType}")
                   ref
             case _ =>
-              trace(s"TODO: resolve ref: ${ref.fullName} as ${other}")
+              // trace(s"TODO: resolve ref: ${ref.fullName} as ${other}")
               ref
       end match
     case i: InterpolatedString if i.prefix.fullName == "sql" =>
@@ -828,7 +853,8 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
       inputRelationType.find(x => x.name == i.fullName) match
         case Some(attr) =>
           val ri = i.toResolved(attr.dataType)
-          trace(s"Resolved identifier: ${ri}")
+          if context.isContextCompilationUnit then
+            trace(s"Resolved identifier: ${ri}")
           ri
         case None =>
           trace(

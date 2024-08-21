@@ -1,0 +1,8 @@
+from 'person.json'
+transform 1 as key
+group by key
+select age.sum.round(1).to_string as sum_str
+
+test:
+  _.size should be 1
+  _.json should be '{"sum_str":"74.0"}'

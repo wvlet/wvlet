@@ -24,6 +24,16 @@ class DuckDBExecutorTest extends AirSpec:
     debug(result)
   }
 
+  test("method_chain") {
+    val result = duckDB.execute("spec/basic", "method_chain.flow")
+    debug(result)
+  }
+
+  test("method_chain_agg") {
+    val result = duckDB.execute("spec/basic", "method_chain_agg.flow")
+    debug(result)
+  }
+
   test("table function") {
     val result = duckDB.execute("spec/duckdb", "from_table_function.flow")
     debug(result)

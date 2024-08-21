@@ -186,7 +186,7 @@ class DataTypeParser(scanner: FlowScanner) extends LogSupport:
         NamedType(Name.termName(paramName), paramType)
       case FlowToken.IDENTIFIER if !DataType.isKnownTypeName(t.str.toLowerCase) =>
         val id = consume(FlowToken.IDENTIFIER)
-        TypeVariable(id.str.trim)
+        TypeVariable(Name.typeName(id.str.trim))
       case _ =>
         dataType()
 

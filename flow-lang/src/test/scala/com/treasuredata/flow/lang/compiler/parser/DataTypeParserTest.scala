@@ -121,7 +121,8 @@ class DataTypeParserTest extends AirSpec:
   }
 
   test("parse varchar(x) with type variables") {
-    parse("varchar(x)") shouldBe DataType.VarcharType(Some(DataType.TypeVariable("x")))
+    parse("varchar(x)") shouldBe
+      DataType.VarcharType(Some(DataType.TypeVariable(Name.typeName("x"))))
   }
 
   test("parse varchar(1)") {
@@ -129,13 +130,17 @@ class DataTypeParserTest extends AirSpec:
   }
 
   test("parse generic array") {
-    parse("array(T)") shouldBe ArrayType(DataType.TypeVariable("T"))
-    parse("array(x)") shouldBe ArrayType(DataType.TypeVariable("x"))
+    parse("array(T)") shouldBe ArrayType(DataType.TypeVariable(Name.typeName("T")))
+    parse("array(x)") shouldBe ArrayType(DataType.TypeVariable(Name.typeName("x")))
   }
 
   test("parse timestamp with type variables") {
     parse("timestamp(x)") shouldBe
-      DataType.TimestampType(TimestampField.TIMESTAMP, false, Some(DataType.TypeVariable("x")))
+      DataType.TimestampType(
+        TimestampField.TIMESTAMP,
+        false,
+        Some(DataType.TypeVariable(Name.typeName("x")))
+      )
   }
 
 end DataTypeParserTest

@@ -207,9 +207,17 @@ object SymbolLabeler extends Phase("symbol-labeler"):
         val parentSymbol = t.parent.map(registerParentSymbols).orElse(Some(ctx.owner))
         val parentTpe    = parentSymbol.map(_.dataType)
         val tpe          = SchemaType(parent = parentTpe, typeName, columns)
+        val typeParams   = t.params
 
         // Associate TypeSymbolInfo with the symbol
-        sym.symbolInfo = TypeSymbolInfo(sym, owner = parentSymbol.get, typeName, tpe, typeScope)
+        sym.symbolInfo = TypeSymbolInfo(
+          sym,
+          owner = parentSymbol.get,
+          typeName,
+          tpe,
+          typeParams,
+          typeScope
+        )
 
         trace(s"Created type symbol ${sym}: ${tpe}")
         sym.tree = t
@@ -234,6 +242,7 @@ object SymbolLabeler extends Phase("symbol-labeler"):
           Symbol.NoSymbol,
           typeName,
           DataType.UnknownType,
+          Nil,
           ctx.scope
         )
         parent.symbol = sym

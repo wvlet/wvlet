@@ -1,7 +1,8 @@
 package com.treasuredata.flow.lang.model
 
-import com.treasuredata.flow.lang.compiler.Name
-import com.treasuredata.flow.lang.model.DataType.NamedType
+import com.treasuredata.flow.lang.StatusCode
+import com.treasuredata.flow.lang.compiler.{Name, TypeName}
+import com.treasuredata.flow.lang.model.DataType.{NamedType, TypeParameter}
 import com.treasuredata.flow.lang.model.expr.Expression
 import com.treasuredata.flow.lang.model.plan.Import
 
@@ -11,8 +12,15 @@ abstract class Type:
   def typeDescription: String
   def isFunctionType: Boolean = false
   def isResolved: Boolean
-  def isBound: Boolean                                  = true
-  def bind(typeArgMap: Map[String, DataType]): DataType = ???
+  def isBound: Boolean = true
+  def bind(typeArgMap: Map[TypeName, DataType]): DataType =
+    this match
+      case d: DataType =>
+        d
+      case other =>
+        throw StatusCode.NOT_IMPLEMENTED.newException(s"Cannot bind type ${other}")
+
+  def typeParams: Seq[DataType] = Nil
 
 object Type:
   val UnknownType: Type =
@@ -37,6 +45,7 @@ object Type:
       returnType: DataType,
       contextNames: List[Name]
   ) extends Type:
+    override def toString: String        = typeDescription
     override def typeDescription: String = s"${name}(${args.mkString(", ")}): ${returnType}"
     override def isFunctionType: Boolean = true
     override def isResolved: Boolean     = args.forall(_.isResolved) && returnType.isResolved

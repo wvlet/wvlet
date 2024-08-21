@@ -3,14 +3,15 @@ package com.treasuredata.flow.lang.model
 import com.treasuredata.flow.lang.{FlowLangException, StatusCode}
 import com.treasuredata.flow.lang.compiler.parser.DataTypeParser
 import com.treasuredata.flow.lang.compiler.{Name, TermName, TypeName}
-import com.treasuredata.flow.lang.model.DataType.NamedType
+import com.treasuredata.flow.lang.model.DataType.{NamedType, TypeParameter}
 import com.treasuredata.flow.lang.model.expr.NameExpr
 import wvlet.log.LogSupport
 
 import scala.util.Try
 import scala.util.control.NonFatal
 
-abstract class DataType(val typeName: TypeName, val typeParams: Seq[Type]) extends Type:
+abstract class DataType(val typeName: TypeName, override val typeParams: Seq[DataType])
+    extends Type:
   override def toString: String = typeDescription
 
   def typeDescription: String =
@@ -167,6 +168,16 @@ object DataType extends LogSupport:
       valueType: RelationType
   ) extends RelationType(typeName, Seq.empty):
 
+    private lazy val aggregatedFields: Seq[NamedType] = valueType
+      .fields
+      .map { nt =>
+        NamedType(nt.name, ArrayType(nt.dataType))
+      }
+
+    override def find(f: Name => Boolean): Option[NamedType] =
+      // Resolve aggregated fields as well
+      super.find(f).orElse(aggregatedFields.find(x => f(x.name)))
+
     override def fields: Seq[NamedType] =
       groupingKeyTypes :+ NamedType(Name.termName("_"), ArrayType(valueType))
 
@@ -214,11 +225,11 @@ object DataType extends LogSupport:
   case class IntConstant(value: Int) extends TypeParameter(s"${value}"):
     override def isResolved: Boolean = true
 
-  case class TypeVariable(name: String) extends TypeParameter(s"$$${name}"):
+  case class TypeVariable(name: TypeName) extends TypeParameter(s"$$${name}"):
     override def isBound: Boolean    = false
     override def isResolved: Boolean = false
 
-    override def bind(typeArgMap: Map[String, DataType]): DataType =
+    override def bind(typeArgMap: Map[TypeName, DataType]): DataType =
       typeArgMap.get(name) match
         case Some(t) =>
           t
@@ -231,10 +242,12 @@ object DataType extends LogSupport:
   ) extends DataType(typeName, typeParams):
     override def isBound: Boolean = typeParams.forall(_.isBound)
 
-    override def bind(typeArgMap: Map[String, DataType]): DataType = GenericType(
-      typeName,
-      typeParams.map(_.bind(typeArgMap))
-    )
+    override def bind(typeArgMap: Map[TypeName, DataType]): DataType =
+      typeArgMap.get(typeName) match
+        case Some(resolved) if typeParams.isEmpty =>
+          resolved
+        case _ =>
+          GenericType(typeName, typeParams.map(_.bind(typeArgMap)))
 
     override def isResolved: Boolean = typeParams.forall(_.isResolved)
 

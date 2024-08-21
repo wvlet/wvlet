@@ -87,6 +87,14 @@ case class Context(
 
   def isGlobalContext: Boolean = compilationUnit.isPreset || owner.isNoSymbol
 
+  def isContextCompilationUnit: Boolean =
+    !compilationUnit.isEmpty &&
+      global
+        .getContextUnit
+        .exists { ctxUnit =>
+          ctxUnit eq compilationUnit
+        }
+
   // Get the context catalog
   // TODO support multiple catalogs
   def catalog: Catalog = global.defaultCatalog

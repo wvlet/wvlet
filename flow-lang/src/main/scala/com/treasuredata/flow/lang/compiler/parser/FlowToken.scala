@@ -84,10 +84,11 @@ enum FlowToken(val tokenType: TokenType, val str: String):
   case LTEQ extends FlowToken(Op, "<=")
   case GTEQ extends FlowToken(Op, ">=")
 
-  case PLUS  extends FlowToken(Op, "+")
-  case MINUS extends FlowToken(Op, "-")
-  case DIV   extends FlowToken(Op, "/")
-  case MOD   extends FlowToken(Op, "%")
+  case PLUS    extends FlowToken(Op, "+")
+  case MINUS   extends FlowToken(Op, "-")
+  case DIV     extends FlowToken(Op, "/")
+  case DIV_INT extends FlowToken(Op, "//")
+  case MOD     extends FlowToken(Op, "%")
 
   case EXCLAMATION extends FlowToken(Op, "!")
 

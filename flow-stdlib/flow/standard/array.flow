@@ -1,6 +1,6 @@
 package flow.standard
 
--- A array created by 'group by' clause
+-- An array created by 'group by' clause
 type array[A]:
   def length: int = sql"length({this})"
   def size: int = sql"length({this})"

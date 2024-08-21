@@ -31,6 +31,8 @@ class SymbolInfo(val symbol: Symbol, val name: Name, private var _tpe: Type):
   def dataType_=(d: DataType): Unit = tpe = d
 
   def findMember(name: Name): Symbol = NoSymbol
+  def members: List[Symbol]          = Nil
+  def typeParams: Seq[DataType]      = Nil
 
 class PackageSymbolInfo(
     symbol: Symbol,
@@ -54,11 +56,17 @@ class NamedSymbolInfo(symbol: Symbol, owner: Symbol, name: Name, tpe: Type)
     extends SymbolInfo(symbol, name, tpe):
   override def toString: String = s"${owner}.${name}: ${dataType}"
 
-class TypeSymbolInfo(symbol: Symbol, owner: Symbol, name: Name, tpe: DataType, typeScope: Scope)
-    extends NamedSymbolInfo(symbol, owner, name, tpe):
+class TypeSymbolInfo(
+    symbol: Symbol,
+    owner: Symbol,
+    name: Name,
+    tpe: DataType,
+    override val typeParams: Seq[DataType],
+    typeScope: Scope
+) extends NamedSymbolInfo(symbol, owner, name, tpe):
   this.declScope = typeScope
   override def findMember(name: Name): Symbol = typeScope.lookupSymbol(name).getOrElse(NoSymbol)
-  def members: List[Symbol]                   = typeScope.getLocalSymbols
+  override def members: List[Symbol]          = typeScope.getLocalSymbols
 
 class MethodSymbolInfo(
     symbol: Symbol,
