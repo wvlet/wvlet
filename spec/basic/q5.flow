@@ -1,5 +1,0 @@
-import example.*
-import example.person_t
-import example.person_t2 as p2
--- import a package from GitHub repository and folder
-import example.* from "github.com/treasure-data/treasure-flow/spec/basic"

@@ -6,22 +6,7 @@ val SCALAJS_DOM_VERSION = "2.8.0"
 
 val SCALA_3 = IO.read(file("SCALA_VERSION")).trim
 ThisBuild / scalaVersion := SCALA_3
-
-// For using the internal Maven repo at jfrog.io
-val jfrogCredential = Credentials(
-  "Artifactory Realm",
-  "treasuredata.jfrog.io",
-  sys.env.getOrElse("TD_ARTIFACTORY_USERNAME", ""),
-  sys.env.getOrElse("TD_ARTIFACTORY_PASSWORD", "")
-)
-
-val TD_MAVEN_REPO = "release" at "https://treasuredata.jfrog.io/treasuredata/libs-release"
-val TD_MAVEN_SNAPSHOT_REPO =
-  "snapshot" at "https://treasuredata.jfrog.io/treasuredata/libs-snapshot"
-
-ThisBuild / credentials += jfrogCredential
-ThisBuild / resolvers ++= Resolver.sonatypeOssRepos("snapshots") ++
-  Seq(TD_MAVEN_REPO, TD_MAVEN_SNAPSHOT_REPO)
+ThisBuild / resolvers ++= Resolver.sonatypeOssRepos("snapshots")
 
 Global / onChangedBuildSource := ReloadOnSourceChanges
 
@@ -29,8 +14,8 @@ import scala.concurrent.duration.FiniteDuration
 import java.util.concurrent.TimeUnit
 
 val buildSettings = Seq[Setting[?]](
-  organization       := "com.treasuredata.flow",
-  description        := "Incremental Query Compiler and Scheduler",
+  organization       := "wvlet.lang",
+  description        := "wvlet-ql: Flow-style query language",
   crossPaths         := true,
   publishMavenStyle  := true,
   Test / logBuffered := false,
@@ -41,8 +26,7 @@ val buildSettings = Seq[Setting[?]](
 )
 
 lazy val jvmProjects: Seq[ProjectReference] = Seq(api.jvm, server, lang, runner, client.jvm)
-
-lazy val jsProjects: Seq[ProjectReference] = Seq(api.js, client.js, ui, uiMain)
+lazy val jsProjects: Seq[ProjectReference]  = Seq(api.js, client.js, ui, uiMain)
 
 val noPublish = Seq(
   publishArtifact := false,
@@ -74,14 +58,14 @@ lazy val projectJS = project
 
 lazy val api = crossProject(JVMPlatform, JSPlatform)
   .crossType(CrossType.Pure)
-  .in(file("flow-api"))
+  .in(file("wvlet-api"))
   .enablePlugins(AirframeHttpPlugin, BuildInfoPlugin)
   .settings(
     buildSettings,
-    name          := "flow-api",
+    name          := "wvlet-api",
     buildInfoKeys := Seq[BuildInfoKey](name, version, scalaVersion, sbtVersion),
     buildInfoOptions += BuildInfoOption.BuildTime,
-    buildInfoPackage := "com.treasuredata.flow",
+    buildInfoPackage := "wvlet.lang",
     libraryDependencies ++=
       Seq(
         "org.wvlet.airframe" %%% "airframe-http"    % AIRFRAME_VERSION,
@@ -91,17 +75,13 @@ lazy val api = crossProject(JVMPlatform, JSPlatform)
 
 lazy val lang = project
 //    .enablePlugins(Antlr4Plugin)
-  .in(file("flow-lang"))
+  .in(file("wvlet-lang"))
   .settings(
     buildSettings,
-    name := "flow-lang",
-//      Antlr4 / antlr4Version     := "4.13.1",
-//      Antlr4 / antlr4PackageName := Some("com.treasuredata.flow.lang.compiler.parser"),
-//      Antlr4 / antlr4GenListener := true,
-//      Antlr4 / antlr4GenVisitor  := true,
+    name := "wvlet-lang",
     // Embed the standard library in the jar
     Compile / unmanagedResourceDirectories +=
-      (ThisBuild / baseDirectory).value / "flow-stdlib",
+      (ThisBuild / baseDirectory).value / "wvlet-stdlib",
     libraryDependencies ++=
       Seq(
         "org.wvlet.airframe" %% "airframe"      % AIRFRAME_VERSION,
@@ -111,10 +91,10 @@ lazy val lang = project
         // Add a reference implementation of the compiler
         "org.scala-lang" %% "scala3-compiler" % SCALA_3 % Test
       ),
-    // Watch changes of example .flow files upon testing
+    // Watch changes of example .wv files upon testing
     Test / watchSources ++=
-      ((ThisBuild / baseDirectory).value / "spec" ** "*.flow").get ++
-        ((ThisBuild / baseDirectory).value / "flow-stdlib" ** "*.flow").get
+      ((ThisBuild / baseDirectory).value / "spec" ** "*.wv").get ++
+        ((ThisBuild / baseDirectory).value / "wvlet-stdlib" ** "*.wv").get
   )
   .dependsOn(api.jvm)
 
@@ -124,25 +104,22 @@ val specRunnerSettings = Seq(
   // When forking, the base directory should be set to the root directory
   Test / baseDirectory :=
     (ThisBuild / baseDirectory).value,
-  // Watch changes of example .flow files upon testing
+  // Watch changes of example .wv files upon testing
   Test / watchSources ++=
-    ((ThisBuild / baseDirectory).value / "spec" ** "*.flow").get ++
-      ((ThisBuild / baseDirectory).value / "flow-lang" ** "*.flow").get
+    ((ThisBuild / baseDirectory).value / "spec" ** "*.wv").get ++
+      ((ThisBuild / baseDirectory).value / "wvlet-lang" ** "*.wv").get
 )
 
 lazy val runner = project
-  .in(file("flow-runner"))
+  .in(file("wvlet-runner"))
   .enablePlugins(PackPlugin)
   .settings(
     buildSettings,
     specRunnerSettings,
-    name        := "flow-runner",
-    description := "flow program executor using trino, duckdb, etc.",
+    name        := "wvlet-runner",
+    description := "wvlet query executor using trino, duckdb, etc.",
     packMain :=
-      Map(
-        "flowc" -> "com.treasuredata.flow.lang.runner.cli.FlowCli",
-        "flow"  -> "com.treasuredata.flow.lang.runner.cli.FlowREPLCli"
-      ),
+      Map("wvc" -> "wvlet.lang.runner.cli.WvletCli", "wv" -> "wvlet.lang.runner.cli.WvletREPLCli"),
     libraryDependencies ++=
       Seq(
         "org.jline"                     % "jline"             % "3.26.3",
@@ -174,15 +151,15 @@ lazy val runner = project
   .dependsOn(lang)
 
 lazy val spec = project
-  .in(file("flow-spec"))
-  .settings(buildSettings, specRunnerSettings, noPublish, name := "flow-spec")
+  .in(file("wvlet-spec"))
+  .settings(buildSettings, specRunnerSettings, noPublish, name := "wvlet-spec")
   .dependsOn(runner)
 
 lazy val server = project
-  .in(file("flow-server"))
+  .in(file("wvlet-server"))
   .settings(
     buildSettings,
-    name := "flow-server",
+    name := "wvlet-server",
     libraryDependencies ++=
       Seq(
         // For redirecting slf4j logs to airframe-log
@@ -195,12 +172,9 @@ lazy val server = project
   .dependsOn(api.jvm)
 
 lazy val client = crossProject(JVMPlatform, JSPlatform)
-  .in(file("flow-client"))
+  .in(file("wvlet-client"))
   .enablePlugins(AirframeHttpPlugin)
-  .settings(
-    buildSettings,
-    airframeHttpClients := Seq("com.treasuredata.flow.api.v1.frontend:rpc:FrontendRPC")
-  )
+  .settings(buildSettings, airframeHttpClients := Seq("wvlet.lang.api.v1.frontend:rpc:FrontendRPC"))
   .dependsOn(api)
 
 import org.scalajs.linker.interface.{OutputPatterns, StandardConfig}
@@ -208,10 +182,10 @@ import org.scalajs.linker.interface.{ModuleKind, ModuleSplitStyle}
 
 lazy val ui = project
   .enablePlugins(ScalaJSPlugin)
-  .in(file("flow-ui"))
+  .in(file("wvlet-ui"))
   .settings(
     buildSettings,
-    name                   := "flow-ui",
+    name                   := "wvlet-ui",
     description            := "UI components that can be testable with Node.js",
     Test / jsEnv           := new org.scalajs.jsenv.jsdomnodejs.JSDOMNodeJSEnv(),
     Test / requireJsDomEnv := true,
@@ -227,10 +201,10 @@ lazy val ui = project
 
 lazy val uiMain = project
   .enablePlugins(ScalaJSPlugin, ScalablyTypedConverterExternalNpmPlugin)
-  .in(file("flow-ui-main"))
+  .in(file("wvlet-ui-main"))
   .settings(
     buildSettings,
-    name                            := "flow-ui-main",
+    name                            := "wvlet-ui-main",
     description                     := "UI main code compiled with Vite.js",
     Test / jsEnv                    := new org.scalajs.jsenv.nodejs.NodeJSEnv(),
     scalaJSUseMainModuleInitializer := true,
@@ -253,4 +227,4 @@ def linkerConfig(config: StandardConfig): StandardConfig = config
   .withCheckIR(true)
   .withSourceMap(true)
   .withModuleKind(ModuleKind.ESModule)
-  .withModuleSplitStyle(ModuleSplitStyle.SmallModulesFor(List("com.treasuredata.flow.ui")))
+  .withModuleSplitStyle(ModuleSplitStyle.SmallModulesFor(List("wvlet.ui")))

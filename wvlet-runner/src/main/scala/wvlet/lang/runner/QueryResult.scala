@@ -1,0 +1,25 @@
+package wvlet.lang.runner
+
+import wvlet.lang.model.{DataType, RelationType}
+import wvlet.lang.model.plan.LogicalPlan
+import wvlet.log.LogSupport
+
+import scala.collection.immutable.ListMap
+
+sealed trait QueryResult:
+  override def toString: String = toPrettyBox()
+  def toPrettyBox(maxWidth: Option[Int] = None, maxColWidth: Int = 150): String = QueryResultPrinter
+    .print(this, PrettyBoxFormat(maxWidth, maxColWidth))
+
+  def toTSV: String = QueryResultPrinter.print(this, TSVFormat)
+
+object QueryResult:
+  object empty extends QueryResult
+
+case class QueryResultList(list: Seq[QueryResult]) extends QueryResult
+
+case class PlanResult(plan: LogicalPlan, result: QueryResult) extends QueryResult
+
+case class TableRows(schema: RelationType, rows: Seq[ListMap[String, Any]], totalRows: Int)
+    extends QueryResult:
+  def isTruncated: Boolean = rows.size < totalRows

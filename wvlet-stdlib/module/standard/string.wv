@@ -1,0 +1,39 @@
+package wvlet.standard
+
+type string:
+  def to_int: int = sql"cast({this} as bigint)"
+  def to_long: long = sql"cast({this} as bigint)"
+  def to_float: float = sql"cast({this} as double)"
+  def to_double: double = sql"cast({this} as double)"
+  def to_boolean: boolean = sql"cast({this} as boolean)"
+  def to_date: date = sql"cast({this} as date)"
+
+  -- if the string is null, return the default value
+  def or_else(other:string): string = sql"coalesce({this},{other})"
+
+  def +(other:string): string = sql"{this} || {other}"
+  def length: int = sql"length({this})"
+  def trim: string = sql"trim({this})"
+
+  def like(pattern:string): boolean = sql"{this} like {pattern}"
+
+  def substring(start:int,end:int): string = sql"substring({this},{start},{end})"
+
+  def in(v:any*): boolean = sql"{this} in ({v})"
+  def not_in(expr:any*): boolean = sql"{this} not in ({expr})"
+end
+
+-- Using query engine specific dialects
+type string in duckdb:
+  -- TODO support context-specific functions
+  -- def substring(start:int): string = sql"substring({this},{start},strlen({this}))"
+  def regexp_like(pattern:string): boolean = sql"regexp_matches({this},{pattern})"
+end
+
+
+type string in trino:
+  -- TODO support context-specific functions
+  -- def substring(start:int, end:int): string = sql"substring({this},{start},{end})"
+  def regexp_like(pattern:string): boolean = sql"regexp_like({this},{pattern})"
+end
+

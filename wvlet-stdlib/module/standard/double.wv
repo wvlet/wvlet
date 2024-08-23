@@ -1,0 +1,20 @@
+package wvlet.standard
+
+type double:
+  def to_int: int = sql"cast({this} as bigint)"
+  def to_long: long = sql"cast({this} as bigint)"
+  def to_float: float = sql"cast({this} as double)"
+  def to_double: double = sql"cast({this} as double)"
+  def to_boolean: boolean = sql"cast({this} as boolean)"
+  def to_string: string = sql"cast({this} as varchar)"
+
+  def or_else(other:double): double = sql"coalesce({this},{other})"
+
+  def round(decimal:int=0): double = sql"round({this},{decimal})"
+
+  def in(v:any*): boolean = sql"{this} in ({v})"
+  def not_in(v:any*): boolean = sql"{this} not in ({v})"
+
+  -- TODO Add between(int, int), etc.
+  def between(l:double, r:double): boolean = sql"{this} between {l} and {r}"
+end
