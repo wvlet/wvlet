@@ -5,12 +5,12 @@ jobs:
   auto-merge:
     name: Auto-Merge Bot PRs
     runs-on: ubuntu-latest
-    if: ${{ github.actor == 'td-scala-steward' || github.actor == 'dependabot[bot]' }}
+    if: ${{ github.actor == 'xerial-bot' || github.actor == 'dependabot[bot]' }}
     steps:
       - name: Enable Pull Request Auto-Merge
         run: gh pr merge --squash --auto "${{ github.event.pull_request.html_url }}"
         env:
-          GITHUB_TOKEN: ${{ secrets.TD_ACTIONS_REPO_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Dependabot metadata
         id: metadata
         uses: dependabot/fetch-metadata@v2.2.0
@@ -18,4 +18,4 @@ jobs:
         run: gh pr review --approve "${{ github.event.pull_request.html_url }}"
         if: steps.metadata.outputs.update-type != 'version-update:semver-major'
         env:
-          GITHUB_TOKEN: ${{ secrets.TD_ACTIONS_REPO_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
