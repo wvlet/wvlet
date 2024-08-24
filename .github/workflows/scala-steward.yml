@@ -10,9 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     name: Scala Steward
     env:
-      # Necessary for resolving dependencies at private repositories
-      TD_ARTIFACTORY_USERNAME: ${{ secrets.TD_ARTIFACTORY_USERNAME }}
-      TD_ARTIFACTORY_PASSWORD: ${{ secrets.TD_ARTIFACTORY_PASSWORD }}
+      # scalablytyped requries more JVM memory      
       SBT_OPTS: -Xmx2048m -XX:+UseG1GC
     steps:
       # Need to checkout the repo for reading repos.md
@@ -20,8 +18,12 @@ jobs:
       - name: Launch Scala Steward
         uses: scala-steward-org/scala-steward-action@v2
         with:
-          # Need to use a different user from TD_ACTIONS_REPO_TOKEN for auto-approval of PRs
-          github-token: ${{ secrets.TD_SCALA_STEWARD_TOKEN }}
-          author-name: 'td-scala-steward'
-          author-email: 'dev+ctoo@treasure-data.com'
+          github-app-id: ${{ secrets.APP_ID }}
+          github-app-installation-id: ${{ secrets.APP_INSTALLATION_ID }}
+          github-app-key: ${{ secrets.APP_PRIVATE_KEY }}
+          author-name: 'scala-steward'
+          author-email: 'leo+bot@xerial.org'
           other-args: '--do-not-fork --add-labels'
+      # Prevent GitHub to suspend actions after 60 days of no activity
+      - name: Keep Alive GitHub Action
+        uses: gautamkrishnar/keepalive-workflow@v2
