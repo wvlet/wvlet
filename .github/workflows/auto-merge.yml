@@ -8,15 +8,15 @@ jobs:
     if: ${{ github.actor == 'xerial-bot' || github.actor == 'dependabot[bot]' }}
     steps:
       - name: Generate token
-        id: generate-token
-        uses: tibdex/github-app-token@v2
+      - uses: actions/create-github-app-token@v1
+        id: app-token
         with:
-          app_id: ${{ secrets.APP_ID }}
-          private_key: ${{ secrets.APP_PRIVATE_KEY }}
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
       - name: Enable Pull Request Auto-Merge
         run: gh pr merge --squash --auto "${{ github.event.pull_request.html_url }}"
         env:
-          GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
       - name: Dependabot metadata
         id: metadata
         uses: dependabot/fetch-metadata@v2.2.0
@@ -24,4 +24,4 @@ jobs:
         run: gh pr review --approve "${{ github.event.pull_request.html_url }}"
         if: steps.metadata.outputs.update-type != 'version-update:semver-major'
         env:
-          GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
