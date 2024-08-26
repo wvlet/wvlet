@@ -1,10 +1,22 @@
 # wvlet-ql
 
+![wvlet](logos/wvlet-banner-300.png)
+
 The wvlet, pronounced as weave-let, is a new flow-style query language for SQL-based database engines. 
+
+
+## Features
 
 wvlet queries (.wv) are designed to provide a more natural way to describe data processing pipelines, which can be compiled into SQL queries.
 
-- Flow-style: All of wvlet queries starts from a table scan statement `from`, and the result can be streamelined to the next processing steps using `where`, `group by`, `select`, etc.:
+- [Flow-Style Syntax](#flow-style-syntax)
+- [Reusable and Composable Models](#reusable-and-composable-models)
+- [Extensible](#extensible)
+- [Incremental Processing](#incremental-processing)
+
+### Flow-Style Syntax
+
+All of wvlet queries starts from a table scan statement `from`, and the result can be streamelined to the next processing steps using `where`, `group by`, `select`, etc.:
 ```sql
 from (table)
 where (filtering condition)
@@ -13,7 +25,10 @@ select (columns to output)
 order by (ordering columns...)
 ```
 This flow style provides a natual way to describe data processing pipelines, and this style still can leverage the power of existing SQL-based DBMS engines as wvlet queries will be compiled into SQL queries.
-- Reusable: wvlet queries can be defined as a data model function, which can be reused for subsequent data processing. For example, you can define a data model function:
+
+### Reusable and Composable Models
+
+wvlet queries can be defined as a data model function, which can be reused for subsequent data processing. For example, you can define a data model function with `model` keyword:
 ```sql
 model lookup(person_id: int) =
   from persons
@@ -27,15 +42,31 @@ Calling this model, e.g., `from lookup(1)`, will issue this SQL query:
 select * from persons
 where id = 1
 ```
-Model will work as function templates to generate SQL queries depending on the input values.
-
-- Composable. model functions can be reused for subsequent data processing:
+Model will work as function templates to generate SQL queries depending on the input values. You can also compose models to build more complex queries:
 ```sql
 from lookup(1) as p
 join address_table on p.id = address_table.person_id
 ```
 
-- Reproducible. You can build a reproducible data processing pipeline with time-window based incremental processing.
+### Extensible
+
+You can define your own functions to the existing data types to specify how to compile these functions int SQL. For example, you can extend the string type to handle null values:
+
+```sql
+type string:
+  def or_else(default:string): string = sql"coalesce({this}, '{default}')"
+end
+
+-- Use or_else function to handle null values:
+from person
+select id, name.or_else("N/A") as name
+```
+
+### Incremental Processing
+
+(This feature will be available soon)
+
+You can build a reproducible data processing pipeline with time-window based incremental processing.
 
 ```sql
 @config(watermark_column='time', window_size='1h')
@@ -53,7 +84,7 @@ insert into downstream_web_records
 
 This wvlet query will be compiled into the following SQL queries to update the downstream_web_records table:
 ```sql
-create table if not exits as downstream_web_records;
+create table if not exists as downstream_web_records;
 
 insert into downstream_web_records
 select time, user_id, path from upstrem_weblog_records
@@ -65,17 +96,5 @@ where
   and user_id is not null;
 ```
 
-- Extensible. You can define your own functions to the existing data types to specify how to compile these functions int SQL. For example, you can handle null values in string data types as follows:
-
-```sql
-type string:
-  def or_else(default:string) = sql"coalesce({this}, default)"
-end
-
--- Use or_else function to handle null values:
-from person
-select id, name.or_else("N/A") as name
-```
-
-# Quick Start
+## Quick Start
 
