@@ -160,7 +160,7 @@ object GenSQL extends Phase("generate-sql"):
       else
         indent(s"(select * from ${tableExpr})")
 
-    def toAggregateSelect(agg: AggregateSelect, r: Relation): AggregateSelect =
+    def toSQLSelect(agg: SQLSelect, r: Relation): SQLSelect =
       def collectFilter(plan: Relation): (List[Filter], Relation) =
         plan match
           case f: Filter =>
@@ -174,23 +174,25 @@ object GenSQL extends Phase("generate-sql"):
         case f: Filter =>
           val (filters, lastNode) = collectFilter(f)
           lastNode match
-            case a: Aggregate =>
+            case a: GroupBy =>
               agg.copy(child = a.child, groupingKeys = a.groupingKeys, having = filters)
             case other =>
               agg.copy(child = other, filters = filters)
         case p: Project =>
           agg
-        case a: Aggregate =>
+        case a: Agg =>
+          agg
+        case a: GroupBy =>
           agg.copy(child = a.child, groupingKeys = a.groupingKeys)
         case _ =>
           agg
 
-    end toAggregateSelect
+    end toSQLSelect
 
-    def printAggregate(a: Aggregate): String =
+    def printAggregate(a: GroupBy): String =
       // Aggregation without any projection (select)
-      val agg = toAggregateSelect(
-        AggregateSelect(a.child, Nil, a.groupingKeys, Nil, Nil, a.nodeLocation),
+      val agg = toSQLSelect(
+        SQLSelect(a.child, Nil, a.groupingKeys, Nil, Nil, a.nodeLocation),
         a.child
       )
       val s           = Seq.newBuilder[String]
@@ -222,11 +224,11 @@ object GenSQL extends Phase("generate-sql"):
     end printAggregate
 
     r match
-      case p: Project =>
+      case p: AggSelect =>
         // pull-up filter nodes to build where clause
         // pull-up an Aggregate node to build group by clause
-        val agg = toAggregateSelect(
-          AggregateSelect(p.child, p.selectItems.toList, Nil, Nil, Nil, p.nodeLocation),
+        val agg = toSQLSelect(
+          SQLSelect(p.child, p.selectItems.toList, Nil, Nil, Nil, p.nodeLocation),
           p.child
         )
         val selectItems = agg.selectItems.map(x => printExpression(x, ctx)).mkString(", ")
@@ -242,7 +244,7 @@ object GenSQL extends Phase("generate-sql"):
           s += s"having ${agg.having.map(x => printExpression(x.filterExpr, ctx)).mkString(", ")}"
 
         selectWithIndent(s"${s.result().mkString("\n")}")
-      case a: Aggregate =>
+      case a: GroupBy =>
         selectWithIndent(s"${printAggregate(a)}")
       case j: Join =>
         def printRel(r: Relation): String =
@@ -283,7 +285,7 @@ object GenSQL extends Phase("generate-sql"):
             s"${l}, ${r}${c}"
       case f: Filter =>
         f.child match
-          case a: Aggregate =>
+          case a: GroupBy =>
             val body = List(
               s"${printAggregate(a)}",
               s"having ${printExpression(f.filterExpr, ctx)}"

@@ -138,6 +138,7 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   case AS extends WvletToken(Keyword, "as")
 
   case FROM      extends WvletToken(Keyword, "from")
+  case AGG       extends WvletToken(Keyword, "agg")
   case SELECT    extends WvletToken(Keyword, "select")
   case FOR       extends WvletToken(Keyword, "for")
   case LET       extends WvletToken(Keyword, "let")
