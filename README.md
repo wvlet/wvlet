@@ -1,4 +1,4 @@
-![wvlet](logos/wvlet-banner-500.png)
+![wvlet](logos/wvlet-banner-300.png)
 
 The wvlet, pronounced as weave-let, is a new flow-style query language for SQL-based database engines, including [DuckDB](https://duckdb.org/), [Trino](https://trino.io/), etc.
 
