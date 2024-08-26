@@ -5,7 +5,7 @@ The wvlet, pronounced as weave-let, is a new flow-style query language for SQL-b
 Wvlet queries (.wv files) provide a more natural way to describe data processing pipelines, which will eventually be compiled into SQL queries. While SQL is a powerful language to process data, its syntax often does not match the semantic order of data processing, which has confused users. Here is an illustration of the problem from _[A Critique of Modern SQL And A Proposal Towards A Simple and Expressive Query Language (CIDR '24)](https://www.cidrdb.org/cidr2024/papers/p48-neumann.pdf)_:
 ![semantic-order](docs/img/sql-semantic-order.png)
 
-Wvlet queries start from a table scan statement `from ...`, and the result can be streamlined to the next processing steps using `where`, `group by`, `select`, etc.:
+For overcoming this shortcoming of SQL, wvlet queries start from a table scan statement `from ...`, and the result can be streamlined to the next processing steps using `where`, `group by`, `select`, etc., as if passing table values through [a pipe](https://en.wikipedia.org/wiki/Pipeline_(Unix)) to the next operator: 
 ```sql
 from (table)
 where (filtering condition)
@@ -13,9 +13,7 @@ group by (grouping keys, ...)
 select (columns to output)
 order by (ordering columns...)
 ```
-This flow style enables describing data processing pipelines with top-to-bottom semantic ordering and 
- providing various methods to help composing complex queries while peaking data in the middle of a query. This type of syntax has also been adopted in [Google SQL](https://research.google/pubs/sql-has-problems-we-can-fix-them-pipe-syntax-in-sql/) to cope with the complexity of SQL queries.
-
+This flow style enables describing data processing pipelines with top-to-bottom semantic ordering, and allowing various methods to help composing complex queries, such as adding operator for peaking data in the middle of a query. This type of flow syntax has also been adopted in Google SQL, _[SQL Has Problems. We Can Fix Them: Pipe Syntax In SQL (VLDB 2024)](https://research.google/pubs/sql-has-problems-we-can-fix-them-pipe-syntax-in-sql/)_, to cope with the complexity of writing SQL queries.
 
 # Features
 
@@ -43,7 +41,7 @@ Calling this model, e.g., `from lookup(1)`, will issue this SQL query:
 select * from persons
 where id = 1
 ```
-Model will work as function templates to generate SQL queries depending on the input values. You can also compose models to build more complex queries:
+Model will work as function templates to generate SQL queries depending on the input values. You can also compose models to build more complex queries. For example, you can take a join between data modle and other tables:
 ```sql
 from lookup(1) as p
 join address_table on p.id = address_table.person_id
