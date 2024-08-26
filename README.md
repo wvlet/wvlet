@@ -1,20 +1,22 @@
-# wvlet-ql
-
 ![wvlet](logos/wvlet-banner-300.png)
 
-The wvlet, pronounced as weave-let, is a new flow-style query language for SQL-based database engines. 
+Wvlet, pronounced as weave-let, is a new flow-style query language for SQL-based database engines, including [DuckDB](https://duckdb.org/), [Trino](https://trino.io/), etc.
 
+Wvlet queries (.wv files) are designed to be a more natural way to describe data processing pipelines, which will eventually be compiled into SQL queries. While SQL is a powerful language to process data, its syntax often does not match the semantic order of data processing, which has confused users. Here is an illustration of the problem from _[A Critique of Modern SQL And A Proposal Towards A Simple and Expressive Query Language (CIDR '24)](https://www.cidrdb.org/cidr2024/papers/p48-neumann.pdf)_:
+![semantic-order](docs/img/sql-semantic-order.png)
 
-## Features
+Wvlet queries aim to provide a more intuitive way to describe data processing pipelines by adopting the top-to-bottom syntax ordering for data processing.
 
-wvlet queries (.wv) are designed to provide a more natural way to describe data processing pipelines, which can be compiled into SQL queries.
+# Features
+
+Wvlet offers the following features to incorporate the best practices of the modern programming languages in the context of querying and managing data processing pipelines:
 
 - [Flow-Style Syntax](#flow-style-syntax)
 - [Reusable and Composable Models](#reusable-and-composable-models)
 - [Extensible](#extensible)
 - [Incremental Processing](#incremental-processing)
 
-### Flow-Style Syntax
+## Flow-Style Syntax
 
 All of wvlet queries starts from a table scan statement `from`, and the result can be streamelined to the next processing steps using `where`, `group by`, `select`, etc.:
 ```sql
@@ -24,9 +26,9 @@ group by (grouping keys, ...)
 select (columns to output)
 order by (ordering columns...)
 ```
-This flow style provides a natual way to describe data processing pipelines, and this style still can leverage the power of existing SQL-based DBMS engines as wvlet queries will be compiled into SQL queries.
+This flow style provides a natual way to describe data processing pipelines, and this style still can leverage the power of existing SQL-based DBMS engines as wvlet queries will be compiled into SQL queries. This flow-style query has also been adopted in [Google SQL](https://research.google/pubs/sql-has-problems-we-can-fix-them-pipe-syntax-in-sql/) too.
 
-### Reusable and Composable Models
+## Reusable and Composable Models
 
 wvlet queries can be defined as a data model function, which can be reused for subsequent data processing. For example, you can define a data model function with `model` keyword:
 ```sql
@@ -48,7 +50,7 @@ from lookup(1) as p
 join address_table on p.id = address_table.person_id
 ```
 
-### Extensible
+## Extensible
 
 You can define your own functions to the existing data types to specify how to compile these functions int SQL. For example, you can extend the string type to handle null values:
 
@@ -62,7 +64,15 @@ from person
 select id, name.or_else("N/A") as name
 ```
 
-### Incremental Processing
+You can also define table functions to pipe query results to the next processing steps:
+```sql
+from persons
+-- Use your_table_function to process the input table results
+pipe your_table_function(...)
+limit 10
+```
+
+## Incremental Processing
 
 (This feature will be available soon)
 
@@ -96,5 +106,6 @@ where
   and user_id is not null;
 ```
 
-## Quick Start
+# Quick Start
 
+(To be updated)
