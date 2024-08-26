@@ -213,23 +213,28 @@ case class RawSQL(sql: Expression, nodeLocation: Option[NodeLocation])
     with LeafPlan:
   override val relationType: RelationType = UnresolvedRelationType(RelationType.newRelationTypeName)
 
+/**
+  * A relation that only filters rows without changing the schema
+  */
+trait FilteringRelation extends UnaryRelation
+
 // Deduplicate (duplicate elimination) the input relation
-case class Distinct(child: Relation, nodeLocation: Option[NodeLocation]) extends UnaryRelation:
+case class Distinct(child: Relation, nodeLocation: Option[NodeLocation]) extends FilteringRelation:
   override def toString: String           = s"Distinct(${child})"
   override def relationType: RelationType = child.relationType
 
 case class Sort(child: Relation, orderBy: Seq[SortItem], nodeLocation: Option[NodeLocation])
-    extends UnaryRelation:
+    extends FilteringRelation:
   override def toString: String           = s"Sort[${orderBy.mkString(", ")}](${child})"
   override def relationType: RelationType = child.relationType
 
 case class Limit(child: Relation, limit: LongLiteral, nodeLocation: Option[NodeLocation])
-    extends UnaryRelation:
+    extends FilteringRelation:
   override def toString: String           = s"Limit[${limit.value}](${child})"
   override def relationType: RelationType = child.relationType
 
 case class Filter(child: Relation, filterExpr: Expression, nodeLocation: Option[NodeLocation])
-    extends UnaryRelation:
+    extends FilteringRelation:
   override def toString: String           = s"Filter[${filterExpr}](${child})"
   override def relationType: RelationType = child.relationType
 
@@ -243,9 +248,12 @@ case class EmptyRelation(nodeLocation: Option[NodeLocation]) extends Relation wi
 sealed trait Selection extends UnaryRelation:
   def selectItems: Seq[Attribute]
 
+// This node can be a pivot node for generating a SELECT statement with aggregation functions
+trait AggSelect extends Selection
+
 case class Project(child: Relation, selectItems: Seq[Attribute], nodeLocation: Option[NodeLocation])
     extends UnaryRelation
-    with Selection:
+    with AggSelect:
 
   override def toString: String = s"Project[${selectItems.mkString(", ")}](${child})"
 
@@ -299,12 +307,12 @@ case class Transform(
   * @param having
   * @param nodeLocation
   */
-case class Aggregate(
+case class GroupBy(
     child: Relation,
     groupingKeys: List[GroupingKey],
     nodeLocation: Option[NodeLocation]
 ) extends UnaryRelation:
-  override def toString: String = s"Aggregate[${groupingKeys.mkString(",")}](${child})"
+  override def toString: String = s"GroupBy[${groupingKeys.mkString(",")}](${child})"
 
   override lazy val relationType: RelationType = AggregationType(
     Name.typeName(RelationType.newRelationTypeName),
@@ -318,14 +326,37 @@ case class Aggregate(
   )
 
 /**
-  * Tradtional aggregation node with SELECT clause
+  * Agg(Select) is an operation to report grouping keys and aggregation expressions.
+  *
+  * @param child
+  * @param selectItems
+  * @param nodeLocation
+  */
+case class Agg(child: Relation, selectItems: List[Attribute], nodeLocation: Option[NodeLocation])
+    extends UnaryRelation
+    with AggSelect:
+  override def toString = s"AggSelect[${selectItems.mkString(", ")}](${child})"
+
+  override lazy val relationType: RelationType = ProjectedType(
+    Name.typeName(RelationType.newRelationTypeName),
+    selectItems.map {
+      case n: NamedType =>
+        n
+      case a =>
+        NamedType(Name.termName(a.nameExpr.leafName), a.dataType)
+    },
+    child.relationType
+  )
+
+/**
+  * Tradtional SQL aggregation node with SELECT clause
   * @param child
   * @param selectItems
   * @param groupingKeys
   * @param having
   * @param nodeLocation
   */
-case class AggregateSelect(
+case class SQLSelect(
     child: Relation,
     selectItems: List[Attribute],
     groupingKeys: List[GroupingKey],

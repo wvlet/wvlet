@@ -38,7 +38,7 @@ import wvlet.log.LogSupport
   *               | reserved  # Necessary to use reserved words as identifiers
   *   IDENTIFIER  : (LETTER | '_') (LETTER | DIGIT | '_')*
   *   BACKQUOTED_IDENTIFIER: '`' (~'`' | '``')+ '`'
-  *   reserved   : 'from' | 'select' | 'where' | 'group' | 'by' | 'having' | 'join'
+  *   reserved   : 'from' | 'select' | 'agg' | 'where' | 'group' | 'by' | 'having' | 'join'
   *              | 'order' | 'limit' | 'as' | 'model' | 'type' | 'def' | 'end' | 'in' | 'like'
   *
   *
@@ -228,10 +228,10 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
   def reserved(): Identifier =
     val t = scanner.nextToken()
     t.token match
-      case WvletToken.FROM | WvletToken.SELECT | WvletToken.WHERE | WvletToken.GROUP | WvletToken
-            .BY | WvletToken.HAVING | WvletToken.JOIN | WvletToken.ORDER | WvletToken.LIMIT |
-          WvletToken.AS | WvletToken.MODEL | WvletToken.TYPE | WvletToken.DEF | WvletToken.END |
-          WvletToken.IN | WvletToken.LIKE =>
+      case WvletToken.FROM | WvletToken.SELECT | WvletToken.AGG | WvletToken.WHERE | WvletToken
+            .GROUP | WvletToken.BY | WvletToken.HAVING | WvletToken.JOIN | WvletToken.ORDER |
+          WvletToken.LIMIT | WvletToken.AS | WvletToken.MODEL | WvletToken.TYPE | WvletToken.DEF |
+          WvletToken.END | WvletToken.IN | WvletToken.LIKE =>
         UnquotedIdentifier(t.str, t.nodeLocation)
       case _ =>
         unexpected(t)
@@ -687,6 +687,9 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
       case WvletToken.GROUP =>
         val groupBy = groupByExpr(input)
         queryBlock(groupBy)
+      case WvletToken.AGG =>
+        val agg = aggExpr(input)
+        queryBlock(agg)
       case WvletToken.SELECT =>
         val select = selectExpr(input)
         queryBlock(select)
@@ -788,11 +791,33 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
     nextItem
     Transform(input, items.result, t.nodeLocation)
 
-  def groupByExpr(input: Relation): Aggregate =
+  def groupByExpr(input: Relation): GroupBy =
     val t = consume(WvletToken.GROUP)
     consume(WvletToken.BY)
     val items = groupByItemList()
-    Aggregate(input, items, t.nodeLocation)
+    GroupBy(input, items, t.nodeLocation)
+
+  def aggExpr(input: Relation): Agg =
+    def findGroupingKeys(r: Relation): List[GroupingKey] =
+      r match
+        case g: GroupBy =>
+          g.groupingKeys
+        case f: FilteringRelation =>
+          findGroupingKeys(f.child)
+        case _ =>
+          Nil
+    end findGroupingKeys
+
+    val t = consume(WvletToken.AGG)
+    val groupingKeys = findGroupingKeys(input)
+      .zipWithIndex
+      .map { case (g, i) =>
+        val key = UnquotedIdentifier(s"_${i + 1}", g.nodeLocation)
+        SingleColumn(key, key, g.nodeLocation)
+      }
+    // report _1, _2, agg_expr...
+    val items = groupingKeys ++ selectItems()
+    Agg(input, items, t.nodeLocation)
 
   def groupByItemList(): List[GroupingKey] =
     val t = scanner.lookAhead()

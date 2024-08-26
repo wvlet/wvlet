@@ -136,7 +136,7 @@ class SQLGenerator(config: SQLGeneratorConfig = SQLGeneratorConfig()) extends Lo
         case Project(_, _, _) =>
           // Merge parent and child Filters
           collectFilterExpression(context) ++ collectFilterExpression(childFilters)
-        case a: AggregateSelect =>
+        case a: SQLSelect =>
           // We cannot push down parent Filters
           collectFilterExpression(childFilters)
         case n: NamedRelation =>
@@ -188,7 +188,7 @@ class SQLGenerator(config: SQLGeneratorConfig = SQLGeneratorConfig()) extends Lo
         case Project(_, _, _) =>
           // Merge parent and child Filters
           collectFilterExpression(context) ++ collectFilterExpression(childFilters)
-        case a: AggregateSelect =>
+        case a: SQLSelect =>
           // We cannot push down parent Filters
           collectFilterExpression(childFilters)
         case n: NamedRelation =>
@@ -204,7 +204,7 @@ class SQLGenerator(config: SQLGeneratorConfig = SQLGeneratorConfig()) extends Lo
       b += printExpression(cond)
 
     s match
-      case a @ AggregateSelect(_, _, groupingKeys, having, _, _) =>
+      case a @ SQLSelect(_, _, groupingKeys, having, _, _) =>
         if groupingKeys.nonEmpty then
           b += s"GROUP BY ${groupingKeys.map(printExpression).mkString(", ")}"
         having.map { h =>
@@ -233,7 +233,7 @@ class SQLGenerator(config: SQLGeneratorConfig = SQLGeneratorConfig()) extends Lo
         printRelation(in, r :: context)
       case p @ Project(in, selectItems, _) =>
         printSelection(p, context)
-      case a: AggregateSelect =>
+      case a: SQLSelect =>
         printSelection(a, context)
 //      case c: CTERelationRef =>
 //        c.name

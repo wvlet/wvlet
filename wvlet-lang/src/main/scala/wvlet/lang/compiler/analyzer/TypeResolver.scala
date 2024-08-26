@@ -389,7 +389,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
     }
 
   private object resolveGroupingKey extends RewriteRule:
-    override def apply(context: Context): PlanRewriter = { case g: Aggregate =>
+    override def apply(context: Context): PlanRewriter = { case g: GroupBy =>
       val newKeys = g
         .groupingKeys
         .map { k =>
@@ -404,11 +404,11 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
     */
   private object resolveGroupingKeyIndexes extends RewriteRule:
     // Find the first Aggregate node
-    private def findAggregate(r: Relation): Option[Aggregate] =
+    private def findAggregate(r: Relation): Option[GroupBy] =
       r match
-        case a: Aggregate =>
+        case a: GroupBy =>
           Some(a)
-        case f: Filter =>
+        case f: FilteringRelation =>
           findAggregate(f.child)
         case p: Project =>
           findAggregate(p.child)
@@ -416,7 +416,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
           None
 
     override def apply(context: Context): PlanRewriter = {
-      case p: Project if p.selectItems.exists(_.nameExpr.isGroupingKeyIndex) =>
+      case p: AggSelect if p.selectItems.exists(_.nameExpr.isGroupingKeyIndex) =>
         findAggregate(p.child) match
           case Some(agg) =>
             p.transformChildExpressions {
