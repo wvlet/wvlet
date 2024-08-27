@@ -331,9 +331,19 @@ object GenSQL extends Phase("generate-sql"):
                 )}\nwhere ${printExpression(f.filterExpr, ctx)}"""
             )
       case a: AliasedRelation =>
-        indent(
-          s"${printRelation(a.inputRelation, ctx, sqlContext.nested)} as ${printExpression(a.alias, ctx)}"
-        )
+        val tableAlias: String =
+          val name = printExpression(a.alias, ctx)
+          a.columnNames match
+            case Some(columns) =>
+              s"${name}(${columns.map(x => s"${x.name}").mkString(", ")})"
+            case None =>
+              name
+
+        a.child match
+          case v: Values =>
+            selectAllWithIndent(s"${printValues(v, ctx)} as ${tableAlias}")
+          case _ =>
+            indent(s"${printRelation(a.inputRelation, ctx, sqlContext.nested)} as ${tableAlias}")
       case p: ParenthesizedRelation =>
         selectWithIndentAndParenIfNecessary(s"${printRelation(p.child, ctx, sqlContext.nested)}")
       case t: TestRelation =>
@@ -408,6 +418,8 @@ object GenSQL extends Phase("generate-sql"):
         selectAllWithIndent(s"'${j.path}'")
       case t: ParquetFileScan =>
         selectAllWithIndent(s"'${t.path}'")
+      case v: Values =>
+        printValues(v, ctx)
       case s: Show if s.showType == ShowType.tables =>
         val sql  = s"select table_name from information_schema.tables"
         val cond = List.newBuilder[Expression]
@@ -485,6 +497,20 @@ object GenSQL extends Phase("generate-sql"):
     end match
 
   end printRelation
+
+  def printValues(values: Values, ctx: Context): String =
+    val rows = values
+      .rows
+      .map { row =>
+        row match
+          case a: ArrayConstructor =>
+            val elems = a.values.map(x => printExpression(x, ctx)).mkString(", ")
+            s"(${elems})"
+          case other =>
+            printExpression(other, ctx)
+      }
+      .mkString(", ")
+    s"(values ${rows})"
 
   def printExpression(expression: Expression, context: Context): String =
     expression match

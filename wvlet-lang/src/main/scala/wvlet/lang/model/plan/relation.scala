@@ -93,7 +93,7 @@ case class ParenthesizedRelation(child: Relation, nodeLocation: Option[NodeLocat
 case class AliasedRelation(
     child: Relation,
     alias: NameExpr,
-    columnNames: Option[Seq[NameExpr]],
+    columnNames: Option[Seq[NamedType]],
     nodeLocation: Option[NodeLocation]
 ) extends UnaryRelation:
   override def toString: String =
@@ -103,9 +103,12 @@ case class AliasedRelation(
       case None =>
         s"AliasedRelation[${alias}](${child})"
 
-  override def relationType: RelationType =
-    // TODO column rename with columnNames
-    AliasedType(Name.typeName(alias.leafName), child.relationType)
+  override lazy val relationType: RelationType =
+    columnNames match
+      case None =>
+        AliasedType(Name.typeName(alias.leafName), child.relationType)
+      case Some(columns) =>
+        ProjectedType(Name.typeName(alias.leafName), columns, child.relationType)
 
 end AliasedRelation
 
