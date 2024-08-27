@@ -150,6 +150,8 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   case TRANSFORM extends WvletToken(Keyword, "transform")
   case PIVOT     extends WvletToken(Keyword, "pivot")
 
+  case DISTINCT extends WvletToken(Keyword, "distinct")
+
   case ASC  extends WvletToken(Keyword, "asc")
   case DESC extends WvletToken(Keyword, "desc")
 
