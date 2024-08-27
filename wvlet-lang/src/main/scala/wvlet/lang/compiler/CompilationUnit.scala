@@ -122,10 +122,15 @@ object CompilationUnit extends LogSupport:
       if ignoreSpecFolder && level == 1 && f.getName == "spec" then
         Seq.empty
       else
-        f.listFiles()
-          .flatMap { file =>
+        val files         = f.listFiles()
+        val hasAnyWvFiles = files.exists(_.getName.endsWith(".wv"))
+        if hasAnyWvFiles then
+          // Only scan sub-folders if there is any .wv files
+          files flatMap { file =>
             listFiles(file.getPath, level + 1, ignoreSpecFolder)
           }
+        else
+          Seq.empty
     else if f.isFile && f.getName.endsWith(".wv") then
       Seq(f.getPath)
     else
