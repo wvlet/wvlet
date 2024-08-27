@@ -148,7 +148,7 @@ object GenSQL extends Phase("generate-sql"):
         val str = s.split("\n").map(x => s"  ${x}").mkString("\n")
         s"\n${str}"
 
-    def selectWithIndent(body: String): String =
+    def selectWithIndentAndParenIfNecessary(body: String): String =
       if sqlContext.nestingLevel == 0 then
         body
       else
@@ -247,12 +247,12 @@ object GenSQL extends Phase("generate-sql"):
         val pivotExpr =
           s"pivot ${printRelation(p.child, ctx, sqlContext.enterFrom)}\n  on ${onExpr}\n  using ${aggItems}"
         if p.groupingKeys.isEmpty then
-          indent(pivotExpr)
+          selectWithIndentAndParenIfNecessary(pivotExpr)
         else
           val groupByItems = p.groupingKeys.map(x => printExpression(x, ctx)).mkString(", ")
-          indent(s"${pivotExpr}\n  group by ${groupByItems}")
+          selectWithIndentAndParenIfNecessary(s"${pivotExpr}\n  group by ${groupByItems}")
       case p: Pivot => // pivot without explicit aggregations
-        indent(
+        selectWithIndentAndParenIfNecessary(
           s"pivot ${printRelation(p.child, ctx, sqlContext.enterFrom)}\n  on ${pivotOnExpr(p)}"
         )
       case p: AggSelect =>
@@ -274,9 +274,9 @@ object GenSQL extends Phase("generate-sql"):
         if agg.having.nonEmpty then
           s += s"having ${agg.having.map(x => printExpression(x.filterExpr, ctx)).mkString(", ")}"
 
-        selectWithIndent(s"${s.result().mkString("\n")}")
+        selectWithIndentAndParenIfNecessary(s"${s.result().mkString("\n")}")
       case a: GroupBy =>
-        selectWithIndent(s"${printAggregate(a)}")
+        selectWithIndentAndParenIfNecessary(s"${printAggregate(a)}")
       case j: Join =>
         def printRel(r: Relation): String =
           r match
@@ -321,9 +321,9 @@ object GenSQL extends Phase("generate-sql"):
               s"${printAggregate(a)}",
               s"having ${printExpression(f.filterExpr, ctx)}"
             ).mkString("\n")
-            selectWithIndent(s"${body}")
+            selectWithIndentAndParenIfNecessary(s"${body}")
           case _ =>
-            selectWithIndent(
+            selectWithIndentAndParenIfNecessary(
               s"""select * from ${printRelation(
                   f.inputRelation,
                   ctx,
@@ -335,7 +335,7 @@ object GenSQL extends Phase("generate-sql"):
           s"${printRelation(a.inputRelation, ctx, sqlContext.nested)} as ${printExpression(a.alias, ctx)}"
         )
       case p: ParenthesizedRelation =>
-        selectWithIndent(s"${printRelation(p.child, ctx, sqlContext.nested)}")
+        selectWithIndentAndParenIfNecessary(s"${printRelation(p.child, ctx, sqlContext.nested)}")
       case t: TestRelation =>
         printRelation(t.inputRelation, ctx, sqlContext.nested)
       case q: Query =>
@@ -349,10 +349,12 @@ object GenSQL extends Phase("generate-sql"):
               s"""select * from ${input}
                  |order by ${s.orderBy.map(e => printExpression(e, ctx)).mkString(", ")}
                  |limit ${l.limit.stringValue}""".stripMargin
-            selectWithIndent(body)
+            selectWithIndentAndParenIfNecessary(body)
           case _ =>
             val input = printRelation(l.inputRelation, ctx, sqlContext.enterFrom)
-            selectWithIndent(s"""select * from ${input}\nlimit ${l.limit.stringValue}""")
+            selectWithIndentAndParenIfNecessary(
+              s"""select * from ${input}\nlimit ${l.limit.stringValue}"""
+            )
       case s: Sort =>
         val input = printRelation(s.inputRelation, ctx, sqlContext.enterFrom)
         val body =
@@ -360,10 +362,10 @@ object GenSQL extends Phase("generate-sql"):
               .orderBy
               .map(e => printExpression(e, ctx))
               .mkString(", ")}"""
-        selectWithIndent(body)
+        selectWithIndentAndParenIfNecessary(body)
       case t: Transform =>
         val transformItems = t.transformItems.map(x => printExpression(x, ctx)).mkString(", ")
-        selectWithIndent(
+        selectWithIndentAndParenIfNecessary(
           s"""select ${transformItems}, * from ${printRelation(
               t.inputRelation,
               ctx,
@@ -376,7 +378,7 @@ object GenSQL extends Phase("generate-sql"):
         val args = t.args.map(x => printExpression(x, ctx)).mkString(", ")
         selectAllWithIndent(s"${t.name.strExpr}(${args})")
       case r: RawSQL =>
-        selectWithIndent(printExpression(r.sql, ctx))
+        selectWithIndentAndParenIfNecessary(printExpression(r.sql, ctx))
       case t: TableScan =>
         selectAllWithIndent(s"${t.name.fullName}")
       case j: JSONFileScan =>
@@ -405,7 +407,7 @@ object GenSQL extends Phase("generate-sql"):
             sql
           else
             s"${sql} where ${printExpression(Expression.concatWithAnd(conds), ctx)}"
-        selectWithIndent(s"${body} order by table_name")
+        selectWithIndentAndParenIfNecessary(s"${body} order by table_name")
       case s: Show if s.showType == ShowType.models =>
         val models: Seq[ListMap[String, Any]] = ctx
           .global
@@ -446,11 +448,11 @@ object GenSQL extends Phase("generate-sql"):
           }
           .map(x => s"(${x})")
         if modelValues.isEmpty then
-          selectWithIndent(
+          selectWithIndentAndParenIfNecessary(
             "select cast(null as varchar) as name, cast(null as varchar) as args, cast(null as varchar) as package_name limit 0"
           )
         else
-          selectWithIndent(
+          selectWithIndentAndParenIfNecessary(
             s"select * from values ${indent(modelValues.mkString(", "))} as __models(name, args, package_name)"
           )
       case other =>
