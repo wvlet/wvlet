@@ -244,13 +244,16 @@ object GenSQL extends Phase("generate-sql"):
         val onExpr   = pivotOnExpr(p)
         val aggItems = a.selectItems.map(x => printExpression(x, ctx)).mkString(", ")
         val pivotExpr =
-          s"pivot ${printRelation(p.child, ctx, sqlContext.enterFrom)} on ${onExpr} using ${aggItems}"
+          s"pivot ${printRelation(p.child, ctx, sqlContext.enterFrom)}\n  on ${onExpr}\n  using ${aggItems}"
         if p.groupingKeys.isEmpty then
-          pivotExpr
+          indent(pivotExpr)
         else
           val groupByItems = p.groupingKeys.map(x => printExpression(x, ctx)).mkString(", ")
-          s"${pivotExpr} group by ${groupByItems}"
-
+          indent(s"${pivotExpr}\n  group by ${groupByItems}")
+      case p: Pivot => // pivot without explicit aggregations
+        indent(
+          s"pivot ${printRelation(p.child, ctx, sqlContext.enterFrom)}\n  on ${pivotOnExpr(p)}"
+        )
       case p: AggSelect =>
         // pull-up filter nodes to build where clause
         // pull-up an Aggregate node to build group by clause
@@ -273,8 +276,6 @@ object GenSQL extends Phase("generate-sql"):
         selectWithIndent(s"${s.result().mkString("\n")}")
       case a: GroupBy =>
         selectWithIndent(s"${printAggregate(a)}")
-      case p: Pivot =>
-        s"pivot ${printRelation(p.child, ctx, sqlContext.enterFrom)} on ${pivotOnExpr(p)}"
       case j: Join =>
         def printRel(r: Relation): String =
           r match
