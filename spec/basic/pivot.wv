@@ -1,0 +1,2 @@
+from 'books.json'
+pivot on year

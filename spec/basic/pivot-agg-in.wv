@@ -1,0 +1,3 @@
+from 'books.json'
+pivot on year in (1951, 1960)
+agg _.count

@@ -74,7 +74,9 @@ import wvlet.log.LogSupport
   *             | 'group' 'by' groupByItemList
   *             | 'where' booleanExpression
   *             | 'transform' transformExpr
-  *             | 'select' selectExpr
+  *             | 'select' selectItems
+  *             | 'agg' selectItems
+  *             | 'pivot' 'on' pivotItem (',' pivotItem)*
   *             | 'limit' INTEGER_VALUE
   *             | 'order' 'by' sortItem (',' sortItem)* comma?)?
   *             | 'test' COLON testExpr*
@@ -93,16 +95,18 @@ import wvlet.log.LogSupport
   *   transformExpr: transformItem (',' transformItem)* ','?
   *   transformItem: qualifiedId '=' expression
   *
-  *   selectExpr: selectItem (',' selectItem)* ','?
-  *   selectItem: (identifier '=')? expression
-  *             | expression ('as' identifier)?
+  *   selectItems: selectItem (',' selectItem)* ','?
+  *   selectItem : (identifier '=')? expression
+  *              | expression ('as' identifier)?
   *
   *   test: 'test' COLON testExpr*
   *   testExpr: booleanExpression
   *
   *   showCommand: 'show' identifier
   *
-  *   sortItem:: expression ('asc' | 'desc')?
+  *   sortItem: expression ('asc' | 'desc')?
+  *
+  *   pivotKey: identifier ('in' '(' (valueExpression (',' valueExpression)*) ')')?
   *
   *   typeDef    : 'type' identifier typeParams? context? typeExtends? ':' typeElem* 'end'
   *   typeParams : '[' typeParam (',' typeParam)* ']'
@@ -690,6 +694,9 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
       case WvletToken.AGG =>
         val agg = aggExpr(input)
         queryBlock(agg)
+      case WvletToken.PIVOT =>
+        val pivot = pivotExpr(input)
+        queryBlock(pivot)
       case WvletToken.SELECT =>
         val select = selectExpr(input)
         queryBlock(select)
@@ -818,6 +825,55 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
     // report _1, _2, agg_expr...
     val items = groupingKeys ++ selectItems()
     Agg(input, items, t.nodeLocation)
+
+  def pivotExpr(input: Relation): Pivot =
+    def pivotValues: List[Expression] =
+      val values = List.newBuilder[Expression]
+      def nextValue: Unit =
+        val t = scanner.lookAhead()
+        t.token match
+          case WvletToken.COMMA =>
+            consume(WvletToken.COMMA)
+            nextValue
+          case WvletToken.R_PAREN =>
+          // ok
+          case _ =>
+            val e = expression()
+            values += e
+            nextValue
+      end nextValue
+
+      nextValue
+      values.result()
+    end pivotValues
+
+    def pivotKeys: List[PivotKey] =
+      val t = scanner.lookAhead()
+      t.token match
+        case WvletToken.IDENTIFIER =>
+          val pivotKey = identifierSingle()
+          scanner.lookAhead().token match
+            case WvletToken.IN =>
+              consume(WvletToken.IN)
+              consume(WvletToken.L_PAREN)
+              val values = pivotValues
+              consume(WvletToken.R_PAREN)
+              PivotKey(pivotKey, values, t.nodeLocation) :: pivotKeys
+            case _ =>
+              PivotKey(pivotKey, Nil, t.nodeLocation) :: pivotKeys
+        case WvletToken.COMMA =>
+          consume(WvletToken.COMMA)
+          pivotKeys
+        case _ =>
+          Nil
+    end pivotKeys
+
+    val t = consume(WvletToken.PIVOT)
+    consume(WvletToken.ON)
+    val keys = pivotKeys
+    Pivot(input, keys, t.nodeLocation)
+
+  end pivotExpr
 
   def groupByItemList(): List[GroupingKey] =
     val t = scanner.lookAhead()
