@@ -817,20 +817,8 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
 
   def addColumnsExpr(input: Relation): AddColumnsToRelation =
     val t     = consume(WvletToken.ADD)
-    val items = List.newBuilder[SingleColumn]
-    def nextItem: Unit =
-      val t = scanner.lookAhead()
-      t.token match
-        case WvletToken.COMMA =>
-          consume(WvletToken.COMMA)
-          nextItem
-        case t if t.tokenType == TokenType.Keyword =>
-        // finish
-        case _ =>
-          items += selectItem()
-          nextItem
-    nextItem
-    AddColumnsToRelation(input, items.result, t.nodeLocation)
+    val items = selectItems()
+    AddColumnsToRelation(input, items, t.nodeLocation)
 
   def dropColumnsExpr(input: Relation): DropColumnsFromRelation =
     val t     = consume(WvletToken.DROP)
@@ -841,6 +829,8 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
         case WvletToken.COMMA =>
           consume(WvletToken.COMMA)
           nextItem
+        case WvletToken.EOF | WvletToken.END =>
+        // finish
         case t if t.tokenType == TokenType.Keyword =>
         // finish
         case _ =>
