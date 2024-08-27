@@ -16,8 +16,8 @@ package wvlet.lang.compiler
 import wvlet.lang.catalog.Catalog
 import wvlet.lang.compiler.Compiler.presetLibraries
 import wvlet.lang.compiler.analyzer.{RemoveUnusedQueries, SymbolLabeler, TypeResolver}
-import wvlet.lang.compiler.parser.{WvletParser, ParserPhase}
-import wvlet.lang.compiler.transform.Incrementalize
+import wvlet.lang.compiler.parser.{ParserPhase, WvletParser}
+import wvlet.lang.compiler.transform.{Incrementalize, TrinoRewritePivot}
 import wvlet.lang.model.plan.LogicalPlan
 import wvlet.log.LogSupport
 
@@ -40,7 +40,8 @@ object Compiler extends LogSupport:
     * Phases for transforming the logical plan trees
     */
   def transformPhases: List[Phase] = List(
-    Incrementalize // Create an incrementalized plan for a subscription
+    TrinoRewritePivot, // Rewrite pivot to group-by for engines not supporting pivot functions
+    Incrementalize     // Create an incrementalized plan for a subscription
   )
 
   /**

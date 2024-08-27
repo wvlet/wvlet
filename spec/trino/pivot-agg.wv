@@ -1,0 +1,4 @@
+from sql"select * from (values (1, 'apple', 'A'), (2, 'apple', 'A'), (3, 'banana', 'B')) as t(id, name, tpe)"
+pivot on tpe in ('A', 'B')
+group by name
+agg _.count
