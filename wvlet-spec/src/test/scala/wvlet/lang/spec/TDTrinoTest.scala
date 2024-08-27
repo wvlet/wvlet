@@ -13,25 +13,62 @@
  */
 package wvlet.lang.spec
 
-import wvlet.lang.runner.cli.{WvletCli, WvletREPLCli}
+import wvlet.lang.runner.cli.{Profile, WvletCli, WvletREPLCli}
 import wvlet.airspec.AirSpec
+import wvlet.lang.{StatusCode, WvletLangException}
+import wvlet.lang.compiler.{Compiler, CompilerOptions}
+import wvlet.lang.runner.QueryExecutor
+import wvlet.lang.runner.connector.trino.{TrinoConfig, TrinoConnector}
 
-class TDTrinoTest extends AirSpec:
+class TDTrinoSpecRunner(specPath: String) extends AirSpec:
   if inCI then
     skip("Trino td-dev profile is not available in CI")
 
-  test("resolve string") {
-    WvletREPLCli.main("""--profile td-dev -c 'from accounts where data_center.in("aws")'""")
-  }
+  private val profile: Profile = Profile
+    .getProfile("td-dev")
+    .getOrElse {
+      throw StatusCode.NOT_IMPLEMENTED.newException("td-dev profile is not found")
+    }
 
-  test("show tables") {
-    WvletREPLCli.main("--profile td-dev -c 'show tables'")
-  }
+  private val defaultCatalog = profile.catalog.getOrElse("td")
+  private val defaultSchema  = profile.schema.getOrElse("default")
 
-  test("time.within") {
-    WvletREPLCli.main("""--profile td-dev -w spec/trino --file within.wv""")
-  }
+  private val config = TrinoConfig(
+    catalog = defaultCatalog,
+    schema = defaultSchema,
+    hostAndPort = profile.host.getOrElse("localhost"),
+    user = profile.user,
+    password = profile.password
+  )
 
-  test("sfdc.account") {
-    WvletREPLCli.main("""--profile td-dev -w spec/trino --file sfdc_accounts.wv""")
-  }
+  private val executor = QueryExecutor(TrinoConnector(config))
+
+  private val compiler = Compiler(
+    CompilerOptions(
+      sourceFolders = List(specPath),
+      workingFolder = specPath,
+      catalog = Some(defaultCatalog),
+      schema = Some(defaultSchema)
+    )
+  )
+
+  // Need to tell it's Trino
+  compiler.setDefaultCatalog(executor.getDBConnector.getCatalog(defaultCatalog, defaultSchema))
+
+  // Compile all files in the source paths first
+  for unit <- compiler.localCompilationUnits do
+    test(unit.sourceFile.fileName) {
+      // ignoredSpec.get(unit.sourceFile.fileName).foreach(reason => ignore(reason))
+
+      try
+        val compileResult = compiler.compileSingleUnit(unit)
+        val result        = executor.executeSingle(unit, compileResult.context)
+        debug(result.toPrettyBox(maxWidth = Some(120)))
+      catch
+        case e: WvletLangException if e.statusCode.isUserError =>
+          fail(e.getMessage)
+    }
+
+end TDTrinoSpecRunner
+
+class TDTrinoTest extends TDTrinoSpecRunner("spec/trino")

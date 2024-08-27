@@ -362,7 +362,9 @@ case class Pivot(
     nodeLocation: Option[NodeLocation]
 ) extends UnaryRelation:
 
-  override def toString = s"Pivot(on:[${pivotKeys.mkString(", ")}])(${child})"
+  override def toString =
+    s"Pivot(on:[${pivotKeys.mkString(", ")}],group_by:[${groupingKeys.mkString(", ")}],${child})"
+
   override lazy val relationType: RelationType = AggregationType(
     Name.typeName(RelationType.newRelationTypeName),
     groupingKeys.map {
@@ -375,7 +377,7 @@ case class Pivot(
     child.relationType
   )
 
-case class PivotKey(name: Identifier, values: List[Expression], nodeLocation: Option[NodeLocation])
+case class PivotKey(name: Identifier, values: List[Literal], nodeLocation: Option[NodeLocation])
     extends Expression:
   override def children: Seq[Expression] = values
 

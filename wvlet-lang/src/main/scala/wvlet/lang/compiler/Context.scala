@@ -46,7 +46,7 @@ case class GlobalContext(compilerOptions: CompilerOptions):
   var defs: GlobalDefinitions = _
 
   var defaultCatalog: Catalog = InMemoryCatalog(catalogName = "memory", functions = Nil)
-  var defaultSchema: String   = "main"
+  var defaultSchema: String   = compilerOptions.schema.getOrElse("main")
 
   def init(using rootContext: Context): Unit =
     this.rootContext = rootContext
