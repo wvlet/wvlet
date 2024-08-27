@@ -42,58 +42,87 @@ object TrinoRewritePivot extends Phase("rewrite-pivot"):
   private object rewritePivotAggForTrino extends RewriteRule:
     override def apply(context: Context): PlanRewriter =
       case a: Agg if a.child.isPivot && context.dbType == DBType.Trino =>
-        // TODO: Implement pivot aggregation for Trino
-        a
+        rewritePivot(a.child.asInstanceOf[Pivot], a.selectItems)
 
   private object rewritePivotForTrino extends RewriteRule:
     override def apply(context: Context): PlanRewriter =
       case p: Pivot if context.dbType == DBType.Trino =>
-        // Rewrite pivot function for Trino
-        val pivotKeyNames = p.pivotKeys.map(_.name.fullName)
-        val pivotGroupingKeys: List[GroupingKey] =
-          if p.groupingKeys.isEmpty then
-            // If no grouping key is given, use all columns in the relation
-            p.child
-              .relationType
-              .fields
-              .filterNot(f => pivotKeyNames.contains(f.name.name))
-              .map { f =>
-                UnresolvedGroupingKey(
-                  NameExpr.EmptyName,
-                  UnquotedIdentifier(f.name.name, None),
-                  None
-                )
-              }
-              .toList
-          else
-            p.groupingKeys
-
-        // Wrap with group by for specifying aggregation keys
-        val g = GroupBy(p.child, pivotGroupingKeys, p.nodeLocation)
-
-        // Pivot keys are used as grouping keys
-        val pivotKeys: List[Attribute] = p.groupingKeys.map(k => SingleColumn(k.name, k.name, None))
-        // Pivot aggregation expressions
-        val pivotAggExprs: List[Attribute] = p
-          .pivotKeys
-          .flatMap { pivotKey =>
-            val targetColumn = pivotKey.name
-            val pivotExprs = pivotKey
-              .values
-              .map { v =>
-                // TODO support other aggregation functions
-                val expr = FunctionApply(
-                  UnquotedIdentifier("count_if", None),
-                  List(FunctionArg(None, Eq(targetColumn, v, None), None)),
-                  None
-                )
-                SingleColumn(DoubleQuotedIdentifier(v.stringValue, None), expr, None)
-              }
-            pivotExprs
-          }
-        Project(g, pivotKeys ++ pivotAggExprs, p.nodeLocation)
+        rewritePivot(p, Nil)
     end apply
 
   end rewritePivotForTrino
+
+  private def rewritePivot(p: Pivot, aggExprs: List[Attribute]): Relation =
+    // Rewrite pivot function for Trino
+    val pivotKeyNames = p.pivotKeys.map(_.name.fullName)
+    val pivotGroupingKeys: List[GroupingKey] =
+      if p.groupingKeys.isEmpty then
+        // If no grouping key is given, use all columns in the relation
+        p.child
+          .relationType
+          .fields
+          .filterNot(f => pivotKeyNames.contains(f.name.name))
+          .map { f =>
+            UnresolvedGroupingKey(NameExpr.EmptyName, UnquotedIdentifier(f.name.name, None), None)
+          }
+          .toList
+      else
+        p.groupingKeys
+
+    // Wrap with group by for specifying aggregation keys
+    val g = GroupBy(p.child, pivotGroupingKeys, p.nodeLocation)
+
+    // Pivot keys are used as grouping keys
+    val pivotKeys: List[Attribute] = p.groupingKeys.map(k => SingleColumn(k.name, k.name, None))
+    // Pivot aggregation expressions
+    val pivotAggExprs: List[Attribute] = p
+      .pivotKeys
+      .flatMap { pivotKey =>
+        val targetColumn = pivotKey.name
+        val pivotExprs = pivotKey
+          .values
+          .flatMap { v =>
+            val exprs = List.newBuilder[SingleColumn]
+            if aggExprs.isEmpty then
+              // count_if(pivot_column = value) as "value"
+              exprs +=
+                SingleColumn(
+                  DoubleQuotedIdentifier(v.stringValue, None),
+                  FunctionApply(
+                    UnquotedIdentifier("count_if", None),
+                    List(FunctionArg(None, Eq(targetColumn, v, None), None)),
+                    None
+                  ),
+                  None
+                )
+            else
+              val fieldNames = p.inputRelationType.fields.map(_.name).toSet
+              aggExprs.foreach { aggExpr =>
+                // Rewrite agg expr to conditional aggregation. For example:
+                // sum(price) => sum(if(pivot_column = value, price, null)) as "value"
+                val pivotAggExpr = aggExpr.transformUpExpression {
+                  // Replace input relation field access to conditional access
+                  case id: Identifier if fieldNames.contains(id.toTermName) =>
+                    FunctionApply(
+                      UnquotedIdentifier("if", None),
+                      List(
+                        FunctionArg(None, Eq(targetColumn, v, None), None),
+                        FunctionArg(None, id, None),
+                        FunctionArg(None, NullLiteral(None), None)
+                      ),
+                      None
+                    )
+                }
+                exprs +=
+                  SingleColumn(DoubleQuotedIdentifier(v.stringValue, None), pivotAggExpr, None)
+              }
+            end if
+            exprs.result
+          }
+        pivotExprs
+      }
+    Project(g, pivotKeys ++ pivotAggExprs, p.nodeLocation)
+
+  end rewritePivot
 
 end TrinoRewritePivot
