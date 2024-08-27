@@ -262,9 +262,22 @@ object GenSQL extends Phase("generate-sql"):
           SQLSelect(p.child, p.selectItems.toList, Nil, Nil, Nil, p.nodeLocation),
           p.child
         )
+        val hasDistinct =
+          p match
+            case d: Distinct =>
+              true
+            case _ =>
+              false
+
         val selectItems = agg.selectItems.map(x => printExpression(x, ctx)).mkString(", ")
         val s           = Seq.newBuilder[String]
-        s += s"select ${selectItems}"
+        s +=
+          s"select ${
+              if hasDistinct then
+                "distinct "
+              else
+                ""
+            }${selectItems}"
         s += s"from ${printRelation(agg.child, ctx, sqlContext.enterFrom)}"
         if agg.filters.nonEmpty then
           val filterExpr = Expression.concatWithAnd(agg.filters.map(x => x.filterExpr))

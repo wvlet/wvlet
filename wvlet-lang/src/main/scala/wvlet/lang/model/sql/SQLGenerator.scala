@@ -345,8 +345,8 @@ class SQLGenerator(config: SQLGeneratorConfig = SQLGeneratorConfig()) extends Lo
         s"(${printRelation(r)})"
       case _: Sort =>
         s"(${printRelation(r)})"
-      case _: Distinct =>
-        s"(${printRelation(r)})"
+//      case _: Distinct =>
+//        s"(${printRelation(r)})"
       case _ =>
         printRelation(r)
 

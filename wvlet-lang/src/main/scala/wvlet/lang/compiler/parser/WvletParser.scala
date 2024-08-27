@@ -17,7 +17,7 @@ import wvlet.lang.StatusCode
 import wvlet.lang.catalog.Catalog.TableName
 import wvlet.lang.compiler.parser.WvletToken.*
 import wvlet.lang.compiler.{CompilationUnit, Name, SourceFile}
-import wvlet.lang.model.DataType
+import wvlet.lang.model.{DataType, plan}
 import wvlet.lang.model.DataType.*
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.expr.NameExpr.EmptyName
@@ -77,7 +77,7 @@ import wvlet.log.LogSupport
   *             | 'group' 'by' groupByItemList
   *             | 'where' booleanExpression
   *             | 'transform' transformExpr
-  *             | 'select' selectItems
+  *             | 'select' 'distinct'? selectItems
   *             | 'agg' selectItems
   *             | 'pivot' 'on' pivotItem (',' pivotItem)*
   *                  ('group' 'by' groupByItemList)?
@@ -290,7 +290,7 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
       case WvletToken.FROM =>
         query()
       case WvletToken.SELECT =>
-        Query(select(), t.nodeLocation)
+        Query(selectExpr(EmptyRelation(t.nodeLocation)), t.nodeLocation)
       case WvletToken.TYPE =>
         typeDef()
       case WvletToken.MODEL =>
@@ -984,10 +984,18 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
         val key = UnresolvedGroupingKey(EmptyName, e, e.nodeLocation)
         key :: groupByItemList()
 
-  def selectExpr(input: Relation): Project =
-    val t     = consume(WvletToken.SELECT)
-    val items = selectItems()
-    Project(input, items, t.nodeLocation)
+  def selectExpr(input: Relation): Relation =
+    val t = consume(WvletToken.SELECT)
+    def proj: Project =
+      val items = selectItems()
+      Project(input, items, t.nodeLocation)
+
+    scanner.lookAhead().token match
+      case WvletToken.DISTINCT =>
+        val t1 = consume(WvletToken.DISTINCT)
+        Distinct(proj, t1.nodeLocation)
+      case _ =>
+        proj
 
   def selectItems(): List[Attribute] =
     val t = scanner.lookAhead()
@@ -1080,11 +1088,6 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
         arrayValue()
       case _ =>
         unexpected(t)
-
-  def select(): Relation =
-    val t     = consume(WvletToken.SELECT)
-    val attrs = attributeList()
-    Project(EmptyRelation(t.nodeLocation), attrs, t.nodeLocation)
 
   def attributeList(): List[Attribute] =
     val t = scanner.lookAhead()

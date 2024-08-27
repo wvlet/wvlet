@@ -1,0 +1,2 @@
+from 'books.json'
+select distinct author

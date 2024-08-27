@@ -226,27 +226,27 @@ case class RawSQL(sql: Expression, nodeLocation: Option[NodeLocation])
 /**
   * A relation that only filters rows without changing the schema
   */
-trait FilteringRelation extends UnaryRelation
+trait FilteringRelation extends UnaryRelation:
+  override def relationType: RelationType = child.relationType
 
 // Deduplicate (duplicate elimination) the input relation
-case class Distinct(child: Relation, nodeLocation: Option[NodeLocation]) extends FilteringRelation:
-  override def toString: String           = s"Distinct(${child})"
-  override def relationType: RelationType = child.relationType
+case class Distinct(child: Project, nodeLocation: Option[NodeLocation])
+    extends FilteringRelation
+    with AggSelect:
+  override def selectItems: Seq[Attribute] = child.selectItems
+  override def toString: String            = s"Distinct(${child})"
 
 case class Sort(child: Relation, orderBy: Seq[SortItem], nodeLocation: Option[NodeLocation])
     extends FilteringRelation:
-  override def toString: String           = s"Sort[${orderBy.mkString(", ")}](${child})"
-  override def relationType: RelationType = child.relationType
+  override def toString: String = s"Sort[${orderBy.mkString(", ")}](${child})"
 
 case class Limit(child: Relation, limit: LongLiteral, nodeLocation: Option[NodeLocation])
     extends FilteringRelation:
-  override def toString: String           = s"Limit[${limit.value}](${child})"
-  override def relationType: RelationType = child.relationType
+  override def toString: String = s"Limit[${limit.value}](${child})"
 
 case class Filter(child: Relation, filterExpr: Expression, nodeLocation: Option[NodeLocation])
     extends FilteringRelation:
-  override def toString: String           = s"Filter[${filterExpr}](${child})"
-  override def relationType: RelationType = child.relationType
+  override def toString: String = s"Filter[${filterExpr}](${child})"
 
 case class EmptyRelation(nodeLocation: Option[NodeLocation]) extends Relation with LeafPlan:
   // Need to override this method so as not to create duplicate case object instances
