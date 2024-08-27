@@ -77,6 +77,8 @@ import wvlet.log.LogSupport
   *             | 'select' selectItems
   *             | 'agg' selectItems
   *             | 'pivot' 'on' pivotItem (',' pivotItem)*
+  *                  ('group' 'by' groupByItemList)?
+  *                  ('agg' selectItems)?
   *             | 'limit' INTEGER_VALUE
   *             | 'order' 'by' sortItem (',' sortItem)* comma?)?
   *             | 'test' COLON testExpr*
@@ -871,8 +873,16 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
     val t = consume(WvletToken.PIVOT)
     consume(WvletToken.ON)
     val keys = pivotKeys
-    Pivot(input, keys, t.nodeLocation)
 
+    val groupByItems =
+      scanner.lookAhead().token match
+        case WvletToken.GROUP =>
+          consume(WvletToken.GROUP)
+          consume(WvletToken.BY)
+          groupByItemList()
+        case _ =>
+          Nil
+    Pivot(input, keys, groupByItems, t.nodeLocation)
   end pivotExpr
 
   def groupByItemList(): List[GroupingKey] =

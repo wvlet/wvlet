@@ -243,7 +243,14 @@ object GenSQL extends Phase("generate-sql"):
         val p: Pivot = a.child.asInstanceOf[Pivot]
         val onExpr   = pivotOnExpr(p)
         val aggItems = a.selectItems.map(x => printExpression(x, ctx)).mkString(", ")
-        s"pivot ${printRelation(p.child, ctx, sqlContext.enterFrom)} on ${onExpr} using ${aggItems}"
+        val pivotExpr =
+          s"pivot ${printRelation(p.child, ctx, sqlContext.enterFrom)} on ${onExpr} using ${aggItems}"
+        if p.groupingKeys.isEmpty then
+          pivotExpr
+        else
+          val groupByItems = p.groupingKeys.map(x => printExpression(x, ctx)).mkString(", ")
+          s"${pivotExpr} group by ${groupByItems}"
+
       case p: AggSelect =>
         // pull-up filter nodes to build where clause
         // pull-up an Aggregate node to build group by clause
