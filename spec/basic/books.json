@@ -1,10 +1,9 @@
 [
-  {"id": "1", "title": "The Great Gatsby", "author": "F. Scott Fitzgerald"},
-  {"id": "2", "title": "To Kill a Mockingbird", "author": "Harper Lee"},
-  {"id": "3", "title": "1984", "author": "George Orwell"},
-  {"id": "4", "title": "Harry Potter and the Sorcerer's Stone", "author": "J.K. Rowling"},
-  {"id": "5", "title": "The Catcher in the Rye", "author": "J.D Salinger"},
-  {"id": "6", "title": "The Hobbit", "author": "J.R.R. Tolkien"},
-  {"id": "7", "title": "The Lord of the Rings", "author": "J.R.R. Tolkien"},
-  {"id": "8", "title": "Pride and Prejudice", "author": "Jane Austen"}
+  {"id": "1", "title": "The Great Gatsby", "author": "F. Scott Fitzgerald", "year": 1925, "genre": "Fiction"},
+  {"id": "2", "title": "The Catcher in the Rye", "author": "J.D. Salinger", "year": 1951, "genre": "Fiction"},
+  {"id": "3", "title": "To Kill a Mockingbird", "author": "Harper Lee", "year": 1960, "genre": "Fiction"},
+  {"id": "4", "title": "The Grapes of Wrath", "author": "John Steinbeck", "year": 1939, "genre": "Fiction"},
+  {"id": "5", "title": "The Great Gatsby", "author": "F. Scott Fitzgerald", "year": 1925, "genre": "Fiction"},
+  {"id": "6", "title": "The Catcher in the Rye", "author": "J.D. Salinger", "year": 1951, "genre": "Fiction"},
+  {"id": "7", "title": "To Kill a Mockingbird", "author": "Harper Lee", "year": 1960, "genre": "Fiction"}
 ]

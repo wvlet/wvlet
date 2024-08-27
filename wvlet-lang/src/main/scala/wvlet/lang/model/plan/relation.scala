@@ -53,6 +53,13 @@ sealed trait Relation extends LogicalPlan:
         else
           RelationTypeList(Name.typeName(ULID.newULIDString), inputs)
 
+  def isPivot: Boolean =
+    this match
+      case p: Pivot =>
+        true
+      case _ =>
+        false
+
 // A relation that takes a single input relation
 trait UnaryRelation extends Relation with UnaryPlan:
   def inputRelation: Relation                  = child
@@ -347,6 +354,30 @@ case class Agg(child: Relation, selectItems: List[Attribute], nodeLocation: Opti
     },
     child.relationType
   )
+
+case class Pivot(
+    child: Relation,
+    pivotKeys: List[PivotKey],
+    groupingKeys: List[GroupingKey],
+    nodeLocation: Option[NodeLocation]
+) extends UnaryRelation:
+
+  override def toString = s"Pivot(on:[${pivotKeys.mkString(", ")}])(${child})"
+  override lazy val relationType: RelationType = AggregationType(
+    Name.typeName(RelationType.newRelationTypeName),
+    groupingKeys.map {
+      case g: UnresolvedGroupingKey =>
+        NamedType(Name.termName(g.name.leafName), g.child.dataType)
+      case k =>
+        NamedType(Name.NoName, k.dataType)
+    },
+    // TODO Add expanded pivotKey values as fields
+    child.relationType
+  )
+
+case class PivotKey(name: Identifier, values: List[Expression], nodeLocation: Option[NodeLocation])
+    extends Expression:
+  override def children: Seq[Expression] = values
 
 /**
   * Tradtional SQL aggregation node with SELECT clause

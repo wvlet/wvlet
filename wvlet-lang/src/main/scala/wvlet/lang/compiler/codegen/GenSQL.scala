@@ -182,6 +182,8 @@ object GenSQL extends Phase("generate-sql"):
           agg
         case a: Agg =>
           agg
+        case p: Pivot =>
+          agg
         case a: GroupBy =>
           agg.copy(child = a.child, groupingKeys = a.groupingKeys)
         case _ =>
@@ -223,7 +225,32 @@ object GenSQL extends Phase("generate-sql"):
       s.result().mkString("\n")
     end printAggregate
 
+    def pivotOnExpr(p: Pivot): String = p
+      .pivotKeys
+      .map { k =>
+        val values = k.values.map(v => printExpression(v, ctx)).mkString(", ")
+        if values.isEmpty then
+          s"${printExpression(k.name, ctx)}"
+        else
+          s"${printExpression(k.name, ctx)} in (${values})"
+      }
+      .mkString(", ")
+    end pivotOnExpr
+
     r match
+      case a: Agg if a.child.isPivot =>
+        // pivot + agg combination
+        val p: Pivot = a.child.asInstanceOf[Pivot]
+        val onExpr   = pivotOnExpr(p)
+        val aggItems = a.selectItems.map(x => printExpression(x, ctx)).mkString(", ")
+        val pivotExpr =
+          s"pivot ${printRelation(p.child, ctx, sqlContext.enterFrom)} on ${onExpr} using ${aggItems}"
+        if p.groupingKeys.isEmpty then
+          pivotExpr
+        else
+          val groupByItems = p.groupingKeys.map(x => printExpression(x, ctx)).mkString(", ")
+          s"${pivotExpr} group by ${groupByItems}"
+
       case p: AggSelect =>
         // pull-up filter nodes to build where clause
         // pull-up an Aggregate node to build group by clause
@@ -246,6 +273,8 @@ object GenSQL extends Phase("generate-sql"):
         selectWithIndent(s"${s.result().mkString("\n")}")
       case a: GroupBy =>
         selectWithIndent(s"${printAggregate(a)}")
+      case p: Pivot =>
+        s"pivot ${printRelation(p.child, ctx, sqlContext.enterFrom)} on ${pivotOnExpr(p)}"
       case j: Join =>
         def printRel(r: Relation): String =
           r match
