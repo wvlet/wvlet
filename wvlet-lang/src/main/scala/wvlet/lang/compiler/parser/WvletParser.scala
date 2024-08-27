@@ -1295,7 +1295,7 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
     if scanner.lookAhead().token == WvletToken.STRING_LITERAL then
       val part = consume(WvletToken.STRING_PART)
       parts += StringPart(part.str, part.nodeLocation)
-    
+
     InterpolatedString(prefixNode, parts.result(), DataType.UnknownType, prefix.nodeLocation)
 
   end interpolatedString

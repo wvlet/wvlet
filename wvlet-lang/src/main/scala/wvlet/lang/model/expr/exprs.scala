@@ -152,7 +152,7 @@ case class DoubleQuotedIdentifier(
     override val unquotedValue: String,
     nodeLocation: Option[NodeLocation]
 ) extends Identifier:
-  override def strExpr: String = s""""${unquotedValue}""""
+  override def strExpr: String  = s""""${unquotedValue}""""
   override def toString: String = s"Id(${unquotedValue})"
 
 /**

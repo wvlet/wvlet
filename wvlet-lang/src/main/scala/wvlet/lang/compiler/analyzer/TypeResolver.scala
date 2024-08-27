@@ -245,9 +245,31 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
     override def apply(context: Context): PlanRewriter =
       case p: Pivot if context.dbType == DBType.Trino =>
         // Rewrite pivot function for Trino
-        val g                          = GroupBy(p.child, p.groupingKeys, p.nodeLocation)
-        val pivotKeys: List[Attribute] =
-          p.groupingKeys.map(k => SingleColumn(k.name, k.name, None))
+        val pivotKeyNames = p.pivotKeys.map(_.name.fullName)
+        val pivotGroupingKeys: List[GroupingKey] =
+          if p.groupingKeys.isEmpty then
+            // If no grouping key is given, use all columns in the relation
+            p.child
+              .relationType
+              .fields
+              .filterNot(f => pivotKeyNames.contains(f.name.name))
+              .map { f =>
+                UnresolvedGroupingKey(
+                  NameExpr.EmptyName,
+                  UnquotedIdentifier(f.name.name, None),
+                  None
+                )
+              }
+              .toList
+          else
+            p.groupingKeys
+
+        // Wrap with group by for specifying aggregation keys
+        val g = GroupBy(p.child, pivotGroupingKeys, p.nodeLocation)
+
+        // Pivot keys are used as grouping keys
+        val pivotKeys: List[Attribute] = p.groupingKeys.map(k => SingleColumn(k.name, k.name, None))
+        // Pivot aggregation expressions
         val pivotAggExprs: List[Attribute] = p
           .pivotKeys
           .flatMap { pivotKey =>
@@ -266,6 +288,10 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
             pivotExprs
           }
         Project(g, pivotKeys ++ pivotAggExprs, p.nodeLocation)
+
+    end apply
+
+  end rewritePivotForTrino
 
   private object resolveModelDef extends RewriteRule:
     override def apply(context: Context): PlanRewriter = {
