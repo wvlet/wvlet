@@ -162,6 +162,10 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   case INNER extends WvletToken(Keyword, "inner")
   case CROSS extends WvletToken(Keyword, "cross")
 
+  // ddl keywords
+  case ADD  extends WvletToken(Keyword, "add")
+  case DROP extends WvletToken(Keyword, "drop")
+
   case RUN     extends WvletToken(Keyword, "run")
   case IMPORT  extends WvletToken(Keyword, "import")
   case EXPORT  extends WvletToken(Keyword, "export")

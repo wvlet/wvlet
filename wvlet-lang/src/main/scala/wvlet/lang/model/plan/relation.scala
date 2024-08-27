@@ -306,6 +306,52 @@ case class Transform(
     )
     pt
 
+case class AddColumnsToRelation(
+    child: Relation,
+    newColumns: Seq[Attribute],
+    nodeLocation: Option[NodeLocation]
+) extends UnaryRelation
+    with LogSupport:
+  override def toString: String = s"Add[${newColumns.mkString(", ")}](${child})"
+
+  override lazy val relationType: RelationType =
+    val cols = Seq.newBuilder[NamedType]
+    cols ++= inputRelationType.fields
+    cols ++=
+      newColumns.map { x =>
+        NamedType(Name.termName(x.nameExpr.leafName), x.dataType)
+      }
+    val pt = ProjectedType(
+      Name.typeName(RelationType.newRelationTypeName),
+      cols.result(),
+      child.relationType
+    )
+    pt
+
+case class DropColumnsFromRelation(
+    child: Relation,
+    columnNames: Seq[NameExpr],
+    nodeLocation: Option[NodeLocation]
+) extends UnaryRelation
+    with LogSupport:
+  override def toString: String = s"Drop[${columnNames.mkString(", ")}](${child})"
+
+  override lazy val relationType: RelationType =
+    val newColumns = Seq.newBuilder[NamedType]
+    // Detect newly added columns
+    newColumns ++=
+      inputRelationType
+        .fields
+        .filterNot { x =>
+          columnNames.exists(_.leafName == x.name.name)
+        }
+    val pt = ProjectedType(
+      Name.typeName(RelationType.newRelationTypeName),
+      newColumns.result(),
+      child.relationType
+    )
+    pt
+
 /**
   * Aggregation operator that merges records by grouping keys and create a list of records for each
   * group
