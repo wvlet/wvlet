@@ -210,6 +210,9 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
       case WvletToken.IDENTIFIER =>
         consume(WvletToken.IDENTIFIER)
         UnquotedIdentifier(t.str, t.nodeLocation)
+      case WvletToken.BACKQUOTED_IDENTIFIER =>
+        consume(WvletToken.BACKQUOTED_IDENTIFIER)
+        BackQuotedIdentifier(t.str, t.nodeLocation)
       case WvletToken.UNDERSCORE =>
         consume(WvletToken.UNDERSCORE)
         ContextInputRef(DataType.UnknownType, t.nodeLocation)
@@ -228,6 +231,9 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
       case WvletToken.IDENTIFIER =>
         consume(WvletToken.IDENTIFIER)
         UnquotedIdentifier(t.str, t.nodeLocation)
+      case WvletToken.BACKQUOTED_IDENTIFIER =>
+        consume(WvletToken.BACKQUOTED_IDENTIFIER)
+        BackQuotedIdentifier(t.str, t.nodeLocation)
       case _ =>
         reserved()
 
@@ -464,7 +470,7 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
     t.token match
       case WvletToken.DEF =>
         funDef()
-      case WvletToken.IDENTIFIER =>
+      case id if id.isIdentifier =>
         val name = identifier()
         consume(WvletToken.COLON)
         val valType = identifier()
@@ -519,7 +525,7 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
   def funName(): NameExpr =
     val t = scanner.lookAhead()
     t.token match
-      case WvletToken.IDENTIFIER =>
+      case id if id.isIdentifier =>
         identifier()
       case WvletToken.PLUS | WvletToken.MINUS | WvletToken.STAR | WvletToken.DIV | WvletToken.MOD |
           WvletToken.AMP | WvletToken.PIPE | WvletToken.EQ | WvletToken.NEQ | WvletToken.LT |
@@ -607,7 +613,7 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
   def sortItems(): List[SortItem] =
     val t = scanner.lookAhead()
     t.token match
-      case WvletToken.IDENTIFIER =>
+      case id if id.isIdentifier =>
         val expr = expression()
         val order =
           scanner.lookAhead().token match
@@ -852,7 +858,7 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
     def pivotKeys: List[PivotKey] =
       val t = scanner.lookAhead()
       t.token match
-        case WvletToken.IDENTIFIER =>
+        case id if id.isIdentifier =>
           val pivotKey = identifierSingle()
           scanner.lookAhead().token match
             case WvletToken.IN =>
@@ -888,7 +894,7 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
   def groupByItemList(): List[GroupingKey] =
     val t = scanner.lookAhead()
     t.token match
-      case WvletToken.IDENTIFIER =>
+      case id if id.isIdentifier =>
         val item = selectItem()
         val key  = UnresolvedGroupingKey(item.nameExpr, item.expr, t.nodeLocation)
         key :: groupByItemList()
@@ -942,7 +948,7 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
 
     val t = scanner.lookAhead()
     t.token match
-      case WvletToken.IDENTIFIER =>
+      case id if id.isIdentifier =>
         val exprOrColumName = expression()
         exprOrColumName match
           case Eq(columnName: Identifier, expr: Expression, nodeLocation) =>
@@ -984,7 +990,7 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
   def relationPrimary(): Relation =
     val t = scanner.lookAhead()
     t.token match
-      case WvletToken.IDENTIFIER =>
+      case id if id.isIdentifier =>
         TableRef(qualifiedId(), t.nodeLocation)
       case WvletToken.L_PAREN =>
         consume(WvletToken.L_PAREN)
@@ -1207,7 +1213,9 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
               ParenthesizedExpression(e, t.nodeLocation)
         case WvletToken.L_BRACKET =>
           array()
-        case WvletToken.IDENTIFIER | WvletToken.STAR | WvletToken.END =>
+        case id if id.isIdentifier =>
+          identifier()
+        case WvletToken.STAR | WvletToken.END =>
           identifier()
         case _ =>
           unexpected(t)
@@ -1360,7 +1368,7 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
   def functionArg(): FunctionArg =
     val t = scanner.lookAhead()
     scanner.lookAhead().token match
-      case WvletToken.IDENTIFIER =>
+      case id if id.isIdentifier =>
         val nameOrArg = expression()
         nameOrArg match
           case i: Identifier =>

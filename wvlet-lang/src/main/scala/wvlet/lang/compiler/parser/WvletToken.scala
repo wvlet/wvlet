@@ -27,7 +27,7 @@ import TokenType.*
 import scala.annotation.switch
 
 enum WvletToken(val tokenType: TokenType, val str: String):
-
+  def isIdentifier: Boolean          = tokenType == Identifier
   def isRightParenOrBracket: Boolean = this == WvletToken.R_PAREN || this == WvletToken.R_BRACKET
 
   // special tokens

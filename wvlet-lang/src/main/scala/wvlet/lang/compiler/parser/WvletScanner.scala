@@ -352,6 +352,8 @@ class WvletScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
         getSingleQuoteString()
       case '\"' =>
         getDoubleQuoteString()
+      case '`' =>
+        getBackQuoteString()
       case '/' =>
         putChar(ch)
         nextChar()
@@ -532,6 +534,15 @@ class WvletScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
       nextChar()
     consume('\'')
     current.token = WvletToken.STRING_LITERAL
+    current.str = flushTokenString()
+
+  private def getBackQuoteString(): Unit =
+    consume('`')
+    while ch != '`' && ch != SU do
+      putChar(ch)
+      nextChar()
+    consume('`')
+    current.token = WvletToken.BACKQUOTED_IDENTIFIER
     current.str = flushTokenString()
 
   @tailrec
