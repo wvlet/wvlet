@@ -66,7 +66,7 @@ class TDTrinoSpecRunner(specPath: String) extends AirSpec:
         debug(result.toPrettyBox(maxWidth = Some(120)))
       catch
         case e: WvletLangException if e.statusCode.isUserError =>
-          warn(e)
+          trace(e)
           fail(e.getMessage)
     }
 

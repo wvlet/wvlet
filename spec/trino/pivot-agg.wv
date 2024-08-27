@@ -1,4 +1,8 @@
-from sql"select * from (values (1, 'apple', 'A'), (2, 'apple', 'A'), (3, 'banana', 'B')) as t(id, name, tpe)"
+from [
+  [1, 'apple', 'A', 100],
+  [2, 'apple', 'A', 100],
+  [3, 'banana', 'B', 50]
+] as t(id, name, tpe, price)
 pivot on tpe in ('A', 'B')
 group by name
-agg _.count
+agg price.sum
