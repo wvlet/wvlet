@@ -372,6 +372,29 @@ object GenSQL extends Phase("generate-sql"):
               sqlContext.enterFrom
             )}"""
         )
+      case a: AddColumnsToRelation =>
+        val newColumns = a
+          .newColumns
+          .map { c =>
+            printExpression(c, ctx)
+          }
+        selectWithIndentAndParenIfNecessary(
+          s"""select *, ${newColumns
+              .mkString(", ")} from ${printRelation(a.inputRelation, ctx, sqlContext.enterFrom)}"""
+        )
+      case d: DropColumnsFromRelation =>
+        val dropColumns = d
+          .columnNames
+          .map { c =>
+            printExpression(c, ctx)
+          }
+        selectWithIndentAndParenIfNecessary(
+          s"""select ${d.relationType.fields.map(_.name).mkString(", ")} from ${printRelation(
+              d.inputRelation,
+              ctx,
+              sqlContext.enterFrom
+            )}"""
+        )
       case t: TableRef =>
         selectAllWithIndent(s"${t.name.fullName}")
       case t: TableFunctionCall =>

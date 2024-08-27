@@ -40,6 +40,7 @@ import wvlet.log.LogSupport
   *   BACKQUOTED_IDENTIFIER: '`' (~'`' | '``')+ '`'
   *   reserved   : 'from' | 'select' | 'agg' | 'where' | 'group' | 'by' | 'having' | 'join'
   *              | 'order' | 'limit' | 'as' | 'model' | 'type' | 'def' | 'end' | 'in' | 'like'
+  *              | 'add' | 'drop'
   *
   *
   *   statements: statement+
@@ -80,7 +81,9 @@ import wvlet.log.LogSupport
   *                  ('group' 'by' groupByItemList)?
   *                  ('agg' selectItems)?
   *             | 'limit' INTEGER_VALUE
-  *             | 'order' 'by' sortItem (',' sortItem)* comma?)?
+  *             | 'order' 'by' sortItem (',' sortItem)* ','?)?
+  *             | 'add' selectItems
+  *             | 'drop' identifier ((',' identifier)* ','?)?
   *             | 'test' COLON testExpr*
   *             | 'show' identifier
   *
@@ -243,7 +246,7 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
       case WvletToken.FROM | WvletToken.SELECT | WvletToken.AGG | WvletToken.WHERE | WvletToken
             .GROUP | WvletToken.BY | WvletToken.HAVING | WvletToken.JOIN | WvletToken.ORDER |
           WvletToken.LIMIT | WvletToken.AS | WvletToken.MODEL | WvletToken.TYPE | WvletToken.DEF |
-          WvletToken.END | WvletToken.IN | WvletToken.LIKE =>
+          WvletToken.END | WvletToken.IN | WvletToken.LIKE | WvletToken.ADD | WvletToken.DROP =>
         UnquotedIdentifier(t.str, t.nodeLocation)
       case _ =>
         unexpected(t)
@@ -696,6 +699,12 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
       case WvletToken.TRANSFORM =>
         val transform = transformExpr(input)
         queryBlock(transform)
+      case WvletToken.ADD =>
+        val add = addColumnsExpr(input)
+        queryBlock(add)
+      case WvletToken.DROP =>
+        val drop = dropColumnsExpr(input)
+        queryBlock(drop)
       case WvletToken.GROUP =>
         val groupBy = groupByExpr(input)
         queryBlock(groupBy)
@@ -805,6 +814,40 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
           nextItem
     nextItem
     Transform(input, items.result, t.nodeLocation)
+
+  def addColumnsExpr(input: Relation): AddColumnsToRelation =
+    val t     = consume(WvletToken.ADD)
+    val items = List.newBuilder[SingleColumn]
+    def nextItem: Unit =
+      val t = scanner.lookAhead()
+      t.token match
+        case WvletToken.COMMA =>
+          consume(WvletToken.COMMA)
+          nextItem
+        case t if t.tokenType == TokenType.Keyword =>
+        // finish
+        case _ =>
+          items += selectItem()
+          nextItem
+    nextItem
+    AddColumnsToRelation(input, items.result, t.nodeLocation)
+
+  def dropColumnsExpr(input: Relation): DropColumnsFromRelation =
+    val t     = consume(WvletToken.DROP)
+    val items = List.newBuilder[Identifier]
+    def nextItem: Unit =
+      val t = scanner.lookAhead()
+      t.token match
+        case WvletToken.COMMA =>
+          consume(WvletToken.COMMA)
+          nextItem
+        case t if t.tokenType == TokenType.Keyword =>
+        // finish
+        case _ =>
+          items += identifierSingle()
+          nextItem
+    nextItem
+    DropColumnsFromRelation(input, items.result, t.nodeLocation)
 
   def groupByExpr(input: Relation): GroupBy =
     val t = consume(WvletToken.GROUP)
