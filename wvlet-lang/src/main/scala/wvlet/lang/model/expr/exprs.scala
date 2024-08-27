@@ -148,6 +148,13 @@ case class UnquotedIdentifier(
   override def strExpr          = unquotedValue
   override def toString: String = s"Id(${unquotedValue})"
 
+case class DoubleQuotedIdentifier(
+    override val unquotedValue: String,
+    nodeLocation: Option[NodeLocation]
+) extends Identifier:
+  override def strExpr: String = s""""${unquotedValue}""""
+  override def toString: String = s"Id(${unquotedValue})"
+
 /**
   * Backquote is used for table or column names that conflicts with reserved words
   * @param unquotedValue

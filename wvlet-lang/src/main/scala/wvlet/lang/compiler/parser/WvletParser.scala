@@ -829,8 +829,8 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
     Agg(input, items, t.nodeLocation)
 
   def pivotExpr(input: Relation): Pivot =
-    def pivotValues: List[Expression] =
-      val values = List.newBuilder[Expression]
+    def pivotValues: List[Literal] =
+      val values = List.newBuilder[Literal]
       def nextValue: Unit =
         val t = scanner.lookAhead()
         t.token match
@@ -840,7 +840,7 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
           case WvletToken.R_PAREN =>
           // ok
           case _ =>
-            val e = expression()
+            val e = literal()
             values += e
             nextValue
       end nextValue
@@ -1295,7 +1295,7 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
     if scanner.lookAhead().token == WvletToken.STRING_LITERAL then
       val part = consume(WvletToken.STRING_PART)
       parts += StringPart(part.str, part.nodeLocation)
-
+    
     InterpolatedString(prefixNode, parts.result(), DataType.UnknownType, prefix.nodeLocation)
 
   end interpolatedString

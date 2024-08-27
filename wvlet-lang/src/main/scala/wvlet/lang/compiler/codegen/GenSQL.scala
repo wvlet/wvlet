@@ -170,6 +170,7 @@ object GenSQL extends Phase("generate-sql"):
             (Nil, other)
       end collectFilter
 
+      // pull-up aggregation node
       r match
         case f: Filter =>
           val (filters, lastNode) = collectFilter(f)

@@ -15,10 +15,12 @@ package wvlet.lang.compiler.analyzer
 
 import wvlet.lang.StatusCode
 import wvlet.lang.catalog.Catalog.TableName
+import wvlet.lang.compiler.DBType.Trino
 import wvlet.lang.compiler.RewriteRule.PlanRewriter
 import wvlet.lang.compiler.{
   CompilationUnit,
   Context,
+  DBType,
   MethodSymbolInfo,
   ModelSymbolInfo,
   MultipleSymbolInfo,
@@ -63,6 +65,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
       resolveFunctionApply ::         // Resolve function args
       resolveInlineRef ::             // Resolve inline-expression expansion
       resolveAggregationFunctions ::  // Resolve aggregation expression without group by
+      rewritePivotForTrino ::         // Rewrite pivot function for Trino
       resolveModelDef ::              // Resolve models again to use the updated types
       Nil
 
@@ -237,6 +240,32 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
         val parquetRelationType = ParquetAnalyzer.guessSchema(file)
         val cols                = parquetRelationType.fields
         ParquetFileScan(file, parquetRelationType, cols, r.nodeLocation)
+
+  private object rewritePivotForTrino extends RewriteRule:
+    override def apply(context: Context): PlanRewriter =
+      case p: Pivot if context.dbType == DBType.Trino =>
+        // Rewrite pivot function for Trino
+        val g                          = GroupBy(p.child, p.groupingKeys, p.nodeLocation)
+        val pivotKeys: List[Attribute] =
+          p.groupingKeys.map(k => SingleColumn(k.name, k.name, None))
+        val pivotAggExprs: List[Attribute] = p
+          .pivotKeys
+          .flatMap { pivotKey =>
+            val targetColumn = pivotKey.name
+            val pivotExprs = pivotKey
+              .values
+              .map { v =>
+                // TODO support other aggregation functions
+                val expr = FunctionApply(
+                  UnquotedIdentifier("count_if", None),
+                  List(FunctionArg(None, Eq(targetColumn, v, None), None)),
+                  None
+                )
+                SingleColumn(DoubleQuotedIdentifier(v.stringValue, None), expr, None)
+              }
+            pivotExprs
+          }
+        Project(g, pivotKeys ++ pivotAggExprs, p.nodeLocation)
 
   private object resolveModelDef extends RewriteRule:
     override def apply(context: Context): PlanRewriter = {

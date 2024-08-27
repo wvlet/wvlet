@@ -35,3 +35,7 @@ class TDTrinoTest extends AirSpec:
   test("sfdc.account") {
     WvletREPLCli.main("""--profile td-dev -w spec/trino --file sfdc_accounts.wv""")
   }
+
+  test("pivot") {
+    WvletREPLCli.main("""--profile td-dev -w spec/trino --file pivot.wv""")
+  }
