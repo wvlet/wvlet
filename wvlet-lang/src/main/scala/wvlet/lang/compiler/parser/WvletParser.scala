@@ -70,6 +70,8 @@ import wvlet.log.LogSupport
   *                  | '(' relation ')'
   *                  | str               // file scan
   *                  | strInterpolation  // embedded raw SQL
+  *                  | arrayValue
+  *   arrayValue     : '[' arrayValue (',' arrayValue)* ','? ']'
   *
   *   queryBlock: join
   *             | 'group' 'by' groupByItemList
@@ -489,6 +491,43 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
       case _ =>
         unexpected(t)
 
+  def tableAlias(input: Relation): AliasedRelation =
+    val alias = identifierSingle()
+    val columns: Option[List[NamedType]] =
+      scanner.lookAhead().token match
+        case WvletToken.L_PAREN =>
+          consume(WvletToken.L_PAREN)
+          val cols = namedTypes()
+          consume(WvletToken.R_PAREN)
+          Some(cols)
+        case _ =>
+          None
+    AliasedRelation(input, alias, columns, alias.nodeLocation)
+
+  def namedTypes(): List[NamedType] =
+    val t = scanner.lookAhead()
+    t.token match
+      case WvletToken.EOF | WvletToken.END | WvletToken.R_PAREN =>
+        List.empty
+      case WvletToken.COMMA =>
+        consume(WvletToken.COMMA)
+        namedTypes()
+      case _ =>
+        val e = namedType()
+        e :: namedTypes()
+
+  def namedType(): NamedType =
+    val name = identifierSingle().toTermName
+    // scan `: (type)`
+    scanner.lookAhead().token match
+      case WvletToken.COLON =>
+        consume(WvletToken.COLON)
+        val tpeName   = identifier().fullName
+        val tpeParams = typeParams()
+        NamedType(name, DataType.parse(tpeName, tpeParams))
+      case _ =>
+        NamedType(name, DataType.UnknownType)
+
   def funDef(): FunctionDef =
     val t    = consume(WvletToken.DEF)
     val name = funName()
@@ -669,8 +708,7 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
       t.token match
         case WvletToken.AS =>
           consume(WvletToken.AS)
-          val alias = identifier()
-          AliasedRelation(primary, alias, None, t.nodeLocation)
+          tableAlias(primary)
         case WvletToken.L_PAREN =>
           consume(WvletToken.L_PAREN)
           val relationArgs = functionArgs()
@@ -683,6 +721,8 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
         case _ =>
           primary
     rel
+
+  // def alias(): AliasedRelation =
 
   def queryBlock(input: Relation): Relation =
     val t = scanner.lookAhead()
@@ -1036,6 +1076,8 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
       case WvletToken.STRING_INTERPOLATION_PREFIX if t.str == "sql" =>
         val rawSQL = interpolatedString()
         RawSQL(rawSQL, t.nodeLocation)
+      case WvletToken.L_BRACKET =>
+        arrayValue()
       case _ =>
         unexpected(t)
 
@@ -1272,6 +1314,24 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
 
     consume(WvletToken.L_PAREN)
     rest
+
+  def arrayValue(): Values =
+    val t      = consume(WvletToken.L_BRACKET)
+    val values = List.newBuilder[ArrayConstructor]
+    def nextValue: Unit =
+      val t = scanner.lookAhead()
+      t.token match
+        case WvletToken.COMMA =>
+          consume(WvletToken.COMMA)
+          nextValue
+        case WvletToken.R_BRACKET =>
+        // ok
+        case _ =>
+          values += array()
+          nextValue
+    nextValue
+    consume(WvletToken.R_BRACKET)
+    Values(values.result(), t.nodeLocation)
 
   def array(): ArrayConstructor =
     val t        = consume(WvletToken.L_BRACKET)
