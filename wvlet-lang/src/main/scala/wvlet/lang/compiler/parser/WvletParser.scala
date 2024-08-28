@@ -16,7 +16,7 @@ package wvlet.lang.compiler.parser
 import wvlet.lang.StatusCode
 import wvlet.lang.catalog.Catalog.TableName
 import wvlet.lang.compiler.parser.WvletToken.*
-import wvlet.lang.compiler.{CompilationUnit, Name, SourceFile}
+import wvlet.lang.compiler.{CompilationUnit, Name, SourceFile, SourceLocation}
 import wvlet.lang.model.{DataType, plan}
 import wvlet.lang.model.DataType.*
 import wvlet.lang.model.expr.*
@@ -106,6 +106,10 @@ import wvlet.log.LogSupport
   *   selectItem : (identifier '=')? expression
   *              | expression ('as' identifier)?
   *
+  *   window     : 'over' '(' windowSpec ')'
+  *   windowSpec : ('partition' 'by' expression (',' expression)*)?
+  *              | ('order' 'by' sortItem (',' sortItem)*)?
+  *
   *   test: 'test' COLON testExpr*
   *   testExpr: booleanExpression
   *
@@ -161,8 +165,8 @@ import wvlet.log.LogSupport
   *                     | 'if' booleanExpresssion 'then' expression 'else' expression   # if-then-else
   *                     | qualifiedId
   *                     | primaryExpression '.' primaryExpression
-  *                     | primaryExpression '(' functionArg? (',' functionArg)* ')'     # function call
-  *                     | primaryExpression identifier expression                       # function infix
+  *                     | primaryExpression '(' functionArg? (',' functionArg)* ')' window? # function call
+  *                     | primaryExpression identifier expression                           # function infix
   *
   *   functionArg       | (identifier '=')? expression
   *
@@ -202,7 +206,10 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
   private def unexpected(t: TokenData): Nothing =
     throw StatusCode
       .SYNTAX_ERROR
-      .newException(s"Unexpected token ${t.token} '${t.str}'", t.sourceLocation)
+      .newException(
+        s"Unexpected token: <${t.token}> '${t.str}'",
+        SourceLocation(compilationUnit, t.nodeLocation)
+      )
 
   private def unexpected(expr: Expression): Nothing =
     throw StatusCode
@@ -248,7 +255,9 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
       case WvletToken.FROM | WvletToken.SELECT | WvletToken.AGG | WvletToken.WHERE | WvletToken
             .GROUP | WvletToken.BY | WvletToken.HAVING | WvletToken.JOIN | WvletToken.ORDER |
           WvletToken.LIMIT | WvletToken.AS | WvletToken.MODEL | WvletToken.TYPE | WvletToken.DEF |
-          WvletToken.END | WvletToken.IN | WvletToken.LIKE | WvletToken.ADD | WvletToken.DROP =>
+          WvletToken.END | WvletToken.IN | WvletToken.LIKE | WvletToken.ADD | WvletToken.DROP |
+          WvletToken.OVER | WvletToken.PARTITION | WvletToken.UNBOUNDED | WvletToken.PRECEDING |
+          WvletToken.FOLLOWING | WvletToken.CURRENT | WvletToken.RANGE | WvletToken.ROW =>
         UnquotedIdentifier(t.str, t.nodeLocation)
       case _ =>
         unexpected(t)
@@ -1049,6 +1058,55 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
         val expr = expression()
         selectItemWithAlias(expr)
 
+  end selectItem
+
+  def window(): Option[Window] =
+    def partitionKeys(): List[Expression] =
+      val t = scanner.lookAhead()
+      t.token match
+        case WvletToken.R_PAREN | WvletToken.ORDER | WvletToken.RANGE | WvletToken.ROW =>
+          Nil
+        case WvletToken.COMMA =>
+          consume(WvletToken.COMMA)
+          partitionKeys()
+        case _ =>
+          val e = expression()
+          e :: partitionKeys()
+      end match
+    end partitionKeys
+
+    def partitionBy(): Seq[Expression] =
+      scanner.lookAhead().token match
+        case WvletToken.PARTITION =>
+          consume(WvletToken.PARTITION)
+          consume(WvletToken.BY)
+          partitionKeys()
+        case _ =>
+          Nil
+
+    def orderBy(): Seq[SortItem] =
+      scanner.lookAhead().token match
+        case WvletToken.ORDER =>
+          consume(WvletToken.ORDER)
+          consume(WvletToken.BY)
+          sortItems()
+        case _ =>
+          Nil
+
+    scanner.lookAhead().token match
+      case WvletToken.OVER =>
+        val t = consume(WvletToken.OVER)
+        consume(WvletToken.L_PAREN)
+        val partition = partitionBy()
+        val order     = orderBy()
+        // TODO parse window frame
+        consume(WvletToken.R_PAREN)
+        Some(Window(partition, order, None, t.nodeLocation))
+      case _ =>
+        None
+
+  end window
+
   def limitExpr(input: Relation): Limit =
     val t = consume(WvletToken.LIMIT)
     val n = consume(WvletToken.INTEGER_LITERAL)
@@ -1308,7 +1366,7 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
   end primaryExpression
 
   def inExprList(): List[Expression] =
-    def rest: List[Expression] =
+    def rest(): List[Expression] =
       val t = scanner.lookAhead()
       t.token match
         case WvletToken.R_PAREN =>
@@ -1316,13 +1374,13 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
           Nil
         case WvletToken.COMMA =>
           consume(WvletToken.COMMA)
-          rest
+          rest()
         case _ =>
           val e = valueExpression()
-          e :: rest
+          e :: rest()
 
     consume(WvletToken.L_PAREN)
-    rest
+    rest()
 
   def arrayValue(): Values =
     val t      = consume(WvletToken.L_BRACKET)
@@ -1429,7 +1487,8 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
             val p    = consume(WvletToken.L_PAREN)
             val args = functionArgs()
             consume(WvletToken.R_PAREN)
-            val f = FunctionApply(sel, args, p.nodeLocation)
+            val w = window()
+            val f = FunctionApply(sel, args, w, p.nodeLocation)
             primaryExpressionRest(f)
           case _ =>
             primaryExpressionRest(DotRef(expr, next, DataType.UnknownType, t.nodeLocation))
@@ -1440,7 +1499,8 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
             val args = functionArgs()
             consume(WvletToken.R_PAREN)
             // Global function call
-            val f = FunctionApply(n, args, t.nodeLocation)
+            val w = window()
+            val f = FunctionApply(n, args, w, t.nodeLocation)
             primaryExpressionRest(f)
           case _ =>
             unexpected(expr)

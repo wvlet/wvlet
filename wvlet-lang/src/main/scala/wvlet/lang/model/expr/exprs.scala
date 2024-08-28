@@ -272,6 +272,7 @@ case class WindowFrame(
 case class FunctionApply(
     base: Expression,
     args: List[FunctionArg],
+    window: Option[Window],
     nodeLocation: Option[NodeLocation]
 ) extends Expression:
   override def children: Seq[Expression] = args
