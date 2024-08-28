@@ -2,7 +2,7 @@ from 'person.json'
 -- Add a new column to enrich the data
 add age_group = (age / 5).to_int * 5
 -- Remove unnecessary columns
-drop name, age
+exclude name, age
 
 test:
   _.column_names should be ['id', 'age_group']

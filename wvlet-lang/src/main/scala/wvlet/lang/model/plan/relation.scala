@@ -331,7 +331,7 @@ case class AddColumnsToRelation(
     )
     pt
 
-case class DropColumnsFromRelation(
+case class ExcludeColumnsFromRelation(
     child: Relation,
     columnNames: Seq[NameExpr],
     nodeLocation: Option[NodeLocation]

@@ -38,9 +38,8 @@ import wvlet.log.LogSupport
   *               | reserved  # Necessary to use reserved words as identifiers
   *   IDENTIFIER  : (LETTER | '_') (LETTER | DIGIT | '_')*
   *   BACKQUOTED_IDENTIFIER: '`' (~'`' | '``')+ '`'
-  *   reserved   : 'from' | 'select' | 'agg' | 'where' | 'group' | 'by' | 'having' | 'join'
-  *              | 'order' | 'limit' | 'as' | 'model' | 'type' | 'def' | 'end' | 'in' | 'like'
-  *              | 'add' | 'drop'
+  *   // All reserved keywords (TokenType.Keyword)
+  *   reserved   : 'from' | 'select' | 'agg' | 'where' | 'group' | 'by' | ...
   *
   *
   *   statements: statement+
@@ -85,7 +84,7 @@ import wvlet.log.LogSupport
   *             | 'limit' INTEGER_VALUE
   *             | 'order' 'by' sortItem (',' sortItem)* ','?)?
   *             | 'add' selectItems
-  *             | 'drop' identifier ((',' identifier)* ','?)?
+  *             | 'exclude' identifier ((',' identifier)* ','?)?
   *             | 'test' COLON testExpr*
   *             | 'show' identifier
   *
@@ -154,7 +153,7 @@ import wvlet.log.LogSupport
   *   comparisonOperator: '=' | '==' | 'is' | '!=' | 'is' 'not' | '<' | '<=' | '>' | '>=' | 'like'
   *   testOperator      : 'should' 'not'? ('be' | 'contain')
   *
-  *   // Expresion that can be chained with '.' operator
+  *   // Expression that can be chained with '.' operator
   *   primaryExpression : 'this'
   *                     | '_'
   *                     | literal
@@ -252,12 +251,7 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
   def reserved(): Identifier =
     val t = scanner.nextToken()
     t.token match
-      case WvletToken.FROM | WvletToken.SELECT | WvletToken.AGG | WvletToken.WHERE | WvletToken
-            .GROUP | WvletToken.BY | WvletToken.HAVING | WvletToken.JOIN | WvletToken.ORDER |
-          WvletToken.LIMIT | WvletToken.AS | WvletToken.MODEL | WvletToken.TYPE | WvletToken.DEF |
-          WvletToken.END | WvletToken.IN | WvletToken.LIKE | WvletToken.ADD | WvletToken.DROP |
-          WvletToken.OVER | WvletToken.PARTITION | WvletToken.UNBOUNDED | WvletToken.PRECEDING |
-          WvletToken.FOLLOWING | WvletToken.CURRENT | WvletToken.RANGE | WvletToken.ROW =>
+      case token if token.isReservedKeyword =>
         UnquotedIdentifier(t.str, t.nodeLocation)
       case _ =>
         unexpected(t)
@@ -757,8 +751,8 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
       case WvletToken.ADD =>
         val add = addColumnsExpr(input)
         queryBlock(add)
-      case WvletToken.DROP =>
-        val drop = dropColumnsExpr(input)
+      case WvletToken.EXCLUDE =>
+        val drop = excludeColumnExpr(input)
         queryBlock(drop)
       case WvletToken.GROUP =>
         val groupBy = groupByExpr(input)
@@ -875,8 +869,8 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
     val items = selectItems()
     AddColumnsToRelation(input, items, t.nodeLocation)
 
-  def dropColumnsExpr(input: Relation): DropColumnsFromRelation =
-    val t     = consume(WvletToken.DROP)
+  def excludeColumnExpr(input: Relation): ExcludeColumnsFromRelation =
+    val t     = consume(WvletToken.EXCLUDE)
     val items = List.newBuilder[Identifier]
     def nextItem: Unit =
       val t = scanner.lookAhead()
@@ -892,7 +886,7 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
           items += identifierSingle()
           nextItem
     nextItem
-    DropColumnsFromRelation(input, items.result, t.nodeLocation)
+    ExcludeColumnsFromRelation(input, items.result, t.nodeLocation)
 
   def groupByExpr(input: Relation): GroupBy =
     val t = consume(WvletToken.GROUP)

@@ -109,7 +109,7 @@ class DataTypeParser(scanner: WvletScanner) extends LogSupport:
       case WvletToken.STRING_LITERAL if t.str.toLowerCase == "null" =>
         consume(WvletToken.STRING_LITERAL)
         NullType
-      case token if token.isIdentifier || token.tokenType == TokenType.Keyword =>
+      case token if token.isIdentifier || token.isReservedKeyword =>
         val id       = consume(t.token)
         val typeName = id.str.toLowerCase
         typeName match
