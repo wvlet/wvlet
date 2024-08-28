@@ -16,7 +16,7 @@ package wvlet.lang.compiler.parser
 import wvlet.lang.StatusCode
 import wvlet.lang.catalog.Catalog.TableName
 import wvlet.lang.compiler.parser.WvletToken.*
-import wvlet.lang.compiler.{CompilationUnit, Name, SourceFile}
+import wvlet.lang.compiler.{CompilationUnit, Name, SourceFile, SourceLocation}
 import wvlet.lang.model.{DataType, plan}
 import wvlet.lang.model.DataType.*
 import wvlet.lang.model.expr.*
@@ -202,7 +202,10 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
   private def unexpected(t: TokenData): Nothing =
     throw StatusCode
       .SYNTAX_ERROR
-      .newException(s"Unexpected token ${t.token} '${t.str}'", t.sourceLocation)
+      .newException(
+        s"Unexpected token: <${t.token}> '${t.str}'",
+        SourceLocation(compilationUnit, t.nodeLocation)
+      )
 
   private def unexpected(expr: Expression): Nothing =
     throw StatusCode

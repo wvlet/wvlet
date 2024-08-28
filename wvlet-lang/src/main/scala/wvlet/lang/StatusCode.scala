@@ -38,7 +38,16 @@ enum StatusCode(statusType: StatusType):
   )
 
   def newException(msg: String, sourceLocation: SourceLocation): WvletLangException =
-    val err = s"[${this.name}] ${msg} (${sourceLocation.locationString})"
+    val baseMsg   = s"[${this.name}] ${msg}"
+    val locString = s"${sourceLocation.locationString}"
+    val column    = sourceLocation.nodeLocation.map(_.column).getOrElse(1)
+    val line      = sourceLocation.codeLineAt
+    val err =
+      if line.isEmpty then
+        s"${baseMsg} (${locString})"
+      else
+        s"${baseMsg}\n${line} (${locString})\n${" " * (column - 1)}^\n"
+
     WvletLangException(this, err, Some(sourceLocation))
 
   def newException(msg: String, nodeLocation: Option[NodeLocation])(using
@@ -46,14 +55,7 @@ enum StatusCode(statusType: StatusType):
   ): WvletLangException =
     nodeLocation match
       case Some(nodeLoc) =>
-        val loc  = nodeLoc.toSourceLocation
-        val line = loc.codeLineAt
-        val err =
-          if line.isEmpty then
-            msg
-          else
-            s"${msg}\n[code]\n${line}\n${" " * (nodeLoc.column - 1)}^"
-        newException(err, loc)
+        newException(msg, nodeLoc.toSourceLocation)
       case _ =>
         newException(msg)
 
