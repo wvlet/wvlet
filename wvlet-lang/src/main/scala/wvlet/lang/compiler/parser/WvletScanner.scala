@@ -428,7 +428,7 @@ class WvletScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
       case '\\' =>
         // escape character
         lookAheadChar() match
-          case '{' | '}' | '"' =>
+          case '$' | '"' =>
             nextRawChar() // skip '\'
             putChar(ch)
             nextRawChar()
@@ -436,16 +436,17 @@ class WvletScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
             putChar(ch)
             nextRawChar()
         getStringPart(multiline)
-      case '{' =>
+      case '$' =>
         lookAheadChar() match
           case '{' =>
-            putChar(ch)
-            nextChar()
-            getStringPart(multiline)
-          case _ =>
+            // Enter the in-string expression state
             current.token = WvletToken.STRING_PART
             current.str = flushTokenString()
             currentRegion = InBraces(currentRegion)
+          case _ =>
+            putChar(ch)
+            nextChar()
+            getStringPart(multiline)
       case SU =>
         reportError(
           s"unexpected end of file in string interpolation",

@@ -20,7 +20,7 @@ import wvlet.lang.compiler.{Compiler, CompilerOptions}
 import wvlet.lang.runner.QueryExecutor
 import wvlet.lang.runner.connector.trino.{TrinoConfig, TrinoConnector}
 
-class TDTrinoSpecRunner(specPath: String) extends AirSpec:
+trait TDTrinoSpecRunner(specPath: String) extends AirSpec:
   if inCI then
     skip("Trino td-dev profile is not available in CI")
 

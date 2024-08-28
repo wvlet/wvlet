@@ -1444,7 +1444,8 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
           val part = consume(WvletToken.STRING_PART)
           parts += StringPart(part.str, part.nodeLocation)
           nextPart()
-        case WvletToken.L_BRACE =>
+        case WvletToken.DOLLAR =>
+          consume(WvletToken.DOLLAR)
           consume(WvletToken.L_BRACE)
           val expr = expression()
           consume(WvletToken.R_BRACE)
