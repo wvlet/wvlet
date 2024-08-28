@@ -2,5 +2,5 @@ package wvlet.standard
 
 
 type date:
-  def extract(field:string): int = sql"extract({field} from {this})"
+  def extract(field:string): int = sql"extract(${field} from ${this})"
 end
