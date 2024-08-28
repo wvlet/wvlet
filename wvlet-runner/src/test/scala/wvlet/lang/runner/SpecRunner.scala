@@ -44,6 +44,7 @@ trait SpecRunner(
         debug(result.toPrettyBox(maxWidth = Some(120)))
       catch
         case e: WvletLangException if e.statusCode.isUserError =>
+          debug(e)
           fail(e.getMessage)
     }
 

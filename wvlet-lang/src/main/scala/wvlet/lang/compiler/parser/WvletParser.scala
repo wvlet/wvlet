@@ -105,6 +105,7 @@ import wvlet.log.LogSupport
   *   selectItems: selectItem (',' selectItem)* ','?
   *   selectItem : (identifier '=')? expression
   *              | expression ('as' identifier)?
+  *
   *   window     : 'over' '(' windowSpec ')'
   *   windowSpec : ('partition' 'by' expression (',' expression)*)?
   *              | ('order' 'by' sortItem (',' sortItem)*)?
@@ -164,8 +165,8 @@ import wvlet.log.LogSupport
   *                     | 'if' booleanExpresssion 'then' expression 'else' expression   # if-then-else
   *                     | qualifiedId
   *                     | primaryExpression '.' primaryExpression
-  *                     | primaryExpression '(' functionArg? (',' functionArg)* ')'     # function call
-  *                     | primaryExpression identifier expression                       # function infix
+  *                     | primaryExpression '(' functionArg? (',' functionArg)* ')' window? # function call
+  *                     | primaryExpression identifier expression                           # function infix
   *
   *   functionArg       | (identifier '=')? expression
   *
@@ -1058,26 +1059,26 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
   end selectItem
 
   def window(): Option[Window] =
-    def exprs(): List[Expression] =
+    def partitionKeys(): List[Expression] =
       val t = scanner.lookAhead()
       t.token match
-        case WvletToken.R_PAREN =>
+        case WvletToken.R_PAREN | WvletToken.ORDER | WvletToken.RANGE | WvletToken.ROW =>
           Nil
         case WvletToken.COMMA =>
           consume(WvletToken.COMMA)
-          exprs()
+          partitionKeys()
         case _ =>
           val e = expression()
-          e :: exprs()
+          e :: partitionKeys()
       end match
-    end exprs
+    end partitionKeys
 
     def partitionBy(): Seq[Expression] =
       scanner.lookAhead().token match
         case WvletToken.PARTITION =>
           consume(WvletToken.PARTITION)
           consume(WvletToken.BY)
-          exprs()
+          partitionKeys()
         case _ =>
           Nil
 
@@ -1484,7 +1485,8 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
             val p    = consume(WvletToken.L_PAREN)
             val args = functionArgs()
             consume(WvletToken.R_PAREN)
-            val f = FunctionApply(sel, args, p.nodeLocation)
+            val w = window()
+            val f = FunctionApply(sel, args, w, p.nodeLocation)
             primaryExpressionRest(f)
           case _ =>
             primaryExpressionRest(DotRef(expr, next, DataType.UnknownType, t.nodeLocation))
@@ -1495,7 +1497,8 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
             val args = functionArgs()
             consume(WvletToken.R_PAREN)
             // Global function call
-            val f = FunctionApply(n, args, t.nodeLocation)
+            val w = window()
+            val f = FunctionApply(n, args, w, t.nodeLocation)
             primaryExpressionRest(f)
           case _ =>
             unexpected(expr)

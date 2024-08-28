@@ -532,10 +532,20 @@ object GenSQL extends Phase("generate-sql"):
       case f: FunctionApply =>
         val base = printExpression(f.base, context)
         val args = f.args.map(x => printExpression(x, context)).mkString(", ")
-        s"${base}(${args})"
+        val w    = f.window.map(x => printExpression(x, context)).getOrElse("")
+        Seq(s"${base}(${args})", w).mkString(" ")
       case f: FunctionArg =>
         // TODO handle arg name mapping
         printExpression(f.value, context)
+      case w: Window =>
+        val s = Seq.newBuilder[String]
+        if w.partitionBy.nonEmpty then
+          s += "partition by"
+          s += w.partitionBy.map(x => printExpression(x, context)).mkString(", ")
+        if w.orderBy.nonEmpty then
+          s += "order by"
+          s += w.orderBy.map(x => printExpression(x, context)).mkString(", ")
+        s"over (${s.result().mkString(" ")})"
       case Eq(left, n: NullLiteral, _) =>
         s"${printExpression(left, context)} is null"
       case NotEq(left, n: NullLiteral, _) =>
