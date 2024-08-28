@@ -255,7 +255,9 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
       case WvletToken.FROM | WvletToken.SELECT | WvletToken.AGG | WvletToken.WHERE | WvletToken
             .GROUP | WvletToken.BY | WvletToken.HAVING | WvletToken.JOIN | WvletToken.ORDER |
           WvletToken.LIMIT | WvletToken.AS | WvletToken.MODEL | WvletToken.TYPE | WvletToken.DEF |
-          WvletToken.END | WvletToken.IN | WvletToken.LIKE | WvletToken.ADD | WvletToken.DROP =>
+          WvletToken.END | WvletToken.IN | WvletToken.LIKE | WvletToken.ADD | WvletToken.DROP |
+          WvletToken.OVER | WvletToken.PARTITION | WvletToken.UNBOUNDED | WvletToken.PRECEDING |
+          WvletToken.FOLLOWING | WvletToken.CURRENT | WvletToken.RANGE | WvletToken.ROW =>
         UnquotedIdentifier(t.str, t.nodeLocation)
       case _ =>
         unexpected(t)
