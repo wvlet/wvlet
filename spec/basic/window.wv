@@ -2,5 +2,5 @@ from 'books.json'
 select
   title,
   year,
-  rank() window (partition by year order by id) as rank_in_year
+  rank() over (partition by year order by id) as rank_in_year
 order by year
