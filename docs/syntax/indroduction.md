@@ -12,16 +12,16 @@ wvlet favors lower-case keywords for SQL-like operators. The following is a list
 | select `expr` as `alias`, ... | Rows with the given expressions with aliases. |
 | add `expr` (as `alias`)?, ... | Same rows with new columns. |
 | exclude `column`, ... | Same rows except the given columns. |
-| where `cond` | Rows that satisfy the given condition. |
+| where `cond` | Rows that satisfy the given condition. `where` can be used multiple times in the same query like `from ... where ... where ...` |
 | transform `column` = `expr`, ... | Same rows with added or updated columns. |  
-| group by `column`, ... | Grouped rows by the given columns. Grouping keys can be referenced as `select _1, _2, ...`  in the subsequent operator. This returns `_1: key1, _2: key2, ..., _: list of records` |
+| group by `column`, ... | Grouped rows by the given columns. Grouping keys can be referenced as `select _1, _2, ...`  in the subsequent operator. `group by` returns `_1, _2, ..., arbitrary(col1), arbitrary(col2), ...` if there is no subsequent agg or select operator. |
 | agg `agg_expr`, ... | Rows with the grouping keys in `group by` clause and aggregated values.  This is is a shorthand notation for `select _1, _2, ..., (agg_expr), ...`. In aggr_expr, dot-notation like `_.count`, `(column).sum` can be used for aggregating grouped rows.|
 | order by `expr` (asc \| desc)?, ... | Rows sorted by the given expression. 1-origin column indexes can be used like `1`, `2`, |
 | limit `n` | Rows up to the given number |
-| (left \| right \| cross)? join `table` on `cond or column` | Joined rows with the given condition or the same column |
+| (left \| right \| cross)? join `table` on `cond` | Joined rows with the given condition. `cond` can be just common column names between joined tables (e.g., `using` in SQL) |
 | pivot on `pivot_column` (in (`v1`, `v2`, ...) )? | Rows whose column values in the pivot column are expanded as columns. |
-| pipe `func(args, ...)` | Rows processed by the given table function | 
 | pivot on `pivot_column`<br/> (group by `grouping columns`)?<br/> agg `agg_expr` |  Pivoted rows with the given grouping columns and aggregated values.|
+| pipe `func(args, ...)` | Rows processed by the given table function | 
 
 
 ## Expressions
@@ -35,8 +35,8 @@ One of the major difference from tradtional SQL is that wvlet uses single or dou
 | \`(back quote)\` | Column or table name, which requires quotations |
 | sql"`sql expr`" | SQL expression used for inline expansion |
 | sql" ... ${`expr`} ..." | Interpolated SQL expression with embedded expressions |
-| [[`expr`, ...], ...] | Array of arrays for representing table records |
 | [`expr`, ...] | Array value |
+| [[`expr`, ...], ...] | Array of arrays for representing table records |
 | `_`| underscore refers to the previous input | 
 | `agg_func(expr)` over (partition by ... order by ...)  | Window functions for computing aggregate values computed from the entire query result. This follows the same window function syntax with SQL |
 | `_1`, `_2`, ... | Refers to grouping keys in the preceding `group by` clause |
