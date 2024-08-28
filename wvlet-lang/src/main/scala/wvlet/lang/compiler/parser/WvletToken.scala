@@ -152,6 +152,7 @@ enum WvletToken(val tokenType: TokenType, val str: String):
 
   case DISTINCT extends WvletToken(Keyword, "distinct")
 
+  // for order by
   case ASC  extends WvletToken(Keyword, "asc")
   case DESC extends WvletToken(Keyword, "desc")
 
@@ -167,6 +168,16 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   // ddl keywords
   case ADD  extends WvletToken(Keyword, "add")
   case DROP extends WvletToken(Keyword, "drop")
+
+  // window function keywords
+  case OVER      extends WvletToken(Keyword, "over")
+  case PARTITION extends WvletToken(Keyword, "partition")
+  case UNBOUNDED extends WvletToken(Keyword, "unbounded")
+  case PRECEDING extends WvletToken(Keyword, "preceding")
+  case FOLLOWING extends WvletToken(Keyword, "following")
+  case CURRENT   extends WvletToken(Keyword, "current")
+  case RANGE     extends WvletToken(Keyword, "range")
+  case ROW       extends WvletToken(Keyword, "row")
 
   case RUN     extends WvletToken(Keyword, "run")
   case IMPORT  extends WvletToken(Keyword, "import")

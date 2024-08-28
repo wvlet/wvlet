@@ -105,6 +105,9 @@ import wvlet.log.LogSupport
   *   selectItems: selectItem (',' selectItem)* ','?
   *   selectItem : (identifier '=')? expression
   *              | expression ('as' identifier)?
+  *   window     : 'over' '(' windowSpec ')'
+  *   windowSpec : ('partition' 'by' expression (',' expression)*)?
+  *              | ('order' 'by' sortItem (',' sortItem)*)?
   *
   *   test: 'test' COLON testExpr*
   *   testExpr: booleanExpression
@@ -1052,6 +1055,55 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
         val expr = expression()
         selectItemWithAlias(expr)
 
+  end selectItem
+
+  def window(): Option[Window] =
+    def exprs(): List[Expression] =
+      val t = scanner.lookAhead()
+      t.token match
+        case WvletToken.R_PAREN =>
+          Nil
+        case WvletToken.COMMA =>
+          consume(WvletToken.COMMA)
+          exprs()
+        case _ =>
+          val e = expression()
+          e :: exprs()
+      end match
+    end exprs
+
+    def partitionBy(): Seq[Expression] =
+      scanner.lookAhead().token match
+        case WvletToken.PARTITION =>
+          consume(WvletToken.PARTITION)
+          consume(WvletToken.BY)
+          exprs()
+        case _ =>
+          Nil
+
+    def orderBy(): Seq[SortItem] =
+      scanner.lookAhead().token match
+        case WvletToken.ORDER =>
+          consume(WvletToken.ORDER)
+          consume(WvletToken.BY)
+          sortItems()
+        case _ =>
+          Nil
+
+    scanner.lookAhead().token match
+      case WvletToken.OVER =>
+        val t = consume(WvletToken.OVER)
+        consume(WvletToken.L_PAREN)
+        val partition = partitionBy()
+        val order     = orderBy()
+        // TODO parse window frame
+        consume(WvletToken.R_PAREN)
+        Some(Window(partition, order, None, t.nodeLocation))
+      case _ =>
+        None
+
+  end window
+
   def limitExpr(input: Relation): Limit =
     val t = consume(WvletToken.LIMIT)
     val n = consume(WvletToken.INTEGER_LITERAL)
@@ -1311,7 +1363,7 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
   end primaryExpression
 
   def inExprList(): List[Expression] =
-    def rest: List[Expression] =
+    def rest(): List[Expression] =
       val t = scanner.lookAhead()
       t.token match
         case WvletToken.R_PAREN =>
@@ -1319,13 +1371,13 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
           Nil
         case WvletToken.COMMA =>
           consume(WvletToken.COMMA)
-          rest
+          rest()
         case _ =>
           val e = valueExpression()
-          e :: rest
+          e :: rest()
 
     consume(WvletToken.L_PAREN)
-    rest
+    rest()
 
   def arrayValue(): Values =
     val t      = consume(WvletToken.L_BRACKET)
