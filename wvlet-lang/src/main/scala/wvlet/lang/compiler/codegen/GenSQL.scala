@@ -405,7 +405,7 @@ object GenSQL extends Phase("generate-sql"):
           s"""select *, ${newColumns
               .mkString(", ")} from ${printRelation(a.inputRelation, ctx, sqlContext.enterFrom)}"""
         )
-      case d: DropColumnsFromRelation =>
+      case d: ExcludeColumnsFromRelation =>
         val dropColumns = d
           .columnNames
           .map { c =>

@@ -28,6 +28,7 @@ import scala.annotation.switch
 
 enum WvletToken(val tokenType: TokenType, val str: String):
   def isIdentifier: Boolean          = tokenType == Identifier
+  def isReservedKeyword: Boolean     = tokenType == Keyword
   def isRightParenOrBracket: Boolean = this == WvletToken.R_PAREN || this == WvletToken.R_BRACKET
 
   // special tokens
@@ -166,8 +167,9 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   case CROSS extends WvletToken(Keyword, "cross")
 
   // ddl keywords
-  case ADD  extends WvletToken(Keyword, "add")
-  case DROP extends WvletToken(Keyword, "drop")
+  case ADD     extends WvletToken(Keyword, "add")
+  case EXCLUDE extends WvletToken(Keyword, "exclude")
+  case DROP    extends WvletToken(Keyword, "drop")
 
   // window function keywords
   case OVER      extends WvletToken(Keyword, "over")
