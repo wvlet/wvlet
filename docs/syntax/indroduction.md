@@ -14,7 +14,7 @@ wvlet provides the following pipeline operators for processing rows in table-for
 | `where` (cond) | Rows that satisfy the given condition. |
 | `group by` (column), ... | Grouped rows by the given columns. Grouping keys can be referenced as `select _1, _2, ...`  in the subsequent operator. This returns `_1: key1, _2: key2, ..., _: list of records` |
 | `agg` (agg_expr), ... | Rows with the grouping keys in `group by` clause and aggregated values.  This is is a shorthand notation for `select _1, _2, ..., (agg_expr), ...`. In aggr_expr, dot-notation like `_.count`, `(column).sum` can be used for aggregating grouped rows.|
-| `order by` (expr) (`asc`\|`desc`)?, ... | Rows sorted by the given expression. |
+| `order by` (expr) (`asc`\|`desc`)?, ... | Rows sorted by the given expression. 1-origin column indexes can be used like `1`, `2`, |
 | `limit` (n) | Rows up to the given number |
 | (`left`\|`right`\|`cross`)? `join` (table) `on` (cond or column) | Joined rows with the given condition or the same column |
 | `pivot on` (pivot column) [`in` (v1, v2, ...) ]? | Rows whose column values in the pivot column are expanded as columns. |
