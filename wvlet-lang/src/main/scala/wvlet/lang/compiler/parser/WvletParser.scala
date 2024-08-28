@@ -653,7 +653,7 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
     Sort(input, items, t.nodeLocation)
 
   def sortItems(): List[SortItem] =
-    def sortOrder: Option[SortOrdering] =
+    def sortOrder(): Option[SortOrdering] =
       scanner.lookAhead().token match
         case WvletToken.ASC =>
           consume(WvletToken.ASC)
@@ -668,13 +668,13 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
     t.token match
       case id if id.isIdentifier =>
         val expr  = expression()
-        val order = sortOrder
+        val order = sortOrder()
         // TODO: Support NullOrdering
         SortItem(expr, order, None, expr.nodeLocation) :: sortItems()
       case WvletToken.INTEGER_LITERAL =>
         val expr  = literal()
-        val order = sortOrder
-        SortItem(expr, sortOrder, None, expr.nodeLocation) :: sortItems()
+        val order = sortOrder()
+        SortItem(expr, order, None, expr.nodeLocation) :: sortItems()
       case WvletToken.COMMA =>
         consume(WvletToken.COMMA)
         sortItems()
