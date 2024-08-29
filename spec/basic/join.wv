@@ -1,0 +1,8 @@
+from
+  [[1, "apple", 50], [2, "banana", 10], [3, "cherry", 70]]
+  as fruit(id, name, price)
+join (
+  from [["o1", 1, 10], ["o2", 2, 5]]
+  as fruit_order(order_id, fruit_id, qty)
+)
+on fruit.id = fruit_order.fruit_id

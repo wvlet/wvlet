@@ -28,6 +28,7 @@ import wvlet.lang.catalog.Catalog.TableName
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
 import wvlet.lang.model.plan.JoinType.*
+import wvlet.log.LogSupport
 
 import scala.collection.immutable.ListMap
 
@@ -51,14 +52,15 @@ object GenSQL extends Phase("generate-sql"):
 
   override def run(unit: CompilationUnit, context: Context): CompilationUnit =
     // Generate SQL from the resolved plan
-    // generateSQL(unit.resolvedPlan, context)
+    // generateSQL(unit.resolvedPlan)
     // Attach the generated SQL to the CompilationUnit
     unit
 
   def generateSQL(q: Query, ctx: Context): GeneratedSQL =
     val expanded = expand(q, ctx)
     // val sql      = SQLGenerator.toSQL(expanded)
-    val sql = printRelation(expanded, ctx, Indented(0))
+    val gen = GenSQL(using ctx)
+    val sql = gen.printRelation(expanded)(using Indented(0))
     trace(s"[plan]\n${expanded.pp}\n[SQL]\n${sql}")
     GeneratedSQL(sql, expanded)
 
@@ -93,8 +95,10 @@ object GenSQL extends Phase("generate-sql"):
               val argValue          = arg.value
 
               // Register function arguments to the current scope
-              val argSym    = Symbol(ctx.global.newSymbolId)
+              val argSym = Symbol(ctx.global.newSymbolId)
+
               given Context = ctx
+
               argSym.symbolInfo = BoundedSymbolInfo(
                 symbol = argSym,
                 name = argName,
@@ -140,7 +144,12 @@ object GenSQL extends Phase("generate-sql"):
       result
     }
 
-  def printRelation(r: Relation, ctx: Context, sqlContext: SQLGenContext): String =
+end GenSQL
+
+class GenSQL(using ctx: Context) extends LogSupport:
+  import GenSQL.*
+
+  def printRelation(r: Relation)(using sqlContext: SQLGenContext): String =
     def indent(s: String): String =
       if sqlContext.nestingLevel == 0 then
         s
@@ -204,7 +213,7 @@ object GenSQL extends Phase("generate-sql"):
         agg
           .groupingKeys
           .map { x =>
-            val key = printExpression(x, ctx)
+            val key = printExpression(x)
             s"""${key} as "${key}""""
           }
       selectItems ++=
@@ -221,39 +230,53 @@ object GenSQL extends Phase("generate-sql"):
                 s"""${expr} as "${expr}""""
           }
       s += s"select ${selectItems.result().mkString(", ")}"
-      s += s"from ${printRelation(agg.child, ctx, sqlContext.enterFrom)}"
-      s += s"group by ${agg.groupingKeys.map(x => printExpression(x, ctx)).mkString(", ")}"
+      s += s"from ${printRelation(agg.child)(using sqlContext.enterFrom)}"
+      s += s"group by ${agg.groupingKeys.map(x => printExpression(x)).mkString(", ")}"
       s.result().mkString("\n")
     end printAggregate
 
     def pivotOnExpr(p: Pivot): String = p
       .pivotKeys
       .map { k =>
-        val values = k.values.map(v => printExpression(v, ctx)).mkString(", ")
+        val values = k.values.map(v => printExpression(v)).mkString(", ")
         if values.isEmpty then
-          s"${printExpression(k.name, ctx)}"
+          s"${printExpression(k.name)}"
         else
-          s"${printExpression(k.name, ctx)} in (${values})"
+          s"${printExpression(k.name)} in (${values})"
       }
       .mkString(", ")
     end pivotOnExpr
+
+    def printValues(values: Values): String =
+      val rows = values
+        .rows
+        .map { row =>
+          row match
+            case a: ArrayConstructor =>
+              val elems = a.values.map(x => printExpression(x)).mkString(", ")
+              s"(${elems})"
+            case other =>
+              printExpression(other)
+        }
+        .mkString(", ")
+      s"values ${rows}"
 
     r match
       case a: Agg if a.child.isPivot =>
         // pivot + agg combination
         val p: Pivot = a.child.asInstanceOf[Pivot]
         val onExpr   = pivotOnExpr(p)
-        val aggItems = a.selectItems.map(x => printExpression(x, ctx)).mkString(", ")
+        val aggItems = a.selectItems.map(x => printExpression(x)).mkString(", ")
         val pivotExpr =
-          s"pivot ${printRelation(p.child, ctx, sqlContext.enterFrom)}\n  on ${onExpr}\n  using ${aggItems}"
+          s"pivot ${printRelation(p.child)(using sqlContext.enterFrom)}\n  on ${onExpr}\n  using ${aggItems}"
         if p.groupingKeys.isEmpty then
           selectWithIndentAndParenIfNecessary(pivotExpr)
         else
-          val groupByItems = p.groupingKeys.map(x => printExpression(x, ctx)).mkString(", ")
+          val groupByItems = p.groupingKeys.map(x => printExpression(x)).mkString(", ")
           selectWithIndentAndParenIfNecessary(s"${pivotExpr}\n  group by ${groupByItems}")
       case p: Pivot => // pivot without explicit aggregations
         selectWithIndentAndParenIfNecessary(
-          s"pivot ${printRelation(p.child, ctx, sqlContext.enterFrom)}\n  on ${pivotOnExpr(p)}"
+          s"pivot ${printRelation(p.child)(using sqlContext.enterFrom)}\n  on ${pivotOnExpr(p)}"
         )
       case p: AggSelect =>
         // pull-up filter nodes to build where clause
@@ -269,7 +292,7 @@ object GenSQL extends Phase("generate-sql"):
             case _ =>
               false
 
-        val selectItems = agg.selectItems.map(x => printExpression(x, ctx)).mkString(", ")
+        val selectItems = agg.selectItems.map(x => printExpression(x)).mkString(", ")
         val s           = Seq.newBuilder[String]
         s +=
           s"select ${
@@ -278,28 +301,35 @@ object GenSQL extends Phase("generate-sql"):
               else
                 ""
             }${selectItems}"
-        s += s"from ${printRelation(agg.child, ctx, sqlContext.enterFrom)}"
+        s += s"from ${printRelation(agg.child)(using sqlContext.enterFrom)}"
         if agg.filters.nonEmpty then
           val filterExpr = Expression.concatWithAnd(agg.filters.map(x => x.filterExpr))
-          s += s"where ${printExpression(filterExpr, ctx)}"
+          s += s"where ${printExpression(filterExpr)}"
         if agg.groupingKeys.nonEmpty then
-          s += s"group by ${agg.groupingKeys.map(x => printExpression(x, ctx)).mkString(", ")}"
+          s += s"group by ${agg.groupingKeys.map(x => printExpression(x)).mkString(", ")}"
         if agg.having.nonEmpty then
-          s += s"having ${agg.having.map(x => printExpression(x.filterExpr, ctx)).mkString(", ")}"
+          s += s"having ${agg.having.map(x => printExpression(x.filterExpr)).mkString(", ")}"
 
         selectWithIndentAndParenIfNecessary(s"${s.result().mkString("\n")}")
       case a: GroupBy =>
         selectWithIndentAndParenIfNecessary(s"${printAggregate(a)}")
       case j: Join =>
-        def printRel(r: Relation): String =
-          r match
-            case t: TableScan =>
-              t.name.name
-            case other =>
-              printRelation(other, ctx, sqlContext.nested)
+//        def printRel(r: Relation): String =
+//          r match
+//            case t: TableScan =>
+//              t.name.name
+////            case p @ ParenthesizedRelation(a: AliasedRelation, _) =>
+////              // Need to name sub query
+////              s"${printRelation(p, ctx, sqlContext.nested)} as ${a.alias.fullName}"
+//            case a: AliasedRelation =>
+//              // Need to name sub query
+//              s"${printRelation(a.child)(using sqlContext.nested)} as ${a.alias.fullName}"
+//            case other =>
+//              printRelation(other)(using sqlContext.nested)
 
-        val l = printRel(j.left)
-        val r = printRel(j.right)
+        val l = printRelation(j.left)(using sqlContext.enterFrom)
+        // join (right) is similar to enter from ...
+        val r = printRelation(j.right)(using sqlContext.enterFrom)
         val c =
           j.cond match
             case NoJoinCriteria =>
@@ -309,41 +339,39 @@ object GenSQL extends Phase("generate-sql"):
             case u: JoinOnTheSameColumns =>
               s" using(${u.columns.map(_.fullName).mkString(", ")})"
             case JoinOn(expr, _) =>
-              s" on ${printExpression(expr, ctx)}"
+              s" on ${printExpression(expr)}"
             case JoinOnEq(keys, _) =>
-              s" on ${printExpression(Expression.concatWithEq(keys), ctx)}"
-        j.joinType match
-          case InnerJoin =>
-            s"${l} join ${r}${c}"
-          case LeftOuterJoin =>
-            s"${l} left join ${r}${c}"
-          case RightOuterJoin =>
-            s"${l} right join ${r}${c}"
-          case FullOuterJoin =>
-            s"${l} full outer join ${r}${c}"
-          case CrossJoin =>
-            s"${l} cross join p${r}${c}"
-          case ImplicitJoin =>
-            s"${l}, ${r}${c}"
+              s" on ${printExpression(Expression.concatWithEq(keys))}"
+        val joinSQL =
+          j.joinType match
+            case InnerJoin =>
+              s"${l} join ${r}${c}"
+            case LeftOuterJoin =>
+              s"${l} left join ${r}${c}"
+            case RightOuterJoin =>
+              s"${l} right join ${r}${c}"
+            case FullOuterJoin =>
+              s"${l} full outer join ${r}${c}"
+            case CrossJoin =>
+              s"${l} cross join p${r}${c}"
+            case ImplicitJoin =>
+              s"${l}, ${r}${c}"
+        joinSQL
       case f: Filter =>
         f.child match
           case a: GroupBy =>
-            val body = List(
-              s"${printAggregate(a)}",
-              s"having ${printExpression(f.filterExpr, ctx)}"
-            ).mkString("\n")
+            val body = List(s"${printAggregate(a)}", s"having ${printExpression(f.filterExpr)}")
+              .mkString("\n")
             selectWithIndentAndParenIfNecessary(s"${body}")
           case _ =>
             selectWithIndentAndParenIfNecessary(
-              s"""select * from ${printRelation(
-                  f.inputRelation,
-                  ctx,
+              s"""select * from ${printRelation(f.inputRelation)(using
                   sqlContext.enterFrom
-                )}\nwhere ${printExpression(f.filterExpr, ctx)}"""
+                )}\nwhere ${printExpression(f.filterExpr)}"""
             )
       case a: AliasedRelation =>
         val tableAlias: String =
-          val name = printExpression(a.alias, ctx)
+          val name = printExpression(a.alias)
           a.columnNames match
             case Some(columns) =>
               s"${name}(${columns.map(x => s"${x.name}").mkString(", ")})"
@@ -352,44 +380,43 @@ object GenSQL extends Phase("generate-sql"):
 
         a.child match
           case v: Values =>
-            selectAllWithIndent(s"${printValues(v, ctx)} as ${tableAlias}")
+            selectAllWithIndent(s"${printValues(v)} as ${tableAlias}")
           case _ =>
-            indent(s"${printRelation(a.inputRelation, ctx, sqlContext.nested)} as ${tableAlias}")
+            indent(s"${printRelation(a.inputRelation)(using sqlContext.nested)} as ${tableAlias}")
       case p: ParenthesizedRelation =>
-        selectWithIndentAndParenIfNecessary(s"${printRelation(p.child, ctx, sqlContext.nested)}")
+        val inner = printRelation(p.child)(using sqlContext.nested)
+        selectWithIndentAndParenIfNecessary(inner)
       case t: TestRelation =>
-        printRelation(t.inputRelation, ctx, sqlContext.nested)
+        printRelation(t.inputRelation)(using sqlContext.nested)
       case q: Query =>
-        printRelation(q.body, ctx, sqlContext)
+        printRelation(q.body)(using sqlContext)
       case l: Limit =>
         l.inputRelation match
           case s: Sort =>
             // order by needs to be compresed with limit as subexpression query ordering will be ignored in Trino
-            val input = printRelation(s.inputRelation, ctx, sqlContext.enterFrom)
+            val input = printRelation(s.inputRelation)(using sqlContext.enterFrom)
             val body =
               s"""select * from ${input}
-                 |order by ${s.orderBy.map(e => printExpression(e, ctx)).mkString(", ")}
+                 |order by ${s.orderBy.map(e => printExpression(e)).mkString(", ")}
                  |limit ${l.limit.stringValue}""".stripMargin
             selectWithIndentAndParenIfNecessary(body)
           case _ =>
-            val input = printRelation(l.inputRelation, ctx, sqlContext.enterFrom)
+            val input = printRelation(l.inputRelation)(using sqlContext.enterFrom)
             selectWithIndentAndParenIfNecessary(
               s"""select * from ${input}\nlimit ${l.limit.stringValue}"""
             )
       case s: Sort =>
-        val input = printRelation(s.inputRelation, ctx, sqlContext.enterFrom)
+        val input = printRelation(s.inputRelation)(using sqlContext.enterFrom)
         val body =
           s"""select * from ${input}\norder by ${s
               .orderBy
-              .map(e => printExpression(e, ctx))
+              .map(e => printExpression(e))
               .mkString(", ")}"""
         selectWithIndentAndParenIfNecessary(body)
       case t: Transform =>
-        val transformItems = t.transformItems.map(x => printExpression(x, ctx)).mkString(", ")
+        val transformItems = t.transformItems.map(x => printExpression(x)).mkString(", ")
         selectWithIndentAndParenIfNecessary(
-          s"""select ${transformItems}, * from ${printRelation(
-              t.inputRelation,
-              ctx,
+          s"""select ${transformItems}, * from ${printRelation(t.inputRelation)(using
               sqlContext.enterFrom
             )}"""
         )
@@ -397,35 +424,31 @@ object GenSQL extends Phase("generate-sql"):
         val newColumns = a
           .newColumns
           .map { c =>
-            printExpression(c, ctx)
+            printExpression(c)
           }
         selectWithIndentAndParenIfNecessary(
           s"""select *, ${newColumns
-              .mkString(", ")} from ${printRelation(a.inputRelation, ctx, sqlContext.enterFrom)}"""
+              .mkString(", ")} from ${printRelation(a.inputRelation)(using sqlContext.enterFrom)}"""
         )
       case d: ExcludeColumnsFromRelation =>
         selectWithIndentAndParenIfNecessary(
           s"""select ${d.relationType.fields.map(_.name).mkString(", ")} from ${printRelation(
-              d.inputRelation,
-              ctx,
-              sqlContext.enterFrom
-            )}"""
+              d.inputRelation
+            )(using sqlContext.enterFrom)}"""
         )
       case s: ShiftColumns =>
         selectWithIndentAndParenIfNecessary(
           s"""select ${s.relationType.fields.map(_.name).mkString(", ")} from ${printRelation(
-              s.inputRelation,
-              ctx,
-              sqlContext.enterFrom
-            )}"""
+              s.inputRelation
+            )(using sqlContext.enterFrom)}"""
         )
       case t: TableRef =>
         selectAllWithIndent(s"${t.name.fullName}")
       case t: TableFunctionCall =>
-        val args = t.args.map(x => printExpression(x, ctx)).mkString(", ")
+        val args = t.args.map(x => printExpression(x)).mkString(", ")
         selectAllWithIndent(s"${t.name.strExpr}(${args})")
       case r: RawSQL =>
-        selectWithIndentAndParenIfNecessary(printExpression(r.sql, ctx))
+        selectWithIndentAndParenIfNecessary(printExpression(r.sql))
       case t: TableScan =>
         selectAllWithIndent(s"${t.name.fullName}")
       case j: JSONFileScan =>
@@ -433,7 +456,7 @@ object GenSQL extends Phase("generate-sql"):
       case t: ParquetFileScan =>
         selectAllWithIndent(s"'${t.path}'")
       case v: Values =>
-        printValues(v, ctx)
+        printValues(v)
       case s: Show if s.showType == ShowType.tables =>
         val sql  = s"select table_name from information_schema.tables"
         val cond = List.newBuilder[Expression]
@@ -455,7 +478,7 @@ object GenSQL extends Phase("generate-sql"):
           if conds.size == 0 then
             sql
           else
-            s"${sql} where ${printExpression(Expression.concatWithAnd(conds), ctx)}"
+            s"${sql} where ${printExpression(Expression.concatWithAnd(conds))}"
         selectWithIndentAndParenIfNecessary(s"${body} order by table_name")
       case s: Show if s.showType == ShowType.models =>
         val models: Seq[ListMap[String, Any]] = ctx
@@ -512,47 +535,33 @@ object GenSQL extends Phase("generate-sql"):
 
   end printRelation
 
-  def printValues(values: Values, ctx: Context): String =
-    val rows = values
-      .rows
-      .map { row =>
-        row match
-          case a: ArrayConstructor =>
-            val elems = a.values.map(x => printExpression(x, ctx)).mkString(", ")
-            s"(${elems})"
-          case other =>
-            printExpression(other, ctx)
-      }
-      .mkString(", ")
-    s"(values ${rows})"
-
-  def printExpression(expression: Expression, context: Context): String =
+  def printExpression(expression: Expression)(using sqlContext: SQLGenContext): String =
     expression match
       case g: UnresolvedGroupingKey =>
-        printExpression(g.child, context)
+        printExpression(g.child)
       case f: FunctionApply =>
-        val base = printExpression(f.base, context)
-        val args = f.args.map(x => printExpression(x, context)).mkString(", ")
-        val w    = f.window.map(x => printExpression(x, context)).getOrElse("")
+        val base = printExpression(f.base)
+        val args = f.args.map(x => printExpression(x)).mkString(", ")
+        val w    = f.window.map(x => printExpression(x)).getOrElse("")
         Seq(s"${base}(${args})", w).mkString(" ")
       case f: FunctionArg =>
         // TODO handle arg name mapping
-        printExpression(f.value, context)
+        printExpression(f.value)
       case w: Window =>
         val s = Seq.newBuilder[String]
         if w.partitionBy.nonEmpty then
           s += "partition by"
-          s += w.partitionBy.map(x => printExpression(x, context)).mkString(", ")
+          s += w.partitionBy.map(x => printExpression(x)).mkString(", ")
         if w.orderBy.nonEmpty then
           s += "order by"
-          s += w.orderBy.map(x => printExpression(x, context)).mkString(", ")
+          s += w.orderBy.map(x => printExpression(x)).mkString(", ")
         s"over (${s.result().mkString(" ")})"
       case Eq(left, n: NullLiteral, _) =>
-        s"${printExpression(left, context)} is null"
+        s"${printExpression(left)} is null"
       case NotEq(left, n: NullLiteral, _) =>
-        s"${printExpression(left, context)} is not null"
+        s"${printExpression(left)} is not null"
       case b: BinaryExpression =>
-        s"${printExpression(b.left, context)} ${b.operatorName} ${printExpression(b.right, context)}"
+        s"${printExpression(b.left)} ${b.operatorName} ${printExpression(b.right)}"
       case s: StringPart =>
         s.stringValue
       case s: StringLiteral =>
@@ -565,41 +574,41 @@ object GenSQL extends Phase("generate-sql"):
       case i: Identifier =>
         i.strExpr
       case s: SortItem =>
-        s"${printExpression(s.sortKey, context)}${s.ordering.map(x => s" ${x.expr}").getOrElse("")}"
+        s"${printExpression(s.sortKey)}${s.ordering.map(x => s" ${x.expr}").getOrElse("")}"
       case s: SingleColumn =>
         if s.nameExpr.isEmpty then
-          printExpression(s.expr, context)
+          printExpression(s.expr)
         else
-          s"${printExpression(s.expr, context)} as ${printExpression(s.nameExpr, context)}"
+          s"${printExpression(s.expr)} as ${printExpression(s.nameExpr)}"
       case a: Attribute =>
         a.fullName
       case p: ParenthesizedExpression =>
-        s"(${printExpression(p.child, context)})"
+        s"(${printExpression(p.child)})"
       case i: InterpolatedString =>
         i.parts
           .map { e =>
-            printExpression(e, context)
+            printExpression(e)
           }
           .mkString
       case s: SubQueryExpression =>
-        s"(${printRelation(s.query, context, Indented(0))})"
+        s"(${printRelation(s.query)(using sqlContext.nested)})"
       case i: IfExpr =>
-        s"if(${printExpression(i.cond, context)}, ${printExpression(i.onTrue, context)}, ${printExpression(i.onFalse, context)})"
+        s"if(${printExpression(i.cond)}, ${printExpression(i.onTrue)}, ${printExpression(i.onFalse)})"
       case i: Wildcard =>
         i.strExpr
       case n: Not =>
-        s"not ${printExpression(n.child, context)}"
+        s"not ${printExpression(n.child)}"
       case l: ListExpr =>
-        l.exprs.map(x => printExpression(x, context)).mkString(", ")
+        l.exprs.map(x => printExpression(x)).mkString(", ")
       case d @ DotRef(qual: Expression, name: NameExpr, _, _) =>
-        s"${printExpression(qual, context)}.${printExpression(name, context)}"
+        s"${printExpression(qual)}.${printExpression(name)}"
       case in: In =>
-        val left  = printExpression(in.a, context)
-        val right = in.list.map(x => printExpression(x, context)).mkString(", ")
+        val left  = printExpression(in.a)
+        val right = in.list.map(x => printExpression(x)).mkString(", ")
         s"${left} in (${right})"
       case notIn: NotIn =>
-        val left  = printExpression(notIn.a, context)
-        val right = notIn.list.map(x => printExpression(x, context)).mkString(", ")
+        val left  = printExpression(notIn.a)
+        val right = notIn.list.map(x => printExpression(x)).mkString(", ")
         s"${left} not in (${right})"
       case other =>
         warn(s"unknown expression type: ${other}")
