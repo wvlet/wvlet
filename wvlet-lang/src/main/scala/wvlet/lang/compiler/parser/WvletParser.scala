@@ -85,6 +85,7 @@ import wvlet.log.LogSupport
   *             | 'order' 'by' sortItem (',' sortItem)* ','?)?
   *             | 'add' selectItems
   *             | 'exclude' identifier ((',' identifier)* ','?)?
+  *             | 'shift' identifier (',' identifier)* ','?
   *             | 'test' COLON testExpr*
   *             | 'show' identifier
   *
@@ -754,6 +755,9 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
       case WvletToken.EXCLUDE =>
         val drop = excludeColumnExpr(input)
         queryBlock(drop)
+      case WvletToken.SHIFT =>
+        val shift = shiftColumnsExpr(input)
+        queryBlock(shift)
       case WvletToken.GROUP =>
         val groupBy = groupByExpr(input)
         queryBlock(groupBy)
@@ -878,7 +882,7 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
         case WvletToken.COMMA =>
           consume(WvletToken.COMMA)
           nextItem
-        case WvletToken.EOF | WvletToken.END =>
+        case token if WvletToken.isQueryEndKeyword(token) =>
         // finish
         case t if t.tokenType == TokenType.Keyword =>
         // finish
@@ -887,6 +891,45 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
           nextItem
     nextItem
     ExcludeColumnsFromRelation(input, items.result, t.nodeLocation)
+
+  def shiftColumnsExpr(input: Relation): ShiftColumns =
+    val t = consume(WvletToken.SHIFT)
+
+    val isLeftShift =
+      scanner.lookAhead().token match
+        case WvletToken.TO =>
+          consume(WvletToken.TO)
+          val tt = scanner.lookAhead()
+          tt.token match
+            case WvletToken.LEFT =>
+              consume(WvletToken.LEFT)
+              true
+            case WvletToken.RIGHT =>
+              consume(WvletToken.RIGHT)
+              false
+            case _ =>
+              unexpected(tt)
+        case _ =>
+          true
+
+    val items = List.newBuilder[Identifier]
+    def nextItem: Unit =
+      val t = scanner.lookAhead()
+      t.token match
+        case WvletToken.COMMA =>
+          consume(WvletToken.COMMA)
+          nextItem
+        case token if WvletToken.isQueryEndKeyword(token) =>
+        // finish
+        case t if t.tokenType == TokenType.Keyword =>
+        // finish
+        case _ =>
+          items += identifierSingle()
+          nextItem
+    nextItem
+    ShiftColumns(input, isLeftShift, items.result, t.nodeLocation)
+
+  end shiftColumnsExpr
 
   def groupByExpr(input: Relation): GroupBy =
     val t = consume(WvletToken.GROUP)

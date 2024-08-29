@@ -355,6 +355,31 @@ case class ExcludeColumnsFromRelation(
     )
     pt
 
+case class ShiftColumns(
+    child: Relation,
+    isLeftShift: Boolean,
+    shiftItems: Seq[NameExpr],
+    nodeLocation: Option[NodeLocation]
+) extends UnaryRelation:
+  override def toString: String = s"Shift[${shiftItems.mkString(", ")}](${child})"
+
+  override lazy val relationType: RelationType =
+    val reorderedColumns = Seq.newBuilder[NamedType]
+    val (preferredColumns, remainingColumns) = inputRelationType
+      .fields
+      .partition { field =>
+        shiftItems.exists(_.leafName == field.name.name)
+      }
+    ProjectedType(
+      Name.typeName(RelationType.newRelationTypeName),
+      if isLeftShift then
+        preferredColumns ++ remainingColumns
+      else
+        remainingColumns ++ preferredColumns
+      ,
+      child.relationType
+    )
+
 /**
   * Aggregation operator that merges records by grouping keys and create a list of records for each
   * group
@@ -504,10 +529,35 @@ case class Join(
 //        // Report including duplicated name columns
 //        inputAttributes
 
-  override lazy val relationType: RelationType = ConcatType(
-    Name.typeName(RelationType.newRelationTypeName),
-    Seq(left.relationType, right.relationType)
-  )
+  override lazy val relationType: RelationType =
+    cond match
+      case j: JoinOnTheSameColumns =>
+        // If the join condition is on the same column names, merge the column types
+        val mergedColumns = Seq.newBuilder[NamedType]
+
+        val joinColumns = j.columns.map(_.toTermName)
+
+        mergedColumns ++= left.relationType.fields
+        right
+          .relationType
+          .fields
+          .foreach { f =>
+            if !joinColumns.contains(f.name) then
+              mergedColumns += f
+          }
+        ProjectedType(
+          Name.typeName(RelationType.newRelationTypeName),
+          mergedColumns.result(),
+          ConcatType(
+            Name.typeName(RelationType.newRelationTypeName),
+            Seq(left.relationType, right.relationType)
+          )
+        )
+      case _ =>
+        ConcatType(
+          Name.typeName(RelationType.newRelationTypeName),
+          Seq(left.relationType, right.relationType)
+        )
 
 end Join
 

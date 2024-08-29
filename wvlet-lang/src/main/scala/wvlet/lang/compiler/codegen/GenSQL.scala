@@ -306,10 +306,8 @@ object GenSQL extends Phase("generate-sql"):
               ""
             case NaturalJoin(_) =>
               ""
-            case JoinUsing(columns, _) =>
-              s" using(${columns.map(_.fullName).mkString(", ")})"
-            case ResolvedJoinUsing(columns, _) =>
-              s" using(${columns.map(_.fullName).mkString(", ")})"
+            case u: JoinOnTheSameColumns =>
+              s" using(${u.columns.map(_.fullName).mkString(", ")})"
             case JoinOn(expr, _) =>
               s" on ${printExpression(expr, ctx)}"
             case JoinOnEq(keys, _) =>
@@ -406,14 +404,17 @@ object GenSQL extends Phase("generate-sql"):
               .mkString(", ")} from ${printRelation(a.inputRelation, ctx, sqlContext.enterFrom)}"""
         )
       case d: ExcludeColumnsFromRelation =>
-        val dropColumns = d
-          .columnNames
-          .map { c =>
-            printExpression(c, ctx)
-          }
         selectWithIndentAndParenIfNecessary(
           s"""select ${d.relationType.fields.map(_.name).mkString(", ")} from ${printRelation(
               d.inputRelation,
+              ctx,
+              sqlContext.enterFrom
+            )}"""
+        )
+      case s: ShiftColumns =>
+        selectWithIndentAndParenIfNecessary(
+          s"""select ${s.relationType.fields.map(_.name).mkString(", ")} from ${printRelation(
+              s.inputRelation,
               ctx,
               sqlContext.enterFrom
             )}"""
