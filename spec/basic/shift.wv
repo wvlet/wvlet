@@ -1,0 +1,10 @@
+from 'person.json'
+shift name, age
+
+
+from 'person.json'
+shift to left name, age
+
+from 'person.json'
+shift to right name
+

@@ -169,6 +169,8 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   // ddl keywords
   case ADD     extends WvletToken(Keyword, "add")
   case EXCLUDE extends WvletToken(Keyword, "exclude")
+  case SHIFT   extends WvletToken(Keyword, "shift")
+  case TO      extends WvletToken(Keyword, "to")
   case DROP    extends WvletToken(Keyword, "drop")
 
   // window function keywords
@@ -232,6 +234,10 @@ object WvletToken:
       WvletToken.TRANSFORM,
       WvletToken.TEST
     ) ++ joinKeywords
+
+  val queryEndKeywords = Set(WvletToken.EOF, WvletToken.END, WvletToken.R_PAREN)
+
+  def isQueryEndKeyword(t: WvletToken): Boolean = queryEndKeywords.contains(t)
 
   // Line Feed '\n'
   inline val LF = '\u000A'

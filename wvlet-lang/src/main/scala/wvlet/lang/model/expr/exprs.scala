@@ -174,15 +174,22 @@ case object NoJoinCriteria extends JoinCriteria with LeafExpression:
 case class NaturalJoin(nodeLocation: Option[NodeLocation]) extends JoinCriteria with LeafExpression:
   override def toString: String = "NaturalJoin"
 
+sealed trait JoinOnTheSameColumns extends JoinCriteria:
+  def columns: Seq[NameExpr]
+
 case class JoinUsing(columns: Seq[NameExpr], nodeLocation: Option[NodeLocation])
-    extends JoinCriteria:
+    extends JoinOnTheSameColumns:
   override def children: Seq[Expression] = columns
   override def toString: String          = s"JoinUsing(${columns.mkString(",")})"
 
 case class ResolvedJoinUsing(keys: Seq[MultiSourceColumn], nodeLocation: Option[NodeLocation])
-    extends JoinCriteria:
-  override def children: Seq[Expression] = keys
-  override def toString: String          = s"ResolvedJoinUsing(${keys.mkString(",")})"
+    extends JoinOnTheSameColumns:
+  override def columns: Seq[NameExpr] = keys.map { k =>
+    k.nameExpr
+  }
+
+  override def children: Seq[Expression] = columns
+  override def toString: String          = s"ResolvedJoinUsing(${columns.mkString(",")})"
   override lazy val resolved: Boolean    = true
 
 case class JoinOn(expr: Expression, nodeLocation: Option[NodeLocation])

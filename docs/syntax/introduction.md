@@ -22,7 +22,8 @@ wvlet favors lower-case keywords for SQL-like operators. The following is a list
 | pivot on `pivot_column` (in (`v1`, `v2`, ...) )? | Rows whose column values in the pivot column are expanded as columns. |
 | pivot on `pivot_column`<br/> (group by `grouping columns`)?<br/> agg `agg_expr` |  Pivoted rows with the given grouping columns and aggregated values.|
 | pipe `func(args, ...)` | Rows processed by the given table function | 
-
+| shift (to left)? `column`, ... | Same rows with selected column moved to the left |
+| shift to right `column`, ... | Same rows with selected column moved to the right |
 
 ## Expressions
 
