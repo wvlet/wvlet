@@ -40,6 +40,7 @@ object GenSQL extends Phase("generate-sql"):
     def nestingLevel: Int
     def nested: SQLGenContext    = Indented(nestingLevel + 1)
     def enterFrom: SQLGenContext = InFromClause(nestingLevel + 1)
+
     def withinFrom: Boolean =
       this match
         case InFromClause(_) =>
@@ -59,7 +60,7 @@ object GenSQL extends Phase("generate-sql"):
   def generateSQL(q: Query, ctx: Context): GeneratedSQL =
     val expanded = expand(q, ctx)
     // val sql      = SQLGenerator.toSQL(expanded)
-    val gen = GenSQL(using ctx)
+    val gen = GenSQL(ctx)
     val sql = gen.printRelation(expanded)(using Indented(0))
     trace(s"[plan]\n${expanded.pp}\n[SQL]\n${sql}")
     GeneratedSQL(sql, expanded)
@@ -146,7 +147,7 @@ object GenSQL extends Phase("generate-sql"):
 
 end GenSQL
 
-class GenSQL(using ctx: Context) extends LogSupport:
+class GenSQL(ctx: Context) extends LogSupport:
   import GenSQL.*
 
   def printRelation(r: Relation)(using sqlContext: SQLGenContext): String =
@@ -259,7 +260,7 @@ class GenSQL(using ctx: Context) extends LogSupport:
               printExpression(other)
         }
         .mkString(", ")
-      s"values ${rows}"
+      s"(values ${rows})"
 
     r match
       case a: Agg if a.child.isPivot =>
@@ -314,20 +315,7 @@ class GenSQL(using ctx: Context) extends LogSupport:
       case a: GroupBy =>
         selectWithIndentAndParenIfNecessary(s"${printAggregate(a)}")
       case j: Join =>
-//        def printRel(r: Relation): String =
-//          r match
-//            case t: TableScan =>
-//              t.name.name
-////            case p @ ParenthesizedRelation(a: AliasedRelation, _) =>
-////              // Need to name sub query
-////              s"${printRelation(p, ctx, sqlContext.nested)} as ${a.alias.fullName}"
-//            case a: AliasedRelation =>
-//              // Need to name sub query
-//              s"${printRelation(a.child)(using sqlContext.nested)} as ${a.alias.fullName}"
-//            case other =>
-//              printRelation(other)(using sqlContext.nested)
-
-        val l = printRelation(j.left)(using sqlContext.enterFrom)
+        val l = printRelation(j.left)(using sqlContext.nested)
         // join (right) is similar to enter from ...
         val r = printRelation(j.right)(using sqlContext.enterFrom)
         val c =
@@ -356,7 +344,12 @@ class GenSQL(using ctx: Context) extends LogSupport:
               s"${l} cross join p${r}${c}"
             case ImplicitJoin =>
               s"${l}, ${r}${c}"
-        joinSQL
+
+        if sqlContext.nestingLevel == 0 then
+          // Need a top-level select statement for (left) join (right)
+          indent(s"select * from ${joinSQL}")
+        else
+          joinSQL
       case f: Filter =>
         f.child match
           case a: GroupBy =>
@@ -379,13 +372,24 @@ class GenSQL(using ctx: Context) extends LogSupport:
               name
 
         a.child match
-          case v: Values =>
+          case t: TableScan =>
+            s"${t.name.fullName} as ${tableAlias}"
+          case v: Values if sqlContext.nestingLevel == 0 =>
             selectAllWithIndent(s"${printValues(v)} as ${tableAlias}")
+          case v: Values if sqlContext.nestingLevel > 0 =>
+            s"${selectAllWithIndent(s"${printValues(v)} as ${tableAlias}")} as ${a.alias.fullName}"
           case _ =>
             indent(s"${printRelation(a.inputRelation)(using sqlContext.nested)} as ${tableAlias}")
       case p: ParenthesizedRelation =>
         val inner = printRelation(p.child)(using sqlContext.nested)
-        selectWithIndentAndParenIfNecessary(inner)
+        p.child match
+          case v: Values =>
+            // No need to wrap values query
+            inner
+          case AliasedRelation(v: Values, _, _, _) =>
+            inner
+          case _ =>
+            selectWithIndentAndParenIfNecessary(inner)
       case t: TestRelation =>
         printRelation(t.inputRelation)(using sqlContext.nested)
       case q: Query =>
