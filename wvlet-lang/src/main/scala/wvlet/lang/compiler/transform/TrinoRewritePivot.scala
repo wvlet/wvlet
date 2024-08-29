@@ -104,6 +104,7 @@ object TrinoRewritePivot extends Phase("rewrite-pivot"):
                 // sum(price) => sum(if(pivot_column = value, price, null)) as "value"
                 val pivotAggExpr = aggExpr.transformUpExpression {
                   // Replace input relation field access to conditional access
+                  // TODO Do not replace identifiers used for aliases
                   case id: Identifier if fieldNames.contains(id.toTermName) =>
                     FunctionApply(
                       UnquotedIdentifier("if", None),
