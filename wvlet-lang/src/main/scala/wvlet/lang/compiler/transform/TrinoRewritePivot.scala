@@ -87,7 +87,8 @@ object TrinoRewritePivot extends Phase("rewrite-pivot"):
               // count_if(pivot_column = value) as "value"
               exprs +=
                 SingleColumn(
-                  DoubleQuotedIdentifier(v.stringValue, None),
+                  // Use a quoted column name for safely wrapping arbitrary column values
+                  BackQuotedIdentifier(v.unquotedValue, None),
                   FunctionApply(
                     UnquotedIdentifier("count_if", None),
                     List(FunctionArg(None, Eq(targetColumn, v, None), None)),
@@ -116,7 +117,8 @@ object TrinoRewritePivot extends Phase("rewrite-pivot"):
                     )
                 }
                 exprs +=
-                  SingleColumn(DoubleQuotedIdentifier(v.stringValue, None), pivotAggExpr, None)
+                  // Use a quoted column name for safely wrapping arbitrary column values
+                  SingleColumn(BackQuotedIdentifier(v.unquotedValue, None), pivotAggExpr, None)
               }
             end if
             exprs.result

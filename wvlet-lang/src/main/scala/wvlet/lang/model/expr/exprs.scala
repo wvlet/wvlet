@@ -52,7 +52,12 @@ sealed trait NameExpr extends Expression:
   def toTypeName: TypeName = Name.typeName(leafName)
 
   def toSQLAttributeName: String =
-    val s = fullName
+    val s =
+      this match
+        case i: Identifier =>
+          i.unquotedValue
+        case _ =>
+          fullName
     if s.matches("^[_a-zA-Z][_a-zA-Z0-9]*$") then
       s
     else
@@ -604,6 +609,7 @@ case class This(override val dataType: DataType, nodeLocation: Option[NodeLocati
 // Literal
 sealed trait Literal extends Expression:
   def stringValue: String
+  def unquotedValue: String = stringValue
 
 case class NullLiteral(nodeLocation: Option[NodeLocation]) extends Literal with LeafExpression:
   override def dataType: DataType  = DataType.NullType
@@ -634,6 +640,13 @@ case class StringLiteral(value: String, nodeLocation: Option[NodeLocation])
   override def dataType: DataType  = DataType.StringType
   override def stringValue: String = value
   override def toString            = s"StringLiteral('${value}')"
+  override def unquotedValue: String =
+    if value.startsWith("\"") then
+      value.stripPrefix("\"").stripSuffix("\"")
+    else if value.startsWith("'") then
+      value.stripPrefix("'").stripSuffix("'")
+    else
+      value
 
 case class StringPart(value: String, nodeLocation: Option[NodeLocation])
     extends Literal

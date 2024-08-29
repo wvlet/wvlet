@@ -72,4 +72,4 @@ trait TDTrinoSpecRunner(specPath: String) extends AirSpec:
 
 end TDTrinoSpecRunner
 
-class TDTrinoTest extends TDTrinoSpecRunner("spec/trino")
+class TDTrinoSpec extends TDTrinoSpecRunner("spec/trino")
