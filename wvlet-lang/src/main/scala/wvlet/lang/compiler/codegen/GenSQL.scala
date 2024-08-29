@@ -51,6 +51,12 @@ object GenSQL extends Phase("generate-sql"):
   case class Indented(nestingLevel: Int)     extends SQLGenContext
   case class InFromClause(nestingLevel: Int) extends SQLGenContext
 
+  private def doubleQuoteIfNecessary(s: String): String =
+    if s.matches("^[_a-zA-Z][_a-zA-Z0-9]*$") then
+      s
+    else
+      s""""${s}""""
+
   override def run(unit: CompilationUnit, context: Context): CompilationUnit =
     // Generate SQL from the resolved plan
     // generateSQL(unit.resolvedPlan)
@@ -222,7 +228,7 @@ class GenSQL(ctx: Context) extends LogSupport:
           .fields
           .map { f =>
             // TODO: This should generate a nested relation, but use arbitrary(expr) for efficiency
-            val expr = s"arbitrary(${f.name})"
+            val expr = s"arbitrary(${f.toSQLAttributeName})"
             ctx.dbType match
               case DBType.DuckDB =>
                 // DuckDB generates human-friendly column name
@@ -367,7 +373,7 @@ class GenSQL(ctx: Context) extends LogSupport:
           val name = printExpression(a.alias)
           a.columnNames match
             case Some(columns) =>
-              s"${name}(${columns.map(x => s"${x.name}").mkString(", ")})"
+              s"${name}(${columns.map(x => s"${x.toSQLAttributeName}").mkString(", ")})"
             case None =>
               name
 
@@ -377,7 +383,7 @@ class GenSQL(ctx: Context) extends LogSupport:
           case v: Values if sqlContext.nestingLevel == 0 =>
             selectAllWithIndent(s"${printValues(v)} as ${tableAlias}")
           case v: Values if sqlContext.nestingLevel > 0 =>
-            s"${selectAllWithIndent(s"${printValues(v)} as ${tableAlias}")} as ${a.alias.fullName}"
+            s"${selectWithIndentAndParenIfNecessary(s"select * from ${printValues(v)} as ${tableAlias}")} as ${a.alias.fullName}"
           case _ =>
             indent(s"${printRelation(a.inputRelation)(using sqlContext.nested)} as ${tableAlias}")
       case p: ParenthesizedRelation =>
@@ -436,15 +442,19 @@ class GenSQL(ctx: Context) extends LogSupport:
         )
       case d: ExcludeColumnsFromRelation =>
         selectWithIndentAndParenIfNecessary(
-          s"""select ${d.relationType.fields.map(_.name).mkString(", ")} from ${printRelation(
-              d.inputRelation
-            )(using sqlContext.enterFrom)}"""
+          s"""select ${d
+              .relationType
+              .fields
+              .map(_.toSQLAttributeName)
+              .mkString(", ")} from ${printRelation(d.inputRelation)(using sqlContext.enterFrom)}"""
         )
       case s: ShiftColumns =>
         selectWithIndentAndParenIfNecessary(
-          s"""select ${s.relationType.fields.map(_.name).mkString(", ")} from ${printRelation(
-              s.inputRelation
-            )(using sqlContext.enterFrom)}"""
+          s"""select ${s
+              .relationType
+              .fields
+              .map(_.toSQLAttributeName)
+              .mkString(", ")} from ${printRelation(s.inputRelation)(using sqlContext.enterFrom)}"""
         )
       case t: TableRef =>
         selectAllWithIndent(s"${t.name.fullName}")
@@ -583,7 +593,7 @@ class GenSQL(ctx: Context) extends LogSupport:
         if s.nameExpr.isEmpty then
           printExpression(s.expr)
         else
-          s"${printExpression(s.expr)} as ${printExpression(s.nameExpr)}"
+          s"${printExpression(s.expr)} as ${s.nameExpr.toSQLAttributeName}"
       case a: Attribute =>
         a.fullName
       case p: ParenthesizedExpression =>
