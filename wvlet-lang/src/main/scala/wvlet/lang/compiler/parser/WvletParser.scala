@@ -521,7 +521,8 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
         e :: namedTypes()
 
   def namedType(): NamedType =
-    val name = identifierSingle().toTermName
+    val id   = identifierSingle()
+    val name = id.toTermName
     // scan `: (type)`
     scanner.lookAhead().token match
       case WvletToken.COLON =>

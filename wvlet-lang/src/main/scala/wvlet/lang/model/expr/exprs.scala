@@ -51,6 +51,13 @@ sealed trait NameExpr extends Expression:
   def toTermName: TermName = Name.termName(leafName)
   def toTypeName: TypeName = Name.typeName(leafName)
 
+  def toSQLAttributeName: String =
+    val s = fullName
+    if s.matches("^[_a-zA-Z][_a-zA-Z0-9]*$") then
+      s
+    else
+      s""""${s}""""
+
 object NameExpr:
   val EmptyName: Identifier           = UnquotedIdentifier("<empty>", None)
   def fromString(s: String): NameExpr = UnquotedIdentifier(s, None)
@@ -116,7 +123,7 @@ sealed trait Identifier extends QualifiedName with LeafExpression:
   override def attributeName: String  = strExpr
   override lazy val resolved: Boolean = false
   def toResolved(dataType: DataType): ResolvedIdentifier = ResolvedIdentifier(
-    this.strExpr,
+    this.unquotedValue,
     dataType,
     nodeLocation
   )
@@ -164,8 +171,10 @@ case class BackQuotedIdentifier(
     override val unquotedValue: String,
     nodeLocation: Option[NodeLocation]
 ) extends Identifier:
-  override def strExpr: String = s"`${unquotedValue}`"
-  override def toString        = s"Id(`${unquotedValue}`)"
+  override def leafName: String = unquotedValue
+  override def fullName: String = unquotedValue
+  override def strExpr: String  = s"`${unquotedValue}`"
+  override def toString         = s"Id(`${unquotedValue}`)"
 
 sealed trait JoinCriteria extends Expression
 case object NoJoinCriteria extends JoinCriteria with LeafExpression:
