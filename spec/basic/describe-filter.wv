@@ -1,0 +1,5 @@
+from 'books.json'
+describe
+-- returns rows of (column_name, column_type)
+where column_type like 'string'
+limit 2

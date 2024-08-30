@@ -364,7 +364,7 @@ class GenSQL(ctx: Context) extends LogSupport:
             selectWithIndentAndParenIfNecessary(s"${body}")
           case _ =>
             selectWithIndentAndParenIfNecessary(
-              s"""select * from ${printRelation(f.inputRelation)(using
+              s"""select * from ${printRelation(f.child)(using
                   sqlContext.enterFrom
                 )}\nwhere ${printExpression(f.filterExpr)}"""
             )
@@ -471,6 +471,22 @@ class GenSQL(ctx: Context) extends LogSupport:
         selectAllWithIndent(s"'${t.path}'")
       case v: Values =>
         printValues(v)
+      case d: Describe =>
+        // Trino doesn't support nesting describe statement, so we need to generate raw values as SQL
+        val values = d
+          .child
+          .relationType
+          .fields
+          .map { f =>
+            s"""('${f.name.name}','${f.dataType.typeName}')"""
+          }
+          .mkString(",")
+        val sql = s"select * from (values ${values}) as table_schema(column_name, column_type)"
+        selectWithIndentAndParenIfNecessary(sql)
+      case r: RelationInspector =>
+        // Skip relation inspector
+        // TODO Dump output to the file logger
+        printRelation(r.child)
       case s: Show if s.showType == ShowType.tables =>
         val sql  = s"select table_name from information_schema.tables"
         val cond = List.newBuilder[Expression]

@@ -34,6 +34,7 @@ import wvlet.airframe.ulid.ULID
 import wvlet.log.LogSupport
 
 import java.io.File
+import scala.collection.immutable.ListMap
 
 object JSONAnalyzer extends LogSupport:
   def analyzeJSONFile(path: String): RelationType =
@@ -53,7 +54,8 @@ object JSONAnalyzer extends LogSupport:
 
   private def guessSchema(json: JSONValue): RelationType =
     // json path -> (data type -> count)
-    var schema = Map.empty[String, TypeCountMap]
+    // Use ListMap to keep the order of the columns
+    var schema = ListMap.empty[String, TypeCountMap]
 
     def traverse(path: String, v: JSONValue): Unit =
       v match

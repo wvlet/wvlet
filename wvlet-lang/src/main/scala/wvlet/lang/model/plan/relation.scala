@@ -35,6 +35,8 @@ import wvlet.airframe.json.JSON
 import wvlet.airframe.ulid.ULID
 import wvlet.log.LogSupport
 
+import scala.collection.immutable.ListMap
+
 sealed trait Relation extends LogicalPlan:
   // Input attributes (column names) of the relation
   def relationType: RelationType
@@ -486,7 +488,9 @@ case class SQLSelect(
     child.relationType
   )
 
-case class Query(body: Relation, nodeLocation: Option[NodeLocation]) extends UnaryRelation:
+trait QueryStatement extends UnaryRelation
+
+case class Query(body: Relation, nodeLocation: Option[NodeLocation]) extends QueryStatement:
   override def child: Relation  = body
   override def toString: String = s"Query(body:${body})"
   override def children: Seq[LogicalPlan] =
@@ -827,3 +831,22 @@ case class Show(showType: ShowType, nodeLocation: Option[NodeLocation])
           typeName = Name.typeName("table"),
           columnTypes = Seq[NamedType](NamedType(Name.termName("name"), DataType.StringType))
         )
+
+trait RelationInspector extends QueryStatement
+
+case class Describe(child: Relation, nodeLocation: Option[NodeLocation]) extends RelationInspector:
+  override def relationType: RelationType = SchemaType(
+    parent = None,
+    typeName = Name.typeName("table_description"),
+    columnTypes = List(
+      NamedType(Name.termName("column_name"), DataType.StringType),
+      NamedType(Name.termName("column_type"), DataType.StringType)
+    )
+  )
+
+  def descRows: Seq[ListMap[String, Any]] = child
+    .relationType
+    .fields
+    .map { f =>
+      ListMap("column_name" -> f.name.name, "column_type" -> f.dataType.typeName)
+    }

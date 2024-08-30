@@ -121,6 +121,9 @@ class QueryExecutor(dbConnector: DBConnector) extends LogSupport with AutoClosea
         QueryResult.empty
       case m: ModelDef =>
         QueryResult.empty
+      case d: Describe =>
+        val desc = d.descRows
+        TableRows(d.relationType, desc, desc.size)
       case s: Subscribe =>
         debug(s"Executing subscribe: ${s}")
         QueryResult.empty

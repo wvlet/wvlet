@@ -62,7 +62,9 @@ import wvlet.log.LogSupport
   *   modelParam : identifier ':' identifier ('=' expression)?
   *
   *   query: 'from' relation (',' relation)* ','?
-  *          queryBlock*
+  *          (queryBlock* | inspector)
+  *
+  *   inspector: `describe`
   *
   *   relation       : relationPrimary ('as' identifier)?
   *   relationPrimary: qualifiedId ('(' functionArg (',' functionArg)* ')')?
@@ -705,8 +707,13 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
     readRest()
 
     r = queryBlock(r)
-    val q = Query(r, t.nodeLocation)
-    q
+    r =
+      r match
+        case i: RelationInspector =>
+          i
+        case _ =>
+          Query(r, t.nodeLocation)
+    r
 
   /**
     * fromRelation := relationPrimary ('as' identifier)?
@@ -780,6 +787,10 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
       case WvletToken.TEST =>
         val test = testExpr(input)
         queryBlock(test)
+      case WvletToken.DESCRIBE =>
+        consume(WvletToken.DESCRIBE)
+        val desc = Describe(input, t.nodeLocation)
+        queryBlock(desc)
       case _ =>
         input
 

@@ -25,6 +25,13 @@ wvlet favors lower-case keywords for SQL-like operators. The following is a list
 | shift (to left)? `column`, ... | Same rows with selected column moved to the left |
 | shift to right `column`, ... | Same rows with selected column moved to the right |
 
+
+## Relation Inspection Operators
+
+| Operator | Output                                                             |
+| --- |--------------------------------------------------------------------|
+| describe | Return the schema of the input relation (column_name, column_type) |
+
 ## Expressions
 
 One of the major difference from tradtional SQL is that wvlet uses single or double quoted strings for representing string values, and back-quoted strings for referencing column or table names, which might contain space or special characters.
