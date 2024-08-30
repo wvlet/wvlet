@@ -36,7 +36,7 @@ import wvlet.airframe.log.AnsiColorPalette
 import wvlet.log.io.IOUtil
 import wvlet.log.{LogSupport, Logger}
 
-import java.io.File
+import java.io.{File, StringWriter}
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicReference
 import java.util.regex.Pattern
@@ -215,14 +215,19 @@ class WvletREPL(runner: WvletScriptRunner) extends AutoCloseable with LogSupport
     reader.callWidget(LineReader.ACCEPT_LINE)
     true
 
-  private def describeLine = newWidget: () =>
+  private def extractQueryFragment: String =
     val buf        = reader.getBuffer
     val lastCursor = buf.cursor()
-    reader.callWidget(LineReader.END_OF_LINE)
+    if buf.currChar() != '\n' then
+      reader.callWidget(LineReader.END_OF_LINE)
     val queryFragment = trimLine(buf.upToCursor())
     // Move back cursor
     buf.cursor(lastCursor)
-    // TODO implement describe schema
+    queryFragment
+
+  private def describeLine = newWidget: () =>
+    // Run (query fragment) describe to show the schema
+    val queryFragment = extractQueryFragment
     val lines         = queryFragment.split("\n")
     val lastLine      = lines.lastOption.getOrElse("")
     val lineNum       = lines.size
@@ -230,8 +235,31 @@ class WvletREPL(runner: WvletScriptRunner) extends AutoCloseable with LogSupport
     val result        = runner.runStatement(describeQuery)
     val str           = result.toPrettyBox()
     reader.printAbove(
-      s"${Color.GREEN}describe${Color.RESET} ${Color.BLUE}(line:${lineNum})${AnsiColor.RESET}: ${Color.BRIGHT_RED}${lastLine}\n${Color.GRAY}${str}${AnsiColor.RESET}"
+      s"${Color.GREEN}describe${Color.RESET} ${Color.BLUE}(line:${lineNum})${Color.RESET}: ${Color.BRIGHT_RED}${lastLine}\n${Color.GRAY}${str}${AnsiColor.RESET}"
     )
+    true
+
+  private def debugRun = newWidget: () =>
+    val originalQuery = reader.getBuffer.toString
+    val queryFragment = extractQueryFragment
+    val lines         = queryFragment.split("\n")
+    val lastLine      = lines.lastOption.getOrElse("")
+    val lineNum       = lines.size
+    val samplingQuery = s"${queryFragment}\nlimit ${runner.getResultRowLimit}"
+    val totalLines    = originalQuery.split("\n").size
+    // Need to add newlines to display the debug output in a proper position in the terminal
+    println(
+      s"${"\n" * (totalLines - lineNum + 1).max(0)}${Color.GREEN}debug${Color.RESET} ${Color.BLUE}(line:${lineNum})${Color.RESET}: ${Color.BRIGHT_RED}${lastLine}${AnsiColor.RESET}"
+    )
+    val result = runner.runStatement(samplingQuery)
+    lastOutput = Some(runner.displayOutput(samplingQuery, result, terminal))
+    val out = terminal.output()
+    // Add enough blank lines to redisplay the user query
+    for i <- 1 until lineNum do
+      out.write('\n')
+
+    // Redisplay the original query
+    reader.callWidget(LineReader.REDRAW_LINE)
     true
 
   def start(commands: List[String] = Nil): Unit =
@@ -251,7 +279,8 @@ class WvletREPL(runner: WvletScriptRunner) extends AutoCloseable with LogSupport
     keyMaps.bind(moveToTop, KeyMap.translate("^J^A"))
     keyMaps.bind(moveToEnd, KeyMap.translate("^J^E"))
     keyMaps.bind(enterStmt, KeyMap.translate("^J^J"))
-    keyMaps.bind(describeLine, KeyMap.translate("^J^D"))
+    keyMaps.bind(describeLine, KeyMap.translate("^J^F"))
+    keyMaps.bind(debugRun, KeyMap.translate("^J^D"))
 
     // Load the command history so that we can use ctrl-r (keyword), ctrl+p/n (previous/next) for history search
     val history = reader.getHistory
