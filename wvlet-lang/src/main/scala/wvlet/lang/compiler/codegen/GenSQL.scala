@@ -472,10 +472,17 @@ class GenSQL(ctx: Context) extends LogSupport:
       case v: Values =>
         printValues(v)
       case d: Describe =>
-        // TODO: Trino doesn't support nesting describe statement. Need to generate schema values here
-        selectWithIndentAndParenIfNecessary(
-          s"describe ${printRelation(d.child)(using sqlContext.nested)}"
-        )
+        // Trino doesn't support nesting describe statement, so we need to generate raw values as SQL
+        val values = d
+          .child
+          .relationType
+          .fields
+          .map { f =>
+            s"""('${f.name.name}','${f.dataType.typeName}')"""
+          }
+          .mkString(",")
+        val sql = s"select * from (values ${values}) as table_schema(column_name, column_type)"
+        selectWithIndentAndParenIfNecessary(sql)
       case r: RelationInspector =>
         // Skip relation inspector
         // TODO Dump output to the file logger

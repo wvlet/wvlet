@@ -835,7 +835,7 @@ case class Show(showType: ShowType, nodeLocation: Option[NodeLocation])
 trait RelationInspector extends QueryStatement
 
 case class Describe(child: Relation, nodeLocation: Option[NodeLocation]) extends RelationInspector:
-  override def relationType: RelationType =SchemaType(
+  override def relationType: RelationType = SchemaType(
     parent = None,
     typeName = Name.typeName("table_description"),
     columnTypes = List(
