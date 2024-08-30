@@ -30,6 +30,7 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   def isIdentifier: Boolean          = tokenType == Identifier
   def isLiteral: Boolean             = tokenType == Literal
   def isReservedKeyword: Boolean     = tokenType == Keyword
+  def isOperator: Boolean            = tokenType == Op
   def isRightParenOrBracket: Boolean = this == WvletToken.R_PAREN || this == WvletToken.R_BRACKET
 
   // special tokens
