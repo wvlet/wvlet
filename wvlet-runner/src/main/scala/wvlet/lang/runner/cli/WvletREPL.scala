@@ -32,6 +32,7 @@ import org.jline.utils.{AttributedString, AttributedStringBuilder, AttributedSty
 import wvlet.airframe.*
 import wvlet.airframe.control.{Shell, ThreadUtil}
 import wvlet.airframe.launcher.{Launcher, command, option}
+import wvlet.airframe.log.AnsiColorPalette
 import wvlet.log.io.IOUtil
 import wvlet.log.{LogSupport, Logger}
 
@@ -229,7 +230,7 @@ class WvletREPL(runner: WvletScriptRunner) extends AutoCloseable with LogSupport
     val result        = runner.runStatement(describeQuery)
     val str           = result.toPrettyBox()
     reader.printAbove(
-      s"${AnsiColor.CYAN}describe${AnsiColor.RESET} ${AnsiColor.BLUE}(line:${lineNum})${AnsiColor.RESET}: ${AnsiColor.MAGENTA}${lastLine}\n${AnsiColor.GREEN}${str}${AnsiColor.RESET}"
+      s"${Color.GREEN}describe${Color.RESET} ${Color.BLUE}(line:${lineNum})${AnsiColor.RESET}: ${Color.BRIGHT_RED}${lastLine}\n${Color.GRAY}${str}${AnsiColor.RESET}"
     )
     true
 
@@ -365,6 +366,8 @@ object WvletREPL:
     val AltRight    = Alt * 2 + "[C"
     val AltLeft     = Alt * 2 + "[D"
 
+  object Color extends AnsiColorPalette
+
   /**
     * A custom parser to enable receiving multiline inputs in REPL
     */
@@ -431,12 +434,15 @@ object WvletREPL:
             builder.append(rawString)
           case WvletToken.COMMENT =>
             builder.append(rawString, AttributedStyle.DEFAULT.foreground(AttributedStyle.YELLOW))
-          case WvletToken.IDENTIFIER =>
-            builder.append(rawString, AttributedStyle.DEFAULT.foreground(AttributedStyle.WHITE))
           case token if token.isLiteral =>
             builder.append(rawString, AttributedStyle.DEFAULT.foreground(AttributedStyle.GREEN))
           case token if token.isReservedKeyword =>
             builder.append(rawString, AttributedStyle.DEFAULT.foreground(AttributedStyle.CYAN))
+          case WvletToken.IDENTIFIER =>
+            builder.append(rawString, AttributedStyle.DEFAULT.foreground(AttributedStyle.WHITE))
+//          case token if token.isOperator =>
+//            // bright cyan
+//            builder.append(rawString, AttributedStyle.DEFAULT.foreground(8))
           case _ =>
             builder.append(rawString)
       builder.toAttributedString
