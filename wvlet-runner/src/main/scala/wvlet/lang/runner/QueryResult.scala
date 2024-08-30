@@ -26,6 +26,8 @@ sealed trait QueryResult:
 
   def toTSV: String = QueryResultPrinter.print(this, TSVFormat)
 
+  def getError: Option[Throwable] = None
+
 object QueryResult:
   object empty extends QueryResult
 
@@ -36,3 +38,6 @@ case class PlanResult(plan: LogicalPlan, result: QueryResult) extends QueryResul
 case class TableRows(schema: RelationType, rows: Seq[ListMap[String, Any]], totalRows: Int)
     extends QueryResult:
   def isTruncated: Boolean = rows.size < totalRows
+
+case class ErrorResult(e: Throwable) extends QueryResult:
+  override def getError: Option[Throwable] = Some(e)
