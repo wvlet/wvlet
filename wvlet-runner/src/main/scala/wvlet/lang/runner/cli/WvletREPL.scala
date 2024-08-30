@@ -13,6 +13,7 @@
  */
 package wvlet.lang.runner.cli
 
+import org.jline.keymap.KeyMap
 import wvlet.lang.BuildInfo
 import wvlet.lang.compiler.parser.*
 import wvlet.lang.compiler.{CompilationUnit, SourceFile}
@@ -20,12 +21,13 @@ import wvlet.lang.model.plan.Query
 import wvlet.lang.runner.connector.DBConnector
 import wvlet.lang.runner.connector.duckdb.DuckDBConnector
 import wvlet.lang.runner.connector.trino.{TrinoConfig, TrinoConnector}
-import wvlet.lang.{WvletLangException, StatusCode}
+import wvlet.lang.{StatusCode, WvletLangException}
 import org.jline.reader.*
 import org.jline.reader.Parser.ParseContext
 import org.jline.reader.impl.DefaultParser
 import org.jline.terminal.Terminal.Signal
 import org.jline.terminal.{Size, Terminal, TerminalBuilder}
+import org.jline.utils.InfoCmp.Capability
 import org.jline.utils.{AttributedString, AttributedStringBuilder, AttributedStyle, InfoCmp}
 import wvlet.airframe.*
 import wvlet.airframe.control.{Shell, ThreadUtil}
@@ -159,34 +161,85 @@ class WvletREPL(runner: WvletScriptRunner) extends AutoCloseable with LogSupport
   private def isRealTerminal() =
     terminal.getType != Terminal.TYPE_DUMB && terminal.getType != Terminal.TYPE_DUMB_COLOR
 
+  private var lastOutput: Option[LastOutput] = None
+  // Handle ctrl-c (int) or ctrl-d (quit) to interrupt the current thread
+  private val currentThread = new AtomicReference[Thread](Thread.currentThread())
+
+  private def withNewThread[Result](body: => Result): Result =
+    val lastThread = Thread.currentThread()
+    try executorThreadManager
+        .submit { () =>
+          currentThread.set(Thread.currentThread())
+          body
+        }
+        .get()
+    finally currentThread.set(lastThread)
+
+  private def runStmt(trimmedLine: String): Unit =
+    if trimmedLine.nonEmpty then
+      withNewThread {
+        try
+          val result = runner.runStatement(trimmedLine, terminal)
+          lastOutput = Some(result)
+        catch
+          case e: InterruptedException =>
+            logger.error("Cancelled the query")
+      }
+
+  private def trimLine(line: String): String = line.trim.stripSuffix(";")
+
   def start(commands: List[String] = Nil): Unit =
     // Set the default size when opening a new window or inside sbt console
     if terminal.getWidth == 0 || terminal.getHeight == 0 then
       terminal.setSize(Size(120, 40))
 
-    // Handle ctrl-c (int) or ctrl-d (quit) to interrupt the current thread
-    val currentThread = new AtomicReference[Thread](Thread.currentThread())
-    def withNewThread[Result](body: => Result): Result =
-      val lastThread = Thread.currentThread()
-      try executorThreadManager
-          .submit { () =>
-            currentThread.set(Thread.currentThread())
-            body
-          }
-          .get()
-      finally currentThread.set(lastThread)
-
     terminal.handle(Signal.INT, _ => currentThread.get().interrupt())
+
+    // Add shortcut keys
+    val keyMaps = reader.getKeyMaps().get("main")
+
+    def moveToTop =
+      new Widget:
+        override def apply(): Boolean =
+          val buf = reader.getBuffer
+          buf.cursor(0)
+          true
+
+    def moveToEnd =
+      new Widget:
+        override def apply(): Boolean =
+          val buf = reader.getBuffer
+          buf.cursor(buf.length())
+          true
+
+    def enterStmt =
+      new Widget:
+        override def apply(): Boolean =
+          val buf = reader.getBuffer
+          buf.cursor(buf.length())
+          val line = buf.toString
+          if !line.trim.endsWith(";") then
+            buf.write(";")
+          buf.write("\n")
+          warn(s"here")
+          true
+
+    val Alt: String     = "\u001b"
+    val ShiftUp: String = Alt + "[1;2A"
+    val ShiftDown       = Alt + "[1;2B"
+    val CtrlEnter       = "\u000A"
+//    keyMaps.bind(moveToTop, ShiftUp)
+//    keyMaps.bind(moveToEnd, ShiftDown)
+    keyMaps.bind(enterStmt, KeyMap.alt(';'))
 
     // Load the command history so that we can use ctrl-r (keyword), ctrl+p/n (previous/next) for history search
     val history = reader.getHistory
     history.attach(reader)
 
-    var toContinue                     = true
-    var lastOutput: Option[LastOutput] = None
+    var toContinue = true
     while toContinue do
       def eval(line: String): Unit =
-        val trimmedLine = line.trim.stripSuffix(";")
+        val trimmedLine = trimLine(line)
         val cmd         = trimmedLine.split("\\s+").headOption.getOrElse("")
         cmd match
           case "exit" | "quit" =>
@@ -225,15 +278,7 @@ class WvletREPL(runner: WvletScriptRunner) extends AutoCloseable with LogSupport
               info(s"Set the column width to: ${width}")
               runner.setMaxColWidth(width)
           case stmt =>
-            if trimmedLine.nonEmpty then
-              withNewThread {
-                try
-                  val result = runner.runStatement(trimmedLine, terminal)
-                  lastOutput = Some(result)
-                catch
-                  case e: InterruptedException =>
-                    logger.error("Cancelled the query")
-              }
+            runStmt(trimmedLine)
         end match
       end eval
 
