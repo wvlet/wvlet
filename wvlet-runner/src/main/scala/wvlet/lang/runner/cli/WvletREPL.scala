@@ -17,7 +17,7 @@ import org.jline.keymap.KeyMap
 import wvlet.lang.BuildInfo
 import wvlet.lang.compiler.parser.*
 import wvlet.lang.compiler.{CompilationUnit, SourceFile}
-import wvlet.lang.model.plan.Query
+import wvlet.lang.model.plan.{Query, QueryStatement}
 import wvlet.lang.runner.connector.DBConnector
 import wvlet.lang.runner.connector.duckdb.DuckDBConnector
 import wvlet.lang.runner.connector.trino.{TrinoConfig, TrinoConnector}
@@ -380,8 +380,8 @@ object WvletREPL:
           // Test whether the statement is a complete statement
           val stmt = wvletParser.statement()
           stmt match
-            case q: Query =>
-              // Query might have additional operators, so it needs to end with ";"
+            case q: QueryStatement =>
+              // QueryStatement might have additional operators, so it needs to end with ";"
               incomplete
             case _ =>
               if cursor >= line.length then

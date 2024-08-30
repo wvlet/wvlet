@@ -167,11 +167,12 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   case CROSS extends WvletToken(Keyword, "cross")
 
   // ddl keywords
-  case ADD     extends WvletToken(Keyword, "add")
-  case EXCLUDE extends WvletToken(Keyword, "exclude")
-  case SHIFT   extends WvletToken(Keyword, "shift")
-  case TO      extends WvletToken(Keyword, "to")
-  case DROP    extends WvletToken(Keyword, "drop")
+  case ADD      extends WvletToken(Keyword, "add")
+  case EXCLUDE  extends WvletToken(Keyword, "exclude")
+  case SHIFT    extends WvletToken(Keyword, "shift")
+  case TO       extends WvletToken(Keyword, "to")
+  case DROP     extends WvletToken(Keyword, "drop")
+  case DESCRIBE extends WvletToken(Keyword, "describe")
 
   // window function keywords
   case OVER      extends WvletToken(Keyword, "over")

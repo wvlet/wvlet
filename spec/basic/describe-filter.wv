@@ -1,0 +1,4 @@
+from 'books.json'
+describe
+where column_type like 'VARCHAR'
+limit 2
