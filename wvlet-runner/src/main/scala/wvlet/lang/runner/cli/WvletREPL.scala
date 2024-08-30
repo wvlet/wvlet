@@ -279,7 +279,7 @@ class WvletREPL(runner: WvletScriptRunner) extends AutoCloseable with LogSupport
     keyMaps.bind(moveToTop, KeyMap.translate("^J^A"))
     keyMaps.bind(moveToEnd, KeyMap.translate("^J^E"))
     keyMaps.bind(enterStmt, KeyMap.translate("^J^J"))
-    keyMaps.bind(describeLine, KeyMap.translate("^J^S"))
+    keyMaps.bind(describeLine, KeyMap.translate("^J^F"))
     keyMaps.bind(debugRun, KeyMap.translate("^J^D"))
 
     // Load the command history so that we can use ctrl-r (keyword), ctrl+p/n (previous/next) for history search
