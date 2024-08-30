@@ -87,7 +87,8 @@ object TrinoRewritePivot extends Phase("rewrite-pivot"):
               // count_if(pivot_column = value) as "value"
               exprs +=
                 SingleColumn(
-                  DoubleQuotedIdentifier(v.stringValue, None),
+                  // Use a quoted column name for safely wrapping arbitrary column values
+                  BackQuotedIdentifier(v.unquotedValue, None),
                   FunctionApply(
                     UnquotedIdentifier("count_if", None),
                     List(FunctionArg(None, Eq(targetColumn, v, None), None)),
@@ -103,6 +104,7 @@ object TrinoRewritePivot extends Phase("rewrite-pivot"):
                 // sum(price) => sum(if(pivot_column = value, price, null)) as "value"
                 val pivotAggExpr = aggExpr.transformUpExpression {
                   // Replace input relation field access to conditional access
+                  // TODO Do not replace identifiers used for aliases
                   case id: Identifier if fieldNames.contains(id.toTermName) =>
                     FunctionApply(
                       UnquotedIdentifier("if", None),
@@ -116,7 +118,8 @@ object TrinoRewritePivot extends Phase("rewrite-pivot"):
                     )
                 }
                 exprs +=
-                  SingleColumn(DoubleQuotedIdentifier(v.stringValue, None), pivotAggExpr, None)
+                  // Use a quoted column name for safely wrapping arbitrary column values
+                  SingleColumn(BackQuotedIdentifier(v.unquotedValue, None), pivotAggExpr, None)
               }
             end if
             exprs.result
