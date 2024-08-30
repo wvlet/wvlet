@@ -21,6 +21,7 @@ import wvlet.airframe.control.{Control, Shell}
 import wvlet.log.LogSupport
 
 import java.io.{BufferedWriter, FilterOutputStream, OutputStreamWriter}
+import scala.util.control.NonFatal
 
 case class WvletScriptRunnerConfig(
     workingFolder: String = ".",
@@ -47,6 +48,7 @@ class WvletScriptRunner(config: WvletScriptRunnerConfig, queryExecutor: QueryExe
   private var resultRowLimits: Int   = config.resultLimit
   private var resultMaxColWidth: Int = config.maxColWidth
 
+  def getResultRowLimit: Int              = resultRowLimits
   def setResultRowLimit(limit: Int): Unit = resultRowLimits = limit
   def setMaxColWidth(size: Int): Unit     = resultMaxColWidth = size
 
@@ -92,7 +94,7 @@ class WvletScriptRunner(config: WvletScriptRunnerConfig, queryExecutor: QueryExe
 
       queryResult
     catch
-      case e: WvletLangException if e.statusCode.isUserError =>
+      case NonFatal(e) =>
         ErrorResult(e)
     end try
 
