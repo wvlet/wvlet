@@ -220,17 +220,31 @@ class WvletREPL(runner: WvletScriptRunner) extends AutoCloseable with LogSupport
           val line = buf.toString
           if !line.trim.endsWith(";") then
             buf.write(";")
-          buf.write("\n")
-          warn(s"here")
+            buf.cursor(buf.length())
+          reader.callWidget(LineReader.ACCEPT_LINE)
           true
 
-    val Alt: String     = "\u001b"
-    val ShiftUp: String = Alt + "[1;2A"
-    val ShiftDown       = Alt + "[1;2B"
-    val CtrlEnter       = "\u000A"
-//    keyMaps.bind(moveToTop, ShiftUp)
-//    keyMaps.bind(moveToEnd, ShiftDown)
-    keyMaps.bind(enterStmt, KeyMap.alt(';'))
+    def describeLine =
+      new Widget:
+        override def apply(): Boolean =
+          val buf        = reader.getBuffer
+          val lastCursor = buf.cursor()
+          reader.callWidget(LineReader.END_OF_LINE)
+          val queryFragment = buf.upToCursor()
+          // Move back cursor
+          buf.cursor(lastCursor)
+          // TODO implement describe schema
+          reader.printAbove(s"describe:\n[query]\n${queryFragment}\n")
+          true
+
+    import scala.jdk.CollectionConverters.*
+    // Clean up all the default key bindings for ctrl-j (accept line) to enable our custom key bindings
+    reader.getKeyMaps().values().asScala.foreach(_.unbind(KeyMap.ctrl('J')))
+    // Bind Ctrl+J, ... sequence
+    keyMaps.bind(moveToTop, KeyMap.translate("^J^A"))
+    keyMaps.bind(moveToEnd, KeyMap.translate("^J^E"))
+    keyMaps.bind(enterStmt, KeyMap.translate("^J^J"))
+    keyMaps.bind(describeLine, KeyMap.translate("^J^D"))
 
     // Load the command history so that we can use ctrl-r (keyword), ctrl+p/n (previous/next) for history search
     val history = reader.getHistory
@@ -331,6 +345,17 @@ object WvletREPL:
       | rows       : Set the maximum number of query result rows to display (default: 40)
       | col-width  : Set the maximum column width to display (default: 150)
       |""".stripMargin
+
+  object Keys:
+    val Alt: String = "\u001b"
+    val ShiftUp     = Alt + "[1;2A"
+    val ShiftDown   = Alt + "[1;2B"
+    val ShiftRight  = Alt + "[1;2C"
+    val ShiftLeft   = Alt + "[1;2D"
+    val AltUp       = Alt * 2 + "[A"
+    val AltDown     = Alt * 2 + "[B"
+    val AltRight    = Alt * 2 + "[C"
+    val AltLeft     = Alt * 2 + "[D"
 
   /**
     * A custom parser to enable receiving multiline inputs in REPL
