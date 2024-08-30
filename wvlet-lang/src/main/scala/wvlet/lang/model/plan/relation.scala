@@ -848,5 +848,5 @@ case class Describe(child: Relation, nodeLocation: Option[NodeLocation]) extends
     .relationType
     .fields
     .map { f =>
-      ListMap("column_name" -> f.name.name, "column_type" -> f.dataType.typeName)
+      ListMap("column_name" -> f.name.name, "column_type" -> f.dataType.typeDescription)
     }

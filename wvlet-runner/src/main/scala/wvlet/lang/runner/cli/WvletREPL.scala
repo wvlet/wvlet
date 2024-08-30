@@ -39,6 +39,7 @@ import java.io.File
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicReference
 import java.util.regex.Pattern
+import scala.io.AnsiColor
 
 object WvletREPLCli:
 
@@ -179,14 +180,58 @@ class WvletREPL(runner: WvletScriptRunner) extends AutoCloseable with LogSupport
     if trimmedLine.nonEmpty then
       withNewThread {
         try
-          val result = runner.runStatement(trimmedLine, terminal)
-          lastOutput = Some(result)
+          val result = runner.runStatement(trimmedLine)
+          val output = runner.displayOutput(trimmedLine, result, terminal)
+          lastOutput = Some(output)
         catch
           case e: InterruptedException =>
             logger.error("Cancelled the query")
       }
 
   private def trimLine(line: String): String = line.trim.stripSuffix(";")
+
+  private def newWidget(body: () => Boolean): Widget =
+    new Widget:
+      override def apply(): Boolean = body()
+
+  private def moveToTop = newWidget: () =>
+    val buf = reader.getBuffer
+    buf.cursor(0)
+    true
+
+  private def moveToEnd = newWidget: () =>
+    val buf = reader.getBuffer
+    buf.cursor(buf.length())
+    true
+
+  private def enterStmt = newWidget: () =>
+    val buf = reader.getBuffer
+    buf.cursor(buf.length())
+    val line = buf.toString
+    if !line.trim.endsWith(";") then
+      buf.write(";")
+      buf.cursor(buf.length())
+    reader.callWidget(LineReader.ACCEPT_LINE)
+    true
+
+  private def describeLine = newWidget: () =>
+    val buf        = reader.getBuffer
+    val lastCursor = buf.cursor()
+    reader.callWidget(LineReader.END_OF_LINE)
+    val queryFragment = trimLine(buf.upToCursor())
+    // Move back cursor
+    buf.cursor(lastCursor)
+    // TODO implement describe schema
+    val lines         = queryFragment.split("\n")
+    val lastLine      = lines.lastOption.getOrElse("")
+    val lineNum       = lines.size
+    val describeQuery = s"${queryFragment}\ndescribe"
+    val result        = runner.runStatement(describeQuery)
+    val str           = result.toPrettyBox()
+    reader.printAbove(
+      s"${AnsiColor.CYAN}describe${AnsiColor.RESET} ${AnsiColor.BLUE}(line:${lineNum})${AnsiColor.RESET}: ${AnsiColor.MAGENTA}${lastLine}\n${AnsiColor.GREEN}${str}${AnsiColor.RESET}"
+    )
+    true
 
   def start(commands: List[String] = Nil): Unit =
     // Set the default size when opening a new window or inside sbt console
@@ -197,45 +242,6 @@ class WvletREPL(runner: WvletScriptRunner) extends AutoCloseable with LogSupport
 
     // Add shortcut keys
     val keyMaps = reader.getKeyMaps().get("main")
-
-    def moveToTop =
-      new Widget:
-        override def apply(): Boolean =
-          val buf = reader.getBuffer
-          buf.cursor(0)
-          true
-
-    def moveToEnd =
-      new Widget:
-        override def apply(): Boolean =
-          val buf = reader.getBuffer
-          buf.cursor(buf.length())
-          true
-
-    def enterStmt =
-      new Widget:
-        override def apply(): Boolean =
-          val buf = reader.getBuffer
-          buf.cursor(buf.length())
-          val line = buf.toString
-          if !line.trim.endsWith(";") then
-            buf.write(";")
-            buf.cursor(buf.length())
-          reader.callWidget(LineReader.ACCEPT_LINE)
-          true
-
-    def describeLine =
-      new Widget:
-        override def apply(): Boolean =
-          val buf        = reader.getBuffer
-          val lastCursor = buf.cursor()
-          reader.callWidget(LineReader.END_OF_LINE)
-          val queryFragment = buf.upToCursor()
-          // Move back cursor
-          buf.cursor(lastCursor)
-          // TODO implement describe schema
-          reader.printAbove(s"describe:\n[query]\n${queryFragment}\n")
-          true
 
     import scala.jdk.CollectionConverters.*
     // Clean up all the default key bindings for ctrl-j (accept line) to enable our custom key bindings
@@ -344,6 +350,8 @@ object WvletREPL:
       | clip-result: Clip the last result to the clipboard in TSV format
       | rows       : Set the maximum number of query result rows to display (default: 40)
       | col-width  : Set the maximum column width to display (default: 150)
+      | git        : Run a git command in the shell
+      | gh         : Run a GitHub command in the shell
       |""".stripMargin
 
   object Keys:
@@ -425,9 +433,9 @@ object WvletREPL:
             builder.append(rawString, AttributedStyle.DEFAULT.foreground(AttributedStyle.YELLOW))
           case WvletToken.IDENTIFIER =>
             builder.append(rawString, AttributedStyle.DEFAULT.foreground(AttributedStyle.WHITE))
-          case token if token.tokenType == TokenType.Literal =>
+          case token if token.isLiteral =>
             builder.append(rawString, AttributedStyle.DEFAULT.foreground(AttributedStyle.GREEN))
-          case token if token.tokenType == TokenType.Keyword =>
+          case token if token.isReservedKeyword =>
             builder.append(rawString, AttributedStyle.DEFAULT.foreground(AttributedStyle.CYAN))
           case _ =>
             builder.append(rawString)

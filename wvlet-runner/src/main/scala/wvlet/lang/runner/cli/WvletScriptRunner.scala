@@ -31,7 +31,13 @@ case class WvletScriptRunnerConfig(
     schema: Option[String]
 )
 
-case class LastOutput(line: String, output: String, result: QueryResult) {}
+case class LastOutput(
+    line: String,
+    output: String,
+    result: QueryResult,
+    error: Option[Throwable] = None
+):
+  def hasError: Boolean = error.isDefined
 
 class WvletScriptRunner(config: WvletScriptRunnerConfig, queryExecutor: QueryExecutor)
     extends AutoCloseable
@@ -74,7 +80,7 @@ class WvletScriptRunner(config: WvletScriptRunnerConfig, queryExecutor: QueryExe
     c.compileSourcePaths(None)
     c
 
-  def runStatement(line: String, terminal: Terminal): LastOutput =
+  def runStatement(line: String): QueryResult =
     val newUnit = CompilationUnit.fromString(line)
     units = newUnit :: units
 
@@ -84,37 +90,51 @@ class WvletScriptRunner(config: WvletScriptRunnerConfig, queryExecutor: QueryExe
       val queryResult   = queryExecutor.executeSingle(newUnit, ctx, limit = resultRowLimits)
       trace(s"ctx: ${ctx.hashCode()} ${ctx.compilationUnit.knownSymbols}")
 
-      val str = queryResult.toPrettyBox(maxColWidth = resultMaxColWidth)
-      if str.nonEmpty then
-        val resultMaxWidth = str.split("\n").map(_.size).max
-        if !config.interactive || resultMaxWidth <= terminal.getWidth then
-          println(
-            queryResult
-              .toPrettyBox(maxWidth = Some(terminal.getWidth), maxColWidth = resultMaxColWidth)
-          )
-        else
-          // Launch less command to enable scrolling of query results in the terminal
-          val proc = ProcessUtil.launchInteractiveProcess("less", "-FXRSn")
-          val out =
-            new BufferedWriter(
-              new OutputStreamWriter(
-                // Need to use a FilterOutputStream to accept keyboard events for less command along with the query result string
-                new FilterOutputStream(proc.getOutputStream())
-              )
-            )
-          out.write(str)
-          out.flush()
-          out.close()
-          // Blocking
-          proc.waitFor()
-
-      LastOutput(line, str, queryResult)
+      queryResult
     catch
       case e: WvletLangException if e.statusCode.isUserError =>
-        error(s"${e.getMessage}")
-        LastOutput(line, e.getMessage, QueryResult.empty)
+        ErrorResult(e)
     end try
 
   end runStatement
+
+  def displayOutput(query: String, queryResult: QueryResult, terminal: Terminal): LastOutput =
+    def print: LastOutput =
+      val str            = queryResult.toPrettyBox(maxColWidth = resultMaxColWidth)
+      val resultMaxWidth = str.split("\n").map(_.size).max
+      if !config.interactive || resultMaxWidth <= terminal.getWidth then
+        // The result fits in the terminal width
+        println(
+          queryResult
+            .toPrettyBox(maxWidth = Some(terminal.getWidth), maxColWidth = resultMaxColWidth)
+        )
+      else
+        // Launch less command to enable scrolling of query results in the terminal
+        // TODO Use jline3's internal less
+        val proc = ProcessUtil.launchInteractiveProcess("less", "-FXRSn")
+        val out =
+          new BufferedWriter(
+            new OutputStreamWriter(
+              // Need to use a FilterOutputStream to accept keyboard events for less command along with the query result string
+              new FilterOutputStream(proc.getOutputStream())
+            )
+          )
+        out.write(str)
+        out.flush()
+        out.close()
+        // Blocks until the process is finished
+        proc.waitFor()
+
+      LastOutput(query, str, queryResult)
+    end print
+
+    queryResult.getError match
+      case None =>
+        print
+      case Some(e) =>
+        error(e)
+        LastOutput(query, e.getMessage, QueryResult.empty, error = Some(e))
+
+  end displayOutput
 
 end WvletScriptRunner
