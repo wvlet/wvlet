@@ -278,9 +278,10 @@ class WvletREPL(runner: WvletScriptRunner) extends AutoCloseable with LogSupport
     // Bind Ctrl+J, ... sequence
     keyMaps.bind(moveToTop, KeyMap.translate("^J^A"))
     keyMaps.bind(moveToEnd, KeyMap.translate("^J^E"))
-    keyMaps.bind(enterStmt, KeyMap.translate("^J^J"))
-    keyMaps.bind(describeLine, KeyMap.translate("^J^F"))
-    keyMaps.bind(debugRun, KeyMap.translate("^J^D"))
+    keyMaps.bind(enterStmt, KeyMap.translate("^J^R"))
+    keyMaps.bind(describeLine, KeyMap.translate("^J^D"))
+    keyMaps.bind(debugRun, KeyMap.translate("^J^T"))
+    //keyMaps.bind(testRun, KeyMap.translate("^J^T"))
 
     // Load the command history so that we can use ctrl-r (keyword), ctrl+p/n (previous/next) for history search
     val history = reader.getHistory
