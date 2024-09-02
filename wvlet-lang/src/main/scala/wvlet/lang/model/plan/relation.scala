@@ -366,21 +366,35 @@ case class ShiftColumns(
   override def toString: String = s"Shift[${shiftItems.mkString(", ")}](${child})"
 
   override lazy val relationType: RelationType =
-    val reorderedColumns = Seq.newBuilder[NamedType]
-    val (preferredColumns, remainingColumns) = inputRelationType
-      .fields
-      .partition { field =>
-        shiftItems.exists(_.leafName == field.name.name)
-      }
+    var inputFields: Map[String, NamedType] =
+      inputRelationType
+        .fields
+        .map { f =>
+          f.name.name -> f
+        }
+        .toMap
+    val preferredColumns = List.newBuilder[NamedType]
+    shiftItems.foreach { si =>
+      inputFields.get(si.leafName) match
+        case Some(f) =>
+          preferredColumns += f
+          inputFields -= si.leafName
+        case None =>
+        // skip
+    }
+    val remainingColumns = inputFields.values.toList
     ProjectedType(
       Name.typeName(RelationType.newRelationTypeName),
+      // Shift column positions
       if isLeftShift then
-        preferredColumns ++ remainingColumns
+        preferredColumns.result() ++ remainingColumns
       else
-        remainingColumns ++ preferredColumns
+        remainingColumns ++ preferredColumns.result()
       ,
       child.relationType
     )
+
+end ShiftColumns
 
 /**
   * Aggregation operator that merges records by grouping keys and create a list of records for each
