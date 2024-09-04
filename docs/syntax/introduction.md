@@ -24,7 +24,7 @@ wvlet favors lower-case keywords for SQL-like operators. The following is a list
 | pipe `func(args, ...)` | Rows processed by the given table function | 
 | shift (to left)? `column`, ... | Same rows with selected column moved to the left |
 | shift to right `column`, ... | Same rows with selected column moved to the right |
-
+| sample `method`? (`size` rows? \| %) | Randomly sampled rows. Sampling method can be reservoir (default) or system |   
 
 ## Relation Inspection Operators
 

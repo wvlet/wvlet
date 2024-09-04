@@ -1,0 +1,20 @@
+from 'person.json'
+sample 2
+
+from 'person.json'
+sample reservoir 2
+
+from 'person.json'
+sample reservoir 1 rows
+
+from 'person.json'
+sample reservoir 50%
+
+from 'person.json'
+sample 50%
+
+from 'person.json'
+sample reservoir 50%
+
+from 'person.json'
+sample system 50%

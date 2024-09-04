@@ -25,9 +25,11 @@ import wvlet.lang.compiler.{
   TermName
 }
 import wvlet.lang.catalog.Catalog.TableName
+import wvlet.lang.compiler.DBType.{DuckDB, Trino}
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
 import wvlet.lang.model.plan.JoinType.*
+import wvlet.lang.model.plan.SamplingSize.{Percentage, Rows}
 import wvlet.log.LogSupport
 
 import scala.collection.immutable.ListMap
@@ -557,6 +559,29 @@ class GenSQL(ctx: Context) extends LogSupport:
           selectWithIndentAndParenIfNecessary(
             s"select * from values ${indent(modelValues.mkString(", "))} as __models(name, args, package_name)"
           )
+      case s: Sample =>
+        val child = printRelation(s.child)(using sqlContext.enterFrom)
+        val body: String =
+          ctx.dbType match
+            case DuckDB =>
+              val size =
+                s.size match
+                  case Rows(n) =>
+                    s"${n} rows"
+                  case Percentage(percentage) =>
+                    s"${percentage}%"
+              s"select * from ${child} using sample ${s.method.toString.toLowerCase}(${size})"
+            case Trino if s.method == SamplingMethod.reservoir =>
+              s.size match
+                case Rows(n) =>
+                  s"select *, reservoir_sample(${n}) over() from ${child}"
+                case Percentage(percentage) =>
+                  warn(s"Unsupported sampling size for ${s.method}: ${s.size}")
+                  child
+            case _ =>
+              warn(s"Unsupported sampling method: ${s.method} for ${ctx.dbType}")
+              child
+        selectWithIndentAndParenIfNecessary(body)
       case other =>
         warn(s"unknown relation type: ${other}")
         other.toString

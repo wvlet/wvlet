@@ -33,6 +33,8 @@ trait SpecRunner(
     CompilerOptions(sourceFolders = List(specPath), workingFolder = specPath)
   )
 
+  compiler.setDefaultCatalog(duckDB.getDBConnector.getCatalog("main", "memory"))
+
   // Compile all files in the source paths first
   for unit <- compiler.localCompilationUnits do
     test(unit.sourceFile.fileName) {

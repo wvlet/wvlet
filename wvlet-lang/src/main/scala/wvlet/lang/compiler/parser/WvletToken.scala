@@ -132,6 +132,7 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   case WITH    extends WvletToken(Keyword, "with")
   case TEST    extends WvletToken(Keyword, "test")
   case SHOW    extends WvletToken(Keyword, "show")
+  case SAMPLE  extends WvletToken(Keyword, "sample")
 
   case THIS extends WvletToken(Keyword, "this")
 

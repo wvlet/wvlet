@@ -864,3 +864,19 @@ case class Describe(child: Relation, nodeLocation: Option[NodeLocation]) extends
     .map { f =>
       ListMap("column_name" -> f.name.name, "column_type" -> f.dataType.typeDescription)
     }
+
+case class Sample(
+    child: Relation,
+    method: SamplingMethod,
+    size: SamplingSize,
+    nodeLocation: Option[NodeLocation]
+) extends UnaryRelation:
+  override def relationType: RelationType = child.relationType
+
+enum SamplingMethod:
+  case reservoir
+  case system
+
+enum SamplingSize:
+  case Rows(rows: Long)               extends SamplingSize
+  case Percentage(percentage: Double) extends SamplingSize
