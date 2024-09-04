@@ -75,7 +75,7 @@ case class ModelDef(
     name: TableName,
     params: List[DefArg],
     givenRelationType: Option[RelationType],
-    child: Relation,
+    child: Query,
     nodeLocation: Option[NodeLocation]
 ) extends UnaryRelation
     with HasTableName:

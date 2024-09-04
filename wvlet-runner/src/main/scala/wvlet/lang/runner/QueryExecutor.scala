@@ -55,6 +55,7 @@ class QueryExecutor(dbConnector: DBConnector) extends LogSupport with AutoClosea
     result
 
   def execute(plan: LogicalPlan, context: Context, limit: Int): QueryResult =
+    trace(s"Executing plan: ${plan.pp}")
     plan match
       case p: PackageDef =>
         val results = p
@@ -131,5 +132,9 @@ class QueryExecutor(dbConnector: DBConnector) extends LogSupport with AutoClosea
         QueryResult.empty
       case other =>
         throw StatusCode.NOT_IMPLEMENTED.newException(s"Unsupported plan: ${other}")
+
+    end match
+
+  end execute
 
 end QueryExecutor

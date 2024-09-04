@@ -32,8 +32,13 @@ object TrinoRewritePivot extends Phase("rewrite-pivot"):
       if context.dbType != Trino then
         resolvedPlan
       else
-        resolvedPlan.transform { case q: Query =>
-          RewriteRule.rewrite(q, rewriteRules, context)
+        resolvedPlan.transformUp {
+          case m: ModelDef =>
+            // TODO Update symbol tree for the model elsewhere appropriate
+            m.symbol.tree = m
+            m
+          case q: Query =>
+            RewriteRule.rewrite(q, rewriteRules, context)
         }
 
     unit.resolvedPlan = newPlan

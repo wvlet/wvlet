@@ -143,6 +143,8 @@ object QueryResultPrinter extends LogSupport:
         print(result, format)
       case t: TableRows =>
         format.printTableRows(t)
+      case e: ErrorResult =>
+        s"Error: ${e.getError.map(_.getMessage).getOrElse("")}"
 
 end QueryResultPrinter
 

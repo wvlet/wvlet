@@ -341,7 +341,14 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
         case _ =>
           None
     consume(WvletToken.EQ)
-    val q = query()
+    val q: Query =
+      query() match
+        case q: Query =>
+          q
+        case other =>
+          throw StatusCode
+            .SYNTAX_ERROR
+            .newException(s"Expected a query block, but found ${other}", other.sourceLocation)
     consume(WvletToken.END)
     ModelDef(
       TableName(name.fullName),
