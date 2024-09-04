@@ -22,6 +22,7 @@ import wvlet.lang.model.DataType.*
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.expr.NameExpr.EmptyName
 import wvlet.lang.model.plan.*
+import wvlet.lang.model.plan.SamplingMethod.reservoir
 import wvlet.log.LogSupport
 
 /**
@@ -90,6 +91,7 @@ import wvlet.log.LogSupport
   *             | 'shift' identifier (',' identifier)* ','?
   *             | 'test' COLON testExpr*
   *             | 'show' identifier
+  *             | 'sample' sampleExpr
   *
   *   join        : joinType? 'join' relation joinCriteria
   *               | 'cross' 'join' relation
@@ -116,6 +118,9 @@ import wvlet.log.LogSupport
   *   testExpr: booleanExpression
   *
   *   showCommand: 'show' identifier
+  *
+  *   sampleExpr: ('reservoir' | 'system')?
+  *               ((integerLiteral 'rows'?) | (floatLiteral '%'))
   *
   *   sortItem: expression ('asc' | 'desc')?
   *
@@ -798,6 +803,9 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
         consume(WvletToken.DESCRIBE)
         val desc = Describe(input, t.nodeLocation)
         queryBlock(desc)
+      case WvletToken.SAMPLE =>
+        val sample = sampleExpr(input)
+        queryBlock(sample)
       case _ =>
         input
 
@@ -1183,6 +1191,55 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
           nextItem
     nextItem
     TestRelation(input, items.result(), t.nodeLocation)
+
+  def sampleExpr(input: Relation): Sample =
+    def samplingSize: SamplingSize =
+      val t = scanner.lookAhead()
+      t.token match
+        case WvletToken.INTEGER_LITERAL =>
+          val n  = consume(WvletToken.INTEGER_LITERAL)
+          val t2 = scanner.lookAhead()
+          t2.token match
+            case WvletToken.MOD =>
+              consume(WvletToken.MOD)
+              SamplingSize.Percentage(n.str.toDouble)
+            case WvletToken.IDENTIFIER if t2.str == "rows" =>
+              consume(WvletToken.IDENTIFIER)
+              SamplingSize.Rows(n.str.toInt)
+            case _ =>
+              SamplingSize.Rows(n.str.toInt)
+        case WvletToken.DOUBLE_LITERAL | WvletToken.FLOAT_LITERAL =>
+          val n = consume(t.token)
+          consume(WvletToken.MOD)
+          SamplingSize.Percentage(n.str.toDouble)
+        case _ =>
+          unexpected(t)
+    end samplingSize
+
+    consume(WvletToken.SAMPLE)
+    val t = scanner.lookAhead()
+    t.token match
+      case WvletToken.IDENTIFIER =>
+        consume(WvletToken.IDENTIFIER)
+        t.str match
+          case "reservoir" =>
+            val size = samplingSize
+            Sample(input, SamplingMethod.reservoir, size, t.nodeLocation)
+          case "system" =>
+            val size = samplingSize
+            Sample(input, SamplingMethod.system, size, t.nodeLocation)
+          case _ =>
+            unexpected(t)
+      case WvletToken.INTEGER_LITERAL =>
+        val size = samplingSize
+        Sample(input, reservoir, size, t.nodeLocation)
+      case WvletToken.FLOAT_LITERAL | WvletToken.DOUBLE_LITERAL =>
+        val size = samplingSize
+        Sample(input, reservoir, size, t.nodeLocation)
+      case _ =>
+        unexpected(t)
+
+  end sampleExpr
 
   /**
     * relationPrimary := qualifiedId \| '(' query ')' \| stringLiteral
