@@ -25,6 +25,8 @@ import wvlet.lang.model.plan.*
 import wvlet.lang.model.plan.SamplingMethod.reservoir
 import wvlet.log.LogSupport
 
+import scala.util.Try
+
 /**
   * {{{
   *   [Wvlet Language Grammar]
@@ -119,8 +121,10 @@ import wvlet.log.LogSupport
   *
   *   showCommand: 'show' identifier
   *
-  *   sampleExpr: ('reservoir' | 'system')?
-  *               ((integerLiteral 'rows'?) | (floatLiteral '%'))
+  *   sampleExpr: sampleSize
+  *             | ('reservoir' | 'system') '(' sampleSize ')'
+  *
+  *   sampleSize:  ((integerLiteral 'rows'?) | (floatLiteral '%'))
   *
   *   sortItem: expression ('asc' | 'desc')?
   *
@@ -1221,21 +1225,21 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
     t.token match
       case WvletToken.IDENTIFIER =>
         consume(WvletToken.IDENTIFIER)
-        t.str match
-          case "reservoir" =>
-            val size = samplingSize
-            Sample(input, SamplingMethod.reservoir, size, t.nodeLocation)
-          case "system" =>
-            val size = samplingSize
-            Sample(input, SamplingMethod.system, size, t.nodeLocation)
-          case _ =>
-            unexpected(t)
+        val method: SamplingMethod = Try(SamplingMethod.valueOf(t.str.toLowerCase)).getOrElse {
+          unexpected(t)
+        }
+        consume(WvletToken.L_PAREN)
+        val size = samplingSize
+        consume(WvletToken.R_PAREN)
+        Sample(input, method, size, t.nodeLocation)
       case WvletToken.INTEGER_LITERAL =>
         val size = samplingSize
-        Sample(input, reservoir, size, t.nodeLocation)
+        // Use reservoir sampling by default for fixed number of rows
+        Sample(input, SamplingMethod.reservoir, size, t.nodeLocation)
       case WvletToken.FLOAT_LITERAL | WvletToken.DOUBLE_LITERAL =>
         val size = samplingSize
-        Sample(input, reservoir, size, t.nodeLocation)
+        // Use system sampling by default for percentage sampling
+        Sample(input, SamplingMethod.system, size, t.nodeLocation)
       case _ =>
         unexpected(t)
 

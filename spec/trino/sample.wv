@@ -14,4 +14,32 @@ from [
   [4, '2024-02', 3]
 ] as t(id, month, cnt)
 where id > 0
-sample 3
+sample 3 rows
+
+
+from [
+  [1, '2024-01', 5],
+  [2, '2024-01', 10],
+  [3, '2023-12', 1],
+  [4, '2024-02', 3]
+] as t(id, month, cnt)
+where id > 0
+sample system(25%)
+
+from [
+  [1, '2024-01', 5],
+  [2, '2024-01', 10],
+  [3, '2023-12', 1],
+  [4, '2024-02', 3]
+] as t(id, month, cnt)
+where id > 0
+sample reservoir(3 rows)
+
+from [
+  [1, '2024-01', 5],
+  [2, '2024-01', 10],
+  [3, '2023-12', 1],
+  [4, '2024-02', 3]
+] as t(id, month, cnt)
+where id > 0
+sample bernoulli(25%)

@@ -876,6 +876,7 @@ case class Sample(
 enum SamplingMethod:
   case reservoir
   case system
+  case bernoulli
 
 enum SamplingSize:
   case Rows(rows: Long)               extends SamplingSize
