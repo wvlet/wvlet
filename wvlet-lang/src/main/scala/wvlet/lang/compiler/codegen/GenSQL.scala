@@ -571,13 +571,13 @@ class GenSQL(ctx: Context) extends LogSupport:
                   case Percentage(percentage) =>
                     s"${percentage}%"
               s"select * from ${child} using sample ${s.method.toString.toLowerCase}(${size})"
-            case Trino if s.method == SamplingMethod.reservoir =>
+            case Trino =>
               s.size match
                 case Rows(n) =>
+                  // Supported only in td-trino
                   s"select *, reservoir_sample(${n}) over() from ${child}"
                 case Percentage(percentage) =>
-                  warn(s"Unsupported sampling size for ${s.method}: ${s.size}")
-                  child
+                  s"select * from ${child} TABLESAMPLE ${s.method.toString.toLowerCase()}(${percentage})"
             case _ =>
               warn(s"Unsupported sampling method: ${s.method} for ${ctx.dbType}")
               child
