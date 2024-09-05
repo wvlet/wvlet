@@ -370,6 +370,10 @@ class GenSQL(ctx: Context) extends LogSupport:
                   sqlContext.enterFrom
                 )}\nwhere ${printExpression(f.filterExpr)}"""
             )
+      case c: Concat =>
+        val rels = c.children.map(x => printRelation(x)(using sqlContext))
+        val sql  = rels.mkString("\nunion all\n")
+        selectWithIndentAndParenIfNecessary(sql)
       case a: AliasedRelation =>
         val tableAlias: String =
           val name = printExpression(a.alias)
@@ -399,7 +403,7 @@ class GenSQL(ctx: Context) extends LogSupport:
           case _ =>
             selectWithIndentAndParenIfNecessary(inner)
       case t: TestRelation =>
-        printRelation(t.inputRelation)(using sqlContext.nested)
+        printRelation(t.inputRelation)(using sqlContext)
       case q: Query =>
         printRelation(q.body)(using sqlContext)
       case l: Limit =>

@@ -661,6 +661,13 @@ sealed trait SetOperation extends Relation with LogSupport:
 
 end SetOperation
 
+case class Concat(relations: Seq[Relation], nodeLocation: Option[NodeLocation])
+    extends SetOperation:
+  assert(relations.size > 0)
+  override def children: Seq[Relation]         = relations
+  override lazy val relationType: RelationType = relations.head.relationType
+  override def toString                        = s"Concat(${relations.mkString(", ")})"
+
 case class Intersect(relations: Seq[Relation], nodeLocation: Option[NodeLocation])
     extends SetOperation:
   override def children: Seq[Relation] = relations

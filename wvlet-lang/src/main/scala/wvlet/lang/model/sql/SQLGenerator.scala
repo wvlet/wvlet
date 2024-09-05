@@ -83,6 +83,8 @@ class SQLGenerator(config: SQLGeneratorConfig = SQLGeneratorConfig()) extends Lo
     val isDistinct = containsDistinctPlan(context)
     val op =
       s match
+        case Concat(relations, _) =>
+          "UNION ALL"
         case Union(relations, _) =>
           if isDistinct then
             "UNION"
