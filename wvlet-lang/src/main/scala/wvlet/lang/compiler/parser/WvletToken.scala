@@ -169,7 +169,7 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   case INNER extends WvletToken(Keyword, "inner")
   case CROSS extends WvletToken(Keyword, "cross")
 
-  // ddl keywords
+  // column modification operators
   case ADD      extends WvletToken(Keyword, "add")
   case EXCLUDE  extends WvletToken(Keyword, "exclude")
   case SHIFT    extends WvletToken(Keyword, "shift")
@@ -179,6 +179,7 @@ enum WvletToken(val tokenType: TokenType, val str: String):
 
   // set operators
   case CONCAT extends WvletToken(Keyword, "concat")
+  case DEDUP  extends WvletToken(Keyword, "dedup")
 
   // window function keywords
   case OVER      extends WvletToken(Keyword, "over")
