@@ -94,6 +94,7 @@ import scala.util.Try
   *             | 'test' COLON testExpr*
   *             | 'show' identifier
   *             | 'sample' sampleExpr
+  *             | 'concat' query
   *
   *   join        : joinType? 'join' relation joinCriteria
   *               | 'cross' 'join' relation
@@ -810,6 +811,16 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
       case WvletToken.SAMPLE =>
         val sample = sampleExpr(input)
         queryBlock(sample)
+      case WvletToken.CONCAT =>
+        consume(WvletToken.CONCAT)
+        val right =
+          scanner.lookAhead().token match
+            case WvletToken.FROM =>
+              consume(WvletToken.FROM)
+              fromRelation()
+            case _ =>
+              relationPrimary()
+        queryBlock(Concat(Seq(input, right), t.nodeLocation))
       case _ =>
         input
 

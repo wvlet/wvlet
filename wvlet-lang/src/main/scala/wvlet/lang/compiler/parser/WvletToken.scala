@@ -177,6 +177,9 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   case DROP     extends WvletToken(Keyword, "drop")
   case DESCRIBE extends WvletToken(Keyword, "describe")
 
+  // set operators
+  case CONCAT extends WvletToken(Keyword, "concat")
+
   // window function keywords
   case OVER      extends WvletToken(Keyword, "over")
   case PARTITION extends WvletToken(Keyword, "partition")
