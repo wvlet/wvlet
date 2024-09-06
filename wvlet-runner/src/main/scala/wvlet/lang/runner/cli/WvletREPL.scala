@@ -151,6 +151,8 @@ class WvletREPL(runner: WvletScriptRunner) extends AutoCloseable with LogSupport
       else
         ""
     )
+    // Disable ${...} variable expansion
+    .option(LineReader.Option.AUTO_PARAM_SLASH, false)
     // Coloring keywords
     .highlighter(new ReplHighlighter).build()
 
@@ -471,9 +473,6 @@ object WvletREPL:
             builder.append(rawString, AttributedStyle.DEFAULT.foreground(AttributedStyle.CYAN))
           case WvletToken.IDENTIFIER =>
             builder.append(rawString, AttributedStyle.DEFAULT.foreground(AttributedStyle.WHITE))
-//          case token if token.isOperator =>
-//            // bright cyan
-//            builder.append(rawString, AttributedStyle.DEFAULT.foreground(8))
           case _ =>
             builder.append(rawString)
       builder.toAttributedString

@@ -408,13 +408,13 @@ class WvletScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
       current.str = flushTokenString()
 
   private def getStringPart(multiline: Boolean): Unit =
-    ch match
+    (ch: @switch) match
       case '"' => // end of string
         if multiline then
           nextRawChar()
           if isTripleQuote then
+            flushTokenString()
             current.token = WvletToken.STRING_PART
-            current.str = flushTokenString()
             currentRegion = InString(multiline, currentRegion)
           else
             getStringPart(multiline)
@@ -422,8 +422,10 @@ class WvletScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
         else
           // Last part of the interpolated string
           nextChar()
+          // Proceed a cursor
+          current.offset += 1
+          flushTokenString()
           current.token = STRING_PART
-          current.str = flushTokenString()
           currentRegion = currentRegion.outer
       case '\\' =>
         // escape character
@@ -440,8 +442,8 @@ class WvletScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
         lookAheadChar() match
           case '{' =>
             // Enter the in-string expression state
+            flushTokenString()
             current.token = WvletToken.STRING_PART
-            current.str = flushTokenString()
             currentRegion = InBraces(currentRegion)
           case _ =>
             putChar(ch)
