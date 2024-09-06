@@ -38,7 +38,11 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
 
   private val scanner = WvletScanner(
     unit.sourceFile,
-    ScannerConfig(skipComments = true, debugScanner = isContextUnit)
+    ScannerConfig(
+      skipComments = true,
+      // enable debug only for the context unit
+      debugScanner = isContextUnit
+    )
   )
 
   def parse(): LogicalPlan =

@@ -401,20 +401,49 @@ class WvletScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
     else
       // Regular double quoted string
       // TODO Support unicode and escape characters
-      consume('"')
-      while ch != '"' && ch != SU do
-        putChar(ch)
+      nextChar()
+      if ch == '\"' then
         nextChar()
-      consume('"')
-      current.token = WvletToken.STRING_LITERAL
-      current.str = flushTokenString()
+        if ch == '\"' then
+          nextRawChar()
+          // Enter the triple-quote string
+          getRawStringLiteral()
+        else
+          current.token = WvletToken.STRING_LITERAL
+          current.str = ""
+      else
+        getStringLiteral()
+  end getDoubleQuoteString
+
+  private def getStringLiteral(): Unit =
+    while ch != '"' && ch != SU do
+      putChar(ch)
+      nextChar()
+    consume('"')
+    current.token = WvletToken.STRING_LITERAL
+    current.str = flushTokenString()
+
+  private def getRawStringLiteral(): Unit =
+    if ch == '\"' then
+      nextRawChar()
+      if isTripleQuote() then
+        flushTokenString()
+        current.token = WvletToken.STRING_LITERAL
+      else
+        getRawStringLiteral()
+    else if ch == SU then
+      reportError("Unclosed multi-line string literal", source.sourcePositionAt(offset))
+    else
+      putChar(ch)
+      nextRawChar()
+      getRawStringLiteral()
 
   private def getStringPart(multiline: Boolean): Unit =
     (ch: @switch) match
       case '"' => // end of string
         if multiline then
           nextRawChar()
-          if isTripleQuote then
+          if isTripleQuote() then
             flushTokenString()
             current.token = WvletToken.STRING_PART
             currentRegion = InString(multiline, currentRegion)
@@ -461,7 +490,7 @@ class WvletScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
         nextRawChar()
         getStringPart(multiline)
 
-  private def isTripleQuote: Boolean =
+  private def isTripleQuote(): Boolean =
     if ch == '"' then
       nextRawChar()
       if ch == '"' then
