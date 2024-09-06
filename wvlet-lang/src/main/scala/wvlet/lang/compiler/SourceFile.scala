@@ -39,7 +39,7 @@ class SourceFile(
     val relativeFilePath: String,
     readContent: (file: String) => String
 ):
-  override def toString: String = s"SourceFile($relativeFilePath)"
+  override def toString: String = relativeFilePath
 
   /**
     * Returns the leaf file name

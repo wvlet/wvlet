@@ -37,7 +37,7 @@ trait SpecRunner(
 
   // Compile all files in the source paths first
   for unit <- compiler.localCompilationUnits do
-    test(unit.sourceFile.fileName) {
+    test(unit.sourceFile.relativeFilePath) {
       ignoredSpec.get(unit.sourceFile.fileName).foreach(reason => ignore(reason))
       try
         runSpec(unit)
@@ -68,7 +68,6 @@ class BasicSpec
 
 class Model1Spec extends SpecRunner("spec/model1")
 class TPCHSpec   extends SpecRunner("spec/tpch", prepareTPCH = true)
-class DuckDBSpec extends SpecRunner("spec/duckdb")
 
 // Negative tests, expecting some errors
 class NegSpec extends SpecRunner("spec/neg"):

@@ -143,6 +143,10 @@ case class Context(
     .map(folder => dataFilePath(path))
     .find(file => new java.io.File(file).exists())
 
+  def findCompilationUnit(path: String): Option[CompilationUnit] = global
+    .getAllCompilationUnits
+    .find(_.sourceFile.fileName == path)
+
   def dataFilePath(relativePath: String): String =
     if relativePath.startsWith("s3://") || relativePath.startsWith("https://") then
       relativePath
