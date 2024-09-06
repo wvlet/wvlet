@@ -68,6 +68,7 @@ import scala.util.Try
   *   query    : queryBody
   *   queryBody: 'from' relation (',' relation)* ','? queryRest*
   *            | 'select' selectItems queryRest*
+  *             | '(' queryBody ')' queryRest*
   *   queryRest: queryBlock | inspector
   *   inspector: `describe`
   *
@@ -312,7 +313,7 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
     t.token match
       case WvletToken.IMPORT =>
         importStatement()
-      case WvletToken.FROM | WvletToken.SELECT =>
+      case WvletToken.FROM | WvletToken.SELECT | WvletToken.L_PAREN =>
         query()
       case WvletToken.TYPE =>
         typeDef()
@@ -746,6 +747,11 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
       case WvletToken.SELECT =>
         // select only query like select 1
         r = selectExpr(EmptyRelation(t.nodeLocation))
+      case WvletToken.L_PAREN =>
+        // parenthesized query
+        consume(WvletToken.L_PAREN)
+        r = ParenthesizedRelation(queryBody(), t.nodeLocation)
+        consume(WvletToken.R_PAREN)
       case _ =>
         unexpected(t)
 
