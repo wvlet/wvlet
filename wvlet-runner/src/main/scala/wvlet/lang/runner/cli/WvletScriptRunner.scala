@@ -150,7 +150,7 @@ class WvletScriptRunner(val config: WvletScriptRunnerConfig, queryExecutor: Quer
           case e: SQLException =>
             error(e.getMessage)
           case _ =>
-            error(e)
+            error(e.getMessage)
         LastOutput(query, e.getMessage, QueryResult.empty, error = Some(e))
 
   end displayOutput
