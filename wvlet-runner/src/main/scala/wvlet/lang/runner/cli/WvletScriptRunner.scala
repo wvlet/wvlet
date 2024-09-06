@@ -25,7 +25,6 @@ import java.sql.SQLException
 import scala.util.control.NonFatal
 
 case class WvletScriptRunnerConfig(
-    workingFolder: WvletWorkFolder = WvletWorkFolder(),
     interactive: Boolean,
     resultLimit: Int = 40,
     maxColWidth: Int = 150,
@@ -41,16 +40,12 @@ case class LastOutput(
 ):
   def hasError: Boolean = error.isDefined
 
-class WvletScriptRunner(val config: WvletScriptRunnerConfig, queryExecutor: QueryExecutor)
-    extends AutoCloseable
+class WvletScriptRunner(
+    workEnv: WvletWorkEnv,
+    config: WvletScriptRunnerConfig,
+    queryExecutor: QueryExecutor
+) extends AutoCloseable
     with LogSupport:
-
-  private val errorLogger: Logger =
-    val l            = Logger("wvlet.lang.runner.cli.runner")
-    val errorLogFile = config.workingFolder.errorFile
-    trace(s"Logging errors to ${errorLogFile}")
-    l.resetHandler(LogRotationHandler(fileName = errorLogFile))
-    l
 
   private var units: List[CompilationUnit] = Nil
 
@@ -66,8 +61,8 @@ class WvletScriptRunner(val config: WvletScriptRunnerConfig, queryExecutor: Quer
   private val compiler =
     val c = Compiler(
       CompilerOptions(
-        sourceFolders = List(config.workingFolder.path),
-        workingFolder = config.workingFolder.path,
+        sourceFolders = List(workEnv.path),
+        workingFolder = workEnv.path,
         catalog = config.catalog,
         schema = config.schema
       )
@@ -143,7 +138,7 @@ class WvletScriptRunner(val config: WvletScriptRunnerConfig, queryExecutor: Quer
       case None =>
         print
       case Some(e) =>
-        errorLogger.error(e)
+        workEnv.errorLogger.error(e)
         e match
           case e: WvletLangException if e.statusCode.isUserError =>
             error(e.getMessage)

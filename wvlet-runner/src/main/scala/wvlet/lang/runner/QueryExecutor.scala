@@ -30,10 +30,9 @@ import java.sql.SQLException
 import scala.collection.immutable.ListMap
 import scala.util.{Try, Using}
 
-object QueryExecutor extends LogSupport:
-  def default: QueryExecutor = QueryExecutor(dbConnector = DuckDBConnector())
-
-class QueryExecutor(dbConnector: DBConnector) extends LogSupport with AutoCloseable:
+class QueryExecutor(dbConnector: DBConnector, workEnv: WvletWorkEnv)
+    extends LogSupport
+    with AutoCloseable:
 
   def getDBConnector: DBConnector = dbConnector
 
@@ -51,11 +50,13 @@ class QueryExecutor(dbConnector: DBConnector) extends LogSupport with AutoClosea
         throw StatusCode.FILE_NOT_FOUND.newException(s"File not found: ${file}")
 
   def executeSingle(u: CompilationUnit, context: Context, limit: Int = 40): QueryResult =
+    workEnv.outLogger.info(s"Executing ${u.sourceFile.fileName}")
     val result = execute(u.resolvedPlan, context, limit)
     result
 
   def execute(plan: LogicalPlan, context: Context, limit: Int): QueryResult =
     trace(s"Executing plan: ${plan.pp}")
+    workEnv.outLogger.trace(s"Executing plan: ${plan.pp}")
     plan match
       case p: PackageDef =>
         val results = p
@@ -67,6 +68,7 @@ class QueryExecutor(dbConnector: DBConnector) extends LogSupport with AutoClosea
       case q: Query =>
         val generatedSQL = GenSQL.generateSQL(q, context)
         debug(s"Executing SQL:\n${generatedSQL.sql}")
+        workEnv.outLogger.debug(s"Executing SQL:\n${generatedSQL.sql}")
         trace(s"[plan]:\n${generatedSQL.plan.pp}")
         try
           val result = dbConnector.withConnection { conn =>
