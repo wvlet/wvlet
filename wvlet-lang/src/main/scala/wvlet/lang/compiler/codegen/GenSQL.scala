@@ -310,7 +310,11 @@ class GenSQL(ctx: Context) extends LogSupport:
               else
                 ""
             }${selectItems}"
-        s += s"from ${printRelation(agg.child)(using sqlContext.enterFrom)}"
+        agg.child match
+          case e: EmptyRelation =>
+          // Do not add from clause for empty imputs
+          case _ =>
+            s += s"from ${printRelation(agg.child)(using sqlContext.enterFrom)}"
         if agg.filters.nonEmpty then
           val filterExpr = Expression.concatWithAnd(agg.filters.map(x => x.filterExpr))
           s += s"where ${printExpression(filterExpr)}"

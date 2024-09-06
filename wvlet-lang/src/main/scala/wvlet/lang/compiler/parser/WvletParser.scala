@@ -64,14 +64,17 @@ import scala.util.Try
   *   modelParams: '(' modelParam (',' modelParam)* ')'
   *   modelParam : identifier ':' identifier ('=' expression)?
   *
-  *   query: 'from' relation (',' relation)* ','?
-  *          (queryBlock* | inspector)
-  *
+  *   // top-level query
+  *   query    : queryBody
+  *   queryBody: 'from' relation (',' relation)* ','? queryRest*
+  *            | 'select' selectItems queryRest*
+  *   queryRest: queryBlock | inspector
   *   inspector: `describe`
   *
+  *   // relation that can be used after 'from':
   *   relation       : relationPrimary ('as' identifier)?
   *   relationPrimary: qualifiedId ('(' functionArg (',' functionArg)* ')')?
-  *                  | '(' relation ')'
+  *                  | '(' queryBody ')'
   *                  | str               // file scan
   *                  | strInterpolation  // embedded raw SQL
   *                  | arrayValue
@@ -95,8 +98,9 @@ import scala.util.Try
   *             | 'show' identifier
   *             | 'sample' sampleExpr
   *             | 'concat' query
-  *              | ('intersect' | 'except') 'all'? query
+  *             | ('intersect' | 'except') 'all'? query
   *             | 'dedup'
+  *             | ';' // explicit query terminator
   *
   *   join        : joinType? 'join' relation joinCriteria
   *               | 'cross' 'join' relation
@@ -296,6 +300,9 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
     t.token match
       case WvletToken.EOF =>
         List.empty
+      case WvletToken.SEMICOLON =>
+        consume(WvletToken.SEMICOLON)
+        statements()
       case _ =>
         val stmt: LogicalPlan = statement()
         stmt :: statements()
@@ -305,10 +312,8 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
     t.token match
       case WvletToken.IMPORT =>
         importStatement()
-      case WvletToken.FROM =>
+      case WvletToken.FROM | WvletToken.SELECT =>
         query()
-      case WvletToken.SELECT =>
-        Query(selectExpr(EmptyRelation(t.nodeLocation)), t.nodeLocation)
       case WvletToken.TYPE =>
         typeDef()
       case WvletToken.MODEL =>
@@ -711,8 +716,17 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
     * query := 'from' fromRelation queryBlock*
     */
   def query(): Relation =
-    val t = consume(WvletToken.FROM)
-    var r = fromRelation()
+    val r: Relation = queryBody()
+    r match
+      case i: RelationInspector =>
+        i
+      case _ =>
+        Query(r, r.nodeLocation)
+
+  end query
+
+  def queryBody(): Relation =
+    var r: Relation = null
 
     def readRest(): Unit =
       scanner.lookAhead().token match
@@ -723,16 +737,21 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
           readRest()
         case _ =>
 
-    readRest()
+    val t = scanner.lookAhead()
+    t.token match
+      case WvletToken.FROM =>
+        consume(WvletToken.FROM)
+        r = fromRelation()
+        readRest()
+      case WvletToken.SELECT =>
+        // select only query like select 1
+        r = selectExpr(EmptyRelation(t.nodeLocation))
+      case _ =>
+        unexpected(t)
 
     r = queryBlock(r)
-    r =
-      r match
-        case i: RelationInspector =>
-          i
-        case _ =>
-          Query(r, t.nodeLocation)
     r
+  end queryBody
 
   def relation(): Relation =
     scanner.lookAhead().token match
@@ -823,7 +842,7 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
         queryBlock(sample)
       case WvletToken.CONCAT =>
         consume(WvletToken.CONCAT)
-        val right = relation()
+        val right = queryBody()
         queryBlock(Concat(input, right, t.nodeLocation))
       case WvletToken.INTERSECT | WvletToken.EXCEPT =>
         consume(t.token)
@@ -841,6 +860,8 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
               Intersect(input, right, isDistinct, t.nodeLocation)
             case WvletToken.EXCEPT =>
               Except(input, right, isDistinct, t.nodeLocation)
+            case _ =>
+              unexpected(t)
         queryBlock(rel)
       case WvletToken.DEDUP =>
         consume(WvletToken.DEDUP)
@@ -948,7 +969,7 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
         case WvletToken.COMMA =>
           consume(WvletToken.COMMA)
           nextItem
-        case token if WvletToken.isQueryEndKeyword(token) =>
+        case token if WvletToken.isQueryDelimiter(token) =>
         // finish
         case t if t.tokenType == TokenType.Keyword =>
         // finish
@@ -985,7 +1006,7 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
         case WvletToken.COMMA =>
           consume(WvletToken.COMMA)
           nextItem
-        case token if WvletToken.isQueryEndKeyword(token) =>
+        case token if WvletToken.isQueryDelimiter(token) =>
         // finish
         case t if t.tokenType == TokenType.Keyword =>
         // finish
@@ -1121,7 +1142,7 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
       case WvletToken.COMMA =>
         consume(WvletToken.COMMA)
         selectItems()
-      case WvletToken.EOF | WvletToken.END =>
+      case token if WvletToken.isQueryDelimiter(token) =>
         Nil
       case WvletToken.R_PAREN =>
         // sub-query end
@@ -1291,7 +1312,7 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
         TableRef(qualifiedId(), t.nodeLocation)
       case WvletToken.L_PAREN =>
         consume(WvletToken.L_PAREN)
-        val q = query()
+        val q = queryBody()
         consume(WvletToken.R_PAREN)
         ParenthesizedRelation(q, t.nodeLocation)
       case WvletToken.STRING_LITERAL =>
@@ -1491,14 +1512,14 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
         case WvletToken.STRING_INTERPOLATION_PREFIX =>
           interpolatedString()
         case WvletToken.FROM =>
-          val q: Relation = query()
+          val q: Relation = queryBody()
           SubQueryExpression(q, t.nodeLocation)
         case WvletToken.L_PAREN =>
           consume(WvletToken.L_PAREN)
           val t2 = scanner.lookAhead()
           t2.token match
             case WvletToken.FROM =>
-              val q = query()
+              val q = queryBody()
               consume(WvletToken.R_PAREN)
               SubQueryExpression(q, t2.nodeLocation)
             case _ =>
