@@ -33,7 +33,7 @@ import wvlet.airframe.*
 import wvlet.airframe.control.{Shell, ThreadUtil}
 import wvlet.airframe.launcher.{Launcher, command, option}
 import wvlet.airframe.log.AnsiColorPalette
-import wvlet.lang.runner.WvletWorkFolder
+import wvlet.lang.runner.WvletWorkEnv
 import wvlet.log.io.IOUtil
 import wvlet.log.{LogSupport, Logger}
 
@@ -101,9 +101,9 @@ class WvletREPLCli(
     val design = Design
       .newSilentDesign
       .bindSingleton[WvletREPL]
+      .bindInstance[WvletWorkEnv](WvletWorkEnv(path = workFolder, logLevel = opts.logLevel))
       .bindInstance[WvletScriptRunnerConfig](
         WvletScriptRunnerConfig(
-          workingFolder = WvletWorkFolder(path = workFolder),
           interactive = inputScripts.isEmpty,
           catalog = selectedCatalog,
           schema = selectedSchema
@@ -132,11 +132,13 @@ class WvletREPLCli(
 
 end WvletREPLCli
 
-class WvletREPL(runner: WvletScriptRunner) extends AutoCloseable with LogSupport:
+class WvletREPL(workEnv: WvletWorkEnv, runner: WvletScriptRunner)
+    extends AutoCloseable
+    with LogSupport:
   import WvletREPL.*
 
   private val terminal    = TerminalBuilder.builder().name("wvlet-shell").build()
-  private val historyFile = new File(runner.config.workingFolder.cacheFolder, ".wv_history")
+  private val historyFile = new File(workEnv.cacheFolder, ".wv_history")
 
   private val reader = LineReaderBuilder
     .builder()

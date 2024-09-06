@@ -25,7 +25,8 @@ trait SpecRunner(
     ignoredSpec: Map[String, String] = Map.empty,
     prepareTPCH: Boolean = false
 ) extends AirSpec:
-  private val duckDB          = QueryExecutor(DuckDBConnector(prepareTPCH = prepareTPCH))
+  private val workEnv         = WvletWorkEnv(path = specPath, logLevel = logger.getLogLevel)
+  private val duckDB          = QueryExecutor(DuckDBConnector(prepareTPCH = prepareTPCH), workEnv)
   override def afterAll: Unit = duckDB.close()
 
   private val compiler = Compiler(

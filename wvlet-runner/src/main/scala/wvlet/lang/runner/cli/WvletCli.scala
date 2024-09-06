@@ -16,8 +16,8 @@ package wvlet.lang.runner.cli
 import wvlet.lang.BuildInfo
 import wvlet.lang.compiler.{CompilationUnit, Compiler, CompilerOptions}
 import wvlet.lang.runner.connector.duckdb.DuckDBConnector
-import wvlet.lang.runner.{QueryExecutor, QueryResultPrinter}
-import wvlet.lang.{WvletLangException, StatusCode}
+import wvlet.lang.runner.{QueryExecutor, QueryResultPrinter, WvletWorkEnv}
+import wvlet.lang.{StatusCode, WvletLangException}
 import wvlet.airframe.launcher.{Launcher, argument, command, option}
 import wvlet.log.{LogLevel, LogSupport, Logger}
 
@@ -116,7 +116,8 @@ class WvletCli(opts: WvletCliOption) extends LogSupport:
 
       info(s"context directory: ${contextDirectory}, wvlet file: ${wvFile}")
 
-      val duckdb = QueryExecutor(dbConnector = DuckDBConnector(prepareTPCH = prepareTPCH))
+      val workEnv = WvletWorkEnv(path = contextDirectory, opts.logLevel)
+      val duckdb  = QueryExecutor(dbConnector = DuckDBConnector(prepareTPCH = prepareTPCH), workEnv)
       val compilationResult = Compiler(
         CompilerOptions(
           phases = Compiler.allPhases,
