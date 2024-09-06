@@ -73,7 +73,8 @@ case class ScannerConfig(
     startFrom: Int = 0,
     skipComments: Boolean = false,
     skipWhiteSpace: Boolean = true,
-    reportErrorToken: Boolean = false
+    reportErrorToken: Boolean = false,
+    debugScanner: Boolean = false
 )
 
 abstract class ScannerBase(protected val buf: IArray[Char], startFrom: Int = 0):
@@ -210,7 +211,8 @@ class WvletScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
     try
       getNextToken(lastToken)
       val t = current.toTokenData(lastCharOffset)
-      debug(s"${currentRegion} ${t}")
+      if config.debugScanner then
+        debug(s"${currentRegion} ${t}")
       t
     catch
       case e: WvletLangException
@@ -490,7 +492,8 @@ class WvletScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
       current.token = WvletToken.COMMENT
       current.str = commentLine
     else
-      debug(s"skip comment: ${commentLine}")
+      if config.debugScanner then
+        debug(s"skip comment: ${commentLine}")
       fetchToken()
 
   private def getBlockComment(): Unit =
