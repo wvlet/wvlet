@@ -40,7 +40,7 @@ case class LastOutput(
 ):
   def hasError: Boolean = error.isDefined
 
-class WvletScriptRunner(config: WvletScriptRunnerConfig, queryExecutor: QueryExecutor)
+class WvletScriptRunner(val config: WvletScriptRunnerConfig, queryExecutor: QueryExecutor)
     extends AutoCloseable
     with LogSupport:
   private var units: List[CompilationUnit] = Nil
