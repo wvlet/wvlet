@@ -18,13 +18,14 @@ import wvlet.lang.compiler.{CompilationUnit, CompileResult, Compiler, CompilerOp
 import wvlet.lang.runner.*
 import org.jline.terminal.Terminal
 import wvlet.airframe.control.{Control, Shell}
-import wvlet.log.LogSupport
+import wvlet.log.{LogRotationHandler, LogSupport, Logger}
 
 import java.io.{BufferedWriter, FilterOutputStream, OutputStreamWriter}
+import java.sql.SQLException
 import scala.util.control.NonFatal
 
 case class WvletScriptRunnerConfig(
-    workingFolder: String = ".",
+    workingFolder: WvletWorkFolder = WvletWorkFolder(),
     interactive: Boolean,
     resultLimit: Int = 40,
     maxColWidth: Int = 150,
@@ -43,6 +44,14 @@ case class LastOutput(
 class WvletScriptRunner(val config: WvletScriptRunnerConfig, queryExecutor: QueryExecutor)
     extends AutoCloseable
     with LogSupport:
+
+  private val errorLogger: Logger =
+    val l            = Logger("wvlet.lang.runner.cli.WvletScriptRunner.error")
+    val errorLogFile = config.workingFolder.errorFile
+    trace(s"Logging errors to ${errorLogFile}")
+    l.resetHandler(LogRotationHandler(fileName = errorLogFile))
+    l
+
   private var units: List[CompilationUnit] = Nil
 
   private var resultRowLimits: Int   = config.resultLimit
@@ -57,8 +66,8 @@ class WvletScriptRunner(val config: WvletScriptRunnerConfig, queryExecutor: Quer
   private val compiler =
     val c = Compiler(
       CompilerOptions(
-        sourceFolders = List(config.workingFolder),
-        workingFolder = config.workingFolder,
+        sourceFolders = List(config.workingFolder.path),
+        workingFolder = config.workingFolder.path,
         catalog = config.catalog,
         schema = config.schema
       )
@@ -134,7 +143,14 @@ class WvletScriptRunner(val config: WvletScriptRunnerConfig, queryExecutor: Quer
       case None =>
         print
       case Some(e) =>
-        error(e)
+        errorLogger.error(e)
+        e match
+          case e: WvletLangException if e.statusCode.isUserError =>
+            error(e.getMessage)
+          case e: SQLException =>
+            error(e.getMessage)
+          case _ =>
+            error(e)
         LastOutput(query, e.getMessage, QueryResult.empty, error = Some(e))
 
   end displayOutput
