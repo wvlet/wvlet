@@ -1,0 +1,27 @@
+-- set semantics
+from 'person.json'
+intersect (
+  from 'person.json'
+  where id = 1
+)
+
+-- bag semantics
+from 'person.json'
+intersect all (
+  from 'person.json'
+  where id = 1
+)
+
+-- set semantics
+from 'person.json'
+except (
+  from 'person.json'
+  where id = 1
+)
+
+-- bag semantics
+from 'person.json'
+except all (
+  from 'person.json'
+  where id = 1
+)

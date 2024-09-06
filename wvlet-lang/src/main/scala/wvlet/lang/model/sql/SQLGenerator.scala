@@ -83,20 +83,20 @@ class SQLGenerator(config: SQLGeneratorConfig = SQLGeneratorConfig()) extends Lo
     val isDistinct = containsDistinctPlan(context)
     val op =
       s match
-        case Concat(relations, _) =>
+        case Concat(left, right, _) =>
           "UNION ALL"
-        case Union(relations, _) =>
-          if isDistinct then
+        case Union(left, right, distinct, _) =>
+          if isDistinct || distinct then
             "UNION"
           else
             "UNION ALL"
-        case Except(left, right, _) =>
-          if isDistinct then
+        case Except(left, right, distinct, _) =>
+          if isDistinct || distinct then
             "EXCEPT"
           else
             "EXCEPT ALL"
-        case Intersect(relations, _) =>
-          if isDistinct then
+        case Intersect(left, right, distinct, _) =>
+          if isDistinct || distinct then
             "INTERSECT"
           else
             "INTERSECT ALL"

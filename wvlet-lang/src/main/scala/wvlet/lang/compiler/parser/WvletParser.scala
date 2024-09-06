@@ -95,6 +95,7 @@ import scala.util.Try
   *             | 'show' identifier
   *             | 'sample' sampleExpr
   *             | 'concat' query
+  *              | ('intersect' | 'except') 'all'? query
   *             | 'dedup'
   *
   *   join        : joinType? 'join' relation joinCriteria
@@ -733,6 +734,14 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
           Query(r, t.nodeLocation)
     r
 
+  def relation(): Relation =
+    scanner.lookAhead().token match
+      case WvletToken.FROM =>
+        consume(WvletToken.FROM)
+        fromRelation()
+      case _ =>
+        relationPrimary()
+
   /**
     * fromRelation := relationPrimary ('as' identifier)?
     * @return
@@ -814,14 +823,25 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
         queryBlock(sample)
       case WvletToken.CONCAT =>
         consume(WvletToken.CONCAT)
-        val right =
+        val right = relation()
+        queryBlock(Concat(input, right, t.nodeLocation))
+      case WvletToken.INTERSECT | WvletToken.EXCEPT =>
+        consume(t.token)
+        val isDistinct: Boolean =
           scanner.lookAhead().token match
-            case WvletToken.FROM =>
-              consume(WvletToken.FROM)
-              fromRelation()
+            case WvletToken.ALL =>
+              consume(WvletToken.ALL)
+              false
             case _ =>
-              relationPrimary()
-        queryBlock(Concat(Seq(input, right), t.nodeLocation))
+              true
+        val right = relation()
+        val rel =
+          t.token match
+            case WvletToken.INTERSECT =>
+              Intersect(input, right, isDistinct, t.nodeLocation)
+            case WvletToken.EXCEPT =>
+              Except(input, right, isDistinct, t.nodeLocation)
+        queryBlock(rel)
       case WvletToken.DEDUP =>
         consume(WvletToken.DEDUP)
         queryBlock(Dedup(input, t.nodeLocation))
