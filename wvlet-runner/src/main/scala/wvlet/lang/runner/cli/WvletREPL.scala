@@ -135,7 +135,7 @@ end WvletREPLCli
 class WvletREPL(runner: WvletScriptRunner) extends AutoCloseable with LogSupport:
   import WvletREPL.*
 
-  private val terminal    = TerminalBuilder.builder().name("wvlet-ql").build()
+  private val terminal    = TerminalBuilder.builder().name("wvlet-shell").build()
   private val historyFile = new File(runner.config.workingFolder.cacheFolder, ".wv_history")
 
   private val reader = LineReaderBuilder

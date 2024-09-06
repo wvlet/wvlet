@@ -46,7 +46,7 @@ class WvletScriptRunner(val config: WvletScriptRunnerConfig, queryExecutor: Quer
     with LogSupport:
 
   private val errorLogger: Logger =
-    val l            = Logger("wvlet.lang.runner.cli.WvletScriptRunner.error")
+    val l            = Logger("wvlet.lang.runner.cli.runner")
     val errorLogFile = config.workingFolder.errorFile
     trace(s"Logging errors to ${errorLogFile}")
     l.resetHandler(LogRotationHandler(fileName = errorLogFile))
