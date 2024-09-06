@@ -50,10 +50,10 @@ import scala.util.Try
   *
   *   statement: importStatement
   *            | modelDef
-  *            | query
+  *            | query ';'?
   *            | typeDef
   *            | funDef
-  *            | showCommand queryBlock*
+  *            | showCommand queryOp*
   *
   *   importStatement: 'import' importRef (from str)?
   *   importRef      : qualifiedId ('.' '*')?
@@ -65,23 +65,23 @@ import scala.util.Try
   *   modelParam : identifier ':' identifier ('=' expression)?
   *
   *   // top-level query
-  *   query    : queryBody
-  *   queryBody: 'from' relation (',' relation)* ','? queryRest*
-  *            | 'select' selectItems queryRest*
-  *             | '(' queryBody ')' queryRest*
-  *   queryRest: queryBlock | inspector
-  *   inspector: `describe`
+  *   query      : queryBody
+  *   queryBody  : querySingle queryBlock*
+  *   // This rule can be used for sub queries for set operations, joins
+  *   querySingle: 'from' relation (',' relation)* ','? queryBlock*
+  *              | 'select' selectItems queryBlock*
+  *              | '(' queryBody ')' // For parenthesized query, do not continue queryBlock
   *
   *   // relation that can be used after 'from':
   *   relation       : relationPrimary ('as' identifier)?
   *   relationPrimary: qualifiedId ('(' functionArg (',' functionArg)* ')')?
-  *                  | '(' queryBody ')'
+  *                  | '(' querySingle ')'
   *                  | str               // file scan
   *                  | strInterpolation  // embedded raw SQL
   *                  | arrayValue
   *   arrayValue     : '[' arrayValue (',' arrayValue)* ','? ']'
   *
-  *   queryBlock: join
+  *   queryBlock: joinExpr
   *             | 'group' 'by' groupByItemList
   *             | 'where' booleanExpression
   *             | 'transform' transformExpr
@@ -98,12 +98,12 @@ import scala.util.Try
   *             | 'test' COLON testExpr*
   *             | 'show' identifier
   *             | 'sample' sampleExpr
-  *             | 'concat' query
+  *             | 'concat' querySingle
   *             | ('intersect' | 'except') 'all'? query
   *             | 'dedup'
-  *             | ';' // explicit query terminator
+  *             | 'describe'
   *
-  *   join        : joinType? 'join' relation joinCriteria
+  *   joinExpr    : joinType? 'join' relation joinCriteria
   *               | 'cross' 'join' relation
   *   joinType    : 'inner' | 'left' | 'right' | 'full'
   *   joinCriteria: 'on' booleanExpression
@@ -178,7 +178,7 @@ import scala.util.Try
   *                     | '_'
   *                     | literal
   *                     | query
-  *                     | '(' query ')'                                                 # subquery
+  *                     | '(' querySingle ')'                                                 # subquery
   *                     | '(' expression ')'                                            # parenthesized expression
   *                     | '[' expression (',' expression)* ']'                          # array
   *                     | 'if' booleanExpresssion 'then' expression 'else' expression   # if-then-else
@@ -713,10 +713,7 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
       case _ =>
         Nil
 
-  /**
-    * query := 'from' fromRelation queryBlock*
-    */
-  def query(): Relation =
+  def query(): QueryStatement =
     val r: Relation = queryBody()
     r match
       case i: RelationInspector =>
@@ -726,27 +723,31 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
 
   end query
 
-  def queryBody(): Relation =
-    var r: Relation = null
+  def queryBody(): Relation = queryBlock(querySingle())
 
-    def readRest(): Unit =
+  def querySingle(): Relation =
+    def readRest(input: Relation): Relation =
       scanner.lookAhead().token match
         case WvletToken.COMMA =>
           val ct    = consume(WvletToken.COMMA)
           val rNext = fromRelation()
-          r = Join(JoinType.ImplicitJoin, r, rNext, NoJoinCriteria, ct.nodeLocation)
-          readRest()
+          val rel   = Join(JoinType.ImplicitJoin, input, rNext, NoJoinCriteria, ct.nodeLocation)
+          readRest(rel)
         case _ =>
+          input
 
-    val t = scanner.lookAhead()
+    var r: Relation = null
+    val t           = scanner.lookAhead()
     t.token match
       case WvletToken.FROM =>
         consume(WvletToken.FROM)
         r = fromRelation()
-        readRest()
+        r = readRest(r)
+        r = queryBlock(r)
       case WvletToken.SELECT =>
         // select only query like select 1
         r = selectExpr(EmptyRelation(t.nodeLocation))
+        r = queryBlock(r)
       case WvletToken.L_PAREN =>
         // parenthesized query
         consume(WvletToken.L_PAREN)
@@ -754,10 +755,8 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
         consume(WvletToken.R_PAREN)
       case _ =>
         unexpected(t)
-
-    r = queryBlock(r)
     r
-  end queryBody
+  end querySingle
 
   def relation(): Relation =
     scanner.lookAhead().token match
@@ -791,8 +790,6 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
         case _ =>
           primary
     rel
-
-  // def alias(): AliasedRelation =
 
   def queryBlock(input: Relation): Relation =
     val t = scanner.lookAhead()
@@ -848,7 +845,7 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
         queryBlock(sample)
       case WvletToken.CONCAT =>
         consume(WvletToken.CONCAT)
-        val right = queryBody()
+        val right = querySingle()
         queryBlock(Concat(input, right, t.nodeLocation))
       case WvletToken.INTERSECT | WvletToken.EXCEPT =>
         consume(t.token)
@@ -1318,7 +1315,7 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
         TableRef(qualifiedId(), t.nodeLocation)
       case WvletToken.L_PAREN =>
         consume(WvletToken.L_PAREN)
-        val q = queryBody()
+        val q = querySingle()
         consume(WvletToken.R_PAREN)
         ParenthesizedRelation(q, t.nodeLocation)
       case WvletToken.STRING_LITERAL =>
@@ -1518,14 +1515,14 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
         case WvletToken.STRING_INTERPOLATION_PREFIX =>
           interpolatedString()
         case WvletToken.FROM =>
-          val q: Relation = queryBody()
+          val q: Relation = querySingle()
           SubQueryExpression(q, t.nodeLocation)
         case WvletToken.L_PAREN =>
           consume(WvletToken.L_PAREN)
           val t2 = scanner.lookAhead()
           t2.token match
             case WvletToken.FROM =>
-              val q = queryBody()
+              val q = querySingle()
               consume(WvletToken.R_PAREN)
               SubQueryExpression(q, t2.nodeLocation)
             case _ =>
