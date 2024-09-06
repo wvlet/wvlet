@@ -26,8 +26,9 @@ object ParserPhase extends Phase("parser") with LogSupport:
     unit.unresolvedPlan = parse(unit, context)
     unit
 
-  def parseSourceFolder(path: String): Seq[LogicalPlan] =
-    CompilationUnit.fromPath(path).map(unit => parse(unit, Context.NoContext))
+  def parseSourceFolder(path: String): Seq[LogicalPlan] = CompilationUnit
+    .fromPath(path)
+    .map(unit => parse(unit, Context.NoContext))
 
   def parse(compileUnit: CompilationUnit, ctx: Context): LogicalPlan =
     debug(s"Parsing ${compileUnit.sourceFile}")
