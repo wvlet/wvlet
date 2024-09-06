@@ -33,6 +33,8 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   def isOperator: Boolean            = tokenType == Op
   def isRightParenOrBracket: Boolean = this == WvletToken.R_PAREN || this == WvletToken.R_BRACKET
 
+  def isQueryDelimiter: Boolean = WvletToken.isQueryDelimiter(this)
+
   // special tokens
   case EMPTY      extends WvletToken(Control, "<empty>")
   case ERROR      extends WvletToken(Control, "<erroneous token>")
@@ -80,6 +82,7 @@ enum WvletToken(val tokenType: TokenType, val str: String):
 
   // Special symbols
   case COLON      extends WvletToken(Op, ":")
+  case SEMICOLON  extends WvletToken(Op, ";")
   case COMMA      extends WvletToken(Op, ",")
   case DOT        extends WvletToken(Op, ".")
   case UNDERSCORE extends WvletToken(Op, "_")
@@ -248,9 +251,14 @@ object WvletToken:
       WvletToken.TEST
     ) ++ joinKeywords
 
-  val queryEndKeywords = Set(WvletToken.EOF, WvletToken.END, WvletToken.R_PAREN)
+  val queryDelimiters = Set(
+    WvletToken.EOF,
+    WvletToken.END,
+    WvletToken.R_PAREN,
+    WvletToken.SEMICOLON
+  )
 
-  def isQueryEndKeyword(t: WvletToken): Boolean = queryEndKeywords.contains(t)
+  def isQueryDelimiter(t: WvletToken): Boolean = queryDelimiters.contains(t)
 
   // Line Feed '\n'
   inline val LF = '\u000A'
