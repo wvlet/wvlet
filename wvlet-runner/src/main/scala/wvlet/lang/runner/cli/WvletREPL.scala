@@ -463,10 +463,14 @@ object WvletREPL:
       )
 
       var toContinue = true
+      var lastOffset = 0
       while toContinue do
         val t = scanner.nextToken()
 
-        def rawString: String = src.content.slice(t.offset, t.offset + t.length).mkString
+        // Extract the raw string between the last offset and the current token
+        val rawString: String =
+          src.content.slice(lastOffset.min(t.offset), t.offset + t.length).mkString
+        lastOffset = t.offset + t.length
 
         t.token match
           case WvletToken.EOF =>
