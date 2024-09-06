@@ -229,6 +229,26 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
     */
   private object resolveLocalFileScan extends RewriteRule:
     override def apply(context: Context): PlanRewriter =
+      case r: FileScan if r.path.endsWith(".wv") =>
+        // import a query from another .wv file
+        context.findCompilationUnit(r.path) match
+          case None =>
+            throw StatusCode.FILE_NOT_FOUND.newException(s"${r.path} is not found")
+          case Some(unit) =>
+            // compile the query
+            val compiledUnit =
+              if unit.isFinished(TypeResolver) then
+                unit
+              else
+                run(unit, context.withCompilationUnit(unit))
+            // Replace with the resolved plan
+            compiledUnit.resolvedPlan match
+              case PackageDef(_, List(rel: Relation), _, _) =>
+                ParenthesizedRelation(rel, r.nodeLocation)
+              case other =>
+                throw StatusCode
+                  .SYNTAX_ERROR
+                  .newException(s"${unit.sourceFile} is not a single query file")
       case r: FileScan if r.path.endsWith(".json") =>
         val file             = context.getDataFile(r.path)
         val jsonRelationType = JSONAnalyzer.analyzeJSONFile(file)
@@ -239,6 +259,10 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
         val parquetRelationType = ParquetAnalyzer.guessSchema(file)
         val cols                = parquetRelationType.fields
         ParquetFileScan(file, parquetRelationType, cols, r.nodeLocation)
+
+    end apply
+
+  end resolveLocalFileScan
 
   private object resolveModelDef extends RewriteRule:
     override def apply(context: Context): PlanRewriter = {
