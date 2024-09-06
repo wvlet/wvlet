@@ -33,10 +33,12 @@ import wvlet.airframe.*
 import wvlet.airframe.control.{Shell, ThreadUtil}
 import wvlet.airframe.launcher.{Launcher, command, option}
 import wvlet.airframe.log.AnsiColorPalette
+import wvlet.lang.runner.WvletWorkFolder
 import wvlet.log.io.IOUtil
 import wvlet.log.{LogSupport, Logger}
 
 import java.io.{File, StringWriter}
+import java.sql.SQLException
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicReference
 import java.util.regex.Pattern
@@ -101,7 +103,7 @@ class WvletREPLCli(
       .bindSingleton[WvletREPL]
       .bindInstance[WvletScriptRunnerConfig](
         WvletScriptRunnerConfig(
-          workingFolder = workFolder,
+          workingFolder = WvletWorkFolder(path = workFolder),
           interactive = inputScripts.isEmpty,
           catalog = selectedCatalog,
           schema = selectedSchema
@@ -133,16 +135,8 @@ end WvletREPLCli
 class WvletREPL(runner: WvletScriptRunner) extends AutoCloseable with LogSupport:
   import WvletREPL.*
 
-  private val terminal = TerminalBuilder.builder().name("wvlet-ql").build()
-  private val historyFile =
-    val dir        = runner.config.workingFolder
-    val hasWvFiles = Option(new File(dir).listFiles()).exists(_.exists(_.getName.endsWith(".wv")))
-    if hasWvFiles then
-      // Use the project folder
-      new File(s"${dir}/target/.cache/.wv_history")
-    else
-      // Use the global folder at the user home
-      new File(sys.props("user.home"), ".cache/wvlet/.wv_history")
+  private val terminal    = TerminalBuilder.builder().name("wvlet-shell").build()
+  private val historyFile = new File(runner.config.workingFolder.cacheFolder, ".wv_history")
 
   private val reader = LineReaderBuilder
     .builder()

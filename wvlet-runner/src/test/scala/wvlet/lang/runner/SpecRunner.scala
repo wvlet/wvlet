@@ -13,13 +13,12 @@
  */
 package wvlet.lang.runner
 
-import wvlet.lang.WvletLangException
-import wvlet.lang.compiler.{Compiler, CompilerOptions}
-import wvlet.lang.runner.connector.duckdb.DuckDBConnector
 import wvlet.airspec.AirSpec
+import wvlet.lang.WvletLangException
+import wvlet.lang.compiler.{CompilationUnit, Compiler, CompilerOptions}
+import wvlet.lang.runner.connector.duckdb.DuckDBConnector
 
-import java.io.File
-import java.sql.SQLException
+import scala.util.control.NonFatal
 
 trait SpecRunner(
     specPath: String,
@@ -39,16 +38,26 @@ trait SpecRunner(
   for unit <- compiler.localCompilationUnits do
     test(unit.sourceFile.fileName) {
       ignoredSpec.get(unit.sourceFile.fileName).foreach(reason => ignore(reason))
-
       try
-        val compileResult = compiler.compileSingleUnit(unit)
-        val result        = duckDB.executeSingle(unit, compileResult.context)
-        debug(result.toPrettyBox(maxWidth = Some(120)))
+        runSpec(unit)
       catch
-        case e: WvletLangException if e.statusCode.isUserError =>
-          debug(e)
-          fail(e.getMessage)
+        case NonFatal(e) =>
+          handleError(e)
     }
+
+  protected def runSpec(unit: CompilationUnit): Unit =
+    val compileResult = compiler.compileSingleUnit(unit)
+    val result        = duckDB.executeSingle(unit, compileResult.context)
+    debug(result.toPrettyBox(maxWidth = Some(120)))
+
+  protected def handleError: Throwable => Unit =
+    case e: WvletLangException if e.statusCode.isUserError =>
+      debug(e)
+      fail(e.getMessage)
+    case e: Throwable =>
+      throw e
+
+end SpecRunner
 
 class BasicSpec
     extends SpecRunner(
@@ -59,3 +68,12 @@ class BasicSpec
 class Model1Spec extends SpecRunner("spec/model1")
 class TPCHSpec   extends SpecRunner("spec/tpch", prepareTPCH = true)
 class DuckDBSpec extends SpecRunner("spec/duckdb")
+
+// Negative tests, expecting some errors
+class NegSpec extends SpecRunner("spec/neg"):
+  override protected def handleError: Throwable => Unit =
+    case e: WvletLangException if e.statusCode.isUserError =>
+      // Expected error
+      debug(e)
+    case e: Throwable =>
+      throw e
