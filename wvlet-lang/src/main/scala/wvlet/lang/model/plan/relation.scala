@@ -597,6 +597,8 @@ enum JoinType(val symbol: String):
 sealed trait SetOperation extends Relation with LogSupport:
   override def children: Seq[Relation]
 
+  def toSQLOp: String
+
   override lazy val relationType: RelationType = children
     .headOption
     .map(_.relationType)
@@ -661,35 +663,70 @@ sealed trait SetOperation extends Relation with LogSupport:
 
 end SetOperation
 
-case class Concat(relations: Seq[Relation], nodeLocation: Option[NodeLocation])
+case class Concat(left: Relation, right: Relation, nodeLocation: Option[NodeLocation])
     extends SetOperation:
-  assert(relations.size > 0)
-  override def children: Seq[Relation]         = relations
-  override lazy val relationType: RelationType = relations.head.relationType
-  override def toString                        = s"Concat(${relations.mkString(", ")})"
+  override def toSQLOp: String         = "union all"
+  override def children: Seq[Relation] = Seq(left, right)
+  override def toString                = s"Concat(${left}, ${right})"
 
 case class Dedup(child: Relation, nodeLocation: Option[NodeLocation]) extends FilteringRelation:
   override def toString = s"Dedup(${child})"
 
-case class Intersect(relations: Seq[Relation], nodeLocation: Option[NodeLocation])
-    extends SetOperation:
-  override def children: Seq[Relation] = relations
-  override def toString                = s"Intersect(${relations.mkString(", ")})"
+case class Intersect(
+    left: Relation,
+    right: Relation,
+    isDistinct: Boolean,
+    nodeLocation: Option[NodeLocation]
+) extends SetOperation:
+  override def toSQLOp: String =
+    s"intersect${
+        if isDistinct then
+          ""
+        else
+          " all"
+      }"
 
-case class Except(left: Relation, right: Relation, nodeLocation: Option[NodeLocation])
-    extends SetOperation:
   override def children: Seq[Relation] = Seq(left, right)
+  override def toString                = s"Intersect(${left}, ${right})"
 
-  override def toString = s"Except(${left}, ${right})"
+case class Except(
+    left: Relation,
+    right: Relation,
+    isDistinct: Boolean,
+    nodeLocation: Option[NodeLocation]
+) extends SetOperation:
+  override def toSQLOp: String =
+    s"except${
+        if isDistinct then
+          ""
+        else
+          " all"
+      }"
+
+  override def children: Seq[Relation] = Seq(left, right)
+  override def toString                = s"Except(${left}, ${right})"
 
 /**
   * Union operation without involving duplicate elimination
   * @param relations
   * @param nodeLocation
   */
-case class Union(relations: Seq[Relation], nodeLocation: Option[NodeLocation]) extends SetOperation:
-  override def children: Seq[Relation] = relations
-  override def toString                = s"Union(${relations.mkString(",")})"
+case class Union(
+    left: Relation,
+    right: Relation,
+    isDistinct: Boolean,
+    nodeLocation: Option[NodeLocation]
+) extends SetOperation:
+  override def toSQLOp: String =
+    s"except${
+        if isDistinct then
+          ""
+        else
+          " all"
+      }"
+
+  override def children: Seq[Relation] = Seq(left, right)
+  override def toString                = s"Union(${children.mkString(",")})"
 
 case class Unnest(
     columns: Seq[Expression],

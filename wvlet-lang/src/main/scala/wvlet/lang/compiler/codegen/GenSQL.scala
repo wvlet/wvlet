@@ -370,14 +370,15 @@ class GenSQL(ctx: Context) extends LogSupport:
                   sqlContext.enterFrom
                 )}\nwhere ${printExpression(f.filterExpr)}"""
             )
-      case c: Concat =>
-        val rels = c.children.map(x => printRelation(x)(using sqlContext.nested))
-        val sql  = rels.mkString("\nunion all\n")
-        selectWithIndentAndParenIfNecessary(sql)
       case d: Dedup =>
         selectWithIndentAndParenIfNecessary(
           s"""select distinct * from ${printRelation(d.child)(using sqlContext.enterFrom)}"""
         )
+      case s: SetOperation =>
+        val rels = s.children.map(x => printRelation(x)(using sqlContext.nested))
+        val op   = s.toSQLOp
+        val sql  = rels.mkString(s"\n${op}\n")
+        selectWithIndentAndParenIfNecessary(sql)
       case a: AliasedRelation =>
         val tableAlias: String =
           val name = printExpression(a.alias)

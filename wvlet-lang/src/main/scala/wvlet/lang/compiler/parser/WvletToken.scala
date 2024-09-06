@@ -178,8 +178,13 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   case DESCRIBE extends WvletToken(Keyword, "describe")
 
   // set operators
-  case CONCAT extends WvletToken(Keyword, "concat")
-  case DEDUP  extends WvletToken(Keyword, "dedup")
+  // Note: We do not provide UNION as a lot of users use UNION (duplicate elimination)
+  // where UNION ALL is appropriate
+  case CONCAT    extends WvletToken(Keyword, "concat")
+  case DEDUP     extends WvletToken(Keyword, "dedup")
+  case INTERSECT extends WvletToken(Keyword, "intersect")
+  case EXCEPT    extends WvletToken(Keyword, "except")
+  case ALL       extends WvletToken(Keyword, "all")
 
   // window function keywords
   case OVER      extends WvletToken(Keyword, "over")
