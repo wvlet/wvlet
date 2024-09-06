@@ -275,8 +275,18 @@ class WvletREPL(runner: WvletScriptRunner) extends AutoCloseable with LogSupport
     val keyMaps = reader.getKeyMaps().get("main")
 
     import scala.jdk.CollectionConverters.*
-    // Clean up all the default key bindings for ctrl-j (accept line) to enable our custom key bindings
-    reader.getKeyMaps().values().asScala.foreach(_.unbind(KeyMap.ctrl('J')))
+    // Clean up some default key bindings
+    reader
+      .getKeyMaps()
+      .values()
+      .asScala
+      .foreach { keyMap =>
+        // Remove ctrl-j (accept line) to enable our custom key bindings
+        keyMap.unbind(KeyMap.ctrl('J'))
+        // Disable insert_close_curly command, which disrupts screen
+        // keyMap.unbind("}")
+      }
+
     // Bind Ctrl+J, ... sequence
     keyMaps.bind(moveToTop, KeyMap.translate("^J^A"))
     keyMaps.bind(moveToEnd, KeyMap.translate("^J^E"))
@@ -453,10 +463,14 @@ object WvletREPL:
       )
 
       var toContinue = true
+      var lastOffset = 0
       while toContinue do
         val t = scanner.nextToken()
 
-        def rawString: String = src.content.slice(t.offset, t.offset + t.length).mkString
+        // Extract the raw string between the last offset and the current token
+        val rawString: String =
+          src.content.slice(lastOffset.min(t.offset), t.offset + t.length).mkString
+        lastOffset = t.offset + t.length
 
         t.token match
           case WvletToken.EOF =>
@@ -471,9 +485,6 @@ object WvletREPL:
             builder.append(rawString, AttributedStyle.DEFAULT.foreground(AttributedStyle.CYAN))
           case WvletToken.IDENTIFIER =>
             builder.append(rawString, AttributedStyle.DEFAULT.foreground(AttributedStyle.WHITE))
-//          case token if token.isOperator =>
-//            // bright cyan
-//            builder.append(rawString, AttributedStyle.DEFAULT.foreground(8))
           case _ =>
             builder.append(rawString)
       builder.toAttributedString

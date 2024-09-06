@@ -109,6 +109,89 @@ class ScannerTest extends AirSpec:
     token = scanner.nextToken()
     debug(token)
     token.token shouldBe WvletToken.EOF
+    token.offset shouldBe src.length
+    token.length shouldBe 0
+  }
+
+  test("expr in string interpolation") {
+    val src = "from sql\"select ${x}\""
+    //             0    5  8 9      16
+    val scanner = WvletScanner(SourceFile.fromString(src))
+
+    var token = scanner.nextToken()
+    debug(token)
+    token.token shouldBe WvletToken.FROM
+
+    token = scanner.nextToken()
+    debug(token)
+    token.token shouldBe WvletToken.STRING_INTERPOLATION_PREFIX
+    token.str shouldBe "sql"
+
+    token = scanner.nextToken()
+    debug(token)
+    token.token shouldBe WvletToken.STRING_PART
+
+    token = scanner.nextToken()
+    debug(token)
+    token.token shouldBe WvletToken.DOLLAR
+
+    token = scanner.nextToken()
+    debug(token)
+    token.token shouldBe WvletToken.L_BRACE
+
+    token = scanner.nextToken()
+    debug(token)
+    token.token shouldBe WvletToken.IDENTIFIER
+
+    token = scanner.nextToken()
+    debug(token)
+    token.token shouldBe WvletToken.R_BRACE
+
+    token = scanner.nextToken()
+    debug(token)
+    token.token shouldBe WvletToken.STRING_PART
+    token.length shouldBe 1
+    token.offset shouldBe 20
+
+    token = scanner.nextToken()
+    debug(token)
+    token.token shouldBe WvletToken.EOF
+    token.offset shouldBe src.length
+    token.length shouldBe 0
+  }
+
+  test("open expr in string interpolation") {
+    val src     = "from sql\"select ${x}"
+    val scanner = WvletScanner(SourceFile.fromString(src))
+
+    var token = scanner.nextToken()
+    debug(token)
+    token.token shouldBe WvletToken.FROM
+
+    token = scanner.nextToken()
+    debug(token)
+    token.token shouldBe WvletToken.STRING_INTERPOLATION_PREFIX
+
+    token = scanner.nextToken()
+    debug(token)
+    token.token shouldBe WvletToken.STRING_PART
+
+    token = scanner.nextToken()
+    debug(token)
+    token.token shouldBe WvletToken.DOLLAR
+
+    token = scanner.nextToken()
+    debug(token)
+    token.token shouldBe WvletToken.L_BRACE
+
+    token = scanner.nextToken()
+    debug(token)
+    token.token shouldBe WvletToken.IDENTIFIER
+
+    token = scanner.nextToken()
+    debug(token)
+    token.token shouldBe WvletToken.R_BRACE
+
   }
 
 end ScannerTest
