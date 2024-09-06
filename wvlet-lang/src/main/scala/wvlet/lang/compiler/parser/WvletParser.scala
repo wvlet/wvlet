@@ -31,12 +31,19 @@ import scala.util.Try
   * Wvlet Language Parser. The grammar is described in `docs/internal/grammar.md` file.
   * @param unit
   */
-class WvletParser(unit: CompilationUnit) extends LogSupport:
+class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends LogSupport:
 
   given src: SourceFile                  = unit.sourceFile
   given compilationUnit: CompilationUnit = unit
 
-  private val scanner = WvletScanner(unit.sourceFile, ScannerConfig(skipComments = true))
+  private val scanner = WvletScanner(
+    unit.sourceFile,
+    ScannerConfig(
+      skipComments = true,
+      // enable debug only for the context unit
+      debugScanner = isContextUnit
+    )
+  )
 
   def parse(): LogicalPlan =
     val t = scanner.lookAhead()
