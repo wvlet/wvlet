@@ -151,8 +151,6 @@ class WvletREPL(runner: WvletScriptRunner) extends AutoCloseable with LogSupport
       else
         ""
     )
-    // Disable ${...} variable expansion
-    .option(LineReader.Option.AUTO_PARAM_SLASH, false)
     // Coloring keywords
     .highlighter(new ReplHighlighter).build()
 
@@ -277,8 +275,18 @@ class WvletREPL(runner: WvletScriptRunner) extends AutoCloseable with LogSupport
     val keyMaps = reader.getKeyMaps().get("main")
 
     import scala.jdk.CollectionConverters.*
-    // Clean up all the default key bindings for ctrl-j (accept line) to enable our custom key bindings
-    reader.getKeyMaps().values().asScala.foreach(_.unbind(KeyMap.ctrl('J')))
+    // Clean up some default key bindings
+    reader
+      .getKeyMaps()
+      .values()
+      .asScala
+      .foreach { keyMap =>
+        // Remove ctrl-j (accept line) to enable our custom key bindings
+        keyMap.unbind(KeyMap.ctrl('J'))
+        // Disable insert_close_curly command, which disrupts screen
+        // keyMap.unbind("}")
+      }
+
     // Bind Ctrl+J, ... sequence
     keyMaps.bind(moveToTop, KeyMap.translate("^J^A"))
     keyMaps.bind(moveToEnd, KeyMap.translate("^J^E"))
