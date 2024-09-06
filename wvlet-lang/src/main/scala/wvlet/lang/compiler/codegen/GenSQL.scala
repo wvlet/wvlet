@@ -163,8 +163,8 @@ class GenSQL(ctx: Context) extends LogSupport:
       if sqlContext.nestingLevel == 0 then
         s
       else
-        val str = s.split("\n").map(x => s"  ${x}").mkString("\n")
-        s"\n${str}"
+        val str = s.split("\n").map(x => s"  ${x}").mkString("\n", "\n", "")
+        str
 
     def selectWithIndentAndParenIfNecessary(body: String): String =
       if sqlContext.nestingLevel == 0 then
@@ -371,9 +371,13 @@ class GenSQL(ctx: Context) extends LogSupport:
                 )}\nwhere ${printExpression(f.filterExpr)}"""
             )
       case c: Concat =>
-        val rels = c.children.map(x => printRelation(x)(using sqlContext))
+        val rels = c.children.map(x => printRelation(x)(using sqlContext.nested))
         val sql  = rels.mkString("\nunion all\n")
         selectWithIndentAndParenIfNecessary(sql)
+      case d: Dedup =>
+        selectWithIndentAndParenIfNecessary(
+          s"""select distinct * from ${printRelation(d.child)(using sqlContext.enterFrom)}"""
+        )
       case a: AliasedRelation =>
         val tableAlias: String =
           val name = printExpression(a.alias)

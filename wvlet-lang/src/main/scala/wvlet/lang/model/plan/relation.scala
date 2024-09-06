@@ -668,6 +668,9 @@ case class Concat(relations: Seq[Relation], nodeLocation: Option[NodeLocation])
   override lazy val relationType: RelationType = relations.head.relationType
   override def toString                        = s"Concat(${relations.mkString(", ")})"
 
+case class Dedup(child: Relation, nodeLocation: Option[NodeLocation]) extends FilteringRelation:
+  override def toString = s"Dedup(${child})"
+
 case class Intersect(relations: Seq[Relation], nodeLocation: Option[NodeLocation])
     extends SetOperation:
   override def children: Seq[Relation] = relations

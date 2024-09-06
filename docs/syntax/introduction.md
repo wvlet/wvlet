@@ -20,9 +20,10 @@ wvlet favors lower-case keywords for SQL-like operators. The following is a list
 | limit `n` | Rows up to the given number |
 | (left \| right \| cross)? join `table` on `cond` | Joined rows with the given condition. `cond` can be just common column names between joined tables (e.g., `using` in SQL) |
 | concat ... | Concatenated rows from multiple sources. Same with UNION ALL in SQL |
+| dedup | Rows with duplicated rows removed. Equivalent to `select distinct *` | 
 | pivot on `pivot_column` (in (`v1`, `v2`, ...) )? | Rows whose column values in the pivot column are expanded as columns. |
 | pivot on `pivot_column`<br/> (group by `grouping columns`)?<br/> agg `agg_expr` |  Pivoted rows with the given grouping columns and aggregated values.|
-| call `func(args, ...)` | Rows processed by the given table function |
+| pipe `func(args, ...)` | Rows processed by the given table function |
 | shift (to left)? `column`, ... | Same rows with selected column moved to the left |
 | shift to right `column`, ... | Same rows with selected column moved to the right |
 | sample `method`? (`size` rows? \| %) | Randomly sampled rows. Sampling method can be reservoir (default), system, or bernoulli |   

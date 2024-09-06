@@ -95,6 +95,7 @@ import scala.util.Try
   *             | 'show' identifier
   *             | 'sample' sampleExpr
   *             | 'concat' query
+  *             | 'dedup'
   *
   *   join        : joinType? 'join' relation joinCriteria
   *               | 'cross' 'join' relation
@@ -821,6 +822,9 @@ class WvletParser(unit: CompilationUnit) extends LogSupport:
             case _ =>
               relationPrimary()
         queryBlock(Concat(Seq(input, right), t.nodeLocation))
+      case WvletToken.DEDUP =>
+        consume(WvletToken.DEDUP)
+        queryBlock(Dedup(input, t.nodeLocation))
       case _ =>
         input
 
