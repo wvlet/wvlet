@@ -65,7 +65,7 @@ object GenSQL extends Phase("generate-sql"):
     // Attach the generated SQL to the CompilationUnit
     unit
 
-  def generateSQL(q: Query, ctx: Context): GeneratedSQL =
+  def generateSQL(q: Relation, ctx: Context): GeneratedSQL =
     val expanded = expand(q, ctx)
     // val sql      = SQLGenerator.toSQL(expanded)
     val gen = GenSQL(ctx)

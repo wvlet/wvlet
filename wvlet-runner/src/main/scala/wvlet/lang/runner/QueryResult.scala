@@ -20,6 +20,7 @@ import wvlet.log.LogSupport
 import scala.collection.immutable.ListMap
 
 sealed trait QueryResult:
+  def isEmpty: Boolean          = this eq QueryResult.empty
   override def toString: String = toPrettyBox()
   def toPrettyBox(maxWidth: Option[Int] = None, maxColWidth: Int = 150): String = QueryResultPrinter
     .print(this, PrettyBoxFormat(maxWidth, maxColWidth))
@@ -30,6 +31,12 @@ sealed trait QueryResult:
 
 object QueryResult:
   object empty extends QueryResult
+  def fromList(lst: List[QueryResult]): QueryResult =
+    lst.filter(!_.isEmpty) match
+      case Nil => QueryResult.empty
+      case r :: Nil => r
+      case lst =>
+        QueryResultList(lst)
 
 case class QueryResultList(list: Seq[QueryResult]) extends QueryResult
 

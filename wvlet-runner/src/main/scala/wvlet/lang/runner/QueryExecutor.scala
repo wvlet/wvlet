@@ -16,23 +16,35 @@ package wvlet.lang.runner
 import wvlet.lang.StatusCode
 import wvlet.lang.compiler.*
 import wvlet.lang.compiler.codegen.GenSQL
+import wvlet.lang.compiler.planner.ExecutionPlanner
 import wvlet.lang.model.DataType
 import wvlet.lang.model.DataType.{NamedType, SchemaType, UnresolvedType}
 import wvlet.lang.model.plan.*
+import wvlet.lang.model.expr.*
 import wvlet.lang.runner.connector.DBConnector
 import wvlet.lang.runner.connector.duckdb.DuckDBConnector
 import wvlet.airframe.codec.{JDBCCodec, MessageCodec}
 import wvlet.airframe.control.Control
 import wvlet.airframe.control.Control.withResource
+import wvlet.lang.model.expr.Expression
 import wvlet.log.{LogLevel, LogSupport}
 
 import java.sql.SQLException
 import scala.collection.immutable.ListMap
 import scala.util.{Try, Using}
 
-class QueryExecutor(dbConnector: DBConnector, workEnv: WvletWorkEnv)
-    extends LogSupport
+case class QueryExecutorConfig(rowLimit: Int = 40)
+
+class QueryExecutor(
+    dbConnector: DBConnector,
+    workEnv: WvletWorkEnv,
+    private var config: QueryExecutorConfig = QueryExecutorConfig()
+) extends LogSupport
     with AutoCloseable:
+
+  def setRowLimit(limit: Int): QueryExecutor =
+    config = config.copy(rowLimit = limit)
+    this
 
   def getDBConnector: DBConnector = dbConnector
 
@@ -49,27 +61,45 @@ class QueryExecutor(dbConnector: DBConnector, workEnv: WvletWorkEnv)
       case None =>
         throw StatusCode.FILE_NOT_FOUND.newException(s"File not found: ${file}")
 
-  def executeSingle(u: CompilationUnit, context: Context, limit: Int = 40): QueryResult =
+  def executeSingle(u: CompilationUnit, context: Context): QueryResult =
     workEnv.outLogger.info(s"Executing ${u.sourceFile.fileName}")
-    val result = execute(u.resolvedPlan, context, limit)
+
+    val executionPlan = ExecutionPlanner.plan(u, context)
+    val result        = execute(executionPlan, context)
     result
 
-  def execute(plan: LogicalPlan, context: Context, limit: Int): QueryResult =
-    trace(s"Executing plan: ${plan.pp}")
+  def execute(executionPlan: ExecutionPlan, context: Context): QueryResult =
+    var lastResult: QueryResult = QueryResult.empty
+
+    def process(e: ExecutionPlan): QueryResult =
+      e match
+        case ExecuteQuery(plan) =>
+          lastResult = executeQuery(plan, context)
+          lastResult
+        case ExecuteTest(test) =>
+          lastResult = executeTest(test, context, lastResult)
+          lastResult
+        case ExecuteTasks(tasks) =>
+          val results = tasks.map { task =>
+            process(task)
+          }
+          lastResult = QueryResult.fromList(results)
+          lastResult
+        case ExecuteNothing =>
+          QueryResult.empty
+        case other =>
+          throw StatusCode.NOT_IMPLEMENTED.newException(s"Unsupported execution plan: ${other}")
+
+    process(executionPlan)
+
+  private def executeQuery(plan: LogicalPlan, context: Context): QueryResult =
+    trace(s"Executing query: ${plan.pp}")
     workEnv.outLogger.trace(s"Executing plan: ${plan.pp}")
     plan match
-      case p: PackageDef =>
-        val results = p
-          .statements
-          .map { stmt =>
-            PlanResult(stmt, execute(stmt, context, limit))
-          }
-        QueryResultList(results)
-      case q: Query =>
+      case q: Relation =>
         val generatedSQL = GenSQL.generateSQL(q, context)
         debug(s"Executing SQL:\n${generatedSQL.sql}")
         workEnv.outLogger.debug(s"Executing SQL:\n${generatedSQL.sql}")
-        trace(s"[plan]:\n${generatedSQL.plan.pp}")
         try
           val result = dbConnector.withConnection { conn =>
             withResource(conn.createStatement()) { stmt =>
@@ -92,7 +122,7 @@ class QueryExecutor(dbConnector: DBConnector, workEnv: WvletWorkEnv)
                 val rowCodec = MessageCodec.of[ListMap[String, Any]]
                 var rowCount = 0
                 val it = codec.mapMsgPackMapRows { msgpack =>
-                  if rowCount < limit then
+                  if rowCount < config.rowLimit then
                     rowCodec.fromMsgPack(msgpack)
                   else
                     null
@@ -101,7 +131,7 @@ class QueryExecutor(dbConnector: DBConnector, workEnv: WvletWorkEnv)
                 val rows = Seq.newBuilder[ListMap[String, Any]]
                 while it.hasNext do
                   val row = it.next()
-                  if row != null && rowCount < limit then
+                  if row != null && rowCount < config.rowLimit then
                     rows += row
                   rowCount += 1
 
@@ -117,26 +147,63 @@ class QueryExecutor(dbConnector: DBConnector, workEnv: WvletWorkEnv)
               .INVALID_ARGUMENT
               .newException(s"${e.getMessage}\n[sql]\n${generatedSQL.sql}", e)
         end try
-      case t: TableDef =>
-        QueryResult.empty
-      case t: TestRelation =>
-        debug(s"Executing test: ${t}")
-        QueryResult.empty
-      case m: ModelDef =>
-        QueryResult.empty
-      case d: Describe =>
-        val desc = d.descRows
-        TableRows(d.relationType, desc, desc.size)
-      case s: Subscribe =>
-        debug(s"Executing subscribe: ${s}")
-        QueryResult.empty
-      case f: LanguageStatement =>
-        QueryResult.empty
       case other =>
-        throw StatusCode.NOT_IMPLEMENTED.newException(s"Unsupported plan: ${other}")
-
+        QueryResult.empty
     end match
 
-  end execute
+  end executeQuery
+
+  private def executeTest(
+      test: TestRelation,
+      context: Context,
+      lastResult: QueryResult
+  ): QueryResult =
+
+    def eval(e: Expression): QueryResult =
+      e match
+        case ShouldExpr(TestType.ShouldBe, left, right, _) =>
+          val leftValue  = trim(evalOp(left))
+          val rightValue = trim(evalOp(right))
+          if leftValue != rightValue then
+            val msg = s"match failure:\n[left]\n${leftValue}\n\n[right]\n${rightValue}"
+            workEnv.errorLogger.error(msg)
+            ErrorResult(StatusCode.TEST_FAILED.newException(msg))
+          else
+            workEnv
+              .outLogger
+              .debug(s"match success:\n[left]\n${leftValue}\n\n[right]\n${rightValue}")
+            QueryResult.empty
+        case _ =>
+          ErrorResult(StatusCode.NOT_IMPLEMENTED.newException(s"Unsupported test expression: ${e}"))
+
+    def evalOp(e: Expression): Any =
+      e match
+        case DotRef(c: ContextInputRef, name, _, _) if name.leafName == "output" =>
+          val box = lastResult.toPrettyBox()
+          box
+        case l: StringLiteral =>
+          l.value
+        case _ =>
+          ()
+
+    def trim(v: Any): Any =
+      v match
+        case s: String =>
+          s.trim
+        case _ =>
+          v
+
+    val results =
+      test
+        .testExprs
+        .map { testExpr =>
+          eval(testExpr)
+        }
+        .filter(!_.isEmpty)
+        .toList
+
+    QueryResult.fromList(results)
+
+  end executeTest
 
 end QueryExecutor

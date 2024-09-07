@@ -83,7 +83,7 @@ case class ModelDef(
 
 case class TestRelation(
     child: Relation,
-    textExprs: Seq[Expression],
+    testExprs: Seq[Expression],
     nodeLocation: Option[NodeLocation]
 ) extends UnaryRelation:
   override def relationType: RelationType = child.relationType
