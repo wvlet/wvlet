@@ -20,15 +20,24 @@ import wvlet.airframe.ulid.ULID
 /**
   * Additional nodes that for organizing tasks for executing LogicalPlan nodes
   */
-sealed trait ExecutionPlan
-//def sessionID: ULID
-end ExecutionPlan
+sealed trait ExecutionPlan:
+  def isEmpty: Boolean = false
 
 object ExecutionPlan:
-  case class Tasks(name: String, tasks: List[ExecutionPlan]) extends ExecutionPlan
+  def empty: ExecutionPlan = ExecuteNothing
+  def apply(tasks: List[ExecutionPlan]): ExecutionPlan =
+    tasks match
+      case Nil =>
+        ExecuteNothing
+      case task :: Nil =>
+        task
+      case lst =>
+        ExecuteTasks(lst)
 
-  /**
-    * Materialize a model using a logical plan
-    * @param name
-    */
-  case class MaterializeModel(modelName: NameExpr, plan: LogicalPlan) extends ExecutionPlan
+case object ExecuteNothing extends ExecutionPlan:
+  override def isEmpty: Boolean = true
+
+case class ExecuteTasks(tasks: List[ExecutionPlan]) extends ExecutionPlan
+
+case class ExecuteQuery(plan: LogicalPlan) extends ExecutionPlan
+case class ExecuteTest(test: TestRelation) extends ExecutionPlan

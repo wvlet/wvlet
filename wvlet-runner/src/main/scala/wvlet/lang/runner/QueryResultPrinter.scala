@@ -143,6 +143,9 @@ object QueryResultPrinter extends LogSupport:
         print(result, format)
       case t: TableRows =>
         format.printTableRows(t)
+      case w: WarningResult =>
+        val msg = s"Warning: ${w.msg}"
+        msg
       case e: ErrorResult =>
         s"Error: ${e.getError.map(_.getMessage).getOrElse("")}"
 

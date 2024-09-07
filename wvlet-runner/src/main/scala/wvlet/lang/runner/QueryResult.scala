@@ -20,24 +20,50 @@ import wvlet.log.LogSupport
 import scala.collection.immutable.ListMap
 
 sealed trait QueryResult:
+  def isEmpty: Boolean          = this eq QueryResult.empty
   override def toString: String = toPrettyBox()
   def toPrettyBox(maxWidth: Option[Int] = None, maxColWidth: Int = 150): String = QueryResultPrinter
     .print(this, PrettyBoxFormat(maxWidth, maxColWidth))
 
-  def toTSV: String = QueryResultPrinter.print(this, TSVFormat)
-
+  def toTSV: String               = QueryResultPrinter.print(this, TSVFormat)
   def getError: Option[Throwable] = None
+  def getWarning: Option[String]  = None
+  def hasError: Boolean           = getError.isDefined
 
 object QueryResult:
   object empty extends QueryResult
+  def fromList(lst: List[QueryResult]): QueryResult =
+    lst.filter(!_.isEmpty) match
+      case Nil =>
+        QueryResult.empty
+      case r :: Nil =>
+        r
+      case lst =>
+        QueryResultList(lst)
 
-case class QueryResultList(list: Seq[QueryResult]) extends QueryResult
+case class QueryResultList(list: Seq[QueryResult]) extends QueryResult:
+  override def getError: Option[Throwable] =
+    val errors = list.map(_.getError).filter(_.isDefined)
+    if errors.isEmpty then
+      None
+    else
+      Some(errors.head.get)
+
+  override def getWarning: Option[String] =
+    val warnings = list.map(_.getWarning).filter(_.isDefined)
+    if warnings.isEmpty then
+      None
+    else
+      Some(warnings.mkString("\n"))
 
 case class PlanResult(plan: LogicalPlan, result: QueryResult) extends QueryResult
 
 case class TableRows(schema: RelationType, rows: Seq[ListMap[String, Any]], totalRows: Int)
     extends QueryResult:
   def isTruncated: Boolean = rows.size < totalRows
+
+case class WarningResult(msg: String) extends QueryResult:
+  override def getWarning: Option[String] = Some(msg)
 
 case class ErrorResult(e: Throwable) extends QueryResult:
   override def getError: Option[Throwable] = Some(e)

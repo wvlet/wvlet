@@ -4,5 +4,13 @@ select (age / 10).round(1).to_string as age_group
 limit 1
 
 test:
-  _.size should be 1
-  _.json should be '{"age_group":"1.0"}'
+  _.output should be """
+┌───────────┐
+│ age_group │
+│  string   │
+├───────────┤
+│ 1.0       │
+├───────────┤
+│ 1 rows    │
+└───────────┘
+"""
