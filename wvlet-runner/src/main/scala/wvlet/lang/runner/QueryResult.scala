@@ -25,20 +25,28 @@ sealed trait QueryResult:
   def toPrettyBox(maxWidth: Option[Int] = None, maxColWidth: Int = 150): String = QueryResultPrinter
     .print(this, PrettyBoxFormat(maxWidth, maxColWidth))
 
-  def toTSV: String = QueryResultPrinter.print(this, TSVFormat)
-
+  def toTSV: String               = QueryResultPrinter.print(this, TSVFormat)
   def getError: Option[Throwable] = None
+  def hasError: Boolean           = getError.isDefined
 
 object QueryResult:
   object empty extends QueryResult
   def fromList(lst: List[QueryResult]): QueryResult =
     lst.filter(!_.isEmpty) match
-      case Nil => QueryResult.empty
-      case r :: Nil => r
+      case Nil =>
+        QueryResult.empty
+      case r :: Nil =>
+        r
       case lst =>
         QueryResultList(lst)
 
-case class QueryResultList(list: Seq[QueryResult]) extends QueryResult
+case class QueryResultList(list: Seq[QueryResult]) extends QueryResult:
+  override def getError: Option[Throwable] =
+    val errors = list.map(_.getError).filter(_.isDefined)
+    if errors.isEmpty then
+      None
+    else
+      Some(errors.head.get)
 
 case class PlanResult(plan: LogicalPlan, result: QueryResult) extends QueryResult
 

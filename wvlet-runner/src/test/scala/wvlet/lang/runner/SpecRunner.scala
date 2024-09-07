@@ -40,16 +40,24 @@ trait SpecRunner(
     test(unit.sourceFile.fileName) {
       ignoredSpec.get(unit.sourceFile.fileName).foreach(reason => ignore(reason))
       try
-        runSpec(unit)
+        handleResult(runSpec(unit))
       catch
         case NonFatal(e) =>
           handleError(e)
     }
 
-  protected def runSpec(unit: CompilationUnit): Unit =
+  protected def runSpec(unit: CompilationUnit): QueryResult =
     val compileResult = compiler.compileSingleUnit(unit)
     val result        = duckDB.executeSingle(unit, compileResult.context)
     debug(result.toPrettyBox(maxWidth = Some(120)))
+    result
+
+  protected def handleResult(result: QueryResult): Unit =
+    result.getError match
+      case Some(e) =>
+        throw e
+      case None =>
+      // ok
 
   protected def handleError: Throwable => Unit =
     case e: WvletLangException if e.statusCode.isUserError =>
