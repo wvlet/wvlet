@@ -27,6 +27,7 @@ sealed trait QueryResult:
 
   def toTSV: String               = QueryResultPrinter.print(this, TSVFormat)
   def getError: Option[Throwable] = None
+  def getWarning: Option[String]  = None
   def hasError: Boolean           = getError.isDefined
 
 object QueryResult:
@@ -48,11 +49,21 @@ case class QueryResultList(list: Seq[QueryResult]) extends QueryResult:
     else
       Some(errors.head.get)
 
+  override def getWarning: Option[String] =
+    val warnings = list.map(_.getWarning).filter(_.isDefined)
+    if warnings.isEmpty then
+      None
+    else
+      Some(warnings.mkString("\n"))
+
 case class PlanResult(plan: LogicalPlan, result: QueryResult) extends QueryResult
 
 case class TableRows(schema: RelationType, rows: Seq[ListMap[String, Any]], totalRows: Int)
     extends QueryResult:
   def isTruncated: Boolean = rows.size < totalRows
+
+case class WarningResult(msg: String) extends QueryResult:
+  override def getWarning: Option[String] = Some(msg)
 
 case class ErrorResult(e: Throwable) extends QueryResult:
   override def getError: Option[Throwable] = Some(e)

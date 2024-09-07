@@ -25,11 +25,14 @@ sealed trait ExecutionPlan:
 
 object ExecutionPlan:
   def empty: ExecutionPlan = ExecuteNothing
-  def apply(tasks:List[ExecutionPlan]): ExecutionPlan =
+  def apply(tasks: List[ExecutionPlan]): ExecutionPlan =
     tasks match
-      case Nil => ExecuteNothing
-      case task :: Nil => task
-      case lst => ExecuteTasks(lst)
+      case Nil =>
+        ExecuteNothing
+      case task :: Nil =>
+        task
+      case lst =>
+        ExecuteTasks(lst)
 
 case object ExecuteNothing extends ExecutionPlan:
   override def isEmpty: Boolean = true
@@ -38,4 +41,3 @@ case class ExecuteTasks(tasks: List[ExecutionPlan]) extends ExecutionPlan
 
 case class ExecuteQuery(plan: LogicalPlan) extends ExecutionPlan
 case class ExecuteTest(test: TestRelation) extends ExecutionPlan
-

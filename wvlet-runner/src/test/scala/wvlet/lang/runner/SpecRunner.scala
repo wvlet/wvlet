@@ -53,6 +53,11 @@ trait SpecRunner(
     result
 
   protected def handleResult(result: QueryResult): Unit =
+    result
+      .getWarning
+      .foreach { w =>
+        warn(w)
+      }
     result.getError match
       case Some(e) =>
         throw e

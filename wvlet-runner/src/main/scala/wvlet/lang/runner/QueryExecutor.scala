@@ -174,7 +174,7 @@ class QueryExecutor(
               .debug(s"match success:\n[left]\n${leftValue}\n\n[right]\n${rightValue}")
             QueryResult.empty
         case _ =>
-          ErrorResult(StatusCode.NOT_IMPLEMENTED.newException(s"Unsupported test expression: ${e}"))
+          WarningResult(s"Unsupported test expression: ${e}")
 
     def evalOp(e: Expression): Any =
       e match

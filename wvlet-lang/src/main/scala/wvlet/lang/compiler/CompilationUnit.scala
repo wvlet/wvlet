@@ -36,7 +36,7 @@ case class CompilationUnit(sourceFile: SourceFile, isPreset: Boolean = false) ex
   // Fully-typed plan tree
   var resolvedPlan: LogicalPlan    = LogicalPlan.empty
   var executionPlan: ExecutionPlan = ExecutionPlan.empty
-  
+
   var knownSymbols: List[Symbol] = List.empty
 
   var lastError: Option[Throwable] = None
