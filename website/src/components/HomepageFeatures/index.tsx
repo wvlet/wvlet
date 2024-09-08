@@ -33,7 +33,7 @@ const FeatureList: FeatureItem[] = [
                 Wvlet consumes the differences between SQL engines,
                 such as <a href='https://duckdb.org'>DuckDB</a>, <a href='https://trino.io/'>Trino</a>, <a href={'https://apache.hive.org/'}>Hive</a>, etc.
                 You can switch the SQL engines without changing the query,
-                depending on your data size and the expected query performance.
+                depending on the data size and the expected query performance.
             </>
         ),
   },
@@ -41,7 +41,7 @@ const FeatureList: FeatureItem[] = [
       title: 'Exensible',
       description: (
          <>
-              You can extend wvlet through table-value functions or compiler-plugins to add your custom
+              Wvlet is extensible with table-value functions or compiler-plugins to add your custom
              query rewrite rules.
           </>
       ),
@@ -52,8 +52,8 @@ function Feature({title, Svg, description}: FeatureItem) {
   return (
     <div className={clsx('col col--6')}>
       <div className="text--center padding-horiz--md">
-        <Heading as="h3">{title}</Heading>
-        <p>{description}</p>
+        <Heading as="h3" className={'text--left'}>{title}</Heading>
+        <p className={'text--left'}>{description}</p>
       </div>
     </div>
   );

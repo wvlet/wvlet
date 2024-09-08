@@ -37,7 +37,7 @@ function HomepageHeader() {
                     </div>
                 </div>
                 <div className={clsx('col col--6')}>
-                    (demo)
+                    <img className={'shadow--md'} src='./img/demo-query.png' alt='wvlet demo query' width={550}/>
                 </div>
             </div>
         </div>
