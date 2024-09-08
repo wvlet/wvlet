@@ -10,30 +10,37 @@ import styles from './index.module.css';
 function HomepageHeader() {
   const {siteConfig} = useDocusaurusContext();
   return (
-    <header className={clsx('hero hero--primary', styles.heroBanner)}>
-      <div className="container">
-        <Heading as="h2" className="hero__title">
-          {siteConfig.title}
-        </Heading>
-        <p className="hero__subtitle">{siteConfig.tagline}</p>
+    <header className={clsx('hero', styles.heroBanner)}>
+        <div className="container">
+            <div className="row">
+                <div className={clsx('col col--6')}>
+                    <div>
+                        <div className='row row--align-center'>
+                            <div className='col col--3'>
+                               <img src="./img/logo.png" alt="wvlet logo" width={100}/>
+                               <h1 lassName={'margin--none'}>wvlet</h1>
+                            </div>
+                            <div className='col'>
+                                <em className={'text--left'}>Wvlet is a cross-SQL flow-style query language for
+                                    functional data modeling and interactive data analysis.</em>
+                                <div className={styles.buttons}>
+                                    <Link className="button button--primary" to="/docs/intro">
+                                        Installation
+                                    </Link>
+                                    <Link className="button button--secondary margin--sm" to="/docs/intro">
+                                        Documentation
+                                    </Link>
+                                </div>
 
-        <div className={styles.buttons}>
-          <Link className="button button--secondary" to="/docs/intro">
-            Get Started
-          </Link>
-          <span>&nbsp;</span>
-          <span className={styles.indexCtasGitHubButtonWrapper}>
-            <iframe
-              className={styles.indexCtasGitHubButton}
-              src="https://ghbtns.com/github-btn.html?user=wvlet&amp;repo=wvlet&amp;type=star&amp;count=true&amp;size=large"
-              frameBorder={0}
-              width={170}
-              height={30}
-              title="GitHub"
-            />
-          </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div className={clsx('col col--6')}>
+                    (demo)
+                </div>
+            </div>
         </div>
-      </div>
     </header>
   );
 }

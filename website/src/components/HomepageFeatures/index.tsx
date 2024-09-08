@@ -10,43 +10,47 @@ type FeatureItem = {
 
 const FeatureList: FeatureItem[] = [
   {
-    title: 'Flow-Style Query',
-    Svg: require('@site/static/img/undraw_docusaurus_mountain.svg').default,
+    title: 'Analyze As You Write',
     description: (
       <>
-        Wvlet streamlines data flow operators intuitively, making it easy to
-        write and read queries.
+        Flow-style query enables you to analyze data as you write queries for interactive data exploration.
       </>
     ),
   },
   {
-    title: 'Reusable and Composable Data Models',
-    Svg: require('@site/static/img/undraw_docusaurus_tree.svg').default,
+    title: 'Functional Data Modeling',
     description: (
       <>
-        Wvlet lets you build reusable and composable data models, enable to
-          share and reuse data models across different queries.
+        Wvlet enables to build functional (i.e., reusable and composable) data models, which
+          can be shared and extended to build reliable data pipelines.
       </>
     ),
   },
   {
-        title: 'Cross-SQL Engine Queries',
-        Svg: require('@site/static/img/undraw_docusaurus_tree.svg').default,
+        title: 'Cross-SQL Engine Support',
         description: (
             <>
-                Wvlet consumes the differences between SQL engines, enabling you to
-                move and query data across different SQL engines.
+                Wvlet consumes the differences between SQL engines,
+                such as <a href='https://duckdb.org'>DuckDB</a>, <a href='https://trino.io/'>Trino</a>, <a href={'https://apache.hive.org/'}>Hive</a>, etc.
+                You can switch the SQL engines without changing the query,
+                depending on your data size and the expected query performance.
             </>
         ),
   },
+  {
+      title: 'Exensible',
+      description: (
+         <>
+              You can extend wvlet through table-value functions or compiler-plugins to add your custom
+             query rewrite rules.
+          </>
+      ),
+    },
 ];
 
 function Feature({title, Svg, description}: FeatureItem) {
   return (
-    <div className={clsx('col col--4')}>
-      <div className="text--center">
-        <Svg className={styles.featureSvg} role="img" />
-      </div>
+    <div className={clsx('col col--6')}>
       <div className="text--center padding-horiz--md">
         <Heading as="h3">{title}</Heading>
         <p>{description}</p>
