@@ -12,7 +12,7 @@ function HomepageHeader() {
   return (
     <header className={clsx('hero', styles.heroBanner)}>
         <div className="container">
-            <div className="row">
+            <div className="row row--align-center">
                 <div className={clsx('col col--6')}>
                     <div>
                         <div className='row row--align-center'>
