@@ -425,6 +425,9 @@ trait LogicalPlan extends TreeNode with Product:
     val newObj             = primaryConstructor.newInstance(newArgs*)
     newObj match
       case t: TreeNode =>
+        if this.symbol.tree != null then
+          // Update the tree reference to the rewritten one
+          this.symbol.tree = t
         t.symbol = this.symbol
       case _ =>
     newObj.asInstanceOf[this.type]

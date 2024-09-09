@@ -1,5 +1,5 @@
 ---
-sidebar_title: Wvlet Shell
+sidebar_label: Interactive Shell
 ---
 
 # Wvlet Shell

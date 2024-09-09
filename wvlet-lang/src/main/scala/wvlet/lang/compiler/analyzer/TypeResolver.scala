@@ -26,6 +26,7 @@ import wvlet.lang.compiler.{
   MultipleSymbolInfo,
   Name,
   Phase,
+  RelationAliasSymbolInfo,
   RewriteRule,
   Symbol,
   TermName,
@@ -128,6 +129,14 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
           ctx
         case m: ModelDef =>
           ctx.enter(m.symbol)
+          ctx
+        case q: Relation =>
+          q.traverseChildrenOnce {
+            case s: SelectAsAlias =>
+              ctx.enter(s.symbol)
+            case other =>
+              preScan(other, ctx)
+          }
           ctx
         case other =>
           ctx
@@ -329,10 +338,17 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
         lookup(ref.name, context) match
           case Some(sym) =>
             val si = sym.symbolInfo
-            si.tpe match
-              case r: RelationType =>
-                // trace(s"resolved ${sym} ${ref.locationString(using context)}")
-                ModelScan(TableName(sym.name.name), Nil, r, r.fields, ref.nodeLocation)
+            si match
+              case m: ModelSymbolInfo =>
+                si.tpe match
+                  case r: RelationType =>
+                    // trace(s"resolved ${sym} ${ref.locationString(using context)}")
+                    ModelScan(TableName(sym.name.name), Nil, r, r.fields, ref.nodeLocation)
+                  case _ =>
+                    ref
+              case relAlias: RelationAliasSymbolInfo =>
+                // Replace alias to the referenced query
+                sym.tree.asInstanceOf[Relation]
               case _ =>
                 ref
           case None =>

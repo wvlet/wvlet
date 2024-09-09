@@ -23,6 +23,7 @@ import wvlet.lang.compiler.{
   NamedSymbolInfo,
   PackageSymbolInfo,
   Phase,
+  RelationAliasSymbolInfo,
   Scope,
   Symbol,
   TypeSymbol,
@@ -41,6 +42,8 @@ import wvlet.lang.model.plan.{
   LogicalPlan,
   ModelDef,
   PackageDef,
+  Query,
+  SelectAsAlias,
   TypeDef
 }
 
@@ -78,10 +81,28 @@ object SymbolLabeler extends Phase("symbol-labeler"):
         case m: ModelDef =>
           registerModelSymbol(m)(using ctx)
           ctx
+        case q: Query =>
+          q.traverseChildrenOnce {
+            case s: SelectAsAlias =>
+              registerSelectAsAlias(s)(using ctx)
+            case other =>
+              iter(other, ctx)
+          }
+          ctx
         case _ =>
           ctx
 
     iter(plan, context)
+
+  end label
+
+  private def registerSelectAsAlias(s: SelectAsAlias)(using ctx: Context): Symbol =
+    val aliasName = s.alias.toTermName
+    val sym       = Symbol(ctx.global.newSymbolId)
+    sym.symbolInfo = RelationAliasSymbolInfo(sym, aliasName)
+    s.symbol = sym
+    sym.tree = s.child
+    sym
 
   private def registerPackageSymbol(pkgName: NameExpr)(using ctx: Context): Symbol =
     val pkgOwner: Symbol =

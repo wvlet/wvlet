@@ -979,6 +979,12 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       case WvletToken.DISTINCT =>
         val t1 = consume(WvletToken.DISTINCT)
         Distinct(proj, t1.nodeLocation)
+      case WvletToken.AS =>
+        // select as
+        consume(WvletToken.AS)
+        val alias = identifier()
+        val rel   = SelectAsAlias(input, alias, t.nodeLocation)
+        rel
       case _ =>
         proj
 
