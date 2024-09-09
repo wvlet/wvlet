@@ -1,5 +1,10 @@
+---
+sidebar_title: Wvlet Shell
+---
 
-## Wvlet REPL
+# Wvlet Shell
+
+Wvlet Shell (`wv` command) is an interactive query editor for the console.  
 
 ### Shortcut Keys
 

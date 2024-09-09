@@ -1,0 +1,35 @@
+xerial:
+  name: Taro L. Saito
+  title: Senior Principal Engineer @ Treasure Data
+  url: https://xerial.org/leo
+  image_url: https://pbs.twimg.com/profile_images/652040869705461760/eIm1fxaM_400x400.jpg
+  page: true
+  socials:
+    x: taroleo
+    github: xerial
+    linkedin: taro-l-saito-b0709387
+    newsletter: https://xerial.org/leo/
+
+yangshun:
+  name: Yangshun Tay
+  title: Front End Engineer @ Facebook
+  url: https://github.com/yangshun
+  image_url: https://github.com/yangshun.png
+  page: true
+  socials:
+    x: yangshunz
+    github: yangshun
+
+slorber:
+  name: Sébastien Lorber
+  title: Docusaurus maintainer
+  url: https://sebastienlorber.com
+  image_url: https://github.com/slorber.png
+  page:
+    # customize the url of the author page at /blog/authors/<permalink>
+    permalink: '/all-sebastien-lorber-articles'
+  socials:
+    x: sebastienlorber
+    linkedin: sebastienlorber
+    github: slorber
+    newsletter: https://thisweekinreact.com
