@@ -1,14 +1,19 @@
 ---
+sidebar_title: Introduction
 sidebar_position: 1
 ---
 
-# Introduction
 
-## Wvlet Overview
+# Introduction
 
 The wvlet, pronounced as weave-let, is a new flow-style query language for SQL-based database engines, including [DuckDB](https://duckdb.org/), [Trino](https://trino.io/), etc.
 
+- [Query Syntax](./syntax/)
+
+
 ![wvlet-architecture](./img/wvlet-architecture.svg)
+
+## Why Wvlet?
 
 Wvlet queries (saved as .wv files) provide a natural way to describe data processing pipelines, which will eventually be compiled into a sequence of SQL queries. While SQL is a powerful language for processing data, its syntax often does not match the semantic order of data processing. Lets see the following example: The syntactic order of SQL's SELECT ... statements mismatches with the actual data flow inside the SQL engines (cited from _[A Critique of Modern SQL And A Proposal Towards A Simple and Expressive Query Language (CIDR '24)](https://www.cidrdb.org/cidr2024/papers/p48-neumann.pdf)_):
 
@@ -16,7 +21,7 @@ Wvlet queries (saved as .wv files) provide a natural way to describe data proces
 ![semantic-order](./img/sql-semantic-order.png)
 </center>
 
-For overcoming this shortcoming of SQL, wvlet start from a table scan statement `from ...`, and the result can be streamlined to the next processing operators like `where`, `group by`, `select`, etc., as if passing table values through [a pipe](https://en.wikipedia.org/wiki/Pipeline_(Unix)) to the next operator:
+For overcoming this shortcoming of SQL, wvlet start from a table scan statement `from ...`, and the result can be streamlined to the next processing operators like `where`, `group by`, `select`, etc., as if passing table values through [a UNIX pipe](https://en.wikipedia.org/wiki/Pipeline_(Unix)) to the next operator:
 
 ```sql
 from (table)

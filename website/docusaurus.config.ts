@@ -132,7 +132,7 @@ const config: Config = {
       copyright: `Copyright © ${new Date().getFullYear()} wvlet.org. Built with Docusaurus.`,
     },
     prism: {
-      theme: prismThemes.github,
+      theme: prismThemes.okaidia,
       darkTheme: prismThemes.dracula,
     },
   } satisfies Preset.ThemeConfig,

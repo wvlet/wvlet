@@ -32,3 +32,10 @@ body {
     font-size: 0.95rem;
     line-height: 1.5;
 }
+
+code {
+    font-family: SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace;
+}
+
+pre code {
+}
