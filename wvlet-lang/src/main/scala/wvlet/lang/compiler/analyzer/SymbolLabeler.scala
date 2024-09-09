@@ -102,6 +102,7 @@ object SymbolLabeler extends Phase("symbol-labeler"):
     sym.symbolInfo = RelationAliasSymbolInfo(sym, aliasName)
     s.symbol = sym
     sym.tree = s.child
+    ctx.compilationUnit.enter(sym)
     sym
 
   private def registerPackageSymbol(pkgName: NameExpr)(using ctx: Context): Symbol =
