@@ -16,6 +16,7 @@ Wvlet favors __lower-case__ keywords for SQL-like operators. The following is a 
 | select distinct `expr`,... | Rows with distinct values of the given expressions. |
 | select `alias` = `expr`, ... | Rows with the given expressions with aliases. |
 | select `expr` as `alias`, ... | Rows with the given expressions with aliases. |
+| select as `alias` | Add an alias to the query result to reference it from another query. |
 | add `expr` (as `alias`)?, ... | Same rows with new columns. |
 | exclude `column`, ... | Same rows except the given columns. |
 | where `cond` | Rows that satisfy the given condition. `where` can be used multiple times in the same query like `from ... where ... where ...` |

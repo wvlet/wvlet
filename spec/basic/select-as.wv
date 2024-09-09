@@ -1,0 +1,20 @@
+from 'books.json'
+where year >= 1950
+select as books_after_1950
+
+from books_after_1950
+
+test:
+  _.output should be """
+┌────────┬────────────────────────┬───────────────┬──────┬─────────┐
+│   id   │         title          │    author     │ year │  genre  │
+│ string │         string         │    string     │ long │ string  │
+├────────┼────────────────────────┼───────────────┼──────┼─────────┤
+│ 2      │ The Catcher in the Rye │ J.D. Salinger │ 1951 │ Fiction │
+│ 3      │ To Kill a Mockingbird  │ Harper Lee    │ 1960 │ Fiction │
+│ 6      │ The Catcher in the Rye │ J.D. Salinger │ 1951 │ Fiction │
+│ 7      │ To Kill a Mockingbird  │ Harper Lee    │ 1960 │ Fiction │
+├────────┴────────────────────────┴───────────────┴──────┴─────────┤
+│ 4 rows                                                           │
+└──────────────────────────────────────────────────────────────────┘
+"""

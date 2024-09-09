@@ -81,6 +81,10 @@ case class ModelDef(
     with HasTableName:
   override def relationType: RelationType = givenRelationType.getOrElse(child.relationType)
 
+case class SelectAsAlias(child: Relation, alias: NameExpr, nodeLocation: Option[NodeLocation])
+    extends UnaryRelation:
+  override def relationType: RelationType = child.relationType
+
 case class TestRelation(
     child: Relation,
     testExprs: Seq[Expression],

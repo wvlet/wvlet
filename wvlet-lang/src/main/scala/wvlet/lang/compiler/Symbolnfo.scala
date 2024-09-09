@@ -101,6 +101,9 @@ class BoundedSymbolInfo(symbol: Symbol, name: Name, tpe: DataType, val expr: Exp
 case class MultipleSymbolInfo(s1: SymbolInfo, s2: SymbolInfo)
     extends SymbolInfo(s1.symbol, s1.name, s1.tpe)
 
+case class RelationAliasSymbolInfo(override val symbol: Symbol, override val name: Name)
+    extends SymbolInfo(symbol, name, DataType.UnknownType)
+
 //class TypeInfo(symbol: Symbol, tpe: Type) extends SymbolInfo(symbol, tpe)
 //
 //case class SingleTypeInfo(symbol: Symbol, tpe: Type) extends TypeInfo(symbol, tpe)

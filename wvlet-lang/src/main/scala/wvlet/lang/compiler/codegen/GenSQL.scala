@@ -486,6 +486,8 @@ class GenSQL(ctx: Context) extends LogSupport:
         selectAllWithIndent(s"'${t.path}'")
       case v: Values =>
         printValues(v)
+      case s: SelectAsAlias =>
+        printRelation(s.child)
       case d: Describe =>
         // Trino doesn't support nesting describe statement, so we need to generate raw values as SQL
         val values = d
