@@ -23,7 +23,7 @@ object ExecutionPlanner extends Phase("execution-plan"):
             ExecutionPlan.empty
           else
             ExecuteTasks(plans)
-        case q: Query =>
+        case q: QueryStatement =>
           val plans = List.newBuilder[ExecutionPlan]
           q.child match
             case t: TestRelation =>
@@ -34,9 +34,14 @@ object ExecutionPlanner extends Phase("execution-plan"):
             case _ =>
               plans += ExecuteQuery(q)
           ExecutionPlan(plans.result())
-        case _ =>
+        case other =>
+          trace(s"Unsupported logical plan: ${other}")
           ExecutionPlan.empty
 
-    plan(unit.resolvedPlan)
+    val executionPlan = plan(unit.resolvedPlan)
+    trace(s"Execution plan:\n${executionPlan}")
+    executionPlan
+
+  end plan
 
 end ExecutionPlanner
