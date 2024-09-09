@@ -1,13 +1,13 @@
 ---
 sidebar_label: 'Syntax'
-sidebar_position: 2
+sidebar_position: 3
 ---
 
 # Query Syntax
 
 ## Relational Operators
 
-wvlet favors lower-case keywords for SQL-like operators. The following is a list of relational operators in wvlet for manipulating table-format data (i.e., relation):
+Wvlet favors __lower-case__ keywords for SQL-like operators. The following is a list of relational operators in wvlet for manipulating table-format data (i.e., _relation_):
 
 | Operator | Output |
 | --- | --- | 

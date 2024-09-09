@@ -76,7 +76,7 @@ const config: Config = {
           type: 'docSidebar',
           sidebarId: 'tutorialSidebar',
           position: 'left',
-          label: 'Tutorial',
+          label: 'Documentation',
         },
         {to: '/blog', label: 'Blog', position: 'left'},
         {
@@ -93,7 +93,7 @@ const config: Config = {
           title: 'Docs',
           items: [
             {
-              label: 'Tutorial',
+              label: 'Documentation',
               to: '/docs/intro',
             },
           ],
@@ -133,7 +133,7 @@ const config: Config = {
     },
     prism: {
       theme: prismThemes.okaidia,
-      darkTheme: prismThemes.dracula,
+      darkTheme: prismThemes.okaidia,
     },
   } satisfies Preset.ThemeConfig,
 };
