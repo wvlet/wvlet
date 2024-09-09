@@ -134,6 +134,7 @@ const config: Config = {
     prism: {
       theme: prismThemes.okaidia,
       darkTheme: prismThemes.okaidia,
+      additionalLanguages: ['sql', 'antlr4'],
     },
   } satisfies Preset.ThemeConfig,
 };

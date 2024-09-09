@@ -3,7 +3,7 @@ sidebar_title: Installation
 sidebar_position: 1
 ---
 
-# Wvlet Installation
+# Installation
 
 :::warning
 This page will be available soon.

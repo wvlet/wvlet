@@ -13,7 +13,7 @@ docusaurus:
   permalink: /docusaurus
   description: Docusaurus tag description
 
-hola:
-  label: Hola
-  permalink: /hola
-  description: Hola tag description
+tech:
+  label: Tech
+  permalink: /tech
+  description: Technical Articles

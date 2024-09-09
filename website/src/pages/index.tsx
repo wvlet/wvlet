@@ -18,7 +18,7 @@ function HomepageHeader() {
                         <div className='row row--align-center'>
                             <div className='col col--3'>
                                <img src="./img/logo.png" alt="wvlet logo" width={100}/>
-                               <h1 lassName={'margin--none'}>wvlet</h1>
+                               <h1>wvlet</h1>
                             </div>
                             <div className='col'>
                                 <em className={'text--left'}>Wvlet is a cross-SQL flow-style query language for

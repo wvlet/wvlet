@@ -1,8 +1,9 @@
-## Wvlet Language Grammar
+
+# Language Grammar
 
 This document describes the grammar of Wvlet language.
 
-```antlrv4
+```antlr4
 packageDef: 'package' qualifiedId statement*
 
 qualifiedId: identifier ('.' identifier)*
