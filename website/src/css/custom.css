@@ -13,7 +13,10 @@
   --ifm-color-primary-light: #338292;
   --ifm-color-primary-lighter: #358899;
   --ifm-color-primary-lightest: #3c99ad;
-  --ifm-code-font-size: 90%;
+  --ifm-font-size-base: 97%;
+  --ifm-font-family-base: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+  --ifm-code-font-size: 85%;
+  --ifm-font-family-monospace: SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace;
   --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
 }
 

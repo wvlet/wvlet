@@ -1,6 +1,7 @@
 ---
 sidebar_label: Introduction
 sidebar_position: 1
+title: Introduction
 ---
 
 <img width='130' src='../img/logo.png' style={{float: "right", padding: 10, margin: 15}}>
