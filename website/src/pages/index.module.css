@@ -27,14 +27,15 @@ h1 {
     font-size: 2.3rem;
 }
 
+h2 {
+    font-size: 1.8rem;
+}
+
 body {
-    font-family: -apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif,Apple Color Emoji,Segoe UI Emoji,Segoe UI Symbol;
-    font-size: 0.95rem;
     line-height: 1.5;
 }
 
 code {
-    font-family: SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace;
 }
 
 pre code {

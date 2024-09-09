@@ -1,4 +1,0 @@
-from dataflow_all_stages
-where time.within('-1w')
-select account_id, stage_name, jobs, job_cost
-limit 10

@@ -80,9 +80,15 @@ const config: Config = {
         },
         {to: '/blog', label: 'Blog', position: 'left'},
         {
+          href: 'https://github.com/orgs/wvlet/projects/2/views/2',
+          label: 'Roadmap',
+          position: 'right',
+        },
+        {
           href: 'https://github.com/wvlet/wvlet',
           label: 'GitHub',
           position: 'right',
+          className: 'header-github-link',
         },
       ],
     },
