@@ -43,6 +43,7 @@ import wvlet.lang.model.plan.{
   ModelDef,
   PackageDef,
   Query,
+  Relation,
   SelectAsAlias,
   TypeDef
 }
@@ -81,12 +82,10 @@ object SymbolLabeler extends Phase("symbol-labeler"):
         case m: ModelDef =>
           registerModelSymbol(m)(using ctx)
           ctx
-        case q: Query =>
-          q.traverseChildrenOnce {
-            case s: SelectAsAlias =>
-              registerSelectAsAlias(s)(using ctx)
-            case other =>
-              iter(other, ctx)
+        case q: Relation =>
+          q.traverseOnce { case s: SelectAsAlias =>
+            registerSelectAsAlias(s)(using ctx)
+            iter(s.child, ctx)
           }
           ctx
         case _ =>

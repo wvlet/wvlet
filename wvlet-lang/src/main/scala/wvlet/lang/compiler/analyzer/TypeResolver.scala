@@ -131,11 +131,9 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
           ctx.enter(m.symbol)
           ctx
         case q: Relation =>
-          q.traverseChildrenOnce {
-            case s: SelectAsAlias =>
-              ctx.enter(s.symbol)
-            case other =>
-              preScan(other, ctx)
+          q.traverseOnce { case s: SelectAsAlias =>
+            ctx.enter(s.symbol)
+            preScan(s.child, ctx)
           }
           ctx
         case other =>
