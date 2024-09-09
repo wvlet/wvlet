@@ -4,9 +4,9 @@ Wvlet, pronounced as weave-let, is a new cross-SQL flow-style query language for
 
 - [Documentation](https://wvlet.org/wvlet/)
 
-<center>
 ![wvlet-architecture](website/docs/img/wvlet-architecture.svg)
 
+<center>
 ![demo](website/static/img/demo.gif)
 </center>
 
