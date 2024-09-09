@@ -49,8 +49,8 @@ export default function Home(): JSX.Element {
     const {siteConfig} = useDocusaurusContext();
     return (
         <Layout
-            title={`wvlet: Flow-Style Query`}
-            description="wvlet: A new flow-style query language">
+            title={`Flow-Style Query Language`}
+            description="Wvlet: A New Cross-SQL Flow-Style Query Language">
             <HomepageHeader/>
             <main>
                 <HomepageFeatures/>
