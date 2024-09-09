@@ -3,3 +3,16 @@ describe
 -- returns rows of (column_name, column_type)
 where column_type like 'string'
 limit 2
+
+test:
+  _.output should be """
+┌─────────────┬─────────────┐
+│ column_name │ column_type │
+│   string    │   string    │
+├─────────────┼─────────────┤
+│ id          │ string      │
+│ title       │ string      │
+├─────────────┴─────────────┤
+│ 2 rows                    │
+└───────────────────────────┘
+"""

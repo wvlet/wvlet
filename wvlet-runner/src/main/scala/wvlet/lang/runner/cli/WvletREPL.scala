@@ -73,18 +73,22 @@ class WvletREPLCli(
 
   @command(description = "Start a REPL", isDefault = true)
   def repl(): Unit =
-    val currentProfile: Option[Profile] = profile.flatMap { targetProfile =>
-      Profile.getProfile(targetProfile) match
-        case Some(p) =>
-          debug(s"Using profile: ${targetProfile}")
-          Some(p)
-        case None =>
-          error(s"No profile ${targetProfile} found")
-          None
-    }
+    val currentProfile: Profile = profile
+      .flatMap { targetProfile =>
+        Profile.getProfile(targetProfile) match
+          case Some(p) =>
+            debug(s"Using profile: ${targetProfile}")
+            Some(p)
+          case None =>
+            error(s"No profile ${targetProfile} found")
+            None
+      }
+      .getOrElse {
+        Profile(name = "local", `type` = "duckdb", catalog = Some("memory"), schema = Some("main"))
+      }
 
-    val selectedCatalog = catalog.orElse(currentProfile.flatMap(_.catalog))
-    val selectedSchema  = schema.orElse(currentProfile.flatMap(_.schema))
+    val selectedCatalog = catalog.orElse(currentProfile.catalog)
+    val selectedSchema  = schema.orElse(currentProfile.schema)
 
     val commandInputs = List.newBuilder[String]
     commandInputs ++= commands
@@ -110,15 +114,15 @@ class WvletREPLCli(
         )
       )
       .bindInstance[DBConnector] {
-        currentProfile match
-          case Some(p) if p.`type` == "trino" =>
+        currentProfile.`type` match
+          case "trino" =>
             TrinoConnector(
               TrinoConfig(
                 catalog = selectedCatalog.getOrElse("default"),
                 schema = selectedSchema.getOrElse("default"),
-                hostAndPort = p.host.getOrElse("localhost"),
-                user = p.user,
-                password = p.password
+                hostAndPort = currentProfile.host.getOrElse("localhost"),
+                user = currentProfile.user,
+                password = currentProfile.password
               )
             )
           case _ =>

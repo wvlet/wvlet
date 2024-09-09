@@ -1,2 +1,18 @@
 from 'books.json'
 describe
+
+test:
+    _.output should be """
+┌─────────────┬─────────────┐
+│ column_name │ column_type │
+│   string    │   string    │
+├─────────────┼─────────────┤
+│ id          │ string      │
+│ title       │ string      │
+│ author      │ string      │
+│ year        │ long        │
+│ genre       │ string      │
+├─────────────┴─────────────┤
+│ 5 rows                    │
+└───────────────────────────┘
+"""
