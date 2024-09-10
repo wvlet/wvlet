@@ -1,28 +1,40 @@
 # Building Wvlet
 
-To build wvlet, you will need JDK17 or later. To test Trino connector, JDK22 or later is required (as of September 2024).  
+
+## Building from Source 
+
+To build wvlet, you will need at least JDK17 or later. To test Trino connector, JDK22 or later is required (as of September 2024).  
 
 ```bash
-$ gh repo clone wvlet/wvlet
+# Clone the source code repository
+$ git clone git@github.com:wvlet/wvlet.git
 $ cd wvlet
 $ ./sbt
 ## This will install wv command to your ~/local/bin
 > runner/packInstall
 ```
 
+You can find the wvlet command in `~/local/bin/wv`. For convenience, you can set `PATH` environment variable like this:
+```bash title='~/.bashenv'
+export PATH=$HOME/local/bin:$PATH
+```
+
+:::info
+For Mac users, brew install script will be provided soon. 
+:::
 
 
-## Building Documentation Site
+## Building Documentation 
 
-Wvlet Documentation https://wvlet.org/wvlet is built with Docusaurus and GitHub Pages. 
+Wvlet Documentation https://wvlet.org/wvlet is built with Docusaurus and GitHub Pages. To edit the documentation, you can start a local server to preview the documentation changes: 
 
 ```bash
 $ cd website
-# Start a documentation server, which will be 
+# Start a documentation server at localhost:3000, which will be 
 # reloaded automatically when you update the documentation
 $ npm start
 ```
 
-`website/docs/` directory contains the markdown files for the documentation. Once your change is merged to the main branch, GitHub Action will update the web site automatically.
+`website/docs/` directory contains the markdown files for the documentation. Once your change is merged to the main branch, GitHub Action will update the public website automatically.
 
 

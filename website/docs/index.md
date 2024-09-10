@@ -14,8 +14,9 @@ The wvlet, pronounced as weave-let, is a new flow-style query language for SQL-b
 
 ## Documentation
 
-- [Query Syntax](./syntax/)
 - [Installation](./usage/install)
+- [Usage](./usage/repl)
+- [Query Syntax](./syntax/)
 
 
 ## Why Wvlet?

@@ -21,7 +21,7 @@ function HomepageHeader() {
                                <h1>wvlet</h1>
                             </div>
                             <div className='col'>
-                                <em className={'text--left'}>Wvlet is a cross-SQL flow-style query language for
+                                <em className={'text--left'}>Wvlet is a cross-SQL <a href='./docs/syntax/'>flow-style query language</a> for
                                     functional data modeling and interactive data analysis.</em>
                                 <div className={styles.buttons}>
                                     <Link className="button button--primary" to="/docs/usage/install">

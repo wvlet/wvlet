@@ -6,7 +6,7 @@ sidebar_position: 1
 # Installation
 
 :::warning
-This page will be available soon after the first release, scheduled within 2024.
+This page will be available soon after the first release, scheduled around September 2024.
 :::
 
 
