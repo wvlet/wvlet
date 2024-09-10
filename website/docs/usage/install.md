@@ -8,3 +8,8 @@ sidebar_position: 1
 :::warning
 This page will be available soon after the first release, scheduled within 2024.
 :::
+
+
+## Building From Source
+
+See [Building Wvlet](../development/build) for building wvlet from source.
