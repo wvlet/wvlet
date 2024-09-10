@@ -22,7 +22,7 @@ limit ...        -- Limit the number of rows to output
 
 Unlike SQL, whose queries always must follow the `SELECT ... FROM ... WHERE ... GROUP BY ... ORDER BY ... LIMIT ...` structure, wvlet uses the __flow-style syntax__ to match the syntax order with the data processing order as much as possible to facilitate more intuitive query writing.
 
-Some operators like `add`, `transform`, `agg`, `exclude`, `shift`, etc. are not available in the standard SQL, but they have been added for reducing the amount of code and making the query more readable and easier to compose. These operators will eventually be translated into the equivalent SQL syntax.
+Some operators like `add`, `transform`, `agg`, `exclude`, `shift`, etc. are not available in the standard SQL, but these new operators have been added for reducing the amount of code and making the query more readable and easier to compose. Eventually, these operators will be translated into the equivalent SQL syntax.
 
 
 ## References
@@ -77,9 +77,9 @@ wv> from customer;
 │         9 │ Customer#000000009 │ vgIql8H6zoyuLMFNdAMLyE7 H9              │           >
 ```
 
-This query returns all of the columns in the `customer` table.
+This query returns all the columns in the `customer` table.
 If the query result doesn't fit to the screen, wvlet shell enters [UNIX `less` command](https://en.wikipedia.org/wiki/Less_(Unix)#:~:text=less%20is%20a%20terminal%20pager,backward%20navigation%20through%20the%20file.) mode, which 
-allows to navigate table data using arrow keys, page up/down keys, and `q` key to exit the mode.
+allows to navigate table data using arrow keys, page up/down keys, and `q` key to exit the mode. See [Interactive Shell](../usage/repl.md) for the list of the available shortcut keys.
 
 To limit the number of rows to display, you can use `limit` operator:
 ```sql
@@ -96,7 +96,10 @@ wv> from customer
 │ 3 rows                                                                               >
 └──────────────────────────────────────────────────────────────────────────────────────>
 ```
-Note that, `|` between expressions are shown only while editing queries. You don't need to type `|` in the wvlet shell or in query files. 
+
+:::tip
+A separator `|` between expressions are shown only while editing queries. You don't need to type `|` in the wvlet shell or in query files.
+:::
 
 
 To select specific columns, you can use `select` operator:
@@ -145,7 +148,7 @@ wv> from customer
 
 ### One-Liner Queries
 
-In wvlet, individual query line often matches with a single [relational operator](relational-operators.md), which processes a given input table data and return a new table data. Inserting newlines, however, are not mandatory. You can also fit the whole query within a single line, which is convenient for quick data exploration:
+In wvlet, individual query line often matches with a single [relational operator](relational-operators.md), which processes a given input table data and return a new table data. Inserting newlines, however, is not mandatory. You can fit the whole query within a single line, which is convenient for quick data exploration:
 
 ```sql
 wv> from customer where c_mktsegment = 'HOUSEHOLD' limit 5;
@@ -366,6 +369,11 @@ from 'my_query.wv'
 ```
 
 In the wvlet shell, .wv files will be loaded from the current directory. If you want to load files from other directories, use `-w (working directory)` option to specify the base directory:
+
+
+:::tip
+For advanced users, you can define reusable data models, which can accept some input parameters. See [Data Models](./data-models.md) for more details. 
+:::
 
 ## Design Philosophy of Wvlet
 
