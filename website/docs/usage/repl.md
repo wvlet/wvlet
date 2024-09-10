@@ -30,7 +30,7 @@ wv> help
 
 ## Shortcut Keys
 
-Wvlet shell basically uses [GNU readline](https://readline.kablamo.org/emacs.html)-style shortcut keys. Here are the list of shortcut keys that are most frequently used in the shell: 
+Wvlet shell basically uses [GNU readline](https://readline.kablamo.org/emacs.html)-style shortcut keys. Here is the list of shortcut keys that are most frequently used in the shell: 
 
 ### Navigation
 
