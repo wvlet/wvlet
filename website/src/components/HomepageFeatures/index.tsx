@@ -55,7 +55,7 @@ const FeatureList: FeatureItem[] = [
         )
     },
     {
-        title: 'Free and Open-Source',
+        title: 'Free and Open Source',
         description: (
             <>
                 We believe in the power of open-source software and want to help you to exploit more values from your data and queries written with wvlet.
