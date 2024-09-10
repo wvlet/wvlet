@@ -15,8 +15,8 @@ The wvlet, pronounced as weave-let, is a new flow-style query language for SQL-b
 ## Documentation
 
 - [Installation](./usage/install)
-- [Usage](./usage/repl)
 - [Query Syntax](./syntax/)
+- [Usage](./usage/repl)
 
 
 ## Why Wvlet?
@@ -83,7 +83,11 @@ join address_table on p.id = address_table.person_id
 
 ### Managing Queries As A Reusable Module
 
-(To be available). These queries saved as `.wv` files can be managed in local folders or GitHub repositories as modules. You can import these queries in other queries to reuse them. If analyzing your datasets requires the knowledge of domain experts or complex data processing, you can leverage such query modules to focus on the core part of your analysis.
+:::warning
+This feature will be available in later 2024.
+:::
+
+These queries saved as `.wv` files can be managed in local folders or GitHub repositories as modules. You can import these queries in other queries to reuse them. If analyzing your datasets requires the knowledge of domain experts or complex data processing, you can leverage such query modules to focus on the core part of your analysis.
 
 ```sql
 -- import queries from a GitHub repository
@@ -106,6 +110,10 @@ end
 from person
 select id, name.or_else("N/A") as name
 ```
+
+:::warning
+Extending wvlet with table functions will be available in later 2024.
+:::
 
 You can also define table functions to pipe query results to the next processing steps:
 ```sql
@@ -141,7 +149,9 @@ wv> from lineitem
 
 ## Incremental Processing
 
-(This feature will be available soon)
+:::warning
+Incremental processing feature is planned to be available in later 2024.
+:::
 
 You can build a reproducible data processing pipeline with time-window based incremental processing.
 

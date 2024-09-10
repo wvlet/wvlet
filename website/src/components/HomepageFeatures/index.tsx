@@ -13,7 +13,7 @@ const FeatureList: FeatureItem[] = [
     title: 'Analyze As You Write',
     description: (
       <>
-        Flow-style query enables you to analyze data as you write queries for interactive data exploration.
+        The flow-style query enables you to analyze data as you write queries for interactive data exploration.
       </>
     ),
   },
@@ -22,7 +22,7 @@ const FeatureList: FeatureItem[] = [
     description: (
       <>
         Wvlet enables to build functional (i.e., reusable and composable) data models, which
-          can be shared and extended to build reliable data pipelines.
+          can be shared and extended to build reliable data pipelines as in <a href='https://www.getdbt.com'>dbt</a>.
       </>
     ),
   },
@@ -45,6 +45,23 @@ const FeatureList: FeatureItem[] = [
              query rewrite rules.
           </>
       ),
+  },
+    {
+        title: 'GitHub Integration',
+        description: (
+            <> Save your queries in GitHub repositories and call them from other queries to ensure reproducibility with
+            version control.
+            </>
+        )
+    },
+    {
+        title: 'Free and Open-Source',
+        description: (
+            <>
+                We believe in the power of open-source software and want to help you to exploit more values from your data and queries written with wvlet.
+                Wvlet is free to use and open-sourced under the <a href='https://www.apache.org/licenses/LICENSE-2.0'>Apache License, Version 2.0 (APL2)</a> license.
+            </>
+        )
     },
 ];
 
