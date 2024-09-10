@@ -35,7 +35,7 @@ class DuckDBConnector(prepareTPCH: Boolean = false)
     with AutoCloseable
     with LogSupport:
 
-  // We need to reuse he same connection for preserving in-memory tables
+  // We need to reuse the same connection for preserving in-memory tables
   private var conn: DuckDBConnection = null
 
   // Initialize DuckDB in the background thread as it may take several seconds

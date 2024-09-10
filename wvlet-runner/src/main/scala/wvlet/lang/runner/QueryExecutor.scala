@@ -87,8 +87,6 @@ class QueryExecutor(
           lastResult
         case ExecuteNothing =>
           QueryResult.empty
-        case other =>
-          throw StatusCode.NOT_IMPLEMENTED.newException(s"Unsupported execution plan: ${other}")
 
     process(executionPlan)
 

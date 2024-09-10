@@ -13,6 +13,7 @@
  */
 package wvlet.lang.runner.connector.duckdb
 
+import wvlet.airframe.control.Control.withResource
 import wvlet.lang.compiler.Name
 import wvlet.lang.model.DataType
 import wvlet.lang.model.DataType.NamedType
@@ -37,7 +38,8 @@ class DuckDBConnectorTest extends AirSpec:
 
   test("Read SchemaType"): (duckdb: DuckDBConnector) =>
     duckdb.withConnection: conn =>
-      conn.createStatement().execute("create table a(c1 bigint, c2 varchar, c3 integer[])")
+      withResource(conn.createStatement()): stmt =>
+        stmt.execute("create table a(c1 bigint, c2 varchar, c3 integer[])")
 
     val schemas = duckdb.listTableDefs("memory", "main")
     schemas.head.schemaType.fields shouldBe
@@ -56,6 +58,5 @@ class DuckDBConnectorTest extends AirSpec:
   test("read functions"): (duckdb: DuckDBConnector) =>
     val functions = duckdb.listFunctions("memory")
     functions shouldNotBe empty
-    trace(functions.mkString("\n"))
 
 end DuckDBConnectorTest
