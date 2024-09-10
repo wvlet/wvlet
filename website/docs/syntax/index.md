@@ -13,9 +13,9 @@ transform ... -- Transform a subset of columns
 group by ...  -- Grouping rows by the given columns
 agg ...       -- Add group aggregation expressions, e.g., _.count, _.sum 
 where ...     -- Apply filtering conditions for groups (e.g., HAVING clause in SQL)
-select ...    -- Select colums to output
 exclude ...   -- Remove columns from the output
 shift ...     -- Shift the column order
+select ...    -- Select columns to output
 order by ...  -- Add ordering columns
 limit ...     -- Limit the number of rows to output
 ```
@@ -25,7 +25,7 @@ Unlike SQL, whose queries must follow the `SELECT ... FROM ... WHERE ... GROUP B
 Some operators like `add`, `transform`, `agg`, `exclude`, `shift`, etc. are not available in the standard SQL, but they have been added for reducing the amount of code and making the query more readable and easier to compose. These operators will eventually be translated into the equivalent SQL syntax.
 
 
-## Reference
+## References
 
 - [Relational Operators](./relational-operators.md)
 - [Expressions](./expressions.md)
@@ -96,6 +96,8 @@ wv> from customer
 │ 3 rows                                                                               >
 └──────────────────────────────────────────────────────────────────────────────────────>
 ```
+Note that, `|` between expressions are shown only while editing queries. You don't need to type `|` in the wvlet shell or in query files. 
+
 
 To select specific columns, you can use `select` operator:
 
@@ -311,8 +313,54 @@ debug (line:2): select c_custkey, c_name, c_nationkey
 │         6 │ Customer#000000006 │          20 │
 ```
 
+## Reusing Queries
 
+In wvlet, you can name a query using `select as` operator, and refer to the named query result in the subsequent queries: 
 
+```sql
+wv> from customer
+  | where c_nationkey = 1
+  | -- Name the query as domestic_customer
+  | select as domestic_customer;
+```
+
+You can refer to the named query result in the subsequent queries:
+```sql
+wv> from domestic_customer
+  | limit 5;
+┌───────────┬────────────────────┬─────────────────────────────────────────┬─────────────┬─>
+│ c_custkey │       c_name       │                c_address                │ c_nationkey │ >
+│   long    │       string       │                 string                  │     int     │ >
+├───────────┼────────────────────┼─────────────────────────────────────────┼─────────────┼─>
+│         3 │ Customer#000000003 │ fkRGN8nY4pkE                            │           1 │ >
+│        14 │ Customer#000000014 │ h3GFMzeFfYiamqr                         │           1 │ >
+│        30 │ Customer#000000030 │ EhnzmgkqQw7UXhF0PVdg gLfSAihaaHaD2fZah2 │           1 │ >
+│        59 │ Customer#000000059 │ tfcob0wJRYdypIJLzBckGW                  │           1 │ >
+│       106 │ Customer#000000106 │ vkocmr6H6dl                             │           1 │ >
+├───────────┴────────────────────┴─────────────────────────────────────────┴─────────────┴─>
+│ 5 rows                                                                                   >
+└──────────────────────────────────────────────────────────────────────────────────────────>
+```
+
+Unlike SQL views, which will be registered to the system catalog, named queries are available only in the current scope (e.g., the current wvlet shell session). 
+
+## Writing Queries in Files (.wv)
+
+If you want to reuse the query in other sessions or share it with others, you can save the query to a file with `.wv` extension:
+
+```sql title="my_query.wv"
+from customer
+where c_nationkey = 1
+```
+
+Queries in `.wv` files can be loaded in `from` operator:
+
+```sql
+-- Load the query written in my_query.wv file
+from 'my_query.wv'
+```
+
+In the wvlet shell, .wv files will be loaded from the current directory. If you want to load files from other directories, use `-w (working directory)` option to specify the base directory:
 
 ## Design Philosophy of Wvlet
 
