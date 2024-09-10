@@ -3,27 +3,29 @@ sidebar_label: Interactive Shell
 sidebar_position: 2
 ---
 
-# Wvlet Shell
+# Interactive Shell
 
-Wvlet Shell (`wv` command) is an interactive query editor for the console.  
+Wvlet Shell (`wv` command) launches an interactive query editor for the console.  
 
-### Shortcut Keys
+## Shortcut Keys
 
-#### Navigaion
-| Keys | Description | 
-|---|---|
-| ctrl-a | Move to the beginning of the line |
-| ctrl-e | Move to the end of the line |
-| ctrl-j a | Move to the beginning of the query |
-| ctrl-j e | Move to the end of the query |
-| ctrl-p | Up | 
-| ctrl-n | Down |
-| ctrl-f | Left |
-| ctrl-b | Right |
+### Navigation
+
+| Keys | Description                                                                      | 
+|---|----------------------------------------------------------------------------------|
+| ctrl-a | Home: Move to the beginning of the line                                          |
+| ctrl-e | End: Move to the end of the line                                                 |
+| ctrl-j a | Move to the beginning of the query                                               |
+| ctrl-j e | Move to the end of the query                                                     |
+| ctrl-p | Up                                                                               | 
+| ctrl-n | Down                                                                             |
+| ctrl-f | Left                                                                             |
+| ctrl-b | Right                                                                            |
 | ctrl-r | Search the history. Type ctrl+r again to continue to search the previous history | 
-| ctrl-k | Delete until the end of line from the cursor position | 
+| ctrl-k | Delete until the end of line from the cursor position                            | 
 
-#### Run 
+### Running Queries
+
 | Keys | Description |
 |---|---|
 | ctrl-j ctrl-r | Run the whole query | 
