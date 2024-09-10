@@ -140,7 +140,7 @@ const config: Config = {
     prism: {
       theme: prismThemes.okaidia,
       darkTheme: prismThemes.okaidia,
-      additionalLanguages: ['sql', 'antlr4'],
+      additionalLanguages: ['sql', 'antlr4', 'bash'],
     },
   } satisfies Preset.ThemeConfig,
 };
