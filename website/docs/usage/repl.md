@@ -1,13 +1,36 @@
 ---
-sidebar_label: Interactive Shell
+sidebar_label: Interactive Shell (wv)
 sidebar_position: 2
 ---
 
 # Interactive Shell
 
-Wvlet Shell (`wv` command) launches an interactive query editor for the console.  
+Wvlet Shell (`wv` command) launches an interactive query editor for the console. In the shell, you can write SQL queries, run them, and see the results interactively.
+
+![wvlet shell](/img/demo.gif)
+
+## Commands
+
+By typing `help` in the shell, you can see the list of available commands:
+
+```bash
+$ wv 
+wv> help
+[commands]
+ help       : Show this help message
+ quit/exit  : Exit the REPL
+ clear      : Clear the screen
+ clip       : Clip the last query and result to the clipboard
+ clip-result: Clip the last result to the clipboard in TSV format
+ rows       : Set the maximum number of query result rows to display (default: 40)
+ col-width  : Set the maximum column width to display (default: 150)
+ git        : Run a git command in the shell
+ gh         : Run a GitHub command in the shell
+```
 
 ## Shortcut Keys
+
+Wvlet shell basically uses [GNU readline](https://readline.kablamo.org/emacs.html)-style shortcut keys. Here is the list of shortcut keys that are most frequently used in the shell: 
 
 ### Navigation
 
@@ -31,3 +54,5 @@ Wvlet Shell (`wv` command) launches an interactive query editor for the console.
 | ctrl-j ctrl-r | Run the whole query | 
 | ctrl-j ctrl-t | Test run the query fragment up to the line with debug mode |
 | ctrl-j ctrl-d | Describe the schema of the current line of the query fragment |
+| ctrl-c | Cancel the current query, or exit the shell |
+
