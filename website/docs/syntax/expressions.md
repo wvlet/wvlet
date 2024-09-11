@@ -6,6 +6,7 @@ One of the major difference from tradtional SQL is that wvlet uses single or dou
 |-------------------------------------------------------| --- |
 | '(single quote)'                                      | String literal for representing string values, file names, etc. |
 | "(double quote)"                                      | Same as single quote strings | 
+| """(triple quote string)"""                           | Multi-line strings |
 | \`(back quote)\`                                      | Column or table name, which requires quotations |
 | sql"`sql expr`"                                       | SQL expression used for inline expansion |
 | sql" ... $\{`expr`\} ..."                             | Interpolated SQL expression with embedded expressions |
