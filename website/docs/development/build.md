@@ -11,7 +11,7 @@ $ git clone git@github.com:wvlet/wvlet.git
 $ cd wvlet
 $ ./sbt
 ## This will install wv command to your ~/local/bin
-> runner/packInstall
+> cli/packInstall
 ```
 
 You can find the wvlet command in `~/local/bin/wv`. For convenience, you can set `PATH` environment variable like this:

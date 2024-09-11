@@ -110,16 +110,31 @@ val specRunnerSettings = Seq(
       ((ThisBuild / baseDirectory).value / "wvlet-lang" ** "*.wv").get
 )
 
+lazy val cli = project
+  .in(file("wvlet-cli"))
+  .enablePlugins(PackPlugin)
+  .settings(
+    buildSettings,
+    name := "wvlet-cli",
+    packMain :=
+      Map(
+        // wvlet compiler
+        "wvc" -> "wvlet.lang.runner.cli.WvletCli",
+        // Alias for wvlet runner and shell
+        "wv" -> "wvlet.lang.runner.cli.WvletREPLCli",
+        // wvlet runner and shell
+        "wvlet" -> "wvlet.lang.runner.cli.WvletREPLCli"
+      )
+  )
+  .dependsOn(runner)
+
 lazy val runner = project
   .in(file("wvlet-runner"))
-  .enablePlugins(PackPlugin)
   .settings(
     buildSettings,
     specRunnerSettings,
     name        := "wvlet-runner",
     description := "wvlet query executor using trino, duckdb, etc.",
-    packMain :=
-      Map("wvc" -> "wvlet.lang.runner.cli.WvletCli", "wv" -> "wvlet.lang.runner.cli.WvletREPLCli"),
     libraryDependencies ++=
       Seq(
         "org.jline"                     % "jline"             % "3.26.3",

@@ -28,9 +28,6 @@ jobs:
           java-version: '22'
           cache: sbt
       - name: Scala 3.x test
-        env:
-          TD_ARTIFACTORY_USERNAME: '${{ secrets.TD_ARTIFACTORY_USERNAME }}'
-          TD_ARTIFACTORY_PASSWORD: '${{ secrets.TD_ARTIFACTORY_PASSWORD }}'
         run: ./sbt projectJVM/test
       - name: Publish Test Report
         uses: mikepenz/action-junit-report@v4

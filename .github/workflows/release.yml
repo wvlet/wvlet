@@ -23,3 +23,23 @@ jobs:
           gh release view "$GITHUB_REF_NAME" --repo="$GITHUB_REPOSITORY" | \
           # Create a new release note only when the release note is not created yet
           gh release create "$GITHUB_REF_NAME" --repo="$GITHUB_REPOSITORY" --generate-notes
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '22'
+          cache: sbt
+      - name: Build wvlet-cli
+        run: ./sbt cli/packArchiveTgz
+      - name: Get the release version name
+        run: |
+          # Strip v from tag name
+          VERSION=${GITHUB_REF_NAME#v}
+          echo Version: $VERSION
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+      - name: Upload wvlet-cli-(version).tgz to GitHub release
+        run: |
+          gh release upload "$GITHUB_REF_NAME" \
+          "wvlet-cli/target/wvlet-cli-${VERSION}.tar.gz" \
+          # Overwrite the existing file
+          --clobber \
+          --repo="$GITHUB_REPOSITORY" 
