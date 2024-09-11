@@ -98,7 +98,7 @@ wv> from customer
 ```
 
 :::tip
-A separator `|` between expressions are shown only while editing queries. You don't need to type `|` in the wvlet shell or in query files.
+Separators `|` between expressions are shown only while editing queries. You don't need to type `|` in the wvlet shell or in query files.
 :::
 
 
