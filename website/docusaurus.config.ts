@@ -151,6 +151,27 @@ const config: Config = {
       darkTheme: prismThemes.okaidia,
       additionalLanguages: ['sql', 'antlr4', 'bash'],
     },
+    algolia: {
+      // The application ID provided by Algolia
+      appId: 'XY6KZ8HC00',
+
+      // Public API key: it is safe to commit it
+      apiKey: '67fdbb927f084c7d029b3db8108202b6',
+
+      indexName: 'wvlet',
+
+      // Optional: see doc section below
+      contextualSearch: true,
+
+      // Optional: Algolia search parameters
+      searchParameters: {},
+
+      // Optional: path for search page that enabled by default (`false` to disable it)
+      searchPagePath: 'search',
+
+      // Optional: whether the insights feature is enabled or not on Docsearch (`false` by default)
+      insights: false,
+    },
   } satisfies Preset.ThemeConfig,
 };
 
