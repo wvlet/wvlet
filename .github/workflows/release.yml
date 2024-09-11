@@ -11,7 +11,7 @@ jobs:
     name: Create a new release
     runs-on: ubuntu-latest
     env:
-      GITHUB_TOKEN: ${{ secrets.TD_ACTIONS_REPO_TOKEN }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         # We need to fetch all tags to get the latest tag
