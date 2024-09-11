@@ -153,7 +153,7 @@ class WvletREPL(workEnv: WvletWorkEnv, runner: WvletScriptRunner)
     .variable(
       LineReader.SECONDARY_PROMPT_PATTERN,
       if isRealTerminal() then
-        AttributedString("%P  | ", AttributedStyle.DEFAULT.foreground(AttributedStyle.BRIGHT))
+        AttributedString(s"%P  ${Color.GRAY}│${Color.RESET} ")
       else
         ""
     )
