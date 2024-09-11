@@ -38,8 +38,5 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_ENV
       - name: Upload wvlet-cli-(version).tgz to GitHub release
         run: |
-          gh release upload "$GITHUB_REF_NAME" \
-          "wvlet-cli/target/wvlet-cli-${VERSION}.tar.gz" \
-          # Overwrite the existing file
-          --clobber \
-          --repo="$GITHUB_REPOSITORY" 
+          gh release upload "$GITHUB_REF_NAME" "wvlet-cli/target/wvlet-cli-${VERSION}.tar.gz" \
+          --clobber --repo="$GITHUB_REPOSITORY"
