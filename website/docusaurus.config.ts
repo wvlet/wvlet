@@ -82,11 +82,16 @@ const config: Config = {
           position: 'left',
           label: 'Documentation',
         },
+        {
+          href: '/docs/syntax/',
+          position: 'left',
+          label: 'Query Syntax',
+        },
         {to: '/blog', label: 'Blog', position: 'left'},
         {
           href: 'https://github.com/orgs/wvlet/projects/2/views/2',
           label: 'Roadmap',
-          position: 'right',
+          position: 'left',
         },
         {
           href: 'https://github.com/wvlet/wvlet',
