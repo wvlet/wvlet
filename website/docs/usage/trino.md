@@ -2,7 +2,7 @@
 
 ## Connecting to Trino
 
-```yaml title='~/.wvlet/profiles.yaml'
+```yaml title='~/.wvlet/profiles.yml'
 profiles:
   - name: trino
     type: trino
@@ -22,7 +22,7 @@ wv>
 
 ## Connecting to Trino at Treasure Data 
 
-```yaml title='~/.wvlet/profiles.yaml'
+```yaml title='~/.wvlet/profiles.yml'
 profiles:
   - name: td
     type: trino
@@ -31,7 +31,7 @@ profiles:
     host: api-presto.treasuredata.com
     port: 443
     catalog: td
-    schema: (your database)
+    schema: (your database name)
 ```
 
 ```bash
