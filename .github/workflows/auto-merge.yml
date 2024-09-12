@@ -2,10 +2,10 @@ name: auto-merge
 on: pull_request
 
 jobs:
-  auto-merge:
-    name: Auto-Merge Bot PRs
+  auto-merge-dependabot:
+    name: Auto-Merge Dependabot PRs
     runs-on: ubuntu-latest
-    if: ${{ github.actor == 'xerial-bot' || github.actor == 'dependabot[bot]' }}
+    if: ${{ github.actor == 'dependabot[bot]' }}
     steps:
       - name: Generate token
         uses: actions/create-github-app-token@v1
@@ -13,15 +13,28 @@ jobs:
         with:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
-      - name: Enable Pull Request Auto-Merge
+      - name: Dependabot metadata
+        id: metadata
+        if: ${{ github.actor == 'dependabot[bot]' }}
+        uses: dependabot/fetch-metadata@v2.2.0
+      - name: Enable auto-merge PR for minor updates
+        if: ${{ steps.metadata.outputs.update-type != 'version-update:semver-major' }}
         run: gh pr merge --squash --auto "${{ github.event.pull_request.html_url }}"
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
-      - name: Dependabot metadata
-        id: metadata
-        uses: dependabot/fetch-metadata@v2.2.0
-      - name: Approve a PR
-        run: gh pr review --approve "${{ github.event.pull_request.html_url }}"
-        if: steps.metadata.outputs.update-type != 'version-update:semver-major'
+  auto-merge-scala-steward:
+    name: Auto-Merge Scala Steward PRs
+    runs-on: ubuntu-latest
+    if: ${{ github.actor == 'xerial-bot' }}
+    steps:
+      - name: Generate token
+        uses: actions/create-github-app-token@v1
+        id: app-token
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+      - name: Enable auto-merge PR for minor updates
+        if: ${{ ! contains(github.event.issue.labels.*.name, 'semver-spec-major') }}
+        run: gh pr merge --squash --auto "${{ github.event.pull_request.html_url }}"
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
