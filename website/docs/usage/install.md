@@ -27,6 +27,12 @@ For other platforms (e.g., Linux, Windows, etc.), download a binary package wvle
 
 JDK17 or later is required to run wvlet. Set JAVA_HOME environment variable to the JDK path.
 
+## Quick Start
+
+After installing wvlet, start learning the query syntax of Wvlet:
+- [Query Syntax](../syntax) to learn the query syntax
+
+
 ## Building From Source
 
 See [Building Wvlet](../development/build) for building wvlet from source.

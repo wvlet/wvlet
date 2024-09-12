@@ -52,7 +52,7 @@ export default function Home(): JSX.Element {
     return (
         <Layout
             title={`Flow-Style Query Language`}
-            description="Wvlet: A New Cross-SQL Flow-Style Query Language">
+            description="Wvlet is a new cross-SQL flow-style query language">
             <HomepageHeader/>
             <main>
                 <HomepageFeatures/>
