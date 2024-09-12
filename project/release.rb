@@ -26,5 +26,5 @@ def run(cmd)
   system cmd
 end
 
-run "git tag -a -m \"Airframe #{next_version}\" v#{next_version}"
+run "git tag -a -m \"wvlet #{next_version}\" v#{next_version}"
 run "git push --follow-tags"
