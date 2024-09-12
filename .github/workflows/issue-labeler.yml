@@ -5,7 +5,10 @@ on:
   pull_request:
     # Only following types are handled by the action, but one can default to all as well
     types: [opened, reopened, synchronize]
-  
+  # Label pull request from forks
+  pull_request_target:
+    types: [opened, reopened, synchronize]
+
 permissions:
   contents: read
 
@@ -15,7 +18,6 @@ jobs:
     permissions:
       contents: read
       # write permission is required for autolabeler
-      # otherwise, read permission is required at least
       pull-requests: write
     runs-on: ubuntu-latest
     steps:
