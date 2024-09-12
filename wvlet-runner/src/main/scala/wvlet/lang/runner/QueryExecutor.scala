@@ -26,6 +26,7 @@ import wvlet.lang.runner.connector.duckdb.DuckDBConnector
 import wvlet.airframe.codec.{JDBCCodec, MessageCodec}
 import wvlet.airframe.control.Control
 import wvlet.airframe.control.Control.withResource
+import wvlet.lang.compiler.codegen.GenSQL.Indented
 import wvlet.lang.model.expr.Expression
 import wvlet.log.{LogLevel, LogSupport}
 
@@ -85,10 +86,29 @@ class QueryExecutor(
           }
           lastResult = QueryResult.fromList(results)
           lastResult
+        case ExecuteCommand(e) =>
+          // Command produces no QueryResult other than errors
+          executeCommand(e.expr, context)
         case ExecuteNothing =>
           QueryResult.empty
 
     process(executionPlan)
+
+  private def executeCommand(e: Expression, context: Context): QueryResult =
+    val gen = GenSQL(context)
+    val cmd = gen.printExpression(e)(using Indented(0))
+    debug(s"Executing command:\n${cmd}")
+    try
+      dbConnector.withConnection { conn =>
+        withResource(conn.createStatement()) { stmt =>
+          stmt.execute(cmd)
+          dbConnector.processWarning(stmt.getWarnings())
+          QueryResult.empty
+        }
+      }
+    catch
+      case e: SQLException =>
+        throw StatusCode.SYNTAX_ERROR.newException(s"${e.getMessage}\n[sql]\n${cmd}", e)
 
   private def executeQuery(plan: LogicalPlan, context: Context): QueryResult =
     trace(s"Executing query: ${plan.pp}")
@@ -142,7 +162,7 @@ class QueryExecutor(
         catch
           case e: SQLException =>
             throw StatusCode
-              .INVALID_ARGUMENT
+              .SYNTAX_ERROR
               .newException(s"${e.getMessage}\n[sql]\n${generatedSQL.sql}", e)
         end try
       case other =>

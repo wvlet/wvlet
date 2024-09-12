@@ -25,6 +25,7 @@ statement : importStatement
           | typeDef
           | funDef
           | showCommand queryOp*
+          | executeCommand expression
 
 importStatement: 'import' importRef (from str)?
 importRef      : qualifiedId ('.' '*')?
@@ -100,6 +101,8 @@ test: 'test' COLON testExpr*
 testExpr: booleanExpression
 
 showCommand: 'show' identifier
+
+executeCommand: 'execute' expression
 
 sampleExpr: sampleSize
           | ('reservoir' | 'system') '(' sampleSize ')'

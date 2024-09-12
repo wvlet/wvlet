@@ -1,0 +1,6 @@
+execute sql"install ulid from community"
+execute sql"load ulid"
+
+select ulid() as ulid
+
+

@@ -167,6 +167,8 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         TopLevelFunctionDef(d, t.nodeLocation)
       case WvletToken.SHOW =>
         Query(queryBlock(show()), t.nodeLocation)
+      case WvletToken.EXECUTE =>
+        executeExpr()
       case _ =>
         unexpected(t)
 
@@ -180,6 +182,11 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         throw StatusCode
           .SYNTAX_ERROR
           .newException(s"Unknown argument for show: ${name.leafName}", t.sourceLocation)
+
+  def executeExpr(): Execute =
+    val t    = consume(WvletToken.EXECUTE)
+    val expr = expression()
+    Execute(expr, t.nodeLocation)
 
   def modelDef(): ModelDef =
     val t    = consume(WvletToken.MODEL)

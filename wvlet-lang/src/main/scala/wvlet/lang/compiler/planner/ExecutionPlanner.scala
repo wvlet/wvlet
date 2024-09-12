@@ -34,6 +34,8 @@ object ExecutionPlanner extends Phase("execution-plan"):
             case _ =>
               plans += ExecuteQuery(q)
           ExecutionPlan(plans.result())
+        case e: Execute =>
+          ExecuteCommand(e)
         case other =>
           trace(s"Unsupported logical plan: ${other}")
           ExecutionPlan.empty
