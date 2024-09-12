@@ -89,9 +89,14 @@ const config: Config = {
         },
         {to: '/blog', label: 'Blog', position: 'left'},
         {
+          href: 'https://github.com/wvlet/wvlet/releases',
+          label: 'Release Notes',
+          position: 'left',
+        },
+        {
           href: 'https://github.com/orgs/wvlet/projects/2/views/2',
           label: 'Roadmap',
-          position: 'left',
+          position: 'right',
         },
         {
           href: 'https://github.com/wvlet/wvlet',
@@ -110,6 +115,10 @@ const config: Config = {
             {
               label: 'Documentation',
               to: '/docs/',
+            },
+            {
+              href: 'https://github.com/wvlet/wvlet/releases',
+              label: 'Release Notes',
             },
           ],
         },

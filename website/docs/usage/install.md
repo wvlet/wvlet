@@ -35,4 +35,4 @@ After installing wvlet, start learning the query syntax of Wvlet:
 
 ## Building From Source
 
-See [Building Wvlet](../development/build) for building wvlet from source.
+See [Building Wvlet](../development/build.md) for building wvlet from source.
