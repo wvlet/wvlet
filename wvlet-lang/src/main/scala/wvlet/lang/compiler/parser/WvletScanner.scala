@@ -446,10 +446,11 @@ class WvletScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
           if isTripleQuote() then
             flushTokenString()
             current.token = WvletToken.STRING_PART
-            currentRegion = InString(multiline, currentRegion)
           else
             getStringPart(multiline)
-            currentRegion = InString(multiline, currentRegion)
+          // Exit the string interpolation scope
+          if currentRegion.outer != null then
+            currentRegion = currentRegion.outer
         else
           // Last part of the interpolated string
           nextChar()

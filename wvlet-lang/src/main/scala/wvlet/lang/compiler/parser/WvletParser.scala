@@ -1170,6 +1170,9 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       case WvletToken.STRING_INTERPOLATION_PREFIX if t.str == "sql" =>
         val rawSQL = interpolatedString()
         RawSQL(rawSQL, t.nodeLocation)
+      case WvletToken.STRING_INTERPOLATION_PREFIX if t.str == "json" =>
+        val rawJSON = interpolatedString()
+        RawJSON(rawJSON, t.nodeLocation)
       case WvletToken.L_BRACKET =>
         arrayValue()
       case _ =>

@@ -1,0 +1,11 @@
+from sql"""select 1"""
+
+from sql"""select 1 as "id""""
+
+
+-- New histogram function in DuckDB 1.1.0
+from sql"""from histogram(
+    'https://blobs.duckdb.org/data/ontime.parquet',
+    UniqueCarrier,
+    bin_count := 5
+)"""

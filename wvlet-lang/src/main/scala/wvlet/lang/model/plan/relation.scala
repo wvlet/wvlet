@@ -229,6 +229,11 @@ case class RawSQL(sql: Expression, nodeLocation: Option[NodeLocation])
     with LeafPlan:
   override val relationType: RelationType = UnresolvedRelationType(RelationType.newRelationTypeName)
 
+case class RawJSON(json: Expression, nodeLocation: Option[NodeLocation])
+    extends Relation
+    with LeafPlan:
+  override val relationType: RelationType = UnresolvedRelationType(RelationType.newRelationTypeName)
+
 /**
   * A relation that only filters rows without changing the schema
   */
