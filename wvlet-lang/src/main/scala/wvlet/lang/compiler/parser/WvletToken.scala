@@ -204,6 +204,7 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   case EXPORT  extends WvletToken(Keyword, "export")
   case PACKAGE extends WvletToken(Keyword, "package")
   case MODEL   extends WvletToken(Keyword, "model")
+  case EXECUTE extends WvletToken(Keyword, "execute")
 
   case IF   extends WvletToken(Keyword, "if")
   case THEN extends WvletToken(Keyword, "then")

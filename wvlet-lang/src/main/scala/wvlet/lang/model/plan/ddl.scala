@@ -124,3 +124,5 @@ case class Delete(table: NameExpr, where: Option[Expression], nodeLocation: Opti
     extends Update
     with LeafPlan:
   override def relationType: RelationType = EmptyRelationType
+
+case class Execute(expr: Expression, nodeLocation: Option[NodeLocation]) extends DDL
