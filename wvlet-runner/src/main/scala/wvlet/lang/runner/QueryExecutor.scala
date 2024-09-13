@@ -97,6 +97,7 @@ class QueryExecutor(
   private def executeCommand(e: Expression, context: Context): QueryResult =
     val gen = GenSQL(context)
     val cmd = gen.printExpression(e)(using Indented(0))
+    workEnv.outLogger.info(s"Executing command:\n${cmd}")
     debug(s"Executing command:\n${cmd}")
     try
       dbConnector.withConnection { conn =>
@@ -116,8 +117,8 @@ class QueryExecutor(
     plan match
       case q: Relation =>
         val generatedSQL = GenSQL.generateSQL(q, context)
+        workEnv.outLogger.info(s"Executing SQL:\n${generatedSQL.sql}")
         debug(s"Executing SQL:\n${generatedSQL.sql}")
-        workEnv.outLogger.debug(s"Executing SQL:\n${generatedSQL.sql}")
         try
           val result = dbConnector.withConnection { conn =>
             withResource(conn.createStatement()) { stmt =>

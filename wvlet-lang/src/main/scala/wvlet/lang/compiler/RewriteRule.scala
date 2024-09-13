@@ -13,13 +13,19 @@
  */
 package wvlet.lang.compiler
 
+import wvlet.lang.compiler.RewriteRule.rewriteLogger
+import wvlet.lang.model.expr.Expression
 import wvlet.lang.model.plan.{LogicalPlan, Relation}
 import wvlet.log.{LogLevel, LogSupport, Logger}
 
 import scala.util.control.NonFatal
 
 object RewriteRule extends LogSupport:
-  type PlanRewriter = PartialFunction[LogicalPlan, LogicalPlan]
+  type PlanRewriter       = PartialFunction[LogicalPlan, LogicalPlan]
+  type ExpressionRewriter = PartialFunction[Expression, Expression]
+
+  // Prepare a stable logger for debugging purpose
+  private[compiler] val rewriteLogger = Logger("wvlet.lang.compiler.RewriteRule")
 
   def rewriteRelation(plan: Relation, rules: List[RewriteRule], context: Context): Relation =
     rewrite(plan, rules, context) match
@@ -41,10 +47,26 @@ object RewriteRule extends LogSupport:
       }
     rewrittenPlan
 
-trait RewriteRule extends LogSupport:
-  // Prepare a stable logger for debugging purpose
-  private val localLogger = Logger("wvlet.lang.compiler.RewriteRule")
+  def rewriteExpr(
+      plan: LogicalPlan,
+      rules: List[ExpressionRewriteRule],
+      context: Context
+  ): LogicalPlan =
+    val rewrittenPlan =
+      rules.foldLeft(plan) { (p, rule) =>
+        try
+          val rewritten = rule.transform(p, context)
+          rewritten
+        catch
+          case NonFatal(e) =>
+            debug(s"Failed to rewrite with: ${rule.name}\n${p.pp}")
+            throw e
+      }
+    rewrittenPlan
 
+end RewriteRule
+
+trait RewriteRule extends LogSupport:
   def name: String = this.getClass.getSimpleName.stripSuffix("$")
 
   /**
@@ -77,12 +99,27 @@ trait RewriteRule extends LogSupport:
       val rule = this.apply(context)
       // Recursively transform the tree form bottom to up
       val resolved = plan.transformUp(rule)
-      if localLogger.isEnabled(LogLevel.TRACE) && !(plan eq resolved) && plan != resolved then
+      if rewriteLogger.isEnabled(LogLevel.TRACE) && !(plan eq resolved) && plan != resolved then
         if context.isContextCompilationUnit then
-          localLogger
+          rewriteLogger
             .trace(s"Transformed with ${name}:\n[before]\n${plan.pp}\n[after]\n${resolved.pp}")
 
       // Apply post-process filter
       postProcess(resolved, context)
 
 end RewriteRule
+
+trait ExpressionRewriteRule extends LogSupport:
+  def name: String = this.getClass.getSimpleName.stripSuffix("$")
+
+  def apply(context: Context): RewriteRule.ExpressionRewriter
+
+  def transform(plan: LogicalPlan, context: Context): LogicalPlan =
+    val rule = this.apply(context)
+    // Recursively transform the tree form bottom to up
+    val resolved = plan.transformUpExpressions(rule)
+    if rewriteLogger.isEnabled(LogLevel.TRACE) && !(plan eq resolved) && plan != resolved then
+      if context.isContextCompilationUnit then
+        rewriteLogger
+          .trace(s"Transformed with ${name}:\n[before]\n${plan.pp}\n[after]\n${resolved.pp}")
+    resolved

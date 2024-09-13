@@ -66,7 +66,7 @@ trait SpecRunner(
 
   protected def handleError: Throwable => Unit =
     case e: WvletLangException if e.statusCode.isUserError =>
-      debug(e)
+      workEnv.errorLogger.error(e)
       fail(e.getMessage)
     case e: Throwable =>
       throw e
