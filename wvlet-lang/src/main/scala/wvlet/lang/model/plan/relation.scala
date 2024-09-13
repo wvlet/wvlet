@@ -82,7 +82,7 @@ case class ModelDef(
   override def children: Seq[LogicalPlan] = Nil
 
   override def inputRelationType: RelationType = EmptyRelationType
-  override def relationType: RelationType = givenRelationType.getOrElse(child.relationType)
+  override def relationType: RelationType      = givenRelationType.getOrElse(child.relationType)
 
 case class SelectAsAlias(child: Relation, alias: NameExpr, nodeLocation: Option[NodeLocation])
     extends UnaryRelation:

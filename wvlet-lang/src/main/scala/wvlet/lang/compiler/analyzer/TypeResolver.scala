@@ -774,8 +774,9 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
       case e: ShouldExpr =>
         // do not resolve aggregation expr in test expressions
         e
-      case d @ DotRef(qual, name: Identifier, _, _) =>
-        val nme = name.toTermName
+      case d: DotRef =>
+        val dd  = d.transformChildExpressions(resolveAggregationExpr).asInstanceOf[DotRef]
+        val nme = dd.name.toTermName
         aggregationFunctions
           .find(_.name == nme)
           .map(_.symbolInfo)
@@ -788,22 +789,22 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
               .map { body =>
                 body.transformUpExpression {
                   case th: This =>
-                    qual
+                    dd.qualifier
                   case i: InterpolatedString =>
                     // Resolve interpolated string from function argument type
                     i.copy(dataType = m.ft.returnType)
                 }
               }
-              .getOrElse(d)
+              .getOrElse(dd)
           }
-          .getOrElse(d)
+          .getOrElse(dd)
       case other =>
         other.transformChildExpressions(resolveAggregationExpr)
     end resolveAggregationExpr
 
     override def apply(context: Context): PlanRewriter = { case q: Query =>
       init(context)
-      q.transformChildExpressions(resolveAggregationExpr(using context))
+      q.transformExpressions(resolveAggregationExpr(using context))
     }
 
   end resolveAggregationFunctions
