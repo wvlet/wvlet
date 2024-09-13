@@ -16,7 +16,7 @@ jobs:
       pull-requests: read
     steps:
       - uses: dorny/paths-filter@v3
-        id: cahnges
+        id: changes
         with:
           filters: |
             src:
