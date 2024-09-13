@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       pull-requests: read
-    output:
+    outputs:
       src: ${{ steps.filter.outputs.src }}
     steps:
       - uses: dorny/paths-filter@v3
