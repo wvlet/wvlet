@@ -18,6 +18,7 @@ import wvlet.lang.WvletLangException
 import wvlet.lang.compiler.{CompilationUnit, Compiler, CompilerOptions}
 import wvlet.lang.runner.connector.duckdb.DuckDBConnector
 
+import java.io.File
 import scala.util.control.NonFatal
 
 trait SpecRunner(
@@ -66,7 +67,7 @@ trait SpecRunner(
 
   protected def handleError: Throwable => Unit =
     case e: WvletLangException if e.statusCode.isUserError =>
-      debug(e)
+      workEnv.errorLogger.error(e)
       fail(e.getMessage)
     case e: Throwable =>
       throw e
