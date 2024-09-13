@@ -635,7 +635,9 @@ class GenSQL(ctx: Context) extends LogSupport:
       case s: StringPart =>
         s.stringValue
       case s: StringLiteral =>
-        s"'${s.stringValue}'"
+        // Escape single quotes
+        val v = s.stringValue.replaceAll("'", "''")
+        s"'${v}'"
       case l: Literal =>
         l.stringValue
       case bq: BackQuotedIdentifier =>
