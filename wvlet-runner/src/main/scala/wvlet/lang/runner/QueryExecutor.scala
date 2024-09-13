@@ -279,6 +279,13 @@ class QueryExecutor(
               t.totalRows
             case _ =>
               0
+        case DotRef(c: ContextInputRef, name, _, _) if name.leafName == "json" =>
+          lastResult match
+            case t: TableRows =>
+              val json = t.toJsonLines
+              json
+            case _ =>
+              0
         case l: StringLiteral =>
           l.value
         case l: LongLiteral =>

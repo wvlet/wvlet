@@ -20,6 +20,9 @@ object ExecutionPlanner extends Phase("execution-plan"):
             }
             .filter(!_.isEmpty)
           ExecutionPlan(plans)
+        case q: Query =>
+          // Skip the top-level query wrapping
+          plan(q.child, evalQuery)
         case t: TestRelation =>
           val plans = List.newBuilder[ExecutionPlan]
           val tests = List.newBuilder[TestRelation]
@@ -40,9 +43,6 @@ object ExecutionPlanner extends Phase("execution-plan"):
           }
           plans ++= tests.result().map(ExecuteTest(_))
           ExecutionPlan(plans.result())
-        case q: Query =>
-          // Skip top-level query wrap
-          plan(q.child, evalQuery)
         case r: Relation =>
           val plans = List.newBuilder[ExecutionPlan]
           // Iterate through the children to find any test/debug queries

@@ -13,6 +13,7 @@
  */
 package wvlet.lang.runner
 
+import wvlet.airframe.codec.MessageCodec
 import wvlet.lang.StatusCode
 import wvlet.lang.compiler.SourceLocation
 import wvlet.lang.model.{DataType, RelationType}
@@ -67,6 +68,14 @@ case class PlanResult(plan: LogicalPlan, result: QueryResult) extends QueryResul
 case class TableRows(schema: RelationType, rows: Seq[ListMap[String, Any]], totalRows: Int)
     extends QueryResult:
   def isTruncated: Boolean = rows.size < totalRows
+  def toJsonLines: String =
+    val codec = MessageCodec.of[ListMap[String, Any]]
+    val jsonLines = rows
+      .map { row =>
+        codec.toJson(row)
+      }
+      .mkString("\n")
+    jsonLines
 
 case class WarningResult(msg: String, loc: SourceLocation) extends QueryResult:
   override def getWarning: Option[String] = Some(msg)
