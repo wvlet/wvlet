@@ -2,4 +2,4 @@ from 'person.json'
 concat
 from 'person2.json'
 
-test _.size is 6
+test _.size should be 6

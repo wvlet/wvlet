@@ -1287,10 +1287,6 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         consume(WvletToken.LIKE)
         val right = valueExpression()
         Like(expression, right, t.nodeLocation)
-      case WvletToken.CONTAINS =>
-        consume(WvletToken.CONTAINS)
-        val right = valueExpression()
-        Contains(expression, right, t.nodeLocation)
       case WvletToken.NOT =>
         consume(WvletToken.NOT)
         val t2 = scanner.lookAhead()
@@ -1305,6 +1301,33 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
             NotIn(expression, valueList, t.nodeLocation)
           case other =>
             unexpected(t2)
+      case WvletToken.SHOULD =>
+        consume(WvletToken.SHOULD)
+        val not =
+          scanner.lookAhead().token match
+            case WvletToken.NOT =>
+              consume(WvletToken.NOT)
+              true
+            case _ =>
+              false
+        val testType =
+          scanner.lookAhead().token match
+            case WvletToken.BE =>
+              consume(WvletToken.BE)
+              if not then
+                TestType.ShouldNotBe
+              else
+                TestType.ShouldBe
+            case WvletToken.CONTAIN =>
+              consume(WvletToken.CONTAIN)
+              if not then
+                TestType.ShouldNotContain
+              else
+                TestType.ShouldContain
+            case _ =>
+              unexpected(t)
+        val right = booleanExpression()
+        ShouldExpr(testType, left = expression, right, t.nodeLocation)
       case _ =>
         expression
 

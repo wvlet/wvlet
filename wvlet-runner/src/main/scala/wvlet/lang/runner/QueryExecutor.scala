@@ -222,21 +222,21 @@ class QueryExecutor(
 
     def eval(e: Expression): QueryResult =
       e match
-        case Eq(left, right, _) =>
+        case ShouldExpr(TestType.ShouldBe, left, right, _) =>
           val leftValue  = trim(evalOp(left))
           val rightValue = trim(evalOp(right))
           if leftValue != rightValue then
             TestFailure(cmpMsg("was not equal to", leftValue, rightValue), e.sourceLocation)
           else
             TestSuccess(cmpMsg("was equal to", leftValue, rightValue), e.sourceLocation)
-        case NotEq(left, right, _) =>
+        case ShouldExpr(TestType.ShouldNotBe, left, right, _) =>
           val leftValue  = trim(evalOp(left))
           val rightValue = trim(evalOp(right))
           if leftValue == rightValue then
             TestFailure(cmpMsg("was equal to", leftValue, rightValue), e.sourceLocation)
           else
             TestSuccess(cmpMsg("was not equal to", leftValue, rightValue), e.sourceLocation)
-        case Contains(left, right, _) =>
+        case ShouldExpr(TestType.ShouldContain, left, right, _) =>
           val leftValue  = trim(evalOp(left))
           val rightValue = trim(evalOp(right))
           (leftValue, rightValue) match
@@ -250,18 +250,20 @@ class QueryExecutor(
                 s"`contains` operator is not supported for: ${leftValue} and ${rightValue}",
                 e.sourceLocation
               )
-        case Not(left, _) =>
-          eval(left) match
-            case TestSuccess(msg, loc) =>
-              TestFailure(msg, loc)
-            case TestFailure(msg, loc) =>
-              TestSuccess(msg, loc)
-            case WarningResult(w, loc) =>
-              WarningResult(w, e.sourceLocation)
+        case ShouldExpr(TestType.ShouldNotContain, left, right, _) =>
+          val leftValue  = trim(evalOp(left))
+          val rightValue = trim(evalOp(right))
+          (leftValue, rightValue) match
+            case (l: String, r: String) =>
+              if l.contains(r) then
+                TestFailure(cmpMsg("contained", leftValue, rightValue), e.sourceLocation)
+              else
+                TestSuccess(cmpMsg("did not contain", leftValue, rightValue), e.sourceLocation)
             case _ =>
-              WarningResult(s"Unsupported test expression: ${e}", e.sourceLocation)
-        case ParenthesizedExpression(expr, _) =>
-          eval(expr)
+              WarningResult(
+                s"`contains` operator is not supported for: ${leftValue} and ${rightValue}",
+                e.sourceLocation
+              )
         case _ =>
           WarningResult(s"Unsupported test expression: ${e}", e.sourceLocation)
 

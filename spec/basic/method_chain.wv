@@ -3,7 +3,7 @@ where id = 1
 select (age / 10).round(1).to_string as age_group
 limit 1
 
-test _.output is """
+test _.output should be """
 ┌───────────┐
 │ age_group │
 │  string   │

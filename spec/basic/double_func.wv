@@ -2,7 +2,7 @@ from 'person.json'
 select (1 / 0.3).round(2) as div
 limit 1
 
-test _.output is """
+test _.output should be """
 ┌────────┐
 │  div   │
 │ double │

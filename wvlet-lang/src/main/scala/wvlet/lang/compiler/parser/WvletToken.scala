@@ -122,7 +122,9 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   case FALSE extends WvletToken(Keyword, "false")
 
   // For testing
-  case CONTAINS extends WvletToken(Keyword, "contains")
+  case SHOULD  extends WvletToken(Keyword, "should")
+  case BE      extends WvletToken(Keyword, "be")
+  case CONTAIN extends WvletToken(Keyword, "contain")
 
   // Alphabectic keywords
   case DEF     extends WvletToken(Keyword, "def")
