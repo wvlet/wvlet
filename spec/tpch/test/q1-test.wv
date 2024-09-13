@@ -1,7 +1,7 @@
 from 'q1.wv'
 
 -- The result when sf=0.01
-test_.output should be """
+test _.output should be """
 ┌──────────────┬──────────────┬───────────────┬────────────────┬────────────────┬───────────────────┬────────────────────┬────────────────────┬──────────────────────┬─────────────┐
 │ l_returnflag │ l_linestatus │    sum_qty    │ sum_base_price │ sum_disc_price │    sum_charge     │      avg_qty       │     avg_price      │       avg_disc       │ count_order │
 │    string    │    string    │ decimal(38,2) │ decimal(38,2)  │ decimal(38,4)  │   decimal(38,6)   │       double       │       double       │        double        │    long     │
