@@ -14,9 +14,11 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       pull-requests: read
+    outputs:
+      src: ${{ steps.filter.outputs.src }}
     steps:
       - uses: dorny/paths-filter@v3
-        id: cahnges
+        id: filter
         with:
           filters: |
             src:
@@ -30,7 +32,7 @@ jobs:
   code_format:
     name: Code format
     needs: changes
-    if: needs.changes.outputs.src == 'true'
+    if: ${{ needs.changes.outputs.src == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -39,7 +41,7 @@ jobs:
   test_scala_3:
     name: Scala 3
     needs: changes
-    if: needs.changes.outputs.src == 'true'
+    if: ${{ needs.changes.outputs.src == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -61,7 +63,7 @@ jobs:
   test_js:
     name: Scala.js
     needs: changes
-    if: needs.changes.outputs.src == 'true'
+    if: ${{ needs.changes.outputs.src == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
