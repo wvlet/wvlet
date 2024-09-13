@@ -10,8 +10,27 @@ on:
   workflow_dispatch:
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    steps:
+      - uses: dorny/paths-filter@v3
+        id: cahnges
+        with:
+          filters: |
+            src:
+              - '.github/workflows/test.yml'
+              - 'project/**'
+              - '**.scala'
+              - '**.sbt'
+              - '**.conf'
+              - '**.json'
+              - '**.wv'
   code_format:
     name: Code format
+    needs: changes
+    if: needs.changes.outputs.src == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,6 +38,8 @@ jobs:
         run: ./sbt scalafmtCheckAll
   test_scala_3:
     name: Scala 3
+    needs: changes
+    if: needs.changes.outputs.src == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -39,6 +60,8 @@ jobs:
           detailed_summary: true
   test_js:
     name: Scala.js
+    needs: changes
+    if: needs.changes.outputs.src == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
