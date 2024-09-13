@@ -676,7 +676,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
     end resolveFunApply
 
   end resolveFunctionApply
-
+  
   private object resolveInlineRef extends RewriteRule:
     private def resolveRef(using ctx: Context): PartialFunction[Expression, Expression] =
       case ref: DotRef =>

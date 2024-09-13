@@ -10,39 +10,48 @@ object ExecutionPlanner extends Phase("execution-plan"):
     unit
 
   def plan(unit: CompilationUnit, context: Context): ExecutionPlan =
-    def plan(l: LogicalPlan, evalSubQuery: Boolean): ExecutionPlan =
+    def plan(l: LogicalPlan, evalQuery: Boolean): ExecutionPlan =
       l match
         case p: PackageDef =>
           val plans = p
             .statements
             .map { stmt =>
-              plan(stmt, evalSubQuery)
+              plan(stmt, evalQuery)
             }
             .filter(!_.isEmpty)
-          if plans.isEmpty then
-            ExecutionPlan.empty
-          else
-            ExecuteTasks(plans)
+          ExecutionPlan(plans)
         case t: TestRelation =>
           val plans = List.newBuilder[ExecutionPlan]
-          // Run non-test subqueries, nees to evaluate the child query fragment
-          plans += plan(t.child, evalSubQuery = true)
-          plans += ExecuteTest(t)
+          val tests = List.newBuilder[TestRelation]
+
+          def findNonTestRel(r: Relation): Option[Relation] =
+            r match
+              case tr: TestRelation =>
+                tests += tr
+                findNonTestRel(tr.child)
+              case other =>
+                Some(other)
+          val nonTestChild = findNonTestRel(t.child)
+          tests += t
+
+          // For evaluating the test, need to evaluate the sub query
+          nonTestChild.foreach { c =>
+            plans += plan(c, evalQuery = true)
+          }
+          plans ++= tests.result().map(ExecuteTest(_))
           ExecutionPlan(plans.result())
-        case q: QueryStatement =>
-          // top-level query statement
-          val plans = List.newBuilder[ExecutionPlan]
-          plans += plan(q.child, evalSubQuery = false)
-          plans += ExecuteQuery(q)
-          ExecutionPlan(plans.result())
+        case q: Query =>
+          // Skip top-level query wrap
+          plan(q.child, evalQuery)
         case r: Relation =>
           val plans = List.newBuilder[ExecutionPlan]
-          if evalSubQuery then
-            plans += ExecuteQuery(r)
+          // Iterate through the children to find any test/debug queries
           r.children
             .map { child =>
-              plans += plan(child, evalSubQuery = false)
+              plans += plan(child, evalQuery = false)
             }
+          if evalQuery then
+            plans += ExecuteQuery(r)
           ExecutionPlan(plans.result())
         case e: Execute =>
           ExecuteCommand(e)
@@ -50,7 +59,7 @@ object ExecutionPlanner extends Phase("execution-plan"):
           trace(s"Unsupported logical plan: ${other}")
           ExecutionPlan.empty
 
-    val executionPlan = plan(unit.resolvedPlan, evalSubQuery = false)
+    val executionPlan = plan(unit.resolvedPlan, evalQuery = true)
     trace(s"Execution plan:\n${executionPlan}")
     executionPlan
 

@@ -79,7 +79,7 @@ class QueryExecutor(
         // Update the last result only when there is no error
         if r.isSuccessfulQueryResult then
           // TODO Add a unique name to the last result
-          trace(s"last result is updated: ${r.getClass}")
+          debug(s"last result is updated:\n${r}")
           lastResult = r
         // log results
         r match
@@ -99,6 +99,7 @@ class QueryExecutor(
         case ExecuteQuery(plan) =>
           report(executeQuery(plan, context))
         case ExecuteTest(test) =>
+          debug(s"run test: ${test.testExpr}")
           report(executeTest(test, lastResult)(using context))
         case ExecuteTasks(tasks) =>
           val results = tasks.map { task =>
@@ -247,7 +248,7 @@ class QueryExecutor(
                 TestFailure(cmpMsg("did not contain", leftValue, rightValue), e.sourceLocation)
             case _ =>
               WarningResult(
-                s"`contains` operator is not supported for: ${leftValue} and ${rightValue}",
+                s"`contain` operator is not supported for: ${leftValue} and ${rightValue}",
                 e.sourceLocation
               )
         case ShouldExpr(TestType.ShouldNotContain, left, right, _) =>
@@ -261,7 +262,7 @@ class QueryExecutor(
                 TestSuccess(cmpMsg("did not contain", leftValue, rightValue), e.sourceLocation)
             case _ =>
               WarningResult(
-                s"`contains` operator is not supported for: ${leftValue} and ${rightValue}",
+                s"`contain` operator is not supported for: ${leftValue} and ${rightValue}",
                 e.sourceLocation
               )
         case _ =>
