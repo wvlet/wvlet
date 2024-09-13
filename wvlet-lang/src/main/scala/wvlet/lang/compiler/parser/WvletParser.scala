@@ -1096,20 +1096,9 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     Limit(input, LongLiteral(n.str.toLong, t.nodeLocation), t.nodeLocation)
 
   def testExpr(input: Relation): Relation =
-    val t = consume(WvletToken.TEST)
-    consume(WvletToken.COLON)
-    val items = List.newBuilder[Expression]
-    def nextItem: Unit =
-      val t = scanner.lookAhead()
-      t.token match
-        case token if token.isQueryDelimiter                          =>
-        case t if WvletToken.queryBlockKeywords.contains(t.tokenType) =>
-        case _ =>
-          val e = expression()
-          items += e
-          nextItem
-    nextItem
-    TestRelation(input, items.result(), t.nodeLocation)
+    val t    = consume(WvletToken.TEST)
+    val item = expression()
+    TestRelation(input, item, t.nodeLocation)
 
   def sampleExpr(input: Relation): Sample =
     def samplingSize: SamplingSize =

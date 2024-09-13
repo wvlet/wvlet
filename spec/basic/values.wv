@@ -4,8 +4,7 @@ from json"""
 {"id":3,"name":"clark","age":30}
 """
 
-test:
-  _.json should be json"""
+test _.json should be json"""
 {"id":1,"name":"alice","age":10}
 {"id":2,"name":"bob","age":20}
 {"id":3,"name":"clark","age":30}

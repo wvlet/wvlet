@@ -85,11 +85,8 @@ case class SelectAsAlias(child: Relation, alias: NameExpr, nodeLocation: Option[
     extends UnaryRelation:
   override def relationType: RelationType = child.relationType
 
-case class TestRelation(
-    child: Relation,
-    testExprs: Seq[Expression],
-    nodeLocation: Option[NodeLocation]
-) extends UnaryRelation:
+case class TestRelation(child: Relation, testExpr: Expression, nodeLocation: Option[NodeLocation])
+    extends UnaryRelation:
   override def relationType: RelationType = child.relationType
 
 case class ParenthesizedRelation(child: Relation, nodeLocation: Option[NodeLocation])

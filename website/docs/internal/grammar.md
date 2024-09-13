@@ -68,7 +68,7 @@ queryBlock: joinExpr
           | 'add' selectItems
           | 'exclude' identifier ((',' identifier)* ','?)?
           | 'shift' identifier (',' identifier)* ','?
-          | 'test' COLON testExpr*
+          | 'test' testExpr
           | 'show' identifier
           | 'sample' sampleExpr
           | 'concat' relation
@@ -97,7 +97,6 @@ window     : 'over' '(' windowSpec ')'
 windowSpec : ('partition' 'by' expression (',' expression)*)?
            | ('order' 'by' sortItem (',' sortItem)*)?
 
-test: 'test' COLON testExpr*
 testExpr: booleanExpression
 
 showCommand: 'show' identifier

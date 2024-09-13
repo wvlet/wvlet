@@ -4,8 +4,7 @@ select as books_after_1950
 
 from books_after_1950
 
-test:
-  _.output should be """
+test _.output should be """
 ┌────────┬────────────────────────┬───────────────┬──────┬─────────┐
 │   id   │         title          │    author     │ year │  genre  │
 │ string │         string         │    string     │ long │ string  │

@@ -2,6 +2,5 @@
 from 'person.json'
 where id = 1
 
-test:
-  _.size should be 1
-  _.json should contain '{"id":1,"name":"alice","age":10}'
+test _.size should be 1
+test _.json should contain '{"id":1,"name":"alice","age":10}'

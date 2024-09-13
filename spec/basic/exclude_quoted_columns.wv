@@ -4,8 +4,7 @@ from [
 ] as sample(`2024-01`, `2024-02`)
 exclude `2024-01`
 
-test:
-  _.to_array should be [
+test _.to_array should be [
     ['2024-02'],
     [20],
     [24]

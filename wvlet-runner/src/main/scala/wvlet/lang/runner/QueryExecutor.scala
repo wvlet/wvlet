@@ -212,16 +212,7 @@ class QueryExecutor(
         case _ =>
           v
 
-    val results =
-      test
-        .testExprs
-        .map { testExpr =>
-          eval(testExpr)
-        }
-        .filter(!_.isEmpty)
-        .toList
-
-    QueryResult.fromList(results)
+    eval(test.testExpr)
 
   end executeTest
 

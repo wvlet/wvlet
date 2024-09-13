@@ -1,5 +1,5 @@
 select s"hello ${'wvlet'}!"
-test: _.output should be """
+test _.output should be """
 ┌────────────────────────────────────────┐
 │ concat(concat('hello ', 'wvlet'), '!') │
 │                 string                 │
@@ -12,7 +12,7 @@ test: _.output should be """
 ;
 
 select s"hello ${2000 + 24}!"
-test: _.output should be """
+test _.output should be """
 ┌────────────────────────────────────────────┐
 │ concat(concat('hello ', (2000 + 24)), '!') │
 │                   string                   │

@@ -1,8 +1,7 @@
 from 'books.json'
 describe
 
-test:
-    _.output should be """
+test _.output should be """
 ┌─────────────┬─────────────┐
 │ column_name │ column_type │
 │   string    │   string    │

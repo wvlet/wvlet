@@ -29,11 +29,6 @@ class WvletREPLTest extends AirSpec:
       .main("-w spec/model1 -c 'model m(v:int) = from person where id = v end' -c 'from m(1)'")
   }
 
-  test("limit shown rows") {
-    WvletREPLCli
-      .main("""-c "from 'https://shell.duckdb.org/data/tpch/0_01/parquet/customer.parquet'" """)
-  }
-
   test("show models") {
     WvletREPLCli.main("-w spec/model1 -c 'show models'")
     WvletREPLCli.main("-w spec/model1 -c 'show models limit 1'")
