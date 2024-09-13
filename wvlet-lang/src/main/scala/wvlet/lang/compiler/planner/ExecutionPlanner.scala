@@ -10,29 +10,48 @@ object ExecutionPlanner extends Phase("execution-plan"):
     unit
 
   def plan(unit: CompilationUnit, context: Context): ExecutionPlan =
-    def plan(l: LogicalPlan): ExecutionPlan =
+    def plan(l: LogicalPlan, evalQuery: Boolean): ExecutionPlan =
       l match
         case p: PackageDef =>
           val plans = p
             .statements
             .map { stmt =>
-              plan(stmt)
+              plan(stmt, evalQuery)
             }
             .filter(!_.isEmpty)
-          if plans.isEmpty then
-            ExecutionPlan.empty
-          else
-            ExecuteTasks(plans)
-        case q: QueryStatement =>
+          ExecutionPlan(plans)
+        case q: Query =>
+          // Skip the top-level query wrapping
+          plan(q.child, evalQuery)
+        case t: TestRelation =>
           val plans = List.newBuilder[ExecutionPlan]
-          q.child match
-            case t: TestRelation =>
-              // TODO Support in-query test
-              // TODO Persistent test data to local file or table (for Trino)
-              plans += ExecuteQuery(t.child)
-              plans += ExecuteTest(t)
-            case _ =>
-              plans += ExecuteQuery(q)
+          val tests = List.newBuilder[TestRelation]
+
+          def findNonTestRel(r: Relation): Option[Relation] =
+            r match
+              case tr: TestRelation =>
+                tests += tr
+                findNonTestRel(tr.child)
+              case other =>
+                Some(other)
+          val nonTestChild = findNonTestRel(t.child)
+          tests += t
+
+          // For evaluating the test, need to evaluate the sub query
+          nonTestChild.foreach { c =>
+            plans += plan(c, evalQuery = true)
+          }
+          plans ++= tests.result().map(ExecuteTest(_))
+          ExecutionPlan(plans.result())
+        case r: Relation =>
+          val plans = List.newBuilder[ExecutionPlan]
+          // Iterate through the children to find any test/debug queries
+          r.children
+            .map { child =>
+              plans += plan(child, evalQuery = false)
+            }
+          if evalQuery then
+            plans += ExecuteQuery(r)
           ExecutionPlan(plans.result())
         case e: Execute =>
           ExecuteCommand(e)
@@ -40,7 +59,7 @@ object ExecutionPlanner extends Phase("execution-plan"):
           trace(s"Unsupported logical plan: ${other}")
           ExecutionPlan.empty
 
-    val executionPlan = plan(unit.resolvedPlan)
+    val executionPlan = plan(unit.resolvedPlan, evalQuery = true)
     trace(s"Execution plan:\n${executionPlan}")
     executionPlan
 

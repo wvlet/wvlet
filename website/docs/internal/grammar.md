@@ -141,11 +141,9 @@ booleanExpression : ('!' | 'not') booleanExpression
 valueExpression   : primaryExpression
                   | valueExpression arithmeticOperator valueExpression
                   | valueExpression comparisonOperator valueExpression
-                  | valueExpression testOperator valueExpression
 
 arithmeticOperator: '+' | '-' | '*' | '/' | '%'
-comparisonOperator: '=' | '==' | 'is' | '!=' | 'is' 'not' | '<' | '<=' | '>' | '>=' | 'like'
-testOperator      : 'should' 'not'? ('be' | 'contain')
+comparisonOperator: '=' | '==' | 'is' | '!=' | 'is' 'not' | '<' | '<=' | '>' | '>=' | 'like' | 'contains' 
 
 // Expression that can be chained with '.' operator
 primaryExpression : 'this'

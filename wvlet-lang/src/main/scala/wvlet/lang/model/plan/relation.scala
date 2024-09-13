@@ -77,9 +77,12 @@ case class ModelDef(
     givenRelationType: Option[RelationType],
     child: Query,
     nodeLocation: Option[NodeLocation]
-) extends UnaryRelation
+) extends LogicalPlan
     with HasTableName:
-  override def relationType: RelationType = givenRelationType.getOrElse(child.relationType)
+  override def children: Seq[LogicalPlan] = Nil
+
+  override def inputRelationType: RelationType = EmptyRelationType
+  override def relationType: RelationType      = givenRelationType.getOrElse(child.relationType)
 
 case class SelectAsAlias(child: Relation, alias: NameExpr, nodeLocation: Option[NodeLocation])
     extends UnaryRelation:

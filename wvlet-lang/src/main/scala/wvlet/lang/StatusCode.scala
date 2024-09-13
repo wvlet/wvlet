@@ -78,6 +78,7 @@ enum StatusCode(statusType: StatusType):
 
   case NOT_IMPLEMENTED              extends StatusCode(StatusType.UserError)
   case NON_RETRYABLE_INTERNAL_ERROR extends StatusCode(StatusType.UserError)
+  case COMPILATION_FAILURE          extends StatusCode(StatusType.UserError)
   case UNEXPECTED_STATE             extends StatusCode(StatusType.UserError)
 
   case TEST_FAILED extends StatusCode(StatusType.UserError)
