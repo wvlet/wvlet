@@ -3,7 +3,7 @@ where name.like('alice')
 group by id
 select _1, age.max
 
-test _.output should be """
+test _.output is """
 ┌──────┬──────────┐
 │  id  │ max(age) │
 │ long │   long   │

@@ -1,0 +1,21 @@
+select 1
+test _.output is """
+┌─────┐
+│  1  │
+│ int │
+├─────┤
+│   1 │
+├─────┤
+│ 1 … │
+└─────┘
+"""
+test 1 is 1
+test 1 is not 2
+test "a" is "a"
+test "a" is not "b"
+test 1 is not "a"
+test 1 is not "1"
+test "hello" contains "ell"
+test "hello" contains "hello"
+test !"hello" contains "ox"
+test !("hello" contains "hh")

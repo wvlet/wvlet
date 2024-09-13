@@ -10,29 +10,39 @@ object ExecutionPlanner extends Phase("execution-plan"):
     unit
 
   def plan(unit: CompilationUnit, context: Context): ExecutionPlan =
-    def plan(l: LogicalPlan): ExecutionPlan =
+    def plan(l: LogicalPlan, evalSubQuery: Boolean): ExecutionPlan =
       l match
         case p: PackageDef =>
           val plans = p
             .statements
             .map { stmt =>
-              plan(stmt)
+              plan(stmt, evalSubQuery)
             }
             .filter(!_.isEmpty)
           if plans.isEmpty then
             ExecutionPlan.empty
           else
             ExecuteTasks(plans)
-        case q: QueryStatement =>
+        case t: TestRelation =>
           val plans = List.newBuilder[ExecutionPlan]
-          q.child match
-            case t: TestRelation =>
-              // TODO Support in-query test
-              // TODO Persistent test data to local file or table (for Trino)
-              plans += ExecuteQuery(t.child)
-              plans += ExecuteTest(t)
-            case _ =>
-              plans += ExecuteQuery(q)
+          // Run non-test subqueries, nees to evaluate the child query fragment
+          plans += plan(t.child, evalSubQuery = true)
+          plans += ExecuteTest(t)
+          ExecutionPlan(plans.result())
+        case q: QueryStatement =>
+          // top-level query statement
+          val plans = List.newBuilder[ExecutionPlan]
+          plans += plan(q.child, evalSubQuery = false)
+          plans += ExecuteQuery(q)
+          ExecutionPlan(plans.result())
+        case r: Relation =>
+          val plans = List.newBuilder[ExecutionPlan]
+          if evalSubQuery then
+            plans += ExecuteQuery(r)
+          r.children
+            .map { child =>
+              plans += plan(child, evalSubQuery = false)
+            }
           ExecutionPlan(plans.result())
         case e: Execute =>
           ExecuteCommand(e)
@@ -40,7 +50,7 @@ object ExecutionPlanner extends Phase("execution-plan"):
           trace(s"Unsupported logical plan: ${other}")
           ExecutionPlan.empty
 
-    val executionPlan = plan(unit.resolvedPlan)
+    val executionPlan = plan(unit.resolvedPlan, evalSubQuery = false)
     trace(s"Execution plan:\n${executionPlan}")
     executionPlan
 

@@ -71,28 +71,50 @@ class QueryExecutor(
 
   def execute(executionPlan: ExecutionPlan, context: Context): QueryResult =
     var lastResult: QueryResult = QueryResult.empty
+    val results                 = List.newBuilder[QueryResult]
+
+    def report(r: QueryResult): QueryResult =
+      if !r.isEmpty then
+        results += r
+        // Update the last result only when there is no error
+        if r.isSuccessfulQueryResult then
+          // TODO Add a unique name to the last result
+          trace(s"last result is updated: ${r.getClass}")
+          lastResult = r
+        // log results
+        r match
+          case t: TestSuccess =>
+            workEnv.outLogger.debug(s"Test passed: ${t.msg} (${t.loc.locationString})")
+          case t: TestFailure =>
+            workEnv.outLogger.error(s"Test failed: ${t.msg} (${t.loc.locationString})")
+          case w: WarningResult =>
+            warn(s"${w.msg} (${w.loc.locationString})")
+            workEnv.outLogger.warn(s"Warning: ${w.msg}")
+          case _ =>
+
+      r
 
     def process(e: ExecutionPlan): QueryResult =
       e match
         case ExecuteQuery(plan) =>
-          lastResult = executeQuery(plan, context)
-          lastResult
+          report(executeQuery(plan, context))
         case ExecuteTest(test) =>
-          lastResult = executeTest(test, context, lastResult)
-          lastResult
+          report(executeTest(test, lastResult)(using context))
         case ExecuteTasks(tasks) =>
           val results = tasks.map { task =>
             process(task)
           }
-          lastResult = QueryResult.fromList(results)
-          lastResult
+          QueryResult.fromList(results)
         case ExecuteCommand(e) =>
           // Command produces no QueryResult other than errors
-          executeCommand(e.expr, context)
+          report(executeCommand(e.expr, context))
         case ExecuteNothing =>
-          QueryResult.empty
+          report(QueryResult.empty)
 
     process(executionPlan)
+    QueryResult.fromList(results.result())
+
+  end execute
 
   private def executeCommand(e: Expression, context: Context): QueryResult =
     val gen = GenSQL(context)
@@ -172,36 +194,98 @@ class QueryExecutor(
 
   end executeQuery
 
-  private def executeTest(
-      test: TestRelation,
-      context: Context,
-      lastResult: QueryResult
+  private def executeTest(test: TestRelation, lastResult: QueryResult)(using
+      context: Context
   ): QueryResult =
+
+    given unit: CompilationUnit = context.compilationUnit
+
+    def isShortString(x: Any): Boolean =
+      def fitToSingleLine(x: String): Boolean = x != null && x.length < 30 && !x.contains("\n")
+
+      x match
+        case s: String =>
+          fitToSingleLine(s)
+        case null =>
+          true
+        case x if fitToSingleLine(x.toString) =>
+          true
+        case _ =>
+          false
+
+    def cmpMsg(op: String, l: Any, r: Any): String =
+      (l, r) match
+        case (l: Any, r: Any) if isShortString(l) && isShortString(r) =>
+          s"${l} ${op} ${r}"
+        case _ =>
+          s"[left]\n${l}\n${op}\n[right]\n${r}"
 
     def eval(e: Expression): QueryResult =
       e match
-        case ShouldExpr(TestType.ShouldBe, left, right, _) =>
+        case Eq(left, right, _) =>
           val leftValue  = trim(evalOp(left))
           val rightValue = trim(evalOp(right))
           if leftValue != rightValue then
-            val msg = s"match failure:\n[left]\n${leftValue}\n\n[right]\n${rightValue}"
-            workEnv.errorLogger.error(msg)
-            ErrorResult(StatusCode.TEST_FAILED.newException(msg))
+            TestFailure(cmpMsg("was not equal to", leftValue, rightValue), e.sourceLocation)
           else
-            workEnv
-              .outLogger
-              .debug(s"match success:\n[left]\n${leftValue}\n\n[right]\n${rightValue}")
-            QueryResult.empty
+            TestSuccess(cmpMsg("was equal to", leftValue, rightValue), e.sourceLocation)
+        case NotEq(left, right, _) =>
+          val leftValue  = trim(evalOp(left))
+          val rightValue = trim(evalOp(right))
+          if leftValue == rightValue then
+            TestFailure(cmpMsg("was equal to", leftValue, rightValue), e.sourceLocation)
+          else
+            TestSuccess(cmpMsg("was not equal to", leftValue, rightValue), e.sourceLocation)
+        case Contains(left, right, _) =>
+          val leftValue  = trim(evalOp(left))
+          val rightValue = trim(evalOp(right))
+          (leftValue, rightValue) match
+            case (l: String, r: String) =>
+              if l.contains(r) then
+                TestSuccess(cmpMsg("contained", leftValue, rightValue), e.sourceLocation)
+              else
+                TestFailure(cmpMsg("did not contain", leftValue, rightValue), e.sourceLocation)
+            case _ =>
+              WarningResult(
+                s"`contains` operator is not supported for: ${leftValue} and ${rightValue}",
+                e.sourceLocation
+              )
+        case Not(left, _) =>
+          eval(left) match
+            case TestSuccess(msg, loc) =>
+              TestFailure(msg, loc)
+            case TestFailure(msg, loc) =>
+              TestSuccess(msg, loc)
+            case WarningResult(w, loc) =>
+              WarningResult(w, e.sourceLocation)
+            case _ =>
+              WarningResult(s"Unsupported test expression: ${e}", e.sourceLocation)
+        case ParenthesizedExpression(expr, _) =>
+          eval(expr)
         case _ =>
-          WarningResult(s"Unsupported test expression: ${e}")
+          WarningResult(s"Unsupported test expression: ${e}", e.sourceLocation)
 
     def evalOp(e: Expression): Any =
       e match
         case DotRef(c: ContextInputRef, name, _, _) if name.leafName == "output" =>
           val box = lastResult.toPrettyBox()
           box
+        case DotRef(c: ContextInputRef, name, _, _) if name.leafName == "size" =>
+          lastResult match
+            case t: TableRows =>
+              t.totalRows
+            case _ =>
+              0
         case l: StringLiteral =>
           l.value
+        case l: LongLiteral =>
+          l.value
+        case d: DoubleLiteral =>
+          d.value
+        case b: BooleanLiteral =>
+          b.booleanValue
+        case n: NullLiteral =>
+          null
         case _ =>
           ()
 

@@ -4,7 +4,7 @@ describe
 where column_type like 'string'
 limit 2
 
-test _.output should be """
+test _.output is """
 ┌─────────────┬─────────────┐
 │ column_name │ column_type │
 │   string    │   string    │

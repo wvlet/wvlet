@@ -3,7 +3,7 @@ transform 1 as key
 group by key
 select age.sum.round(1).to_string as sum_str
 
-test _.output should be """
+test _.output is """
 ┌─────────┐
 │ sum_str │
 │ string  │

@@ -422,6 +422,11 @@ case class NotLike(left: Expression, right: Expression, nodeLocation: Option[Nod
     with BinaryExpression:
   override def operatorName: String = "not like"
 
+case class Contains(left: Expression, right: Expression, nodeLocation: Option[NodeLocation])
+    extends ConditionalExpression
+    with BinaryExpression:
+  override def operatorName: String = "contains"
+
 case class DistinctFrom(left: Expression, right: Expression, nodeLocation: Option[NodeLocation])
     extends ConditionalExpression
     with BinaryExpression:

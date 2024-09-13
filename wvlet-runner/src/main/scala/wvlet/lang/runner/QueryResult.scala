@@ -13,6 +13,8 @@
  */
 package wvlet.lang.runner
 
+import wvlet.lang.StatusCode
+import wvlet.lang.compiler.SourceLocation
 import wvlet.lang.model.{DataType, RelationType}
 import wvlet.lang.model.plan.LogicalPlan
 import wvlet.log.LogSupport
@@ -25,10 +27,14 @@ sealed trait QueryResult:
   def toPrettyBox(maxWidth: Option[Int] = None, maxColWidth: Int = 150): String = QueryResultPrinter
     .print(this, PrettyBoxFormat(maxWidth, maxColWidth))
 
-  def toTSV: String               = QueryResultPrinter.print(this, TSVFormat)
-  def getError: Option[Throwable] = None
-  def getWarning: Option[String]  = None
-  def hasError: Boolean           = getError.isDefined
+  def toTSV: String                    = QueryResultPrinter.print(this, TSVFormat)
+  def getError: Option[Throwable]      = None
+  def getWarning: Option[String]       = None
+  def hasError: Boolean                = getError.isDefined
+  def isWarning: Boolean               = getWarning.isDefined
+  def isTest: Boolean                  = false
+  def isSuccess: Boolean               = !hasError
+  def isSuccessfulQueryResult: Boolean = isSuccess && !isTest && !isWarning
 
 object QueryResult:
   object empty extends QueryResult
@@ -50,7 +56,7 @@ case class QueryResultList(list: Seq[QueryResult]) extends QueryResult:
       Some(errors.head.get)
 
   override def getWarning: Option[String] =
-    val warnings = list.map(_.getWarning).filter(_.isDefined)
+    val warnings = list.map(_.getWarning).filter(_.isDefined).map(_.get)
     if warnings.isEmpty then
       None
     else
@@ -62,8 +68,15 @@ case class TableRows(schema: RelationType, rows: Seq[ListMap[String, Any]], tota
     extends QueryResult:
   def isTruncated: Boolean = rows.size < totalRows
 
-case class WarningResult(msg: String) extends QueryResult:
+case class WarningResult(msg: String, loc: SourceLocation) extends QueryResult:
   override def getWarning: Option[String] = Some(msg)
 
 case class ErrorResult(e: Throwable) extends QueryResult:
   override def getError: Option[Throwable] = Some(e)
+
+case class TestSuccess(msg: String, loc: SourceLocation) extends QueryResult:
+  override def isTest: Boolean = true
+
+case class TestFailure(msg: String, loc: SourceLocation) extends QueryResult:
+  override val getError: Option[Throwable] = Some(StatusCode.TEST_FAILED.newException(msg, loc))
+  override def isTest: Boolean             = true
