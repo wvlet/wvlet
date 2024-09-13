@@ -73,7 +73,7 @@ object GenSQL extends Phase("generate-sql"):
     trace(s"[plan]\n${expanded.pp}\n[SQL]\n${sql}")
     GeneratedSQL(sql, expanded)
 
-  def expand(q: Relation, ctx: Context): Relation =
+  def expand(relation: Relation, ctx: Context): Relation =
     // expand referenced models
 
     def transformExpr(r: Relation, ctx: Context): Relation = r
@@ -126,7 +126,8 @@ object GenSQL extends Phase("generate-sql"):
           m
 
     // TODO expand expressions and inline macros as well
-    q.transformUp {
+    relation
+      .transformUp {
         case m: ModelScan =>
           lookupType(Name.termName(m.name.name), ctx) match
             case Some(sym) =>

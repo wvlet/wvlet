@@ -676,7 +676,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
     end resolveFunApply
 
   end resolveFunctionApply
-  
+
   private object resolveInlineRef extends RewriteRule:
     private def resolveRef(using ctx: Context): PartialFunction[Expression, Expression] =
       case ref: DotRef =>
@@ -771,6 +771,9 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
           .getOrElse(Nil)
 
     private def resolveAggregationExpr(using Context): PartialFunction[Expression, Expression] =
+      case e: ShouldExpr =>
+        // do not resolve aggregation expr in test expressions
+        e
       case d @ DotRef(qual, name: Identifier, _, _) =>
         val nme = name.toTermName
         aggregationFunctions
@@ -794,11 +797,13 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
               .getOrElse(d)
           }
           .getOrElse(d)
+      case other =>
+        other.transformChildExpressions(resolveAggregationExpr)
     end resolveAggregationExpr
 
     override def apply(context: Context): PlanRewriter = { case q: Query =>
       init(context)
-      q.transformUpExpressions(resolveAggregationExpr(using context))
+      q.transformChildExpressions(resolveAggregationExpr(using context))
     }
 
   end resolveAggregationFunctions

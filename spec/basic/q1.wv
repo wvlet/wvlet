@@ -3,7 +3,7 @@ from 'person.json'
 
 test _.size should not be 0
 test _.size should be 3
-test _.json should contain '{"id":1, "name":"alice", "age":10 }'
-test _.json should contain '{"id":2, "name":"bob",   "age":20 }'
-test _.json should contain '{"id":3, "name":"clark", "age":30 }'
-test _.json should not contain '{"id":4, "name":"david", "age":40 }'
+test _.json should contain '{"id":1,"name":"alice","age":10}'
+test _.json should contain '{"id":2,"name":"bob","age":24}'
+test _.json should contain '{"id":3,"name":"clark","age":40}'
+test _.json should not contain '{"id":4,"name":"david","age":40}'

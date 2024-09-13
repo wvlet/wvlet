@@ -19,6 +19,7 @@ import wvlet.lang.model.expr.NameExpr.EmptyName
 import wvlet.lang.model.expr.{Attribute, AttributeList, Expression, NameExpr}
 import wvlet.lang.model.{NodeLocation, RelationType, RelationTypeList, TreeNode}
 import wvlet.airframe.ulid.ULID
+import wvlet.lang.StatusCode
 
 enum PlanProperty:
   // Used for recording a Symbol defined for the tree
@@ -421,16 +422,26 @@ trait LogicalPlan extends TreeNode with Product:
       this
 
   protected def copyInstance(newArgs: Seq[AnyRef]): this.type =
+    // TODO: Use non-reflection to support Scala.js/Scala Native
     val primaryConstructor = this.getClass.getDeclaredConstructors()(0)
-    val newObj             = primaryConstructor.newInstance(newArgs*)
-    newObj match
-      case t: TreeNode =>
-        if this.symbol.tree != null then
-          // Update the tree reference to the rewritten one
-          this.symbol.tree = t
-        t.symbol = this.symbol
-      case _ =>
-    newObj.asInstanceOf[this.type]
+    try
+      val newObj = primaryConstructor.newInstance(newArgs*)
+      newObj match
+        case t: TreeNode =>
+          if this.symbol.tree != null then
+            // Update the tree reference to the rewritten one
+            this.symbol.tree = t
+          t.symbol = this.symbol
+        case _ =>
+      newObj.asInstanceOf[this.type]
+    catch
+      case e: IllegalArgumentException =>
+        throw StatusCode
+          .COMPILATION_FAILURE
+          .newException(
+            s"Failed to create ${modelName} node with args: ${newArgs.mkString(", ")}",
+            e
+          )
 
   /**
     * List all input expressions to the plan
