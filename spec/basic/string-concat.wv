@@ -1,6 +1,5 @@
 select 'hello' + ' wvlet!'
-test:
-  _.output should be """
+test _.output should be """
 ┌────────────────────────────┐
 │ concat('hello', ' wvlet!') │
 │           string           │
@@ -13,8 +12,7 @@ test:
 ;
 
 select 'hello' + ' "wvlet!"'
-test:
-  _.output should be """
+test _.output should be """
 ┌──────────────────────────────┐
 │ concat('hello', ' "wvlet!"') │
 │            string            │
@@ -28,8 +26,7 @@ test:
 
 -- need to use escape single quote
 select "hello" + " 'wvlet!'"
-test:
-  _.output should be """
+test _.output should be """
 ┌────────────────────────────────┐
 │ concat('hello', ' ''wvlet!''') │
 │             string             │
@@ -42,7 +39,7 @@ test:
 ;
 
 select "hello" + " wvlet" + " and airframe!"
-test: _.output should be """
+test _.output should be """
 ┌─────────────────────────────────────────────────────┐
 │ concat('hello', concat(' wvlet', ' and airframe!')) │
 │                       string                        │
@@ -56,7 +53,7 @@ test: _.output should be """
 
 
 select "hello " + 2024
-test: _.output should be """
+test _.output should be """
 ┌────────────────────────┐
 │ concat('hello ', 2024) │
 │         string         │

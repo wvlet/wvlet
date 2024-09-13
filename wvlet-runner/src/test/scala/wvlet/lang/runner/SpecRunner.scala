@@ -37,7 +37,7 @@ trait SpecRunner(
 
   // Compile all files in the source paths first
   for unit <- compiler.localCompilationUnits do
-    test(unit.sourceFile.fileName) {
+    test(unit.sourceFile.relativeFilePath.replaceAll("/", ":")) {
       ignoredSpec.get(unit.sourceFile.fileName).foreach(reason => ignore(reason))
       try
         handleResult(runSpec(unit))
