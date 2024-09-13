@@ -15,6 +15,7 @@ This will install `wv (wvlet)` command to your system.
 
 To upgrade wvlet, run:
 ```bash
+$ brew update
 $ brew upgrade wvlet
 ```
 
