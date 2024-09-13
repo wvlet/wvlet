@@ -1102,7 +1102,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     def nextItem: Unit =
       val t = scanner.lookAhead()
       t.token match
-        case WvletToken.END | WvletToken.EOF                          =>
+        case token if token.isQueryDelimiter                          =>
         case t if WvletToken.queryBlockKeywords.contains(t.tokenType) =>
         case _ =>
           val e = expression()
