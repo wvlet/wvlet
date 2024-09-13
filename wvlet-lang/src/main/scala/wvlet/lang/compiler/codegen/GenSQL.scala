@@ -631,7 +631,6 @@ class GenSQL(ctx: Context) extends LogSupport:
       case NotEq(left, n: NullLiteral, _) =>
         s"${printExpression(left)} is not null"
       case b: BinaryExpression =>
-        warn(s"here: ${b}")
         s"${printExpression(b.left)} ${b.operatorName} ${printExpression(b.right)}"
       case s: StringPart =>
         s.stringValue

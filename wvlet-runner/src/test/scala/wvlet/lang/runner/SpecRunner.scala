@@ -18,7 +18,6 @@ import wvlet.lang.WvletLangException
 import wvlet.lang.compiler.{CompilationUnit, Compiler, CompilerOptions}
 import wvlet.lang.runner.connector.duckdb.DuckDBConnector
 
-import java.io.File
 import scala.util.control.NonFatal
 
 trait SpecRunner(
