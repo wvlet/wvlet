@@ -37,7 +37,8 @@ object RewriteExpr extends Phase("rewrite-expr"):
 
   object RewriteStringInterpolation extends ExpressionRewriteRule:
     override def apply(context: Context) =
-      case s: InterpolatedString =>
+      case s: InterpolatedString if s.prefix.fullName == "s" =>
+        // Replace only s"... " strings
         Expression.concat(s.parts) { (left, right) =>
           def quote(e: Expression): Expression =
             e match
