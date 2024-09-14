@@ -642,61 +642,53 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     rel
 
   def queryBlock(input: Relation): Relation =
+    queryBlockSingle(input) match
+      case r if r eq input =>
+        r
+      case r =>
+        queryBlock(r)
+
+  def queryBlockSingle(input: Relation): Relation =
     val t = scanner.lookAhead()
     t.token match
       case WvletToken.LEFT | WvletToken.RIGHT | WvletToken.INNER | WvletToken.FULL | WvletToken
             .CROSS | WvletToken.JOIN =>
-        val joinRel = join(input)
-        queryBlock(joinRel)
+        join(input)
       case WvletToken.WHERE =>
         consume(WvletToken.WHERE)
-        val cond   = booleanExpression()
-        val filter = Filter(input, cond, t.nodeLocation)
-        queryBlock(filter)
+        val cond = booleanExpression()
+        Filter(input, cond, t.nodeLocation)
       case WvletToken.TRANSFORM =>
-        val transform = transformExpr(input)
-        queryBlock(transform)
+        transformExpr(input)
       case WvletToken.ADD =>
-        val add = addColumnsExpr(input)
-        queryBlock(add)
+        addColumnsExpr(input)
       case WvletToken.EXCLUDE =>
-        val drop = excludeColumnExpr(input)
-        queryBlock(drop)
+        excludeColumnExpr(input)
       case WvletToken.SHIFT =>
-        val shift = shiftColumnsExpr(input)
-        queryBlock(shift)
+        shiftColumnsExpr(input)
       case WvletToken.GROUP =>
-        val groupBy = groupByExpr(input)
-        queryBlock(groupBy)
+        groupByExpr(input)
       case WvletToken.AGG =>
-        val agg = aggExpr(input)
-        queryBlock(agg)
+        aggExpr(input)
       case WvletToken.PIVOT =>
-        val pivot = pivotExpr(input)
-        queryBlock(pivot)
+        pivotExpr(input)
       case WvletToken.SELECT =>
-        val select = selectExpr(input)
-        queryBlock(select)
+        selectExpr(input)
       case WvletToken.LIMIT =>
-        val limit = limitExpr(input)
-        queryBlock(limit)
+        limitExpr(input)
       case WvletToken.ORDER =>
-        val order = orderExpr(input)
-        queryBlock(order)
+        orderExpr(input)
       case WvletToken.TEST =>
-        val test = testExpr(input)
-        queryBlock(test)
+        testExpr(input)
       case WvletToken.DESCRIBE =>
         consume(WvletToken.DESCRIBE)
-        val desc = Describe(input, t.nodeLocation)
-        queryBlock(desc)
+        Describe(input, t.nodeLocation)
       case WvletToken.SAMPLE =>
-        val sample = sampleExpr(input)
-        queryBlock(sample)
+        sampleExpr(input)
       case WvletToken.CONCAT =>
         consume(WvletToken.CONCAT)
         val right = relation()
-        queryBlock(Concat(input, right, t.nodeLocation))
+        Concat(input, right, t.nodeLocation)
       case WvletToken.INTERSECT | WvletToken.EXCEPT =>
         consume(t.token)
         val isDistinct: Boolean =
@@ -715,16 +707,18 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
               Except(input, right, isDistinct, t.nodeLocation)
             case _ =>
               unexpected(t)
-        queryBlock(rel)
+        rel
       case WvletToken.DEDUP =>
         consume(WvletToken.DEDUP)
-        queryBlock(Dedup(input, t.nodeLocation))
+        Dedup(input, t.nodeLocation)
+      case WvletToken.DEBUG =>
+        debugExpr(input)
       case _ =>
         input
 
     end match
 
-  end queryBlock
+  end queryBlockSingle
 
   def join(input: Relation): Relation =
     val t = scanner.lookAhead()
@@ -1148,6 +1142,21 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         unexpected(t)
 
   end sampleExpr
+
+  def debugExpr(input: Relation): Debug =
+    def loop(r: Relation): Relation =
+      scanner.lookAhead().token match
+        case WvletToken.PIPE =>
+          consume(WvletToken.PIPE)
+          val next = queryBlockSingle(r)
+          loop(next)
+        case _ =>
+          r
+    end loop
+
+    val t        = consume(WvletToken.DEBUG)
+    val debugRel = loop(input)
+    Debug(input, debugRel, t.nodeLocation)
 
   /**
     * relationPrimary := qualifiedId \| '(' query ')' \| stringLiteral

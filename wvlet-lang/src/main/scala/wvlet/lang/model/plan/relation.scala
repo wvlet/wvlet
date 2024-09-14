@@ -937,3 +937,12 @@ enum SamplingMethod:
 enum SamplingSize:
   case Rows(rows: Long)               extends SamplingSize
   case Percentage(percentage: Double) extends SamplingSize
+
+/**
+  * Debug operator adds a separate execution path to inspect the input relation.
+  * @param child
+  * @param debugRelation
+  * @param nodeLocation
+  */
+case class Debug(child: Relation, debugRelation: Relation, nodeLocation: Option[NodeLocation])
+    extends FilteringRelation

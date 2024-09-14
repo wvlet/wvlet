@@ -1,0 +1,8 @@
+from 'person.json'
+debug
+| where id = 1
+| test _.size should be 1
+| test _.rows should be [[1, "alice", 10]]
+where id = 2
+test _.size should be 1
+test _.rows should be [[2, "bob", 24]]
