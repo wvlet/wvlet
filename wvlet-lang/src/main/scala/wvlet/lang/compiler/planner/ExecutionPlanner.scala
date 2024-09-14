@@ -30,8 +30,9 @@ object ExecutionPlanner extends Phase("execution-plan"):
           def findNonTestRel(r: Relation): Option[Relation] =
             r match
               case tr: TestRelation =>
+                val ret = findNonTestRel(tr.child)
                 tests += tr
-                findNonTestRel(tr.child)
+                ret
               case other =>
                 Some(other)
           val nonTestChild = findNonTestRel(t.child)
