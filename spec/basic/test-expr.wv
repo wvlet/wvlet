@@ -1,0 +1,38 @@
+from 'person.json'
+
+-- test schema
+test _.size should be 3
+test _.columns should be ['id', 'name', 'age']
+test _.columns should contain "name"
+test _.columns should not contain 'address'
+
+-- test results
+test _.output should be """
+┌──────┬────────┬──────┐
+│  id  │  name  │ age  │
+│ long │ string │ long │
+├──────┼────────┼──────┤
+│    1 │ alice  │   10 │
+│    2 │ bob    │   24 │
+│    3 │ clark  │   40 │
+├──────┴────────┴──────┤
+│ 3 rows               │
+└──────────────────────┘
+"""
+test _.json should be """
+{"id":1,"name":"alice","age":10}
+{"id":2,"name":"bob","age":24}
+{"id":3,"name":"clark","age":40}
+"""
+test _.json should contain """{"id":2,"name":"bob","age":24}"""
+test _.json should not contain """{"id":4,"name":"david","age":32}"""
+
+-- test rows
+test _.rows should contain [1, "alice", 10]
+test _.rows should contain [2, "bob", 24]
+test _.rows should not contain [5, "eric", 18]
+test _.rows should be [
+  [1, "alice", 10],
+  [2, "bob", 24],
+  [3, "clark", 40],
+]
