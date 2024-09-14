@@ -13,7 +13,7 @@
  */
 package wvlet.lang.runner
 
-import wvlet.lang.StatusCode
+import wvlet.lang.{StatusCode, WvletLangException}
 import wvlet.lang.compiler.*
 import wvlet.lang.compiler.codegen.GenSQL
 import wvlet.lang.compiler.planner.ExecutionPlanner
@@ -246,6 +246,11 @@ class QueryExecutor(
                 TestSuccess(cmpMsg("contained", leftValue, rightValue), e.sourceLocation)
               else
                 TestFailure(cmpMsg("did not contain", leftValue, rightValue), e.sourceLocation)
+            case (l: List[?], r: Any) =>
+              if l.contains(r) then
+                TestSuccess(cmpMsg("contained", leftValue, rightValue), e.sourceLocation)
+              else
+                TestFailure(cmpMsg("did not contain", leftValue, rightValue), e.sourceLocation)
             case _ =>
               WarningResult(
                 s"`contain` operator is not supported for: ${leftValue} and ${rightValue}",
@@ -260,6 +265,11 @@ class QueryExecutor(
                 TestFailure(cmpMsg("contained", leftValue, rightValue), e.sourceLocation)
               else
                 TestSuccess(cmpMsg("did not contain", leftValue, rightValue), e.sourceLocation)
+            case (l: List[?], r: Any) =>
+              if l.contains(r) then
+                TestFailure(cmpMsg("contained", leftValue, rightValue), e.sourceLocation)
+              else
+                TestSuccess(cmpMsg("did not contain", leftValue, rightValue), e.sourceLocation)
             case _ =>
               WarningResult(
                 s"`contain` operator is not supported for: ${leftValue} and ${rightValue}",
@@ -270,22 +280,38 @@ class QueryExecutor(
 
     def evalOp(e: Expression): Any =
       e match
-        case DotRef(c: ContextInputRef, name, _, _) if name.leafName == "output" =>
-          val box = lastResult.toPrettyBox()
-          box
-        case DotRef(c: ContextInputRef, name, _, _) if name.leafName == "size" =>
-          lastResult match
-            case t: TableRows =>
-              t.totalRows
-            case _ =>
-              0
-        case DotRef(c: ContextInputRef, name, _, _) if name.leafName == "json" =>
-          lastResult match
-            case t: TableRows =>
-              val json = t.toJsonLines
-              json
-            case _ =>
-              0
+        case DotRef(c: ContextInputRef, name, _, _) =>
+          name.leafName match
+            case "output" =>
+              lastResult.toPrettyBox()
+            case "columns" =>
+              lastResult match
+                case t: TableRows =>
+                  t.schema.fields.map(_.name.name).toList
+                case _ =>
+                  List.empty
+            case "size" =>
+              lastResult match
+                case t: TableRows =>
+                  t.totalRows
+                case _ =>
+                  0
+            case "json" =>
+              lastResult match
+                case t: TableRows =>
+                  t.toJsonLines
+                case _ =>
+                  ""
+            case "rows" =>
+              lastResult match
+                case t: TableRows =>
+                  t.rows.map(_.values.toList).toList
+                case _ =>
+                  List.empty
+            case other =>
+              throw StatusCode
+                .TEST_FAILED
+                .newException(s"Unsupported result inspection function: _.${other}")
         case l: StringLiteral =>
           l.value
         case l: LongLiteral =>
@@ -296,7 +322,10 @@ class QueryExecutor(
           b.booleanValue
         case n: NullLiteral =>
           null
+        case a: ArrayConstructor =>
+          a.values.map(evalOp).toList
         case _ =>
+          warn(s"Test expression ${e} is not supported yet.")
           ()
 
     def trim(v: Any): Any =
@@ -306,7 +335,11 @@ class QueryExecutor(
         case _ =>
           v
 
-    eval(test.testExpr)
+    try
+      eval(test.testExpr)
+    catch
+      case e: WvletLangException =>
+        TestFailure(e.getMessage, test.sourceLocation)
 
   end executeTest
 
