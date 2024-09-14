@@ -598,6 +598,9 @@ class GenSQL(ctx: Context) extends LogSupport:
               warn(s"Unsupported sampling method: ${s.method} for ${ctx.dbType}")
               child
         selectWithIndentAndParenIfNecessary(body)
+      case d: Debug =>
+        // Skip debug expression
+        printRelation(d.inputRelation)
       case other =>
         warn(s"unknown relation type: ${other}")
         other.toString

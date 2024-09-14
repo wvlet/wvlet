@@ -75,6 +75,7 @@ queryBlock: joinExpr
           | ('intersect' | 'except') 'all'? relation
           | 'dedup'
           | 'describe'
+          | 'debug' debugExpr+
 
 joinExpr    : joinType? 'join' relation joinCriteria
             | 'cross' 'join' relation
@@ -107,6 +108,11 @@ sampleExpr: sampleSize
           | ('reservoir' | 'system') '(' sampleSize ')'
 
 sampleSize:  ((integerLiteral 'rows'?) | (floatLiteral '%'))
+
+
+// Note: Using signifinant indent or `-` may improve the readabiltity,
+// but uses `|` to avoid conflicts with arightmetic operators 
+debugExpr: '|' queryBlock
 
 sortItem: expression ('asc' | 'desc')?
 

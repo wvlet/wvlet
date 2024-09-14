@@ -122,9 +122,11 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   case FALSE extends WvletToken(Keyword, "false")
 
   // For testing
+  case TEST    extends WvletToken(Keyword, "test")
   case SHOULD  extends WvletToken(Keyword, "should")
   case BE      extends WvletToken(Keyword, "be")
   case CONTAIN extends WvletToken(Keyword, "contain")
+  case DEBUG   extends WvletToken(Keyword, "debug")
 
   // Alphabectic keywords
   case DEF     extends WvletToken(Keyword, "def")
@@ -133,7 +135,6 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   case TYPE    extends WvletToken(Keyword, "type")
   case EXTENDS extends WvletToken(Keyword, "extends")
   case WITH    extends WvletToken(Keyword, "with")
-  case TEST    extends WvletToken(Keyword, "test")
   case SHOW    extends WvletToken(Keyword, "show")
   case SAMPLE  extends WvletToken(Keyword, "sample")
 
@@ -256,7 +257,8 @@ object WvletToken:
     WvletToken.EOF,
     WvletToken.END,
     WvletToken.R_PAREN,
-    WvletToken.SEMICOLON
+    WvletToken.SEMICOLON,
+    WvletToken.PIPE
   )
 
   def isQueryDelimiter(t: WvletToken): Boolean = queryDelimiters.contains(t)

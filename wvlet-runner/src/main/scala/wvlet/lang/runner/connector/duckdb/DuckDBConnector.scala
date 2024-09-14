@@ -28,6 +28,7 @@ import wvlet.airframe.metrics.ElapsedTime
 import wvlet.log.LogSupport
 
 import java.sql.{Connection, DriverManager, SQLException}
+import java.util.concurrent.atomic.AtomicBoolean
 import scala.util.{Try, Using}
 
 class DuckDBConnector(prepareTPCH: Boolean = false)
@@ -37,6 +38,7 @@ class DuckDBConnector(prepareTPCH: Boolean = false)
 
   // We need to reuse the same connection for preserving in-memory tables
   private var conn: DuckDBConnection = null
+  private val closed                 = AtomicBoolean(false)
 
   // Initialize DuckDB in the background thread as it may take several seconds
   private val initThread = ThreadUtil.runBackgroundTask { () =>
@@ -60,7 +62,8 @@ class DuckDBConnector(prepareTPCH: Boolean = false)
         throw StatusCode.NOT_IMPLEMENTED.newException("duckdb connection is unavailable")
 
   override def close(): Unit = Option(conn).foreach { c =>
-    c.close()
+    if closed.compareAndSet(false, true) then
+      c.close()
     conn = null
   }
 
