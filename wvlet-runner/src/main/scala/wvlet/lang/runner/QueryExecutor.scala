@@ -98,6 +98,10 @@ class QueryExecutor(
       e match
         case ExecuteQuery(plan) =>
           report(executeQuery(plan, context))
+        case d @ ExecuteDebug(debugPlan, debugExecutionPlan) =>
+          val debugInput = lastResult
+          executeDebug(d, lastResult)(using context)
+          debugInput
         case ExecuteTest(test) =>
           debug(s"run test: ${test.testExpr}")
           report(executeTest(test, lastResult)(using context))
@@ -194,6 +198,14 @@ class QueryExecutor(
     end match
 
   end executeQuery
+
+  private def executeDebug(debugPlan: ExecuteDebug, lastResult: QueryResult)(using
+      context: Context
+  ): QueryResult =
+    val result = execute(debugPlan.debugExecutionPlan, context)
+    // TODO: Output to REPL
+    workEnv.outLogger.info(result)
+    QueryResult.empty
 
   private def executeTest(test: TestRelation, lastResult: QueryResult)(using
       context: Context

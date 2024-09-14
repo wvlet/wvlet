@@ -258,7 +258,7 @@ object WvletToken:
     WvletToken.END,
     WvletToken.R_PAREN,
     WvletToken.SEMICOLON,
-    WvletToken.MINUS
+    WvletToken.PIPE
   )
 
   def isQueryDelimiter(t: WvletToken): Boolean = queryDelimiters.contains(t)

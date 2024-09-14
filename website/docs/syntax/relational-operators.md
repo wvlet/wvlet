@@ -29,6 +29,8 @@ In wvlet, you need to use __lower-case__ keywords for SQL-like operators. The fo
 | shift to right `column`, ...                                                    | Same rows with selected column moved to the right                                                                                                                                                                                                       |
 | sample `method`? (`size` rows? \| %)                                            | Randomly sampled rows. Sampling method can be reservoir (default), system, or bernoulli                                                                                                                                                                 | 
 | [test `(test_expr)`](test-syntax.md)                                            | Test the query result, which will be evaluated only in the test-run mode.                                                                                                                                                                               |
+| debug (\| (query))+                                                             | Same rows (no change), but run a debug query using the subsequent query expression, prefixed with `\|`                                                                                                                                                  |
+
 
 ## Relation Inspection Operators
 
