@@ -14,7 +14,7 @@
 package wvlet.lang.runner.cli
 
 import wvlet.lang.WvletLangException
-import wvlet.lang.compiler.{CompilationUnit, CompileResult, Compiler, CompilerOptions}
+import wvlet.lang.compiler.{CompilationUnit, CompileResult, Compiler, CompilerOptions, WorkEnv}
 import wvlet.lang.runner.*
 import org.jline.terminal.Terminal
 import wvlet.airframe.control.{Control, Shell}
@@ -41,7 +41,7 @@ case class LastOutput(
   def hasError: Boolean = error.isDefined
 
 class WvletScriptRunner(
-    workEnv: WvletWorkEnv,
+    workEnv: WorkEnv,
     config: WvletScriptRunnerConfig,
     queryExecutor: QueryExecutor
 ) extends AutoCloseable
@@ -62,7 +62,7 @@ class WvletScriptRunner(
     val c = Compiler(
       CompilerOptions(
         sourceFolders = List(workEnv.path),
-        workingFolder = workEnv.path,
+        workEnv = workEnv,
         catalog = config.catalog,
         schema = config.schema
       )

@@ -48,6 +48,8 @@ case class GlobalContext(compilerOptions: CompilerOptions):
   var defaultCatalog: Catalog = InMemoryCatalog(catalogName = "memory", functions = Nil)
   var defaultSchema: String   = compilerOptions.schema.getOrElse("main")
 
+  var workEnv: WorkEnv = compilerOptions.workEnv
+
   def init(using rootContext: Context): Unit =
     this.rootContext = rootContext
     defs = GlobalDefinitions(using rootContext)
@@ -97,7 +99,6 @@ case class Context(
     compilationUnit: CompilationUnit = CompilationUnit.empty,
     importDefs: List[Import] = Nil
 ) extends LogSupport:
-
   def isGlobalContext: Boolean = compilationUnit.isPreset || owner.isNoSymbol
 
   def isContextCompilationUnit: Boolean =
@@ -114,6 +115,8 @@ case class Context(
   def dbType: DBType   = catalog.dbType
 
   def defaultSchema: String = global.defaultSchema
+
+  def workEnv: WorkEnv = global.workEnv
 
   /**
     * Create a new context with an additional import
@@ -151,7 +154,7 @@ case class Context(
     if relativePath.startsWith("s3://") || relativePath.startsWith("https://") then
       relativePath
     else
-      s"${global.compilerOptions.workingFolder}/${relativePath}"
+      s"${global.compilerOptions.workEnv.path}/${relativePath}"
 
   def getDataFile(path: String): String =
     findDataFile(path) match

@@ -1,10 +1,15 @@
-package wvlet.lang.runner
+package wvlet.lang.compiler
 
 import wvlet.log.LogFormatter.SourceCodeLogFormatter
 import wvlet.log.LogLevel.ALL
 import wvlet.log.{LogLevel, LogRotationHandler, Logger}
 
-case class WvletWorkEnv(path: String = ".", logLevel: LogLevel):
+/**
+  * Working directory for finding .wv files and target folders for logs and cache
+  * @param path
+  * @param logLevel
+  */
+case class WorkEnv(path: String = ".", logLevel: LogLevel = Logger.getDefaultLogLevel):
   lazy val hasWvletFiles: Boolean = Option(new java.io.File(path).listFiles())
     .exists(_.exists(_.getName.endsWith(".wv")))
 
@@ -37,4 +42,4 @@ case class WvletWorkEnv(path: String = ".", logLevel: LogLevel):
     l.setLogLevel(logLevel)
     l
 
-end WvletWorkEnv
+end WorkEnv
