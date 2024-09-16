@@ -1,7 +1,12 @@
 
 # Language Grammar
 
-This document describes the grammar of Wvlet language.
+This document describes the grammar of Wvlet language. 
+
+:::warning
+As of September 2024, Wvlet is still under active development. The language syntax and grammar structure may change, so use this grammar just as a reference.
+:::
+
 
 ```antlr4
 packageDef: 'package' qualifiedId statement*

@@ -9,4 +9,6 @@ $ git checkout main
 $ ./project/release.rb
 ```
 
-This will add a new git tag, and GitHub Action will create a new release note and tar.gz archive automatically.
+This will add a new git tag, and GitHub Action will create a new release note and tar.gz archive automatically. 
+
+After releasing a new version and if it's stable enough, you can also distribute the release for Homebrew: https://github.com/wvlet/homebrew-wvlet

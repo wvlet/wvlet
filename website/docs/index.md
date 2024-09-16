@@ -9,7 +9,7 @@ title: Introduction
 
 # Introduction
 
-The wvlet, pronounced as weave-let, is a new flow-style query language for SQL-based database engines, including [DuckDB](https://duckdb.org/), [Trino](https://trino.io/), etc.
+Wvlet, pronounced as weave-let, is a new flow-style query language for SQL-based database engines, including [DuckDB](https://duckdb.org/), [Trino](https://trino.io/), etc.
 
 
 ## Documentation
@@ -42,7 +42,7 @@ where (conditions for groups)
 select c1, c2, ...
 order by (ordering columns...)
 ```
-This flow style enables describing data processing pipelines with top-to-bottom semantic ordering. It allows various methods to help composing complex queries, such as adding an operator for debuging data in the middle of a query. This type of flow syntax has also been adopted in Google SQL, _[SQL Has Problems. We Can Fix Them: Pipe Syntax In SQL (VLDB 2024)](https://research.google/pubs/sql-has-problems-we-can-fix-them-pipe-syntax-in-sql/)_, to cope with the complexity of writing SQL queries.
+With this flow style, you can describe data processing pipelines in a natural order to create complex queries. You can also add operators for testing or debugging data in the middle of the query. This flow syntax is gaining traction and has been adopted in Google's SQL to simplify writing SQL queries. For more details, see _[SQL Has Problems. We Can Fix Them: Pipe Syntax In SQL (VLDB 2024)](https://research.google/pubs/sql-has-problems-we-can-fix-them-pipe-syntax-in-sql/)_.
 
 ## Architecture
 
@@ -53,15 +53,15 @@ This flow style enables describing data processing pipelines with top-to-bottom 
 
 Wvlet offers the following features to incorporate the best practices of the modern programming languages in the context of querying and managing data processing pipelines:
 
-- [Reusable and Composable Models](#reusable-and-composable-models)
+- [Functional Data Modeling](#functional-data-modeling)
 - [Extensible Types](#extensible-types)
 - [Chaining Function Calls](#chaining-function-calls)
 - [Incremental Processing](#incremental-processing)
 
 
-## Reusable and Composable Models
+## Funcitonal Data Modeling
 
-wvlet queries can be defined as a data model function, which can be reused for subsequent data processing. For example, you can define a data model function with `model` keyword:
+In Wvlet, you can define queries as data model functions, which can be reused for subsequent data processing. The following example defines a data `model` function:
 ```sql
 model lookup(person_id: int) =
   from persons
@@ -75,10 +75,11 @@ Calling this model, e.g., `from lookup(1)`, will issue this SQL query:
 select * from persons
 where id = 1
 ```
-Model will work as function templates to generate SQL queries depending on the input values. You can also compose models to build more complex queries. For example, you can take a join between data modle and other tables:
+Models in Wvlet will work as template functions to generate SQL queries. You can also compose models to build more complex queries. For example, you can take a join between data modle and other tables:
 ```sql
 from lookup(1) as p
-join address_table on p.id = address_table.person_id
+join address_table 
+  on p.id = address_table.person_id
 ```
 
 ### Managing Queries As A Reusable Module
