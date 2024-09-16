@@ -6,7 +6,7 @@ This page is still work in progress.
 
 ### Defining Data Models 
 
-In wvlet, you can define reusable data models, which wraps an wvlet query with `model (model name) = ... end` block:
+In Wvlet, you can define reusable data models, which wraps an Wvlet query with `model (model name) = ... end` block:
 
 ```sql
 model my_model =

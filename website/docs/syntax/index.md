@@ -86,7 +86,7 @@ allows to navigate table data using arrow keys, page up/down keys, and `q` key t
 To limit the number of rows to display, you can use `limit` operator:
 ```sql
 wv> from customer
-  | limit 3;
+  │ limit 3;
 ┌───────────┬────────────────────┬────────────────────────────────┬─────────────┬──────>
 │ c_custkey │       c_name       │           c_address            │ c_nationkey │     c>
 │   long    │       string       │             string             │     int     │     s>
@@ -109,8 +109,8 @@ To select specific columns, you can use `select` operator:
 ```sql
 from customer
 wv> from customer
-  | select c_name, c_nationkey
-  | limit 5;
+  │ select c_name, c_nationkey
+  │ limit 5;
 ┌────────────────────┬─────────────┐
 │       c_name       │ c_nationkey │
 │       string       │     int     │
@@ -129,9 +129,9 @@ To select specific values from the table, you can use `where` operator:
 
 ```sql 
 wv> from customer 
-  | where c_nationkey = 1
-  | select c_name, c_address
-  | limit 5;
+  │ where c_nationkey = 1
+  │ select c_name, c_address
+  │ limit 5;
 ┌────────────────────┬─────────────┐
 │       c_name       │ c_nationkey │
 │       string       │     int     │
@@ -174,10 +174,10 @@ The multi-line syntax is convenient for improving readability of your queries. A
 
 ```sql
 wv> from customer
-  | -- Select customers for each market segment, e.g., HOUSEHOLD, BUILDING, etc.
-  | group by c_mktsegment,
-  | -- Report the number of customers in each market segment
-  | agg _.count as customer_count
+  │ -- Select customers for each market segment, e.g., HOUSEHOLD, BUILDING, etc.
+  │ group by c_mktsegment,
+  │ -- Report the number of customers in each market segment
+  │ agg _.count as customer_count
 ┌──────────────┬────────────────┐
 │ c_mktsegment │ customer_count │
 │    string    │      long      │
@@ -201,7 +201,7 @@ Comments in wvlet start with `--` and continue to the end of the line.
 To learn about the table schema, the list of columns and types in the table, you can use `describe` operator:
 ```sql
 wv> from customer
-  | describe;
+  │ describe;
 ┌──────────────┬─────────────┐
 │ column_name  │ column_type │
 │    string    │   string    │
@@ -223,8 +223,8 @@ wv> from customer
 
 ```sql
 wv> from customer
-  | describe
-  | where column_name like '%name%';
+  │ describe
+  │ where column_name like '%name%';
 ┌─────────────┬─────────────┐
 │ column_name │ column_type │
 │   string    │   string    │
@@ -256,9 +256,9 @@ describe (line:1): from customer
 │ 8 rows                     │
 └────────────────────────────┘
 wv> from customer  -- Press ctrl-j ctrl-d sequence here
-  | where c_nationkey = 1
-  | select c_name, c_nationkey
-  | limit 5;
+  │ where c_nationkey = 1
+  │ select c_name, c_nationkey
+  │ limit 5;
 ```
 `ctrl-j ctrl-d` shortcut key internally calls `(A query fragment up to the current line) describe`  to show the schema of the current query fragment.
 
@@ -275,9 +275,9 @@ describe (line:3): select c_name, c_nationkey
 │ 2 rows                    │
 └───────────────────────────┘
 wv> from customer
-  | where c_nationkey = 1
-  | select c_name, c_nationkey -- Press ctrl-j ctrl-d here
-  | limit 5;
+  │ where c_nationkey = 1
+  │ select c_name, c_nationkey -- Press ctrl-j ctrl-d here
+  │ limit 5;
 ```
 
 ### Test Run to Peek Data
@@ -286,9 +286,9 @@ While editing queries, you will often need to look at the actual data. Type `ctr
 
 ```sql
 wv> from customer -- type ctrl-j ctrl-t here
-  | where c_nationkey = 1
-  | select c_name, c_nationkey
-  | limit 5;
+  │ where c_nationkey = 1
+  │ select c_name, c_nationkey
+  │ limit 5;
 debug (line:1): from customer
 ┌───────────┬────────────────────┬─────────────────────────────────────────┬───────────>
 │ c_custkey │       c_name       │                c_address                │ c_nationke>
@@ -309,7 +309,7 @@ debug (line:1): from customer
 Test run command is useful to refine your query as you add more relational operators:
 ```sql
 wv> from customer
-  | select c_custkey, c_name, c_nationkey -- type ctrl-j ctrl-t here
+  │ select c_custkey, c_name, c_nationkey -- type ctrl-j ctrl-t here
 debug (line:2): select c_custkey, c_name, c_nationkey
 ┌───────────┬────────────────────┬─────────────┐
 │ c_custkey │       c_name       │ c_nationkey │
@@ -329,15 +329,15 @@ In wvlet, you can name a query using `select as` operator, and refer to the name
 
 ```sql
 wv> from customer
-  | where c_nationkey = 1
-  | -- Name the query as domestic_customer
-  | select as domestic_customer;
+  │ where c_nationkey = 1
+  │ -- Name the query as domestic_customer
+  │ select as domestic_customer;
 ```
 
 You can refer to the named query result in the subsequent queries:
 ```sql
 wv> from domestic_customer
-  | limit 5;
+  │ limit 5;
 ┌───────────┬────────────────────┬─────────────────────────────────────────┬─────────────┬─>
 │ c_custkey │       c_name       │                c_address                │ c_nationkey │ >
 │   long    │       string       │                 string                  │     int     │ >

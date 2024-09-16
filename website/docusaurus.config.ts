@@ -3,7 +3,7 @@ import type {Config} from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
 
 const config: Config = {
-  title: 'wvlet',
+  title: 'Wvlet',
   tagline: 'Wvlet: A New Flow-Style Query Language',
   favicon: 'img/favicon.ico',
 
