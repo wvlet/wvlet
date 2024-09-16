@@ -15,7 +15,7 @@ package wvlet.lang.runner
 
 import wvlet.airspec.AirSpec
 import wvlet.lang.WvletLangException
-import wvlet.lang.compiler.{CompilationUnit, Compiler, CompilerOptions}
+import wvlet.lang.compiler.{CompilationUnit, Compiler, CompilerOptions, WorkEnv}
 import wvlet.lang.runner.connector.duckdb.DuckDBConnector
 
 import scala.util.control.NonFatal
@@ -25,12 +25,12 @@ trait SpecRunner(
     ignoredSpec: Map[String, String] = Map.empty,
     prepareTPCH: Boolean = false
 ) extends AirSpec:
-  private val workEnv         = WvletWorkEnv(path = specPath, logLevel = logger.getLogLevel)
+  private val workEnv         = WorkEnv(path = specPath, logLevel = logger.getLogLevel)
   private val duckDB          = QueryExecutor(DuckDBConnector(prepareTPCH = prepareTPCH), workEnv)
   override def afterAll: Unit = duckDB.close()
 
   private val compiler = Compiler(
-    CompilerOptions(sourceFolders = List(specPath), workingFolder = specPath)
+    CompilerOptions(sourceFolders = List(specPath), workEnv = workEnv)
   )
 
   compiler.setDefaultCatalog(duckDB.getDBConnector.getCatalog("main", "memory"))

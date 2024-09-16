@@ -19,12 +19,17 @@ import wvlet.lang.compiler.analyzer.{RemoveUnusedQueries, SymbolLabeler, TypeRes
 import wvlet.lang.compiler.parser.{ParserPhase, WvletParser}
 import wvlet.lang.compiler.transform.{Incrementalize, RewriteExpr, TrinoRewritePivot}
 import wvlet.lang.model.plan.LogicalPlan
-import wvlet.log.LogSupport
+import wvlet.log.{LogLevel, LogSupport}
 
 object Compiler extends LogSupport:
 
   def default(sourcePath: String): Compiler =
-    new Compiler(CompilerOptions(sourceFolders = List(sourcePath), workingFolder = sourcePath))
+    new Compiler(
+      CompilerOptions(
+        sourceFolders = List(sourcePath),
+        workEnv = WorkEnv(sourcePath, logLevel = LogLevel.INFO)
+      )
+    )
 
   /**
     * Phases for text-based analysis of the source code
@@ -61,12 +66,14 @@ end Compiler
 case class CompilerOptions(
     phases: List[List[Phase]] = Compiler.allPhases,
     sourceFolders: List[String] = List("."),
-    workingFolder: String = ".",
+    workEnv: WorkEnv,
     // Context database catalog
     catalog: Option[String] = None,
     // context database schema
     schema: Option[String] = None
-)
+) {
+  // def workingFolder: String = workEnv.cacheFolder
+}
 
 class Compiler(compilerOptions: CompilerOptions) extends LogSupport:
 

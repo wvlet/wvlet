@@ -38,7 +38,7 @@ case class QueryExecutorConfig(rowLimit: Int = 40)
 
 class QueryExecutor(
     dbConnector: DBConnector,
-    workEnv: WvletWorkEnv,
+    workEnv: WorkEnv,
     private var config: QueryExecutorConfig = QueryExecutorConfig()
 ) extends LogSupport
     with AutoCloseable:
@@ -53,7 +53,7 @@ class QueryExecutor(
 
   def executeSingleSpec(sourceFolder: String, file: String): QueryResult =
     val compiler = Compiler(
-      CompilerOptions(sourceFolders = List(sourceFolder), workingFolder = sourceFolder)
+      CompilerOptions(sourceFolders = List(sourceFolder), workEnv = WorkEnv(sourceFolder))
     )
     compiler.compilationUnitsInSourcePaths.find(_.sourceFile.fileName == file) match
       case Some(unit) =>

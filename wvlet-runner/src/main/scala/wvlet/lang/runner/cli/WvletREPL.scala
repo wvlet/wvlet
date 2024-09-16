@@ -16,7 +16,7 @@ package wvlet.lang.runner.cli
 import org.jline.keymap.KeyMap
 import wvlet.lang.BuildInfo
 import wvlet.lang.compiler.parser.*
-import wvlet.lang.compiler.{CompilationUnit, SourceFile}
+import wvlet.lang.compiler.{CompilationUnit, SourceFile, WorkEnv}
 import wvlet.lang.model.plan.{Query, QueryStatement}
 import wvlet.lang.runner.connector.DBConnector
 import wvlet.lang.runner.connector.duckdb.DuckDBConnector
@@ -33,7 +33,6 @@ import wvlet.airframe.*
 import wvlet.airframe.control.{Shell, ThreadUtil}
 import wvlet.airframe.launcher.{Launcher, command, option}
 import wvlet.airframe.log.AnsiColorPalette
-import wvlet.lang.runner.WvletWorkEnv
 import wvlet.log.io.IOUtil
 import wvlet.log.{LogSupport, Logger}
 
@@ -105,7 +104,7 @@ class WvletREPLCli(
     val design = Design
       .newSilentDesign
       .bindSingleton[WvletREPL]
-      .bindInstance[WvletWorkEnv](WvletWorkEnv(path = workFolder, logLevel = opts.logLevel))
+      .bindInstance[WorkEnv](WorkEnv(path = workFolder, logLevel = opts.logLevel))
       .bindInstance[WvletScriptRunnerConfig](
         WvletScriptRunnerConfig(
           interactive = inputScripts.isEmpty,
@@ -136,9 +135,7 @@ class WvletREPLCli(
 
 end WvletREPLCli
 
-class WvletREPL(workEnv: WvletWorkEnv, runner: WvletScriptRunner)
-    extends AutoCloseable
-    with LogSupport:
+class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseable with LogSupport:
   import WvletREPL.*
 
   private val terminal    = TerminalBuilder.builder().name("wvlet-shell").build()
