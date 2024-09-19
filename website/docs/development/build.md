@@ -20,7 +20,7 @@ export PATH=$HOME/local/bin:$PATH
 ```
 
 :::info
-For Mac users, brew install script will be provided soon. 
+Mac users can install wvlet with Homebrew: [`brew install wvlet/wvlet/wvlet`](../usage/install.md)
 :::
 
 
