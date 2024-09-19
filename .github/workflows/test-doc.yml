@@ -21,7 +21,7 @@ jobs:
               - '.github/workflows/test-doc.yml'
               - 'website/**'
   build-doc:
-    name: Build
+    name: Build doc
     needs: changes
     if: ${{ needs.changes.outputs.src == 'true' }}
     runs-on: ubuntu-latest
