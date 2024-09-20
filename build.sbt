@@ -137,7 +137,7 @@ lazy val runner = project
     description := "wvlet query executor using trino, duckdb, etc.",
     libraryDependencies ++=
       Seq(
-        "org.jline"                     % "jline"             % "3.26.3",
+        "org.jline"                     % "jline"             % "3.27.0",
         "org.wvlet.airframe"           %% "airframe-config"   % AIRFRAME_VERSION,
         "org.wvlet.airframe"           %% "airframe-launcher" % AIRFRAME_VERSION,
         "com.github.ben-manes.caffeine" % "caffeine"          % "3.1.8",
