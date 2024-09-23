@@ -43,13 +43,13 @@ trait Catalog extends LogSupport:
   def findTable(schemaName: String, tableName: String): Option[Catalog.TableDef]
 
   def getTable(tableName: TableName): Option[Catalog.TableDef] =
-    tableName.catalog.exists(_ == catalogName) match
-      case true =>
+    tableName.catalog match
+      case c if c.isEmpty || c.exists(_ == catalogName) =>
         if tableName.schema.isDefined then
           findTable(tableName.schema.get, tableName.name)
         else
           None
-      case false =>
+      case _ =>
         None
 
   def getTable(schemaName: String, tableName: String): Catalog.TableDef

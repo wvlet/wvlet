@@ -16,6 +16,7 @@ package wvlet.lang.runner
 import wvlet.airframe.codec.{JDBCCodec, MessageCodec}
 import wvlet.airframe.control.Control
 import wvlet.airframe.control.Control.withResource
+import wvlet.lang.catalog.Catalog.TableName
 import wvlet.lang.compiler.*
 import wvlet.lang.compiler.codegen.GenSQL
 import wvlet.lang.compiler.codegen.GenSQL.Indented
@@ -176,10 +177,36 @@ class QueryExecutor(
           case e: SQLException =>
             // TODO: Switch error code based on the error type
             throw StatusCode.SYNTAX_ERROR.newException(s"${e.getMessage}\n[sql]\n${ctasSQL}", e)
-      case s: SaveAsFile =>
+      case a: AppendTo =>
+        val baseSQL = GenSQL.generateSQL(save.inputRelation, context)
+
+        val tbl           = TableName.parse(a.targetName)
+        val schema        = tbl.schema.getOrElse(context.defaultSchema)
+        val fullTableName = s"${schema}.${tbl.name}"
+        val insertSQL =
+          context.catalog.getTable(TableName.parse(fullTableName)) match
+            case Some(t) =>
+              s"insert into ${fullTableName}\n${baseSQL.sql}"
+            case None =>
+              s"create table ${fullTableName} as\n${baseSQL.sql}"
+
+        try
+          dbConnector.withConnection { conn =>
+            withResource(conn.createStatement()) { stmt =>
+              workEnv.outLogger.info(s"Executing DML:\n${insertSQL}")
+              debug(s"Executing DML:\n${insertSQL}")
+              stmt.execute(insertSQL)
+              dbConnector.processWarning(stmt.getWarnings())
+            }
+          }
+          QueryResult.empty
+        catch
+          case e: SQLException =>
+            throw StatusCode.SYNTAX_ERROR.newException(s"${e.getMessage}\n[sql]\n${insertSQL}", e)
+      case other =>
         throw StatusCode
           .NOT_IMPLEMENTED
-          .newException(s"SaveAsFile is not implemented yet", s.sourceLocation)
+          .newException(s"${other.modelName} is not implemented yet", other.sourceLocation)
     end match
     QueryResult.empty
 

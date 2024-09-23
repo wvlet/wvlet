@@ -131,12 +131,22 @@ case class Execute(expr: Expression, nodeLocation: Option[NodeLocation]) extends
 sealed trait Save extends DDL with UnaryRelation:
   def targetName: String
 
+sealed trait SaveToTable extends Save with HasRefName
+
 case class SaveAs(child: Relation, target: QualifiedName, nodeLocation: Option[NodeLocation])
-    extends Save
-    with HasRefName:
+    extends SaveToTable:
   override def targetName: String = target.fullName
   override def refName: NameExpr  = target
 
 case class SaveAsFile(child: Relation, path: String, nodeLocation: Option[NodeLocation])
+    extends Save:
+  override def targetName: String = path
+
+case class AppendTo(child: Relation, target: QualifiedName, nodeLocation: Option[NodeLocation])
+    extends SaveToTable:
+  override def targetName: String = target.fullName
+  override def refName: NameExpr  = target
+
+case class AppendToFile(child: Relation, path: String, nodeLocation: Option[NodeLocation])
     extends Save:
   override def targetName: String = path
