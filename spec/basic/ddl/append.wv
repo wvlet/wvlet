@@ -3,16 +3,16 @@ from [
   [2, "bob", 20],
   [3, "clark", 30]
 ] as person(id, name, age)
-save as person
+save as person_tmp
 
 from [
   [4, "dave", 40],
   [5, "eve", 50],
   [6, "frank", 60]
 ] as person(id, name, age)
-append to person
+append to person_tmp
 
-from person
+from person_tmp
 test _.rows should be [
   [1, "alice", 10],
   [2, "bob", 20],
