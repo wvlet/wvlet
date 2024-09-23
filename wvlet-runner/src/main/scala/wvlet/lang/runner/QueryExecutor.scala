@@ -13,26 +13,24 @@
  */
 package wvlet.lang.runner
 
-import wvlet.lang.{StatusCode, WvletLangException}
-import wvlet.lang.compiler.*
-import wvlet.lang.compiler.codegen.GenSQL
-import wvlet.lang.compiler.planner.ExecutionPlanner
-import wvlet.lang.model.DataType
-import wvlet.lang.model.DataType.{NamedType, SchemaType, UnresolvedType}
-import wvlet.lang.model.plan.*
-import wvlet.lang.model.expr.*
-import wvlet.lang.runner.connector.DBConnector
-import wvlet.lang.runner.connector.duckdb.DuckDBConnector
 import wvlet.airframe.codec.{JDBCCodec, MessageCodec}
 import wvlet.airframe.control.Control
 import wvlet.airframe.control.Control.withResource
+import wvlet.lang.compiler.*
+import wvlet.lang.compiler.codegen.GenSQL
 import wvlet.lang.compiler.codegen.GenSQL.Indented
-import wvlet.lang.model.expr.Expression
+import wvlet.lang.compiler.planner.ExecutionPlanner
+import wvlet.lang.model.DataType
+import wvlet.lang.model.DataType.{NamedType, SchemaType, UnresolvedType}
+import wvlet.lang.model.expr.*
+import wvlet.lang.model.plan.*
+import wvlet.lang.runner.connector.DBConnector
+import wvlet.lang.{StatusCode, WvletLangException}
 import wvlet.log.{LogLevel, LogSupport}
 
 import java.sql.SQLException
 import scala.collection.immutable.ListMap
-import scala.util.{Try, Using}
+import scala.util.Try
 
 case class QueryExecutorConfig(rowLimit: Int = 40)
 
@@ -146,13 +144,29 @@ class QueryExecutor(
   private def executeSave(save: Save)(using context: Context): QueryResult =
     save match
       case s: SaveAs =>
-        val baseSQL = GenSQL.generateSQL(save.inputRelation, context)
-        val ctasSQL = s"create table if not exists ${s.target.fullName} as\n${baseSQL.sql}"
-        workEnv.outLogger.info(s"Executing DDL:\n${ctasSQL}")
-        debug(s"Executing DDL:\n${ctasSQL}")
+        val baseSQL           = GenSQL.generateSQL(save.inputRelation, context)
+        var needsTableCleanup = false
+        val ctasCmd =
+          if context.dbType.supportCreateOrReplace then
+            s"create or replace table"
+          else
+            needsTableCleanup = true
+            "create table"
+
+        val ctasSQL = s"${ctasCmd} ${s.target.fullName} as\n${baseSQL.sql}"
         try
           dbConnector.withConnection { conn =>
             withResource(conn.createStatement()) { stmt =>
+              // TODO: May need to wrap drop-ctas in a transaction
+              if needsTableCleanup then
+                val dropSQL = s"drop table if exists ${s.target.fullName}"
+                debug(s"Dropping table:\n${dropSQL}")
+                workEnv.outLogger.info(s"Dropping table:\n${dropSQL}")
+                stmt.execute(dropSQL)
+                dbConnector.processWarning(stmt.getWarnings())
+
+              workEnv.outLogger.info(s"Executing DDL:\n${ctasSQL}")
+              debug(s"Executing DDL:\n${ctasSQL}")
               stmt.execute(ctasSQL)
               dbConnector.processWarning(stmt.getWarnings())
             }
@@ -166,7 +180,10 @@ class QueryExecutor(
         throw StatusCode
           .NOT_IMPLEMENTED
           .newException(s"SaveAsFile is not implemented yet", s.sourceLocation)
+    end match
     QueryResult.empty
+
+  end executeSave
 
   private def executeQuery(plan: LogicalPlan, context: Context): QueryResult =
     trace(s"Executing query: ${plan.pp}")
