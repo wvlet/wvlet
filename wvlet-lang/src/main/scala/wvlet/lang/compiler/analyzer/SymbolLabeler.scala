@@ -70,7 +70,7 @@ object SymbolLabeler extends Phase("symbol-labeler"):
         case m: ModelDef =>
           registerModelSymbol(m)(using ctx)
           ctx
-        case s: SaveAs =>
+        case s: SaveToTable =>
           iter(s.child, ctx)
           registerSaveAs(s)(using ctx)
           ctx
@@ -96,8 +96,8 @@ object SymbolLabeler extends Phase("symbol-labeler"):
     ctx.compilationUnit.enter(sym)
     sym
 
-  private def registerSaveAs(s: SaveAs)(using ctx: Context): Symbol =
-    val targetName = s.target.toTermName
+  private def registerSaveAs(s: SaveToTable)(using ctx: Context): Symbol =
+    val targetName = s.refName.toTermName
     val sym        = Symbol(ctx.global.newSymbolId)
     sym.symbolInfo = SavedRelationSymbolInfo(sym, targetName)
     s.symbol = sym

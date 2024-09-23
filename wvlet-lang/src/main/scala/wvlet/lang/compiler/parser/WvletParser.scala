@@ -592,6 +592,17 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           case _ =>
             val qname = qualifiedId()
             SaveAs(r, qname, t.nodeLocation)
+      case WvletToken.APPEND =>
+        consume(WvletToken.APPEND)
+        consume(WvletToken.TO)
+        val target = scanner.lookAhead()
+        target.token match
+          case WvletToken.STRING_LITERAL =>
+            val path = consume(WvletToken.STRING_LITERAL)
+            AppendToFile(r, path.str, t.nodeLocation)
+          case _ =>
+            val qname = qualifiedId()
+            AppendTo(r, qname, t.nodeLocation)
       case _ =>
         r
 
