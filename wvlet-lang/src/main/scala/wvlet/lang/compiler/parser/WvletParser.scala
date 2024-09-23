@@ -567,12 +567,13 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         Nil
 
   def query(): Relation =
-    val r: Relation = queryBody()
-    r match
-      case i: RelationInspector =>
-        i
-      case _ =>
-        Query(r, r.nodeLocation)
+    var r: Relation = queryBody()
+    r =
+      r match
+        case i: RelationInspector =>
+          i
+        case _ =>
+          Query(r, r.nodeLocation)
 
     queryRest(r)
   end query
