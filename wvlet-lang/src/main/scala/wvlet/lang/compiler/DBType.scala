@@ -13,18 +13,27 @@
  */
 package wvlet.lang.compiler
 
-enum DBType:
-  case DuckDB
+enum DBType(
+    // CREATE OR REPLACE is supported
+    val supportCreateOrReplace: Boolean = false
+):
+
+  case DuckDB extends DBType(supportCreateOrReplace = true)
   case Trino
-  case Hive
-  case BigQuery
-  case MySQL
-  case PostgreSQL
-  case SQLite
-  case Redshift
-  case Snowflake
-  case ClickHouse
-  case Oracle
-  case SQLServer
-  case InMemory
-  case Other(name: String)
+      extends DBType(
+        // Note: Trino connector may support `create or replace table` depending on the connector.
+        supportCreateOrReplace = false
+      )
+
+  case Hive                extends DBType
+  case BigQuery            extends DBType
+  case MySQL               extends DBType
+  case PostgreSQL          extends DBType
+  case SQLite              extends DBType
+  case Redshift            extends DBType
+  case Snowflake           extends DBType
+  case ClickHouse          extends DBType
+  case Oracle              extends DBType
+  case SQLServer           extends DBType
+  case InMemory            extends DBType
+  case Other(name: String) extends DBType
