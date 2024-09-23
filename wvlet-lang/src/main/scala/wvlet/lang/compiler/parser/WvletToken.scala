@@ -134,16 +134,19 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   case SCHEMA  extends WvletToken(Keyword, "schema")
   case TYPE    extends WvletToken(Keyword, "type")
   case EXTENDS extends WvletToken(Keyword, "extends")
-  case WITH    extends WvletToken(Keyword, "with")
-  case SHOW    extends WvletToken(Keyword, "show")
-  case SAMPLE  extends WvletToken(Keyword, "sample")
+
+  case SHOW   extends WvletToken(Keyword, "show")
+  case SAMPLE extends WvletToken(Keyword, "sample")
 
   case THIS extends WvletToken(Keyword, "this")
 
-  case OF extends WvletToken(Keyword, "of")
-  case IN extends WvletToken(Keyword, "in")
-  case BY extends WvletToken(Keyword, "by")
-  case AS extends WvletToken(Keyword, "as")
+  // Operator prepositions
+  case OF   extends WvletToken(Keyword, "of")
+  case IN   extends WvletToken(Keyword, "in")
+  case BY   extends WvletToken(Keyword, "by")
+  case AS   extends WvletToken(Keyword, "as")
+  case TO   extends WvletToken(Keyword, "to")
+  case WITH extends WvletToken(Keyword, "with")
 
   case FROM      extends WvletToken(Keyword, "from")
   case AGG       extends WvletToken(Keyword, "agg")
@@ -177,7 +180,6 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   case ADD      extends WvletToken(Keyword, "add")
   case EXCLUDE  extends WvletToken(Keyword, "exclude")
   case SHIFT    extends WvletToken(Keyword, "shift")
-  case TO       extends WvletToken(Keyword, "to")
   case DROP     extends WvletToken(Keyword, "drop")
   case DESCRIBE extends WvletToken(Keyword, "describe")
 
@@ -200,6 +202,7 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   case RANGE     extends WvletToken(Keyword, "range")
   case ROW       extends WvletToken(Keyword, "row")
 
+  // model management keywords
   case RUN     extends WvletToken(Keyword, "run")
   case IMPORT  extends WvletToken(Keyword, "import")
   case EXPORT  extends WvletToken(Keyword, "export")
@@ -207,16 +210,23 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   case MODEL   extends WvletToken(Keyword, "model")
   case EXECUTE extends WvletToken(Keyword, "execute")
 
+  // Control statements
   case IF   extends WvletToken(Keyword, "if")
   case THEN extends WvletToken(Keyword, "then")
   case ELSE extends WvletToken(Keyword, "else")
   case END  extends WvletToken(Keyword, "end")
 
+  // Condition keywords
   case AND  extends WvletToken(Keyword, "and")
   case OR   extends WvletToken(Keyword, "or")
   case NOT  extends WvletToken(Keyword, "not")
   case IS   extends WvletToken(Keyword, "is")
   case LIKE extends WvletToken(Keyword, "like")
+
+  // DDL operators
+  case SAVE   extends WvletToken(Keyword, "save")
+  case APPEND extends WvletToken(Keyword, "append")
+  case DELETE extends WvletToken(Keyword, "delete")
 
 end WvletToken
 

@@ -490,6 +490,7 @@ class GenSQL(ctx: Context) extends LogSupport:
       case s: SelectAsAlias =>
         printRelation(s.child)
       case d: Describe =>
+        // TODO: Compute schema only from local DataType information without using connectors
         // Trino doesn't support nesting describe statement, so we need to generate raw values as SQL
         val values = d
           .child
@@ -529,6 +530,7 @@ class GenSQL(ctx: Context) extends LogSupport:
             s"${sql} where ${printExpression(Expression.concatWithAnd(conds))}"
         selectWithIndentAndParenIfNecessary(s"${body} order by table_name")
       case s: Show if s.showType == ShowType.models =>
+        // TODO: Show models should be handled outside of GenSQL
         val models: Seq[ListMap[String, Any]] = ctx
           .global
           .getAllContexts

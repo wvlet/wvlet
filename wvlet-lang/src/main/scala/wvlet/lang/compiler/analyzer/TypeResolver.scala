@@ -131,7 +131,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
           ctx.enter(m.symbol)
           ctx
         case q: Relation =>
-          q.traverseOnce { case s: SelectAsAlias =>
+          q.traverseOnce { case s: HasRefName =>
             ctx.enter(s.symbol)
             preScan(s.child, ctx)
           }
@@ -183,7 +183,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
           .UNEXPECTED_STATE
           .newException(
             s"Unexpected plan type: ${other.getClass.getName}",
-            other.sourceLocation(using context.compilationUnit)
+            other.sourceLocation(using context)
           )
     end match
 

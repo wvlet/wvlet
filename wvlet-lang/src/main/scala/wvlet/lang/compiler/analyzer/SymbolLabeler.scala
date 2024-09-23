@@ -24,29 +24,17 @@ import wvlet.lang.compiler.{
   PackageSymbolInfo,
   Phase,
   RelationAliasSymbolInfo,
+  SavedRelationSymbolInfo,
   Scope,
   Symbol,
   TypeSymbol,
   TypeSymbolInfo
 }
-import wvlet.lang.model.DataType.{NamedType, SchemaType, UnresolvedType}
-import wvlet.lang.model.Type.FunctionType
-import wvlet.lang.model.{DataType, Type}
-import Type.{ImportType, PackageType}
-import wvlet.lang.StatusCode
+import wvlet.lang.model.DataType.{NamedType, SchemaType}
+import wvlet.lang.model.Type.{FunctionType, ImportType, PackageType}
 import wvlet.lang.model.expr.{DotRef, Identifier, NameExpr, QualifiedName}
-import wvlet.lang.model.plan.{
-  FieldDef,
-  FunctionDef,
-  Import,
-  LogicalPlan,
-  ModelDef,
-  PackageDef,
-  Query,
-  Relation,
-  SelectAsAlias,
-  TypeDef
-}
+import wvlet.lang.model.plan.*
+import wvlet.lang.model.{DataType, Type}
 
 /**
   * Assign unique Symbol to PackageDef, Import, TypeDef, and ModelDef nodes, and assign a lazy
@@ -82,10 +70,14 @@ object SymbolLabeler extends Phase("symbol-labeler"):
         case m: ModelDef =>
           registerModelSymbol(m)(using ctx)
           ctx
+        case s: SaveAs =>
+          iter(s.child, ctx)
+          registerSaveAs(s)(using ctx)
+          ctx
         case q: Relation =>
           q.traverseOnce { case s: SelectAsAlias =>
-            registerSelectAsAlias(s)(using ctx)
             iter(s.child, ctx)
+            registerSelectAsAlias(s)(using ctx)
           }
           ctx
         case _ =>
@@ -99,6 +91,15 @@ object SymbolLabeler extends Phase("symbol-labeler"):
     val aliasName = s.alias.toTermName
     val sym       = Symbol(ctx.global.newSymbolId)
     sym.symbolInfo = RelationAliasSymbolInfo(sym, aliasName)
+    s.symbol = sym
+    sym.tree = s.child
+    ctx.compilationUnit.enter(sym)
+    sym
+
+  private def registerSaveAs(s: SaveAs)(using ctx: Context): Symbol =
+    val targetName = s.target.toTermName
+    val sym        = Symbol(ctx.global.newSymbolId)
+    sym.symbolInfo = SavedRelationSymbolInfo(sym, targetName)
     s.symbol = sym
     sym.tree = s.child
     ctx.compilationUnit.enter(sym)

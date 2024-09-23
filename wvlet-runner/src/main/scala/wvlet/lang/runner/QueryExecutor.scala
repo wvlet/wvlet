@@ -73,6 +73,7 @@ class QueryExecutor(
     var lastResult: QueryResult = QueryResult.empty
     val results                 = List.newBuilder[QueryResult]
 
+    // TODO: Use an external reporting object to collect the results
     def report(r: QueryResult): QueryResult =
       if !r.isEmpty then
         results += r
@@ -98,6 +99,10 @@ class QueryExecutor(
       e match
         case ExecuteQuery(plan) =>
           report(executeQuery(plan, context))
+        case ExecuteSave(save, queryPlan) =>
+          // Evaluate test/debug if exists
+          report(process(queryPlan))
+          report(executeSave(save)(using context))
         case d @ ExecuteDebug(debugPlan, debugExecutionPlan) =>
           val debugInput = lastResult
           executeDebug(d, lastResult)(using context)
@@ -137,6 +142,31 @@ class QueryExecutor(
     catch
       case e: SQLException =>
         throw StatusCode.SYNTAX_ERROR.newException(s"${e.getMessage}\n[sql]\n${cmd}", e)
+
+  private def executeSave(save: Save)(using context: Context): QueryResult =
+    save match
+      case s: SaveAs =>
+        val baseSQL = GenSQL.generateSQL(save.inputRelation, context)
+        val ctasSQL = s"create table if not exists ${s.target.fullName} as\n${baseSQL.sql}"
+        workEnv.outLogger.info(s"Executing DDL:\n${ctasSQL}")
+        debug(s"Executing DDL:\n${ctasSQL}")
+        try
+          dbConnector.withConnection { conn =>
+            withResource(conn.createStatement()) { stmt =>
+              stmt.execute(ctasSQL)
+              dbConnector.processWarning(stmt.getWarnings())
+            }
+          }
+          QueryResult.empty
+        catch
+          case e: SQLException =>
+            // TODO: Switch error code based on the error type
+            throw StatusCode.SYNTAX_ERROR.newException(s"${e.getMessage}\n[sql]\n${ctasSQL}", e)
+      case s: SaveAsFile =>
+        throw StatusCode
+          .NOT_IMPLEMENTED
+          .newException(s"SaveAsFile is not implemented yet", s.sourceLocation)
+    QueryResult.empty
 
   private def executeQuery(plan: LogicalPlan, context: Context): QueryResult =
     trace(s"Executing query: ${plan.pp}")
@@ -189,6 +219,7 @@ class QueryExecutor(
           result
         catch
           case e: SQLException =>
+            // TODO: Switch error code based on the error type
             throw StatusCode
               .SYNTAX_ERROR
               .newException(s"${e.getMessage}\n[sql]\n${generatedSQL.sql}", e)

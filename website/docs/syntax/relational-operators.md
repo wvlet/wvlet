@@ -31,6 +31,12 @@ In wvlet, you need to use __lower-case__ keywords for SQL-like operators. The fo
 | [test `(test_expr)`](test-syntax.md)                                            | Test the query result, which will be evaluated only in the test-run mode.                                                                                                                                                                               |
 | debug (\| (query))+                                                             | Same rows (no change), but run a debug query using the subsequent query expression, prefixed with `\|`                                                                                                                                                  |
 
+## DDL Statements
+
+| Operator              | Description                                              |
+|-----------------------|----------------------------------------------------------|
+| save as `table_name`  | Save the query result as a new table with the given name |
+| save as `'file name'` | Save the query result as a file with the given name      |
 
 ## Relation Inspection Operators
 

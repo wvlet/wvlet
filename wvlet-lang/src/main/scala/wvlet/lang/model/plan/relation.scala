@@ -15,7 +15,7 @@ package wvlet.lang.model.plan
 
 import wvlet.lang.catalog.Catalog
 import wvlet.lang.catalog.Catalog.TableName
-import wvlet.lang.compiler.{Name, TypeName}
+import wvlet.lang.compiler.{Name, TermName, TypeName}
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.*
 import wvlet.lang.model.DataType.{
@@ -84,9 +84,14 @@ case class ModelDef(
   override def inputRelationType: RelationType = EmptyRelationType
   override def relationType: RelationType      = givenRelationType.getOrElse(child.relationType)
 
+trait HasRefName extends UnaryRelation:
+  def refName: NameExpr
+
 case class SelectAsAlias(child: Relation, alias: NameExpr, nodeLocation: Option[NodeLocation])
-    extends UnaryRelation:
+    extends UnaryRelation
+    with HasRefName:
   override def relationType: RelationType = child.relationType
+  override def refName: NameExpr          = alias
 
 case class TestRelation(child: Relation, testExpr: Expression, nodeLocation: Option[NodeLocation])
     extends UnaryRelation:

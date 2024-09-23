@@ -13,6 +13,7 @@
  */
 package wvlet.lang.model.plan
 
+import wvlet.lang.compiler.TermName
 import wvlet.lang.model.DataType.EmptyRelationType
 import wvlet.lang.model.{NodeLocation, RelationType}
 import wvlet.lang.model.expr.*
@@ -126,3 +127,16 @@ case class Delete(table: NameExpr, where: Option[Expression], nodeLocation: Opti
   override def relationType: RelationType = EmptyRelationType
 
 case class Execute(expr: Expression, nodeLocation: Option[NodeLocation]) extends DDL
+
+sealed trait Save extends DDL with UnaryRelation:
+  def targetName: String
+
+case class SaveAs(child: Relation, target: QualifiedName, nodeLocation: Option[NodeLocation])
+    extends Save
+    with HasRefName:
+  override def targetName: String = target.fullName
+  override def refName: NameExpr  = target
+
+case class SaveAsFile(child: Relation, path: String, nodeLocation: Option[NodeLocation])
+    extends Save:
+  override def targetName: String = path

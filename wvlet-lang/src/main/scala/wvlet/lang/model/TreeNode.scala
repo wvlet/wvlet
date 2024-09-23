@@ -30,6 +30,14 @@ trait TreeNode:
     *   the code location in the SQL text if available
     */
   def nodeLocation: Option[NodeLocation]
-  def sourceLocation(using cu: CompilationUnit): SourceLocation = SourceLocation(cu, nodeLocation)
-  def locationString(using ctx: Context): String =
-    sourceLocation(using ctx.compilationUnit).locationString
+  def sourceLocation(using ctx: Context): SourceLocation = SourceLocation(
+    ctx.compilationUnit,
+    nodeLocation
+  )
+
+  def sourceLocationOfCompilationUnit(using cu: CompilationUnit): SourceLocation = SourceLocation(
+    cu,
+    nodeLocation
+  )
+
+  def locationString(using ctx: Context): String = sourceLocation(using ctx).locationString

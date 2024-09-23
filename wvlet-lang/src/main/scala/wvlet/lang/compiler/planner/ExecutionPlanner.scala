@@ -47,6 +47,9 @@ object ExecutionPlanner extends Phase("execution-plan"):
           }
           plans ++= tests.result().map(ExecuteTest(_))
           ExecutionPlan(plans.result())
+        case save: Save =>
+          val queryPlan = plan(save.inputRelation, evalQuery = false)
+          ExecuteSave(save, queryPlan)
         case r: Relation =>
           val plans = List.newBuilder[ExecutionPlan]
           // Iterate through the children to find any test/debug queries
@@ -64,7 +67,8 @@ object ExecutionPlanner extends Phase("execution-plan"):
           ExecutionPlan.empty
 
     val executionPlan = plan(unit.resolvedPlan, evalQuery = true)
-    trace(s"Execution plan:\n${executionPlan}")
+    trace(s"[Logical plan]:\n${unit.resolvedPlan.pp})")
+    debug(s"[Execution plan]:\n${executionPlan.pp}")
     executionPlan
 
   end plan

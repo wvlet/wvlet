@@ -42,9 +42,9 @@ modelParams: '(' modelParam (',' modelParam)* ')'
 modelParam : identifier ':' identifier ('=' expression)?
 
 // top-level query
-query      : queryBody
+query      : queryBody queryRest?
 queryBody  : querySingle queryBlock*
-// This rule can be used for sub queries
+// A rule for sub queries
 querySingle: 'from' relation (',' relation)* ','? queryBlock*
            | 'select' selectItems queryBlock*
            // For parenthesized query, do not continue queryBlock for disambiguation
@@ -81,6 +81,9 @@ queryBlock: joinExpr
           | 'dedup'
           | 'describe'
           | 'debug' debugExpr+
+
+queryRest: 'save' 'as' (qualifiedId | stringLiteral)
+
 
 joinExpr    : joinType? 'join' relation joinCriteria
             | 'cross' 'join' relation
