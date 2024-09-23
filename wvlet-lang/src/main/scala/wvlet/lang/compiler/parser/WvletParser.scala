@@ -76,7 +76,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
   private def unexpected(expr: Expression): Nothing =
     throw StatusCode
       .SYNTAX_ERROR
-      .newException(s"Unexpected expression: ${expr}", expr.sourceLocation)
+      .newException(s"Unexpected expression: ${expr}", expr.sourceLocationOfCompilationUnit)
 
   def identifier(): QualifiedName =
     val t = scanner.lookAhead()
@@ -216,7 +216,10 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         case other =>
           throw StatusCode
             .SYNTAX_ERROR
-            .newException(s"Expected a query block, but found ${other}", other.sourceLocation)
+            .newException(
+              s"Expected a query block, but found ${other}",
+              other.sourceLocationOfCompilationUnit
+            )
     consume(WvletToken.END)
     ModelDef(
       TableName(name.fullName),
@@ -563,7 +566,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       case _ =>
         Nil
 
-  def query(): QueryStatement =
+  def query(): Relation =
     val r: Relation = queryBody()
     r match
       case i: RelationInspector =>
@@ -571,7 +574,25 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       case _ =>
         Query(r, r.nodeLocation)
 
+    queryRest(r)
   end query
+
+  def queryRest(r: Relation): Relation =
+    val t = scanner.lookAhead()
+    t.token match
+      case WvletToken.SAVE =>
+        consume(WvletToken.SAVE)
+        consume(WvletToken.AS)
+        val target = scanner.lookAhead()
+        target.token match
+          case WvletToken.STRING_LITERAL =>
+            val path = consume(WvletToken.STRING_LITERAL)
+            SaveAsFile(r, path.str, t.nodeLocation)
+          case _ =>
+            val qname = qualifiedId()
+            SaveAs(r, qname, t.nodeLocation)
+      case _ =>
+        r
 
   def queryBody(): Relation = queryBlock(querySingle())
 

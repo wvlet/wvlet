@@ -166,7 +166,7 @@ object LogicalPlanPrinter extends LogSupport:
 
   end print
 
-  private def printExpression(e: Expression): String =
+  def printExpression(e: Expression): String =
     e match
       case i: Identifier =>
         i.strExpr

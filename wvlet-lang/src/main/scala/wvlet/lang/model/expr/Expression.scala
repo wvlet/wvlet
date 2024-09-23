@@ -16,13 +16,14 @@ package wvlet.lang.model.expr
 import wvlet.lang.StatusCode
 import wvlet.lang.model.*
 import wvlet.lang.model.DataType.*
-import wvlet.lang.model.plan.LogicalPlan
+import wvlet.lang.model.plan.{LogicalPlan, LogicalPlanPrinter}
 import wvlet.airframe.surface.reflect.ReflectTypeUtil
 import wvlet.log.LogSupport
 
 /**
   */
 trait Expression extends TreeNode with Product with LogSupport:
+  def pp: String = LogicalPlanPrinter.printExpression(this)
   def children: Seq[Expression]
 
   /**
