@@ -16,7 +16,6 @@ package wvlet.lang.runner.connector.trino
 import wvlet.lang.catalog.SQLFunction
 import wvlet.lang.compiler.DBType
 import wvlet.lang.model.DataType
-import wvlet.lang.model.sql.*
 import wvlet.lang.runner.connector.DBConnector
 import io.trino.jdbc.{TrinoDriver, TrinoResultSet}
 import wvlet.log.LogSupport
