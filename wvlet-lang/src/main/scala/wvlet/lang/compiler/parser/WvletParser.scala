@@ -603,8 +603,30 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           case _ =>
             val qname = qualifiedId()
             AppendTo(r, qname, t.nodeLocation)
+      case WvletToken.DELETE =>
+        consume(WvletToken.DELETE)
+        def iter(x: Relation): Relation =
+          x match
+            case f: FilteringRelation =>
+              iter(f.child)
+            case TableRef(qname: QualifiedName, _) =>
+              Delete(r, qname, t.nodeLocation)
+            case f: FileScan =>
+              DeleteFromFile(r, f.path, t.nodeLocation)
+            case other =>
+              throw StatusCode
+                .SYNTAX_ERROR
+                .newException(
+                  s"delete statement can't have ${other.modelName} operator",
+                  t.sourceLocation
+                )
+        iter(r)
       case _ =>
         r
+
+    end match
+
+  end queryRest
 
   def queryBody(): Relation = queryBlock(querySingle())
 

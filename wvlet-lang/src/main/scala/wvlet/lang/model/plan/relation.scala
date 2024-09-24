@@ -518,7 +518,9 @@ case class SQLSelect(
 
 trait QueryStatement extends UnaryRelation
 
-case class Query(body: Relation, nodeLocation: Option[NodeLocation]) extends QueryStatement:
+case class Query(body: Relation, nodeLocation: Option[NodeLocation])
+    extends QueryStatement
+    with FilteringRelation:
   override def child: Relation  = body
   override def toString: String = s"Query(body:${body})"
   override def children: Seq[LogicalPlan] =

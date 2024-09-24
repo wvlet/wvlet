@@ -82,9 +82,10 @@ queryBlock: joinExpr
           | 'describe'
           | 'debug' debugExpr+
 
-queryRest: 'save' 'as' ddlTarget
-         | 'append' 'to' ddlTarget
-ddlTarget: qualifiedId | stringLiteral 
+queryRest    : 'save' 'as' updateTarget
+             | 'append' 'to' updateTarget
+             | 'delete'
+updateTarget : qualifiedId | stringLiteral 
 
 
 joinExpr    : joinType? 'join' relation joinCriteria

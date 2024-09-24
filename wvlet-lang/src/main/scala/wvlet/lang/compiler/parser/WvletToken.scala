@@ -223,10 +223,11 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   case IS   extends WvletToken(Keyword, "is")
   case LIKE extends WvletToken(Keyword, "like")
 
-  // DDL operators
-  case SAVE   extends WvletToken(Keyword, "save")
-  case APPEND extends WvletToken(Keyword, "append")
-  case DELETE extends WvletToken(Keyword, "delete")
+  // DML operators
+  case SAVE     extends WvletToken(Keyword, "save")
+  case APPEND   extends WvletToken(Keyword, "append")
+  case DELETE   extends WvletToken(Keyword, "delete")
+  case TRUNCATE extends WvletToken(Keyword, "truncate")
 
 end WvletToken
 
