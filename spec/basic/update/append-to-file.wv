@@ -1,0 +1,23 @@
+from [
+  [1, "alice", 10],
+  [2, "bob", 20],
+  [3, "clark", 30]
+] as person(id, name, age)
+save as 'target/person_append_to_file.parquet'
+
+from [
+  [4, "dave", 40],
+  [5, "eve", 50],
+  [6, "frank", 60]
+] as person(id, name, age)
+append to 'target/person_append_to_file.parquet'
+
+from 'target/person_append_to_file.parquet'
+test _.rows should be [
+  [1, "alice", 10],
+  [2, "bob", 20],
+  [3, "clark", 30],
+  [4, "dave", 40],
+  [5, "eve", 50],
+  [6, "frank", 60],
+]

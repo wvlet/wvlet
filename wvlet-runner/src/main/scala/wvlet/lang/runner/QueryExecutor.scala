@@ -29,6 +29,7 @@ import wvlet.lang.runner.connector.DBConnector
 import wvlet.lang.{StatusCode, WvletLangException}
 import wvlet.log.{LogLevel, LogSupport}
 
+import java.io.File
 import java.sql.SQLException
 import scala.collection.immutable.ListMap
 import scala.util.Try
@@ -201,9 +202,14 @@ class QueryExecutor(
         statements += ctasSQL
         executeStatement(statements.result())
         QueryResult.empty
+      case s: SaveAsFile if context.dbType == DBType.DuckDB =>
+        val baseSQL    = GenSQL.generateSQL(save.inputRelation, context)
+        val targetPath = context.dataFilePath(s.path)
+        val sql        = s"copy (${baseSQL.sql}) to '${targetPath}'"
+        executeStatement(List(sql))
+        QueryResult.empty
       case a: AppendTo =>
-        val baseSQL = GenSQL.generateSQL(save.inputRelation, context)
-
+        val baseSQL       = GenSQL.generateSQL(save.inputRelation, context)
         val tbl           = TableName.parse(a.targetName)
         val schema        = tbl.schema.getOrElse(context.defaultSchema)
         val fullTableName = s"${schema}.${tbl.name}"
@@ -216,10 +222,29 @@ class QueryExecutor(
 
         executeStatement(List(insertSQL))
         QueryResult.empty
+      case a: AppendToFile if context.dbType == DBType.DuckDB =>
+        val baseSQL    = GenSQL.generateSQL(save.inputRelation, context)
+        val targetPath = context.dataFilePath(a.path)
+        if new File(targetPath).exists then
+          val sql =
+            s"""copy (
+               |  (select * from '${targetPath}')
+               |  union all
+               |  ${baseSQL.sql}
+               |)
+               |to '${targetPath}' (USE_TMP_FILE true)""".stripMargin
+          executeStatement(List(sql))
+        else
+          val sql = s"create (${baseSQL.sql}) to '${targetPath}'"
+          executeStatement(List(sql))
+        QueryResult.empty
       case other =>
         throw StatusCode
           .NOT_IMPLEMENTED
-          .newException(s"${other.modelName} is not implemented yet", other.sourceLocation)
+          .newException(
+            s"${other.modelName} is not implemented yet for ${context.dbType}",
+            other.sourceLocation
+          )
     end match
     QueryResult.empty
 
