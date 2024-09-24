@@ -1,0 +1,13 @@
+from [
+  [1, "alice", 10],
+  [2, "bob", 20],
+  [3, "clark", 30]
+] as person(id, name, age)
+save as 'target/person_copy_save_as_file.parquet'
+
+from 'target/person_copy_save_as_file.parquet'
+test _.rows should be [
+  [1, "alice", 10],
+  [2, "bob", 20],
+  [3, "clark", 30],
+]

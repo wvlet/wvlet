@@ -14,7 +14,7 @@
 package wvlet.lang.compiler.analyzer
 
 import wvlet.lang.StatusCode
-import wvlet.lang.model.DataType.{NamedType, SchemaType}
+import wvlet.lang.model.DataType.{EmptyRelationType, NamedType, SchemaType}
 import wvlet.lang.model.expr.NameExpr
 import wvlet.lang.model.{DataType, RelationType}
 import wvlet.lang.compiler.Name
@@ -22,6 +22,7 @@ import org.duckdb.DuckDBConnection
 import wvlet.airframe.control.Control
 import wvlet.airframe.control.Control.withResource
 
+import java.io.File
 import java.sql.DriverManager
 
 object ParquetAnalyzer:
@@ -36,18 +37,23 @@ object ParquetAnalyzer:
         throw StatusCode.NOT_IMPLEMENTED.newException("duckdb connection is unavailable")
 
   def guessSchema(path: String): RelationType =
-    // Use DuckDB to analyze the schema of the Parquet file
-    val sql = s"select * from '${path}' limit 0"
+    if !new File(path).exists then
+      EmptyRelationType
+    else
+      // Use DuckDB to analyze the schema of the Parquet file
+      val sql = s"select * from '${path}' limit 0"
 
-    withConnection { conn =>
-      withResource(conn.createStatement().executeQuery(sql)) { rs =>
-        val metadata = rs.getMetaData
-        val columns = (1 to metadata.getColumnCount).map { i =>
-          val name     = metadata.getColumnName(i)
-          val dataType = metadata.getColumnTypeName(i).toLowerCase
-          // TODO support non-primitive type parsing
-          NamedType(Name.termName(name), DataType.parse(dataType))
+      withConnection { conn =>
+        withResource(conn.createStatement().executeQuery(sql)) { rs =>
+          val metadata = rs.getMetaData
+          val columns = (1 to metadata.getColumnCount).map { i =>
+            val name     = metadata.getColumnName(i)
+            val dataType = metadata.getColumnTypeName(i).toLowerCase
+            // TODO support non-primitive type parsing
+            NamedType(Name.termName(name), DataType.parse(dataType))
+          }
+          SchemaType(None, Name.typeName(RelationType.newRelationTypeName), columns)
         }
-        SchemaType(None, Name.typeName(RelationType.newRelationTypeName), columns)
       }
-    }
+
+end ParquetAnalyzer
