@@ -24,7 +24,6 @@ import wvlet.lang.compiler.{
   Symbol,
   TermName
 }
-import wvlet.lang.catalog.Catalog.TableName
 import wvlet.lang.compiler.DBType.{DuckDB, Trino}
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*

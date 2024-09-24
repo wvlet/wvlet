@@ -1,6 +1,7 @@
 from 'person.json'
 
-test _.output is """
+-- row count mismatch needs to be detected
+test _.output should be """
 ┌──────┬────────┬──────┐
 │  id  │  name  │ age  │
 │ long │ string │ long │

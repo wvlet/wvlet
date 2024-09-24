@@ -102,6 +102,10 @@ class QueryExecutor(
           // Evaluate test/debug if exists
           report(process(queryPlan))
           report(executeSave(save)(using context))
+        case ExecuteDelete(delete, queryPlan) =>
+          // Evaluate test/debug if exists
+          report(process(queryPlan))
+          report(executeDelete(delete)(using context))
         case d @ ExecuteDebug(debugPlan, debugExecutionPlan) =>
           val debugInput = lastResult
           executeDebug(d, lastResult)(using context)
@@ -125,27 +129,61 @@ class QueryExecutor(
 
   end execute
 
+  private def executeStatement(sqls: List[String]): Unit = dbConnector.withConnection { conn =>
+    withResource(conn.createStatement()) { stmt =>
+      sqls.foreach { sql =>
+        workEnv.outLogger.info(s"Executing SQL:\n${sql}")
+        debug(s"Executing SQL:\n${sql}")
+        try
+          stmt.execute(sql)
+          dbConnector.processWarning(stmt.getWarnings)
+        catch
+          case e: SQLException =>
+            throw StatusCode.SYNTAX_ERROR.newException(s"${e.getMessage}\n[sql]\n${sql}", e)
+      }
+    }
+  }
+
   private def executeCommand(e: Expression, context: Context): QueryResult =
     val gen = GenSQL(context)
     val cmd = gen.printExpression(e)(using Indented(0))
-    workEnv.outLogger.info(s"Executing command:\n${cmd}")
-    debug(s"Executing command:\n${cmd}")
-    try
-      dbConnector.withConnection { conn =>
-        withResource(conn.createStatement()) { stmt =>
-          stmt.execute(cmd)
-          dbConnector.processWarning(stmt.getWarnings())
-          QueryResult.empty
+    executeStatement(List(cmd))
+    QueryResult.empty
+
+  private def executeDelete(ops: DeleteOps)(using context: Context): QueryResult =
+    val gen = GenSQL(context)
+    ops match
+      case d: Delete =>
+        def filterExpr(x: Relation): Option[String] =
+          x match
+            case q: Query =>
+              filterExpr(q.child)
+            case f: Filter =>
+              Some(gen.printExpression(f.filterExpr)(using Indented(0)))
+            case l: LeafPlan =>
+              None
+            case other =>
+              throw StatusCode
+                .SYNTAX_ERROR
+                .newException(s"Unsupported delete input: ${other.modelName}", other.sourceLocation)
+
+        val filterSQL = filterExpr(d.inputRelation)
+        var sql       = s"delete from ${d.targetTable.fullName}"
+        filterSQL.foreach { expr =>
+          sql += s"\nwhere ${expr}"
         }
-      }
-    catch
-      case e: SQLException =>
-        throw StatusCode.SYNTAX_ERROR.newException(s"${e.getMessage}\n[sql]\n${cmd}", e)
+        executeStatement(List(sql))
+        QueryResult.empty
+      case other =>
+        throw StatusCode
+          .NOT_IMPLEMENTED
+          .newException(s"${other.modelName} is not implemented yet", other.sourceLocation)
 
   private def executeSave(save: Save)(using context: Context): QueryResult =
     save match
       case s: SaveAs =>
         val baseSQL           = GenSQL.generateSQL(save.inputRelation, context)
+        val statements        = List.newBuilder[String]
         var needsTableCleanup = false
         val ctasCmd =
           if context.dbType.supportCreateOrReplace then
@@ -153,30 +191,16 @@ class QueryExecutor(
           else
             needsTableCleanup = true
             "create table"
-
         val ctasSQL = s"${ctasCmd} ${s.target.fullName} as\n${baseSQL.sql}"
-        try
-          dbConnector.withConnection { conn =>
-            withResource(conn.createStatement()) { stmt =>
-              // TODO: May need to wrap drop-ctas in a transaction
-              if needsTableCleanup then
-                val dropSQL = s"drop table if exists ${s.target.fullName}"
-                debug(s"Dropping table:\n${dropSQL}")
-                workEnv.outLogger.info(s"Dropping table:\n${dropSQL}")
-                stmt.execute(dropSQL)
-                dbConnector.processWarning(stmt.getWarnings())
 
-              workEnv.outLogger.info(s"Executing DDL:\n${ctasSQL}")
-              debug(s"Executing DDL:\n${ctasSQL}")
-              stmt.execute(ctasSQL)
-              dbConnector.processWarning(stmt.getWarnings())
-            }
-          }
-          QueryResult.empty
-        catch
-          case e: SQLException =>
-            // TODO: Switch error code based on the error type
-            throw StatusCode.SYNTAX_ERROR.newException(s"${e.getMessage}\n[sql]\n${ctasSQL}", e)
+        if needsTableCleanup then
+          val dropSQL = s"drop table if exists ${s.target.fullName}"
+          // TODO: May need to wrap drop-ctas in a transaction
+          statements += dropSQL
+
+        statements += ctasSQL
+        executeStatement(statements.result())
+        QueryResult.empty
       case a: AppendTo =>
         val baseSQL = GenSQL.generateSQL(save.inputRelation, context)
 
@@ -190,19 +214,8 @@ class QueryExecutor(
             case None =>
               s"create table ${fullTableName} as\n${baseSQL.sql}"
 
-        try
-          dbConnector.withConnection { conn =>
-            withResource(conn.createStatement()) { stmt =>
-              workEnv.outLogger.info(s"Executing DML:\n${insertSQL}")
-              debug(s"Executing DML:\n${insertSQL}")
-              stmt.execute(insertSQL)
-              dbConnector.processWarning(stmt.getWarnings())
-            }
-          }
-          QueryResult.empty
-        catch
-          case e: SQLException =>
-            throw StatusCode.SYNTAX_ERROR.newException(s"${e.getMessage}\n[sql]\n${insertSQL}", e)
+        executeStatement(List(insertSQL))
+        QueryResult.empty
       case other =>
         throw StatusCode
           .NOT_IMPLEMENTED
