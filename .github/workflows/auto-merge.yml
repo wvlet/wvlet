@@ -25,7 +25,7 @@ jobs:
   auto-merge-scala-steward:
     name: Auto-Merge Scala Steward PRs
     runs-on: ubuntu-latest
-    if: ${{ github.actor == 'xerial-bot' }}
+    if: ${{ github.actor == 'xerial-bot' || github.actor == 'scala-steward-wvlet' }}
     steps:
       - name: Generate token
         uses: actions/create-github-app-token@v1
