@@ -1072,7 +1072,12 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           val alias = identifier()
           SingleColumn(alias, item, item.nodeLocation)
         case _ =>
-          SingleColumn(EmptyName, item, item.nodeLocation)
+          item match
+            case i: Identifier =>
+              // Propagate the column name for a single column reference
+              SingleColumn(i, i, t.nodeLocation)
+            case _ =>
+              SingleColumn(EmptyName, item, item.nodeLocation)
 
     val t = scanner.lookAhead()
     t.token match
@@ -1081,9 +1086,6 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         exprOrColumName match
           case Eq(columnName: Identifier, expr: Expression, nodeLocation) =>
             SingleColumn(columnName, expr, t.nodeLocation)
-          case i: Identifier =>
-            // Propagate the column name for a single column reference
-            SingleColumn(i, exprOrColumName, t.nodeLocation)
           case _ =>
             selectItemWithAlias(exprOrColumName)
       case _ =>
