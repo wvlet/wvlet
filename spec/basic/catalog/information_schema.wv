@@ -1,0 +1,15 @@
+from [
+  [1, "alice", 10],
+  [2, "bob", 20],
+  [3, "clark", 30]
+] as person(id, name, age)
+save as demo_table
+
+from wv_tables()
+test _.columns should be ['catalog', 'schema', 'table', 'table_type']
+test _.rows should contain ['memory', 'main', 'demo_table', 'BASE TABLE']
+
+
+from wv_schemas()
+test _.columns should be ['catalog', 'schema']
+test _.rows should contain ['memory', 'main']

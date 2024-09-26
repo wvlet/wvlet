@@ -22,6 +22,7 @@ import wvlet.lang.model.DataType.{
   TypeVariable
 }
 import wvlet.lang.model.expr.BinaryExprType.DivideInt
+import wvlet.lang.model.expr.NameExpr.sqlKeywords
 import wvlet.lang.model.{DataType, NodeLocation}
 import wvlet.lang.model.plan.*
 
@@ -58,7 +59,7 @@ sealed trait NameExpr extends Expression:
           i.unquotedValue
         case _ =>
           fullName
-    if s.matches("^[_a-zA-Z][_a-zA-Z0-9]*$") then
+    if s.matches("^[_a-zA-Z][_a-zA-Z0-9]*$") && !sqlKeywords.contains(s) then
       s
     else
       s""""${s}""""
@@ -66,6 +67,15 @@ sealed trait NameExpr extends Expression:
 object NameExpr:
   val EmptyName: Identifier           = UnquotedIdentifier("<empty>", None)
   def fromString(s: String): NameExpr = UnquotedIdentifier(s, None)
+
+  private val sqlKeywords = Set(
+    // TODO enumerate more SQL keywords
+    "select",
+    "schema",
+    "table",
+    "from",
+    "catalog"
+  )
 
 case class Wildcard(nodeLocation: Option[NodeLocation]) extends LeafExpression with QualifiedName:
   override def leafName: String = "*"

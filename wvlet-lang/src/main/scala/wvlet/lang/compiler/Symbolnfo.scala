@@ -28,6 +28,7 @@ import wvlet.lang.model.plan.{DefContext, EmptyRelation, LogicalPlan}
   * @param dataType
   */
 class SymbolInfo(val symbol: Symbol, val name: Name, private var _tpe: Type):
+  override def toString(): String      = s"[${this.getClass.getSimpleName}] ${name}"
   private var _declScope: Scope | Null = null
   def declScope: Scope                 = _declScope
   def declScope_=(s: Scope): Unit      = _declScope = s

@@ -368,9 +368,12 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
                   case Some(tbl) =>
                     TableScan(tableName, tbl.schemaType, tbl.schemaType.fields, ref.nodeLocation)
                   case None =>
-                    warn(
-                      s"Unresolved table ref: ${ref.name.fullName}: ${context.scope.getAllEntries}"
-                    )
+                    context
+                      .workEnv
+                      .errorLogger
+                      .warn(
+                        s"Unresolved table ref: ${ref.name.fullName}: ${context.scope.getAllEntries}"
+                      )
                     ref
       case ref: TableFunctionCall if !ref.relationType.isResolved =>
         lookup(ref.name, context) match

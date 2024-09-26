@@ -53,3 +53,4 @@ In wvlet, you need to use __lower-case__ keywords for SQL-like operators. The fo
 | Operator | Description |
 | --- | --- |
 | execute sql"..." | Execute a raw SQL statement in the context engine |
+

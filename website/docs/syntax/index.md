@@ -5,6 +5,7 @@
 - [Quick Start](./quick-start.md)
 - [Relational Operators](./relational-operators.md)
 - [Expressions](./expressions.md)
+- [Metadata Functions](./metadata-functions.md)
 - [Data Models](./data-models.md)
 
 ## Introduction
