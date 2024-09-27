@@ -140,6 +140,23 @@ case class Context(
     importDefs = Nil
   )
 
+  def findTermSymbolByName(name: String): Option[Symbol] =
+    val n = TermName(name)
+    scope
+      // Search local symbols
+      .lookupSymbol(n)
+      .orElse {
+        // Search global symbols
+        var foundSymbol: Option[Symbol] = None
+        for
+          ctx <- global.getAllContexts.filter(_.isGlobalContext)
+          if foundSymbol.isEmpty
+        do
+          foundSymbol = ctx.compilationUnit.knownSymbols.find(_.name.name == name)
+
+        foundSymbol
+      }
+
   def findDataFile(path: String): Option[String] = global
     .compilerOptions
     .sourceFolders

@@ -276,6 +276,7 @@ trait Expression extends TreeNode with Product with LogSupport:
     l.result()
 
   lazy val resolved: Boolean    = resolvedChildren
+  def unresolved: Boolean       = !resolved
   def resolvedChildren: Boolean = children.forall(_.resolved) && resolvedInputs
   def resolvedInputs: Boolean   = dataType.isResolved
 

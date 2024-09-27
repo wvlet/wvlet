@@ -65,6 +65,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
       resolveFunctionBodyInTypeDef :: //
       resolveFunctionApply ::         // Resolve function args
       resolveInlineRef ::             // Resolve inline-expression expansion
+      resolveNativeExpressions ::     // Resolve native expressions
       resolveAggregationFunctions ::  // Resolve aggregation expression without group by
       resolveModelDef ::              // Resolve models again to use the updated types
       Nil
@@ -753,6 +754,30 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
     }
 
   end resolveFunctionBodyInTypeDef
+
+  private object resolveNativeExpressions extends RewriteRule:
+
+    private def findNativeFunction(context: Context, name: String): Option[NativeExpression] =
+      context
+        .findTermSymbolByName(name)
+        .map(_.symbolInfo)
+        .collect {
+          case m: MethodSymbolInfo if m.body.isDefined =>
+            m.body.get
+        }
+        .collect { case n: NativeExpression =>
+          n
+        }
+
+    def apply(context: Context): PlanRewriter = { case q: Query =>
+      q.transformUpExpressions {
+        case id: Identifier if id.unresolved && id.nonEmpty =>
+          // Replace the id with the referenced native expression
+          findNativeFunction(context, id.fullName).getOrElse(id)
+      }
+    }
+
+  end resolveNativeExpressions
 
   /**
     * For aggregation, which has no Aggregate plan node, a simple expression like

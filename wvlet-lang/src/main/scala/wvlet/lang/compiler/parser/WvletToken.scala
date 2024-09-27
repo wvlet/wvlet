@@ -128,11 +128,12 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   case CONTAIN extends WvletToken(Keyword, "contain")
   case DEBUG   extends WvletToken(Keyword, "debug")
 
-  // Alphabectic keywords
+  // Type definition keywords
   case DEF     extends WvletToken(Keyword, "def")
   case INLINE  extends WvletToken(Keyword, "inline")
   case TYPE    extends WvletToken(Keyword, "type")
   case EXTENDS extends WvletToken(Keyword, "extends")
+  case NATIVE  extends WvletToken(Keyword, "native")
 
   case SHOW   extends WvletToken(Keyword, "show")
   case SAMPLE extends WvletToken(Keyword, "sample")

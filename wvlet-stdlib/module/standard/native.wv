@@ -1,0 +1,7 @@
+package wvlet.standard
+
+-- Generate a new ULID
+def ulid_string: string = native
+
+-- TODO: Read an environment variable (shell only for safety)
+-- def env(key: string): string = native
