@@ -90,11 +90,11 @@ trait DBConnector(val dbType: DBType) extends AutoCloseable with LogSupport:
     showWarnings(w)
 
   def getCatalogNames: List[String] = withConnection: conn =>
-    val rs       = conn.getMetaData().getCatalogs()
-    val catalogs = List.newBuilder[String]
-    while rs.next() do
-      catalogs += rs.getString("TABLE_CAT")
-    catalogs.result()
+    withResource(conn.getMetaData().getCatalogs()): rs =>
+      val catalogs = List.newBuilder[String]
+      while rs.next() do
+        catalogs += rs.getString("TABLE_CAT")
+      catalogs.result()
 
   private def toTableDef(
       catalog: String,
@@ -109,66 +109,64 @@ trait DBConnector(val dbType: DBType) extends AutoCloseable with LogSupport:
       }
     Catalog.TableDef(TableName(Some(catalog), Some(schema), table), columns = fields)
 
-  def listTableDefs(catalog: String, schema: String): List[Catalog.TableDef] = withConnection:
-    conn =>
-      val columns = List.newBuilder[JDBCColumn]
-      runQuery(
-        s"""select table_catalog, table_schema, table_name, column_name, ordinal_position, column_default, is_nullable, data_type
+  def listTableDefs(catalog: String, schema: String): List[Catalog.TableDef] =
+    val columns = List.newBuilder[JDBCColumn]
+    runQuery(
+      s"""select table_catalog, table_schema, table_name, column_name, ordinal_position, column_default, is_nullable, data_type
              |from information_schema.columns
              |where table_catalog = '${catalog}' and table_schema = '${schema}'""".stripMargin
-      ): rs =>
-        while rs.next() do
-          columns +=
-            JDBCColumn(
-              table_catalog = rs.getString("table_catalog"),
-              table_schema = rs.getString("table_schema"),
-              table_name = rs.getString("table_name"),
-              column_name = rs.getString("column_name"),
-              ordinal_position = rs.getInt("ordinal_position"),
-              is_nullable = rs.getString("is_nullable"),
-              data_type = rs.getString("data_type").toLowerCase
-            )
+    ): rs =>
+      while rs.next() do
+        columns +=
+          JDBCColumn(
+            table_catalog = rs.getString("table_catalog"),
+            table_schema = rs.getString("table_schema"),
+            table_name = rs.getString("table_name"),
+            column_name = rs.getString("column_name"),
+            ordinal_position = rs.getInt("ordinal_position"),
+            is_nullable = rs.getString("is_nullable"),
+            data_type = rs.getString("data_type").toLowerCase
+          )
 
-      val schemas = columns
-        .result()
-        .groupBy(c => (c.table_catalog, c.table_schema, c.table_name))
-        .map { case ((catalog, schema, table), cols) =>
-          toTableDef(catalog, schema, table, cols)
-        }
+    val schemas = columns
+      .result()
+      .groupBy(c => (c.table_catalog, c.table_schema, c.table_name))
+      .map { case ((catalog, schema, table), cols) =>
+        toTableDef(catalog, schema, table, cols)
+      }
 
-      schemas.toList
+    schemas.toList
 
   end listTableDefs
 
   def getTableDef(catalog: String, schema: String, table: String): Option[Catalog.TableDef] =
-    withConnection: conn =>
-      val columns = List.newBuilder[JDBCColumn]
-      runQuery(
-        s"""select table_catalog, table_schema, table_name, column_name, ordinal_position, column_default, is_nullable, data_type
+    val columns = List.newBuilder[JDBCColumn]
+    runQuery(
+      s"""select table_catalog, table_schema, table_name, column_name, ordinal_position, column_default, is_nullable, data_type
              |from information_schema.columns
              |where table_catalog = '${catalog}' and table_schema = '${schema}' and table_name = '${table}'
              |""".stripMargin
-      ): rs =>
-        while rs.next() do
-          columns +=
-            JDBCColumn(
-              table_catalog = rs.getString("table_catalog"),
-              table_schema = rs.getString("table_schema"),
-              table_name = rs.getString("table_name"),
-              column_name = rs.getString("column_name"),
-              ordinal_position = rs.getInt("ordinal_position"),
-              is_nullable = rs.getString("is_nullable"),
-              data_type = rs.getString("data_type").toLowerCase
-            )
+    ): rs =>
+      while rs.next() do
+        columns +=
+          JDBCColumn(
+            table_catalog = rs.getString("table_catalog"),
+            table_schema = rs.getString("table_schema"),
+            table_name = rs.getString("table_name"),
+            column_name = rs.getString("column_name"),
+            ordinal_position = rs.getInt("ordinal_position"),
+            is_nullable = rs.getString("is_nullable"),
+            data_type = rs.getString("data_type").toLowerCase
+          )
 
-      val schemas = columns
-        .result()
-        .groupBy(c => (c.table_catalog, c.table_schema, c.table_name))
-        .map { case ((catalog, schema, table), cols) =>
-          toTableDef(catalog, schema, table, cols)
-        }
+    val schemas = columns
+      .result()
+      .groupBy(c => (c.table_catalog, c.table_schema, c.table_name))
+      .map { case ((catalog, schema, table), cols) =>
+        toTableDef(catalog, schema, table, cols)
+      }
 
-      schemas.headOption
+    schemas.headOption
 
   end getTableDef
 
@@ -210,15 +208,17 @@ trait DBConnector(val dbType: DBType) extends AutoCloseable with LogSupport:
 
     foundSchemas.result().headOption
 
-  def createSchema(catalog: String, schema: String): TableSchema = withConnection: conn =>
+  def createSchema(catalog: String, schema: String): TableSchema =
     executeUpdate(s"""create schema if not exists ${catalog}.${schema}""")
     TableSchema(Some(catalog), schema)
 
-  def dropTable(catalog: String, schema: String, table: String): Unit = withConnection: conn =>
-    executeUpdate(s"""drop table if exists ${catalog}.${schema}.${table}""")
+  def dropTable(catalog: String, schema: String, table: String): Unit = executeUpdate(
+    s"""drop table if exists ${catalog}.${schema}.${table}"""
+  )
 
-  def dropSchema(catalog: String, schema: String): Unit = withConnection: conn =>
-    executeUpdate(s"""drop schema if exists ${catalog}.${schema}""")
+  def dropSchema(catalog: String, schema: String): Unit = executeUpdate(
+    s"""drop schema if exists ${catalog}.${schema}"""
+  )
 
   def listFunctions(catalog: String): List[SQLFunction]
 

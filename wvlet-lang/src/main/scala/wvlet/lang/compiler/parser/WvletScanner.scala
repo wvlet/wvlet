@@ -13,8 +13,14 @@
  */
 package wvlet.lang.compiler.parser
 
-import wvlet.lang.{WvletLangException, StatusCode}
-import wvlet.lang.compiler.parser.WvletScanner.{InBraces, InString, Indented, Region}
+import wvlet.lang.{StatusCode, WvletLangException}
+import wvlet.lang.compiler.parser.WvletScanner.{
+  InBackquoteString,
+  InBraces,
+  InString,
+  Indented,
+  Region
+}
 import wvlet.lang.compiler.parser.WvletToken.{LF, SU}
 import wvlet.lang.compiler.{CompilationUnit, SourceFile, SourceLocation}
 import wvlet.lang.model.NodeLocation
@@ -246,6 +252,8 @@ class WvletScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
       currentRegion match
         case InString(multiline, _) =>
           getStringPart(multiline)
+        case InBackquoteString(outer) =>
+          getBackquotePart()
         case _ =>
           fetchToken()
     else
@@ -292,9 +300,11 @@ class WvletScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
         putChar(ch)
         nextChar()
         getIdentRest()
-        if ch == '"' && current.token == WvletToken.IDENTIFIER then
-          // Switch the behavior of getDoubleQuotedString
-          current.token = WvletToken.STRING_INTERPOLATION_PREFIX
+        if (ch == '"' || ch == '`') && current.token == WvletToken.IDENTIFIER then
+          if ch == '`' then
+            current.token = WvletToken.BACKQUOTE_INTERPOLATION_PREFIX
+          else
+            current.token = WvletToken.STRING_INTERPOLATION_PREFIX
       case '~' | '!' | '@' | '#' | '%' | '^' | '*' | '+' | '<' | '>' | '?' | ':' | '=' | '&' | '|' |
           '\\' =>
         putChar(ch)
@@ -573,13 +583,68 @@ class WvletScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
     current.str = flushTokenString()
 
   private def getBackQuoteString(): Unit =
-    consume('`')
-    while ch != '`' && ch != SU do
-      putChar(ch)
-      nextChar()
-    consume('`')
-    current.token = WvletToken.BACKQUOTED_IDENTIFIER
-    current.str = flushTokenString()
+    if current.token == BACKQUOTE_INTERPOLATION_PREFIX then
+      currentRegion = InBackquoteString(currentRegion)
+      nextRawChar()
+      if ch == '`' then
+        nextChar()
+        // Empty string interpolation
+        current.token = WvletToken.BACKQUOTED_IDENTIFIER
+        current.str = flushTokenString()
+      else
+        // Single-line string interpolation
+        getBackquotePart()
+    else
+      // Regular backquote string
+      consume('`')
+      while ch != '`' && ch != SU do
+        putChar(ch)
+        nextChar()
+      consume('`')
+      current.token = WvletToken.BACKQUOTED_IDENTIFIER
+      current.str = flushTokenString()
+
+  private def getBackquotePart(): Unit =
+    (ch: @switch) match
+      case '`' => // end of string
+        // Last part of the interpolated string
+        nextChar()
+        // Proceed a cursor
+        current.offset += 1
+        flushTokenString()
+        current.token = STRING_PART
+        currentRegion = currentRegion.outer
+      case '\\' =>
+        // escape character
+        lookAheadChar() match
+          case '$' | '`' =>
+            nextRawChar() // skip '\'
+            putChar(ch)
+            nextRawChar()
+          case _ =>
+            putChar(ch)
+            nextRawChar()
+        getBackquotePart()
+      case '$' =>
+        lookAheadChar() match
+          case '{' =>
+            // Enter the in-string expression state
+            flushTokenString()
+            current.token = WvletToken.STRING_PART
+            currentRegion = InBraces(currentRegion)
+          case _ =>
+            putChar(ch)
+            nextChar()
+            getBackquotePart()
+      case SU =>
+        reportError(
+          s"unexpected end of file in string interpolation",
+          source.sourcePositionAt(offset)
+        )
+      case _ =>
+        putChar(ch)
+        nextRawChar()
+        getBackquotePart()
 
   @tailrec
   private def getIdentRest(): Unit =
@@ -712,6 +777,7 @@ object WvletScanner:
 
   // Inside an interpolated string
   case class InString(multiline: Boolean, outer: Region) extends Region
+  case class InBackquoteString(outer: Region)            extends Region
   case class InBraces(outer: Region)                     extends Region
   // Inside an indented region
   case class Indented(level: Int, outer: Region | Null) extends Region

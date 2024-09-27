@@ -123,3 +123,7 @@ trait ExpressionRewriteRule extends LogSupport:
         rewriteLogger
           .trace(s"Transformed with ${name}:\n[before]\n${plan.pp}\n[after]\n${resolved.pp}")
     resolved
+
+  def transformExpression(expr: Expression, context: Context): Expression =
+    val rule = this.apply(context)
+    expr.transformUpExpression(rule)

@@ -60,6 +60,8 @@ enum WvletToken(val tokenType: TokenType, val str: String):
 
   // For interpolated string, e.g., sql"...${expr}..."
   case STRING_INTERPOLATION_PREFIX extends WvletToken(Literal, "<string interpolation>")
+  // For backquoted interpolation strings, e.g., s`table_name_${expr}...`
+  case BACKQUOTE_INTERPOLATION_PREFIX extends WvletToken(Literal, "<backquote interpolation>")
   // A part in the string interpolation
   case STRING_PART extends WvletToken(Literal, "<string part>")
 

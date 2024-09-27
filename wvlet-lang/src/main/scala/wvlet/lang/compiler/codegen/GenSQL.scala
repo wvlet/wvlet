@@ -25,6 +25,8 @@ import wvlet.lang.compiler.{
   TermName
 }
 import wvlet.lang.compiler.DBType.{DuckDB, Trino}
+import wvlet.lang.compiler.analyzer.TypeResolver
+import wvlet.lang.compiler.transform.PreprocessLocalExpr
 import wvlet.lang.ext.NativeFunction
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
@@ -73,22 +75,31 @@ object GenSQL extends Phase("generate-sql"):
     trace(s"[plan]\n${expanded.pp}\n[SQL]\n${sql}")
     GeneratedSQL(sql, expanded)
 
+  /**
+    * Expand referenced model queries by populating model arguments
+    * @param relation
+    * @param ctx
+    * @return
+    */
   def expand(relation: Relation, ctx: Context): Relation =
     // expand referenced models
 
     def transformExpr(r: Relation, ctx: Context): Relation = r
-      .transformUpExpressions { case i: Identifier =>
-        val nme = Name.termName(i.leafName)
-        ctx.scope.lookupSymbol(nme) match
-          case Some(sym) =>
-            sym.symbolInfo match
-              case b: BoundedSymbolInfo =>
-                // Replace to the bounded expression
-                b.expr
-              case _ =>
-                i
-          case None =>
-            i
+      .transformUpExpressions {
+        case b: BackquoteInterpolatedString =>
+          PreprocessLocalExpr.EvalBackquoteInterpolation.transformExpression(b, ctx)
+        case i: Identifier =>
+          val nme = Name.termName(i.leafName)
+          ctx.scope.lookupSymbol(nme) match
+            case Some(sym) =>
+              sym.symbolInfo match
+                case b: BoundedSymbolInfo =>
+                  // Replace to the bounded expression
+                  b.expr
+                case _ =>
+                  i
+            case None =>
+              i
       }
       .asInstanceOf[Relation]
 
@@ -131,7 +142,9 @@ object GenSQL extends Phase("generate-sql"):
         case m: ModelScan =>
           lookupType(Name.termName(m.name.name), ctx) match
             case Some(sym) =>
-              transformModelScan(m, sym)
+              val rel = transformModelScan(m, sym)
+              // Finally resolve types again
+              TypeResolver.resolve(rel, ctx)
             case None =>
               warn(s"unknown model: ${m.name}")
               m
@@ -139,6 +152,7 @@ object GenSQL extends Phase("generate-sql"):
           q.child
       }
       .asInstanceOf[Relation]
+
   end expand
 
   private def lookupType(name: Name, ctx: Context): Option[Symbol] = ctx

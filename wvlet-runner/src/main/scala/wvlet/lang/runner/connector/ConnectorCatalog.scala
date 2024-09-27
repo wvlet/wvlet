@@ -22,6 +22,7 @@ import wvlet.lang.runner.ThreadUtil
 import wvlet.log.LogSupport
 
 import java.util.concurrent.TimeUnit
+import scala.jdk.CollectionConverters.*
 
 class ConnectorCatalog(val catalogName: String, defaultSchema: String, dbConnector: DBConnector)
     extends Catalog
@@ -32,12 +33,15 @@ class ConnectorCatalog(val catalogName: String, defaultSchema: String, dbConnect
     .expireAfterWrite(5, TimeUnit.MINUTES)
     .build { (schema: String) =>
       debug(s"Loading tables in schema ${catalogName}.${schema}")
-      dbConnector.listTableDefs(catalogName, schema)
+      val defs = dbConnector.listTableDefs(catalogName, schema)
+      defs
     }
 
   ThreadUtil.runBackgroundTask(() => init())
 
-  private def init(): Unit = tablesInSchemaCache.get(defaultSchema)
+  private def init(): Unit =
+    // Pre-load tables in defaultSchema and information_schema
+    tablesInSchemaCache.getAll(List(defaultSchema, "information_schema").asJava)
 
   override def dbType: DBType = dbConnector.dbType
 
