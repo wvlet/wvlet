@@ -418,6 +418,9 @@ object WvletREPL:
   private class ReplParser extends org.jline.reader.Parser with LogSupport:
     private val parser = new DefaultParser()
 
+    // Disable escape char removal at the jline3 parser level
+    override def isEscapeChar(ch: Char): Boolean = false
+
     override def parse(line: String, cursor: Int, context: ParseContext): ParsedLine =
       def incomplete = throw EOFError(-1, -1, null)
       def accept     = parser.parse(line, cursor, context)

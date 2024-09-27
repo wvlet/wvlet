@@ -25,7 +25,7 @@ val buildSettings = Seq[Setting[?]](
   watchAntiEntropy := FiniteDuration(700, TimeUnit.MILLISECONDS)
 )
 
-lazy val jvmProjects: Seq[ProjectReference] = Seq(api.jvm, server, lang, runner, client.jvm)
+lazy val jvmProjects: Seq[ProjectReference] = Seq(api.jvm, server, lang, runner, client.jvm, spec)
 lazy val jsProjects: Seq[ProjectReference]  = Seq(api.js, client.js, ui, uiMain)
 
 val noPublish = Seq(

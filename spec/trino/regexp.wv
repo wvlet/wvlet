@@ -1,0 +1,5 @@
+select
+  regexp_replace('regexp_0123', '[_-]\d+', '') as result
+test _.rows should be [
+  ['regexp']
+]
