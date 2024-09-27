@@ -339,12 +339,21 @@ class QueryExecutor(
         case _ =>
           false
 
+    def pp(x: Any): String =
+      x match
+        case s: Seq[?] =>
+          s"[${s.map(pp).mkString(", ")}]"
+        case null =>
+          "null"
+        case _ =>
+          x.toString
+
     def cmpMsg(op: String, l: Any, r: Any): String =
       (l, r) match
         case (l: Any, r: Any) if isShortString(l) && isShortString(r) =>
-          s"${l} ${op} ${r}"
+          s"${pp(l)} ${op} ${pp(r)}"
         case _ =>
-          s"[left]\n${l}\n${op}\n[right]\n${r}"
+          s"[left]\n${pp(l)}\n${op}\n[right]\n${pp(r)}"
 
     def eval(e: Expression): QueryResult =
       e match

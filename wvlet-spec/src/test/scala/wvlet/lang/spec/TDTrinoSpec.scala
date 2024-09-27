@@ -16,7 +16,7 @@ package wvlet.lang.spec
 import wvlet.lang.runner.cli.{Profile, WvletCli, WvletREPLCli}
 import wvlet.airspec.AirSpec
 import wvlet.lang.{StatusCode, WvletLangException}
-import wvlet.lang.compiler.{Compiler, CompilerOptions}
+import wvlet.lang.compiler.{Compiler, CompilerOptions, WorkEnv}
 import wvlet.lang.runner.QueryExecutor
 import wvlet.lang.runner.connector.trino.{TrinoConfig, TrinoConnector}
 
@@ -41,12 +41,13 @@ trait TDTrinoSpecRunner(specPath: String) extends AirSpec:
     password = profile.password
   )
 
-  private val executor = QueryExecutor(TrinoConnector(config))
+  private val workEnv  = WorkEnv(path = specPath, logLevel = logger.getLogLevel)
+  private val executor = QueryExecutor(TrinoConnector(config), workEnv)
 
   private val compiler = Compiler(
     CompilerOptions(
       sourceFolders = List(specPath),
-      workingFolder = specPath,
+      workEnv = workEnv,
       catalog = Some(defaultCatalog),
       schema = Some(defaultSchema)
     )
