@@ -41,10 +41,9 @@ object Compiler extends LogSupport:
     */
   def analysisPhases: List[Phase] = List(
     ParserPhase, // Parse *.wv files and create untyped plans
-    RemoveUnusedQueries(), // Exclude unused compilation units (e.g., out of scope queries) from the following phases
     PreprocessLocalExpr, // Preprocess local expressions (e.g., backquote strings and native expressions)
     SymbolLabeler, // Assign unique Symbol to each LogicalPlan and Expression nodes, a and assign a lazy DataType
-    TypeResolver // Assign a concrete DataType to each LogicalPlan and Expression nodes
+    RemoveUnusedQueries() // Exclude unused compilation units (e.g., out of scope queries) from the following phases    TypeResolver // Assign a concrete DataType to each LogicalPlan and Expression nodes
   )
 
   /**
