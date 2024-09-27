@@ -87,6 +87,8 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       case WvletToken.BACKQUOTED_IDENTIFIER =>
         consume(WvletToken.BACKQUOTED_IDENTIFIER)
         BackQuotedIdentifier(t.str, t.nodeLocation)
+      case WvletToken.BACKQUOTE_INTERPOLATION_PREFIX if t.str == "s" =>
+        interpolatedBackquoteString()
       case WvletToken.UNDERSCORE =>
         consume(WvletToken.UNDERSCORE)
         ContextInputRef(DataType.UnknownType, t.nodeLocation)
@@ -1241,6 +1243,9 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       case WvletToken.STRING_INTERPOLATION_PREFIX if t.str == "json" =>
         val rawJSON = interpolatedString()
         RawJSON(rawJSON, t.nodeLocation)
+      case WvletToken.BACKQUOTE_INTERPOLATION_PREFIX if t.str == "s" =>
+        val tableRef = interpolatedBackquoteString()
+        TableRef(tableRef, t.nodeLocation)
       case WvletToken.L_BRACKET =>
         arrayValue()
       case _ =>
@@ -1555,12 +1560,48 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     while scanner.lookAhead().token == WvletToken.STRING_PART do
       nextPart()
     if scanner.lookAhead().token == WvletToken.STRING_LITERAL then
-      val part = consume(WvletToken.STRING_PART)
+      val part = consume(WvletToken.STRING_LITERAL)
       parts += StringPart(part.str, part.nodeLocation)
 
     InterpolatedString(prefixNode, parts.result(), DataType.UnknownType, prefix.nodeLocation)
 
   end interpolatedString
+
+  def interpolatedBackquoteString(): BackquoteInterpolatedString =
+    val prefix     = consume(WvletToken.BACKQUOTE_INTERPOLATION_PREFIX)
+    val prefixNode = ResolvedIdentifier(prefix.str, NoType, prefix.nodeLocation)
+    val parts      = List.newBuilder[Expression]
+
+    def nextPart(): Unit =
+      val t = scanner.lookAhead()
+      t.token match
+        case WvletToken.STRING_PART =>
+          val part = consume(WvletToken.STRING_PART)
+          parts += StringPart(part.str, part.nodeLocation)
+          nextPart()
+        case WvletToken.DOLLAR =>
+          consume(WvletToken.DOLLAR)
+          consume(WvletToken.L_BRACE)
+          val expr = expression()
+          consume(WvletToken.R_BRACE)
+          parts += expr
+          nextPart()
+        case _ =>
+
+    while scanner.lookAhead().token == WvletToken.STRING_PART do
+      nextPart()
+    if scanner.lookAhead().token == WvletToken.STRING_LITERAL then
+      val part = consume(WvletToken.STRING_LITERAL)
+      parts += StringPart(part.str, part.nodeLocation)
+
+    BackquoteInterpolatedString(
+      prefixNode,
+      parts.result(),
+      DataType.UnknownType,
+      prefix.nodeLocation
+    )
+
+  end interpolatedBackquoteString
 
   def nameExpression(): NameExpr =
     primaryExpression() match

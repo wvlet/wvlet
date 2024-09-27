@@ -51,7 +51,7 @@ case class ParenthesizedExpression(child: Expression, nodeLocation: Option[NodeL
   */
 sealed trait NameExpr extends Expression:
   /* string expression of the name */
-  def strExpr: String = fullName
+  def strExpr: String
   def leafName: String
   def fullName: String
   def nonEmpty: Boolean = !isEmpty
@@ -93,6 +93,7 @@ object NameExpr:
 case class Wildcard(nodeLocation: Option[NodeLocation]) extends LeafExpression with QualifiedName:
   override def leafName: String = "*"
   override def fullName: String = "*"
+  override def strExpr: String  = "*"
 
   override def qualifier: Expression = NameExpr.EmptyName
 
@@ -107,6 +108,7 @@ case class ContextInputRef(override val dataType: DataType, nodeLocation: Option
     with Identifier:
   override def leafName: String      = "_"
   override def fullName: String      = "_"
+  override def strExpr: String       = "_"
   override def unquotedValue: String = "_"
 
 /**
@@ -129,6 +131,7 @@ case class DotRef(
     nodeLocation: Option[NodeLocation]
 ) extends QualifiedName:
   override def leafName: String = name.leafName
+  override def strExpr: String  = fullName
   override def fullName: String =
     qualifier match
       case q: NameExpr =>
@@ -204,6 +207,17 @@ case class BackQuotedIdentifier(
   override def fullName: String = unquotedValue
   override def strExpr: String  = s"`${unquotedValue}`"
   override def toString         = s"Id(`${unquotedValue}`)"
+
+case class BackquoteInterpolatedString(
+    prefix: NameExpr,
+    parts: List[Expression],
+    override val dataType: DataType,
+    nodeLocation: Option[NodeLocation]
+) extends Identifier:
+  override def children: Seq[Expression] = parts
+  override def toString: String = s"BackquoteInterpolatedString(${prefix}, ${parts.mkString(", ")})"
+  override def strExpr: String  = "<backquote interpolation>"
+  override def unquotedValue: String = ???
 
 sealed trait JoinCriteria extends Expression
 case object NoJoinCriteria extends JoinCriteria with LeafExpression:
