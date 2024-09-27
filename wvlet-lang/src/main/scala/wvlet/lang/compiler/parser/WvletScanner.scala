@@ -423,19 +423,12 @@ class WvletScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
     current.token = WvletToken.STRING_LITERAL
     current.str = flushTokenString()
 
-  private def flushRemainingStringPart: Unit =
-    flushTokenString()
-    current.token =
-      if current.str.isEmpty then
-        EMPTY
-      else
-        STRING_PART
-
   private def getRawStringLiteral(): Unit =
     if ch == '\"' then
       nextRawChar()
       if isTripleQuote() then
-        flushRemainingStringPart
+        flushTokenString()
+        current.token = WvletToken.STRING_LITERAL
       else
         getRawStringLiteral()
     else if ch == SU then
@@ -446,13 +439,13 @@ class WvletScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
       getRawStringLiteral()
 
   private def getStringPart(multiline: Boolean): Unit =
-
     (ch: @switch) match
       case '"' => // end of string
         if multiline then
           nextRawChar()
           if isTripleQuote() then
-            flushRemainingStringPart
+            flushTokenString()
+            current.token = WvletToken.STRING_PART
           else
             getStringPart(multiline)
           // Exit the string interpolation scope
@@ -463,7 +456,8 @@ class WvletScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
           nextChar()
           // Proceed a cursor
           current.offset += 1
-          flushRemainingStringPart
+          flushTokenString()
+          current.token = STRING_PART
           currentRegion = currentRegion.outer
       case '\\' =>
         // escape character
@@ -480,7 +474,8 @@ class WvletScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
         lookAheadChar() match
           case '{' =>
             // Enter the in-string expression state
-            flushRemainingStringPart
+            flushTokenString()
+            current.token = WvletToken.STRING_PART
             currentRegion = InBraces(currentRegion)
           case _ =>
             putChar(ch)
@@ -495,10 +490,6 @@ class WvletScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
         putChar(ch)
         nextRawChar()
         getStringPart(multiline)
-
-    end match
-
-  end getStringPart
 
   private def isTripleQuote(): Boolean =
     if ch == '"' then
