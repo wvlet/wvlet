@@ -29,6 +29,18 @@ import wvlet.lang.model.plan.*
 import java.util.Locale
 
 /**
+  * Native expression for running code implemented in Scala
+  * @param name
+  * @param nodeLocation
+  */
+case class NativeExpression(
+    name: String,
+    retType: Option[DataType],
+    nodeLocation: Option[NodeLocation]
+) extends LeafExpression:
+  override def dataType: DataType = retType.getOrElse(DataType.UnknownType)
+
+/**
   */
 case class ParenthesizedExpression(child: Expression, nodeLocation: Option[NodeLocation])
     extends UnaryExpression:
@@ -42,6 +54,7 @@ sealed trait NameExpr extends Expression:
   def strExpr: String = fullName
   def leafName: String
   def fullName: String
+  def nonEmpty: Boolean = !isEmpty
   def isEmpty: Boolean =
     // TODO: This part is a bit ad-hoc as EmptyName can be copied during the tree transformation, so
     // we can't use the object equality like this eq EmptyName
@@ -135,7 +148,8 @@ sealed trait Identifier extends QualifiedName with LeafExpression:
   // Unquoted value
   def unquotedValue: String
 
-  override def attributeName: String  = strExpr
+  override def attributeName: String = strExpr
+
   override lazy val resolved: Boolean = false
   def toResolved(dataType: DataType): ResolvedIdentifier = ResolvedIdentifier(
     this.unquotedValue,

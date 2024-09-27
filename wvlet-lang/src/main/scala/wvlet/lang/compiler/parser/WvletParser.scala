@@ -442,7 +442,13 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       scanner.lookAhead().token match
         case WvletToken.EQ =>
           consume(WvletToken.EQ)
-          Some(expression())
+          val t = scanner.lookAhead()
+          t.token match
+            case WvletToken.NATIVE =>
+              consume(WvletToken.NATIVE)
+              Some(NativeExpression(name.fullName, retType, t.nodeLocation))
+            case _ =>
+              Some(expression())
         case _ =>
           None
     FunctionDef(Name.termName(name.leafName), args, defScope, retType, body, t.nodeLocation)

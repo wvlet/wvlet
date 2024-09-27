@@ -25,6 +25,7 @@ import wvlet.lang.compiler.{
   TermName
 }
 import wvlet.lang.compiler.DBType.{DuckDB, Trino}
+import wvlet.lang.ext.NativeFunction
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
 import wvlet.lang.model.plan.JoinType.*
@@ -687,6 +688,15 @@ class GenSQL(ctx: Context) extends LogSupport:
         val left  = printExpression(notIn.a)
         val right = notIn.list.map(x => printExpression(x)).mkString(", ")
         s"${left} not in (${right})"
+      case n: NativeExpression =>
+        val v = NativeFunction.callByName(n.name)
+        v match
+          case s: String =>
+            s"'${s}'"
+          case null =>
+            "null"
+          case other =>
+            other.toString
       case other =>
         warn(s"unknown expression type: ${other}")
         other.toString

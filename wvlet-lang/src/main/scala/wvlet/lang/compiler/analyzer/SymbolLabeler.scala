@@ -70,6 +70,9 @@ object SymbolLabeler extends Phase("symbol-labeler"):
         case m: ModelDef =>
           registerModelSymbol(m)(using ctx)
           ctx
+        case f: TopLevelFunctionDef =>
+          registerTopLevelFunction(f)(using ctx)
+          ctx
         case s: SaveToTable =>
           iter(s.child, ctx)
           registerSaveAs(s)(using ctx)
@@ -86,6 +89,21 @@ object SymbolLabeler extends Phase("symbol-labeler"):
     iter(plan, context)
 
   end label
+
+  private def registerTopLevelFunction(t: TopLevelFunctionDef)(using ctx: Context): Symbol =
+    val sym = Symbol(ctx.global.newSymbolId)
+    sym.symbolInfo = MethodSymbolInfo(
+      symbol = sym,
+      owner = ctx.owner,
+      name = t.functionDef.name,
+      ft = toFunctionType(t.functionDef, Nil),
+      body = t.functionDef.expr,
+      Nil
+    )
+    t.symbol = sym
+    sym.tree = t
+    ctx.compilationUnit.enter(sym)
+    sym
 
   private def registerSelectAsAlias(s: SelectAsAlias)(using ctx: Context): Symbol =
     val aliasName = s.alias.toTermName
@@ -141,10 +159,8 @@ object SymbolLabeler extends Phase("symbol-labeler"):
 
   end registerPackageSymbol
 
-  private def registerTypeDefSymbol(t: TypeDef)(using ctx: Context): Symbol =
-    val typeName = t.name
-
-    def toFunctionType(f: FunctionDef): FunctionType = FunctionType(
+  private def toFunctionType(f: FunctionDef, defContexts: List[DefContext]): FunctionType =
+    FunctionType(
       name = f.name,
       args = f
         .args
@@ -155,8 +171,11 @@ object SymbolLabeler extends Phase("symbol-labeler"):
         },
       returnType = f.retType.getOrElse(DataType.UnknownType),
       // TODO resolve qualified name
-      contextNames = t.defContexts.map(x => Name.typeName(x.tpe.leafName))
+      contextNames = defContexts.map(x => Name.typeName(x.tpe.leafName))
     )
+
+  private def registerTypeDefSymbol(t: TypeDef)(using ctx: Context): Symbol =
+    val typeName = t.name
 
     ctx.scope.lookupSymbol(typeName) match
       case Some(sym) =>
@@ -168,7 +187,7 @@ object SymbolLabeler extends Phase("symbol-labeler"):
             val typeScope = ts.declScope
             t.elems
               .collect { case f: FunctionDef =>
-                val ft = toFunctionType(f)
+                val ft = toFunctionType(f, t.defContexts)
                 val funSym: Symbol =
                   typeScope.lookupSymbol(f.name) match
                     case Some(funSym) =>
@@ -205,7 +224,7 @@ object SymbolLabeler extends Phase("symbol-labeler"):
         // Register method defs to the type scope
         t.elems
           .collect { case f: FunctionDef =>
-            val ft = toFunctionType(f)
+            val ft = toFunctionType(f, t.defContexts)
             val funSym =
               typeScope.lookupSymbol(f.name) match
                 case Some(sym) =>
