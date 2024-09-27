@@ -765,7 +765,6 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
         .map(_.symbolInfo)
         .collect {
           case m: MethodSymbolInfo if m.body.isDefined =>
-            warn(s"${name} -> ${m.body}")
             m.body.get
         }
         .collect { case n: NativeExpression =>
@@ -777,8 +776,6 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
         case id: Identifier if id.unresolved && id.nonEmpty =>
           // Replace the id with the referenced native expression
           val expr = findNativeFunction(context, id.fullName).getOrElse(id)
-          if context.isContextCompilationUnit then
-            warn(s"${id} -> ${expr}")
           expr
       }
     }
