@@ -179,6 +179,8 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
             ctx = nextContext(newStmt, ctx)
           }
         p.copy(statements = stmts.result())
+      case r: Relation =>
+        RewriteRule.rewrite(r, defaultRules, context)
       case other =>
         throw StatusCode
           .UNEXPECTED_STATE
@@ -763,6 +765,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
         .map(_.symbolInfo)
         .collect {
           case m: MethodSymbolInfo if m.body.isDefined =>
+            warn(s"${name} -> ${m.body}")
             m.body.get
         }
         .collect { case n: NativeExpression =>
@@ -773,7 +776,10 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
       q.transformUpExpressions {
         case id: Identifier if id.unresolved && id.nonEmpty =>
           // Replace the id with the referenced native expression
-          findNativeFunction(context, id.fullName).getOrElse(id)
+          val expr = findNativeFunction(context, id.fullName).getOrElse(id)
+          if context.isContextCompilationUnit then
+            warn(s"${id} -> ${expr}")
+          expr
       }
     }
 
