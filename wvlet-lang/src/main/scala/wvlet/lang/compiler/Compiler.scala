@@ -43,7 +43,8 @@ object Compiler extends LogSupport:
     ParserPhase, // Parse *.wv files and create untyped plans
     PreprocessLocalExpr, // Preprocess local expressions (e.g., backquote strings and native expressions)
     SymbolLabeler, // Assign unique Symbol to each LogicalPlan and Expression nodes, a and assign a lazy DataType
-    RemoveUnusedQueries() // Exclude unused compilation units (e.g., out of scope queries) from the following phases    TypeResolver // Assign a concrete DataType to each LogicalPlan and Expression nodes
+    RemoveUnusedQueries(), // Exclude unused compilation units (e.g., out of scope queries) from the following phases
+    TypeResolver // Assign a concrete DataType to each LogicalPlan and Expression nodes
   )
 
   /**
