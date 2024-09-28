@@ -247,6 +247,7 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
   private def debugRun = newWidget: () =>
     val originalQuery = reader.getBuffer.toString
     val queryFragment = extractQueryFragment
+    reader.getHistory.add(queryFragment)
     val lines         = queryFragment.split("\n")
     val lastLine      = lines.lastOption.getOrElse("")
     val lineNum       = lines.size
