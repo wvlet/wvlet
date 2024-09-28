@@ -1,0 +1,6 @@
+from [[1, "alice", 10], [2, "bob", 20], [3, "clark", 30]] as person(id, name, age)
+where id = 1
+group by age
+select age
+
+test _.rows should be [[10]]

@@ -255,6 +255,9 @@ class GenSQL(ctx: Context) extends LogSupport:
           }
       s += s"select ${selectItems.result().mkString(", ")}"
       s += s"from ${printRelation(agg.child)(using sqlContext.enterFrom)}"
+      if agg.filters.nonEmpty then
+        val cond = printExpression(Expression.concatWithAnd(agg.filters.map(_.filterExpr)))
+        s += s"where ${cond}"
       s += s"group by ${agg.groupingKeys.map(x => printExpression(x)).mkString(", ")}"
       s.result().mkString("\n")
     end printAggregate
