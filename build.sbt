@@ -238,7 +238,7 @@ lazy val uiMain = project
   .dependsOn(ui)
 
 def linkerConfig(config: StandardConfig): StandardConfig = config
-  // Check IR works properly since Scala.js 1.16.0 https://github.com/scala-js/scala-js/pull/4867
+  // Check IR works properly since Scala.js 1.17.0 https://github.com/scala-js/scala-js/pull/4867
   .withCheckIR(true)
   .withSourceMap(true)
   .withModuleKind(ModuleKind.ESModule)
