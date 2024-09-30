@@ -83,7 +83,9 @@ class WvletScriptRunner(
       }
 
     // Pre-compile files in the source paths
-    c.compileSourcePaths(None)
+    ThreadUtil.runBackgroundTask { () =>
+      c.compileSourcePaths(None)
+    }
     c
 
   def runStatement(line: String): QueryResult =
