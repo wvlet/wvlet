@@ -28,6 +28,7 @@ jobs:
               - '**.conf'
               - '**.json'
               - '**.wv'
+              - SCALA_VERSION
   code_format:
     name: Code format
     needs: changes
