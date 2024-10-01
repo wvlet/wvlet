@@ -41,38 +41,39 @@ jobs:
           gh release upload "$GITHUB_REF_NAME" "wvlet-cli/target/wvlet-cli-${VERSION}.tar.gz" \
           --clobber --repo="$GITHUB_REPOSITORY"
   homebrew:
-      name: Update homebrew-wvlet
-      needs: release
-      runs-on: ubuntu-latest
-      steps:
-        - name: Generate token
-          uses: actions/create-github-app-token@v1
-          id: app-token
-          with:
-            app-id: ${{ vars.APP_ID }}
-            private-key: ${{ secrets.APP_PRIVATE_KEY }}
-        - uses: actions/checkout@v4
-          with:
-            repository: wvlet/homebrew-wvlet
-        - name: Setup git
-          run: |
-            git config --global user.email "leo@xerial.org"
-            git config --global user.name "Taro L. Saito"
-            git config --global push.default simple
-        - name: Update VERSION
-          run: |
-            VERSION=${GITHUB_REF_NAME#v}
-            echo Version: $VERSION
-            echo $VERSION > VERSION
-            git add VERSION
-            git diff-index --quiet --cached HEAD || git commit -am "New release for wvlet ${VERSION}"
-            echo "VERSION=$VERSION" >> $GITHUB_ENV
-        - name: Create a PR to update version
-          run: |
-            gh pr create --repo wvlet/homebrew-wvlet \
-            --title "Release wvlet ${{ env.VERSION }}"\
-            --body "Release wvlet [${{ env.VERSION }}](https://github.com/wvlet/wvlet/releases/tag/${GITHUB_REF_NAME})"
-          env:
-            GH_TOKEN: ${{ steps.app-token.outputs.token }}
+    if: ${{ always() }}
+    name: Update homebrew-wvlet
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate token
+        uses: actions/create-github-app-token@v1
+        id: app-token
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+      - uses: actions/checkout@v4
+        with:
+          repository: wvlet/homebrew-wvlet
+      - name: Setup git
+        run: |
+          git config --global user.email "leo@xerial.org"
+          git config --global user.name "Taro L. Saito"
+          git config --global push.default simple
+      - name: Update VERSION
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          echo Version: $VERSION
+          echo $VERSION > VERSION
+          git add VERSION
+          git diff-index --quiet --cached HEAD || git commit -am "New release for wvlet ${VERSION}"
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+      - name: Create a PR to update version
+        run: |
+          gh pr create --repo wvlet/homebrew-wvlet \
+          --title "Release wvlet ${{ env.VERSION }}"\
+          --body "Release wvlet [${{ env.VERSION }}](https://github.com/wvlet/wvlet/releases/tag/${GITHUB_REF_NAME})"
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
 
 
