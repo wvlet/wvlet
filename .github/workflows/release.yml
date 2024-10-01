@@ -62,6 +62,7 @@ jobs:
           git config --global push.default simple
       - name: Update VERSION
         run: |
+          git switch -c releases/${{ github.ref_name }}
           VERSION=${GITHUB_REF_NAME#v}
           echo Version: $VERSION
           echo $VERSION > VERSION
