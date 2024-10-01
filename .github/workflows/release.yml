@@ -41,7 +41,6 @@ jobs:
           gh release upload "$GITHUB_REF_NAME" "wvlet-cli/target/wvlet-cli-${VERSION}.tar.gz" \
           --clobber --repo="$GITHUB_REPOSITORY"
   homebrew:
-    if: ${{ always() }}
     name: Update homebrew-wvlet
     needs: release
     runs-on: ubuntu-latest
