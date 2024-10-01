@@ -18,7 +18,7 @@ jobs:
         # We need to fetch all tags to get the latest tag
         with:
          fetch-depth: 0
-        name: Create a release note
+      - name: Create a release note
         run: |
           gh release view "$GITHUB_REF_NAME" --repo="$GITHUB_REPOSITORY" | \
           # Create a new release note only when the release note is not created yet
