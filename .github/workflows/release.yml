@@ -66,9 +66,11 @@ jobs:
           VERSION=${GITHUB_REF_NAME#v}
           echo Version: $VERSION
           echo $VERSION > VERSION
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+      - name: Push a release branch
           git add VERSION
           git diff-index --quiet --cached HEAD || git commit -am "New release for wvlet ${VERSION}"
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          git push --set-upstream origin releases/${{ github.ref_name }}
       - name: Create a PR to update version
         run: |
           gh pr create --repo="wvlet/homebrew-wvlet" \
