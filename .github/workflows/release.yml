@@ -76,7 +76,7 @@ jobs:
         run: |
           git add VERSION
           git diff-index --quiet --cached HEAD || git commit -am "New release for wvlet ${VERSION}"
-          git push -u
+          git push -set-upstream origin releases/${{ github.ref_name }}
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
       - name: Create a PR to update version
