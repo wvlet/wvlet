@@ -68,6 +68,7 @@ jobs:
           echo $VERSION > VERSION
           echo "VERSION=$VERSION" >> $GITHUB_ENV
       - name: Push a release branch
+        run: |
           git add VERSION
           git diff-index --quiet --cached HEAD || git commit -am "New release for wvlet ${VERSION}"
           git push --set-upstream origin releases/${{ github.ref_name }}
