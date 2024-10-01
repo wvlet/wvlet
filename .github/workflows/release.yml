@@ -52,9 +52,6 @@ jobs:
         with:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-          repositories: |
-            homebrew-wvlet
       - name: Get GitHub App User ID
         id: get-user-id
         run: echo "user-id=$(gh api "/users/${{ steps.app-token.outputs.app-slug }}[bot]" --jq .id)" >> "$GITHUB_OUTPUT"
@@ -62,6 +59,7 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
       - uses: actions/checkout@v4
         with:
+          # Need to specify the repository to set the write scope for git push
           repository: wvlet/homebrew-wvlet
           token: '${{ steps.app-token.outputs.token }}'
       - name: Setup git
