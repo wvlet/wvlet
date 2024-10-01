@@ -70,9 +70,9 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_ENV
       - name: Create a PR to update version
         run: |
-          gh pr create --repo wvlet/homebrew-wvlet \
-          --title "Release wvlet ${{ env.VERSION }}"\
-          --body "Release wvlet [${{ env.VERSION }}](https://github.com/wvlet/wvlet/releases/tag/${GITHUB_REF_NAME})"
+          gh pr create --repo="wvlet/homebrew-wvlet" \
+          --title "Release wvlet $VERSION" \
+          --body "Release wvlet [$VERSION](https://github.com/wvlet/wvlet/releases/tag/${{ github.ref_name }})"
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
 
