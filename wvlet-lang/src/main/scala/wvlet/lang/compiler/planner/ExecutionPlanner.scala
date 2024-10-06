@@ -24,7 +24,7 @@ object ExecutionPlanner extends Phase("execution-plan"):
           // Skip the top-level query wrapping
           plan(q.child, evalQuery)
         case d: Debug =>
-          val debugPlan = plan(d.debugRelation, evalQuery = true)
+          val debugPlan = plan(d.debugExpr, evalQuery = true)
           ExecuteDebug(d, debugPlan)
         case t: TestRelation =>
           val plans = List.newBuilder[ExecutionPlan]

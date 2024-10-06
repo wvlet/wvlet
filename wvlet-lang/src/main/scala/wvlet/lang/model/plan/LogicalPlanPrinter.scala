@@ -158,8 +158,9 @@ object LogicalPlanPrinter extends LogSupport:
           case _ =>
             out.println(s"${prefix}")
             printChildExprs(m.childExpressions)
+
         for c <- m.children do
-          // Add indent for child releations
+          // Add indent for child relations
           print(c, out, level + 1)
 
     end match

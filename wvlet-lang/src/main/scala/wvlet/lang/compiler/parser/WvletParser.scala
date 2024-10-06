@@ -583,10 +583,10 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         case _ =>
           Query(r, r.nodeLocation)
 
-    queryRest(r)
+    updateRelationIfExists(r)
   end query
 
-  def queryRest(r: Relation): Relation =
+  def updateRelationIfExists(r: Relation): Relation =
     val t = scanner.lookAhead()
     t.token match
       case WvletToken.SAVE =>
@@ -634,7 +634,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
 
     end match
 
-  end queryRest
+  end updateRelationIfExists
 
   def queryBody(): Relation = queryBlock(querySingle())
 
@@ -1213,7 +1213,12 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       scanner.lookAhead().token match
         case WvletToken.PIPE =>
           consume(WvletToken.PIPE)
-          val next = queryBlockSingle(r)
+          val next =
+            scanner.lookAhead().token match
+              case WvletToken.SAVE | WvletToken.APPEND | WvletToken.DELETE =>
+                updateRelationIfExists(r)
+              case _ =>
+                queryBlockSingle(r)
           loop(next)
         case _ =>
           r
@@ -1221,7 +1226,8 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
 
     val t        = consume(WvletToken.DEBUG)
     val debugRel = loop(input)
-    Debug(input, debugRel, t.nodeLocation)
+
+    Debug(input, debugExpr = debugRel, t.nodeLocation)
 
   /**
     * relationPrimary := qualifiedId \| '(' query ')' \| stringLiteral

@@ -42,7 +42,7 @@ modelParams: '(' modelParam (',' modelParam)* ')'
 modelParam : identifier ':' identifier ('=' expression)?
 
 // top-level query
-query      : queryBody queryRest?
+query      : queryBody update?
 queryBody  : querySingle queryBlock*
 // A rule for sub queries
 querySingle: 'from' relation (',' relation)* ','? queryBlock*
@@ -80,9 +80,9 @@ queryBlock: joinExpr
           | ('intersect' | 'except') 'all'? relation
           | 'dedup'
           | 'describe'
-          | 'debug' debugExpr+
+          | 'debug' debugExpr+ update?
 
-queryRest    : 'save' 'as' updateTarget
+update       : 'save' 'as' updateTarget
              | 'append' 'to' updateTarget
              | 'delete'
 updateTarget : qualifiedId | stringLiteral 
