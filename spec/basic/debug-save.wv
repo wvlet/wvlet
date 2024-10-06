@@ -1,0 +1,8 @@
+from 'person.json'
+debug
+| where id = 1
+| save as debug_result_0123
+
+from debug_result_0123
+test _.size should be 1
+test _.rows should be [[1, "alice", 10]]
