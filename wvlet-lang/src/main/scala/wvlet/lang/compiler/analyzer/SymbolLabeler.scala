@@ -47,6 +47,8 @@ object SymbolLabeler extends Phase("symbol-labeler"):
     unit
 
   private def label(plan: LogicalPlan, context: Context): Unit =
+    if context.isContextCompilationUnit then
+      debug(s"Labeling symbols for ${plan.pp}")
     def iter(tree: LogicalPlan, ctx: Context): Context =
       tree match
         case p: PackageDef =>
@@ -77,10 +79,17 @@ object SymbolLabeler extends Phase("symbol-labeler"):
           iter(s.child, ctx)
           registerSaveAs(s)(using ctx)
           ctx
+        case d: Debug =>
+          warn(d)
+          iter(d.debugExpr, ctx)
+          ctx
         case q: Relation =>
-          q.traverseOnce { case s: SelectAsAlias =>
-            iter(s.child, ctx)
-            registerSelectAsAlias(s)(using ctx)
+          q.traverseOnce {
+            case s: SelectAsAlias =>
+              iter(s.child, ctx)
+              registerSelectAsAlias(s)(using ctx)
+            case d: Debug =>
+              iter(d.debugExpr, ctx)
           }
           ctx
         case _ =>

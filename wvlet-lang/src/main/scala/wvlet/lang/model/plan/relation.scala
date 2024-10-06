@@ -950,8 +950,11 @@ enum SamplingSize:
   * @param child
   *   query fragment to debug
   * @param debugRelation
-  *   debug query to evaluate the input query fragment (child)
+  *   a chain of operators for debugging
   * @param nodeLocation
   */
-case class Debug(child: Relation, debugRelation: Relation, nodeLocation: Option[NodeLocation])
-    extends FilteringRelation
+case class Debug(child: Relation, debugExpr: Relation, nodeLocation: Option[NodeLocation])
+    extends FilteringRelation:
+
+  // Add debug expr as well for the ease of tree traversal
+  override def children: Seq[LogicalPlan] = Seq(child, debugExpr)

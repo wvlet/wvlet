@@ -26,7 +26,7 @@ sealed trait ExecutionPlan extends Product:
 
   def pp: String =
     def iter(p: ExecutionPlan, level: Int): String =
-      def indent(s: String): String =
+      def indent(s: String, level: Int = level): String =
         val lines = s.split("\n")
         lines.map(l => s"${("  " * level)}${l}").mkString("\n")
 
@@ -34,20 +34,26 @@ sealed trait ExecutionPlan extends Product:
       val body =
         p match
           case t: ExecuteTasks =>
-            val tasks = t.tasks.map(iter(_, level + 1)).mkString("\n")
-            s"- ${header}\n${tasks}"
+            val tasks = t.tasks.filterNot(_ eq ExecuteNothing).map(iter(_, level)).mkString("\n")
+            s"- ${header}:\n${indent(tasks, level + 1)}"
           case q: ExecuteQuery =>
-            s"- ${header}\n${q.plan.pp}"
+            s"- ${header}:\n${indent(q.plan.pp, level + 1)}"
           case s: ExecuteSave =>
-            s"- ${header} ${s.save.targetName}"
+            s"- ${header} as ${s.save.targetName}:\n${indent(s.queryPlan.pp, level + 1)}"
           case t: ExecuteTest =>
             s"- ${header} ${t.test.testExpr.pp}"
-          case _ =>
-            ""
+          case t: ExecuteDebug =>
+            s"- ${header}:\n${indent(t.debugExecutionPlan.pp, level + 1)}"
+          case other =>
+            s"${other}"
 
       indent(body)
 
     iter(this, 0)
+
+  end pp
+
+end ExecutionPlan
 
 object ExecutionPlan:
   def empty: ExecutionPlan = ExecuteNothing
