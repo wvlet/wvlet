@@ -40,12 +40,13 @@ trait Expression extends TreeNode with Product with LogSupport:
     try
       val primaryConstructor = this.getClass.getDeclaredConstructors()(0)
 
-      val args = newArgs.map {
-        case s: Span =>
-          // Span (AnyVal) becomes a Long type due to optimization
-          s.coordinate
-        case other =>
-          other
+      val args = newArgs.map { (x: Any) =>
+        x match
+          case s: Span =>
+            // Span (AnyVal) becomes a Long type due to optimization
+            s.coordinate
+          case other =>
+            other
       }
 
       val newObj =
