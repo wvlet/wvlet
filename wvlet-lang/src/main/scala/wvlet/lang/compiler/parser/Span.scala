@@ -103,7 +103,7 @@ class Span(val coordinate: Long) extends AnyVal:
   def extendTo(other: Span): Span =
     if exists then
       if other.exists && end < other.end then
-        Span(start, other.end, pointOffset)
+        withEnd(other.end)
       else
         this
     else if other.exists then
