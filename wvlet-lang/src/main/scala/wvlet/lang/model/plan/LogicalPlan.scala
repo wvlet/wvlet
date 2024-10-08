@@ -427,12 +427,13 @@ trait LogicalPlan extends TreeNode with Product:
     // TODO: Use non-reflection to support Scala.js/Scala Native
     val primaryConstructor = this.getClass.getDeclaredConstructors()(0)
     try
-      val args = newArgs.map {
-        case s: Span =>
-          // Span can be a plain Long type due to optimization
-          s.coordinate
-        case other =>
-          other
+      val args = newArgs.map { (x: Any) =>
+        x match
+          case s: Span =>
+            // Span can be a plain Long type due to optimization
+            s.coordinate
+          case other =>
+            other
       }
       val newObj = primaryConstructor.newInstance(args*)
       newObj match

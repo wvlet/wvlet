@@ -15,10 +15,30 @@ package wvlet.lang.compiler.parser
 
 import wvlet.lang.compiler.{CompilationUnit, SourceFile}
 import wvlet.airspec.AirSpec
+import wvlet.lang.model.plan.ModelDef
 
 class WvletParserTest extends AirSpec:
   test("parse"):
     WvletParser(CompilationUnit.fromString("from A select _")).parse()
+
+  test("model span"):
+    given unit: CompilationUnit = CompilationUnit.fromString(s"""model A =
+        |  from x
+        |end
+        |""".stripMargin)
+    val plan = WvletParser(unit).parse()
+
+    var found = false
+    plan.traverseOnce { case m: ModelDef =>
+      found = true
+      val startLoc = m.span.nodeLocation
+      startLoc.line shouldBe 1
+      startLoc.column shouldBe 1
+      val endLoc = m.span.endNodeLocation
+      endLoc.line shouldBe 3
+      endLoc.column shouldBe 4
+    }
+    found shouldBe true
 
   test("parse basic queries"):
     val plans = ParserPhase.parseSourceFolder("spec/basic/src")
@@ -40,3 +60,5 @@ class WvletParserTest extends AirSpec:
     plans.foreach: p =>
       debug(p.pp)
   }
+
+end WvletParserTest

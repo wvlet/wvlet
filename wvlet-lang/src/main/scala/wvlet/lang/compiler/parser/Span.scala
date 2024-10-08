@@ -52,6 +52,12 @@ class Span(val coordinate: Long) extends AnyVal:
     val pos  = src.offsetToColumn(start)
     NodeLocation(line + 1, pos)
 
+  def endNodeLocation(using unit: CompilationUnit): NodeLocation =
+    val src  = unit.sourceFile
+    val line = src.offsetToLine(end)
+    val pos  = src.offsetToColumn(end)
+    NodeLocation(line + 1, pos)
+
   /**
     * Is this span different from NoSpan?
     */
@@ -85,7 +91,23 @@ class Span(val coordinate: Long) extends AnyVal:
 
   def withEnd(end: Int): Span =
     if exists then
-      Span(start, end, this.point - start)
+      Span(start, end, pointOffset)
+    else
+      this
+
+  /**
+    * Extend the span to the end of the given other span
+    * @param other
+    * @return
+    */
+  def extendTo(other: Span): Span =
+    if exists then
+      if other.exists && end < other.end then
+        Span(start, other.end, pointOffset)
+      else
+        this
+    else if other.exists then
+      other
     else
       this
 

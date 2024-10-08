@@ -219,14 +219,14 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
               s"Expected a query block, but found ${other}",
               other.sourceLocationOfCompilationUnit
             )
-    consume(WvletToken.END)
+    val modelEnd = consume(WvletToken.END)
     ModelDef(
       TableName(name.fullName),
       params,
       // resolve the model type from the query if no type is given
       tpe.map(x => UnresolvedRelationType(x.fullName, Name.typeName(x.leafName))),
       q,
-      t.span
+      t.span.extendTo(modelEnd.span)
     )
 
   end modelDef
