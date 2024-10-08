@@ -727,6 +727,8 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         addColumnsExpr(input)
       case WvletToken.EXCLUDE =>
         excludeColumnExpr(input)
+      case WvletToken.RENAME =>
+        renameColumnExpr(input)
       case WvletToken.SHIFT =>
         shiftColumnsExpr(input)
       case WvletToken.GROUP =>
@@ -888,6 +890,39 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           nextItem
     nextItem
     ExcludeColumnsFromRelation(input, items.result, t.nodeLocation)
+
+  def renameColumnExpr(relation: Relation): RenameColumnsFromRelation =
+    val t     = consume(WvletToken.RENAME)
+    val items = List.newBuilder[Alias]
+
+    def item(): Alias =
+      val t = scanner.lookAhead()
+      t.token match
+        case WvletToken.IDENTIFIER | WvletToken.BACKQUOTED_IDENTIFIER =>
+          val name = identifierSingle()
+          consume(WvletToken.AS)
+          val alias = identifierSingle()
+          Alias(alias, name, t.nodeLocation)
+        case _ =>
+          unexpected(t)
+
+    def nextItem(): Unit =
+      val t = scanner.lookAhead()
+      t.token match
+        case WvletToken.COMMA =>
+          consume(WvletToken.COMMA)
+          nextItem()
+        case token if WvletToken.isQueryDelimiter(token) =>
+        // finish
+        case t if t.tokenType == TokenType.Keyword =>
+        // finish
+        case _ =>
+          items += item()
+          nextItem()
+    nextItem()
+    RenameColumnsFromRelation(relation, items.result, t.nodeLocation)
+
+  end renameColumnExpr
 
   def shiftColumnsExpr(input: Relation): ShiftColumns =
     val t = consume(WvletToken.SHIFT)

@@ -1,0 +1,4 @@
+from 'person.json'
+rename name as full_name
+rename id as person_id
+test _.columns should be ['person_id', 'full_name', 'age']

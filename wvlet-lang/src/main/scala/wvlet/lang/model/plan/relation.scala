@@ -371,6 +371,48 @@ case class ExcludeColumnsFromRelation(
     )
     pt
 
+case class RenameColumnsFromRelation(
+    child: Relation,
+    columnAliases: Seq[Alias],
+    nodeLocation: Option[NodeLocation]
+) extends UnaryRelation
+    with LogSupport:
+  override def toString: String = s"Rename[${columnAliases.mkString(", ")}](${child})"
+
+  val columnMapping: ListMap[TermName, TermName] =
+    val renamedColumns = ListMap.newBuilder[TermName, TermName]
+    inputRelationType
+      .fields
+      .foreach { f =>
+        columnAliases.find(a => a.expr.asInstanceOf[Identifier].toTermName == f.name) match
+          case Some(a) =>
+            renamedColumns += f.name -> Name.termName(a.nameExpr.leafName)
+          case _ =>
+      }
+    renamedColumns.result()
+
+  override lazy val relationType: RelationType =
+    val newColumns = Seq.newBuilder[NamedType]
+    // Detect newly added columns
+    newColumns ++=
+      inputRelationType
+        .fields
+        .map { f =>
+          columnMapping.get(f.name) match
+            case Some(a) =>
+              NamedType(a, f.dataType)
+            case None =>
+              f
+        }
+    val pt = ProjectedType(
+      Name.typeName(RelationType.newRelationTypeName),
+      newColumns.result(),
+      child.relationType
+    )
+    pt
+
+end RenameColumnsFromRelation
+
 case class ShiftColumns(
     child: Relation,
     isLeftShift: Boolean,

@@ -481,6 +481,22 @@ class GenSQL(ctx: Context) extends LogSupport:
               .map(_.toSQLAttributeName)
               .mkString(", ")} from ${printRelation(d.inputRelation)(using sqlContext.enterFrom)}"""
         )
+      case r: RenameColumnsFromRelation =>
+        val newColumns = r
+          .child
+          .relationType
+          .fields
+          .map { f =>
+            r.columnMapping.get(f.name) match
+              case Some(alias) =>
+                s"${f.toSQLAttributeName} as ${alias.toSQLAttributeName}"
+              case None =>
+                s"${f.toSQLAttributeName}"
+          }
+        selectWithIndentAndParenIfNecessary(
+          s"""select ${newColumns
+              .mkString(", ")} from ${printRelation(r.inputRelation)(using sqlContext.enterFrom)}"""
+        )
       case s: ShiftColumns =>
         selectWithIndentAndParenIfNecessary(
           s"""select ${s

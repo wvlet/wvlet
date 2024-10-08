@@ -126,12 +126,7 @@ object DataType extends LogSupport:
       * Produces a double quoted name if necessry
       * @return
       */
-    def toSQLAttributeName: String =
-      val s = name.name
-      if s.matches("^[_a-zA-Z][_a-zA-Z0-9]*$") then
-        s
-      else
-        s""""${s}""""
+    def toSQLAttributeName: String = name.toSQLAttributeName
 
   case class VarArgType(elemType: DataType) extends DataType(elemType.typeName, Seq(elemType)):
     override def isResolved: Boolean     = elemType.isResolved
