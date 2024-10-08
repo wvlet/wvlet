@@ -27,7 +27,7 @@ case class ResolvedAttribute(
     override val dataType: DataType,
     // If this attribute directly refers to a table column, its source column will be set.
     sourceColumn: Option[SourceColumn],
-    nodeLocation: Option[NodeLocation]
+    nodeLocation: NodeLocation
 ) extends Attribute
     with LogSupport:
 

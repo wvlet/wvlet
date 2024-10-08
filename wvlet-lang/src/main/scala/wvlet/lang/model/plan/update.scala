@@ -16,30 +16,28 @@ sealed trait Save extends Update with UnaryRelation:
 
 sealed trait SaveToTable extends Save with HasRefName
 
-case class SaveAs(child: Relation, target: QualifiedName, nodeLocation: Option[NodeLocation])
+case class SaveAs(child: Relation, target: QualifiedName, nodeLocation: NodeLocation)
     extends SaveToTable:
   override def targetName: String = target.fullName
   override def refName: NameExpr  = target
 
-case class SaveAsFile(child: Relation, path: String, nodeLocation: Option[NodeLocation])
-    extends Save:
+case class SaveAsFile(child: Relation, path: String, nodeLocation: NodeLocation) extends Save:
   override def targetName: String = path
 
-case class AppendTo(child: Relation, target: QualifiedName, nodeLocation: Option[NodeLocation])
+case class AppendTo(child: Relation, target: QualifiedName, nodeLocation: NodeLocation)
     extends SaveToTable:
   override def targetName: String = target.fullName
   override def refName: NameExpr  = target
 
-case class AppendToFile(child: Relation, path: String, nodeLocation: Option[NodeLocation])
-    extends Save:
+case class AppendToFile(child: Relation, path: String, nodeLocation: NodeLocation) extends Save:
   override def targetName: String = path
 
 trait DeleteOps extends Update with UnaryRelation
 
-case class Delete(child: Relation, targetTable: QualifiedName, nodeLocation: Option[NodeLocation])
+case class Delete(child: Relation, targetTable: QualifiedName, nodeLocation: NodeLocation)
     extends DeleteOps
 
-case class DeleteFromFile(child: Relation, path: String, nodeLocation: Option[NodeLocation])
+case class DeleteFromFile(child: Relation, path: String, nodeLocation: NodeLocation)
     extends DeleteOps
 
 case class Truncate(targetTable: QualifiedName, nodeLocation: Option[NodeLocation])

@@ -55,7 +55,7 @@ case class CompilationUnit(sourceFile: SourceFile, isPreset: Boolean = false) ex
 
   def enter(symbol: Symbol): Unit = knownSymbols = symbol :: knownSymbols
 
-  def toSourceLocation(nodeLocation: Option[NodeLocation]) = SourceLocation(this, nodeLocation)
+  def toSourceLocation(nodeLocation: NodeLocation) = SourceLocation(this, nodeLocation)
 
   def findRelationRef(name: String): Option[LogicalPlan] =
     var result: Option[Relation] = None

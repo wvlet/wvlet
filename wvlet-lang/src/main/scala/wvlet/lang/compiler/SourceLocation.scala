@@ -16,7 +16,7 @@ package wvlet.lang.compiler
 import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.model.NodeLocation
 
-case class SourceLocation(compileUnit: CompilationUnit, nodeLocation: Option[NodeLocation]):
+case class SourceLocation(compileUnit: CompilationUnit, nodeLocation: NodeLocation):
   def codeLineAt: String = nodeLocation
     .map { loc =>
       val line = compileUnit.sourceFile.sourceLine(loc.line)
@@ -25,8 +25,7 @@ case class SourceLocation(compileUnit: CompilationUnit, nodeLocation: Option[Nod
     .getOrElse("")
 
   def locationString: String =
-    nodeLocation match
-      case Some(loc) =>
-        s"${compileUnit.sourceFile.fileName}:${loc.line}:${loc.column}"
-      case None =>
-        compileUnit.sourceFile.relativeFilePath
+    if nodeLocation.isEmpty then
+      compileUnit.sourceFile.relativeFilePath
+    else
+      s"${compileUnit.sourceFile.fileName}:${nodeLocation.line}:${nodeLocation.column}"

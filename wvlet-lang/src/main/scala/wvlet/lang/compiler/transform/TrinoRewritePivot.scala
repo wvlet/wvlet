@@ -16,6 +16,8 @@ package wvlet.lang.compiler.transform
 import wvlet.lang.compiler.RewriteRule.PlanRewriter
 import wvlet.lang.compiler.*
 import wvlet.lang.compiler.DBType.Trino
+import wvlet.lang.model.NodeLocation
+import wvlet.lang.model.NodeLocation.NoLocation
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
 
@@ -68,7 +70,11 @@ object TrinoRewritePivot extends Phase("rewrite-pivot"):
           .fields
           .filterNot(f => pivotKeyNames.contains(f.name.name))
           .map { f =>
-            UnresolvedGroupingKey(NameExpr.EmptyName, UnquotedIdentifier(f.name.name, None), None)
+            UnresolvedGroupingKey(
+              NameExpr.EmptyName,
+              UnquotedIdentifier(f.name.name, NoLocation),
+              NoLocation
+            )
           }
           .toList
       else
@@ -78,7 +84,9 @@ object TrinoRewritePivot extends Phase("rewrite-pivot"):
     val g = GroupBy(p.child, pivotGroupingKeys, p.nodeLocation)
 
     // Pivot keys are used as grouping keys
-    val pivotKeys: List[Attribute] = p.groupingKeys.map(k => SingleColumn(k.name, k.name, None))
+    val pivotKeys: List[Attribute] = p
+      .groupingKeys
+      .map(k => SingleColumn(k.name, k.name, NoLocation))
     // Pivot aggregation expressions
     val pivotAggExprs: List[Attribute] = p
       .pivotKeys
@@ -93,14 +101,14 @@ object TrinoRewritePivot extends Phase("rewrite-pivot"):
               exprs +=
                 SingleColumn(
                   // Use a quoted column name for safely wrapping arbitrary column values
-                  BackQuotedIdentifier(v.unquotedValue, None),
+                  BackQuotedIdentifier(v.unquotedValue, NoLocation),
                   FunctionApply(
-                    UnquotedIdentifier("count_if", None),
-                    List(FunctionArg(None, Eq(targetColumn, v, None), None)),
+                    UnquotedIdentifier("count_if", NoLocation),
+                    List(FunctionArg(None, Eq(targetColumn, v, NoLocation), NoLocation)),
                     None,
-                    None
+                    NoLocation
                   ),
-                  None
+                  NoLocation
                 )
             else
               val fieldNames = p.inputRelationType.fields.map(_.name).toSet
@@ -112,19 +120,23 @@ object TrinoRewritePivot extends Phase("rewrite-pivot"):
                   // TODO Do not replace identifiers used for aliases
                   case id: Identifier if fieldNames.contains(id.toTermName) =>
                     FunctionApply(
-                      UnquotedIdentifier("if", None),
+                      UnquotedIdentifier("if", NoLocation),
                       List(
-                        FunctionArg(None, Eq(targetColumn, v, None), None),
-                        FunctionArg(None, id, None),
-                        FunctionArg(None, NullLiteral(None), None)
+                        FunctionArg(None, Eq(targetColumn, v, NoLocation), NoLocation),
+                        FunctionArg(None, id, NoLocation),
+                        FunctionArg(None, NullLiteral(NoLocation), NoLocation)
                       ),
                       None,
-                      None
+                      NoLocation
                     )
                 }
                 exprs +=
                   // Use a quoted column name for safely wrapping arbitrary column values
-                  SingleColumn(BackQuotedIdentifier(v.unquotedValue, None), pivotAggExpr, None)
+                  SingleColumn(
+                    BackQuotedIdentifier(v.unquotedValue, NoLocation),
+                    pivotAggExpr,
+                    NoLocation
+                  )
               }
             end if
             exprs.result

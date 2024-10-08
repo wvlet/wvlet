@@ -33,6 +33,7 @@ import wvlet.lang.model.DataType.{
 import wvlet.lang.model.expr.NameExpr.EmptyName
 import wvlet.airframe.json.JSON
 import wvlet.airframe.ulid.ULID
+import wvlet.lang.model.NodeLocation.NoLocation
 import wvlet.log.LogSupport
 
 import scala.collection.immutable.ListMap
@@ -76,7 +77,7 @@ case class ModelDef(
     params: List[DefArg],
     givenRelationType: Option[RelationType],
     child: Query,
-    nodeLocation: Option[NodeLocation]
+    nodeLocation: NodeLocation
 ) extends LogicalPlan
     with HasTableName:
   override def children: Seq[LogicalPlan] = Nil
@@ -87,25 +88,24 @@ case class ModelDef(
 trait HasRefName extends UnaryRelation:
   def refName: NameExpr
 
-case class SelectAsAlias(child: Relation, alias: NameExpr, nodeLocation: Option[NodeLocation])
+case class SelectAsAlias(child: Relation, alias: NameExpr, nodeLocation: NodeLocation)
     extends UnaryRelation
     with HasRefName:
   override def relationType: RelationType = child.relationType
   override def refName: NameExpr          = alias
 
-case class TestRelation(child: Relation, testExpr: Expression, nodeLocation: Option[NodeLocation])
+case class TestRelation(child: Relation, testExpr: Expression, nodeLocation: NodeLocation)
     extends UnaryRelation:
   override def relationType: RelationType = child.relationType
 
-case class ParenthesizedRelation(child: Relation, nodeLocation: Option[NodeLocation])
-    extends UnaryRelation:
+case class ParenthesizedRelation(child: Relation, nodeLocation: NodeLocation) extends UnaryRelation:
   override def relationType: RelationType = child.relationType
 
 case class AliasedRelation(
     child: Relation,
     alias: NameExpr,
     columnNames: Option[Seq[NamedType]],
-    nodeLocation: Option[NodeLocation]
+    nodeLocation: NodeLocation
 ) extends UnaryRelation:
   override def toString: String =
     columnNames match
@@ -123,23 +123,21 @@ case class AliasedRelation(
 
 end AliasedRelation
 
-case class NamedRelation(child: Relation, name: NameExpr, nodeLocation: Option[NodeLocation])
+case class NamedRelation(child: Relation, name: NameExpr, nodeLocation: NodeLocation)
     extends UnaryRelation
     with Selection:
   override def toString: String = s"NamedRelation[${name.strExpr}](${child})"
 
   override def selectItems: Seq[Attribute] =
     // Produce a dummy AllColumns node for SQLGenerator
-    Seq(AllColumns(Wildcard(None), None, None))
+    Seq(AllColumns(Wildcard(NoLocation), None, NoLocation))
 
   override def relationType: RelationType = AliasedType(
     Name.typeName(name.leafName),
     child.relationType
   )
 
-case class Values(rows: Seq[Expression], nodeLocation: Option[NodeLocation])
-    extends Relation
-    with LeafPlan:
+case class Values(rows: Seq[Expression], nodeLocation: NodeLocation) extends Relation with LeafPlan:
   override def toString: String = s"Values(${rows.mkString(", ")})"
 
   override val relationType: RelationType =
@@ -164,33 +162,22 @@ case class Values(rows: Seq[Expression], nodeLocation: Option[NodeLocation])
   * @param name
   * @param nodeLocation
   */
-case class TableRef(name: NameExpr, nodeLocation: Option[NodeLocation])
-    extends Relation
-    with LeafPlan:
+case class TableRef(name: NameExpr, nodeLocation: NodeLocation) extends Relation with LeafPlan:
   override def toString: String           = s"TableRef(${name})"
   override val relationType: RelationType = UnresolvedRelationType(name.fullName)
 
-case class TableFunctionCall(
-    name: NameExpr,
-    args: List[FunctionArg],
-    nodeLocation: Option[NodeLocation]
-) extends Relation
+case class TableFunctionCall(name: NameExpr, args: List[FunctionArg], nodeLocation: NodeLocation)
+    extends Relation
     with LeafPlan:
   override def toString: String           = s"TableFunctionCall(${name}, ${args})"
   override val relationType: RelationType = UnresolvedRelationType(name.fullName)
 
-case class FileScan(path: String, nodeLocation: Option[NodeLocation])
-    extends Relation
-    with LeafPlan:
+case class FileScan(path: String, nodeLocation: NodeLocation) extends Relation with LeafPlan:
   override def toString: String           = s"FileScan(${path})"
   override val relationType: RelationType = UnresolvedRelationType(RelationType.newRelationTypeName)
 
-case class PathScan(
-    name: String,
-    path: String,
-    schema: RelationType,
-    nodeLocation: Option[NodeLocation]
-) extends Relation
+case class PathScan(name: String, path: String, schema: RelationType, nodeLocation: NodeLocation)
+    extends Relation
     with LeafPlan:
   override def toString: String           = s"PathScan(${path})"
   override val relationType: RelationType = UnresolvedRelationType(RelationType.newRelationTypeName)
@@ -199,7 +186,7 @@ case class JSONFileScan(
     path: String,
     schema: RelationType,
     columns: Seq[NamedType],
-    nodeLocation: Option[NodeLocation]
+    nodeLocation: NodeLocation
 ) extends Relation
     with LeafPlan:
   override def relationType: RelationType =
@@ -215,7 +202,7 @@ case class ParquetFileScan(
     path: String,
     schema: RelationType,
     columns: Seq[NamedType],
-    nodeLocation: Option[NodeLocation]
+    nodeLocation: NodeLocation
 ) extends Relation
     with LeafPlan:
   override def relationType: RelationType =
@@ -229,14 +216,10 @@ case class ParquetFileScan(
 
   override lazy val resolved = true
 
-case class RawSQL(sql: Expression, nodeLocation: Option[NodeLocation])
-    extends Relation
-    with LeafPlan:
+case class RawSQL(sql: Expression, nodeLocation: NodeLocation) extends Relation with LeafPlan:
   override val relationType: RelationType = UnresolvedRelationType(RelationType.newRelationTypeName)
 
-case class RawJSON(json: Expression, nodeLocation: Option[NodeLocation])
-    extends Relation
-    with LeafPlan:
+case class RawJSON(json: Expression, nodeLocation: NodeLocation) extends Relation with LeafPlan:
   override val relationType: RelationType = UnresolvedRelationType(RelationType.newRelationTypeName)
 
 /**
@@ -246,25 +229,25 @@ trait FilteringRelation extends UnaryRelation:
   override def relationType: RelationType = child.relationType
 
 // Deduplicate (duplicate elimination) the input relation
-case class Distinct(child: Project, nodeLocation: Option[NodeLocation])
+case class Distinct(child: Project, nodeLocation: NodeLocation)
     extends FilteringRelation
     with AggSelect:
   override def selectItems: Seq[Attribute] = child.selectItems
   override def toString: String            = s"Distinct(${child})"
 
-case class Sort(child: Relation, orderBy: Seq[SortItem], nodeLocation: Option[NodeLocation])
+case class Sort(child: Relation, orderBy: Seq[SortItem], nodeLocation: NodeLocation)
     extends FilteringRelation:
   override def toString: String = s"Sort[${orderBy.mkString(", ")}](${child})"
 
-case class Limit(child: Relation, limit: LongLiteral, nodeLocation: Option[NodeLocation])
+case class Limit(child: Relation, limit: LongLiteral, nodeLocation: NodeLocation)
     extends FilteringRelation:
   override def toString: String = s"Limit[${limit.value}](${child})"
 
-case class Filter(child: Relation, filterExpr: Expression, nodeLocation: Option[NodeLocation])
+case class Filter(child: Relation, filterExpr: Expression, nodeLocation: NodeLocation)
     extends FilteringRelation:
   override def toString: String = s"Filter[${filterExpr}](${child})"
 
-case class EmptyRelation(nodeLocation: Option[NodeLocation]) extends Relation with LeafPlan:
+case class EmptyRelation(nodeLocation: NodeLocation) extends Relation with LeafPlan:
   // Need to override this method so as not to create duplicate case object instances
   override def copyInstance(newArgs: Seq[AnyRef]) = this
   override def toString: String                   = s"EmptyRelation()"
@@ -277,7 +260,7 @@ sealed trait Selection extends UnaryRelation:
 // This node can be a pivot node for generating a SELECT statement with aggregation functions
 trait AggSelect extends Selection
 
-case class Project(child: Relation, selectItems: Seq[Attribute], nodeLocation: Option[NodeLocation])
+case class Project(child: Relation, selectItems: Seq[Attribute], nodeLocation: NodeLocation)
     extends UnaryRelation
     with AggSelect:
 
@@ -300,11 +283,8 @@ case class Project(child: Relation, selectItems: Seq[Attribute], nodeLocation: O
   * @param transformItems
   * @param nodeLocation
   */
-case class Transform(
-    child: Relation,
-    transformItems: Seq[Attribute],
-    nodeLocation: Option[NodeLocation]
-) extends UnaryRelation
+case class Transform(child: Relation, transformItems: Seq[Attribute], nodeLocation: NodeLocation)
+    extends UnaryRelation
     with Selection
     with LogSupport:
   override def toString: String = s"Transform[${transformItems.mkString(", ")}](${child})"
@@ -328,7 +308,7 @@ case class Transform(
 case class AddColumnsToRelation(
     child: Relation,
     newColumns: Seq[Attribute],
-    nodeLocation: Option[NodeLocation]
+    nodeLocation: NodeLocation
 ) extends UnaryRelation
     with LogSupport:
   override def toString: String = s"Add[${newColumns.mkString(", ")}](${child})"
@@ -350,7 +330,7 @@ case class AddColumnsToRelation(
 case class ExcludeColumnsFromRelation(
     child: Relation,
     columnNames: Seq[NameExpr],
-    nodeLocation: Option[NodeLocation]
+    nodeLocation: NodeLocation
 ) extends UnaryRelation
     with LogSupport:
   override def toString: String = s"Drop[${columnNames.mkString(", ")}](${child})"
@@ -374,7 +354,7 @@ case class ExcludeColumnsFromRelation(
 case class RenameColumnsFromRelation(
     child: Relation,
     columnAliases: Seq[Alias],
-    nodeLocation: Option[NodeLocation]
+    nodeLocation: NodeLocation
 ) extends UnaryRelation
     with LogSupport:
   override def toString: String = s"Rename[${columnAliases.mkString(", ")}](${child})"
@@ -417,7 +397,7 @@ case class ShiftColumns(
     child: Relation,
     isLeftShift: Boolean,
     shiftItems: Seq[NameExpr],
-    nodeLocation: Option[NodeLocation]
+    nodeLocation: NodeLocation
 ) extends UnaryRelation:
   override def toString: String = s"Shift[${shiftItems.mkString(", ")}](${child})"
 
@@ -460,11 +440,8 @@ end ShiftColumns
   * @param having
   * @param nodeLocation
   */
-case class GroupBy(
-    child: Relation,
-    groupingKeys: List[GroupingKey],
-    nodeLocation: Option[NodeLocation]
-) extends UnaryRelation:
+case class GroupBy(child: Relation, groupingKeys: List[GroupingKey], nodeLocation: NodeLocation)
+    extends UnaryRelation:
   override def toString: String = s"GroupBy[${groupingKeys.mkString(",")}](${child})"
 
   override lazy val relationType: RelationType = AggregationType(
@@ -485,7 +462,7 @@ case class GroupBy(
   * @param selectItems
   * @param nodeLocation
   */
-case class Agg(child: Relation, selectItems: List[Attribute], nodeLocation: Option[NodeLocation])
+case class Agg(child: Relation, selectItems: List[Attribute], nodeLocation: NodeLocation)
     extends UnaryRelation
     with AggSelect:
   override def toString = s"AggSelect[${selectItems.mkString(", ")}](${child})"
@@ -505,7 +482,7 @@ case class Pivot(
     child: Relation,
     pivotKeys: List[PivotKey],
     groupingKeys: List[GroupingKey],
-    nodeLocation: Option[NodeLocation]
+    nodeLocation: NodeLocation
 ) extends UnaryRelation:
 
   override def toString =
@@ -523,7 +500,7 @@ case class Pivot(
     child.relationType
   )
 
-case class PivotKey(name: Identifier, values: List[Literal], nodeLocation: Option[NodeLocation])
+case class PivotKey(name: Identifier, values: List[Literal], nodeLocation: NodeLocation)
     extends Expression:
   override def children: Seq[Expression] = values
 
@@ -541,7 +518,7 @@ case class SQLSelect(
     groupingKeys: List[GroupingKey],
     having: List[Filter],
     filters: List[Filter],
-    nodeLocation: Option[NodeLocation]
+    nodeLocation: NodeLocation
 ) extends UnaryRelation
     with Selection:
   override def toString =
@@ -560,7 +537,7 @@ case class SQLSelect(
 
 trait QueryStatement extends UnaryRelation
 
-case class Query(body: Relation, nodeLocation: Option[NodeLocation])
+case class Query(body: Relation, nodeLocation: NodeLocation)
     extends QueryStatement
     with FilteringRelation:
   override def child: Relation  = body
@@ -578,7 +555,7 @@ case class Join(
     left: Relation,
     right: Relation,
     cond: JoinCriteria,
-    nodeLocation: Option[NodeLocation]
+    nodeLocation: NodeLocation
 ) extends Relation
     with LogSupport:
   override def modelName: String = joinType.toString
@@ -721,20 +698,19 @@ sealed trait SetOperation extends Relation with LogSupport:
 
 end SetOperation
 
-case class Concat(left: Relation, right: Relation, nodeLocation: Option[NodeLocation])
-    extends SetOperation:
+case class Concat(left: Relation, right: Relation, nodeLocation: NodeLocation) extends SetOperation:
   override def toSQLOp: String         = "union all"
   override def children: Seq[Relation] = Seq(left, right)
   override def toString                = s"Concat(${left}, ${right})"
 
-case class Dedup(child: Relation, nodeLocation: Option[NodeLocation]) extends FilteringRelation:
+case class Dedup(child: Relation, nodeLocation: NodeLocation) extends FilteringRelation:
   override def toString = s"Dedup(${child})"
 
 case class Intersect(
     left: Relation,
     right: Relation,
     isDistinct: Boolean,
-    nodeLocation: Option[NodeLocation]
+    nodeLocation: NodeLocation
 ) extends SetOperation:
   override def toSQLOp: String =
     s"intersect${
@@ -747,12 +723,8 @@ case class Intersect(
   override def children: Seq[Relation] = Seq(left, right)
   override def toString                = s"Intersect(${left}, ${right})"
 
-case class Except(
-    left: Relation,
-    right: Relation,
-    isDistinct: Boolean,
-    nodeLocation: Option[NodeLocation]
-) extends SetOperation:
+case class Except(left: Relation, right: Relation, isDistinct: Boolean, nodeLocation: NodeLocation)
+    extends SetOperation:
   override def toSQLOp: String =
     s"except${
         if isDistinct then
@@ -769,12 +741,8 @@ case class Except(
   * @param relations
   * @param nodeLocation
   */
-case class Union(
-    left: Relation,
-    right: Relation,
-    isDistinct: Boolean,
-    nodeLocation: Option[NodeLocation]
-) extends SetOperation:
+case class Union(left: Relation, right: Relation, isDistinct: Boolean, nodeLocation: NodeLocation)
+    extends SetOperation:
   override def toSQLOp: String =
     s"except${
         if isDistinct then
@@ -786,11 +754,8 @@ case class Union(
   override def children: Seq[Relation] = Seq(left, right)
   override def toString                = s"Union(${children.mkString(",")})"
 
-case class Unnest(
-    columns: Seq[Expression],
-    withOrdinality: Boolean,
-    nodeLocation: Option[NodeLocation]
-) extends Relation:
+case class Unnest(columns: Seq[Expression], withOrdinality: Boolean, nodeLocation: NodeLocation)
+    extends Relation:
   override def children: Seq[LogicalPlan] = Seq.empty
 
   override def toString = s"Unnest(withOrdinality:${withOrdinality}, ${columns.mkString(",")})"
@@ -806,7 +771,7 @@ case class Unnest(
 //      SingleColumn(EmptyName, other, other.nodeLocation)
 //  }
 
-case class Lateral(query: Relation, nodeLocation: Option[NodeLocation]) extends UnaryRelation:
+case class Lateral(query: Relation, nodeLocation: NodeLocation) extends UnaryRelation:
   override def child: Relation = query
 
   override lazy val relationType: RelationType =
@@ -818,7 +783,7 @@ case class LateralView(
     exprs: Seq[Expression],
     tableAlias: NameExpr,
     columnAliases: Seq[NameExpr],
-    nodeLocation: Option[NodeLocation]
+    nodeLocation: NodeLocation
 ) extends UnaryRelation:
 
   override lazy val relationType: RelationType =
@@ -839,7 +804,7 @@ case class TableScan(
     name: TableName,
     schema: RelationType,
     columns: Seq[NamedType],
-    nodeLocation: Option[NodeLocation]
+    nodeLocation: NodeLocation
 ) extends Relation
     with LeafPlan
     with HasTableName:
@@ -866,7 +831,7 @@ case class ModelScan(
     modelArgs: List[FunctionArg],
     schema: RelationType,
     columns: Seq[NamedType],
-    nodeLocation: Option[NodeLocation]
+    nodeLocation: NodeLocation
 ) extends Relation
     with LeafPlan
     with HasTableName:
@@ -887,7 +852,7 @@ case class Subscribe(
     watermarkColumn: Option[String],
     windowSize: Option[String],
     params: Seq[SubscribeParam],
-    nodeLocation: Option[NodeLocation]
+    nodeLocation: NodeLocation
 ) extends UnaryRelation:
   override val relationType: RelationType = AliasedType(
     Name.typeName(name.leafName),
@@ -900,7 +865,7 @@ case class Subscribe(
 //  def windowSize: Option[String] =
 //    params.find(_.name == "window_size").map(_.value)
 
-case class SubscribeParam(name: String, value: String, nodeLocation: Option[NodeLocation])
+case class SubscribeParam(name: String, value: String, nodeLocation: NodeLocation)
     extends Expression:
   override def children: Seq[Expression] = Seq.empty
 
@@ -908,7 +873,7 @@ case class IncrementalTableScan(
     name: TableName,
     schema: RelationType,
     columns: Seq[NamedType],
-    nodeLocation: Option[NodeLocation]
+    nodeLocation: NodeLocation
 ) extends Relation
     with LeafPlan
     with HasTableName:
@@ -921,7 +886,7 @@ case class IncrementalTableScan(
 case class IncrementalAppend(
     // Differential query
     child: Relation,
-    nodeLocation: Option[NodeLocation]
+    nodeLocation: NodeLocation
 ) extends UnaryRelation:
   override def relationType: RelationType = child.relationType
 
@@ -929,9 +894,7 @@ enum ShowType:
   case models
   case tables
 
-case class Show(showType: ShowType, nodeLocation: Option[NodeLocation])
-    extends Relation
-    with LeafPlan:
+case class Show(showType: ShowType, nodeLocation: NodeLocation) extends Relation with LeafPlan:
   override def relationType: RelationType =
     showType match
       case ShowType.models =>
@@ -953,7 +916,7 @@ case class Show(showType: ShowType, nodeLocation: Option[NodeLocation])
 
 trait RelationInspector extends QueryStatement
 
-case class Describe(child: Relation, nodeLocation: Option[NodeLocation]) extends RelationInspector:
+case class Describe(child: Relation, nodeLocation: NodeLocation) extends RelationInspector:
   override def relationType: RelationType = SchemaType(
     parent = None,
     typeName = Name.typeName("table_description"),
@@ -974,7 +937,7 @@ case class Sample(
     child: Relation,
     method: SamplingMethod,
     size: SamplingSize,
-    nodeLocation: Option[NodeLocation]
+    nodeLocation: NodeLocation
 ) extends UnaryRelation:
   override def relationType: RelationType = child.relationType
 
@@ -995,7 +958,7 @@ enum SamplingSize:
   *   a chain of operators for debugging
   * @param nodeLocation
   */
-case class Debug(child: Relation, debugExpr: Relation, nodeLocation: Option[NodeLocation])
+case class Debug(child: Relation, debugExpr: Relation, nodeLocation: NodeLocation)
     extends FilteringRelation:
 
   // Add debug expr as well for the ease of tree traversal

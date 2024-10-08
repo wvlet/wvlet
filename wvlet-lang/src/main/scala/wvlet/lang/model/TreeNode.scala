@@ -29,7 +29,7 @@ trait TreeNode:
     * @return
     *   the code location in the SQL text if available
     */
-  def nodeLocation: Option[NodeLocation]
+  def nodeLocation: NodeLocation
   def sourceLocation(using ctx: Context): SourceLocation = SourceLocation(
     ctx.compilationUnit,
     nodeLocation

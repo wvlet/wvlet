@@ -37,10 +37,10 @@ case class TokenData(token: WvletToken, str: String, offset: Int, length: Int):
     nodeLocation(using unit.sourceFile)
   )
 
-  def nodeLocation(using src: SourceFile): Option[NodeLocation] =
+  def nodeLocation(using src: SourceFile): NodeLocation =
     val line = src.offsetToLine(offset)
     val col  = src.offsetToColumn(offset)
-    Some(NodeLocation(line + 1, col))
+    NodeLocation(line + 1, col)
 
 class ScanState(startFrom: Int = 0):
   override def toString: String = s"'${str}' <${token}> (${lastOffset}-${offset})"
