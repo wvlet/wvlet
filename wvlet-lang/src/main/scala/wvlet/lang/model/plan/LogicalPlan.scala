@@ -20,7 +20,8 @@ import wvlet.lang.model.expr.{Attribute, AttributeList, Expression, NameExpr}
 import wvlet.lang.model.{NodeLocation, RelationType, RelationTypeList, TreeNode}
 import wvlet.airframe.ulid.ULID
 import wvlet.lang.StatusCode
-import wvlet.lang.model.NodeLocation.NoLocation
+import wvlet.lang.compiler.parser.Span
+import wvlet.lang.compiler.parser.Span.NoSpan
 
 enum PlanProperty:
   // Used for recording a Symbol defined for the tree
@@ -426,7 +427,14 @@ trait LogicalPlan extends TreeNode with Product:
     // TODO: Use non-reflection to support Scala.js/Scala Native
     val primaryConstructor = this.getClass.getDeclaredConstructors()(0)
     try
-      val newObj = primaryConstructor.newInstance(newArgs*)
+      val args = newArgs.map {
+        case s: Span =>
+          // Span can be a plain Long type due to optimization
+          s.coordinate
+        case other =>
+          other
+      }
+      val newObj = primaryConstructor.newInstance(args*)
       newObj match
         case t: TreeNode =>
           if this.symbol.tree != null then
@@ -523,4 +531,4 @@ trait BinaryPlan extends LogicalPlan:
   override def children: Seq[LogicalPlan] = Seq(left, right)
 
 object LogicalPlan:
-  val empty = PackageDef(name = EmptyName, statements = Nil, nodeLocation = NoLocation)
+  val empty = PackageDef(name = EmptyName, statements = Nil, span = NoSpan)

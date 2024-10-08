@@ -152,6 +152,9 @@ class Compiler(compilerOptions: CompilerOptions) extends LogSupport:
       .foreach { failedUnit =>
         if contextUnit.exists(_ eq failedUnit) then
           throw failedUnit.lastError.get
+        else
+          // TODO Return errors to CompilerResult
+          trace(failedUnit.lastError.get)
       }
 
     val result = CompileResult(refinedUnits, this, rootContext)

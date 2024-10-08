@@ -37,6 +37,8 @@ case class TokenData(token: WvletToken, str: String, offset: Int, length: Int):
     nodeLocation(using unit.sourceFile)
   )
 
+  def span: Span = Span(offset, offset + length, 0)
+
   def nodeLocation(using src: SourceFile): NodeLocation =
     val line = src.offsetToLine(offset)
     val col  = src.offsetToColumn(offset)

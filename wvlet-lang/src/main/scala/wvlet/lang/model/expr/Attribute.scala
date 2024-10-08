@@ -17,7 +17,8 @@ import wvlet.lang.model.DataType.{EmbeddedRecordType, NamedType}
 import wvlet.lang.model.{DataType, NodeLocation}
 import wvlet.lang.compiler.Name
 import wvlet.airframe.ulid.ULID
-import wvlet.lang.model.NodeLocation.NoLocation
+import wvlet.lang.compiler.parser.Span
+import wvlet.lang.compiler.parser.Span.NoSpan
 import wvlet.log.LogSupport
 
 /**
@@ -57,7 +58,7 @@ trait Attribute extends LeafExpression with LogSupport:
             // No need to have alias
             other
           case other =>
-            Alias(alias, other, NoLocation)
+            Alias(alias, other, NoSpan)
 
   /**
     * * Returns the index of this attribute in the input or output columns
@@ -112,7 +113,7 @@ case class AttributeRef(attr: Attribute)(val exprId: ULID = ULID.newULID) extend
   override def nameExpr: NameExpr = attr.nameExpr
   override def toString: String   = s"AttributeRef(${attr})"
 
-  override def nodeLocation: NodeLocation = attr.nodeLocation
+  override def span: Span = attr.span
 
   // override def withDataType(newDataType: DataType): Attribute = this.copy(attr = attr.withDataType(newDataType))
 
@@ -134,11 +135,8 @@ case class AttributeRef(attr: Attribute)(val exprId: ULID = ULID.newULID) extend
   * @param qualifier
   * @param nodeLocation
   */
-case class SingleColumn(
-    override val nameExpr: NameExpr,
-    expr: Expression,
-    nodeLocation: NodeLocation
-) extends Attribute:
+case class SingleColumn(override val nameExpr: NameExpr, expr: Expression, span: Span)
+    extends Attribute:
   override def fullName: String   = nameExpr.fullName
   override def dataType: DataType = expr.dataType
 
@@ -150,8 +148,7 @@ case class SingleColumn(
 
   override def toString = s"${fullName}:${dataTypeName} := ${expr}"
 
-case class UnresolvedAttribute(override val nameExpr: NameExpr, nodeLocation: NodeLocation)
-    extends Attribute:
+case class UnresolvedAttribute(override val nameExpr: NameExpr, span: Span) extends Attribute:
   override def fullName: String = nameExpr.fullName
   override def toString: String = s"UnresolvedAttribute(${fullName})"
   override lazy val resolved    = false
@@ -159,11 +156,8 @@ case class UnresolvedAttribute(override val nameExpr: NameExpr, nodeLocation: No
   override def inputAttributes: Seq[Attribute]  = Seq.empty
   override def outputAttributes: Seq[Attribute] = Seq.empty
 
-case class AllColumns(
-    override val nameExpr: NameExpr,
-    columns: Option[Seq[Attribute]],
-    nodeLocation: NodeLocation
-) extends Attribute
+case class AllColumns(override val nameExpr: NameExpr, columns: Option[Seq[Attribute]], span: Span)
+    extends Attribute
     with LogSupport:
   override def fullName: String = nameExpr.fullName
 
@@ -204,8 +198,7 @@ case class AllColumns(
 
 end AllColumns
 
-case class Alias(nameExpr: NameExpr, expr: Expression, nodeLocation: NodeLocation)
-    extends Attribute:
+case class Alias(nameExpr: NameExpr, expr: Expression, span: Span) extends Attribute:
   override def fullName: String = nameExpr.fullName
 
   override def inputAttributes: Seq[Attribute]  = Seq(this)
@@ -223,11 +216,8 @@ case class Alias(nameExpr: NameExpr, expr: Expression, nodeLocation: NodeLocatio
   * @param qualifier
   * @param nodeLocation
   */
-case class MultiSourceColumn(
-    nameExpr: NameExpr,
-    inputs: Seq[Expression],
-    nodeLocation: NodeLocation
-) extends Attribute:
+case class MultiSourceColumn(nameExpr: NameExpr, inputs: Seq[Expression], span: Span)
+    extends Attribute:
   // require(inputs.nonEmpty, s"The inputs of MultiSourceColumn should not be empty: ${this}", nodeLocation)
   override def fullName: String = nameExpr.fullName
   override def toString: String = s"${fullName}:${dataTypeName} := {${inputs.mkString(", ")}}"
@@ -236,7 +226,7 @@ case class MultiSourceColumn(
     case a: Attribute =>
       a
     case e: Expression =>
-      SingleColumn(nameExpr, e, e.nodeLocation)
+      SingleColumn(nameExpr, e, e.span)
   }
 
   override def outputAttributes: Seq[Attribute] = Seq(this)

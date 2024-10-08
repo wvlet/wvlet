@@ -17,6 +17,7 @@ import wvlet.lang.compiler.Context
 import wvlet.lang.compiler.SourceLocation
 
 case class NodeLocation(
+    // 1-origin line number
     line: Int,
     // column position in the line (1-origin)
     column: Int

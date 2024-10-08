@@ -254,7 +254,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
             // Replace with the resolved plan
             compiledUnit.resolvedPlan match
               case PackageDef(_, List(rel: Relation), _, _) =>
-                ParenthesizedRelation(rel, r.nodeLocation)
+                ParenthesizedRelation(rel, r.span)
               case other =>
                 throw StatusCode
                   .SYNTAX_ERROR
@@ -263,12 +263,12 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
         val file             = context.getDataFile(r.path)
         val jsonRelationType = JSONAnalyzer.analyzeJSONFile(file)
         val cols             = jsonRelationType.fields
-        JSONFileScan(file, jsonRelationType, cols, r.nodeLocation)
+        JSONFileScan(file, jsonRelationType, cols, r.span)
       case r: FileScan if r.path.endsWith(".parquet") =>
         val file                = context.dataFilePath(r.path)
         val parquetRelationType = ParquetAnalyzer.guessSchema(file)
         val cols                = parquetRelationType.fields
-        ParquetFileScan(file, parquetRelationType, cols, r.nodeLocation)
+        ParquetFileScan(file, parquetRelationType, cols, r.span)
 
     end apply
 
@@ -344,7 +344,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
                 si.tpe match
                   case r: RelationType =>
                     // trace(s"resolved ${sym} ${ref.locationString(using context)}")
-                    ModelScan(TableName(sym.name.name), Nil, r, r.fields, ref.nodeLocation)
+                    ModelScan(TableName(sym.name.name), Nil, r, r.fields, ref.span)
                   case _ =>
                     ref
               case relAlias: RelationAliasSymbolInfo =>
@@ -359,7 +359,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
               case Some(tpe: SchemaType) =>
                 trace(s"Found a table type for ${tblType}: ${tpe}")
                 val tableName = TableName.parse(tblType.toTermName.name)
-                TableScan(tableName, tpe, tpe.fields, ref.nodeLocation)
+                TableScan(tableName, tpe, tpe.fields, ref.span)
               case _ =>
                 val tableName = TableName.parse(ref.name.fullName)
                 context
@@ -369,7 +369,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
                     tableName.name
                   ) match
                   case Some(tbl) =>
-                    TableScan(tableName, tbl.schemaType, tbl.schemaType.fields, ref.nodeLocation)
+                    TableScan(tableName, tbl.schemaType, tbl.schemaType.fields, ref.span)
                   case None =>
                     context
                       .workEnv
@@ -385,7 +385,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
             si.tpe match
               case r: RelationType =>
                 trace(s"Resolved model ref: ${ref.name.fullName} as ${r}")
-                ModelScan(TableName(sym.name.name), ref.args, r, r.fields, ref.nodeLocation)
+                ModelScan(TableName(sym.name.name), ref.args, r, r.fields, ref.span)
               case _ =>
                 ref
           case None =>
@@ -431,7 +431,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
             x.transformExpression(resolveExpression(p.child.relationType, context))
               .asInstanceOf[Attribute]
         }
-      Project(resolvedChild, resolvedColumns, p.nodeLocation)
+      Project(resolvedChild, resolvedColumns, p.span)
     }
 
   private object resolveGroupingKey extends RewriteRule:
@@ -471,17 +471,12 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
                 if index >= agg.groupingKeys.length then
                   throw StatusCode
                     .SYNTAX_ERROR
-                    .newException(
-                      s"Invalid grouping key index: ${attr.nameExpr}",
-                      attr.nodeLocation
-                    )(using context)
+                    .newException(s"Invalid grouping key index: ${attr.nameExpr}", attr.span)(using
+                      context
+                    )
 
                 val referencedGroupingKey = agg.groupingKeys(index)
-                SingleColumn(
-                  referencedGroupingKey.name,
-                  expr = referencedGroupingKey,
-                  attr.nodeLocation
-                )
+                SingleColumn(referencedGroupingKey.name, expr = referencedGroupingKey, attr.span)
             }
           case None =>
             p
@@ -519,7 +514,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
         val updated = u.transformChildExpressions { case expr: Expression =>
           expr.transformExpression {
             case ref: ContextInputRef if !ref.dataType.isResolved =>
-              val c = ContextInputRef(dataType = contextType, ref.nodeLocation)
+              val c = ContextInputRef(dataType = contextType, ref.span)
               c
           }
         }
@@ -567,7 +562,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
               // TODO resolve one of the function type
               throw StatusCode
                 .SYNTAX_ERROR
-                .newException(s"Ambiguous function call for ${i}", i.nodeLocation)
+                .newException(s"Ambiguous function call for ${i}", i.span)
           }
       case d @ DotRef(qual, method: Identifier, _, _) =>
         val methodName = method.toTermName
@@ -584,7 +579,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
                 // TODO resolve one of the function type
                 throw StatusCode
                   .SYNTAX_ERROR
-                  .newException(s"Ambiguous function call for ${method}", d.nodeLocation)
+                  .newException(s"Ambiguous function call for ${method}", d.span)
             }
         else
           trace(s"Failed to find function `${methodName}` for ${qual}:${qual.dataType}")
@@ -634,7 +629,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
                     case Some(argType) =>
                       argType.dataType match
                         case VarArgType(elemType) =>
-                          resolvedArgs += argName -> ListExpr(args, expr.nodeLocation)
+                          resolvedArgs += argName -> ListExpr(args, expr.span)
                         // all args are consumed
                         case _ =>
                           resolvedArgs += argName -> expr
@@ -866,7 +861,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
                 Name.termName(resolvedRef.name.leafName),
                 col.dataType,
                 None,
-                resolvedRef.nodeLocation
+                resolvedRef.span
               )
             case None =>
               // Lookup functions

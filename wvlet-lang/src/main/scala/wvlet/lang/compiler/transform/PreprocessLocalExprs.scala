@@ -5,6 +5,9 @@ import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.Query
 import wvlet.log.{LogSupport, Logger}
 
+/**
+  * Preprocess compile-time expressions, such as backquote strings and native expressions
+  */
 object PreprocessLocalExpr extends Phase("preprocess-local-expr") with LogSupport:
 
   private def rewriteRules: List[ExpressionRewriteRule] = EvalBackquoteInterpolation :: Nil
@@ -27,7 +30,7 @@ object PreprocessLocalExpr extends Phase("preprocess-local-expr") with LogSuppor
           b
         else
           val str = evaluatedParts.map(_.get).mkString
-          BackQuotedIdentifier(str, b.nodeLocation)
+          BackQuotedIdentifier(str, b.span)
 
   def eval(e: Expression, ctx: Context): Option[String] =
     e match

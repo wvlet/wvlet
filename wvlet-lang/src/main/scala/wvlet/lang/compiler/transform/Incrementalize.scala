@@ -94,11 +94,11 @@ object Incrementalize extends Phase("incrementalize"):
 
     override def apply(context: Context): PlanRewriter =
       case t: TableScan =>
-        IncrementalTableScan(TableName.parse(t.name.fullName), t.schema, t.columns, t.nodeLocation)
+        IncrementalTableScan(TableName.parse(t.name.fullName), t.schema, t.columns, t.span)
 
     override def postProcess(plan: LogicalPlan, context: Context): LogicalPlan = IncrementalAppend(
       plan.asInstanceOf[Relation],
-      plan.nodeLocation
+      plan.span
     )
 
   end IncrementalizeSimpleScan

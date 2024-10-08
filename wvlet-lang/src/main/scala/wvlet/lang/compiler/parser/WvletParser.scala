@@ -52,7 +52,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         packageDef()
       case _ =>
         val stmts = statements()
-        PackageDef(EmptyName, stmts, unit.sourceFile, t.nodeLocation)
+        PackageDef(EmptyName, stmts, unit.sourceFile, t.span)
 
   // private def sourceLocation: SourceLocation = SourceLocation(unit.sourceFile, nodeLocation())
 
@@ -68,10 +68,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
   private def unexpected(t: TokenData): Nothing =
     throw StatusCode
       .SYNTAX_ERROR
-      .newException(
-        s"Unexpected token: <${t.token}> '${t.str}'",
-        SourceLocation(compilationUnit, t.nodeLocation)
-      )
+      .newException(s"Unexpected token: <${t.token}> '${t.str}'", t.sourceLocation)
 
   private def unexpected(expr: Expression): Nothing =
     throw StatusCode
@@ -83,21 +80,21 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     t.token match
       case WvletToken.IDENTIFIER =>
         consume(WvletToken.IDENTIFIER)
-        UnquotedIdentifier(t.str, t.nodeLocation)
+        UnquotedIdentifier(t.str, t.span)
       case WvletToken.BACKQUOTED_IDENTIFIER =>
         consume(WvletToken.BACKQUOTED_IDENTIFIER)
-        BackQuotedIdentifier(t.str, t.nodeLocation)
+        BackQuotedIdentifier(t.str, t.span)
       case WvletToken.BACKQUOTE_INTERPOLATION_PREFIX if t.str == "s" =>
         interpolatedBackquoteString()
       case WvletToken.UNDERSCORE =>
         consume(WvletToken.UNDERSCORE)
-        ContextInputRef(DataType.UnknownType, t.nodeLocation)
+        ContextInputRef(DataType.UnknownType, t.span)
       case WvletToken.STAR =>
         consume(WvletToken.STAR)
-        Wildcard(t.nodeLocation)
+        Wildcard(t.span)
       case WvletToken.INTEGER_LITERAL =>
         consume(WvletToken.INTEGER_LITERAL)
-        DigitIdentifier(t.str, t.nodeLocation)
+        DigitIdentifier(t.str, t.span)
       case _ =>
         reserved()
 
@@ -106,10 +103,10 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     t.token match
       case WvletToken.IDENTIFIER =>
         consume(WvletToken.IDENTIFIER)
-        UnquotedIdentifier(t.str, t.nodeLocation)
+        UnquotedIdentifier(t.str, t.span)
       case WvletToken.BACKQUOTED_IDENTIFIER =>
         consume(WvletToken.BACKQUOTED_IDENTIFIER)
-        BackQuotedIdentifier(t.str, t.nodeLocation)
+        BackQuotedIdentifier(t.str, t.span)
       case _ =>
         reserved()
 
@@ -117,7 +114,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     val t = scanner.nextToken()
     t.token match
       case token if token.isReservedKeyword =>
-        UnquotedIdentifier(t.str, t.nodeLocation)
+        UnquotedIdentifier(t.str, t.span)
       case _ =>
         unexpected(t)
 
@@ -135,7 +132,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           EmptyName
 
     val stmts = statements()
-    PackageDef(packageName, stmts, unit.sourceFile, t.nodeLocation)
+    PackageDef(packageName, stmts, unit.sourceFile, t.span)
 
   /**
     * statements := statement+
@@ -166,9 +163,9 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         modelDef()
       case WvletToken.DEF =>
         val d = funDef()
-        TopLevelFunctionDef(d, t.nodeLocation)
+        TopLevelFunctionDef(d, t.span)
       case WvletToken.SHOW =>
-        Query(queryBlock(show()), t.nodeLocation)
+        Query(queryBlock(show()), t.span)
       case WvletToken.EXECUTE =>
         executeExpr()
       case _ =>
@@ -178,7 +175,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     val t    = consume(WvletToken.SHOW)
     val name = identifier()
     try
-      Show(ShowType.valueOf(name.leafName), t.nodeLocation)
+      Show(ShowType.valueOf(name.leafName), t.span)
     catch
       case e: IllegalArgumentException =>
         throw StatusCode
@@ -188,7 +185,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
   def executeExpr(): Execute =
     val t    = consume(WvletToken.EXECUTE)
     val expr = expression()
-    Execute(expr, t.nodeLocation)
+    Execute(expr, t.span)
 
   def modelDef(): ModelDef =
     val t    = consume(WvletToken.MODEL)
@@ -229,7 +226,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       // resolve the model type from the query if no type is given
       tpe.map(x => UnresolvedRelationType(x.fullName, Name.typeName(x.leafName))),
       q,
-      t.nodeLocation
+      t.span
     )
 
   end modelDef
@@ -241,7 +238,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       case WvletToken.FROM =>
         consume(WvletToken.FROM)
         val fromSource = consume(WvletToken.STRING_LITERAL)
-        d.copy(fromSource = Some(StringLiteral(fromSource.str, fromSource.nodeLocation)))
+        d.copy(fromSource = Some(StringLiteral(fromSource.str, fromSource.span)))
       case _ =>
         d
 
@@ -252,19 +249,14 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       case WvletToken.DOT =>
         consume(WvletToken.DOT)
         val w = consume(WvletToken.STAR)
-        Import(
-          DotRef(qid, Wildcard(w.nodeLocation), DataType.UnknownType, qid.nodeLocation),
-          None,
-          None,
-          qid.nodeLocation
-        )
+        Import(DotRef(qid, Wildcard(w.span), DataType.UnknownType, qid.span), None, None, qid.span)
       case WvletToken.AS =>
         // alias
         consume(WvletToken.AS)
         val alias = identifier()
-        Import(qid, Some(alias), None, qid.nodeLocation)
+        Import(qid, Some(alias), None, qid.span)
       case _ =>
-        Import(qid, None, None, qid.nodeLocation)
+        Import(qid, None, None, qid.span)
 
   def typeDef(): TypeDef =
     val t       = consume(WvletToken.TYPE)
@@ -282,7 +274,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           s"extending multiple types is not supported: ${name} extends ${parents.map(_.fullName).mkString(", ")}",
           t.sourceLocation
         )
-    TypeDef(name, tp, scopes, parents.headOption, elems, t.nodeLocation)
+    TypeDef(name, tp, scopes, parents.headOption, elems, t.span)
 
   def typeParams(): List[TypeParameter] =
     scanner.lookAhead().token match
@@ -373,7 +365,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
               Some(expression())
             case _ =>
               None
-        FieldDef(Name.termName(name.leafName), valType, tp, defaultValue, t.nodeLocation)
+        FieldDef(Name.termName(name.leafName), valType, tp, defaultValue, t.span)
       case _ =>
         unexpected(t)
 
@@ -388,7 +380,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           Some(cols)
         case _ =>
           None
-    AliasedRelation(input, alias, columns, alias.nodeLocation)
+    AliasedRelation(input, alias, columns, alias.span)
 
   def namedTypes(): List[NamedType] =
     val t = scanner.lookAhead()
@@ -448,12 +440,12 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           t.token match
             case WvletToken.NATIVE =>
               consume(WvletToken.NATIVE)
-              Some(NativeExpression(name.fullName, retType, t.nodeLocation))
+              Some(NativeExpression(name.fullName, retType, t.span))
             case _ =>
               Some(expression())
         case _ =>
           None
-    FunctionDef(Name.termName(name.leafName), args, defScope, retType, body, t.nodeLocation)
+    FunctionDef(Name.termName(name.leafName), args, defScope, retType, body, t.span)
 
   end funDef
 
@@ -467,7 +459,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           WvletToken.LTEQ | WvletToken.GT | WvletToken.GTEQ =>
         // symbols
         consume(t.token)
-        UnquotedIdentifier(t.str, t.nodeLocation)
+        UnquotedIdentifier(t.str, t.span)
       case _ =>
         reserved()
 
@@ -513,7 +505,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       else
         dt
     // TODO check the name is a leaf name
-    DefArg(Name.termName(name.leafName), dt, defaultValue, name.nodeLocation)
+    DefArg(Name.termName(name.leafName), dt, defaultValue, name.span)
 
   end defArg
 
@@ -532,7 +524,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
             // ok
             case _ =>
               val nameOrType = identifier()
-              scopes += DefContext(None, nameOrType, t.nodeLocation)
+              scopes += DefContext(None, nameOrType, t.span)
               nextScope
         nextScope
         scopes.result()
@@ -543,7 +535,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     val t = consume(WvletToken.ORDER)
     consume(WvletToken.BY)
     val items = sortItems()
-    Sort(input, items, t.nodeLocation)
+    Sort(input, items, t.span)
 
   def sortItems(): List[SortItem] =
     def sortOrder(): Option[SortOrdering] =
@@ -563,11 +555,11 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         val expr  = expression()
         val order = sortOrder()
         // TODO: Support NullOrdering
-        SortItem(expr, order, None, expr.nodeLocation) :: sortItems()
+        SortItem(expr, order, None, expr.span) :: sortItems()
       case WvletToken.INTEGER_LITERAL =>
         val expr  = literal()
         val order = sortOrder()
-        SortItem(expr, order, None, expr.nodeLocation) :: sortItems()
+        SortItem(expr, order, None, expr.span) :: sortItems()
       case WvletToken.COMMA =>
         consume(WvletToken.COMMA)
         sortItems()
@@ -581,7 +573,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         case i: RelationInspector =>
           i
         case _ =>
-          Query(r, r.nodeLocation)
+          Query(r, r.span)
 
     updateRelationIfExists(r)
   end query
@@ -596,10 +588,10 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         target.token match
           case WvletToken.STRING_LITERAL =>
             val path = consume(WvletToken.STRING_LITERAL)
-            SaveAsFile(r, path.str, t.nodeLocation)
+            SaveAsFile(r, path.str, t.span)
           case _ =>
             val qname = qualifiedId()
-            SaveAs(r, qname, t.nodeLocation)
+            SaveAs(r, qname, t.span)
       case WvletToken.APPEND =>
         consume(WvletToken.APPEND)
         consume(WvletToken.TO)
@@ -607,10 +599,10 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         target.token match
           case WvletToken.STRING_LITERAL =>
             val path = consume(WvletToken.STRING_LITERAL)
-            AppendToFile(r, path.str, t.nodeLocation)
+            AppendToFile(r, path.str, t.span)
           case _ =>
             val qname = qualifiedId()
-            AppendTo(r, qname, t.nodeLocation)
+            AppendTo(r, qname, t.span)
       case WvletToken.DELETE =>
         consume(WvletToken.DELETE)
         def iter(x: Relation): Relation =
@@ -618,9 +610,9 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
             case f: FilteringRelation =>
               iter(f.child)
             case TableRef(qname: QualifiedName, _) =>
-              Delete(r, qname, t.nodeLocation)
+              Delete(r, qname, t.span)
             case f: FileScan =>
-              DeleteFromFile(r, f.path, t.nodeLocation)
+              DeleteFromFile(r, f.path, t.span)
             case other =>
               throw StatusCode
                 .SYNTAX_ERROR
@@ -644,7 +636,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         case WvletToken.COMMA =>
           val ct    = consume(WvletToken.COMMA)
           val rNext = fromRelation()
-          val rel   = Join(JoinType.ImplicitJoin, input, rNext, NoJoinCriteria, ct.nodeLocation)
+          val rel   = Join(JoinType.ImplicitJoin, input, rNext, NoJoinCriteria, ct.span)
           readRest(rel)
         case _ =>
           input
@@ -659,12 +651,12 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         r = queryBlock(r)
       case WvletToken.SELECT =>
         // select only query like select 1
-        r = selectExpr(EmptyRelation(t.nodeLocation))
+        r = selectExpr(EmptyRelation(t.span))
         r = queryBlock(r)
       case WvletToken.L_PAREN =>
         // parenthesized query
         consume(WvletToken.L_PAREN)
-        r = ParenthesizedRelation(queryBody(), t.nodeLocation)
+        r = ParenthesizedRelation(queryBody(), t.span)
         consume(WvletToken.R_PAREN)
       case _ =>
         unexpected(t)
@@ -697,7 +689,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           consume(WvletToken.R_PAREN)
           primary match
             case r: TableRef =>
-              TableFunctionCall(r.name, relationArgs, t.nodeLocation)
+              TableFunctionCall(r.name, relationArgs, t.span)
             case other =>
               unexpected(t)
         case _ =>
@@ -720,7 +712,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       case WvletToken.WHERE =>
         consume(WvletToken.WHERE)
         val cond = booleanExpression()
-        Filter(input, cond, t.nodeLocation)
+        Filter(input, cond, t.span)
       case WvletToken.TRANSFORM =>
         transformExpr(input)
       case WvletToken.ADD =>
@@ -747,13 +739,13 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         testExpr(input)
       case WvletToken.DESCRIBE =>
         consume(WvletToken.DESCRIBE)
-        Describe(input, t.nodeLocation)
+        Describe(input, t.span)
       case WvletToken.SAMPLE =>
         sampleExpr(input)
       case WvletToken.CONCAT =>
         consume(WvletToken.CONCAT)
         val right = relation()
-        Concat(input, right, t.nodeLocation)
+        Concat(input, right, t.span)
       case WvletToken.INTERSECT | WvletToken.EXCEPT =>
         consume(t.token)
         val isDistinct: Boolean =
@@ -767,15 +759,15 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         val rel =
           t.token match
             case WvletToken.INTERSECT =>
-              Intersect(input, right, isDistinct, t.nodeLocation)
+              Intersect(input, right, isDistinct, t.span)
             case WvletToken.EXCEPT =>
-              Except(input, right, isDistinct, t.nodeLocation)
+              Except(input, right, isDistinct, t.span)
             case _ =>
               unexpected(t)
         rel
       case WvletToken.DEDUP =>
         consume(WvletToken.DEDUP)
-        Dedup(input, t.nodeLocation)
+        Dedup(input, t.span)
       case WvletToken.DEBUG =>
         debugExpr(input)
       case _ =>
@@ -792,12 +784,12 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         consume(WvletToken.CROSS)
         consume(WvletToken.JOIN)
         val right = relationPrimary()
-        Join(JoinType.CrossJoin, input, right, NoJoinCriteria, t.nodeLocation)
+        Join(JoinType.CrossJoin, input, right, NoJoinCriteria, t.span)
       case WvletToken.JOIN =>
         consume(WvletToken.JOIN)
         val right  = relationPrimary()
         val joinOn = joinCriteria()
-        Join(JoinType.InnerJoin, input, right, joinOn, t.nodeLocation)
+        Join(JoinType.InnerJoin, input, right, joinOn, t.span)
       case WvletToken.LEFT | WvletToken.RIGHT | WvletToken.INNER | WvletToken.FULL =>
         val joinType =
           t.token match
@@ -815,7 +807,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         consume(WvletToken.JOIN)
         val right  = relationPrimary()
         val joinOn = joinCriteria()
-        Join(joinType, input, right, joinOn, t.nodeLocation)
+        Join(joinType, input, right, joinOn, t.span)
       case _ =>
         unexpected(t)
 
@@ -844,9 +836,9 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
                 case other =>
                 // stop the search
             nextKey
-            JoinUsing(joinKeys.result(), t.nodeLocation)
+            JoinUsing(joinKeys.result(), t.span)
           case _ =>
-            JoinOn(cond, t.nodeLocation)
+            JoinOn(cond, t.span)
       case _ =>
         NoJoinCriteria
 
@@ -865,12 +857,12 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           items += selectItem()
           nextItem
     nextItem
-    Transform(input, items.result, t.nodeLocation)
+    Transform(input, items.result, t.span)
 
   def addColumnsExpr(input: Relation): AddColumnsToRelation =
     val t     = consume(WvletToken.ADD)
     val items = selectItems()
-    AddColumnsToRelation(input, items, t.nodeLocation)
+    AddColumnsToRelation(input, items, t.span)
 
   def excludeColumnExpr(input: Relation): ExcludeColumnsFromRelation =
     val t     = consume(WvletToken.EXCLUDE)
@@ -889,7 +881,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           items += identifierSingle()
           nextItem
     nextItem
-    ExcludeColumnsFromRelation(input, items.result, t.nodeLocation)
+    ExcludeColumnsFromRelation(input, items.result, t.span)
 
   def renameColumnExpr(relation: Relation): RenameColumnsFromRelation =
     val t     = consume(WvletToken.RENAME)
@@ -902,7 +894,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           val name = identifierSingle()
           consume(WvletToken.AS)
           val alias = identifierSingle()
-          Alias(alias, name, t.nodeLocation)
+          Alias(alias, name, t.span)
         case _ =>
           unexpected(t)
 
@@ -920,7 +912,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           items += item()
           nextItem()
     nextItem()
-    RenameColumnsFromRelation(relation, items.result, t.nodeLocation)
+    RenameColumnsFromRelation(relation, items.result, t.span)
 
   end renameColumnExpr
 
@@ -959,7 +951,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           items += identifierSingle()
           nextItem
     nextItem
-    ShiftColumns(input, isLeftShift, items.result, t.nodeLocation)
+    ShiftColumns(input, isLeftShift, items.result, t.span)
 
   end shiftColumnsExpr
 
@@ -967,7 +959,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     val t = consume(WvletToken.GROUP)
     consume(WvletToken.BY)
     val items = groupByItemList()
-    GroupBy(input, items, t.nodeLocation)
+    GroupBy(input, items, t.span)
 
   def aggExpr(input: Relation): Agg =
     def findGroupingKeys(r: Relation): List[GroupingKey] =
@@ -984,12 +976,12 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     val groupingKeys = findGroupingKeys(input)
       .zipWithIndex
       .map { case (g, i) =>
-        val key = UnquotedIdentifier(s"_${i + 1}", g.nodeLocation)
-        SingleColumn(key, key, g.nodeLocation)
+        val key = UnquotedIdentifier(s"_${i + 1}", g.span)
+        SingleColumn(key, key, g.span)
       }
     // report _1, _2, agg_expr...
     val items = groupingKeys ++ selectItems()
-    Agg(input, items, t.nodeLocation)
+    Agg(input, items, t.span)
 
   def pivotExpr(input: Relation): Pivot =
     def pivotValues: List[Literal] =
@@ -1023,9 +1015,9 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
               consume(WvletToken.L_PAREN)
               val values = pivotValues
               consume(WvletToken.R_PAREN)
-              PivotKey(pivotKey, values, t.nodeLocation) :: pivotKeys
+              PivotKey(pivotKey, values, t.span) :: pivotKeys
             case _ =>
-              PivotKey(pivotKey, Nil, t.nodeLocation) :: pivotKeys
+              PivotKey(pivotKey, Nil, t.span) :: pivotKeys
         case WvletToken.COMMA =>
           consume(WvletToken.COMMA)
           pivotKeys
@@ -1045,7 +1037,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           groupByItemList()
         case _ =>
           Nil
-    Pivot(input, keys, groupByItems, t.nodeLocation)
+    Pivot(input, keys, groupByItems, t.span)
   end pivotExpr
 
   def groupByItemList(): List[GroupingKey] =
@@ -1053,7 +1045,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     t.token match
       case id if id.isIdentifier =>
         val item = selectItem()
-        val key  = UnresolvedGroupingKey(item.nameExpr, item.expr, t.nodeLocation)
+        val key  = UnresolvedGroupingKey(item.nameExpr, item.expr, t.span)
         key :: groupByItemList()
       case WvletToken.COMMA =>
         consume(WvletToken.COMMA)
@@ -1065,24 +1057,24 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       case _ =>
         // expression only
         val e   = expression()
-        val key = UnresolvedGroupingKey(EmptyName, e, e.nodeLocation)
+        val key = UnresolvedGroupingKey(EmptyName, e, e.span)
         key :: groupByItemList()
 
   def selectExpr(input: Relation): Relation =
     val t = consume(WvletToken.SELECT)
     def proj: Project =
       val items = selectItems()
-      Project(input, items, t.nodeLocation)
+      Project(input, items, t.span)
 
     scanner.lookAhead().token match
       case WvletToken.DISTINCT =>
         val t1 = consume(WvletToken.DISTINCT)
-        Distinct(proj, t1.nodeLocation)
+        Distinct(proj, t1.span)
       case WvletToken.AS =>
         // select as
         consume(WvletToken.AS)
         val alias = identifier()
-        val rel   = SelectAsAlias(input, alias, t.nodeLocation)
+        val rel   = SelectAsAlias(input, alias, t.span)
         rel
       case _ =>
         proj
@@ -1113,22 +1105,22 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         case WvletToken.AS =>
           consume(WvletToken.AS)
           val alias = identifier()
-          SingleColumn(alias, item, item.nodeLocation)
+          SingleColumn(alias, item, item.span)
         case _ =>
           item match
             case i: Identifier =>
               // Propagate the column name for a single column reference
-              SingleColumn(i, i, t.nodeLocation)
+              SingleColumn(i, i, t.span)
             case _ =>
-              SingleColumn(EmptyName, item, item.nodeLocation)
+              SingleColumn(EmptyName, item, item.span)
 
     val t = scanner.lookAhead()
     t.token match
       case id if id.isIdentifier =>
         val exprOrColumName = expression()
         exprOrColumName match
-          case Eq(columnName: Identifier, expr: Expression, nodeLocation) =>
-            SingleColumn(columnName, expr, t.nodeLocation)
+          case Eq(columnName: Identifier, expr: Expression, span) =>
+            SingleColumn(columnName, expr, t.span)
           case _ =>
             selectItemWithAlias(exprOrColumName)
       case _ =>
@@ -1178,7 +1170,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         val order     = orderBy()
         // TODO parse window frame
         consume(WvletToken.R_PAREN)
-        Some(Window(partition, order, None, t.nodeLocation))
+        Some(Window(partition, order, None, t.span))
       case _ =>
         None
 
@@ -1187,12 +1179,12 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
   def limitExpr(input: Relation): Limit =
     val t = consume(WvletToken.LIMIT)
     val n = consume(WvletToken.INTEGER_LITERAL)
-    Limit(input, LongLiteral(n.str.toLong, t.nodeLocation), t.nodeLocation)
+    Limit(input, LongLiteral(n.str.toLong, t.span), t.span)
 
   def testExpr(input: Relation): Relation =
     val t    = consume(WvletToken.TEST)
     val item = expression()
-    TestRelation(input, item, t.nodeLocation)
+    TestRelation(input, item, t.span)
 
   def sampleExpr(input: Relation): Sample =
     def samplingSize: SamplingSize =
@@ -1229,15 +1221,15 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         consume(WvletToken.L_PAREN)
         val size = samplingSize
         consume(WvletToken.R_PAREN)
-        Sample(input, method, size, t.nodeLocation)
+        Sample(input, method, size, t.span)
       case WvletToken.INTEGER_LITERAL =>
         val size = samplingSize
         // Use reservoir sampling by default for fixed number of rows
-        Sample(input, SamplingMethod.reservoir, size, t.nodeLocation)
+        Sample(input, SamplingMethod.reservoir, size, t.span)
       case WvletToken.FLOAT_LITERAL | WvletToken.DOUBLE_LITERAL =>
         val size = samplingSize
         // Use system sampling by default for percentage sampling
-        Sample(input, SamplingMethod.system, size, t.nodeLocation)
+        Sample(input, SamplingMethod.system, size, t.span)
       case _ =>
         unexpected(t)
 
@@ -1262,7 +1254,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     val t        = consume(WvletToken.DEBUG)
     val debugRel = loop(input)
 
-    Debug(input, debugExpr = debugRel, t.nodeLocation)
+    Debug(input, debugExpr = debugRel, t.span)
 
   /**
     * relationPrimary := qualifiedId \| '(' query ')' \| stringLiteral
@@ -1272,21 +1264,21 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     val t = scanner.lookAhead()
     t.token match
       case id if id.isIdentifier =>
-        TableRef(qualifiedId(), t.nodeLocation)
+        TableRef(qualifiedId(), t.span)
       case WvletToken.SELECT | WvletToken.FROM | WvletToken.L_PAREN =>
         querySingle()
       case WvletToken.STRING_LITERAL =>
         consume(WvletToken.STRING_LITERAL)
-        FileScan(t.str, t.nodeLocation)
+        FileScan(t.str, t.span)
       case WvletToken.STRING_INTERPOLATION_PREFIX if t.str == "sql" =>
         val rawSQL = interpolatedString()
-        RawSQL(rawSQL, t.nodeLocation)
+        RawSQL(rawSQL, t.span)
       case WvletToken.STRING_INTERPOLATION_PREFIX if t.str == "json" =>
         val rawJSON = interpolatedString()
-        RawJSON(rawJSON, t.nodeLocation)
+        RawJSON(rawJSON, t.span)
       case WvletToken.BACKQUOTE_INTERPOLATION_PREFIX if t.str == "s" =>
         val tableRef = interpolatedBackquoteString()
-        TableRef(tableRef, t.nodeLocation)
+        TableRef(tableRef, t.span)
       case WvletToken.L_BRACKET =>
         arrayValue()
       case _ =>
@@ -1303,7 +1295,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
 
   def attribute(): Attribute =
     val t = scanner.lookAhead()
-    SingleColumn(EmptyName, expression(), t.nodeLocation)
+    SingleColumn(EmptyName, expression(), t.span)
 
   def expression(): Expression = booleanExpression()
 
@@ -1313,7 +1305,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       case WvletToken.EXCLAMATION | WvletToken.NOT =>
         consume(t.token)
         val e = booleanExpression()
-        Not(e, t.nodeLocation)
+        Not(e, t.span)
       case _ =>
         val expr = valueExpression()
         booleanExpressionRest(expr)
@@ -1324,11 +1316,11 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       case WvletToken.AND =>
         consume(WvletToken.AND)
         val right = booleanExpression()
-        And(expression, right, t.nodeLocation)
+        And(expression, right, t.span)
       case WvletToken.OR =>
         consume(WvletToken.OR)
         val right = booleanExpression()
-        Or(expression, right, t.nodeLocation)
+        Or(expression, right, t.span)
       case _ =>
         expression
 
@@ -1342,23 +1334,23 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       case WvletToken.PLUS =>
         consume(WvletToken.PLUS)
         val right = valueExpression()
-        ArithmeticBinaryExpr(BinaryExprType.Add, expression, right, t.nodeLocation)
+        ArithmeticBinaryExpr(BinaryExprType.Add, expression, right, t.span)
       case WvletToken.MINUS =>
         consume(WvletToken.MINUS)
         val right = valueExpression()
-        ArithmeticBinaryExpr(BinaryExprType.Subtract, expression, right, t.nodeLocation)
+        ArithmeticBinaryExpr(BinaryExprType.Subtract, expression, right, t.span)
       case WvletToken.STAR =>
         consume(WvletToken.STAR)
         val right = valueExpression()
-        ArithmeticBinaryExpr(BinaryExprType.Multiply, expression, right, t.nodeLocation)
+        ArithmeticBinaryExpr(BinaryExprType.Multiply, expression, right, t.span)
       case WvletToken.DIV =>
         consume(WvletToken.DIV)
         val right = valueExpression()
-        ArithmeticBinaryExpr(BinaryExprType.Divide, expression, right, t.nodeLocation)
+        ArithmeticBinaryExpr(BinaryExprType.Divide, expression, right, t.span)
       case WvletToken.MOD =>
         consume(WvletToken.MOD)
         val right = valueExpression()
-        ArithmeticBinaryExpr(BinaryExprType.Modulus, expression, right, t.nodeLocation)
+        ArithmeticBinaryExpr(BinaryExprType.Modulus, expression, right, t.span)
       case WvletToken.EQ =>
         consume(WvletToken.EQ)
         scanner.lookAhead().token match
@@ -1366,45 +1358,45 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
             consume(WvletToken.EQ)
           case _ =>
         val right = valueExpression()
-        Eq(expression, right, t.nodeLocation)
+        Eq(expression, right, t.span)
       case WvletToken.NEQ =>
         consume(WvletToken.NEQ)
         val right = valueExpression()
-        NotEq(expression, right, t.nodeLocation)
+        NotEq(expression, right, t.span)
       case WvletToken.IS =>
         consume(WvletToken.IS)
         scanner.lookAhead().token match
           case WvletToken.NOT =>
             consume(WvletToken.NOT)
             val right = valueExpression()
-            NotEq(expression, right, t.nodeLocation)
+            NotEq(expression, right, t.span)
           case _ =>
             val right = valueExpression()
-            Eq(expression, right, t.nodeLocation)
+            Eq(expression, right, t.span)
       case WvletToken.LT =>
         consume(WvletToken.LT)
         val right = valueExpression()
-        LessThan(expression, right, t.nodeLocation)
+        LessThan(expression, right, t.span)
       case WvletToken.GT =>
         consume(WvletToken.GT)
         val right = valueExpression()
-        GreaterThan(expression, right, t.nodeLocation)
+        GreaterThan(expression, right, t.span)
       case WvletToken.LTEQ =>
         consume(WvletToken.LTEQ)
         val right = valueExpression()
-        LessThanOrEq(expression, right, t.nodeLocation)
+        LessThanOrEq(expression, right, t.span)
       case WvletToken.GTEQ =>
         consume(WvletToken.GTEQ)
         val right = valueExpression()
-        GreaterThanOrEq(expression, right, t.nodeLocation)
+        GreaterThanOrEq(expression, right, t.span)
       case WvletToken.IN =>
         consume(WvletToken.IN)
         val valueList = inExprList()
-        In(expression, valueList, t.nodeLocation)
+        In(expression, valueList, t.span)
       case WvletToken.LIKE =>
         consume(WvletToken.LIKE)
         val right = valueExpression()
-        Like(expression, right, t.nodeLocation)
+        Like(expression, right, t.span)
       case WvletToken.NOT =>
         consume(WvletToken.NOT)
         val t2 = scanner.lookAhead()
@@ -1412,11 +1404,11 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           case WvletToken.LIKE =>
             consume(WvletToken.LIKE)
             val right = valueExpression()
-            NotLike(expression, right, t.nodeLocation)
+            NotLike(expression, right, t.span)
           case WvletToken.IN =>
             consume(WvletToken.IN)
             val valueList = inExprList()
-            NotIn(expression, valueList, t.nodeLocation)
+            NotIn(expression, valueList, t.span)
           case other =>
             unexpected(t2)
       case WvletToken.SHOULD =>
@@ -1445,7 +1437,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
             case _ =>
               unexpected(t)
         val right = booleanExpression()
-        ShouldExpr(testType, left = expression, right, t.nodeLocation)
+        ShouldExpr(testType, left = expression, right, t.span)
       case _ =>
         expression
 
@@ -1459,10 +1451,10 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       t.token match
         case WvletToken.THIS =>
           consume(WvletToken.THIS)
-          This(DataType.UnknownType, t.nodeLocation)
+          This(DataType.UnknownType, t.span)
         case WvletToken.UNDERSCORE =>
           consume(WvletToken.UNDERSCORE)
-          ContextInputRef(DataType.UnknownType, t.nodeLocation)
+          ContextInputRef(DataType.UnknownType, t.span)
         case WvletToken.NULL | WvletToken.INTEGER_LITERAL | WvletToken.DOUBLE_LITERAL | WvletToken
               .FLOAT_LITERAL | WvletToken.DECIMAL_LITERAL | WvletToken.EXP_LITERAL | WvletToken
               .STRING_LITERAL =>
@@ -1474,12 +1466,12 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           val thenExpr = expression()
           consume(WvletToken.ELSE)
           val elseExpr = expression()
-          IfExpr(cond, thenExpr, elseExpr, t.nodeLocation)
+          IfExpr(cond, thenExpr, elseExpr, t.span)
         case WvletToken.STRING_INTERPOLATION_PREFIX =>
           interpolatedString()
         case WvletToken.FROM =>
           val q: Relation = querySingle()
-          SubQueryExpression(q, t.nodeLocation)
+          SubQueryExpression(q, t.span)
         case WvletToken.L_PAREN =>
           consume(WvletToken.L_PAREN)
           val t2 = scanner.lookAhead()
@@ -1487,11 +1479,11 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
             case WvletToken.FROM =>
               val q = querySingle()
               consume(WvletToken.R_PAREN)
-              SubQueryExpression(q, t2.nodeLocation)
+              SubQueryExpression(q, t2.span)
             case _ =>
               val e = expression()
               consume(WvletToken.R_PAREN)
-              ParenthesizedExpression(e, t.nodeLocation)
+              ParenthesizedExpression(e, t.span)
         case WvletToken.L_BRACKET =>
           array()
         case id if id.isIdentifier =>
@@ -1537,7 +1529,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           nextValue
     nextValue
     consume(WvletToken.R_BRACKET)
-    Values(values.result(), t.nodeLocation)
+    Values(values.result(), t.span)
 
   def array(): ArrayConstructor =
     val t        = consume(WvletToken.L_BRACKET)
@@ -1555,31 +1547,31 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           nextElement
     nextElement
     consume(WvletToken.R_BRACKET)
-    ArrayConstructor(elements.result(), t.nodeLocation)
+    ArrayConstructor(elements.result(), t.span)
 
   def literal(): Literal =
     val t = scanner.nextToken()
     t.token match
       case WvletToken.NULL =>
-        NullLiteral(t.nodeLocation)
+        NullLiteral(t.span)
       case WvletToken.INTEGER_LITERAL =>
-        LongLiteral(t.str.toLong, t.nodeLocation)
+        LongLiteral(t.str.toLong, t.span)
       case WvletToken.DOUBLE_LITERAL =>
-        DoubleLiteral(t.str.toDouble, t.nodeLocation)
+        DoubleLiteral(t.str.toDouble, t.span)
       case WvletToken.FLOAT_LITERAL =>
-        DoubleLiteral(t.str.toFloat, t.nodeLocation)
+        DoubleLiteral(t.str.toFloat, t.span)
       case WvletToken.DECIMAL_LITERAL =>
-        DecimalLiteral(t.str, t.nodeLocation)
+        DecimalLiteral(t.str, t.span)
       case WvletToken.EXP_LITERAL =>
-        DecimalLiteral(t.str, t.nodeLocation)
+        DecimalLiteral(t.str, t.span)
       case WvletToken.STRING_LITERAL =>
-        StringLiteral(t.str, t.nodeLocation)
+        StringLiteral(t.str, t.span)
       case _ =>
         unexpected(t)
 
   def interpolatedString(): InterpolatedString =
     val prefix     = consume(WvletToken.STRING_INTERPOLATION_PREFIX)
-    val prefixNode = ResolvedIdentifier(prefix.str, NoType, prefix.nodeLocation)
+    val prefixNode = ResolvedIdentifier(prefix.str, NoType, prefix.span)
     val parts      = List.newBuilder[Expression]
 
     def nextPart(): Unit =
@@ -1587,7 +1579,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       t.token match
         case WvletToken.STRING_PART =>
           val part = consume(WvletToken.STRING_PART)
-          parts += StringPart(part.str, part.nodeLocation)
+          parts += StringPart(part.str, part.span)
           nextPart()
         case WvletToken.DOLLAR =>
           consume(WvletToken.DOLLAR)
@@ -1602,15 +1594,15 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       nextPart()
     if scanner.lookAhead().token == WvletToken.STRING_LITERAL then
       val part = consume(WvletToken.STRING_LITERAL)
-      parts += StringPart(part.str, part.nodeLocation)
+      parts += StringPart(part.str, part.span)
 
-    InterpolatedString(prefixNode, parts.result(), DataType.UnknownType, prefix.nodeLocation)
+    InterpolatedString(prefixNode, parts.result(), DataType.UnknownType, prefix.span)
 
   end interpolatedString
 
   def interpolatedBackquoteString(): BackquoteInterpolatedString =
     val prefix     = consume(WvletToken.BACKQUOTE_INTERPOLATION_PREFIX)
-    val prefixNode = ResolvedIdentifier(prefix.str, NoType, prefix.nodeLocation)
+    val prefixNode = ResolvedIdentifier(prefix.str, NoType, prefix.span)
     val parts      = List.newBuilder[Expression]
 
     def nextPart(): Unit =
@@ -1618,7 +1610,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       t.token match
         case WvletToken.STRING_PART =>
           val part = consume(WvletToken.STRING_PART)
-          parts += StringPart(part.str, part.nodeLocation)
+          parts += StringPart(part.str, part.span)
           nextPart()
         case WvletToken.DOLLAR =>
           consume(WvletToken.DOLLAR)
@@ -1633,14 +1625,9 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       nextPart()
     if scanner.lookAhead().token == WvletToken.STRING_LITERAL then
       val part = consume(WvletToken.STRING_LITERAL)
-      parts += StringPart(part.str, part.nodeLocation)
+      parts += StringPart(part.str, part.span)
 
-    BackquoteInterpolatedString(
-      prefixNode,
-      parts.result(),
-      DataType.UnknownType,
-      prefix.nodeLocation
-    )
+    BackquoteInterpolatedString(prefixNode, parts.result(), DataType.UnknownType, prefix.span)
 
   end interpolatedBackquoteString
 
@@ -1659,15 +1646,15 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         val next = identifier()
         scanner.lookAhead().token match
           case WvletToken.L_PAREN =>
-            val sel  = DotRef(expr, next, DataType.UnknownType, next.nodeLocation)
+            val sel  = DotRef(expr, next, DataType.UnknownType, next.span)
             val p    = consume(WvletToken.L_PAREN)
             val args = functionArgs()
             consume(WvletToken.R_PAREN)
             val w = window()
-            val f = FunctionApply(sel, args, w, p.nodeLocation)
+            val f = FunctionApply(sel, args, w, p.span)
             primaryExpressionRest(f)
           case _ =>
-            primaryExpressionRest(DotRef(expr, next, DataType.UnknownType, t.nodeLocation))
+            primaryExpressionRest(DotRef(expr, next, DataType.UnknownType, t.span))
       case WvletToken.L_PAREN =>
         expr match
           case n: NameExpr =>
@@ -1676,7 +1663,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
             consume(WvletToken.R_PAREN)
             // Global function call
             val w = window()
-            val f = FunctionApply(n, args, w, t.nodeLocation)
+            val f = FunctionApply(n, args, w, t.span)
             primaryExpressionRest(f)
           case _ =>
             unexpected(expr)
@@ -1714,16 +1701,16 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
               case WvletToken.EQ =>
                 consume(WvletToken.EQ)
                 val expr = expression()
-                FunctionArg(Some(Name.termName(i.leafName)), expr, t.nodeLocation)
+                FunctionArg(Some(Name.termName(i.leafName)), expr, t.span)
               case _ =>
-                FunctionArg(None, nameOrArg, t.nodeLocation)
-          case Eq(i: Identifier, v: Expression, nodeLocation) =>
-            FunctionArg(Some(Name.termName(i.leafName)), v, t.nodeLocation)
+                FunctionArg(None, nameOrArg, t.span)
+          case Eq(i: Identifier, v: Expression, span) =>
+            FunctionArg(Some(Name.termName(i.leafName)), v, t.span)
           case expr: Expression =>
-            FunctionArg(None, nameOrArg, t.nodeLocation)
+            FunctionArg(None, nameOrArg, t.span)
       case _ =>
         val nameOrArg = expression()
-        FunctionArg(None, nameOrArg, t.nodeLocation)
+        FunctionArg(None, nameOrArg, t.span)
 
   /**
     * qualifiedId := identifier ('.' identifier)*
@@ -1743,10 +1730,10 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         scanner.lookAhead().token match
           case WvletToken.STAR =>
             val t = consume(WvletToken.STAR)
-            DotRef(expr, Wildcard(t.nodeLocation), DataType.UnknownType, dt.nodeLocation)
+            DotRef(expr, Wildcard(t.span), DataType.UnknownType, dt.span)
           case _ =>
             val id = identifier()
-            dotRef(DotRef(expr, id, DataType.UnknownType, token.nodeLocation))
+            dotRef(DotRef(expr, id, DataType.UnknownType, token.span))
       case _ =>
         expr
 

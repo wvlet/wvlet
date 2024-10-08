@@ -13,6 +13,9 @@
  */
 package wvlet.lang.compiler.parser
 
+import wvlet.lang.compiler.{Context, CompilationUnit, SourceLocation}
+import wvlet.lang.model.NodeLocation
+
 /**
   * Span is a range between start and end offset, and a point.
   * {{{
@@ -33,10 +36,28 @@ class Span(val coordinate: Long) extends AnyVal:
     else
       "[NoSpan]"
 
+  def map[U](f: Span => U): Option[U] =
+    if exists then
+      Some(f(this))
+    else
+      None
+
+  def sourceLocation(using ctx: Context): SourceLocation =
+    val cu = ctx.compilationUnit
+    SourceLocation(cu, nodeLocation(using cu))
+
+  def nodeLocation(using unit: CompilationUnit): NodeLocation =
+    val src  = unit.sourceFile
+    val line = src.offsetToLine(start)
+    val pos  = src.offsetToColumn(start)
+    NodeLocation(line + 1, pos)
+
   /**
     * Is this span different from NoSpan?
     */
-  def exists: Boolean = this != Span.NoSpan
+  def exists: Boolean   = this != Span.NoSpan
+  def isEmpty: Boolean  = !exists
+  def nonEmpty: Boolean = exists
 
   def start: Int = (coordinate & Span.POSITION_MASK).toInt
   def end: Int   = ((coordinate >>> Span.POSITION_BITS) & Span.POSITION_MASK).toInt

@@ -79,6 +79,11 @@ class SourceFile(
 
   def sourcePositionAt(offset: Int): SourcePosition = SourcePosition(this, Span.at(offset))
 
+  /**
+    * 0-origin line index
+    * @param offset
+    * @return
+    */
   def offsetToLine(offset: Int): Int = findLineIndex(offset)
 
   inline def charAt(pos: Int): Char = content(pos)
