@@ -68,6 +68,8 @@ case class CompilationUnit(sourceFile: SourceFile, isPreset: Boolean = false) ex
 end CompilationUnit
 
 object CompilationUnit extends LogSupport:
+  private val ignoredFolders: Set[String] = Set("spec", "target")
+
   val empty: CompilationUnit = CompilationUnit(NoSourceFile)
 
   def fromString(text: String) = CompilationUnit(SourceFile.fromString(text))
@@ -75,10 +77,8 @@ object CompilationUnit extends LogSupport:
   def fromFile(path: String) = CompilationUnit(SourceFile.fromFile(path))
 
   def fromPath(path: String): List[CompilationUnit] =
-    // Ignore the spec folder by default
-    val ignoreRootSpecFolder = !path.startsWith("spec/")
     // List all *.wv files under the path
-    val files = listFiles(path, 0, ignoreRootSpecFolder)
+    val files = listFiles(path, 0)
     val units =
       files
         .map { file =>
@@ -93,7 +93,7 @@ object CompilationUnit extends LogSupport:
     Option(this.getClass.getResource(path)).foreach: r =>
       r.getProtocol match
         case "file" =>
-          val files = listFiles(r.getPath, 0, ignoreSpecFolder = true)
+          val files = listFiles(r.getPath, 0)
           urls ++= files.map(File(_).toURI.toURL)
         case "jar" =>
           val jarPath     = r.getPath.split("!")(0).replaceAll("%20", " ").replaceAll("%25", "%")
@@ -117,10 +117,10 @@ object CompilationUnit extends LogSupport:
       CompilationUnit(SourceFile.fromResource(url), isPreset = isPreset)
     }
 
-  private def listFiles(path: String, level: Int, ignoreSpecFolder: Boolean): Seq[String] =
+  private def listFiles(path: String, level: Int): Seq[String] =
     val f = new java.io.File(path)
     if f.isDirectory then
-      if ignoreSpecFolder && level == 1 && f.getName == "spec" then
+      if level == 1 && ignoredFolders.contains(f.getName) then
         Seq.empty
       else
         val files         = f.listFiles()
@@ -128,7 +128,7 @@ object CompilationUnit extends LogSupport:
         if hasAnyWvFiles then
           // Only scan sub-folders if there is any .wv files
           files flatMap { file =>
-            listFiles(file.getPath, level + 1, ignoreSpecFolder)
+            listFiles(file.getPath, level + 1)
           }
         else
           Seq.empty
