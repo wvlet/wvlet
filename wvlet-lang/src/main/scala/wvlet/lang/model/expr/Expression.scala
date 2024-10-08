@@ -18,6 +18,7 @@ import wvlet.lang.model.*
 import wvlet.lang.model.DataType.*
 import wvlet.lang.model.plan.{LogicalPlan, LogicalPlanPrinter}
 import wvlet.airframe.surface.reflect.ReflectTypeUtil
+import wvlet.lang.model.NodeLocation.NoLocation
 import wvlet.log.LogSupport
 
 /**
@@ -313,23 +314,23 @@ object Expression:
 
   def concatWithAnd(expr: Seq[Expression]): Expression =
     concat(expr) { case (a, b) =>
-      And(a, b, None)
+      And(a, b, NoLocation)
     }
 
   def concatWithEq(expr: Seq[Expression]): Expression =
     concat(expr) { case (a, b) =>
-      Eq(a, b, None)
+      Eq(a, b, NoLocation)
     }
 
   def newIdentifier(x: String): Identifier =
     if x.startsWith("`") && x.endsWith("`") then
-      BackQuotedIdentifier(x.stripPrefix("`").stripSuffix("`"), None)
+      BackQuotedIdentifier(x.stripPrefix("`").stripSuffix("`"), NoLocation)
     else if x.matches("[0-9]+") then
-      DigitIdentifier(x, None)
+      DigitIdentifier(x, NoLocation)
     else if !x.matches("[0-9a-zA-Z_]*") then
       // Quotations are needed with special characters to generate valid SQL
-      BackQuotedIdentifier(x, None)
+      BackQuotedIdentifier(x, NoLocation)
     else
-      UnquotedIdentifier(x, None)
+      UnquotedIdentifier(x, NoLocation)
 
 end Expression

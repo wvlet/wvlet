@@ -17,6 +17,7 @@ import wvlet.lang.model.DataType.{EmbeddedRecordType, NamedType}
 import wvlet.lang.model.{DataType, NodeLocation}
 import wvlet.lang.compiler.Name
 import wvlet.airframe.ulid.ULID
+import wvlet.lang.model.NodeLocation.NoLocation
 import wvlet.log.LogSupport
 
 /**
@@ -56,7 +57,7 @@ trait Attribute extends LeafExpression with LogSupport:
             // No need to have alias
             other
           case other =>
-            Alias(alias, other, None)
+            Alias(alias, other, NoLocation)
 
   /**
     * * Returns the index of this attribute in the input or output columns
@@ -111,7 +112,7 @@ case class AttributeRef(attr: Attribute)(val exprId: ULID = ULID.newULID) extend
   override def nameExpr: NameExpr = attr.nameExpr
   override def toString: String   = s"AttributeRef(${attr})"
 
-  override def nodeLocation: Option[NodeLocation] = attr.nodeLocation
+  override def nodeLocation: NodeLocation = attr.nodeLocation
 
   // override def withDataType(newDataType: DataType): Attribute = this.copy(attr = attr.withDataType(newDataType))
 
@@ -136,7 +137,7 @@ case class AttributeRef(attr: Attribute)(val exprId: ULID = ULID.newULID) extend
 case class SingleColumn(
     override val nameExpr: NameExpr,
     expr: Expression,
-    nodeLocation: Option[NodeLocation]
+    nodeLocation: NodeLocation
 ) extends Attribute:
   override def fullName: String   = nameExpr.fullName
   override def dataType: DataType = expr.dataType
@@ -149,7 +150,7 @@ case class SingleColumn(
 
   override def toString = s"${fullName}:${dataTypeName} := ${expr}"
 
-case class UnresolvedAttribute(override val nameExpr: NameExpr, nodeLocation: Option[NodeLocation])
+case class UnresolvedAttribute(override val nameExpr: NameExpr, nodeLocation: NodeLocation)
     extends Attribute:
   override def fullName: String = nameExpr.fullName
   override def toString: String = s"UnresolvedAttribute(${fullName})"
@@ -161,7 +162,7 @@ case class UnresolvedAttribute(override val nameExpr: NameExpr, nodeLocation: Op
 case class AllColumns(
     override val nameExpr: NameExpr,
     columns: Option[Seq[Attribute]],
-    nodeLocation: Option[NodeLocation]
+    nodeLocation: NodeLocation
 ) extends Attribute
     with LogSupport:
   override def fullName: String = nameExpr.fullName
@@ -203,7 +204,7 @@ case class AllColumns(
 
 end AllColumns
 
-case class Alias(nameExpr: NameExpr, expr: Expression, nodeLocation: Option[NodeLocation])
+case class Alias(nameExpr: NameExpr, expr: Expression, nodeLocation: NodeLocation)
     extends Attribute:
   override def fullName: String = nameExpr.fullName
 
@@ -225,7 +226,7 @@ case class Alias(nameExpr: NameExpr, expr: Expression, nodeLocation: Option[Node
 case class MultiSourceColumn(
     nameExpr: NameExpr,
     inputs: Seq[Expression],
-    nodeLocation: Option[NodeLocation]
+    nodeLocation: NodeLocation
 ) extends Attribute:
   // require(inputs.nonEmpty, s"The inputs of MultiSourceColumn should not be empty: ${this}", nodeLocation)
   override def fullName: String = nameExpr.fullName

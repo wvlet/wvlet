@@ -24,4 +24,16 @@ case class NodeLocation(
   override def toString: String = s"$line:$column"
   def toSourceLocation(using ctx: Context): SourceLocation = ctx
     .compilationUnit
-    .toSourceLocation(Some(this))
+    .toSourceLocation(this)
+
+  def isEmpty: Boolean  = line < 0
+  def nonEmpty: Boolean = !isEmpty
+
+  def map[U](f: NodeLocation => U): Option[U] =
+    if isEmpty then
+      None
+    else
+      Some(f(this))
+
+object NodeLocation:
+  val NoLocation: NodeLocation = NodeLocation(-1, 0)

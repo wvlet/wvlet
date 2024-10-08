@@ -50,14 +50,13 @@ enum StatusCode(statusType: StatusType):
 
     WvletLangException(this, err, Some(sourceLocation))
 
-  def newException(msg: String, nodeLocation: Option[NodeLocation])(using
+  def newException(msg: String, nodeLocation: NodeLocation)(using
       ctx: Context
   ): WvletLangException =
-    nodeLocation match
-      case Some(nodeLoc) =>
-        newException(msg, nodeLoc.toSourceLocation)
-      case _ =>
-        newException(msg)
+    if nodeLocation.isEmpty then
+      newException(msg)
+    else
+      newException(msg, nodeLocation.toSourceLocation)
 
   case OK extends StatusCode(StatusType.Success)
 

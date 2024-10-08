@@ -28,6 +28,8 @@ import wvlet.lang.compiler.DBType.{DuckDB, Trino}
 import wvlet.lang.compiler.analyzer.TypeResolver
 import wvlet.lang.compiler.transform.PreprocessLocalExpr
 import wvlet.lang.ext.NativeFunction
+import wvlet.lang.model.NodeLocation
+import wvlet.lang.model.NodeLocation.NoLocation
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
 import wvlet.lang.model.plan.JoinType.*
@@ -547,12 +549,21 @@ class GenSQL(ctx: Context) extends LogSupport:
           .catalog
           .map { catalog =>
             cond +=
-              Eq(UnquotedIdentifier("table_catalog", None), StringLiteral(catalog, None), None)
+              Eq(
+                UnquotedIdentifier("table_catalog", NoLocation),
+                StringLiteral(catalog, NoLocation),
+                NoLocation
+              )
           }
         opts
           .schema
           .map { schema =>
-            cond += Eq(UnquotedIdentifier("table_schema", None), StringLiteral(schema, None), None)
+            cond +=
+              Eq(
+                UnquotedIdentifier("table_schema", NoLocation),
+                StringLiteral(schema, NoLocation),
+                NoLocation
+              )
           }
 
         val conds = cond.result()

@@ -20,6 +20,7 @@ import wvlet.lang.model.expr.{Attribute, AttributeList, Expression, NameExpr}
 import wvlet.lang.model.{NodeLocation, RelationType, RelationTypeList, TreeNode}
 import wvlet.airframe.ulid.ULID
 import wvlet.lang.StatusCode
+import wvlet.lang.model.NodeLocation.NoLocation
 
 enum PlanProperty:
   // Used for recording a Symbol defined for the tree
@@ -522,4 +523,4 @@ trait BinaryPlan extends LogicalPlan:
   override def children: Seq[LogicalPlan] = Seq(left, right)
 
 object LogicalPlan:
-  val empty = PackageDef(name = EmptyName, statements = Nil, nodeLocation = None)
+  val empty = PackageDef(name = EmptyName, statements = Nil, nodeLocation = NoLocation)
