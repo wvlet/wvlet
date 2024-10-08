@@ -21,6 +21,7 @@ class CDPBehaviorTest extends AirSpec:
 
   test("cdp_behavior") {
     val result = Compiler.default("spec/cdp_behavior").compile()
+    result.units shouldNotBe empty
     val resolvedPlan: List[LogicalPlan] = result
       .units
       .map: x =>

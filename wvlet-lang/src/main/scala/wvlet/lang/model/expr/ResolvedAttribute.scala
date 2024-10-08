@@ -14,6 +14,7 @@
 package wvlet.lang.model.expr
 
 import wvlet.lang.catalog.Catalog
+import wvlet.lang.compiler.parser.Span
 import wvlet.lang.compiler.{Name, TermName}
 import wvlet.lang.model.{DataType, NodeLocation}
 import wvlet.lang.model.plan.*
@@ -27,7 +28,7 @@ case class ResolvedAttribute(
     override val dataType: DataType,
     // If this attribute directly refers to a table column, its source column will be set.
     sourceColumn: Option[SourceColumn],
-    nodeLocation: NodeLocation
+    span: Span
 ) extends Attribute
     with LogSupport:
 

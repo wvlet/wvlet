@@ -18,7 +18,8 @@ import wvlet.lang.model.*
 import wvlet.lang.model.DataType.*
 import wvlet.lang.model.plan.{LogicalPlan, LogicalPlanPrinter}
 import wvlet.airframe.surface.reflect.ReflectTypeUtil
-import wvlet.lang.model.NodeLocation.NoLocation
+import wvlet.lang.compiler.parser.Span
+import wvlet.lang.compiler.parser.Span.NoSpan
 import wvlet.log.LogSupport
 
 /**
@@ -38,12 +39,21 @@ trait Expression extends TreeNode with Product with LogSupport:
   protected def copyInstance(newArgs: Seq[AnyRef]): this.type =
     try
       val primaryConstructor = this.getClass.getDeclaredConstructors()(0)
+
+      val args = newArgs.map {
+        case s: Span =>
+          // Span (AnyVal) becomes a Long type due to optimization
+          s.coordinate
+        case other =>
+          other
+      }
+
       val newObj =
         if primaryConstructor.getParameterCount == 0 && this.getClass.getSimpleName.endsWith("$")
         then
           ReflectTypeUtil.companionObject(this.getClass).get
         else
-          primaryConstructor.newInstance(newArgs*)
+          primaryConstructor.newInstance(args*)
       newObj.asInstanceOf[this.type]
     catch
       case e: IllegalArgumentException =>
@@ -314,23 +324,23 @@ object Expression:
 
   def concatWithAnd(expr: Seq[Expression]): Expression =
     concat(expr) { case (a, b) =>
-      And(a, b, NoLocation)
+      And(a, b, NoSpan)
     }
 
   def concatWithEq(expr: Seq[Expression]): Expression =
     concat(expr) { case (a, b) =>
-      Eq(a, b, NoLocation)
+      Eq(a, b, NoSpan)
     }
 
   def newIdentifier(x: String): Identifier =
     if x.startsWith("`") && x.endsWith("`") then
-      BackQuotedIdentifier(x.stripPrefix("`").stripSuffix("`"), NoLocation)
+      BackQuotedIdentifier(x.stripPrefix("`").stripSuffix("`"), NoSpan)
     else if x.matches("[0-9]+") then
-      DigitIdentifier(x, NoLocation)
+      DigitIdentifier(x, NoSpan)
     else if !x.matches("[0-9a-zA-Z_]*") then
       // Quotations are needed with special characters to generate valid SQL
-      BackQuotedIdentifier(x, NoLocation)
+      BackQuotedIdentifier(x, NoSpan)
     else
-      UnquotedIdentifier(x, NoLocation)
+      UnquotedIdentifier(x, NoSpan)
 
 end Expression

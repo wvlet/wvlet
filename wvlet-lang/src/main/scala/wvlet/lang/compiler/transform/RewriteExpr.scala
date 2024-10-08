@@ -27,12 +27,9 @@ object RewriteExpr extends Phase("rewrite-expr"):
           if left.dataType == DataType.StringType =>
         FunctionApply(
           base = NameExpr.fromString("concat"),
-          args = List(
-            FunctionArg(None, left, left.nodeLocation),
-            FunctionArg(None, right, left.nodeLocation)
-          ),
+          args = List(FunctionArg(None, left, left.span), FunctionArg(None, right, left.span)),
           window = None,
-          nodeLocation = a.nodeLocation
+          span = a.span
         )
 
   object RewriteStringInterpolation extends ExpressionRewriteRule:
@@ -43,18 +40,18 @@ object RewriteExpr extends Phase("rewrite-expr"):
           def quote(e: Expression): Expression =
             e match
               case s: StringPart =>
-                StringLiteral(s.value, s.nodeLocation)
+                StringLiteral(s.value, s.span)
               case _ =>
                 e
 
           FunctionApply(
             base = NameExpr.fromString("concat"),
             args = List(
-              FunctionArg(None, quote(left), left.nodeLocation),
-              FunctionArg(None, quote(right), left.nodeLocation)
+              FunctionArg(None, quote(left), left.span),
+              FunctionArg(None, quote(right), left.span)
             ),
             window = None,
-            nodeLocation = s.nodeLocation
+            span = s.span
           )
         }
 

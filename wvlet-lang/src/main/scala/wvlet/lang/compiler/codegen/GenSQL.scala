@@ -29,7 +29,7 @@ import wvlet.lang.compiler.analyzer.TypeResolver
 import wvlet.lang.compiler.transform.PreprocessLocalExpr
 import wvlet.lang.ext.NativeFunction
 import wvlet.lang.model.NodeLocation
-import wvlet.lang.model.NodeLocation.NoLocation
+import wvlet.lang.compiler.parser.Span.NoSpan
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
 import wvlet.lang.model.plan.JoinType.*
@@ -229,11 +229,8 @@ class GenSQL(ctx: Context) extends LogSupport:
 
     def printAggregate(a: GroupBy): String =
       // Aggregation without any projection (select)
-      val agg = toSQLSelect(
-        SQLSelect(a.child, Nil, a.groupingKeys, Nil, Nil, a.nodeLocation),
-        a.child
-      )
-      val s           = Seq.newBuilder[String]
+      val agg = toSQLSelect(SQLSelect(a.child, Nil, a.groupingKeys, Nil, Nil, a.span), a.child)
+      val s   = Seq.newBuilder[String]
       val selectItems = Seq.newBuilder[String]
       selectItems ++=
         agg
@@ -311,7 +308,7 @@ class GenSQL(ctx: Context) extends LogSupport:
         // pull-up filter nodes to build where clause
         // pull-up an Aggregate node to build group by clause
         val agg = toSQLSelect(
-          SQLSelect(p.child, p.selectItems.toList, Nil, Nil, Nil, p.nodeLocation),
+          SQLSelect(p.child, p.selectItems.toList, Nil, Nil, Nil, p.span),
           p.child
         )
         val hasDistinct =
@@ -550,20 +547,16 @@ class GenSQL(ctx: Context) extends LogSupport:
           .map { catalog =>
             cond +=
               Eq(
-                UnquotedIdentifier("table_catalog", NoLocation),
-                StringLiteral(catalog, NoLocation),
-                NoLocation
+                UnquotedIdentifier("table_catalog", NoSpan),
+                StringLiteral(catalog, NoSpan),
+                NoSpan
               )
           }
         opts
           .schema
           .map { schema =>
             cond +=
-              Eq(
-                UnquotedIdentifier("table_schema", NoLocation),
-                StringLiteral(schema, NoLocation),
-                NoLocation
-              )
+              Eq(UnquotedIdentifier("table_schema", NoSpan), StringLiteral(schema, NoSpan), NoSpan)
           }
 
         val conds = cond.result()

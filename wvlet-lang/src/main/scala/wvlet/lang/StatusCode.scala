@@ -13,6 +13,7 @@
  */
 package wvlet.lang
 
+import wvlet.lang.compiler.parser.Span
 import wvlet.lang.compiler.{Context, SourceLocation}
 import wvlet.lang.model.NodeLocation
 
@@ -50,13 +51,11 @@ enum StatusCode(statusType: StatusType):
 
     WvletLangException(this, err, Some(sourceLocation))
 
-  def newException(msg: String, nodeLocation: NodeLocation)(using
-      ctx: Context
-  ): WvletLangException =
-    if nodeLocation.isEmpty then
+  def newException(msg: String, span: Span)(using ctx: Context): WvletLangException =
+    if span.isEmpty then
       newException(msg)
     else
-      newException(msg, nodeLocation.toSourceLocation)
+      newException(msg, span.sourceLocation)
 
   case OK extends StatusCode(StatusType.Success)
 

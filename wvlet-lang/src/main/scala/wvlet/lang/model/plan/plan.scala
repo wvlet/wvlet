@@ -13,6 +13,7 @@
  */
 package wvlet.lang.model.plan
 
+import wvlet.lang.compiler.parser.Span
 import wvlet.lang.compiler.{SourceFile, TermName, TypeName}
 import wvlet.lang.model.DataType.{EmptyRelationType, TypeParameter}
 import wvlet.lang.model.{DataType, NodeLocation, RelationType}
@@ -34,7 +35,7 @@ case class PackageDef(
     name: QualifiedName,
     statements: List[LogicalPlan],
     sourceFile: SourceFile = SourceFile.NoSourceFile,
-    nodeLocation: NodeLocation
+    span: Span
 ) extends LanguageStatement
     with HasSourceFile:
   override def isEmpty: Boolean           = statements.isEmpty
@@ -44,10 +45,10 @@ case class Import(
     importRef: NameExpr,
     alias: Option[NameExpr],
     fromSource: Option[StringLiteral],
-    nodeLocation: NodeLocation
+    span: Span
 ) extends LanguageStatement
 
-case class TypeAlias(alias: NameExpr, sourceTypeName: NameExpr, nodeLocation: NodeLocation)
+case class TypeAlias(alias: NameExpr, sourceTypeName: NameExpr, span: Span)
     extends LanguageStatement
 
 case class TypeDef(
@@ -56,14 +57,13 @@ case class TypeDef(
     defContexts: List[DefContext],
     parent: Option[NameExpr],
     elems: List[TypeElem],
-    nodeLocation: NodeLocation
+    span: Span
 ) extends LanguageStatement
 
 // type elements (def or column (field) definition)
 sealed trait TypeElem extends Expression
 
-case class TopLevelFunctionDef(functionDef: FunctionDef, nodeLocation: NodeLocation)
-    extends LanguageStatement
+case class TopLevelFunctionDef(functionDef: FunctionDef, span: Span) extends LanguageStatement
 
 // def ... { ... } in the type definition
 case class FunctionDef(
@@ -72,7 +72,7 @@ case class FunctionDef(
     defContexts: List[DefContext],
     retType: Option[DataType],
     expr: Option[Expression],
-    nodeLocation: NodeLocation
+    span: Span
 ) extends TypeElem:
   override def children: Seq[Expression] = Seq.empty
 
@@ -80,7 +80,7 @@ case class DefArg(
     name: TermName,
     override val dataType: DataType,
     defaultValue: Option[Expression],
-    nodeLocation: NodeLocation
+    span: Span
 ) extends Expression:
   override def children: Seq[Expression] = Seq.empty
 
@@ -89,7 +89,7 @@ case class FieldDef(
     tpe: NameExpr,
     params: List[TypeParameter],
     body: Option[Expression],
-    nodeLocation: NodeLocation
+    span: Span
 ) extends TypeElem:
   override def children: Seq[Expression] = Seq.empty
 
@@ -99,6 +99,5 @@ case class FieldDef(
   * @param tpe
   * @param nodeLocation
   */
-case class DefContext(name: Option[NameExpr], tpe: NameExpr, nodeLocation: NodeLocation)
-    extends Expression:
+case class DefContext(name: Option[NameExpr], tpe: NameExpr, span: Span) extends Expression:
   override def children: Seq[Expression] = Seq.empty

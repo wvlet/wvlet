@@ -14,6 +14,7 @@
 package wvlet.lang.model.plan
 
 import wvlet.lang.compiler.TermName
+import wvlet.lang.compiler.parser.Span
 import wvlet.lang.model.DataType.EmptyRelationType
 import wvlet.lang.model.{NodeLocation, RelationType}
 import wvlet.lang.model.expr.*
@@ -24,8 +25,7 @@ import wvlet.lang.model.expr.*
 sealed trait DDL extends LogicalPlan with LeafPlan:
   override def relationType: RelationType = EmptyRelationType
 
-case class TableDef(name: NameExpr, params: Seq[TableDefParam], nodeLocation: NodeLocation)
-    extends DDL:
+case class TableDef(name: NameExpr, params: Seq[TableDefParam], span: Span) extends DDL:
 
   def getParam(paramName: NameExpr): Option[NameExpr] = params
     .find(_.name == paramName)
@@ -33,56 +33,41 @@ case class TableDef(name: NameExpr, params: Seq[TableDefParam], nodeLocation: No
 
   def getType: Option[NameExpr] = params.find(_.name.fullName == "type").map(_.paramValue)
 
-case class TableDefParam(name: NameExpr, paramValue: NameExpr, nodeLocation: NodeLocation)
-    extends Expression:
+case class TableDefParam(name: NameExpr, paramValue: NameExpr, span: Span) extends Expression:
   override def children: Seq[Expression] = Nil
 
 case class CreateSchema(
     schema: NameExpr,
     ifNotExists: Boolean,
     properties: Option[Seq[SchemaProperty]],
-    nodeLocation: NodeLocation
+    span: Span
 ) extends DDL
 
-case class DropDatabase(
-    database: NameExpr,
-    ifExists: Boolean,
-    cascade: Boolean,
-    nodeLocation: NodeLocation
-) extends DDL
-
-case class RenameDatabase(database: NameExpr, renameTo: NameExpr, nodeLocation: NodeLocation)
+case class DropDatabase(database: NameExpr, ifExists: Boolean, cascade: Boolean, span: Span)
     extends DDL
+
+case class RenameDatabase(database: NameExpr, renameTo: NameExpr, span: Span) extends DDL
 
 case class CreateTable(
     table: NameExpr,
     ifNotExists: Boolean,
     tableElems: Seq[TableElement],
-    nodeLocation: NodeLocation
+    span: Span
 ) extends DDL
 
-case class DropTable(table: NameExpr, ifExists: Boolean, nodeLocation: NodeLocation) extends DDL
+case class DropTable(table: NameExpr, ifExists: Boolean, span: Span) extends DDL
 
-case class RenameTable(table: NameExpr, renameTo: NameExpr, nodeLocation: NodeLocation) extends DDL
+case class RenameTable(table: NameExpr, renameTo: NameExpr, span: Span) extends DDL
 
-case class RenameColumn(
-    table: NameExpr,
-    column: NameExpr,
-    renameTo: NameExpr,
-    nodeLocation: NodeLocation
-) extends DDL
+case class RenameColumn(table: NameExpr, column: NameExpr, renameTo: NameExpr, span: Span)
+    extends DDL
 
-case class DropColumn(table: NameExpr, column: NameExpr, nodeLocation: NodeLocation) extends DDL
+case class DropColumn(table: NameExpr, column: NameExpr, span: Span) extends DDL
 
-case class AddColumn(table: NameExpr, column: ColumnDef, nodeLocation: NodeLocation) extends DDL
+case class AddColumn(table: NameExpr, column: ColumnDef, span: Span) extends DDL
 
-case class CreateView(
-    viewName: NameExpr,
-    replace: Boolean,
-    query: Relation,
-    nodeLocation: NodeLocation
-) extends DDL
+case class CreateView(viewName: NameExpr, replace: Boolean, query: Relation, span: Span) extends DDL
 
-case class DropView(viewName: NameExpr, ifExists: Boolean, nodeLocation: NodeLocation) extends DDL
+case class DropView(viewName: NameExpr, ifExists: Boolean, span: Span) extends DDL
 
-case class Execute(expr: Expression, nodeLocation: NodeLocation) extends DDL
+case class Execute(expr: Expression, span: Span) extends DDL
