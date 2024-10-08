@@ -43,6 +43,12 @@ case class TermName private[compiler] (override val name: String) extends Name(n
   private lazy val _typeName = TypeName(name)
   def toTypeName: TypeName   = _typeName
 
+  def toSQLAttributeName: String =
+    if name.matches("^[_a-zA-Z][_a-zA-Z0-9]*$") then
+      name
+    else
+      s""""${name}""""
+
   override def isTermName: Boolean = true
   override def isTypeName: Boolean = false
 
