@@ -58,6 +58,11 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   case DOUBLE_LITERAL  extends WvletToken(Literal, "<double literal>")
   case STRING_LITERAL  extends WvletToken(Literal, "<string literal>")
 
+  // literal keywords
+  case NULL  extends WvletToken(Keyword, "null")
+  case TRUE  extends WvletToken(Keyword, "true")
+  case FALSE extends WvletToken(Keyword, "false")
+
   // For interpolated string, e.g., sql"...${expr}..."
   case STRING_INTERPOLATION_PREFIX extends WvletToken(Literal, "<string interpolation>")
   // For backquoted interpolation strings, e.g., s`table_name_${expr}...`
@@ -117,11 +122,6 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   case PIPE extends WvletToken(Op, "|")
 
   case HASH extends WvletToken(Op, "#")
-
-  // literal keywords
-  case NULL  extends WvletToken(Keyword, "null")
-  case TRUE  extends WvletToken(Keyword, "true")
-  case FALSE extends WvletToken(Keyword, "false")
 
   // For testing
   case TEST    extends WvletToken(Keyword, "test")
@@ -235,10 +235,11 @@ enum WvletToken(val tokenType: TokenType, val str: String):
 end WvletToken
 
 object WvletToken:
-  val keywords       = WvletToken.values.filter(_.tokenType == Keyword).toSeq
-  val specialSymbols = WvletToken.values.filter(_.tokenType == Op).toSeq
+  val keywords        = WvletToken.values.filter(_.tokenType == Keyword).toSeq
+  val specialSymbols  = WvletToken.values.filter(_.tokenType == Op).toSeq
+  val keywordLiterals = List(WvletToken.NULL, WvletToken.TRUE, WvletToken.FALSE)
 
-  val allKeywordAndSymbol = keywords ++ specialSymbols
+  val allKeywordAndSymbol = keywords ++ keywordLiterals ++ specialSymbols
 
   val keywordAndSymbolTable = allKeywordAndSymbol.map(x => x.str -> x).toMap
 
