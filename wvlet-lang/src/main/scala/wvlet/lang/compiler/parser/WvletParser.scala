@@ -1114,10 +1114,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         selectItems()
       case token if WvletToken.isQueryDelimiter(token) =>
         Nil
-      case WvletToken.R_PAREN =>
-        // sub-query end
-        Nil
-      case t if t.tokenType == TokenType.Keyword =>
+      case t if t.tokenType == TokenType.Keyword && !WvletToken.keywordLiterals.contains(t) =>
         Nil
       case _ =>
         selectItem() :: selectItems()

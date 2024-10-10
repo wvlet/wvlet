@@ -1,0 +1,11 @@
+package wvlet.standard
+
+type null:
+  def to_int: int = sql"cast(${this} as bigint)"
+  def to_long: long = sql"cast(${this} as bigint)"
+  def to_float: float = sql"cast(${this} as double)"
+  def to_double: double = sql"cast(${this} as double)"
+  def to_boolean: boolean = sql"cast(${this} as boolean)"
+  def to_date: date = sql"cast(${this} as date)"
+end
+

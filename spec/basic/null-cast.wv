@@ -1,0 +1,12 @@
+select
+  null.to_int as null_to_int,
+  null.to_long as null_to_long,
+  null.to_float as null_to_float,
+  null.to_double as null_to_double,
+  null.to_boolean as null_to_boolean,
+  null.to_date as null_to_date,
+  null as null_only
+test _.columns should be
+  ['null_to_int', 'null_to_long', 'null_to_float', 'null_to_double',
+   'null_to_boolean', 'null_to_date', 'null_only']
+test _.rows should be [[null, null, null, null, null, null, null]]

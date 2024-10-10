@@ -15,12 +15,10 @@ package wvlet.lang.compiler.analyzer
 
 import wvlet.lang.StatusCode
 import wvlet.lang.catalog.Catalog.TableName
-import wvlet.lang.compiler.DBType.Trino
 import wvlet.lang.compiler.RewriteRule.PlanRewriter
 import wvlet.lang.compiler.{
   CompilationUnit,
   Context,
-  DBType,
   MethodSymbolInfo,
   ModelSymbolInfo,
   MultipleSymbolInfo,
@@ -33,11 +31,10 @@ import wvlet.lang.compiler.{
   TypeName,
   TypeSymbolInfo
 }
-import wvlet.lang.model.DataType.{NamedType, PrimitiveType, SchemaType, UnresolvedType, VarArgType}
-import wvlet.lang.model.Type.FunctionType
+import wvlet.lang.model.DataType.{NamedType, SchemaType, VarArgType}
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
-import wvlet.lang.model.{DataType, RelationType, RelationTypeList}
+import wvlet.lang.model.{DataType, RelationType}
 import wvlet.log.LogSupport
 
 import scala.util.Try
@@ -85,7 +82,8 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
                 ctx <- context.global.getAllContexts
                 if foundSym.isEmpty
               do
-                // trace(s"Lookup ${name} in ${ctx.compilationUnit.sourceFile.fileName}")
+                if context.isContextCompilationUnit then
+                  trace(s"Lookup ${name} in ${ctx.compilationUnit.sourceFile.fileName}")
                 ctx
                   .compilationUnit
                   .knownSymbols
