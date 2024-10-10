@@ -12,7 +12,7 @@ For the ease of learning, let's create a sample [TPC-H benchmark](https://www.tp
 
 ```sql
 $ wv
-wv> from sql"call dbgen(sf=0.01)";
+wv> execute sql"call dbgen(sf=0.01)";
 wv> show tables;
 ┌────────────┐
 │ table_name │
@@ -30,7 +30,7 @@ wv> show tables;
 │ 8 rows     │
 └────────────┘
 ```
-The above `from sql"call dbgen(sf=0.01)"` command calls DuckDB's [TPC-H extension](https://duckdb.org/docs/extensions/tpch.html) and creates an in-memory TPC-H benchmark database, which will be gone when you exit the wvlet shell. So you can try this command without worrying about the disk space.
+The above `execute sql"call dbgen(sf=0.01)"` command calls DuckDB's [TPC-H extension](https://duckdb.org/docs/extensions/tpch.html) and creates an in-memory TPC-H benchmark database, which will be gone when you exit the wvlet shell. So you can try this command without worrying about the disk space.
 
 The simplest form of queries is `from (table name)`:
 ```sql
