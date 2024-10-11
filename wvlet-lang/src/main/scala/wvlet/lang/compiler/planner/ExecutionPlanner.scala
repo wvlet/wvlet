@@ -69,7 +69,7 @@ object ExecutionPlanner extends Phase("execution-plan"):
           ExecuteValDef(v)
         case other =>
           if context.isContextCompilationUnit then
-            warn(s"Unsupported logical plan: ${other}")
+            trace(s"Unsupported logical plan: ${other}")
           ExecutionPlan.empty
 
     val executionPlan = plan(unit.resolvedPlan, evalQuery = true)
