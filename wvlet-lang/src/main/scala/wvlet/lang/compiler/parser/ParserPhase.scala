@@ -36,6 +36,6 @@ object ParserPhase extends Phase("parser") with LogSupport:
     val p    = WvletParser(unit = compileUnit, isContextUnit = ctx.isContextCompilationUnit)
     val plan = p.parse()
     debug(
-      s"[parsed tree for ${compileUnit.sourceFile}:\n${plan.pp}\n${compileUnit.sourceFile.content}"
+      s"[parsed tree for ${compileUnit.sourceFile}:\n${plan.pp}\n${compileUnit.sourceFile.getContent}"
     )
     plan

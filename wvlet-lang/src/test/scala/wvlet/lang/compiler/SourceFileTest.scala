@@ -45,3 +45,5 @@ class SourceFileTest extends AirSpec:
       src.startOfLine(4) shouldBe 4
     }
   }
+
+end SourceFileTest

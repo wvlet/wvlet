@@ -148,7 +148,7 @@ end ScannerBase
   * Scan *.wv files
   */
 class WvletScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
-    extends ScannerBase(source.content, config.startFrom)
+    extends ScannerBase(source.getContent, config.startFrom)
     with LogSupport:
   import WvletToken.*
 
