@@ -15,3 +15,9 @@ test _.output should be """
 │ 5 rows                    │
 └───────────────────────────┘
 """
+
+select 1 as id
+exclude id
+describe
+test _.columns should be ['column_name', 'column_type']
+test _.size should be 0

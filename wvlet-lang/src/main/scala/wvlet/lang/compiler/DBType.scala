@@ -15,10 +15,13 @@ package wvlet.lang.compiler
 
 enum DBType(
     // CREATE OR REPLACE is supported
-    val supportCreateOrReplace: Boolean = false
+    val supportCreateOrReplace: Boolean = false,
+
+    // True if describe ... can be nested like select * (describe select ...)
+    val supportDescribeSubQuery: Boolean = false
 ):
 
-  case DuckDB extends DBType(supportCreateOrReplace = true)
+  case DuckDB extends DBType(supportCreateOrReplace = true, supportDescribeSubQuery = true)
   case Trino
       extends DBType(
         // Note: Trino connector may support `create or replace table` depending on the connector.
