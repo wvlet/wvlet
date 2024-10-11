@@ -13,6 +13,9 @@
  */
 package wvlet.lang.compiler
 
+import wvlet.log.io.IOUtil
+
+import java.io.File
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
 
@@ -20,24 +23,41 @@ import scala.jdk.CollectionConverters.*
   * An abstraction over local files or files in remote GitHub repositories
   */
 trait VirtualFile:
+  /**
+    * Leaf file name
+    */
   def name: String
+
+  /**
+    * relative file path
+    * @return
+    */
   def path: String
 
   def exists: Boolean
   def isDirectory: Boolean
   def listFiles: Seq[VirtualFile]
 
-case class LocalFile(name: String, path: String) extends VirtualFile:
-  override def exists: Boolean      = Files.exists(Path.of(path))
-  override def isDirectory: Boolean = exists && Files.isDirectory(Path.of(path))
+  /**
+    * Last updated time in milliseconds
+    * @return
+    */
+  def lastUpdatedAt: Long
+  def contentString: String
+  def content: IArray[Char] = IArray.unsafeFromArray(contentString.toCharArray)
+
+case class LocalFile(path: String) extends VirtualFile:
+  private val filePath              = Path.of(path)
+  override def name: String         = filePath.getFileName.toString
+  override def exists: Boolean      = Files.exists(filePath)
+  override def isDirectory: Boolean = exists && Files.exists(filePath)
+
+  override def contentString: String = IOUtil.readAsString(filePath.toFile)
+
+  override def lastUpdatedAt: Long = Files.getLastModifiedTime(filePath).toMillis
   override def listFiles: Seq[VirtualFile] =
     if isDirectory then
-      Files
-        .list(Path.of(path))
-        .toList
-        .asScala
-        .map(p => LocalFile(p.getFileName.toString, p.toString))
-        .toSeq
+      Files.list(filePath).toList.asScala.map(p => LocalFile(p.toString)).toSeq
     else
       Seq.empty
 
@@ -49,8 +69,47 @@ case class LocalFile(name: String, path: String) extends VirtualFile:
   * @param ref
   */
 case class GitHubArchive(owner: String, repo: String, ref: String) extends VirtualFile:
-  def name: String                  = s"github:${owner}/${repo}@${ref}"
-  override def path: String         = s"https://github.com/${owner}/${repo}"
-  override def exists: Boolean      = ???
-  override def isDirectory: Boolean = true
-  override def listFiles            = ???
+  def name: String                   = s"github:${owner}/${repo}@${ref}"
+  override def path: String          = s"https://github.com/${owner}/${repo}"
+  override def exists: Boolean       = ???
+  override def isDirectory: Boolean  = true
+  override def listFiles             = ???
+  override def lastUpdatedAt: Long   = ???
+  override def contentString: String = ???
+
+case class MemoryFile(name: String, contentString: String) extends VirtualFile:
+  val lastUpdatedAt                 = System.currentTimeMillis()
+  override def path: String         = name
+  override def exists: Boolean      = true
+  override def isDirectory: Boolean = false
+  override def listFiles            = Seq.empty
+
+case object EmptyFile extends VirtualFile:
+  override def name: String                = "<empty>"
+  override def path: String                = ""
+  override def exists: Boolean             = false
+  override def isDirectory: Boolean        = false
+  override def listFiles: Seq[VirtualFile] = Seq.empty
+  override def lastUpdatedAt: Long         = 0
+  override def contentString: String       = ""
+
+/**
+  * A file in a resource folder or a jar file
+  * @param path
+  */
+case class FileInResource(path: String) extends VirtualFile:
+  val lastUpdatedAt: Long                  = System.currentTimeMillis()
+  override def name: String                = path.split("/").last
+  override def exists: Boolean             = true
+  override def isDirectory: Boolean        = false
+  override def listFiles: Seq[VirtualFile] = Seq.empty
+  override def contentString: String       = IOUtil.readAsString(path)
+
+case class URLResource(url: java.net.URL) extends VirtualFile:
+  val lastUpdatedAt: Long                  = System.currentTimeMillis()
+  override def name: String                = url.getFile
+  override def path: String                = url.getPath
+  override def exists: Boolean             = true
+  override def isDirectory: Boolean        = false
+  override def listFiles: Seq[VirtualFile] = Seq.empty
+  override def contentString: String       = IOUtil.readAsString(url)
