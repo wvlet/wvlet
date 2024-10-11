@@ -179,6 +179,8 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       case WvletToken.DEF =>
         val d = funDef()
         TopLevelFunctionDef(d, spanFrom(t))
+      case WvletToken.VAL =>
+        valDef()
       case WvletToken.SHOW =>
         val q = queryBlock(show())
         Query(q, spanFrom(t))
@@ -433,6 +435,20 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         NamedType(name, DataType.UnknownType)
 
   def funDef(): FunctionDef =
+    def funName(): NameExpr =
+      val t = scanner.lookAhead()
+      t.token match
+        case id if id.isIdentifier =>
+          identifier()
+        case WvletToken.PLUS | WvletToken.MINUS | WvletToken.STAR | WvletToken.DIV | WvletToken
+              .MOD | WvletToken.AMP | WvletToken.PIPE | WvletToken.EQ | WvletToken.NEQ | WvletToken
+              .LT | WvletToken.LTEQ | WvletToken.GT | WvletToken.GTEQ =>
+          // symbols
+          consume(t.token)
+          UnquotedIdentifier(t.str, spanFrom(t))
+        case _ =>
+          reserved()
+
     val t    = consume(WvletToken.DEF)
     val name = funName()
     val args: List[DefArg] =
@@ -474,20 +490,6 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     FunctionDef(Name.termName(name.leafName), args, defScope, retType, body, spanFrom(t))
 
   end funDef
-
-  def funName(): NameExpr =
-    val t = scanner.lookAhead()
-    t.token match
-      case id if id.isIdentifier =>
-        identifier()
-      case WvletToken.PLUS | WvletToken.MINUS | WvletToken.STAR | WvletToken.DIV | WvletToken.MOD |
-          WvletToken.AMP | WvletToken.PIPE | WvletToken.EQ | WvletToken.NEQ | WvletToken.LT |
-          WvletToken.LTEQ | WvletToken.GT | WvletToken.GTEQ =>
-        // symbols
-        consume(t.token)
-        UnquotedIdentifier(t.str, spanFrom(t))
-      case _ =>
-        reserved()
 
   def defArgs(): List[DefArg] =
     val t = scanner.lookAhead()
@@ -556,6 +558,25 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         scopes.result()
       case _ =>
         Nil
+
+  def valDef(): ValDef =
+    val t    = consume(WvletToken.VAL)
+    val name = identifier()
+
+    val valType: Option[DataType] =
+      scanner.lookAhead().token match
+        case WvletToken.COLON =>
+          consume(WvletToken.COLON)
+          val typeName = identifier()
+          Some(DataType.parse(typeName.fullName))
+        case _ =>
+          None
+
+    consume(WvletToken.EQ)
+    val expr         = expression()
+    val exprType     = expr.dataType
+    val resolvedType = valType.getOrElse(exprType)
+    ValDef(Name.termName(name.leafName), resolvedType, expr, spanFrom(t))
 
   def orderExpr(input: Relation): Sort =
     val t = consume(WvletToken.ORDER)

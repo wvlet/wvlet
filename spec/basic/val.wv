@@ -1,0 +1,11 @@
+val msg = 'hello'
+
+select s"${msg} wvlet"
+test _.rows should be [['hello wvlet']]
+
+val msg2 = ulid_string
+
+select s"${msg2}" as l1, s"${msg2}" as l2
+where l1 = l2
+-- variable is evaluated only once
+test _.size should be 1

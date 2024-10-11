@@ -14,6 +14,7 @@
 package wvlet.lang.compiler.analyzer
 
 import wvlet.lang.compiler.{
+  BoundedSymbolInfo,
   CompilationUnit,
   Context,
   MethodSymbolInfo,
@@ -74,6 +75,13 @@ object SymbolLabeler extends Phase("symbol-labeler"):
           ctx
         case f: TopLevelFunctionDef =>
           registerTopLevelFunction(f)(using ctx)
+          ctx
+        case v: ValDef =>
+          val sym = Symbol(ctx.global.newSymbolId)
+          sym.symbolInfo = BoundedSymbolInfo(sym, v.name, v.dataType, v.expr)
+          v.symbol = sym
+          sym.tree = v
+          ctx.compilationUnit.enter(sym)
           ctx
         case s: SaveToTable =>
           iter(s.child, ctx)

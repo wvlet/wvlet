@@ -764,7 +764,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
           n
         }
 
-    def apply(context: Context): PlanRewriter = { case q: Query =>
+    def apply(context: Context): PlanRewriter = { case q: TopLevelStatement =>
       q.transformUpExpressions {
         case id: Identifier if id.unresolved && id.nonEmpty =>
           // Replace the id with the referenced native expression

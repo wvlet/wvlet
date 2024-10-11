@@ -21,6 +21,7 @@ import wvlet.lang.compiler.*
 import wvlet.lang.compiler.codegen.GenSQL
 import wvlet.lang.compiler.codegen.GenSQL.Indented
 import wvlet.lang.compiler.planner.ExecutionPlanner
+import wvlet.lang.compiler.transform.ExpressionEvaluator
 import wvlet.lang.model.DataType
 import wvlet.lang.model.DataType.{NamedType, SchemaType, UnresolvedType}
 import wvlet.lang.model.expr.*
@@ -122,6 +123,11 @@ class QueryExecutor(
         case ExecuteCommand(e) =>
           // Command produces no QueryResult other than errors
           report(executeCommand(e.expr, context))
+        case ExecuteValDef(v) =>
+          val expr = ExpressionEvaluator.eval(v.expr, context)
+          v.symbol.symbolInfo = BoundedSymbolInfo(v.symbol, v.name, expr.dataType, expr)
+          context.enter(v.symbol)
+          QueryResult.empty
         case ExecuteNothing =>
           report(QueryResult.empty)
 

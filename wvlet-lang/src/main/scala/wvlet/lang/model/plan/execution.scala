@@ -45,7 +45,7 @@ sealed trait ExecutionPlan extends Product:
           case t: ExecuteDebug =>
             s"- ${header}:\n${indent(t.debugExecutionPlan.pp, level + 1)}"
           case other =>
-            s"${other}"
+            s"- ${other}"
 
       indent(body)
 
@@ -78,3 +78,4 @@ case class ExecuteCommand(execute: Execute)                           extends Ex
 case class ExecuteTest(test: TestRelation)                            extends ExecutionPlan
 
 case class ExecuteDebug(debug: Debug, debugExecutionPlan: ExecutionPlan) extends ExecutionPlan
+case class ExecuteValDef(v: ValDef)                                      extends ExecutionPlan
