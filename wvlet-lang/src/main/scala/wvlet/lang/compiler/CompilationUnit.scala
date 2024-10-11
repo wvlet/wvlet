@@ -30,7 +30,8 @@ import java.util.jar.JarFile
   * trees) for the source file
   * @param sourceFile
   */
-case class CompilationUnit(sourceFile: SourceFile, isPreset: Boolean = false) extends LogSupport:
+case class CompilationUnit(var sourceFile: SourceFile, isPreset: Boolean = false)
+    extends LogSupport:
   // Untyped plan tree
   var unresolvedPlan: LogicalPlan = LogicalPlan.empty
   // Fully-typed plan tree
@@ -57,7 +58,7 @@ case class CompilationUnit(sourceFile: SourceFile, isPreset: Boolean = false) ex
 
   def needsRecompile: Boolean = lastCompiledAt.exists(sourceFile.lastUpdatedAt > _)
   def reload(): CompilationUnit =
-    sourceFile.reload()
+    sourceFile = sourceFile.reload()
     finishedPhases = Set.empty
     lastCompiledAt = None
     this
