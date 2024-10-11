@@ -45,12 +45,10 @@ class SourceFile(file: VirtualFile):
   def toCompileUnit: CompilationUnit = CompilationUnit(this)
   def lastUpdatedAt: Long            = file.lastUpdatedAt
 
-  var content: IArray[Char]           = file.content
-  private var lineIndexes: Array[Int] = computeLineIndexes
+  lazy val content: IArray[Char]           = file.content
+  private lazy val lineIndexes: Array[Int] = computeLineIndexes
 
-  def reload(): Unit =
-    content = file.content
-    lineIndexes = computeLineIndexes
+  def reload(): SourceFile = SourceFile(file)
 
   def length: Int = content.length
 
