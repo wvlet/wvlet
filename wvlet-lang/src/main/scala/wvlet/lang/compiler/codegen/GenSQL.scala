@@ -530,15 +530,19 @@ class GenSQL(ctx: Context) extends LogSupport:
       case d: Describe =>
         // TODO: Compute schema only from local DataType information without using connectors
         // Trino doesn't support nesting describe statement, so we need to generate raw values as SQL
-        val values = d
-          .child
-          .relationType
-          .fields
-          .map { f =>
-            s"""('${f.name.name}','${f.dataType.typeName}')"""
-          }
-          .mkString(",")
-        val sql = s"select * from (values ${values}) as table_schema(column_name, column_type)"
+        val fields = d.child.relationType.fields
+
+        val sql =
+          if fields.isEmpty then
+            "select '' as column_name, '' as column_type limit 0"
+          else
+            val values = fields
+              .map { f =>
+                s"""('${f.name.name}','${f.dataType.typeName}')"""
+              }
+              .mkString(",")
+            s"select * from (values ${values}) as table_schema(column_name, column_type)"
+
         selectWithIndentAndParenIfNecessary(sql)
       case r: RelationInspector =>
         // Skip relation inspector
