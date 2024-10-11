@@ -138,8 +138,16 @@ class Compiler(compilerOptions: CompilerOptions) extends LogSupport:
       contextUnit: Option[CompilationUnit]
   ): CompileResult =
     globalContext.setContextUnit(contextUnit)
-    val rootContext  = globalContext.getRootContext
-    var refinedUnits = units
+    val rootContext = globalContext.getRootContext
+
+    // reload if necessary
+    var refinedUnits = units.map { unit =>
+      if unit.needsRecompile then
+        trace(s"Reloading ${unit.sourceFile.fileName} for recompilation")
+        unit.reload()
+      else
+        unit
+    }
     for
       phaseGroup <- compilerOptions.phases
       phase      <- phaseGroup
@@ -159,6 +167,8 @@ class Compiler(compilerOptions: CompilerOptions) extends LogSupport:
 
     val result = CompileResult(refinedUnits, this, rootContext)
     result
+
+  end compileInternal
 
 end Compiler
 
