@@ -475,7 +475,7 @@ object WvletREPL:
         val t = scanner.nextToken()
 
         // Extract the raw string between the last offset and the current token
-        val rawString: String = src.content.slice(lastOffset, t.offset + t.length).mkString
+        val rawString: String = src.getContent.slice(lastOffset, t.offset + t.length).mkString
         lastOffset = t.offset + t.length
 
         t.token match

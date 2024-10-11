@@ -13,13 +13,14 @@
  */
 package wvlet.lang.compiler
 
-import wvlet.lang.compiler.parser.{WvletScanner, WvletToken, SourcePosition, Span}
+import wvlet.lang.compiler.parser.{SourcePosition, Span, WvletScanner, WvletToken}
 import wvlet.lang.compiler.parser.WvletToken.*
 import wvlet.airframe.ulid.ULID
 import wvlet.log.io.IOUtil
 
 import java.io.File
 import java.net.URL
+import java.util.concurrent.atomic.AtomicBoolean
 import scala.collection.mutable.ArrayBuffer
 
 object SourceFile:
@@ -45,12 +46,25 @@ class SourceFile(file: VirtualFile):
   def toCompileUnit: CompilationUnit = CompilationUnit(this)
   def lastUpdatedAt: Long            = file.lastUpdatedAt
 
-  lazy val content: IArray[Char]           = file.content
-  private lazy val lineIndexes: Array[Int] = computeLineIndexes
+  private val isLoaded                = AtomicBoolean(false)
+  private var content: IArray[Char]   = IArray.emptyCharIArray
+  private var lineIndexes: Array[Int] = Array.emptyIntArray
 
-  def reload(): SourceFile = SourceFile(file)
+  def ensureLoaded: Unit = getContent
 
-  def length: Int = content.length
+  def getContent: IArray[Char] =
+    if isLoaded.compareAndSet(false, true) then
+      loadContent
+    content
+
+  private def loadContent: IArray[Char] =
+    content = file.content
+    lineIndexes = computeLineIndexes
+    content
+
+  def reload(): Unit = isLoaded.set(false)
+
+  def length: Int = getContent.length
 
   private def computeLineIndexes: Array[Int] =
     val txt = content
@@ -72,6 +86,7 @@ class SourceFile(file: VirtualFile):
     buf.toArray
 
   private def findLineIndex(offset: Int, hint: Int = -1): Int =
+    ensureLoaded
     val idx = java.util.Arrays.binarySearch(lineIndexes, offset)
     if idx >= 0 then
       idx
@@ -90,6 +105,7 @@ class SourceFile(file: VirtualFile):
   inline def charAt(pos: Int): Char = content(pos)
 
   def sourceLine(line: Int): String =
+    ensureLoaded
     val lineIndex = line - 1
     if lineIndex < 0 || lineIndex >= lineIndexes.length - 1 then
       ""
