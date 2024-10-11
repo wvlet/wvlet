@@ -659,7 +659,7 @@ case class IntervalLiteral(
   override def children: Seq[Expression] = Seq(startField) ++ end.toSeq
   override def stringValue: String       = s"${sign.symbol} '${value}' ${startField}"
 
-case class GenericLiteral(tpe: String, value: String, span: Span)
+case class GenericLiteral(tpe: DataType, value: String, span: Span)
     extends Literal
     with LeafExpression:
   override def stringValue: String = value

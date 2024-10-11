@@ -21,7 +21,7 @@ import wvlet.lang.model.{DataType, NodeLocation, RelationType}
 import wvlet.lang.model.expr.{Attribute, Expression, NameExpr, QualifiedName, StringLiteral}
 import wvlet.lang.model.plan.LogicalPlan
 
-sealed trait LanguageStatement extends LogicalPlan with LeafPlan:
+sealed trait LanguageStatement extends TopLevelStatement with LeafPlan:
   override def isEmpty: Boolean           = true
   override def children: Seq[LogicalPlan] = Nil
 

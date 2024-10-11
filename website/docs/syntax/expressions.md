@@ -2,22 +2,35 @@
 
 One of the major difference from tradtional SQL is that wvlet uses single or double quoted strings for representing string values, and back-quoted strings for referencing column or table names, which might contain space or special characters.
 
-| Operator                                              | Description                                                                                                                                  | 
-|-------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------|
+| Operator                                              | Description                                                                                                                                  |
+|:------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------|
 | '(single quote)'                                      | String literal for representing string values, file names, etc.                                                                              |
-| "(double quote)"                                      | Same as single quote strings                                                                                                                 | 
+| "(double quote)"                                      | Same as single quote strings                                                                                                                 |
 | """(triple quote string)"""                           | Multi-line strings                                                                                                                           |
 | \`(back quote)\`                                      | Column or table name, which requires quotations                                                                                              |
 | sql"`sql expr`"                                       | SQL expression used for inline expansion                                                                                                     |
 | sql" ... $\{`expr`\} ..."                             | Interpolated SQL expression with embedded expressions                                                                                        |
 | s"... $\{expr\} ..."                                  | Interpolated strings with expressions                                                                                                        |
+| s\`... $\{expr\} ...\`                                | Interpolated backquote strings with expressions                                                                                              |
 | [`expr`, ...]                                         | Array value                                                                                                                                  |
 | [[`expr`, ...], ...]                                  | Array of arrays for representing table records                                                                                               |
-| `_`                                                   | underscore refers to the previous input                                                                                                      | 
+| `_`                                                   | underscore refers to the previous input                                                                                                      |
 | `agg_func(expr)` over (partition by ... order by ...) | Window functions for computing aggregate values computed from the entire query result. This follows the same window function syntax with SQL |
 | `_1`, `_2`, ...                                       | Refers to 1-origin grouping keys in the preceding `group by` clause                                                                          |
 | `1`, `2`, ...                                         | Refers to 1-origin column index for `order by` clause                                                                                        |
 
+## Variable Definition
+
+You can define a variable using `val` keyword:
+
+```sql
+-- Define a new variable
+val name = 'wvlet'
+
+-- Variable is evaluated once before running the query
+select s"Hello ${x}!" as msg
+-- Returns [['Hello wvlet!']]
+```
 
 ## Conditional Expressions
 
@@ -41,9 +54,7 @@ One of the major difference from tradtional SQL is that wvlet uses single or dou
 | `expr` between `v1` and `v2`    | True if the expression value is between v1 and v2, i.e., v1 &le; (value) &le; v2   |
 | `expr` like `pattern`           | True if the expression matches the given pattern, e.g., , `'abc%'`                 |
 
-
 ## String Expressions
-
 
 | Operator        | Description             |
 |-----------------|-------------------------|

@@ -95,8 +95,12 @@ class ModelSymbolInfo(symbol: Symbol, val owner: Symbol, name: Name, tpe: DataTy
     extends NamedSymbolInfo(symbol, owner, name, tpe):
   override def toString: String = s"model ${owner}.${name}: ${dataType}"
 
-class BoundedSymbolInfo(symbol: Symbol, name: Name, tpe: DataType, val expr: Expression)
-    extends SymbolInfo(symbol, name, tpe):
+case class BoundedSymbolInfo(
+    override val symbol: Symbol,
+    override val name: Name,
+    override val tpe: DataType,
+    expr: Expression
+) extends SymbolInfo(symbol, name, tpe):
   override def toString: String = s"bounded ${name}: ${dataType} = ${expr}"
 
 case class MultipleSymbolInfo(s1: SymbolInfo, s2: SymbolInfo)

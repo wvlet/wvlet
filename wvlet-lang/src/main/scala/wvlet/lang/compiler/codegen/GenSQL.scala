@@ -26,7 +26,7 @@ import wvlet.lang.compiler.{
 }
 import wvlet.lang.compiler.DBType.{DuckDB, Trino}
 import wvlet.lang.compiler.analyzer.TypeResolver
-import wvlet.lang.compiler.transform.PreprocessLocalExpr
+import wvlet.lang.compiler.transform.{ExpressionEvaluator, PreprocessLocalExpr}
 import wvlet.lang.ext.NativeFunction
 import wvlet.lang.model.NodeLocation
 import wvlet.lang.compiler.parser.Span.NoSpan
@@ -125,6 +125,7 @@ object GenSQL extends Phase("generate-sql"):
                 symbol = argSym,
                 name = argName,
                 tpe = argValue.dataType,
+                // TODO: This expr can be outdated after tree rewrite.
                 expr = argValue
               )
               newCtx.scope.add(argName, argSym)
@@ -731,14 +732,7 @@ class GenSQL(ctx: Context) extends LogSupport:
         val right = notIn.list.map(x => printExpression(x)).mkString(", ")
         s"${left} not in (${right})"
       case n: NativeExpression =>
-        val v = NativeFunction.callByName(n.name)
-        v match
-          case s: String =>
-            s"'${s}'"
-          case null =>
-            "null"
-          case other =>
-            other.toString
+        printExpression(ExpressionEvaluator.eval(n, ctx))
       case other =>
         warn(s"unknown expression type: ${other}")
         other.toString

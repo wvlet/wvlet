@@ -499,7 +499,9 @@ case class SQLSelect(
     child.relationType
   )
 
-trait QueryStatement extends UnaryRelation
+trait TopLevelStatement extends LogicalPlan
+
+trait QueryStatement extends UnaryRelation with TopLevelStatement
 
 case class Query(body: Relation, span: Span) extends QueryStatement with FilteringRelation:
   override def child: Relation  = body
