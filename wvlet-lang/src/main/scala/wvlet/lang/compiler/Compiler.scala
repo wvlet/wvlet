@@ -141,12 +141,13 @@ class Compiler(compilerOptions: CompilerOptions) extends LogSupport:
     val rootContext = globalContext.getRootContext
 
     // reload if necessary
-    var refinedUnits = units
-      .filter(_.needsRecompile)
-      .map { unit =>
+    var refinedUnits = units.map { unit =>
+      if unit.needsRecompile then
         trace(s"Reloading ${unit.sourceFile.fileName} for recompilation")
         unit.reload()
-      }
+      else
+        unit
+    }
     for
       phaseGroup <- compilerOptions.phases
       phase      <- phaseGroup
