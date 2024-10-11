@@ -43,16 +43,18 @@ class SourceFile(file: VirtualFile):
   def fileName: String               = new File(file.path).getName
   def relativeFilePath: String       = file.path
   def toCompileUnit: CompilationUnit = CompilationUnit(this)
+  def lastUpdatedAt: Long            = file.lastUpdatedAt
 
-  def lastUpdatedAt: Long = file.lastUpdatedAt
+  var content: IArray[Char]           = file.content
+  private var lineIndexes: Array[Int] = computeLineIndexes
 
-  var content: IArray[Char] = file.content
-
-  def reload(): Unit = content = file.content
+  def reload(): Unit =
+    content = file.content
+    lineIndexes = computeLineIndexes
 
   def length: Int = content.length
 
-  private val lineIndexes: Array[Int] =
+  private def computeLineIndexes: Array[Int] =
     val txt = content
     val buf = new ArrayBuffer[Int]
     buf += 0

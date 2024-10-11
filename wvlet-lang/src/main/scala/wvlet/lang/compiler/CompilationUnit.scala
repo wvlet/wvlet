@@ -45,13 +45,21 @@ case class CompilationUnit(sourceFile: SourceFile, isPreset: Boolean = false) ex
   var subscriptionPlans: List[LogicalPlan] = List.empty[LogicalPlan]
 
   private var finishedPhases: Set[String] = Set.empty
+  private var lastCompiledAt: Long        = 0
 
-  def isEmpty: Boolean = this eq CompilationUnit.empty
-
+  def isEmpty: Boolean  = this eq CompilationUnit.empty
   def isFailed: Boolean = lastError.isDefined
 
   def isFinished(phase: Phase): Boolean = finishedPhases.contains(phase.name)
-  def setFinished(phase: Phase): Unit   = finishedPhases += phase.name
+  def setFinished(phase: Phase): Unit =
+    finishedPhases += phase.name
+    lastCompiledAt = System.currentTimeMillis()
+
+  def needsRecompile: Boolean = sourceFile.lastUpdatedAt > lastCompiledAt
+  def reload(): CompilationUnit =
+    sourceFile.reload()
+    finishedPhases = Set.empty
+    this
 
   def enter(symbol: Symbol): Unit = knownSymbols = symbol :: knownSymbols
 
