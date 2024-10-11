@@ -151,7 +151,12 @@ object GenSQL extends Phase("generate-sql"):
               warn(s"unknown model: ${m.name}")
               m
         case q: Query =>
+          // unwrap
           q.child
+      }
+      .transformOnce { case r: Relation =>
+        // Evaluate identifiers
+        transformExpr(r, ctx)
       }
       .asInstanceOf[Relation]
 

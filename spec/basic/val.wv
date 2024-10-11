@@ -1,0 +1,5 @@
+val msg = 'hello'
+
+select s"${msg} wvlet"
+test _.rows should be [['hello wvlet']]
+

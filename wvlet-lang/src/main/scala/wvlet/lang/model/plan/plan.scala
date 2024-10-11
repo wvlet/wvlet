@@ -13,6 +13,7 @@
  */
 package wvlet.lang.model.plan
 
+import wvlet.lang.catalog.Catalog.TableName
 import wvlet.lang.compiler.parser.Span
 import wvlet.lang.compiler.{SourceFile, TermName, TypeName}
 import wvlet.lang.model.DataType.{EmptyRelationType, TypeParameter}
@@ -101,3 +102,19 @@ case class FieldDef(
   */
 case class DefContext(name: Option[NameExpr], tpe: NameExpr, span: Span) extends Expression:
   override def children: Seq[Expression] = Seq.empty
+
+case class ModelDef(
+    name: TableName,
+    params: List[DefArg],
+    givenRelationType: Option[RelationType],
+    child: Query,
+    span: Span
+) extends LogicalPlan
+    with HasTableName:
+  override def children: Seq[LogicalPlan] = Nil
+
+  override def inputRelationType: RelationType = EmptyRelationType
+  override def relationType: RelationType      = givenRelationType.getOrElse(child.relationType)
+
+case class ValDef(name: TermName, dataType: DataType, expr: Expression, span: Span)
+    extends LanguageStatement

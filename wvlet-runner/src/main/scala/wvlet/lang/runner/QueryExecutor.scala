@@ -122,6 +122,9 @@ class QueryExecutor(
         case ExecuteCommand(e) =>
           // Command produces no QueryResult other than errors
           report(executeCommand(e.expr, context))
+        case ExecuteValDef(v) =>
+          context.enter(v.symbol)
+          QueryResult.empty
         case ExecuteNothing =>
           report(QueryResult.empty)
 

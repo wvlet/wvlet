@@ -75,9 +75,9 @@ object LogicalPlanPrinter extends LogSupport:
         val s = concat(
           List(
             "  " * level,
-            "[TypeDef (",
+            "[TypeDef ",
             t.span,
-            ")] ",
+            "] ",
             t.name,
             if t.params.isEmpty then
               Nil
@@ -132,7 +132,7 @@ object LogicalPlanPrinter extends LogSupport:
         val attr        = m.childExpressions.map(expr => printExpression(expr))
         val functionSig = s" ${inputType} => ${outputType}"
 
-        val loc = m.span.map(l => s" (${l})").getOrElse("")
+        val loc = m.span.map(l => s" ${l}").getOrElse("")
         val prefix =
           m match
             case t: HasTableName =>

@@ -48,7 +48,7 @@ object RewriteExpr extends Phase("rewrite-expr"):
             base = NameExpr.fromString("concat"),
             args = List(
               FunctionArg(None, quote(left), left.span),
-              FunctionArg(None, quote(right), left.span)
+              FunctionArg(None, quote(right), right.span)
             ),
             window = None,
             span = s.span

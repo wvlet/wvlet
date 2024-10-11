@@ -73,19 +73,6 @@ trait UnaryRelation extends Relation with UnaryPlan:
 trait HasTableName:
   def name: TableName
 
-case class ModelDef(
-    name: TableName,
-    params: List[DefArg],
-    givenRelationType: Option[RelationType],
-    child: Query,
-    span: Span
-) extends LogicalPlan
-    with HasTableName:
-  override def children: Seq[LogicalPlan] = Nil
-
-  override def inputRelationType: RelationType = EmptyRelationType
-  override def relationType: RelationType      = givenRelationType.getOrElse(child.relationType)
-
 trait HasRefName extends UnaryRelation:
   def refName: NameExpr
 

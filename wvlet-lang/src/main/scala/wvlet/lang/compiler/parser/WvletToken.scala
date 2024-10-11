@@ -213,6 +213,8 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   case MODEL   extends WvletToken(Keyword, "model")
   case EXECUTE extends WvletToken(Keyword, "execute")
 
+  case VAL extends WvletToken(Keyword, "val")
+
   // Control statements
   case IF   extends WvletToken(Keyword, "if")
   case THEN extends WvletToken(Keyword, "then")
