@@ -23,33 +23,34 @@ import java.net.URL
 import scala.collection.mutable.ArrayBuffer
 
 object SourceFile:
-  object NoSourceFile extends SourceFile("<empty>", _ => "")
-  def fromFile(v: VirtualFile): SourceFile = SourceFile(v.path, IOUtil.readAsString)
-  def fromFile(file: String): SourceFile   = SourceFile(file, IOUtil.readAsString)
+  object NoSourceFile extends SourceFile(EmptyFile)
+  def fromFile(v: VirtualFile): SourceFile = SourceFile(v)
+  def fromFile(file: String): SourceFile   = SourceFile(LocalFile(file))
   def fromString(content: String): SourceFile = SourceFile(
-    s"${ULID.newULIDString}.wv",
-    _ => content
+    MemoryFile(s"${ULID.newULIDString}.wv", content)
   )
 
-  def fromResource(url: URL): SourceFile = SourceFile(url.getPath, _ => IOUtil.readAsString(url))
-  def fromResource(path: String): SourceFile = SourceFile(path, IOUtil.readAsString)
+  def fromResource(url: URL): SourceFile     = SourceFile(URLResource(url))
+  def fromResource(path: String): SourceFile = SourceFile(FileInResource(path))
 
-class SourceFile(
-    // Relative path of the source from the working folder
-    val relativeFilePath: String,
-    readContent: (file: String) => String
-):
-  override def toString: String = relativeFilePath
+class SourceFile(file: VirtualFile):
+  override def toString: String = file.path
 
   /**
     * Returns the leaf file name
     * @return
     */
-  def fileName: String               = new File(relativeFilePath).getName
+  def fileName: String               = new File(file.path).getName
+  def relativeFilePath: String       = file.path
   def toCompileUnit: CompilationUnit = CompilationUnit(this)
 
-  lazy val content: IArray[Char] = IArray.unsafeFromArray(readContent(relativeFilePath).toCharArray)
-  def length: Int                = content.length
+  def lastUpdatedAt: Long = file.lastUpdatedAt
+
+  var content: IArray[Char] = file.content
+
+  def reload(): Unit = content = file.content
+
+  def length: Int = content.length
 
   private val lineIndexes: Array[Int] =
     val txt = content

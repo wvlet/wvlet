@@ -62,8 +62,7 @@ case class GlobalContext(compilerOptions: CompilerOptions):
     symbolCount += 1
     symbolCount
 
-  def getFile(name: NameExpr): VirtualFile = files
-    .getOrElseUpdate(name, LocalFile(name.leafName, name.fullName))
+  def getFile(name: NameExpr): VirtualFile = files.getOrElseUpdate(name, LocalFile(name.fullName))
 
   /**
     * Get the context corresponding to the specific source file in the CompilationUnit
