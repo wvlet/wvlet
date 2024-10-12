@@ -85,7 +85,7 @@ case class MemoryFile(name: String, contentString: String) extends VirtualFile:
   override def listFiles            = Seq.empty
 
 case object EmptyFile extends VirtualFile:
-  override def name: String                = "<empty>"
+  override def name: String                = "N/A"
   override def path: String                = ""
   override def exists: Boolean             = false
   override def isDirectory: Boolean        = false

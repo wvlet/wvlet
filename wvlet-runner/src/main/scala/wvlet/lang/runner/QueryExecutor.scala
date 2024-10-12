@@ -63,11 +63,12 @@ class QueryExecutor(
       case None =>
         throw StatusCode.FILE_NOT_FOUND.newException(s"File not found: ${file}")
 
-  def executeSingle(u: CompilationUnit, context: Context): QueryResult =
+  def executeSingle(u: CompilationUnit, rootContext: Context): QueryResult =
     workEnv.outLogger.info(s"Executing ${u.sourceFile.fileName}")
+    val ctx = rootContext.withCompilationUnit(u).newContext(Symbol.NoSymbol)
 
-    val executionPlan = ExecutionPlanner.plan(u, context)
-    val result        = execute(executionPlan, context)
+    val executionPlan = ExecutionPlanner.plan(u, ctx)
+    val result        = execute(executionPlan, ctx)
     result
 
   def execute(executionPlan: ExecutionPlan, context: Context): QueryResult =
