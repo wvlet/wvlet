@@ -107,7 +107,7 @@ case class FileInResource(path: String) extends VirtualFile:
 
 case class URLResource(url: java.net.URL) extends VirtualFile:
   val lastUpdatedAt: Long                  = System.currentTimeMillis()
-  override def name: String                = url.getFile
+  override def name: String                = url.getFile.split("/").last
   override def path: String                = url.getPath
   override def exists: Boolean             = true
   override def isDirectory: Boolean        = false
