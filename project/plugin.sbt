@@ -36,7 +36,7 @@ libraryDependencies += "org.scala-js" %% "scalajs-env-jsdom-nodejs" % "1.1.0"
 addDependencyTreePlugin
 
 // For setting explicit versions for each commit
-addSbtPlugin("com.github.sbt" % "sbt-dynver" % "5.0.1")
+addSbtPlugin("com.github.sbt" % "sbt-dynver" % "5.1.0")
 
 // For packaging Scala project into a executable folder
 addSbtPlugin("org.xerial.sbt" % "sbt-pack" % "0.20")
