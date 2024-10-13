@@ -13,6 +13,7 @@
  */
 package wvlet.lang.compiler.codegen
 
+import wvlet.lang.BuildInfo
 import wvlet.lang.compiler.{
   BoundedSymbolInfo,
   CompilationUnit,
@@ -72,10 +73,19 @@ object GenSQL extends Phase("generate-sql"):
   def generateSQL(q: Relation, ctx: Context): GeneratedSQL =
     val expanded = expand(q, ctx)
     // val sql      = SQLGenerator.toSQL(expanded)
-    val gen = GenSQL(ctx)
-    val sql = gen.printRelation(expanded)(using Indented(0))
-    trace(s"[plan]\n${expanded.pp}\n[SQL]\n${sql}")
-    GeneratedSQL(sql, expanded)
+    val gen    = GenSQL(ctx)
+    val sql    = gen.printRelation(expanded)(using Indented(0))
+    val header = Seq.newBuilder[String]
+    header += s"version:${BuildInfo.version}"
+    val src =
+      if !ctx.compilationUnit.sourceFile.isEmpty then
+        header += s"src:${ctx.compilationUnit.sourceFile.fileName}"
+
+    val query =
+      s"""-- wvlet ${header.result().mkString(", ")}
+         |${sql}""".stripMargin
+    trace(s"[plan]\n${expanded.pp}\n[SQL]\n${query}")
+    GeneratedSQL(query, expanded)
 
   /**
     * Expand referenced model queries by populating model arguments

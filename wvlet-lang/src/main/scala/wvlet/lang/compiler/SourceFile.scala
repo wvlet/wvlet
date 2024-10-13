@@ -34,14 +34,15 @@ object SourceFile:
   def fromResource(url: URL): SourceFile     = SourceFile(URLResource(url))
   def fromResource(path: String): SourceFile = SourceFile(FileInResource(path))
 
-class SourceFile(file: VirtualFile):
+class SourceFile(val file: VirtualFile):
+  def isEmpty: Boolean          = file eq EmptyFile
   override def toString: String = file.path
 
   /**
     * Returns the leaf file name
     * @return
     */
-  def fileName: String               = new File(file.path).getName
+  def fileName: String               = file.name
   def relativeFilePath: String       = file.path
   def toCompileUnit: CompilationUnit = CompilationUnit(this)
   def lastUpdatedAt: Long            = file.lastUpdatedAt

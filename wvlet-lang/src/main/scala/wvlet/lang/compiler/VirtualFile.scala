@@ -85,7 +85,7 @@ case class MemoryFile(name: String, contentString: String) extends VirtualFile:
   override def listFiles            = Seq.empty
 
 case object EmptyFile extends VirtualFile:
-  override def name: String                = "<empty>"
+  override def name: String                = "N/A"
   override def path: String                = ""
   override def exists: Boolean             = false
   override def isDirectory: Boolean        = false
@@ -107,7 +107,7 @@ case class FileInResource(path: String) extends VirtualFile:
 
 case class URLResource(url: java.net.URL) extends VirtualFile:
   val lastUpdatedAt: Long                  = System.currentTimeMillis()
-  override def name: String                = url.getFile
+  override def name: String                = url.getFile.split("/").last
   override def path: String                = url.getPath
   override def exists: Boolean             = true
   override def isDirectory: Boolean        = false
