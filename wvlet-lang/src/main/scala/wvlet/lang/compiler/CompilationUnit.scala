@@ -60,7 +60,7 @@ case class CompilationUnit(sourceFile: SourceFile, isPreset: Boolean = false) ex
     sourceFile.reload()
     finishedPhases = Set.empty
     lastCompiledAt = None
-    this
+    thisa
 
   def enter(symbol: Symbol): Unit = knownSymbols = symbol :: knownSymbols
 
