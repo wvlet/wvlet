@@ -12,5 +12,8 @@
  * limitations under the License.
  */
 
+// Import Tailwind CSS
+import './index.css'
+
 // Scala.js code
 import '__public__/main.js';
