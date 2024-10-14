@@ -4,4 +4,4 @@ import wvlet.airframe.rx.html.RxElement
 import wvlet.airframe.rx.html.all.*
 
 class PreviewWindow extends RxElement:
-  override def render = div("Hello Wvlet Preview Window")
+  override def render = div("Preview Window")

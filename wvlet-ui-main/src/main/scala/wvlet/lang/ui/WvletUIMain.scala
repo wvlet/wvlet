@@ -13,15 +13,19 @@
  */
 package wvlet.lang.ui
 
+import wvlet.airframe.Design
 import wvlet.airframe.rx.html.all.*
 import wvlet.lang.ui.component.MainFrame
 import wvlet.lang.ui.editor.WvletEditor
 
 object WvletUIMain:
-
   def main(args: Array[String]): Unit = render
 
-  def render: Unit = MainFrame()(
-    h1(cls -> "text-3xl font-bold underline", "Hello world!"),
-    WvletEditor()
-  ).renderTo("main")
+  protected[ui] def design: Design = Design.newDesign.bindSingleton[WvletEditor]
+
+  def render: Unit =
+    val frame = MainFrame()
+
+    // Let Airframe DI design build UI components for WvletEditor
+    val editor = design.newSession.build[WvletEditor]
+    frame(editor).renderTo("main")
