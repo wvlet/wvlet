@@ -17,7 +17,6 @@ class FrontendApiImpl(queryService: QueryService) extends FrontendApi with LogSu
     val resp = queryService.enqueue(request)
     resp
 
-  override def getQueryInfo(request: QueryInfoRequest): QueryInfo = {
+  override def getQueryInfo(request: QueryInfoRequest): QueryInfo =
     info(request)
     queryService.fetchNext(request)
-  }
