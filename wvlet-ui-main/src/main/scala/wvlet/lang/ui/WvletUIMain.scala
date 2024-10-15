@@ -41,4 +41,5 @@ object WvletUIMain extends LogSupport:
       // Let Airframe DI design build UI components for WvletEditor
       val editor = design.newSession.build[WvletEditor]
       frame(editor).renderTo("main")
-    }.run()
+    }
+    .run()
