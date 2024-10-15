@@ -36,7 +36,11 @@ class WvletMonacoEditor extends RxElement:
     )
 
     languages.setMonarchTokensProvider(languageId, MonarchLanguage)
-    languages.setLanguageConfiguration(languageId, new { brackets = js.Array(js.Tuple2("(", ")"), js.Tuple2("{", "}"), js.Tuple2("[", "]"))})
+    languages.setLanguageConfiguration(
+      languageId,
+      new:
+        brackets = js.Array(js.Tuple2("(", ")"), js.Tuple2("{", "}"), js.Tuple2("[", "]"))
+    )
 
     editor.defineTheme("vs-wvlet", editorTheme)
 
@@ -52,10 +56,15 @@ class WvletMonacoEditor extends RxElement:
       .setTheme("vs-wvlet")
       // minimap options
       .setMinimap(minimapOptions)
-      .setBracketPairColorization(new { val enables = true })
+      .setBracketPairColorization(
+        new:
+          val enables = true
+      )
 
     editorOptions.tabSize = 2.0
     editorOptions
+
+  end monacoEditorOptions
 
   override def onMount: Unit = editor.create(
     dom.document.getElementById("editor").asInstanceOf[dom.HTMLElement],
