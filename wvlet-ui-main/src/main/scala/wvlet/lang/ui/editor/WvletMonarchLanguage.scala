@@ -3,10 +3,11 @@ package wvlet.lang.ui.editor
 import scala.scalajs.js
 import typings.monacoEditor.mod.languages.IMonarchLanguage
 
-val MonarchLanguage: IMonarchLanguage =
+val WvletMonarchLanguage: IMonarchLanguage =
   new IMonarchLanguage:
     defaultToken = "invalid"
 
+    // TODO Get these keywords from WvletToken class once WvletToken supports Scala.js
     val keywords = js.Array(
       "test",
       "should",
@@ -90,8 +91,20 @@ val MonarchLanguage: IMonarchLanguage =
       "truncate"
     )
 
-    val typeKeywords = js
-      .Array("boolean", "double", "byte", "int", "short", "char", "void", "long", "float")
+    val typeKeywords = js.Array(
+      "boolean",
+      "double",
+      "byte",
+      "int",
+      "short",
+      "char",
+      "void",
+      "long",
+      "float",
+      "string",
+      "array",
+      "map"
+    )
 
     val operators = js.Array(
       ":",
@@ -123,19 +136,24 @@ val MonarchLanguage: IMonarchLanguage =
       "#"
     )
 
-    val symbols = "[=><!~?:&|+\\-*/^%]+"
+    val symbols = "[=><!~?:;,\\._@$&|+\\-*/^%]+"
 
     val tokenizer =
       new:
         val root: js.Array[js.Array[js.Object]] = js.Array(
           js.Array(
-            js.RegExp("[a-z_][a-z_.]*"),
+            js.RegExp("[a-z_][a-z_\\.]*"),
             new:
               val cases = js.Dictionary(
                 "@keywords"     -> "keyword",
-                "@typeKeywords" -> "keyword",
+                "@typeKeywords" -> "type.keyword",
                 "@default"      -> "identifier"
               )
+          ),
+          js.Array(
+            js.RegExp("[A-Z][a-zA-Z_0-9][a-zA-Z_\\.0-9]*"),
+            new:
+              val token = "type.identifier"
           ),
           js.Array(
             js.RegExp("--.*"),
@@ -160,20 +178,20 @@ val MonarchLanguage: IMonarchLanguage =
           js.Array(
             js.RegExp("`.*?`"),
             new:
-              val token = "string"
+              val token = "string.backquoted"
           ),
           js.Array(
-            js.RegExp("[1-9][0-9]*.[0-9]*"),
+            js.RegExp("[1-9][0-9_]*.[0-9]+"),
             new:
               val token = "number.float"
           ),
           js.Array(
-            js.RegExp("0[xX][0-9a-fA-F]+"),
+            js.RegExp("0[xX][0-9a-fA-F_]+"),
             new:
               val token = "number"
           ),
           js.Array(
-            js.RegExp("[1-9][0-9]*"),
+            js.RegExp("[1-9][0-9_]*"),
             new:
               val token = "number"
           )

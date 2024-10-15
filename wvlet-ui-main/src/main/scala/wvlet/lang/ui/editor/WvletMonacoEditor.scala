@@ -20,8 +20,13 @@ class WvletMonacoEditor extends RxElement:
       rules = js.Array(
         editor.ITokenThemeRule("keyword").setForeground("#58ccf0"),
         editor.ITokenThemeRule("identifier").setForeground("#ffffff"),
+        editor.ITokenThemeRule("type.identifier").setForeground("#aaaaff"),
+        editor.ITokenThemeRule("type.keyword").setForeground("#cc99cc"),
         editor.ITokenThemeRule("string").setForeground("#f4c099"),
-        editor.ITokenThemeRule("comment").setForeground("#99cc99")
+        editor.ITokenThemeRule("string.backquoted").setForeground("#f4c0cc"),
+        editor.ITokenThemeRule("comment").setForeground("#99cc99"),
+        editor.ITokenThemeRule("operator").setForeground("#aaaaaa"),
+        editor.ITokenThemeRule("invalid").setForeground("#ff9999")
       )
     )
     theme
@@ -35,7 +40,7 @@ class WvletMonacoEditor extends RxElement:
         aliases = js.Array("Wvlet")
     )
 
-    languages.setMonarchTokensProvider(languageId, MonarchLanguage)
+    languages.setMonarchTokensProvider(languageId, WvletMonarchLanguage)
     languages.setLanguageConfiguration(
       languageId,
       new:
@@ -48,9 +53,14 @@ class WvletMonacoEditor extends RxElement:
     val minimapOptions = editor.IEditorMinimapOptions()
     minimapOptions.enabled = false
 
+    val sampleText =
+      """-- Enter your query
+         |from line item
+         |where l_quantity > 10.0""".stripMargin
+
     val editorOptions = editor.IStandaloneEditorConstructionOptions()
     editorOptions
-      .setValue(s"-- Enter your query\nfrom lineitem\nwhere l_quantity > 10.0")
+      .setValue(sampleText)
       // TODO Add a new language wvlet
       .setLanguage(languageId)
       .setTheme("vs-wvlet")
