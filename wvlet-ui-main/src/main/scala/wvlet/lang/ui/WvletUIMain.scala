@@ -14,18 +14,31 @@
 package wvlet.lang.ui
 
 import wvlet.airframe.Design
+import wvlet.airframe.http.Http
 import wvlet.airframe.rx.html.all.*
+import wvlet.lang.api.v1.frontend.FrontendRPC
 import wvlet.lang.ui.component.MainFrame
 import wvlet.lang.ui.editor.WvletEditor
+import wvlet.log.LogSupport
 
-object WvletUIMain:
+object WvletUIMain extends LogSupport:
   def main(args: Array[String]): Unit = render
 
-  protected[ui] def design: Design = Design.newDesign.bindSingleton[WvletEditor]
+  private val rpcClient = FrontendRPC.newRPCAsyncClient(Http.client.newJSClient)
 
-  def render: Unit =
-    val frame = MainFrame()
+  protected[ui] def design: Design = Design
+    .newDesign
+    .bindSingleton[WvletEditor]
+    .bindInstance[FrontendRPC.RPCAsyncClient](rpcClient)
 
-    // Let Airframe DI design build UI components for WvletEditor
-    val editor = design.newSession.build[WvletEditor]
-    frame(editor).renderTo("main")
+  def render: Unit = rpcClient
+    .FrontendApi
+    .status()
+    .map { status =>
+      info(s"Connected to the server: ${status}")
+
+      val frame = MainFrame()
+      // Let Airframe DI design build UI components for WvletEditor
+      val editor = design.newSession.build[WvletEditor]
+      frame(editor).renderTo("main")
+    }.run()

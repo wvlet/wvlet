@@ -185,7 +185,7 @@ lazy val server = project
     reStart / baseDirectory :=
       (ThisBuild / baseDirectory).value
   )
-  .dependsOn(api.jvm, client.jvm)
+  .dependsOn(api.jvm, client.jvm, runner)
 
 lazy val client = crossProject(JVMPlatform, JSPlatform)
   .in(file("wvlet-client"))

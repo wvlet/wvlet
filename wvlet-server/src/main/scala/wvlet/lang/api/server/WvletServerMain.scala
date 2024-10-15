@@ -19,9 +19,9 @@ class WvletServerMain(
   def version: Unit = info(s"wvlet server - version: ${BuildInfo.version}")
 
   @command(description = "Start the wvlet server")
-  def start(
+  def server(
       @option(prefix = "-p,--port", description = "Port number to listen")
-      port: Int = 8080
+      port: Int = 9090
   ): Unit =
     val design = WvletServer.design(WvletServerConfig(port = port))
     design.build[NettyServer] { server =>
