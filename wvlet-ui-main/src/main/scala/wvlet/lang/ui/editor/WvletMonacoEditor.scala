@@ -4,6 +4,7 @@ import org.scalablytyped.runtime.StringDictionary
 import wvlet.airframe.rx.html.RxElement
 import wvlet.airframe.rx.html.all.*
 import typings.monacoEditor.mod.editor
+import typings.monacoEditor.mod.languages
 import org.scalajs.dom
 import typings.monacoEditor.mod.editor.BuiltinTheme
 
@@ -19,30 +20,61 @@ class WvletMonacoEditor extends RxElement:
       rules = js.Array(
         editor.ITokenThemeRule("keyword").setForeground("#58ccf0"),
         editor.ITokenThemeRule("identifier").setForeground("#ffffff"),
+        editor.ITokenThemeRule("type.identifier").setForeground("#aaaaff"),
+        editor.ITokenThemeRule("type.keyword").setForeground("#cc99cc"),
         editor.ITokenThemeRule("string").setForeground("#f4c099"),
-        editor.ITokenThemeRule("comment").setForeground("#99cc99")
+        editor.ITokenThemeRule("string.backquoted").setForeground("#f4c0cc"),
+        editor.ITokenThemeRule("comment").setForeground("#99cc99"),
+        editor.ITokenThemeRule("operator").setForeground("#aaaaaa"),
+        editor.ITokenThemeRule("invalid").setForeground("#ff9999")
       )
     )
     theme
 
   private def monacoEditorOptions: editor.IStandaloneEditorConstructionOptions =
+    val languageId = "wvlet"
+    languages.register(
+      new:
+        val id = languageId
+        extensions = js.Array(".wv")
+        aliases = js.Array("Wvlet")
+    )
+
+    languages.setMonarchTokensProvider(languageId, WvletMonarchLanguage)
+    languages.setLanguageConfiguration(
+      languageId,
+      new:
+        brackets = js.Array(js.Tuple2("(", ")"), js.Tuple2("{", "}"), js.Tuple2("[", "]"))
+    )
+
     editor.defineTheme("vs-wvlet", editorTheme)
 
     // Disable minimap, which shows a small preview of the code
     val minimapOptions = editor.IEditorMinimapOptions()
     minimapOptions.enabled = false
 
+    val sampleText =
+      """-- Enter your query
+         |from line item
+         |where l_quantity > 10.0""".stripMargin
+
     val editorOptions = editor.IStandaloneEditorConstructionOptions()
     editorOptions
-      .setValue(s"-- Enter your query\nfrom lineitem\nwhere l_quantity > 10.0")
+      .setValue(sampleText)
       // TODO Add a new language wvlet
-      .setLanguage("sql")
+      .setLanguage(languageId)
       .setTheme("vs-wvlet")
       // minimap options
       .setMinimap(minimapOptions)
+      .setBracketPairColorization(
+        new:
+          val enables = true
+      )
 
     editorOptions.tabSize = 2.0
     editorOptions
+
+  end monacoEditorOptions
 
   override def onMount: Unit = editor.create(
     dom.document.getElementById("editor").asInstanceOf[dom.HTMLElement],
