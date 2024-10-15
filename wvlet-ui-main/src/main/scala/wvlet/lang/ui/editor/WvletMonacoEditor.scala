@@ -4,8 +4,10 @@ import org.scalablytyped.runtime.StringDictionary
 import wvlet.airframe.rx.html.RxElement
 import wvlet.airframe.rx.html.all.*
 import typings.monacoEditor.mod.editor
+import typings.monacoEditor.mod.languages
 import org.scalajs.dom
 import typings.monacoEditor.mod.editor.BuiltinTheme
+import typings.monacoEditor.mod.languages.IMonarchLanguage
 
 import scala.scalajs.js
 
@@ -26,6 +28,16 @@ class WvletMonacoEditor extends RxElement:
     theme
 
   private def monacoEditorOptions: editor.IStandaloneEditorConstructionOptions =
+    val languageId = "wvlet"
+    languages.register(
+      new:
+        val id = languageId
+        extensions = js.Array(".wv")
+        aliases = js.Array("Wvlet")
+    )
+
+    languages.setMonarchTokensProvider(languageId, MonarchLanguage)
+
     editor.defineTheme("vs-wvlet", editorTheme)
 
     // Disable minimap, which shows a small preview of the code
@@ -36,7 +48,7 @@ class WvletMonacoEditor extends RxElement:
     editorOptions
       .setValue(s"-- Enter your query\nfrom lineitem\nwhere l_quantity > 10.0")
       // TODO Add a new language wvlet
-      .setLanguage("sql")
+      .setLanguage(languageId)
       .setTheme("vs-wvlet")
       // minimap options
       .setMinimap(minimapOptions)
