@@ -36,6 +36,7 @@ class WvletMonacoEditor extends RxElement:
     )
 
     languages.setMonarchTokensProvider(languageId, MonarchLanguage)
+    languages.setLanguageConfiguration(languageId, new { brackets = js.Array(js.Tuple2("(", ")"), js.Tuple2("{", "}"), js.Tuple2("[", "]"))})
 
     editor.defineTheme("vs-wvlet", editorTheme)
 
@@ -51,6 +52,7 @@ class WvletMonacoEditor extends RxElement:
       .setTheme("vs-wvlet")
       // minimap options
       .setMinimap(minimapOptions)
+      .setBracketPairColorization(new { val enables = true })
 
     editorOptions.tabSize = 2.0
     editorOptions
