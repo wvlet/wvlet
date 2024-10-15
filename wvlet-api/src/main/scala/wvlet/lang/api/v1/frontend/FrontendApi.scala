@@ -20,10 +20,10 @@ import wvlet.lang.BuildInfo
 import wvlet.lang.api.v1.query.{QueryInfo, QueryStatus}
 
 @RPC
-abstract class FrontendApi(startTimeNs: Long = System.nanoTime()):
+trait FrontendApi:
   import FrontendApi.*
 
-  def status: ServerStatus = ServerStatus(upTime = ElapsedTime.nanosSince(startTimeNs))
+  def status: ServerStatus
 
   /**
     * Submit a query to from the frontend, and issue a new query id
