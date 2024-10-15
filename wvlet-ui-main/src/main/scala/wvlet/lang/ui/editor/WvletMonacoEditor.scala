@@ -12,7 +12,7 @@ import wvlet.lang.api.v1.frontend.FrontendRPC.RPCAsyncClient
 
 import scala.scalajs.js
 
-class WvletMonacoEditor(rpcClient: RPCAsyncClient) extends RxElement:
+class WvletMonacoEditor(queryResultReader: QueryResultReader) extends RxElement:
 
   private def editorTheme: editor.IStandaloneThemeData =
     val theme = editor.IStandaloneThemeData(
@@ -59,8 +59,9 @@ class WvletMonacoEditor(rpcClient: RPCAsyncClient) extends RxElement:
 
     val sampleText =
       """-- Enter your query
-         |from line item
-         |where l_quantity > 10.0""".stripMargin
+         |from lineitem
+         |where l_quantity > 10.0
+         |limit 10""".stripMargin
 
     val editorOptions = editor.IStandaloneEditorConstructionOptions()
     editorOptions
@@ -89,12 +90,7 @@ class WvletMonacoEditor(rpcClient: RPCAsyncClient) extends RxElement:
     textEditor.onKeyDown { (e: IKeyboardEvent) =>
       // ctrl + enter to submit the query
       if e.keyCode == KeyCode.Enter && (e.ctrlKey || e.metaKey) then
-        rpcClient
-          .FrontendApi
-          .submitQuery(QueryRequest(query = getTextValue))
-          .run { case resp =>
-            info(s"Query result: ${resp}")
-          }
+        queryResultReader.submitQuery(query = getTextValue)
     }
 
   def getTextValue: String = textEditor.getValue()
