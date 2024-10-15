@@ -179,6 +179,7 @@ lazy val server = project
       Seq(
         // For redirecting slf4j logs to airframe-log
         "org.slf4j"           % "slf4j-jdk14"         % "2.0.16",
+        "org.wvlet.airframe" %% "airframe-launcher"   % AIRFRAME_VERSION,
         "org.wvlet.airframe" %% "airframe-http-netty" % AIRFRAME_VERSION
       ),
     reStart / baseDirectory :=
