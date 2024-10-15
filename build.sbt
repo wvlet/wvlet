@@ -179,12 +179,13 @@ lazy val server = project
       Seq(
         // For redirecting slf4j logs to airframe-log
         "org.slf4j"           % "slf4j-jdk14"         % "2.0.16",
+        "org.wvlet.airframe" %% "airframe-launcher"   % AIRFRAME_VERSION,
         "org.wvlet.airframe" %% "airframe-http-netty" % AIRFRAME_VERSION
       ),
     reStart / baseDirectory :=
       (ThisBuild / baseDirectory).value
   )
-  .dependsOn(api.jvm)
+  .dependsOn(api.jvm, client.jvm)
 
 lazy val client = crossProject(JVMPlatform, JSPlatform)
   .in(file("wvlet-client"))

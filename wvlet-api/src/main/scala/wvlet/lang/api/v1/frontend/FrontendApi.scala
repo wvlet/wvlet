@@ -14,10 +14,44 @@
 package wvlet.lang.api.v1.frontend
 
 import wvlet.airframe.http.{RPC, RxRouter, RxRouterProvider}
+import wvlet.airframe.metrics.ElapsedTime
+import wvlet.airframe.ulid.{PrefixedULID, ULID}
+import wvlet.lang.BuildInfo
+import wvlet.lang.api.v1.query.{QueryInfo, QueryStatus}
 
 @RPC
-class FrontendApi:
-  def status: String = "ok"
+trait FrontendApi:
+  import FrontendApi.*
+
+  def status: ServerStatus
+
+  /**
+    * Submit a query to from the frontend, and issue a new query id
+    * @param request
+    * @return
+    */
+  def submitQuery(request: QueryRequest): QueryResponse
+
+  /**
+    * Read the query status and partial results
+    * @param queryId
+    * @return
+    */
+  def getQueryInfo(request: QueryInfoRequest): QueryInfo
 
 object FrontendApi extends RxRouterProvider:
   override def router = RxRouter.of[FrontendApi]
+
+  case class ServerStatus(version: String = BuildInfo.version, upTime: ElapsedTime)
+
+  case class QueryRequest(
+      // wvlet query text
+      query: String,
+      profile: Option[String] = None,
+      schema: Option[String] = None,
+      requestId: ULID = ULID.newULID
+  )
+
+  case class QueryInfoRequest(queryId: ULID, pageToken: String)
+
+  case class QueryResponse(queryId: ULID, requestId: ULID)
