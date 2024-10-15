@@ -129,7 +129,7 @@ val MonarchLanguage: IMonarchLanguage =
       new:
         val root: js.Array[js.Array[js.Object]] = js.Array(
           js.Array(
-            js.RegExp("[a-z_]+"),
+            js.RegExp("[a-z_][a-z_.]*"),
             new:
               val cases = js.Dictionary(
                 "@keywords"     -> "keyword",
