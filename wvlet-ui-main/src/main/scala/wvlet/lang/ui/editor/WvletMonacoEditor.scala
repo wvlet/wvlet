@@ -3,14 +3,16 @@ package wvlet.lang.ui.editor
 import org.scalablytyped.runtime.StringDictionary
 import wvlet.airframe.rx.html.RxElement
 import wvlet.airframe.rx.html.all.*
-import typings.monacoEditor.mod.editor
-import typings.monacoEditor.mod.languages
+import typings.monacoEditor.mod.{IKeyboardEvent, KeyCode, editor, languages}
 import org.scalajs.dom
-import typings.monacoEditor.mod.editor.BuiltinTheme
+import typings.monacoEditor.mod.editor.{BuiltinTheme, IStandaloneCodeEditor}
+import wvlet.lang.api.v1.frontend.FrontendApi
+import wvlet.lang.api.v1.frontend.FrontendApi.QueryRequest
+import wvlet.lang.api.v1.frontend.FrontendRPC.RPCAsyncClient
 
 import scala.scalajs.js
 
-class WvletMonacoEditor extends RxElement:
+class WvletMonacoEditor(rpcClient: RPCAsyncClient) extends RxElement:
 
   private def editorTheme: editor.IStandaloneThemeData =
     val theme = editor.IStandaloneThemeData(
@@ -30,6 +32,8 @@ class WvletMonacoEditor extends RxElement:
       )
     )
     theme
+
+  private var textEditor: IStandaloneCodeEditor = null
 
   private def monacoEditorOptions: editor.IStandaloneEditorConstructionOptions =
     val languageId = "wvlet"
@@ -76,10 +80,26 @@ class WvletMonacoEditor extends RxElement:
 
   end monacoEditorOptions
 
-  override def onMount: Unit = editor.create(
-    dom.document.getElementById("editor").asInstanceOf[dom.HTMLElement],
-    monacoEditorOptions
-  )
+  private def buildEditor: Unit =
+    textEditor = editor.create(
+      dom.document.getElementById("editor").asInstanceOf[dom.HTMLElement],
+      monacoEditorOptions
+    )
+    // Add shortcut keys
+    textEditor.onKeyDown { (e: IKeyboardEvent) =>
+      // ctrl + enter to submit the query
+      if e.keyCode == KeyCode.Enter && (e.ctrlKey || e.metaKey) then
+        rpcClient
+          .FrontendApi
+          .submitQuery(QueryRequest(query = getTextValue))
+          .run { case resp =>
+            info(s"Query result: ${resp}")
+          }
+    }
+
+  def getTextValue: String = textEditor.getValue()
+
+  override def onMount: Unit = buildEditor
 
   override def render = div(cls -> "pl-0 pr-2", div(id -> "editor", style -> "min-height: 250px;"))
 
