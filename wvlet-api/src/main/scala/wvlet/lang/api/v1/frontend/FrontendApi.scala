@@ -14,14 +14,16 @@
 package wvlet.lang.api.v1.frontend
 
 import wvlet.airframe.http.{RPC, RxRouter, RxRouterProvider}
+import wvlet.airframe.metrics.ElapsedTime
 import wvlet.airframe.ulid.{PrefixedULID, ULID}
+import wvlet.lang.BuildInfo
 import wvlet.lang.api.v1.query.{QueryInfo, QueryStatus}
 
 @RPC
-trait FrontendApi:
+abstract class FrontendApi(startTimeNs: Long = System.nanoTime()):
   import FrontendApi.*
 
-  def status: String = "ok"
+  def status: ServerStatus = ServerStatus(upTime = ElapsedTime.nanosSince(startTimeNs))
 
   /**
     * Submit a query to from the frontend, and issue a new query id
@@ -35,10 +37,12 @@ trait FrontendApi:
     * @param queryId
     * @return
     */
-  def getQueryInfo(queryId: ULID): QueryInfo
+  def getQueryInfo(request: QueryInfoRequest): QueryInfo
 
 object FrontendApi extends RxRouterProvider:
   override def router = RxRouter.of[FrontendApi]
+
+  case class ServerStatus(version: String = BuildInfo.version, upTime: ElapsedTime)
 
   case class QueryRequest(
       // wvlet query text
@@ -47,5 +51,7 @@ object FrontendApi extends RxRouterProvider:
       schema: Option[String] = None,
       requestId: ULID = ULID.newULID
   )
+
+  case class QueryInfoRequest(queryId: ULID, pageToken: String)
 
   case class QueryResponse(queryId: ULID, requestId: ULID)
