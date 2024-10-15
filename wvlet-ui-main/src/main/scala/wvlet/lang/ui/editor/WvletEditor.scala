@@ -18,8 +18,8 @@ class WvletEditor(
     cls -> "container px-2",
     div(
       cls -> "flex flex-row",
-      div(cls -> "basis-2/3", title("Editor"), monacoEditor),
-      div(cls -> "basis-1/3", title("Preview"), previewWindow),
+      div(cls -> "basis-1/2", title("Editor"), monacoEditor),
+      div(cls -> "basis-1/2", title("Preview"), previewWindow),
       div(
         cls -> "absolute inset-x-0 bottom-0 h-48 w-100 bg-cyan-950 text-gray-100",
         consoleLogWindow

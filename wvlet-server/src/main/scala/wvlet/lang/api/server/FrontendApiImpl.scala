@@ -6,7 +6,7 @@ import wvlet.lang.api.v1.frontend.FrontendApi
 import wvlet.lang.api.v1.frontend.FrontendApi.*
 import wvlet.lang.api.v1.query.QueryInfo
 
-class FrontendApiImpl extends FrontendApi:
+class FrontendApiImpl() extends FrontendApi:
   private val startTimeNs = System.nanoTime()
 
   override def status: ServerStatus = ServerStatus(upTime = ElapsedTime.nanosSince(startTimeNs))

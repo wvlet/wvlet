@@ -26,10 +26,10 @@ const replacementForPublic= `./target/scala-${scalaVersion}/wvlet-ui-main${suffi
 
 export default defineConfig({
   server: {
-  open: true,
-  proxy: {
-    '^/v1/*': 'http://127.0.0.1:9090',
-  }
+    open: true,
+    proxy: {
+      '^/wvlet.lang.api.v1*': 'http://127.0.0.1:9090'
+    }
   },
   plugins: [
     replace({
