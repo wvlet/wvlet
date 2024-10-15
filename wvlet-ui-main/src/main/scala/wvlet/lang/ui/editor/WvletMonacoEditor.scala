@@ -7,7 +7,6 @@ import typings.monacoEditor.mod.editor
 import typings.monacoEditor.mod.languages
 import org.scalajs.dom
 import typings.monacoEditor.mod.editor.BuiltinTheme
-import typings.monacoEditor.mod.languages.IMonarchLanguage
 
 import scala.scalajs.js
 
