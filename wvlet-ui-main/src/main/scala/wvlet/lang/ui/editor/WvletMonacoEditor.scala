@@ -9,6 +9,7 @@ import typings.monacoEditor.mod.editor.{BuiltinTheme, IStandaloneCodeEditor}
 import wvlet.lang.api.v1.frontend.FrontendApi
 import wvlet.lang.api.v1.frontend.FrontendApi.QueryRequest
 import wvlet.lang.api.v1.frontend.FrontendRPC.RPCAsyncClient
+import typings.monacoEditor.mod.languages.CompletionItemProvider
 
 import scala.scalajs.js
 
@@ -45,6 +46,7 @@ class WvletMonacoEditor(queryResultReader: QueryResultReader) extends RxElement:
     )
 
     languages.setMonarchTokensProvider(languageId, WvletMonarchLanguage)
+    languages.registerCompletionItemProvider(languageId, WvletMonacoKeywordCompletionProvider)
     languages.setLanguageConfiguration(
       languageId,
       new:
