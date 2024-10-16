@@ -3,8 +3,7 @@ package wvlet.lang.ui.editor
 import scala.scalajs.js
 import typings.monacoEditor.mod.languages.IMonarchLanguage
 
-object WvletMonarchLanguage extends IMonarchLanguage:
-  defaultToken = "invalid"
+object WvletMonarchLanguage:
 
   // TODO Get these keywords from WvletToken class once WvletToken supports Scala.js
   val keywords = js.Array(
@@ -105,6 +104,14 @@ object WvletMonarchLanguage extends IMonarchLanguage:
     "map"
   )
 
+end WvletMonarchLanguage
+
+class WvletMonarchLanguage extends IMonarchLanguage:
+  import WvletMonarchLanguage.*
+  defaultToken = "invalid"
+
+  val keywords     = WvletMonarchLanguage.keywords
+  val typeKeywords = WvletMonarchLanguage.typeKeywords
   val operators = js.Array(
     ":",
     ";",
@@ -137,6 +144,8 @@ object WvletMonarchLanguage extends IMonarchLanguage:
 
   val symbols = "[=><!~?:;,\\._@$&|+\\-*/^%]+"
 
+  type Rules = js.Array[js.Array[js.Object]]
+
   val numberTokenRules: Rules = js.Array(
     js.Array(
       js.RegExp("[1-9][0-9_]*.[0-9]+"),
@@ -166,8 +175,6 @@ object WvletMonarchLanguage extends IMonarchLanguage:
         )
     )
   )
-
-  type Rules = js.Array[js.Array[js.Object]]
 
   val tokenizer =
     new:
