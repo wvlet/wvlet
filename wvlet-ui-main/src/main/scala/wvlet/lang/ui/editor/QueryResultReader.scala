@@ -16,10 +16,13 @@ class QueryResultReader(rpcClient: RPCAsyncClient) extends LogSupport:
     }
     .run()
 
-  def fetchQueryResult(query: QueryResponse): Unit = rpcClient
-    .FrontendApi
-    .getQueryInfo(QueryInfoRequest(queryId = query.queryId, pageToken = "0"))
-    .tap { queryInfo =>
-      info(s"Query info: ${queryInfo}")
-    }
-    .run()
+  def fetchQueryResult(query: QueryResponse): Unit =
+    Rx.intervalMillis(100)
+
+    rpcClient
+      .FrontendApi
+      .getQueryInfo(QueryInfoRequest(queryId = query.queryId, pageToken = "0"))
+      .tap { queryInfo =>
+        info(s"Query info: ${queryInfo}")
+      }
+      .run()

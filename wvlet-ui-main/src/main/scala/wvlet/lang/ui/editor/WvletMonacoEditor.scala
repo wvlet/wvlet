@@ -129,6 +129,6 @@ class WvletMonacoEditor(queryResultReader: QueryResultReader) extends RxElement:
 
   override def onMount: Unit = buildEditor
 
-  override def render = div(cls -> "pl-0 pr-2", div(id -> "editor", style -> "min-height: 250px;"))
+  override def render = div(cls -> "pl-0 pr-2", div(id -> "editor", style -> "min-height: 350px;"))
 
 end WvletMonacoEditor
