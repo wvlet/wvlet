@@ -70,7 +70,7 @@ class WvletMonacoEditor(queryResultReader: QueryResultReader) extends RxElement:
         aliases = js.Array("Wvlet")
     )
 
-    languages.setMonarchTokensProvider(languageId, WvletMonarchLanguage)
+    languages.setMonarchTokensProvider(languageId, WvletMonarchLanguage())
     languages.registerCompletionItemProvider(languageId, keywordCompletionProvider)
     languages.setLanguageConfiguration(
       languageId,
