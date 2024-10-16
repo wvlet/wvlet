@@ -8,8 +8,9 @@ case class QueryInfo(
     queryId: ULID,
     // For pagination
     pageToken: String,
-    queryStatus: QueryStatus,
+    status: QueryStatus,
     createdAt: Instant = Instant.now(),
+    startedAt: Option[Instant] = None,
     completedAt: Option[Instant] = None,
     error: Option[QueryError] = None,
     // Partial query result

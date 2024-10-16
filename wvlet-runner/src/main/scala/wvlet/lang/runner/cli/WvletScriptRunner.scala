@@ -25,6 +25,7 @@ import java.sql.SQLException
 import scala.util.control.NonFatal
 
 case class WvletScriptRunnerConfig(
+    // If true, the query result will be displayed with LESS command
     interactive: Boolean,
     resultLimit: Int = 40,
     maxColWidth: Int = 150,

@@ -5,12 +5,18 @@ import wvlet.airframe.ulid.ULID
 import wvlet.lang.api.v1.frontend.FrontendApi
 import wvlet.lang.api.v1.frontend.FrontendApi.*
 import wvlet.lang.api.v1.query.QueryInfo
+import wvlet.log.LogSupport
 
-class FrontendApiImpl() extends FrontendApi:
+class FrontendApiImpl(queryService: QueryService) extends FrontendApi with LogSupport:
   private val startTimeNs = System.nanoTime()
 
   override def status: ServerStatus = ServerStatus(upTime = ElapsedTime.nanosSince(startTimeNs))
 
-  override def submitQuery(request: QueryRequest): QueryResponse = ???
+  override def submitQuery(request: QueryRequest): QueryResponse =
+    debug(s"Received:\n${request}")
+    val resp = queryService.enqueue(request)
+    resp
 
-  override def getQueryInfo(request: QueryInfoRequest): QueryInfo = ???
+  override def getQueryInfo(request: QueryInfoRequest): QueryInfo =
+    info(request)
+    queryService.fetchNext(request)
