@@ -161,6 +161,12 @@ val WvletMonarchLanguage: IMonarchLanguage =
               val token = "comment"
           ),
           js.Array(
+            js.RegExp("\"\"\""),
+            new:
+              val token = "comment"
+              val next = "@multilinecomment"
+          ),
+          js.Array(
             js.RegExp("@symbols"),
             new:
               val cases = js.Dictionary("@operators" -> "operator", "@default" -> "")
@@ -195,4 +201,17 @@ val WvletMonarchLanguage: IMonarchLanguage =
             new:
               val token = "number"
           )
+        )
+        val multilinecomment: js.Array[js.Array[js.Object]] = js.Array(
+          js.Array(
+            js.RegExp("\"\"\""),
+            new:
+              val token = "comment"
+              val next = "@pop"
+          ),
+          js.Array(
+            js.RegExp("."),
+            new:
+              val token = "comment"
+          ),
         )
