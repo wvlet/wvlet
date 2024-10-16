@@ -17,11 +17,11 @@ class WvletEditor(
   override def render = div(
     cls -> "grid grid-cols-2 bg-black",
     div(cls -> "col-span-1", monacoEditor),
-    div(cls -> "col-start-2 col-end-3 bg-black", title("Preview")),
+    div(cls -> "col-start-2 col-end-3 bg-black", div(title("Preview"), previewWindow)),
     div(
       // span to the bottom of the screen
       cls -> "col-start-1 col-end-3 bg-cyan-950 text-gray-100 h-screen px-2",
-      title("Console")
+      div(title("Console"), consoleLogWindow)
     )
   )
 
