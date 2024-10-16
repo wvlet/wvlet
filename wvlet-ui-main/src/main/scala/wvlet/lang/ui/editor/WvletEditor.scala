@@ -20,7 +20,8 @@ class WvletEditor(
     div(cls -> "col-start-2 col-end-3 bg-black", div(title("Preview"), previewWindow)),
     div(
       // span to the bottom of the screen
-      cls -> "col-start-1 col-end-3 bg-cyan-950 text-gray-100 h-screen px-2",
+      cls ->
+        "col-start-1 col-end-3 bg-cyan-950 text-gray-100 h-screen max-h-full px-2 overflow-y-auto scroll-auto",
       div(title("Console"), consoleLogWindow)
     )
   )
