@@ -38,6 +38,7 @@ class QueryService(scriptRunner: WvletScriptRunner) extends LogSupport with Auto
     QueryResponse(queryId = queryId, requestId = request.requestId)
 
   def fetchNext(request: QueryInfoRequest): QueryInfo =
+    info(s"Fetching query info: ${request}")
     // Fetch the query info
     queryMap
       .get(request.queryId)

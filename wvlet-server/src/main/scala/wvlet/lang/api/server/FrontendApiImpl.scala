@@ -18,5 +18,5 @@ class FrontendApiImpl(queryService: QueryService) extends FrontendApi with LogSu
     resp
 
   override def getQueryInfo(request: QueryInfoRequest): QueryInfo =
-    info(request)
+    debug(request)
     queryService.fetchNext(request)
