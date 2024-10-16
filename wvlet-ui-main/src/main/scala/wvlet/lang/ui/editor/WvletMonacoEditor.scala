@@ -48,7 +48,7 @@ class WvletMonacoEditor(queryResultReader: QueryResultReader) extends RxElement:
     languages.setLanguageConfiguration(
       languageId,
       new:
-        brackets = js.Array(js.Tuple2("(", ")"), js.Tuple2("{", "}"), js.Tuple2("[", "]"))
+        brackets = js.Array(js.Tuple2("(", ")"), js.Tuple2("{", "}"), js.Tuple2("[", "]"), js.Tuple2("${", "}"))
     )
 
     editor.defineTheme("vs-wvlet", editorTheme)

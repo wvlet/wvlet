@@ -1,6 +1,7 @@
 package wvlet.lang.ui.editor
 
 import scala.scalajs.js
+import js.JSConverters._
 import typings.monacoEditor.mod.languages.IMonarchLanguage
 
 val WvletMonarchLanguage: IMonarchLanguage =
@@ -138,18 +139,40 @@ val WvletMonarchLanguage: IMonarchLanguage =
 
     val symbols = "[=><!~?:;,\\._@$&|+\\-*/^%]+"
 
+    val numberTokenRules: Rules = js.Array(
+      js.Array(
+        js.RegExp("[1-9][0-9_]*.[0-9]+"),
+        new:
+          val token = "number.float"
+      ),
+      js.Array(
+        js.RegExp("0[xX][0-9a-fA-F_]+"),
+        new:
+          val token = "number"
+      ),
+      js.Array(
+        js.RegExp("[1-9][0-9_]*"),
+        new:
+          val token = "number"
+      ),
+    )
+
+    val keywordTokenRules: Rules = js.Array(
+      js.Array(
+        js.RegExp("[a-z_][a-z_0-9\\.]*"),
+        new:
+          val cases = js.Dictionary(
+            "@keywords"     -> "keyword",
+            "@typeKeywords" -> "type.keyword",
+            "@default"      -> "identifier"
+          )
+      )
+    )
+
+    type Rules = js.Array[js.Array[js.Object]]
     val tokenizer =
       new:
-        val root: js.Array[js.Array[js.Object]] = js.Array(
-          js.Array(
-            js.RegExp("[a-z_][a-z_\\.]*"),
-            new:
-              val cases = js.Dictionary(
-                "@keywords"     -> "keyword",
-                "@typeKeywords" -> "type.keyword",
-                "@default"      -> "identifier"
-              )
-          ),
+        val root: Rules = keywordTokenRules ++ js.Array[js.Array[js.Object]](
           js.Array(
             js.RegExp("[A-Z][a-zA-Z_0-9][a-zA-Z_\\.0-9]*"),
             new:
@@ -172,9 +195,10 @@ val WvletMonarchLanguage: IMonarchLanguage =
               val cases = js.Dictionary("@operators" -> "operator", "@default" -> "")
           ),
           js.Array(
-            js.RegExp("\".*?\""),
+            js.RegExp("\""),
             new:
-              val token = "string"
+              val token = "string.quote"
+              val next = "@string"
           ),
           js.Array(
             js.RegExp("'.*?'"),
@@ -186,23 +210,8 @@ val WvletMonarchLanguage: IMonarchLanguage =
             new:
               val token = "string.backquoted"
           ),
-          js.Array(
-            js.RegExp("[1-9][0-9_]*.[0-9]+"),
-            new:
-              val token = "number.float"
-          ),
-          js.Array(
-            js.RegExp("0[xX][0-9a-fA-F_]+"),
-            new:
-              val token = "number"
-          ),
-          js.Array(
-            js.RegExp("[1-9][0-9_]*"),
-            new:
-              val token = "number"
-          )
-        )
-        val multilinecomment: js.Array[js.Array[js.Object]] = js.Array(
+        ) ++ numberTokenRules
+        val multilinecomment: Rules = js.Array(
           js.Array(
             js.RegExp("\"\"\""),
             new:
@@ -215,3 +224,35 @@ val WvletMonarchLanguage: IMonarchLanguage =
               val token = "comment"
           ),
         )
+        val string: Rules = js.Array(
+          js.Array(
+            js.RegExp("\""),
+            new:
+              val token = "string.quote"
+              val next = "@pop"
+          ),
+          js.Array(
+            js.RegExp("\\$\\{"),
+            new:
+              val token = "string.interpolation"
+              val next = "@interpolation"
+          ),
+          js.Array(
+            js.RegExp("."),
+            new:
+              val token = "string"
+          ),
+        )
+        val interpolation: Rules = keywordTokenRules ++ js.Array[js.Array[js.Object]](
+          js.Array(
+            js.RegExp("}"),
+            new:
+              val token = "string.interpolation"
+              val next = "@pop"
+          ),
+          js.Array(
+            js.RegExp("@symbols"),
+            new:
+              val cases = js.Dictionary("@operators" -> "operator", "@default" -> "")
+          ),
+        ) ++ numberTokenRules
