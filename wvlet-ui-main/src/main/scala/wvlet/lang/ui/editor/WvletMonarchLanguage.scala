@@ -1,7 +1,6 @@
 package wvlet.lang.ui.editor
 
 import scala.scalajs.js
-import js.JSConverters.*
 import typings.monacoEditor.mod.languages.IMonarchLanguage
 
 val WvletMonarchLanguage: IMonarchLanguage =
