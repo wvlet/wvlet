@@ -1,18 +1,44 @@
 package wvlet.lang.ui.editor
 
 import org.scalablytyped.runtime.StringDictionary
+import org.scalajs.dom
+import typings.monacoEditor.mod.*
+import typings.monacoEditor.mod.editor.{BuiltinTheme, IStandaloneCodeEditor, ITextModel}
+import typings.monacoEditor.mod.languages.*
 import wvlet.airframe.rx.html.RxElement
 import wvlet.airframe.rx.html.all.*
-import typings.monacoEditor.mod.{IKeyboardEvent, KeyCode, editor, languages}
-import org.scalajs.dom
-import typings.monacoEditor.mod.editor.{BuiltinTheme, IStandaloneCodeEditor}
-import wvlet.lang.api.v1.frontend.FrontendApi
-import wvlet.lang.api.v1.frontend.FrontendApi.QueryRequest
-import wvlet.lang.api.v1.frontend.FrontendRPC.RPCAsyncClient
 
 import scala.scalajs.js
 
+object WvletMonacoEditor:
+  import WvletMonarchLanguage.*
+
+  private val keywordCompletionProvider =
+    new CompletionItemProvider:
+      override def provideCompletionItems(
+          model: ITextModel,
+          position: Position,
+          context: CompletionContext,
+          token: CancellationToken
+      ): ProviderResult[CompletionList] =
+        new CompletionList:
+          val suggestions = (keywords ++ typeKeywords).map(word =>
+            new CompletionItem:
+              val label: String      = word
+              val kind               = CompletionItemKind.Keyword
+              val insertText: String = word
+              val range: IRange =
+                new:
+                  val startLineNumber = position.lineNumber
+                  val startColumn     = position.column - 1
+                  val endLineNumber   = position.lineNumber
+                  val endColumn       = position.column
+          )
+
+end WvletMonacoEditor
+
 class WvletMonacoEditor(queryResultReader: QueryResultReader) extends RxElement:
+  import WvletMonacoEditor.*
 
   private def editorTheme: editor.IStandaloneThemeData =
     val theme = editor.IStandaloneThemeData(
@@ -45,6 +71,7 @@ class WvletMonacoEditor(queryResultReader: QueryResultReader) extends RxElement:
     )
 
     languages.setMonarchTokensProvider(languageId, WvletMonarchLanguage)
+    languages.registerCompletionItemProvider(languageId, keywordCompletionProvider)
     languages.setLanguageConfiguration(
       languageId,
       new:
