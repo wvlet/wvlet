@@ -24,6 +24,12 @@ object ConsoleLog:
     logBuffer = span(currentTimeStamp(), " ", span(log)) :: logBuffer.take(bufferSize - 1)
     logMessages := logBuffer.reverse
 
+  def writeError(log: String): Unit =
+    logBuffer =
+      span(currentTimeStamp(), " ", span(cls -> "text-red-300", log)) ::
+        logBuffer.take(bufferSize - 1)
+    logMessages := logBuffer.reverse
+
 class ConsoleLogWindow extends RxElement:
 
   // fixed length buffer for log messages
