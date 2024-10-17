@@ -46,6 +46,13 @@ class QueryResultReader(rpcClient: RPCAsyncClient) extends LogSupport:
       info(queryInfo)
       queryInfo
         .lastOption
+        .flatMap(_.error)
+        .map { err =>
+          ConsoleLog.writeError(s"Query failed: ${err.message}")
+        }
+
+      queryInfo
+        .lastOption
         .flatMap(_.preview)
         .foreach { preview =>
           info(preview)
