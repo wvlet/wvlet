@@ -3,6 +3,12 @@ package wvlet.lang.ui.editor
 import wvlet.airframe.rx.html.RxElement
 import wvlet.airframe.rx.html.all.*
 
+object WvletEditor:
+  val editorWidthRem: Int  = 32 // rem (chars)
+  val editorHeightRem: Int = 24 // rem (lines)
+  def editorStyle =
+    s"min-width: ${editorWidthRem}rem; max-width: ${editorWidthRem}rem; min-height: ${editorHeightRem}rem;"
+
 class WvletEditor(
     monacoEditor: WvletMonacoEditor,
     previewWindow: PreviewWindow,
@@ -14,19 +20,20 @@ class WvletEditor(
     title
   )
 
-  override def render = div(
-    cls -> "grid grid-cols-3 bg-black h-full",
-    div(cls -> "col-span-1 max-h-2/3", monacoEditor),
+  override def render =
+    // grid
     div(
-      cls -> "col-start-2 col-end-4 bg-black max-h-full overflow-y-auto",
-      div(title("Preview"), previewWindow)
-    ),
-    div(
-      // span to the bottom of the screen
-      cls ->
-        "col-start-1 col-end-4 bg-cyan-950 text-gray-100 h-screen max-h-full px-2 overflow-y-auto scroll-auto",
-      div(title("Console"), consoleLogWindow)
+      cls -> "flex flex-col h-screen",
+      div(
+        cls -> "flex bg-black",
+        div(cls -> "flex-none", style -> WvletEditor.editorStyle, monacoEditor),
+        div(
+          // span to the bottom of the screen
+          cls -> "grow bg-cyan-950 text-gray-100 px-2 overflow-y-auto scroll-auto",
+          div(title("Console"), consoleLogWindow)
+        )
+      ),
+      div(cls -> "h-dvh bg-black overflow-y-auto", div(title("Preview"), previewWindow))
     )
-  )
 
 end WvletEditor

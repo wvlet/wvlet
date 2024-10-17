@@ -36,8 +36,8 @@ class ConsoleLogWindow extends RxElement:
   private val logBuffer = List.empty
 
   override def render = div(
-    cls -> "overflow-x-clip",
     pre(
+      id  -> "console-log",
       cls -> "text-xs text-slate-300 dark:text-white",
       ConsoleLog
         .logMessages
@@ -45,6 +45,15 @@ class ConsoleLogWindow extends RxElement:
           logBuffer.map { log =>
             code(log, "\n")
           }
+        }
+        .tap { _ =>
+          // Scroll to the bottom after rendering new log messages
+          // TODO Airframe RxElement should support componentDidUpdate hook
+          Rx.delay(50, java.util.concurrent.TimeUnit.MILLISECONDS)
+            .run { _ =>
+              val elem = org.scalajs.dom.document.getElementById("console-log")
+              Option(elem).foreach(_.scrollIntoView(false))
+            }
         }
     )
   )
