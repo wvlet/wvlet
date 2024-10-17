@@ -56,10 +56,14 @@ class QueryService(scriptRunner: WvletScriptRunner) extends LogSupport with Auto
     if queryResult.isSuccess then
       // TODO Support pagination
       // TODO Return the query result
-      info(queryResult.toPrettyBox(maxWidth = Some(100)))
+      val preview = queryResult.toPrettyBox()
       queryMap += queryId ->
-        lastInfo
-          .copy(pageToken = "2", status = QueryStatus.FINISHED, completedAt = Some(Instant.now()))
+        lastInfo.copy(
+          pageToken = "2",
+          status = QueryStatus.FINISHED,
+          completedAt = Some(Instant.now()),
+          preview = Some(preview)
+        )
     else
       val error = queryResult.getError.get
       val errorCode =
