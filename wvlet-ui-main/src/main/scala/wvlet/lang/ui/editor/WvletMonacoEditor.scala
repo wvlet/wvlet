@@ -3,12 +3,19 @@ package wvlet.lang.ui.editor
 import org.scalablytyped.runtime.StringDictionary
 import org.scalajs.dom
 import typings.monacoEditor.mod.*
-import typings.monacoEditor.mod.editor.{BuiltinTheme, IStandaloneCodeEditor, ITextModel}
+import typings.monacoEditor.mod.editor.{
+  BuiltinTheme,
+  IActionDescriptor,
+  ICodeEditor,
+  IStandaloneCodeEditor,
+  ITextModel
+}
 import typings.monacoEditor.mod.languages.*
 import wvlet.airframe.rx.html.RxElement
 import wvlet.airframe.rx.html.all.*
 
 import scala.scalajs.js
+import scala.scalajs.js.Promise
 
 object WvletMonacoEditor:
   import WvletMonarchLanguage.*
@@ -113,17 +120,88 @@ class WvletMonacoEditor(queryResultReader: QueryResultReader) extends RxElement:
 
   end monacoEditorOptions
 
+  private def queryUpToTheLine: String =
+    val query    = getTextValue
+    val lines    = query.split("\n")
+    val lineNum  = textEditor.getPosition().lineNumber.toInt
+    val subQuery = lines.take(lineNum).mkString("\n")
+    subQuery
+
+  private def runQuery: Unit =
+    val query = getTextValue
+    ConsoleLog.write(s"Run query:\n${query}")
+    queryResultReader.submitQuery(query)
+
+  private def testRunQuery(): Unit =
+    val queryFragment = queryUpToTheLine
+    val subQuery      = s"${queryFragment}\nlimit 40"
+    ConsoleLog.write(s"Run test query:\n${subQuery}")
+    queryResultReader.submitQuery(subQuery)
+
+  private def describeQuery(): Unit =
+    val subQuery = queryUpToTheLine
+    ConsoleLog.write(s"Describe query:\n${subQuery}")
+    queryResultReader.submitQuery(s"${subQuery}\ndescribe")
+
   private def buildEditor: Unit =
     textEditor = editor.create(
       dom.document.getElementById("editor").asInstanceOf[dom.HTMLElement],
       monacoEditorOptions
     )
+
     // Add shortcut keys
     textEditor.onKeyDown { (e: IKeyboardEvent) =>
       // ctrl + enter to submit the query
       if e.keyCode == KeyCode.Enter && (e.ctrlKey || e.metaKey) then
-        queryResultReader.submitQuery(query = getTextValue)
+        runQuery
     }
+
+    {
+      val acc = IActionDescriptor(
+        id = "run-query",
+        label = "run query",
+        run = (editor: ICodeEditor, args: Any) => runQuery
+      )
+      acc.keybindings = js.Array(
+        KeyMod.chord(
+          KeyMod.WinCtrl.toInt | KeyCode.KeyJ.toInt,
+          KeyMod.WinCtrl.toInt | KeyCode.KeyR.toInt
+        )
+      )
+      textEditor.addAction(acc)
+    }
+
+    {
+      val acc = IActionDescriptor(
+        id = "test-query",
+        label = "test query",
+        run = (editor: ICodeEditor, args: Any) => testRunQuery()
+      )
+      acc.keybindings = js.Array(
+        KeyMod.chord(
+          KeyMod.WinCtrl.toInt | KeyCode.KeyJ.toInt,
+          KeyMod.WinCtrl.toInt | KeyCode.KeyT.toInt
+        )
+      )
+      textEditor.addAction(acc)
+    }
+
+    {
+      val acc = IActionDescriptor(
+        id = "describe-query",
+        label = "Describe query",
+        run = (editor: ICodeEditor, args: Any) => describeQuery()
+      )
+      acc.keybindings = js.Array(
+        KeyMod.chord(
+          KeyMod.WinCtrl.toInt | KeyCode.KeyJ.toInt,
+          KeyMod.WinCtrl.toInt | KeyCode.KeyD.toInt
+        )
+      )
+      textEditor.addAction(acc)
+    }
+
+  end buildEditor
 
   def getTextValue: String = textEditor.getValue()
 
