@@ -4,8 +4,10 @@ import wvlet.airframe.rx.html.RxElement
 import wvlet.airframe.rx.html.all.*
 
 object WvletEditor:
-  val editorWidthRem: Int = 32 // rem (chars)
-  def editorStyle         = s"min-width: ${editorWidthRem}rem; max-width: ${editorWidthRem}rem;"
+  val editorWidthRem: Int  = 32 // rem (chars)
+  val editorHeightRem: Int = 24 // rem (lines)
+  def editorStyle =
+    s"min-width: ${editorWidthRem}rem; max-width: ${editorWidthRem}rem; min-height: ${editorHeightRem}rem;"
 
 class WvletEditor(
     monacoEditor: WvletMonacoEditor,
@@ -23,7 +25,7 @@ class WvletEditor(
     div(
       cls -> "flex flex-col h-screen",
       div(
-        cls -> "flex bg-black h-64 min-h-64",
+        cls -> "flex bg-black",
         div(cls -> "flex-none", style -> WvletEditor.editorStyle, monacoEditor),
         div(
           // span to the bottom of the screen

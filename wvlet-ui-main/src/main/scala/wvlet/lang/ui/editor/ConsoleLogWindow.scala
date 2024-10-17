@@ -36,7 +36,6 @@ class ConsoleLogWindow extends RxElement:
   private val logBuffer = List.empty
 
   override def render = div(
-    cls -> "overflow-x-clip",
     pre(
       id  -> "console-log",
       cls -> "text-xs text-slate-300 dark:text-white",

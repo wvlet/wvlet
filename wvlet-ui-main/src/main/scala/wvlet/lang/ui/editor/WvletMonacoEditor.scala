@@ -131,7 +131,11 @@ class WvletMonacoEditor(queryResultReader: QueryResultReader) extends RxElement:
 
   override def render = div(
     cls -> "pl-0 pr-2",
-    div(id -> "editor", cls -> "w-96 min-w-96 h-64 min-h-64", style -> WvletEditor.editorStyle)
+    div(
+      id -> "editor",
+      // Need to set the exact size here to set the initial size of the Monaco editor
+      style -> WvletEditor.editorStyle
+    )
   )
 
 end WvletMonacoEditor
