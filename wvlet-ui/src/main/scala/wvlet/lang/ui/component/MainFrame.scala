@@ -18,6 +18,8 @@ import wvlet.airframe.rx.html.{RxComponent, RxElement}
 
 object MainFrame extends RxComponent:
 
+  val navBarHeightPx = 44
+
   object NavBar extends RxElement:
     // Based on https://tailwindui.com/components/application-ui/navigation/navbars
     override def render: RxElement = nav(
@@ -25,8 +27,8 @@ object MainFrame extends RxComponent:
       div(
         cls -> "mx-auto max-w-7xl px-2 sm:px-6 lg:px-8",
         div(
-          cls -> "relative flex h-11 items-center justify-between",
-          // div(cls -> "absolute inset-y-0 left-0 flex items-center sm:hidden", button()),
+          cls   -> "relative flex items-center justify-between",
+          style -> s"height: ${navBarHeightPx}px;",
           div(
             cls -> "flex flex-1 items-center justify-center sm:items-stretch sm:justify-start",
             div(
@@ -68,10 +70,6 @@ object MainFrame extends RxComponent:
 
   end NavBar
 
-  override def render(content: RxElement) = div(
-    cls -> "overflow-y-hidden h-screen max-h-screen",
-    NavBar,
-    content
-  )
+  override def render(content: RxElement) = div(cls -> "h-screen max-h-screen", NavBar, content)
 
 end MainFrame

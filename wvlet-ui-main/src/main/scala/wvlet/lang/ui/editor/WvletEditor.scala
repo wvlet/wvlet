@@ -2,6 +2,7 @@ package wvlet.lang.ui.editor
 
 import wvlet.airframe.rx.html.RxElement
 import wvlet.airframe.rx.html.all.*
+import wvlet.lang.ui.component.MainFrame
 
 object WvletEditor:
   val editorWidthRem: Int  = 32 // rem (chars)
@@ -23,13 +24,15 @@ class WvletEditor(
   override def render =
     // grid
     div(
-      cls -> "flex flex-col h-screen",
+      cls   -> "flex flex-col",
+      style -> s"height: calc(100vh - ${MainFrame.navBarHeightPx}px);",
       div(
         cls -> "flex bg-black",
         div(cls -> "flex-none", style -> WvletEditor.editorStyle, monacoEditor),
         div(
           // span to the bottom of the screen
-          cls -> "grow bg-cyan-950 text-gray-100 px-2 overflow-y-auto scroll-auto",
+          cls   -> "grow bg-cyan-950 text-gray-100 px-2 overflow-y-auto scroll-auto",
+          style -> s"height: ${WvletEditor.editorHeightRem}rem;",
           div(title("Console"), consoleLogWindow)
         )
       ),
