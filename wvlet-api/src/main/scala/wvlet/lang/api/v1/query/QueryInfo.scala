@@ -15,6 +15,8 @@ case class QueryInfo(
     error: Option[QueryError] = None,
     // Partial query result
     result: Option[QueryResult] = None,
+    // demo purpose only
+    preview: Option[String] = None,
     limit: Option[Int] = None
 )
 
