@@ -68,6 +68,10 @@ object MainFrame extends RxComponent:
 
   end NavBar
 
-  override def render(content: RxElement) = div(cls -> "h-screen", NavBar, content)
+  override def render(content: RxElement) = div(
+    cls -> "overflow-y-hidden h-screen max-h-screen",
+    NavBar,
+    content
+  )
 
 end MainFrame
