@@ -25,8 +25,17 @@ val buildSettings = Seq[Setting[?]](
   watchAntiEntropy := FiniteDuration(700, TimeUnit.MILLISECONDS)
 )
 
-lazy val jvmProjects: Seq[ProjectReference] = Seq(api.jvm, server, lang, runner, client.jvm, spec, cli)
-lazy val jsProjects: Seq[ProjectReference]  = Seq(api.js, client.js, ui, uiMain)
+lazy val jvmProjects: Seq[ProjectReference] = Seq(
+  api.jvm,
+  server,
+  lang,
+  runner,
+  client.jvm,
+  spec,
+  cli
+)
+
+lazy val jsProjects: Seq[ProjectReference] = Seq(api.js, client.js, ui, uiMain)
 
 val noPublish = Seq(
   publishArtifact := false,
@@ -87,7 +96,7 @@ lazy val lang = project
         "org.wvlet.airframe" %% "airframe"      % AIRFRAME_VERSION,
         "org.wvlet.airframe" %% "airframe-ulid" % AIRFRAME_VERSION,
         // For resolving parquet file schema
-        "org.duckdb" % "duckdb_jdbc" % "1.1.1",
+        "org.duckdb" % "duckdb_jdbc" % "1.1.2",
         // Add a reference implementation of the compiler
         "org.scala-lang" %% "scala3-compiler" % SCALA_3 % Test
       ),
@@ -142,7 +151,7 @@ lazy val runner = project
         "org.wvlet.airframe"           %% "airframe-launcher" % AIRFRAME_VERSION,
         "com.github.ben-manes.caffeine" % "caffeine"          % "3.1.8",
         "org.apache.arrow"              % "arrow-vector"      % "17.0.0",
-        "org.duckdb"                    % "duckdb_jdbc"       % "1.1.1",
+        "org.duckdb"                    % "duckdb_jdbc"       % "1.1.2",
         "io.trino"                      % "trino-jdbc"        % TRINO_VERSION,
         // exclude() and jar() are necessary to avoid https://github.com/sbt/sbt/issues/7407
         // tpc-h connector neesd to download GB's of jar, so excluding it
