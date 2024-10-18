@@ -20,9 +20,9 @@ val buildSettings = Seq[Setting[?]](
   publishMavenStyle  := true,
   Test / logBuffered := false,
   libraryDependencies ++= Seq("org.wvlet.airframe" %%% "airspec" % AIRSPEC_VERSION % Test),
-  testFrameworks += new TestFramework("wvlet.airspec.Framework")
+  testFrameworks += new TestFramework("wvlet.airspec.Framework"),
   // Prevent double trigger due to scalafmt run in IntelliJ by adding a small delay (default is 500ms)
-  // watchAntiEntropy := FiniteDuration(800, TimeUnit.MILLISECONDS)
+  watchAntiEntropy := FiniteDuration(700, TimeUnit.MILLISECONDS)
 )
 
 lazy val jvmProjects: Seq[ProjectReference] = Seq(
