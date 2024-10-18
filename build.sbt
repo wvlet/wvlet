@@ -119,9 +119,9 @@ lazy val cli = project
     packMain :=
       Map(
         // wvlet compiler
-        "wvc" -> "wvlet.lang.runner.cli.WvletCli",
+        "wvc" -> "wvlet.lang.cli.WvletCompilerCli",
         // Alias for wvlet runner and shell
-        "wv" -> "wvlet.lang.runner.cli.WvletREPLCli",
+        "wv" -> "wvlet.lang.cli.WvletREPLCli",
         // wvlet runner and shell
         "wvlet" -> "wvlet.lang.runner.cli.WvletREPLCli"
       )
