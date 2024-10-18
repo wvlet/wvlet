@@ -11,14 +11,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package wvlet.lang.runner.cli
+package wvlet.lang.cli
 
-import wvlet.lang.BuildInfo
+import wvlet.airframe.launcher.{Launcher, argument, command, option}
 import wvlet.lang.compiler.{CompilationUnit, Compiler, CompilerOptions, WorkEnv}
 import wvlet.lang.runner.connector.duckdb.DuckDBConnector
 import wvlet.lang.runner.{QueryExecutor, QueryResultPrinter}
-import wvlet.lang.{StatusCode, WvletLangException}
-import wvlet.airframe.launcher.{Launcher, argument, command, option}
+import wvlet.lang.{BuildInfo, StatusCode, WvletLangException}
 import wvlet.log.{LogLevel, LogSupport, Logger}
 
 import java.io.File
