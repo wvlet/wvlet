@@ -25,9 +25,9 @@ import java.io.File
 /**
   * A command-line interface for the wvlet compiler (wvc)
   */
-object WvletCompilerCli:
+object WvcMain:
   private def withLauncher[U](body: Launcher => U): U =
-    val l = Launcher.of[WvletCompilerCli]
+    val l = Launcher.of[WvcMain]
     body(l)
 
   def main(argLine: String): Unit = withLauncher: l =>
@@ -36,8 +36,11 @@ object WvletCompilerCli:
   def main(args: Array[String]): Unit = withLauncher: l =>
     l.execute(args)
 
+class WvcMain(opts: WvletGlobalOption) extends LogSupport:
 
-class WvletCompilerCli(opts: WvletCliOption) extends LogSupport:
+  @command(description = "show the help", isDefault = true)
+  def defaultMessage: Unit = info(s"Type --help to see the list of available commands")
+
   @command(description = "Compile .wv files")
   def compile(
       @argument(description = "source folders to compile")
@@ -110,4 +113,4 @@ class WvletCompilerCli(opts: WvletCliOption) extends LogSupport:
       case e: WvletLangException =>
         error(e.getMessage, e.getCause)
 
-end WvletCompilerCli
+end WvcMain
