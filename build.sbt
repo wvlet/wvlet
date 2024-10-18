@@ -168,7 +168,7 @@ lazy val runner = project
 lazy val spec = project
   .in(file("wvlet-spec"))
   .settings(buildSettings, specRunnerSettings, noPublish, name := "wvlet-spec")
-  .dependsOn(runner)
+  .dependsOn(cli)
 
 lazy val server = project
   .in(file("wvlet-server"))
