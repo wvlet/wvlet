@@ -44,98 +44,6 @@ import java.util.concurrent.atomic.AtomicReference
 import java.util.regex.Pattern
 import scala.io.AnsiColor
 
-object WvletREPLCli:
-
-  private def launcher: Launcher = Launcher.of[WvletREPLCli]
-
-  def main(args: Array[String]): Unit = launcher.execute(args)
-
-  def main(argLine: String): Unit = launcher.execute(argLine)
-
-class WvletREPLCli(
-    opts: WvletCliOption,
-    @option(prefix = "--profile", description = "Profile to use")
-    profile: Option[String] = None,
-    @option(prefix = "-c", description = "Run a command and exit")
-    commands: List[String] = Nil,
-    @option(prefix = "--file", description = "Run commands in a file and exit")
-    inputFile: Option[String] = None,
-    @option(prefix = "-w", description = "Working folder")
-    workFolder: String = ".",
-    @option(prefix = "--catalog", description = "Context database catalog to use")
-    catalog: Option[String] = None,
-    @option(prefix = "--schema", description = "Context database schema to use")
-    schema: Option[String] = None
-) extends LogSupport:
-
-  @command(description = "Show the version")
-  def version: Unit = info(opts.versionString)
-
-  @command(description = "Start a REPL", isDefault = true)
-  def repl(): Unit =
-    val currentProfile: Profile = profile
-      .flatMap { targetProfile =>
-        Profile.getProfile(targetProfile) match
-          case Some(p) =>
-            debug(s"Using profile: ${targetProfile}")
-            Some(p)
-          case None =>
-            error(s"No profile ${targetProfile} found")
-            None
-      }
-      .getOrElse {
-        Profile(name = "local", `type` = "duckdb", catalog = Some("memory"), schema = Some("main"))
-      }
-
-    val selectedCatalog = catalog.orElse(currentProfile.catalog)
-    val selectedSchema  = schema.orElse(currentProfile.schema)
-
-    val commandInputs = List.newBuilder[String]
-    commandInputs ++= commands
-    inputFile.foreach { file =>
-      val f = new File(workFolder, file)
-      if f.exists() then
-        val contents = IOUtil.readAsString(f)
-        commandInputs += contents
-      else
-        throw StatusCode.FILE_NOT_FOUND.newException(s"File not found: ${f.getAbsolutePath()}")
-    }
-    val inputScripts = commandInputs.result()
-
-    val design = Design
-      .newSilentDesign
-      .bindSingleton[WvletREPL]
-      .bindInstance[WorkEnv](WorkEnv(path = workFolder, logLevel = opts.logLevel))
-      .bindInstance[WvletScriptRunnerConfig](
-        WvletScriptRunnerConfig(
-          interactive = inputScripts.isEmpty,
-          catalog = selectedCatalog,
-          schema = selectedSchema
-        )
-      )
-      .bindInstance[DBConnector] {
-        currentProfile.`type` match
-          case "trino" =>
-            TrinoConnector(
-              TrinoConfig(
-                catalog = selectedCatalog.getOrElse("default"),
-                schema = selectedSchema.getOrElse("default"),
-                hostAndPort = currentProfile.host.getOrElse("localhost"),
-                user = currentProfile.user,
-                password = currentProfile.password
-              )
-            )
-          case _ =>
-            DuckDBConnector()
-      }
-
-    design.build[WvletREPL] { repl =>
-      repl.start(inputScripts)
-    }
-  end repl
-
-end WvletREPLCli
-
 class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseable with LogSupport:
   import WvletREPL.*
 
@@ -374,7 +282,90 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
 
 end WvletREPL
 
-object WvletREPL:
+case class WvletREPLOption(
+    @option(prefix = "--profile", description = "Profile to use")
+    profile: Option[String] = None,
+    @option(prefix = "-c", description = "Run a command and exit")
+    commands: List[String] = Nil,
+    @option(prefix = "--file", description = "Run commands in a file and exit")
+    inputFile: Option[String] = None,
+    @option(prefix = "-w", description = "Working folder")
+    workFolder: String = ".",
+    @option(prefix = "--catalog", description = "Context database catalog to use")
+    catalog: Option[String] = None,
+    @option(prefix = "--schema", description = "Context database schema to use")
+    schema: Option[String] = None
+)
+
+object WvletREPL extends LogSupport:
+
+  def startREPL(opts: WvletCliOption, replOpts: WvletREPLOption): Unit =
+    val currentProfile: Profile = replOpts
+      .profile
+      .flatMap { targetProfile =>
+        Profile.getProfile(targetProfile) match
+          case Some(p) =>
+            debug(s"Using profile: ${targetProfile}")
+            Some(p)
+          case None =>
+            error(s"No profile ${targetProfile} found")
+            None
+      }
+      .getOrElse {
+        Profile(name = "local", `type` = "duckdb", catalog = Some("memory"), schema = Some("main"))
+      }
+
+    val selectedCatalog = replOpts.catalog.orElse(currentProfile.catalog)
+    val selectedSchema  = replOpts.schema.orElse(currentProfile.schema)
+
+    val commandInputs = List.newBuilder[String]
+    commandInputs ++= replOpts.commands
+    replOpts
+      .inputFile
+      .foreach { file =>
+        val f = new File(replOpts.workFolder, file)
+        if f.exists() then
+          val contents = IOUtil.readAsString(f)
+          commandInputs += contents
+        else
+          throw StatusCode.FILE_NOT_FOUND.newException(s"File not found: ${f.getAbsolutePath()}")
+      }
+
+    val inputScripts = commandInputs.result()
+
+    val design = Design
+      .newSilentDesign
+      .bindSingleton[WvletREPL]
+      .bindInstance[WorkEnv](WorkEnv(path = replOpts.workFolder, logLevel = opts.logLevel))
+      .bindInstance[WvletScriptRunnerConfig](
+        WvletScriptRunnerConfig(
+          interactive = inputScripts.isEmpty,
+          catalog = selectedCatalog,
+          schema = selectedSchema
+        )
+      )
+      .bindInstance[DBConnector] {
+        currentProfile.`type` match
+          case "trino" =>
+            TrinoConnector(
+              TrinoConfig(
+                catalog = selectedCatalog.getOrElse("default"),
+                schema = selectedSchema.getOrElse("default"),
+                hostAndPort = currentProfile.host.getOrElse("localhost"),
+                user = currentProfile.user,
+                password = currentProfile.password
+              )
+            )
+          case _ =>
+            DuckDBConnector()
+      }
+
+    design.build[WvletREPL] { repl =>
+      repl.start(inputScripts)
+    }
+
+  end startREPL
+
   private def knownCommands = Set(
     "exit",
     "quit",

@@ -15,7 +15,7 @@ package wvlet.lang.cli
 
 import wvlet.airspec.AirSpec
 
-class WvletCliTest extends AirSpec:
+class WvcCliTest extends AirSpec:
   test("help") {
     WvletCompilerCli.main("--help")
   }
@@ -32,4 +32,4 @@ class WvletCliTest extends AirSpec:
   test("model1-q1"):
     WvletCompilerCli.main("run spec/model1/src/q1.wv")
 
-end WvletCliTest
+end WvcCliTest

@@ -25,8 +25,17 @@ val buildSettings = Seq[Setting[?]](
   watchAntiEntropy := FiniteDuration(700, TimeUnit.MILLISECONDS)
 )
 
-lazy val jvmProjects: Seq[ProjectReference] = Seq(api.jvm, server, lang, runner, client.jvm, spec, cli)
-lazy val jsProjects: Seq[ProjectReference]  = Seq(api.js, client.js, ui, uiMain)
+lazy val jvmProjects: Seq[ProjectReference] = Seq(
+  api.jvm,
+  server,
+  lang,
+  runner,
+  client.jvm,
+  spec,
+  cli
+)
+
+lazy val jsProjects: Seq[ProjectReference] = Seq(api.js, client.js, ui, uiMain)
 
 val noPublish = Seq(
   publishArtifact := false,
@@ -121,9 +130,9 @@ lazy val cli = project
         // wvlet compiler
         "wvc" -> "wvlet.lang.cli.WvletCompilerCli",
         // Alias for wvlet runner and shell
-        "wv" -> "wvlet.lang.cli.WvletREPLCli",
+        "wv" -> "wvlet.lang.cli.WvletCli",
         // wvlet runner and shell
-        "wvlet" -> "wvlet.lang.runner.cli.WvletREPLCli"
+        "wvlet" -> "wvlet.lang.cli.WvletCli"
       )
   )
   .dependsOn(server)
