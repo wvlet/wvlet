@@ -11,14 +11,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package wvlet.lang.runner.cli
+package wvlet.lang.cli
 
-import wvlet.lang.BuildInfo
+import wvlet.airframe.launcher.{Launcher, argument, command, option}
 import wvlet.lang.compiler.{CompilationUnit, Compiler, CompilerOptions, WorkEnv}
 import wvlet.lang.runner.connector.duckdb.DuckDBConnector
 import wvlet.lang.runner.{QueryExecutor, QueryResultPrinter}
-import wvlet.lang.{StatusCode, WvletLangException}
-import wvlet.airframe.launcher.{Launcher, argument, command, option}
+import wvlet.lang.{BuildInfo, StatusCode, WvletLangException}
 import wvlet.log.{LogLevel, LogSupport, Logger}
 
 import java.io.File
@@ -26,9 +25,9 @@ import java.io.File
 /**
   * A command-line interface for the wvlet compiler
   */
-object WvletCli:
+object WvletCompilerCli:
   private def withLauncher[U](body: Launcher => U): U =
-    val l = Launcher.of[WvletCli]
+    val l = Launcher.of[WvletCompilerCli]
     body(l)
 
   def main(argLine: String): Unit = withLauncher: l =>
@@ -70,7 +69,7 @@ case class WvletCliOption(
 
 end WvletCliOption
 
-class WvletCli(opts: WvletCliOption) extends LogSupport:
+class WvletCompilerCli(opts: WvletCliOption) extends LogSupport:
   @command(description = "Compile .wv files")
   def compile(
       @argument(description = "source folders to compile")
@@ -143,4 +142,4 @@ class WvletCli(opts: WvletCliOption) extends LogSupport:
       case e: WvletLangException =>
         error(e.getMessage, e.getCause)
 
-end WvletCli
+end WvletCompilerCli

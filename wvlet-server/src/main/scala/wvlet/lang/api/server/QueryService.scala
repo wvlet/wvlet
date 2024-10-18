@@ -7,7 +7,7 @@ import wvlet.lang.api.v1.frontend.FrontendApi.{QueryInfoRequest, QueryRequest, Q
 import wvlet.lang.api.v1.query.{QueryError, QueryInfo, QueryResult, QueryStatus}
 import wvlet.lang.api.v1.query.QueryStatus.{QUEUED, RUNNING}
 import wvlet.lang.runner.QueryExecutor
-import wvlet.lang.runner.cli.WvletScriptRunner
+import wvlet.lang.runner.WvletScriptRunner
 import wvlet.lang.runner.connector.DBConnector
 import wvlet.log.LogSupport
 

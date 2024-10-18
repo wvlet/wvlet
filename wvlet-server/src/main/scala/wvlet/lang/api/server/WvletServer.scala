@@ -6,7 +6,7 @@ import wvlet.airframe.http.netty.{Netty, NettyServer}
 import wvlet.lang.api.v1.frontend.FrontendRPC
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.runner.QueryExecutor
-import wvlet.lang.runner.cli.WvletScriptRunnerConfig
+import wvlet.lang.runner.WvletScriptRunnerConfig
 import wvlet.lang.runner.connector.DBConnector
 import wvlet.lang.runner.connector.duckdb.DuckDBConnector
 import wvlet.log.io.IOUtil

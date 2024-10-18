@@ -13,7 +13,7 @@
  */
 package wvlet.lang.spec
 
-import wvlet.lang.runner.cli.{Profile, WvletCli, WvletREPLCli}
+import wvlet.lang.cli.{Profile, WvletCompilerCli, WvletREPLCli}
 import wvlet.airspec.AirSpec
 import wvlet.lang.{StatusCode, WvletLangException}
 import wvlet.lang.compiler.{Compiler, CompilerOptions, WorkEnv}

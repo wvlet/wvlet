@@ -11,17 +11,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package wvlet.lang.runner.cli
+package wvlet.lang.cli
 
 import org.jline.keymap.KeyMap
-import wvlet.lang.BuildInfo
-import wvlet.lang.compiler.parser.*
-import wvlet.lang.compiler.{CompilationUnit, SourceFile, WorkEnv}
-import wvlet.lang.model.plan.{Query, QueryStatement}
-import wvlet.lang.runner.connector.DBConnector
-import wvlet.lang.runner.connector.duckdb.DuckDBConnector
-import wvlet.lang.runner.connector.trino.{TrinoConfig, TrinoConnector}
-import wvlet.lang.{StatusCode, WvletLangException}
 import org.jline.reader.*
 import org.jline.reader.Parser.ParseContext
 import org.jline.reader.impl.DefaultParser
@@ -33,6 +25,15 @@ import wvlet.airframe.*
 import wvlet.airframe.control.{Shell, ThreadUtil}
 import wvlet.airframe.launcher.{Launcher, command, option}
 import wvlet.airframe.log.AnsiColorPalette
+import wvlet.lang.cli.{Clipboard, WvletCliOption}
+import wvlet.lang.compiler.parser.*
+import wvlet.lang.compiler.{CompilationUnit, SourceFile, WorkEnv}
+import wvlet.lang.model.plan.{Query, QueryStatement}
+import wvlet.lang.runner.{LastOutput, WvletScriptRunner, WvletScriptRunnerConfig}
+import wvlet.lang.runner.connector.DBConnector
+import wvlet.lang.runner.connector.duckdb.DuckDBConnector
+import wvlet.lang.runner.connector.trino.{TrinoConfig, TrinoConnector}
+import wvlet.lang.{BuildInfo, StatusCode, WvletLangException}
 import wvlet.log.io.IOUtil
 import wvlet.log.{LogSupport, Logger}
 

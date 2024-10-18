@@ -119,14 +119,14 @@ lazy val cli = project
     packMain :=
       Map(
         // wvlet compiler
-        "wvc" -> "wvlet.lang.runner.cli.WvletCli",
+        "wvc" -> "wvlet.lang.cli.WvletCompilerCli",
         // Alias for wvlet runner and shell
-        "wv" -> "wvlet.lang.runner.cli.WvletREPLCli",
+        "wv" -> "wvlet.lang.cli.WvletREPLCli",
         // wvlet runner and shell
         "wvlet" -> "wvlet.lang.runner.cli.WvletREPLCli"
       )
   )
-  .dependsOn(runner)
+  .dependsOn(server)
 
 lazy val runner = project
   .in(file("wvlet-runner"))
@@ -168,7 +168,7 @@ lazy val runner = project
 lazy val spec = project
   .in(file("wvlet-spec"))
   .settings(buildSettings, specRunnerSettings, noPublish, name := "wvlet-spec")
-  .dependsOn(runner)
+  .dependsOn(cli)
 
 lazy val server = project
   .in(file("wvlet-server"))
