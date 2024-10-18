@@ -126,7 +126,7 @@ lazy val cli = project
         "wvlet" -> "wvlet.lang.runner.cli.WvletREPLCli"
       )
   )
-  .dependsOn(runner)
+  .dependsOn(server)
 
 lazy val runner = project
   .in(file("wvlet-runner"))
