@@ -15,14 +15,14 @@ import java.util.concurrent.TimeUnit
 
 val buildSettings = Seq[Setting[?]](
   organization       := "wvlet.lang",
-  description        := "wvlet-ql: Flow-style query language",
+  description        := "wvlet: A flow-style query language",
   crossPaths         := true,
   publishMavenStyle  := true,
   Test / logBuffered := false,
   libraryDependencies ++= Seq("org.wvlet.airframe" %%% "airspec" % AIRSPEC_VERSION % Test),
-  testFrameworks += new TestFramework("wvlet.airspec.Framework"),
+  testFrameworks += new TestFramework("wvlet.airspec.Framework")
   // Prevent double trigger due to scalafmt run in IntelliJ by adding a small delay (default is 500ms)
-  watchAntiEntropy := FiniteDuration(700, TimeUnit.MILLISECONDS)
+  // watchAntiEntropy := FiniteDuration(800, TimeUnit.MILLISECONDS)
 )
 
 lazy val jvmProjects: Seq[ProjectReference] = Seq(
@@ -31,8 +31,8 @@ lazy val jvmProjects: Seq[ProjectReference] = Seq(
   lang,
   runner,
   client.jvm,
-  spec,
-  cli
+  cli,
+  spec
 )
 
 lazy val jsProjects: Seq[ProjectReference] = Seq(api.js, client.js, ui, uiMain)
@@ -55,7 +55,7 @@ lazy val projectJVM = project
       // Use a stable coverage directory name without containing scala version
       // coverageDataDir := target.value
   )
-  .aggregate(jvmProjects *)
+  .aggregate(jvmProjects: _*)
 
 lazy val projectJS = project
   .settings(noPublish)
@@ -63,7 +63,7 @@ lazy val projectJS = project
     // Skip importing aggregated projects in IntelliJ IDEA
     ideSkipProject := true
   )
-  .aggregate(jsProjects *)
+  .aggregate(jsProjects: _*)
 
 lazy val api = crossProject(JVMPlatform, JSPlatform)
   .crossType(CrossType.Pure)

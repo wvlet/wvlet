@@ -50,8 +50,12 @@ class WvletCli(opts: WvletCliOption) extends LogSupport:
   def repl(
       @argument(description = "repl arguments")
       args: Seq[String] = Seq.empty
-  ): Unit = warn(s"REPL args: ${args}")
-  // WvletREPL.startREPL(opts, replOpts)
+  ): Unit =
+    warn(s"REPL args: ${args}")
+    // WvletREPL.startREPL(opts, replOpts)
+    // ---
+    info(s"hello")
+    ()
 
   @command(description = "Start a local WebUI server")
   def ui(

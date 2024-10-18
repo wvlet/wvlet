@@ -49,7 +49,8 @@ class QueryService(scriptRunner: WvletScriptRunner) extends LogSupport with Auto
   private def runQuery(queryId: ULID, query: String): Unit =
     info(s"[${queryId}] Running query:\n${query}")
     var lastInfo = queryMap(queryId)
-    lastInfo = lastInfo.copy(pageToken = "1", QueryStatus.RUNNING, startedAt = Some(Instant.now()))
+    lastInfo = lastInfo
+      .copy(pageToken = "1", status = QueryStatus.RUNNING, startedAt = Some(Instant.now()))
     queryMap += queryId -> lastInfo
 
     val queryResult = scriptRunner.runStatement(query)

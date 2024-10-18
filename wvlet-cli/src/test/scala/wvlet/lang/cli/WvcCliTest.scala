@@ -20,6 +20,10 @@ class WvcCliTest extends AirSpec:
     WvletCompilerCli.main("--help")
   }
 
+  // ...
+  test("q0"):
+    WvletCompilerCli.main("run spec/basic/src/q1.wv")
+
   test("q1"):
     WvletCompilerCli.main("run spec/basic/src/q1.wv")
 
