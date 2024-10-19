@@ -14,7 +14,7 @@
 package wvlet.lang.spec
 
 import wvlet.airspec.AirSpec
-import wvlet.lang.cli.Profile
+import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.{Compiler, CompilerOptions, WorkEnv}
 import wvlet.lang.runner.QueryExecutor
 import wvlet.lang.runner.connector.trino.{TrinoConfig, TrinoConnector}
@@ -27,7 +27,7 @@ trait TDTrinoSpecRunner(specPath: String) extends AirSpec:
   private val profile: Profile = Profile
     .getProfile("td-dev")
     .getOrElse {
-      throw StatusCode.NOT_IMPLEMENTED.newException("td-dev profile is not found")
+      skip("Skip as td-dev profile is not found in ~/.wvlet/profiles.yml").asInstanceOf[Profile]
     }
 
   private val defaultCatalog = profile.catalog.getOrElse("td")

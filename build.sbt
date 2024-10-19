@@ -93,8 +93,10 @@ lazy val lang = project
       (ThisBuild / baseDirectory).value / "wvlet-stdlib",
     libraryDependencies ++=
       Seq(
-        "org.wvlet.airframe" %% "airframe"      % AIRFRAME_VERSION,
-        "org.wvlet.airframe" %% "airframe-ulid" % AIRFRAME_VERSION,
+        "org.wvlet.airframe" %% "airframe" % AIRFRAME_VERSION,
+        // For reading profile
+        "org.wvlet.airframe" %% "airframe-config" % AIRFRAME_VERSION,
+        "org.wvlet.airframe" %% "airframe-ulid"   % AIRFRAME_VERSION,
         // For resolving parquet file schema
         "org.duckdb" % "duckdb_jdbc" % "1.1.2",
         // Add a reference implementation of the compiler
@@ -166,7 +168,6 @@ lazy val runner = project
     libraryDependencies ++=
       Seq(
         "org.jline"                     % "jline"             % "3.27.1",
-        "org.wvlet.airframe"           %% "airframe-config"   % AIRFRAME_VERSION,
         "org.wvlet.airframe"           %% "airframe-launcher" % AIRFRAME_VERSION,
         "com.github.ben-manes.caffeine" % "caffeine"          % "3.1.8",
         "org.apache.arrow"              % "arrow-vector"      % "17.0.0",
@@ -196,7 +197,7 @@ lazy val runner = project
 lazy val spec = project
   .in(file("wvlet-spec"))
   .settings(buildSettings, specRunnerSettings, noPublish, name := "wvlet-spec")
-  .dependsOn(cli)
+  .dependsOn(runner)
 
 lazy val server = project
   .in(file("wvlet-server"))
