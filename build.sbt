@@ -125,6 +125,24 @@ lazy val cli = project
   .settings(
     buildSettings,
     name := "wvlet-cli",
+    Compile / resourceGenerators +=
+      Def
+        .task {
+          // Trigger compilation from Scala.js to JS
+          val assetFiles = (uiMain / Compile / fullLinkJS).value
+          // Packaging the web assets using Vite.js
+          scala
+            .sys
+            .process
+            .Process(
+              List("npm", "run", "build", "--silent", "--no-audit", "--no-fund"),
+              (uiMain / baseDirectory).value
+            )
+            .!
+          // Return empty files to avoid recompilation
+          Seq.empty[File]
+        }
+        .taskValue,
     packMain :=
       Map(
         // wvlet compiler
@@ -133,7 +151,8 @@ lazy val cli = project
         "wv" -> "wvlet.lang.cli.WvMain",
         // wvlet command launcher
         "wvlet" -> "wvlet.lang.cli.WvletMain"
-      )
+      ),
+    packResourceDir ++= Map(file("wvlet-ui-main/dist") -> "web")
   )
   .dependsOn(server)
 
