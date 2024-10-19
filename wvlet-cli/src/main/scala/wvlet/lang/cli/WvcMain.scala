@@ -23,11 +23,11 @@ import wvlet.log.{LogLevel, LogSupport, Logger}
 import java.io.File
 
 /**
-  * A command-line interface for the wvlet compiler
+  * A command-line interface for the wvlet compiler (wvc)
   */
-object WvletCompilerCli:
+object WvcMain:
   private def withLauncher[U](body: Launcher => U): U =
-    val l = Launcher.of[WvletCompilerCli]
+    val l = Launcher.of[WvcMain]
     body(l)
 
   def main(argLine: String): Unit = withLauncher: l =>
@@ -36,40 +36,11 @@ object WvletCompilerCli:
   def main(args: Array[String]): Unit = withLauncher: l =>
     l.execute(args)
 
-case class WvletCliOption(
-    @option(prefix = "-h,--help", description = "Display help message", isHelp = true)
-    displayHelp: Boolean = false,
-    @option(prefix = "--debug", description = "Enable debug log")
-    debugMode: Boolean = false,
-    @option(prefix = "-l", description = "log level")
-    logLevel: LogLevel = LogLevel.INFO,
-    @option(prefix = "-L", description = "log level for a class pattern")
-    logLevelPatterns: List[String] = List.empty
-) extends LogSupport:
+class WvcMain(opts: WvletGlobalOption) extends LogSupport:
 
-  Logger("wvlet.lang.runner").setLogLevel {
-    if debugMode then
-      LogLevel.DEBUG
-    else
-      logLevel
-  }
+  @command(description = "show the help", isDefault = true)
+  def defaultMessage: Unit = info(s"Type --help to see the list of available commands")
 
-  def versionString = s"wvlet version: ${BuildInfo.version} (Built at: ${BuildInfo.builtAtString})"
-
-  debug(versionString)
-
-  logLevelPatterns.foreach { p =>
-    p.split("=") match
-      case Array(pattern, level) =>
-        debug(s"Set the log level for ${pattern} to ${level}")
-        Logger.setLogLevel(pattern, LogLevel(level))
-      case _ =>
-        error(s"Invalid log level pattern: ${p}")
-  }
-
-end WvletCliOption
-
-class WvletCompilerCli(opts: WvletCliOption) extends LogSupport:
   @command(description = "Compile .wv files")
   def compile(
       @argument(description = "source folders to compile")
@@ -142,4 +113,4 @@ class WvletCompilerCli(opts: WvletCliOption) extends LogSupport:
       case e: WvletLangException =>
         error(e.getMessage, e.getCause)
 
-end WvletCompilerCli
+end WvcMain

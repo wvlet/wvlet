@@ -19,122 +19,22 @@ import org.jline.reader.Parser.ParseContext
 import org.jline.reader.impl.DefaultParser
 import org.jline.terminal.Terminal.Signal
 import org.jline.terminal.{Size, Terminal, TerminalBuilder}
-import org.jline.utils.InfoCmp.Capability
 import org.jline.utils.{AttributedString, AttributedStringBuilder, AttributedStyle, InfoCmp}
 import wvlet.airframe.*
 import wvlet.airframe.control.{Shell, ThreadUtil}
-import wvlet.airframe.launcher.{Launcher, command, option}
 import wvlet.airframe.log.AnsiColorPalette
-import wvlet.lang.cli.{Clipboard, WvletCliOption}
+import wvlet.lang.WvletLangException
 import wvlet.lang.compiler.parser.*
 import wvlet.lang.compiler.{CompilationUnit, SourceFile, WorkEnv}
-import wvlet.lang.model.plan.{Query, QueryStatement}
-import wvlet.lang.runner.{LastOutput, WvletScriptRunner, WvletScriptRunnerConfig}
-import wvlet.lang.runner.connector.DBConnector
-import wvlet.lang.runner.connector.duckdb.DuckDBConnector
-import wvlet.lang.runner.connector.trino.{TrinoConfig, TrinoConnector}
-import wvlet.lang.{BuildInfo, StatusCode, WvletLangException}
-import wvlet.log.io.IOUtil
+import wvlet.lang.model.plan.QueryStatement
+import wvlet.lang.runner.{LastOutput, WvletScriptRunner}
 import wvlet.log.{LogSupport, Logger}
 
-import java.io.{File, StringWriter}
-import java.sql.SQLException
+import java.io.File
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicReference
 import java.util.regex.Pattern
 import scala.io.AnsiColor
-
-object WvletREPLCli:
-
-  private def launcher: Launcher = Launcher.of[WvletREPLCli]
-
-  def main(args: Array[String]): Unit = launcher.execute(args)
-
-  def main(argLine: String): Unit = launcher.execute(argLine)
-
-class WvletREPLCli(
-    opts: WvletCliOption,
-    @option(prefix = "--profile", description = "Profile to use")
-    profile: Option[String] = None,
-    @option(prefix = "-c", description = "Run a command and exit")
-    commands: List[String] = Nil,
-    @option(prefix = "--file", description = "Run commands in a file and exit")
-    inputFile: Option[String] = None,
-    @option(prefix = "-w", description = "Working folder")
-    workFolder: String = ".",
-    @option(prefix = "--catalog", description = "Context database catalog to use")
-    catalog: Option[String] = None,
-    @option(prefix = "--schema", description = "Context database schema to use")
-    schema: Option[String] = None
-) extends LogSupport:
-
-  @command(description = "Show the version")
-  def version: Unit = info(opts.versionString)
-
-  @command(description = "Start a REPL", isDefault = true)
-  def repl(): Unit =
-    val currentProfile: Profile = profile
-      .flatMap { targetProfile =>
-        Profile.getProfile(targetProfile) match
-          case Some(p) =>
-            debug(s"Using profile: ${targetProfile}")
-            Some(p)
-          case None =>
-            error(s"No profile ${targetProfile} found")
-            None
-      }
-      .getOrElse {
-        Profile(name = "local", `type` = "duckdb", catalog = Some("memory"), schema = Some("main"))
-      }
-
-    val selectedCatalog = catalog.orElse(currentProfile.catalog)
-    val selectedSchema  = schema.orElse(currentProfile.schema)
-
-    val commandInputs = List.newBuilder[String]
-    commandInputs ++= commands
-    inputFile.foreach { file =>
-      val f = new File(workFolder, file)
-      if f.exists() then
-        val contents = IOUtil.readAsString(f)
-        commandInputs += contents
-      else
-        throw StatusCode.FILE_NOT_FOUND.newException(s"File not found: ${f.getAbsolutePath()}")
-    }
-    val inputScripts = commandInputs.result()
-
-    val design = Design
-      .newSilentDesign
-      .bindSingleton[WvletREPL]
-      .bindInstance[WorkEnv](WorkEnv(path = workFolder, logLevel = opts.logLevel))
-      .bindInstance[WvletScriptRunnerConfig](
-        WvletScriptRunnerConfig(
-          interactive = inputScripts.isEmpty,
-          catalog = selectedCatalog,
-          schema = selectedSchema
-        )
-      )
-      .bindInstance[DBConnector] {
-        currentProfile.`type` match
-          case "trino" =>
-            TrinoConnector(
-              TrinoConfig(
-                catalog = selectedCatalog.getOrElse("default"),
-                schema = selectedSchema.getOrElse("default"),
-                hostAndPort = currentProfile.host.getOrElse("localhost"),
-                user = currentProfile.user,
-                password = currentProfile.password
-              )
-            )
-          case _ =>
-            DuckDBConnector()
-      }
-
-    design.build[WvletREPL] { repl =>
-      repl.start(inputScripts)
-    }
-  end repl
-
-end WvletREPLCli
 
 class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseable with LogSupport:
   import WvletREPL.*
@@ -374,7 +274,8 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
 
 end WvletREPL
 
-object WvletREPL:
+object WvletREPL extends LogSupport:
+
   private def knownCommands = Set(
     "exit",
     "quit",
