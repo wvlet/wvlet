@@ -3,6 +3,7 @@ package wvlet.lang.cli
 import wvlet.airframe.http.netty.NettyServer
 import wvlet.airframe.launcher.{Launcher, command, option}
 import wvlet.lang.api.server.{WvletServer, WvletServerConfig}
+import wvlet.lang.compiler.WorkEnv
 import wvlet.log.{LogLevel, LogSupport}
 
 object WvletMain:
@@ -19,13 +20,4 @@ class WvletMain(opts: WvletGlobalOption) extends LogSupport:
   def version: Unit = info(opts.versionString)
 
   @command(description = "Start a local WebUI server")
-  def ui(
-      @option(prefix = "-p,--port", description = "Port number to listen")
-      port: Int = 9090
-  ): Unit =
-    val design = WvletServer.design(WvletServerConfig(port = port))
-    design.build[NettyServer] { server =>
-      info(s"Wvlet UI server started at http://localhost:${port}")
-      info(s"Press ctrl+c to stop the server")
-      server.awaitTermination()
-    }
+  def ui(serverConfig: WvletServerConfig): Unit = WvletServer(serverConfig).start
