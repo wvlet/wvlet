@@ -25,6 +25,7 @@ class WvletMain(opts: WvletGlobalOption) extends LogSupport:
   ): Unit =
     val design = WvletServer.design(WvletServerConfig(port = port))
     design.build[NettyServer] { server =>
+      info(s"Wvlet UI server started at http://localhost:${port}")
       info(s"Press ctrl+c to stop the server")
       server.awaitTermination()
     }

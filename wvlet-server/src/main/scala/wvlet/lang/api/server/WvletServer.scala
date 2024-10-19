@@ -15,11 +15,11 @@ case class WvletServerConfig(port: Int = 8080)
 
 object WvletServer:
 
-  def router: RxRouter = RxRouter.of[FrontendApiImpl]
+  def router: RxRouter = RxRouter.of(RxRouter.of[FrontendApiImpl], RxRouter.of[StaticContentApi])
 
   def design(config: WvletServerConfig): Design = Netty
     .server
-    .withName("wvlet-server")
+    .withName("wvlet-ui")
     .withPort(config.port)
     .withRouter(router)
     .design
