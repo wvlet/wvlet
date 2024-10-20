@@ -18,8 +18,8 @@ import java.io.File
 /**
   * REPL command launcher (wv)
   */
-object WvMain:
-  def launcher = Launcher.of[WvMain]
+object WvletREPLMain:
+  def launcher = Launcher.of[WvletREPLMain]
 
   def main(args: Array[String]): Unit = launcher.execute(args)
   def main(argLine: String): Unit     = launcher.execute(argLine)
@@ -39,7 +39,7 @@ case class WvMainOption(
     schema: Option[String] = None
 )
 
-class WvMain(cliOption: WvletGlobalOption, replOpts: WvMainOption) extends LogSupport:
+class WvletREPLMain(cliOption: WvletGlobalOption, replOpts: WvMainOption) extends LogSupport:
 
   @command(description = "Start REPL shell", isDefault = true)
   def repl(): Unit =
@@ -109,4 +109,4 @@ class WvMain(cliOption: WvletGlobalOption, replOpts: WvMainOption) extends LogSu
 
   end repl
 
-end WvMain
+end WvletREPLMain

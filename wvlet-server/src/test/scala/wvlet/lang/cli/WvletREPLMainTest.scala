@@ -15,45 +15,46 @@ package wvlet.lang.cli
 
 import wvlet.airspec.AirSpec
 
-class WvMainTest extends AirSpec:
+class WvletREPLMainTest extends AirSpec:
   test("help") {
-    WvMain.main("-c 'help'")
+    WvletREPLMain.main("-c 'help'")
   }
 
   test("model in the working folder") {
-    WvMain.main("-w spec/model1 -c 'from person_filter(2)'")
+    WvletREPLMain.main("-w spec/model1 -c 'from person_filter(2)'")
   }
 
   test("def new model") {
-    WvMain.main("-w spec/model1 -c 'model m(v:int) = from person where id = v end' -c 'from m(1)'")
+    WvletREPLMain
+      .main("-w spec/model1 -c 'model m(v:int) = from person where id = v end' -c 'from m(1)'")
   }
 
   test("show models") {
-    WvMain.main("-w spec/model1 -c 'show models'")
-    WvMain.main("-w spec/model1 -c 'show models limit 1'")
-    WvMain.main("-w spec/model1 -c 'show models' -c 'show models limit 5'")
+    WvletREPLMain.main("-w spec/model1 -c 'show models'")
+    WvletREPLMain.main("-w spec/model1 -c 'show models limit 1'")
+    WvletREPLMain.main("-w spec/model1 -c 'show models' -c 'show models limit 5'")
   }
 
   test("select group index") {
-    WvMain.main("-w spec/model1 -c 'from person group by age / 10 select _1'")
+    WvletREPLMain.main("-w spec/model1 -c 'from person group by age / 10 select _1'")
   }
 
   test("clip") {
-    WvMain.main("-w spec/model1 -c 'from person' -c 'clip'")
+    WvletREPLMain.main("-w spec/model1 -c 'from person' -c 'clip'")
   }
 
   test("clip-result") {
-    WvMain.main("-w spec/model1 -c 'from person' -c 'clip-result'")
+    WvletREPLMain.main("-w spec/model1 -c 'from person' -c 'clip-result'")
   }
 
   test("rows") {
-    WvMain.main("-w spec/model1 -c 'rows 2' -c 'from person'")
+    WvletREPLMain.main("-w spec/model1 -c 'rows 2' -c 'from person'")
   }
 
   test("col-width") {
-    WvMain.main(
+    WvletREPLMain.main(
       """-c 'col-width 10' -c "from 'https://shell.duckdb.org/data/tpch/0_01/parquet/customer.parquet'""""
     )
   }
 
-end WvMainTest
+end WvletREPLMainTest

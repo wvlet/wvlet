@@ -20,4 +20,4 @@ class WvletMain(opts: WvletGlobalOption) extends LogSupport:
   def version: Unit = info(opts.versionString)
 
   @command(description = "Start a local WebUI server")
-  def ui(serverConfig: WvletServerConfig): Unit = WvletServer(serverConfig).start
+  def ui(serverConfig: WvletServerConfig): Unit = WvletServer.startServer(serverConfig)
