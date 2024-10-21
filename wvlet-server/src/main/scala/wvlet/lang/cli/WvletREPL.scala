@@ -224,6 +224,12 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
                 Clipboard.saveToClipboard(s"""[wv:query]\n${output.line}\n\n${output.output}""")
               case None =>
                 warn("No output to clip")
+          case "clip-query" =>
+            lastOutput match
+              case Some(output) =>
+                Clipboard.saveToClipboard(output.line)
+              case None =>
+                warn("No output to clip")
           case "clip-result" =>
             lastOutput match
               case Some(output) =>
