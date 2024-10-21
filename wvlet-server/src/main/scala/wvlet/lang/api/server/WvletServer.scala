@@ -1,6 +1,8 @@
 package wvlet.lang.api.server
 
+import org.jline.nativ.OSInfo
 import wvlet.airframe.Design
+import wvlet.airframe.control.Shell
 import wvlet.airframe.http.netty.{Netty, NettyServer}
 import wvlet.airframe.http.{Http, RxRouter}
 import wvlet.airframe.launcher.{Launcher, command, option}
@@ -11,6 +13,7 @@ import wvlet.lang.runner.connector.DBConnector
 import wvlet.lang.runner.connector.duckdb.DuckDBConnector
 import wvlet.log.LogSupport
 import wvlet.log.io.IOUtil
+import wvlet.lang.cli.OS
 
 case class WvletServerConfig(
     @option(prefix = "-p,--port", description = "Port number to listen")
@@ -26,6 +29,9 @@ object WvletServer extends LogSupport:
   def startServer(config: WvletServerConfig): Unit = design(config).build[NettyServer] { server =>
     info(s"Wvlet UI server started at http://localhost:${config.port}")
     info(s"Press ctrl+c to stop the server")
+    if OS.isMacOS then
+      // Open the web browser
+      Shell.exec(s"open http://localhost:${config.port}")
     server.awaitTermination()
   }
 

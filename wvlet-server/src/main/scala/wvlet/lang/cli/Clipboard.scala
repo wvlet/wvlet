@@ -19,11 +19,10 @@ import wvlet.log.LogSupport
 import java.io.{BufferedWriter, OutputStreamWriter}
 
 object Clipboard extends LogSupport:
-  private val isMacOS: Boolean = sys.props.get("os.name").exists(_.toLowerCase.contains("mac"))
 
   def saveToClipboard(str: String): Unit =
     // Save query and result to clipboard (only for Mac OS, now)
-    if isMacOS then
+    if OS.isMacOS then
       val proc = ProcessUtil.launchInteractiveProcess("pbcopy")
       val out  = new BufferedWriter(new OutputStreamWriter(proc.getOutputStream()))
       out.write(str)
