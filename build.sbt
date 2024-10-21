@@ -142,7 +142,7 @@ lazy val cli = project
         // wvlet compiler
         "wvc" -> "wvlet.lang.cli.WvcMain",
         // Alias for wvlet runner and shell
-        "wv" -> "wvlet.lang.cli.WvMain",
+        "wv" -> "wvlet.lang.cli.WvletREPLMain",
         // wvlet command launcher
         "wvlet" -> "wvlet.lang.cli.WvletMain"
       ),
