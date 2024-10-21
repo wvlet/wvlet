@@ -74,7 +74,7 @@ case class ExecuteTasks(tasks: List[ExecutionPlan]) extends ExecutionPlan
 case class ExecuteQuery(plan: LogicalPlan)                            extends ExecutionPlan
 case class ExecuteSave(save: Save, queryPlan: ExecutionPlan)          extends ExecutionPlan
 case class ExecuteDelete(delete: DeleteOps, queryPlan: ExecutionPlan) extends ExecutionPlan
-case class ExecuteCommand(execute: Execute)                           extends ExecutionPlan
+case class ExecuteCommand(execute: Command)                           extends ExecutionPlan
 case class ExecuteTest(test: TestRelation)                            extends ExecutionPlan
 
 case class ExecuteDebug(debug: Debug, debugExecutionPlan: ExecutionPlan) extends ExecutionPlan
