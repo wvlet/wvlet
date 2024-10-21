@@ -123,7 +123,7 @@ class QueryExecutor(
           QueryResult.fromList(results)
         case ExecuteCommand(e) =>
           // Command produces no QueryResult other than errors
-          report(executeCommand(e.expr, context))
+          report(executeCommand(e, context))
         case ExecuteValDef(v) =>
           val expr = ExpressionEvaluator.eval(v.expr, context)
           v.symbol.symbolInfo = BoundedSymbolInfo(v.symbol, v.name, expr.dataType, expr)
@@ -152,10 +152,14 @@ class QueryExecutor(
     }
   }
 
-  private def executeCommand(e: Expression, context: Context): QueryResult =
-    val gen = GenSQL(context)
-    val cmd = gen.printExpression(e)(using Indented(0))
-    executeStatement(List(cmd))
+  private def executeCommand(cmd: Command, context: Context): QueryResult =
+    cmd match
+      case e: ExecuteExpr =>
+        val gen = GenSQL(context)
+        val cmd = gen.printExpression(e.expr)(using Indented(0))
+        executeStatement(List(cmd))
+      case s: ShowQuery =>
+        info(s)
     QueryResult.empty
 
   private def executeDelete(ops: DeleteOps)(using context: Context): QueryResult =

@@ -842,6 +842,7 @@ case class IncrementalAppend(
 enum ShowType:
   case models
   case tables
+  case query
 
 case class Show(showType: ShowType, span: Span) extends Relation with LeafPlan:
   override def relationType: RelationType =

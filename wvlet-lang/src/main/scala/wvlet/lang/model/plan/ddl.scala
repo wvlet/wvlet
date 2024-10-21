@@ -70,4 +70,3 @@ case class CreateView(viewName: NameExpr, replace: Boolean, query: Relation, spa
 
 case class DropView(viewName: NameExpr, ifExists: Boolean, span: Span) extends DDL
 
-case class Execute(expr: Expression, span: Span) extends DDL
