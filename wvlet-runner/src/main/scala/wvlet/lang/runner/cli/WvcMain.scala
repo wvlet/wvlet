@@ -57,6 +57,8 @@ class WvcMain(opts: WvletGlobalOption) extends LogSupport:
       )
     ).compile()
 
+    compileResult.reportAllErrors
+
     compileResult
       .typedPlans
       .collect:

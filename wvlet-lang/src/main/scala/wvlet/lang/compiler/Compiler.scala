@@ -13,6 +13,8 @@
  */
 package wvlet.lang.compiler
 
+import wvlet.lang.StatusCode.SYNTAX_ERROR
+import wvlet.lang.{StatusCode, WvletLangException}
 import wvlet.lang.catalog.Catalog
 import wvlet.lang.compiler.Compiler.presetLibraries
 import wvlet.lang.compiler.analyzer.{RemoveUnusedQueries, SymbolLabeler, TypeResolver}
@@ -25,6 +27,8 @@ import wvlet.lang.compiler.transform.{
 }
 import wvlet.lang.model.plan.LogicalPlan
 import wvlet.log.{LogLevel, LogSupport}
+
+import scala.collection.immutable.ListMap
 
 object Compiler extends LogSupport:
 
@@ -155,25 +159,40 @@ class Compiler(compilerOptions: CompilerOptions) extends LogSupport:
       debug(s"Running phase ${phase.name}")
       refinedUnits = phase.runOn(refinedUnits, rootContext)
 
-    units
-      .filter(_.isFailed)
-      .foreach { failedUnit =>
-        if contextUnit.exists(_ eq failedUnit) then
-          throw failedUnit.lastError.get
-        else
-          // TODO Return errors to CompilerResult
-          trace(failedUnit.lastError.get)
-      }
-
-    val result = CompileResult(refinedUnits, this, rootContext)
+    val result = CompileResult(refinedUnits, this, rootContext, contextUnit)
+    result.reportErrorsInContextUnit
     result
 
   end compileInternal
 
 end Compiler
 
-case class CompileResult(units: List[CompilationUnit], compiler: Compiler, context: Context):
+case class CompileResult(
+    units: List[CompilationUnit],
+    compiler: Compiler,
+    context: Context,
+    contextUnit: Option[CompilationUnit]
+) extends LogSupport:
   def typedPlans: List[LogicalPlan] = units.map(_.resolvedPlan).filter(_.nonEmpty)
+
+  def hasFailures: Boolean = units.exists(_.isFailed)
+  def failureReport: ListMap[CompilationUnit, Throwable] =
+    val l = ListMap.newBuilder[CompilationUnit, Throwable]
+    units.filter(_.isFailed).foreach(unit => l += unit -> unit.lastError.get)
+    l.result()
+
+  def reportErrorsInContextUnit: Unit = contextUnit.foreach { unit =>
+    if unit.isFailed then
+      throw unit.lastError.get
+  }
+
+  def reportAllErrors: Unit =
+    if hasFailures then
+      val msg = failureReport
+        .map: (unit, e) =>
+          e.getMessage
+        .mkString("\n")
+      throw StatusCode.COMPILATION_FAILURE.newException(msg)
 
   /**
     * Extract compilation results for a specific file name
@@ -182,3 +201,5 @@ case class CompileResult(units: List[CompilationUnit], compiler: Compiler, conte
     */
   def inFile(fileName: String): Option[CompilationUnit] =
     units.filter(_.sourceFile.fileName == fileName).headOption
+
+end CompileResult
