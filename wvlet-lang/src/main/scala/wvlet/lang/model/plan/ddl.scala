@@ -69,5 +69,3 @@ case class AddColumn(table: NameExpr, column: ColumnDef, span: Span) extends DDL
 case class CreateView(viewName: NameExpr, replace: Boolean, query: Relation, span: Span) extends DDL
 
 case class DropView(viewName: NameExpr, ifExists: Boolean, span: Span) extends DDL
-
-case class Execute(expr: Expression, span: Span) extends DDL

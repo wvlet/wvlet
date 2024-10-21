@@ -63,8 +63,8 @@ object ExecutionPlanner extends Phase("execution-plan"):
           if evalQuery then
             plans += ExecuteQuery(r)
           ExecutionPlan(plans.result())
-        case e: Execute =>
-          ExecuteCommand(e)
+        case c: Command =>
+          ExecuteCommand(c)
         case v: ValDef =>
           ExecuteValDef(v)
         case other =>

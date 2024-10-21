@@ -125,7 +125,7 @@ object SymbolLabeler extends Phase("symbol-labeler"):
   private def registerSelectAsAlias(s: SelectAsAlias)(using ctx: Context): Symbol =
     val aliasName = s.alias.toTermName
     val sym       = Symbol(ctx.global.newSymbolId)
-    sym.symbolInfo = RelationAliasSymbolInfo(sym, aliasName)
+    sym.symbolInfo = RelationAliasSymbolInfo(sym, aliasName, ctx.compilationUnit)
     s.symbol = sym
     sym.tree = s.child
     ctx.compilationUnit.enter(sym)
@@ -329,7 +329,7 @@ object SymbolLabeler extends Phase("symbol-labeler"):
         ctx.compilationUnit.enter(sym)
         sym.tree = m
         val tpe = m.givenRelationType.getOrElse(m.relationType)
-        sym.symbolInfo = ModelSymbolInfo(sym, ctx.owner, modelName, tpe)
+        sym.symbolInfo = ModelSymbolInfo(sym, ctx.owner, modelName, tpe, ctx.compilationUnit)
         m.symbol = sym
         trace(s"Created a new model symbol ${sym}")
         ctx.scope.add(modelName, sym)

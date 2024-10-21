@@ -33,6 +33,7 @@ import wvlet.lang.model.DataType.{
 import wvlet.lang.model.expr.NameExpr.EmptyName
 import wvlet.airframe.json.JSON
 import wvlet.airframe.ulid.ULID
+import wvlet.lang.StatusCode
 import wvlet.lang.compiler.parser.Span
 import wvlet.lang.compiler.parser.Span.NoSpan
 import wvlet.log.LogSupport
@@ -842,6 +843,7 @@ case class IncrementalAppend(
 enum ShowType:
   case models
   case tables
+  case query
 
 case class Show(showType: ShowType, span: Span) extends Relation with LeafPlan:
   override def relationType: RelationType =
@@ -862,6 +864,8 @@ case class Show(showType: ShowType, span: Span) extends Relation with LeafPlan:
           typeName = Name.typeName("table"),
           columnTypes = Seq[NamedType](NamedType(Name.termName("name"), DataType.StringType))
         )
+      case other =>
+        throw StatusCode.UNEXPECTED_STATE.newException(s"Unexpected show type: ${other}")
 
 trait RelationInspector extends QueryStatement
 

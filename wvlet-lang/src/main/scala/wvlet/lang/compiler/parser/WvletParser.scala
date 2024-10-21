@@ -182,28 +182,35 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       case WvletToken.VAL =>
         valDef()
       case WvletToken.SHOW =>
-        val q = queryBlock(show())
-        Query(q, spanFrom(t))
+        showExpr()
       case WvletToken.EXECUTE =>
         executeExpr()
       case _ =>
         unexpected(t)
 
-  def show(): Show =
+  def showExpr(): LogicalPlan =
     val t    = consume(WvletToken.SHOW)
     val name = identifier()
     try
-      Show(ShowType.valueOf(name.leafName), spanFrom(t))
+      ShowType.valueOf(name.leafName) match
+        case ShowType.models | ShowType.tables =>
+          ShowQuery(name, spanFrom(t))
+          val s = Show(ShowType.valueOf(name.leafName), spanFrom(t))
+          val q = queryBlock(s)
+          Query(q, spanFrom(t))
+        case ShowType.query =>
+          val ref = nameExpression()
+          ShowQuery(ref, spanFrom(t))
     catch
       case e: IllegalArgumentException =>
         throw StatusCode
           .SYNTAX_ERROR
           .newException(s"Unknown argument for show: ${name.leafName}", t.sourceLocation)
 
-  def executeExpr(): Execute =
+  def executeExpr(): ExecuteExpr =
     val t    = consume(WvletToken.EXECUTE)
     val expr = expression()
-    Execute(expr, spanFrom(t))
+    ExecuteExpr(expr, spanFrom(t))
 
   def modelDef(): ModelDef =
     val t    = consume(WvletToken.MODEL)
@@ -614,13 +621,14 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         Nil
 
   def query(): Relation =
+    val t           = scanner.lookAhead()
     var r: Relation = queryBody()
     r =
       r match
         case i: RelationInspector =>
           i
         case _ =>
-          Query(r, r.span)
+          Query(r, spanFrom(t))
 
     updateRelationIfExists(r)
   end query

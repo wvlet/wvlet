@@ -24,7 +24,7 @@ object WvletREPLMain:
   def main(args: Array[String]): Unit = launcher.execute(args)
   def main(argLine: String): Unit     = launcher.execute(argLine)
 
-case class WvMainOption(
+case class WvletREPLOption(
     @option(prefix = "--profile", description = "Profile to use")
     profile: Option[String] = None,
     @option(prefix = "-c", description = "Run a command and exit")
@@ -39,7 +39,7 @@ case class WvMainOption(
     schema: Option[String] = None
 )
 
-class WvletREPLMain(cliOption: WvletGlobalOption, replOpts: WvMainOption) extends LogSupport:
+class WvletREPLMain(cliOption: WvletGlobalOption, replOpts: WvletREPLOption) extends LogSupport:
 
   @command(description = "Start REPL shell", isDefault = true)
   def repl(): Unit =
