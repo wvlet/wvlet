@@ -621,13 +621,14 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         Nil
 
   def query(): Relation =
+    val t           = scanner.lookAhead()
     var r: Relation = queryBody()
     r =
       r match
         case i: RelationInspector =>
           i
         case _ =>
-          Query(r, r.span)
+          Query(r, spanFrom(t))
 
     updateRelationIfExists(r)
   end query

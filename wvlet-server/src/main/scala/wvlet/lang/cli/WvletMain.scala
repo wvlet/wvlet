@@ -19,5 +19,8 @@ class WvletMain(opts: WvletGlobalOption) extends LogSupport:
   @command(description = "Show the version", isDefault = true)
   def version: Unit = info(opts.versionString)
 
+  @command(description = "Start a Wvlet REPL shell")
+  def shell(replOpts: WvletREPLOption): Unit = WvletREPLMain(opts, replOpts).repl()
+
   @command(description = "Start a local WebUI server")
   def ui(serverConfig: WvletServerConfig): Unit = WvletServer.startServer(serverConfig)

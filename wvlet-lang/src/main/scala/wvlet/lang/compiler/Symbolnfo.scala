@@ -91,8 +91,13 @@ class MethodSymbolInfo(
     defContexts: List[DefContext]
 ) extends NamedSymbolInfo(symbol, owner, name, ft)
 
-class ModelSymbolInfo(symbol: Symbol, val owner: Symbol, name: Name, tpe: DataType)
-    extends NamedSymbolInfo(symbol, owner, name, tpe):
+case class ModelSymbolInfo(
+    override val symbol: Symbol,
+    owner: Symbol,
+    override val name: Name,
+    override val tpe: DataType,
+    compilationUnit: CompilationUnit
+) extends NamedSymbolInfo(symbol, owner, name, tpe):
   override def toString: String = s"model ${owner}.${name}: ${dataType}"
 
 case class BoundedSymbolInfo(
@@ -106,8 +111,11 @@ case class BoundedSymbolInfo(
 case class MultipleSymbolInfo(s1: SymbolInfo, s2: SymbolInfo)
     extends SymbolInfo(s1.symbol, s1.name, s1.tpe)
 
-case class RelationAliasSymbolInfo(override val symbol: Symbol, override val name: Name)
-    extends SymbolInfo(symbol, name, DataType.UnknownType)
+case class RelationAliasSymbolInfo(
+    override val symbol: Symbol,
+    override val name: Name,
+    compilationUnit: CompilationUnit
+) extends SymbolInfo(symbol, name, DataType.UnknownType)
 
 case class SavedRelationSymbolInfo(override val symbol: Symbol, override val name: Name)
     extends SymbolInfo(symbol, name, DataType.UnknownType)

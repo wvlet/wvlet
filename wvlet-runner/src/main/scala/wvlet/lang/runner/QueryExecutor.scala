@@ -158,9 +158,28 @@ class QueryExecutor(
         val gen = GenSQL(context)
         val cmd = gen.printExpression(e.expr)(using Indented(0))
         executeStatement(List(cmd))
+        QueryResult.empty
       case s: ShowQuery =>
-        info(s)
-    QueryResult.empty
+        context.findTermSymbolByName(s.name.fullName) match
+          case Some(sym) =>
+            sym.tree match
+              case md: ModelDef =>
+                sym.symbolInfo match
+                  case m: ModelSymbolInfo =>
+                    val query = m
+                      .compilationUnit
+                      .text(md.child.span)
+                      // Remove indentation
+                      .split("\n").map(_.trim).mkString("\n")
+
+                    // TODO Report query in the provided output
+                    println(query)
+                  case _ =>
+              // TODO Support SelectAsAlias, already resolved models, etc.
+              case _ =>
+            QueryResult.empty
+          case None =>
+            WarningResult(s"${s.name} is not found", s.sourceLocation(using context))
 
   private def executeDelete(ops: DeleteOps)(using context: Context): QueryResult =
     val gen = GenSQL(context)

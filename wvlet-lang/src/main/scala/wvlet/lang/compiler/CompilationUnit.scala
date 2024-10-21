@@ -15,6 +15,7 @@ package wvlet.lang.compiler
 
 import wvlet.lang.compiler
 import wvlet.lang.compiler.SourceFile.NoSourceFile
+import wvlet.lang.compiler.parser.Span
 import wvlet.lang.model.NodeLocation
 import wvlet.lang.model.plan.{ExecutionPlan, LogicalPlan, NamedRelation, Relation}
 import wvlet.log.LogSupport
@@ -61,6 +62,10 @@ case class CompilationUnit(sourceFile: SourceFile, isPreset: Boolean = false) ex
     finishedPhases = Set.empty
     lastCompiledAt = None
     this
+
+  def text(span: Span): String =
+    // Extract the text in the span range
+    sourceFile.getContent.slice(span.start, span.end).mkString
 
   def enter(symbol: Symbol): Unit = knownSymbols = symbol :: knownSymbols
 
