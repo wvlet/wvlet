@@ -140,11 +140,11 @@ lazy val cli = project
     packMain :=
       Map(
         // wvlet compiler
-        "wvc" -> "wvlet.lang.cli.WvcMain",
-        // Alias for wvlet runner and shell
-        "wv" -> "wvlet.lang.cli.WvletREPLMain",
-        // wvlet command launcher
-        "wvlet" -> "wvlet.lang.cli.WvletMain"
+        "wvc" -> "wvlet.lang.runner.cli.WvcMain",
+        // Wvlet REPL launcher
+        "wv" -> "wvlet.lang.runner.cli.WvletREPLMain",
+        // wvlet server command launcher
+        "wvlet" -> "wvlet.lang.server.WvletServerMain"
       ),
     packResourceDir ++= Map(file("wvlet-ui-main/dist") -> "web")
   )

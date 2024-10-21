@@ -1,4 +1,4 @@
-package wvlet.lang.api.server
+package wvlet.lang.server
 
 import wvlet.airframe.control.ThreadUtil
 import wvlet.airframe.ulid.ULID
@@ -33,7 +33,7 @@ class QueryService(scriptRunner: WvletScriptRunner) extends LogSupport with Auto
     queryMap += queryId -> firstQueryInfo
     threadManager.submit(
       new Runnable:
-        override def run: Unit = runQuery(queryId, request.query)
+        override def run: Unit = runQuery(queryId, request.query, request.isTestRun)
     )
     QueryResponse(queryId = queryId, requestId = request.requestId)
 
@@ -46,14 +46,14 @@ class QueryService(scriptRunner: WvletScriptRunner) extends LogSupport with Auto
         throw StatusCode.INVALID_ARGUMENT.newException(s"Query not found: ${request.queryId}")
       }
 
-  private def runQuery(queryId: ULID, query: String): Unit =
+  private def runQuery(queryId: ULID, query: String, isTestRun: Boolean): Unit =
     debug(s"[${queryId}] Running query:\n${query}")
     var lastInfo = queryMap(queryId)
     lastInfo = lastInfo
       .copy(pageToken = "1", status = QueryStatus.RUNNING, startedAt = Some(Instant.now()))
     queryMap += queryId -> lastInfo
 
-    val queryResult = scriptRunner.runStatement(query)
+    val queryResult = scriptRunner.runStatement(query, isTestRun = isTestRun)
     if queryResult.isSuccess then
       // TODO Support pagination
       // TODO Return the query result

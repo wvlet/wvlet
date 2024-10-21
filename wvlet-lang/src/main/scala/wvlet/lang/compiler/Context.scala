@@ -96,7 +96,9 @@ case class Context(
     owner: Symbol = Symbol.NoSymbol,
     scope: Scope = Scope.NoScope,
     compilationUnit: CompilationUnit = CompilationUnit.empty,
-    importDefs: List[Import] = Nil
+    importDefs: List[Import] = Nil,
+    // If true, evaluate test expressions
+    isTestRun: Boolean = false
 ) extends LogSupport:
   def isGlobalContext: Boolean = compilationUnit.isPreset || owner.isNoSymbol
 
@@ -117,6 +119,8 @@ case class Context(
 
   def workEnv: WorkEnv = global.workEnv
 
+  def withTestRun(isTest: Boolean): Context = this.copy(isTestRun = isTest)
+
   /**
     * Create a new context with an additional import
     * @param i
@@ -127,6 +131,8 @@ case class Context(
 
   def withCompilationUnit[U](newCompileUnit: CompilationUnit): Context = global
     .getContextOf(newCompileUnit)
+    // Propagate debug run flag
+    .withTestRun(isTestRun)
 
   def enter(sym: Symbol): Unit = scope.enter(sym)(using this)
 
@@ -136,7 +142,8 @@ case class Context(
     owner = owner,
     scope = scope.newChildScope,
     compilationUnit = compilationUnit,
-    importDefs = Nil
+    importDefs = Nil,
+    isTestRun = isTestRun
   )
 
   def findTermSymbolByName(name: String): Option[Symbol] =

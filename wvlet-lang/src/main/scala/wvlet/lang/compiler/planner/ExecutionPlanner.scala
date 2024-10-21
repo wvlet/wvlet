@@ -42,10 +42,11 @@ object ExecutionPlanner extends Phase("execution-plan"):
           tests += t
 
           // For evaluating the test, need to evaluate the sub query
-          nonTestChild.foreach { c =>
-            plans += plan(c, evalQuery = true)
-          }
-          plans ++= tests.result().map(ExecuteTest(_))
+          if context.isTestRun then
+            nonTestChild.foreach { c =>
+              plans += plan(c, evalQuery = true)
+            }
+            plans ++= tests.result().map(ExecuteTest(_))
           ExecutionPlan(plans.result())
         case save: Save =>
           val queryPlan = plan(save.inputRelation, evalQuery = false)
