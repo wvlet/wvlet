@@ -47,6 +47,10 @@ class WvletREPLMainTest extends AirSpec:
     WvletREPLMain.main("-w spec/model1 -c 'from person' -c 'clip-result'")
   }
 
+  test("clip-query") {
+    WvletREPLMain.main("-w spec/model1 -c 'from person' -c 'clip-query'")
+  }
+
   test("rows") {
     WvletREPLMain.main("-w spec/model1 -c 'rows 2' -c 'from person'")
   }
