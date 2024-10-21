@@ -11,7 +11,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package wvlet.lang.cli
+package wvlet.lang.runner.cli
 
 import org.jline.keymap.KeyMap
 import org.jline.reader.*
@@ -87,7 +87,7 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
     if trimmedLine.nonEmpty then
       withNewThread {
         try
-          val result = runner.runStatement(trimmedLine)
+          val result = runner.runStatement(trimmedLine, isTestRun = false)
           val output = runner.displayOutput(trimmedLine, result, terminal)
           lastOutput = Some(output)
         catch
@@ -138,14 +138,14 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
     val lastLine      = lines.lastOption.getOrElse("")
     val lineNum       = lines.size
     val describeQuery = s"${queryFragment}\ndescribe"
-    val result        = runner.runStatement(describeQuery)
+    val result        = runner.runStatement(describeQuery, isTestRun = true)
     val str           = result.toPrettyBox()
     reader.printAbove(
       s"${Color.GREEN}describe${Color.RESET} ${Color.BLUE}(line:${lineNum})${Color.RESET}: ${Color.BRIGHT_RED}${lastLine}\n${Color.GRAY}${str}${AnsiColor.RESET}"
     )
     true
 
-  private def debugRun = newWidget: () =>
+  private def testRun = newWidget: () =>
     val originalQuery = reader.getBuffer.toString
     val queryFragment = extractQueryFragment
     reader.getHistory.add(queryFragment)
@@ -158,7 +158,7 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
     println(
       s"${"\n" * (totalLines - lineNum + 1).max(0)}${Color.GREEN}debug${Color.RESET} ${Color.BLUE}(line:${lineNum})${Color.RESET}: ${Color.BRIGHT_RED}${lastLine}${AnsiColor.RESET}"
     )
-    val result = runner.runStatement(samplingQuery)
+    val result = runner.runStatement(samplingQuery, isTestRun = true)
     lastOutput = Some(runner.displayOutput(samplingQuery, result, terminal))
     val out = terminal.output()
     // Add enough blank lines to redisplay the user query
@@ -197,7 +197,7 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
     keyMaps.bind(moveToEnd, KeyMap.translate("^J^E"))
     keyMaps.bind(enterStmt, KeyMap.translate("^J^R"))
     keyMaps.bind(describeLine, KeyMap.translate("^J^D"))
-    keyMaps.bind(debugRun, KeyMap.translate("^J^T"))
+    keyMaps.bind(testRun, KeyMap.translate("^J^T"))
 
     // Load the command history so that we can use ctrl-r (keyword), ctrl+p/n (previous/next) for history search
     val history = reader.getHistory

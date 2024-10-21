@@ -1,13 +1,13 @@
-package wvlet.lang.cli
+package wvlet.lang.server
 
 import wvlet.airframe.http.netty.NettyServer
 import wvlet.airframe.launcher.{Launcher, command, option}
-import wvlet.lang.api.server.{WvletServer, WvletServerConfig}
 import wvlet.lang.compiler.WorkEnv
+import wvlet.lang.runner.cli.{WvletGlobalOption, WvletREPLMain, WvletREPLOption}
 import wvlet.log.{LogLevel, LogSupport}
 
-object WvletMain:
-  private def launcher: Launcher      = Launcher.of[WvletMain]
+object WvletServerMain:
+  private def launcher: Launcher      = Launcher.of[WvletServerMain]
   def main(args: Array[String]): Unit = launcher.execute(args)
   def main(argLine: String): Unit     = launcher.execute(argLine)
 
@@ -15,7 +15,7 @@ object WvletMain:
   * 'wvlet' command line interface
   * @param opts
   */
-class WvletMain(opts: WvletGlobalOption) extends LogSupport:
+class WvletServerMain(opts: WvletGlobalOption) extends LogSupport:
   @command(description = "Show the version", isDefault = true)
   def version: Unit = info(opts.versionString)
 

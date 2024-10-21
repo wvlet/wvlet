@@ -89,13 +89,13 @@ class WvletScriptRunner(
     }
     c
 
-  def runStatement(line: String): QueryResult =
+  def runStatement(line: String, isTestRun: Boolean): QueryResult =
     val newUnit = CompilationUnit.fromString(line)
     units = newUnit :: units
 
     try
       val compileResult = compiler.compileSingleUnit(contextUnit = newUnit)
-      val ctx           = compileResult.context.global.getContextOf(newUnit)
+      val ctx           = compileResult.context.global.getContextOf(newUnit).withTestRun(isTestRun)
       val queryResult   = queryExecutor.setRowLimit(resultRowLimits).executeSingle(newUnit, ctx)
       trace(s"ctx: ${ctx.hashCode()} ${ctx.compilationUnit.knownSymbols}")
 

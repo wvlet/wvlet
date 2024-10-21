@@ -130,18 +130,18 @@ class WvletMonacoEditor(queryResultReader: QueryResultReader) extends RxElement:
   private def runQuery: Unit =
     val query = getTextValue
     ConsoleLog.write(s"Run query:\n${query}")
-    queryResultReader.submitQuery(query)
+    queryResultReader.submitQuery(query, isTestRun = false)
 
   private def testRunQuery(): Unit =
     val queryFragment = queryUpToTheLine
     val subQuery      = s"${queryFragment}\nlimit 40"
     ConsoleLog.write(s"Run test query:\n${subQuery}")
-    queryResultReader.submitQuery(subQuery)
+    queryResultReader.submitQuery(subQuery, isTestRun = true)
 
   private def describeQuery(): Unit =
     val subQuery = queryUpToTheLine
     ConsoleLog.write(s"Describe query:\n${subQuery}")
-    queryResultReader.submitQuery(s"${subQuery}\ndescribe")
+    queryResultReader.submitQuery(s"${subQuery}\ndescribe", isTestRun = true)
 
   private def buildEditor: Unit =
     textEditor = editor.create(

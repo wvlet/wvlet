@@ -49,6 +49,7 @@ object FrontendApi extends RxRouterProvider:
       query: String,
       profile: Option[String] = None,
       schema: Option[String] = None,
+      isTestRun: Boolean = false,
       requestId: ULID = ULID.newULID
   )
 

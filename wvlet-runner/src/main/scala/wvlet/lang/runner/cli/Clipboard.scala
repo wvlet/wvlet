@@ -11,7 +11,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package wvlet.lang.cli
+package wvlet.lang.runner.cli
 
 import wvlet.lang.runner.ProcessUtil
 import wvlet.log.LogSupport

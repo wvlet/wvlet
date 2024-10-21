@@ -48,7 +48,7 @@ trait SpecRunner(
 
   protected def runSpec(unit: CompilationUnit): QueryResult =
     val compileResult = compiler.compileSingleUnit(unit)
-    val result        = duckDB.executeSingle(unit, compileResult.context)
+    val result        = duckDB.executeSingle(unit, compileResult.context.withTestRun(true))
     debug(result.toPrettyBox(maxWidth = Some(120)))
     result
 

@@ -1,4 +1,4 @@
-package wvlet.lang.api.server
+package wvlet.lang.server
 
 import wvlet.airframe.http.{Endpoint, HttpMessage, StaticContent}
 import wvlet.log.LogSupport

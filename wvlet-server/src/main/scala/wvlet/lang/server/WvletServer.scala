@@ -1,4 +1,4 @@
-package wvlet.lang.api.server
+package wvlet.lang.server
 
 import org.jline.nativ.OSInfo
 import wvlet.airframe.Design
@@ -8,12 +8,12 @@ import wvlet.airframe.http.{Http, RxRouter}
 import wvlet.airframe.launcher.{Launcher, command, option}
 import wvlet.lang.api.v1.frontend.FrontendRPC
 import wvlet.lang.compiler.WorkEnv
+import wvlet.lang.runner.cli.OS
 import wvlet.lang.runner.{QueryExecutor, WvletScriptRunnerConfig}
 import wvlet.lang.runner.connector.DBConnector
 import wvlet.lang.runner.connector.duckdb.DuckDBConnector
 import wvlet.log.LogSupport
 import wvlet.log.io.IOUtil
-import wvlet.lang.cli.OS
 
 case class WvletServerConfig(
     @option(prefix = "-p,--port", description = "Port number to listen")

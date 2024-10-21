@@ -1,10 +1,10 @@
-package wvlet.lang.cli
+package wvlet.lang.runner.cli
 
 import wvlet.airframe.Design
 import wvlet.airframe.launcher.{Launcher, command, option}
 import wvlet.lang.StatusCode
 import wvlet.lang.catalog.Profile
-import wvlet.lang.cli.WvletREPL.{debug, error}
+import WvletREPL.{debug, error}
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.runner.WvletScriptRunnerConfig
 import wvlet.lang.runner.connector.DBConnector

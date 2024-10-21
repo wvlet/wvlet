@@ -11,9 +11,9 @@ import scala.util.{Failure, Success}
 
 class QueryResultReader(rpcClient: RPCAsyncClient) extends LogSupport:
 
-  def submitQuery(query: String): Unit = rpcClient
+  def submitQuery(query: String, isTestRun: Boolean): Unit = rpcClient
     .FrontendApi
-    .submitQuery(QueryRequest(query = query))
+    .submitQuery(QueryRequest(query = query, isTestRun = isTestRun))
     .map { resp =>
       fetchQueryResult(resp)
     }

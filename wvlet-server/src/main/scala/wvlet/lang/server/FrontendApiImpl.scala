@@ -1,4 +1,4 @@
-package wvlet.lang.api.server
+package wvlet.lang.server
 
 import wvlet.airframe.metrics.ElapsedTime
 import wvlet.airframe.ulid.ULID
