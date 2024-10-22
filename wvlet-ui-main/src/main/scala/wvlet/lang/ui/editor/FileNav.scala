@@ -15,18 +15,18 @@ object FileNav:
   var selectedPath: RxVar[String] = Rx.variable("")
 
 class FileNav(rpcClient: RPCAsyncClient) extends RxElement:
-  private def pathElem(elem: RxElement, entry: FileEntry, isRoot: Boolean = false) =
+  private def pathElem(elem: RxElement, parentEntry: FileEntry, isRoot: Boolean = false) =
     def pathItem(x: RxElement): RxElement = a(
       href -> "#",
       cls  -> "text-sm font-medium text-gray-500 hover:text-gray-300",
       rx.html
         .when(
-          entry.isDirectory,
+          parentEntry.isDirectory,
           onclick -> { e =>
             e.preventDefault()
             rpcClient
               .FileApi
-              .listFiles(FileRequest(entry.path))
+              .listFiles(FileRequest(parentEntry.path))
               .map { lst =>
                 info(lst)
               }
@@ -49,20 +49,20 @@ class FileNav(rpcClient: RPCAsyncClient) extends RxElement:
         .getPath(FileRequest(path))
         .map { pathEntries =>
           info(pathEntries)
-          var lst   = pathEntries
-          val elems = Seq.newBuilder[RxElement]
+
+          var parentEntry = FileEntry("", "", true, true, 0, 0)
+          val elems       = Seq.newBuilder[RxElement]
           // home directory
-          if lst.headOption.exists(_.isDirectory) then
-            val home = lst.head
-            lst = lst.tail
-            elems += pathElem(Icon.home(cls -> "size-4"), home, isRoot = true)
-          // path
-          lst.map { p =>
-            elems += pathElem(p.name, p)
+          elems +=
+            pathElem(Icon.home(cls -> "size-4"), FileEntry("", "", true, true, 0, 0), isRoot = true)
+
+          pathEntries.foreach { p =>
+            elems += pathElem(p.name, parentEntry)
+            parentEntry = p
           }
           // If the last path is directory, add "..." to lookup files in the directory
-          if pathEntries.lastOption.exists(_.isDirectory) then
-            elems += pathElem("...", pathEntries.last)
+          if parentEntry.isDirectory then
+            elems += pathElem("...", parentEntry)
           elems.result()
         }
     }

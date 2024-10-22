@@ -14,11 +14,11 @@ case class FileEntry(
     content: Option[String] = None
 ):
   def isFile: Boolean = !isDirectory
-  def parentPath: Option[String] =
+  def parentPath: String =
     if path.isEmpty || path == "." then
-      None
+      ""
     else
-      Some(path.stripSuffix(s"/${name}"))
+      path.stripSuffix(s"/${name}")
 
 object FileEntry:
   def validateRelativePath(path: String): Unit =

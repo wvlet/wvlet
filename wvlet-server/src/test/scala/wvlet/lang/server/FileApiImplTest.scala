@@ -11,12 +11,32 @@ class FileApiImplTest extends AirSpec:
     _.bindImpl[FileApi, FileApiImpl].bindInstance[WorkEnv](WorkEnv("spec/basic"))
 
   test("list files") { (api: FileApi) =>
-    val f = api.listFiles(FileApi.FileRequest(""))
-    debug(f.children.mkString("\n"))
-    f.children shouldNotBe empty
-    f.children.filter(_.isFile).forall(_.name.endsWith(".wv")) shouldBe true
+    val lst = api.listFiles(FileApi.FileRequest(""))
+    lst shouldNotBe empty
+    lst.filter(_.isFile).forall(_.name.endsWith(".wv")) shouldBe true
 
-    f.children.filter(_.isDirectory) shouldNotBe empty
+    lst.filter(_.isDirectory) shouldNotBe empty
+  }
+
+  test("get empty path") { (api: FileApi) =>
+    val lst = api.getPath(FileApi.FileRequest(""))
+    lst shouldBe empty
+  }
+
+  test("get single path") { (api: FileApi) =>
+    val lst = api.getPath(FileApi.FileRequest("update"))
+    lst shouldNotBe empty
+    lst.size shouldBe 1
+    lst.head.path shouldBe "spec/basic/update"
+  }
+
+  test("get multiple paths") { (api: FileApi) =>
+    val lst = api.getPath(FileApi.FileRequest("update/append.wv"))
+    lst shouldNotBe empty
+    lst.size shouldBe 2
+    lst.map(_.path) shouldBe Seq("spec/basic/update", "spec/basic/update/append.wv")
+    lst.head.isFile shouldBe false
+    lst.last.isFile shouldBe true
   }
 
   test("reject invalid path") { (api: FileApi) =>
@@ -25,3 +45,5 @@ class FileApiImplTest extends AirSpec:
     }
     ex.statusCode.isUserError shouldBe true
   }
+
+end FileApiImplTest

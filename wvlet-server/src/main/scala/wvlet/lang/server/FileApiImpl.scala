@@ -34,14 +34,17 @@ class FileApiImpl(workEnv: WorkEnv) extends FileApi with LogSupport:
     toFileEntry(f)
 
   override def getPath(request: FileApi.FileRequest): List[FileEntry] =
-    val paths: Array[String] = request.relativePath.split("/")
-    (1 to paths.size)
-      .map { i =>
-        val p = paths.take(i).mkString("/")
-        val f = getFile(p)
-        toFileEntry(f)
-      }
-      .toList
+    if request.relativePath.isEmpty || request.relativePath == "." then
+      List.empty
+    else
+      val paths: Array[String] = request.relativePath.split("/")
+      (1 to paths.size)
+        .map { i =>
+          val p = paths.take(i).mkString("/")
+          val f = getFile(p)
+          toFileEntry(f)
+        }
+        .toList
 
   override def readFile(request: FileApi.FileRequest): FileEntry =
     val f = getFile(request.relativePath)
