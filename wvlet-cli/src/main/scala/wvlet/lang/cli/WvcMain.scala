@@ -17,7 +17,8 @@ import wvlet.airframe.launcher.{Launcher, argument, command, option}
 import wvlet.lang.compiler.{CompilationUnit, Compiler, CompilerOptions, WorkEnv}
 import wvlet.lang.runner.connector.duckdb.DuckDBConnector
 import wvlet.lang.runner.{QueryExecutor, QueryResultPrinter}
-import wvlet.lang.{BuildInfo, StatusCode, WvletLangException}
+import wvlet.lang.BuildInfo
+import wvlet.lang.api.{StatusCode, WvletLangException}
 import wvlet.log.{LogLevel, LogSupport, Logger}
 
 import java.io.File

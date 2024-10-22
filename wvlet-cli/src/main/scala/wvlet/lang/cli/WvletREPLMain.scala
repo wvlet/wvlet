@@ -2,7 +2,7 @@ package wvlet.lang.cli
 
 import wvlet.airframe.Design
 import wvlet.airframe.launcher.{Launcher, command, option}
-import wvlet.lang.StatusCode
+import wvlet.lang.api.StatusCode
 import wvlet.lang.catalog.Profile
 import wvlet.lang.cli.WvletREPL.{debug, error}
 import wvlet.lang.compiler.WorkEnv
