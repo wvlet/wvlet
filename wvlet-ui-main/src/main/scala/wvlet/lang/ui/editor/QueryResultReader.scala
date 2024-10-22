@@ -55,7 +55,6 @@ class QueryResultReader(rpcClient: RPCAsyncClient) extends LogSupport:
         .lastOption
         .flatMap(_.preview)
         .foreach { preview =>
-          info(preview)
           PreviewWindow.previewResult := preview
         }
     }
