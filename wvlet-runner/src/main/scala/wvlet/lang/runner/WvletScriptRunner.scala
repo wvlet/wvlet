@@ -44,7 +44,8 @@ case class LastOutput(
 class WvletScriptRunner(
     workEnv: WorkEnv,
     config: WvletScriptRunnerConfig,
-    queryExecutor: QueryExecutor
+    queryExecutor: QueryExecutor,
+    threadManager: ThreadManager
 ) extends AutoCloseable
     with LogSupport:
 
@@ -84,7 +85,7 @@ class WvletScriptRunner(
       }
 
     // Pre-compile files in the source paths
-    ThreadUtil.runBackgroundTask { () =>
+    threadManager.runBackgroundTask { () =>
       c.compileSourcePaths(None)
     }
     c

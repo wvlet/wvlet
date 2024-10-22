@@ -11,10 +11,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package wvlet.lang.runner.cli
+package wvlet.lang.cli
 
 import wvlet.airspec.AirSpec
-import wvlet.lang.runner.cli.WvletREPLMain
 
 class WvletREPLMainTest extends AirSpec:
   test("help") {
