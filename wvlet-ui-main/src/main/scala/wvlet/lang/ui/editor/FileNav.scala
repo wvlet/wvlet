@@ -19,9 +19,19 @@ class FileNav(rpcClient: RPCAsyncClient) extends RxElement:
     def pathItem(x: RxElement): RxElement = a(
       href -> "#",
       cls  -> "text-sm font-medium text-gray-500 hover:text-gray-300",
+      // Select the root path
       rx.html
         .when(
-          parentEntry.isDirectory,
+          isRoot,
+          onclick -> { e =>
+            e.preventDefault()
+            selectedPath := ""
+          }
+        ),
+      // List files in the directory
+      rx.html
+        .when(
+          !isRoot && parentEntry.isDirectory,
           onclick -> { e =>
             e.preventDefault()
             rpcClient
@@ -40,10 +50,12 @@ class FileNav(rpcClient: RPCAsyncClient) extends RxElement:
       div(cls -> "flex items-center", pathItem(elem))
     )
 
-  override def render: RxElement = nav(
-    cls -> "flex px-2 h-4 text-sm text-gray-400",
-    ol(role -> "list", cls -> "flex space-x-4 rounded-md px-1 shadow"),
-    selectedPath.map { path =>
+  end pathElem
+
+  override def render: RxElement = selectedPath.map { path =>
+    nav(
+      cls -> "flex px-2 h-4 text-sm text-gray-400",
+      ol(role -> "list", cls -> "flex space-x-4 rounded-md px-1 shadow"),
       rpcClient
         .FileApi
         .getPath(FileRequest(path))
@@ -65,7 +77,7 @@ class FileNav(rpcClient: RPCAsyncClient) extends RxElement:
             elems += pathElem("...", parentEntry)
           elems.result()
         }
-    }
-  )
+    )
+  }
 
 end FileNav
