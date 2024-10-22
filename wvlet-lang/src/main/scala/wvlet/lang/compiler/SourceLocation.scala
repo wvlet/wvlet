@@ -16,16 +16,15 @@ package wvlet.lang.compiler
 import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.model.NodeLocation
 
-case class SourceLocation(compileUnit: CompilationUnit, nodeLocation: NodeLocation):
-  def codeLineAt: String = nodeLocation
-    .map { loc =>
-      val line = compileUnit.sourceFile.sourceLine(loc.line)
-      line
-    }
-    .getOrElse("")
+case class SourceLocation(
+    path: String,
+    fileName: String,
+    codeLineAt: String,
+    nodeLocation: NodeLocation
+):
 
   def locationString: String =
     if nodeLocation.isEmpty then
-      compileUnit.sourceFile.relativeFilePath
+      path
     else
-      s"${compileUnit.sourceFile.fileName}:${nodeLocation.line}:${nodeLocation.column}"
+      s"${fileName}:${nodeLocation.line}:${nodeLocation.column}"

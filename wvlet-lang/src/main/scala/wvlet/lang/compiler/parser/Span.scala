@@ -42,22 +42,6 @@ class Span(val coordinate: Long) extends AnyVal:
     else
       None
 
-  def sourceLocation(using ctx: Context): SourceLocation =
-    val cu = ctx.compilationUnit
-    SourceLocation(cu, nodeLocation(using cu))
-
-  def nodeLocation(using unit: CompilationUnit): NodeLocation =
-    val src  = unit.sourceFile
-    val line = src.offsetToLine(start)
-    val pos  = src.offsetToColumn(start)
-    NodeLocation(line + 1, pos)
-
-  def endNodeLocation(using unit: CompilationUnit): NodeLocation =
-    val src  = unit.sourceFile
-    val line = src.offsetToLine(end)
-    val pos  = src.offsetToColumn(end)
-    NodeLocation(line + 1, pos)
-
   /**
     * Is this span different from NoSpan?
     */

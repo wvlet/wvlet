@@ -51,12 +51,6 @@ enum StatusCode(statusType: StatusType):
 
     WvletLangException(this, err, Some(sourceLocation))
 
-  def newException(msg: String, span: Span)(using ctx: Context): WvletLangException =
-    if span.isEmpty then
-      newException(msg)
-    else
-      newException(msg, span.sourceLocation)
-
   case OK extends StatusCode(StatusType.Success)
 
   case SYNTAX_ERROR     extends StatusCode(StatusType.UserError)

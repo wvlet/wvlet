@@ -22,10 +22,11 @@ case class NodeLocation(
     // column position in the line (1-origin)
     column: Int
 ):
-  override def toString: String = s"$line:$column"
-  def toSourceLocation(using ctx: Context): SourceLocation = ctx
-    .compilationUnit
-    .toSourceLocation(this)
+  override def toString: String =
+    if isEmpty then
+      "?:?"
+    else
+      s"$line:$column"
 
   def isEmpty: Boolean  = line < 0
   def nonEmpty: Boolean = !isEmpty

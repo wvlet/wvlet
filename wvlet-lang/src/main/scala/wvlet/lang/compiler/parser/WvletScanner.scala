@@ -23,6 +23,7 @@ import wvlet.lang.compiler.parser.WvletScanner.{
 }
 import wvlet.lang.compiler.parser.WvletToken.{LF, SU}
 import wvlet.lang.compiler.{CompilationUnit, SourceFile, SourceLocation}
+import wvlet.lang.compiler.ContextUtil.*
 import wvlet.lang.model.NodeLocation
 import wvlet.log.LogSupport
 
@@ -32,10 +33,8 @@ import scala.annotation.{switch, tailrec}
 case class TokenData(token: WvletToken, str: String, offset: Int, length: Int):
   override def toString: String = f"[${offset}%3d:${length}%2d] ${token}%10s: ${str}"
 
-  def sourceLocation(using unit: CompilationUnit): SourceLocation = SourceLocation(
-    unit,
-    nodeLocation(using unit.sourceFile)
-  )
+  def sourceLocation(using unit: CompilationUnit): SourceLocation = unit
+    .sourceLocationAt(nodeLocation(using unit.sourceFile))
 
   def span: Span = Span(offset, offset + length, 0)
 

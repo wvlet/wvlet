@@ -36,6 +36,7 @@ import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
 import wvlet.lang.model.{DataType, RelationType}
 import wvlet.log.LogSupport
+import wvlet.lang.compiler.ContextUtil.*
 
 import scala.util.Try
 
@@ -469,8 +470,9 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
                 if index >= agg.groupingKeys.length then
                   throw StatusCode
                     .SYNTAX_ERROR
-                    .newException(s"Invalid grouping key index: ${attr.nameExpr}", attr.span)(using
-                      context
+                    .newException(
+                      s"Invalid grouping key index: ${attr.nameExpr}",
+                      context.sourceLocationAt(attr.span)
                     )
 
                 val referencedGroupingKey = agg.groupingKeys(index)
@@ -560,7 +562,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
               // TODO resolve one of the function type
               throw StatusCode
                 .SYNTAX_ERROR
-                .newException(s"Ambiguous function call for ${i}", i.span)
+                .newException(s"Ambiguous function call for ${i}", context.sourceLocationAt(i.span))
           }
       case d @ DotRef(qual, method: Identifier, _, _) =>
         val methodName = method.toTermName
@@ -577,7 +579,10 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
                 // TODO resolve one of the function type
                 throw StatusCode
                   .SYNTAX_ERROR
-                  .newException(s"Ambiguous function call for ${method}", d.span)
+                  .newException(
+                    s"Ambiguous function call for ${method}",
+                    context.sourceLocationAt(d.span)
+                  )
             }
         else
           trace(s"Failed to find function `${methodName}` for ${qual}:${qual.dataType}")
@@ -609,20 +614,22 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
           def mapArg(args: List[FunctionArg]): Unit =
             if !args.isEmpty then
               args.head match
-                case FunctionArg(None, expr, loc) =>
+                case FunctionArg(None, expr, span) =>
                   if index >= functionArgTypes.length then
-                    throw StatusCode.SYNTAX_ERROR.newException("Too many arguments", loc)
+                    throw StatusCode
+                      .SYNTAX_ERROR
+                      .newException("Too many arguments", ctx.sourceLocationAt(span))
                   val argType = functionArgTypes(index)
                   argType.dataType match
                     case VarArgType(elemType) =>
                       index += 1
-                      resolvedArgs += argType.name -> ListExpr(args, loc)
+                      resolvedArgs += argType.name -> ListExpr(args, span)
                     // all args are consumed
                     case _ =>
                       index += 1
                       resolvedArgs += argType.name -> expr
                       mapArg(args.tail)
-                case FunctionArg(Some(argName), expr, loc) =>
+                case FunctionArg(Some(argName), expr, span) =>
                   functionArgTypes.find(_.name == argName) match
                     case Some(argType) =>
                       argType.dataType match
@@ -635,7 +642,10 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
                     case None =>
                       throw StatusCode
                         .SYNTAX_ERROR
-                        .newException("Unknown argument name: ${argName}", loc)
+                        .newException(
+                          "Unknown argument name: ${argName}",
+                          ctx.sourceLocationAt(span)
+                        )
 
           // Resolve function arguments
           mapArg(f.args)
