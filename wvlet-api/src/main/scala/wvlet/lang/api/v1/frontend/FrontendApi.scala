@@ -40,16 +40,6 @@ trait FrontendApi:
     */
   def getQueryInfo(request: QueryInfoRequest): QueryInfo
 
-  /**
-    * Return the file list in the given path
-    * @param relativePath
-    * @return
-    */
-  def fileList(relativePath: String): FileList
-
-  def readFile(relativePath: String): String
-  def saveFile(relativePath: String, content: String): Unit
-
 object FrontendApi extends RxRouterProvider:
   override def router = RxRouter.of[FrontendApi]
 

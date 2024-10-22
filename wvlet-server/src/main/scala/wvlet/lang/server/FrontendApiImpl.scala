@@ -25,24 +25,5 @@ class FrontendApiImpl(queryService: QueryService, workEnv: WorkEnv)
     debug(request)
     queryService.fetchNext(request)
 
-  override def fileList(relativePath: String): FileList =
-    val f = new java.io.File(workEnv.path, relativePath)
-    val files = f
-      .listFiles()
-      .collect {
-        case d if d.isDirectory && d.getName.startsWith(".") =>
-          FileEntry.Directory(f.getName)
-        case f if f.getName.endsWith(".wv") =>
-          FileEntry.LocalFile(f.getName, f.length())
-      }
-    FileList(relativePath, files.toList)
-
-  override def readFile(relativePath: String): String =
-    // TODO
-    ""
-
-  override def saveFile(relativePath: String, content: String): Unit =
-    // TODO
-    ()
 
 end FrontendApiImpl
