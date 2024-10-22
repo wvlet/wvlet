@@ -127,7 +127,10 @@ lazy val cli = project
   .enablePlugins(PackPlugin)
   .settings(
     buildSettings,
-    name := "wvlet-cli",
+    name        := "wvlet-cli",
+    Test / fork := true,
+    Test / baseDirectory :=
+      (ThisBuild / baseDirectory).value,
     pack :=
       Def
         .sequential(
