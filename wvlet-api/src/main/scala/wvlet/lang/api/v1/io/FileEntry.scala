@@ -1,19 +1,31 @@
 package wvlet.lang.api.v1.io
 
+import wvlet.lang.api.StatusCode
+
 import scala.annotation.tailrec
 
-sealed trait FileEntry:
+case class FileEntry(
+    name: String,
+    path: String,
+    exists: Boolean,
+    isDirectory: Boolean,
+    size: Long,
+    lastUpdatedAtMillis: Long,
+    content: Option[String] = None
+):
   def isFile: Boolean = !isDirectory
-  def isDirectory: Boolean
+  def parentPath: String =
+    if path.isEmpty || path == "." then
+      ""
+    else
+      path.stripSuffix(s"/${name}")
 
 object FileEntry:
-  case class LocalFile(name: String, size: Long) extends FileEntry:
-    override def isDirectory: Boolean = false
+  def validateRelativePath(path: String): Unit =
+    if !isSafeRelativePath(path) then
+      throw StatusCode.INVALID_ARGUMENT.newException(s"Invalid path: ${path}")
 
-  case class Directory(name: String) extends FileEntry:
-    override def isDirectory: Boolean = true
-
-  private def isSafeRelativePath(path: String): Boolean =
+  def isSafeRelativePath(path: String): Boolean =
     @tailrec
     def loop(pos: Int, path: List[String]): Boolean =
       if pos < 0 then
@@ -26,5 +38,3 @@ object FileEntry:
         loop(pos + 1, path.tail)
 
     loop(0, path.split("/").toList)
-
-case class FileList(path: String, files: List[FileEntry])
