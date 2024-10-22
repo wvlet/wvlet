@@ -18,14 +18,18 @@ import wvlet.lang.StatusCode
 import wvlet.lang.catalog.Catalog.TableName
 import wvlet.lang.catalog.{Catalog, SQLFunction}
 import wvlet.lang.compiler.DBType
-import wvlet.lang.runner.ThreadUtil
+import wvlet.lang.runner.{ThreadManager, ThreadUtil}
 import wvlet.log.LogSupport
 
 import java.util.concurrent.TimeUnit
 import scala.jdk.CollectionConverters.*
 
-class ConnectorCatalog(val catalogName: String, defaultSchema: String, dbConnector: DBConnector)
-    extends Catalog
+class ConnectorCatalog(
+    val catalogName: String,
+    defaultSchema: String,
+    dbConnector: DBConnector,
+    threadManager: ThreadManager = ThreadManager()
+) extends Catalog
     with LogSupport:
 
   private val tablesInSchemaCache = Caffeine
@@ -37,7 +41,7 @@ class ConnectorCatalog(val catalogName: String, defaultSchema: String, dbConnect
       defs
     }
 
-  ThreadUtil.runBackgroundTask(() => init())
+  threadManager.runBackgroundTask(() => init())
 
   private def init(): Unit =
     // Pre-load tables in defaultSchema and information_schema

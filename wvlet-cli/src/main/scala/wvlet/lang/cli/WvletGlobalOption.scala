@@ -1,4 +1,4 @@
-package wvlet.lang.runner.cli
+package wvlet.lang.cli
 
 import wvlet.airframe.launcher.option
 import wvlet.lang.BuildInfo

@@ -14,11 +14,12 @@ import scala.concurrent.duration.FiniteDuration
 import java.util.concurrent.TimeUnit
 
 val buildSettings = Seq[Setting[?]](
-  organization       := "wvlet.lang",
-  description        := "wvlet: A flow-style query language",
-  crossPaths         := true,
-  publishMavenStyle  := true,
-  Test / logBuffered := false,
+  organization             := "wvlet.lang",
+  description              := "wvlet: A flow-style query language",
+  crossPaths               := true,
+  publishMavenStyle        := true,
+  Test / parallelExecution := false,
+  Test / logBuffered       := false,
   libraryDependencies ++= Seq("org.wvlet.airframe" %%% "airspec" % AIRSPEC_VERSION % Test),
   testFrameworks += new TestFramework("wvlet.airspec.Framework"),
   // Prevent double trigger due to scalafmt run in IntelliJ by adding a small delay (default is 500ms)
@@ -119,32 +120,34 @@ lazy val cli = project
   .settings(
     buildSettings,
     name := "wvlet-cli",
-    Compile / resourceGenerators +=
+    pack :=
       Def
-        .task {
-          // Trigger compilation from Scala.js to JS
-          val assetFiles = (uiMain / Compile / fullLinkJS).value
-          // Packaging the web assets using Vite.js
-          scala
-            .sys
-            .process
-            .Process(
-              List("npm", "run", "build", "--silent", "--no-audit", "--no-fund"),
-              (uiMain / baseDirectory).value
-            )
-            .!
-          // Return empty files to avoid recompilation
-          Seq.empty[File]
-        }
-        .taskValue,
+        .sequential(
+          Def.task[Unit] {
+            // Trigger compilation from Scala.js to JS
+            val assetFiles = (uiMain / Compile / fullLinkJS).value
+            // Packaging the web assets using Vite.js
+            scala
+              .sys
+              .process
+              .Process(
+                List("npm", "run", "build", "--silent", "--no-audit", "--no-fund"),
+                (uiMain / baseDirectory).value
+              )
+              .!
+          },
+          // Run the default pack task
+          (Runtime / pack).toTask
+        )
+        .value,
     packMain :=
       Map(
         // wvlet compiler
-        "wvc" -> "wvlet.lang.runner.cli.WvcMain",
+        "wvc" -> "wvlet.lang.cli.WvcMain",
         // Wvlet REPL launcher
-        "wv" -> "wvlet.lang.runner.cli.WvletREPLMain",
+        "wv" -> "wvlet.lang.cli.WvletREPLMain",
         // wvlet server command launcher
-        "wvlet" -> "wvlet.lang.server.WvletServerMain"
+        "wvlet" -> "wvlet.lang.cli.WvletMain"
       ),
     packResourceDir ++= Map(file("wvlet-ui-main/dist") -> "web")
   )

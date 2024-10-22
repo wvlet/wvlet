@@ -61,11 +61,15 @@ class DuckDBConnector(prepareTPCH: Boolean = false)
       case _ =>
         throw StatusCode.NOT_IMPLEMENTED.newException("duckdb connection is unavailable")
 
-  override def close(): Unit = Option(conn).foreach { c =>
+  override def close(): Unit =
     if closed.compareAndSet(false, true) then
-      c.close()
-    conn = null
-  }
+      // Ensure the connection is prepared
+      getConnection
+      trace("Closing DuckDB connection")
+      Option(conn).foreach { c =>
+        c.close()
+      }
+      conn = null
 
   private def getConnection: DuckDBConnection =
     if conn == null && initThread.isAlive then

@@ -13,7 +13,11 @@
  */
 package wvlet.lang.runner
 
+import org.apache.arrow.flatbuf.TimeUnit
 import wvlet.airframe.ulid.ULID
+
+import java.util.concurrent
+import java.util.concurrent.{Executors, Future}
 
 object ThreadUtil:
   def runBackgroundTask(f: () => Unit): Thread =
@@ -25,3 +29,18 @@ object ThreadUtil:
     t.setDaemon(true)
     t.start()
     t
+
+class ThreadManager() extends AutoCloseable:
+  private val executor = Executors.newCachedThreadPool(
+    wvlet.airframe.control.ThreadUtil.newDaemonThreadFactory(s"wvlet-task-${ULID.newULID}")
+  )
+
+  override def close(): Unit =
+    executor.shutdownNow()
+    while !executor.awaitTermination(10, concurrent.TimeUnit.MILLISECONDS) do
+      Thread.sleep(10, TimeUnit.MILLISECOND)
+
+  def runBackgroundTask(f: () => Unit): Future[?] = executor.submit(
+    new Runnable:
+      override def run(): Unit = f()
+  )
