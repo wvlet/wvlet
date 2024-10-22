@@ -4,7 +4,7 @@ import wvlet.airframe.metrics.ElapsedTime
 import wvlet.airframe.ulid.ULID
 import wvlet.lang.api.v1.frontend.FrontendApi
 import wvlet.lang.api.v1.frontend.FrontendApi.*
-import wvlet.lang.api.v1.io.{FileList, FileEntry}
+import wvlet.lang.api.v1.io.FileEntry
 import wvlet.lang.api.v1.query.QueryInfo
 import wvlet.lang.compiler.WorkEnv
 import wvlet.log.LogSupport
@@ -24,6 +24,5 @@ class FrontendApiImpl(queryService: QueryService, workEnv: WorkEnv)
   override def getQueryInfo(request: QueryInfoRequest): QueryInfo =
     debug(request)
     queryService.fetchNext(request)
-
 
 end FrontendApiImpl

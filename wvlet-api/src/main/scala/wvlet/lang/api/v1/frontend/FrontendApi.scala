@@ -17,7 +17,6 @@ import wvlet.airframe.http.{RPC, RxRouter, RxRouterProvider}
 import wvlet.airframe.metrics.ElapsedTime
 import wvlet.airframe.ulid.{PrefixedULID, ULID}
 import wvlet.lang.BuildInfo
-import wvlet.lang.api.v1.io.FileList
 import wvlet.lang.api.v1.query.{QueryInfo, QueryStatus}
 
 @RPC

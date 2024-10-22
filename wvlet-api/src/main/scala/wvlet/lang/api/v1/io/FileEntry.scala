@@ -7,11 +7,18 @@ import scala.annotation.tailrec
 case class FileEntry(
     name: String,
     path: String,
+    exists: Boolean,
     isDirectory: Boolean,
     size: Long,
-    lastUpdatedAtMills: Long
+    lastUpdatedAtMillis: Long,
+    content: Option[String] = None
 ):
   def isFile: Boolean = !isDirectory
+  def parentPath: Option[String] =
+    if path.isEmpty || path == "." then
+      None
+    else
+      Some(path.stripSuffix(s"/${name}"))
 
 object FileEntry:
   def validateRelativePath(path: String): Unit =
@@ -31,5 +38,3 @@ object FileEntry:
         loop(pos + 1, path.tail)
 
     loop(0, path.split("/").toList)
-
-case class FileList(path: String, files: List[FileEntry])

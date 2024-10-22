@@ -1,7 +1,7 @@
 package wvlet.lang.api.v1.frontend
 
 import wvlet.airframe.http.{RPC, RxRouter, RxRouterProvider}
-import wvlet.lang.api.v1.io.{FileEntry, FileList}
+import wvlet.lang.api.v1.io.FileEntry
 
 @RPC
 trait FileApi:
@@ -12,18 +12,23 @@ trait FileApi:
     * @param relativePath
     * @return
     */
-  def fileList(request: FileListRequest): FileList
+  def listFiles(request: FileRequest): List[FileEntry]
+  def getFile(request: FileRequest): FileEntry
 
-  def readFile(request: ReadFileRequest): String
+  /**
+    * Get a list of FileEntry along with the given path
+    * @param request
+    * @return
+    */
+  def getPath(request: FileRequest): List[FileEntry]
+  def readFile(request: FileRequest): FileEntry
+
   def saveFile(request: SaveFileRequest): Unit
 
 object FileApi extends RxRouterProvider:
   override def router: RxRouter = RxRouter.of[FileApi]
 
-  case class FileListRequest(relativePath: String):
-    FileEntry.validateRelativePath(relativePath)
-
-  case class ReadFileRequest(relativePath: String):
+  case class FileRequest(relativePath: String):
     FileEntry.validateRelativePath(relativePath)
 
   case class SaveFileRequest(relativePath: String, content: String):

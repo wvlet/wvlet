@@ -1,11 +1,14 @@
 package wvlet.lang.ui.editor
 
+import wvlet.airframe.rx
+import wvlet.airframe.rx.Rx
 import wvlet.airframe.rx.html.RxElement
 import wvlet.airframe.rx.html.all.*
 import wvlet.airframe.rx.html.svgTags.*
 import wvlet.airframe.rx.html.svgAttrs.{style as _, xmlns as _, *}
-import wvlet.lang.api.v1.frontend.FileApi.FileListRequest
+import wvlet.lang.api.v1.frontend.FileApi.FileRequest
 import wvlet.lang.api.v1.frontend.FrontendRPC.RPCAsyncClient
+import wvlet.lang.api.v1.io.FileEntry
 import wvlet.lang.ui.component.{Icon, MainFrame}
 
 object WvletEditor:
@@ -15,7 +18,7 @@ object WvletEditor:
     s"min-width: ${editorWidthRem}rem; max-width: ${editorWidthRem}rem; min-height: ${editorHeightRem}rem;"
 
 class WvletEditor(
-    rpcClient: RPCAsyncClient,
+    fileNav: FileNav,
     monacoEditor: WvletMonacoEditor,
     previewWindow: PreviewWindow,
     consoleLogWindow: ConsoleLogWindow
@@ -31,7 +34,7 @@ class WvletEditor(
     div(
       cls   -> "flex flex-col bg-zinc-800",
       style -> s"height: calc(100vh - ${MainFrame.navBarHeightPx}px);",
-      div(FileNav("spec", rpcClient)),
+      div(fileNav),
       div(
         cls -> "flex bg-black",
         div(cls -> "flex-none", style -> WvletEditor.editorStyle, monacoEditor),
@@ -46,36 +49,3 @@ class WvletEditor(
     )
 
 end WvletEditor
-
-class FileNav(path: String, rpcClient: RPCAsyncClient) extends RxElement:
-  private val pathComponents: Seq[String] = path.split("\\/")
-
-  override def render: RxElement = nav(
-    cls -> "flex h-4 text-sm text-gray-400",
-    ol(role -> "list", cls -> "flex space-x-4 rounded-md px-1 shadow"),
-    li(
-      cls -> "flex",
-      div(
-        cls -> "flex items-center",
-        a(href -> "#", cls -> "px-1 text-gray-400 hover:text-gray-300", Icon.home(cls -> "size-4"))
-      )
-    ),
-    rpcClient
-      .FileApi
-      .fileList(FileListRequest(path))
-      .map { fileList =>
-        info(fileList)
-        pathComponents.map { p =>
-          li(
-            cls -> "flex",
-            div(
-              cls -> "flex items-center",
-              Icon.slash(cls -> "size-3"),
-              a(href -> "#", cls -> "px-1 text-sm font-medium text-gray-500 hover:text-gray-300", p)
-            )
-          )
-        }
-      }
-  )
-
-end FileNav

@@ -11,17 +11,17 @@ class FileApiImplTest extends AirSpec:
     _.bindImpl[FileApi, FileApiImpl].bindInstance[WorkEnv](WorkEnv("spec/basic"))
 
   test("list files") { (api: FileApi) =>
-    val list = api.fileList(FileApi.FileListRequest(""))
-    debug(list.files.mkString("\n"))
-    list.files shouldNotBe empty
-    list.files.filter(_.isFile).forall(_.name.endsWith(".wv")) shouldBe true
+    val f = api.listFiles(FileApi.FileRequest(""))
+    debug(f.children.mkString("\n"))
+    f.children shouldNotBe empty
+    f.children.filter(_.isFile).forall(_.name.endsWith(".wv")) shouldBe true
 
-    list.files.filter(_.isDirectory) shouldNotBe empty
+    f.children.filter(_.isDirectory) shouldNotBe empty
   }
 
   test("reject invalid path") { (api: FileApi) =>
     val ex = intercept[WvletLangException] {
-      api.fileList(FileApi.FileListRequest("../"))
+      api.listFiles(FileApi.FileRequest("../"))
     }
     ex.statusCode.isUserError shouldBe true
   }
