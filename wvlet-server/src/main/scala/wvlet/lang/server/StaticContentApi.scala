@@ -7,8 +7,8 @@ import java.io.File
 
 class StaticContentApi extends LogSupport:
   private val baseDir = sys.props.getOrElse("prog.home", ".")
-  info(s"current directory: ${new File(".").getAbsolutePath}")
-  info(s"baseDir for static contents: ${baseDir}")
+  trace(s"current directory: ${new File(".").getAbsolutePath}")
+  trace(s"baseDir for static contents: ${baseDir}")
 
   private val content = StaticContent.fromDirectory(s"${baseDir}/web")
 
