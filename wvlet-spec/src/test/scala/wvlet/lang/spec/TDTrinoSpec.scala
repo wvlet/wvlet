@@ -18,7 +18,7 @@ import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.{Compiler, CompilerOptions, WorkEnv}
 import wvlet.lang.runner.QueryExecutor
 import wvlet.lang.runner.connector.trino.{TrinoConfig, TrinoConnector}
-import wvlet.lang.{StatusCode, WvletLangException}
+import wvlet.lang.api.{StatusCode, WvletLangException}
 
 trait TDTrinoSpecRunner(specPath: String) extends AirSpec:
   if inCI then

@@ -16,6 +16,7 @@ package wvlet.lang.compiler.parser
 import wvlet.lang.compiler.{CompilationUnit, SourceFile}
 import wvlet.airspec.AirSpec
 import wvlet.lang.model.plan.ModelDef
+import wvlet.lang.compiler.ContextUtil.*
 
 class WvletParserTest extends AirSpec:
   test("parse"):
@@ -31,10 +32,10 @@ class WvletParserTest extends AirSpec:
     var found = false
     plan.traverseOnce { case m: ModelDef =>
       found = true
-      val startLoc = m.span.nodeLocation
+      val startLoc = unit.nodeLocationAt(m.span)
       startLoc.line shouldBe 1
       startLoc.column shouldBe 1
-      val endLoc = m.span.endNodeLocation
+      val endLoc = unit.endNodeLocationAt(m.span)
       endLoc.line shouldBe 3
       endLoc.column shouldBe 4
     }

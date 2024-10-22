@@ -180,9 +180,9 @@ class WvletScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
 
   private def checkNoTrailingNumberSeparator(): Unit =
     if tokenBuffer.nonEmpty && isNumberSeparator(tokenBuffer.last) then
-      reportError("trailing number separator", source.sourcePositionAt(offset))
+      reportError("trailing number separator", source.sourceLocationAt(offset))
 
-  private def reportError(msg: String, loc: SourcePosition): Unit =
+  private def reportError(msg: String, loc: SourceLocation): Unit =
     if config.reportErrorToken then
       throw StatusCode.UNEXPECTED_TOKEN.newException(msg)
     else
@@ -190,7 +190,7 @@ class WvletScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
 
   private def consume(expectedChar: Char): Unit =
     if ch != expectedChar then
-      reportError(s"expected '${expectedChar}', but found '${ch}'", source.sourcePositionAt(offset))
+      reportError(s"expected '${expectedChar}', but found '${ch}'", source.sourceLocationAt(offset))
     nextChar()
 
   def peekAhead(): Unit =
@@ -442,7 +442,7 @@ class WvletScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
       else
         getRawStringLiteral()
     else if ch == SU then
-      reportError("Unclosed multi-line string literal", source.sourcePositionAt(offset))
+      reportError("Unclosed multi-line string literal", source.sourceLocationAt(offset))
     else
       putChar(ch)
       nextRawChar()
@@ -494,7 +494,7 @@ class WvletScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
       case SU =>
         reportError(
           s"unexpected end of file in string interpolation",
-          source.sourcePositionAt(offset)
+          source.sourceLocationAt(offset)
         )
       case _ =>
         putChar(ch)
@@ -639,7 +639,7 @@ class WvletScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
       case SU =>
         reportError(
           s"unexpected end of file in string interpolation",
-          source.sourcePositionAt(offset)
+          source.sourceLocationAt(offset)
         )
       case _ =>
         putChar(ch)
