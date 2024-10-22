@@ -33,9 +33,9 @@ import wvlet.lang.model.DataType.{
 import wvlet.lang.model.expr.NameExpr.EmptyName
 import wvlet.airframe.json.JSON
 import wvlet.airframe.ulid.ULID
-import wvlet.lang.StatusCode
-import wvlet.lang.compiler.parser.Span
-import wvlet.lang.compiler.parser.Span.NoSpan
+import wvlet.lang.api.StatusCode
+import wvlet.lang.api.Span
+import wvlet.lang.api.Span.NoSpan
 import wvlet.log.LogSupport
 
 import scala.collection.immutable.ListMap

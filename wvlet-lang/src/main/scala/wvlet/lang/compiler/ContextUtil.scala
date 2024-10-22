@@ -1,7 +1,6 @@
 package wvlet.lang.compiler
 
-import wvlet.lang.compiler.parser.Span
-import wvlet.lang.model.NodeLocation
+import wvlet.lang.api.{SourceLocation, Span, NodeLocation}
 
 object ContextUtil:
 
@@ -9,7 +8,7 @@ object ContextUtil:
     def nodeLocationOf(span: Span): NodeLocation =
       if span.isEmpty then
         NodeLocation.NoLocation
-      else 
+      else
         val src  = ctx.compilationUnit.sourceFile
         val line = src.offsetToLine(span.start)
         val pos  = src.offsetToColumn(span.start)
@@ -21,13 +20,12 @@ object ContextUtil:
       val pos  = src.offsetToColumn(span.end)
       NodeLocation(line + 1, pos)
 
-    def sourceLocationAt(span: Span): SourceLocation =
-      sourceLocationAt(nodeLocationOf(span))
+    def sourceLocationAt(span: Span): SourceLocation = sourceLocationAt(nodeLocationOf(span))
 
     def sourceLocationAt(nodeLocation: NodeLocation): SourceLocation =
       val cu = ctx.compilationUnit
       cu.toSourceLocation(nodeLocation)
-  
+
   extension (cu: CompilationUnit)
     def sourceLocationAt(span: Span): SourceLocation = sourceLocationAt(nodeLocationAt(span))
     def sourceLocationAt(nodeLocation: NodeLocation): SourceLocation = cu

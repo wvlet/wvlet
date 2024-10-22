@@ -13,7 +13,7 @@
  */
 package wvlet.lang.compiler.parser
 
-import wvlet.lang.{StatusCode, WvletLangException}
+import wvlet.lang.api.{NodeLocation, SourceLocation, Span, StatusCode, WvletLangException}
 import wvlet.lang.compiler.parser.WvletScanner.{
   InBackquoteString,
   InBraces,
@@ -22,9 +22,8 @@ import wvlet.lang.compiler.parser.WvletScanner.{
   Region
 }
 import wvlet.lang.compiler.parser.WvletToken.{LF, SU}
-import wvlet.lang.compiler.{CompilationUnit, SourceFile, SourceLocation}
+import wvlet.lang.compiler.{CompilationUnit, SourceFile}
 import wvlet.lang.compiler.ContextUtil.*
-import wvlet.lang.model.NodeLocation
 import wvlet.log.LogSupport
 
 import java.io.ObjectInputFilter.Status

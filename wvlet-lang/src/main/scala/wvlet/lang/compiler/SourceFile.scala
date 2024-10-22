@@ -13,7 +13,8 @@
  */
 package wvlet.lang.compiler
 
-import wvlet.lang.compiler.parser.{SourcePosition, Span, WvletScanner, WvletToken}
+import wvlet.lang.api.{Span}
+import wvlet.lang.compiler.parser.{SourcePosition, WvletScanner, WvletToken}
 import wvlet.lang.compiler.parser.WvletToken.*
 import wvlet.airframe.ulid.ULID
 import wvlet.log.io.IOUtil

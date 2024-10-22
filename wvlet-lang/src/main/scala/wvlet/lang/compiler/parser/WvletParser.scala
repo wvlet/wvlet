@@ -13,9 +13,9 @@
  */
 package wvlet.lang.compiler.parser
 
-import wvlet.lang.StatusCode
+import wvlet.lang.api.{StatusCode, Span}
+import wvlet.lang.api.Span.NoSpan
 import wvlet.lang.catalog.Catalog.TableName
-import wvlet.lang.compiler.parser.Span.NoSpan
 import wvlet.lang.compiler.{CompilationUnit, Name, SourceFile}
 import wvlet.lang.model.DataType.*
 import wvlet.lang.model.expr.*

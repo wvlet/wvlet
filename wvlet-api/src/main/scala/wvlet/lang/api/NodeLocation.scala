@@ -11,13 +11,28 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package wvlet.lang
+package wvlet.lang.api
 
-import wvlet.lang.compiler.SourceLocation
+case class NodeLocation(
+    // 1-origin line number
+    line: Int,
+    // column position in the line (1-origin)
+    column: Int
+):
+  override def toString: String =
+    if isEmpty then
+      "?:?"
+    else
+      s"$line:$column"
 
-class WvletLangException(
-    val statusCode: StatusCode,
-    message: String,
-    sourceLocation: Option[SourceLocation] = None,
-    cause: Throwable = null
-) extends Exception(message, cause)
+  def isEmpty: Boolean  = line < 0
+  def nonEmpty: Boolean = !isEmpty
+
+  def map[U](f: NodeLocation => U): Option[U] =
+    if isEmpty then
+      None
+    else
+      Some(f(this))
+
+object NodeLocation:
+  val NoLocation: NodeLocation = NodeLocation(-1, 0)

@@ -13,8 +13,9 @@
  */
 package wvlet.lang.model
 
-import wvlet.lang.compiler.parser.Span
-import wvlet.lang.compiler.{CompilationUnit, Context, SourceFile, SourceLocation, Symbol}
+import wvlet.lang.api.SourceLocation
+import wvlet.lang.api.Span
+import wvlet.lang.compiler.{CompilationUnit, Context, SourceFile, Symbol}
 import wvlet.lang.compiler.ContextUtil.*
 
 /**

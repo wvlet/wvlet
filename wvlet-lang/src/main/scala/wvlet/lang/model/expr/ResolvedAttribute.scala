@@ -14,9 +14,9 @@
 package wvlet.lang.model.expr
 
 import wvlet.lang.catalog.Catalog
-import wvlet.lang.compiler.parser.Span
+import wvlet.lang.api.{NodeLocation, Span}
 import wvlet.lang.compiler.{Name, TermName}
-import wvlet.lang.model.{DataType, NodeLocation}
+import wvlet.lang.model.DataType
 import wvlet.lang.model.plan.*
 import wvlet.log.LogSupport
 

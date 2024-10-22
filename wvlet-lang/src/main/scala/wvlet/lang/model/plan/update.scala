@@ -1,10 +1,10 @@
 package wvlet.lang.model.plan
 
-import wvlet.lang.compiler.parser.Span
+import wvlet.lang.api.{NodeLocation, Span}
 import wvlet.lang.model.DataType.EmptyRelationType
 import wvlet.lang.model.expr.{Expression, Identifier, NameExpr, QualifiedName}
 import wvlet.lang.model.plan.{DDL, HasRefName, LeafPlan, LogicalPlan, Relation, UnaryRelation}
-import wvlet.lang.model.{NodeLocation, RelationType}
+import wvlet.lang.model.RelationType
 
 /**
   * A base trait for all update operations (e.g., add/delete the table contents).

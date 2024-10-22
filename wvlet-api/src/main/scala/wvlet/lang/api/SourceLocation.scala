@@ -11,11 +11,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package wvlet.lang.compiler.parser
+package wvlet.lang.api
 
-import wvlet.lang.api.Span
-import wvlet.lang.compiler.SourceFile
+case class SourceLocation(
+    path: String,
+    fileName: String,
+    codeLineAt: String,
+    nodeLocation: NodeLocation
+):
 
-case class SourcePosition(source: SourceFile, span: Span):
-  def line: Int   = source.offsetToLine(span.point)
-  def column: Int = source.offsetToColumn(span.point)
+  def locationString: String =
+    if nodeLocation.isEmpty then
+      path
+    else
+      s"${fileName}:${nodeLocation.line}:${nodeLocation.column}"

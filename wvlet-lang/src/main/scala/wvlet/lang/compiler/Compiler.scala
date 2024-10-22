@@ -13,8 +13,7 @@
  */
 package wvlet.lang.compiler
 
-import wvlet.lang.StatusCode.SYNTAX_ERROR
-import wvlet.lang.{StatusCode, WvletLangException}
+import wvlet.lang.api.{StatusCode, WvletLangException}
 import wvlet.lang.catalog.Catalog
 import wvlet.lang.compiler.Compiler.presetLibraries
 import wvlet.lang.compiler.analyzer.{RemoveUnusedQueries, SymbolLabeler, TypeResolver}

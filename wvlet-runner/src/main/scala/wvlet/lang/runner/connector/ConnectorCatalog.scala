@@ -14,7 +14,7 @@
 package wvlet.lang.runner.connector
 
 import com.github.benmanes.caffeine.cache.{CacheLoader, Caffeine}
-import wvlet.lang.StatusCode
+import wvlet.lang.api.StatusCode
 import wvlet.lang.catalog.Catalog.TableName
 import wvlet.lang.catalog.{Catalog, SQLFunction}
 import wvlet.lang.compiler.DBType

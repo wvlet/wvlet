@@ -11,11 +11,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package wvlet.lang
-
-import wvlet.lang.compiler.parser.Span
-import wvlet.lang.compiler.{Context, SourceLocation}
-import wvlet.lang.model.NodeLocation
+package wvlet.lang.api
 
 enum StatusType:
   case Success

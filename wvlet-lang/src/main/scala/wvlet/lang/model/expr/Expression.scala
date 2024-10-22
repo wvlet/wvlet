@@ -13,13 +13,12 @@
  */
 package wvlet.lang.model.expr
 
-import wvlet.lang.StatusCode
+import wvlet.airframe.surface.reflect.ReflectTypeUtil
+import wvlet.lang.api.Span.NoSpan
+import wvlet.lang.api.{Span, StatusCode}
 import wvlet.lang.model.*
 import wvlet.lang.model.DataType.*
 import wvlet.lang.model.plan.{LogicalPlan, LogicalPlanPrinter}
-import wvlet.airframe.surface.reflect.ReflectTypeUtil
-import wvlet.lang.compiler.parser.Span
-import wvlet.lang.compiler.parser.Span.NoSpan
 import wvlet.log.LogSupport
 
 /**

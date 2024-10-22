@@ -16,6 +16,7 @@ package wvlet.lang.model.plan
 import wvlet.lang.model.DataType.EmptyRelationType
 import wvlet.lang.model.{DataType, RelationType}
 import wvlet.lang.model.expr.*
+import wvlet.lang.api.Span
 import wvlet.log.LogSupport
 
 import java.io.{PrintWriter, StringWriter}

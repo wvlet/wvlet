@@ -13,10 +13,9 @@
  */
 package wvlet.lang.compiler
 
+import wvlet.lang.api.{NodeLocation, SourceLocation, Span}
 import wvlet.lang.compiler
 import wvlet.lang.compiler.SourceFile.NoSourceFile
-import wvlet.lang.compiler.parser.Span
-import wvlet.lang.model.NodeLocation
 import wvlet.lang.model.plan.{ExecutionPlan, LogicalPlan, NamedRelation, Relation}
 import wvlet.log.LogSupport
 import wvlet.log.io.{IOUtil, Resource}

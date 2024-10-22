@@ -13,7 +13,7 @@
  */
 package wvlet.lang.compiler.analyzer
 
-import wvlet.lang.StatusCode
+import wvlet.lang.api.StatusCode
 import wvlet.lang.catalog.Catalog.TableName
 import wvlet.lang.compiler.RewriteRule.PlanRewriter
 import wvlet.lang.compiler.{

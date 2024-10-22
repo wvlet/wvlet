@@ -11,20 +11,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package wvlet.lang.compiler
+package wvlet.lang.api
 
-import wvlet.lang.compiler.CompilationUnit
-import wvlet.lang.model.NodeLocation
-
-case class SourceLocation(
-    path: String,
-    fileName: String,
-    codeLineAt: String,
-    nodeLocation: NodeLocation
-):
-
-  def locationString: String =
-    if nodeLocation.isEmpty then
-      path
-    else
-      s"${fileName}:${nodeLocation.line}:${nodeLocation.column}"
+class WvletLangException(
+    val statusCode: StatusCode,
+    message: String,
+    sourceLocation: Option[SourceLocation] = None,
+    cause: Throwable = null
+) extends Exception(message, cause)
