@@ -13,7 +13,8 @@
  */
 package wvlet.lang.model.expr
 
-import wvlet.lang.compiler.parser.Span
+import wvlet.lang.api.{Span, NodeLocation}
+import wvlet.lang.api.Span.NoSpan
 import wvlet.lang.compiler.{Name, TermName, TypeName}
 import wvlet.lang.model.DataType.{
   AnyType,
@@ -22,10 +23,9 @@ import wvlet.lang.model.DataType.{
   TimestampField,
   TypeVariable
 }
-import wvlet.lang.compiler.parser.Span.NoSpan
 import wvlet.lang.model.expr.BinaryExprType.DivideInt
 import wvlet.lang.model.expr.NameExpr.sqlKeywords
-import wvlet.lang.model.{DataType, NodeLocation}
+import wvlet.lang.model.DataType
 import wvlet.lang.model.plan.*
 
 import java.util.Locale

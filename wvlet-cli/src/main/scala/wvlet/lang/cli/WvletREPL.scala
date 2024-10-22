@@ -23,7 +23,7 @@ import org.jline.utils.{AttributedString, AttributedStringBuilder, AttributedSty
 import wvlet.airframe.*
 import wvlet.airframe.control.{Shell, ThreadUtil}
 import wvlet.airframe.log.AnsiColorPalette
-import wvlet.lang.WvletLangException
+import wvlet.lang.api.WvletLangException
 import wvlet.lang.compiler.parser.*
 import wvlet.lang.compiler.{CompilationUnit, SourceFile, WorkEnv}
 import wvlet.lang.model.plan.QueryStatement

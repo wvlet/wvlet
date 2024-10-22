@@ -11,21 +11,28 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package wvlet.lang.compiler
+package wvlet.lang.api
 
-import wvlet.lang.compiler.CompilationUnit
-import wvlet.lang.model.NodeLocation
-
-case class SourceLocation(compileUnit: CompilationUnit, nodeLocation: NodeLocation):
-  def codeLineAt: String = nodeLocation
-    .map { loc =>
-      val line = compileUnit.sourceFile.sourceLine(loc.line)
-      line
-    }
-    .getOrElse("")
-
-  def locationString: String =
-    if nodeLocation.isEmpty then
-      compileUnit.sourceFile.relativeFilePath
+case class NodeLocation(
+    // 1-origin line number
+    line: Int,
+    // column position in the line (1-origin)
+    column: Int
+):
+  override def toString: String =
+    if isEmpty then
+      "?:?"
     else
-      s"${compileUnit.sourceFile.fileName}:${nodeLocation.line}:${nodeLocation.column}"
+      s"$line:$column"
+
+  def isEmpty: Boolean  = line < 0
+  def nonEmpty: Boolean = !isEmpty
+
+  def map[U](f: NodeLocation => U): Option[U] =
+    if isEmpty then
+      None
+    else
+      Some(f(this))
+
+object NodeLocation:
+  val NoLocation: NodeLocation = NodeLocation(-1, 0)

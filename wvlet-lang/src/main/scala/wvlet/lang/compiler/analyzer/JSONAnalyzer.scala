@@ -13,7 +13,7 @@
  */
 package wvlet.lang.compiler.analyzer
 
-import wvlet.lang.StatusCode
+import wvlet.lang.api.StatusCode
 import wvlet.lang.compiler.{Context, Name}
 import wvlet.lang.model.DataType.{EmptyRelationType, NamedType, RecordType, SchemaType}
 import wvlet.lang.model.{DataType, RelationType}

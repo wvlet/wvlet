@@ -13,7 +13,7 @@
  */
 package wvlet.lang.compiler
 
-import wvlet.lang.StatusCode
+import wvlet.lang.api.StatusCode
 import wvlet.lang.catalog.{Catalog, InMemoryCatalog}
 import wvlet.lang.model.expr.{NameExpr, UnquotedIdentifier}
 import wvlet.lang.model.plan.Import

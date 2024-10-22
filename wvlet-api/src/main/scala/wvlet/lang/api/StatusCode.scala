@@ -11,11 +11,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package wvlet.lang
-
-import wvlet.lang.compiler.parser.Span
-import wvlet.lang.compiler.{Context, SourceLocation}
-import wvlet.lang.model.NodeLocation
+package wvlet.lang.api
 
 enum StatusType:
   case Success
@@ -50,12 +46,6 @@ enum StatusCode(statusType: StatusType):
         s"${baseMsg}\n${line} (${locString})\n${" " * (column - 1)}^\n"
 
     WvletLangException(this, err, Some(sourceLocation))
-
-  def newException(msg: String, span: Span)(using ctx: Context): WvletLangException =
-    if span.isEmpty then
-      newException(msg)
-    else
-      newException(msg, span.sourceLocation)
 
   case OK extends StatusCode(StatusType.Success)
 

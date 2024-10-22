@@ -13,7 +13,7 @@
  */
 package wvlet.lang.runner.connector.duckdb
 
-import wvlet.lang.StatusCode
+import wvlet.lang.api.StatusCode
 import wvlet.lang.catalog.SQLFunction
 import wvlet.lang.catalog.SQLFunction.FunctionType
 import wvlet.lang.compiler.DBType.DuckDB

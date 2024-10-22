@@ -14,9 +14,9 @@
 package wvlet.lang.model.plan
 
 import wvlet.lang.compiler.TermName
-import wvlet.lang.compiler.parser.Span
+import wvlet.lang.api.{NodeLocation, Span, StatusCode}
 import wvlet.lang.model.DataType.EmptyRelationType
-import wvlet.lang.model.{NodeLocation, RelationType}
+import wvlet.lang.model.RelationType
 import wvlet.lang.model.expr.*
 
 /*

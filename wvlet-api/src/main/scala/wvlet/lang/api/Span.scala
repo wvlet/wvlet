@@ -11,10 +11,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package wvlet.lang.compiler.parser
-
-import wvlet.lang.compiler.{Context, CompilationUnit, SourceLocation}
-import wvlet.lang.model.NodeLocation
+package wvlet.lang.api
 
 /**
   * Span is a range between start and end offset, and a point.
@@ -41,22 +38,6 @@ class Span(val coordinate: Long) extends AnyVal:
       Some(f(this))
     else
       None
-
-  def sourceLocation(using ctx: Context): SourceLocation =
-    val cu = ctx.compilationUnit
-    SourceLocation(cu, nodeLocation(using cu))
-
-  def nodeLocation(using unit: CompilationUnit): NodeLocation =
-    val src  = unit.sourceFile
-    val line = src.offsetToLine(start)
-    val pos  = src.offsetToColumn(start)
-    NodeLocation(line + 1, pos)
-
-  def endNodeLocation(using unit: CompilationUnit): NodeLocation =
-    val src  = unit.sourceFile
-    val line = src.offsetToLine(end)
-    val pos  = src.offsetToColumn(end)
-    NodeLocation(line + 1, pos)
 
   /**
     * Is this span different from NoSpan?

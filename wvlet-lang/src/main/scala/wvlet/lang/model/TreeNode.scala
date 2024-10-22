@@ -13,8 +13,10 @@
  */
 package wvlet.lang.model
 
-import wvlet.lang.compiler.parser.Span
-import wvlet.lang.compiler.{CompilationUnit, Context, SourceFile, SourceLocation, Symbol}
+import wvlet.lang.api.SourceLocation
+import wvlet.lang.api.Span
+import wvlet.lang.compiler.{CompilationUnit, Context, SourceFile, Symbol}
+import wvlet.lang.compiler.ContextUtil.*
 
 /**
   * A base class for LogicalPlan and Expression
@@ -31,11 +33,9 @@ trait TreeNode:
     *   the code location in the SQL text if available
     */
   def span: Span
-  def sourceLocation(using ctx: Context): SourceLocation = span.sourceLocation
+  def sourceLocation(using ctx: Context): SourceLocation = ctx.sourceLocationAt(span)
 
-  def sourceLocationOfCompilationUnit(using cu: CompilationUnit): SourceLocation = SourceLocation(
-    cu,
-    span.nodeLocation
-  )
+  def sourceLocationOfCompilationUnit(using cu: CompilationUnit): SourceLocation = cu
+    .sourceLocationAt(span)
 
   def locationString(using ctx: Context): String = sourceLocation(using ctx).locationString

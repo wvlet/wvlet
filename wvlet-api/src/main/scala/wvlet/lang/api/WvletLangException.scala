@@ -11,10 +11,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package wvlet.lang.compiler.parser
+package wvlet.lang.api
 
-import wvlet.lang.compiler.SourceFile
-
-case class SourcePosition(source: SourceFile, span: Span):
-  def line: Int   = source.offsetToLine(span.point)
-  def column: Int = source.offsetToColumn(span.point)
+class WvletLangException(
+    val statusCode: StatusCode,
+    message: String,
+    sourceLocation: Option[SourceLocation] = None,
+    cause: Throwable = null
+) extends Exception(message, cause)

@@ -1,7 +1,7 @@
 package wvlet.lang.ext
 
 import wvlet.airframe.ulid.ULID
-import wvlet.lang.StatusCode
+import wvlet.lang.api.StatusCode
 
 object NativeFunction:
 

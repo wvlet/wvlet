@@ -13,7 +13,7 @@
  */
 package wvlet.lang.catalog
 
-import wvlet.lang.StatusCode
+import wvlet.lang.api.StatusCode
 import wvlet.lang.catalog.Catalog.CreateMode
 import wvlet.lang.compiler.DBType
 

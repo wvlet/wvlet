@@ -15,7 +15,7 @@ package wvlet.lang.runner
 
 import org.jline.terminal.Terminal
 import wvlet.airframe.control.{Control, Shell}
-import wvlet.lang.WvletLangException
+import wvlet.lang.api.WvletLangException
 import wvlet.lang.compiler.*
 import wvlet.lang.runner.*
 import wvlet.log.{LogRotationHandler, LogSupport, Logger}

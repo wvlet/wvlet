@@ -14,11 +14,11 @@
 package wvlet.lang.model.expr
 
 import wvlet.lang.model.DataType.{EmbeddedRecordType, NamedType}
-import wvlet.lang.model.{DataType, NodeLocation}
+import wvlet.lang.model.DataType
 import wvlet.lang.compiler.Name
 import wvlet.airframe.ulid.ULID
-import wvlet.lang.compiler.parser.Span
-import wvlet.lang.compiler.parser.Span.NoSpan
+import wvlet.lang.api.{NodeLocation, Span}
+import wvlet.lang.api.Span.NoSpan
 import wvlet.log.LogSupport
 
 /**

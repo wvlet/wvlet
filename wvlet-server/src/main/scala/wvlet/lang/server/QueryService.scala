@@ -2,7 +2,7 @@ package wvlet.lang.server
 
 import wvlet.airframe.control.ThreadUtil
 import wvlet.airframe.ulid.ULID
-import wvlet.lang.{StatusCode, WvletLangException}
+import wvlet.lang.api.{StatusCode, WvletLangException}
 import wvlet.lang.api.v1.frontend.FrontendApi.{QueryInfoRequest, QueryRequest, QueryResponse}
 import wvlet.lang.api.v1.query.{QueryError, QueryInfo, QueryResult, QueryStatus}
 import wvlet.lang.api.v1.query.QueryStatus.{QUEUED, RUNNING}

@@ -27,7 +27,7 @@ import wvlet.lang.model.DataType.{NamedType, SchemaType, UnresolvedType}
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
 import wvlet.lang.runner.connector.DBConnector
-import wvlet.lang.{StatusCode, WvletLangException}
+import wvlet.lang.api.{StatusCode, WvletLangException}
 import wvlet.log.{LogLevel, LogSupport}
 
 import java.io.File

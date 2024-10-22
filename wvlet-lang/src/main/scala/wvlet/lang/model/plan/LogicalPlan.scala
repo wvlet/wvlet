@@ -17,11 +17,11 @@ import wvlet.lang.compiler.{Name, SourceFile}
 import wvlet.lang.model.DataType.EmptyRelationType
 import wvlet.lang.model.expr.NameExpr.EmptyName
 import wvlet.lang.model.expr.{Attribute, AttributeList, Expression, NameExpr}
-import wvlet.lang.model.{NodeLocation, RelationType, RelationTypeList, TreeNode}
+import wvlet.lang.model.{RelationType, RelationTypeList, TreeNode}
 import wvlet.airframe.ulid.ULID
-import wvlet.lang.StatusCode
-import wvlet.lang.compiler.parser.Span
-import wvlet.lang.compiler.parser.Span.NoSpan
+import wvlet.lang.api.StatusCode
+import wvlet.lang.api.{NodeLocation, Span}
+import wvlet.lang.api.Span.NoSpan
 
 enum PlanProperty:
   // Used for recording a Symbol defined for the tree

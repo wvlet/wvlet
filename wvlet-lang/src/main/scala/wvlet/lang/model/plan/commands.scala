@@ -1,6 +1,6 @@
 package wvlet.lang.model.plan
 
-import wvlet.lang.compiler.parser.Span
+import wvlet.lang.api.Span
 import wvlet.lang.model.DataType.EmptyRelationType
 import wvlet.lang.model.RelationType
 import wvlet.lang.model.expr.{Expression, NameExpr}

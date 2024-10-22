@@ -13,7 +13,7 @@
  */
 package wvlet.lang.compiler
 
-import wvlet.lang.StatusCode
+import wvlet.lang.api.StatusCode
 import wvlet.log.LogSupport
 
 object Scope:

@@ -15,7 +15,7 @@ package wvlet.lang.catalog
 
 import wvlet.log.LogSupport
 import wvlet.lang.model.expr.*
-import wvlet.lang.StatusCode
+import wvlet.lang.api.StatusCode
 import wvlet.lang.model.DataType
 import Catalog.*
 import wvlet.lang.model.DataType.{NamedType, SchemaType}

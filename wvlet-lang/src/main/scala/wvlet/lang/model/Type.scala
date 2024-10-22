@@ -13,7 +13,7 @@
  */
 package wvlet.lang.model
 
-import wvlet.lang.StatusCode
+import wvlet.lang.api.StatusCode
 import wvlet.lang.compiler.{Name, TypeName}
 import wvlet.lang.model.DataType.{NamedType, TypeParameter}
 import wvlet.lang.model.expr.Expression

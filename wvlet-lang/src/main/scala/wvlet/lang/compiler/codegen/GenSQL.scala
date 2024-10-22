@@ -29,8 +29,8 @@ import wvlet.lang.compiler.DBType.{DuckDB, Trino}
 import wvlet.lang.compiler.analyzer.TypeResolver
 import wvlet.lang.compiler.transform.{ExpressionEvaluator, PreprocessLocalExpr}
 import wvlet.lang.ext.NativeFunction
-import wvlet.lang.model.NodeLocation
-import wvlet.lang.compiler.parser.Span.NoSpan
+import wvlet.lang.api.NodeLocation
+import wvlet.lang.api.Span.NoSpan
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
 import wvlet.lang.model.plan.JoinType.*

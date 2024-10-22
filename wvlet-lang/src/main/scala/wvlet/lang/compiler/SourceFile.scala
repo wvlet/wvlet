@@ -13,7 +13,8 @@
  */
 package wvlet.lang.compiler
 
-import wvlet.lang.compiler.parser.{SourcePosition, Span, WvletScanner, WvletToken}
+import wvlet.lang.api.{NodeLocation, SourceLocation, Span}
+import wvlet.lang.compiler.parser.{WvletScanner, WvletToken}
 import wvlet.lang.compiler.parser.WvletToken.*
 import wvlet.airframe.ulid.ULID
 import wvlet.log.io.IOUtil
@@ -94,7 +95,15 @@ class SourceFile(val file: VirtualFile):
     else
       -idx - 2
 
-  def sourcePositionAt(offset: Int): SourcePosition = SourcePosition(this, Span.at(offset))
+  def sourceLocationAt(offset: Int): SourceLocation =
+    val line   = offsetToLine(offset)
+    val codeAt = sourceLine(line)
+    SourceLocation(
+      relativeFilePath,
+      fileName,
+      codeAt,
+      NodeLocation(line + 1, offsetToColumn(offset))
+    )
 
   /**
     * 0-origin line index

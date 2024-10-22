@@ -13,10 +13,9 @@
  */
 package wvlet.lang.compiler
 
+import wvlet.lang.api.{NodeLocation, SourceLocation, Span}
 import wvlet.lang.compiler
 import wvlet.lang.compiler.SourceFile.NoSourceFile
-import wvlet.lang.compiler.parser.Span
-import wvlet.lang.model.NodeLocation
 import wvlet.lang.model.plan.{ExecutionPlan, LogicalPlan, NamedRelation, Relation}
 import wvlet.log.LogSupport
 import wvlet.log.io.{IOUtil, Resource}
@@ -69,7 +68,15 @@ case class CompilationUnit(sourceFile: SourceFile, isPreset: Boolean = false) ex
 
   def enter(symbol: Symbol): Unit = knownSymbols = symbol :: knownSymbols
 
-  def toSourceLocation(nodeLocation: NodeLocation) = SourceLocation(this, nodeLocation)
+  def toSourceLocation(nodeLocation: NodeLocation) =
+    val codeLineAt: String = nodeLocation
+      .map { loc =>
+        val line = sourceFile.sourceLine(loc.line)
+        line
+      }
+      .getOrElse("")
+
+    SourceLocation(sourceFile.relativeFilePath, sourceFile.fileName, codeLineAt, nodeLocation)
 
   def findRelationRef(name: String): Option[LogicalPlan] =
     var result: Option[Relation] = None
