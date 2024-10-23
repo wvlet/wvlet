@@ -12,8 +12,8 @@ import wvlet.lang.api.v1.io.FileEntry
 import wvlet.lang.ui.component.{Icon, MainFrame}
 
 object WvletEditor:
-  val editorWidthRem: Int  = 32 // rem (chars)
-  val editorHeightRem: Int = 24 // rem (lines)
+  val editorWidthRem: Int  = 40 // rem (chars)
+  val editorHeightRem: Int = 28 // rem (lines)
   def editorStyle =
     s"min-width: ${editorWidthRem}rem; max-width: ${editorWidthRem}rem; min-height: ${editorHeightRem}rem;"
 

@@ -21,14 +21,12 @@ case class FileEntry(
       path.stripSuffix(s"/${name}")
 
   override def compare(that: FileEntry): Int =
-  {
     if isDirectory && !that.isDirectory then
       -1
     else if !isDirectory && that.isDirectory then
       1
     else
       name.compareTo(that.name)
-  }
 
 object FileEntry:
   def validateRelativePath(path: String): Unit =

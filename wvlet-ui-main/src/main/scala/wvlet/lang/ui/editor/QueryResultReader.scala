@@ -43,7 +43,7 @@ class QueryResultReader(rpcClient: RPCAsyncClient) extends LogSupport:
     }
     rx.run { _ =>
       val queryInfo = lst.result()
-      info(queryInfo)
+      trace(queryInfo)
       queryInfo
         .lastOption
         .flatMap(_.error)

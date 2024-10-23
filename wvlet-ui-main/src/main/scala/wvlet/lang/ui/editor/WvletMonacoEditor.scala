@@ -11,8 +11,13 @@ import typings.monacoEditor.mod.editor.{
   ITextModel
 }
 import typings.monacoEditor.mod.languages.*
+import typings.monacoEditor.monacoEditorStrings
+import wvlet.airframe.rx.{Cancelable, Rx}
 import wvlet.airframe.rx.html.RxElement
 import wvlet.airframe.rx.html.all.*
+import wvlet.lang.api.v1.frontend.FileApi.FileRequest
+import wvlet.lang.api.v1.frontend.FrontendRPC.RPCAsyncClient
+import wvlet.lang.ui.component.GlobalState
 
 import scala.scalajs.js
 import scala.scalajs.js.Promise
@@ -44,7 +49,8 @@ object WvletMonacoEditor:
 
 end WvletMonacoEditor
 
-class WvletMonacoEditor(queryResultReader: QueryResultReader) extends RxElement:
+class WvletMonacoEditor(rpcClient: RPCAsyncClient, queryResultReader: QueryResultReader)
+    extends RxElement:
   import WvletMonacoEditor.*
 
   private def editorTheme: editor.IStandaloneThemeData =
@@ -67,6 +73,12 @@ class WvletMonacoEditor(queryResultReader: QueryResultReader) extends RxElement:
     theme
 
   private var textEditor: IStandaloneCodeEditor = null
+
+  private val sampleText =
+    """-- Enter a query
+      |from lineitem
+      |where l_quantity > 10.0
+      |limit 10""".stripMargin
 
   private def monacoEditorOptions: editor.IStandaloneEditorConstructionOptions =
     val languageId = "wvlet"
@@ -96,12 +108,6 @@ class WvletMonacoEditor(queryResultReader: QueryResultReader) extends RxElement:
     val minimapOptions = editor.IEditorMinimapOptions()
     minimapOptions.enabled = false
 
-    val sampleText =
-      """-- Enter a query
-         |from lineitem
-         |where l_quantity > 10.0
-         |limit 10""".stripMargin
-
     val editorOptions = editor.IStandaloneEditorConstructionOptions()
     editorOptions
       .setValue(sampleText)
@@ -110,6 +116,8 @@ class WvletMonacoEditor(queryResultReader: QueryResultReader) extends RxElement:
       .setTheme("vs-wvlet")
       // minimap options
       .setMinimap(minimapOptions)
+      // Hide horizontal scrollbar as it's annoying
+      .setScrollbar(editor.IEditorScrollbarOptions().setHorizontal(monacoEditorStrings.hidden))
       .setBracketPairColorization(
         new:
           val enables = true
@@ -206,6 +214,25 @@ class WvletMonacoEditor(queryResultReader: QueryResultReader) extends RxElement:
   def getTextValue: String = textEditor.getValue()
 
   override def onMount: Unit = buildEditor
+
+  private var editorTextReloadMonitor = Cancelable.empty
+
+  override def beforeRender: Unit =
+    val rx = GlobalState
+      .selectedPath
+      .flatMap { path =>
+        rpcClient
+          .FileApi
+          .readFile(FileRequest(path))
+          .map { file =>
+            if file.isFile && file.content.isDefined then
+              textEditor.setValue(file.content.get)
+          }
+      }
+    editorTextReloadMonitor.cancel
+    editorTextReloadMonitor = rx.run()
+
+  override def beforeUnmount: Unit = editorTextReloadMonitor.cancel
 
   override def render = div(
     cls -> "pl-0 pr-2",

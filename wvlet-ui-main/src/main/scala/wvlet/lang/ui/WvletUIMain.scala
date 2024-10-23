@@ -38,7 +38,6 @@ object WvletUIMain extends LogSupport:
     .map { status =>
       info(s"Connected to the server: ${status}")
       val frame = MainFrame()
-      
 
       // Let Airframe DI design build UI components for WvletEditor
       val editor = design.newSession.build[WvletEditor]
