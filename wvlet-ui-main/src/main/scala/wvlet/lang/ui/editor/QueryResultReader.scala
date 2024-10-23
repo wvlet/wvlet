@@ -44,6 +44,8 @@ class QueryResultReader(rpcClient: RPCAsyncClient) extends LogSupport:
     rx.run { _ =>
       val queryInfo = lst.result()
       trace(queryInfo)
+
+      // Show error message if exists
       queryInfo
         .lastOption
         .flatMap(_.error)
@@ -51,9 +53,11 @@ class QueryResultReader(rpcClient: RPCAsyncClient) extends LogSupport:
           ConsoleLog.writeError(s"Query failed: ${err.message}")
         }
 
+      // Show query result preview if exists
       queryInfo
         .lastOption
-        .flatMap(_.preview)
+        .flatMap(x => x.preview)
+        .filter(_.trim.nonEmpty)
         .foreach { preview =>
           PreviewWindow.previewResult := preview
         }

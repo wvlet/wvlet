@@ -166,8 +166,20 @@ class WvletMonacoEditor(rpcClient: RPCAsyncClient, queryResultReader: QueryResul
 
     {
       val acc = IActionDescriptor(
+        id = "command-palette",
+        label = "Command Palette",
+        run =
+          (editor: ICodeEditor, args: Any) =>
+            editor.trigger("Command Palette", "editor.action.quickCommand", js.Object)
+      )
+      acc.keybindings = js.Array(KeyMod.CtrlCmd.toInt | KeyCode.KeyJ.toInt)
+      textEditor.addAction(acc)
+    }
+
+    {
+      val acc = IActionDescriptor(
         id = "run-query",
-        label = "run query",
+        label = "Run query",
         run = (editor: ICodeEditor, args: Any) => runQuery
       )
       acc.keybindings = js.Array(
@@ -182,15 +194,11 @@ class WvletMonacoEditor(rpcClient: RPCAsyncClient, queryResultReader: QueryResul
     {
       val acc = IActionDescriptor(
         id = "test-query",
-        label = "test query",
+        label = "Test query",
         run = (editor: ICodeEditor, args: Any) => testRunQuery()
       )
-      acc.keybindings = js.Array(
-        KeyMod.chord(
-          KeyMod.WinCtrl.toInt | KeyCode.KeyJ.toInt,
-          KeyMod.WinCtrl.toInt | KeyCode.KeyT.toInt
-        )
-      )
+      acc.keybindings = js
+        .Array(KeyMod.chord(KeyMod.WinCtrl.toInt | KeyCode.KeyJ.toInt, KeyCode.KeyT.toInt))
       textEditor.addAction(acc)
     }
 

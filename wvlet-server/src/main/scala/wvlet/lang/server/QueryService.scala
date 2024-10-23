@@ -73,7 +73,6 @@ class QueryService(scriptRunner: WvletScriptRunner) extends LogSupport with Auto
             e.statusCode
           case _ =>
             StatusCode.NON_RETRYABLE_INTERNAL_ERROR
-
       queryMap += queryId ->
         lastInfo.copy(
           pageToken = "2",

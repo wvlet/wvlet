@@ -24,7 +24,9 @@ class URLParamManager extends RxElement:
     GlobalState
       .selectedPath
       .map { path =>
-        if path.nonEmpty then
+        if path.isEmpty then
+          dom.window.location.hash = "#"
+        else
           val urlHash = s"#path=${path}"
           dom.window.location.hash = urlHash
         // dummy element

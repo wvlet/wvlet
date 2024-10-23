@@ -7,9 +7,14 @@ import wvlet.log.LogSupport
 import wvlet.log.io.IOUtil
 
 class FileApiImpl(workEnv: WorkEnv) extends FileApi with LogSupport:
+
+  private def relativePath(path: String): String = path
+    .stripPrefix("./")
+    .stripPrefix(s"${workEnv.path}/")
+
   private def toFileEntry(f: java.io.File): FileEntry = FileEntry(
     name = f.getName,
-    path = f.getPath.stripPrefix("./"),
+    path = relativePath(f.getPath),
     exists = f.exists(),
     isDirectory = f.isDirectory,
     size = f.length(),
@@ -19,8 +24,12 @@ class FileApiImpl(workEnv: WorkEnv) extends FileApi with LogSupport:
   private def getFile(path: String): java.io.File = new java.io.File(workEnv.path, path)
 
   override def listFiles(request: FileApi.FileRequest): List[FileEntry] =
-    val f                          = getFile(request.relativePath)
-    val files: Array[java.io.File] = Option(f.listFiles()).getOrElse(Array.empty)
+    val f = getFile(request.relativePath)
+    val files: Array[java.io.File] =
+      if !f.exists() then
+        Array.empty
+      else
+        Option(f.listFiles()).getOrElse(Array.empty)
     val entries = files.collect {
       case d if d.isDirectory && !d.getName.startsWith(".") =>
         toFileEntry(d)
@@ -48,7 +57,12 @@ class FileApiImpl(workEnv: WorkEnv) extends FileApi with LogSupport:
 
   override def readFile(request: FileApi.FileRequest): FileEntry =
     val f = getFile(request.relativePath)
-    toFileEntry(f).copy(content = Some(IOUtil.readAsString(f)))
+    toFileEntry(f).copy(content =
+      if !f.exists() then
+        None
+      else
+        Some(IOUtil.readAsString(f))
+    )
 
   override def saveFile(request: FileApi.SaveFileRequest): Unit = ???
 
