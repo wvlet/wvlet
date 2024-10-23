@@ -9,7 +9,7 @@ import wvlet.log.io.IOUtil
 class FileApiImpl(workEnv: WorkEnv) extends FileApi with LogSupport:
   private def toFileEntry(f: java.io.File): FileEntry = FileEntry(
     name = f.getName,
-    path = f.getPath,
+    path = f.getPath.stripPrefix("./"),
     exists = f.exists(),
     isDirectory = f.isDirectory,
     size = f.length(),
