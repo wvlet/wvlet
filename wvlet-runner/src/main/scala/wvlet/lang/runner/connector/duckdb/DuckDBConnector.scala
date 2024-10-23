@@ -57,6 +57,7 @@ class DuckDBConnector(prepareTPCH: Boolean = false)
       stmt.execute("call dbgen(sf = 0.01)")
 
   override def newConnection: DuckDBConnection =
+    // For in-memory DuckDB, the connection will be created only once
     Class.forName("org.duckdb.DuckDBDriver")
     DriverManager.getConnection("jdbc:duckdb:") match
       case conn: DuckDBConnection =>
@@ -67,18 +68,20 @@ class DuckDBConnector(prepareTPCH: Boolean = false)
   override def close(): Unit =
     if closed.compareAndSet(false, true) then
       // Ensure the connection is prepared
-      getConnection
+      verifyConnection
       trace("Closing DuckDB connection")
       Option(conn).foreach { c =>
         c.close()
       }
       conn = null
 
-  private def getConnection: DuckDBConnection =
+  private def verifyConnection: Unit =
     if conn == null && initThread.isAlive then
       // Wait until the connection is available
       initThread.join()
 
+  private def getConnection: DuckDBConnection =
+    verifyConnection
     if conn == null then
       throw StatusCode.NON_RETRYABLE_INTERNAL_ERROR.newException("Failed to initialize DuckDB")
     conn
