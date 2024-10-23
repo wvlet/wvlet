@@ -27,7 +27,7 @@ class FileApiImpl(workEnv: WorkEnv) extends FileApi with LogSupport:
       case f if f.getName.endsWith(".wv") =>
         toFileEntry(f)
     }
-    entries.toList
+    entries.sorted.toList
 
   override def getFile(request: FileApi.FileRequest): FileEntry =
     val f = getFile(request.relativePath)

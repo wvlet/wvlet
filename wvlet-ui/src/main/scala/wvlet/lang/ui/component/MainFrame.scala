@@ -22,6 +22,18 @@ object MainFrame extends RxComponent:
 
   object NavBar extends RxElement:
     // Based on https://tailwindui.com/components/application-ui/navigation/navbars
+
+    private def navItem(name: String, isSelected: Boolean = false): RxElement = a(
+      href -> "#",
+      if isSelected then
+        cls -> "rounded-md bg-gray-900 px-3 py-2 text-sm font-medium text-white"
+      else
+        cls ->
+          "rounded-md px-3 py-2 text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white"
+      ,
+      name
+    )
+
     override def render: RxElement = nav(
       cls -> "bg-gray-800",
       div(
@@ -44,23 +56,8 @@ object MainFrame extends RxComponent:
               cls -> "hidden sm:ml-6 sm:block",
               div(
                 cls -> "flex space-x-4",
-                a(
-                  href -> "#",
-                  cls  -> "rounded-md bg-gray-900 px-3 py-2 text-sm font-medium text-white",
-                  "Editor"
-                ),
-                a(
-                  href -> "#",
-                  cls ->
-                    "rounded-md px-3 py-2 text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white",
-                  "Projects"
-                ),
-                a(
-                  href -> "#",
-                  cls ->
-                    "rounded-md px-3 py-2 text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white",
-                  "Config"
-                )
+                navItem("Editor", isSelected = true),
+                navItem("Projects")
               )
             )
           )
@@ -70,6 +67,11 @@ object MainFrame extends RxComponent:
 
   end NavBar
 
-  override def render(content: RxElement) = div(cls -> "h-screen max-h-screen", NavBar, content)
+  override def render(content: RxElement) = div(
+    cls -> "h-screen max-h-screen",
+    NavBar,
+    content,
+    URLParamManager()
+  )
 
 end MainFrame

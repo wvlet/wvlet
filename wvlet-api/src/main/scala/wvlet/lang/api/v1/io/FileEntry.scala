@@ -12,13 +12,21 @@ case class FileEntry(
     size: Long,
     lastUpdatedAtMillis: Long,
     content: Option[String] = None
-):
+) extends Ordered[FileEntry]:
   def isFile: Boolean = !isDirectory
   def parentPath: String =
     if path.isEmpty || path == "." then
       ""
     else
       path.stripSuffix(s"/${name}")
+
+  override def compare(that: FileEntry): Int =
+    if isDirectory && !that.isDirectory then
+      -1
+    else if !isDirectory && that.isDirectory then
+      1
+    else
+      name.compareTo(that.name)
 
 object FileEntry:
   def validateRelativePath(path: String): Unit =
