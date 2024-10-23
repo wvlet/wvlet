@@ -20,6 +20,9 @@ object DBConnectorProvider extends LogSupport:
           )
         )
       case _ =>
-        DuckDBConnector()
+        DuckDBConnector(
+          // TODO Use more generic way to pass profile properties
+          prepareTPCH = profile.properties.getOrElse("prepareTPCH", "false").toString.toBoolean
+        )
 
 end DBConnectorProvider

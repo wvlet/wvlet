@@ -45,18 +45,21 @@ class DuckDBConnector(prepareTPCH: Boolean = false)
     val nano = System.nanoTime()
     logger.trace("Initializing DuckDB connection")
     conn = newConnection
+    if prepareTPCH then
+      loadTPCH()
     logger.trace(s"Finished initializing DuckDB. ${ElapsedTime.nanosSince(nano)}")
   }
+
+  def loadTPCH(): Unit =
+    Using.resource(conn.createStatement()): stmt =>
+      stmt.execute("install tpch")
+      stmt.execute("load tpch")
+      stmt.execute("call dbgen(sf = 0.01)")
 
   override def newConnection: DuckDBConnection =
     Class.forName("org.duckdb.DuckDBDriver")
     DriverManager.getConnection("jdbc:duckdb:") match
       case conn: DuckDBConnection =>
-        if prepareTPCH then
-          Using.resource(conn.createStatement()): stmt =>
-            stmt.execute("install tpch")
-            stmt.execute("load tpch")
-            stmt.execute("call dbgen(sf = 0.01)")
         conn
       case _ =>
         throw StatusCode.NOT_IMPLEMENTED.newException("duckdb connection is unavailable")

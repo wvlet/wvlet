@@ -28,7 +28,8 @@ case class Profile(
     host: Option[String] = None,
     port: Option[Int] = None,
     catalog: Option[String] = None,
-    schema: Option[String] = None
+    schema: Option[String] = None,
+    properties: Map[String, Any] = Map.empty
 )
 
 object Profile extends LogSupport:
@@ -50,13 +51,22 @@ object Profile extends LogSupport:
       }
       .getOrElse {
         // Use default DuckDB profile
-        Profile(name = "local", `type` = "duckdb", catalog = Some("memory"), schema = Some("main"))
+        Profile(
+          name = "local",
+          `type` = "duckdb",
+          catalog = Some("memory"),
+          schema = Some("main"),
+          // Prepare TPCH tables for demo purpose
+          properties = Map("prepareTPCH" -> true)
+        )
       }
 
     currentProfile.copy(
       catalog = catalog.orElse(currentProfile.catalog),
       schema = schema.orElse(currentProfile.schema)
     )
+
+  end getProfile
 
   def getProfile(profile: String): Option[Profile] =
     val configPath = sys.props("user.home") + "/.wvlet/profiles.yml"
