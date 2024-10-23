@@ -51,14 +51,7 @@ object Profile extends LogSupport:
       }
       .getOrElse {
         // Use default DuckDB profile
-        Profile(
-          name = "local",
-          `type` = "duckdb",
-          catalog = Some("memory"),
-          schema = Some("main"),
-          // Prepare TPCH tables for demo purpose
-          properties = Map("prepareTPCH" -> true)
-        )
+        Profile(name = "local", `type` = "duckdb", catalog = Some("memory"), schema = Some("main"))
       }
 
     currentProfile.copy(

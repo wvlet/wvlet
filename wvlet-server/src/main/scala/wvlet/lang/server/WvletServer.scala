@@ -31,7 +31,9 @@ case class WvletServerConfig(
       prefix = "--quit-immediately",
       description = "Quit the server immediately after starting. Only for boot testing"
     )
-    quitImmediately: Boolean = false
+    quitImmediately: Boolean = false,
+    @option(prefix = "--tpch", description = "Load a small demo TPC-H data (DuckDB only)")
+    prepareTPCH: Boolean = false
 ):
   lazy val workEnv: WorkEnv = WorkEnv(path = workDir)
 
@@ -63,6 +65,7 @@ object WvletServer extends LogSupport:
     .bindInstance[Profile](Profile.getProfile(config.profile, config.catalog, config.schema))
     // TODO Support switching DB Connector
     .bindProvider[Profile, DBConnector] { p =>
+      val prop = Map("prepareTPCH" -> config.prepareTPCH)
       DBConnectorProvider.getConnector(p)
     }
     .bindInstance[WvletScriptRunnerConfig](
