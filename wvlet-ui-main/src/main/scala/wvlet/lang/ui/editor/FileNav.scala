@@ -31,8 +31,6 @@ class FileNav(rpcClient: RPCAsyncClient) extends RxElement:
     def hide: Unit = selector.hide
 
     private def pathElem(elem: RxElement, parentEntry: FileEntry, isRoot: Boolean = false) =
-      val menuId = s"menu-button-${ULID.newULID}"
-
       def pathItem(x: RxElement): RxElement = button(
         // href          -> "#",
         cls           -> "text-sm font-medium text-gray-500 hover:text-gray-300",
@@ -152,7 +150,8 @@ class FileSelectorPopup extends RxElement:
                     event.preventDefault()
                     selectedPath := e.path
                   },
-                  e.name
+                  rx.html.when(e.isDirectory, Icon.folder),
+                  span(cls -> "pl-1", e.name)
                 )
               }
           }
