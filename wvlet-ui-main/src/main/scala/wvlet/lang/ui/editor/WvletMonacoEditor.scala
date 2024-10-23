@@ -135,7 +135,7 @@ class WvletMonacoEditor(rpcClient: RPCAsyncClient, queryResultReader: QueryResul
     val subQuery = lines.take(lineNum).mkString("\n")
     subQuery
 
-  private def runQuery: Unit =
+  private def runQuery(): Unit =
     val query = getTextValue
     ConsoleLog.write(s"Run query:\n${query}")
     queryResultReader.submitQuery(query, isTestRun = false)
@@ -160,8 +160,13 @@ class WvletMonacoEditor(rpcClient: RPCAsyncClient, queryResultReader: QueryResul
     // Add shortcut keys
     textEditor.onKeyDown { (e: IKeyboardEvent) =>
       // ctrl + enter to submit the query
-      if e.keyCode == KeyCode.Enter && (e.ctrlKey || e.metaKey) then
-        runQuery
+      if e.keyCode == KeyCode.Enter then
+        if e.ctrlKey || e.metaKey then
+          e.preventDefault()
+          testRunQuery()
+        else if e.shiftKey then
+          e.preventDefault()
+          runQuery()
     }
 
     {
@@ -180,7 +185,7 @@ class WvletMonacoEditor(rpcClient: RPCAsyncClient, queryResultReader: QueryResul
       val acc = IActionDescriptor(
         id = "run-query",
         label = "Run query",
-        run = (editor: ICodeEditor, args: Any) => runQuery
+        run = (editor: ICodeEditor, args: Any) => runQuery()
       )
       acc.keybindings = js.Array(
         KeyMod.chord(
