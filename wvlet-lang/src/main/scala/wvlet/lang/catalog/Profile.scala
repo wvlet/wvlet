@@ -28,7 +28,8 @@ case class Profile(
     host: Option[String] = None,
     port: Option[Int] = None,
     catalog: Option[String] = None,
-    schema: Option[String] = None
+    schema: Option[String] = None,
+    properties: Map[String, Any] = Map.empty
 )
 
 object Profile extends LogSupport:
@@ -57,6 +58,8 @@ object Profile extends LogSupport:
       catalog = catalog.orElse(currentProfile.catalog),
       schema = schema.orElse(currentProfile.schema)
     )
+
+  end getProfile
 
   def getProfile(profile: String): Option[Profile] =
     val configPath = sys.props("user.home") + "/.wvlet/profiles.yml"

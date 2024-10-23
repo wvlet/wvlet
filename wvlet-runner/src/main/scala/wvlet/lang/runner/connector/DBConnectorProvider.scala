@@ -7,7 +7,7 @@ import wvlet.log.LogSupport
 
 object DBConnectorProvider extends LogSupport:
 
-  def getConnector(profile: Profile): DBConnector =
+  def getConnector(profile: Profile, properties: Map[String, Any] = Map.empty): DBConnector =
     profile.`type` match
       case "trino" =>
         TrinoConnector(
@@ -20,6 +20,12 @@ object DBConnectorProvider extends LogSupport:
           )
         )
       case _ =>
-        DuckDBConnector()
+        DuckDBConnector(
+          // TODO Use more generic way to pass profile properties
+          prepareTPCH = (profile.properties ++ properties)
+            .getOrElse("prepareTPCH", "false")
+            .toString
+            .toBoolean
+        )
 
 end DBConnectorProvider

@@ -38,25 +38,32 @@ class DuckDBConnector(prepareTPCH: Boolean = false)
 
   // We need to reuse the same connection for preserving in-memory tables
   private var conn: DuckDBConnection = null
-  private val closed                 = AtomicBoolean(false)
+
+  private val initialized = AtomicBoolean(false)
+  private val closed      = AtomicBoolean(false)
 
   // Initialize DuckDB in the background thread as it may take several seconds
   private val initThread = ThreadUtil.runBackgroundTask { () =>
     val nano = System.nanoTime()
     logger.trace("Initializing DuckDB connection")
     conn = newConnection
+    if prepareTPCH then
+      loadTPCH()
+    initialized.set(true)
     logger.trace(s"Finished initializing DuckDB. ${ElapsedTime.nanosSince(nano)}")
   }
 
+  def loadTPCH(): Unit =
+    Using.resource(conn.createStatement()): stmt =>
+      stmt.execute("install tpch")
+      stmt.execute("load tpch")
+      stmt.execute("call dbgen(sf = 0.01)")
+
   override def newConnection: DuckDBConnection =
+    // For in-memory DuckDB, the connection will be created only once
     Class.forName("org.duckdb.DuckDBDriver")
     DriverManager.getConnection("jdbc:duckdb:") match
       case conn: DuckDBConnection =>
-        if prepareTPCH then
-          Using.resource(conn.createStatement()): stmt =>
-            stmt.execute("install tpch")
-            stmt.execute("load tpch")
-            stmt.execute("call dbgen(sf = 0.01)")
         conn
       case _ =>
         throw StatusCode.NOT_IMPLEMENTED.newException("duckdb connection is unavailable")
@@ -64,18 +71,20 @@ class DuckDBConnector(prepareTPCH: Boolean = false)
   override def close(): Unit =
     if closed.compareAndSet(false, true) then
       // Ensure the connection is prepared
-      getConnection
+      verifyConnection
       trace("Closing DuckDB connection")
       Option(conn).foreach { c =>
         c.close()
       }
       conn = null
 
-  private def getConnection: DuckDBConnection =
-    if conn == null && initThread.isAlive then
+  private def verifyConnection: Unit =
+    if !initialized.get() then
       // Wait until the connection is available
       initThread.join()
 
+  private def getConnection: DuckDBConnection =
+    verifyConnection
     if conn == null then
       throw StatusCode.NON_RETRYABLE_INTERNAL_ERROR.newException("Failed to initialize DuckDB")
     conn
