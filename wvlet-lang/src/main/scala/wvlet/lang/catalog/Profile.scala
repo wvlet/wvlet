@@ -33,6 +33,31 @@ case class Profile(
 
 object Profile extends LogSupport:
 
+  def getProfile(
+      profile: Option[String],
+      catalog: Option[String] = None,
+      schema: Option[String] = None
+  ): Profile =
+    val currentProfile: Profile = profile
+      .flatMap { targetProfile =>
+        getProfile(targetProfile) match
+          case Some(p) =>
+            debug(s"Using profile: ${targetProfile}")
+            Some(p)
+          case None =>
+            error(s"No profile ${targetProfile} found")
+            None
+      }
+      .getOrElse {
+        // Use default DuckDB profile
+        Profile(name = "local", `type` = "duckdb", catalog = Some("memory"), schema = Some("main"))
+      }
+
+    currentProfile.copy(
+      catalog = catalog.orElse(currentProfile.catalog),
+      schema = schema.orElse(currentProfile.schema)
+    )
+
   def getProfile(profile: String): Option[Profile] =
     val configPath = sys.props("user.home") + "/.wvlet/profiles.yml"
     val configFile = new File(configPath)

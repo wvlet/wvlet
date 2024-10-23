@@ -7,10 +7,11 @@ import wvlet.airframe.http.netty.{Netty, NettyServer}
 import wvlet.airframe.http.{Http, RxRouter}
 import wvlet.airframe.launcher.{Launcher, command, option}
 import wvlet.lang.api.v1.frontend.FrontendRPC
+import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.OS
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.runner.{QueryExecutor, WvletScriptRunnerConfig}
-import wvlet.lang.runner.connector.DBConnector
+import wvlet.lang.runner.connector.{DBConnector, DBConnectorProvider}
 import wvlet.lang.runner.connector.duckdb.DuckDBConnector
 import wvlet.log.LogSupport
 import wvlet.log.io.IOUtil
@@ -20,6 +21,12 @@ case class WvletServerConfig(
     port: Int = 9090,
     @option(prefix = "-w", description = "Working directory")
     workDir: String = ".",
+    @option(prefix = "--profile", description = "Profile to use")
+    profile: Option[String] = None,
+    @option(prefix = "--catalog", description = "Context database catalog to use")
+    catalog: Option[String] = None,
+    @option(prefix = "--schema", description = "Context database schema to use")
+    schema: Option[String] = None,
     @option(
       prefix = "--quit-immediately",
       description = "Quit the server immediately after starting. Only for boot testing"
@@ -53,8 +60,11 @@ object WvletServer extends LogSupport:
     .bindInstance[WvletServerConfig](config)
     // TODO Switch working folder
     .bindInstance[WorkEnv](config.workEnv)
+    .bindInstance[Profile](Profile.getProfile(config.profile, config.catalog, config.schema))
     // TODO Support switching DB Connector
-    .bindInstance[DBConnector](DuckDBConnector(prepareTPCH = true))
+    .bindProvider[Profile, DBConnector] { p =>
+      DBConnectorProvider.getConnector(p)
+    }
     .bindInstance[WvletScriptRunnerConfig](
       WvletScriptRunnerConfig(interactive = false, catalog = Some("memory"), schema = Some("main"))
     )
