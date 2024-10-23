@@ -27,14 +27,14 @@ class FileApiImplTest extends AirSpec:
     val lst = api.getPath(FileApi.FileRequest("update"))
     lst shouldNotBe empty
     lst.size shouldBe 1
-    lst.head.path shouldBe "spec/basic/update"
+    lst.head.path shouldBe "update"
   }
 
   test("get multiple paths") { (api: FileApi) =>
     val lst = api.getPath(FileApi.FileRequest("update/append.wv"))
     lst shouldNotBe empty
     lst.size shouldBe 2
-    lst.map(_.path) shouldBe Seq("spec/basic/update", "spec/basic/update/append.wv")
+    lst.map(_.path) shouldBe Seq("update", "update/append.wv")
     lst.head.isFile shouldBe false
     lst.last.isFile shouldBe true
   }
