@@ -18,8 +18,9 @@ import wvlet.airframe.http.Http
 import wvlet.airframe.rx.html.all.*
 import wvlet.lang.api.v1.frontend.FrontendRPC
 import wvlet.lang.ui.component.MainFrame
-import wvlet.lang.ui.editor.WvletEditor
+import wvlet.lang.ui.editor.{FileNav, WvletEditor}
 import wvlet.log.LogSupport
+import org.scalajs.dom
 
 object WvletUIMain extends LogSupport:
   def main(args: Array[String]): Unit = render
@@ -36,10 +37,13 @@ object WvletUIMain extends LogSupport:
     .status()
     .map { status =>
       info(s"Connected to the server: ${status}")
-
       val frame = MainFrame()
+      
+
       // Let Airframe DI design build UI components for WvletEditor
       val editor = design.newSession.build[WvletEditor]
       frame(editor).renderTo("main")
     }
     .run()
+
+end WvletUIMain

@@ -11,11 +11,8 @@ import wvlet.airframe.ulid.ULID
 import wvlet.lang.api.v1.frontend.FileApi.FileRequest
 import wvlet.lang.api.v1.frontend.FrontendRPC.RPCAsyncClient
 import wvlet.lang.api.v1.io.FileEntry
-import wvlet.lang.ui.component.Icon
-import wvlet.lang.ui.editor.FileNav.selectedPath
-
-object FileNav:
-  var selectedPath: RxVar[String] = Rx.variable("")
+import wvlet.lang.ui.component.GlobalState.selectedPath
+import wvlet.lang.ui.component.{GlobalState, Icon}
 
 class FileNav(rpcClient: RPCAsyncClient) extends RxElement:
 
@@ -125,7 +122,7 @@ class FileSelectorPopup extends RxElement:
 
   override def render: RxElement = div(
     cls ->
-      "absolute left-0 z-10 mt-0 w-56 origin-top-right divide-y divide-gray-100 rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none",
+      "absolute left-0 z-10 mt-0 w-56 origin-top-right divide-y divide-gray-100 rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none overflow-y-scroll max-h-96",
     role             -> "menu",
     aria.orientation -> "vertical",
     aria.labelledby  -> selectorId,

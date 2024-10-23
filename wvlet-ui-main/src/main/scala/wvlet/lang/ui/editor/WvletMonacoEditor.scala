@@ -97,7 +97,7 @@ class WvletMonacoEditor(queryResultReader: QueryResultReader) extends RxElement:
     minimapOptions.enabled = false
 
     val sampleText =
-      """-- Enter your query
+      """-- Enter a query
          |from lineitem
          |where l_quantity > 10.0
          |limit 10""".stripMargin
