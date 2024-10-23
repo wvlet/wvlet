@@ -1,6 +1,6 @@
 val AIRFRAME_VERSION    = "24.9.3"
 val AIRSPEC_VERSION     = "24.9.3"
-val TRINO_VERSION       = "462"
+val TRINO_VERSION       = "463"
 val AWS_SDK_VERSION     = "2.20.146"
 val SCALAJS_DOM_VERSION = "2.8.0"
 
