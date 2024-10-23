@@ -7,7 +7,7 @@ import wvlet.lang.catalog.Profile
 import wvlet.lang.cli.WvletREPL.{debug, error}
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.runner.WvletScriptRunnerConfig
-import wvlet.lang.runner.connector.DBConnector
+import wvlet.lang.runner.connector.{DBConnector, DBConnectorProvider}
 import wvlet.lang.runner.connector.duckdb.DuckDBConnector
 import wvlet.lang.runner.connector.trino.{TrinoConfig, TrinoConnector}
 import wvlet.log.LogSupport
@@ -43,23 +43,11 @@ class WvletREPLMain(cliOption: WvletGlobalOption, replOpts: WvletREPLOption) ext
 
   @command(description = "Start REPL shell", isDefault = true)
   def repl(): Unit =
-    val currentProfile: Profile = replOpts
-      .profile
-      .flatMap { targetProfile =>
-        Profile.getProfile(targetProfile) match
-          case Some(p) =>
-            debug(s"Using profile: ${targetProfile}")
-            Some(p)
-          case None =>
-            error(s"No profile ${targetProfile} found")
-            None
-      }
-      .getOrElse {
-        Profile(name = "local", `type` = "duckdb", catalog = Some("memory"), schema = Some("main"))
-      }
+    val currentProfile: Profile = Profile
+      .getProfile(replOpts.profile, replOpts.catalog, replOpts.schema)
 
-    val selectedCatalog = replOpts.catalog.orElse(currentProfile.catalog)
-    val selectedSchema  = replOpts.schema.orElse(currentProfile.schema)
+    val selectedCatalog = currentProfile.catalog
+    val selectedSchema  = currentProfile.schema
 
     val commandInputs = List.newBuilder[String]
     commandInputs ++= replOpts.commands
@@ -87,21 +75,7 @@ class WvletREPLMain(cliOption: WvletGlobalOption, replOpts: WvletREPLOption) ext
           schema = selectedSchema
         )
       )
-      .bindInstance[DBConnector] {
-        currentProfile.`type` match
-          case "trino" =>
-            TrinoConnector(
-              TrinoConfig(
-                catalog = selectedCatalog.getOrElse("default"),
-                schema = selectedSchema.getOrElse("default"),
-                hostAndPort = currentProfile.host.getOrElse("localhost"),
-                user = currentProfile.user,
-                password = currentProfile.password
-              )
-            )
-          case _ =>
-            DuckDBConnector()
-      }
+      .bindInstance[DBConnector](DBConnectorProvider.getConnector(currentProfile))
 
     design.build[WvletREPL] { repl =>
       repl.start(inputScripts)
