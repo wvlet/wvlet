@@ -38,7 +38,9 @@ class DuckDBConnector(prepareTPCH: Boolean = false)
 
   // We need to reuse the same connection for preserving in-memory tables
   private var conn: DuckDBConnection = null
-  private val closed                 = AtomicBoolean(false)
+
+  private val initialized = AtomicBoolean(false)
+  private val closed      = AtomicBoolean(false)
 
   // Initialize DuckDB in the background thread as it may take several seconds
   private val initThread = ThreadUtil.runBackgroundTask { () =>
@@ -47,6 +49,7 @@ class DuckDBConnector(prepareTPCH: Boolean = false)
     conn = newConnection
     if prepareTPCH then
       loadTPCH()
+    initialized.set(true)
     logger.trace(s"Finished initializing DuckDB. ${ElapsedTime.nanosSince(nano)}")
   }
 
@@ -76,7 +79,7 @@ class DuckDBConnector(prepareTPCH: Boolean = false)
       conn = null
 
   private def verifyConnection: Unit =
-    if conn == null && initThread.isAlive then
+    if !initialized.get() then
       // Wait until the connection is available
       initThread.join()
 
