@@ -138,20 +138,30 @@ object QueryResultPrinter extends LogSupport:
       case QueryResult.empty =>
         ""
       case QueryResultList(list) =>
-        list.map(x => print(x, format)).filter(_.nonEmpty).mkString("\n\n")
+        list.map(x => print(x, format)).filter(_.nonEmpty).mkString("\n")
       case PlanResult(plan, result) =>
         print(result, format)
       case t: TableRows =>
-        format.printTableRows(t)
+        s"${format.printTableRows(t)}\n"
       case w: WarningResult =>
         val msg = s"[warn]: ${w.msg}"
         msg
       case e: ErrorResult =>
         s"Error: ${e.getError.map(_.getMessage).getOrElse("")}"
       case e: TestSuccess =>
-        s"[ok]:    ${e.msg} (${e.loc.locationString})"
+        val nl =
+          if e.msg.contains("\n") then
+            "\n"
+          else
+            ""
+        s"[ok]: ${nl}${e.msg} (${e.loc.locationString})${nl}"
       case e: TestFailure =>
-        s"[failed]: ${e.msg} (${e.loc.locationString})"
+        val nl =
+          if e.msg.contains("\n") then
+            "\n"
+          else
+            ""
+        s"[failed]: ${nl}${e.msg} (${e.loc.locationString})${nl}"
 
 end QueryResultPrinter
 

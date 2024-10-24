@@ -69,6 +69,7 @@ class QueryExecutor(
 
     val executionPlan = ExecutionPlanner.plan(u, ctx)
     val result        = execute(executionPlan, ctx)
+    workEnv.outLogger.info(s"Completed ${u.sourceFile.fileName}")
     result
 
   def execute(executionPlan: ExecutionPlan, context: Context): QueryResult =
@@ -383,7 +384,7 @@ class QueryExecutor(
         case (l: Any, r: Any) if isShortString(l) && isShortString(r) =>
           s"${pp(l)} ${op} ${pp(r)}"
         case _ =>
-          s"[left]\n${pp(l)}\n${op}\n[right]\n${pp(r)}"
+          s"${pp(l)}\n${op}\n${pp(r)}"
 
     def eval(e: Expression): QueryResult =
       e match

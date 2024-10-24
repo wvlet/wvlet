@@ -43,6 +43,8 @@ object WvletServer extends LogSupport:
 
   def startServer(config: WvletServerConfig, openBrowser: Boolean = false): Unit = design(config)
     .build[NettyServer] { server =>
+      info(s"- log file path: ${config.workEnv.logFile}")
+      info(s"- error file path: ${config.workEnv.errorFile}")
       info(s"Wvlet UI server started at http://localhost:${config.port}")
       info(s"Press ctrl+c to stop the server")
 
