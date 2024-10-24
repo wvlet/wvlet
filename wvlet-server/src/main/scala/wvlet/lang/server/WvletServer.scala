@@ -60,13 +60,11 @@ object WvletServer extends LogSupport:
     .withRouter(router)
     .design
     .bindInstance[WvletServerConfig](config)
-    // TODO Switch working folder
     .bindInstance[WorkEnv](config.workEnv)
     .bindInstance[Profile](Profile.getProfile(config.profile, config.catalog, config.schema))
-    // TODO Support switching DB Connector
     .bindProvider[Profile, DBConnector] { p =>
       val prop = Map("prepareTPCH" -> config.prepareTPCH)
-      DBConnectorProvider.getConnector(p)
+      DBConnectorProvider.getConnector(p, prop)
     }
     .bindInstance[WvletScriptRunnerConfig](
       WvletScriptRunnerConfig(interactive = false, catalog = Some("memory"), schema = Some("main"))
