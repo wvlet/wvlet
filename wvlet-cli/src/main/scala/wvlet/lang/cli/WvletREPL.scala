@@ -87,7 +87,7 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
     if trimmedLine.nonEmpty then
       withNewThread {
         try
-          val result = runner.runStatement(trimmedLine, isTestRun = false)
+          val result = runner.runStatement(trimmedLine, isTestRun = true)
           val output = runner.displayOutput(trimmedLine, result, terminal)
           lastOutput = Some(output)
         catch
@@ -145,7 +145,7 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
     )
     true
 
-  private def testRun = newWidget: () =>
+  private def debugRun = newWidget: () =>
     val originalQuery = reader.getBuffer.toString
     val queryFragment = extractQueryFragment
     reader.getHistory.add(queryFragment)
@@ -192,12 +192,12 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
         // keyMap.unbind("}")
       }
 
-    // Bind Ctrl+J, ... sequence
+    // Bind shortcut keys Ctrl+J, ... sequence
     keyMaps.bind(moveToTop, KeyMap.translate("^J^A"))
     keyMaps.bind(moveToEnd, KeyMap.translate("^J^E"))
     keyMaps.bind(enterStmt, KeyMap.translate("^J^R"))
     keyMaps.bind(describeLine, KeyMap.translate("^J^D"))
-    keyMaps.bind(testRun, KeyMap.translate("^J^T"))
+    keyMaps.bind(debugRun, KeyMap.translate("^J^T"))
 
     // Load the command history so that we can use ctrl-r (keyword), ctrl+p/n (previous/next) for history search
     val history = reader.getHistory

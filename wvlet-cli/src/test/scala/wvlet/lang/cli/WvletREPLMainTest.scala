@@ -61,4 +61,8 @@ class WvletREPLMainTest extends AirSpec:
     )
   }
 
+  test("run test") {
+    WvletREPLMain.main("""-c 'select 1 test 1 should be 1'""")
+  }
+
 end WvletREPLMainTest

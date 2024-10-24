@@ -1,10 +1,12 @@
 from 'person.json'
 shift name, age
-
+test _.columns should be ['name', 'age', 'id']
 
 from 'person.json'
 shift to left name, age
+test _.columns should be ['name', 'age', 'id']
 
 from 'person.json'
 shift to right name
+test _.columns should be ['id', 'age', 'name']
 

@@ -13,7 +13,7 @@ class QueryResultReader(rpcClient: RPCAsyncClient) extends LogSupport:
 
   def submitQuery(query: String, isTestRun: Boolean): Unit = rpcClient
     .FrontendApi
-    .submitQuery(QueryRequest(query = query, isTestRun = isTestRun))
+    .submitQuery(QueryRequest(query = query, isDebugRun = isTestRun))
     .map { resp =>
       fetchQueryResult(resp)
     }

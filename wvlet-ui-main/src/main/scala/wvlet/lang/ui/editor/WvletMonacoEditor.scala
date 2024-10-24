@@ -136,14 +136,21 @@ class WvletMonacoEditor(rpcClient: RPCAsyncClient, queryResultReader: QueryResul
     subQuery
 
   private def runQuery(): Unit =
+    // TODO: Extract query fragment from the cursor position
     val query = getTextValue
     ConsoleLog.write(s"Run query:\n${query}")
+    queryResultReader.submitQuery(query, isTestRun = true)
+
+  private def runProductionQuery(): Unit =
+    val query = getTextValue
+    ConsoleLog.write(s"Run query with production mode:\n${query}")
     queryResultReader.submitQuery(query, isTestRun = false)
 
-  private def testRunQuery(): Unit =
+  private def debugQuery(): Unit =
+    // TODO: Extract query fragment from the cursor position
     val queryFragment = queryUpToTheLine
-    val subQuery      = s"${queryFragment}\nlimit 40"
-    ConsoleLog.write(s"Run test query:\n${subQuery}")
+    val subQuery      = s"${queryFragment}"
+    ConsoleLog.write(s"Run query fragment:\n${subQuery}")
     queryResultReader.submitQuery(subQuery, isTestRun = true)
 
   private def describeQuery(): Unit =
@@ -162,11 +169,15 @@ class WvletMonacoEditor(rpcClient: RPCAsyncClient, queryResultReader: QueryResul
       // ctrl + enter to submit the query
       if e.keyCode == KeyCode.Enter then
         if e.ctrlKey || e.metaKey then
-          e.preventDefault()
-          testRunQuery()
+          if e.shiftKey then
+            e.preventDefault()
+            runProductionQuery()
+          else
+            e.preventDefault()
+            runQuery()
         else if e.shiftKey then
           e.preventDefault()
-          runQuery()
+          debugQuery()
     }
 
     {
@@ -200,7 +211,7 @@ class WvletMonacoEditor(rpcClient: RPCAsyncClient, queryResultReader: QueryResul
       val acc = IActionDescriptor(
         id = "test-query",
         label = "Test query",
-        run = (editor: ICodeEditor, args: Any) => testRunQuery()
+        run = (editor: ICodeEditor, args: Any) => debugQuery()
       )
       acc.keybindings = js
         .Array(KeyMod.chord(KeyMod.WinCtrl.toInt | KeyCode.KeyJ.toInt, KeyCode.KeyT.toInt))

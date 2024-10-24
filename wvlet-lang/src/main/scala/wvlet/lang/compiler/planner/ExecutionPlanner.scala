@@ -42,10 +42,10 @@ object ExecutionPlanner extends Phase("execution-plan"):
           tests += t
 
           // For evaluating the test, need to evaluate the sub query
-          if context.isTestRun then
-            nonTestChild.foreach { c =>
-              plans += plan(c, evalQuery = true)
-            }
+          nonTestChild.foreach { c =>
+            plans += plan(c, evalQuery = true)
+          }
+          if context.isDebugRun then
             plans ++= tests.result().map(ExecuteTest(_))
           ExecutionPlan(plans.result())
         case save: Save =>

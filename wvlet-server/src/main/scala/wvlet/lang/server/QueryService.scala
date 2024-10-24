@@ -33,7 +33,7 @@ class QueryService(scriptRunner: WvletScriptRunner) extends LogSupport with Auto
     queryMap += queryId -> firstQueryInfo
     threadManager.submit(
       new Runnable:
-        override def run: Unit = runQuery(queryId, request.query, request.isTestRun)
+        override def run: Unit = runQuery(queryId, request.query, request.isDebugRun)
     )
     QueryResponse(queryId = queryId, requestId = request.requestId)
 
