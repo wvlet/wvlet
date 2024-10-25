@@ -2,7 +2,8 @@ package wvlet.lang.server
 
 import org.jline.nativ.OSInfo
 import wvlet.airframe.Design
-import wvlet.airframe.control.Shell
+import wvlet.airframe.control.Control.withResource
+import wvlet.airframe.control.{Control, Shell}
 import wvlet.airframe.http.netty.{Netty, NettyServer}
 import wvlet.airframe.http.{Http, RxRouter}
 import wvlet.airframe.launcher.{Launcher, command, option}
@@ -16,8 +17,11 @@ import wvlet.lang.runner.connector.duckdb.DuckDBConnector
 import wvlet.log.LogSupport
 import wvlet.log.io.IOUtil
 
+import scala.annotation.tailrec
+import scala.util.Try
+
 case class WvletServerConfig(
-    @option(prefix = "-p,--port", description = "Port number to listen")
+    @option(prefix = "-p,--port", description = "Web UI server port. default:9090")
     port: Int = 9090,
     @option(prefix = "-w", description = "Working directory")
     workDir: String = ".",
@@ -55,23 +59,46 @@ object WvletServer extends LogSupport:
         server.awaitTermination()
     }
 
-  def design(config: WvletServerConfig): Design = Netty
-    .server
-    .withName("wvlet-ui")
-    .withPort(config.port)
-    .withRouter(router)
-    .design
-    .bindInstance[WvletServerConfig](config)
-    .bindInstance[WorkEnv](config.workEnv)
-    .bindInstance[Profile](Profile.getProfile(config.profile, config.catalog, config.schema))
-    .bindProvider[Profile, DBConnector] { p =>
-      val prop = Map("prepareTPCH" -> config.prepareTPCH)
-      DBConnectorProvider.getConnector(p, prop)
-    }
-    .bindInstance[WvletScriptRunnerConfig](
-      WvletScriptRunnerConfig(interactive = false, catalog = Some("memory"), schema = Some("main"))
-    )
-    .bindSingleton[QueryExecutor]
+  private def unusedPortFrom(start: Int, counter: Int = 0): Int =
+    def isPortAvailable(port: Int): Boolean =
+      Try(
+        withResource(new java.net.ServerSocket(port)) { socket =>
+          socket.close()
+        }
+      ).isSuccess
+
+    val p = start + counter
+    if isPortAvailable(p) then
+      if p > start then
+        warn(s"port:${start} was already used. Trying port:${p}")
+      p
+    else
+      unusedPortFrom(start, counter + 1)
+
+  def design(config: WvletServerConfig): Design =
+    val port = unusedPortFrom(config.port)
+
+    Netty
+      .server
+      .withName("wvlet-ui")
+      .withPort(config.port)
+      .withRouter(router)
+      .design
+      .bindInstance[WvletServerConfig](config)
+      .bindInstance[WorkEnv](config.workEnv)
+      .bindInstance[Profile](Profile.getProfile(config.profile, config.catalog, config.schema))
+      .bindProvider[Profile, DBConnector] { p =>
+        val prop = Map("prepareTPCH" -> config.prepareTPCH)
+        DBConnectorProvider.getConnector(p, prop)
+      }
+      .bindInstance[WvletScriptRunnerConfig](
+        WvletScriptRunnerConfig(
+          interactive = false,
+          catalog = Some("memory"),
+          schema = Some("main")
+        )
+      )
+      .bindSingleton[QueryExecutor]
 
   def testDesign: Design = design(WvletServerConfig(port = IOUtil.unusedPort)).bindProvider {
     (server: NettyServer) =>

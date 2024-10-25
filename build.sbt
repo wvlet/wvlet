@@ -111,7 +111,7 @@ lazy val lang = project
   .dependsOn(api.jvm)
 
 val specRunnerSettings = Seq(
-  // To enable JVM options
+  // Fork JVM to enable JVM options for Trino
   Test / fork := true,
   // When forking, the base directory should be set to the root directory
   Test / baseDirectory :=
@@ -127,7 +127,8 @@ lazy val cli = project
   .enablePlugins(PackPlugin)
   .settings(
     buildSettings,
-    name        := "wvlet-cli",
+    name := "wvlet-cli",
+    // Need to fork a JVM to avoid DuckDB crash while running runner/cli test simultaneously
     Test / fork := true,
     Test / baseDirectory :=
       (ThisBuild / baseDirectory).value,
