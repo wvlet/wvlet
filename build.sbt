@@ -14,10 +14,12 @@ import scala.concurrent.duration.FiniteDuration
 import java.util.concurrent.TimeUnit
 
 val buildSettings = Seq[Setting[?]](
-  organization             := "wvlet.lang",
-  description              := "wvlet: A flow-style query language",
-  crossPaths               := true,
-  publishMavenStyle        := true,
+  organization      := "wvlet.lang",
+  description       := "wvlet: A flow-style query language",
+  crossPaths        := true,
+  publishMavenStyle := true,
+  // Tell the runtime that we are running tests in SBT
+  Test / testOptions += Tests.Setup(_ => sys.props("wvlet.sbt.testing") = "true"),
   Test / parallelExecution := true,
   Test / logBuffered       := false,
   libraryDependencies ++= Seq("org.wvlet.airframe" %%% "airspec" % AIRSPEC_VERSION % Test),

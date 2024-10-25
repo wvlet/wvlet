@@ -39,7 +39,13 @@ import scala.io.AnsiColor
 class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseable with LogSupport:
   import WvletREPL.*
 
-  private val terminal    = TerminalBuilder.builder().name("wvlet-shell").build()
+  private val useDumbTerminal = sys.props.getOrElse("wvlet.sbt.testing", "true").toBoolean
+  private val terminal = TerminalBuilder
+    .builder()
+    .name("wvlet-shell")
+    // Use dumb terminal for sbt testing
+    .dumb(useDumbTerminal).build()
+
   private val historyFile = new File(workEnv.cacheFolder, ".wv_history")
 
   private val reader = LineReaderBuilder
