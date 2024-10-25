@@ -13,6 +13,7 @@
  */
 package wvlet.lang.cli
 
+import wvlet.airframe.control.Control
 import wvlet.airframe.launcher.{Launcher, argument, command, option}
 import wvlet.lang.compiler.{CompilationUnit, Compiler, CompilerOptions, WorkEnv}
 import wvlet.lang.runner.connector.duckdb.DuckDBConnector
@@ -90,28 +91,30 @@ class WvcMain(opts: WvletGlobalOption) extends LogSupport:
       info(s"context directory: ${contextDirectory}, wvlet file: ${wvFile}")
 
       val workEnv = WorkEnv(path = contextDirectory, opts.logLevel)
-      val duckdb  = QueryExecutor(dbConnector = DuckDBConnector(prepareTPCH = prepareTPCH), workEnv)
-      val compilationResult = Compiler(
-        CompilerOptions(
-          phases = Compiler.allPhases,
-          sourceFolders = List(contextDirectory),
-          workEnv = workEnv
-        )
-      ).compileSourcePaths(Some(wvFile))
-      compilationResult
-        .context
-        .global
-        .getAllContexts
-        .map(_.compilationUnit)
-        .find(_.sourceFile.fileName == wvFile) match
-        case Some(contextUnit) =>
-          val ctx    = compilationResult.context.global.getContextOf(contextUnit)
-          val result = duckdb.executeSingle(contextUnit, ctx)
-          val str    = result.toPrettyBox()
-          if str.nonEmpty then
-            println(str)
-        case None =>
-          throw StatusCode.INVALID_ARGUMENT.newException(s"Cannot find the context for ${wvFile}")
+      Control.withResource(
+        QueryExecutor(dbConnector = DuckDBConnector(prepareTPCH = prepareTPCH), workEnv)
+      ): duckdb =>
+        val compilationResult = Compiler(
+          CompilerOptions(
+            phases = Compiler.allPhases,
+            sourceFolders = List(contextDirectory),
+            workEnv = workEnv
+          )
+        ).compileSourcePaths(Some(wvFile))
+        compilationResult
+          .context
+          .global
+          .getAllContexts
+          .map(_.compilationUnit)
+          .find(_.sourceFile.fileName == wvFile) match
+          case Some(contextUnit) =>
+            val ctx    = compilationResult.context.global.getContextOf(contextUnit)
+            val result = duckdb.executeSingle(contextUnit, ctx)
+            val str    = result.toPrettyBox()
+            if str.nonEmpty then
+              println(str)
+          case None =>
+            throw StatusCode.INVALID_ARGUMENT.newException(s"Cannot find the context for ${wvFile}")
     catch
       case e: WvletLangException =>
         error(e.getMessage, e.getCause)
