@@ -30,7 +30,7 @@ enum StatusCode(statusType: StatusType):
   def newException(msg: String, cause: Throwable): WvletLangException = WvletLangException(
     this,
     msg,
-    None,
+    SourceLocation.NoSourceLocation,
     cause
   )
 
@@ -45,7 +45,7 @@ enum StatusCode(statusType: StatusType):
       else
         s"${baseMsg}\n${line} (${locString})\n${" " * (column - 1)}^\n"
 
-    WvletLangException(this, err, Some(sourceLocation))
+    WvletLangException(this, err, sourceLocation)
 
   case OK extends StatusCode(StatusType.Success)
 

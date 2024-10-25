@@ -37,6 +37,8 @@ sealed trait QueryResult:
   def isSuccess: Boolean               = !hasError
   def isSuccessfulQueryResult: Boolean = isSuccess && !isTest && !isWarning
 
+  def getAllErrors: Seq[Throwable] = Seq.empty
+
 object QueryResult:
   object empty extends QueryResult
   def fromList(lst: List[QueryResult]): QueryResult =
@@ -63,6 +65,8 @@ case class QueryResultList(list: Seq[QueryResult]) extends QueryResult:
     else
       Some(warnings.mkString("\n"))
 
+  override def getAllErrors: Seq[Throwable] = list.flatMap(_.getAllErrors)
+
 case class PlanResult(plan: LogicalPlan, result: QueryResult) extends QueryResult
 
 case class TableRows(schema: RelationType, rows: Seq[ListMap[String, Any]], totalRows: Int)
@@ -81,11 +85,13 @@ case class WarningResult(msg: String, loc: SourceLocation) extends QueryResult:
   override def getWarning: Option[String] = Some(msg)
 
 case class ErrorResult(e: Throwable) extends QueryResult:
-  override def getError: Option[Throwable] = Some(e)
+  override def getError: Option[Throwable]  = Some(e)
+  override def getAllErrors: Seq[Throwable] = Seq(e)
 
 case class TestSuccess(msg: String, loc: SourceLocation) extends QueryResult:
   override def isTest: Boolean = true
 
 case class TestFailure(msg: String, loc: SourceLocation) extends QueryResult:
-  override val getError: Option[Throwable] = Some(StatusCode.TEST_FAILED.newException(msg, loc))
-  override def isTest: Boolean             = true
+  override val getError: Option[Throwable]  = Some(StatusCode.TEST_FAILED.newException(msg, loc))
+  override def isTest: Boolean              = true
+  override def getAllErrors: Seq[Throwable] = getError.toList

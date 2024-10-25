@@ -1,15 +1,16 @@
 package wvlet.lang.ui.editor
 
-import wvlet.airframe.rx.{Cancelable, Rx}
+import wvlet.airframe.rx.{Cancelable, Rx, RxVar}
 import wvlet.lang.api.v1.frontend.FrontendApi.{QueryInfoRequest, QueryRequest, QueryResponse}
 import wvlet.lang.api.v1.frontend.FrontendRPC.RPCAsyncClient
-import wvlet.lang.api.v1.query.QueryInfo
+import wvlet.lang.api.v1.query.{ErrorReport, QueryInfo}
 import wvlet.log.LogSupport
 
 import java.util.concurrent.TimeUnit
 import scala.util.{Failure, Success}
 
-class QueryResultReader(rpcClient: RPCAsyncClient) extends LogSupport:
+class QueryResultReader(rpcClient: RPCAsyncClient, errorReports: RxVar[Seq[ErrorReport]])
+    extends LogSupport:
 
   def submitQuery(query: String, isTestRun: Boolean): Unit = rpcClient
     .FrontendApi
@@ -50,7 +51,13 @@ class QueryResultReader(rpcClient: RPCAsyncClient) extends LogSupport:
         .lastOption
         .flatMap(_.error)
         .map { err =>
-          ConsoleLog.writeError(s"Query failed: ${err.message}")
+          ConsoleLog.writeError(s"Query failed:")
+          errorReports := err.errorReports
+          err
+            .errorReports
+            .foreach { e =>
+              ConsoleLog.writeError(e.message)
+            }
         }
 
       // Show query result preview if exists

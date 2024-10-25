@@ -2,9 +2,9 @@ package wvlet.lang.server
 
 import wvlet.airframe.control.ThreadUtil
 import wvlet.airframe.ulid.ULID
-import wvlet.lang.api.{StatusCode, WvletLangException}
+import wvlet.lang.api.{SourceLocation, StatusCode, WvletLangException}
 import wvlet.lang.api.v1.frontend.FrontendApi.{QueryInfoRequest, QueryRequest, QueryResponse}
-import wvlet.lang.api.v1.query.{QueryError, QueryInfo, QueryResult, QueryStatus}
+import wvlet.lang.api.v1.query.{ErrorReport, QueryError, QueryInfo, QueryResult, QueryStatus}
 import wvlet.lang.api.v1.query.QueryStatus.{QUEUED, RUNNING}
 import wvlet.lang.runner.QueryExecutor
 import wvlet.lang.runner.WvletScriptRunner
@@ -66,20 +66,27 @@ class QueryService(scriptRunner: WvletScriptRunner) extends LogSupport with Auto
           preview = Some(preview)
         )
     else
-      val error = queryResult.getError.get
-      val errorCode =
-        error match
-          case e: WvletLangException =>
-            e.statusCode
-          case _ =>
-            StatusCode.NON_RETRYABLE_INTERNAL_ERROR
+      val errors: Seq[Throwable] = queryResult.getAllErrors
+      val errorReport: Seq[ErrorReport] = errors.map {
+        case e: WvletLangException =>
+          ErrorReport(e.statusCode, e.getMessage, e.sourceLocation, Some(e))
+        case other: Throwable =>
+          ErrorReport(
+            StatusCode.NON_RETRYABLE_INTERNAL_ERROR,
+            other.getMessage,
+            SourceLocation.NoSourceLocation,
+            Some(other)
+          )
+      }
+
       queryMap += queryId ->
         lastInfo.copy(
           pageToken = "2",
           status = QueryStatus.FAILED,
           completedAt = Some(Instant.now()),
-          error = Some(QueryError(errorCode.name, message = error.getMessage, error = Some(error)))
+          error = Some(QueryError(errorReport))
         )
+    end if
 
   end runQuery
 

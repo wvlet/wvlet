@@ -13,9 +13,9 @@
  */
 package wvlet.lang.api
 
-class WvletLangException(
-    val statusCode: StatusCode,
+case class WvletLangException(
+    statusCode: StatusCode,
     message: String,
-    sourceLocation: Option[SourceLocation] = None,
+    sourceLocation: SourceLocation = SourceLocation.NoSourceLocation,
     cause: Throwable = null
 ) extends Exception(message, cause)
