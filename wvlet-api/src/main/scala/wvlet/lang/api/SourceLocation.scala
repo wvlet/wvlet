@@ -25,3 +25,6 @@ case class SourceLocation(
       path
     else
       s"${fileName}:${nodeLocation.line}:${nodeLocation.column}"
+
+object SourceLocation:
+  val NoSourceLocation = SourceLocation("", "", "", NodeLocation.NoLocation)

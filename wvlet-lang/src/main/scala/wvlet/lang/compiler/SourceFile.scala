@@ -84,7 +84,7 @@ class SourceFile(val file: VirtualFile):
       if isLineBreak then
         buf += i + 1
       i += 1
-    buf += txt.length // sentinel, so that findLine below works smoother
+    buf += txt.length + 1 // sentinel, so that findLine below works smoother
     buf.toArray
 
   private def findLineIndex(offset: Int, hint: Int = -1): Int =

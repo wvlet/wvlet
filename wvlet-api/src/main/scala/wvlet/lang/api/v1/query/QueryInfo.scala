@@ -1,6 +1,7 @@
 package wvlet.lang.api.v1.query
 
 import wvlet.airframe.ulid.ULID
+import wvlet.lang.api.{SourceLocation, StatusCode}
 
 import java.time.Instant
 
@@ -23,4 +24,17 @@ case class QueryInfo(
 case class QueryResult(schema: Seq[Column], rows: Seq[Seq[Any]])
 
 case class Column(name: String, typeName: String)
-case class QueryError(errorCode: String, message: String, error: Option[Throwable])
+case class QueryError(
+    // More detailed errors at different locations, if exists
+    errorReports: Seq[ErrorReport]
+):
+  require(errorReports.nonEmpty, "errorReports must not be empty")
+  def message: String        = errorReports.head.message
+  def statusCode: StatusCode = errorReports.head.statusCode
+
+case class ErrorReport(
+    statusCode: StatusCode,
+    message: String,
+    sourceLocation: SourceLocation,
+    error: Option[Throwable]
+)

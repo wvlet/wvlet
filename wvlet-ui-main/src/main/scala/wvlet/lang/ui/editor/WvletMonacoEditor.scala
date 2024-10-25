@@ -7,16 +7,20 @@ import typings.monacoEditor.mod.editor.{
   BuiltinTheme,
   IActionDescriptor,
   ICodeEditor,
+  IMarkerData,
+  IModelDecorationOptions,
+  IModelDeltaDecoration,
   IStandaloneCodeEditor,
   ITextModel
 }
 import typings.monacoEditor.mod.languages.*
 import typings.monacoEditor.monacoEditorStrings
-import wvlet.airframe.rx.{Cancelable, Rx}
+import wvlet.airframe.rx.{Cancelable, Rx, RxVar}
 import wvlet.airframe.rx.html.RxElement
 import wvlet.airframe.rx.html.all.*
 import wvlet.lang.api.v1.frontend.FileApi.FileRequest
 import wvlet.lang.api.v1.frontend.FrontendRPC.RPCAsyncClient
+import wvlet.lang.api.v1.query.ErrorReport
 import wvlet.lang.ui.component.GlobalState
 
 import scala.scalajs.js
@@ -49,8 +53,11 @@ object WvletMonacoEditor:
 
 end WvletMonacoEditor
 
-class WvletMonacoEditor(rpcClient: RPCAsyncClient, queryResultReader: QueryResultReader)
-    extends RxElement:
+class WvletMonacoEditor(
+    rpcClient: RPCAsyncClient,
+    queryResultReader: QueryResultReader,
+    errorReports: RxVar[Seq[ErrorReport]]
+) extends RxElement:
   import WvletMonacoEditor.*
 
   private def editorTheme: editor.IStandaloneThemeData =
@@ -137,16 +144,19 @@ class WvletMonacoEditor(rpcClient: RPCAsyncClient, queryResultReader: QueryResul
 
   private def runQuery(): Unit =
     // TODO: Extract query fragment from the cursor position
+    clearMarkers()
     val query = getTextValue
     ConsoleLog.write(s"Run query:\n${query}")
     queryResultReader.submitQuery(query, isTestRun = true)
 
   private def runProductionQuery(): Unit =
+    clearMarkers()
     val query = getTextValue
     ConsoleLog.write(s"Run query with production mode:\n${query}")
     queryResultReader.submitQuery(query, isTestRun = false)
 
   private def debugQuery(): Unit =
+    clearMarkers()
     // TODO: Extract query fragment from the cursor position
     val queryFragment = queryUpToTheLine
     val subQuery      = s"${queryFragment}"
@@ -154,6 +164,7 @@ class WvletMonacoEditor(rpcClient: RPCAsyncClient, queryResultReader: QueryResul
     queryResultReader.submitQuery(subQuery, isTestRun = true)
 
   private def describeQuery(): Unit =
+    clearMarkers()
     val subQuery = queryUpToTheLine
     ConsoleLog.write(s"Describe query:\n${subQuery}")
     queryResultReader.submitQuery(s"${subQuery}\ndescribe", isTestRun = true)
@@ -261,13 +272,37 @@ class WvletMonacoEditor(rpcClient: RPCAsyncClient, queryResultReader: QueryResul
 
   override def beforeUnmount: Unit = editorTextReloadMonitor.cancel
 
+  private def model = textEditor.getModel().asInstanceOf[ITextModel]
+
+  private def clearMarkers(): Unit = typings.monacoEditor.mod.editor.removeAllMarkers("errors")
+
   override def render = div(
     cls -> "pl-0 pr-2",
     div(
       id -> "editor",
       // Need to set the exact size here to set the initial size of the Monaco editor
       style -> WvletEditor.editorStyle
-    )
+    ),
+    // Show line markers to indicate errors
+    errorReports.map { errors =>
+      val markers = js.Array(
+        errors.map { err =>
+          val loc        = err.sourceLocation.nodeLocation
+          val lineLength = model.getLineLength(loc.line)
+          IMarkerData(
+            severity = MarkerSeverity.Error,
+            message = err.message,
+            startLineNumber = loc.line,
+            startColumn = 1,
+            endLineNumber = loc.line,
+            endColumn = lineLength + 1
+          )
+        }*
+      )
+      typings.monacoEditor.mod.editor.setModelMarkers(model, "errors", markers)
+
+      span()
+    }
   )
 
 end WvletMonacoEditor
