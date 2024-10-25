@@ -23,7 +23,7 @@ object MainFrame extends RxComponent:
   object NavBar extends RxElement:
     // Based on https://tailwindui.com/components/application-ui/navigation/navbars
 
-    private def navItem(name: String, isSelected: Boolean = false): RxElement = a(
+    private def navItem(name: RxElement, isSelected: Boolean = false): RxElement = a(
       href -> "#",
       if isSelected then
         cls -> "rounded-md bg-gray-900 px-3 py-2 text-sm font-medium text-white"
@@ -35,9 +35,9 @@ object MainFrame extends RxComponent:
     )
 
     override def render: RxElement = nav(
-      cls -> "bg-gray-800",
+      cls -> "w-full bg-gray-800",
       div(
-        cls -> "mx-auto max-w-7xl px-2 sm:px-6 lg:px-8",
+        cls -> " px-2 sm:px-6 lg:px-8",
         div(
           cls   -> "relative flex items-center justify-between",
           style -> s"height: ${navBarHeightPx}px;",
@@ -57,7 +57,14 @@ object MainFrame extends RxComponent:
               div(
                 cls -> "flex space-x-4",
                 navItem("Editor", isSelected = true),
-                navItem("Projects")
+                navItem(
+                  a(
+                    href   -> "https://wvlet.org/wvlet/docs/syntax",
+                    target -> "_blank",
+                    "Query Syntax"
+                  )
+                ),
+                navItem(a(href -> "https://github.com/wvlet/wvlet", target -> "_blank", "GitHub"))
               )
             )
           )
