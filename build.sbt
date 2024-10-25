@@ -128,6 +128,10 @@ lazy val cli = project
   .settings(
     buildSettings,
     name := "wvlet-cli",
+    // Need to fork a JVM to avoid DuckDB crash while running runner/cli test simultaneously
+    Test / fork := true,
+    Test / baseDirectory :=
+      (ThisBuild / baseDirectory).value,
     pack :=
       Def
         .sequential(
