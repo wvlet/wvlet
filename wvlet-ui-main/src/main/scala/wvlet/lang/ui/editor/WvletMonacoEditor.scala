@@ -165,21 +165,6 @@ class WvletMonacoEditor(rpcClient: RPCAsyncClient, queryResultReader: QueryResul
     )
 
     // Add shortcut keys
-    textEditor.onKeyDown { (e: IKeyboardEvent) =>
-      // ctrl + enter to submit the query
-      if e.keyCode == KeyCode.Enter then
-        if e.ctrlKey || e.metaKey then
-          if e.shiftKey then
-            e.preventDefault()
-            runProductionQuery()
-          else
-            e.preventDefault()
-            runQuery()
-        else if e.shiftKey then
-          e.preventDefault()
-          debugQuery()
-    }
-
     {
       val acc = IActionDescriptor(
         id = "command-palette",
@@ -199,6 +184,9 @@ class WvletMonacoEditor(rpcClient: RPCAsyncClient, queryResultReader: QueryResul
         run = (editor: ICodeEditor, args: Any) => runQuery()
       )
       acc.keybindings = js.Array(
+        // ctrl+enter
+        KeyMod.WinCtrl.toInt | KeyCode.Enter.toInt,
+        // ctrl+j ctrl-r
         KeyMod.chord(
           KeyMod.WinCtrl.toInt | KeyCode.KeyJ.toInt,
           KeyMod.WinCtrl.toInt | KeyCode.KeyR.toInt
@@ -213,8 +201,23 @@ class WvletMonacoEditor(rpcClient: RPCAsyncClient, queryResultReader: QueryResul
         label = "Test query",
         run = (editor: ICodeEditor, args: Any) => debugQuery()
       )
-      acc.keybindings = js
-        .Array(KeyMod.chord(KeyMod.WinCtrl.toInt | KeyCode.KeyJ.toInt, KeyCode.KeyT.toInt))
+      acc.keybindings = js.Array(
+        // shift + enter
+        KeyMod.Shift.toInt | KeyCode.Enter.toInt
+      )
+      textEditor.addAction(acc)
+    }
+
+    {
+      val acc = IActionDescriptor(
+        id = "run-production-query",
+        label = "Run query with production mode",
+        run = (editor: ICodeEditor, args: Any) => runProductionQuery()
+      )
+      acc.keybindings = js.Array(
+        // cmd + enter
+        KeyMod.CtrlCmd.toInt | KeyCode.Enter.toInt
+      )
       textEditor.addAction(acc)
     }
 
