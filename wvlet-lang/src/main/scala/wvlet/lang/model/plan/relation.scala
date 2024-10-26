@@ -505,8 +505,7 @@ trait TopLevelStatement extends LogicalPlan
 trait QueryStatement extends UnaryRelation with TopLevelStatement
 
 case class Query(body: Relation, span: Span) extends QueryStatement with FilteringRelation:
-  override def child: Relation  = body
-  override def toString: String = s"Query(body:${body})"
+  override def child: Relation = body
   override def children: Seq[LogicalPlan] =
     val b = Seq.newBuilder[LogicalPlan]
     b += body

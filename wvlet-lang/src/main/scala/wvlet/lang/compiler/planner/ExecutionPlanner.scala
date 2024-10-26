@@ -9,7 +9,13 @@ object ExecutionPlanner extends Phase("execution-plan"):
       unit.executionPlan = plan(unit, context)
     unit
 
-  def plan(unit: CompilationUnit, context: Context): ExecutionPlan =
+  def plan(unit: CompilationUnit, context: Context): ExecutionPlan = plan(
+    unit,
+    unit.resolvedPlan,
+    context
+  )
+
+  def plan(unit: CompilationUnit, targetPlan: LogicalPlan, context: Context): ExecutionPlan =
     def plan(l: LogicalPlan, evalQuery: Boolean): ExecutionPlan =
       l match
         case p: PackageDef =>
@@ -73,8 +79,8 @@ object ExecutionPlanner extends Phase("execution-plan"):
             trace(s"Unsupported logical plan: ${other}")
           ExecutionPlan.empty
 
-    val executionPlan = plan(unit.resolvedPlan, evalQuery = true)
-    trace(s"[Logical plan]:\n${unit.resolvedPlan.pp})")
+    val executionPlan = plan(targetPlan, evalQuery = true)
+    trace(s"[Logical plan]:\n${targetPlan.pp})")
     debug(s"[Execution plan]:\n${executionPlan.pp}")
     executionPlan
 

@@ -46,8 +46,13 @@ class Span(val coordinate: Long) extends AnyVal:
   def isEmpty: Boolean  = !exists
   def nonEmpty: Boolean = exists
 
+  def contains(offset: Int): Boolean          = start <= offset && offset < end
+  def containsInclusive(offset: Int): Boolean = start <= offset && offset <= end
+
   def start: Int = (coordinate & Span.POSITION_MASK).toInt
   def end: Int   = ((coordinate >>> Span.POSITION_BITS) & Span.POSITION_MASK).toInt
+
+  def size: Int = end - start
 
   /**
     * The offset of the point from the start

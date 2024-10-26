@@ -23,7 +23,7 @@ import org.jline.utils.{AttributedString, AttributedStringBuilder, AttributedSty
 import wvlet.airframe.*
 import wvlet.airframe.control.{Shell, ThreadUtil}
 import wvlet.airframe.log.AnsiColorPalette
-import wvlet.lang.api.WvletLangException
+import wvlet.lang.api.{NodeLocation, WvletLangException}
 import wvlet.lang.api.v1.query.QueryRequest
 import wvlet.lang.api.v1.query.QuerySelection.{All, Describe, Subquery}
 import wvlet.lang.compiler.parser.*
@@ -147,9 +147,13 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
     val lines         = queryFragment.split("\n")
     val lastLine      = lines.lastOption.getOrElse("")
     val lineNum       = lines.size
-    val describeQuery = s"${queryFragment}\ndescribe"
     val result = runner.runStatement(
-      QueryRequest(query = describeQuery, querySelection = Describe, isDebugRun = true)
+      QueryRequest(
+        query = queryFragment,
+        querySelection = Describe,
+        nodeLocation = NodeLocation(lineNum, 1),
+        isDebugRun = true
+      )
     )
     val str = result.toPrettyBox()
     reader.printAbove(
@@ -170,9 +174,8 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
     println(
       s"${"\n" * (totalLines - lineNum + 1).max(0)}${Color.GREEN}debug${Color.RESET} ${Color.BLUE}(line:${lineNum})${Color.RESET}: ${Color.BRIGHT_RED}${lastLine}${AnsiColor.RESET}"
     )
-    val result = runner.runStatement(
-      QueryRequest(query = samplingQuery, querySelection = Subquery, isDebugRun = true)
-    )
+    val result = runner
+      .runStatement(QueryRequest(query = samplingQuery, querySelection = All, isDebugRun = true))
     lastOutput = Some(runner.displayOutput(samplingQuery, result, terminal))
     val out = terminal.output()
     // Add enough blank lines to redisplay the user query
