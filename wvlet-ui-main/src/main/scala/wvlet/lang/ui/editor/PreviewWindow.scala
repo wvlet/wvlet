@@ -13,6 +13,6 @@ class PreviewWindow extends RxElement:
     PreviewWindow
       .previewResult
       .map { result =>
-        pre(code(result))
+        pre(code(cls -> "font-mono", result))
       }
   )
