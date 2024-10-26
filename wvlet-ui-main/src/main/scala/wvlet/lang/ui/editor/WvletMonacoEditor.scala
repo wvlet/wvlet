@@ -20,9 +20,8 @@ import wvlet.airframe.rx.html.RxElement
 import wvlet.airframe.rx.html.all.*
 import wvlet.lang.api.NodeLocation
 import wvlet.lang.api.v1.frontend.FileApi.FileRequest
-import wvlet.lang.api.v1.frontend.FrontendApi.{QueryRequest}
 import wvlet.lang.api.v1.frontend.FrontendRPC.RPCAsyncClient
-import wvlet.lang.api.v1.query.{QueryError, QuerySelection}
+import wvlet.lang.api.v1.query.{QueryError, QuerySelection, QueryRequest}
 import wvlet.lang.ui.component.GlobalState
 
 import scala.scalajs.js
@@ -155,7 +154,7 @@ class WvletMonacoEditor(
     queryResultReader.submitQuery(
       QueryRequest(
         query = query,
-        queryRunMode = QuerySelection.Single,
+        querySelection = QuerySelection.Single,
         nodeLocation = currentNodeLocation,
         isDebugRun = true
       )
@@ -168,7 +167,7 @@ class WvletMonacoEditor(
     queryResultReader.submitQuery(
       QueryRequest(
         query = query,
-        queryRunMode = QuerySelection.Subquery,
+        querySelection = QuerySelection.Subquery,
         nodeLocation = currentNodeLocation,
         isDebugRun = true
       )
@@ -181,7 +180,7 @@ class WvletMonacoEditor(
     queryResultReader.submitQuery(
       QueryRequest(
         query = query,
-        queryRunMode = QuerySelection.Single,
+        querySelection = QuerySelection.Single,
         nodeLocation = currentNodeLocation,
         isDebugRun = false
       )
@@ -194,7 +193,7 @@ class WvletMonacoEditor(
     queryResultReader.submitQuery(
       QueryRequest(
         query = query,
-        queryRunMode = QuerySelection.Describe,
+        querySelection = QuerySelection.Describe,
         nodeLocation = currentNodeLocation,
         isDebugRun = true
       )

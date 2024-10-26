@@ -16,6 +16,7 @@ package wvlet.lang.runner
 import org.jline.terminal.Terminal
 import wvlet.airframe.control.{Control, Shell}
 import wvlet.lang.api.WvletLangException
+import wvlet.lang.api.v1.query.{QueryRequest, QuerySelection}
 import wvlet.lang.compiler.*
 import wvlet.lang.runner.*
 import wvlet.log.{LogRotationHandler, LogSupport, Logger}
@@ -90,14 +91,14 @@ class WvletScriptRunner(
     }
     c
 
-  def runStatement(line: String, isTestRun: Boolean): QueryResult =
-    val newUnit = CompilationUnit.fromString(line)
+  def runStatement(request: QueryRequest): QueryResult =
+    val newUnit = CompilationUnit.fromString(request.query)
     units = newUnit :: units
 
     try
       val compileResult = compiler.compileSingleUnit(contextUnit = newUnit)
-      val ctx           = compileResult.context.global.getContextOf(newUnit).withTestRun(isTestRun)
-      val queryResult   = queryExecutor.setRowLimit(resultRowLimits).executeSingle(newUnit, ctx)
+      val ctx = compileResult.context.global.getContextOf(newUnit).withDebugRun(request.isDebugRun)
+      val queryResult = queryExecutor.setRowLimit(resultRowLimits).executeSingle(newUnit, ctx)
       trace(s"ctx: ${ctx.hashCode()} ${ctx.compilationUnit.knownSymbols}")
 
       queryResult
