@@ -15,9 +15,10 @@ package wvlet.lang.api.v1.frontend
 
 import wvlet.airframe.http.{RPC, RxRouter, RxRouterProvider}
 import wvlet.airframe.metrics.ElapsedTime
-import wvlet.airframe.ulid.{PrefixedULID, ULID}
+import wvlet.airframe.ulid.ULID
 import wvlet.lang.BuildInfo
-import wvlet.lang.api.v1.query.{QueryInfo, QueryStatus}
+import wvlet.lang.api.NodeLocation
+import wvlet.lang.api.v1.query.{QueryInfo, QuerySelection}
 
 @RPC
 trait FrontendApi:
@@ -47,6 +48,8 @@ object FrontendApi extends RxRouterProvider:
   case class QueryRequest(
       // wvlet query text
       query: String,
+      queryRunMode: QuerySelection = QuerySelection.Single,
+      nodeLocation: NodeLocation = NodeLocation.NoLocation,
       profile: Option[String] = None,
       schema: Option[String] = None,
       isDebugRun: Boolean = true,

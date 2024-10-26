@@ -22,7 +22,7 @@ import wvlet.lang.ui.editor.{FileNav, WvletEditor}
 import wvlet.log.LogSupport
 import org.scalajs.dom
 import wvlet.airframe.rx.RxVar
-import wvlet.lang.api.v1.query.ErrorReport
+import wvlet.lang.api.v1.query.QueryError
 
 object WvletUIMain extends LogSupport:
   def main(args: Array[String]): Unit = render
@@ -32,7 +32,7 @@ object WvletUIMain extends LogSupport:
   protected[ui] def design: Design = Design
     .newDesign
     .bindSingleton[WvletEditor]
-    .bindInstance[RxVar[Seq[ErrorReport]]](RxVar(Seq.empty))
+    .bindInstance[RxVar[List[QueryError]]](RxVar(List.empty))
     .bindInstance[FrontendRPC.RPCAsyncClient](rpcClient)
 
   def render: Unit = rpcClient
