@@ -3,8 +3,8 @@ package wvlet.lang.server
 import wvlet.airframe.control.ThreadUtil
 import wvlet.airframe.ulid.ULID
 import wvlet.lang.api.{SourceLocation, StatusCode, WvletLangException}
-import wvlet.lang.api.v1.frontend.FrontendApi.{QueryInfoRequest, QueryRequest, QueryResponse}
-import wvlet.lang.api.v1.query.{ErrorReport, QueryError, QueryInfo, QueryResult, QueryStatus}
+import wvlet.lang.api.v1.frontend.FrontendApi.{QueryInfoRequest, QueryResponse}
+import wvlet.lang.api.v1.query.{QueryError, QueryInfo, QueryResult, QueryRequest, QueryStatus}
 import wvlet.lang.api.v1.query.QueryStatus.{QUEUED, RUNNING}
 import wvlet.lang.runner.QueryExecutor
 import wvlet.lang.runner.WvletScriptRunner
@@ -28,12 +28,18 @@ class QueryService(scriptRunner: WvletScriptRunner) extends LogSupport with Auto
 
   def enqueue(request: QueryRequest): QueryResponse =
     // Enqueue the query request
-    val queryId        = ULID.newULID
-    val firstQueryInfo = QueryInfo(queryId = queryId, pageToken = "0", status = QUEUED)
+    val queryId = ULID.newULID
+    val firstQueryInfo = QueryInfo(
+      queryId = queryId,
+      pageToken = "0",
+      status = QUEUED,
+      statusCode = StatusCode.OK,
+      createdAt = Instant.now()
+    )
     queryMap += queryId -> firstQueryInfo
     threadManager.submit(
       new Runnable:
-        override def run: Unit = runQuery(queryId, request.query, request.isDebugRun)
+        override def run: Unit = runQuery(queryId, request)
     )
     QueryResponse(queryId = queryId, requestId = request.requestId)
 
@@ -46,14 +52,13 @@ class QueryService(scriptRunner: WvletScriptRunner) extends LogSupport with Auto
         throw StatusCode.INVALID_ARGUMENT.newException(s"Query not found: ${request.queryId}")
       }
 
-  private def runQuery(queryId: ULID, query: String, isTestRun: Boolean): Unit =
-    debug(s"[${queryId}] Running query:\n${query}")
+  private def runQuery(queryId: ULID, request: QueryRequest): Unit =
     var lastInfo = queryMap(queryId)
     lastInfo = lastInfo
       .copy(pageToken = "1", status = QueryStatus.RUNNING, startedAt = Some(Instant.now()))
     queryMap += queryId -> lastInfo
 
-    val queryResult = scriptRunner.runStatement(query, isTestRun = isTestRun)
+    val queryResult = scriptRunner.runStatement(request)
     if queryResult.isSuccess then
       // TODO Support pagination
       // TODO Return the query result
@@ -67,24 +72,28 @@ class QueryService(scriptRunner: WvletScriptRunner) extends LogSupport with Auto
         )
     else
       val errors: Seq[Throwable] = queryResult.getAllErrors
-      val errorReport: Seq[ErrorReport] = errors.map {
-        case e: WvletLangException =>
-          ErrorReport(e.statusCode, e.getMessage, e.sourceLocation, Some(e))
-        case other: Throwable =>
-          ErrorReport(
-            StatusCode.NON_RETRYABLE_INTERNAL_ERROR,
-            other.getMessage,
-            SourceLocation.NoSourceLocation,
-            Some(other)
-          )
-      }
+      val errorReport: List[QueryError] =
+        errors
+          .map {
+            case e: WvletLangException =>
+              QueryError(e.statusCode, e.getMessage, e.sourceLocation, Some(e))
+            case other: Throwable =>
+              QueryError(
+                StatusCode.NON_RETRYABLE_INTERNAL_ERROR,
+                other.getMessage,
+                SourceLocation.NoSourceLocation,
+                Some(other)
+              )
+          }
+          .toList
 
       queryMap += queryId ->
         lastInfo.copy(
           pageToken = "2",
           status = QueryStatus.FAILED,
+          statusCode = errorReport.head.statusCode,
           completedAt = Some(Instant.now()),
-          error = Some(QueryError(errorReport))
+          errors = errorReport
         )
     end if
 

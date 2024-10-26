@@ -119,7 +119,7 @@ case class Context(
 
   def workEnv: WorkEnv = global.workEnv
 
-  def withTestRun(isTest: Boolean): Context = this.copy(isDebugRun = isTest)
+  def withDebugRun(isDebug: Boolean): Context = this.copy(isDebugRun = isDebug)
 
   /**
     * Create a new context with an additional import
@@ -132,7 +132,7 @@ case class Context(
   def withCompilationUnit[U](newCompileUnit: CompilationUnit): Context = global
     .getContextOf(newCompileUnit)
     // Propagate debug run flag
-    .withTestRun(isDebugRun)
+    .withDebugRun(isDebugRun)
 
   def enter(sym: Symbol): Unit = scope.enter(sym)(using this)
 

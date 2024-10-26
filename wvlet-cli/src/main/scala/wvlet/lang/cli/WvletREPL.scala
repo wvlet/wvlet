@@ -24,6 +24,8 @@ import wvlet.airframe.*
 import wvlet.airframe.control.{Shell, ThreadUtil}
 import wvlet.airframe.log.AnsiColorPalette
 import wvlet.lang.api.WvletLangException
+import wvlet.lang.api.v1.query.QueryRequest
+import wvlet.lang.api.v1.query.QuerySelection.{All, Describe, Subquery}
 import wvlet.lang.compiler.parser.*
 import wvlet.lang.compiler.{CompilationUnit, SourceFile, WorkEnv}
 import wvlet.lang.model.plan.QueryStatement
@@ -93,7 +95,9 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
     if trimmedLine.nonEmpty then
       withNewThread {
         try
-          val result = runner.runStatement(trimmedLine, isTestRun = true)
+          val result = runner.runStatement(
+            QueryRequest(query = trimmedLine, querySelection = All, isDebugRun = true)
+          )
           val output = runner.displayOutput(trimmedLine, result, terminal)
           lastOutput = Some(output)
         catch
@@ -144,14 +148,16 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
     val lastLine      = lines.lastOption.getOrElse("")
     val lineNum       = lines.size
     val describeQuery = s"${queryFragment}\ndescribe"
-    val result        = runner.runStatement(describeQuery, isTestRun = true)
-    val str           = result.toPrettyBox()
+    val result = runner.runStatement(
+      QueryRequest(query = describeQuery, querySelection = Describe, isDebugRun = true)
+    )
+    val str = result.toPrettyBox()
     reader.printAbove(
       s"${Color.GREEN}describe${Color.RESET} ${Color.BLUE}(line:${lineNum})${Color.RESET}: ${Color.BRIGHT_RED}${lastLine}\n${Color.GRAY}${str}${AnsiColor.RESET}"
     )
     true
 
-  private def debugRun = newWidget: () =>
+  private def subqueryRun = newWidget: () =>
     val originalQuery = reader.getBuffer.toString
     val queryFragment = extractQueryFragment
     reader.getHistory.add(queryFragment)
@@ -164,7 +170,9 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
     println(
       s"${"\n" * (totalLines - lineNum + 1).max(0)}${Color.GREEN}debug${Color.RESET} ${Color.BLUE}(line:${lineNum})${Color.RESET}: ${Color.BRIGHT_RED}${lastLine}${AnsiColor.RESET}"
     )
-    val result = runner.runStatement(samplingQuery, isTestRun = true)
+    val result = runner.runStatement(
+      QueryRequest(query = samplingQuery, querySelection = Subquery, isDebugRun = true)
+    )
     lastOutput = Some(runner.displayOutput(samplingQuery, result, terminal))
     val out = terminal.output()
     // Add enough blank lines to redisplay the user query
@@ -203,7 +211,7 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
     keyMaps.bind(moveToEnd, KeyMap.translate("^J^E"))
     keyMaps.bind(enterStmt, KeyMap.translate("^J^R"))
     keyMaps.bind(describeLine, KeyMap.translate("^J^D"))
-    keyMaps.bind(debugRun, KeyMap.translate("^J^T"))
+    keyMaps.bind(subqueryRun, KeyMap.translate("^J^T"))
 
     // Load the command history so that we can use ctrl-r (keyword), ctrl+p/n (previous/next) for history search
     val history = reader.getHistory

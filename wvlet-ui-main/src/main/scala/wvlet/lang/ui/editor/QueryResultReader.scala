@@ -1,20 +1,20 @@
 package wvlet.lang.ui.editor
 
 import wvlet.airframe.rx.{Cancelable, Rx, RxVar}
-import wvlet.lang.api.v1.frontend.FrontendApi.{QueryInfoRequest, QueryRequest, QueryResponse}
+import wvlet.lang.api.v1.frontend.FrontendApi.{QueryInfoRequest, QueryResponse}
 import wvlet.lang.api.v1.frontend.FrontendRPC.RPCAsyncClient
-import wvlet.lang.api.v1.query.{ErrorReport, QueryInfo}
+import wvlet.lang.api.v1.query.{QueryError, QueryInfo, QueryRequest}
 import wvlet.log.LogSupport
 
 import java.util.concurrent.TimeUnit
 import scala.util.{Failure, Success}
 
-class QueryResultReader(rpcClient: RPCAsyncClient, errorReports: RxVar[Seq[ErrorReport]])
+class QueryResultReader(rpcClient: RPCAsyncClient, errorReports: RxVar[List[QueryError]])
     extends LogSupport:
 
-  def submitQuery(query: String, isTestRun: Boolean): Unit = rpcClient
+  def submitQuery(request: QueryRequest): Unit = rpcClient
     .FrontendApi
-    .submitQuery(QueryRequest(query = query, isDebugRun = isTestRun))
+    .submitQuery(request)
     .map { resp =>
       fetchQueryResult(resp)
     }
@@ -28,7 +28,10 @@ class QueryResultReader(rpcClient: RPCAsyncClient, errorReports: RxVar[Seq[Error
       .FrontendApi
       .getQueryInfo(QueryInfoRequest(queryId = query.queryId, pageToken = s"${page}"))
       .tap(queryInfo =>
-        ConsoleLog.write(s"Query: ${queryInfo.queryId} ${queryInfo.status}")
+        if queryInfo.status.isFailed then
+          ConsoleLog.writeError(s"Query: ${queryInfo.queryId} ${queryInfo.status}")
+        else
+          ConsoleLog.write(s"Query: ${queryInfo.queryId} ${queryInfo.status}")
         lst += queryInfo
       )
 
@@ -49,12 +52,10 @@ class QueryResultReader(rpcClient: RPCAsyncClient, errorReports: RxVar[Seq[Error
       // Show error message if exists
       queryInfo
         .lastOption
-        .flatMap(_.error)
-        .map { err =>
-          ConsoleLog.writeError(s"Query failed:")
-          errorReports := err.errorReports
-          err
-            .errorReports
+        .filter(_.errors.nonEmpty)
+        .foreach { x =>
+          errorReports := x.errors
+          x.errors
             .foreach { e =>
               ConsoleLog.writeError(e.message)
             }

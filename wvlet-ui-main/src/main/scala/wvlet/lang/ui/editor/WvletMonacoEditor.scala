@@ -18,9 +18,10 @@ import typings.monacoEditor.monacoEditorStrings
 import wvlet.airframe.rx.{Cancelable, Rx, RxVar}
 import wvlet.airframe.rx.html.RxElement
 import wvlet.airframe.rx.html.all.*
+import wvlet.lang.api.NodeLocation
 import wvlet.lang.api.v1.frontend.FileApi.FileRequest
 import wvlet.lang.api.v1.frontend.FrontendRPC.RPCAsyncClient
-import wvlet.lang.api.v1.query.ErrorReport
+import wvlet.lang.api.v1.query.{QueryError, QuerySelection, QueryRequest}
 import wvlet.lang.ui.component.GlobalState
 
 import scala.scalajs.js
@@ -56,7 +57,7 @@ end WvletMonacoEditor
 class WvletMonacoEditor(
     rpcClient: RPCAsyncClient,
     queryResultReader: QueryResultReader,
-    errorReports: RxVar[Seq[ErrorReport]]
+    errorReports: RxVar[List[QueryError]]
 ) extends RxElement:
   import WvletMonacoEditor.*
 
@@ -142,32 +143,61 @@ class WvletMonacoEditor(
     val subQuery = lines.take(lineNum).mkString("\n")
     subQuery
 
+  private def currentNodeLocation: NodeLocation =
+    val pos = textEditor.getPosition()
+    NodeLocation(pos.lineNumber.toInt, pos.column.toInt)
+
   private def runQuery(): Unit =
-    // TODO: Extract query fragment from the cursor position
     clearMarkers()
     val query = getTextValue
     ConsoleLog.write(s"Run query:\n${query}")
-    queryResultReader.submitQuery(query, isTestRun = true)
+    queryResultReader.submitQuery(
+      QueryRequest(
+        query = query,
+        querySelection = QuerySelection.Single,
+        nodeLocation = currentNodeLocation,
+        isDebugRun = true
+      )
+    )
+
+  private def runSubquery(): Unit =
+    clearMarkers()
+    val query = getTextValue
+    ConsoleLog.write(s"Run query fragment:\n${query}")
+    queryResultReader.submitQuery(
+      QueryRequest(
+        query = query,
+        querySelection = QuerySelection.Subquery,
+        nodeLocation = currentNodeLocation,
+        isDebugRun = true
+      )
+    )
 
   private def runProductionQuery(): Unit =
     clearMarkers()
     val query = getTextValue
     ConsoleLog.write(s"Run query with production mode:\n${query}")
-    queryResultReader.submitQuery(query, isTestRun = false)
-
-  private def debugQuery(): Unit =
-    clearMarkers()
-    // TODO: Extract query fragment from the cursor position
-    val queryFragment = queryUpToTheLine
-    val subQuery      = s"${queryFragment}"
-    ConsoleLog.write(s"Run query fragment:\n${subQuery}")
-    queryResultReader.submitQuery(subQuery, isTestRun = true)
+    queryResultReader.submitQuery(
+      QueryRequest(
+        query = query,
+        querySelection = QuerySelection.Single,
+        nodeLocation = currentNodeLocation,
+        isDebugRun = false
+      )
+    )
 
   private def describeQuery(): Unit =
     clearMarkers()
-    val subQuery = queryUpToTheLine
-    ConsoleLog.write(s"Describe query:\n${subQuery}")
-    queryResultReader.submitQuery(s"${subQuery}\ndescribe", isTestRun = true)
+    val query = getTextValue
+    ConsoleLog.write(s"Describe query:\n${query}")
+    queryResultReader.submitQuery(
+      QueryRequest(
+        query = query,
+        querySelection = QuerySelection.Describe,
+        nodeLocation = currentNodeLocation,
+        isDebugRun = true
+      )
+    )
 
   private def buildEditor: Unit =
     textEditor = editor.create(
@@ -208,9 +238,9 @@ class WvletMonacoEditor(
 
     {
       val acc = IActionDescriptor(
-        id = "test-query",
-        label = "Test query",
-        run = (editor: ICodeEditor, args: Any) => debugQuery()
+        id = "run-subquery",
+        label = "Run subquery",
+        run = (editor: ICodeEditor, args: Any) => runSubquery()
       )
       acc.keybindings = js.Array(
         // shift + enter

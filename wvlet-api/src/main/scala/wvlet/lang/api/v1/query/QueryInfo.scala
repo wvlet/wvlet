@@ -10,10 +10,13 @@ case class QueryInfo(
     // For pagination
     pageToken: String,
     status: QueryStatus,
-    createdAt: Instant = Instant.now(),
+    statusCode: StatusCode,
+    queryFragment: Option[String] = None,
+    sql: Option[String] = None,
+    createdAt: Instant,
     startedAt: Option[Instant] = None,
     completedAt: Option[Instant] = None,
-    error: Option[QueryError] = None,
+    errors: List[QueryError] = Nil,
     // Partial query result
     result: Option[QueryResult] = None,
     // demo purpose only
@@ -24,17 +27,10 @@ case class QueryInfo(
 case class QueryResult(schema: Seq[Column], rows: Seq[Seq[Any]])
 
 case class Column(name: String, typeName: String)
-case class QueryError(
-    // More detailed errors at different locations, if exists
-    errorReports: Seq[ErrorReport]
-):
-  require(errorReports.nonEmpty, "errorReports must not be empty")
-  def message: String        = errorReports.head.message
-  def statusCode: StatusCode = errorReports.head.statusCode
 
-case class ErrorReport(
+case class QueryError(
     statusCode: StatusCode,
     message: String,
     sourceLocation: SourceLocation,
-    error: Option[Throwable]
+    stackTrace: Option[Throwable]
 )
