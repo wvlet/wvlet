@@ -12,5 +12,7 @@ case class QueryRequest(
     schema: Option[String] = None,
     // If true, evaluate test expressions
     isDebugRun: Boolean = true,
+    // Limit the max output rows for debug run
+    maxRows: Option[Int] = None,
     requestId: ULID = ULID.newULID
 )

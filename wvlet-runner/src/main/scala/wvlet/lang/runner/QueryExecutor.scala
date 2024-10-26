@@ -16,6 +16,8 @@ package wvlet.lang.runner
 import wvlet.airframe.codec.{JDBCCodec, MessageCodec}
 import wvlet.airframe.control.Control
 import wvlet.airframe.control.Control.withResource
+import wvlet.lang.api.v1.query.QuerySelection
+import wvlet.lang.api.{NodeLocation, StatusCode, WvletLangException}
 import wvlet.lang.catalog.Catalog.TableName
 import wvlet.lang.compiler.*
 import wvlet.lang.compiler.codegen.GenSQL
@@ -27,7 +29,6 @@ import wvlet.lang.model.DataType.{NamedType, SchemaType, UnresolvedType}
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
 import wvlet.lang.runner.connector.DBConnector
-import wvlet.lang.api.{StatusCode, WvletLangException}
 import wvlet.log.{LogLevel, LogSupport}
 
 import java.io.File
@@ -62,6 +63,33 @@ class QueryExecutor(
         executeSingle(unit, result.context)
       case None =>
         throw StatusCode.FILE_NOT_FOUND.newException(s"File not found: ${file}")
+
+  def executeSelectedStatement(
+      u: CompilationUnit,
+      querySelection: QuerySelection,
+      nodeLocation: NodeLocation,
+      rootContext: Context
+  ): QueryResult =
+    workEnv
+      .outLogger
+      .info(s"Executing ${u.sourceFile.fileName} (${nodeLocation}, ${querySelection})")
+
+    val targetOffset =
+      if nodeLocation.isEmpty then
+        u.sourceFile.length - 1
+      else
+        u.sourceFile.offsetAt(nodeLocation)
+
+    val targetStatement: LogicalPlan = QuerySelector
+      .selectQuery(u.resolvedPlan, targetOffset, querySelection)
+    trace(s"Selected statement: ${targetStatement}, ${querySelection}")
+    val ctx           = rootContext.withCompilationUnit(u).newContext(Symbol.NoSymbol)
+    val executionPlan = ExecutionPlanner.plan(u, targetStatement, ctx)
+    val result        = execute(executionPlan, ctx)
+    workEnv.outLogger.info(s"Completed ${u.sourceFile.fileName}")
+    result
+
+  end executeSelectedStatement
 
   def executeSingle(u: CompilationUnit, rootContext: Context): QueryResult =
     workEnv.outLogger.info(s"Executing ${u.sourceFile.fileName}")
