@@ -9,7 +9,8 @@ object PreviewWindow:
 
 class PreviewWindow extends RxElement:
   override def render = div(
-    cls -> "text-xs text-slate-300 dark:text-white overflow-x-scroll overflow-y-auto",
+    cls ->
+      "text-xs text-slate-300 dark:text-white overflow-x-scroll overflow-y-auto scrollbar-hidden",
     PreviewWindow
       .previewResult
       .map { result =>

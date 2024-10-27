@@ -38,7 +38,7 @@ class ConsoleLogWindow extends RxElement:
   override def render = div(
     pre(
       id  -> "console-log",
-      cls -> "text-xs text-slate-300 dark:text-white",
+      cls -> "text-xs text-slate-300 dark:text-white scrollbar-hidden",
       ConsoleLog
         .logMessages
         .map { logBuffer =>
