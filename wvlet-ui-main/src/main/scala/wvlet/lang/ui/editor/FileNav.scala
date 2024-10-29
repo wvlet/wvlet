@@ -70,6 +70,18 @@ class FileNav(rpcClient: RPCAsyncClient) extends RxElement:
 
   end PathElem
 
+  private class NewFileButton(path: String, fileEntry: FileEntry) extends RxElement:
+    override def render: RxElement = button(
+      cls   -> "text-sm px-1 text-gray-500 hover:text-gray-300",
+      title -> "New",
+      onclick -> { (e: MouseEvent) =>
+        ConsoleLog.writeError(s"[NOT IMPLEMENTED] Add a file at ${fileEntry}")
+      },
+      "+"
+    )
+
+  end NewFileButton
+
   override def render: RxElement = selectedPath.map { path =>
     nav(
       cls -> "flex px-2 h-4 text-sm text-gray-400",
@@ -91,10 +103,14 @@ class FileNav(rpcClient: RPCAsyncClient) extends RxElement:
           // If the last path is directory, add "..." to lookup files in the directory
           if parentEntry.isDirectory then
             elems += PathElem("...", parentEntry)
+
           pathElems := elems.result()
+          // Add a dummy element
           span()
         },
-      pathElems
+      pathElems.map { pathElems =>
+        Seq[RxElement](pathElems, NewFileButton(path, pathElems.last.parentEntry))
+      }
     )
   }
 
