@@ -77,7 +77,6 @@ object WvletServer extends LogSupport:
 
   def design(config: WvletServerConfig): Design =
     val port = unusedPortFrom(config.port)
-
     Netty
       .server
       .withName("wvlet-ui")
@@ -87,17 +86,17 @@ object WvletServer extends LogSupport:
       .bindInstance[WvletServerConfig](config)
       .bindInstance[WorkEnv](config.workEnv)
       .bindInstance[Profile](Profile.getProfile(config.profile, config.catalog, config.schema))
-      .bindProvider[Profile, DBConnector] { p =>
+      .bindProvider[Profile, DBConnector] { (p: Profile) =>
         val prop = Map("prepareTPCH" -> config.prepareTPCH)
         DBConnectorProvider.getConnector(p, prop)
       }
-      .bindInstance[WvletScriptRunnerConfig](
+      .bindProvider[Profile, WvletScriptRunnerConfig] { (profile: Profile) =>
         WvletScriptRunnerConfig(
           interactive = false,
-          catalog = Some("memory"),
-          schema = Some("main")
+          catalog = profile.catalog,
+          schema = profile.schema
         )
-      )
+      }
       .bindSingleton[QueryExecutor]
 
   def testDesign: Design = design(WvletServerConfig(port = IOUtil.unusedPort)).bindProvider {
