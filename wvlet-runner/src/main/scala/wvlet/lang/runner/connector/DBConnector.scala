@@ -70,13 +70,13 @@ trait DBConnector(val dbType: DBType) extends AutoCloseable with LogSupport:
     try body(conn)
     finally conn.close()
 
-  protected def runQuery[U](sql: String)(handler: ResultSet => U): U = withConnection: conn =>
+  def runQuery[U](sql: String)(handler: ResultSet => U): U = withConnection: conn =>
     trace(s"Running SQL: ${sql}")
     withResource(conn.createStatement()): stmt =>
       withResource(stmt.executeQuery(sql)): rs =>
         handler(rs)
 
-  protected def executeUpdate(sql: String): Int = withConnection: conn =>
+  def executeUpdate(sql: String): Int = withConnection: conn =>
     withResource(conn.createStatement()): stmt =>
       stmt.executeUpdate(sql)
 
