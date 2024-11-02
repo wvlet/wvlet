@@ -7,20 +7,26 @@ import io.airlift.bootstrap.{Bootstrap, LifeCycleManager}
 import io.airlift.json.JsonModule
 import io.airlift.slice.{Slice, Slices}
 import io.trino.plugin.memory.*
-import io.trino.spi.Plugin
-import io.trino.spi.`type`.VarcharType
-import io.trino.spi.block.Block
+import io.trino.spi.{Page, Plugin}
+import io.trino.spi.`type`.{BooleanType, DoubleType, IntegerType, VarcharType}
+import io.trino.spi.block.{Block, VariableWidthBlockBuilder}
 import io.trino.spi.connector.ConnectorSplitSource.ConnectorSplitBatch
 import io.trino.spi.connector.*
 import io.trino.spi.function.FunctionProvider
 import io.trino.spi.function.table.ReturnTypeSpecification.DescribedTable
 import io.trino.spi.function.table.*
+import wvlet.airframe.codec.JDBCCodec.ResultSetCodec
+import wvlet.airframe.codec.MessageCodec
+import wvlet.airframe.msgpack.spi.MessagePack
+import wvlet.lang.runner.connector.duckdb.DuckDBConnector
+import wvlet.lang.runner.connector.trino.DuckDBSQLFunction.{DuckDBFunctionHandle, DuckDBQuerySplit}
 import wvlet.log.LogSupport
 
 import java.util.Optional
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.atomic.AtomicBoolean
 import java.{lang, util}
+import scala.collection.immutable.ListMap
 import scala.jdk.CollectionConverters.*
 
 class CustomMemoryPlugin extends Plugin:
@@ -68,7 +74,8 @@ class CustomMemoryConnector @Inject (
       pageSinkProvider
     ):
 
-  override def getTableFunctions: util.Set[ConnectorTableFunction] = Set(HelloTableFunction).asJava
+  override def getTableFunctions: util.Set[ConnectorTableFunction] =
+    Set(HelloTableFunction, DuckDBSQLFunction).asJava
 
   override def getFunctionProvider: Optional[FunctionProvider] = Optional
     .of(CustomMemoryFunctionProvider)
@@ -76,12 +83,15 @@ class CustomMemoryConnector @Inject (
   override def getSplitManager: ConnectorSplitManager = splitManager
 
 object CustomMemoryFunctionProvider extends FunctionProvider:
+
   override def getTableFunctionProcessorProvider(
       functionHandle: ConnectorTableFunctionHandle
   ): TableFunctionProcessorProvider =
     functionHandle match
       case h: HelloTableFunction.HelloTableFunctionHandle =>
         HelloTableFunction.TableFunctionProcessor()
+      case d: DuckDBFunctionHandle =>
+        DuckDBSQLFunction.QuerySplitProcessor()
       case _ =>
         super.getTableFunctionProcessorProvider(functionHandle)
 
@@ -106,8 +116,9 @@ class CustomMemorySplitManager @Inject (config: MemoryConfig, metadata: MemoryMe
   ): ConnectorSplitSource =
     function match
       case h: HelloTableFunction.HelloTableFunctionHandle =>
-        warn(s"here: ${function}")
-        new HelloTableFunction.SplitSource()
+        FixedSplitSource(HelloTableFunction.Split(h.msg))
+      case d: DuckDBFunctionHandle =>
+        FixedSplitSource(DuckDBQuerySplit(d.sql))
       case other =>
         super.getSplits(transaction, session, function)
 
@@ -163,40 +174,26 @@ object HelloTableFunction extends ConnectorTableFunction:
     @JsonProperty
     def getMsg: String = msg
 
-  class SplitSource extends ConnectorSplitSource:
-    private val isRead = AtomicBoolean(false)
-
-    override def getNextBatch(maxSize: Int): CompletableFuture[ConnectorSplitBatch] =
-      if isRead.compareAndSet(false, true) then
-        java
-          .util
-          .concurrent
-          .CompletableFuture
-          .completedFuture(ConnectorSplitBatch(List(Split(0)).asJava, true))
-      else
-        throw new UnsupportedOperationException("No more splits")
-
-    override def close(): Unit = {
-      // Do nothing
-    }
-
-    override def isFinished: Boolean = isRead.get()
-
   class TableFunctionProcessor extends TableFunctionProcessorProvider:
     override def getSplitProcessor(
         session: ConnectorSession,
         handle: ConnectorTableFunctionHandle,
         split: ConnectorSplit
-    ): TableFunctionSplitProcessor = SplitProcessor()
+    ): TableFunctionSplitProcessor =
+      split match
+        case s: Split =>
+          SplitProcessor(s.getMsg)
+        case _ =>
+          SplitProcessor("N/A")
 
-  class Split @JsonCreator (
-      @JsonProperty("id")
-      id: Int
+  case class Split @JsonCreator (
+      @JsonProperty("msg")
+      msg: String
   ) extends ConnectorSplit:
     @JsonProperty
-    def getId: Int = id
+    def getMsg: String = msg
 
-  class SplitProcessor extends io.trino.spi.function.table.TableFunctionSplitProcessor:
+  class SplitProcessor(msg: String) extends io.trino.spi.function.table.TableFunctionSplitProcessor:
     private var count = 0
     override def process(): TableFunctionProcessorState =
       if count == 0 then
@@ -206,7 +203,7 @@ object HelloTableFunction extends ConnectorTableFunction:
             VarcharType
               .VARCHAR
               .createBlockBuilder(null, 1)
-              .writeEntry(Slices.utf8Slice("hello"))
+              .writeEntry(Slices.utf8Slice(s"Hello ${msg}!"))
               .build()
           )
         TableFunctionProcessorState.Processed.produced(result)
@@ -214,3 +211,170 @@ object HelloTableFunction extends ConnectorTableFunction:
         TableFunctionProcessorState.Finished.FINISHED
 
 end HelloTableFunction
+
+/**
+  * Run a DuckDB SQL inside Trino
+  */
+object DuckDBSQLFunction extends ConnectorTableFunction with LogSupport:
+
+  private def toTrinoType(typeName: String): io.trino.spi.`type`.Type =
+    typeName match
+      case "INTEGER" =>
+        IntegerType.INTEGER
+      case "DOUBLE" =>
+        DoubleType.DOUBLE
+      case "VARCHAR" =>
+        VarcharType.VARCHAR
+      case "BOOLEAN" =>
+        BooleanType.BOOLEAN
+      case other =>
+        warn(s"Unknown type: ${other}")
+        VarcharType.VARCHAR
+
+  // TODO: Pass this from connector dependency
+  private val duckdb: DuckDBConnector = DuckDBConnector()
+
+  override def getName: String = "sql"
+
+  override def getSchema: String = "duckdb"
+
+  override def getReturnTypeSpecification: ReturnTypeSpecification =
+    ReturnTypeSpecification.GenericTable.GENERIC_TABLE
+
+  override def getArguments: util.List[ArgumentSpecification] =
+    List(
+      ScalarArgumentSpecification
+        .builder()
+        .name("sql")
+        .`type`(io.trino.spi.`type`.VarcharType.VARCHAR)
+        .build()
+    ).asJava
+
+  override def analyze(
+      session: ConnectorSession,
+      transaction: ConnectorTransactionHandle,
+      arguments: util.Map[String, Argument],
+      accessControl: ConnectorAccessControl
+  ): TableFunctionAnalysis =
+
+    val sql: String =
+      arguments.get("sql") match
+        case a: io.trino.spi.function.table.ScalarArgument =>
+          a.getValue match
+            case s: Slice =>
+              s.toStringUtf8
+            case _ =>
+              "N/A"
+        case _ =>
+          "N/A"
+
+    val returnedType =
+      duckdb.runQuery(s"describe ${sql}") { rs =>
+        val fields = List.newBuilder[Descriptor.Field]
+        while rs.next() do
+          val columName = rs.getString("column_name")
+          val columType = toTrinoType(rs.getString("column_type"))
+          fields += Descriptor.Field(columName, Optional.of(columType))
+        Descriptor(fields.result().asJava)
+      }
+
+    TableFunctionAnalysis
+      .builder()
+      .returnedType(returnedType)
+      .handle(DuckDBFunctionHandle(sql))
+      .build()
+  end analyze
+
+  case class DuckDBFunctionHandle @JsonCreator() (
+      @JsonProperty("sql")
+      sql: String
+  ) extends ConnectorTableFunctionHandle:
+    @JsonProperty
+    def getSql: String = sql
+
+  case class DuckDBQuerySplit @JsonCreator (
+      @JsonProperty("sql")
+      sql: String
+  ) extends ConnectorSplit:
+    @JsonProperty
+    def getSql: String = sql
+
+  class QuerySplitProcessor extends TableFunctionProcessorProvider:
+    override def getSplitProcessor(
+        session: ConnectorSession,
+        handle: ConnectorTableFunctionHandle,
+        split: ConnectorSplit
+    ): TableFunctionSplitProcessor =
+      split match
+        case s: DuckDBQuerySplit =>
+          DuckDBSplitProcessor(s.sql)
+        case _ =>
+          ???
+
+  class DuckDBSplitProcessor(sql: String) extends TableFunctionSplitProcessor with LogSupport:
+    private val isProcessed = AtomicBoolean(false)
+
+    private def toPage(
+        columnNames: IndexedSeq[String],
+        types: IndexedSeq[io.trino.spi.`type`.Type],
+        records: Seq[ListMap[String, Any]]
+    ): Page =
+      val blockBuilders = types.map(_.createBlockBuilder(null, records.size)).toIndexedSeq
+      records.foreach { record =>
+        record
+          .zipWithIndex
+          .foreach { case ((k, v), i) =>
+            val blockBuilder = blockBuilders(i)
+            v match
+              case null =>
+                blockBuilder.appendNull()
+              case _ =>
+                types(i) match
+                  case IntegerType.INTEGER =>
+                    v match
+                      case l: Long =>
+                        IntegerType.INTEGER.writeLong(blockBuilder, l)
+                      case i: Int =>
+                        IntegerType.INTEGER.writeInt(blockBuilder, i)
+                  case DoubleType.DOUBLE =>
+                    DoubleType.DOUBLE.writeDouble(blockBuilder, v.asInstanceOf[Double])
+                  case VarcharType.VARCHAR =>
+                    blockBuilder
+                      .asInstanceOf[VariableWidthBlockBuilder]
+                      .writeEntry(Slices.utf8Slice(v.toString))
+                  case BooleanType.BOOLEAN =>
+                    BooleanType.BOOLEAN.writeBoolean(blockBuilder, v.asInstanceOf[Boolean])
+                  case other =>
+                    blockBuilder
+                      .asInstanceOf[VariableWidthBlockBuilder]
+                      .writeEntry(Slices.utf8Slice(v.toString))
+          }
+      }
+      val blocks = blockBuilders.map(_.build())
+      new Page(blocks*)
+
+    end toPage
+
+    override def process(): TableFunctionProcessorState =
+      if isProcessed.compareAndSet(false, true) then
+        val page =
+          duckdb.runQuery(sql) { rs =>
+            val md          = rs.getMetaData
+            val columnCount = md.getColumnCount
+            val columnNames = (1 to columnCount).map(i => md.getColumnName(i))
+            debug(s"column names: ${columnNames}")
+            val types = (1 to columnCount).map(i => md.getColumnTypeName(i)).map(toTrinoType)
+            debug(s"column types: ${types}")
+
+            val json    = ResultSetCodec(rs).toJson
+            val records = MessageCodec.of[Seq[ListMap[String, Any]]].fromJson(json)
+            debug(s"=== ${records}")
+            toPage(columnNames.toIndexedSeq, types.toIndexedSeq, records)
+          }
+        TableFunctionProcessorState.Processed.produced(page)
+      else
+        TableFunctionProcessorState.Finished.FINISHED
+
+  end DuckDBSplitProcessor
+
+end DuckDBSQLFunction
