@@ -25,7 +25,7 @@ import java.io.File
 class TrinoConnectorTest extends AirSpec:
 
   initDesign { d =>
-    d.bindInstance[TestTrinoServer](new TestTrinoServer())
+    d.bindInstance[TestTrinoServer](new TestTrinoServer().withDeltaLakePlugin)
       .bindProvider { (server: TestTrinoServer) =>
         TrinoConfig(
           catalog = "memory",
