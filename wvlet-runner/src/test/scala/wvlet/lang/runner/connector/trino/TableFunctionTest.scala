@@ -35,9 +35,12 @@ class TableFunctionTest extends AirSpec:
 
     test("hello duckdb table function") {
       trino.runQuery(s"""
-           |select * from TABLE(
+           |-- Projection in Trino
+           |select c_custkey, c_nationkey, c_phone
+           |-- Read a parquet file with DuckDB
+           |from TABLE(
            |  duckdb.sql(
-           |    'SELECT c_custkey, c_nationkey, c_phone
+           |    'SELECT *
            |     FROM ''https://shell.duckdb.org/data/tpch/0_01/parquet/customer.parquet''
            |     where c_custkey = 1'
            |  )
