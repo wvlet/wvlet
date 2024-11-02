@@ -30,7 +30,7 @@ class TestTrinoServer() extends AutoCloseable with LogSupport:
     val l = java.util.logging.Logger.getLogger(loggerName)
     l.setLevel(level)
 
-  val tempMetastoreDir =
+  private val tempMetastoreDir =
     val dir = new File(s"target/trino-hive-metastore/${ULID.newULIDString}")
     dir.mkdirs()
     dir
@@ -51,7 +51,6 @@ class TestTrinoServer() extends AutoCloseable with LogSupport:
     this
 
   def withDeltaLakePlugin: TestTrinoServer =
-
     trino.installPlugin(MemoryPlugin())
     trino.createCatalog("memory", "memory")
 
