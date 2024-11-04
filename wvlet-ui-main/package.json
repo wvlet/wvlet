@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "monaco-editor": "^0.52.0",
-    "rollup": "^4.24.2"
+    "rollup": "^4.24.3"
   },
   "devDependencies": {
     "@rollup/plugin-replace": "^6.0.1",
