@@ -3,6 +3,8 @@
 Wvlet, pronounced as weave-let, is a new cross-SQL flow-style query language for functional data modeling and interactive data exploration. Wvlet works with various types of SQL-based database engines, including [DuckDB](https://duckdb.org/), [Trino](https://trino.io/), [Hive](https://hive.apache.org/), etc.
 
 - [Documentation](https://wvlet.org/wvlet/)
+- [Milestones](https://github.com/wvlet/wvlet/milestones)
+- [Project Roadmap(https://github.com/orgs/wvlet/projects/2)
 
 ![wvlet-architecture](website/docs/img/wvlet-architecture.svg)
 
@@ -29,3 +31,10 @@ limit (limiting the number of output rows)
 ```
 
 With this flow style, you can describe data processing pipelines in a natural order to create complex queries. You can also add operators for testing or debugging data in the middle of the query. This flow syntax is gaining traction and has been adopted in Google's SQL to simplify writing SQL queries. For more details, see _[SQL Has Problems. We Can Fix Them: Pipe Syntax In SQL (VLDB 2024)](https://research.google/pubs/sql-has-problems-we-can-fix-them-pipe-syntax-in-sql/)_.
+
+
+## Contributors
+
+Many thanks to everyone who has contributed to our progress:
+
+[![Contributors](https://contrib.rocks/image?repo=wvlet/wvlet)](https://github.com/wvlet/wvlet/graphs/contributors)
