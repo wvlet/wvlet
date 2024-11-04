@@ -86,7 +86,6 @@ lazy val api = crossProject(JVMPlatform, JSPlatform)
   )
 
 lazy val lang = project
-//    .enablePlugins(Antlr4Plugin)
   .in(file("wvlet-lang"))
   .settings(
     buildSettings,
