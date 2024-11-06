@@ -101,8 +101,13 @@ object GenSQL extends Phase("generate-sql"):
 
     val executionPlan = ExecutionPlanner.plan(unit, ctx)
     loop(executionPlan)
-    val sql = statements.result().mkString("\n;\n")
-    sql
+    val queries = statements.result()
+    val sql     = queries.mkString("\n;\n")
+    if queries.size > 1 then
+      // Add a last semi-colon for multiple statements
+      s"${sql}\n;"
+    else
+      sql
 
   end generateSQL
 
