@@ -182,8 +182,7 @@ class QueryExecutor(
   private def executeCommand(cmd: Command, context: Context): QueryResult =
     cmd match
       case e: ExecuteExpr =>
-        val gen = GenSQL(context)
-        val cmd = gen.printExpression(e.expr)(using Indented(0))
+        val cmd = GenSQL.generateExecute(e.expr, context)
         executeStatement(List(cmd))
         QueryResult.empty
       case s: ShowQuery =>

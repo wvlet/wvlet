@@ -93,6 +93,13 @@ object GenSQL extends Phase("generate-sql"):
           val expr = ExpressionEvaluator.eval(v.expr, ctx)
           v.symbol.symbolInfo = BoundedSymbolInfo(v.symbol, v.name, expr.dataType, expr)
           ctx.enter(v.symbol)
+        case cmd: ExecuteCommand =>
+          cmd.execute match
+            case ExecuteExpr(e, _) =>
+              val sql = generateExecute(e, ctx)
+              statements += sql
+            case _ =>
+              warn(s"Unsupported command: ${cmd}")
         case ExecuteNothing =>
         // ok
         case other =>
@@ -233,6 +240,12 @@ object GenSQL extends Phase("generate-sql"):
     statements.result()
 
   end generateSaveSQL
+
+  def generateExecute(expr: Expression, context: Context): String =
+    given Context = context
+    val gen       = GenSQL(context)
+    val sql       = gen.printExpression(expr)(using Indented(0))
+    withHeader(sql, expr.sourceLocation)
 
   /**
     * Expand referenced model queries by populating model arguments

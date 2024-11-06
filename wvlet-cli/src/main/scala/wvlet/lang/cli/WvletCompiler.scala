@@ -17,7 +17,7 @@ case class WvletCompilerOption(
     catalog: Option[String] = None,
     @option(prefix = "--schema", description = "Context database schema to use")
     schema: Option[String] = None,
-    @option(prefix = "--file", description = "Read a query from a file")
+    @option(prefix = "-f,--file", description = "Read a query from a file")
     file: Option[String] = None,
     @argument(description = "query")
     query: Option[String] = None
