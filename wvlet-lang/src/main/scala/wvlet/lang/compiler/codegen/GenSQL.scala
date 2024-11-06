@@ -14,6 +14,13 @@
 package wvlet.lang.compiler.codegen
 
 import wvlet.lang.BuildInfo
+import wvlet.lang.api.Span.NoSpan
+import wvlet.lang.api.StatusCode
+import wvlet.lang.catalog.Catalog.TableName
+import wvlet.lang.compiler.DBType.{DuckDB, Trino}
+import wvlet.lang.compiler.analyzer.TypeResolver
+import wvlet.lang.compiler.planner.ExecutionPlanner
+import wvlet.lang.compiler.transform.{ExpressionEvaluator, PreprocessLocalExpr}
 import wvlet.lang.compiler.{
   BoundedSymbolInfo,
   CompilationUnit,
@@ -25,14 +32,6 @@ import wvlet.lang.compiler.{
   Symbol,
   TermName
 }
-import wvlet.lang.compiler.DBType.{DuckDB, Trino}
-import wvlet.lang.compiler.analyzer.TypeResolver
-import wvlet.lang.compiler.transform.{ExpressionEvaluator, PreprocessLocalExpr}
-import wvlet.lang.ext.NativeFunction
-import wvlet.lang.api.{NodeLocation, StatusCode}
-import wvlet.lang.api.Span.NoSpan
-import wvlet.lang.catalog.Catalog.TableName
-import wvlet.lang.compiler.planner.ExecutionPlanner
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
 import wvlet.lang.model.plan.JoinType.*

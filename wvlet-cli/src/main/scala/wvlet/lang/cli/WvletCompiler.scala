@@ -1,12 +1,10 @@
 package wvlet.lang.cli
 
 import wvlet.airframe.launcher.{argument, option}
-import wvlet.lang.api.{StatusCode, WvletLangException}
+import wvlet.lang.api.StatusCode
 import wvlet.lang.catalog.Profile
-import wvlet.lang.compiler.codegen.{GenSQL, GeneratedSQL}
-import wvlet.lang.compiler.planner.ExecutionPlanner
-import wvlet.lang.compiler.{CompilationUnit, Compiler, CompilerOptions, Context, Symbol, WorkEnv}
-import wvlet.lang.model.plan.{ExecuteQuery, ExecuteSave, ExecuteTasks, ExecutionPlan, Relation}
+import wvlet.lang.compiler.codegen.GenSQL
+import wvlet.lang.compiler.{CompilationUnit, Compiler, CompilerOptions, Symbol, WorkEnv}
 import wvlet.lang.runner.connector.DBConnectorProvider
 import wvlet.log.LogSupport
 
