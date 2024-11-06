@@ -33,6 +33,7 @@ class WvletCompiler(opts: WvletGlobalOption, compilerOption: WvletCompilerOption
     val compiler = Compiler(
       CompilerOptions(
         phases = Compiler.allPhases,
+        sourceFolders = List(compilerOption.workFolder),
         workEnv = WorkEnv(compilerOption.workFolder, opts.logLevel),
         catalog = currentProfile.catalog,
         schema = currentProfile.schema
