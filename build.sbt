@@ -20,6 +20,7 @@ val buildSettings = Seq[Setting[?]](
   publishMavenStyle := true,
   // Tell the runtime that we are running tests in SBT
   Test / testOptions += Tests.Setup(_ => sys.props("wvlet.sbt.testing") = "true"),
+  Test / javaOptions += "-Dwvlet.sbt.testing=true",
   Test / parallelExecution := true,
   Test / logBuffered       := false,
   libraryDependencies ++= Seq("org.wvlet.airframe" %%% "airspec" % AIRSPEC_VERSION % Test),

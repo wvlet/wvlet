@@ -18,7 +18,6 @@ import wvlet.airframe.control.Control
 import wvlet.airframe.control.Control.withResource
 import wvlet.lang.api.v1.query.QuerySelection
 import wvlet.lang.api.{NodeLocation, StatusCode, WvletLangException}
-import wvlet.lang.catalog.Catalog.TableName
 import wvlet.lang.compiler.*
 import wvlet.lang.compiler.codegen.GenSQL
 import wvlet.lang.compiler.codegen.GenSQL.Indented
@@ -31,7 +30,6 @@ import wvlet.lang.model.plan.*
 import wvlet.lang.runner.connector.DBConnector
 import wvlet.log.{LogLevel, LogSupport}
 
-import java.io.File
 import java.sql.SQLException
 import scala.collection.immutable.ListMap
 import scala.util.Try
@@ -111,7 +109,7 @@ class QueryExecutor(
         // Update the last result only when there is no error
         if r.isSuccessfulQueryResult then
           // TODO Add a unique name to the last result
-          debug(s"last result is updated:\n${r}")
+          trace(s"last result is updated:\n${r}")
           lastResult = r
         // log results
         r match
@@ -143,7 +141,7 @@ class QueryExecutor(
           executeDebug(d, lastResult)(using context)
           debugInput
         case ExecuteTest(test) =>
-          debug(s"run test: ${test.testExpr}")
+          trace(s"run test: ${test.testExpr}")
           report(executeTest(test, lastResult)(using context))
         case ExecuteTasks(tasks) =>
           val results = tasks.map { task =>
@@ -184,8 +182,7 @@ class QueryExecutor(
   private def executeCommand(cmd: Command, context: Context): QueryResult =
     cmd match
       case e: ExecuteExpr =>
-        val gen = GenSQL(context)
-        val cmd = gen.printExpression(e.expr)(using Indented(0))
+        val cmd = GenSQL.generateExecute(e.expr, context)
         executeStatement(List(cmd))
         QueryResult.empty
       case s: ShowQuery =>
@@ -211,103 +208,14 @@ class QueryExecutor(
             WarningResult(s"${s.name} is not found", s.sourceLocation(using context))
 
   private def executeDelete(ops: DeleteOps)(using context: Context): QueryResult =
-    val gen = GenSQL(context)
-    ops match
-      case d: Delete =>
-        def filterExpr(x: Relation): Option[String] =
-          x match
-            case q: Query =>
-              filterExpr(q.child)
-            case f: Filter =>
-              Some(gen.printExpression(f.filterExpr)(using Indented(0)))
-            case l: LeafPlan =>
-              None
-            case other =>
-              throw StatusCode
-                .SYNTAX_ERROR
-                .newException(s"Unsupported delete input: ${other.modelName}", other.sourceLocation)
-
-        val filterSQL = filterExpr(d.inputRelation)
-        var sql       = s"delete from ${d.targetTable.fullName}"
-        filterSQL.foreach { expr =>
-          sql += s"\nwhere ${expr}"
-        }
-        executeStatement(List(sql))
-        QueryResult.empty
-      case other =>
-        throw StatusCode
-          .NOT_IMPLEMENTED
-          .newException(s"${other.modelName} is not implemented yet", other.sourceLocation)
-
-  private def executeSave(save: Save)(using context: Context): QueryResult =
-    save match
-      case s: SaveAs =>
-        val baseSQL           = GenSQL.generateSQL(save.inputRelation, context)
-        val statements        = List.newBuilder[String]
-        var needsTableCleanup = false
-        val ctasCmd =
-          if context.dbType.supportCreateOrReplace then
-            s"create or replace table"
-          else
-            needsTableCleanup = true
-            "create table"
-        val ctasSQL = s"${ctasCmd} ${s.target.fullName} as\n${baseSQL.sql}"
-
-        if needsTableCleanup then
-          val dropSQL = s"drop table if exists ${s.target.fullName}"
-          // TODO: May need to wrap drop-ctas in a transaction
-          statements += dropSQL
-
-        statements += ctasSQL
-        executeStatement(statements.result())
-        QueryResult.empty
-      case s: SaveAsFile if context.dbType == DBType.DuckDB =>
-        val baseSQL    = GenSQL.generateSQL(save.inputRelation, context)
-        val targetPath = context.dataFilePath(s.path)
-        val sql        = s"copy (${baseSQL.sql}) to '${targetPath}'"
-        executeStatement(List(sql))
-        QueryResult.empty
-      case a: AppendTo =>
-        val baseSQL       = GenSQL.generateSQL(save.inputRelation, context)
-        val tbl           = TableName.parse(a.targetName)
-        val schema        = tbl.schema.getOrElse(context.defaultSchema)
-        val fullTableName = s"${schema}.${tbl.name}"
-        val insertSQL =
-          context.catalog.getTable(TableName.parse(fullTableName)) match
-            case Some(t) =>
-              s"insert into ${fullTableName}\n${baseSQL.sql}"
-            case None =>
-              s"create table ${fullTableName} as\n${baseSQL.sql}"
-
-        executeStatement(List(insertSQL))
-        QueryResult.empty
-      case a: AppendToFile if context.dbType == DBType.DuckDB =>
-        val baseSQL    = GenSQL.generateSQL(save.inputRelation, context)
-        val targetPath = context.dataFilePath(a.path)
-        if new File(targetPath).exists then
-          val sql =
-            s"""copy (
-               |  (select * from '${targetPath}')
-               |  union all
-               |  ${baseSQL.sql}
-               |)
-               |to '${targetPath}' (USE_TMP_FILE true)""".stripMargin
-          executeStatement(List(sql))
-        else
-          val sql = s"create (${baseSQL.sql}) to '${targetPath}'"
-          executeStatement(List(sql))
-        QueryResult.empty
-      case other =>
-        throw StatusCode
-          .NOT_IMPLEMENTED
-          .newException(
-            s"${other.modelName} is not implemented yet for ${context.dbType}",
-            other.sourceLocation
-          )
-    end match
+    val statements = GenSQL.generateDeleteSQL(ops, context)
+    executeStatement(statements)
     QueryResult.empty
 
-  end executeSave
+  private def executeSave(save: Save)(using context: Context): QueryResult =
+    val statements = GenSQL.generateSaveSQL(save, context)
+    executeStatement(statements)
+    QueryResult.empty
 
   private def executeQuery(plan: LogicalPlan, context: Context): QueryResult =
     trace(s"Executing query: ${plan.pp}")

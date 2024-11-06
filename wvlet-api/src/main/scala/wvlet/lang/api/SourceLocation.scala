@@ -20,6 +20,12 @@ case class SourceLocation(
     nodeLocation: NodeLocation
 ):
 
+  def lineLocationString: String =
+    if nodeLocation.isEmpty then
+      path
+    else
+      s"${fileName}:${nodeLocation.line}"
+
   def locationString: String =
     if nodeLocation.isEmpty then
       path

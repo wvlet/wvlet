@@ -14,6 +14,13 @@
 package wvlet.lang.compiler.codegen
 
 import wvlet.lang.BuildInfo
+import wvlet.lang.api.Span.NoSpan
+import wvlet.lang.api.{SourceLocation, StatusCode}
+import wvlet.lang.catalog.Catalog.TableName
+import wvlet.lang.compiler.DBType.{DuckDB, Trino}
+import wvlet.lang.compiler.analyzer.TypeResolver
+import wvlet.lang.compiler.planner.ExecutionPlanner
+import wvlet.lang.compiler.transform.{ExpressionEvaluator, PreprocessLocalExpr}
 import wvlet.lang.compiler.{
   BoundedSymbolInfo,
   CompilationUnit,
@@ -25,18 +32,13 @@ import wvlet.lang.compiler.{
   Symbol,
   TermName
 }
-import wvlet.lang.compiler.DBType.{DuckDB, Trino}
-import wvlet.lang.compiler.analyzer.TypeResolver
-import wvlet.lang.compiler.transform.{ExpressionEvaluator, PreprocessLocalExpr}
-import wvlet.lang.ext.NativeFunction
-import wvlet.lang.api.NodeLocation
-import wvlet.lang.api.Span.NoSpan
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
 import wvlet.lang.model.plan.JoinType.*
 import wvlet.lang.model.plan.SamplingSize.{Percentage, Rows}
 import wvlet.log.LogSupport
 
+import java.io.File
 import scala.collection.immutable.ListMap
 
 case class GeneratedSQL(sql: String, plan: Relation)
@@ -70,22 +72,180 @@ object GenSQL extends Phase("generate-sql"):
     // Attach the generated SQL to the CompilationUnit
     unit
 
-  def generateSQL(q: Relation, ctx: Context): GeneratedSQL =
-    val expanded = expand(q, ctx)
-    // val sql      = SQLGenerator.toSQL(expanded)
-    val gen    = GenSQL(ctx)
-    val sql    = gen.printRelation(expanded)(using Indented(0))
-    val header = Seq.newBuilder[String]
-    header += s"version:${BuildInfo.version}"
-    val src =
-      if !ctx.compilationUnit.sourceFile.isEmpty then
-        header += s"src:${ctx.compilationUnit.sourceFile.fileName}"
+  def generateSQL(unit: CompilationUnit, ctx: Context): String =
+    val statements = List.newBuilder[String]
 
-    val query =
-      s"""-- wvlet ${header.result().mkString(", ")}
-         |${sql}""".stripMargin
+    def loop(p: ExecutionPlan): Unit =
+      p match
+        case ExecuteTasks(tasks) =>
+          tasks.foreach(loop)
+        case ExecuteQuery(plan) =>
+          plan match
+            case r: Relation =>
+              val gen = GenSQL.generateSQL(r, ctx)
+              statements += gen.sql
+            case other =>
+              warn(s"Unsupported query type: ${other.pp}")
+        case ExecuteSave(save, queryPlan) =>
+          statements ++= generateSaveSQL(save, ctx)
+        case ExecuteValDef(v) =>
+          // TODO Refactor this with QueryExecutor
+          val expr = ExpressionEvaluator.eval(v.expr, ctx)
+          v.symbol.symbolInfo = BoundedSymbolInfo(v.symbol, v.name, expr.dataType, expr)
+          ctx.enter(v.symbol)
+        case cmd: ExecuteCommand =>
+          cmd.execute match
+            case ExecuteExpr(e, _) =>
+              val sql = generateExecute(e, ctx)
+              statements += sql
+            case _ =>
+              warn(s"Unsupported command: ${cmd}")
+        case ExecuteNothing =>
+        // ok
+        case other =>
+          warn(s"Unsupported execution plan: ${other.pp}")
+    end loop
+
+    val executionPlan = ExecutionPlanner.plan(unit, ctx)
+    loop(executionPlan)
+    val queries = statements.result()
+    val sql     = queries.mkString("\n;\n")
+    if queries.size > 1 then
+      // Add a last semi-colon for multiple statements
+      s"${sql}\n;"
+    else
+      sql
+
+  end generateSQL
+
+  private def withHeader(sql: String, sourceLocation: SourceLocation)(using ctx: Context): String =
+    def headerComment: String =
+      val header = Seq.newBuilder[String]
+      header += s"version=${BuildInfo.version}"
+      val src =
+        if !ctx.compilationUnit.sourceFile.isEmpty then
+          header += s"src=${sourceLocation.lineLocationString}"
+      s"""-- wvlet ${header.result().mkString(", ")}"""
+
+    s"${headerComment}\n${sql}"
+
+  def generateSQL(q: Relation, ctx: Context, addHeader: Boolean = true): GeneratedSQL =
+    given Context = ctx
+    val expanded  = expand(q, ctx)
+    // val sql      = SQLGenerator.toSQL(expanded)
+    val gen = GenSQL(ctx)
+    val sql = gen.printRelation(expanded)(using Indented(0))
+
+    val query: String =
+      if addHeader then
+        withHeader(sql, expanded.sourceLocation)
+      else
+        sql
     trace(s"[plan]\n${expanded.pp}\n[SQL]\n${query}")
     GeneratedSQL(query, expanded)
+
+  def generateDeleteSQL(ops: DeleteOps, context: Context): List[String] =
+    given Context = context
+    val gen       = GenSQL(context)
+    ops match
+      case d: Delete =>
+        def filterExpr(x: Relation): Option[String] =
+          x match
+            case q: Query =>
+              filterExpr(q.child)
+            case f: Filter =>
+              Some(gen.printExpression(f.filterExpr)(using Indented(0)))
+            case l: LeafPlan =>
+              None
+            case other =>
+              throw StatusCode
+                .SYNTAX_ERROR
+                .newException(s"Unsupported delete input: ${other.modelName}", other.sourceLocation)
+
+        val filterSQL = filterExpr(d.inputRelation)
+        var sql       = withHeader(s"delete from ${d.targetTable.fullName}", ops.sourceLocation)
+        filterSQL.foreach { expr =>
+          sql += s"\nwhere ${expr}"
+        }
+        List(sql)
+      case other =>
+        throw StatusCode
+          .NOT_IMPLEMENTED
+          .newException(s"${other.modelName} is not implemented yet", other.sourceLocation)
+
+  def generateSaveSQL(save: Save, context: Context): List[String] =
+    given Context  = context
+    val statements = List.newBuilder[String]
+    save match
+      case s: SaveAs =>
+        val baseSQL           = generateSQL(save.inputRelation, context, addHeader = false)
+        var needsTableCleanup = false
+        val ctasCmd =
+          if context.dbType.supportCreateOrReplace then
+            s"create or replace table"
+          else
+            needsTableCleanup = true
+            "create table"
+        val ctasSQL = withHeader(
+          s"${ctasCmd} ${s.target.fullName} as\n${baseSQL.sql}",
+          s.sourceLocation
+        )
+
+        if needsTableCleanup then
+          val dropSQL = s"drop table if exists ${s.target.fullName}"
+          // TODO: May need to wrap drop-ctas in a transaction
+          statements += withHeader(dropSQL, s.sourceLocation)
+
+        statements += ctasSQL
+      case s: SaveAsFile if context.dbType == DBType.DuckDB =>
+        val baseSQL    = GenSQL.generateSQL(save.inputRelation, context, addHeader = false)
+        val targetPath = context.dataFilePath(s.path)
+        val sql        = s"copy (${baseSQL.sql}) to '${targetPath}'"
+        statements += withHeader(sql, s.sourceLocation)
+      case a: AppendTo =>
+        val baseSQL       = GenSQL.generateSQL(save.inputRelation, context, addHeader = false)
+        val tbl           = TableName.parse(a.targetName)
+        val schema        = tbl.schema.getOrElse(context.defaultSchema)
+        val fullTableName = s"${schema}.${tbl.name}"
+        val insertSQL =
+          context.catalog.getTable(TableName.parse(fullTableName)) match
+            case Some(t) =>
+              s"insert into ${fullTableName}\n${baseSQL.sql}"
+            case None =>
+              s"create table ${fullTableName} as\n${baseSQL.sql}"
+        statements += withHeader(insertSQL, save.sourceLocation)
+      case a: AppendToFile if context.dbType == DBType.DuckDB =>
+        val baseSQL    = GenSQL.generateSQL(save.inputRelation, context, addHeader = false)
+        val targetPath = context.dataFilePath(a.path)
+        if new File(targetPath).exists then
+          val sql =
+            s"""copy (
+               |  (select * from '${targetPath}')
+               |  union all
+               |  ${baseSQL.sql}
+               |)
+               |to '${targetPath}' (USE_TMP_FILE true)""".stripMargin
+          statements += withHeader(sql, a.sourceLocation)
+        else
+          val sql = s"create (${baseSQL.sql}) to '${targetPath}'"
+          statements += withHeader(sql, a.sourceLocation)
+      case other =>
+        throw StatusCode
+          .NOT_IMPLEMENTED
+          .newException(
+            s"${other.modelName} is not implemented yet for ${context.dbType}",
+            other.sourceLocation(using context)
+          )
+    end match
+    statements.result()
+
+  end generateSaveSQL
+
+  def generateExecute(expr: Expression, context: Context): String =
+    given Context = context
+    val gen       = GenSQL(context)
+    val sql       = gen.printExpression(expr)(using Indented(0))
+    withHeader(sql, expr.sourceLocation)
 
   /**
     * Expand referenced model queries by populating model arguments
@@ -208,6 +368,8 @@ class GenSQL(ctx: Context) extends LogSupport:
     def selectAllWithIndent(tableExpr: String): String =
       if sqlContext.withinFrom then
         s"${tableExpr}"
+      else if sqlContext.nestingLevel == 0 then
+        s"select * from ${tableExpr}"
       else
         indent(s"(select * from ${tableExpr})")
 

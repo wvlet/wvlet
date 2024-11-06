@@ -1,7 +1,14 @@
 package wvlet.lang.cli
 
-import wvlet.airframe.launcher.{Launcher, command}
+import wvlet.airframe.launcher.{Launcher, argument, command, option}
 import wvlet.lang.BuildInfo
+import wvlet.lang.api.v1.query.QuerySelection.All
+import wvlet.lang.api.{StatusCode, WvletLangException}
+import wvlet.lang.catalog.Profile
+import wvlet.lang.cli.WvletMain.isInSbt
+import wvlet.lang.compiler.planner.ExecutionPlanner
+import wvlet.lang.compiler.*
+import wvlet.lang.runner.QuerySelector
 import wvlet.lang.server.{WvletServer, WvletServerConfig}
 import wvlet.log.LogSupport
 
@@ -9,6 +16,8 @@ object WvletMain:
   private def launcher: Launcher      = Launcher.of[WvletMain]
   def main(args: Array[String]): Unit = launcher.execute(args)
   def main(argLine: String): Unit     = launcher.execute(argLine)
+
+  def isInSbt: Boolean = sys.props.getOrElse("wvlet.sbt.testing", "false").toBoolean
 
 /**
   * 'wvlet' command line interface
@@ -22,3 +31,16 @@ class WvletMain(opts: WvletGlobalOption) extends LogSupport:
   @command(description = "Start a local WebUI server")
   def ui(serverConfig: WvletServerConfig): Unit = WvletServer
     .startServer(serverConfig, openBrowser = true)
+
+  @command(description = "Compile .wv files")
+  def compile(compilerOption: WvletCompilerOption): Unit =
+    try
+      val sql = WvletCompiler(opts, compilerOption).toSQL
+      println(sql)
+    catch
+      case e: WvletLangException =>
+        error(e.getMessage)
+        if !isInSbt then
+          System.exit(1)
+
+end WvletMain

@@ -16,6 +16,10 @@ package wvlet.lang.cli
 import wvlet.airspec.AirSpec
 
 class WvletREPLMainTest extends AirSpec:
+  test("detect sbt") {
+    WvletMain.isInSbt shouldBe true
+  }
+
   test("help") {
     WvletREPLMain.main("-c 'help'")
   }

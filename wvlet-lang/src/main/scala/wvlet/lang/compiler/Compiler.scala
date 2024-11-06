@@ -143,6 +143,9 @@ class Compiler(compilerOptions: CompilerOptions) extends LogSupport:
     globalContext.setContextUnit(contextUnit)
     val rootContext = globalContext.getRootContext
 
+    debug(s"Compiling ${units.size} units")
+    trace(s"CompilationUnits:\n${units.map(_.sourceFile.fileName).mkString("\n")}")
+
     // reload if necessary
     var refinedUnits = units.map { unit =>
       if unit.needsRecompile then
