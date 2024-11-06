@@ -29,14 +29,17 @@ import wvlet.lang.compiler.DBType.{DuckDB, Trino}
 import wvlet.lang.compiler.analyzer.TypeResolver
 import wvlet.lang.compiler.transform.{ExpressionEvaluator, PreprocessLocalExpr}
 import wvlet.lang.ext.NativeFunction
-import wvlet.lang.api.NodeLocation
+import wvlet.lang.api.{NodeLocation, StatusCode}
 import wvlet.lang.api.Span.NoSpan
+import wvlet.lang.catalog.Catalog.TableName
+import wvlet.lang.compiler.planner.ExecutionPlanner
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
 import wvlet.lang.model.plan.JoinType.*
 import wvlet.lang.model.plan.SamplingSize.{Percentage, Rows}
 import wvlet.log.LogSupport
 
+import java.io.File
 import scala.collection.immutable.ListMap
 
 case class GeneratedSQL(sql: String, plan: Relation)
@@ -70,6 +73,31 @@ object GenSQL extends Phase("generate-sql"):
     // Attach the generated SQL to the CompilationUnit
     unit
 
+  def generateSQL(unit: CompilationUnit, ctx: Context): String =
+    val statements = List.newBuilder[String]
+
+    def loop(p: ExecutionPlan): Unit =
+      p match
+        case ExecuteTasks(tasks) =>
+          tasks.foreach(loop)
+        case ExecuteQuery(plan) =>
+          plan match
+            case r: Relation =>
+              val gen = GenSQL.generateSQL(r, ctx)
+              statements += gen.sql
+            case other =>
+              warn(s"Unsupported query type: ${other.pp}")
+        case ExecuteSave(save, queryPlan) =>
+          statements ++= generateSaveSQL(save, ctx)
+        case other =>
+          warn(s"Unsupported execution plan: ${other.pp}")
+    end loop
+
+    val executionPlan = ExecutionPlanner.plan(unit, ctx)
+    loop(executionPlan)
+    val sql = statements.result().mkString(";\n")
+    sql
+
   def generateSQL(q: Relation, ctx: Context): GeneratedSQL =
     val expanded = expand(q, ctx)
     // val sql      = SQLGenerator.toSQL(expanded)
@@ -86,6 +114,99 @@ object GenSQL extends Phase("generate-sql"):
          |${sql}""".stripMargin
     trace(s"[plan]\n${expanded.pp}\n[SQL]\n${query}")
     GeneratedSQL(query, expanded)
+
+  def generateDeleteSQL(ops: DeleteOps, context: Context): List[String] =
+    given Context = context
+    val gen       = GenSQL(context)
+    ops match
+      case d: Delete =>
+        def filterExpr(x: Relation): Option[String] =
+          x match
+            case q: Query =>
+              filterExpr(q.child)
+            case f: Filter =>
+              Some(gen.printExpression(f.filterExpr)(using Indented(0)))
+            case l: LeafPlan =>
+              None
+            case other =>
+              throw StatusCode
+                .SYNTAX_ERROR
+                .newException(s"Unsupported delete input: ${other.modelName}", other.sourceLocation)
+
+        val filterSQL = filterExpr(d.inputRelation)
+        var sql       = s"delete from ${d.targetTable.fullName}"
+        filterSQL.foreach { expr =>
+          sql += s"\nwhere ${expr}"
+        }
+        List(sql)
+      case other =>
+        throw StatusCode
+          .NOT_IMPLEMENTED
+          .newException(s"${other.modelName} is not implemented yet", other.sourceLocation)
+
+  def generateSaveSQL(save: Save, context: Context): List[String] =
+    val statements = List.newBuilder[String]
+    save match
+      case s: SaveAs =>
+        val baseSQL           = generateSQL(save.inputRelation, context)
+        var needsTableCleanup = false
+        val ctasCmd =
+          if context.dbType.supportCreateOrReplace then
+            s"create or replace table"
+          else
+            needsTableCleanup = true
+            "create table"
+        val ctasSQL = s"${ctasCmd} ${s.target.fullName} as\n${baseSQL.sql}"
+
+        if needsTableCleanup then
+          val dropSQL = s"drop table if exists ${s.target.fullName}"
+          // TODO: May need to wrap drop-ctas in a transaction
+          statements += dropSQL
+
+        statements += ctasSQL
+      case s: SaveAsFile if context.dbType == DBType.DuckDB =>
+        val baseSQL    = GenSQL.generateSQL(save.inputRelation, context)
+        val targetPath = context.dataFilePath(s.path)
+        val sql        = s"copy (\n${baseSQL.sql}\n) to '${targetPath}'"
+        statements += sql
+      case a: AppendTo =>
+        val baseSQL       = GenSQL.generateSQL(save.inputRelation, context)
+        val tbl           = TableName.parse(a.targetName)
+        val schema        = tbl.schema.getOrElse(context.defaultSchema)
+        val fullTableName = s"${schema}.${tbl.name}"
+        val insertSQL =
+          context.catalog.getTable(TableName.parse(fullTableName)) match
+            case Some(t) =>
+              s"insert into ${fullTableName}\n${baseSQL.sql}"
+            case None =>
+              s"create table ${fullTableName} as\n${baseSQL.sql}"
+        statements += insertSQL
+      case a: AppendToFile if context.dbType == DBType.DuckDB =>
+        val baseSQL    = GenSQL.generateSQL(save.inputRelation, context)
+        val targetPath = context.dataFilePath(a.path)
+        if new File(targetPath).exists then
+          val sql =
+            s"""copy (
+               |  (select * from '${targetPath}')
+               |  union all
+               |  ${baseSQL.sql}
+               |)
+               |to '${targetPath}' (USE_TMP_FILE true)""".stripMargin
+          statements += sql
+        else
+          val sql = s"create (${baseSQL.sql}) to '${targetPath}'"
+          statements += sql
+      case other =>
+        throw StatusCode
+          .NOT_IMPLEMENTED
+          .newException(
+            s"${other.modelName} is not implemented yet for ${context.dbType}",
+            other.sourceLocation(using context)
+          )
+    end match
+    statements.result()
+
+  end generateSaveSQL
 
   /**
     * Expand referenced model queries by populating model arguments
@@ -208,6 +329,8 @@ class GenSQL(ctx: Context) extends LogSupport:
     def selectAllWithIndent(tableExpr: String): String =
       if sqlContext.withinFrom then
         s"${tableExpr}"
+      else if sqlContext.nestingLevel == 0 then
+        s"select * from ${tableExpr}"
       else
         indent(s"(select * from ${tableExpr})")
 

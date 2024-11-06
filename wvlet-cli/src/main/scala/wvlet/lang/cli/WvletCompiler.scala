@@ -3,9 +3,11 @@ package wvlet.lang.cli
 import wvlet.airframe.launcher.{argument, option}
 import wvlet.lang.api.{StatusCode, WvletLangException}
 import wvlet.lang.catalog.Profile
+import wvlet.lang.compiler.codegen.{GenSQL, GeneratedSQL}
 import wvlet.lang.compiler.planner.ExecutionPlanner
-import wvlet.lang.compiler.{CompilationUnit, Compiler, CompilerOptions, Symbol, WorkEnv}
-import wvlet.lang.model.plan.ExecutionPlan
+import wvlet.lang.compiler.{CompilationUnit, Compiler, CompilerOptions, Context, Symbol, WorkEnv}
+import wvlet.lang.model.plan.{ExecuteQuery, ExecuteSave, ExecuteTasks, ExecutionPlan, Relation}
+import wvlet.lang.runner.connector.DBConnectorProvider
 import wvlet.log.LogSupport
 
 case class WvletCompilerOption(
@@ -39,6 +41,14 @@ class WvletCompiler(opts: WvletGlobalOption, compilerOption: WvletCompilerOption
       )
     )
 
+    val dbConnector = DBConnectorProvider.getConnector(currentProfile)
+    currentProfile
+      .catalog
+      .foreach { catalog =>
+        val schema = currentProfile.schema.getOrElse("main")
+        compiler.setDefaultCatalog(dbConnector.getCatalog(catalog, schema))
+      }
+
     val inputUnit =
       (compilerOption.file, compilerOption.query) match
         case (Some(f), None) =>
@@ -53,13 +63,13 @@ class WvletCompiler(opts: WvletGlobalOption, compilerOption: WvletCompilerOption
     val compileResult = compiler.compileSingleUnit(inputUnit)
 
     compileResult.reportAllErrors
-    val ctx = compileResult.context.withCompilationUnit(inputUnit).newContext(Symbol.NoSymbol)
-    val executionPlan = ExecutionPlanner.plan(inputUnit, ctx)
-    toSQL(executionPlan)
-  end toSQL
+    val ctx = compileResult
+      .context
+      .withCompilationUnit(inputUnit)
+      // Disable debug path as we can't run tests in plain SQL
+      .withDebugRun(false).newContext(Symbol.NoSymbol)
 
-  private def toSQL(executionPlan: ExecutionPlan): String =
-    info(executionPlan.pp)
-    ""
+    GenSQL.generateSQL(inputUnit, ctx)
+  end toSQL
 
 end WvletCompiler

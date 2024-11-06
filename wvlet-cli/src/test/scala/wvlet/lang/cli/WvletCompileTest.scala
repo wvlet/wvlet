@@ -3,7 +3,6 @@ package wvlet.lang.cli
 import wvlet.airspec.AirSpec
 
 import java.io.ByteArrayOutputStream
-import scala.annotation.internal.Body
 
 class WvletCompileTest extends AirSpec:
   test("help") {
@@ -15,12 +14,26 @@ class WvletCompileTest extends AirSpec:
     Console.withOut(out) {
       body
     }
-    out.toString
+    val s = out.toString
+    debug(s)
+    s
 
   test("compile") {
     val out = captureStdout {
       WvletMain.main("""compile -w spec/basic "from 'person.json'" """)
     }
     out shouldContain "select *"
-    out shouldContain "from 'person.json'"
+    out shouldContain "from 'spec/basic/person.json'"
   }
+
+  test("compile save") {
+    val out = captureStdout {
+      WvletMain.main("""compile -w spec/basic "from 'person.json' save as 'tmp.parquet'" """)
+    }
+    out shouldContain "copy"
+    out shouldContain "to 'spec/basic/tmp.parquet'"
+    out shouldContain "select *"
+    out shouldContain "from 'spec/basic/person.json'"
+  }
+
+end WvletCompileTest

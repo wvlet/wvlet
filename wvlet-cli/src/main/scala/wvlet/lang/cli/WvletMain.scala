@@ -35,7 +35,8 @@ class WvletMain(opts: WvletGlobalOption) extends LogSupport:
   @command(description = "Compile .wv files")
   def compile(compilerOption: WvletCompilerOption): Unit =
     try
-      WvletCompiler(opts, compilerOption).toSQL
+      val sql = WvletCompiler(opts, compilerOption).toSQL
+      println(sql)
     catch
       case e: WvletLangException =>
         error(e.getMessage)
