@@ -32,5 +32,5 @@ case class WvletGlobalOption(
       case _ =>
         error(s"Invalid log level pattern: ${p}")
   }
-  
+
 end WvletGlobalOption

@@ -18,7 +18,6 @@ import wvlet.airframe.control.Control
 import wvlet.airframe.control.Control.withResource
 import wvlet.lang.api.v1.query.QuerySelection
 import wvlet.lang.api.{NodeLocation, StatusCode, WvletLangException}
-import wvlet.lang.catalog.Catalog.TableName
 import wvlet.lang.compiler.*
 import wvlet.lang.compiler.codegen.GenSQL
 import wvlet.lang.compiler.codegen.GenSQL.Indented
@@ -31,7 +30,6 @@ import wvlet.lang.model.plan.*
 import wvlet.lang.runner.connector.DBConnector
 import wvlet.log.{LogLevel, LogSupport}
 
-import java.io.File
 import java.sql.SQLException
 import scala.collection.immutable.ListMap
 import scala.util.Try
