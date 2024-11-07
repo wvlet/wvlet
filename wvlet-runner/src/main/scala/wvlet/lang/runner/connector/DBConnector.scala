@@ -54,7 +54,7 @@ trait DBConnector(val dbType: DBType) extends AutoCloseable with LogSupport:
     queryScope = scope
     this
 
-  protected def newConnection: Connection
+  def newConnection: Connection
 
   def getCatalog(catalogName: String, defaultSchema: String): Catalog = catalogs.getOrElseUpdate(
     catalogName,

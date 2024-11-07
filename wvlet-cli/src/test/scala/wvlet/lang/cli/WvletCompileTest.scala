@@ -26,9 +26,18 @@ class WvletCompileTest extends AirSpec:
     out shouldContain "from 'spec/basic/person.json'"
   }
 
-  test("compile save") {
+  test("compile table scan") {
     val out = captureStdout {
-      WvletMain.main("""compile -w spec/basic "from 'person.json' save as 'tmp.parquet'" """)
+      WvletMain.main("""compile -w spec/basic "from tbl" """)
+    }
+    out shouldContain "select *"
+    out shouldContain "from tbl"
+  }
+
+  test("compile save as file in DuckDB") {
+    val out = captureStdout {
+      WvletMain
+        .main("""compile -w spec/basic -t duckdb "from 'person.json' save as 'tmp.parquet'" """)
     }
     out shouldContain "copy"
     out shouldContain "to 'spec/basic/tmp.parquet'"
@@ -40,7 +49,6 @@ class WvletCompileTest extends AirSpec:
     val out = captureStdout {
       WvletMain.main("""compile -w spec/basic -t hive "from person limit 10"""")
     }
-    debug(out)
   }
 
 end WvletCompileTest

@@ -13,13 +13,13 @@
  */
 package wvlet.lang.compiler
 
-import wvlet.lang.api.{NodeLocation, SourceLocation, Span}
+import wvlet.lang.api.{NodeLocation, SourceLocation, Span, StatusCode}
 import wvlet.lang.compiler.parser.{WvletScanner, WvletToken}
 import wvlet.lang.compiler.parser.WvletToken.*
 import wvlet.airframe.ulid.ULID
 import wvlet.log.io.IOUtil
 
-import java.io.File
+import java.io.{File, FileNotFoundException}
 import java.net.URL
 import java.util.concurrent.atomic.AtomicBoolean
 import scala.collection.mutable.ArrayBuffer
@@ -60,9 +60,13 @@ class SourceFile(val file: VirtualFile):
     content
 
   private def loadContent: IArray[Char] =
-    content = file.content
-    lineIndexes = computeLineIndexes
-    content
+    try
+      content = file.content
+      lineIndexes = computeLineIndexes
+      content
+    catch
+      case e: FileNotFoundException =>
+        throw StatusCode.FILE_NOT_FOUND.newException(s"${e.getMessage}", e)
 
   def reload(): Unit = isLoaded.set(false)
 

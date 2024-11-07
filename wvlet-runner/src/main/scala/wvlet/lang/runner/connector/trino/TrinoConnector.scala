@@ -35,7 +35,7 @@ case class TrinoConfig(
 class TrinoConnector(val config: TrinoConfig) extends DBConnector(DBType.Trino) with LogSupport:
   private lazy val driver = new TrinoDriver()
 
-  override protected def newConnection: Connection =
+  override def newConnection: Connection =
     val jdbcUrl =
       s"jdbc:trino://${config.hostAndPort}/${config.catalog}/${config.schema}${
           if config.useSSL then

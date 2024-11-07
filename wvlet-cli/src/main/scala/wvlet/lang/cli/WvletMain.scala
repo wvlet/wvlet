@@ -1,14 +1,10 @@
 package wvlet.lang.cli
 
-import wvlet.airframe.launcher.{Launcher, argument, command, option}
+import wvlet.airframe.Design
+import wvlet.airframe.launcher.{Launcher, command}
 import wvlet.lang.BuildInfo
-import wvlet.lang.api.v1.query.QuerySelection.All
-import wvlet.lang.api.{StatusCode, WvletLangException}
-import wvlet.lang.catalog.Profile
+import wvlet.lang.api.WvletLangException
 import wvlet.lang.cli.WvletMain.isInSbt
-import wvlet.lang.compiler.planner.ExecutionPlanner
-import wvlet.lang.compiler.*
-import wvlet.lang.runner.QuerySelector
 import wvlet.lang.server.{WvletServer, WvletServerConfig}
 import wvlet.log.LogSupport
 
@@ -42,15 +38,23 @@ class WvletMain(opts: WvletGlobalOption) extends LogSupport:
           System.exit(1)
         throw e
 
+  private def design(compilerOptions: WvletCompilerOption): Design = Design
+    .newSilentDesign
+    .bindInstance(WvletCompiler(opts, compilerOptions))
+
   @command(description = "Compile .wv files")
   def compile(compilerOption: WvletCompilerOption): Unit = handleError {
-    val sql = WvletCompiler(opts, compilerOption).generateSQL
-    println(sql)
+    design(compilerOption).build[WvletCompiler] { compiler =>
+      val sql = compiler.generateSQL
+      println(sql)
+    }
   }
 
   @command(description = "Run a query")
   def run(compilerOption: WvletCompilerOption): Unit = handleError {
-    WvletCompiler(opts, compilerOption).run()
+    design(compilerOption).build[WvletCompiler] { compiler =>
+      compiler.run()
+    }
   }
 
 end WvletMain
