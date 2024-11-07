@@ -40,7 +40,6 @@ class WvletCompileTest extends AirSpec:
     val out = captureStdout {
       WvletMain.main("""compile -w spec/basic -t hive "from person limit 10"""")
     }
-    debug(out)
   }
 
 end WvletCompileTest

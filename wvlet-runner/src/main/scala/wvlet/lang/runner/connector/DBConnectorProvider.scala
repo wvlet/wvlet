@@ -1,6 +1,7 @@
 package wvlet.lang.runner.connector
 
 import wvlet.lang.catalog.Profile
+import wvlet.lang.compiler.DBType
 import wvlet.lang.runner.connector.duckdb.DuckDBConnector
 import wvlet.lang.runner.connector.trino.{TrinoConfig, TrinoConnector}
 import wvlet.log.LogSupport
@@ -8,8 +9,10 @@ import wvlet.log.LogSupport
 object DBConnectorProvider extends LogSupport:
 
   def getConnector(profile: Profile, properties: Map[String, Any] = Map.empty): DBConnector =
-    profile.`type` match
-      case "trino" =>
+    val dbType = profile.dbType
+    debug(s"Get a connector for ${dbType}")
+    dbType match
+      case DBType.Trino =>
         TrinoConnector(
           TrinoConfig(
             catalog = profile.catalog.getOrElse("default"),

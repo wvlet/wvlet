@@ -14,6 +14,7 @@
 package wvlet.lang.catalog
 
 import wvlet.airframe.codec.MessageCodec
+import wvlet.lang.compiler.DBType
 import wvlet.log.LogSupport
 import wvlet.log.io.IOUtil
 
@@ -30,7 +31,8 @@ case class Profile(
     catalog: Option[String] = None,
     schema: Option[String] = None,
     properties: Map[String, Any] = Map.empty
-)
+):
+  def dbType: DBType = DBType.fromString(`type`)
 
 object Profile extends LogSupport:
 
