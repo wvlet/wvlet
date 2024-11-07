@@ -1,35 +1,49 @@
 package wvlet.lang.cli
 
+import wvlet.airframe.control.Control
 import wvlet.airframe.launcher.{argument, option}
 import wvlet.lang.api.StatusCode
+import wvlet.lang.api.v1.query.QuerySelection
+import wvlet.lang.api.v1.query.QuerySelection.All
 import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.codegen.GenSQL
-import wvlet.lang.compiler.{CompilationUnit, Compiler, CompilerOptions, Symbol, WorkEnv}
-import wvlet.lang.runner.connector.DBConnectorProvider
+import wvlet.lang.compiler.{
+  CompilationUnit,
+  CompileResult,
+  Compiler,
+  CompilerOptions,
+  Context,
+  Symbol,
+  WorkEnv
+}
+import wvlet.lang.runner.{QueryExecutor, WvletScriptRunner}
+import wvlet.lang.runner.connector.{DBConnector, DBConnectorProvider}
 import wvlet.log.LogSupport
 
 case class WvletCompilerOption(
     @option(prefix = "-w", description = "Working folder")
     workFolder: String = ".",
+    @option(prefix = "-f,--file", description = "Read a query from the given .wv file")
+    file: Option[String] = None,
+    @argument(description = "query")
+    query: Option[String] = None,
     @option(prefix = "--profile", description = "Profile to use")
     profile: Option[String] = None,
     @option(prefix = "--catalog", description = "Context database catalog to use")
     catalog: Option[String] = None,
     @option(prefix = "--schema", description = "Context database schema to use")
-    schema: Option[String] = None,
-    @option(prefix = "-f,--file", description = "Read a query from a file")
-    file: Option[String] = None,
-    @argument(description = "query")
-    query: Option[String] = None
+    schema: Option[String] = None
 )
 
 class WvletCompiler(opts: WvletGlobalOption, compilerOption: WvletCompilerOption)
     extends LogSupport:
 
-  def toSQL: String =
-    val currentProfile: Profile = Profile
-      .getProfile(compilerOption.profile, compilerOption.catalog, compilerOption.schema)
+  private lazy val currentProfile: Profile = Profile
+    .getProfile(compilerOption.profile, compilerOption.catalog, compilerOption.schema)
 
+  private lazy val dbConnector: DBConnector = DBConnectorProvider.getConnector(currentProfile)
+
+  private val compiler: Compiler =
     val compiler = Compiler(
       CompilerOptions(
         phases = Compiler.allPhases,
@@ -39,8 +53,6 @@ class WvletCompiler(opts: WvletGlobalOption, compilerOption: WvletCompilerOption
         schema = currentProfile.schema
       )
     )
-
-    val dbConnector = DBConnectorProvider.getConnector(currentProfile)
     currentProfile
       .catalog
       .foreach { catalog =>
@@ -48,18 +60,27 @@ class WvletCompiler(opts: WvletGlobalOption, compilerOption: WvletCompilerOption
         compiler.setDefaultCatalog(dbConnector.getCatalog(catalog, schema))
       }
 
-    val inputUnit =
-      (compilerOption.file, compilerOption.query) match
-        case (Some(f), None) =>
-          CompilationUnit.fromFile(s"${compilerOption.workFolder}/${f}".stripPrefix("./"))
-        case (None, Some(q)) =>
-          CompilationUnit.fromString(q)
-        case _ =>
-          throw StatusCode
-            .INVALID_ARGUMENT
-            .newException("Specify either --file or a query argument")
+    currentProfile
+      .schema
+      .foreach { schema =>
+        compiler.setDefaultSchema(schema)
+      }
 
-    val compileResult = compiler.compileSingleUnit(inputUnit)
+    compiler
+
+  private lazy val inputUnit: CompilationUnit =
+    (compilerOption.file, compilerOption.query) match
+      case (Some(f), None) =>
+        CompilationUnit.fromFile(s"${compilerOption.workFolder}/${f}".stripPrefix("./"))
+      case (None, Some(q)) =>
+        CompilationUnit.fromString(q)
+      case _ =>
+        throw StatusCode.INVALID_ARGUMENT.newException("Specify either --file or a query argument")
+
+  private def compile(): CompileResult = compiler.compileSingleUnit(inputUnit)
+
+  def generateSQL: String =
+    val compileResult = compile()
 
     compileResult.reportAllErrors
     val ctx = compileResult
@@ -69,6 +90,20 @@ class WvletCompiler(opts: WvletGlobalOption, compilerOption: WvletCompilerOption
       .withDebugRun(false).newContext(Symbol.NoSymbol)
 
     GenSQL.generateSQL(inputUnit, ctx)
-  end toSQL
+  end generateSQL
+
+  def run(): Unit =
+    Control.withResource(QueryExecutor(dbConnector, compiler.compilerOptions.workEnv)) { executor =>
+      val compileResult = compile()
+      given Context     = compileResult.context
+
+      val queryResult = executor.executeSelectedStatement(
+        inputUnit,
+        QuerySelection.All,
+        nodeLocation = inputUnit.resolvedPlan.sourceLocation.nodeLocation,
+        compileResult.context
+      )
+      println(queryResult.toPrettyBox())
+    }
 
 end WvletCompiler

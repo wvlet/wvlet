@@ -84,7 +84,7 @@ case class CompilerOptions(
   // def workingFolder: String = workEnv.cacheFolder
 }
 
-class Compiler(compilerOptions: CompilerOptions) extends LogSupport:
+class Compiler(val compilerOptions: CompilerOptions) extends LogSupport:
 
   private lazy val globalContext = newGlobalContext
   // Compilation units in the given source folders (except preset-libraries)

@@ -32,15 +32,25 @@ class WvletMain(opts: WvletGlobalOption) extends LogSupport:
   def ui(serverConfig: WvletServerConfig): Unit = WvletServer
     .startServer(serverConfig, openBrowser = true)
 
-  @command(description = "Compile .wv files")
-  def compile(compilerOption: WvletCompilerOption): Unit =
+  private def handleError[U](body: => U): U =
     try
-      val sql = WvletCompiler(opts, compilerOption).toSQL
-      println(sql)
+      body
     catch
       case e: WvletLangException =>
         error(e.getMessage)
         if !isInSbt then
           System.exit(1)
+        throw e
+
+  @command(description = "Compile .wv files")
+  def compile(compilerOption: WvletCompilerOption): Unit = handleError {
+    val sql = WvletCompiler(opts, compilerOption).generateSQL
+    println(sql)
+  }
+
+  @command(description = "Run a query")
+  def run(compilerOption: WvletCompilerOption): Unit = handleError {
+    WvletCompiler(opts, compilerOption).run()
+  }
 
 end WvletMain

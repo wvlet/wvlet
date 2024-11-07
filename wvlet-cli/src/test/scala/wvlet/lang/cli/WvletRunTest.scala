@@ -15,29 +15,25 @@ package wvlet.lang.cli
 
 import wvlet.airspec.AirSpec
 
-class WvcMainTest extends AirSpec:
+class WvletRunTest extends AirSpec:
   test("help") {
-    WvcMain.main("--help")
-  }
-
-  test("q0") {
-    WvcMain.main("run spec/basic/src/q1.wv")
+    WvletMain.main("run --help")
   }
 
   test("q1") {
-    WvcMain.main("run spec/basic/src/q1.wv")
+    WvletMain.main("run -w spec/basic -f q1.wv")
   }
 
   test("q2") {
-    WvcMain.main("run spec/basic/src/q2.wv")
+    WvletMain.main("run -w spec/basic -f q2.wv")
   }
 
   test("query") {
-    WvcMain.main("run spec/basic/src/query.wv")
+    WvletMain.main("run -w spec/basic -f query.wv")
   }
 
   test("model1-q1") {
-    WvcMain.main("run spec/model1/src/q1.wv")
+    WvletMain.main("run -w spec/model1 -f q1.wv")
   }
 
-end WvcMainTest
+end WvletRunTest
