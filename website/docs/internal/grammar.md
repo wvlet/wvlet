@@ -82,12 +82,13 @@ queryBlock: joinExpr
           | 'describe'
           | 'debug' debugExpr+ update?
 
-update       : 'save' 'as' updateTarget
+update       : 'save' 'as' updateTarget saveOptions?
              | 'append' 'to' updateTarget
              | 'delete'
 updateTarget : qualifiedId | stringLiteral 
-
-
+saveOptions: 'with' updateOption (',' saveOption)* ','?
+saveOption : identifier ':' expression
+3
 joinExpr    : joinType? 'join' relation joinCriteria
             | 'cross' 'join' relation
 joinType    : 'inner' | 'left' | 'right' | 'full'

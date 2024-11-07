@@ -37,6 +37,7 @@ In wvlet, you need to use __lower-case__ keywords for SQL-like operators. The fo
 | Operator                | Description                                                                                           |
 |-------------------------|-------------------------------------------------------------------------------------------------------|
 | save as `table_name`    | Save the query result as a new table with the given name                                              |
+| save as `table_name` with p1:v1, p2:v2, ...  | Save the query result as a new table with the given name and options                                         |
 | save as `'file name'`   | Save the query result as a file with the given name                                                   |
 | append to `table_name`  | Append the query result to the target table. If the target table doesn't exist, it creates a new one. |
 | append to `'file_name'` | Append the query result to the target file. It will create a new file if the file doesn't exist.      |

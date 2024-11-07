@@ -18,14 +18,24 @@ enum DBType(
     val supportCreateOrReplace: Boolean = false,
 
     // True if describe ... can be nested like select * (describe select ...)
-    val supportDescribeSubQuery: Boolean = false
+    val supportDescribeSubQuery: Boolean = false,
+    val supportSaveAsFile: Boolean = false,
+    // CREATE TABLE ... WITH (options...) is supported
+    val supportCreateTableWithOption: Boolean = false
 ):
 
-  case DuckDB extends DBType(supportCreateOrReplace = true, supportDescribeSubQuery = true)
+  case DuckDB
+      extends DBType(
+        supportCreateOrReplace = true,
+        supportDescribeSubQuery = true,
+        supportSaveAsFile = true
+      )
+
   case Trino
       extends DBType(
         // Note: Trino connector may support `create or replace table` depending on the connector.
-        supportCreateOrReplace = false
+        supportCreateOrReplace = false,
+        supportCreateTableWithOption = true
       )
 
   case Hive       extends DBType
@@ -40,6 +50,8 @@ enum DBType(
   case SQLServer  extends DBType
   case InMemory   extends DBType
   case Generic    extends DBType
+
+end DBType
 
 object DBType:
 

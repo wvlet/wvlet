@@ -13,7 +13,7 @@
  */
 package wvlet.lang.compiler.parser
 
-import wvlet.lang.api.{StatusCode, Span}
+import wvlet.lang.api.{Span, StatusCode}
 import wvlet.lang.api.Span.NoSpan
 import wvlet.lang.catalog.Catalog.TableName
 import wvlet.lang.compiler.{CompilationUnit, Name, SourceFile}
@@ -24,6 +24,7 @@ import wvlet.lang.model.plan.*
 import wvlet.lang.model.{DataType, plan}
 import wvlet.log.LogSupport
 
+import scala.collection.immutable.ListMap
 import scala.util.Try
 
 /**
@@ -634,6 +635,32 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
   end query
 
   def updateRelationIfExists(r: Relation): Relation =
+
+    def saveOptions(): List[SaveOption] =
+      val t = scanner.lookAhead()
+      t.token match
+        case WvletToken.WITH =>
+          consume(WvletToken.WITH)
+          val options = List.newBuilder[SaveOption]
+          def nextOption: Unit =
+            val t = scanner.lookAhead()
+            t.token match
+              case WvletToken.COMMA =>
+                consume(WvletToken.COMMA)
+                nextOption
+              case WvletToken.IDENTIFIER =>
+                val key = identifierSingle()
+                consume(WvletToken.COLON)
+                val value = expression()
+                options += SaveOption(key, value, key.span.extendTo(value.span))
+                nextOption
+              case _ =>
+              // finish
+          nextOption
+          options.result()
+        case _ =>
+          List.empty
+
     val t = scanner.lookAhead()
     t.token match
       case WvletToken.SAVE =>
@@ -642,11 +669,14 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         val target = scanner.lookAhead()
         target.token match
           case WvletToken.STRING_LITERAL =>
-            val path = consume(WvletToken.STRING_LITERAL)
-            SaveAsFile(r, path.str, spanFrom(t))
+            val path   = consume(WvletToken.STRING_LITERAL)
+            val opts   = saveOptions()
+            val saveAs = SaveAsFile(r, path.str, opts, spanFrom(t))
+            saveAs
           case _ =>
             val qname = qualifiedId()
-            SaveAs(r, qname, spanFrom(t))
+            val opts  = saveOptions()
+            SaveAs(r, qname, opts, spanFrom(t))
       case WvletToken.APPEND =>
         consume(WvletToken.APPEND)
         consume(WvletToken.TO)
@@ -1603,18 +1633,20 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     ArrayConstructor(elements.result(), spanFrom(t))
 
   def literal(): Literal =
+    def removeUnderscore(s: String): String = s.replaceAll("_", "")
+
     val t = consumeToken()
     t.token match
       case WvletToken.NULL =>
         NullLiteral(spanFrom(t))
       case WvletToken.INTEGER_LITERAL =>
-        LongLiteral(t.str.toLong, spanFrom(t))
+        LongLiteral(removeUnderscore(t.str).toLong, spanFrom(t))
       case WvletToken.DOUBLE_LITERAL =>
         DoubleLiteral(t.str.toDouble, spanFrom(t))
       case WvletToken.FLOAT_LITERAL =>
         DoubleLiteral(t.str.toFloat, spanFrom(t))
       case WvletToken.DECIMAL_LITERAL =>
-        DecimalLiteral(t.str, spanFrom(t))
+        DecimalLiteral(removeUnderscore(t.str), spanFrom(t))
       case WvletToken.EXP_LITERAL =>
         DecimalLiteral(t.str, spanFrom(t))
       case WvletToken.STRING_LITERAL =>
