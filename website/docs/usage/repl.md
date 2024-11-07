@@ -42,8 +42,8 @@ Wvlet shell basically uses [GNU readline](https://readline.kablamo.org/emacs.htm
 | ctrl-j e | Move to the end of the query                                                     |
 | ctrl-p | Up                                                                               | 
 | ctrl-n | Down                                                                             |
-| ctrl-f | Left                                                                             |
-| ctrl-b | Right                                                                            |
+| ctrl-f | Right                                                                            |
+| ctrl-b | Left                                                                             |
 | ctrl-r | Search the history. Type ctrl+r again to continue to search the previous history | 
 | ctrl-k | Delete until the end of line from the cursor position                            | 
 
