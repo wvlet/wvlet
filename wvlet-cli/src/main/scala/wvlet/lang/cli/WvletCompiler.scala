@@ -13,6 +13,7 @@ import wvlet.lang.compiler.{
   Compiler,
   CompilerOptions,
   Context,
+  DBType,
   Symbol,
   WorkEnv
 }
@@ -27,6 +28,8 @@ case class WvletCompilerOption(
     file: Option[String] = None,
     @argument(description = "query")
     query: Option[String] = None,
+    @option(prefix = "-t,--target", description = "Target database type")
+    targetDBType: Option[String] = None,
     @option(prefix = "--profile", description = "Profile to use")
     profile: Option[String] = None,
     @option(prefix = "--catalog", description = "Context database catalog to use")
@@ -38,8 +41,18 @@ case class WvletCompilerOption(
 class WvletCompiler(opts: WvletGlobalOption, compilerOption: WvletCompilerOption)
     extends LogSupport:
 
-  private lazy val currentProfile: Profile = Profile
-    .getProfile(compilerOption.profile, compilerOption.catalog, compilerOption.schema)
+  private lazy val currentProfile: Profile =
+    compilerOption.targetDBType match
+      case Some(dbType) =>
+        if compilerOption.profile.isDefined then
+          throw StatusCode
+            .INVALID_ARGUMENT
+            .newException("Specify either -t (--target) or --profile")
+        val resolvedDBType = DBType.fromString(dbType)
+        debug(s"Using syntax for ${resolvedDBType}")
+        Profile(name = "local", `type` = resolvedDBType.toString)
+      case _ =>
+        Profile.getProfile(compilerOption.profile, compilerOption.catalog, compilerOption.schema)
 
   private lazy val dbConnector: DBConnector = DBConnectorProvider.getConnector(currentProfile)
 
