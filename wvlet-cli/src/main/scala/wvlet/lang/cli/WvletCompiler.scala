@@ -39,9 +39,11 @@ case class WvletCompilerOption(
 )
 
 class WvletCompiler(opts: WvletGlobalOption, compilerOption: WvletCompilerOption)
-    extends LogSupport:
+    extends LogSupport
+    with AutoCloseable:
 
   private lazy val currentProfile: Profile =
+    // Resolve the profile from DBType or profile name
     compilerOption.targetDBType match
       case Some(dbType) =>
         if compilerOption.profile.isDefined then
@@ -50,7 +52,7 @@ class WvletCompiler(opts: WvletGlobalOption, compilerOption: WvletCompilerOption
             .newException("Specify either -t (--target) or --profile")
         val resolvedDBType = DBType.fromString(dbType)
         debug(s"Using syntax for ${resolvedDBType}")
-        Profile(name = "local", `type` = resolvedDBType.toString)
+        Profile.defaultProfileFor(resolvedDBType)
       case _ =>
         Profile.getProfile(compilerOption.profile, compilerOption.catalog, compilerOption.schema)
 
@@ -91,6 +93,8 @@ class WvletCompiler(opts: WvletGlobalOption, compilerOption: WvletCompilerOption
         throw StatusCode.INVALID_ARGUMENT.newException("Specify either --file or a query argument")
 
   private def compile(): CompileResult = compiler.compileSingleUnit(inputUnit)
+
+  override def close(): Unit = dbConnector.close()
 
   def generateSQL: String =
     val compileResult = compile()

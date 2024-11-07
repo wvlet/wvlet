@@ -85,7 +85,10 @@ object WvletServer extends LogSupport:
       .design
       .bindInstance[WvletServerConfig](config)
       .bindInstance[WorkEnv](config.workEnv)
-      .bindInstance[Profile](Profile.getProfile(config.profile, config.catalog, config.schema))
+      .bindInstance[Profile](
+        Profile
+          .getProfile(config.profile, config.catalog, config.schema, Profile.defaultDuckDBProfile)
+      )
       .bindProvider[Profile, DBConnector] { (p: Profile) =>
         val prop = Map("prepareTPCH" -> config.prepareTPCH)
         DBConnectorProvider.getConnector(p, prop)

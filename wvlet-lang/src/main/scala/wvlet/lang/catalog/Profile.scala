@@ -36,10 +36,27 @@ case class Profile(
 
 object Profile extends LogSupport:
 
+  def defaultGenericProfile = Profile(name = "local", `type` = "generic")
+
+  def defaultDuckDBProfile = Profile(
+    name = "local",
+    `type` = "duckdb",
+    catalog = Some("memory"),
+    schema = Some("main")
+  )
+
+  def defaultProfileFor(dbType: DBType): Profile =
+    dbType match
+      case DBType.DuckDB =>
+        defaultDuckDBProfile
+      case other =>
+        Profile(name = "local", `type` = other.toString.toLowerCase)
+
   def getProfile(
       profile: Option[String],
       catalog: Option[String] = None,
-      schema: Option[String] = None
+      schema: Option[String] = None,
+      default: => Profile = defaultGenericProfile
   ): Profile =
     val currentProfile: Profile = profile
       .flatMap { targetProfile =>
@@ -52,8 +69,8 @@ object Profile extends LogSupport:
             None
       }
       .getOrElse {
-        // Use default DuckDB profile
-        Profile(name = "local", `type` = "duckdb", catalog = Some("memory"), schema = Some("main"))
+        // Use the default profile
+        default
       }
 
     currentProfile.copy(
