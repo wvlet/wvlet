@@ -21,21 +21,13 @@ sealed trait SaveToTable extends Save with HasRefName
 
 case class SaveOption(key: Identifier, value: Expression, span: Span) extends LeafExpression
 
-case class SaveAs(
-    child: Relation,
-    target: QualifiedName,
-    saveOptions: List[SaveOption],
-    span: Span
-) extends SaveToTable:
+case class SaveAs(child: Relation, target: QualifiedName, saveOptions: List[SaveOption], span: Span)
+    extends SaveToTable:
   override def targetName: String = target.fullName
   override def refName: NameExpr  = target
 
-case class SaveAsFile(
-    child: Relation,
-    path: String,
-    saveOptions: List[SaveOption],
-    span: Span
-) extends Save:
+case class SaveAsFile(child: Relation, path: String, saveOptions: List[SaveOption], span: Span)
+    extends Save:
   override def targetName: String = path
 
 case class AppendTo(child: Relation, target: QualifiedName, span: Span) extends SaveToTable:

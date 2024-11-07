@@ -1,0 +1,9 @@
+from [
+  [1, 'apple', 'A', 100],
+  [2, 'apple', 'A', 100],
+  [3, 'banana', 'B', 50]
+] as t(id, name, tpe, price)
+save as tmp_table
+with
+  bucketed_on: ['id'],
+  bucket_count: 512,

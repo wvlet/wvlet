@@ -186,8 +186,17 @@ object GenSQL extends Phase("generate-sql"):
           else
             needsTableCleanup = true
             "create table"
+        val options =
+          if s.saveOptions.nonEmpty && context.dbType.supportCreateTableWithOption then
+            s.saveOptions
+              .map { opt =>
+                s"${opt.key.fullName}=${GenSQL(context).printExpression(opt.value)(using Indented(0))}"
+              }
+              .mkString(" with (", ", ", ")")
+          else
+            ""
         val ctasSQL = withHeader(
-          s"${ctasCmd} ${s.target.fullName} as\n${baseSQL.sql}",
+          s"${ctasCmd} ${s.target.fullName}${options} as\n${baseSQL.sql}",
           s.sourceLocation
         )
 
@@ -197,7 +206,7 @@ object GenSQL extends Phase("generate-sql"):
           statements += withHeader(dropSQL, s.sourceLocation)
 
         statements += ctasSQL
-      case s: SaveAsFile if context.dbType == DBType.DuckDB =>
+      case s: SaveAsFile if context.dbType.supportSaveAsFile =>
         val baseSQL    = GenSQL.generateSQL(save.inputRelation, context, addHeader = false)
         val targetPath = context.dataFilePath(s.path)
         val copySQL    = s"copy (${baseSQL.sql}) to '${targetPath}'"
@@ -921,6 +930,8 @@ class GenSQL(ctx: Context) extends LogSupport:
         s"${left} not in (${right})"
       case n: NativeExpression =>
         printExpression(ExpressionEvaluator.eval(n, ctx))
+      case a: ArrayConstructor =>
+        s"ARRAY[${a.values.map(x => printExpression(x)).mkString(", ")}]"
       case other =>
         warn(s"unknown expression type: ${other}")
         other.toString
