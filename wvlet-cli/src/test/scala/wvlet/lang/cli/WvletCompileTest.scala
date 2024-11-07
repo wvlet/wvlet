@@ -36,4 +36,11 @@ class WvletCompileTest extends AirSpec:
     out shouldContain "from 'spec/basic/person.json'"
   }
 
+  test("change target to Hive") {
+    val out = captureStdout {
+      WvletMain.main("""compile -w spec/basic -t hive "from person limit 10"""")
+    }
+    debug(out)
+  }
+
 end WvletCompileTest

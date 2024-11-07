@@ -28,15 +28,29 @@ enum DBType(
         supportCreateOrReplace = false
       )
 
-  case Hive                extends DBType
-  case BigQuery            extends DBType
-  case MySQL               extends DBType
-  case PostgreSQL          extends DBType
-  case SQLite              extends DBType
-  case Redshift            extends DBType
-  case Snowflake           extends DBType
-  case ClickHouse          extends DBType
-  case Oracle              extends DBType
-  case SQLServer           extends DBType
-  case InMemory            extends DBType
-  case Other(name: String) extends DBType
+  case Hive       extends DBType
+  case BigQuery   extends DBType
+  case MySQL      extends DBType
+  case PostgreSQL extends DBType
+  case SQLite     extends DBType
+  case Redshift   extends DBType
+  case Snowflake  extends DBType
+  case ClickHouse extends DBType
+  case Oracle     extends DBType
+  case SQLServer  extends DBType
+  case InMemory   extends DBType
+  case Generic    extends DBType
+
+object DBType:
+
+  private val dbTypeMap = DBType.values.map(x => x.toString.toLowerCase -> x).toMap
+
+  def fromString(name: String): DBType =
+    dbTypeMap.get(name.toLowerCase) match
+      case Some(t) =>
+        t
+      case None =>
+        // Fallback to generic
+        Generic
+
+end DBType
