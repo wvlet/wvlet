@@ -138,7 +138,7 @@ object GenSQL extends Phase("generate-sql"):
 
     val query: String =
       if addHeader then
-        withHeader(sql, expanded.sourceLocation)
+        withHeader(sql, q.sourceLocation)
       else
         sql
     trace(s"[plan]\n${expanded.pp}\n[SQL]\n${query}")
