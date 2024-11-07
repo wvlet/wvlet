@@ -156,11 +156,9 @@ lazy val cli = project
         .value,
     packMain :=
       Map(
-        // wvlet compiler
-        "wvc" -> "wvlet.lang.cli.WvcMain",
         // Wvlet REPL launcher
         "wv" -> "wvlet.lang.cli.WvletREPLMain",
-        // wvlet server command launcher
+        // wvlet compiler/run/ui server command launcher
         "wvlet" -> "wvlet.lang.cli.WvletMain"
       ),
     packResourceDir ++= Map(file("wvlet-ui-main/dist") -> "web")
