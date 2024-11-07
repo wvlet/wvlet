@@ -200,7 +200,19 @@ object GenSQL extends Phase("generate-sql"):
       case s: SaveAsFile if context.dbType == DBType.DuckDB =>
         val baseSQL    = GenSQL.generateSQL(save.inputRelation, context, addHeader = false)
         val targetPath = context.dataFilePath(s.path)
-        val sql        = s"copy (${baseSQL.sql}) to '${targetPath}'"
+        val copySQL    = s"copy (${baseSQL.sql}) to '${targetPath}'"
+        val sql =
+          if s.saveOptions.isEmpty then
+            copySQL
+          else
+            val g = GenSQL(context)
+            val opts = s
+              .saveOptions
+              .map { opt =>
+                s"${opt.key.fullName} ${g.printExpression(opt.value)(using Indented(0))}"
+              }
+              .mkString("(", ", ", ")")
+            s"${copySQL} ${opts}"
         statements += withHeader(sql, s.sourceLocation)
       case a: AppendTo =>
         val baseSQL       = GenSQL.generateSQL(save.inputRelation, context, addHeader = false)

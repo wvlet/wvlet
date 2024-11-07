@@ -1,0 +1,17 @@
+from [
+  [1, "alice", 10],
+  [2, "bob", 20],
+  [3, "clark", 30]
+] as person(id, name, age)
+save as 'target/person_copy_save_with_opts.parquet'
+with
+  compression: 'zstd',
+  row_group_size: 100_000,
+
+from parquet_metadata('spec/basic/target/person_copy_save_with_opts.parquet')
+select compression
+limit 1
+
+test _.rows should be [[
+  "ZSTD"
+]]
