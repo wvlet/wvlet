@@ -31,9 +31,11 @@ object DBConnectorProvider extends LogSupport:
             .toString
             .toBoolean
         )
+      case DBType.Generic =>
+        GenericConnector()
       case other =>
         warn(
-          s"Connector for DBType.${other} is not implemented. Use GenericConnector based on DuckDB as a fallback"
+          s"Connector for -t ${other.toString.toLowerCase} option is not implemented. Using GenericConnector for DuckDB as a fallback"
         )
         GenericConnector()
 

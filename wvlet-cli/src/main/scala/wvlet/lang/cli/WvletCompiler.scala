@@ -4,7 +4,6 @@ import wvlet.airframe.control.Control
 import wvlet.airframe.launcher.{argument, option}
 import wvlet.lang.api.StatusCode
 import wvlet.lang.api.v1.query.QuerySelection
-import wvlet.lang.api.v1.query.QuerySelection.All
 import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.codegen.GenSQL
 import wvlet.lang.compiler.{
@@ -17,7 +16,7 @@ import wvlet.lang.compiler.{
   Symbol,
   WorkEnv
 }
-import wvlet.lang.runner.{QueryExecutor, WvletScriptRunner}
+import wvlet.lang.runner.QueryExecutor
 import wvlet.lang.runner.connector.{DBConnector, DBConnectorProvider}
 import wvlet.log.LogSupport
 
@@ -56,7 +55,15 @@ class WvletCompiler(opts: WvletGlobalOption, compilerOption: WvletCompilerOption
       case _ =>
         Profile.getProfile(compilerOption.profile, compilerOption.catalog, compilerOption.schema)
 
-  private lazy val dbConnector: DBConnector = DBConnectorProvider.getConnector(currentProfile)
+  private var _dbConnector: DBConnector = null
+
+  private def getDBConnector: DBConnector = synchronized {
+    if _dbConnector == null then
+      _dbConnector = DBConnectorProvider.getConnector(currentProfile)
+    _dbConnector
+  }
+
+  override def close(): Unit = Option(_dbConnector).foreach(_.close())
 
   private val compiler: Compiler =
     val compiler = Compiler(
@@ -72,7 +79,7 @@ class WvletCompiler(opts: WvletGlobalOption, compilerOption: WvletCompilerOption
       .catalog
       .foreach { catalog =>
         val schema = currentProfile.schema.getOrElse("main")
-        compiler.setDefaultCatalog(dbConnector.getCatalog(catalog, schema))
+        compiler.setDefaultCatalog(getDBConnector.getCatalog(catalog, schema))
       }
 
     currentProfile
@@ -94,8 +101,6 @@ class WvletCompiler(opts: WvletGlobalOption, compilerOption: WvletCompilerOption
 
   private def compile(): CompileResult = compiler.compileSingleUnit(inputUnit)
 
-  override def close(): Unit = dbConnector.close()
-
   def generateSQL: String =
     val compileResult = compile()
 
@@ -110,17 +115,18 @@ class WvletCompiler(opts: WvletGlobalOption, compilerOption: WvletCompilerOption
   end generateSQL
 
   def run(): Unit =
-    Control.withResource(QueryExecutor(dbConnector, compiler.compilerOptions.workEnv)) { executor =>
-      val compileResult = compile()
-      given Context     = compileResult.context
+    Control.withResource(QueryExecutor(getDBConnector, compiler.compilerOptions.workEnv)) {
+      executor =>
+        val compileResult = compile()
+        given Context     = compileResult.context
 
-      val queryResult = executor.executeSelectedStatement(
-        inputUnit,
-        QuerySelection.All,
-        nodeLocation = inputUnit.resolvedPlan.sourceLocation.nodeLocation,
-        compileResult.context
-      )
-      println(queryResult.toPrettyBox())
+        val queryResult = executor.executeSelectedStatement(
+          inputUnit,
+          QuerySelection.All,
+          nodeLocation = inputUnit.resolvedPlan.sourceLocation.nodeLocation,
+          compileResult.context
+        )
+        println(queryResult.toPrettyBox())
     }
 
 end WvletCompiler
