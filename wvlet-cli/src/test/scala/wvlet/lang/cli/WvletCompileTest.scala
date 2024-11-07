@@ -26,6 +26,14 @@ class WvletCompileTest extends AirSpec:
     out shouldContain "from 'spec/basic/person.json'"
   }
 
+  test("compile table scan") {
+    val out = captureStdout {
+      WvletMain.main("""compile -w spec/basic "from tbl" """)
+    }
+    out shouldContain "select *"
+    out shouldContain "from tbl"
+  }
+
   test("compile save as file in DuckDB") {
     val out = captureStdout {
       WvletMain
