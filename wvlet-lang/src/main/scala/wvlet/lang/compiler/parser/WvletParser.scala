@@ -1599,10 +1599,47 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
               val q = querySingle()
               consume(WvletToken.R_PAREN)
               SubQueryExpression(q, t2.span)
+            case WvletToken.IDENTIFIER =>
+              val exprs = List.newBuilder[Expression]
+
+              // true if the expression is a list of identifiers
+              def nextIdentifier: Boolean =
+                scanner.lookAhead().token match
+                  case WvletToken.COMMA =>
+                    consume(WvletToken.COMMA)
+                    nextIdentifier
+                  case WvletToken.R_PAREN =>
+                    // ok
+                    true
+                  case _ =>
+                    val expr = expression()
+                    exprs += expr
+                    expr match
+                      case i: Identifier =>
+                        nextIdentifier
+                      case _ =>
+                        false
+
+              val isIdentifierList = nextIdentifier
+              consume(WvletToken.R_PAREN)
+              val args = exprs.result()
+              val t3   = scanner.lookAhead()
+              t3.token match
+                case WvletToken.R_ARROW if isIdentifierList =>
+                  // Lambda
+                  consume(WvletToken.R_ARROW)
+                  val body = expression()
+                  LambdaExpr(args.map(_.asInstanceOf[Identifier]), body, spanFrom(t))
+                case _ if args.size == 1 =>
+                  // Other parenthesized expressions
+                  ParenthesizedExpression(args.head, spanFrom(t))
+                case _ =>
+                  unexpected(t3)
             case _ =>
               val e = expression()
               consume(WvletToken.R_PAREN)
               ParenthesizedExpression(e, spanFrom(t))
+          end match
         case WvletToken.L_BRACKET =>
           array()
         case id if id.isIdentifier =>
@@ -1793,6 +1830,12 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         val index = expression()
         consume(WvletToken.R_BRACKET)
         primaryExpressionRest(ArrayAccess(expr, index, spanFrom(t)))
+      case WvletToken.R_ARROW if expr.isIdentifier =>
+        consume(WvletToken.R_ARROW)
+        val body = expression()
+        primaryExpressionRest(
+          LambdaExpr(args = List(expr.asInstanceOf[Identifier]), body, spanFrom(t))
+        )
       case _ =>
         expr
     end match

@@ -185,4 +185,7 @@ literal           : 'null' | '-'? integerLiteral | '-'? floatLiteral | booleanLi
 
 whenExpr          : 'when' booleanExpression 'then' expression
 elseExpr          : 'else' expression
+lambdaExpr        : lambdaParams '->' expression
+lambdaParams      : identirifer 
+                  | '(' (identifier (',' identifier)*)? ')'
 ```

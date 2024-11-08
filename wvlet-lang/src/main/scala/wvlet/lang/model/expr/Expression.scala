@@ -35,6 +35,13 @@ trait Expression extends TreeNode with Product with LogSupport:
   def dataTypeName: String  = dataType.typeDescription
   def dataType: DataType    = DataType.UnknownType
 
+  def isIdentifier: Boolean =
+    this match
+      case _: Identifier =>
+        true
+      case _ =>
+        false
+
   protected def copyInstance(newArgs: Seq[AnyRef]): this.type =
     try
       val primaryConstructor = this.getClass.getDeclaredConstructors()(0)
