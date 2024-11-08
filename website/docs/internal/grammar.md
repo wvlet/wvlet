@@ -175,6 +175,7 @@ primaryExpression : 'this'
                   | qualifiedId
                   | primaryExpression '.' primaryExpression
                   | primaryExpression '(' functionArg? (',' functionArg)* ')' window? # function call
+                  | primaryExpression '[' expression ']'                              # array access
                   | primaryExpression identifier expression                           # function infix
 
 functionArg       | (identifier '=')? expression

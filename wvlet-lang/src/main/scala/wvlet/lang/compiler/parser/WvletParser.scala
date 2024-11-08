@@ -1752,8 +1752,14 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
             primaryExpressionRest(f)
           case _ =>
             unexpected(expr)
+      case WvletToken.L_BRACKET =>
+        consume(WvletToken.L_BRACKET)
+        val index = expression()
+        consume(WvletToken.R_BRACKET)
+        primaryExpressionRest(ArrayAccess(expr, index, spanFrom(t)))
       case _ =>
         expr
+    end match
 
   end primaryExpressionRest
 

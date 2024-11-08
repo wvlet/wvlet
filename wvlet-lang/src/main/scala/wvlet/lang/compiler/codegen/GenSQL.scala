@@ -932,6 +932,8 @@ class GenSQL(ctx: Context) extends LogSupport:
         printExpression(ExpressionEvaluator.eval(n, ctx))
       case a: ArrayConstructor =>
         s"ARRAY[${a.values.map(x => printExpression(x)).mkString(", ")}]"
+      case a: ArrayAccess =>
+        s"${printExpression(a.arrayExpr)}[${printExpression(a.index)}]"
       case other =>
         warn(s"unknown expression type: ${other}")
         other.toString

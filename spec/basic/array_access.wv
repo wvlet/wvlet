@@ -1,0 +1,8 @@
+from [
+  [1, [10, 20, 30]]
+] as arr_tbl(id, arr)
+select arr
+select arr, arr[1] as a1, arr[2] as a2
+
+test _.columns should be ['arr', 'a1', 'a2']
+test _.rows should be [[[10, 20, 30], 10, 20]]
