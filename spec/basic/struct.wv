@@ -1,0 +1,9 @@
+select {'i': 3, 's': 'str'} as obj
+select obj.i, obj.s, obj['i'], obj['s']
+test _.rows should be [[3, 'str', 3, 'str']]
+;
+
+select {k1:1, k2:'v1'} as obj
+select obj.k1, obj.k2
+test _.rows should be [[1, 'v1']]
+;

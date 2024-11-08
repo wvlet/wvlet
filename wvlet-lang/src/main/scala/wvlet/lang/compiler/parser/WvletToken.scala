@@ -34,6 +34,7 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   def isRightParenOrBracket: Boolean = this == WvletToken.R_PAREN || this == WvletToken.R_BRACKET
 
   def isQueryDelimiter: Boolean = WvletToken.isQueryDelimiter(this)
+  def isStringStart: Boolean    = WvletToken.stringStartToken.contains(this)
 
   // special tokens
   case EMPTY      extends WvletToken(Control, "<empty>")
@@ -248,6 +249,14 @@ object WvletToken:
     WvletToken.FALSE,
     WvletToken.CASE,
     WvletToken.IF
+  )
+
+  val stringStartToken = List(
+    WvletToken.IDENTIFIER,
+    WvletToken.STRING_INTERPOLATION_PREFIX,
+    WvletToken.BACKQUOTED_IDENTIFIER,
+    WvletToken.SINGLE_QUOTE,
+    WvletToken.DOUBLE_QUOTE
   )
 
   val allKeywordAndSymbol = keywords ++ literalStartKeywords ++ specialSymbols

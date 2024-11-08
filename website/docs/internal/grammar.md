@@ -172,6 +172,7 @@ primaryExpression : 'this'
                   | '(' querySingle ')'                                           # subquery
                   | '(' expression ')'                                            # parenthesized expression
                   | '[' expression (',' expression)* ']'                          # array
+                  | '{' rowElem (',' rowElem)* '}'                       # struct, row
                   | 'if' booleanExpresssion 'then' expression 'else' expression   # if-then-else
                   | qualifiedId
                   | primaryExpression '.' primaryExpression
@@ -179,6 +180,7 @@ primaryExpression : 'this'
                   | primaryExpression '[' expression ']'                              # array access
                   | primaryExpression identifier expression                           # function infix
 
+rowElem           : stringLiteral ':' expression
 functionArg       | (identifier '=')? expression
 
 literal           : 'null' | '-'? integerLiteral | '-'? floatLiteral | booleanLiteral | stringLiteral

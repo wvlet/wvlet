@@ -712,11 +712,15 @@ case class ArrayConstructor(values: Seq[Expression], span: Span) extends Express
   override def children: Seq[Expression] = values
 
 case class RowConstructor(values: Seq[Expression], span: Span) extends Expression:
-
-  override def dataType: DataType = EmbeddedRecordType(values.map(_.dataType))
-
+  override def dataType: DataType        = EmbeddedRecordType(values.map(_.dataType))
   override def children: Seq[Expression] = values
   override def toString: String          = s"Row(${values.mkString(", ")})"
+
+case class StructValue(fields: List[StructField], span: Span) extends Expression:
+  override def children: Seq[Expression] = fields
+
+case class StructField(name: String, value: Expression, span: Span) extends Expression:
+  override def children: Seq[Expression] = Seq(value)
 
 abstract sealed class CurrentTimeBase(name: String, precision: Option[Int]) extends LeafExpression
 
