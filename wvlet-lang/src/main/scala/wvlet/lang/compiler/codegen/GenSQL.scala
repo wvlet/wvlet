@@ -569,7 +569,7 @@ class GenSQL(ctx: Context) extends LogSupport:
             case FullOuterJoin =>
               s"${l} full outer join ${r}${c}"
             case CrossJoin =>
-              s"${l} cross join p${r}${c}"
+              s"${l} cross join ${r}${c}"
             case ImplicitJoin =>
               s"${l}, ${r}${c}"
 
@@ -611,6 +611,8 @@ class GenSQL(ctx: Context) extends LogSupport:
         a.child match
           case t: TableScan =>
             s"${t.name.fullName} as ${tableAlias}"
+          case t: TableFunctionCall =>
+            s"${printRelation(t)(using sqlContext)} as ${tableAlias}"
           case v: Values if sqlContext.nestingLevel == 0 =>
             selectAllWithIndent(s"${printValues(v)} as ${tableAlias}")
           case v: Values if sqlContext.nestingLevel > 0 =>

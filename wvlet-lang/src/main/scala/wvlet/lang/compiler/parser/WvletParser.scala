@@ -769,15 +769,6 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         case WvletToken.AS =>
           consume(WvletToken.AS)
           tableAlias(primary)
-        case WvletToken.L_PAREN =>
-          consume(WvletToken.L_PAREN)
-          val relationArgs = functionArgs()
-          consume(WvletToken.R_PAREN)
-          primary match
-            case r: TableRef =>
-              TableFunctionCall(r.name, relationArgs, spanFrom(primary.span))
-            case other =>
-              unexpected(t)
         case _ =>
           primary
     rel
@@ -1339,15 +1330,26 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
 
     Debug(input, debugExpr = debugRel, spanFrom(t))
 
-  /**
-    * relationPrimary := qualifiedId \| '(' query ')' \| stringLiteral
-    * @return
-    */
   def relationPrimary(): Relation =
     val t = scanner.lookAhead()
     t.token match
       case id if id.isIdentifier =>
-        TableRef(qualifiedId(), spanFrom(t))
+        val tableOrFunctionName = qualifiedId()
+        scanner.lookAhead().token match
+          case WvletToken.L_PAREN =>
+            // table function
+            consume(WvletToken.L_PAREN)
+            val args = functionArgs()
+            consume(WvletToken.R_PAREN)
+            val tbl = TableFunctionCall(tableOrFunctionName, args, spanFrom(t))
+            scanner.lookAhead().token match
+              case WvletToken.AS =>
+                consume(WvletToken.AS)
+                tableAlias(tbl)
+              case _ =>
+                tbl
+          case _ =>
+            TableRef(tableOrFunctionName, spanFrom(t))
       case WvletToken.SELECT | WvletToken.FROM | WvletToken.L_PAREN =>
         querySingle()
       case WvletToken.STRING_LITERAL =>
@@ -1366,6 +1368,10 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         arrayValue()
       case _ =>
         unexpected(t)
+
+    end match
+
+  end relationPrimary
 
   def attributeList(): List[Attribute] =
     val t = scanner.lookAhead()

@@ -1,0 +1,21 @@
+from unnest([1, 2, 3]) as t(number)
+test _.columns should be ['number']
+test _.rows should be [[1], [2], [3]]
+;
+
+select unnest([])
+test _.rows should be []
+;
+
+select unnest(null)
+test _.rows should be []
+;
+
+select unnest([1, 2, 3]), 10
+test _.rows should be [[1, 10], [2, 10], [3, 10]]
+;
+
+-- TODO Support map values
+-- select unnest({'a':42, 'b':43})
+
+
