@@ -54,6 +54,35 @@ select s"Hello ${x}!" as msg
 | `expr` between `v1` and `v2`    | True if the expression value is between v1 and v2, i.e., v1 &le; (value) &le; v2   |
 | `expr` like `pattern`           | True if the expression matches the given pattern, e.g., , `'abc%'`                 |
 
+### Case Expression
+
+To switch the output value based on the input value, you can use the `case` expression:
+
+```sql
+from lineitem
+select 
+  case l_returnflag
+    when 'A' then 1
+    when 'R' then 2
+    else 0
+  as return_code
+```
+
+You can also use the `case` expression with conditional expressions for clarity:
+```sql
+from lineitem
+select 
+  case 
+    when l_returnflag = 'A' then 1
+    when l_returnflag = 'R' then 2
+    else 0
+  as return_code 
+```
+
+:::warning
+Unlike SQL, Wvlet doesn't require `end` at the end of case expressions. 
+:::
+
 ## String Expressions
 
 | Operator        | Description             |

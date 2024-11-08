@@ -425,17 +425,17 @@ case class IfExpr(cond: Expression, onTrue: Expression, onFalse: Expression, spa
   override def children: Seq[Expression] = Seq(cond, onTrue, onFalse)
 
 case class CaseExpr(
-    operand: Option[Expression],
-    whenClauses: Seq[WhenClause],
-    defaultValue: Option[Expression],
+    target: Option[Expression],
+    whenClauses: List[WhenClause],
+    elseClause: Option[Expression],
     span: Span
 ) extends Expression:
 
   override def children: Seq[Expression] =
     val b = Seq.newBuilder[Expression]
-    operand.foreach(b += _)
+    target.foreach(b += _)
     b ++= whenClauses
-    defaultValue.foreach(b += _)
+    elseClause.foreach(b += _)
     b.result()
 
 case class WhenClause(condition: Expression, result: Expression, span: Span) extends Expression:

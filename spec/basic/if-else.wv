@@ -1,0 +1,14 @@
+-- Equivalent syntax with if-else
+from [
+ [1, 'apple'],
+ [2, 'banana'],
+ [3, 'box'],
+] as items(id, name)
+select
+  if name is 'apple' then 'fruit'
+  else if name is 'banana' then 'fruit'
+  else 'other'
+  as category
+
+test _.columns should be ['category']
+test _.rows should be [['fruit'], ['fruit'], ['other']]

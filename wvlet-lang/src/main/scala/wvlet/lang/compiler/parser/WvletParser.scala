@@ -1542,6 +1542,36 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
               .FLOAT_LITERAL | WvletToken.DECIMAL_LITERAL | WvletToken.EXP_LITERAL | WvletToken
               .STRING_LITERAL =>
           literal()
+        case WvletToken.CASE =>
+          val cases                          = List.newBuilder[WhenClause]
+          var elseClause: Option[Expression] = None
+          def nextCase: Unit =
+            val t = scanner.lookAhead()
+            t.token match
+              case WvletToken.WHEN =>
+                consume(WvletToken.WHEN)
+                val cond = booleanExpression()
+                consume(WvletToken.THEN)
+                val thenExpr = expression()
+                cases += WhenClause(cond, thenExpr, spanFrom(t))
+                nextCase
+              case WvletToken.ELSE =>
+                consume(WvletToken.ELSE)
+                val elseExpr = expression()
+                elseClause = Some(elseExpr)
+              case _ =>
+              // done
+          end nextCase
+
+          consume(WvletToken.CASE)
+          val target =
+            scanner.lookAhead().token match
+              case WvletToken.WHEN =>
+                None
+              case other =>
+                Some(expression())
+          nextCase
+          CaseExpr(target, cases.result(), elseClause, spanFrom(t))
         case WvletToken.IF =>
           consume(WvletToken.IF)
           val cond = booleanExpression()
