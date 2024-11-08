@@ -305,6 +305,9 @@ case class FunctionArg(name: Option[TermName], value: Expression, span: Span) ex
   override def children: Seq[Expression] = Seq(value)
   override def dataType: DataType        = value.dataType
 
+case class ArrayAccess(arrayExpr: Expression, index: Expression, span: Span) extends Expression:
+  override def children: Seq[Expression] = Seq(arrayExpr, index)
+
 case class LambdaExpr(body: Expression, args: Seq[String], span: Span)
     extends Expression
     with UnaryExpression:
