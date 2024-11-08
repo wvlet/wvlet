@@ -89,3 +89,59 @@ Unlike SQL, Wvlet doesn't require `end` at the end of case expressions.
 |-----------------|-------------------------|
 | `expr` + `expr` | Concatenate two strings |
 
+
+
+## Lambda Expression
+
+To manipulate array values, you can use lambda expressions:
+
+```sql
+select list_transform([4, 5, 6], x -> x + 1)
+```
+This query applyes the lambda function `x -> x + 1` to each element of the input array: 
+```
+┌────────────┐
+│    arr     │
+│ array(int) │
+├────────────┤
+│ [5, 6, 7]  │
+├────────────┤
+│ 1 rows     │
+└────────────┘
+```
+
+To pass multiple arguments to the lambda function, use the following syntax:
+```sql
+select list_reduce([4, 5, 6], (a, b) -> a + b) as sum
+```
+
+```
+┌─────┐
+│ sum │
+│ int │
+├─────┤
+│  15 │
+├─────┤
+│ 1 … │
+└─────┘
+```
+
+Lambda functions can be nested as follows:
+```sql
+select
+  list_transform(
+    [1, 2, 3],
+    x -> list_reduce([4, 5, 6], (a, b) -> a + b) + x
+  ) as arr
+```
+
+```
+┌──────────────┐
+│     arr      │
+│  array(int)  │
+├──────────────┤
+│ [16, 17, 18] │
+├──────────────┤
+│ 1 rows       │
+└──────────────┘
+```

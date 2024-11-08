@@ -1,0 +1,17 @@
+select list_transform([4, 5, 6], x -> x + 1) as arr
+
+test _.rows should be [[[5, 6, 7]]]
+;
+
+select list_reduce([4, 5, 6], (a, b) -> a + b) as sum
+test _.rows should be [[15]]
+;
+
+
+select
+  list_transform(
+    [1, 2, 3],
+    x -> list_reduce([4, 5, 6], (a, b) -> a + b) + x
+  ) as arr
+test _.rows should be [[[16, 17, 18]]]
+;

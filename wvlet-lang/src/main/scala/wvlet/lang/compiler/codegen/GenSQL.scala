@@ -953,7 +953,12 @@ class GenSQL(ctx: Context) extends LogSupport:
           }
         s += "end"
         s.result().mkString(" ")
-
+      case l: LambdaExpr =>
+        val args = l.args.map(printExpression(_)).mkString(", ")
+        if l.args.size == 1 then
+          s"${args} -> ${printExpression(l.body)}"
+        else
+          s"(${args}) -> ${printExpression(l.body)}"
       case other =>
         warn(s"unknown expression type: ${other}")
         other.toString
