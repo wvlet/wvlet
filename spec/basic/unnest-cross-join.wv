@@ -1,0 +1,16 @@
+from [
+  ['John', [7, 10, 9]],
+  ['Mary', [4, 8, 9]]
+] as tests(student, scores)
+cross join unnest(scores) as t(score)
+select student, score
+
+test _.columns should be ['student', 'score']
+test _.rows should be [
+  ['John', 7],
+  ['John', 10],
+  ['John', 9],
+  ['Mary', 4],
+  ['Mary', 8],
+  ['Mary', 9]
+]

@@ -15,7 +15,9 @@
   --ifm-color-primary-lightest: #3c99ad;
   --ifm-font-size-base: 97%;
   --ifm-font-family-base: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
-  --ifm-code-font-size: 82%;
+  --ifm-code-font-size: 86%;
+  --ifm-code-background: #f6f8fa;
+  --ifm-code-border-radius: 0.2rem;
   --ifm-pre-line-height: 1.25;
   /* Use Consolas as the first choice for Windows for pretty-printed tables */
   --ifm-font-family-monospace: Consolas, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace;

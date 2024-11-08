@@ -57,13 +57,13 @@ Wvlet offers the following features to incorporate the best practices of the mod
 - [Incremental Processing](#incremental-processing)
 
 
-## Funcitonal Data Modeling
+## Functional Data Modeling
 
 In Wvlet, you can define queries as data model functions, which can be reused for subsequent data processing. The following example defines a data `model` function:
 ```sql
 model lookup(person_id: int) =
   from persons
-  where id = person_id
+  where id = ${person_id}
 end
 ```
 
@@ -118,7 +118,7 @@ You can also define table functions to pipe query results to the next processing
 ```sql
 from persons
 -- Use your_table_function to process the input table results
-pipe your_table_function(...)
+call your_table_function(...)
 limit 10
 ```
 
@@ -128,8 +128,8 @@ In the modern programming languages, you can call functions defined in the type 
 
 ```sql
 wv> from lineitem
-  | group by l_shipmode
-  | select _1, _.count, l_quantity.sum.round(0);
+  │ group by l_shipmode
+  │ agg _.count, l_quantity.sum.round(0);
 ┌────────────┬──────────────┬───────────────────────────┐
 │ l_shipmode │ count_star() │ round(sum(l_quantity), 0) │
 │   string   │     long     │       decimal(38,0)       │
@@ -176,8 +176,8 @@ insert into downstream_web_records
 select time, user_id, path from upstrem_weblog_records
 where
   -- incremental processing
-  time > {last_watermark}
-  and time <= {last_watermark} + interval '1 hour'
+  time > ${last_watermark}
+  and time <= ${last_watermark} + interval '1 hour'
   -- the original filter to the subscribed data
   and user_id is not null;
 ```
