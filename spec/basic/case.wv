@@ -1,0 +1,32 @@
+-- case
+from [
+ [1, 'apple'],
+ [2, 'banana'],
+ [3, 'box'],
+] as items(id, name)
+select
+  case name
+    when 'apple' then 'fruit'
+    when 'banana' then 'fruit'
+    else 'other'
+  as category
+
+test _.columns should be ['category']
+test _.rows should be [['fruit'], ['fruit'], ['other']]
+
+-- case
+from [
+ [1, 'apple'],
+ [2, 'banana'],
+ [3, 'box'],
+] as items(id, name)
+select
+  case
+    when name is 'apple' then 'fruit'
+    when name is 'banana' then 'fruit'
+    else 'other'
+  as category
+
+test _.columns should be ['category']
+test _.rows should be [['fruit'], ['fruit'], ['other']]
+

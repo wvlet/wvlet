@@ -168,7 +168,8 @@ primaryExpression : 'this'
                   | '_'
                   | literal
                   | query
-                  | '(' querySingle ')'                                                 # subquery
+                  | 'case' expression? whenExpr+ elseExpr?                        # case-when
+                  | '(' querySingle ')'                                           # subquery
                   | '(' expression ')'                                            # parenthesized expression
                   | '[' expression (',' expression)* ']'                          # array
                   | 'if' booleanExpresssion 'then' expression 'else' expression   # if-then-else
@@ -181,4 +182,7 @@ primaryExpression : 'this'
 functionArg       | (identifier '=')? expression
 
 literal           : 'null' | '-'? integerLiteral | '-'? floatLiteral | booleanLiteral | stringLiteral
+
+whenExpr          : 'when' booleanExpression 'then' expression
+elseExpr          : 'else' expression
 ```

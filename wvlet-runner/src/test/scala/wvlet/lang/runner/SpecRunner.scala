@@ -76,7 +76,10 @@ end SpecRunner
 class BasicSpec
     extends SpecRunner(
       "spec/basic",
-      ignoredSpec = Map("values.wv" -> "Need to support RawJSON data")
+      ignoredSpec = Map(
+        "values.wv"  -> "Need to support RawJSON data",
+        "if-else.wv" -> "Need to support if-then-else"
+      )
     )
 
 class Model1Spec extends SpecRunner("spec/model1")

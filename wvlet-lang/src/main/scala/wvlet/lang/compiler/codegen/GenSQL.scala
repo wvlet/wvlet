@@ -934,6 +934,24 @@ class GenSQL(ctx: Context) extends LogSupport:
         s"ARRAY[${a.values.map(x => printExpression(x)).mkString(", ")}]"
       case a: ArrayAccess =>
         s"${printExpression(a.arrayExpr)}[${printExpression(a.index)}]"
+      case c: CaseExpr =>
+        val s = Seq.newBuilder[String]
+        s += "case"
+        c.target
+          .foreach { t =>
+            s += s"${printExpression(t)}"
+          }
+        c.whenClauses
+          .foreach { w =>
+            s += s"when ${printExpression(w.condition)} then ${printExpression(w.result)}"
+          }
+        c.elseClause
+          .foreach { e =>
+            s += s"else ${printExpression(e)}"
+          }
+        s += "end"
+        s.result().mkString(" ")
+
       case other =>
         warn(s"unknown expression type: ${other}")
         other.toString

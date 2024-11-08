@@ -220,6 +220,8 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   case IF   extends WvletToken(Keyword, "if")
   case THEN extends WvletToken(Keyword, "then")
   case ELSE extends WvletToken(Keyword, "else")
+  case CASE extends WvletToken(Keyword, "case")
+  case WHEN extends WvletToken(Keyword, "when")
   case END  extends WvletToken(Keyword, "end")
 
   // Condition keywords
@@ -240,7 +242,7 @@ end WvletToken
 object WvletToken:
   val keywords        = WvletToken.values.filter(_.tokenType == Keyword).toSeq
   val specialSymbols  = WvletToken.values.filter(_.tokenType == Op).toSeq
-  val keywordLiterals = List(WvletToken.NULL, WvletToken.TRUE, WvletToken.FALSE)
+  val keywordLiterals = List(WvletToken.NULL, WvletToken.TRUE, WvletToken.FALSE, WvletToken.CASE)
 
   val allKeywordAndSymbol = keywords ++ keywordLiterals ++ specialSymbols
 
