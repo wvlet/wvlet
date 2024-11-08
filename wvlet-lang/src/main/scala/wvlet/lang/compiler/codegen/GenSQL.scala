@@ -544,6 +544,20 @@ class GenSQL(ctx: Context) extends LogSupport:
       case a: GroupBy =>
         selectWithIndentAndParenIfNecessary(s"${printAggregate(a)}")
       case j: Join =>
+        val asof =
+          if j.asof then
+            if ctx.dbType.supportAsOfJoin then
+              "asof "
+            else
+              throw StatusCode
+                .SYNTAX_ERROR
+                .newException(
+                  s"AsOf join is not supported in ${ctx.dbType}",
+                  j.sourceLocation(using ctx)
+                )
+          else
+            ""
+
         val l = printRelation(j.left)(using sqlContext.nested)
         // join (right) is similar to enter from ...
         val r = printRelation(j.right)(using sqlContext.enterFrom)
@@ -562,15 +576,15 @@ class GenSQL(ctx: Context) extends LogSupport:
         val joinSQL =
           j.joinType match
             case InnerJoin =>
-              s"${l} join ${r}${c}"
+              s"${l} ${asof}join ${r}${c}"
             case LeftOuterJoin =>
-              s"${l} left join ${r}${c}"
+              s"${l} ${asof}left join ${r}${c}"
             case RightOuterJoin =>
-              s"${l} right join ${r}${c}"
+              s"${l} ${asof}right join ${r}${c}"
             case FullOuterJoin =>
-              s"${l} full outer join ${r}${c}"
+              s"${l} ${asof}full outer join ${r}${c}"
             case CrossJoin =>
-              s"${l} cross join ${r}${c}"
+              s"${l} ${asof}cross join ${r}${c}"
             case ImplicitJoin =>
               s"${l}, ${r}${c}"
 
