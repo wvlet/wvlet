@@ -14,6 +14,7 @@ One of the major difference from tradtional SQL is that wvlet uses single or dou
 | s\`... $\{expr\} ...\`                                | Interpolated backquote strings with expressions                                                                                              |
 | [`expr`, ...]                                         | Array value                                                                                                                                  |
 | [[`expr`, ...], ...]                                  | Array of arrays for representing table records                                                                                               |
+| \{'`key`'\: `value`, ...\}                                 | Struct (row) value                                                                                                                         |
 | `_`                                                   | underscore refers to the previous input                                                                                                      |
 | `agg_func(expr)` over (partition by ... order by ...) | Window functions for computing aggregate values computed from the entire query result. This follows the same window function syntax with SQL |
 | `_1`, `_2`, ...                                       | Refers to 1-origin grouping keys in the preceding `group by` clause                                                                          |
@@ -90,6 +91,37 @@ Unlike SQL, Wvlet doesn't require `end` at the end of case expressions.
 | `expr` + `expr` | Concatenate two strings |
 
 
+## Array Expressions
+
+You can construct array values with `[e1, e2, ...]` syntax:
+
+```sql
+select ['a', 'b', 'c'] as arr
+```
+
+Arrays can be accessed with index (1-origin):
+```sql
+select ['a', 'b', 'c'] as arr
+select arr[1] as first_element
+```
+
+## Struct/Row Expressions
+
+Struct (row) expressions are used to represent key-value pairs. You can access the values by name:
+```sql
+select {'i': 3, 's': 'str'} as obj
+select 
+  -- Name based access
+  obj.i, obj.s,
+  -- Lookup by name 
+  obj['i'], obj['s']
+```
+
+Note that key names in a struct do not require quotes for plain key names: 
+```sql
+select {k1:1, k2:'v1'} as obj
+select obj.k1, obj.k2
+```
 
 ## Lambda Expression
 

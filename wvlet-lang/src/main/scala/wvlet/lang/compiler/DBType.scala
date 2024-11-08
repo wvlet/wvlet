@@ -21,21 +21,25 @@ enum DBType(
     val supportDescribeSubQuery: Boolean = false,
     val supportSaveAsFile: Boolean = false,
     // CREATE TABLE ... WITH (options...) is supported
-    val supportCreateTableWithOption: Boolean = false
+    val supportCreateTableWithOption: Boolean = false,
+    val supportStructExpr: Boolean = false,
+    val supportRowExpr: Boolean = false
 ):
 
   case DuckDB
       extends DBType(
         supportCreateOrReplace = true,
         supportDescribeSubQuery = true,
-        supportSaveAsFile = true
+        supportSaveAsFile = true,
+        supportStructExpr = true
       )
 
   case Trino
       extends DBType(
         // Note: Trino connector may support `create or replace table` depending on the connector.
         supportCreateOrReplace = false,
-        supportCreateTableWithOption = true
+        supportCreateTableWithOption = true,
+        supportRowExpr = true
       )
 
   case Hive       extends DBType

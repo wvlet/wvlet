@@ -15,8 +15,8 @@ package wvlet.lang.model
 
 import wvlet.lang.api.{StatusCode, WvletLangException}
 import wvlet.lang.compiler.parser.DataTypeParser
-import wvlet.lang.compiler.{Name, TermName, TypeName}
-import wvlet.lang.model.DataType.{NamedType, TypeParameter}
+import wvlet.lang.compiler.{DBType, Name, TermName, TypeName}
+import wvlet.lang.model.DataType.{NamedType, PrimitiveType, TypeParameter}
 import wvlet.lang.model.expr.NameExpr
 import wvlet.log.LogSupport
 
@@ -102,6 +102,22 @@ object DataType extends LogSupport:
     .parse(s, typeParams)
 
   def unapply(str: String): Option[DataType] = Try(parse(str)).toOption
+
+  def toSQLType(t: DataType, dbType: DBType): String =
+    // TODO Cover more SQL types and dialect
+    t match
+      case IntType | LongType =>
+        "bigint"
+      case FloatType | RealType | DoubleType =>
+        dbType match
+          case DBType.DuckDB =>
+            "real"
+          case _ =>
+            "double"
+      case StringType =>
+        "varchar"
+      case other =>
+        other.typeName.toString.toLowerCase
 
   case class UnresolvedType(leafName: String) extends DataType(Name.typeName(leafName), Seq.empty):
     override def typeDescription: String = s"${leafName}?"

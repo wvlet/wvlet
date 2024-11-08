@@ -1642,6 +1642,8 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           end match
         case WvletToken.L_BRACKET =>
           array()
+        case WvletToken.L_BRACE =>
+          struct()
         case id if id.isIdentifier =>
           identifier()
         case WvletToken.STAR | WvletToken.END =>
@@ -1704,6 +1706,36 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     nextElement
     consume(WvletToken.R_BRACKET)
     ArrayConstructor(elements.result(), spanFrom(t))
+
+  def struct(): StructValue =
+    val fields = List.newBuilder[StructField]
+    def nextField: Unit =
+      val t = scanner.lookAhead()
+      t.token match
+        case WvletToken.COMMA =>
+          consume(WvletToken.COMMA)
+          nextField
+        case WvletToken.R_BRACE =>
+        // ok
+        case WvletToken.STRING_LITERAL =>
+          val name = consume(WvletToken.STRING_LITERAL).str
+          consume(WvletToken.COLON)
+          val value = expression()
+          fields += StructField(name, value, spanFrom(t))
+          nextField
+        case s if s.isStringStart =>
+          val name = identifier()
+          consume(WvletToken.COLON)
+          val value = expression()
+          fields += StructField(name.fullName, value, spanFrom(t))
+          nextField
+        case _ =>
+          unexpected(t)
+
+    val t = consume(WvletToken.L_BRACE)
+    nextField
+    consume(WvletToken.R_BRACE)
+    StructValue(fields.result(), spanFrom(t))
 
   def literal(): Literal =
     def removeUnderscore(s: String): String = s.replaceAll("_", "")

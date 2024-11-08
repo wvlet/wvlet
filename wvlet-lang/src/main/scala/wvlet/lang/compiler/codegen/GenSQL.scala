@@ -32,6 +32,7 @@ import wvlet.lang.compiler.{
   Symbol,
   TermName
 }
+import wvlet.lang.model.DataType
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
 import wvlet.lang.model.plan.JoinType.*
@@ -959,6 +960,28 @@ class GenSQL(ctx: Context) extends LogSupport:
           s"${args} -> ${printExpression(l.body)}"
         else
           s"(${args}) -> ${printExpression(l.body)}"
+      case s: StructValue if ctx.dbType.supportRowExpr =>
+        // For Trino
+        val fields = s
+          .fields
+          .map { f =>
+            printExpression(f.value)
+          }
+        val schema = s
+          .fields
+          .map { f =>
+            val sqlType = DataType.toSQLType(f.value.dataType, ctx.dbType)
+            s"${f.name} ${sqlType}"
+          }
+          .mkString(", ")
+        s"cast(row(${fields.mkString(", ")}) as row(${schema}))"
+      case s: StructValue =>
+        val fields = s
+          .fields
+          .map { f =>
+            s"${f.name}: ${printExpression(f.value)}"
+          }
+        s"{${fields.mkString(", ")}}"
       case other =>
         warn(s"unknown expression type: ${other}")
         other.toString
