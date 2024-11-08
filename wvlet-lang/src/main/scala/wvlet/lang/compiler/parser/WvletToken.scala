@@ -240,11 +240,17 @@ enum WvletToken(val tokenType: TokenType, val str: String):
 end WvletToken
 
 object WvletToken:
-  val keywords        = WvletToken.values.filter(_.tokenType == Keyword).toSeq
-  val specialSymbols  = WvletToken.values.filter(_.tokenType == Op).toSeq
-  val keywordLiterals = List(WvletToken.NULL, WvletToken.TRUE, WvletToken.FALSE, WvletToken.CASE)
+  val keywords       = WvletToken.values.filter(_.tokenType == Keyword).toSeq
+  val specialSymbols = WvletToken.values.filter(_.tokenType == Op).toSeq
+  val literalStartKeywords = List(
+    WvletToken.NULL,
+    WvletToken.TRUE,
+    WvletToken.FALSE,
+    WvletToken.CASE,
+    WvletToken.IF
+  )
 
-  val allKeywordAndSymbol = keywords ++ keywordLiterals ++ specialSymbols
+  val allKeywordAndSymbol = keywords ++ literalStartKeywords ++ specialSymbols
 
   val keywordAndSymbolTable = allKeywordAndSymbol.map(x => x.str -> x).toMap
 
