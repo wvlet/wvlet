@@ -172,6 +172,7 @@ enum WvletToken(val tokenType: TokenType, val str: String):
 
   // join keywords
   case JOIN  extends WvletToken(Keyword, "join")
+  case ASOF  extends WvletToken(Keyword, "asof")
   case ON    extends WvletToken(Keyword, "on")
   case LEFT  extends WvletToken(Keyword, "left")
   case RIGHT extends WvletToken(Keyword, "right")

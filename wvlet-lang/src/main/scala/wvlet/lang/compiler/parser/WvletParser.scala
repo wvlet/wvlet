@@ -721,7 +721,14 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         case WvletToken.COMMA =>
           val ct    = consume(WvletToken.COMMA)
           val rNext = fromRelation()
-          val rel = Join(JoinType.ImplicitJoin, input, rNext, NoJoinCriteria, spanFrom(rNext.span))
+          val rel = Join(
+            JoinType.ImplicitJoin,
+            input,
+            rNext,
+            NoJoinCriteria,
+            false,
+            spanFrom(rNext.span)
+          )
           readRest(rel)
         case _ =>
           input
@@ -784,7 +791,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     val t = scanner.lookAhead()
     t.token match
       case WvletToken.LEFT | WvletToken.RIGHT | WvletToken.INNER | WvletToken.FULL | WvletToken
-            .CROSS | WvletToken.JOIN =>
+            .CROSS | WvletToken.ASOF | WvletToken.JOIN =>
         join(input)
       case WvletToken.WHERE =>
         consume(WvletToken.WHERE)
@@ -855,18 +862,26 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
   end queryBlockSingle
 
   def join(input: Relation): Relation =
+    val isAsOfJoin =
+      scanner.lookAhead().token match
+        case WvletToken.ASOF =>
+          consume(WvletToken.ASOF)
+          true
+        case _ =>
+          false
+
     val t = scanner.lookAhead()
     t.token match
       case WvletToken.CROSS =>
         consume(WvletToken.CROSS)
         consume(WvletToken.JOIN)
         val right = relationPrimary()
-        Join(JoinType.CrossJoin, input, right, NoJoinCriteria, spanFrom(t))
+        Join(JoinType.CrossJoin, input, right, NoJoinCriteria, isAsOfJoin, spanFrom(t))
       case WvletToken.JOIN =>
         consume(WvletToken.JOIN)
         val right  = relationPrimary()
         val joinOn = joinCriteria()
-        Join(JoinType.InnerJoin, input, right, joinOn, spanFrom(t))
+        Join(JoinType.InnerJoin, input, right, joinOn, isAsOfJoin, spanFrom(t))
       case WvletToken.LEFT | WvletToken.RIGHT | WvletToken.INNER | WvletToken.FULL =>
         val joinType =
           t.token match
@@ -884,12 +899,10 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         consume(WvletToken.JOIN)
         val right  = relationPrimary()
         val joinOn = joinCriteria()
-        Join(joinType, input, right, joinOn, spanFrom(t))
+        Join(joinType, input, right, joinOn, isAsOfJoin, spanFrom(t))
       case _ =>
         unexpected(t)
-
     end match
-
   end join
 
   def joinCriteria(): JoinCriteria =

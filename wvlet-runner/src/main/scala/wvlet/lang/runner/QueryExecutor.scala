@@ -421,6 +421,8 @@ class QueryExecutor(
           d.value
         case b: BooleanLiteral =>
           b.booleanValue
+        case d: DecimalLiteral =>
+          d.value
         case n: NullLiteral =>
           null
         case a: ArrayConstructor =>

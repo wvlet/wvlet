@@ -23,7 +23,8 @@ enum DBType(
     // CREATE TABLE ... WITH (options...) is supported
     val supportCreateTableWithOption: Boolean = false,
     val supportStructExpr: Boolean = false,
-    val supportRowExpr: Boolean = false
+    val supportRowExpr: Boolean = false,
+    val supportAsOfJoin: Boolean = false
 ):
 
   case DuckDB
@@ -31,7 +32,8 @@ enum DBType(
         supportCreateOrReplace = true,
         supportDescribeSubQuery = true,
         supportSaveAsFile = true,
-        supportStructExpr = true
+        supportStructExpr = true,
+        supportAsOfJoin = true
       )
 
   case Trino

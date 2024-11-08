@@ -89,7 +89,7 @@ updateTarget : qualifiedId | stringLiteral
 saveOptions: 'with' updateOption (',' saveOption)* ','?
 saveOption : identifier ':' expression
 3
-joinExpr    : joinType? 'join' relation joinCriteria
+joinExpr    : 'asof'? joinType? 'join' relation joinCriteria
             | 'cross' 'join' relation
 joinType    : 'inner' | 'left' | 'right' | 'full'
 joinCriteria: 'on' booleanExpression

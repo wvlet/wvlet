@@ -514,8 +514,14 @@ case class Query(body: Relation, span: Span) extends QueryStatement with Filteri
   override def relationType: RelationType = body.relationType
 
 // Joins
-case class Join(joinType: JoinType, left: Relation, right: Relation, cond: JoinCriteria, span: Span)
-    extends Relation
+case class Join(
+    joinType: JoinType,
+    left: Relation,
+    right: Relation,
+    cond: JoinCriteria,
+    asof: Boolean,
+    span: Span
+) extends Relation
     with LogSupport:
   override def modelName: String = joinType.toString
 
