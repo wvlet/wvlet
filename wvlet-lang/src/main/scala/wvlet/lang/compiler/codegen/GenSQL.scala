@@ -29,6 +29,7 @@ import wvlet.lang.compiler.{
   ModelSymbolInfo,
   Name,
   Phase,
+  SQLDialect,
   Symbol,
   TermName
 }
@@ -1000,6 +1001,19 @@ class GenSQL(ctx: Context) extends LogSupport:
             s"${f.name}: ${printExpression(f.value)}"
           }
         s"{${fields.mkString(", ")}}"
+      case m: MapValue =>
+        ctx.dbType.mapConstructorSyntax match
+          case SQLDialect.MapSyntax.KeyValue =>
+            val entries = m
+              .entries
+              .map { e =>
+                s"${printExpression(e.key)}: ${printExpression(e.value)}"
+              }
+            s"MAP{${entries.mkString(", ")}}"
+          case SQLDialect.MapSyntax.ArrayPair =>
+            val keys   = ArrayConstructor(m.entries.map(_.key), m.span)
+            val values = ArrayConstructor(m.entries.map(_.value), m.span)
+            s"MAP(${printExpression(keys)}, ${printExpression(values)})"
       case other =>
         warn(s"unknown expression type: ${other}")
         other.toString

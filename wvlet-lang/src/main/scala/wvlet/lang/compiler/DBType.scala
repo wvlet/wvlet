@@ -13,6 +13,8 @@
  */
 package wvlet.lang.compiler
 
+import wvlet.lang.compiler.SQLDialect.MapSyntax.KeyValue
+
 enum DBType(
     // CREATE OR REPLACE is supported
     val supportCreateOrReplace: Boolean = false,
@@ -24,7 +26,10 @@ enum DBType(
     val supportCreateTableWithOption: Boolean = false,
     val supportStructExpr: Boolean = false,
     val supportRowExpr: Boolean = false,
-    val supportAsOfJoin: Boolean = false
+    val supportAsOfJoin: Boolean = false,
+    val arrayConstructorSyntax: SQLDialect.ArraySyntax = SQLDialect.ArraySyntax.ArrayLiteral,
+    // MAP {key: value, ...} syntax or MAP(ARRAY[k1, k2, ...], ARRAY[v1, v2, ...]) syntax
+    val mapConstructorSyntax: SQLDialect.MapSyntax = KeyValue
 ):
 
   case DuckDB
@@ -33,7 +38,8 @@ enum DBType(
         supportDescribeSubQuery = true,
         supportSaveAsFile = true,
         supportStructExpr = true,
-        supportAsOfJoin = true
+        supportAsOfJoin = true,
+        mapConstructorSyntax = SQLDialect.MapSyntax.KeyValue
       )
 
   case Trino
@@ -41,7 +47,9 @@ enum DBType(
         // Note: Trino connector may support `create or replace table` depending on the connector.
         supportCreateOrReplace = false,
         supportCreateTableWithOption = true,
-        supportRowExpr = true
+        supportRowExpr = true,
+        arrayConstructorSyntax = SQLDialect.ArraySyntax.ArrayPrefix,
+        mapConstructorSyntax = SQLDialect.MapSyntax.ArrayPair
       )
 
   case Hive       extends DBType
@@ -72,3 +80,19 @@ object DBType:
         Generic
 
 end DBType
+
+object SQLDialect:
+
+  enum ArraySyntax:
+    // ARRAY[1, 2, 3] syntax
+    case ArrayPrefix
+    // [1, 2, 3] syntax
+    case ArrayLiteral
+
+  enum MapSyntax:
+    // MAP {key: value, ...} syntax
+    case KeyValue
+    // MAP(ARRAY[k1, k2, ...], ARRAY[v1, v2, ...]) syntax
+    case ArrayPair
+
+end SQLDialect

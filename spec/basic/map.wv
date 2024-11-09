@@ -1,0 +1,20 @@
+select map {
+  "a": 1,
+  "b": 2,
+  "c": 3
+} as m
+
+-- TODO: Support map value comparison
+-- test _.rows should be [
+--   [map {"a":1, "b":2, "c":3}]
+-- ]
+test _.output should be """
+┌─────────────────┐
+│        m        │
+│ map(string,int) │
+├─────────────────┤
+│ {a=1, b=2, c=3} │
+├─────────────────┤
+│ 1 rows          │
+└─────────────────┘
+"""

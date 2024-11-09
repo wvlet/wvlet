@@ -177,6 +177,7 @@ primaryExpression : 'this'
                   | '(' expression ')'                                            # parenthesized expression
                   | '[' expression (',' expression)* ']'                          # array
                   | '{' rowElem (',' rowElem)* '}'                       # struct, row
+                  | 'map' {' rowElem (',' rowElem)* '}'                       # map value
                   | 'if' booleanExpresssion 'then' expression 'else' expression   # if-then-else
                   | qualifiedId
                   | primaryExpression '.' primaryExpression

@@ -720,6 +720,12 @@ case class StructValue(fields: List[StructField], span: Span) extends Expression
 case class StructField(name: String, value: Expression, span: Span) extends Expression:
   override def children: Seq[Expression] = Seq(value)
 
+case class MapValue(entries: List[MapEntry], span: Span) extends Expression:
+  override def children: Seq[Expression] = entries
+
+case class MapEntry(key: Expression, value: Expression, span: Span) extends Expression:
+  override def children: Seq[Expression] = Seq(key, value)
+
 abstract sealed class CurrentTimeBase(name: String, precision: Option[Int]) extends LeafExpression
 
 case class CurrentTime(precision: Option[Int], span: Span)
