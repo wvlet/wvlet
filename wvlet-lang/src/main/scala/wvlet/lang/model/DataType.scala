@@ -338,6 +338,7 @@ object DataType extends LogSupport:
       Map(
         "integer"   -> IntType,
         "bigint"    -> LongType,
+        "hugeint"   -> LongType,
         "tinyint"   -> ByteType,
         "smallint"  -> ShortType,
         "varchar"   -> StringType,
