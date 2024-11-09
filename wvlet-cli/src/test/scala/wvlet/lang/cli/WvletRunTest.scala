@@ -33,7 +33,7 @@ class WvletRunTest extends AirSpec:
   }
 
   test("model1-q1") {
-    WvletMain.main("run -w spec/model1 -f q1.wv")
+    WvletMain.main("run -w spec/basic -f model/model1.wv")
   }
 
 end WvletRunTest
