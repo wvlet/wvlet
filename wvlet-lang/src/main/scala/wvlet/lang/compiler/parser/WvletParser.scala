@@ -1220,7 +1220,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     def partitionKeys(): List[Expression] =
       val t = scanner.lookAhead()
       t.token match
-        case WvletToken.R_PAREN | WvletToken.ORDER | WvletToken.RANGE | WvletToken.ROW =>
+        case WvletToken.R_PAREN | WvletToken.ORDER | WvletToken.RANGE | WvletToken.ROWS =>
           Nil
         case WvletToken.COMMA =>
           consume(WvletToken.COMMA)
@@ -1249,15 +1249,58 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         case _ =>
           Nil
 
+    def windowFrame(): Option[WindowFrame] =
+      val t = scanner.lookAhead()
+      t.token match
+        case WvletToken.ROWS =>
+          consume(WvletToken.ROWS)
+          consume(WvletToken.L_BRACKET)
+          val frameStart: FrameBound =
+            val t = scanner.lookAhead()
+            t.token match
+              case WvletToken.COLON =>
+                FrameBound.UnboundedPreceding
+              case WvletToken.INTEGER_LITERAL =>
+                val n = consume(WvletToken.INTEGER_LITERAL).str.toInt
+                if n == 0 then
+                  FrameBound.CurrentRow
+                else
+                  FrameBound.Preceding(-n)
+              case _ =>
+                unexpected(t)
+
+          consume(WvletToken.COLON)
+
+          val frameEnd: FrameBound =
+            val t = scanner.lookAhead()
+            t.token match
+              case WvletToken.R_BRACKET =>
+                FrameBound.UnboundedFollowing
+              case WvletToken.INTEGER_LITERAL =>
+                val n = consume(WvletToken.INTEGER_LITERAL).str.toInt
+                if n == 0 then
+                  FrameBound.CurrentRow
+                else
+                  FrameBound.Following(n)
+              case _ =>
+                unexpected(t)
+          consume(WvletToken.R_BRACKET)
+          Some(WindowFrame(FrameType.RowsFrame, frameStart, frameEnd, spanFrom(t)))
+        case _ =>
+          // TODO Support WvletToken.RANGE
+          None
+      end match
+    end windowFrame
+
     scanner.lookAhead().token match
       case WvletToken.OVER =>
         val t = consume(WvletToken.OVER)
         consume(WvletToken.L_PAREN)
         val partition = partitionBy()
         val order     = orderBy()
-        // TODO parse window frame
+        val frame     = windowFrame()
         consume(WvletToken.R_PAREN)
-        Some(Window(partition, order, None, spanFrom(t)))
+        Some(Window(partition, order, frame, spanFrom(t)))
       case _ =>
         None
 
@@ -1284,8 +1327,8 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
             case WvletToken.MOD =>
               consume(WvletToken.MOD)
               SamplingSize.Percentage(n.str.toDouble)
-            case WvletToken.IDENTIFIER if t2.str == "rows" =>
-              consume(WvletToken.IDENTIFIER)
+            case WvletToken.ROWS =>
+              consume(WvletToken.ROWS)
               SamplingSize.Rows(n.str.toInt)
             case _ =>
               SamplingSize.Rows(n.str.toInt)

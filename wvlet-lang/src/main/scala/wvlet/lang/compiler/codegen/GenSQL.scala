@@ -888,6 +888,10 @@ class GenSQL(ctx: Context) extends LogSupport:
         if w.orderBy.nonEmpty then
           s += "order by"
           s += w.orderBy.map(x => printExpression(x)).mkString(", ")
+        w.frame
+          .foreach { f =>
+            s += s"${f.frameType.expr} between ${f.start.expr} and ${f.end.expr}"
+          }
         s"over (${s.result().mkString(" ")})"
       case Eq(left, n: NullLiteral, _) =>
         s"${printExpression(left)} is null"

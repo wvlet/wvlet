@@ -1,0 +1,31 @@
+-- test query for window function frames
+from [
+  ['AAPL', '2024-11-07', 1000],
+  ['AAPL', '2024-11-08',  100],
+  ['AAPL', '2024-11-09',   10],
+  ['AAPL', '2024-11-10',    1],
+] as holding(symbol, date, shares)
+select
+  -- rows between 1 preceding and current row
+  sum(shares) over (rows[-1:0]) as s1,
+  -- rows between 1 preceding and unbounded following
+  sum(shares) over (rows[-1:]) as s2,
+  -- rows between 1 preceding and 1 following
+  sum(shares) over (rows[-1:1]) as s3,
+  -- rows between unbounded preceding and current row
+  sum(shares) over (rows[:0]) as s4,
+  -- rows between unbounded preceding and 1 following
+  sum(shares) over (rows[:1]) as s5,
+  -- rows between current row and 1 following
+  sum(shares) over (rows[0:1]) as s6,
+  -- rows between current row and unbounded following
+  sum(shares) over (rows[0:]) as s7,
+
+-- TODO: Need to read hugeint values as Long in JDBCCodec
+-- test _.rows should be [
+--   [1000, 1111, 1100, 1000, 1100, 1100, 1111],
+--   [1100, 1111, 1110, 1100, 1110, 110,  111],
+--   [110,  111,  111,  1110, 1111, 11,   11],
+--   [11,   11,   11,   1111, 1111, 1,    1]
+-- ]
+-- ;

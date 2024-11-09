@@ -276,19 +276,17 @@ enum FrameBound(val expr: String):
   case Following(n: Long) extends FrameBound(s"${n} following")
   case CurrentRow         extends FrameBound("current row")
 
-case class WindowFrame(frameType: FrameType, start: FrameBound, end: Option[FrameBound], span: Span)
+case class WindowFrame(frameType: FrameType, start: FrameBound, end: FrameBound, span: Span)
     extends Expression
     with LeafExpression:
 
   override def toString: String =
     val s = Seq.newBuilder[String]
     s += frameType.toString
-    if end.isDefined then
-      s += "BETWEEN"
+    s += "BETWEEN"
     s += start.toString
-    if end.isDefined then
-      s += "AND"
-      s += end.get.toString
+    s += "AND"
+    s += end.toString
     s.result().mkString(" ")
 
 // Function
@@ -699,7 +697,7 @@ case class TimezoneMinute(span: Span) extends IntervalField:
   override def toString(): String = "timezone_minute"
 
 // Value constructor
-case class ArrayConstructor(values: Seq[Expression], span: Span) extends Expression:
+case class ArrayConstructor(values: List[Expression], span: Span) extends Expression:
 
   def elementType: DataType =
     val elemTypes = values.map(_.dataType).distinct

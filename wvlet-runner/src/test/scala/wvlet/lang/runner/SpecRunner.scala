@@ -79,8 +79,7 @@ class BasicSpec
       ignoredSpec = Map("values.wv" -> "Need to support RawJSON data")
     )
 
-class Model1Spec extends SpecRunner("spec/model1")
-class TPCHSpec   extends SpecRunner("spec/tpch", prepareTPCH = true)
+class TPCHSpec extends SpecRunner("spec/tpch", prepareTPCH = true)
 
 // Negative tests, expecting some errors
 class NegSpec extends SpecRunner("spec/neg"):
