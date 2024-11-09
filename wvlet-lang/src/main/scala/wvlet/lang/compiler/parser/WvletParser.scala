@@ -1700,6 +1700,8 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           array()
         case WvletToken.L_BRACE =>
           struct()
+        case WvletToken.MAP =>
+          map()
         case id if id.isIdentifier =>
           identifier()
         case WvletToken.STAR | WvletToken.END =>
@@ -1792,6 +1794,29 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     nextField
     consume(WvletToken.R_BRACE)
     StructValue(fields.result(), spanFrom(t))
+
+  def map(): MapValue =
+    val entries = List.newBuilder[MapEntry]
+    def nextEntry: Unit =
+      val t = scanner.lookAhead()
+      t.token match
+        case WvletToken.COMMA =>
+          consume(WvletToken.COMMA)
+          nextEntry
+        case WvletToken.R_BRACE =>
+        // ok
+        case _ =>
+          val key = expression()
+          consume(WvletToken.COLON)
+          val value = expression()
+          entries += MapEntry(key, value, spanFrom(t))
+          nextEntry
+
+    val t = consume(WvletToken.MAP)
+    consume(WvletToken.L_BRACE)
+    nextEntry
+    consume(WvletToken.R_BRACE)
+    MapValue(entries.result(), spanFrom(t))
 
   def literal(): Literal =
     def removeUnderscore(s: String): String = s.replaceAll("_", "")

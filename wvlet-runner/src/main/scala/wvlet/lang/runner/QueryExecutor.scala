@@ -427,6 +427,12 @@ class QueryExecutor(
           null
         case a: ArrayConstructor =>
           a.values.map(evalOp)
+        case m: MapValue =>
+          m.entries
+            .map { x =>
+              evalOp(x.key) -> evalOp(x.value)
+            }
+            .toMap
         case other =>
           warn(s"Test expression ${e} is not supported yet.")
           ()

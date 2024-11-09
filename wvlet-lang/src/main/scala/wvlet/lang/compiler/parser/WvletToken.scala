@@ -137,11 +137,13 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   case TYPE    extends WvletToken(Keyword, "type")
   case EXTENDS extends WvletToken(Keyword, "extends")
   case NATIVE  extends WvletToken(Keyword, "native")
+  case THIS    extends WvletToken(Keyword, "this")
+
+  // Data type keywords
+  case MAP extends WvletToken(Keyword, "map")
 
   case SHOW   extends WvletToken(Keyword, "show")
   case SAMPLE extends WvletToken(Keyword, "sample")
-
-  case THIS extends WvletToken(Keyword, "this")
 
   // Operator prepositions
   case OF   extends WvletToken(Keyword, "of")
@@ -245,7 +247,8 @@ object WvletToken:
     WvletToken.TRUE,
     WvletToken.FALSE,
     WvletToken.CASE,
-    WvletToken.IF
+    WvletToken.IF,
+    WvletToken.MAP
   )
 
   val stringStartToken = List(

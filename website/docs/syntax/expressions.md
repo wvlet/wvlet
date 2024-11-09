@@ -128,6 +128,14 @@ select ['a', 'b', 'c'] as arr
 select arr[1] as first_element
 ```
 
+## Map Expressions
+
+You can construct map values with `map {k1: v1, k2: v2, ...}` syntax. Unlike struct expressions, keys (k1, k2, ...) needs to be the same type values, and values (v1, v2, ...) also need to be the same type values:
+
+```sql
+select map {'a': 1, 'b': 2} as m
+```
+
 ## Struct/Row Expressions
 
 Struct (row) expressions are used to represent key-value pairs. You can access the values by name:
