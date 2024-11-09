@@ -55,13 +55,36 @@ select s"Hello ${x}!" as msg
 | `expr` between `v1` and `v2`    | True if the expression value is between v1 and v2, i.e., v1 &le; (value) &le; v2   |
 | `expr` like `pattern`           | True if the expression matches the given pattern, e.g., , `'abc%'`                 |
 
+### If Expression
+
+`if ... then .. else` expression can be used to switch the output value based on the condition:
+
+```sql
+from lineitem
+select
+  if l_returnflag = 'A' then 1 else 0
+  as return_code
+```
+
+The `if` expression can be nested as follows:
+
+```sql
+from lineitem
+select
+  if l_returnflag = 'A' then 1
+  else if l_returnflag = 'R' then 2
+  else 0
+  as return_code
+```
+
+
 ### Case Expression
 
 To switch the output value based on the input value, you can use the `case` expression:
 
 ```sql
 from lineitem
-select 
+select
   case l_returnflag
     when 'A' then 1
     when 'R' then 2
