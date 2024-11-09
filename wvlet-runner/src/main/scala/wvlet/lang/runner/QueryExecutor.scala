@@ -426,8 +426,8 @@ class QueryExecutor(
         case n: NullLiteral =>
           null
         case a: ArrayConstructor =>
-          a.values.map(evalOp).toList
-        case _ =>
+          a.values.map(evalOp)
+        case other =>
           warn(s"Test expression ${e} is not supported yet.")
           ()
 

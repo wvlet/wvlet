@@ -16,7 +16,7 @@ One of the major difference from tradtional SQL is that wvlet uses single or dou
 | [[`expr`, ...], ...]                                  | Array of arrays for representing table records                                                                                               |
 | \{'`key`'\: `value`, ...\}                                 | Struct (row) value                                                                                                                         |
 | `_`                                                   | underscore refers to the previous input                                                                                                      |
-| `agg_func(expr)` over (partition by ... order by ...) | Window functions for computing aggregate values computed from the entire query result. This follows the same window function syntax with SQL |
+| `agg_func(expr)` over (partition by ... order by ...) | [Window functions](window.md) for computing aggregate values computed from the entire query result. This follows similar window function syntax with SQL |
 | `_1`, `_2`, ...                                       | Refers to 1-origin grouping keys in the preceding `group by` clause                                                                          |
 | `1`, `2`, ...                                         | Refers to 1-origin column index for `order by` clause                                                                                        |
 

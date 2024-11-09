@@ -200,12 +200,8 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   // window function keywords
   case OVER      extends WvletToken(Keyword, "over")
   case PARTITION extends WvletToken(Keyword, "partition")
-  case UNBOUNDED extends WvletToken(Keyword, "unbounded")
-  case PRECEDING extends WvletToken(Keyword, "preceding")
-  case FOLLOWING extends WvletToken(Keyword, "following")
-  case CURRENT   extends WvletToken(Keyword, "current")
+  case ROWS      extends WvletToken(Keyword, "rows")
   case RANGE     extends WvletToken(Keyword, "range")
-  case ROW       extends WvletToken(Keyword, "row")
 
   // model management keywords
   case RUN     extends WvletToken(Keyword, "run")

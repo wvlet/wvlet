@@ -88,7 +88,7 @@ update       : 'save' 'as' updateTarget saveOptions?
 updateTarget : qualifiedId | stringLiteral 
 saveOptions: 'with' updateOption (',' saveOption)* ','?
 saveOption : identifier ':' expression
-3
+
 joinExpr    : 'asof'? joinType? 'join' relation joinCriteria
             | 'cross' 'join' relation
 joinType    : 'inner' | 'left' | 'right' | 'full'
@@ -108,7 +108,11 @@ selectItem : (identifier '=')? expression
 
 window     : 'over' '(' windowSpec ')'
 windowSpec : ('partition' 'by' expression (',' expression)*)?
-           | ('order' 'by' sortItem (',' sortItem)*)?
+             ('order' 'by' sortItem (',' sortItem)*)?
+             frameSpec?
+frameSpec  | ('rows' | 'range') frame
+frame      : '[' frameBound? ':' frameBound? ']'
+frameBound : INTEGER_VALUE | INTEGER_VALUE 'days' 
 
 testExpr: booleanExpression
 
