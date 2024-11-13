@@ -307,6 +307,7 @@ object WvletREPL extends LogSupport:
     "gh",
     "clip",
     "clip-result",
+    "clip-query",
     "rows",
     "col-width"
   )
@@ -318,6 +319,7 @@ object WvletREPL extends LogSupport:
       | clear      : Clear the screen
       | clip       : Clip the last query and result to the clipboard
       | clip-result: Clip the last result to the clipboard in TSV format
+      | clip-query : Clip the last query to the clipboard
       | rows       : Set the maximum number of query result rows to display (default: 40)
       | col-width  : Set the maximum column width to display (default: 150)
       | git        : Run a git command in the shell
