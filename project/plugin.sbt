@@ -24,6 +24,10 @@ val SCALAJS_VERSION                    = sys.env.getOrElse("SCALAJS_VERSION", "1
 addSbtPlugin("org.scala-js"       % "sbt-scalajs"              % SCALAJS_VERSION)
 addSbtPlugin("org.portable-scala" % "sbt-scalajs-crossproject" % "1.3.2")
 
+// For Scala Native
+addSbtPlugin("org.scala-native"   % "sbt-scala-native"              % "0.5.5")
+addSbtPlugin("org.portable-scala" % "sbt-scala-native-crossproject" % "1.3.2")
+
 // For creating Scala.js facade from JS moduels
 addSbtPlugin("org.scalablytyped.converter" % "sbt-converter" % "1.0.0-beta44")
 
