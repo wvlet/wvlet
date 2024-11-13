@@ -69,4 +69,8 @@ class WvletREPLMainTest extends AirSpec:
     WvletREPLMain.main("""-c 'select 1 test 1 should be 1'""")
   }
 
+  test("run execute") {
+    WvletREPLMain.main("""-c 'execute sql"select 1"'""")
+  }
+
 end WvletREPLMainTest

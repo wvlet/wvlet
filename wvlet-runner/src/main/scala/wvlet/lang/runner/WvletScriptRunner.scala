@@ -117,10 +117,10 @@ class WvletScriptRunner(
       val resultMaxWidth = str.split("\n").map(_.size).max
       if !config.interactive || resultMaxWidth <= terminal.getWidth then
         // The result fits in the terminal width
-        println(
-          queryResult
-            .toPrettyBox(maxWidth = Some(terminal.getWidth), maxColWidth = resultMaxColWidth)
-        )
+        val output = queryResult
+          .toPrettyBox(maxWidth = Some(terminal.getWidth), maxColWidth = resultMaxColWidth)
+        if output.trim.nonEmpty then
+          println(output)
       else
         // Launch less command to enable scrolling of query results in the terminal
         // TODO Use jline3's internal less
