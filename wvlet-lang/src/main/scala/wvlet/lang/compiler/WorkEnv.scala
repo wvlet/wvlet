@@ -9,7 +9,8 @@ import wvlet.log.{LogLevel, LogRotationHandler, Logger}
   * @param path
   * @param logLevel
   */
-case class WorkEnv(path: String = ".", logLevel: LogLevel = Logger.getDefaultLogLevel):
+case class WorkEnv(path: String = ".", logLevel: LogLevel = Logger.getDefaultLogLevel)
+    extends WorkEnvCompat:
   lazy val hasWvletFiles: Boolean = Option(new java.io.File(path).listFiles())
     .exists(_.exists(_.getName.endsWith(".wv")))
 
@@ -32,13 +33,13 @@ case class WorkEnv(path: String = ".", logLevel: LogLevel = Logger.getDefaultLog
 
   lazy val errorLogger: Logger =
     val l = Logger("wvlet.lang.runner.error")
-    l.resetHandler(LogRotationHandler(fileName = errorFile, formatter = SourceCodeLogFormatter))
+    initLogger(l)
     l.setLogLevel(logLevel)
     l
 
   lazy val outLogger: Logger =
     val l = Logger("wvlet.lang.runner.out")
-    l.resetHandler(LogRotationHandler(fileName = logFile, formatter = SourceCodeLogFormatter))
+    initLogger(l)
     l.setLogLevel(logLevel)
     l
 

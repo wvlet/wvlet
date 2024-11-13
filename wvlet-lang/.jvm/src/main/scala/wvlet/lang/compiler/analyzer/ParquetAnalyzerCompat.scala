@@ -24,7 +24,7 @@ import wvlet.lang.model.{DataType, RelationType}
 import java.io.File
 import java.sql.DriverManager
 
-object ParquetAnalyzer:
+trait ParquetAnalyzerCompat:
 
   private def withConnection[U](f: DuckDBConnection => U): U =
     Class.forName("org.duckdb.DuckDBDriver")
@@ -35,7 +35,7 @@ object ParquetAnalyzer:
       case other =>
         throw StatusCode.NOT_IMPLEMENTED.newException("duckdb connection is unavailable")
 
-  def guessSchema(path: String): RelationType =
+  protected def guessSchemaInternal(path: String): RelationType =
     if !new File(path).exists then
       EmptyRelationType
     else
@@ -55,4 +55,4 @@ object ParquetAnalyzer:
         }
       }
 
-end ParquetAnalyzer
+end ParquetAnalyzerCompat
