@@ -1,5 +1,5 @@
-val AIRFRAME_VERSION    = "24.10.0"
-val AIRSPEC_VERSION     = "24.10.0"
+val AIRFRAME_VERSION    = "24.11.0"
+val AIRSPEC_VERSION     = "24.11.0"
 val TRINO_VERSION       = "464"
 val AWS_SDK_VERSION     = "2.20.146"
 val SCALAJS_DOM_VERSION = "2.8.0"
@@ -32,7 +32,7 @@ val buildSettings = Seq[Setting[?]](
 lazy val jvmProjects: Seq[ProjectReference] = Seq(
   api.jvm,
   server,
-  lang,
+  lang.jvm,
   runner,
   client.jvm,
   spec,
@@ -41,35 +41,26 @@ lazy val jvmProjects: Seq[ProjectReference] = Seq(
 
 lazy val jsProjects: Seq[ProjectReference] = Seq(api.js, client.js, ui, uiMain)
 
+lazy val nativeProjects: Seq[ProjectReference] = Seq(api.native, lang.native)
+
 val noPublish = Seq(
   publishArtifact := false,
   publish         := {},
   publishLocal    := {},
-  publish / skip  := true
+  publish / skip  := true,
+  // Skip importing aggregated projects in IntelliJ IDEA
+  ideSkipProject := true
+  // Use a stable coverage directory name without containing scala version
+  // coverageDataDir := target.value
 )
 
 Global / excludeLintKeys += ideSkipProject
 
-lazy val projectJVM = project
-  .settings(noPublish)
-  .settings(
-    // Skip importing aggregated projects in IntelliJ IDEA
-    ideSkipProject :=
-      true
-      // Use a stable coverage directory name without containing scala version
-      // coverageDataDir := target.value
-  )
-  .aggregate(jvmProjects: _*)
+lazy val projectJVM    = project.settings(noPublish).aggregate(jvmProjects: _*)
+lazy val projectJS     = project.settings(noPublish).aggregate(jsProjects: _*)
+lazy val projectNative = project.settings(noPublish).aggregate(nativeProjects: _*)
 
-lazy val projectJS = project
-  .settings(noPublish)
-  .settings(
-    // Skip importing aggregated projects in IntelliJ IDEA
-    ideSkipProject := true
-  )
-  .aggregate(jsProjects: _*)
-
-lazy val api = crossProject(JVMPlatform, JSPlatform)
+lazy val api = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("wvlet-api"))
   .enablePlugins(AirframeHttpPlugin, BuildInfoPlugin)
@@ -86,7 +77,8 @@ lazy val api = crossProject(JVMPlatform, JSPlatform)
       )
   )
 
-lazy val lang = project
+lazy val lang = crossProject(JVMPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
   .in(file("wvlet-lang"))
   .settings(
     buildSettings,
@@ -110,7 +102,7 @@ lazy val lang = project
       ((ThisBuild / baseDirectory).value / "spec" ** "*.wv").get ++
         ((ThisBuild / baseDirectory).value / "wvlet-stdlib" ** "*.wv").get
   )
-  .dependsOn(api.jvm)
+  .dependsOn(api)
 
 val specRunnerSettings = Seq(
   // Fork JVM to enable JVM options for Trino
@@ -199,7 +191,7 @@ lazy val runner = project
         //        ) cross (CrossVersion.for3Use2_13)
       )
   )
-  .dependsOn(lang)
+  .dependsOn(lang.jvm)
 
 lazy val spec = project
   .in(file("wvlet-spec"))

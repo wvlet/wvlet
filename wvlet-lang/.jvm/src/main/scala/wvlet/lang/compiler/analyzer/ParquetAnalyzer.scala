@@ -13,14 +13,13 @@
  */
 package wvlet.lang.compiler.analyzer
 
-import wvlet.lang.api.StatusCode
-import wvlet.lang.model.DataType.{EmptyRelationType, NamedType, SchemaType}
-import wvlet.lang.model.expr.NameExpr
-import wvlet.lang.model.{DataType, RelationType}
-import wvlet.lang.compiler.Name
 import org.duckdb.DuckDBConnection
 import wvlet.airframe.control.Control
 import wvlet.airframe.control.Control.withResource
+import wvlet.lang.api.StatusCode
+import wvlet.lang.compiler.Name
+import wvlet.lang.model.DataType.{EmptyRelationType, NamedType, SchemaType}
+import wvlet.lang.model.{DataType, RelationType}
 
 import java.io.File
 import java.sql.DriverManager
