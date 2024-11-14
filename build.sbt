@@ -201,8 +201,14 @@ lazy val runner = project
 
 lazy val spec = project
   .in(file("wvlet-spec"))
-  .settings(buildSettings, specRunnerSettings, noPublish, name := "wvlet-spec")
-  .dependsOn(runner)
+  .settings(
+    buildSettings,
+    specRunnerSettings,
+    noPublish,
+    name := "wvlet-spec",
+    libraryDependencies ++= Seq("org.apache.hive" % "hive-parser" % "4.0.1" % Test)
+  )
+  .dependsOn(runner % "compile->compile;test->test")
 
 lazy val server = project
   .in(file("wvlet-server"))

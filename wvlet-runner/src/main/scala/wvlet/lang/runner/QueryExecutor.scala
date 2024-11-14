@@ -48,7 +48,7 @@ class QueryExecutor(
     this
 
   def getDBConnector: DBConnector = dbConnector
-
+  
   override def close(): Unit = dbConnector.close()
 
   def executeSingleSpec(sourceFolder: String, file: String): QueryResult =
