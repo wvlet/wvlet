@@ -20,6 +20,9 @@ import wvlet.airspec.AirSpec
 class AnalyzerTest extends AirSpec:
 
   test("analyze stdlib") {
+    if isScalaNative then
+      pending(s"Need to support reading stdlib from Scala Native")
+
     val result     = Compiler.default("spec/empty").compile()
     val typedPlans = result.typedPlans
     typedPlans.map: p =>

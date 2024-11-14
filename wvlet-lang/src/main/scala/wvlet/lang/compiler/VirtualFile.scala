@@ -52,7 +52,7 @@ case class LocalFile(path: String) extends VirtualFile:
   override def exists: Boolean      = Files.exists(filePath)
   override def isDirectory: Boolean = exists && Files.exists(filePath)
 
-  override def contentString: String = IOUtil.readAsString(filePath.toFile)
+  override def contentString: String = SourceIO.readAsString(path)
 
   override def lastUpdatedAt: Long = Files.getLastModifiedTime(filePath).toMillis
   override def listFiles: Seq[VirtualFile] =
@@ -103,13 +103,13 @@ case class FileInResource(path: String) extends VirtualFile:
   override def exists: Boolean             = true
   override def isDirectory: Boolean        = false
   override def listFiles: Seq[VirtualFile] = Seq.empty
-  override def contentString: String       = IOUtil.readAsString(path)
+  override def contentString: String       = SourceIO.readAsString(path)
 
-case class URLResource(url: java.net.URL) extends VirtualFile:
+case class URIResource(url: java.net.URI) extends VirtualFile:
   val lastUpdatedAt: Long                  = System.currentTimeMillis()
-  override def name: String                = url.getFile.split("/").last
+  override def name: String                = url.getPath.split("/").last
   override def path: String                = url.getPath
   override def exists: Boolean             = true
   override def isDirectory: Boolean        = false
   override def listFiles: Seq[VirtualFile] = Seq.empty
-  override def contentString: String       = IOUtil.readAsString(url)
+  override def contentString: String       = SourceIO.readAsString(url)

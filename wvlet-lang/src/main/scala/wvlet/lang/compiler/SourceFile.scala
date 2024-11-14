@@ -20,7 +20,7 @@ import wvlet.airframe.ulid.ULID
 import wvlet.log.io.IOUtil
 
 import java.io.{File, FileNotFoundException}
-import java.net.URL
+import java.net.{URI, URL}
 import java.util.concurrent.atomic.AtomicBoolean
 import scala.collection.mutable.ArrayBuffer
 
@@ -32,7 +32,7 @@ object SourceFile:
     MemoryFile(s"${ULID.newULIDString}.wv", content)
   )
 
-  def fromResource(url: URL): SourceFile     = SourceFile(URLResource(url))
+  def fromResource(uri: URI): SourceFile     = SourceFile(URIResource(uri))
   def fromResource(path: String): SourceFile = SourceFile(FileInResource(path))
 
 class SourceFile(val file: VirtualFile):
