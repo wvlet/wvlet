@@ -89,8 +89,6 @@ case class CompilationUnit(sourceFile: SourceFile, isPreset: Boolean = false) ex
 end CompilationUnit
 
 object CompilationUnit extends LogSupport:
-  private val ignoredFolders: Set[String] = Set("spec", "target")
-
   val empty: CompilationUnit = CompilationUnit(NoSourceFile)
 
   def fromString(text: String) = CompilationUnit(SourceFile.fromString(text))
@@ -99,7 +97,7 @@ object CompilationUnit extends LogSupport:
 
   def fromPath(path: String): List[CompilationUnit] =
     // List all *.wv files under the path
-    val files = listFiles(path, 0)
+    val files = SourceIO.listFiles(path, 0)
     val units =
       files
         .map { file =>
@@ -108,54 +106,12 @@ object CompilationUnit extends LogSupport:
         .toList
     units
 
-  private def listWvletFile(path: String): List[URL] =
-    val urls = List.newBuilder[URL]
-    import scala.jdk.CollectionConverters.*
-    Option(this.getClass.getResource(path)).foreach: r =>
-      r.getProtocol match
-        case "file" =>
-          val files = listFiles(r.getPath, 0)
-          urls ++= files.map(File(_).toURI.toURL)
-        case "jar" =>
-          val jarPath     = r.getPath.split("!")(0).replaceAll("%20", " ").replaceAll("%25", "%")
-          val jarFilePath = jarPath.replace("file:", "")
-          val jf          = new JarFile(jarFilePath)
-          val wvFilePaths = jf.entries().asScala.filter(_.getName.endsWith(".wv"))
-          urls ++=
-            wvFilePaths
-              .map { j =>
-                val url = s"jar:${jarPath}!/${j.getName}"
-                URI(url).toURL
-              }
-              .toList
-        case _ =>
-
-    urls.result()
+  private def listWvletFile(path: String): List[URI] = SourceIO.listResource(path)
 
   def fromResourcePath(path: String, isPreset: Boolean): List[CompilationUnit] =
     val urls = listWvletFile(path)
     urls.map { url =>
       CompilationUnit(SourceFile.fromResource(url), isPreset = isPreset)
     }
-
-  private def listFiles(path: String, level: Int): Seq[String] =
-    val f = new java.io.File(path)
-    if f.isDirectory then
-      if level == 1 && ignoredFolders.contains(f.getName) then
-        Seq.empty
-      else
-        val files         = f.listFiles()
-        val hasAnyWvFiles = files.exists(_.getName.endsWith(".wv"))
-        if hasAnyWvFiles then
-          // Only scan sub-folders if there is any .wv files
-          files flatMap { file =>
-            listFiles(file.getPath, level + 1)
-          }
-        else
-          Seq.empty
-    else if f.isFile && f.getName.endsWith(".wv") then
-      Seq(f.getPath)
-    else
-      Seq.empty
 
 end CompilationUnit

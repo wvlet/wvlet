@@ -42,22 +42,22 @@ class WvletParserTest extends AirSpec:
     found shouldBe true
 
   test("parse basic queries"):
-    val plans = ParserPhase.parseSourceFolder("spec/basic/src")
+    val plans = ParserPhase.parseSourceFolder("spec/basic")
     plans.foreach: p =>
       debug(p.pp)
 
   test("parse cdp_simple queries"):
-    val plans = ParserPhase.parseSourceFolder("spec/cdp_simple/src")
+    val plans = ParserPhase.parseSourceFolder("spec/cdp_simple")
     plans.foreach: p =>
       debug(p.pp)
 
   test("parse cdp_behavior queries"):
-    val plans = ParserPhase.parseSourceFolder("spec/cdp_behavior/src")
+    val plans = ParserPhase.parseSourceFolder("spec/cdp_behavior")
     plans.foreach: p =>
       debug(p.pp)
 
   test("tpch") {
-    val plans = ParserPhase.parseSourceFolder("spec/tpch/src")
+    val plans = ParserPhase.parseSourceFolder("spec/tpch")
     plans.foreach: p =>
       debug(p.pp)
   }

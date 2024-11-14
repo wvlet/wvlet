@@ -13,32 +13,18 @@
  */
 package wvlet.lang.compiler.analyzer
 
-import wvlet.lang.api.StatusCode
-import wvlet.lang.compiler.{Context, Name}
-import wvlet.lang.model.DataType.{EmptyRelationType, NamedType, RecordType, SchemaType}
-import wvlet.lang.model.{DataType, RelationType}
-import wvlet.lang.model.expr.NameExpr
-import wvlet.airframe.control.IO
 import wvlet.airframe.json.JSON
-import wvlet.airframe.json.JSON.{
-  JSONArray,
-  JSONBoolean,
-  JSONDouble,
-  JSONLong,
-  JSONNull,
-  JSONObject,
-  JSONString,
-  JSONValue
-}
-import wvlet.airframe.ulid.ULID
+import wvlet.airframe.json.JSON.*
+import wvlet.lang.compiler.{SourceIO, Name}
+import wvlet.lang.model.DataType.{NamedType, SchemaType}
+import wvlet.lang.model.{DataType, RelationType}
 import wvlet.log.LogSupport
 
-import java.io.File
 import scala.collection.immutable.ListMap
 
 object JSONAnalyzer extends LogSupport:
   def analyzeJSONFile(path: String): RelationType =
-    val json = IO.readAsString(new File(path))
+    val json = SourceIO.readAsString(path)
     debug(json)
     val jsonValue = JSON.parse(json)
 
