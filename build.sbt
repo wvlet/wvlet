@@ -41,7 +41,7 @@ lazy val jvmProjects: Seq[ProjectReference] = Seq(
 
 lazy val jsProjects: Seq[ProjectReference] = Seq(api.js, client.js, ui, uiMain)
 
-lazy val nativeProjects: Seq[ProjectReference] = Seq(api.native, lang.native)
+lazy val nativeProjects: Seq[ProjectReference] = Seq(api.native, lang.native, nativeCli)
 
 val noPublish = Seq(
   publishArtifact := false,
@@ -115,6 +115,12 @@ val specRunnerSettings = Seq(
     ((ThisBuild / baseDirectory).value / "spec" ** "*.wv").get ++
       ((ThisBuild / baseDirectory).value / "wvlet-lang" ** "*.wv").get
 )
+
+lazy val nativeCli = project
+  .enablePlugins(ScalaNativePlugin)
+  .in(file("wvlet-native-cli"))
+  .settings(buildSettings, name := "wvlet-native-cli")
+  .dependsOn(lang.native)
 
 lazy val cli = project
   .in(file("wvlet-cli"))
