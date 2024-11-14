@@ -425,7 +425,6 @@ trait LogicalPlan extends TreeNode with Product:
 
   protected def copyInstance(newArgs: Seq[AnyRef]): this.type =
     // TODO: Use non-reflection to support Scala.js/Scala Native
-    val primaryConstructor = this.getClass.getDeclaredConstructors()(0)
     try
       val args = newArgs.map { (x: Any) =>
         x match
@@ -435,7 +434,7 @@ trait LogicalPlan extends TreeNode with Product:
           case other =>
             other
       }
-      val newObj = primaryConstructor.newInstance(args*)
+      val newObj = newInstance(args*)
       newObj match
         case t: TreeNode =>
           if this.symbol.tree != null then
