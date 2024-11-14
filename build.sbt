@@ -102,7 +102,6 @@ lazy val lang = crossProject(JVMPlatform, NativePlatform)
       ((ThisBuild / baseDirectory).value / "spec" ** "*.wv").get ++
         ((ThisBuild / baseDirectory).value / "wvlet-stdlib" ** "*.wv").get
   )
-  .nativeSettings(libraryDependencies ++= Seq("com.lihaoyi" %% "os-lib" % "0.11.3"))
   .dependsOn(api)
 
 val specRunnerSettings = Seq(
