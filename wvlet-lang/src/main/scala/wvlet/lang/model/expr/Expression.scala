@@ -13,7 +13,6 @@
  */
 package wvlet.lang.model.expr
 
-import wvlet.airframe.surface.reflect.ReflectTypeUtil
 import wvlet.lang.api.Span.NoSpan
 import wvlet.lang.api.{Span, StatusCode}
 import wvlet.lang.model.*
@@ -44,8 +43,6 @@ trait Expression extends TreeNode with Product with LogSupport:
 
   protected def copyInstance(newArgs: Seq[AnyRef]): this.type =
     try
-      val primaryConstructor = this.getClass.getDeclaredConstructors()(0)
-
       val args = newArgs.map { (x: Any) =>
         x match
           case s: Span =>
@@ -55,12 +52,7 @@ trait Expression extends TreeNode with Product with LogSupport:
             other
       }
 
-      val newObj =
-        if primaryConstructor.getParameterCount == 0 && this.getClass.getSimpleName.endsWith("$")
-        then
-          ReflectTypeUtil.companionObject(this.getClass).get
-        else
-          primaryConstructor.newInstance(args*)
+      val newObj = getSingletonObject.getOrElse(newInstance(args*))
       newObj.asInstanceOf[this.type]
     catch
       case e: IllegalArgumentException =>
