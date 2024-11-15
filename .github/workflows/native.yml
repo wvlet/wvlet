@@ -37,15 +37,18 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-latest
-            arch: arm64
-            name: mac
-          - os: ubuntu-latest
-            arch: arm64
-            name: linux
+# TODO This works, but binary signing and notarization is required
+#          - os: macos-latest
+#            arch: arm64
+#            name: mac
+# TODO It seems arm64 is not available yet (2024-11)
+#          - os: ubuntu-latest
+#            arch: arm64
+#            name: linux
           - os: ubuntu-latest
             arch: x64
             name: linux
+# TODO Need some tweaks to run sbt on Windows
 #          - os: windows-latest
 #            arch: x64
 #            name: windows
