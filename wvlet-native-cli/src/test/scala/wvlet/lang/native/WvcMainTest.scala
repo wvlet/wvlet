@@ -12,5 +12,5 @@ class WvcMainTest extends AirSpec:
   }
 
   test("load spec") {
-    WvcMain.main(Array("-l", "debug", "-w", "spec/basic", "-q", "from person"))
+    WvcMain.main(Array("-w", "spec/basic", "-q", "from person"))
   }
