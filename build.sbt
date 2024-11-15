@@ -63,7 +63,7 @@ lazy val projectNative = project.settings(noPublish).aggregate(nativeProjects: _
 lazy val api = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("wvlet-api"))
-  .enablePlugins(AirframeHttpPlugin, BuildInfoPlugin)
+  .enablePlugins(BuildInfoPlugin)
   .settings(
     buildSettings,
     name          := "wvlet-api",

@@ -60,7 +60,7 @@ jobs:
       - name: Set SCALA_VERSION env
         run: |
           SCALA_VERSION=$(cat SCALA_VERSION)
-          echo Version: $SCALA_VERSION
+          echo SCALA_VERSION: $SCALA_VERSION
           echo "SCALA_VERSION=$SCALA_VERSION" >> $GITHUB_ENV
       - name: Build native binary
         run: |
@@ -73,11 +73,12 @@ jobs:
           name: wvc-${{ matrix.name }}-${{ matrix.arch }}
           path: wvc-${{ matrix.name }}-${{ matrix.arch }}
   collect_artifact:
+    name: Collect wvc binaries
     runs-on: ubuntu-latest
     needs: build_native
     steps:
-      - name: Collect artifacts
+      - name: Merge artifacts
         uses: actions/upload-artifact/merge@v4
         with:
-          name: wvc-${{ github.ref_name }}
+          name: wvc-binaries
           delete-merged: true
