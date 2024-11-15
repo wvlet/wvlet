@@ -97,6 +97,51 @@ lazy val lang = crossProject(JVMPlatform, NativePlatform)
         // Add a reference implementation of the compiler
         "org.scala-lang" %% "scala3-compiler" % SCALA_3 % Test
       ),
+    Compile / sourceGenerators +=
+      Def
+        .task {
+          // Generate a Scala file containing all .wv files in wvlet-stdlib
+          val out        = (Compile / sourceManaged).value
+          val libDir     = (ThisBuild / baseDirectory).value / "wvlet-stdlib" / "module"
+          val files      = (libDir ** "*.wv").get()
+          val targetFile = out / "stdlib.scala"
+
+          val methodNames = Seq.newBuilder[String]
+
+          def resourceDefs: String = files
+            .map { f =>
+              val name = f.relativeTo(libDir).get.getPath.stripSuffix(".wv").replaceAll("/", "__")
+              methodNames += name
+              val content = IO.read(f)
+              s"""|  def ${name}: String = \"\"\"${content}\"\"\"
+                  |""".stripMargin
+            }
+            .mkString("\n")
+
+          def allFiles: String = {
+            val allMethods = methodNames.result()
+            s"""  def allFiles: Map[String, String] = Map(
+               |    ${allMethods
+                .map(m => s""""${m.replaceAll("__", "/")}.wv"-> ${m}""")
+                .mkString(",\n    ")}
+               |  )
+               |""".stripMargin
+          }
+
+          val body =
+            s"""package wvlet.lang.stdlib
+          |
+          |object StdLib:
+          |${resourceDefs}
+          |${allFiles}
+          |end StdLib
+          |""".stripMargin
+
+          state.value.log.debug(s"Generating stdlib.scala:\n${body}")
+          IO.write(targetFile, body)
+          Seq(targetFile)
+        }
+        .taskValue,
     // Watch changes of example .wv files upon testing
     Test / watchSources ++=
       ((ThisBuild / baseDirectory).value / "spec" ** "*.wv").get ++

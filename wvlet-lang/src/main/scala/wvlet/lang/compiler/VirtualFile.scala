@@ -77,9 +77,9 @@ case class GitHubArchive(owner: String, repo: String, ref: String) extends Virtu
   override def lastUpdatedAt: Long   = ???
   override def contentString: String = ???
 
-case class MemoryFile(name: String, contentString: String) extends VirtualFile:
+case class MemoryFile(path: String, contentString: String) extends VirtualFile:
   val lastUpdatedAt                 = System.currentTimeMillis()
-  override def path: String         = name
+  override def name: String         = path.split("/").last
   override def exists: Boolean      = true
   override def isDirectory: Boolean = false
   override def listFiles            = Seq.empty
