@@ -59,7 +59,7 @@ jobs:
           cache: sbt
       - name: Set SCALA_VERSION env
         run: |
-          VERSION=$(cat SCALA_VERSION)
+          SCALA_VERSION=$(cat SCALA_VERSION)
           echo Version: $SCALA_VERSION
           echo "SCALA_VERSION=$SCALA_VERSION" >> $GITHUB_ENV
       - name: Build native binary
