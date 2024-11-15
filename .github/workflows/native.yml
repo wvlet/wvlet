@@ -33,7 +33,6 @@ jobs:
     name: Cross build with Scala Native
     needs: changes
     if: ${{ needs.changes.outputs.src == 'true' }}
-    runs-on: ${{ matrix.config.os }}
     strategy:
       fail-fast: false
       matrix:
@@ -46,6 +45,7 @@ jobs:
             arch: x64
           - os: windows-latest
             arch: x64
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
