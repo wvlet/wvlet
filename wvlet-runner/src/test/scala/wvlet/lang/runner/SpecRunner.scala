@@ -96,21 +96,19 @@ trait QuerySpec(specPath: String, profile: Profile = Profile.defaultDuckDBProfil
       }
   }
   
-  
-  
 end QuerySpec
 
 
 class BasicSpec
-    extends SpecRunner(
+    extends QuerySpec(
       "spec/basic",
       ignoredSpec = Map("values.wv" -> "Need to support RawJSON data")
     )
 
-class TPCHSpec extends SpecRunner("spec/tpch", profile = Profile.defaultDuckDBProfileWithTPCH)
+class TPCHSpec extends QuerySpec("spec/tpch", profile = Profile.defaultDuckDBProfileWithTPCH)
 
 // Negative tests, expecting some errors
-class NegSpec extends SpecRunner("spec/neg"):
+class NegSpec extends QuerySpec("spec/neg"):
   override protected def handleError: Throwable => Unit =
     case e: WvletLangException if e.statusCode.isUserError =>
       // Expected error
