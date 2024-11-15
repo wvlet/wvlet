@@ -66,7 +66,7 @@ jobs:
         run: |
           ./sbt 'nativeCli/nativeLinkReleaseFast'
       - name: Upload native binary
-        uses: actions/upload-pages-artifact@v4
+        uses: actions/upload-artifact@v4
         with:
           name: wvc-${{ matrix.name }}-${{ matrix.arch }}
           path: wvlet-native-cli/target/scala-${{ env.SCALA_VERSION }}/wvlet-native-cli-release-fast
