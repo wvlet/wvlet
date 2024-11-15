@@ -191,9 +191,9 @@ def nativeCrossProject(name: String, llvmTriple: String) = {
 // Native libraries (include headers in C) will be necessary for nativeLink,
 // So we may need to use https://github.com/dockcross/dockcross to cross build native libraries
 lazy val nativeCliMacArm       = nativeCrossProject("mac-arm64", "arm64-apple-darwin")
-lazy val nativeCliLinuxIntel   = nativeCrossProject("linux-x86_64", "x86_64-pc-linux-gnu")
-lazy val nativeCliLinuxArm     = nativeCrossProject("linux-arm64", "arm64-pc-linux-gnu")
-lazy val nativeCliWindowsArm   = nativeCrossProject("windows-arm64", "arm64-w64-windows-gnu")
+lazy val nativeCliLinuxIntel   = nativeCrossProject("linux-x86_64", "x86_64-unknown-linux-gnu")
+lazy val nativeCliLinuxArm     = nativeCrossProject("linux-arm64", "aarch64-unknown-linux-gnu")
+lazy val nativeCliWindowsArm   = nativeCrossProject("windows-arm64", "aarch64-w64-windows-gnu")
 lazy val nativeCliWindowsIntel = nativeCrossProject("windows-x86_64", "x86_64-w64-windows-gnu")
 
 lazy val cli = project
