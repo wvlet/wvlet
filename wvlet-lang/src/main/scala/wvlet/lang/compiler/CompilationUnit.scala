@@ -17,6 +17,7 @@ import wvlet.lang.api.{NodeLocation, SourceLocation, Span}
 import wvlet.lang.compiler
 import wvlet.lang.compiler.SourceFile.NoSourceFile
 import wvlet.lang.model.plan.{ExecutionPlan, LogicalPlan, NamedRelation, Relation}
+import wvlet.lang.stdlib.StdLib
 import wvlet.log.LogSupport
 import wvlet.log.io.{IOUtil, Resource}
 
@@ -113,5 +114,13 @@ object CompilationUnit extends LogSupport:
     urls.map { url =>
       CompilationUnit(SourceFile.fromResource(url), isPreset = isPreset)
     }
+
+  def stdLib: List[CompilationUnit] =
+    StdLib
+      .allFiles
+      .map { case (file, content) =>
+        CompilationUnit(SourceFile.fromString(file, content), isPreset = true)
+      }
+      .toList
 
 end CompilationUnit

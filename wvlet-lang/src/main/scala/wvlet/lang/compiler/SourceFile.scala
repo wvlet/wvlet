@@ -26,10 +26,11 @@ import scala.collection.mutable.ArrayBuffer
 
 object SourceFile:
   object NoSourceFile extends SourceFile(EmptyFile)
-  def fromFile(v: VirtualFile): SourceFile = SourceFile(v)
-  def fromFile(file: String): SourceFile   = SourceFile(LocalFile(file))
-  def fromString(content: String): SourceFile = SourceFile(
-    MemoryFile(s"${ULID.newULIDString}.wv", content)
+  def fromFile(v: VirtualFile): SourceFile    = SourceFile(v)
+  def fromFile(file: String): SourceFile      = SourceFile(LocalFile(file))
+  def fromString(content: String): SourceFile = fromString(s"${ULID.newULIDString}.wv", content)
+  def fromString(wvName: String, content: String): SourceFile = SourceFile(
+    MemoryFile(wvName, content)
   )
 
   def fromResource(uri: URI): SourceFile     = SourceFile(URIResource(uri))

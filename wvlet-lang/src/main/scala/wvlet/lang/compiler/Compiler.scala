@@ -67,8 +67,7 @@ object Compiler extends LogSupport:
 
   def allPhases: List[List[Phase]] = List(analysisPhases, transformPhases, codeGenPhases)
 
-  lazy val presetLibraries: List[CompilationUnit] = CompilationUnit
-    .fromResourcePath("/module/standard", isPreset = true)
+  lazy val presetLibraries: List[CompilationUnit] = CompilationUnit.stdLib
 
 end Compiler
 
