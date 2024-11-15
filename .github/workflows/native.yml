@@ -1,0 +1,47 @@
+name: Native
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      src: ${{ steps.filter.outputs.src }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            src:
+              - '.github/workflows/native.yml'
+              - 'project/**'
+              - '**.scala'
+              - '**.sbt'
+              - '**.conf'
+              - '**.json'
+              - '**.wv'
+              - SCALA_VERSION
+  build_native:
+    name: Cross build with Scala Native
+    needs: changes
+    if: ${{ needs.changes.outputs.src == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '23'
+          cache: sbt
+      - name: Build Linux Arm64
+        run: ./docker/dockcross-arm64 -a --rm bash "./sbt wvc-linux-arm64/nativeLink"
+        env:
+          OCI_EXE: docker
