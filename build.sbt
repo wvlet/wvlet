@@ -193,7 +193,7 @@ def nativeCrossProject(name: String, llvmTriple: String) = {
 lazy val nativeCliMacArm       = nativeCrossProject("mac-arm64", "arm64-apple-darwin")
 lazy val nativeCliLinuxIntel   = nativeCrossProject("linux-x86_64", "x86_64-unknown-linux-gnu")
 lazy val nativeCliLinuxArm     = nativeCrossProject("linux-arm64", "aarch64-unknown-linux-gnu")
-lazy val nativeCliWindowsArm   = nativeCrossProject("windows-arm64", "aarch64-w64-windows-gnu")
+lazy val nativeCliWindowsArm   = nativeCrossProject("windows-arm64", "arm64-w64-windows-gnu")
 lazy val nativeCliWindowsIntel = nativeCrossProject("windows-x86_64", "x86_64-w64-windows-gnu")
 
 lazy val cli = project
