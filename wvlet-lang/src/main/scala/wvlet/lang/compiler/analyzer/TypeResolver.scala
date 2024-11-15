@@ -373,7 +373,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
                     context
                       .workEnv
                       .errorLogger
-                      .warn(
+                      .debug(
                         s"Unresolved table ref: ${ref.name.fullName}: ${context.scope.getAllEntries}"
                       )
                     ref
