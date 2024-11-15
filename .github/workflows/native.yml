@@ -65,16 +65,19 @@ jobs:
       - name: Build native binary
         run: |
           ./sbt 'nativeCli/nativeLinkReleaseFast'
+          cp wvlet-native-cli/target/scala-${{ env.SCALA_VERSION }}/wvlet-native-cli-release-fast \
+          > wvc-${{ matrix.name }}-${{ matrix.arch }}
       - name: Upload native binary
         uses: actions/upload-artifact@v4
         with:
           name: wvc-${{ matrix.name }}-${{ matrix.arch }}
-          path: wvlet-native-cli/target/scala-${{ env.SCALA_VERSION }}/wvlet-native-cli-release-fast
+          path: wvc-${{ matrix.name }}-${{ matrix.arch }}
   collect_artifact:
     runs-on: ubuntu-latest
     needs: build_native
     steps:
-      - uses: actions/upload-artifact/merge@v4
+      - name: Collect artifacts
+        uses: actions/upload-artifact/merge@v4
         with:
-          name: wvc
+          name: wvc-${{ github.ref_name }}
           delete-merged: true
