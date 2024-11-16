@@ -173,15 +173,15 @@ lazy val nativeCli = project
   *   https://clang.llvm.org/docs/CrossCompilation.html
   * @return
   */
-def nativeCrossProject(name: String, llvmTriple: String) = {
+def nativeCrossProject(name: String, llvmTriple: String, linkerOptions: Seq[String] = Seq.empty) = {
   val id = s"wvc-${name}"
   Project(id = id, file(s"wvlet-native-cli"))
     .enablePlugins(ScalaNativePlugin)
     .settings(noPublish)
     .settings(
       target := (ThisBuild / baseDirectory).value / id / "target",
-      nativeConfig ~= {
-        _.withTargetTriple(llvmTriple)
+      nativeConfig ~= { c =>
+        c.withTargetTriple(llvmTriple).withLinkingOptions(c.linkingOptions ++ linkerOptions)
       }
     )
     .dependsOn(nativeCli)
@@ -190,10 +190,30 @@ def nativeCrossProject(name: String, llvmTriple: String) = {
 // Cross compile for different platforms
 // Native libraries (include headers in C) will be necessary for nativeLink,
 // So we may need to use https://github.com/dockcross/dockcross to cross build native libraries
-lazy val nativeCliMacArm       = nativeCrossProject("mac-arm64", "arm64-apple-darwin")
-lazy val nativeCliMacIntel     = nativeCrossProject("mac-x64", "x86_64-apple-darwin")
-lazy val nativeCliLinuxIntel   = nativeCrossProject("linux-x64", "x86_64-unknown-linux-gnu")
-lazy val nativeCliLinuxArm     = nativeCrossProject("linux-arm64", "aarch64-unknown-linux-gnu")
+lazy val nativeCliMacArm = nativeCrossProject(
+  "mac-arm64",
+  "arm64-apple-darwin",
+  // Need to use LLD linker as the default linker never understands cross-build target
+  linkerOptions = Seq("-fuse-ld=ld64.lld")
+)
+
+lazy val nativeCliMacIntel = nativeCrossProject(
+  "mac-x64",
+  "x86_64-apple-darwin",
+  linkerOptions = Seq("-fuse-ld=ld64.lld")
+)
+
+lazy val nativeCliLinuxIntel = nativeCrossProject(
+  "linux-x64",
+  "x86_64-unknown-linux-gnu",
+  linkerOptions = Seq("-fuse-ld=ld.lld")
+)
+
+lazy val nativeCliLinuxArm = nativeCrossProject(
+  "linux-arm64",
+  "aarch64-unknown-linux-gnu",
+  linkerOptions = Seq("-fuse-ld=ld.lld")
+)
 lazy val nativeCliWindowsArm   = nativeCrossProject("windows-arm64", "arm64-w64-windows-gnu")
 lazy val nativeCliWindowsIntel = nativeCrossProject("windows-x64", "x86_64-w64-windows-gnu")
 
