@@ -78,31 +78,35 @@ object WvcMain extends LogSupport:
       val compiler = Compiler(
         CompilerOptions(workEnv = WorkEnv(path = workFolder), sourceFolders = List(workFolder))
       )
-      val inputUnit =
+      val query: String =
         inputQuery match
           case Some(q) =>
-            CompilationUnit.fromString(q)
+            q
           case None =>
-            // TODO Read a query from stdin
-            val query = Iterator
-              .continually(scala.io.StdIn.readLine())
-              .takeWhile(_ != null)
-              .mkString("\n")
-            if query.trim.isEmpty then
-              warn(s"No query is given. Use -c 'query' option or feed the query from stdin")
-            CompilationUnit.fromString(query)
+            import scala.scalanative.posix.unistd
+            val connectedToStdin = unistd.isatty(unistd.STDIN_FILENO) == 0
+            if connectedToStdin then
+              // Read from stdin
+              Iterator.continually(scala.io.StdIn.readLine()).takeWhile(_ != null).mkString("\n")
+            else
+              ""
 
-      // Compile
-      val compileResult = compiler.compileSingleUnit(inputUnit)
-      compileResult.reportAllErrors
-      val ctx = compileResult
-        .context
-        .withCompilationUnit(inputUnit)
-        .withDebugRun(false)
-        .newContext(Symbol.NoSymbol)
+      if query.trim.isEmpty then
+        warn(s"No query is given. Use -q 'query' option or stdin to feed the query")
+      else
+        // Compile
+        val inputUnit     = CompilationUnit.fromString(query)
+        val compileResult = compiler.compileSingleUnit(inputUnit)
+        compileResult.reportAllErrors
+        val ctx = compileResult
+          .context
+          .withCompilationUnit(inputUnit)
+          .withDebugRun(false)
+          .newContext(Symbol.NoSymbol)
 
-      val sql = GenSQL.generateSQL(inputUnit, ctx)
-      println(sql)
+        val sql = GenSQL.generateSQL(inputUnit, ctx)
+        println(sql)
+
     end if
 
   end main
