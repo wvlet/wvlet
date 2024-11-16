@@ -63,7 +63,7 @@ lazy val projectNative = project.settings(noPublish).aggregate(nativeProjects: _
 lazy val api = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("wvlet-api"))
-  .enablePlugins(AirframeHttpPlugin, BuildInfoPlugin)
+  .enablePlugins(BuildInfoPlugin)
   .settings(
     buildSettings,
     name          := "wvlet-api",
@@ -166,6 +166,35 @@ lazy val nativeCli = project
   .in(file("wvlet-native-cli"))
   .settings(buildSettings, name := "wvlet-native-cli")
   .dependsOn(lang.native)
+
+/**
+  * @param name
+  * @param llvmTriple
+  *   https://clang.llvm.org/docs/CrossCompilation.html
+  * @return
+  */
+def nativeCrossProject(name: String, llvmTriple: String) = {
+  val id = s"wvc-${name}"
+  Project(id = id, file(s"wvlet-native-cli"))
+    .enablePlugins(ScalaNativePlugin)
+    .settings(noPublish)
+    .settings(
+      target := (ThisBuild / baseDirectory).value / id / "target",
+      nativeConfig ~= {
+        _.withTargetTriple(llvmTriple)
+      }
+    )
+    .dependsOn(nativeCli)
+}
+
+// Cross compile for different platforms
+// Native libraries (include headers in C) will be necessary for nativeLink,
+// So we may need to use https://github.com/dockcross/dockcross to cross build native libraries
+lazy val nativeCliMacArm       = nativeCrossProject("mac-arm64", "arm64-apple-darwin")
+lazy val nativeCliLinuxIntel   = nativeCrossProject("linux-x86_64", "x86_64-unknown-linux-gnu")
+lazy val nativeCliLinuxArm     = nativeCrossProject("linux-arm64", "aarch64-unknown-linux-gnu")
+lazy val nativeCliWindowsArm   = nativeCrossProject("windows-arm64", "arm64-w64-windows-gnu")
+lazy val nativeCliWindowsIntel = nativeCrossProject("windows-x86_64", "x86_64-w64-windows-gnu")
 
 lazy val cli = project
   .in(file("wvlet-cli"))
