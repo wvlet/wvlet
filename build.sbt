@@ -214,7 +214,6 @@ lazy val nativeCliLinuxArm = nativeCrossProject(
   "aarch64-unknown-linux-gnu",
   linkerOptions = Seq("-fuse-ld=ld.lld")
 )
-
 lazy val nativeCliWindowsArm   = nativeCrossProject("windows-arm64", "arm64-w64-windows-gnu")
 lazy val nativeCliWindowsIntel = nativeCrossProject("windows-x64", "x86_64-w64-windows-gnu")
 
