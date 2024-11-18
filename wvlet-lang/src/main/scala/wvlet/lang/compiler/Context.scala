@@ -167,7 +167,7 @@ case class Context(
     .compilerOptions
     .sourceFolders
     .map(folder => dataFilePath(path))
-    .find(file => new java.io.File(file).exists())
+    .find(file => SourceIO.existsFile(path))
 
   def findCompilationUnit(path: String): Option[CompilationUnit] = global
     .getAllCompilationUnits
