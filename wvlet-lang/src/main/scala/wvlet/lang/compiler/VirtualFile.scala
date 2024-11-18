@@ -47,17 +47,17 @@ trait VirtualFile:
   def content: IArray[Char] = IArray.unsafeFromArray(contentString.toCharArray)
 
 case class LocalFile(path: String) extends VirtualFile:
-  private val filePath              = Path.of(path)
-  override def name: String         = filePath.getFileName.toString
-  override def exists: Boolean      = Files.exists(filePath)
-  override def isDirectory: Boolean = exists && Files.exists(filePath)
+
+  override def name: String         = SourceIO.fileName(path)
+  override def exists: Boolean      = SourceIO.existsFile(path)
+  override def isDirectory: Boolean = exists && SourceIO.isDirectory(path)
 
   override def contentString: String = SourceIO.readAsString(path)
 
-  override def lastUpdatedAt: Long = Files.getLastModifiedTime(filePath).toMillis
+  override def lastUpdatedAt: Long = SourceIO.lastUpdatedAt(path)
   override def listFiles: Seq[VirtualFile] =
     if isDirectory then
-      Files.list(filePath).toList.asScala.map(p => LocalFile(p.toString)).toSeq
+      SourceIO.listFiles(path).map(p => LocalFile(p.toString))
     else
       Seq.empty
 

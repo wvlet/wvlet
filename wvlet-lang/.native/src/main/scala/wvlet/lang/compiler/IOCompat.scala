@@ -2,6 +2,8 @@ package wvlet.lang.compiler
 
 import java.net.URI
 import java.io.File
+import java.nio.file.{Files, Path}
+import scala.jdk.CollectionConverters.*
 
 trait IOCompat:
   self: SourceIO.type =>
@@ -12,4 +14,36 @@ trait IOCompat:
 
   def readAsString(uri: java.net.URI): String = ???
 
-  def listResource(path: String): List[URI] = listFiles(path, 0).map(File(_).toURI).toList
+  def listResource(path: String): List[URI] = listWvFiles(path, 0).map(File(_).toURI).toList
+
+  def existsFile(path: String): Boolean = new java.io.File(path).exists()
+
+  def lastUpdatedAt(path: String): Long = Files.getLastModifiedTime(Path.of(path)).toMillis
+
+  def listWvFiles(path: String, level: Int): Seq[String] =
+    val f = new java.io.File(path)
+    if f.isDirectory then
+      if level == 1 && SourceIO.ignoredFolders.contains(f.getName) then
+        Seq.empty
+      else
+        val files         = f.listFiles()
+        val hasAnyWvFiles = files.exists(_.getName.endsWith(".wv"))
+        if hasAnyWvFiles then
+          // Only scan sub-folders if there is any .wv files
+          files flatMap { file =>
+            listWvFiles(file.getPath, level + 1)
+          }
+        else
+          Seq.empty
+    else if f.isFile && f.getName.endsWith(".wv") then
+      Seq(f.getPath)
+    else
+      Seq.empty
+
+  def listFiles(path: String): Seq[String] =
+    Files.list(Path.of(path)).toList.asScala.map(_.toString).toSeq
+
+  def fileName(path: String): String     = path.split("/").lastOption.getOrElse(path)
+  def isDirectory(path: String): Boolean = Files.isDirectory(Path.of(path))
+
+end IOCompat

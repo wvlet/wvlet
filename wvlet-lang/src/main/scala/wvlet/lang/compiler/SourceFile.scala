@@ -19,7 +19,6 @@ import wvlet.lang.compiler.parser.WvletToken.*
 import wvlet.airframe.ulid.ULID
 import wvlet.log.io.IOUtil
 
-import java.io.{File, FileNotFoundException}
 import java.net.{URI, URL}
 import java.util.concurrent.atomic.AtomicBoolean
 import scala.collection.mutable.ArrayBuffer
@@ -66,7 +65,8 @@ class SourceFile(val file: VirtualFile):
       lineIndexes = computeLineIndexes
       content
     catch
-      case e: FileNotFoundException =>
+      case e: Exception if e.getClass.getName.contains("FileNotFound") =>
+        // Use the class name for exception matching as FileNotFoundException is not defined in Scala.js
         throw StatusCode.FILE_NOT_FOUND.newException(s"${e.getMessage}", e)
 
   def reload(): Unit = isLoaded.set(false)
