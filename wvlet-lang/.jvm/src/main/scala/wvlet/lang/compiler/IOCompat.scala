@@ -47,16 +47,13 @@ trait IOCompat:
         case _ =>
     uris.result()
 
-  def listFiles(path: String): Seq[String] = Files
-    .list(Path.of(path))
-    .toList
-    .asScala
-    .map(_.toString)
+  def listFiles(path: String): Seq[String] =
+    Files.list(Path.of(path)).toList.asScala.map(_.toString).toSeq
 
   def listWvFiles(path: String, level: Int): Seq[String] =
     val f = new java.io.File(path)
     if f.isDirectory then
-      if level == 1 && ignoredFolders.contains(f.getName) then
+      if level == 1 && SourceIO.ignoredFolders.contains(f.getName) then
         Seq.empty
       else
         val files         = f.listFiles()
@@ -64,7 +61,7 @@ trait IOCompat:
         if hasAnyWvFiles then
           // Only scan sub-folders if there is any .wv files
           files flatMap { file =>
-            listFiles(file.getPath, level + 1)
+            listWvFiles(file.getPath, level + 1)
           }
         else
           Seq.empty
@@ -75,8 +72,8 @@ trait IOCompat:
 
   def existsFile(path: String): Boolean = new java.io.File(path).exists()
 
-  def lastUpdatedAt(path: String): Long = Files.getLastModifiedTime(Path.of(path)).toMillis
-  def fileName(path: String): String    = path.split("/").lastOption.getOrElse(path)
-  def isDirectory(path: String): String = Files.isDirectory(Path.of(path))
+  def lastUpdatedAt(path: String): Long  = Files.getLastModifiedTime(Path.of(path)).toMillis
+  def fileName(path: String): String     = path.split("/").lastOption.getOrElse(path)
+  def isDirectory(path: String): Boolean = Files.isDirectory(Path.of(path))
 
 end IOCompat
