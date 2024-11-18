@@ -3,5 +3,5 @@
 ## How to install
 
 ```sh
-pip install -e "git+https://wvlet/wvlet/#egg=wvlet&subdirectory=sdks/python"
+pip install -e "git+https://github.com/wvlet/wvlet/#egg=wvlet&subdirectory=sdks/python"
 ```
