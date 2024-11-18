@@ -1,0 +1,5 @@
+[project]
+# EOL of 3.8 was 2024-10-07
+requires-python = ">= 3.9"
+name = "wvlet"
+version = "0.1.0"
