@@ -39,7 +39,7 @@ lazy val jvmProjects: Seq[ProjectReference] = Seq(
   cli
 )
 
-lazy val jsProjects: Seq[ProjectReference] = Seq(api.js, client.js, ui, uiMain)
+lazy val jsProjects: Seq[ProjectReference] = Seq(api.js, client.js, lang.js, ui, uiMain)
 
 lazy val nativeProjects: Seq[ProjectReference] = Seq(api.native, lang.native, nativeCli)
 
@@ -77,7 +77,7 @@ lazy val api = crossProject(JVMPlatform, JSPlatform, NativePlatform)
       )
   )
 
-lazy val lang = crossProject(JVMPlatform, NativePlatform)
+lazy val lang = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("wvlet-lang"))
   .settings(
@@ -214,6 +214,7 @@ lazy val nativeCliLinuxArm = nativeCrossProject(
   "aarch64-unknown-linux-gnu",
   linkerOptions = Seq("-fuse-ld=ld.lld")
 )
+
 lazy val nativeCliWindowsArm   = nativeCrossProject("windows-arm64", "arm64-w64-windows-gnu")
 lazy val nativeCliWindowsIntel = nativeCrossProject("windows-x64", "x86_64-w64-windows-gnu")
 
