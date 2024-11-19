@@ -5,4 +5,4 @@ import scala.scalanative.unsafe.*
 object WvcLib:
 
   @exported("wvlet_compile_main")
-  def compile_main(args: Array[String]): Unit = WvcMain.main(args)
+  def compile_main(): Unit = WvcMain.main(Array.empty)
