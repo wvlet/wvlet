@@ -168,6 +168,19 @@ lazy val nativeCli = project
   .settings(buildSettings, name := "wvlet-native-cli")
   .dependsOn(lang.native)
 
+lazy val nativeLib = project
+  .in(file("wvlet-native-lib"))
+  .enablePlugins(ScalaNativePlugin)
+  .settings(noPublish)
+  .settings(
+    buildSettings,
+    name := "wvlet-native-lib",
+    nativeConfig ~= { c =>
+      c.withBuildTarget(BuildTarget.libraryDynamic)
+    }
+  )
+  .dependsOn(nativeCli)
+
 /**
   * @param name
   * @param llvmTriple
