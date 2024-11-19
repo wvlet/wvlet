@@ -1,2 +1,2 @@
 int ScalaNativeInit();
-long wvlet_compile_main();
+void wvlet_compile_main();
