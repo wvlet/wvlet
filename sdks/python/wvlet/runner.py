@@ -5,7 +5,7 @@ import subprocess
 
 
 class WvletRunner():
-    def __init__(self, executable_path: Optional[str] = None):
+    def __init__(self, executable_path: Optional[str] = None, target: Optional[str] = None):
         if executable_path:
             if shutil.which(executable_path) is None:
                 raise ValueError(f"Invalid executable_path: {executable_path}")
@@ -16,10 +16,15 @@ class WvletRunner():
         if path is None:
             raise NotImplementedError("This binding currently requires wvc executable")
         self.path = path
+        self.target = target
 
 
     def compile(self, query: str) -> str:
-        process = subprocess.run([self.path, "compile", query], capture_output=True, text=True)
+        command = [self.path, "compile"]
+        if self.target:
+            command.append(f"--target:{self.target}")
+        command.append(query)
+        process = subprocess.run(command, capture_output=True, text=True)
         print(process.stdout, end="")
         print(process.stderr, file=sys.stderr, end="")
         if process.returncode != 0:
