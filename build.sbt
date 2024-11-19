@@ -12,6 +12,7 @@ Global / onChangedBuildSource := ReloadOnSourceChanges
 
 import scala.concurrent.duration.FiniteDuration
 import java.util.concurrent.TimeUnit
+import scala.scalanative.build.BuildTarget
 
 val buildSettings = Seq[Setting[?]](
   organization      := "wvlet.lang",
@@ -173,7 +174,12 @@ lazy val nativeCli = project
   *   https://clang.llvm.org/docs/CrossCompilation.html
   * @return
   */
-def nativeCrossProject(name: String, llvmTriple: String, linkerOptions: Seq[String] = Seq.empty) = {
+def nativeCrossProject(
+    name: String,
+    llvmTriple: String,
+    compileOptions: Seq[String] = Seq.empty,
+    linkerOptions: Seq[String] = Seq.empty
+) = {
   val id = s"wvc-${name}"
   Project(id = id, file(s"wvlet-native-cli"))
     .enablePlugins(ScalaNativePlugin)
@@ -181,7 +187,9 @@ def nativeCrossProject(name: String, llvmTriple: String, linkerOptions: Seq[Stri
     .settings(
       target := (ThisBuild / baseDirectory).value / id / "target",
       nativeConfig ~= { c =>
-        c.withTargetTriple(llvmTriple).withLinkingOptions(c.linkingOptions ++ linkerOptions)
+        c.withTargetTriple(llvmTriple)
+          .withCompileOptions(c.compileOptions ++ compileOptions)
+          .withLinkingOptions(c.linkingOptions ++ linkerOptions)
       }
     )
     .dependsOn(nativeCli)
@@ -212,7 +220,14 @@ lazy val nativeCliLinuxIntel = nativeCrossProject(
 lazy val nativeCliLinuxArm = nativeCrossProject(
   "linux-arm64",
   "aarch64-unknown-linux-gnu",
-  linkerOptions = Seq("-fuse-ld=ld.lld")
+  compileOptions = Seq(
+    // For 'exception' file not found error
+    "-stdlib=libc++",
+    "-I /usr/xcc/aarch64-unknown-linux-gnu/include/",
+    // For clang
+    "--sysroot=/usr/xcc/aarch64-unknown-linux-gnu/aarch64-unknown-linux-gnu/sysroot"
+  ),
+  linkerOptions = Seq("-fuse-ld=/usr/bin/ld.lld", "-L /usr/xcc/aarch64-unknown-linux-gnu/lib/")
 )
 
 lazy val nativeCliWindowsArm   = nativeCrossProject("windows-arm64", "arm64-w64-windows-gnu")
