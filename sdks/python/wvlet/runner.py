@@ -12,14 +12,14 @@ class WvletRunner():
             self.path = executable_path
             return
         # To make self.path non-optional type, first declare optional path
-        path = shutil.which("wvc")
+        path = shutil.which("wvlet")
         if path is None:
             raise NotImplementedError("This binding currently requires wvc executable")
         self.path = path
 
 
     def compile(self, query: str) -> str:
-        process = subprocess.run([self.path, "-c", f'"{query}"'], capture_output=True, text=True)
+        process = subprocess.run([self.path, "compile", query], capture_output=True, text=True)
         print(process.stdout)
         print(process.stderr, file=sys.stderr)
         if process.returncode != 0:
