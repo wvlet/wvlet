@@ -171,7 +171,6 @@ lazy val nativeCli = project
 lazy val nativeLib = project
   .in(file("wvlet-native-lib"))
   .enablePlugins(ScalaNativePlugin)
-  .settings(noPublish)
   .settings(
     buildSettings,
     name := "wvlet-native-lib",
@@ -206,7 +205,7 @@ def nativeCrossProject(
           .withBuildTarget(BuildTarget.libraryDynamic)
       }
     )
-    .dependsOn(nativeCli)
+    .dependsOn(nativeLib)
 }
 
 // Cross compile for different platforms
