@@ -24,4 +24,4 @@ class WvletRunner():
         print(process.stderr, file=sys.stderr)
         if process.returncode != 0:
             raise ValueError("Failed to compile")
-        return process.stdout
+        return "\n".join(process.stdout.split("\n")[1:])
