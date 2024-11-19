@@ -20,8 +20,8 @@ class WvletRunner():
 
     def compile(self, query: str) -> str:
         process = subprocess.run([self.path, "compile", query], capture_output=True, text=True)
-        print(process.stdout)
-        print(process.stderr, file=sys.stderr)
+        print(process.stdout, end="")
+        print(process.stderr, file=sys.stderr, end="")
         if process.returncode != 0:
             raise ValueError("Failed to compile")
         return "\n".join(process.stdout.split("\n")[1:])
