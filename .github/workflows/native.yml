@@ -67,7 +67,7 @@ jobs:
           echo "SCALA_VERSION=$SCALA_VERSION" >> $GITHUB_ENV
       - name: Build native binary
         run: |
-          ./sbt 'nativeCli/nativeLinkReleaseFast'
+          ./sbt 'wvc/nativeLinkReleaseFast'
           cp wvc/target/scala-${{ env.SCALA_VERSION }}/wvc-release-fast \
           wvc-${{ matrix.name }}-${{ matrix.arch }}
       - name: Upload native binary
