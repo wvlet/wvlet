@@ -51,10 +51,18 @@ With this flow style, you can describe data processing pipelines in a natural or
 
 Wvlet offers the following features to incorporate the best practices of the modern programming languages in the context of querying and managing data processing pipelines:
 
+- [Flow-Style Query](#flow-style-query)
 - [Functional Data Modeling](#functional-data-modeling)
 - [Extensible Types](#extensible-types)
 - [Chaining Function Calls](#chaining-function-calls)
 - [Incremental Processing](#incremental-processing)
+
+## Flow-Style Query 
+
+Wvlet queries are written in a flow-style, where you can describe data processing pipelines in a natural order. Learn more about the query syntax in the following pages:
+
+- [Query Syntax](./syntax) 
+- [Relational Operators](./syntax/relational-operators)
 
 
 ## Functional Data Modeling
