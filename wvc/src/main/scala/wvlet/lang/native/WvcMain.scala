@@ -64,6 +64,7 @@ object WvcMain extends LogSupport:
     else
       // Set log levels
       Logger("wvlet.lang.compiler").setLogLevel(logLevel)
+      Logger("wvlet.lang.runner").setLogLevel(logLevel)
       Logger("wvlet.lang.native").setLogLevel(logLevel)
       logLevelPatterns.foreach { p =>
         p.split("=") match

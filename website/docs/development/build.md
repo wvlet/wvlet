@@ -43,7 +43,8 @@ The server will be reloaded automatically when you update .md files.
 `website/docs/` directory contains the markdown files for the documentation. Once your change is merged to the main branch, GitHub Action will update the public website automatically.
 
 
-## Building Native Libraries 
+## Building Native Libraries
+
 
 Wvlet can be compiled to a native library using Scala Native, which compiles Scala code to a native binary for the target OS and CPU architecture.
 
@@ -54,13 +55,40 @@ To build native libraries, you need to install `clang` and `llvm`, and `libstdc+
 To build libwvlet.so (Linux) or libwvlet.dylib (macOS), run the following command:
 
 ```bash
-./sbt
-sbt:wvlet> nativeLib/nativeLink 
+$ ./sbt
+sbt:wvlet> wvcLib/nativeLink 
 ```
 
-The library files will be generated in `wvlet-native-lib/target/scala-3.3.4/` directory.
+The library files will be generated in `wvc-lib/target/scala-3.3.4/` directory.
 
 You can use methods defined in this library from C, C++, Rust, etc. 
 
+Test the Rust binding:
+```
+$ cd wvc-lib
+$ make rust
+```
+
+:::warning
+Dynamic link library libwvlet is still experimental due to miscellaneous issues (e.g., segmentation fault). 
+:::
+
+```
+$ make rust ARGS='-q "select 1"'
+```
+
+## Building Native Compiler (wvc)
+
+Standalone compiler (wvc) can be built with Scala Native.
 
 
+```bash
+$ ./sbt
+sbt:wvlet> wvc/nativeLink
+```
+
+```bash
+$ ./wvc/target/scala-3.3.4/wvc -q "select 1"
+-- wvlet version=2024.9.12, src=01JD5Q1CSBH59S686VS2RGWZE3.wv:1
+select 1
+```
