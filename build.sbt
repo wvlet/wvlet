@@ -168,6 +168,18 @@ lazy val nativeCli = project
   .settings(buildSettings, name := "wvlet-native-cli")
   .dependsOn(lang.native)
 
+lazy val nativeLib = project
+  .in(file("wvlet-native-lib"))
+  .enablePlugins(ScalaNativePlugin)
+  .settings(
+    buildSettings,
+    name := "wvlet-native-lib",
+    nativeConfig ~= { c =>
+      c.withBuildTarget(BuildTarget.libraryDynamic)
+    }
+  )
+  .dependsOn(nativeCli)
+
 /**
   * @param name
   * @param llvmTriple
@@ -190,9 +202,10 @@ def nativeCrossProject(
         c.withTargetTriple(llvmTriple)
           .withCompileOptions(c.compileOptions ++ compileOptions)
           .withLinkingOptions(c.linkingOptions ++ linkerOptions)
+          .withBuildTarget(BuildTarget.libraryDynamic)
       }
     )
-    .dependsOn(nativeCli)
+    .dependsOn(nativeLib)
 }
 
 // Cross compile for different platforms
@@ -217,17 +230,22 @@ lazy val nativeCliLinuxIntel = nativeCrossProject(
   linkerOptions = Seq("-fuse-ld=ld.lld")
 )
 
+val commonClangOptions = Seq(
+  "--sysroot=/usr/xcc/aarch64-unknown-linux-gnu/aarch64-unknown-linux-gnu/sysroot"
+)
+
 lazy val nativeCliLinuxArm = nativeCrossProject(
   "linux-arm64",
   "aarch64-unknown-linux-gnu",
-  compileOptions = Seq(
-    // For 'exception' file not found error
-    "-stdlib=libc++",
-    "-I /usr/xcc/aarch64-unknown-linux-gnu/include/",
-    // For clang
-    "--sysroot=/usr/xcc/aarch64-unknown-linux-gnu/aarch64-unknown-linux-gnu/sysroot"
-  ),
-  linkerOptions = Seq("-fuse-ld=/usr/bin/ld.lld", "-L /usr/xcc/aarch64-unknown-linux-gnu/lib/")
+  compileOptions = commonClangOptions ++ Seq("-I/usr/xcc/aarch64-unknown-linux-gnu/include/"),
+  linkerOptions =
+    commonClangOptions ++
+      Seq(
+        "-fuse-ld=/usr/xcc/aarch64-unknown-linux-gnu/bin/aarch64-unknown-linux-gnu-ld",
+        "-L/usr/xcc/aarch64-unknown-linux-gnu/lib",
+        "-L/usr/xcc/aarch64-unknown-linux-gnu/aarch64-unknown-linux-gnu/sysroot",
+        "-L/usr/lib/aarch64-linux-gnu"
+      )
 )
 
 lazy val nativeCliWindowsArm   = nativeCrossProject("windows-arm64", "arm64-w64-windows-gnu")
