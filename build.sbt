@@ -42,7 +42,7 @@ lazy val jvmProjects: Seq[ProjectReference] = Seq(
 
 lazy val jsProjects: Seq[ProjectReference] = Seq(api.js, client.js, lang.js, ui, uiMain)
 
-lazy val nativeProjects: Seq[ProjectReference] = Seq(api.native, lang.native, nativeCli)
+lazy val nativeProjects: Seq[ProjectReference] = Seq(api.native, lang.native, wvc, wvcLib)
 
 val noPublish = Seq(
   publishArtifact := false,
@@ -162,25 +162,25 @@ val specRunnerSettings = Seq(
       ((ThisBuild / baseDirectory).value / "wvlet-lang" ** "*.wv").get
 )
 
-lazy val nativeCli = project
+lazy val wvc = project
   .enablePlugins(ScalaNativePlugin)
-  .in(file("wvlet-native-cli"))
-  .settings(buildSettings, name := "wvlet-native-cli")
+  .in(file("wvc"))
+  .settings(buildSettings, name := "wvc")
   .dependsOn(lang.native)
 
-lazy val nativeLib = project
-  .in(file("wvlet-native-lib"))
+lazy val wvcLib = project
+  .in(file("wvc-lib"))
   .enablePlugins(ScalaNativePlugin)
   .settings(
     buildSettings,
-    name := "wvlet-native-lib",
+    name := "wvc-lib",
     nativeConfig ~= { c =>
       c.withBuildTarget(BuildTarget.libraryDynamic)
         // Generates libwvlet.so, libwvlet.dylib, libwvlet.dll
         .withBaseName("wvlet")
     }
   )
-  .dependsOn(nativeCli)
+  .dependsOn(wvc)
 
 /**
   * @param name
@@ -207,7 +207,7 @@ def nativeCrossProject(
           .withBuildTarget(BuildTarget.libraryDynamic)
       }
     )
-    .dependsOn(nativeLib)
+    .dependsOn(wvcLib)
 }
 
 // Cross compile for different platforms

@@ -79,7 +79,7 @@ trait Expression extends TreeNode with Product with LogSupport:
         case null =>
           null
 
-    val newArgs = productIterator.map(recursiveTransform).toIndexedSeq
+    val newArgs = productIterator.map(recursiveTransform).toSeq
     copyInstance(newArgs)
 
   def traversePlan[U](rule: PartialFunction[LogicalPlan, U]): Unit =

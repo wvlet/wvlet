@@ -43,7 +43,11 @@ The server will be reloaded automatically when you update .md files.
 `website/docs/` directory contains the markdown files for the documentation. Once your change is merged to the main branch, GitHub Action will update the public website automatically.
 
 
-## Building Native Libraries 
+## Building Native Libraries
+
+:::warning
+This feature is experimental due to miscellaneous issues of building dynamic link libraries with Scala Native. 
+:::
 
 Wvlet can be compiled to a native library using Scala Native, which compiles Scala code to a native binary for the target OS and CPU architecture.
 
@@ -62,5 +66,23 @@ The library files will be generated in `wvlet-native-lib/target/scala-3.3.4/` di
 
 You can use methods defined in this library from C, C++, Rust, etc. 
 
+```
+cd wvlet-native-lib
+$ make rust
+
+$ make rust ARGS='-q "select 1"'
+```
+
+## Building Native Compiler (wvc)
+
+Standalone compiler (wvc) can be built with Scala Native.
 
 
+```bash
+./sbt
+sbt:wvlet> wvc/nativeLink
+```
+
+```bash
+./wvlet-native-cli/target/scala-3.3.4/wvc -q "select 1"
+```
