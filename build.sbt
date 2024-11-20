@@ -176,6 +176,8 @@ lazy val nativeLib = project
     name := "wvlet-native-lib",
     nativeConfig ~= { c =>
       c.withBuildTarget(BuildTarget.libraryDynamic)
+        // Generates libwvlet.so, libwvlet.dylib, libwvlet.dll
+        .withBaseName("wvlet")
     }
   )
   .dependsOn(nativeCli)
