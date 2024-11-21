@@ -1,13 +1,13 @@
 import * as duckdb from "@duckdb/duckdb-wasm";
 
-
 export class DuckDB {
+    private duckdb: Promise<duckdb.AsyncDuckDB>;
 
     constructor() {
-        this.duckdb = DuckDB.initDuckDB()
+        this.duckdb = DuckDB.initDuckDB();
     }
 
-    static async initDuckDB() {
+    static async initDuckDB(): Promise<duckdb.AsyncDuckDB> {
         const JSDELIVER_BUNDLES = duckdb.getJsDelivrBundles();
         const bundle = await duckdb.selectBundle(JSDELIVER_BUNDLES);
 
@@ -15,30 +15,24 @@ export class DuckDB {
             type: 'application/javascript'
         }));
 
-        // Instantiate the asynchronus version of DuckDB-wasm
+        // Instantiate the asynchronous version of DuckDB-wasm
         const worker = new Worker(worker_url);
         const logger = new duckdb.ConsoleLogger();
         const db = new duckdb.AsyncDuckDB(logger, worker);
         await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
         URL.revokeObjectURL(worker_url);
+        console.log("Initialized DuckDB-Wasm");
         return db;
     }
 
-    hello() {
-        console.log("Hello DuckDB Wasm");
-    }
-
-    async query(sql) {
+    async query(sql: string): Promise<string> {
         const db = await this.duckdb;
         const c = await db.connect();
         try {
             const r = await c.query(sql);
-
             return r.toString();
-        }
-        finally {
-            c.close()
+        } finally {
+            c.close();
         }
     }
-
 }

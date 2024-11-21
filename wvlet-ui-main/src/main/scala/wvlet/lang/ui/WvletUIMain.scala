@@ -46,7 +46,6 @@ object WvletUIMain extends LogSupport:
       info(s"Connected to the server: ${status}")
       val frame = MainFrame()
 
-      DuckDBWasm.hello()
       DuckDBWasm
         .query("select 1 as id")
         .toFuture
