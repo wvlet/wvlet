@@ -132,6 +132,7 @@ class WvletMonacoEditor(
       )
 
     editorOptions.tabSize = 2.0
+    editorOptions.automaticLayout = true
     editorOptions
 
   end monacoEditorOptions

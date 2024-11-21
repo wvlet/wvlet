@@ -15,6 +15,7 @@
 import { defineConfig } from "vite";
 import fs from 'fs'
 import replace from '@rollup/plugin-replace';
+import { resolve } from 'path'
 
 function isDev() {
 return process.env.NODE_ENV !== "production";
@@ -22,7 +23,7 @@ return process.env.NODE_ENV !== "production";
 
 const scalaVersion = fs.readFileSync("../SCALA_VERSION").toString().trim();
 const suffix = isDev() ? "-fastopt" : "-opt";
-const replacementForPublic= `./target/scala-${scalaVersion}/wvlet-ui-main${suffix}`;
+const scalaJsTarget= `./target/scala-${scalaVersion}/wvlet-ui-main${suffix}`;
 
 export default defineConfig({
   server: {
@@ -33,7 +34,8 @@ export default defineConfig({
   },
   plugins: [
     replace({
-      __public__: replacementForPublic
+      preventAssignment: true,
+      __target__: scalaJsTarget
     })
   ]
 });

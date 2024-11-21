@@ -15,5 +15,9 @@
 // Import Tailwind CSS
 import './index.css'
 
+import {DuckDB} from './duckdb.ts'
+
 // Scala.js code
-import '__public__/main.js';
+import '__target__/main.js'
+
+window.duckdb = new DuckDB()

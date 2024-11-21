@@ -392,6 +392,8 @@ lazy val uiMain = project
     scalaJSLinkerConfig ~= {
       linkerConfig(_)
     },
+    // A workaround for the error: Not found: type TReturn
+    stIgnore ++= List("@duckdb/duckdb-wasm"),
     externalNpm := {
       scala
         .sys
@@ -408,4 +410,4 @@ def linkerConfig(config: StandardConfig): StandardConfig = config
   .withCheckIR(true)
   .withSourceMap(true)
   .withModuleKind(ModuleKind.ESModule)
-  .withModuleSplitStyle(ModuleSplitStyle.SmallModulesFor(List("wvlet.ui")))
+  .withModuleSplitStyle(ModuleSplitStyle.SmallModulesFor(List("wvlet.lang.ui")))

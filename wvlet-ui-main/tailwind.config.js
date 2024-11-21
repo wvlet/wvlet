@@ -1,5 +1,4 @@
 /** @type {import('tailwindcss').Config} */
-const defaultTheme = require('tailwindcss/defaultTheme')
 
 export default {
   content: [
@@ -9,7 +8,17 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        mono: ['Consolas', ...defaultTheme.fontFamily.mono],
+        mono: [
+          /* Consolas is most reliable mono-space font, even on Windows */
+          'Consolas',
+          'ui-monospace',
+          'SFMono-Regular',
+          'Menlo',
+          'Monaco',
+          "Liberation Mono",
+          "Courier New",
+          'monospace'
+        ],
       },
     },
   },
