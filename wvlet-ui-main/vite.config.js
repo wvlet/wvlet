@@ -26,12 +26,6 @@ const suffix = isDev() ? "-fastopt" : "-opt";
 const scalaJsTarget= `./target/scala-${scalaVersion}/wvlet-ui-main${suffix}`;
 
 export default defineConfig({
-  build: {
-    rollupOptions: {
-      // Keep exports as defined in source
-      preserveEntrySignatures: "allow-extension",
-    }
-  },
   server: {
     open: true,
     proxy: {
@@ -40,6 +34,7 @@ export default defineConfig({
   },
   plugins: [
     replace({
+      preventAssignment: true,
       __target__: scalaJsTarget
     })
   ]

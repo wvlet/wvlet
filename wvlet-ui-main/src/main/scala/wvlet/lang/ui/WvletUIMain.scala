@@ -23,9 +23,10 @@ import wvlet.log.LogSupport
 import org.scalajs.dom
 import wvlet.airframe.rx.RxVar
 import wvlet.lang.api.v1.query.QueryError
-import wvlet.lang.ui.duckdb.{DuckDB}
-
+import wvlet.lang.ui.duckdb.DuckDBWasm
+import wvlet.airframe.rx.Rx
 import scalajs.js
+import org.scalajs.macrotaskexecutor.MacrotaskExecutor.Implicits.*
 
 object WvletUIMain extends LogSupport:
   def main(args: Array[String]): Unit = render
@@ -45,9 +46,13 @@ object WvletUIMain extends LogSupport:
       info(s"Connected to the server: ${status}")
       val frame = MainFrame()
 
-      // info(DuckDB.getJsDelivrBundles())
-      js.Dynamic.global.hello()
-      js.Dynamic.global.query("select 1 as id")
+      DuckDBWasm.hello()
+      DuckDBWasm
+        .query("select 1 as id")
+        .toFuture
+        .foreach { result =>
+          info(result)
+        }
 
       // Let Airframe DI design build UI components for WvletEditor
       val editor = design.newSession.build[WvletEditor]
