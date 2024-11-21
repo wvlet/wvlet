@@ -46,6 +46,7 @@ object WvletUIMain extends LogSupport:
       val frame = MainFrame()
 
       info(DuckDB.getJsDelivrBundles())
+      // info(DuckDBUtil.hello())
 
       // Let Airframe DI design build UI components for WvletEditor
       val editor = design.newSession.build[WvletEditor]

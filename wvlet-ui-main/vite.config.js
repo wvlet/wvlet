@@ -15,6 +15,7 @@
 import { defineConfig } from "vite";
 import fs from 'fs'
 import replace from '@rollup/plugin-replace';
+import { resolve } from 'path'
 
 function isDev() {
 return process.env.NODE_ENV !== "production";
@@ -25,6 +26,7 @@ const suffix = isDev() ? "-fastopt" : "-opt";
 const replacementForPublic= `./target/scala-${scalaVersion}/wvlet-ui-main${suffix}`;
 
 export default defineConfig({
+  build: { lib: { entry: resolve(__dirname, 'duckdb.js'), formats: ['es'] } },
   server: {
     open: true,
     proxy: {
