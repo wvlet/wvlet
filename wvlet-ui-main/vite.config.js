@@ -23,10 +23,15 @@ return process.env.NODE_ENV !== "production";
 
 const scalaVersion = fs.readFileSync("../SCALA_VERSION").toString().trim();
 const suffix = isDev() ? "-fastopt" : "-opt";
-const replacementForPublic= `./target/scala-${scalaVersion}/wvlet-ui-main${suffix}`;
+const scalaJsTarget= `./target/scala-${scalaVersion}/wvlet-ui-main${suffix}`;
 
 export default defineConfig({
-  build: { lib: { entry: resolve(__dirname, 'duckdb.js'), formats: ['es'] } },
+  build: {
+    rollupOptions: {
+      // Keep exports as defined in source
+      preserveEntrySignatures: "allow-extension",
+    }
+  },
   server: {
     open: true,
     proxy: {
@@ -35,7 +40,7 @@ export default defineConfig({
   },
   plugins: [
     replace({
-      __public__: replacementForPublic
+      __target__: scalaJsTarget
     })
   ]
 });
