@@ -392,6 +392,8 @@ lazy val uiMain = project
     scalaJSLinkerConfig ~= {
       linkerConfig(_)
     },
+    // A workaround for the error: Not found: type TReturn
+    stIgnore += "@duckdb/duckdb-wasm",
     externalNpm := {
       scala
         .sys

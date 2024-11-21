@@ -23,6 +23,9 @@ import wvlet.log.LogSupport
 import org.scalajs.dom
 import wvlet.airframe.rx.RxVar
 import wvlet.lang.api.v1.query.QueryError
+import wvlet.lang.ui.duckdb.{DuckDB, DuckDBUtil}
+
+import scalajs.js
 
 object WvletUIMain extends LogSupport:
   def main(args: Array[String]): Unit = render
@@ -41,6 +44,8 @@ object WvletUIMain extends LogSupport:
     .map { status =>
       info(s"Connected to the server: ${status}")
       val frame = MainFrame()
+
+      info(DuckDB.getJsDelivrBundles())
 
       // Let Airframe DI design build UI components for WvletEditor
       val editor = design.newSession.build[WvletEditor]
