@@ -30,7 +30,8 @@ export class DuckDB {
         const c = await db.connect();
         try {
             const r = await c.query(sql);
-            return r.toString();
+            const result = r.toArray().map((row) => row.toJSON());
+            return JSON.stringify(result);
         } finally {
             c.close();
         }

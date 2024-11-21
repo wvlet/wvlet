@@ -20,5 +20,5 @@ import scala.scalajs.js.annotation.{
 @JSGlobal("duckdb")
 object DuckDBWasm extends js.Object:
   def hello(): Unit                          = js.native
-  def query(sql: String): js.Promise[js.Any] = js.native
+  def query(sql: String): js.Promise[String] = js.native
 end DuckDBWasm

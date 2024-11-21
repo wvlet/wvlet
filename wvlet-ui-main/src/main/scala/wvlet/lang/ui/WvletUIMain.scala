@@ -47,7 +47,7 @@ object WvletUIMain extends LogSupport:
       val frame = MainFrame()
 
       DuckDBWasm
-        .query("select 1 as id")
+        .query("select 'Hello DuckDB Wasm' as msg")
         .toFuture
         .foreach { result =>
           info(result)
