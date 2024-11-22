@@ -20,11 +20,10 @@ import { MonacoEditor } from './src/main/scala/wvlet/lang/ui/playground/MonacoEd
 
 // Ensure that Monaco is loaded before assigning it to the window object
 document.addEventListener('DOMContentLoaded', () => {
-    // Dynamically import the Monaco Editor library
     import('monaco-editor').then((monaco) => {
         console.log("Monaco Editor loaded successfully");
 
-        // Make the MonacoEditor class accessible from @JSGlobal
+        // Make the MonacoEditor class accessible from @JSGlobal in Scala.js
         window.MonacoEditor = MonacoEditor;
 
         // Start Scala.js code
