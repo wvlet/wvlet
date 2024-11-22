@@ -30,6 +30,7 @@ import wvlet.lang.compiler.{
   Name,
   Phase,
   SQLDialect,
+  SourceIO,
   Symbol,
   TermName
 }
@@ -240,7 +241,7 @@ object GenSQL extends Phase("generate-sql"):
       case a: AppendToFile if context.dbType == DBType.DuckDB =>
         val baseSQL    = GenSQL.generateSQL(save.inputRelation, context, addHeader = false)
         val targetPath = context.dataFilePath(a.path)
-        if new File(targetPath).exists then
+        if SourceIO.existsFile(targetPath) then
           val sql =
             s"""copy (
                |  (select * from '${targetPath}')

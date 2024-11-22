@@ -11,7 +11,10 @@ object PlaygroundUI extends LogSupport:
   val previewWindowHeightPx = 512;
   val editorTabHeight       = 24;
 
-  private def design: Design = Design.newDesign.bindSingleton[QueryRunner]
+  private def design: Design = Design
+    .newDesign
+    .bindSingleton[QueryRunner]
+    .bindSingleton[CurrentQuery]
 
   def main(args: Array[String]): Unit =
     val ui = design.newSession.build[PlaygroundUI]
@@ -59,13 +62,13 @@ class PlaygroundUI(
               ),
               div(
                 cls -> "flex",
-                span(cls -> "flex-none px-2", "SQL"),
+                span(cls -> "flex-none px-2", "Compiled SQL"),
                 span(cls -> "grow"),
                 clipButton(sqlPreview)
               )
             )
           ),
-          // two-column blocks with tailwind css
+          // Two-column blocks for editors
           div(
             cls -> "grid grid-cols-2 h-full",
             div(cls -> "h-full", queryEditor),
