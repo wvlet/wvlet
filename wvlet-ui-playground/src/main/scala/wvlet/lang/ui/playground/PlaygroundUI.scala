@@ -23,6 +23,7 @@ object PlaygroundUI extends LogSupport:
 end PlaygroundUI
 
 class PlaygroundUI(
+    currentQuery: CurrentQuery,
     fileExplorer: QuerySetSelector,
     queryEditor: QueryEditor,
     sqlPreview: SQLPreview,
@@ -57,6 +58,11 @@ class PlaygroundUI(
               div(
                 cls -> "flex",
                 span(cls -> "flex-none px-2", "Wvlet"),
+                currentQuery
+                  .queryName
+                  .map { queryName =>
+                    span(cls -> "flex-none px-2 text-slate-200", queryName)
+                  },
                 span(cls -> "grow"),
                 clipButton(queryEditor)
               ),

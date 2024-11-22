@@ -3,6 +3,7 @@ package wvlet.lang.ui.playground
 import wvlet.airframe.rx.{Rx, RxVar}
 
 class CurrentQuery:
+  val queryName: RxVar[String] = Rx.variable("sample.wv")
   val wvletQuery: RxVar[String] = Rx.variable("""-- scan from a file
         |from lineitem
         |-- add filtering condition
