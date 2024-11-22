@@ -38,7 +38,7 @@ object JSONAnalyzer extends LogSupport:
       val count = map.getOrElse(dataType, 0)
       map = map.updated(dataType, count + 1)
 
-  private def guessSchema(json: JSONValue): RelationType =
+  def guessSchema(json: JSONValue): RelationType =
     // json path -> (data type -> count)
     // Use ListMap to keep the order of the columns
     var schema = ListMap.empty[String, TypeCountMap]
