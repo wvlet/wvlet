@@ -40,7 +40,7 @@ lazy val jvmProjects: Seq[ProjectReference] = Seq(
   cli
 )
 
-lazy val jsProjects: Seq[ProjectReference] = Seq(api.js, client.js, lang.js, ui, uiMain)
+lazy val jsProjects: Seq[ProjectReference] = Seq(api.js, client.js, lang.js, ui, uiMain, playground)
 
 lazy val nativeProjects: Seq[ProjectReference] = Seq(api.native, lang.native, wvc, wvcLib)
 
@@ -385,25 +385,40 @@ lazy val uiMain = project
   .in(file("wvlet-ui-main"))
   .settings(
     buildSettings,
-    name                            := "wvlet-ui-main",
-    description                     := "UI main code compiled with Vite.js",
-    Test / jsEnv                    := new org.scalajs.jsenv.nodejs.NodeJSEnv(),
-    scalaJSUseMainModuleInitializer := true,
-    scalaJSLinkerConfig ~= {
-      linkerConfig(_)
-    },
-    // A workaround for the error: Not found: type TReturn
-    stIgnore ++= List("@duckdb/duckdb-wasm"),
-    externalNpm := {
-      scala
-        .sys
-        .process
-        .Process(List("npm", "install", "--silent", "--no-audit", "--no-fund"), baseDirectory.value)
-        .!
-      baseDirectory.value
-    }
+    uiSettings,
+    name        := "wvlet-ui-main",
+    description := "UI main code compiled with Vite.js"
   )
   .dependsOn(ui)
+
+lazy val playground = project
+  .enablePlugins(ScalaJSPlugin, ScalablyTypedConverterExternalNpmPlugin)
+  .in(file("wvlet-ui-playground"))
+  .settings(
+    buildSettings,
+    uiSettings,
+    name        := "wvlet-ui-playground",
+    description := "Playground for wvlet"
+  )
+  .dependsOn(ui, lang.js)
+
+def uiSettings: Seq[Setting[?]] = Seq(
+  Test / jsEnv                    := new org.scalajs.jsenv.nodejs.NodeJSEnv(),
+  scalaJSUseMainModuleInitializer := true,
+  scalaJSLinkerConfig ~= {
+    linkerConfig(_)
+  },
+  // A workaround for the error: Not found: type TReturn
+  stIgnore ++= List("@duckdb/duckdb-wasm"),
+  externalNpm := {
+    scala
+      .sys
+      .process
+      .Process(List("npm", "install", "--silent", "--no-audit", "--no-fund"), baseDirectory.value)
+      .!
+    baseDirectory.value
+  }
+)
 
 def linkerConfig(config: StandardConfig): StandardConfig = config
   // Check IR works properly since Scala.js 1.17.0 https://github.com/scala-js/scala-js/pull/4867

@@ -22,14 +22,11 @@ function isDev() {
 
 const scalaVersion = fs.readFileSync("../SCALA_VERSION").toString().trim();
 const suffix = isDev() ? "-fastopt" : "-opt";
-const scalaJsTarget= `./target/scala-${scalaVersion}/wvlet-ui-main${suffix}`;
+const scalaJsTarget= `./target/scala-${scalaVersion}/wvlet-ui-playground${suffix}`;
 
 export default defineConfig({
   server: {
     open: true,
-    proxy: {
-      '^/wvlet.lang.api.v1*': 'http://127.0.0.1:9090'
-    }
   },
   plugins: [
     replace({

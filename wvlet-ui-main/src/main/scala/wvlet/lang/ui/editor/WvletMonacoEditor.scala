@@ -190,7 +190,7 @@ class WvletMonacoEditor(
   private def describeQuery(): Unit =
     clearMarkers()
     val query = getTextValue
-    ConsoleLog.write(s"Describe query:\n${query}")
+    ConsoleLog.write(s"Describe query:\n$query")
     queryResultReader.submitQuery(
       QueryRequest(
         query = query,
