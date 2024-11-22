@@ -19,10 +19,17 @@ class MonacoEditor(val id: String, initialText: String) extends js.Object:
   def setReadOnly(): Unit                = js.native
   def adjustHeight(newHeight: Int): Unit = js.native
 
-class QueryEditor(windowSize: WindowSize) extends RxElement:
-  private val editor = new MonacoEditor("wvlet-editor", "from lineitem\nlimit 10")
+class QueryEditor(windowSize: WindowSize) extends EditorBase(windowSize, "wvlet-editor"):
+  override def initialText: String = "from lineitem\nlimit 10"
 
-  private var c = Cancelable.empty
+class SQLPreview(windowSize: WindowSize) extends EditorBase(windowSize, "wvlet-sql-preview"):
+  override def initialText: String = "select * from lineitem\nlimit 10"
+
+abstract class EditorBase(windowSize: WindowSize, editorId: String) extends RxElement:
+  protected def initialText: String
+
+  protected val editor = new MonacoEditor(editorId, initialText)
+  private var c        = Cancelable.empty
 
   override def onMount: Unit =
     editor.render()
@@ -34,48 +41,4 @@ class QueryEditor(windowSize: WindowSize) extends RxElement:
       .subscribe()
 
   override def beforeUnmount: Unit = c.cancel
-
-  override def render: RxElement = div(cls -> "h-full", id -> editor.id)
-
-end QueryEditor
-
-class SQLPreview(windowSize: WindowSize) extends RxElement:
-  private val viewer = new MonacoEditor("wvlet-sql-preview", "select * from lineitem\nlimit 10")
-  private var c      = Cancelable.empty
-
-  override def onMount: Unit =
-    viewer.render()
-    c = windowSize
-      .getInnerHeight
-      .map { h =>
-        viewer.adjustHeight(h - 512 - 44)
-      }
-      .subscribe()
-
-  override def beforeUnmount: Unit = c.cancel
-
-  override def render: RxElement = div(cls -> "h-full", id -> viewer.id)
-
-end SQLPreview
-
-class WindowSize extends AutoCloseable with LogSupport:
-  private val innerWidth: RxVar[Int]  = Rx.variable(dom.window.innerWidth.toInt)
-  private val innerHeight: RxVar[Int] = Rx.variable(dom.window.innerHeight.toInt)
-
-  private val observer =
-    val ob =
-      new ResizeObserver(callback =
-        (entries, observer) =>
-          innerWidth  := dom.window.innerWidth.toInt
-          innerHeight := dom.window.innerHeight.toInt
-      )
-    ob.observe(dom.document.body)
-    ob
-
-  def getInnerWidth: Rx[Int] = innerWidth
-
-  def getInnerHeight: Rx[Int] = innerHeight
-
-  override def close(): Unit =
-    // dom.window.onresize = null
-    observer.disconnect()
+  override def render: RxElement   = div(cls -> "h-full", id -> editor.id)
