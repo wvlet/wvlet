@@ -7,6 +7,8 @@ import wvlet.airframe.rx.html.all.*
 import wvlet.lang.ui.component.MainFrame
 
 object WvletPlaygroundMain extends LogSupport:
+  val previewWindowHeightPx = 512;
+
   private def design: Design = Design.newDesign.bindSingleton[PlaygroundFrame]
 
   def main(args: Array[String]): Unit =
@@ -25,15 +27,11 @@ class PlaygroundFrame(
     style -> s"height: calc(100vh - ${MainFrame.navBarHeightPx}px);",
     div(cls -> "flex-none w-44 h-full", fileExplorer),
     div(
-      cls -> "glow w-full h-full bg-black",
+      cls -> "glow w-full h-full bg-slate-700",
       div(
         cls -> "flex flex-col h-full",
         // two-column blocks with tailwind css
-        div(
-          cls -> "grid grid-cols-2 h-full",
-          div(editor),
-          div(cls -> "bg-gray-200 p-4 h-full", sqlPreview)
-        ),
+        div(cls -> "grid grid-cols-2 h-full", div(editor), div(sqlPreview)),
         resultViewer
       )
     )
@@ -54,11 +52,10 @@ end FileExplorer
 
 class SQLPreview extends RxElement:
   override def render: RxElement = div(
-    h2("SQL"),
+    cls -> "h-full bg-zinc-900 text-slate-300 text-xs px-2",
     pre(
-      cls -> "bg-gray-300 p-4",
       code(
-        cls -> "language-sql",
+        cls -> "font-mono language-sql",
         """select * from tbl
           |""".stripMargin
       )
@@ -70,8 +67,8 @@ end SQLPreview
 class ResultViewer extends RxElement:
   override def render: RxElement = div(
     cls   -> "bg-zinc-800 text-xs text-slate-300 dark:text-white p-2",
-    style -> "height: 32rem;",
-    pre(code(cls -> "font-mono", "preview result"))
+    style -> s"height: ${WvletPlaygroundMain.previewWindowHeightPx}px;",
+    pre(cls -> "font-mono", "preview result")
   )
 
 end ResultViewer

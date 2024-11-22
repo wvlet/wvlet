@@ -54,7 +54,9 @@ class Editor extends RxElement:
       .setValue("from lineitem")
       // TODO Add a new language wvlet
       .setLanguage(languageId)
+      .setFontFamily("Consolas, ui-monospace, SFMono-Regular, Menlo, Monaco, monospace")
       .setTheme("vs-dark")
+      .setFontSize(13)
       // minimap options
       .setMinimap(minimapOptions)
       // Hide horizontal scrollbar as it's annoying
@@ -74,8 +76,10 @@ class Editor extends RxElement:
   dom.window.onresize =
     _ =>
       if textEditor != null then
-        val newWidth  = textEditor.getContentWidth()
-        val newHeight = dom.window.outerHeight - 512 - MainFrame.navBarHeightPx
+        val newWidth = textEditor.getContentWidth()
+        val newHeight =
+          dom.window.outerHeight - WvletPlaygroundMain.previewWindowHeightPx -
+            MainFrame.navBarHeightPx
         textEditor.layout(IDimension(width = newWidth, height = newHeight))
 
   override def onMount: Unit = initEditor()

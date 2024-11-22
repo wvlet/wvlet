@@ -18,3 +18,12 @@ import './index.css'
 // Scala.js code
 import '__target__/main.js'
 
+// Using ES6 import syntax
+import hljs from 'highlight.js/lib/core';
+import 'highlight.js/styles/atom-one-dark.css';
+import './custom.css';
+import sql from 'highlight.js/lib/languages/sql';
+
+// Then register the languages you need
+hljs.registerLanguage('sql', sql);
+hljs.highlightAll();
