@@ -41,6 +41,10 @@ export class MonacoEditor {
         });
     }
 
+    getText(): string {
+        return this.editor.getValue();
+    }
+
     adjustHeight(newHeight: number): void {
         if (this.editor) {
             const w = this.editor.getLayoutInfo().width;

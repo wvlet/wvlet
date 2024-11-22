@@ -5,6 +5,8 @@ import org.scalajs.dom.ResizeObserver
 import wvlet.airframe.rx.{Cancelable, Rx, RxVar}
 import wvlet.airframe.rx.html.RxElement
 import wvlet.airframe.rx.html.all.*
+import wvlet.lang.ui.component.MainFrame
+import wvlet.lang.ui.component.MainFrame.NavBar
 import wvlet.log.LogSupport
 
 import java.util.concurrent.TimeUnit
@@ -18,6 +20,7 @@ class MonacoEditor(val id: String, lang: String, initialText: String) extends js
   def render(): Unit                     = js.native
   def setReadOnly(): Unit                = js.native
   def adjustHeight(newHeight: Int): Unit = js.native
+  def getText(): String                  = js.native
 
 abstract class EditorBase(windowSize: WindowSize, editorId: String, lang: String) extends RxElement:
   protected def initialText: String
@@ -30,12 +33,17 @@ abstract class EditorBase(windowSize: WindowSize, editorId: String, lang: String
     c = windowSize
       .getInnerHeight
       .map { h =>
-        editor.adjustHeight(h - 512 - 44)
+        editor.adjustHeight(
+          h - PlaygroundUI.previewWindowHeightPx - PlaygroundUI.editorTabHeight -
+            MainFrame.navBarHeightPx
+        )
       }
       .subscribe()
 
   override def beforeUnmount: Unit = c.cancel
   override def render: RxElement   = div(cls -> "h-full", id -> editor.id)
+
+  def getText: String = editor.getText()
 
 class QueryEditor(windowSize: WindowSize) extends EditorBase(windowSize, "wvlet-editor", "wvlet"):
   override def initialText: String = "from lineitem\nsample 10"
