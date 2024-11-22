@@ -19,12 +19,6 @@ class MonacoEditor(val id: String, initialText: String) extends js.Object:
   def setReadOnly(): Unit                = js.native
   def adjustHeight(newHeight: Int): Unit = js.native
 
-class QueryEditor(windowSize: WindowSize) extends EditorBase(windowSize, "wvlet-editor"):
-  override def initialText: String = "from lineitem\nlimit 10"
-
-class SQLPreview(windowSize: WindowSize) extends EditorBase(windowSize, "wvlet-sql-preview"):
-  override def initialText: String = "select * from lineitem\nlimit 10"
-
 abstract class EditorBase(windowSize: WindowSize, editorId: String) extends RxElement:
   protected def initialText: String
 
@@ -42,3 +36,9 @@ abstract class EditorBase(windowSize: WindowSize, editorId: String) extends RxEl
 
   override def beforeUnmount: Unit = c.cancel
   override def render: RxElement   = div(cls -> "h-full", id -> editor.id)
+
+class QueryEditor(windowSize: WindowSize) extends EditorBase(windowSize, "wvlet-editor"):
+  override def initialText: String = "from lineitem\nlimit 10"
+
+class SQLPreview(windowSize: WindowSize) extends EditorBase(windowSize, "wvlet-sql-preview"):
+  override def initialText: String = "select * from lineitem\nlimit 10"
