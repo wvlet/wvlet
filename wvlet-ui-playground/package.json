@@ -10,7 +10,6 @@
   },
   "dependencies": {
     "@duckdb/duckdb-wasm": "^1.29.0",
-    "highlight.js": "^11.10.0",
     "monaco-editor": "^0.52.0",
     "rollup": "^4.27.2"
   },

@@ -15,15 +15,21 @@
 // Import Tailwind CSS
 import './index.css'
 
-// Scala.js code
-import '__target__/main.js'
+// Typescript
+import { MonacoEditor } from './src/main/scala/wvlet/lang/ui/playground/MonacoEditor.ts'
 
-// Using ES6 import syntax
-import hljs from 'highlight.js/lib/core';
-import 'highlight.js/styles/atom-one-dark.css';
-import './custom.css';
-import sql from 'highlight.js/lib/languages/sql';
+// Ensure that Monaco is loaded before assigning it to the window object
+document.addEventListener('DOMContentLoaded', () => {
+    // Dynamically import the Monaco Editor library
+    import('monaco-editor').then((monaco) => {
+        console.log("Monaco Editor loaded successfully");
 
-// Then register the languages you need
-hljs.registerLanguage('sql', sql);
-hljs.highlightAll();
+        // Make the MonacoEditor class accessible from @JSGlobal
+        window.MonacoEditor = MonacoEditor;
+
+        // Start Scala.js code
+        import('__target__/main.js')
+    }).catch((error) => {
+        console.error('Failed to load Monaco Editor:', error);
+    });
+});
