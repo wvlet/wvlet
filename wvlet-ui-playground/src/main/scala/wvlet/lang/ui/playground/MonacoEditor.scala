@@ -13,16 +13,16 @@ import scala.scalajs.js.annotation.JSGlobal
 
 @js.native
 @JSGlobal("MonacoEditor")
-class MonacoEditor(val id: String, initialText: String) extends js.Object:
+class MonacoEditor(val id: String, lang: String, initialText: String) extends js.Object:
   def hello(): Unit                      = js.native
   def render(): Unit                     = js.native
   def setReadOnly(): Unit                = js.native
   def adjustHeight(newHeight: Int): Unit = js.native
 
-abstract class EditorBase(windowSize: WindowSize, editorId: String) extends RxElement:
+abstract class EditorBase(windowSize: WindowSize, editorId: String, lang: String) extends RxElement:
   protected def initialText: String
 
-  protected val editor = new MonacoEditor(editorId, initialText)
+  protected val editor = new MonacoEditor(editorId, lang, initialText)
   private var c        = Cancelable.empty
 
   override def onMount: Unit =
@@ -37,8 +37,8 @@ abstract class EditorBase(windowSize: WindowSize, editorId: String) extends RxEl
   override def beforeUnmount: Unit = c.cancel
   override def render: RxElement   = div(cls -> "h-full", id -> editor.id)
 
-class QueryEditor(windowSize: WindowSize) extends EditorBase(windowSize, "wvlet-editor"):
-  override def initialText: String = "from lineitem\nlimit 10"
+class QueryEditor(windowSize: WindowSize) extends EditorBase(windowSize, "wvlet-editor", "wvlet"):
+  override def initialText: String = "from lineitem\nsample 10"
 
-class SQLPreview(windowSize: WindowSize) extends EditorBase(windowSize, "wvlet-sql-preview"):
+class SQLPreview(windowSize: WindowSize) extends EditorBase(windowSize, "wvlet-sql-preview", "sql"):
   override def initialText: String = "select * from lineitem\nlimit 10"

@@ -27,7 +27,7 @@ class PlaygroundFrame(
     style -> s"height: calc(100vh - ${MainFrame.navBarHeightPx}px);",
     div(cls -> "flex-none w-44 h-full", fileExplorer),
     div(
-      cls -> "glow w-full h-full bg-slate-700",
+      cls -> "glow w-full h-full bg-slate-900",
       div(
         cls -> "flex flex-col h-full",
         // two-column blocks with tailwind css
