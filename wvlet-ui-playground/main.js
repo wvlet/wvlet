@@ -16,6 +16,9 @@
 import './index.css'
 
 // Typescript
+import {DuckDBWasm} from './src/main/scala/wvlet/lang/ui/playground/DuckDBWasm.ts'
+window.duckdb = DuckDBWasm
+
 import { MonacoEditor } from './src/main/scala/wvlet/lang/ui/playground/MonacoEditor.ts'
 import './src/main/scala/wvlet/lang/ui/playground/WvletLanguage.ts'
 

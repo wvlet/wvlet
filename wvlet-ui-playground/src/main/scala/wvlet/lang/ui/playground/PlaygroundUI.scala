@@ -9,17 +9,19 @@ import wvlet.lang.ui.component.MainFrame
 object PlaygroundUI extends LogSupport:
   val previewWindowHeightPx = 512;
 
-  private def design: Design = Design.newDesign.bindSingleton[PlaygroundFrame]
+  private def design: Design = Design.newDesign.bindSingleton[QueryRunner]
 
   def main(args: Array[String]): Unit =
-    val ui = design.newSession.build[PlaygroundFrame]
+    val ui = design.newSession.build[PlaygroundUI]
     MainFrame(ui).renderTo("main")
 
-class PlaygroundFrame(
-    fileExplorer: FileExplorer,
+end PlaygroundUI
+
+class PlaygroundUI(
+    fileExplorer: QuerySetSelector,
     queryEditor: QueryEditor,
     sqlPreview: SQLPreview,
-    resultViewer: ResultViewer
+    resultViewer: QueryResultViewer
 ) extends RxElement:
 
   override def render = div(
@@ -37,24 +39,4 @@ class PlaygroundFrame(
     )
   )
 
-end PlaygroundFrame
-
-class FileExplorer extends RxElement:
-  override def render = div(
-    cls -> "h-full bg-slate-700 p-3 text-sm text-slate-200",
-    h2("Examples"),
-    ul(li("file1.wv"), li("file2.wv"), li("file3.wv")),
-    // border
-    div(cls -> "border-t border-gray-300 mt-2 mb-2")
-  )
-
-end FileExplorer
-
-class ResultViewer extends RxElement:
-  override def render: RxElement = div(
-    cls   -> "bg-zinc-800 text-xs text-slate-300 dark:text-white p-2",
-    style -> s"height: ${PlaygroundUI.previewWindowHeightPx}px;",
-    pre(cls -> "font-mono", "preview result")
-  )
-
-end ResultViewer
+end PlaygroundUI

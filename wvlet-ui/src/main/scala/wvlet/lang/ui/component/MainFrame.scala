@@ -14,6 +14,8 @@
 package wvlet.lang.ui.component
 
 import wvlet.airframe.rx.html.all.*
+import wvlet.airframe.rx.html.svgTags.*
+import wvlet.airframe.rx.html.svgAttrs
 import wvlet.airframe.rx.html.{RxComponent, RxElement}
 
 object MainFrame extends RxComponent:
@@ -45,11 +47,14 @@ object MainFrame extends RxComponent:
             cls -> "flex flex-1 items-center justify-center sm:items-stretch sm:justify-start",
             div(
               cls -> "flex flex-shrink-0 items-center",
-              img(
-                cls   -> "h-8 w-auto",
-                src   -> "./img/apple-touch-icon.png",
-                alt   -> "Wvlet",
-                width -> 50
+              a(
+                href -> "https://wvlet.org/",
+                img(
+                  cls   -> "h-8 w-auto",
+                  src   -> "./img/apple-touch-icon.png",
+                  alt   -> "Wvlet",
+                  width -> 50
+                )
               )
             ),
             div(
