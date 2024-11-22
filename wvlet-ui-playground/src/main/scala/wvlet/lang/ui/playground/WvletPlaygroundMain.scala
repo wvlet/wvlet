@@ -13,28 +13,28 @@ object WvletPlaygroundMain extends LogSupport:
     val ui = design.newSession.build[PlaygroundFrame]
     MainFrame(ui).renderTo("main")
 
-class PlaygroundFrame(fileExplorer: FileExplorer, editor: Editor, sqlPreview: SQLPreview)
-    extends RxElement:
+class PlaygroundFrame(
+    fileExplorer: FileExplorer,
+    editor: Editor,
+    sqlPreview: SQLPreview,
+    resultViewer: ResultViewer
+) extends RxElement:
 
   override def render = div(
     cls   -> "flex",
     style -> s"height: calc(100vh - ${MainFrame.navBarHeightPx}px);",
-    div(cls -> "flex-none w-44 h-full bg-gray-200 p-1", fileExplorer),
+    div(cls -> "flex-none w-44 h-full", fileExplorer),
     div(
-      cls -> "glow w-full h-full",
+      cls -> "glow w-full h-full bg-black",
       div(
         cls -> "flex flex-col h-full",
         // two-column blocks with tailwind css
         div(
           cls -> "grid grid-cols-2 h-full",
-          div(cls -> "bg-gray-300 p-4 h-full", editor),
+          div(editor),
           div(cls -> "bg-gray-200 p-4 h-full", sqlPreview)
         ),
-        div(
-          cls   -> "bg-zinc-800 text-xs text-slate-300 dark:text-white p-2",
-          style -> "height: 32rem;",
-          pre(code(cls -> "font-mono", "preview result"))
-        )
+        resultViewer
       )
     )
   )
@@ -43,7 +43,7 @@ end PlaygroundFrame
 
 class FileExplorer extends RxElement:
   override def render = div(
-    cls -> "bg-gray-200 p-2",
+    cls -> "h-full bg-slate-700 p-3 text-sm text-slate-200",
     h2("Examples"),
     ul(li("file1.wv"), li("file2.wv"), li("file3.wv")),
     // border
@@ -51,19 +51,6 @@ class FileExplorer extends RxElement:
   )
 
 end FileExplorer
-
-class Editor extends RxElement:
-  override def render: RxElement = div(
-    h2("Editor"),
-    pre(
-      cls -> "bg-gray-300 p-4",
-      code(
-        cls -> "language-sql",
-        """select * from tbl
-          |""".stripMargin
-      )
-    )
-  )
 
 class SQLPreview extends RxElement:
   override def render: RxElement = div(
@@ -79,3 +66,12 @@ class SQLPreview extends RxElement:
   )
 
 end SQLPreview
+
+class ResultViewer extends RxElement:
+  override def render: RxElement = div(
+    cls   -> "bg-zinc-800 text-xs text-slate-300 dark:text-white p-2",
+    style -> "height: 32rem;",
+    pre(code(cls -> "font-mono", "preview result"))
+  )
+
+end ResultViewer
