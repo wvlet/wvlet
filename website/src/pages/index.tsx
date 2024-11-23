@@ -26,11 +26,11 @@ function HomepageHeader() {
                                     functional data modeling and interactive data analysis.</em>
                                 </p>
                                 <div className={styles.buttons}>
-                                    <Link className="button button--primary" to="/docs/usage/install">
-                                        Installation
+                                    <Link className="button button--primary" to="pathname:///playground/">
+                                        Playground: Try Wvlet!
                                     </Link>
-                                    <Link className="button button--secondary margin--sm" to="/docs/">
-                                        Documentation
+                                    <Link className="button button--secondary margin--sm" to="/docs/usage/install">
+                                        Install
                                     </Link>
                                 </div>
 
