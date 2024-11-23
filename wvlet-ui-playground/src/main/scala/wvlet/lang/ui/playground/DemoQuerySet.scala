@@ -26,6 +26,18 @@ object DemoQuerySet:
           |""".stripMargin
     ),
     DemoQuery(
+      "list-tables.wv",
+      """-- List tables
+        |show tables
+        |""".stripMargin
+    ),
+    DemoQuery(
+      "list-schemas.wv",
+      """-- List scemas
+        |from wv_schemas
+        |""".stripMargin
+    ),
+    DemoQuery(
       "scan.wv",
       """-- Simple table scan
         |from lineitem
@@ -33,6 +45,40 @@ object DemoQuerySet:
         |where l_returnflag = 'R'
         |-- Take 10 rows
         |limit 10
+        |""".stripMargin
+    ),
+    DemoQuery(
+      "model.wv",
+      """-- Define a new model
+        |model my_query =
+        |  from lineitem
+        |  where l_quantity > 10.0
+        |end
+        |
+        |-- Refer to the model
+        |from my_query
+        |-- Add a further condition
+        |where l_returnflag = 'N'
+        |limit 5
+        |""".stripMargin
+    ),
+    DemoQuery(
+      "model_with_param.wv",
+      s"""
+        |-- Define a model with parameters
+        |model my_query(p1: double, p2: string) =
+        |  from lineitem
+        |  where l_quantity > p1
+        |  where l_returnflag = p2
+        |end
+        |
+        |-- Use the model with parameters
+        |from my_query(5, 'R')
+        |limit 5
+        |
+        |-- Use the model with different parameters
+        |from my_query(20, 'N')
+        |limit 5
         |""".stripMargin
     ),
     DemoQuery(
