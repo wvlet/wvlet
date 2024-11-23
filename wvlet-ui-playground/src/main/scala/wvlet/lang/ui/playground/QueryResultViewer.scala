@@ -11,7 +11,8 @@ class QueryResultViewer(currentQuery: CurrentQuery) extends RxElement:
     style -> s"height: ${PlaygroundUI.previewWindowHeightPx}px;",
     div(cls -> "h-7 font-light text-slate-400", "Preview"),
     div(
-      cls -> "overflow-x-scroll overflow-y-auto scrollbar-hidden",
+      // Important: Setting the width relative to the viewport width in order to hide overflowed contents
+      style -> "overflow-x: scroll; overflow-y: auto; max-width: calc(100vw - 184px);",
       currentQuery
         .lastQueryResult
         .map { result =>

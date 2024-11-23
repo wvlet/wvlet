@@ -49,9 +49,9 @@ class PlaygroundUI(
     div(
       cls   -> "flex",
       style -> s"height: calc(100vh - ${MainFrame.navBarHeightPx}px);",
-      div(cls -> "flex-none w-44 h-full", fileExplorer),
+      div(cls -> "w-44 h-full", fileExplorer),
       div(
-        cls -> "glow w-full h-full bg-slate-900",
+        cls -> "w-full h-full bg-slate-900",
         div(
           cls -> "flex flex-col h-full",
           // Editor header
@@ -84,7 +84,7 @@ class PlaygroundUI(
             div(cls -> "h-full", queryEditor),
             div(cls -> "h-full", sqlPreview)
           ),
-          div(cls -> "overflow-y-auto scrollbar-hidden", resultViewer)
+          resultViewer
         )
       )
     )
