@@ -14,7 +14,11 @@ object PlaygroundUI extends LogSupport:
   private def design: Design = Design
     .newDesign
     .bindSingleton[QueryRunner]
-    .bindSingleton[CurrentQuery]
+    .bindInstance[CurrentQuery] {
+      val c = CurrentQuery()
+      c.setQuery(DemoQuerySet.defaultQuerySet.head)
+      c
+    }
 
   def main(args: Array[String]): Unit =
     val ui = design.newSession.build[PlaygroundUI]
@@ -45,9 +49,9 @@ class PlaygroundUI(
     div(
       cls   -> "flex",
       style -> s"height: calc(100vh - ${MainFrame.navBarHeightPx}px);",
-      div(cls -> "flex-none w-44 h-full", fileExplorer),
+      div(cls -> "w-44 h-full", fileExplorer),
       div(
-        cls -> "glow w-full h-full bg-slate-900",
+        cls -> "w-full h-full bg-slate-900",
         div(
           cls -> "flex flex-col h-full",
           // Editor header

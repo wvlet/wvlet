@@ -71,7 +71,7 @@ class QueryEditor(currentQuery: CurrentQuery, windowSize: WindowSize)
     super.beforeUnmount
     monitor.cancel
 
-class SQLPreview(currentQuery: CurrentQuery, windowSize: WindowSize)
+class SQLPreview(currentQuery: CurrentQuery, windowSize: WindowSize, queryRunner: QueryRunner)
     extends EditorBase(windowSize, "wvlet-sql-preview", "sql"):
   override def initialText: String = "select * from lineitem\nlimit 10"
 
@@ -83,7 +83,7 @@ class SQLPreview(currentQuery: CurrentQuery, windowSize: WindowSize)
     super.onMount
     monitor = currentQuery
       .wvletQuery
-      .map { newWvletQuery =>
+      .flatMap { newWvletQuery =>
         val unit = CompilationUnit.fromString(newWvletQuery)
         try
           val compileResult = compiler.compileSingleUnit(unit)
@@ -95,11 +95,22 @@ class SQLPreview(currentQuery: CurrentQuery, windowSize: WindowSize)
               .newContext(Symbol.NoSymbol)
             val sql = GenSQL.generateSQL(unit, ctx)
             setText(sql)
+            queryRunner
+              .runQuery("tpch", sql)
+              .map { queryResult =>
+                info(s"Query result: ${queryResult}")
+                currentQuery.lastQueryResult := queryResult
+              }
+          else
+            Rx.empty
         catch
           case e: WvletLangException =>
-          // Ignore compilation errors
+            // Ignore compilation errors
+            Rx.empty
       }
       .subscribe()
+
+  end onMount
 
   override def beforeUnmount: Unit =
     super.beforeUnmount
