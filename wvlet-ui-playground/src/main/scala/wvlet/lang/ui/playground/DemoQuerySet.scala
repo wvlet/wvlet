@@ -73,10 +73,6 @@ object DemoQuerySet:
         |end
         |
         |-- Use the model with parameters
-        |from my_query(5, 'O')
-        |limit 5
-        |
-        |-- Use the model with different parameters
         |from my_query(20, 'N')
         |limit 5
         |""".stripMargin

@@ -30,6 +30,7 @@ export class MonacoEditor {
                 {token: 'identifier', foreground: 'f8f8f2'},
                 {token: 'type.identifier', foreground: 'aaaaff'},
                 {token: 'type.keyword', foreground: 'cc99cc'},
+                {token: 'predefined.sql', foreground: 'cc99ee'},
                 {token: 'type.string', foreground: 'f8f8f2'},
                 {token: 'string', foreground: 'f4c099'},
                 {token: 'string.backquoted', foreground: 'f4c0cc'},

@@ -24,7 +24,8 @@ case class QueryInfo(
     limit: Option[Int] = None
 )
 
-case class QueryResult(schema: Seq[Column], rows: Seq[Seq[Any]])
+case class QueryResult(schema: Seq[Column], rows: Seq[Seq[Any]]):
+  def totalRows: Int = rows.size
 
 case class Column(name: String, typeName: String)
 

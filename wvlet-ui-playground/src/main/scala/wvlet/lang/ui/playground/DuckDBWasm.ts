@@ -42,6 +42,7 @@ export class DuckDBWasm {
         const c = await this.connect();
         const r = await c.query(sql);
         const result = r.toArray().map((row) => row.toJSON());
+        // console.log(`Query result: ${r.numRows} rows`);
         return JSON.stringify(result,
             // Woarkaround for 'Do not know how to serialize a BigInt' error
             (key, value) =>

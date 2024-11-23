@@ -84,7 +84,7 @@ class PlaygroundUI(
             div(cls -> "h-full", queryEditor),
             div(cls -> "h-full", sqlPreview)
           ),
-          resultViewer
+          div(cls -> "overflow-y-auto scrollbar-hidden", resultViewer)
         )
       )
     )
