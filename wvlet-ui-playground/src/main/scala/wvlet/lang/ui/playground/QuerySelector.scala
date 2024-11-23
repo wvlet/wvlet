@@ -13,7 +13,7 @@ class QuerySelector(currentQuery: CurrentQuery, queryEditor: QueryEditor) extend
       h2(cls -> "text-slate-400", "Playground"),
       separator(),
       DemoQuerySet
-        .demoQueries
+        .demoQuerySet
         .map { demoQuerySet =>
           div(
             h2(cls -> "text-sm font-bold text-slate-300", demoQuerySet.name),
@@ -28,8 +28,7 @@ class QuerySelector(currentQuery: CurrentQuery, queryEditor: QueryEditor) extend
                       q.name,
                       onclick -> { e =>
                         e.preventDefault()
-                        currentQuery.queryName  := q.name
-                        currentQuery.wvletQuery := q.query
+                        currentQuery.setQuery(q)
                         queryEditor.setText(q.query)
                       }
                     )

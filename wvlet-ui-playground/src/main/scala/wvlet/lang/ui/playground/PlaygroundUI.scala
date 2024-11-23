@@ -14,7 +14,11 @@ object PlaygroundUI extends LogSupport:
   private def design: Design = Design
     .newDesign
     .bindSingleton[QueryRunner]
-    .bindSingleton[CurrentQuery]
+    .bindInstance[CurrentQuery] {
+      val c = CurrentQuery()
+      c.setQuery(DemoQuerySet.defaultQuerySet.head)
+      c
+    }
 
   def main(args: Array[String]): Unit =
     val ui = design.newSession.build[PlaygroundUI]

@@ -14,15 +14,16 @@ import scala.jdk.CollectionConverters.*
 class QueryRunner extends AutoCloseable with LogSupport:
   private val connectors = new ConcurrentHashMap[String, DuckDB]().asScala
 
-  private def getConnector(name: String): DuckDB = connectors.getOrElseUpdate(
-    name, {
-      newDuckDB()
-    }
-  )
+  private def getConnector(name: String): DuckDB = connectors.getOrElseUpdate(name, newDuckDB())
 
   private def newDuckDB(): DuckDB =
     try
-      DuckDB()
+      val duckdb = DuckDB()
+      // Preload an example TPC-H dataset
+      duckdb.query("""load tpch;
+          |call dbgen(sf=-0.01);
+          |""".stripMargin)
+      duckdb
     catch
       case e: Throwable =>
         warn(e)
