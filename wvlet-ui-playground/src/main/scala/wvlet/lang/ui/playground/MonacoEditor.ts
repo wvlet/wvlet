@@ -46,7 +46,7 @@ export class MonacoEditor {
             value: this.initialText,
             language: this.lang,
             theme: theme,
-            fontSize: 13,
+            fontSize: 12,
             fontFamily: 'Consolas, ui-monospace, SFMono-Regular, Menlo, Monaco, monospace',
             minimap: {
                 enabled: false
