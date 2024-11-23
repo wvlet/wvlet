@@ -54,3 +54,6 @@ dist
 # Ignore all local history of files
 .history
 .ionide
+
+# playground will be built at CI
+website/static/playground

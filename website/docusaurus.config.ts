@@ -87,6 +87,11 @@ const config: Config = {
           position: 'left',
           label: 'Query Syntax',
         },
+        {
+          href: 'pathname:///playground/',
+          position: 'left',
+          label: 'Playground',
+        },
         {to: '/blog', label: 'Blog', position: 'left'},
         {
           href: 'https://github.com/wvlet/wvlet/releases',
