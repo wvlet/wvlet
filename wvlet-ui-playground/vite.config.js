@@ -25,6 +25,7 @@ const suffix = isDev() ? "-fastopt" : "-opt";
 const scalaJsTarget= `./target/scala-${scalaVersion}/wvlet-ui-playground${suffix}`;
 
 export default defineConfig({
+  base: isDev() ? "/" : "/playground/",
   server: {
     open: true,
   },

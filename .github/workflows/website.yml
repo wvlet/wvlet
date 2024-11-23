@@ -30,6 +30,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '23'
+          cache: sbt
       - uses: actions/setup-node@v4
         with:
           node-version: 18
@@ -41,6 +46,15 @@ jobs:
       - name: Build website
         run: npm run build
         working-directory: ./website
+      - name: Build playground
+        run: JVM_OPTS=-Xmx4g ./sbt "playground/fullLinkJS"
+      - name: Build playground web site
+        run: npm run build
+        working-directory: ./wvlet-ui-playground
+      - name: Copy playground web site to website
+        run: |
+          mkdir -p website/build/playground
+          cp -r wvlet-ui-playground/build website/build/playground
       - name: Upload Build Artifact
         uses: actions/upload-pages-artifact@v3
         with:
