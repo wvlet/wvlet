@@ -306,7 +306,7 @@ lazy val runner = project
         "org.jline"                     % "jline"             % "3.27.1",
         "org.wvlet.airframe"           %% "airframe-launcher" % AIRFRAME_VERSION,
         "com.github.ben-manes.caffeine" % "caffeine"          % "3.1.8",
-        "org.apache.arrow"              % "arrow-vector"      % "18.0.0",
+        "org.apache.arrow"              % "arrow-vector"      % "18.1.0",
         "org.duckdb"                    % "duckdb_jdbc"       % "1.1.3",
         "io.trino"                      % "trino-jdbc"        % TRINO_VERSION,
         // exclude() and jar() are necessary to avoid https://github.com/sbt/sbt/issues/7407
