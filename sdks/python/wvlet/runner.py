@@ -4,7 +4,7 @@ import shutil
 import subprocess
 
 
-class WvletRunner():
+class WvletCompiler():
     def __init__(self, executable_path: Optional[str] = None, target: Optional[str] = None):
         if executable_path:
             if shutil.which(executable_path) is None:
