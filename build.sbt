@@ -387,12 +387,14 @@ lazy val uiMain = project
     buildSettings,
     uiSettings,
     name        := "wvlet-ui-main",
-    description := "UI main code compiled with Vite.js"
+    description := "UI main code compiled with Vite.js",
+    // A workaround for the error: Not found: type TReturn
+    stIgnore ++= List("@duckdb/duckdb-wasm")
   )
   .dependsOn(ui)
 
 lazy val playground = project
-  .enablePlugins(ScalaJSPlugin, ScalablyTypedConverterExternalNpmPlugin)
+  .enablePlugins(ScalaJSPlugin)
   .in(file("wvlet-ui-playground"))
   .settings(
     buildSettings,
@@ -408,8 +410,6 @@ def uiSettings: Seq[Setting[?]] = Seq(
   scalaJSLinkerConfig ~= {
     linkerConfig(_)
   },
-  // A workaround for the error: Not found: type TReturn
-  stIgnore ++= List("@duckdb/duckdb-wasm"),
   externalNpm := {
     scala
       .sys
