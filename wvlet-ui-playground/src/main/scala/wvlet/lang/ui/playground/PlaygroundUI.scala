@@ -48,7 +48,7 @@ class PlaygroundUI(
 
     div(
       cls   -> "flex",
-      style -> s"height: calc(100vh - ${MainFrame.navBarHeightPx}px);",
+      style -> s"width: max-screen; height: calc(100vh - ${MainFrame.navBarHeightPx}px);",
       div(cls -> "w-44 h-full", fileExplorer),
       div(
         cls -> "w-full h-full bg-slate-900",
