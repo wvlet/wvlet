@@ -4,11 +4,12 @@ import wvlet.airframe.rx.html.RxElement
 import wvlet.airframe.rx.html.all.*
 import wvlet.lang.api.v1.query.QueryResult
 import wvlet.lang.compiler.TablePrinter
+import org.scalajs.dom
 
-class QueryResultViewer(currentQuery: CurrentQuery) extends RxElement:
+class QueryResultViewer(currentQuery: CurrentQuery, windowSize: WindowSize) extends RxElement:
   override def render: RxElement =
-    val consoleHeight = PlaygroundUI.previewWindowHeightPx - 50
-    div(
+
+    def renderQueryResult(consoleHeight: Int): RxElement = div(
       cls -> "bg-zinc-800 text-xs text-slate-300 dark:text-white p-2",
       div(cls -> "h-7 font-light text-slate-400", "Preview"),
       div(
@@ -22,6 +23,15 @@ class QueryResultViewer(currentQuery: CurrentQuery) extends RxElement:
           }
       )
     )
+
+    windowSize
+      .getInnerHeight
+      .map { h =>
+        val consoleHeight = (dom.window.innerHeight / 3)
+          .min(PlaygroundUI.previewWindowHeightPx)
+          .toInt
+        renderQueryResult(consoleHeight)
+      }
 
   def printQueryResult(result: QueryResult): String = TablePrinter.printTableRows(result)
 
