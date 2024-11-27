@@ -345,6 +345,8 @@ object DataType extends LogSupport:
         "int64"     -> LongType,
         "tinyint"   -> ByteType,
         "smallint"  -> ShortType,
+        "float32"   -> FloatType,
+        "float64"   -> DoubleType,
         "varchar"   -> StringType,
         "utf8"      -> StringType,
         "varbinary" -> BinaryType,
