@@ -2,13 +2,18 @@ package wvlet.lang.compiler
 
 import wvlet.lang.api.v1.query.QueryResult
 import wvlet.lang.model.DataType
+import scala.util.Try
 
 object TablePrinter:
   private val maxWidth: Option[Int] = None
   private val maxColWidth: Int      = 150
 
   def printTableRows(queryResult: QueryResult): String =
-    val dataTypes = queryResult.schema.map(c => DataType.parse(c.typeName))
+    val dataTypes = queryResult
+      .schema
+      .map { c =>
+        Try(DataType.parse(c.typeName)).getOrElse(DataType.GenericType(Name.typeName(c.typeName)))
+      }
     val isNumeric = dataTypes.map(_.isNumeric).toIndexedSeq
 
     val tbl: List[Seq[String]] =

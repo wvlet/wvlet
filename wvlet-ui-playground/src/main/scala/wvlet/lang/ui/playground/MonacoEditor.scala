@@ -98,7 +98,7 @@ class SQLPreview(currentQuery: CurrentQuery, windowSize: WindowSize, queryRunner
             queryRunner
               .runQuery("tpch", sql)
               .map { queryResult =>
-                info(s"Query result: ${queryResult}")
+                trace(s"Query result: ${queryResult}")
                 currentQuery.lastQueryResult := queryResult
               }
           else

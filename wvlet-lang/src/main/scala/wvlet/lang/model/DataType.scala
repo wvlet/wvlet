@@ -44,6 +44,8 @@ abstract class DataType(val typeName: TypeName, override val typeParams: Seq[Dat
     this match
       case _: DataType.NumericType =>
         true
+      case _ if typeName.name.startsWith("decimal") =>
+        true
       case _ =>
         false
 
@@ -337,11 +339,14 @@ object DataType extends LogSupport:
     primitiveTypes.map(x => x.typeName -> x).toMap ++
       Map(
         "integer"   -> IntType,
+        "int32"     -> LongType,
         "bigint"    -> LongType,
         "hugeint"   -> LongType,
+        "int64"     -> LongType,
         "tinyint"   -> ByteType,
         "smallint"  -> ShortType,
         "varchar"   -> StringType,
+        "utf8"      -> StringType,
         "varbinary" -> BinaryType,
         "sql"       -> SQLExprType,
         "timestamp" -> TimestampType(TimestampField.TIMESTAMP, withTimeZone = false)
