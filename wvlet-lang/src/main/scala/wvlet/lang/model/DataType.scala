@@ -44,8 +44,6 @@ abstract class DataType(val typeName: TypeName, override val typeParams: Seq[Dat
     this match
       case _: DataType.NumericType =>
         true
-      case _ if typeName.name.startsWith("decimal") =>
-        true
       case _ =>
         false
 

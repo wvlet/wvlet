@@ -79,12 +79,19 @@ object Arrow extends LogSupport:
     def fields: js.Array[ArrowField] = js.native
   end ArrowSchema
 
+  private val decimalTypePattern = """decimal\[([0-9]+)e\+([0-9]+)\]""".r
   extension (s: ArrowSchema)
     def columns: Seq[Column] = s
       .fields
       .toSeq
       .map { f =>
-        Column(f.name, f.`type`.toString.toLowerCase)
+        val tpeName = f.`type`.toString.toLowerCase
+        tpeName match
+          case decimalTypePattern(p, s) =>
+            // Workaround for the weird decimal type representaion in DuckDB Wasm
+            Column(f.name, s"decimal(${p},${s})")
+          case _ =>
+            Column(f.name, tpeName)
       }
 
   @js.native
