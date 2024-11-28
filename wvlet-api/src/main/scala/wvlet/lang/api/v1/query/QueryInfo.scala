@@ -24,8 +24,13 @@ case class QueryInfo(
     limit: Option[Int] = None
 )
 
-case class QueryResult(schema: Seq[Column], rows: Seq[Seq[Any]]):
-  def totalRows: Int = rows.size
+case class QueryResult(
+    schema: Seq[Column],
+    rows: Seq[Seq[Any]],
+    actualTotalRows: Option[Int] = None
+):
+  def totalRows: Int       = actualTotalRows.getOrElse(rows.size)
+  def isTruncated: Boolean = actualTotalRows.exists(_ >= rows.size)
 
 case class Column(name: String, typeName: String)
 
