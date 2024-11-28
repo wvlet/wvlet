@@ -1,0 +1,14 @@
+-- Scan a table
+from lineitem
+-- Add filtering condition
+where l_quantity > 0.0
+-- Grouping by keys
+group by l_returnflag, l_linestatus
+-- Add aggregation expressions
+agg
+  l_quantity.sum as sum_qty,
+  l_extendedprice.sum as sum_ext_price
+-- Remove unnecessary column
+exclude l_returnflag
+-- Sort
+order by sum_qty desc
