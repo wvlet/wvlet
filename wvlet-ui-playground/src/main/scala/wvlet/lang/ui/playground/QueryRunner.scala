@@ -30,12 +30,18 @@ class QueryRunner extends AutoCloseable with LogSupport:
         warn(e)
         throw e
 
-  def runQuery(connector: String, sql: String): Rx[QueryResult] = getConnector(connector)
-    .query(sql)
+  def runQuery(connector: String, sql: String, rowLimit: Int = 40): Rx[QueryResult] = getConnector(
+    connector
+  ).query(sql)
     .map { tbl =>
       import Arrow.*
       val rows = tbl.asScalaArray
-      QueryResult(tbl.schema.columns, rows)
+      val (truncatedRows, totalRows: Option[Int]) =
+        if rows.size > rowLimit then
+          (rows.take(rowLimit), Some(rows.size))
+        else
+          (rows, None)
+      QueryResult(tbl.schema.columns, truncatedRows, totalRows)
     }
 
   end runQuery
