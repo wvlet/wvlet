@@ -1,0 +1,11 @@
+-- Define a new model
+model my_model =
+  from lineitem
+  where l_quantity > 10.0
+end
+
+-- Refer to the model
+from my_model
+-- Add a further condition
+where l_returnflag = 'N'
+limit 5

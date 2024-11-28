@@ -1,0 +1,10 @@
+-- Define a model with parameters
+model my_query(p1: double, p2: string) =
+  from lineitem
+  where l_quantity > p1
+  where l_returnflag = p2
+end
+
+-- Use the model with parameters
+from my_query(20, 'N')
+limit 5

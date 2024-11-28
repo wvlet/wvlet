@@ -135,6 +135,13 @@ class Compiler(val compilerOptions: CompilerOptions) extends LogSupport:
     val units: List[CompilationUnit] = compilationUnitsInSourcePaths :+ contextUnit
     compileInternal(units, contextUnit = Some(contextUnit))
 
+  def compileMultipleUnits(
+      units: List[CompilationUnit],
+      contextUnit: CompilationUnit
+  ): CompileResult =
+    val lst = compilationUnitsInSourcePaths ++ units :+ contextUnit
+    compileInternal(lst, Some(contextUnit))
+
   def compileInternal(
       units: List[CompilationUnit],
       contextUnit: Option[CompilationUnit]

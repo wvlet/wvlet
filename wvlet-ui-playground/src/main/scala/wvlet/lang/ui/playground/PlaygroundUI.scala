@@ -16,7 +16,12 @@ object PlaygroundUI extends LogSupport:
     .bindSingleton[QueryRunner]
     .bindInstance[CurrentQuery] {
       val c = CurrentQuery()
-      c.setQuery(DemoQuerySet.defaultQuerySet.head)
+      c.setQuery(
+        DemoQuerySet
+          .defaultQuerySet
+          .find(_.name == "sample.wv")
+          .getOrElse(DemoQuerySet.defaultQuerySet.head)
+      )
       c
     }
 
