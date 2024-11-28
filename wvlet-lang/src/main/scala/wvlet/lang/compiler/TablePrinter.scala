@@ -115,12 +115,12 @@ object TablePrinter:
           "─" * s
         }
         .mkString("├─", "─┴─", "─┤")
-//    if tableRows.isTruncated then
-//      rows +=
-//        alignLeft(f"${tableRows.totalRows}%,d rows (${tableRows.rows.size}%,d shown)", width)
-//          .mkString("│ ", "", " │")
-//    else
-    rows += alignLeft(f"${queryResult.totalRows}%,d rows", width).mkString("│ ", "", " │")
+    if queryResult.isTruncated then
+      rows +=
+        alignLeft(f"${queryResult.totalRows}%,d rows (${queryResult.rows.size}%,d shown)", width)
+          .mkString("│ ", "", " │")
+    else
+      rows += alignLeft(f"${queryResult.totalRows}%,d rows", width).mkString("│ ", "", " │")
 
     rows +=
       maxColSize
