@@ -17,4 +17,5 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: unittest
-        run: cd sdks/python && python -m unittest
+        run: python -m unittest
+        working-directory: sdks/python
