@@ -19,7 +19,7 @@ object PlaygroundUI extends LogSupport:
       c.setQuery(
         DemoQuerySet
           .defaultQuerySet
-          .find(_.name == "sample.wv")
+          .find(_.name == "00_sample.wv")
           .getOrElse(DemoQuerySet.defaultQuerySet.head)
       )
       c

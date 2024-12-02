@@ -1,0 +1,10 @@
+-- Scan a table
+from lineitem
+-- Grouping by keys
+group by l_returnflag, l_linestatus
+-- Add aggregation expressions
+agg
+  _.count as cnt,
+  l_quantity.sum as sum_qty,
+  l_extendedprice.sum as sum_ext_price
+order by sum_qty desc

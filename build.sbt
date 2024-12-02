@@ -90,7 +90,7 @@ def generateWvletLib(path: File, packageName: String, className: String): String
       val methodName = name.replaceAll("-", "_")
       methodNames += methodName
       val content = IO.read(f)
-      s"""|  def ${methodName}: String = \"\"\"${content}\"\"\"
+      s"""|  def _${methodName}: String = \"\"\"${content}\"\"\"
           |""".stripMargin
     }
     .mkString("\n")
@@ -99,7 +99,7 @@ def generateWvletLib(path: File, packageName: String, className: String): String
     val allMethods = methodNames.result().sorted
     s"""  def allFiles: ListMap[String, String] = ListMap(
        |    ${allMethods
-        .map(m => s""""${m.replaceAll("__", "/")}.wv"-> ${m}""")
+        .map(m => s""""${m.replaceAll("__", "/")}.wv"-> _${m}""")
         .mkString(",\n    ")}
        |  )
        |""".stripMargin

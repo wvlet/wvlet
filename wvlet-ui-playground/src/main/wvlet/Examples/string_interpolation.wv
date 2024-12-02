@@ -1,0 +1,3 @@
+from lineitem
+group by l_returnflag, l_linestatus
+select s"label ${l_returnflag}:${l_linestatus}" as label, _.count as cnt
