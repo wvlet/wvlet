@@ -1,0 +1,4 @@
+from lineitem
+limit 10
+-- Move two columns to the left
+shift l_returnflag, l_quantity

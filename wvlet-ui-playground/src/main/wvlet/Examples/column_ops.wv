@@ -1,0 +1,10 @@
+from lineitem
+-- Add a new expression column
+add l_linestatus + ':' + l_shipmode as ship_label
+-- Move ship_label colmn to the left
+shift ship_label
+-- Move augumentary column ro the right
+shift to right l_comment
+-- Remove column
+exclude l_shipinstruct, l_tax, l_extendedprice
+limit 10

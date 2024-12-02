@@ -126,7 +126,9 @@ export const language = <languages.IMonarchLanguage> {
         "float",
         "string",
         "array",
-        "map"
+        "map",
+        "date",
+        "decimal"
     ],
 
     operators: [
