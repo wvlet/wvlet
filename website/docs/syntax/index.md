@@ -15,7 +15,7 @@ Wvlet is a query language designed to be more human-readable and easier to write
 Wvlet queries start with `from` keyword, and you can chain multiple [relational operators](./relational-operators.md) to process the input data and generate the output data. The following is a typical flow of chaining operators in a wvlet query:
 
 ```sql
-from ...         -- Scan the input datd
+from ...         -- Scan the input data
 where ...        -- Apply filtering conditions
 where ...        -- [optional] Apply more filtering conditions
 add   ... as ... -- Add new columns

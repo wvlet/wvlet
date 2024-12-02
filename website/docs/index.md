@@ -81,7 +81,7 @@ Calling this model, e.g., `from lookup(1)`, will issue this SQL query:
 select * from persons
 where id = 1
 ```
-Models in Wvlet will work as template functions to generate SQL queries. You can also compose models to build more complex queries. For example, you can take a join between data modle and other tables:
+Models in Wvlet will work as template functions to generate SQL queries. You can also compose models to build more complex queries. For example, you can take a join between data model and other tables:
 ```sql
 from lookup(1) as p
 join address_table 
@@ -106,7 +106,7 @@ from my_query(p1, p2, ...)
 
 ## Extensible Types
 
-You can define your own functions to the existing data types to specify how to compile these functions int SQL. For example, you can extend the string type to handle null values:
+You can define your own functions to the existing data types to specify how to compile these functions into SQL. For example, you can extend the string type to handle null values:
 
 ```sql
 type string:

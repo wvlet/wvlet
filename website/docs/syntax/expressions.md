@@ -1,6 +1,6 @@
 # Expressions
 
-One of the major difference from tradtional SQL is that wvlet uses single or double quoted strings for representing string values, and back-quoted strings for referencing column or table names, which might contain space or special characters.
+One of the major difference from traditional SQL is that wvlet uses single or double quoted strings for representing string values, and back-quoted strings for referencing column or table names, which might contain space or special characters.
 
 | Operator                                              | Description                                                                                                                                  |
 |:------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------|
@@ -161,7 +161,7 @@ To manipulate array values, you can use lambda expressions:
 ```sql
 select list_transform([4, 5, 6], x -> x + 1)
 ```
-This query applyes the lambda function `x -> x + 1` to each element of the input array: 
+This query applies the lambda function `x -> x + 1` to each element of the input array: 
 ```
 ┌────────────┐
 │    arr     │
