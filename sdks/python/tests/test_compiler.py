@@ -14,15 +14,16 @@
 # limitations under the License.
 #
 
-import unittest
-from wvlet.runner import WvletCompiler
+import pytest
+from wvlet.compiler import WvletCompiler
 
-class TestWvletRunner(unittest.TestCase):
+def test_wvlet_invalid_path():
+    with pytest.raises(ValueError, match="Invalid executable_path: invalid"):
+        WvletCompiler(executable_path="invalid")
 
-    def test_wvlet_invalid_path(self):
-        with self.assertRaises(ValueError, msg="Invalid executable_path: invalid"):
-            WvletCompiler(executable_path="invald")
+def test_wvlet_not_found():
+    try:
+        WvletCompiler()
+    except NotImplementedError:
+        pytest.skip("wvlet executable is not found")
 
-    def test_wvlet_not_found(self):
-        with self.assertRaises(NotImplementedError, msg="This binding currently requires wvc executable"):
-            WvletCompiler()

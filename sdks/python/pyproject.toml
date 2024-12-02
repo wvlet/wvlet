@@ -3,3 +3,6 @@
 requires-python = ">= 3.9"
 name = "wvlet"
 dynamic = ["version"]
+dependencies = [
+    "pytest>=6.0"
+]

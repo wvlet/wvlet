@@ -23,11 +23,11 @@ Wvlet SDK for Python provides an interface to compile Wvlet code into SQL querie
 Typical usage
 -------------
 
-  from wvlet.runner import WvletCompiler
+  from wvlet.compiler import WvletCompiler
   c = WvletCompiler()
   sql = c.compile("show tables")
 
 
-By translating Wvlet code into SQL, we can utilize existing code assets like SQLAlchemy and Pandas (e.g. pd.read_sql).
+By translating an Wvlet query into SQL, we can utilize existing code assets like SQLAlchemy and Pandas (e.g. pd.read_sql).
 
 """
