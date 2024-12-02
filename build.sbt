@@ -1,6 +1,6 @@
 val AIRFRAME_VERSION    = "24.11.0"
 val AIRSPEC_VERSION     = "24.11.0"
-val TRINO_VERSION       = "465"
+val TRINO_VERSION       = "466"
 val AWS_SDK_VERSION     = "2.20.146"
 val SCALAJS_DOM_VERSION = "2.8.0"
 
@@ -78,6 +78,46 @@ lazy val api = crossProject(JVMPlatform, JSPlatform, NativePlatform)
       )
   )
 
+def generateWvletLib(path: File, packageName: String, className: String): String = {
+  val srcDir      = path
+  val wvFiles     = (srcDir ** "*.wv").get
+  val methodNames = Seq.newBuilder[String]
+
+  def resourceDefs: String = wvFiles
+    .map { f =>
+      val name = f.relativeTo(srcDir).get.getPath.stripSuffix(".wv").replaceAll("/", "__")
+
+      val methodName = name.replaceAll("-", "_")
+      methodNames += methodName
+      val content = IO.read(f)
+      s"""|  def ${methodName}: String = \"\"\"${content}\"\"\"
+          |""".stripMargin
+    }
+    .mkString("\n")
+
+  def allFiles: String = {
+    val allMethods = methodNames.result().sorted
+    s"""  def allFiles: ListMap[String, String] = ListMap(
+       |    ${allMethods
+        .map(m => s""""${m.replaceAll("__", "/")}.wv"-> ${m}""")
+        .mkString(",\n    ")}
+       |  )
+       |""".stripMargin
+  }
+
+  def body =
+    s"""package ${packageName}
+       |import scala.collection.immutable.ListMap
+       |
+       |object ${className}:
+       |${resourceDefs}
+       |${allFiles}
+       |end ${className}
+       |""".stripMargin
+
+  body
+}
+
 lazy val lang = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("wvlet-lang"))
@@ -102,42 +142,9 @@ lazy val lang = crossProject(JVMPlatform, JSPlatform, NativePlatform)
       Def
         .task {
           // Generate a Scala file containing all .wv files in wvlet-stdlib
-          val out        = (Compile / sourceManaged).value
           val libDir     = (ThisBuild / baseDirectory).value / "wvlet-stdlib" / "module"
-          val files      = (libDir ** "*.wv").get()
-          val targetFile = out / "stdlib.scala"
-
-          val methodNames = Seq.newBuilder[String]
-
-          def resourceDefs: String = files
-            .map { f =>
-              val name = f.relativeTo(libDir).get.getPath.stripSuffix(".wv").replaceAll("/", "__")
-              methodNames += name
-              val content = IO.read(f)
-              s"""|  def ${name}: String = \"\"\"${content}\"\"\"
-                  |""".stripMargin
-            }
-            .mkString("\n")
-
-          def allFiles: String = {
-            val allMethods = methodNames.result()
-            s"""  def allFiles: Map[String, String] = Map(
-               |    ${allMethods
-                .map(m => s""""${m.replaceAll("__", "/")}.wv"-> ${m}""")
-                .mkString(",\n    ")}
-               |  )
-               |""".stripMargin
-          }
-
-          val body =
-            s"""package wvlet.lang.stdlib
-          |
-          |object StdLib:
-          |${resourceDefs}
-          |${allFiles}
-          |end StdLib
-          |""".stripMargin
-
+          val targetFile = (Compile / sourceManaged).value / "stdlib.scala"
+          val body       = generateWvletLib(libDir, "wvlet.lang.stdlib", "StdLib")
           state.value.log.debug(s"Generating stdlib.scala:\n${body}")
           IO.write(targetFile, body)
           Seq(targetFile)
@@ -306,7 +313,7 @@ lazy val runner = project
         "org.jline"                     % "jline"             % "3.27.1",
         "org.wvlet.airframe"           %% "airframe-launcher" % AIRFRAME_VERSION,
         "com.github.ben-manes.caffeine" % "caffeine"          % "3.1.8",
-        "org.apache.arrow"              % "arrow-vector"      % "18.0.0",
+        "org.apache.arrow"              % "arrow-vector"      % "18.1.0",
         "org.duckdb"                    % "duckdb_jdbc"       % "1.1.3",
         "io.trino"                      % "trino-jdbc"        % TRINO_VERSION,
         // exclude() and jar() are necessary to avoid https://github.com/sbt/sbt/issues/7407
@@ -387,18 +394,33 @@ lazy val uiMain = project
     buildSettings,
     uiSettings,
     name        := "wvlet-ui-main",
-    description := "UI main code compiled with Vite.js"
+    description := "UI main code compiled with Vite.js",
+    // A workaround for the error: Not found: type TReturn
+    stIgnore ++= List("@duckdb/duckdb-wasm")
   )
   .dependsOn(ui)
 
 lazy val playground = project
-  .enablePlugins(ScalaJSPlugin, ScalablyTypedConverterExternalNpmPlugin)
+  .enablePlugins(ScalaJSPlugin)
   .in(file("wvlet-ui-playground"))
   .settings(
     buildSettings,
     uiSettings,
     name        := "wvlet-ui-playground",
-    description := "Playground for wvlet"
+    description := "Playground for wvlet",
+    Compile / sourceGenerators +=
+      Def
+        .task {
+          // Generate a Scala file containing all .wv files in wvlet-stdlib
+          val libDir = baseDirectory.value / "src/main/wvlet/Examples"
+          val targetFile = (Compile / sourceManaged).value /
+            "wvlet/langu/ui/playground/SampleQuery.scala"
+          val body = generateWvletLib(libDir, "wvlet.lang.ui.playground", "SampleQuery")
+          state.value.log.debug(s"Generating stdlib.scala:\n${body}")
+          IO.write(targetFile, body)
+          Seq(targetFile)
+        }
+        .taskValue
   )
   .dependsOn(ui, lang.js)
 
@@ -408,8 +430,6 @@ def uiSettings: Seq[Setting[?]] = Seq(
   scalaJSLinkerConfig ~= {
     linkerConfig(_)
   },
-  // A workaround for the error: Not found: type TReturn
-  stIgnore ++= List("@duckdb/duckdb-wasm"),
   externalNpm := {
     scala
       .sys

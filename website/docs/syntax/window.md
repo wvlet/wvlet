@@ -2,7 +2,7 @@
 
 Window function computes the data against the whole query result.
 
-- partition by (key): Split the query resut into multiple partitions based on the key.
+- partition by (key): Split the query result into multiple partitions based on the key.
 - order by (key): Define ordering of the rows within each partition.
 - rows [start:end]: Define the range of rows in each window.
 

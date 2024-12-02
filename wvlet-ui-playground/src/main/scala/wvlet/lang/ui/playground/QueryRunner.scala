@@ -10,6 +10,7 @@ import wvlet.log.LogSupport
 
 import java.util.concurrent.ConcurrentHashMap
 import scala.jdk.CollectionConverters.*
+import scala.scalajs.js
 
 class QueryRunner extends AutoCloseable with LogSupport:
   private val connectors = new ConcurrentHashMap[String, DuckDB]().asScala
@@ -29,30 +30,18 @@ class QueryRunner extends AutoCloseable with LogSupport:
         warn(e)
         throw e
 
-  def runQuery(connector: String, sql: String): Rx[QueryResult] = getConnector(connector)
-    .query(sql)
-    .map { jsonString =>
-      val j            = JSON.parse(jsonString)
-      val relationType = JSONAnalyzer.guessSchema(j)
-      val columns = relationType
-        .fields
-        .map { f =>
-          Column(f.name.name, f.dataType.toString)
-        }
-      val result: Seq[Seq[Any]] =
-        j match
-          case a: JSONArray =>
-            a.v
-              .map { row =>
-                row match
-                  case obj: JSONObject =>
-                    obj.v.map(x => x._2)
-                  case _ =>
-                    Seq.empty
-              }
-          case _ =>
-            Seq.empty
-      QueryResult(columns, result)
+  def runQuery(connector: String, sql: String, rowLimit: Int = 40): Rx[QueryResult] = getConnector(
+    connector
+  ).query(sql)
+    .map { tbl =>
+      import Arrow.*
+      val rows = tbl.asScalaArray
+      val (truncatedRows, totalRows: Option[Int]) =
+        if rows.size > rowLimit then
+          (rows.take(rowLimit), Some(rows.size))
+        else
+          (rows, None)
+      QueryResult(tbl.schema.columns, truncatedRows, totalRows)
     }
 
   end runQuery

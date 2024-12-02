@@ -1,4 +1,5 @@
 import * as duckdb from "@duckdb/duckdb-wasm";
+import {Table} from 'apache-arrow'
 
 export class DuckDBWasm {
     private duckdb: Promise<duckdb.AsyncDuckDB>;
@@ -38,16 +39,10 @@ export class DuckDBWasm {
         return this.conn;
     }
 
-    async query(sql: string): Promise<string> {
+    async query(sql: string): Promise<Table> {
         const c = await this.connect();
         const r = await c.query(sql);
-        const result = r.toArray().map((row) => row.toJSON());
-        // console.log(`Query result: ${r.numRows} rows`);
-        return JSON.stringify(result,
-            // Woarkaround for 'Do not know how to serialize a BigInt' error
-            (key, value) =>
-            typeof value === "bigint" ? Number(value) : value,
-        );
+        return r;
     }
 
     async close() {
@@ -57,3 +52,4 @@ export class DuckDBWasm {
         }
     }
 }
+

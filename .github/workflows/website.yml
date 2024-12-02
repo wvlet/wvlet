@@ -7,6 +7,7 @@ on:
     paths:
       - 'website/**'
       - '.github/workflows/website.yml'
+      - 'wvlet-ui-playground/**'
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
@@ -43,7 +44,9 @@ jobs:
       - name: Build playground
         run: JVM_OPTS=-Xmx4g ./sbt "playground/fullLinkJS"
       - name: Build playground web site
-        run: npm run build
+        run: |
+          npm install
+          npm run build
         working-directory: ./wvlet-ui-playground
       - name: Copy playground web site to website
         run: |

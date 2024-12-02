@@ -92,7 +92,7 @@ You can just add additional relational operators to refine the query without tra
 
 ### No Significant Indentation
 
-To describe nested queries, we may be able to use parenthesized subquery `(...)` or significant indentations like Python or Scala 3. Although indentation-based syntaxes improve the readability, writing and parsing queries becomes harder for IDE or edictors (e.g., parser, linter, query generators, etc.) 
+To describe nested queries, we may be able to use parenthesized subquery `(...)` or significant indentations like Python or Scala 3. Although indentation-based syntaxes improve the readability, writing and parsing queries becomes harder for IDE or editors (e.g., parser, linter, query generators, etc.) 
 
 ### Support Dot Notation
 

@@ -27,10 +27,10 @@ function HomepageHeader() {
                                 </p>
                                 <div className={styles.buttons}>
                                     <Link className="button button--primary" to="pathname:///playground/">
-                                        Playground: Try Wvlet!
+                                        Try Wvlet!
                                     </Link>
                                     <Link className="button button--secondary margin--sm" to="/docs/usage/install">
-                                        Install
+                                        Installation
                                     </Link>
                                 </div>
 

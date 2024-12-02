@@ -19,6 +19,9 @@ import './index.css'
 import {DuckDBWasm} from './src/main/scala/wvlet/lang/ui/playground/DuckDBWasm.ts'
 window.duckdb = DuckDBWasm
 
+import * as arrow from 'apache-arrow'
+window.arrow = arrow
+
 import { MonacoEditor } from './src/main/scala/wvlet/lang/ui/playground/MonacoEditor.ts'
 import './src/main/scala/wvlet/lang/ui/playground/WvletLanguage.ts'
 
@@ -29,8 +32,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Make the MonacoEditor class accessible from @JSGlobal in Scala.js
         window.MonacoEditor = MonacoEditor;
-
-
 
         // Start Scala.js code
         import('__target__/main.js')

@@ -1,0 +1,6 @@
+-- Simple table scan
+from lineitem
+-- Add a condition
+where l_returnflag = 'N'
+-- Take 10 rows
+limit 10

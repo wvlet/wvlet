@@ -2,13 +2,18 @@ package wvlet.lang.compiler
 
 import wvlet.lang.api.v1.query.QueryResult
 import wvlet.lang.model.DataType
+import scala.util.Try
 
 object TablePrinter:
   private val maxWidth: Option[Int] = None
   private val maxColWidth: Int      = 150
 
   def printTableRows(queryResult: QueryResult): String =
-    val dataTypes = queryResult.schema.map(c => DataType.parse(c.typeName))
+    val dataTypes = queryResult
+      .schema
+      .map { c =>
+        Try(DataType.parse(c.typeName)).getOrElse(DataType.GenericType(Name.typeName(c.typeName)))
+      }
     val isNumeric = dataTypes.map(_.isNumeric).toIndexedSeq
 
     val tbl: List[Seq[String]] =
@@ -110,12 +115,12 @@ object TablePrinter:
           "─" * s
         }
         .mkString("├─", "─┴─", "─┤")
-//    if tableRows.isTruncated then
-//      rows +=
-//        alignLeft(f"${tableRows.totalRows}%,d rows (${tableRows.rows.size}%,d shown)", width)
-//          .mkString("│ ", "", " │")
-//    else
-    rows += alignLeft(f"${queryResult.totalRows}%,d rows", width).mkString("│ ", "", " │")
+    if queryResult.isTruncated then
+      rows +=
+        alignLeft(f"${queryResult.totalRows}%,d rows (${queryResult.rows.size}%,d shown)", width)
+          .mkString("│ ", "", " │")
+    else
+      rows += alignLeft(f"${queryResult.totalRows}%,d rows", width).mkString("│ ", "", " │")
 
     rows +=
       maxColSize
