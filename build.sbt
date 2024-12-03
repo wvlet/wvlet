@@ -89,8 +89,11 @@ def generateWvletLib(path: File, packageName: String, className: String): String
 
       val methodName = name.replaceAll("-", "_")
       methodNames += methodName
-      val content = IO.read(f)
-      s"""|  def _${methodName}: String = \"\"\"${content}\"\"\"
+      val content = IO
+        .read(f)
+        .replaceAll("""\$""", """\$\$""")
+        .replaceAll("""\"\"\"""", """\${"\\"\\"\\""}""")
+      s"""|  def _${methodName}: String = s\"\"\"${content}\"\"\"
           |""".stripMargin
     }
     .mkString("\n")

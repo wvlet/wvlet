@@ -1,3 +1,4 @@
+-- Define table schema for TPC-H benchmark
 type lineitem:
   l_orderkey: int
   l_partkey: int
