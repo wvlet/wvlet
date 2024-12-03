@@ -38,19 +38,20 @@ export class MonacoEditor {
                 {token: 'string', foreground: 'f4c099'},
                 {token: 'string.backquoted', foreground: 'f4c0cc'},
                 {token: 'string.sql', foreground: 'f4c099'},
-                {token: 'comment', foreground: '6272a4'},
+                {token: 'comment', foreground: '7282a4'},
                 {token: 'operator', foreground: 'bd93f9'},
                 {token: 'invalid', foreground: 'ff0000'},
             ]
         })
 
-
+        // Use relative font size (rem) to adjust the editor font size
+        var fontSize = 0.8 * parseFloat(getComputedStyle(document.documentElement).fontSize);
 
         this.editor = monaco.editor.create(document.getElementById(this.id), {
             value: this.initialText,
             language: this.lang,
             theme: theme,
-            fontSize: 12,
+            fontSize: fontSize,
             fontFamily: 'Consolas, ui-monospace, SFMono-Regular, Menlo, Monaco, monospace',
             minimap: {
                 enabled: false
