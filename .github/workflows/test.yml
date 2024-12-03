@@ -24,6 +24,7 @@ jobs:
               - '.github/workflows/test.yml'
               - 'project/**'
               - '**.scala'
+              - '**.ts'
               - '**.sbt'
               - '**.conf'
               - '**.json'
