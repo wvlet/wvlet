@@ -1,15 +1,18 @@
 import * as monaco from 'monaco-editor';
+import {KeyCode, KeyMod} from "monaco-editor";
 
 export class MonacoEditor {
     private id: string;
     private initialText: string;
     private lang: string;
     private editor: monaco.editor.IStandaloneCodeEditor = null;
+    private action: (arg: string) => void;
 
-    constructor(id: string, lang: string, initialText: string) {
+    constructor(id: string, lang: string, initialText: string, action: (arg:string) => void) {
         this.id = id;
         this.lang = lang;
         this.initialText = initialText;
+        this.action = action;
     }
 
     hello(): void {
@@ -59,6 +62,55 @@ export class MonacoEditor {
             tabSize: 2
         })
 
+        // Add shortcut key commands
+        this.editor.addAction({
+            id : "describe-query",
+            label : "Describe Query",
+            keybindings : [monaco.KeyMod.chord(
+                monaco.KeyMod.WinCtrl | KeyCode.KeyJ,
+                monaco.KeyMod.WinCtrl | KeyCode.KeyD
+            )],
+            run : async (editor, args) => {
+                this.action('describe-query')
+            },
+        })
+
+        this.editor.addAction({
+            id : "run-subquery",
+            label : "Run subquery",
+            keybindings : [
+                monaco.KeyMod.Shift | KeyCode.Enter
+            ],
+            run : async (editor, args) => {
+                this.action('run-subquery')
+            },
+        })
+
+        this.editor.addAction({
+            id: "run-query",
+            label: "Run Query",
+            keybindings: [
+                monaco.KeyMod.WinCtrl | KeyCode.Enter,
+                KeyMod.chord(
+                    monaco.KeyMod.WinCtrl | KeyCode.KeyJ,
+                    monaco.KeyMod.WinCtrl | KeyCode.KeyR
+                )
+            ],
+            run : async (editor, args) => {
+                this.action('run-query')
+            },
+        })
+
+        this.editor.addAction({
+            id: "run-production-query",
+            label: "Run query with production mode",
+            keybindings: [
+                monaco.KeyMod.CtrlCmd | KeyCode.Enter,
+            ],
+            run : async (editor, args) => {
+                this.action('run-production-query')
+            },
+        })
 
     };
 
@@ -86,5 +138,14 @@ export class MonacoEditor {
                 height: h
             });
         }
-    };
+    }
+
+    getLinePosition(): number {
+        return this.editor.getPosition().lineNumber;
+    }
+
+    getColumnPosition(): number {
+        return this.editor.getPosition().column;
+    }
+
 }
