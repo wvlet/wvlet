@@ -1,0 +1,14 @@
+-- In case you need DBMS-specific SQL features,
+-- you can embed raw SQL statements:
+
+-- Run an SQL commend for DuckDB
+execute sql"""
+set threads = 1
+"""
+
+-- Run a raw SQL query for DuckDB
+from sql"""
+select *
+from lineitem
+limit 10
+"""
