@@ -18,19 +18,31 @@ import scala.scalajs.js.annotation.JSGlobal
 
 @js.native
 @JSGlobal("MonacoEditor")
-class MonacoEditor(val id: String, lang: String, initialText: String) extends js.Object:
+class MonacoEditor(
+    val id: String,
+    lang: String,
+    initialText: String,
+    action: js.Function1[String, Unit] = { cmd =>
+      // do nothing by default
+    }
+) extends js.Object:
   def hello(): Unit                      = js.native
   def render(): Unit                     = js.native
   def setReadOnly(): Unit                = js.native
   def adjustHeight(newHeight: Int): Unit = js.native
   def getText(): String                  = js.native
   def setText(txt: String): Unit         = js.native
+  def getLinePosition: Int               = js.native
+  def getColumnPosition: Int             = js.native
 
 abstract class EditorBase(windowSize: WindowSize, editorId: String, lang: String) extends RxElement:
   protected def initialText: String
 
-  protected val editor = new MonacoEditor(editorId, lang, initialText)
-  private var c        = Cancelable.empty
+  protected val editor = new MonacoEditor(editorId, lang, initialText, action = action)
+
+  protected def action: String => Unit = cmd => logger.info(s"Action: ${cmd}")
+
+  private var c = Cancelable.empty
 
   override def onMount: Unit =
     editor.render()
@@ -49,24 +61,3 @@ abstract class EditorBase(windowSize: WindowSize, editorId: String, lang: String
 
   def getText: String            = editor.getText()
   def setText(txt: String): Unit = editor.setText(txt)
-
-class QueryEditor(currentQuery: CurrentQuery, windowSize: WindowSize)
-    extends EditorBase(windowSize, "wvlet-editor", "wvlet"):
-  override def initialText: String = currentQuery.wvletQuery.get
-
-  private var monitor = Cancelable.empty
-
-  override def onMount: Unit =
-    super.onMount
-    monitor = Rx
-      .intervalMillis(100)
-      .map { _ =>
-        val query = getText
-        if query != currentQuery.wvletQuery.get then
-          currentQuery.wvletQuery := query
-      }
-      .subscribe()
-
-  override def beforeUnmount: Unit =
-    super.beforeUnmount
-    monitor.cancel
