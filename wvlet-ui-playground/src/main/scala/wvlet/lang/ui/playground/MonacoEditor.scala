@@ -5,7 +5,7 @@ import org.scalajs.dom.ResizeObserver
 import wvlet.airframe.rx.{Cancelable, Rx, RxVar}
 import wvlet.airframe.rx.html.RxElement
 import wvlet.airframe.rx.html.all.*
-import wvlet.lang.api.WvletLangException
+import wvlet.lang.api.{NodeLocation, WvletLangException}
 import wvlet.lang.compiler.{CompilationUnit, Compiler, Symbol}
 import wvlet.lang.compiler.codegen.GenSQL
 import wvlet.lang.ui.component.MainFrame
@@ -32,13 +32,18 @@ class MonacoEditor(
   def adjustHeight(newHeight: Int): Unit = js.native
   def getText(): String                  = js.native
   def setText(txt: String): Unit         = js.native
-  def getLinePosition: Int               = js.native
-  def getColumnPosition: Int             = js.native
+  def getLinePosition(): Double          = js.native
+  def getColumnPosition(): Double        = js.native
 
 abstract class EditorBase(windowSize: WindowSize, editorId: String, lang: String) extends RxElement:
   protected def initialText: String
 
   protected val editor = new MonacoEditor(editorId, lang, initialText, action = action)
+
+  protected def currentNodeLocation(): NodeLocation = NodeLocation(
+    editor.getLinePosition().toInt,
+    editor.getColumnPosition().toInt
+  )
 
   protected def action: String => Unit = cmd => logger.info(s"Action: ${cmd}")
 
@@ -61,3 +66,5 @@ abstract class EditorBase(windowSize: WindowSize, editorId: String, lang: String
 
   def getText: String            = editor.getText()
   def setText(txt: String): Unit = editor.setText(txt)
+
+end EditorBase

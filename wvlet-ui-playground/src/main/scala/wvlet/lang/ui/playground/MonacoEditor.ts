@@ -1,5 +1,5 @@
 import * as monaco from 'monaco-editor';
-import {KeyCode} from "monaco-editor";
+import {KeyCode, KeyMod} from "monaco-editor";
 
 export class MonacoEditor {
     private id: string;
@@ -62,6 +62,7 @@ export class MonacoEditor {
             tabSize: 2
         })
 
+        // Add shortcut key commands
         this.editor.addAction({
             id : "describe-query",
             label : "Describe Query",
@@ -69,9 +70,46 @@ export class MonacoEditor {
                 monaco.KeyMod.WinCtrl | KeyCode.KeyJ,
                 monaco.KeyMod.WinCtrl | KeyCode.KeyD
             )],
-             run : async (editor, args) => {
+            run : async (editor, args) => {
                 this.action('describe-query')
-             },
+            },
+        })
+
+        this.editor.addAction({
+            id : "run-subquery",
+            label : "Run subquery",
+            keybindings : [
+                monaco.KeyMod.Shift | KeyCode.Enter
+            ],
+            run : async (editor, args) => {
+                this.action('run-subquery')
+            },
+        })
+
+        this.editor.addAction({
+            id: "run-query",
+            label: "Run Query",
+            keybindings: [
+                monaco.KeyMod.WinCtrl | KeyCode.Enter,
+                KeyMod.chord(
+                    monaco.KeyMod.WinCtrl | KeyCode.KeyJ,
+                    monaco.KeyMod.WinCtrl | KeyCode.KeyR
+                )
+            ],
+            run : async (editor, args) => {
+                this.action('run-query')
+            },
+        })
+
+        this.editor.addAction({
+            id: "run-production-query",
+            label: "Run query with production mode",
+            keybindings: [
+                monaco.KeyMod.CtrlCmd | KeyCode.Enter,
+            ],
+            run : async (editor, args) => {
+                this.action('run-production-query')
+            },
         })
 
     };
