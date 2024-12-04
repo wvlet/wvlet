@@ -5,6 +5,18 @@ sidebar_position: 1
 
 # Installation
 
+Wvlet is available as a command-line tool. You can install wvlet using Homebrew on macOS or download a binary package for other platforms.
+
+## Command Line Tools
+
+- [wv (Interactive Shell (REPL))](repl.md)
+- [wvlet (Command-line tool)](cli.md)
+- [Web UI](ui.md)
+
+:::info
+We are also working on [language bingings](../bindings) for various programming languages. 
+:::
+
 ## Mac OS X
 
 For macOS, you can install wvlet using [Homebrew](https://brew.sh/):
