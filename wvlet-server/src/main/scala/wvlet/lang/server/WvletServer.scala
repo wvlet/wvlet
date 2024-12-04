@@ -46,6 +46,7 @@ object WvletServer extends LogSupport:
     .of(RxRouter.of[FrontendApiImpl], RxRouter.of[FileApiImpl], RxRouter.of[StaticContentApi])
 
   def startServer(config: WvletServerConfig, openBrowser: Boolean = false): Unit = design(config)
+    .withProductionMode
     .build[NettyServer] { server =>
       info(s"- log file path: ${config.workEnv.logFile}")
       info(s"- error file path: ${config.workEnv.errorFile}")
