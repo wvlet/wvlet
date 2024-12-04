@@ -2,3 +2,4 @@ from lineitem
 -- Add a new column
 add l_extendedprice - l_discount as price
 select l_orderkey, price
+limit 10
