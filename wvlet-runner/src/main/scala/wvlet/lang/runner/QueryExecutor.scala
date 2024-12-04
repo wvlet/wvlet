@@ -49,7 +49,9 @@ class QueryExecutor(
 
   def getDBConnector: DBConnector = dbConnector
 
-  override def close(): Unit = dbConnector.close()
+  override def close(): Unit = {
+    // DB Connector will be closed by Airframe DI
+  }
 
   def executeSingleSpec(sourceFolder: String, file: String): QueryResult =
     val compiler = Compiler(
