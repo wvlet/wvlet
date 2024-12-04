@@ -1,5 +1,6 @@
 :::info
-Python SDK is currently in beta, requiring wvlet and Java installation on your local machine.
+Python SDK is currently in alpha, requiring wvlet and Java installation on your local machine.
+It will be available in PyPI in the future.
 :::
 
 
