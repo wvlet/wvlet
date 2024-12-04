@@ -1,0 +1,3 @@
+from customer
+join nation on c_nationkey = n_nationkey
+select c_custkey, c_nationkey, n_name

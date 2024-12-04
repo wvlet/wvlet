@@ -1,0 +1,6 @@
+-- Define table values
+from [
+  [1, 'apple', 100],
+  [2, 'banana', 50]
+]
+as fruit(id, name, price)
