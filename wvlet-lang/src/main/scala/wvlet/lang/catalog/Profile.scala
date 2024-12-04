@@ -45,6 +45,14 @@ object Profile extends LogSupport:
     schema = Some("main")
   )
 
+  def defaultDuckDBProfileWithTPCH = Profile(
+    name = "local",
+    `type` = "duckdb",
+    catalog = Some("memory"),
+    schema = Some("main"),
+    properties = Map("prepareTPCH" -> true)
+  )
+
   def defaultProfileFor(dbType: DBType): Profile =
     dbType match
       case DBType.DuckDB =>
