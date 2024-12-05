@@ -21,9 +21,9 @@ All keywords in Wvlet must be lower cases to reduce typing efforts and maintain 
 
 Use `'...'` (single quotes) and `"..."` (double quotes) for the convenience of writing string literals, and use `` `...` `` (back quotes) for describing column or table names, which might contain special characters or spaces.
 
-### Break Down SELECT
+### Managing Column At A Time
 
-The SELECT statement in SQL is a quite complex operator, which can do multiple operations at the same time, including aggregation, adding, removing, or renaming columns, annotating columns with aliases, changing column orders, etc. Wvlet breaks down this functionality into different operators `agg`, `add`, `exclude`, `transform`, `shift`, etc. With these new operators, users don't need to enumerate all columns in the SELECT statement, which makes the query more readable and easier to maintain.
+The SELECT statement in SQL is a complex operator that can do multiple operations simultaneously, including aggregation, adding, removing, or renaming columns, annotating columns with aliases, changing column orders, etc. Wvlet breaks down this functionality into different column-level operators, such as `agg`, `add`, `exclude`, `transform`, `shift`, etc. With these new operators, users don't need to enumerate all columns in the SELECT statement, which makes the query more readable and easier to maintain.
 
 
 ```sql
