@@ -20,6 +20,10 @@ class WvletREPLMainTest extends AirSpec:
     WvletMain.isInSbt shouldBe true
   }
 
+  test("--version") {
+    WvletREPLMain.main("--version")
+  }
+
   test("help") {
     WvletREPLMain.main("-c 'help'")
   }

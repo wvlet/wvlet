@@ -2,11 +2,14 @@ package wvlet.lang.cli
 
 import wvlet.airframe.launcher.option
 import wvlet.lang.BuildInfo
+import wvlet.lang.api.StatusCode
 import wvlet.log.{LogLevel, LogSupport, Logger}
 
 case class WvletGlobalOption(
     @option(prefix = "-h,--help", description = "Display help message", isHelp = true)
     displayHelp: Boolean = false,
+    @option(prefix = "--version", description = "Display the version")
+    displayVersion: Boolean = false,
     @option(prefix = "--debug", description = "Enable debug log")
     debugMode: Boolean = false,
     @option(prefix = "-l", description = "log level")
@@ -22,7 +25,10 @@ case class WvletGlobalOption(
   }
 
   def versionString = s"wvlet version: ${BuildInfo.version} (Built at: ${BuildInfo.builtAtString})"
-  debug(versionString)
+
+  if displayVersion then
+    info(versionString)
+    throw StatusCode.EXIT_SUCCESSFULLY.newException("exit successfully")
 
   logLevelPatterns.foreach { p =>
     p.split("=") match

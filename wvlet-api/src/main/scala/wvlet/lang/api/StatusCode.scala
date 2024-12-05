@@ -48,6 +48,8 @@ enum StatusCode(statusType: StatusType):
     WvletLangException(this, err, sourceLocation)
 
   case OK extends StatusCode(StatusType.Success)
+  // Used for successful exit using Exception
+  case EXIT_SUCCESSFULLY extends StatusCode(StatusType.Success)
 
   case SYNTAX_ERROR     extends StatusCode(StatusType.UserError)
   case UNEXPECTED_TOKEN extends StatusCode(StatusType.UserError)
