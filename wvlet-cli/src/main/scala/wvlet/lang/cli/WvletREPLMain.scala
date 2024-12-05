@@ -2,14 +2,12 @@ package wvlet.lang.cli
 
 import wvlet.airframe.Design
 import wvlet.airframe.launcher.{Launcher, command, option}
-import wvlet.lang.api.StatusCode
+import wvlet.lang.api.StatusCode.SYNTAX_ERROR
+import wvlet.lang.api.{StatusCode, WvletLangException}
 import wvlet.lang.catalog.Profile
-import wvlet.lang.cli.WvletREPL.{debug, error}
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.runner.WvletScriptRunnerConfig
 import wvlet.lang.runner.connector.{DBConnector, DBConnectorProvider}
-import wvlet.lang.runner.connector.duckdb.DuckDBConnector
-import wvlet.lang.runner.connector.trino.{TrinoConfig, TrinoConnector}
 import wvlet.log.LogSupport
 import wvlet.log.io.IOUtil
 
@@ -18,11 +16,24 @@ import java.io.File
 /**
   * REPL command launcher (wv)
   */
-object WvletREPLMain:
+object WvletREPLMain extends LogSupport:
   def launcher = Launcher.of[WvletREPLMain]
 
-  def main(args: Array[String]): Unit = launcher.execute(args)
-  def main(argLine: String): Unit     = launcher.execute(argLine)
+  private def wrap(body: => Unit): Unit =
+    try
+      body
+    catch
+      case e: IllegalArgumentException if e.getMessage.contains("exit successfully") =>
+      // Exit successfully
+      case e: WvletLangException if e.statusCode == StatusCode.EXIT_SUCCESSFULLY =>
+      // Exit successfully
+      case e: WvletLangException if e.statusCode.isUserError =>
+        error(e.getMessage())
+      case other =>
+        error(other)
+
+  def main(args: Array[String]): Unit = wrap(launcher.execute(args))
+  def main(argLine: String): Unit     = wrap(launcher.execute(argLine))
 
 case class WvletREPLOption(
     @option(prefix = "--profile", description = "Profile to use")
@@ -39,6 +50,7 @@ case class WvletREPLOption(
     schema: Option[String] = None
 )
 
+@command(usage = "wv [options]", description = "Wvlet REPL")
 class WvletREPLMain(cliOption: WvletGlobalOption, replOpts: WvletREPLOption) extends LogSupport:
 
   @command(description = "Start REPL shell", isDefault = true)
