@@ -45,9 +45,9 @@ jobs:
         run: JVM_OPTS=-Xmx4g ./sbt "playground/fullLinkJS"
       - name: Build playground web site
         run: |
+          cd wvlet-ui-playground
           npm install
           npm run build
-        working-directory: ./wvlet-ui-playground
       - name: Copy playground web site to website
         run: |
           rm -rf website/static/playground
