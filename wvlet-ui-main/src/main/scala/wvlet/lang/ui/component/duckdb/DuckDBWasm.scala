@@ -52,7 +52,7 @@ object Arrow extends LogSupport:
 
   private def eval(v: js.Any): Any =
     v match
-      case x: js.Array[js.Any] =>
+      case x: js.Array[js.Any] @unchecked =>
         x.toSeq.map(eval)
       case x: js.Any =>
         x
