@@ -40,13 +40,19 @@ jobs:
         with:
           node-version: 18
           cache: npm
-          cache-dependency-path: ./website/package-lock.json
+          cache-dependency-path: '**/package-lock.json'
+      - name: Install npm dependencies for wvlet-ui
+        run: npm install
+      - name: Install npm dependencies for ui-main
+        run: npm install
+        working-directory: ./wvlet-ui-main
+      - name: Install npm dependencies
+        run: npm install
+        working-directory: ./wvlet-ui-playground
       - name: Build playground
         run: JVM_OPTS=-Xmx4g ./sbt "playground/fullLinkJS"
       - name: Build playground web site
-        run: |
-          npm install
-          npm run build
+        run: npm run build
         working-directory: ./wvlet-ui-playground
       - name: Copy playground web site to website
         run: |
