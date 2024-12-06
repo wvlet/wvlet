@@ -4,12 +4,15 @@ import wvlet.airframe.Design
 import wvlet.airframe.rx.html.RxElement
 import wvlet.log.LogSupport
 import wvlet.airframe.rx.html.all.*
+import wvlet.lang.ui.component.monaco.EditorBase
 import wvlet.lang.ui.component.{Icon, MainFrame}
+
 import scalajs.js
 
 object PlaygroundUI extends LogSupport:
   val previewWindowHeightPx = 512;
   val editorTabHeight       = 24;
+  val editorMarginHeight    = previewWindowHeightPx - editorTabHeight - MainFrame.navBarHeightPx
 
   private def design: Design = Design
     .newDesign

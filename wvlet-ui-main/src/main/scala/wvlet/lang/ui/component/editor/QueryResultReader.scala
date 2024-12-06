@@ -1,4 +1,4 @@
-package wvlet.lang.ui.editor
+package wvlet.lang.ui.component.editor
 
 import wvlet.airframe.rx.{Cancelable, Rx, RxVar}
 import wvlet.lang.api.v1.frontend.FrontendApi.{QueryInfoRequest, QueryResponse}

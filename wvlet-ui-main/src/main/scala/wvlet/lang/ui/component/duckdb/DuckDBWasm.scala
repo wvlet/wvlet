@@ -1,21 +1,14 @@
-package wvlet.lang.ui.playground
+package wvlet.lang.ui.component.duckdb
 
 import wvlet.airframe.rx.Rx
 import wvlet.lang.api.v1.query.Column
 import wvlet.lang.api.{StatusCode, WvletLangException}
-import wvlet.lang.ui.playground.Arrow.ArrowTable
 import wvlet.log.LogSupport
 
 import scala.concurrent.Future
 import scala.scalajs.js
-import scala.scalajs.js.annotation.{
-  JSBracketCall,
-  JSExport,
-  JSExportTopLevel,
-  JSGlobal,
-  JSGlobalScope,
-  JSImport
-}
+import scala.scalajs.js.annotation.*
+import Arrow.*
 
 /**
   * A facade for accessing DuckDB.ts

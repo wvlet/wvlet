@@ -375,10 +375,9 @@ lazy val ui = project
   .in(file("wvlet-ui"))
   .settings(
     buildSettings,
-    name                   := "wvlet-ui",
-    description            := "UI components that can be testable with Node.js",
-    Test / jsEnv           := new org.scalajs.jsenv.jsdomnodejs.JSDOMNodeJSEnv(),
-    Test / requireJsDomEnv := true,
+    name         := "wvlet-ui",
+    description  := "UI components that can be testable with Node.js",
+    Test / jsEnv := new org.scalajs.jsenv.jsdomnodejs.JSDOMNodeJSEnv(),
     libraryDependencies ++=
       Seq(
         "org.wvlet.airframe" %%% "airframe"         % AIRFRAME_VERSION,
@@ -390,17 +389,15 @@ lazy val ui = project
   .dependsOn(api.js, client.js)
 
 lazy val uiMain = project
-  .enablePlugins(ScalaJSPlugin, ScalablyTypedConverterExternalNpmPlugin)
+  .enablePlugins(ScalaJSPlugin)
   .in(file("wvlet-ui-main"))
   .settings(
     buildSettings,
     uiSettings,
     name        := "wvlet-ui-main",
-    description := "UI main code compiled with Vite.js",
-    // A workaround for the error: Not found: type TReturn
-    stIgnore ++= List("@duckdb/duckdb-wasm")
+    description := "UI main code compiled with Vite.js"
   )
-  .dependsOn(ui)
+  .dependsOn(ui, lang.js)
 
 lazy val playground = project
   .enablePlugins(ScalaJSPlugin)
@@ -424,21 +421,13 @@ lazy val playground = project
         }
         .taskValue
   )
-  .dependsOn(ui, lang.js)
+  .dependsOn(uiMain, lang.js)
 
 def uiSettings: Seq[Setting[?]] = Seq(
   Test / jsEnv                    := new org.scalajs.jsenv.nodejs.NodeJSEnv(),
   scalaJSUseMainModuleInitializer := true,
   scalaJSLinkerConfig ~= {
     linkerConfig(_)
-  },
-  externalNpm := {
-    scala
-      .sys
-      .process
-      .Process(List("npm", "install", "--silent", "--no-audit", "--no-fund"), baseDirectory.value)
-      .!
-    baseDirectory.value
   }
 )
 

@@ -1,4 +1,4 @@
-package wvlet.lang.ui.editor
+package wvlet.lang.ui.component.editor
 
 import org.scalajs.dom
 import wvlet.airframe.rx

@@ -1,14 +1,14 @@
-package wvlet.lang.ui.playground
+package wvlet.lang.ui.component.monaco
 
 import org.scalajs.dom
 import org.scalajs.dom.ResizeObserver
-import wvlet.airframe.rx.{Cancelable, Rx, RxVar}
 import wvlet.airframe.rx.html.RxElement
 import wvlet.airframe.rx.html.all.*
+import wvlet.airframe.rx.{Cancelable, Rx, RxVar}
 import wvlet.lang.api.{NodeLocation, WvletLangException}
-import wvlet.lang.compiler.{CompilationUnit, Compiler, Symbol}
 import wvlet.lang.compiler.codegen.GenSQL
-import wvlet.lang.ui.component.MainFrame
+import wvlet.lang.compiler.{CompilationUnit, Compiler, Symbol}
+import wvlet.lang.ui.component.{MainFrame, WindowSize}
 import wvlet.lang.ui.component.MainFrame.NavBar
 import wvlet.log.LogSupport
 
@@ -35,7 +35,12 @@ class MonacoEditor(
   def getLinePosition(): Double          = js.native
   def getColumnPosition(): Double        = js.native
 
-abstract class EditorBase(windowSize: WindowSize, editorId: String, lang: String) extends RxElement:
+abstract class EditorBase(
+    windowSize: WindowSize,
+    editorId: String,
+    lang: String,
+    marginHeightPx: Int = MainFrame.navBarHeightPx
+) extends RxElement:
   protected def initialText: String
 
   protected val editor = new MonacoEditor(editorId, lang, initialText, action = action)
@@ -54,10 +59,7 @@ abstract class EditorBase(windowSize: WindowSize, editorId: String, lang: String
     c = windowSize
       .getInnerHeight
       .map { h =>
-        editor.adjustHeight(
-          h - PlaygroundUI.previewWindowHeightPx - PlaygroundUI.editorTabHeight -
-            MainFrame.navBarHeightPx
-        )
+        editor.adjustHeight(h - marginHeightPx)
       }
       .subscribe()
 

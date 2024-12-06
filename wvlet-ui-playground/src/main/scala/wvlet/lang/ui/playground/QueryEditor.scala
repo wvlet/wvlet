@@ -4,9 +4,16 @@ import wvlet.airframe.rx.{Cancelable, Rx}
 import wvlet.lang.api.NodeLocation
 import wvlet.lang.api.v1.query.{QueryRequest, QuerySelection}
 import wvlet.lang.api.v1.query.QuerySelection.Describe
+import wvlet.lang.ui.component.{MainFrame, WindowSize}
+import wvlet.lang.ui.component.monaco.EditorBase
 
 class QueryEditor(currentQuery: CurrentQuery, windowSize: WindowSize)
-    extends EditorBase(windowSize, "wvlet-editor", "wvlet"):
+    extends EditorBase(
+      windowSize,
+      "wvlet-editor",
+      "wvlet",
+      marginHeightPx = PlaygroundUI.editorMarginHeight
+    ):
   override def initialText: String = currentQuery.wvletQuery.get
 
   private var monitor = Cancelable.empty

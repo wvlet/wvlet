@@ -1,9 +1,10 @@
-package wvlet.lang.ui.editor
+package wvlet.lang.ui.component.editor
 
 import wvlet.airframe.rx.{Rx, RxVar}
 import wvlet.airframe.rx.html.RxElement
 import wvlet.airframe.rx.html.all.*
 import wvlet.lang.BuildInfo
+import wvlet.lang.ui.component.{MainFrame, WindowSize}
 import wvlet.log.LogTimestampFormatter
 
 object ConsoleLog:
@@ -57,3 +58,5 @@ class ConsoleLogWindow extends RxElement:
         }
     )
   )
+
+end ConsoleLogWindow

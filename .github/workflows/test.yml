@@ -67,17 +67,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Cache ScalablyTyped artifacts
-        id: cache-scalablytyped
-        uses: actions/cache@v4
-        with:
-          key: ${{ runner.os }}-scalablytyped-node-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: ${{ runner.os }}-scalablytyped-node-
-          path: |
-            ~/.ivy2/local
-            ~/.ivy2/cache
-            ~/.sbt
-            ~/.cache
       - uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
@@ -93,6 +82,9 @@ jobs:
       - name: Install npm dependencies for ui-main
         run: npm install
         working-directory: ./wvlet-ui-main
+      - name: Install npm dependencies for ui-playground
+        run: npm install
+        working-directory: ./wvlet-ui-playground
       - name: Scala.js test
         run: JVM_OPTS=-Xmx4g ./sbt "projectJS/test"
       - name: Packaging wvlet-cli

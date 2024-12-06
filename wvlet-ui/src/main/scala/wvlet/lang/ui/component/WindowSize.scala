@@ -1,4 +1,4 @@
-package wvlet.lang.ui.playground
+package wvlet.lang.ui.component
 
 import org.scalajs.dom
 import org.scalajs.dom.ResizeObserver
