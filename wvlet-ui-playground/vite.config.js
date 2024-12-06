@@ -25,16 +25,9 @@ const suffix = isDev() ? "-fastopt" : "-opt";
 const scalaJsTarget= `./target/scala-${scalaVersion}/wvlet-ui-playground${suffix}`;
 
 export default defineConfig({
-  base: "./",
+  base: "/playground/",
   server: {
     open: true,
-  },
-  build: {
-    rollupOptions: {
-      external: [
-          '../wvlet-ui-main/src/main/scala/**.ts'
-      ]
-    },
   },
   plugins: [
     replace({
