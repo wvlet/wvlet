@@ -5,6 +5,7 @@ import wvlet.airframe.rx.html.all.*
 import wvlet.lang.api.v1.query.QueryResult
 import wvlet.lang.compiler.TablePrinter
 import org.scalajs.dom
+import wvlet.lang.ui.component.WindowSize
 
 class QueryResultViewer(currentQuery: CurrentQuery, windowSize: WindowSize) extends RxElement:
   override def render: RxElement =

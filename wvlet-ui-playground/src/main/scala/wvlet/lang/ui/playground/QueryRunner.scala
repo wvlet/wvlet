@@ -1,16 +1,13 @@
 package wvlet.lang.ui.playground
 
-import wvlet.airframe.codec.MessageCodec
-import wvlet.airframe.json.JSON
-import wvlet.airframe.json.JSON.{JSONArray, JSONNumber, JSONObject, JSONString, JSONValue}
 import wvlet.airframe.rx.Rx
-import wvlet.lang.api.v1.query.{Column, QueryResult}
-import wvlet.lang.compiler.analyzer.JSONAnalyzer
+import wvlet.lang.api.v1.query.QueryResult
+import wvlet.lang.ui.component.duckdb.Arrow.*
+import wvlet.lang.ui.component.duckdb.DuckDB
 import wvlet.log.LogSupport
 
 import java.util.concurrent.ConcurrentHashMap
 import scala.jdk.CollectionConverters.*
-import scala.scalajs.js
 
 class QueryRunner extends AutoCloseable with LogSupport:
   private val connectors = new ConcurrentHashMap[String, DuckDB]().asScala
@@ -34,7 +31,6 @@ class QueryRunner extends AutoCloseable with LogSupport:
     connector
   ).query(sql)
     .map { tbl =>
-      import Arrow.*
       val rows = tbl.asScalaArray
       val (truncatedRows, totalRows: Option[Int]) =
         if rows.size > rowLimit then

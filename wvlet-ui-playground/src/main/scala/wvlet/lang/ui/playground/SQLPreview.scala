@@ -5,9 +5,16 @@ import wvlet.airframe.rx.{Cancelable, Rx}
 import wvlet.lang.api.WvletLangException
 import wvlet.lang.compiler.codegen.GenSQL
 import wvlet.lang.compiler.{CompilationUnit, Compiler, SourceFile, Symbol}
+import wvlet.lang.ui.component.WindowSize
+import wvlet.lang.ui.component.monaco.EditorBase
 
 class SQLPreview(currentQuery: CurrentQuery, windowSize: WindowSize, queryRunner: QueryRunner)
-    extends EditorBase(windowSize, "wvlet-sql-preview", "sql"):
+    extends EditorBase(
+      windowSize,
+      "wvlet-sql-preview",
+      "sql",
+      marginHeightPx = PlaygroundUI.editorMarginHeight
+    ):
   override def initialText: String = "select * from lineitem\nlimit 10"
 
   private var monitor = Cancelable.empty

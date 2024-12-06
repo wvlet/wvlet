@@ -16,14 +16,14 @@
 import './index.css'
 
 // Typescript
-import {DuckDBWasm} from './src/main/scala/wvlet/lang/ui/playground/DuckDBWasm.ts'
+import {DuckDBWasm} from '../wvlet-ui-main/src/main/scala/wvlet/lang/ui/component/duckdb/DuckDBWasm.ts'
 window.duckdb = DuckDBWasm
 
 import * as arrow from 'apache-arrow'
 window.arrow = arrow
 
-import { MonacoEditor } from './src/main/scala/wvlet/lang/ui/playground/MonacoEditor.ts'
-import './src/main/scala/wvlet/lang/ui/playground/WvletLanguage.ts'
+import { MonacoEditor } from '../wvlet-ui-main/src/main/scala/wvlet/lang/ui/component/monaco/MonacoEditor.ts'
+import '../wvlet-ui-main/src/main/scala/wvlet/lang/ui/component/monaco/WvletLanguage.ts'
 
 // Ensure that Monaco is loaded before assigning it to the window object
 document.addEventListener('DOMContentLoaded', () => {

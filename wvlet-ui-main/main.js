@@ -15,9 +15,28 @@
 // Import Tailwind CSS
 import './index.css'
 
-import {DuckDB} from './duckdb.ts'
+// Typescript
+import {DuckDBWasm} from './src/main/scala/wvlet/lang/ui/component/duckdb/DuckDBWasm.ts'
+window.duckdb = DuckDBWasm
 
-// Scala.js code
-import '__target__/main.js'
+import * as arrow from 'apache-arrow'
+window.arrow = arrow
 
-window.duckdb = new DuckDB()
+import { MonacoEditor } from './src/main/scala/wvlet/lang/ui/component/monaco/MonacoEditor.ts'
+import './src/main/scala/wvlet/lang/ui/component/monaco/WvletLanguage.ts'
+
+// Ensure that Monaco is loaded before assigning it to the window object
+document.addEventListener('DOMContentLoaded', () => {
+    import('monaco-editor').then((monaco) => {
+        console.log("Monaco Editor loaded successfully");
+
+        // Make the MonacoEditor class accessible from @JSGlobal in Scala.js
+        window.MonacoEditor = MonacoEditor;
+
+        // Start Scala.js code
+        import('__target__/main.js')
+    }).catch((error) => {
+        console.error('Failed to load Monaco Editor:', error);
+    });
+});
+
