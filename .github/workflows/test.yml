@@ -28,6 +28,10 @@ jobs:
               - '**.conf'
               - '**.json'
               - '**.wv'
+              - '**.js'
+              - '**.html'
+              - '**.css'
+              - '**.ts'
               - SCALA_VERSION
   code_format:
     name: Code format
@@ -97,6 +101,38 @@ jobs:
           check_name: Test Report Scala.js
           annotate_only: true
           detailed_summary: true
+  test_playground:
+    name: Playground
+    needs: changes
+    if: ${{ needs.changes.outputs.src == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '23'
+          cache: sbt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: npm
+          cache-dependency-path: ./wvlet-ui-main/package-lock.json
+      - name: Install npm dependencies for testing wvlet-ui
+        run: npm install
+      - name: Install npm dependencies for ui-main
+        run: npm install
+        working-directory: ./wvlet-ui-main
+      - name: Install npm dependencies for ui-playground
+        run: npm install
+        working-directory: ./wvlet-ui-playground
+      - name: Build Scala.js
+        run: JVM_OPTS=-Xmx4g ./sbt "playground/fullLinkJS"
+      - name: Build playground web site
+        run: |
+          npm install
+          npm run build
+        working-directory: ./wvlet-ui-playground
   test_native:
     name: Scala Native
     needs: changes
