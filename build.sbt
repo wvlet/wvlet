@@ -1,3 +1,5 @@
+import scala.scalanative.build.BuildTarget
+
 val AIRFRAME_VERSION    = "24.12.0"
 val AIRSPEC_VERSION     = "24.12.0"
 val TRINO_VERSION       = "466"
@@ -5,14 +7,10 @@ val AWS_SDK_VERSION     = "2.20.146"
 val SCALAJS_DOM_VERSION = "2.8.0"
 
 val SCALA_3 = IO.read(file("SCALA_VERSION")).trim
-ThisBuild / scalaVersion := SCALA_3
 ThisBuild / resolvers ++= Resolver.sonatypeOssRepos("snapshots")
 
 Global / onChangedBuildSource := ReloadOnSourceChanges
-
-import scala.concurrent.duration.FiniteDuration
-import java.util.concurrent.TimeUnit
-import scala.scalanative.build.BuildTarget
+Global / scalaVersion         := SCALA_3
 
 val buildSettings = Seq[Setting[?]](
   organization      := "wvlet.lang",
@@ -26,8 +24,7 @@ val buildSettings = Seq[Setting[?]](
   Test / logBuffered       := false,
   libraryDependencies ++= Seq("org.wvlet.airframe" %%% "airspec" % AIRSPEC_VERSION % Test),
   testFrameworks += new TestFramework("wvlet.airspec.Framework"),
-  // Prevent double trigger due to scalafmt run in IntelliJ by adding a small delay (default is 500ms)
-  watchAntiEntropy := FiniteDuration(700, TimeUnit.MILLISECONDS)
+  usePipelining := true
 )
 
 lazy val jvmProjects: Seq[ProjectReference] = Seq(
@@ -49,6 +46,8 @@ val noPublish = Seq(
   publish         := {},
   publishLocal    := {},
   publish / skip  := true,
+  // Aggregated project should not be a part of pipelining
+  usePipelining := false,
   // Skip importing aggregated projects in IntelliJ IDEA
   ideSkipProject := true
   // Use a stable coverage directory name without containing scala version
