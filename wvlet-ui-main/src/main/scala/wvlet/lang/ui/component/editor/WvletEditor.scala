@@ -14,6 +14,7 @@ import wvlet.lang.ui.component.{MainFrame, WindowSize}
 object WvletEditor:
   val editorWidthRem: Int  = 40 // rem (chars)
   val editorHeightRem: Int = 24 // rem (lines)
+  val previewHeightPx: Int = 512
   def editorStyle =
     s"min-width: ${editorWidthRem}rem; max-width: ${editorWidthRem}rem; min-height: ${editorHeightRem}rem;"
 
@@ -21,7 +22,8 @@ class WvletEditor(
     fileNav: FileNav,
     monacoEditor: WvletMonacoEditor,
     previewWindow: PreviewWindow,
-    consoleLogWindow: ConsoleLogWindow
+    consoleLogWindow: ConsoleLogWindow,
+    windowSize: WindowSize
 ) extends RxElement:
 
   private def title(title: String) = h1(
@@ -32,20 +34,25 @@ class WvletEditor(
   override def render =
     // grid
     div(
-      cls   -> "flex flex-col bg-zinc-800",
-      style -> s"height: calc(100vh - ${MainFrame.navBarHeightPx}px);",
+      cls   -> "flex flex-col h-full bg-zinc-800",
+      style -> s"width: max-screen; height: calc(100vh - ${MainFrame.navBarHeightPx}px);",
       div(fileNav),
       div(
-        cls -> "flex bg-black",
-        div(cls -> "flex-none", style -> WvletEditor.editorStyle, monacoEditor),
+        cls -> "grid grid-cols-2 h-full w-full",
+        div(monacoEditor),
         div(
+          cls -> "bg-cyan-950 text-gray-100 px-2 overflow-y-auto scroll-auto",
+          windowSize
+            .getInnerHeight
+            .map { h =>
+              style -> s"height: ${(h - MainFrame.navBarHeightPx) / 2}px;"
+            },
           // span to the bottom of the screen
-          cls   -> "grow bg-cyan-950 text-gray-100 px-2 overflow-y-auto scroll-auto",
-          style -> s"height: ${WvletEditor.editorHeightRem}rem;",
-          div(title("Console"), consoleLogWindow)
+          title("Console"),
+          consoleLogWindow
         )
       ),
-      div(cls -> "h-dvh bg-zinc-800 overflow-y-auto", div(title("Preview"), previewWindow))
+      div(cls -> "h-full bg-zinc-800", div(title("Preview"), previewWindow))
     )
 
 end WvletEditor
@@ -59,7 +66,7 @@ class WvletMonacoEditor(
       windowSize,
       "main-editor",
       "wvlet",
-      marginHeightPx = MainFrame.navBarHeightPx - 512
+      marginHeightPx = MainFrame.navBarHeightPx + WvletEditor.previewHeightPx
     ):
   override protected def initialText: String =
     """-- Enter a query
