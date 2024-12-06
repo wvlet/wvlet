@@ -1,7 +1,7 @@
 package wvlet.lang.ui.component.editor
 
 import wvlet.airframe.rx
-import wvlet.airframe.rx.RxVar
+import wvlet.airframe.rx.{Cancelable, RxVar}
 import wvlet.airframe.rx.html.RxElement
 import wvlet.airframe.rx.html.all.*
 import wvlet.airframe.rx.html.svgAttrs.{style as _, xmlns as _}
@@ -77,6 +77,18 @@ class WvletMonacoEditor(
   private def processRequest(request: QueryRequest): Unit =
     ConsoleLog.write(s"Processing query with mode:${request.querySelection}\n${request.query}")
     queryResultReader.submitQuery(request)
+
+  private var errorMonitor: Cancelable = Cancelable.empty
+
+  override def onMount: Unit =
+    super.onMount
+    errorMonitor = errorReports.subscribe { (errors: List[QueryError]) =>
+      // TODO set error markers
+    }
+
+  override def beforeUnmount: Unit =
+    super.beforeUnmount
+    errorMonitor.cancel
 
   override protected def action: String => Unit = {
     case "describe-query" =>

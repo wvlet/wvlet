@@ -148,5 +148,4 @@ export class MonacoEditor {
     getColumnPosition(): number {
         return this.editor.getPosition().column;
     }
-
 }
