@@ -86,7 +86,7 @@ case class SelectAsAlias(child: Relation, alias: NameExpr, span: Span)
 case class TestRelation(child: Relation, testExpr: Expression, span: Span) extends UnaryRelation:
   override def relationType: RelationType = child.relationType
 
-case class ParenthesizedRelation(child: Relation, span: Span) extends UnaryRelation:
+case class BracedRelation(child: Relation, span: Span) extends UnaryRelation:
   override def relationType: RelationType = child.relationType
 
 case class AliasedRelation(

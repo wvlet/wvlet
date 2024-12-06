@@ -1,7 +1,8 @@
 from 'person.json'
-debug
-| where id = 1
-| save as debug_result_0123
+debug {
+  where id = 1
+  save as debug_result_0123
+}
 where id = 2
 
 from debug_result_0123

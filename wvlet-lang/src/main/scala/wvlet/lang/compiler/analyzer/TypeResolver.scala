@@ -253,7 +253,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
             // Replace with the resolved plan
             compiledUnit.resolvedPlan match
               case PackageDef(_, List(rel: Relation), _, _) =>
-                ParenthesizedRelation(rel, r.span)
+                BracedRelation(rel, r.span)
               case other =>
                 throw StatusCode
                   .SYNTAX_ERROR

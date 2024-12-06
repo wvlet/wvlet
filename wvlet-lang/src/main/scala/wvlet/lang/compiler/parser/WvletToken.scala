@@ -291,7 +291,7 @@ object WvletToken:
   val queryDelimiters = Set(
     WvletToken.EOF,
     WvletToken.END,
-    WvletToken.R_PAREN,
+    WvletToken.R_BRACE,
     WvletToken.SEMICOLON,
     WvletToken.PIPE
   )
