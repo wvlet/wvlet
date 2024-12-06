@@ -29,6 +29,13 @@ export default defineConfig({
   server: {
     open: true,
   },
+  build: {
+    rollupOptions: {
+      external: [
+          '../wvlet-ui-main/src/main/scala/**.ts'
+      ]
+    },
+  },
   plugins: [
     replace({
       preventAssignment: true,
