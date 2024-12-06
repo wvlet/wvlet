@@ -118,6 +118,11 @@ jobs:
           node-version: '18'
           cache: npm
           cache-dependency-path: ./wvlet-ui-main/package-lock.json
+      - name: Install npm dependencies for testing wvlet-ui
+        run: npm install
+      - name: Install npm dependencies for ui-main
+        run: npm install
+        working-directory: ./wvlet-ui-main
       - name: Install npm dependencies for ui-playground
         run: npm install
         working-directory: ./wvlet-ui-playground
