@@ -1,4 +1,4 @@
-from (
+from {
     from
         part,
         supplier,
@@ -18,7 +18,7 @@ from (
         nation = n_name,
         o_year = o_orderdate.extract('year'),
         amount = l_extendedprice * (1 - l_discount) - ps_supplycost * l_quantity
-    ) as profit
+    } as profit
 group by
     nation,
     o_year

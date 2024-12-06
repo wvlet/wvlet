@@ -5,10 +5,10 @@ where
     p_partkey = l_partkey
     and p_brand = 'Brand#23'
     and p_container = 'MED BOX'
-    and l_quantity < (
+    and l_quantity < {
         from lineitem
         where l_partkey = p_partkey
         select 0.2 * l_quantity.avg
-    )
+    }
 select
     avg_yearly = l_extendedprice.sum / 7.0

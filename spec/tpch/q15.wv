@@ -1,6 +1,6 @@
 from
     supplier,
-    (
+    {
         from lineitem
         where
             l_shipdate >= '1996-01-01'.to_date
@@ -9,11 +9,11 @@ from
         select
             supplier_no = l_suppkey,
             total_revenue = (l_extendedprice * (1 - l_discount)).sum
-    ) as revenue0
+    } as revenue0
 where
     s_suppkey = supplier_no
-    and total_revenue = (
-        from (
+    and total_revenue = {
+        from {
             from lineitem
             where
                 l_shipdate >= '1996-01-01'.to_date
@@ -22,10 +22,10 @@ where
             select
                 supplier_no = l_suppkey,
                 total_revenue = (l_extendedprice * (1 - l_discount)).sum
-           ) as revenue1
+           } as revenue1
         select
             total_revenue.max
-    )
+    }
 select
     s_suppkey,
     s_name,

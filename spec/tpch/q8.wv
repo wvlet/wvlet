@@ -1,4 +1,4 @@
-from (
+from {
     from
         part,
         supplier,
@@ -23,7 +23,7 @@ from (
         o_year = o_orderdate.extract('year'),
         volume = l_extendedprice * (1 - l_discount),
         nation = n2.n_name
-    ) as all_nations
+    } as all_nations
 group by
     o_year
 select

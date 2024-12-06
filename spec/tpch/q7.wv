@@ -1,4 +1,4 @@
-from (
+from {
     from
         supplier,
         lineitem,
@@ -22,7 +22,7 @@ from (
         cust_nation = n2.n_name,
         l_year = l_shipdate.extract('year'),
         volume = l_extendedprice * (1 - l_discount)
-    ) as shipping
+    } as shipping
 group by
     supp_nation,
     cust_nation,
