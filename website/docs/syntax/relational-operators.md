@@ -32,7 +32,7 @@ _relation_):
 | __sample__ `method`? (`size` rows? \| %)                                                    | Randomly sampled rows. Sampling method can be reservoir (default), system, or bernoulli                                                                                                                                                                 | 
 | [__unnest__(`array expr`)](unnest.md)                                                       | Expand an array into rows.                                                                                                                                                                                                                              | 
 | [__test__ `(test_expr)`](test-syntax.md)                                                    | Test the query result, which will be evaluated only in the test-run mode.                                                                                                                                                                               |
-| __debug__ { (query) }                                                                     | Pass-through the input results (no-op), but run a debug query against the input rows.                                                                                                                                                  |
+| __debug__ \{ `(query)` \}                                                                     | Pass-through the input results (no-op), but run a debug query against the input rows.                                                                                                                                                  |
 
 ## Update Statements
 
