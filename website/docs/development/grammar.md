@@ -47,8 +47,8 @@ queryBody  : querySingle queryBlock*
 // A rule for sub queries
 querySingle: 'from' relation (',' relation)* ','? queryBlock*
            | 'select' selectItems queryBlock*
-           // For parenthesized query, do not continue queryBlock for disambiguation
-           | '(' queryBody ')' 
+           // For braced query, do not continue queryBlock for disambiguation
+           | '{' queryBody '}' 
 
 // relation that can be used after 'from', 'join', 'concat' (set operation), etc.:
 relation       : relationPrimary ('as' identifier)?

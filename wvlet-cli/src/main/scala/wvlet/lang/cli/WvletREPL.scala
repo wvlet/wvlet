@@ -14,12 +14,14 @@
 package wvlet.lang.cli
 
 import org.jline.keymap.KeyMap
-import org.jline.reader.*
+import org.jline.reader.{LineReader, *}
 import org.jline.reader.Parser.ParseContext
 import org.jline.reader.impl.DefaultParser
+import org.jline.reader.impl.DefaultParser.Bracket
 import org.jline.terminal.Terminal.Signal
 import org.jline.terminal.{Size, Terminal, TerminalBuilder}
 import org.jline.utils.{AttributedString, AttributedStringBuilder, AttributedStyle, InfoCmp}
+import org.jline.widget.AutopairWidgets
 import wvlet.airframe.*
 import wvlet.airframe.control.{Shell, ThreadUtil}
 import wvlet.airframe.log.AnsiColorPalette
@@ -62,6 +64,8 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
       else
         ""
     )
+    .variable(LineReader.INDENTATION, 2)
+    .option(LineReader.Option.INSERT_BRACKET, true)
     // Coloring keywords
     .highlighter(new ReplHighlighter).build()
 
@@ -344,6 +348,7 @@ object WvletREPL extends LogSupport:
     */
   private class ReplParser extends org.jline.reader.Parser with LogSupport:
     private val parser = new DefaultParser()
+    parser.setEofOnUnclosedBracket(DefaultParser.Bracket.CURLY)
 
     // Disable escape char removal at the jline3 parser level
     override def isEscapeChar(ch: Char): Boolean = false

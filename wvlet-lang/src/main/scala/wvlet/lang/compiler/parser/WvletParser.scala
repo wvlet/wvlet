@@ -16,6 +16,7 @@ package wvlet.lang.compiler.parser
 import wvlet.lang.api.{Span, StatusCode}
 import wvlet.lang.api.Span.NoSpan
 import wvlet.lang.catalog.Catalog.TableName
+import wvlet.lang.compiler.parser.WvletToken.isQueryDelimiter
 import wvlet.lang.compiler.{CompilationUnit, Name, SourceFile}
 import wvlet.lang.model.DataType.*
 import wvlet.lang.model.expr.*
@@ -1370,6 +1371,8 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       scanner.lookAhead().token match
         case WvletToken.R_BRACE =>
           r
+        case t if isQueryDelimiter(t) =>
+          r
         case _ =>
           val next =
             scanner.lookAhead().token match
@@ -1377,7 +1380,10 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
                 updateRelationIfExists(r)
               case _ =>
                 queryBlockSingle(r)
-          loop(next)
+          if r eq next then
+            r
+          else
+            loop(next)
     end loop
 
     val t = consume(WvletToken.DEBUG)
