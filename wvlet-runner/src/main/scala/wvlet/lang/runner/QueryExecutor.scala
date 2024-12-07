@@ -333,6 +333,13 @@ class QueryExecutor(
             TestFailure(cmpMsg("was not equal to", leftValue, rightValue), e.sourceLocation)
           else
             TestSuccess(cmpMsg("was equal to", leftValue, rightValue), e.sourceLocation)
+        case Eq(left, right, _) =>
+          val leftValue  = trim(evalOp(left))
+          val rightValue = trim(evalOp(right))
+          if leftValue != rightValue then
+            TestFailure(cmpMsg("was not equal to", leftValue, rightValue), e.sourceLocation)
+          else
+            TestSuccess(cmpMsg("was equal to", leftValue, rightValue), e.sourceLocation)
         case ShouldExpr(TestType.ShouldNotBe, left, right, _) =>
           val leftValue  = trim(evalOp(left))
           val rightValue = trim(evalOp(right))
@@ -340,6 +347,27 @@ class QueryExecutor(
             TestFailure(cmpMsg("was equal to", leftValue, rightValue), e.sourceLocation)
           else
             TestSuccess(cmpMsg("was not equal to", leftValue, rightValue), e.sourceLocation)
+        case NotEq(left, right, _) =>
+          val leftValue  = trim(evalOp(left))
+          val rightValue = trim(evalOp(right))
+          if leftValue == rightValue then
+            TestFailure(cmpMsg("was equal to", leftValue, rightValue), e.sourceLocation)
+          else
+            TestSuccess(cmpMsg("was not equal to", leftValue, rightValue), e.sourceLocation)
+        case IsNull(left, _) =>
+          val leftValue  = trim(evalOp(left))
+          val rightValue = null
+          if leftValue != rightValue then
+            TestFailure(s"${pp(leftValue)} was not null", e.sourceLocation)
+          else
+            TestSuccess(s"${pp(leftValue)} was null", e.sourceLocation)
+        case IsNotNull(left, _) =>
+          val leftValue  = trim(evalOp(left))
+          val rightValue = null
+          if leftValue == rightValue then
+            TestFailure(s"${pp(leftValue)} was null", e.sourceLocation)
+          else
+            TestSuccess(s"${pp(leftValue)} was not null", e.sourceLocation)
         case ShouldExpr(TestType.ShouldContain, left, right, _) =>
           val leftValue  = trim(evalOp(left))
           val rightValue = trim(evalOp(right))
@@ -378,8 +406,95 @@ class QueryExecutor(
                 s"`contain` operator is not supported for: ${leftValue} and ${rightValue}",
                 e.sourceLocation
               )
+        case LessThanOrEq(left, right, _) =>
+          val leftValue  = trim(evalOp(left))
+          val rightValue = trim(evalOp(right))
+          cmpAny(leftValue, rightValue)
+            .map {
+              case x if x <= 0 =>
+                TestSuccess(
+                  cmpMsg("was less than or equal to", leftValue, rightValue),
+                  e.sourceLocation
+                )
+              case _ =>
+                TestFailure(
+                  cmpMsg("was not less than or equal to", leftValue, rightValue),
+                  e.sourceLocation
+                )
+            }
+            .getOrElse {
+              WarningResult(s"Can't compare ${leftValue} and ${rightValue}", e.sourceLocation)
+            }
+        case LessThan(left, right, _) =>
+          val leftValue  = trim(evalOp(left))
+          val rightValue = trim(evalOp(right))
+          cmpAny(leftValue, rightValue)
+            .map {
+              case x if x < 0 =>
+                TestSuccess(cmpMsg("was less than", leftValue, rightValue), e.sourceLocation)
+              case _ =>
+                TestFailure(cmpMsg("was not less than", leftValue, rightValue), e.sourceLocation)
+            }
+            .getOrElse {
+              WarningResult(s"Can't compare ${leftValue} and ${rightValue}", e.sourceLocation)
+            }
+        case GreaterThanOrEq(left, right, _) =>
+          val leftValue  = trim(evalOp(left))
+          val rightValue = trim(evalOp(right))
+          cmpAny(leftValue, rightValue)
+            .map {
+              case x if x >= 0 =>
+                TestSuccess(
+                  cmpMsg("was greater than or equal to", leftValue, rightValue),
+                  e.sourceLocation
+                )
+              case _ =>
+                TestFailure(
+                  cmpMsg("was not greater than or equal to", leftValue, rightValue),
+                  e.sourceLocation
+                )
+            }
+            .getOrElse {
+              WarningResult(s"Can't compare ${leftValue} and ${rightValue}", e.sourceLocation)
+            }
+        case GreaterThan(left, right, _) =>
+          val leftValue  = trim(evalOp(left))
+          val rightValue = trim(evalOp(right))
+          cmpAny(leftValue, rightValue)
+            .map {
+              case x if x > 0 =>
+                TestSuccess(cmpMsg("was greater than", leftValue, rightValue), e.sourceLocation)
+              case _ =>
+                TestFailure(cmpMsg("was not greater than", leftValue, rightValue), e.sourceLocation)
+            }
+            .getOrElse {
+              WarningResult(s"Can't compare ${leftValue} and ${rightValue}", e.sourceLocation)
+            }
         case _ =>
           WarningResult(s"Unsupported test expression: ${e}", e.sourceLocation)
+
+    def cmpAny(l: Any, r: Any): Option[Int] =
+      (l, r) match
+        case (l: String, r: String) =>
+          Some(l.compareTo(r))
+        case (l: Int, r: Int) =>
+          Some(l.compareTo(r))
+        case (l: Int, r: Long) =>
+          Some(l.toLong.compareTo(r))
+        case (l: Long, r: Long) =>
+          Some(l.compareTo(r))
+        case (l: Long, r: Int) =>
+          Some(l.compareTo(r.toLong))
+        case (l: Float, r: Float) =>
+          Some(l.compareTo(r))
+        case (l: Double, r: Double) =>
+          Some(l.compareTo(r))
+        case (l: Boolean, r: Boolean) =>
+          Some(l.compareTo(r))
+        case (l: BigDecimal, r: BigDecimal) =>
+          Some(l.compareTo(r))
+        case _ =>
+          None
 
     def evalOp(e: Expression): Any =
       e match

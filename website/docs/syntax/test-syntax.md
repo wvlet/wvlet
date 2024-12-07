@@ -74,3 +74,8 @@ Only in the test-run mode, these test expressions will be evaluated.
 | `x` should not be `y` | Test if the value of `x` is not equal to `y` |
 | `x` should contain `y` | Test if the string value of `x` contains `y` |
 | `x` should not contain `y` | Test if the string value of `x` does not contain `y` |
+| `x` = `y` | Test if the value of `x` is equal to `y`     |
+| `x` is `y` | Test if the value of `x` is equal to `y`     |
+| `x` != `y` | Test if the value of `x` is not equal to `y` |
+| `x` is not `y` | Test if the value of `x` is not equal to `y` |
+| `x` `(cmp)` `y` | Compare `x` and `y` with `<`, `<=`, `=>`, `>` |
