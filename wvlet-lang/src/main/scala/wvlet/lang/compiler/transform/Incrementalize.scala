@@ -74,7 +74,7 @@ object Incrementalize extends Phase("incrementalize"):
           true
         case _: Values =>
           true
-        case p: ParenthesizedRelation =>
+        case p: BracedRelation =>
           isSimpleScan(p.child, context)
         case a: AliasedRelation =>
           isSimpleScan(a.child, context)

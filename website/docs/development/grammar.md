@@ -47,8 +47,8 @@ queryBody  : querySingle queryBlock*
 // A rule for sub queries
 querySingle: 'from' relation (',' relation)* ','? queryBlock*
            | 'select' selectItems queryBlock*
-           // For parenthesized query, do not continue queryBlock for disambiguation
-           | '(' queryBody ')' 
+           // For braced query, do not continue queryBlock for disambiguation
+           | '{' queryBody '}' 
 
 // relation that can be used after 'from', 'join', 'concat' (set operation), etc.:
 relation       : relationPrimary ('as' identifier)?
@@ -80,7 +80,7 @@ queryBlock: joinExpr
           | ('intersect' | 'except') 'all'? relation
           | 'dedup'
           | 'describe'
-          | 'debug' debugExpr+ update?
+          | 'debug' '{' (queryBlock | update)+ '}'
 
 update       : 'save' 'as' updateTarget saveOptions?
              | 'append' 'to' updateTarget
@@ -125,11 +125,6 @@ sampleExpr: sampleSize
 
 sampleSize:  ((integerLiteral 'rows'?) | (floatLiteral '%'))
 
-
-// Note: Using signifinant indent or `-` may improve the readabiltity,
-// but uses `|` to avoid conflicts with arightmetic operators 
-debugExpr: '|' queryBlock
-
 sortItem: expression ('asc' | 'desc')?
 
 pivotKey: identifier ('in' '(' (valueExpression (',' valueExpression)*) ')')?
@@ -173,7 +168,7 @@ primaryExpression : 'this'
                   | literal
                   | query
                   | 'case' expression? whenExpr+ elseExpr?                        # case-when
-                  | '(' querySingle ')'                                           # subquery
+                  | '{' querySingle '}'                                           # subquery
                   | '(' expression ')'                                            # parenthesized expression
                   | '[' expression (',' expression)* ']'                          # array
                   | '{' rowElem (',' rowElem)* '}'                       # struct, row

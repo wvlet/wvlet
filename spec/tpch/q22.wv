@@ -2,16 +2,16 @@ from
   customer
 where
   c_phone.substring(1, 2).in('13', '31', '23', '29', '30', '18', '17')
-  and c_acctbal > (
+  and c_acctbal > {
      from customer
      where c_acctbal > 0.00
        and c_phone.substring(1, 2).in('13', '31', '23', '29', '30', '18', '17')
      select c_acctbal.avg
-  )
-  and (
+  }
+  and {
      from orders
      where o_custkey = c_custkey
-  ).not_exists
+  }.not_exists
 select
   cntrycode = c_phone.substring(1, 2),
   c_acctbal

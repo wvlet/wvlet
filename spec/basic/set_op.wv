@@ -1,27 +1,27 @@
 -- set semantics
 from 'person.json'
-intersect (
+intersect {
   from 'person.json'
   where id = 1
-)
+}
 
 -- bag semantics
 from 'person.json'
-intersect all (
+intersect all {
   from 'person.json'
   where id = 1
-)
+}
 
 -- set semantics
 from 'person.json'
-except (
+except {
   from 'person.json'
   where id = 1
-)
+}
 
 -- bag semantics
 from 'person.json'
-except all (
+except all {
   from 'person.json'
   where id = 1
-)
+}

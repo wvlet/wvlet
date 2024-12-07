@@ -12,7 +12,7 @@ where
     and s_nationkey = n_nationkey
     and n_regionkey = r_regionkey
     and r_name = 'EUROPE'
-    and ps_supplycost = (
+    and ps_supplycost = {
         from
             partsupp,
             supplier,
@@ -26,7 +26,7 @@ where
             and r_name = 'EUROPE'
         select
             ps_supplycost.min
-        )
+    }
 select
     s_acctbal,
     s_name,

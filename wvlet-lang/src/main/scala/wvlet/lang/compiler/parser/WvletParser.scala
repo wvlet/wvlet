@@ -16,6 +16,7 @@ package wvlet.lang.compiler.parser
 import wvlet.lang.api.{Span, StatusCode}
 import wvlet.lang.api.Span.NoSpan
 import wvlet.lang.catalog.Catalog.TableName
+import wvlet.lang.compiler.parser.WvletToken.isQueryDelimiter
 import wvlet.lang.compiler.{CompilationUnit, Name, SourceFile}
 import wvlet.lang.model.DataType.*
 import wvlet.lang.model.expr.*
@@ -171,7 +172,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     t.token match
       case WvletToken.IMPORT =>
         importStatement()
-      case WvletToken.FROM | WvletToken.SELECT | WvletToken.L_PAREN =>
+      case WvletToken.FROM | WvletToken.SELECT | WvletToken.L_BRACE =>
         query()
       case WvletToken.TYPE =>
         typeDef()
@@ -745,12 +746,12 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         // select only query like select 1
         r = selectExpr(EmptyRelation(t.span))
         r = queryBlock(r)
-      case WvletToken.L_PAREN =>
+      case WvletToken.L_BRACE =>
         // parenthesized query
-        consume(WvletToken.L_PAREN)
+        consume(WvletToken.L_BRACE)
         val q = queryBody()
-        consume(WvletToken.R_PAREN)
-        r = ParenthesizedRelation(q, spanFrom(t))
+        consume(WvletToken.R_BRACE)
+        r = BracedRelation(q, spanFrom(t))
       case _ =>
         unexpected(t)
     r
@@ -1368,21 +1369,27 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
   def debugExpr(input: Relation): Debug =
     def loop(r: Relation): Relation =
       scanner.lookAhead().token match
-        case WvletToken.PIPE =>
-          consume(WvletToken.PIPE)
+        case WvletToken.R_BRACE =>
+          r
+        case t if isQueryDelimiter(t) =>
+          r
+        case _ =>
           val next =
             scanner.lookAhead().token match
               case WvletToken.SAVE | WvletToken.APPEND | WvletToken.DELETE =>
                 updateRelationIfExists(r)
               case _ =>
                 queryBlockSingle(r)
-          loop(next)
-        case _ =>
-          r
+          if r eq next then
+            r
+          else
+            loop(next)
     end loop
 
-    val t        = consume(WvletToken.DEBUG)
+    val t = consume(WvletToken.DEBUG)
+    consume(WvletToken.L_BRACE)
     val debugRel = loop(input)
+    consume(WvletToken.R_BRACE)
 
     Debug(input, debugExpr = debugRel, spanFrom(t))
 
@@ -1406,7 +1413,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
                 tbl
           case _ =>
             TableRef(tableOrFunctionName, spanFrom(t))
-      case WvletToken.SELECT | WvletToken.FROM | WvletToken.L_PAREN =>
+      case WvletToken.SELECT | WvletToken.FROM | WvletToken.L_BRACE =>
         querySingle()
       case WvletToken.STRING_LITERAL =>
         consume(WvletToken.STRING_LITERAL)
@@ -1647,14 +1654,20 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         case WvletToken.FROM =>
           val q: Relation = querySingle()
           SubQueryExpression(q, spanFrom(t))
-        case WvletToken.L_PAREN =>
-          consume(WvletToken.L_PAREN)
+        case WvletToken.L_BRACE =>
+          val lt = consume(WvletToken.L_BRACE)
           val t2 = scanner.lookAhead()
           t2.token match
             case WvletToken.FROM =>
               val q = querySingle()
-              consume(WvletToken.R_PAREN)
+              consume(WvletToken.R_BRACE)
               SubQueryExpression(q, t2.span)
+            case _ =>
+              struct(lt)
+        case WvletToken.L_PAREN =>
+          consume(WvletToken.L_PAREN)
+          val t2 = scanner.lookAhead()
+          t2.token match
             case WvletToken.IDENTIFIER =>
               val exprs = List.newBuilder[Expression]
 
@@ -1698,8 +1711,6 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           end match
         case WvletToken.L_BRACKET =>
           array()
-        case WvletToken.L_BRACE =>
-          struct()
         case WvletToken.MAP =>
           map()
         case id if id.isIdentifier =>
@@ -1765,7 +1776,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     consume(WvletToken.R_BRACKET)
     ArrayConstructor(elements.result(), spanFrom(t))
 
-  def struct(): StructValue =
+  def struct(lBraceToken: TokenData): StructValue =
     val fields = List.newBuilder[StructField]
     def nextField: Unit =
       val t = scanner.lookAhead()
@@ -1790,10 +1801,9 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         case _ =>
           unexpected(t)
 
-    val t = consume(WvletToken.L_BRACE)
     nextField
     consume(WvletToken.R_BRACE)
-    StructValue(fields.result(), spanFrom(t))
+    StructValue(fields.result(), spanFrom(lBraceToken))
 
   def map(): MapValue =
     val entries = List.newBuilder[MapEntry]

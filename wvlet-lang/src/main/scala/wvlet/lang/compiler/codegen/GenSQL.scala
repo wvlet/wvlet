@@ -636,7 +636,7 @@ class GenSQL(ctx: Context) extends LogSupport:
             s"${selectWithIndentAndParenIfNecessary(s"select * from ${printValues(v)} as ${tableAlias}")} as ${a.alias.fullName}"
           case _ =>
             indent(s"${printRelation(a.inputRelation)(using sqlContext.nested)} as ${tableAlias}")
-      case p: ParenthesizedRelation =>
+      case p: BracedRelation =>
         val inner = printRelation(p.child)(using sqlContext.nested)
         p.child match
           case v: Values =>
