@@ -1,0 +1,5 @@
+select
+  0.to_string,
+  1.23f.to_string,
+  -- TODO Support decimal type
+  -- 1.01.to_string

@@ -24,7 +24,8 @@ val buildSettings = Seq[Setting[?]](
   Test / logBuffered       := false,
   libraryDependencies ++= Seq("org.wvlet.airframe" %%% "airspec" % AIRSPEC_VERSION % Test),
   testFrameworks += new TestFramework("wvlet.airspec.Framework"),
-  usePipelining := true
+  // Don't use pipelining as it tends to slowdown the build
+  usePipelining := false
 )
 
 lazy val jvmProjects: Seq[ProjectReference] = Seq(

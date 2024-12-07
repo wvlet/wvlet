@@ -715,10 +715,13 @@ class WvletScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
     var tokenType = WvletToken.INTEGER_LITERAL
 
     if base == 10 && ch == '.' then
-      putChar(ch)
-      nextChar()
-      if '0' <= ch && ch <= '9' then
+      val nextCh = lookAheadChar()
+      if '0' <= nextCh && nextCh <= '9' then
+        putChar(ch)
+        nextChar()
         tokenType = getFraction()
+      else
+        tokenType = WvletToken.INTEGER_LITERAL
     else
       (ch: @switch) match
         case 'e' | 'E' | 'f' | 'F' | 'd' | 'D' =>
