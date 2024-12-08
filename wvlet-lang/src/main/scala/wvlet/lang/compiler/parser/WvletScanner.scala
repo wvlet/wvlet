@@ -13,7 +13,7 @@
  */
 package wvlet.lang.compiler.parser
 
-import wvlet.lang.api.{NodeLocation, SourceLocation, Span, StatusCode, WvletLangException}
+import wvlet.lang.api.{LinePosition, SourceLocation, Span, StatusCode, WvletLangException}
 import wvlet.lang.compiler.parser.WvletScanner.{
   InBackquoteString,
   InBraces,
@@ -37,10 +37,10 @@ case class TokenData(token: WvletToken, str: String, offset: Int, length: Int):
 
   def span: Span = Span(offset, offset + length, 0)
 
-  def nodeLocation(using src: SourceFile): NodeLocation =
+  def nodeLocation(using src: SourceFile): LinePosition =
     val line = src.offsetToLine(offset)
     val col  = src.offsetToColumn(offset)
-    NodeLocation(line + 1, col)
+    LinePosition(line + 1, col)
 
 class ScanState(startFrom: Int = 0):
   override def toString: String = s"'${str}' <${token}> (${lastOffset}-${offset})"

@@ -14,7 +14,7 @@
 package wvlet.lang.cli
 
 import org.jline.keymap.KeyMap
-import org.jline.reader.{LineReader, *}
+import org.jline.reader.*
 import org.jline.reader.Parser.ParseContext
 import org.jline.reader.impl.DefaultParser
 import org.jline.reader.impl.DefaultParser.Bracket
@@ -25,7 +25,7 @@ import org.jline.widget.AutopairWidgets
 import wvlet.airframe.*
 import wvlet.airframe.control.{Shell, ThreadUtil}
 import wvlet.airframe.log.AnsiColorPalette
-import wvlet.lang.api.{NodeLocation, WvletLangException}
+import wvlet.lang.api.{LinePosition, WvletLangException}
 import wvlet.lang.api.v1.query.QueryRequest
 import wvlet.lang.api.v1.query.QuerySelection.{All, Describe, Subquery}
 import wvlet.lang.compiler.parser.*
@@ -154,7 +154,7 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
       QueryRequest(
         query = queryFragment,
         querySelection = Describe,
-        nodeLocation = NodeLocation(lineNum, 1),
+        nodeLocation = LinePosition(lineNum, 1),
         isDebugRun = true
       )
     )

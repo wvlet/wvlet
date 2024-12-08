@@ -13,7 +13,7 @@
  */
 package wvlet.lang.compiler
 
-import wvlet.lang.api.{NodeLocation, SourceLocation, Span}
+import wvlet.lang.api.{LinePosition, SourceLocation, Span}
 import wvlet.lang.compiler
 import wvlet.lang.compiler.SourceFile.NoSourceFile
 import wvlet.lang.model.plan.{ExecutionPlan, LogicalPlan, NamedRelation, Relation}
@@ -69,7 +69,7 @@ case class CompilationUnit(sourceFile: SourceFile, isPreset: Boolean = false) ex
 
   def enter(symbol: Symbol): Unit = knownSymbols = symbol :: knownSymbols
 
-  def toSourceLocation(nodeLocation: NodeLocation) =
+  def toSourceLocation(nodeLocation: LinePosition) =
     val codeLineAt: String = nodeLocation
       .map { loc =>
         val line = sourceFile.sourceLine(loc.line)

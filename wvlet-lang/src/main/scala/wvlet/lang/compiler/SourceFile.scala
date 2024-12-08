@@ -13,7 +13,7 @@
  */
 package wvlet.lang.compiler
 
-import wvlet.lang.api.{NodeLocation, SourceLocation, Span, StatusCode}
+import wvlet.lang.api.{LinePosition, SourceLocation, Span, StatusCode}
 import wvlet.lang.compiler.parser.{WvletScanner, WvletToken}
 import wvlet.lang.compiler.parser.WvletToken.*
 import wvlet.airframe.ulid.ULID
@@ -107,7 +107,7 @@ class SourceFile(val file: VirtualFile):
       relativeFilePath,
       fileName,
       codeAt,
-      NodeLocation(line + 1, offsetToColumn(offset))
+      LinePosition(line + 1, offsetToColumn(offset))
     )
 
   /**
@@ -119,7 +119,7 @@ class SourceFile(val file: VirtualFile):
 
   inline def charAt(pos: Int): Char = content(pos)
 
-  def offsetAt(nodeLocation: NodeLocation): Int =
+  def offsetAt(nodeLocation: LinePosition): Int =
     val lineStart = lineIndexes(nodeLocation.line - 1)
     lineStart + nodeLocation.column - 1
 

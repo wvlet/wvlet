@@ -5,7 +5,7 @@ import org.scalajs.dom.ResizeObserver
 import wvlet.airframe.rx.html.RxElement
 import wvlet.airframe.rx.html.all.*
 import wvlet.airframe.rx.{Cancelable, Rx, RxVar}
-import wvlet.lang.api.{NodeLocation, WvletLangException}
+import wvlet.lang.api.{LinePosition, WvletLangException}
 import wvlet.lang.compiler.codegen.GenSQL
 import wvlet.lang.compiler.{CompilationUnit, Compiler, Symbol}
 import wvlet.lang.ui.component.{MainFrame, WindowSize}
@@ -45,7 +45,7 @@ abstract class EditorBase(
 
   protected val editor = new MonacoEditor(editorId, lang, initialText, action = action)
 
-  protected def currentNodeLocation(): NodeLocation = NodeLocation(
+  protected def currentNodeLocation(): LinePosition = LinePosition(
     editor.getLinePosition().toInt,
     editor.getColumnPosition().toInt
   )

@@ -13,7 +13,12 @@
  */
 package wvlet.lang.api
 
-case class NodeLocation(
+/**
+  * Line and column position in the source code
+  * @param line
+  * @param column
+  */
+case class LinePosition(
     // 1-origin line number
     line: Int,
     // column position in the line (1-origin)
@@ -28,11 +33,11 @@ case class NodeLocation(
   def isEmpty: Boolean  = line < 0
   def nonEmpty: Boolean = !isEmpty
 
-  def map[U](f: NodeLocation => U): Option[U] =
+  def map[U](f: LinePosition => U): Option[U] =
     if isEmpty then
       None
     else
       Some(f(this))
 
-object NodeLocation:
-  val NoLocation: NodeLocation = NodeLocation(-1, 0)
+object LinePosition:
+  val NoLocation: LinePosition = LinePosition(-1, 0)

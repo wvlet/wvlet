@@ -17,7 +17,7 @@ import wvlet.lang.model.DataType.{EmbeddedRecordType, NamedType}
 import wvlet.lang.model.DataType
 import wvlet.lang.compiler.Name
 import wvlet.airframe.ulid.ULID
-import wvlet.lang.api.{NodeLocation, Span}
+import wvlet.lang.api.{LinePosition, Span}
 import wvlet.lang.api.Span.NoSpan
 import wvlet.log.LogSupport
 

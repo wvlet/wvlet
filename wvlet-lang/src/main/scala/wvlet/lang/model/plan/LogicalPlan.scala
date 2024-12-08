@@ -20,7 +20,7 @@ import wvlet.lang.model.expr.{Attribute, AttributeList, Expression, NameExpr}
 import wvlet.lang.model.{RelationType, RelationTypeList, TreeNode}
 import wvlet.airframe.ulid.ULID
 import wvlet.lang.api.StatusCode
-import wvlet.lang.api.{NodeLocation, Span}
+import wvlet.lang.api.{LinePosition, Span}
 import wvlet.lang.api.Span.NoSpan
 
 enum PlanProperty:

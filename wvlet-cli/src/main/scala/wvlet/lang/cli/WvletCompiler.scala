@@ -123,7 +123,7 @@ class WvletCompiler(opts: WvletGlobalOption, compilerOption: WvletCompilerOption
         val queryResult = executor.executeSelectedStatement(
           inputUnit,
           QuerySelection.All,
-          nodeLocation = inputUnit.resolvedPlan.sourceLocation.nodeLocation,
+          nodeLocation = inputUnit.resolvedPlan.sourceLocation.position,
           compileResult.context
         )
         println(queryResult.toPrettyBox())

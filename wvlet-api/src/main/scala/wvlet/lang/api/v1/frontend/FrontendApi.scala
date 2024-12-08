@@ -17,7 +17,7 @@ import wvlet.airframe.http.{RPC, RxRouter, RxRouterProvider}
 import wvlet.airframe.metrics.ElapsedTime
 import wvlet.airframe.ulid.ULID
 import wvlet.lang.BuildInfo
-import wvlet.lang.api.NodeLocation
+import wvlet.lang.api.LinePosition
 import wvlet.lang.api.v1.query.{QueryInfo, QueryRequest, QuerySelection}
 
 @RPC
