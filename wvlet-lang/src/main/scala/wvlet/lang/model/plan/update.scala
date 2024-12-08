@@ -1,6 +1,6 @@
 package wvlet.lang.model.plan
 
-import wvlet.lang.api.{NodeLocation, Span}
+import wvlet.lang.api.{LinePosition, Span}
 import wvlet.lang.model.DataType.EmptyRelationType
 import wvlet.lang.model.expr.{Expression, Identifier, LeafExpression, NameExpr, QualifiedName}
 import wvlet.lang.model.plan.{DDL, HasRefName, LeafPlan, LogicalPlan, Relation, UnaryRelation}
@@ -43,4 +43,4 @@ case class Delete(child: Relation, targetTable: QualifiedName, span: Span) exten
 
 case class DeleteFromFile(child: Relation, path: String, span: Span) extends DeleteOps
 
-case class Truncate(targetTable: QualifiedName, nodeLocation: Option[NodeLocation])
+case class Truncate(targetTable: QualifiedName, nodeLocation: Option[LinePosition])

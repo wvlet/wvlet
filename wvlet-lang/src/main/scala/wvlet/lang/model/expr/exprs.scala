@@ -13,7 +13,7 @@
  */
 package wvlet.lang.model.expr
 
-import wvlet.lang.api.{Span, NodeLocation}
+import wvlet.lang.api.{Span, LinePosition}
 import wvlet.lang.api.Span.NoSpan
 import wvlet.lang.compiler.{Name, TermName, TypeName}
 import wvlet.lang.model.DataType.{

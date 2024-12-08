@@ -1,6 +1,6 @@
 package wvlet.lang.runner
 
-import wvlet.lang.api.NodeLocation
+import wvlet.lang.api.LinePosition
 import wvlet.lang.api.v1.query.QuerySelection
 import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.model.expr.NameExpr

@@ -17,7 +17,7 @@ import wvlet.airframe.codec.{JDBCCodec, MessageCodec}
 import wvlet.airframe.control.Control
 import wvlet.airframe.control.Control.withResource
 import wvlet.lang.api.v1.query.QuerySelection
-import wvlet.lang.api.{NodeLocation, StatusCode, WvletLangException}
+import wvlet.lang.api.{LinePosition, StatusCode, WvletLangException}
 import wvlet.lang.compiler.*
 import wvlet.lang.compiler.codegen.GenSQL
 import wvlet.lang.compiler.codegen.GenSQL.Indented
@@ -67,7 +67,7 @@ class QueryExecutor(
   def executeSelectedStatement(
       u: CompilationUnit,
       querySelection: QuerySelection,
-      nodeLocation: NodeLocation,
+      nodeLocation: LinePosition,
       rootContext: Context
   ): QueryResult =
     workEnv

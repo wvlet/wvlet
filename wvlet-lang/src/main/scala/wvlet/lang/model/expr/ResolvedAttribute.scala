@@ -14,7 +14,7 @@
 package wvlet.lang.model.expr
 
 import wvlet.lang.catalog.Catalog
-import wvlet.lang.api.{NodeLocation, Span}
+import wvlet.lang.api.{LinePosition, Span}
 import wvlet.lang.compiler.{Name, TermName}
 import wvlet.lang.model.DataType
 import wvlet.lang.model.plan.*

@@ -13,7 +13,7 @@
  */
 package wvlet.lang.model.plan
 
-import wvlet.lang.api.NodeLocation
+import wvlet.lang.api.LinePosition
 import wvlet.lang.model.expr.{Attribute, NameExpr}
 import wvlet.airframe.ulid.ULID
 

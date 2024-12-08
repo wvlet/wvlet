@@ -16,7 +16,7 @@ package wvlet.lang.compiler.transform
 import wvlet.lang.compiler.RewriteRule.PlanRewriter
 import wvlet.lang.compiler.*
 import wvlet.lang.compiler.DBType.Trino
-import wvlet.lang.api.NodeLocation
+import wvlet.lang.api.LinePosition
 import wvlet.lang.api.Span.NoSpan
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*

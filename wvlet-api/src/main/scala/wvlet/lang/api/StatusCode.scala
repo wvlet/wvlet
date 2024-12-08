@@ -20,32 +20,6 @@ enum StatusType:
   case ExternalError
 
 enum StatusCode(statusType: StatusType):
-  def isUserError: Boolean     = statusType == StatusType.UserError
-  def isSystemError: Boolean   = statusType == StatusType.SystemError
-  def isExternalError: Boolean = statusType == StatusType.ExternalError
-  def isSuccess: Boolean       = statusType == StatusType.Success
-
-  def name: String                                  = this.toString
-  def newException(msg: String): WvletLangException = WvletLangException(this, msg)
-  def newException(msg: String, cause: Throwable): WvletLangException = WvletLangException(
-    this,
-    msg,
-    SourceLocation.NoSourceLocation,
-    cause
-  )
-
-  def newException(msg: String, sourceLocation: SourceLocation): WvletLangException =
-    val baseMsg   = s"[${this.name}] ${msg}"
-    val locString = s"${sourceLocation.locationString}"
-    val column    = sourceLocation.nodeLocation.map(_.column).getOrElse(1)
-    val line      = sourceLocation.codeLineAt
-    val err =
-      if line.isEmpty then
-        s"${baseMsg} (${locString})"
-      else
-        s"${baseMsg}\n${line} (${locString})\n${" " * (column - 1)}^\n"
-
-    WvletLangException(this, err, sourceLocation)
 
   case OK extends StatusCode(StatusType.Success)
   // Used for successful exit using Exception
@@ -73,5 +47,32 @@ enum StatusCode(statusType: StatusType):
   case QUERY_EXECUTION_FAILURE      extends StatusCode(StatusType.UserError)
 
   case TEST_FAILED extends StatusCode(StatusType.UserError)
+
+  def isUserError: Boolean     = statusType == StatusType.UserError
+  def isSystemError: Boolean   = statusType == StatusType.SystemError
+  def isExternalError: Boolean = statusType == StatusType.ExternalError
+  def isSuccess: Boolean       = statusType == StatusType.Success
+
+  def name: String                                  = this.toString
+  def newException(msg: String): WvletLangException = WvletLangException(this, msg)
+  def newException(msg: String, cause: Throwable): WvletLangException = WvletLangException(
+    this,
+    msg,
+    SourceLocation.NoSourceLocation,
+    cause
+  )
+
+  def newException(msg: String, sourceLocation: SourceLocation): WvletLangException =
+    val baseMsg   = s"[${this.name}] ${msg}"
+    val locString = s"${sourceLocation.locationString}"
+    val column    = sourceLocation.position.map(_.column).getOrElse(1)
+    val line      = sourceLocation.codeLineAt
+    val err =
+      if line.isEmpty then
+        s"${baseMsg} (${locString})"
+      else
+        s"${baseMsg}\n${line} (${locString})\n${" " * (column - 1)}^\n"
+
+    WvletLangException(this, err, sourceLocation)
 
 end StatusCode

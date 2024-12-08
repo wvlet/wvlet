@@ -1,7 +1,7 @@
 package wvlet.lang.ui.playground
 
 import wvlet.airframe.rx.{Cancelable, Rx}
-import wvlet.lang.api.NodeLocation
+import wvlet.lang.api.LinePosition
 import wvlet.lang.api.v1.query.{QueryRequest, QuerySelection}
 import wvlet.lang.api.v1.query.QuerySelection.Describe
 import wvlet.lang.ui.component.{MainFrame, WindowSize}

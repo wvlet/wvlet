@@ -13,6 +13,14 @@
  */
 package wvlet.lang.api
 
+/**
+  * WvletLangException is a common exeception type for Wvlet related errors.
+  *
+  * @param statusCode
+  * @param message
+  * @param sourceLocation
+  * @param cause
+  */
 case class WvletLangException(
     statusCode: StatusCode,
     message: String,

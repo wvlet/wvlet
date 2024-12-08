@@ -16,21 +16,22 @@ package wvlet.lang.api
 case class SourceLocation(
     path: String,
     fileName: String,
+    // The line of the source code where the error occurred
     codeLineAt: String,
-    nodeLocation: NodeLocation
+    position: LinePosition
 ):
 
   def lineLocationString: String =
-    if nodeLocation.isEmpty then
+    if position.isEmpty then
       path
     else
-      s"${fileName}:${nodeLocation.line}"
+      s"${fileName}:${position.line}"
 
   def locationString: String =
-    if nodeLocation.isEmpty then
+    if position.isEmpty then
       path
     else
-      s"${fileName}:${nodeLocation.line}:${nodeLocation.column}"
+      s"${fileName}:${position.line}:${position.column}"
 
 object SourceLocation:
-  val NoSourceLocation = SourceLocation("", "", "", NodeLocation.NoLocation)
+  val NoSourceLocation = SourceLocation("", "", "", LinePosition.NoLocation)
