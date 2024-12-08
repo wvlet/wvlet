@@ -40,4 +40,4 @@ case class LinePosition(
       Some(f(this))
 
 object LinePosition:
-  val NoLocation: LinePosition = LinePosition(-1, 0)
+  val NoPosition: LinePosition = LinePosition(-1, 0)
