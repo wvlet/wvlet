@@ -34,4 +34,4 @@ case class SourceLocation(
       s"${fileName}:${position.line}:${position.column}"
 
 object SourceLocation:
-  val NoSourceLocation = SourceLocation("", "", "", LinePosition.NoLocation)
+  val NoSourceLocation = SourceLocation("", "", "", LinePosition.NoPosition)

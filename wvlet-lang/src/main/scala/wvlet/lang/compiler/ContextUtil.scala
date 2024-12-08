@@ -11,7 +11,7 @@ object ContextUtil:
   extension (ctx: Context)
     def nodeLocationOf(span: Span): LinePosition =
       if span.isEmpty then
-        LinePosition.NoLocation
+        LinePosition.NoPosition
       else
         val src  = ctx.compilationUnit.sourceFile
         val line = src.offsetToLine(span.start)

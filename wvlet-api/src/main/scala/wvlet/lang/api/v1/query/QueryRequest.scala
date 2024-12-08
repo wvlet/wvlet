@@ -7,7 +7,7 @@ case class QueryRequest(
     // wvlet query text
     query: String,
     querySelection: QuerySelection = QuerySelection.Single,
-    nodeLocation: LinePosition = LinePosition.NoLocation,
+    nodeLocation: LinePosition = LinePosition.NoPosition,
     profile: Option[String] = None,
     schema: Option[String] = None,
     // If true, evaluate test expressions
