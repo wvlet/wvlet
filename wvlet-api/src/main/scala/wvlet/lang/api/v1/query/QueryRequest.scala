@@ -15,4 +15,15 @@ case class QueryRequest(
     // Limit the max output rows for debug run
     maxRows: Option[Int] = None,
     requestId: ULID = ULID.newULID
-)
+):
+  def queryLine: String =
+    val lines = query.split("\n")
+    val line =
+      if linePosition.isEmpty then
+        0
+      else
+        linePosition.line - 1
+    if line < lines.length then
+      lines(line)
+    else
+      ""

@@ -5,6 +5,7 @@ import wvlet.airframe.rx.html.all.*
 import wvlet.lang.api.v1.query.QueryResult
 import wvlet.lang.compiler.TablePrinter
 import org.scalajs.dom
+import wvlet.lang.api.v1.query.QuerySelection.{Describe, Subquery}
 import wvlet.lang.ui.component.WindowSize
 
 class QueryResultViewer(currentQuery: CurrentQuery, windowSize: WindowSize) extends RxElement:
@@ -12,7 +13,32 @@ class QueryResultViewer(currentQuery: CurrentQuery, windowSize: WindowSize) exte
 
     def renderQueryResult(consoleHeight: Int): RxElement = div(
       cls -> "bg-zinc-800 text-xs text-slate-300 dark:text-white p-2",
-      div(cls -> "h-7 font-light text-slate-400", "Preview"),
+      div(
+        cls -> "h-7 font-light text-slate-400",
+        "Preview",
+        currentQuery
+          .wvletQueryRequest
+          .map { req =>
+            val queryLine = req.queryLine
+            req.querySelection match
+              case Describe =>
+                span(
+                  span(cls -> "px-2 text-teal-400", s"describe"),
+                  span(cls -> "text-blue-400", s"(line:${req.linePosition.line}): "),
+                  span(cls -> "text-slate-400", queryLine)
+                )
+              case Subquery =>
+                span(
+                  span(cls -> "px-2 text-pink-400", "subquery"),
+                  span(cls -> "text-blue-400", s"(line:${req.linePosition.line}): "),
+                  span(cls -> "text-slate-300", queryLine)
+                )
+              case _ if req.isDebugRun =>
+                span()
+              case _ =>
+                span(cls -> "px-2 text-sky-400", "production mode")
+          }
+      ),
       div(
         // Important: Setting the width relative to the viewport width in order to hide overflowed contents
         style ->
@@ -34,6 +60,8 @@ class QueryResultViewer(currentQuery: CurrentQuery, windowSize: WindowSize) exte
         renderQueryResult(consoleHeight)
       }
 
-  def printQueryResult(result: QueryResult): String = TablePrinter.printTableRows(result)
+  end render
+
+  private def printQueryResult(result: QueryResult): String = TablePrinter.printTableRows(result)
 
 end QueryResultViewer
