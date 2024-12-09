@@ -9,22 +9,21 @@ object WvcMain extends LogSupport:
   def main(args: Array[String]): Unit =
     // Call compileWvletQuery to process the query and check if -x flag was set
     val (sqlResult, shouldReturn) = compileWvletQuery(args)
-    if (!shouldReturn) {
+    if !shouldReturn then
       // If -x is not passed, print the result to stdout
-      println(sqlResult)  // Print to stdout as usual
-    }
+      println(sqlResult) // Print to stdout as usual
 
   end main
 
-  def compileWvletQuery(args: Array[String]): (String, Boolean) = {
-    var inputQuery: Option[String] = None
-    var workFolder = "."
-    var displayHelp = false
-    var logLevel: LogLevel = LogLevel.INFO
+  def compileWvletQuery(args: Array[String]): (String, Boolean) =
+    var inputQuery: Option[String]     = None
+    var workFolder                     = "."
+    var displayHelp                    = false
+    var logLevel: LogLevel             = LogLevel.INFO
     var logLevelPatterns: List[String] = List.empty[String]
-    var remainingArgs: List[String] = Nil
-    var parseSuccess: Boolean = false
-    var returnResult = false // Flag for -x option
+    var remainingArgs: List[String]    = Nil
+    var parseSuccess: Boolean          = false
+    var returnResult                   = false // Flag for -x option
 
     // Option parsing
     def parseOption(lst: List[String]): Unit =
@@ -56,11 +55,12 @@ object WvcMain extends LogSupport:
 
     parseOption(args.toList)
 
-    if (!parseSuccess) {
+    if !parseSuccess then
       System.exit(1)
       return ("", false)
-    } else if (displayHelp) {
-      val helpMessage = """wvc (Wvlet Native Compiler)
+    else if displayHelp then
+      val helpMessage =
+        """wvc (Wvlet Native Compiler)
           |  Compile Wvlet files and generate SQL queries
           |
           |[usage]:
@@ -76,7 +76,6 @@ object WvcMain extends LogSupport:
           | -x                 Return the result instead of printing it
           |""".stripMargin
       return (helpMessage, returnResult)
-    }
 
     // Set log levels
     Logger("wvlet.lang.compiler").setLogLevel(logLevel)
@@ -96,24 +95,25 @@ object WvcMain extends LogSupport:
       CompilerOptions(workEnv = WorkEnv(path = workFolder), sourceFolders = List(workFolder))
     )
 
-    val query: String = inputQuery match
-      case Some(q) => q
-      case None =>
-        import scala.scalanative.posix.unistd
-        val connectedToStdin = unistd.isatty(unistd.STDIN_FILENO) == 0
-        if (connectedToStdin) {
-          // Read from stdin
-          Iterator.continually(scala.io.StdIn.readLine()).takeWhile(_ != null).mkString("\n")
-        } else {
-          ""
-        }
+    val query: String =
+      inputQuery match
+        case Some(q) =>
+          q
+        case None =>
+          import scala.scalanative.posix.unistd
+          val connectedToStdin = unistd.isatty(unistd.STDIN_FILENO) == 0
+          if connectedToStdin then
+            // Read from stdin
+            Iterator.continually(scala.io.StdIn.readLine()).takeWhile(_ != null).mkString("\n")
+          else
+            ""
 
-    if (query.trim.isEmpty) {
+    if query.trim.isEmpty then
       warn(s"No query is given. Use -q 'query' option or stdin to feed the query")
       return ("", returnResult)
-    } else {
+    else
       // Compile
-      val inputUnit = CompilationUnit.fromString(query)
+      val inputUnit     = CompilationUnit.fromString(query)
       val compileResult = compiler.compileSingleUnit(inputUnit)
       compileResult.reportAllErrors
 
@@ -125,6 +125,7 @@ object WvcMain extends LogSupport:
 
       val sql = GenSQL.generateSQL(inputUnit, ctx)
       return (sql, returnResult) // Return the SQL string and the flag
-    }
-  }
+
+  end compileWvletQuery
+
 end WvcMain

@@ -34,21 +34,22 @@ object WvcLib extends LogSupport:
     *   generated SQL as a CString
     */
   @exported("wvlet_compile_query")
-  def compile_query(argJson: CString): CString = 
+  def compile_query(argJson: CString): CString =
     try
-      val json = fromCString(argJson)
-      val args = MessageCodec.of[Array[String]].fromJson(json)
+      val json     = fromCString(argJson)
+      val args     = MessageCodec.of[Array[String]].fromJson(json)
       val (sql, _) = WvcMain.compileWvletQuery(args)
-      
+
       val buffer = stackalloc[CChar](sql.length + 1)
-      var i = 0
-      while (i < sql.length) {
+      var i      = 0
+      while i < sql.length do
         buffer(i) = sql.charAt(i).toByte
         i += 1
-      }
       buffer(sql.length) = 0.toByte
       buffer.asInstanceOf[CString]
     catch
       case e: Throwable =>
         warn(e)
         stackalloc[CChar](1).asInstanceOf[CString]
+
+end WvcLib
