@@ -10,9 +10,9 @@ import wvlet.lang.ui.component.{Icon, MainFrame}
 import scalajs.js
 
 object PlaygroundUI extends LogSupport:
-  val previewWindowHeightPx = 512;
-  val editorTabHeight       = 24;
-  val editorMarginHeight    = previewWindowHeightPx - editorTabHeight - MainFrame.navBarHeightPx
+  val previewWindowMaxHeightPx = 768;
+  val editorTabHeight          = 24;
+  val editorMarginHeight = previewWindowMaxHeightPx - editorTabHeight - MainFrame.navBarHeightPx
 
   private def design: Design = Design
     .newDesign
