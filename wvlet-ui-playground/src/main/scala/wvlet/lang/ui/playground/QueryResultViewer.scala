@@ -42,7 +42,7 @@ class QueryResultViewer(currentQuery: CurrentQuery, windowSize: WindowSize) exte
       div(
         // Important: Setting the width relative to the viewport width in order to hide overflowed contents
         style ->
-          s"overflow-x: scroll; overflow-y: scroll; max-width: calc(100vw - 184px); height: ${consoleHeight}px; max-height: ${consoleHeight}px;",
+          s"overflow-x: scroll; overflow-y: scroll; max-width: fit-content; height: ${consoleHeight}px; max-height: ${consoleHeight}px;",
         currentQuery
           .lastQueryResult
           .map { result =>
