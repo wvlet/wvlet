@@ -1,4 +1,4 @@
-package wvlet.lang.runner
+package wvlet.lang.compiler
 
 import wvlet.lang.api.LinePosition
 import wvlet.lang.api.v1.query.QuerySelection
@@ -7,6 +7,19 @@ import wvlet.lang.model.expr.NameExpr
 import wvlet.lang.model.plan.*
 
 object QuerySelector:
+
+  def selectQuery(
+      unit: CompilationUnit,
+      linePosition: LinePosition,
+      selection: QuerySelection
+  ): LogicalPlan =
+    val targetOffset =
+      if linePosition.isEmpty then
+        unit.sourceFile.length - 1
+      else
+        unit.sourceFile.offsetAt(linePosition)
+
+    selectQuery(unit.resolvedPlan, targetOffset, selection)
 
   def selectQuery(
       inputPlan: LogicalPlan,

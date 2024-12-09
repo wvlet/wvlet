@@ -4,7 +4,7 @@ import wvlet.airframe.rx.html.all.s
 import wvlet.airframe.rx.{Cancelable, Rx}
 import wvlet.lang.api.WvletLangException
 import wvlet.lang.compiler.codegen.GenSQL
-import wvlet.lang.compiler.{CompilationUnit, Compiler, SourceFile, Symbol}
+import wvlet.lang.compiler.{CompilationUnit, Compiler, QuerySelector, SourceFile, Symbol}
 import wvlet.lang.ui.component.WindowSize
 import wvlet.lang.ui.component.monaco.EditorBase
 
@@ -29,9 +29,9 @@ class SQLPreview(currentQuery: CurrentQuery, windowSize: WindowSize, queryRunner
   override def onMount: Unit =
     super.onMount
     monitor = currentQuery
-      .wvletQuery
-      .flatMap { newWvletQuery =>
-        val unit = CompilationUnit.fromString(newWvletQuery)
+      .wvletQueryRequest
+      .flatMap { newWvletQueryRequest =>
+        val unit = CompilationUnit.fromString(newWvletQueryRequest.query)
         try
           val compileResult = compiler.compileMultipleUnits(contextCompilationUnits, unit)
           if !compileResult.hasFailures then
@@ -40,7 +40,13 @@ class SQLPreview(currentQuery: CurrentQuery, windowSize: WindowSize, queryRunner
               .withCompilationUnit(unit)
               .withDebugRun(false)
               .newContext(Symbol.NoSymbol)
-            val sql = GenSQL.generateSQL(unit, ctx)
+
+            val selectedPlan = QuerySelector.selectQuery(
+              unit,
+              newWvletQueryRequest.linePosition,
+              newWvletQueryRequest.querySelection
+            )
+            val sql = GenSQL.generateSQL(unit, ctx, targetPlan = Some(selectedPlan))
             setText(sql)
             queryRunner
               .runQuery("tpch", sql)
@@ -56,6 +62,7 @@ class SQLPreview(currentQuery: CurrentQuery, windowSize: WindowSize, queryRunner
             warn(e)
             // Ignore compilation errors
             Rx.empty
+        end try
       }
       .subscribe()
 

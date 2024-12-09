@@ -5,7 +5,7 @@ import wvlet.airframe.rx.html.all.*
 
 import scala.collection.immutable.ListMap
 
-class QuerySelector(currentQuery: CurrentQuery, queryEditor: QueryEditor) extends RxElement:
+class QueryNavigator(currentQuery: CurrentQuery, queryEditor: QueryEditor) extends RxElement:
   override def render =
     def separator(): RxElement = div(cls -> "border-t border-gray-600 mt-2 mb-2")
     div(
@@ -42,4 +42,4 @@ class QuerySelector(currentQuery: CurrentQuery, queryEditor: QueryEditor) extend
 
   end render
 
-end QuerySelector
+end QueryNavigator

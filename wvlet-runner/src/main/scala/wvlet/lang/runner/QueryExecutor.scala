@@ -18,7 +18,7 @@ import wvlet.airframe.control.Control
 import wvlet.airframe.control.Control.withResource
 import wvlet.lang.api.v1.query.QuerySelection
 import wvlet.lang.api.{LinePosition, StatusCode, WvletLangException}
-import wvlet.lang.compiler.*
+import wvlet.lang.compiler.{QuerySelector, *}
 import wvlet.lang.compiler.codegen.GenSQL
 import wvlet.lang.compiler.codegen.GenSQL.Indented
 import wvlet.lang.compiler.planner.ExecutionPlanner
@@ -67,21 +67,14 @@ class QueryExecutor(
   def executeSelectedStatement(
       u: CompilationUnit,
       querySelection: QuerySelection,
-      nodeLocation: LinePosition,
+      linePosition: LinePosition,
       rootContext: Context
   ): QueryResult =
     workEnv
       .outLogger
-      .info(s"Executing ${u.sourceFile.fileName} (${nodeLocation}, ${querySelection})")
+      .info(s"Executing ${u.sourceFile.fileName} (${linePosition}, ${querySelection})")
 
-    val targetOffset =
-      if nodeLocation.isEmpty then
-        u.sourceFile.length - 1
-      else
-        u.sourceFile.offsetAt(nodeLocation)
-
-    val targetStatement: LogicalPlan = QuerySelector
-      .selectQuery(u.resolvedPlan, targetOffset, querySelection)
+    val targetStatement: LogicalPlan = QuerySelector.selectQuery(u, linePosition, querySelection)
     trace(s"Selected statement: ${targetStatement}, ${querySelection}")
     val ctx           = rootContext.withCompilationUnit(u).newContext(Symbol.NoSymbol)
     val executionPlan = ExecutionPlanner.plan(u, targetStatement, ctx)
@@ -224,7 +217,7 @@ class QueryExecutor(
     workEnv.outLogger.trace(s"Executing plan: ${plan.pp}")
     plan match
       case q: Relation =>
-        val generatedSQL = GenSQL.generateSQL(q, context)
+        val generatedSQL = GenSQL.generateSQLFromRelation(q, context)
         workEnv.outLogger.info(s"Executing SQL:\n${generatedSQL.sql}")
         debug(s"Executing SQL:\n${generatedSQL.sql}")
         try

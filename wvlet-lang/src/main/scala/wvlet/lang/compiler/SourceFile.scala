@@ -119,9 +119,9 @@ class SourceFile(val file: VirtualFile):
 
   inline def charAt(pos: Int): Char = content(pos)
 
-  def offsetAt(nodeLocation: LinePosition): Int =
-    val lineStart = lineIndexes(nodeLocation.line - 1)
-    lineStart + nodeLocation.column - 1
+  def offsetAt(linePosition: LinePosition): Int =
+    val lineStart = lineIndexes(linePosition.line - 1)
+    lineStart + linePosition.column - 1
 
   def sourceLine(line: Int): String =
     ensureLoaded
