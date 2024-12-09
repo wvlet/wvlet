@@ -28,6 +28,7 @@ class SQLPreview(currentQuery: CurrentQuery, windowSize: WindowSize, queryRunner
 
   override def onMount: Unit =
     super.onMount
+    editor.enableWordWrap()
     monitor = currentQuery
       .wvletQueryRequest
       .flatMap { newWvletQueryRequest =>
