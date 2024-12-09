@@ -197,11 +197,10 @@ lazy val wvcLibStatic = project
   .enablePlugins(ScalaNativePlugin)
   .settings(
     buildSettings,
-    name := "wvc-lib",
-    target := target.value / "static", 
+    name   := "wvc-lib",
+    target := target.value / "static",
     nativeConfig ~= { c =>
-      c.withBuildTarget(BuildTarget.libraryStatic)
-        .withBaseName("wvlet")
+      c.withBuildTarget(BuildTarget.libraryStatic).withBaseName("wvlet")
     }
   )
   .dependsOn(wvc)
@@ -291,6 +290,15 @@ lazy val cli = project
       Def
         .sequential(
           Def.task[Unit] {
+            // Install NPM dependencies
+            scala
+              .sys
+              .process
+              .Process(
+                List("npm", "install", "--silent", "--no-audit", "--no-fund"),
+                (uiMain / baseDirectory).value
+              )
+              .!
             // Trigger compilation from Scala.js to JS
             val assetFiles = (uiMain / Compile / fullLinkJS).value
             // Packaging the web assets using Vite.js
