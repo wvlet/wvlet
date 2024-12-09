@@ -59,6 +59,7 @@ export class MonacoEditor {
             scrollbar: {
                 horizontal: 'hidden',
             },
+            wordWrapBreakAfterCharacters: '.,;',
             automaticLayout: true,
             tabSize: 2
         })
@@ -150,5 +151,11 @@ export class MonacoEditor {
 
     getColumnPosition(): number {
         return this.editor.getPosition().column;
+    }
+
+    enableWordWrap(): void {
+        this.editor.updateOptions({
+            wordWrap: 'on'
+        });
     }
 }

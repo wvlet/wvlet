@@ -34,6 +34,7 @@ class MonacoEditor(
   def setText(txt: String): Unit         = js.native
   def getLinePosition(): Double          = js.native
   def getColumnPosition(): Double        = js.native
+  def enableWordWrap(): Unit             = js.native
 
 abstract class EditorBase(
     windowSize: WindowSize,
