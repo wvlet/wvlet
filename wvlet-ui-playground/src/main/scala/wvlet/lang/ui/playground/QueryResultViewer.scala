@@ -54,8 +54,8 @@ class QueryResultViewer(currentQuery: CurrentQuery, windowSize: WindowSize) exte
     windowSize
       .getInnerHeight
       .map { h =>
-        val consoleHeight = (dom.window.innerHeight / 3)
-          .min(PlaygroundUI.previewWindowHeightPx)
+        val consoleHeight = (dom.window.innerHeight / 5 * 2)
+          .min(PlaygroundUI.previewWindowMaxHeightPx)
           .toInt
         renderQueryResult(consoleHeight)
       }
