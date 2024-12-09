@@ -32,10 +32,10 @@ class WvletParserTest extends AirSpec:
     var found = false
     plan.traverseOnce { case m: ModelDef =>
       found = true
-      val startLoc = unit.nodeLocationAt(m.span)
+      val startLoc = unit.linePositionAt(m.span)
       startLoc.line shouldBe 1
       startLoc.column shouldBe 1
-      val endLoc = unit.endNodeLocationAt(m.span)
+      val endLoc = unit.endLinePositionAt(m.span)
       endLoc.line shouldBe 3
       endLoc.column shouldBe 4
     }
