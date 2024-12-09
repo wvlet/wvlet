@@ -57,7 +57,7 @@ class PlaygroundUI(
     div(
       cls   -> "flex",
       style -> s"width: max-screen; height: calc(100vh - ${MainFrame.navBarHeightPx}px);",
-      div(cls -> "w-44 h-full", fileExplorer),
+      div(cls -> "w-28 md:w-44 h-full", fileExplorer),
       div(
         cls -> "w-full h-full bg-slate-900",
         div(
@@ -79,7 +79,7 @@ class PlaygroundUI(
                 clipButton(queryEditor)
               ),
               div(
-                cls -> "flex",
+                cls -> "flex hidden md:block",
                 span(cls -> "flex-none px-2", "Compiled SQL"),
                 span(cls -> "grow"),
                 clipButton(sqlPreview)
@@ -88,9 +88,9 @@ class PlaygroundUI(
           ),
           // Two-column blocks for editors
           div(
-            cls -> "grid grid-cols-2 h-full",
+            cls -> "grid grid-cols-1 md:grid-cols-2 h-full",
             div(cls -> "h-full", queryEditor),
-            div(cls -> "h-full", sqlPreview)
+            div(cls -> "hidden md:block h-full", sqlPreview)
           ),
           resultViewer
         )
