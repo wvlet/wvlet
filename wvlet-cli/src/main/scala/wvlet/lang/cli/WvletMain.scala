@@ -9,9 +9,28 @@ import wvlet.lang.server.{WvletServer, WvletServerConfig}
 import wvlet.log.LogSupport
 
 object WvletMain:
-  private def launcher: Launcher      = Launcher.of[WvletMain]
-  def main(args: Array[String]): Unit = launcher.execute(args)
-  def main(argLine: String): Unit     = launcher.execute(argLine)
+  private def launcher: Launcher = Launcher.of[WvletMain]
+
+  private def wrap(body: => Unit): Unit =
+    def findCause(e: Throwable): Throwable =
+      e match
+        case e: IllegalArgumentException if e.getCause != null =>
+          findCause(e.getCause)
+        case other =>
+          e
+
+    try
+      body
+    catch
+      case e: Throwable =>
+        findCause(e) match
+          case e: WvletLangException if e.statusCode.isSuccess =>
+          // do nothing
+          case other =>
+            throw other
+
+  def main(args: Array[String]): Unit = wrap(launcher.execute(args))
+  def main(argLine: String): Unit     = wrap(launcher.execute(argLine))
 
   def isInSbt: Boolean = sys.props.getOrElse("wvlet.sbt.testing", "false").toBoolean
 
