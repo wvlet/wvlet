@@ -42,5 +42,7 @@ usage: ui
 
 - `ctrl-enter`: Execute the sub query at the current line
 - `shift-enter`: Describe the schema at the line
+- `ctrl-j ctrl-d`: Describe the schema at the line
 - `⌘-enter`: Run the current query
+- `ctrl-j ctrl-r`: Run the current query
 - `⌘-shift-enter`: Run the current query with production mode (e.g., skip debug/test expressions)
