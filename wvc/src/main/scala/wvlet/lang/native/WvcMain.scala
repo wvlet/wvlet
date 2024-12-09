@@ -7,17 +7,25 @@ import wvlet.log.{LogLevel, LogSupport, Logger}
 object WvcMain extends LogSupport:
 
   def main(args: Array[String]): Unit =
-    var inputQuery: Option[String] = None
+    // Call compileWvletQuery to process the query and check if -x flag was set
+    val (sqlResult, shouldReturn) = compileWvletQuery(args)
+    if !shouldReturn then
+      // If -x is not passed, print the result to stdout
+      println(sqlResult) // Print to stdout as usual
 
+  end main
+
+  def compileWvletQuery(args: Array[String]): (String, Boolean) =
+    var inputQuery: Option[String]     = None
     var workFolder                     = "."
     var displayHelp                    = false
     var logLevel: LogLevel             = LogLevel.INFO
     var logLevelPatterns: List[String] = List.empty[String]
     var remainingArgs: List[String]    = Nil
+    var parseSuccess: Boolean          = false
+    var returnResult                   = false // Flag for -x option
 
-    var parseSuccess: Boolean = false
-
-    // TODO Use generic command line parser (airframe-launcher still doesn't support Scala Native)
+    // Option parsing
     def parseOption(lst: List[String]): Unit =
       lst match
         case h :: tail if h == "-h" || h == "--help" =>
@@ -35,6 +43,9 @@ object WvcMain extends LogSupport:
         case "-L" :: pattern :: tail =>
           logLevelPatterns = pattern.toString :: logLevelPatterns
           parseOption(tail)
+        case "-x" :: tail =>
+          returnResult = true // Set returnResult to true if -x is present
+          parseOption(tail)
         case h :: tail if h.startsWith("-") || h.startsWith("--") =>
           warn(s"Unknown option: ${h}")
           parseSuccess = false
@@ -46,8 +57,10 @@ object WvcMain extends LogSupport:
 
     if !parseSuccess then
       System.exit(1)
+      return ("", false)
     else if displayHelp then
-      println("""wvc (Wvlet Native Compiler)
+      val helpMessage =
+        """wvc (Wvlet Native Compiler)
           |  Compile Wvlet files and generate SQL queries
           |
           |[usage]:
@@ -60,56 +73,59 @@ object WvcMain extends LogSupport:
           | -q <query>         Query string
           | -l <level>         Log level (info, debug, trace, warn, error)
           | -L <pattern=level> Set log level for a class pattern
-          |""".stripMargin)
+          | -x                 Return the result instead of printing it
+          |""".stripMargin
+      return (helpMessage, returnResult)
+
+    // Set log levels
+    Logger("wvlet.lang.compiler").setLogLevel(logLevel)
+    Logger("wvlet.lang.runner").setLogLevel(logLevel)
+    Logger("wvlet.lang.native").setLogLevel(logLevel)
+    logLevelPatterns.foreach { p =>
+      p.split("=") match
+        case Array(pattern, level) =>
+          debug(s"Set the log level for ${pattern} to ${level}")
+          Logger.setLogLevel(pattern, LogLevel(level))
+        case _ =>
+          error(s"Invalid log level pattern: ${p}")
+    }
+
+    // Prepare a compiler and input source
+    val compiler = Compiler(
+      CompilerOptions(workEnv = WorkEnv(path = workFolder), sourceFolders = List(workFolder))
+    )
+
+    val query: String =
+      inputQuery match
+        case Some(q) =>
+          q
+        case None =>
+          import scala.scalanative.posix.unistd
+          val connectedToStdin = unistd.isatty(unistd.STDIN_FILENO) == 0
+          if connectedToStdin then
+            // Read from stdin
+            Iterator.continually(scala.io.StdIn.readLine()).takeWhile(_ != null).mkString("\n")
+          else
+            ""
+
+    if query.trim.isEmpty then
+      warn(s"No query is given. Use -q 'query' option or stdin to feed the query")
+      return ("", returnResult)
     else
-      // Set log levels
-      Logger("wvlet.lang.compiler").setLogLevel(logLevel)
-      Logger("wvlet.lang.runner").setLogLevel(logLevel)
-      Logger("wvlet.lang.native").setLogLevel(logLevel)
-      logLevelPatterns.foreach { p =>
-        p.split("=") match
-          case Array(pattern, level) =>
-            debug(s"Set the log level for ${pattern} to ${level}")
-            Logger.setLogLevel(pattern, LogLevel(level))
-          case _ =>
-            error(s"Invalid log level pattern: ${p}")
-      }
+      // Compile
+      val inputUnit     = CompilationUnit.fromString(query)
+      val compileResult = compiler.compileSingleUnit(inputUnit)
+      compileResult.reportAllErrors
 
-      // Prepare a compiler and input source
-      val compiler = Compiler(
-        CompilerOptions(workEnv = WorkEnv(path = workFolder), sourceFolders = List(workFolder))
-      )
-      val query: String =
-        inputQuery match
-          case Some(q) =>
-            q
-          case None =>
-            import scala.scalanative.posix.unistd
-            val connectedToStdin = unistd.isatty(unistd.STDIN_FILENO) == 0
-            if connectedToStdin then
-              // Read from stdin
-              Iterator.continually(scala.io.StdIn.readLine()).takeWhile(_ != null).mkString("\n")
-            else
-              ""
+      val ctx = compileResult
+        .context
+        .withCompilationUnit(inputUnit)
+        .withDebugRun(false)
+        .newContext(Symbol.NoSymbol)
 
-      if query.trim.isEmpty then
-        warn(s"No query is given. Use -q 'query' option or stdin to feed the query")
-      else
-        // Compile
-        val inputUnit     = CompilationUnit.fromString(query)
-        val compileResult = compiler.compileSingleUnit(inputUnit)
-        compileResult.reportAllErrors
-        val ctx = compileResult
-          .context
-          .withCompilationUnit(inputUnit)
-          .withDebugRun(false)
-          .newContext(Symbol.NoSymbol)
+      val sql = GenSQL.generateSQL(inputUnit, ctx)
+      return (sql, returnResult) // Return the SQL string and the flag
 
-        val sql = GenSQL.generateSQL(inputUnit, ctx)
-        println(sql)
-
-    end if
-
-  end main
+  end compileWvletQuery
 
 end WvcMain
