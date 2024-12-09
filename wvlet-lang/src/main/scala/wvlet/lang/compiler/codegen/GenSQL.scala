@@ -925,10 +925,13 @@ class GenSQL(ctx: Context) extends LogSupport:
       case s: SortItem =>
         s"${printExpression(s.sortKey)}${s.ordering.map(x => s" ${x.expr}").getOrElse("")}"
       case s: SingleColumn =>
+        val left = printExpression(s.expr)
         if s.nameExpr.isEmpty then
-          printExpression(s.expr)
+          left
+        else if left != s.nameExpr.toSQLAttributeName then
+          s"${left} as ${s.nameExpr.toSQLAttributeName}"
         else
-          s"${printExpression(s.expr)} as ${s.nameExpr.toSQLAttributeName}"
+          left
       case a: Attribute =>
         a.fullName
       case p: ParenthesizedExpression =>
