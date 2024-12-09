@@ -368,13 +368,12 @@ case class ShiftColumns(
   override def toString: String = s"Shift[${shiftItems.mkString(", ")}](${child})"
 
   override lazy val relationType: RelationType =
-    var inputFields: Map[String, NamedType] =
-      inputRelationType
-        .fields
-        .map { f =>
-          f.name.name -> f
-        }
-        .toMap
+    var inputFields: ListMap[String, NamedType] = inputRelationType
+      .fields
+      .map { f =>
+        f.name.name -> f
+      }
+      .to(ListMap)
     val preferredColumns = List.newBuilder[NamedType]
     shiftItems.foreach { si =>
       inputFields.get(si.leafName) match

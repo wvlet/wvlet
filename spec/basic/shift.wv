@@ -10,3 +10,9 @@ from 'person.json'
 shift to right name
 test _.columns should be ['id', 'age', 'name']
 
+
+-- #531 Preserve column orders between multiple shift ops
+from [[1, 2, 3, 4, 5]] as t(c_comment, c_acctbal, c_name, c_nationkey, c_custkey)
+shift c_nationkey
+shift c_comment
+test _.columns should be ['c_comment', 'c_nationkey', 'c_acctbal', 'c_name', 'c_custkey']
