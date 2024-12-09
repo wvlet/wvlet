@@ -100,7 +100,7 @@ class WvletScriptRunner(
       val ctx = compileResult.context.global.getContextOf(newUnit).withDebugRun(request.isDebugRun)
       val queryResult = queryExecutor
         .setRowLimit(resultRowLimits)
-        .executeSelectedStatement(newUnit, request.querySelection, request.nodeLocation, ctx)
+        .executeSelectedStatement(newUnit, request.querySelection, request.linePosition, ctx)
       trace(s"ctx: ${ctx.hashCode()} ${ctx.compilationUnit.knownSymbols}")
 
       queryResult

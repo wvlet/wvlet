@@ -67,10 +67,9 @@ export class MonacoEditor {
         this.editor.addAction({
             id : "describe-query",
             label : "Describe Query",
-            keybindings : [monaco.KeyMod.chord(
-                monaco.KeyMod.WinCtrl | KeyCode.KeyJ,
-                monaco.KeyMod.WinCtrl | KeyCode.KeyD
-            )],
+            keybindings : [
+                monaco.KeyMod.Shift | KeyCode.Enter,
+            ],
             run : async (editor, args) => {
                 this.action('describe-query')
             },
@@ -80,7 +79,7 @@ export class MonacoEditor {
             id : "run-subquery",
             label : "Run subquery",
             keybindings : [
-                monaco.KeyMod.Shift | KeyCode.Enter
+                monaco.KeyMod.WinCtrl | KeyCode.Enter
             ],
             run : async (editor, args) => {
                 this.action('run-subquery')
@@ -91,11 +90,7 @@ export class MonacoEditor {
             id: "run-query",
             label: "Run Query",
             keybindings: [
-                monaco.KeyMod.WinCtrl | KeyCode.Enter,
-                KeyMod.chord(
-                    monaco.KeyMod.WinCtrl | KeyCode.KeyJ,
-                    monaco.KeyMod.WinCtrl | KeyCode.KeyR
-                )
+                monaco.KeyMod.CtrlCmd | KeyCode.Enter,
             ],
             run : async (editor, args) => {
                 this.action('run-query')
@@ -106,7 +101,7 @@ export class MonacoEditor {
             id: "run-production-query",
             label: "Run query with production mode",
             keybindings: [
-                monaco.KeyMod.CtrlCmd | KeyCode.Enter,
+                monaco.KeyMod.Shift | KeyMod.CtrlCmd | KeyCode.Enter,
             ],
             run : async (editor, args) => {
                 this.action('run-production-query')

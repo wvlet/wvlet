@@ -4,6 +4,7 @@ import wvlet.airframe.rx.{Cancelable, Rx}
 import wvlet.lang.api.LinePosition
 import wvlet.lang.api.v1.query.{QueryRequest, QuerySelection}
 import wvlet.lang.api.v1.query.QuerySelection.Describe
+import wvlet.lang.compiler.QuerySelector
 import wvlet.lang.ui.component.{MainFrame, WindowSize}
 import wvlet.lang.ui.component.monaco.EditorBase
 
@@ -14,7 +15,7 @@ class QueryEditor(currentQuery: CurrentQuery, windowSize: WindowSize)
       "wvlet",
       marginHeightPx = PlaygroundUI.editorMarginHeight
     ):
-  override def initialText: String = currentQuery.wvletQuery.get
+  override def initialText: String = currentQuery.wvletQueryRequest.get.query
 
   private var monitor = Cancelable.empty
 
@@ -24,8 +25,8 @@ class QueryEditor(currentQuery: CurrentQuery, windowSize: WindowSize)
       .intervalMillis(100)
       .map { _ =>
         val query = getText
-        if query != currentQuery.wvletQuery.get then
-          currentQuery.wvletQuery := query
+        if query != currentQuery.wvletQueryRequest.get.query then
+          currentQuery.wvletQueryRequest := QueryRequest(query = query)
       }
       .subscribe()
 
@@ -33,16 +34,14 @@ class QueryEditor(currentQuery: CurrentQuery, windowSize: WindowSize)
     super.beforeUnmount
     monitor.cancel
 
-  private def processRequest(req: QueryRequest): Unit =
-    // TODO Process query
-    info(s"Query request: ${req}")
+  private def processRequest(req: QueryRequest): Unit = currentQuery.wvletQueryRequest := req
 
   override protected def action: String => Unit = {
     case "describe-query" =>
       val req = QueryRequest(
         query = editor.getText(),
         querySelection = Describe,
-        nodeLocation = currentNodeLocation(),
+        linePosition = currentLinePosition(),
         isDebugRun = true
       )
       processRequest(req)
@@ -50,7 +49,7 @@ class QueryEditor(currentQuery: CurrentQuery, windowSize: WindowSize)
       val req = QueryRequest(
         query = editor.getText(),
         querySelection = QuerySelection.Single,
-        nodeLocation = currentNodeLocation(),
+        linePosition = currentLinePosition(),
         isDebugRun = true
       )
       processRequest(req)
@@ -58,7 +57,7 @@ class QueryEditor(currentQuery: CurrentQuery, windowSize: WindowSize)
       val req = QueryRequest(
         query = editor.getText(),
         querySelection = QuerySelection.Subquery,
-        nodeLocation = currentNodeLocation(),
+        linePosition = currentLinePosition(),
         isDebugRun = true
       )
       processRequest(req)
@@ -67,7 +66,7 @@ class QueryEditor(currentQuery: CurrentQuery, windowSize: WindowSize)
       val req = QueryRequest(
         query = editor.getText(),
         querySelection = QuerySelection.Single,
-        nodeLocation = currentNodeLocation(),
+        linePosition = currentLinePosition(),
         isDebugRun = false
       )
       processRequest(req)

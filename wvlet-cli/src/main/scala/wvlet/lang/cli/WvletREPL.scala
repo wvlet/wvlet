@@ -154,7 +154,7 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
       QueryRequest(
         query = queryFragment,
         querySelection = Describe,
-        nodeLocation = LinePosition(lineNum, 1),
+        linePosition = LinePosition(lineNum, 1),
         isDebugRun = true
       )
     )

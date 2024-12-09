@@ -45,7 +45,7 @@ abstract class EditorBase(
 
   protected val editor = new MonacoEditor(editorId, lang, initialText, action = action)
 
-  protected def currentNodeLocation(): LinePosition = LinePosition(
+  protected def currentLinePosition(): LinePosition = LinePosition(
     editor.getLinePosition().toInt,
     editor.getColumnPosition().toInt
   )

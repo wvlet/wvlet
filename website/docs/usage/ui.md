@@ -40,7 +40,7 @@ usage: ui
 
 ## Shortcut Keys
 
-- `ctrl-enter`: Execute the current query
-- `shift-enter`: Run the subquery upto the line
-- `⌘-enter`: Run the current query with production mode
-- `ctrl-j ctrl-d`: Describe the schema of the intermediate query
+- `ctrl-enter`: Execute the sub query at the current line
+- `shift-enter`: Describe the schema at the line
+- `⌘-enter`: Run the current query
+- `⌘-shift-enter`: Run the current query with production mode (e.g., skip debug/test expressions)

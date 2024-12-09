@@ -95,7 +95,7 @@ class WvletMonacoEditor(
       val req = QueryRequest(
         query = editor.getText(),
         querySelection = QuerySelection.Describe,
-        nodeLocation = currentNodeLocation(),
+        linePosition = currentLinePosition(),
         isDebugRun = true
       )
       processRequest(req)
@@ -103,7 +103,7 @@ class WvletMonacoEditor(
       val req = QueryRequest(
         query = editor.getText(),
         querySelection = QuerySelection.Single,
-        nodeLocation = currentNodeLocation(),
+        linePosition = currentLinePosition(),
         isDebugRun = true
       )
       processRequest(req)
@@ -111,7 +111,7 @@ class WvletMonacoEditor(
       val req = QueryRequest(
         query = editor.getText(),
         querySelection = QuerySelection.Subquery,
-        nodeLocation = currentNodeLocation(),
+        linePosition = currentLinePosition(),
         isDebugRun = true
       )
       processRequest(req)
@@ -120,7 +120,7 @@ class WvletMonacoEditor(
       val req = QueryRequest(
         query = editor.getText(),
         querySelection = QuerySelection.Single,
-        nodeLocation = currentNodeLocation(),
+        linePosition = currentLinePosition(),
         isDebugRun = false
       )
       processRequest(req)

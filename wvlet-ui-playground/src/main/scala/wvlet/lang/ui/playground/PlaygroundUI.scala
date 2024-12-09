@@ -36,7 +36,7 @@ end PlaygroundUI
 
 class PlaygroundUI(
     currentQuery: CurrentQuery,
-    fileExplorer: QuerySelector,
+    fileExplorer: QueryNavigator,
     queryEditor: QueryEditor,
     sqlPreview: SQLPreview,
     resultViewer: QueryResultViewer
