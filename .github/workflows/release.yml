@@ -28,6 +28,10 @@ jobs:
           distribution: 'temurin'
           java-version: '22'
           cache: sbt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: npm
       - name: Build wvlet-cli
         run: ./sbt cli/packArchiveTgz
       - name: Get the release version name
