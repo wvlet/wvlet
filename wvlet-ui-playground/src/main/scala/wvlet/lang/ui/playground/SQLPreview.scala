@@ -13,7 +13,7 @@ class SQLPreview(currentQuery: CurrentQuery, windowSize: WindowSize, queryRunner
       windowSize,
       "wvlet-sql-preview",
       "sql",
-      marginHeightPx = PlaygroundUI.editorMarginHeight
+      marginHeight = PlaygroundUI.editorMarginHeight
     ):
   override def initialText: String = "select * from lineitem\nlimit 10"
 

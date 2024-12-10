@@ -6,13 +6,15 @@ import wvlet.log.LogSupport
 import wvlet.airframe.rx.html.all.*
 import wvlet.lang.ui.component.monaco.EditorBase
 import wvlet.lang.ui.component.{Icon, MainFrame}
+import wvlet.lang.ui.playground.PlaygroundUI.{editorMarginHeight, queryNavigatorWidth}
 
 import scalajs.js
 
 object PlaygroundUI extends LogSupport:
-  val previewWindowMaxHeightPx = 768;
-  val editorTabHeight          = 24;
-  val editorMarginHeight = previewWindowMaxHeightPx - editorTabHeight - MainFrame.navBarHeightPx
+  val previewWindowMaxHeightPx = 768
+  val editorTabHeight          = 24
+  val editorMarginHeight  = previewWindowMaxHeightPx + editorTabHeight + MainFrame.navBarHeightPx
+  val queryNavigatorWidth = 160
 
   private def design: Design = Design
     .newDesign
@@ -57,16 +59,17 @@ class PlaygroundUI(
     div(
       cls   -> "flex",
       style -> s"width: max-screen; height: calc(100vh - ${MainFrame.navBarHeightPx}px);",
-      div(cls -> "w-28 md:w-44 h-full", fileExplorer),
+      div(cls -> "w-40 h-full", fileExplorer),
       div(
         cls -> "w-full h-full bg-slate-900",
         div(
-          cls -> "flex flex-col h-full",
+          cls   -> "flex flex-col h-full",
+          style -> s"width: calc(100vw - ${queryNavigatorWidth}px);",
           // Editor header
           div(
             cls -> "h-7 text-xs font-light bg-stone-900 text-slate-400 p-2",
             div(
-              cls -> "grid grid-cols-2",
+              cls -> "grid grid-cols-1 md:grid-cols-2",
               div(
                 cls -> "flex",
                 span(cls -> "flex-none px-2", "Wvlet"),
@@ -86,11 +89,11 @@ class PlaygroundUI(
               )
             )
           ),
-          // Two-column blocks for editors
+          // Two-column blocks for editors (or hide SQL preview for small screens)
           div(
-            cls -> "grid grid-cols-1 md:grid-cols-2 h-full",
-            div(cls -> "h-full", queryEditor),
-            div(cls -> "hidden md:block h-full", sqlPreview)
+            cls -> "grid grid-cols-1 md:grid-cols-2 h-full max-h-full",
+            div(queryEditor),
+            div(cls -> "hidden md:block", sqlPreview)
           ),
           resultViewer
         )

@@ -62,12 +62,7 @@ class WvletMonacoEditor(
     rpcClient: RPCAsyncClient,
     queryResultReader: QueryResultReader,
     errorReports: RxVar[List[QueryError]]
-) extends EditorBase(
-      windowSize,
-      "main-editor",
-      "wvlet",
-      marginHeightPx = MainFrame.navBarHeightPx + WvletEditor.previewHeightPx
-    ):
+) extends EditorBase(windowSize, "main-editor", "wvlet"):
   override protected def initialText: String =
     """-- Enter a query
       |from lineitem

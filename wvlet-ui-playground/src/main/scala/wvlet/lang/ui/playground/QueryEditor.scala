@@ -13,7 +13,7 @@ class QueryEditor(currentQuery: CurrentQuery, windowSize: WindowSize)
       windowSize,
       "wvlet-editor",
       "wvlet",
-      marginHeightPx = PlaygroundUI.editorMarginHeight
+      marginHeight = PlaygroundUI.editorMarginHeight
     ):
   override def initialText: String = currentQuery.wvletQueryRequest.get.query
 
