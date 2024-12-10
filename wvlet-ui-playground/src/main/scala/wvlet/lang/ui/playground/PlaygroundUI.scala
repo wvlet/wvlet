@@ -63,7 +63,8 @@ class PlaygroundUI(
       div(
         cls -> "w-full h-full bg-slate-900",
         div(
-          cls -> "flex flex-col h-full",
+          cls   -> "flex flex-col h-full",
+          style -> s"width: calc(100vw - ${queryNavigatorWidth}px);",
           // Editor header
           div(
             cls -> "h-7 text-xs font-light bg-stone-900 text-slate-400 p-2",
@@ -90,8 +91,7 @@ class PlaygroundUI(
           ),
           // Two-column blocks for editors (or hide SQL preview for small screens)
           div(
-            cls   -> "grid grid-cols-1 md:grid-cols-2 h-full max-h-full",
-            style -> s"max-width: calc(100vw - ${queryNavigatorWidth}px);",
+            cls -> "grid grid-cols-1 md:grid-cols-2 h-full max-h-full",
             div(queryEditor),
             div(cls -> "hidden md:block", sqlPreview)
           ),
