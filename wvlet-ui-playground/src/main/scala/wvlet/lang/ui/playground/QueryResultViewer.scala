@@ -40,6 +40,8 @@ class QueryResultViewer(currentQuery: CurrentQuery, windowSize: WindowSize) exte
           }
       ),
       div(
+        // Ensure hiding the scrollbar for Edge on Windows
+        cls -> "scrollbar-hidden",
         // Important: Setting the width relative to the viewport width in order to hide overflowed contents
         style ->
           s"overflow-x: scroll; overflow-y: scroll; max-width: fit-content; height: ${consoleHeight}px; max-height: ${consoleHeight}px;",
