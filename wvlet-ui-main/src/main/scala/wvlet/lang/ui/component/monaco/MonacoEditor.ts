@@ -138,9 +138,15 @@ export class MonacoEditor {
         if (this.editor) {
             const w = this.editor.getLayoutInfo().width;
             const h = newHeight;
+            this.adjustSize(w, h);
+        }
+    }
+
+    adjustSize(newWidth: number, newHeight: number): void {
+        if (this.editor) {
             this.editor.layout({
-                width: w,
-                height: h
+                width: newWidth,
+                height: newHeight
             });
         }
     }

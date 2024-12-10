@@ -1,7 +1,7 @@
 package wvlet.lang.ui.component.monaco
 
 import org.scalajs.dom
-import org.scalajs.dom.ResizeObserver
+import org.scalajs.dom.{HTMLElement, ResizeObserver}
 import wvlet.airframe.rx.html.RxElement
 import wvlet.airframe.rx.html.all.*
 import wvlet.airframe.rx.{Cancelable, Rx, RxVar}
@@ -13,6 +13,9 @@ import wvlet.lang.ui.component.MainFrame.NavBar
 import wvlet.log.LogSupport
 
 import java.util.concurrent.TimeUnit
+import org.scalajs.dom
+import wvlet.lang.ui.WvletUIMain
+
 import scala.scalajs.js
 import scala.scalajs.js.annotation.JSGlobal
 
@@ -26,21 +29,22 @@ class MonacoEditor(
       // do nothing by default
     }
 ) extends js.Object:
-  def hello(): Unit                      = js.native
-  def render(): Unit                     = js.native
-  def setReadOnly(): Unit                = js.native
-  def adjustHeight(newHeight: Int): Unit = js.native
-  def getText(): String                  = js.native
-  def setText(txt: String): Unit         = js.native
-  def getLinePosition(): Double          = js.native
-  def getColumnPosition(): Double        = js.native
-  def enableWordWrap(): Unit             = js.native
+  def hello(): Unit                                   = js.native
+  def render(): Unit                                  = js.native
+  def setReadOnly(): Unit                             = js.native
+  def adjustHeight(newHeight: Int): Unit              = js.native
+  def adjustSize(newWidth: Int, newHeight: Int): Unit = js.native
+  def getText(): String                               = js.native
+  def setText(txt: String): Unit                      = js.native
+  def getLinePosition(): Double                       = js.native
+  def getColumnPosition(): Double                     = js.native
+  def enableWordWrap(): Unit                          = js.native
 
 abstract class EditorBase(
     windowSize: WindowSize,
     editorId: String,
     lang: String,
-    marginHeightPx: Int = MainFrame.navBarHeightPx
+    marginHeight: Int = MainFrame.navBarHeightPx
 ) extends RxElement:
   protected def initialText: String
 
@@ -58,9 +62,9 @@ abstract class EditorBase(
   override def onMount: Unit =
     editor.render()
     c = windowSize
-      .getInnerHeight
-      .map { h =>
-        editor.adjustHeight(h - marginHeightPx)
+      .getSize
+      .map { (w, h) =>
+        editor.adjustHeight(h - marginHeight)
       }
       .subscribe()
 

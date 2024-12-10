@@ -19,9 +19,9 @@ class WindowSize extends AutoCloseable with LogSupport:
     ob.observe(dom.document.body)
     ob
 
-  def getInnerWidth: Rx[Int] = innerWidth
-
+  def getInnerWidth: Rx[Int]  = innerWidth
   def getInnerHeight: Rx[Int] = innerHeight
+  def getSize: Rx[(Int, Int)] = innerWidth.zip(innerHeight)
 
   override def close(): Unit =
     // dom.window.onresize = null

@@ -7,9 +7,11 @@ import wvlet.lang.ui.component.MainFrame
 import scala.collection.immutable.ListMap
 
 class QueryNavigator(currentQuery: CurrentQuery, queryEditor: QueryEditor) extends RxElement:
+
   override def render =
     def separator(): RxElement = div(cls -> "border-t border-gray-600 mt-2 mb-2")
     div(
+      id    -> "query-navigator",
       cls   -> "h-full bg-slate-700 p-3 text-sm text-slate-200 overflow-y-auto",
       style -> s"max-height: calc(100vh - ${MainFrame.navBarHeightPx}px); ",
       h2(cls -> "text-slate-400", "Playground"),
