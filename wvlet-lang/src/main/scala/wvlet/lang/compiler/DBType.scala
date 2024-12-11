@@ -62,8 +62,18 @@ enum DBType(
   case ClickHouse extends DBType
   case Oracle     extends DBType
   case SQLServer  extends DBType
-  case InMemory   extends DBType
-  case Generic    extends DBType
+  case InMemory
+      extends DBType(
+        // Basically same with DuckDB
+        supportCreateOrReplace = true,
+        supportDescribeSubQuery = true,
+        supportSaveAsFile = true,
+        supportStructExpr = true,
+        supportAsOfJoin = true,
+        mapConstructorSyntax = SQLDialect.MapSyntax.KeyValue
+      )
+
+  case Generic extends DBType
 
 end DBType
 
