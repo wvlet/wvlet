@@ -32,6 +32,8 @@ export const language = <languages.IMonarchLanguage> {
     tokenPostfix: '.wv',
 
     keywords: [
+        "case",
+        "when",
         "test",
         "should",
         "be",

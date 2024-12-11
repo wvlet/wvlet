@@ -1,0 +1,23 @@
+-- case expression can be used for branching with exact matches
+from lineitem
+group by l_returnflag
+agg _.count as cnt
+add
+  case l_returnflag
+    when 'A' then 1
+    when 'R' then 2
+    when 'N' then 3
+    else 0
+  as return_code
+
+-- case expression can also be used with arbitrary conditions
+from lineitem
+group by l_returnflag
+agg _.count as cnt
+add
+  case
+    when l_returnflag = 'A' then 1
+    when l_returnflag = 'R' then 2
+    when l_returnflag = 'N' then 3
+    else 0
+  as return_code

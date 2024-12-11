@@ -1,0 +1,10 @@
+from orders
+select
+  o_custkey,
+  o_orderkey,
+  o_totalprice,
+  -- Window function computes exprssions, e.g., sum(o_totalprice)
+  -- against the final query result, partitioned by the given key
+  sum(o_totalprice)
+    over (partition by o_custkey order by o_orderdate) as total_by_customer
+limit 15
