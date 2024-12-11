@@ -1,0 +1,8 @@
+-- Unnest can be used to expand an array column as individual rows
+-- if it is used with `cross join`:
+from [
+  ['John', [7, 10, 9]],
+  ['Mary', [4, 8, 9]],
+] as tests(student, scores)
+cross join unnest(scores) as t(score)
+select student, score

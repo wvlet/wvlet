@@ -1,0 +1,4 @@
+-- lambda expression can be used for transforming elements in a list
+select
+  list_transform([4, 5, 6], x -> x + 1)
+

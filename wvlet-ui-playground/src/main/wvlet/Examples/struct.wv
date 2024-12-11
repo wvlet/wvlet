@@ -1,0 +1,9 @@
+-- Define a struct value
+select {id: 123, name: 'leo'} as obj
+select
+  -- Name based access
+  obj.id,
+  obj.name,
+  -- Lookup by name
+  obj['id'],
+  obj['name']
