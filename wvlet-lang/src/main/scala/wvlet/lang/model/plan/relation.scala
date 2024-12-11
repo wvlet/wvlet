@@ -849,7 +849,7 @@ enum ShowType:
   case tables
   case query
 
-case class Show(showType: ShowType, span: Span) extends Relation with LeafPlan:
+case class Show(showType: ShowType, inExpr: NameExpr, span: Span) extends Relation with LeafPlan:
   override def relationType: RelationType =
     showType match
       case ShowType.models =>

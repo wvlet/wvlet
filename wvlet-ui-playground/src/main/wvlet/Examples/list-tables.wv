@@ -1,2 +1,8 @@
 -- List tables
 show tables
+
+-- List tables in a specific schema
+show tables in main
+
+-- List tables in a specific catalog.schema
+show tables in memory.main

@@ -769,25 +769,27 @@ class GenSQL(ctx: Context) extends LogSupport:
         // TODO Dump output to the file logger
         printRelation(r.child)
       case s: Show if s.showType == ShowType.tables =>
-        val sql  = s"select table_name from information_schema.tables"
+        val sql  = s"select table_name as name from information_schema.tables"
         val cond = List.newBuilder[Expression]
-        val opts = ctx.global.compilerOptions
-        opts
-          .catalog
-          .map { catalog =>
-            cond +=
-              Eq(
-                UnquotedIdentifier("table_catalog", NoSpan),
-                StringLiteral(catalog, NoSpan),
-                NoSpan
-              )
-          }
-        opts
-          .schema
-          .map { schema =>
-            cond +=
-              Eq(UnquotedIdentifier("table_schema", NoSpan), StringLiteral(schema, NoSpan), NoSpan)
-          }
+
+        val opts                    = ctx.global.compilerOptions
+        var catalog: Option[String] = opts.catalog
+        var schema: Option[String]  = opts.schema
+
+        s.inExpr match
+          case i: Identifier if i.nonEmpty =>
+            schema = Some(i.leafName)
+          case DotRef(q: Identifier, name, _, _) =>
+            catalog = Some(q.leafName)
+            schema = Some(name.leafName)
+          case _ =>
+
+        catalog.foreach { c =>
+          cond += Eq(UnquotedIdentifier("table_catalog", NoSpan), StringLiteral(c, NoSpan), NoSpan)
+        }
+        schema.foreach { s =>
+          cond += Eq(UnquotedIdentifier("table_schema", NoSpan), StringLiteral(s, NoSpan), NoSpan)
+        }
 
         val conds = cond.result()
         val body =
@@ -795,7 +797,7 @@ class GenSQL(ctx: Context) extends LogSupport:
             sql
           else
             s"${sql} where ${printExpression(Expression.concatWithAnd(conds))}"
-        selectWithIndentAndParenIfNecessary(s"${body} order by table_name")
+        selectWithIndentAndParenIfNecessary(s"${body} order by name")
       case s: Show if s.showType == ShowType.models =>
         // TODO: Show models should be handled outside of GenSQL
         val models: Seq[ListMap[String, Any]] = ctx
