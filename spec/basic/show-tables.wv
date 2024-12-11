@@ -1,0 +1,8 @@
+show tables
+test _.columns = ['name']
+
+show tables in main
+test _.columns = ['name']
+
+show tables in memory.main
+test _.columns = ['name']

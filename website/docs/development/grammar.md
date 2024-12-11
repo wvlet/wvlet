@@ -116,7 +116,7 @@ frameBound : INTEGER_VALUE | INTEGER_VALUE 'days'
 
 testExpr: booleanExpression
 
-showCommand: 'show' identifier
+showCommand: 'show' identifier ('in' qualifiedId)?
 
 executeCommand: 'execute' expression
 
