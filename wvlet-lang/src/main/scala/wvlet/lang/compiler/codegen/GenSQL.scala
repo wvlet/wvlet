@@ -50,18 +50,30 @@ object GenSQL extends Phase("generate-sql"):
 
   sealed trait SQLGenContext:
     def nestingLevel: Int
-    def nested: SQLGenContext    = Indented(nestingLevel + 1)
+    def nested: SQLGenContext    = Indented(nestingLevel + 1, parent = Some(this))
     def enterFrom: SQLGenContext = InFromClause(nestingLevel + 1)
+    def enterJoin: SQLGenContext = InJoinClause(nestingLevel + 1)
+    def withinJoin: Boolean =
+      this match
+        case InJoinClause(_) =>
+          true
+        case Indented(_, Some(parent)) =>
+          parent.withinJoin
+        case _ =>
+          false
 
     def withinFrom: Boolean =
       this match
         case InFromClause(_) =>
           true
+        case InJoinClause(_) =>
+          true
         case _ =>
           false
 
-  case class Indented(nestingLevel: Int)     extends SQLGenContext
-  case class InFromClause(nestingLevel: Int) extends SQLGenContext
+  case class Indented(nestingLevel: Int, parent: Option[SQLGenContext] = None) extends SQLGenContext
+  case class InFromClause(nestingLevel: Int)                                   extends SQLGenContext
+  case class InJoinClause(nestingLevel: Int)                                   extends SQLGenContext
 
   private def doubleQuoteIfNecessary(s: String): String =
     if s.matches("^[_a-zA-Z][_a-zA-Z0-9]*$") then
@@ -568,9 +580,8 @@ class GenSQL(ctx: Context) extends LogSupport:
           else
             ""
 
-        val l = printRelation(j.left)(using sqlContext.nested)
-        // join (right) is similar to enter from ...
-        val r = printRelation(j.right)(using sqlContext.enterFrom)
+        val l = printRelation(j.left)(using sqlContext.enterJoin)
+        val r = printRelation(j.right)(using sqlContext.enterJoin)
         val c =
           j.cond match
             case NoJoinCriteria =>
@@ -640,12 +651,14 @@ class GenSQL(ctx: Context) extends LogSupport:
             s"${printRelation(t)(using sqlContext)} as ${tableAlias}"
           case v: Values if sqlContext.nestingLevel == 0 =>
             selectAllWithIndent(s"${printValues(v)} as ${tableAlias}")
-          case v: Values if sqlContext.nestingLevel > 0 =>
+          case v: Values if sqlContext.nestingLevel > 0 && !sqlContext.withinJoin =>
+            selectWithIndentAndParenIfNecessary(s"select * from ${printValues(v)} as ${tableAlias}")
+          case v: Values if sqlContext.nestingLevel > 0 && sqlContext.withinJoin =>
             s"${selectWithIndentAndParenIfNecessary(s"select * from ${printValues(v)} as ${tableAlias}")} as ${a.alias.fullName}"
           case _ =>
             indent(s"${printRelation(a.inputRelation)(using sqlContext.nested)} as ${tableAlias}")
       case p: BracedRelation =>
-        val inner = printRelation(p.child)(using sqlContext.nested)
+        def inner = printRelation(p.child)(using sqlContext.nested)
         p.child match
           case v: Values =>
             // No need to wrap values query
