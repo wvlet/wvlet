@@ -146,9 +146,9 @@ case class Context(
     isDebugRun = isDebugRun
   )
 
-  def findTermSymbolByName(name: String): Option[Symbol] = findTermSymbolByName(TermName(name))
+  def findTermSymbolByName(name: String): Option[Symbol] = findSymbolByName(Name.termName(name))
 
-  def findTermSymbolByName(name: Name): Option[Symbol] =
+  def findSymbolByName(name: Name): Option[Symbol] =
     // Search the current scope first
     var foundSymbol: Option[Symbol] = scope.lookupSymbol(name)
 
@@ -175,12 +175,12 @@ case class Context(
         ctx <- global.getAllContexts.filter(_.isGlobalContext)
         if foundSymbol.isEmpty
       do
-        foundSymbol = ctx.compilationUnit.knownSymbols.find(_.name.name == name.name)
+        foundSymbol = ctx.compilationUnit.knownSymbols.find(_.name == name)
 
     if isContextCompilationUnit then
       trace(s"Looked up ${name} in ${compilationUnit.sourceFile.fileName} => ${foundSymbol}")
     foundSymbol
-  end findTermSymbolByName
+  end findSymbolByName
 
   def findDataFile(path: String): Option[String] = global
     .compilerOptions

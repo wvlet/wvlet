@@ -69,7 +69,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
       Nil
 
   private def lookupType(name: Name, context: Context): Option[Symbol] = context
-    .findTermSymbolByName(name)
+    .findSymbolByName(name)
 
   def resolve(plan: LogicalPlan, context: Context): LogicalPlan =
 
@@ -236,9 +236,10 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
               // trace(s"Resolved ${t}")
               case other =>
           case other =>
-            trace(
-              s"Unresolved model type for ${m.name}: ${other} (${m.locationString(using context)})"
-            )
+            if context.isContextCompilationUnit then
+              trace(
+                s"Unresolved model type for ${m.name}: ${other} (${m.locationString(using context)})"
+              )
         m
       case m: ModelDef if m.givenRelationType.isDefined && !m.symbol.dataType.isResolved =>
         val modelType = m.givenRelationType.get
@@ -339,7 +340,8 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
               case _ =>
                 ref
           case None =>
-            trace(s"Unresolved model ref: ${ref.name.fullName}")
+            if context.isContextCompilationUnit then
+              trace(s"Unresolved model ref: ${ref.name.fullName}")
             ref
 
     end apply
