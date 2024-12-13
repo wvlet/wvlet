@@ -5,5 +5,5 @@ left join orders
 group by c_custkey
 select o_orderkey.count as c_count
 group by c_count
-select _1, _.count as custdist
+agg _.count as custdist
 order by custdist desc, c_count desc

@@ -1,12 +1,18 @@
 package wvlet.standard
 
-type null:
+type any:
+  def to_string: string = sql"cast(${this} as varchar)"
   def to_int: int = sql"cast(${this} as bigint)"
   def to_long: long = sql"cast(${this} as bigint)"
   def to_float: float = sql"cast(${this} as double)"
   def to_double: double = sql"cast(${this} as double)"
   def to_boolean: boolean = sql"cast(${this} as boolean)"
-  def to_date: date = sql"cast(${this} as date)"
-  def to_string: string = sql"cast(${this} as varchar)"
-end
 
+  -- SQL types
+  def to_date: date = sql"cast(${this} as date)"
+  -- TODO Support type args
+  -- def to_decimal[P,S]: decimal[P,S] = sql"cast(${this} as decimal(${type[P]},${type[S]}))"
+
+  -- TODO Support generic type cast
+  --def cast_as[A]: A = sql"cast(${this} as ${type[A]})"
+end

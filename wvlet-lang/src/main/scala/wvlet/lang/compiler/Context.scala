@@ -146,22 +146,41 @@ case class Context(
     isDebugRun = isDebugRun
   )
 
-  def findTermSymbolByName(name: String): Option[Symbol] =
-    val n = TermName(name)
-    scope
-      // Search local symbols
-      .lookupSymbol(n)
-      .orElse {
-        // Search global symbols
-        var foundSymbol: Option[Symbol] = None
-        for
-          ctx <- global.getAllContexts.filter(_.isGlobalContext)
-          if foundSymbol.isEmpty
-        do
-          foundSymbol = ctx.compilationUnit.knownSymbols.find(_.name.name == name)
+  def findTermSymbolByName(name: String): Option[Symbol] = findSymbolByName(Name.termName(name))
 
-        foundSymbol
+  def findSymbolByName(name: Name): Option[Symbol] =
+    // Search the current scope first
+    var foundSymbol: Option[Symbol] = scope.lookupSymbol(name)
+
+    // Search the imported symbols
+    if foundSymbol.isEmpty then
+      importDefs.collectFirst {
+        case i: Import if i.importRef.leafName == name.name =>
+          for
+            ctx <- global.getAllContexts
+            if foundSymbol.isEmpty
+          do
+            ctx
+              .compilationUnit
+              .knownSymbols
+              .collectFirst {
+                case s: Symbol if s.name == name =>
+                  foundSymbol = Some(s)
+              }
       }
+
+    if foundSymbol.isEmpty then
+      // Search global symbols
+      for
+        ctx <- global.getAllContexts.filter(_.isGlobalContext)
+        if foundSymbol.isEmpty
+      do
+        foundSymbol = ctx.compilationUnit.knownSymbols.find(_.name == name)
+
+    if isContextCompilationUnit then
+      trace(s"Looked up ${name} in ${compilationUnit.sourceFile.fileName} => ${foundSymbol}")
+    foundSymbol
+  end findSymbolByName
 
   def findDataFile(path: String): Option[String] = global
     .compilerOptions
