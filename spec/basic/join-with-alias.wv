@@ -1,0 +1,3 @@
+from 'person.json' as p1
+join 'person.json' as p2
+on p1.id = p2.id

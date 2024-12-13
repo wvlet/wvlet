@@ -728,7 +728,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       scanner.lookAhead().token match
         case WvletToken.COMMA =>
           val ct    = consume(WvletToken.COMMA)
-          val rNext = fromRelation()
+          val rNext = relation()
           val rel = Join(
             JoinType.ImplicitJoin,
             input,
@@ -745,7 +745,6 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     val t           = scanner.lookAhead()
     t.token match
       case WvletToken.FROM =>
-        consume(WvletToken.FROM)
         r = fromRelation()
         r = readRest(r)
         r = queryBlock(r)
@@ -764,29 +763,22 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     r
   end querySingle
 
-  def relation(): Relation =
+  def fromRelation(): Relation =
     scanner.lookAhead().token match
       case WvletToken.FROM =>
         consume(WvletToken.FROM)
-        fromRelation()
+        relation()
       case _ =>
-        relationPrimary()
+        relation()
 
-  /**
-    * fromRelation := relationPrimary ('as' identifier)?
-    * @return
-    */
-  def fromRelation(): Relation =
-    val primary = relationPrimary()
-    val t       = scanner.lookAhead()
-    var rel: Relation =
-      t.token match
-        case WvletToken.AS =>
-          consume(WvletToken.AS)
-          tableAlias(primary)
-        case _ =>
-          primary
-    rel
+  def relation(): Relation =
+    val r = relationPrimary()
+    scanner.lookAhead().token match
+      case WvletToken.AS =>
+        consume(WvletToken.AS)
+        tableAlias(r)
+      case _ =>
+        r
 
   def queryBlock(input: Relation): Relation =
     queryBlockSingle(input) match
@@ -836,7 +828,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         sampleExpr(input)
       case WvletToken.CONCAT =>
         consume(WvletToken.CONCAT)
-        val right = relation()
+        val right = fromRelation()
         Concat(input, right, spanFrom(t))
       case WvletToken.INTERSECT | WvletToken.EXCEPT =>
         consume(t.token)
@@ -847,7 +839,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
               false
             case _ =>
               true
-        val right = relation()
+        val right = fromRelation()
         val rel =
           t.token match
             case WvletToken.INTERSECT =>
@@ -883,11 +875,11 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       case WvletToken.CROSS =>
         consume(WvletToken.CROSS)
         consume(WvletToken.JOIN)
-        val right = relationPrimary()
+        val right = relation()
         Join(JoinType.CrossJoin, input, right, NoJoinCriteria, isAsOfJoin, spanFrom(t))
       case WvletToken.JOIN =>
         consume(WvletToken.JOIN)
-        val right  = relationPrimary()
+        val right  = relation()
         val joinOn = joinCriteria()
         Join(JoinType.InnerJoin, input, right, joinOn, isAsOfJoin, spanFrom(t))
       case WvletToken.LEFT | WvletToken.RIGHT | WvletToken.INNER | WvletToken.FULL =>
@@ -905,7 +897,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
               unexpected(t)
         consume(t.token)
         consume(WvletToken.JOIN)
-        val right  = relationPrimary()
+        val right  = relation()
         val joinOn = joinCriteria()
         Join(joinType, input, right, joinOn, isAsOfJoin, spanFrom(t))
       case _ =>
@@ -1411,13 +1403,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
             consume(WvletToken.L_PAREN)
             val args = functionArgs()
             consume(WvletToken.R_PAREN)
-            val tbl = TableFunctionCall(tableOrFunctionName, args, spanFrom(t))
-            scanner.lookAhead().token match
-              case WvletToken.AS =>
-                consume(WvletToken.AS)
-                tableAlias(tbl)
-              case _ =>
-                tbl
+            TableFunctionCall(tableOrFunctionName, args, spanFrom(t))
           case _ =>
             TableRef(tableOrFunctionName, spanFrom(t))
       case WvletToken.SELECT | WvletToken.FROM | WvletToken.L_BRACE =>
@@ -1438,9 +1424,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         arrayValue()
       case _ =>
         unexpected(t)
-
     end match
-
   end relationPrimary
 
   def attributeList(): List[Attribute] =
