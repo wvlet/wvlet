@@ -31,7 +31,7 @@ import wvlet.lang.compiler.{
   TypeName,
   TypeSymbolInfo
 }
-import wvlet.lang.model.DataType.{NamedType, SchemaType, VarArgType}
+import wvlet.lang.model.DataType.{AnyType, NamedType, SchemaType, VarArgType}
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
 import wvlet.lang.model.{DataType, RelationType}
@@ -68,57 +68,8 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
       resolveModelDef ::              // Resolve models again to use the updated types
       Nil
 
-  private def lookupType(name: Name, context: Context): Option[Symbol] =
-    context.scope.lookupSymbol(name) match
-      case Some(s) =>
-        Some(s)
-      case None =>
-        var foundSym: Option[Symbol] = None
-        context
-          .importDefs
-          .collectFirst {
-            case i: Import if i.importRef.leafName == name.name =>
-              // trace(s"Found import ${i}")
-              for
-                ctx <- context.global.getAllContexts
-                if foundSym.isEmpty
-              do
-                if context.isContextCompilationUnit then
-                  trace(s"Lookup ${name} in ${ctx.compilationUnit.sourceFile.fileName}")
-                ctx
-                  .compilationUnit
-                  .knownSymbols
-                  .collectFirst {
-                    case s: Symbol if s.name == name =>
-                      trace(s"Found ${s.name} in ${ctx.compilationUnit}")
-                      foundSym = Some(s)
-                  }
-          }
-
-        if foundSym.isEmpty then
-          // Search for global and preset contexts
-          for
-            // TODO Search global scope
-            ctx <- context
-              .global
-              .getAllContexts
-              .filter(_.isGlobalContext) // preset libraries or global symbols
-            if foundSym.isEmpty
-          do
-            // trace(
-            //  s"Searching ${name} in ${ctx.compilationUnit.sourceFile.fileName}\n${ctx.compilationUnit.knownSymbols} ${ctx.hashCode()}"
-            // )
-            ctx
-              .compilationUnit
-              .knownSymbols
-              .collectFirst {
-                case s: Symbol if s.name == name =>
-                  if ctx.isContextCompilationUnit then
-                    trace(s"Found ${s.name} in ${ctx.compilationUnit}")
-                  foundSym = Some(s)
-              }
-
-        foundSym
+  private def lookupType(name: Name, context: Context): Option[Symbol] = context
+    .findTermSymbolByName(name)
 
   def resolve(plan: LogicalPlan, context: Context): LogicalPlan =
 
@@ -566,27 +517,34 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
           }
       case d @ DotRef(qual, method: Identifier, _, _) =>
         val methodName = method.toTermName
-        if qual.dataType.isResolved then
-          lookupType(qual.dataType.typeName, context)
-            .map { sym =>
-              // TODO: Resolve member with different arg types
-              sym.symbolInfo.findMember(methodName).symbolInfo
-            }
-            .collect {
-              case m: MethodSymbolInfo =>
-                m
-              case m: MultipleSymbolInfo =>
-                // TODO resolve one of the function type
-                throw StatusCode
-                  .SYNTAX_ERROR
-                  .newException(
-                    s"Ambiguous function call for ${method}",
-                    context.sourceLocationAt(d.span)
-                  )
-            }
-        else
+        val qualType =
+          if qual.dataType.isResolved then
+            qual.dataType
+          else
+            DataType.AnyType
+
+        val m: Option[MethodSymbolInfo] = lookupType(qualType.typeName, context)
+          .map { sym =>
+            // TODO: Resolve member with different arg types
+            sym.symbolInfo.findMember(methodName).symbolInfo
+          }
+          .collect {
+            case m: MethodSymbolInfo =>
+              m
+            case m: MultipleSymbolInfo =>
+              // TODO resolve one of the function type
+              throw StatusCode
+                .SYNTAX_ERROR
+                .newException(
+                  s"Ambiguous function call for ${method}",
+                  context.sourceLocationAt(d.span)
+                )
+          }
+
+        if context.isContextCompilationUnit && m.isEmpty then
           trace(s"Failed to find function `${methodName}` for ${qual}:${qual.dataType}")
-          None
+
+        m
       case _ =>
         trace(s"Failed to find function definition for ${f}")
         None

@@ -1,0 +1,25 @@
+select
+  ceiling(17.4).to_string as ceil_s,
+  ceiling(17.4).to_int as ceil_i,
+  -- cast null to tpe
+  null.to_int as null_i,
+  null.to_string as null_s,
+  null.to_long as null_l,
+  null.to_float as null_f,
+  null.to_double as null_d,
+  null.to_boolean as null_b,
+  null.to_date as null_date,
+
+test _.rows = [
+  [
+    "18",
+    18,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+  ]
+]
