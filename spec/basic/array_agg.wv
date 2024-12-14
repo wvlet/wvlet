@@ -1,0 +1,11 @@
+from [
+  [1, "a"],
+  [1, "b"],
+  [2, "c"]
+] as tbl(id, v)
+group by id
+agg v.to_array as arr
+order by id
+
+test _.columns should be ['id', 'arr']
+test _.rows should be [[1, ['a', 'b']], [2, ['c']]]
