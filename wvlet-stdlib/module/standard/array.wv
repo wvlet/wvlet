@@ -22,6 +22,8 @@ type array[A]:
   def min_by(expr: sql): A = sql"min_by(${this}, ${expr})"
   def max_by(expr: sql): A = sql"max_by(${this}, ${expr})"
 
+  def to_array: array[A] = sql"array_agg(${this})"
+
   def exists: boolean = sql"exists(${this})"
   def not_exists: boolean = sql"not exists(${this})"
 end
