@@ -15,6 +15,7 @@ package wvlet.lang.runner.connector
 
 import wvlet.airframe.control.Control.withResource
 import DBConnector.*
+import io.trino.jdbc.QueryStats
 import wvlet.lang.catalog.{Catalog, SQLFunction}
 import wvlet.lang.catalog.Catalog.{TableColumn, TableName, TableSchema}
 import wvlet.lang.compiler.{DBType, Name}
@@ -23,9 +24,10 @@ import wvlet.lang.model.{DataType, RelationType}
 import wvlet.lang.model.plan.LogicalPlan
 import wvlet.lang.model.plan.*
 import wvlet.airframe.codec.JDBCCodec.ResultSetCodec
+import wvlet.airframe.metrics.{Count, ElapsedTime}
 import wvlet.log.LogSupport
 
-import java.sql.{Connection, ResultSet, SQLWarning}
+import java.sql.{Connection, ResultSet, SQLWarning, Statement}
 import java.util.concurrent.ConcurrentHashMap
 import scala.jdk.CollectionConverters.*
 
@@ -44,6 +46,14 @@ enum QueryScope:
   case Global,
     InQuery,
     InExpr
+
+trait QueryProgress[Metric]:
+  def statusLine(m: Metric): String
+
+object QueryProgress:
+  case class TrinoQueryProgress(stats: QueryStats) extends QueryProgress[QueryStats]:
+    override def statusLine(stats: QueryStats): String =
+      s"Query ${stats.getQueryId}: ${Count.succinct(stats.getProcessedRows)} rows processed in ${ElapsedTime.succinctMillis(stats.getElapsedTimeMillis)}"
 
 trait DBConnector(val dbType: DBType) extends AutoCloseable with LogSupport:
   private var queryScope: QueryScope = QueryScope.Global
@@ -65,14 +75,23 @@ trait DBConnector(val dbType: DBType) extends AutoCloseable with LogSupport:
     )
   )
 
+  def setProgressMonitor[Metric](monitor: QueryProgress[Metric] => Unit): Unit = {
+    // do nothing unless supported
+  }
+
   def withConnection[U](body: Connection => U): U =
     val conn = newConnection
     try body(conn)
     finally conn.close()
 
+  def withStatement[U](conn: Connection)(body: Statement => U): U =
+    withResource(conn.createStatement()) { stmt =>
+      body(stmt)
+    }
+
   def runQuery[U](sql: String)(handler: ResultSet => U): U = withConnection: conn =>
     trace(s"Running SQL: ${sql}")
-    withResource(conn.createStatement()): stmt =>
+    withStatement(conn): stmt =>
       withResource(stmt.executeQuery(sql)): rs =>
         handler(rs)
 

@@ -34,7 +34,9 @@ import java.sql.SQLException
 import scala.collection.immutable.ListMap
 import scala.util.Try
 
-case class QueryExecutorConfig(rowLimit: Int = 40)
+case class QueryExecutorConfig(rowLimit: Int = 40,
+  progressMonitor: Any => Unit = _ => (),
+)
 
 class QueryExecutor(
     dbConnector: DBConnector,
