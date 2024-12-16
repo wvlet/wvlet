@@ -20,6 +20,7 @@ import wvlet.lang.catalog.SQLFunction
 import wvlet.lang.compiler.DBType
 import wvlet.lang.model.DataType
 import wvlet.lang.runner.connector.*
+import wvlet.lang.runner.connector.QueryMetric.TrinoQueryMetric
 import wvlet.log.LogSupport
 
 import java.sql.{Connection, Statement}
@@ -60,8 +61,9 @@ class TrinoConnector(val config: TrinoConfig) extends DBConnector(DBType.Trino) 
     Control.withResource(conn.createStatement().asInstanceOf[TrinoStatement]) { stmt =>
       stmt.setProgressMonitor(
         new Consumer[QueryStats]:
-          override def accept(stats: QueryStats): Unit = {}
-
+          override def accept(stats: QueryStats): Unit = {
+            conn.queryProgressMonitor.reportProgress(TrinoQueryMetric(stats))
+          }
         // m.report(TrinoQueryMetric(stats))
         //            print(
         //            s"\r[Query ${stats.getQueryId}] elapsed: ${ElapsedTime.succinctMillis(stats.getElapsedTimeMillis)}, rows: ${Count.succinct(stats.getProcessedRows)}, splits: ${stats.getCompletedSplits}/${stats.getTotalSplits}\r"

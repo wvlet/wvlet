@@ -1,13 +1,14 @@
 package wvlet.lang.runner.connector
 
 import wvlet.lang.catalog.Profile
-import wvlet.lang.compiler.DBType
+import wvlet.lang.compiler.{DBType}
 import wvlet.lang.compiler.DBType.DuckDB
 import wvlet.lang.runner.connector.duckdb.DuckDBConnector
 import wvlet.lang.runner.connector.trino.{TrinoConfig, TrinoConnector}
 import wvlet.log.LogSupport
 
-object DBConnectorProvider extends LogSupport:
+class DBConnectorProvider(progressMonitor: QueryProgressMonitor = QueryProgressMonitor.noOp)
+    extends LogSupport:
 
   def getConnector(profile: Profile, properties: Map[String, Any] = Map.empty): DBConnector =
     val dbType = profile.dbType

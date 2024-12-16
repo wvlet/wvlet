@@ -7,7 +7,7 @@ import wvlet.lang.api.{StatusCode, WvletLangException}
 import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.runner.WvletScriptRunnerConfig
-import wvlet.lang.runner.connector.{DBConnector, DBConnectorProvider}
+import wvlet.lang.runner.connector.{DBConnector, DBConnectorProvider, QueryProgressMonitor}
 import wvlet.log.LogSupport
 import wvlet.log.io.IOUtil
 
@@ -87,7 +87,7 @@ class WvletREPLMain(cliOption: WvletGlobalOption, replOpts: WvletREPLOption) ext
           schema = selectedSchema
         )
       )
-      .bindInstance[DBConnector](DBConnectorProvider.getConnector(currentProfile))
+      .bindInstance[QueryProgressMonitor](QueryProgressMonitor.noOp)
 
     design.build[WvletREPL] { repl =>
       repl.start(inputScripts)

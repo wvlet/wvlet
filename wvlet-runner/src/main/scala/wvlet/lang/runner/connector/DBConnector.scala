@@ -48,18 +48,6 @@ enum QueryScope:
     InQuery,
     InExpr
 
-trait QueryMetric
-object QueryMetric:
-  case class TrinoQueryMetric(stats: QueryStats) extends QueryMetric
-
-trait QueryProgressMonitor:
-  def newQuery(sql: String): Unit = {}
-  def report(metric: QueryMetric): Unit
-
-object QueryProgressMonitor:
-  def noOp: QueryProgressMonitor =
-    new QueryProgressMonitor:
-      override def report(metric: QueryMetric): Unit = ()
 
 case class DBConnection(
     jdbcConnection: Connection,

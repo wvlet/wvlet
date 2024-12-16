@@ -17,7 +17,7 @@ import wvlet.lang.compiler.{
   WorkEnv
 }
 import wvlet.lang.runner.QueryExecutor
-import wvlet.lang.runner.connector.{DBConnector, DBConnectorProvider}
+import wvlet.lang.runner.connector.{DBConnector, DBConnectorProvider, QueryProgressMonitor}
 import wvlet.log.LogSupport
 
 case class WvletCompilerOption(
@@ -41,6 +41,8 @@ class WvletCompiler(opts: WvletGlobalOption, compilerOption: WvletCompilerOption
     extends LogSupport
     with AutoCloseable:
 
+  private val workEnv: WorkEnv = WorkEnv(compilerOption.workFolder, opts.logLevel)
+
   private lazy val currentProfile: Profile =
     // Resolve the profile from DBType or profile name
     compilerOption.targetDBType match
@@ -59,7 +61,7 @@ class WvletCompiler(opts: WvletGlobalOption, compilerOption: WvletCompilerOption
 
   private def getDBConnector: DBConnector = synchronized {
     if _dbConnector == null then
-      _dbConnector = DBConnectorProvider.getConnector(currentProfile)
+      _dbConnector = DBConnectorProvider().getConnector(currentProfile)
     _dbConnector
   }
 
@@ -70,7 +72,7 @@ class WvletCompiler(opts: WvletGlobalOption, compilerOption: WvletCompilerOption
       CompilerOptions(
         phases = Compiler.allPhases,
         sourceFolders = List(compilerOption.workFolder),
-        workEnv = WorkEnv(compilerOption.workFolder, opts.logLevel),
+        workEnv = workEnv,
         catalog = currentProfile.catalog,
         schema = currentProfile.schema
       )

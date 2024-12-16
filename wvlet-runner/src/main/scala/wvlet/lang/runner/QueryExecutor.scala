@@ -70,27 +70,26 @@ class QueryExecutor(
       linePosition: LinePosition,
       rootContext: Context
   ): QueryResult =
-    workEnv
-      .outLogger
-      .info(s"Executing ${u.sourceFile.fileName} (${linePosition}, ${querySelection})")
+    workEnv.info(s"Executing ${u.sourceFile.fileName} (${linePosition}, ${querySelection})")
 
     val targetStatement: LogicalPlan = QuerySelector.selectQuery(u, linePosition, querySelection)
     trace(s"Selected statement: ${targetStatement}, ${querySelection}")
     val ctx           = rootContext.withCompilationUnit(u).newContext(Symbol.NoSymbol)
     val executionPlan = ExecutionPlanner.plan(u, targetStatement, ctx)
     val result        = execute(executionPlan, ctx)
-    workEnv.outLogger.info(s"Completed ${u.sourceFile.fileName}")
+
+    workEnv.info(s"Completed ${u.sourceFile.fileName}")
     result
 
   end executeSelectedStatement
 
   def executeSingle(u: CompilationUnit, rootContext: Context): QueryResult =
-    workEnv.outLogger.info(s"Executing ${u.sourceFile.fileName}")
+    workEnv.info(s"Executing ${u.sourceFile.fileName}")
     val ctx = rootContext.withCompilationUnit(u).newContext(Symbol.NoSymbol)
 
     val executionPlan = ExecutionPlanner.plan(u, ctx)
     val result        = execute(executionPlan, ctx)
-    workEnv.outLogger.info(s"Completed ${u.sourceFile.fileName}")
+    workEnv.info(s"Completed ${u.sourceFile.fileName}")
     result
 
   def execute(executionPlan: ExecutionPlan, context: Context): QueryResult =
@@ -109,12 +108,12 @@ class QueryExecutor(
         // log results
         r match
           case t: TestSuccess =>
-            workEnv.outLogger.debug(s"Test passed: ${t.msg} (${t.loc.locationString})")
+            workEnv.debug(s"Test passed: ${t.msg} (${t.loc.locationString})")
           case t: TestFailure =>
-            workEnv.outLogger.error(s"Test failed: ${t.msg} (${t.loc.locationString})")
+            workEnv.error(s"Test failed: ${t.msg} (${t.loc.locationString})")
           case w: WarningResult =>
             warn(s"${w.msg} (${w.loc.locationString})")
-            workEnv.outLogger.warn(s"Warning: ${w.msg}")
+            workEnv.warn(s"Warning: ${w.msg}")
           case _ =>
 
       r
@@ -160,7 +159,7 @@ class QueryExecutor(
   end execute
 
   private def executeStatement(sqls: List[String]): Unit = sqls.foreach: sql =>
-    workEnv.outLogger.info(s"Executing SQL:\n${sql}")
+    workEnv.info(s"Executing SQL:\n${sql}")
     debug(s"Executing SQL:\n${sql}")
     try
       dbConnector.executeUpdate(sql)
@@ -208,11 +207,11 @@ class QueryExecutor(
 
   private def executeQuery(plan: LogicalPlan, context: Context): QueryResult =
     trace(s"Executing query: ${plan.pp}")
-    workEnv.outLogger.trace(s"Executing plan: ${plan.pp}")
+    workEnv.trace(s"Executing plan: ${plan.pp}")
     plan match
       case q: Relation =>
         val generatedSQL = GenSQL.generateSQLFromRelation(q, context)
-        workEnv.outLogger.info(s"Executing SQL:\n${generatedSQL.sql}")
+        workEnv.info(s"Executing SQL:\n${generatedSQL.sql}")
         debug(s"Executing SQL:\n${generatedSQL.sql}")
         try
           val result =
@@ -267,7 +266,7 @@ class QueryExecutor(
   ): QueryResult =
     val result = execute(debugPlan.debugExecutionPlan, context)
     // TODO: Output to REPL
-    workEnv.outLogger.info(result)
+    workEnv.info(result)
     QueryResult.empty
 
   private def executeTest(test: TestRelation, lastResult: QueryResult)(using
