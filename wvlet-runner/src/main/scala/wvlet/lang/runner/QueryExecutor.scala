@@ -34,9 +34,7 @@ import java.sql.SQLException
 import scala.collection.immutable.ListMap
 import scala.util.Try
 
-case class QueryExecutorConfig(rowLimit: Int = 40,
-  progressMonitor: Any => Unit = _ => (),
-)
+case class QueryExecutorConfig(rowLimit: Int = 40, progressMonitor: Any => Unit = _ => ())
 
 class QueryExecutor(
     dbConnector: DBConnector,
@@ -161,20 +159,14 @@ class QueryExecutor(
 
   end execute
 
-  private def executeStatement(sqls: List[String]): Unit = dbConnector.withConnection { conn =>
-    withResource(conn.createStatement()) { stmt =>
-      sqls.foreach { sql =>
-        workEnv.outLogger.info(s"Executing SQL:\n${sql}")
-        debug(s"Executing SQL:\n${sql}")
-        try
-          stmt.execute(sql)
-          dbConnector.processWarning(stmt.getWarnings)
-        catch
-          case e: SQLException =>
-            throw StatusCode.SYNTAX_ERROR.newException(s"${e.getMessage}\n[sql]\n${sql}", e)
-      }
-    }
-  }
+  private def executeStatement(sqls: List[String]): Unit = sqls.foreach: sql =>
+    workEnv.outLogger.info(s"Executing SQL:\n${sql}")
+    debug(s"Executing SQL:\n${sql}")
+    try
+      dbConnector.executeUpdate(sql)
+    catch
+      case e: SQLException =>
+        throw StatusCode.SYNTAX_ERROR.newException(s"${e.getMessage}\n[sql]\n${sql}", e)
 
   private def executeCommand(cmd: Command, context: Context): QueryResult =
     cmd match
@@ -223,45 +215,39 @@ class QueryExecutor(
         workEnv.outLogger.info(s"Executing SQL:\n${generatedSQL.sql}")
         debug(s"Executing SQL:\n${generatedSQL.sql}")
         try
-          val result = dbConnector.withConnection { conn =>
-            withResource(conn.createStatement()) { stmt =>
-              withResource(stmt.executeQuery(generatedSQL.sql)) { rs =>
-                dbConnector.processWarning(stmt.getWarnings())
+          val result =
+            dbConnector.runQuery(generatedSQL.sql) { rs =>
+              val metadata = rs.getMetaData
+              val fields =
+                for i <- 1 to metadata.getColumnCount
+                yield NamedType(
+                  Name.termName(metadata.getColumnName(i)),
+                  Try(DataType.parse(metadata.getColumnTypeName(i))).getOrElse {
+                    UnresolvedType(metadata.getColumnTypeName(i))
+                  }
+                )
+              val outputType = SchemaType(None, Name.NoTypeName, fields)
+              trace(outputType)
 
-                val metadata = rs.getMetaData
-                val fields =
-                  for i <- 1 to metadata.getColumnCount
-                  yield NamedType(
-                    Name.termName(metadata.getColumnName(i)),
-                    Try(DataType.parse(metadata.getColumnTypeName(i))).getOrElse {
-                      UnresolvedType(metadata.getColumnTypeName(i))
-                    }
-                  )
-                val outputType = SchemaType(None, Name.NoTypeName, fields)
-                trace(outputType)
+              val codec    = JDBCCodec(rs)
+              val rowCodec = MessageCodec.of[ListMap[String, Any]]
+              var rowCount = 0
+              val it = codec.mapMsgPackMapRows { msgpack =>
+                if rowCount < config.rowLimit then
+                  rowCodec.fromMsgPack(msgpack)
+                else
+                  null
+              }
 
-                val codec    = JDBCCodec(rs)
-                val rowCodec = MessageCodec.of[ListMap[String, Any]]
-                var rowCount = 0
-                val it = codec.mapMsgPackMapRows { msgpack =>
-                  if rowCount < config.rowLimit then
-                    rowCodec.fromMsgPack(msgpack)
-                  else
-                    null
-                }
-
-                val rows = Seq.newBuilder[ListMap[String, Any]]
-                while it.hasNext do
-                  val row = it.next()
-                  if row != null && rowCount < config.rowLimit then
-                    rows += row
+              val rows = Seq.newBuilder[ListMap[String, Any]]
+              while it.hasNext do
+                val row = it.next()
+                if row != null && rowCount < config.rowLimit then
+                  rows += row
                   rowCount += 1
 
-                TableRows(outputType, rows.result(), rowCount)
-              }
+              TableRows(outputType, rows.result(), rowCount)
             }
-          }
-
           result
         catch
           case e: SQLException =>

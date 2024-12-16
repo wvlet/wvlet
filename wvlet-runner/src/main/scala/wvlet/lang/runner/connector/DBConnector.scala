@@ -25,9 +25,10 @@ import wvlet.lang.model.plan.LogicalPlan
 import wvlet.lang.model.plan.*
 import wvlet.airframe.codec.JDBCCodec.ResultSetCodec
 import wvlet.airframe.metrics.{Count, ElapsedTime}
+import wvlet.lang.api.StatusCode
 import wvlet.log.LogSupport
 
-import java.sql.{Connection, ResultSet, SQLWarning, Statement}
+import java.sql.{Connection, ResultSet, SQLException, SQLWarning, Statement}
 import java.util.concurrent.ConcurrentHashMap
 import scala.jdk.CollectionConverters.*
 
@@ -47,13 +48,26 @@ enum QueryScope:
     InQuery,
     InExpr
 
-trait QueryProgress[Metric]:
-  def statusLine(m: Metric): String
+trait QueryMetric
+object QueryMetric:
+  case class TrinoQueryMetric(stats: QueryStats) extends QueryMetric
 
-object QueryProgress:
-  case class TrinoQueryProgress(stats: QueryStats) extends QueryProgress[QueryStats]:
-    override def statusLine(stats: QueryStats): String =
-      s"Query ${stats.getQueryId}: ${Count.succinct(stats.getProcessedRows)} rows processed in ${ElapsedTime.succinctMillis(stats.getElapsedTimeMillis)}"
+trait QueryProgressMonitor:
+  def newQuery(sql: String): Unit = {}
+  def report(metric: QueryMetric): Unit
+
+object QueryProgressMonitor:
+  def noOp: QueryProgressMonitor =
+    new QueryProgressMonitor:
+      override def report(metric: QueryMetric): Unit = ()
+
+case class DBConnection(
+    jdbcConnection: Connection,
+    queryProgressMonitor: QueryProgressMonitor = QueryProgressMonitor.noOp
+) extends AutoCloseable:
+  def createStatement(): Statement             = jdbcConnection.createStatement()
+  def getMetaData(): java.sql.DatabaseMetaData = jdbcConnection.getMetaData()
+  def close(): Unit                            = jdbcConnection.close()
 
 trait DBConnector(val dbType: DBType) extends AutoCloseable with LogSupport:
   private var queryScope: QueryScope = QueryScope.Global
@@ -64,7 +78,7 @@ trait DBConnector(val dbType: DBType) extends AutoCloseable with LogSupport:
     queryScope = scope
     this
 
-  def newConnection: Connection
+  private[connector] def newConnection: DBConnection
 
   def getCatalog(catalogName: String, defaultSchema: String): Catalog = catalogs.getOrElseUpdate(
     catalogName,
@@ -75,29 +89,30 @@ trait DBConnector(val dbType: DBType) extends AutoCloseable with LogSupport:
     )
   )
 
-  def setProgressMonitor[Metric](monitor: QueryProgress[Metric] => Unit): Unit = {
-    // do nothing unless supported
-  }
-
-  def withConnection[U](body: Connection => U): U =
+  protected def withConnection[U](body: DBConnection => U): U =
     val conn = newConnection
     try body(conn)
     finally conn.close()
 
-  def withStatement[U](conn: Connection)(body: Statement => U): U =
+  protected def withStatement[U](body: Statement => U): U = withConnection: conn =>
     withResource(conn.createStatement()) { stmt =>
-      body(stmt)
+      val preWarnings = stmt.getWarnings
+      processWarning(stmt.getWarnings())
+      val result       = body(stmt)
+      val postWarnings = stmt.getWarnings
+      if preWarnings != postWarnings then
+        processWarning(stmt.getWarnings())
+      result
     }
 
-  def runQuery[U](sql: String)(handler: ResultSet => U): U = withConnection: conn =>
+  def runQuery[U](sql: String)(handler: ResultSet => U): U =
     trace(s"Running SQL: ${sql}")
-    withStatement(conn): stmt =>
+    withStatement: stmt =>
       withResource(stmt.executeQuery(sql)): rs =>
         handler(rs)
 
-  def executeUpdate(sql: String): Int = withConnection: conn =>
-    withResource(conn.createStatement()): stmt =>
-      stmt.executeUpdate(sql)
+  def executeUpdate(sql: String): Int = withStatement: stmt =>
+    stmt.executeUpdate(sql)
 
   def processWarning(w: java.sql.SQLWarning): Unit =
     def showWarnings(w: SQLWarning): Unit =

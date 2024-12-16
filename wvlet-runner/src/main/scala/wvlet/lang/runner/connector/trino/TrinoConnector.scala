@@ -13,16 +13,16 @@
  */
 package wvlet.lang.runner.connector.trino
 
+import io.trino.jdbc.{QueryStats, TrinoConnection, TrinoDriver, TrinoStatement}
+import wvlet.airframe.control.Control
+import wvlet.airframe.metrics.{Count, ElapsedTime}
 import wvlet.lang.catalog.SQLFunction
 import wvlet.lang.compiler.DBType
 import wvlet.lang.model.DataType
-import wvlet.lang.runner.connector.{DBConnector, QueryProgress, TrinoQueryProgress}
-import io.trino.jdbc.{QueryStats, TrinoConnection, TrinoDriver, TrinoResultSet, TrinoStatement}
-import wvlet.airframe.control.Control
-import wvlet.airframe.metrics.{Count, ElapsedTime}
+import wvlet.lang.runner.connector.*
 import wvlet.log.LogSupport
 
-import java.sql.{Connection, ResultSet, SQLWarning, Statement}
+import java.sql.{Connection, Statement}
 import java.util.Properties
 import java.util.function.Consumer
 
@@ -38,7 +38,7 @@ case class TrinoConfig(
 class TrinoConnector(val config: TrinoConfig) extends DBConnector(DBType.Trino) with LogSupport:
   private lazy val driver = new TrinoDriver()
 
-  override def newConnection: Connection =
+  private[connector] override def newConnection: DBConnection =
     val jdbcUrl =
       s"jdbc:trino://${config.hostAndPort}/${config.catalog}/${config.schema}${
           if config.useSSL then
@@ -50,23 +50,22 @@ class TrinoConnector(val config: TrinoConfig) extends DBConnector(DBType.Trino) 
     val properties = new Properties()
     config.user.foreach(x => properties.put("user", x))
     config.password.foreach(x => properties.put("password", x))
-    driver.connect(jdbcUrl, properties).asInstanceOf[TrinoConnection]
+    DBConnection(driver.connect(jdbcUrl, properties).asInstanceOf[TrinoConnection])
 
   override def close(): Unit = driver.close()
 
   def withConfig(newConfig: TrinoConfig): TrinoConnector = new TrinoConnector(newConfig)
 
-  override def setProgressMonitor[Metric](monitor: QueryProgress[Metric] => Unit): Unit = {
-    
-  }
-
-  override def withStatement[U](conn: Connection)(body: Statement => U): U =
+  override protected def withStatement[U](body: Statement => U): U = withConnection: conn =>
     Control.withResource(conn.createStatement().asInstanceOf[TrinoStatement]) { stmt =>
       stmt.setProgressMonitor(
         new Consumer[QueryStats]:
-          override def accept(stats: QueryStats): Unit = print(
-            s"\r[Query ${stats.getQueryId}] elapsed: ${ElapsedTime.succinctMillis(stats.getElapsedTimeMillis)}, rows: ${Count.succinct(stats.getProcessedRows)}, splits: ${stats.getCompletedSplits}/${stats.getTotalSplits}\r"
-          )
+          override def accept(stats: QueryStats): Unit = {}
+
+        // m.report(TrinoQueryMetric(stats))
+        //            print(
+        //            s"\r[Query ${stats.getQueryId}] elapsed: ${ElapsedTime.succinctMillis(stats.getElapsedTimeMillis)}, rows: ${Count.succinct(stats.getProcessedRows)}, splits: ${stats.getCompletedSplits}/${stats.getTotalSplits}\r"
+        //            )
       )
       body(stmt)
     }

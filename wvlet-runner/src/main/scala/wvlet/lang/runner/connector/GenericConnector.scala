@@ -19,7 +19,7 @@ class GenericConnector extends DBConnector(Generic):
       _connector = DuckDBConnector()
     _connector
 
-  override def newConnection: Connection = getConnector.newConnection
+  override private[connector] def newConnection: DBConnection = getConnector.newConnection
 
   override def listFunctions(catalog: String): List[SQLFunction] = getConnector
     .listFunctions(catalog)
