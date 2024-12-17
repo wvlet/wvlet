@@ -52,7 +52,7 @@ abstract class Phase(
           unit.setFinished(this)
         catch
           case NonFatal(e) =>
-            context.workEnv.logError(e)
+            // context.workEnv.logError(e)
             unit.setFailed(e)
 
     refineUnits(completedUnits.result())
