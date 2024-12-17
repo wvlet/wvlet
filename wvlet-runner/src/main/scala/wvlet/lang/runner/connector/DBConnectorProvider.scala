@@ -12,12 +12,9 @@ import scala.jdk.CollectionConverters.*
 
 class DBConnectorProvider extends LogSupport with AutoCloseable:
 
-  private val connectorCache  = new ConcurrentHashMap[Profile, DBConnector]().asScala
-  private var progressMonitor = QueryProgressMonitor.noOp
+  private val connectorCache = new ConcurrentHashMap[Profile, DBConnector]().asScala
 
   override def close(): Unit = connectorCache.values.foreach(_.close())
-
-  def setQueryProgressMonitor(monitor: QueryProgressMonitor): Unit = progressMonitor = monitor
 
   def getConnector(profile: Profile, properties: Map[String, Any] = Map.empty): DBConnector =
     def createConnector: DBConnector =
@@ -32,8 +29,7 @@ class DBConnectorProvider extends LogSupport with AutoCloseable:
               hostAndPort = profile.host.getOrElse("localhost"),
               user = profile.user,
               password = profile.password
-            ),
-            progressMonitor
+            )
           )
         case DBType.DuckDB =>
           DuckDBConnector(
@@ -52,8 +48,7 @@ class DBConnectorProvider extends LogSupport with AutoCloseable:
           GenericConnector()
     end createConnector
 
-    // connectorCache.getOrElseUpdate(profile, createConnector)
-    createConnector
+    connectorCache.getOrElseUpdate(profile, createConnector)
 
   end getConnector
 

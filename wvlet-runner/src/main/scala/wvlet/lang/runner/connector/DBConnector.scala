@@ -19,6 +19,7 @@ import io.trino.jdbc.QueryStats
 import wvlet.lang.catalog.{Catalog, SQLFunction}
 import wvlet.lang.catalog.Catalog.{TableColumn, TableName, TableSchema}
 import wvlet.lang.compiler.{DBType, Name}
+import wvlet.lang.compiler.query.QueryProgressMonitor
 import wvlet.lang.model.DataType.{NamedType, SchemaType}
 import wvlet.lang.model.{DataType, RelationType}
 import wvlet.lang.model.plan.LogicalPlan
@@ -48,8 +49,7 @@ enum QueryScope:
     InQuery,
     InExpr
 
-case class DBConnection(jdbcConnection: Connection, queryProgressMonitor: QueryProgressMonitor)
-    extends AutoCloseable:
+case class DBConnection(jdbcConnection: Connection) extends AutoCloseable:
   def createStatement(): Statement             = jdbcConnection.createStatement()
   def getMetaData(): java.sql.DatabaseMetaData = jdbcConnection.getMetaData()
   def close(): Unit                            = jdbcConnection.close()
@@ -79,7 +79,9 @@ trait DBConnector(val dbType: DBType) extends AutoCloseable with LogSupport:
     try body(conn)
     finally conn.close()
 
-  protected def withStatement[U](body: Statement => U): U = withConnection: conn =>
+  protected def withStatement[U](
+      body: Statement => U
+  )(using queryProgressMonitor: QueryProgressMonitor): U = withConnection: conn =>
     withResource(conn.createStatement()) { stmt =>
       val preWarnings = stmt.getWarnings
       processWarning(stmt.getWarnings())
@@ -90,13 +92,21 @@ trait DBConnector(val dbType: DBType) extends AutoCloseable with LogSupport:
       result
     }
 
-  def runQuery[U](sql: String)(handler: ResultSet => U): U =
-    withStatement: stmt =>
-      withResource(stmt.executeQuery(sql)): rs =>
-        handler(rs)
+  def runQuery[U](sql: String)(handler: ResultSet => U)(using
+      progressMonitor: QueryProgressMonitor = QueryProgressMonitor.noOp
+  ): U = withStatement: stmt =>
+    withResource(stmt.executeQuery(sql)): rs =>
+      handler(rs)
 
-  def executeUpdate(sql: String): Int = withStatement: stmt =>
-    stmt.executeUpdate(sql)
+  def executeUpdate(
+      sql: String
+  )(using progressMonitor: QueryProgressMonitor = QueryProgressMonitor.noOp): Int = withStatement:
+    stmt => stmt.executeUpdate(sql)
+
+  def execute(sql: String)(using
+      progressMonitor: QueryProgressMonitor = QueryProgressMonitor.noOp
+  ): Boolean = withStatement: stmt =>
+    stmt.execute(sql)
 
   def processWarning(w: java.sql.SQLWarning): Unit =
     def showWarnings(w: SQLWarning): Unit =

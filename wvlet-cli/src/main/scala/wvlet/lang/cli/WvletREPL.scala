@@ -21,7 +21,7 @@ import org.jline.reader.impl.DefaultParser.Bracket
 import org.jline.terminal.Terminal.Signal
 import org.jline.terminal.{Size, Terminal, TerminalBuilder}
 import org.jline.utils.{AttributedString, AttributedStringBuilder, AttributedStyle, InfoCmp, Status}
-import org.jline.widget.{AutopairWidgets}
+import org.jline.widget.AutopairWidgets
 import wvlet.airframe.*
 import wvlet.airframe.control.{Shell, ThreadUtil}
 import wvlet.airframe.log.AnsiColorPalette
@@ -31,9 +31,9 @@ import wvlet.lang.api.v1.query.QueryRequest
 import wvlet.lang.api.v1.query.QuerySelection.{All, Describe, Subquery}
 import wvlet.lang.compiler.parser.*
 import wvlet.lang.compiler.{CompilationUnit, SourceFile, WorkEnv}
+import wvlet.lang.compiler.query.{QueryMetric, QueryProgressMonitor}
 import wvlet.lang.model.plan.QueryStatement
-import wvlet.lang.runner.connector.QueryMetric.TrinoQueryMetric
-import wvlet.lang.runner.connector.{QueryMetric, QueryProgressMonitor}
+import wvlet.lang.runner.connector.TrinoQueryMetric
 import wvlet.lang.runner.{LastOutput, WvletScriptRunner}
 import wvlet.log.{LogSupport, Logger}
 
@@ -76,20 +76,28 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
   private val executorThreadManager = Executors
     .newCachedThreadPool(ThreadUtil.newDaemonThreadFactory("wvlet-repl-executor"))
 
-  private lazy val progressMonitor: QueryProgressMonitor =
+  private given progressMonitor: QueryProgressMonitor =
     new QueryProgressMonitor:
+      private var lines = 0
+      override def close(): Unit =
+        if lines > 0 then
+          // terminal.writer().print(s"\u001B[${lines}A\u001B[0J")
+          terminal.writer().print("\u001b[2K\r")
+          terminal.flush()
+          lines = 0
       override def reportProgress(metric: QueryMetric): Unit =
         metric match
           case m: TrinoQueryMetric =>
+            if lines == 0 then
+              // Move the cursor to the end
+              moveToEnd
+
             val stats = m.stats
             val msg =
-              s"${ElapsedTime.succinctMillis(stats.getElapsedTimeMillis)} [${Count.succinct(stats.getProcessedRows)} rows] ${stats.getCompletedSplits}/${stats.getTotalSplits}"
-
-            val ERASE_LINE_ALL = "\u001b[2K"
-            if WvletMain.isInSbt then
-              terminal.writer().print(s"\r${msg}")
-            else
-              terminal.writer().print(s"\r${msg}")
+              f"Query ${stats.getQueryId} ${ElapsedTime.succinctMillis(stats.getElapsedTimeMillis)}%8s [${Count.succinct(stats.getProcessedRows)} rows] ${stats.getCompletedSplits}/${stats.getTotalSplits}"
+            lines = 1
+            // terminal.writer().print(s"\u001B[2K${msg}\n")
+            terminal.writer().print(s"\r${msg}")
             terminal.flush()
           case _ =>
 
@@ -122,6 +130,7 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
           val result = runner.runStatement(
             QueryRequest(query = trimmedLine, querySelection = All, isDebugRun = true)
           )
+          reader.getTerminal.writer()
           val output = runner.displayOutput(trimmedLine, result, terminal)
           lastOutput = Some(output)
         catch
@@ -171,14 +180,15 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
     val lines         = queryFragment.split("\n")
     val lastLine      = lines.lastOption.getOrElse("")
     val lineNum       = lines.size
-    val result = runner.runStatement(
-      QueryRequest(
-        query = queryFragment,
-        querySelection = Describe,
-        linePosition = LinePosition(lineNum, 1),
-        isDebugRun = true
-      )
-    )
+    val result =
+      runner.runStatement(
+        QueryRequest(
+          query = queryFragment,
+          querySelection = Describe,
+          linePosition = LinePosition(lineNum, 1),
+          isDebugRun = true
+        )
+      )(using QueryProgressMonitor.noOp) // Hide progress for descirbe query
     val str = result.toPrettyBox()
     reader.printAbove(
       s"${Color.GREEN}describe${Color.RESET} ${Color.BLUE}(line:${lineNum})${Color.RESET}: ${Color.BRIGHT_RED}${lastLine}\n${Color.GRAY}${str}${AnsiColor.RESET}"
@@ -211,10 +221,6 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
     true
 
   def start(commands: List[String] = Nil): Unit =
-    runner.setQueryProgressMonitor(progressMonitor)
-
-    Status.getStatus(reader.getTerminal).setBorder(true)
-
     // Set the default size when opening a new window or inside sbt console
     if terminal.getWidth == 0 || terminal.getHeight == 0 then
       terminal.setSize(Size(120, 40))

@@ -19,8 +19,8 @@ import wvlet.lang.api.WvletLangException
 import wvlet.lang.api.v1.query.{QueryRequest, QuerySelection}
 import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.*
+import wvlet.lang.compiler.query.QueryProgressMonitor
 import wvlet.lang.runner.*
-import wvlet.lang.runner.connector.QueryProgressMonitor
 import wvlet.log.{LogRotationHandler, LogSupport, Logger}
 
 import java.io.{BufferedWriter, FilterOutputStream, OutputStreamWriter}
@@ -62,9 +62,6 @@ class WvletScriptRunner(
   def setResultRowLimit(limit: Int): Unit = resultRowLimits = limit
   def setMaxColWidth(size: Int): Unit     = resultMaxColWidth = size
 
-  def setQueryProgressMonitor(monitor: QueryProgressMonitor): Unit = queryExecutor
-    .setQueryProgressMonitor(monitor)
-
   override def close(): Unit = queryExecutor.close()
 
   private val compiler =
@@ -101,13 +98,20 @@ class WvletScriptRunner(
 
   end compiler
 
-  def runStatement(request: QueryRequest): QueryResult =
+  def runStatement(request: QueryRequest)(using
+      queryProgressMonitor: QueryProgressMonitor
+  ): QueryResult =
     val newUnit = CompilationUnit.fromString(request.query)
     units = newUnit :: units
 
     try
       val compileResult = compiler.compileSingleUnit(contextUnit = newUnit)
-      val ctx = compileResult.context.global.getContextOf(newUnit).withDebugRun(request.isDebugRun)
+      val ctx = compileResult
+        .context
+        .global
+        .getContextOf(newUnit)
+        .withDebugRun(request.isDebugRun)
+        .withQueryProgressMonitor(queryProgressMonitor)
       val queryResult = queryExecutor
         .setRowLimit(resultRowLimits)
         .executeSelectedStatement(newUnit, request.querySelection, request.linePosition, ctx)

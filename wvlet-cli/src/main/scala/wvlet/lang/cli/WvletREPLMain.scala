@@ -7,7 +7,7 @@ import wvlet.lang.api.{StatusCode, WvletLangException}
 import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.runner.WvletScriptRunnerConfig
-import wvlet.lang.runner.connector.{DBConnector, DBConnectorProvider, QueryProgressMonitor}
+import wvlet.lang.runner.connector.{DBConnector, DBConnectorProvider}
 import wvlet.log.LogSupport
 import wvlet.log.io.IOUtil
 

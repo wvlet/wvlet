@@ -19,23 +19,25 @@ import wvlet.airframe.control.Control.withResource
 import wvlet.lang.api.v1.query.QuerySelection
 import wvlet.lang.api.{LinePosition, StatusCode, WvletLangException}
 import wvlet.lang.catalog.Profile
-import wvlet.lang.compiler.{QuerySelector, *}
+import wvlet.lang.compiler.*
+import wvlet.lang.compiler.query.QueryProgressMonitor
 import wvlet.lang.compiler.codegen.GenSQL
 import wvlet.lang.compiler.codegen.GenSQL.Indented
 import wvlet.lang.compiler.planner.ExecutionPlanner
+import wvlet.lang.compiler.query.QuerySelector
 import wvlet.lang.compiler.transform.ExpressionEvaluator
 import wvlet.lang.model.DataType
 import wvlet.lang.model.DataType.{NamedType, SchemaType, UnresolvedType}
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
-import wvlet.lang.runner.connector.{DBConnector, DBConnectorProvider, QueryProgressMonitor}
+import wvlet.lang.runner.connector.{DBConnector, DBConnectorProvider}
 import wvlet.log.{LogLevel, LogSupport}
 
 import java.sql.SQLException
 import scala.collection.immutable.ListMap
 import scala.util.Try
 
-case class QueryExecutorConfig(rowLimit: Int = 40, progressMonitor: Any => Unit = _ => ())
+case class QueryExecutorConfig(rowLimit: Int = 40)
 
 class QueryExecutor(
     dbConnectorProvider: DBConnectorProvider,
@@ -44,9 +46,6 @@ class QueryExecutor(
     private var config: QueryExecutorConfig = QueryExecutorConfig()
 ) extends LogSupport
     with AutoCloseable:
-
-  def setQueryProgressMonitor(monitor: QueryProgressMonitor): Unit = dbConnectorProvider
-    .setQueryProgressMonitor(monitor)
 
   def setRowLimit(limit: Int): QueryExecutor =
     config = config.copy(rowLimit = limit)
@@ -167,7 +166,7 @@ class QueryExecutor(
     workEnv.info(s"Executing SQL:\n${sql}")
     debug(s"Executing SQL:\n${sql}")
     try
-      getDBConnector(defaultProfile).executeUpdate(sql)
+      getDBConnector(defaultProfile).execute(sql)
     catch
       case e: SQLException =>
         throw StatusCode.SYNTAX_ERROR.newException(s"${e.getMessage}\n[sql]\n${sql}", e)
@@ -219,6 +218,7 @@ class QueryExecutor(
         workEnv.info(s"Executing SQL:\n${generatedSQL.sql}")
         debug(s"Executing SQL:\n${generatedSQL.sql}")
         try
+          given QueryProgressMonitor = context.queryProgressMonitor
           val result =
             getDBConnector(defaultProfile).runQuery(generatedSQL.sql) { rs =>
               val metadata = rs.getMetaData

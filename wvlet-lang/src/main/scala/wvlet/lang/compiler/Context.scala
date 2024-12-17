@@ -15,6 +15,7 @@ package wvlet.lang.compiler
 
 import wvlet.lang.api.StatusCode
 import wvlet.lang.catalog.{Catalog, InMemoryCatalog}
+import wvlet.lang.compiler.query.QueryProgressMonitor
 import wvlet.lang.model.expr.NameExpr
 import wvlet.lang.model.plan.Import
 import wvlet.log.LogSupport
@@ -98,7 +99,8 @@ case class Context(
     compilationUnit: CompilationUnit = CompilationUnit.empty,
     importDefs: List[Import] = Nil,
     // If true, evaluate test expressions
-    isDebugRun: Boolean = false
+    isDebugRun: Boolean = false,
+    queryProgressMonitor: QueryProgressMonitor = QueryProgressMonitor.noOp
 ) extends LogSupport:
   def isGlobalContext: Boolean = compilationUnit.isPreset || owner.isNoSymbol
 
@@ -120,6 +122,8 @@ case class Context(
   def workEnv: WorkEnv = global.workEnv
 
   def withDebugRun(isDebug: Boolean): Context = this.copy(isDebugRun = isDebug)
+  def withQueryProgressMonitor(monitor: QueryProgressMonitor): Context = this
+    .copy(queryProgressMonitor = monitor)
 
   /**
     * Create a new context with an additional import
@@ -133,6 +137,8 @@ case class Context(
     .getContextOf(newCompileUnit)
     // Propagate debug run flag
     .withDebugRun(isDebugRun)
+    // Propagate the same query progress monitor
+    .withQueryProgressMonitor(queryProgressMonitor)
 
   def enter(sym: Symbol): Unit = scope.enter(sym)(using this)
 
@@ -143,7 +149,8 @@ case class Context(
     scope = scope.newChildScope,
     compilationUnit = compilationUnit,
     importDefs = Nil,
-    isDebugRun = isDebugRun
+    isDebugRun = isDebugRun,
+    queryProgressMonitor = queryProgressMonitor
   )
 
   def findTermSymbolByName(name: String): Option[Symbol] = findSymbolByName(Name.termName(name))

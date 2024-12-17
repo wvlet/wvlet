@@ -18,9 +18,9 @@ import wvlet.airframe.control.Control
 import wvlet.airframe.metrics.{Count, ElapsedTime}
 import wvlet.lang.catalog.SQLFunction
 import wvlet.lang.compiler.DBType
+import wvlet.lang.compiler.query.QueryProgressMonitor
 import wvlet.lang.model.DataType
 import wvlet.lang.runner.connector.*
-import wvlet.lang.runner.connector.QueryMetric.TrinoQueryMetric
 import wvlet.log.LogSupport
 
 import java.sql.{Connection, Statement}
@@ -36,9 +36,7 @@ case class TrinoConfig(
     password: Option[String] = None
 )
 
-class TrinoConnector(val config: TrinoConfig, queryProgressMonitor: QueryProgressMonitor)
-    extends DBConnector(DBType.Trino)
-    with LogSupport:
+class TrinoConnector(val config: TrinoConfig) extends DBConnector(DBType.Trino) with LogSupport:
   private lazy val driver = new TrinoDriver()
 
   private[connector] override def newConnection: DBConnection =
@@ -53,24 +51,26 @@ class TrinoConnector(val config: TrinoConfig, queryProgressMonitor: QueryProgres
     val properties = new Properties()
     config.user.foreach(x => properties.put("user", x))
     config.password.foreach(x => properties.put("password", x))
-    DBConnection(
-      driver.connect(jdbcUrl, properties).asInstanceOf[TrinoConnection],
-      queryProgressMonitor
-    )
+    DBConnection(driver.connect(jdbcUrl, properties).asInstanceOf[TrinoConnection])
 
   override def close(): Unit = driver.close()
 
-  def withConfig(newConfig: TrinoConfig): TrinoConnector =
-    new TrinoConnector(newConfig, queryProgressMonitor)
+  def withConfig(newConfig: TrinoConfig): TrinoConnector = new TrinoConnector(newConfig)
 
-  override protected def withStatement[U](body: Statement => U): U = withConnection: conn =>
+  override protected def withStatement[U](body: Statement => U)(using
+      queryProgressMonitor: QueryProgressMonitor = QueryProgressMonitor.noOp
+  ): U = withConnection: conn =>
     Control.withResource(conn.createStatement().asInstanceOf[TrinoStatement]) { stmt =>
-      stmt.setProgressMonitor(
-        new Consumer[QueryStats]:
-          override def accept(stats: QueryStats): Unit = queryProgressMonitor
-            .reportProgress(TrinoQueryMetric(stats))
-      )
-      body(stmt)
+      try
+        stmt.setProgressMonitor(
+          new Consumer[QueryStats]:
+            override def accept(stats: QueryStats): Unit = queryProgressMonitor
+              .reportProgress(TrinoQueryMetric(stats))
+        )
+        body(stmt)
+      finally
+        stmt.clearProgressMonitor()
+        queryProgressMonitor.close()
     }
 
   override def listFunctions(catalog: String): List[SQLFunction] =

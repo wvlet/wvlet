@@ -1,4 +1,4 @@
-package wvlet.lang.compiler
+package wvlet.lang.compiler.query
 
 import wvlet.lang.api.LinePosition
 import wvlet.lang.api.v1.query.QuerySelection

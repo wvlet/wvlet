@@ -17,7 +17,7 @@ import wvlet.lang.compiler.{
   WorkEnv
 }
 import wvlet.lang.runner.QueryExecutor
-import wvlet.lang.runner.connector.{DBConnector, DBConnectorProvider, QueryProgressMonitor}
+import wvlet.lang.runner.connector.{DBConnector, DBConnectorProvider}
 import wvlet.log.LogSupport
 
 case class WvletCompilerOption(
