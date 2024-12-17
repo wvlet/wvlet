@@ -61,9 +61,8 @@ class SQLPreview(currentQuery: CurrentQuery, windowSize: WindowSize, queryRunner
             Rx.empty
         catch
           case e: WvletLangException =>
-            warn(e)
             // Ignore compilation errors
-            Rx.empty
+            Rx.exception(e)
         end try
       }
       .subscribe()
