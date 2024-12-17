@@ -107,18 +107,21 @@ class WvletScriptRunner(
     try
       queryProgressMonitor.startCompile(newUnit)
       val compileResult = compiler.compileSingleUnit(contextUnit = newUnit)
-      val ctx = compileResult
-        .context
-        .global
-        .getContextOf(newUnit)
-        .withDebugRun(request.isDebugRun)
-        .withQueryProgressMonitor(queryProgressMonitor)
-      val queryResult = queryExecutor
-        .setRowLimit(resultRowLimits)
-        .executeSelectedStatement(newUnit, request.querySelection, request.linePosition, ctx)
-      trace(s"ctx: ${ctx.hashCode()} ${ctx.compilationUnit.knownSymbols}")
 
-      queryResult
+      if !compileResult.hasFailures then
+        val ctx = compileResult
+          .context
+          .global
+          .getContextOf(newUnit)
+          .withDebugRun(request.isDebugRun)
+          .withQueryProgressMonitor(queryProgressMonitor)
+
+        val queryResult = queryExecutor
+          .setRowLimit(resultRowLimits)
+          .executeSelectedStatement(newUnit, request.querySelection, request.linePosition, ctx)
+        queryResult
+      else
+        ErrorResult(compileResult.failureException)
     catch
       case NonFatal(e) =>
         ErrorResult(e)

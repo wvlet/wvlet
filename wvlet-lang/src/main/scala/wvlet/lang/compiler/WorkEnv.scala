@@ -56,21 +56,21 @@ case class WorkEnv(path: String = ".", logLevel: LogLevel = Logger.getDefaultLog
       outLogger.warn(msg)
       errorLogger.warn(msg)
 
-  def logWarn(e: Throwable): Unit =
+  inline def logWarn(e: Throwable): Unit =
     val msg = e.getMessage
     compilerLogger.warn(msg)
     if !isScalaJS then
       outLogger.warn(msg)
       errorLogger.warn(msg, e)
 
-  def logError(e: Throwable): Unit =
+  inline def logError(e: Throwable): Unit =
     val msg = e.getMessage
     compilerLogger.error(msg)
     if !isScalaJS then
       outLogger.error(msg)
       errorLogger.error(msg, e)
 
-  def error(msg: => Any): Unit =
+  inline def error(msg: => Any): Unit =
     compilerLogger.error(msg)
     if !isScalaJS then
       outLogger.error(msg)
