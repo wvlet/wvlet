@@ -79,26 +79,40 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
   private given progressMonitor: QueryProgressMonitor =
     new QueryProgressMonitor:
       private var lines = 0
+      private val CLEAR_LINE =
+        if isRealTerminal() then
+          "\u001b[2K"
+        else
+          "\r"
+
+      private var lastUpdateTimeMillis = 0L
+
       override def close(): Unit =
         if lines > 0 then
-          // terminal.writer().print(s"\u001B[${lines}A\u001B[0J")
-          terminal.writer().print("\u001b[2K\r")
+          terminal.writer().print(s"${CLEAR_LINE}\r")
           terminal.flush()
           lines = 0
+
+      override def newQuery(sql: String): Unit =
+        if isRealTerminal() then
+          terminal.writer().print(s"\r${Color.GRAY}${CLEAR_LINE}Query starting...${Color.RESET}")
+          terminal.flush()
+          lines = 1
+
       override def reportProgress(metric: QueryMetric): Unit =
         metric match
           case m: TrinoQueryMetric =>
-            if lines == 0 then
-              // Move the cursor to the end
-              moveToEnd
+            val t = System.currentTimeMillis()
+            // Show report every 1s
+            if t - lastUpdateTimeMillis > 300 then
+              lastUpdateTimeMillis = t
+              val stats = m.stats
+              val msg =
+                f"Query ${stats.getQueryId} ${ElapsedTime.succinctMillis(stats.getElapsedTimeMillis)}%8s [${Count.succinct(stats.getProcessedRows)} rows] ${stats.getCompletedSplits}/${stats.getTotalSplits}"
+              lines = 1
 
-            val stats = m.stats
-            val msg =
-              f"Query ${stats.getQueryId} ${ElapsedTime.succinctMillis(stats.getElapsedTimeMillis)}%8s [${Count.succinct(stats.getProcessedRows)} rows] ${stats.getCompletedSplits}/${stats.getTotalSplits}"
-            lines = 1
-            // terminal.writer().print(s"\u001B[2K${msg}\n")
-            terminal.writer().print(s"\r${msg}")
-            terminal.flush()
+              terminal.writer().print(s"\r${CLEAR_LINE}${Color.GRAY}${msg}${Color.RESET}")
+              terminal.flush()
           case _ =>
 
   override def close(): Unit =
