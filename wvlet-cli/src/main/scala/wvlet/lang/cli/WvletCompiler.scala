@@ -40,11 +40,10 @@ case class WvletCompilerOption(
 class WvletCompiler(
     opts: WvletGlobalOption,
     compilerOption: WvletCompilerOption,
+    workEnv: WorkEnv,
     dbConnectorProvider: DBConnectorProvider
 ) extends LogSupport
     with AutoCloseable:
-
-  private val workEnv: WorkEnv = WorkEnv(compilerOption.workFolder, opts.logLevel)
 
   private lazy val currentProfile: Profile =
     // Resolve the profile from DBType or profile name

@@ -105,6 +105,7 @@ class WvletScriptRunner(
     units = newUnit :: units
 
     try
+      queryProgressMonitor.startCompile(newUnit)
       val compileResult = compiler.compileSingleUnit(contextUnit = newUnit)
       val ctx = compileResult
         .context
@@ -121,6 +122,8 @@ class WvletScriptRunner(
     catch
       case NonFatal(e) =>
         ErrorResult(e)
+    finally
+      queryProgressMonitor.close()
     end try
 
   end runStatement

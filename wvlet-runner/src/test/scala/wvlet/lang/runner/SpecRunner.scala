@@ -29,7 +29,7 @@ trait SpecRunner(
 ) extends AirSpec:
   private val workEnv = WorkEnv(path = specPath, logLevel = logger.getLogLevel)
   private val profile = Profile.defaultDuckDBProfile.withProperty("prepareTPCH", prepareTPCH)
-  private val dbConnectorProvider = DBConnectorProvider()
+  private val dbConnectorProvider = DBConnectorProvider(workEnv)
   private val queryExecutor       = QueryExecutor(dbConnectorProvider, profile, workEnv)
   override def afterAll: Unit =
     queryExecutor.close()

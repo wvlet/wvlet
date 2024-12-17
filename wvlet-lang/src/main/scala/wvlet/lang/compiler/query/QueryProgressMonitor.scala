@@ -1,7 +1,10 @@
 package wvlet.lang.compiler.query
 
+import wvlet.lang.compiler.CompilationUnit
+
 trait QueryProgressMonitor extends AutoCloseable:
-  def newQuery(sql: String): Unit = {}
+  def startCompile(unit: CompilationUnit): Unit = {}
+  def newQuery(sql: String): Unit               = {}
   def reportProgress(metric: QueryMetric): Unit
   def close(): Unit = {}
 
