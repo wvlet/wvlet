@@ -5,6 +5,6 @@ import wvlet.log.{LogRotationHandler, Logger}
 
 trait WorkEnvCompat:
   self: WorkEnv =>
-  protected def initLogger(l: Logger): Logger =
-    l.resetHandler(LogRotationHandler(fileName = errorFile, formatter = SourceCodeLogFormatter))
+  protected def initLogger(l: Logger, fileName: String): Logger =
+    l.resetHandler(LogRotationHandler(fileName = fileName, formatter = SourceCodeLogFormatter))
     l
