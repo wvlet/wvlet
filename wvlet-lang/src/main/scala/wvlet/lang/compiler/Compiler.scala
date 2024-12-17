@@ -150,7 +150,18 @@ class Compiler(val compilerOptions: CompilerOptions) extends LogSupport:
     val rootContext = globalContext.getRootContext
 
     debug(s"Compiling ${units.size} units")
-    trace(s"CompilationUnits:\n${units.map(_.sourceFile.fileName).mkString("\n")}")
+    trace(
+      s"CompilationUnits:\n${units
+          .map { unit =>
+            s"${
+                if unit.needsRecompile then
+                  "*"
+                else
+                  " "
+              }${unit.sourceFile.fileName}"
+          }
+          .mkString("\n")}"
+    )
 
     // reload if necessary
     var refinedUnits = units.map { unit =>
@@ -167,7 +178,9 @@ class Compiler(val compilerOptions: CompilerOptions) extends LogSupport:
       debug(s"Running phase ${phase.name}")
       refinedUnits = phase.runOn(refinedUnits, rootContext)
 
-    val result = CompileResult(refinedUnits, this, rootContext, contextUnit)
+    // Include failed compilation units to the report
+    val reportingUnits = refinedUnits.filter(!_.isFailed) ++ units.find(_.isFailed)
+    val result         = CompileResult(reportingUnits, this, rootContext, contextUnit)
     result.reportErrorsInContextUnit
     result
 
@@ -189,6 +202,13 @@ case class CompileResult(
     units.filter(_.isFailed).foreach(unit => l += unit -> unit.lastError.get)
     l.result()
 
+  def failureException: WvletLangException =
+    val msg = failureReport
+      .map: (unit, e) =>
+        e.getMessage
+      .mkString("\n")
+    StatusCode.COMPILATION_FAILURE.newException(msg)
+
   def reportErrorsInContextUnit: Unit = contextUnit.foreach { unit =>
     if unit.isFailed then
       throw unit.lastError.get
@@ -196,11 +216,7 @@ case class CompileResult(
 
   def reportAllErrors: Unit =
     if hasFailures then
-      val msg = failureReport
-        .map: (unit, e) =>
-          e.getMessage
-        .mkString("\n")
-      throw StatusCode.COMPILATION_FAILURE.newException(msg)
+      throw failureException
 
   /**
     * Extract compilation results for a specific file name

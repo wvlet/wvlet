@@ -56,10 +56,16 @@ case class CompilationUnit(sourceFile: SourceFile, isPreset: Boolean = false) ex
     finishedPhases += phase.name
     lastCompiledAt = Some(System.currentTimeMillis())
 
+  def setFailed(e: Throwable): Unit =
+    lastError = Some(e)
+    lastCompiledAt = Some(System.currentTimeMillis())
+
   def needsRecompile: Boolean = lastCompiledAt.exists(sourceFile.lastUpdatedAt > _)
+
   def reload(): CompilationUnit =
     sourceFile.reload()
     finishedPhases = Set.empty
+    lastError = None
     lastCompiledAt = None
     this
 
