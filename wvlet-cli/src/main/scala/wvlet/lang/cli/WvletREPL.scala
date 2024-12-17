@@ -87,17 +87,21 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
 
       private var lastUpdateTimeMillis = 0L
 
+      private def printLine(line: String): Unit =
+        if isRealTerminal() then
+          terminal.writer().print(s"\r${Color.GRAY}${CLEAR_LINE}${line}${Color.RESET}")
+          terminal.flush()
+          lines = 1
+
       override def close(): Unit =
         if lines > 0 then
           terminal.writer().print(s"${CLEAR_LINE}\r")
           terminal.flush()
           lines = 0
 
-      override def newQuery(sql: String): Unit =
-        if isRealTerminal() then
-          terminal.writer().print(s"\r${Color.GRAY}${CLEAR_LINE}Query starting...${Color.RESET}")
-          terminal.flush()
-          lines = 1
+      override def startCompile(unit: CompilationUnit): Unit = printLine("Query compilation...")
+
+      override def newQuery(sql: String): Unit = printLine("Query starting...")
 
       override def reportProgress(metric: QueryMetric): Unit =
         metric match
@@ -109,10 +113,7 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
               val stats = m.stats
               val msg =
                 f"Query ${stats.getQueryId} ${ElapsedTime.succinctMillis(stats.getElapsedTimeMillis)}%8s [${Count.succinct(stats.getProcessedRows)} rows] ${stats.getCompletedSplits}/${stats.getTotalSplits}"
-              lines = 1
-
-              terminal.writer().print(s"\r${CLEAR_LINE}${Color.GRAY}${msg}${Color.RESET}")
-              terminal.flush()
+              printLine(msg)
           case _ =>
 
   override def close(): Unit =

@@ -18,6 +18,7 @@ import io.trino.spi.function.table.*
 import wvlet.airframe.codec.JDBCCodec.ResultSetCodec
 import wvlet.airframe.codec.MessageCodec
 import wvlet.airframe.msgpack.spi.MessagePack
+import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.runner.connector.duckdb.DuckDBConnector
 import wvlet.lang.runner.connector.trino.DuckDBSQLFunction.{DuckDBFunctionHandle, DuckDBQuerySplit}
 import wvlet.log.LogSupport
@@ -232,7 +233,7 @@ object DuckDBSQLFunction extends ConnectorTableFunction with LogSupport:
         VarcharType.VARCHAR
 
   // TODO: Pass this from connector dependency
-  private val duckdb: DuckDBConnector = DuckDBConnector()
+  private val duckdb: DuckDBConnector = DuckDBConnector(WorkEnv())
 
   override def getName: String = "sql"
 

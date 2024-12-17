@@ -1,7 +1,7 @@
 package wvlet.lang.runner.connector
 
 import wvlet.lang.catalog.Profile
-import wvlet.lang.compiler.DBType
+import wvlet.lang.compiler.{DBType, WorkEnv}
 import wvlet.lang.compiler.DBType.DuckDB
 import wvlet.lang.runner.connector.duckdb.DuckDBConnector
 import wvlet.lang.runner.connector.trino.{TrinoConfig, TrinoConnector}
@@ -10,7 +10,7 @@ import wvlet.log.LogSupport
 import java.util.concurrent.ConcurrentHashMap
 import scala.jdk.CollectionConverters.*
 
-class DBConnectorProvider extends LogSupport with AutoCloseable:
+class DBConnectorProvider(workEnv: WorkEnv) extends LogSupport with AutoCloseable:
 
   private val connectorCache = new ConcurrentHashMap[Profile, DBConnector]().asScala
 
@@ -29,10 +29,12 @@ class DBConnectorProvider extends LogSupport with AutoCloseable:
               hostAndPort = profile.host.getOrElse("localhost"),
               user = profile.user,
               password = profile.password
-            )
+            ),
+            workEnv
           )
         case DBType.DuckDB =>
           DuckDBConnector(
+            workEnv,
             // TODO Use more generic way to pass profile properties
             prepareTPCH = (profile.properties ++ properties)
               .getOrElse("prepareTPCH", "false")
@@ -40,12 +42,12 @@ class DBConnectorProvider extends LogSupport with AutoCloseable:
               .toBoolean
           )
         case DBType.Generic =>
-          GenericConnector()
+          GenericConnector(workEnv)
         case other =>
           warn(
             s"Connector for -t ${other.toString.toLowerCase} option is not implemented. Using GenericConnector for DuckDB as a fallback"
           )
-          GenericConnector()
+          GenericConnector(workEnv)
     end createConnector
 
     connectorCache.getOrElseUpdate(profile, createConnector)

@@ -8,4 +8,10 @@ trait WorkEnvCompat:
 
   def isScalaJS: Boolean = true
 
+  def saveToCache(path: String, content: String): Unit = {
+    // no-op
+  }
+
+  def loadCache(path: String): Option[VirtualFile] = None
+
   protected def initLogger(l: Logger, fileName: String): Logger = l

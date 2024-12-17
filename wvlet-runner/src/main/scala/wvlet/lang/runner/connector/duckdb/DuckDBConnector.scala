@@ -17,7 +17,7 @@ import wvlet.lang.api.StatusCode
 import wvlet.lang.catalog.SQLFunction
 import wvlet.lang.catalog.SQLFunction.FunctionType
 import wvlet.lang.compiler.DBType.DuckDB
-import wvlet.lang.compiler.Name
+import wvlet.lang.compiler.{Name, WorkEnv}
 import wvlet.lang.model.DataType
 import wvlet.lang.model.DataType.NamedType
 import wvlet.lang.runner.ThreadUtil
@@ -31,8 +31,8 @@ import java.sql.{Connection, DriverManager, SQLException}
 import java.util.concurrent.atomic.AtomicBoolean
 import scala.util.{Try, Using}
 
-class DuckDBConnector(prepareTPCH: Boolean = false)
-    extends DBConnector(DuckDB)
+class DuckDBConnector(workEnv: WorkEnv, prepareTPCH: Boolean = false)
+    extends DBConnector(DuckDB, workEnv)
     with AutoCloseable
     with LogSupport:
 

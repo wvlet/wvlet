@@ -17,7 +17,7 @@ import io.trino.jdbc.{QueryStats, TrinoConnection, TrinoDriver, TrinoStatement}
 import wvlet.airframe.control.Control
 import wvlet.airframe.metrics.{Count, ElapsedTime}
 import wvlet.lang.catalog.SQLFunction
-import wvlet.lang.compiler.DBType
+import wvlet.lang.compiler.{DBType, WorkEnv}
 import wvlet.lang.compiler.query.QueryProgressMonitor
 import wvlet.lang.model.DataType
 import wvlet.lang.runner.connector.*
@@ -36,7 +36,9 @@ case class TrinoConfig(
     password: Option[String] = None
 )
 
-class TrinoConnector(val config: TrinoConfig) extends DBConnector(DBType.Trino) with LogSupport:
+class TrinoConnector(val config: TrinoConfig, workEnv: WorkEnv)
+    extends DBConnector(DBType.Trino, workEnv)
+    with LogSupport:
   private lazy val driver = new TrinoDriver()
 
   private[connector] override def newConnection: DBConnection =
@@ -55,7 +57,7 @@ class TrinoConnector(val config: TrinoConfig) extends DBConnector(DBType.Trino) 
 
   override def close(): Unit = driver.close()
 
-  def withConfig(newConfig: TrinoConfig): TrinoConnector = new TrinoConnector(newConfig)
+  def withConfig(newConfig: TrinoConfig): TrinoConnector = new TrinoConnector(newConfig, workEnv)
 
   override protected def withStatement[U](body: Statement => U)(using
       queryProgressMonitor: QueryProgressMonitor = QueryProgressMonitor.noOp

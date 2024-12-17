@@ -18,7 +18,7 @@ import DBConnector.*
 import io.trino.jdbc.QueryStats
 import wvlet.lang.catalog.{Catalog, SQLFunction}
 import wvlet.lang.catalog.Catalog.{TableColumn, TableName, TableSchema}
-import wvlet.lang.compiler.{DBType, Name}
+import wvlet.lang.compiler.{DBType, Name, WorkEnv}
 import wvlet.lang.compiler.query.QueryProgressMonitor
 import wvlet.lang.model.DataType.{NamedType, SchemaType}
 import wvlet.lang.model.{DataType, RelationType}
@@ -54,7 +54,7 @@ case class DBConnection(jdbcConnection: Connection) extends AutoCloseable:
   def getMetaData(): java.sql.DatabaseMetaData = jdbcConnection.getMetaData()
   def close(): Unit                            = jdbcConnection.close()
 
-trait DBConnector(val dbType: DBType) extends AutoCloseable with LogSupport:
+trait DBConnector(val dbType: DBType, workEnv: WorkEnv) extends AutoCloseable with LogSupport:
   private var queryScope: QueryScope = QueryScope.Global
 
   private val catalogs = new ConcurrentHashMap[String, ConnectorCatalog]().asScala
@@ -70,7 +70,8 @@ trait DBConnector(val dbType: DBType) extends AutoCloseable with LogSupport:
     new ConnectorCatalog(
       catalogName = catalogName,
       defaultSchema = defaultSchema,
-      dbConnector = this
+      dbConnector = this,
+      workEnv = workEnv
     )
   )
 

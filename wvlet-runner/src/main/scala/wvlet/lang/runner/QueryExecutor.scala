@@ -71,10 +71,10 @@ class QueryExecutor(
       rootContext: Context
   ): QueryResult =
     workEnv.info(s"Executing ${u.sourceFile.fileName} (${linePosition}, ${querySelection})")
-
     val targetStatement: LogicalPlan = QuerySelector.selectQuery(u, linePosition, querySelection)
     trace(s"Selected statement: ${targetStatement}, ${querySelection}")
-    val ctx           = rootContext.withCompilationUnit(u).newContext(Symbol.NoSymbol)
+    val ctx = rootContext.withCompilationUnit(u).newContext(Symbol.NoSymbol)
+
     val executionPlan = ExecutionPlanner.plan(u, targetStatement, ctx)
     val result        = execute(executionPlan, ctx)
 
@@ -106,11 +106,19 @@ class QueryExecutor(
           trace(s"last result is updated:\n${r}")
           lastResult = r
         // log results
+        def isMultiline(s: String): Boolean = s.split("\n").size > 1
+
         r match
           case t: TestSuccess =>
-            workEnv.debug(s"Test passed: ${t.msg} (${t.loc.locationString})")
+            if isMultiline(t.msg) then
+              workEnv.debug(s"Test passed: (${t.loc.locationString})\n${t.msg}")
+            else
+              workEnv.debug(s"Test passed: ${t.msg} (${t.loc.locationString})")
           case t: TestFailure =>
-            workEnv.error(s"Test failed: ${t.msg} (${t.loc.locationString})")
+            if isMultiline(t.msg) then
+              workEnv.error(s"Test failed: (${t.loc.locationString})\n${t.msg}")
+            else
+              workEnv.error(s"Test failed: ${t.msg} (${t.loc.locationString})")
           case w: WarningResult =>
             warn(s"${w.msg} (${w.loc.locationString})")
             workEnv.warn(s"Warning: ${w.msg}")

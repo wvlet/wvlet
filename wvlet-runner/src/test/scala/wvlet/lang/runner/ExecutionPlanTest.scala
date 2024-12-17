@@ -13,7 +13,7 @@
  */
 package wvlet.lang.runner
 
-import wvlet.lang.compiler.CompilationUnit
+import wvlet.lang.compiler.{CompilationUnit, WorkEnv}
 import wvlet.lang.compiler.parser.WvletParser
 import wvlet.lang.runner.connector.DBConnector
 import wvlet.lang.runner.connector.duckdb.DuckDBConnector
@@ -23,10 +23,12 @@ import wvlet.airspec.AirSpec
 class ExecutionPlanTest extends AirSpec:
 
   test("create an execution plan") {
-    val duckdb = new DuckDBConnector()
+    val workEnv = WorkEnv()
+    val duckdb  = new DuckDBConnector(workEnv)
     val trino =
       new TrinoConnector(
-        TrinoConfig(catalog = "memory", schema = "main", hostAndPort = "localhost:8080")
+        TrinoConfig(catalog = "memory", schema = "main", hostAndPort = "localhost:8080"),
+        workEnv
       )
 
     inline def query(q: String)(body: String => Unit)(using ctx: DBConnector): Unit =

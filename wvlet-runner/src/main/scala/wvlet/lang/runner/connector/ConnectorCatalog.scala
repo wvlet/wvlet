@@ -14,10 +14,11 @@
 package wvlet.lang.runner.connector
 
 import com.github.benmanes.caffeine.cache.{CacheLoader, Caffeine}
+import wvlet.airframe.codec.MessageCodec
 import wvlet.lang.api.StatusCode
 import wvlet.lang.catalog.Catalog.TableName
 import wvlet.lang.catalog.{Catalog, SQLFunction}
-import wvlet.lang.compiler.DBType
+import wvlet.lang.compiler.{DBType, WorkEnv}
 import wvlet.lang.runner.{ThreadManager, ThreadUtil}
 import wvlet.log.LogSupport
 
@@ -28,16 +29,43 @@ class ConnectorCatalog(
     val catalogName: String,
     defaultSchema: String,
     dbConnector: DBConnector,
+    workEnv: WorkEnv,
     threadManager: ThreadManager = ThreadManager()
 ) extends Catalog
     with LogSupport:
+
+  private val tableDefCodec = MessageCodec.of[List[Catalog.TableDef]]
 
   private val tablesInSchemaCache = Caffeine
     .newBuilder()
     .expireAfterWrite(5, TimeUnit.MINUTES)
     .build { (schema: String) =>
-      debug(s"Loading tables in schema ${catalogName}.${schema}")
-      val defs = dbConnector.listTableDefs(catalogName, schema)
+      val cacheFile         = s"${dbType.toString.toLowerCase}/${catalogName}/${schema}.json"
+      val currentTimeMillis = System.currentTimeMillis()
+      val defs: List[Catalog.TableDef] = workEnv
+        .loadCache(cacheFile)
+        .filterNot { cache =>
+          // Expire the file cache after 5 minutes
+          cache.lastUpdatedAt < currentTimeMillis - (5 * 60 * 1000)
+        }
+        .flatMap { cache =>
+          try
+            debug(s"Loading tables in schema ${catalogName}.${schema} from cache ${cache.path}")
+            val json = cache.contentString
+            Some(tableDefCodec.fromJson(json))
+          catch
+            case e: Throwable =>
+              workEnv.logError(e)
+              None
+        }
+        .getOrElse {
+          debug(s"Loading tables in schema ${catalogName}.${schema}")
+          val defs = dbConnector.listTableDefs(catalogName, schema)
+          val json = tableDefCodec.toJson(defs)
+          workEnv.saveToCache(cacheFile, json)
+          defs
+        }
+
       defs
     }
 
@@ -48,6 +76,8 @@ class ConnectorCatalog(
     tablesInSchemaCache.getAll(List(defaultSchema, "information_schema").asJava)
 
   override def dbType: DBType = dbConnector.dbType
+
+  def clearCache(): Unit = tablesInSchemaCache.invalidateAll()
 
   // implement Catalog interface
   override def listSchemaNames: Seq[String] = dbConnector.listSchemaNames(catalogName)

@@ -43,7 +43,7 @@ trait TDTrinoSpecRunner(specPath: String) extends AirSpec:
   )
 
   private val workEnv             = WorkEnv(path = specPath, logLevel = logger.getLogLevel)
-  private val dbConnectorProvider = DBConnectorProvider()
+  private val dbConnectorProvider = DBConnectorProvider(workEnv)
   private val executor            = QueryExecutor(dbConnectorProvider, profile, workEnv)
 
   private val compiler = Compiler(

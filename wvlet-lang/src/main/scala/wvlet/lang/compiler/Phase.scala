@@ -42,12 +42,12 @@ abstract class Phase(
       unit <- units
       if !unit.isFailed
     do
-      logger.trace(s"Running phase ${name} on ${unit.sourceFile.relativeFilePath}")
       val sourceContext = context.withCompilationUnit(unit)
       if !runAlways && unit.isFinished(this) then
         completedUnits += unit
       else
         try
+          logger.trace(s"Running phase ${name} on ${unit.sourceFile.relativeFilePath}")
           completedUnits += run(unit, sourceContext)
           unit.setFinished(this)
         catch
