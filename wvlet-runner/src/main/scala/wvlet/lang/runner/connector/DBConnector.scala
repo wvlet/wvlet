@@ -95,8 +95,12 @@ trait DBConnector(val dbType: DBType) extends AutoCloseable with LogSupport:
   def runQuery[U](sql: String)(handler: ResultSet => U)(using
       progressMonitor: QueryProgressMonitor = QueryProgressMonitor.noOp
   ): U = withStatement: stmt =>
-    withResource(stmt.executeQuery(sql)): rs =>
-      handler(rs)
+    try
+      progressMonitor.newQuery(sql)
+      withResource(stmt.executeQuery(sql)): rs =>
+        handler(rs)
+    finally
+      progressMonitor.close()
 
   def executeUpdate(
       sql: String

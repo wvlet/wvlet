@@ -215,7 +215,6 @@ class QueryExecutor(
         debug(s"Executing SQL:\n${generatedSQL.sql}")
         try
           given monitor: QueryProgressMonitor = context.queryProgressMonitor
-          monitor.newQuery(generatedSQL.sql)
           val result =
             getDBConnector(defaultProfile).runQuery(generatedSQL.sql) { rs =>
               val metadata = rs.getMetaData

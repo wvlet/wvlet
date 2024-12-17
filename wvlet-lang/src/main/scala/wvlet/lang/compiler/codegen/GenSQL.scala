@@ -857,7 +857,7 @@ class GenSQL(ctx: Context) extends LogSupport:
           )
         else
           selectWithIndentAndParenIfNecessary(
-            s"select * from values ${indent(modelValues.mkString(", "))} as __models(name, args, package_name)"
+            s"select * from (values ${indent(modelValues.mkString(", "))}) as __models(name, args, package_name)"
           )
       case s: Sample =>
         val child = printRelation(s.child)(using sqlContext.enterFrom)
