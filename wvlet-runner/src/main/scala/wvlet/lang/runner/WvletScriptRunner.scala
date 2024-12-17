@@ -92,7 +92,7 @@ class WvletScriptRunner(
 
     // Pre-compile files in the source paths
     threadManager.runBackgroundTask { () =>
-      c.compileSourcePaths(None)
+      c.compileSourcePaths(contextFile = None)
     }
     c
 
@@ -159,14 +159,7 @@ class WvletScriptRunner(
       case None =>
         print
       case Some(e) =>
-        workEnv.errorLogger.error(e)
-        e match
-          case e: WvletLangException if e.statusCode.isUserError =>
-            error(e.getMessage)
-          case e: SQLException =>
-            error(e.getMessage)
-          case _ =>
-            error(e.getMessage)
+        workEnv.logError(e)
         LastOutput(query, e.getMessage, QueryResult.empty, error = Some(e))
 
   end displayOutput

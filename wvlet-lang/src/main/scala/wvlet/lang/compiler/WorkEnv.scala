@@ -11,8 +11,6 @@ import wvlet.log.{LogLevel, LogRotationHandler, Logger}
   */
 case class WorkEnv(path: String = ".", logLevel: LogLevel = Logger.getDefaultLogLevel)
     extends WorkEnvCompat:
-  lazy val hasWvletFiles: Boolean = Option(new java.io.File(path).listFiles())
-    .exists(_.exists(_.getName.endsWith(".wv")))
 
   def targetFolder: String =
     if hasWvletFiles then
@@ -31,15 +29,17 @@ case class WorkEnv(path: String = ".", logLevel: LogLevel = Logger.getDefaultLog
       // Use the global folder at the user home for an arbitrary directory
       s"${sys.props("user.home")}/.cache/wvlet"
 
+  val compilerLogger: Logger = Logger("wvlet.lang.runner")
+
   lazy val errorLogger: Logger =
     val l = Logger("wvlet.lang.runner.error")
-    initLogger(l)
+    initLogger(l, errorFile)
     l.setLogLevel(logLevel)
     l
 
   lazy val outLogger: Logger =
     val l = Logger("wvlet.lang.runner.out")
-    initLogger(l)
+    initLogger(l, logFile)
     l.setLogLevel(logLevel)
     l
 
@@ -50,19 +50,30 @@ case class WorkEnv(path: String = ".", logLevel: LogLevel = Logger.getDefaultLog
   def info(msg: => Any): Unit = outLogger.info(msg)
 
   def warn(msg: => Any): Unit =
-    outLogger.warn(msg)
-    errorLogger.warn(msg)
+    compilerLogger.warn(msg)
 
-  def warn(msg: => Any, e: Throwable): Unit =
-    outLogger.warn(msg)
-    errorLogger.warn(msg, e)
+    if !isScalaJS then
+      outLogger.warn(msg)
+      errorLogger.warn(msg)
+
+  def logWarn(e: Throwable): Unit =
+    val msg = e.getMessage
+    compilerLogger.warn(msg)
+    if !isScalaJS then
+      outLogger.warn(msg)
+      errorLogger.warn(msg, e)
+
+  def logError(e: Throwable): Unit =
+    val msg = e.getMessage
+    compilerLogger.error(msg)
+    if !isScalaJS then
+      outLogger.error(msg)
+      errorLogger.error(msg, e)
 
   def error(msg: => Any): Unit =
-    outLogger.error(msg)
-    errorLogger.error(msg)
-
-  def error(msg: => Any, e: Throwable): Unit =
-    outLogger.error(msg)
-    errorLogger.error(msg, e)
+    compilerLogger.error(msg)
+    if !isScalaJS then
+      outLogger.error(msg)
+      errorLogger.error(msg)
 
 end WorkEnv
