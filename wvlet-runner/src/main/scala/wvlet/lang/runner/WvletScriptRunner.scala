@@ -92,7 +92,10 @@ class WvletScriptRunner(
 
     // Pre-compile files in the source paths
     threadManager.runBackgroundTask { () =>
-      c.compileSourcePaths(contextFile = None)
+      val result = c.compileSourcePaths(contextFile = None)
+      // Report compilation errors in the initialization phases
+      if result.hasFailures then
+        workEnv.logError(result.failureException)
     }
     c
 
