@@ -29,7 +29,9 @@ enum DBType(
     val supportAsOfJoin: Boolean = false,
     val arrayConstructorSyntax: SQLDialect.ArraySyntax = SQLDialect.ArraySyntax.ArrayLiteral,
     // MAP {key: value, ...} syntax or MAP(ARRAY[k1, k2, ...], ARRAY[v1, v2, ...]) syntax
-    val mapConstructorSyntax: SQLDialect.MapSyntax = KeyValue
+    val mapConstructorSyntax: SQLDialect.MapSyntax = KeyValue,
+    // values 1, 2, ...   or (values 1, 2, ...)
+    val requireParenForValues: Boolean = false
 ):
 
   case DuckDB
@@ -49,7 +51,8 @@ enum DBType(
         supportCreateTableWithOption = true,
         supportRowExpr = true,
         arrayConstructorSyntax = SQLDialect.ArraySyntax.ArrayPrefix,
-        mapConstructorSyntax = SQLDialect.MapSyntax.ArrayPair
+        mapConstructorSyntax = SQLDialect.MapSyntax.ArrayPair,
+        requireParenForValues = true
       )
 
   case Hive       extends DBType

@@ -60,7 +60,7 @@ class TrinoConnector(val config: TrinoConfig) extends DBConnector(DBType.Trino) 
   override protected def withStatement[U](body: Statement => U)(using
       queryProgressMonitor: QueryProgressMonitor = QueryProgressMonitor.noOp
   ): U = withConnection: conn =>
-    Control.withResource(conn.createStatement().asInstanceOf[TrinoStatement]) { stmt =>
+    Control.withResource(conn.createStatement().asInstanceOf[TrinoStatement]): stmt =>
       try
         stmt.setProgressMonitor(
           new Consumer[QueryStats]:
@@ -70,8 +70,6 @@ class TrinoConnector(val config: TrinoConfig) extends DBConnector(DBType.Trino) 
         body(stmt)
       finally
         stmt.clearProgressMonitor()
-        queryProgressMonitor.close()
-    }
 
   override def listFunctions(catalog: String): List[SQLFunction] =
     val functionList = List.newBuilder[SQLFunction]
