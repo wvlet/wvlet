@@ -89,11 +89,6 @@ object WvletServer extends LogSupport:
         Profile
           .getProfile(config.profile, config.catalog, config.schema, Profile.defaultDuckDBProfile)
       )
-      .bindProvider[DBConnectorProvider, Profile, DBConnector] {
-        (dbConnectorProvider: DBConnectorProvider, p: Profile) =>
-          val prop = Map("prepareTPCH" -> config.prepareTPCH)
-          dbConnectorProvider.getConnector(p, prop)
-      }
       .bindProvider[Profile, WvletScriptRunnerConfig] { (profile: Profile) =>
         WvletScriptRunnerConfig(
           interactive = false,
