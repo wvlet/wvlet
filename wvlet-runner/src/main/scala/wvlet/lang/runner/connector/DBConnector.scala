@@ -48,11 +48,8 @@ enum QueryScope:
     InQuery,
     InExpr
 
-
-case class DBConnection(
-    jdbcConnection: Connection,
-    queryProgressMonitor: QueryProgressMonitor = QueryProgressMonitor.noOp
-) extends AutoCloseable:
+case class DBConnection(jdbcConnection: Connection, queryProgressMonitor: QueryProgressMonitor)
+    extends AutoCloseable:
   def createStatement(): Statement             = jdbcConnection.createStatement()
   def getMetaData(): java.sql.DatabaseMetaData = jdbcConnection.getMetaData()
   def close(): Unit                            = jdbcConnection.close()
@@ -94,7 +91,6 @@ trait DBConnector(val dbType: DBType) extends AutoCloseable with LogSupport:
     }
 
   def runQuery[U](sql: String)(handler: ResultSet => U): U =
-    trace(s"Running SQL: ${sql}")
     withStatement: stmt =>
       withResource(stmt.executeQuery(sql)): rs =>
         handler(rs)

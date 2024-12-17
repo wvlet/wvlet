@@ -98,6 +98,7 @@ object WvletServer extends LogSupport:
       .bindProvider[Profile, WvletScriptRunnerConfig] { (profile: Profile) =>
         WvletScriptRunnerConfig(
           interactive = false,
+          profile = profile,
           catalog = profile.catalog,
           schema = profile.schema
         )

@@ -18,6 +18,7 @@ import wvlet.airframe.control.Control
 import wvlet.airframe.control.Control.withResource
 import wvlet.lang.api.v1.query.QuerySelection
 import wvlet.lang.api.{LinePosition, StatusCode, WvletLangException}
+import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.{QuerySelector, *}
 import wvlet.lang.compiler.codegen.GenSQL
 import wvlet.lang.compiler.codegen.GenSQL.Indented
@@ -27,7 +28,7 @@ import wvlet.lang.model.DataType
 import wvlet.lang.model.DataType.{NamedType, SchemaType, UnresolvedType}
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
-import wvlet.lang.runner.connector.DBConnector
+import wvlet.lang.runner.connector.{DBConnector, DBConnectorProvider, QueryProgressMonitor}
 import wvlet.log.{LogLevel, LogSupport}
 
 import java.sql.SQLException
@@ -37,21 +38,25 @@ import scala.util.Try
 case class QueryExecutorConfig(rowLimit: Int = 40, progressMonitor: Any => Unit = _ => ())
 
 class QueryExecutor(
-    dbConnector: DBConnector,
+    dbConnectorProvider: DBConnectorProvider,
+    defaultProfile: Profile,
     workEnv: WorkEnv,
     private var config: QueryExecutorConfig = QueryExecutorConfig()
 ) extends LogSupport
     with AutoCloseable:
 
+  def setQueryProgressMonitor(monitor: QueryProgressMonitor): Unit = dbConnectorProvider
+    .setQueryProgressMonitor(monitor)
+
   def setRowLimit(limit: Int): QueryExecutor =
     config = config.copy(rowLimit = limit)
     this
 
-  def getDBConnector: DBConnector = dbConnector
-
   override def close(): Unit = {
     // DB Connector will be closed by Airframe DI
   }
+
+  def getDBConnector(profile: Profile): DBConnector = dbConnectorProvider.getConnector(profile)
 
   def executeSingleSpec(sourceFolder: String, file: String): QueryResult =
     val compiler = Compiler(
@@ -162,7 +167,7 @@ class QueryExecutor(
     workEnv.info(s"Executing SQL:\n${sql}")
     debug(s"Executing SQL:\n${sql}")
     try
-      dbConnector.executeUpdate(sql)
+      getDBConnector(defaultProfile).executeUpdate(sql)
     catch
       case e: SQLException =>
         throw StatusCode.SYNTAX_ERROR.newException(s"${e.getMessage}\n[sql]\n${sql}", e)
@@ -215,7 +220,7 @@ class QueryExecutor(
         debug(s"Executing SQL:\n${generatedSQL.sql}")
         try
           val result =
-            dbConnector.runQuery(generatedSQL.sql) { rs =>
+            getDBConnector(defaultProfile).runQuery(generatedSQL.sql) { rs =>
               val metadata = rs.getMetaData
               val fields =
                 for i <- 1 to metadata.getColumnCount

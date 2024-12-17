@@ -36,7 +36,9 @@ case class TrinoConfig(
     password: Option[String] = None
 )
 
-class TrinoConnector(val config: TrinoConfig) extends DBConnector(DBType.Trino) with LogSupport:
+class TrinoConnector(val config: TrinoConfig, queryProgressMonitor: QueryProgressMonitor)
+    extends DBConnector(DBType.Trino)
+    with LogSupport:
   private lazy val driver = new TrinoDriver()
 
   private[connector] override def newConnection: DBConnection =
@@ -51,23 +53,22 @@ class TrinoConnector(val config: TrinoConfig) extends DBConnector(DBType.Trino) 
     val properties = new Properties()
     config.user.foreach(x => properties.put("user", x))
     config.password.foreach(x => properties.put("password", x))
-    DBConnection(driver.connect(jdbcUrl, properties).asInstanceOf[TrinoConnection])
+    DBConnection(
+      driver.connect(jdbcUrl, properties).asInstanceOf[TrinoConnection],
+      queryProgressMonitor
+    )
 
   override def close(): Unit = driver.close()
 
-  def withConfig(newConfig: TrinoConfig): TrinoConnector = new TrinoConnector(newConfig)
+  def withConfig(newConfig: TrinoConfig): TrinoConnector =
+    new TrinoConnector(newConfig, queryProgressMonitor)
 
   override protected def withStatement[U](body: Statement => U): U = withConnection: conn =>
     Control.withResource(conn.createStatement().asInstanceOf[TrinoStatement]) { stmt =>
       stmt.setProgressMonitor(
         new Consumer[QueryStats]:
-          override def accept(stats: QueryStats): Unit = {
-            conn.queryProgressMonitor.reportProgress(TrinoQueryMetric(stats))
-          }
-        // m.report(TrinoQueryMetric(stats))
-        //            print(
-        //            s"\r[Query ${stats.getQueryId}] elapsed: ${ElapsedTime.succinctMillis(stats.getElapsedTimeMillis)}, rows: ${Count.succinct(stats.getProcessedRows)}, splits: ${stats.getCompletedSplits}/${stats.getTotalSplits}\r"
-        //            )
+          override def accept(stats: QueryStats): Unit = queryProgressMonitor
+            .reportProgress(TrinoQueryMetric(stats))
       )
       body(stmt)
     }

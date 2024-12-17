@@ -79,15 +79,16 @@ class WvletREPLMain(cliOption: WvletGlobalOption, replOpts: WvletREPLOption) ext
     val design = Design
       .newSilentDesign
       .bindSingleton[WvletREPL]
+      .bindInstance[Profile](currentProfile)
       .bindInstance[WorkEnv](WorkEnv(path = replOpts.workFolder, logLevel = cliOption.logLevel))
       .bindInstance[WvletScriptRunnerConfig](
         WvletScriptRunnerConfig(
           interactive = inputScripts.isEmpty,
+          profile = currentProfile,
           catalog = selectedCatalog,
           schema = selectedSchema
         )
       )
-      .bindInstance[QueryProgressMonitor](QueryProgressMonitor.noOp)
 
     design.build[WvletREPL] { repl =>
       repl.start(inputScripts)

@@ -21,7 +21,7 @@ import wvlet.lang.compiler.Name
 import wvlet.lang.model.DataType
 import wvlet.lang.model.DataType.NamedType
 import wvlet.lang.runner.ThreadUtil
-import wvlet.lang.runner.connector.{DBConnector, DBConnection}
+import wvlet.lang.runner.connector.{DBConnection, DBConnector, QueryProgressMonitor}
 import org.duckdb.DuckDBConnection
 import wvlet.airframe.codec.MessageCodec
 import wvlet.airframe.metrics.ElapsedTime
@@ -64,7 +64,7 @@ class DuckDBConnector(prepareTPCH: Boolean = false)
     Class.forName("org.duckdb.DuckDBDriver")
     DriverManager.getConnection("jdbc:duckdb:") match
       case conn: DuckDBConnection =>
-        DBConnection(conn)
+        DBConnection(conn, QueryProgressMonitor.noOp)
       case _ =>
         throw StatusCode.NOT_IMPLEMENTED.newException("duckdb connection is unavailable")
 

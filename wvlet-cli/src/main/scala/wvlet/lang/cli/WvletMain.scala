@@ -5,6 +5,7 @@ import wvlet.airframe.launcher.{Launcher, command}
 import wvlet.lang.BuildInfo
 import wvlet.lang.api.WvletLangException
 import wvlet.lang.cli.WvletMain.isInSbt
+import wvlet.lang.runner.connector.DBConnectorProvider
 import wvlet.lang.server.{WvletServer, WvletServerConfig}
 import wvlet.log.LogSupport
 
@@ -59,7 +60,7 @@ class WvletMain(opts: WvletGlobalOption) extends LogSupport:
 
   private def design(compilerOptions: WvletCompilerOption): Design = Design
     .newSilentDesign
-    .bindInstance(WvletCompiler(opts, compilerOptions))
+    .bindInstance(WvletCompiler(opts, compilerOptions, DBConnectorProvider()))
 
   @command(description = "Compile .wv files")
   def compile(compilerOption: WvletCompilerOption): Unit = handleError {

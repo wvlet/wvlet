@@ -37,8 +37,11 @@ case class WvletCompilerOption(
     schema: Option[String] = None
 )
 
-class WvletCompiler(opts: WvletGlobalOption, compilerOption: WvletCompilerOption)
-    extends LogSupport
+class WvletCompiler(
+    opts: WvletGlobalOption,
+    compilerOption: WvletCompilerOption,
+    dbConnectorProvider: DBConnectorProvider
+) extends LogSupport
     with AutoCloseable:
 
   private val workEnv: WorkEnv = WorkEnv(compilerOption.workFolder, opts.logLevel)
@@ -61,7 +64,7 @@ class WvletCompiler(opts: WvletGlobalOption, compilerOption: WvletCompilerOption
 
   private def getDBConnector: DBConnector = synchronized {
     if _dbConnector == null then
-      _dbConnector = DBConnectorProvider().getConnector(currentProfile)
+      _dbConnector = dbConnectorProvider.getConnector(currentProfile)
     _dbConnector
   }
 
@@ -117,18 +120,19 @@ class WvletCompiler(opts: WvletGlobalOption, compilerOption: WvletCompilerOption
   end generateSQL
 
   def run(): Unit =
-    Control.withResource(QueryExecutor(getDBConnector, compiler.compilerOptions.workEnv)) {
-      executor =>
-        val compileResult = compile()
-        given Context     = compileResult.context
+    Control.withResource(
+      QueryExecutor(dbConnectorProvider, currentProfile, compiler.compilerOptions.workEnv)
+    ) { executor =>
+      val compileResult = compile()
+      given Context     = compileResult.context
 
-        val queryResult = executor.executeSelectedStatement(
-          inputUnit,
-          QuerySelection.All,
-          linePosition = inputUnit.resolvedPlan.sourceLocation.position,
-          compileResult.context
-        )
-        println(queryResult.toPrettyBox())
+      val queryResult = executor.executeSelectedStatement(
+        inputUnit,
+        QuerySelection.All,
+        linePosition = inputUnit.resolvedPlan.sourceLocation.position,
+        compileResult.context
+      )
+      println(queryResult.toPrettyBox())
     }
 
 end WvletCompiler

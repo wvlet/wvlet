@@ -17,8 +17,10 @@ import org.jline.terminal.Terminal
 import wvlet.airframe.control.{Control, Shell}
 import wvlet.lang.api.WvletLangException
 import wvlet.lang.api.v1.query.{QueryRequest, QuerySelection}
+import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.*
 import wvlet.lang.runner.*
+import wvlet.lang.runner.connector.QueryProgressMonitor
 import wvlet.log.{LogRotationHandler, LogSupport, Logger}
 
 import java.io.{BufferedWriter, FilterOutputStream, OutputStreamWriter}
@@ -30,6 +32,7 @@ case class WvletScriptRunnerConfig(
     interactive: Boolean,
     resultLimit: Int = 40,
     maxColWidth: Int = 150,
+    profile: Profile,
     catalog: Option[String],
     schema: Option[String]
 )
@@ -59,6 +62,9 @@ class WvletScriptRunner(
   def setResultRowLimit(limit: Int): Unit = resultRowLimits = limit
   def setMaxColWidth(size: Int): Unit     = resultMaxColWidth = size
 
+  def setQueryProgressMonitor(monitor: QueryProgressMonitor): Unit = queryExecutor
+    .setQueryProgressMonitor(monitor)
+
   override def close(): Unit = queryExecutor.close()
 
   private val compiler =
@@ -76,7 +82,9 @@ class WvletScriptRunner(
       .catalog
       .foreach { catalog =>
         c.setDefaultCatalog(
-          queryExecutor.getDBConnector.getCatalog(catalog, config.schema.getOrElse("main"))
+          queryExecutor
+            .getDBConnector(config.profile)
+            .getCatalog(catalog, config.schema.getOrElse("main"))
         )
       }
     config
@@ -90,6 +98,8 @@ class WvletScriptRunner(
       c.compileSourcePaths(None)
     }
     c
+
+  end compiler
 
   def runStatement(request: QueryRequest): QueryResult =
     val newUnit = CompilationUnit.fromString(request.query)

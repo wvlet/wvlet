@@ -20,17 +20,20 @@ import org.jline.reader.impl.DefaultParser
 import org.jline.reader.impl.DefaultParser.Bracket
 import org.jline.terminal.Terminal.Signal
 import org.jline.terminal.{Size, Terminal, TerminalBuilder}
-import org.jline.utils.{AttributedString, AttributedStringBuilder, AttributedStyle, InfoCmp}
-import org.jline.widget.AutopairWidgets
+import org.jline.utils.{AttributedString, AttributedStringBuilder, AttributedStyle, InfoCmp, Status}
+import org.jline.widget.{AutopairWidgets}
 import wvlet.airframe.*
 import wvlet.airframe.control.{Shell, ThreadUtil}
 import wvlet.airframe.log.AnsiColorPalette
+import wvlet.airframe.metrics.{Count, ElapsedTime}
 import wvlet.lang.api.{LinePosition, WvletLangException}
 import wvlet.lang.api.v1.query.QueryRequest
 import wvlet.lang.api.v1.query.QuerySelection.{All, Describe, Subquery}
 import wvlet.lang.compiler.parser.*
 import wvlet.lang.compiler.{CompilationUnit, SourceFile, WorkEnv}
 import wvlet.lang.model.plan.QueryStatement
+import wvlet.lang.runner.connector.QueryMetric.TrinoQueryMetric
+import wvlet.lang.runner.connector.{QueryMetric, QueryProgressMonitor}
 import wvlet.lang.runner.{LastOutput, WvletScriptRunner}
 import wvlet.log.{LogSupport, Logger}
 
@@ -39,6 +42,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicReference
 import java.util.regex.Pattern
 import scala.io.AnsiColor
+import scala.jdk.CollectionConverters.*
 
 class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseable with LogSupport:
   import WvletREPL.*
@@ -71,6 +75,23 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
 
   private val executorThreadManager = Executors
     .newCachedThreadPool(ThreadUtil.newDaemonThreadFactory("wvlet-repl-executor"))
+
+  private lazy val progressMonitor: QueryProgressMonitor =
+    new QueryProgressMonitor:
+      override def reportProgress(metric: QueryMetric): Unit =
+        metric match
+          case m: TrinoQueryMetric =>
+            val stats = m.stats
+            val msg =
+              s"${ElapsedTime.succinctMillis(stats.getElapsedTimeMillis)} [${Count.succinct(stats.getProcessedRows)} rows] ${stats.getCompletedSplits}/${stats.getTotalSplits}"
+
+            val ERASE_LINE_ALL = "\u001b[2K"
+            if WvletMain.isInSbt then
+              terminal.writer().print(s"\r${msg}")
+            else
+              terminal.writer().print(s"\r${msg}")
+            terminal.flush()
+          case _ =>
 
   override def close(): Unit =
     reader.getHistory.save()
@@ -190,6 +211,10 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
     true
 
   def start(commands: List[String] = Nil): Unit =
+    runner.setQueryProgressMonitor(progressMonitor)
+
+    Status.getStatus(reader.getTerminal).setBorder(true)
+
     // Set the default size when opening a new window or inside sbt console
     if terminal.getWidth == 0 || terminal.getHeight == 0 then
       terminal.setSize(Size(120, 40))
