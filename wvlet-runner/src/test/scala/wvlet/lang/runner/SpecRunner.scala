@@ -15,7 +15,9 @@ package wvlet.lang.runner
 
 import wvlet.airspec.AirSpec
 import wvlet.lang.api.WvletLangException
+import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.{CompilationUnit, Compiler, CompilerOptions, WorkEnv}
+import wvlet.lang.runner.connector.DBConnectorProvider
 import wvlet.lang.runner.connector.duckdb.DuckDBConnector
 
 import scala.util.control.NonFatal
@@ -25,15 +27,19 @@ trait SpecRunner(
     ignoredSpec: Map[String, String] = Map.empty,
     prepareTPCH: Boolean = false
 ) extends AirSpec:
-  private val workEnv         = WorkEnv(path = specPath, logLevel = logger.getLogLevel)
-  private val duckDB          = QueryExecutor(DuckDBConnector(prepareTPCH = prepareTPCH), workEnv)
-  override def afterAll: Unit = duckDB.close()
+  private val workEnv = WorkEnv(path = specPath, logLevel = logger.getLogLevel)
+  private val profile = Profile.defaultDuckDBProfile.withProperty("prepareTPCH", prepareTPCH)
+  private val dbConnectorProvider = DBConnectorProvider()
+  private val queryExecutor       = QueryExecutor(dbConnectorProvider, profile, workEnv)
+  override def afterAll: Unit =
+    queryExecutor.close()
+    dbConnectorProvider.close()
 
   private val compiler = Compiler(
     CompilerOptions(sourceFolders = List(specPath), workEnv = workEnv)
   )
 
-  compiler.setDefaultCatalog(duckDB.getDBConnector.getCatalog("memory", "main"))
+  compiler.setDefaultCatalog(queryExecutor.getDBConnector(profile).getCatalog("memory", "main"))
 
   // Compile all files in the source paths first
   for unit <- compiler.localCompilationUnits do
@@ -48,7 +54,7 @@ trait SpecRunner(
 
   protected def runSpec(unit: CompilationUnit): QueryResult =
     val compileResult = compiler.compileSingleUnit(unit)
-    val result        = duckDB.executeSingle(unit, compileResult.context.withDebugRun(true))
+    val result        = queryExecutor.executeSingle(unit, compileResult.context.withDebugRun(true))
     debug(result.toPrettyBox(maxWidth = Some(120)))
     result
 

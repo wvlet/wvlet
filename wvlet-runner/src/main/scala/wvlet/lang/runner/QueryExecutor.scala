@@ -14,17 +14,13 @@
 package wvlet.lang.runner
 
 import wvlet.airframe.codec.{JDBCCodec, MessageCodec}
-import wvlet.airframe.control.Control
-import wvlet.airframe.control.Control.withResource
 import wvlet.lang.api.v1.query.QuerySelection
 import wvlet.lang.api.{LinePosition, StatusCode, WvletLangException}
 import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.*
-import wvlet.lang.compiler.query.QueryProgressMonitor
 import wvlet.lang.compiler.codegen.GenSQL
-import wvlet.lang.compiler.codegen.GenSQL.Indented
 import wvlet.lang.compiler.planner.ExecutionPlanner
-import wvlet.lang.compiler.query.QuerySelector
+import wvlet.lang.compiler.query.{QueryProgressMonitor, QuerySelector}
 import wvlet.lang.compiler.transform.ExpressionEvaluator
 import wvlet.lang.model.DataType
 import wvlet.lang.model.DataType.{NamedType, SchemaType, UnresolvedType}
