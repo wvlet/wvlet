@@ -43,4 +43,26 @@ case class WorkEnv(path: String = ".", logLevel: LogLevel = Logger.getDefaultLog
     l.setLogLevel(logLevel)
     l
 
+  def trace(msg: => Any): Unit = outLogger.trace(msg)
+
+  def debug(msg: => Any): Unit = outLogger.debug(msg)
+
+  def info(msg: => Any): Unit = outLogger.info(msg)
+
+  def warn(msg: => Any): Unit =
+    outLogger.warn(msg)
+    errorLogger.warn(msg)
+
+  def warn(msg: => Any, e: Throwable): Unit =
+    outLogger.warn(msg)
+    errorLogger.warn(msg, e)
+
+  def error(msg: => Any): Unit =
+    outLogger.error(msg)
+    errorLogger.error(msg)
+
+  def error(msg: => Any, e: Throwable): Unit =
+    outLogger.error(msg)
+    errorLogger.error(msg, e)
+
 end WorkEnv

@@ -21,7 +21,7 @@ import wvlet.lang.compiler.Name
 import wvlet.lang.model.DataType
 import wvlet.lang.model.DataType.NamedType
 import wvlet.lang.runner.ThreadUtil
-import wvlet.lang.runner.connector.DBConnector
+import wvlet.lang.runner.connector.{DBConnection, DBConnector}
 import org.duckdb.DuckDBConnection
 import wvlet.airframe.codec.MessageCodec
 import wvlet.airframe.metrics.ElapsedTime
@@ -37,7 +37,7 @@ class DuckDBConnector(prepareTPCH: Boolean = false)
     with LogSupport:
 
   // We need to reuse the same connection for preserving in-memory tables
-  private var conn: DuckDBConnection = null
+  private var conn: DBConnection = null
 
   private val initialized = AtomicBoolean(false)
   private val closed      = AtomicBoolean(false)
@@ -59,12 +59,12 @@ class DuckDBConnector(prepareTPCH: Boolean = false)
       stmt.execute("load tpch")
       stmt.execute("call dbgen(sf = 0.01)")
 
-  override def newConnection: DuckDBConnection =
+  override private[connector] def newConnection: DBConnection =
     // For in-memory DuckDB, the connection will be created only once
     Class.forName("org.duckdb.DuckDBDriver")
     DriverManager.getConnection("jdbc:duckdb:") match
       case conn: DuckDBConnection =>
-        conn
+        DBConnection(conn)
       case _ =>
         throw StatusCode.NOT_IMPLEMENTED.newException("duckdb connection is unavailable")
 
@@ -83,13 +83,13 @@ class DuckDBConnector(prepareTPCH: Boolean = false)
       // Wait until the connection is available
       initThread.join()
 
-  private def getConnection: DuckDBConnection =
+  private def getConnection: DBConnection =
     verifyConnection
     if conn == null then
       throw StatusCode.NON_RETRYABLE_INTERNAL_ERROR.newException("Failed to initialize DuckDB")
     conn
 
-  override def withConnection[U](body: Connection => U): U =
+  override def withConnection[U](body: DBConnection => U): U =
     try
       body(getConnection)
     catch

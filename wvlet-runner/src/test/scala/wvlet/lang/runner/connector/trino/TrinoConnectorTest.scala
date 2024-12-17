@@ -42,8 +42,7 @@ class TrinoConnectorTest extends AirSpec:
     trino.createSchema("memory", "main")
     trino.getSchema("memory", "main") shouldBe defined
 
-    trino.withConnection: conn =>
-      conn.createStatement().execute("create table a(id bigint)")
+    trino.executeUpdate("create table a(id bigint)")
 
     trino.getTableDef("memory", "main", "a") shouldBe defined
 
@@ -62,29 +61,21 @@ class TrinoConnectorTest extends AirSpec:
       val trinoDelta = trino.withConfig(trino.config.copy(catalog = "delta", schema = "delta_db"))
       trinoDelta.createSchema("delta", "delta_db")
       test("create a local delta lake file") {
-        trinoDelta.withConnection { conn =>
-          withResource(conn.createStatement()): stmt =>
-            stmt.execute("create table a as select 1 as id, 'leo' as name")
-
-            stmt.execute("insert into a values(2, 'yui')")
-
-            withResource(stmt.executeQuery("select * from a")): rs =>
-              val queryResultJson = ResultSetCodec(rs).toJson
-              debug(queryResultJson)
-        }
+        trinoDelta.executeUpdate("create table a as select 1 as id, 'leo' as name")
+        trinoDelta.executeUpdate("insert into a values(2, 'yui')")
+        trinoDelta.runQuery("select * from a"): rs =>
+          val queryResultJson = ResultSetCodec(rs).toJson
+          debug(queryResultJson)
       }
 
       test("register a local delta lake table") {
-        trinoDelta.withConnection: conn =>
-          withResource(conn.createStatement()) { stmt =>
-            stmt.execute(
-              s"call delta.system.register_table(schema_name => 'delta_db', table_name => 'www_access', table_location => 'file://${baseDir}/spec/delta/data/www_access')"
-            )
-            withResource(stmt.executeQuery("select * from www_access limit 5")) { rs =>
-              val queryResultJson = ResultSetCodec(rs).toJson
-              debug(queryResultJson)
-            }
-          }
+        trinoDelta.execute(
+          s"call delta.system.register_table(schema_name => 'delta_db', table_name => 'www_access', table_location => 'file://${baseDir}/spec/delta/data/www_access')"
+        )
+        trinoDelta.runQuery("select * from www_access limit 5") { rs =>
+          val queryResultJson = ResultSetCodec(rs).toJson
+          debug(queryResultJson)
+        }
       }
     }
 

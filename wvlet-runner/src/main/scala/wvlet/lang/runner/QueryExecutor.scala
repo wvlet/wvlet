@@ -14,20 +14,19 @@
 package wvlet.lang.runner
 
 import wvlet.airframe.codec.{JDBCCodec, MessageCodec}
-import wvlet.airframe.control.Control
-import wvlet.airframe.control.Control.withResource
 import wvlet.lang.api.v1.query.QuerySelection
 import wvlet.lang.api.{LinePosition, StatusCode, WvletLangException}
-import wvlet.lang.compiler.{QuerySelector, *}
+import wvlet.lang.catalog.Profile
+import wvlet.lang.compiler.*
 import wvlet.lang.compiler.codegen.GenSQL
-import wvlet.lang.compiler.codegen.GenSQL.Indented
 import wvlet.lang.compiler.planner.ExecutionPlanner
+import wvlet.lang.compiler.query.{QueryProgressMonitor, QuerySelector}
 import wvlet.lang.compiler.transform.ExpressionEvaluator
 import wvlet.lang.model.DataType
 import wvlet.lang.model.DataType.{NamedType, SchemaType, UnresolvedType}
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
-import wvlet.lang.runner.connector.DBConnector
+import wvlet.lang.runner.connector.{DBConnector, DBConnectorProvider}
 import wvlet.log.{LogLevel, LogSupport}
 
 import java.sql.SQLException
@@ -37,7 +36,8 @@ import scala.util.Try
 case class QueryExecutorConfig(rowLimit: Int = 40)
 
 class QueryExecutor(
-    dbConnector: DBConnector,
+    dbConnectorProvider: DBConnectorProvider,
+    defaultProfile: Profile,
     workEnv: WorkEnv,
     private var config: QueryExecutorConfig = QueryExecutorConfig()
 ) extends LogSupport
@@ -47,11 +47,11 @@ class QueryExecutor(
     config = config.copy(rowLimit = limit)
     this
 
-  def getDBConnector: DBConnector = dbConnector
-
   override def close(): Unit = {
     // DB Connector will be closed by Airframe DI
   }
+
+  def getDBConnector(profile: Profile): DBConnector = dbConnectorProvider.getConnector(profile)
 
   def executeSingleSpec(sourceFolder: String, file: String): QueryResult =
     val compiler = Compiler(
@@ -70,27 +70,26 @@ class QueryExecutor(
       linePosition: LinePosition,
       rootContext: Context
   ): QueryResult =
-    workEnv
-      .outLogger
-      .info(s"Executing ${u.sourceFile.fileName} (${linePosition}, ${querySelection})")
+    workEnv.info(s"Executing ${u.sourceFile.fileName} (${linePosition}, ${querySelection})")
 
     val targetStatement: LogicalPlan = QuerySelector.selectQuery(u, linePosition, querySelection)
     trace(s"Selected statement: ${targetStatement}, ${querySelection}")
     val ctx           = rootContext.withCompilationUnit(u).newContext(Symbol.NoSymbol)
     val executionPlan = ExecutionPlanner.plan(u, targetStatement, ctx)
     val result        = execute(executionPlan, ctx)
-    workEnv.outLogger.info(s"Completed ${u.sourceFile.fileName}")
+
+    workEnv.info(s"Completed ${u.sourceFile.fileName}")
     result
 
   end executeSelectedStatement
 
   def executeSingle(u: CompilationUnit, rootContext: Context): QueryResult =
-    workEnv.outLogger.info(s"Executing ${u.sourceFile.fileName}")
+    workEnv.info(s"Executing ${u.sourceFile.fileName}")
     val ctx = rootContext.withCompilationUnit(u).newContext(Symbol.NoSymbol)
 
     val executionPlan = ExecutionPlanner.plan(u, ctx)
     val result        = execute(executionPlan, ctx)
-    workEnv.outLogger.info(s"Completed ${u.sourceFile.fileName}")
+    workEnv.info(s"Completed ${u.sourceFile.fileName}")
     result
 
   def execute(executionPlan: ExecutionPlan, context: Context): QueryResult =
@@ -109,12 +108,12 @@ class QueryExecutor(
         // log results
         r match
           case t: TestSuccess =>
-            workEnv.outLogger.debug(s"Test passed: ${t.msg} (${t.loc.locationString})")
+            workEnv.debug(s"Test passed: ${t.msg} (${t.loc.locationString})")
           case t: TestFailure =>
-            workEnv.outLogger.error(s"Test failed: ${t.msg} (${t.loc.locationString})")
+            workEnv.error(s"Test failed: ${t.msg} (${t.loc.locationString})")
           case w: WarningResult =>
             warn(s"${w.msg} (${w.loc.locationString})")
-            workEnv.outLogger.warn(s"Warning: ${w.msg}")
+            workEnv.warn(s"Warning: ${w.msg}")
           case _ =>
 
       r
@@ -159,20 +158,14 @@ class QueryExecutor(
 
   end execute
 
-  private def executeStatement(sqls: List[String]): Unit = dbConnector.withConnection { conn =>
-    withResource(conn.createStatement()) { stmt =>
-      sqls.foreach { sql =>
-        workEnv.outLogger.info(s"Executing SQL:\n${sql}")
-        debug(s"Executing SQL:\n${sql}")
-        try
-          stmt.execute(sql)
-          dbConnector.processWarning(stmt.getWarnings)
-        catch
-          case e: SQLException =>
-            throw StatusCode.SYNTAX_ERROR.newException(s"${e.getMessage}\n[sql]\n${sql}", e)
-      }
-    }
-  }
+  private def executeStatement(sqls: List[String]): Unit = sqls.foreach: sql =>
+    workEnv.info(s"Executing SQL:\n${sql}")
+    debug(s"Executing SQL:\n${sql}")
+    try
+      getDBConnector(defaultProfile).execute(sql)
+    catch
+      case e: SQLException =>
+        throw StatusCode.SYNTAX_ERROR.newException(s"${e.getMessage}\n[sql]\n${sql}", e)
 
   private def executeCommand(cmd: Command, context: Context): QueryResult =
     cmd match
@@ -214,52 +207,48 @@ class QueryExecutor(
 
   private def executeQuery(plan: LogicalPlan, context: Context): QueryResult =
     trace(s"Executing query: ${plan.pp}")
-    workEnv.outLogger.trace(s"Executing plan: ${plan.pp}")
+    workEnv.trace(s"Executing plan: ${plan.pp}")
     plan match
       case q: Relation =>
         val generatedSQL = GenSQL.generateSQLFromRelation(q, context)
-        workEnv.outLogger.info(s"Executing SQL:\n${generatedSQL.sql}")
+        workEnv.info(s"Executing SQL:\n${generatedSQL.sql}")
         debug(s"Executing SQL:\n${generatedSQL.sql}")
         try
-          val result = dbConnector.withConnection { conn =>
-            withResource(conn.createStatement()) { stmt =>
-              withResource(stmt.executeQuery(generatedSQL.sql)) { rs =>
-                dbConnector.processWarning(stmt.getWarnings())
+          given monitor: QueryProgressMonitor = context.queryProgressMonitor
+          monitor.newQuery(generatedSQL.sql)
+          val result =
+            getDBConnector(defaultProfile).runQuery(generatedSQL.sql) { rs =>
+              val metadata = rs.getMetaData
+              val fields =
+                for i <- 1 to metadata.getColumnCount
+                yield NamedType(
+                  Name.termName(metadata.getColumnName(i)),
+                  Try(DataType.parse(metadata.getColumnTypeName(i))).getOrElse {
+                    UnresolvedType(metadata.getColumnTypeName(i))
+                  }
+                )
+              val outputType = SchemaType(None, Name.NoTypeName, fields)
+              trace(outputType)
 
-                val metadata = rs.getMetaData
-                val fields =
-                  for i <- 1 to metadata.getColumnCount
-                  yield NamedType(
-                    Name.termName(metadata.getColumnName(i)),
-                    Try(DataType.parse(metadata.getColumnTypeName(i))).getOrElse {
-                      UnresolvedType(metadata.getColumnTypeName(i))
-                    }
-                  )
-                val outputType = SchemaType(None, Name.NoTypeName, fields)
-                trace(outputType)
+              val codec    = JDBCCodec(rs)
+              val rowCodec = MessageCodec.of[ListMap[String, Any]]
+              var rowCount = 0
+              val it = codec.mapMsgPackMapRows { msgpack =>
+                if rowCount < config.rowLimit then
+                  rowCodec.fromMsgPack(msgpack)
+                else
+                  null
+              }
 
-                val codec    = JDBCCodec(rs)
-                val rowCodec = MessageCodec.of[ListMap[String, Any]]
-                var rowCount = 0
-                val it = codec.mapMsgPackMapRows { msgpack =>
-                  if rowCount < config.rowLimit then
-                    rowCodec.fromMsgPack(msgpack)
-                  else
-                    null
-                }
-
-                val rows = Seq.newBuilder[ListMap[String, Any]]
-                while it.hasNext do
-                  val row = it.next()
-                  if row != null && rowCount < config.rowLimit then
-                    rows += row
+              val rows = Seq.newBuilder[ListMap[String, Any]]
+              while it.hasNext do
+                val row = it.next()
+                if row != null && rowCount < config.rowLimit then
+                  rows += row
                   rowCount += 1
 
-                TableRows(outputType, rows.result(), rowCount)
-              }
+              TableRows(outputType, rows.result(), rowCount)
             }
-          }
-
           result
         catch
           case e: SQLException =>
@@ -279,7 +268,7 @@ class QueryExecutor(
   ): QueryResult =
     val result = execute(debugPlan.debugExecutionPlan, context)
     // TODO: Output to REPL
-    workEnv.outLogger.info(result)
+    workEnv.info(result)
     QueryResult.empty
 
   private def executeTest(test: TestRelation, lastResult: QueryResult)(using

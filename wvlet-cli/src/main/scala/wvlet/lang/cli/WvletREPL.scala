@@ -20,17 +20,20 @@ import org.jline.reader.impl.DefaultParser
 import org.jline.reader.impl.DefaultParser.Bracket
 import org.jline.terminal.Terminal.Signal
 import org.jline.terminal.{Size, Terminal, TerminalBuilder}
-import org.jline.utils.{AttributedString, AttributedStringBuilder, AttributedStyle, InfoCmp}
+import org.jline.utils.{AttributedString, AttributedStringBuilder, AttributedStyle, InfoCmp, Status}
 import org.jline.widget.AutopairWidgets
 import wvlet.airframe.*
 import wvlet.airframe.control.{Shell, ThreadUtil}
 import wvlet.airframe.log.AnsiColorPalette
+import wvlet.airframe.metrics.{Count, ElapsedTime}
 import wvlet.lang.api.{LinePosition, WvletLangException}
 import wvlet.lang.api.v1.query.QueryRequest
 import wvlet.lang.api.v1.query.QuerySelection.{All, Describe, Subquery}
 import wvlet.lang.compiler.parser.*
 import wvlet.lang.compiler.{CompilationUnit, SourceFile, WorkEnv}
+import wvlet.lang.compiler.query.{QueryMetric, QueryProgressMonitor}
 import wvlet.lang.model.plan.QueryStatement
+import wvlet.lang.runner.connector.TrinoQueryMetric
 import wvlet.lang.runner.{LastOutput, WvletScriptRunner}
 import wvlet.log.{LogSupport, Logger}
 
@@ -39,6 +42,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicReference
 import java.util.regex.Pattern
 import scala.io.AnsiColor
+import scala.jdk.CollectionConverters.*
 
 class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseable with LogSupport:
   import WvletREPL.*
@@ -72,6 +76,45 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
   private val executorThreadManager = Executors
     .newCachedThreadPool(ThreadUtil.newDaemonThreadFactory("wvlet-repl-executor"))
 
+  private given progressMonitor: QueryProgressMonitor =
+    new QueryProgressMonitor:
+      private var lines = 0
+      private val CLEAR_LINE =
+        if isRealTerminal() then
+          "\u001b[2K"
+        else
+          "\r"
+
+      private var lastUpdateTimeMillis = 0L
+
+      override def close(): Unit =
+        if lines > 0 then
+          terminal.writer().print(s"${CLEAR_LINE}\r")
+          terminal.flush()
+          lines = 0
+
+      override def newQuery(sql: String): Unit =
+        if isRealTerminal() then
+          terminal.writer().print(s"\r${Color.GRAY}${CLEAR_LINE}Query starting...${Color.RESET}")
+          terminal.flush()
+          lines = 1
+
+      override def reportProgress(metric: QueryMetric): Unit =
+        metric match
+          case m: TrinoQueryMetric =>
+            val t = System.currentTimeMillis()
+            // Show report every 1s
+            if t - lastUpdateTimeMillis > 300 then
+              lastUpdateTimeMillis = t
+              val stats = m.stats
+              val msg =
+                f"Query ${stats.getQueryId} ${ElapsedTime.succinctMillis(stats.getElapsedTimeMillis)}%8s [${Count.succinct(stats.getProcessedRows)} rows] ${stats.getCompletedSplits}/${stats.getTotalSplits}"
+              lines = 1
+
+              terminal.writer().print(s"\r${CLEAR_LINE}${Color.GRAY}${msg}${Color.RESET}")
+              terminal.flush()
+          case _ =>
+
   override def close(): Unit =
     reader.getHistory.save()
     terminal.close()
@@ -101,6 +144,7 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
           val result = runner.runStatement(
             QueryRequest(query = trimmedLine, querySelection = All, isDebugRun = true)
           )
+          reader.getTerminal.writer()
           val output = runner.displayOutput(trimmedLine, result, terminal)
           lastOutput = Some(output)
         catch
@@ -150,14 +194,15 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
     val lines         = queryFragment.split("\n")
     val lastLine      = lines.lastOption.getOrElse("")
     val lineNum       = lines.size
-    val result = runner.runStatement(
-      QueryRequest(
-        query = queryFragment,
-        querySelection = Describe,
-        linePosition = LinePosition(lineNum, 1),
-        isDebugRun = true
-      )
-    )
+    val result =
+      runner.runStatement(
+        QueryRequest(
+          query = queryFragment,
+          querySelection = Describe,
+          linePosition = LinePosition(lineNum, 1),
+          isDebugRun = true
+        )
+      )(using QueryProgressMonitor.noOp) // Hide progress for descirbe query
     val str = result.toPrettyBox()
     reader.printAbove(
       s"${Color.GREEN}describe${Color.RESET} ${Color.BLUE}(line:${lineNum})${Color.RESET}: ${Color.BRIGHT_RED}${lastLine}\n${Color.GRAY}${str}${AnsiColor.RESET}"

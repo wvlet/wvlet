@@ -4,7 +4,7 @@ import wvlet.airframe.rx.{Cancelable, Rx}
 import wvlet.lang.api.LinePosition
 import wvlet.lang.api.v1.query.{QueryRequest, QuerySelection}
 import wvlet.lang.api.v1.query.QuerySelection.Describe
-import wvlet.lang.compiler.QuerySelector
+import wvlet.lang.compiler.query.QuerySelector
 import wvlet.lang.ui.component.{MainFrame, WindowSize}
 import wvlet.lang.ui.component.monaco.EditorBase
 

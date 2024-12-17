@@ -17,7 +17,9 @@ import org.jline.terminal.Terminal
 import wvlet.airframe.control.{Control, Shell}
 import wvlet.lang.api.WvletLangException
 import wvlet.lang.api.v1.query.{QueryRequest, QuerySelection}
+import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.*
+import wvlet.lang.compiler.query.QueryProgressMonitor
 import wvlet.lang.runner.*
 import wvlet.log.{LogRotationHandler, LogSupport, Logger}
 
@@ -30,6 +32,7 @@ case class WvletScriptRunnerConfig(
     interactive: Boolean,
     resultLimit: Int = 40,
     maxColWidth: Int = 150,
+    profile: Profile,
     catalog: Option[String],
     schema: Option[String]
 )
@@ -76,7 +79,9 @@ class WvletScriptRunner(
       .catalog
       .foreach { catalog =>
         c.setDefaultCatalog(
-          queryExecutor.getDBConnector.getCatalog(catalog, config.schema.getOrElse("main"))
+          queryExecutor
+            .getDBConnector(config.profile)
+            .getCatalog(catalog, config.schema.getOrElse("main"))
         )
       }
     config
@@ -91,13 +96,22 @@ class WvletScriptRunner(
     }
     c
 
-  def runStatement(request: QueryRequest): QueryResult =
+  end compiler
+
+  def runStatement(request: QueryRequest)(using
+      queryProgressMonitor: QueryProgressMonitor
+  ): QueryResult =
     val newUnit = CompilationUnit.fromString(request.query)
     units = newUnit :: units
 
     try
       val compileResult = compiler.compileSingleUnit(contextUnit = newUnit)
-      val ctx = compileResult.context.global.getContextOf(newUnit).withDebugRun(request.isDebugRun)
+      val ctx = compileResult
+        .context
+        .global
+        .getContextOf(newUnit)
+        .withDebugRun(request.isDebugRun)
+        .withQueryProgressMonitor(queryProgressMonitor)
       val queryResult = queryExecutor
         .setRowLimit(resultRowLimits)
         .executeSelectedStatement(newUnit, request.querySelection, request.linePosition, ctx)

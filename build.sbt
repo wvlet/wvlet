@@ -276,6 +276,8 @@ lazy val nativeCliLinuxArm = nativeCrossProject(
 lazy val nativeCliWindowsArm   = nativeCrossProject("windows-arm64", "arm64-w64-windows-gnu")
 lazy val nativeCliWindowsIntel = nativeCrossProject("windows-x64", "x86_64-w64-windows-gnu")
 
+val packQuick = taskKey[Unit]("Run pack task quickly for faster development")
+
 lazy val cli = project
   .in(file("wvlet-cli"))
   .enablePlugins(PackPlugin)
@@ -286,6 +288,9 @@ lazy val cli = project
     Test / fork := true,
     Test / baseDirectory :=
       (ThisBuild / baseDirectory).value,
+    packQuick :=
+      // Run the default pack task
+      (Runtime / pack).value,
     pack :=
       Def
         .sequential(

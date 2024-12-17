@@ -4,7 +4,8 @@ import wvlet.airframe.rx.html.all.s
 import wvlet.airframe.rx.{Cancelable, Rx}
 import wvlet.lang.api.WvletLangException
 import wvlet.lang.compiler.codegen.GenSQL
-import wvlet.lang.compiler.{CompilationUnit, Compiler, QuerySelector, SourceFile, Symbol}
+import wvlet.lang.compiler.query.QuerySelector
+import wvlet.lang.compiler.{CompilationUnit, Compiler, SourceFile, Symbol}
 import wvlet.lang.ui.component.WindowSize
 import wvlet.lang.ui.component.monaco.EditorBase
 

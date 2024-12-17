@@ -9,11 +9,10 @@ import wvlet.airframe.http.{Http, RxRouter}
 import wvlet.airframe.launcher.{Launcher, command, option}
 import wvlet.lang.api.v1.frontend.FrontendRPC
 import wvlet.lang.catalog.Profile
-import wvlet.lang.compiler.OS
-import wvlet.lang.compiler.WorkEnv
-import wvlet.lang.runner.{QueryExecutor, WvletScriptRunnerConfig}
-import wvlet.lang.runner.connector.{DBConnector, DBConnectorProvider}
+import wvlet.lang.compiler.{OS, WorkEnv}
 import wvlet.lang.runner.connector.duckdb.DuckDBConnector
+import wvlet.lang.runner.connector.{DBConnector, DBConnectorProvider}
+import wvlet.lang.runner.{QueryExecutor, WvletScriptRunnerConfig}
 import wvlet.log.LogSupport
 import wvlet.log.io.IOUtil
 
@@ -90,13 +89,10 @@ object WvletServer extends LogSupport:
         Profile
           .getProfile(config.profile, config.catalog, config.schema, Profile.defaultDuckDBProfile)
       )
-      .bindProvider[Profile, DBConnector] { (p: Profile) =>
-        val prop = Map("prepareTPCH" -> config.prepareTPCH)
-        DBConnectorProvider.getConnector(p, prop)
-      }
       .bindProvider[Profile, WvletScriptRunnerConfig] { (profile: Profile) =>
         WvletScriptRunnerConfig(
           interactive = false,
+          profile = profile,
           catalog = profile.catalog,
           schema = profile.schema
         )

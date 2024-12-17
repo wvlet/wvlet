@@ -7,36 +7,49 @@ import wvlet.lang.runner.connector.duckdb.DuckDBConnector
 import wvlet.lang.runner.connector.trino.{TrinoConfig, TrinoConnector}
 import wvlet.log.LogSupport
 
-object DBConnectorProvider extends LogSupport:
+import java.util.concurrent.ConcurrentHashMap
+import scala.jdk.CollectionConverters.*
+
+class DBConnectorProvider extends LogSupport with AutoCloseable:
+
+  private val connectorCache = new ConcurrentHashMap[Profile, DBConnector]().asScala
+
+  override def close(): Unit = connectorCache.values.foreach(_.close())
 
   def getConnector(profile: Profile, properties: Map[String, Any] = Map.empty): DBConnector =
-    val dbType = profile.dbType
-    debug(s"Get a connector for DBType:${dbType}")
-    dbType match
-      case DBType.Trino =>
-        TrinoConnector(
-          TrinoConfig(
-            catalog = profile.catalog.getOrElse("default"),
-            schema = profile.schema.getOrElse("default"),
-            hostAndPort = profile.host.getOrElse("localhost"),
-            user = profile.user,
-            password = profile.password
+    def createConnector: DBConnector =
+      val dbType = profile.dbType
+      debug(s"Get a connector for DBType:${dbType}")
+      dbType match
+        case DBType.Trino =>
+          TrinoConnector(
+            TrinoConfig(
+              catalog = profile.catalog.getOrElse("default"),
+              schema = profile.schema.getOrElse("default"),
+              hostAndPort = profile.host.getOrElse("localhost"),
+              user = profile.user,
+              password = profile.password
+            )
           )
-        )
-      case DBType.DuckDB =>
-        DuckDBConnector(
-          // TODO Use more generic way to pass profile properties
-          prepareTPCH = (profile.properties ++ properties)
-            .getOrElse("prepareTPCH", "false")
-            .toString
-            .toBoolean
-        )
-      case DBType.Generic =>
-        GenericConnector()
-      case other =>
-        warn(
-          s"Connector for -t ${other.toString.toLowerCase} option is not implemented. Using GenericConnector for DuckDB as a fallback"
-        )
-        GenericConnector()
+        case DBType.DuckDB =>
+          DuckDBConnector(
+            // TODO Use more generic way to pass profile properties
+            prepareTPCH = (profile.properties ++ properties)
+              .getOrElse("prepareTPCH", "false")
+              .toString
+              .toBoolean
+          )
+        case DBType.Generic =>
+          GenericConnector()
+        case other =>
+          warn(
+            s"Connector for -t ${other.toString.toLowerCase} option is not implemented. Using GenericConnector for DuckDB as a fallback"
+          )
+          GenericConnector()
+    end createConnector
+
+    connectorCache.getOrElseUpdate(profile, createConnector)
+
+  end getConnector
 
 end DBConnectorProvider

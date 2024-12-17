@@ -19,6 +19,7 @@ import wvlet.lang.compiler.{Compiler, CompilerOptions, WorkEnv}
 import wvlet.lang.runner.QueryExecutor
 import wvlet.lang.runner.connector.trino.{TrinoConfig, TrinoConnector}
 import wvlet.lang.api.{StatusCode, WvletLangException}
+import wvlet.lang.runner.connector.DBConnectorProvider
 
 trait TDTrinoSpecRunner(specPath: String) extends AirSpec:
   if inCI then
@@ -41,8 +42,9 @@ trait TDTrinoSpecRunner(specPath: String) extends AirSpec:
     password = profile.password
   )
 
-  private val workEnv  = WorkEnv(path = specPath, logLevel = logger.getLogLevel)
-  private val executor = QueryExecutor(TrinoConnector(config), workEnv)
+  private val workEnv             = WorkEnv(path = specPath, logLevel = logger.getLogLevel)
+  private val dbConnectorProvider = DBConnectorProvider()
+  private val executor            = QueryExecutor(dbConnectorProvider, profile, workEnv)
 
   private val compiler = Compiler(
     CompilerOptions(
@@ -53,8 +55,14 @@ trait TDTrinoSpecRunner(specPath: String) extends AirSpec:
     )
   )
 
+  override def afterAll: Unit =
+    executor.close()
+    dbConnectorProvider.close()
+
   // Need to tell it's Trino
-  compiler.setDefaultCatalog(executor.getDBConnector.getCatalog(defaultCatalog, defaultSchema))
+  compiler.setDefaultCatalog(
+    dbConnectorProvider.getConnector(profile).getCatalog(defaultCatalog, defaultSchema)
+  )
 
   // Compile all files in the source paths first
   for unit <- compiler.localCompilationUnits do

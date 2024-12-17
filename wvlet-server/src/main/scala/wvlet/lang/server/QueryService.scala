@@ -4,8 +4,9 @@ import wvlet.airframe.control.ThreadUtil
 import wvlet.airframe.ulid.ULID
 import wvlet.lang.api.{SourceLocation, StatusCode, WvletLangException}
 import wvlet.lang.api.v1.frontend.FrontendApi.{QueryInfoRequest, QueryResponse}
-import wvlet.lang.api.v1.query.{QueryError, QueryInfo, QueryResult, QueryRequest, QueryStatus}
+import wvlet.lang.api.v1.query.{QueryError, QueryInfo, QueryRequest, QueryResult, QueryStatus}
 import wvlet.lang.api.v1.query.QueryStatus.{QUEUED, RUNNING}
+import wvlet.lang.compiler.query.QueryProgressMonitor
 import wvlet.lang.runner.QueryExecutor
 import wvlet.lang.runner.WvletScriptRunner
 import wvlet.lang.runner.connector.DBConnector
@@ -52,7 +53,9 @@ class QueryService(scriptRunner: WvletScriptRunner) extends LogSupport with Auto
         throw StatusCode.INVALID_ARGUMENT.newException(s"Query not found: ${request.queryId}")
       }
 
-  private def runQuery(queryId: ULID, request: QueryRequest): Unit =
+  private def runQuery(queryId: ULID, request: QueryRequest)(using
+      queryProgressMonitor: QueryProgressMonitor = QueryProgressMonitor.noOp
+  ): Unit =
     var lastInfo = queryMap(queryId)
     lastInfo = lastInfo
       .copy(pageToken = "1", status = QueryStatus.RUNNING, startedAt = Some(Instant.now()))
