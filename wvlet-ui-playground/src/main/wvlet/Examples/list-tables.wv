@@ -6,3 +6,7 @@ show tables in main
 
 -- List tables in a specific catalog.schema
 show tables in memory.main
+
+-- You can apply filters to the table list
+show tables
+limit 10

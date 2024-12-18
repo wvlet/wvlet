@@ -195,7 +195,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     val name = identifier()
     try
       ShowType.valueOf(name.leafName) match
-        case ShowType.models | ShowType.tables =>
+        case ShowType.models | ShowType.tables | ShowType.schemas =>
           val inExpr: NameExpr =
             scanner.lookAhead().token match
               case WvletToken.IN =>
@@ -205,6 +205,10 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
                 EmptyName
 
           val s = Show(ShowType.valueOf(name.leafName), inExpr, spanFrom(t))
+          val q = queryBlock(s)
+          Query(q, spanFrom(t))
+        case ShowType.catalogs =>
+          val s = Show(ShowType.valueOf(name.leafName), NameExpr.EmptyName, spanFrom(t))
           val q = queryBlock(s)
           Query(q, spanFrom(t))
         case ShowType.query =>

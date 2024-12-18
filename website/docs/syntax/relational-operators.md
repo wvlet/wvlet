@@ -45,6 +45,15 @@ _relation_):
 | __append to__ `'file_name'`                         | Append the query result to the target file. It will create a new file if the file doesn't exist.      |
 | __delete__                                          | Delete input rows from the source table.                                                              |
 
+## Catalog Inspection Operators
+
+| Operator     | Output                                                             |
+|--------------|--------------------------------------------------------------------|
+| __show__ tables (in `catalog`?.`schema`)? | Return a list of all tables in the current schema (database)   |
+| __show__ schemas (in `catalog`)?| Return a list of all schemas (databases) in the catalog        |
+| __show__ catalogs | Return a list of all catalogs                                 |
+| __show__ models  | Return a list of all models                                    |
+
 ## Relation Inspection Operators
 
 | Operator     | Output                                                             |
