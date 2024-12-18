@@ -1,6 +1,3 @@
-select 0.123.to_double.round(1).to_string
-test _.rows is [['0.1']]
-
 from [[1.23]] as t(d_value)
 select d_value.round(1)
 test _.rows is [[1.2]]

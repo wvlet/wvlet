@@ -94,7 +94,8 @@ case class AliasedRelation(
     alias: NameExpr,
     columnNames: Option[Seq[NamedType]],
     span: Span
-) extends UnaryRelation:
+) extends UnaryRelation
+    with LogSupport:
   override def toString: String =
     columnNames match
       case Some(columnNames) =>
@@ -107,7 +108,18 @@ case class AliasedRelation(
       case None =>
         AliasedType(Name.typeName(alias.leafName), child.relationType)
       case Some(columns) =>
-        ProjectedType(Name.typeName(alias.leafName), columns, child.relationType)
+        // Assign the given field names to the input relation fields
+        val typedColumns = columns
+          .zip(child.relationType.fields)
+          .map { (c, f) =>
+            val dt =
+              if c.isResolved then
+                c
+              else
+                f.dataType
+            NamedType(c.name, dt)
+          }
+        ProjectedType(Name.typeName(alias.leafName), typedColumns, child.relationType)
 
 end AliasedRelation
 
@@ -129,8 +141,20 @@ case class Values(rows: Seq[Expression], span: Span) extends Relation with LeafP
   override def toString: String = s"Values(${rows.mkString(", ")})"
 
   override val relationType: RelationType =
-    // TODO Resolve column types
-    UnresolvedRelationType(RelationType.newRelationTypeName)
+    if rows.isEmpty then
+      EmptyRelationType
+    else
+      val row = rows.head
+      row match
+        case arr: ArrayConstructor =>
+          val columns = arr
+            .values
+            .map { v =>
+              NamedType(Name.NoName, v.dataType)
+            }
+          SchemaType(None, Name.NoTypeName, columnTypes = columns)
+        case _ =>
+          EmptyRelationType
 
 //  override def outputAttributes: Seq[Attribute] =
 //    val values = rows.map { row =>
