@@ -2,7 +2,7 @@ import scala.scalanative.build.BuildTarget
 
 val AIRFRAME_VERSION    = "24.12.2"
 val AIRSPEC_VERSION     = "24.12.2"
-val TRINO_VERSION       = "467"
+val TRINO_VERSION       = "468"
 val AWS_SDK_VERSION     = "2.20.146"
 val SCALAJS_DOM_VERSION = "2.8.0"
 
