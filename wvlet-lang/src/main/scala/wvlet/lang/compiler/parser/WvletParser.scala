@@ -187,6 +187,10 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         showExpr()
       case WvletToken.EXECUTE =>
         executeExpr()
+      case WvletToken.DESCRIBE =>
+        consume(WvletToken.DESCRIBE)
+        val r = relationPrimary()
+        Describe(r, spanFrom(t))
       case _ =>
         unexpected(t)
 
@@ -1407,9 +1411,9 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
             consume(WvletToken.L_PAREN)
             val args = functionArgs()
             consume(WvletToken.R_PAREN)
-            TableFunctionCall(tableOrFunctionName, args, spanFrom(t))
+            TableFunctionCall(tableOrFunctionName, args, spanFrom(t.span))
           case _ =>
-            TableRef(tableOrFunctionName, spanFrom(t))
+            TableRef(tableOrFunctionName, spanFrom(t.span))
       case WvletToken.SELECT | WvletToken.FROM | WvletToken.L_BRACE =>
         querySingle()
       case WvletToken.STRING_LITERAL =>
