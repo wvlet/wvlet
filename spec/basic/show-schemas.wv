@@ -1,0 +1,6 @@
+show schemas
+test _.columns = ['catalog', 'name']
+
+show schemas
+where catalog = 'memory'
+test _.columns = ['catalog', 'name']

@@ -871,6 +871,8 @@ case class IncrementalAppend(
 enum ShowType:
   case models
   case tables
+  case schemas
+  case catalogs
   case query
 
 case class Show(showType: ShowType, inExpr: NameExpr, span: Span) extends Relation with LeafPlan:
@@ -892,8 +894,25 @@ case class Show(showType: ShowType, inExpr: NameExpr, span: Span) extends Relati
           typeName = Name.typeName("table"),
           columnTypes = Seq[NamedType](NamedType(Name.termName("name"), DataType.StringType))
         )
+      case ShowType.schemas =>
+        SchemaType(
+          parent = None,
+          typeName = Name.typeName("schema"),
+          columnTypes = Seq[NamedType](
+            NamedType(Name.termName("catalog"), DataType.StringType),
+            NamedType(Name.termName("name"), DataType.StringType)
+          )
+        )
+      case ShowType.catalogs =>
+        SchemaType(
+          parent = None,
+          typeName = Name.typeName("catalog"),
+          columnTypes = Seq[NamedType](NamedType(Name.termName("name"), DataType.StringType))
+        )
       case other =>
         throw StatusCode.UNEXPECTED_STATE.newException(s"Unexpected show type: ${other}")
+
+end Show
 
 trait RelationInspector extends QueryStatement
 

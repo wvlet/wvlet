@@ -6,10 +6,10 @@ from [
 save as demo_table
 
 from wv_tables()
-test _.columns should be ['catalog', 'schema', 'table', 'table_type']
+test _.columns should be ['catalog', 'schema', 'name', 'table_type']
 test _.rows should contain ['memory', 'main', 'demo_table', 'BASE TABLE']
 
 
 from wv_schemas()
-test _.columns should be ['catalog', 'schema']
+test _.columns should be ['catalog', 'name']
 test _.rows should contain ['memory', 'main']

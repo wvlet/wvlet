@@ -811,6 +811,32 @@ class GenSQL(ctx: Context) extends LogSupport:
           else
             s"${sql} where ${printExpression(Expression.concatWithAnd(conds))}"
         selectWithIndentAndParenIfNecessary(s"${body} order by name")
+      case s: Show if s.showType == ShowType.schemas =>
+        val sql =
+          s"""select catalog_name as "catalog", schema_name as name from information_schema.schemata"""
+        val cond = List.newBuilder[Expression]
+
+        val opts                    = ctx.global.compilerOptions
+        var catalog: Option[String] = opts.catalog
+
+        s.inExpr match
+          case i: Identifier if i.nonEmpty =>
+            catalog = Some(i.leafName)
+          case _ =>
+
+        catalog.foreach { c =>
+          cond += Eq(UnquotedIdentifier("catalog_name", NoSpan), StringLiteral(c, NoSpan), NoSpan)
+        }
+        val conds = cond.result()
+        val body =
+          if conds.size == 0 then
+            sql
+          else
+            s"${sql} where ${printExpression(Expression.concatWithAnd(conds))}"
+        selectWithIndentAndParenIfNecessary(s"${body} order by name")
+      case s: Show if s.showType == ShowType.catalogs =>
+        val sql = s"""select distinct catalog_name as "name" from information_schema.schemata"""
+        selectWithIndentAndParenIfNecessary(s"${sql} order by 1")
       case s: Show if s.showType == ShowType.models =>
         // TODO: Show models should be handled outside of GenSQL
         val models: Seq[ListMap[String, Any]] = ctx

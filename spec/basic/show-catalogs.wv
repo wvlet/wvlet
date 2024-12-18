@@ -1,0 +1,12 @@
+show catalogs
+test _.columns = ['name']
+
+show catalogs
+dedup
+test _.columns = ['name']
+
+show catalogs
+where name = 'memory'
+dedup
+test _.columns = ['name']
+
