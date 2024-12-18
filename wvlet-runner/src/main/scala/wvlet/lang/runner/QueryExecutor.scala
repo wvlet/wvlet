@@ -241,7 +241,7 @@ class QueryExecutor(
               val rowCodec = MessageCodec.of[ListMap[String, Any]]
               var rowCount = 0
               val it = codec.mapMsgPackMapRows { msgpack =>
-                if rowCount < config.rowLimit then
+                if rowCount <= config.rowLimit then
                   rowCodec.fromMsgPack(msgpack)
                 else
                   null
@@ -250,9 +250,9 @@ class QueryExecutor(
               val rows = Seq.newBuilder[ListMap[String, Any]]
               while it.hasNext do
                 val row = it.next()
-                if row != null && rowCount < config.rowLimit then
+                rowCount += 1
+                if row != null && rowCount <= config.rowLimit then
                   rows += row
-                  rowCount += 1
 
               TableRows(outputType, rows.result(), rowCount)
             }

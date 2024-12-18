@@ -99,9 +99,9 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
           terminal.flush()
           lines = 0
 
-      override def startCompile(unit: CompilationUnit): Unit = printLine("Query compilation...")
+      override def startCompile(unit: CompilationUnit): Unit = printLine("Query compiling...")
 
-      override def newQuery(sql: String): Unit = printLine("Query starting...")
+      override def newQuery(sql: String): Unit = printLine(f"Query starting...")
 
       override def reportProgress(metric: QueryMetric): Unit =
         metric match
@@ -112,7 +112,7 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
               lastUpdateTimeMillis = t
               val stats = m.stats
               val msg =
-                f"Query ${stats.getQueryId} ${ElapsedTime.succinctMillis(stats.getElapsedTimeMillis)}%8s [${Count.succinct(stats.getProcessedRows)} rows] ${stats.getCompletedSplits}/${stats.getTotalSplits}"
+                f"Query ${s"${stats.getState.toLowerCase}"} ${ElapsedTime.succinctMillis(stats.getElapsedTimeMillis)}%6s [${Count.succinct(stats.getProcessedRows)} rows] ${stats.getCompletedSplits}/${stats.getTotalSplits}"
               printLine(msg)
           case _ =>
 
