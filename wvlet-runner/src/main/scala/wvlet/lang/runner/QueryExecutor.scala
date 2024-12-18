@@ -528,7 +528,8 @@ class QueryExecutor(
         case b: BooleanLiteral =>
           b.booleanValue
         case d: DecimalLiteral =>
-          d.value
+          // TODO Using Double for simplicity, but this process should preserve the precision
+          d.value.toDouble
         case n: NullLiteral =>
           null
         case a: ArrayConstructor =>
@@ -540,7 +541,7 @@ class QueryExecutor(
             }
             .toMap
         case other =>
-          warn(s"Test expression ${e} is not supported yet.")
+          workEnv.warn(s"Test expression ${e} is not supported yet.")
           ()
 
     def trim(v: Any): Any =
