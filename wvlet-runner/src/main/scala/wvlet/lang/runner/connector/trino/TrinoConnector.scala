@@ -41,7 +41,7 @@ class TrinoConnector(val config: TrinoConfig, workEnv: WorkEnv)
     with LogSupport:
   private lazy val driver = new TrinoDriver()
 
-  private[connector] override def newConnection: DBConnection =
+  private[connector] override lazy val newConnection: DBConnection =
     val jdbcUrl =
       s"jdbc:trino://${config.hostAndPort}/${config.catalog}/${config.schema}${
           if config.useSSL then
@@ -55,7 +55,12 @@ class TrinoConnector(val config: TrinoConfig, workEnv: WorkEnv)
     config.password.foreach(x => properties.put("password", x))
     DBConnection(driver.connect(jdbcUrl, properties).asInstanceOf[TrinoConnection])
 
-  override def close(): Unit = driver.close()
+  override def close(): Unit = Control.closeResources(newConnection, driver)
+
+  override protected def withConnection[U](body: DBConnection => U): U =
+    val conn = newConnection
+    // Do not close the connection for reusing the connection
+    body(conn)
 
   def withConfig(newConfig: TrinoConfig): TrinoConnector = new TrinoConnector(newConfig, workEnv)
 
