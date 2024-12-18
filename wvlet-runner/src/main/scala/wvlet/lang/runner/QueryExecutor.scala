@@ -528,8 +528,7 @@ class QueryExecutor(
         case b: BooleanLiteral =>
           b.booleanValue
         case d: DecimalLiteral =>
-          // TODO Using Double for simplicity, but this process should preserve the precision
-          d.value.toDouble
+          d.value
         case n: NullLiteral =>
           null
         case a: ArrayConstructor =>
