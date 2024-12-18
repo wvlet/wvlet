@@ -3,7 +3,7 @@ from [
   [2, "bob", 20],
   [3, "clark", 30]
 ] as person(id, name, age)
-save as person_tmp
+save to person_tmp
 
 from [
   [4, "dave", 40],

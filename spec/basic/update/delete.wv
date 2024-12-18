@@ -3,7 +3,7 @@ from [
   [2, "bob", 20],
   [3, "clark", 30]
 ] as person(id, name, age)
-save as person_copy_dlt
+save to person_copy_dlt
 
 from person_copy_dlt
 where id = 2

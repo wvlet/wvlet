@@ -38,9 +38,9 @@ _relation_):
 
 | Operator                                            | Description                                                                                           |
 |-----------------------------------------------------|-------------------------------------------------------------------------------------------------------|
-| __save as__ `table_name`                            | Save the query result as a new table with the given name                                              |
-| __save as__ `table_name` __with__ p1:v1, p2:v2, ... | Save the query result as a new table with the given name and options                                  |
-| __save as__ `'file name'`                           | Save the query result as a file with the given name                                                   |
+| __save to__ `table_name`                            | Save the query result as a new table with the given name                                              |
+| __save to__ `table_name` __with__ p1:v1, p2:v2, ... | Save the query result as a new table with the given name and options                                  |
+| __save to__ `'file name'`                           | Save the query result as a file with the given name                                                   |
 | __append to__ `table_name`                          | Append the query result to the target table. If the target table doesn't exist, it creates a new one. |
 | __append to__ `'file_name'`                         | Append the query result to the target file. It will create a new file if the file doesn't exist.      |
 | __delete__                                          | Delete input rows from the source table.                                                              |
