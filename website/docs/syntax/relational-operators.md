@@ -52,13 +52,16 @@ _relation_):
 | __show__ tables (in `catalog`?.`schema`)? | Return a list of all tables in the current schema (database)   |
 | __show__ schemas (in `catalog`)?| Return a list of all schemas (databases) in the catalog        |
 | __show__ catalogs | Return a list of all catalogs                                 |
-| __show__ models  | Return a list of all models                                    |
+| __show__ models  | Return a list of all models |
+| __describe__ (relation) | Return the schema of the specified table or query |
+
 
 ## Relation Inspection Operators
 
 | Operator     | Output                                                             |
 |--------------|--------------------------------------------------------------------|
 | __describe__ | Return the schema of the input relation (column_name, column_type) |
+
 
 ## Commands
 
