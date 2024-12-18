@@ -200,7 +200,7 @@ object GenSQL extends Phase("generate-sql"):
     given Context  = context
     val statements = List.newBuilder[String]
     save match
-      case s: SaveAs =>
+      case s: SaveTo =>
         val baseSQL = generateSQLFromRelation(save.inputRelation, context, addHeader = false)
         var needsTableCleanup = false
         val ctasCmd =
@@ -229,7 +229,7 @@ object GenSQL extends Phase("generate-sql"):
           statements += withHeader(dropSQL, s.sourceLocation)
 
         statements += ctasSQL
-      case s: SaveAsFile if context.dbType.supportSaveAsFile =>
+      case s: SaveToFile if context.dbType.supportSaveAsFile =>
         val baseSQL = GenSQL.generateSQLFromRelation(save.inputRelation, context, addHeader = false)
         val targetPath = context.dataFilePath(s.path)
         val copySQL    = s"copy (${baseSQL.sql}) to '${targetPath}'"

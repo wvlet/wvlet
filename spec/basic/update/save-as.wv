@@ -3,7 +3,7 @@ from [
   [2, "bob", 20],
   [3, "clark", 30]
 ] as person(id, name, age)
-save as person_copy
+save to person_copy
 
 from person_copy
 test _.rows should be [

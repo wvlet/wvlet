@@ -3,7 +3,7 @@ from [
   [2, "bob", 20],
   [3, "clark", 30]
 ] as person(id, name, age)
-save as 'target/person_append_to_file.parquet'
+save to 'target/person_append_to_file.parquet'
 
 from [
   [4, "dave", 40],

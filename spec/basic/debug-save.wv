@@ -1,7 +1,7 @@
 from 'person.json'
 debug {
   where id = 1
-  save as debug_result_0123
+  save to debug_result_0123
 }
 where id = 2
 

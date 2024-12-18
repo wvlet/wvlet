@@ -3,7 +3,7 @@ from [
   [2, "bob", 20],
   [3, "clark", 30]
 ] as person(id, name, age)
-save as demo_table
+save to demo_table
 
 from wv_tables()
 test _.columns should be ['catalog', 'schema', 'name', 'table_type']

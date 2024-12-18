@@ -681,18 +681,18 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     t.token match
       case WvletToken.SAVE =>
         consume(WvletToken.SAVE)
-        consume(WvletToken.AS)
+        consume(WvletToken.TO)
         val target = scanner.lookAhead()
         target.token match
           case WvletToken.STRING_LITERAL =>
             val path   = consume(WvletToken.STRING_LITERAL)
             val opts   = saveOptions()
-            val saveAs = SaveAsFile(r, path.str, opts, spanFrom(t))
+            val saveAs = SaveToFile(r, path.str, opts, spanFrom(t))
             saveAs
           case _ =>
             val qname = qualifiedId()
             val opts  = saveOptions()
-            SaveAs(r, qname, opts, spanFrom(t))
+            SaveTo(r, qname, opts, spanFrom(t))
       case WvletToken.APPEND =>
         consume(WvletToken.APPEND)
         consume(WvletToken.TO)

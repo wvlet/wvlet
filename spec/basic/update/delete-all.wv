@@ -3,7 +3,7 @@ from [
   [2, "bob", 20],
   [3, "clark", 30]
 ] as person(id, name, age)
-save as person_copy_dlt_all
+save to person_copy_dlt_all
 
 from person_copy_dlt_all
 delete
