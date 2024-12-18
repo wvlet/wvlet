@@ -1,3 +1,2 @@
 select 1.234.round(1)
-
 test _.rows is [[1.2]]

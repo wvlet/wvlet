@@ -540,7 +540,7 @@ class QueryExecutor(
             }
             .toMap
         case other =>
-          warn(s"Test expression ${e} is not supported yet.")
+          workEnv.warn(s"Test expression ${e} is not supported yet.")
           ()
 
     def trim(v: Any): Any =
