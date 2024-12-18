@@ -835,8 +835,8 @@ class GenSQL(ctx: Context) extends LogSupport:
             s"${sql} where ${printExpression(Expression.concatWithAnd(conds))}"
         selectWithIndentAndParenIfNecessary(s"${body} order by name")
       case s: Show if s.showType == ShowType.catalogs =>
-        val sql = s"""select catalog_name as "name" from information_schema.schemata"""
-        selectWithIndentAndParenIfNecessary(s"${sql} order by name")
+        val sql = s"""select distinct catalog_name as "name" from information_schema.schemata"""
+        selectWithIndentAndParenIfNecessary(s"${sql} order by 1")
       case s: Show if s.showType == ShowType.models =>
         // TODO: Show models should be handled outside of GenSQL
         val models: Seq[ListMap[String, Any]] = ctx
