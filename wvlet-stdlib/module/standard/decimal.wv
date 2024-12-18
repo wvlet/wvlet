@@ -8,7 +8,7 @@ type decimal:
   def to_boolean: boolean = sql"cast(${this} as boolean)"
   def to_string: string = sql"cast(${this} as varchar)"
 
-  def or_else(other:deicmal): decimal= sql"coalesce(${this},${other})"
+  def or_else(other:deicmal): decimal = sql"coalesce(${this},${other})"
 
   def round(decimal:int=0): double = sql"round(${this},${decimal})"
 
