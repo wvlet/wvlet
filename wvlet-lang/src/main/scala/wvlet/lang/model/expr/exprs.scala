@@ -13,13 +13,14 @@
  */
 package wvlet.lang.model.expr
 
-import wvlet.lang.api.{Span, LinePosition}
+import wvlet.lang.api.{LinePosition, Span}
 import wvlet.lang.api.Span.NoSpan
 import wvlet.lang.compiler.{Name, TermName, TypeName}
 import wvlet.lang.model.DataType.{
   AnyType,
   ArrayType,
   EmbeddedRecordType,
+  IntConstant,
   TimestampField,
   TypeVariable
 }
@@ -633,8 +634,19 @@ case class TimestampLiteral(value: String, span: Span) extends Literal with Leaf
   override def stringValue: String = value
 
 case class DecimalLiteral(value: String, span: Span) extends Literal with LeafExpression:
-  override def dataType: DataType = DataType
-    .DecimalType(TypeVariable(Name.typeName("precision")), TypeVariable(Name.typeName("scale")))
+  override lazy val dataType: DataType =
+    value.split("\\.") match
+      case Array(decimal, frac) =>
+        val p = decimal.length + frac.length
+        val s = frac.length
+        DataType.DecimalType(IntConstant(p), IntConstant(s))
+      case Array(decimal) =>
+        DataType.DecimalType(IntConstant(decimal.length), IntConstant(0))
+      case _ =>
+        DataType.DecimalType(
+          TypeVariable(Name.typeName("precision")),
+          TypeVariable(Name.typeName("scale"))
+        )
 
   override def stringValue: String = value
 
