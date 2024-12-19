@@ -38,6 +38,9 @@ template: |
 
 
 autolabeler:
+  - label: 'breaking'
+    title:
+      - '/breaking/i'
   - label: 'doc'
     files:
       - '*.md'
