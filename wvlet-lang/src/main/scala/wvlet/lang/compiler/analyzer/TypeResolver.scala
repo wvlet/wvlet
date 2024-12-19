@@ -33,7 +33,15 @@ import wvlet.lang.compiler.{
   TypeName,
   TypeSymbolInfo
 }
-import wvlet.lang.model.DataType.{AnyType, NamedType, SchemaType, VarArgType}
+import wvlet.lang.model.DataType.{
+  AnyType,
+  NamedType,
+  SchemaType,
+  TypeParameter,
+  TypeVariable,
+  UnknownType,
+  VarArgType
+}
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
 import wvlet.lang.model.{DataType, RelationType}
@@ -502,7 +510,6 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
   private def resolveFunction(f: Expression, knownArgs: List[FunctionArg] = Nil)(using
       context: Context
   ): Option[MethodSymbolInfo] =
-    context.logDebug(s"Resolve function: ${f}")
 
     f match
       case fa: FunctionApply =>
@@ -527,8 +534,6 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
           else
             DataType.AnyType
 
-        context.logDebug(s"Resolve method ${methodName}: ${qualType} ${qualType.getClass}")
-
         val m: Option[MethodSymbolInfo] = lookupType(qualType.typeName, context)
           .map { sym =>
             // TODO: Resolve member with different arg types
@@ -546,10 +551,33 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
                   context.sourceLocationAt(d.span)
                 )
           }
+          .map { mi =>
+            // Find the owner type of the method to build generic type mappings
+            lookupType(mi.owner.dataType.typeName, context).map(_.symbolInfo) match
+              case Some(ownerType: TypeSymbolInfo) =>
+                val typeMap: Map[TypeName, DataType] = ownerType
+                  .typeParams
+                  .zipAll(qualType.typeParams, UnknownType, UnknownType)
+                  .collect { case (t1: TypeParameter, t2) =>
+                    t1.typeName -> t2
+                  }
+                  .toMap[TypeName, DataType]
+                if typeMap.isEmpty then
+                  mi
+                else
+                  val bounded = mi.bind(typeMap)
+                  context.logTrace(s"Bind ${mi} with typeMap: ${typeMap} => ${bounded}")
+                  bounded
+              case _ =>
+                mi
+          }
+          .map { m =>
+            context.logDebug(s"Resolved method ${qualType}.${methodName} => ${m}")
+            m
+          }
 
         if m.isEmpty then
           context.logDebug(s"Failed to find function `${methodName}` for ${qual}:${qual.dataType}")
-
         m
       case _ =>
         trace(s"Failed to find function definition for ${f}")
@@ -638,9 +666,10 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
 
           expr match
             case i: InterpolatedString =>
-              // TODO Support adding DataType to arbitrary expressions
+              // TODO Not only SQL macro expansion, we also need to support adding DataType to arbitrary expressions
               // Resolve interpolated string from function argument type
               // TODO Resolve type parameters e.g., [A]
+              ctx.logInfo(s"Resolve interpolated string: ${i} with ${m.ft}")
               i.copy(dataType = m.ft.returnType)
             case _ =>
               expr

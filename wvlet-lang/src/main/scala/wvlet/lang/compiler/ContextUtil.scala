@@ -55,6 +55,14 @@ end ContextUtil
   */
 trait ContextLogSupport extends LogSupport:
   extension (c: Context)
+    inline def logInfo(inline msg: => String): Unit =
+      if c.isContextCompilationUnit then
+        info(msg)
+
+    inline def logWarn(inline msg: => String): Unit =
+      if c.isContextCompilationUnit then
+        warn(msg)
+
     inline def logDebug(inline msg: => String): Unit =
       if c.isContextCompilationUnit then
         debug(msg)

@@ -83,8 +83,9 @@ class BasicSpec
     extends SpecRunner(
       "spec/basic",
       ignoredSpec = Map(
-        "values.wv"       -> "Need to support RawJSON data",
-        "agg_col_type.wv" -> "Fix an issue that TypeVariable (array[A]) is parsed as GenericType"
+        "values.wv" ->
+          "Need to support RawJSON data"
+          // "agg_col_type.wv" -> "Fix an issue that TypeVariable (array[A]) is parsed as GenericType"
       )
     )
 
