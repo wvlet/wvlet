@@ -69,6 +69,20 @@ class Symbol(val id: Int) extends LogSupport:
 
   private def isResolved: Boolean = dataType.isResolved
 
+  def isModelDef: Boolean =
+    symbolInfo match
+      case m: ModelSymbolInfo =>
+        true
+      case _ =>
+        false
+
+  def isRelationAlias: Boolean =
+    symbolInfo match
+      case r: RelationAliasSymbolInfo =>
+        true
+      case _ =>
+        false
+
   def tree: TreeNode =
     if _tree == null then
       LogicalPlan.empty

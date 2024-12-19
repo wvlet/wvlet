@@ -47,6 +47,19 @@ object RewriteRule extends LogSupport:
       }
     rewrittenPlan
 
+  def rewriteUnresolved(plan: LogicalPlan, rules: List[RewriteRule], context: Context): LogicalPlan =
+    val rewrittenPlan =
+      rules.foldLeft(plan) { (p, rule) =>
+        try
+          val rewritten = if !p.resolved then rule.transform(p, context) else p
+          rewritten
+        catch
+          case NonFatal(e) =>
+            debug(s"Failed to rewrite with: ${rule.name}\n${p.pp}")
+            throw e
+      }
+    rewrittenPlan
+  
   def rewriteExpr(
       plan: LogicalPlan,
       rules: List[ExpressionRewriteRule],

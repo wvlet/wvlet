@@ -809,21 +809,16 @@ case class ModelScan(
     name: TableName,
     modelArgs: List[FunctionArg],
     schema: RelationType,
-    columns: Seq[NamedType],
     span: Span
 ) extends Relation
     with LeafPlan
     with HasTableName:
 
-  override def relationType: RelationType =
-    if columns.isEmpty then
-      schema
-    else
-      ProjectedType(schema.typeName, columns, schema)
+  override def relationType: RelationType = ProjectedType(schema.typeName, schema.fields, schema)
 
   override def toString: String = s"ModelScan(name:${name}, schema:${schema})"
 
-  override lazy val resolved = true
+  override lazy val resolved = schema.isResolved
 
 case class Subscribe(
     child: Relation,

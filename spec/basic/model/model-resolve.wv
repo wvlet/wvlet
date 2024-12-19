@@ -1,0 +1,13 @@
+model person_ref =
+  from [[1, "alice"], [2, "bob"], [3, "clark"]] as person(id, name)
+  group by id
+  agg name.max as name
+end
+
+from person_ref
+where name.trim.length <= 3
+select id
+
+test _.rows = [[2]]
+;
+
