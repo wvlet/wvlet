@@ -174,7 +174,7 @@ case class ResolvedIdentifier(
     else
       this.copy(dataType = dataType)
 
-  override lazy val resolved: Boolean = true
+  override lazy val resolved: Boolean = dataType.isResolved
 
 // Used for group by 1, 2, 3 ...
 case class DigitIdentifier(override val unquotedValue: String, span: Span) extends Identifier:

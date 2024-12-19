@@ -31,7 +31,7 @@ object RewriteExpr extends Phase("rewrite-expr"):
           window = None,
           span = a.span
         )
-  
+
   object RewriteStringInterpolation extends ExpressionRewriteRule:
     override def apply(context: Context) =
       case s: InterpolatedString if s.prefix.fullName == "s" =>

@@ -246,7 +246,6 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
             m.symbol.symbolInfo match
               case t: ModelSymbolInfo =>
                 t.dataType = r
-              // context.logInfo(s"Resolved ${t.dataType}")
               case other =>
           case other =>
             context.logTrace(
@@ -867,8 +866,7 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
   ): PartialFunction[Expression, Expression] =
     case ref: DotRef if !ref.resolved =>
       val resolvedRef = ref.transformChildExpressions(resolveExpression(inputRelationType, context))
-      context.logWarn(s"Unresolved ref: ${ref} in ${inputRelationType} ===> ${resolvedRef}")
-      val refName = Name.termName(resolvedRef.name.leafName)
+      val refName     = Name.termName(resolvedRef.name.leafName)
 
       // Resolve types after following . (dot)
       resolvedRef.qualifier.dataType match
@@ -892,10 +890,10 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
                       context.logTrace(s"Resolved ${t}.${resolvedRef.name.fullName} as a function")
                       resolvedRef.copy(dataType = method.ft.returnType)
                     case _ =>
-                      context.logWarn(s"${t}.${resolvedRef.name.fullName} is not found")
+                      context.logDebug(s"${t}.${resolvedRef.name.fullName} is not found")
                       resolvedRef
                 case _ =>
-                  context.logWarn(s"${t}.${resolvedRef.name.fullName} is not found")
+                  context.logDebug(s"${t}.${resolvedRef.name.fullName} is not found")
                   resolvedRef
         case refDataType =>
           // TODO Support multiple context-specific functions
