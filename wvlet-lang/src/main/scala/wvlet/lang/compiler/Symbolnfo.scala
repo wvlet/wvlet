@@ -79,13 +79,15 @@ class TypeSymbolInfo(
     typeScope: Scope
 ) extends NamedSymbolInfo(symbol, owner, name, tpe):
   this.declScope = typeScope
+
+  override def toString: String               = s"${owner}.${name}: ${dataType}"
   override def findMember(name: Name): Symbol = typeScope.lookupSymbol(name).getOrElse(NoSymbol)
   override def members: List[Symbol]          = typeScope.getLocalSymbols
 
-class MethodSymbolInfo(
-    symbol: Symbol,
+case class MethodSymbolInfo(
+    override val symbol: Symbol,
     owner: Symbol,
-    name: Name,
+    override val name: Name,
     val ft: FunctionType,
     val body: Option[Expression],
     defContexts: List[DefContext]

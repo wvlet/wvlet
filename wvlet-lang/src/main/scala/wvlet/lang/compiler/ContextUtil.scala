@@ -1,6 +1,7 @@
 package wvlet.lang.compiler
 
-import wvlet.lang.api.{SourceLocation, Span, LinePosition}
+import wvlet.lang.api.{LinePosition, SourceLocation, Span}
+import wvlet.log.LogSupport
 
 /**
   * Handy method collection to extend Context class to resolve Source or Node locations in source
@@ -48,3 +49,16 @@ object ContextUtil:
       LinePosition(line + 1, pos)
 
 end ContextUtil
+
+/**
+  * Extend this method to add logging effective only when processing the context unit
+  */
+trait ContextLogSupport extends LogSupport:
+  extension (c: Context)
+    inline def logDebug(inline msg: => String): Unit =
+      if c.isContextCompilationUnit then
+        debug(msg)
+
+    inline def logTrace(inline msg: => String): Unit =
+      if c.isContextCompilationUnit then
+        trace(msg)

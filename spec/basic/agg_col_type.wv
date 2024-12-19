@@ -1,0 +1,5 @@
+from 'books.json'
+group by author
+agg
+  title.max_by(year).trim as latest_title
+

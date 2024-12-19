@@ -82,7 +82,10 @@ end SpecRunner
 class BasicSpec
     extends SpecRunner(
       "spec/basic",
-      ignoredSpec = Map("values.wv" -> "Need to support RawJSON data")
+      ignoredSpec = Map(
+        "values.wv"       -> "Need to support RawJSON data",
+        "agg_col_type.wv" -> "Fix an issue that TypeVariable (array[A]) is parsed as GenericType"
+      )
     )
 
 class TPCHSpec extends SpecRunner("spec/tpch", prepareTPCH = true)
