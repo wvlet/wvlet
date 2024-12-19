@@ -657,7 +657,6 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
           // Resolve function arguments
           mapArg(f.args)
 
-          ctx.logTrace(s"Resolved args for ${m.name}: ${resolvedArgs.result()}")
           // Resolve identifiers in the function body with the given function arguments
           val expr = m
             .body
@@ -863,17 +862,15 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
       context: Context
   ): PartialFunction[Expression, Expression] =
     case ref: DotRef if !ref.resolved =>
-      val resolvedRef = ref
-        .transformChildExpressions(resolveExpression(inputRelationType, context))
-        .asInstanceOf[DotRef]
-      val refName = Name.termName(resolvedRef.name.leafName)
+      val resolvedRef = ref.transformChildExpressions(resolveExpression(inputRelationType, context))
+      val refName     = Name.termName(resolvedRef.name.leafName)
       // Resolve types after following . (dot)
       resolvedRef.qualifier.dataType match
         case t: SchemaType =>
-          trace(s"Find reference from ${t} -> ${resolvedRef.name}")
+          context.logTrace(s"Find reference from ${t} -> ${resolvedRef.name}")
           t.columnTypes.find(_.name.name == resolvedRef.name.leafName) match
             case Some(col) =>
-              trace(s"${t}.${col.name} is a column")
+              context.logTrace(s"${t}.${col.name} is a column")
               ResolvedAttribute(
                 Name.termName(resolvedRef.name.leafName),
                 col.dataType,
@@ -886,13 +883,13 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
                 case Some(tpe: TypeSymbolInfo) =>
                   tpe.declScope.lookupSymbol(refName).map(_.symbolInfo) match
                     case Some(method: MethodSymbolInfo) =>
-                      trace(s"Resolved ${t}.${resolvedRef.name.fullName} as a function")
+                      context.logTrace(s"Resolved ${t}.${resolvedRef.name.fullName} as a function")
                       resolvedRef.copy(dataType = method.ft.returnType)
                     case _ =>
-                      warn(s"${t}.${resolvedRef.name.fullName} is not found")
+                      context.logWarn(s"${t}.${resolvedRef.name.fullName} is not found")
                       resolvedRef
                 case _ =>
-                  warn(s"${t}.${resolvedRef.name.fullName} is not found")
+                  context.logWarn(s"${t}.${resolvedRef.name.fullName} is not found")
                   resolvedRef
         case refDataType =>
           // TODO Support multiple context-specific functions
