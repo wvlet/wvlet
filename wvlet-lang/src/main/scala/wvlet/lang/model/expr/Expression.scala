@@ -201,7 +201,7 @@ trait Expression extends TreeNode with Product with LogSupport:
 
   end transformUpExpression
 
-  def transformChildExpressions(rule: PartialFunction[Expression, Expression]): Expression =
+  def transformChildExpressions(rule: PartialFunction[Expression, Expression]): this.type =
     var changed = false
 
     def iterOnce(arg: Any): AnyRef =

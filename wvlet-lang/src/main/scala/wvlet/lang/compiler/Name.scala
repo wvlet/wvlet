@@ -57,6 +57,12 @@ case class TypeName private[compiler] (override val name: String) extends Name(n
   override def isTypeName: Boolean = true
   def toTermName: TermName         = Name.termName(name)
 
+object TypeName:
+  def of(s: String): TypeName = Name.typeName(s)
+
+object TermName:
+  def of(s: String): TermName = Name.termName(s)
+
 object Name:
   // Manages a set of unique TermName objects
   private val nameTable = collection.mutable.Map.empty[String, TermName]

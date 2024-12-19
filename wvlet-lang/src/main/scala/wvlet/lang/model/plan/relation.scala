@@ -226,10 +226,13 @@ case class RawSQL(sql: Expression, span: Span) extends Relation with LeafPlan:
 case class RawJSON(json: Expression, span: Span) extends Relation with LeafPlan:
   override val relationType: RelationType = UnresolvedRelationType(RelationType.newRelationTypeName)
 
+// A base trait that will be translated to SELECT * in SQL
+trait GeneralSelection extends UnaryRelation
+
 /**
   * A relation that only filters rows without changing the schema
   */
-trait FilteringRelation extends UnaryRelation:
+trait FilteringRelation extends GeneralSelection:
   override def relationType: RelationType = child.relationType
 
 // Deduplicate (duplicate elimination) the input relation
@@ -253,7 +256,7 @@ case class EmptyRelation(span: Span) extends Relation with LeafPlan:
   override def relationType: RelationType         = EmptyRelationType
 
 // This node can be a pivot node for generating a SELECT statement
-sealed trait Selection extends UnaryRelation:
+sealed trait Selection extends GeneralSelection:
   def selectItems: Seq[Attribute]
 
 // This node can be a pivot node for generating a SELECT statement with aggregation functions
@@ -306,6 +309,7 @@ case class Transform(child: Relation, transformItems: Seq[Attribute], span: Span
 
 case class AddColumnsToRelation(child: Relation, newColumns: Seq[Attribute], span: Span)
     extends UnaryRelation
+    with GeneralSelection
     with LogSupport:
   override def toString: String = s"Add[${newColumns.mkString(", ")}](${child})"
 
@@ -809,21 +813,16 @@ case class ModelScan(
     name: TableName,
     modelArgs: List[FunctionArg],
     schema: RelationType,
-    columns: Seq[NamedType],
     span: Span
 ) extends Relation
     with LeafPlan
     with HasTableName:
 
-  override def relationType: RelationType =
-    if columns.isEmpty then
-      schema
-    else
-      ProjectedType(schema.typeName, columns, schema)
+  override def relationType: RelationType = ProjectedType(schema.typeName, schema.fields, schema)
 
   override def toString: String = s"ModelScan(name:${name}, schema:${schema})"
 
-  override lazy val resolved = true
+  override lazy val resolved = schema.isResolved
 
 case class Subscribe(
     child: Relation,

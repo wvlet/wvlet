@@ -74,8 +74,9 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
       resolveFunctionApply ::         // Resolve function args
       resolveInlineRef ::             // Resolve inline-expression expansion
       resolveNativeExpressions ::     // Resolve native expressions
-      resolveAggregationFunctions ::  // Resolve aggregation expression without group by
+      resolveNoGroupByAggregations :: // Resolve aggregation expression without group by
       resolveModelDef ::              // Resolve models again to use the updated types
+      resolveModelScan ::             // Resolve scanned model types
       Nil
 
   private def lookupType(name: Name, context: Context): Option[Symbol] = context
@@ -122,7 +123,9 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
         val stmts        = List.newBuilder[LogicalPlan]
         p.statements
           .foreach { stmt =>
-            val newStmt = RewriteRule.rewrite(stmt, defaultRules, ctx)
+            var newStmt = RewriteRule.rewrite(stmt, defaultRules, ctx)
+            // Resolve again if the statement is not resolved
+            newStmt = RewriteRule.rewriteUnresolved(newStmt, defaultRules, ctx)
             stmts += newStmt
 
             if !ctx.compilationUnit.isPreset then
@@ -243,7 +246,6 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
             m.symbol.symbolInfo match
               case t: ModelSymbolInfo =>
                 t.dataType = r
-              // trace(s"Resolved ${t}")
               case other =>
           case other =>
             context.logTrace(
@@ -255,11 +257,11 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
         lookupType(modelType.typeName, context) match
           case Some(sym) =>
             val si = sym.symbolInfo
-            trace(s"${modelType.typeName} -> ${m.symbol.id} -> ${m.symbol.symbolInfo}")
+            context.logTrace(s"${modelType.typeName} -> ${m.symbol.id} -> ${m.symbol.symbolInfo}")
             val modelSymbolInfo = m.symbol.symbolInfo
             si.dataType match
               case r: RelationType =>
-                trace(s"Resolved model type: ${m.name} as ${r}")
+                context.logTrace(s"Resolved model type: ${m.name} as ${r}")
                 modelSymbolInfo.dataType = r
                 // TODO Develop safe copy or embed Symbol as Plan parameter
                 val newModel = m.copy(givenRelationType = Some(r))
@@ -274,6 +276,23 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
     }
 
   end resolveModelDef
+
+  private object resolveModelScan extends RewriteRule:
+    override def apply(context: Context): PlanRewriter =
+      case m: ModelScan if !m.resolved =>
+        context.findTermSymbolByName(m.name.fullName) match
+          case Some(sym) if sym.isModelDef =>
+            sym.tree match
+              case md: ModelDef =>
+                val newModelScan = m.copy(schema = md.relationType)
+                newModelScan.symbol = md.child.symbol
+                newModelScan
+              case _ =>
+                m
+          case _ =>
+            m
+
+  end resolveModelScan
 
   /**
     * Resolve TableRefs with concrete TableScans using the table schema in the catalog.
@@ -303,8 +322,8 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
               case m: ModelSymbolInfo =>
                 si.tpe match
                   case r: RelationType =>
-                    // trace(s"resolved ${sym} ${ref.locationString(using context)}")
-                    ModelScan(TableName(sym.name.name), Nil, r, r.fields, ref.span)
+                    context.logTrace(s"Resolve model type: ${ref.name.fullName}")
+                    ModelScan(TableName(sym.name.name), Nil, r, ref.span)
                   case _ =>
                     ref
               case relAlias: RelationAliasSymbolInfo =>
@@ -345,7 +364,7 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
             si.tpe match
               case r: RelationType =>
                 trace(s"Resolved model ref: ${ref.name.fullName} as ${r}")
-                ModelScan(TableName(sym.name.name), ref.args, r, r.fields, ref.span)
+                ModelScan(TableName(sym.name.name), ref.args, r, ref.span)
               case _ =>
                 ref
           case None =>
@@ -363,7 +382,7 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
         .map {
           case s: SingleColumn =>
             // resolve only the body expression
-            s.copy(expr = s.expr.transformExpression(resolveExpression(t.relationType, context)))
+            s.transformChildExpressions(resolveExpression(t.relationType, context))
           case x: Attribute =>
             x.transformExpression(resolveExpression(t.relationType, context))
               .asInstanceOf[Attribute]
@@ -382,14 +401,9 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
         .selectItems
         .map {
           case s: SingleColumn =>
-            val resolvedExpr: Expression = s
-              .expr
-              .transformExpression(resolveExpression(p.child.relationType, context))
-            s.copy(expr = resolvedExpr)
-
+            s.transformChildExpressions(resolveExpression(p.child.relationType, context))
           case x: Attribute =>
-            x.transformExpression(resolveExpression(p.child.relationType, context))
-              .asInstanceOf[Attribute]
+            x.transformChildExpressions(resolveExpression(p.child.relationType, context))
         }
       Project(resolvedChild, resolvedColumns, p.span)
     }
@@ -399,8 +413,7 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
       val newKeys = g
         .groupingKeys
         .map { k =>
-          k.transformExpression(resolveExpression(g.child.relationType, context))
-            .asInstanceOf[GroupingKey]
+          k.transformChildExpressions(resolveExpression(g.child.relationType, context))
         }
       g.copy(groupingKeys = newKeys)
     }
@@ -451,7 +464,9 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
   private object resolveRelation extends RewriteRule:
     override def apply(context: Context): PlanRewriter = {
       case r: Relation => // Regular relation and Filter etc.
-        r.transformChildExpressions(resolveExpression(r.inputRelationType, context))
+        val newRelation = r
+          .transformChildExpressions(resolveExpression(r.inputRelationType, context))
+        newRelation
     }
 
   /**
@@ -494,7 +509,6 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
           val r = s.symbolInfo.dataType
           t.transformUpExpressions { case th: This =>
             val newThis = th.copy(dataType = r)
-            // trace(s"Resolved this: ${th} as ${newThis}")
             newThis
           }
         case _ =>
@@ -577,7 +591,8 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
           }
 
         if m.isEmpty then
-          context.logDebug(s"Failed to find function `${methodName}` for ${qual}:${qual.dataType}")
+          context.logTrace(s"Failed to find function `${methodName}` for ${qual}:${qual.dataType}")
+
         m
       case _ =>
         trace(s"Failed to find function definition for ${f}")
@@ -643,7 +658,6 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
           // Resolve function arguments
           mapArg(f.args)
 
-          ctx.logTrace(s"Resolved args for ${m.name}: ${resolvedArgs.result()}")
           // Resolve identifiers in the function body with the given function arguments
           val expr = m
             .body
@@ -783,7 +797,7 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
     * {{{(l_extendedprice * l_discount)}}} can be an aggregation expression if aggregation function
     * is applied like {{{(l_extendedprice * l_discount).sum}}}.
     */
-  private object resolveAggregationFunctions extends RewriteRule:
+  private object resolveNoGroupByAggregations extends RewriteRule:
 
     private var aggregationFunctions: List[Symbol] = Nil
 
@@ -833,10 +847,12 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
 
     override def apply(context: Context): PlanRewriter = { case q: Query =>
       init(context)
-      q.transformExpressions(resolveAggregationExpr(using context))
+      q.transformUp { case s: GeneralSelection =>
+        s.transformChildExpressions(resolveAggregationExpr(using context))
+      }
     }
 
-  end resolveAggregationFunctions
+  end resolveNoGroupByAggregations
 
   /**
     * Resolve the given expression type using the input attributes from child plan nodes
@@ -849,17 +865,16 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
       context: Context
   ): PartialFunction[Expression, Expression] =
     case ref: DotRef if !ref.resolved =>
-      val resolvedRef = ref
-        .transformChildExpressions(resolveExpression(inputRelationType, context))
-        .asInstanceOf[DotRef]
-      val refName = Name.termName(resolvedRef.name.leafName)
+      val resolvedRef = ref.transformChildExpressions(resolveExpression(inputRelationType, context))
+      val refName     = Name.termName(resolvedRef.name.leafName)
+
       // Resolve types after following . (dot)
       resolvedRef.qualifier.dataType match
         case t: SchemaType =>
-          trace(s"Find reference from ${t} -> ${resolvedRef.name}")
+          context.logTrace(s"Find reference from ${t} -> ${resolvedRef.name}")
           t.columnTypes.find(_.name.name == resolvedRef.name.leafName) match
             case Some(col) =>
-              trace(s"${t}.${col.name} is a column")
+              context.logTrace(s"${t}.${col.name} is a column")
               ResolvedAttribute(
                 Name.termName(resolvedRef.name.leafName),
                 col.dataType,
@@ -872,17 +887,16 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
                 case Some(tpe: TypeSymbolInfo) =>
                   tpe.declScope.lookupSymbol(refName).map(_.symbolInfo) match
                     case Some(method: MethodSymbolInfo) =>
-                      trace(s"Resolved ${t}.${resolvedRef.name.fullName} as a function")
+                      context.logTrace(s"Resolved ${t}.${resolvedRef.name.fullName} as a function")
                       resolvedRef.copy(dataType = method.ft.returnType)
                     case _ =>
-                      warn(s"${t}.${resolvedRef.name.fullName} is not found")
+                      context.logDebug(s"${t}.${resolvedRef.name.fullName} is not found")
                       resolvedRef
                 case _ =>
-                  warn(s"${t}.${resolvedRef.name.fullName} is not found")
+                  context.logDebug(s"${t}.${resolvedRef.name.fullName} is not found")
                   resolvedRef
         case refDataType =>
           // TODO Support multiple context-specific functions
-          // warn(s"qualifier's type name: ${other.typeName}: ${ref.qualifier}")
           lookupType(refDataType.typeName, context).map(_.symbolInfo) match
             case Some(functionBaseType: TypeSymbolInfo) =>
               functionBaseType.declScope.lookupSymbol(refName).map(_.symbolInfo) match
@@ -908,7 +922,7 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
                   context.logTrace(s"Failed to resolve ${resolvedRef} as ${refDataType}")
                   resolvedRef
             case _ =>
-              // trace(s"TODO: resolve ref: ${ref.fullName} as ${refDataType}")
+              context.logTrace(s"TODO: resolve ref: ${ref.fullName} as ${refDataType}")
               resolvedRef
       end match
     case i: Identifier if !i.resolved =>
@@ -920,7 +934,8 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
         case None =>
           i
     case other if !other.resolved =>
-      other.transformChildExpressions(resolveExpression(inputRelationType, context))
+      val expr = other.transformChildExpressions(resolveExpression(inputRelationType, context))
+      expr
   end resolveExpression
 
   private def resolveExpression(
