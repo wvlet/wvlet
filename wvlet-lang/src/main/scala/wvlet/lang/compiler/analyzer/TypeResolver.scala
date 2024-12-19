@@ -13,12 +13,14 @@
  */
 package wvlet.lang.compiler.analyzer
 
+import wvlet.airframe.msgpack.spi.MsgPack
 import wvlet.lang.api.StatusCode
 import wvlet.lang.catalog.Catalog.TableName
 import wvlet.lang.compiler.RewriteRule.PlanRewriter
 import wvlet.lang.compiler.{
   CompilationUnit,
   Context,
+  ContextLogSupport,
   MethodSymbolInfo,
   ModelSymbolInfo,
   MultipleSymbolInfo,
@@ -40,7 +42,7 @@ import wvlet.lang.compiler.ContextUtil.*
 
 import scala.util.Try
 
-object TypeResolver extends Phase("type-resolver") with LogSupport:
+object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
 
   override def run(unit: CompilationUnit, context: Context): CompilationUnit =
     // resolve plans
@@ -115,8 +117,8 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
             val newStmt = RewriteRule.rewrite(stmt, defaultRules, ctx)
             stmts += newStmt
 
-            if !ctx.compilationUnit.isPreset && ctx.isContextCompilationUnit then
-              trace(newStmt.pp)
+            if !ctx.compilationUnit.isPreset then
+              ctx.logDebug(newStmt.pp)
 
             // Update the tree reference from the symbol
             newStmt match
@@ -236,10 +238,9 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
               // trace(s"Resolved ${t}")
               case other =>
           case other =>
-            if context.isContextCompilationUnit then
-              trace(
-                s"Unresolved model type for ${m.name}: ${other} (${m.locationString(using context)})"
-              )
+            context.logTrace(
+              s"Unresolved model type for ${m.name}: ${other} (${m.locationString(using context)})"
+            )
         m
       case m: ModelDef if m.givenRelationType.isDefined && !m.symbol.dataType.isResolved =>
         val modelType = m.givenRelationType.get
@@ -340,8 +341,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
               case _ =>
                 ref
           case None =>
-            if context.isContextCompilationUnit then
-              trace(s"Unresolved model ref: ${ref.name.fullName}")
+            context.logTrace(s"Unresolved model ref: ${ref.name.fullName}")
             ref
 
     end apply
@@ -502,6 +502,8 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
   private def resolveFunction(f: Expression, knownArgs: List[FunctionArg] = Nil)(using
       context: Context
   ): Option[MethodSymbolInfo] =
+    context.logDebug(s"Resolve function: ${f}")
+
     f match
       case fa: FunctionApply =>
         resolveFunction(fa.base, fa.args)
@@ -525,6 +527,8 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
           else
             DataType.AnyType
 
+        context.logDebug(s"Resolve method ${methodName}: ${qualType} ${qualType.getClass}")
+
         val m: Option[MethodSymbolInfo] = lookupType(qualType.typeName, context)
           .map { sym =>
             // TODO: Resolve member with different arg types
@@ -543,13 +547,14 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
                 )
           }
 
-        if context.isContextCompilationUnit && m.isEmpty then
-          trace(s"Failed to find function `${methodName}` for ${qual}:${qual.dataType}")
+        if m.isEmpty then
+          context.logDebug(s"Failed to find function `${methodName}` for ${qual}:${qual.dataType}")
 
         m
       case _ =>
         trace(s"Failed to find function definition for ${f}")
         None
+    end match
   end resolveFunction
 
   /**
@@ -610,7 +615,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
           // Resolve function arguments
           mapArg(f.args)
 
-          trace(s"Resolved args for ${m.name}: ${resolvedArgs.result()}")
+          ctx.logTrace(s"Resolved args for ${m.name}: ${resolvedArgs.result()}")
           // Resolve identifiers in the function body with the given function arguments
           val expr = m
             .body
@@ -630,10 +635,12 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
                       i
             }
             .getOrElse(f)
+
           expr match
             case i: InterpolatedString =>
               // TODO Support adding DataType to arbitrary expressions
               // Resolve interpolated string from function argument type
+              // TODO Resolve type parameters e.g., [A]
               i.copy(dataType = m.ft.returnType)
             case _ =>
               expr
@@ -866,13 +873,11 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
                         .toMap
 
                   val retType = method.ft.returnType.bind(typeMap)
-                  if context.isContextCompilationUnit then
-                    trace(s"Resolved ${resolvedRef} as ${retType}")
+                  context.logTrace(s"Resolved ${resolvedRef} as ${retType}")
 
                   resolvedRef.copy(dataType = retType)
                 case _ =>
-                  if context.isContextCompilationUnit then
-                    trace(s"Failed to resolve ${resolvedRef} as ${refDataType}")
+                  context.logTrace(s"Failed to resolve ${resolvedRef} as ${refDataType}")
                   resolvedRef
             case _ =>
               // trace(s"TODO: resolve ref: ${ref.fullName} as ${refDataType}")
@@ -882,8 +887,7 @@ object TypeResolver extends Phase("type-resolver") with LogSupport:
       inputRelationType.find(x => x.name == i.fullName) match
         case Some(attr) =>
           val ri = i.toResolved(attr.dataType)
-          if context.isContextCompilationUnit then
-            trace(s"Resolved identifier: ${ri}")
+          context.logTrace(s"Resolved identifier: ${ri}")
           ri
         case None =>
           i

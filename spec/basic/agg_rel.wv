@@ -1,3 +1,2 @@
 from 'books.json'
 group by author
-agg _.count
