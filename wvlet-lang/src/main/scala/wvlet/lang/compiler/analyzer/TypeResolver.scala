@@ -572,7 +572,7 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
                 mi
           }
           .map { m =>
-            context.logDebug(s"Resolved method ${qualType}.${methodName} => ${m}")
+            context.logTrace(s"Resolved method ${qualType}.${methodName} => ${m}")
             m
           }
 
@@ -664,15 +664,7 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
             }
             .getOrElse(f)
 
-          expr match
-            case i: InterpolatedString =>
-              // TODO Not only SQL macro expansion, we also need to support adding DataType to arbitrary expressions
-              // Resolve interpolated string from function argument type
-              // TODO Resolve type parameters e.g., [A]
-              ctx.logInfo(s"Resolve interpolated string: ${i} with ${m.ft}")
-              i.copy(dataType = m.ft.returnType)
-            case _ =>
-              expr
+          TypedExpression(expr, m.ft.returnType, expr.span)
         case _ =>
           f
 
@@ -682,19 +674,24 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
 
   end resolveFunctionApply
 
+  /**
+    * Resolve `this` expression inside sql"...${this}..." interpolated strings, etc.
+    */
   private object resolveInlineRef extends RewriteRule:
     private def resolveRef(using ctx: Context): PartialFunction[Expression, Expression] =
       case ref: DotRef =>
         resolveFunction(ref) match
           case Some(m: MethodSymbolInfo) =>
             // Replace {this} -> {qual}
-            m.body
+            val newExpr = m
+              .body
               .map { body =>
                 body.transformExpression { case th: This =>
                   ref.qualifier
                 }
               }
               .getOrElse(ref)
+            TypedExpression(newExpr, m.ft.returnType, ref.span)
           case _ =>
             ref
     end resolveRef
@@ -800,7 +797,9 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
           }
           .getOrElse(Nil)
 
-    private def resolveAggregationExpr(using Context): PartialFunction[Expression, Expression] =
+    private def resolveAggregationExpr(using
+        ctx: Context
+    ): PartialFunction[Expression, Expression] =
       case e: ShouldExpr =>
         // do not resolve aggregation expr in test expressions
         e
