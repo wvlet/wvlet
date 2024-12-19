@@ -113,13 +113,13 @@ object LogicalPlanPrinter extends LogSupport:
 
         def printRelationType(r: RelationType): String = s"<${r.typeDescription}>"
 
-        val inputType =
-          m.inputRelationType match
-            case EmptyRelationType =>
-              ""
-            case other: RelationType =>
-              wrap(printRelationType(other))
-
+//        val inputType =
+//          m.inputRelationType match
+//            case EmptyRelationType =>
+//              ""
+//            case other: RelationType =>
+//              wrap(printRelationType(other))
+//
         val outputType =
           m.relationType match
             case DataType.EmptyRelationType =>
@@ -131,7 +131,7 @@ object LogicalPlanPrinter extends LogSupport:
         val outputAttrs = m.relationType.fields
 
         val attr        = m.childExpressions.map(expr => printExpression(expr))
-        val functionSig = s" ${inputType} => ${outputType}"
+        val functionSig = s" => ${outputType}"
 
         val loc = m.span.map(l => s" ${l}").getOrElse("")
         val prefix =
