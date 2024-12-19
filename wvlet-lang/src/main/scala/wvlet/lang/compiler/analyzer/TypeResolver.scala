@@ -125,7 +125,9 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
           .foreach { stmt =>
             var newStmt = RewriteRule.rewrite(stmt, defaultRules, ctx)
             // Resolve again if the statement is not resolved
-            newStmt = RewriteRule.rewriteUnresolved(newStmt, defaultRules, ctx)
+            if !newStmt.resolved then
+              ctx.logTrace(s"Try unresolved plans: ${newStmt.pp}")
+              newStmt = RewriteRule.rewriteUnresolved(newStmt, defaultRules, ctx)
             stmts += newStmt
 
             if !ctx.compilationUnit.isPreset then
@@ -659,25 +661,7 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
           mapArg(f.args)
 
           // Resolve identifiers in the function body with the given function arguments
-          val expr = m
-            .body
-            .map {
-              _.transformUpExpression:
-                case th: This =>
-                  f.base match
-                    case d: DotRef =>
-                      d.qualifier
-                    case _ =>
-                      th
-                case i: Identifier =>
-                  resolvedArgs.result().find(_._1 == i.toTermName) match
-                    case Some((_, expr)) =>
-                      expr
-                    case None =>
-                      i
-            }
-            .getOrElse(f)
-
+          val expr = inlineFunctionBody(f.base, m, resolvedArgs.result())
           TypedExpression(expr, m.ft.returnType, expr.span)
         case _ =>
           f
@@ -688,6 +672,40 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
 
   end resolveFunctionApply
 
+  private def inlineFunctionBody(
+      base: Expression,
+      m: MethodSymbolInfo,
+      resolvedArgs: List[(TermName, Expression)]
+  ): Expression =
+    val newExpr: Expression =
+      m.body match
+        case Some(methodBody) =>
+          methodBody.transformUpExpression {
+            case th: This =>
+              base match
+                case d: DotRef =>
+                  // Replace ${this} with ${qual} in DotRef(qual, method)
+                  d.qualifier
+                case _ =>
+                  th
+            case i: Identifier =>
+              // Replace function arguments to the resolved args
+              resolvedArgs.find(_._1 == i.toTermName) match
+                case Some((_, expr)) =>
+                  expr
+                case None =>
+                  i
+          }
+        case None =>
+          // If the function definition has no body expression, return the original expression
+          base
+    if newExpr.resolved then
+      newExpr
+    else
+      TypedExpression(newExpr, m.ft.returnType, newExpr.span)
+
+  end inlineFunctionBody
+
   /**
     * Resolve `this` expression inside sql"...${this}..." interpolated strings, etc.
     */
@@ -697,15 +715,7 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
         resolveFunction(ref) match
           case Some(m: MethodSymbolInfo) =>
             // Replace {this} -> {qual}
-            val newExpr = m
-              .body
-              .map { body =>
-                body.transformExpression { case th: This =>
-                  ref.qualifier
-                }
-              }
-              .getOrElse(ref)
-            TypedExpression(newExpr, m.ft.returnType, ref.span)
+            inlineFunctionBody(ref, m, Nil)
           case _ =>
             ref
     end resolveRef
@@ -818,27 +828,13 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
         // do not resolve aggregation expr in test expressions
         e
       case d: DotRef =>
-        val dd  = d.transformChildExpressions(resolveAggregationExpr).asInstanceOf[DotRef]
+        val dd  = d.transformChildExpressions(resolveAggregationExpr)
         val nme = dd.name.toTermName
         aggregationFunctions
           .find(_.name == nme)
           .map(_.symbolInfo)
           .collect { case m: MethodSymbolInfo =>
-            m
-          }
-          .map { m =>
-            // inline aggregation function body
-            m.body
-              .map { body =>
-                body.transformUpExpression {
-                  case th: This =>
-                    dd.qualifier
-                  case i: InterpolatedString =>
-                    // Resolve interpolated string from function argument type
-                    i.copy(dataType = m.ft.returnType)
-                }
-              }
-              .getOrElse(dd)
+            inlineFunctionBody(d, m, Nil)
           }
           .getOrElse(dd)
       case other =>
@@ -914,9 +910,12 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
                         }
                         .toMap
 
-                  val retType = method.ft.returnType.bind(typeMap)
-                  context.logTrace(s"Resolved ${resolvedRef} as ${retType}")
-
+                  val boundedFunctionType = method.bind(typeMap)
+                  // TODO: Resolve FunctionApply first
+                  // val newExpr = inlineFunctionBody(resolvedRef, boundedFunctionType, Nil)
+                  val retType = boundedFunctionType.ft.returnType
+                  // context.logInfo(s"Resolved ${resolvedRef} ====> ${newExpr}")
+                  // newExpr
                   resolvedRef.copy(dataType = retType)
                 case _ =>
                   context.logTrace(s"Failed to resolve ${resolvedRef} as ${refDataType}")

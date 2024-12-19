@@ -300,7 +300,7 @@ case class FunctionApply(
     window: Option[Window],
     span: Span
 ) extends Expression:
-  override def children: Seq[Expression] = args
+  override def children: Seq[Expression] = Seq(base) ++ args ++ window.toSeq
   override def dataType: DataType        = base.dataType
 
 case class FunctionArg(name: Option[TermName], value: Expression, span: Span) extends Expression:
