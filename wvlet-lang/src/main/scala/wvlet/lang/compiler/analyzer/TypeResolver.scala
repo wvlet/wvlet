@@ -33,7 +33,15 @@ import wvlet.lang.compiler.{
   TypeName,
   TypeSymbolInfo
 }
-import wvlet.lang.model.DataType.{AnyType, NamedType, SchemaType, VarArgType}
+import wvlet.lang.model.DataType.{
+  AnyType,
+  NamedType,
+  SchemaType,
+  TypeParameter,
+  TypeVariable,
+  UnknownType,
+  VarArgType
+}
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
 import wvlet.lang.model.{DataType, RelationType}
@@ -502,7 +510,6 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
   private def resolveFunction(f: Expression, knownArgs: List[FunctionArg] = Nil)(using
       context: Context
   ): Option[MethodSymbolInfo] =
-    context.logDebug(s"Resolve function: ${f}")
 
     f match
       case fa: FunctionApply =>
@@ -527,8 +534,6 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
           else
             DataType.AnyType
 
-        context.logDebug(s"Resolve method ${methodName}: ${qualType} ${qualType.getClass}")
-
         val m: Option[MethodSymbolInfo] = lookupType(qualType.typeName, context)
           .map { sym =>
             // TODO: Resolve member with different arg types
@@ -546,10 +551,33 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
                   context.sourceLocationAt(d.span)
                 )
           }
+          .map { mi =>
+            // Find the owner type of the method to build generic type mappings
+            lookupType(mi.owner.dataType.typeName, context).map(_.symbolInfo) match
+              case Some(ownerType: TypeSymbolInfo) =>
+                val typeMap: Map[TypeName, DataType] = ownerType
+                  .typeParams
+                  .zipAll(qualType.typeParams, UnknownType, UnknownType)
+                  .collect { case (t1: TypeParameter, t2) =>
+                    t1.typeName -> t2
+                  }
+                  .toMap[TypeName, DataType]
+                if typeMap.isEmpty then
+                  mi
+                else
+                  val bounded = mi.bind(typeMap)
+                  context.logTrace(s"Bind ${mi} with typeMap: ${typeMap} => ${bounded}")
+                  bounded
+              case _ =>
+                mi
+          }
+          .map { m =>
+            context.logTrace(s"Resolved method ${qualType}.${methodName} => ${m}")
+            m
+          }
 
         if m.isEmpty then
           context.logDebug(s"Failed to find function `${methodName}` for ${qual}:${qual.dataType}")
-
         m
       case _ =>
         trace(s"Failed to find function definition for ${f}")
@@ -636,14 +664,7 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
             }
             .getOrElse(f)
 
-          expr match
-            case i: InterpolatedString =>
-              // TODO Support adding DataType to arbitrary expressions
-              // Resolve interpolated string from function argument type
-              // TODO Resolve type parameters e.g., [A]
-              i.copy(dataType = m.ft.returnType)
-            case _ =>
-              expr
+          TypedExpression(expr, m.ft.returnType, expr.span)
         case _ =>
           f
 
@@ -653,19 +674,24 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
 
   end resolveFunctionApply
 
+  /**
+    * Resolve `this` expression inside sql"...${this}..." interpolated strings, etc.
+    */
   private object resolveInlineRef extends RewriteRule:
     private def resolveRef(using ctx: Context): PartialFunction[Expression, Expression] =
       case ref: DotRef =>
         resolveFunction(ref) match
           case Some(m: MethodSymbolInfo) =>
             // Replace {this} -> {qual}
-            m.body
+            val newExpr = m
+              .body
               .map { body =>
                 body.transformExpression { case th: This =>
                   ref.qualifier
                 }
               }
               .getOrElse(ref)
+            TypedExpression(newExpr, m.ft.returnType, ref.span)
           case _ =>
             ref
     end resolveRef
@@ -771,7 +797,9 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
           }
           .getOrElse(Nil)
 
-    private def resolveAggregationExpr(using Context): PartialFunction[Expression, Expression] =
+    private def resolveAggregationExpr(using
+        ctx: Context
+    ): PartialFunction[Expression, Expression] =
       case e: ShouldExpr =>
         // do not resolve aggregation expr in test expressions
         e

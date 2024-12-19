@@ -975,6 +975,8 @@ class GenSQL(ctx: Context) extends LogSupport:
           left
       case a: Attribute =>
         a.fullName
+      case t: TypedExpression =>
+        printExpression(t.child)
       case p: ParenthesizedExpression =>
         s"(${printExpression(p.child)})"
       case i: InterpolatedString =>

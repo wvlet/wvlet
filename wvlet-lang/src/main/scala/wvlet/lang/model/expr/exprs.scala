@@ -45,6 +45,9 @@ case class NativeExpression(name: String, retType: Option[DataType], span: Span)
 case class ParenthesizedExpression(child: Expression, span: Span) extends UnaryExpression:
   override def dataType: DataType = child.dataType
 
+case class TypedExpression(child: Expression, tpe: DataType, span: Span) extends UnaryExpression:
+  override def dataType: DataType = tpe
+
 /**
   * variable name, function name, type name, etc. The name might have a qualifier.
   */

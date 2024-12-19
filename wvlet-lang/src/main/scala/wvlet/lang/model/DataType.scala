@@ -16,7 +16,7 @@ package wvlet.lang.model
 import wvlet.lang.api.{StatusCode, WvletLangException}
 import wvlet.lang.compiler.parser.DataTypeParser
 import wvlet.lang.compiler.{DBType, Name, TermName, TypeName}
-import wvlet.lang.model.DataType.{NamedType, PrimitiveType, TypeParameter}
+import wvlet.lang.model.DataType.{GenericType, NamedType, PrimitiveType, TypeParameter}
 import wvlet.lang.model.expr.NameExpr
 import wvlet.log.LogSupport
 
@@ -25,7 +25,8 @@ import scala.util.control.NonFatal
 
 abstract class DataType(val typeName: TypeName, override val typeParams: Seq[DataType])
     extends Type:
-  override def toString: String = typeDescription
+  override def toString: String                                    = typeDescription
+  override def bind(typeArgMap: Map[TypeName, DataType]): DataType = this
 
   def typeDescription: String =
     val typeStr =
@@ -51,6 +52,8 @@ abstract class DataType(val typeName: TypeName, override val typeParams: Seq[Dat
   override def isResolved: Boolean
   def resolved: DataType = this
 
+end DataType
+
 /**
   * p A base type for representing LogicalPlan node types, which return table records
   * @param typeName
@@ -62,6 +65,8 @@ sealed abstract class RelationType(
 ) extends DataType(typeName, typeParams):
   def fields: Seq[NamedType]
   def find(f: Name => Boolean): Option[NamedType] = fields.find(x => f(x.name))
+
+  override def bind(typeArgMap: Map[TypeName, DataType]): RelationType = this
 
   override def typeDescription: String =
     val fieldDesc = fields.map(_.typeDescription).mkString(", ")
@@ -82,6 +87,10 @@ object RelationType:
 case class RelationTypeList(override val typeName: TypeName, inputRelationTypes: Seq[RelationType])
     extends RelationType(typeName, Seq.empty):
   override def isResolved: Boolean = inputRelationTypes.forall(_.isResolved)
+
+  override def bind(typeArgMap: Map[TypeName, DataType]): RelationTypeList =
+    val inputTypes = inputRelationTypes.map(_.bind(typeArgMap))
+    RelationTypeList(typeName, inputTypes)
 
   override def fields: Seq[NamedType] = inputRelationTypes.flatMap { r =>
     r.fields
@@ -122,10 +131,17 @@ object DataType extends LogSupport:
   case class UnresolvedType(leafName: String) extends DataType(Name.typeName(leafName), Seq.empty):
     override def typeDescription: String = s"${leafName}?"
     override def isResolved: Boolean     = false
+    override def bind(typeArgMap: Map[TypeName, DataType]): DataType =
+      typeArgMap.get(typeName) match
+        case Some(resolved) =>
+          resolved
+        case None =>
+          this
 
   val NoType =
     new DataType(Name.NoTypeName, Seq.empty):
-      override def isResolved: Boolean = true
+      override def bind(typeArgMap: Map[TypeName, DataType]): DataType = this
+      override def isResolved: Boolean                                 = true
 
   /**
     * Used for named column types or parameter types
@@ -134,6 +150,13 @@ object DataType extends LogSupport:
     */
   case class NamedType(name: TermName, dataType: DataType)
       extends DataType(dataType.typeName, Seq.empty):
+    override def bind(typeArgMap: Map[TypeName, DataType]): NamedType =
+      dataType.bind(typeArgMap) match
+        case resolved: DataType if resolved != dataType =>
+          NamedType(name, resolved)
+        case _ =>
+          this
+
     override def isNumeric: Boolean      = dataType.isNumeric
     override def isResolved: Boolean     = dataType.isResolved
     override def typeDescription: String = s"${name}:${dataType.typeDescription}"
@@ -402,7 +425,8 @@ object DataType extends LogSupport:
     }
 
   abstract class PrimitiveType(name: String) extends DataType(Name.typeName(name), Seq.empty):
-    override def isResolved: Boolean = true
+    override def bind(typeArgMap: Map[TypeName, DataType]): PrimitiveType = this
+    override def isResolved: Boolean                                      = true
 
   // calendar date (year, month, day)
   case object DateType extends PrimitiveType("date")
@@ -478,8 +502,7 @@ object DataType extends LogSupport:
     */
   case class EmbeddedRecordType(elems: Seq[DataType]) extends DataType(Name.typeName("*"), elems):
     override def typeDescription: String = elems.map(_.typeDescription).mkString(", ")
-
-    override def isResolved: Boolean = elems.forall(_.isResolved)
+    override def isResolved: Boolean     = elems.forall(_.isResolved)
 
   case object SQLExprType extends DataType(Name.typeName("sql"), Nil):
     override def isResolved: Boolean = true

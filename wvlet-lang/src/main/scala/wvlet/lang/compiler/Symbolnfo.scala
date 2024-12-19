@@ -18,6 +18,7 @@ import Type.{FunctionType, PackageType}
 import wvlet.lang.compiler.Symbol.NoSymbol
 import wvlet.lang.model.expr.Expression
 import wvlet.lang.model.plan.{DefContext, EmptyRelation, LogicalPlan}
+import wvlet.log.LogSupport
 
 /**
   * SymbolInfo is the result of resolving a name (Symbol) during the compilation phase.
@@ -92,6 +93,12 @@ case class MethodSymbolInfo(
     val body: Option[Expression],
     defContexts: List[DefContext]
 ) extends NamedSymbolInfo(symbol, owner, name, ft)
+    with LogSupport:
+  override def toString: String = s"${owner}.${name}: ${ft}"
+
+  def bind(typeArgMap: Map[TypeName, DataType]): MethodSymbolInfo =
+    val newFT = ft.bind(typeArgMap)
+    this.copy(ft = newFT)
 
 case class ModelSymbolInfo(
     override val symbol: Symbol,
