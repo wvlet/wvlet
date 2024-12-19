@@ -226,10 +226,13 @@ case class RawSQL(sql: Expression, span: Span) extends Relation with LeafPlan:
 case class RawJSON(json: Expression, span: Span) extends Relation with LeafPlan:
   override val relationType: RelationType = UnresolvedRelationType(RelationType.newRelationTypeName)
 
+// A base trait that will be translated to SELECT * in SQL
+trait GeneralSelection extends UnaryRelation
+
 /**
   * A relation that only filters rows without changing the schema
   */
-trait FilteringRelation extends UnaryRelation:
+trait FilteringRelation extends GeneralSelection:
   override def relationType: RelationType = child.relationType
 
 // Deduplicate (duplicate elimination) the input relation
@@ -251,8 +254,6 @@ case class EmptyRelation(span: Span) extends Relation with LeafPlan:
   override def copyInstance(newArgs: Seq[AnyRef]) = this
   override def toString: String                   = s"EmptyRelation()"
   override def relationType: RelationType         = EmptyRelationType
-
-trait GeneralSelection extends UnaryRelation
 
 // This node can be a pivot node for generating a SELECT statement
 sealed trait Selection extends GeneralSelection:
