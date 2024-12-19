@@ -848,7 +848,7 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
     override def apply(context: Context): PlanRewriter = { case q: Query =>
       init(context)
       q.transformUp { case s: GeneralSelection =>
-        s.transformChildExpressions(resolveAggregationExpr(using context))
+        s.transformUpExpressions(resolveAggregationExpr(using context))
       }
     }
 
