@@ -252,8 +252,10 @@ case class EmptyRelation(span: Span) extends Relation with LeafPlan:
   override def toString: String                   = s"EmptyRelation()"
   override def relationType: RelationType         = EmptyRelationType
 
+trait GeneralSelection extends UnaryRelation
+
 // This node can be a pivot node for generating a SELECT statement
-sealed trait Selection extends UnaryRelation:
+sealed trait Selection extends GeneralSelection:
   def selectItems: Seq[Attribute]
 
 // This node can be a pivot node for generating a SELECT statement with aggregation functions
@@ -306,6 +308,7 @@ case class Transform(child: Relation, transformItems: Seq[Attribute], span: Span
 
 case class AddColumnsToRelation(child: Relation, newColumns: Seq[Attribute], span: Span)
     extends UnaryRelation
+    with GeneralSelection
     with LogSupport:
   override def toString: String = s"Add[${newColumns.mkString(", ")}](${child})"
 

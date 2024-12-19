@@ -74,7 +74,7 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
       resolveFunctionApply ::         // Resolve function args
       resolveInlineRef ::             // Resolve inline-expression expansion
       resolveNativeExpressions ::     // Resolve native expressions
-      resolveAggregationFunctions ::  // Resolve aggregation expression without group by
+      resolveNoGroupByAggregations :: // Resolve aggregation expression without group by
       resolveModelDef ::              // Resolve models again to use the updated types
       resolveModelScan ::             // Resolve scanned model types
       Nil
@@ -258,7 +258,7 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
         lookupType(modelType.typeName, context) match
           case Some(sym) =>
             val si = sym.symbolInfo
-            trace(s"${modelType.typeName} -> ${m.symbol.id} -> ${m.symbol.symbolInfo}")
+            context.logTrace(s"${modelType.typeName} -> ${m.symbol.id} -> ${m.symbol.symbolInfo}")
             val modelSymbolInfo = m.symbol.symbolInfo
             si.dataType match
               case r: RelationType =>
@@ -465,7 +465,9 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
   private object resolveRelation extends RewriteRule:
     override def apply(context: Context): PlanRewriter = {
       case r: Relation => // Regular relation and Filter etc.
-        r.transformChildExpressions(resolveExpression(r.inputRelationType, context))
+        val newRelation = r
+          .transformChildExpressions(resolveExpression(r.inputRelationType, context))
+        newRelation
     }
 
   /**
@@ -508,7 +510,6 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
           val r = s.symbolInfo.dataType
           t.transformUpExpressions { case th: This =>
             val newThis = th.copy(dataType = r)
-            // trace(s"Resolved this: ${th} as ${newThis}")
             newThis
           }
         case _ =>
@@ -592,6 +593,7 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
 
         if m.isEmpty then
           context.logTrace(s"Failed to find function `${methodName}` for ${qual}:${qual.dataType}")
+
         m
       case _ =>
         trace(s"Failed to find function definition for ${f}")
@@ -796,7 +798,7 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
     * {{{(l_extendedprice * l_discount)}}} can be an aggregation expression if aggregation function
     * is applied like {{{(l_extendedprice * l_discount).sum}}}.
     */
-  private object resolveAggregationFunctions extends RewriteRule:
+  private object resolveNoGroupByAggregations extends RewriteRule:
 
     private var aggregationFunctions: List[Symbol] = Nil
 
@@ -846,10 +848,12 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
 
     override def apply(context: Context): PlanRewriter = { case q: Query =>
       init(context)
-      q.transformExpressions(resolveAggregationExpr(using context))
+      q.transformUp { case s: GeneralSelection =>
+        s.transformChildExpressions(resolveAggregationExpr(using context))
+      }
     }
 
-  end resolveAggregationFunctions
+  end resolveNoGroupByAggregations
 
   /**
     * Resolve the given expression type using the input attributes from child plan nodes
@@ -863,7 +867,9 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
   ): PartialFunction[Expression, Expression] =
     case ref: DotRef if !ref.resolved =>
       val resolvedRef = ref.transformChildExpressions(resolveExpression(inputRelationType, context))
-      val refName     = Name.termName(resolvedRef.name.leafName)
+      context.logWarn(s"Unresolved ref: ${ref} in ${inputRelationType} ===> ${resolvedRef}")
+      val refName = Name.termName(resolvedRef.name.leafName)
+
       // Resolve types after following . (dot)
       resolvedRef.qualifier.dataType match
         case t: SchemaType =>
@@ -893,7 +899,6 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
                   resolvedRef
         case refDataType =>
           // TODO Support multiple context-specific functions
-          // warn(s"qualifier's type name: ${other.typeName}: ${ref.qualifier}")
           lookupType(refDataType.typeName, context).map(_.symbolInfo) match
             case Some(functionBaseType: TypeSymbolInfo) =>
               functionBaseType.declScope.lookupSymbol(refName).map(_.symbolInfo) match
@@ -919,7 +924,7 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
                   context.logTrace(s"Failed to resolve ${resolvedRef} as ${refDataType}")
                   resolvedRef
             case _ =>
-              // trace(s"TODO: resolve ref: ${ref.fullName} as ${refDataType}")
+              context.logTrace(s"TODO: resolve ref: ${ref.fullName} as ${refDataType}")
               resolvedRef
       end match
     case i: Identifier if !i.resolved =>
@@ -931,7 +936,8 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
         case None =>
           i
     case other if !other.resolved =>
-      other.transformChildExpressions(resolveExpression(inputRelationType, context))
+      val expr = other.transformChildExpressions(resolveExpression(inputRelationType, context))
+      expr
   end resolveExpression
 
   private def resolveExpression(
