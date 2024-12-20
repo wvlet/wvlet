@@ -340,12 +340,12 @@ object Expression:
 
   def newIdentifier(x: String): Identifier =
     if x.startsWith("`") && x.endsWith("`") then
-      BackQuotedIdentifier(x.stripPrefix("`").stripSuffix("`"), NoSpan)
+      BackQuotedIdentifier(x.stripPrefix("`").stripSuffix("`"), DataType.UnknownType, NoSpan)
     else if x.matches("[0-9]+") then
       DigitIdentifier(x, NoSpan)
     else if !x.matches("[0-9a-zA-Z_]*") then
       // Quotations are needed with special characters to generate valid SQL
-      BackQuotedIdentifier(x, NoSpan)
+      BackQuotedIdentifier(x, DataType.UnknownType, NoSpan)
     else
       UnquotedIdentifier(x, NoSpan)
 

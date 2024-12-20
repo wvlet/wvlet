@@ -156,7 +156,7 @@ sealed trait Identifier extends QualifiedName with LeafExpression:
   override def attributeName: String = strExpr
 
   override lazy val resolved: Boolean = false
-  def toResolved(dataType: DataType): ResolvedIdentifier = ResolvedIdentifier(
+  def toResolved(dataType: DataType): Identifier = ResolvedIdentifier(
     this.unquotedValue,
     dataType,
     span
@@ -192,10 +192,15 @@ case class DoubleQuotedIdentifier(override val unquotedValue: String, span: Span
   * @param unquotedValue
   * @param nodeLocation
   */
-case class BackQuotedIdentifier(override val unquotedValue: String, span: Span) extends Identifier:
-  override def leafName: String = unquotedValue
-  override def fullName: String = unquotedValue
-  override def strExpr: String  = s"`${unquotedValue}`"
+case class BackQuotedIdentifier(
+    override val unquotedValue: String,
+    override val dataType: DataType,
+    span: Span
+) extends Identifier:
+  override def leafName: String                                     = unquotedValue
+  override def fullName: String                                     = unquotedValue
+  override def strExpr: String                                      = s"`${unquotedValue}`"
+  override def toResolved(dataType: DataType): BackQuotedIdentifier = this.copy(dataType = dataType)
 
 case class BackquoteInterpolatedString(
     prefix: NameExpr,

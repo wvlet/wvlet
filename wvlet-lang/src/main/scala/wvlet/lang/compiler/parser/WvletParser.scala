@@ -110,7 +110,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         UnquotedIdentifier(t.str, spanFrom(t))
       case WvletToken.BACKQUOTED_IDENTIFIER =>
         consume(WvletToken.BACKQUOTED_IDENTIFIER)
-        BackQuotedIdentifier(t.str, spanFrom(t))
+        BackQuotedIdentifier(t.str, DataType.UnknownType, spanFrom(t))
       case WvletToken.BACKQUOTE_INTERPOLATION_PREFIX if t.str == "s" =>
         interpolatedBackquoteString()
       case WvletToken.UNDERSCORE =>
@@ -133,7 +133,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         UnquotedIdentifier(t.str, spanFrom(t))
       case WvletToken.BACKQUOTED_IDENTIFIER =>
         consume(WvletToken.BACKQUOTED_IDENTIFIER)
-        BackQuotedIdentifier(t.str, spanFrom(t))
+        BackQuotedIdentifier(t.str, DataType.UnknownType, spanFrom(t))
       case _ =>
         reserved()
 

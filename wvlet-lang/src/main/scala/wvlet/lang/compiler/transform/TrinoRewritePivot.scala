@@ -18,6 +18,7 @@ import wvlet.lang.compiler.*
 import wvlet.lang.compiler.DBType.Trino
 import wvlet.lang.api.LinePosition
 import wvlet.lang.api.Span.NoSpan
+import wvlet.lang.model.DataType
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
 
@@ -99,7 +100,7 @@ object TrinoRewritePivot extends Phase("rewrite-pivot"):
               exprs +=
                 SingleColumn(
                   // Use a quoted column name for safely wrapping arbitrary column values
-                  BackQuotedIdentifier(v.unquotedValue, NoSpan),
+                  BackQuotedIdentifier(v.unquotedValue, pivotKey.dataType, NoSpan),
                   FunctionApply(
                     UnquotedIdentifier("count_if", NoSpan),
                     List(FunctionArg(None, Eq(targetColumn, v, NoSpan), NoSpan)),
@@ -130,7 +131,11 @@ object TrinoRewritePivot extends Phase("rewrite-pivot"):
                 }
                 exprs +=
                   // Use a quoted column name for safely wrapping arbitrary column values
-                  SingleColumn(BackQuotedIdentifier(v.unquotedValue, NoSpan), pivotAggExpr, NoSpan)
+                  SingleColumn(
+                    BackQuotedIdentifier(v.unquotedValue, pivotKey.dataType, NoSpan),
+                    pivotAggExpr,
+                    NoSpan
+                  )
               }
             end if
             exprs.result
