@@ -13,6 +13,7 @@
  */
 package wvlet.lang.compiler.parser
 
+import wvlet.airframe.SourceCode
 import wvlet.lang.api.{Span, StatusCode}
 import wvlet.lang.api.Span.NoSpan
 import wvlet.lang.catalog.Catalog.TableName
@@ -58,7 +59,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
   private var lastToken: TokenData = null
 
   // private def sourceLocation: SourceLocation = SourceLocation(unit.sourceFile, nodeLocation())
-  def consume(expected: WvletToken): TokenData =
+  def consume(expected: WvletToken)(using code: SourceCode): TokenData =
     val t = scanner.nextToken()
     if t.token == expected then
       lastToken = t
@@ -66,7 +67,10 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     else
       throw StatusCode
         .SYNTAX_ERROR
-        .newException(s"Expected ${expected}, but found ${t.token}", t.sourceLocation)
+        .newException(
+          s"Expected ${expected}, but found ${t.token} (context: ${code.fileName}:${code.line})",
+          t.sourceLocation
+        )
 
   def consumeToken(): TokenData =
     val t = scanner.nextToken()
@@ -82,15 +86,21 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
 
   private def spanFrom(startSpan: Span): Span = startSpan.extendTo(lastToken.span)
 
-  private def unexpected(t: TokenData): Nothing =
+  private def unexpected(t: TokenData)(using code: SourceCode): Nothing =
     throw StatusCode
       .SYNTAX_ERROR
-      .newException(s"Unexpected token: <${t.token}> '${t.str}'", t.sourceLocation)
+      .newException(
+        s"Unexpected token: <${t.token}> '${t.str}' (context: WvletParser.scala:${code.line})",
+        t.sourceLocation
+      )
 
-  private def unexpected(expr: Expression): Nothing =
+  private def unexpected(expr: Expression)(using code: SourceCode): Nothing =
     throw StatusCode
       .SYNTAX_ERROR
-      .newException(s"Unexpected expression: ${expr}", expr.sourceLocationOfCompilationUnit)
+      .newException(
+        s"Unexpected expression: ${expr} (context: WvletParser.scala:${code.line})",
+        expr.sourceLocationOfCompilationUnit
+      )
 
   def identifier(): QualifiedName =
     val t = scanner.lookAhead()
@@ -1699,7 +1709,6 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
                   val body = expression()
                   LambdaExpr(args.map(_.asInstanceOf[Identifier]), body, spanFrom(t))
                 case _ if args.size == 1 =>
-                  // Other parenthesized expressions
                   ParenthesizedExpression(args.head, spanFrom(t))
                 case _ =>
                   unexpected(t3)
@@ -1958,6 +1967,12 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         primaryExpressionRest(
           LambdaExpr(args = List(expr.asInstanceOf[Identifier]), body, spanFrom(t))
         )
+      case WvletToken.OVER =>
+        window() match
+          case Some(w) =>
+            WindowApply(expr, w, spanFrom(t))
+          case None =>
+            expr
       case _ =>
         expr
     end match

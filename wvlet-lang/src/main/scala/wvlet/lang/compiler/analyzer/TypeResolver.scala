@@ -122,6 +122,9 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
         val stmts        = List.newBuilder[LogicalPlan]
         p.statements
           .foreach { stmt =>
+
+            ctx.logTrace(s"Untyped plan:\n${stmt.pp}")
+
             var newStmt = RewriteRule.rewrite(stmt, defaultRules, ctx)
             // Resolve again if the statement is not resolved
             if !newStmt.resolved then
@@ -507,13 +510,13 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
     * @param context
     * @return
     */
-  private def resolveFunction(f: Expression, knownArgs: List[FunctionArg] = Nil)(using
+  private def findFunctionDef(f: Expression, knownArgs: List[FunctionArg] = Nil)(using
       context: Context
   ): Option[MethodSymbolInfo] =
 
     f match
       case fa: FunctionApply =>
-        resolveFunction(fa.base, fa.args)
+        findFunctionDef(fa.base, fa.args)
       case i: Identifier =>
         lookupType(i.toTermName, context)
           .map(_.symbolInfo)
@@ -584,7 +587,7 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
         trace(s"Failed to find function definition for ${f}")
         None
     end match
-  end resolveFunction
+  end findFunctionDef
 
   /**
     * Evaluate FunctionApply nodes with the given function definition
@@ -616,6 +619,7 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
                   th
             case i: Identifier =>
               // Replace function arguments to the resolved args
+              // TODO Handle nested function calls
               resolvedArgs.find(_._1 == i.toTermName) match
                 case Some((_, expr)) =>
                   expr
@@ -625,16 +629,16 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
         case None =>
           // If the function definition has no body expression, return the original expression
           base
+    context.logTrace(s"Resolving ${base} => ${newExpr}: ${m.ft.returnType}")
     if newExpr.resolved || !m.ft.returnType.isResolved then
       newExpr
     else
-      context.logTrace(s"Resolving ${newExpr} => ${m.ft.returnType} ${m.ft.returnType.getClass}")
       newExpr.withDataType(m.ft.returnType)
 
   end inlineFunctionBody
 
   private def resolveFunctionApply(f: FunctionApply)(using context: Context) =
-    resolveFunction(f) match
+    findFunctionDef(f) match
       case Some(m: MethodSymbolInfo) =>
         val functionArgTypes = m.ft.args
         // Mapping function arguments aligned to the function definition
@@ -683,7 +687,12 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
         // Resolve identifiers in the function body with the given function arguments
         // context.logWarn(s"Resolved function args: ${f.base}")
         val expr = inlineFunctionBody(f.base, m, resolvedArgs.result())
-        expr.withDataType(m.ft.returnType)
+
+        f.window match
+          case Some(w) =>
+            WindowApply(expr.withDataType(m.ft.returnType), w, expr.span)
+          case None =>
+            expr.withDataType(m.ft.returnType)
       case _ =>
         f
     end match
@@ -695,7 +704,7 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
   private object resolveInlineRef extends RewriteRule:
     private def resolveRef(using ctx: Context): PartialFunction[Expression, Expression] =
       case ref: DotRef =>
-        resolveFunction(ref) match
+        findFunctionDef(ref) match
           case Some(m: MethodSymbolInfo) =>
             // Replace {this} -> {qual}
             inlineFunctionBody(ref, m, Nil)

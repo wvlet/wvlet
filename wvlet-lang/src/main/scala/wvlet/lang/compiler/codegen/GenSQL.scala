@@ -928,6 +928,10 @@ class GenSQL(ctx: Context) extends LogSupport:
         val args = f.args.map(x => printExpression(x)).mkString(", ")
         val w    = f.window.map(x => printExpression(x)).getOrElse("")
         Seq(s"${base}(${args})", w).mkString(" ")
+      case w: WindowApply =>
+        val base   = printExpression(w.base)
+        val window = printExpression(w.window)
+        Seq(s"${base}", window).mkString(" ")
       case f: FunctionArg =>
         // TODO handle arg name mapping
         printExpression(f.value)
