@@ -111,7 +111,11 @@ trait DBConnector(val dbType: DBType, workEnv: WorkEnv) extends AutoCloseable wi
   def execute(sql: String)(using
       progressMonitor: QueryProgressMonitor = QueryProgressMonitor.noOp
   ): Boolean = withStatement: stmt =>
-    stmt.execute(sql)
+    try
+      progressMonitor.newQuery(sql)
+      stmt.execute(sql)
+    finally
+      progressMonitor.close()
 
   def processWarning(w: java.sql.SQLWarning): Unit =
     def showWarnings(w: SQLWarning): Unit =
