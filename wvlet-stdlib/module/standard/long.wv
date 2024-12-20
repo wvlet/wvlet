@@ -11,6 +11,8 @@ type long:
   def or_else(other:long): long = sql"coalesce(${this},${other})"
   def round(decimal:int=0): double = sql"round(${this},${decimal})"
 
+  def floor: long = sql"floor(${this})"
+
   def in(v:any*): boolean = sql"${this} in (${v})"
   def not_in(v:any*): boolean = sql"${this} not in (${v})"
 

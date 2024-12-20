@@ -337,7 +337,7 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
             val tblType = Name.typeName(ref.name.leafName)
             lookupType(tblType, context).map(_.symbolInfo.dataType) match
               case Some(tpe: SchemaType) =>
-                trace(s"Found a table type for ${tblType}: ${tpe}")
+                context.logTrace(s"Found a table type for ${tblType}: ${tpe}")
                 val tableName = TableName.parse(tblType.toTermName.name)
                 TableScan(tableName, tpe, tpe.fields, ref.span)
               case _ =>
@@ -364,7 +364,7 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
             val si = sym.symbolInfo
             si.tpe match
               case r: RelationType =>
-                trace(s"Resolved model ref: ${ref.name.fullName} as ${r}")
+                context.logTrace(s"Resolved model ref: ${ref.name.fullName} as ${r}")
                 ModelScan(TableName(sym.name.name), ref.args, r, ref.span)
               case _ =>
                 ref
@@ -449,6 +449,7 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
   private object resolveRelation extends RewriteRule:
     override def apply(context: Context): PlanRewriter = {
       case r: Relation => // Regular relation and Filter etc.
+        context.logWarn(s"Resolving relation: ${r} with ${r.inputRelationType}")
         val newRelation = r
           .transformChildExpressions(resolveExpression(r.inputRelationType, context))
         newRelation
@@ -471,7 +472,9 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
     override def apply(context: Context): PlanRewriter = {
       case u: UnaryRelation if hasUnderscore(u) =>
         val contextType = u.inputRelation.relationType
-        trace(s"Resolved underscore (_) as ${contextType} in ${u.locationString(using context)}")
+        context.logTrace(
+          s"Resolved underscore (_) as ${contextType} in ${u.locationString(using context)}"
+        )
         val updated = u.transformChildExpressions { case expr: Expression =>
           expr.transformExpression {
             case ref: ContextInputRef if !ref.dataType.isResolved =>
@@ -601,7 +604,7 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
       base: Expression,
       m: MethodSymbolInfo,
       resolvedArgs: List[(TermName, Expression)]
-  ): Expression =
+  )(using context: Context): Expression =
     val newExpr: Expression =
       m.body match
         case Some(methodBody) =>
@@ -624,10 +627,11 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
         case None =>
           // If the function definition has no body expression, return the original expression
           base
-    if newExpr.resolved then
+    if newExpr.resolved || !m.ft.returnType.isResolved then
       newExpr
     else
-      TypedExpression(newExpr, m.ft.returnType, newExpr.span)
+      context.logInfo(s"Resolving ${newExpr} => ${m.ft.returnType} ${m.ft.returnType.getClass}")
+      newExpr.withDataType(m.ft.returnType)
 
   end inlineFunctionBody
 
@@ -680,7 +684,7 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
 
         // Resolve identifiers in the function body with the given function arguments
         val expr = inlineFunctionBody(f.base, m, resolvedArgs.result())
-        TypedExpression(expr, m.ft.returnType, expr.span)
+        expr.withDataType(m.ft.returnType)
       case _ =>
         f
     end match
@@ -894,24 +898,22 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
                         .toMap
 
                   val boundedFunctionType = method.bind(typeMap)
-                  // TODO: Resolve FunctionApply first
                   // val newExpr = inlineFunctionBody(resolvedRef, boundedFunctionType, Nil)
-                  val retType = boundedFunctionType.ft.returnType
-                  // context.logInfo(s"Resolved ${resolvedRef} ====> ${newExpr}")
                   // newExpr
+                  val retType = boundedFunctionType.ft.returnType
                   resolvedRef.copy(dataType = retType)
                 case _ =>
                   context.logTrace(s"Failed to resolve ${resolvedRef} as ${refDataType}")
                   resolvedRef
             case _ =>
-              context.logTrace(s"TODO: resolve ref: ${ref.fullName} as ${refDataType}")
+              context.logTrace(s"TODO: ${refDataType.typeName} <- resolve ref: ${ref.fullName}")
               resolvedRef
       end match
     case i: Identifier if !i.resolved =>
       inputRelationType.find(x => x.name == i.fullName) match
         case Some(attr) =>
           val ri = i.toResolved(attr.dataType)
-          context.logTrace(s"Resolved identifier: ${ri}")
+          context.logTrace(s"Resolved identifier: ${ri} from ${inputRelationType}")
           ri
         case None =>
           i
@@ -926,23 +928,5 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
       context: Context
   ): Expression = resolveExpression(inputRelationType, context)
     .applyOrElse(expr, identity[Expression])
-
-  /**
-    * Resolve the given list of attribute types using known attributes from the child plan nodes as
-    * hints
-    *
-    * @param attributes
-    * @param knownAttributes
-    * @param context
-    * @return
-    */
-  private def resolveAttributes(
-      attributes: Seq[Attribute],
-      inputRelationType: RelationType,
-      context: Context
-  ): Seq[Attribute] = attributes.map { a =>
-    a.transformChildExpressions(resolveExpression(inputRelationType, context))
-      .asInstanceOf[Attribute]
-  }
 
 end TypeResolver

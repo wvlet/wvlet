@@ -290,6 +290,13 @@ trait Expression extends TreeNode with Product with LogSupport:
   def resolvedChildren: Boolean = children.forall(_.resolved) && resolvedInputs
   def resolvedInputs: Boolean   = dataType.isResolved
 
+  def withDataType(dt: DataType): Expression =
+    this match
+      case e: TypedExpression =>
+        e.copy(tpe = dt)
+      case _ =>
+        TypedExpression(this, dt, this.span)
+
 end Expression
 
 trait LeafExpression extends Expression:

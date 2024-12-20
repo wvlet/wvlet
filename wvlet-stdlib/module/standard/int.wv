@@ -9,8 +9,9 @@ type int:
   def to_string: string = sql"cast(${this} as varchar)"
 
   def or_else(other:int): int = sql"coalesce(${this},${other})"
-
   def round(decimal:int=0): double = sql"round(${this},${decimal})"
+
+  def floor: int = sql"floor(${this})"
 
   def in(v:any*): boolean = sql"${this} in (${v})"
   def not_in(v:any*): boolean = sql"${this} not in (${v})"

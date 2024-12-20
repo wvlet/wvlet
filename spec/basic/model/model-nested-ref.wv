@@ -1,0 +1,10 @@
+model model_nested1 =
+  from [[1, 5], [2, 7], [3, 9]] as person(id, v)
+  select id, v
+end
+
+from model_nested1
+group by id
+agg v.sum.round(1) as v2
+
+
