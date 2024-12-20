@@ -133,15 +133,20 @@ object LogicalPlanPrinter extends LogSupport:
         val attr        = m.childExpressions.map(expr => printExpression(expr))
         val functionSig = s" => ${outputType}"
 
+        val resolvedSign =
+          if m.resolved then
+            ""
+          else
+            "*"
         val loc = m.span.map(l => s" ${l}").getOrElse("")
         val prefix =
           m match
             case t: HasTableName =>
-              s"${ws}[${m.modelName}${loc}] ${t.name}${functionSig}"
+              s"${ws}[${resolvedSign}${m.modelName}${loc}] ${t.name}${functionSig}"
             case src: HasSourceFile =>
-              s"${ws}[${m.modelName} ${src.sourceFile.fileName}${loc}]${functionSig} "
+              s"${ws}[${resolvedSign}${m.modelName} ${src.sourceFile.fileName}${loc}]${functionSig} "
             case _ =>
-              s"${ws}[${m.modelName}${loc}]${functionSig}"
+              s"${ws}[${resolvedSign}${m.modelName}${loc}]${functionSig}"
 
         m match
           case p: PackageDef =>

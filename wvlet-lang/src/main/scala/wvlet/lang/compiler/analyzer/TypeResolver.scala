@@ -63,7 +63,6 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
       resolveLocalFileScan ::         // resolve local file scans for DuckDb
       resolveTableRef ::              // resolve table reference (model or schema) types
       resolveModelDef ::              // resolve ModelDef
-      resolveTransformItem ::         // resolve transform items prefixed with column name
       resolveSelectItem ::            // resolve select items (projected columns)
       resolveGroupingKey ::           // resolve Aggregate keys
       resolveGroupingKeyIndexes ::    // resolve grouping key indexes, _1, _2, .. in select clauses
@@ -125,7 +124,9 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
           .foreach { stmt =>
             var newStmt = RewriteRule.rewrite(stmt, defaultRules, ctx)
             // Resolve again if the statement is not resolved
-            newStmt = RewriteRule.rewriteUnresolved(newStmt, defaultRules, ctx)
+            if !newStmt.resolved then
+              ctx.logTrace(s"Trying to resolve unresolved plan again:\n${newStmt.pp}")
+              newStmt = RewriteRule.rewriteUnresolved(newStmt, defaultRules, ctx)
             stmts += newStmt
 
             if !ctx.compilationUnit.isPreset then
@@ -375,25 +376,9 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
 
   end resolveTableRef
 
-  private object resolveTransformItem extends RewriteRule:
-    override def apply(context: Context): PlanRewriter = { case t: Transform =>
-      val newItems: Seq[Attribute] = t
-        .transformItems
-        .map {
-          case s: SingleColumn =>
-            // resolve only the body expression
-            s.transformChildExpressions(resolveExpression(t.relationType, context))
-          case x: Attribute =>
-            x.transformExpression(resolveExpression(t.relationType, context))
-              .asInstanceOf[Attribute]
-        }
-      t.copy(transformItems = newItems)
-    }
-
-    /**
-      * Resolve select items (projected attributes) in Project nodes
-      */
-
+  /**
+    * Resolve select items (projected attributes) in Project nodes
+    */
   private object resolveSelectItem extends RewriteRule:
     def apply(context: Context): PlanRewriter = { case p: Project =>
       val resolvedChild = p.child.transform(resolveRelation(context)).asInstanceOf[Relation]
@@ -401,9 +386,9 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
         .selectItems
         .map {
           case s: SingleColumn =>
-            s.transformChildExpressions(resolveExpression(p.child.relationType, context))
+            s.transformChildExpressions(resolveExpression(p.inputRelationType, context))
           case x: Attribute =>
-            x.transformChildExpressions(resolveExpression(p.child.relationType, context))
+            x.transformChildExpressions(resolveExpression(p.inputRelationType, context))
         }
       Project(resolvedChild, resolvedColumns, p.span)
     }
@@ -604,88 +589,101 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
     * Evaluate FunctionApply nodes with the given function definition
     */
   private object resolveFunctionApply extends RewriteRule:
-
     override def apply(context: Context): PlanRewriter = { case q: Query =>
       q.transformUpExpressions { case f: FunctionApply =>
-        resolveFunApply(f)(using context)
+        resolveFunctionApply(f)(using context)
       }
     }
 
-    private def resolveFunApply(f: FunctionApply)(using ctx: Context): Expression =
-      resolveFunction(f) match
-        case Some(m: MethodSymbolInfo) =>
-          val functionArgTypes = m.ft.args
-          // Mapping function arguments aligned to the function definition
-          var index        = 0
-          val resolvedArgs = List.newBuilder[(TermName, Expression)]
+  end resolveFunctionApply
 
-          def mapArg(args: List[FunctionArg]): Unit =
-            if !args.isEmpty then
-              args.head match
-                case FunctionArg(None, expr, span) =>
-                  if index >= functionArgTypes.length then
+  private def inlineFunctionBody(
+      base: Expression,
+      m: MethodSymbolInfo,
+      resolvedArgs: List[(TermName, Expression)]
+  ): Expression =
+    val newExpr: Expression =
+      m.body match
+        case Some(methodBody) =>
+          methodBody.transformUpExpression {
+            case th: This =>
+              base match
+                case d: DotRef =>
+                  // Replace ${this} with ${qual} in DotRef(qual, method)
+                  d.qualifier
+                case _ =>
+                  th
+            case i: Identifier =>
+              // Replace function arguments to the resolved args
+              resolvedArgs.find(_._1 == i.toTermName) match
+                case Some((_, expr)) =>
+                  expr
+                case None =>
+                  i
+          }
+        case None =>
+          // If the function definition has no body expression, return the original expression
+          base
+    if newExpr.resolved then
+      newExpr
+    else
+      TypedExpression(newExpr, m.ft.returnType, newExpr.span)
+
+  end inlineFunctionBody
+
+  private def resolveFunctionApply(f: FunctionApply)(using context: Context) =
+    resolveFunction(f) match
+      case Some(m: MethodSymbolInfo) =>
+        val functionArgTypes = m.ft.args
+        // Mapping function arguments aligned to the function definition
+        var index        = 0
+        val resolvedArgs = List.newBuilder[(TermName, Expression)]
+
+        def mapArg(args: List[FunctionArg]): Unit =
+          if !args.isEmpty then
+            args.head match
+              case FunctionArg(None, expr, span) =>
+                if index >= functionArgTypes.length then
+                  throw StatusCode
+                    .SYNTAX_ERROR
+                    .newException("Too many arguments", context.sourceLocationAt(span))
+                val argType = functionArgTypes(index)
+                argType.dataType match
+                  case VarArgType(elemType) =>
+                    index += 1
+                    resolvedArgs += argType.name -> ListExpr(args, span)
+                  // all args are consumed
+                  case _ =>
+                    index += 1
+                    resolvedArgs += argType.name -> expr
+                    mapArg(args.tail)
+              case FunctionArg(Some(argName), expr, span) =>
+                functionArgTypes.find(_.name == argName) match
+                  case Some(argType) =>
+                    argType.dataType match
+                      case VarArgType(elemType) =>
+                        resolvedArgs += argName -> ListExpr(args, expr.span)
+                      // all args are consumed
+                      case _ =>
+                        resolvedArgs += argName -> expr
+                        mapArg(args.tail)
+                  case None =>
                     throw StatusCode
                       .SYNTAX_ERROR
-                      .newException("Too many arguments", ctx.sourceLocationAt(span))
-                  val argType = functionArgTypes(index)
-                  argType.dataType match
-                    case VarArgType(elemType) =>
-                      index += 1
-                      resolvedArgs += argType.name -> ListExpr(args, span)
-                    // all args are consumed
-                    case _ =>
-                      index += 1
-                      resolvedArgs += argType.name -> expr
-                      mapArg(args.tail)
-                case FunctionArg(Some(argName), expr, span) =>
-                  functionArgTypes.find(_.name == argName) match
-                    case Some(argType) =>
-                      argType.dataType match
-                        case VarArgType(elemType) =>
-                          resolvedArgs += argName -> ListExpr(args, expr.span)
-                        // all args are consumed
-                        case _ =>
-                          resolvedArgs += argName -> expr
-                          mapArg(args.tail)
-                    case None =>
-                      throw StatusCode
-                        .SYNTAX_ERROR
-                        .newException(
-                          "Unknown argument name: ${argName}",
-                          ctx.sourceLocationAt(span)
-                        )
+                      .newException(
+                        "Unknown argument name: ${argName}",
+                        context.sourceLocationAt(span)
+                      )
 
-          // Resolve function arguments
-          mapArg(f.args)
+        // Resolve function arguments
+        mapArg(f.args)
 
-          // Resolve identifiers in the function body with the given function arguments
-          val expr = m
-            .body
-            .map {
-              _.transformUpExpression:
-                case th: This =>
-                  f.base match
-                    case d: DotRef =>
-                      d.qualifier
-                    case _ =>
-                      th
-                case i: Identifier =>
-                  resolvedArgs.result().find(_._1 == i.toTermName) match
-                    case Some((_, expr)) =>
-                      expr
-                    case None =>
-                      i
-            }
-            .getOrElse(f)
-
-          TypedExpression(expr, m.ft.returnType, expr.span)
-        case _ =>
-          f
-
-      end match
-
-    end resolveFunApply
-
+        // Resolve identifiers in the function body with the given function arguments
+        val expr = inlineFunctionBody(f.base, m, resolvedArgs.result())
+        TypedExpression(expr, m.ft.returnType, expr.span)
+      case _ =>
+        f
+    end match
   end resolveFunctionApply
 
   /**
@@ -697,15 +695,7 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
         resolveFunction(ref) match
           case Some(m: MethodSymbolInfo) =>
             // Replace {this} -> {qual}
-            val newExpr = m
-              .body
-              .map { body =>
-                body.transformExpression { case th: This =>
-                  ref.qualifier
-                }
-              }
-              .getOrElse(ref)
-            TypedExpression(newExpr, m.ft.returnType, ref.span)
+            inlineFunctionBody(ref, m, Nil)
           case _ =>
             ref
     end resolveRef
@@ -818,27 +808,13 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
         // do not resolve aggregation expr in test expressions
         e
       case d: DotRef =>
-        val dd  = d.transformChildExpressions(resolveAggregationExpr).asInstanceOf[DotRef]
+        val dd  = d.transformChildExpressions(resolveAggregationExpr)
         val nme = dd.name.toTermName
         aggregationFunctions
           .find(_.name == nme)
           .map(_.symbolInfo)
           .collect { case m: MethodSymbolInfo =>
-            m
-          }
-          .map { m =>
-            // inline aggregation function body
-            m.body
-              .map { body =>
-                body.transformUpExpression {
-                  case th: This =>
-                    dd.qualifier
-                  case i: InterpolatedString =>
-                    // Resolve interpolated string from function argument type
-                    i.copy(dataType = m.ft.returnType)
-                }
-              }
-              .getOrElse(dd)
+            inlineFunctionBody(d, m, Nil)
           }
           .getOrElse(dd)
       case other =>
@@ -864,6 +840,9 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
       inputRelationType: RelationType,
       context: Context
   ): PartialFunction[Expression, Expression] =
+    case f: FunctionApply if !f.resolved =>
+      val resolvedF = f.transformChildExpressions(resolveExpression(inputRelationType, context))
+      resolveFunctionApply(resolvedF)(using context)
     case ref: DotRef if !ref.resolved =>
       val resolvedRef = ref.transformChildExpressions(resolveExpression(inputRelationType, context))
       val refName     = Name.termName(resolvedRef.name.leafName)
@@ -914,9 +893,12 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
                         }
                         .toMap
 
-                  val retType = method.ft.returnType.bind(typeMap)
-                  context.logTrace(s"Resolved ${resolvedRef} as ${retType}")
-
+                  val boundedFunctionType = method.bind(typeMap)
+                  // TODO: Resolve FunctionApply first
+                  // val newExpr = inlineFunctionBody(resolvedRef, boundedFunctionType, Nil)
+                  val retType = boundedFunctionType.ft.returnType
+                  // context.logInfo(s"Resolved ${resolvedRef} ====> ${newExpr}")
+                  // newExpr
                   resolvedRef.copy(dataType = retType)
                 case _ =>
                   context.logTrace(s"Failed to resolve ${resolvedRef} as ${refDataType}")
