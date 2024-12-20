@@ -2,4 +2,11 @@ from 'books.json'
 pivot on year in (1951, 1960)
 group by author
 agg _.count
-order by `1951` desc
+order by `1951` desc, author
+
+test _.rows is [
+  ['J.D. Salinger', 2, 0],
+  ['F. Scott Fitzgerald', 0, 0],
+  ['Harper Lee', 0, 2],
+  ['John Steinbeck', 0, 0],
+]

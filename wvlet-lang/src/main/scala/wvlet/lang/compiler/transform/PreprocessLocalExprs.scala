@@ -1,6 +1,7 @@
 package wvlet.lang.compiler.transform
 
 import wvlet.lang.compiler.{CompilationUnit, Context, ExpressionRewriteRule, Phase, RewriteRule}
+import wvlet.lang.model.DataType
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.Query
 import wvlet.log.{LogSupport, Logger}
@@ -30,7 +31,7 @@ object PreprocessLocalExpr extends Phase("preprocess-local-expr") with LogSuppor
           b
         else
           val str = evaluatedParts.map(_.get).mkString
-          BackQuotedIdentifier(str, b.span)
+          BackQuotedIdentifier(str, DataType.UnknownType, b.span)
 
   def eval(e: Expression, ctx: Context): Option[String] =
     e match
