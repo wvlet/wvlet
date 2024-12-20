@@ -1,0 +1,12 @@
+from [[1, 5.1], [1, 7.2], [2, 9.3]] as t(g, v)
+group by g
+agg
+  v.sum as local_sum
+add
+  (local_sum.sum over()).round(1) as total
+order by g
+
+test _.rows is [
+  [1, 12.3, 21.6],
+  [2, 9.3, 21.6]
+]

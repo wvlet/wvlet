@@ -25,4 +25,13 @@ In Wvlet, you can specify range of rows in each window with the following syntax
 | rows [0:] | rows between current row and unbounded following |
 
 
-`rows [:0]` is the default window frame if no frame is specified. This means the window frame includes all rows from the first row of the partition to the current row. 
+`rows [:0]` is the default window frame if no frame is specified. This means the window frame includes all rows from the first row of the partition to the current row. To explicitly specify the window frame, you can use the `rows` keyword as follows:
+
+```sql
+from orders
+select amount.sum() over (
+    partition by customer_id
+    order by order_date
+    rows [:0]
+  ) as cumulative_amount
+```
