@@ -126,25 +126,25 @@ class QueryExecutor(
 
       r
 
-    def process(e: ExecutionPlan): QueryResult =
+    def process(e: ExecutionPlan)(using Context): QueryResult =
       e match
         case ExecuteQuery(plan) =>
-          report(executeQuery(plan, context))
+          report(executeQuery(plan))
         case ExecuteSave(save, queryPlan) =>
           // Evaluate test/debug if exists
           report(process(queryPlan))
-          report(executeSave(save)(using context))
+          report(executeSave(save))
         case ExecuteDelete(delete, queryPlan) =>
           // Evaluate test/debug if exists
           report(process(queryPlan))
-          report(executeDelete(delete)(using context))
+          report(executeDelete(delete))
         case d @ ExecuteDebug(debugPlan, debugExecutionPlan) =>
           val debugInput = lastResult
-          executeDebug(d, lastResult)(using context)
+          executeDebug(d, lastResult)
           debugInput
         case ExecuteTest(test) =>
           trace(s"run test: ${test.testExpr}")
-          report(executeTest(test, lastResult)(using context))
+          report(executeTest(test, lastResult))
         case ExecuteTasks(tasks) =>
           val results = tasks.map { task =>
             process(task)
@@ -152,7 +152,7 @@ class QueryExecutor(
           QueryResult.fromList(results)
         case ExecuteCommand(e) =>
           // Command produces no QueryResult other than errors
-          report(executeCommand(e, context))
+          report(executeCommand(e))
         case ExecuteValDef(v) =>
           val expr = ExpressionEvaluator.eval(v.expr, context)
           v.symbol.symbolInfo = BoundedSymbolInfo(v.symbol, v.name, expr.dataType, expr)
@@ -161,21 +161,24 @@ class QueryExecutor(
         case ExecuteNothing =>
           report(QueryResult.empty)
 
-    process(executionPlan)
+    process(executionPlan)(using context)
     QueryResult.fromList(results.result())
 
   end execute
 
-  private def executeStatement(sqls: List[String]): Unit = sqls.foreach: sql =>
-    workEnv.info(s"Executing SQL:\n${sql}")
-    debug(s"Executing SQL:\n${sql}")
-    try
-      getDBConnector(defaultProfile).execute(sql)
-    catch
-      case e: SQLException =>
-        throw StatusCode.SYNTAX_ERROR.newException(s"${e.getMessage}\n[sql]\n${sql}", e)
+  private def executeStatement(sqls: List[String])(using context: Context): Unit = sqls.foreach:
+    sql =>
+      workEnv.info(s"Executing SQL:\n${sql}")
+      debug(s"Executing SQL:\n${sql}")
+      given monitor: QueryProgressMonitor = context.queryProgressMonitor
+      try
+        getDBConnector(defaultProfile).execute(sql)
+      catch
+        case e: SQLException =>
+          throw StatusCode.SYNTAX_ERROR.newException(s"${e.getMessage}\n[sql]\n${sql}", e)
 
-  private def executeCommand(cmd: Command, context: Context): QueryResult =
+  private def executeCommand(cmd: Command)(using context: Context): QueryResult =
+    given monitor: QueryProgressMonitor = context.queryProgressMonitor
     cmd match
       case e: ExecuteExpr =>
         val cmd = GenSQL.generateExecute(e.expr, context)
@@ -213,7 +216,7 @@ class QueryExecutor(
     executeStatement(statements)
     QueryResult.empty
 
-  private def executeQuery(plan: LogicalPlan, context: Context): QueryResult =
+  private def executeQuery(plan: LogicalPlan)(using context: Context): QueryResult =
     trace(s"Executing query: ${plan.pp}")
     workEnv.trace(s"Executing plan: ${plan.pp}")
     plan match
