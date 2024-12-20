@@ -318,20 +318,18 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
       case ref: TableRef if !ref.relationType.isResolved =>
         lookup(ref.name, context) match
           case Some(sym) =>
-            val si = sym.symbolInfo
-            si match
-              case m: ModelSymbolInfo =>
-                si.tpe match
-                  case r: RelationType =>
-                    context.logTrace(s"Resolve model type: ${ref.name.fullName}")
-                    ModelScan(TableName(sym.name.name), Nil, r, ref.span)
+            sym.tree match
+              case m: ModelDef =>
+                val r = m.child.relationType
+                ModelScan(TableName(ref.name.fullName), Nil, r, ref.span)
+              case _ =>
+                val si = sym.symbolInfo
+                si match
+                  case relAlias: RelationAliasSymbolInfo =>
+                    // Replace alias to the referenced query
+                    sym.tree.asInstanceOf[Relation]
                   case _ =>
                     ref
-              case relAlias: RelationAliasSymbolInfo =>
-                // Replace alias to the referenced query
-                sym.tree.asInstanceOf[Relation]
-              case _ =>
-                ref
           case None =>
             // Lookup known types
             val tblType = Name.typeName(ref.name.leafName)
@@ -449,7 +447,7 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
   private object resolveRelation extends RewriteRule:
     override def apply(context: Context): PlanRewriter = {
       case r: Relation => // Regular relation and Filter etc.
-        context.logWarn(s"Resolving relation: ${r} with ${r.inputRelationType}")
+        // context.logWarn(s"Resolving relation: ${r} with ${r.inputRelationType}")
         val newRelation = r
           .transformChildExpressions(resolveExpression(r.inputRelationType, context))
         newRelation
@@ -630,7 +628,7 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
     if newExpr.resolved || !m.ft.returnType.isResolved then
       newExpr
     else
-      context.logInfo(s"Resolving ${newExpr} => ${m.ft.returnType} ${m.ft.returnType.getClass}")
+      context.logTrace(s"Resolving ${newExpr} => ${m.ft.returnType} ${m.ft.returnType.getClass}")
       newExpr.withDataType(m.ft.returnType)
 
   end inlineFunctionBody
@@ -683,6 +681,7 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
         mapArg(f.args)
 
         // Resolve identifiers in the function body with the given function arguments
+        // context.logWarn(s"Resolved function args: ${f.base}")
         val expr = inlineFunctionBody(f.base, m, resolvedArgs.result())
         expr.withDataType(m.ft.returnType)
       case _ =>
