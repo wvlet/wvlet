@@ -24,10 +24,12 @@ import wvlet.lang.compiler.{
   NamedSymbolInfo,
   PackageSymbolInfo,
   Phase,
+  QuerySymbol,
   RelationAliasSymbolInfo,
   SavedRelationSymbolInfo,
   Scope,
   Symbol,
+  TermName,
   TypeSymbol,
   TypeSymbolInfo
 }
@@ -50,6 +52,14 @@ object SymbolLabeler extends Phase("symbol-labeler"):
   private def label(plan: LogicalPlan, context: Context): Unit =
     if context.isContextCompilationUnit then
       debug(s"Labeling symbols for ${plan.pp}")
+
+    def attachNewSymbol(tree: LogicalPlan, ctx: Context): Symbol =
+      val sym = Symbol(ctx.global.newSymbolId)
+      tree.symbol = sym
+      sym.tree = tree
+      ctx.compilationUnit.enter(sym)
+      sym
+
     def iter(tree: LogicalPlan, ctx: Context): Context =
       tree match
         case p: PackageDef =>
@@ -72,7 +82,7 @@ object SymbolLabeler extends Phase("symbol-labeler"):
           ctx
         case m: ModelDef =>
           registerModelSymbol(m)(using ctx)
-          ctx
+          iter(m.child, ctx)
         case f: TopLevelFunctionDef =>
           registerTopLevelFunction(f)(using ctx)
           ctx
@@ -91,15 +101,24 @@ object SymbolLabeler extends Phase("symbol-labeler"):
           warn(d)
           iter(d.debugExpr, ctx)
           ctx
-        case q: Relation =>
-          q.traverseOnce {
-            case s: SelectAsAlias =>
-              iter(s.child, ctx)
-              registerSelectAsAlias(s)(using ctx)
-            case d: Debug =>
-              iter(d.debugExpr, ctx)
-          }
-          ctx
+        case stmt: TopLevelStatement =>
+          stmt match
+            case q: Query =>
+              val sym: Symbol = attachNewSymbol(q, ctx)
+              sym.symbolInfo = QuerySymbol(sym, ctx.owner, TermName.of(s"__query_${sym.id}"))
+              q.traverseOnce {
+                case s: SelectAsAlias =>
+                  iter(s.child, ctx)
+                  registerSelectAsAlias(s)(using ctx)
+                case d: Debug =>
+                  iter(d.debugExpr, ctx)
+              }
+              ctx
+            case c: Command =>
+              val sym = attachNewSymbol(c, ctx)
+              ctx
+            case _ =>
+              ctx
         case _ =>
           ctx
 

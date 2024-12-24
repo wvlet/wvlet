@@ -55,9 +55,13 @@ class Symbol(val id: Int) extends LogSupport:
     if _symbolInfo == null then
       s"Symbol($id)"
     else
-      _symbolInfo.toString
+      _symbolInfo.name.name
 
-  def name: Name = symbolInfo.name
+  def name: Name =
+    if _symbolInfo == null then
+      Name.NoName
+    else
+      symbolInfo.name
 
   def isNoSymbol: Boolean = this == Symbol.NoSymbol
 

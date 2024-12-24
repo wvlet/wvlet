@@ -136,3 +136,6 @@ case class SavedRelationSymbolInfo(override val symbol: Symbol, override val nam
 //// Multiple types are used for overloaded methods
 //case class MultipleTypeInfo(i1: TypeInfo, i2: TypeInfo)
 //    extends TypeInfo(Symbol.NoSymbol, Type.UnknownType)
+
+case class QuerySymbol(override val symbol: Symbol, owner: Symbol, override val name: Name)
+    extends SymbolInfo(symbol, Name.NoName, DataType.UnknownType)
