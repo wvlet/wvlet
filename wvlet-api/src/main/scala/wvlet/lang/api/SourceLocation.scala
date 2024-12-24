@@ -20,7 +20,7 @@ case class SourceLocation(
     codeLineAt: String,
     position: LinePosition
 ):
-
+  override def toString: String = locationString
   def lineLocationString: String =
     if position.isEmpty then
       path

@@ -16,7 +16,12 @@ package wvlet.lang.compiler
 import wvlet.lang.api.{StatusCode, WvletLangException}
 import wvlet.lang.catalog.Catalog
 import wvlet.lang.compiler.Compiler.presetLibraries
-import wvlet.lang.compiler.analyzer.{RemoveUnusedQueries, SymbolLabeler, TypeResolver}
+import wvlet.lang.compiler.analyzer.{
+  ModelDependencyAnalyzer,
+  RemoveUnusedQueries,
+  SymbolLabeler,
+  TypeResolver
+}
 import wvlet.lang.compiler.parser.{ParserPhase, WvletParser}
 import wvlet.lang.compiler.transform.{
   Incrementalize,
@@ -47,7 +52,8 @@ object Compiler extends LogSupport:
     PreprocessLocalExpr, // Preprocess local expressions (e.g., backquote strings and native expressions)
     SymbolLabeler, // Assign unique Symbol to each LogicalPlan and Expression nodes, a and assign a lazy DataType
     RemoveUnusedQueries(), // Exclude unused compilation units (e.g., out of scope queries) from the following phases
-    TypeResolver // Assign a concrete DataType to each LogicalPlan and Expression nodes
+    TypeResolver, // Assign a concrete DataType to each LogicalPlan and Expression nodes
+    ModelDependencyAnalyzer()
   )
 
   /**
