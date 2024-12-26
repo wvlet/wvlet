@@ -19,7 +19,10 @@ package wvlet.lang.api
   *   start |-----------| end
   *             ^ (point)
   * }}}
-  * Encoded as | 12 bit (pointDelta) | 26 bit (end) | 26 bit (start) |
+  * Encoded as a single Long (64-bit value):
+  * {{{
+  * | 12 bit (pointDelta) | 26 bit (end) | 26 bit (start) |
+  * }}}
   */
 class Span(val coordinate: Long) extends AnyVal:
   override def toString: String =
