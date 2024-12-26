@@ -14,17 +14,26 @@
 package wvlet.lang.api
 
 enum StatusType:
+  // Success status
   case Success
+  // User or query errors, which is not retryable
   case UserError
-  case SystemError
-  case ExternalError
+  // Internal errors, which is usually retryable
+  case InternalError
+  // Insufficient resources to complete the task. Users can retry after the resource is available
+  case ResourceExhausted
 
+/**
+  * The standard error code for throwing exceptions
+  * @param statusType
+  */
 enum StatusCode(statusType: StatusType):
 
   case OK extends StatusCode(StatusType.Success)
-  // Used for successful exit using Exception
+  // Used for successful exit by throwing an Exception
   case EXIT_SUCCESSFULLY extends StatusCode(StatusType.Success)
 
+  // User errors
   case SYNTAX_ERROR     extends StatusCode(StatusType.UserError)
   case UNEXPECTED_TOKEN extends StatusCode(StatusType.UserError)
 
@@ -48,9 +57,12 @@ enum StatusCode(statusType: StatusType):
 
   case TEST_FAILED extends StatusCode(StatusType.UserError)
 
+  case INTERNAL_ERROR extends StatusCode(StatusType.InternalError)
+
+  case RESOURCE_EXHAUSTED extends StatusCode(StatusType.ResourceExhausted)
+
   def isUserError: Boolean     = statusType == StatusType.UserError
-  def isSystemError: Boolean   = statusType == StatusType.SystemError
-  def isExternalError: Boolean = statusType == StatusType.ExternalError
+  def isInternalError: Boolean = statusType == StatusType.InternalError
   def isSuccess: Boolean       = statusType == StatusType.Success
 
   def name: String                                  = this.toString
