@@ -99,3 +99,5 @@ class NegSpec extends SpecRunner("spec/neg"):
       debug(e)
     case e: Throwable =>
       throw e
+
+class CDPBehaviorSpec extends SpecRunner("spec/cdp_behavior")

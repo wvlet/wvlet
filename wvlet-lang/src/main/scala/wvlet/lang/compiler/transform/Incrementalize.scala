@@ -86,7 +86,7 @@ object Incrementalize extends Phase("incrementalize"):
               false
         case _ =>
           false
-
+    
     override def isTargetPlan(plan: LogicalPlan, context: Context): Boolean = isSimpleScan(
       plan,
       context

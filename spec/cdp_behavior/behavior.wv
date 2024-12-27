@@ -22,3 +22,5 @@ model behavior_weblog_fluentd_ja =
   from weblog_fluentd_ja
   where _.is_valid_behavior
 end
+
+from behavior_weblogs.subscribe(within = '-1h/2017-08-31 21:00:00')

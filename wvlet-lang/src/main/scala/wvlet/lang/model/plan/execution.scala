@@ -13,14 +13,16 @@
  */
 package wvlet.lang.model.plan
 
-import wvlet.lang.api.LinePosition
+import wvlet.lang.api.{LinePosition, StatusCode}
 import wvlet.lang.model.expr.{Attribute, NameExpr}
 import wvlet.airframe.ulid.ULID
+import wvlet.lang.model.TreeNode
 
 /**
   * Additional nodes that for organizing tasks for executing LogicalPlan nodes
   */
-sealed trait ExecutionPlan extends Product:
+
+sealed trait ExecutionPlan extends TreeNode with Product:
   def isEmpty: Boolean = false
   def planName: String = this.getClass.getSimpleName.stripSuffix("$")
 
@@ -52,6 +54,43 @@ sealed trait ExecutionPlan extends Product:
     iter(this, 0)
 
   end pp
+
+  def transformUp(p: PartialFunction[ExecutionPlan, ExecutionPlan]): ExecutionPlan = this
+
+  def mapChildren(f: ExecutionPlan => ExecutionPlan): ExecutionPlan =
+    var changed = false
+
+    def iter(it: Any): AnyRef =
+      it match
+        case p: ExecutionPlan =>
+          val newP = f(p)
+          if newP ne p then
+            changed = true
+          newP
+        case l: List[?] =>
+          l.map(iter)
+        case other =>
+          other.asInstanceOf[AnyRef]
+
+    val newArgs = productIterator.map(iter).toIndexedSeq
+    if changed then
+      copyInstance(newArgs)
+    else
+      this
+
+  protected def copyInstance(newArgs: Seq[AnyRef]): this.type =
+    // Using non-JVM reflection to support Scala.js/Scala Native
+    try
+      val newObj = newInstance(newArgs*)
+      newObj.asInstanceOf[this.type]
+    catch
+      case e: IllegalArgumentException =>
+        throw StatusCode
+          .COMPILATION_FAILURE
+          .newException(
+            s"Failed to create ${this.getClass.getSimpleName} node with args: ${newArgs.mkString(", ")}",
+            e
+          )
 
 end ExecutionPlan
 

@@ -127,14 +127,18 @@ object GenSQL extends Phase("generate-sql"):
 
     val executionPlan =
       if targetPlan.isEmpty then
-        ExecutionPlanner.plan(unit, ctx)
+        if unit.executionPlan.isEmpty then
+          ExecutionPlanner.plan(unit, ctx)
+        else
+          unit.executionPlan
       else
+        // Create an execution plan for sub queries
         ExecutionPlanner.plan(unit, targetPlan.get, ctx)
     loop(executionPlan)
     val queries = statements.result()
     val sql     = queries.mkString("\n;\n")
     if queries.size > 1 then
-      // Add a last semi-colon for multiple statements
+      // Add a last semicolon for multiple statements
       s"${sql}\n;"
     else
       sql
