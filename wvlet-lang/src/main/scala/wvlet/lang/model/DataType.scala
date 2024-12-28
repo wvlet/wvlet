@@ -48,6 +48,13 @@ abstract class DataType(val typeName: TypeName, override val typeParams: Seq[Dat
       case _ =>
         false
 
+  def isRelationType: Boolean =
+    this match
+      case _: RelationType =>
+        true
+      case _ =>
+        false
+
   override def isFunctionType: Boolean = false
   override def isResolved: Boolean
   def resolved: DataType = this

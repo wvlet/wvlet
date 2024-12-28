@@ -52,7 +52,9 @@ class Symbol(val id: Int) extends LogSupport:
   private var _tree: SyntaxTreeNode | Null   = null
 
   override def toString =
-    if _symbolInfo == null then
+    if id == -1 then
+      "NoSymbol"
+    else if _symbolInfo == null then
       s"Symbol($id)"
     else
       _symbolInfo.name.name

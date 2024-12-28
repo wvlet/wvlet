@@ -61,6 +61,7 @@ object ExecutionPlanRewriter extends Phase("exec-plan-rewriter") with ContextLog
             val resolvedQuery: Relation = TypeResolver
               .resolve(query, context)
               .asInstanceOf[Relation]
+
             val save: Save = SaveTo(
               resolvedQuery,
               UnquotedIdentifier(s"__${t.fullName}", Span.NoSpan),
