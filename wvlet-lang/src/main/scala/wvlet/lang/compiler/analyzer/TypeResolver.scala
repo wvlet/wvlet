@@ -14,7 +14,7 @@
 package wvlet.lang.compiler.analyzer
 
 import wvlet.airframe.msgpack.spi.MsgPack
-import wvlet.lang.api.StatusCode
+import wvlet.lang.api.{Span, StatusCode}
 import wvlet.lang.catalog.Catalog.TableName
 import wvlet.lang.compiler.RewriteRule.PlanRewriter
 import wvlet.lang.compiler.{

@@ -25,6 +25,7 @@ class ModelDependencyAnalyzer extends Phase("model-dependency-analyzer"):
     val dag = DependencyDAG(dependencies.result())
     if !dag.isEmpty then
       debug(s"[dependency graph]\n${dag.printGraph}")
+      unit.modelDependencies = dag
     unit
 
   private def analyzeDependency(l: LogicalPlan)(using ctx: Context): ListMap[Symbol, List[Symbol]] =
@@ -43,6 +44,9 @@ class ModelDependencyAnalyzer extends Phase("model-dependency-analyzer"):
     edges.result()
 
 end ModelDependencyAnalyzer
+
+object DependencyDAG:
+  val empty: DependencyDAG = DependencyDAG(ListMap.empty)
 
 case class DependencyDAG(nodes: ListMap[Symbol, List[Symbol]]):
   def isEmpty: Boolean  = nodes.isEmpty

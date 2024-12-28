@@ -48,6 +48,7 @@ object ExecutionPlanRewriter extends Phase("exec-plan-rewriter") with ContextLog
                 if funName.fullName == "subscribe" =>
               subscriptionTarget ::= qual
               val savedModelName = s"__${qual.fullName}"
+              context.logDebug(s"model ref symbol: ${qual.symbol}")
               TableRef(UnquotedIdentifier(savedModelName, span), span)
           }
 
@@ -61,6 +62,7 @@ object ExecutionPlanRewriter extends Phase("exec-plan-rewriter") with ContextLog
             val resolvedQuery: Relation = TypeResolver
               .resolve(query, context)
               .asInstanceOf[Relation]
+
             val save: Save = SaveTo(
               resolvedQuery,
               UnquotedIdentifier(s"__${t.fullName}", Span.NoSpan),

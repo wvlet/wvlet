@@ -56,6 +56,7 @@ sealed trait NameExpr extends Expression:
   def strExpr: String
   def leafName: String
   def fullName: String
+  def nonLeafName: String = fullName.stripSuffix(s".${leafName}")
   def nonEmpty: Boolean = !isEmpty
   def isEmpty: Boolean =
     // TODO: This part is a bit ad-hoc as EmptyName can be copied during the tree transformation, so

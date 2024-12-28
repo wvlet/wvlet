@@ -16,6 +16,7 @@ package wvlet.lang.compiler
 import wvlet.lang.api.{LinePosition, SourceLocation, Span}
 import wvlet.lang.compiler
 import wvlet.lang.compiler.SourceFile.NoSourceFile
+import wvlet.lang.compiler.analyzer.DependencyDAG
 import wvlet.lang.model.plan.{ExecutionPlan, LogicalPlan, NamedRelation, Relation}
 import wvlet.lang.stdlib.StdLib
 import wvlet.log.LogSupport
@@ -36,6 +37,7 @@ case class CompilationUnit(sourceFile: SourceFile, isPreset: Boolean = false) ex
   var unresolvedPlan: LogicalPlan = LogicalPlan.empty
   // Fully-typed plan tree
   var resolvedPlan: LogicalPlan    = LogicalPlan.empty
+  var modelDependencies: DependencyDAG = DependencyDAG.empty
   var executionPlan: ExecutionPlan = ExecutionPlan.empty
 
   var knownSymbols: List[Symbol] = List.empty
