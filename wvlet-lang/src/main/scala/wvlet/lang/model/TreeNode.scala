@@ -21,8 +21,9 @@ import wvlet.lang.compiler.ContextUtil.*
 /**
   * A base class for LogicalPlan and Expression
   */
-trait TreeNode extends TreeNodeCompat:
+trait TreeNode extends TreeNodeCompat
 
+trait SyntaxTreeNode extends TreeNode:
   private var _symbol: Symbol = Symbol.NoSymbol
 
   def symbol: Symbol            = _symbol

@@ -17,7 +17,7 @@ import wvlet.lang.compiler.{Name, SourceFile}
 import wvlet.lang.model.DataType.EmptyRelationType
 import wvlet.lang.model.expr.NameExpr.EmptyName
 import wvlet.lang.model.expr.{Attribute, AttributeList, Expression, NameExpr}
-import wvlet.lang.model.{RelationType, RelationTypeList, TreeNode}
+import wvlet.lang.model.{RelationType, RelationTypeList, SyntaxTreeNode, TreeNode}
 import wvlet.airframe.ulid.ULID
 import wvlet.lang.api.StatusCode
 import wvlet.lang.api.{LinePosition, Span}
@@ -27,7 +27,7 @@ enum PlanProperty:
   // Used for recording a Symbol defined for the tree
   case SymbolOfTree
 
-trait LogicalPlan extends TreeNode with Product:
+trait LogicalPlan extends SyntaxTreeNode with Product:
   // Ephemeral properties of the plan node, which will be used during compilation phases
   private var properties = Map.empty[PlanProperty, Any]
 
@@ -424,7 +424,7 @@ trait LogicalPlan extends TreeNode with Product:
       this
 
   protected def copyInstance(newArgs: Seq[AnyRef]): this.type =
-    // TODO: Use non-reflection to support Scala.js/Scala Native
+    // Using non-JVM reflection to support Scala.js/Scala Native
     try
       val args = newArgs.map { (x: Any) =>
         x match
@@ -436,7 +436,7 @@ trait LogicalPlan extends TreeNode with Product:
       }
       val newObj = newInstance(args*)
       newObj match
-        case t: TreeNode =>
+        case t: SyntaxTreeNode =>
           if this.symbol.tree != null then
             // Update the tree reference to the rewritten one
             this.symbol.tree = t

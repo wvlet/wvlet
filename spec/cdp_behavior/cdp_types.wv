@@ -33,7 +33,8 @@ type td_sdk_log:
     and td_client_id is not '00000000-0000-4000-8000-000000000000'
     and (
       td_browser is not null
-      or not td_browser.regexp_like('^(?:Googlebot(?:-.*)?|BingPreview|bingbot|YandexBot|PingdomBot)$')
+      -- TODO: Support td_browser.regexp_like(...) syntax for DuckDB/Trino
+      or not regexp_like(td_browser, '^(?:Googlebot(?:-.*)?|BingPreview|bingbot|YandexBot|PingdomBot)$')
     )
     and td_host is not 'gtm-msr.appspot.com'
 end

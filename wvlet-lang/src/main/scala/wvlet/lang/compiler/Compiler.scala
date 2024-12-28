@@ -23,6 +23,7 @@ import wvlet.lang.compiler.analyzer.{
   TypeResolver
 }
 import wvlet.lang.compiler.parser.{ParserPhase, WvletParser}
+import wvlet.lang.compiler.planner.{ExecutionPlanRewriter, ExecutionPlanner}
 import wvlet.lang.compiler.transform.{
   Incrementalize,
   PreprocessLocalExpr,
@@ -69,7 +70,7 @@ object Compiler extends LogSupport:
     * Generate SQL, Scala, or other code from the logical plan
     * @return
     */
-  def codeGenPhases: List[Phase] = List()
+  def codeGenPhases: List[Phase] = List(ExecutionPlanner, ExecutionPlanRewriter)
 
   def allPhases: List[List[Phase]] = List(analysisPhases, transformPhases, codeGenPhases)
 

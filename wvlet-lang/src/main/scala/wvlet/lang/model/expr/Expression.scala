@@ -22,7 +22,7 @@ import wvlet.log.LogSupport
 
 /**
   */
-trait Expression extends TreeNode with Product with LogSupport:
+trait Expression extends SyntaxTreeNode with Product with LogSupport:
   def pp: String = LogicalPlanPrinter.printExpression(this)
   def children: Seq[Expression]
 

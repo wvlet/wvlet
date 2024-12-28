@@ -13,7 +13,7 @@
  */
 package wvlet.lang.compiler
 
-import wvlet.lang.model.{DataType, TreeNode, Type}
+import wvlet.lang.model.{DataType, SyntaxTreeNode, TreeNode, Type}
 import wvlet.lang.model.Type.PackageType
 import wvlet.lang.model.expr.NameExpr
 import wvlet.lang.model.expr.NameExpr.EmptyName
@@ -49,7 +49,7 @@ end Symbol
   */
 class Symbol(val id: Int) extends LogSupport:
   private var _symbolInfo: SymbolInfo | Null = null
-  private var _tree: TreeNode | Null         = null
+  private var _tree: SyntaxTreeNode | Null   = null
 
   override def toString =
     if _symbolInfo == null then
@@ -87,13 +87,13 @@ class Symbol(val id: Int) extends LogSupport:
       case _ =>
         false
 
-  def tree: TreeNode =
+  def tree: SyntaxTreeNode =
     if _tree == null then
       LogicalPlan.empty
     else
       _tree
 
-  def tree_=(t: TreeNode): Unit =
+  def tree_=(t: SyntaxTreeNode): Unit =
     t match
       case l: LogicalPlan =>
         trace(s"Set Symbol(${id}) to ${l.pp}")
