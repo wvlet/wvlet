@@ -36,9 +36,9 @@ case class CompilationUnit(sourceFile: SourceFile, isPreset: Boolean = false) ex
   // Untyped plan tree
   var unresolvedPlan: LogicalPlan = LogicalPlan.empty
   // Fully-typed plan tree
-  var resolvedPlan: LogicalPlan    = LogicalPlan.empty
+  var resolvedPlan: LogicalPlan        = LogicalPlan.empty
   var modelDependencies: DependencyDAG = DependencyDAG.empty
-  var executionPlan: ExecutionPlan = ExecutionPlan.empty
+  var executionPlan: ExecutionPlan     = ExecutionPlan.empty
 
   var knownSymbols: List[Symbol] = List.empty
 

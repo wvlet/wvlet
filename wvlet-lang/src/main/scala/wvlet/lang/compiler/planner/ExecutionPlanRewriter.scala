@@ -48,7 +48,6 @@ object ExecutionPlanRewriter extends Phase("exec-plan-rewriter") with ContextLog
                 if funName.fullName == "subscribe" =>
               subscriptionTarget ::= qual
               val savedModelName = s"__${qual.fullName}"
-              context.logDebug(s"model ref symbol: ${qual.symbol}")
               TableRef(UnquotedIdentifier(savedModelName, span), span)
           }
 
