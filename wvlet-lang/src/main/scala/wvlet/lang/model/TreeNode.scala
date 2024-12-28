@@ -23,7 +23,6 @@ import wvlet.lang.compiler.ContextUtil.*
   */
 trait TreeNode extends TreeNodeCompat
 
-
 trait SyntaxTreeNode extends TreeNode:
   private var _symbol: Symbol = Symbol.NoSymbol
 

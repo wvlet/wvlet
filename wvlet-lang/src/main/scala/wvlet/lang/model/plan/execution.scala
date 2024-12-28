@@ -41,7 +41,7 @@ sealed trait ExecutionPlan extends TreeNode with Product:
           case q: ExecuteQuery =>
             s"- ${header}:\n${indent(q.plan.pp, level + 1)}"
           case s: ExecuteSave =>
-            s"- ${header} as ${s.save.targetName}:\n${indent(s.queryPlan.pp, level + 1)}"
+            s"- ${header} to ${s.save.targetName}:\n${indent(s.queryPlan.pp, level + 1)}"
           case t: ExecuteTest =>
             s"- ${header} ${t.test.testExpr.pp}"
           case t: ExecuteDebug =>

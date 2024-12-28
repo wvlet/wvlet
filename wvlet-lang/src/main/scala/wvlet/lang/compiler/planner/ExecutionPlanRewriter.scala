@@ -1,7 +1,10 @@
 package wvlet.lang.compiler.planner
 
+import wvlet.lang.api.Span
+import wvlet.lang.compiler.analyzer.TypeResolver
 import wvlet.lang.compiler.{CompilationUnit, Context, ContextLogSupport, Phase}
-import wvlet.lang.model.plan.{ExecuteQuery, ExecutionPlan, TableFunctionCall}
+import wvlet.lang.model.expr.{DotRef, Identifier, NameExpr, UnquotedIdentifier}
+import wvlet.lang.model.plan.*
 
 trait ExecutionPlanRewriteRule:
   def rewrite(plan: ExecutionPlan, context: Context): ExecutionPlan
@@ -25,13 +28,51 @@ object ExecutionPlanRewriter extends Phase("exec-plan-rewriter") with ContextLog
     unit
 
   object RewriteSubscribeTableFunction extends ExecutionPlanRewriteRule:
+
+    private def hasSubscriptionCall(plan: LogicalPlan): Boolean =
+      var found = false
+      plan.traverseOnce {
+        case t: TableFunctionCall if t.name.leafName == "subscribe" =>
+          found = true
+      }
+      found
+
     override def rewrite(plan: ExecutionPlan, context: Context): ExecutionPlan = plan.transformUp {
-      case q: ExecuteQuery =>
-        q.plan
-          .traverse {
-            case t: TableFunctionCall if t.name.leafName == "subscribe" =>
-              warn(s"Found a subscription query: ${t.pp}")
+      case q: ExecuteQuery if hasSubscriptionCall(q.plan) =>
+        var subscriptionTarget: List[NameExpr] = List.empty
+
+        val newQueryPlan = q
+          .plan
+          .transformOnce {
+            case TableFunctionCall(DotRef(qual: Identifier, funName, _, _), args, span)
+                if funName.fullName == "subscribe" =>
+              subscriptionTarget ::= qual
+              val savedModelName = s"__${qual.fullName}"
+              TableRef(UnquotedIdentifier(savedModelName, span), span)
           }
 
-        q
+        if subscriptionTarget == null then
+          q
+        else
+          val newPlans = List.newBuilder[ExecutionPlan]
+          subscriptionTarget.map { t =>
+            // TODO Append time conditions for subscription
+            val query = TableRef(t, Span.NoSpan)
+            val resolvedQuery: Relation = TypeResolver
+              .resolve(query, context)
+              .asInstanceOf[Relation]
+            val save: Save = SaveTo(
+              resolvedQuery,
+              UnquotedIdentifier(s"__${t.fullName}", Span.NoSpan),
+              Nil,
+              Span.NoSpan
+            )
+            newPlans += ExecuteSave(save, ExecuteQuery(resolvedQuery))
+          }
+          newPlans += ExecuteQuery(newQueryPlan)
+          ExecuteTasks(tasks = newPlans.result())
     }
+
+  end RewriteSubscribeTableFunction
+
+end ExecutionPlanRewriter

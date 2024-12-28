@@ -87,7 +87,7 @@ class QueryExecutor(
     workEnv.info(s"Executing ${u.sourceFile.fileName}")
     val ctx = rootContext.withCompilationUnit(u).newContext(Symbol.NoSymbol)
 
-    val executionPlan = ExecutionPlanner.plan(u, ctx)
+    val executionPlan = u.executionPlan // ExecutionPlanner.plan(u, ctx)
     val result        = execute(executionPlan, ctx)
     workEnv.info(s"Completed ${u.sourceFile.fileName}")
     result

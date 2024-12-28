@@ -15,7 +15,8 @@ end
 --@config(watermark_column='time', window_size='1h')
 model behavior_weblogs =
   from weblogs
-  where _.is_valid_behavior
+-- TODO Resolve _ as td_sdk_log type
+--  where _.is_valid_behavior
 end
 
 model behavior_weblog_fluentd_ja =
@@ -23,4 +24,4 @@ model behavior_weblog_fluentd_ja =
   where _.is_valid_behavior
 end
 
-from behavior_weblogs.subscribe(within = '-1h/2017-08-31 21:00:00')
+from behavior_weblogs.subscribe(watermark_column = 'time', window_size = '1h')
