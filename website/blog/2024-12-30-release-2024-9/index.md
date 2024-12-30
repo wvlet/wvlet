@@ -1,31 +1,31 @@
 ---
 slug: release-2024-9
-title: 'Redesigning 50-Year-Old SQL for Modern Data Analytics'
+title: 'Wvlet: Redesigning 50-Year-Old SQL for Modern Data Analytics'
 authors: [xerial]
 tags: [tech, release]
 ---
 
-We are excited to announce the release of Wvlet version [2024.9](https://github.com/wvlet/wvlet/milestone/11), an open-source flow-style query language designed to help users to write efficient queries for SQL engines. You can try Wvlet directly in your web browser at [Wvlet Playground](https://wvlet.org/wvlet/playground/). The source code is available on [GitHub](https://github.com/wvlet/wvlet).
+We are excited to announce the release of Wvlet version [2024.9](https://github.com/wvlet/wvlet/milestone/11), an open-source flow-style query language designed to help users to write efficient queries for SQL engines. you can try Wvlet, pronounced as _weave-let_, directly in your web browser at [Wvlet Playground](https://wvlet.org/wvlet/playground/). The source code of Wvlet compiler is available on [GitHub](https://github.com/wvlet/wvlet).
 
 <!-- truncate -->
 
 
 ## Why Wvlet?
 
-At Treasure Data, we process over 3 million SQL queries daily. Managing this volume of queries and helping users (or LLM) write efficient queries presents several challenges.
+At Treasure Data, we process over 3 million SQL queries daily. Managing this volume of queries and helping users (including LLM) write efficient queries presents significant challenges.
 
-The first challenge was that the syntactic order of SQL does not match the actual data flow. This discrepancy makes debugging complex and deeply nested queries difficult, even for SQL experts. _[A Critique of Modern SQL And A Proposal Towards A Simple and Expressive Query Language (CIDR '24)](https://www.cidrdb.org/cidr2024/papers/p48-neumann.pdf)_ highlights this issue intuitively:
+The primary challenges lies in SQL's syntax: its syntactic order doesn't match the actual data flow. This mismatch makes debugging complex and deeply nested queries difficult, even for SQL experts. _[A Critique of Modern SQL And A Proposal Towards A Simple and Expressive Query Language (CIDR '24)](https://www.cidrdb.org/cidr2024/papers/p48-neumann.pdf)_ highlights this issue clearly:
 
 <center>
 ![semantic-order](./sql-semantic-order.png)
 </center>
 
-Another challenge is that the SQL standard (e.g., SQL-92) covers only a small area and lacks essential software engineering features for managing multiple queries, including:
+Additionally, the SQL standard (e.g., SQL-92) is limited in scope and lacks essential software engineering features for managing multiple queries, including:
 - No built-in support for reusing and generating queries.
 - No extension point for multi-query optimization, such as incremental processing and pipeline execution like dbt.
 - No built-in debugging or testing capabilities.
 
-These challenges have arisen because SQL, designed in the 1970s, is now widely used for data analytics beyond its original scope. Wvlet is designed to address these challenges by modernizing [50-year-old SQL](https://dl.acm.org/doi/10.1145/3649887) to be more intuitive and functional, incorporating the best practices of software engineering.
+These limitations stem from SQL, born in the 1970s, not designed for today's complex data analytics needs. Wvlet adresses these challenges by modernizing [50-year-old SQL](https://dl.acm.org/doi/10.1145/3649887), making it more intuitive and functional while incorporating software engineering best practices.
 
 
 ## What's the current state of Wvlet?
