@@ -1,6 +1,6 @@
 ---
 slug: release-2024-9
-title: Wvlet Release 2024.9
+title: 'Redesigning 50-Year-Old SQL for Modern Data Analytics'
 authors: [xerial]
 tags: [tech, release]
 ---
@@ -10,28 +10,27 @@ We are excited to announce the release of Wvlet version [2024.9](https://github.
 <!-- truncate -->
 
 
-
 ## Why Wvlet?
 
 At Treasure Data, we process over 3 million SQL queries daily. Managing this volume of queries and helping users (or LLM) write efficient queries presents several challenges.
 
-The first challenge is that the syntactic order of SQL does not match the actual data flow. This discrepancy makes debugging complex and deeply nested queries difficult, even for SQL experts. [A Critique of Modern SQL And A Proposal Towards A Simple and Expressive Query Language (CIDR '24)](https://www.cidrdb.org/cidr2024/papers/p48-neumann.pdf)_ highlights this issue effectively:
+The first challenge was that the syntactic order of SQL does not match the actual data flow. This discrepancy makes debugging complex and deeply nested queries difficult, even for SQL experts. _[A Critique of Modern SQL And A Proposal Towards A Simple and Expressive Query Language (CIDR '24)](https://www.cidrdb.org/cidr2024/papers/p48-neumann.pdf)_ highlights this issue intuitively:
 
 <center>
 ![semantic-order](./sql-semantic-order.png)
 </center>
 
-Another challenge is that the SQL standard (e.g., SQL-92) covers too small an area and lacks essential software engineering features for managing multiple queries, including:  
+Another challenge is that the SQL standard (e.g., SQL-92) covers only a small area and lacks essential software engineering features for managing multiple queries, including:
 - No built-in support for reusing and generating queries.
 - No extension point for multi-query optimization, such as incremental processing and pipeline execution like dbt.
 - No built-in debugging or testing capabilities.
 
-These challenges have arisen because SQL, designed in the 1970s, is now used for data analytics beyond its original scope. Wvlet is designed to address these challenges by modernizing 50-year-old SQL to be more intuitive and functional, incorporating the best practices of software engineering.
+These challenges have arisen because SQL, designed in the 1970s, is now widely used for data analytics beyond its original scope. Wvlet is designed to address these challenges by modernizing [50-year-old SQL](https://dl.acm.org/doi/10.1145/3649887) to be more intuitive and functional, incorporating the best practices of software engineering.
 
 
 ## What's the current state of Wvlet?
 
-Wvlet is still in the early stage of development, but is already usable for writing and running queries against DuckDB, Trino, through a command line client (`wv`) or the Web-based UI (`wvlet ui`).  
+Though still in early development, Wvlet already enables users to write and run queries against DuckDB, Trino through either a command line client (`wv`) or the Web-based UI (`wvlet ui`).  
 
 ### Interactive Editor (wv)
 
@@ -80,7 +79,7 @@ Queries written in Wvlet are reusable and composable, making it easier to manage
 
 ### Wvlet SDKs
 
-We plan to add SDKs for various programming languages to help users convert Wvlet queries into SQL. Wvlet, written in Scala 3, can be compiled into native LLVM code, which can be integrated with various programming languages, including Python, Rust, Ruby, C/C++ etc. In 2024.9 version, we have created an early version of Python SDKs: 
+We plan to add SDKs for various programming languages to help users convert Wvlet queries into SQL. Wvlet compiler, written in Scala 3, can be compiled into native LLVM code, which can be integrated with various programming languages, including Python, Rust, Ruby, C/C++ etc. In 2024.9 version, we have created an early version of Python SDKs: 
 
 - [Wvlet SDKs](/docs/bindings)
 
@@ -89,13 +88,13 @@ Thanks to contributors from the community, we are getting closer to support mult
 
 ## What's Next?
 
-We plan to release milestone versions approximately every 3 months, following the format `(year).(milestone month).(patch)`. The next milestone version will be [2025.1](https://github.com/wvlet/wvlet/milestone/12). The project roadmap and features under active development can be found on the [Wvlet Roadmap](https://github.com/orgs/wvlet/projects/2).
+We plan to release milestone versions approximately every 3 months, following the format `(year).(milestone month).(patch)`. The next milestone version will be [2025.1](https://github.com/wvlet/wvlet/milestone/12). You can find our project roadmap and features under active development on the [Wvlet Roadmap](https://github.com/orgs/wvlet/projects/2).
 
-The next milestone 2025.1 will focus on functional data modeling features, such as:
-- Cascading updates and materialization of Wvlet data models, similar to DBT, including advanced query optimization, such as incremental processing and query fusion.
+The next 2025.1 milestone will focus on functional data modeling features, including:
+- Advanced query optimization with cuscading updates and materialization of Wvlet data models, similar to DBT, featuring incremental processing and query fusion.
 - Support for importing Wvlet queries from GitHub repositories. 
-- Redesign the type systems to enhance dot-syntax support for more complex expressions.
+- Enhance the type system with improved dot-syntax support for complex expressions.
+- Support for more SQL dialects through context-specific query inlining.
 
-
-We have an open [Discord channel](https://discord.com/invite/vJBXRfEeNQ) for public discussions. Let us know your thoughts, feedback, and feature requests. We are looking forward to hearing from you!
+Join our discussions in the [Discord channel](https://discord.com/invite/vJBXRfEeNQ). We welcom your thoughts, feedback, and feature requests. 
 
