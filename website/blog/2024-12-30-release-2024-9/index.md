@@ -46,7 +46,7 @@ For using Trino SQL engine, you need to configure `~/.wvlet/profiles.yml` file t
 
 ### Wvlet Playground 
 
-Wvlet is written in Scala 3, which can be compiled to JavaScript using Scala.js. This allows us to run Wvlet in the browser. Here is a demo for running Wvlet queries, compiled into SQL, and executing them on the WebAssembly version of DuckDB. No installation is required.
+Wvlet is written in Scala 3, which can be compiled to JavaScript using Scala.js. This allows us to run Wvlet in the browser. Here is a demo for running Wvlet queries, compiled into SQL, and executing them on [the WebAssembly version of DuckDB](https://duckdb.org/2021/10/29/duckdb-wasm.html). No installation is required.
 
 
 - [Wvlet Playground](https://wvlet.org/wvlet/playground/)
