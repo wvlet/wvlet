@@ -5,7 +5,7 @@ authors: [xerial]
 tags: [tech, release]
 ---
 
-We are excited to announce the release of Wvlet version [2024.9](https://github.com/wvlet/wvlet/milestone/11), an open-source flow-style query language designed to help users to write efficient queries for SQL engines. you can try Wvlet, pronounced as _weave-let_, directly in your web browser at [Wvlet Playground](https://wvlet.org/wvlet/playground/). The source code of Wvlet compiler is available on [GitHub](https://github.com/wvlet/wvlet).
+We are excited to announce the release of Wvlet version [2024.9](https://github.com/wvlet/wvlet/milestone/11), an open-source flow-style query language designed to help users to write efficient queries for SQL engines. You can try Wvlet, pronounced as _weave-let_, directly in your web browser at [Wvlet Playground](https://wvlet.org/wvlet/playground/). The source code of Wvlet compiler is available at [GitHub wvlet/wvlet](https://github.com/wvlet/wvlet).
 
 <!-- truncate -->
 
@@ -25,7 +25,7 @@ Additionally, the SQL standard (e.g., SQL-92) is limited in scope and lacks esse
 - No extension point for multi-query optimization, such as incremental processing and pipeline execution like dbt.
 - No built-in debugging or testing capabilities.
 
-These limitations stem from SQL, born in the 1970s, not designed for today's complex data analytics needs. Wvlet adresses these challenges by modernizing [50-year-old SQL](https://dl.acm.org/doi/10.1145/3649887), making it more intuitive and functional while incorporating software engineering best practices.
+These limitations stem from SQL, born in the 1970s, not designed for today's complex data analytics needs. Wvlet addresses these challenges by modernizing [50-year-old SQL](https://dl.acm.org/doi/10.1145/3649887), making it more intuitive and functional while incorporating software engineering best practices.
 
 
 ## What's the current state of Wvlet?
