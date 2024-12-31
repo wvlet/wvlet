@@ -15,17 +15,17 @@ package wvlet.lang.compiler
 
 import wvlet.lang.api.Span
 import wvlet.lang.model.{DataType, SyntaxTreeNode, TreeNode, Type}
-import wvlet.lang.model.Type.PackageType
+import wvlet.lang.model.Type.{ImportType, PackageType}
 import wvlet.lang.model.expr.NameExpr
 import wvlet.lang.model.expr.NameExpr.EmptyName
-import wvlet.lang.model.plan.LogicalPlan
+import wvlet.lang.model.plan.{Import, LogicalPlan}
 import wvlet.log.LogSupport
 
 import scala.annotation.compileTimeOnly
 
 object Symbol:
   val NoSymbol: Symbol =
-    new Symbol(-1):
+    new Symbol(-1, span = Span.NoSpan):
       override def computeSymbolInfo(using Context): SymbolInfo = NoSymbolInfo
 
   private val importName = Name.termName("<import>")
@@ -33,13 +33,13 @@ object Symbol:
 //  lazy val RootType: Symbol = newTypeDefSymbol(NoSymbol, NoName, DataType.UnknownType)
 //
   def newPackageSymbol(owner: Symbol, name: Name)(using context: Context): Symbol =
-    val symbol = Symbol(context.global.newSymbolId)
+    val symbol = Symbol(context.global.newSymbolId, Span.NoSpan)
     symbol.symbolInfo = PackageSymbolInfo(symbol, owner, name, PackageType(name), context.scope)
     symbol
 
-  def newImportSymbol(owner: Symbol, tpe: Type)(using context: Context): Symbol =
-    val symbol = Symbol(context.global.newSymbolId)
-    symbol.symbolInfo = SymbolInfo(SymbolType.Import, NoSymbol, symbol, importName, tpe)
+  def newImportSymbol(owner: Symbol, i: Import)(using context: Context): Symbol =
+    val symbol = Symbol(context.global.newSymbolId, i.span)
+    symbol.symbolInfo = SymbolInfo(SymbolType.Import, NoSymbol, symbol, importName, ImportType(i))
     symbol
 
 end Symbol
@@ -50,7 +50,7 @@ end Symbol
   *
   * @param name
   */
-class Symbol(val id: Int, val span: Span = Span.NoSpan) extends LogSupport:
+class Symbol(val id: Int, val span: Span) extends LogSupport:
   private var _symbolInfo: SymbolInfo | Null = null
   private var _tree: SyntaxTreeNode | Null   = null
 
@@ -126,4 +126,5 @@ class Symbol(val id: Int, val span: Span = Span.NoSpan) extends LogSupport:
 
 end Symbol
 
-class TypeSymbol(override val id: Int, sourceFile: SourceFile) extends Symbol(id)
+case class TypeSymbol(override val id: Int, override val span: Span, sourceFile: SourceFile)
+    extends Symbol(id, span)
