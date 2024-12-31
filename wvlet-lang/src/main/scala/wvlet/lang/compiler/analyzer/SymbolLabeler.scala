@@ -21,7 +21,6 @@ import wvlet.lang.compiler.{
   ModelSymbolInfo,
   MultipleSymbolInfo,
   Name,
-  NamedSymbolInfo,
   PackageSymbolInfo,
   Phase,
   QuerySymbol,
@@ -88,7 +87,7 @@ object SymbolLabeler extends Phase("symbol-labeler"):
           ctx
         case v: ValDef =>
           val sym = Symbol(ctx.global.newSymbolId)
-          sym.symbolInfo = BoundedSymbolInfo(sym, v.name, v.dataType, v.expr)
+          sym.symbolInfo = BoundedSymbolInfo(ctx.owner, sym, v.name, v.dataType, v.expr)
           v.symbol = sym
           sym.tree = v
           ctx.compilationUnit.enter(sym)
@@ -105,7 +104,7 @@ object SymbolLabeler extends Phase("symbol-labeler"):
           stmt match
             case q: Query =>
               val sym: Symbol = attachNewSymbol(q, ctx)
-              sym.symbolInfo = QuerySymbol(sym, ctx.owner, TermName.of(s"__query_${sym.id}"))
+              sym.symbolInfo = QuerySymbol(ctx.owner, sym, TermName.of(s"__query_${sym.id}"))
               q.traverseOnce {
                 case s: SelectAsAlias =>
                   iter(s.child, ctx)
@@ -144,7 +143,7 @@ object SymbolLabeler extends Phase("symbol-labeler"):
   private def registerSelectAsAlias(s: SelectAsAlias)(using ctx: Context): Symbol =
     val aliasName = s.alias.toTermName
     val sym       = Symbol(ctx.global.newSymbolId)
-    sym.symbolInfo = RelationAliasSymbolInfo(sym, aliasName, ctx.compilationUnit)
+    sym.symbolInfo = RelationAliasSymbolInfo(ctx.owner, sym, aliasName, ctx.compilationUnit)
     s.symbol = sym
     sym.tree = s.child
     ctx.compilationUnit.enter(sym)
@@ -153,7 +152,7 @@ object SymbolLabeler extends Phase("symbol-labeler"):
   private def registerSaveAs(s: SaveToTable)(using ctx: Context): Symbol =
     val targetName = s.refName.toTermName
     val sym        = Symbol(ctx.global.newSymbolId)
-    sym.symbolInfo = SavedRelationSymbolInfo(sym, targetName)
+    sym.symbolInfo = SavedRelationSymbolInfo(ctx.owner, sym, targetName)
     s.symbol = sym
     sym.tree = s.child
     ctx.compilationUnit.enter(sym)
@@ -301,8 +300,8 @@ object SymbolLabeler extends Phase("symbol-labeler"):
 
         // Associate TypeSymbolInfo with the symbol
         sym.symbolInfo = TypeSymbolInfo(
-          sym,
           owner = parentSymbol.get,
+          sym,
           typeName,
           tpe,
           typeParams,
@@ -328,8 +327,8 @@ object SymbolLabeler extends Phase("symbol-labeler"):
       case None =>
         val sym = Symbol(ctx.global.newSymbolId)
         sym.symbolInfo = TypeSymbolInfo(
+          ctx.owner,
           sym,
-          Symbol.NoSymbol,
           typeName,
           DataType.UnknownType,
           Nil,
@@ -348,7 +347,7 @@ object SymbolLabeler extends Phase("symbol-labeler"):
         ctx.compilationUnit.enter(sym)
         sym.tree = m
         val tpe = m.givenRelationType.getOrElse(m.relationType)
-        sym.symbolInfo = ModelSymbolInfo(sym, ctx.owner, modelName, tpe, ctx.compilationUnit)
+        sym.symbolInfo = ModelSymbolInfo(ctx.owner, sym, modelName, tpe, ctx.compilationUnit)
         m.symbol = sym
         trace(s"Created a new model symbol ${sym}")
         ctx.scope.add(modelName, sym)

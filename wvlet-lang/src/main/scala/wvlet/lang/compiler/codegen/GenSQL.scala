@@ -110,7 +110,7 @@ object GenSQL extends Phase("generate-sql"):
         case ExecuteValDef(v) =>
           // TODO Refactor this with QueryExecutor
           val expr = ExpressionEvaluator.eval(v.expr, ctx)
-          v.symbol.symbolInfo = BoundedSymbolInfo(v.symbol, v.name, expr.dataType, expr)
+          v.symbol.symbolInfo = BoundedSymbolInfo(ctx.owner, v.symbol, v.name, expr.dataType, expr)
           ctx.enter(v.symbol)
         case cmd: ExecuteCommand =>
           cmd.execute match
@@ -340,6 +340,7 @@ object GenSQL extends Phase("generate-sql"):
               given Context = ctx
 
               argSym.symbolInfo = BoundedSymbolInfo(
+                ctx.owner,
                 symbol = argSym,
                 name = argName,
                 tpe = argValue.dataType,

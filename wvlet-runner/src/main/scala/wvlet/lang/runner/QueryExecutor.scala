@@ -155,7 +155,13 @@ class QueryExecutor(
           report(executeCommand(e))
         case ExecuteValDef(v) =>
           val expr = ExpressionEvaluator.eval(v.expr, context)
-          v.symbol.symbolInfo = BoundedSymbolInfo(v.symbol, v.name, expr.dataType, expr)
+          v.symbol.symbolInfo = BoundedSymbolInfo(
+            context.owner,
+            v.symbol,
+            v.name,
+            expr.dataType,
+            expr
+          )
           context.enter(v.symbol)
           QueryResult.empty
         case ExecuteNothing =>

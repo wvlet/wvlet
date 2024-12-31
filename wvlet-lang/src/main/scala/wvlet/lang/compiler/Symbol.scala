@@ -39,7 +39,7 @@ object Symbol:
 
   def newImportSymbol(owner: Symbol, tpe: Type)(using context: Context): Symbol =
     val symbol = Symbol(context.global.newSymbolId)
-    symbol.symbolInfo = NamedSymbolInfo(symbol, NoSymbol, importName, tpe)
+    symbol.symbolInfo = SymbolInfo(SymbolType.Import, NoSymbol, symbol, importName, tpe)
     symbol
 
 end Symbol
@@ -69,6 +69,9 @@ class Symbol(val id: Int, val span: Span = Span.NoSpan) extends LogSupport:
       symbolInfo.name
 
   def isNoSymbol: Boolean = this == Symbol.NoSymbol
+
+  def isDefined = !isNoSymbol
+  def isEmpty   = !isDefined
 
   def dataType: DataType =
     if _symbolInfo == null then

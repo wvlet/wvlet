@@ -185,7 +185,7 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
             if updated then
               val newType = s.copy(columnTypes = newCols)
               trace(s"Resolved ${t.name} as ${newType}")
-              t.symbol.symbolInfo.dataType = newType
+              t.symbol.symbolInfo.withType(newType)
               newType
             else
               s
@@ -249,7 +249,7 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
             // given model type is already resolved
             m.symbol.symbolInfo match
               case t: ModelSymbolInfo =>
-                t.dataType = r
+                t.withDataType(r)
               case other =>
           case other =>
             context.logTrace(
@@ -266,7 +266,7 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
             si.dataType match
               case r: RelationType =>
                 context.logTrace(s"Resolved model type: ${m.name} as ${r}")
-                modelSymbolInfo.dataType = r
+                modelSymbolInfo.withDataType(r)
                 // TODO Develop safe copy or embed Symbol as Plan parameter
                 val newModel = m.copy(givenRelationType = Some(r))
                 newModel.symbol = m.symbol

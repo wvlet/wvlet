@@ -56,7 +56,12 @@ sealed trait ExecutionPlan extends TreeNode with Product:
   end pp
 
   def transformUp(p: PartialFunction[ExecutionPlan, ExecutionPlan]): ExecutionPlan =
-    val newPlan = mapChildren(p.orElse(identity))
+    val newPlan = mapChildren { x =>
+      if p.isDefinedAt(x) then
+        p(x)
+      else
+        x
+    }
     p.applyOrElse(newPlan, identity)
 
   def mapChildren(f: ExecutionPlan => ExecutionPlan): ExecutionPlan =
