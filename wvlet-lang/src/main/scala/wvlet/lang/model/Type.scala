@@ -15,12 +15,9 @@ package wvlet.lang.model
 
 import wvlet.lang.api.StatusCode
 import wvlet.lang.compiler.{Name, TypeName}
-import wvlet.lang.model.DataType.{NamedType, TypeParameter}
-import wvlet.lang.model.expr.Expression
+import wvlet.lang.model.DataType.NamedType
 import wvlet.lang.model.plan.Import
 import wvlet.log.LogSupport
-
-import scala.quoted.Expr
 
 abstract class Type:
   def typeDescription: String

@@ -22,7 +22,7 @@ import wvlet.lang.compiler.analyzer.TypeResolver
 import wvlet.lang.compiler.planner.ExecutionPlanner
 import wvlet.lang.compiler.transform.{ExpressionEvaluator, PreprocessLocalExpr}
 import wvlet.lang.compiler.{
-  BoundedSymbolInfo,
+  ValSymbolInfo,
   CompilationUnit,
   Context,
   DBType,
@@ -110,7 +110,7 @@ object GenSQL extends Phase("generate-sql"):
         case ExecuteValDef(v) =>
           // TODO Refactor this with QueryExecutor
           val expr = ExpressionEvaluator.eval(v.expr, ctx)
-          v.symbol.symbolInfo = BoundedSymbolInfo(v.symbol, v.name, expr.dataType, expr)
+          v.symbol.symbolInfo = ValSymbolInfo(ctx.owner, v.symbol, v.name, expr.dataType, expr)
           ctx.enter(v.symbol)
         case cmd: ExecuteCommand =>
           cmd.execute match
@@ -313,7 +313,7 @@ object GenSQL extends Phase("generate-sql"):
           ctx.scope.lookupSymbol(nme) match
             case Some(sym) =>
               sym.symbolInfo match
-                case b: BoundedSymbolInfo =>
+                case b: ValSymbolInfo =>
                   // Replace to the bounded expression
                   b.expr
                 case _ =>
@@ -335,11 +335,12 @@ object GenSQL extends Phase("generate-sql"):
               val argValue          = arg.value
 
               // Register function arguments to the current scope
-              val argSym = Symbol(ctx.global.newSymbolId)
+              val argSym = Symbol(ctx.global.newSymbolId, arg.span)
 
               given Context = ctx
 
-              argSym.symbolInfo = BoundedSymbolInfo(
+              argSym.symbolInfo = ValSymbolInfo(
+                ctx.owner,
                 symbol = argSym,
                 name = argName,
                 tpe = argValue.dataType,
