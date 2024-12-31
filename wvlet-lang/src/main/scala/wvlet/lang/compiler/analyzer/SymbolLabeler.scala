@@ -128,8 +128,8 @@ object SymbolLabeler extends Phase("symbol-labeler"):
   private def registerTopLevelFunction(t: TopLevelFunctionDef)(using ctx: Context): Symbol =
     val sym = Symbol(ctx.global.newSymbolId)
     sym.symbolInfo = MethodSymbolInfo(
-      symbol = sym,
       owner = ctx.owner,
+      symbol = sym,
       name = t.functionDef.name,
       ft = toFunctionType(t.functionDef, Nil),
       body = t.functionDef.expr,
@@ -234,8 +234,8 @@ object SymbolLabeler extends Phase("symbol-labeler"):
                       funSym
 
                 val methodSymbolInfo = MethodSymbolInfo(
-                  funSym,
                   sym,
+                  funSym,
                   f.name,
                   ft,
                   f.expr,
@@ -270,8 +270,8 @@ object SymbolLabeler extends Phase("symbol-labeler"):
                   newSym
             f.symbol = funSym
             val newSymbolInfo = MethodSymbolInfo(
-              funSym,
               sym,
+              funSym,
               f.name,
               ft,
               f.expr,

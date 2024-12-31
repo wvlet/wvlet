@@ -124,7 +124,7 @@ case class MethodSymbolInfo(
     ft: FunctionType,
     body: Option[Expression],
     defContexts: List[DefContext]
-) extends SymbolInfo(SymbolType.MethodDef, symbol, owner, name, ft)
+) extends SymbolInfo(SymbolType.MethodDef, owner, symbol, name, ft)
     with LogSupport:
   override def toString: String = s"${owner}.${name}: ${ft}"
 
