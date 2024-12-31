@@ -13,12 +13,15 @@
  */
 package wvlet.lang.compiler
 
+import wvlet.lang.api.Span
 import wvlet.lang.model.{DataType, SyntaxTreeNode, TreeNode, Type}
 import wvlet.lang.model.Type.PackageType
 import wvlet.lang.model.expr.NameExpr
 import wvlet.lang.model.expr.NameExpr.EmptyName
 import wvlet.lang.model.plan.LogicalPlan
 import wvlet.log.LogSupport
+
+import scala.annotation.compileTimeOnly
 
 object Symbol:
   val NoSymbol: Symbol =
@@ -42,12 +45,12 @@ object Symbol:
 end Symbol
 
 /**
-  * Symbol is a permanent identifier for a TreeNode of LogicalPlan or Expression nodes. Symbol holds
-  * a cache of the resolved SymbolInfo, which contains DataType for the TreeNode.
+  * Symbol is a permanent identifier for a TreeNode (e.g., LogicalPlan or Expression nodes). Symbol
+  * holds a cache of the resolved SymbolInfo, which contains DataType for the TreeNode.
   *
   * @param name
   */
-class Symbol(val id: Int) extends LogSupport:
+class Symbol(val id: Int, val span: Span = Span.NoSpan) extends LogSupport:
   private var _symbolInfo: SymbolInfo | Null = null
   private var _tree: SyntaxTreeNode | Null   = null
 
@@ -74,6 +77,13 @@ class Symbol(val id: Int) extends LogSupport:
       _symbolInfo.dataType
 
   private def isResolved: Boolean = dataType.isResolved
+
+  def isTypeSymbol: Boolean =
+    this match
+      case t: TypeSymbol =>
+        true
+      case _ =>
+        false
 
   def isModelDef: Boolean =
     symbolInfo match
@@ -113,4 +123,4 @@ class Symbol(val id: Int) extends LogSupport:
 
 end Symbol
 
-class TypeSymbol(id: Int, file: SourceFile) extends Symbol(id)
+class TypeSymbol(override val id: Int, sourceFile: SourceFile) extends Symbol(id)

@@ -20,6 +20,20 @@ import wvlet.lang.model.expr.Expression
 import wvlet.lang.model.plan.{DefContext, EmptyRelation, LogicalPlan}
 import wvlet.log.LogSupport
 
+enum SymbolType:
+  case Undefined
+  case Error
+  case Package
+  case Import
+  case ModelDef
+  case TypeDef
+  case MethodDef
+  case VarDef
+  case Relation
+  case Query
+
+
+
 /**
   * SymbolInfo is the result of resolving a name (Symbol) during the compilation phase.
   *
