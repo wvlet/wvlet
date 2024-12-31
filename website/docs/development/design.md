@@ -89,14 +89,16 @@ where b = 'Y'
 ```
 You can just add additional relational operators to refine the query without tracking the previous context.
 
+An exception is the subquery block `{...}`. This block is used to describe nested queries, and it is necessary to use parentheses to separate the subquery from the outer query context. In SQL, parentheses are used for both subquery and function arguments, which makes the query harder to read. In Wvlet, we use `{...}` for subquery blocks and `(...)` for function arguments.
+
 
 ### No Significant Indentation
 
-To describe nested queries, we may be able to use parenthesized subquery `(...)` or significant indentations like Python or Scala 3. Although indentation-based syntaxes improve the readability, writing and parsing queries becomes harder for IDE or editors (e.g., parser, linter, query generators, etc.) 
+To describe nested queries, we may be able to use parenthesized subquery `{...}` or significant indentations like Python or Scala 3. Although indentation-based syntaxes improve the readability, writing and parsing queries becomes harder for IDE or editors (e.g., parser, linter, query generators, etc.)
 
 ### Support Dot Notation
 
-The modern programming languages support dot-notation for method chaining. SQL, which was designed around 1970s, however, does not support this feature, and always requires to use global function calls like this example:
+The modern programming languages support dot-notation for method chaining. SQL, designed around 1970s, however, does not support this feature, and always requires to use global function calls like this example:
 
 ```sql
 cast(round(abs(sum(c1)), 1) as varchar)
@@ -109,16 +111,16 @@ c1.sum.abs.round(1).to_string
 
 Chaining functions like this also helps editors or IDEs to complement function names and arguments. Recently, DuckDB also supports [dot operator syntaxes](https://duckdb.org/docs/sql/functions/overview) for chaining function calls.
 
-### Require Schema Only When Necessary
+### Require Fixed Schema Only When Necessary
 
 SQL enforces designing concrete table schema at all query stages. Even in subqueries, SQL requires full column names and fields with a fixed order. This requirement, however, introduces too early materialization of the column schema, which makes the query less flexible for schema changes based on the user requirement. 
 
-Wvlet requires schema only when it is necessary, such as when writing the query result to a file or a database table. This allows users to focus on the data processing logic rather than the schema design. 
+Wvlet requires a schema only when it is necessary, such as when writing the query result to a file or a database table. This allows users to focus on the data processing logic rather than the schema design. 
 
 ## Minor Design Choices
 
-- For expressions within string interpolation, used `${...}` syntax, instead of `{...}` because we often want to include JSON data inside a string. Using `{...}` conflicts with JSON object notation.
+- For expressions within string interpolation, we used `${...}` syntax, instead of `{...}` because we often want to include JSON data inside a string. Using `{...}` conflicts with JSON object notation.
   - Although adding JSON string as the first-class syntax was an option, we didn't pursue this direction because of the complexity of managing JSON tokens in the same grammar. Also, JSON is not always the best choice for describing table data and floating-point values.    
 - Unlike ZetaSQL, which uses pipe operator `|>` to mix regular SQL and [pipe syntax](https://github.com/google/zetasql/blob/master/docs/pipe-syntax.md), Wvlet is a brand-new query language, isolated from SQL. So we don't need any such pipe operator for separating relational operators.
-- For debug operator, using significant indent for the subsequent debug expressions was considered, but we decided to use `|` (pipe) operator. Unlike SQL, which uses `||` for concatenating strings, wvlet uses `+` operator for string concatenation, so we can use `|` for listing debug expressions. This pipe syntax also works in one-liner query.
+- For debug operator, using significant indent for the subsequent debug expressions was considered, but we decided to use `{...}` sub query block for enclosing debug statements.
 - For `group by` operator, the default aggregation function for each column is `arbitrary` (`any`), which returns an arbitrary value from the grouped rows. This is because `arbitrary` is the most light-weight aggregation operator, which doesn't require reading all column values. When other type of aggregation is necessary, we can use `agg` operator to specify the aggregation function explicitly.
