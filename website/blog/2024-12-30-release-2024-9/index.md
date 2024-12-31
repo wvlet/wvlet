@@ -12,15 +12,15 @@ We are excited to announce the release of Wvlet version [2024.9](https://github.
 
 ## Why Wvlet?
 
-At Treasure Data, we process over 3 million SQL queries daily. Managing this volume of queries and helping users (including LLM) write efficient queries presents significant challenges.
+At Treasure Data, we process over 3 million SQL queries daily. Managing this volume of queries while helping users (including LLM) write efficient queries presents significant challenges. 
 
-The primary challenges lies in SQL's syntax: its syntactic order doesn't match the actual data flow. This mismatch makes debugging complex and deeply nested queries difficult, even for SQL experts. _[A Critique of Modern SQL And A Proposal Towards A Simple and Expressive Query Language (CIDR '24)](https://www.cidrdb.org/cidr2024/papers/p48-neumann.pdf)_ highlights this issue clearly:
+The primary challenges lies in SQL's syntax: its syntactic order doesn't match the actual data flow. This mismatch makes debugging complex and deeply nested queries difficult, even for SQL experts. _[A Critique of Modern SQL And A Proposal Towards A Simple and Expressive Query Language (CIDR '24)](https://www.cidrdb.org/cidr2024/papers/p48-neumann.pdf)_ illustrates this issue clearly:
 
 <center>
 ![semantic-order](./sql-semantic-order.png)
 </center>
 
-Additionally, the SQL standard (e.g., SQL-92) is limited in scope and lacks essential software engineering features for managing multiple queries, including:
+Additionally, the SQL standard (e.g., SQL-92) is limited in scope and lacks essential software engineering features for managing multiple queries. For example, SQL has:
 - No built-in support for reusing and generating queries.
 - No extension point for multi-query optimization, such as incremental processing and pipeline execution like dbt.
 - No built-in debugging or testing capabilities.
@@ -30,22 +30,22 @@ These limitations stem from SQL, born in the 1970s, not designed for today's com
 
 ## What's the current state of Wvlet?
 
-Though still in early development, Wvlet already enables users to write and run queries against DuckDB, Trino through either a command line client (`wv`) or the Web-based UI (`wvlet ui`).  
+Though still in early development, Wvlet already enables users to write and run queries against [DuckDB](https://duckdb.org/) and [Trino](https://trino.io/) through either a command line client (`wv`) or the Web-based UI (`wvlet ui`).
 
 ### Interactive Editor (wv)
 
-If you are using Mac, you can easily install the [interative shell (wv)](/docs/usage/repl) with the Homebrew command: `brew install wvlet/wvlet/wvlet`. 
+If you are using Mac, you can easily install the [interative shell (wv)](/docs/usage/repl) with the Homebrew command: `brew install wvlet/wvlet/wvlet`.
 
 The `wv` interactive editor (REPL) supports various shortcut keys, allowing you to check the schema (ctrl-j, ctrl-d), test the sub query (ctrl-j ctrl-t), or run the query (ctrl-j, ctrl-r) even in the middle of the query.
 
 ![wvlet shell](/img/demo.gif)
 
-For using Trino SQL engine, you need to configure `~/.wvlet/profiles.yml` file to [specify the target Trino server address](/docs/usage/trino).  
+For using Trino SQL engine, you need to configure `~/.wvlet/profiles.yml` file to [specify the target Trino server address](/docs/usage/trino).
 
 
 ### Wvlet Playground 
 
-Wvlet is written in Scala 3, which can be compiled to JavaScript using Scala.js. This allows us to run Wvlet in the browser. Here is a demo for running Wvlet queries, compiled into SQL, and executing them on [the WebAssembly version of DuckDB](https://duckdb.org/2021/10/29/duckdb-wasm.html). No installation is required.
+Wvlet is written in Scala 3, which can be compiled to JavaScript using the power of [Scala.js](https://www.scala-js.org/), enabling browser-based execution. You can try out Wvlet queries in the [Wvlet Playground](https://wvlet.org/wvlet/playground/), where the Wvlet queries are compiled into SQL and run on [DUckDB's WebAssembly version (DuckDB Wasm)](https://duckdb.org/2021/10/29/duckdb-wasm.html)--all without requiring any installation.
 
 
 - [Wvlet Playground](https://wvlet.org/wvlet/playground/)
@@ -57,17 +57,16 @@ Wvlet also provides a standalone [WebUI](/docs/usage/ui) to start a local web se
 
 ### Flow-Style Query Syntax
 
-Wvlet has redesigned SQL in various ways to match the syntax with the natural data flow by introducing flow-style relational operators (e.g., `add`, `agg`, `concat`, `sample`, etc.), and column-at-a-time operators (e.g., `rename`, `exclude`, `shift`) for reducing the burden of enumerating columns.
+Wvlet has redesigned SQL in various ways to match the syntax with the natural data flow by introducing flow-style relational operators (e.g., `add`, `agg`, `concat`, `sample`, etc.), and column-at-a-time operators (e.g., `rename`, `exclude`, `shift`) for reducing the burden of enumerating columns. 
 
-We have also added `update`, `test`, `debug` syntaxes for convenience. The functionality of Wvlet is [tested using Wvlet queries with test expressions](https://github.com/wvlet/wvlet/tree/main/spec/basic). 
+Notably, Wvlet enhances SQL with [test syntax](https://wvlet.org/wvlet/docs/syntax/test-syntax), leveraging test expressions to verify Wvlet's functionality through [Wvlet queries with test expressions](https://github.com/wvlet/wvlet/tree/main/spec/basic).
+
+- [Wvlet - Quick Start](/docs/syntax/quick-start)
+- [Query Syntax](/docs/syntax/)
 
 For more details on the query syntax, refer to the following [presentation slides](https://speakerdeck.com/xerial/wvlet-a-new-flow-style-query-language-for-functional-data-modeling-and-interactive-data-analysis-trino-summit-2024) from [Trino Summit 2024](https://trino.io/blog/2024/12/18/trino-summit-2024-quick-recap.html):
 
 <iframe class="speakerdeck-iframe" frameborder="0" src="https://speakerdeck.com/player/4148a46ee4f24fb0816d1207439cbd33?slide=10" title="Wvlet: A New Flow-Style Query Language For Functional Data Modeling and Interactive Data Analysis - Trino Summit 2024" allowfullscreen="true" style={{width: '100%', height: 'auto', aspectRatio: 1.777}} ></iframe>
-
-and in the following documents:
-- [Wvlet - Quick Start](/docs/syntax/quick-start)
-- [Query Syntax](/docs/syntax/)
 
 
 ### Functional Data Modeling
@@ -79,7 +78,7 @@ Queries written in Wvlet are reusable and composable, making it easier to manage
 
 ### Wvlet SDKs
 
-We plan to add SDKs for various programming languages to help users convert Wvlet queries into SQL. Wvlet compiler, written in Scala 3, can be compiled into native LLVM code, which can be integrated with various programming languages, including Python, Rust, Ruby, C/C++ etc. In 2024.9 version, we have created an early version of Python SDKs: 
+We plan to add SDKs for multiple programming languages to enable users to convert Wvlet queries into SQL. Wvlet compiler, written in Scala 3, can be compiled into native LLVM code through [Scala Native](https://scala-native.org/en/stable/). This generates binaries that integrate with languages like Python, Rust, Ruby, C/C++ etc. Our 2024.9 release includes an initial version of Python SDKs: 
 
 - [Wvlet SDKs](/docs/bindings)
 
@@ -91,7 +90,7 @@ Thanks to contributors from the community, we are getting closer to support mult
 We plan to release milestone versions approximately every 3 months, following the format `(year).(milestone month).(patch)`. The next milestone version will be [2025.1](https://github.com/wvlet/wvlet/milestone/12). You can find our project roadmap and features under active development on the [Wvlet Roadmap](https://github.com/orgs/wvlet/projects/2).
 
 The next 2025.1 milestone will focus on functional data modeling features, including:
-- Advanced query optimization with cuscading updates and materialization of Wvlet data models, similar to DBT, featuring incremental processing and query fusion.
+- Advanced query optimization with cuscading updates and materialization of Wvlet data models, similar to [dbt](https://www.getdbt.com/), featuring incremental processing and query fusion.
 - Support for importing Wvlet queries from GitHub repositories. 
 - Enhance the type system with improved dot-syntax support for complex expressions.
 - Support for more SQL dialects through context-specific query inlining.
