@@ -14,6 +14,8 @@
 package wvlet.lang.compiler
 
 import wvlet.airspec.AirSpec
+import wvlet.lang.api.Span
+import wvlet.lang.api.Span.NoSpan
 
 class ScopeTest extends AirSpec:
 
@@ -36,7 +38,7 @@ class ScopeTest extends AirSpec:
     val x = Name.termName("x")
     scope.lookupEntry(x) shouldBe None
 
-    val sym    = Symbol(1)
+    val sym    = Symbol(1, NoSpan)
     val retSym = scope.add(x, sym)
     sym shouldBe retSym
 
@@ -48,7 +50,7 @@ class ScopeTest extends AirSpec:
       val childScope = scope.newChildScope
       childScope.nestingLevel shouldBe 2
       childScope.lookupEntry(x) shouldBe Some(ScopeEntry(x, sym, scope))
-      val sym2 = Symbol(2)
+      val sym2 = Symbol(2, NoSpan)
       childScope.add(Name.termName("y"), sym2)
 
       val localSyms = childScope.getLocalSymbols
