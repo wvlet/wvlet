@@ -28,7 +28,7 @@ enum SymbolType:
   case ModelDef
   case TypeDef
   case MethodDef
-  case VarDef
+  case ValDef
   case Relation
   case Query
   case Expression
@@ -141,13 +141,13 @@ case class ModelSymbolInfo(
 ) extends SymbolInfo(SymbolType.ModelDef, symbol, owner, name, tpe):
   override def toString: String = s"model ${owner}.${name}: ${dataType}"
 
-case class BoundedSymbolInfo(
+case class ValSymbolInfo(
     override val owner: Symbol,
     override val symbol: Symbol,
     override val name: Name,
     override val tpe: DataType,
     expr: Expression
-) extends SymbolInfo(SymbolType.Expression, Symbol.NoSymbol, symbol, name, tpe):
+) extends SymbolInfo(SymbolType.ValDef, Symbol.NoSymbol, symbol, name, tpe):
   override def toString: String = s"bounded ${name}: ${dataType} = ${expr}"
 
 case class MultipleSymbolInfo(s1: SymbolInfo, s2: SymbolInfo)

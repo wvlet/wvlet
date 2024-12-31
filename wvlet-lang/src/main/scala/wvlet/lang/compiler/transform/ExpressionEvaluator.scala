@@ -1,6 +1,6 @@
 package wvlet.lang.compiler.transform
 
-import wvlet.lang.compiler.{BoundedSymbolInfo, Context}
+import wvlet.lang.compiler.{ValSymbolInfo, Context}
 import wvlet.lang.ext.NativeFunction
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.ValDef
