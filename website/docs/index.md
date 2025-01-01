@@ -53,16 +53,18 @@ These limitations stem from SQL, born in the 1970s, not designed for today's com
 
 Here is a presentation at Trino Summit 2024, which explains the motivation and design of Wvlet:
 
-<iframe class="speakerdeck-iframe" frameborder="0" src="https://speakerdeck.com/player/4148a46ee4f24fb0816d1207439cbd33" title="Wvlet: A New Flow-Style Query Language For Functional Data Modeling and Interactive Data Analysis - Trino Summit 2024" allowfullscreen="true" style={{width: '100%', height: 'auto', aspectRatio: 1.777}} ></iframe>
+<center>
+<iframe class="speakerdeck-iframe" frameborder="0" src="https://speakerdeck.com/player/4148a46ee4f24fb0816d1207439cbd33" title="Wvlet: A New Flow-Style Query Language For Functional Data Modeling and Interactive Data Analysis - Trino Summit 2024" allowfullscreen="true" style={{width: '98%', margin: '4px', height: 'auto', aspectRatio: 1.777}} ></iframe>
+</center>
 
 ## Architecture
 
 Here is an overview of the Wvlet architecture:
 ![wvlet-architecture](./img/wvlet-architecture.svg)
 
-- From query (.wv) files, the Wvlet compiler generates logical plans, execution plans, and SQL statements. Wvlet compiler has `-w (workdir)` option to specify which directory to scan .wv files. The [standard library](https://github.com/wvlet/wvlet/tree/main/wvlet-stdlib/module/standard) defines common data types and operators, which can be used for standard SQL engines.  
-- Logical Plan is tree-representation of relational operators (e.g., scan, filter, projection). Wvlet has several phases for optimizing logical plans, such as SymbolLabeler (labeling type definition, data models), TypeResolver (resolving data types of individual operators), PlanRewriter for optimizing the query, etc.
-- Execution Plan is a sequence of steps execute SQL and other programs. This is an entry point for extending Wvlet to support various data sources and data processing engines, not limited to SQL engines, but also to support other code (e.g, Python) through table functions.
+- The Wvlet compiler processes query (.wv) files to generate logical plans, execution plans, and SQL statements. Wvlet has `-w (workdir)` option for specifying which directory to scan for .wv files. The [standard library](https://github.com/wvlet/wvlet/tree/main/wvlet-stdlib/module/standard) provides common data types with convenient operators while handling differences between SQL dialects.
+- A Logical Plan represents relational operators (e.g., scan, filter, projection) in a tree structure. Wvlet optimize these plans through several phases: SymbolLabeler for labeling type definition and data models, TypeResolver for determining data types of operator and expression nodes, and PlanRewriter for query optimization.
+- An Execution Plan consists of steps to execute SQL and other programs. This serves as the extension point for Wvlet, allowing it to support various data sources and processing engines, not just SQL engines, but also to other code (such as Python) through table functions.
 
 
 ## Features
