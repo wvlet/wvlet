@@ -20,12 +20,12 @@ The primary challenges lies in SQL's syntax: its syntactic order doesn't match t
 ![semantic-order](./sql-semantic-order.png)
 </center>
 
-Additionally, the SQL standard (e.g., SQL-92) is limited in scope and lacks essential software engineering features for managing multiple queries. For example, SQL has:
+Additionally, the SQL standard (e.g., SQL-92) is limited in scope and lacks essential software engineering features for managing multiple queries. For example, in SQL, there are:
 - No built-in support for reusing and generating queries.
 - No extension point for multi-query optimization, such as incremental processing and pipeline execution like dbt.
 - No built-in debugging or testing capabilities.
 
-These limitations stem from SQL, born in the 1970s, not designed for today's complex data analytics needs. Wvlet addresses these challenges by modernizing [50-year-old SQL](https://dl.acm.org/doi/10.1145/3649887), making it more intuitive and functional while incorporating software engineering best practices.
+These limitations stem from SQL, born in the 1970s, which was not designed for today's complex data analytics needs. Wvlet addresses these challenges by modernizing [50-year-old SQL](https://dl.acm.org/doi/10.1145/3649887), making it more intuitive and functional while incorporating software engineering best practices.
 
 
 ## What's the current state of Wvlet?
@@ -90,7 +90,7 @@ Thanks to contributors from the community, we are getting closer to support mult
 We plan to release milestone versions approximately every 3 months, following the format `(year).(milestone month).(patch)`. The next milestone version will be [2025.1](https://github.com/wvlet/wvlet/milestone/12). You can find our project roadmap and features under active development on the [Wvlet Roadmap](https://github.com/orgs/wvlet/projects/2).
 
 The next 2025.1 milestone will focus on functional data modeling features, including:
-- Advanced query optimization with cuscading updates and materialization of Wvlet data models, similar to [dbt](https://www.getdbt.com/), featuring incremental processing and query fusion.
+- Advanced query optimization with cascading updates and materialization of Wvlet data models, similar to [dbt](https://www.getdbt.com/), featuring incremental processing.
 - Support for importing Wvlet queries from GitHub repositories. 
 - Enhance the type system with improved dot-syntax support for complex expressions.
 - Support for more SQL dialects through context-specific query inlining.
