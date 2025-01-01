@@ -20,7 +20,7 @@ The primary challenges lies in SQL's syntax: its syntactic order doesn't match t
 ![semantic-order](./sql-semantic-order.png)
 </center>
 
-Additionally, the SQL standard (e.g., SQL-92) is limited in scope and lacks essential software engineering features for managing multiple queries. For example, in SQL, there are:
+Additionally, the SQL standard (e.g., SQL-92) is limited in scope and lacks essential software engineering features for managing multiple queries. For example, SQL has:
 - No built-in support for reusing and generating queries.
 - No extension point for multi-query optimization, such as incremental processing and pipeline execution like dbt.
 - No built-in debugging or testing capabilities.
@@ -28,7 +28,7 @@ Additionally, the SQL standard (e.g., SQL-92) is limited in scope and lacks esse
 These limitations stem from SQL, born in the 1970s, which was not designed for today's complex data analytics needs. Wvlet addresses these challenges by modernizing [50-year-old SQL](https://dl.acm.org/doi/10.1145/3649887), making it more intuitive and functional while incorporating software engineering best practices.
 
 
-## What's the current state of Wvlet?
+## What's The Current State of Wvlet?
 
 Though still in early development, Wvlet already enables users to write and run queries against [DuckDB](https://duckdb.org/) and [Trino](https://trino.io/) through either a command line client (`wv`) or the Web-based UI (`wvlet ui`).
 
