@@ -34,6 +34,7 @@ function HomepageHeader() {
                                         Documentation
                                     </Link>
                                     <span style={{
+                                        width: '110px',
                                         paddingTop: '5px',
                                     }}>
                                         <GitHubButton href="https://github.com/wvlet/wvlet" data-color-scheme="no-preference: light; light: light; dark: dark;" data-size="large" data-show-count="true" aria-label="Star wvlet/wvlet on GitHub">Star</GitHubButton>
