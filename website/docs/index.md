@@ -178,7 +178,7 @@ agg _.count, l_quantity.sum.round(0);
 └───────────────────────────────────────────────────────┘
 ```
 
-SQL, which was designed about 50 years ago, every function call needs to be nested with parenthesises, which require more cursor and eye movements to write the query:
+In SQL, which was designed about 50 years ago, every function call needs to be nested with parenthesises, which require more cursor and eye movements to write the query:
 ```sql
 -- You need to wrap each function call with parentheses (More cursor movements!)
 select l_shipmode, count(*), round(sum(l_quantity), 0);
