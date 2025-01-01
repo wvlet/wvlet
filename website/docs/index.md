@@ -41,14 +41,31 @@ where (conditions for groups)
 select c1, c2, ...
 order by (ordering columns...)
 ```
-With this flow style, you can describe data processing pipelines in a natural order to create complex queries. You can also add operators for testing or debugging data in the middle of the query. This flow syntax is gaining traction and has been adopted in Google's SQL to simplify writing SQL queries. For more details, see _[SQL Has Problems. We Can Fix Them: Pipe Syntax In SQL (VLDB 2024)](https://research.google/pubs/sql-has-problems-we-can-fix-them-pipe-syntax-in-sql/)_.
+With this flow style, you can describe data processing pipelines in a natural order to create complex queries. You can also add operators for testing or debugging data in the middle of the query. This flow syntax is gaining traction and has been adopted in Google's SQL to simplify writing SQL queries: _[SQL Has Problems. We Can Fix Them: Pipe Syntax In SQL (VLDB 2024)](https://research.google/pubs/sql-has-problems-we-can-fix-them-pipe-syntax-in-sql/)_.
+
+
+Additionally, the SQL standard (e.g., SQL-92) is limited in scope and lacks essential software engineering features for managing multiple queries. For example, SQL has:
+- No built-in support for reusing and generating queries.
+- No extension point for multi-query optimization, such as incremental processing and pipeline execution like dbt.
+- No built-in debugging or testing capabilities.
+
+These limitations stem from SQL, born in the 1970s, not designed for today's complex data analytics needs. Wvlet addresses these challenges by modernizing [50-year-old SQL](https://dl.acm.org/doi/10.1145/3649887), making it more intuitive and functional while incorporating software engineering best practices.
+
+Here is a presentation at Trino Summit 2024, which explains the motivation and design of Wvlet:
+
+<iframe class="speakerdeck-iframe" frameborder="0" src="https://speakerdeck.com/player/4148a46ee4f24fb0816d1207439cbd33" title="Wvlet: A New Flow-Style Query Language For Functional Data Modeling and Interactive Data Analysis - Trino Summit 2024" allowfullscreen="true" style={{width: '100%', height: 'auto', aspectRatio: 1.777}} ></iframe>
 
 ## Architecture
 
+Here is an overview of the Wvlet architecture:
 ![wvlet-architecture](./img/wvlet-architecture.svg)
 
+- From query (.wv) files, the Wvlet compiler generates logical plans, execution plans, and SQL statements. Wvlet compiler has `-w (workdir)` option to specify which directory to scan .wv files. The [standard library](https://github.com/wvlet/wvlet/tree/main/wvlet-stdlib/module/standard) defines common data types and operators, which can be used for standard SQL engines.  
+- Logical Plan is tree-representation of relational operators (e.g., scan, filter, projection). Wvlet has several phases for optimizing logical plans, such as SymbolLabeler (labeling type definition, data models), TypeResolver (resolving data types of individual operators), PlanRewriter for optimizing the query, etc.
+- Execution Plan is a sequence of steps execute SQL and other programs. This is an entry point for extending Wvlet to support various data sources and data processing engines, not limited to SQL engines, but also to support other code (e.g, Python) through table functions.
 
-# Features
+
+## Features
 
 Wvlet offers the following features to incorporate the best practices of the modern programming languages in the context of querying and managing data processing pipelines:
 
@@ -56,14 +73,12 @@ Wvlet offers the following features to incorporate the best practices of the mod
 - [Functional Data Modeling](#functional-data-modeling)
 - [Incremental Processing](#incremental-processing)
 
-## Flow-Style Query 
+### Flow-Style Query: Analyze As You Write 
 
 Wvlet queries are written in a flow-style, where you can describe data processing pipelines in a natural order. For more details, refer to the following documents:
 
 - [Query Syntax](./syntax) 
 - [(internal) Design Philosophy](./development/design)
-
-### Analyze As You Write
 
 Wvlet maintains the consistency between the query syntax and the actual data processing flow. You can analyze the query results as you write the query:
 
@@ -169,7 +184,7 @@ from lineitem
 group by l_shipmode
 ```
 
-## Functional Data Modeling
+### Functional Data Modeling
 
 In Wvlet, you can define queries as data model functions, which can be reused for subsequent data processing. The following example defines a data `model` function:
 ```sql
@@ -208,7 +223,7 @@ import github.com/my_project/my_query_library
 from my_query(p1, p2, ...)
 ```
 
-## Incremental Processing
+### Incremental Processing
 
 :::warning
 Incremental processing feature is planned to be available in 2025.
