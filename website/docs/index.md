@@ -61,7 +61,6 @@ Wvlet offers the following features to incorporate the best practices of the mod
 Wvlet queries are written in a flow-style, where you can describe data processing pipelines in a natural order. For more details, refer to the following documents:
 
 - [Query Syntax](./syntax) 
-- [Relational Operators](./syntax/relational-operators)
 - [(internal) Design Philosophy](./development/design)
 
 ### Analyze As You Write
@@ -196,7 +195,7 @@ join address_table
 ### Managing Queries As A Reusable Module
 
 :::warning
-This feature will be available in later 2024.
+This feature will be available in 2025.
 :::
 
 These queries saved as `.wv` files can be managed in local folders or GitHub repositories as modules. You can import these queries in other queries to reuse them. If analyzing your datasets requires the knowledge of domain experts or complex data processing, you can leverage such query modules to focus on the core part of your analysis.
@@ -209,11 +208,10 @@ import github.com/my_project/my_query_library
 from my_query(p1, p2, ...)
 ```
 
-
 ## Incremental Processing
 
 :::warning
-Incremental processing feature is planned to be available in later 2024.
+Incremental processing feature is planned to be available in 2025.
 :::
 
 You can build a reproducible data processing pipeline with time-window based incremental processing.

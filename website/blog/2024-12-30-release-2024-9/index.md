@@ -14,7 +14,7 @@ We are excited to announce the release of Wvlet version [2024.9](https://github.
 
 At Treasure Data, we process over 3 million SQL queries daily. Managing this volume of queries while helping users (including LLM) write efficient queries presents significant challenges. 
 
-The primary challenges lies in SQL's syntax: its syntactic order doesn't match the actual data flow. This mismatch makes debugging complex and deeply nested queries difficult, even for SQL experts. _[A Critique of Modern SQL And A Proposal Towards A Simple and Expressive Query Language (CIDR '24)](https://www.cidrdb.org/cidr2024/papers/p48-neumann.pdf)_ illustrates this issue clearly:
+The primary challenges lies in SQL's syntax: its syntactic order doesn't match the actual data flow. This mismatch makes debugging complex and deeply nested queries difficult, even for SQL experts. _[A Critique of Modern SQL And A Proposal Towards A Simple and Expressive Query Language (CIDR '24)](https://www.cidrdb.org/cidr2024/papers/p48-neumann.pdf)_ clearly illustrates this issue in this figure:
 
 <center>
 ![semantic-order](./sql-semantic-order.png)

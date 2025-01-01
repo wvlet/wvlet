@@ -121,7 +121,7 @@ wv> from customer
 
 ### One-Liner Queries
 
-In wvlet, individual query line often matches with a single [relational operator](relational-operators.md), which processes a given input table data and return a new table data. Inserting newlines, however, is not mandatory. You can fit the whole query within a single line, which is convenient for quick data exploration:
+In wvlet, individual query line often matches with a single [relational operator](./), which processes a given input table data and return a new table data. Inserting newlines, however, is not mandatory. You can fit the whole query within a single line, which is convenient for quick data exploration:
 
 ```sql
 wv> from customer where c_mktsegment = 'HOUSEHOLD' limit 5;

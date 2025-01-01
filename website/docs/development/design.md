@@ -9,7 +9,7 @@ The design of syntax should follow a typing order of left-to-right, top-to-botto
 
 The language also needs to incorporate the best practices of software engineering in order to make the query reusable (modularity) and composable for building more complex queries and data processing pipelines.
 
- Each [relational operator](../syntax/relational-operators.md) processes the input table data and returns a new table data, but the returned data is not limited to a simple table format. It can be a nested objects with additional metadata to enrich the query results.
+ Each [relational operator](../syntax/#relational-operators) processes the input table data and returns a new table data, but the returned data is not limited to a simple table format. It can be a nested objects with additional metadata to enrich the query results.
 
 ## Syntax Design Choices
 
