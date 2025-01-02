@@ -68,11 +68,11 @@ For more on Wvlet's motivation and design, see the presentation slides at Trino 
 
 ![wvlet-architecture](./img/wvlet-architecture.svg)
 
-The Wvlet compiler processes `.wv` query files to generate logical plans, execution plans, and SQL statements. You can specify the directory to scan for wv files with `-w (workdir)` option.
+The Wvlet compiler processes `.wv` query files to generate logical plans, execution plans, and SQL statements. Specify the directory to scan for .wv files with `-w (workdir)` option. Key terminilogies include:
 
 - __Logical Plan__: Represents relational operators (e.g., scan, filter, projection) in a tree structure.
 - __Execution Plan__: Steps to execute SQL and other programs, supporting various data sources and processing engines.
-- [__Standard Library__](https://github.com/wvlet/wvlet/tree/main/wvlet-stdlib/module/standard): Provides common data type definitions with convenient operators as .wv files while handling differences between SQL dialects.
+- [__Standard Library__](https://github.com/wvlet/wvlet/tree/main/wvlet-stdlib/module/standard): Provides common data type definitions with convenient operators while handling differences between SQL dialects.
 
 
 ## Features
@@ -115,8 +115,9 @@ agg _.count as cnt
 
 ### Column-Level Operators
 
-Wvlet provides column-level operators to process selected columns efficiently. Example:
+Wvlet provides column-level operators to process selected columns efficiently. 
 
+Example:
 ```sql
 from lineitem
 -- Add a new column
@@ -156,8 +157,9 @@ limit 5
 
 ### Chaining Function Calls
 
-Wvlet supports dot-notation for chaining function calls. Example:
+Wvlet supports dot-notation for chaining function calls.
 
+Example:
 ```sql
 from lineitem
 group by l_shipmode
@@ -189,7 +191,9 @@ group by l_shipmode
 
 ### Functional Data Modeling
 
-Define reusable data model functions. Example: 
+Define reusable data model functions. 
+
+Example: 
 ```sql
 model lookup(person_id: int) =
   from persons
@@ -203,7 +207,8 @@ Calling this model:
 select * from persons
 where id = 1
 ```
-And composing models and other tables:
+
+Composing the model with another table:
 ```sql
 from lookup(1) as p
 join address_table 
@@ -216,8 +221,9 @@ join address_table
 This feature will be available in 2025.
 :::
 
-Queries saved as `.wv` files can be managed in local folders or GitHub repositories as modules. Import and reuse queries in other queries. Example:
+Queries saved as `.wv` files can be managed in local folders or GitHub repositories as modules. Import and reuse queries in other queries. 
 
+Example:
 ```sql
 -- import queries from a GitHub repository
 import github.com/my_project/my_query_library
@@ -232,8 +238,9 @@ from my_query(p1, p2, ...)
 Incremental processing feature is planned to be available in 2025.
 :::
 
-Build reproducible data processing pipelines with incremental processing. Example:
+Build reproducible data processing pipelines with incremental processing. 
 
+Example:
 ```sql
 @config(watermark_column='time', window_size='1h')
 model weblog_records =
@@ -243,7 +250,7 @@ end
 
 -- Subscribe newly inserted records in weblog_records
 -- and save filtered records to downstream_web_records
-from weblog_records.subscribe
+from weblog_records.subscribe()
 where user_id is not null
 insert into downstream_web_records
 ```
