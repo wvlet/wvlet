@@ -5,9 +5,11 @@ import TabItem from '@theme/TabItem';
 
 Wvlet is a query language designed to be more human-readable and easier to write than SQL. If you familiar to SQL, you will find it easy to learn Wvlet syntax due to the many similarities. If you know about [DataFrame in Python](https://pandas.pydata.org/docs/user_guide), it will help you understand the Wvlet query language, as chaining relational operators in flow-style is similar to using the DataFrame API.
 
+### Documentation Overview
+
 - [Quick Start](./quick-start.md)
 - [Relational Operators](#relational-operators)
-- [Expressions](./expressions.md)
+- [Expressions](#expressions)
 - [Data Models](./data-models.md)
 
 ### Typical Flow of a Wvlet Query
@@ -71,22 +73,21 @@ Wvlet provides various relational operators to process input data and generate o
 | __select__ `alias` __=__ `expr`, ...                                                           | Rows with the given expressions with aliases                                                                                                  |
 | __select__ `expr` __as__ `alias`, ...                                                          | Rows with the given expressions with aliases                                                                                                  |
 | __select as__ `alias`                                                                          | Add an alias to the query to reference it from another query                                                                                  |
-| __rename__ `column` __as__ `alias`, ...                                                        | Same rows with the given columns renamed                                                                                                      | 
-| __exclude__ `column`, ...                                                                      | Same rows except the given columns                                                                                                            |
-| __transform__ `expr` __as__ `name`, ...                                                        | Same rows with added or updated columns                                                                                                       |  
+| [__rename__ `column` __as__ `alias`, ...](#rename)                                                        | Same rows with the given columns renamed                                                                                                      | 
+| [__exclude__ `column`, ...](#exclude)                                                                      | Same rows except the given columns                                                                                                            |
+| [__transform__ `expr` __as__ `name`, ...](#transform)                                                        | Same rows with added or updated columns                                                                                                       |  
+| [__shift__ (to left)? `column`, ...](#shift)                                                             | Same rows with selected column moved to the left                                                                                              |
+| [__shift to right__ `column`, ...](#shift)                                                               | Same rows with selected column moved to the right                                                                                             |
 | __group by__ `column`, ...                                                                     | Grouped rows by the given columns. Grouping keys can be referenced as `select _1, _2, ...`  in the subsequent operator                        |
 | [__agg__ `agg_expr`, ...](#agg)                                                                | Rows with the grouping keys in `group by` clause and aggregated values                                                                        |
-| __order by__ `expr` (__asc__ \| __desc__)?, ...                                                | Rows sorted by the given expression. 1-origin column indexes can be used like `1`, `2`, ...                                                   |
-| __limit__ `n`                                                                                  | Rows up to the given number                                                                                                                   |
+| [__order by__ `expr` (__asc__ \| __desc__)?, ...](#order-by)                                                | Rows sorted by the given expression. 1-origin column indexes can be used like `1`, `2`, ...                                                   |
+| [__limit__ `n`](#limit)                                                                                  | Rows up to the given number                                                                                                                   |
 | [__asof__](asof-join.md)? (__left__ \| __right__ \| __cross__)? __join__ `table` __on__ `cond` | Joined rows with the given condition                                                                                                          |
-| __concat__ \{ `query` \}                                                                       | Concatenated rows with the given subquery result. Same as `UNION ALL` in SQL                                                                  |
-| __dedup__                                                                                      | Rows with duplicated rows removed. Equivalent to `select distinct *`                                                                          | 
-| (__intersect__ \| __except__) __all__? ...                                                     | Rows with the intersection (difference) of the given sources. By default set semantics is used. If `all` is given, bag semantics will be used |
-| __pivot on__ `pivot_column` (__in__ (`v1`, `v2`, ...) )?                                       | Rows whose column values in the pivot column are expanded as columns                                                                          |
-| __pivot on__ `pivot_column`<br/> (__group by__ `grouping columns`)?<br/> __agg__ `agg_expr`    | Pivoted rows with the given grouping columns and aggregated values                                                                            |
+| [__concat__ \{ `query` \}](#concat)                                                                       | Concatenated rows with the given subquery result. Same as `UNION ALL` in SQL                                                                  |
+| [__dedup__](#dedup)                                                                                      | Rows with duplicated rows removed. Equivalent to `select distinct *`                                                                          | 
+| ([__intersect__](#intersect) \| [__except__](#except)) __all__? ...                                                     | Rows with the intersection (difference) of the given sources. By default set semantics is used. If `all` is given, bag semantics will be used |
+| [__pivot on__ `pivot_column` (__in__ (`v1`, `v2`, ...) )?](#pivot)                                       | Rows whose column values in the pivot column are expanded as columns                                                                          |
 | __call__ `func(args, ...)`                                                                     | Rows processed by the given table function                                                                                                    |
-| __shift__ (to left)? `column`, ...                                                             | Same rows with selected column moved to the left                                                                                              |
-| __shift to right__ `column`, ...                                                               | Same rows with selected column moved to the right                                                                                             |
 | __sample__ `method`? (`size` __rows__? \| __%__)                                               | Randomly sampled rows. Sampling method can be reservoir (default), system, or bernoulli                                                       | 
 | [__unnest__(`array expr`)](unnest.md)                                                          | Expand an array into rows                                                                                                                     | 
 | [__test__ `(test_expr)`](test-syntax.md)                                                       | Test the query result, evaluated only in the test-run mode                                                                                    |
@@ -296,10 +297,8 @@ This query applies the lambda function `x -> x + 1` to each element of the input
 To pass multiple arguments to the lambda function, use the following syntax:
 
 ```sql
-select list_reduce([4, 5, 6], (a, b) -> a + b) as sum
-```
+select list_reduce([4, 5, 6], (a, b) -> a + b) as sum;
 
-```
 ┌─────┐
 │ sum │
 │ int │
@@ -317,10 +316,8 @@ select
   list_transform(
     [1, 2, 3],
     x -> list_reduce([4, 5, 6], (a, b) -> a + b) + x
-  ) as arr
-```
+  ) as arr;
 
-```
 ┌──────────────┐
 │     arr      │
 │  array(int)  │
@@ -343,15 +340,10 @@ show tables
 
 The output of `show tables` can be followed by the `where` clause to filter the table names:
 
-<Tabs>
-<TabItem value="Query" default>
 ```sql
 show tables
-where name like 'n%'
-```
-</TabItem>
-<TabItem value="Result">
-```sql
+where name like 'n%';
+
 ┌────────┐
 │  name  │
 │ string │
@@ -361,21 +353,14 @@ where name like 'n%'
 │ 1 rows │
 └────────┘
 ```
-</TabItem>
-</Tabs>
 
 ### show schemas
 
 To find a target database (schema) to query in the current catalog, you can use the `show schemas` query:
 
-<Tabs>
-<TabItem value="Query" default>
 ```sql
-show schemas
-```
-</TabItem>
-<TabItem value="Result">
-```sql
+show schemas;
+
 ┌─────────┬────────────────────┐
 │ catalog │        name        │
 │ string  │       string       │
@@ -393,20 +378,13 @@ show schemas
 │ 9 rows                       │
 └──────────────────────────────┘
 ```
-</TabItem>
-</Tabs>
 
 These schema names can be used to specify the target schema in the `show tables` command:
 
-<Tabs>
-<TabItem value="Query" default>
 ```sql
 show tables in main 
-where name like 'p%'
-```
-</TabItem>  
-<TabItem value="Result">
-```sql
+where name like 'p%';
+
 ┌──────────┐
 │   name   │
 │  string  │
@@ -417,21 +395,14 @@ where name like 'p%'
 │ 2 rows   │
 └──────────┘
 ```
-</TabItem>  
-</Tabs>
 
 ### show catalogs
 
 List all available catalogs:
 
-<Tabs>
-<TabItem value="Query" default>
 ```sql
-show catalogs
-```
-</TabItem>
-<TabItem value="Result">
-```sql
+show catalogs;
+
 ┌────────┐
 │  name  │
 │ string │
@@ -443,8 +414,6 @@ show catalogs
 │ 3 rows │
 └────────┘
 ```
-</TabItem>
-</Tabs>
 
 ### from
 
@@ -504,17 +473,12 @@ This is useful even when you need to generate Wvlet queries programatically as y
 
 Add a new column to the input. This operator is helpful to reduce the typing effort as you don't need to enumerate all the columns in the `select` clause:
 
-<Tabs>
-<TabItem value="Query" default>
 ```sql
 from nation
 select n_name
 add n_name.substring(1, 3) as prefix
-limit 5
-```
-</TabItem>
-<TabItem value="Result">
-```sql
+limit 5;
+
 ┌───────────┬────────┐
 │  n_name   │ prefix │
 │  string   │ string │
@@ -528,8 +492,6 @@ limit 5
 │ 5 rows             │
 └────────────────────┘
 ```
-</TabItem>
-</Tabs>
 
 ### select
 
@@ -542,6 +504,53 @@ select n_name, n_regionkey
 
 As in SQL, arbitrary expressions can be used in select statements. Note that, however, in Wvlet, you usually don't need to use select statement
 as the other column-at-a-time operators, like `add`, `transform`, `exclude`, `shift`, etc. can be used for manipulating column values.
+
+### rename
+
+The `rename` operator changes the column names in the input rows. This is useful when you want to rename columns in the output.
+
+```sql
+from nation
+rename n_name as nation_name
+```
+
+### exclude
+
+The `exclude` operator removes specified columns from the input rows. This is useful when you want to drop certain columns from the output.
+
+```sql
+from nation
+exclude n_regionkey
+```
+
+
+### transform
+
+The `transform` operator allows you to add or update columns in the input rows. This operator is useful for applying transformations to existing columns without needing to list all columns in the select clause.
+
+```sql
+from nation
+transform n_name.uppercase() as upper_name
+limit 5
+```
+
+
+### shift
+
+The `shift` operator changes the position of specified columns in the input rows. You can move columns to the left or right.
+
+Shift to the left (default):
+```sql
+from nation
+shift n_name
+```
+
+Shift to the right:
+```sql
+from nation
+shift to right n_comment
+```
+
 
 ### group by
 
@@ -567,7 +576,7 @@ agg _.count as count
 ```
 
 `_` denotes a list of rows in a group and can follow SQL aggregation expressions with dot notation.
-For example, `_.sum`, `_.avg`, `_.max`, `_.min`, `_.max_by`, `_.min_by`, etc. can be used in agg statement.
+For example, `_.sum`, `_.avg`, `_.max`, `_.min`, `_.max_by(sort_col)`, `_.min_by(sort_col)`, etc. can be used in agg statement.
 
 ### limit
 
@@ -590,3 +599,94 @@ limit 5
 
 The `order by` statement can follow `asc`, `desc` ordering specifier as in SQL.
 
+
+### concat
+
+The concat operator concatenates rows from multiple subqueries. This is similar to the UNION ALL operator in SQL.
+
+```sql
+from nation
+where n_regionkey = 0
+-- Append rows from another query
+concat {
+  from nation
+  where n_regionkey = 1
+}
+```
+
+The ordering of rows are not guaranteed in the `concat` operator. If you need to sort the output, use the `order by` operator after the `concat` operator. 
+
+### dedup
+
+The `dedup` operator removes duplicated rows from the input rows. This is equivalent to `select distinct *` in SQL.
+
+```sql
+from nation
+dedup
+```
+
+### intersect
+
+The `intersect` operator returns the intersection of the input rows from multiple subqueries. By default, set semantics are used, but you can use bag semantics by specifying `all`.
+
+```sql
+from nation
+intersect all {
+  from nation
+  where n_regionkey = 1
+}
+```
+
+### except
+
+The `except` operator returns the difference of the input rows from multiple subqueries. By default, set semantics are used, but you can use bag semantics by specifying `all`.
+
+```sql
+from nation
+except {
+  from nation
+  where n_regionkey = 1
+}
+```
+
+### pivot
+
+The `pivot` operator expands the column values as horizontal columns. In `pivot`, you need to specify grouping columns (`group by`) and aggregation expressions (`agg`) in the subsequent operators.
+
+Example:
+```sql
+from orders
+pivot on o_orderpriority
+group by o_orderstatus
+agg _.count;
+
+┌───────────────┬──────────┬────────┬──────────┬─────────────────┬───────┐
+│ o_orderstatus │ 1-URGENT │ 2-HIGH │ 3-MEDIUM │ 4-NOT SPECIFIED │ 5-LOW │
+│    string     │   long   │  long  │   long   │      long       │ long  │
+├───────────────┼──────────┼────────┼──────────┼─────────────────┼───────┤
+│ F             │     1468 │   1483 │     1445 │            1465 │  1443 │
+│ O             │     1488 │   1506 │     1421 │            1482 │  1436 │
+│ P             │       64 │     76 │       75 │              77 │    71 │
+├───────────────┴──────────┴────────┴──────────┴─────────────────┴───────┤
+│ 3 rows                                                                 │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+To specify the column values to expand, use `in` clause:
+```sql
+from orders
+pivot on o_orderpriority in ('1-URGENT', '2-HIGH')
+group by o_orderstatus
+agg _.count;
+
+┌───────────────┬──────────┬────────┐
+│ o_orderstatus │ 1-URGENT │ 2-HIGH │
+│    string     │   long   │  long  │
+├───────────────┼──────────┼────────┤
+│ F             │     1468 │   1483 │
+│ O             │     1488 │   1506 │
+│ P             │       64 │     76 │
+├───────────────┴──────────┴────────┤
+│ 3 rows                            │
+└───────────────────────────────────┘
+```
