@@ -8,7 +8,7 @@ title: Introduction
 
 Wvlet (pronounced as weave-let) is a new flow-style query language designed for SQL-based database engines, such as [DuckDB](https://duckdb.org/) and [Trino](https://trino.io/).
 
-## Documentation Overview
+## Documentation Links
 
 - [Installation](./usage/install)
 - [Query Syntax](./syntax/)
@@ -31,7 +31,7 @@ SQL's syntax often does not match the semantic order of data processing. Here is
 
 In SQL, the syntactic order of `SELECT ...` statements does not align with the atual data flow inside SQL engines.
 
-Wvlet addresses this problem by starting queries `from ...` (table scan statement), and then streamlining results through subsequent processing operators like `where`, `group by`, and `select`. This approach resembles passing table values through [a UNIX pipe](https://en.wikipedia.org/wiki/Pipeline_(Unix)):
+Wvlet addresses this problem by starting queries with `from ...` (table scan statement), and then streamlining results through subsequent processing operators like `where`, `group by`, and `select`. This approach resembles passing table values through [a UNIX pipe](https://en.wikipedia.org/wiki/Pipeline_(Unix)):
 
 ```sql
 -- Starts from table scan
@@ -66,13 +66,13 @@ For more on Wvlet's motivation and design, see the presentation slides at Trino 
 
 ## Architecture
 
-![wvlet-architecture](./img/wvlet-architecture.svg)
-
-The Wvlet compiler processes `.wv` query files to generate logical plans, execution plans, and SQL statements. Specify the directory to scan for .wv files with `-w (workdir)` option. Key terminilogies include:
+The Wvlet compiler processes `.wv` query files to generate logical plans, execution plans, and SQL statements. You can specify the directory to scan for .wv files with `-w (workdir)` option. Key terminlogies include:
 
 - __Logical Plan__: Represents relational operators (e.g., scan, filter, projection) in a tree structure.
 - __Execution Plan__: Steps to execute SQL and other programs, supporting various data sources and processing engines.
 - [__Standard Library__](https://github.com/wvlet/wvlet/tree/main/wvlet-stdlib/module/standard): Provides common data type definitions with convenient operators while handling differences between SQL dialects.
+
+![wvlet-architecture](./img/wvlet-architecture.svg)
 
 
 ## Features
@@ -252,7 +252,7 @@ end
 -- and save filtered records to downstream_web_records
 from weblog_records.subscribe()
 where user_id is not null
-insert into downstream_web_records
+append to downstream_web_records
 ```
 
 This query compiles into SQL to update the downstream_web_records table:
