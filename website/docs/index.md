@@ -203,7 +203,9 @@ end
 
 Calling this model:
 ```sql
--- {person_id} will be replaced with the given input 1
+from lookup(1)
+
+-- In the compiled SQL, ${person_id} will be replaced with the given input 1:
 select * from persons
 where id = 1
 ```
