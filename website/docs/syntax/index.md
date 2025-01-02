@@ -10,6 +10,7 @@ Wvlet is a query language designed to be more human-readable and easier to write
 - [Quick Start](./quick-start.md)
 - [Relational Operators](#relational-operators)
 - [Expressions](#expressions)
+- [Examples](#examples)
 - [Data Models](./data-models.md)
 
 ### Typical Flow of a Wvlet Query
