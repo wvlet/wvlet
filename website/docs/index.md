@@ -8,11 +8,11 @@ title: Introduction
 
 Wvlet (pronounced as weave-let) is a new flow-style query language designed for SQL-based database engines, such as [DuckDB](https://duckdb.org/) and [Trino](https://trino.io/).
 
-## Documentation Links
+## Documentation Overview
 
 - [Installation](./usage/install)
-- [Query Syntax](./syntax/)
 - [Usage](./usage/install.md)
+- [Query Syntax](./syntax/)
 - [Language Bindings](./bindings/)
 - [Development](./development/build.md)
 
@@ -29,7 +29,7 @@ SQL's syntax often does not match the semantic order of data processing. Here is
 </center>
 
 
-In SQL, the syntactic order of `SELECT ...` statements does not align with the atual data flow inside SQL engines.
+In SQL, the syntactic order of `SELECT ...` statements does not align with the actual data flow inside SQL engines.
 
 Wvlet addresses this problem by starting queries with `from ...` (table scan statement), and then streamlining results through subsequent processing operators like `where`, `group by`, and `select`. This approach resembles passing table values through [a UNIX pipe](https://en.wikipedia.org/wiki/Pipeline_(Unix)):
 
