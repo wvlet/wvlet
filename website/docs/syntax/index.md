@@ -124,10 +124,10 @@ One of the major difference from traditional SQL is that wvlet uses single or do
 | "double quote"                                      | Same as single quote strings                                                                                                                             |
 | """triple quote string"""                           | Multi-line strings                                                                                                                                       |
 | \`(back quote)\`                                      | Column or table name, which requires quotations                                                                                                          |
-| sql"`sql expr`"                                       | SQL expression used for inline expansion                                                                                                                 |
-| sql" ... $\{`expr`\} ..."                             | Interpolated SQL expression with embedded expressions                                                                                                    |
-| s"... $\{expr\} ..."                                  | Interpolated strings with expressions                                                                                                                    |
-| s\`... $\{expr\} ...\`                                | Interpolated backquote strings with expressions                                                                                                          |
+| __sql__"`sql expr`"                                       | SQL expression used for inline expansion                                                                                                                 |
+| __sql__" ... $\{`expr`\} ..."                             | Interpolated SQL expression with embedded expressions                                                                                                    |
+| __s__"... $\{expr\} ..."                                  | Interpolated strings with expressions                                                                                                                    |
+| __s__\`... $\{expr\} ...\`                                | Interpolated backquote strings with expressions                                                                                                          |
 | [`expr`, ...]                                         | Array value                                                                                                                                              |
 | [[`expr`, ...], ...]                                  | Array of arrays for representing table records                                                                                                           |
 | \{`key`\: `value`, ...\}                              | Struct (row) value                                                                                                                                       |
@@ -153,23 +153,23 @@ select s"Hello ${x}!" as msg
 
 | Operator                        | Description                                                                      |
 |---------------------------------|----------------------------------------------------------------------------------|
-| `expr` and `expr`               | Logical AND                                                                      |
-| `expr` or  `expr`               | Logical OR                                                                       |
-| not `expr`                      | Logical NOT                                                                      |
+| `expr` __and__ `expr`               | Logical AND                                                                      |
+| `expr` __or__  `expr`               | Logical OR                                                                       |
+| __not__ `expr`                      | Logical NOT                                                                      |
 | !`expr`                         | Logical NOT                                                                      |
-| `expr` is `expr`                | Equality check                                                                   |
-| `expr` = `expr`                 | Equality check                                                                   |
-| `expr` is not `expr`            | Inequality check                                                                 |
-| `expr` != `expr`                | Inequality check                                                                 |
-| `expr` is null                  | True if the expression is null                                                   |
-| `expr` = null                   | True if the expression is null                                                   |
-| `expr` is not null              | True if the expression is not null                                               |
-| `expr` != null                  | True if the expression is not null                                              |
-| `expr` in (`v1`, `v2`, ...)     | True if the expression value is in the given list                                |
-| `expr` in (from ...)            | True if the expression value is in the given list provided by a sub query        |
-| `expr` not in (`v1`, `v2`, ...) | True if the expression is not in the given list                                  |
-| `expr` between `v1` and `v2`    | True if the expression value is between v1 and v2, i.e., v1 &le; (value) &le; v2 |
-| `expr` like `pattern`           | True if the expression matches the given pattern, e.g., , `'abc%'`               |
+| `expr` __is__ `expr`                | Equality check                                                                   |
+| `expr` __=__ `expr`                 | Equality check                                                                   |
+| `expr` __is not__ `expr`            | Inequality check                                                                 |
+| `expr` __!=__ `expr`                | Inequality check                                                                 |
+| `expr` __is null__                  | True if the expression is null                                                   |
+| `expr` __= null__                   | True if the expression is null                                                   |
+| `expr` __is not null__              | True if the expression is not null                                               |
+| `expr` __!= null__                  | True if the expression is not null                                              |
+| `expr` __in__ (`v1`, `v2`, ...)     | True if the expression value is in the given list                                |
+| `expr` __in__ \{ from ... \}            | True if the expression value is in the given list provided by a sub query        |
+| `expr` __not in__ (`v1`, `v2`, ...) | True if the expression is not in the given list                                  |
+| `expr` __between__ `v1` __and__ `v2`    | True if the expression value is between v1 and v2, i.e., v1 &le; (value) &le; v2 |
+| `expr` __like__ `pattern`           | True if the expression matches the given pattern, e.g., , `'abc%'`               |
 
 #### If Expression
 
@@ -219,7 +219,7 @@ select
   as return_code 
 ```
 
-:::warning
+:::tip
 Unlike SQL, Wvlet doesn't require `end` at the end of case expressions.
 :::
 
@@ -227,7 +227,7 @@ Unlike SQL, Wvlet doesn't require `end` at the end of case expressions.
 
 | Operator        | Description             |
 |-----------------|-------------------------|
-| `expr` + `expr` | Concatenate two strings |
+| `expr` __+__ `expr` | Concatenate two strings |
 
 ### Array Expressions
 
