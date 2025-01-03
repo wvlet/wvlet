@@ -6,6 +6,8 @@ import wvlet.lang.compiler.ContextUtil.*
 import wvlet.lang.compiler.parser.Scanner.{Indented, Region}
 import wvlet.log.LogSupport
 
+import scala.annotation.{switch, tailrec}
+
 case class TokenData[Token](token: Token, str: String, offset: Int, length: Int):
   override def toString: String = f"[${offset}%3d:${length}%2d] ${token}%10s: ${str}"
 
@@ -102,6 +104,9 @@ abstract class ScannerBase[Token](sourceFile: SourceFile, config: ScannerConfig)
   inline protected def offset: Int = current.offset
   inline private def length: Int   = buf.length
 
+  // Initialization for populating the first character
+  nextChar()
+
   /**
     * Consume and return the next token
     */
@@ -137,9 +142,6 @@ abstract class ScannerBase[Token](sourceFile: SourceFile, config: ScannerConfig)
       peekAhead()
       shiftTokenHistory()
     next.toTokenData(lastCharOffset)
-
-  // Initialization for populating the first character
-  nextChar()
 
   protected def nextChar(): Unit =
     val index = charOffset
@@ -210,6 +212,8 @@ abstract class ScannerBase[Token](sourceFile: SourceFile, config: ScannerConfig)
     */
   protected def getNextToken(lastToken: Token): Unit
 
+  protected def fetchToken(): Unit
+
   protected def peekAhead(): Unit =
     prev.copyFrom(current)
     getNextToken(current.token)
@@ -232,6 +236,205 @@ abstract class ScannerBase[Token](sourceFile: SourceFile, config: ScannerConfig)
           target.token = tokenType
         case _ =>
           target.token = tokenTypeInfo.identifier
+
+  @tailrec
+  final protected def getIdentRest(): Unit =
+    trace(s"getIdentRest[${offset}]: ch: '${String.valueOf(ch)}'")
+    (ch: @switch) match
+      case 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'I' | 'J' | 'K' | 'L' | 'M' | 'N' | 'O' |
+          'P' | 'Q' | 'R' | 'S' | 'T' | 'U' | 'V' | 'W' | 'X' | 'Y' | 'Z' | '$' | 'a' | 'b' | 'c' |
+          'd' | 'e' | 'f' | 'g' | 'h' | 'i' | 'j' | 'k' | 'l' | 'm' | 'n' | 'o' | 'p' | 'q' | 'r' |
+          's' | 't' | 'u' | 'v' | 'w' | 'x' | 'y' | 'z' | '0' | '1' | '2' | '3' | '4' | '5' | '6' |
+          '7' | '8' | '9' | '_' =>
+        putChar(ch)
+        nextChar()
+        getIdentRest()
+      case _ =>
+        finishNamedToken()
+
+  @tailrec
+  final protected def getOperatorRest(): Unit =
+    trace(s"getOperatorRest[${offset}]: ch: '${String.valueOf(ch)}'")
+    (ch: @switch) match
+      case '~' | '!' | '@' | '#' | '%' | '^' | '+' | '-' | '<' | '>' | '?' | ':' | '=' | '&' | '|' |
+          '\\' =>
+        putChar(ch)
+        nextChar()
+        getOperatorRest()
+      case SU =>
+        finishNamedToken()
+      case _ =>
+        finishNamedToken()
+
+  protected def getNumber(base: Int): Unit =
+    while isNumberSeparator(ch) || digit2int(ch, base) >= 0 do
+      putChar(ch)
+      nextChar()
+    checkNoTrailingNumberSeparator()
+    var tokenType = tokenTypeInfo.integerLiteral
+
+    if base == 10 && ch == '.' then
+      val nextCh = lookAheadChar()
+      if '0' <= nextCh && nextCh <= '9' then
+        putChar(ch)
+        nextChar()
+        tokenType = getFraction()
+      else
+        tokenType = tokenTypeInfo.integerLiteral
+    else
+      (ch: @switch) match
+        case 'e' | 'E' | 'f' | 'F' | 'd' | 'D' =>
+          if base == 10 then
+            tokenType = getFraction()
+        case 'l' | 'L' =>
+          nextChar()
+          tokenType = tokenTypeInfo.longLiteral
+        case _ =>
+
+    checkNoTrailingNumberSeparator()
+
+    flushTokenString()
+    current.token = tokenType
+  end getNumber
+
+  protected def getFraction(): Token =
+    var tokenType = tokenTypeInfo.decimalLiteral
+    trace(s"getFraction ch[${offset}]: '${ch}'")
+    while '0' <= ch && ch <= '9' || isNumberSeparator(ch) do
+      putChar(ch)
+      nextChar()
+    checkNoTrailingNumberSeparator()
+    if ch == 'e' || ch == 'E' then
+      putChar(ch)
+      nextChar()
+      if ch == '+' || ch == '-' then
+        putChar(ch)
+        nextChar()
+      if '0' <= ch && ch <= '9' || isNumberSeparator(ch) then
+        putChar(ch)
+        nextChar()
+        if ch == '+' || ch == '-' then
+          putChar(ch)
+          nextChar()
+        while '0' <= ch && ch <= '9' || isNumberSeparator(ch) do
+          putChar(ch)
+          nextChar()
+        checkNoTrailingNumberSeparator()
+      tokenType = tokenTypeInfo.expLiteral
+    if ch == 'd' || ch == 'D' then
+      putChar(ch)
+      nextChar()
+      tokenType = tokenTypeInfo.doubleLiteral
+    else if ch == 'f' || ch == 'F' then
+      putChar(ch)
+      nextChar()
+      tokenType = tokenTypeInfo.floatLiteral
+    // checkNoLetter()
+    tokenType
+  end getFraction
+
+  protected def getLineComment(): Unit =
+    @tailrec
+    def readToLineEnd(): Unit =
+      putChar(ch)
+      nextChar()
+      if (ch != CR) && (ch != LF) && (ch != SU) then
+        readToLineEnd()
+
+    readToLineEnd()
+    val commentLine = flushTokenString()
+    if !config.skipComments then
+      current.token = tokenTypeInfo.commentToken
+      current.str = commentLine
+    else
+      if config.debugScanner then
+        debug(s"skip comment: ${commentLine}")
+      fetchToken()
+
+  protected def getSingleQuoteString(): Unit =
+    consume('\'')
+    while ch != '\'' && ch != SU do
+      putChar(ch)
+      nextChar()
+    consume('\'')
+    current.token = tokenTypeInfo.stringLiteral
+    current.str = flushTokenString()
+
+  protected def getDoubleQuoteString(): Unit =
+    // Regular double quoted string
+    // TODO Support unicode and escape characters
+    nextChar()
+    if ch == '\"' then
+      nextChar()
+      if ch == '\"' then
+        nextRawChar()
+        // Enter the triple-quote string
+        getRawStringLiteral()
+      else
+        current.token = tokenTypeInfo.stringLiteral
+        current.str = ""
+    else
+      getStringLiteral()
+
+  protected def getStringLiteral(): Unit =
+    while ch != '"' && ch != SU do
+      putChar(ch)
+      nextChar()
+    consume('"')
+    current.token = tokenTypeInfo.stringLiteral
+    current.str = flushTokenString()
+
+  private def getRawStringLiteral(): Unit =
+    if ch == '\"' then
+      nextRawChar()
+      if isTripleQuote() then
+        flushTokenString()
+        current.token = tokenTypeInfo.stringLiteral
+      else
+        getRawStringLiteral()
+    else if ch == SU then
+      reportError("Unclosed multi-line string literal", offset)
+    else
+      putChar(ch)
+      nextRawChar()
+      getRawStringLiteral()
+
+  protected def isTripleQuote(): Boolean =
+    if ch == '"' then
+      nextRawChar()
+      if ch == '"' then
+        nextRawChar()
+        while ch == '"' do
+          putChar('"')
+          nextChar()
+        true
+      else
+        putChar('"')
+        putChar('"')
+        false
+    else
+      putChar('"')
+      false
+
+  protected def getBlockComment(): Unit =
+    @tailrec
+    def readToCommentEnd(): Unit =
+      putChar(ch)
+      nextChar()
+      if ch == '*' then
+        putChar(ch)
+        nextChar()
+        if ch == '/' then
+          putChar(ch)
+          nextChar()
+        else
+          readToCommentEnd()
+      else
+        readToCommentEnd()
+
+    readToCommentEnd()
+    current.token = tokenTypeInfo.commentToken
+    current.str = flushTokenString()
 
 end ScannerBase
 

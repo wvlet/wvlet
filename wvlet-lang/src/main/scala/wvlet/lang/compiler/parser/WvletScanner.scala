@@ -63,7 +63,7 @@ class WvletScanner(sourceFile: SourceFile, config: ScannerConfig = ScannerConfig
   /**
     * Fetch the next token and set it to the current ScannerState
     */
-  private def fetchToken(): Unit =
+  override protected def fetchToken(): Unit =
     current.offset = charOffset - 1
     current.lineOffset =
       if current.lastOffset < lineStartOffset then
@@ -192,7 +192,7 @@ class WvletScanner(sourceFile: SourceFile, config: ScannerConfig = ScannerConfig
 
   end fetchToken
 
-  private def getDoubleQuoteString(): Unit =
+  override protected def getDoubleQuoteString(): Unit =
     if current.token == WvletToken.STRING_INTERPOLATION_PREFIX then
       currentRegion = InString(false, currentRegion)
       nextRawChar()
@@ -211,44 +211,8 @@ class WvletScanner(sourceFile: SourceFile, config: ScannerConfig = ScannerConfig
         // Single-line string interpolation
         getStringPart(multiline = false)
     else
-      // Regular double quoted string
-      // TODO Support unicode and escape characters
-      nextChar()
-      if ch == '\"' then
-        nextChar()
-        if ch == '\"' then
-          nextRawChar()
-          // Enter the triple-quote string
-          getRawStringLiteral()
-        else
-          current.token = WvletToken.STRING_LITERAL
-          current.str = ""
-      else
-        getStringLiteral()
+      super.getDoubleQuoteString()
   end getDoubleQuoteString
-
-  private def getStringLiteral(): Unit =
-    while ch != '"' && ch != SU do
-      putChar(ch)
-      nextChar()
-    consume('"')
-    current.token = WvletToken.STRING_LITERAL
-    current.str = flushTokenString()
-
-  private def getRawStringLiteral(): Unit =
-    if ch == '\"' then
-      nextRawChar()
-      if isTripleQuote() then
-        flushTokenString()
-        current.token = WvletToken.STRING_LITERAL
-      else
-        getRawStringLiteral()
-    else if ch == SU then
-      reportError("Unclosed multi-line string literal", offset)
-    else
-      putChar(ch)
-      nextRawChar()
-      getRawStringLiteral()
 
   private def getStringPart(multiline: Boolean): Unit =
     (ch: @switch) match
@@ -300,61 +264,6 @@ class WvletScanner(sourceFile: SourceFile, config: ScannerConfig = ScannerConfig
         nextRawChar()
         getStringPart(multiline)
 
-  private def isTripleQuote(): Boolean =
-    if ch == '"' then
-      nextRawChar()
-      if ch == '"' then
-        nextRawChar()
-        while ch == '"' do
-          putChar('"')
-          nextChar()
-        true
-      else
-        putChar('"')
-        putChar('"')
-        false
-    else
-      putChar('"')
-      false
-
-  private def getLineComment(): Unit =
-    @tailrec
-    def readToLineEnd(): Unit =
-      putChar(ch)
-      nextChar()
-      if (ch != CR) && (ch != LF) && (ch != SU) then
-        readToLineEnd()
-
-    readToLineEnd()
-    val commentLine = flushTokenString()
-    if !config.skipComments then
-      current.token = WvletToken.COMMENT
-      current.str = commentLine
-    else
-      if config.debugScanner then
-        debug(s"skip comment: ${commentLine}")
-      fetchToken()
-
-  private def getBlockComment(): Unit =
-    @tailrec
-    def readToCommentEnd(): Unit =
-      putChar(ch)
-      nextChar()
-      if ch == '*' then
-        putChar(ch)
-        nextChar()
-        if ch == '/' then
-          putChar(ch)
-          nextChar()
-        else
-          readToCommentEnd()
-      else
-        readToCommentEnd()
-
-    readToCommentEnd()
-    current.token = WvletToken.COMMENT
-    current.str = flushTokenString()
-
   /**
     * Skip the comment and return true if the comment is skipped
     */
@@ -371,15 +280,6 @@ class WvletScanner(sourceFile: SourceFile, config: ScannerConfig = ScannerConfig
       true
     else
       false
-
-  private def getSingleQuoteString(): Unit =
-    consume('\'')
-    while ch != '\'' && ch != SU do
-      putChar(ch)
-      nextChar()
-    consume('\'')
-    current.token = WvletToken.STRING_LITERAL
-    current.str = flushTokenString()
 
   private def getBackQuoteString(): Unit =
     if current.token == BACKQUOTE_INTERPOLATION_PREFIX then
@@ -441,112 +341,5 @@ class WvletScanner(sourceFile: SourceFile, config: ScannerConfig = ScannerConfig
         putChar(ch)
         nextRawChar()
         getBackquotePart()
-
-  @tailrec
-  private def getIdentRest(): Unit =
-    trace(s"getIdentRest[${offset}]: ch: '${String.valueOf(ch)}'")
-    (ch: @switch) match
-      case 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'I' | 'J' | 'K' | 'L' | 'M' | 'N' | 'O' |
-          'P' | 'Q' | 'R' | 'S' | 'T' | 'U' | 'V' | 'W' | 'X' | 'Y' | 'Z' | '$' | 'a' | 'b' | 'c' |
-          'd' | 'e' | 'f' | 'g' | 'h' | 'i' | 'j' | 'k' | 'l' | 'm' | 'n' | 'o' | 'p' | 'q' | 'r' |
-          's' | 't' | 'u' | 'v' | 'w' | 'x' | 'y' | 'z' | '0' | '1' | '2' | '3' | '4' | '5' | '6' |
-          '7' | '8' | '9' | '_' =>
-        putChar(ch)
-        nextChar()
-        getIdentRest()
-      case _ =>
-        finishNamedToken()
-
-  @tailrec
-  private def getOperatorRest(): Unit =
-    trace(s"getOperatorRest[${offset}]: ch: '${String.valueOf(ch)}'")
-    (ch: @switch) match
-      case '~' | '!' | '@' | '#' | '%' | '^' | '+' | '-' | '<' | '>' | '?' | ':' | '=' | '&' | '|' |
-          '\\' =>
-        putChar(ch)
-        nextChar()
-        getOperatorRest()
-      //    case '/' =>
-      //      val nxch = lookAheadChar()
-      //      if nxch == '/' || nxch == '*' then finishNamed()
-      //      else {
-      //        putChar(ch); nextChar(); getOperatorRest()
-      //      }
-      case SU =>
-        finishNamedToken()
-      case _ =>
-        finishNamedToken()
-  //      if isSpecial(ch) then {
-  //        putChar(ch); nextChar(); getOperatorRest()
-  //      }
-  //      else if isSupplementary(ch, isSpecial) then getOperatorRest()
-  //      else finishNamed()
-
-  private def getNumber(base: Int): Unit =
-    while isNumberSeparator(ch) || digit2int(ch, base) >= 0 do
-      putChar(ch)
-      nextChar()
-    checkNoTrailingNumberSeparator()
-    var tokenType = WvletToken.INTEGER_LITERAL
-
-    if base == 10 && ch == '.' then
-      val nextCh = lookAheadChar()
-      if '0' <= nextCh && nextCh <= '9' then
-        putChar(ch)
-        nextChar()
-        tokenType = getFraction()
-      else
-        tokenType = WvletToken.INTEGER_LITERAL
-    else
-      (ch: @switch) match
-        case 'e' | 'E' | 'f' | 'F' | 'd' | 'D' =>
-          if base == 10 then
-            tokenType = getFraction()
-        case 'l' | 'L' =>
-          nextChar()
-          tokenType = WvletToken.LONG_LITERAL
-        case _ =>
-
-    checkNoTrailingNumberSeparator()
-
-    flushTokenString()
-    current.token = tokenType
-  end getNumber
-
-  private def getFraction(): WvletToken =
-    var tokenType = WvletToken.DECIMAL_LITERAL
-    trace(s"getFraction ch[${offset}]: '${ch}'")
-    while '0' <= ch && ch <= '9' || isNumberSeparator(ch) do
-      putChar(ch)
-      nextChar()
-    checkNoTrailingNumberSeparator()
-    if ch == 'e' || ch == 'E' then
-      putChar(ch)
-      nextChar()
-      if ch == '+' || ch == '-' then
-        putChar(ch)
-        nextChar()
-      if '0' <= ch && ch <= '9' || isNumberSeparator(ch) then
-        putChar(ch)
-        nextChar()
-        if ch == '+' || ch == '-' then
-          putChar(ch)
-          nextChar()
-        while '0' <= ch && ch <= '9' || isNumberSeparator(ch) do
-          putChar(ch)
-          nextChar()
-        checkNoTrailingNumberSeparator()
-      tokenType = WvletToken.EXP_LITERAL
-    if ch == 'd' || ch == 'D' then
-      putChar(ch)
-      nextChar()
-      tokenType = WvletToken.DOUBLE_LITERAL
-    else if ch == 'f' || ch == 'F' then
-      putChar(ch)
-      nextChar()
-      tokenType = WvletToken.FLOAT_LITERAL
-    // checkNoLetter()
-    tokenType
-  end getFraction
 
 end WvletScanner

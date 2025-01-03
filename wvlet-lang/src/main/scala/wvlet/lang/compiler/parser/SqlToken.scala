@@ -221,7 +221,17 @@ object SqlToken:
   )
 
   val allKeywordsAndSymbols = keywords ++ literalStartKeyword ++ specialSymbols
-  val keywordAndSymbolTable = allKeywordsAndSymbols.map(x => x.str -> x).toMap
+  val keywordAndSymbolTable =
+    val m = Map.newBuilder[String, SqlToken]
+    allKeywordsAndSymbols.foreach {
+      case t: SqlToken if t.isReservedKeyword =>
+        m += t.str -> t
+        // Support upper-case keywords in SQL
+        m += t.str.toUpperCase -> t
+      case t: SqlToken =>
+        m += t.str -> t
+    }
+    m.result()
 
   val joinKeywords = Set(
     SqlToken.JOIN,
@@ -243,5 +253,13 @@ object SqlToken:
 
     override def identifier: SqlToken                   = SqlToken.IDENTIFIER
     override def findToken(s: String): Option[SqlToken] = SqlToken.keywordAndSymbolTable.get(s)
+    override def integerLiteral: SqlToken               = SqlToken.INTEGER_LITERAL
+    override def longLiteral: SqlToken                  = SqlToken.LONG_LITERAL
+    override def decimalLiteral: SqlToken               = SqlToken.DECIMAL_LITERAL
+    override def expLiteral: SqlToken                   = SqlToken.EXP_LITERAL
+    override def doubleLiteral: SqlToken                = SqlToken.DOUBLE_LITERAL
+    override def floatLiteral: SqlToken                 = SqlToken.FLOAT_LITERAL
+    override def commentToken: SqlToken                 = SqlToken.COMMENT
+    override def stringLiteral: SqlToken                = SqlToken.STRING_LITERAL
 
 end SqlToken
