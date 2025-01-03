@@ -261,5 +261,6 @@ object SqlToken:
     override def floatLiteral: SqlToken                 = SqlToken.FLOAT_LITERAL
     override def commentToken: SqlToken                 = SqlToken.COMMENT
     override def stringLiteral: SqlToken                = SqlToken.STRING_LITERAL
+    override def whiteSpace: SqlToken                   = SqlToken.WHITESPACE
 
 end SqlToken

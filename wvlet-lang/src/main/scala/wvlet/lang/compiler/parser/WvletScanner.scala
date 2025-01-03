@@ -76,30 +76,12 @@ class WvletScanner(sourceFile: SourceFile, config: ScannerConfig = ScannerConfig
 
     (ch: @switch) match
       case ' ' | '\t' | CR | LF | FF =>
-        def getWSRest(): Unit =
-          if isWhiteSpaceChar(ch) then
-            putChar(ch)
-            nextChar()
-            getWSRest()
-          else
-            current.token = WvletToken.WHITESPACE
-            flushTokenString()
-
-        if config.skipWhiteSpace then
-          // Skip white space characters without pushing them into the buffer
-          nextChar()
-          fetchToken()
-        else
-          putChar(ch)
-          nextChar()
-          getWSRest()
+        getWhiteSpaces()
       case 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'I' | 'J' | 'K' | 'L' | 'M' | 'N' | 'O' |
           'P' | 'Q' | 'R' | 'S' | 'T' | 'U' | 'V' | 'W' | 'X' | 'Y' | 'Z' | '$' | '_' | 'a' | 'b' |
           'c' | 'd' | 'e' | 'f' | 'g' | 'h' | 'i' | 'j' | 'k' | 'l' | 'm' | 'n' | 'o' | 'p' | 'q' |
           'r' | 's' | 't' | 'u' | 'v' | 'w' | 'x' | 'y' | 'z' =>
-        putChar(ch)
-        nextChar()
-        getIdentRest()
+        getIdentifier()
         if (ch == '"' || ch == '`') && current.token == WvletToken.IDENTIFIER then
           if ch == '`' then
             current.token = WvletToken.BACKQUOTE_INTERPOLATION_PREFIX
@@ -107,46 +89,15 @@ class WvletScanner(sourceFile: SourceFile, config: ScannerConfig = ScannerConfig
             current.token = WvletToken.STRING_INTERPOLATION_PREFIX
       case '~' | '!' | '@' | '#' | '%' | '^' | '*' | '+' | '<' | '>' | '?' | ':' | '=' | '&' | '|' |
           '\\' =>
-        putChar(ch)
-        nextChar()
-        getOperatorRest()
+        getOperator()
       case '-' =>
-        putChar(ch)
-        nextChar()
-        if ch == '-' then
-          getLineComment()
-        else if '0' <= ch && ch <= '9' then
-          getNumber(base = 10)
-        else
-          getOperatorRest()
+        scanHyphen()
       case '0' =>
-        var base: Int = 10
-        def fetchLeadingZero(): Unit =
-          putChar(ch)
-          nextChar()
-          ch match
-            case 'x' | 'X' =>
-              base = 16
-              putChar(ch)
-              nextChar()
-            case _ =>
-              base = 10
-          if base != 10 && !isNumberSeparator(ch) && digit2int(ch, base) < 0 then
-            error("invalid literal number")
-
-        fetchLeadingZero()
-        getNumber(base)
+        scanZero()
       case '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' =>
         getNumber(base = 10)
       case '.' =>
-        nextChar()
-        if '0' <= ch && ch <= '9' then
-          putChar('.')
-          getFraction()
-          flushTokenString()
-        else
-          putChar('.')
-          getOperatorRest()
+        scanDot()
       case '{' =>
         putChar(ch)
         nextChar()
@@ -169,17 +120,7 @@ class WvletScanner(sourceFile: SourceFile, config: ScannerConfig = ScannerConfig
       case '`' =>
         getBackQuoteString()
       case '/' =>
-        putChar(ch)
-        nextChar()
-        ch match
-          case '/' =>
-            putChar(ch)
-            nextChar()
-            getOperatorRest()
-          case '*' =>
-            getBlockComment()
-          case _ =>
-            getOperatorRest()
+        scanSlash()
       case SU =>
         current.token = WvletToken.EOF
         current.str = ""
