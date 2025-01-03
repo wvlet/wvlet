@@ -86,13 +86,13 @@ end DataTypeParser
 class DataTypeParser(scanner: WvletScanner) extends LogSupport:
   import DataTypeParser.*
 
-  private def consume(expected: WvletToken): TokenData =
+  private def consume(expected: WvletToken): TokenData[WvletToken] =
     val t = scanner.nextToken()
     if t.token != expected then
       throw unexpected(s"Expected ${expected} but found ${t.token}")
     t
 
-  private def consumeIdentifier(expected: String): TokenData =
+  private def consumeIdentifier(expected: String): TokenData[WvletToken] =
     val t = scanner.nextToken()
     if t.token != WvletToken.IDENTIFIER || t.str.toLowerCase != expected then
       throw unexpected(s"Expected ${expected} but found ${t.token}")

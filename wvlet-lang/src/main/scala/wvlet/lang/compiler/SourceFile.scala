@@ -15,7 +15,7 @@ package wvlet.lang.compiler
 
 import wvlet.lang.api.{LinePosition, SourceLocation, Span, StatusCode}
 import wvlet.lang.compiler.parser.{WvletScanner, WvletToken}
-import wvlet.lang.compiler.parser.WvletToken.*
+import wvlet.lang.compiler.parser.Tokens.*
 import wvlet.airframe.ulid.ULID
 import wvlet.log.io.IOUtil
 
@@ -85,7 +85,7 @@ class SourceFile(val file: VirtualFile):
         if ch == CR then
           i + 1 == txt.length || content(i + 1) != LF
         else
-          WvletToken.isLineBreakChar(ch)
+          isLineBreakChar(ch)
       if isLineBreak then
         buf += i + 1
       i += 1

@@ -56,10 +56,10 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         val stmts = statements()
         PackageDef(EmptyName, stmts, unit.sourceFile, spanFrom(t))
 
-  private var lastToken: TokenData = null
+  private var lastToken: TokenData[WvletToken] = null
 
   // private def sourceLocation: SourceLocation = SourceLocation(unit.sourceFile, nodeLocation())
-  def consume(expected: WvletToken)(using code: SourceCode): TokenData =
+  def consume(expected: WvletToken)(using code: SourceCode): TokenData[WvletToken] =
     val t = scanner.nextToken()
     if t.token == expected then
       lastToken = t
@@ -72,7 +72,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           t.sourceLocation
         )
 
-  def consumeToken(): TokenData =
+  def consumeToken(): TokenData[WvletToken] =
     val t = scanner.nextToken()
     lastToken = t
     t
@@ -82,11 +82,13 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     * @param startToken
     * @return
     */
-  private def spanFrom(startToken: TokenData): Span = startToken.span.extendTo(lastToken.span)
+  private def spanFrom(startToken: TokenData[WvletToken]): Span = startToken
+    .span
+    .extendTo(lastToken.span)
 
   private def spanFrom(startSpan: Span): Span = startSpan.extendTo(lastToken.span)
 
-  private def unexpected(t: TokenData)(using code: SourceCode): Nothing =
+  private def unexpected(t: TokenData[WvletToken])(using code: SourceCode): Nothing =
     throw StatusCode
       .SYNTAX_ERROR
       .newException(
@@ -1784,7 +1786,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     consume(WvletToken.R_BRACKET)
     ArrayConstructor(elements.result(), spanFrom(t))
 
-  def struct(lBraceToken: TokenData): StructValue =
+  def struct(lBraceToken: TokenData[WvletToken]): StructValue =
     val fields = List.newBuilder[StructField]
     def nextField: Unit =
       val t = scanner.lookAhead()
