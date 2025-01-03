@@ -3,7 +3,7 @@ import TabItem from '@theme/TabItem';
 
 # Query Syntax
 
-Wvlet is a query language designed to be more human-readable and easier to write than SQL. If you familiar to SQL, you will find it easy to learn Wvlet syntax due to the many similarities. If you know about [DataFrame in Python](https://pandas.pydata.org/docs/user_guide), it will help you understand the Wvlet query language, as chaining relational operators in flow-style is similar to using the DataFrame API.
+Wvlet is a query language designed to be more human-readable and easier to write than SQL. If you are familiar to SQL, you will find it easy to learn Wvlet syntax due to the many similarities. If you know about [DataFrame in Python](https://pandas.pydata.org/docs/user_guide), it will help you understand the Wvlet query language, as chaining relational operators in flow-style is similar to using the DataFrame API.
 
 ### Documentation Overview
 
