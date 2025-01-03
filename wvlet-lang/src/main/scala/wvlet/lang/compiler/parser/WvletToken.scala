@@ -314,5 +314,6 @@ object WvletToken:
 
     override def commentToken: WvletToken  = WvletToken.COMMENT
     override def stringLiteral: WvletToken = WvletToken.STRING_LITERAL
+    override def whiteSpace: WvletToken    = WvletToken.WHITESPACE
 
 end WvletToken

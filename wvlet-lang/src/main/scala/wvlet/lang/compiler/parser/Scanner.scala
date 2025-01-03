@@ -237,6 +237,88 @@ abstract class ScannerBase[Token](sourceFile: SourceFile, config: ScannerConfig)
         case _ =>
           target.token = tokenTypeInfo.identifier
 
+  protected def getWhiteSpaces(): Unit =
+    def getWSRest(): Unit =
+      if isWhiteSpaceChar(ch) then
+        putChar(ch)
+        nextChar()
+        getWSRest()
+      else
+        current.token = tokenTypeInfo.whiteSpace
+        flushTokenString()
+
+    if config.skipWhiteSpace then
+      // Skip white space characters without pushing them into the buffer
+      nextChar()
+      fetchToken()
+    else
+      putChar(ch)
+      nextChar()
+      getWSRest()
+
+  protected def getIdentifier(): Unit =
+    putChar(ch)
+    nextChar()
+    getIdentRest()
+
+  protected def getOperator(): Unit =
+    putChar(ch)
+    nextChar()
+    getOperatorRest()
+
+  protected def scanHyphen(): Unit =
+    putChar(ch)
+    nextChar()
+    if ch == '-' then
+      getLineComment()
+    else if '0' <= ch && ch <= '9' then
+      getNumber(base = 10)
+    else
+      getOperatorRest()
+
+  protected def scanZero(): Unit =
+    var base: Int = 10
+    def fetchLeadingZero(): Unit =
+      putChar(ch)
+      nextChar()
+      ch match
+        case 'x' | 'X' =>
+          base = 16
+          putChar(ch)
+          nextChar()
+        case _ =>
+          base = 10
+      if base != 10 && !isNumberSeparator(ch) && digit2int(ch, base) < 0 then
+        reportError("invalid literal number", offset)
+
+    fetchLeadingZero()
+    getNumber(base)
+
+  protected def scanDot(): Unit =
+    nextChar()
+    if '0' <= ch && ch <= '9' then
+      putChar('.')
+      getFraction()
+      flushTokenString()
+    else
+      putChar('.')
+      getOperatorRest()
+
+  protected def scanSlash(): Unit =
+    putChar(ch)
+    nextChar()
+    ch match
+      case '/' =>
+        putChar(ch)
+        nextChar()
+        getOperatorRest()
+      case '*' =>
+        putChar(ch)
+        nextChar()
+        getBlockComment()
+      case _ =>
+        getOperatorRest()
+
   @tailrec
   final protected def getIdentRest(): Unit =
     trace(s"getIdentRest[${offset}]: ch: '${String.valueOf(ch)}'")

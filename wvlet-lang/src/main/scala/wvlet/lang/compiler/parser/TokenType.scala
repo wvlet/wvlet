@@ -14,3 +14,4 @@ trait TokenTypeInfo[Token]:
   def floatLiteral: Token
   def commentToken: Token
   def stringLiteral: Token
+  def whiteSpace: Token
