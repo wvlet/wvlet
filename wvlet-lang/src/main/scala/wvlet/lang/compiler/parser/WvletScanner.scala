@@ -21,198 +21,23 @@ import wvlet.lang.compiler.parser.WvletScanner.{
   Indented,
   Region
 }
-import wvlet.lang.compiler.parser.WvletToken.{LF, SU}
 import wvlet.lang.compiler.{CompilationUnit, SourceFile}
 import wvlet.lang.compiler.ContextUtil.*
 import wvlet.log.LogSupport
 
 import java.io.ObjectInputFilter.Status
 import scala.annotation.{switch, tailrec}
-
-case class TokenData(token: WvletToken, str: String, offset: Int, length: Int):
-  override def toString: String = f"[${offset}%3d:${length}%2d] ${token}%10s: ${str}"
-
-  def sourceLocation(using unit: CompilationUnit): SourceLocation = unit
-    .sourceLocationAt(nodeLocation(using unit.sourceFile))
-
-  def span: Span = Span(offset, offset + length, 0)
-
-  def nodeLocation(using src: SourceFile): LinePosition =
-    val line = src.offsetToLine(offset)
-    val col  = src.offsetToColumn(offset)
-    LinePosition(line + 1, col)
-
-class ScanState(startFrom: Int = 0):
-  override def toString: String = s"'${str}' <${token}> (${lastOffset}-${offset})"
-
-  // Token type
-  var token: WvletToken = WvletToken.EMPTY
-  // The string value of the token
-  var str: String = ""
-
-  // The 1-character ahead offset of the last read character
-  var offset: Int = startFrom
-  // The offset of the character immediately before the current token
-  var lastOffset: Int = startFrom
-  // the offset of the newline immediately before the current token, or -1 if the current token is not the first one after a newline
-  var lineOffset: Int = -1
-
-  def copyFrom(s: ScanState): Unit =
-    token = s.token
-    str = s.str
-    offset = s.offset
-    lastOffset = s.lastOffset
-    lineOffset = s.lineOffset
-
-  def toTokenData(lastCharOffset: Int): TokenData = TokenData(
-    token,
-    str,
-    offset,
-    lastCharOffset - offset
-  )
-
-  def isAfterLineEnd: Boolean = lineOffset >= 0
-
-end ScanState
-
-case class ScannerConfig(
-    startFrom: Int = 0,
-    skipComments: Boolean = false,
-    skipWhiteSpace: Boolean = true,
-    reportErrorToken: Boolean = false,
-    debugScanner: Boolean = false
-)
-
-abstract class ScannerBase(protected val buf: IArray[Char], startFrom: Int = 0):
-  import WvletToken.*
-
-  protected var current: ScanState = ScanState(startFrom = startFrom)
-
-  // The last read character
-  protected var ch: Char = _
-  // The offset +1 of the last read character
-  protected var charOffset: Int = startFrom
-  // The offset before the last read character
-  protected var lastCharOffset: Int = startFrom
-  // The start offset of the current line
-  protected var lineStartOffset: Int = startFrom
-
-  inline protected def offset: Int = current.offset
-  inline private def length: Int   = buf.length
-
-  protected def nextChar(): Unit =
-    val index = charOffset
-    lastCharOffset = index
-    charOffset = index + 1
-    if index >= length then
-      // Set SU to represent the end of the file
-      ch = SU
-    else
-      val c = buf(index)
-      ch = c
-      if c < ' ' then
-        fetchLineEnd()
-
-  protected def nextRawChar(): Unit =
-    val index = charOffset
-    lastCharOffset = index
-    charOffset = index + 1
-    if index >= length then
-      ch = SU
-    else
-      ch = buf(index)
-
-  private def fetchLineEnd(): Unit =
-    // Handle CR LF as a single LF
-    if ch == CR then
-      if charOffset < length && buf(offset) == LF then
-        current.offset += 1
-        ch = LF
-
-    // Found a new line. Update the line start offset
-    if ch == LF || ch == FF then
-      lineStartOffset = charOffset
-
-  protected def lookAheadChar(): Char =
-    val index = charOffset
-    if index >= length then
-      SU
-    else
-      buf(index)
-
-end ScannerBase
+import Tokens.*
 
 /**
   * Scan *.wv files
   */
-class WvletScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
-    extends ScannerBase(source.getContent, config.startFrom)
+class WvletScanner(sourceFile: SourceFile, config: ScannerConfig = ScannerConfig())
+    extends ScannerBase[WvletToken](sourceFile, config)
     with LogSupport:
   import WvletToken.*
 
-  // Preserve token history
-  private var prev: ScanState = ScanState(startFrom = config.startFrom)
-  private var next: ScanState = ScanState(startFrom = config.startFrom)
-
-  // Is the current token the first one after a newline?
-
-  private val tokenBuffer           = TokenBuffer()
-  private var currentRegion: Region = Indented(0, null)
-
-  // Initialization for populating the first character
-  nextChar()
-
-  /**
-    * Handle new lines. If necessary, add INDENT or OUTDENT tokens in front of the current token.
-    *
-    * Insert INDENT if
-    *   - the indentation is significant, and
-    *   - the last token can start an indentation region, and
-    *   - the indentation of the current token is greater than the previous indentation width.
-    */
-  private def handleNewLine(): Unit =
-    val indent = indentWidth(offset)
-    debug(s"handle new line: ${offset}, indentWidth:${indent}")
-
-  private def indentWidth(offset: Int): Int =
-    def loop(index: Int, ch: Char): Int = 0
-    loop(offset - 1, ' ')
-
-  private def checkNoTrailingNumberSeparator(): Unit =
-    if tokenBuffer.nonEmpty && isNumberSeparator(tokenBuffer.last) then
-      reportError("trailing number separator", source.sourceLocationAt(offset))
-
-  private def reportError(msg: String, loc: SourceLocation): Unit =
-    if config.reportErrorToken then
-      throw StatusCode.UNEXPECTED_TOKEN.newException(msg)
-    else
-      error(s"${msg} at ${loc}")
-
-  private def consume(expectedChar: Char): Unit =
-    if ch != expectedChar then
-      reportError(s"expected '${expectedChar}', but found '${ch}'", source.sourceLocationAt(offset))
-    nextChar()
-
-  def peekAhead(): Unit =
-    prev.copyFrom(current)
-    getNextToken(current.token)
-//    if current.token == WvletToken.END && isEndMaker then
-//      current.token = WvletToken.IDENTIFIER
-
-  def shiftTokenHistory(): Unit =
-    next.copyFrom(current)
-    current.copyFrom(prev)
-
-  def lookAhead(): TokenData =
-    if next.token == WvletToken.EMPTY then
-      peekAhead()
-      shiftTokenHistory()
-
-    next.toTokenData(lastCharOffset)
-
-  private def putChar(ch: Char): Unit = tokenBuffer.append(ch)
-
-  def nextToken(): TokenData =
+  def nextToken(): TokenData[WvletToken] =
     val lastToken = current.token
     try
       getNextToken(lastToken)
@@ -229,8 +54,6 @@ class WvletScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
         nextChar()
         t
 
-  def currentToken: TokenData = current.toTokenData(lastCharOffset)
-
   def inStringInterpolation: Boolean =
     currentRegion match
       case InString(_, _) =>
@@ -245,7 +68,7 @@ class WvletScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
       case _ =>
         false
 
-  private def getNextToken(lastToken: WvletToken): Unit =
+  override protected def getNextToken(lastToken: WvletToken): Unit =
     // If the next token is already set, use it, otherwise fetch the next token
     if next.token == WvletToken.EMPTY then
       current.lastOffset = lastCharOffset
@@ -444,7 +267,7 @@ class WvletScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
       else
         getRawStringLiteral()
     else if ch == SU then
-      reportError("Unclosed multi-line string literal", source.sourceLocationAt(offset))
+      reportError("Unclosed multi-line string literal", offset)
     else
       putChar(ch)
       nextRawChar()
@@ -494,10 +317,7 @@ class WvletScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
             nextChar()
             getStringPart(multiline)
       case SU =>
-        reportError(
-          s"unexpected end of file in string interpolation",
-          source.sourceLocationAt(offset)
-        )
+        reportError(s"unexpected end of file in string interpolation", offset)
       case _ =>
         putChar(ch)
         nextRawChar()
@@ -639,10 +459,7 @@ class WvletScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
             nextChar()
             getBackquotePart()
       case SU =>
-        reportError(
-          s"unexpected end of file in string interpolation",
-          source.sourceLocationAt(offset)
-        )
+        reportError(s"unexpected end of file in string interpolation", offset)
       case _ =>
         putChar(ch)
         nextRawChar()
@@ -697,7 +514,7 @@ class WvletScanner(source: SourceFile, config: ScannerConfig = ScannerConfig())
     tokenBuffer.clear()
     str
 
-  private def finishNamedToken(target: ScanState = current): Unit =
+  private def finishNamedToken(target: ScanState[WvletToken] = current): Unit =
     val currentTokenStr = flushTokenString()
     trace(s"finishNamedToken at ${current}: '${currentTokenStr}'")
     val token =
