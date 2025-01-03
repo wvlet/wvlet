@@ -300,6 +300,10 @@ object WvletToken:
   def isQueryDelimiter(t: WvletToken): Boolean = queryDelimiters.contains(t)
 
   given tokenTypeInfo: TokenTypeInfo[WvletToken] with
-    override def empty: WvletToken = WvletToken.EMPTY
+    override def empty: WvletToken                        = WvletToken.EMPTY
+    override def errorToken: WvletToken                   = WvletToken.ERROR
+    override def eofToken: WvletToken                     = WvletToken.EOF
+    override def identifier: WvletToken                   = WvletToken.IDENTIFIER
+    override def findToken(s: String): Option[WvletToken] = keywordAndSymbolTable.get(s)
 
 end WvletToken

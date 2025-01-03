@@ -237,6 +237,11 @@ object SqlToken:
   val queryDelimiters = Set(SqlToken.EOF, SqlToken.R_PAREN, SqlToken.SEMICOLON)
 
   given tokenTypeInfo: TokenTypeInfo[SqlToken] with
-    override def empty: SqlToken = SqlToken.EMPTY
+    override def empty: SqlToken      = SqlToken.EMPTY
+    override def errorToken: SqlToken = SqlToken.ERROR
+    override def eofToken: SqlToken   = SqlToken.EOF
+
+    override def identifier: SqlToken                   = SqlToken.IDENTIFIER
+    override def findToken(s: String): Option[SqlToken] = SqlToken.keywordAndSymbolTable.get(s)
 
 end SqlToken

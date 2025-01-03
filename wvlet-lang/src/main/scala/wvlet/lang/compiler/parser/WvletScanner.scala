@@ -14,13 +14,7 @@
 package wvlet.lang.compiler.parser
 
 import wvlet.lang.api.{LinePosition, SourceLocation, Span, StatusCode, WvletLangException}
-import wvlet.lang.compiler.parser.WvletScanner.{
-  InBackquoteString,
-  InBraces,
-  InString,
-  Indented,
-  Region
-}
+import wvlet.lang.compiler.parser.Scanner.{InBackquoteString, InBraces, InString, Indented, Region}
 import wvlet.lang.compiler.{CompilationUnit, SourceFile}
 import wvlet.lang.compiler.ContextUtil.*
 import wvlet.log.LogSupport
@@ -36,23 +30,6 @@ class WvletScanner(sourceFile: SourceFile, config: ScannerConfig = ScannerConfig
     extends ScannerBase[WvletToken](sourceFile, config)
     with LogSupport:
   import WvletToken.*
-
-  def nextToken(): TokenData[WvletToken] =
-    val lastToken = current.token
-    try
-      getNextToken(lastToken)
-      val t = current.toTokenData(lastCharOffset)
-      if config.debugScanner then
-        debug(s"${currentRegion} ${t}")
-      t
-    catch
-      case e: WvletLangException
-          if e.statusCode == StatusCode.UNEXPECTED_TOKEN && config.reportErrorToken =>
-        current.token = WvletToken.ERROR
-        currentRegion = Indented(0, null)
-        val t = current.toTokenData(lastCharOffset)
-        nextChar()
-        t
 
   def inStringInterpolation: Boolean =
     currentRegion match
@@ -505,25 +482,6 @@ class WvletScanner(sourceFile: SourceFile, config: ScannerConfig = ScannerConfig
   //      else if isSupplementary(ch, isSpecial) then getOperatorRest()
   //      else finishNamed()
 
-  /**
-    * Set the token string and clear the buffer
-    */
-  private def flushTokenString(): String =
-    val str = tokenBuffer.toString
-    current.str = str
-    tokenBuffer.clear()
-    str
-
-  private def finishNamedToken(target: ScanState[WvletToken] = current): Unit =
-    val currentTokenStr = flushTokenString()
-    trace(s"finishNamedToken at ${current}: '${currentTokenStr}'")
-    val token =
-      WvletToken.keywordAndSymbolTable.get(currentTokenStr) match
-        case Some(tokenType) =>
-          target.token = tokenType
-        case None =>
-          target.token = WvletToken.IDENTIFIER
-
   private def getNumber(base: Int): Unit =
     while isNumberSeparator(ch) || digit2int(ch, base) >= 0 do
       putChar(ch)
@@ -592,14 +550,3 @@ class WvletScanner(sourceFile: SourceFile, config: ScannerConfig = ScannerConfig
   end getFraction
 
 end WvletScanner
-
-object WvletScanner:
-  sealed trait Region:
-    def outer: Region
-
-  // Inside an interpolated string
-  case class InString(multiline: Boolean, outer: Region) extends Region
-  case class InBackquoteString(outer: Region)            extends Region
-  case class InBraces(outer: Region)                     extends Region
-  // Inside an indented region
-  case class Indented(level: Int, outer: Region | Null) extends Region

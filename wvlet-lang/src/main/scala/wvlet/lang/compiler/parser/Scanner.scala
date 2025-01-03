@@ -1,9 +1,9 @@
 package wvlet.lang.compiler.parser
 
-import wvlet.lang.api.{LinePosition, SourceLocation, Span, StatusCode}
+import wvlet.lang.api.{LinePosition, SourceLocation, Span, StatusCode, WvletLangException}
 import wvlet.lang.compiler.{CompilationUnit, SourceFile}
 import wvlet.lang.compiler.ContextUtil.*
-import wvlet.lang.compiler.parser.WvletScanner.{Indented, Region}
+import wvlet.lang.compiler.parser.Scanner.{Indented, Region}
 import wvlet.log.LogSupport
 
 case class TokenData[Token](token: Token, str: String, offset: Int, length: Int):
@@ -59,18 +59,31 @@ case class ScannerConfig(
     debugScanner: Boolean = false
 )
 
+/**
+  * A common scanner implementation for reading tokens from the source file
+  * @param sourceFile
+  * @param config
+  * @param tokenTypeInfo
+  * @tparam Token
+  */
 abstract class ScannerBase[Token](sourceFile: SourceFile, config: ScannerConfig)(using
-    tokenType: TokenTypeInfo[Token]
+    tokenTypeInfo: TokenTypeInfo[Token]
 ) extends LogSupport:
   import Tokens.*
 
   protected val buf: IArray[Char]         = sourceFile.getContent
-  protected var current: ScanState[Token] = ScanState(tokenType.empty, config.startFrom)
+  protected var current: ScanState[Token] = ScanState(tokenTypeInfo.empty, config.startFrom)
 
   // Preserve token history
-  protected var prev: ScanState[Token] = ScanState(tokenType.empty, startFrom = config.startFrom)
+  protected var prev: ScanState[Token] = ScanState(
+    tokenTypeInfo.empty,
+    startFrom = config.startFrom
+  )
 
-  protected var next: ScanState[Token] = ScanState(tokenType.empty, startFrom = config.startFrom)
+  protected var next: ScanState[Token] = ScanState(
+    tokenTypeInfo.empty,
+    startFrom = config.startFrom
+  )
 
   // Is the current token the first one after a newline?
 
@@ -88,6 +101,42 @@ abstract class ScannerBase[Token](sourceFile: SourceFile, config: ScannerConfig)
 
   inline protected def offset: Int = current.offset
   inline private def length: Int   = buf.length
+
+  /**
+    * Consume and return the next token
+    */
+  def nextToken(): TokenData[Token] =
+    val lastToken = current.token
+    try
+      getNextToken(lastToken)
+      val t = current.toTokenData(lastCharOffset)
+      if config.debugScanner then
+        debug(s"${currentRegion} ${t}")
+      t
+    catch
+      case e: WvletLangException
+          if e.statusCode == StatusCode.UNEXPECTED_TOKEN && config.reportErrorToken =>
+        current.token = tokenTypeInfo.errorToken
+        currentRegion = Indented(0, null)
+        val t = current.toTokenData(lastCharOffset)
+        nextChar()
+        t
+
+  /**
+    * Return the current token
+    * @return
+    */
+  def currentToken: TokenData[Token] = current.toTokenData(lastCharOffset)
+
+  /**
+    * Peek the next token without consuming it
+    * @return
+    */
+  def lookAhead(): TokenData[Token] =
+    if next.token == tokenTypeInfo.empty then
+      peekAhead()
+      shiftTokenHistory()
+    next.toTokenData(lastCharOffset)
 
   // Initialization for populating the first character
   nextChar()
@@ -154,18 +203,46 @@ abstract class ScannerBase[Token](sourceFile: SourceFile, config: ScannerConfig)
 
   protected def putChar(ch: Char): Unit = tokenBuffer.append(ch)
 
+  /**
+    * Read the next token and update the current token data. If the next token is already read,
+    * update the current token data with the next token.
+    * @param lastToken
+    */
   protected def getNextToken(lastToken: Token): Unit
 
-  def currentToken: TokenData[Token] = current.toTokenData(lastCharOffset)
-
-  def peekAhead(): Unit =
+  protected def peekAhead(): Unit =
     prev.copyFrom(current)
     getNextToken(current.token)
 
-  def lookAhead(): TokenData[Token] =
-    if next.token == tokenType.empty then
-      peekAhead()
-      shiftTokenHistory()
-    next.toTokenData(lastCharOffset)
+  /**
+    * Set the token string and clear the buffer
+    */
+  protected def flushTokenString(): String =
+    val str = tokenBuffer.toString
+    current.str = str
+    tokenBuffer.clear()
+    str
+
+  protected def finishNamedToken(target: ScanState[Token] = current): Unit =
+    val currentTokenStr = flushTokenString()
+    trace(s"finishNamedToken at ${current}: '${currentTokenStr}'")
+    val token =
+      tokenTypeInfo.findToken(currentTokenStr) match
+        case Some(tokenType: Token) =>
+          target.token = tokenType
+        case _ =>
+          target.token = tokenTypeInfo.identifier
 
 end ScannerBase
+
+object Scanner:
+  sealed trait Region:
+    def outer: Region
+
+  // Inside an interpolated string
+  case class InString(multiline: Boolean, outer: Region) extends Region
+  case class InBackquoteString(outer: Region)            extends Region
+  case class InBraces(outer: Region)                     extends Region
+
+  // Inside an indented region
+  case class Indented(level: Int, outer: Region | Null) extends Region
