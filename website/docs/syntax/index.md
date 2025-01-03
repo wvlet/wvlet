@@ -34,8 +34,7 @@ order by ...     -- Sort the rows by the given columns
 limit ...        -- Limit the number of rows to output
 ```
 
-Unlike SQL, whose queries always must follow the `SELECT ... FROM ... WHERE ... GROUP BY ... ORDER BY ... LIMIT ...` structure, Wvlet uses the __flow-style syntax
-__ to match the order of data processing order as much as possible, facilitating more intuitive query writing. A query should have a `from` statement to read the data, but
+Unlike SQL, whose queries always must follow the `SELECT ... FROM ... WHERE ... GROUP BY ... ORDER BY ... LIMIT ...` structure, Wvlet uses the flow-style syntax to match the order of data processing order as much as possible, facilitating more intuitive query writing. A query should have a `from` statement to read the data, but
 `select` is not mandatory in Wvlet.
 
 [//]: # (Some operators like `add`, `transform`, `agg`, `exclude`, `shift`, etc. are not available in the standard SQL, but these new operators will reduce your query text size and make the query more readable and easier to compose. Eventually, these operators will be translated to the equivalent SQL syntax.)
