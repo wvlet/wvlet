@@ -64,15 +64,7 @@ class WvletScanner(sourceFile: SourceFile, config: ScannerConfig = ScannerConfig
     * Fetch the next token and set it to the current ScannerState
     */
   override protected def fetchToken(): Unit =
-    current.offset = charOffset - 1
-    current.lineOffset =
-      if current.lastOffset < lineStartOffset then
-        lineStartOffset
-      else
-        -1
-    trace(
-      s"fetchToken[${current}]: '${String.valueOf(ch)}' charOffset:${charOffset} lastCharOffset:${lastCharOffset}, lineStartOffset:${lineStartOffset}"
-    )
+    initOffset()
 
     (ch: @switch) match
       case ' ' | '\t' | CR | LF | FF =>

@@ -8,6 +8,9 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   def isReservedKeyword: Boolean = tokenType == Keyword
   def isOperator: Boolean        = tokenType == Op
 
+  def isUpdateStart: Boolean = updateStartTokens.contains(this)
+  def isQueryStart: Boolean  = queryStartTokens.contains(this)
+
   // special tokens
   case EMPTY      extends SqlToken(Control, "<empty>")
   case ERROR      extends SqlToken(Control, "<erroneous token>")
@@ -34,7 +37,7 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   // Identifiers
   case IDENTIFIER extends SqlToken(Identifier, "<identifier>")
   // Identifier wrapped in backquotes `....`
-  case BACKQUOTED_IDENTIFIER extends SqlToken(Identifier, "<quoted identifier>")
+  // case BACKQUOTED_IDENTIFIER extends SqlToken(Identifier, "<quoted identifier>")
 
   case SINGLE_QUOTE extends SqlToken(Quote, "'")
   case DOUBLE_QUOTE extends SqlToken(Quote, "\"")
@@ -111,6 +114,7 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   case QUALIFY  extends SqlToken(Keyword, "qualify")
   case LATERAL  extends SqlToken(Keyword, "lateral")
   case SPECIFIC extends SqlToken(Keyword, "specific")
+  case UNNEST   extends SqlToken(Keyword, "unnest")
 
   case ALL      extends SqlToken(Keyword, "all")
   case DISTINCT extends SqlToken(Keyword, "distinct")
@@ -157,10 +161,12 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   case SESSION        extends SqlToken(Keyword, "session")
   case RESET          extends SqlToken(Keyword, "reset")
   case EXPLAIN        extends SqlToken(Keyword, "explain")
+  case PLAN           extends SqlToken(Keyword, "plan")
   case IMPLEMENTATION extends SqlToken(Keyword, "implementation")
   case FOR            extends SqlToken(Keyword, "for")
   case DESCRIBE       extends SqlToken(Keyword, "describe")
   case CATALOG        extends SqlToken(Keyword, "catalog")
+  case DATABASE       extends SqlToken(Keyword, "database")
   case SCHEMA         extends SqlToken(Keyword, "schema")
   case TABLE          extends SqlToken(Keyword, "table")
   case STATEMENT      extends SqlToken(Keyword, "statement")
@@ -187,6 +193,10 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   case REFERENCES extends SqlToken(Keyword, "references")
   case DEFAULT    extends SqlToken(Keyword, "default")
   case NULLABLE   extends SqlToken(Keyword, "nullable")
+
+  // commands
+  case SHOW extends SqlToken(Keyword, "show")
+  case USE  extends SqlToken(Keyword, "use")
 
   // logical expressions
   case NOT     extends SqlToken(Keyword, "not")
@@ -242,6 +252,17 @@ object SqlToken:
     SqlToken.CROSS,
     SqlToken.NATURAL,
     SqlToken.ON
+  )
+
+  val queryStartTokens = List(SqlToken.SELECT, SqlToken.WITH, SqlToken.VALUES, SqlToken.VALUE)
+  val updateStartTokens = List(
+    SqlToken.INSERT,
+    SqlToken.UPSERT,
+    SqlToken.UPDATE,
+    SqlToken.MERGE,
+    SqlToken.DELETE,
+    SqlToken.CREATE,
+    SqlToken.DROP
   )
 
   val queryDelimiters = Set(SqlToken.EOF, SqlToken.R_PAREN, SqlToken.SEMICOLON)

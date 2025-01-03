@@ -214,6 +214,17 @@ abstract class ScannerBase[Token](sourceFile: SourceFile, config: ScannerConfig)
 
   protected def fetchToken(): Unit
 
+  protected def initOffset(): Unit =
+    current.offset = charOffset - 1
+    current.lineOffset =
+      if current.lastOffset < lineStartOffset then
+        lineStartOffset
+      else
+        -1
+    trace(
+      s"fetchToken[${current}]: '${String.valueOf(ch)}' charOffset:${charOffset} lastCharOffset:${lastCharOffset}, lineStartOffset:${lineStartOffset}"
+    )
+
   protected def peekAhead(): Unit =
     prev.copyFrom(current)
     getNextToken(current.token)

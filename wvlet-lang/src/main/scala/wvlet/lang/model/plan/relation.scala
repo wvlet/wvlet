@@ -872,6 +872,7 @@ enum ShowType:
   case tables
   case schemas
   case catalogs
+  case databases
   case query
 
 case class Show(showType: ShowType, inExpr: NameExpr, span: Span) extends Relation with LeafPlan:
