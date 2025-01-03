@@ -300,6 +300,19 @@ object WvletToken:
   def isQueryDelimiter(t: WvletToken): Boolean = queryDelimiters.contains(t)
 
   given tokenTypeInfo: TokenTypeInfo[WvletToken] with
-    override def empty: WvletToken = WvletToken.EMPTY
+    override def empty: WvletToken                        = WvletToken.EMPTY
+    override def errorToken: WvletToken                   = WvletToken.ERROR
+    override def eofToken: WvletToken                     = WvletToken.EOF
+    override def identifier: WvletToken                   = WvletToken.IDENTIFIER
+    override def findToken(s: String): Option[WvletToken] = keywordAndSymbolTable.get(s)
+    override def integerLiteral: WvletToken               = WvletToken.INTEGER_LITERAL
+    override def longLiteral: WvletToken                  = WvletToken.LONG_LITERAL
+    override def decimalLiteral: WvletToken               = WvletToken.DECIMAL_LITERAL
+    override def expLiteral: WvletToken                   = WvletToken.EXP_LITERAL
+    override def doubleLiteral: WvletToken                = WvletToken.DOUBLE_LITERAL
+    override def floatLiteral: WvletToken                 = WvletToken.FLOAT_LITERAL
+
+    override def commentToken: WvletToken  = WvletToken.COMMENT
+    override def stringLiteral: WvletToken = WvletToken.STRING_LITERAL
 
 end WvletToken

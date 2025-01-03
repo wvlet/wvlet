@@ -17,7 +17,7 @@ import wvlet.lang.compiler.SourceFile
 import wvlet.airspec.AirSpec
 import wvlet.log.io.IOUtil
 
-class ScannerTest extends AirSpec:
+class WvletScannerTest extends AirSpec:
   test("scan text") {
     val src     = SourceFile.fromString("from A")
     val scanner = WvletScanner(src)
@@ -194,4 +194,4 @@ class ScannerTest extends AirSpec:
 
   }
 
-end ScannerTest
+end WvletScannerTest
