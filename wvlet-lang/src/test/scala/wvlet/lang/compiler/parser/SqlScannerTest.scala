@@ -6,7 +6,7 @@ import wvlet.lang.compiler.SourceFile
 class SqlScannerTest extends AirSpec:
   inline def testScanToken(txt: String, expectedToken: SqlToken): Unit =
     test(s"scan ${txt}") {
-      val src     = SourceFile.fromString(txt)
+      val src     = SourceFile.fromWvletString(txt)
       val scanner = SqlScanner(src)
       val token   = scanner.nextToken()
       debug(token)
@@ -32,7 +32,7 @@ class SqlScannerTest extends AirSpec:
     val src =
       """-- line comment
         |from A""".stripMargin
-    val scanner = SqlScanner(SourceFile.fromString(src))
+    val scanner = SqlScanner(SourceFile.fromWvletString(src))
     var token   = scanner.nextToken()
     debug(token)
     token.token shouldBe SqlToken.COMMENT
@@ -54,7 +54,7 @@ class SqlScannerTest extends AirSpec:
     val src =
       """/* block comment */
         |from A""".stripMargin
-    val scanner = SqlScanner(SourceFile.fromString(src))
+    val scanner = SqlScanner(SourceFile.fromWvletString(src))
     var token   = scanner.nextToken()
     debug(token)
     token.token shouldBe SqlToken.COMMENT

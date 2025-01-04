@@ -113,7 +113,7 @@ object WvcMain extends LogSupport:
       return ("", returnResult)
     else
       // Compile
-      val inputUnit     = CompilationUnit.fromString(query)
+      val inputUnit     = CompilationUnit.fromWvletString(query)
       val compileResult = compiler.compileSingleUnit(inputUnit)
       compileResult.reportAllErrors
 

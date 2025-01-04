@@ -11,10 +11,10 @@ import scala.collection.immutable.ListMap
 /**
   * A base trait for all update operations (e.g., add/delete the table contents).
   */
-trait Update extends LogicalPlan:
+trait Update extends TopLevelStatement:
   override def relationType: RelationType = EmptyRelationType
 
-sealed trait Save extends Update with UnaryRelation:
+trait Save extends Update with UnaryRelation:
   def targetName: String
 
 sealed trait SaveToTable extends Save with HasRefName

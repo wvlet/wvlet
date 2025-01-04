@@ -33,7 +33,7 @@ class SQLPreview(currentQuery: CurrentQuery, windowSize: WindowSize, queryRunner
     monitor = currentQuery
       .wvletQueryRequest
       .flatMap { newWvletQueryRequest =>
-        val unit = CompilationUnit.fromString(newWvletQueryRequest.query)
+        val unit = CompilationUnit.fromWvletString(newWvletQueryRequest.query)
         try
           val compileResult = compiler.compileMultipleUnits(contextCompilationUnits, unit)
           if !compileResult.hasFailures then

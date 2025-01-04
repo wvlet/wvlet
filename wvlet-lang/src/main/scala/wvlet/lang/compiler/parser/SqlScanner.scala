@@ -18,15 +18,8 @@ class SqlScanner(sourceFile: SourceFile, config: ScannerConfig = ScannerConfig()
       next.token = SqlToken.EMPTY
 
   override protected def fetchToken(): Unit =
-    current.offset = charOffset - 1
-    current.lineOffset =
-      if current.lastOffset < lineStartOffset then
-        lineStartOffset
-      else
-        -1
-    trace(
-      s"fetchToken[${current}]: '${String.valueOf(ch)}' charOffset:${charOffset} lastCharOffset:${lastCharOffset}, lineStartOffset:${lineStartOffset}"
-    )
+    initOffset()
+
     (ch: @switch) match
       case ' ' | '\t' | CR | LF | FF =>
         getWhiteSpaces()
@@ -49,7 +42,7 @@ class SqlScanner(sourceFile: SourceFile, config: ScannerConfig = ScannerConfig()
       case '\'' =>
         getSingleQuoteString()
       case '\"' =>
-        getDoubleQuoteString()
+        getDoubleQuoteString(resultingToken = SqlToken.DOUBLE_QUOTED_IDENTIFIER)
       case '/' =>
         scanSlash()
       case SU =>

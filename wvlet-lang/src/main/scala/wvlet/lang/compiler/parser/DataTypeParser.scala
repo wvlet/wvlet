@@ -44,7 +44,7 @@ import wvlet.log.LogSupport
   * @param sourceFile
   */
 object DataTypeParser extends LogSupport:
-  def parse(str: String): DataType = DataTypeParser(WvletScanner(SourceFile.fromString(str)))
+  def parse(str: String): DataType = DataTypeParser(WvletScanner(SourceFile.fromWvletString(str)))
     .parse()
 
   def parse(str: String, typeParams: List[DataType]): DataType = toDataType(str, typeParams)

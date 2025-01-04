@@ -100,7 +100,8 @@ end CompilationUnit
 object CompilationUnit extends LogSupport:
   val empty: CompilationUnit = CompilationUnit(NoSourceFile)
 
-  def fromString(text: String) = CompilationUnit(SourceFile.fromString(text))
+  def fromWvletString(text: String) = CompilationUnit(SourceFile.fromWvletString(text))
+  def fromSqlString(text: String)   = CompilationUnit(SourceFile.fromSqlString(text))
 
   def fromFile(path: String) = CompilationUnit(SourceFile.fromFile(path))
 

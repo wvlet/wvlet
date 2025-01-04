@@ -99,7 +99,7 @@ class WvletCompiler(
       case (Some(f), None) =>
         CompilationUnit.fromFile(s"${compilerOption.workFolder}/${f}".stripPrefix("./"))
       case (None, Some(q)) =>
-        CompilationUnit.fromString(q)
+        CompilationUnit.fromWvletString(q)
       case _ =>
         throw StatusCode.INVALID_ARGUMENT.newException("Specify either --file or a query argument")
 

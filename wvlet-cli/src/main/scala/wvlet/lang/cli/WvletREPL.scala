@@ -410,7 +410,7 @@ object WvletREPL extends LogSupport:
       else if cmd.endsWith(";") && cursor >= line.length then
         accept
       else
-        val unit        = CompilationUnit.fromString(line)
+        val unit        = CompilationUnit.fromWvletString(line)
         val wvletParser = WvletParser(unit)
         try
           // Test whether the statement is a complete statement
@@ -440,7 +440,7 @@ object WvletREPL extends LogSupport:
   private class ReplHighlighter extends org.jline.reader.Highlighter with LogSupport:
     override def highlight(reader: LineReader, buffer: String): AttributedString =
       val builder = AttributedStringBuilder()
-      val src     = SourceFile.fromString(buffer)
+      val src     = SourceFile.fromWvletString(buffer)
       val scanner = WvletScanner(
         src,
         ScannerConfig(skipComments = false, skipWhiteSpace = false, reportErrorToken = true)

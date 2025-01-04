@@ -18,7 +18,7 @@ import wvlet.airspec.AirSpec
 
 class SourceFileTest extends AirSpec:
   test("find line and column positions") {
-    val src = SourceFile.fromString("a\nb\nc")
+    val src = SourceFile.fromWvletString("a\nb\nc")
     src.length shouldBe 5
 
     test("find line index") {

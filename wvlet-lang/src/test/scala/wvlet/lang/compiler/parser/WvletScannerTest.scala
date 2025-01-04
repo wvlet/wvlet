@@ -19,7 +19,7 @@ import wvlet.log.io.IOUtil
 
 class WvletScannerTest extends AirSpec:
   test("scan text") {
-    val src     = SourceFile.fromString("from A")
+    val src     = SourceFile.fromWvletString("from A")
     val scanner = WvletScanner(src)
     val token   = scanner.nextToken()
     debug(token)
@@ -45,7 +45,7 @@ class WvletScannerTest extends AirSpec:
 
   inline def testScanToken(txt: String, expectedToken: WvletToken): Unit =
     test(s"scan ${txt}") {
-      val src     = SourceFile.fromString(txt)
+      val src     = SourceFile.fromWvletString(txt)
       val scanner = WvletScanner(src)
       val token   = scanner.nextToken()
       debug(token)
@@ -71,7 +71,7 @@ class WvletScannerTest extends AirSpec:
     val src =
       """-- line comment
         |from A""".stripMargin
-    val scanner = WvletScanner(SourceFile.fromString(src))
+    val scanner = WvletScanner(SourceFile.fromWvletString(src))
     var token   = scanner.nextToken()
     debug(token)
     token.token shouldBe WvletToken.COMMENT
@@ -93,7 +93,7 @@ class WvletScannerTest extends AirSpec:
     val src =
       """/* block comment */
         |from A""".stripMargin
-    val scanner = WvletScanner(SourceFile.fromString(src))
+    val scanner = WvletScanner(SourceFile.fromWvletString(src))
     var token   = scanner.nextToken()
     debug(token)
     token.token shouldBe WvletToken.COMMENT
@@ -116,7 +116,7 @@ class WvletScannerTest extends AirSpec:
   test("expr in string interpolation") {
     val src = "from sql\"select ${x}\""
     //             0    5  8 9      16
-    val scanner = WvletScanner(SourceFile.fromString(src))
+    val scanner = WvletScanner(SourceFile.fromWvletString(src))
 
     var token = scanner.nextToken()
     debug(token)
@@ -162,7 +162,7 @@ class WvletScannerTest extends AirSpec:
 
   test("open expr in string interpolation") {
     val src     = "from sql\"select ${x}"
-    val scanner = WvletScanner(SourceFile.fromString(src))
+    val scanner = WvletScanner(SourceFile.fromWvletString(src))
 
     var token = scanner.nextToken()
     debug(token)

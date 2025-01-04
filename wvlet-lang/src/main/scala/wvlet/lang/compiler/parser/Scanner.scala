@@ -214,6 +214,17 @@ abstract class ScannerBase[Token](sourceFile: SourceFile, config: ScannerConfig)
 
   protected def fetchToken(): Unit
 
+  protected def initOffset(): Unit =
+    current.offset = charOffset - 1
+    current.lineOffset =
+      if current.lastOffset < lineStartOffset then
+        lineStartOffset
+      else
+        -1
+    trace(
+      s"fetchToken[${current}]: '${String.valueOf(ch)}' charOffset:${charOffset} lastCharOffset:${lastCharOffset}, lineStartOffset:${lineStartOffset}"
+    )
+
   protected def peekAhead(): Unit =
     prev.copyFrom(current)
     getNextToken(current.token)
@@ -442,7 +453,7 @@ abstract class ScannerBase[Token](sourceFile: SourceFile, config: ScannerConfig)
     current.token = tokenTypeInfo.stringLiteral
     current.str = flushTokenString()
 
-  protected def getDoubleQuoteString(): Unit =
+  protected def getDoubleQuoteString(resultingToken: Token): Unit =
     // Regular double quoted string
     // TODO Support unicode and escape characters
     nextChar()
@@ -451,9 +462,9 @@ abstract class ScannerBase[Token](sourceFile: SourceFile, config: ScannerConfig)
       if ch == '\"' then
         nextRawChar()
         // Enter the triple-quote string
-        getRawStringLiteral()
+        getRawStringLiteral(resultingToken)
       else
-        current.token = tokenTypeInfo.stringLiteral
+        current.token = resultingToken
         current.str = ""
     else
       getStringLiteral()
@@ -466,20 +477,20 @@ abstract class ScannerBase[Token](sourceFile: SourceFile, config: ScannerConfig)
     current.token = tokenTypeInfo.stringLiteral
     current.str = flushTokenString()
 
-  private def getRawStringLiteral(): Unit =
+  private def getRawStringLiteral(resultingToken: Token): Unit =
     if ch == '\"' then
       nextRawChar()
       if isTripleQuote() then
         flushTokenString()
         current.token = tokenTypeInfo.stringLiteral
       else
-        getRawStringLiteral()
+        getRawStringLiteral(resultingToken)
     else if ch == SU then
       reportError("Unclosed multi-line string literal", offset)
     else
       putChar(ch)
       nextRawChar()
-      getRawStringLiteral()
+      getRawStringLiteral(resultingToken)
 
   protected def isTripleQuote(): Boolean =
     if ch == '"' then

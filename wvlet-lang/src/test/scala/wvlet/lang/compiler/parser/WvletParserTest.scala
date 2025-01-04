@@ -20,10 +20,10 @@ import wvlet.lang.compiler.ContextUtil.*
 
 class WvletParserTest extends AirSpec:
   test("parse"):
-    WvletParser(CompilationUnit.fromString("from A select _")).parse()
+    WvletParser(CompilationUnit.fromWvletString("from A select _")).parse()
 
   test("model span"):
-    given unit: CompilationUnit = CompilationUnit.fromString(s"""model A =
+    given unit: CompilationUnit = CompilationUnit.fromWvletString(s"""model A =
         |  from x
         |end
         |""".stripMargin)

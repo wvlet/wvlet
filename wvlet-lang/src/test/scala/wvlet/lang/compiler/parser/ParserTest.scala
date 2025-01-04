@@ -19,7 +19,7 @@ import wvlet.airspec.AirSpec
 
 class ParserTest extends AirSpec:
   test("parse package") {
-    val p = WvletParser(CompilationUnit.fromString("""package org.app.example
+    val p = WvletParser(CompilationUnit.fromWvletString("""package org.app.example
         |from A
         |""".stripMargin))
     val plan = p.parse()
@@ -32,7 +32,7 @@ class ParserTest extends AirSpec:
   }
 
   test("parse json scan") {
-    val p = WvletParser(CompilationUnit.fromString("""-- sample query
+    val p = WvletParser(CompilationUnit.fromWvletString("""-- sample query
         |from 'sample.json'""".stripMargin))
     val plan = p.parse()
     debug(plan)
