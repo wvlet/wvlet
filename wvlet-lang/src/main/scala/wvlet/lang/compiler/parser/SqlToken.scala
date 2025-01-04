@@ -9,8 +9,9 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   def isReservedKeyword: Boolean = tokenType == Keyword
   def isOperator: Boolean        = tokenType == Op
 
-  def isUpdateStart: Boolean = updateStartTokens.contains(this)
-  def isQueryStart: Boolean  = queryStartTokens.contains(this)
+  def isUpdateStart: Boolean    = updateStartTokens.contains(this)
+  def isQueryStart: Boolean     = queryStartTokens.contains(this)
+  def isQueryDelimiter: Boolean = queryDelimiters.contains(this)
 
   // special tokens
   case EMPTY      extends SqlToken(Control, "<empty>")
@@ -225,7 +226,7 @@ object SqlToken:
   val keywords       = SqlToken.values.filter(_.tokenType == Keyword).toSeq
   val specialSymbols = SqlToken.values.filter(_.tokenType == Op).toSeq
 
-  val literalStartKeyword = Seq(
+  val literalStartKeywords = Seq(
     SqlToken.NULL,
     SqlToken.TRUE,
     SqlToken.FALSE,
@@ -234,7 +235,7 @@ object SqlToken:
     SqlToken.ARRAY
   )
 
-  val allKeywordsAndSymbols = keywords ++ literalStartKeyword ++ specialSymbols
+  val allKeywordsAndSymbols = keywords ++ literalStartKeywords ++ specialSymbols
   val keywordAndSymbolTable =
     val m = Map.newBuilder[String, SqlToken]
     allKeywordsAndSymbols.foreach {

@@ -34,7 +34,7 @@ class ExecutionPlanTest extends AirSpec:
     inline def query(q: String)(body: String => Unit)(using ctx: DBConnector): Unit =
       // var expr: SqlExpr = null
       test(s"query: ${q}") {
-        val unit: CompilationUnit = CompilationUnit.fromString(q)
+        val unit: CompilationUnit = CompilationUnit.fromWvletString(q)
 
         val parser = WvletParser(unit)
         val plan   = parser.parse()

@@ -6,11 +6,12 @@ import wvlet.lang.compiler.parser.SqlToken.{EOF, ROW, STAR, STRING_LITERAL}
 import wvlet.lang.compiler.{CompilationUnit, Name, SourceFile}
 import wvlet.lang.model.DataType
 import wvlet.lang.model.expr.*
+import wvlet.lang.model.expr.NameExpr.EmptyName
 import wvlet.lang.model.plan.*
 import wvlet.lang.model.plan.{Lateral, ShowType, TableRef, Unnest, Values}
 import wvlet.log.LogSupport
 
-class SqlParser(unit: CompilationUnit, isContextUnit: Boolean) extends LogSupport:
+class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends LogSupport:
 
   given src: SourceFile                  = unit.sourceFile
   given compilationUnit: CompilationUnit = unit
@@ -29,12 +30,20 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean) extends LogSuppor
   def parse(): LogicalPlan =
     val t     = scanner.lookAhead()
     val stmts = statementList()
-    PackageDef(NameExpr.EmptyName, stmts, unit.sourceFile, spanFrom(t))
+    PackageDef(EmptyName, stmts, unit.sourceFile, spanFrom(t))
 
-  def consumeIfExist(expected: SqlToken): Unit =
+  /**
+    * Consume the expected token if it exists and return true, otherwise return false
+    * @param expected
+    * @return
+    */
+  def consumeIfExist(expected: SqlToken): Boolean =
     val t = scanner.lookAhead()
     if t.token == expected then
       consumeToken()
+      true
+    else
+      false
 
   def consume(expected: SqlToken)(using code: SourceCode): TokenData[SqlToken] =
     val t = scanner.nextToken()
@@ -149,7 +158,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean) extends LogSuppor
         scanner.lookAhead().token match
           case SqlToken.ALL =>
             consume(SqlToken.ALL)
-            AlterVariable(alterType, true, NameExpr.EmptyName, None, spanFrom(t))
+            AlterVariable(alterType, true, EmptyName, None, spanFrom(t))
           case _ =>
             val id = identifier()
             AlterVariable(alterType, false, id, None, spanFrom(t))
@@ -375,17 +384,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean) extends LogSuppor
     t.token match
       case SqlToken.VALUE | SqlToken.VALUES =>
         values()
-      case SqlToken.WITH =>
-        consume(SqlToken.WITH)
-        val id = identifier()
-        consume(SqlToken.AS)
-        consume(SqlToken.L_PAREN)
-        val subQuery = query()
-        consume(SqlToken.R_PAREN)
-        val body = query()
-        Lateral(subQuery, spanFrom(t))
-      case SqlToken.SELECT =>
-        query()
+      case q if q.isQueryStart =>
+        select()
       case SqlToken.L_PAREN =>
         consume(SqlToken.L_PAREN)
         val subQuery = query()
@@ -393,6 +393,176 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean) extends LogSuppor
         subQuery
       case _ =>
         unexpected(t)
+
+  def selectItems(): List[Attribute] =
+    val t = scanner.lookAhead()
+    t.token match
+      case SqlToken.COMMA =>
+        consume(SqlToken.COMMA)
+        selectItems()
+      case token if token.isQueryDelimiter =>
+        Nil
+      case t if t.tokenType == TokenType.Keyword && !SqlToken.literalStartKeywords.contains(t) =>
+        Nil
+      case _ =>
+        selectItem() :: selectItems()
+    end match
+
+  end selectItems
+
+  def selectItem(): SingleColumn =
+    def selectItemWithAlias(item: Expression): SingleColumn =
+      val t = scanner.lookAhead()
+      t.token match
+        case SqlToken.AS =>
+          consume(SqlToken.AS)
+          val alias = identifier()
+          SingleColumn(alias, item, spanFrom(t))
+        case id if id.isIdentifier =>
+          val alias = identifier()
+          // Propagate the column name for a single column reference
+          SingleColumn(alias, item, spanFrom(t))
+        case _ =>
+          item match
+            case i: Identifier =>
+              // Propagate the column name for a single column reference
+              SingleColumn(i, i, spanFrom(t))
+            case _ =>
+              SingleColumn(EmptyName, item, spanFrom(t))
+
+    val t = scanner.lookAhead()
+    t.token match
+      case id if id.isIdentifier =>
+        val exprOrColumName = expression()
+        exprOrColumName match
+          case Eq(columnName: Identifier, expr: Expression, span) =>
+            SingleColumn(columnName, expr, spanFrom(t))
+          case _ =>
+            selectItemWithAlias(exprOrColumName)
+      case _ =>
+        val expr = expression()
+        selectItemWithAlias(expr)
+
+  end selectItem
+
+  def select(): Relation =
+    val t = scanner.lookAhead()
+    t.token match
+      case SqlToken.SELECT =>
+        consume(SqlToken.SELECT)
+        val isDistinct = consumeIfExist(SqlToken.DISTINCT)
+        val items      = selectItems()
+        var r          = fromClause()
+        r = whereClause(r)
+        val g          = groupBy(r)
+        val hasGroupBy = r ne g
+        r = g
+
+        r =
+          if hasGroupBy then
+            Agg(r, items, spanFrom(t))
+          else
+            Project(r, items, spanFrom(t))
+        r = orderBy(r)
+        r = limit(r)
+        r = offset(r)
+        r
+      case other =>
+        unexpected(t)
+
+  end select
+
+  def fromClause(): Relation =
+    val t = scanner.lookAhead()
+    t.token match
+      case SqlToken.FROM =>
+        consume(SqlToken.FROM)
+        tablePrimary()
+      case _ =>
+        unexpected(t)
+
+  def whereClause(input: Relation): Relation =
+    val t = scanner.lookAhead()
+    t.token match
+      case SqlToken.WHERE =>
+        consume(SqlToken.WHERE)
+        val cond = booleanExpression()
+        Filter(input, cond, spanFrom(t))
+      case _ =>
+        input
+
+  def groupBy(input: Relation): Relation =
+    val t = scanner.lookAhead()
+    t.token match
+      case SqlToken.GROUP =>
+        consume(SqlToken.GROUP)
+        consume(SqlToken.BY)
+        val items = groupByItemList()
+        val g     = GroupBy(input, items, spanFrom(t))
+        having(g)
+      case _ =>
+        input
+
+  def groupByItemList(): List[GroupingKey] =
+    val t = scanner.lookAhead()
+    t.token match
+      case id if id.isIdentifier =>
+        val item = selectItem()
+        val key  = UnresolvedGroupingKey(item.nameExpr, item.expr, spanFrom(t))
+        key :: groupByItemList()
+      case SqlToken.COMMA =>
+        consume(SqlToken.COMMA)
+        groupByItemList()
+      case t if t.tokenType == TokenType.Keyword =>
+        Nil
+      case SqlToken.EOF =>
+        Nil
+      case _ =>
+        // expression only
+        val e   = expression()
+        val key = UnresolvedGroupingKey(EmptyName, e, e.span)
+        key :: groupByItemList()
+
+  def having(input: Relation): Relation =
+    val t = scanner.lookAhead()
+    t.token match
+      case SqlToken.HAVING =>
+        consume(SqlToken.HAVING)
+        val cond = booleanExpression()
+        Filter(input, cond, spanFrom(t))
+      case _ =>
+        input
+
+  def orderBy(input: Relation): Relation =
+    val t = scanner.lookAhead()
+    t.token match
+      case SqlToken.ORDER =>
+        consume(SqlToken.ORDER)
+        consume(SqlToken.BY)
+        val items = sortItems()
+        Sort(input, items, spanFrom(t))
+      case _ =>
+        input
+
+  def limit(input: Relation): Relation =
+    val t = scanner.lookAhead()
+    t.token match
+      case SqlToken.LIMIT =>
+        consume(SqlToken.LIMIT)
+        val limit = consume(SqlToken.INTEGER_LITERAL)
+        Limit(input, LongLiteral(limit.str.toLong, limit.span), spanFrom(t))
+      case _ =>
+        input
+
+  def offset(input: Relation): Relation =
+    val t = scanner.lookAhead()
+    t.token match
+      case SqlToken.OFFSET =>
+        consume(SqlToken.OFFSET)
+        val offset = consume(SqlToken.INTEGER_LITERAL)
+        Offset(input, LongLiteral(offset.str.toLong, offset.span), spanFrom(t))
+      case _ =>
+        input
 
   def values(): Values =
     def valueList(): List[Expression] =
@@ -422,7 +592,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean) extends LogSuppor
           consume(SqlToken.IN)
           qualifiedName()
         case _ =>
-          NameExpr.EmptyName
+          EmptyName
 
     val t    = consume(SqlToken.SHOW)
     val name = identifier()
@@ -433,7 +603,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean) extends LogSuppor
           val in = inExpr()
           Show(tpe, in, spanFrom(t))
         case ShowType.catalogs =>
-          Show(ShowType.catalogs, NameExpr.EmptyName, spanFrom(t))
+          Show(ShowType.catalogs, EmptyName, spanFrom(t))
         case _ =>
           unexpected(name)
     catch
@@ -459,21 +629,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean) extends LogSuppor
 
     next()
 
-  def expression(): Expression =
-    val t = scanner.lookAhead()
-    t.token match
-      case SqlToken.L_PAREN =>
-        consume(SqlToken.L_PAREN)
-        val e = expression()
-        consume(SqlToken.R_PAREN)
-        ParenthesizedExpression(e, spanFrom(t))
-      case id if id.isIdentifier =>
-        identifier()
-      case SqlToken.INTEGER_LITERAL =>
-        consume(SqlToken.INTEGER_LITERAL)
-        DigitIdentifier(t.str, spanFrom(t))
-      case _ =>
-        unexpected(t)
+  def expression(): Expression = booleanExpression()
 
   def booleanExpression(): Expression =
     def booleanExpressionRest(expr: Expression): Expression =

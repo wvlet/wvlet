@@ -246,6 +246,9 @@ case class Sort(child: Relation, orderBy: Seq[SortItem], span: Span) extends Fil
 case class Limit(child: Relation, limit: LongLiteral, span: Span) extends FilteringRelation:
   override def toString: String = s"Limit[${limit.value}](${child})"
 
+case class Offset(child: Relation, rows: LongLiteral, span: Span) extends FilteringRelation:
+  override def toString: String = s"Offset[${rows.value}](${child})"
+
 case class Filter(child: Relation, filterExpr: Expression, span: Span) extends FilteringRelation:
   override def toString: String = s"Filter[${filterExpr}](${child})"
 

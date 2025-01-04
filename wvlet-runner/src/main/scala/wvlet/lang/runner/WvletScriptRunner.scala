@@ -104,7 +104,7 @@ class WvletScriptRunner(
   def runStatement(request: QueryRequest)(using
       queryProgressMonitor: QueryProgressMonitor
   ): QueryResult =
-    val newUnit = CompilationUnit.fromString(request.query)
+    val newUnit = CompilationUnit.fromWvletString(request.query)
     units = newUnit :: units
 
     try
