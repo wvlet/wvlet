@@ -3,7 +3,7 @@ package wvlet.lang.compiler.parser
 import wvlet.airframe.SourceCode
 import wvlet.lang.api.{Span, StatusCode}
 import wvlet.lang.compiler.parser.SqlToken.{EOF, ROW, STAR, STRING_LITERAL}
-import wvlet.lang.compiler.{CompilationUnit, Name}
+import wvlet.lang.compiler.{CompilationUnit, Name, SourceFile}
 import wvlet.lang.model.DataType
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
@@ -12,6 +12,7 @@ import wvlet.log.LogSupport
 
 class SqlParser(unit: CompilationUnit, isContextUnit: Boolean) extends LogSupport:
 
+  given src: SourceFile                  = unit.sourceFile
   given compilationUnit: CompilationUnit = unit
 
   private val scanner = SqlScanner(
@@ -45,7 +46,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean) extends LogSuppor
         .SYNTAX_ERROR
         .newException(
           s"Expected ${expected}, but found ${t.token} (context: ${code.fileName}:${code.line})",
-          t.sourceLocation
+          t.sourceLocation(using compilationUnit)
         )
 
   def consumeToken(): TokenData[SqlToken] =
@@ -70,7 +71,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean) extends LogSuppor
       .SYNTAX_ERROR
       .newException(
         s"Unexpected token: <${t.token}> '${t.str}' (context: SqlParser.scala:${code.line})",
-        t.sourceLocation
+        t.sourceLocation(using compilationUnit)
       )
 
   private def unexpected(expr: Expression)(using code: SourceCode): Nothing =
@@ -78,7 +79,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean) extends LogSuppor
       .SYNTAX_ERROR
       .newException(
         s"Unexpected expression: ${expr} (context: SqlParser.scala:${code.line})",
-        expr.sourceLocationOfCompilationUnit
+        expr.sourceLocationOfCompilationUnit(using compilationUnit)
       )
 
   def statementList(): List[LogicalPlan] =
@@ -100,8 +101,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean) extends LogSuppor
         alterStatement()
       case SqlToken.EXPLAIN =>
         explain()
-      case SqlToken.DESCRIBE =>
-        describe()
+//      case SqlToken.DESCRIBE =>
+//       describe()
       case t if t.isUpdateStart =>
         update()
       case t if t.isQueryStart =>
@@ -145,7 +146,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean) extends LogSuppor
         AlterVariable(alterType, false, id, Some(value), spanFrom(t))
       case SqlToken.RESET =>
         consume(SqlToken.RESET)
-        scanner.lookAhead() match
+        scanner.lookAhead().token match
           case SqlToken.ALL =>
             consume(SqlToken.ALL)
             AlterVariable(alterType, true, NameExpr.EmptyName, None, spanFrom(t))
@@ -175,35 +176,35 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean) extends LogSuppor
 
   end explain
 
-  def describe(): LogicalPlan =
-    val t = consume(SqlToken.DESCRIBE)
-    scanner.lookAhead().token match
-      case SqlToken.DATABASE =>
-        consume(SqlToken.DATABASE)
-        val name = qualifiedName()
-        DescribeStmt(DescribeTarget.DATABASE, name, spanFrom(t))
-      case SqlToken.CATALOG =>
-        consume(SqlToken.CATALOG)
-        val name = qualifiedName()
-        DescribeStmt(DescribeTarget.CATALOG, name, spanFrom(t))
-      case SqlToken.SCHEMA =>
-        consume(SqlToken.SCHEMA)
-        val name = qualifiedName()
-        DescribeStmt(DescribeTarget.SCHEMA, name, spanFrom(t))
-      case SqlToken.TABLE =>
-        consume(SqlToken.TABLE)
-        val name = qualifiedName()
-        DescribeStmt(DescribeTarget.TABLE, name, spanFrom(t))
-      case tk if tk.isIdentifier =>
-        val name = qualifiedName()
-        DescribeStmt(DescribeTarget.TABLE, name, spanFrom(t))
-      case SqlToken.STATEMENT =>
-        consume(SqlToken.STATEMENT)
-        val q = query()
-        DescribeStmt(DescribeTarget.STATEMENT, q, spanFrom(t))
-      case tk if tk.isQueryStart =>
-        val q = query()
-        DescribeStmt(DescribeTarget.STATEMENT, q, spanFrom(t))
+//  def describe(): LogicalPlan =
+//    val t = consume(SqlToken.DESCRIBE)
+//    scanner.lookAhead().token match
+//      case SqlToken.DATABASE =>
+//        consume(SqlToken.DATABASE)
+//        val name = qualifiedName()
+//        DescribeStmt(DescribeTarget.DATABASE, name, spanFrom(t))
+//      case SqlToken.CATALOG =>
+//        consume(SqlToken.CATALOG)
+//        val name = qualifiedName()
+//        DescribeStmt(DescribeTarget.CATALOG, name, spanFrom(t))
+//      case SqlToken.SCHEMA =>
+//        consume(SqlToken.SCHEMA)
+//        val name = qualifiedName()
+//        DescribeStmt(DescribeTarget.SCHEMA, name, spanFrom(t))
+//      case SqlToken.TABLE =>
+//        consume(SqlToken.TABLE)
+//        val name = qualifiedName()
+//        DescribeStmt(DescribeTarget.TABLE, name, spanFrom(t))
+//      case tk if tk.isIdentifier =>
+//        val name = qualifiedName()
+//        DescribeStmt(DescribeTarget.TABLE, name, spanFrom(t))
+//      case SqlToken.STATEMENT =>
+//        consume(SqlToken.STATEMENT)
+//        val q = query()
+//        Describe(q, spanFrom(t))
+//      case tk if tk.isQueryStart =>
+//        val q = query()
+//        Describe(q, spanFrom(t))
 
   def queryOrUpdate(): LogicalPlan =
     val t = scanner.lookAhead()
@@ -224,12 +225,12 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean) extends LogSuppor
         unexpected(t)
   end queryOrUpdate
 
-  def insert(): Insert =
+  def insert(): InsertOps =
     val t = scanner.lookAhead()
     t.token match
       case SqlToken.INSERT =>
         consume(SqlToken.INSERT)
-        val target = tablePrimary()
+        val target = qualifiedName()
         val columns =
           scanner.lookAhead().token match
             case SqlToken.L_PAREN =>
@@ -240,11 +241,11 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean) extends LogSuppor
             case _ =>
               Nil
         consume(SqlToken.VALUES)
-        val query = query()
-        Insert(target, columns, query, spanFrom(t))
+        val q = query()
+        Insert(target, columns, q, spanFrom(t))
       case SqlToken.UPSERT =>
         consume(SqlToken.UPSERT)
-        val target = tablePrimary()
+        val target = qualifiedName()
         val columns =
           scanner.lookAhead().token match
             case SqlToken.L_PAREN =>
@@ -255,16 +256,16 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean) extends LogSuppor
             case _ =>
               Nil
         consume(SqlToken.VALUES)
-        val query = query()
-        Upsert(target, columns, query, spanFrom(t))
+        val q = query()
+        Upsert(target, columns, q, spanFrom(t))
       case _ =>
         unexpected(t)
     end match
   end insert
 
-  def update(): Update =
+  def update(): UpdateRows =
     val t      = consume(SqlToken.UPDATE)
-    val target = tablePrimary()
+    val target = qualifiedName()
     consume(SqlToken.SET)
 
     val lst = assignments()
@@ -275,30 +276,30 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean) extends LogSuppor
           Some(expression())
         case _ =>
           None
-    Update(target, lst, cond, spanFrom(t))
+    UpdateRows(target, lst, cond, spanFrom(t))
 
   end update
 
   def assignments(): List[UpdateAssignment] =
     val t = scanner.lookAhead()
     t.token match
-      case SqlToken.IDENTIFIER =>
-        val id = identifier()
+      case id if id.isIdentifier =>
+        val target = identifier()
         consume(SqlToken.EQ)
         val value = expression()
         scanner.lookAhead().token match
           case SqlToken.COMMA =>
             consume(SqlToken.COMMA)
-            UpdateAssignment(id, value, spanFrom(t)) :: assign
+            UpdateAssignment(target, value, spanFrom(t)) :: assignments()
           case _ =>
-            UpdateAssignment(id, value, spanFrom(t))
+            List(UpdateAssignment(target, value, spanFrom(t)))
       case _ =>
         Nil
 
   def merge(): Merge =
     val t = consume(SqlToken.MERGE)
     consume(SqlToken.INTO)
-    val target = tablePrimary()
+    val target = qualifiedName()
     val alias =
       scanner.lookAhead().token match
         case id if id.isIdentifier =>
@@ -329,25 +330,45 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean) extends LogSuppor
           consume(SqlToken.MATCHED)
           consume(SqlToken.THEN)
           consume(SqlToken.INSERT)
-          val values = values()
-          Some(values)
+          val insertValues = values()
+          Some(insertValues)
         case _ =>
           None
     Merge(target, alias, using, on, whenMatched, whenNotMatchedInsert, spanFrom(t))
   end merge
 
-  def delete(): Delete =
+  def delete(): DeleteOps =
     val t = consume(SqlToken.DELETE)
     consume(SqlToken.FROM)
     val target = tablePrimary()
-    val cond =
+
+    val filteredRelation =
       scanner.lookAhead().token match
         case SqlToken.WHERE =>
           consume(SqlToken.WHERE)
-          Some(expression())
+          val cond = expression()
+          Filter(target, cond, spanFrom(t))
         case _ =>
-          None
-    Delete(target, target, spanFrom(t))
+          target
+
+    def deleteExpr(x: Relation): DeleteOps =
+      x match
+        case f: FilteringRelation =>
+          deleteExpr(f.child)
+        case TableRef(qname: QualifiedName, _) =>
+          Delete(filteredRelation, qname, spanFrom(t))
+        case f: FileScan =>
+          DeleteFromFile(filteredRelation, f.path, spanFrom(t))
+        case other =>
+          throw StatusCode
+            .SYNTAX_ERROR
+            .newException(
+              s"delete statement can't have ${other.modelName} operator",
+              t.sourceLocation(using unit)
+            )
+    deleteExpr(filteredRelation)
+
+  end delete
 
   def query(): Relation =
     val t = scanner.lookAhead()
@@ -364,7 +385,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean) extends LogSuppor
         val body = query()
         Lateral(subQuery, spanFrom(t))
       case SqlToken.SELECT =>
-        select()
+        query()
       case SqlToken.L_PAREN =>
         consume(SqlToken.L_PAREN)
         val subQuery = query()
@@ -388,7 +409,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean) extends LogSuppor
     val t = scanner.lookAhead()
     t.token match
       case SqlToken.VALUE | SqlToken.VALUES =>
-        consume(t)
+        consume(t.token)
         val values = expressionList()
         Values(values, spanFrom(t))
       case _ =>
@@ -419,7 +440,12 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean) extends LogSuppor
       case e: IllegalArgumentException =>
         throw StatusCode
           .SYNTAX_ERROR
-          .newException(s"Unknown SHOW type: ${name}", name.sourceLocation)
+          .newException(s"Unknown SHOW type: ${name}", name.sourceLocationOfCompilationUnit)
+
+  def use(): UseSchema =
+    val t      = consume(SqlToken.USE)
+    val schema = qualifiedName()
+    UseSchema(schema, spanFrom(t))
 
   def expressionList(): List[Expression] =
     def next(): List[Expression] =
@@ -621,7 +647,6 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean) extends LogSuppor
         val nameOrArg = expression()
         FunctionArg(None, nameOrArg, spanFrom(t))
 
-
   def primaryExpression(): Expression =
     def primaryExpressionRest(expr: Expression): Expression =
       val t = scanner.lookAhead()
@@ -631,18 +656,18 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean) extends LogSuppor
           val next = identifier()
           scanner.lookAhead().token match
             case SqlToken.L_PAREN =>
-                val sel = DotRef(expr, next, DataType.UnknownType, spanFrom(t))
-                val p = consume(SqlToken.L_PAREN)
-                val args = functionArgs()
-                consume(SqlToken.R_PAREN)
-                val w = window()
-                val f = FunctionApply(sel, args, w, spanFrom(t))
-                primaryExpressionRest(f)
+              val sel  = DotRef(expr, next, DataType.UnknownType, spanFrom(t))
+              val p    = consume(SqlToken.L_PAREN)
+              val args = functionArgs()
+              consume(SqlToken.R_PAREN)
+              val w = window()
+              val f = FunctionApply(sel, args, w, spanFrom(t))
+              primaryExpressionRest(f)
             case _ =>
               primaryExpressionRest(DotRef(expr, next, DataType.UnknownType, spanFrom(t)))
         case SqlToken.L_PAREN =>
           expr match
-            case n:  NameExpr =>
+            case n: NameExpr =>
               consume(SqlToken.L_PAREN)
               val args = functionArgs()
               consume(SqlToken.R_PAREN)
@@ -650,8 +675,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean) extends LogSuppor
               val w = window()
               val f = FunctionApply(n, args, w, spanFrom(t))
               primaryExpressionRest(f)
-          case _ =>
-            unexpected(expr)
+            case _ =>
+              unexpected(expr)
         case SqlToken.L_BRACKET =>
           consume(SqlToken.L_BRACKET)
           val index = expression()
@@ -661,7 +686,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean) extends LogSuppor
           consume(SqlToken.R_ARROW)
           val body = identifier()
           primaryExpressionRest(
-            LambdaExpr(args = List(expr.asInstanceOf[Identifier]), body, spanFrom(t)))
+            LambdaExpr(args = List(expr.asInstanceOf[Identifier]), body, spanFrom(t))
+          )
         case SqlToken.OVER =>
           window() match
             case Some(w) =>
@@ -670,109 +696,115 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean) extends LogSuppor
               expr
         case _ =>
           expr
+      end match
     end primaryExpressionRest
 
     val t = scanner.lookAhead()
-    val expr = t.token match
-      case SqlToken.NULL | SqlToken.INTEGER_LITERAL | SqlToken.DOUBLE_LITERAL | SqlToken.FLOAT_LITERAL | SqlToken.DECIMAL_LITERAL | SqlToken.EXP_LITERAL | SqlToken.STRING_LITERAL =>
-        literal()
-      case SqlToken.CASE =>
-        val cases                          = List.newBuilder[WhenClause]
-        var elseClause: Option[Expression] = None
-        def nextCase: Unit =
-          val t = scanner.lookAhead()
-          t.token match
-            case SqlToken.WHEN =>
-              consume(SqlToken.WHEN)
-              val cond = booleanExpression()
-              consume(SqlToken.THEN)
-              val thenExpr = expression()
-              cases += WhenClause(cond, thenExpr, spanFrom(t))
-              nextCase
-            case SqlToken.ELSE =>
-              consume(SqlToken.ELSE)
-              val elseExpr = expression()
-              elseClause = Some(elseExpr)
-            case _ =>
-        // done
-        end nextCase
-
-        consume(SqlToken.CASE)
-        val target =
-          scanner.lookAhead().token match
-            case SqlToken.WHEN =>
-              None
-            case other =>
-              Some(expression())
-        nextCase
-        consume(SqlToken.END)
-        CaseExpr(target, cases.result(), elseClause, spanFrom(t))
-      case q if q.isQueryStart =>
-        val subQuery = query()
-        SubQueryExpression(subQuery, spanFrom(t))
-      case SqlToken.L_PAREN =>
-        consume(SqlToken.L_PAREN)
-        val t2 = scanner.lookAhead()
-        t2.token match
-          case q if q.isQueryStart =>
-            val subQuery = query()
-            consume(SqlToken.R_PAREN)
-            SubQueryExpression(subQuery, spanFrom(t))
-          case id if id.isIdentifier =>
-            val exprs = List.newBuilder[Expression]
-
-            // true if the expression is a list of identifiers
-            def nextIdentifier: Boolean =
-              scanner.lookAhead().token match
-                case SqlToken.COMMA =>
-                  consume(SqlToken.COMMA)
-                  nextIdentifier
-                case SqlToken.R_PAREN =>
-                  // ok
-                  true
-                case _ =>
-                  val expr = expression()
-                  exprs += expr
-                  expr match
-                    case i: Identifier =>
-                      nextIdentifier
-                    case _ =>
-                      false
-
-            val isIdentifierList = nextIdentifier
-            consume(SqlToken.R_PAREN)
-            val args = exprs.result()
-            val t3 = scanner.lookAhead()
-            t3.token match
-              case SqlToken.R_ARROW if isIdentifierList =>
-                // Lambda
-                consume(SqlToken.R_ARROW)
-                val body = identifier()
-                LambdaExpr(args.map(_.asInstanceOf[Identifier]), body, spanFrom(t))
-              case _ if args.size == 1 =>
-                ParenthesizedExpression(args.head, spanFrom(t))
+    val expr =
+      t.token match
+        case SqlToken.NULL | SqlToken.INTEGER_LITERAL | SqlToken.DOUBLE_LITERAL |
+            SqlToken.FLOAT_LITERAL | SqlToken.DECIMAL_LITERAL | SqlToken.EXP_LITERAL | SqlToken
+              .STRING_LITERAL =>
+          literal()
+        case SqlToken.CASE =>
+          val cases                          = List.newBuilder[WhenClause]
+          var elseClause: Option[Expression] = None
+          def nextCase: Unit =
+            val t = scanner.lookAhead()
+            t.token match
+              case SqlToken.WHEN =>
+                consume(SqlToken.WHEN)
+                val cond = booleanExpression()
+                consume(SqlToken.THEN)
+                val thenExpr = expression()
+                cases += WhenClause(cond, thenExpr, spanFrom(t))
+                nextCase
+              case SqlToken.ELSE =>
+                consume(SqlToken.ELSE)
+                val elseExpr = expression()
+                elseClause = Some(elseExpr)
               case _ =>
-                unexpected(t3)
-          case _ =>
-            val e = expression()
-            consume(SqlToken.R_PAREN)
-            ParenthesizedExpression(e, spanFrom(t))
-      case SqlToken.ARRAY  | SqlToken.L_BRACKET =>
-        array()
-      case SqlToken.MAP =>
-        map()
-      case id if id.isIdentifier =>
-        identifier()
-      case SqlToken.STAR  =>
-        identifier()
-      case _ =>
-        unexpected(t)
+          // done
+          end nextCase
+
+          consume(SqlToken.CASE)
+          val target =
+            scanner.lookAhead().token match
+              case SqlToken.WHEN =>
+                None
+              case other =>
+                Some(expression())
+          nextCase
+          consume(SqlToken.END)
+          CaseExpr(target, cases.result(), elseClause, spanFrom(t))
+        case q if q.isQueryStart =>
+          val subQuery = query()
+          SubQueryExpression(subQuery, spanFrom(t))
+        case SqlToken.L_PAREN =>
+          consume(SqlToken.L_PAREN)
+          val t2 = scanner.lookAhead()
+          t2.token match
+            case q if q.isQueryStart =>
+              val subQuery = query()
+              consume(SqlToken.R_PAREN)
+              SubQueryExpression(subQuery, spanFrom(t))
+            case id if id.isIdentifier =>
+              val exprs = List.newBuilder[Expression]
+
+              // true if the expression is a list of identifiers
+              def nextIdentifier: Boolean =
+                scanner.lookAhead().token match
+                  case SqlToken.COMMA =>
+                    consume(SqlToken.COMMA)
+                    nextIdentifier
+                  case SqlToken.R_PAREN =>
+                    // ok
+                    true
+                  case _ =>
+                    val expr = expression()
+                    exprs += expr
+                    expr match
+                      case i: Identifier =>
+                        nextIdentifier
+                      case _ =>
+                        false
+
+              val isIdentifierList = nextIdentifier
+              consume(SqlToken.R_PAREN)
+              val args = exprs.result()
+              val t3   = scanner.lookAhead()
+              t3.token match
+                case SqlToken.R_ARROW if isIdentifierList =>
+                  // Lambda
+                  consume(SqlToken.R_ARROW)
+                  val body = identifier()
+                  LambdaExpr(args.map(_.asInstanceOf[Identifier]), body, spanFrom(t))
+                case _ if args.size == 1 =>
+                  ParenthesizedExpression(args.head, spanFrom(t))
+                case _ =>
+                  unexpected(t3)
+            case _ =>
+              val e = expression()
+              consume(SqlToken.R_PAREN)
+              ParenthesizedExpression(e, spanFrom(t))
+          end match
+        case SqlToken.ARRAY | SqlToken.L_BRACKET =>
+          array()
+        case SqlToken.MAP =>
+          map()
+        case id if id.isIdentifier =>
+          identifier()
+        case SqlToken.STAR =>
+          identifier()
+        case _ =>
+          unexpected(t)
     primaryExpressionRest(expr)
 
+  end primaryExpression
 
   def array(): ArrayConstructor =
     consumeIfExist(SqlToken.ARRAY)
-    val t = consume(SqlToken.L_BRACKET)
+    val t        = consume(SqlToken.L_BRACKET)
     val elements = List.newBuilder[Expression]
 
     def nextElement: Unit =
@@ -790,7 +822,6 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean) extends LogSuppor
     nextElement
     consume(SqlToken.R_BRACKET)
     ArrayConstructor(elements.result(), spanFrom(t))
-
 
   def map(): MapValue =
     val entries = List.newBuilder[MapEntry]
@@ -853,12 +884,12 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean) extends LogSuppor
     val t = scanner.lookAhead()
     t.token match
       case id if id.isIdentifier =>
-        val expr = expression()
+        val expr  = expression()
         val order = sortOrder()
         // TODO: Support NullOrdering
         SortItem(expr, order, None, spanFrom(expr.span)) :: sortItems()
       case SqlToken.INTEGER_LITERAL =>
-        val expr = literal()
+        val expr  = literal()
         val order = sortOrder()
         SortItem(expr, order, None, spanFrom(expr.span)) :: sortItems()
       case SqlToken.COMMA =>
@@ -949,8 +980,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean) extends LogSuppor
         val t = consume(SqlToken.OVER)
         consume(SqlToken.L_PAREN)
         val partition = partitionBy()
-        val order = orderBy()
-        val frame = windowFrame()
+        val order     = orderBy()
+        val frame     = windowFrame()
         consume(SqlToken.R_PAREN)
         Some(Window(partition, order, frame, spanFrom(t)))
       case _ =>
@@ -989,6 +1020,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean) extends LogSuppor
             Unnest(expr, withOrdinality = false, spanFrom(t))
       case _ =>
         unexpected(t)
+    end match
 
   end tablePrimary
 

@@ -464,7 +464,7 @@ abstract class ScannerBase[Token](sourceFile: SourceFile, config: ScannerConfig)
         // Enter the triple-quote string
         getRawStringLiteral(resultingToken)
       else
-        current.token = token
+        current.token = resultingToken
         current.str = ""
     else
       getStringLiteral()
@@ -484,13 +484,13 @@ abstract class ScannerBase[Token](sourceFile: SourceFile, config: ScannerConfig)
         flushTokenString()
         current.token = tokenTypeInfo.stringLiteral
       else
-        getRawStringLiteral()
+        getRawStringLiteral(resultingToken)
     else if ch == SU then
       reportError("Unclosed multi-line string literal", offset)
     else
       putChar(ch)
       nextRawChar()
-      getRawStringLiteral()
+      getRawStringLiteral(resultingToken)
 
   protected def isTripleQuote(): Boolean =
     if ch == '"' then
