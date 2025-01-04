@@ -3,6 +3,7 @@ package wvlet.lang.compiler.parser
 import TokenType.*
 
 enum SqlToken(val tokenType: TokenType, val str: String):
+  import SqlToken.*
   def isIdentifier: Boolean      = tokenType == Identifier
   def isLiteral: Boolean         = tokenType == Literal
   def isReservedKeyword: Boolean = tokenType == Keyword
@@ -36,8 +37,8 @@ enum SqlToken(val tokenType: TokenType, val str: String):
 
   // Identifiers
   case IDENTIFIER extends SqlToken(Identifier, "<identifier>")
-  // Identifier wrapped in backquotes `....`
-  // case BACKQUOTED_IDENTIFIER extends SqlToken(Identifier, "<quoted identifier>")
+  // Identifier wrapped in double quotes "...."
+  case DOUBLE_QUOTED_IDENTIFIER extends SqlToken(Identifier, "<quoted identifier>")
 
   case SINGLE_QUOTE extends SqlToken(Quote, "'")
   case DOUBLE_QUOTE extends SqlToken(Quote, "\"")
@@ -84,37 +85,39 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   case PIPE extends SqlToken(Op, "|")
 
   // query keywords
-  case SELECT   extends SqlToken(Keyword, "select")
-  case FROM     extends SqlToken(Keyword, "from")
-  case WHERE    extends SqlToken(Keyword, "where")
-  case GROUP    extends SqlToken(Keyword, "group")
-  case BY       extends SqlToken(Keyword, "by")
-  case ORDER    extends SqlToken(Keyword, "order")
-  case ASC      extends SqlToken(Keyword, "asc")
-  case DESC     extends SqlToken(Keyword, "desc")
-  case LIMIT    extends SqlToken(Keyword, "limit")
-  case OFFSET   extends SqlToken(Keyword, "offset")
-  case FETCH    extends SqlToken(Keyword, "fetch")
-  case FIRST    extends SqlToken(Keyword, "first")
-  case NEXT     extends SqlToken(Keyword, "next")
-  case ROW      extends SqlToken(Keyword, "row")
-  case ROWS     extends SqlToken(Keyword, "rows")
-  case ONLY     extends SqlToken(Keyword, "only")
-  case AS       extends SqlToken(Keyword, "as")
-  case JOIN     extends SqlToken(Keyword, "join")
-  case ON       extends SqlToken(Keyword, "on")
-  case LEFT     extends SqlToken(Keyword, "left")
-  case RIGHT    extends SqlToken(Keyword, "right")
-  case OUTER    extends SqlToken(Keyword, "outer")
-  case INNER    extends SqlToken(Keyword, "inner")
-  case CROSS    extends SqlToken(Keyword, "cross")
-  case NATURAL  extends SqlToken(Keyword, "natural")
-  case USING    extends SqlToken(Keyword, "using")
-  case WINDOW   extends SqlToken(Keyword, "window")
-  case QUALIFY  extends SqlToken(Keyword, "qualify")
-  case LATERAL  extends SqlToken(Keyword, "lateral")
-  case SPECIFIC extends SqlToken(Keyword, "specific")
-  case UNNEST   extends SqlToken(Keyword, "unnest")
+  case SELECT     extends SqlToken(Keyword, "select")
+  case FROM       extends SqlToken(Keyword, "from")
+  case WHERE      extends SqlToken(Keyword, "where")
+  case GROUP      extends SqlToken(Keyword, "group")
+  case BY         extends SqlToken(Keyword, "by")
+  case ORDER      extends SqlToken(Keyword, "order")
+  case ASC        extends SqlToken(Keyword, "asc")
+  case DESC       extends SqlToken(Keyword, "desc")
+  case LIMIT      extends SqlToken(Keyword, "limit")
+  case OFFSET     extends SqlToken(Keyword, "offset")
+  case FETCH      extends SqlToken(Keyword, "fetch")
+  case FIRST      extends SqlToken(Keyword, "first")
+  case NEXT       extends SqlToken(Keyword, "next")
+  case ROW        extends SqlToken(Keyword, "row")
+  case ROWS       extends SqlToken(Keyword, "rows")
+  case ONLY       extends SqlToken(Keyword, "only")
+  case AS         extends SqlToken(Keyword, "as")
+  case JOIN       extends SqlToken(Keyword, "join")
+  case ON         extends SqlToken(Keyword, "on")
+  case LEFT       extends SqlToken(Keyword, "left")
+  case RIGHT      extends SqlToken(Keyword, "right")
+  case OUTER      extends SqlToken(Keyword, "outer")
+  case INNER      extends SqlToken(Keyword, "inner")
+  case CROSS      extends SqlToken(Keyword, "cross")
+  case NATURAL    extends SqlToken(Keyword, "natural")
+  case USING      extends SqlToken(Keyword, "using")
+  case WINDOW     extends SqlToken(Keyword, "window")
+  case OVER       extends SqlToken(Keyword, "over")
+  case QUALIFY    extends SqlToken(Keyword, "qualify")
+  case LATERAL    extends SqlToken(Keyword, "lateral")
+  case SPECIFIC   extends SqlToken(Keyword, "specific")
+  case UNNEST     extends SqlToken(Keyword, "unnest")
+  case ORDINALITY extends SqlToken(Keyword, "ordinality")
 
   case ALL      extends SqlToken(Keyword, "all")
   case DISTINCT extends SqlToken(Keyword, "distinct")
@@ -171,14 +174,15 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   case TABLE          extends SqlToken(Keyword, "table")
   case STATEMENT      extends SqlToken(Keyword, "statement")
 
-  case INSERT extends SqlToken(Keyword, "insert")
-  case UPSERT extends SqlToken(Keyword, "upsert")
-  case INTO   extends SqlToken(Keyword, "into")
-  case MERGE  extends SqlToken(Keyword, "merge")
-  case UPDATE extends SqlToken(Keyword, "update")
-  case SET    extends SqlToken(Keyword, "set")
-  case DELETE extends SqlToken(Keyword, "delete")
-  case CREATE extends SqlToken(Keyword, "create")
+  case INSERT  extends SqlToken(Keyword, "insert")
+  case UPSERT  extends SqlToken(Keyword, "upsert")
+  case INTO    extends SqlToken(Keyword, "into")
+  case MERGE   extends SqlToken(Keyword, "merge")
+  case MATCHED extends SqlToken(Keyword, "matched")
+  case UPDATE  extends SqlToken(Keyword, "update")
+  case SET     extends SqlToken(Keyword, "set")
+  case DELETE  extends SqlToken(Keyword, "delete")
+  case CREATE  extends SqlToken(Keyword, "create")
 
   case DROP extends SqlToken(Keyword, "drop")
 

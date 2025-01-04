@@ -93,7 +93,7 @@ object NameExpr:
     "catalog"
   )
 
-case class Wildcard(span: Span) extends LeafExpression with QualifiedName:
+case class Wildcard(span: Span) extends LeafExpression with Identifier:
   override def leafName: String = "*"
   override def fullName: String = "*"
   override def strExpr: String  = "*"

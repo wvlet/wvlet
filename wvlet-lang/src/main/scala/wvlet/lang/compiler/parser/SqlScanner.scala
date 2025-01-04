@@ -42,7 +42,7 @@ class SqlScanner(sourceFile: SourceFile, config: ScannerConfig = ScannerConfig()
       case '\'' =>
         getSingleQuoteString()
       case '\"' =>
-        getDoubleQuoteString()
+        getDoubleQuoteString(resultingToken = SqlToken.DOUBLE_QUOTED_IDENTIFIER)
       case '/' =>
         scanSlash()
       case SU =>

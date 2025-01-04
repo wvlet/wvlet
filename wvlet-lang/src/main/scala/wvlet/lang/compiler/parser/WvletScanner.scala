@@ -125,7 +125,7 @@ class WvletScanner(sourceFile: SourceFile, config: ScannerConfig = ScannerConfig
 
   end fetchToken
 
-  override protected def getDoubleQuoteString(): Unit =
+  private def getDoubleQuoteString(): Unit =
     if current.token == WvletToken.STRING_INTERPOLATION_PREFIX then
       currentRegion = InString(false, currentRegion)
       nextRawChar()
@@ -144,7 +144,7 @@ class WvletScanner(sourceFile: SourceFile, config: ScannerConfig = ScannerConfig
         // Single-line string interpolation
         getStringPart(multiline = false)
     else
-      super.getDoubleQuoteString()
+      super.getDoubleQuoteString(WvletToken.STRING_LITERAL)
   end getDoubleQuoteString
 
   private def getStringPart(multiline: Boolean): Unit =

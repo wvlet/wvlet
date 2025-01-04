@@ -453,7 +453,7 @@ abstract class ScannerBase[Token](sourceFile: SourceFile, config: ScannerConfig)
     current.token = tokenTypeInfo.stringLiteral
     current.str = flushTokenString()
 
-  protected def getDoubleQuoteString(): Unit =
+  protected def getDoubleQuoteString(resultingToken: Token): Unit =
     // Regular double quoted string
     // TODO Support unicode and escape characters
     nextChar()
@@ -462,9 +462,9 @@ abstract class ScannerBase[Token](sourceFile: SourceFile, config: ScannerConfig)
       if ch == '\"' then
         nextRawChar()
         // Enter the triple-quote string
-        getRawStringLiteral()
+        getRawStringLiteral(resultingToken)
       else
-        current.token = tokenTypeInfo.stringLiteral
+        current.token = token
         current.str = ""
     else
       getStringLiteral()
@@ -477,7 +477,7 @@ abstract class ScannerBase[Token](sourceFile: SourceFile, config: ScannerConfig)
     current.token = tokenTypeInfo.stringLiteral
     current.str = flushTokenString()
 
-  private def getRawStringLiteral(): Unit =
+  private def getRawStringLiteral(resultingToken: Token): Unit =
     if ch == '\"' then
       nextRawChar()
       if isTripleQuote() then

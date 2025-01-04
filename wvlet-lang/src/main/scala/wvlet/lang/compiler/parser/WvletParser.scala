@@ -1719,8 +1719,6 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
               consume(WvletToken.R_PAREN)
               ParenthesizedExpression(e, spanFrom(t))
           end match
-        case WvletToken.L_BRACKET =>
-          array()
         case WvletToken.MAP =>
           map()
         case id if id.isIdentifier =>
