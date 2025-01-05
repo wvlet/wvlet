@@ -107,7 +107,7 @@ object CompilationUnit extends LogSupport:
 
   def fromPath(path: String): List[CompilationUnit] =
     // List all *.wv files under the path
-    val files = SourceIO.listWvFiles(path, 0)
+    val files = SourceIO.listSourceFiles(path)
     val units =
       files
         .map { file =>
@@ -116,13 +116,13 @@ object CompilationUnit extends LogSupport:
         .toList
     units
 
-  private def listWvletFile(path: String): List[URI] = SourceIO.listResource(path)
-
   def fromResourcePath(path: String, isPreset: Boolean): List[CompilationUnit] =
-    val urls = listWvletFile(path)
-    urls.map { url =>
-      CompilationUnit(SourceFile.fromResource(url), isPreset = isPreset)
-    }
+    val resources = SourceIO.listResources(path)
+    resources
+      .filter(_.isSourceFile)
+      .map { r =>
+        CompilationUnit(SourceFile.fromFile(r), isPreset = isPreset)
+      }
 
   def stdLib: List[CompilationUnit] =
     StdLib
