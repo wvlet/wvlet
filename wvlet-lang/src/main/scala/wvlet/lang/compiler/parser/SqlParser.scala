@@ -518,6 +518,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         Nil
       case SqlToken.EOF =>
         Nil
+      case e if e.isQueryDelimiter =>
+        Nil
       case _ =>
         // expression only
         val e   = expression()
