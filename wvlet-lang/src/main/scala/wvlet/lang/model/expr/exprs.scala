@@ -577,9 +577,9 @@ case class ArithmeticUnaryExpr(sign: Sign, child: Expression, span: Span)
     extends ArithmeticExpression
     with UnaryExpression
 
-abstract sealed class Sign(val symbol: String)
-case object Positive extends Sign("+")
-case object Negative extends Sign("-")
+enum Sign(val symbol: String):
+  case Positive extends Sign("+")
+  case Negative extends Sign("-")
 
 // Set quantifier
 sealed trait SetQuantifier extends LeafExpression:
@@ -676,16 +676,6 @@ case class LongLiteral(value: Long, span: Span) extends Literal with LeafExpress
   override def dataType: DataType  = DataType.LongType
   override def stringValue: String = value.toString
 
-case class IntervalLiteral(
-    value: String,
-    sign: Sign,
-    startField: IntervalField,
-    end: Option[IntervalField],
-    span: Span
-) extends Literal:
-  override def children: Seq[Expression] = Seq(startField) ++ end.toSeq
-  override def stringValue: String       = s"${sign.symbol} '${value}' ${startField}"
-
 case class GenericLiteral(tpe: DataType, value: String, span: Span)
     extends Literal
     with LeafExpression:
@@ -694,33 +684,35 @@ case class GenericLiteral(tpe: DataType, value: String, span: Span)
 case class BinaryLiteral(binary: String, span: Span) extends Literal with LeafExpression:
   override def stringValue: String = binary
 
-sealed trait IntervalField extends LeafExpression:
-  override def toString(): String = getClass.getSimpleName
+case class IntervalLiteral(
+    value: String,
+    sign: Sign,
+    startField: IntervalField,
+    end: Option[IntervalField],
+    span: Span
+) extends Literal:
+  override def children: Seq[Expression] = Nil
+  override def stringValue: String       = s"${sign.symbol} '${value}' ${startField}"
 
-case class Year(span: Span)    extends IntervalField
-case class Quarter(span: Span) extends IntervalField
-case class Month(span: Span)   extends IntervalField
-case class Week(span: Span)    extends IntervalField
-case class Day(span: Span)     extends IntervalField
+object IntervalField:
+  def unapply(name: String): Option[IntervalField] = IntervalField.values.find(_.name == name)
 
-case class DayOfWeek(span: Span) extends IntervalField:
-  override def toString(): String = "day_of_week"
+enum IntervalField(val name: String):
+  override def toString: String = name
 
-case class DayOfYear(span: Span) extends IntervalField:
-  override def toString(): String = "day_of_year"
-
-case class YearOfWeek(span: Span) extends IntervalField:
-  override def toString(): String = "year_of_week"
-
-case class Hour(span: Span)   extends IntervalField
-case class Minute(span: Span) extends IntervalField
-case class Second(span: Span) extends IntervalField
-
-case class TimezoneHour(span: Span) extends IntervalField:
-  override def toString(): String = "timezone_hour"
-
-case class TimezoneMinute(span: Span) extends IntervalField:
-  override def toString(): String = "timezone_minute"
+  case Year           extends IntervalField("year")
+  case Quarter        extends IntervalField("quarter")
+  case Month          extends IntervalField("month")
+  case Week           extends IntervalField("week")
+  case Day            extends IntervalField("day")
+  case DayOfWeek      extends IntervalField("day_of_week")
+  case DayOfYear      extends IntervalField("day_of_year")
+  case YearOfWeek     extends IntervalField("year_of_week")
+  case Hour           extends IntervalField("hour")
+  case Minute         extends IntervalField("minute")
+  case Second         extends IntervalField("second")
+  case TimezoneHour   extends IntervalField("timezone_hour")
+  case TimezoneMinute extends IntervalField("timezone_minute")
 
 // Value constructor
 case class ArrayConstructor(values: List[Expression], span: Span) extends Expression:

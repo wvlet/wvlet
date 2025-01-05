@@ -948,6 +948,12 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           array()
         case SqlToken.MAP =>
           map()
+        case SqlToken.DATE =>
+          consume(SqlToken.DATE)
+          val i = literal()
+          GenericLiteral(DataType.DateType, i.stringValue, spanFrom(t))
+        case SqlToken.INTERVAL =>
+          interval()
         case id if id.isIdentifier =>
           identifier()
         case SqlToken.STAR =>
@@ -1002,6 +1008,40 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     nextEntry
     consume(SqlToken.R_BRACE)
     MapValue(entries.result(), spanFrom(t))
+
+  def interval(): IntervalLiteral =
+    // interval : INTERVAL sign = (PLUS | MINUS) ? str intervalField (TO intervalField)?
+    // intervalField: YEAR | MONTH | DAY | HOUR | MINUTE | SECOND;
+
+    val t = consume(SqlToken.INTERVAL)
+
+    val sign =
+      scanner.lookAhead().token match
+        case SqlToken.PLUS =>
+          consume(SqlToken.PLUS)
+          Sign.Positive
+        case SqlToken.MINUS =>
+          consume(SqlToken.MINUS)
+          Sign.Negative
+        case _ =>
+          Sign.Positive
+
+    val value = literal()
+
+    def intervalField(): IntervalField =
+      val t   = consumeToken()
+      val opt = IntervalField.unapply(t.token.str)
+      opt.getOrElse(unexpected(t))
+
+    val f1 = intervalField()
+    scanner.lookAhead().token match
+      case SqlToken.TO =>
+        consume(SqlToken.TO)
+        val f2 = intervalField()
+        IntervalLiteral(value.stringValue, sign, f1, Some(f2), spanFrom(t))
+      case _ =>
+        IntervalLiteral(value.stringValue, sign, f1, None, spanFrom(t))
+  end interval
 
   def literal(): Literal =
     def removeUnderscore(s: String): String = s.replaceAll("_", "")

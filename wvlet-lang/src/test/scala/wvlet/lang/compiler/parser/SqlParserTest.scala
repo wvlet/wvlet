@@ -10,7 +10,6 @@ class SqlParserTest extends AirSpec:
   }
 
   test("parse tpch") {
-    skip(s"Support all SQL expressions")
     CompilationUnit
       .fromPath("spec/sql/tpc-h")
       .foreach { unit =>

@@ -218,8 +218,20 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   case CHECK   extends SqlToken(Keyword, "check")
 
   // literal start keywords
-  case MAP   extends SqlToken(Keyword, "map")
-  case ARRAY extends SqlToken(Keyword, "array")
+  case MAP      extends SqlToken(Keyword, "map")
+  case ARRAY    extends SqlToken(Keyword, "array")
+  case DATE     extends SqlToken(Keyword, "date")
+  case INTERVAL extends SqlToken(Keyword, "interval")
+
+  // For internal
+  case TO extends SqlToken(Keyword, "to")
+  case YEAR   extends SqlToken(Keyword, "year")
+  case MONTH  extends SqlToken(Keyword, "month")
+  case DAY    extends SqlToken(Keyword, "day")
+  case HOUR   extends SqlToken(Keyword, "hour")
+  case MINUTE extends SqlToken(Keyword, "minute")
+  case SECOND extends SqlToken(Keyword, "second")
+
 end SqlToken
 
 object SqlToken:
@@ -232,7 +244,9 @@ object SqlToken:
     SqlToken.FALSE,
     SqlToken.CASE,
     SqlToken.MAP,
-    SqlToken.ARRAY
+    SqlToken.ARRAY,
+    SqlToken.DATE,
+    SqlToken.INTERVAL
   )
 
   val allKeywordsAndSymbols = keywords ++ literalStartKeywords ++ specialSymbols
