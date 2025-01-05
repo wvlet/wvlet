@@ -468,8 +468,37 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         r = limit(r)
         r = offset(r)
         r
+      case SqlToken.WITH =>
+        consume(SqlToken.WITH)
+        val isRecursive = consumeIfExist(SqlToken.RECURSIVE)
+        def withQuery(): List[AliasedRelation] =
+          val alias = identifier()
+          val typeDefs =
+            scanner.lookAhead().token match
+              case SqlToken.L_PAREN =>
+                consume(SqlToken.L_PAREN)
+                val types = namedTypes()
+                consume(SqlToken.R_PAREN)
+                Some(types)
+              case _ =>
+                None
+
+          consume(SqlToken.AS)
+          val body = query()
+          val r    = AliasedRelation(body, alias, typeDefs, spanFrom(t))
+          scanner.lookAhead().token match
+            case SqlToken.COMMA =>
+              consume(SqlToken.COMMA)
+              r :: withQuery()
+            case _ =>
+              List(r)
+
+        val withStmts = withQuery()
+        val body      = query()
+        WithQuery(isRecursive, withStmts, body, spanFrom(t))
       case other =>
         unexpected(t)
+    end match
 
   end select
 

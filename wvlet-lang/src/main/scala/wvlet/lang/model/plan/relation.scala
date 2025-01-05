@@ -40,7 +40,7 @@ import wvlet.log.LogSupport
 
 import scala.collection.immutable.ListMap
 
-sealed trait Relation extends LogicalPlan:
+trait Relation extends LogicalPlan:
   // Input attributes (column names) of the relation
   def relationType: RelationType
   override def inputRelationType: RelationType =
