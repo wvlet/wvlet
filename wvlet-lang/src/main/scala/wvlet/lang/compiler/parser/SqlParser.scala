@@ -453,7 +453,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         consume(SqlToken.SELECT)
         val isDistinct = consumeIfExist(SqlToken.DISTINCT)
         val items      = selectItems()
-        var r          = fromClause()
+        warn(items)
+        var r = fromClause()
         r = whereClause(r)
         val g          = groupBy(r)
         val hasGroupBy = r ne g
@@ -478,7 +479,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     t.token match
       case SqlToken.FROM =>
         consume(SqlToken.FROM)
-        tableRest(tablePrimary())
+        tableRest(table())
       case _ =>
         unexpected(t)
 
@@ -737,6 +738,12 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
               NotIn(expr, values, spanFrom(t))
             case _ =>
               unexpected(t2)
+        case SqlToken.BETWEEN =>
+          consume(SqlToken.BETWEEN)
+          val start = valueExpression()
+          consume(SqlToken.AND)
+          val end = valueExpression()
+          Between(expr, start, end, spanFrom(t))
         case _ =>
           expr
       end match
@@ -955,7 +962,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           GenericLiteral(DataType.DateType, i.stringValue, spanFrom(t))
         case SqlToken.INTERVAL =>
           interval()
-        case id if id.isIdentifier =>
+        case id if id.isIdentifier || id.isReservedKeyword =>
           identifier()
         case SqlToken.STAR =>
           identifier()
@@ -1185,6 +1192,17 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         None
   end window
 
+  def table(): Relation =
+    val r = tablePrimary()
+    scanner.lookAhead().token match
+      case SqlToken.AS =>
+        consume(SqlToken.AS)
+        tableAlias(r)
+      case id if id.isIdentifier =>
+        tableAlias(r)
+      case _ =>
+        r
+
   def tablePrimary(): Relation =
     val t = scanner.lookAhead()
     val r =
@@ -1224,25 +1242,26 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     r
   end tablePrimary
 
+  def tableAlias(input: Relation): AliasedRelation =
+    val alias = identifier()
+    val columns: Option[List[NamedType]] =
+      scanner.lookAhead().token match
+        case SqlToken.L_PAREN =>
+          consume(SqlToken.L_PAREN)
+          val cols = namedTypes()
+          consume(SqlToken.R_PAREN)
+          Some(cols)
+        case _ =>
+          None
+    AliasedRelation(input, alias, columns, spanFrom(alias.span))
+
   def tableRest(r: Relation): Relation =
     val t = scanner.lookAhead()
     t.token match
       case SqlToken.COMMA =>
         consume(SqlToken.COMMA)
-        val next = tablePrimary()
+        val next = table()
         tableRest(Join(JoinType.ImplicitJoin, r, next, NoJoinCriteria, asof = false, spanFrom(t)))
-      case SqlToken.AS =>
-        consume(SqlToken.AS)
-        val alias = identifier()
-        val t2    = scanner.lookAhead()
-        t2.token match
-          case SqlToken.L_PAREN =>
-            consume(SqlToken.L_PAREN)
-            val cols = namedTypes()
-            consume(SqlToken.R_PAREN)
-            AliasedRelation(r, alias, Some(cols), spanFrom(t))
-          case _ =>
-            AliasedRelation(r, alias, None, spanFrom(t))
       case _ =>
         r
 

@@ -225,12 +225,13 @@ enum SqlToken(val tokenType: TokenType, val str: String):
 
   // For internal
   case TO extends SqlToken(Keyword, "to")
-  case YEAR   extends SqlToken(Keyword, "year")
-  case MONTH  extends SqlToken(Keyword, "month")
-  case DAY    extends SqlToken(Keyword, "day")
-  case HOUR   extends SqlToken(Keyword, "hour")
-  case MINUTE extends SqlToken(Keyword, "minute")
-  case SECOND extends SqlToken(Keyword, "second")
+  // These should not be keyword tokens as it conflicts with function names
+  //  case YEAR   extends SqlToken(Keyword, "year")
+  //  case MONTH  extends SqlToken(Keyword, "month")
+  //  case DAY    extends SqlToken(Keyword, "day")
+  //  case HOUR   extends SqlToken(Keyword, "hour")
+  //  case MINUTE extends SqlToken(Keyword, "minute")
+  //  case SECOND extends SqlToken(Keyword, "second")
 
 end SqlToken
 

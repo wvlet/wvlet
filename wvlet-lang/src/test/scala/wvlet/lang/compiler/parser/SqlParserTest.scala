@@ -13,7 +13,7 @@ class SqlParserTest extends AirSpec:
     .fromPath("spec/sql/tpc-h")
     .foreach { unit =>
       test(s"parse tpc-h ${unit.sourceFile.fileName}") {
-        val stmt = SqlParser(unit).parse()
+        val stmt = SqlParser(unit, isContextUnit = true).parse()
         debug(stmt.pp)
       }
     }
