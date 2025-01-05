@@ -24,51 +24,31 @@ trait IOCompat:
       wvlet.airframe.control.IO.readAsString(in)
     }
 
-  def listResource(path: String): List[URI] =
-    val uris = List.newBuilder[URI]
+  def listResources(path: String): List[VirtualFile] =
+    val resources = List.newBuilder[VirtualFile]
     import scala.jdk.CollectionConverters.*
     Option(this.getClass.getResource(path)).foreach: r =>
       r.getProtocol match
         case "file" =>
-          val files = listWvFiles(r.getPath, 0)
-          uris ++= files.map(File(_).toURI)
+          val f = LocalFile(r.getPath)
+          resources += f
+          if f.isDirectory then
+            resources ++= f.listFilesRecursively
         case "jar" =>
           val jarPath     = r.getPath.split("!")(0).replaceAll("%20", " ").replaceAll("%25", "%")
           val jarFilePath = jarPath.replace("file:", "")
           val jf          = new JarFile(jarFilePath)
-          val wvFilePaths = jf.entries().asScala.filter(_.getName.endsWith(".wv"))
-          uris ++=
-            wvFilePaths
-              .map { j =>
-                val url = s"jar:${jarPath}!/${j.getName}"
-                URI(url)
-              }
-              .toList
+          jf.entries()
+            .asScala
+            .foreach { j =>
+              val url = s"jar:${jarPath}!/${j.getName}"
+              resources += URIResource(URI(url))
+            }
         case _ =>
-    uris.result()
+    resources.result()
 
-  def listFiles(path: String): Seq[String] =
-    Files.list(Path.of(path)).toList.asScala.map(_.toString).toSeq
-
-  def listWvFiles(path: String, level: Int): Seq[String] =
-    val f = new java.io.File(path)
-    if f.isDirectory then
-      if level == 1 && SourceIO.ignoredFolders.contains(f.getName) then
-        Seq.empty
-      else
-        val files         = f.listFiles()
-        val hasAnyWvFiles = files.exists(_.getName.endsWith(".wv"))
-        if hasAnyWvFiles then
-          // Only scan sub-folders if there is any .wv files
-          files flatMap { file =>
-            listWvFiles(file.getPath, level + 1)
-          }
-        else
-          Seq.empty
-    else if f.isFile && f.getName.endsWith(".wv") then
-      Seq(f.getPath)
-    else
-      Seq.empty
+  def listFiles(path: String): List[String] =
+    Files.list(Path.of(path)).toList.asScala.map(_.toString).toList
 
   def existsFile(path: String): Boolean = new java.io.File(path).exists()
 
