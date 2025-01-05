@@ -83,7 +83,13 @@ enum StatusCode(statusType: StatusType):
       if line.isEmpty then
         s"${baseMsg} (${locString})"
       else
-        s"${baseMsg}\n${line} (${locString})\n${" " * (column - 1)}^\n"
+        var pos = 0
+        for i <- 0 until column do
+          if line(i) == '\t' then
+            pos += 4
+          else
+            pos += 1
+        s"${baseMsg}\n${line} (${locString})\n${" " * (pos - 1)}^\n"
 
     WvletLangException(this, err, sourceLocation)
 

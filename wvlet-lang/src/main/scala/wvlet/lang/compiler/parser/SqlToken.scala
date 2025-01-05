@@ -69,6 +69,7 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   // Special keywords
   case EQ   extends SqlToken(Op, "=")
   case NEQ  extends SqlToken(Op, "!=")
+  case NEQ2 extends SqlToken(Op, "<>")
   case LT   extends SqlToken(Op, "<")
   case GT   extends SqlToken(Op, ">")
   case LTEQ extends SqlToken(Op, "<=")
@@ -103,12 +104,14 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   case ROWS       extends SqlToken(Keyword, "rows")
   case ONLY       extends SqlToken(Keyword, "only")
   case AS         extends SqlToken(Keyword, "as")
+  case ASOF       extends SqlToken(Keyword, "asof")
   case JOIN       extends SqlToken(Keyword, "join")
   case ON         extends SqlToken(Keyword, "on")
   case LEFT       extends SqlToken(Keyword, "left")
   case RIGHT      extends SqlToken(Keyword, "right")
   case OUTER      extends SqlToken(Keyword, "outer")
   case INNER      extends SqlToken(Keyword, "inner")
+  case FULL       extends SqlToken(Keyword, "full")
   case CROSS      extends SqlToken(Keyword, "cross")
   case NATURAL    extends SqlToken(Keyword, "natural")
   case USING      extends SqlToken(Keyword, "using")
@@ -218,8 +221,21 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   case CHECK   extends SqlToken(Keyword, "check")
 
   // literal start keywords
-  case MAP   extends SqlToken(Keyword, "map")
-  case ARRAY extends SqlToken(Keyword, "array")
+  case MAP      extends SqlToken(Keyword, "map")
+  case ARRAY    extends SqlToken(Keyword, "array")
+  case DATE     extends SqlToken(Keyword, "date")
+  case INTERVAL extends SqlToken(Keyword, "interval")
+
+  // For internal
+  case TO extends SqlToken(Keyword, "to")
+  // These should not be keyword tokens as it conflicts with function names
+  //  case YEAR   extends SqlToken(Keyword, "year")
+  //  case MONTH  extends SqlToken(Keyword, "month")
+  //  case DAY    extends SqlToken(Keyword, "day")
+  //  case HOUR   extends SqlToken(Keyword, "hour")
+  //  case MINUTE extends SqlToken(Keyword, "minute")
+  //  case SECOND extends SqlToken(Keyword, "second")
+
 end SqlToken
 
 object SqlToken:
@@ -232,7 +248,9 @@ object SqlToken:
     SqlToken.FALSE,
     SqlToken.CASE,
     SqlToken.MAP,
-    SqlToken.ARRAY
+    SqlToken.ARRAY,
+    SqlToken.DATE,
+    SqlToken.INTERVAL
   )
 
   val allKeywordsAndSymbols = keywords ++ literalStartKeywords ++ specialSymbols

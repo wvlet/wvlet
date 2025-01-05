@@ -9,7 +9,7 @@ select
 	o_totalprice,
 	sum(l_quantity)
 from
-	customer,
+    customer,
 	orders,
 	lineitem
 where

@@ -72,3 +72,12 @@ case class Merge(
 
 case class UseSchema(schema: QualifiedName, span: Span) extends TopLevelStatement with LeafPlan:
   override def relationType: RelationType = EmptyRelationType
+
+case class WithQuery(
+    isRecursive: Boolean,
+    withStatements: List[AliasedRelation],
+    child: Relation,
+    span: Span
+) extends Relation:
+  override def children: Seq[LogicalPlan] = withStatements :+ child
+  override def relationType: RelationType = child.relationType

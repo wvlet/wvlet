@@ -5,6 +5,7 @@ import wvlet.lang.api.{Span, StatusCode}
 import wvlet.lang.compiler.parser.SqlToken.{EOF, ROW, STAR, STRING_LITERAL}
 import wvlet.lang.compiler.{CompilationUnit, Name, SourceFile}
 import wvlet.lang.model.DataType
+import wvlet.lang.model.DataType.{IntConstant, NamedType, TypeParameter, UnresolvedTypeParameter}
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.expr.NameExpr.EmptyName
 import wvlet.lang.model.plan.*
@@ -467,8 +468,37 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         r = limit(r)
         r = offset(r)
         r
+      case SqlToken.WITH =>
+        consume(SqlToken.WITH)
+        val isRecursive = consumeIfExist(SqlToken.RECURSIVE)
+        def withQuery(): List[AliasedRelation] =
+          val alias = identifier()
+          val typeDefs =
+            scanner.lookAhead().token match
+              case SqlToken.L_PAREN =>
+                consume(SqlToken.L_PAREN)
+                val types = namedTypes()
+                consume(SqlToken.R_PAREN)
+                Some(types)
+              case _ =>
+                None
+
+          consume(SqlToken.AS)
+          val body = query()
+          val r    = AliasedRelation(body, alias, typeDefs, spanFrom(t))
+          scanner.lookAhead().token match
+            case SqlToken.COMMA =>
+              consume(SqlToken.COMMA)
+              r :: withQuery()
+            case _ =>
+              List(r)
+
+        val withStmts = withQuery()
+        val body      = query()
+        WithQuery(isRecursive, withStmts, body, spanFrom(t))
       case other =>
         unexpected(t)
+    end match
 
   end select
 
@@ -477,7 +507,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     t.token match
       case SqlToken.FROM =>
         consume(SqlToken.FROM)
-        tablePrimary()
+        tableRest(table())
       case _ =>
         unexpected(t)
 
@@ -516,6 +546,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       case t if t.tokenType == TokenType.Keyword =>
         Nil
       case SqlToken.EOF =>
+        Nil
+      case e if e.isQueryDelimiter =>
         Nil
       case _ =>
         // expression only
@@ -684,8 +716,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           consume(SqlToken.EQ)
           val right = valueExpression()
           Eq(expr, right, spanFrom(t))
-        case SqlToken.NEQ =>
-          consume(SqlToken.NEQ)
+        case SqlToken.NEQ | SqlToken.NEQ2 =>
+          consumeToken()
           val right = valueExpression()
           NotEq(expr, right, spanFrom(t))
         case SqlToken.IS =>
@@ -736,6 +768,12 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
               NotIn(expr, values, spanFrom(t))
             case _ =>
               unexpected(t2)
+        case SqlToken.BETWEEN =>
+          consume(SqlToken.BETWEEN)
+          val start = valueExpression()
+          consume(SqlToken.AND)
+          val end = valueExpression()
+          Between(expr, start, end, spanFrom(t))
         case _ =>
           expr
       end match
@@ -948,7 +986,13 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           array()
         case SqlToken.MAP =>
           map()
-        case id if id.isIdentifier =>
+        case SqlToken.DATE =>
+          consume(SqlToken.DATE)
+          val i = literal()
+          GenericLiteral(DataType.DateType, i.stringValue, spanFrom(t))
+        case SqlToken.INTERVAL =>
+          interval()
+        case id if id.isIdentifier || id.isReservedKeyword =>
           identifier()
         case SqlToken.STAR =>
           identifier()
@@ -1002,6 +1046,40 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     nextEntry
     consume(SqlToken.R_BRACE)
     MapValue(entries.result(), spanFrom(t))
+
+  def interval(): IntervalLiteral =
+    // interval : INTERVAL sign = (PLUS | MINUS) ? str intervalField (TO intervalField)?
+    // intervalField: YEAR | MONTH | DAY | HOUR | MINUTE | SECOND;
+
+    val t = consume(SqlToken.INTERVAL)
+
+    val sign =
+      scanner.lookAhead().token match
+        case SqlToken.PLUS =>
+          consume(SqlToken.PLUS)
+          Sign.Positive
+        case SqlToken.MINUS =>
+          consume(SqlToken.MINUS)
+          Sign.Negative
+        case _ =>
+          Sign.Positive
+
+    val value = literal()
+
+    def intervalField(): IntervalField =
+      val t   = consumeToken()
+      val opt = IntervalField.unapply(t.str)
+      opt.getOrElse(unexpected(t))
+
+    val f1 = intervalField()
+    scanner.lookAhead().token match
+      case SqlToken.TO =>
+        consume(SqlToken.TO)
+        val f2 = intervalField()
+        IntervalLiteral(value.stringValue, sign, f1, Some(f2), spanFrom(t))
+      case _ =>
+        IntervalLiteral(value.stringValue, sign, f1, None, spanFrom(t))
+  end interval
 
   def literal(): Literal =
     def removeUnderscore(s: String): String = s.replaceAll("_", "")
@@ -1144,41 +1222,216 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         None
   end window
 
+  def table(): Relation =
+    val r = tablePrimary()
+    scanner.lookAhead().token match
+      case SqlToken.AS =>
+        consume(SqlToken.AS)
+        tableAlias(r)
+      case id if id.isIdentifier =>
+        tableAlias(r)
+      case _ =>
+        r
+
   def tablePrimary(): Relation =
     val t = scanner.lookAhead()
+    val r =
+      t.token match
+        case id if id.isIdentifier =>
+          val name = qualifiedName()
+          TableRef(name, spanFrom(t))
+        case SqlToken.LATERAL =>
+          consume(SqlToken.LATERAL)
+          // TODO Support LATERAL TABLE ...
+          consume(SqlToken.L_PAREN)
+          val subQuery = query()
+          consume(SqlToken.R_PAREN)
+          Lateral(subQuery, spanFrom(t))
+        case SqlToken.L_PAREN =>
+          consume(SqlToken.L_PAREN)
+          val subQuery = query()
+          consume(SqlToken.R_PAREN)
+          subQuery
+        case SqlToken.UNNEST =>
+          consume(SqlToken.UNNEST)
+          consume(SqlToken.L_PAREN)
+          val expr = expressionList()
+          consume(SqlToken.R_PAREN)
+          scanner.lookAhead().token match
+            case SqlToken.WITH =>
+              consume(SqlToken.WITH)
+              consume(SqlToken.ORDINALITY)
+              Unnest(expr, withOrdinality = true, spanFrom(t))
+            case _ =>
+              Unnest(expr, withOrdinality = false, spanFrom(t))
+        case _ =>
+          unexpected(t)
+      end match
+    end r
+
+    r
+  end tablePrimary
+
+  def tableAlias(input: Relation): AliasedRelation =
+    val alias = identifier()
+    val columns: Option[List[NamedType]] =
+      scanner.lookAhead().token match
+        case SqlToken.L_PAREN =>
+          consume(SqlToken.L_PAREN)
+          val cols = namedTypes()
+          consume(SqlToken.R_PAREN)
+          Some(cols)
+        case _ =>
+          None
+    AliasedRelation(input, alias, columns, spanFrom(alias.span))
+
+  def tableRest(r: Relation): Relation =
+    val t = scanner.lookAhead()
     t.token match
-      case id if id.isIdentifier =>
-        val name = qualifiedName()
-        TableRef(name, spanFrom(t))
-      case SqlToken.LATERAL =>
-        consume(SqlToken.LATERAL)
-        // TODO Support LATERAL TABLE ...
-        consume(SqlToken.L_PAREN)
-        val subQuery = query()
-        consume(SqlToken.R_PAREN)
-        Lateral(subQuery, spanFrom(t))
-      case SqlToken.L_PAREN =>
-        consume(SqlToken.L_PAREN)
-        val subQuery = query()
-        consume(SqlToken.R_PAREN)
-        subQuery
-      case SqlToken.UNNEST =>
-        consume(SqlToken.UNNEST)
-        consume(SqlToken.L_PAREN)
-        val expr = expressionList()
-        consume(SqlToken.R_PAREN)
-        scanner.lookAhead().token match
-          case SqlToken.WITH =>
-            consume(SqlToken.WITH)
-            consume(SqlToken.ORDINALITY)
-            Unnest(expr, withOrdinality = true, spanFrom(t))
-          case _ =>
-            Unnest(expr, withOrdinality = false, spanFrom(t))
+      case SqlToken.COMMA =>
+        consume(SqlToken.COMMA)
+        val next = table()
+        tableRest(Join(JoinType.ImplicitJoin, r, next, NoJoinCriteria, asof = false, spanFrom(t)))
+      case SqlToken.LEFT | SqlToken.RIGHT | SqlToken.INNER | SqlToken.FULL | SqlToken.CROSS |
+          SqlToken.ASOF | SqlToken.JOIN =>
+        join(r)
+      case _ =>
+        r
+
+  def join(r: Relation): Relation =
+    def joinType(): JoinType =
+      val t = scanner.lookAhead()
+      t.token match
+        case SqlToken.LEFT =>
+          consume(SqlToken.LEFT)
+          consumeIfExist(SqlToken.OUTER)
+          consume(SqlToken.JOIN)
+          JoinType.LeftOuterJoin
+        case SqlToken.RIGHT =>
+          consume(SqlToken.RIGHT)
+          consumeIfExist(SqlToken.OUTER)
+          consume(SqlToken.JOIN)
+          JoinType.RightOuterJoin
+        case SqlToken.INNER =>
+          consume(SqlToken.INNER)
+          consume(SqlToken.JOIN)
+          JoinType.InnerJoin
+        case SqlToken.FULL =>
+          consume(SqlToken.FULL)
+          consumeIfExist(SqlToken.OUTER)
+          consume(SqlToken.JOIN)
+          JoinType.FullOuterJoin
+        case _ =>
+          JoinType.InnerJoin
+
+    val isAsOfJoin =
+      scanner.lookAhead().token match
+        case SqlToken.ASOF =>
+          consume(SqlToken.ASOF)
+          true
+        case _ =>
+          false
+    val t = scanner.lookAhead()
+    t.token match
+      case SqlToken.CROSS =>
+        consume(SqlToken.CROSS)
+        consume(SqlToken.JOIN)
+        val right = table()
+        Join(JoinType.CrossJoin, r, right, NoJoinCriteria, asof = isAsOfJoin, spanFrom(t))
+      case SqlToken.JOIN =>
+        consume(SqlToken.JOIN)
+        val right  = table()
+        val joinOn = joinCriteria()
+        Join(JoinType.InnerJoin, r, right, NoJoinCriteria, asof = isAsOfJoin, spanFrom(t))
+      case SqlToken.LEFT | SqlToken.RIGHT | SqlToken.INNER | SqlToken.FULL =>
+        val joinTpe = joinType()
+        val right   = table()
+        val joinOn  = joinCriteria()
+        Join(joinTpe, r, right, joinOn, asof = isAsOfJoin, spanFrom(t))
       case _ =>
         unexpected(t)
-    end match
 
-  end tablePrimary
+  end join
+
+  def joinCriteria(): JoinCriteria =
+    val t = scanner.lookAhead()
+    t.token match
+      case SqlToken.ON =>
+        consume(SqlToken.ON)
+        val cond = booleanExpression()
+        cond match
+          case i: Identifier =>
+            val joinKeys = List.newBuilder[NameExpr]
+            joinKeys += i
+
+            def nextKey: Unit =
+              val la = scanner.lookAhead()
+              la.token match
+                case SqlToken.COMMA =>
+                  consume(SqlToken.COMMA)
+                  val k = identifier()
+                  joinKeys += k
+                  nextKey
+                case other =>
+            // stop the search
+            nextKey
+            JoinUsing(joinKeys.result(), spanFrom(t))
+          case _ =>
+            JoinOn(cond, spanFrom(t))
+      case _ =>
+        NoJoinCriteria
+
+  def namedTypes(): List[NamedType] =
+    val t = scanner.lookAhead()
+    t.token match
+      case SqlToken.EOF | SqlToken.END | SqlToken.R_PAREN =>
+        List.empty
+      case SqlToken.COMMA =>
+        consume(SqlToken.COMMA)
+        namedTypes()
+      case _ =>
+        val e = namedType()
+        e :: namedTypes()
+
+  def namedType(): NamedType =
+    val id   = identifier()
+    val name = id.toTermName
+    scanner.lookAhead().token match
+      case SqlToken.COLON =>
+        consume(SqlToken.COLON)
+        val tpeName   = identifier().fullName
+        val tpeParams = typeParams()
+        NamedType(name, DataType.parse(tpeName, tpeParams))
+      case _ =>
+        NamedType(name, DataType.UnknownType)
+
+  def typeParams(): List[TypeParameter] =
+    scanner.lookAhead().token match
+      case SqlToken.L_BRACKET =>
+        consume(SqlToken.L_BRACKET)
+        val params = List.newBuilder[TypeParameter]
+        def nextParam: Unit =
+          val t = scanner.lookAhead()
+          t.token match
+            case SqlToken.COMMA =>
+              consume(SqlToken.COMMA)
+              nextParam
+            case SqlToken.R_BRACKET =>
+            // ok
+            case SqlToken.INTEGER_LITERAL =>
+              // e.g., decimal[15, 2]
+              val i = consume(SqlToken.INTEGER_LITERAL)
+              params += IntConstant(i.str.toInt)
+              nextParam
+            case _ =>
+              val name = identifier()
+              params += UnresolvedTypeParameter(name.fullName, None)
+              nextParam
+        nextParam
+        consume(SqlToken.R_BRACKET)
+        params.result()
+      case _ =>
+        Nil
 
   def identifierList(): List[QualifiedName] =
     val t = scanner.lookAhead()
