@@ -9,13 +9,11 @@ class SqlParserTest extends AirSpec:
     debug(stmt.pp)
   }
 
-  test("parse tpch") {
-    CompilationUnit
-      .fromPath("spec/sql/tpc-h")
-      .foreach { unit =>
-        test(s"parse ${unit.sourceFile.fileName}") {
-          val stmt = SqlParser(unit).parse()
-          debug(stmt.pp)
-        }
+  CompilationUnit
+    .fromPath("spec/sql/tpc-h")
+    .foreach { unit =>
+      test(s"parse tpc-h ${unit.sourceFile.fileName}") {
+        val stmt = SqlParser(unit).parse()
+        debug(stmt.pp)
       }
-  }
+    }
