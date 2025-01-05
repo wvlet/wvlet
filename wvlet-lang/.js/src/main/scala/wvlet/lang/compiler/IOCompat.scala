@@ -8,7 +8,8 @@ trait IOCompat:
 
   def readAsString(filePath: String): String  = ???
   def readAsString(uri: java.net.URI): String = ???
-  def listResource(path: String): List[URI]   = listWvFiles(path, 0).map(File(_).toURI).toList
+  def listResources(path: String): List[VirtualFile] =
+    listFiles(path).map(f => URIResource(File(f).toURI)).toList
 
   def existsFile(path: String): Boolean     = false
   def lastUpdatedAt(path: String): Long     = ???
