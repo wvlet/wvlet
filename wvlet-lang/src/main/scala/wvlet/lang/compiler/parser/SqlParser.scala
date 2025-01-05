@@ -1261,8 +1261,94 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         consume(SqlToken.COMMA)
         val next = table()
         tableRest(Join(JoinType.ImplicitJoin, r, next, NoJoinCriteria, asof = false, spanFrom(t)))
+      case SqlToken.LEFT | SqlToken.RIGHT | SqlToken.INNER | SqlToken.FULL | SqlToken.CROSS |
+          SqlToken.ASOF | SqlToken.JOIN =>
+        join(r)
       case _ =>
         r
+
+  def join(r: Relation): Relation =
+    def joinType(): JoinType =
+      val t = scanner.lookAhead()
+      t.token match
+        case SqlToken.LEFT =>
+          consume(SqlToken.LEFT)
+          consumeIfExist(SqlToken.OUTER)
+          consume(SqlToken.JOIN)
+          JoinType.LeftOuterJoin
+        case SqlToken.RIGHT =>
+          consume(SqlToken.RIGHT)
+          consumeIfExist(SqlToken.OUTER)
+          consume(SqlToken.JOIN)
+          JoinType.RightOuterJoin
+        case SqlToken.INNER =>
+          consume(SqlToken.INNER)
+          consume(SqlToken.JOIN)
+          JoinType.InnerJoin
+        case SqlToken.FULL =>
+          consume(SqlToken.FULL)
+          consumeIfExist(SqlToken.OUTER)
+          consume(SqlToken.JOIN)
+          JoinType.FullOuterJoin
+        case _ =>
+          JoinType.InnerJoin
+
+    val isAsOfJoin =
+      scanner.lookAhead().token match
+        case SqlToken.ASOF =>
+          consume(SqlToken.ASOF)
+          true
+        case _ =>
+          false
+    val t = scanner.lookAhead()
+    t.token match
+      case SqlToken.CROSS =>
+        consume(SqlToken.CROSS)
+        consume(SqlToken.JOIN)
+        val right = table()
+        Join(JoinType.CrossJoin, r, right, NoJoinCriteria, asof = isAsOfJoin, spanFrom(t))
+      case SqlToken.JOIN =>
+        consume(SqlToken.JOIN)
+        val right  = table()
+        val joinOn = joinCriteria()
+        Join(JoinType.InnerJoin, r, right, NoJoinCriteria, asof = isAsOfJoin, spanFrom(t))
+      case SqlToken.LEFT | SqlToken.RIGHT | SqlToken.INNER | SqlToken.FULL =>
+        val joinTpe = joinType()
+        val right   = table()
+        val joinOn  = joinCriteria()
+        Join(joinTpe, r, right, joinOn, asof = isAsOfJoin, spanFrom(t))
+      case _ =>
+        unexpected(t)
+
+  end join
+
+  def joinCriteria(): JoinCriteria =
+    val t = scanner.lookAhead()
+    t.token match
+      case SqlToken.ON =>
+        consume(SqlToken.ON)
+        val cond = booleanExpression()
+        cond match
+          case i: Identifier =>
+            val joinKeys = List.newBuilder[NameExpr]
+            joinKeys += i
+
+            def nextKey: Unit =
+              val la = scanner.lookAhead()
+              la.token match
+                case SqlToken.COMMA =>
+                  consume(SqlToken.COMMA)
+                  val k = identifier()
+                  joinKeys += k
+                  nextKey
+                case other =>
+            // stop the search
+            nextKey
+            JoinUsing(joinKeys.result(), spanFrom(t))
+          case _ =>
+            JoinOn(cond, spanFrom(t))
+      case _ =>
+        NoJoinCriteria
 
   def namedTypes(): List[NamedType] =
     val t = scanner.lookAhead()
