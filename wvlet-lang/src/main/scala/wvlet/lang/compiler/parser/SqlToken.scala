@@ -69,6 +69,7 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   // Special keywords
   case EQ   extends SqlToken(Op, "=")
   case NEQ  extends SqlToken(Op, "!=")
+  case NEQ2 extends SqlToken(Op, "<>")
   case LT   extends SqlToken(Op, "<")
   case GT   extends SqlToken(Op, ">")
   case LTEQ extends SqlToken(Op, "<=")

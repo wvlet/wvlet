@@ -453,8 +453,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         consume(SqlToken.SELECT)
         val isDistinct = consumeIfExist(SqlToken.DISTINCT)
         val items      = selectItems()
-        warn(items)
-        var r = fromClause()
+        var r          = fromClause()
         r = whereClause(r)
         val g          = groupBy(r)
         val hasGroupBy = r ne g
@@ -686,8 +685,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           consume(SqlToken.EQ)
           val right = valueExpression()
           Eq(expr, right, spanFrom(t))
-        case SqlToken.NEQ =>
-          consume(SqlToken.NEQ)
+        case SqlToken.NEQ | SqlToken.NEQ2 =>
+          consumeToken()
           val right = valueExpression()
           NotEq(expr, right, spanFrom(t))
         case SqlToken.IS =>
@@ -1038,7 +1037,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
 
     def intervalField(): IntervalField =
       val t   = consumeToken()
-      val opt = IntervalField.unapply(t.token.str)
+      val opt = IntervalField.unapply(t.str)
       opt.getOrElse(unexpected(t))
 
     val f1 = intervalField()
