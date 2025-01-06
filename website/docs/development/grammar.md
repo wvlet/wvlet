@@ -155,7 +155,8 @@ expression        : booleanExpression
 booleanExpression : ('!' | 'not') booleanExpression
                   | valueExpression
                   | booleanExpression ('and' | 'or') booleanExpression
-valueExpression   : primaryExpression
+valueExpression   : ('-' | '+') valueExpression  
+                  | primaryExpression
                   | valueExpression arithmeticOperator valueExpression
                   | valueExpression comparisonOperator valueExpression
 
