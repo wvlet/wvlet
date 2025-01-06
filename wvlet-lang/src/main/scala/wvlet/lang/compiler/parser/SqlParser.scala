@@ -1187,42 +1187,115 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           Nil
 
     def windowFrame(): Option[WindowFrame] =
+      def bracketWindowFrame(): WindowFrame =
+        val t = consume(SqlToken.L_BRACKET)
+        val frameStart: FrameBound =
+          val t = scanner.lookAhead()
+          t.token match
+            case SqlToken.COLON =>
+              FrameBound.UnboundedPreceding
+            case SqlToken.INTEGER_LITERAL =>
+              val n = consume(SqlToken.INTEGER_LITERAL).str.toInt
+              if n == 0 then
+                FrameBound.CurrentRow
+              else
+                FrameBound.Preceding(-n)
+            case _ =>
+              unexpected(t)
+
+        consume(SqlToken.COLON)
+
+        val frameEnd: FrameBound =
+          val t = scanner.lookAhead()
+          t.token match
+            case SqlToken.R_BRACKET =>
+              FrameBound.UnboundedFollowing
+            case SqlToken.INTEGER_LITERAL =>
+              val n = consume(SqlToken.INTEGER_LITERAL).str.toInt
+              if n == 0 then
+                FrameBound.CurrentRow
+              else
+                FrameBound.Following(n)
+            case _ =>
+              unexpected(t)
+        consume(SqlToken.R_BRACKET)
+        WindowFrame(FrameType.RowsFrame, frameStart, frameEnd, spanFrom(t))
+      end bracketWindowFrame
+
+      def frameBound(): FrameBound =
+        val t = scanner.lookAhead()
+        t.token match
+          case SqlToken.UNBOUNDED =>
+            consume(SqlToken.UNBOUNDED)
+            scanner.lookAhead().token match
+              case SqlToken.PRECEDING =>
+                consume(SqlToken.PRECEDING)
+                FrameBound.UnboundedPreceding
+              case SqlToken.FOLLOWING =>
+                consume(SqlToken.FOLLOWING)
+                FrameBound.UnboundedFollowing
+              case _ =>
+                unexpected(t)
+          case SqlToken.CURRENT =>
+            consume(SqlToken.CURRENT)
+            scanner.lookAhead().token match
+              case SqlToken.ROW =>
+                consume(SqlToken.ROW)
+                FrameBound.CurrentRow
+              case SqlToken.ROWS =>
+                consume(SqlToken.ROWS)
+                FrameBound.CurrentRow
+              case _ =>
+                unexpected(t)
+          case _ =>
+            val t = scanner.lookAhead()
+            val bound: Long =
+              expression() match
+                case l: LongLiteral =>
+                  l.value
+                case ArithmeticUnaryExpr(sign, l: LongLiteral, _) =>
+                  sign match
+                    case Sign.Positive =>
+                      l.value
+                    case Sign.Negative =>
+                      -l.value
+                case _ =>
+                  unexpected(t)
+            scanner.lookAhead().token match
+              case SqlToken.PRECEDING =>
+                consume(SqlToken.PRECEDING)
+                FrameBound.Preceding(bound)
+              case SqlToken.FOLLOWING =>
+                consume(SqlToken.FOLLOWING)
+                FrameBound.Following(bound)
+              case _ =>
+                unexpected(t)
+        end match
+      end frameBound
+
+      def sqlWindowFrame(): WindowFrame =
+        val t          = scanner.lookAhead()
+        val hasBetween = consumeIfExist(SqlToken.BETWEEN)
+        val start      = frameBound()
+        if hasBetween then
+          consume(SqlToken.AND)
+          val end = frameBound()
+          WindowFrame(FrameType.RowsFrame, start, end, spanFrom(t))
+        else
+          WindowFrame(FrameType.RowsFrame, start, FrameBound.CurrentRow, spanFrom(t))
+
       val t = scanner.lookAhead()
       t.token match
-        case SqlToken.ROWS =>
-          consume(SqlToken.ROWS)
-          consume(SqlToken.L_BRACKET)
-          val frameStart: FrameBound =
-            val t = scanner.lookAhead()
-            t.token match
-              case SqlToken.COLON =>
-                FrameBound.UnboundedPreceding
-              case SqlToken.INTEGER_LITERAL =>
-                val n = consume(SqlToken.INTEGER_LITERAL).str.toInt
-                if n == 0 then
-                  FrameBound.CurrentRow
-                else
-                  FrameBound.Preceding(-n)
-              case _ =>
-                unexpected(t)
-
-          consume(SqlToken.COLON)
-
-          val frameEnd: FrameBound =
-            val t = scanner.lookAhead()
-            t.token match
-              case SqlToken.R_BRACKET =>
-                FrameBound.UnboundedFollowing
-              case SqlToken.INTEGER_LITERAL =>
-                val n = consume(SqlToken.INTEGER_LITERAL).str.toInt
-                if n == 0 then
-                  FrameBound.CurrentRow
-                else
-                  FrameBound.Following(n)
-              case _ =>
-                unexpected(t)
-          consume(SqlToken.R_BRACKET)
-          Some(WindowFrame(FrameType.RowsFrame, frameStart, frameEnd, spanFrom(t)))
+        case SqlToken.ROWS | SqlToken.RANGE =>
+          consumeToken()
+          val t = scanner.lookAhead()
+          t.token match
+            case SqlToken.L_BRACKET =>
+              Some(bracketWindowFrame())
+            case SqlToken.BETWEEN | SqlToken.UNBOUNDED | SqlToken.CURRENT =>
+              Some(sqlWindowFrame())
+            case _ =>
+              unexpected(t)
         case _ =>
           // TODO Support SqlToken.RANGE
           None
