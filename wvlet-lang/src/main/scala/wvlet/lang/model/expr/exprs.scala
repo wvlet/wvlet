@@ -15,7 +15,7 @@ package wvlet.lang.model.expr
 
 import wvlet.lang.api.{LinePosition, Span}
 import wvlet.lang.api.Span.NoSpan
-import wvlet.lang.compiler.{Name, TermName, TypeName}
+import wvlet.lang.compiler.{Name, TermName, TypeName, Printer}
 import wvlet.lang.model.DataType.{
   AnyType,
   ArrayType,
@@ -579,6 +579,7 @@ case class ArithmeticUnaryExpr(sign: Sign, child: Expression, span: Span)
     with UnaryExpression
 
 enum Sign(val symbol: String):
+  case NoSign   extends Sign("")
   case Positive extends Sign("+")
   case Negative extends Sign("-")
 
@@ -693,7 +694,11 @@ case class IntervalLiteral(
     span: Span
 ) extends Literal:
   override def children: Seq[Expression] = Nil
-  override def stringValue: String       = s"${sign.symbol} '${value}' ${startField}"
+  override def stringValue: String =
+    if end.isEmpty then
+      s"${sign.symbol} '${value}' ${startField}"
+    else
+      s"${sign.symbol} between '${value}' ${startField} and ${end.get}"
 
 object IntervalField:
   def unapply(name: String): Option[IntervalField] = IntervalField.values.find(_.name == name)

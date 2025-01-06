@@ -1086,7 +1086,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           consume(SqlToken.MINUS)
           Sign.Negative
         case _ =>
-          Sign.Positive
+          Sign.NoSign
 
     val value = literal()
 
@@ -1255,7 +1255,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
                   l.value
                 case ArithmeticUnaryExpr(sign, l: LongLiteral, _) =>
                   sign match
-                    case Sign.Positive =>
+                    case Sign.NoSign | Sign.Positive =>
                       l.value
                     case Sign.Negative =>
                       -l.value

@@ -965,11 +965,17 @@ class GenSQL(ctx: Context) extends LogSupport:
         // Escape single quotes
         val v = s.stringValue.replaceAll("'", "''")
         s"'${v}'"
+      case i: IntervalLiteral =>
+        s"interval ${i.stringValue}"
+      case g: GenericLiteral =>
+        s"${g.tpe.typeName} '${g.value}'"
       case l: Literal =>
         l.stringValue
       case bq: BackQuotedIdentifier =>
         // Need to use double quotes for back-quoted identifiers, which represents table or column names
         s"\"${bq.unquotedValue}\""
+      case w: Wildcard =>
+        w.strExpr
       case i: Identifier =>
         i.strExpr
       case s: SortItem =>
@@ -998,8 +1004,6 @@ class GenSQL(ctx: Context) extends LogSupport:
         s"(${printRelation(s.query)(using sqlContext.nested)})"
       case i: IfExpr =>
         s"if(${printExpression(i.cond)}, ${printExpression(i.onTrue)}, ${printExpression(i.onFalse)})"
-      case i: Wildcard =>
-        i.strExpr
       case n: Not =>
         s"not ${printExpression(n.child)}"
       case l: ListExpr =>

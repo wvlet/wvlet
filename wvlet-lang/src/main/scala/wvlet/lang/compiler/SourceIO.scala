@@ -5,12 +5,9 @@ import wvlet.log.LogSupport
 object SourceIO extends IOCompat with LogSupport:
   val ignoredFolders: Set[String] = Set("spec", "target")
 
-  def listSourceFiles(path: String, level: Int = 0): Seq[VirtualFile] = listSourceFiles(
-    LocalFile(path),
-    level
-  )
+  def listSourceFiles(path: String): Seq[VirtualFile] = listSourceFiles(LocalFile(path))
 
-  def listSourceFiles(path: VirtualFile, level: Int): Seq[VirtualFile] =
+  def listSourceFiles(path: VirtualFile, level: Int = 0): Seq[VirtualFile] =
     val lst = Seq.newBuilder[VirtualFile]
     if path.isDirectory && !ignoredFolders.contains(path.name) then
       val filesInDir       = path.listFiles

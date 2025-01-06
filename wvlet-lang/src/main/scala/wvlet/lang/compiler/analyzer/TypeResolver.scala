@@ -206,7 +206,7 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
     */
   private object resolveLocalFileScan extends RewriteRule:
     override def apply(context: Context): PlanRewriter =
-      case r: FileScan if r.path.endsWith(".wv") =>
+      case r: FileScan if r.path.endsWith(".wv") || r.path.endsWith(".sql") =>
         // import a query from another .wv file
         context.findCompilationUnit(r.path) match
           case None =>
