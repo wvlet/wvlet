@@ -39,7 +39,8 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   // Identifiers
   case IDENTIFIER extends SqlToken(Identifier, "<identifier>")
   // Identifier wrapped in double quotes "...."
-  case DOUBLE_QUOTED_IDENTIFIER extends SqlToken(Identifier, "<quoted identifier>")
+  case DOUBLE_QUOTED_IDENTIFIER extends SqlToken(Identifier, "<doublequoted identifier>")
+  case BACK_QUOTED_IDENTIFIER   extends SqlToken(Identifier, "<backquoted identifier>")
 
   case SINGLE_QUOTE extends SqlToken(Quote, "'")
   case DOUBLE_QUOTE extends SqlToken(Quote, "\"")
@@ -127,6 +128,9 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   case DISTINCT extends SqlToken(Keyword, "distinct")
   case VALUE    extends SqlToken(Keyword, "value")
   case VALUES   extends SqlToken(Keyword, "values")
+
+  case CAST     extends SqlToken(Keyword, "cast")
+  case TRY_CAST extends SqlToken(Keyword, "try_cast")
 
   // window spec
   case PARTITION extends SqlToken(Keyword, "partition")
@@ -306,5 +310,6 @@ object SqlToken:
     override def commentToken: SqlToken                 = SqlToken.COMMENT
     override def stringLiteral: SqlToken                = SqlToken.STRING_LITERAL
     override def whiteSpace: SqlToken                   = SqlToken.WHITESPACE
+    override def backQuotedIdentifier: SqlToken         = SqlToken.BACK_QUOTED_IDENTIFIER
 
 end SqlToken

@@ -391,7 +391,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         consume(SqlToken.L_PAREN)
         val subQuery = query()
         consume(SqlToken.R_PAREN)
-        subQuery
+        tableRest(subQuery)
       case _ =>
         unexpected(t)
 
@@ -484,8 +484,10 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
                 None
 
           consume(SqlToken.AS)
+          consume(SqlToken.L_PAREN)
           val body = query()
-          val r    = AliasedRelation(body, alias, typeDefs, spanFrom(t))
+          consume(SqlToken.R_PAREN)
+          val r = AliasedRelation(body, alias, typeDefs, spanFrom(t))
           scanner.lookAhead().token match
             case SqlToken.COMMA =>
               consume(SqlToken.COMMA)
@@ -934,6 +936,15 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         case q if q.isQueryStart =>
           val subQuery = query()
           SubQueryExpression(subQuery, spanFrom(t))
+        case SqlToken.CAST | SqlToken.TRY_CAST =>
+          val isTryCast: Boolean = t.token == SqlToken.TRY_CAST
+          consumeToken()
+          consume(SqlToken.L_PAREN)
+          val e = expression()
+          consume(SqlToken.AS)
+          val dt = identifier()
+          consume(SqlToken.R_PAREN)
+          Cast(e, dt, isTryCast, spanFrom(t))
         case SqlToken.L_PAREN =>
           consume(SqlToken.L_PAREN)
           val t2 = scanner.lookAhead()
@@ -1248,10 +1259,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           consume(SqlToken.R_PAREN)
           Lateral(subQuery, spanFrom(t))
         case SqlToken.L_PAREN =>
-          consume(SqlToken.L_PAREN)
-          val subQuery = query()
-          consume(SqlToken.R_PAREN)
-          subQuery
+          query()
         case SqlToken.UNNEST =>
           consume(SqlToken.UNNEST)
           consume(SqlToken.L_PAREN)
@@ -1294,11 +1302,11 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         tableRest(Join(JoinType.ImplicitJoin, r, next, NoJoinCriteria, asof = false, spanFrom(t)))
       case SqlToken.LEFT | SqlToken.RIGHT | SqlToken.INNER | SqlToken.FULL | SqlToken.CROSS |
           SqlToken.ASOF | SqlToken.JOIN =>
-        join(r)
+        tableRest(join(r))
       case SqlToken.UNION =>
-        union(r)
+        tableRest(union(r))
       case SqlToken.INTERSECT | SqlToken.EXCEPT =>
-        intersectOrExcept(r)
+        tableRest(intersectOrExcept(r))
       case _ =>
         r
 

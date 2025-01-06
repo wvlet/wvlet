@@ -767,7 +767,7 @@ case class Parameter(index: Int, span: Span) extends LeafExpression
 case class SubQueryExpression(query: Relation, span: Span) extends Expression:
   override def children: Seq[Expression] = query.childExpressions
 
-case class Cast(expr: NameExpr, tpe: NameExpr, tryCast: Boolean = false, span: Span)
+case class Cast(expr: Expression, tpe: NameExpr, tryCast: Boolean = false, span: Span)
     extends UnaryExpression:
   override def child: Expression = expr
 

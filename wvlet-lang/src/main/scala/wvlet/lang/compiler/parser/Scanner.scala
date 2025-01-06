@@ -469,6 +469,16 @@ abstract class ScannerBase[Token](sourceFile: SourceFile, config: ScannerConfig)
     else
       getStringLiteral()
 
+  protected def getBackQuoteString(): Unit =
+    // Regular backquote string
+    consume('`')
+    while ch != '`' && ch != SU do
+      putChar(ch)
+      nextChar()
+    consume('`')
+    current.token = tokenTypeInfo.backQuotedIdentifier
+    current.str = flushTokenString()
+
   protected def getStringLiteral(): Unit =
     while ch != '"' && ch != SU do
       putChar(ch)
