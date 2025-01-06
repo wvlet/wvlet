@@ -467,6 +467,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         r = orderBy(r)
         r = limit(r)
         r = offset(r)
+        r = queryRest(r)
         r
       case SqlToken.WITH =>
         consume(SqlToken.WITH)
@@ -1312,6 +1313,19 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       case _ =>
         r
 
+  def queryRest(r: Relation): Relation =
+    val t = scanner.lookAhead()
+    t.token match
+      case SqlToken.LEFT | SqlToken.RIGHT | SqlToken.INNER | SqlToken.FULL | SqlToken.CROSS |
+          SqlToken.ASOF | SqlToken.JOIN =>
+        queryRest(join(r))
+      case SqlToken.UNION =>
+        queryRest(union(r))
+      case SqlToken.INTERSECT | SqlToken.EXCEPT =>
+        queryRest(intersectOrExcept(r))
+      case _ =>
+        r
+
   def join(r: Relation): Relation =
     def joinType(): JoinType =
       val t = scanner.lookAhead()
@@ -1444,7 +1458,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         NamedType(name, DataType.UnknownType)
 
   def typeName(): DataType =
-    val id = identifier()
+    val id   = identifier()
     val name = id.toTermName
     scanner.lookAhead().token match
       case SqlToken.L_PAREN =>
@@ -1452,7 +1466,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         DataType.parse(name.name, tpeParams)
       case _ =>
         DataType.parse(name.name)
-  
+
   def typeParams(): List[TypeParameter] =
     scanner.lookAhead().token match
       case SqlToken.L_PAREN =>
