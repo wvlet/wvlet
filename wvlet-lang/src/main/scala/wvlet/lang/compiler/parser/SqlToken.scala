@@ -176,11 +176,13 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   case IMPLEMENTATION extends SqlToken(Keyword, "implementation")
   case FOR            extends SqlToken(Keyword, "for")
   case DESCRIBE       extends SqlToken(Keyword, "describe")
-  case CATALOG        extends SqlToken(Keyword, "catalog")
-  case DATABASE       extends SqlToken(Keyword, "database")
-  case SCHEMA         extends SqlToken(Keyword, "schema")
-  case TABLE          extends SqlToken(Keyword, "table")
-  case STATEMENT      extends SqlToken(Keyword, "statement")
+
+  // Do not treat them as keywords as they can be used as  table names
+  //  case CATALOG        extends SqlToken(Keyword, "catalog")
+  //  case DATABASE       extends SqlToken(Keyword, "database")
+  //  case SCHEMA         extends SqlToken(Keyword, "schema")
+  //  case TABLE          extends SqlToken(Keyword, "table")
+  //  case STATEMENT      extends SqlToken(Keyword, "statement")
 
   case INSERT  extends SqlToken(Keyword, "insert")
   case UPSERT  extends SqlToken(Keyword, "upsert")

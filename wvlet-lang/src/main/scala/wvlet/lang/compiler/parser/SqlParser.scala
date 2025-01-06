@@ -1139,22 +1139,18 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         case _ =>
           None
 
-    val t = scanner.lookAhead()
-    t.token match
-      case id if id.isIdentifier =>
-        val expr  = expression()
-        val order = sortOrder()
-        // TODO: Support NullOrdering
-        SortItem(expr, order, None, spanFrom(expr.span)) :: sortItems()
-      case SqlToken.INTEGER_LITERAL =>
-        val expr  = literal()
-        val order = sortOrder()
-        SortItem(expr, order, None, spanFrom(expr.span)) :: sortItems()
-      case SqlToken.COMMA =>
-        consume(SqlToken.COMMA)
-        sortItems()
-      case _ =>
-        Nil
+    def items(): List[SortItem] =
+      val expr  = expression()
+      val order = sortOrder()
+      val item  = SortItem(expr, order, None, spanFrom(expr.span))
+      scanner.lookAhead().token match
+        case SqlToken.COMMA =>
+          consume(SqlToken.COMMA)
+          item :: items()
+        case _ =>
+          List(item)
+
+    items()
 
   def window(): Option[Window] =
 
