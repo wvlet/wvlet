@@ -254,7 +254,8 @@ object SqlToken:
     SqlToken.MAP,
     SqlToken.ARRAY,
     SqlToken.DATE,
-    SqlToken.INTERVAL
+    SqlToken.INTERVAL,
+    SqlToken.CAST
   )
 
   val allKeywordsAndSymbols = keywords ++ literalStartKeywords ++ specialSymbols

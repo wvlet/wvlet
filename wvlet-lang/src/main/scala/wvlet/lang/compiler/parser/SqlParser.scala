@@ -509,7 +509,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     t.token match
       case SqlToken.FROM =>
         consume(SqlToken.FROM)
-        tableRest(table())
+        table()
       case _ =>
         unexpected(t)
 
@@ -942,7 +942,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           consume(SqlToken.L_PAREN)
           val e = expression()
           consume(SqlToken.AS)
-          val dt = identifier()
+          val dt = typeName()
           consume(SqlToken.R_PAREN)
           Cast(e, dt, isTryCast, spanFrom(t))
         case SqlToken.L_PAREN =>
@@ -1234,15 +1234,17 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
   end window
 
   def table(): Relation =
-    val r = tablePrimary()
-    scanner.lookAhead().token match
-      case SqlToken.AS =>
-        consume(SqlToken.AS)
-        tableAlias(r)
-      case id if id.isIdentifier =>
-        tableAlias(r)
-      case _ =>
-        r
+    def singleTable(): Relation =
+      val r = tablePrimary()
+      scanner.lookAhead().token match
+        case SqlToken.AS =>
+          consume(SqlToken.AS)
+          tableAlias(r)
+        case id if id.isIdentifier =>
+          tableAlias(r)
+        case _ =>
+          r
+    tableRest(singleTable())
 
   def tablePrimary(): Relation =
     val t = scanner.lookAhead()
@@ -1441,10 +1443,20 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       case _ =>
         NamedType(name, DataType.UnknownType)
 
+  def typeName(): DataType =
+    val id = identifier()
+    val name = id.toTermName
+    scanner.lookAhead().token match
+      case SqlToken.L_PAREN =>
+        val tpeParams = typeParams()
+        DataType.parse(name.name, tpeParams)
+      case _ =>
+        DataType.parse(name.name)
+  
   def typeParams(): List[TypeParameter] =
     scanner.lookAhead().token match
-      case SqlToken.L_BRACKET =>
-        consume(SqlToken.L_BRACKET)
+      case SqlToken.L_PAREN =>
+        consume(SqlToken.L_PAREN)
         val params = List.newBuilder[TypeParameter]
         def nextParam: Unit =
           val t = scanner.lookAhead()
@@ -1452,7 +1464,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
             case SqlToken.COMMA =>
               consume(SqlToken.COMMA)
               nextParam
-            case SqlToken.R_BRACKET =>
+            case SqlToken.R_PAREN =>
             // ok
             case SqlToken.INTEGER_LITERAL =>
               // e.g., decimal[15, 2]
@@ -1464,7 +1476,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
               params += UnresolvedTypeParameter(name.fullName, None)
               nextParam
         nextParam
-        consume(SqlToken.R_BRACKET)
+        consume(SqlToken.R_PAREN)
         params.result()
       case _ =>
         Nil
