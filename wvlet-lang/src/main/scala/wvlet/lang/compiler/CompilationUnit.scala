@@ -106,7 +106,7 @@ object CompilationUnit extends LogSupport:
   def fromFile(path: String) = CompilationUnit(SourceFile.fromFile(path))
 
   def fromPath(path: String): List[CompilationUnit] =
-    // List all *.wv files under the path
+    // List all *.wv and .sql files under the path
     val files = SourceIO.listSourceFiles(path)
     val units =
       files

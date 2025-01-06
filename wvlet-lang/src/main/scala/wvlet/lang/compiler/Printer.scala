@@ -1,7 +1,7 @@
 package wvlet.lang.compiler
 
 object Printer:
-  def print(v: Any): String =
+  def print(v: Any*): String =
     val buf = new StringBuilder()
     def iter(x: Any): Unit =
       x match

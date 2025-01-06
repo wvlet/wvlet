@@ -44,6 +44,10 @@ class SourceFile(val file: VirtualFile):
   def isEmpty: Boolean          = file eq EmptyFile
   override def toString: String = file.path
 
+  def isSQL: Boolean        = file.isSQL
+  def isWv: Boolean         = file.isWv
+  def isSourceFile: Boolean = file.isSourceFile
+
   /**
     * Returns the leaf file name
     * @return
