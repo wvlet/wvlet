@@ -1,4 +1,4 @@
-## SQL Grammar
+# SQL Grammar
 
 The SQL parser in Wvlet is based on Apache Calcite's [SQL Language](https://calcite.apache.org/docs/reference.html) definition.
 

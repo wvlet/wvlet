@@ -1295,6 +1295,10 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       case SqlToken.LEFT | SqlToken.RIGHT | SqlToken.INNER | SqlToken.FULL | SqlToken.CROSS |
           SqlToken.ASOF | SqlToken.JOIN =>
         join(r)
+      case SqlToken.UNION =>
+        union(r)
+      case SqlToken.INTERSECT | SqlToken.EXCEPT =>
+        intersectOrExcept(r)
       case _ =>
         r
 
@@ -1323,6 +1327,34 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           JoinType.FullOuterJoin
         case _ =>
           JoinType.InnerJoin
+
+    def joinCriteria(): JoinCriteria =
+      val t = scanner.lookAhead()
+      t.token match
+        case SqlToken.ON =>
+          consume(SqlToken.ON)
+          val cond = booleanExpression()
+          cond match
+            case i: Identifier =>
+              val joinKeys = List.newBuilder[NameExpr]
+              joinKeys += i
+
+              def nextKey: Unit =
+                val la = scanner.lookAhead()
+                la.token match
+                  case SqlToken.COMMA =>
+                    consume(SqlToken.COMMA)
+                    val k = identifier()
+                    joinKeys += k
+                    nextKey
+                  case other =>
+              // stop the search
+              nextKey
+              JoinUsing(joinKeys.result(), spanFrom(t))
+            case _ =>
+              JoinOn(cond, spanFrom(t))
+        case _ =>
+          NoJoinCriteria
 
     val isAsOfJoin =
       scanner.lookAhead().token match
@@ -1353,33 +1385,29 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
 
   end join
 
-  def joinCriteria(): JoinCriteria =
+  def union(r: Relation): Relation =
+    val t          = consume(SqlToken.UNION)
+    val isUnionAll = consumeIfExist(SqlToken.ALL)
+    val right      = query()
+    Union(r, right, !isUnionAll, spanFrom(t))
+
+  def intersectOrExcept(r: Relation): Relation =
+    def isAll: Boolean = consumeIfExist(SqlToken.ALL)
+
     val t = scanner.lookAhead()
     t.token match
-      case SqlToken.ON =>
-        consume(SqlToken.ON)
-        val cond = booleanExpression()
-        cond match
-          case i: Identifier =>
-            val joinKeys = List.newBuilder[NameExpr]
-            joinKeys += i
-
-            def nextKey: Unit =
-              val la = scanner.lookAhead()
-              la.token match
-                case SqlToken.COMMA =>
-                  consume(SqlToken.COMMA)
-                  val k = identifier()
-                  joinKeys += k
-                  nextKey
-                case other =>
-            // stop the search
-            nextKey
-            JoinUsing(joinKeys.result(), spanFrom(t))
-          case _ =>
-            JoinOn(cond, spanFrom(t))
+      case SqlToken.INTERSECT =>
+        consume(SqlToken.INTERSECT)
+        val isDistinct = !isAll
+        val right      = query()
+        Intersect(r, right, isDistinct, spanFrom(t))
+      case SqlToken.EXCEPT =>
+        consume(SqlToken.EXCEPT)
+        val isDistinct = !isAll
+        val right      = query()
+        Except(r, right, isDistinct, spanFrom(t))
       case _ =>
-        NoJoinCriteria
+        unexpected(t)
 
   def namedTypes(): List[NamedType] =
     val t = scanner.lookAhead()
