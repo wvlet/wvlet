@@ -782,7 +782,19 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       end match
     end valueExpressionRest
 
-    val expr = primaryExpression()
+    val t = scanner.lookAhead()
+    val expr =
+      t.token match
+        case SqlToken.PLUS =>
+          consume(SqlToken.PLUS)
+          val v = valueExpression()
+          ArithmeticUnaryExpr(Sign.Positive, v, spanFrom(t))
+        case SqlToken.MINUS =>
+          consume(SqlToken.MINUS)
+          val v = valueExpression()
+          ArithmeticUnaryExpr(Sign.Negative, v, spanFrom(t))
+        case _ =>
+          primaryExpression()
     valueExpressionRest(expr)
 
   end valueExpression
