@@ -282,8 +282,6 @@ abstract class ScannerBase[Token](sourceFile: SourceFile, config: ScannerConfig)
     nextChar()
     if ch == '-' then
       getLineComment()
-    else if '0' <= ch && ch <= '9' then
-      getNumber(base = 10)
     else
       getOperatorRest()
 
