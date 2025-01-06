@@ -21,3 +21,8 @@ updates:
     directory: "/website"
     schedule:
       interval: "weekly"
+    groups:
+      # Grouping Docusaurus module updates into a single PR
+      docusaurus:
+        patterns:
+          - "@docusaurus/*"  
