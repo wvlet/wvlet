@@ -1269,6 +1269,21 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         case _ =>
           Nil
 
+    def integer(): Long =
+      val t    = scanner.lookAhead()
+      val expr = expression()
+      expr match
+        case l: LongLiteral =>
+          l.value
+        case ArithmeticUnaryExpr(sign, l: LongLiteral, _) =>
+          sign match
+            case Sign.Positive =>
+              l.value
+            case Sign.Negative =>
+              -l.value
+        case _ =>
+          unexpected(t)
+
     def windowFrame(): Option[WindowFrame] =
       val t = scanner.lookAhead()
       t.token match
@@ -1280,14 +1295,12 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
             t.token match
               case WvletToken.COLON =>
                 FrameBound.UnboundedPreceding
-              case WvletToken.INTEGER_LITERAL =>
-                val n = consume(WvletToken.INTEGER_LITERAL).str.toInt
+              case _ =>
+                val n = integer()
                 if n == 0 then
                   FrameBound.CurrentRow
                 else
                   FrameBound.Preceding(-n)
-              case _ =>
-                unexpected(t)
 
           consume(WvletToken.COLON)
 
@@ -1296,14 +1309,12 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
             t.token match
               case WvletToken.R_BRACKET =>
                 FrameBound.UnboundedFollowing
-              case WvletToken.INTEGER_LITERAL =>
-                val n = consume(WvletToken.INTEGER_LITERAL).str.toInt
+              case _ =>
+                val n = integer()
                 if n == 0 then
                   FrameBound.CurrentRow
                 else
                   FrameBound.Following(n)
-              case _ =>
-                unexpected(t)
           consume(WvletToken.R_BRACKET)
           Some(WindowFrame(FrameType.RowsFrame, frameStart, frameEnd, spanFrom(t)))
         case _ =>
@@ -1488,7 +1499,20 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         expression
 
   def valueExpression(): Expression =
-    val expr = primaryExpression()
+    val t = scanner.lookAhead()
+    val expr =
+      t.token match
+        case WvletToken.PLUS =>
+          consume(WvletToken.PLUS)
+          val right = valueExpression()
+          ArithmeticUnaryExpr(Sign.Positive, right, spanFrom(t))
+        case WvletToken.MINUS =>
+          consume(WvletToken.MINUS)
+          val right = valueExpression()
+          ArithmeticUnaryExpr(Sign.Negative, right, spanFrom(t))
+        case _ =>
+          primaryExpression()
+
     valueExpressionRest(expr)
 
   def valueExpressionRest(expression: Expression): Expression =

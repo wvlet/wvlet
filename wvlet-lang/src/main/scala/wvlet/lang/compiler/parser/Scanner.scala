@@ -282,8 +282,6 @@ abstract class ScannerBase[Token](sourceFile: SourceFile, config: ScannerConfig)
     nextChar()
     if ch == '-' then
       getLineComment()
-    else if '0' <= ch && ch <= '9' then
-      getNumber(base = 10)
     else
       getOperatorRest()
 
@@ -468,6 +466,16 @@ abstract class ScannerBase[Token](sourceFile: SourceFile, config: ScannerConfig)
         current.str = ""
     else
       getStringLiteral()
+
+  protected def getBackQuoteString(): Unit =
+    // Regular backquote string
+    consume('`')
+    while ch != '`' && ch != SU do
+      putChar(ch)
+      nextChar()
+    consume('`')
+    current.token = tokenTypeInfo.backQuotedIdentifier
+    current.str = flushTokenString()
 
   protected def getStringLiteral(): Unit =
     while ch != '"' && ch != SU do

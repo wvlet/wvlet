@@ -39,7 +39,8 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   // Identifiers
   case IDENTIFIER extends SqlToken(Identifier, "<identifier>")
   // Identifier wrapped in double quotes "...."
-  case DOUBLE_QUOTED_IDENTIFIER extends SqlToken(Identifier, "<quoted identifier>")
+  case DOUBLE_QUOTED_IDENTIFIER extends SqlToken(Identifier, "<doublequoted identifier>")
+  case BACK_QUOTED_IDENTIFIER   extends SqlToken(Identifier, "<backquoted identifier>")
 
   case SINGLE_QUOTE extends SqlToken(Quote, "'")
   case DOUBLE_QUOTE extends SqlToken(Quote, "\"")
@@ -128,6 +129,9 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   case VALUE    extends SqlToken(Keyword, "value")
   case VALUES   extends SqlToken(Keyword, "values")
 
+  case CAST     extends SqlToken(Keyword, "cast")
+  case TRY_CAST extends SqlToken(Keyword, "try_cast")
+
   // window spec
   case PARTITION extends SqlToken(Keyword, "partition")
   case RANGE     extends SqlToken(Keyword, "range")
@@ -172,11 +176,13 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   case IMPLEMENTATION extends SqlToken(Keyword, "implementation")
   case FOR            extends SqlToken(Keyword, "for")
   case DESCRIBE       extends SqlToken(Keyword, "describe")
-  case CATALOG        extends SqlToken(Keyword, "catalog")
-  case DATABASE       extends SqlToken(Keyword, "database")
-  case SCHEMA         extends SqlToken(Keyword, "schema")
-  case TABLE          extends SqlToken(Keyword, "table")
-  case STATEMENT      extends SqlToken(Keyword, "statement")
+
+  // Do not treat them as keywords as they can be used as  table names
+  //  case CATALOG        extends SqlToken(Keyword, "catalog")
+  //  case DATABASE       extends SqlToken(Keyword, "database")
+  //  case SCHEMA         extends SqlToken(Keyword, "schema")
+  //  case TABLE          extends SqlToken(Keyword, "table")
+  //  case STATEMENT      extends SqlToken(Keyword, "statement")
 
   case INSERT  extends SqlToken(Keyword, "insert")
   case UPSERT  extends SqlToken(Keyword, "upsert")
@@ -250,7 +256,8 @@ object SqlToken:
     SqlToken.MAP,
     SqlToken.ARRAY,
     SqlToken.DATE,
-    SqlToken.INTERVAL
+    SqlToken.INTERVAL,
+    SqlToken.CAST
   )
 
   val allKeywordsAndSymbols = keywords ++ literalStartKeywords ++ specialSymbols
@@ -306,5 +313,6 @@ object SqlToken:
     override def commentToken: SqlToken                 = SqlToken.COMMENT
     override def stringLiteral: SqlToken                = SqlToken.STRING_LITERAL
     override def whiteSpace: SqlToken                   = SqlToken.WHITESPACE
+    override def backQuotedIdentifier: SqlToken         = SqlToken.BACK_QUOTED_IDENTIFIER
 
 end SqlToken

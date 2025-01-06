@@ -312,8 +312,9 @@ object WvletToken:
     override def doubleLiteral: WvletToken                = WvletToken.DOUBLE_LITERAL
     override def floatLiteral: WvletToken                 = WvletToken.FLOAT_LITERAL
 
-    override def commentToken: WvletToken  = WvletToken.COMMENT
-    override def stringLiteral: WvletToken = WvletToken.STRING_LITERAL
-    override def whiteSpace: WvletToken    = WvletToken.WHITESPACE
+    override def commentToken: WvletToken         = WvletToken.COMMENT
+    override def stringLiteral: WvletToken        = WvletToken.STRING_LITERAL
+    override def whiteSpace: WvletToken           = WvletToken.WHITESPACE
+    override def backQuotedIdentifier: WvletToken = WvletToken.BACKQUOTED_IDENTIFIER
 
 end WvletToken

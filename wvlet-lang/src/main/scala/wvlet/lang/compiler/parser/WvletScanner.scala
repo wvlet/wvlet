@@ -214,7 +214,7 @@ class WvletScanner(sourceFile: SourceFile, config: ScannerConfig = ScannerConfig
     else
       false
 
-  private def getBackQuoteString(): Unit =
+  override protected def getBackQuoteString(): Unit =
     if current.token == BACKQUOTE_INTERPOLATION_PREFIX then
       currentRegion = InBackquoteString(currentRegion)
       nextRawChar()
@@ -228,13 +228,7 @@ class WvletScanner(sourceFile: SourceFile, config: ScannerConfig = ScannerConfig
         getBackquotePart()
     else
       // Regular backquote string
-      consume('`')
-      while ch != '`' && ch != SU do
-        putChar(ch)
-        nextChar()
-      consume('`')
-      current.token = WvletToken.BACKQUOTED_IDENTIFIER
-      current.str = flushTokenString()
+      super.getBackQuoteString()
 
   private def getBackquotePart(): Unit =
     (ch: @switch) match

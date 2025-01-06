@@ -15,3 +15,4 @@ trait TokenTypeInfo[Token]:
   def commentToken: Token
   def stringLiteral: Token
   def whiteSpace: Token
+  def backQuotedIdentifier: Token

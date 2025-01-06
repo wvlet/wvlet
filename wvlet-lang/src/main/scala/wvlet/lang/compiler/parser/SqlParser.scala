@@ -391,7 +391,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         consume(SqlToken.L_PAREN)
         val subQuery = query()
         consume(SqlToken.R_PAREN)
-        subQuery
+        tableRest(subQuery)
       case _ =>
         unexpected(t)
 
@@ -467,6 +467,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         r = orderBy(r)
         r = limit(r)
         r = offset(r)
+        r = queryRest(r)
         r
       case SqlToken.WITH =>
         consume(SqlToken.WITH)
@@ -484,8 +485,10 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
                 None
 
           consume(SqlToken.AS)
+          consume(SqlToken.L_PAREN)
           val body = query()
-          val r    = AliasedRelation(body, alias, typeDefs, spanFrom(t))
+          consume(SqlToken.R_PAREN)
+          val r = AliasedRelation(body, alias, typeDefs, spanFrom(t))
           scanner.lookAhead().token match
             case SqlToken.COMMA =>
               consume(SqlToken.COMMA)
@@ -507,7 +510,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     t.token match
       case SqlToken.FROM =>
         consume(SqlToken.FROM)
-        tableRest(table())
+        table()
       case _ =>
         unexpected(t)
 
@@ -779,7 +782,19 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       end match
     end valueExpressionRest
 
-    val expr = primaryExpression()
+    val t = scanner.lookAhead()
+    val expr =
+      t.token match
+        case SqlToken.PLUS =>
+          consume(SqlToken.PLUS)
+          val v = valueExpression()
+          ArithmeticUnaryExpr(Sign.Positive, v, spanFrom(t))
+        case SqlToken.MINUS =>
+          consume(SqlToken.MINUS)
+          val v = valueExpression()
+          ArithmeticUnaryExpr(Sign.Negative, v, spanFrom(t))
+        case _ =>
+          primaryExpression()
     valueExpressionRest(expr)
 
   end valueExpression
@@ -934,6 +949,15 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         case q if q.isQueryStart =>
           val subQuery = query()
           SubQueryExpression(subQuery, spanFrom(t))
+        case SqlToken.CAST | SqlToken.TRY_CAST =>
+          val isTryCast: Boolean = t.token == SqlToken.TRY_CAST
+          consumeToken()
+          consume(SqlToken.L_PAREN)
+          val e = expression()
+          consume(SqlToken.AS)
+          val dt = typeName()
+          consume(SqlToken.R_PAREN)
+          Cast(e, dt, isTryCast, spanFrom(t))
         case SqlToken.L_PAREN =>
           consume(SqlToken.L_PAREN)
           val t2 = scanner.lookAhead()
@@ -1115,22 +1139,18 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         case _ =>
           None
 
-    val t = scanner.lookAhead()
-    t.token match
-      case id if id.isIdentifier =>
-        val expr  = expression()
-        val order = sortOrder()
-        // TODO: Support NullOrdering
-        SortItem(expr, order, None, spanFrom(expr.span)) :: sortItems()
-      case SqlToken.INTEGER_LITERAL =>
-        val expr  = literal()
-        val order = sortOrder()
-        SortItem(expr, order, None, spanFrom(expr.span)) :: sortItems()
-      case SqlToken.COMMA =>
-        consume(SqlToken.COMMA)
-        sortItems()
-      case _ =>
-        Nil
+    def items(): List[SortItem] =
+      val expr  = expression()
+      val order = sortOrder()
+      val item  = SortItem(expr, order, None, spanFrom(expr.span))
+      scanner.lookAhead().token match
+        case SqlToken.COMMA =>
+          consume(SqlToken.COMMA)
+          item :: items()
+        case _ =>
+          List(item)
+
+    items()
 
   def window(): Option[Window] =
 
@@ -1167,42 +1187,115 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           Nil
 
     def windowFrame(): Option[WindowFrame] =
+      def bracketWindowFrame(): WindowFrame =
+        val t = consume(SqlToken.L_BRACKET)
+        val frameStart: FrameBound =
+          val t = scanner.lookAhead()
+          t.token match
+            case SqlToken.COLON =>
+              FrameBound.UnboundedPreceding
+            case SqlToken.INTEGER_LITERAL =>
+              val n = consume(SqlToken.INTEGER_LITERAL).str.toInt
+              if n == 0 then
+                FrameBound.CurrentRow
+              else
+                FrameBound.Preceding(-n)
+            case _ =>
+              unexpected(t)
+
+        consume(SqlToken.COLON)
+
+        val frameEnd: FrameBound =
+          val t = scanner.lookAhead()
+          t.token match
+            case SqlToken.R_BRACKET =>
+              FrameBound.UnboundedFollowing
+            case SqlToken.INTEGER_LITERAL =>
+              val n = consume(SqlToken.INTEGER_LITERAL).str.toInt
+              if n == 0 then
+                FrameBound.CurrentRow
+              else
+                FrameBound.Following(n)
+            case _ =>
+              unexpected(t)
+        consume(SqlToken.R_BRACKET)
+        WindowFrame(FrameType.RowsFrame, frameStart, frameEnd, spanFrom(t))
+      end bracketWindowFrame
+
+      def frameBound(): FrameBound =
+        val t = scanner.lookAhead()
+        t.token match
+          case SqlToken.UNBOUNDED =>
+            consume(SqlToken.UNBOUNDED)
+            scanner.lookAhead().token match
+              case SqlToken.PRECEDING =>
+                consume(SqlToken.PRECEDING)
+                FrameBound.UnboundedPreceding
+              case SqlToken.FOLLOWING =>
+                consume(SqlToken.FOLLOWING)
+                FrameBound.UnboundedFollowing
+              case _ =>
+                unexpected(t)
+          case SqlToken.CURRENT =>
+            consume(SqlToken.CURRENT)
+            scanner.lookAhead().token match
+              case SqlToken.ROW =>
+                consume(SqlToken.ROW)
+                FrameBound.CurrentRow
+              case SqlToken.ROWS =>
+                consume(SqlToken.ROWS)
+                FrameBound.CurrentRow
+              case _ =>
+                unexpected(t)
+          case _ =>
+            val t = scanner.lookAhead()
+            val bound: Long =
+              expression() match
+                case l: LongLiteral =>
+                  l.value
+                case ArithmeticUnaryExpr(sign, l: LongLiteral, _) =>
+                  sign match
+                    case Sign.Positive =>
+                      l.value
+                    case Sign.Negative =>
+                      -l.value
+                case _ =>
+                  unexpected(t)
+            scanner.lookAhead().token match
+              case SqlToken.PRECEDING =>
+                consume(SqlToken.PRECEDING)
+                FrameBound.Preceding(bound)
+              case SqlToken.FOLLOWING =>
+                consume(SqlToken.FOLLOWING)
+                FrameBound.Following(bound)
+              case _ =>
+                unexpected(t)
+        end match
+      end frameBound
+
+      def sqlWindowFrame(): WindowFrame =
+        val t          = scanner.lookAhead()
+        val hasBetween = consumeIfExist(SqlToken.BETWEEN)
+        val start      = frameBound()
+        if hasBetween then
+          consume(SqlToken.AND)
+          val end = frameBound()
+          WindowFrame(FrameType.RowsFrame, start, end, spanFrom(t))
+        else
+          WindowFrame(FrameType.RowsFrame, start, FrameBound.CurrentRow, spanFrom(t))
+
       val t = scanner.lookAhead()
       t.token match
-        case SqlToken.ROWS =>
-          consume(SqlToken.ROWS)
-          consume(SqlToken.L_BRACKET)
-          val frameStart: FrameBound =
-            val t = scanner.lookAhead()
-            t.token match
-              case SqlToken.COLON =>
-                FrameBound.UnboundedPreceding
-              case SqlToken.INTEGER_LITERAL =>
-                val n = consume(SqlToken.INTEGER_LITERAL).str.toInt
-                if n == 0 then
-                  FrameBound.CurrentRow
-                else
-                  FrameBound.Preceding(-n)
-              case _ =>
-                unexpected(t)
-
-          consume(SqlToken.COLON)
-
-          val frameEnd: FrameBound =
-            val t = scanner.lookAhead()
-            t.token match
-              case SqlToken.R_BRACKET =>
-                FrameBound.UnboundedFollowing
-              case SqlToken.INTEGER_LITERAL =>
-                val n = consume(SqlToken.INTEGER_LITERAL).str.toInt
-                if n == 0 then
-                  FrameBound.CurrentRow
-                else
-                  FrameBound.Following(n)
-              case _ =>
-                unexpected(t)
-          consume(SqlToken.R_BRACKET)
-          Some(WindowFrame(FrameType.RowsFrame, frameStart, frameEnd, spanFrom(t)))
+        case SqlToken.ROWS | SqlToken.RANGE =>
+          consumeToken()
+          val t = scanner.lookAhead()
+          t.token match
+            case SqlToken.L_BRACKET =>
+              Some(bracketWindowFrame())
+            case SqlToken.BETWEEN | SqlToken.UNBOUNDED | SqlToken.CURRENT =>
+              Some(sqlWindowFrame())
+            case _ =>
+              unexpected(t)
         case _ =>
           // TODO Support SqlToken.RANGE
           None
@@ -1223,15 +1316,17 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
   end window
 
   def table(): Relation =
-    val r = tablePrimary()
-    scanner.lookAhead().token match
-      case SqlToken.AS =>
-        consume(SqlToken.AS)
-        tableAlias(r)
-      case id if id.isIdentifier =>
-        tableAlias(r)
-      case _ =>
-        r
+    def singleTable(): Relation =
+      val r = tablePrimary()
+      scanner.lookAhead().token match
+        case SqlToken.AS =>
+          consume(SqlToken.AS)
+          tableAlias(r)
+        case id if id.isIdentifier =>
+          tableAlias(r)
+        case _ =>
+          r
+    tableRest(singleTable())
 
   def tablePrimary(): Relation =
     val t = scanner.lookAhead()
@@ -1248,10 +1343,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           consume(SqlToken.R_PAREN)
           Lateral(subQuery, spanFrom(t))
         case SqlToken.L_PAREN =>
-          consume(SqlToken.L_PAREN)
-          val subQuery = query()
-          consume(SqlToken.R_PAREN)
-          subQuery
+          query()
         case SqlToken.UNNEST =>
           consume(SqlToken.UNNEST)
           consume(SqlToken.L_PAREN)
@@ -1294,7 +1386,24 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         tableRest(Join(JoinType.ImplicitJoin, r, next, NoJoinCriteria, asof = false, spanFrom(t)))
       case SqlToken.LEFT | SqlToken.RIGHT | SqlToken.INNER | SqlToken.FULL | SqlToken.CROSS |
           SqlToken.ASOF | SqlToken.JOIN =>
-        join(r)
+        tableRest(join(r))
+      case SqlToken.UNION =>
+        tableRest(union(r))
+      case SqlToken.INTERSECT | SqlToken.EXCEPT =>
+        tableRest(intersectOrExcept(r))
+      case _ =>
+        r
+
+  def queryRest(r: Relation): Relation =
+    val t = scanner.lookAhead()
+    t.token match
+      case SqlToken.LEFT | SqlToken.RIGHT | SqlToken.INNER | SqlToken.FULL | SqlToken.CROSS |
+          SqlToken.ASOF | SqlToken.JOIN =>
+        queryRest(join(r))
+      case SqlToken.UNION =>
+        queryRest(union(r))
+      case SqlToken.INTERSECT | SqlToken.EXCEPT =>
+        queryRest(intersectOrExcept(r))
       case _ =>
         r
 
@@ -1323,6 +1432,34 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           JoinType.FullOuterJoin
         case _ =>
           JoinType.InnerJoin
+
+    def joinCriteria(): JoinCriteria =
+      val t = scanner.lookAhead()
+      t.token match
+        case SqlToken.ON =>
+          consume(SqlToken.ON)
+          val cond = booleanExpression()
+          cond match
+            case i: Identifier =>
+              val joinKeys = List.newBuilder[NameExpr]
+              joinKeys += i
+
+              def nextKey: Unit =
+                val la = scanner.lookAhead()
+                la.token match
+                  case SqlToken.COMMA =>
+                    consume(SqlToken.COMMA)
+                    val k = identifier()
+                    joinKeys += k
+                    nextKey
+                  case other =>
+              // stop the search
+              nextKey
+              JoinUsing(joinKeys.result(), spanFrom(t))
+            case _ =>
+              JoinOn(cond, spanFrom(t))
+        case _ =>
+          NoJoinCriteria
 
     val isAsOfJoin =
       scanner.lookAhead().token match
@@ -1353,33 +1490,29 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
 
   end join
 
-  def joinCriteria(): JoinCriteria =
+  def union(r: Relation): Relation =
+    val t          = consume(SqlToken.UNION)
+    val isUnionAll = consumeIfExist(SqlToken.ALL)
+    val right      = query()
+    Union(r, right, !isUnionAll, spanFrom(t))
+
+  def intersectOrExcept(r: Relation): Relation =
+    def isAll: Boolean = consumeIfExist(SqlToken.ALL)
+
     val t = scanner.lookAhead()
     t.token match
-      case SqlToken.ON =>
-        consume(SqlToken.ON)
-        val cond = booleanExpression()
-        cond match
-          case i: Identifier =>
-            val joinKeys = List.newBuilder[NameExpr]
-            joinKeys += i
-
-            def nextKey: Unit =
-              val la = scanner.lookAhead()
-              la.token match
-                case SqlToken.COMMA =>
-                  consume(SqlToken.COMMA)
-                  val k = identifier()
-                  joinKeys += k
-                  nextKey
-                case other =>
-            // stop the search
-            nextKey
-            JoinUsing(joinKeys.result(), spanFrom(t))
-          case _ =>
-            JoinOn(cond, spanFrom(t))
+      case SqlToken.INTERSECT =>
+        consume(SqlToken.INTERSECT)
+        val isDistinct = !isAll
+        val right      = query()
+        Intersect(r, right, isDistinct, spanFrom(t))
+      case SqlToken.EXCEPT =>
+        consume(SqlToken.EXCEPT)
+        val isDistinct = !isAll
+        val right      = query()
+        Except(r, right, isDistinct, spanFrom(t))
       case _ =>
-        NoJoinCriteria
+        unexpected(t)
 
   def namedTypes(): List[NamedType] =
     val t = scanner.lookAhead()
@@ -1405,10 +1538,20 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       case _ =>
         NamedType(name, DataType.UnknownType)
 
+  def typeName(): DataType =
+    val id   = identifier()
+    val name = id.toTermName
+    scanner.lookAhead().token match
+      case SqlToken.L_PAREN =>
+        val tpeParams = typeParams()
+        DataType.parse(name.name, tpeParams)
+      case _ =>
+        DataType.parse(name.name)
+
   def typeParams(): List[TypeParameter] =
     scanner.lookAhead().token match
-      case SqlToken.L_BRACKET =>
-        consume(SqlToken.L_BRACKET)
+      case SqlToken.L_PAREN =>
+        consume(SqlToken.L_PAREN)
         val params = List.newBuilder[TypeParameter]
         def nextParam: Unit =
           val t = scanner.lookAhead()
@@ -1416,7 +1559,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
             case SqlToken.COMMA =>
               consume(SqlToken.COMMA)
               nextParam
-            case SqlToken.R_BRACKET =>
+            case SqlToken.R_PAREN =>
             // ok
             case SqlToken.INTEGER_LITERAL =>
               // e.g., decimal[15, 2]
@@ -1428,7 +1571,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
               params += UnresolvedTypeParameter(name.fullName, None)
               nextParam
         nextParam
-        consume(SqlToken.R_BRACKET)
+        consume(SqlToken.R_PAREN)
         params.result()
       case _ =>
         Nil
