@@ -33,9 +33,7 @@ import wvlet.lang.compiler.transform.{
 import wvlet.lang.model.plan.LogicalPlan
 import wvlet.log.{LogLevel, LogSupport}
 
-import java.util.concurrent.ConcurrentHashMap
 import scala.collection.immutable.ListMap
-import scala.jdk.CollectionConverters.*
 
 object Compiler extends LogSupport:
 
