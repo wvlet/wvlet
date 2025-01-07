@@ -25,6 +25,7 @@ import wvlet.log.io.{IOUtil, Resource}
 import java.io.File
 import java.net.URLClassLoader
 import java.net.{URI, URL}
+import java.util.concurrent.ConcurrentHashMap
 import java.util.jar.JarFile
 
 /**
@@ -97,6 +98,15 @@ case class CompilationUnit(sourceFile: SourceFile, isPreset: Boolean = false) ex
 
 end CompilationUnit
 
+class CompilationUnitCache:
+  import scala.jdk.CollectionConverters.*
+  private var cache = ConcurrentHashMap[String, CompilationUnit]().asScala
+
+  def getOrElseUpdate(path: String, factory: => CompilationUnit): CompilationUnit = cache
+    .getOrElseUpdate(path, factory)
+
+end CompilationUnitCache
+
 object CompilationUnit extends LogSupport:
   val empty: CompilationUnit = CompilationUnit(NoSourceFile)
 
@@ -105,13 +115,19 @@ object CompilationUnit extends LogSupport:
 
   def fromFile(path: String) = CompilationUnit(SourceFile.fromFile(path))
 
-  def fromPath(path: String): List[CompilationUnit] =
+  def fromPath(
+      path: String,
+      cache: CompilationUnitCache = CompilationUnitCache()
+  ): List[CompilationUnit] =
     // List all *.wv and .sql files under the path
     val files = SourceIO.listSourceFiles(path)
     val units =
       files
         .map { file =>
-          CompilationUnit(SourceFile.fromFile(file), isPreset = false)
+          cache.getOrElseUpdate(
+            file.path,
+            CompilationUnit(SourceFile.fromFile(file), isPreset = false)
+          )
         }
         .toList
     units
