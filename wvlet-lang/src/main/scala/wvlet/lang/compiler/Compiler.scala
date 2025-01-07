@@ -93,8 +93,20 @@ case class CompilerOptions(
 class Compiler(val compilerOptions: CompilerOptions) extends LogSupport:
 
   private lazy val globalContext = newGlobalContext
+
+  // A cache for skipping parsing the same file multiple times
+  private val compilationUnitCache = CompilationUnitCache()
+
   // Compilation units in the given source folders (except preset-libraries)
-  lazy val localCompilationUnits    = listLocalCompilationUnits(compilerOptions.sourceFolders)
+  def localCompilationUnits = listLocalCompilationUnits(compilerOptions.sourceFolders)
+
+  private def listLocalCompilationUnits(sourceFolders: List[String]): List[CompilationUnit] =
+    val sourcePaths = sourceFolders
+    val units = sourcePaths.flatMap { path =>
+      CompilationUnit.fromPath(path, compilationUnitCache)
+    }
+    units
+
   def compilationUnitsInSourcePaths = presetLibraries ++ localCompilationUnits
 
   def setDefaultCatalog(catalog: Catalog): Unit = globalContext.defaultCatalog = catalog
@@ -106,13 +118,6 @@ class Compiler(val compilerOptions: CompilerOptions) extends LogSupport:
     // Need to initialize the global context before running the analysis phases
     global.init(using rootContext)
     global
-
-  private def listLocalCompilationUnits(sourceFolders: List[String]): List[CompilationUnit] =
-    val sourcePaths = sourceFolders
-    val units = sourcePaths.flatMap { path =>
-      CompilationUnit.fromPath(path)
-    }
-    units
 
   /**
     * @param sourceFolder
