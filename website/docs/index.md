@@ -113,6 +113,10 @@ agg _.count as cnt
 └───────────────────┘
 ```
 
+#### Dual-Syntax Support: SQL and Wvlet
+
+Wvlet supports SQL syntax for compatibility with existing SQL queries. You can write SQL queries in `.sql` files and leverage the same capabilities as Wvlet queries.
+
 ### Column-Level Operators
 
 Wvlet provides column-level operators to process selected columns efficiently. 
