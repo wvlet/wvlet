@@ -674,6 +674,18 @@ class GenSQL(ctx: Context) extends LogSupport:
             selectWithIndentAndParenIfNecessary(inner)
       case t: TestRelation =>
         printRelation(t.inputRelation)(using sqlContext)
+      case q: WithQuery =>
+        val subQueries = q
+          .withStatements
+          .map { w =>
+            val subQuery = printRelation(w.child)(using sqlContext)
+            s"${printExpression(w.alias)} as (\n${subQuery}\n)"
+          }
+        val body     = printRelation(q.child)(using sqlContext)
+        val withStmt = subQueries.mkString("with ", ", ", "")
+        s"""${withStmt}
+           |${body}
+           |""".stripMargin
       case q: Query =>
         printRelation(q.body)(using sqlContext)
       case l: Limit =>

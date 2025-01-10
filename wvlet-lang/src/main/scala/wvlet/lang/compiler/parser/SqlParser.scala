@@ -826,6 +826,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         val arg = functionArg()
         scanner.lookAhead().token match
           case SqlToken.COMMA =>
+            consume(SqlToken.COMMA)
             arg :: functionArgs()
           case _ =>
             List(arg)
