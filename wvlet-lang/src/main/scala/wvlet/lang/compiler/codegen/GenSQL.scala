@@ -636,7 +636,7 @@ class GenSQL(ctx: Context) extends LogSupport:
           s"""select distinct * from ${printRelation(d.child)(using sqlContext.enterFrom)}"""
         )
       case s: SetOperation =>
-        val rels = s.children.map(x => printRelation(x)(using sqlContext.nested))
+        val rels = s.children.map(x => printRelation(x)(using sqlContext))
         val op   = s.toSQLOp
         val sql  = rels.mkString(s"\n${op}\n")
         selectWithIndentAndParenIfNecessary(sql)
@@ -1101,6 +1101,8 @@ class GenSQL(ctx: Context) extends LogSupport:
         s"${printExpression(b.e)} between ${printExpression(b.a)} and ${printExpression(b.b)}"
       case b: NotBetween =>
         s"${printExpression(b.e)} not between ${printExpression(b.a)} and ${printExpression(b.b)}"
+      case c: Cast =>
+        s"cast(${printExpression(c.child)} as ${c.dataType.typeName})"
       case other =>
         warn(s"unknown expression type: ${other}")
         other.toString

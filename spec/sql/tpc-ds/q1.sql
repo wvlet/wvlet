@@ -16,4 +16,3 @@
    AND s_state = 'TN'
    AND ctr1.ctr_customer_sk = c_customer_sk
    ORDER BY c_customer_id LIMIT 100
-            

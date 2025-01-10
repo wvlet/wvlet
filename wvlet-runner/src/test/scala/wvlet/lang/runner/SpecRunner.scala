@@ -25,10 +25,15 @@ import scala.util.control.NonFatal
 trait SpecRunner(
     specPath: String,
     ignoredSpec: Map[String, String] = Map.empty,
-    prepareTPCH: Boolean = false
+    prepareTPCH: Boolean = false,
+    prepareTPCDS: Boolean = false
 ) extends AirSpec:
   private val workEnv = WorkEnv(path = specPath, logLevel = logger.getLogLevel)
-  private val profile = Profile.defaultDuckDBProfile.withProperty("prepareTPCH", prepareTPCH)
+  private val profile = Profile
+    .defaultDuckDBProfile
+    .withProperty("prepareTPCH", prepareTPCH)
+    .withProperty("prepareTPCDS", prepareTPCDS)
+
   private val dbConnectorProvider = DBConnectorProvider(workEnv)
   private val queryExecutor       = QueryExecutor(dbConnectorProvider, profile, workEnv)
   override def afterAll: Unit =

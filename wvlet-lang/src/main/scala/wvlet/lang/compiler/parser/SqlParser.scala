@@ -1388,10 +1388,6 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       case SqlToken.LEFT | SqlToken.RIGHT | SqlToken.INNER | SqlToken.FULL | SqlToken.CROSS |
           SqlToken.ASOF | SqlToken.JOIN =>
         tableRest(join(r))
-      case SqlToken.UNION =>
-        tableRest(union(r))
-      case SqlToken.INTERSECT | SqlToken.EXCEPT =>
-        tableRest(intersectOrExcept(r))
       case _ =>
         r
 
