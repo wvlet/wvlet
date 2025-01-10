@@ -3,7 +3,7 @@ package wvlet.lang.compiler.codegen
 import wvlet.lang.api.Span.NoSpan
 import wvlet.lang.api.StatusCode
 import wvlet.lang.compiler.DBType.DuckDB
-import wvlet.lang.compiler.{DBType, ModelSymbolInfo, SQLDialect}
+import wvlet.lang.compiler.{Context, DBType, ModelSymbolInfo, SQLDialect}
 import wvlet.lang.compiler.transform.ExpressionEvaluator
 import wvlet.lang.model.DataType
 import wvlet.lang.model.expr.ArrayConstructor
@@ -61,7 +61,7 @@ object SqlGenerator:
 
 end SqlGenerator
 
-class SqlGenerator(dbType: DBType) extends LogSupport:
+class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) extends LogSupport:
   import SqlGenerator.*
 
   def print(l: LogicalPlan): String =
@@ -245,7 +245,7 @@ class SqlGenerator(dbType: DBType) extends LogSupport:
               s"${selectWithIndentAndParenIfNecessary(s"select * from ${printValues(v)} as ${tableAlias}")} as ${a.alias.fullName}"
             case _ =>
               indent(
-                s"${printRelation(a.inputRelation, a :: parents)(using sqlContext.nested)} as ${tableAlias}"
+                s"${printRelation(a.inputRelation, parents)(using sqlContext.nested)} as ${tableAlias}"
               )
         sql
       case p: BracedRelation =>
@@ -267,7 +267,7 @@ class SqlGenerator(dbType: DBType) extends LogSupport:
             val subQuery = printRelation(w.child, Nil)(using sqlContext)
             s"${printExpression(w.alias)} as (\n${subQuery}\n)"
           }
-        val body     = printRelation(q.child, q :: parents)(using sqlContext)
+        val body     = printRelation(q.child, parents)(using sqlContext)
         val withStmt = subQueries.mkString("with ", ", ", "")
         s"""${withStmt}
            |${body}
@@ -363,6 +363,110 @@ class SqlGenerator(dbType: DBType) extends LogSupport:
         // Skip relation inspector
         // TODO Dump output to the file logger
         printRelation(r.child, r :: parents)
+      case s: Show if s.showType == ShowType.tables =>
+        val sql  = s"select table_name as name from information_schema.tables"
+        val cond = List.newBuilder[Expression]
+
+        val opts                    = ctx.global.compilerOptions
+        var catalog: Option[String] = opts.catalog
+        var schema: Option[String]  = opts.schema
+
+        s.inExpr match
+          case i: Identifier if i.nonEmpty =>
+            schema = Some(i.leafName)
+          case DotRef(q: Identifier, name, _, _) =>
+            catalog = Some(q.leafName)
+            schema = Some(name.leafName)
+          case _ =>
+
+        catalog.foreach { c =>
+          cond += Eq(UnquotedIdentifier("table_catalog", NoSpan), StringLiteral(c, NoSpan), NoSpan)
+        }
+        schema.foreach { s =>
+          cond += Eq(UnquotedIdentifier("table_schema", NoSpan), StringLiteral(s, NoSpan), NoSpan)
+        }
+
+        val conds = cond.result()
+        val body =
+          if conds.size == 0 then
+            sql
+          else
+            s"${sql} where ${printExpression(Expression.concatWithAnd(conds))}"
+        selectWithIndentAndParenIfNecessary(s"${body} order by name")
+      case s: Show if s.showType == ShowType.schemas =>
+        val sql =
+          s"""select catalog_name as "catalog", schema_name as name from information_schema.schemata"""
+        val cond = List.newBuilder[Expression]
+
+        val opts                    = ctx.global.compilerOptions
+        var catalog: Option[String] = opts.catalog
+
+        s.inExpr match
+          case i: Identifier if i.nonEmpty =>
+            catalog = Some(i.leafName)
+          case _ =>
+
+        catalog.foreach { c =>
+          cond += Eq(UnquotedIdentifier("catalog_name", NoSpan), StringLiteral(c, NoSpan), NoSpan)
+        }
+        val conds = cond.result()
+        val body =
+          if conds.size == 0 then
+            sql
+          else
+            s"${sql} where ${printExpression(Expression.concatWithAnd(conds))}"
+        selectWithIndentAndParenIfNecessary(s"${body} order by name")
+      case s: Show if s.showType == ShowType.catalogs =>
+        val sql = s"""select distinct catalog_name as "name" from information_schema.schemata"""
+        selectWithIndentAndParenIfNecessary(s"${sql} order by 1")
+      case s: Show if s.showType == ShowType.models =>
+        // TODO: Show models should be handled outside of GenSQL
+        val models: Seq[ListMap[String, Any]] = ctx
+          .global
+          .getAllContexts
+          .flatMap { ctx =>
+            ctx
+              .compilationUnit
+              .knownSymbols
+              .map(_.symbolInfo)
+              .collect { case m: ModelSymbolInfo =>
+                m
+              }
+              .map { m =>
+                val e = ListMap.newBuilder[String, Any]
+                e += "name" -> s"'${m.name.name}'"
+
+                // model argument types
+                m.symbol.tree match
+                  case md: ModelDef if md.params.nonEmpty =>
+                    val args = md.params.map(arg => s"${arg.name}:${arg.dataType.typeDescription}")
+                    e += "args" -> args.mkString("'", ", ", "'")
+                  case _ =>
+                    e += "args" -> "cast(null as varchar)"
+
+                // package_name
+                if !m.owner.isNoSymbol && m.owner != ctx.global.defs.RootPackage then
+                  e += "package_name" -> s"'${m.owner.name}'"
+                else
+                  e += "package_name" -> "cast(null as varchar)"
+
+                e.result()
+              }
+          }
+
+        val modelValues = models
+          .map { x =>
+            List(x("name"), x.getOrElse("args", ""), x.getOrElse("package_name", "")).mkString(",")
+          }
+          .map(x => s"(${x})")
+        if modelValues.isEmpty then
+          selectWithIndentAndParenIfNecessary(
+            "select cast(null as varchar) as name, cast(null as varchar) as args, cast(null as varchar) as package_name limit 0"
+          )
+        else
+          selectWithIndentAndParenIfNecessary(
+            s"select * from (values ${indent(modelValues.mkString(", "))}) as __models(name, args, package_name)"
+          )
       case other =>
         warn(s"unsupported relation type: ${other}")
         other.pp
@@ -566,6 +670,14 @@ class SqlGenerator(dbType: DBType) extends LogSupport:
         s"${printExpression(left)} is null"
       case NotEq(left, n: NullLiteral, _) =>
         s"${printExpression(left)} is not null"
+      case a: ArithmeticUnaryExpr =>
+        a.sign match
+          case Sign.NoSign =>
+            printExpression(a.child)
+          case Sign.Positive =>
+            s"+${printExpression(a.child)}"
+          case Sign.Negative =>
+            s"-${printExpression(a.child)}"
       case b: BinaryExpression =>
         s"${printExpression(b.left)} ${b.operatorName} ${printExpression(b.right)}"
       case s: StringPart =>
