@@ -3,21 +3,12 @@ package wvlet.lang.compiler.codegen
 import wvlet.lang.api.Span.NoSpan
 import wvlet.lang.api.StatusCode
 import wvlet.lang.compiler.DBType.DuckDB
-import wvlet.lang.compiler.{Context, DBType, ModelSymbolInfo, SQLDialect}
 import wvlet.lang.compiler.transform.ExpressionEvaluator
+import wvlet.lang.compiler.{Context, DBType, ModelSymbolInfo, SQLDialect}
 import wvlet.lang.model.DataType
-import wvlet.lang.model.expr.ArrayConstructor
-import wvlet.lang.model.plan.Relation
-import wvlet.lang.model.plan.*
 import wvlet.lang.model.expr.*
-import wvlet.lang.model.plan.JoinType.{
-  CrossJoin,
-  FullOuterJoin,
-  ImplicitJoin,
-  InnerJoin,
-  LeftOuterJoin,
-  RightOuterJoin
-}
+import wvlet.lang.model.plan.JoinType.*
+import wvlet.lang.model.plan.*
 import wvlet.lang.model.plan.SamplingSize.{Percentage, Rows}
 import wvlet.log.LogSupport
 
