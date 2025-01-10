@@ -1082,6 +1082,10 @@ class GenSQL(ctx: Context) extends LogSupport:
             val keys   = ArrayConstructor(m.entries.map(_.key), m.span)
             val values = ArrayConstructor(m.entries.map(_.value), m.span)
             s"MAP(${printExpression(keys)}, ${printExpression(values)})"
+      case b: Between =>
+        s"${printExpression(b.e)} between ${printExpression(b.a)} and ${printExpression(b.b)}"
+      case b: NotBetween =>
+        s"${printExpression(b.e)} not between ${printExpression(b.a)} and ${printExpression(b.b)}"
       case other =>
         warn(s"unknown expression type: ${other}")
         other.toString
