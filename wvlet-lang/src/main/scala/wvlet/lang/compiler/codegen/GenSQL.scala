@@ -161,7 +161,7 @@ object GenSQL extends Phase("generate-sql"):
     val expanded  = expand(q, ctx)
     // val sql      = SQLGenerator.toSQL(expanded)
     val gen = GenSQL(ctx)
-    val sql = gen.printRelation(expanded)(using Indented(0))
+    val sql = gen.printRelation(expanded, Nil)(using Indented(0))
 
     val query: String =
       if addHeader then
@@ -400,7 +400,7 @@ end GenSQL
 class GenSQL(ctx: Context) extends LogSupport:
   import GenSQL.*
 
-  def printRelation(r: Relation)(using sqlContext: SQLGenContext): String =
+  def printRelation(r: Relation, parents: List[Relation])(using sqlContext: SQLGenContext): String =
     def indent(s: String): String =
       if sqlContext.nestingLevel == 0 then
         s
@@ -480,7 +480,7 @@ class GenSQL(ctx: Context) extends LogSupport:
                 s"""${expr} as "${expr}""""
           }
       s += s"select ${selectItems.result().mkString(", ")}"
-      s += s"from ${printRelation(agg.child)(using sqlContext.enterFrom)}"
+      s += s"from ${printRelation(agg.child, agg :: parents)(using sqlContext.enterFrom)}"
       if agg.filters.nonEmpty then
         val cond = printExpression(Expression.concatWithAnd(agg.filters.map(_.filterExpr)))
         s += s"where ${cond}"
@@ -514,14 +514,96 @@ class GenSQL(ctx: Context) extends LogSupport:
         .mkString(", ")
       s"(values ${rows})"
 
+    def printSelection(p: AggSelect, parents: List[Relation]): String =
+      // pull-up filter nodes to build where clause
+      // pull-up an Aggregate node to build group by clause
+      val agg = toSQLSelect(
+        SQLSelect(p.child, p.selectItems.toList, Nil, Nil, Nil, p.span),
+        p.child
+      )
+      val hasDistinct =
+        p match
+          case d: Distinct =>
+            true
+          case _ =>
+            false
+
+      val selectItems = agg.selectItems.map(x => printExpression(x)).mkString(", ")
+      val s           = Seq.newBuilder[String]
+      s +=
+        s"select ${
+            if hasDistinct then
+              "distinct "
+            else
+              ""
+          }${selectItems}"
+      agg.child match
+        case e: EmptyRelation =>
+        // Do not add from clause for empty imputs
+        case _ =>
+          s += s"from ${printRelation(agg.child, agg :: parents)(using sqlContext.enterFrom)}"
+      if agg.filters.nonEmpty then
+        val filterExpr = Expression.concatWithAnd(agg.filters.map(x => x.filterExpr))
+        s += s"where ${printExpression(filterExpr)}"
+      if agg.groupingKeys.nonEmpty then
+        s += s"group by ${agg.groupingKeys.map(x => printExpression(x)).mkString(", ")}"
+      if agg.having.nonEmpty then
+        s += s"having ${agg.having.map(x => printExpression(x.filterExpr)).mkString(", ")}"
+
+      selectWithIndentAndParenIfNecessary(s"${s.result().mkString("\n")}")
+    end printSelection
+
     r match
+      case q: Query =>
+        printRelation(q.body, q :: parents)
+//      case f: Filter =>
+//        f.child match
+//          case a: GroupBy =>
+//            val body = List(s"${printAggregate(a)}", s"having ${printExpression(f.filterExpr)}")
+//              .mkString("\n")
+//            selectWithIndentAndParenIfNecessary(s"${body}")
+//          case _ =>
+//            selectWithIndentAndParenIfNecessary(
+//              s"""select * from ${printRelation(f.child, f :: parents)(using
+//                sqlContext.enterFrom
+//              )}\nwhere ${printExpression(f.filterExpr)}"""
+//            )
+      case f: Filter =>
+        printRelation(f.child, f :: parents)
+      case d: Distinct =>
+        printRelation(d.child, d :: parents)
+      case l: Limit =>
+        printRelation(l.child, l :: parents)
+//        l.inputRelation match
+//          case s: Sort =>
+//            // order by needs to be compresed with limit as subexpression query ordering will be ignored in Trino
+//            val input = printRelation(s.inputRelation, s :: parents)(using sqlContext.enterFrom)
+//            val body =
+//              s"""select * from ${input}
+//                 |order by ${s.orderBy.map(e => printExpression(e)).mkString(", ")}
+//                 |limit ${l.limit.stringValue}""".stripMargin
+//            selectWithIndentAndParenIfNecessary(body)
+//          case _ =>
+//            val input = printRelation(l.inputRelation, l :: parents)(using sqlContext.enterFrom)
+//            selectWithIndentAndParenIfNecessary(
+//              s"""select * from ${input}\nlimit ${l.limit.stringValue}"""
+//            )
+      case s: Sort =>
+        printRelation(s.child, s :: parents)
+//        val input = printRelation(s.inputRelation, s :: parents)(using sqlContext.enterFrom)
+//        val body =
+//          s"""select * from ${input}\norder by ${s
+//            .orderBy
+//            .map(e => printExpression(e))
+//            .mkString(", ")}"""
+//        selectWithIndentAndParenIfNecessary(body)
       case a: Agg if a.child.isPivot =>
         // pivot + agg combination
         val p: Pivot = a.child.asInstanceOf[Pivot]
         val onExpr   = pivotOnExpr(p)
         val aggItems = a.selectItems.map(x => printExpression(x)).mkString(", ")
         val pivotExpr =
-          s"pivot ${printRelation(p.child)(using sqlContext.enterFrom)}\n  on ${onExpr}\n  using ${aggItems}"
+          s"pivot ${printRelation(p.child, a :: parents)(using sqlContext.enterFrom)}\n  on ${onExpr}\n  using ${aggItems}"
         if p.groupingKeys.isEmpty then
           selectWithIndentAndParenIfNecessary(pivotExpr)
         else
@@ -529,45 +611,10 @@ class GenSQL(ctx: Context) extends LogSupport:
           selectWithIndentAndParenIfNecessary(s"${pivotExpr}\n  group by ${groupByItems}")
       case p: Pivot => // pivot without explicit aggregations
         selectWithIndentAndParenIfNecessary(
-          s"pivot ${printRelation(p.child)(using sqlContext.enterFrom)}\n  on ${pivotOnExpr(p)}"
+          s"pivot ${printRelation(p.child, p :: parents)(using sqlContext.enterFrom)}\n  on ${pivotOnExpr(p)}"
         )
-      case p: AggSelect =>
-        // pull-up filter nodes to build where clause
-        // pull-up an Aggregate node to build group by clause
-        val agg = toSQLSelect(
-          SQLSelect(p.child, p.selectItems.toList, Nil, Nil, Nil, p.span),
-          p.child
-        )
-        val hasDistinct =
-          p match
-            case d: Distinct =>
-              true
-            case _ =>
-              false
-
-        val selectItems = agg.selectItems.map(x => printExpression(x)).mkString(", ")
-        val s           = Seq.newBuilder[String]
-        s +=
-          s"select ${
-              if hasDistinct then
-                "distinct "
-              else
-                ""
-            }${selectItems}"
-        agg.child match
-          case e: EmptyRelation =>
-          // Do not add from clause for empty imputs
-          case _ =>
-            s += s"from ${printRelation(agg.child)(using sqlContext.enterFrom)}"
-        if agg.filters.nonEmpty then
-          val filterExpr = Expression.concatWithAnd(agg.filters.map(x => x.filterExpr))
-          s += s"where ${printExpression(filterExpr)}"
-        if agg.groupingKeys.nonEmpty then
-          s += s"group by ${agg.groupingKeys.map(x => printExpression(x)).mkString(", ")}"
-        if agg.having.nonEmpty then
-          s += s"having ${agg.having.map(x => printExpression(x.filterExpr)).mkString(", ")}"
-
-        selectWithIndentAndParenIfNecessary(s"${s.result().mkString("\n")}")
+      case s: AggSelect =>
+        printSelection(s, parents)
       case a: GroupBy =>
         selectWithIndentAndParenIfNecessary(s"${printAggregate(a)}")
       case j: Join =>
@@ -585,8 +632,8 @@ class GenSQL(ctx: Context) extends LogSupport:
           else
             ""
 
-        val l = printRelation(j.left)(using sqlContext.enterJoin)
-        val r = printRelation(j.right)(using sqlContext.enterJoin)
+        val l = printRelation(j.left, j :: parents)(using sqlContext.enterJoin)
+        val r = printRelation(j.right, j :: parents)(using sqlContext.enterJoin)
         val c =
           j.cond match
             case NoJoinCriteria =>
@@ -619,24 +666,14 @@ class GenSQL(ctx: Context) extends LogSupport:
           indent(s"select * from ${joinSQL}")
         else
           joinSQL
-      case f: Filter =>
-        f.child match
-          case a: GroupBy =>
-            val body = List(s"${printAggregate(a)}", s"having ${printExpression(f.filterExpr)}")
-              .mkString("\n")
-            selectWithIndentAndParenIfNecessary(s"${body}")
-          case _ =>
-            selectWithIndentAndParenIfNecessary(
-              s"""select * from ${printRelation(f.child)(using
-                  sqlContext.enterFrom
-                )}\nwhere ${printExpression(f.filterExpr)}"""
-            )
       case d: Dedup =>
         selectWithIndentAndParenIfNecessary(
-          s"""select distinct * from ${printRelation(d.child)(using sqlContext.enterFrom)}"""
+          s"""select distinct * from ${printRelation(d.child, d :: parents)(using
+              sqlContext.enterFrom
+            )}"""
         )
       case s: SetOperation =>
-        val rels = s.children.map(x => printRelation(x)(using sqlContext))
+        val rels = s.children.map(x => printRelation(x, s :: parents)(using sqlContext))
         val op   = s.toSQLOp
         val sql  = rels.mkString(s"\n${op}\n")
         selectWithIndentAndParenIfNecessary(sql)
@@ -653,7 +690,7 @@ class GenSQL(ctx: Context) extends LogSupport:
           case t: TableScan =>
             s"${t.name.fullName} as ${tableAlias}"
           case t: TableFunctionCall =>
-            s"${printRelation(t)(using sqlContext)} as ${tableAlias}"
+            s"${printRelation(t, t :: parents)(using sqlContext)} as ${tableAlias}"
           case v: Values if sqlContext.nestingLevel == 0 =>
             selectAllWithIndent(s"${printValues(v)} as ${tableAlias}")
           case v: Values if sqlContext.nestingLevel > 0 && !sqlContext.withinJoin =>
@@ -661,9 +698,11 @@ class GenSQL(ctx: Context) extends LogSupport:
           case v: Values if sqlContext.nestingLevel > 0 && sqlContext.withinJoin =>
             s"${selectWithIndentAndParenIfNecessary(s"select * from ${printValues(v)} as ${tableAlias}")} as ${a.alias.fullName}"
           case _ =>
-            indent(s"${printRelation(a.inputRelation)(using sqlContext.nested)} as ${tableAlias}")
+            indent(
+              s"${printRelation(a.inputRelation, a :: parents)(using sqlContext.nested)} as ${tableAlias}"
+            )
       case p: BracedRelation =>
-        def inner = printRelation(p.child)(using sqlContext.nested)
+        def inner = printRelation(p.child, p :: parents)(using sqlContext.nested)
         p.child match
           case v: Values =>
             // No need to wrap values query
@@ -673,48 +712,23 @@ class GenSQL(ctx: Context) extends LogSupport:
           case _ =>
             selectWithIndentAndParenIfNecessary(inner)
       case t: TestRelation =>
-        printRelation(t.inputRelation)(using sqlContext)
+        printRelation(t.inputRelation, t :: parents)(using sqlContext)
       case q: WithQuery =>
         val subQueries = q
           .withStatements
           .map { w =>
-            val subQuery = printRelation(w.child)(using sqlContext)
+            val subQuery = printRelation(w.child, Nil)(using sqlContext)
             s"${printExpression(w.alias)} as (\n${subQuery}\n)"
           }
-        val body     = printRelation(q.child)(using sqlContext)
+        val body     = printRelation(q.child, q :: parents)(using sqlContext)
         val withStmt = subQueries.mkString("with ", ", ", "")
         s"""${withStmt}
            |${body}
            |""".stripMargin
-      case q: Query =>
-        printRelation(q.body)(using sqlContext)
-      case l: Limit =>
-        l.inputRelation match
-          case s: Sort =>
-            // order by needs to be compresed with limit as subexpression query ordering will be ignored in Trino
-            val input = printRelation(s.inputRelation)(using sqlContext.enterFrom)
-            val body =
-              s"""select * from ${input}
-                 |order by ${s.orderBy.map(e => printExpression(e)).mkString(", ")}
-                 |limit ${l.limit.stringValue}""".stripMargin
-            selectWithIndentAndParenIfNecessary(body)
-          case _ =>
-            val input = printRelation(l.inputRelation)(using sqlContext.enterFrom)
-            selectWithIndentAndParenIfNecessary(
-              s"""select * from ${input}\nlimit ${l.limit.stringValue}"""
-            )
-      case s: Sort =>
-        val input = printRelation(s.inputRelation)(using sqlContext.enterFrom)
-        val body =
-          s"""select * from ${input}\norder by ${s
-              .orderBy
-              .map(e => printExpression(e))
-              .mkString(", ")}"""
-        selectWithIndentAndParenIfNecessary(body)
       case t: Transform =>
         val transformItems = t.transformItems.map(x => printExpression(x)).mkString(", ")
         selectWithIndentAndParenIfNecessary(
-          s"""select ${transformItems}, * from ${printRelation(t.inputRelation)(using
+          s"""select ${transformItems}, * from ${printRelation(t.inputRelation, t :: parents)(using
               sqlContext.enterFrom
             )}"""
         )
@@ -726,7 +740,9 @@ class GenSQL(ctx: Context) extends LogSupport:
           }
         selectWithIndentAndParenIfNecessary(
           s"""select *, ${newColumns
-              .mkString(", ")} from ${printRelation(a.inputRelation)(using sqlContext.enterFrom)}"""
+              .mkString(", ")} from ${printRelation(a.inputRelation, a :: parents)(using
+              sqlContext.enterFrom
+            )}"""
         )
       case d: ExcludeColumnsFromRelation =>
         selectWithIndentAndParenIfNecessary(
@@ -734,7 +750,9 @@ class GenSQL(ctx: Context) extends LogSupport:
               .relationType
               .fields
               .map(_.toSQLAttributeName)
-              .mkString(", ")} from ${printRelation(d.inputRelation)(using sqlContext.enterFrom)}"""
+              .mkString(", ")} from ${printRelation(d.inputRelation, d :: parents)(using
+              sqlContext.enterFrom
+            )}"""
         )
       case r: RenameColumnsFromRelation =>
         val newColumns = r
@@ -750,7 +768,9 @@ class GenSQL(ctx: Context) extends LogSupport:
           }
         selectWithIndentAndParenIfNecessary(
           s"""select ${newColumns
-              .mkString(", ")} from ${printRelation(r.inputRelation)(using sqlContext.enterFrom)}"""
+              .mkString(", ")} from ${printRelation(r.inputRelation, r :: parents)(using
+              sqlContext.enterFrom
+            )}"""
         )
       case s: ShiftColumns =>
         selectWithIndentAndParenIfNecessary(
@@ -758,7 +778,9 @@ class GenSQL(ctx: Context) extends LogSupport:
               .relationType
               .fields
               .map(_.toSQLAttributeName)
-              .mkString(", ")} from ${printRelation(s.inputRelation)(using sqlContext.enterFrom)}"""
+              .mkString(", ")} from ${printRelation(s.inputRelation, s :: parents)(using
+              sqlContext.enterFrom
+            )}"""
         )
       case t: TableRef =>
         selectAllWithIndent(s"${t.name.fullName}")
@@ -776,7 +798,7 @@ class GenSQL(ctx: Context) extends LogSupport:
       case v: Values =>
         printValues(v)
       case s: SelectAsAlias =>
-        printRelation(s.child)
+        printRelation(s.child, s :: parents)
       case d: Describe =>
         // TODO: Compute schema only from local DataType information without using connectors
         // Trino doesn't support nesting describe statement, so we need to generate raw values as SQL
@@ -797,7 +819,7 @@ class GenSQL(ctx: Context) extends LogSupport:
       case r: RelationInspector =>
         // Skip relation inspector
         // TODO Dump output to the file logger
-        printRelation(r.child)
+        printRelation(r.child, r :: parents)
       case s: Show if s.showType == ShowType.tables =>
         val sql  = s"select table_name as name from information_schema.tables"
         val cond = List.newBuilder[Expression]
@@ -903,7 +925,7 @@ class GenSQL(ctx: Context) extends LogSupport:
             s"select * from (values ${indent(modelValues.mkString(", "))}) as __models(name, args, package_name)"
           )
       case s: Sample =>
-        val child = printRelation(s.child)(using sqlContext.enterFrom)
+        val child = printRelation(s.child, s :: parents)(using sqlContext.enterFrom)
         val body: String =
           ctx.dbType match
             case DuckDB =>
@@ -927,7 +949,7 @@ class GenSQL(ctx: Context) extends LogSupport:
         selectWithIndentAndParenIfNecessary(body)
       case d: Debug =>
         // Skip debug expression
-        printRelation(d.inputRelation)
+        printRelation(d.inputRelation, d :: parents)
       case other =>
         warn(s"unknown relation type: ${other}")
         other.toString
@@ -1016,7 +1038,7 @@ class GenSQL(ctx: Context) extends LogSupport:
           }
           .mkString
       case s: SubQueryExpression =>
-        s"(${printRelation(s.query)(using sqlContext.nested)})"
+        s"(${printRelation(s.query, Nil)(using sqlContext.nested)})"
       case i: IfExpr =>
         s"if(${printExpression(i.cond)}, ${printExpression(i.onTrue)}, ${printExpression(i.onFalse)})"
       case n: Not =>

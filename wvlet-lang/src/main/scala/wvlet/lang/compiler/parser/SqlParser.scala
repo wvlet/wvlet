@@ -97,12 +97,13 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     t.token match
       case SqlToken.EOF =>
         Nil
-      case SqlToken.SEMICOLON =>
-        consume(SqlToken.SEMICOLON)
-        statementList()
       case _ =>
         val stmt = statement()
-        stmt :: statementList()
+        scanner.lookAhead().token match
+          case SqlToken.SEMICOLON =>
+            stmt :: statementList()
+          case _ =>
+            List(stmt)
 
   def statement(): LogicalPlan =
     val t = scanner.lookAhead()
@@ -113,10 +114,10 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         explain()
 //      case SqlToken.DESCRIBE =>
 //       describe()
-      case t if t.isUpdateStart =>
+      case u if u.isUpdateStart =>
         update()
-      case t if t.isQueryStart =>
-        query()
+      case q if q.isQueryStart =>
+        Query(query(), spanFrom(t))
       case SqlToken.SHOW =>
         show()
       case SqlToken.USE =>

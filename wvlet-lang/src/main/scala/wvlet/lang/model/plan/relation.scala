@@ -937,7 +937,7 @@ case class Describe(child: Relation, span: Span) extends RelationInspector:
     }
 
 case class Sample(child: Relation, method: SamplingMethod, size: SamplingSize, span: Span)
-    extends UnaryRelation:
+    extends FilteringRelation:
   override def relationType: RelationType = child.relationType
 
 enum SamplingMethod:
