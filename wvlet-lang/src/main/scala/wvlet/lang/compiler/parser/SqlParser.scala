@@ -221,7 +221,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     t.token match
       case SqlToken.WITH | SqlToken.SELECT =>
         query()
-      case SqlToken.VALUE | SqlToken.VALUES =>
+      case SqlToken.VALUES =>
         values()
       case SqlToken.INSERT | SqlToken.UPSERT =>
         insert()
@@ -383,7 +383,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
   def query(): Relation =
     val t = scanner.lookAhead()
     t.token match
-      case SqlToken.VALUE | SqlToken.VALUES =>
+      case SqlToken.VALUES =>
         values()
       case q if q.isQueryStart =>
         select()
@@ -613,7 +613,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
 
     val t = scanner.lookAhead()
     t.token match
-      case SqlToken.VALUE | SqlToken.VALUES =>
+      case SqlToken.VALUES =>
         consume(t.token)
         val values = expressionList()
         Values(values, spanFrom(t))
