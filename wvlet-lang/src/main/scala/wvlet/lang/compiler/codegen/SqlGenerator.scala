@@ -630,7 +630,7 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
     .mkString(", ")
   end printPivotOnExpr
 
-  def printExpression(expression: Expression)(using sqlContext: SqlContext): String =
+  def printExpression(expression: Expression)(using sqlContext: SqlContext = Indented(0)): String =
     expression match
       case g: UnresolvedGroupingKey =>
         printExpression(g.child)
