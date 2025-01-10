@@ -82,7 +82,7 @@ object GenSQL extends Phase("generate-sql"):
           statements ++= generateSaveSQL(save, ctx)
         case ExecuteValDef(v) =>
           // TODO Refactor this with QueryExecutor
-          val expr = ExpressionEvaluator.eval(v.expr, ctx)
+          val expr = ExpressionEvaluator.eval(v.expr)(using ctx)
           v.symbol.symbolInfo = ValSymbolInfo(ctx.owner, v.symbol, v.name, expr.dataType, expr)
           ctx.enter(v.symbol)
         case cmd: ExecuteCommand =>

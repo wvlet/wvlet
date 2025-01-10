@@ -65,14 +65,21 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
   import SqlGenerator.*
 
   def print(l: LogicalPlan): String =
-    l match
-      case r: Relation =>
-        printRelation(r, Nil)(using SqlGenerator.Indented(0))
-      case p: PackageDef =>
-        p.statements.map(stmt => print(stmt)).mkString(";\n\n")
-      case other =>
-        warn(s"unsupported logical plan: ${other}")
-        other.toString
+
+    def iter(plan: LogicalPlan): String =
+      plan match
+        case r: Relation =>
+          printRelation(r, Nil)(using SqlGenerator.Indented(0))
+        case p: PackageDef =>
+          p.statements.map(stmt => print(stmt)).mkString(";\n\n")
+        case other =>
+          warn(s"unsupported logical plan: ${other}")
+          other.toString
+
+    val sql = iter(l)
+    trace(l.pp)
+    debug(sql)
+    sql
 
   private def selectAllWithIndent(tableExpr: String)(using sqlContext: SqlContext): String =
     if sqlContext.withinFrom then
@@ -100,16 +107,18 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
     * Print Relation nodes while tracking the parent nodes (e.g., filter, sort) for merging them
     * later into a single SELECT statement.
     * @param r
-    * @param parents
+    * @param remainingParents
     *   unprocessed parent nodes
     * @param sqlContext
     * @return
     */
-  def printRelation(r: Relation, parents: List[Relation])(using sqlContext: SqlContext): String =
+  def printRelation(r: Relation, remainingParents: List[Relation])(using
+      sqlContext: SqlContext
+  ): String =
     r match
       case q: Query =>
         // Query is just an wrapper of Relation, so no need to push it in the stack
-        printRelation(q.body, parents)
+        printRelation(q.body, remainingParents)
       case a: GroupBy =>
         selectWithIndentAndParenIfNecessary(s"${printAggregate(a)}")
       case a: Agg if a.child.isPivot =>
@@ -118,7 +127,7 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
         val onExpr   = printPivotOnExpr(p)
         val aggItems = a.selectItems.map(x => printExpression(x)).mkString(", ")
         val pivotExpr =
-          s"pivot ${printRelation(p.child, parents)(using sqlContext.enterFrom)}\n  on ${onExpr}\n  using ${aggItems}"
+          s"pivot ${printRelation(p.child, remainingParents)(using sqlContext.enterFrom)}\n  on ${onExpr}\n  using ${aggItems}"
         if p.groupingKeys.isEmpty then
           selectWithIndentAndParenIfNecessary(pivotExpr)
         else
@@ -127,12 +136,12 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
       case t: Transform =>
         val transformItems = t.transformItems.map(x => printExpression(x)).mkString(", ")
         selectWithIndentAndParenIfNecessary(
-          s"""select ${transformItems}, * from ${printRelation(t.inputRelation, parents)(using
-              sqlContext.enterFrom
+          s"""select ${transformItems}, * from ${printRelation(t.inputRelation, remainingParents)(
+              using sqlContext.enterFrom
             )}"""
         )
       case s: Selection =>
-        printSelection(s, parents)
+        printSelection(s, remainingParents)
       case j: Join =>
         val asof =
           if j.asof then
@@ -143,7 +152,7 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
           else
             ""
 
-        val l = printRelation(j.left, parents)(using sqlContext.enterJoin)
+        val l = printRelation(j.left, remainingParents)(using sqlContext.enterJoin)
         val r = printRelation(j.right, Nil)(using sqlContext.enterJoin)
         val c =
           j.cond match
@@ -184,19 +193,19 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
         selectWithIndentAndParenIfNecessary(sql)
       case p: Pivot => // pivot without explicit aggregations
         selectWithIndentAndParenIfNecessary(
-          s"pivot ${printRelation(p.child, parents)(using sqlContext.enterFrom)}\n  on ${printPivotOnExpr(p)}"
+          s"pivot ${printRelation(p.child, remainingParents)(using sqlContext.enterFrom)}\n  on ${printPivotOnExpr(p)}"
         )
       case d: Debug =>
         // Skip debug expression
-        printRelation(d.inputRelation, d :: parents)
+        printRelation(d.inputRelation, d :: remainingParents)
       case d: Dedup =>
         selectWithIndentAndParenIfNecessary(
-          s"""select distinct * from ${printRelation(d.child, d :: parents)(using
+          s"""select distinct * from ${printRelation(d.child, d :: remainingParents)(using
               sqlContext.enterFrom
             )}"""
         )
       case s: Sample =>
-        val child = printRelation(s.child, s :: parents)(using sqlContext.enterFrom)
+        val child = printRelation(s.child, s :: remainingParents)(using sqlContext.enterFrom)
         val body: String =
           dbType match
             case DBType.DuckDB =>
@@ -234,7 +243,7 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
             case t: TableRef =>
               s"${t.name.fullName} as ${tableAlias}"
             case t: TableFunctionCall =>
-              s"${printRelation(t, t :: parents)(using sqlContext)} as ${tableAlias}"
+              s"${printRelation(t, t :: remainingParents)(using sqlContext)} as ${tableAlias}"
             case v: Values if sqlContext.nestingLevel == 0 =>
               selectAllWithIndent(s"${printValues(v)} as ${tableAlias}")
             case v: Values if sqlContext.nestingLevel > 0 && !sqlContext.withinJoin =>
@@ -245,11 +254,11 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
               s"${selectWithIndentAndParenIfNecessary(s"select * from ${printValues(v)} as ${tableAlias}")} as ${a.alias.fullName}"
             case _ =>
               indent(
-                s"${printRelation(a.inputRelation, parents)(using sqlContext.nested)} as ${tableAlias}"
+                s"${printRelation(a.inputRelation, remainingParents)(using sqlContext.nested)} as ${tableAlias}"
               )
         sql
       case p: BracedRelation =>
-        def inner = printRelation(p.child, p :: parents)(using sqlContext.nested)
+        def inner = printRelation(p.child, p :: remainingParents)(using sqlContext.nested)
         p.child match
           case v: Values =>
             // No need to wrap values query
@@ -259,7 +268,7 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
           case _ =>
             selectWithIndentAndParenIfNecessary(inner)
       case t: TestRelation =>
-        printRelation(t.inputRelation, t :: parents)(using sqlContext)
+        printRelation(t.inputRelation, remainingParents)(using sqlContext)
       case q: WithQuery =>
         val subQueries = q
           .withStatements
@@ -267,7 +276,7 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
             val subQuery = printRelation(w.child, Nil)(using sqlContext)
             s"${printExpression(w.alias)} as (\n${subQuery}\n)"
           }
-        val body     = printRelation(q.child, parents)(using sqlContext)
+        val body     = printRelation(q.child, remainingParents)(using sqlContext)
         val withStmt = subQueries.mkString("with ", ", ", "")
         s"""${withStmt}
            |${body}
@@ -280,7 +289,7 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
           }
         selectWithIndentAndParenIfNecessary(
           s"""select *, ${newColumns
-              .mkString(", ")} from ${printRelation(a.inputRelation, a :: parents)(using
+              .mkString(", ")} from ${printRelation(a.inputRelation, a :: remainingParents)(using
               sqlContext.enterFrom
             )}"""
         )
@@ -290,7 +299,7 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
               .relationType
               .fields
               .map(_.toSQLAttributeName)
-              .mkString(", ")} from ${printRelation(d.inputRelation, d :: parents)(using
+              .mkString(", ")} from ${printRelation(d.inputRelation, d :: remainingParents)(using
               sqlContext.enterFrom
             )}"""
         )
@@ -308,7 +317,7 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
           }
         selectWithIndentAndParenIfNecessary(
           s"""select ${newColumns
-              .mkString(", ")} from ${printRelation(r.inputRelation, r :: parents)(using
+              .mkString(", ")} from ${printRelation(r.inputRelation, r :: remainingParents)(using
               sqlContext.enterFrom
             )}"""
         )
@@ -318,13 +327,13 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
               .relationType
               .fields
               .map(_.toSQLAttributeName)
-              .mkString(", ")} from ${printRelation(s.inputRelation, s :: parents)(using
+              .mkString(", ")} from ${printRelation(s.inputRelation, s :: remainingParents)(using
               sqlContext.enterFrom
             )}"""
         )
       case f: FilteringRelation =>
         // Sort, Offset, Limit, Filter, Distinct, etc.
-        printRelation(f.child, f :: parents)
+        printRelation(f.child, f :: remainingParents)
       case t: TableRef =>
         selectAllWithIndent(s"${t.name.fullName}")
       case t: TableFunctionCall =>
@@ -341,7 +350,7 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
       case v: Values =>
         printValues(v)
       case s: SelectAsAlias =>
-        printRelation(s.child, s :: parents)
+        printRelation(s.child, s :: remainingParents)
       case d: Describe =>
         // TODO: Compute schema only from local DataType information without using connectors
         // Trino doesn't support nesting describe statement, so we need to generate raw values as SQL
@@ -362,7 +371,7 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
       case r: RelationInspector =>
         // Skip relation inspector
         // TODO Dump output to the file logger
-        printRelation(r.child, r :: parents)
+        printRelation(r.child, r :: remainingParents)
       case s: Show if s.showType == ShowType.tables =>
         val sql  = s"select table_name as name from information_schema.tables"
         val cond = List.newBuilder[Expression]
@@ -477,9 +486,25 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
   private def printSelection(l: Selection, parents: List[Relation])(using
       sqlContext: SqlContext
   ): String =
+
+    var remainingParents = parents
+
+    def findParentFilters(lst: List[Relation]): List[Filter] =
+      lst match
+        case (f: Filter) :: tail =>
+          remainingParents = tail
+          f :: findParentFilters(tail)
+        case tail =>
+          Nil
+
+    val parentFilters: List[Filter] = findParentFilters(remainingParents)
+
     // pull-up filter nodes to build where clause
     // pull-up an Aggregate node to build group by clause
-    val agg = toSQLSelect(SQLSelect(l.child, l.selectItems.toList, Nil, Nil, Nil, l.span), l.child)
+    val agg = toSQLSelect(
+      SQLSelect(l.child, l.selectItems.toList, Nil, Nil, parentFilters, l.span),
+      l.child
+    )
     val hasDistinct =
       l match
         case d: Distinct =>
@@ -525,13 +550,15 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
         case other =>
           other
 
-    val remainingParents = processSortAndLimit(parents)
-    val body             = selectWithIndentAndParenIfNecessary(s"${s.result().mkString("\n")}")
+    remainingParents = processSortAndLimit(remainingParents)
+    val body = selectWithIndentAndParenIfNecessary(s"${s.result().mkString("\n")}")
 
     if remainingParents.isEmpty then
       body
     else
-      warn(s"Unprocessed parents: ${remainingParents}")
+      warn(
+        s"Unprocessed parents:\n${remainingParents.mkString(" - ", "\n - ", "")} (${ctx.compilationUnit.sourceFile.fileName})"
+      )
       body
 
   end printSelection
@@ -556,7 +583,7 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
           case a: GroupBy =>
             agg.copy(child = a.child, groupingKeys = a.groupingKeys, having = filters)
           case other =>
-            agg.copy(child = other, filters = filters)
+            agg.copy(child = other, filters = agg.filters ++ filters)
       case p: Project =>
         agg
       case a: Agg =>
@@ -565,7 +592,7 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
         agg
       case a: GroupBy =>
         val (filters, lastNode) = collectFilter(a.child)
-        agg.copy(child = a.child, groupingKeys = a.groupingKeys, filters = filters)
+        agg.copy(child = a.child, groupingKeys = a.groupingKeys, filters = agg.filters ++ filters)
       case _ =>
         agg
   end toSQLSelect
@@ -640,7 +667,7 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
         val w    = f.window.map(x => printExpression(x))
         val stem = s"${base}(${args})"
         if w.isDefined then
-          s"${stem} ${w}"
+          s"${stem} ${w.get}"
         else
           stem
       case w: WindowApply =>
@@ -809,6 +836,8 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
         s"${printExpression(b.e)} not between ${printExpression(b.a)} and ${printExpression(b.b)}"
       case c: Cast =>
         s"cast(${printExpression(c.child)} as ${c.dataType.typeName})"
+      case n: NativeExpression =>
+        printExpression(ExpressionEvaluator.eval(n))
       case other =>
         warn(s"unknown expression type: ${other}")
         other.toString

@@ -154,7 +154,7 @@ class QueryExecutor(
           // Command produces no QueryResult other than errors
           report(executeCommand(e))
         case ExecuteValDef(v) =>
-          val expr = ExpressionEvaluator.eval(v.expr, context)
+          val expr = ExpressionEvaluator.eval(v.expr)(using context)
           v.symbol.symbolInfo = ValSymbolInfo(context.owner, v.symbol, v.name, expr.dataType, expr)
           context.enter(v.symbol)
           QueryResult.empty
