@@ -312,9 +312,12 @@ case class Transform(child: Relation, transformItems: Seq[Attribute], span: Span
 
 case class AddColumnsToRelation(child: Relation, newColumns: Seq[Attribute], span: Span)
     extends UnaryRelation
-    with GeneralSelection
+    with Selection
     with LogSupport:
   override def toString: String = s"Add[${newColumns.mkString(", ")}](${child})"
+
+  override def selectItems: Seq[Attribute] =
+    Seq(AllColumns(Wildcard(NoSpan), None, NoSpan)) ++ newColumns
 
   override lazy val relationType: RelationType =
     val cols = Seq.newBuilder[NamedType]
@@ -331,28 +334,29 @@ case class AddColumnsToRelation(child: Relation, newColumns: Seq[Attribute], spa
     pt
 
 case class ExcludeColumnsFromRelation(child: Relation, columnNames: Seq[NameExpr], span: Span)
-    extends UnaryRelation
+    extends Selection
     with LogSupport:
   override def toString: String = s"Drop[${columnNames.mkString(", ")}](${child})"
 
+  private def outputColumns: Seq[NamedType] = inputRelationType
+    .fields
+    .filterNot(f => columnNames.exists(_.leafName == f.name.name))
+
+  override def selectItems: Seq[Attribute] = outputColumns.map { c =>
+    val name = NameExpr.fromString(c.toSQLAttributeName, span)
+    SingleColumn(NameExpr.EmptyName, name, span)
+  }
+
   override lazy val relationType: RelationType =
-    val newColumns = Seq.newBuilder[NamedType]
-    // Detect newly added columns
-    newColumns ++=
-      inputRelationType
-        .fields
-        .filterNot { x =>
-          columnNames.exists(_.leafName == x.name.name)
-        }
     val pt = ProjectedType(
       Name.typeName(RelationType.newRelationTypeName),
-      newColumns.result(),
+      outputColumns,
       child.relationType
     )
     pt
 
 case class RenameColumnsFromRelation(child: Relation, columnAliases: Seq[Alias], span: Span)
-    extends UnaryRelation
+    extends Selection
     with LogSupport:
   override def toString: String = s"Rename[${columnAliases.mkString(", ")}](${child})"
 
@@ -367,6 +371,20 @@ case class RenameColumnsFromRelation(child: Relation, columnAliases: Seq[Alias],
           case _ =>
       }
     renamedColumns.result()
+
+  override def selectItems: Seq[Attribute] = inputRelationType
+    .fields
+    .map { f =>
+      columnMapping.get(f.name) match
+        case Some(a) =>
+          SingleColumn(
+            NameExpr.fromString(a.toSQLAttributeName, span),
+            NameExpr.fromString(f.toSQLAttributeName, span),
+            span
+          )
+        case None =>
+          SingleColumn(NameExpr.EmptyName, NameExpr.fromString(f.toSQLAttributeName, span), span)
+    }
 
   override lazy val relationType: RelationType =
     val newColumns = Seq.newBuilder[NamedType]
@@ -395,10 +413,15 @@ case class ShiftColumns(
     isLeftShift: Boolean,
     shiftItems: Seq[NameExpr],
     span: Span
-) extends UnaryRelation:
+) extends Selection:
   override def toString: String = s"Shift[${shiftItems.mkString(", ")}](${child})"
 
-  override lazy val relationType: RelationType =
+  override def selectItems: Seq[Attribute] = outputColumns.map { c =>
+    val name = NameExpr.fromString(c.toSQLAttributeName, span)
+    SingleColumn(NameExpr.EmptyName, name, span)
+  }
+
+  private def outputColumns: List[NamedType] =
     var inputFields: ListMap[String, NamedType] = inputRelationType
       .fields
       .map { f =>
@@ -412,19 +435,21 @@ case class ShiftColumns(
           preferredColumns += f
           inputFields -= si.leafName
         case None =>
-        // skip
+      // skip
     }
     val remainingColumns = inputFields.values.toList
-    ProjectedType(
-      Name.typeName(RelationType.newRelationTypeName),
-      // Shift column positions
-      if isLeftShift then
-        preferredColumns.result() ++ remainingColumns
-      else
-        remainingColumns ++ preferredColumns.result()
-      ,
-      child.relationType
-    )
+
+    // Shift column positions
+    if isLeftShift then
+      preferredColumns.result() ++ remainingColumns
+    else
+      remainingColumns ++ preferredColumns.result()
+
+  override lazy val relationType: RelationType = ProjectedType(
+    Name.typeName(RelationType.newRelationTypeName),
+    outputColumns,
+    child.relationType
+  )
 
 end ShiftColumns
 

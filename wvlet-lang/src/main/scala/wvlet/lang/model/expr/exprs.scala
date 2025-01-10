@@ -82,8 +82,8 @@ sealed trait NameExpr extends Expression:
       s""""${s}""""
 
 object NameExpr:
-  val EmptyName: Identifier           = UnquotedIdentifier("<empty>", NoSpan)
-  def fromString(s: String): NameExpr = UnquotedIdentifier(s, NoSpan)
+  val EmptyName: Identifier                                = UnquotedIdentifier("<empty>", NoSpan)
+  def fromString(s: String, span: Span = NoSpan): NameExpr = UnquotedIdentifier(s, span)
 
   private val sqlKeywords = Set(
     // TODO enumerate more SQL keywords
