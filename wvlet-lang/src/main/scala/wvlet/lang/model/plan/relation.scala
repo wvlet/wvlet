@@ -735,7 +735,7 @@ case class Except(left: Relation, right: Relation, isDistinct: Boolean, span: Sp
 case class Union(left: Relation, right: Relation, isDistinct: Boolean, span: Span)
     extends SetOperation:
   override def toSQLOp: String =
-    s"except${
+    s"union${
         if isDistinct then
           ""
         else

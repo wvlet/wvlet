@@ -39,6 +39,10 @@ class DBConnectorProvider(workEnv: WorkEnv) extends LogSupport with AutoCloseabl
             prepareTPCH = (profile.properties ++ properties)
               .getOrElse("prepareTPCH", "false")
               .toString
+              .toBoolean,
+            prepareTPCDS = (profile.properties ++ properties)
+              .getOrElse("prepareTPCDS", "false")
+              .toString
               .toBoolean
           )
         case DBType.Generic =>
@@ -48,6 +52,7 @@ class DBConnectorProvider(workEnv: WorkEnv) extends LogSupport with AutoCloseabl
             s"Connector for -t ${other.toString.toLowerCase} option is not implemented. Using GenericConnector for DuckDB as a fallback"
           )
           GenericConnector(workEnv)
+      end match
     end createConnector
 
     connectorCache.getOrElseUpdate(profile, createConnector)

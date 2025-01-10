@@ -31,7 +31,7 @@ import java.sql.{Connection, DriverManager, SQLException}
 import java.util.concurrent.atomic.AtomicBoolean
 import scala.util.{Try, Using}
 
-class DuckDBConnector(workEnv: WorkEnv, prepareTPCH: Boolean = false)
+class DuckDBConnector(workEnv: WorkEnv, prepareTPCH: Boolean = false, prepareTPCDS: Boolean = false)
     extends DBConnector(DuckDB, workEnv)
     with AutoCloseable
     with LogSupport:
@@ -49,6 +49,9 @@ class DuckDBConnector(workEnv: WorkEnv, prepareTPCH: Boolean = false)
     conn = newConnection
     if prepareTPCH then
       loadTPCH()
+    if prepareTPCDS then
+      loadTPCDS()
+
     initialized.set(true)
     logger.trace(s"Finished initializing DuckDB. ${ElapsedTime.nanosSince(nano)}")
   }
@@ -58,6 +61,12 @@ class DuckDBConnector(workEnv: WorkEnv, prepareTPCH: Boolean = false)
       stmt.execute("install tpch")
       stmt.execute("load tpch")
       stmt.execute("call dbgen(sf = 0.01)")
+
+  def loadTPCDS(): Unit =
+    Using.resource(conn.createStatement()): stmt =>
+      stmt.execute("install tpcds")
+      stmt.execute("load tpcds")
+      stmt.execute("call dsdgen(sf = 0.01)")
 
   override private[connector] def newConnection: DBConnection =
     // For in-memory DuckDB, the connection will be created only once
