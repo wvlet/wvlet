@@ -1277,7 +1277,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           l.value
         case ArithmeticUnaryExpr(sign, l: LongLiteral, _) =>
           sign match
-            case Sign.Positive =>
+            case Sign.Positive | Sign.NoSign =>
               l.value
             case Sign.Negative =>
               -l.value
@@ -2006,22 +2006,19 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
   end primaryExpressionRest
 
   def functionArgs(): List[FunctionArg] =
-    val args = List.newBuilder[FunctionArg]
-
-    def nextArg: Unit =
-      val t = scanner.lookAhead()
-      t.token match
-        case WvletToken.COMMA =>
-          consume(WvletToken.COMMA)
-          nextArg
-        case WvletToken.R_PAREN =>
+    val t = scanner.lookAhead()
+    t.token match
+      case WvletToken.R_PAREN =>
         // ok
-        case _ =>
-          args += functionArg()
-          nextArg
-
-    nextArg
-    args.result()
+        Nil
+      case _ =>
+        val arg = functionArg()
+        scanner.lookAhead().token match
+          case WvletToken.COMMA =>
+            consume(WvletToken.COMMA)
+            arg :: functionArgs()
+          case _ =>
+            List(arg)
 
   def functionArg(): FunctionArg =
     val t = scanner.lookAhead()
@@ -2034,16 +2031,16 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
               case WvletToken.EQ =>
                 consume(WvletToken.EQ)
                 val expr = expression()
-                FunctionArg(Some(Name.termName(i.leafName)), expr, spanFrom(t))
+                FunctionArg(Some(Name.termName(i.leafName)), expr, false, spanFrom(t))
               case _ =>
-                FunctionArg(None, nameOrArg, spanFrom(t))
+                FunctionArg(None, nameOrArg, false, spanFrom(t))
           case Eq(i: Identifier, v: Expression, span) =>
-            FunctionArg(Some(Name.termName(i.leafName)), v, spanFrom(t))
+            FunctionArg(Some(Name.termName(i.leafName)), v, false, spanFrom(t))
           case expr: Expression =>
-            FunctionArg(None, nameOrArg, spanFrom(t))
+            FunctionArg(None, nameOrArg, false, spanFrom(t))
       case _ =>
         val nameOrArg = expression()
-        FunctionArg(None, nameOrArg, spanFrom(t))
+        FunctionArg(None, nameOrArg, false, spanFrom(t))
 
   /**
     * qualifiedId := identifier ('.' identifier)*

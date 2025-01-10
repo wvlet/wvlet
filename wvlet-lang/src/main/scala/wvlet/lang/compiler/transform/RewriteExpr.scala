@@ -27,7 +27,10 @@ object RewriteExpr extends Phase("rewrite-expr"):
           if left.dataType == DataType.StringType =>
         FunctionApply(
           base = NameExpr.fromString("concat"),
-          args = List(FunctionArg(None, left, left.span), FunctionArg(None, right, left.span)),
+          args = List(
+            FunctionArg(None, left, false, left.span),
+            FunctionArg(None, right, false, left.span)
+          ),
           window = None,
           span = a.span
         )
@@ -47,8 +50,8 @@ object RewriteExpr extends Phase("rewrite-expr"):
           FunctionApply(
             base = NameExpr.fromString("concat"),
             args = List(
-              FunctionArg(None, quote(left), left.span),
-              FunctionArg(None, quote(right), right.span)
+              FunctionArg(None, quote(left), false, left.span),
+              FunctionArg(None, quote(right), false, right.span)
             ),
             window = None,
             span = s.span

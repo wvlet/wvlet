@@ -126,8 +126,8 @@ enum SqlToken(val tokenType: TokenType, val str: String):
 
   case ALL      extends SqlToken(Keyword, "all")
   case DISTINCT extends SqlToken(Keyword, "distinct")
-  case VALUE    extends SqlToken(Keyword, "value")
-  case VALUES   extends SqlToken(Keyword, "values")
+  // case VALUE    extends SqlToken(Keyword, "value")
+  case VALUES extends SqlToken(Keyword, "values")
 
   case CAST     extends SqlToken(Keyword, "cast")
   case TRY_CAST extends SqlToken(Keyword, "try_cast")
@@ -284,7 +284,7 @@ object SqlToken:
     SqlToken.ON
   )
 
-  val queryStartTokens = List(SqlToken.SELECT, SqlToken.WITH, SqlToken.VALUES, SqlToken.VALUE)
+  val queryStartTokens = List(SqlToken.SELECT, SqlToken.WITH, SqlToken.VALUES)
   val updateStartTokens = List(
     SqlToken.INSERT,
     SqlToken.UPSERT,

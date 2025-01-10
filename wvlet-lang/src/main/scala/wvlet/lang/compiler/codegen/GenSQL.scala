@@ -674,6 +674,18 @@ class GenSQL(ctx: Context) extends LogSupport:
             selectWithIndentAndParenIfNecessary(inner)
       case t: TestRelation =>
         printRelation(t.inputRelation)(using sqlContext)
+      case q: WithQuery =>
+        val subQueries = q
+          .withStatements
+          .map { w =>
+            val subQuery = printRelation(w.child)(using sqlContext)
+            s"${printExpression(w.alias)} as (\n${subQuery}\n)"
+          }
+        val body     = printRelation(q.child)(using sqlContext)
+        val withStmt = subQueries.mkString("with ", ", ", "")
+        s"""${withStmt}
+           |${body}
+           |""".stripMargin
       case q: Query =>
         printRelation(q.body)(using sqlContext)
       case l: Limit =>
@@ -939,7 +951,10 @@ class GenSQL(ctx: Context) extends LogSupport:
         Seq(s"${base}", window).mkString(" ")
       case f: FunctionArg =>
         // TODO handle arg name mapping
-        printExpression(f.value)
+        if f.isDistinct then
+          s"distinct ${printExpression(f.value)}"
+        else
+          printExpression(f.value)
       case w: Window =>
         val s = Seq.newBuilder[String]
         if w.partitionBy.nonEmpty then
@@ -1082,6 +1097,10 @@ class GenSQL(ctx: Context) extends LogSupport:
             val keys   = ArrayConstructor(m.entries.map(_.key), m.span)
             val values = ArrayConstructor(m.entries.map(_.value), m.span)
             s"MAP(${printExpression(keys)}, ${printExpression(values)})"
+      case b: Between =>
+        s"${printExpression(b.e)} between ${printExpression(b.a)} and ${printExpression(b.b)}"
+      case b: NotBetween =>
+        s"${printExpression(b.e)} not between ${printExpression(b.a)} and ${printExpression(b.b)}"
       case other =>
         warn(s"unknown expression type: ${other}")
         other.toString
