@@ -391,22 +391,25 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         consume(SqlToken.L_PAREN)
         val subQuery = query()
         consume(SqlToken.R_PAREN)
-        tableRest(subQuery)
+        queryRest(subQuery)
       case _ =>
         unexpected(t)
 
   def selectItems(): List[Attribute] =
     val t = scanner.lookAhead()
     t.token match
-      case SqlToken.COMMA =>
-        consume(SqlToken.COMMA)
-        selectItems()
       case token if token.isQueryDelimiter =>
         Nil
       case t if t.tokenType == TokenType.Keyword && !SqlToken.literalStartKeywords.contains(t) =>
         Nil
       case _ =>
-        selectItem() :: selectItems()
+        val item = selectItem()
+        scanner.lookAhead().token match
+          case SqlToken.COMMA =>
+            consume(SqlToken.COMMA)
+            item :: selectItems()
+          case _ =>
+            List(item)
     end match
 
   end selectItems
