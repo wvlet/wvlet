@@ -939,7 +939,10 @@ class GenSQL(ctx: Context) extends LogSupport:
         Seq(s"${base}", window).mkString(" ")
       case f: FunctionArg =>
         // TODO handle arg name mapping
-        printExpression(f.value)
+        if f.isDistinct then
+          s"distinct ${printExpression(f.value)}"
+        else
+          printExpression(f.value)
       case w: Window =>
         val s = Seq.newBuilder[String]
         if w.partitionBy.nonEmpty then

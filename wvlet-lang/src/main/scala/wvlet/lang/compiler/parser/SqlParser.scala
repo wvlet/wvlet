@@ -817,26 +817,26 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     rest()
 
   def functionArgs(): List[FunctionArg] =
-    val args = List.newBuilder[FunctionArg]
-
-    def nextArg: Unit =
-      val t = scanner.lookAhead()
-      t.token match
-        case SqlToken.COMMA =>
-          consume(SqlToken.COMMA)
-          nextArg
-        case SqlToken.R_PAREN =>
+    val t = scanner.lookAhead()
+    t.token match
+      case SqlToken.R_PAREN =>
         // ok
-        case _ =>
-          args += functionArg()
-          nextArg
-
-    nextArg
-    args.result()
+        Nil
+      case _ =>
+        val arg = functionArg()
+        scanner.lookAhead().token match
+          case SqlToken.COMMA =>
+            arg :: functionArgs()
+          case _ =>
+            List(arg)
 
   def functionArg(): FunctionArg =
     val t = scanner.lookAhead()
     scanner.lookAhead().token match
+      case SqlToken.DISTINCT =>
+        consume(SqlToken.DISTINCT)
+        val expr = expression()
+        FunctionArg(None, expr, true, spanFrom(t))
       case id if id.isIdentifier =>
         val nameOrArg = expression()
         nameOrArg match
@@ -845,16 +845,16 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
               case SqlToken.EQ =>
                 consume(SqlToken.EQ)
                 val expr = expression()
-                FunctionArg(Some(Name.termName(i.leafName)), expr, spanFrom(t))
+                FunctionArg(Some(Name.termName(i.leafName)), expr, false, spanFrom(t))
               case _ =>
-                FunctionArg(None, nameOrArg, spanFrom(t))
+                FunctionArg(None, nameOrArg, false, spanFrom(t))
           case Eq(i: Identifier, v: Expression, span) =>
-            FunctionArg(Some(Name.termName(i.leafName)), v, spanFrom(t))
+            FunctionArg(Some(Name.termName(i.leafName)), v, false, spanFrom(t))
           case expr: Expression =>
-            FunctionArg(None, nameOrArg, spanFrom(t))
+            FunctionArg(None, nameOrArg, false, spanFrom(t))
       case _ =>
         val nameOrArg = expression()
-        FunctionArg(None, nameOrArg, spanFrom(t))
+        FunctionArg(None, nameOrArg, false, spanFrom(t))
 
   def primaryExpression(): Expression =
     def primaryExpressionRest(expr: Expression): Expression =

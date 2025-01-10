@@ -315,7 +315,8 @@ case class WindowApply(base: Expression, window: Window, span: Span) extends Exp
   override def children: Seq[Expression] = Seq(base, window)
   override def dataType: DataType        = base.dataType
 
-case class FunctionArg(name: Option[TermName], value: Expression, span: Span) extends Expression:
+case class FunctionArg(name: Option[TermName], value: Expression, isDistinct: Boolean, span: Span)
+    extends Expression:
   override def children: Seq[Expression] = Seq(value)
   override def dataType: DataType        = value.dataType
 
