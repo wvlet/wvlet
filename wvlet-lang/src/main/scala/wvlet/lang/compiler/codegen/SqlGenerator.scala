@@ -112,6 +112,8 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
       case q: Query =>
         // Query is just an wrapper of Relation, so no need to push it in the stack
         printRelation(q.body, remainingParents)
+      case g: GroupBy =>
+        printGroupBy(g, remainingParents)
       case a: Agg if a.child.isPivot =>
         // pivot + agg combination
         val p: Pivot = a.child.asInstanceOf[Pivot]
@@ -446,9 +448,6 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
           Nil
     val inputRelation =
       r match
-        case g: GroupBy =>
-          // In Wvlet, GroupBy can be used without Selection
-          g
         case s: Selection =>
           s.child
         case _ =>
@@ -557,38 +556,44 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
         agg
   end toSQLSelect
 
-//    // Aggregation without any projection (select)
-//    val agg = toSQLSelect(SQLSelect(a.child, Nil, a.groupingKeys, Nil, Nil, a.span), a.child)
-//    val s   = Seq.newBuilder[String]
-//    val selectItems = Seq.newBuilder[String]
-//    selectItems ++=
-//      agg
-//        .groupingKeys
-//        .map { x =>
-//          val key = printExpression(x)
-//          s"""${key} as "${key}""""
-//        }
-//    selectItems ++=
-//      a.inputRelationType
-//        .fields
-//        .map { f =>
-//          // TODO: This should generate a nested relation, but use arbitrary(expr) for efficiency
-//          val expr = s"arbitrary(${f.toSQLAttributeName})"
-//          dbType match
-//            case DBType.DuckDB =>
-//              // DuckDB generates human-friendly column name
-//              expr
-//            case _ =>
-//              s"""${expr} as "${expr}""""
-//        }
-//    s += s"select ${selectItems.result().mkString(", ")}"
-//    s += s"from ${printRelation(agg.child, Nil)(using sqlContext.enterFrom)}"
-//    if agg.filters.nonEmpty then
-//      val cond = printExpression(Expression.concatWithAnd(agg.filters.map(_.filterExpr)))
-//      s += s"where ${cond}"
-//    s += s"group by ${agg.groupingKeys.map(x => printExpression(x)).mkString(", ")}"
-//    s.result().mkString("\n")
-//  end printAggregate
+  private def printGroupBy(g: GroupBy, parents: List[Relation])(using
+      sqlContext: SqlContext
+  ): String =
+    // Aggregation without any projection (select)
+    val selectItems = List.newBuilder[Attribute]
+    selectItems ++=
+      g.groupingKeys
+        .map { k =>
+          val keyName = printExpression(k)
+          SingleColumn(NameExpr.fromString(keyName), k.name, NoSpan)
+        }
+    selectItems ++=
+      g.inputRelationType
+        .fields
+        .map { f =>
+          // Use arbitrary(expr) for efficiency
+          val expr: Expression = FunctionApply(
+            NameExpr.fromString("arbitrary"),
+            args = List(
+              FunctionArg(None, NameExpr.fromString(f.toSQLAttributeName), false, NoSpan)
+            ),
+            None,
+            NoSpan
+          )
+          val name: NameExpr =
+            dbType match
+              case DBType.DuckDB =>
+                // DuckDB generates human-friendly column name
+                NameExpr.EmptyName
+              case _ =>
+                val exprStr = printExpression(expr)
+                NameExpr.fromString(exprStr)
+          SingleColumn(name, expr, NoSpan)
+        }
+
+    val agg = Agg(g, selectItems.result(), g.span)
+    printRelation(agg, parents)
+  end printGroupBy
 
   private def printValues(values: Values)(using sqlContext: SqlContext): String =
     val rows = values

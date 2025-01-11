@@ -459,15 +459,20 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         val items      = selectItems()
         var r          = fromClause()
         r = whereClause(r)
-        val g          = groupBy(r)
-        val hasGroupBy = r ne g
-        r = g
+        val g = groupBy(r)
+        r = having(g)
 
         r =
-          if hasGroupBy then
-            Agg(r, items, spanFrom(t))
-          else
-            Project(r, items, spanFrom(t))
+          g match
+            case g: GroupBy =>
+              val keyAttrs = g
+                .groupingKeys
+                .map { k =>
+                  SingleColumn(NameExpr.EmptyName, k.name, k.span)
+                }
+              Agg(r, keyAttrs ++ items, spanFrom(t))
+            case _ =>
+              Project(r, items, spanFrom(t))
         r = orderBy(r)
         r = limit(r)
         r = offset(r)
@@ -535,8 +540,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         consume(SqlToken.GROUP)
         consume(SqlToken.BY)
         val items = groupByItemList()
-        val g     = GroupBy(input, items, spanFrom(t))
-        having(g)
+        GroupBy(input, items, spanFrom(t))
       case _ =>
         input
 

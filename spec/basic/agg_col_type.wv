@@ -3,3 +3,7 @@ group by author
 agg
   title.max_by(year).trim as latest_title
 
+test _.columns = [
+  'author',
+  'latest_title'
+]

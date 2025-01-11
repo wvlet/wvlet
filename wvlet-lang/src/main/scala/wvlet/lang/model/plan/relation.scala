@@ -260,6 +260,9 @@ case class EmptyRelation(span: Span) extends Relation with LeafPlan:
 
 // This node can be a pivot node for generating a SELECT statement
 sealed trait Selection extends GeneralSelection:
+  /**
+    * Attributes corresponding to SELECT items
+    */
   def selectItems: Seq[Attribute]
 
 // This node can be a pivot node for generating a SELECT statement with aggregation functions
