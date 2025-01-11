@@ -24,7 +24,7 @@ object SqlGenerator:
     def enterExpression: SqlContext = InExpression(nestingLevel + 1)
 
     def isNested: Boolean             = nestingLevel > 0
-    def needsToWrapWithParen: Boolean = nestingLevel == 0 || !withinExpression
+    def needsToWrapWithParen: Boolean = nestingLevel > 0 || withinExpression
 
     def withinJoin: Boolean =
       this match
@@ -91,7 +91,7 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
     def iter(plan: LogicalPlan): String =
       plan match
         case r: Relation =>
-          printRelation(r, Nil)(using SqlGenerator.Indented(0))
+          printQuery(r, Nil)(using SqlGenerator.Indented(0))
         case p: PackageDef =>
           p.statements.map(stmt => iter(stmt)).mkString(";\n\n")
         case other =>
@@ -125,22 +125,40 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
     else
       s.split("\n").map(x => s"  ${x}").mkString("\n", "\n", "")
 
-  private def hasSelection(r: Relation): Boolean =
+  private def hasSelection(r: Relation, nestingLevel: Int = 0): Boolean =
     r match
       case s: Selection =>
         true
+      case g: GroupBy =>
+        // Wvlet allows GroupBy without any projection (select)
+        true
+      case r: RawSQL =>
+        true
+      case s: SetOperation =>
+        // The left operand of set operation will be a selection
+        true
+      case j: Join if nestingLevel > 0 =>
+        // The left operand of join will be a selection
+        true
       case r: UnaryRelation =>
-        hasSelection(r.child)
+        hasSelection(r.child, nestingLevel + 1)
       case _ =>
         false
 
-  private def addProjectionIfMissing(r: Relation): Relation =
+  private def addProjectionIfMissing(r: Relation)(using sqlContext: SqlContext) =
     if !hasSelection(r) then
       Project(r, Seq(SingleColumn(EmptyName, Wildcard(NoSpan), NoSpan)), NoSpan)
     else
       r
 
-  private def printSubQuery(r: Relation, remainingParents: List[Relation])(using
+  /**
+    * Print a query matching with SELECT statement in SQL
+    * @param r
+    * @param remainingParents
+    * @param sqlContext
+    * @return
+    */
+  private def printQuery(r: Relation, remainingParents: List[Relation])(using
       sqlContext: SqlContext
   ): String =
     val p = addProjectionIfMissing(r)
@@ -161,8 +179,9 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
 
     r match
       case q: Query =>
-        printSubQuery(q.body, remainingParents)
+        printQuery(q.body, remainingParents)
       case g: GroupBy =>
+        // If there has been no Projection or Agg before GroupBy, it reaches here
         printGroupBy(g, remainingParents)
       case a: Agg if a.child.isPivot =>
         // pivot + agg combination
@@ -195,7 +214,7 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
           else
             ""
 
-        val l = printRelation(j.left, Nil)(using sqlContext.enterJoin)
+        val l = printRelation(j.left, remainingParents)(using sqlContext.enterJoin)
         val r = printRelation(j.right, Nil)(using sqlContext.enterJoin)
         val c =
           j.cond match
@@ -224,15 +243,18 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
             case ImplicitJoin =>
               s"${l}, ${r}${c}"
 
-        if sqlContext.nestingLevel == 0 then
-          // Need a top-level select statement for (left) join (right)
-          indent(s"select * from ${joinSQL}")
-        else
-          joinSQL
+        joinSQL
       case s: SetOperation =>
-        val rels = s.children.map(x => printRelation(x, Nil)(using sqlContext))
-        val op   = s.toSQLOp
-        val sql  = rels.mkString(s"\n${op}\n")
+        val rels: List[String] =
+          s.children.toList match
+            case Nil =>
+              Nil
+            case head :: tail =>
+              val hd = printQuery(head, remainingParents)(using sqlContext)
+              val tl = tail.map(x => printQuery(x, Nil)(using sqlContext))
+              hd :: tl
+        val op  = s.toSQLOp
+        val sql = rels.mkString(s"\n${op}\n")
         selectWithIndentAndParenIfNecessary(sql)
       case p: Pivot => // pivot without explicit aggregations
         selectWithIndentAndParenIfNecessary(
@@ -282,19 +304,17 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
         a.child match
           case t: TableInput =>
             s"${printExpression(t.sqlExpr)} as ${tableAlias}"
-          case v: Values if sqlContext.nestingLevel == 0 =>
-            selectAllWithIndent(s"${printValues(v)} as ${tableAlias}")
-          case v: Values if sqlContext.nestingLevel > 0 && !sqlContext.withinJoin =>
-            selectWithIndentAndParenIfNecessary(s"select * from ${printValues(v)} as ${tableAlias}")
-          case v: Values if sqlContext.nestingLevel > 0 && sqlContext.withinJoin =>
-            // For joins, expose table column aliases to the outer scope
-            s"${selectWithIndentAndParenIfNecessary(s"select * from ${printValues(v)} as ${tableAlias}")} as ${a.alias.fullName}"
+          case v: Values =>
+            s"${printValues(v)} as ${tableAlias}"
+//          case v: Values if sqlContext.nestingLevel > 0 && sqlContext.withinJoin =>
+//            // For joins, expose table column aliases to the outer scope
+//            s"${selectWithIndentAndParenIfNecessary(s"select * from ${printValues(v)} as ${tableAlias}")} as ${a.alias.fullName}"
           case _ =>
             indent(
               s"${printRelation(a.child, remainingParents)(using sqlContext.nested)} as ${tableAlias}"
             )
       case p: BracedRelation =>
-        def inner = printRelation(p.child, remainingParents)(using sqlContext.nested)
+        def inner = printRelation(p.child, Nil)
         p.child match
           case v: Values =>
             // No need to wrap values query
@@ -302,7 +322,8 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
           case AliasedRelation(v: Values, _, _, _) =>
             inner
           case _ =>
-            selectWithIndentAndParenIfNecessary(inner)
+            val body = printQuery(p.child, Nil)(using sqlContext.nested)
+            selectWithIndentAndParenIfNecessary(body)
       case t: TestRelation =>
         printRelation(t.inputRelation, remainingParents)(using sqlContext)
       case q: WithQuery =>
@@ -751,7 +772,7 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
           }
           .mkString
       case s: SubQueryExpression =>
-        val sql = s"(${printSubQuery(s.query, Nil)(using sqlContext.enterExpression)})"
+        val sql = s"(${printQuery(s.query, Nil)(using sqlContext.enterExpression)})"
         sql
       case i: IfExpr =>
         s"if(${printExpression(i.cond)}, ${printExpression(i.onTrue)}, ${printExpression(i.onFalse)})"

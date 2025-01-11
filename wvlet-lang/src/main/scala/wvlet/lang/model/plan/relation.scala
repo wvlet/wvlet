@@ -217,7 +217,7 @@ case class JSONFileScan(path: String, schema: RelationType, columns: Seq[NamedTy
 
 case class ParquetFileScan(path: String, schema: RelationType, columns: Seq[NamedType], span: Span)
     extends TableInput:
-  override def sqlExpr: Expression = NameExpr.fromString(path)
+  override def sqlExpr: Expression = SingleQuotedIdentifier(path, span)
   override def relationType: RelationType =
     if columns.isEmpty then
       schema
