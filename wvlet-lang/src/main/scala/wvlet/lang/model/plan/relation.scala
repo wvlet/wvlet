@@ -65,6 +65,9 @@ trait Relation extends LogicalPlan:
       case _ =>
         false
 
+  def isLeaf: Boolean =
+    children.isEmpty
+
 // A relation that takes a single input relation
 trait UnaryRelation extends Relation with UnaryPlan:
   def inputRelation: Relation                  = child
@@ -471,29 +474,9 @@ end ShiftColumns
   * @param having
   * @param nodeLocation
   */
-case class GroupBy(child: Relation, groupingKeys: List[GroupingKey], span: Span) extends Selection:
+case class GroupBy(child: Relation, groupingKeys: List[GroupingKey], span: Span)
+    extends UnaryRelation:
   override def toString: String = s"GroupBy[${groupingKeys.mkString(",")}](${child})"
-
-  override def selectItems: Seq[Attribute] =
-    val keys: List[Attribute] = groupingKeys.map { k =>
-      SingleColumn(EmptyName, k, k.span)
-    }
-    val others: List[Attribute] =
-      inputRelationType
-        .fields
-        .map { f =>
-          val anyValue = FunctionApply(
-            NameExpr.fromString("arbitrary"),
-            args = List(
-              FunctionArg(None, NameExpr.fromString(f.toSQLAttributeName), false, NoSpan)
-            ),
-            None,
-            NoSpan
-          )
-          SingleColumn(NameExpr.fromString(f.toSQLAttributeName), anyValue, NoSpan)
-        }
-        .toList
-    keys ++ others
 
   override lazy val relationType: RelationType = AggregationType(
     Name.typeName(RelationType.newRelationTypeName),

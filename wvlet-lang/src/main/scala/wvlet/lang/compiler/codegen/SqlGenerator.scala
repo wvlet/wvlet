@@ -7,6 +7,7 @@ import wvlet.lang.compiler.transform.ExpressionEvaluator
 import wvlet.lang.compiler.{Context, DBType, ModelSymbolInfo, SQLDialect}
 import wvlet.lang.model.DataType
 import wvlet.lang.model.expr.*
+import wvlet.lang.model.expr.NameExpr.EmptyName
 import wvlet.lang.model.plan.JoinType.*
 import wvlet.lang.model.plan.*
 import wvlet.lang.model.plan.SamplingSize.{Percentage, Rows}
@@ -96,6 +97,25 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
     else
       s.split("\n").map(x => s"  ${x}").mkString("\n", "\n", "")
 
+  private def hasSelection(r: Relation): Boolean =
+    r match
+      case s: Selection =>
+        true
+      case r: UnaryRelation =>
+        hasSelection(r.child)
+      case _ =>
+        false
+
+  private def addProjectionIfMissing(r: Relation): Relation =
+    if r.isLeaf && !hasSelection(r) then
+      Project(r, Seq(SingleColumn(EmptyName, Wildcard(NoSpan), NoSpan)), NoSpan)
+    else
+      r
+
+  private def printSubQuery(r: Relation, remainingParents: List[Relation])(using
+      sqlContext: SqlContext
+  ): String = printRelation(addProjectionIfMissing(r), remainingParents)
+
   /**
     * Print Relation nodes while tracking the parent nodes (e.g., filter, sort) for merging them
     * later into a single SELECT statement.
@@ -108,10 +128,10 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
   def printRelation(r: Relation, remainingParents: List[Relation])(using
       sqlContext: SqlContext
   ): String =
+
     r match
       case q: Query =>
-        // Query is just an wrapper of Relation, so no need to push it in the stack
-        printRelation(q.body, remainingParents)
+        printSubQuery(q.body, remainingParents)
       case g: GroupBy =>
         printGroupBy(g, remainingParents)
       case a: Agg if a.child.isPivot =>
@@ -145,8 +165,8 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
           else
             ""
 
-        val l = printRelation(j.left, remainingParents)(using sqlContext.enterJoin)
-        val r = printRelation(j.right, Nil)(using sqlContext.enterJoin)
+        val l = printSubQuery(j.left, Nil)(using sqlContext.enterJoin)
+        val r = printSubQuery(j.right, Nil)(using sqlContext.enterJoin)
         val c =
           j.cond match
             case NoJoinCriteria =>
@@ -229,29 +249,23 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
             case None =>
               name
 
-        if sqlContext.withinFrom then
-          a.child match
-            case t: TableInput if remainingParents.isEmpty =>
-              s"${printExpression(t.sqlExpr)} as ${tableAlias}"
-            case _ =>
-              indent(
-                s"${printRelation(a.child, remainingParents)(using sqlContext.nested)} as ${tableAlias}"
-              )
-        else
-          a.child match
-            case v: Values if sqlContext.nestingLevel == 0 =>
-              selectAllWithIndent(s"${printValues(v)} as ${tableAlias}")
-            case v: Values if sqlContext.nestingLevel > 0 && !sqlContext.withinJoin =>
-              selectWithIndentAndParenIfNecessary(
-                s"select * from ${printValues(v)} as ${tableAlias}"
-              )
-            case v: Values if sqlContext.nestingLevel > 0 && sqlContext.withinJoin =>
-              // For joins, expose table column aliases to the outer scope
-              s"${selectWithIndentAndParenIfNecessary(s"select * from ${printValues(v)} as ${tableAlias}")} as ${a.alias.fullName}"
-            case _ =>
-              indent(
-                s"${printRelation(a.child, remainingParents)(using sqlContext.nested)} as ${tableAlias}"
-              )
+        val r = printSubQuery(a.child, remainingParents)(using sqlContext)
+        warn(r)
+
+        a.child match
+          case t: TableInput =>
+            s"${printExpression(t.sqlExpr)} as ${tableAlias}"
+          case v: Values if sqlContext.nestingLevel == 0 =>
+            selectAllWithIndent(s"${printValues(v)} as ${tableAlias}")
+          case v: Values if sqlContext.nestingLevel > 0 && !sqlContext.withinJoin =>
+            selectWithIndentAndParenIfNecessary(s"select * from ${printValues(v)} as ${tableAlias}")
+          case v: Values if sqlContext.nestingLevel > 0 && sqlContext.withinJoin =>
+            // For joins, expose table column aliases to the outer scope
+            s"${selectWithIndentAndParenIfNecessary(s"select * from ${printValues(v)} as ${tableAlias}")} as ${a.alias.fullName}"
+          case _ =>
+            indent(
+              s"${printRelation(a.child, remainingParents)(using sqlContext.nested)} as ${tableAlias}"
+            )
       case p: BracedRelation =>
         def inner = printRelation(p.child, remainingParents)(using sqlContext.nested)
         p.child match
@@ -280,7 +294,7 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
         // Sort, Offset, Limit, Filter, Distinct, etc.
         printRelation(f.child, f :: remainingParents)
       case t: TableInput =>
-        printAsSelect(t, remainingParents)
+        printExpression(t.sqlExpr)
       case v: Values =>
         printValues(v)
       case s: SelectAsAlias =>
@@ -581,7 +595,7 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
             dbType match
               case DBType.DuckDB =>
                 // DuckDB generates human-friendly column name
-                NameExpr.EmptyName
+                EmptyName
               case _ =>
                 val exprStr = printExpression(expr)
                 NameExpr.fromString(exprStr)
@@ -710,7 +724,7 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
           }
           .mkString
       case s: SubQueryExpression =>
-        val sql = s"(${printRelation(s.query, Nil)(using sqlContext.nested)})"
+        val sql = s"(${printSubQuery(s.query, Nil)(using sqlContext.nested)})"
         sql
       case i: IfExpr =>
         s"if(${printExpression(i.cond)}, ${printExpression(i.onTrue)}, ${printExpression(i.onFalse)})"
