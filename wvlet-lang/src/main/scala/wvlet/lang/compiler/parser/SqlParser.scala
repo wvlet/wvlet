@@ -366,8 +366,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       x match
         case f: FilteringRelation =>
           deleteExpr(f.child)
-        case TableRef(qname: QualifiedName, _) =>
-          Delete(filteredRelation, qname, spanFrom(t))
+        case r: TableRef =>
+          Delete(filteredRelation, r.name, spanFrom(t))
         case f: FileScan =>
           DeleteFromFile(filteredRelation, f.path, spanFrom(t))
         case other =>

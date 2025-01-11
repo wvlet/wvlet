@@ -65,8 +65,7 @@ trait Relation extends LogicalPlan:
       case _ =>
         false
 
-  def isLeaf: Boolean =
-    children.isEmpty
+  def isLeaf: Boolean = children.isEmpty
 
 // A relation that takes a single input relation
 trait UnaryRelation extends Relation with UnaryPlan:
@@ -174,13 +173,15 @@ case class Values(rows: Seq[Expression], span: Span) extends Relation with LeafP
 
 trait TableInput extends Relation with LeafPlan:
   def sqlExpr: Expression
+  // def alias: NameExpr
+  // def columnNames: Option[Seq[NamedType]]
 
 /**
   * Reference to a table structured data (tables or other query results)
   * @param name
   * @param nodeLocation
   */
-case class TableRef(name: NameExpr, span: Span) extends TableInput:
+case class TableRef(name: QualifiedName, span: Span) extends TableInput:
   override def sqlExpr: Expression        = name
   override def toString: String           = s"TableRef(${name})"
   override val relationType: RelationType = UnresolvedRelationType(name.fullName)

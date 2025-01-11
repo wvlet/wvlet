@@ -49,6 +49,9 @@ case class ParenthesizedExpression(child: Expression, span: Span) extends UnaryE
 case class TypedExpression(child: Expression, tpe: DataType, span: Span) extends UnaryExpression:
   override def dataType: DataType = tpe
 
+case class TableAlias(name: NameExpr, alias: NameExpr, span: Span) extends LeafExpression:
+  override def dataType: DataType = DataType.UnknownType
+
 /**
   * variable name, function name, type name, etc. The name might have a qualifier.
   */

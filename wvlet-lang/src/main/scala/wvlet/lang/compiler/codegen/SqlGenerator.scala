@@ -18,11 +18,13 @@ import scala.collection.immutable.ListMap
 object SqlGenerator:
   sealed trait SqlContext:
     def nestingLevel: Int
-    def nested: SqlContext    = Indented(nestingLevel + 1, parent = Some(this))
-    def enterFrom: SqlContext = InFromClause(nestingLevel + 1)
-    def enterJoin: SqlContext = InJoinClause(nestingLevel + 1)
+    def nested: SqlContext          = Indented(nestingLevel + 1, parent = Some(this))
+    def enterFrom: SqlContext       = InFromClause(nestingLevel + 1)
+    def enterJoin: SqlContext       = InJoinClause(nestingLevel + 1)
+    def enterExpression: SqlContext = InExpression(nestingLevel + 1)
 
-    def isNested: Boolean = nestingLevel > 0
+    def isNested: Boolean             = nestingLevel > 0
+    def needsToWrapWithParen: Boolean = nestingLevel == 0 || !withinExpression
 
     def withinJoin: Boolean =
       this match
@@ -42,9 +44,19 @@ object SqlGenerator:
         case _ =>
           false
 
+    def withinExpression: Boolean =
+      this match
+        case InExpression(_) =>
+          true
+        case _ =>
+          false
+
+  end SqlContext
+
   case class Indented(nestingLevel: Int, parent: Option[SqlContext] = None) extends SqlContext
   case class InFromClause(nestingLevel: Int)                                extends SqlContext
   case class InJoinClause(nestingLevel: Int)                                extends SqlContext
+  case class InExpression(nestingLevel: Int)                                extends SqlContext
 
   private val identifierPattern = "^[_a-zA-Z][_a-zA-Z0-9]*$".r
   private def doubleQuoteIfNecessary(s: String): String =
@@ -55,6 +67,22 @@ object SqlGenerator:
 
 end SqlGenerator
 
+/**
+  * SqlGenerator generates a SQL query from a given LogicalPlan for the target SQL engine.
+  *
+  * Algorithm:
+  *   - As Wvlet's LogicalPlan may not have SELECT node (e.g., Project), complement the missing
+  *     SELECT node (select *)
+  *   - Then recursively traverse and generate SQL strings by tracking the indentation level and SQL
+  *     syntax context in SqlContext
+  *   - As SQL requires to have a rigit structure of SELECT ... FROM .. WHERE .. GROUP BY ... HAVING
+  *     .. ORDER BY ... LIMIT, some we push some plan nodes to remainingParents stack
+  *   - When we find Selection node (Project, Agg, column-level operators), consolidate
+  *     remainingParents and child filters to form SQLSelect node.
+  *
+  * @param dbType
+  * @param ctx
+  */
 class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) extends LogSupport:
   import SqlGenerator.*
 
@@ -78,7 +106,7 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
   private def selectAllWithIndent(tableExpr: String)(using sqlContext: SqlContext): String =
     if sqlContext.withinFrom then
       s"${tableExpr}"
-    else if sqlContext.nestingLevel == 0 then
+    else if !sqlContext.needsToWrapWithParen then
       s"select * from ${tableExpr}"
     else
       indent(s"(select * from ${tableExpr})")
@@ -86,7 +114,7 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
   private def selectWithIndentAndParenIfNecessary(
       body: String
   )(using sqlContext: SqlContext): String =
-    if sqlContext.nestingLevel == 0 then
+    if !sqlContext.needsToWrapWithParen then
       body
     else
       indent(s"(${body})")
@@ -107,14 +135,16 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
         false
 
   private def addProjectionIfMissing(r: Relation): Relation =
-    if r.isLeaf && !hasSelection(r) then
+    if !hasSelection(r) then
       Project(r, Seq(SingleColumn(EmptyName, Wildcard(NoSpan), NoSpan)), NoSpan)
     else
       r
 
   private def printSubQuery(r: Relation, remainingParents: List[Relation])(using
       sqlContext: SqlContext
-  ): String = printRelation(addProjectionIfMissing(r), remainingParents)
+  ): String =
+    val p = addProjectionIfMissing(r)
+    printRelation(p, remainingParents)
 
   /**
     * Print Relation nodes while tracking the parent nodes (e.g., filter, sort) for merging them
@@ -165,8 +195,8 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
           else
             ""
 
-        val l = printSubQuery(j.left, Nil)(using sqlContext.enterJoin)
-        val r = printSubQuery(j.right, Nil)(using sqlContext.enterJoin)
+        val l = printRelation(j.left, Nil)(using sqlContext.enterJoin)
+        val r = printRelation(j.right, Nil)(using sqlContext.enterJoin)
         val c =
           j.cond match
             case NoJoinCriteria =>
@@ -248,9 +278,6 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
               s"${name}(${columns.map(x => s"${x.toSQLAttributeName}").mkString(", ")})"
             case None =>
               name
-
-        val r = printSubQuery(a.child, remainingParents)(using sqlContext)
-        warn(r)
 
         a.child match
           case t: TableInput =>
@@ -724,7 +751,7 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
           }
           .mkString
       case s: SubQueryExpression =>
-        val sql = s"(${printSubQuery(s.query, Nil)(using sqlContext.nested)})"
+        val sql = s"(${printSubQuery(s.query, Nil)(using sqlContext.enterExpression)})"
         sql
       case i: IfExpr =>
         s"if(${printExpression(i.cond)}, ${printExpression(i.onTrue)}, ${printExpression(i.onFalse)})"
