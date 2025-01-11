@@ -229,14 +229,16 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
             case None =>
               name
 
-        val sql =
+        if sqlContext.withinFrom then
           a.child match
-            case t: TableScan =>
-              s"${t.name.fullName} as ${tableAlias}"
-            case t: TableRef =>
-              s"${t.name.fullName} as ${tableAlias}"
-            case t: TableFunctionCall =>
-              s"${printRelation(t, remainingParents)(using sqlContext)} as ${tableAlias}"
+            case t: TableInput if remainingParents.isEmpty =>
+              s"${printExpression(t.sqlExpr)} as ${tableAlias}"
+            case _ =>
+              indent(
+                s"${printRelation(a.child, remainingParents)(using sqlContext.nested)} as ${tableAlias}"
+              )
+        else
+          a.child match
             case v: Values if sqlContext.nestingLevel == 0 =>
               selectAllWithIndent(s"${printValues(v)} as ${tableAlias}")
             case v: Values if sqlContext.nestingLevel > 0 && !sqlContext.withinJoin =>
@@ -248,9 +250,8 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
               s"${selectWithIndentAndParenIfNecessary(s"select * from ${printValues(v)} as ${tableAlias}")} as ${a.alias.fullName}"
             case _ =>
               indent(
-                s"${printRelation(a.inputRelation, remainingParents)(using sqlContext.nested)} as ${tableAlias}"
+                s"${printRelation(a.child, remainingParents)(using sqlContext.nested)} as ${tableAlias}"
               )
-        sql
       case p: BracedRelation =>
         def inner = printRelation(p.child, remainingParents)(using sqlContext.nested)
         p.child match
@@ -278,19 +279,8 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
       case f: FilteringRelation =>
         // Sort, Offset, Limit, Filter, Distinct, etc.
         printRelation(f.child, f :: remainingParents)
-      case t: TableRef =>
-        selectAllWithIndent(s"${t.name.fullName}")
-      case t: TableFunctionCall =>
-        val args = t.args.map(x => printExpression(x)).mkString(", ")
-        selectAllWithIndent(s"${t.name.strExpr}(${args})")
-      case r: RawSQL =>
-        selectWithIndentAndParenIfNecessary(printExpression(r.sql))
-      case t: TableScan =>
-        selectAllWithIndent(s"${t.name.fullName}")
-      case j: JSONFileScan =>
-        selectAllWithIndent(s"'${j.path}'")
-      case t: ParquetFileScan =>
-        selectAllWithIndent(s"'${t.path}'")
+      case t: TableInput =>
+        printAsSelect(t, remainingParents)
       case v: Values =>
         printValues(v)
       case s: SelectAsAlias =>
@@ -484,8 +474,13 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
         case _ =>
           false
 
-    val selectItemsExpr = sqlSelect.selectItems.map(x => printExpression(x)).mkString(", ")
-    val s               = Seq.newBuilder[String]
+    // SELECT distinct? ...
+    val selectItemsExpr =
+      if selectItems.isEmpty then
+        "*"
+      else
+        sqlSelect.selectItems.map(x => printExpression(x)).mkString(", ")
+    val s = Seq.newBuilder[String]
     s +=
       s"select ${
           if hasDistinct then
@@ -497,6 +492,8 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
     sqlSelect.child match
       case e: EmptyRelation =>
       // Do not add from clause for empty imputs
+      case t: TableInput =>
+        s += s"from ${printExpression(t.sqlExpr)}"
       case _ =>
         // Start a new SELECT statement inside FROM
         s += s"from ${printRelation(sqlSelect.child, Nil)(using sqlContext.enterFrom)}"
@@ -559,7 +556,7 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
   private def printGroupBy(g: GroupBy, parents: List[Relation])(using
       sqlContext: SqlContext
   ): String =
-    // Aggregation without any projection (select)
+    // Translate GroupBy node without any projection (select) to Agg node
     val selectItems = List.newBuilder[Attribute]
     selectItems ++=
       g.groupingKeys

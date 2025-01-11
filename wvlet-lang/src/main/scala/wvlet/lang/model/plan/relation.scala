@@ -169,34 +169,39 @@ case class Values(rows: Seq[Expression], span: Span) extends Relation with LeafP
 //    }
 //    columns
 
+trait TableInput extends Relation with LeafPlan:
+  def sqlExpr: Expression
+
 /**
   * Reference to a table structured data (tables or other query results)
   * @param name
   * @param nodeLocation
   */
-case class TableRef(name: NameExpr, span: Span) extends Relation with LeafPlan:
+case class TableRef(name: NameExpr, span: Span) extends TableInput:
+  override def sqlExpr: Expression        = name
   override def toString: String           = s"TableRef(${name})"
   override val relationType: RelationType = UnresolvedRelationType(name.fullName)
 
 case class TableFunctionCall(name: NameExpr, args: List[FunctionArg], span: Span)
-    extends Relation
-    with LeafPlan:
+    extends TableInput:
+  override def sqlExpr: Expression        = FunctionApply(name, args, None, span)
   override def toString: String           = s"TableFunctionCall(${name}, ${args})"
   override val relationType: RelationType = UnresolvedRelationType(name.fullName)
 
-case class FileScan(path: String, span: Span) extends Relation with LeafPlan:
+case class FileScan(path: String, span: Span) extends TableInput:
+  override def sqlExpr: Expression        = NameExpr.fromString(path)
   override def toString: String           = s"FileScan(${path})"
   override val relationType: RelationType = UnresolvedRelationType(RelationType.newRelationTypeName)
 
 case class PathScan(name: String, path: String, schema: RelationType, span: Span)
-    extends Relation
-    with LeafPlan:
+    extends TableInput:
+  override def sqlExpr: Expression        = NameExpr.fromString(path)
   override def toString: String           = s"PathScan(${path})"
   override val relationType: RelationType = UnresolvedRelationType(RelationType.newRelationTypeName)
 
 case class JSONFileScan(path: String, schema: RelationType, columns: Seq[NamedType], span: Span)
-    extends Relation
-    with LeafPlan:
+    extends TableInput:
+  override def sqlExpr: Expression = NameExpr.fromString(path)
   override def relationType: RelationType =
     if columns.isEmpty then
       schema
@@ -207,8 +212,8 @@ case class JSONFileScan(path: String, schema: RelationType, columns: Seq[NamedTy
   override lazy val resolved    = true
 
 case class ParquetFileScan(path: String, schema: RelationType, columns: Seq[NamedType], span: Span)
-    extends Relation
-    with LeafPlan:
+    extends TableInput:
+  override def sqlExpr: Expression = NameExpr.fromString(path)
   override def relationType: RelationType =
     if columns.isEmpty then
       schema
@@ -220,10 +225,12 @@ case class ParquetFileScan(path: String, schema: RelationType, columns: Seq[Name
 
   override lazy val resolved = true
 
-case class RawSQL(sql: Expression, span: Span) extends Relation with LeafPlan:
+case class RawSQL(sql: Expression, span: Span) extends TableInput:
+  override def sqlExpr: Expression        = sql
   override val relationType: RelationType = UnresolvedRelationType(RelationType.newRelationTypeName)
 
-case class RawJSON(json: Expression, span: Span) extends Relation with LeafPlan:
+case class RawJSON(json: Expression, span: Span) extends TableInput:
+  override def sqlExpr: Expression        = json
   override val relationType: RelationType = UnresolvedRelationType(RelationType.newRelationTypeName)
 
 // A base trait that will be translated to SELECT * in SQL
@@ -843,9 +850,10 @@ case class LateralView(
   *   projected columns
   */
 case class TableScan(name: TableName, schema: RelationType, columns: Seq[NamedType], span: Span)
-    extends Relation
-    with LeafPlan
+    extends TableInput
     with HasTableName:
+
+  override def sqlExpr: Expression = NameExpr.fromString(name.fullName, span)
 
   override def relationType: RelationType =
     if columns.isEmpty then
