@@ -193,19 +193,19 @@ case class TableFunctionCall(name: NameExpr, args: List[FunctionArg], span: Span
   override val relationType: RelationType = UnresolvedRelationType(name.fullName)
 
 case class FileScan(path: String, span: Span) extends TableInput:
-  override def sqlExpr: Expression        = NameExpr.fromString(path)
+  override def sqlExpr: Expression        = SingleQuotedIdentifier(path, span)
   override def toString: String           = s"FileScan(${path})"
   override val relationType: RelationType = UnresolvedRelationType(RelationType.newRelationTypeName)
 
 case class PathScan(name: String, path: String, schema: RelationType, span: Span)
     extends TableInput:
-  override def sqlExpr: Expression        = NameExpr.fromString(path)
+  override def sqlExpr: Expression        = SingleQuotedIdentifier(path, span)
   override def toString: String           = s"PathScan(${path})"
   override val relationType: RelationType = UnresolvedRelationType(RelationType.newRelationTypeName)
 
 case class JSONFileScan(path: String, schema: RelationType, columns: Seq[NamedType], span: Span)
     extends TableInput:
-  override def sqlExpr: Expression = NameExpr.fromString(path)
+  override def sqlExpr: Expression = SingleQuotedIdentifier(path, span)
   override def relationType: RelationType =
     if columns.isEmpty then
       schema

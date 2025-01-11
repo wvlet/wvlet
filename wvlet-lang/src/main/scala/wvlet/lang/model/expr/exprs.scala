@@ -187,11 +187,16 @@ case class DigitIdentifier(override val unquotedValue: String, span: Span) exten
   override def strExpr = unquotedValue
 
 case class UnquotedIdentifier(override val unquotedValue: String, span: Span) extends Identifier:
-  override def strExpr = unquotedValue
+  override def strExpr =
+    unquotedValue
 
 case class DoubleQuotedIdentifier(override val unquotedValue: String, span: Span)
     extends Identifier:
   override def strExpr: String = s""""${unquotedValue}""""
+
+case class SingleQuotedIdentifier(override val unquotedValue: String, span: Span)
+    extends Identifier:
+  override def strExpr: String = s"'${unquotedValue}'"
 
 /**
   * Backquote is used for table or column names that conflicts with reserved words
