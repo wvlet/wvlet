@@ -90,7 +90,7 @@ class BasicSpec
       ignoredSpec = Map("values.wv" -> "Need to support array[struct] data")
     )
 
-class TPCHSpec extends SpecRunner("spec/tpch", prepareTPCH = true)
+class WvletTPCHSpec extends SpecRunner("spec/tpch", prepareTPCH = true)
 
 // Negative tests, expecting some errors
 class NegSpec extends SpecRunner("spec/neg"):

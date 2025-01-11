@@ -772,7 +772,7 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
           }
           .mkString
       case s: SubQueryExpression =>
-        val sql = s"(${printQuery(s.query, Nil)(using sqlContext.enterExpression)})"
+        val sql = printQuery(s.query, Nil)(using sqlContext.enterExpression)
         sql
       case i: IfExpr =>
         s"if(${printExpression(i.cond)}, ${printExpression(i.onTrue)}, ${printExpression(i.onFalse)})"

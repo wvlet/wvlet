@@ -462,17 +462,17 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         val g = groupBy(r)
         r = having(g)
 
-        r =
-          g match
-            case g: GroupBy =>
-              val keyAttrs = g
-                .groupingKeys
-                .map { k =>
-                  SingleColumn(NameExpr.EmptyName, k.name, k.span)
-                }
-              Agg(r, keyAttrs ++ items, spanFrom(t))
-            case _ =>
-              Project(r, items, spanFrom(t))
+        r = Project(r, items, spanFrom(t))
+//        g match
+//            case g: GroupBy =>
+//              val keyAttrs = g
+//                .groupingKeys
+//                .map { k =>
+//                  SingleColumn(NameExpr.EmptyName, k.name, k.span)
+//                }
+//              Agg(r, keyAttrs ++ items, spanFrom(t))
+//            case _ =>
+//              Project(r, items, spanFrom(t))
         r = orderBy(r)
         r = limit(r)
         r = offset(r)
