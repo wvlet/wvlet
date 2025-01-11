@@ -21,6 +21,8 @@ object SqlGenerator:
     def enterFrom: SqlContext = InFromClause(nestingLevel + 1)
     def enterJoin: SqlContext = InJoinClause(nestingLevel + 1)
 
+    def isNested: Boolean = nestingLevel > 0
+
     def withinJoin: Boolean =
       this match
         case InJoinClause(_) =>
@@ -62,7 +64,7 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
         case r: Relation =>
           printRelation(r, Nil)(using SqlGenerator.Indented(0))
         case p: PackageDef =>
-          p.statements.map(stmt => print(stmt)).mkString(";\n\n")
+          p.statements.map(stmt => iter(stmt)).mkString(";\n\n")
         case other =>
           warn(s"unsupported logical plan: ${other}")
           other.toString
@@ -110,8 +112,6 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
       case q: Query =>
         // Query is just an wrapper of Relation, so no need to push it in the stack
         printRelation(q.body, remainingParents)
-      case a: GroupBy =>
-        selectWithIndentAndParenIfNecessary(s"${printAggregate(a)}")
       case a: Agg if a.child.isPivot =>
         // pivot + agg combination
         val p: Pivot = a.child.asInstanceOf[Pivot]
@@ -132,7 +132,7 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
             )}"""
         )
       case s: Selection =>
-        printSelection(s, remainingParents)
+        printAsSelect(s, remainingParents)
       case j: Join =>
         val asof =
           if j.asof then
@@ -242,6 +242,7 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
                 s"select * from ${printValues(v)} as ${tableAlias}"
               )
             case v: Values if sqlContext.nestingLevel > 0 && sqlContext.withinJoin =>
+              // For joins, expose table column aliases to the outer scope
               s"${selectWithIndentAndParenIfNecessary(s"select * from ${printValues(v)} as ${tableAlias}")} as ${a.alias.fullName}"
             case _ =>
               indent(
@@ -424,10 +425,9 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
 
   end printRelation
 
-  private def printSelection(l: Selection, parents: List[Relation])(using
+  private def printAsSelect(r: Relation, parents: List[Relation])(using
       sqlContext: SqlContext
   ): String =
-
     var remainingParents = parents
 
     def findParentFilters(lst: List[Relation]): List[Filter] =
@@ -437,63 +437,83 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
           f :: findParentFilters(tail)
         case tail =>
           Nil
-
     val parentFilters: List[Filter] = findParentFilters(remainingParents)
+    val selectItems: List[Attribute] =
+      r match
+        case s: Selection =>
+          s.selectItems.toList
+        case _ =>
+          Nil
+    val inputRelation =
+      r match
+        case g: GroupBy =>
+          // In Wvlet, GroupBy can be used without Selection
+          g
+        case s: Selection =>
+          s.child
+        case _ =>
+          r
 
-    // pull-up filter nodes to build where clause
-    // pull-up an Aggregate node to build group by clause
-    val agg = toSQLSelect(
-      SQLSelect(l.child, l.selectItems.toList, Nil, Nil, parentFilters, l.span),
-      l.child
+    var orderBy: List[SortItem]   = Nil
+    var limit: Option[Expression] = None
+
+    def processSortAndLimit(lst: List[Relation]): List[Relation] =
+      lst match
+        case (st: Sort) :: (l: Limit) :: tail =>
+          orderBy = st.orderBy.toList
+          limit = Some(l.limit)
+          tail
+        case (st: Sort) :: tail =>
+          orderBy = st.orderBy.toList
+          tail
+        case (l: Limit) :: tail =>
+          limit = Some(l.limit)
+          tail
+        case other =>
+          other
+
+    remainingParents = processSortAndLimit(remainingParents)
+
+    val sqlSelect = toSQLSelect(
+      SQLSelect(inputRelation, selectItems, Nil, Nil, parentFilters, orderBy, limit, r.span),
+      inputRelation
     )
     val hasDistinct =
-      l match
+      r match
         case d: Distinct =>
           true
         case _ =>
           false
 
-    val selectItems = agg.selectItems.map(x => printExpression(x)).mkString(", ")
-    val s           = Seq.newBuilder[String]
+    val selectItemsExpr = sqlSelect.selectItems.map(x => printExpression(x)).mkString(", ")
+    val s               = Seq.newBuilder[String]
     s +=
       s"select ${
           if hasDistinct then
             "distinct "
           else
             ""
-        }${selectItems}"
-    agg.child match
+        }${selectItemsExpr}"
+
+    sqlSelect.child match
       case e: EmptyRelation =>
       // Do not add from clause for empty imputs
       case _ =>
         // Start a new SELECT statement inside FROM
-        s += s"from ${printRelation(agg.child, Nil)(using sqlContext.enterFrom)}"
-    if agg.filters.nonEmpty then
-      val filterExpr = Expression.concatWithAnd(agg.filters.map(x => x.filterExpr))
+        s += s"from ${printRelation(sqlSelect.child, Nil)(using sqlContext.enterFrom)}"
+    if sqlSelect.filters.nonEmpty then
+      val filterExpr = Expression.concatWithAnd(sqlSelect.filters.map(x => x.filterExpr))
       s += s"where ${printExpression(filterExpr)}"
-    if agg.groupingKeys.nonEmpty then
-      s += s"group by ${agg.groupingKeys.map(x => printExpression(x)).mkString(", ")}"
-    if agg.having.nonEmpty then
-      s += s"having ${agg.having.map(x => printExpression(x.filterExpr)).mkString(", ")}"
+    if sqlSelect.groupingKeys.nonEmpty then
+      s += s"group by ${sqlSelect.groupingKeys.map(x => printExpression(x)).mkString(", ")}"
+    if sqlSelect.having.nonEmpty then
+      s += s"having ${sqlSelect.having.map(x => printExpression(x.filterExpr)).mkString(", ")}"
+    if sqlSelect.orderBy.nonEmpty then
+      s += s"order by ${sqlSelect.orderBy.map(x => printExpression(x)).mkString(", ")}"
+    if sqlSelect.limit.nonEmpty then
+      s += s"limit ${printExpression(sqlSelect.limit.get)}"
 
-    def processSortAndLimit(lst: List[Relation]): List[Relation] =
-      lst match
-        case (st: Sort) :: (l: Limit) :: tail =>
-          s += s"order by ${st.orderBy.map(e => printExpression(e)).mkString(", ")}"
-          s += s"limit ${printExpression(l.limit)}"
-          tail
-        case (st: Sort) :: tail =>
-          s += s"order by ${st.orderBy.map(e => printExpression(e)).mkString(", ")}"
-          tail
-        case (l: Limit) :: tail =>
-          s += s"limit ${printExpression(l.limit)}"
-          tail
-        case other =>
-          other
-
-    remainingParents = processSortAndLimit(remainingParents)
     val body = selectWithIndentAndParenIfNecessary(s"${s.result().mkString("\n")}")
-
     if remainingParents.isEmpty then
       body
     else
@@ -501,8 +521,7 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
         s"Unprocessed parents:\n${remainingParents.mkString(" - ", "\n - ", "")} (${ctx.compilationUnit.sourceFile.fileName})"
       )
       body
-
-  end printSelection
+  end printAsSelect
 
   private def toSQLSelect(agg: SQLSelect, r: Relation): SQLSelect =
     def collectFilter(plan: Relation): (List[Filter], Relation) =
@@ -538,39 +557,38 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
         agg
   end toSQLSelect
 
-  private def printAggregate(a: GroupBy)(using sqlContext: SqlContext): String =
-    // Aggregation without any projection (select)
-    val agg = toSQLSelect(SQLSelect(a.child, Nil, a.groupingKeys, Nil, Nil, a.span), a.child)
-    val s   = Seq.newBuilder[String]
-    val selectItems = Seq.newBuilder[String]
-    selectItems ++=
-      agg
-        .groupingKeys
-        .map { x =>
-          val key = printExpression(x)
-          s"""${key} as "${key}""""
-        }
-    selectItems ++=
-      a.inputRelationType
-        .fields
-        .map { f =>
-          // TODO: This should generate a nested relation, but use arbitrary(expr) for efficiency
-          val expr = s"arbitrary(${f.toSQLAttributeName})"
-          dbType match
-            case DBType.DuckDB =>
-              // DuckDB generates human-friendly column name
-              expr
-            case _ =>
-              s"""${expr} as "${expr}""""
-        }
-    s += s"select ${selectItems.result().mkString(", ")}"
-    s += s"from ${printRelation(agg.child, Nil)(using sqlContext.enterFrom)}"
-    if agg.filters.nonEmpty then
-      val cond = printExpression(Expression.concatWithAnd(agg.filters.map(_.filterExpr)))
-      s += s"where ${cond}"
-    s += s"group by ${agg.groupingKeys.map(x => printExpression(x)).mkString(", ")}"
-    s.result().mkString("\n")
-  end printAggregate
+//    // Aggregation without any projection (select)
+//    val agg = toSQLSelect(SQLSelect(a.child, Nil, a.groupingKeys, Nil, Nil, a.span), a.child)
+//    val s   = Seq.newBuilder[String]
+//    val selectItems = Seq.newBuilder[String]
+//    selectItems ++=
+//      agg
+//        .groupingKeys
+//        .map { x =>
+//          val key = printExpression(x)
+//          s"""${key} as "${key}""""
+//        }
+//    selectItems ++=
+//      a.inputRelationType
+//        .fields
+//        .map { f =>
+//          // TODO: This should generate a nested relation, but use arbitrary(expr) for efficiency
+//          val expr = s"arbitrary(${f.toSQLAttributeName})"
+//          dbType match
+//            case DBType.DuckDB =>
+//              // DuckDB generates human-friendly column name
+//              expr
+//            case _ =>
+//              s"""${expr} as "${expr}""""
+//        }
+//    s += s"select ${selectItems.result().mkString(", ")}"
+//    s += s"from ${printRelation(agg.child, Nil)(using sqlContext.enterFrom)}"
+//    if agg.filters.nonEmpty then
+//      val cond = printExpression(Expression.concatWithAnd(agg.filters.map(_.filterExpr)))
+//      s += s"where ${cond}"
+//    s += s"group by ${agg.groupingKeys.map(x => printExpression(x)).mkString(", ")}"
+//    s.result().mkString("\n")
+//  end printAggregate
 
   private def printValues(values: Values)(using sqlContext: SqlContext): String =
     val rows = values
@@ -690,7 +708,8 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
           }
           .mkString
       case s: SubQueryExpression =>
-        s"(${printRelation(s.query, Nil)(using sqlContext.nested)})"
+        val sql = s"(${printRelation(s.query, Nil)(using sqlContext.nested)})"
+        sql
       case i: IfExpr =>
         s"if(${printExpression(i.cond)}, ${printExpression(i.onTrue)}, ${printExpression(i.onFalse)})"
       case n: Not =>
