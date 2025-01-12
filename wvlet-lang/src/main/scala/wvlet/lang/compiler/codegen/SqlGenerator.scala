@@ -127,6 +127,8 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
 
   private def hasSelection(r: Relation, nestingLevel: Int = 0): Boolean =
     r match
+      case w: WithQuery =>
+        true
       case s: Selection =>
         true
       case g: GroupBy =>
