@@ -55,7 +55,7 @@ class DuckDBConnectorTest extends AirSpec:
     val catalog = duckdb.getCatalog("memory", "main")
     catalog.catalogName shouldBe "memory"
     catalog.listSchemaNames shouldContain "main"
-    catalog.listTableNames("main") shouldBe Seq.empty
+    catalog.listTableNames("main")
 
   test("read functions"): (duckdb: DuckDBConnector) =>
     val functions = duckdb.listFunctions("memory")

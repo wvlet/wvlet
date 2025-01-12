@@ -484,7 +484,21 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
   private def printAsSelect(r: Relation, parents: List[Relation])(using
       sqlContext: SqlContext
   ): String =
-    var remainingParents = parents
+
+    var remainingParents     = parents
+    var having: List[Filter] = Nil
+
+    parents.headOption match
+      case Some(f: Filter) =>
+        r match
+          case a: Agg =>
+            having = List(f)
+            remainingParents = parents.tail
+          case g: GroupBy =>
+            having = List(f)
+            remainingParents = parents.tail
+          case _ =>
+      case _ =>
 
     def findParentFilters(lst: List[Relation]): List[Filter] =
       lst match
@@ -528,7 +542,7 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
     remainingParents = processSortAndLimit(remainingParents)
 
     val sqlSelect = toSQLSelect(
-      SQLSelect(inputRelation, selectItems, Nil, Nil, parentFilters, orderBy, limit, r.span),
+      SQLSelect(inputRelation, selectItems, Nil, having, parentFilters, orderBy, limit, r.span),
       inputRelation
     )
     val hasDistinct =
