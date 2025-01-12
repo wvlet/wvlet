@@ -20,6 +20,8 @@ import wvlet.lang.model.DataType.NamedType
 import wvlet.airspec.AirSpec
 
 class DuckDBConnectorTest extends AirSpec:
+  initDesign:
+    _.bindSingleton[DuckDBConnector]
 
   test("Create an in-memory schema and table"): (duckdb: DuckDBConnector) =>
     duckdb.withConnection: conn =>
