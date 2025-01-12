@@ -1,0 +1,7 @@
+from 'person.json'
+select
+  id,
+  name,
+  age, -- Trailing comma is allowed in Wvlet
+
+test _.size = 3
