@@ -97,12 +97,13 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     t.token match
       case SqlToken.EOF =>
         Nil
-      case SqlToken.SEMICOLON =>
-        consume(SqlToken.SEMICOLON)
-        statementList()
       case _ =>
         val stmt = statement()
-        stmt :: statementList()
+        scanner.lookAhead().token match
+          case SqlToken.SEMICOLON =>
+            stmt :: statementList()
+          case _ =>
+            List(stmt)
 
   def statement(): LogicalPlan =
     val t = scanner.lookAhead()
@@ -113,10 +114,10 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         explain()
 //      case SqlToken.DESCRIBE =>
 //       describe()
-      case t if t.isUpdateStart =>
+      case u if u.isUpdateStart =>
         update()
-      case t if t.isQueryStart =>
-        query()
+      case q if q.isQueryStart =>
+        Query(query(), spanFrom(t))
       case SqlToken.SHOW =>
         show()
       case SqlToken.USE =>
@@ -365,8 +366,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       x match
         case f: FilteringRelation =>
           deleteExpr(f.child)
-        case TableRef(qname: QualifiedName, _) =>
-          Delete(filteredRelation, qname, spanFrom(t))
+        case r: TableRef =>
+          Delete(filteredRelation, r.name, spanFrom(t))
         case f: FileScan =>
           DeleteFromFile(filteredRelation, f.path, spanFrom(t))
         case other =>
@@ -458,15 +459,20 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         val items      = selectItems()
         var r          = fromClause()
         r = whereClause(r)
-        val g          = groupBy(r)
-        val hasGroupBy = r ne g
-        r = g
+        val g = groupBy(r)
+        r = having(g)
 
-        r =
-          if hasGroupBy then
-            Agg(r, items, spanFrom(t))
-          else
-            Project(r, items, spanFrom(t))
+        r = Project(r, items, spanFrom(t))
+//        g match
+//            case g: GroupBy =>
+//              val keyAttrs = g
+//                .groupingKeys
+//                .map { k =>
+//                  SingleColumn(NameExpr.EmptyName, k.name, k.span)
+//                }
+//              Agg(r, keyAttrs ++ items, spanFrom(t))
+//            case _ =>
+//              Project(r, items, spanFrom(t))
         r = orderBy(r)
         r = limit(r)
         r = offset(r)
@@ -534,8 +540,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         consume(SqlToken.GROUP)
         consume(SqlToken.BY)
         val items = groupByItemList()
-        val g     = GroupBy(input, items, spanFrom(t))
-        having(g)
+        GroupBy(input, items, spanFrom(t))
       case _ =>
         input
 

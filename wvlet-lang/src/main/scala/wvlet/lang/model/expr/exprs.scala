@@ -49,6 +49,9 @@ case class ParenthesizedExpression(child: Expression, span: Span) extends UnaryE
 case class TypedExpression(child: Expression, tpe: DataType, span: Span) extends UnaryExpression:
   override def dataType: DataType = tpe
 
+case class TableAlias(name: NameExpr, alias: NameExpr, span: Span) extends LeafExpression:
+  override def dataType: DataType = DataType.UnknownType
+
 /**
   * variable name, function name, type name, etc. The name might have a qualifier.
   */
@@ -82,8 +85,8 @@ sealed trait NameExpr extends Expression:
       s""""${s}""""
 
 object NameExpr:
-  val EmptyName: Identifier           = UnquotedIdentifier("<empty>", NoSpan)
-  def fromString(s: String): NameExpr = UnquotedIdentifier(s, NoSpan)
+  val EmptyName: Identifier                                = UnquotedIdentifier("<empty>", NoSpan)
+  def fromString(s: String, span: Span = NoSpan): NameExpr = UnquotedIdentifier(s, span)
 
   private val sqlKeywords = Set(
     // TODO enumerate more SQL keywords
@@ -189,6 +192,10 @@ case class UnquotedIdentifier(override val unquotedValue: String, span: Span) ex
 case class DoubleQuotedIdentifier(override val unquotedValue: String, span: Span)
     extends Identifier:
   override def strExpr: String = s""""${unquotedValue}""""
+
+case class SingleQuotedIdentifier(override val unquotedValue: String, span: Span)
+    extends Identifier:
+  override def strExpr: String = s"'${unquotedValue}'"
 
 /**
   * Backquote is used for table or column names that conflicts with reserved words

@@ -65,6 +65,8 @@ trait Relation extends LogicalPlan:
       case _ =>
         false
 
+  def isLeaf: Boolean = children.isEmpty
+
 // A relation that takes a single input relation
 trait UnaryRelation extends Relation with UnaryPlan:
   def inputRelation: Relation                  = child
@@ -169,34 +171,41 @@ case class Values(rows: Seq[Expression], span: Span) extends Relation with LeafP
 //    }
 //    columns
 
+trait TableInput extends Relation with LeafPlan:
+  def sqlExpr: Expression
+  // def alias: NameExpr
+  // def columnNames: Option[Seq[NamedType]]
+
 /**
   * Reference to a table structured data (tables or other query results)
   * @param name
   * @param nodeLocation
   */
-case class TableRef(name: NameExpr, span: Span) extends Relation with LeafPlan:
+case class TableRef(name: QualifiedName, span: Span) extends TableInput:
+  override def sqlExpr: Expression        = name
   override def toString: String           = s"TableRef(${name})"
   override val relationType: RelationType = UnresolvedRelationType(name.fullName)
 
 case class TableFunctionCall(name: NameExpr, args: List[FunctionArg], span: Span)
-    extends Relation
-    with LeafPlan:
+    extends TableInput:
+  override def sqlExpr: Expression        = FunctionApply(name, args, None, span)
   override def toString: String           = s"TableFunctionCall(${name}, ${args})"
   override val relationType: RelationType = UnresolvedRelationType(name.fullName)
 
-case class FileScan(path: String, span: Span) extends Relation with LeafPlan:
+case class FileScan(path: String, span: Span) extends TableInput:
+  override def sqlExpr: Expression        = SingleQuotedIdentifier(path, span)
   override def toString: String           = s"FileScan(${path})"
   override val relationType: RelationType = UnresolvedRelationType(RelationType.newRelationTypeName)
 
 case class PathScan(name: String, path: String, schema: RelationType, span: Span)
-    extends Relation
-    with LeafPlan:
+    extends TableInput:
+  override def sqlExpr: Expression        = SingleQuotedIdentifier(path, span)
   override def toString: String           = s"PathScan(${path})"
   override val relationType: RelationType = UnresolvedRelationType(RelationType.newRelationTypeName)
 
 case class JSONFileScan(path: String, schema: RelationType, columns: Seq[NamedType], span: Span)
-    extends Relation
-    with LeafPlan:
+    extends TableInput:
+  override def sqlExpr: Expression = SingleQuotedIdentifier(path, span)
   override def relationType: RelationType =
     if columns.isEmpty then
       schema
@@ -207,8 +216,8 @@ case class JSONFileScan(path: String, schema: RelationType, columns: Seq[NamedTy
   override lazy val resolved    = true
 
 case class ParquetFileScan(path: String, schema: RelationType, columns: Seq[NamedType], span: Span)
-    extends Relation
-    with LeafPlan:
+    extends TableInput:
+  override def sqlExpr: Expression = SingleQuotedIdentifier(path, span)
   override def relationType: RelationType =
     if columns.isEmpty then
       schema
@@ -220,10 +229,12 @@ case class ParquetFileScan(path: String, schema: RelationType, columns: Seq[Name
 
   override lazy val resolved = true
 
-case class RawSQL(sql: Expression, span: Span) extends Relation with LeafPlan:
+case class RawSQL(sql: Expression, span: Span) extends TableInput:
+  override def sqlExpr: Expression        = sql
   override val relationType: RelationType = UnresolvedRelationType(RelationType.newRelationTypeName)
 
-case class RawJSON(json: Expression, span: Span) extends Relation with LeafPlan:
+case class RawJSON(json: Expression, span: Span) extends TableInput:
+  override def sqlExpr: Expression        = json
   override val relationType: RelationType = UnresolvedRelationType(RelationType.newRelationTypeName)
 
 // A base trait that will be translated to SELECT * in SQL
@@ -260,6 +271,9 @@ case class EmptyRelation(span: Span) extends Relation with LeafPlan:
 
 // This node can be a pivot node for generating a SELECT statement
 sealed trait Selection extends GeneralSelection:
+  /**
+    * Attributes corresponding to SELECT items
+    */
   def selectItems: Seq[Attribute]
 
 // This node can be a pivot node for generating a SELECT statement with aggregation functions
@@ -312,9 +326,12 @@ case class Transform(child: Relation, transformItems: Seq[Attribute], span: Span
 
 case class AddColumnsToRelation(child: Relation, newColumns: Seq[Attribute], span: Span)
     extends UnaryRelation
-    with GeneralSelection
+    with Selection
     with LogSupport:
   override def toString: String = s"Add[${newColumns.mkString(", ")}](${child})"
+
+  override def selectItems: Seq[Attribute] =
+    Seq(AllColumns(Wildcard(NoSpan), None, NoSpan)) ++ newColumns
 
   override lazy val relationType: RelationType =
     val cols = Seq.newBuilder[NamedType]
@@ -331,28 +348,29 @@ case class AddColumnsToRelation(child: Relation, newColumns: Seq[Attribute], spa
     pt
 
 case class ExcludeColumnsFromRelation(child: Relation, columnNames: Seq[NameExpr], span: Span)
-    extends UnaryRelation
+    extends Selection
     with LogSupport:
   override def toString: String = s"Drop[${columnNames.mkString(", ")}](${child})"
 
+  private def outputColumns: Seq[NamedType] = inputRelationType
+    .fields
+    .filterNot(f => columnNames.exists(_.leafName == f.name.name))
+
+  override def selectItems: Seq[Attribute] = outputColumns.map { c =>
+    val name = NameExpr.fromString(c.toSQLAttributeName, span)
+    SingleColumn(NameExpr.EmptyName, name, span)
+  }
+
   override lazy val relationType: RelationType =
-    val newColumns = Seq.newBuilder[NamedType]
-    // Detect newly added columns
-    newColumns ++=
-      inputRelationType
-        .fields
-        .filterNot { x =>
-          columnNames.exists(_.leafName == x.name.name)
-        }
     val pt = ProjectedType(
       Name.typeName(RelationType.newRelationTypeName),
-      newColumns.result(),
+      outputColumns,
       child.relationType
     )
     pt
 
 case class RenameColumnsFromRelation(child: Relation, columnAliases: Seq[Alias], span: Span)
-    extends UnaryRelation
+    extends Selection
     with LogSupport:
   override def toString: String = s"Rename[${columnAliases.mkString(", ")}](${child})"
 
@@ -367,6 +385,20 @@ case class RenameColumnsFromRelation(child: Relation, columnAliases: Seq[Alias],
           case _ =>
       }
     renamedColumns.result()
+
+  override def selectItems: Seq[Attribute] = inputRelationType
+    .fields
+    .map { f =>
+      columnMapping.get(f.name) match
+        case Some(a) =>
+          SingleColumn(
+            NameExpr.fromString(a.toSQLAttributeName, span),
+            NameExpr.fromString(f.toSQLAttributeName, span),
+            span
+          )
+        case None =>
+          SingleColumn(NameExpr.EmptyName, NameExpr.fromString(f.toSQLAttributeName, span), span)
+    }
 
   override lazy val relationType: RelationType =
     val newColumns = Seq.newBuilder[NamedType]
@@ -395,10 +427,15 @@ case class ShiftColumns(
     isLeftShift: Boolean,
     shiftItems: Seq[NameExpr],
     span: Span
-) extends UnaryRelation:
+) extends Selection:
   override def toString: String = s"Shift[${shiftItems.mkString(", ")}](${child})"
 
-  override lazy val relationType: RelationType =
+  override def selectItems: Seq[Attribute] = outputColumns.map { c =>
+    val name = NameExpr.fromString(c.toSQLAttributeName, span)
+    SingleColumn(NameExpr.EmptyName, name, span)
+  }
+
+  private def outputColumns: List[NamedType] =
     var inputFields: ListMap[String, NamedType] = inputRelationType
       .fields
       .map { f =>
@@ -412,19 +449,21 @@ case class ShiftColumns(
           preferredColumns += f
           inputFields -= si.leafName
         case None =>
-        // skip
+      // skip
     }
     val remainingColumns = inputFields.values.toList
-    ProjectedType(
-      Name.typeName(RelationType.newRelationTypeName),
-      // Shift column positions
-      if isLeftShift then
-        preferredColumns.result() ++ remainingColumns
-      else
-        remainingColumns ++ preferredColumns.result()
-      ,
-      child.relationType
-    )
+
+    // Shift column positions
+    if isLeftShift then
+      preferredColumns.result() ++ remainingColumns
+    else
+      remainingColumns ++ preferredColumns.result()
+
+  override lazy val relationType: RelationType = ProjectedType(
+    Name.typeName(RelationType.newRelationTypeName),
+    outputColumns,
+    child.relationType
+  )
 
 end ShiftColumns
 
@@ -450,6 +489,8 @@ case class GroupBy(child: Relation, groupingKeys: List[GroupingKey], span: Span)
     },
     child.relationType
   )
+
+end GroupBy
 
 /**
   * Agg(Select) is an operation to report grouping keys and aggregation expressions.
@@ -513,6 +554,8 @@ case class SQLSelect(
     groupingKeys: List[GroupingKey],
     having: List[Filter],
     filters: List[Filter],
+    orderBy: Seq[SortItem],
+    limit: Option[Expression],
     span: Span
 ) extends UnaryRelation
     with Selection:
@@ -791,9 +834,10 @@ case class LateralView(
   *   projected columns
   */
 case class TableScan(name: TableName, schema: RelationType, columns: Seq[NamedType], span: Span)
-    extends Relation
-    with LeafPlan
+    extends TableInput
     with HasTableName:
+
+  override def sqlExpr: Expression = NameExpr.fromString(name.fullName, span)
 
   override def relationType: RelationType =
     if columns.isEmpty then
@@ -937,7 +981,7 @@ case class Describe(child: Relation, span: Span) extends RelationInspector:
     }
 
 case class Sample(child: Relation, method: SamplingMethod, size: SamplingSize, span: Span)
-    extends UnaryRelation:
+    extends FilteringRelation:
   override def relationType: RelationType = child.relationType
 
 enum SamplingMethod:

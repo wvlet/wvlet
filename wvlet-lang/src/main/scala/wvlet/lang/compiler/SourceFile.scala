@@ -68,6 +68,8 @@ class SourceFile(val file: VirtualFile):
       loadContent
     content
 
+  def getContentAsString: String = getContent.mkString
+
   private def loadContent: IArray[Char] =
     try
       content = file.content

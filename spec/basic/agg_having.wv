@@ -1,0 +1,7 @@
+from 'books.json'
+group by author
+where _.count >= 1
+
+test _.rows should be [
+  ["F. Scott Fitzgerald"]
+]

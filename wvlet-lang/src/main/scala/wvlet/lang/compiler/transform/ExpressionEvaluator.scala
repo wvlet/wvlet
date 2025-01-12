@@ -6,7 +6,7 @@ import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.ValDef
 
 object ExpressionEvaluator:
-  def eval(expr: Expression, context: Context): Expression =
+  def eval(expr: Expression)(using context: Context): Expression =
     expr match
       case n: NativeExpression =>
         val v = NativeFunction.callByName(n.name)

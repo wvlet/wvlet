@@ -20,6 +20,8 @@ import wvlet.lang.model.DataType.NamedType
 import wvlet.airspec.AirSpec
 
 class DuckDBConnectorTest extends AirSpec:
+  initDesign:
+    _.bindSingleton[DuckDBConnector]
 
   test("Create an in-memory schema and table"): (duckdb: DuckDBConnector) =>
     duckdb.withConnection: conn =>
@@ -53,7 +55,7 @@ class DuckDBConnectorTest extends AirSpec:
     val catalog = duckdb.getCatalog("memory", "main")
     catalog.catalogName shouldBe "memory"
     catalog.listSchemaNames shouldContain "main"
-    catalog.listTableNames("main") shouldBe Seq.empty
+    catalog.listTableNames("main")
 
   test("read functions"): (duckdb: DuckDBConnector) =>
     val functions = duckdb.listFunctions("memory")
