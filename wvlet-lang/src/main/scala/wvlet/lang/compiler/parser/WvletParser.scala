@@ -959,6 +959,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       val t = scanner.lookAhead()
       t.token match
         case WvletToken.COMMA =>
+          // Consume the trailing comma
           consume(WvletToken.COMMA)
           nextItem
         case t if t.tokenType == TokenType.Keyword =>
@@ -1193,6 +1194,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     val t = scanner.lookAhead()
     t.token match
       case WvletToken.COMMA =>
+        // Support consuming trailing comma
         consume(WvletToken.COMMA)
         selectItems()
       case token if WvletToken.isQueryDelimiter(token) =>
