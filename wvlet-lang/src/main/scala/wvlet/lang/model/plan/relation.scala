@@ -596,7 +596,7 @@ case class Join(
     span: Span
 ) extends Relation
     with LogSupport:
-  override def modelName: String = joinType.toString
+  override def nodeName: String = joinType.toString
 
   override def children: Seq[LogicalPlan] = Seq(left, right)
 

@@ -41,7 +41,7 @@ trait LogicalPlan extends SyntaxTreeNode with Product:
   def isEmpty: Boolean  = false
   def nonEmpty: Boolean = !isEmpty
 
-  def modelName: String =
+  def nodeName: String =
     val n = this.getClass.getSimpleName
     n.stripSuffix("$")
 
@@ -448,7 +448,7 @@ trait LogicalPlan extends SyntaxTreeNode with Product:
         throw StatusCode
           .COMPILATION_FAILURE
           .newException(
-            s"Failed to create ${modelName} node with args: ${newArgs.mkString(", ")}",
+            s"Failed to create ${nodeName} node with args: ${newArgs.mkString(", ")}",
             e
           )
 

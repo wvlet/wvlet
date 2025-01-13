@@ -159,7 +159,7 @@ object GenSQL extends Phase("generate-sql"):
             case other =>
               throw StatusCode
                 .SYNTAX_ERROR
-                .newException(s"Unsupported delete input: ${other.modelName}", other.sourceLocation)
+                .newException(s"Unsupported delete input: ${other.nodeName}", other.sourceLocation)
 
         val filterSQL = filterExpr(d.inputRelation)
         var sql       = withHeader(s"delete from ${d.targetTable.fullName}", ops.sourceLocation)
@@ -170,7 +170,7 @@ object GenSQL extends Phase("generate-sql"):
       case other =>
         throw StatusCode
           .NOT_IMPLEMENTED
-          .newException(s"${other.modelName} is not implemented yet", other.sourceLocation)
+          .newException(s"${other.nodeName} is not implemented yet", other.sourceLocation)
 
   def generateSaveSQL(save: Save, context: Context): List[String] =
     given Context  = context
@@ -254,7 +254,7 @@ object GenSQL extends Phase("generate-sql"):
         throw StatusCode
           .NOT_IMPLEMENTED
           .newException(
-            s"${other.modelName} is not implemented yet for ${context.dbType}",
+            s"${other.nodeName} is not implemented yet for ${context.dbType}",
             other.sourceLocation(using context)
           )
     end match

@@ -374,7 +374,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           throw StatusCode
             .SYNTAX_ERROR
             .newException(
-              s"delete statement can't have ${other.modelName} operator",
+              s"delete statement can't have ${other.nodeName} operator",
               t.sourceLocation(using unit)
             )
     deleteExpr(filteredRelation)
