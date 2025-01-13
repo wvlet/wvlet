@@ -4,7 +4,7 @@ import wvlet.airspec.AirSpec
 import wvlet.lang.compiler.*
 import wvlet.lang.compiler.codegen.WvletGenerator
 
-class WvletGeneratorSpec(path: String) extends AirSpec:
+abstract class WvletGeneratorSpec(path: String) extends AirSpec:
   private val name = path.split("\\/").lastOption.getOrElse(path)
   CompilationUnit
     .fromPath(path)
