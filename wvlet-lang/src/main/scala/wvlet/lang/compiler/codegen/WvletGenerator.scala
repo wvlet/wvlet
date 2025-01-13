@@ -49,11 +49,11 @@ class WvletGenerator(config: WvletFormatConfig = WvletFormatConfig())(using
     debug(wv)
     wv
 
-  def indent(block: String, offset: Int = 0)(using wvletContext: WvletContext): String =
+  private def indent(block: String, offset: Int = 0)(using wvletContext: WvletContext): String =
     val ws = " " * ((wvletContext.indent + offset) * config.indentWidth)
     block.split("\n").map(line => s"${ws}${line}").mkString("\n")
 
-  def lines(lines: Any*)(using wvletContext: WvletContext): String = lines
+  private def lines(lines: Any*)(using wvletContext: WvletContext): String = lines
     .collect {
       case s: String =>
         s
@@ -65,41 +65,48 @@ class WvletGenerator(config: WvletFormatConfig = WvletFormatConfig())(using
   private def fitInLine(width: Int)(using wvletContext: WvletContext): Boolean =
     width + wvletContext.indent * config.indentWidth <= config.maxWidth
 
+  private def printOpAndSingle(op: String, child: Relation, item: String)(using
+      wvletContext: WvletContext
+  ): String =
+    val prev = printRelation(child)
+    if fitInLine(op.size + 1 + item.size) then
+      val q = indent(s"${op} ${item}")
+      lines(prev, q)
+    else
+      val q = indent(item, 1)
+      lines(prev, indent(op), q)
+
+  private def printOpAndItems(op: String, child: Relation, items: Seq[String])(using
+      wvletContext: WvletContext
+  ): String =
+    val prev = printRelation(child)
+
+    if fitInLine(op.size + 1 + items.map(_.size).sum) then
+      val q = indent(s"${op} ${items.mkString(", ")}")
+      lines(prev, q)
+    else
+      val endItem =
+        if config.addTrailingComma then
+          ","
+        else
+          ""
+      val q = indent(items.mkString("", ",\n", endItem), 1)
+      lines(prev, op, q)
+
   def printRelation(r: Relation)(using wvletContext: WvletContext): String =
     r match
       case q: Query =>
         printRelation(q.child)
       case s: Sort =>
-        val prev = printRelation(s.child)
-        val q    = indent(s"order by ${s.orderBy.map(x => printExpression(x)).mkString(", ")}")
-        lines(prev, q)
+        printOpAndItems("order by", s.child, s.orderBy.map(x => printExpression(x)))
       case p: Project =>
-        val prev        = printRelation(p.child)
-        val selectItems = p.selectItems.map(x => printExpression(x))
-        if fitInLine("select ".size + selectItems.map(_.size).sum) then
-          val q = indent(s"select ${selectItems.mkString(", ")}")
-          lines(prev, q)
-        else
-          val endItem =
-            if config.addTrailingComma then
-              ","
-            else
-              ""
-          val q = indent(selectItems.map(x => x).mkString("", ",\n", endItem), 1)
-          lines(prev, s"select", q)
+        printOpAndItems("select", p.child, p.selectItems.map(x => printExpression(x)))
       case g: GroupBy =>
-        val prev = printRelation(g.child)
-        val cols = g.groupingKeys.map(x => printExpression(x)).mkString(", ")
-        val q    = indent(s"group by ${cols}")
-        lines(prev, q)
+        printOpAndItems("group by", g.child, g.groupingKeys.map(x => printExpression(x)))
       case f: Filter =>
-        val prev = printRelation(f.child)
-        val q    = s"where ${printExpression(f.filterExpr)}"
-        lines(prev, q)
+        printOpAndSingle("where", f.child, printExpression(f.filterExpr))
       case l: Limit =>
-        val prev = printRelation(l.child)
-        val q    = s"limit ${l.limit}"
-        lines(prev, q)
+        printOpAndSingle("limit", l.child, printExpression(l.limit))
       case t: TableInput =>
         indent(s"from ${printExpression(t.sqlExpr)}")
       case other =>
