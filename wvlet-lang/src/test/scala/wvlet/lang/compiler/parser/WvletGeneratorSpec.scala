@@ -21,6 +21,8 @@ class WvletGeneratorSpec(path: String) extends AirSpec:
 
 end WvletGeneratorSpec
 
+class WvletGeneratorBasicTest  extends WvletGeneratorSpec("spec/basic")
+
 class SqlToWvletTPCHGeneratorTest extends WvletGeneratorSpec("spec/sql/tpc-h")
 
 class SqlToWvletTPCDSGeneratorTest extends WvletGeneratorSpec("spec/sql/tpc-ds")
