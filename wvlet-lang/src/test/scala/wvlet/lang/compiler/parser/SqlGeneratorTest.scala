@@ -7,7 +7,7 @@ import wvlet.lang.compiler.codegen.SqlGenerator
 abstract class SqlGeneratorSpec(path: String) extends AirSpec:
   private val name = path.split("\\/").lastOption.getOrElse(path)
   CompilationUnit
-    .fromPath("spec/sql/tpc-h")
+    .fromPath(path)
     .foreach { unit =>
       test(s"parse ${name}:${unit.sourceFile.fileName}") {
         debug(unit.sourceFile.getContentAsString)

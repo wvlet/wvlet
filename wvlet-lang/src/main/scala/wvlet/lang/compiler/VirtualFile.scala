@@ -18,11 +18,12 @@ import wvlet.log.io.IOUtil
 import java.io.File
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
+import scala.util.Try
 
 /**
   * An abstraction over local files or files in remote GitHub repositories
   */
-trait VirtualFile:
+trait VirtualFile extends Ordered[VirtualFile]:
   /**
     * Leaf file name
     */
@@ -56,6 +57,54 @@ trait VirtualFile:
   def isWv: Boolean         = name.endsWith(".wv")
   def isSQL: Boolean        = name.endsWith(".sql")
   def isSourceFile: Boolean = isWv || isSQL
+
+  override def compare(other: VirtualFile): Int =
+    def split(s: String): List[Any] =
+      val alphabetOrNumber = """[^\d]+|\d+""".r
+      val num              = "[0-9]+".r
+      val parts = alphabetOrNumber
+        .findAllIn(s)
+        .toList
+        .map {
+          case s if num.matches(s) =>
+            Try(s.toLong).getOrElse(s)
+          case x =>
+            x
+        }
+      parts
+
+    def cmp(x: List[Any], y: List[Any]): Int =
+      (x, y) match
+        case (Nil, Nil) =>
+          0
+        case (Nil, _) =>
+          -1
+        case (_, Nil) =>
+          1
+        case (hx :: tx, hy :: ty) =>
+          (hx, hy) match
+            case (hx: String, hy: String) =>
+              val c = hx.compareTo(hy)
+              if c == 0 then
+                cmp(tx, ty)
+              else
+                c
+            case (hx: Long, hy: Long) =>
+              val c = hx.compareTo(hy)
+              if c == 0 then
+                cmp(tx, ty)
+              else
+                c
+            case (hx: String, hy: Long) =>
+              -1
+            case (hx: Long, hy: String) =>
+              1
+            case (hx, hy) =>
+              hx.toString.compareTo(hy.toString)
+
+    cmp(split(path), split(other.path))
+
+  end compare
 
 end VirtualFile
 

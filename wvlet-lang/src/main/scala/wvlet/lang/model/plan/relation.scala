@@ -499,9 +499,11 @@ end GroupBy
   * @param selectItems
   * @param nodeLocation
   */
-case class Agg(child: Relation, selectItems: List[Attribute], span: Span)
+case class Agg(child: Relation, keys: List[Attribute], aggExprs: List[Attribute], span: Span)
     extends UnaryRelation
     with AggSelect:
+  override def selectItems: List[Attribute] = keys ++ aggExprs
+
   override def toString = s"AggSelect[${selectItems.mkString(", ")}](${child})"
 
   override lazy val relationType: RelationType = ProjectedType(
@@ -598,7 +600,7 @@ case class Join(
     span: Span
 ) extends Relation
     with LogSupport:
-  override def modelName: String = joinType.toString
+  override def nodeName: String = joinType.toString
 
   override def children: Seq[LogicalPlan] = Seq(left, right)
 

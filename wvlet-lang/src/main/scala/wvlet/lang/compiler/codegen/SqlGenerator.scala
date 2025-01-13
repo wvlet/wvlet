@@ -649,14 +649,13 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
       sqlContext: SqlContext
   ): String =
     // Translate GroupBy node without any projection (select) to Agg node
-    val selectItems = List.newBuilder[Attribute]
-    selectItems ++=
-      g.groupingKeys
-        .map { k =>
-          val keyName = printExpression(k)
-          SingleColumn(NameExpr.fromString(keyName), k.name, NoSpan)
-        }
-    selectItems ++=
+    val keys: List[Attribute] = g
+      .groupingKeys
+      .map { k =>
+        val keyName = printExpression(k)
+        SingleColumn(NameExpr.fromString(keyName), k.name, NoSpan)
+      }
+    val aggExprs: List[Attribute] =
       g.inputRelationType
         .fields
         .map { f =>
@@ -679,8 +678,9 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
                 NameExpr.fromString(exprStr)
           SingleColumn(name, expr, NoSpan)
         }
+        .toList
 
-    val agg = Agg(g, selectItems.result(), g.span)
+    val agg = Agg(g, keys, aggExprs, g.span)
     printRelation(agg, parents)
   end printGroupBy
 

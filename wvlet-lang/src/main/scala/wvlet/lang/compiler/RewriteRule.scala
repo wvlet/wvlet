@@ -32,7 +32,7 @@ object RewriteRule extends LogSupport:
       case r: Relation =>
         r
       case other =>
-        throw new IllegalStateException(s"Expected Relation but got ${other.modelName}")
+        throw new IllegalStateException(s"Expected Relation but got ${other.nodeName}")
 
   def rewrite(plan: LogicalPlan, rules: List[RewriteRule], context: Context): LogicalPlan =
     val rewrittenPlan =
