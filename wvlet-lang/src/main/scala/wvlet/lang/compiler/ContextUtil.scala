@@ -33,8 +33,9 @@ object ContextUtil:
 
   extension (cu: CompilationUnit)
     def sourceLocationAt(span: Span): SourceLocation = sourceLocationAt(linePositionAt(span))
-    def sourceLocationAt(nodeLocation: LinePosition): SourceLocation = cu
-      .toSourceLocation(nodeLocation)
+    def sourceLocationAt(nodeLocation: LinePosition): SourceLocation = cu.toSourceLocation(
+      nodeLocation
+    )
 
     def endLinePositionAt(span: Span): LinePosition =
       val src  = cu.sourceFile

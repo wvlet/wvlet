@@ -56,7 +56,9 @@ case class DependencyDAG(nodes: ListMap[Symbol, List[Symbol]]):
     val b = new StringBuilder
     nodes.foreach { (s, deps) =>
       b.append(
-        s"${s} (${s.tree.sourceLocation}) -> ${deps.map(d => s"${d} (${d.tree.sourceLocation})").mkString(", ")}\n"
+        s"${s} (${s.tree.sourceLocation}) -> ${deps
+            .map(d => s"${d} (${d.tree.sourceLocation})")
+            .mkString(", ")}\n"
       )
     }
     b.result()

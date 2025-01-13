@@ -14,8 +14,9 @@ trait IOCompat:
 
   def readAsString(uri: java.net.URI): String = ???
 
-  def listResources(path: String): List[VirtualFile] = listFiles(path)
-    .map(f => URIResource(File(f).toURI))
+  def listResources(path: String): List[VirtualFile] = listFiles(path).map(f =>
+    URIResource(File(f).toURI)
+  )
 
   def existsFile(path: String): Boolean = new java.io.File(path).exists()
 

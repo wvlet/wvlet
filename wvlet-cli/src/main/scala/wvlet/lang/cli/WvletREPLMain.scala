@@ -55,8 +55,12 @@ class WvletREPLMain(cliOption: WvletGlobalOption, replOpts: WvletREPLOption) ext
 
   @command(description = "Start REPL shell", isDefault = true)
   def repl(): Unit =
-    val currentProfile: Profile = Profile
-      .getProfile(replOpts.profile, replOpts.catalog, replOpts.schema, Profile.defaultDuckDBProfile)
+    val currentProfile: Profile = Profile.getProfile(
+      replOpts.profile,
+      replOpts.catalog,
+      replOpts.schema,
+      Profile.defaultDuckDBProfile
+    )
 
     val selectedCatalog = currentProfile.catalog
     val selectedSchema  = currentProfile.schema

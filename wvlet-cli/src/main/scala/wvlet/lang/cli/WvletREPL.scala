@@ -51,7 +51,8 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
     .builder()
     .name("wvlet-shell")
     // Use dumb terminal for sbt testing
-    .dumb(WvletMain.isInSbt).build()
+    .dumb(WvletMain.isInSbt)
+    .build()
 
   private val historyFile = new File(workEnv.cacheFolder, ".wv_history")
 
@@ -71,10 +72,12 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
     .variable(LineReader.INDENTATION, 2)
     .option(LineReader.Option.INSERT_BRACKET, true)
     // Coloring keywords
-    .highlighter(new ReplHighlighter).build()
+    .highlighter(new ReplHighlighter)
+    .build()
 
-  private val executorThreadManager = Executors
-    .newCachedThreadPool(ThreadUtil.newDaemonThreadFactory("wvlet-repl-executor"))
+  private val executorThreadManager = Executors.newCachedThreadPool(
+    ThreadUtil.newDaemonThreadFactory("wvlet-repl-executor")
+  )
 
   private given progressMonitor: QueryProgressMonitor =
     new QueryProgressMonitor:
@@ -112,7 +115,10 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
               lastUpdateTimeMillis = t
               val stats = m.stats
               val msg =
-                f"Query ${s"${stats.getState.toLowerCase}"} ${ElapsedTime.succinctMillis(stats.getElapsedTimeMillis)}%6s [${Count.succinct(stats.getProcessedRows)} rows] ${stats.getCompletedSplits}/${stats.getTotalSplits}"
+                f"Query ${s"${stats.getState.toLowerCase}"} ${ElapsedTime.succinctMillis(
+                    stats.getElapsedTimeMillis
+                  )}%6s [${Count.succinct(stats.getProcessedRows)} rows] ${stats
+                    .getCompletedSplits}/${stats.getTotalSplits}"
               printLine(msg)
           case _ =>
 
@@ -206,7 +212,8 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
       )(using QueryProgressMonitor.noOp) // Hide progress for descirbe query
     val str = result.toPrettyBox()
     reader.printAbove(
-      s"${Color.GREEN}describe${Color.RESET} ${Color.BLUE}(line:${lineNum})${Color.RESET}: ${Color.BRIGHT_RED}${lastLine}\n${Color.GRAY}${str}${AnsiColor.RESET}"
+      s"${Color.GREEN}describe${Color.RESET} ${Color.BLUE}(line:${lineNum})${Color.RESET}: ${Color
+          .BRIGHT_RED}${lastLine}\n${Color.GRAY}${str}${AnsiColor.RESET}"
     )
     true
 
@@ -221,10 +228,12 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
     val totalLines    = originalQuery.split("\n").size
     // Need to add newlines to display the debug output in a proper position in the terminal
     println(
-      s"${"\n" * (totalLines - lineNum + 1).max(0)}${Color.GREEN}debug${Color.RESET} ${Color.BLUE}(line:${lineNum})${Color.RESET}: ${Color.BRIGHT_RED}${lastLine}${AnsiColor.RESET}"
+      s"${"\n" * (totalLines - lineNum + 1).max(0)}${Color.GREEN}debug${Color.RESET} ${Color
+          .BLUE}(line:${lineNum})${Color.RESET}: ${Color.BRIGHT_RED}${lastLine}${AnsiColor.RESET}"
     )
-    val result = runner
-      .runStatement(QueryRequest(query = samplingQuery, querySelection = All, isDebugRun = true))
+    val result = runner.runStatement(
+      QueryRequest(query = samplingQuery, querySelection = All, isDebugRun = true)
+    )
     lastOutput = Some(runner.displayOutput(samplingQuery, result, terminal))
     val out = terminal.output()
     // Add enough blank lines to redisplay the user query

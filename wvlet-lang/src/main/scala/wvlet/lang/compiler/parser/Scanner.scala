@@ -11,8 +11,9 @@ import scala.annotation.{switch, tailrec}
 case class TokenData[Token](token: Token, str: String, offset: Int, length: Int):
   override def toString: String = f"[${offset}%3d:${length}%2d] ${token}%10s: ${str}"
 
-  def sourceLocation(using unit: CompilationUnit): SourceLocation = unit
-    .sourceLocationAt(nodeLocation(using unit.sourceFile))
+  def sourceLocation(using unit: CompilationUnit): SourceLocation = unit.sourceLocationAt(
+    nodeLocation(using unit.sourceFile)
+  )
 
   def span: Span = Span(offset, offset + length, 0)
 
@@ -222,7 +223,9 @@ abstract class ScannerBase[Token](sourceFile: SourceFile, config: ScannerConfig)
       else
         -1
     trace(
-      s"fetchToken[${current}]: '${String.valueOf(ch)}' charOffset:${charOffset} lastCharOffset:${lastCharOffset}, lineStartOffset:${lineStartOffset}"
+      s"fetchToken[${current}]: '${String.valueOf(
+          ch
+        )}' charOffset:${charOffset} lastCharOffset:${lastCharOffset}, lineStartOffset:${lineStartOffset}"
     )
 
   protected def peekAhead(): Unit =
