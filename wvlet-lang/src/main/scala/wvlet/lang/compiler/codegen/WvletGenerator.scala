@@ -18,13 +18,29 @@ case class WvletFormatConfig(
 object WvletGenerator:
   sealed trait WvletContext:
     def indent: Int
-    def enterExpression: WvletContext
+    def enterExpression: WvletContext = InExpression(indent + 1)
+    def enterFrom: WvletContext       = InFromClause(indent + 1)
+    def nested: WvletContext          = Indented(indent + 1)
 
-  case class Indented(indent: Int) extends WvletContext:
-    def enterExpression: Indented = Indented(indent + 1)
+    def isNested: Boolean = indent > 0
 
-  case class InExpression(indent: Int) extends WvletContext:
-    def enterExpression: InExpression = this
+    def inExpression: Boolean =
+      this match
+        case InExpression(_) =>
+          true
+        case _ =>
+          false
+
+    def inFrom: Boolean =
+      this match
+        case InFromClause(_) =>
+          true
+        case _ =>
+          false
+
+  case class Indented(indent: Int)     extends WvletContext
+  case class InExpression(indent: Int) extends WvletContext
+  case class InFromClause(indent: Int) extends WvletContext
 
 end WvletGenerator
 
@@ -52,6 +68,12 @@ class WvletGenerator(config: WvletFormatConfig = WvletFormatConfig())(using
   private def indent(block: String, offset: Int = 0)(using wvletContext: WvletContext): String =
     val ws = " " * ((wvletContext.indent + offset) * config.indentWidth)
     block.split("\n").map(line => s"${ws}${line}").mkString("\n")
+
+  private def wrapWithBlockIfNecessary(body: String)(using wvletContext: WvletContext): String =
+    if !wvletContext.isNested then
+      body
+    else
+      indent(s"{${body}}")
 
   private def lines(lines: Any*)(using wvletContext: WvletContext): String = lines
     .collect {
@@ -108,10 +130,83 @@ class WvletGenerator(config: WvletFormatConfig = WvletFormatConfig())(using
       case l: Limit =>
         printOpAndSingle("limit", l.child, printExpression(l.limit))
       case t: TableInput =>
-        indent(s"from ${printExpression(t.sqlExpr)}")
+        if wvletContext.inFrom then
+          printExpression(t.sqlExpr)
+        else
+          indent(s"from ${printExpression(t.sqlExpr)}")
+      case j: Join =>
+        val prefix =
+          if j.asof then
+            "asof "
+          else
+            ""
+
+        val left  = printRelation(j.left)
+        val right = printRelation(j.right)(using wvletContext.enterFrom)
+        val cond =
+          j.cond match
+            case NoJoinCriteria =>
+              ""
+            case NaturalJoin(_) =>
+              ""
+            case u: JoinOnTheSameColumns =>
+              if u.columns.size == 1 then
+                s"on ${u.columns.head.fullName}"
+              else
+                s"on (${u.columns.map(x => x.fullName).mkString(", ")})"
+            case JoinOn(expr, _) =>
+              s"on ${printExpression(expr)}"
+            case JoinOnEq(keys, _) =>
+              s"on ${printExpression(Expression.concatWithEq(keys))}"
+
+        // TODO Fix indentation of multi-table implicit joins
+        val q =
+          j.joinType match
+            case JoinType.InnerJoin =>
+              s"${left}\n${prefix}join ${right}${cond}"
+            case JoinType.LeftOuterJoin =>
+              s"${left}\n${prefix}left join ${right}${cond}"
+            case JoinType.RightOuterJoin =>
+              s"${left}\n${prefix}right join ${right}${cond}"
+            case JoinType.FullOuterJoin =>
+              s"${left}\n${prefix}full outer join ${right}${cond}"
+            case JoinType.CrossJoin =>
+              s"${left}\n${prefix}cross join ${right}${cond}"
+            case JoinType.ImplicitJoin =>
+              s"${left}, ${right}${cond}"
+        q
+      case a: AliasedRelation =>
+        val tableAlias: String =
+          val name = printExpression(a.alias)
+          a.columnNames match
+            case Some(columns) =>
+              s"${name}(${columns.map(x => s"${x.toSQLAttributeName}").mkString(", ")})"
+            case None =>
+              name
+        a.child match
+          case t: TableInput =>
+            s"${printExpression(t.sqlExpr)} as ${tableAlias}"
+          case v: Values =>
+            s"${printValues(v)} as ${tableAlias}"
+          case _ =>
+            s"${wrapWithBlockIfNecessary(printRelation(a.child))(using wvletContext.nested)} as ${tableAlias}"
       case other =>
         warn(s"Unsupported relation: ${other.nodeName}")
         other.nodeName
+
+  private def printValues(values: Values)(using wvletContext: WvletContext): String =
+    val rows = values
+      .rows
+      .map { row =>
+        row match
+          case a: ArrayConstructor =>
+            val elems = a.values.map(x => printExpression(x)).mkString(", ")
+            s"[${elems}]"
+          case other =>
+            printExpression(other)
+      }
+      .mkString(", ")
+    s"[${rows}]"
 
   def printExpression(
       expression: Expression
@@ -208,7 +303,7 @@ class WvletGenerator(config: WvletFormatConfig = WvletFormatConfig())(using
           .mkString
       case s: SubQueryExpression =>
         val wv = printRelation(s.query)(using wvletContext.enterExpression)
-        wv
+        s"{${wv}}"
       case i: IfExpr =>
         s"if(${printExpression(i.cond)}, ${printExpression(i.onTrue)}, ${printExpression(i.onFalse)})"
       case n: Not =>
