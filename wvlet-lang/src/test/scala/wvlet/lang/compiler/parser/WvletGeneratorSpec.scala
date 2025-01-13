@@ -19,6 +19,8 @@ class WvletGeneratorSpec(path: String) extends AirSpec:
       }
     }
 
+end WvletGeneratorSpec
+
 class SqlToWvletTPCHGeneratorTest extends WvletGeneratorSpec("spec/sql/tpc-h")
 
 class SqlToWvletTPCDSGeneratorTest extends WvletGeneratorSpec("spec/sql/tpc-ds")

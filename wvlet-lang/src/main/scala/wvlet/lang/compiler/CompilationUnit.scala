@@ -33,7 +33,7 @@ import java.util.jar.JarFile
   * trees) for the source file
   * @param sourceFile
   */
-case class CompilationUnit(sourceFile: SourceFile, isPreset: Boolean = false) extends LogSupport:
+case class CompilationUnit(sourceFile: SourceFile, isPreset: Boolean = false) extends LogSupport with Ordered[CompilationUnit]:
   // Untyped plan tree
   var unresolvedPlan: LogicalPlan = LogicalPlan.empty
   // Fully-typed plan tree
@@ -96,6 +96,9 @@ case class CompilationUnit(sourceFile: SourceFile, isPreset: Boolean = false) ex
     }
     result
 
+  override def compare(that: CompilationUnit): Int =
+    sourceFile.file.compare(that.sourceFile.file)
+
 end CompilationUnit
 
 class CompilationUnitCache:
@@ -130,7 +133,7 @@ object CompilationUnit extends LogSupport:
           )
         }
         .toList
-    units
+    units.sorted
 
   def fromResourcePath(path: String, isPreset: Boolean): List[CompilationUnit] =
     val resources = SourceIO.listResources(path)

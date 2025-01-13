@@ -704,7 +704,10 @@ case class IntervalLiteral(
   override def children: Seq[Expression] = Nil
   override def stringValue: String =
     if end.isEmpty then
-      s"${sign.symbol} '${value}' ${startField}"
+      if sign == Sign.NoSign then
+        s"'${value}' ${startField}"
+      else
+        s"${sign.symbol} '${value}' ${startField}"
     else
       s"${sign.symbol} between '${value}' ${startField} and ${end.get}"
 
