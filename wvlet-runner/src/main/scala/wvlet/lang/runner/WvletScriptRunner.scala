@@ -140,8 +140,10 @@ class WvletScriptRunner(
       val resultMaxWidth = str.split("\n").map(_.size).max
       if !config.interactive || resultMaxWidth <= terminal.getWidth then
         // The result fits in the terminal width
-        val output = queryResult
-          .toPrettyBox(maxWidth = Some(terminal.getWidth), maxColWidth = resultMaxColWidth)
+        val output = queryResult.toPrettyBox(
+          maxWidth = Some(terminal.getWidth),
+          maxColWidth = resultMaxColWidth
+        )
         if output.trim.nonEmpty then
           println(output)
       else

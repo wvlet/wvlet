@@ -18,8 +18,9 @@ import scala.jdk.CollectionConverters.*
 
 class QueryService(scriptRunner: WvletScriptRunner) extends LogSupport with AutoCloseable:
 
-  private val threadManager = Executors
-    .newCachedThreadPool(ThreadUtil.newDaemonThreadFactory("wvlet-query-service"))
+  private val threadManager = Executors.newCachedThreadPool(
+    ThreadUtil.newDaemonThreadFactory("wvlet-query-service")
+  )
 
   private val queryMap = ConcurrentHashMap[ULID, QueryInfo]().asScala
 
@@ -57,8 +58,11 @@ class QueryService(scriptRunner: WvletScriptRunner) extends LogSupport with Auto
       queryProgressMonitor: QueryProgressMonitor = QueryProgressMonitor.noOp
   ): Unit =
     var lastInfo = queryMap(queryId)
-    lastInfo = lastInfo
-      .copy(pageToken = "1", status = QueryStatus.RUNNING, startedAt = Some(Instant.now()))
+    lastInfo = lastInfo.copy(
+      pageToken = "1",
+      status = QueryStatus.RUNNING,
+      startedAt = Some(Instant.now())
+    )
     queryMap += queryId -> lastInfo
 
     val queryResult = scriptRunner.runStatement(request)

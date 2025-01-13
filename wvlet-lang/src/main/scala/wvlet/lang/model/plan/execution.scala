@@ -95,7 +95,9 @@ sealed trait ExecutionPlan extends TreeNode with Product:
         throw StatusCode
           .COMPILATION_FAILURE
           .newException(
-            s"Failed to create ${this.getClass.getSimpleName} node with args: ${newArgs.mkString(", ")}",
+            s"Failed to create ${this.getClass.getSimpleName} node with args: ${newArgs.mkString(
+                ", "
+              )}",
             e
           )
 

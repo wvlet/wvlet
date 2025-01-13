@@ -132,8 +132,9 @@ class Compiler(val compilerOptions: CompilerOptions) extends LogSupport:
     * @return
     */
   def compileSourcePaths(contextFile: Option[String]): CompileResult =
-    val contextUnit: Option[CompilationUnit] = contextFile
-      .flatMap(f => compilationUnitsInSourcePaths.find(_.sourceFile.fileName == f))
+    val contextUnit: Option[CompilationUnit] = contextFile.flatMap(f =>
+      compilationUnitsInSourcePaths.find(_.sourceFile.fileName == f)
+    )
 
     compileInternal(compilationUnitsInSourcePaths, contextUnit = contextUnit)
 

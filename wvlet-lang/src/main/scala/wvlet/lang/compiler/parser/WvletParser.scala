@@ -333,7 +333,9 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       throw StatusCode
         .SYNTAX_ERROR
         .newException(
-          s"extending multiple types is not supported: ${name} extends ${parents.map(_.fullName).mkString(", ")}",
+          s"extending multiple types is not supported: ${name} extends ${parents
+              .map(_.fullName)
+              .mkString(", ")}",
           t.sourceLocation
         )
     TypeDef(name, tp, scopes, parents.headOption, elems, spanFrom(t))

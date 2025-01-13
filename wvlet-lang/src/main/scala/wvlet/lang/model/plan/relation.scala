@@ -560,7 +560,9 @@ case class SQLSelect(
 ) extends UnaryRelation
     with Selection:
   override def toString =
-    s"AggregateSelect[${groupingKeys.mkString(",")}](Select[${selectItems.mkString(", ")}](${child}))"
+    s"AggregateSelect[${groupingKeys.mkString(",")}](Select[${selectItems.mkString(
+        ", "
+      )}](${child}))"
 
   override lazy val relationType: RelationType = ProjectedType(
     Name.typeName(RelationType.newRelationTypeName),

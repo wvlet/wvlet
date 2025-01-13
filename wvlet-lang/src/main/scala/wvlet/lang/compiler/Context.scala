@@ -122,16 +122,20 @@ case class Context(
   def workEnv: WorkEnv = global.workEnv
 
   def withDebugRun(isDebug: Boolean): Context = this.copy(isDebugRun = isDebug)
-  def withQueryProgressMonitor(monitor: QueryProgressMonitor): Context = this
-    .copy(queryProgressMonitor = monitor)
+  def withQueryProgressMonitor(monitor: QueryProgressMonitor): Context = this.copy(
+    queryProgressMonitor = monitor
+  )
 
   /**
     * Create a new context with an additional import
     * @param i
     * @return
     */
-  def withImport(i: Import): Context = this
-    .copy(outer = this, scope = scope, importDefs = i :: importDefs)
+  def withImport(i: Import): Context = this.copy(
+    outer = this,
+    scope = scope,
+    importDefs = i :: importDefs
+  )
 
   def withCompilationUnit[U](newCompileUnit: CompilationUnit): Context = global
     .getContextOf(newCompileUnit)

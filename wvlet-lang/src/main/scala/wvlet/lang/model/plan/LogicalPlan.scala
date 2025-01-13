@@ -165,8 +165,9 @@ trait LogicalPlan extends SyntaxTreeNode with Product:
     *
     * @param rule
     */
-  def traverseChildren[U](rule: PartialFunction[LogicalPlan, U]): Unit = productIterator
-    .foreach(child => recursiveTraverse(rule)(child))
+  def traverseChildren[U](rule: PartialFunction[LogicalPlan, U]): Unit = productIterator.foreach(
+    child => recursiveTraverse(rule)(child)
+  )
 
   private def recursiveTraverseOnce[U](f: PartialFunction[LogicalPlan, U])(arg: Any): Unit =
     def loop(v: Any): Unit =

@@ -71,8 +71,9 @@ class TrinoConnector(val config: TrinoConfig, workEnv: WorkEnv)
       try
         stmt.setProgressMonitor(
           new Consumer[QueryStats]:
-            override def accept(stats: QueryStats): Unit = queryProgressMonitor
-              .reportProgress(TrinoQueryMetric(stats))
+            override def accept(stats: QueryStats): Unit = queryProgressMonitor.reportProgress(
+              TrinoQueryMetric(stats)
+            )
         )
         body(stmt)
       finally

@@ -41,8 +41,11 @@ case class WvletServerConfig(
   lazy val workEnv: WorkEnv = WorkEnv(path = workDir)
 
 object WvletServer extends LogSupport:
-  def router: RxRouter = RxRouter
-    .of(RxRouter.of[FrontendApiImpl], RxRouter.of[FileApiImpl], RxRouter.of[StaticContentApi])
+  def router: RxRouter = RxRouter.of(
+    RxRouter.of[FrontendApiImpl],
+    RxRouter.of[FileApiImpl],
+    RxRouter.of[StaticContentApi]
+  )
 
   def startServer(config: WvletServerConfig, openBrowser: Boolean = false): Unit = design(config)
     .withProductionMode
@@ -86,8 +89,12 @@ object WvletServer extends LogSupport:
       .bindInstance[WvletServerConfig](config)
       .bindInstance[WorkEnv](config.workEnv)
       .bindInstance[Profile](
-        Profile
-          .getProfile(config.profile, config.catalog, config.schema, Profile.defaultDuckDBProfile)
+        Profile.getProfile(
+          config.profile,
+          config.catalog,
+          config.schema,
+          Profile.defaultDuckDBProfile
+        )
       )
       .bindProvider[Profile, WvletScriptRunnerConfig] { (profile: Profile) =>
         WvletScriptRunnerConfig(
