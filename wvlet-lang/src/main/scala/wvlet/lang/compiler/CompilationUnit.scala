@@ -33,7 +33,9 @@ import java.util.jar.JarFile
   * trees) for the source file
   * @param sourceFile
   */
-case class CompilationUnit(sourceFile: SourceFile, isPreset: Boolean = false) extends LogSupport with Ordered[CompilationUnit]:
+case class CompilationUnit(sourceFile: SourceFile, isPreset: Boolean = false)
+    extends LogSupport
+    with Ordered[CompilationUnit]:
   // Untyped plan tree
   var unresolvedPlan: LogicalPlan = LogicalPlan.empty
   // Fully-typed plan tree
@@ -96,8 +98,7 @@ case class CompilationUnit(sourceFile: SourceFile, isPreset: Boolean = false) ex
     }
     result
 
-  override def compare(that: CompilationUnit): Int =
-    sourceFile.file.compare(that.sourceFile.file)
+  override def compare(that: CompilationUnit): Int = sourceFile.file.compare(that.sourceFile.file)
 
 end CompilationUnit
 

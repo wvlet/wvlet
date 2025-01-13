@@ -125,6 +125,8 @@ class WvletGenerator(config: WvletFormatConfig = WvletFormatConfig())(using
         printOpAndItems("select", p.child, p.selectItems.map(x => printExpression(x)))
       case g: GroupBy =>
         printOpAndItems("group by", g.child, g.groupingKeys.map(x => printExpression(x)))
+      case a: Agg =>
+        printOpAndItems("agg", a.child, a.aggExprs.map(x => printExpression(x)))
       case f: Filter =>
         printOpAndSingle("where", f.child, printExpression(f.filterExpr))
       case l: Limit =>
@@ -134,6 +136,14 @@ class WvletGenerator(config: WvletFormatConfig = WvletFormatConfig())(using
           printExpression(t.sqlExpr)
         else
           indent(s"from ${printExpression(t.sqlExpr)}")
+      case a: AddColumnsToRelation =>
+        printOpAndItems("add", a.child, a.newColumns.map(x => printExpression(x)))
+      case s: ShiftColumns =>
+        printOpAndItems("shift", s.child, s.shiftItems.map(x => printExpression(x)))
+      case s: ExcludeColumnsFromRelation =>
+        printOpAndItems("exclude", s.child, s.columnNames.map(x => printExpression(x)))
+      case r: RenameColumnsFromRelation =>
+        printOpAndItems("rename", r.child, r.columnAliases.map(x => printExpression(x)))
       case j: Join =>
         val prefix =
           if j.asof then
@@ -175,6 +185,30 @@ class WvletGenerator(config: WvletFormatConfig = WvletFormatConfig())(using
             case JoinType.ImplicitJoin =>
               s"${left}, ${right}${cond}"
         q
+      case s: SetOperation =>
+        val rels: List[String] =
+          s.children.toList match
+            case Nil =>
+              Nil
+            case head :: tail =>
+              val hd = printRelation(head)
+              val tl = tail.map(x => wrapWithBlockIfNecessary(printRelation(x)))
+              hd :: tl
+
+        val op =
+          s match
+            case _: Union =>
+              "union"
+            case _: Intersect =>
+              "intersect"
+            case _: Except =>
+              "except"
+            case _: Concat =>
+              "concat"
+
+        indent(rels.mkString(s"\n${op}\n"))
+      case b: BracedRelation =>
+        wrapWithBlockIfNecessary(printRelation(b.child))
       case a: AliasedRelation =>
         val tableAlias: String =
           val name = printExpression(a.alias)
@@ -189,7 +223,17 @@ class WvletGenerator(config: WvletFormatConfig = WvletFormatConfig())(using
           case v: Values =>
             s"${printValues(v)} as ${tableAlias}"
           case _ =>
-            s"${wrapWithBlockIfNecessary(printRelation(a.child))(using wvletContext.nested)} as ${tableAlias}"
+            s"${wrapWithBlockIfNecessary(printRelation(a.child))(using
+                wvletContext.nested
+              )} as ${tableAlias}"
+      case p: Pivot =>
+        val pivotKeys    = p.pivotKeys.map(x => printExpression(x))
+        val groupingKeys = p.groupingKeys.map(x => printExpression(x))
+        val prev         = printRelation(p.child)
+        val q            = indent(s"pivot on ${pivotKeys.mkString(", ")}")
+        lines(prev, q)
+      case t: TestRelation =>
+        printOpAndSingle("test", t.child, printExpression(t.testExpr))
       case other =>
         warn(s"Unsupported relation: ${other.nodeName}")
         other.nodeName
@@ -305,7 +349,9 @@ class WvletGenerator(config: WvletFormatConfig = WvletFormatConfig())(using
         val wv = printRelation(s.query)(using wvletContext.enterExpression)
         s"{${wv}}"
       case i: IfExpr =>
-        s"if(${printExpression(i.cond)}, ${printExpression(i.onTrue)}, ${printExpression(i.onFalse)})"
+        s"if(${printExpression(i.cond)}, ${printExpression(i.onTrue)}, ${printExpression(
+            i.onFalse
+          )})"
       case n: Not =>
         s"not ${printExpression(n.child)}"
       case l: ListExpr =>
@@ -323,7 +369,7 @@ class WvletGenerator(config: WvletFormatConfig = WvletFormatConfig())(using
       //      case n: NativeExpression =>
       //        printExpression(ExpressionEvaluator.eval(n, ctx))
       case a: ArrayConstructor =>
-        s"ARRAY[${a.values.map(x => printExpression(x)).mkString(", ")}]"
+        s"[${a.values.map(x => printExpression(x)).mkString(", ")}]"
       case a: ArrayAccess =>
         s"${printExpression(a.arrayExpr)}[${printExpression(a.index)}]"
       case c: CaseExpr =>
@@ -371,6 +417,17 @@ class WvletGenerator(config: WvletFormatConfig = WvletFormatConfig())(using
         s"cast(${printExpression(c.child)} as ${c.dataType.typeName})"
       case n: NativeExpression =>
         printExpression(ExpressionEvaluator.eval(n))
+      case p: PivotKey =>
+        val values = p.values.map(x => printExpression(x)).mkString(", ")
+        if values.isEmpty then
+          s"${printExpression(p.name)}"
+        else
+          s"${printExpression(p.name)} in (${values})"
+      case s: ShouldExpr =>
+        val left  = printExpression(s.left)
+        val right = printExpression(s.right)
+        val op    = s.testType.expr
+        s"${left} ${op} ${right}"
       case other =>
         warn(s"unknown expression type: ${other}")
         other.toString

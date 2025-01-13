@@ -1093,8 +1093,8 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         SingleColumn(key, key, g.span)
       }
     // report _1, _2, agg_expr...
-    val items = groupingKeys ++ selectItems()
-    Agg(input, items, spanFrom(t))
+    val items = selectItems()
+    Agg(input, groupingKeys, items, spanFrom(t))
 
   def pivotExpr(input: Relation): Pivot =
     def pivotValues: List[Literal] =
