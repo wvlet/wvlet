@@ -920,8 +920,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     val t = scanner.lookAhead()
     val expr =
       t.token match
-        case SqlToken.NULL | SqlToken.INTEGER_LITERAL | SqlToken.DOUBLE_LITERAL |
-            SqlToken.FLOAT_LITERAL | SqlToken.DECIMAL_LITERAL | SqlToken.EXP_LITERAL | SqlToken
+        case SqlToken.NULL | SqlToken.INTEGER_LITERAL | SqlToken.DOUBLE_LITERAL | SqlToken
+              .FLOAT_LITERAL | SqlToken.DECIMAL_LITERAL | SqlToken.EXP_LITERAL | SqlToken
               .STRING_LITERAL =>
           literal()
         case SqlToken.CASE =>

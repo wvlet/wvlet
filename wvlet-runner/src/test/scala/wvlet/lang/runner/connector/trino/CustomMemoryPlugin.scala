@@ -31,8 +31,9 @@ import scala.collection.immutable.ListMap
 import scala.jdk.CollectionConverters.*
 
 class CustomMemoryPlugin extends Plugin:
-  override def getConnectorFactories: lang.Iterable[ConnectorFactory] = ImmutableList
-    .of(CustomMemoryConnectorFactory())
+  override def getConnectorFactories: lang.Iterable[ConnectorFactory] = ImmutableList.of(
+    CustomMemoryConnectorFactory()
+  )
 
 class CustomMemoryModule extends com.google.inject.Module:
   override def configure(binder: com.google.inject.Binder): Unit =
@@ -78,8 +79,9 @@ class CustomMemoryConnector @Inject (
   override def getTableFunctions: util.Set[ConnectorTableFunction] =
     Set(HelloTableFunction, DuckDBSQLFunction).asJava
 
-  override def getFunctionProvider: Optional[FunctionProvider] = Optional
-    .of(CustomMemoryFunctionProvider)
+  override def getFunctionProvider: Optional[FunctionProvider] = Optional.of(
+    CustomMemoryFunctionProvider
+  )
 
   override def getSplitManager: ConnectorSplitManager = splitManager
 
@@ -107,8 +109,13 @@ class CustomMemorySplitManager @Inject (config: MemoryConfig, metadata: MemoryMe
       table: ConnectorTableHandle,
       dynamicFilter: DynamicFilter,
       constraint: Constraint
-  ): ConnectorSplitSource = memorySplitManager
-    .getSplits(transaction, session, table, dynamicFilter, constraint)
+  ): ConnectorSplitSource = memorySplitManager.getSplits(
+    transaction,
+    session,
+    table,
+    dynamicFilter,
+    constraint
+  )
 
   override def getSplits(
       transaction: ConnectorTransactionHandle,
@@ -122,6 +129,8 @@ class CustomMemorySplitManager @Inject (config: MemoryConfig, metadata: MemoryMe
         FixedSplitSource(DuckDBQuerySplit(d.sql))
       case other =>
         super.getSplits(transaction, session, function)
+
+end CustomMemorySplitManager
 
 object HelloTableFunction extends ConnectorTableFunction:
   override def getName: String = "hello"

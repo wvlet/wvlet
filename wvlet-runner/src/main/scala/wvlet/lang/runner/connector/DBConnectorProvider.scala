@@ -49,7 +49,9 @@ class DBConnectorProvider(workEnv: WorkEnv) extends LogSupport with AutoCloseabl
           GenericConnector(workEnv)
         case other =>
           warn(
-            s"Connector for -t ${other.toString.toLowerCase} option is not implemented. Using GenericConnector for DuckDB as a fallback"
+            s"Connector for -t ${other
+                .toString
+                .toLowerCase} option is not implemented. Using GenericConnector for DuckDB as a fallback"
           )
           GenericConnector(workEnv)
       end match

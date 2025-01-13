@@ -46,8 +46,10 @@ class WvletMain(opts: WvletGlobalOption) extends LogSupport:
   def version: Unit = info(s"wvlet version ${BuildInfo.version}")
 
   @command(description = "Start a local WebUI server")
-  def ui(serverConfig: WvletServerConfig): Unit = WvletServer
-    .startServer(serverConfig, openBrowser = true)
+  def ui(serverConfig: WvletServerConfig): Unit = WvletServer.startServer(
+    serverConfig,
+    openBrowser = true
+  )
 
   private def handleError[U](body: => U): U =
     try

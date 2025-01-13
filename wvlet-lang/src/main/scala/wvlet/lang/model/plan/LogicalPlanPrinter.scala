@@ -144,7 +144,9 @@ object LogicalPlanPrinter extends LogSupport:
             case t: HasTableName =>
               s"${ws}[${resolvedSign}${m.modelName}${loc}] ${t.name}${functionSig}"
             case src: HasSourceFile =>
-              s"${ws}[${resolvedSign}${m.modelName} ${src.sourceFile.fileName}${loc}]${functionSig} "
+              s"${ws}[${resolvedSign}${m.modelName} ${src
+                  .sourceFile
+                  .fileName}${loc}]${functionSig} "
             case _ =>
               s"${ws}[${resolvedSign}${m.modelName}${loc}]${functionSig}"
 

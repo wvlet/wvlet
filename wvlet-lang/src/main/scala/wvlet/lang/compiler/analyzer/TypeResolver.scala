@@ -78,8 +78,9 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
       resolveModelScan ::             // Resolve scanned model types
       Nil
 
-  private def lookupType(name: Name, context: Context): Option[Symbol] = context
-    .findSymbolByName(name)
+  private def lookupType(name: Name, context: Context): Option[Symbol] = context.findSymbolByName(
+    name
+  )
 
   def resolve(plan: LogicalPlan, context: Context): LogicalPlan =
 
@@ -356,7 +357,9 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
                       .workEnv
                       .errorLogger
                       .debug(
-                        s"Unresolved table ref: ${ref.name.fullName}: ${context.scope.getAllEntries}"
+                        s"Unresolved table ref: ${ref.name.fullName}: ${context
+                            .scope
+                            .getAllEntries}"
                       )
                     ref
       case ref: TableFunctionCall if !ref.relationType.isResolved =>
@@ -451,8 +454,9 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
     override def apply(context: Context): PlanRewriter = {
       case r: Relation => // Regular relation and Filter etc.
         // context.logWarn(s"Resolving relation: ${r} with ${r.inputRelationType}")
-        val newRelation = r
-          .transformChildExpressions(resolveExpression(r.inputRelationType, context))
+        val newRelation = r.transformChildExpressions(
+          resolveExpression(r.inputRelationType, context)
+        )
         newRelation
     }
 
@@ -934,7 +938,9 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
       expr: Expression,
       inputRelationType: RelationType,
       context: Context
-  ): Expression = resolveExpression(inputRelationType, context)
-    .applyOrElse(expr, identity[Expression])
+  ): Expression = resolveExpression(inputRelationType, context).applyOrElse(
+    expr,
+    identity[Expression]
+  )
 
 end TypeResolver

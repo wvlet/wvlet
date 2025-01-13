@@ -195,7 +195,9 @@ class QueryExecutor(
                       .compilationUnit
                       .text(md.child.span)
                       // Remove indentation
-                      .split("\n").map(_.trim).mkString("\n")
+                      .split("\n")
+                      .map(_.trim)
+                      .mkString("\n")
 
                     // TODO Report query in the provided output
                     println(query)
@@ -205,6 +207,8 @@ class QueryExecutor(
             QueryResult.empty
           case None =>
             WarningResult(s"${s.name} is not found", s.sourceLocation(using context))
+
+  end executeCommand
 
   private def executeDelete(ops: DeleteOps)(using context: Context): QueryResult =
     val statements = GenSQL.generateDeleteSQL(ops, context)

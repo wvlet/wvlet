@@ -191,7 +191,9 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
         val onExpr   = printPivotOnExpr(p)
         val aggItems = a.selectItems.map(x => printExpression(x)).mkString(", ")
         val pivotExpr =
-          s"pivot ${printRelation(p.child, remainingParents)(using sqlContext.enterFrom)}\n  on ${onExpr}\n  using ${aggItems}"
+          s"pivot ${printRelation(p.child, remainingParents)(using
+              sqlContext.enterFrom
+            )}\n  on ${onExpr}\n  using ${aggItems}"
         if p.groupingKeys.isEmpty then
           selectWithIndentAndParenIfNecessary(pivotExpr)
         else
@@ -260,7 +262,9 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
         selectWithIndentAndParenIfNecessary(sql)
       case p: Pivot => // pivot without explicit aggregations
         selectWithIndentAndParenIfNecessary(
-          s"pivot ${printRelation(p.child, remainingParents)(using sqlContext.enterFrom)}\n  on ${printPivotOnExpr(p)}"
+          s"pivot ${printRelation(p.child, remainingParents)(using
+              sqlContext.enterFrom
+            )}\n  on ${printPivotOnExpr(p)}"
         )
       case d: Debug =>
         // Skip debug expression
@@ -289,7 +293,10 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
                   // Supported only in td-trino
                   s"select *, reservoir_sample(${n}) over() from ${child}"
                 case Percentage(percentage) =>
-                  s"select * from ${child} TABLESAMPLE ${s.method.toString.toLowerCase()}(${percentage})"
+                  s"select * from ${child} TABLESAMPLE ${s
+                      .method
+                      .toString
+                      .toLowerCase()}(${percentage})"
             case _ =>
               warn(s"Unsupported sampling method: ${s.method} for ${dbType}")
               child
@@ -313,7 +320,9 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
 //            s"${selectWithIndentAndParenIfNecessary(s"select * from ${printValues(v)} as ${tableAlias}")} as ${a.alias.fullName}"
           case _ =>
             indent(
-              s"${printRelation(a.child, remainingParents)(using sqlContext.nested)} as ${tableAlias}"
+              s"${printRelation(a.child, remainingParents)(using
+                  sqlContext.nested
+                )} as ${tableAlias}"
             )
       case p: BracedRelation =>
         def inner = printRelation(p.child, Nil)
@@ -472,7 +481,9 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
           )
         else
           selectWithIndentAndParenIfNecessary(
-            s"select * from (values ${indent(modelValues.mkString(", "))}) as __models(name, args, package_name)"
+            s"select * from (values ${indent(
+                modelValues.mkString(", ")
+              )}) as __models(name, args, package_name)"
           )
       case other =>
         warn(s"unsupported relation type: ${other}")
@@ -592,7 +603,10 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
       body
     else
       warn(
-        s"Unprocessed parents:\n${remainingParents.mkString(" - ", "\n - ", "")} (${ctx.compilationUnit.sourceFile.fileName})"
+        s"Unprocessed parents:\n${remainingParents.mkString(" - ", "\n - ", "")} (${ctx
+            .compilationUnit
+            .sourceFile
+            .fileName})"
       )
       body
   end printAsSelect
@@ -791,7 +805,9 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
         val sql = printQuery(s.query, Nil)(using sqlContext.enterExpression)
         sql
       case i: IfExpr =>
-        s"if(${printExpression(i.cond)}, ${printExpression(i.onTrue)}, ${printExpression(i.onFalse)})"
+        s"if(${printExpression(i.cond)}, ${printExpression(i.onTrue)}, ${printExpression(
+            i.onFalse
+          )})"
       case n: Not =>
         s"not ${printExpression(n.child)}"
       case l: ListExpr =>
