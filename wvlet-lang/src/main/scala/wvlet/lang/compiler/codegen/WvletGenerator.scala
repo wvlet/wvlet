@@ -56,6 +56,8 @@ class WvletGenerator(config: WvletFormatConfig = WvletFormatConfig())(using
           p.statements.map(stmt => iter(stmt)).mkString(";\n\n")
         case r: Relation =>
           printRelation(r)(using Indented(0))
+        case s: TopLevelStatement =>
+          printStatement(s)(using Indented(0))
         case other =>
           warn(s"Unsupported logical plan: ${other}")
           other.toString
@@ -75,9 +77,18 @@ class WvletGenerator(config: WvletFormatConfig = WvletFormatConfig())(using
     else
       indent(s"{${body}}")
 
+  private def concatWithWS(items: Any*): String = items
+    .collect {
+      case s: String if s.nonEmpty =>
+        s
+      case Some(s) =>
+        s
+    }
+    .mkString(" ")
+
   private def lines(lines: Any*)(using wvletContext: WvletContext): String = lines
     .collect {
-      case s: String =>
+      case s: String if s.nonEmpty =>
         s
       case Some(s) =>
         s
@@ -127,6 +138,8 @@ class WvletGenerator(config: WvletFormatConfig = WvletFormatConfig())(using
         printOpAndItems("group by", g.child, g.groupingKeys.map(x => printExpression(x)))
       case a: Agg =>
         printOpAndItems("agg", a.child, a.aggExprs.map(x => printExpression(x)))
+      case t: Transform =>
+        printOpAndItems("transform", t.child, t.transformItems.map(x => printExpression(x)))
       case f: Filter =>
         printOpAndSingle("where", f.child, printExpression(f.filterExpr))
       case l: Limit =>
@@ -207,8 +220,15 @@ class WvletGenerator(config: WvletFormatConfig = WvletFormatConfig())(using
               "concat"
 
         indent(rels.mkString(s"\n${op}\n"))
+      case d: Dedup =>
+        val r = printRelation(d.child)
+        lines(r, indent("dedup"))
+      case v: Values =>
+        val r = printValues(v)
+        wrapWithBlockIfNecessary(r)
       case b: BracedRelation =>
-        wrapWithBlockIfNecessary(printRelation(b.child))
+        val r = printRelation(b.child)(using wvletContext.nested)
+        r
       case a: AliasedRelation =>
         val tableAlias: String =
           val name = printExpression(a.alias)
@@ -232,11 +252,157 @@ class WvletGenerator(config: WvletFormatConfig = WvletFormatConfig())(using
         val prev         = printRelation(p.child)
         val q            = indent(s"pivot on ${pivotKeys.mkString(", ")}")
         lines(prev, q)
+      case s: SaveTo =>
+        val target = printExpression(s.target)
+        val opts =
+          if s.saveOptions.isEmpty then
+            ""
+          else
+            s" with ${s.saveOptions.map(x => printExpression(x)).mkString(", ")}"
+        printOpAndSingle("save", s.child, s"to ${target}${opts}")
+      case s: SaveToFile =>
+        val target = s.path
+        val opts =
+          if s.saveOptions.isEmpty then
+            ""
+          else
+            s" with ${s.saveOptions.map(x => printExpression(x)).mkString(", ")}"
+        printOpAndSingle("save", s.child, s"to '${target}'${opts}")
+      case a: AppendTo =>
+        val target = printExpression(a.target)
+        printOpAndSingle("append", a.child, s"to ${target}")
+      case a: AppendToFile =>
+        val target = a.path
+        printOpAndSingle("save", a.child, s"to '${target}'")
+      case d: Delete =>
+        lines(printRelation(d.child), indent(s"delete"))
+      case s: Sample =>
+        val r = printRelation(s.child)
+        val q = indent(s"sample ${s.method} ${s.size.toExpr}")
+        lines(r, q)
+      case d: Describe =>
+        val r = printRelation(d.child)
+        val q = indent(s"describe")
+        lines(r, q)
+      case d: Distinct =>
+        val r = printRelation(d.child)
+        val q = indent(s"distinct")
+        lines(r, q)
       case t: TestRelation =>
         printOpAndSingle("test", t.child, printExpression(t.testExpr))
+      case d: Debug =>
+        val r  = printRelation(d.child)
+        val rd = printRelation(removeLeafInput(d.debugExpr))(using wvletContext.nested)
+        val q  = lines(s"debug {", rd, "}")
+        lines(r, q)
+      case s: SelectAsAlias =>
+        val r = printRelation(s.child)
+        val q = indent(s"select as ${printExpression(s.alias)}")
+        lines(r, q)
+      case e: EmptyRelation =>
+        ""
+      case s: Show =>
+        indent(
+          concatWithWS(
+            "show",
+            s.showType,
+            if s.inExpr.isEmpty then
+              None
+            else
+              Some(s"in ${printExpression(s.inExpr)}")
+          )
+        )
       case other =>
         warn(s"Unsupported relation: ${other.nodeName}")
         other.nodeName
+
+  def printStatement(s: TopLevelStatement)(using wvletContext: WvletContext): String =
+    s match
+      case e: ExecuteExpr =>
+        val q = indent(s"execute ${printExpression(e.expr)}")
+        indent(q)
+      case i: Import =>
+        val q = concatWithWS(
+          "import",
+          printExpression(i.importRef),
+          i.alias.map(x => s"as ${printExpression(x)}")
+        )
+        indent(q)
+      case v: ValDef =>
+        val q = concatWithWS(
+          "val",
+          s"${v.name.name}:",
+          v.dataType.typeName,
+          "=",
+          printExpression(v.expr)
+        )
+        indent(q)
+      case m: ModelDef =>
+        lines(
+          concatWithWS(
+            "model",
+            m.params.map(x => printExpression(x)).mkString(", "),
+            m.givenRelationType
+              .map { rt =>
+                s": ${rt.typeName}"
+              },
+            "="
+          ),
+          printRelation(m.child)(using wvletContext.nested),
+          "end"
+        )
+      case t: TypeDef =>
+        val q = concatWithWS(
+          "type",
+          t.name.name,
+          if t.params.isEmpty then
+            None
+          else
+            Some(s"[${t.params.mkString(", ")}]")
+          ,
+          t.parent.map(x => s"extends ${printExpression(x)}"),
+          "="
+        )
+        val elems = t
+          .elems
+          .map {
+            case f: FieldDef =>
+              concatWithWS(
+                f.name.name,
+                ":",
+                f.tpe.toSQLAttributeName,
+                f.body.map(x => s"= ${printExpression(x)}").getOrElse("")
+              )
+            case f: FunctionDef =>
+              concatWithWS(
+                "def",
+                f.name.name,
+                if f.args.isEmpty then
+                  None
+                else
+                  Some(f.args.map(x => printExpression(x)).mkString("(", ", ", ")"))
+                ,
+                f.retType.map(x => s": ${x.typeName}"),
+                f.expr.map(x => s"= ${printExpression(x)}")
+              )
+          }
+        lines(q, elems.map(x => indent(x)).mkString("\n"), "end")
+      case s: ShowQuery =>
+        indent(concatWithWS("show", "query", printExpression(s.name)))
+      case other =>
+        warn(s"Unsupported statement: ${other}")
+        other.nodeName
+
+  /**
+    * Remove the leaf input for debug expressions
+    * @param r
+    * @return
+    */
+  private def removeLeafInput(r: Relation): Relation = r
+    .transformUp { case l: LeafPlan =>
+      EmptyRelation(l.span)
+    }
+    .asInstanceOf[Relation]
 
   private def printValues(values: Values)(using wvletContext: WvletContext): String =
     val rows = values
@@ -250,7 +416,10 @@ class WvletGenerator(config: WvletFormatConfig = WvletFormatConfig())(using
             printExpression(other)
       }
       .mkString(", ")
-    s"[${rows}]"
+    if wvletContext.inFrom then
+      s"[${rows}]"
+    else
+      s"from [${rows}]"
 
   def printExpression(
       expression: Expression
@@ -428,6 +597,15 @@ class WvletGenerator(config: WvletFormatConfig = WvletFormatConfig())(using
         val right = printExpression(s.right)
         val op    = s.testType.expr
         s"${left} ${op} ${right}"
+      case s: SaveOption =>
+        s"${printExpression(s.key)}: ${printExpression(s.value)}"
+      case d: DefArg =>
+        concatWithWS(
+          d.name.name,
+          ":",
+          d.dataType.typeName,
+          d.defaultValue.map(x => s" = ${printExpression(x)}")
+        )
       case other =>
         warn(s"unknown expression type: ${other}")
         other.toString

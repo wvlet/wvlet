@@ -35,6 +35,7 @@ enum WvletToken(val tokenType: TokenType, val str: String):
 
   def isQueryDelimiter: Boolean = WvletToken.isQueryDelimiter(this)
   def isStringStart: Boolean    = WvletToken.stringStartToken.contains(this)
+  def isStringLiteral: Boolean  = WvletToken.stringLiterals.contains(this)
 
   // special tokens
   case EMPTY      extends WvletToken(Control, "<empty>")
@@ -57,7 +58,9 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   case LONG_LITERAL    extends WvletToken(Literal, "<long literal>")
   case FLOAT_LITERAL   extends WvletToken(Literal, "<float literal>")
   case DOUBLE_LITERAL  extends WvletToken(Literal, "<double literal>")
-  case STRING_LITERAL  extends WvletToken(Literal, "<string literal>")
+  case STRING_LITERAL  extends WvletToken(Literal, "<'string literal'>") // Single-quoted
+  case DOUBLE_QUOTED_STRING_LITERAL extends WvletToken(Literal, "<\"string literal\">")
+  case TRIPLE_QUOTED_STRING_LITERAL extends WvletToken(Literal, "<\"\"\"string literal\"\"\">")
 
   // literal keywords
   case NULL  extends WvletToken(Keyword, "null")
@@ -295,6 +298,12 @@ object WvletToken:
     WvletToken.R_PAREN,
     WvletToken.SEMICOLON,
     WvletToken.PIPE
+  )
+
+  val stringLiterals = Set(
+    WvletToken.STRING_LITERAL,
+    WvletToken.DOUBLE_QUOTED_STRING_LITERAL,
+    WvletToken.TRIPLE_QUOTED_STRING_LITERAL
   )
 
   def isQueryDelimiter(t: WvletToken): Boolean = queryDelimiters.contains(t)

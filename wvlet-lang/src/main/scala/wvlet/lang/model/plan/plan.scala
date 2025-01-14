@@ -110,7 +110,8 @@ case class ModelDef(
     child: Query,
     span: Span
 ) extends LogicalPlan
-    with HasTableName:
+    with HasTableName
+    with LanguageStatement:
   override def children: Seq[LogicalPlan] = Nil
 
   override def inputRelationType: RelationType = EmptyRelationType
