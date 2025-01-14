@@ -386,7 +386,7 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
   private object resolveSelectItem extends RewriteRule:
     def apply(context: Context): PlanRewriter = { case p: Project =>
       val resolvedChild = p.child.transform(resolveRelation(context)).asInstanceOf[Relation]
-      val resolvedColumns: Seq[Attribute] = p
+      val resolvedColumns: List[Attribute] = p
         .selectItems
         .map {
           case s: SingleColumn =>

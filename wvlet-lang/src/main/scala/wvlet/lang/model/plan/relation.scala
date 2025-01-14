@@ -94,7 +94,7 @@ case class BracedRelation(child: Relation, span: Span) extends UnaryRelation:
 case class AliasedRelation(
     child: Relation,
     alias: NameExpr,
-    columnNames: Option[Seq[NamedType]],
+    columnNames: Option[List[NamedType]],
     span: Span
 ) extends UnaryRelation
     with LogSupport:
@@ -139,7 +139,7 @@ case class NamedRelation(child: Relation, name: NameExpr, span: Span)
     child.relationType
   )
 
-case class Values(rows: Seq[Expression], span: Span) extends Relation with LeafPlan:
+case class Values(rows: List[Expression], span: Span) extends Relation with LeafPlan:
   override def toString: String = s"Values(${rows.mkString(", ")})"
 
   override val relationType: RelationType =
@@ -760,7 +760,7 @@ case class Intersect(left: Relation, right: Relation, isDistinct: Boolean, span:
           " all"
       }"
   override def toWvOp: String          = toSQLOp
-  
+
   override def children: Seq[Relation] = Seq(left, right)
   override def toString                = s"Intersect(${left}, ${right})"
 
@@ -1022,6 +1022,15 @@ enum SamplingSize:
   * @param nodeLocation
   */
 case class Debug(child: Relation, debugExpr: Relation, span: Span) extends FilteringRelation:
+  /**
+   * A partial debug expression that only contains operators inside the debug expression
+   * @return
+   */
+  def partialDebugExpr: Relation = debugExpr
+          .transformUp { case l: LeafPlan =>
+            EmptyRelation(l.span)
+          }
+          .asInstanceOf[Relation]
 
   // Add debug expr as well for the ease of tree traversal
   override def children: Seq[LogicalPlan] = Seq(child, debugExpr)

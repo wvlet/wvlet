@@ -72,6 +72,8 @@ sealed trait NameExpr extends Expression:
   def toTermName: TermName = Name.termName(leafName)
   def toTypeName: TypeName = Name.typeName(leafName)
 
+  def map[A](f: Expression => A): Option[A] = if this.isEmpty then None else Some(f(this))
+
   def toSQLAttributeName: String =
     val s =
       this match
