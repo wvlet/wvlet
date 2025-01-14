@@ -1,115 +1,201 @@
 package wvlet.lang.compiler.formatter
 
+import scala.annotation.tailrec
+
 case class CodeFormatterConfig(
-    indentWidth: Int = 2,
-    maxLineLength: Int = 100
+        indentWidth: Int = 2,
+        maxLineWidth: Int = 100,
+        preserveNewLines: Int = 1,
+        addTrailingCommaToItemList: Boolean = true
 )
 
+/**
+  * A code formatter algorithm and data structure for representing code blocks. This algorithm is
+  * derived from Philip Wadler's "A Prettier Printer" algorithm.
+  */
 object CodeFormatter:
 
-  sealed trait Doc
+  sealed trait Doc:
+    /**
+      * Compute the text length if rendered into a single line
+      *
+      * @param d
+      * @return
+      */
+    def length: Int =
+      this match
+        case Text(s) =>
+          s.length
+        case NewLine =>
+          1
+        case HList(d1, d2) =>
+          d1.length + d2.length
+        case VList(d1, d2) =>
+          d1.length + 1 + d2.length
+        case Nest(level, d) =>
+          d.length
+        case Group(d) =>
+          d.length
+
+    def flatten: Doc =
+      this match
+        case NewLine =>
+          ws
+        case HList(d1, d2) =>
+          d1.flatten + d2.flatten
+        case VList(d1, d2) =>
+          d1.flatten + ws + d2.flatten
+        case Nest(level, d) =>
+          Nest(level, d.flatten)
+        case Group(d) =>
+          d.flatten
+        case _ =>
+          this
+
+    // Concat docs horizontally
+    def +(d2: Doc): Doc =
+      this match
+        case Text("") =>
+          d2
+        case _ =>
+          d2 match
+            case Text("") =>
+              this
+            case _ =>
+              this + d2
+
+    def +(d2: Option[Doc]): Doc =
+      d2 match
+        case Some(d) =>
+          this + d
+        case None =>
+          this
+
+    // Concat docs vertically
+    def /(d2: Doc): Doc =
+      this match
+        case Text("") =>
+          d2
+        case _ =>
+          d2 match
+            case Text("") =>
+              this
+            case _ =>
+              this / d2
+
+    def /(d2: Option[Doc]): Doc =
+      d2 match
+        case Some(d) =>
+          this / d
+        case None =>
+          this
+
+  end Doc
+
   case class Text(s: String) extends Doc
-  case object NewLine extends Doc
+  case object NewLine        extends Doc
   // Horizontally concatenated docs
   case class HList(d1: Doc, d2: Doc) extends Doc
   // Vertically concatenated docs
-  case class VList(d1: Doc, d2: Doc) extends Doc
+  case class VList(d1: Doc, d2: Doc)  extends Doc
   case class Nest(level: Int, d: Doc) extends Doc
   // Grouped doc elements
   case class Group(d: Doc) extends Doc
 
   // Convenient operators
-  inline def text(s: String): Doc = Text(s)
-  inline def newLine: Doc = NewLine
+  inline def text(s: String): Doc          = Text(s)
+  inline def newline: Doc                  = NewLine
   inline def nest(level: Int, d: Doc): Doc = Nest(level, d)
-  inline def group(d: Doc): Doc = Group(d)
-  inline def ws: Doc = Text(" ")
+  inline def group(d: Doc): Doc            = Group(d)
+  val ws: Doc                              = Text(" ")
+  val empty: Doc = Text("")
 
-  // Concat docs horizontally
-  def +(d1:Doc, d2:Doc): Doc = d1 match
-    case Text("") => d2
-    case _ => d2 match
-      case Text("") => d1
-      case _ => d1 + d2
 
-  // Concat docs vertically
-  def /(d1:Doc, d2:Doc): Doc = d1 match
-    case Text("") => d2
-    case _ => d2 match
-      case Text("") => d1
-      case _ => d1 / d2
-
-  def flatten(doc: Doc): Doc =
-    doc match
-      case NewLine => ws
-      case d1 + d2 => flatten(d1) + flatten(d2)
-      case d1 / d2 => flatten(d1) + ws + flatten(d2)
-      case Nest(level, d) => Nest(level, flatten(d))
-      case Group(d) => flatten(d)
-      case _ => doc
 
 end CodeFormatter
 
 import CodeFormatter.*
-class CodeFormatter[Token](config: CodeFormatterConfig):
-  def fits(width: Int, level: Int, doc: Doc): Boolean =
-    level * config.indentWidth + doc.length <= width
 
-  def best(width: Int, level: Int, doc: Doc): Doc =
+import scala.annotation.tailrec
+class CodeFormatter(config: CodeFormatterConfig = CodeFormatterConfig()):
+  protected def fits(level: Int, doc: Doc): Boolean =
+    level * config.indentWidth + doc.length <= config.maxLineWidth
+
+  protected def best(level: Int, doc: Doc): Doc =
     doc match
-      case Text(s) => doc
-      case NewLine => doc
+      case Text(s) =>
+        doc
+      case NewLine =>
+        doc
       case HList(d1, d2) =>
-        best(width, level, d1) + best(width, level, d2)
+        best(level, d1) + best(level, d2)
       case VList(d1, d2) =>
-        best(width, level, d1) / best(width, level, d2)
+        best(level, d1) / best(level, d2)
       case Nest(l, d) =>
-        nest(l, best(width, level + l, d))
+        nest(l, best(level + l, d))
       case Group(d) =>
-        val oneline = flatten(d)
-        if fits(width, level, oneline) then
+        val oneline = d.flatten
+        if fits(level, oneline) then
           oneline
         else
-          best(width, level, d)
+          best(level, d)
 
   def format(doc: Doc): String =
-    val formattedDoc = best(config.maxLineLength, 0, doc)
-    formattedDoc.render(config.maxLineLength, 0)
+    val formattedDoc = best(0, doc)
+    render(0, formattedDoc)
 
-  def render(width: Int, nestingLevel: Int, d: Doc): String =
+  def render(nestingLevel: Int, d: Doc): String =
     d match
-      case Text(s) => s
-      case NewLine => "\n" + " " * nestingLevel
+      case Text(s) =>
+        s
+      case NewLine =>
+        "\n" + " " * nestingLevel
       case HList(d1, d2) =>
-        val r1 = render(width, nestingLevel, d1)
-        val r2 = render(width, nestingLevel, d2)
+        val r1 = render(nestingLevel, d1)
+        val r2 = render(nestingLevel, d2)
         s"${r1}${r2}"
       case VList(d1, d2) =>
-        val r1 = render(width, nestingLevel, d1)
-        val r2 = render(width, nestingLevel, d2)
-        s"${r1}\n${r2w}"
+        val r1 = render(nestingLevel, d1)
+        val r2 = render(nestingLevel, d2)
+        s"${r1}\n${r2}"
       case Nest(level, d) =>
-        render(width, nestingLevel + level, d)
+        render(nestingLevel + level, d)
       case Group(d) =>
-        val flat = render(width, nestinglevel, flatten(d))
-        if (nestingLevel * config.indentWidth + flat.length <= width) then
+        val flat = render(nestingLevel, d.flatten)
+        if nestingLevel * config.indentWidth + flat.length <= config.maxLineWidth then
           flat
         else
-          render(width, nestingLevel, d)
+          render(nestingLevel, d)
 
-  /**
-   * Compute the text length if rendered into a single line
-   * @param d
-   * @return
-   */
-  def length(d: Doc): Int =
-    d match
-      case Text(s) => s.length
-      case NewLine => 1
-      case HList(d1, d2) => length(d1) + length(d2)
-      case VList(d1, d2) => length(d1) + 1 + length(d2)
-      case Nest(level, d) => length(d)
-      case Group(d) => length(d)
+  protected def horizontalConcat(lst: List[Doc], separator: Doc): Doc =
+    lst match
+      case Nil =>
+        empty
+      case head :: Nil =>
+        head
+      case head :: tail =>
+        head + separator / horizontalConcat(tail, separator)
+
+  protected def itemList(items: List[Doc]): Doc =
+    items match
+      case Nil =>
+        empty
+      case head :: Nil =>
+        if config.addTrailingCommaToItemList then
+          head + text(",") + newline
+        else
+          head
+      case head :: tail =>
+        head + text(",") + newline + itemList(tail)
+
+  protected def functionArgs(args: List[Doc]): Doc =
+    args match
+      case Nil =>
+        empty
+      case head :: Nil =>
+        head
+      case head :: tail =>
+        head + text(",") + ws + functionArgs(tail)
 
 
 end CodeFormatter

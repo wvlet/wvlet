@@ -230,13 +230,13 @@ case class NaturalJoin(span: Span) extends JoinCriteria with LeafExpression:
   override def toString: String = "NaturalJoin"
 
 sealed trait JoinOnTheSameColumns extends JoinCriteria:
-  def columns: Seq[NameExpr]
+  def columns: List[NameExpr]
 
-case class JoinUsing(columns: Seq[NameExpr], span: Span) extends JoinOnTheSameColumns:
+case class JoinUsing(columns: List[NameExpr], span: Span) extends JoinOnTheSameColumns:
   override def children: Seq[Expression] = columns
 
-case class ResolvedJoinUsing(keys: Seq[MultiSourceColumn], span: Span) extends JoinOnTheSameColumns:
-  override def columns: Seq[NameExpr] = keys.map { k =>
+case class ResolvedJoinUsing(keys: List[MultiSourceColumn], span: Span) extends JoinOnTheSameColumns:
+  override def columns: List[NameExpr] = keys.map { k =>
     k.nameExpr
   }
 
