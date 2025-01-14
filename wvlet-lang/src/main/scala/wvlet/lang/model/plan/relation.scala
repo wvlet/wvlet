@@ -994,6 +994,13 @@ enum SamplingMethod:
   case bernoulli
 
 enum SamplingSize:
+  def toExpr: String =
+    this match
+      case Rows(rows) =>
+        rows.toString
+      case Percentage(p) =>
+        s"${p}%"
+
   case Rows(rows: Long)               extends SamplingSize
   case Percentage(percentage: Double) extends SamplingSize
 
