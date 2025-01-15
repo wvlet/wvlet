@@ -297,12 +297,12 @@ enum FrameType(val expr: String):
   case RangeFrame extends FrameType("range")
   case RowsFrame  extends FrameType("rows")
 
-enum FrameBound(val expr: String):
-  case UnboundedPreceding extends FrameBound("unbounded preceding")
-  case UnboundedFollowing extends FrameBound("unbounded following")
-  case Preceding(n: Long) extends FrameBound(s"${n} preceding")
-  case Following(n: Long) extends FrameBound(s"${n} following")
-  case CurrentRow         extends FrameBound("current row")
+enum FrameBound(val expr: String, val wvExpr: String):
+  case UnboundedPreceding extends FrameBound("unbounded preceding", "")
+  case UnboundedFollowing extends FrameBound("unbounded following", "")
+  case Preceding(n: Long) extends FrameBound(s"${n} preceding", s"-${n}")
+  case Following(n: Long) extends FrameBound(s"${n} following", s"${n}")
+  case CurrentRow         extends FrameBound("current row", "0")
 
 case class WindowFrame(frameType: FrameType, start: FrameBound, end: FrameBound, span: Span)
     extends Expression

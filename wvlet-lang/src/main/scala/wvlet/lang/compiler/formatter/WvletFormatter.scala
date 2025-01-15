@@ -339,7 +339,7 @@ class WvletFormatter(config: CodeFormatterConfig = CodeFormatterConfig())(using 
           s += ws("order by", cs(w.orderBy.map(x => expr(x))))
         w.frame
           .foreach { f =>
-            s += ws(f.frameType.expr, "between", f.start.expr, "and", f.end.expr)
+            s += text(f.frameType.expr) + "[" + f.start.wvExpr + ":" + f.end.wvExpr + "]"
           }
         ws("over", paren(ws(s.result())))
       case Eq(left, n: NullLiteral, _) =>
