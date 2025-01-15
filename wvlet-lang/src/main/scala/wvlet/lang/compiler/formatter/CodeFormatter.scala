@@ -44,7 +44,7 @@ object CodeFormatter:
 
     def flatten: Doc =
       this match
-        case NewLine | WhiteSpaceOrNewline=>
+        case NewLine | WhiteSpaceOrNewline =>
           whitespace
         case OptNewLine =>
           empty
@@ -149,13 +149,11 @@ object CodeFormatter:
       text(s"Nest") + text("(") + maybeNewline + nest(d.toDoc + text(")"))
     )
 
-
   // Nested code block wrapped with newlines or preceded with a single whitespace
   case class Block(d: Doc) extends Doc:
     override def toDoc: Doc = group(
       text("Block") + text("(") + maybeNewline + nest(d.toDoc + text(")"))
     )
-
 
   // Group is a unit for compacting the doc into a single line if possible
   case class Group(d: Doc) extends Doc:
@@ -164,17 +162,17 @@ object CodeFormatter:
     )
 
   // Convenient operators
-  inline def text(s: String): Doc = Text(s)
-  inline def newline: Doc         = NewLine
-  inline def linebreak: Doc = LineBreak
-  inline def maybeNewline: Doc    = OptNewLine
+  inline def text(s: String): Doc     = Text(s)
+  inline def newline: Doc             = NewLine
+  inline def linebreak: Doc           = LineBreak
+  inline def maybeNewline: Doc        = OptNewLine
   inline def whitespaceOrNewline: Doc = WhiteSpaceOrNewline
-  inline def nest(d: Doc): Doc    = Nest(d)
-  inline def group(d: Doc): Doc   = Group(d)
+  inline def nest(d: Doc): Doc        = Nest(d)
+  inline def group(d: Doc): Doc       = Group(d)
   // Create a new block with possible newlines before and after the block
   inline def block(d: Doc): Doc = Block(d)
-  val whitespace: Doc             = Text(" ")
-  val empty: Doc                  = Text("")
+  val whitespace: Doc           = Text(" ")
+  val empty: Doc                = Text("")
 
   private def toDoc(x: Any): Doc =
     x match
@@ -246,10 +244,10 @@ object CodeFormatter:
   def paren(d: Doc): Doc = group(text("(") + lineBlock(d) + text(")"))
 
   /**
-   * Create a new nested block with possible newlines before and after the block
-   * @param d
-   * @return
-   */
+    * Create a new nested block with possible newlines before and after the block
+    * @param d
+    * @return
+    */
   def lineBlock(d: Doc): Doc = maybeNewline + nest(d) + maybeNewline
 
 end CodeFormatter
@@ -308,7 +306,7 @@ class CodeFormatter(config: CodeFormatterConfig = CodeFormatterConfig()):
       case Nest(d) =>
         indent(render(nestingLevel + 1, d))
       case Block(d) =>
-        val r = render(nestingLevel+1, d)
+        val r = render(nestingLevel + 1, d)
         s"\n${indent(r)}\n"
       case Group(d) =>
         lazy val flat = render(nestingLevel, d.flatten)
