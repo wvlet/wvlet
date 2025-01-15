@@ -279,7 +279,7 @@ object GenSQL extends Phase("generate-sql"):
 
     def transformExpr(r: Relation, ctx: Context): Relation = r
       .transformUpExpressions {
-        case b: BackquoteInterpolatedString =>
+        case b: BackquoteInterpolatedIdentifier =>
           PreprocessLocalExpr.EvalBackquoteInterpolation.transformExpression(b, ctx)
         case i: Identifier =>
           val nme = Name.termName(i.leafName)

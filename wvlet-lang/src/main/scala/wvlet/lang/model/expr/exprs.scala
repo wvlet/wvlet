@@ -220,7 +220,7 @@ case class BackQuotedIdentifier(
   override def strExpr: String                                      = s"`${unquotedValue}`"
   override def toResolved(dataType: DataType): BackQuotedIdentifier = this.copy(dataType = dataType)
 
-case class BackquoteInterpolatedString(
+case class BackquoteInterpolatedIdentifier(
     prefix: NameExpr,
     parts: List[Expression],
     override val dataType: DataType,

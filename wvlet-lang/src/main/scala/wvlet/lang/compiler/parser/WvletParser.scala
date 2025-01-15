@@ -1919,7 +1919,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
 
   end interpolatedString
 
-  def interpolatedBackquoteString(): BackquoteInterpolatedString =
+  def interpolatedBackquoteString(): BackquoteInterpolatedIdentifier =
     val prefix     = consume(WvletToken.BACKQUOTE_INTERPOLATION_PREFIX)
     val prefixNode = ResolvedIdentifier(prefix.str, NoType, prefix.span)
     val parts      = List.newBuilder[Expression]
@@ -1946,7 +1946,12 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       val part = consume(WvletToken.STRING_LITERAL)
       parts += StringPart(part.str, part.span)
 
-    BackquoteInterpolatedString(prefixNode, parts.result(), DataType.UnknownType, spanFrom(prefix))
+    BackquoteInterpolatedIdentifier(
+      prefixNode,
+      parts.result(),
+      DataType.UnknownType,
+      spanFrom(prefix)
+    )
 
   end interpolatedBackquoteString
 

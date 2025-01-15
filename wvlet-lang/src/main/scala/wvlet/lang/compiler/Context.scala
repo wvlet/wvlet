@@ -13,7 +13,7 @@
  */
 package wvlet.lang.compiler
 
-import wvlet.lang.api.StatusCode
+import wvlet.lang.api.{SourceLocation, Span, StatusCode}
 import wvlet.lang.catalog.{Catalog, InMemoryCatalog}
 import wvlet.lang.compiler.query.QueryProgressMonitor
 import wvlet.lang.model.expr.NameExpr
@@ -111,6 +111,10 @@ case class Context(
         .exists { ctxUnit =>
           ctxUnit eq compilationUnit
         }
+
+  def sourceLocationAt(span: Span): SourceLocation = compilationUnit
+    .sourceFile
+    .sourceLocationAt(span.start)
 
   // Get the context catalog
   // TODO support multiple catalogs
@@ -220,3 +224,12 @@ end Context
 
 object Context:
   val NoContext: Context = Context(null)
+
+  def testGlobalContext(path: String): GlobalContext =
+    val global = GlobalContext(
+      CompilerOptions(sourceFolders = List(path), workEnv = WorkEnv(path = path))
+    )
+    val rootContext = global.getContextOf(unit = CompilationUnit.empty, scope = Scope.newScope(0))
+    // Need to initialize the global context before running the analysis phases
+    global.init(using rootContext)
+    global
