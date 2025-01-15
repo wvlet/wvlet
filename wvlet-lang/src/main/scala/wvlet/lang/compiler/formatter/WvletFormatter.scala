@@ -56,7 +56,7 @@ class WvletFormatter(config: CodeFormatterConfig = CodeFormatterConfig())
       if lst.isEmpty then
         None
       else
-        Some(nest(1, cs(lst)))
+        Some(nest(cs(lst)))
     in / group(text(op) + maybeNewline +  argBlock)
 
   private def relation(r: Relation)(using sc: SyntaxContext): Doc =
@@ -81,7 +81,7 @@ class WvletFormatter(config: CodeFormatterConfig = CodeFormatterConfig())
         if sc.inFrom then
           expr(t.sqlExpr)
         else
-          group(text("from") + maybeNewline + nest(1, expr(t.sqlExpr)))
+          group(text("from") + maybeNewline + nest(expr(t.sqlExpr)))
       case a: AddColumnsToRelation =>
         unary(a, "add", a.newColumns)
       case s: ShiftColumns =>
@@ -260,7 +260,7 @@ class WvletFormatter(config: CodeFormatterConfig = CodeFormatterConfig())
     if sc.inFrom then
       bracket(cs(rows))
     else
-      group(text("from") + maybeNewline + nest(1, bracket(cs(rows))))
+      group(text("from") + maybeNewline + nest(bracket(cs(rows))))
 
   private def statement(s: TopLevelStatement)(using sc: SyntaxContext): Doc =
     s match
@@ -287,7 +287,7 @@ class WvletFormatter(config: CodeFormatterConfig = CodeFormatterConfig())
             ,
             m.givenRelationType.map(t => ws(": ", t.typeName)),
             "="
-          ) + nest(1, relation(m.child)) + "end"
+          ) + nest(relation(m.child)) + "end"
         )
       case t: ShowQuery =>
         group(ws("show", "query", expr(t.name)))
@@ -387,10 +387,10 @@ class WvletFormatter(config: CodeFormatterConfig = CodeFormatterConfig())
           expr(i.cond),
           "then",
           maybeNewline,
-          nest(1, expr(i.onTrue)),
+          nest(expr(i.onTrue)),
           "else",
           maybeNewline,
-          nest(1, expr(i.onFalse))
+          nest(expr(i.onFalse))
         )
       case n: Not =>
         ws("not", expr(n.child))
