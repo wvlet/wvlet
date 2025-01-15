@@ -237,7 +237,7 @@ object CodeFormatter:
 
   def brace(d: Doc): Doc = group(text("{") + lineBlock(d) + text("}"))
   // Create subexpression block wrapped with braces
-  def indentedBrace(d: Doc): Doc = text("{") + linebreak + nest(d) + linebreak + text("}")
+  def indentedBrace(d: Doc): Doc = text("{") + nest(linebreak + d) + linebreak + text("}")
 
   def bracket(d: Doc): Doc = group(text("[") + lineBlock(d) + text("]"))
 
@@ -286,15 +286,13 @@ class CodeFormatter(config: CodeFormatterConfig = CodeFormatterConfig()):
     render(0, formattedDoc)
 
   def render(nestingLevel: Int, d: Doc): String =
-    def indent(s: String): String =
-      val ws = " " * config.indentWidth
-      s.split("\n").map(line => s"${ws}${line}").mkString("\n")
+    def indent: String = " " * nestingLevel * config.indentWidth
 
     d match
       case Text(s) =>
         s
       case NewLine | WhiteSpaceOrNewline | OptNewLine | LineBreak =>
-        "\n"
+        s"\n${indent}"
       case HList(d1, d2) =>
         val r1 = render(nestingLevel, d1)
         val r2 = render(nestingLevel, d2)
@@ -302,12 +300,11 @@ class CodeFormatter(config: CodeFormatterConfig = CodeFormatterConfig()):
       case VList(d1, d2) =>
         val r1 = render(nestingLevel, d1)
         val r2 = render(nestingLevel, d2)
-        s"${r1}\n${r2}"
+        s"${r1}\n${indent}${r2}"
       case Nest(d) =>
-        indent(render(nestingLevel + 1, d))
+        render(nestingLevel + 1, d)
       case Block(d) =>
-        val r = render(nestingLevel + 1, d)
-        s"\n${indent(r)}\n"
+        render(nestingLevel + 1, newline + d + newline)
       case Group(d) =>
         lazy val flat = render(nestingLevel, d.flatten)
         if config.fitToLine &&
