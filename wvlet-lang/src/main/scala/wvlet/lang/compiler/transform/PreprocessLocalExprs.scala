@@ -24,7 +24,7 @@ object PreprocessLocalExpr extends Phase("preprocess-local-expr") with LogSuppor
 
   object EvalBackquoteInterpolation extends ExpressionRewriteRule:
     override def apply(context: Context) =
-      case b: BackquoteInterpolatedString =>
+      case b: BackquoteInterpolatedIdentifier =>
         val evaluatedParts = b.parts.map(eval(_, context))
         if evaluatedParts.exists(_.isEmpty) then
           // There is a parts that can't be resolved yet
