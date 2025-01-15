@@ -179,7 +179,10 @@ class WvletFormatter(config: CodeFormatterConfig = CodeFormatterConfig())(using 
         unary(t, "test", t.testExpr)
       case d: Debug =>
         val r = relation(d.child)
-        r / group(brace(relation(d.partialDebugExpr)(using InSubQuery)))
+        // Render the debug expr like a top-level query
+        val body = relation(d.partialDebugExpr)(using InStatement)
+        val debugExpr = text("debug") + whitespace + indentedBrace(body)
+        r / debugExpr
       case s: Sample =>
         val prev = relation(s.child)
         prev / group(ws("sample", s.method.toString, s.size.toExpr))

@@ -171,6 +171,7 @@ object CodeFormatter:
   inline def whitespaceOrNewline: Doc = WhiteSpaceOrNewline
   inline def nest(d: Doc): Doc    = Nest(d)
   inline def group(d: Doc): Doc   = Group(d)
+  // Create a new block with possible newlines before and after the block
   inline def block(d: Doc): Doc = Block(d)
   val whitespace: Doc             = Text(" ")
   val empty: Doc                  = Text("")
@@ -237,6 +238,8 @@ object CodeFormatter:
         head + concat(tail)
 
   def brace(d: Doc): Doc = group(text("{") + lineBlock(d) + text("}"))
+  // Create subexpression block wrapped with braces
+  def indentedBrace(d: Doc): Doc = text("{") + linebreak + nest(d) + linebreak + text("}")
 
   def bracket(d: Doc): Doc = group(text("[") + lineBlock(d) + text("]"))
 
