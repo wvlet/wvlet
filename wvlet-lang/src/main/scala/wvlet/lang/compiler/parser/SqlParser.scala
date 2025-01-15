@@ -1177,7 +1177,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       end match
     end partitionKeys
 
-    def partitionBy(): Seq[Expression] =
+    def partitionBy(): List[Expression] =
       scanner.lookAhead().token match
         case SqlToken.PARTITION =>
           consume(SqlToken.PARTITION)
@@ -1186,7 +1186,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         case _ =>
           Nil
 
-    def orderBy(): Seq[SortItem] =
+    def orderBy(): List[SortItem] =
       scanner.lookAhead().token match
         case SqlToken.ORDER =>
           consume(SqlToken.ORDER)

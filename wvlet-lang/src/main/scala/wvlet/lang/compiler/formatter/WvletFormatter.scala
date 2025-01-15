@@ -274,12 +274,11 @@ class WvletFormatter(config: CodeFormatterConfig = CodeFormatterConfig()) extend
         )
       case v: ValDef =>
         val name = v.name.name
-        val expr = expr(v.expr)
+        val body = expr(v.expr)
         group(
-          ws("val", s"${name}:", v.dataType.typeName, "=", expr)
+          ws("val", s"${name}:", v.dataType.typeName, "=", body)
         )
       case m: ModelDef =>
-        val expr = expr(m.expr)
         group(
           ws("model",
             m.name.fullName,
@@ -295,13 +294,13 @@ class WvletFormatter(config: CodeFormatterConfig = CodeFormatterConfig()) extend
         warn(s"Unsupported statement: ${other}")
         text(other.nodeName)
 
-  private def expr(expr: Expression)(using sc: SyntaxContext): Doc =
-    expr match
+  private def expr(e: Expression)(using sc: SyntaxContext): Doc =
+    e match
       case g: UnresolvedGroupingKey =>
         expr(g.child)
       case f: FunctionApply =>
         val base = expr(f.base)
-        val args = paren(args(f.args.map(x => expr(x))))
+        val args = paren(cs(f.args.map(x => expr(x))))
         val w = f.window.map(x => expr(x))
         val stem = base + args
         ws(stem, w)
@@ -362,9 +361,10 @@ class WvletFormatter(config: CodeFormatterConfig = CodeFormatterConfig()) extend
         ws(expr(s.sortKey), s.ordering.map(x => s" ${x.expr}"))
       case s: SingleColumn =>
         val left = expr(s.expr)
+        val leftStr = render(0, left)
         if s.nameExpr.isEmpty then
           left
-        else if left != s.nameExpr.toSQLAttributeName then
+        else if leftStr != s.nameExpr.toSQLAttributeName then
           ws(left, "as", s.nameExpr.toSQLAttributeName)
         else
           left

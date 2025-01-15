@@ -1255,7 +1255,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       end match
     end partitionKeys
 
-    def partitionBy(): Seq[Expression] =
+    def partitionBy(): List[Expression] =
       scanner.lookAhead().token match
         case WvletToken.PARTITION =>
           consume(WvletToken.PARTITION)
@@ -1264,7 +1264,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         case _ =>
           Nil
 
-    def orderBy(): Seq[SortItem] =
+    def orderBy(): List[SortItem] =
       scanner.lookAhead().token match
         case WvletToken.ORDER =>
           consume(WvletToken.ORDER)

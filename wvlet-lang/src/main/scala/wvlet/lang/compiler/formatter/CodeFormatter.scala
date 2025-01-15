@@ -135,6 +135,8 @@ class CodeFormatter(config: CodeFormatterConfig = CodeFormatterConfig()):
         doc
       case NewLine =>
         doc
+      case OptNewLine =>
+        doc
       case HList(d1, d2) =>
         best(level, d1) + best(level, d2)
       case VList(d1, d2) =>
@@ -157,6 +159,8 @@ class CodeFormatter(config: CodeFormatterConfig = CodeFormatterConfig()):
       case Text(s) =>
         s
       case NewLine =>
+        "\n" + " " * nestingLevel
+      case OptNewLine =>
         "\n" + " " * nestingLevel
       case HList(d1, d2) =>
         val r1 = render(nestingLevel, d1)

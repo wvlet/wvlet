@@ -279,8 +279,8 @@ enum NullOrdering(val expr: String):
 
 // Window functions
 case class Window(
-    partitionBy: Seq[Expression],
-    orderBy: Seq[SortItem],
+    partitionBy: List[Expression],
+    orderBy: List[SortItem],
     frame: Option[WindowFrame],
     span: Span
 ) extends Expression:
@@ -407,10 +407,10 @@ case class IsNotNull(child: Expression, span: Span)
     with UnaryExpression:
   override def toString: String = s"IsNotNull(${child})"
 
-case class In(a: Expression, list: Seq[Expression], span: Span) extends ConditionalExpression:
+case class In(a: Expression, list: List[Expression], span: Span) extends ConditionalExpression:
   override def children: Seq[Expression] = Seq(a) ++ list
 
-case class NotIn(a: Expression, list: Seq[Expression], span: Span) extends ConditionalExpression:
+case class NotIn(a: Expression, list: List[Expression], span: Span) extends ConditionalExpression:
   override def children: Seq[Expression] = Seq(a) ++ list
 
 case class InSubQuery(a: Expression, in: Relation, span: Span) extends ConditionalExpression:
