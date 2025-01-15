@@ -3,6 +3,7 @@ package wvlet.lang.compiler.formatter
 import wvlet.lang.model.plan.*
 import wvlet.lang.model.expr.*
 import CodeFormatter.*
+import wvlet.lang.compiler.transform.ExpressionEvaluator
 import wvlet.log.LogSupport
 
 object WvletFormatter:
@@ -33,62 +34,62 @@ class WvletFormatter(config: CodeFormatterConfig = CodeFormatterConfig()) extend
           val stmts = p.statements.map(stmt => loop(stmt))
           verticalConcat(stmts, text(";") + newline + newline)
         case r: Relation =>
-          convertRelation(r)(using InStatement)
+          relation(r)(using InStatement)
         case s: TopLevelStatement =>
-          convertStatement(s)(using InStatement)
+          statement(s)(using InStatement)
         case other =>
           warn(s"Unsupported plan: ${other}")
           Text(other.toString)
 
     loop(l)
 
-  private def convertUnary(r: UnaryRelation, op: String, item: Expression)(using sc: SyntaxContext): Doc =
-    convertUnary(r, op, List(item))
+  private def unary(r: UnaryRelation, op: String, item: Expression)(using sc: SyntaxContext): Doc =
+    unary(r, op, List(item))
 
-  private def convertUnary(r: UnaryRelation, op: String, items: List[Expression])(using sc: SyntaxContext): Doc =
-    val in = convertRelation(r.child)
-    val lst = items.map(convertExpression)
+  private def unary(r: UnaryRelation, op: String, items: List[Expression])(using sc: SyntaxContext): Doc =
+    val in = relation(r.child)
+    val lst = items.map(expr)
     val next = if lst.isEmpty then None else Some(nest(1, itemList(lst)))
     group(text(op) + newline + next)
 
-  private def convertRelation(r: Relation)(using sc: SyntaxContext): Doc =
+  private def relation(r: Relation)(using sc: SyntaxContext): Doc =
     r match
       case q: Query =>
-        convertRelation(q.child)
+        relation(q.child)
       case s: Sort =>
-        convertUnary(s, "sort", s.orderBy.toList)
+        unary(s, "sort", s.orderBy.toList)
       case p: Project =>
-        convertUnary(p, "select", p.selectItems)
+        unary(p, "select", p.selectItems)
       case g: GroupBy =>
-        convertUnary(g, "group by", g.groupingKeys)
+        unary(g, "group by", g.groupingKeys)
       case a: Agg =>
-        convertUnary(a, "agg", a.aggExprs)
+        unary(a, "agg", a.aggExprs)
       case t: Transform =>
-        convertUnary(t, "transform", t.transformItems)
+        unary(t, "transform", t.transformItems)
       case f: Filter =>
-        convertUnary(f, "where", f.filterExpr)
+        unary(f, "where", f.filterExpr)
       case l: Limit =>
-        convertUnary(l, "limit", l.limit)
+        unary(l, "limit", l.limit)
       case t: TableInput =>
         if sc.inFrom then
-          convertExpression(t.sqlExpr)
+          expr(t.sqlExpr)
         else
-          group(text("from") + newline + nest(1, convertExpression(t.sqlExpr)))
+          group(text("from") + newline + nest(1, expr(t.sqlExpr)))
       case a: AddColumnsToRelation =>
-        convertUnary(a, "add", a.newColumns)
+        unary(a, "add", a.newColumns)
       case s: ShiftColumns =>
         if s.isLeftShift then
-          convertUnary(s, "shift", s.shiftItems)
+          unary(s, "shift", s.shiftItems)
         else
-          convertUnary(s, "shift to right", s.shiftItems)
+          unary(s, "shift to right", s.shiftItems)
       case e: ExcludeColumnsFromRelation =>
-        convertUnary(e, "exclude", e.columnNames)
+        unary(e, "exclude", e.columnNames)
       case r: RenameColumnsFromRelation =>
-        convertUnary(r, "rename", r.columnAliases)
+        unary(r, "rename", r.columnAliases)
       case j: Join =>
         val asof: Option[Doc] = if j.asof then Some(text("asof")) else None
-        val left = convertRelation(j.left)
-        val right = convertRelation(j.right)(using InFromClause)
+        val left = relation(j.left)
+        val right = relation(j.right)(using InFromClause)
         val joinType = j.joinType match
           case JoinType.InnerJoin => text("join")
           case JoinType.LeftOuterJoin => text("left join")
@@ -102,27 +103,27 @@ class WvletFormatter(config: CodeFormatterConfig = CodeFormatterConfig()) extend
           case n: NaturalJoin => None
           case u: JoinOnTheSameColumns =>
             if u.columns.size == 1 then
-              Some(group(list("on", convertExpression(u.columns.head))))
+              Some(group(ws("on", expr(u.columns.head))))
             else
-              Some(group(list("on", paren(args(u.columns.map(convertExpression))))))
+              Some(group(ws("on", paren(cs(u.columns.map(expr))))))
           case u:JoinOn =>
-            Some(group(list("on", convertExpression(u.expr))))
+            Some(group(ws("on", expr(u.expr))))
           case u:JoinOnEq =>
-            Some(group(list("on", convertExpression(Expression.concatWithEq(u.keys)))))
+            Some(group(ws("on", expr(Expression.concatWithEq(u.keys)))))
 
         group(
           left + newline + joinType + newline + right + newline + cond
         )
       case u: Union if u.isDistinct =>
         // union is not supported in Wvlet, so rewrite it to dedup(concat)
-        convertRelation(Dedup(Concat(u.left, u.right, u.span), u.span))
+        relation(Dedup(Concat(u.left, u.right, u.span), u.span))
       case s: SetOperation =>
         val rels: List[Doc] =
           s.children.toList match
             case Nil => Nil
             case head :: tail =>
-              val hd = convertRelation(head)
-              val tl = tail.map(x => wrapWithBraceIfNecessary(convertRelation(x)))
+              val hd = relation(head)
+              val tl = tail.map(x => wrapWithBraceIfNecessary(relation(x)))
               hd :: tl
 
         // TODO union is not supported in Wvlet. Replace tree to dedup(concat)
@@ -131,24 +132,24 @@ class WvletFormatter(config: CodeFormatterConfig = CodeFormatterConfig()) extend
           verticalConcat(rels, text(op) + newline)
         )
       case d: Dedup =>
-        convertUnary(d, "dedup", Nil)
+        unary(d, "dedup", Nil)
       case d: Distinct =>
-        convertUnary(d, "distinct", Nil)
+        unary(d, "distinct", Nil)
       case d: Describe =>
-        convertUnary(d, "describe", Nil)
+        unary(d, "describe", Nil)
       case s: SelectAsAlias =>
-        convertUnary(s, "select as", s.alias)
+        unary(s, "select as", s.alias)
       case t: TestRelation =>
-        convertUnary(t, "test", t.testExpr)
+        unary(t, "test", t.testExpr)
       case d: Debug =>
-        val r = convertRelation(d.child)
+        val r = relation(d.child)
         r / group(
-          brace(convertRelation(d.partialDebugExpr)(using InSubQuery))
+          brace(relation(d.partialDebugExpr)(using InSubQuery))
         )
       case s: Sample =>
-        val prev = convertRelation(s.child)
+        val prev = relation(s.child)
         prev / group(
-          list(
+          ws(
             "sample",
             s.method.toString,
             s.size.toExpr
@@ -157,86 +158,85 @@ class WvletFormatter(config: CodeFormatterConfig = CodeFormatterConfig()) extend
       case v: Values =>
         convertValues(v)
       case b: BracedRelation =>
-        brace(convertRelation(b.child)(using InSubQuery))
+        brace(relation(b.child)(using InSubQuery))
       case a: AliasedRelation =>
         val tableAlias: Doc =
-          val name = convertExpression(a.alias)
+          val name = expr(a.alias)
           a.columnNames match
             case Some(columns) =>
-              val cols = args(columns.map(c => text(c.toSQLAttributeName)))
+              val cols = cs(columns.map(c => text(c.toSQLAttributeName)))
               name + paren(cols)
             case None =>
               name
 
         a.child match
           case t: TableInput =>
-            list(convertExpression(t.sqlExpr), text("as"), tableAlias)
+            ws(expr(t.sqlExpr), text("as"), tableAlias)
           case v: Values =>
-            list(convertValues(v), text("as"), tableAlias)
+            ws(convertValues(v), text("as"), tableAlias)
           case _ =>
-            list(
-              wrapWithBraceIfNecessary(convertRelation(a.child)(using InSubQuery)),
+            ws(
+              wrapWithBraceIfNecessary(relation(a.child)(using InSubQuery)),
               text("as"),
               tableAlias
             )
       case p: Pivot =>
-        val prev = convertRelation(p.child)
-        val pivotKeys = args(p.pivotKeys.map(convertExpression))
+        val prev = relation(p.child)
+        val pivotKeys = cs(p.pivotKeys.map(expr))
         // TODO Add grouping keys
-        val groupingKeys = args(p.groupingKeys.map(convertExpression))
+        val groupingKeys = cs(p.groupingKeys.map(expr))
         prev /
         group(
-          list("pivot", "on", pivotKeys)
+          ws("pivot", "on", pivotKeys)
         )
       case d: Delete =>
-        convertUnary(d, "delete", Nil)
+        unary(d, "delete", Nil)
       case a: AppendTo =>
-        convertRelation(a.child) / group(
-          list("append to", convertExpression(a.target))
+        relation(a.child) / group(
+          ws("append to", expr(a.target))
         )
       case a: AppendToFile =>
-        convertRelation(a.child) / group(
-          list("append to", s"'${a.path}'")
+        relation(a.child) / group(
+          ws("append to", s"'${a.path}'")
         )
       case s: SaveTo =>
-        val prev = convertRelation(s.child)
-        val path = convertExpression(s.target)
+        val prev = relation(s.child)
+        val path = expr(s.target)
         val opts =
           if s.saveOptions.isEmpty then None
           else
-            val lst = s.saveOptions.map { x => convertExpression(x) }
-            Some(list("with", lst))
+            val lst = s.saveOptions.map { x => expr(x) }
+            Some(ws("with", lst))
         prev / group(
-          list("save to", path, opts)
+          ws("save to", path, opts)
         )
       case s: SaveToFile =>
-        val prev = convertRelation(s.child)
+        val prev = relation(s.child)
         val path = s.targetName
         val opts =
           if s.saveOptions.isEmpty then None
           else
-            val lst = s.saveOptions.map { x => convertExpression(x) }
-            Some(list("with", lst))
+            val lst = s.saveOptions.map { x => expr(x) }
+            Some(ws("with", lst))
         prev / group(
-          list("save to", s"'${path}'", opts)
+          ws("save to", s"'${path}'", opts)
         )
       case e: EmptyRelation =>
         empty
       case s: Show =>
-        list("show", s.showType.toString,
+        ws("show", s.showType.toString,
           s.inExpr.map(x =>
-            list("in",
-              convertExpression(x)
+            ws("in",
+              expr(x)
             )
           )
         )
-
       case other =>
         warn(s"Unsupported relation: ${other}")
         Text(other.toString)
 
 
-  end convertRelation
+  end relation
 
   private def wrapWithBraceIfNecessary(d: Doc)(using sc:SyntaxContext): Doc =
     if sc.isNested then
@@ -251,22 +251,223 @@ class WvletFormatter(config: CodeFormatterConfig = CodeFormatterConfig()) extend
             .map { row =>
               row match
                 case a: ArrayConstructor =>
-                  val elems = args(a.values.map(x => convertExpression(x)))
+                  val elems = cs(a.values.map(x => expr(x)))
                   bracket(elems)
                 case other =>
-                  convertExpression(other)
+                  expr(other)
             }
     if sc.inFrom then
-      bracket(args(rows))
+      bracket(cs(rows))
     else
-      group(text("from") + newline + nest(1, bracket(args(rows))))
+      group(text("from") + newline + nest(1, bracket(cs(rows))))
 
-  private def convertStatement(s: TopLevelStatement)(using sc: SyntaxContext): Doc = ???
+  private def statement(s: TopLevelStatement)(using sc: SyntaxContext): Doc =
+    s match
+      case e: ExecuteExpr =>
+        group(ws("execute", expr(e.expr)))
+      case i: Import =>
+        val importRef = expr(i.importRef)
+        val alias = i.alias.map(a => ws("as", expr(a)))
+        val fromSource = i.fromSource.map(expr)
+        group(
+          ws("import", importRef, alias, fromSource)
+        )
+      case v: ValDef =>
+        val name = v.name.name
+        val expr = expr(v.expr)
+        group(
+          ws("val", s"${name}:", v.dataType.typeName, "=", expr)
+        )
+      case m: ModelDef =>
+        val expr = expr(m.expr)
+        group(
+          ws("model",
+            m.name.fullName,
+            if m.params.isEmpty then None else
+              paren(cs(m.params.map(x => expr(x)))),
+            m.givenRelationType.map(t => ws(": ", t.typeName)),
+            "="
+          ) + nest(1, relation(m.child)) + "end"
+        )
+      case t: ShowQuery =>
+        group(ws("show" , "query", expr(t.name)))
+      case other =>
+        warn(s"Unsupported statement: ${other}")
+        text(other.nodeName)
 
-  private def convertExpression(e: Expression)(using sc: SyntaxContext): Doc = ???
-
-
-
-
+  private def expr(expr: Expression)(using sc: SyntaxContext): Doc =
+    expr match
+      case g: UnresolvedGroupingKey =>
+        expr(g.child)
+      case f: FunctionApply =>
+        val base = expr(f.base)
+        val args = paren(args(f.args.map(x => expr(x))))
+        val w = f.window.map(x => expr(x))
+        val stem = base + args
+        ws(stem, w)
+      case w: WindowApply =>
+        val base = expr(w.base)
+        val window = expr(w.window)
+        ws(base, window)
+      case f: FunctionArg =>
+        // TODO handle arg name mapping
+        if f.isDistinct then
+          ws("distinct", expr(f.value))
+        else
+          expr(f.value)
+      case w: Window =>
+        var s = List.newBuilder[Doc]
+        if w.partitionBy.nonEmpty then
+          s += ws("partition by", cs(w.partitionBy.map(x => expr(x))))
+        if w.orderBy.nonEmpty then
+          s += ws("order by", cs(w.orderBy.map(x => expr(x))))
+        w.frame.foreach { f =>
+          s += ws(f.frameType.expr, "between", f.start.expr, "and", f.end.expr)
+        }
+        ws("over", paren(ws(s.result())))
+      case Eq(left, n: NullLiteral, _) =>
+        ws(expr(left), "is null")
+      case NotEq(left, n: NullLiteral, _) =>
+        ws(expr(left), "is not null")
+      case a: ArithmeticUnaryExpr =>
+        a.sign match
+          case Sign.NoSign =>
+            expr(a.child)
+          case Sign.Positive =>
+            text("+") + expr(a.child)
+          case Sign.Negative =>
+            text("-") + expr(a.child)
+      case b: BinaryExpression =>
+        ws(expr(b.left), b.operatorName, expr(b.right))
+      case s: StringPart =>
+        text(s.stringValue)
+      case s: StringLiteral =>
+        // Escape single quotes
+        val v = s.stringValue.replaceAll("'", "''")
+        text(s"'${v}'")
+      case i: IntervalLiteral =>
+        text(s"interval ${i.stringValue}")
+      case g: GenericLiteral =>
+        text(s"${g.tpe.typeName} '${g.value}'")
+      case l: Literal =>
+        text(l.stringValue)
+      case bq: BackQuotedIdentifier =>
+        // Need to use double quotes for back-quoted identifiers, which represents table or column names
+        text(s"\"${bq.unquotedValue}\"")
+      case w: Wildcard =>
+        text(w.strExpr)
+      case i: Identifier =>
+        text(i.strExpr)
+      case s: SortItem =>
+        ws(expr(s.sortKey), s.ordering.map(x => s" ${x.expr}"))
+      case s: SingleColumn =>
+        val left = expr(s.expr)
+        if s.nameExpr.isEmpty then
+          left
+        else if left != s.nameExpr.toSQLAttributeName then
+          ws(left, "as", s.nameExpr.toSQLAttributeName)
+        else
+          left
+      case a: Attribute =>
+        text(a.fullName)
+      case t: TypedExpression =>
+        expr(t.child)
+      case p: ParenthesizedExpression =>
+        paren(expr(p.child))
+      case i: InterpolatedString =>
+        horizontalConncat(i.parts.map(expr))
+      case s: SubQueryExpression =>
+        val wv = relation(s.query)(using InExpression)
+        brace(wv)
+      case i: IfExpr =>
+        ws(
+          "if",
+          expr(i.cond),
+          "then",
+          maybeNewline,
+          nest(1, expr(i.onTrue)),
+          "else",
+          maybeNewline,
+          nest(1, expr(i.onFalse))
+        )
+      case n: Not =>
+        ws("not", expr(n.child))
+      case l: ListExpr =>
+        cs(l.exprs.map(x => expr(x)))
+      case d@DotRef(qual: Expression, name: NameExpr, _, _) =>
+        expr(qual) + text(".") + expr(name)
+      case in: In =>
+        val left = expr(in.a)
+        val right = cs(in.list.map(x => expr(x)))
+        ws(left, "in", paren(right))
+      case notIn: NotIn =>
+        val left = expr(notIn.a)
+        val right = cs(notIn.list.map(x => expr(x)))
+        ws(left, "not in", paren(right))
+      case a: ArrayConstructor =>
+        bracket(cs(a.values.map(x => expr(x))))
+      case a: ArrayAccess =>
+        expr(a.arrayExpr) + text("[") + expr(a.index) + text("]")
+      case c: CaseExpr =>
+        ws(
+          group(ws("case", c.target.map(expr))),
+          lines(c.whenClauses.map { w =>
+            group(ws("when", expr(w.condition), "then", expr(w.result)))
+          }),
+          c.elseClause.map{ e => group(ws("else", expr(e))) },
+        )
+      case l: LambdaExpr =>
+        val args = paren(cs(l.args.map(expr(_))))
+        ws(args, "->", expr(l.body))
+      case s: StructValue =>
+        val fields = s
+                .fields
+                .map { f =>
+                  ws(text(f.name) + ":", expr(f.value))
+                }
+        brace(cs(fields))
+      case m: MapValue =>
+        val entries = m
+                .entries
+                .map { e =>
+                  ws(expr(e.key) + ":", expr(e.value))
+                }
+        ws("map", brace(cs(entries)))
+      case b: Between =>
+        ws(expr(b.e), "between", expr(b.a), "and", expr(b.b))
+      case b: NotBetween =>
+        ws(expr(b.e), "not between", expr(b.a), "and", expr(b.b))
+      case c: Cast =>
+        expr(c.child) + text(".") + text(s"to_${c.dataType.typeName}")
+//      case n: NativeExpression =>
+//        convertExpression(ExpressionEvaluator.eval(n))
+      case p: PivotKey =>
+        val values = cs(p.values.map(x => expr(x)))
+        ws(
+          expr(p.name),
+          p.values.map { v =>
+            ws(
+              "in",
+              paren(values)
+            )
+          }
+        )
+      case s: ShouldExpr =>
+        val left = expr(s.left)
+        val right = expr(s.right)
+        val op = s.testType.expr
+        ws(left, op, right)
+      case s: SaveOption =>
+        ws(expr(s.key) + ":", expr(s.value))
+      case d: DefArg =>
+        ws(
+          d.name.name,
+          ":",
+          d.dataType.typeName,
+          d.defaultValue.map(x => ws("=", expr(x)))
+        )
+      case other =>
+        warn(s"unknown expression type: ${other}")
+        text(other.toString)
 end WvletFormatter
 
