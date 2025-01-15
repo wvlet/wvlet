@@ -4,7 +4,7 @@ import scala.annotation.tailrec
 
 case class CodeFormatterConfig(
     indentWidth: Int = 2,
-    maxLineWidth: Int = 80,
+    maxLineWidth: Int = 100,
     preserveNewLines: Int = 1,
     addTrailingCommaToItemList: Boolean = true,
     fitToLine: Boolean = true
@@ -27,7 +27,7 @@ object CodeFormatter:
       this match
         case Text(s) =>
           s.length
-        case NewLine | WhiteSpaceOrNewline =>
+        case NewLine | WhiteSpaceOrNewline | LineBreak =>
           1
         case OptNewLine =>
           0
@@ -48,6 +48,8 @@ object CodeFormatter:
           whitespace
         case OptNewLine =>
           empty
+        case LineBreak =>
+          this
         case HList(d1, d2) =>
           d1.flatten + d2.flatten
         case VList(d1, d2) =>
@@ -122,6 +124,9 @@ object CodeFormatter:
   case object OptNewLine extends Doc:
     override def toDoc: Doc = text("NL?")
 
+  // A line break that is always preserved
+  case object LineBreak extends Doc:
+    override def toDoc: Doc = text("LB")
 
   case object WhiteSpaceOrNewline extends Doc:
     override def toDoc: Doc = text("<break>")
@@ -138,13 +143,14 @@ object CodeFormatter:
       text("VList") + text("(") + maybeNewline + nest(cs(List(d1.toDoc, d2.toDoc)) + text(")"))
     )
 
+  // 1-level indented block
   case class Nest(d: Doc) extends Doc:
     override def toDoc: Doc = group(
       text(s"Nest") + text("(") + maybeNewline + nest(d.toDoc + text(")"))
     )
 
 
-  // Nested code block or a single whitespace
+  // Nested code block wrapped with newlines or preceded with a single whitespace
   case class Block(d: Doc) extends Doc:
     override def toDoc: Doc = group(
       text("Block") + text("(") + maybeNewline + nest(d.toDoc + text(")"))
@@ -160,6 +166,7 @@ object CodeFormatter:
   // Convenient operators
   inline def text(s: String): Doc = Text(s)
   inline def newline: Doc         = NewLine
+  inline def linebreak: Doc = LineBreak
   inline def maybeNewline: Doc    = OptNewLine
   inline def whitespaceOrNewline: Doc = WhiteSpaceOrNewline
   inline def nest(d: Doc): Doc    = Nest(d)
@@ -256,11 +263,7 @@ class CodeFormatter(config: CodeFormatterConfig = CodeFormatterConfig()):
     doc match
       case Text(s) =>
         doc
-      case NewLine =>
-        doc
-      case WhiteSpaceOrNewline =>
-        doc
-      case OptNewLine =>
+      case NewLine | WhiteSpaceOrNewline | OptNewLine | LineBreak =>
         doc
       case HList(d1, d2) =>
         best(level, d1) + best(level, d2)
@@ -289,11 +292,7 @@ class CodeFormatter(config: CodeFormatterConfig = CodeFormatterConfig()):
     d match
       case Text(s) =>
         s
-      case NewLine =>
-        "\n"
-      case WhiteSpaceOrNewline =>
-        "\n"
-      case OptNewLine =>
+      case NewLine | WhiteSpaceOrNewline | OptNewLine | LineBreak =>
         "\n"
       case HList(d1, d2) =>
         val r1 = render(nestingLevel, d1)

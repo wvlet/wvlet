@@ -45,9 +45,9 @@ class WvletFormatter(config: CodeFormatterConfig = CodeFormatterConfig())(using 
                 val d = toDoc(head)
                 head match
                   case q: Relation =>
-                    d / newline / ";" / newline/ concatStmts(tail)
+                    (d + linebreak + ";" + linebreak) / concatStmts(tail)
                   case _ =>
-                    d / newline / concatStmts(tail)
+                    d + linebreak + concatStmts(tail)
           end concatStmts
 
           concatStmts(p.statements)
@@ -290,7 +290,11 @@ class WvletFormatter(config: CodeFormatterConfig = CodeFormatterConfig())(using 
       case v: ValDef =>
         val name = v.name.name
         val body = expr(v.expr)
-        group(ws("val", s"${name}:", v.dataType.typeName, "=", body))
+        val nameAndType: Doc = if v.dataType.isUnknownType then
+          text(name)
+        else
+          text(name) + ": " + v.dataType.typeName.toString
+        group(ws("val", nameAndType, "=", body))
       case m: ModelDef =>
         group(
           ws(
@@ -393,7 +397,27 @@ class WvletFormatter(config: CodeFormatterConfig = CodeFormatterConfig())(using 
       case p: ParenthesizedExpression =>
         paren(expr(p.child))
       case i: InterpolatedString =>
-        concat(i.parts.map(expr))
+        // TODO: Switch sql"..." (single quote) or sql""" ... """ (triple quote)
+        def doc(e: Expression): Doc =
+          e match
+            case s: StringPart => text(s.value)
+            case other =>
+              text("$") + brace(expr(e))
+
+        def loop(lst: List[Expression]): Doc =
+          lst match
+            case Nil =>
+              empty
+            case head :: Nil =>
+              doc(head)
+            case head :: tail =>
+              doc(head) + loop(tail)
+
+        val prefix = i.prefix.map { name =>
+          expr(name)
+        }.getOrElse(empty)
+
+        prefix + "\"" + loop(i.parts) + "\""
       case s: SubQueryExpression =>
         val wv = relation(s.query)(using InExpression)
         brace(wv)

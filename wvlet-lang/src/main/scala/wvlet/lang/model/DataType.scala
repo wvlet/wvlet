@@ -28,6 +28,8 @@ abstract class DataType(val typeName: TypeName, override val typeParams: Seq[Dat
   override def toString: String                                    = typeDescription
   override def bind(typeArgMap: Map[TypeName, DataType]): DataType = this
 
+  def isUnknownType: Boolean = this == DataType.UnknownType
+  
   def typeDescription: String =
     val typeStr =
       if typeParams.isEmpty then
