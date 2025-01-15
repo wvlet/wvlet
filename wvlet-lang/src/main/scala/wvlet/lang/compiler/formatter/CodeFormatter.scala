@@ -37,6 +37,8 @@ object CodeFormatter:
           d1.length + 1 + d2.length
         case Nest(d) =>
           d.length
+        case Block(d) =>
+          d.length + 1
         case Group(d) =>
           d.length
 
@@ -52,6 +54,8 @@ object CodeFormatter:
           d1.flatten + whitespace + d2.flatten
         case Nest(d) =>
           d.flatten
+        case Block(d) =>
+          whitespace + d.flatten
         case Group(d) =>
           d.flatten
         case _ =>
@@ -129,6 +133,14 @@ object CodeFormatter:
       text(s"Nest") + text("(") + maybeNewline + nest(d.toDoc + text(")"))
     )
 
+
+  // Nested code block or a single whitespace
+  case class Block(d: Doc) extends Doc:
+    override def toDoc: Doc = group(
+      text("Block") + text("(") + maybeNewline + nest(d.toDoc + text(")"))
+    )
+
+
   // Group is a unit for compacting the doc into a single line if possible
   case class Group(d: Doc) extends Doc:
     override def toDoc: Doc = group(
@@ -141,6 +153,7 @@ object CodeFormatter:
   inline def maybeNewline: Doc    = OptNewLine
   inline def nest(d: Doc): Doc    = Nest(d)
   inline def group(d: Doc): Doc   = Group(d)
+  inline def block(d: Doc): Doc = Block(d)
   val whitespace: Doc             = Text(" ")
   val empty: Doc                  = Text("")
 
@@ -268,6 +281,9 @@ class CodeFormatter(config: CodeFormatterConfig = CodeFormatterConfig()):
         s"${r1}\n${r2}"
       case Nest(d) =>
         indent(render(nestingLevel + 1, d))
+      case Block(d) =>
+        val r = render(nestingLevel+1, d)
+        s"\n${indent(r)}\n"
       case Group(d) =>
         lazy val flat = render(nestingLevel, d.flatten)
         if config.fitToLine &&
@@ -298,6 +314,6 @@ class CodeFormatter(config: CodeFormatterConfig = CodeFormatterConfig()):
       case head :: Nil =>
         head
       case head :: tail =>
-        (head + separator) / append(tail, separator)
+        (head / separator) / append(tail, separator)
 
 end CodeFormatter

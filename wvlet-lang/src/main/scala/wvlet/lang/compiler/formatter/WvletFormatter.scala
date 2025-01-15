@@ -56,8 +56,8 @@ class WvletFormatter(config: CodeFormatterConfig = CodeFormatterConfig())
       if lst.isEmpty then
         None
       else
-        Some(nest(cs(lst)))
-    in / group(text(op) + maybeNewline + argBlock)
+        Some(block(cs(lst)))
+    in / group(text(op) + argBlock)
 
   private def relation(r: Relation)(using sc: SyntaxContext): Doc =
     r match
@@ -81,7 +81,7 @@ class WvletFormatter(config: CodeFormatterConfig = CodeFormatterConfig())
         if sc.inFrom then
           expr(t.sqlExpr)
         else
-          group(text("from") + maybeNewline + nest(expr(t.sqlExpr)))
+          group(text("from") + block(expr(t.sqlExpr)))
       case a: AddColumnsToRelation =>
         unary(a, "add", a.newColumns)
       case s: ShiftColumns =>
@@ -148,7 +148,7 @@ class WvletFormatter(config: CodeFormatterConfig = CodeFormatterConfig())
 
         // TODO union is not supported in Wvlet. Replace tree to dedup(concat)
         val op = s.toWvOp
-        append(rels, text(op) + newline)
+        append(rels, text(op))
       case d: Dedup =>
         unary(d, "dedup", Nil)
       case d: Distinct =>
