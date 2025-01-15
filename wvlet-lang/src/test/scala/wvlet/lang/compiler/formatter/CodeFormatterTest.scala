@@ -14,7 +14,7 @@ class CodeFormatterTest extends AirSpec:
         trace(plan.pp)
         val f = WvletFormatter()
         val d = f.convert(plan)
-        debug(s"[doc]\n${d.pp}")
+        trace(s"[doc]\n${d.pp}")
         val wv = f.render(0, d)
         debug(s"[formatted]\n${wv}")
       }

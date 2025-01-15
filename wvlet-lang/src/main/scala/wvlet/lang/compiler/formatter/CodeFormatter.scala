@@ -27,7 +27,7 @@ object CodeFormatter:
       this match
         case Text(s) =>
           s.length
-        case NewLine =>
+        case NewLine | WhiteSpaceOrNewline | LineBreak =>
           1
         case OptNewLine =>
           0
@@ -37,21 +37,27 @@ object CodeFormatter:
           d1.length + 1 + d2.length
         case Nest(d) =>
           d.length
+        case Block(d) =>
+          d.length + 1
         case Group(d) =>
           d.length
 
     def flatten: Doc =
       this match
-        case NewLine =>
+        case NewLine | WhiteSpaceOrNewline =>
           whitespace
         case OptNewLine =>
           empty
+        case LineBreak =>
+          this
         case HList(d1, d2) =>
           d1.flatten + d2.flatten
         case VList(d1, d2) =>
           d1.flatten + whitespace + d2.flatten
         case Nest(d) =>
           d.flatten
+        case Block(d) =>
+          whitespace + d.flatten
         case Group(d) =>
           d.flatten
         case _ =>
@@ -60,6 +66,7 @@ object CodeFormatter:
     // Concat docs horizontally
     def +(s: String): Doc = this.+(text(s))
 
+    // Concat docs horizontally
     def +(d2: Doc): Doc =
       this match
         case Text("") =>
@@ -71,12 +78,16 @@ object CodeFormatter:
             case _ =>
               HList(this, d2)
 
+    // Concat docs horizontally if present
     def +(d2: Option[Doc]): Doc =
       d2 match
         case Some(d) =>
           this + d
         case None =>
           this
+
+    // Concat docs vertically
+    def /(s: String): Doc = this./(text(s))
 
     // Concat docs vertically
     def /(d2: Doc): Doc =
@@ -90,6 +101,7 @@ object CodeFormatter:
             case _ =>
               VList(this, d2)
 
+    // Concat docs vertically if present
     def /(d2: Option[Doc]): Doc =
       d2 match
         case Some(d) =>
@@ -112,6 +124,13 @@ object CodeFormatter:
   case object OptNewLine extends Doc:
     override def toDoc: Doc = text("NL?")
 
+  // A line break that is always preserved
+  case object LineBreak extends Doc:
+    override def toDoc: Doc = text("LB")
+
+  case object WhiteSpaceOrNewline extends Doc:
+    override def toDoc: Doc = text("<break>")
+
   // Horizontally concatenated docs
   case class HList(d1: Doc, d2: Doc) extends Doc:
     override def toDoc: Doc = group(
@@ -124,9 +143,16 @@ object CodeFormatter:
       text("VList") + text("(") + maybeNewline + nest(cs(List(d1.toDoc, d2.toDoc)) + text(")"))
     )
 
+  // 1-level indented block
   case class Nest(d: Doc) extends Doc:
     override def toDoc: Doc = group(
       text(s"Nest") + text("(") + maybeNewline + nest(d.toDoc + text(")"))
+    )
+
+  // Nested code block wrapped with newlines or preceded with a single whitespace
+  case class Block(d: Doc) extends Doc:
+    override def toDoc: Doc = group(
+      text("Block") + text("(") + maybeNewline + nest(d.toDoc + text(")"))
     )
 
   // Group is a unit for compacting the doc into a single line if possible
@@ -136,13 +162,17 @@ object CodeFormatter:
     )
 
   // Convenient operators
-  inline def text(s: String): Doc = Text(s)
-  inline def newline: Doc         = NewLine
-  inline def maybeNewline: Doc    = OptNewLine
-  inline def nest(d: Doc): Doc    = Nest(d)
-  inline def group(d: Doc): Doc   = Group(d)
-  val whitespace: Doc             = Text(" ")
-  val empty: Doc                  = Text("")
+  inline def text(s: String): Doc     = Text(s)
+  inline def newline: Doc             = NewLine
+  inline def linebreak: Doc           = LineBreak
+  inline def maybeNewline: Doc        = OptNewLine
+  inline def whitespaceOrNewline: Doc = WhiteSpaceOrNewline
+  inline def nest(d: Doc): Doc        = Nest(d)
+  inline def group(d: Doc): Doc       = Group(d)
+  // Create a new block with possible newlines before and after the block
+  inline def block(d: Doc): Doc = Block(d)
+  val whitespace: Doc           = Text(" ")
+  val empty: Doc                = Text("")
 
   private def toDoc(x: Any): Doc =
     x match
@@ -165,7 +195,7 @@ object CodeFormatter:
     * @param lst
     * @return
     */
-  def cs(lst: List[Doc]): Doc = concat(lst, text(",") + maybeNewline)
+  def cs(lst: List[Doc]): Doc = concat(lst, text(",") + whitespaceOrNewline)
 
   /**
     * Concatenate items with a whitespace separator
@@ -194,7 +224,7 @@ object CodeFormatter:
       case head :: Nil =>
         head
       case head :: tail =>
-        (head + sep) + concat(tail, sep)
+        head + sep + concat(tail, sep)
 
   def concat(lst: List[Doc]): Doc =
     lst match
@@ -205,11 +235,20 @@ object CodeFormatter:
       case head :: tail =>
         head + concat(tail)
 
-  def brace(d: Doc): Doc = group(text("{") + nest(d) + text("}"))
+  def brace(d: Doc): Doc = group(text("{") + lineBlock(d) + text("}"))
+  // Create subexpression block wrapped with braces
+  def indentedBrace(d: Doc): Doc = text("{") + linebreak + nest(d) + linebreak + text("}")
 
-  def bracket(d: Doc): Doc = group(text("[") + nest(d) + text("]"))
+  def bracket(d: Doc): Doc = group(text("[") + lineBlock(d) + text("]"))
 
-  def paren(d: Doc): Doc = group(text("(") + nest(d) + text(")"))
+  def paren(d: Doc): Doc = group(text("(") + lineBlock(d) + text(")"))
+
+  /**
+    * Create a new nested block with possible newlines before and after the block
+    * @param d
+    * @return
+    */
+  def lineBlock(d: Doc): Doc = maybeNewline + nest(d) + maybeNewline
 
 end CodeFormatter
 
@@ -225,9 +264,7 @@ class CodeFormatter(config: CodeFormatterConfig = CodeFormatterConfig()):
     doc match
       case Text(s) =>
         doc
-      case NewLine =>
-        doc
-      case OptNewLine =>
+      case NewLine | WhiteSpaceOrNewline | OptNewLine | LineBreak =>
         doc
       case HList(d1, d2) =>
         best(level, d1) + best(level, d2)
@@ -235,6 +272,8 @@ class CodeFormatter(config: CodeFormatterConfig = CodeFormatterConfig()):
         best(level, d1) / best(level, d2)
       case Nest(d) =>
         nest(best(level + 1, d))
+      case Block(d) =>
+        block(best(level + 1, d))
       case Group(d) =>
         lazy val oneline = d.flatten
         if config.fitToLine && fits(level, oneline) then
@@ -254,9 +293,7 @@ class CodeFormatter(config: CodeFormatterConfig = CodeFormatterConfig()):
     d match
       case Text(s) =>
         s
-      case NewLine =>
-        "\n"
-      case OptNewLine =>
+      case NewLine | WhiteSpaceOrNewline | OptNewLine | LineBreak =>
         "\n"
       case HList(d1, d2) =>
         val r1 = render(nestingLevel, d1)
@@ -268,6 +305,9 @@ class CodeFormatter(config: CodeFormatterConfig = CodeFormatterConfig()):
         s"${r1}\n${r2}"
       case Nest(d) =>
         indent(render(nestingLevel + 1, d))
+      case Block(d) =>
+        val r = render(nestingLevel + 1, d)
+        s"\n${indent(r)}\n"
       case Group(d) =>
         lazy val flat = render(nestingLevel, d.flatten)
         if config.fitToLine &&
@@ -298,6 +338,6 @@ class CodeFormatter(config: CodeFormatterConfig = CodeFormatterConfig()):
       case head :: Nil =>
         head
       case head :: tail =>
-        (head + separator) / append(tail, separator)
+        (head / separator) / append(tail, separator)
 
 end CodeFormatter
