@@ -72,7 +72,11 @@ sealed trait NameExpr extends Expression:
   def toTermName: TermName = Name.termName(leafName)
   def toTypeName: TypeName = Name.typeName(leafName)
 
-  def map[A](f: Expression => A): Option[A] = if this.isEmpty then None else Some(f(this))
+  def map[A](f: Expression => A): Option[A] =
+    if this.isEmpty then
+      None
+    else
+      Some(f(this))
 
   def toSQLAttributeName: String =
     val s =
@@ -85,6 +89,8 @@ sealed trait NameExpr extends Expression:
       s
     else
       s""""${s}""""
+
+end NameExpr
 
 object NameExpr:
   val EmptyName: Identifier                                = UnquotedIdentifier("<empty>", NoSpan)
@@ -237,7 +243,8 @@ sealed trait JoinOnTheSameColumns extends JoinCriteria:
 case class JoinUsing(columns: List[NameExpr], span: Span) extends JoinOnTheSameColumns:
   override def children: Seq[Expression] = columns
 
-case class ResolvedJoinUsing(keys: List[MultiSourceColumn], span: Span) extends JoinOnTheSameColumns:
+case class ResolvedJoinUsing(keys: List[MultiSourceColumn], span: Span)
+    extends JoinOnTheSameColumns:
   override def columns: List[NameExpr] = keys.map { k =>
     k.nameExpr
   }

@@ -3,10 +3,10 @@ package wvlet.lang.compiler.formatter
 import scala.annotation.tailrec
 
 case class CodeFormatterConfig(
-        indentWidth: Int = 2,
-        maxLineWidth: Int = 100,
-        preserveNewLines: Int = 1,
-        addTrailingCommaToItemList: Boolean = true
+    indentWidth: Int = 2,
+    maxLineWidth: Int = 100,
+    preserveNewLines: Int = 1,
+    addTrailingCommaToItemList: Boolean = true
 )
 
 /**
@@ -44,13 +44,13 @@ object CodeFormatter:
         case NewLine =>
           whitespace
         case OptNewLine =>
-          empty
+          whitespace
         case HList(d1, d2) =>
           d1.flatten + d2.flatten
         case VList(d1, d2) =>
           d1.flatten + whitespace + d2.flatten
         case Nest(level, d) =>
-          Nest(level, d.flatten)
+          d.flatten
         case Group(d) =>
           d.flatten
         case _ =>
@@ -68,7 +68,7 @@ object CodeFormatter:
             case Text("") =>
               this
             case _ =>
-              this + d2
+              HList(this, d2)
 
     def +(d2: Option[Doc]): Doc =
       d2 match
@@ -87,7 +87,7 @@ object CodeFormatter:
             case Text("") =>
               this
             case _ =>
-              this / d2
+              VList(this, d2)
 
     def /(d2: Option[Doc]): Doc =
       d2 match
@@ -114,17 +114,18 @@ object CodeFormatter:
   // Convenient operators
   inline def text(s: String): Doc          = Text(s)
   inline def newline: Doc                  = NewLine
-  inline def maybeNewline: Doc = OptNewLine
+  inline def maybeNewline: Doc             = OptNewLine
   inline def nest(level: Int, d: Doc): Doc = Nest(level, d)
   inline def group(d: Doc): Doc            = Group(d)
-  val whitespace: Doc                              = Text(" ")
-  val empty: Doc = Text("")
+  val whitespace: Doc                      = Text(" ")
+  val empty: Doc                           = Text("")
 
 end CodeFormatter
 
 import CodeFormatter.*
 
 import scala.annotation.tailrec
+
 class CodeFormatter(config: CodeFormatterConfig = CodeFormatterConfig()):
   protected def fits(level: Int, doc: Doc): Boolean =
     level * config.indentWidth + doc.length <= config.maxLineWidth
@@ -155,13 +156,18 @@ class CodeFormatter(config: CodeFormatterConfig = CodeFormatterConfig()):
     render(0, formattedDoc)
 
   def render(nestingLevel: Int, d: Doc): String =
+    def indent(level: Int, s: String): String =
+      s.split("\\n").map(line =>
+        " " * level * config.indentWidth + line
+      ).mkString("\n")
+
     d match
       case Text(s) =>
         s
       case NewLine =>
-        "\n" + " " * nestingLevel
+        "\n"
       case OptNewLine =>
-        "\n" + " " * nestingLevel
+        "\n"
       case HList(d1, d2) =>
         val r1 = render(nestingLevel, d1)
         val r2 = render(nestingLevel, d2)
@@ -171,7 +177,7 @@ class CodeFormatter(config: CodeFormatterConfig = CodeFormatterConfig()):
         val r2 = render(nestingLevel, d2)
         s"${r1}\n${r2}"
       case Nest(level, d) =>
-        render(nestingLevel + level, d)
+        indent(nestingLevel+level, render(nestingLevel + level, d))
       case Group(d) =>
         val flat = render(nestingLevel, d.flatten)
         if nestingLevel * config.indentWidth + flat.length <= config.maxLineWidth then
@@ -179,14 +185,14 @@ class CodeFormatter(config: CodeFormatterConfig = CodeFormatterConfig()):
         else
           render(nestingLevel, d)
 
-  protected def verticalConcat(lst: List[Doc], separator: Doc): Doc =
+  protected def append(lst: List[Doc], separator: Doc): Doc =
     lst match
       case Nil =>
         empty
       case head :: Nil =>
         head
       case head :: tail =>
-        head + separator / verticalConcat(tail, separator)
+        head + separator / append(tail, separator)
 
   protected def itemList(items: List[Doc]): Doc =
     items match
@@ -206,24 +212,28 @@ class CodeFormatter(config: CodeFormatterConfig = CodeFormatterConfig()):
     * @param lst
     * @return
     */
-  protected def cs(lst: List[Doc]): Doc =
-    concat(lst, text(", "))
+  protected def cs(lst: List[Doc]): Doc = concat(lst, text(", "))
 
   private def toDoc(x: Any): Doc =
     x match
-      case d: Doc => d
-      case s: String => text(s)
-      case Some(x) => toDoc(x)
-      case None => empty
-      case s: Seq[_] =>
-        horizontalConncat(s.map(toDoc).toList)
-      case other => empty
+      case d: Doc =>
+        d
+      case s: String =>
+        text(s)
+      case Some(x) =>
+        toDoc(x)
+      case None =>
+        empty
+      case s: Seq[?] =>
+        concat(s.map(toDoc).toList)
+      case other =>
+        empty
 
   /**
-   * Concatenate items with a whitespace separator
-   * @param lst
-   * @return
-   */
+    * Concatenate items with a whitespace separator
+    * @param lst
+    * @return
+    */
   protected def ws(lst: Any*): Doc =
     def loop(x: List[Any]): List[Doc] =
       x match
@@ -236,8 +246,7 @@ class CodeFormatter(config: CodeFormatterConfig = CodeFormatterConfig()):
 
     concat(loop(lst.toList).filterNot(_ == empty), whitespace)
 
-  protected def lines(lst: List[Doc]): Doc =
-    concat(lst, newline)
+  protected def lines(lst: List[Doc]): Doc = concat(lst, newline)
 
   protected def concat(lst: List[Doc], sep: Doc): Doc =
     lst match
@@ -246,24 +255,27 @@ class CodeFormatter(config: CodeFormatterConfig = CodeFormatterConfig()):
       case head :: Nil =>
         head
       case head :: tail =>
-        head + sep + cs(tail)
+        head + sep + concat(tail, sep)
 
-  protected def horizontalConncat(lst: List[Doc]): Doc =
+  protected def concat(lst: List[Doc]): Doc =
     lst match
       case Nil =>
         empty
       case head :: Nil =>
         head
       case head :: tail =>
-        head + horizontalConncat(tail)
+        head + concat(tail)
 
-  protected def brace(d: Doc): Doc =
-    group(text("{") + nest(1, maybeNewline + d) + maybeNewline + text("}"))
+  protected def brace(d: Doc): Doc = group(
+    text("{") + nest(1, d) + text("}")
+  )
 
-  protected def bracket(d: Doc): Doc =
-    group(text("[") + nest(1, maybeNewline + d) + maybeNewline + text("]"))
+  protected def bracket(d: Doc): Doc = group(
+    text("[") + nest(1, d) + text("]")
+  )
 
-  protected def paren(d: Doc): Doc =
-    group(text("(") + nest(1, maybeNewline + d) + maybeNewline + text(")"))
+  protected def paren(d: Doc): Doc = group(
+    text("(") + nest(1, d) + text(")")
+  )
 
 end CodeFormatter

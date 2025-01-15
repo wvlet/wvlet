@@ -759,7 +759,8 @@ case class Intersect(left: Relation, right: Relation, isDistinct: Boolean, span:
         else
           " all"
       }"
-  override def toWvOp: String          = toSQLOp
+
+  override def toWvOp: String = toSQLOp
 
   override def children: Seq[Relation] = Seq(left, right)
   override def toString                = s"Intersect(${left}, ${right})"
@@ -773,7 +774,8 @@ case class Except(left: Relation, right: Relation, isDistinct: Boolean, span: Sp
         else
           " all"
       }"
-  override def toWvOp: String          = toSQLOp
+
+  override def toWvOp: String = toSQLOp
 
   override def children: Seq[Relation] = Seq(left, right)
   override def toString                = s"Except(${left}, ${right})"
@@ -792,7 +794,8 @@ case class Union(left: Relation, right: Relation, isDistinct: Boolean, span: Spa
         else
           " all"
       }"
-  override def toWvOp: String          =
+
+  override def toWvOp: String =
     if isDistinct then
       "union"
     else
@@ -1023,14 +1026,14 @@ enum SamplingSize:
   */
 case class Debug(child: Relation, debugExpr: Relation, span: Span) extends FilteringRelation:
   /**
-   * A partial debug expression that only contains operators inside the debug expression
-   * @return
-   */
+    * A partial debug expression that only contains operators inside the debug expression
+    * @return
+    */
   def partialDebugExpr: Relation = debugExpr
-          .transformUp { case l: LeafPlan =>
-            EmptyRelation(l.span)
-          }
-          .asInstanceOf[Relation]
+    .transformUp { case l: LeafPlan =>
+      EmptyRelation(l.span)
+    }
+    .asInstanceOf[Relation]
 
   // Add debug expr as well for the ease of tree traversal
   override def children: Seq[LogicalPlan] = Seq(child, debugExpr)
