@@ -12,7 +12,7 @@ class CodeFormatterTest extends AirSpec:
         debug(s"[${unit.sourceFile.fileName}]\n${unit.sourceFile.getContentAsString}")
         val plan = ParserPhase.parse(unit, Context.NoContext)
         trace(plan.pp)
-        val f  = WvletFormatter()
+        val f = WvletFormatter()
         val d = f.convert(plan)
         debug(s"[doc]\n${d.pp}")
         val wv = f.render(0, d)

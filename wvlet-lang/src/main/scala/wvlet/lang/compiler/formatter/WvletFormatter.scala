@@ -57,7 +57,7 @@ class WvletFormatter(config: CodeFormatterConfig = CodeFormatterConfig())
         None
       else
         Some(nest(cs(lst)))
-    in / group(text(op) + maybeNewline +  argBlock)
+    in / group(text(op) + maybeNewline + argBlock)
 
   private def relation(r: Relation)(using sc: SyntaxContext): Doc =
     r match
@@ -185,11 +185,7 @@ class WvletFormatter(config: CodeFormatterConfig = CodeFormatterConfig())
           case v: Values =>
             ws(convertValues(v), "as", tableAlias)
           case _ =>
-            ws(
-              wrapWithBraceIfNecessary(relation(a.child)(using InSubQuery)),
-              "as",
-              tableAlias
-            )
+            ws(wrapWithBraceIfNecessary(relation(a.child)(using InSubQuery)), "as", tableAlias)
       case p: Pivot =>
         val prev      = relation(p.child)
         val pivotKeys = cs(p.pivotKeys.map(expr))
