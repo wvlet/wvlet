@@ -94,7 +94,7 @@ case class BracedRelation(child: Relation, span: Span) extends UnaryRelation:
 case class AliasedRelation(
     child: Relation,
     alias: NameExpr,
-    columnNames: Option[Seq[NamedType]],
+    columnNames: Option[List[NamedType]],
     span: Span
 ) extends UnaryRelation
     with LogSupport:
@@ -139,7 +139,7 @@ case class NamedRelation(child: Relation, name: NameExpr, span: Span)
     child.relationType
   )
 
-case class Values(rows: Seq[Expression], span: Span) extends Relation with LeafPlan:
+case class Values(rows: List[Expression], span: Span) extends Relation with LeafPlan:
   override def toString: String = s"Values(${rows.mkString(", ")})"
 
   override val relationType: RelationType =
@@ -251,7 +251,7 @@ case class Distinct(child: Project, span: Span) extends FilteringRelation with A
   override def selectItems: Seq[Attribute] = child.selectItems
   override def toString: String            = s"Distinct(${child})"
 
-case class Sort(child: Relation, orderBy: Seq[SortItem], span: Span) extends FilteringRelation:
+case class Sort(child: Relation, orderBy: List[SortItem], span: Span) extends FilteringRelation:
   override def toString: String = s"Sort[${orderBy.mkString(", ")}](${child})"
 
 case class Limit(child: Relation, limit: LongLiteral, span: Span) extends FilteringRelation:
@@ -279,7 +279,7 @@ sealed trait Selection extends GeneralSelection:
 // This node can be a pivot node for generating a SELECT statement with aggregation functions
 trait AggSelect extends Selection
 
-case class Project(child: Relation, selectItems: Seq[Attribute], span: Span)
+case class Project(child: Relation, selectItems: List[Attribute], span: Span)
     extends UnaryRelation
     with AggSelect:
 
@@ -302,7 +302,7 @@ case class Project(child: Relation, selectItems: Seq[Attribute], span: Span)
   * @param transformItems
   * @param nodeLocation
   */
-case class Transform(child: Relation, transformItems: Seq[Attribute], span: Span)
+case class Transform(child: Relation, transformItems: List[Attribute], span: Span)
     extends UnaryRelation
     with Selection
     with LogSupport:
@@ -324,7 +324,7 @@ case class Transform(child: Relation, transformItems: Seq[Attribute], span: Span
     )
     pt
 
-case class AddColumnsToRelation(child: Relation, newColumns: Seq[Attribute], span: Span)
+case class AddColumnsToRelation(child: Relation, newColumns: List[Attribute], span: Span)
     extends UnaryRelation
     with Selection
     with LogSupport:
@@ -347,7 +347,7 @@ case class AddColumnsToRelation(child: Relation, newColumns: Seq[Attribute], spa
     )
     pt
 
-case class ExcludeColumnsFromRelation(child: Relation, columnNames: Seq[NameExpr], span: Span)
+case class ExcludeColumnsFromRelation(child: Relation, columnNames: List[NameExpr], span: Span)
     extends Selection
     with LogSupport:
   override def toString: String = s"Drop[${columnNames.mkString(", ")}](${child})"
@@ -369,7 +369,7 @@ case class ExcludeColumnsFromRelation(child: Relation, columnNames: Seq[NameExpr
     )
     pt
 
-case class RenameColumnsFromRelation(child: Relation, columnAliases: Seq[Alias], span: Span)
+case class RenameColumnsFromRelation(child: Relation, columnAliases: List[Alias], span: Span)
     extends Selection
     with LogSupport:
   override def toString: String = s"Rename[${columnAliases.mkString(", ")}](${child})"
@@ -425,7 +425,7 @@ end RenameColumnsFromRelation
 case class ShiftColumns(
     child: Relation,
     isLeftShift: Boolean,
-    shiftItems: Seq[NameExpr],
+    shiftItems: List[NameExpr],
     span: Span
 ) extends Selection:
   override def toString: String = s"Shift[${shiftItems.mkString(", ")}](${child})"
@@ -675,6 +675,7 @@ sealed trait SetOperation extends Relation with LogSupport:
   override def children: Seq[Relation]
 
   def toSQLOp: String
+  def toWvOp: String
 
   override lazy val relationType: RelationType = children
     .headOption
@@ -742,6 +743,7 @@ end SetOperation
 
 case class Concat(left: Relation, right: Relation, span: Span) extends SetOperation:
   override def toSQLOp: String         = "union all"
+  override def toWvOp: String          = "concat"
   override def children: Seq[Relation] = Seq(left, right)
   override def toString                = s"Concat(${left}, ${right})"
 
@@ -758,6 +760,8 @@ case class Intersect(left: Relation, right: Relation, isDistinct: Boolean, span:
           " all"
       }"
 
+  override def toWvOp: String = toSQLOp
+
   override def children: Seq[Relation] = Seq(left, right)
   override def toString                = s"Intersect(${left}, ${right})"
 
@@ -770,6 +774,8 @@ case class Except(left: Relation, right: Relation, isDistinct: Boolean, span: Sp
         else
           " all"
       }"
+
+  override def toWvOp: String = toSQLOp
 
   override def children: Seq[Relation] = Seq(left, right)
   override def toString                = s"Except(${left}, ${right})"
@@ -788,6 +794,12 @@ case class Union(left: Relation, right: Relation, isDistinct: Boolean, span: Spa
         else
           " all"
       }"
+
+  override def toWvOp: String =
+    if isDistinct then
+      "union"
+    else
+      "concat"
 
   override def children: Seq[Relation] = Seq(left, right)
   override def toString                = s"Union(${children.mkString(",")})"
@@ -1013,6 +1025,15 @@ enum SamplingSize:
   * @param nodeLocation
   */
 case class Debug(child: Relation, debugExpr: Relation, span: Span) extends FilteringRelation:
+  /**
+    * A partial debug expression that only contains operators inside the debug expression
+    * @return
+    */
+  def partialDebugExpr: Relation = debugExpr
+    .transformUp { case l: LeafPlan =>
+      EmptyRelation(l.span)
+    }
+    .asInstanceOf[Relation]
 
   // Add debug expr as well for the ease of tree traversal
   override def children: Seq[LogicalPlan] = Seq(child, debugExpr)

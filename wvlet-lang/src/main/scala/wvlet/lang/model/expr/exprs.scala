@@ -72,6 +72,12 @@ sealed trait NameExpr extends Expression:
   def toTermName: TermName = Name.termName(leafName)
   def toTypeName: TypeName = Name.typeName(leafName)
 
+  def map[A](f: Expression => A): Option[A] =
+    if this.isEmpty then
+      None
+    else
+      Some(f(this))
+
   def toSQLAttributeName: String =
     val s =
       this match
@@ -83,6 +89,8 @@ sealed trait NameExpr extends Expression:
       s
     else
       s""""${s}""""
+
+end NameExpr
 
 object NameExpr:
   val EmptyName: Identifier                                = UnquotedIdentifier("<empty>", NoSpan)
@@ -230,13 +238,14 @@ case class NaturalJoin(span: Span) extends JoinCriteria with LeafExpression:
   override def toString: String = "NaturalJoin"
 
 sealed trait JoinOnTheSameColumns extends JoinCriteria:
-  def columns: Seq[NameExpr]
+  def columns: List[NameExpr]
 
-case class JoinUsing(columns: Seq[NameExpr], span: Span) extends JoinOnTheSameColumns:
+case class JoinUsing(columns: List[NameExpr], span: Span) extends JoinOnTheSameColumns:
   override def children: Seq[Expression] = columns
 
-case class ResolvedJoinUsing(keys: Seq[MultiSourceColumn], span: Span) extends JoinOnTheSameColumns:
-  override def columns: Seq[NameExpr] = keys.map { k =>
+case class ResolvedJoinUsing(keys: List[MultiSourceColumn], span: Span)
+    extends JoinOnTheSameColumns:
+  override def columns: List[NameExpr] = keys.map { k =>
     k.nameExpr
   }
 
@@ -277,8 +286,8 @@ enum NullOrdering(val expr: String):
 
 // Window functions
 case class Window(
-    partitionBy: Seq[Expression],
-    orderBy: Seq[SortItem],
+    partitionBy: List[Expression],
+    orderBy: List[SortItem],
     frame: Option[WindowFrame],
     span: Span
 ) extends Expression:
@@ -405,10 +414,10 @@ case class IsNotNull(child: Expression, span: Span)
     with UnaryExpression:
   override def toString: String = s"IsNotNull(${child})"
 
-case class In(a: Expression, list: Seq[Expression], span: Span) extends ConditionalExpression:
+case class In(a: Expression, list: List[Expression], span: Span) extends ConditionalExpression:
   override def children: Seq[Expression] = Seq(a) ++ list
 
-case class NotIn(a: Expression, list: Seq[Expression], span: Span) extends ConditionalExpression:
+case class NotIn(a: Expression, list: List[Expression], span: Span) extends ConditionalExpression:
   override def children: Seq[Expression] = Seq(a) ++ list
 
 case class InSubQuery(a: Expression, in: Relation, span: Span) extends ConditionalExpression:

@@ -292,7 +292,7 @@ class WvletGenerator(config: WvletFormatConfig = WvletFormatConfig())(using
         printOpAndSingle("test", t.child, printExpression(t.testExpr))
       case d: Debug =>
         val r  = printRelation(d.child)
-        val rd = printRelation(removeLeafInput(d.debugExpr))(using wvletContext.nested)
+        val rd = printRelation(d.partialDebugExpr)(using wvletContext.nested)
         val q  = lines(s"debug {", rd, "}")
         lines(r, q)
       case s: SelectAsAlias =>
@@ -392,17 +392,6 @@ class WvletGenerator(config: WvletFormatConfig = WvletFormatConfig())(using
       case other =>
         warn(s"Unsupported statement: ${other}")
         other.nodeName
-
-  /**
-    * Remove the leaf input for debug expressions
-    * @param r
-    * @return
-    */
-  private def removeLeafInput(r: Relation): Relation = r
-    .transformUp { case l: LeafPlan =>
-      EmptyRelation(l.span)
-    }
-    .asInstanceOf[Relation]
 
   private def printValues(values: Values)(using wvletContext: WvletContext): String =
     val rows = values

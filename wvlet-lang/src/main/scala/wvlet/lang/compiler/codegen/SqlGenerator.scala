@@ -149,7 +149,7 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
 
   private def addProjectionIfMissing(r: Relation)(using sqlContext: SqlContext) =
     if !hasSelection(r) then
-      Project(r, Seq(SingleColumn(EmptyName, Wildcard(NoSpan), NoSpan)), NoSpan)
+      Project(r, List(SingleColumn(EmptyName, Wildcard(NoSpan), NoSpan)), NoSpan)
     else
       r
 
