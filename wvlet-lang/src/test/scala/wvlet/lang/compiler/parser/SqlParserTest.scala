@@ -9,7 +9,7 @@ class SqlParserTest extends AirSpec:
     debug(stmt.pp)
   }
 
-class SqlParserTPCHTest extends AirSpec:
+class SqlParserTPCHSpec extends AirSpec:
   CompilationUnit
     .fromPath("spec/sql/tpc-h")
     .foreach { unit =>
@@ -19,7 +19,7 @@ class SqlParserTPCHTest extends AirSpec:
       }
     }
 
-class SqlParserTPCDSTest extends AirSpec:
+class SqlParserTPCDSSpec extends AirSpec:
   CompilationUnit
     .fromPath("spec/sql/tpc-ds")
     .foreach { unit =>

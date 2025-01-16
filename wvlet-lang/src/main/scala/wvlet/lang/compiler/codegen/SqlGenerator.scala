@@ -396,10 +396,20 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
           case _ =>
 
         catalog.foreach { c =>
-          cond += Eq(UnquotedIdentifier("table_catalog", NoSpan), StringLiteral(c, NoSpan), NoSpan)
+          cond +=
+            Eq(
+              UnquotedIdentifier("table_catalog", NoSpan),
+              StringLiteral.fromString(c, NoSpan),
+              NoSpan
+            )
         }
         schema.foreach { s =>
-          cond += Eq(UnquotedIdentifier("table_schema", NoSpan), StringLiteral(s, NoSpan), NoSpan)
+          cond +=
+            Eq(
+              UnquotedIdentifier("table_schema", NoSpan),
+              StringLiteral.fromString(s, NoSpan),
+              NoSpan
+            )
         }
 
         val conds = cond.result()
@@ -423,7 +433,12 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
           case _ =>
 
         catalog.foreach { c =>
-          cond += Eq(UnquotedIdentifier("catalog_name", NoSpan), StringLiteral(c, NoSpan), NoSpan)
+          cond +=
+            Eq(
+              UnquotedIdentifier("catalog_name", NoSpan),
+              StringLiteral.fromString(c, NoSpan),
+              NoSpan
+            )
         }
         val conds = cond.result()
         val body =
@@ -763,9 +778,7 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
       case s: StringPart =>
         s.stringValue
       case s: StringLiteral =>
-        // Escape single quotes
-        val v = s.stringValue.replaceAll("'", "''")
-        s"'${v}'"
+        s.stringValue
       case i: IntervalLiteral =>
         s"interval ${i.stringValue}"
       case g: GenericLiteral =>

@@ -384,10 +384,6 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
         ws(expr(b.left), b.operatorName, expr(b.right))
       case s: StringPart =>
         text(s.stringValue)
-      case s: StringLiteral =>
-        // Escape single quotes
-        val v = s.stringValue.replaceAll("'", "''")
-        text(s"'${v}'")
       case i: IntervalLiteral =>
         text(s"interval ${i.stringValue}")
       case g: GenericLiteral =>

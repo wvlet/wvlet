@@ -52,13 +52,13 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   case OUTDENT extends WvletToken(Control, "<outdent>")
 
   // Literals
-  case INTEGER_LITERAL extends WvletToken(Literal, "<integer literal>")
-  case DECIMAL_LITERAL extends WvletToken(Literal, "<decimal literal>")
-  case EXP_LITERAL     extends WvletToken(Literal, "<exp literal>")
-  case LONG_LITERAL    extends WvletToken(Literal, "<long literal>")
-  case FLOAT_LITERAL   extends WvletToken(Literal, "<float literal>")
-  case DOUBLE_LITERAL  extends WvletToken(Literal, "<double literal>")
-  case SINGLE_QUOTE_STRING  extends WvletToken(Literal, "<'string literal'>") // Single-quoted
+  case INTEGER_LITERAL     extends WvletToken(Literal, "<integer literal>")
+  case DECIMAL_LITERAL     extends WvletToken(Literal, "<decimal literal>")
+  case EXP_LITERAL         extends WvletToken(Literal, "<exp literal>")
+  case LONG_LITERAL        extends WvletToken(Literal, "<long literal>")
+  case FLOAT_LITERAL       extends WvletToken(Literal, "<float literal>")
+  case DOUBLE_LITERAL      extends WvletToken(Literal, "<double literal>")
+  case SINGLE_QUOTE_STRING extends WvletToken(Literal, "<'string literal'>") // Single-quoted
   case DOUBLE_QUOTE_STRING extends WvletToken(Literal, "<\"string literal\">")
   case TRIPLE_QUOTE_STRING extends WvletToken(Literal, "<\"\"\"string literal\"\"\">")
 

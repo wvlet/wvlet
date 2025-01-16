@@ -291,10 +291,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       case WvletToken.FROM =>
         consume(WvletToken.FROM)
         val source = stringLiteral()
-        d.copy(
-          fromSource = Some(source),
-          span = d.span.extendTo(lastToken.span)
-        )
+        d.copy(fromSource = Some(source), span = d.span.extendTo(lastToken.span))
       case _ =>
         d
 
@@ -1648,7 +1645,8 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           ContextInputRef(DataType.UnknownType, spanFrom(t))
         case WvletToken.NULL | WvletToken.INTEGER_LITERAL | WvletToken.DOUBLE_LITERAL | WvletToken
               .FLOAT_LITERAL | WvletToken.DECIMAL_LITERAL | WvletToken.EXP_LITERAL | WvletToken
-              .SINGLE_QUOTE_STRING | WvletToken.DOUBLE_QUOTE_STRING | WvletToken.TRIPLE_QUOTE_STRING =>
+              .SINGLE_QUOTE_STRING | WvletToken.DOUBLE_QUOTE_STRING | WvletToken
+              .TRIPLE_QUOTE_STRING =>
           literal()
         case WvletToken.CASE =>
           val cases                          = List.newBuilder[WhenClause]
@@ -2091,6 +2089,5 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         TripleQuoteString(t.str, t.span)
       case other =>
         unexpected(t)
-
 
 end WvletParser

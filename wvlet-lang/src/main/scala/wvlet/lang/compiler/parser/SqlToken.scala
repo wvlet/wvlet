@@ -25,13 +25,13 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   // doc or comments
   case COMMENT extends SqlToken(Doc, "<comment>")
   // Literals
-  case INTEGER_LITERAL extends SqlToken(Literal, "<integer literal>")
-  case DECIMAL_LITERAL extends SqlToken(Literal, "<decimal literal>")
-  case EXP_LITERAL     extends SqlToken(Literal, "<exp literal>")
-  case LONG_LITERAL    extends SqlToken(Literal, "<long literal>")
-  case FLOAT_LITERAL   extends SqlToken(Literal, "<float literal>")
-  case DOUBLE_LITERAL  extends SqlToken(Literal, "<double literal>")
-  case SINGLE_QUOTE_STRING  extends SqlToken(Literal, "<'string'>")
+  case INTEGER_LITERAL     extends SqlToken(Literal, "<integer literal>")
+  case DECIMAL_LITERAL     extends SqlToken(Literal, "<decimal literal>")
+  case EXP_LITERAL         extends SqlToken(Literal, "<exp literal>")
+  case LONG_LITERAL        extends SqlToken(Literal, "<long literal>")
+  case FLOAT_LITERAL       extends SqlToken(Literal, "<float literal>")
+  case DOUBLE_LITERAL      extends SqlToken(Literal, "<double literal>")
+  case SINGLE_QUOTE_STRING extends SqlToken(Literal, "<'string'>")
   case DOUBLE_QUOTE_STRING extends SqlToken(Literal, "<\"string\">")
   case TRIPLE_QUOTE_STRING extends SqlToken(Literal, "<\"\"\"string\"\"\">")
 
@@ -300,8 +300,11 @@ object SqlToken:
   )
 
   val queryDelimiters = Set(SqlToken.EOF, SqlToken.R_PAREN, SqlToken.SEMICOLON)
-  val stringLiterals = Set(SqlToken.SINGLE_QUOTE_STRING, SqlToken.DOUBLE_QUOTE_STRING, SqlToken.TRIPLE_QUOTE_STRING)
-
+  val stringLiterals = Set(
+    SqlToken.SINGLE_QUOTE_STRING,
+    SqlToken.DOUBLE_QUOTE_STRING,
+    SqlToken.TRIPLE_QUOTE_STRING
+  )
 
   given tokenTypeInfo: TokenTypeInfo[SqlToken] with
     override def empty: SqlToken      = SqlToken.EMPTY

@@ -1131,8 +1131,12 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         DecimalLiteral(removeUnderscore(t.str), t.str, spanFrom(t))
       case SqlToken.EXP_LITERAL =>
         DecimalLiteral(t.str, t.str, spanFrom(t))
-      case s if s.isStringLiteral =>
-        stringLiteral()
+      case SqlToken.SINGLE_QUOTE_STRING =>
+        SingleQuoteString(t.str, spanFrom(t))
+      case SqlToken.DOUBLE_QUOTE_STRING =>
+        DoubleQuoteString(t.str, spanFrom(t))
+      case SqlToken.TRIPLE_QUOTE_STRING =>
+        TripleQuoteString(t.str, spanFrom(t))
       case _ =>
         unexpected(t)
 
@@ -1631,18 +1635,6 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     t.token match
       case token if token.isReservedKeyword =>
         UnquotedIdentifier(t.str, spanFrom(t))
-      case _ =>
-        unexpected(t)
-
-  def stringLiteral(): StringLiteral =
-    val t = consumeToken()
-    t.token match
-      case SqlToken.SINGLE_QUOTE_STRING =>
-        SingleQuoteString(t.str, spanFrom(t))
-      case SqlToken.DOUBLE_QUOTE_STRING =>
-        DoubleQuoteString(t.str, spanFrom(t))
-      case SqlToken.TRIPLE_QUOTE_STRING =>
-        TripleQuoteString(t.str, spanFrom(t))
       case _ =>
         unexpected(t)
 

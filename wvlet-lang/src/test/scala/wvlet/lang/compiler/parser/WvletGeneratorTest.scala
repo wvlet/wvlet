@@ -5,14 +5,14 @@ import wvlet.lang.compiler.*
 import wvlet.lang.compiler.codegen.WvletGenerator
 
 abstract class WvletGeneratorTest(path: String) extends AirSpec:
-  private val name      = path.split("\\/").lastOption.getOrElse(path)
-  private val globalCtx = Context.testGlobalContext(path)
+  private val testPrefix = path.split("\\/").lastOption.getOrElse(path)
+  private val globalCtx  = Context.testGlobalContext(path)
 
   CompilationUnit
     .fromPath(path)
     .foreach { unit =>
       val file = unit.sourceFile.fileName
-      test(s"Convert ${file} to Wvlet") {
+      test(s"Convert ${testPrefix}:${file} to Wvlet") {
         debug(s"[${file}]\n${unit.sourceFile.getContentAsString}")
         given ctx: Context = globalCtx.getContextOf(unit)
         val plan           = ParserPhase.parse(unit, ctx)
