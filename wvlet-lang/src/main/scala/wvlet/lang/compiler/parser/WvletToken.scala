@@ -33,9 +33,10 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   def isOperator: Boolean            = tokenType == Op
   def isRightParenOrBracket: Boolean = this == WvletToken.R_PAREN || this == WvletToken.R_BRACKET
 
-  def isQueryDelimiter: Boolean = WvletToken.isQueryDelimiter(this)
-  def isStringStart: Boolean    = WvletToken.stringStartToken.contains(this)
-  def isStringLiteral: Boolean  = WvletToken.stringLiterals.contains(this)
+  def isQueryDelimiter: Boolean           = WvletToken.isQueryDelimiter(this)
+  def isStringStart: Boolean              = WvletToken.stringStartToken.contains(this)
+  def isStringLiteral: Boolean            = WvletToken.stringLiterals.contains(this)
+  def isInterpolatedStringPrefix: Boolean = WvletToken.stringInterpolationPrefixes.contains(this)
 
   // special tokens
   case EMPTY      extends WvletToken(Control, "<empty>")
@@ -69,6 +70,9 @@ enum WvletToken(val tokenType: TokenType, val str: String):
 
   // For interpolated string, e.g., sql"...${expr}..."
   case STRING_INTERPOLATION_PREFIX extends WvletToken(Literal, "<string interpolation>")
+  case TRIPLE_QUOTE_INTERPOLATION_PREFIX
+      extends WvletToken(Literal, "<\"\"\"string interpolation\"\"\">")
+
   // For backquoted interpolation strings, e.g., s`table_name_${expr}...`
   case BACKQUOTE_INTERPOLATION_PREFIX extends WvletToken(Literal, "<backquote interpolation>")
   // A part in the string interpolation
@@ -257,6 +261,7 @@ object WvletToken:
   val stringStartToken = List(
     WvletToken.IDENTIFIER,
     WvletToken.STRING_INTERPOLATION_PREFIX,
+    WvletToken.TRIPLE_QUOTE_INTERPOLATION_PREFIX,
     WvletToken.BACKQUOTED_IDENTIFIER,
     WvletToken.SINGLE_QUOTE,
     WvletToken.DOUBLE_QUOTE
@@ -304,6 +309,11 @@ object WvletToken:
     WvletToken.SINGLE_QUOTE_STRING,
     WvletToken.DOUBLE_QUOTE_STRING,
     WvletToken.TRIPLE_QUOTE_STRING
+  )
+
+  val stringInterpolationPrefixes = Set(
+    WvletToken.STRING_INTERPOLATION_PREFIX,
+    WvletToken.TRIPLE_QUOTE_INTERPOLATION_PREFIX
   )
 
   def isQueryDelimiter(t: WvletToken): Boolean = queryDelimiters.contains(t)

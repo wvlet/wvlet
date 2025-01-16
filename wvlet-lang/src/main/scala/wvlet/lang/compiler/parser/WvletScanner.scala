@@ -77,6 +77,8 @@ class WvletScanner(sourceFile: SourceFile, config: ScannerConfig = ScannerConfig
         if (ch == '"' || ch == '`') && current.token == WvletToken.IDENTIFIER then
           if ch == '`' then
             current.token = WvletToken.BACKQUOTE_INTERPOLATION_PREFIX
+          else if lookAheadChar() == '"' && lookAheadChar(1) == '"' then
+            current.token = WvletToken.TRIPLE_QUOTE_INTERPOLATION_PREFIX
           else
             current.token = WvletToken.STRING_INTERPOLATION_PREFIX
       case '~' | '!' | '@' | '#' | '%' | '^' | '*' | '+' | '<' | '>' | '?' | ':' | '=' | '&' | '|' |
