@@ -623,6 +623,12 @@ sealed trait Literal extends Expression:
     * @return
     */
   def stringValue: String
+
+  /**
+    * SQL representation of this literal
+    * @return
+    */
+  def sqlExpr: String       = stringValue
   def unquotedValue: String = stringValue
 
 case class NullLiteral(span: Span) extends Literal with LeafExpression:
@@ -641,7 +647,7 @@ case class FalseLiteral(span: Span) extends BooleanLiteral with LeafExpression:
   override def stringValue: String   = "false"
   override def booleanValue: Boolean = false
 
-trait StringLiteral extends Literal with LeafExpression:
+sealed trait StringLiteral extends Literal with LeafExpression:
   override def dataType: DataType = DataType.StringType
 
 object StringLiteral:
@@ -654,13 +660,32 @@ object StringLiteral:
       DoubleQuoteString(s, span)
 
 case class SingleQuoteString(override val unquotedValue: String, span: Span) extends StringLiteral:
-  override def stringValue: String = s"'${unquotedValue}'"
+  override def stringValue: String =
+    // Need to escape `'` inside the string for SQL
+    s"'${unquotedValue.replaceAll("'", "''")}'"
+
+  override def sqlExpr: String = stringValue
 
 case class DoubleQuoteString(override val unquotedValue: String, span: Span) extends StringLiteral:
   override def stringValue: String = s""""${unquotedValue}""""
+  override def sqlExpr: String =
+    // In SQL, double quote string means identifiers
+    // So replace double quote with single quote
+    s"'${unquotedValue.replaceAll("'", "''")}'"
 
 case class TripleQuoteString(override val unquotedValue: String, span: Span) extends StringLiteral:
   override def stringValue: String = s"\"\"\"${unquotedValue}\"\"\""
+  override def sqlExpr: String =
+    // SQL doesn't support multi-line triple quotes,
+    // So split the string into multiple lines
+    val lines = unquotedValue.split("\n")
+    val parts: List[String] =
+      lines
+        .map { line =>
+          StringLiteral.fromString(line, span).sqlExpr
+        }
+        .toList
+    parts.mkString(" || ")
 
 case class StringPart(value: String, span: Span) extends Literal with LeafExpression:
   override def dataType: DataType  = DataType.StringType
@@ -703,16 +728,19 @@ case class DoubleLiteral(value: Double, override val stringValue: String, span: 
     extends Literal
     with LeafExpression:
   override def dataType: DataType = DataType.DoubleType
+  override def sqlExpr: String    = value.toString
 
 case class LongLiteral(value: Long, override val stringValue: String, span: Span)
     extends Literal
     with LeafExpression:
   override def dataType: DataType = DataType.LongType
+  override def sqlExpr: String    = value.toString
 
 case class GenericLiteral(tpe: DataType, value: String, span: Span)
     extends Literal
     with LeafExpression:
   override def stringValue: String = value
+  override def sqlExpr             = s"${tpe.typeName} ${value}"
 
 case class BinaryLiteral(binary: String, span: Span) extends Literal with LeafExpression:
   override def stringValue: String = binary
@@ -733,6 +761,8 @@ case class IntervalLiteral(
         s"${sign.symbol} '${value}' ${startField}"
     else
       s"${sign.symbol} between '${value}' ${startField} and ${end.get}"
+
+  override def sqlExpr: String = s"interval ${stringValue}"
 
 object IntervalField:
   def unapply(name: String): Option[IntervalField] = IntervalField.values.find(_.name == name)

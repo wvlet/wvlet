@@ -777,14 +777,8 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
         s"${printExpression(b.left)} ${b.operatorName} ${printExpression(b.right)}"
       case s: StringPart =>
         s.stringValue
-      case s: StringLiteral =>
-        s.stringValue
-      case i: IntervalLiteral =>
-        s"interval ${i.stringValue}"
-      case g: GenericLiteral =>
-        s"${g.tpe.typeName} '${g.value}'"
       case l: Literal =>
-        l.stringValue
+        l.sqlExpr
       case bq: BackQuotedIdentifier =>
         // Need to use double quotes for back-quoted identifiers, which represents table or column names
         s"\"${bq.unquotedValue}\""

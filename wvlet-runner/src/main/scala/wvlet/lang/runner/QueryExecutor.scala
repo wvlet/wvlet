@@ -527,7 +527,7 @@ class QueryExecutor(
                 .TEST_FAILED
                 .newException(s"Unsupported result inspection function: _.${other}")
         case l: StringLiteral =>
-          l.value
+          l.unquotedValue
         case l: LongLiteral =>
           l.value
         case d: DoubleLiteral =>
