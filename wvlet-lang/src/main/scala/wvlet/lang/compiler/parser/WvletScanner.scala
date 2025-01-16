@@ -138,13 +138,13 @@ class WvletScanner(sourceFile: SourceFile, config: ScannerConfig = ScannerConfig
         else
           nextChar()
           // Empty string interpolation
-          current.token = WvletToken.STRING_LITERAL
+          current.token = WvletToken.DOUBLE_QUOTE_STRING
           current.str = flushTokenString()
       else
         // Single-line string interpolation
         getStringPart(multiline = false)
     else
-      super.getDoubleQuoteString(WvletToken.STRING_LITERAL)
+      super.getDoubleQuoteString(WvletToken.DOUBLE_QUOTE_STRING)
   end getDoubleQuoteString
 
   private def getStringPart(multiline: Boolean): Unit =

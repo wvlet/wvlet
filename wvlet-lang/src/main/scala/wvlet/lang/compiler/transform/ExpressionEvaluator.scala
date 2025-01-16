@@ -12,15 +12,15 @@ object ExpressionEvaluator:
         val v = NativeFunction.callByName(n.name)
         v match
           case s: String =>
-            StringLiteral(s, n.span)
+            StringLiteral.fromString(s, n.span)
           case i: Int =>
-            LongLiteral(i, n.span)
+            LongLiteral(i, i.toString, n.span)
           case i: Long =>
-            LongLiteral(i, n.span)
+            LongLiteral(i, i.toString, n.span)
           case f: Float =>
-            DoubleLiteral(f, n.span)
+            DoubleLiteral(f, f.toString, n.span)
           case d: Double =>
-            DoubleLiteral(d, n.span)
+            DoubleLiteral(d, d.toString, n.span)
           case b: Boolean =>
             if b then
               TrueLiteral(n.span)

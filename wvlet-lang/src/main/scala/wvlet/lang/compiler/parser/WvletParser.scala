@@ -290,11 +290,8 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     scanner.lookAhead().token match
       case WvletToken.FROM =>
         consume(WvletToken.FROM)
-        val fromSource = consume(WvletToken.STRING_LITERAL)
-        d.copy(
-          fromSource = Some(StringLiteral(fromSource.str, fromSource.span)),
-          span = d.span.extendTo(lastToken.span)
-        )
+        val source = stringLiteral()
+        d.copy(fromSource = Some(source), span = d.span.extendTo(lastToken.span))
       case _ =>
         d
 
@@ -698,10 +695,10 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         consume(WvletToken.TO)
         val target = scanner.lookAhead()
         target.token match
-          case WvletToken.STRING_LITERAL =>
-            val path   = consume(WvletToken.STRING_LITERAL)
+          case s if s.isStringLiteral =>
+            val path   = stringLiteral()
             val opts   = saveOptions()
-            val saveAs = SaveToFile(r, path.str, opts, spanFrom(t))
+            val saveAs = SaveToFile(r, path.unquotedValue, opts, spanFrom(t))
             saveAs
           case _ =>
             val qname = qualifiedId()
@@ -712,8 +709,8 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         consume(WvletToken.TO)
         val target = scanner.lookAhead()
         target.token match
-          case WvletToken.STRING_LITERAL =>
-            val path = consume(WvletToken.STRING_LITERAL)
+          case s if s.isStringLiteral =>
+            val path = consumeToken()
             AppendToFile(r, path.str, spanFrom(t))
           case _ =>
             val qname = qualifiedId()
@@ -1344,7 +1341,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
   def limitExpr(input: Relation): Limit =
     val t = consume(WvletToken.LIMIT)
     val n = consume(WvletToken.INTEGER_LITERAL)
-    Limit(input, LongLiteral(n.str.toLong, n.span), spanFrom(t))
+    Limit(input, LongLiteral(n.str.toLong, n.str, n.span), spanFrom(t))
 
   def testExpr(input: Relation): Relation =
     val t    = consume(WvletToken.TEST)
@@ -1443,8 +1440,8 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
             TableRef(tableOrFunctionName, spanFrom(t.span))
       case WvletToken.SELECT | WvletToken.FROM | WvletToken.L_BRACE =>
         querySingle()
-      case WvletToken.STRING_LITERAL =>
-        consume(WvletToken.STRING_LITERAL)
+      case s if s.isStringLiteral =>
+        consumeToken()
         FileScan(t.str, spanFrom(t))
       case WvletToken.STRING_INTERPOLATION_PREFIX if t.str == "sql" =>
         val rawSQL = interpolatedString()
@@ -1648,7 +1645,8 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           ContextInputRef(DataType.UnknownType, spanFrom(t))
         case WvletToken.NULL | WvletToken.INTEGER_LITERAL | WvletToken.DOUBLE_LITERAL | WvletToken
               .FLOAT_LITERAL | WvletToken.DECIMAL_LITERAL | WvletToken.EXP_LITERAL | WvletToken
-              .STRING_LITERAL =>
+              .SINGLE_QUOTE_STRING | WvletToken.DOUBLE_QUOTE_STRING | WvletToken
+              .TRIPLE_QUOTE_STRING =>
           literal()
         case WvletToken.CASE =>
           val cases                          = List.newBuilder[WhenClause]
@@ -1824,8 +1822,8 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           nextField
         case WvletToken.R_BRACE =>
         // ok
-        case WvletToken.STRING_LITERAL =>
-          val name = consume(WvletToken.STRING_LITERAL).str
+        case s if s.isStringLiteral =>
+          val name = consumeToken().str
           consume(WvletToken.COLON)
           val value = expression()
           fields += StructField(name, value, spanFrom(t))
@@ -1874,17 +1872,21 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       case WvletToken.NULL =>
         NullLiteral(spanFrom(t))
       case WvletToken.INTEGER_LITERAL =>
-        LongLiteral(removeUnderscore(t.str).toLong, spanFrom(t))
+        LongLiteral(removeUnderscore(t.str).toLong, t.str, spanFrom(t))
       case WvletToken.DOUBLE_LITERAL =>
-        DoubleLiteral(t.str.toDouble, spanFrom(t))
+        DoubleLiteral(t.str.toDouble, t.str, spanFrom(t))
       case WvletToken.FLOAT_LITERAL =>
-        DoubleLiteral(t.str.toFloat, spanFrom(t))
+        DoubleLiteral(t.str.toFloat, t.str, spanFrom(t))
       case WvletToken.DECIMAL_LITERAL =>
-        DecimalLiteral(removeUnderscore(t.str), spanFrom(t))
+        DecimalLiteral(removeUnderscore(t.str), t.str, spanFrom(t))
       case WvletToken.EXP_LITERAL =>
-        DecimalLiteral(t.str, spanFrom(t))
-      case WvletToken.STRING_LITERAL =>
-        StringLiteral(t.str, spanFrom(t))
+        DecimalLiteral(t.str, t.str, spanFrom(t))
+      case WvletToken.SINGLE_QUOTE_STRING =>
+        SingleQuoteString(t.str, spanFrom(t))
+      case WvletToken.DOUBLE_QUOTE_STRING =>
+        DoubleQuoteString(t.str, spanFrom(t))
+      case WvletToken.TRIPLE_QUOTE_STRING =>
+        TripleQuoteString(t.str, spanFrom(t))
       case _ =>
         unexpected(t)
 
@@ -1911,8 +1913,8 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
 
     while scanner.lookAhead().token == WvletToken.STRING_PART do
       nextPart()
-    if scanner.lookAhead().token == WvletToken.STRING_LITERAL then
-      val part = consume(WvletToken.STRING_LITERAL)
+    if scanner.lookAhead().token.isStringLiteral then
+      val part = consumeToken()
       parts += StringPart(part.str, part.span)
 
     InterpolatedString(prefixNode, parts.result(), DataType.UnknownType, spanFrom(prefix))
@@ -1942,8 +1944,8 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
 
     while scanner.lookAhead().token == WvletToken.STRING_PART do
       nextPart()
-    if scanner.lookAhead().token == WvletToken.STRING_LITERAL then
-      val part = consume(WvletToken.STRING_LITERAL)
+    if scanner.lookAhead().token.isStringLiteral then
+      val part = consumeToken()
       parts += StringPart(part.str, part.span)
 
     BackquoteInterpolatedIdentifier(
@@ -2075,5 +2077,17 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
             dotRef(DotRef(expr, id, DataType.UnknownType, spanFrom(token)))
       case _ =>
         expr
+
+  def stringLiteral(): StringLiteral =
+    val t = scanner.nextToken()
+    t.token match
+      case WvletToken.SINGLE_QUOTE_STRING =>
+        SingleQuoteString(t.str, t.span)
+      case WvletToken.DOUBLE_QUOTE_STRING =>
+        DoubleQuoteString(t.str, t.span)
+      case WvletToken.TRIPLE_QUOTE_STRING =>
+        TripleQuoteString(t.str, t.span)
+      case other =>
+        unexpected(t)
 
 end WvletParser
