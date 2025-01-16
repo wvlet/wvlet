@@ -103,8 +103,6 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
         unary(g, "group by", g.groupingKeys)
       case a: Agg =>
         unary(a, "agg", a.aggExprs)
-      case t: Transform =>
-        unary(t, "transform", t.transformItems)
       case f: Filter =>
         unary(f, "where", f.filterExpr)
       case l: Limit =>

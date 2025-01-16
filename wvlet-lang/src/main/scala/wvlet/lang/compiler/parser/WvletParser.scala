@@ -816,8 +816,6 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         consume(WvletToken.WHERE)
         val cond = booleanExpression()
         Filter(input, cond, spanFrom(t))
-      case WvletToken.TRANSFORM =>
-        transformExpr(input)
       case WvletToken.ADD =>
         addColumnsExpr(input)
       case WvletToken.EXCLUDE =>
@@ -950,24 +948,6 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
             JoinOn(cond, spanFrom(t))
       case _ =>
         NoJoinCriteria
-
-  def transformExpr(input: Relation): Transform =
-    val t     = consume(WvletToken.TRANSFORM)
-    val items = List.newBuilder[SingleColumn]
-    def nextItem: Unit =
-      val t = scanner.lookAhead()
-      t.token match
-        case WvletToken.COMMA =>
-          // Consume the trailing comma
-          consume(WvletToken.COMMA)
-          nextItem
-        case t if t.tokenType == TokenType.Keyword =>
-        // finish
-        case _ =>
-          items += selectItem()
-          nextItem
-    nextItem
-    Transform(input, items.result, spanFrom(t))
 
   def addColumnsExpr(input: Relation): AddColumnsToRelation =
     val t     = consume(WvletToken.ADD)

@@ -23,7 +23,6 @@ from ...         -- Scan the input data
 where ...        -- Apply filtering conditions
 where ...        -- [optional] Apply more filtering conditions
 add   ... as ... -- Add new columns
-transform ...    -- Transform a subset of columns
 group by ...     -- Group rows by the given columns
 agg ...          -- Add group aggregation expressions, e.g., _.count, _.sum 
 where ...        -- Apply filtering conditions for groups (HAVING clause in SQL)
@@ -37,7 +36,7 @@ limit ...        -- Limit the number of rows to output
 Unlike SQL, whose queries always must follow the `SELECT ... FROM ... WHERE ... GROUP BY ... ORDER BY ... LIMIT ...` structure, Wvlet uses the flow-style syntax to match the order of data processing order as much as possible, facilitating more intuitive query writing. A query should have a `from` statement to read the data, but
 `select` is not mandatory in Wvlet.
 
-[//]: # (Some operators like `add`, `transform`, `agg`, `exclude`, `shift`, etc. are not available in the standard SQL, but these new operators will reduce your query text size and make the query more readable and easier to compose. Eventually, these operators will be translated to the equivalent SQL syntax.)
+[//]: # (Some operators like `add`, `agg`, `exclude`, `shift`, etc. are not available in the standard SQL, but these new operators will reduce your query text size and make the query more readable and easier to compose. Eventually, these operators will be translated to the equivalent SQL syntax.)
 
 ## Relational Operators
 
@@ -75,7 +74,6 @@ Wvlet provides various relational operators to process input data and generate o
 | __select as__ `alias`                                                                          | Add an alias to the query to reference it from another query                                                                                  |
 | [__rename__ `column` __as__ `alias`, ...](#rename)                                                        | Same rows with the given columns renamed                                                                                                      | 
 | [__exclude__ `column`, ...](#exclude)                                                                      | Same rows except the given columns                                                                                                            |
-| [__transform__ `expr` __as__ `name`, ...](#transform)                                                        | Same rows with added or updated columns                                                                                                       |  
 | [__shift__ (to left)? `column`, ...](#shift)                                                             | Same rows with selected column moved to the left                                                                                              |
 | [__shift to right__ `column`, ...](#shift)                                                               | Same rows with selected column moved to the right                                                                                             |
 | __group by__ `column`, ...                                                                     | Grouped rows by the given columns. Grouping keys can be referenced as `select _1, _2, ...`  in the subsequent operator                        |
@@ -503,7 +501,7 @@ select n_name, n_regionkey
 ```
 
 As in SQL, arbitrary expressions can be used in select statements. Note that, however, in Wvlet, you usually don't need to use select statement
-as the other column-at-a-time operators, like `add`, `transform`, `exclude`, `shift`, etc. can be used for manipulating column values.
+as the other column-at-a-time operators, like `add`, `exclude`, `shift`, etc. can be used for manipulating column values.
 
 ### rename
 
@@ -522,18 +520,6 @@ The `exclude` operator removes specified columns from the input rows. This is us
 from nation
 exclude n_regionkey
 ```
-
-
-### transform
-
-The `transform` operator allows you to add or update columns in the input rows. This operator is useful for applying transformations to existing columns without needing to list all columns in the select clause.
-
-```sql
-from nation
-transform n_name.uppercase() as upper_name
-limit 5
-```
-
 
 ### shift
 

@@ -19,7 +19,7 @@ end
 model m =
   from weblog_users
   -- override only a subset of the columns and report the rest as is
-  transform
+  add
     td_client_id = td_client_id.or_else('dummy-' + hex(floor(rand() * 4294966016))),
     naid = naid.or_else('dummy-' + hex(floor(rand() * 4294966016))),
   group by

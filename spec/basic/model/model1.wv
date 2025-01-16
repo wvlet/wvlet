@@ -4,7 +4,7 @@ end
 
 model person_with_age_group =
   from person
-  transform
+  add
     -- Add a new column for aggregation
     age / 10 as age_group
 end

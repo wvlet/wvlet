@@ -23,7 +23,7 @@ Use `'...'` (single quotes) and `"..."` (double quotes) for the convenience of w
 
 ### Edit Column At A Time
 
-The SELECT statement in SQL is a complex operator that can do multiple operations simultaneously, including aggregation, adding, removing, or renaming columns, annotating columns with aliases, changing column orders, etc. Wvlet breaks down this functionality into different column-level operators, such as `agg`, `add`, `exclude`, `transform`, `shift`, etc. With these new operators, users don't need to enumerate all columns in the SELECT statement, which makes the query more readable and easier to maintain.
+The SELECT statement in SQL is a complex operator that can do multiple operations simultaneously, including aggregation, adding, removing, or renaming columns, annotating columns with aliases, changing column orders, etc. Wvlet breaks down this functionality into different column-level operators, such as `agg`, `add`, `exclude`, `shift`, etc. With these new operators, users don't need to enumerate all columns in the SELECT statement, which makes the query more readable and easier to maintain.
 
 
 ```sql

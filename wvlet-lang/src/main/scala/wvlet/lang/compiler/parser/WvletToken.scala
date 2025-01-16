@@ -156,18 +156,18 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   case TO   extends WvletToken(Keyword, "to")
   case WITH extends WvletToken(Keyword, "with")
 
-  case FROM      extends WvletToken(Keyword, "from")
-  case AGG       extends WvletToken(Keyword, "agg")
-  case SELECT    extends WvletToken(Keyword, "select")
-  case FOR       extends WvletToken(Keyword, "for")
-  case LET       extends WvletToken(Keyword, "let")
-  case WHERE     extends WvletToken(Keyword, "where")
-  case GROUP     extends WvletToken(Keyword, "group")
-  case HAVING    extends WvletToken(Keyword, "having")
-  case ORDER     extends WvletToken(Keyword, "order")
-  case LIMIT     extends WvletToken(Keyword, "limit")
-  case TRANSFORM extends WvletToken(Keyword, "transform")
-  case PIVOT     extends WvletToken(Keyword, "pivot")
+  case FROM   extends WvletToken(Keyword, "from")
+  case AGG    extends WvletToken(Keyword, "agg")
+  case SELECT extends WvletToken(Keyword, "select")
+  case FOR    extends WvletToken(Keyword, "for")
+  case LET    extends WvletToken(Keyword, "let")
+  case WHERE  extends WvletToken(Keyword, "where")
+  case GROUP  extends WvletToken(Keyword, "group")
+  case HAVING extends WvletToken(Keyword, "having")
+  case ORDER  extends WvletToken(Keyword, "order")
+  case LIMIT  extends WvletToken(Keyword, "limit")
+  // case TRANSFORM extends WvletToken(Keyword, "transform")
+  case PIVOT extends WvletToken(Keyword, "pivot")
 
   case DISTINCT extends WvletToken(Keyword, "distinct")
 
@@ -287,7 +287,7 @@ object WvletToken:
       WvletToken.HAVING,
       WvletToken.ORDER,
       WvletToken.LIMIT,
-      WvletToken.TRANSFORM,
+      // WvletToken.TRANSFORM,
       WvletToken.TEST
     ) ++ joinKeywords
 
