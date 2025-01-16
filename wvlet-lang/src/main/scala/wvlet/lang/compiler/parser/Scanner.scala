@@ -451,7 +451,7 @@ abstract class ScannerBase[Token](sourceFile: SourceFile, config: ScannerConfig)
       putChar(ch)
       nextChar()
     consume('\'')
-    current.token = tokenTypeInfo.stringLiteral
+    current.token = tokenTypeInfo.singleQuoteString
     current.str = flushTokenString()
 
   protected def getDoubleQuoteString(resultingToken: Token): Unit =
@@ -485,7 +485,7 @@ abstract class ScannerBase[Token](sourceFile: SourceFile, config: ScannerConfig)
       putChar(ch)
       nextChar()
     consume('"')
-    current.token = tokenTypeInfo.stringLiteral
+    current.token = tokenTypeInfo.doubleQuoteString
     current.str = flushTokenString()
 
   private def getRawStringLiteral(resultingToken: Token): Unit =
@@ -493,7 +493,7 @@ abstract class ScannerBase[Token](sourceFile: SourceFile, config: ScannerConfig)
       nextRawChar()
       if isTripleQuote() then
         flushTokenString()
-        current.token = tokenTypeInfo.stringLiteral
+        current.token = tokenTypeInfo.tripleQuoteString
       else
         getRawStringLiteral(resultingToken)
     else if ch == SU then

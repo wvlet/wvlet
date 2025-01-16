@@ -2,7 +2,7 @@ package wvlet.lang.compiler.parser
 
 import wvlet.airframe.SourceCode
 import wvlet.lang.api.{Span, StatusCode}
-import wvlet.lang.compiler.parser.SqlToken.{EOF, ROW, STAR, STRING_LITERAL}
+import wvlet.lang.compiler.parser.SqlToken.{EOF, ROW, STAR}
 import wvlet.lang.compiler.{CompilationUnit, Name, SourceFile}
 import wvlet.lang.model.DataType
 import wvlet.lang.model.DataType.{IntConstant, NamedType, TypeParameter, UnresolvedTypeParameter}
@@ -593,7 +593,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       case SqlToken.LIMIT =>
         consume(SqlToken.LIMIT)
         val limit = consume(SqlToken.INTEGER_LITERAL)
-        Limit(input, LongLiteral(limit.str.toLong, limit.span), spanFrom(t))
+        Limit(input, LongLiteral(limit.str.toLong, limit.str, limit.span), spanFrom(t))
       case _ =>
         input
 
@@ -603,7 +603,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       case SqlToken.OFFSET =>
         consume(SqlToken.OFFSET)
         val offset = consume(SqlToken.INTEGER_LITERAL)
-        Offset(input, LongLiteral(offset.str.toLong, offset.span), spanFrom(t))
+        Offset(input, LongLiteral(offset.str.toLong, offset.str, offset.span), spanFrom(t))
       case _ =>
         input
 
@@ -922,7 +922,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       t.token match
         case SqlToken.NULL | SqlToken.INTEGER_LITERAL | SqlToken.DOUBLE_LITERAL | SqlToken
               .FLOAT_LITERAL | SqlToken.DECIMAL_LITERAL | SqlToken.EXP_LITERAL | SqlToken
-              .STRING_LITERAL =>
+              .SINGLE_QUOTE_STRING | SqlToken.DOUBLE_QUOTE_STRING | SqlToken.TRIPLE_QUOTE_STRING =>
           literal()
         case SqlToken.CASE =>
           val cases                          = List.newBuilder[WhenClause]
@@ -1122,17 +1122,17 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       case SqlToken.NULL =>
         NullLiteral(spanFrom(t))
       case SqlToken.INTEGER_LITERAL =>
-        LongLiteral(removeUnderscore(t.str).toLong, spanFrom(t))
+        LongLiteral(removeUnderscore(t.str).toLong, t.str, spanFrom(t))
       case SqlToken.DOUBLE_LITERAL =>
-        DoubleLiteral(t.str.toDouble, spanFrom(t))
+        DoubleLiteral(t.str.toDouble, t.str, spanFrom(t))
       case SqlToken.FLOAT_LITERAL =>
-        DoubleLiteral(t.str.toFloat, spanFrom(t))
+        DoubleLiteral(t.str.toFloat, t.str, spanFrom(t))
       case SqlToken.DECIMAL_LITERAL =>
-        DecimalLiteral(removeUnderscore(t.str), spanFrom(t))
+        DecimalLiteral(removeUnderscore(t.str), t.str, spanFrom(t))
       case SqlToken.EXP_LITERAL =>
-        DecimalLiteral(t.str, spanFrom(t))
-      case SqlToken.STRING_LITERAL =>
-        StringLiteral(t.str, spanFrom(t))
+        DecimalLiteral(t.str, t.str, spanFrom(t))
+      case s if s.isStringLiteral =>
+        stringLiteral()
       case _ =>
         unexpected(t)
 
@@ -1631,6 +1631,18 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     t.token match
       case token if token.isReservedKeyword =>
         UnquotedIdentifier(t.str, spanFrom(t))
+      case _ =>
+        unexpected(t)
+
+  def stringLiteral(): StringLiteral =
+    val t = consumeToken()
+    t.token match
+      case SqlToken.SINGLE_QUOTE_STRING =>
+        SingleQuoteString(t.str, spanFrom(t))
+      case SqlToken.DOUBLE_QUOTE_STRING =>
+        DoubleQuoteString(t.str, spanFrom(t))
+      case SqlToken.TRIPLE_QUOTE_STRING =>
+        TripleQuoteString(t.str, spanFrom(t))
       case _ =>
         unexpected(t)
 

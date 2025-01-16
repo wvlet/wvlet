@@ -616,6 +616,12 @@ case class This(override val dataType: DataType, span: Span) extends LeafExpress
 
 // Literal
 sealed trait Literal extends Expression:
+  /**
+   * String representation of the literal, which may include quotation.
+   *
+   * This is for preserving the original representation of the literal (e.g., "0.123")
+   * @return
+   */
   def stringValue: String
   def unquotedValue: String = stringValue
 
@@ -635,22 +641,28 @@ case class FalseLiteral(span: Span) extends BooleanLiteral with LeafExpression:
   override def stringValue: String   = "false"
   override def booleanValue: Boolean = false
 
-case class StringLiteral(value: String, span: Span) extends Literal with LeafExpression:
+trait StringLiteral extends Literal with LeafExpression:
   override def dataType: DataType  = DataType.StringType
-  override def stringValue: String = value
-  override def unquotedValue: String =
-    if value.startsWith("\"") then
-      value.stripPrefix("\"").stripSuffix("\"")
-    else if value.startsWith("'") then
-      value.stripPrefix("'").stripSuffix("'")
+
+object StringLiteral:
+  def fromString(s: String, span: Span = NoSpan): StringLiteral =
+    if s.contains("\n") then
+      TripleQuoteString(s, span)
+    else if s.contains("\"") then
+      SingleQuoteString(s, span)
     else
-      value
+      DoubleQuoteString(s, span)
+
+case class SingleQuoteString(override val unquotedValue: String, span: Span) extends StringLiteral:
+  override def stringValue: String = s"'${unquotedValue}'"
+
+case class DoubleQuoteString(override val unquotedValue: String, span: Span) extends StringLiteral:
+  override def stringValue: String = s""""${unquotedValue}""""
+
+case class TripleQuoteString(override val unquotedValue: String, span: Span) extends StringLiteral:
+  override def stringValue: String = s"\"\"\"${unquotedValue}\"\"\""
 
 case class StringPart(value: String, span: Span) extends Literal with LeafExpression:
-  override def dataType: DataType  = DataType.StringType
-  override def stringValue: String = value
-
-case class TripleQuoteLiteral(value: String, span: Span) extends Literal with LeafExpression:
   override def dataType: DataType  = DataType.StringType
   override def stringValue: String = value
 
@@ -666,7 +678,7 @@ case class TimestampLiteral(value: String, span: Span) extends Literal with Leaf
   override def dataType: DataType  = DataType.TimestampType(TimestampField.TIMESTAMP, false)
   override def stringValue: String = value
 
-case class DecimalLiteral(value: String, span: Span) extends Literal with LeafExpression:
+case class DecimalLiteral(value: String, override val stringValue: String, span: Span) extends Literal with LeafExpression:
   override lazy val dataType: DataType =
     value.split("\\.") match
       case Array(decimal, frac) =>
@@ -681,19 +693,15 @@ case class DecimalLiteral(value: String, span: Span) extends Literal with LeafEx
           TypeVariable(Name.typeName("scale"))
         )
 
-  override def stringValue: String = value
-
 case class CharLiteral(value: String, span: Span) extends Literal with LeafExpression:
   override def dataType: DataType  = DataType.CharType(None)
   override def stringValue: String = value
 
-case class DoubleLiteral(value: Double, span: Span) extends Literal with LeafExpression:
+case class DoubleLiteral(value: Double, override val stringValue: String, span: Span) extends Literal with LeafExpression:
   override def dataType: DataType  = DataType.DoubleType
-  override def stringValue: String = value.toString
 
-case class LongLiteral(value: Long, span: Span) extends Literal with LeafExpression:
+case class LongLiteral(value: Long, override val stringValue: String, span: Span) extends Literal with LeafExpression:
   override def dataType: DataType  = DataType.LongType
-  override def stringValue: String = value.toString
 
 case class GenericLiteral(tpe: DataType, value: String, span: Span)
     extends Literal

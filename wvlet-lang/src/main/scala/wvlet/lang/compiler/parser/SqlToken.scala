@@ -13,6 +13,8 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   def isQueryStart: Boolean     = queryStartTokens.contains(this)
   def isQueryDelimiter: Boolean = queryDelimiters.contains(this)
 
+  def isStringLiteral: Boolean = stringLiterals.contains(this)
+
   // special tokens
   case EMPTY      extends SqlToken(Control, "<empty>")
   case ERROR      extends SqlToken(Control, "<erroneous token>")
@@ -29,7 +31,9 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   case LONG_LITERAL    extends SqlToken(Literal, "<long literal>")
   case FLOAT_LITERAL   extends SqlToken(Literal, "<float literal>")
   case DOUBLE_LITERAL  extends SqlToken(Literal, "<double literal>")
-  case STRING_LITERAL  extends SqlToken(Literal, "<string literal>")
+  case SINGLE_QUOTE_STRING  extends SqlToken(Literal, "<'string'>")
+  case DOUBLE_QUOTE_STRING extends SqlToken(Literal, "<\"string\">")
+  case TRIPLE_QUOTE_STRING extends SqlToken(Literal, "<\"\"\"string\"\"\">")
 
   // literal keywords
   case NULL  extends SqlToken(Keyword, "null")
@@ -296,6 +300,8 @@ object SqlToken:
   )
 
   val queryDelimiters = Set(SqlToken.EOF, SqlToken.R_PAREN, SqlToken.SEMICOLON)
+  val stringLiterals = Set(SqlToken.SINGLE_QUOTE_STRING, SqlToken.DOUBLE_QUOTE_STRING, SqlToken.TRIPLE_QUOTE_STRING)
+
 
   given tokenTypeInfo: TokenTypeInfo[SqlToken] with
     override def empty: SqlToken      = SqlToken.EMPTY
@@ -311,7 +317,9 @@ object SqlToken:
     override def doubleLiteral: SqlToken                = SqlToken.DOUBLE_LITERAL
     override def floatLiteral: SqlToken                 = SqlToken.FLOAT_LITERAL
     override def commentToken: SqlToken                 = SqlToken.COMMENT
-    override def stringLiteral: SqlToken                = SqlToken.STRING_LITERAL
+    override def singleQuoteString: SqlToken            = SqlToken.SINGLE_QUOTE_STRING
+    override def doubleQuoteString: SqlToken            = SqlToken.DOUBLE_QUOTE_STRING
+    override def tripleQuoteString: SqlToken            = SqlToken.TRIPLE_QUOTE_STRING
     override def whiteSpace: SqlToken                   = SqlToken.WHITESPACE
     override def backQuotedIdentifier: SqlToken         = SqlToken.BACK_QUOTED_IDENTIFIER
 

@@ -58,9 +58,9 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   case LONG_LITERAL    extends WvletToken(Literal, "<long literal>")
   case FLOAT_LITERAL   extends WvletToken(Literal, "<float literal>")
   case DOUBLE_LITERAL  extends WvletToken(Literal, "<double literal>")
-  case STRING_LITERAL  extends WvletToken(Literal, "<'string literal'>") // Single-quoted
-  case DOUBLE_QUOTED_STRING_LITERAL extends WvletToken(Literal, "<\"string literal\">")
-  case TRIPLE_QUOTED_STRING_LITERAL extends WvletToken(Literal, "<\"\"\"string literal\"\"\">")
+  case SINGLE_QUOTE_STRING  extends WvletToken(Literal, "<'string literal'>") // Single-quoted
+  case DOUBLE_QUOTE_STRING extends WvletToken(Literal, "<\"string literal\">")
+  case TRIPLE_QUOTE_STRING extends WvletToken(Literal, "<\"\"\"string literal\"\"\">")
 
   // literal keywords
   case NULL  extends WvletToken(Keyword, "null")
@@ -301,9 +301,9 @@ object WvletToken:
   )
 
   val stringLiterals = Set(
-    WvletToken.STRING_LITERAL,
-    WvletToken.DOUBLE_QUOTED_STRING_LITERAL,
-    WvletToken.TRIPLE_QUOTED_STRING_LITERAL
+    WvletToken.SINGLE_QUOTE_STRING,
+    WvletToken.DOUBLE_QUOTE_STRING,
+    WvletToken.TRIPLE_QUOTE_STRING
   )
 
   def isQueryDelimiter(t: WvletToken): Boolean = queryDelimiters.contains(t)
@@ -322,7 +322,9 @@ object WvletToken:
     override def floatLiteral: WvletToken                 = WvletToken.FLOAT_LITERAL
 
     override def commentToken: WvletToken         = WvletToken.COMMENT
-    override def stringLiteral: WvletToken        = WvletToken.STRING_LITERAL
+    override def singleQuoteString: WvletToken    = WvletToken.SINGLE_QUOTE_STRING
+    override def doubleQuoteString: WvletToken    = WvletToken.DOUBLE_QUOTE_STRING
+    override def tripleQuoteString: WvletToken    = WvletToken.TRIPLE_QUOTE_STRING
     override def whiteSpace: WvletToken           = WvletToken.WHITESPACE
     override def backQuotedIdentifier: WvletToken = WvletToken.BACKQUOTED_IDENTIFIER
 

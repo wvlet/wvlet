@@ -43,7 +43,7 @@ object RewriteExpr extends Phase("rewrite-expr"):
           def quote(e: Expression): Expression =
             e match
               case s: StringPart =>
-                StringLiteral(s.value, s.span)
+                StringLiteral.fromString(s.value, s.span)
               case _ =>
                 e
 
