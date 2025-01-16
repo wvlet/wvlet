@@ -199,13 +199,6 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
         else
           val groupByItems = p.groupingKeys.map(x => printExpression(x)).mkString(", ")
           selectWithIndentAndParenIfNecessary(s"${pivotExpr}\n  group by ${groupByItems}")
-      case t: Transform =>
-        val transformItems = t.transformItems.map(x => printExpression(x)).mkString(", ")
-        selectWithIndentAndParenIfNecessary(
-          s"""select ${transformItems}, * from ${printRelation(t.inputRelation, remainingParents)(
-              using sqlContext.enterFrom
-            )}"""
-        )
       case s: Selection =>
         printAsSelect(s, remainingParents)
       case j: Join =>

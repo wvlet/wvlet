@@ -62,7 +62,6 @@ arrayValue     : '[' arrayValue (',' arrayValue)* ','? ']'
 queryBlock: joinExpr
           | 'group' 'by' groupByItemList
           | 'where' booleanExpression
-          | 'transform' transformExpr
           | 'select' 'distinct'? selectItems
           | 'agg' selectItems
           | 'pivot' 'on' pivotItem (',' pivotItem)*
@@ -98,9 +97,6 @@ joinCriteria: 'on' booleanExpression
 
 groupByItemList: groupByItem (',' groupByItem)* ','?
 groupByItem    : expression ('as' identifier (':' identifier)?)?
-
-transformExpr: transformItem (',' transformItem)* ','?
-transformItem: qualifiedId '=' expression
 
 selectItems: selectItem (',' selectItem)* ','?
 selectItem : (identifier '=')? expression

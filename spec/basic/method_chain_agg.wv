@@ -1,5 +1,5 @@
 from 'person.json'
-transform 1 as key
+add 1 as key
 group by key
 select age.sum.round(1).to_string as sum_str
 
