@@ -1109,9 +1109,9 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       case SqlToken.TO =>
         consume(SqlToken.TO)
         val f2 = intervalField()
-        IntervalLiteral(value.stringValue, sign, f1, Some(f2), spanFrom(t))
+        IntervalLiteral(value.unquotedValue, sign, f1, Some(f2), spanFrom(t))
       case _ =>
-        IntervalLiteral(value.stringValue, sign, f1, None, spanFrom(t))
+        IntervalLiteral(value.unquotedValue, sign, f1, None, spanFrom(t))
   end interval
 
   def literal(): Literal =
