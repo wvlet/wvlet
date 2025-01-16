@@ -366,14 +366,13 @@ case class NotEq(left: Expression, right: Expression, span: Span)
   override def operatorName: String = "!="
   // require(operatorName == "<>" || operatorName == "!=", "NotEq.operatorName must be either <> or !=", nodeLocation)
 
+sealed trait LogicalConditionalExpression extends ConditionalExpression with BinaryExpression
+
 case class And(left: Expression, right: Expression, span: Span)
-    extends ConditionalExpression
-    with BinaryExpression:
+    extends LogicalConditionalExpression:
   override def operatorName: String = "and"
 
-case class Or(left: Expression, right: Expression, span: Span)
-    extends ConditionalExpression
-    with BinaryExpression:
+case class Or(left: Expression, right: Expression, span: Span) extends LogicalConditionalExpression:
   override def operatorName: String = "or"
 
 case class Not(child: Expression, span: Span) extends ConditionalExpression with UnaryExpression

@@ -380,6 +380,8 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
             text("+") + expr(a.child)
           case Sign.Negative =>
             text("-") + expr(a.child)
+      case c: LogicalConditionalExpression =>
+        expr(c.left) + whitespaceOrNewline + text(c.operatorName) + whitespace + expr(c.right)
       case b: BinaryExpression =>
         ws(expr(b.left), b.operatorName, expr(b.right))
       case s: StringPart =>
@@ -405,7 +407,7 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
         if s.nameExpr.isEmpty then
           left
         else if leftStr != s.nameExpr.toSQLAttributeName then
-          ws(left, "as", s.nameExpr.toSQLAttributeName)
+          left + whitespaceOrNewline + "as" + whitespace + s.nameExpr.toSQLAttributeName
         else
           left
       case a: Attribute =>
@@ -465,16 +467,14 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
         expr(a.arrayExpr) + text("[") + expr(a.index) + text("]")
       case c: CaseExpr =>
         ws(
-          group(ws("case", c.target.map(expr))),
-          lines(
-            c.whenClauses
-              .map { w =>
-                group(ws("when", expr(w.condition), "then", expr(w.result)))
-              }
-          ),
+          ws("case", c.target.map(expr)),
+          c.whenClauses
+            .map { w =>
+              nest(newline + ws("when", expr(w.condition), "then", expr(w.result)))
+            },
           c.elseClause
             .map { e =>
-              group(ws("else", expr(e)))
+              nest(newline + ws("else", expr(e)))
             }
         )
       case l: LambdaExpr =>
