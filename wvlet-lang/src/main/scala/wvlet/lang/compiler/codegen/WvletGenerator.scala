@@ -124,11 +124,6 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
       case r: RenameColumnsFromRelation =>
         unary(r, "rename", r.columnAliases)
       case j: Join =>
-        val asof: Option[Doc] =
-          if j.asof then
-            Some(text("asof"))
-          else
-            None
         val left  = relation(j.left)
         val right = relation(j.right)(using InFromClause)
         val joinType =
@@ -146,6 +141,12 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
             case JoinType.ImplicitJoin =>
               text(",")
 
+        val joinOp: Doc =
+          if j.asof then
+            ws(text("asof"), joinType)
+          else
+            joinType
+
         val cond =
           j.cond match
             case NoJoinCriteria =>
@@ -162,7 +163,7 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
             case u: JoinOnEq =>
               Some(group(ws("on", expr(Expression.concatWithEq(u.keys)))))
 
-        group(left + newline + joinType + newline + right + newline + cond)
+        group(left + whitespaceOrNewline + joinOp + whitespace + right + whitespaceOrNewline + cond)
       case u: Union if u.isDistinct =>
         // union is not supported in Wvlet, so rewrite it to dedup(concat)
         relation(Dedup(Concat(u.left, u.right, u.span), u.span))
@@ -199,9 +200,9 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
         val prev = relation(s.child)
         prev / group(ws("sample", s.method.toString, s.size.toExpr))
       case v: Values =>
-        convertValues(v)
+        values(v)
       case b: BracedRelation =>
-        brace(relation(b.child)(using InSubQuery))
+        codeBlock(relation(b.child)(using InSubQuery))
       case a: AliasedRelation =>
         val tableAlias: Doc =
           val name = expr(a.alias)
@@ -216,7 +217,7 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
           case t: TableInput =>
             ws(expr(t.sqlExpr), "as", tableAlias)
           case v: Values =>
-            ws(convertValues(v), "as", tableAlias)
+            ws(values(v), "as", tableAlias)
           case _ =>
             ws(wrapWithBraceIfNecessary(relation(a.child)(using InSubQuery)), "as", tableAlias)
       case p: Pivot =>
@@ -282,21 +283,13 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
     else
       d
 
-  private def convertValues(values: Values)(using sc: SyntaxContext): Doc =
-    val rows: List[Doc] = values
-      .rows
-      .map { row =>
-        row match
-          case a: ArrayConstructor =>
-            val elems = cs(a.values.map(x => expr(x)))
-            bracket(elems)
-          case other =>
-            expr(other)
-      }
+  private def values(values: Values)(using sc: SyntaxContext): Doc =
+    val rows: List[Doc] = values.rows.map(expr)
+    def newBlock        = bracket(cs(rows))
     if sc.inFrom then
-      bracket(cs(rows))
+      newBlock
     else
-      group(text("from") + block(bracket(cs(rows))))
+      group(text("from") + whitespace + newBlock)
 
   private def statement(s: TopLevelStatement)(using sc: SyntaxContext): Doc =
     s match
@@ -442,7 +435,7 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
         prefix + "\"" + loop(i.parts) + "\""
       case s: SubQueryExpression =>
         val wv = relation(s.query)(using InExpression)
-        brace(wv)
+        codeBlock(wv)
       case i: IfExpr =>
         ws("if", expr(i.cond), "then", block(expr(i.onTrue)), "else", block(expr(i.onFalse)))
       case n: Not =>

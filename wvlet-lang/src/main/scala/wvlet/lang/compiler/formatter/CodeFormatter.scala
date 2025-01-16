@@ -4,7 +4,7 @@ import scala.annotation.tailrec
 
 case class CodeFormatterConfig(
     indentWidth: Int = 2,
-    maxLineWidth: Int = 100,
+    maxLineWidth: Int = 80,
     preserveNewLines: Int = 1,
     addTrailingCommaToItemList: Boolean = true,
     fitToLine: Boolean = true
@@ -235,20 +235,23 @@ object CodeFormatter:
       case head :: tail =>
         head + concat(tail)
 
-  def brace(d: Doc): Doc = group(text("{") + lineBlock(d) + text("}"))
   // Create subexpression block wrapped with braces
   def indentedBrace(d: Doc): Doc = text("{") + nest(linebreak + d) + linebreak + text("}")
 
+  def brace(d: Doc): Doc   = group(text("{") + lineBlock(d) + text("}"))
   def bracket(d: Doc): Doc = group(text("[") + lineBlock(d) + text("]"))
+  def paren(d: Doc): Doc   = group(text("(") + lineBlock(d) + text(")"))
 
-  def paren(d: Doc): Doc = group(text("(") + lineBlock(d) + text(")"))
+  def codeBlock(d: Doc): Doc = group(
+    text("{") + nest(whitespaceOrNewline + d) + whitespaceOrNewline + text("}")
+  )
 
   /**
     * Create a new nested block with possible newlines before and after the block
     * @param d
     * @return
     */
-  def lineBlock(d: Doc): Doc = maybeNewline + nest(d) + maybeNewline
+  def lineBlock(d: Doc): Doc = nest(maybeNewline + d) + maybeNewline
 
 end CodeFormatter
 
