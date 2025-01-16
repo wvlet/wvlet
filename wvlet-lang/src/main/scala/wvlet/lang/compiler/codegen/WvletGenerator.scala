@@ -432,7 +432,12 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
           }
           .getOrElse(empty)
 
-        prefix + "\"" + loop(i.parts) + "\""
+        val quote =
+          if i.isTripleQuote then
+            text("\"\"\"")
+          else
+            text("\"")
+        prefix + quote + loop(i.parts) + quote
       case s: SubQueryExpression =>
         val wv = relation(s.query)(using InExpression)
         codeBlock(wv)

@@ -177,8 +177,14 @@ abstract class ScannerBase[Token](sourceFile: SourceFile, config: ScannerConfig)
     if ch == LF || ch == FF then
       lineStartOffset = charOffset
 
-  protected def lookAheadChar(): Char =
-    val index = charOffset
+  /**
+    * Look ahead the character at the given offset
+    * @param offset
+    *   0 for the next character (default)
+    * @return
+    */
+  protected def lookAheadChar(offset: Int = 0): Char =
+    val index = charOffset + offset
     if index >= length then
       SU
     else

@@ -1423,10 +1423,10 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       case s if s.isStringLiteral =>
         consumeToken()
         FileScan(t.str, spanFrom(t))
-      case WvletToken.STRING_INTERPOLATION_PREFIX if t.str == "sql" =>
+      case i if i.isInterpolatedStringPrefix && t.str == "sql" =>
         val rawSQL = interpolatedString()
         RawSQL(rawSQL, spanFrom(t))
-      case WvletToken.STRING_INTERPOLATION_PREFIX if t.str == "json" =>
+      case i if i.isInterpolatedStringPrefix && t.str == "json" =>
         val rawJSON = interpolatedString()
         RawJSON(rawJSON, spanFrom(t))
       case WvletToken.BACKQUOTE_INTERPOLATION_PREFIX if t.str == "s" =>
@@ -1666,7 +1666,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           consume(WvletToken.ELSE)
           val elseExpr = expression()
           IfExpr(cond, thenExpr, elseExpr, spanFrom(t))
-        case WvletToken.STRING_INTERPOLATION_PREFIX =>
+        case i if i.isInterpolatedStringPrefix =>
           interpolatedString()
         case WvletToken.FROM =>
           val q: Relation = querySingle()
@@ -1871,7 +1871,15 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         unexpected(t)
 
   def interpolatedString(): InterpolatedString =
-    val prefix     = consume(WvletToken.STRING_INTERPOLATION_PREFIX)
+    val prefix = consumeToken()
+    val isTripleQuote =
+      prefix.token match
+        case WvletToken.TRIPLE_QUOTE_INTERPOLATION_PREFIX =>
+          true
+        case WvletToken.STRING_INTERPOLATION_PREFIX =>
+          false
+        case _ =>
+          unexpected(prefix)
     val prefixNode = ResolvedIdentifier(prefix.str, NoType, prefix.span)
     val parts      = List.newBuilder[Expression]
 
@@ -1897,7 +1905,13 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       val part = consumeToken()
       parts += StringPart(part.str, part.span)
 
-    InterpolatedString(prefixNode, parts.result(), DataType.UnknownType, spanFrom(prefix))
+    InterpolatedString(
+      prefixNode,
+      parts.result(),
+      DataType.UnknownType,
+      isTripleQuote = isTripleQuote,
+      spanFrom(prefix)
+    )
 
   end interpolatedString
 

@@ -877,6 +877,7 @@ case class InterpolatedString(
     prefix: NameExpr,
     parts: List[Expression],
     override val dataType: DataType,
+    isTripleQuote: Boolean,
     span: Span
 ) extends Expression:
   override def children: Seq[Expression] = parts
