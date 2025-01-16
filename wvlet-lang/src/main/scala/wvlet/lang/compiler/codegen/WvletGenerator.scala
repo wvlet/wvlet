@@ -123,6 +123,26 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
         unary(e, "exclude", e.columnNames)
       case r: RenameColumnsFromRelation =>
         unary(r, "rename", r.columnAliases)
+      case a: AliasedRelation =>
+        val tableAlias: Doc =
+          val name = expr(a.alias)
+          a.columnNames match
+            case Some(columns) =>
+              val cols = cs(columns.map(c => text(c.toSQLAttributeName)))
+              name + paren(cols)
+            case None =>
+              name
+
+        a.child match
+          case t: TableInput if sc.isNested =>
+            group(expr(t.sqlExpr) + whitespaceOrNewline + "as" + whitespace + tableAlias)
+          case v: Values if sc.isNested =>
+            group(values(v) + whitespaceOrNewline + "as" + whitespace + tableAlias)
+          case _ =>
+            group(
+              wrapWithBraceIfNecessary(relation(a.child)(using InSubQuery)) +
+                nest(whitespaceOrNewline + "as" + whitespace + tableAlias)
+            )
       case j: Join =>
         val left  = relation(j.left)
         val right = relation(j.right)(using InFromClause)
@@ -203,23 +223,6 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
         values(v)
       case b: BracedRelation =>
         codeBlock(relation(b.child)(using InSubQuery))
-      case a: AliasedRelation =>
-        val tableAlias: Doc =
-          val name = expr(a.alias)
-          a.columnNames match
-            case Some(columns) =>
-              val cols = cs(columns.map(c => text(c.toSQLAttributeName)))
-              name + paren(cols)
-            case None =>
-              name
-
-        a.child match
-          case t: TableInput =>
-            ws(expr(t.sqlExpr), "as", tableAlias)
-          case v: Values =>
-            ws(values(v), "as", tableAlias)
-          case _ =>
-            ws(wrapWithBraceIfNecessary(relation(a.child)(using InSubQuery)), "as", tableAlias)
       case p: Pivot =>
         val prev      = relation(p.child)
         val pivotKeys = p.pivotKeys.map(expr)
@@ -246,8 +249,8 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
               .map { x =>
                 expr(x)
               }
-            Some(ws("with", lst))
-        prev / group(ws("save to", path, opts))
+            Some(whitespace + "with" + nest(whitespaceOrNewline + cs(lst)))
+        prev / group(ws("save to", path) + opts)
       case s: SaveToFile =>
         val prev = relation(s.child)
         val path = s.targetName
@@ -260,8 +263,8 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
               .map { x =>
                 expr(x)
               }
-            Some(ws("with", lst))
-        prev / group(ws("save to", s"'${path}'", opts))
+            Some(whitespace + "with" + nest(whitespaceOrNewline + cs(lst)))
+        prev / group(ws("save to", s"'${path}'") + opts)
       case e: EmptyRelation =>
         empty
       case s: Show =>
@@ -279,7 +282,7 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
 
   private def wrapWithBraceIfNecessary(d: Doc)(using sc: SyntaxContext): Doc =
     if sc.isNested then
-      brace(d)
+      codeBlock(d)
     else
       d
 
@@ -398,7 +401,7 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
         if s.nameExpr.isEmpty then
           left
         else if leftStr != s.nameExpr.toSQLAttributeName then
-          left + whitespaceOrNewline + "as" + whitespace + s.nameExpr.toSQLAttributeName
+          group(left + whitespaceOrNewline + "as" + whitespace + s.nameExpr.toSQLAttributeName)
         else
           left
       case a: Attribute =>
@@ -512,7 +515,7 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
         val op    = s.testType.expr
         ws(left, op, right)
       case s: SaveOption =>
-        ws(expr(s.key) + ":", expr(s.value))
+        ws((expr(s.key) + ":"), expr(s.value))
       case d: DefArg =>
         ws(d.name.name, ":", d.dataType.typeName, d.defaultValue.map(x => ws("=", expr(x))))
       case other =>

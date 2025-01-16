@@ -13,7 +13,7 @@ abstract class WvletGeneratorTest(path: String) extends AirSpec:
     .foreach { unit =>
       val file = unit.sourceFile.fileName
       test(s"Convert ${testPrefix}:${file} to Wvlet") {
-        debug(s"[${file}]\n${unit.sourceFile.getContentAsString}")
+        trace(s"[${file}]\n${unit.sourceFile.getContentAsString}")
         given ctx: Context = globalCtx.getContextOf(unit)
         val plan           = ParserPhase.parse(unit, ctx)
         trace(plan.pp)
@@ -21,7 +21,7 @@ abstract class WvletGeneratorTest(path: String) extends AirSpec:
         val d = g.convert(plan)
         // trace(d.pp)
         val wv = g.render(0, d)
-        debug(s"[${file}: formatted]\n${wv}")
+        debug(s"[formatted ${file}]\n${wv}")
       }
     }
 
