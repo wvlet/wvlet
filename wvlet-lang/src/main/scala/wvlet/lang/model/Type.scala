@@ -24,7 +24,7 @@ abstract class Type:
   def isFunctionType: Boolean = false
   def isResolved: Boolean
   def isNotResolved: Boolean = !isResolved
-  def isBound: Boolean = true
+  def isBound: Boolean       = true
   def bind(typeArgMap: Map[TypeName, DataType]): Type =
     this match
       case d: DataType =>

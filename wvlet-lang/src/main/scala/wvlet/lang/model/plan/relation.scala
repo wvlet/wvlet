@@ -13,29 +13,17 @@
  */
 package wvlet.lang.model.plan
 
+import wvlet.airframe.json.JSON
+import wvlet.airframe.ulid.ULID
+import wvlet.lang.api.Span.NoSpan
+import wvlet.lang.api.{Span, StatusCode}
 import wvlet.lang.catalog.Catalog
 import wvlet.lang.catalog.Catalog.TableName
 import wvlet.lang.compiler.{Name, TermName, TypeName}
-import wvlet.lang.model.expr.*
 import wvlet.lang.model.*
-import wvlet.lang.model.DataType.{
-  AggregationType,
-  AliasedType,
-  ArrayType,
-  ConcatType,
-  EmptyRelationType,
-  NamedType,
-  ProjectedType,
-  RecordType,
-  SchemaType,
-  UnresolvedRelationType
-}
+import wvlet.lang.model.DataType.*
+import wvlet.lang.model.expr.*
 import wvlet.lang.model.expr.NameExpr.EmptyName
-import wvlet.airframe.json.JSON
-import wvlet.airframe.ulid.ULID
-import wvlet.lang.api.StatusCode
-import wvlet.lang.api.Span
-import wvlet.lang.api.Span.NoSpan
 import wvlet.log.LogSupport
 
 import scala.collection.immutable.ListMap

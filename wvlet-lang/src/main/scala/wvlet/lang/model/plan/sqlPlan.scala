@@ -3,7 +3,7 @@ package wvlet.lang.model.plan
 import wvlet.lang.api.Span
 import wvlet.lang.model.DataType.EmptyRelationType
 import wvlet.lang.model.RelationType
-import wvlet.lang.model.expr.{Expression, Identifier, LeafExpression, NameExpr, QualifiedName}
+import wvlet.lang.model.expr.*
 
 enum AlterType:
   case DEFAULT

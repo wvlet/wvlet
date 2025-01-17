@@ -143,35 +143,6 @@ object GenSQL extends Phase("generate-sql"):
     trace(s"[plan]\n${expanded.pp}\n[SQL]\n${query}")
     GeneratedSQL(query, expanded)
 
-  def generateDeleteSQL(ops: Delete, context: Context): List[String] =
-    given Context = context
-    val gen       = SqlGenerator(context.dbType)(using context)
-    ops match
-      case d: Delete =>
-        def filterExpr(x: Relation): Option[String] =
-          x match
-            case q: Query =>
-              filterExpr(q.child)
-            case f: Filter =>
-              Some(gen.printExpression(f.filterExpr))
-            case l: LeafPlan =>
-              None
-            case other =>
-              throw StatusCode
-                .SYNTAX_ERROR
-                .newException(s"Unsupported delete input: ${other.nodeName}", other.sourceLocation)
-
-        val filterSQL = filterExpr(d.inputRelation)
-        var sql       = withHeader(s"delete from ${d.targetName}", ops.sourceLocation)
-        filterSQL.foreach { expr =>
-          sql += s"\nwhere ${expr}"
-        }
-        List(sql)
-      case other =>
-        throw StatusCode
-          .NOT_IMPLEMENTED
-          .newException(s"${other.nodeName} is not implemented yet", other.sourceLocation)
-
   def generateSaveSQL(save: Save, context: Context): List[String] =
     given Context  = context
     val statements = List.newBuilder[String]
@@ -250,6 +221,27 @@ object GenSQL extends Phase("generate-sql"):
         else
           val sql = s"create (${baseSQL.sql}) to '${targetPath}'"
           statements += withHeader(sql, a.sourceLocation)
+      case d: Delete =>
+        val gen = SqlGenerator(context.dbType)(using context)
+        def filterExpr(x: Relation): Option[String] =
+          x match
+            case q: Query =>
+              filterExpr(q.child)
+            case f: Filter =>
+              Some(gen.printExpression(f.filterExpr))
+            case l: LeafPlan =>
+              None
+            case other =>
+              throw StatusCode
+                .SYNTAX_ERROR
+                .newException(s"Unsupported delete input: ${other.nodeName}", other.sourceLocation)
+
+        val filterSQL = filterExpr(d.inputRelation)
+        var sql       = withHeader(s"delete from ${d.targetName}", d.sourceLocation)
+        filterSQL.foreach { expr =>
+          sql += s"\nwhere ${expr}"
+        }
+        List(sql)
       case other =>
         throw StatusCode
           .NOT_IMPLEMENTED
