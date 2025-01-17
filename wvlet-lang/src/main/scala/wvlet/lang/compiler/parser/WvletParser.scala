@@ -125,6 +125,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         consume(WvletToken.INTEGER_LITERAL)
         DigitIdentifier(t.str, spanFrom(t))
       case _ =>
+        // TODO Define what is reserved (e.g., select, add, true, etc.) or not (e.g., count, table, user)
         reserved()
 
   def identifierSingle(): Identifier =
@@ -476,8 +477,8 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         case id if id.isIdentifier =>
           identifier()
         case WvletToken.PLUS | WvletToken.MINUS | WvletToken.STAR | WvletToken.DIV | WvletToken
-              .MOD | WvletToken.AMP | WvletToken.PIPE | WvletToken.EQ | WvletToken.NEQ | WvletToken
-              .LT | WvletToken.LTEQ | WvletToken.GT | WvletToken.GTEQ =>
+              .MOD | WvletToken.AMP | WvletToken.EQ | WvletToken.NEQ | WvletToken.LT | WvletToken
+              .LTEQ | WvletToken.GT | WvletToken.GTEQ =>
           // symbols
           consume(t.token)
           UnquotedIdentifier(t.str, spanFrom(t))
@@ -804,6 +805,9 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
   def queryBlockSingle(input: Relation): Relation =
     val t = scanner.lookAhead()
     t.token match
+      case WvletToken.PIPE =>
+        consume(WvletToken.PIPE)
+        queryBlockSingle(input)
       case WvletToken.LEFT | WvletToken.RIGHT | WvletToken.INNER | WvletToken.FULL | WvletToken
             .CROSS | WvletToken.ASOF | WvletToken.JOIN =>
         join(input)
@@ -823,6 +827,8 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         groupByExpr(input)
       case WvletToken.AGG =>
         aggExpr(input)
+      case WvletToken.COUNT =>
+        countExpr(input)
       case WvletToken.PIVOT =>
         pivotExpr(input)
       case WvletToken.SELECT =>
@@ -1068,6 +1074,10 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     val items = selectItems()
     Agg(input, groupingKeys, items, spanFrom(t))
 
+  def countExpr(input: Relation): Count =
+    val t = consume(WvletToken.COUNT)
+    Count(input, spanFrom(t))
+
   def pivotExpr(input: Relation): Pivot =
     def pivotValues: List[Literal] =
       val values = List.newBuilder[Literal]
@@ -1173,7 +1183,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         selectItems()
       case token if WvletToken.isQueryDelimiter(token) =>
         Nil
-      case t if t.tokenType == TokenType.Keyword && !WvletToken.literalStartKeywords.contains(t) =>
+      case t if !t.canStartSelectItem =>
         Nil
       case _ =>
         selectItem() :: selectItems()
@@ -1727,6 +1737,9 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         case id if id.isIdentifier =>
           identifier()
         case WvletToken.STAR | WvletToken.END =>
+          identifier()
+        case WvletToken.COUNT =>
+          // For count(*) expression
           identifier()
         case _ =>
           unexpected(t)

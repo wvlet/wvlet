@@ -59,7 +59,8 @@ relationPrimary: qualifiedId ('(' functionArg (',' functionArg)* ')')?
                | arrayValue
 arrayValue     : '[' arrayValue (',' arrayValue)* ','? ']'
 
-queryBlock: joinExpr
+queryBlock: '|' queryBlock  // pipe operator for explicit split
+          |  joinExpr
           | 'group' 'by' groupByItemList
           | 'where' booleanExpression
           | 'select' 'distinct'? selectItems
