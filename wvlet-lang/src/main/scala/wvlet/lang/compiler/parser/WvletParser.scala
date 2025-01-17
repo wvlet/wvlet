@@ -185,7 +185,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     t.token match
       case WvletToken.IMPORT =>
         importStatement()
-      case WvletToken.FROM | WvletToken.SELECT | WvletToken.L_BRACE =>
+      case WvletToken.FROM | WvletToken.SELECT | WvletToken.L_BRACE | WvletToken.WITH =>
         query()
       case WvletToken.TYPE =>
         typeDef()
@@ -773,10 +773,67 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         val q = queryBody()
         consume(WvletToken.R_BRACE)
         r = BracedRelation(q, spanFrom(t))
+      case WvletToken.WITH =>
+        r = withQuery()
       case _ =>
         unexpected(t)
     r
   end querySingle
+
+  def withQuery(): Relation =
+    def alias(): (NameExpr, Option[List[NamedType]]) =
+      val name = identifierSingle()
+      val columns: Option[List[NamedType]] =
+        scanner.lookAhead().token match
+          case WvletToken.L_PAREN =>
+            consume(WvletToken.L_PAREN)
+            val cols = namedTypes()
+            consume(WvletToken.R_PAREN)
+            Some(cols)
+          case _ =>
+            None
+      (name, columns)
+    end alias
+
+    def withExpr(): List[AliasedRelation] =
+      val t = scanner.lookAhead()
+      t.token match
+        case WvletToken.WITH =>
+          consume(WvletToken.WITH)
+          val (name, columns) = alias()
+          consume(WvletToken.AS)
+
+          // with query
+          consume(WvletToken.L_BRACE)
+          val q = queryBody()
+          consume(WvletToken.R_BRACE)
+          val a = AliasedRelation(q, name, columns, spanFrom(t))
+          // Read next if exists
+          scanner.lookAhead().token match
+            case WvletToken.WITH =>
+              a :: withExpr()
+            case other =>
+              List(a)
+        case _ =>
+          unexpected(t)
+    end withExpr
+
+    val t              = scanner.lookAhead()
+    val withStatements = withExpr()
+    val withSpan       = spanFrom(t)
+    val child          = queryBody()
+
+    def injectWithQuery(input: Relation): Relation =
+      input match
+        case t: TestRelation =>
+          t.copy(child = injectWithQuery(t.child))
+        case body =>
+          val w = WithQuery(false, withStatements, body, withSpan)
+          w
+    end injectWithQuery
+
+    injectWithQuery(child)
+  end withQuery
 
   def fromRelation(): Relation =
     scanner.lookAhead().token match

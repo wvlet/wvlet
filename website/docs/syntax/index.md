@@ -87,6 +87,7 @@ Wvlet provides various relational operators to process input data and generate o
 | ([__intersect__](#intersect) \| [__except__](#except)) __all__? ...                                                     | Rows with the intersection (difference) of the given sources. By default set semantics is used. If `all` is given, bag semantics will be used |
 | [__pivot on__ `pivot_column` (__in__ (`v1`, `v2`, ...) )?](#pivot)                                       | Rows whose column values in the pivot column are expanded as columns                                                                          |
 | __\|__ `func(args, ...)`                                                                     | Rows processed by the given table function (pipe operator)                                                                                                    |
+| [__with__ `alias` __as__ \{ `(query)` \}](#with) | Define a local query alias, which is the same with a common-table expression (CTE) in SQL |  
 | __sample__ `method`? (`size` __rows__? \| __%__)                                               | Randomly sampled rows. Sampling method can be reservoir (default), system, or bernoulli                                                       | 
 | [__unnest__(`array expr`)](unnest.md)                                                          | Expand an array into rows                                                                                                                     | 
 | [__test__ `(test_expr)`](test-syntax.md)                                                       | Test the query result, evaluated only in the test-run mode                                                                                    |
@@ -705,4 +706,30 @@ agg _.count;
 ├───────────────┴──────────┴────────┤
 │ 3 rows                            │
 └───────────────────────────────────┘
+```
+
+
+### with
+
+To define a local subquery definition, use the `with` expression:
+
+```sql
+with t1 as {
+  from nation
+  where n_regionkey = 1
+}
+from t1
+```
+
+You can define multiple subqueries: 
+```
+with t1 as {
+  from nation
+  where n_regionkey = 1
+}
+with t2 as {
+  from t1
+  limit 10
+}
+from t2
 ```

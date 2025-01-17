@@ -60,10 +60,19 @@ object ExecutionPlanner extends Phase("execution-plan"):
         case r: Relation =>
           val plans = List.newBuilder[ExecutionPlan]
           // Iterate through the children to find any test/debug queries
-          r.children
-            .map { child =>
-              plans += plan(child, evalQuery = false)
-            }
+          r match
+            case w: WithQuery =>
+              // WithQuery needs a specific tree traversal
+              w.queryDefs
+                .foreach { d =>
+                  plans += plan(d, evalQuery = false)
+                }
+              plans += plan(w.queryBody, evalQuery = false)
+            case other =>
+              r.children
+                .map { child =>
+                  plans += plan(child, evalQuery = false)
+                }
           if evalQuery then
             plans += ExecuteQuery(r)
           ExecutionPlan(plans.result())

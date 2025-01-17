@@ -114,8 +114,7 @@ case class ModelDef(
     with LanguageStatement:
   override def children: List[LogicalPlan] = Nil
 
-  override def inputRelationType: RelationType = EmptyRelationType
-  override def relationType: RelationType      = givenRelationType.getOrElse(child.relationType)
+  override def relationType: RelationType = givenRelationType.getOrElse(child.relationType)
 
 case class ValDef(name: TermName, dataType: DataType, expr: Expression, span: Span)
     extends LanguageStatement

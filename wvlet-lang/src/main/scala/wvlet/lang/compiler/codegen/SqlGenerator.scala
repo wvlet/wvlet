@@ -332,12 +332,12 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
         printRelation(t.inputRelation, remainingParents)(using sqlContext)
       case q: WithQuery =>
         val subQueries = q
-          .withStatements
+          .queryDefs
           .map { w =>
-            val subQuery = printRelation(w.child, Nil)(using sqlContext)
+            val subQuery = printQuery(w.child, Nil)(using Indented(0))
             s"${printExpression(w.alias)} as (\n${subQuery}\n)"
           }
-        val body     = printRelation(q.child, remainingParents)(using sqlContext)
+        val body     = printQuery(q.queryBody, remainingParents)(using sqlContext)
         val withStmt = subQueries.mkString("with ", ", ", "")
         s"""${withStmt}
            |${body}
@@ -588,7 +588,7 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
 
     sqlSelect.child match
       case e: EmptyRelation =>
-      // Do not add from clause for empty imputs
+      // Do not add from clause for empty inputs
       case t: TableInput =>
         s += s"from ${printExpression(t.sqlExpr)}"
       case _ =>

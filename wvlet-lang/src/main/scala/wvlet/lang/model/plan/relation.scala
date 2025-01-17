@@ -1051,3 +1051,23 @@ case class Debug(child: Relation, debugExpr: Relation, span: Span) extends Filte
 
   // Add debug expr as well for the ease of tree traversal
   override def children: List[LogicalPlan] = List(child, debugExpr)
+
+/**
+  * A relation that contains a query body with query definitions.
+  *
+  * @param isRecursive
+  * @param queryDefs
+  * @param queryBody
+  * @param span
+  */
+case class WithQuery(
+    isRecursive: Boolean,
+    queryDefs: List[AliasedRelation],
+    queryBody: Relation,
+    span: Span
+) extends Relation:
+  override def children: List[LogicalPlan] =
+    // Technically, queryDefs are not the children, rather prerequisites of the queryBody
+    Nil
+
+  override def relationType: RelationType = queryBody.relationType
