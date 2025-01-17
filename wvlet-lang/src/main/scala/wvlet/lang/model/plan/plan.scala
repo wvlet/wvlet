@@ -22,8 +22,8 @@ import wvlet.lang.model.expr.{Attribute, Expression, NameExpr, QualifiedName, St
 import wvlet.lang.model.plan.LogicalPlan
 
 sealed trait LanguageStatement extends TopLevelStatement with LeafPlan:
-  override def isEmpty: Boolean           = true
-  override def children: Seq[LogicalPlan] = Nil
+  override def isEmpty: Boolean            = true
+  override def children: List[LogicalPlan] = Nil
 
   override def relationType: RelationType      = EmptyRelationType
   override def inputRelationType: RelationType = EmptyRelationType
@@ -39,8 +39,8 @@ case class PackageDef(
     span: Span
 ) extends LanguageStatement
     with HasSourceFile:
-  override def isEmpty: Boolean           = statements.isEmpty
-  override def children: Seq[LogicalPlan] = statements
+  override def isEmpty: Boolean            = statements.isEmpty
+  override def children: List[LogicalPlan] = statements
 
 case class Import(
     importRef: NameExpr,
@@ -75,7 +75,7 @@ case class FunctionDef(
     expr: Option[Expression],
     span: Span
 ) extends TypeElem:
-  override def children: Seq[Expression] = Seq.empty
+  override def children: List[Expression] = Nil
 
 case class DefArg(
     name: TermName,
@@ -83,7 +83,7 @@ case class DefArg(
     defaultValue: Option[Expression],
     span: Span
 ) extends Expression:
-  override def children: Seq[Expression] = Seq.empty
+  override def children: List[Expression] = Nil
 
 case class FieldDef(
     name: TermName,
@@ -92,7 +92,7 @@ case class FieldDef(
     body: Option[Expression],
     span: Span
 ) extends TypeElem:
-  override def children: Seq[Expression] = Seq.empty
+  override def children: List[Expression] = Nil
 
 /**
   * Definition scope (e.g., in xxx)
@@ -101,7 +101,7 @@ case class FieldDef(
   * @param nodeLocation
   */
 case class DefContext(name: Option[NameExpr], tpe: NameExpr, span: Span) extends Expression:
-  override def children: Seq[Expression] = Seq.empty
+  override def children: List[Expression] = Nil
 
 case class ModelDef(
     name: TableName,
@@ -112,7 +112,7 @@ case class ModelDef(
 ) extends LogicalPlan
     with HasTableName
     with LanguageStatement:
-  override def children: Seq[LogicalPlan] = Nil
+  override def children: List[LogicalPlan] = Nil
 
   override def inputRelationType: RelationType = EmptyRelationType
   override def relationType: RelationType      = givenRelationType.getOrElse(child.relationType)

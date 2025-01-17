@@ -143,40 +143,11 @@ object GenSQL extends Phase("generate-sql"):
     trace(s"[plan]\n${expanded.pp}\n[SQL]\n${query}")
     GeneratedSQL(query, expanded)
 
-  def generateDeleteSQL(ops: DeleteOps, context: Context): List[String] =
-    given Context = context
-    val gen       = SqlGenerator(context.dbType)(using context)
-    ops match
-      case d: Delete =>
-        def filterExpr(x: Relation): Option[String] =
-          x match
-            case q: Query =>
-              filterExpr(q.child)
-            case f: Filter =>
-              Some(gen.printExpression(f.filterExpr))
-            case l: LeafPlan =>
-              None
-            case other =>
-              throw StatusCode
-                .SYNTAX_ERROR
-                .newException(s"Unsupported delete input: ${other.nodeName}", other.sourceLocation)
-
-        val filterSQL = filterExpr(d.inputRelation)
-        var sql       = withHeader(s"delete from ${d.targetTable.fullName}", ops.sourceLocation)
-        filterSQL.foreach { expr =>
-          sql += s"\nwhere ${expr}"
-        }
-        List(sql)
-      case other =>
-        throw StatusCode
-          .NOT_IMPLEMENTED
-          .newException(s"${other.nodeName} is not implemented yet", other.sourceLocation)
-
   def generateSaveSQL(save: Save, context: Context): List[String] =
     given Context  = context
     val statements = List.newBuilder[String]
     save match
-      case s: SaveTo =>
+      case s: SaveTo if s.isForTable =>
         val baseSQL = generateSQLFromRelation(save.inputRelation, context, addHeader = false)
         var needsTableCleanup = false
         val ctasCmd =
@@ -196,19 +167,19 @@ object GenSQL extends Phase("generate-sql"):
           else
             ""
         val ctasSQL = withHeader(
-          s"${ctasCmd} ${s.target.fullName}${options} as\n${baseSQL.sql}",
+          s"${ctasCmd} ${s.targetName}${options} as\n${baseSQL.sql}",
           s.sourceLocation
         )
 
         if needsTableCleanup then
-          val dropSQL = s"drop table if exists ${s.target.fullName}"
+          val dropSQL = s"drop table if exists ${s.targetName}"
           // TODO: May need to wrap drop-ctas in a transaction
           statements += withHeader(dropSQL, s.sourceLocation)
 
         statements += ctasSQL
-      case s: SaveToFile if context.dbType.supportSaveAsFile =>
+      case s: SaveTo if s.isForFile && context.dbType.supportSaveAsFile =>
         val baseSQL = GenSQL.generateSQLFromRelation(save.inputRelation, context, addHeader = false)
-        val targetPath = context.dataFilePath(s.path)
+        val targetPath = context.dataFilePath(s.targetName)
         val copySQL    = s"copy (${baseSQL.sql}) to '${targetPath}'"
         val sql =
           if s.saveOptions.isEmpty then
@@ -223,7 +194,7 @@ object GenSQL extends Phase("generate-sql"):
               .mkString("(", ", ", ")")
             s"${copySQL} ${opts}"
         statements += withHeader(sql, s.sourceLocation)
-      case a: AppendTo =>
+      case a: AppendTo if a.isForTable =>
         val baseSQL = GenSQL.generateSQLFromRelation(save.inputRelation, context, addHeader = false)
         val tbl     = TableName.parse(a.targetName)
         val schema  = tbl.schema.getOrElse(context.defaultSchema)
@@ -235,9 +206,9 @@ object GenSQL extends Phase("generate-sql"):
             case None =>
               s"create table ${fullTableName} as\n${baseSQL.sql}"
         statements += withHeader(insertSQL, save.sourceLocation)
-      case a: AppendToFile if context.dbType == DBType.DuckDB =>
+      case a: AppendTo if a.isForFile && context.dbType == DBType.DuckDB =>
         val baseSQL = GenSQL.generateSQLFromRelation(save.inputRelation, context, addHeader = false)
-        val targetPath = context.dataFilePath(a.path)
+        val targetPath = context.dataFilePath(a.targetName)
         if SourceIO.existsFile(targetPath) then
           val sql =
             s"""copy (
@@ -250,6 +221,27 @@ object GenSQL extends Phase("generate-sql"):
         else
           val sql = s"create (${baseSQL.sql}) to '${targetPath}'"
           statements += withHeader(sql, a.sourceLocation)
+      case d: Delete =>
+        val gen = SqlGenerator(context.dbType)(using context)
+        def filterExpr(x: Relation): Option[String] =
+          x match
+            case q: Query =>
+              filterExpr(q.child)
+            case f: Filter =>
+              Some(gen.printExpression(f.filterExpr))
+            case l: LeafPlan =>
+              None
+            case other =>
+              throw StatusCode
+                .SYNTAX_ERROR
+                .newException(s"Unsupported delete input: ${other.nodeName}", other.sourceLocation)
+
+        val filterSQL = filterExpr(d.inputRelation)
+        var sql       = withHeader(s"delete from ${d.targetName}", d.sourceLocation)
+        filterSQL.foreach { expr =>
+          sql += s"\nwhere ${expr}"
+        }
+        List(sql)
       case other =>
         throw StatusCode
           .NOT_IMPLEMENTED

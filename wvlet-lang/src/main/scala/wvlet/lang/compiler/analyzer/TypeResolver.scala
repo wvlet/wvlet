@@ -93,9 +93,11 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
           ctx.enter(m.symbol)
           ctx
         case q: Relation =>
-          q.traverseOnce { case s: HasRefName =>
+          q.traverseOnce { case s: HasTableOrFileName =>
             ctx.enter(s.symbol)
-            preScan(s.child, ctx)
+            s match
+              case u: UnaryRelation =>
+                preScan(u.child, ctx)
           }
           ctx
         case other =>
@@ -203,13 +205,15 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
   end resolveTypeDef
 
   /**
-    * Resolve schema of local file scans (e.g., JSON, Parquet)
+    * Resolve schema of local file scans (e.g., JSON, Parquet).
+    *
+    * TODO: Introduce lazy evaluation of the schema to avoid unnecessary schema resolution
     */
   private object resolveLocalFileScan extends RewriteRule:
     override def apply(context: Context): PlanRewriter =
-      case r: FileScan if r.path.endsWith(".wv") || r.path.endsWith(".sql") =>
-        // import a query from another .wv file
-        context.findCompilationUnit(r.path) match
+      case r: FileRef if r.filePath.endsWith(".wv") || r.filePath.endsWith(".sql") =>
+        // import a query from another .wv or .sql file
+        context.findCompilationUnit(r.filePath) match
           case None =>
             throw StatusCode.FILE_NOT_FOUND.newException(s"${r.path} is not found")
           case Some(unit) =>
@@ -227,16 +231,16 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
                 throw StatusCode
                   .SYNTAX_ERROR
                   .newException(s"${unit.sourceFile} is not a single query file")
-      case r: FileScan if r.path.endsWith(".json") =>
-        val file             = context.getDataFile(r.path)
+      case f: FileRef if f.filePath.endsWith(".json") =>
+        val file             = context.getDataFile(f.filePath)
         val jsonRelationType = JSONAnalyzer.analyzeJSONFile(file)
         val cols             = jsonRelationType.fields
-        JSONFileScan(file, jsonRelationType, cols, r.span)
-      case r: FileScan if r.path.endsWith(".parquet") =>
-        val file                = context.dataFilePath(r.path)
+        FileScan(SingleQuoteString(file, f.span), jsonRelationType, cols, f.span)
+      case f: FileRef if f.filePath.endsWith(".parquet") =>
+        val file                = context.dataFilePath(f.filePath)
         val parquetRelationType = ParquetAnalyzer.guessSchema(file)
         val cols                = parquetRelationType.fields
-        ParquetFileScan(file, parquetRelationType, cols, r.span)
+        FileScan(SingleQuoteString(file, f.span), parquetRelationType, cols, f.span)
 
     end apply
 

@@ -134,10 +134,6 @@ class QueryExecutor(
           // Evaluate test/debug if exists
           report(process(queryPlan))
           report(executeSave(save))
-        case ExecuteDelete(delete, queryPlan) =>
-          // Evaluate test/debug if exists
-          report(process(queryPlan))
-          report(executeDelete(delete))
         case d @ ExecuteDebug(debugPlan, debugExecutionPlan) =>
           val debugInput = lastResult
           executeDebug(d, lastResult)
@@ -210,11 +206,6 @@ class QueryExecutor(
 
   end executeCommand
 
-  private def executeDelete(ops: DeleteOps)(using context: Context): QueryResult =
-    val statements = GenSQL.generateDeleteSQL(ops, context)
-    executeStatement(statements)
-    QueryResult.empty
-
   private def executeSave(save: Save)(using context: Context): QueryResult =
     val statements = GenSQL.generateSaveSQL(save, context)
     executeStatement(statements)
@@ -241,7 +232,7 @@ class QueryExecutor(
                     UnresolvedType(metadata.getColumnTypeName(i))
                   }
                 )
-              val outputType = SchemaType(None, Name.NoTypeName, fields)
+              val outputType = SchemaType(None, Name.NoTypeName, fields.toList)
               trace(outputType)
 
               val codec    = JDBCCodec(rs)

@@ -57,9 +57,6 @@ object ExecutionPlanner extends Phase("execution-plan"):
         case save: Save =>
           val queryPlan = plan(save.inputRelation, evalQuery = false)
           ExecuteSave(save, queryPlan)
-        case d: DeleteOps =>
-          val queryPlan = plan(d.inputRelation, evalQuery = false)
-          ExecuteDelete(d, queryPlan)
         case r: Relation =>
           val plans = List.newBuilder[ExecutionPlan]
           // Iterate through the children to find any test/debug queries

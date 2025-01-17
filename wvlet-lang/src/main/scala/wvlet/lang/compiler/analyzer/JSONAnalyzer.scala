@@ -69,7 +69,7 @@ object JSONAnalyzer extends LogSupport:
       val mostFrequentType = typeMap.mostFrequentType
       NamedType(Name.termName(k), mostFrequentType)
 
-    SchemaType(None, Name.typeName(RelationType.newRelationTypeName), dataTypes.toSeq)
+    SchemaType(None, Name.typeName(RelationType.newRelationTypeName), dataTypes.toList)
 
   end guessSchema
 
