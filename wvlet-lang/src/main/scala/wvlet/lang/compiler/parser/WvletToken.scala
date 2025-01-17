@@ -27,9 +27,16 @@ import TokenType.*
 import scala.annotation.switch
 
 enum WvletToken(val tokenType: TokenType, val str: String):
-  def isIdentifier: Boolean          = tokenType == Identifier
-  def isLiteral: Boolean             = tokenType == Literal
-  def isReservedKeyword: Boolean     = tokenType == Keyword
+  def isIdentifier: Boolean      = tokenType == Identifier
+  def isLiteral: Boolean         = tokenType == Literal
+  def isReservedKeyword: Boolean = tokenType == Keyword
+  def isNonReservedKeyword: Boolean =
+    tokenType == Keyword && WvletToken.nonReservedKeywords.contains(this)
+
+  def canStartSelectItem: Boolean =
+    tokenType != Keyword || WvletToken.literalStartKeywords.contains(this) ||
+      WvletToken.nonReservedKeywords.contains(this)
+
   def isOperator: Boolean            = tokenType == Op
   def isRightParenOrBracket: Boolean = this == WvletToken.R_PAREN || this == WvletToken.R_BRACKET
 
@@ -173,6 +180,7 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   // case TRANSFORM extends WvletToken(Keyword, "transform")
   case PIVOT extends WvletToken(Keyword, "pivot")
 
+  case COUNT    extends WvletToken(Keyword, "count")
   case DISTINCT extends WvletToken(Keyword, "distinct")
 
   // for order by
@@ -218,7 +226,6 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   case EXPORT  extends WvletToken(Keyword, "export")
   case PACKAGE extends WvletToken(Keyword, "package")
   case MODEL   extends WvletToken(Keyword, "model")
-  case QUERY   extends WvletToken(Keyword, "query")
   case EXECUTE extends WvletToken(Keyword, "execute")
 
   case VAL extends WvletToken(Keyword, "val")
@@ -257,6 +264,8 @@ object WvletToken:
     WvletToken.IF,
     WvletToken.MAP
   )
+
+  val nonReservedKeywords = Set(WvletToken.COUNT)
 
   val stringStartToken = List(
     WvletToken.IDENTIFIER,

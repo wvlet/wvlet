@@ -255,6 +255,28 @@ case class Offset(child: Relation, rows: LongLiteral, span: Span) extends Filter
 case class Filter(child: Relation, filterExpr: Expression, span: Span) extends FilteringRelation:
   override def toString: String = s"Filter[${filterExpr}](${child})"
 
+case class Count(child: Relation, span: Span) extends UnaryRelation with AggSelect:
+  override def toString: String = s"Count(${child})"
+
+  override def selectItems: Seq[Attribute] = Seq(
+    SingleColumn(
+      NameExpr.EmptyName,
+      FunctionApply(
+        NameExpr.fromString("count", span),
+        List(FunctionArg(None, AllColumns(Wildcard(NoSpan), None, NoSpan), false, span)),
+        None,
+        span
+      ),
+      span
+    )
+  )
+
+  override lazy val relationType: RelationType = SchemaType(
+    parent = None,
+    typeName = LongType.typeName,
+    columnTypes = List(NamedType(Name.termName("count"), LongType))
+  )
+
 case class EmptyRelation(span: Span) extends Relation with LeafPlan:
   // Need to override this method so as not to create duplicate case object instances
   override def copyInstance(newArgs: Seq[AnyRef]) = this

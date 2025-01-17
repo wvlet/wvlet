@@ -66,6 +66,7 @@ Wvlet provides various relational operators to process input data and generate o
 |------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------| 
 | [__from__ `expr`](#from)                                                                       | Rows from the given source table, model, value, or file                                                                                       |
 | [__where__ `cond`](#where)                                                                     | Rows that satisfy the given condition. Multiple `where` clauses can be used in the same query                                                 |
+| [__count__](#count) | Count the number of input rows| 
 | [__add__ `expr` (__as__ `alias`)?, ...](#add)                                                  | Same rows with new columns                                                                                                                    |
 | [__select__ `expr`, ...](#select)                                                              | Rows with the given expressions. `select *` is allowed                                                                                        |
 | __select distinct__ `expr`,...                                                                 | Rows with distinct values of the given expressions                                                                                            |
@@ -85,7 +86,7 @@ Wvlet provides various relational operators to process input data and generate o
 | [__dedup__](#dedup)                                                                                      | Rows with duplicated rows removed. Equivalent to `select distinct *`                                                                          | 
 | ([__intersect__](#intersect) \| [__except__](#except)) __all__? ...                                                     | Rows with the intersection (difference) of the given sources. By default set semantics is used. If `all` is given, bag semantics will be used |
 | [__pivot on__ `pivot_column` (__in__ (`v1`, `v2`, ...) )?](#pivot)                                       | Rows whose column values in the pivot column are expanded as columns                                                                          |
-| __call__ `func(args, ...)`                                                                     | Rows processed by the given table function                                                                                                    |
+| __\|__ `func(args, ...)`                                                                     | Rows processed by the given table function (pipe operator)                                                                                                    |
 | __sample__ `method`? (`size` __rows__? \| __%__)                                               | Randomly sampled rows. Sampling method can be reservoir (default), system, or bernoulli                                                       | 
 | [__unnest__(`array expr`)](unnest.md)                                                          | Expand an array into rows                                                                                                                     | 
 | [__test__ `(test_expr)`](test-syntax.md)                                                       | Test the query result, evaluated only in the test-run mode                                                                                    |
@@ -466,6 +467,35 @@ where n_name like 'U%'
 ```
 
 This is useful even when you need to generate Wvlet queries programatically as you only need to append new condition lines to the query. In SQL, you need to parse the text inside WHERE clause and concatenate condition with AND expression.
+
+### count 
+
+Wvlet has a shorthand notation for counting the number of input rows:
+
+```sql
+from nation
+count
+```
+
+This is equilvalen to:
+```sql
+from nation
+select _.count
+```
+
+Or more SQL-like expression can be used too:
+```sql
+from nation
+select count(*)
+```
+
+For clarity, you can use pipe `|` before the count operator:
+```sql
+from nation
+select n_name, n_regionkey,
+-- pipe (|) is required after trailing comma
+| count
+```
 
 ### add
 
