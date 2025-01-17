@@ -135,8 +135,9 @@ enum WvletToken(val tokenType: TokenType, val str: String):
 
   case AMP  extends WvletToken(Op, "&")
   case PIPE extends WvletToken(Op, "|")
-
   case HASH extends WvletToken(Op, "#")
+
+  case EXISTS extends WvletToken(Keyword, "exists")
 
   // For testing
   case TEST    extends WvletToken(Keyword, "test")

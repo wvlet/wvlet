@@ -1720,6 +1720,12 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
                 Some(expression())
           nextCase
           CaseExpr(target, cases.result(), elseClause, spanFrom(t))
+        case WvletToken.EXISTS =>
+          consume(WvletToken.EXISTS)
+          consume(WvletToken.L_BRACE)
+          val q = queryBody()
+          consume(WvletToken.R_BRACE)
+          Exists(SubQueryExpression(q, q.span), spanFrom(t))
         case WvletToken.IF =>
           consume(WvletToken.IF)
           val cond = booleanExpression()
@@ -1738,7 +1744,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           val t2 = scanner.lookAhead()
           t2.token match
             case WvletToken.FROM =>
-              val q = querySingle()
+              val q = queryBody()
               consume(WvletToken.R_BRACE)
               SubQueryExpression(q, t2.span)
             case _ =>

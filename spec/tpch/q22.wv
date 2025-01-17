@@ -8,10 +8,10 @@ where
        and c_phone.substring(1, 2).in('13', '31', '23', '29', '30', '18', '17')
      select c_acctbal.avg
   }
-  and {
+  and not exists {
      from orders
      where o_custkey = c_custkey
-  }.not_exists
+  }
 select
   cntrycode = c_phone.substring(1, 2),
   c_acctbal

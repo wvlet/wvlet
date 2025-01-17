@@ -894,6 +894,8 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
         s"cast(${printExpression(c.child)} as ${c.dataType.typeName})"
       case n: NativeExpression =>
         printExpression(ExpressionEvaluator.eval(n))
+      case e: Exists =>
+        s"exists ${printExpression(e.child)}"
       case other =>
         warn(s"unknown expression type: ${other}")
         other.toString

@@ -170,6 +170,8 @@ select s"Hello ${x}!" as msg
 | `expr` __not in__ (`v1`, `v2`, ...) | True if the expression is not in the given list                                  |
 | `expr` __between__ `v1` __and__ `v2`    | True if the expression value is between v1 and v2, i.e., v1 &le; (value) &le; v2 |
 | `expr` __like__ `pattern`           | True if the expression matches the given pattern, e.g., , `'abc%'`               |
+| __exists__ \{ from ... \} | True if the subquery returns any rows |
+| __not exists__ \{ from ... \} | True if the subquery returns no rows |
 
 #### If Expression
 
