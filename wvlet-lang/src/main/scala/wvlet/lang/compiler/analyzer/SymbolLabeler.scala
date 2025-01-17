@@ -94,7 +94,7 @@ object SymbolLabeler extends Phase("symbol-labeler"):
           ctx
         case s: Save if s.isForTable =>
           iter(s.child, ctx)
-          registerSaveAs(s)(using ctx)
+          registerSave(s)(using ctx)
           ctx
         case d: Debug =>
           warn(d)
@@ -141,7 +141,7 @@ object SymbolLabeler extends Phase("symbol-labeler"):
     sym
 
   private def registerSelectAsAlias(s: SelectAsAlias)(using ctx: Context): Symbol =
-    val aliasName = s.alias.toTermName
+    val aliasName = s.target.toTermName
     val sym       = Symbol(ctx.global.newSymbolId, s.span)
     sym.symbolInfo = RelationAliasSymbolInfo(ctx.owner, sym, aliasName, ctx.compilationUnit)
     s.symbol = sym
@@ -149,7 +149,7 @@ object SymbolLabeler extends Phase("symbol-labeler"):
     ctx.compilationUnit.enter(sym)
     sym
 
-  private def registerSaveAs(s: SaveTo)(using ctx: Context): Symbol =
+  private def registerSave(s: Save)(using ctx: Context): Symbol =
     val targetName = Name.termName(s.targetName)
     val sym        = Symbol(ctx.global.newSymbolId, s.span)
     sym.symbolInfo = SavedRelationSymbolInfo(ctx.owner, sym, targetName)

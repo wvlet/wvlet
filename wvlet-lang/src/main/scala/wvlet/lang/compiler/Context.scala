@@ -213,6 +213,11 @@ case class Context(
     else
       s"${global.compilerOptions.workEnv.path}/${relativePath}"
 
+  /**
+   * Return a resolved file path or URL
+   * @param path
+   * @return
+   */
   def getDataFile(path: String): String =
     findDataFile(path) match
       case None =>

@@ -69,7 +69,7 @@ trait LogicalPlan extends SyntaxTreeNode with Product:
     *
     * @return
     */
-  def children: Seq[LogicalPlan]
+  def children: List[LogicalPlan]
 
   // Input attributes (column names) of the relation
   def relationType: RelationType
@@ -513,12 +513,12 @@ trait LogicalPlan extends SyntaxTreeNode with Product:
 end LogicalPlan
 
 trait LeafPlan extends LogicalPlan:
-  override def children: Seq[LogicalPlan]      = Nil
+  override def children: List[LogicalPlan]     = Nil
   override def inputRelationType: RelationType = EmptyRelationType
 
 trait UnaryPlan extends LogicalPlan:
   def child: LogicalPlan
-  override def children: Seq[LogicalPlan] = child :: Nil
+  override def children: List[LogicalPlan] = child :: Nil
   override def inputRelationType: RelationType =
     child match
       case r: Relation =>
@@ -529,7 +529,7 @@ trait UnaryPlan extends LogicalPlan:
 trait BinaryPlan extends LogicalPlan:
   def left: LogicalPlan
   def right: LogicalPlan
-  override def children: Seq[LogicalPlan] = Seq(left, right)
+  override def children: List[LogicalPlan] = List(left, right)
 
 object LogicalPlan:
   val empty = PackageDef(name = EmptyName, statements = Nil, span = NoSpan)

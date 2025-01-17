@@ -206,7 +206,7 @@ object GenSQL extends Phase("generate-sql"):
           statements += withHeader(dropSQL, s.sourceLocation)
 
         statements += ctasSQL
-      case s: SaveTo if s.isForFileName && context.dbType.supportSaveAsFile =>
+      case s: SaveTo if s.isForFile && context.dbType.supportSaveAsFile =>
         val baseSQL = GenSQL.generateSQLFromRelation(save.inputRelation, context, addHeader = false)
         val targetPath = context.dataFilePath(s.targetName)
         val copySQL    = s"copy (${baseSQL.sql}) to '${targetPath}'"
@@ -235,7 +235,7 @@ object GenSQL extends Phase("generate-sql"):
             case None =>
               s"create table ${fullTableName} as\n${baseSQL.sql}"
         statements += withHeader(insertSQL, save.sourceLocation)
-      case a: AppendTo if a.isForFileName && context.dbType == DBType.DuckDB =>
+      case a: AppendTo if a.isForFile && context.dbType == DBType.DuckDB =>
         val baseSQL = GenSQL.generateSQLFromRelation(save.inputRelation, context, addHeader = false)
         val targetPath = context.dataFilePath(a.targetName)
         if SourceIO.existsFile(targetPath) then

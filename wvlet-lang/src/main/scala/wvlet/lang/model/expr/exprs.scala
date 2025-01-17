@@ -797,7 +797,7 @@ case class ArrayConstructor(values: List[Expression], span: Span) extends Expres
   override def dataType: DataType        = ArrayType(elementType)
   override def children: Seq[Expression] = values
 
-case class RowConstructor(values: Seq[Expression], span: Span) extends Expression:
+case class RowConstructor(values: List[Expression], span: Span) extends Expression:
   override def dataType: DataType        = EmbeddedRecordType(values.map(_.dataType))
   override def children: Seq[Expression] = values
   override def toString: String          = s"Row(${values.mkString(", ")})"

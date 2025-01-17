@@ -155,7 +155,7 @@ object Catalog:
         // TODO resolve parent schema catalog types
         None,
         Name.typeName(name),
-        fields
+        fields.toList
       )
 
     def column(name: String): TableColumn = columns

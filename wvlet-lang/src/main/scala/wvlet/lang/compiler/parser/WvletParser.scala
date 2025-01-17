@@ -716,6 +716,8 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
               iter(f.child)
             case TableRef(qname: QualifiedName, _) =>
               Delete(r, qname, spanFrom(t))
+            case f: FileRef =>
+              Delete(r, f.path, spanFrom(t))
             case f: FileScan =>
               Delete(r, f.path, spanFrom(t))
             case other =>
@@ -1415,7 +1417,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         querySingle()
       case s if s.isStringLiteral =>
         val path = stringLiteral()
-        FileScan(path, EmptyRelationType, Nil, spanFrom(t))
+        FileRef(path, spanFrom(t))
       case i if i.isInterpolatedStringPrefix && t.str == "sql" =>
         val rawSQL = interpolatedString()
         RawSQL(rawSQL, spanFrom(t))
