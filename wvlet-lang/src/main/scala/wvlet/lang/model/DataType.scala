@@ -72,7 +72,7 @@ sealed abstract class RelationType(
     override val typeName: TypeName,
     override val typeParams: Seq[DataType]
 ) extends DataType(typeName, typeParams):
-  def fields: Seq[NamedType]
+  def fields: List[NamedType]
   def find(f: Name => Boolean): Option[NamedType] = fields.find(x => f(x.name))
 
   override def bind(typeArgMap: Map[TypeName, DataType]): RelationType = this

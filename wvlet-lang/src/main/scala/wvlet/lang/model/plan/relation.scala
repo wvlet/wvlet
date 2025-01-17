@@ -76,14 +76,32 @@ trait UnaryRelation extends Relation with UnaryPlan:
 trait HasTableName:
   def name: TableName
 
-trait HasRefName extends UnaryRelation:
-  def refName: NameExpr
+type TableOrFileName = StringLiteral | QualifiedName
 
-case class SelectAsAlias(child: Relation, alias: NameExpr, span: Span)
+/**
+  * A common trait for using a table name or a file name
+  */
+trait HasTableOrFileName extends UnaryRelation:
+  def target: TableOrFileName
+  def isForFileName: Boolean =
+    target match
+      case l: StringLiteral =>
+        true
+      case q: QualifiedName =>
+        false
+
+  def isForTable: Boolean = !isForFileName
+  def targetName: String =
+    target match
+      case l: StringLiteral =>
+        l.unquotedValue
+      case q: QualifiedName =>
+        q.fullName
+
+case class SelectAsAlias(child: Relation, target: QualifiedName, span: Span)
     extends UnaryRelation
-    with HasRefName:
+    with HasTableOrFileName:
   override def relationType: RelationType = child.relationType
-  override def refName: NameExpr          = alias
 
 case class TestRelation(child: Relation, testExpr: Expression, span: Span) extends UnaryRelation:
   override def relationType: RelationType = child.relationType
@@ -192,42 +210,18 @@ case class TableFunctionCall(name: NameExpr, args: List[FunctionArg], span: Span
   override def toString: String           = s"TableFunctionCall(${name}, ${args})"
   override val relationType: RelationType = UnresolvedRelationType(name.fullName)
 
-case class FileScan(path: String, span: Span) extends TableInput:
-  override def sqlExpr: Expression        = SingleQuotedIdentifier(path, span)
-  override def toString: String           = s"FileScan(${path})"
-  override val relationType: RelationType = UnresolvedRelationType(RelationType.newRelationTypeName)
-
-case class PathScan(name: String, path: String, schema: RelationType, span: Span)
+case class FileScan(path: StringLiteral, schema: RelationType, columns: List[NamedType], span: Span)
     extends TableInput:
-  override def sqlExpr: Expression        = SingleQuotedIdentifier(path, span)
-  override def toString: String           = s"PathScan(${path})"
-  override val relationType: RelationType = UnresolvedRelationType(RelationType.newRelationTypeName)
-
-case class JSONFileScan(path: String, schema: RelationType, columns: Seq[NamedType], span: Span)
-    extends TableInput:
-  override def sqlExpr: Expression = SingleQuotedIdentifier(path, span)
+  def filePath: String             = path.unquotedValue
+  override def sqlExpr: Expression = path
+  override def toString: String    = s"FileScan(${path})"
   override def relationType: RelationType =
     if columns.isEmpty then
       schema
     else
       ProjectedType(schema.typeName, columns, schema)
 
-  override def toString: String = s"JSONFileScan(path:${path}, columns:[${columns.mkString(", ")}])"
-  override lazy val resolved    = true
-
-case class ParquetFileScan(path: String, schema: RelationType, columns: Seq[NamedType], span: Span)
-    extends TableInput:
-  override def sqlExpr: Expression = SingleQuotedIdentifier(path, span)
-  override def relationType: RelationType =
-    if columns.isEmpty then
-      schema
-    else
-      ProjectedType(schema.typeName, columns, schema)
-
-  override def toString: String =
-    s"ParquetFileScan(path:${path}, columns:[${columns.mkString(", ")}])"
-
-  override lazy val resolved = true
+  override def isResolved: Boolean = relationType.isResolved
 
 case class RawSQL(sql: Expression, span: Span) extends TableInput:
   override def sqlExpr: Expression        = sql

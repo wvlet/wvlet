@@ -688,33 +688,26 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         case _ =>
           List.empty
 
+    def literalOrQualifiedName(): StringLiteral | QualifiedName =
+      scanner.lookAhead().token match
+        case s if s.isStringLiteral =>
+          stringLiteral()
+        case _ =>
+          qualifiedId()
+
     val t = scanner.lookAhead()
     t.token match
       case WvletToken.SAVE =>
         consume(WvletToken.SAVE)
         consume(WvletToken.TO)
-        val target = scanner.lookAhead()
-        target.token match
-          case s if s.isStringLiteral =>
-            val path   = stringLiteral()
-            val opts   = saveOptions()
-            val saveAs = SaveToFile(r, path.unquotedValue, opts, spanFrom(t))
-            saveAs
-          case _ =>
-            val qname = qualifiedId()
-            val opts  = saveOptions()
-            SaveTo(r, qname, opts, spanFrom(t))
+        val target: StringLiteral | QualifiedName = literalOrQualifiedName()
+        val opts                                  = saveOptions()
+        SaveTo(r, target, opts, spanFrom(t))
       case WvletToken.APPEND =>
         consume(WvletToken.APPEND)
         consume(WvletToken.TO)
-        val target = scanner.lookAhead()
-        target.token match
-          case s if s.isStringLiteral =>
-            val path = consumeToken()
-            AppendToFile(r, path.str, spanFrom(t))
-          case _ =>
-            val qname = qualifiedId()
-            AppendTo(r, qname, spanFrom(t))
+        val target: StringLiteral | QualifiedName = literalOrQualifiedName()
+        AppendTo(r, target, spanFrom(t))
       case WvletToken.DELETE =>
         consume(WvletToken.DELETE)
         def iter(x: Relation): Relation =
@@ -724,7 +717,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
             case TableRef(qname: QualifiedName, _) =>
               Delete(r, qname, spanFrom(t))
             case f: FileScan =>
-              DeleteFromFile(r, f.path, spanFrom(t))
+              Delete(r, f.path, spanFrom(t))
             case other =>
               throw StatusCode
                 .SYNTAX_ERROR
@@ -1421,8 +1414,8 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       case WvletToken.SELECT | WvletToken.FROM | WvletToken.L_BRACE =>
         querySingle()
       case s if s.isStringLiteral =>
-        consumeToken()
-        FileScan(t.str, spanFrom(t))
+        val path = stringLiteral()
+        FileScan(path, EmptyRelationType, Nil, spanFrom(t))
       case i if i.isInterpolatedStringPrefix && t.str == "sql" =>
         val rawSQL = interpolatedString()
         RawSQL(rawSQL, spanFrom(t))

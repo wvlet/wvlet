@@ -227,16 +227,16 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
                 throw StatusCode
                   .SYNTAX_ERROR
                   .newException(s"${unit.sourceFile} is not a single query file")
-      case r: FileScan if r.path.endsWith(".json") =>
-        val file             = context.getDataFile(r.path)
+      case f: FileScan if !f.isResolved =>
+        val file             = context.getDataFile(f.filePath)
         val jsonRelationType = JSONAnalyzer.analyzeJSONFile(file)
         val cols             = jsonRelationType.fields
-        JSONFileScan(file, jsonRelationType, cols, r.span)
-      case r: FileScan if r.path.endsWith(".parquet") =>
-        val file                = context.dataFilePath(r.path)
+        FileScan(file, jsonRelationType, cols, f.span)
+      case f: FileScan if !f.isResolved && f.filePath.endsWith(".parquet") =>
+        val file                = context.dataFilePath(f.filePath)
         val parquetRelationType = ParquetAnalyzer.guessSchema(file)
         val cols                = parquetRelationType.fields
-        ParquetFileScan(file, parquetRelationType, cols, r.span)
+        FileScan(f.path, parquetRelationType, cols, f.span)
 
     end apply
 

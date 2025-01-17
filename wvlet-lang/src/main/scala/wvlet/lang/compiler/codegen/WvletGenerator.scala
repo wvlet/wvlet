@@ -207,7 +207,7 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
       case d: Describe =>
         unary(d, "describe", Nil)
       case s: SelectAsAlias =>
-        unary(s, "select as", s.alias)
+        unary(s, "select as", s.target)
       case t: TestRelation =>
         unary(t, "test", t.testExpr)
       case d: Debug =>
@@ -235,8 +235,6 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
         unary(d, "delete", Nil)
       case a: AppendTo =>
         relation(a.child) / group(ws("append to", expr(a.target)))
-      case a: AppendToFile =>
-        relation(a.child) / group(ws("append to", s"'${a.path}'"))
       case s: SaveTo =>
         val prev = relation(s.child)
         val path = expr(s.target)
@@ -251,20 +249,6 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
               }
             Some(whitespace + "with" + nest(whitespaceOrNewline + cs(lst)))
         prev / group(ws("save to", path) + opts)
-      case s: SaveToFile =>
-        val prev = relation(s.child)
-        val path = s.targetName
-        val opts =
-          if s.saveOptions.isEmpty then
-            None
-          else
-            val lst = s
-              .saveOptions
-              .map { x =>
-                expr(x)
-              }
-            Some(whitespace + "with" + nest(whitespaceOrNewline + cs(lst)))
-        prev / group(ws("save to", s"'${path}'") + opts)
       case e: EmptyRelation =>
         empty
       case s: Show =>

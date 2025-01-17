@@ -348,7 +348,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     Merge(target, alias, using, on, whenMatched, whenNotMatchedInsert, spanFrom(t))
   end merge
 
-  def delete(): DeleteOps =
+  def delete(): Delete =
     val t = consume(SqlToken.DELETE)
     consume(SqlToken.FROM)
     val target = tablePrimary()
@@ -362,14 +362,14 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         case _ =>
           target
 
-    def deleteExpr(x: Relation): DeleteOps =
+    def deleteExpr(x: Relation): Delete =
       x match
         case f: FilteringRelation =>
           deleteExpr(f.child)
         case r: TableRef =>
           Delete(filteredRelation, r.name, spanFrom(t))
         case f: FileScan =>
-          DeleteFromFile(filteredRelation, f.path, spanFrom(t))
+          Delete(filteredRelation, f.path, spanFrom(t))
         case other =>
           throw StatusCode
             .SYNTAX_ERROR
