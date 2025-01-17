@@ -91,10 +91,29 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
     val d = in / group(text(op) + argBlock)
     d
 
+  private def tableAliasOf(a: AliasedRelation)(using sc: SyntaxContext): Doc =
+    val name = expr(a.alias)
+    a.columnNames match
+      case Some(columns) =>
+        val cols = cs(columns.map(c => text(c.toSQLAttributeName)))
+        name + paren(cols)
+      case None =>
+        name
+
   private def relation(r: Relation)(using sc: SyntaxContext): Doc =
     r match
       case q: Query =>
         relation(q.child)
+      case w: WithQuery =>
+        val defs = w
+          .queryDefs
+          .map { d =>
+            val alias = tableAliasOf(d)
+            val body  = relation(d.child)(using InSubQuery)
+            text("with") + whitespace + alias + whitespace + text("as") + whitespace +
+              indentedBrace(body)
+          }
+        lines(defs) + linebreak + relation(w.queryBody)
       case s: Sort =>
         unary(s, "order by", s.orderBy.toList)
       case p: Project =>
@@ -107,6 +126,8 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
         unary(f, "where", f.filterExpr)
       case l: Limit =>
         unary(l, "limit", l.limit)
+      case c: Count =>
+        unary(c, "count", Nil)
       case t: TableInput =>
         if sc.inFrom then
           expr(t.sqlExpr)
@@ -124,15 +145,7 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
       case r: RenameColumnsFromRelation =>
         unary(r, "rename", r.columnAliases)
       case a: AliasedRelation =>
-        val tableAlias: Doc =
-          val name = expr(a.alias)
-          a.columnNames match
-            case Some(columns) =>
-              val cols = cs(columns.map(c => text(c.toSQLAttributeName)))
-              name + paren(cols)
-            case None =>
-              name
-
+        val tableAlias: Doc = tableAliasOf(a)
         a.child match
           case t: TableInput if sc.isNested =>
             group(expr(t.sqlExpr) + whitespaceOrNewline + "as" + whitespace + tableAlias)
