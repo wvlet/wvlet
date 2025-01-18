@@ -367,6 +367,7 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
               .mkString(",")
             s"select * from (values ${values}) as table_schema(column_name, column_type)"
 
+        // TODO Wrap this query with the remaining parents
         selectWithIndentAndParenIfNecessary(sql)
       case r: RelationInspector =>
         // Skip relation inspector
