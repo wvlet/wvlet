@@ -87,7 +87,8 @@ class QueryExecutor(
     workEnv.info(s"Executing ${u.sourceFile.fileName}")
     val ctx = rootContext.withCompilationUnit(u).newContext(Symbol.NoSymbol)
 
-    val executionPlan = u.executionPlan // ExecutionPlanner.plan(u, ctx)
+    // val executionPlan = u.executionPlan // ExecutionPlanner.plan(u, ctx)
+    val executionPlan = ExecutionPlanner.plan(u, ctx)
     val result        = execute(executionPlan, ctx)
     workEnv.info(s"Completed ${u.sourceFile.fileName}")
     result
@@ -207,6 +208,8 @@ class QueryExecutor(
   end executeCommand
 
   private def executeSave(save: Save)(using context: Context): QueryResult =
+    trace(s"Executing save:\n${save.pp}")
+    workEnv.trace(s"Executing save: ${save.pp}")
     val statements = GenSQL.generateSaveSQL(save, context)
     executeStatement(statements)
     QueryResult.empty
@@ -485,7 +488,7 @@ class QueryExecutor(
 
     def evalOp(e: Expression): Any =
       e match
-        case DotRef(c: ContextInputRef, name, _, _) =>
+        case DotRef(i: Identifier, name, _, _) if i.fullName == "_" =>
           name.leafName match
             case "output" =>
               lastResult.toPrettyBox()
@@ -517,6 +520,7 @@ class QueryExecutor(
               throw StatusCode
                 .TEST_FAILED
                 .newException(s"Unsupported result inspection function: _.${other}")
+          end match
         case l: StringLiteral =>
           l.unquotedValue
         case l: LongLiteral =>

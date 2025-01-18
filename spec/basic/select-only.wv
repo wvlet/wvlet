@@ -1,14 +1,15 @@
 select 1
-test _.result is [[1]]
+test _.rows is [[1]]
 ;
 
 select 1 as id
-concat
-select 2 as id
-test _.result is [[1], [2]]
+concat {
+  select 2 as id
+}
+test _.rows is [[1], [2]]
 ;
 
 select 1 as id
 where id = 1
-test _.result is [[1]]
+test _.rows is [[1]]
 ;

@@ -241,7 +241,7 @@ object GenSQL extends Phase("generate-sql"):
         filterSQL.foreach { expr =>
           sql += s"\nwhere ${expr}"
         }
-        List(sql)
+        statements += sql
       case other =>
         throw StatusCode
           .NOT_IMPLEMENTED
