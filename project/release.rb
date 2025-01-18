@@ -13,6 +13,7 @@ now = Time.new
 if year == now.year
   patch = patch + 1
 else
+  month = 1
   patch = 0
 end
 default_version = "#{now.year}.#{month}.#{patch}"
