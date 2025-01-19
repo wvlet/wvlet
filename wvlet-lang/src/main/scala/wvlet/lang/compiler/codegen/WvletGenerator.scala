@@ -8,27 +8,14 @@ import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
 import wvlet.lang.api.Span
 import wvlet.log.LogSupport
+import SyntaxContext.*
 
 import scala.annotation.tailrec
-
-object WvletGenerator:
-
-  sealed trait SyntaxContext:
-    def inFrom: Boolean   = this == InFromClause
-    def isNested: Boolean = this != InStatement
-
-  case object InStatement  extends SyntaxContext
-  case object InExpression extends SyntaxContext
-  case object InFromClause extends SyntaxContext
-  case object InSubQuery   extends SyntaxContext
-
-end WvletGenerator
 
 class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
     ctx: Context = Context.NoContext
 ) extends CodeFormatter(config)
     with LogSupport:
-  import WvletGenerator.*
 
   /**
     * Generate a formatted Wvlet code from the given logical plan
@@ -129,7 +116,7 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
       case c: Count =>
         unary(c, "count", Nil)
       case t: TableInput =>
-        if sc.inFrom then
+        if sc.inFromClause then
           expr(t.sqlExpr)
         else
           group(text("from") + block(expr(t.sqlExpr)))
@@ -286,7 +273,7 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
   private def values(values: Values)(using sc: SyntaxContext): Doc =
     val rows: List[Doc] = values.rows.map(expr)
     def newBlock        = bracket(cs(rows))
-    if sc.inFrom then
+    if sc.inFromClause then
       newBlock
     else
       group(text("from") + whitespace + newBlock)
@@ -439,7 +426,7 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
             text("\"")
         prefix + quote + loop(i.parts) + quote
       case s: SubQueryExpression =>
-        val wv = relation(s.query)(using InExpression)
+        val wv = relation(s.query)(using InSubQuery)
         codeBlock(wv)
       case i: IfExpr =>
         ws("if", expr(i.cond), "then", block(expr(i.onTrue)), "else", block(expr(i.onFalse)))

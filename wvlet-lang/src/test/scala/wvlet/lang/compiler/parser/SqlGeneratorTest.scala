@@ -19,5 +19,5 @@ abstract class SqlGeneratorSpec(path: String) extends AirSpec:
       }
     }
 
-class TPCHGeneratorTest  extends SqlGeneratorSpec("spec/sql/tpc-h")
-class TPCDSGeneratorTest extends SqlGeneratorSpec("spec/sql/tpc-ds")
+class SplGeneratorTPCHSpec  extends SqlGeneratorSpec("spec/sql/tpc-h")
+class SqlGeneratorTPCDSSpec extends SqlGeneratorSpec("spec/sql/tpc-ds")

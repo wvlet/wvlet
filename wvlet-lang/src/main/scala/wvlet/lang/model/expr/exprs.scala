@@ -420,10 +420,10 @@ case class In(a: Expression, list: List[Expression], span: Span) extends Conditi
 case class NotIn(a: Expression, list: List[Expression], span: Span) extends ConditionalExpression:
   override def children: Seq[Expression] = Seq(a) ++ list
 
-case class InSubQuery(a: Expression, in: Relation, span: Span) extends ConditionalExpression:
+case class InRelation(a: Expression, in: Relation, span: Span) extends ConditionalExpression:
   override def children: Seq[Expression] = Seq(a) ++ in.childExpressions
 
-case class NotInSubQuery(a: Expression, in: Relation, span: Span) extends ConditionalExpression:
+case class NotInRelation(a: Expression, in: Relation, span: Span) extends ConditionalExpression:
   override def children: Seq[Expression] = Seq(a) ++ in.childExpressions
 
 case class Like(left: Expression, right: Expression, span: Span)

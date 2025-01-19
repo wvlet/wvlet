@@ -2,7 +2,6 @@ package wvlet.lang.compiler.codegen
 
 import wvlet.lang.api.Span.NoSpan
 import wvlet.lang.api.StatusCode
-import wvlet.lang.compiler.DBType.DuckDB
 import wvlet.lang.compiler.transform.ExpressionEvaluator
 import wvlet.lang.compiler.{Context, DBType, ModelSymbolInfo, SQLDialect}
 import wvlet.lang.model.DataType
@@ -12,52 +11,14 @@ import wvlet.lang.model.plan.JoinType.*
 import wvlet.lang.model.plan.*
 import wvlet.lang.model.plan.SamplingSize.{Percentage, Rows}
 import wvlet.log.LogSupport
+import SyntaxContext.*
+import wvlet.lang.compiler.formatter.CodeFormatter
+import wvlet.lang.compiler.formatter.CodeFormatter.*
+import wvlet.lang.compiler.formatter.CodeFormatterConfig
 
 import scala.collection.immutable.ListMap
 
 object SqlGenerator:
-  sealed trait SqlContext:
-    def nestingLevel: Int
-    def nested: SqlContext          = Indented(nestingLevel + 1, parent = Some(this))
-    def enterFrom: SqlContext       = InFromClause(nestingLevel + 1)
-    def enterJoin: SqlContext       = InJoinClause(nestingLevel + 1)
-    def enterExpression: SqlContext = InExpression(nestingLevel + 1)
-
-    def isNested: Boolean             = nestingLevel > 0
-    def needsToWrapWithParen: Boolean = nestingLevel > 0 || withinExpression
-
-    def withinJoin: Boolean =
-      this match
-        case InJoinClause(_) =>
-          true
-        case Indented(_, Some(parent)) =>
-          parent.withinJoin
-        case _ =>
-          false
-
-    def withinFrom: Boolean =
-      this match
-        case InFromClause(_) =>
-          true
-        case InJoinClause(_) =>
-          true
-        case _ =>
-          false
-
-    def withinExpression: Boolean =
-      this match
-        case InExpression(_) =>
-          true
-        case _ =>
-          false
-
-  end SqlContext
-
-  case class Indented(nestingLevel: Int, parent: Option[SqlContext] = None) extends SqlContext
-  case class InFromClause(nestingLevel: Int)                                extends SqlContext
-  case class InJoinClause(nestingLevel: Int)                                extends SqlContext
-  case class InExpression(nestingLevel: Int)                                extends SqlContext
-
   private val identifierPattern = "^[_a-zA-Z][_a-zA-Z0-9]*$".r
   private def doubleQuoteIfNecessary(s: String): String =
     if identifierPattern.matches(s) then
@@ -74,7 +35,7 @@ end SqlGenerator
   *   - As Wvlet's LogicalPlan may not have SELECT node (e.g., Project), complement the missing
   *     SELECT node (select *)
   *   - Then recursively traverse and generate SQL strings by tracking the indentation level and SQL
-  *     syntax context in SqlContext
+  *     syntax context in SyntaxContext
   *   - As SQL requires to have a rigit structure of SELECT ... FROM .. WHERE .. GROUP BY ... HAVING
   *     .. ORDER BY ... LIMIT, some we push some plan nodes to remainingParents stack
   *   - When we find Selection node (Project, Agg, column-level operators), consolidate
@@ -83,47 +44,37 @@ end SqlGenerator
   * @param dbType
   * @param ctx
   */
-class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) extends LogSupport:
+class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoContext)
+    extends CodeFormatter(config)
+    with LogSupport:
   import SqlGenerator.*
 
   def print(l: LogicalPlan): String =
+    val doc: Doc = toDoc(l)
+    render(0, doc)
 
-    def iter(plan: LogicalPlan): String =
+  def toDoc(l: LogicalPlan): Doc =
+    def iter(plan: LogicalPlan): Doc =
       plan match
         case r: Relation =>
-          printQuery(r, Nil)(using SqlGenerator.Indented(0))
+          query(r, Nil)(using InStatement)
         case p: PackageDef =>
-          p.statements.map(stmt => iter(stmt)).mkString(";\n\n")
+          val stmts = p.statements.map(stmt => iter(stmt))
+          concat(stmts, text(";") + linebreak)
         case other =>
-          warn(s"unsupported logical plan: ${other}")
-          other.toString
+          warn(s"Unsupported logical plan: ${other.nodeName}")
+          text(s"-- ${other.nodeName}")
 
     val sql = iter(l)
     trace(l.pp)
     debug(sql)
     sql
 
-  private def selectAllWithIndent(tableExpr: String)(using sqlContext: SqlContext): String =
-    if sqlContext.withinFrom then
-      s"${tableExpr}"
-    else if !sqlContext.needsToWrapWithParen then
-      s"select * from ${tableExpr}"
+  private def wrapWithParenIfNecessary(body: Doc)(using sc: SyntaxContext): Doc =
+    if sc.isNested then
+      parenBlock(d)
     else
-      indent(s"(select * from ${tableExpr})")
-
-  private def selectWithIndentAndParenIfNecessary(
-      body: String
-  )(using sqlContext: SqlContext): String =
-    if !sqlContext.needsToWrapWithParen then
-      body
-    else
-      indent(s"(${body})")
-
-  private def indent(s: String)(using sqlContext: SqlContext): String =
-    if sqlContext.nestingLevel == 0 then
-      s
-    else
-      s.split("\n").map(x => s"  ${x}").mkString("\n", "\n", "")
+      d
 
   private def hasSelection(r: Relation, nestingLevel: Int = 0): Boolean =
     r match
@@ -147,7 +98,7 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
       case _ =>
         false
 
-  private def addProjectionIfMissing(r: Relation)(using sqlContext: SqlContext) =
+  private def addProjectionIfMissing(r: Relation)(using sc: SyntaxContext): Relation =
     if !hasSelection(r) then
       Project(r, List(SingleColumn(EmptyName, Wildcard(NoSpan), NoSpan)), NoSpan)
     else
@@ -157,14 +108,12 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
     * Print a query matching with SELECT statement in SQL
     * @param r
     * @param remainingParents
-    * @param sqlContext
+    * @param sc
     * @return
     */
-  private def printQuery(r: Relation, remainingParents: List[Relation])(using
-      sqlContext: SqlContext
-  ): String =
+  private def query(r: Relation, remainingParents: List[Relation])(using sc: SyntaxContext): Doc =
     val p = addProjectionIfMissing(r)
-    printRelation(p, remainingParents)
+    relation(p, remainingParents)
 
   /**
     * Print Relation nodes while tracking the parent nodes (e.g., filter, sort) for merging them
@@ -172,35 +121,35 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
     * @param r
     * @param remainingParents
     *   unprocessed parent nodes
-    * @param sqlContext
+    * @param sc
     * @return
     */
-  def printRelation(r: Relation, remainingParents: List[Relation])(using
-      sqlContext: SqlContext
-  ): String =
+  def relation(r: Relation, remainingParents: List[Relation])(using sc: SyntaxContext): Doc =
 
     r match
       case q: Query =>
-        printQuery(q.body, remainingParents)
+        query(q.body, remainingParents)
       case g: GroupBy =>
         // If there has been no Projection or Agg before GroupBy, it reaches here
-        printGroupBy(g, remainingParents)
+        groupBy(g, remainingParents)
       case a: Agg if a.child.isPivot =>
         // pivot + agg combination
         val p: Pivot = a.child.asInstanceOf[Pivot]
-        val onExpr   = printPivotOnExpr(p)
-        val aggItems = a.selectItems.map(x => printExpression(x)).mkString(", ")
+        val onExpr   = pivotOnExpr(p)
+        val aggItems = a.selectItems.map(x => expr(x)).mkString(", ")
         val pivotExpr =
-          s"pivot ${printRelation(p.child, remainingParents)(using
-              sqlContext.enterFrom
-            )}\n  on ${onExpr}\n  using ${aggItems}"
+          val child = relation(p.child, remainingParents)(using InSubQuery)
+          group(
+            text("pivot") + whitespaceOrNewline + child + whitespaceOrNewline +
+              ws(text("on"), onExpr) + whitespaceOrNewline + ws(text("using"), aggItems)
+          )
         if p.groupingKeys.isEmpty then
-          selectWithIndentAndParenIfNecessary(pivotExpr)
+          wrapWithParenIfNecessary(pivotExpr)
         else
-          val groupByItems = p.groupingKeys.map(x => printExpression(x)).mkString(", ")
-          selectWithIndentAndParenIfNecessary(s"${pivotExpr}\n  group by ${groupByItems}")
+          val groupByItems = p.groupingKeys.map(x => expr(x)).mkString(", ")
+          wrapWithParenIfNecessary(s"${pivotExpr}\n  group by ${groupByItems}")
       case s: Selection =>
-        printAsSelect(s, remainingParents)
+        select(s, remainingParents)
       case j: Join =>
         val asof =
           if j.asof then
@@ -211,8 +160,8 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
           else
             ""
 
-        val l = printRelation(j.left, remainingParents)(using sqlContext.enterJoin)
-        val r = printRelation(j.right, Nil)(using sqlContext.enterJoin)
+        val l = relation(j.left, remainingParents)(using sc.enterJoin)
+        val r = relation(j.right, Nil)(using sc.enterJoin)
         val c =
           j.cond match
             case NoJoinCriteria =>
@@ -222,9 +171,9 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
             case u: JoinOnTheSameColumns =>
               s" using(${u.columns.map(_.fullName).mkString(", ")})"
             case JoinOn(expr, _) =>
-              s" on ${printExpression(expr)}"
+              s" on ${expr(expr)}"
             case JoinOnEq(keys, _) =>
-              s" on ${printExpression(Expression.concatWithEq(keys))}"
+              s" on ${expr(Expression.concatWithEq(keys))}"
         val joinSQL =
           j.joinType match
             case InnerJoin =>
@@ -247,29 +196,27 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
             case Nil =>
               Nil
             case head :: tail =>
-              val hd = printQuery(head, remainingParents)(using sqlContext)
-              val tl = tail.map(x => printQuery(x, Nil)(using sqlContext))
+              val hd = query(head, remainingParents)(using sc)
+              val tl = tail.map(x => query(x, Nil)(using sc))
               hd :: tl
         val op  = s.toSQLOp
         val sql = rels.mkString(s"\n${op}\n")
         selectWithIndentAndParenIfNecessary(sql)
       case p: Pivot => // pivot without explicit aggregations
         selectWithIndentAndParenIfNecessary(
-          s"pivot ${printRelation(p.child, remainingParents)(using
-              sqlContext.enterFrom
-            )}\n  on ${printPivotOnExpr(p)}"
+          s"pivot ${relation(p.child, remainingParents)(using sc.enterFrom)}\n  on ${pivotOnExpr(
+              p
+            )}"
         )
       case d: Debug =>
         // Skip debug expression
-        printRelation(d.inputRelation, remainingParents)
+        relation(d.inputRelation, remainingParents)
       case d: Dedup =>
         selectWithIndentAndParenIfNecessary(
-          s"""select distinct * from ${printRelation(d.child, remainingParents)(using
-              sqlContext.enterFrom
-            )}"""
+          s"""select distinct * from ${relation(d.child, remainingParents)(using sc.enterFrom)}"""
         )
       case s: Sample =>
-        val child = printRelation(s.child, remainingParents)(using sqlContext.enterFrom)
+        val child = relation(s.child, remainingParents)(using sc.enterFrom)
         val body: String =
           dbType match
             case DBType.DuckDB =>
@@ -296,7 +243,7 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
         selectWithIndentAndParenIfNecessary(body)
       case a: AliasedRelation =>
         val tableAlias: String =
-          val name = printExpression(a.alias)
+          val name = expr(a.alias)
           a.columnNames match
             case Some(columns) =>
               s"${name}(${columns.map(x => s"${x.toSQLAttributeName}").mkString(", ")})"
@@ -305,20 +252,16 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
 
         a.child match
           case t: TableInput =>
-            s"${printExpression(t.sqlExpr)} as ${tableAlias}"
+            s"${expr(t.sqlExpr)} as ${tableAlias}"
           case v: Values =>
-            s"${printValues(v)} as ${tableAlias}"
-//          case v: Values if sqlContext.nestingLevel > 0 && sqlContext.withinJoin =>
+            s"${values(v)} as ${tableAlias}"
+//          case v: Values if sc.nestingLevel > 0 && sc.withinJoin =>
 //            // For joins, expose table column aliases to the outer scope
 //            s"${selectWithIndentAndParenIfNecessary(s"select * from ${printValues(v)} as ${tableAlias}")} as ${a.alias.fullName}"
           case _ =>
-            indent(
-              s"${printRelation(a.child, remainingParents)(using
-                  sqlContext.nested
-                )} as ${tableAlias}"
-            )
+            indent(s"${relation(a.child, remainingParents)(using sc.nested)} as ${tableAlias}")
       case p: BracedRelation =>
-        def inner = printRelation(p.child, Nil)
+        def inner = relation(p.child, Nil)
         p.child match
           case v: Values =>
             // No need to wrap values query
@@ -326,31 +269,31 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
           case AliasedRelation(v: Values, _, _, _) =>
             inner
           case _ =>
-            val body = printQuery(p.child, Nil)(using sqlContext.nested)
+            val body = query(p.child, Nil)(using sc.nested)
             selectWithIndentAndParenIfNecessary(body)
       case t: TestRelation =>
-        printRelation(t.inputRelation, remainingParents)(using sqlContext)
+        relation(t.inputRelation, remainingParents)(using sc)
       case q: WithQuery =>
         val subQueries = q
           .queryDefs
           .map { w =>
-            val subQuery = printQuery(w.child, Nil)(using Indented(0))
-            s"${printExpression(w.alias)} as (\n${subQuery}\n)"
+            val subQuery = query(w.child, Nil)(using Indented(0))
+            s"${expr(w.alias)} as (\n${subQuery}\n)"
           }
-        val body     = printQuery(q.queryBody, remainingParents)(using sqlContext)
+        val body     = query(q.queryBody, remainingParents)(using sc)
         val withStmt = subQueries.mkString("with ", ", ", "")
         s"""${withStmt}
            |${body}
            |""".stripMargin
       case f: FilteringRelation =>
         // Sort, Offset, Limit, Filter, Distinct, etc.
-        printRelation(f.child, f :: remainingParents)
+        relation(f.child, f :: remainingParents)
       case t: TableInput =>
-        printExpression(t.sqlExpr)
+        expr(t.sqlExpr)
       case v: Values =>
-        printValues(v)
+        values(v)
       case s: SelectAsAlias =>
-        printRelation(s.child, remainingParents)
+        relation(s.child, remainingParents)
       case d: Describe =>
         // TODO: Compute schema only from local DataType information without using connectors
         // Trino doesn't support nesting describe statement, so we need to generate raw values as SQL
@@ -372,7 +315,7 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
       case r: RelationInspector =>
         // Skip relation inspector
         // TODO Dump output to the file logger
-        printRelation(r.child, remainingParents)
+        relation(r.child, remainingParents)
       case s: Show if s.showType == ShowType.tables =>
         val sql  = s"select table_name as name from information_schema.tables"
         val cond = List.newBuilder[Expression]
@@ -411,7 +354,7 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
           if conds.size == 0 then
             sql
           else
-            s"${sql} where ${printExpression(Expression.concatWithAnd(conds))}"
+            s"${sql} where ${expr(Expression.concatWithAnd(conds))}"
         selectWithIndentAndParenIfNecessary(s"${body} order by name")
       case s: Show if s.showType == ShowType.schemas =>
         val sql =
@@ -439,7 +382,7 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
           if conds.size == 0 then
             sql
           else
-            s"${sql} where ${printExpression(Expression.concatWithAnd(conds))}"
+            s"${sql} where ${expr(Expression.concatWithAnd(conds))}"
         selectWithIndentAndParenIfNecessary(s"${body} order by name")
       case s: Show if s.showType == ShowType.catalogs =>
         val sql = s"""select distinct catalog_name as "name" from information_schema.schemata"""
@@ -499,11 +442,9 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
         other.pp
     end match
 
-  end printRelation
+  end relation
 
-  private def printAsSelect(r: Relation, parents: List[Relation])(using
-      sqlContext: SqlContext
-  ): String =
+  private def select(r: Relation, parents: List[Relation])(using sc: SyntaxContext): Doc =
 
     var remainingParents     = parents
     var having: List[Filter] = Nil
@@ -561,7 +502,7 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
 
     remainingParents = processSortAndLimit(remainingParents)
 
-    val sqlSelect = toSQLSelect(
+    val sqlSelect = sqlSelect(
       SQLSelect(inputRelation, selectItems, Nil, having, parentFilters, orderBy, limit, r.span),
       inputRelation
     )
@@ -577,7 +518,7 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
       if selectItems.isEmpty then
         "*"
       else
-        sqlSelect.selectItems.map(x => printExpression(x)).mkString(", ")
+        sqlSelect.selectItems.map(x => expr(x)).mkString(", ")
     val s = Seq.newBuilder[String]
     s +=
       s"select ${
@@ -591,21 +532,21 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
       case e: EmptyRelation =>
       // Do not add from clause for empty inputs
       case t: TableInput =>
-        s += s"from ${printExpression(t.sqlExpr)}"
+        s += s"from ${expr(t.sqlExpr)}"
       case _ =>
         // Start a new SELECT statement inside FROM
-        s += s"from ${printRelation(sqlSelect.child, Nil)(using sqlContext.enterFrom)}"
+        s += s"from ${relation(sqlSelect.child, Nil)(using sc.enterFrom)}"
     if sqlSelect.filters.nonEmpty then
       val filterExpr = Expression.concatWithAnd(sqlSelect.filters.map(x => x.filterExpr))
-      s += s"where ${printExpression(filterExpr)}"
+      s += s"where ${expr(filterExpr)}"
     if sqlSelect.groupingKeys.nonEmpty then
-      s += s"group by ${sqlSelect.groupingKeys.map(x => printExpression(x)).mkString(", ")}"
+      s += s"group by ${sqlSelect.groupingKeys.map(x => expr(x)).mkString(", ")}"
     if sqlSelect.having.nonEmpty then
-      s += s"having ${sqlSelect.having.map(x => printExpression(x.filterExpr)).mkString(", ")}"
+      s += s"having ${sqlSelect.having.map(x => expr(x.filterExpr)).mkString(", ")}"
     if sqlSelect.orderBy.nonEmpty then
-      s += s"order by ${sqlSelect.orderBy.map(x => printExpression(x)).mkString(", ")}"
+      s += s"order by ${sqlSelect.orderBy.map(x => expr(x)).mkString(", ")}"
     if sqlSelect.limit.nonEmpty then
-      s += s"limit ${printExpression(sqlSelect.limit.get)}"
+      s += s"limit ${expr(sqlSelect.limit.get)}"
 
     val body = selectWithIndentAndParenIfNecessary(s"${s.result().mkString("\n")}")
     if remainingParents.isEmpty then
@@ -618,9 +559,9 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
             .fileName})"
       )
       body
-  end printAsSelect
+  end select
 
-  private def toSQLSelect(agg: SQLSelect, r: Relation): SQLSelect =
+  private def sqlSelect(agg: SQLSelect, r: Relation): SQLSelect =
     def collectFilter(plan: Relation): (List[Filter], Relation) =
       plan match
         case f: Filter =>
@@ -652,16 +593,14 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
         agg.copy(child = a.child, groupingKeys = a.groupingKeys, filters = agg.filters ++ filters)
       case _ =>
         agg
-  end toSQLSelect
+  end sqlSelect
 
-  private def printGroupBy(g: GroupBy, parents: List[Relation])(using
-      sqlContext: SqlContext
-  ): String =
+  private def groupBy(g: GroupBy, parents: List[Relation])(using sc: SyntaxContext): Doc =
     // Translate GroupBy node without any projection (select) to Agg node
     val keys: List[Attribute] = g
       .groupingKeys
       .map { k =>
-        val keyName = printExpression(k)
+        val keyName = expr(k)
         SingleColumn(NameExpr.fromString(keyName), k.name, NoSpan)
       }
     val aggExprs: List[Attribute] =
@@ -683,92 +622,92 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
                 // DuckDB generates human-friendly column name
                 EmptyName
               case _ =>
-                val exprStr = printExpression(expr)
+                val exprStr = expr(expr)
                 NameExpr.fromString(exprStr)
           SingleColumn(name, expr, NoSpan)
         }
         .toList
 
     val agg = Agg(g, keys, aggExprs, g.span)
-    printRelation(agg, parents)
-  end printGroupBy
+    relation(agg, parents)
+  end groupBy
 
-  private def printValues(values: Values)(using sqlContext: SqlContext): String =
+  private def values(values: Values)(using sc: SyntaxContext): String =
     val rows = values
       .rows
       .map { row =>
         row match
           case a: ArrayConstructor =>
-            val elems = a.values.map(x => printExpression(x)).mkString(", ")
+            val elems = a.values.map(x => expr(x)).mkString(", ")
             s"(${elems})"
           case other =>
-            printExpression(other)
+            expr(other)
       }
       .mkString(", ")
     s"(values ${rows})"
 
-  private def printPivotOnExpr(p: Pivot)(using sqlContext: SqlContext): String = p
+  private def pivotOnExpr(p: Pivot)(using sc: SyntaxContext): Doc = p
     .pivotKeys
     .map { k =>
-      val values = k.values.map(v => printExpression(v)).mkString(", ")
+      val values = k.values.map(v => expr(v)).mkString(", ")
       if values.isEmpty then
-        s"${printExpression(k.name)}"
+        s"${expr(k.name)}"
       else
-        s"${printExpression(k.name)} in (${values})"
+        s"${expr(k.name)} in (${values})"
     }
     .mkString(", ")
-  end printPivotOnExpr
+  end pivotOnExpr
 
-  def printExpression(expression: Expression)(using sqlContext: SqlContext = Indented(0)): String =
+  def expr(expression: Expression)(using sc: SyntaxContext = InStatement): Doc =
     expression match
       case g: UnresolvedGroupingKey =>
-        printExpression(g.child)
+        expr(g.child)
       case f: FunctionApply =>
-        val base = printExpression(f.base)
-        val args = f.args.map(x => printExpression(x)).mkString(", ")
-        val w    = f.window.map(x => printExpression(x))
+        val base = expr(f.base)
+        val args = f.args.map(x => expr(x)).mkString(", ")
+        val w    = f.window.map(x => expr(x))
         val stem = s"${base}(${args})"
         if w.isDefined then
           s"${stem} ${w.get}"
         else
           stem
       case w: WindowApply =>
-        val base   = printExpression(w.base)
-        val window = printExpression(w.window)
+        val base   = expr(w.base)
+        val window = expr(w.window)
         Seq(s"${base}", window).mkString(" ")
       case f: FunctionArg =>
         // TODO handle arg name mapping
         if f.isDistinct then
-          s"distinct ${printExpression(f.value)}"
+          s"distinct ${expr(f.value)}"
         else
-          printExpression(f.value)
+          expr(f.value)
       case w: Window =>
         val s = Seq.newBuilder[String]
         if w.partitionBy.nonEmpty then
           s += "partition by"
-          s += w.partitionBy.map(x => printExpression(x)).mkString(", ")
+          s += w.partitionBy.map(x => expr(x)).mkString(", ")
         if w.orderBy.nonEmpty then
           s += "order by"
-          s += w.orderBy.map(x => printExpression(x)).mkString(", ")
+          s += w.orderBy.map(x => expr(x)).mkString(", ")
         w.frame
           .foreach { f =>
             s += s"${f.frameType.expr} between ${f.start.expr} and ${f.end.expr}"
           }
         s"over (${s.result().mkString(" ")})"
       case Eq(left, n: NullLiteral, _) =>
-        s"${printExpression(left)} is null"
+        s"${expr(left)} is null"
       case NotEq(left, n: NullLiteral, _) =>
-        s"${printExpression(left)} is not null"
+        s"${expr(left)} is not null"
       case a: ArithmeticUnaryExpr =>
         a.sign match
           case Sign.NoSign =>
-            printExpression(a.child)
+            expr(a.child)
           case Sign.Positive =>
-            s"+${printExpression(a.child)}"
+            s"+${expr(a.child)}"
           case Sign.Negative =>
-            s"-${printExpression(a.child)}"
+            s"-${expr(a.child)}"
       case b: BinaryExpression =>
-        s"${printExpression(b.left)} ${b.operatorName} ${printExpression(b.right)}"
+        s"${expr(b.left)} ${b.operatorName} ${expr(b.right)}"
       case s: StringPart =>
         s.stringValue
       case l: Literal =>
@@ -781,9 +720,9 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
       case i: Identifier =>
         i.strExpr
       case s: SortItem =>
-        s"${printExpression(s.sortKey)}${s.ordering.map(x => s" ${x.expr}").getOrElse("")}"
+        s"${expr(s.sortKey)}${s.ordering.map(x => s" ${x.expr}").getOrElse("")}"
       case s: SingleColumn =>
-        val left = printExpression(s.expr)
+        val left = expr(s.expr)
         if s.nameExpr.isEmpty then
           left
         else if left != s.nameExpr.toSQLAttributeName then
@@ -793,71 +732,69 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
       case a: Attribute =>
         a.fullName
       case t: TypedExpression =>
-        printExpression(t.child)
+        expr(t.child)
       case p: ParenthesizedExpression =>
-        s"(${printExpression(p.child)})"
+        s"(${expr(p.child)})"
       case i: InterpolatedString =>
         i.parts
           .map { e =>
-            printExpression(e)
+            expr(e)
           }
           .mkString
       case s: SubQueryExpression =>
-        val sql = printQuery(s.query, Nil)(using sqlContext.enterExpression)
+        val sql = query(s.query, Nil)(using sc.enterExpression)
         sql
       case i: IfExpr =>
-        s"if(${printExpression(i.cond)}, ${printExpression(i.onTrue)}, ${printExpression(
-            i.onFalse
-          )})"
+        s"if(${expr(i.cond)}, ${expr(i.onTrue)}, ${expr(i.onFalse)})"
       case n: Not =>
-        s"not ${printExpression(n.child)}"
+        s"not ${expr(n.child)}"
       case l: ListExpr =>
-        l.exprs.map(x => printExpression(x)).mkString(", ")
+        l.exprs.map(x => expr(x)).mkString(", ")
       case d @ DotRef(qual: Expression, name: NameExpr, _, _) =>
-        s"${printExpression(qual)}.${printExpression(name)}"
+        s"${expr(qual)}.${expr(name)}"
       case in: In =>
-        val left  = printExpression(in.a)
-        val right = in.list.map(x => printExpression(x)).mkString(", ")
+        val left  = expr(in.a)
+        val right = in.list.map(x => expr(x)).mkString(", ")
         s"${left} in (${right})"
       case notIn: NotIn =>
-        val left  = printExpression(notIn.a)
-        val right = notIn.list.map(x => printExpression(x)).mkString(", ")
+        val left  = expr(notIn.a)
+        val right = notIn.list.map(x => expr(x)).mkString(", ")
         s"${left} not in (${right})"
 //      case n: NativeExpression =>
 //        printExpression(ExpressionEvaluator.eval(n, ctx))
       case a: ArrayConstructor =>
-        s"ARRAY[${a.values.map(x => printExpression(x)).mkString(", ")}]"
+        s"ARRAY[${a.values.map(x => expr(x)).mkString(", ")}]"
       case a: ArrayAccess =>
-        s"${printExpression(a.arrayExpr)}[${printExpression(a.index)}]"
+        s"${expr(a.arrayExpr)}[${expr(a.index)}]"
       case c: CaseExpr =>
         val s = Seq.newBuilder[String]
         s += "case"
         c.target
           .foreach { t =>
-            s += s"${printExpression(t)}"
+            s += s"${expr(t)}"
           }
         c.whenClauses
           .foreach { w =>
-            s += s"when ${printExpression(w.condition)} then ${printExpression(w.result)}"
+            s += s"when ${expr(w.condition)} then ${expr(w.result)}"
           }
         c.elseClause
           .foreach { e =>
-            s += s"else ${printExpression(e)}"
+            s += s"else ${expr(e)}"
           }
         s += "end"
         s.result().mkString(" ")
       case l: LambdaExpr =>
-        val args = l.args.map(printExpression(_)).mkString(", ")
+        val args = l.args.map(expr(_)).mkString(", ")
         if l.args.size == 1 then
-          s"${args} -> ${printExpression(l.body)}"
+          s"${args} -> ${expr(l.body)}"
         else
-          s"(${args}) -> ${printExpression(l.body)}"
+          s"(${args}) -> ${expr(l.body)}"
       case s: StructValue if dbType.supportRowExpr =>
         // For Trino
         val fields = s
           .fields
           .map { f =>
-            printExpression(f.value)
+            expr(f.value)
           }
         val schema = s
           .fields
@@ -871,7 +808,7 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
         val fields = s
           .fields
           .map { f =>
-            s"${f.name}: ${printExpression(f.value)}"
+            s"${f.name}: ${expr(f.value)}"
           }
         s"{${fields.mkString(", ")}}"
       case m: MapValue =>
@@ -880,23 +817,23 @@ class SqlGenerator(dbType: DBType)(using ctx: Context = Context.NoContext) exten
             val entries = m
               .entries
               .map { e =>
-                s"${printExpression(e.key)}: ${printExpression(e.value)}"
+                s"${expr(e.key)}: ${expr(e.value)}"
               }
             s"MAP{${entries.mkString(", ")}}"
           case SQLDialect.MapSyntax.ArrayPair =>
             val keys   = ArrayConstructor(m.entries.map(_.key), m.span)
             val values = ArrayConstructor(m.entries.map(_.value), m.span)
-            s"MAP(${printExpression(keys)}, ${printExpression(values)})"
+            s"MAP(${expr(keys)}, ${expr(values)})"
       case b: Between =>
-        s"${printExpression(b.e)} between ${printExpression(b.a)} and ${printExpression(b.b)}"
+        s"${expr(b.e)} between ${expr(b.a)} and ${expr(b.b)}"
       case b: NotBetween =>
-        s"${printExpression(b.e)} not between ${printExpression(b.a)} and ${printExpression(b.b)}"
+        s"${expr(b.e)} not between ${expr(b.a)} and ${expr(b.b)}"
       case c: Cast =>
-        s"cast(${printExpression(c.child)} as ${c.dataType.typeName})"
+        s"cast(${expr(c.child)} as ${c.dataType.typeName})"
       case n: NativeExpression =>
-        printExpression(ExpressionEvaluator.eval(n))
+        expr(ExpressionEvaluator.eval(n))
       case e: Exists =>
-        s"exists ${printExpression(e.child)}"
+        s"exists ${expr(e.child)}"
       case other =>
         warn(s"unknown expression type: ${other}")
         other.toString

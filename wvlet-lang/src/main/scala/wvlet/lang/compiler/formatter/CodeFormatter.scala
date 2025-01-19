@@ -1,5 +1,7 @@
 package wvlet.lang.compiler.formatter
 
+import wvlet.lang.compiler.DBType
+
 import scala.annotation.tailrec
 
 case class CodeFormatterConfig(
@@ -7,7 +9,8 @@ case class CodeFormatterConfig(
     maxLineWidth: Int = 80,
     preserveNewLines: Int = 1,
     addTrailingCommaToItemList: Boolean = true,
-    fitToLine: Boolean = true
+    fitToLine: Boolean = true,
+    sqlDBType: DBType = DBType.DuckDB
 )
 
 /**
@@ -244,6 +247,10 @@ object CodeFormatter:
 
   def codeBlock(d: Doc): Doc = group(
     text("{") + nest(whitespaceOrNewline + d) + whitespaceOrNewline + text("}")
+  )
+
+  def parenBlock(d: Doc): Doc = group(
+    text("(") + nest(whitespaceOrNewline + d) + whitespaceOrNewline + text(")")
   )
 
   /**
