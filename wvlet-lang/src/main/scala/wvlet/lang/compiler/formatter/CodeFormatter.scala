@@ -193,7 +193,7 @@ object CodeFormatter:
         empty
 
   /**
-    * Concatenate a list of docs with a comma separator
+    * Comma-separate list of the given Doc list
     *
     * @param lst
     * @return

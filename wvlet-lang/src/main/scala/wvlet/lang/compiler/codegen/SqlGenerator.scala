@@ -1,5 +1,6 @@
 package wvlet.lang.compiler.codegen
 
+import wvlet.lang.api.Span
 import wvlet.lang.api.Span.NoSpan
 import wvlet.lang.api.StatusCode
 import wvlet.lang.compiler.transform.ExpressionEvaluator
@@ -48,6 +49,8 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
     extends CodeFormatter(config)
     with LogSupport:
   import SqlGenerator.*
+
+  private def dbType: DBType = config.sqlDBType
 
   def print(l: LogicalPlan): String =
     val doc: Doc = toDoc(l)
@@ -767,28 +770,24 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       case a: ArrayAccess =>
         s"${expr(a.arrayExpr)}[${expr(a.index)}]"
       case c: CaseExpr =>
-        val s = Seq.newBuilder[String]
-        s += "case"
-        c.target
-          .foreach { t =>
-            s += s"${expr(t)}"
-          }
-        c.whenClauses
-          .foreach { w =>
-            s += s"when ${expr(w.condition)} then ${expr(w.result)}"
-          }
-        c.elseClause
-          .foreach { e =>
-            s += s"else ${expr(e)}"
-          }
-        s += "end"
-        s.result().mkString(" ")
+        ws(
+          ws("case", c.target.map(expr)),
+          c.whenClauses
+            .map { w =>
+              nest(newline + ws("when", expr(w.condition), "then", expr(w.result)))
+            },
+          c.elseClause
+            .map { e =>
+              nest(newline + ws("else", expr(e)))
+            },
+          "end"
+        )
       case l: LambdaExpr =>
-        val args = l.args.map(expr(_)).mkString(", ")
+        val args = cs(l.args.map(expr(_)))
         if l.args.size == 1 then
-          s"${args} -> ${expr(l.body)}"
+          args + whitespace + "->" + whitespaceOrNewline + expr(l.body)
         else
-          s"(${args}) -> ${expr(l.body)}"
+          paren(args) + whitespace + "->" + whitespaceOrNewline + expr(l.body)
       case s: StructValue if dbType.supportRowExpr =>
         // For Trino
         val fields = s
@@ -800,42 +799,47 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
           .fields
           .map { f =>
             val sqlType = DataType.toSQLType(f.value.dataType, dbType)
-            s"${f.name} ${sqlType}"
+            group(text(f.name) + whitespace + sqlType)
           }
-          .mkString(", ")
-        s"cast(row(${fields.mkString(", ")}) as row(${schema}))"
+        text("cast") + paren(cs(fields)) + whitespaceOrNewline + text("as") + whitespace +
+          text("row") + paren(cs(schema))
       case s: StructValue =>
         val fields = s
           .fields
           .map { f =>
-            s"${f.name}: ${expr(f.value)}"
+            group(text(f.name) + ":" + whitespace + expr(f.value))
           }
-        s"{${fields.mkString(", ")}}"
+        bracket(cs(fields))
       case m: MapValue =>
         dbType.mapConstructorSyntax match
           case SQLDialect.MapSyntax.KeyValue =>
-            val entries = m
+            val entries: List[Doc] = m
               .entries
               .map { e =>
-                s"${expr(e.key)}: ${expr(e.value)}"
+                group(ws(expr(e.key) + ":", expr(e.value)))
               }
-            s"MAP{${entries.mkString(", ")}}"
+            ws("MAP", brace(cs(entries)))
           case SQLDialect.MapSyntax.ArrayPair =>
             val keys   = ArrayConstructor(m.entries.map(_.key), m.span)
             val values = ArrayConstructor(m.entries.map(_.value), m.span)
-            s"MAP(${expr(keys)}, ${expr(values)})"
+            text("MAP") + paren(cs(List(expr(keys), expr(values))))
       case b: Between =>
-        s"${expr(b.e)} between ${expr(b.a)} and ${expr(b.b)}"
+        ws(expr(b.e), "between", expr(b.a), "and", expr(b.b))
       case b: NotBetween =>
-        s"${expr(b.e)} not between ${expr(b.a)} and ${expr(b.b)}"
+        ws(expr(b.e), "not between", expr(b.a), "and", expr(b.b))
       case c: Cast =>
-        s"cast(${expr(c.child)} as ${c.dataType.typeName})"
+        group(ws(text("cast") + paren(ws(expr(c.child), "as", text(c.dataType.typeName.toString)))))
       case n: NativeExpression =>
         expr(ExpressionEvaluator.eval(n))
       case e: Exists =>
-        s"exists ${expr(e.child)}"
+        ws(text("exists"), expr(e.child))
       case other =>
-        warn(s"unknown expression type: ${other}")
-        other.toString
+        unsupportedNode(s"Expression ${other.nodeName}", other.span)
+
+  private def unsupportedNode(nodeType: String, span: Span): Doc =
+    val loc = ctx.sourceLocationAt(span)
+    val msg = s"Unsupported ${nodeType} (${loc})"
+    warn(msg)
+    text(s"-- ${msg}")
 
 end SqlGenerator
