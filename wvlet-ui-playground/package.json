@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@duckdb/duckdb-wasm": "^1.29.0",
-    "apache-arrow": "^18.1.0",
+    "apache-arrow": "^19.0.0",
     "monaco-editor": "^0.52.2",
     "rollup": "^4.31.0"
   },
