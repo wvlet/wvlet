@@ -11,12 +11,12 @@ abstract class SqlGeneratorSpec(path: String) extends AirSpec:
     .fromPath(path)
     .foreach { unit =>
       test(s"parse ${name}:${unit.sourceFile.fileName}") {
-        debug(unit.sourceFile.getContentAsString)
+        trace(unit.sourceFile.getContentAsString)
         val stmt = SqlParser(unit, isContextUnit = true).parse()
         trace(stmt.pp)
         val g   = SqlGenerator(CodeFormatterConfig(sqlDBType = DBType.DuckDB))
         val sql = g.print(stmt)
-        debug(sql)
+        debug(s"[formatted: ${unit.sourceFile.fileName}]\n${sql}")
       }
     }
 

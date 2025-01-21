@@ -595,28 +595,31 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         text("*")
       else
         cs(sqlSelect.selectItems.map(x => expr(x)))
+
+    def indented(d: Doc): Doc = nest(maybeNewline + d)
+
     val s = List.newBuilder[Doc]
-    s += group(ws("select", distinct, selectItemsExpr))
+    s += group(ws("select", distinct, indented(selectItemsExpr)))
 
     sqlSelect.child match
       case e: EmptyRelation =>
       // Do not add from clause for empty inputs
       case t: TableInput =>
-        s += group(ws("from", expr(t.sqlExpr)))
+        s += group(ws("from", indented(expr(t.sqlExpr))))
       case _ =>
         // Start a new SELECT statement inside FROM
-        s += group(ws("from", relation(sqlSelect.child, Nil)(using InFromClause)))
+        s += group(ws("from", indented(relation(sqlSelect.child, Nil)(using InFromClause))))
     if sqlSelect.filters.nonEmpty then
       val filterExpr = Expression.concatWithAnd(sqlSelect.filters.map(x => x.filterExpr))
-      s += group(ws("where", expr(filterExpr)))
+      s += group(ws("where", indented(expr(filterExpr))))
     if sqlSelect.groupingKeys.nonEmpty then
-      s += group(ws("group by", cs(sqlSelect.groupingKeys.map(x => expr(x)))))
+      s += group(ws("group by", indented(cs(sqlSelect.groupingKeys.map(x => expr(x))))))
     if sqlSelect.having.nonEmpty then
-      s += group(ws("having", cs(sqlSelect.having.map(x => expr(x.filterExpr)))))
+      s += group(ws("having", indented(cs(sqlSelect.having.map(x => expr(x.filterExpr))))))
     if sqlSelect.orderBy.nonEmpty then
-      s += group(ws("order by", cs(sqlSelect.orderBy.map(x => expr(x)))))
+      s += group(ws("order by", indented(cs(sqlSelect.orderBy.map(x => expr(x))))))
     if sqlSelect.limit.nonEmpty then
-      s += group(ws("limit", expr(sqlSelect.limit.get)))
+      s += group(ws("limit", indented(expr(sqlSelect.limit.get))))
 
     val body = wrapWithParenIfNecessary(lines(s.result()))
     if remainingParents.isEmpty then
@@ -771,6 +774,9 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             text("+") + expr(a.child)
           case Sign.Negative =>
             text("-") + expr(a.child)
+      case c: LogicalConditionalExpression =>
+        // For adding optional newlines for AND/OR
+        expr(c.left) + whitespaceOrNewline + text(c.operatorName) + whitespace + expr(c.right)
       case b: BinaryExpression =>
         ws(expr(b.left), b.operatorName, expr(b.right))
       case s: StringPart =>
@@ -801,7 +807,8 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       case i: InterpolatedString =>
         concat(i.parts.map(expr))
       case s: SubQueryExpression =>
-        val sql = query(s.query, Nil)(using InSubQuery)
+        // Generate the sub query as a top-level statement and wrap it later
+        val sql = query(s.query, Nil)(using InStatement)
         parenBlock(sql)
       case i: IfExpr =>
         text("if") + paren(cs(expr(i.cond), expr(i.onTrue), expr(i.onFalse)))

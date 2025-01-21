@@ -85,7 +85,7 @@ sealed trait NameExpr extends Expression:
           i.unquotedValue
         case _ =>
           fullName
-    if s.matches("^[_a-zA-Z][_a-zA-Z0-9]*$") && !sqlKeywords.contains(s) then
+    if s.matches("^[\\*_a-zA-Z][_a-zA-Z0-9\\*\\.]*$") && !sqlKeywords.contains(s) then
       s
     else
       s""""${s}""""

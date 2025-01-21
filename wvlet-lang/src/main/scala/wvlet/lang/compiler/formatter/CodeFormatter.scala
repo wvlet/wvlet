@@ -201,15 +201,20 @@ object CodeFormatter:
   def cs(lst: Any*): Doc = concat(to_list(lst), text(",") + whitespaceOrNewline)
 
   private def to_list(x: Any*): List[Doc] =
-    def loop(x: List[Any]): List[Doc] =
-      x match
+    def iter(lst: List[Any]): List[Doc] =
+      lst match
         case Nil =>
           Nil
-        case head :: Nil =>
-          toDoc(head) :: Nil
         case head :: tail =>
-          toDoc(head) :: loop(tail)
-    loop(x.toList).filterNot(_ == empty)
+          head match
+            case s: Seq[?] =>
+              iter(s.toList) ++ iter(tail)
+            case a: Array[?] =>
+              iter(a.toList) ++ iter(tail)
+            case _ =>
+              toDoc(head) :: iter(tail)
+
+    iter(x.toList).filterNot(_ == empty)
 
   /**
     * Concatenate items with a whitespace separator
@@ -217,7 +222,7 @@ object CodeFormatter:
     * @param lst
     * @return
     */
-  def ws(lst: Any*): Doc = concat(to_list(lst), whitespace)
+  def ws(lst: Any*): Doc = concat(to_list(lst*), whitespace)
 
   def lines(lst: List[Doc]): Doc = concat(lst, newline)
 
