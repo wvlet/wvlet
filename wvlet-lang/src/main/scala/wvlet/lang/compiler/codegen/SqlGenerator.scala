@@ -56,6 +56,10 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
     val doc: Doc = toDoc(l)
     render(0, doc)
 
+  def print(e: Expression): String =
+    val doc = expr(e)
+    render(0, doc)
+
   def toDoc(l: LogicalPlan): Doc =
     def iter(plan: LogicalPlan): Doc =
       plan match
@@ -75,9 +79,9 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
 
   private def wrapWithParenIfNecessary(body: Doc)(using sc: SyntaxContext): Doc =
     if sc.isNested then
-      parenBlock(d)
+      parenBlock(body)
     else
-      d
+      body
 
   private def hasSelection(r: Relation, nestingLevel: Int = 0): Boolean =
     r match
@@ -149,52 +153,57 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         if p.groupingKeys.isEmpty then
           wrapWithParenIfNecessary(pivotExpr)
         else
-          val groupByItems = p.groupingKeys.map(x => expr(x)).mkString(", ")
-          wrapWithParenIfNecessary(s"${pivotExpr}\n  group by ${groupByItems}")
+          val groupByItems = cs(p.groupingKeys.map(x => expr(x)))
+          wrapWithParenIfNecessary(
+            pivotExpr + newline + "group by" + whitespaceOrNewline + groupByItems
+          )
       case s: Selection =>
         select(s, remainingParents)
       case j: Join =>
-        val asof =
+        val joinType: Doc =
+          j.joinType match
+            case InnerJoin =>
+              text("join")
+            case LeftOuterJoin =>
+              text("left join")
+            case RightOuterJoin =>
+              text("right join")
+            case FullOuterJoin =>
+              text("full outer join")
+            case CrossJoin =>
+              text("cross join")
+            case ImplicitJoin =>
+              text(",")
+
+        val joinOp: Doc =
           if j.asof then
             if dbType.supportAsOfJoin then
-              "asof "
+              ws("asof", joinType)
             else
               throw StatusCode.SYNTAX_ERROR.newException(s"AsOf join is not supported in ${dbType}")
           else
-            ""
+            joinType
 
-        val l = relation(j.left, remainingParents)(using sc.enterJoin)
-        val r = relation(j.right, Nil)(using sc.enterJoin)
-        val c =
+        val l = relation(j.left, remainingParents)
+        val r = relation(j.right, Nil)(using InFromClause)
+        val c: Option[Doc] =
           j.cond match
             case NoJoinCriteria =>
-              ""
+              None
             case NaturalJoin(_) =>
-              ""
+              None
             case u: JoinOnTheSameColumns =>
-              s" using(${u.columns.map(_.fullName).mkString(", ")})"
-            case JoinOn(expr, _) =>
-              s" on ${expr(expr)}"
+              Some(text("using" + paren(cs(u.columns.map(_.fullName)))))
+            case JoinOn(e, _) =>
+              Some(ws("on", expr(e)))
             case JoinOnEq(keys, _) =>
-              s" on ${expr(Expression.concatWithEq(keys))}"
-        val joinSQL =
-          j.joinType match
-            case InnerJoin =>
-              s"${l} ${asof}join ${r}${c}"
-            case LeftOuterJoin =>
-              s"${l} ${asof}left join ${r}${c}"
-            case RightOuterJoin =>
-              s"${l} ${asof}right join ${r}${c}"
-            case FullOuterJoin =>
-              s"${l} ${asof}full outer join ${r}${c}"
-            case CrossJoin =>
-              s"${l} ${asof}cross join ${r}${c}"
-            case ImplicitJoin =>
-              s"${l}, ${r}${c}"
-
+              Some(ws("on", expr(Expression.concatWithEq(keys))))
+        val joinSQL: Doc = group(
+          l + whitespaceOrNewline + joinOp + whitespace + r + whitespaceOrNewline + c
+        )
         joinSQL
       case s: SetOperation =>
-        val rels: List[String] =
+        val rels: List[Doc] =
           s.children.toList match
             case Nil =>
               Nil
@@ -202,67 +211,84 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
               val hd = query(head, remainingParents)(using sc)
               val tl = tail.map(x => query(x, Nil)(using sc))
               hd :: tl
-        val op  = s.toSQLOp
-        val sql = rels.mkString(s"\n${op}\n")
-        selectWithIndentAndParenIfNecessary(sql)
+        val op  = text(s.toSQLOp)
+        val sql = append(rels, op)
+        wrapWithParenIfNecessary(sql)
       case p: Pivot => // pivot without explicit aggregations
-        selectWithIndentAndParenIfNecessary(
-          s"pivot ${relation(p.child, remainingParents)(using sc.enterFrom)}\n  on ${pivotOnExpr(
-              p
-            )}"
+        wrapWithParenIfNecessary(
+          group(
+            ws(
+              "pivot",
+              relation(p.child, remainingParents)(using InFromClause),
+              "on",
+              pivotOnExpr(p)
+            )
+          )
         )
       case d: Debug =>
         // Skip debug expression
         relation(d.inputRelation, remainingParents)
       case d: Dedup =>
-        selectWithIndentAndParenIfNecessary(
-          s"""select distinct * from ${relation(d.child, remainingParents)(using sc.enterFrom)}"""
+        wrapWithParenIfNecessary(
+          group(
+            ws("select distinct *", "from", relation(d.child, remainingParents)(using InFromClause))
+          )
         )
       case s: Sample =>
-        val child = relation(s.child, remainingParents)(using sc.enterFrom)
-        val body: String =
+        val child = relation(s.child, remainingParents)(using InFromClause)
+        val body: Doc =
           dbType match
             case DBType.DuckDB =>
               val size =
                 s.size match
                   case Rows(n) =>
-                    s"${n} rows"
+                    text(s"${n} rows")
                   case Percentage(percentage) =>
-                    s"${percentage}%"
-              s"select * from ${child} using sample ${s.method.toString.toLowerCase}(${size})"
+                    text(s"${percentage}%")
+              group(
+                ws(
+                  "select",
+                  "*",
+                  "from",
+                  child,
+                  "using",
+                  "sample",
+                  text(s.method.toString.toLowerCase) + paren(size)
+                )
+              )
             case DBType.Trino =>
               s.size match
                 case Rows(n) =>
                   // Supported only in td-trino
-                  s"select *, reservoir_sample(${n}) over() from ${child}"
+                  group(ws("select", cs("*", s"reservoir_sample(${n}) over()"), "from", child))
                 case Percentage(percentage) =>
-                  s"select * from ${child} TABLESAMPLE ${s
-                      .method
-                      .toString
-                      .toLowerCase()}(${percentage})"
+                  group(
+                    ws(
+                      "select",
+                      "*",
+                      "from",
+                      child,
+                      "TABLESAMPLE",
+                      text(s.method.toString.toLowerCase) + paren(text(s"${percentage}%"))
+                    )
+                  )
             case _ =>
               warn(s"Unsupported sampling method: ${s.method} for ${dbType}")
               child
-        selectWithIndentAndParenIfNecessary(body)
+        wrapWithParenIfNecessary(body)
       case a: AliasedRelation =>
-        val tableAlias: String =
-          val name = expr(a.alias)
-          a.columnNames match
-            case Some(columns) =>
-              s"${name}(${columns.map(x => s"${x.toSQLAttributeName}").mkString(", ")})"
-            case None =>
-              name
+        val tableAlias: Doc = tableAliasOf(a)
 
         a.child match
           case t: TableInput =>
-            s"${expr(t.sqlExpr)} as ${tableAlias}"
+            group(ws(expr(t.sqlExpr), "as", tableAlias))
           case v: Values =>
-            s"${values(v)} as ${tableAlias}"
+            group(ws(values(v), "as", tableAlias))
 //          case v: Values if sc.nestingLevel > 0 && sc.withinJoin =>
 //            // For joins, expose table column aliases to the outer scope
 //            s"${selectWithIndentAndParenIfNecessary(s"select * from ${printValues(v)} as ${tableAlias}")} as ${a.alias.fullName}"
           case _ =>
-            indent(s"${relation(a.child, remainingParents)(using sc.nested)} as ${tableAlias}")
+            group(ws(relation(a.child, remainingParents)(using InSubQuery), "as", tableAlias))
       case p: BracedRelation =>
         def inner = relation(p.child, Nil)
         p.child match
@@ -272,22 +298,20 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
           case AliasedRelation(v: Values, _, _, _) =>
             inner
           case _ =>
-            val body = query(p.child, Nil)(using sc.nested)
-            selectWithIndentAndParenIfNecessary(body)
+            val body = query(p.child, Nil)(using InSubQuery)
+            wrapWithParenIfNecessary(body)
       case t: TestRelation =>
-        relation(t.inputRelation, remainingParents)(using sc)
+        relation(t.inputRelation, remainingParents)
       case q: WithQuery =>
-        val subQueries = q
+        val subQueries: List[Doc] = q
           .queryDefs
           .map { w =>
-            val subQuery = query(w.child, Nil)(using Indented(0))
-            s"${expr(w.alias)} as (\n${subQuery}\n)"
+            val subQuery = query(w.child, Nil)(using InStatement)
+            ws(tableAliasOf(w), "as", parenBlock(subQuery))
           }
-        val body     = query(q.queryBody, remainingParents)(using sc)
-        val withStmt = subQueries.mkString("with ", ", ", "")
-        s"""${withStmt}
-           |${body}
-           |""".stripMargin
+        val body     = query(q.queryBody, remainingParents)
+        val withStmt = ws("with", concat(subQueries, text(",") + linebreak))
+        withStmt + linebreak + body
       case f: FilteringRelation =>
         // Sort, Offset, Limit, Filter, Distinct, etc.
         relation(f.child, f :: remainingParents)
@@ -302,26 +326,44 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         // Trino doesn't support nesting describe statement, so we need to generate raw values as SQL
         val fields = d.child.relationType.fields
 
-        val sql =
+        val sql: Doc =
           if fields.isEmpty then
-            "select '' as column_name, '' as column_type limit 0"
+            ws(
+              "select",
+              cs(
+                // empty values
+                "'' as column_name",
+                "'' as column_type"
+              ),
+              "limit 0"
+            )
           else
-            val values = fields
-              .map { f =>
-                s"""('${f.name.name}','${f.dataType.typeName}')"""
+            val values = cs(
+              fields.map { f =>
+                paren(
+                  cs(
+                    text("'") + f.name.name + text("'"),
+                    text("'") + f.dataType.typeName.toString + text("'")
+                  )
+                )
               }
-              .mkString(",")
-            s"select * from (values ${values}) as table_schema(column_name, column_type)"
-
-        // TODO Wrap this query with the remaining parents
-        selectWithIndentAndParenIfNecessary(sql)
+            )
+            ws(
+              "select",
+              "*",
+              "from",
+              paren(ws("values", values)),
+              "as",
+              "table_schema(column_name, column_type)"
+            )
+        wrapWithParenIfNecessary(sql)
       case r: RelationInspector =>
         // Skip relation inspector
         // TODO Dump output to the file logger
         relation(r.child, remainingParents)
       case s: Show if s.showType == ShowType.tables =>
-        val sql  = s"select table_name as name from information_schema.tables"
-        val cond = List.newBuilder[Expression]
+        val sql: Doc = ws("select", "table_name as name", "from", "information_schema.tables")
+        val cond     = List.newBuilder[Expression]
 
         val opts                    = ctx.global.compilerOptions
         var catalog: Option[String] = opts.catalog
@@ -357,13 +399,16 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
           if conds.size == 0 then
             sql
           else
-            s"${sql} where ${expr(Expression.concatWithAnd(conds))}"
-        selectWithIndentAndParenIfNecessary(s"${body} order by name")
+            ws(sql, "where", expr(Expression.concatWithAnd(conds)))
+        wrapWithParenIfNecessary(ws(body, "order by name"))
       case s: Show if s.showType == ShowType.schemas =>
-        val sql =
-          s"""select catalog_name as "catalog", schema_name as name from information_schema.schemata"""
-        val cond = List.newBuilder[Expression]
-
+        val sql: Doc = ws(
+          "select",
+          cs("catalog_name as \"catalog\"", "schema_name as name"),
+          "from",
+          "information_schema.schemata"
+        )
+        val cond                    = List.newBuilder[Expression]
         val opts                    = ctx.global.compilerOptions
         var catalog: Option[String] = opts.catalog
 
@@ -385,11 +430,18 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
           if conds.size == 0 then
             sql
           else
-            s"${sql} where ${expr(Expression.concatWithAnd(conds))}"
-        selectWithIndentAndParenIfNecessary(s"${body} order by name")
+            ws(sql, "where", expr(Expression.concatWithAnd(conds)))
+        wrapWithParenIfNecessary(ws(body, "order by name"))
       case s: Show if s.showType == ShowType.catalogs =>
-        val sql = s"""select distinct catalog_name as "name" from information_schema.schemata"""
-        selectWithIndentAndParenIfNecessary(s"${sql} order by 1")
+        val sql = ws(
+          "select",
+          "distinct",
+          "catalog_name as name",
+          "from",
+          "information_schema.schemata",
+          "order by name"
+        )
+        wrapWithParenIfNecessary(sql)
       case s: Show if s.showType == ShowType.models =>
         // TODO: Show models should be handled outside of GenSQL
         val models: Seq[ListMap[String, Any]] = ctx
@@ -431,21 +483,42 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
           }
           .map(x => s"(${x})")
         if modelValues.isEmpty then
-          selectWithIndentAndParenIfNecessary(
-            "select cast(null as varchar) as name, cast(null as varchar) as args, cast(null as varchar) as package_name limit 0"
+          wrapWithParenIfNecessary(
+            ws(
+              "select",
+              cs(
+                "cast(null as varchar) as name",
+                "cast(null as varchar) as args",
+                "cast(null as varchar) as package_name"
+              ),
+              "limit 0"
+            )
           )
         else
-          selectWithIndentAndParenIfNecessary(
-            s"select * from (values ${indent(
-                modelValues.mkString(", ")
-              )}) as __models(name, args, package_name)"
+          wrapWithParenIfNecessary(
+            ws(
+              "select",
+              "*",
+              "from",
+              paren(ws("values", cs(modelValues))),
+              "as",
+              "__models(name, args, package_name)"
+            )
           )
       case other =>
-        warn(s"unsupported relation type: ${other}")
-        other.pp
+        unsupportedNode(s"relation ${other.nodeName}", other.span)
     end match
 
   end relation
+
+  private def tableAliasOf(a: AliasedRelation)(using sc: SyntaxContext): Doc =
+    val name = expr(a.alias)
+    a.columnNames match
+      case Some(columns) =>
+        val cols = cs(columns.map(c => text(c.toSQLAttributeName)))
+        name + paren(cols)
+      case None =>
+        name
 
   private def select(r: Relation, parents: List[Relation])(using sc: SyntaxContext): Doc =
 
@@ -505,53 +578,47 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
 
     remainingParents = processSortAndLimit(remainingParents)
 
-    val sqlSelect = sqlSelect(
+    val sqlSelect = sql_select(
       SQLSelect(inputRelation, selectItems, Nil, having, parentFilters, orderBy, limit, r.span),
       inputRelation
     )
-    val hasDistinct =
+    val distinct: Option[Doc] =
       r match
         case d: Distinct =>
-          true
+          Some(text("distinct"))
         case _ =>
-          false
+          None
 
     // SELECT distinct? ...
     val selectItemsExpr =
       if selectItems.isEmpty then
-        "*"
+        text("*")
       else
-        sqlSelect.selectItems.map(x => expr(x)).mkString(", ")
-    val s = Seq.newBuilder[String]
-    s +=
-      s"select ${
-          if hasDistinct then
-            "distinct "
-          else
-            ""
-        }${selectItemsExpr}"
+        cs(sqlSelect.selectItems.map(x => expr(x)))
+    val s = List.newBuilder[Doc]
+    s += group(ws("select", distinct, selectItemsExpr))
 
     sqlSelect.child match
       case e: EmptyRelation =>
       // Do not add from clause for empty inputs
       case t: TableInput =>
-        s += s"from ${expr(t.sqlExpr)}"
+        s += group(ws("from", expr(t.sqlExpr)))
       case _ =>
         // Start a new SELECT statement inside FROM
-        s += s"from ${relation(sqlSelect.child, Nil)(using sc.enterFrom)}"
+        s += group(ws("from", relation(sqlSelect.child, Nil)(using InFromClause)))
     if sqlSelect.filters.nonEmpty then
       val filterExpr = Expression.concatWithAnd(sqlSelect.filters.map(x => x.filterExpr))
-      s += s"where ${expr(filterExpr)}"
+      s += group(ws("where", expr(filterExpr)))
     if sqlSelect.groupingKeys.nonEmpty then
-      s += s"group by ${sqlSelect.groupingKeys.map(x => expr(x)).mkString(", ")}"
+      s += group(ws("group by", cs(sqlSelect.groupingKeys.map(x => expr(x)))))
     if sqlSelect.having.nonEmpty then
-      s += s"having ${sqlSelect.having.map(x => expr(x.filterExpr)).mkString(", ")}"
+      s += group(ws("having", cs(sqlSelect.having.map(x => expr(x.filterExpr)))))
     if sqlSelect.orderBy.nonEmpty then
-      s += s"order by ${sqlSelect.orderBy.map(x => expr(x)).mkString(", ")}"
+      s += group(ws("order by", cs(sqlSelect.orderBy.map(x => expr(x)))))
     if sqlSelect.limit.nonEmpty then
-      s += s"limit ${expr(sqlSelect.limit.get)}"
+      s += group(ws("limit", expr(sqlSelect.limit.get)))
 
-    val body = selectWithIndentAndParenIfNecessary(s"${s.result().mkString("\n")}")
+    val body = wrapWithParenIfNecessary(lines(s.result()))
     if remainingParents.isEmpty then
       body
     else
@@ -564,7 +631,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       body
   end select
 
-  private def sqlSelect(agg: SQLSelect, r: Relation): SQLSelect =
+  private def sql_select(agg: SQLSelect, r: Relation): SQLSelect =
     def collectFilter(plan: Relation): (List[Filter], Relation) =
       plan match
         case f: Filter =>
@@ -596,7 +663,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         agg.copy(child = a.child, groupingKeys = a.groupingKeys, filters = agg.filters ++ filters)
       case _ =>
         agg
-  end sqlSelect
+  end sql_select
 
   private def groupBy(g: GroupBy, parents: List[Relation])(using sc: SyntaxContext): Doc =
     // Translate GroupBy node without any projection (select) to Agg node
@@ -752,8 +819,6 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         val left  = expr(notIn.a)
         val right = cs(notIn.list.map(x => expr(x)))
         ws(left, "not in", paren(right))
-      case n: NativeExpression =>
-        expr(ExpressionEvaluator.eval(n))
       case a: ArrayConstructor =>
         text("ARRAY") + bracket(cs(a.values.map(expr(_))))
       case a: ArrayAccess =>

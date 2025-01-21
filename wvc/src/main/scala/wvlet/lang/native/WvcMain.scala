@@ -123,7 +123,7 @@ object WvcMain extends LogSupport:
         .withDebugRun(false)
         .newContext(Symbol.NoSymbol)
 
-      val sql = GenSQL.generateSQL(inputUnit, ctx)
+      val sql = GenSQL.generateSQL(inputUnit)(using ctx)
       return (sql, returnResult) // Return the SQL string and the flag
 
   end compileWvletQuery

@@ -116,7 +116,7 @@ class WvletCompiler(
       .withDebugRun(false)
       .newContext(Symbol.NoSymbol)
 
-    GenSQL.generateSQL(inputUnit, ctx)
+    GenSQL.generateSQL(inputUnit)(using ctx)
   end generateSQL
 
   def run(): Unit =

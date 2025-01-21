@@ -48,7 +48,7 @@ class SQLPreview(currentQuery: CurrentQuery, windowSize: WindowSize, queryRunner
               newWvletQueryRequest.linePosition,
               newWvletQueryRequest.querySelection
             )
-            val sql = GenSQL.generateSQL(unit, ctx, targetPlan = Some(selectedPlan))
+            val sql = GenSQL.generateSQL(unit, targetPlan = Some(selectedPlan))(using ctx)
             setText(sql)
             queryRunner
               .runQuery("tpch", sql)

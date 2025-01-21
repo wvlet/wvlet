@@ -19,10 +19,10 @@ import wvlet.lang.api.{SourceLocation, StatusCode}
 import wvlet.lang.catalog.Catalog.TableName
 import wvlet.lang.compiler.DBType.{DuckDB, Trino}
 import wvlet.lang.compiler.analyzer.TypeResolver
+import wvlet.lang.compiler.formatter.CodeFormatterConfig
 import wvlet.lang.compiler.planner.ExecutionPlanner
 import wvlet.lang.compiler.transform.{ExpressionEvaluator, PreprocessLocalExpr}
 import wvlet.lang.compiler.{
-  ValSymbolInfo,
   CompilationUnit,
   Context,
   DBType,
@@ -32,7 +32,8 @@ import wvlet.lang.compiler.{
   SQLDialect,
   SourceIO,
   Symbol,
-  TermName
+  TermName,
+  ValSymbolInfo
 }
 import wvlet.lang.model.DataType
 import wvlet.lang.model.expr.*
@@ -60,10 +61,12 @@ object GenSQL extends Phase("generate-sql"):
     // Attach the generated SQL to the CompilationUnit
     unit
 
-  def generateSQL(
-      unit: CompilationUnit,
-      ctx: Context,
-      targetPlan: Option[LogicalPlan] = None
+  private def sqlGeneratorFor(dbType: DBType)(using ctx: Context): SqlGenerator = SqlGenerator(
+    CodeFormatterConfig().copy(sqlDBType = dbType)
+  )
+
+  def generateSQL(unit: CompilationUnit, targetPlan: Option[LogicalPlan] = None)(using
+      ctx: Context
   ): String =
     val statements = List.newBuilder[String]
 
@@ -74,7 +77,7 @@ object GenSQL extends Phase("generate-sql"):
         case ExecuteQuery(plan) =>
           plan match
             case r: Relation =>
-              val gen = GenSQL.generateSQLFromRelation(r, ctx)
+              val gen = GenSQL.generateSQLFromRelation(r)(using ctx)
               statements += gen.sql
             case other =>
               warn(s"Unsupported query type: ${other.pp}")
@@ -88,7 +91,7 @@ object GenSQL extends Phase("generate-sql"):
         case cmd: ExecuteCommand =>
           cmd.execute match
             case ExecuteExpr(e, _) =>
-              val sql = generateExecute(e, ctx)
+              val sql = generateExecute(e)(using ctx)
               statements += sql
             case _ =>
               warn(s"Unsupported command: ${cmd}")
@@ -129,11 +132,12 @@ object GenSQL extends Phase("generate-sql"):
 
     s"${headerComment}\n${sql}"
 
-  def generateSQLFromRelation(q: Relation, ctx: Context, addHeader: Boolean = true): GeneratedSQL =
-    given Context = ctx
-    val expanded  = expand(q, ctx)
-    val gen       = SqlGenerator(ctx.dbType)(using ctx)
-    val sql       = gen.print(expanded)
+  def generateSQLFromRelation(q: Relation, addHeader: Boolean = true)(using
+      ctx: Context
+  ): GeneratedSQL =
+    val expanded = expand(q, ctx)
+    val gen      = sqlGeneratorFor(ctx.dbType)
+    val sql      = gen.print(expanded)
 
     val query: String =
       if addHeader then
@@ -148,7 +152,7 @@ object GenSQL extends Phase("generate-sql"):
     val statements = List.newBuilder[String]
     save match
       case s: SaveTo if s.isForTable =>
-        val baseSQL = generateSQLFromRelation(save.inputRelation, context, addHeader = false)
+        val baseSQL           = generateSQLFromRelation(save.inputRelation, addHeader = false)
         var needsTableCleanup = false
         val ctasCmd =
           if context.dbType.supportCreateOrReplace then
@@ -158,7 +162,7 @@ object GenSQL extends Phase("generate-sql"):
             "create table"
         val options =
           if s.saveOptions.nonEmpty && context.dbType.supportCreateTableWithOption then
-            val gen = SqlGenerator(context.dbType)(using context)
+            val gen = sqlGeneratorFor(context.dbType)
             s.saveOptions
               .map { opt =>
                 s"${opt.key.fullName}=${gen.expr(opt.value)}"
@@ -178,14 +182,14 @@ object GenSQL extends Phase("generate-sql"):
 
         statements += ctasSQL
       case s: SaveTo if s.isForFile && context.dbType.supportSaveAsFile =>
-        val baseSQL = GenSQL.generateSQLFromRelation(save.inputRelation, context, addHeader = false)
+        val baseSQL    = GenSQL.generateSQLFromRelation(save.inputRelation, addHeader = false)
         val targetPath = context.dataFilePath(s.targetName)
         val copySQL    = s"copy (${baseSQL.sql}) to '${targetPath}'"
         val sql =
           if s.saveOptions.isEmpty then
             copySQL
           else
-            val g = SqlGenerator(context.dbType)(using context)
+            val g = sqlGeneratorFor(context.dbType)
             val opts = s
               .saveOptions
               .map { opt =>
@@ -195,9 +199,9 @@ object GenSQL extends Phase("generate-sql"):
             s"${copySQL} ${opts}"
         statements += withHeader(sql, s.sourceLocation)
       case a: AppendTo if a.isForTable =>
-        val baseSQL = GenSQL.generateSQLFromRelation(save.inputRelation, context, addHeader = false)
-        val tbl     = TableName.parse(a.targetName)
-        val schema  = tbl.schema.getOrElse(context.defaultSchema)
+        val baseSQL       = GenSQL.generateSQLFromRelation(save.inputRelation, addHeader = false)
+        val tbl           = TableName.parse(a.targetName)
+        val schema        = tbl.schema.getOrElse(context.defaultSchema)
         val fullTableName = s"${schema}.${tbl.name}"
         val insertSQL =
           context.catalog.getTable(TableName.parse(fullTableName)) match
@@ -207,7 +211,7 @@ object GenSQL extends Phase("generate-sql"):
               s"create table ${fullTableName} as\n${baseSQL.sql}"
         statements += withHeader(insertSQL, save.sourceLocation)
       case a: AppendTo if a.isForFile && context.dbType == DBType.DuckDB =>
-        val baseSQL = GenSQL.generateSQLFromRelation(save.inputRelation, context, addHeader = false)
+        val baseSQL    = GenSQL.generateSQLFromRelation(save.inputRelation, addHeader = false)
         val targetPath = context.dataFilePath(a.targetName)
         if SourceIO.existsFile(targetPath) then
           val sql =
@@ -222,13 +226,13 @@ object GenSQL extends Phase("generate-sql"):
           val sql = s"create (${baseSQL.sql}) to '${targetPath}'"
           statements += withHeader(sql, a.sourceLocation)
       case d: Delete =>
-        val gen = SqlGenerator(context.dbType)(using context)
+        val gen = sqlGeneratorFor(context.dbType)
         def filterExpr(x: Relation): Option[String] =
           x match
             case q: Query =>
               filterExpr(q.child)
             case f: Filter =>
-              Some(gen.expr(f.filterExpr))
+              Some(gen.print(f.filterExpr))
             case l: LeafPlan =>
               None
             case other =>
@@ -254,10 +258,9 @@ object GenSQL extends Phase("generate-sql"):
 
   end generateSaveSQL
 
-  def generateExecute(expr: Expression, context: Context): String =
-    given Context = context
-    val gen       = SqlGenerator(context.dbType)(using context)
-    val sql       = gen.expr(expr)
+  def generateExecute(expr: Expression)(using context: Context): String =
+    val gen = sqlGeneratorFor(context.dbType)
+    val sql = gen.print(expr)
     withHeader(sql, expr.sourceLocation)
 
   /**
