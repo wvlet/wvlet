@@ -163,15 +163,15 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         val joinType: Doc =
           j.joinType match
             case InnerJoin =>
-              text("join")
+              whitespaceOrNewline + text("join")
             case LeftOuterJoin =>
-              text("left join")
+              whitespaceOrNewline + text("left join")
             case RightOuterJoin =>
-              text("right join")
+              whitespaceOrNewline + text("right join")
             case FullOuterJoin =>
-              text("full outer join")
+              whitespaceOrNewline + text("full outer join")
             case CrossJoin =>
-              text("cross join")
+              whitespaceOrNewline + text("cross join")
             case ImplicitJoin =>
               text(",")
 
@@ -193,14 +193,12 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             case NaturalJoin(_) =>
               None
             case u: JoinOnTheSameColumns =>
-              Some(text("using" + paren(cs(u.columns.map(_.fullName)))))
+              Some(whitespaceOrNewline + text("using" + paren(cs(u.columns.map(_.fullName)))))
             case JoinOn(e, _) =>
-              Some(ws("on", expr(e)))
+              Some(whitespaceOrNewline + ws("on", expr(e)))
             case JoinOnEq(keys, _) =>
-              Some(ws("on", expr(Expression.concatWithEq(keys))))
-        val joinSQL: Doc = group(
-          l + whitespaceOrNewline + joinOp + whitespace + r + whitespaceOrNewline + c
-        )
+              Some(whitespaceOrNewline + ws("on", expr(Expression.concatWithEq(keys))))
+        val joinSQL: Doc = group(l + joinOp + whitespaceOrNewline + r + c)
         joinSQL
       case s: SetOperation =>
         val rels: List[Doc] =
@@ -819,13 +817,23 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       case d @ DotRef(qual: Expression, name: NameExpr, _, _) =>
         expr(qual) + "." + expr(name)
       case in: In =>
-        val left  = expr(in.a)
-        val right = cs(in.list.map(x => expr(x)))
-        ws(left, "in", paren(right))
+        val left = expr(in.a)
+        val right =
+          in.list match
+            case (s: SubQueryExpression) :: Nil =>
+              expr(s)
+            case _ =>
+              paren(cs(in.list.map(x => expr(x))))
+        ws(left, "in", right)
       case notIn: NotIn =>
-        val left  = expr(notIn.a)
-        val right = cs(notIn.list.map(x => expr(x)))
-        ws(left, "not in", paren(right))
+        val left = expr(notIn.a)
+        val right =
+          notIn.list match
+            case (s: SubQueryExpression) :: Nil =>
+              expr(s)
+            case _ =>
+              paren(cs(notIn.list.map(x => expr(x))))
+        ws(left, "not in", right)
       case a: ArrayConstructor =>
         text("ARRAY") + bracket(cs(a.values.map(expr(_))))
       case a: ArrayAccess =>
@@ -835,13 +843,13 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
           ws("case", c.target.map(expr)),
           c.whenClauses
             .map { w =>
-              nest(newline + ws("when", expr(w.condition), "then", expr(w.result)))
+              nest(newline + ws("when", group(expr(w.condition)), "then", expr(w.result)))
             },
           c.elseClause
             .map { e =>
-              nest(newline + ws("else", expr(e)))
+              nest(newline + ws("else", group(expr(e))))
             },
-          "end"
+          maybeNewline + "end"
         )
       case l: LambdaExpr =>
         val args = cs(l.args.map(expr(_)))
