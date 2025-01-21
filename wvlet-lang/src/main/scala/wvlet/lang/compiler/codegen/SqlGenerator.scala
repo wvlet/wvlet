@@ -122,6 +122,13 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
     val p = addProjectionIfMissing(r)
     relation(p, remainingParents)
 
+  private def selectAll(body: Doc, remainingParents: List[Relation])(using sc: SyntaxContext): Doc =
+    if remainingParents.isEmpty then
+      body
+    else
+      val q = ws("select * from", parenBlock(body))
+      q
+
   /**
     * Print Relation nodes while tracking the parent nodes (e.g., filter, sort) for merging them
     * later into a single SELECT statement.
@@ -143,20 +150,23 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         // pivot + agg combination
         val p: Pivot = a.child.asInstanceOf[Pivot]
         val onExpr   = pivotOnExpr(p)
-        val aggItems = a.selectItems.map(x => expr(x)).mkString(", ")
+        val aggItems = cs(a.selectItems.map(x => expr(x)))
         val pivotExpr =
           val child = relation(p.child, remainingParents)(using InSubQuery)
           group(
             text("pivot") + whitespaceOrNewline + child + whitespaceOrNewline +
               ws(text("on"), onExpr) + whitespaceOrNewline + ws(text("using"), aggItems)
           )
-        if p.groupingKeys.isEmpty then
-          wrapWithParenIfNecessary(pivotExpr)
-        else
-          val groupByItems = cs(p.groupingKeys.map(x => expr(x)))
-          wrapWithParenIfNecessary(
-            pivotExpr + newline + "group by" + whitespaceOrNewline + groupByItems
-          )
+        val sql =
+          if p.groupingKeys.isEmpty then
+            wrapWithParenIfNecessary(pivotExpr)
+          else
+            val groupByItems = cs(p.groupingKeys.map(x => expr(x)))
+            wrapWithParenIfNecessary(
+              pivotExpr + whitespaceOrNewline +
+                group(text("group by") + nest(whitespaceOrNewline + groupByItems))
+            )
+        selectAll(sql, remainingParents)
       case s: Selection =>
         select(s, remainingParents)
       case j: Join =>
@@ -215,12 +225,8 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       case p: Pivot => // pivot without explicit aggregations
         wrapWithParenIfNecessary(
           group(
-            ws(
-              "pivot",
-              relation(p.child, remainingParents)(using InFromClause),
-              "on",
-              pivotOnExpr(p)
-            )
+            text("pivot") + whitespaceOrNewline +
+              ws(relation(p.child, remainingParents)(using InFromClause), "on", pivotOnExpr(p))
           )
         )
       case d: Debug =>

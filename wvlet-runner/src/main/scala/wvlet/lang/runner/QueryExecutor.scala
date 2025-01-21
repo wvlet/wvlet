@@ -178,7 +178,7 @@ class QueryExecutor(
     given monitor: QueryProgressMonitor = context.queryProgressMonitor
     cmd match
       case e: ExecuteExpr =>
-        val cmd = GenSQL.generateExecute(e.expr, context)
+        val cmd = GenSQL.generateExecute(e.expr)
         executeStatement(List(cmd))
         QueryResult.empty
       case s: ShowQuery =>
@@ -219,7 +219,7 @@ class QueryExecutor(
     workEnv.trace(s"Executing plan: ${plan.pp}")
     plan match
       case q: Relation =>
-        val generatedSQL = GenSQL.generateSQLFromRelation(q, context)
+        val generatedSQL = GenSQL.generateSQLFromRelation(q)
         workEnv.info(s"Executing SQL:\n${generatedSQL.sql}")
         debug(s"Executing SQL:\n${generatedSQL.sql}")
         try
