@@ -27,6 +27,35 @@ object SqlGenerator:
     else
       s""""${s}""""
 
+  /**
+    * A block corresponding to a single SQL SELECT statement
+    * @param selectItems
+    * @param whereFilter
+    * @param groupingKeys
+    * @param having
+    * @param orderBy
+    * @param limit
+    * @param offset
+    */
+  private case class SQLBlock(
+      // selectItems: List[Attribute] = Nil, // SingleColumn(EmptyName, Wildcard(NoSpan), NoSpan) :: Nil,
+      isDistinct: Boolean = false,
+      whereFilter: List[Filter] = Nil,
+      groupingKeys: List[GroupingKey] = Nil,
+      having: List[Filter] = Nil,
+      orderBy: List[SortItem] = Nil,
+      limit: Option[Expression] = None,
+      offset: Option[Expression] = None
+  ):
+    // def acceptSelectItems: Boolean = selectItems.isEmpty
+    def acceptOffset: Boolean  = offset.isEmpty && limit.isEmpty
+    def acceptLimit: Boolean   = limit.isEmpty && orderBy.isEmpty
+    def acceptOrderBy: Boolean = orderBy.isEmpty
+
+    def isEmpty: Boolean =
+      !isDistinct && whereFilter.isEmpty && groupingKeys.isEmpty && having.isEmpty &&
+        orderBy.isEmpty && limit.isEmpty && offset.isEmpty
+
 end SqlGenerator
 
 /**
@@ -64,7 +93,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
     def iter(plan: LogicalPlan): Doc =
       plan match
         case r: Relation =>
-          query(r, Nil)(using InStatement)
+          query(r, SQLBlock())(using InStatement)
         case p: PackageDef =>
           val stmts = p.statements.map(stmt => iter(stmt))
           concat(stmts, text(";") + linebreak)
@@ -118,16 +147,9 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
     * @param sc
     * @return
     */
-  private def query(r: Relation, remainingParents: List[Relation])(using sc: SyntaxContext): Doc =
+  private def query(r: Relation, block: SQLBlock)(using sc: SyntaxContext): Doc =
     val p = addProjectionIfMissing(r)
-    relation(p, remainingParents)
-
-  private def selectAll(body: Doc, remainingParents: List[Relation])(using sc: SyntaxContext): Doc =
-    if remainingParents.isEmpty then
-      body
-    else
-      val q = ws("select * from", parenBlock(body))
-      q
+    relation(p, block)
 
   /**
     * Print Relation nodes while tracking the parent nodes (e.g., filter, sort) for merging them
@@ -138,21 +160,36 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
     * @param sc
     * @return
     */
-  def relation(r: Relation, remainingParents: List[Relation])(using sc: SyntaxContext): Doc =
-
+  def relation(r: Relation, block: SQLBlock)(using sc: SyntaxContext): Doc =
     r match
       case q: Query =>
-        query(q.body, remainingParents)
+        query(q.body, block)
+      case o: Offset if block.acceptOffset =>
+        relation(o.child, block.copy(offset = Some(o.rows)))
+      case o: Limit if block.acceptLimit =>
+        relation(o.child, block.copy(limit = Some(o.limit)))
+      case s: Sort if block.acceptOrderBy =>
+        relation(s.child, block.copy(orderBy = s.orderBy))
+      case d: Distinct =>
+        val sql = relation(d.child, SQLBlock())
+        selectAll(sql, block.copy(isDistinct = true))
+      case f: Filter =>
+        f.child match
+          case g: GroupBy =>
+            // Filter(GroupBy(...)) => Having condition
+            relation(f.child, block.copy(having = f :: block.having))
+          case _ =>
+            relation(f.child, block.copy(whereFilter = f :: block.whereFilter))
       case g: GroupBy =>
         // If there has been no Projection or Agg before GroupBy, it reaches here
-        groupBy(g, remainingParents)
+        groupBy(g, block)
       case a: Agg if a.child.isPivot =>
         // pivot + agg combination
         val p: Pivot = a.child.asInstanceOf[Pivot]
         val onExpr   = pivotOnExpr(p)
         val aggItems = cs(a.selectItems.map(x => expr(x)))
         val pivotExpr =
-          val child = relation(p.child, remainingParents)(using InSubQuery)
+          val child = relation(p.child, block)(using InSubQuery)
           group(
             text("pivot") + whitespaceOrNewline + child + whitespaceOrNewline +
               ws(text("on"), onExpr) + whitespaceOrNewline + ws(text("using"), aggItems)
@@ -166,9 +203,9 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
               pivotExpr + whitespaceOrNewline +
                 group(text("group by") + nest(whitespaceOrNewline + groupByItems))
             )
-        selectAll(sql, remainingParents)
+        selectAll(sql, block)
       case s: Selection =>
-        select(s, remainingParents)
+        select(s, block)
       case j: Join =>
         val joinType: Doc =
           j.joinType match
@@ -194,8 +231,8 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
           else
             joinType
 
-        val l = relation(j.left, remainingParents)
-        val r = relation(j.right, Nil)(using InFromClause)
+        val l = relation(j.left, block)
+        val r = relation(j.right, SQLBlock())(using InFromClause)
         val c: Option[Doc] =
           j.cond match
             case NoJoinCriteria =>
@@ -216,8 +253,8 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             case Nil =>
               Nil
             case head :: tail =>
-              val hd = query(head, remainingParents)(using sc)
-              val tl = tail.map(x => query(x, Nil)(using sc))
+              val hd = query(head, block)(using sc)
+              val tl = tail.map(x => query(x, SQLBlock())(using sc))
               hd :: tl
         val op  = text(s.toSQLOp)
         val sql = append(rels, op)
@@ -226,20 +263,18 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         wrapWithParenIfNecessary(
           group(
             text("pivot") + whitespaceOrNewline +
-              ws(relation(p.child, remainingParents)(using InFromClause), "on", pivotOnExpr(p))
+              ws(relation(p.child, block)(using InFromClause), "on", pivotOnExpr(p))
           )
         )
       case d: Debug =>
         // Skip debug expression
-        relation(d.inputRelation, remainingParents)
+        relation(d.inputRelation, block)
       case d: Dedup =>
         wrapWithParenIfNecessary(
-          group(
-            ws("select distinct *", "from", relation(d.child, remainingParents)(using InFromClause))
-          )
+          group(ws("select distinct *", "from", relation(d.child, block)(using InFromClause)))
         )
       case s: Sample =>
-        val child = relation(s.child, remainingParents)(using InFromClause)
+        val child = relation(s.child, block)(using InFromClause)
         val body: Doc =
           dbType match
             case DBType.DuckDB =>
@@ -279,7 +314,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             case _ =>
               warn(s"Unsupported sampling method: ${s.method} for ${dbType}")
               child
-        wrapWithParenIfNecessary(body)
+        selectAll(body, block)
       case a: AliasedRelation =>
         val tableAlias: Doc = tableAliasOf(a)
 
@@ -292,9 +327,9 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
 //            // For joins, expose table column aliases to the outer scope
 //            s"${selectWithIndentAndParenIfNecessary(s"select * from ${printValues(v)} as ${tableAlias}")} as ${a.alias.fullName}"
           case _ =>
-            group(ws(relation(a.child, remainingParents)(using InSubQuery), "as", tableAlias))
+            group(ws(relation(a.child, block)(using InSubQuery), "as", tableAlias))
       case p: BracedRelation =>
-        def inner = relation(p.child, Nil)
+        def inner = relation(p.child, block)
         p.child match
           case v: Values =>
             // No need to wrap values query
@@ -302,29 +337,28 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
           case AliasedRelation(v: Values, _, _, _) =>
             inner
           case _ =>
-            val body = query(p.child, Nil)(using InSubQuery)
+            val body = query(p.child, block)(using InSubQuery)
             wrapWithParenIfNecessary(body)
       case t: TestRelation =>
-        relation(t.inputRelation, remainingParents)
+        // Skip test expression
+        relation(t.inputRelation, block)
       case q: WithQuery =>
         val subQueries: List[Doc] = q
           .queryDefs
           .map { w =>
-            val subQuery = query(w.child, Nil)(using InStatement)
+            val subQuery = query(w.child, SQLBlock())(using InStatement)
             ws(tableAliasOf(w), "as", parenBlock(subQuery))
           }
-        val body     = query(q.queryBody, remainingParents)
+        val body     = query(q.queryBody, block)
         val withStmt = ws("with", concat(subQueries, text(",") + linebreak))
         withStmt + linebreak + body
-      case f: FilteringRelation =>
-        // Sort, Offset, Limit, Filter, Distinct, etc.
-        relation(f.child, f :: remainingParents)
       case t: TableInput =>
         expr(t.sqlExpr)
       case v: Values =>
         values(v)
       case s: SelectAsAlias =>
-        relation(s.child, remainingParents)
+        // Just generate the inner bodSQL
+        relation(s.child, block)
       case d: Describe =>
         // TODO: Compute schema only from local DataType information without using connectors
         // Trino doesn't support nesting describe statement, so we need to generate raw values as SQL
@@ -353,18 +387,15 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
               }
             )
             ws(
-              "select",
-              "*",
-              "from",
+              "select * from",
               paren(ws("values", values)),
-              "as",
-              "table_schema(column_name, column_type)"
+              "as table_schema(column_name, column_type)"
             )
-        wrapWithParenIfNecessary(sql)
+        selectAll(sql, block)
       case r: RelationInspector =>
         // Skip relation inspector
         // TODO Dump output to the file logger
-        relation(r.child, remainingParents)
+        relation(r.child, block)
       case s: Show if s.showType == ShowType.tables =>
         val sql: Doc = ws("select", "table_name as name", "from", "information_schema.tables")
         val cond     = List.newBuilder[Expression]
@@ -404,7 +435,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             sql
           else
             ws(sql, "where", expr(Expression.concatWithAnd(conds)))
-        wrapWithParenIfNecessary(ws(body, "order by name"))
+        selectAll(wrapWithParenIfNecessary(ws(body, "order by name")), block)
       case s: Show if s.showType == ShowType.schemas =>
         val sql: Doc = ws(
           "select",
@@ -435,7 +466,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             sql
           else
             ws(sql, "where", expr(Expression.concatWithAnd(conds)))
-        wrapWithParenIfNecessary(ws(body, "order by name"))
+        selectAll(wrapWithParenIfNecessary(ws(body, "order by name")), block)
       case s: Show if s.showType == ShowType.catalogs =>
         val sql = ws(
           "select",
@@ -445,7 +476,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
           "information_schema.schemata",
           "order by name"
         )
-        wrapWithParenIfNecessary(sql)
+        selectAll(wrapWithParenIfNecessary(sql), block)
       case s: Show if s.showType == ShowType.models =>
         // TODO: Show models should be handled outside of GenSQL
         val models: Seq[ListMap[String, Any]] = ctx
@@ -486,8 +517,8 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             List(x("name"), x.getOrElse("args", ""), x.getOrElse("package_name", "")).mkString(",")
           }
           .map(x => s"(${x})")
-        if modelValues.isEmpty then
-          wrapWithParenIfNecessary(
+        val sql =
+          if modelValues.isEmpty then
             ws(
               "select",
               cs(
@@ -497,9 +528,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
               ),
               "limit 0"
             )
-          )
-        else
-          wrapWithParenIfNecessary(
+          else
             ws(
               "select",
               "*",
@@ -508,7 +537,8 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
               "as",
               "__models(name, args, package_name)"
             )
-          )
+
+        selectAll(wrapWithParenIfNecessary(sql), block)
       case other =>
         unsupportedNode(s"relation ${other.nodeName}", other.span)
     end match
@@ -524,31 +554,25 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       case None =>
         name
 
-  private def select(r: Relation, parents: List[Relation])(using sc: SyntaxContext): Doc =
+  private def selectAll(body: Doc, block: SQLBlock)(using sc: SyntaxContext): Doc =
+    if block.isEmpty then
+      body
+    else
+      val q = ws(
+        "select",
+        if block.isDistinct then
+          Some("distinct")
+        else
+          None
+        ,
+        "*",
+        "from",
+        parenBlock(body)
+      )
+      q
 
-    var remainingParents     = parents
-    var having: List[Filter] = Nil
+  private def select(r: Relation, block: SQLBlock)(using sc: SyntaxContext): Doc =
 
-    parents.headOption match
-      case Some(f: Filter) =>
-        r match
-          case a: Agg =>
-            having = List(f)
-            remainingParents = parents.tail
-          case g: GroupBy =>
-            having = List(f)
-            remainingParents = parents.tail
-          case _ =>
-      case _ =>
-
-    def findParentFilters(lst: List[Relation]): List[Filter] =
-      lst match
-        case (f: Filter) :: tail =>
-          remainingParents = tail
-          f :: findParentFilters(tail)
-        case tail =>
-          Nil
-    val parentFilters: List[Filter] = findParentFilters(remainingParents)
     val selectItems: List[Attribute] =
       r match
         case s: Selection =>
@@ -561,26 +585,6 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
           s.child
         case _ =>
           r
-
-    var orderBy: List[SortItem]   = Nil
-    var limit: Option[Expression] = None
-
-    def processSortAndLimit(lst: List[Relation]): List[Relation] =
-      lst match
-        case (st: Sort) :: (l: Limit) :: tail =>
-          orderBy = st.orderBy.toList
-          limit = Some(l.limit)
-          tail
-        case (st: Sort) :: tail =>
-          orderBy = st.orderBy.toList
-          tail
-        case (l: Limit) :: tail =>
-          limit = Some(l.limit)
-          tail
-        case other =>
-          other
-
-    remainingParents = processSortAndLimit(remainingParents)
 
     val sqlSelect = sql_select(
       SQLSelect(inputRelation, selectItems, Nil, having, parentFilters, orderBy, limit, r.span),
@@ -672,7 +676,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         agg
   end sql_select
 
-  private def groupBy(g: GroupBy, parents: List[Relation])(using sc: SyntaxContext): Doc =
+  private def groupBy(g: GroupBy, block: SQLBlock)(using sc: SyntaxContext): Doc =
     // Translate GroupBy node without any projection (select) to Agg node
     val keys: List[Attribute] = g
       .groupingKeys
@@ -706,7 +710,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         .toList
 
     val agg = Agg(g, keys, aggExprs, g.span)
-    relation(agg, parents)
+    relation(agg, block.copy(groupingKeys = g.groupingKeys))
   end groupBy
 
   private def values(values: Values)(using sc: SyntaxContext): Doc =
