@@ -336,7 +336,7 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
         else
           expr(f.value)
       case w: Window =>
-        var s = List.newBuilder[Doc]
+        val s = List.newBuilder[Doc]
         if w.partitionBy.nonEmpty then
           s += ws("partition by", cs(w.partitionBy.map(x => expr(x))))
         if w.orderBy.nonEmpty then

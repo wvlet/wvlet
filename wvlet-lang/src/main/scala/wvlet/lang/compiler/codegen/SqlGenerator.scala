@@ -603,7 +603,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
     val keys: List[Attribute] = g
       .groupingKeys
       .map { k =>
-        val keyName = expr(k)
+        val keyName = render(0, expr(k))
         SingleColumn(NameExpr.fromString(keyName), k.name, NoSpan)
       }
     val aggExprs: List[Attribute] =
@@ -611,7 +611,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         .fields
         .map { f =>
           // Use arbitrary(expr) for efficiency
-          val expr: Expression = FunctionApply(
+          val ex: Expression = FunctionApply(
             NameExpr.fromString("arbitrary"),
             args = List(
               FunctionArg(None, NameExpr.fromString(f.toSQLAttributeName), false, NoSpan)
@@ -625,9 +625,9 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
                 // DuckDB generates human-friendly column name
                 EmptyName
               case _ =>
-                val exprStr = expr(expr)
-                NameExpr.fromString(exprStr)
-          SingleColumn(name, expr, NoSpan)
+                val exprStr = expr(ex)
+                NameExpr.fromString(render(0, exprStr))
+          SingleColumn(name, ex, NoSpan)
         }
         .toList
 
@@ -635,30 +635,30 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
     relation(agg, parents)
   end groupBy
 
-  private def values(values: Values)(using sc: SyntaxContext): String =
-    val rows = values
-      .rows
-      .map { row =>
-        row match
-          case a: ArrayConstructor =>
-            val elems = a.values.map(x => expr(x)).mkString(", ")
-            s"(${elems})"
-          case other =>
-            expr(other)
-      }
-      .mkString(", ")
-    s"(values ${rows})"
+  private def values(values: Values)(using sc: SyntaxContext): Doc =
+    val rows = cs(
+      values
+        .rows
+        .map { row =>
+          row match
+            case a: ArrayConstructor =>
+              paren(cs(a.values.map(x => expr(x))))
+            case other =>
+              expr(other)
+        }
+    )
+    paren(ws("values", rows))
 
-  private def pivotOnExpr(p: Pivot)(using sc: SyntaxContext): Doc = p
-    .pivotKeys
-    .map { k =>
-      val values = k.values.map(v => expr(v)).mkString(", ")
-      if values.isEmpty then
-        s"${expr(k.name)}"
-      else
-        s"${expr(k.name)} in (${values})"
-    }
-    .mkString(", ")
+  private def pivotOnExpr(p: Pivot)(using sc: SyntaxContext): Doc = cs(
+    p.pivotKeys
+      .map { k =>
+        val values = cs(k.values.map(v => expr(v)))
+        if k.values.isEmpty then
+          expr(k.name)
+        else
+          ws(expr(k.name), "in", paren(values))
+      }
+  )
   end pivotOnExpr
 
   def expr(expression: Expression)(using sc: SyntaxContext = InStatement): Doc =
@@ -667,108 +667,97 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         expr(g.child)
       case f: FunctionApply =>
         val base = expr(f.base)
-        val args = f.args.map(x => expr(x)).mkString(", ")
+        val args = paren(cs(f.args.map(x => expr(x))))
         val w    = f.window.map(x => expr(x))
-        val stem = s"${base}(${args})"
-        if w.isDefined then
-          s"${stem} ${w.get}"
-        else
-          stem
+        val stem = base + args
+        ws(stem, w)
       case w: WindowApply =>
         val base   = expr(w.base)
         val window = expr(w.window)
-        Seq(s"${base}", window).mkString(" ")
+        ws(base, window)
       case f: FunctionArg =>
         // TODO handle arg name mapping
         if f.isDistinct then
-          s"distinct ${expr(f.value)}"
+          ws("distinct", expr(f.value))
         else
           expr(f.value)
       case w: Window =>
-        val s = Seq.newBuilder[String]
+        val s = List.newBuilder[Doc]
         if w.partitionBy.nonEmpty then
-          s += "partition by"
-          s += w.partitionBy.map(x => expr(x)).mkString(", ")
+          s += ws("partition by", cs(w.partitionBy.map(x => expr(x))))
         if w.orderBy.nonEmpty then
-          s += "order by"
-          s += w.orderBy.map(x => expr(x)).mkString(", ")
+          s += ws("order by", cs(w.orderBy.map(x => expr(x))))
         w.frame
           .foreach { f =>
-            s += s"${f.frameType.expr} between ${f.start.expr} and ${f.end.expr}"
+            s += ws(text(f.frameType.expr), "between", f.start.expr, "and", f.end.expr)
           }
-        s"over (${s.result().mkString(" ")})"
+        ws("over", ws(s.result()))
       case Eq(left, n: NullLiteral, _) =>
-        s"${expr(left)} is null"
+        ws(expr(left), "is null")
       case NotEq(left, n: NullLiteral, _) =>
-        s"${expr(left)} is not null"
+        ws(expr(left), "is not null")
       case a: ArithmeticUnaryExpr =>
         a.sign match
           case Sign.NoSign =>
             expr(a.child)
           case Sign.Positive =>
-            s"+${expr(a.child)}"
+            text("+") + expr(a.child)
           case Sign.Negative =>
-            s"-${expr(a.child)}"
+            text("-") + expr(a.child)
       case b: BinaryExpression =>
-        s"${expr(b.left)} ${b.operatorName} ${expr(b.right)}"
+        ws(expr(b.left), b.operatorName, expr(b.right))
       case s: StringPart =>
-        s.stringValue
+        text(s.stringValue)
       case l: Literal =>
-        l.sqlExpr
+        text(l.sqlExpr)
       case bq: BackQuotedIdentifier =>
         // Need to use double quotes for back-quoted identifiers, which represents table or column names
-        s"\"${bq.unquotedValue}\""
-      case w: Wildcard =>
-        w.strExpr
+        text("`") + bq.unquotedValue + text("`")
       case i: Identifier =>
-        i.strExpr
+        text(i.strExpr)
       case s: SortItem =>
-        s"${expr(s.sortKey)}${s.ordering.map(x => s" ${x.expr}").getOrElse("")}"
+        expr(s.sortKey) + s.ordering.map(x => whitespace + text(x.expr))
       case s: SingleColumn =>
-        val left = expr(s.expr)
-        if s.nameExpr.isEmpty then
-          left
-        else if left != s.nameExpr.toSQLAttributeName then
-          s"${left} as ${s.nameExpr.toSQLAttributeName}"
-        else
-          left
+        expr(s.expr) match
+          case left if s.nameExpr.isEmpty =>
+            left
+          case t @ Text(str) if str != s.nameExpr.toSQLAttributeName =>
+            ws(t, "as", s.nameExpr.toSQLAttributeName)
+          case left =>
+            left
       case a: Attribute =>
-        a.fullName
+        text(a.fullName)
       case t: TypedExpression =>
         expr(t.child)
       case p: ParenthesizedExpression =>
-        s"(${expr(p.child)})"
+        paren(expr(p.child))
       case i: InterpolatedString =>
-        i.parts
-          .map { e =>
-            expr(e)
-          }
-          .mkString
+        concat(i.parts.map(expr))
       case s: SubQueryExpression =>
-        val sql = query(s.query, Nil)(using sc.enterExpression)
-        sql
+        val sql = query(s.query, Nil)(using InSubQuery)
+        parenBlock(sql)
       case i: IfExpr =>
-        s"if(${expr(i.cond)}, ${expr(i.onTrue)}, ${expr(i.onFalse)})"
+        text("if") + paren(cs(expr(i.cond), expr(i.onTrue), expr(i.onFalse)))
       case n: Not =>
-        s"not ${expr(n.child)}"
+        ws("not", expr(n.child))
       case l: ListExpr =>
-        l.exprs.map(x => expr(x)).mkString(", ")
+        cs(l.exprs.map(x => expr(x)))
       case d @ DotRef(qual: Expression, name: NameExpr, _, _) =>
-        s"${expr(qual)}.${expr(name)}"
+        expr(qual) + "." + expr(name)
       case in: In =>
         val left  = expr(in.a)
-        val right = in.list.map(x => expr(x)).mkString(", ")
-        s"${left} in (${right})"
+        val right = cs(in.list.map(x => expr(x)))
+        ws(left, "in", paren(right))
       case notIn: NotIn =>
         val left  = expr(notIn.a)
-        val right = notIn.list.map(x => expr(x)).mkString(", ")
-        s"${left} not in (${right})"
-//      case n: NativeExpression =>
-//        printExpression(ExpressionEvaluator.eval(n, ctx))
+        val right = cs(notIn.list.map(x => expr(x)))
+        ws(left, "not in", paren(right))
+      case n: NativeExpression =>
+        expr(ExpressionEvaluator.eval(n))
       case a: ArrayConstructor =>
-        s"ARRAY[${a.values.map(x => expr(x)).mkString(", ")}]"
+        text("ARRAY") + bracket(cs(a.values.map(expr(_))))
       case a: ArrayAccess =>
-        s"${expr(a.arrayExpr)}[${expr(a.index)}]"
+        expr(a.arrayExpr) + text("[") + expr(a.index) + text("]")
       case c: CaseExpr =>
         ws(
           ws("case", c.target.map(expr)),

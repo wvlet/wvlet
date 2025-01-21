@@ -198,15 +198,9 @@ object CodeFormatter:
     * @param lst
     * @return
     */
-  def cs(lst: List[Doc]): Doc = concat(lst, text(",") + whitespaceOrNewline)
+  def cs(lst: Any*): Doc = concat(to_list(lst), text(",") + whitespaceOrNewline)
 
-  /**
-    * Concatenate items with a whitespace separator
-    *
-    * @param lst
-    * @return
-    */
-  def ws(lst: Any*): Doc =
+  private def to_list(x: Any*): List[Doc] =
     def loop(x: List[Any]): List[Doc] =
       x match
         case Nil =>
@@ -215,8 +209,15 @@ object CodeFormatter:
           toDoc(head) :: Nil
         case head :: tail =>
           toDoc(head) :: loop(tail)
+    loop(x.toList).filterNot(_ == empty)
 
-    concat(loop(lst.toList).filterNot(_ == empty), whitespace)
+  /**
+    * Concatenate items with a whitespace separator
+    *
+    * @param lst
+    * @return
+    */
+  def ws(lst: Any*): Doc = concat(to_list(lst), whitespace)
 
   def lines(lst: List[Doc]): Doc = concat(lst, newline)
 
@@ -245,10 +246,43 @@ object CodeFormatter:
   def bracket(d: Doc): Doc = group(text("[") + lineBlock(d) + text("]"))
   def paren(d: Doc): Doc   = group(text("(") + lineBlock(d) + text(")"))
 
+  /**
+    * Code block using braces with nested layout or space separated layout
+    * {{{
+    *   xxxx {
+    *     (block)
+    *   }
+    * }}}
+    *
+    * or
+    *
+    * {{{
+    *   xxxx { (block) }
+    * }}}
+    * @param d
+    * @return
+    */
   def codeBlock(d: Doc): Doc = group(
     text("{") + nest(whitespaceOrNewline + d) + whitespaceOrNewline + text("}")
   )
 
+  /**
+    * Code block using parentheses with nested layout or space separated layout
+    * {{{
+    *   xxxx (
+    *     (block)
+    *   )
+    * }}}
+    *
+    * or
+    *
+    * {{{
+    *   xxxx ( (block) )
+    * }}}
+    *
+    * @param d
+    * @return
+    */
   def parenBlock(d: Doc): Doc = group(
     text("(") + nest(whitespaceOrNewline + d) + whitespaceOrNewline + text(")")
   )
