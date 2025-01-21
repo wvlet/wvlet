@@ -165,7 +165,7 @@ object GenSQL extends Phase("generate-sql"):
             val gen = sqlGeneratorFor(context.dbType)
             s.saveOptions
               .map { opt =>
-                s"${opt.key.fullName}=${gen.expr(opt.value)}"
+                s"${opt.key.fullName}=${gen.print(opt.value)}"
               }
               .mkString(" with (", ", ", ")")
           else
@@ -193,7 +193,7 @@ object GenSQL extends Phase("generate-sql"):
             val opts = s
               .saveOptions
               .map { opt =>
-                s"${opt.key.fullName} ${g.expr(opt.value)}"
+                s"${opt.key.fullName} ${g.print(opt.value)}"
               }
               .mkString("(", ", ", ")")
             s"${copySQL} ${opts}"

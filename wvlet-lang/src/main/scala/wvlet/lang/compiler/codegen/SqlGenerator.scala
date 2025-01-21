@@ -765,7 +765,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
           .foreach { f =>
             s += ws(text(f.frameType.expr), "between", f.start.expr, "and", f.end.expr)
           }
-        ws("over", ws(s.result()))
+        ws("over", paren(ws(s.result())))
       case Eq(left, n: NullLiteral, _) =>
         ws(expr(left), "is null")
       case NotEq(left, n: NullLiteral, _) =>
@@ -788,8 +788,8 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       case l: Literal =>
         text(l.sqlExpr)
       case bq: BackQuotedIdentifier =>
-        // Need to use double quotes for back-quoted identifiers, which represents table or column names
-        text("`") + bq.unquotedValue + text("`")
+        // SQL needs to use double quotes for back-quoted identifiers, which represents table or column names
+        text("\"") + bq.unquotedValue + text("\"")
       case i: Identifier =>
         text(i.strExpr)
       case s: SortItem =>
@@ -797,11 +797,13 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       case s: SingleColumn =>
         expr(s.expr) match
           case left if s.nameExpr.isEmpty =>
+            // no alias
             left
-          case t @ Text(str) if str != s.nameExpr.toSQLAttributeName =>
-            ws(t, "as", s.nameExpr.toSQLAttributeName)
+          case t @ Text(str) if str == s.nameExpr.toSQLAttributeName =>
+            // alias is the same with the expression
+            t
           case left =>
-            left
+            ws(left, "as", s.nameExpr.toSQLAttributeName)
       case a: Attribute =>
         text(a.fullName)
       case t: TypedExpression =>
@@ -884,7 +886,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
           .map { f =>
             group(text(f.name) + ":" + whitespace + expr(f.value))
           }
-        bracket(cs(fields))
+        brace(cs(fields))
       case m: MapValue =>
         dbType.mapConstructorSyntax match
           case SQLDialect.MapSyntax.KeyValue =>
