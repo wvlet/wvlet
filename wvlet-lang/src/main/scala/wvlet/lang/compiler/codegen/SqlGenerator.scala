@@ -110,7 +110,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
 
   private def wrapWithParenIfNecessary(body: Doc)(using sc: SyntaxContext): Doc =
     if sc.isNested then
-      parenBlock(body)
+      indentedParen(body)
     else
       body
 
@@ -181,8 +181,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       case s: Sort if block.acceptOrderBy =>
         relation(s.child, block.copy(orderBy = s.orderBy))
       case d: Distinct =>
-        val sql = relation(d.child, SQLBlock())
-        selectAll(sql, block.copy(isDistinct = true))
+        relation(d.child, block.copy(isDistinct = true))
       case f: Filter =>
         f.child match
           case g: GroupBy =>
@@ -210,21 +209,16 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
           )
         val sql =
           if p.groupingKeys.isEmpty then
-            wrapWithParenIfNecessary(pivotExpr)
+            pivotExpr
           else
             val groupByItems = cs(p.groupingKeys.map(x => expr(x)))
-            wrapWithParenIfNecessary(
-              pivotExpr + whitespaceOrNewline +
-                group(text("group by") + nest(whitespaceOrNewline + groupByItems))
-            )
+            pivotExpr + whitespaceOrNewline +
+              group(text("group by") + nest(whitespaceOrNewline + groupByItems))
         selectAll(sql, block)
       case s: Selection =>
         select(s, block)
       case r: RawSQL =>
-        if block.isEmpty then
-          expr(r.sqlExpr)
-        else
-          selectAll(indentedParen(expr(r.sqlExpr)), block)
+        selectAll(expr(r.sqlExpr), block)
       case t: TableInput =>
         selectAll(expr(t.sqlExpr), block)
       case a: AliasedRelation =>
@@ -318,7 +312,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         // Skip debug expression
         relation(d.inputRelation, block)
       case d: Dedup =>
-        selectAll(relation(d.child, block)(using InSubQuery), block.copy(isDistinct = true))
+        relation(d.child, block.copy(isDistinct = true))
       case s: Sample =>
         val child = relation(s.child, block)(using InFromClause)
         val body: Doc =
@@ -445,7 +439,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             sql
           else
             ws(sql, "where", expr(Expression.concatWithAnd(conds)))
-        selectAll(wrapWithParenIfNecessary(ws(body, "order by name")), block)
+        selectAll(ws(body, "order by name"), block)
       case s: Show if s.showType == ShowType.schemas =>
         val sql: Doc = ws(
           "select",
@@ -476,17 +470,17 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             sql
           else
             ws(sql, "where", expr(Expression.concatWithAnd(conds)))
+
         selectAll(wrapWithParenIfNecessary(ws(body, "order by name")), block)
       case s: Show if s.showType == ShowType.catalogs =>
-        val sql = ws(
-          "select",
-          "distinct",
-          "catalog_name as name",
-          "from",
-          "information_schema.schemata",
-          "order by name"
+        val sql = lines(
+          List(
+            group(ws("select distinct", "catalog_name as name")),
+            group(ws("from", "information_schema.schemata")),
+            group(ws("order by", "name"))
+          )
         )
-        selectAll(wrapWithParenIfNecessary(sql), block)
+        selectAll(sql, block)
       case s: Show if s.showType == ShowType.models =>
         // TODO: Show models should be handled outside of GenSQL
         val models: Seq[ListMap[String, Any]] = ctx
@@ -548,7 +542,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
               "__models(name, args, package_name)"
             )
 
-        selectAll(wrapWithParenIfNecessary(sql), block)
+        selectAll(sql, block)
       case r: Relation if !block.isEmpty =>
         selectAll(
           // Start a new nested SQLBlock
@@ -593,39 +587,50 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
   private def indented(d: Doc): Doc = nest(maybeNewline + d)
 
   private def selectAll(fromStmt: Doc, block: SQLBlock)(using sc: SyntaxContext): Doc =
-    val selectItems =
-      if block.selectItems.isEmpty then
-        if block.isDistinct then
-          text("distinct *")
-        else
+    def renderSelect(input: Doc): Doc =
+      val selectItems =
+        if block.selectItems.isEmpty then
           text("*")
+        else
+          cs(block.selectItems.map(x => expr(x)))
+      val selectExpr =
+        ws(
+          text("select"),
+          if block.isDistinct then
+            Some("distinct")
+          else
+            None
+        ) + nest(whitespaceOrNewline + selectItems)
+
+      val s = List.newBuilder[Doc]
+      s += group(selectExpr)
+      if sc.inFromClause then
+        s += input
+      else if !input.isEmpty then
+        s += ws("from", input)
+
+      if block.whereFilter.nonEmpty then
+        s += group(ws("where", indented(cs(block.whereFilter.map(x => expr(x.filterExpr))))))
+      if block.groupingKeys.nonEmpty then
+        s += group(ws("group by", indented(cs(block.groupingKeys.map(x => expr(x))))))
+      if block.having.nonEmpty then
+        s += group(ws("having", indented(cs(block.having.map(x => expr(x.filterExpr))))))
+      if block.orderBy.nonEmpty then
+        s += group(ws("order by", indented(cs(block.orderBy.map(x => expr(x))))))
+      if block.limit.nonEmpty then
+        s += group(ws("limit", indented(expr(block.limit.get))))
+
+      val sql = lines(s.result())
+      if sc.isNested then
+        indentedParen(sql)
       else
-        cs(block.selectItems.map(x => expr(x)))
+        sql
+    end renderSelect
 
-    val s = List.newBuilder[Doc]
-    s += group(text("select") + nest(whitespaceOrNewline + selectItems))
-    if sc.inFromClause then
-      s += fromStmt
-    else if !fromStmt.isEmpty then
-      s += ws("from", fromStmt)
-
-    if block.whereFilter.nonEmpty then
-      s += group(ws("where", indented(cs(block.whereFilter.map(x => expr(x.filterExpr))))))
-    if block.groupingKeys.nonEmpty then
-      s += group(ws("group by", indented(cs(block.groupingKeys.map(x => expr(x))))))
-    if block.having.nonEmpty then
-      s += group(ws("having", indented(cs(block.having.map(x => expr(x.filterExpr))))))
-    if block.orderBy.nonEmpty then
-      s += group(ws("order by", indented(cs(block.orderBy.map(x => expr(x))))))
-    if block.limit.nonEmpty then
-      s += group(ws("limit", indented(expr(block.limit.get))))
-
-    val sql = lines(s.result())
-    if sc.isNested then
-      indentedParen(sql)
+    if block.isEmpty then
+      fromStmt
     else
-      sql
-
+      renderSelect(indentedParen(fromStmt))
   end selectAll
 
   private def select(r: Relation, block: SQLBlock)(using sc: SyntaxContext): Doc =
@@ -644,6 +649,8 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       child match
         case e: EmptyRelation =>
           empty
+        case t: TableInput =>
+          expr(t.sqlExpr)
         case _ =>
           relation(child, SQLBlock())(using InSubQuery)
     selectAll(fromStmt, newBlock)
