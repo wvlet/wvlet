@@ -120,6 +120,8 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         true
       case s: Selection =>
         true
+      case s: Sample =>
+        true
       case g: GroupBy =>
         // Wvlet allows GroupBy without any projection (select)
         true
@@ -143,7 +145,13 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
     * @param sc
     * @return
     */
-  private def query(r: Relation, block: SQLBlock)(using sc: SyntaxContext): Doc = relation(r, block)
+  private def query(r: Relation, block: SQLBlock)(using sc: SyntaxContext): Doc =
+    if hasSelection(r) then
+      relation(r, block)
+    else
+      // If there is no selection node, add a default selection node
+      val p = Project(r, List(SingleColumn(EmptyName, Wildcard(r.span), r.span)), r.span)
+      relation(p, block)
 
   /**
     * Print Relation nodes while tracking the parent nodes (e.g., filter, sort) for merging them
@@ -158,10 +166,20 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
     r match
       case q: Query =>
         query(q.body, block)
+      case q: WithQuery =>
+        val subQueries: List[Doc] = q
+          .queryDefs
+          .map { w =>
+            val subQuery = query(w.child, SQLBlock())(using InStatement)
+            ws(tableAliasOf(w), "as", indentedParen(subQuery))
+          }
+        val body     = query(q.queryBody, block)
+        val withStmt = ws("with", concat(subQueries, text(",") + linebreak))
+        withStmt + linebreak + body
       case o: Offset if block.acceptOffset =>
         relation(o.child, block.copy(offset = Some(o.rows)))
-      case o: Limit if block.acceptLimit =>
-        relation(o.child, block.copy(limit = Some(o.limit)))
+      case l: Limit if block.acceptLimit =>
+        relation(l.child, block.copy(limit = Some(l.limit)))
       case s: Sort if block.acceptOrderBy =>
         relation(s.child, block.copy(orderBy = s.orderBy))
       case d: Distinct =>
@@ -309,13 +327,20 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
               warn(s"Unsupported sampling method: ${s.method} for ${dbType}")
               child
         selectAll(body, block)
+      case r: RawSQL =>
+        expr(r.sqlExpr)
+      case t: TableInput =>
+        if sc.inFromClause then
+          expr(t.sqlExpr)
+        else
+          printBlock(ws("from", expr(t.sqlExpr)), block)
       case a: AliasedRelation =>
         val tableAlias: Doc = tableAliasOf(a)
 
         a.child match
-          case t: TableInput =>
+          case t: TableInput if sc.isNested =>
             selectAll(group(ws(expr(t.sqlExpr), "as", tableAlias)), block)
-          case v: Values =>
+          case v: Values if sc.isNested =>
             selectAll(group(ws(values(v), "as", tableAlias)), block)
 //          case v: Values if sc.nestingLevel > 0 && sc.withinJoin =>
 //            // For joins, expose table column aliases to the outer scope
@@ -339,18 +364,6 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       case t: TestRelation =>
         // Skip test expression
         relation(t.inputRelation, block)
-      case q: WithQuery =>
-        val subQueries: List[Doc] = q
-          .queryDefs
-          .map { w =>
-            val subQuery = query(w.child, SQLBlock())(using InStatement)
-            ws(tableAliasOf(w), "as", parenBlock(subQuery))
-          }
-        val body     = query(q.queryBody, block)
-        val withStmt = ws("with", concat(subQueries, text(",") + linebreak))
-        withStmt + linebreak + body
-      case t: TableInput =>
-        select(t, block)
       case v: Values =>
         selectAll(values(v), block)
       case s: SelectAsAlias =>
@@ -536,6 +549,12 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             )
 
         selectAll(wrapWithParenIfNecessary(sql), block)
+      case r: Relation if !block.isEmpty =>
+        selectAll(
+          // Start a new nested SQLBlock
+          relation(r, SQLBlock())(using InStatement),
+          block
+        )
       case other =>
         unsupportedNode(s"relation ${other.nodeName}", other.span)
     end match

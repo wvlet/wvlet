@@ -246,6 +246,7 @@ object CodeFormatter:
 
   // Create subexpression block wrapped with braces
   def indentedBrace(d: Doc): Doc = text("{") + nest(linebreak + d) + linebreak + text("}")
+  def indentedParen(d: Doc): Doc = text("(") + nest(linebreak + d) + linebreak + text(")")
 
   def brace(d: Doc): Doc   = group(text("{") + lineBlock(d) + text("}"))
   def bracket(d: Doc): Doc = group(text("[") + lineBlock(d) + text("]"))
