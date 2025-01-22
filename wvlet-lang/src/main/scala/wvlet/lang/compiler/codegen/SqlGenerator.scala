@@ -315,7 +315,8 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         // Skip debug expression
         relation(d.inputRelation, block)
       case d: Dedup =>
-        relation(d.child, block.copy(isDistinct = true))
+        val r = relation(d.child, SQLBlock())(using InSubQuery)
+        selectAll(r, block.copy(isDistinct = true))
       case s: Sample =>
         val child = relation(s.child, block)(using InFromClause)
         val body: Doc =
