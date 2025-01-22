@@ -235,10 +235,11 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       case a: AliasedRelation =>
         val tableAlias: Doc = tableAliasOf(a)
 
+        // For a simple table input,
         a.child match
-          case t: TableInput if sc.isNested =>
+          case t: TableInput =>
             selectAll(group(ws(expr(t.sqlExpr), "as", tableAlias)), block)
-          case v: Values if sc.isNested || sc.inJoinClause =>
+          case v: Values =>
             selectAll(group(ws(values(v), "as", tableAlias)), block)
           case _ =>
             selectAll(
@@ -281,8 +282,9 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             case ImplicitJoin =>
               text(",")
 
-        val l = relation(j.left, block)
-        val r = indentedParen(relation(j.right, SQLBlock())(using InJoinClause))
+        // Generate SQL for left and right relations in a flat structure
+        val l = relation(j.left, SQLBlock())(using InFromClause)
+        val r = relation(j.right, SQLBlock())(using InFromClause)
         val c: Option[Doc] =
           j.cond match
             case NoJoinCriteria =>
@@ -290,13 +292,16 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             case NaturalJoin(_) =>
               None
             case u: JoinOnTheSameColumns =>
-              Some(whitespaceOrNewline + text("using" + paren(cs(u.columns.map(_.fullName)))))
+              Some(
+                whitespaceOrNewline + text("using") + whitespace + paren(cs(u.columns.map(expr)))
+              )
             case JoinOn(e, _) =>
               Some(whitespaceOrNewline + ws("on", expr(e)))
             case JoinOnEq(keys, _) =>
               Some(whitespaceOrNewline + ws("on", expr(Expression.concatWithEq(keys))))
         val joinSQL: Doc = group(l + joinType + whitespaceOrNewline + r + c)
-        joinSQL
+        // Append select * from (left) join (right) where ...
+        selectAll(joinSQL, block)
       case s: SetOperation =>
         val rels: List[Doc] =
           s.children.toList match

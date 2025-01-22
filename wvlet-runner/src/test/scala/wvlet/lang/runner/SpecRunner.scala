@@ -86,8 +86,8 @@ end SpecRunner
 
 class BasicSpec
     extends SpecRunner(
-      "spec/basic",
-      ignoredSpec = Map("values.wv" -> "Need to support array[struct] data")
+      "spec/basic"
+      // ignoredSpec = Map("values.wv" -> "Need to support array[struct] data")
     )
 
 class WvletTPCHSpec extends SpecRunner("spec/tpch", prepareTPCH = true)
