@@ -210,8 +210,10 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             addHaving(g)
           case a: Agg =>
             // Cut the scope explicitly to apply the filter to the aggregated expressions
-            // wvlet: agg v.max as vmax where vmax > 10
-            // sql: select * from (select max(v) as vmax) where vmax > 10
+            // {{{
+            //  wvlet: agg v.max as vmax where vmax > 10
+            //   sql: select * from (select max(v) as vmax) where vmax > 10
+            // }}}
             val c = indentedParen(relation(a, SQLBlock()))
             selectAll(c, block.copy(whereFilter = f :: block.whereFilter))
           case child =>
@@ -245,7 +247,8 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
           // Start a new SQLBlock with the given select items
           val r = relation(s.child, SQLBlock(selectItems = s.selectItems))(using InSubQuery)
           // Wrap with a SELECT statement
-          selectAll(r, block)
+          val d = selectAll(r, block)
+          d
       case r: RawSQL =>
         selectExpr(expr(r.sqlExpr))
       case t: TableInput =>
@@ -265,7 +268,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             selectAll(group(ws(values(v), "as", tableAlias)), block)
           case _ =>
             selectAll(
-              group(ws(relation(a.child, block)(using InSubQuery), "as", tableAlias)),
+              group(ws(relation(a.child, SQLBlock())(using InSubQuery), "as", tableAlias)),
               block
             )
       case p: BracedRelation =>
@@ -277,7 +280,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
           case AliasedRelation(v: Values, _, _, _) =>
             selectExpr(inner)
           case _ =>
-            val body = query(p.child, block)(using InSubQuery)
+            val body = query(p.child, SQLBlock())(using InSubQuery)
             selectExpr(body)
       case j: Join =>
         val asof: Option[Doc] =
@@ -652,50 +655,50 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
 
   end selectAll
 
-  private def select(r: Relation, block: SQLBlock)(using sc: SyntaxContext): Doc =
-    def pullUpChildFilters(r: Relation, block: SQLBlock): SQLBlock =
-      def collectFilters(plan: Relation, filters: List[Filter]): SQLBlock =
-        plan match
-          case f: Filter =>
-            collectFilters(f.child, f :: filters)
-          case g: GroupBy =>
-            pullUpChildFilters(
-              g.child,
-              block.copy(groupingKeys = g.groupingKeys, having = filters ++ block.having)
-            )
-          case other =>
-            block.copy(child = Some(other), whereFilter = filters ++ block.whereFilter)
-
-      r match
-        case s: Selection if block.selectItems.isEmpty =>
-          pullUpChildFilters(s.child, block.copy(selectItems = s.selectItems))
-        case other =>
-          collectFilters(r, Nil)
-    end pullUpChildFilters
-
-    // Pull up child filters to the parent
-    lazy val newBlock: SQLBlock = pullUpChildFilters(r, block)
-
-    def child = newBlock
-      .child
-      .getOrElse {
-        throw StatusCode
-          .UNEXPECTED_STATE
-          .newException(s"Child relation not found in ${r}", r.sourceLocation)
-      }
-
-    def fromStmt =
-      child match
-        case e: EmptyRelation =>
-          empty
-        case t: TableInput =>
-          expr(t.sqlExpr)
-        case _ =>
-          relation(child, SQLBlock())(using InSubQuery)
-
-    selectAll(fromStmt, newBlock)
-
-  end select
+//  private def select(r: Relation, block: SQLBlock)(using sc: SyntaxContext): Doc =
+//    def pullUpChildFilters(r: Relation, block: SQLBlock): SQLBlock =
+//      def collectFilters(plan: Relation, filters: List[Filter]): SQLBlock =
+//        plan match
+//          case f: Filter =>
+//            collectFilters(f.child, f :: filters)
+//          case g: GroupBy =>
+//            pullUpChildFilters(
+//              g.child,
+//              block.copy(groupingKeys = g.groupingKeys, having = filters ++ block.having)
+//            )
+//          case other =>
+//            block.copy(child = Some(other), whereFilter = filters ++ block.whereFilter)
+//
+//      r match
+//        case s: Selection if block.selectItems.isEmpty =>
+//          pullUpChildFilters(s.child, block.copy(selectItems = s.selectItems))
+//        case other =>
+//          collectFilters(r, Nil)
+//    end pullUpChildFilters
+//
+//    // Pull up child filters to the parent
+//    lazy val newBlock: SQLBlock = pullUpChildFilters(r, block)
+//
+//    def child = newBlock
+//      .child
+//      .getOrElse {
+//        throw StatusCode
+//          .UNEXPECTED_STATE
+//          .newException(s"Child relation not found in ${r}", r.sourceLocation)
+//      }
+//
+//    def fromStmt =
+//      child match
+//        case e: EmptyRelation =>
+//          empty
+//        case t: TableInput =>
+//          expr(t.sqlExpr)
+//        case _ =>
+//          relation(child, SQLBlock())(using InSubQuery)
+//
+//    selectAll(fromStmt, newBlock)
+//
+//  end select
 
   private def groupBy(g: GroupBy, block: SQLBlock)(using sc: SyntaxContext): Doc =
     // Translate GroupBy node without any projection (select) to Agg node
