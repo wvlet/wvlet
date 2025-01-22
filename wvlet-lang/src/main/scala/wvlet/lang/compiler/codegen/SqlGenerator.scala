@@ -133,6 +133,10 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       case j: Join if nestingLevel > 0 =>
         // The left operand of join will be a selection
         true
+      case s: Show =>
+        true
+      case r: RelationInspector =>
+        true
       case r: UnaryRelation =>
         hasSelection(r.child, nestingLevel + 1)
       case _ =>
@@ -189,7 +193,10 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         f.child match
           case g: GroupBy =>
             // Filter(GroupBy(...)) => Having condition
-            relation(f.child, block.copy(having = f :: block.having))
+            relation(g, block.copy(having = f :: block.having))
+          case a: Agg =>
+            // Filter(Agg(...)) => Having condition
+            relation(a, block.copy(having = f :: block.having))
           case _ =>
             relation(f.child, block.copy(whereFilter = f :: block.whereFilter))
       case g: GroupBy =>
