@@ -37,8 +37,10 @@ object SqlGenerator:
     * @param limit
     * @param offset
     */
-  private case class SQLBlock(
-      // selectItems: List[Attribute] = Nil, // SingleColumn(EmptyName, Wildcard(NoSpan), NoSpan) :: Nil,
+  case class SQLBlock(
+      child: Option[Relation] = None,
+      selectItems: List[Attribute] =
+        Nil, // SingleColumn(EmptyName, Wildcard(NoSpan), NoSpan) :: Nil,
       isDistinct: Boolean = false,
       whereFilter: List[Filter] = Nil,
       groupingKeys: List[GroupingKey] = Nil,
@@ -53,8 +55,8 @@ object SqlGenerator:
     def acceptOrderBy: Boolean = orderBy.isEmpty
 
     def isEmpty: Boolean =
-      !isDistinct && whereFilter.isEmpty && groupingKeys.isEmpty && having.isEmpty &&
-        orderBy.isEmpty && limit.isEmpty && offset.isEmpty
+      child.isEmpty && !isDistinct && selectItems.isEmpty && whereFilter.isEmpty &&
+        groupingKeys.isEmpty && having.isEmpty && orderBy.isEmpty && limit.isEmpty && offset.isEmpty
 
 end SqlGenerator
 
@@ -134,12 +136,6 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       case _ =>
         false
 
-  private def addProjectionIfMissing(r: Relation)(using sc: SyntaxContext): Relation =
-    if !hasSelection(r) then
-      Project(r, List(SingleColumn(EmptyName, Wildcard(NoSpan), NoSpan)), NoSpan)
-    else
-      r
-
   /**
     * Print a query matching with SELECT statement in SQL
     * @param r
@@ -147,9 +143,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
     * @param sc
     * @return
     */
-  private def query(r: Relation, block: SQLBlock)(using sc: SyntaxContext): Doc =
-    val p = addProjectionIfMissing(r)
-    relation(p, block)
+  private def query(r: Relation, block: SQLBlock)(using sc: SyntaxContext): Doc = relation(r, block)
 
   /**
     * Print Relation nodes while tracking the parent nodes (e.g., filter, sort) for merging them
@@ -554,127 +548,85 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       case None =>
         name
 
+  private def pullUpChildFilters(r: Relation, block: SQLBlock): SQLBlock =
+    def collectFilters(plan: Relation, filters: List[Filter]): SQLBlock =
+      plan match
+        case f: Filter =>
+          collectFilters(f.child, f :: filters)
+        case g: GroupBy =>
+          pullUpChildFilters(
+            g.child,
+            block.copy(groupingKeys = g.groupingKeys, having = filters ++ block.having)
+          )
+        case other =>
+          block.copy(child = Some(other), whereFilter = filters ++ block.whereFilter)
+
+    r match
+      case s: Selection if block.selectItems.isEmpty =>
+        pullUpChildFilters(s.child, block.copy(selectItems = s.selectItems))
+      case other =>
+        collectFilters(r, Nil)
+  end pullUpChildFilters
+
+  private def indented(d: Doc): Doc = nest(maybeNewline + d)
+
+  private def printBlock(fromStmt: Doc, block: SQLBlock)(using sc: SyntaxContext): Doc =
+    val selectItems =
+      if block.selectItems.isEmpty then
+        if block.isDistinct then
+          text("distinct *")
+        else
+          text("*")
+      else
+        cs(block.selectItems.map(x => expr(x)))
+
+    val s = List.newBuilder[Doc]
+    s += group(ws("select", selectItems))
+    s += fromStmt
+    if block.whereFilter.nonEmpty then
+      s += group(ws("where", indented(cs(block.whereFilter.map(x => x.filterExpr)))))
+    if block.groupingKeys.nonEmpty then
+      s += group(ws("group by", indented(cs(block.groupingKeys.map(x => expr(x))))))
+    if block.having.nonEmpty then
+      s += group(ws("having", indented(cs(block.having.map(x => expr(x.filterExpr))))))
+    if block.orderBy.nonEmpty then
+      s += group(ws("order by", indented(cs(block.orderBy.map(x => expr(x))))))
+    if block.limit.nonEmpty then
+      s += group(ws("limit", indented(expr(block.limit.get))))
+
+    lines(s.result())
+
   private def selectAll(body: Doc, block: SQLBlock)(using sc: SyntaxContext): Doc =
     if block.isEmpty then
       body
     else
-      val q = ws(
-        "select",
-        if block.isDistinct then
-          Some("distinct")
-        else
-          None
-        ,
-        "*",
-        "from",
-        parenBlock(body)
-      )
-      q
+      printBlock(ws("from", parenBlock(body)), block)
 
   private def select(r: Relation, block: SQLBlock)(using sc: SyntaxContext): Doc =
+    // Pull up child filters to the parent
+    val newBlock: SQLBlock = pullUpChildFilters(r, block)
 
-    val selectItems: List[Attribute] =
-      r match
-        case s: Selection =>
-          s.selectItems.toList
+    val child = newBlock
+      .child
+      .getOrElse {
+        throw StatusCode
+          .UNEXPECTED_STATE
+          .newException(s"Child relation not found in ${r}", r.sourceLocation)
+      }
+
+    val fromStmt =
+      child match
+        case e: EmptyRelation =>
+          // Do not add from clause for empty inputs
+          empty
+        case t: TableInput =>
+          group(ws("from", indented(expr(t.sqlExpr))))
         case _ =>
-          Nil
-    val inputRelation =
-      r match
-        case s: Selection =>
-          s.child
-        case _ =>
-          r
+          // Start a new SELECT statement inside FROM
+          group(ws("from", indented(relation(child, SQLBlock())(using InFromClause))))
 
-    val sqlSelect = sql_select(
-      SQLSelect(inputRelation, selectItems, Nil, having, parentFilters, orderBy, limit, r.span),
-      inputRelation
-    )
-    val distinct: Option[Doc] =
-      r match
-        case d: Distinct =>
-          Some(text("distinct"))
-        case _ =>
-          None
-
-    // SELECT distinct? ...
-    val selectItemsExpr =
-      if selectItems.isEmpty then
-        text("*")
-      else
-        cs(sqlSelect.selectItems.map(x => expr(x)))
-
-    def indented(d: Doc): Doc = nest(maybeNewline + d)
-
-    val s = List.newBuilder[Doc]
-    s += group(ws("select", distinct, indented(selectItemsExpr)))
-
-    sqlSelect.child match
-      case e: EmptyRelation =>
-      // Do not add from clause for empty inputs
-      case t: TableInput =>
-        s += group(ws("from", indented(expr(t.sqlExpr))))
-      case _ =>
-        // Start a new SELECT statement inside FROM
-        s += group(ws("from", indented(relation(sqlSelect.child, Nil)(using InFromClause))))
-    if sqlSelect.filters.nonEmpty then
-      val filterExpr = Expression.concatWithAnd(sqlSelect.filters.map(x => x.filterExpr))
-      s += group(ws("where", indented(expr(filterExpr))))
-    if sqlSelect.groupingKeys.nonEmpty then
-      s += group(ws("group by", indented(cs(sqlSelect.groupingKeys.map(x => expr(x))))))
-    if sqlSelect.having.nonEmpty then
-      s += group(ws("having", indented(cs(sqlSelect.having.map(x => expr(x.filterExpr))))))
-    if sqlSelect.orderBy.nonEmpty then
-      s += group(ws("order by", indented(cs(sqlSelect.orderBy.map(x => expr(x))))))
-    if sqlSelect.limit.nonEmpty then
-      s += group(ws("limit", indented(expr(sqlSelect.limit.get))))
-
-    val body = wrapWithParenIfNecessary(lines(s.result()))
-    if remainingParents.isEmpty then
-      body
-    else
-      warn(
-        s"Unprocessed parents:\n${remainingParents.mkString(" - ", "\n - ", "")} (${ctx
-            .compilationUnit
-            .sourceFile
-            .fileName})"
-      )
-      body
+    printBlock(fromStmt, newBlock)
   end select
-
-  private def sql_select(agg: SQLSelect, r: Relation): SQLSelect =
-    def collectFilter(plan: Relation): (List[Filter], Relation) =
-      plan match
-        case f: Filter =>
-          val (filters, child) = collectFilter(f.inputRelation)
-          (f :: filters, child)
-        case other =>
-          (Nil, other)
-    end collectFilter
-
-    // pull-up aggregation node
-    // Filter(Filter(GroupBy ...))  => GROUP BY ... HAVING ...
-    // GroupBy(Filter(Filter(...)) => WHERE ... GROUP BY ...
-    r match
-      case f: Filter =>
-        val (filters, lastNode) = collectFilter(f)
-        lastNode match
-          case a: GroupBy =>
-            agg.copy(child = a.child, groupingKeys = a.groupingKeys, having = filters)
-          case other =>
-            agg.copy(child = other, filters = agg.filters ++ filters)
-      case p: Project =>
-        agg
-      case a: Agg =>
-        agg
-      case p: Pivot =>
-        agg
-      case a: GroupBy =>
-        val (filters, lastNode) = collectFilter(a.child)
-        agg.copy(child = a.child, groupingKeys = a.groupingKeys, filters = agg.filters ++ filters)
-      case _ =>
-        agg
-  end sql_select
 
   private def groupBy(g: GroupBy, block: SQLBlock)(using sc: SyntaxContext): Doc =
     // Translate GroupBy node without any projection (select) to Agg node
@@ -818,7 +770,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         concat(i.parts.map(expr))
       case s: SubQueryExpression =>
         // Generate the sub query as a top-level statement and wrap it later
-        val sql = query(s.query, Nil)(using InStatement)
+        val sql = query(s.query, SQLBlock())(using InStatement)
         parenBlock(sql)
       case i: IfExpr =>
         text("if") + paren(cs(expr(i.cond), expr(i.onTrue), expr(i.onFalse)))

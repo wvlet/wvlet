@@ -136,9 +136,9 @@ case class NamedRelation(child: Relation, name: NameExpr, span: Span)
     with Selection:
   override def toString: String = s"NamedRelation[${name.strExpr}](${child})"
 
-  override def selectItems: Seq[Attribute] =
+  override def selectItems: List[Attribute] =
     // Produce a dummy AllColumns node for SQLGenerator
-    Seq(AllColumns(Wildcard(NoSpan), None, NoSpan))
+    List(AllColumns(Wildcard(NoSpan), None, NoSpan))
 
   override def relationType: RelationType = AliasedType(
     Name.typeName(name.leafName),
@@ -240,8 +240,8 @@ trait FilteringRelation extends GeneralSelection:
 
 // Deduplicate (duplicate elimination) the input relation
 case class Distinct(child: Project, span: Span) extends FilteringRelation with AggSelect:
-  override def selectItems: Seq[Attribute] = child.selectItems
-  override def toString: String            = s"Distinct(${child})"
+  override def selectItems: List[Attribute] = child.selectItems
+  override def toString: String             = s"Distinct(${child})"
 
 case class Sort(child: Relation, orderBy: List[SortItem], span: Span) extends FilteringRelation:
   override def toString: String = s"Sort[${orderBy.mkString(", ")}](${child})"
@@ -258,7 +258,7 @@ case class Filter(child: Relation, filterExpr: Expression, span: Span) extends F
 case class Count(child: Relation, span: Span) extends UnaryRelation with AggSelect:
   override def toString: String = s"Count(${child})"
 
-  override def selectItems: Seq[Attribute] = Seq(
+  override def selectItems: List[Attribute] = List(
     SingleColumn(
       NameExpr.EmptyName,
       FunctionApply(
@@ -288,7 +288,7 @@ sealed trait Selection extends GeneralSelection:
   /**
     * Attributes corresponding to SELECT items
     */
-  def selectItems: Seq[Attribute]
+  def selectItems: List[Attribute]
 
 // This node can be a pivot node for generating a SELECT statement with aggregation functions
 trait AggSelect extends Selection
@@ -321,7 +321,7 @@ case class Transform(child: Relation, transformItems: List[Attribute], span: Spa
     with Selection
     with LogSupport:
   override def toString: String = s"Transform[${transformItems.mkString(", ")}](${child})"
-  override def selectItems: Seq[Attribute] = transformItems
+  override def selectItems: List[Attribute] = transformItems
 
   override lazy val relationType: RelationType =
     val inputRelation = child.relationType
@@ -344,8 +344,8 @@ case class AddColumnsToRelation(child: Relation, newColumns: List[Attribute], sp
     with LogSupport:
   override def toString: String = s"Add[${newColumns.mkString(", ")}](${child})"
 
-  override def selectItems: Seq[Attribute] =
-    Seq(AllColumns(Wildcard(NoSpan), None, NoSpan)) ++ newColumns
+  override def selectItems: List[Attribute] =
+    List(AllColumns(Wildcard(NoSpan), None, NoSpan)) ++ newColumns
 
   override lazy val relationType: RelationType =
     val cols = List.newBuilder[NamedType]
@@ -370,7 +370,7 @@ case class ExcludeColumnsFromRelation(child: Relation, columnNames: List[NameExp
     .fields
     .filterNot(f => columnNames.exists(_.leafName == f.name.name))
 
-  override def selectItems: Seq[Attribute] = outputColumns.map { c =>
+  override def selectItems: List[Attribute] = outputColumns.map { c =>
     val name = NameExpr.fromString(c.toSQLAttributeName, span)
     SingleColumn(NameExpr.EmptyName, name, span)
   }
@@ -400,7 +400,7 @@ case class RenameColumnsFromRelation(child: Relation, columnAliases: List[Alias]
       }
     renamedColumns.result()
 
-  override def selectItems: Seq[Attribute] = inputRelationType
+  override def selectItems: List[Attribute] = inputRelationType
     .fields
     .map { f =>
       columnMapping.get(f.name) match
@@ -444,7 +444,7 @@ case class ShiftColumns(
 ) extends Selection:
   override def toString: String = s"Shift[${shiftItems.mkString(", ")}](${child})"
 
-  override def selectItems: Seq[Attribute] = outputColumns.map { c =>
+  override def selectItems: List[Attribute] = outputColumns.map { c =>
     val name = NameExpr.fromString(c.toSQLAttributeName, span)
     SingleColumn(NameExpr.EmptyName, name, span)
   }
