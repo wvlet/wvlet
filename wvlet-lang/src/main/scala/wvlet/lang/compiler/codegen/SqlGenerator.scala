@@ -208,10 +208,11 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         val onExpr   = pivotOnExpr(p)
         val aggItems = cs(a.selectItems.map(x => expr(x)))
         val pivotExpr =
-          val child = relation(p.child, block)(using InSubQuery)
+          val child = relation(p.child, SQLBlock())(using InFromClause)
           group(
-            text("pivot") + whitespaceOrNewline + child + whitespaceOrNewline +
-              ws(text("on"), onExpr) + whitespaceOrNewline + ws(text("using"), aggItems)
+            group(text("pivot") + whitespaceOrNewline + child) +
+              nest(whitespaceOrNewline + ws(text("on"), onExpr)) +
+              nest(whitespaceOrNewline + ws(text("using"), aggItems))
           )
         val sql =
           if p.groupingKeys.isEmpty then
