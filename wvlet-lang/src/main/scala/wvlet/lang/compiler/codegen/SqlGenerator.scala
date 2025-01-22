@@ -56,8 +56,6 @@ object SqlGenerator:
     def acceptSelectItems: Boolean  = selectItems.isEmpty
     def acceptGroupingKeys: Boolean = groupingKeys.isEmpty
 
-    def acceptAggregation: Boolean = whereFilter.isEmpty && selectItems.isEmpty
-
     def isEmpty: Boolean =
       child.isEmpty && !isDistinct && selectItems.isEmpty && whereFilter.isEmpty &&
         groupingKeys.isEmpty && having.isEmpty && orderBy.isEmpty && limit.isEmpty && offset.isEmpty
@@ -177,6 +175,8 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
     r match
       case q: Query =>
         query(q.body, block)
+      case e: EmptyRelation =>
+        selectAll(empty, block)
       case q: WithQuery =>
         val subQueries: List[Doc] = q
           .queryDefs
@@ -197,7 +197,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         relation(d.child, block.copy(isDistinct = true))
       case f: Filter =>
         def addHaving(in: Relation): Doc =
-          if block.acceptAggregation then
+          if block.acceptGroupingKeys then
             relation(in, block.copy(having = f :: block.having))
           else
             // Start a new SELECT block
@@ -582,10 +582,10 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       case r: Relation =>
         selectExpr(
           // Start a new nested SQLBlock
-          relation(r, SQLBlock())(using InStatement)
+          indentedParen(relation(r, SQLBlock())(using InStatement))
         )
-//      case other =>
-//        unsupportedNode(s"relation ${other.nodeName}", other.span)
+      case other =>
+        unsupportedNode(s"relation ${other.nodeName}", other.span)
     end match
 
   end relation
@@ -738,7 +738,9 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
 
     if block.acceptGroupingKeys then
       val newBlock = block.copy(selectItems = selectItems, groupingKeys = g.groupingKeys)
-      relation(g.child, newBlock)
+      val d        = relation(g.child, newBlock)
+      // warn(d)
+      d
     else
       // Start a new SELECT block
       val d = relation(g.child, SQLBlock(groupingKeys = g.groupingKeys))(using InSubQuery)
