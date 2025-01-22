@@ -218,7 +218,10 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       case s: Selection =>
         select(s, block)
       case r: RawSQL =>
-        selectAll(expr(r.sqlExpr), block)
+        if block.isEmpty then
+          expr(r.sqlExpr)
+        else
+          selectAll(indentedParen(expr(r.sqlExpr)), block)
       case t: TableInput =>
         selectAll(expr(t.sqlExpr), block)
       case a: AliasedRelation =>
@@ -401,8 +404,8 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         // TODO Dump output to the file logger
         relation(r.child, block)
       case s: Show if s.showType == ShowType.tables =>
-        val sql: Doc = ws("select", "table_name as name", "from", "information_schema.tables")
-        val cond     = List.newBuilder[Expression]
+        val baseSql: Doc = ws("select", "table_name as name", "from", "information_schema.tables")
+        val cond         = List.newBuilder[Expression]
 
         val opts                    = ctx.global.compilerOptions
         var catalog: Option[String] = opts.catalog
@@ -436,12 +439,18 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         val conds = cond.result()
         val body =
           if conds.size == 0 then
-            sql
+            baseSql
           else
-            ws(sql, "where", expr(Expression.concatWithAnd(conds)))
-        selectAll(ws(body, "order by name"), block)
+            ws(baseSql, "where", expr(Expression.concatWithAnd(conds)))
+
+        val sql = ws(body, "order by name")
+
+        if block.isEmpty then
+          sql
+        else
+          selectAll(indentedParen(sql), block)
       case s: Show if s.showType == ShowType.schemas =>
-        val sql: Doc = ws(
+        val baseSql: Doc = ws(
           "select",
           cs("catalog_name as \"catalog\"", "schema_name as name"),
           "from",
@@ -467,11 +476,15 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         val conds = cond.result()
         val body =
           if conds.size == 0 then
-            sql
+            baseSql
           else
-            ws(sql, "where", expr(Expression.concatWithAnd(conds)))
+            ws(baseSql, "where", expr(Expression.concatWithAnd(conds)))
 
-        selectAll(wrapWithParenIfNecessary(ws(body, "order by name")), block)
+        val sql = ws(body, "order by name")
+        if block.isEmpty then
+          sql
+        else
+          selectAll(indentedParen(sql), block)
       case s: Show if s.showType == ShowType.catalogs =>
         val sql = lines(
           List(
@@ -480,7 +493,10 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             group(ws("order by", "name"))
           )
         )
-        selectAll(sql, block)
+        if block.isEmpty then
+          sql
+        else
+          selectAll(indentedParen(sql), block)
       case s: Show if s.showType == ShowType.models =>
         // TODO: Show models should be handled outside of GenSQL
         val models: Seq[ListMap[String, Any]] = ctx
@@ -542,7 +558,10 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
               "__models(name, args, package_name)"
             )
 
-        selectAll(sql, block)
+        if block.isEmpty then
+          sql
+        else
+          selectAll(indentedParen(sql), block)
       case r: Relation if !block.isEmpty =>
         selectAll(
           // Start a new nested SQLBlock
@@ -627,10 +646,11 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         sql
     end renderSelect
 
-    if block.isEmpty then
+    if block.isEmpty && sc.inFromClause then
       fromStmt
     else
-      renderSelect(indentedParen(fromStmt))
+      renderSelect(fromStmt)
+
   end selectAll
 
   private def select(r: Relation, block: SQLBlock)(using sc: SyntaxContext): Doc =

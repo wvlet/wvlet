@@ -1,6 +1,17 @@
 from sql"""select 1"""
+test _.rows should be [[1]]
 
 from sql"""select 1 as "id""""
+test _.columns should be ["id"]
+test _.rows should be [[1]]
+
 
 -- New histogram function in DuckDB 1.1.0
 from sql"""select hash('🦆')"""
+;
+
+from sql"""select 1 as id"""
+order by id
+test _.rows should be [[1]]
+
+
