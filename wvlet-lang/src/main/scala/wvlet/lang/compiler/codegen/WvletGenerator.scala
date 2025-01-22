@@ -444,6 +444,8 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
         val left  = expr(notIn.a)
         val right = cs(notIn.list.map(x => expr(x)))
         ws(left, "not in", paren(right))
+      case e: Exists =>
+        ws("exists", expr(e.child))
       case a: ArrayConstructor =>
         bracket(cs(a.values.map(x => expr(x))))
       case a: ArrayAccess =>
