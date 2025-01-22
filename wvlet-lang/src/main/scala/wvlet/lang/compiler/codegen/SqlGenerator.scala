@@ -208,13 +208,8 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
           case g: GroupBy =>
             // Filter(GroupBy(...)) => Having condition
             addHaving(g)
-          case a: Agg =>
-            // Filter(Agg(...)) => Having condition
-            addHaving(a)
           case child =>
             relation(child, block.copy(whereFilter = f :: block.whereFilter))
-      case g: GroupBy =>
-        groupBy(g, block)
       case a: Agg if a.child.isPivot =>
         // pivot + agg combination
         val p: Pivot = a.child.asInstanceOf[Pivot]
@@ -235,6 +230,8 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             pivotExpr + whitespaceOrNewline +
               group(text("group by") + nest(whitespaceOrNewline + groupByItems))
         selectExpr(sql)
+      case g: GroupBy =>
+        groupBy(g, block)
       case s: Selection =>
         if block.acceptSelectItems then
           relation(s.child, block.copy(selectItems = s.selectItems))
@@ -584,8 +581,8 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
           // Start a new nested SQLBlock
           indentedParen(relation(r, SQLBlock())(using InStatement))
         )
-      case other =>
-        unsupportedNode(s"relation ${other.nodeName}", other.span)
+//      case other =>
+//        unsupportedNode(s"relation ${other.nodeName}", other.span)
     end match
 
   end relation
@@ -739,7 +736,6 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
     if block.acceptGroupingKeys then
       val newBlock = block.copy(selectItems = selectItems, groupingKeys = g.groupingKeys)
       val d        = relation(g.child, newBlock)
-      // warn(d)
       d
     else
       // Start a new SELECT block
