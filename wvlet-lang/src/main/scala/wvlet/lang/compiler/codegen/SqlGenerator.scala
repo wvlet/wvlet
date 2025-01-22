@@ -208,6 +208,12 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
           case g: GroupBy =>
             // Filter(GroupBy(...)) => Having condition
             addHaving(g)
+          case a: Agg =>
+            // Cut the scope explicitly to apply the filter to the aggregated expressions
+            // wvlet: agg v.max as vmax where vmax > 10
+            // sql: select * from (select max(v) as vmax) where vmax > 10
+            val c = indentedParen(relation(a, SQLBlock()))
+            selectAll(c, block.copy(whereFilter = f :: block.whereFilter))
           case child =>
             relation(child, block.copy(whereFilter = f :: block.whereFilter))
       case a: Agg if a.child.isPivot =>
