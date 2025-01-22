@@ -50,9 +50,13 @@ object SqlGenerator:
       offset: Option[Expression] = None
   ):
     // def acceptSelectItems: Boolean = selectItems.isEmpty
-    def acceptOffset: Boolean  = offset.isEmpty && limit.isEmpty
-    def acceptLimit: Boolean   = limit.isEmpty && orderBy.isEmpty
-    def acceptOrderBy: Boolean = orderBy.isEmpty
+    def acceptOffset: Boolean       = offset.isEmpty && limit.isEmpty
+    def acceptLimit: Boolean        = limit.isEmpty && orderBy.isEmpty
+    def acceptOrderBy: Boolean      = orderBy.isEmpty
+    def acceptSelectItems: Boolean  = selectItems.isEmpty
+    def acceptGroupingKeys: Boolean = groupingKeys.isEmpty
+
+    def acceptAggregation: Boolean = whereFilter.isEmpty && selectItems.isEmpty
 
     def isEmpty: Boolean =
       child.isEmpty && !isDistinct && selectItems.isEmpty && whereFilter.isEmpty &&
@@ -192,17 +196,24 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       case d: Distinct =>
         relation(d.child, block.copy(isDistinct = true))
       case f: Filter =>
+        def addHaving(in: Relation): Doc =
+          if block.acceptAggregation then
+            relation(in, block.copy(having = f :: block.having))
+          else
+            // Start a new SELECT block
+            val sql = relation(in, SQLBlock(having = List(f)))
+            selectAll(sql, block)
+
         f.child match
           case g: GroupBy =>
             // Filter(GroupBy(...)) => Having condition
-            relation(g, block.copy(having = f :: block.having))
+            addHaving(g)
           case a: Agg =>
             // Filter(Agg(...)) => Having condition
-            relation(a, block.copy(having = f :: block.having))
+            addHaving(a)
           case child =>
             relation(child, block.copy(whereFilter = f :: block.whereFilter))
       case g: GroupBy =>
-        // If there has been no Projection or Agg before GroupBy, it reaches here
         groupBy(g, block)
       case a: Agg if a.child.isPivot =>
         // pivot + agg combination
@@ -225,7 +236,13 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
               group(text("group by") + nest(whitespaceOrNewline + groupByItems))
         selectExpr(sql)
       case s: Selection =>
-        select(s, block)
+        if block.acceptSelectItems then
+          relation(s.child, block.copy(selectItems = s.selectItems))
+        else
+          // Start a new SQLBlock with the given select items
+          val r = relation(s.child, SQLBlock(selectItems = s.selectItems))(using InSubQuery)
+          // Wrap with a SELECT statement
+          selectAll(r, block)
       case r: RawSQL =>
         selectExpr(expr(r.sqlExpr))
       case t: TableInput =>
@@ -239,6 +256,8 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         a.child match
           case t: TableInput =>
             selectAll(group(ws(expr(t.sqlExpr), "as", tableAlias)), block)
+          case v: Values if block.isEmpty && sc.inFromClause =>
+            group(ws(values(v), "as", tableAlias))
           case v: Values =>
             selectAll(group(ws(values(v), "as", tableAlias)), block)
           case _ =>
@@ -301,7 +320,8 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
               Some(whitespaceOrNewline + ws("on", expr(Expression.concatWithEq(keys))))
         val joinSQL: Doc = group(l + joinType + whitespaceOrNewline + r + c)
         // Append select * from (left) join (right) where ...
-        selectAll(joinSQL, block)
+        val sql = selectAll(joinSQL, block)
+        sql
       case s: SetOperation =>
         val rels: List[Doc] =
           s.children.toList match
@@ -564,8 +584,8 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
           // Start a new nested SQLBlock
           relation(r, SQLBlock())(using InStatement)
         )
-      case other =>
-        unsupportedNode(s"relation ${other.nodeName}", other.span)
+//      case other =>
+//        unsupportedNode(s"relation ${other.nodeName}", other.span)
     end match
 
   end relation
@@ -578,26 +598,6 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         name + paren(cols)
       case None =>
         name
-
-  private def pullUpChildFilters(r: Relation, block: SQLBlock): SQLBlock =
-    def collectFilters(plan: Relation, filters: List[Filter]): SQLBlock =
-      plan match
-        case f: Filter =>
-          collectFilters(f.child, f :: filters)
-        case g: GroupBy =>
-          pullUpChildFilters(
-            g.child,
-            block.copy(groupingKeys = g.groupingKeys, having = filters ++ block.having)
-          )
-        case other =>
-          block.copy(child = Some(other), whereFilter = filters ++ block.whereFilter)
-
-    r match
-      case s: Selection if block.selectItems.isEmpty =>
-        pullUpChildFilters(s.child, block.copy(selectItems = s.selectItems))
-      case other =>
-        collectFilters(r, Nil)
-  end pullUpChildFilters
 
   private def indented(d: Doc): Doc = nest(maybeNewline + d)
 
@@ -650,10 +650,30 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
   end selectAll
 
   private def select(r: Relation, block: SQLBlock)(using sc: SyntaxContext): Doc =
-    // Pull up child filters to the parent
-    val newBlock: SQLBlock = pullUpChildFilters(r, block)
+    def pullUpChildFilters(r: Relation, block: SQLBlock): SQLBlock =
+      def collectFilters(plan: Relation, filters: List[Filter]): SQLBlock =
+        plan match
+          case f: Filter =>
+            collectFilters(f.child, f :: filters)
+          case g: GroupBy =>
+            pullUpChildFilters(
+              g.child,
+              block.copy(groupingKeys = g.groupingKeys, having = filters ++ block.having)
+            )
+          case other =>
+            block.copy(child = Some(other), whereFilter = filters ++ block.whereFilter)
 
-    val child = newBlock
+      r match
+        case s: Selection if block.selectItems.isEmpty =>
+          pullUpChildFilters(s.child, block.copy(selectItems = s.selectItems))
+        case other =>
+          collectFilters(r, Nil)
+    end pullUpChildFilters
+
+    // Pull up child filters to the parent
+    lazy val newBlock: SQLBlock = pullUpChildFilters(r, block)
+
+    def child = newBlock
       .child
       .getOrElse {
         throw StatusCode
@@ -661,7 +681,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
           .newException(s"Child relation not found in ${r}", r.sourceLocation)
       }
 
-    val fromStmt =
+    def fromStmt =
       child match
         case e: EmptyRelation =>
           empty
@@ -669,13 +689,14 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
           expr(t.sqlExpr)
         case _ =>
           relation(child, SQLBlock())(using InSubQuery)
+
     selectAll(fromStmt, newBlock)
 
   end select
 
   private def groupBy(g: GroupBy, block: SQLBlock)(using sc: SyntaxContext): Doc =
     // Translate GroupBy node without any projection (select) to Agg node
-    val keys: List[Attribute] = g
+    def keys: List[Attribute] = g
       .groupingKeys
       .map { k =>
         val keyName =
@@ -685,33 +706,44 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             k.name
         SingleColumn(keyName, k.child, NoSpan)
       }
-    val aggExprs: List[Attribute] =
-      g.inputRelationType
-        .fields
-        .map { f =>
-          // Use arbitrary(expr) for efficiency
-          val ex: Expression = FunctionApply(
-            NameExpr.fromString("arbitrary"),
-            args = List(
-              FunctionArg(None, NameExpr.fromString(f.toSQLAttributeName), false, NoSpan)
-            ),
-            None,
-            NoSpan
-          )
-          val name: NameExpr =
-            dbType match
-              case DBType.DuckDB =>
-                // DuckDB generates human-friendly column name
-                EmptyName
-              case _ =>
-                val exprStr = expr(ex)
-                NameExpr.fromString(render(0, exprStr))
-          SingleColumn(name, ex, NoSpan)
-        }
-        .toList
+    // Add arbitrary(c1), arbitrary(c2), ... if no aggregation expr is given
+    def defaultAggExprs: List[Attribute] = g
+      .inputRelationType
+      .fields
+      .map { f =>
+        // Use arbitrary(expr) for efficiency
+        val ex: Expression = FunctionApply(
+          NameExpr.fromString("arbitrary"),
+          args = List(FunctionArg(None, NameExpr.fromString(f.toSQLAttributeName), false, NoSpan)),
+          None,
+          NoSpan
+        )
+        val name: NameExpr =
+          dbType match
+            case DBType.DuckDB =>
+              // DuckDB generates human-friendly column name
+              EmptyName
+            case _ =>
+              val exprStr = expr(ex)
+              NameExpr.fromString(render(0, exprStr))
+        SingleColumn(name, ex, NoSpan)
+      }
 
-    val agg = Agg(g, keys, aggExprs, g.span)
-    relation(agg, block.copy(groupingKeys = g.groupingKeys))
+    def selectItems: List[Attribute] =
+      if block.selectItems.isEmpty then
+        // Use the default agg exprs
+        keys ++ defaultAggExprs
+      else
+        block.selectItems
+
+    if block.acceptGroupingKeys then
+      val newBlock = block.copy(selectItems = selectItems, groupingKeys = g.groupingKeys)
+      relation(g.child, newBlock)
+    else
+      // Start a new SELECT block
+      val d = relation(g.child, SQLBlock(groupingKeys = g.groupingKeys))(using InSubQuery)
+      selectAll(d, block)
+
   end groupBy
 
   private def values(values: Values)(using sc: SyntaxContext): Doc =

@@ -20,6 +20,7 @@ case class CodeFormatterConfig(
 object CodeFormatter:
 
   sealed trait Doc:
+    override def toString: String = render()
     def render(conf: CodeFormatterConfig = CodeFormatterConfig()): String = CodeFormatter(conf)
       .render(0, this)
 
