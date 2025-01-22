@@ -5,18 +5,15 @@ select as books_after_1950
 from books_after_1950
 
 test _.output should be """
-┌────────┬────────────────────────┬─────────────────────┬──────┬─────────┐
-│   id   │         title          │       author        │ year │  genre  │
-│ string │         string         │       string        │ long │ string  │
-├────────┼────────────────────────┼─────────────────────┼──────┼─────────┤
-│ 1      │ The Great Gatsby       │ F. Scott Fitzgerald │ 1925 │ Fiction │
-│ 2      │ The Catcher in the Rye │ J.D. Salinger       │ 1951 │ Fiction │
-│ 3      │ To Kill a Mockingbird  │ Harper Lee          │ 1960 │ Fiction │
-│ 4      │ The Grapes of Wrath    │ John Steinbeck      │ 1939 │ Fiction │
-│ 5      │ The Great Gatsby       │ F. Scott Fitzgerald │ 1925 │ Fiction │
-│ 6      │ The Catcher in the Rye │ J.D. Salinger       │ 1951 │ Fiction │
-│ 7      │ To Kill a Mockingbird  │ Harper Lee          │ 1960 │ Fiction │
-├────────┴────────────────────────┴─────────────────────┴──────┴─────────┤
-│ 7 rows                                                                 │
-└────────────────────────────────────────────────────────────────────────┘
+┌────────┬────────────────────────┬───────────────┬──────┬─────────┐
+│   id   │         title          │    author     │ year │  genre  │
+│ string │         string         │    string     │ long │ string  │
+├────────┼────────────────────────┼───────────────┼──────┼─────────┤
+│ 2      │ The Catcher in the Rye │ J.D. Salinger │ 1951 │ Fiction │
+│ 3      │ To Kill a Mockingbird  │ Harper Lee    │ 1960 │ Fiction │
+│ 6      │ The Catcher in the Rye │ J.D. Salinger │ 1951 │ Fiction │
+│ 7      │ To Kill a Mockingbird  │ Harper Lee    │ 1960 │ Fiction │
+├────────┴────────────────────────┴───────────────┴──────┴─────────┤
+│ 4 rows                                                           │
+└──────────────────────────────────────────────────────────────────┘
 """

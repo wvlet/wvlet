@@ -161,6 +161,15 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
     * @return
     */
   def relation(r: Relation, block: SQLBlock)(using sc: SyntaxContext): Doc =
+    def selectExpr(d: Doc): Doc =
+      if block.isEmpty then
+        if sc.isNested && !sc.inFromClause then
+          indentedParen(d)
+        else
+          d
+      else
+        selectAll(indentedParen(d), block)
+
     r match
       case q: Query =>
         query(q.body, block)
@@ -171,9 +180,9 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             val subQuery = query(w.child, SQLBlock())(using InStatement)
             ws(tableAliasOf(w), "as", indentedParen(subQuery))
           }
-        val body     = query(q.queryBody, block)
+        val body     = query(q.queryBody, SQLBlock())
         val withStmt = ws("with", concat(subQueries, text(",") + linebreak))
-        withStmt + linebreak + body
+        selectExpr(withStmt + linebreak + body)
       case o: Offset if block.acceptOffset =>
         relation(o.child, block.copy(offset = Some(o.rows)))
       case l: Limit if block.acceptLimit =>
@@ -214,27 +223,23 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             val groupByItems = cs(p.groupingKeys.map(x => expr(x)))
             pivotExpr + whitespaceOrNewline +
               group(text("group by") + nest(whitespaceOrNewline + groupByItems))
-        selectAll(sql, block)
+        selectExpr(sql)
       case s: Selection =>
         select(s, block)
       case r: RawSQL =>
-        if block.isEmpty then
-          expr(r.sqlExpr)
-        else
-          selectAll(indentedParen(expr(r.sqlExpr)), block)
+        selectExpr(expr(r.sqlExpr))
       case t: TableInput =>
         selectAll(expr(t.sqlExpr), block)
+      case v: Values =>
+        selectAll(values(v), block)
       case a: AliasedRelation =>
         val tableAlias: Doc = tableAliasOf(a)
 
         a.child match
           case t: TableInput if sc.isNested =>
             selectAll(group(ws(expr(t.sqlExpr), "as", tableAlias)), block)
-          case v: Values if sc.isNested =>
+          case v: Values if sc.isNested || sc.inJoinClause =>
             selectAll(group(ws(values(v), "as", tableAlias)), block)
-          //          case v: Values if sc.nestingLevel > 0 && sc.withinJoin =>
-          //            // For joins, expose table column aliases to the outer scope
-          //            s"${selectWithIndentAndParenIfNecessary(s"select * from ${printValues(v)} as ${tableAlias}")} as ${a.alias.fullName}"
           case _ =>
             selectAll(
               group(ws(relation(a.child, block)(using InSubQuery), "as", tableAlias)),
@@ -245,39 +250,39 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         p.child match
           case v: Values =>
             // No need to wrap values query
-            inner
+            selectExpr(inner)
           case AliasedRelation(v: Values, _, _, _) =>
-            inner
+            selectExpr(inner)
           case _ =>
             val body = query(p.child, block)(using InSubQuery)
-            wrapWithParenIfNecessary(body)
+            selectExpr(body)
       case j: Join =>
-        val joinType: Doc =
-          j.joinType match
-            case InnerJoin =>
-              whitespaceOrNewline + text("join")
-            case LeftOuterJoin =>
-              whitespaceOrNewline + text("left join")
-            case RightOuterJoin =>
-              whitespaceOrNewline + text("right join")
-            case FullOuterJoin =>
-              whitespaceOrNewline + text("full outer join")
-            case CrossJoin =>
-              whitespaceOrNewline + text("cross join")
-            case ImplicitJoin =>
-              text(",")
-
-        val joinOp: Doc =
+        val asof: Option[Doc] =
           if j.asof then
             if dbType.supportAsOfJoin then
-              ws("asof", joinType)
+              Some(text("asof") + whitespace)
             else
               throw StatusCode.SYNTAX_ERROR.newException(s"AsOf join is not supported in ${dbType}")
           else
-            joinType
+            None
+
+        val joinType: Doc =
+          j.joinType match
+            case InnerJoin =>
+              whitespaceOrNewline + asof + text("join")
+            case LeftOuterJoin =>
+              whitespaceOrNewline + asof + text("left join")
+            case RightOuterJoin =>
+              whitespaceOrNewline + asof + text("right join")
+            case FullOuterJoin =>
+              whitespaceOrNewline + asof + text("full outer join")
+            case CrossJoin =>
+              whitespaceOrNewline + asof + text("cross join")
+            case ImplicitJoin =>
+              text(",")
 
         val l = relation(j.left, block)
-        val r = relation(j.right, SQLBlock())(using InFromClause)
+        val r = indentedParen(relation(j.right, SQLBlock())(using InJoinClause))
         val c: Option[Doc] =
           j.cond match
             case NoJoinCriteria =>
@@ -290,7 +295,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
               Some(whitespaceOrNewline + ws("on", expr(e)))
             case JoinOnEq(keys, _) =>
               Some(whitespaceOrNewline + ws("on", expr(Expression.concatWithEq(keys))))
-        val joinSQL: Doc = group(l + joinOp + whitespaceOrNewline + r + c)
+        val joinSQL: Doc = group(l + joinType + whitespaceOrNewline + r + c)
         joinSQL
       case s: SetOperation =>
         val rels: List[Doc] =
@@ -298,17 +303,17 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             case Nil =>
               Nil
             case head :: tail =>
-              val hd = query(head, block)(using sc)
+              val hd = query(head, SQLBlock())(using sc)
               val tl = tail.map(x => query(x, SQLBlock())(using sc))
               hd :: tl
         val op  = text(s.toSQLOp)
         val sql = append(rels, op)
-        wrapWithParenIfNecessary(sql)
+        selectExpr(sql)
       case p: Pivot => // pivot without explicit aggregations
-        wrapWithParenIfNecessary(
+        selectExpr(
           group(
             text("pivot") + whitespaceOrNewline +
-              ws(relation(p.child, block)(using InFromClause), "on", pivotOnExpr(p))
+              ws(relation(p.child, SQLBlock())(using InFromClause), "on", pivotOnExpr(p))
           )
         )
       case d: Debug =>
@@ -318,7 +323,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         val r = relation(d.child, SQLBlock())(using InSubQuery)
         selectAll(r, block.copy(isDistinct = true))
       case s: Sample =>
-        val child = relation(s.child, block)(using InFromClause)
+        val child = relation(s.child, SQLBlock())(using InFromClause)
         val body: Doc =
           dbType match
             case DBType.DuckDB =>
@@ -358,12 +363,10 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             case _ =>
               warn(s"Unsupported sampling method: ${s.method} for ${dbType}")
               child
-        selectAll(body, block)
+        selectExpr(body)
       case t: TestRelation =>
         // Skip test expression
         relation(t.inputRelation, block)
-      case v: Values =>
-        selectAll(values(v), block)
       case s: SelectAsAlias =>
         // Just generate the inner bodSQL
         relation(s.child, block)
@@ -399,7 +402,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
               paren(ws("values", values)),
               "as table_schema(column_name, column_type)"
             )
-        selectAll(sql, block)
+        selectExpr(sql)
       case r: RelationInspector =>
         // Skip relation inspector
         // TODO Dump output to the file logger
@@ -446,10 +449,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
 
         val sql = ws(body, "order by name")
 
-        if block.isEmpty then
-          sql
-        else
-          selectAll(indentedParen(sql), block)
+        selectExpr(sql)
       case s: Show if s.showType == ShowType.schemas =>
         val baseSql: Doc = ws(
           "select",
@@ -482,10 +482,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             ws(baseSql, "where", expr(Expression.concatWithAnd(conds)))
 
         val sql = ws(body, "order by name")
-        if block.isEmpty then
-          sql
-        else
-          selectAll(indentedParen(sql), block)
+        selectExpr(sql)
       case s: Show if s.showType == ShowType.catalogs =>
         val sql = lines(
           List(
@@ -494,10 +491,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             group(ws("order by", "name"))
           )
         )
-        if block.isEmpty then
-          sql
-        else
-          selectAll(indentedParen(sql), block)
+        selectExpr(sql)
       case s: Show if s.showType == ShowType.models =>
         // TODO: Show models should be handled outside of GenSQL
         val models: Seq[ListMap[String, Any]] = ctx
@@ -559,15 +553,11 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
               "__models(name, args, package_name)"
             )
 
-        if block.isEmpty then
-          sql
-        else
-          selectAll(indentedParen(sql), block)
-      case r: Relation if !block.isEmpty =>
-        selectAll(
+        selectExpr(sql)
+      case r: Relation =>
+        selectExpr(
           // Start a new nested SQLBlock
-          relation(r, SQLBlock())(using InStatement),
-          block
+          relation(r, SQLBlock())(using InStatement)
         )
       case other =>
         unsupportedNode(s"relation ${other.nodeName}", other.span)
