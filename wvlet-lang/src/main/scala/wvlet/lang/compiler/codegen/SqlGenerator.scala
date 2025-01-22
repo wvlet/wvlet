@@ -221,7 +221,10 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       case s: Selection =>
         select(s, block)
       case r: RawSQL =>
-        selectAll(expr(r.sqlExpr), block)
+        if block.isEmpty then
+          expr(r.sqlExpr)
+        else
+          selectAll(indentedParen(expr(r.sqlExpr)), block)
       case t: TableInput =>
         selectAll(expr(t.sqlExpr), block)
       case a: AliasedRelation =>
@@ -315,9 +318,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         // Skip debug expression
         relation(d.inputRelation, block)
       case d: Dedup =>
-        wrapWithParenIfNecessary(
-          group(ws("select distinct *", "from", relation(d.child, block)(using InFromClause)))
-        )
+        selectAll(relation(d.child, block)(using InSubQuery), block.copy(isDistinct = true))
       case s: Sample =>
         val child = relation(s.child, block)(using InFromClause)
         val body: Doc =
