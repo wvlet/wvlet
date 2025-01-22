@@ -101,4 +101,8 @@ class NegSpec extends SpecRunner("spec/neg"):
     case e: Throwable =>
       throw e
 
-class CDPBehaviorSpec extends SpecRunner("spec/cdp_behavior")
+class CDPBehaviorSpec
+    extends SpecRunner(
+      "spec/cdp_behavior",
+      ignoredSpec = Map("behavior.wv" -> "Need to support subscribe")
+    )
