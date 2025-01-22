@@ -20,6 +20,11 @@ case class CodeFormatterConfig(
 object CodeFormatter:
 
   sealed trait Doc:
+    def render(conf: CodeFormatterConfig = CodeFormatterConfig()): String = CodeFormatter(conf)
+      .render(0, this)
+
+    def isEmpty: Boolean = this eq empty
+
     /**
       * Compute the text length if rendered into a single line
       *
