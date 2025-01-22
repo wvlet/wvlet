@@ -86,8 +86,8 @@ end SpecRunner
 
 class BasicSpec
     extends SpecRunner(
-      "spec/basic",
-      ignoredSpec = Map("values.wv" -> "Need to support array[struct] data")
+      "spec/basic"
+      // ignoredSpec = Map("values.wv" -> "Need to support array[struct] data")
     )
 
 class WvletTPCHSpec extends SpecRunner("spec/tpch", prepareTPCH = true)
@@ -101,4 +101,8 @@ class NegSpec extends SpecRunner("spec/neg"):
     case e: Throwable =>
       throw e
 
-class CDPBehaviorSpec extends SpecRunner("spec/cdp_behavior")
+class CDPBehaviorSpec
+    extends SpecRunner(
+      "spec/cdp_behavior",
+      ignoredSpec = Map("behavior.wv" -> "Need to support subscribe")
+    )

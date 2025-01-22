@@ -1,5 +1,7 @@
 package wvlet.lang.compiler.formatter
 
+import wvlet.lang.compiler.DBType
+
 import scala.annotation.tailrec
 
 case class CodeFormatterConfig(
@@ -7,7 +9,8 @@ case class CodeFormatterConfig(
     maxLineWidth: Int = 80,
     preserveNewLines: Int = 1,
     addTrailingCommaToItemList: Boolean = true,
-    fitToLine: Boolean = true
+    fitToLine: Boolean = true,
+    sqlDBType: DBType = DBType.DuckDB
 )
 
 /**
@@ -17,6 +20,12 @@ case class CodeFormatterConfig(
 object CodeFormatter:
 
   sealed trait Doc:
+    override def toString: String = render()
+    def render(conf: CodeFormatterConfig = CodeFormatterConfig()): String = CodeFormatter(conf)
+      .render(0, this)
+
+    def isEmpty: Boolean = this eq empty
+
     /**
       * Compute the text length if rendered into a single line
       *
@@ -190,12 +199,28 @@ object CodeFormatter:
         empty
 
   /**
-    * Concatenate a list of docs with a comma separator
+    * Comma-separate list of the given Doc list
     *
     * @param lst
     * @return
     */
-  def cs(lst: List[Doc]): Doc = concat(lst, text(",") + whitespaceOrNewline)
+  def cs(lst: Any*): Doc = concat(to_list(lst), text(",") + whitespaceOrNewline)
+
+  private def to_list(x: Any*): List[Doc] =
+    def iter(lst: List[Any]): List[Doc] =
+      lst match
+        case Nil =>
+          Nil
+        case head :: tail =>
+          head match
+            case s: Seq[?] =>
+              iter(s.toList) ++ iter(tail)
+            case a: Array[?] =>
+              iter(a.toList) ++ iter(tail)
+            case _ =>
+              toDoc(head) :: iter(tail)
+
+    iter(x.toList).filterNot(_ == empty)
 
   /**
     * Concatenate items with a whitespace separator
@@ -203,17 +228,7 @@ object CodeFormatter:
     * @param lst
     * @return
     */
-  def ws(lst: Any*): Doc =
-    def loop(x: List[Any]): List[Doc] =
-      x match
-        case Nil =>
-          Nil
-        case head :: Nil =>
-          toDoc(head) :: Nil
-        case head :: tail =>
-          toDoc(head) :: loop(tail)
-
-    concat(loop(lst.toList).filterNot(_ == empty), whitespace)
+  def ws(lst: Any*): Doc = concat(to_list(lst*), whitespace)
 
   def lines(lst: List[Doc]): Doc = concat(lst, newline)
 
@@ -237,13 +252,51 @@ object CodeFormatter:
 
   // Create subexpression block wrapped with braces
   def indentedBrace(d: Doc): Doc = text("{") + nest(linebreak + d) + linebreak + text("}")
+  def indentedParen(d: Doc): Doc = text("(") + nest(linebreak + d) + linebreak + text(")")
 
   def brace(d: Doc): Doc   = group(text("{") + lineBlock(d) + text("}"))
   def bracket(d: Doc): Doc = group(text("[") + lineBlock(d) + text("]"))
   def paren(d: Doc): Doc   = group(text("(") + lineBlock(d) + text(")"))
 
+  /**
+    * Code block using braces with nested layout or space separated layout
+    * {{{
+    *   xxxx {
+    *     (block)
+    *   }
+    * }}}
+    *
+    * or
+    *
+    * {{{
+    *   xxxx { (block) }
+    * }}}
+    * @param d
+    * @return
+    */
   def codeBlock(d: Doc): Doc = group(
     text("{") + nest(whitespaceOrNewline + d) + whitespaceOrNewline + text("}")
+  )
+
+  /**
+    * Code block using parentheses with nested layout or space separated layout
+    * {{{
+    *   xxxx (
+    *     (block)
+    *   )
+    * }}}
+    *
+    * or
+    *
+    * {{{
+    *   xxxx ( (block) )
+    * }}}
+    *
+    * @param d
+    * @return
+    */
+  def parenBlock(d: Doc): Doc = group(
+    text("(") + nest(whitespaceOrNewline + d) + whitespaceOrNewline + text(")")
   )
 
   /**

@@ -40,3 +40,7 @@ trait SyntaxTreeNode extends TreeNode:
     .sourceLocationAt(span)
 
   def locationString(using ctx: Context): String = sourceLocation(using ctx).locationString
+
+  def nodeName: String =
+    val n = this.getClass.getSimpleName
+    n.stripSuffix("$")

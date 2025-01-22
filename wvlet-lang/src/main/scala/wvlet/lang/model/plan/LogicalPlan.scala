@@ -41,10 +41,6 @@ trait LogicalPlan extends SyntaxTreeNode with Product:
   def isEmpty: Boolean  = false
   def nonEmpty: Boolean = !isEmpty
 
-  def nodeName: String =
-    val n = this.getClass.getSimpleName
-    n.stripSuffix("$")
-
   def pp: String = LogicalPlanPrinter.print(this)
 
   // True if all input attributes are resolved.

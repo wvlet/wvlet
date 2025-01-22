@@ -84,7 +84,7 @@ enum StatusCode(statusType: StatusType):
         s"${baseMsg} (${locString})"
       else
         var pos = 0
-        for i <- 0 until column do
+        for i <- 0 until column.min(line.length) do
           if line(i) == '\t' then
             pos += 4
           else

@@ -113,7 +113,7 @@ class SourceFile(val file: VirtualFile):
 
   def sourceLocationAt(offset: Int): SourceLocation =
     val line   = offsetToLine(offset)
-    val codeAt = sourceLine(line)
+    val codeAt = sourceLine(line + 1)
     SourceLocation(
       relativeFilePath,
       fileName,

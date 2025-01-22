@@ -1,7 +1,12 @@
 from 'books.json'
 group by author
 where _.count >= 1
+select author
+order by author
 
-test _.rows should be [
-  ["F. Scott Fitzgerald"]
+test _.rows = [
+  ['F. Scott Fitzgerald'],
+  ['Harper Lee'],
+  ['J.D. Salinger'],
+  ['John Steinbeck']
 ]

@@ -955,6 +955,12 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           nextCase
           consume(SqlToken.END)
           CaseExpr(target, cases.result(), elseClause, spanFrom(t))
+        case SqlToken.EXISTS =>
+          consume(SqlToken.EXISTS)
+          consume(SqlToken.L_PAREN)
+          val subQuery = query()
+          consume(SqlToken.R_PAREN)
+          Exists(SubQueryExpression(subQuery, subQuery.span), spanFrom(t))
         case q if q.isQueryStart =>
           val subQuery = query()
           SubQueryExpression(subQuery, spanFrom(t))
