@@ -314,14 +314,17 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
 
         a.child match
           case t: TableInput =>
-            group(ws(expr(t.sqlExpr), "as", tableAlias))
+            selectAll(group(ws(expr(t.sqlExpr), "as", tableAlias)), block)
           case v: Values =>
-            group(ws(values(v), "as", tableAlias))
+            selectAll(group(ws(values(v), "as", tableAlias)), block)
 //          case v: Values if sc.nestingLevel > 0 && sc.withinJoin =>
 //            // For joins, expose table column aliases to the outer scope
 //            s"${selectWithIndentAndParenIfNecessary(s"select * from ${printValues(v)} as ${tableAlias}")} as ${a.alias.fullName}"
           case _ =>
-            group(ws(relation(a.child, block)(using InSubQuery), "as", tableAlias))
+            selectAll(
+              group(ws(relation(a.child, block)(using InSubQuery), "as", tableAlias)),
+              block
+            )
       case p: BracedRelation =>
         def inner = relation(p.child, block)
         p.child match
@@ -347,9 +350,9 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         val withStmt = ws("with", concat(subQueries, text(",") + linebreak))
         withStmt + linebreak + body
       case t: TableInput =>
-        expr(t.sqlExpr)
+        select(t, block)
       case v: Values =>
-        values(v)
+        selectAll(values(v), block)
       case s: SelectAsAlias =>
         // Just generate the inner bodSQL
         relation(s.child, block)
@@ -584,7 +587,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
     s += group(ws("select", selectItems))
     s += fromStmt
     if block.whereFilter.nonEmpty then
-      s += group(ws("where", indented(cs(block.whereFilter.map(x => x.filterExpr)))))
+      s += group(ws("where", indented(cs(block.whereFilter.map(x => expr(x.filterExpr))))))
     if block.groupingKeys.nonEmpty then
       s += group(ws("group by", indented(cs(block.groupingKeys.map(x => expr(x))))))
     if block.having.nonEmpty then
@@ -594,7 +597,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
     if block.limit.nonEmpty then
       s += group(ws("limit", indented(expr(block.limit.get))))
 
-    lines(s.result())
+    wrapWithParenIfNecessary(lines(s.result()))
 
   private def selectAll(body: Doc, block: SQLBlock)(using sc: SyntaxContext): Doc =
     if block.isEmpty then
