@@ -617,7 +617,7 @@ limit 5
 ```
 
 The `order by` statement can follow `asc`, `desc` ordering specifier as in SQL.
-
+You can add `nulls first` or `nulls last` to specify the order of null values.
 
 ### concat
 

@@ -378,7 +378,11 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
       case i: Identifier =>
         text(i.strExpr)
       case s: SortItem =>
-        ws(expr(s.sortKey), s.ordering.map(x => s" ${x.expr}"))
+        ws(
+          expr(s.sortKey),
+          s.ordering.map(x => text(x.expr)),
+          s.nullOrdering.map(x => text(x.expr))
+        )
       case s: SingleColumn =>
         val left    = expr(s.expr)
         val leftStr = render(0, left)
