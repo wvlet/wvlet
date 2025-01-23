@@ -484,7 +484,7 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
       case b: NotBetween =>
         ws(expr(b.e), "not between", expr(b.a), "and", expr(b.b))
       case c: Cast =>
-        expr(c.child) + text(".") + text(s"to_${c.dataType.typeName}")
+        expr(c.child) + text(".") + text(s"to_${c.tpe.typeName}")
       case n: NativeExpression =>
         expr(ExpressionEvaluator.eval(n))
       case p: PivotKey =>

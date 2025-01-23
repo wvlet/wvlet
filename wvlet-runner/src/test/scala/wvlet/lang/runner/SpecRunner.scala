@@ -25,6 +25,7 @@ import scala.util.control.NonFatal
 trait SpecRunner(
     specPath: String,
     ignoredSpec: Map[String, String] = Map.empty,
+    parseOnly: Boolean = false,
     prepareTPCH: Boolean = false,
     prepareTPCDS: Boolean = false
 ) extends AirSpec:
@@ -41,7 +42,10 @@ trait SpecRunner(
     dbConnectorProvider.close()
 
   private val compiler = Compiler(
-    CompilerOptions(sourceFolders = List(specPath), workEnv = workEnv)
+    CompilerOptions(
+      phases = if parseOnly then Compiler.parseOnlyPhases else Compiler.allPhases,
+      sourceFolders = List(specPath), workEnv = workEnv
+    )
   )
 
   compiler.setDefaultCatalog(queryExecutor.getDBConnector(profile).getCatalog("memory", "main"))
@@ -58,8 +62,10 @@ trait SpecRunner(
     }
 
   protected def runSpec(unit: CompilationUnit): QueryResult =
+    trace(s"compiling: ${unit.sourceFile}")
     val compileResult = compiler.compileSingleUnit(unit)
-    val result        = queryExecutor.executeSingle(unit, compileResult.context.withDebugRun(true))
+    trace(s"compiled: ${unit.sourceFile}")
+    val result = queryExecutor.executeSingle(unit, compileResult.context.withDebugRun(true))
     debug(result.toPrettyBox(maxWidth = Some(120)))
     result
 

@@ -101,6 +101,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         val stmt = statement()
         scanner.lookAhead().token match
           case SqlToken.SEMICOLON =>
+            consume(SqlToken.SEMICOLON)
             stmt :: statementList()
           case _ =>
             List(stmt)
@@ -427,6 +428,9 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           val alias = identifier()
           // Propagate the column name for a single column reference
           SingleColumn(alias, item, spanFrom(t))
+        case SqlToken.DOUBLE_QUOTE_STRING =>
+          val alias = identifier()
+          SingleColumn(alias, item, spanFrom(t))
         case _ =>
           item match
             case i: Identifier =>
@@ -435,18 +439,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
             case _ =>
               SingleColumn(EmptyName, item, spanFrom(t))
 
-    val t = scanner.lookAhead()
-    t.token match
-      case id if id.isIdentifier =>
-        val exprOrColumName = expression()
-        exprOrColumName match
-          case Eq(columnName: Identifier, expr: Expression, span) =>
-            SingleColumn(columnName, expr, spanFrom(t))
-          case _ =>
-            selectItemWithAlias(exprOrColumName)
-      case _ =>
-        val expr = expression()
-        selectItemWithAlias(expr)
+    val expr = expression()
+    selectItemWithAlias(expr)
 
   end selectItem
 
@@ -1616,6 +1610,9 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       case SqlToken.INTEGER_LITERAL =>
         consume(SqlToken.INTEGER_LITERAL)
         DigitIdentifier(t.str, spanFrom(t))
+      case SqlToken.DOUBLE_QUOTE_STRING =>
+        consume(SqlToken.DOUBLE_QUOTE_STRING)
+        DoubleQuotedIdentifier(t.str, spanFrom(t))
       case _ =>
         reserved()
 
