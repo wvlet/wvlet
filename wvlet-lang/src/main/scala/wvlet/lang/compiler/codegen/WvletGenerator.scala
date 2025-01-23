@@ -140,6 +140,11 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
             group(expr(t.sqlExpr) + whitespaceOrNewline + "as" + whitespace + tableAlias)
           case v: Values if sc.isNested =>
             group(values(v) + whitespaceOrNewline + "as" + whitespace + tableAlias)
+          case _ if !sc.isNested =>
+            group(
+              text("from") + whitespace + indentedBrace(relation(a.child)(using InStatement)) +
+                nest(whitespace + "as" + whitespace + tableAlias)
+            )
           case _ =>
             group(
               wrapWithBraceIfNecessary(relation(a.child)(using InSubQuery)) +
@@ -148,26 +153,27 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
       case j: Join =>
         val left  = relation(j.left)
         val right = relation(j.right)(using InFromClause)
+
+        val asof: Option[Doc] =
+          if j.asof then
+            Some(text("asof") + whitespace)
+          else
+            None
+
         val joinType =
           j.joinType match
             case JoinType.InnerJoin =>
-              text("join")
+              whitespaceOrNewline + asof + text("join")
             case JoinType.LeftOuterJoin =>
-              text("left join")
+              whitespaceOrNewline + asof + text("left join")
             case JoinType.RightOuterJoin =>
-              text("right join")
+              whitespaceOrNewline + asof + text("right join")
             case JoinType.FullOuterJoin =>
-              text("full join")
+              whitespaceOrNewline + asof + text("full join")
             case JoinType.CrossJoin =>
-              text("cross join")
+              whitespaceOrNewline + asof + text("cross join")
             case JoinType.ImplicitJoin =>
               text(",")
-
-        val joinOp: Doc =
-          if j.asof then
-            ws(text("asof"), joinType)
-          else
-            joinType
 
         val cond =
           j.cond match
@@ -177,15 +183,15 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
               None
             case u: JoinOnTheSameColumns =>
               if u.columns.size == 1 then
-                Some(group(ws("on", expr(u.columns.head))))
+                Some(group(whitespaceOrNewline + ws("on", expr(u.columns.head))))
               else
-                Some(group(ws("on", paren(cs(u.columns.map(expr))))))
+                Some(group(whitespaceOrNewline + ws("on", paren(cs(u.columns.map(expr))))))
             case u: JoinOn =>
-              Some(group(ws("on", expr(u.expr))))
+              Some(group(whitespaceOrNewline + ws("on", expr(u.expr))))
             case u: JoinOnEq =>
-              Some(group(ws("on", expr(Expression.concatWithEq(u.keys)))))
+              Some(group(whitespaceOrNewline + ws("on", expr(Expression.concatWithEq(u.keys)))))
 
-        group(left + whitespaceOrNewline + joinOp + whitespace + right + whitespaceOrNewline + cond)
+        group(left + joinType + whitespaceOrNewline + right + cond)
       case u: Union if u.isDistinct =>
         // union is not supported in Wvlet, so rewrite it to dedup(concat)
         relation(Dedup(Concat(u.left, u.right, u.span), u.span))
