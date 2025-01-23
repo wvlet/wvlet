@@ -225,7 +225,13 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
         r / debugExpr
       case s: Sample =>
         val prev = relation(s.child)
-        prev / group(ws("sample", s.method.toString, s.size.toExpr))
+        val opts =
+          s.method match
+            case Some(m) =>
+              text(m.toString) + paren(text(s.size.toExpr))
+            case None =>
+              text(s.size.toExpr)
+        prev / group(ws("sample", opts))
       case v: Values =>
         values(v)
       case b: BracedRelation =>

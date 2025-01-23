@@ -1429,12 +1429,9 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
             case WvletToken.MOD =>
               consume(WvletToken.MOD)
               SamplingSize.Percentage(n.str.toDouble)
-            case WvletToken.ROWS =>
-              consume(WvletToken.ROWS)
-              SamplingSize.Rows(n.str.toInt)
             case _ =>
               SamplingSize.Rows(n.str.toInt)
-        case WvletToken.DOUBLE_LITERAL | WvletToken.FLOAT_LITERAL =>
+        case WvletToken.DOUBLE_LITERAL | WvletToken.FLOAT_LITERAL | WvletToken.DECIMAL_LITERAL =>
           val n = consume(t.token)
           consume(WvletToken.MOD)
           SamplingSize.Percentage(n.str.toDouble)
@@ -1447,21 +1444,22 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     st.token match
       case WvletToken.IDENTIFIER =>
         consume(WvletToken.IDENTIFIER)
-        val method: SamplingMethod = Try(SamplingMethod.valueOf(st.str.toLowerCase)).getOrElse {
-          unexpected(st)
-        }
+        val method: Option[SamplingMethod] = Try(SamplingMethod.valueOf(st.str.toLowerCase))
+          .toOption
+          .orElse {
+            unexpected(st)
+          }
         consume(WvletToken.L_PAREN)
         val size = samplingSize
         consume(WvletToken.R_PAREN)
         Sample(input, method, size, spanFrom(t))
       case WvletToken.INTEGER_LITERAL =>
         val size = samplingSize
-        // Use reservoir sampling by default for fixed number of rows
-        Sample(input, SamplingMethod.reservoir, size, spanFrom(t))
-      case WvletToken.FLOAT_LITERAL | WvletToken.DOUBLE_LITERAL =>
+        Sample(input, None, size, spanFrom(t))
+      case WvletToken.FLOAT_LITERAL | WvletToken.DOUBLE_LITERAL | WvletToken.DECIMAL_LITERAL =>
         val size = samplingSize
         // Use system sampling by default for percentage sampling
-        Sample(input, SamplingMethod.system, size, spanFrom(t))
+        Sample(input, Some(SamplingMethod.system), size, spanFrom(t))
       case _ =>
         unexpected(st)
 

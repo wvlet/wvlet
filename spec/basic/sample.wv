@@ -2,16 +2,16 @@ from 'person.json'
 sample 2
 
 from 'person.json'
-sample 2 rows
-
-from 'person.json'
 sample reservoir(2)
 
 from 'person.json'
-sample reservoir(1 rows)
+sample reservoir(1)
 
 from 'person.json'
 sample reservoir(50%)
+
+from 'person.json'
+sample reservoir(50.0%)
 
 from 'person.json'
 sample 50%

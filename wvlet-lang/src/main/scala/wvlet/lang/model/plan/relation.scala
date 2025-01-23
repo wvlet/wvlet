@@ -1010,7 +1010,7 @@ case class Describe(child: Relation, span: Span) extends RelationInspector:
       ListMap("column_name" -> f.name.name, "column_type" -> f.dataType.typeDescription)
     }
 
-case class Sample(child: Relation, method: SamplingMethod, size: SamplingSize, span: Span)
+case class Sample(child: Relation, method: Option[SamplingMethod], size: SamplingSize, span: Span)
     extends FilteringRelation:
   override def relationType: RelationType = child.relationType
 
