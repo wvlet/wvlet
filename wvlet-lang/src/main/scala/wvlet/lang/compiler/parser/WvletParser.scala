@@ -124,6 +124,9 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       case WvletToken.INTEGER_LITERAL =>
         consume(WvletToken.INTEGER_LITERAL)
         DigitIdentifier(t.str, spanFrom(t))
+      case WvletToken.DOUBLE_QUOTE_STRING =>
+        consume(WvletToken.DOUBLE_QUOTE_STRING)
+        DoubleQuotedIdentifier(t.str, spanFrom(t))
       case _ =>
         // TODO Define what is reserved (e.g., select, add, true, etc.) or not (e.g., count, table, user)
         reserved()
@@ -1935,7 +1938,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         case WvletToken.R_BRACE =>
         // ok
         case _ =>
-          val key = expression()
+          val key = identifier()
           consume(WvletToken.COLON)
           val value = expression()
           entries += MapEntry(key, value, spanFrom(t))
