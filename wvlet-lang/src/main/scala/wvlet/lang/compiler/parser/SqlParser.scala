@@ -456,7 +456,12 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         val g = groupBy(r)
         r = having(g)
 
-        r = Project(r, items, spanFrom(t))
+        val p = Project(r, items, spanFrom(t))
+        if isDistinct then
+          r = Distinct(p, spanFrom(t))
+        else
+          r = p
+
 //        g match
 //            case g: GroupBy =>
 //              val keyAttrs = g
@@ -1152,10 +1157,25 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         case _ =>
           None
 
+    def nullOrdering(): Option[NullOrdering] =
+      scanner.lookAhead().token match
+        case SqlToken.NULLS =>
+          consume(SqlToken.NULLS)
+          scanner.lookAhead().token match
+            case SqlToken.FIRST =>
+              consume(SqlToken.FIRST)
+              Some(NullOrdering.NullIsFirst)
+            case SqlToken.LAST =>
+              consume(SqlToken.LAST)
+              Some(NullOrdering.NullIsLast)
+            case _ =>
+              None
+
     def items(): List[SortItem] =
-      val expr  = expression()
-      val order = sortOrder()
-      val item  = SortItem(expr, order, None, spanFrom(expr.span))
+      val expr      = expression()
+      val order     = sortOrder()
+      val nullOrder = nullOrdering()
+      val item      = SortItem(expr, order, nullOrder, spanFrom(expr.span))
       scanner.lookAhead().token match
         case SqlToken.COMMA =>
           consume(SqlToken.COMMA)
@@ -1164,6 +1184,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           List(item)
 
     items()
+
+  end sortItems
 
   def window(): Option[Window] =
 

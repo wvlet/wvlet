@@ -834,7 +834,8 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       case i: Identifier =>
         text(i.strExpr)
       case s: SortItem =>
-        expr(s.sortKey) + s.ordering.map(x => whitespace + text(x.expr))
+        expr(s.sortKey) + s.ordering.map(x => whitespace + text(x.expr)) +
+          s.nullOrdering.map(x => whitespace + text(x.expr))
       case s: SingleColumn =>
         expr(s.expr) match
           case left if s.nameExpr.isEmpty =>
