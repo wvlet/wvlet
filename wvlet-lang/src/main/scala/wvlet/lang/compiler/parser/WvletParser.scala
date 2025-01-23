@@ -750,8 +750,6 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
 
   end updateRelationIfExists
 
-  def queryBody(): Relation = queryBlock(querySingle())
-
   def querySingle(): Relation =
     def readRest(input: Relation): Relation =
       scanner.lookAhead().token match
@@ -849,6 +847,8 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
 
     injectWithQuery(child)
   end withQuery
+
+  def queryBody(): Relation = queryBlock(querySingle())
 
   def fromRelation(): Relation =
     scanner.lookAhead().token match
