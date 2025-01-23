@@ -640,6 +640,8 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         s += group(ws("order by", indented(cs(block.orderBy.map(x => expr(x))))))
       if block.limit.nonEmpty then
         s += group(ws("limit", indented(expr(block.limit.get))))
+      if block.offset.nonEmpty then
+        s += group(ws("offset", indented(expr(block.offset.get))))
 
       val sql = lines(s.result())
       if sc.isNested then

@@ -113,6 +113,8 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
         unary(f, "where", f.filterExpr)
       case l: Limit =>
         unary(l, "limit", l.limit)
+      case o: Offset =>
+        unary(o, "offset", o.rows)
       case c: Count =>
         unary(c, "count", Nil)
       case t: TableInput =>
@@ -365,9 +367,10 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
       case s: StringPart =>
         text(s.stringValue)
       case i: IntervalLiteral =>
-        text(s"interval ${i.stringValue}")
+        val s = StringLiteral.fromString(i.stringValue, i.span)
+        expr(s) + text(":interval")
       case g: GenericLiteral =>
-        text(s"${g.tpe.typeName} '${g.value}'")
+        text(s"${g.value}:${g.tpe.typeName}")
       case l: Literal =>
         text(l.stringValue)
       case bq: BackQuotedIdentifier =>

@@ -1935,31 +1935,52 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     consume(WvletToken.R_BRACE)
     MapValue(entries.result(), spanFrom(t))
 
+  def dataType(): DataType =
+    val tpe    = identifier().fullName
+    val params = typeParams()
+    DataTypeParser.parse(tpe, params)
+
   def literal(): Literal =
     def removeUnderscore(s: String): String = s.replaceAll("_", "")
 
+    def literalRest(l: Literal): Literal =
+      scanner.lookAhead().token match
+        case WvletToken.COLON =>
+          consume(WvletToken.COLON)
+          val tpe = dataType()
+          tpe.typeName.name match
+            case _ =>
+              GenericLiteral(tpe, l.stringValue, l.span)
+        case _ =>
+          l
+
     val t = consumeToken()
-    t.token match
-      case WvletToken.NULL =>
-        NullLiteral(spanFrom(t))
-      case WvletToken.INTEGER_LITERAL =>
-        LongLiteral(removeUnderscore(t.str).toLong, t.str, spanFrom(t))
-      case WvletToken.DOUBLE_LITERAL =>
-        DoubleLiteral(t.str.toDouble, t.str, spanFrom(t))
-      case WvletToken.FLOAT_LITERAL =>
-        DoubleLiteral(t.str.toFloat, t.str, spanFrom(t))
-      case WvletToken.DECIMAL_LITERAL =>
-        DecimalLiteral(removeUnderscore(t.str), t.str, spanFrom(t))
-      case WvletToken.EXP_LITERAL =>
-        DecimalLiteral(t.str, t.str, spanFrom(t))
-      case WvletToken.SINGLE_QUOTE_STRING =>
-        SingleQuoteString(t.str, spanFrom(t))
-      case WvletToken.DOUBLE_QUOTE_STRING =>
-        DoubleQuoteString(t.str, spanFrom(t))
-      case WvletToken.TRIPLE_QUOTE_STRING =>
-        TripleQuoteString(t.str, spanFrom(t))
-      case _ =>
-        unexpected(t)
+    val l =
+      t.token match
+        case WvletToken.NULL =>
+          NullLiteral(spanFrom(t))
+        case WvletToken.INTEGER_LITERAL =>
+          LongLiteral(removeUnderscore(t.str).toLong, t.str, spanFrom(t))
+        case WvletToken.DOUBLE_LITERAL =>
+          DoubleLiteral(t.str.toDouble, t.str, spanFrom(t))
+        case WvletToken.FLOAT_LITERAL =>
+          DoubleLiteral(t.str.toFloat, t.str, spanFrom(t))
+        case WvletToken.DECIMAL_LITERAL =>
+          DecimalLiteral(removeUnderscore(t.str), t.str, spanFrom(t))
+        case WvletToken.EXP_LITERAL =>
+          DecimalLiteral(t.str, t.str, spanFrom(t))
+        case WvletToken.SINGLE_QUOTE_STRING =>
+          SingleQuoteString(t.str, spanFrom(t))
+        case WvletToken.DOUBLE_QUOTE_STRING =>
+          DoubleQuoteString(t.str, spanFrom(t))
+        case WvletToken.TRIPLE_QUOTE_STRING =>
+          TripleQuoteString(t.str, spanFrom(t))
+        case _ =>
+          unexpected(t)
+
+    literalRest(l)
+
+  end literal
 
   def interpolatedString(): InterpolatedString =
     val prefix = consumeToken()
