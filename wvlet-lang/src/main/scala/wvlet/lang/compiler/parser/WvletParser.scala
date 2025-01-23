@@ -648,29 +648,16 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         case _ =>
           None
 
-    def sortItem(e: Expression): List[SortItem] =
-      val order  = sortOrder()
-      val nOrder = nullOrder()
-      SortItem(e, order, nOrder, spanFrom(e.span)) :: sortItems()
-
-    val t = scanner.lookAhead()
-    t.token match
-      case id if id.isIdentifier =>
-        val expr = expression()
-        sortItem(expr)
-      case WvletToken.COUNT =>
-        val expr = expression()
-        sortItem(expr)
-      case WvletToken.INTEGER_LITERAL =>
-        // order by 1, 2, ....
-        val expr = literal()
-        sortItem(expr)
+    val e      = expression()
+    val order  = sortOrder()
+    val nOrder = nullOrder()
+    val si     = SortItem(e, order, nOrder, spanFrom(e.span))
+    scanner.lookAhead().token match
       case WvletToken.COMMA =>
         consume(WvletToken.COMMA)
-        sortItems()
+        si :: sortItems()
       case _ =>
-        Nil
-
+        List(si)
   end sortItems
 
   def query(): Relation =
@@ -1310,12 +1297,14 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       t.token match
         case WvletToken.R_PAREN | WvletToken.ORDER | WvletToken.RANGE | WvletToken.ROWS =>
           Nil
-        case WvletToken.COMMA =>
-          consume(WvletToken.COMMA)
-          partitionKeys()
         case _ =>
           val e = expression()
-          e :: partitionKeys()
+          scanner.lookAhead().token match
+            case WvletToken.COMMA =>
+              consume(WvletToken.COMMA)
+              e :: partitionKeys()
+            case _ =>
+              List(e)
       end match
     end partitionKeys
 
