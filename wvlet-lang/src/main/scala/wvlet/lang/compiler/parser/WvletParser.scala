@@ -1821,8 +1821,8 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           identifier()
         case WvletToken.STAR | WvletToken.END =>
           identifier()
-        case WvletToken.COUNT =>
-          // For count(*) expression
+        case t if t.isNonReservedKeyword =>
+          // For count(*), concat(...) expressions
           identifier()
         case _ =>
           unexpected(t)
