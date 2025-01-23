@@ -915,7 +915,15 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         sampleExpr(input)
       case WvletToken.CONCAT =>
         consume(WvletToken.CONCAT)
-        val right = fromRelation()
+        val right =
+          scanner.lookAhead().token match
+            case WvletToken.L_BRACE =>
+              val s = consume(WvletToken.L_BRACE)
+              val r = fromRelation()
+              consume(WvletToken.R_BRACE)
+              BracedRelation(r, spanFrom(s))
+            case _ =>
+              fromRelation()
         Concat(input, right, spanFrom(t))
       case WvletToken.INTERSECT | WvletToken.EXCEPT =>
         consume(t.token)
@@ -1255,7 +1263,13 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       case t if !t.canStartSelectItem =>
         Nil
       case _ =>
-        selectItem() :: selectItems()
+        val item = selectItem()
+        scanner.lookAhead().token match
+          case WvletToken.COMMA =>
+            consume(WvletToken.COMMA)
+            item :: selectItems()
+          case _ =>
+            List(item)
     end match
 
   end selectItems
