@@ -401,8 +401,8 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
         val leftStr = render(0, left)
         if s.nameExpr.isEmpty then
           left
-        else if leftStr != s.nameExpr.toSQLAttributeName then
-          group(left + whitespaceOrNewline + "as" + whitespace + s.nameExpr.toSQLAttributeName)
+        else if leftStr != s.nameExpr.toWvletAttributeName then
+          group(left + whitespaceOrNewline + "as" + whitespace + s.nameExpr.toWvletAttributeName)
         else
           left
       case a: Attribute =>
