@@ -43,8 +43,14 @@ trait SpecRunner(
 
   private val compiler = Compiler(
     CompilerOptions(
-      phases = if parseOnly then Compiler.parseOnlyPhases else Compiler.allPhases,
-      sourceFolders = List(specPath), workEnv = workEnv
+      phases =
+        if parseOnly then
+          Compiler.parseOnlyPhases
+        else
+          Compiler.allPhases
+      ,
+      sourceFolders = List(specPath),
+      workEnv = workEnv
     )
   )
 

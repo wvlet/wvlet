@@ -2,6 +2,4 @@ package wvlet.lang.runner
 
 class SqlTPCHSpec extends SpecRunner("spec/sql/tpc-h", parseOnly = true, prepareTPCH = true)
 
-class SqlTPCDSSpec extends SpecRunner("spec/sql/tpc-ds", parseOnly = true, prepareTPCDS = true):
-  // pending("TPC-DS is not fully supported yet")
-end SqlTPCDSSpec
+class SqlTPCDSSpec extends SpecRunner("spec/sql/tpc-ds", parseOnly = true, prepareTPCDS = true)
