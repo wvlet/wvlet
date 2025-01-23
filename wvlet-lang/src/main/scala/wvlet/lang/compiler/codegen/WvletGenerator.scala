@@ -206,7 +206,7 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
               Nil
             case head :: tail =>
               val hd = relation(head)
-              val tl = tail.map(x => wrapWithBraceIfNecessary(relation(x)))
+              val tl = tail.map(x => indentedBrace(relation(x)))
               hd :: tl
 
         // TODO union is not supported in Wvlet. Replace tree to dedup(concat)
