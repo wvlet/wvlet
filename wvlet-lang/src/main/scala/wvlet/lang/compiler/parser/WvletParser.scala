@@ -1224,7 +1224,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         groupByItemList()
       case t if t.tokenType == TokenType.Keyword =>
         Nil
-      case WvletToken.EOF =>
+      case t if t.isQueryDelimiter =>
         Nil
       case _ =>
         // expression only

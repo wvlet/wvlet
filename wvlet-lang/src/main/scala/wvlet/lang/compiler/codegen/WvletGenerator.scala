@@ -313,16 +313,16 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
         group(
           ws(
             "model",
-            m.name.fullName,
-            if m.params.isEmpty then
-              None
-            else
-              paren(cs(m.params.map(x => expr(x))))
-            ,
+            text(m.name.fullName) + {
+              if m.params.isEmpty then
+                None
+              else
+                Some(paren(cs(m.params.map(x => expr(x)))))
+            },
             m.givenRelationType.map(t => ws(": ", t.typeName)),
             "="
           )
-        ) + nest(linebreak + relation(m.child)) + linebreak + "end"
+        ) + nest(linebreak + relation(m.child)) + linebreak + "end" + linebreak
       case t: ShowQuery =>
         group(ws("show", "query", expr(t.name)))
       case other =>
@@ -523,7 +523,10 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
       case s: SaveOption =>
         ws((expr(s.key) + ":"), expr(s.value))
       case d: DefArg =>
-        ws(d.name.name, ":", d.dataType.typeName, d.defaultValue.map(x => ws("=", expr(x))))
+        ws(
+          d.name.name + ":" + d.dataType.typeName.toString,
+          d.defaultValue.map(x => ws("=", expr(x)))
+        )
       case other =>
         unsupportedNode(s"expression ${other}", other.span)
 
