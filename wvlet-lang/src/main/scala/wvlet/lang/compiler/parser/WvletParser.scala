@@ -1350,7 +1350,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           val frameStart: FrameBound =
             val t = scanner.lookAhead()
             t.token match
-              case WvletToken.COLON =>
+              case WvletToken.COMMA =>
                 FrameBound.UnboundedPreceding
               case _ =>
                 val n = integer()
@@ -1359,7 +1359,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
                 else
                   FrameBound.Preceding(-n)
 
-          consume(WvletToken.COLON)
+          consume(WvletToken.COMMA)
 
           val frameEnd: FrameBound =
             val t = scanner.lookAhead()

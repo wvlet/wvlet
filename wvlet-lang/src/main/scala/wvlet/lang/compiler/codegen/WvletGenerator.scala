@@ -350,7 +350,7 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
           s += ws("order by", cs(w.orderBy.map(x => expr(x))))
         w.frame
           .foreach { f =>
-            s += text(f.frameType.expr) + "[" + f.start.wvExpr + ":" + f.end.wvExpr + "]"
+            s += text(f.frameType.expr) + "[" + f.start.wvExpr + "," + f.end.wvExpr + "]"
           }
         ws("over", paren(ws(s.result())))
       case Eq(left, n: NullLiteral, _) =>
