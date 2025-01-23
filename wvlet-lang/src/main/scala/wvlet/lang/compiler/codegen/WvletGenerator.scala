@@ -144,14 +144,9 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
             )
           case v: Values if sc.inFromClause =>
             group(values(v) + whitespaceOrNewline + "as" + whitespace + tableAlias)
-          case _ if !sc.isNested =>
-            group(
-              ws("from", indentedBrace(relation(a.child)(using InSubQuery))) +
-                nest(whitespace + "as" + whitespace + tableAlias)
-            )
           case _ =>
             group(
-              indentedBrace(relation(a.child)(using InSubQuery)) +
+              ws("from", indentedBrace(relation(a.child)(using InSubQuery))) +
                 nest(whitespace + "as" + whitespace + tableAlias)
             )
       case j: Join =>
@@ -215,11 +210,7 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
       case d: Dedup =>
         unary(d, "dedup", Nil)
       case d: Distinct =>
-        d.child match
-          case p: Project =>
-            unary(p, "select distinct", p.selectItems)
-          case _ =>
-            unary(d, "dedup", Nil)
+        unary(d.child, "select distinct", d.child.selectItems)
       case d: Describe =>
         unary(d, "describe", Nil)
       case s: SelectAsAlias =>
