@@ -1170,6 +1170,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
               Some(NullOrdering.NullIsLast)
             case _ =>
               None
+        case _ =>
+          None
 
     def items(): List[SortItem] =
       val expr      = expression()
@@ -1510,7 +1512,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         consume(SqlToken.JOIN)
         val right  = table()
         val joinOn = joinCriteria()
-        Join(JoinType.InnerJoin, r, right, NoJoinCriteria, asof = isAsOfJoin, spanFrom(t))
+        Join(JoinType.InnerJoin, r, right, joinOn, asof = isAsOfJoin, spanFrom(t))
       case SqlToken.LEFT | SqlToken.RIGHT | SqlToken.INNER | SqlToken.FULL =>
         val joinTpe = joinType()
         val right   = table()
