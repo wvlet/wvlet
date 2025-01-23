@@ -648,19 +648,23 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         case _ =>
           None
 
+    def sortItem(e: Expression): List[SortItem] =
+      val order  = sortOrder()
+      val nOrder = nullOrder()
+      SortItem(e, order, nOrder, spanFrom(e.span)) :: sortItems()
+
     val t = scanner.lookAhead()
     t.token match
       case id if id.isIdentifier =>
-        val expr   = expression()
-        val order  = sortOrder()
-        val nOrder = nullOrder()
-        // TODO: Support NullOrdering
-        SortItem(expr, order, nOrder, spanFrom(expr.span)) :: sortItems()
+        val expr = expression()
+        sortItem(expr)
+      case WvletToken.COUNT =>
+        val expr = expression()
+        sortItem(expr)
       case WvletToken.INTEGER_LITERAL =>
-        val expr   = literal()
-        val order  = sortOrder()
-        val nOrder = nullOrder()
-        SortItem(expr, order, nOrder, spanFrom(expr.span)) :: sortItems()
+        // order by 1, 2, ....
+        val expr = literal()
+        sortItem(expr)
       case WvletToken.COMMA =>
         consume(WvletToken.COMMA)
         sortItems()
