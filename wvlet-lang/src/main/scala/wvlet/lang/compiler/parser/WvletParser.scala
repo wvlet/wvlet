@@ -1661,6 +1661,12 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
             NotIn(expression, valueList, spanFrom(t))
           case other =>
             unexpected(t2)
+      case WvletToken.BETWEEN =>
+        consume(WvletToken.BETWEEN)
+        val left = valueExpression()
+        consume(WvletToken.AND)
+        val right = valueExpression()
+        Between(expression, left, right, spanFrom(t))
       case WvletToken.SHOULD =>
         consume(WvletToken.SHOULD)
         val not =
