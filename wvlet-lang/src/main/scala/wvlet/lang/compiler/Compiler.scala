@@ -17,6 +17,7 @@ import wvlet.lang.api.{StatusCode, WvletLangException}
 import wvlet.lang.catalog.Catalog
 import wvlet.lang.compiler.Compiler.presetLibraries
 import wvlet.lang.compiler.analyzer.{
+  EmptyTypeResolver,
   ModelDependencyAnalyzer,
   RemoveUnusedQueries,
   SymbolLabeler,
@@ -73,6 +74,10 @@ object Compiler extends LogSupport:
   def codeGenPhases: List[Phase] = List(ExecutionPlanner, ExecutionPlanRewriter)
 
   def allPhases: List[List[Phase]] = List(analysisPhases, transformPhases, codeGenPhases)
+
+  def parseOnlyPhases: List[List[Phase]] = List(
+    List(ParserPhase, RemoveUnusedQueries(), EmptyTypeResolver)
+  )
 
   lazy val presetLibraries: List[CompilationUnit] = CompilationUnit.stdLib
 

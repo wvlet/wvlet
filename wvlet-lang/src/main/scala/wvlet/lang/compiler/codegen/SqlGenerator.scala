@@ -834,7 +834,8 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       case i: Identifier =>
         text(i.strExpr)
       case s: SortItem =>
-        expr(s.sortKey) + s.ordering.map(x => whitespace + text(x.expr))
+        expr(s.sortKey) + s.ordering.map(x => whitespace + text(x.expr)) +
+          s.nullOrdering.map(x => whitespace + text(x.expr))
       case s: SingleColumn =>
         expr(s.expr) match
           case left if s.nameExpr.isEmpty =>
@@ -946,7 +947,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       case b: NotBetween =>
         ws(expr(b.e), "not between", expr(b.a), "and", expr(b.b))
       case c: Cast =>
-        group(ws(text("cast") + paren(ws(expr(c.child), "as", text(c.dataType.typeName.toString)))))
+        group(ws(text("cast") + paren(ws(expr(c.child), "as", text(c.tpe.typeName.name)))))
       case n: NativeExpression =>
         expr(ExpressionEvaluator.eval(n))
       case e: Exists =>

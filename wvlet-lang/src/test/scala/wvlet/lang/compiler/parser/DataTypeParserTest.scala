@@ -156,4 +156,8 @@ class DataTypeParserTest extends AirSpec:
       )
   }
 
+  test("parse date") {
+    parse("date") shouldBe DataType.DateType
+  }
+
 end DataTypeParserTest

@@ -101,6 +101,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         val stmt = statement()
         scanner.lookAhead().token match
           case SqlToken.SEMICOLON =>
+            consume(SqlToken.SEMICOLON)
             stmt :: statementList()
           case _ =>
             List(stmt)
@@ -427,6 +428,9 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           val alias = identifier()
           // Propagate the column name for a single column reference
           SingleColumn(alias, item, spanFrom(t))
+        case SqlToken.DOUBLE_QUOTE_STRING =>
+          val alias = identifier()
+          SingleColumn(alias, item, spanFrom(t))
         case _ =>
           item match
             case i: Identifier =>
@@ -435,18 +439,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
             case _ =>
               SingleColumn(EmptyName, item, spanFrom(t))
 
-    val t = scanner.lookAhead()
-    t.token match
-      case id if id.isIdentifier =>
-        val exprOrColumName = expression()
-        exprOrColumName match
-          case Eq(columnName: Identifier, expr: Expression, span) =>
-            SingleColumn(columnName, expr, spanFrom(t))
-          case _ =>
-            selectItemWithAlias(exprOrColumName)
-      case _ =>
-        val expr = expression()
-        selectItemWithAlias(expr)
+    val expr = expression()
+    selectItemWithAlias(expr)
 
   end selectItem
 
@@ -462,7 +456,12 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         val g = groupBy(r)
         r = having(g)
 
-        r = Project(r, items, spanFrom(t))
+        val p = Project(r, items, spanFrom(t))
+        if isDistinct then
+          r = Distinct(p, spanFrom(t))
+        else
+          r = p
+
 //        g match
 //            case g: GroupBy =>
 //              val keyAttrs = g
@@ -1158,10 +1157,27 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         case _ =>
           None
 
+    def nullOrdering(): Option[NullOrdering] =
+      scanner.lookAhead().token match
+        case SqlToken.NULLS =>
+          consume(SqlToken.NULLS)
+          scanner.lookAhead().token match
+            case SqlToken.FIRST =>
+              consume(SqlToken.FIRST)
+              Some(NullOrdering.NullIsFirst)
+            case SqlToken.LAST =>
+              consume(SqlToken.LAST)
+              Some(NullOrdering.NullIsLast)
+            case _ =>
+              None
+        case _ =>
+          None
+
     def items(): List[SortItem] =
-      val expr  = expression()
-      val order = sortOrder()
-      val item  = SortItem(expr, order, None, spanFrom(expr.span))
+      val expr      = expression()
+      val order     = sortOrder()
+      val nullOrder = nullOrdering()
+      val item      = SortItem(expr, order, nullOrder, spanFrom(expr.span))
       scanner.lookAhead().token match
         case SqlToken.COMMA =>
           consume(SqlToken.COMMA)
@@ -1170,6 +1186,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           List(item)
 
     items()
+
+  end sortItems
 
   def window(): Option[Window] =
 
@@ -1494,7 +1512,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         consume(SqlToken.JOIN)
         val right  = table()
         val joinOn = joinCriteria()
-        Join(JoinType.InnerJoin, r, right, NoJoinCriteria, asof = isAsOfJoin, spanFrom(t))
+        Join(JoinType.InnerJoin, r, right, joinOn, asof = isAsOfJoin, spanFrom(t))
       case SqlToken.LEFT | SqlToken.RIGHT | SqlToken.INNER | SqlToken.FULL =>
         val joinTpe = joinType()
         val right   = table()
@@ -1616,6 +1634,9 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       case SqlToken.INTEGER_LITERAL =>
         consume(SqlToken.INTEGER_LITERAL)
         DigitIdentifier(t.str, spanFrom(t))
+      case SqlToken.DOUBLE_QUOTE_STRING =>
+        consume(SqlToken.DOUBLE_QUOTE_STRING)
+        DoubleQuotedIdentifier(t.str, spanFrom(t))
       case _ =>
         reserved()
 
