@@ -142,7 +142,7 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
             group(
               ws("from", expr(t.sqlExpr)) + whitespaceOrNewline + "as" + whitespace + tableAlias
             )
-          case v: Values if sc.inFromClause =>
+          case v: Values =>
             group(values(v) + whitespaceOrNewline + "as" + whitespace + tableAlias)
           case _ =>
             group(
@@ -384,6 +384,17 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
         text(s"${g.value}:${g.tpe.typeName}")
       case l: Literal =>
         text(l.stringValue)
+      case bq: BackquoteInterpolatedIdentifier =>
+        val p = expr(bq.prefix)
+        val body = bq
+          .parts
+          .map {
+            case s: StringPart =>
+              text(s.value)
+            case e =>
+              text("${") + expr(e) + text("}")
+          }
+        p + text("`") + concat(body) + text("`")
       case bq: BackQuotedIdentifier =>
         // Need to use double quotes for back-quoted identifiers, which represents table or column names
         text(s"\"${bq.unquotedValue}\"")
