@@ -934,16 +934,25 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
           }
         brace(cs(fields))
       case m: MapValue =>
+        def keyExpr(e: Expression): Expression =
+          e match
+            case d: DoubleQuotedIdentifier =>
+              // Wvlet may produce DoubleQuotedIdentifier, which is not supported in SQL
+              val s = d.unquotedValue.replaceAll("'", "''")
+              SingleQuoteString(s, NoSpan)
+            case _ =>
+              e
+
         dbType.mapConstructorSyntax match
           case SQLDialect.MapSyntax.KeyValue =>
             val entries: List[Doc] = m
               .entries
               .map { e =>
-                group(ws(expr(e.key) + ":", expr(e.value)))
+                group(ws(expr(keyExpr(e.key)) + ":", expr(e.value)))
               }
             ws("MAP", brace(cs(entries)))
           case SQLDialect.MapSyntax.ArrayPair =>
-            val keys   = ArrayConstructor(m.entries.map(_.key), m.span)
+            val keys   = ArrayConstructor(m.entries.map(x => keyExpr(x.key)), m.span)
             val values = ArrayConstructor(m.entries.map(_.value), m.span)
             text("MAP") + paren(cs(List(expr(keys), expr(values))))
       case b: Between =>
