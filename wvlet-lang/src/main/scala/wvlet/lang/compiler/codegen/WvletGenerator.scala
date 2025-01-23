@@ -298,7 +298,7 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
       case i: Import =>
         val importRef  = expr(i.importRef)
         val alias      = i.alias.map(a => ws("as", expr(a)))
-        val fromSource = i.fromSource.map(expr)
+        val fromSource = i.fromSource.map(x => ws("from", expr(x)))
         group(ws("import", importRef, alias, fromSource))
       case v: ValDef =>
         val name = v.name.name
