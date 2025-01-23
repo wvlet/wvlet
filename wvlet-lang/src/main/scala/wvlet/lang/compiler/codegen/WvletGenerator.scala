@@ -96,7 +96,7 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
           .queryDefs
           .map { d =>
             val alias = tableAliasOf(d)
-            val body  = relation(d.child)(using InSubQuery)
+            val body  = relation(d.child)(using InStatement)
             text("with") + whitespace + alias + whitespace + text("as") + whitespace +
               indentedBrace(body)
           }
