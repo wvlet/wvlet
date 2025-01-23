@@ -20,7 +20,7 @@ addSbtPlugin("org.jetbrains.scala" % "sbt-ide-settings" % "1.1.2")
 addSbtPlugin("io.spray" % "sbt-revolver" % "0.10.0")
 
 // For Scala.js
-val SCALAJS_VERSION                    = sys.env.getOrElse("SCALAJS_VERSION", "1.18.1")
+val SCALAJS_VERSION                    = sys.env.getOrElse("SCALAJS_VERSION", "1.18.2")
 addSbtPlugin("org.scala-js"       % "sbt-scalajs"              % SCALAJS_VERSION)
 addSbtPlugin("org.portable-scala" % "sbt-scalajs-crossproject" % "1.3.2")
 
