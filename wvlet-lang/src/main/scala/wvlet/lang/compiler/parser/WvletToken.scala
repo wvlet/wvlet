@@ -185,8 +185,11 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   case DISTINCT extends WvletToken(Keyword, "distinct")
 
   // for order by
-  case ASC  extends WvletToken(Keyword, "asc")
-  case DESC extends WvletToken(Keyword, "desc")
+  case ASC   extends WvletToken(Keyword, "asc")
+  case DESC  extends WvletToken(Keyword, "desc")
+  case NULLS extends WvletToken(Keyword, "nulls")
+  case FIRST extends WvletToken(Keyword, "first")
+  case LAST  extends WvletToken(Keyword, "last")
 
   // join keywords
   case JOIN  extends WvletToken(Keyword, "join")
