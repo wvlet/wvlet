@@ -2143,7 +2143,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           case _ =>
             List(arg)
 
-  def functionArg(): FunctionArg =
+  def functionArg(isDistinct: Boolean = false): FunctionArg =
     val t = scanner.lookAhead()
     scanner.lookAhead().token match
       case id if id.isIdentifier =>
@@ -2154,16 +2154,19 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
               case WvletToken.EQ =>
                 consume(WvletToken.EQ)
                 val expr = expression()
-                FunctionArg(Some(Name.termName(i.leafName)), expr, false, spanFrom(t))
+                FunctionArg(Some(Name.termName(i.leafName)), expr, isDistinct, spanFrom(t))
               case _ =>
-                FunctionArg(None, nameOrArg, false, spanFrom(t))
+                FunctionArg(None, nameOrArg, isDistinct, spanFrom(t))
           case Eq(i: Identifier, v: Expression, span) =>
-            FunctionArg(Some(Name.termName(i.leafName)), v, false, spanFrom(t))
+            FunctionArg(Some(Name.termName(i.leafName)), v, isDistinct, spanFrom(t))
           case expr: Expression =>
-            FunctionArg(None, nameOrArg, false, spanFrom(t))
+            FunctionArg(None, nameOrArg, isDistinct, spanFrom(t))
+      case WvletToken.DISTINCT =>
+        consume(WvletToken.DISTINCT)
+        functionArg(isDistinct = true)
       case _ =>
         val nameOrArg = expression()
-        FunctionArg(None, nameOrArg, false, spanFrom(t))
+        FunctionArg(None, nameOrArg, isDistinct, spanFrom(t))
 
   /**
     * qualifiedId := identifier ('.' identifier)*
