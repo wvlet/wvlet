@@ -787,6 +787,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         r = fromRelation()
         r = readRest(r)
         r = queryBlock(r)
+        r = readRest(r)
       case WvletToken.SELECT =>
         // select only query like select 1
         r = selectExpr(EmptyRelation(t.span))

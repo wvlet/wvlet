@@ -215,7 +215,11 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
       case d: Dedup =>
         unary(d, "dedup", Nil)
       case d: Distinct =>
-        unary(d, "distinct", Nil)
+        d.child match
+          case p: Project =>
+            unary(p, "select distinct", p.selectItems)
+          case _ =>
+            unary(d, "dedup", Nil)
       case d: Describe =>
         unary(d, "describe", Nil)
       case s: SelectAsAlias =>
