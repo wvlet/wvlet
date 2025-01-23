@@ -117,7 +117,7 @@ abstract class ScannerBase[Token](sourceFile: SourceFile, config: ScannerConfig)
       getNextToken(lastToken)
       val t = current.toTokenData(lastCharOffset)
       if config.debugScanner then
-        debug(s"${currentRegion} ${t}")
+        debug(s"${currentRegion} $t")
       t
     catch
       case e: WvletLangException
@@ -313,12 +313,12 @@ abstract class ScannerBase[Token](sourceFile: SourceFile, config: ScannerConfig)
     getNumber(base)
 
   protected def scanDot(): Unit =
-    nextChar()
-    if '0' <= ch && ch <= '9' then
-      putChar('.')
-      getFraction()
-      flushTokenString()
+    val next = lookAheadChar()
+    if '0' <= next && next <= '9' then
+      // .01, .1, .123, etc.
+      getNumber(10)
     else
+      nextChar()
       putChar('.')
       getOperatorRest()
 
