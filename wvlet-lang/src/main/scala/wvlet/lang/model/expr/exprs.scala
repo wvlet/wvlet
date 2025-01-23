@@ -101,6 +101,7 @@ sealed trait NameExpr extends Expression:
       s
     else
       s"`${s}`"
+
 end NameExpr
 
 object NameExpr:

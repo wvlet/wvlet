@@ -922,11 +922,11 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           scanner.lookAhead().token match
             case WvletToken.L_BRACE =>
               val s = consume(WvletToken.L_BRACE)
-              val r = fromRelation()
+              val r = queryBody()
               consume(WvletToken.R_BRACE)
               BracedRelation(r, spanFrom(s))
             case _ =>
-              fromRelation()
+              queryBody()
         Concat(input, right, spanFrom(t))
       case WvletToken.INTERSECT | WvletToken.EXCEPT =>
         consume(t.token)
