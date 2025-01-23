@@ -170,10 +170,11 @@ object DataType extends LogSupport:
     override def typeDescription: String = s"${name}:${dataType.typeDescription}"
 
     /**
-      * Produces a double quoted name if necessry
+      * Produces a double-quoted (SQL) or backquoted name (Wvlet) name if necessary
       * @return
       */
-    def toSQLAttributeName: String = name.toSQLAttributeName
+    def toSQLAttributeName: String   = name.toSQLAttributeName
+    def toWvletAttributeName: String = name.toWvletAttributeName
 
   case class VarArgType(elemType: DataType) extends DataType(elemType.typeName, List(elemType)):
     override def isResolved: Boolean     = elemType.isResolved

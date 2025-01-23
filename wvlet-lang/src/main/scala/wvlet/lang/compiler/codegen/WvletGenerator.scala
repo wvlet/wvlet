@@ -82,7 +82,7 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
     val name = expr(a.alias)
     a.columnNames match
       case Some(columns) =>
-        val cols = cs(columns.map(c => text(c.toSQLAttributeName)))
+        val cols = cs(columns.map(c => text(c.toWvletAttributeName)))
         name + paren(cols)
       case None =>
         name
@@ -396,8 +396,7 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
           }
         p + text("`") + concat(body) + text("`")
       case bq: BackQuotedIdentifier =>
-        // Need to use double quotes for back-quoted identifiers, which represents table or column names
-        text(s"\"${bq.unquotedValue}\"")
+        text(s"`${bq.unquotedValue}`")
       case w: Wildcard =>
         text(w.strExpr)
       case i: Identifier =>
