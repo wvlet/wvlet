@@ -16,6 +16,7 @@ import SyntaxContext.*
 import wvlet.lang.compiler.formatter.CodeFormatter
 import wvlet.lang.compiler.formatter.CodeFormatter.*
 import wvlet.lang.compiler.formatter.CodeFormatterConfig
+import wvlet.lang.model.plan.SamplingMethod.reservoir
 
 import scala.collection.immutable.ListMap
 
@@ -354,7 +355,8 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         val r = relation(d.child, SQLBlock())(using InSubQuery)
         selectAll(r, block.copy(isDistinct = true))
       case s: Sample =>
-        val child = relation(s.child, SQLBlock())(using InFromClause)
+        val child          = relation(s.child, SQLBlock())(using InFromClause)
+        val samplingMethod = s.method.getOrElse(reservoir)
         val body: Doc =
           dbType match
             case DBType.DuckDB =>
@@ -372,7 +374,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
                   child,
                   "using",
                   "sample",
-                  text(s.method.toString.toLowerCase) + paren(size)
+                  text(samplingMethod.toString.toLowerCase) + paren(size)
                 )
               )
             case DBType.Trino =>
@@ -388,11 +390,11 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
                       "from",
                       child,
                       "TABLESAMPLE",
-                      text(s.method.toString.toLowerCase) + paren(text(s"${percentage}%"))
+                      text(samplingMethod.toString.toLowerCase) + paren(text(s"${percentage}%"))
                     )
                   )
             case _ =>
-              warn(s"Unsupported sampling method: ${s.method} for ${dbType}")
+              warn(s"Unsupported sampling method: ${samplingMethod} for ${dbType}")
               child
         selectExpr(body)
       case t: TestRelation =>
