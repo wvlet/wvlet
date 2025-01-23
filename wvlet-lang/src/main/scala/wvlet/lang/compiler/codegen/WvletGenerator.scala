@@ -74,8 +74,8 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
       if lst.isEmpty then
         None
       else
-        Some(block(cs(lst)))
-    val d = in / group(text(op) + argBlock)
+        Some(nest(maybeNewline + cs(lst)))
+    val d = in / group(ws(text(op), argBlock))
     d
 
   private def tableAliasOf(a: AliasedRelation)(using sc: SyntaxContext): Doc =
@@ -136,19 +136,23 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
       case a: AliasedRelation =>
         val tableAlias: Doc = tableAliasOf(a)
         a.child match
-          case t: TableInput if sc.isNested =>
+          case t: TableInput if sc.inFromClause =>
             group(expr(t.sqlExpr) + whitespaceOrNewline + "as" + whitespace + tableAlias)
-          case v: Values if sc.isNested =>
+          case t: TableInput if !sc.isNested =>
+            group(
+              ws("from", expr(t.sqlExpr)) + whitespaceOrNewline + "as" + whitespace + tableAlias
+            )
+          case v: Values if sc.inFromClause =>
             group(values(v) + whitespaceOrNewline + "as" + whitespace + tableAlias)
           case _ if !sc.isNested =>
             group(
-              text("from") + whitespace + indentedBrace(relation(a.child)(using InStatement)) +
+              ws("from", indentedBrace(relation(a.child)(using InSubQuery))) +
                 nest(whitespace + "as" + whitespace + tableAlias)
             )
           case _ =>
             group(
-              wrapWithBraceIfNecessary(relation(a.child)(using InSubQuery)) +
-                nest(whitespaceOrNewline + "as" + whitespace + tableAlias)
+              indentedBrace(relation(a.child)(using InSubQuery)) +
+                nest(whitespace + "as" + whitespace + tableAlias)
             )
       case j: Join =>
         val left  = relation(j.left)
@@ -439,7 +443,7 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
             text("\"")
         prefix + quote + loop(i.parts) + quote
       case s: SubQueryExpression =>
-        val wv = relation(s.query)(using InSubQuery)
+        val wv = relation(s.query)(using InStatement)
         codeBlock(wv)
       case i: IfExpr =>
         ws("if", expr(i.cond), "then", block(expr(i.onTrue)), "else", block(expr(i.onFalse)))
