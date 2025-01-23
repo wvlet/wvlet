@@ -66,29 +66,29 @@ Wvlet provides various relational operators to process input data and generate o
 |------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------| 
 | [__from__ `expr`](#from)                                                                       | Rows from the given source table, model, value, or file                                                                                       |
 | [__where__ `cond`](#where)                                                                     | Rows that satisfy the given condition. Multiple `where` clauses can be used in the same query                                                 |
-| [__count__](#count) | Count the number of input rows| 
+| [__count__](#count)                                                                            | Count the number of input rows                                                                                                                |
 | [__add__ `expr` (__as__ `alias`)?, ...](#add)                                                  | Same rows with new columns                                                                                                                    |
 | [__select__ `expr`, ...](#select)                                                              | Rows with the given expressions. `select *` is allowed                                                                                        |
 | __select distinct__ `expr`,...                                                                 | Rows with distinct values of the given expressions                                                                                            |
 | __select__ `alias` __=__ `expr`, ...                                                           | Rows with the given expressions with aliases                                                                                                  |
 | __select__ `expr` __as__ `alias`, ...                                                          | Rows with the given expressions with aliases                                                                                                  |
 | __select as__ `alias`                                                                          | Add an alias to the query to reference it from another query                                                                                  |
-| [__rename__ `column` __as__ `alias`, ...](#rename)                                                        | Same rows with the given columns renamed                                                                                                      | 
-| [__exclude__ `column`, ...](#exclude)                                                                      | Same rows except the given columns                                                                                                            |
-| [__shift__ (to left)? `column`, ...](#shift)                                                             | Same rows with selected column moved to the left                                                                                              |
-| [__shift to right__ `column`, ...](#shift)                                                               | Same rows with selected column moved to the right                                                                                             |
+| [__rename__ `column` __as__ `alias`, ...](#rename)                                             | Same rows with the given columns renamed                                                                                                      |
+| [__exclude__ `column`, ...](#exclude)                                                          | Same rows except the given columns                                                                                                            |
+| [__shift__ (to left)? `column`, ...](#shift)                                                   | Same rows with selected column moved to the left                                                                                              |
+| [__shift to right__ `column`, ...](#shift)                                                     | Same rows with selected column moved to the right                                                                                             |
 | __group by__ `column`, ...                                                                     | Grouped rows by the given columns. Grouping keys can be referenced as `select _1, _2, ...`  in the subsequent operator                        |
 | [__agg__ `agg_expr`, ...](#agg)                                                                | Rows with the grouping keys in `group by` clause and aggregated values                                                                        |
-| [__order by__ `expr` (__asc__ \| __desc__)?, ...](#order-by)                                                | Rows sorted by the given expression. 1-origin column indexes can be used like `1`, `2`, ...                                                   |
-| [__limit__ `n`](#limit)                                                                                  | Rows up to the given number                                                                                                                   |
+| [__order by__ `expr` (__asc__ \| __desc__)?, ...](#order-by)                                   | Rows sorted by the given expression. 1-origin column indexes can be used like `1`, `2`, ...                                                   |
+| [__limit__ `n`](#limit)                                                                        | Rows up to the given number                                                                                                                   |
 | [__asof__](asof-join.md)? (__left__ \| __right__ \| __cross__)? __join__ `table` __on__ `cond` | Joined rows with the given condition                                                                                                          |
-| [__concat__ \{ `query` \}](#concat)                                                                       | Concatenated rows with the given subquery result. Same as `UNION ALL` in SQL                                                                  |
-| [__dedup__](#dedup)                                                                                      | Rows with duplicated rows removed. Equivalent to `select distinct *`                                                                          | 
-| ([__intersect__](#intersect) \| [__except__](#except)) __all__? ...                                                     | Rows with the intersection (difference) of the given sources. By default set semantics is used. If `all` is given, bag semantics will be used |
-| [__pivot on__ `pivot_column` (__in__ (`v1`, `v2`, ...) )?](#pivot)                                       | Rows whose column values in the pivot column are expanded as columns                                                                          |
-| __\|__ `func(args, ...)`                                                                     | Rows processed by the given table function (pipe operator)                                                                                                    |
-| [__with__ `alias` __as__ \{ `(query)` \}](#with) | Define a local query alias, which is the same with a common-table expression (CTE) in SQL |  
-| __sample__ `method`? (`(rows)` \| `(percentage)%`)                                               | Randomly sampled rows. Sampling method can be reservoir (default), system, or bernoulli                                                       | 
+| [__concat__ \{ `query` \}](#concat)                                                            | Concatenated rows with the given subquery result. Same as `UNION ALL` in SQL                                                                  |
+| [__dedup__](#dedup)                                                                            | Rows with duplicated rows removed. Equivalent to `select distinct *`                                                                          |
+| ([__intersect__](#intersect) \| [__except__](#except)) __all__? ...                            | Rows with the intersection (difference) of the given sources. By default set semantics is used. If `all` is given, bag semantics will be used |
+| [__pivot on__ `pivot_column` (__in__ (`v1`, `v2`, ...) )?](#pivot)                             | Rows whose column values in the pivot column are expanded as columns                                                                          |
+| __\|__ `func(args, ...)`                                                                       | Rows processed by the given table function (pipe operator)                                                                                    |
+| [__with__ `alias` __as__ \{ `(query)` \}](#with)                                               | Define a local query alias, which is the same with a common-table expression (CTE) in SQL                                                     |
+| __sample__ `method`? (`(rows)` \| `(percentage)%`)                                             | Randomly sampled rows. Sampling method can be reservoir (default), system, or bernoulli                                                       |
 | [__unnest__(`array expr`)](unnest.md)                                                          | Expand an array into rows                                                                                                                     | 
 | [__test__ `(test_expr)`](test-syntax.md)                                                       | Test the query result, evaluated only in the test-run mode                                                                                    |
 | __debug__ \{ `(query)` \}                                                                      | Pass-through the input results (no-op), but run a debug query against the input rows                                                          |
@@ -120,14 +120,14 @@ One of the major difference from traditional SQL is that wvlet uses single or do
 
 | Operator                                              | Description                                                                                                                                              |
 |:------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------|
-| 'single quote'                                      | String literal for representing string values, file names, etc.                                                                                          |
-| "double quote"                                      | Same as single quote strings                                                                                                                             |
-| """triple quote string"""                           | Multi-line strings                                                                                                                                       |
+| 'single quote'                                        | String literal for representing string values, file names, etc.                                                                                          |
+| "double quote"                                        | Same as single quote strings                                                                                                                             |
+| """triple quote string"""                             | Multi-line strings                                                                                                                                       |
 | \`(back quote)\`                                      | Column or table name, which requires quotations                                                                                                          |
-| __sql__"`sql expr`"                                       | SQL expression used for inline expansion                                                                                                                 |
-| __sql__" ... $\{`expr`\} ..."                             | Interpolated SQL expression with embedded expressions                                                                                                    |
-| __s__"... $\{expr\} ..."                                  | Interpolated strings with expressions                                                                                                                    |
-| __s__\`... $\{expr\} ...\`                                | Interpolated backquote strings with expressions                                                                                                          |
+| __sql__"`sql expr`"                                   | SQL expression used for inline expansion                                                                                                                 |
+| __sql__" ... $\{`expr`\} ..."                         | Interpolated SQL expression with embedded expressions                                                                                                    |
+| __s__"... $\{expr\} ..."                              | Interpolated strings with expressions                                                                                                                    |
+| __s__\`... $\{expr\} ...\`                            | Interpolated backquote strings with expressions                                                                                                          |
 | [`expr`, ...]                                         | Array value                                                                                                                                              |
 | [[`expr`, ...], ...]                                  | Array of arrays for representing table records                                                                                                           |
 | \{`key`\: `value`, ...\}                              | Struct (row) value                                                                                                                                       |
@@ -135,7 +135,9 @@ One of the major difference from traditional SQL is that wvlet uses single or do
 | `agg_func(expr)` over (partition by ... order by ...) | [Window functions](window.md) for computing aggregate values computed from the entire query result. This follows similar window function syntax with SQL |
 | `_1`, `_2`, ...                                       | Refers to 1-origin grouping keys in the preceding `group by` clause                                                                                      |
 | `1`, `2`, ...                                         | Refers to 1-origin column index for `order by` clause                                                                                                    |
-
+| `expr`:`type`                                         | Cast the value to the target type. Equivalent to cast(`expr` as `type`) in SQL                                                                           |
+| '2025-01-01':date                                     | Cast the string to a date value                                                                                                                          |
+| '1 year':interval                                     | Cast the string to an interval of SQL                                                                                                                    |
 ### Variable Definition
 
 You can define a variable using `val` keyword:
@@ -151,27 +153,27 @@ select s"Hello ${x}!" as msg
 
 ### Conditional Expressions
 
-| Operator                        | Description                                                                      |
-|---------------------------------|----------------------------------------------------------------------------------|
-| `expr` __and__ `expr`               | Logical AND                                                                      |
-| `expr` __or__  `expr`               | Logical OR                                                                       |
-| __not__ `expr`                      | Logical NOT                                                                      |
-| !`expr`                         | Logical NOT                                                                      |
-| `expr` __is__ `expr`                | Equality check                                                                   |
-| `expr` __=__ `expr`                 | Equality check                                                                   |
-| `expr` __is not__ `expr`            | Inequality check                                                                 |
-| `expr` __!=__ `expr`                | Inequality check                                                                 |
-| `expr` __is null__                  | True if the expression is null                                                   |
-| `expr` __= null__                   | True if the expression is null                                                   |
-| `expr` __is not null__              | True if the expression is not null                                               |
-| `expr` __!= null__                  | True if the expression is not null                                              |
-| `expr` __in__ (`v1`, `v2`, ...)     | True if the expression value is in the given list                                |
-| `expr` __in__ \{ from ... \}            | True if the expression value is in the given list provided by a sub query        |
-| `expr` __not in__ (`v1`, `v2`, ...) | True if the expression is not in the given list                                  |
-| `expr` __between__ `v1` __and__ `v2`    | True if the expression value is between v1 and v2, i.e., v1 &le; (value) &le; v2 |
-| `expr` __like__ `pattern`           | True if the expression matches the given pattern, e.g., , `'abc%'`               |
-| __exists__ \{ from ... \} | True if the subquery returns any rows |
-| __not exists__ \{ from ... \} | True if the subquery returns no rows |
+| Operator                             | Description                                                                      |
+|--------------------------------------|----------------------------------------------------------------------------------|
+| `expr` __and__ `expr`                | Logical AND                                                                      |
+| `expr` __or__  `expr`                | Logical OR                                                                       |
+| __not__ `expr`                       | Logical NOT                                                                      |
+| !`expr`                              | Logical NOT                                                                      |
+| `expr` __is__ `expr`                 | Equality check                                                                   |
+| `expr` __=__ `expr`                  | Equality check                                                                   |
+| `expr` __is not__ `expr`             | Inequality check                                                                 |
+| `expr` __!=__ `expr`                 | Inequality check                                                                 |
+| `expr` __is null__                   | True if the expression is null                                                   |
+| `expr` __= null__                    | True if the expression is null                                                   |
+| `expr` __is not null__               | True if the expression is not null                                               |
+| `expr` __!= null__                   | True if the expression is not null                                               |
+| `expr` __in__ (`v1`, `v2`, ...)      | True if the expression value is in the given list                                |
+| `expr` __in__ \{ from ... \}         | True if the expression value is in the given list provided by a sub query        |
+| `expr` __not in__ (`v1`, `v2`, ...)  | True if the expression is not in the given list                                  |
+| `expr` __between__ `v1` __and__ `v2` | True if the expression value is between v1 and v2, i.e., v1 &le; (value) &le; v2 |
+| `expr` __like__ `pattern`            | True if the expression matches the given pattern, e.g., , `'abc%'`               |
+| __exists__ \{ from ... \}            | True if the subquery returns any rows                                            |
+| __not exists__ \{ from ... \}        | True if the subquery returns no rows                                             |
 
 #### If Expression
 
@@ -724,7 +726,7 @@ from t1
 ```
 
 You can define multiple subqueries: 
-```
+```sql
 with t1 as {
   from nation
   where n_regionkey = 1
@@ -735,3 +737,8 @@ with t2 as {
 }
 from t2
 ```
+
+:::tip
+The `with` expression is similar to the common-table expression (CTE) in SQL, but for each subquery, you need to use a separate `with` clause. This is for convenience of adding multiple sub queries in separate line blocks without concatenating them with commas (,).
+:::
+
