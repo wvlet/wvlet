@@ -90,6 +90,18 @@ sealed trait NameExpr extends Expression:
     else
       s""""${s}""""
 
+  def toWvletAttributeName: String =
+    val s =
+      this match
+        case i: Identifier =>
+          i.unquotedValue
+        case _ =>
+          fullName
+    if s.matches("^[\\*_a-zA-Z][_a-zA-Z0-9\\*\\.]*$") && !sqlKeywords.contains(s) then
+      s
+    else
+      s"`${s}`"
+
 end NameExpr
 
 object NameExpr:

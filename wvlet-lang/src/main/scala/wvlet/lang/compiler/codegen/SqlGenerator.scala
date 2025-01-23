@@ -16,6 +16,7 @@ import SyntaxContext.*
 import wvlet.lang.compiler.formatter.CodeFormatter
 import wvlet.lang.compiler.formatter.CodeFormatter.*
 import wvlet.lang.compiler.formatter.CodeFormatterConfig
+import wvlet.lang.model.plan.SamplingMethod.reservoir
 
 import scala.collection.immutable.ListMap
 
@@ -354,7 +355,8 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         val r = relation(d.child, SQLBlock())(using InSubQuery)
         selectAll(r, block.copy(isDistinct = true))
       case s: Sample =>
-        val child = relation(s.child, SQLBlock())(using InFromClause)
+        val child          = relation(s.child, SQLBlock())(using InFromClause)
+        val samplingMethod = s.method.getOrElse(reservoir)
         val body: Doc =
           dbType match
             case DBType.DuckDB =>
@@ -372,7 +374,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
                   child,
                   "using",
                   "sample",
-                  text(s.method.toString.toLowerCase) + paren(size)
+                  text(samplingMethod.toString.toLowerCase) + paren(size)
                 )
               )
             case DBType.Trino =>
@@ -388,11 +390,11 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
                       "from",
                       child,
                       "TABLESAMPLE",
-                      text(s.method.toString.toLowerCase) + paren(text(s"${percentage}%"))
+                      text(samplingMethod.toString.toLowerCase) + paren(text(s"${percentage}%"))
                     )
                   )
             case _ =>
-              warn(s"Unsupported sampling method: ${s.method} for ${dbType}")
+              warn(s"Unsupported sampling method: ${samplingMethod} for ${dbType}")
               child
         selectExpr(body)
       case t: TestRelation =>
@@ -640,6 +642,8 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         s += group(ws("order by", indented(cs(block.orderBy.map(x => expr(x))))))
       if block.limit.nonEmpty then
         s += group(ws("limit", indented(expr(block.limit.get))))
+      if block.offset.nonEmpty then
+        s += group(ws("offset", indented(expr(block.offset.get))))
 
       val sql = lines(s.result())
       if sc.isNested then
@@ -930,16 +934,25 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
           }
         brace(cs(fields))
       case m: MapValue =>
+        def keyExpr(e: Expression): Expression =
+          e match
+            case d: DoubleQuotedIdentifier =>
+              // Wvlet may produce DoubleQuotedIdentifier, which is not supported in SQL
+              val s = d.unquotedValue.replaceAll("'", "''")
+              SingleQuoteString(s, NoSpan)
+            case _ =>
+              e
+
         dbType.mapConstructorSyntax match
           case SQLDialect.MapSyntax.KeyValue =>
             val entries: List[Doc] = m
               .entries
               .map { e =>
-                group(ws(expr(e.key) + ":", expr(e.value)))
+                group(ws(expr(keyExpr(e.key)) + ":", expr(e.value)))
               }
             ws("MAP", brace(cs(entries)))
           case SQLDialect.MapSyntax.ArrayPair =>
-            val keys   = ArrayConstructor(m.entries.map(_.key), m.span)
+            val keys   = ArrayConstructor(m.entries.map(x => keyExpr(x.key)), m.span)
             val values = ArrayConstructor(m.entries.map(_.value), m.span)
             text("MAP") + paren(cs(List(expr(keys), expr(values))))
       case b: Between =>

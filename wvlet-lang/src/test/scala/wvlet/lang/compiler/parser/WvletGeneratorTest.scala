@@ -17,11 +17,20 @@ abstract class WvletGeneratorTest(path: String) extends AirSpec:
         given ctx: Context = globalCtx.getContextOf(unit)
         val plan           = ParserPhase.parse(unit, ctx)
         trace(plan.pp)
+
         val g = WvletGenerator()
         val d = g.convert(plan)
         // trace(d.pp)
         val wv = g.render(0, d)
         debug(s"[formatted ${file}]\n${wv}")
+
+        // Test parsing the generated Wvlet query
+        test(s"Parse the generated Wvlet code for ${file}") {
+          val wvUnit  = CompilationUnit.fromWvletString(wv)
+          val newCtx  = globalCtx.getContextOf(wvUnit)
+          val newPlan = ParserPhase.parse(wvUnit, newCtx)
+          trace(plan.pp)
+        }
       }
     }
 

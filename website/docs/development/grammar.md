@@ -69,6 +69,7 @@ queryBlock: '|' queryBlock  // pipe operator for explicit split
                ('group' 'by' groupByItemList)?
                ('agg' selectItems)?
           | 'limit' INTEGER_VALUE
+          | 'offset' INTEGER_VALUE
           | 'order' 'by' sortItem (',' sortItem)* ','?)?
           | 'add' selectItems
           | 'exclude' identifier ((',' identifier)* ','?)?
@@ -122,7 +123,7 @@ sampleExpr: sampleSize
 
 sampleSize:  ((integerLiteral 'rows'?) | (floatLiteral '%'))
 
-sortItem: expression ('asc' | 'desc')?
+sortItem: expression ('asc' | 'desc')? ('nulls' ('first' | 'last'))?
 
 pivotKey: identifier ('in' '(' (valueExpression (',' valueExpression)*) ')')?
 
@@ -156,6 +157,7 @@ valueExpression   : ('-' | '+') valueExpression
                   | primaryExpression
                   | valueExpression arithmeticOperator valueExpression
                   | valueExpression comparisonOperator valueExpression
+                  | valueExpression 'between' valueExpression 'and' valueExpression
 
 arithmeticOperator: '+' | '-' | '*' | '/' | '%'
 comparisonOperator: '=' | '==' | 'is' | '!=' | 'is' 'not' | '<' | '<=' | '>' | '>=' | 'like' | 'contains' 
@@ -163,14 +165,14 @@ comparisonOperator: '=' | '==' | 'is' | '!=' | 'is' 'not' | '<' | '<=' | '>' | '
 // Expression that can be chained with '.' operator
 primaryExpression : 'this'
                   | '_'
-                  | literal
+                  | literal (':' identifier)?   # litral with optional type cast
                   | query
                   | 'case' expression? whenExpr+ elseExpr?                        # case-when
                   | '{' querySingle '}'                                           # subquery
                   | '(' expression ')'                                            # parenthesized expression
                   | '[' expression (',' expression)* ']'                          # array
-                  | '{' rowElem (',' rowElem)* '}'                       # struct, row
-                  | 'map' {' rowElem (',' rowElem)* '}'                       # map value
+                  | '{' rowElem (',' rowElem)* '}'                                # struct, row
+                  | 'map' {' rowElem (',' rowElem)* '}'                           # map value
                   | 'if' booleanExpresssion 'then' expression 'else' expression   # if-then-else
                   | qualifiedId
                   | primaryExpression '.' primaryExpression

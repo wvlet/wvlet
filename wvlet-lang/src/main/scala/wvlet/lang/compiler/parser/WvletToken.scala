@@ -243,11 +243,12 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   case END  extends WvletToken(Keyword, "end")
 
   // Condition keywords
-  case AND  extends WvletToken(Keyword, "and")
-  case OR   extends WvletToken(Keyword, "or")
-  case NOT  extends WvletToken(Keyword, "not")
-  case IS   extends WvletToken(Keyword, "is")
-  case LIKE extends WvletToken(Keyword, "like")
+  case AND     extends WvletToken(Keyword, "and")
+  case OR      extends WvletToken(Keyword, "or")
+  case NOT     extends WvletToken(Keyword, "not")
+  case IS      extends WvletToken(Keyword, "is")
+  case LIKE    extends WvletToken(Keyword, "like")
+  case BETWEEN extends WvletToken(Keyword, "between")
 
   // DML operators
   case SAVE     extends WvletToken(Keyword, "save")
@@ -269,7 +270,7 @@ object WvletToken:
     WvletToken.MAP
   )
 
-  val nonReservedKeywords = Set(WvletToken.COUNT)
+  val nonReservedKeywords = Set(WvletToken.COUNT, WvletToken.CONCAT)
 
   val stringStartToken = List(
     WvletToken.IDENTIFIER,
