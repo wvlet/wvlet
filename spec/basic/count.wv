@@ -17,3 +17,12 @@ test _.rows = [[3]]
 from 'person.json'
 select 1,
 | count
+test _.rows = [[3]]
+
+-- Count the number of groups
+from 'person.json'
+group by id
+count
+test _.rows = [[3]]
+
+
