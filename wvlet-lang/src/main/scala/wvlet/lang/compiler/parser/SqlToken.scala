@@ -23,7 +23,9 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   case WHITESPACE extends SqlToken(Control, "<whitespace>")
 
   // doc or comments
-  case COMMENT extends SqlToken(Doc, "<comment>")
+  case COMMENT     extends SqlToken(Doc, "<comment>")
+  case DOC_COMMENT extends SqlToken(Doc, "<doc comment>")
+
   // Literals
   case INTEGER_LITERAL     extends SqlToken(Literal, "<integer literal>")
   case DECIMAL_LITERAL     extends SqlToken(Literal, "<decimal literal>")
@@ -319,11 +321,13 @@ object SqlToken:
     override def expLiteral: SqlToken                   = SqlToken.EXP_LITERAL
     override def doubleLiteral: SqlToken                = SqlToken.DOUBLE_LITERAL
     override def floatLiteral: SqlToken                 = SqlToken.FLOAT_LITERAL
-    override def commentToken: SqlToken                 = SqlToken.COMMENT
-    override def singleQuoteString: SqlToken            = SqlToken.SINGLE_QUOTE_STRING
-    override def doubleQuoteString: SqlToken            = SqlToken.DOUBLE_QUOTE_STRING
-    override def tripleQuoteString: SqlToken            = SqlToken.TRIPLE_QUOTE_STRING
-    override def whiteSpace: SqlToken                   = SqlToken.WHITESPACE
-    override def backQuotedIdentifier: SqlToken         = SqlToken.BACK_QUOTED_IDENTIFIER
+
+    override def commentToken: SqlToken         = SqlToken.COMMENT
+    override def docCommentToken: SqlToken      = SqlToken.DOC_COMMENT
+    override def singleQuoteString: SqlToken    = SqlToken.SINGLE_QUOTE_STRING
+    override def doubleQuoteString: SqlToken    = SqlToken.DOUBLE_QUOTE_STRING
+    override def tripleQuoteString: SqlToken    = SqlToken.TRIPLE_QUOTE_STRING
+    override def whiteSpace: SqlToken           = SqlToken.WHITESPACE
+    override def backQuotedIdentifier: SqlToken = SqlToken.BACK_QUOTED_IDENTIFIER
 
 end SqlToken

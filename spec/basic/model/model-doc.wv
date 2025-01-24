@@ -1,0 +1,20 @@
+---
+## Markdown-based model documentation
+
+- Use tiple-hyphen so that triple-backquote of Markdown can be used in the documentation. For example:
+
+This model is equivalent to the following SQL query:
+```sql
+select * from 'person.json'
+```
+
+You can add more filters like:
+```wv
+-- comment
+from my_model
+where id = 1
+```
+---
+model my_model =
+  from 'person.json' -- Load data from 'person.json'
+end

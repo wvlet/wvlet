@@ -54,6 +54,8 @@ enum WvletToken(val tokenType: TokenType, val str: String):
 
   // doc or comments
   case COMMENT extends WvletToken(Doc, "<comment>")
+  // doc comment enclosed with --- (triple hyphen)
+  case DOC_COMMENT extends WvletToken(Doc, "<doc comment>")
 
   // For indentation
   case INDENT  extends WvletToken(Control, "<indent>")
@@ -347,6 +349,7 @@ object WvletToken:
     override def floatLiteral: WvletToken                 = WvletToken.FLOAT_LITERAL
 
     override def commentToken: WvletToken         = WvletToken.COMMENT
+    override def docCommentToken: WvletToken      = WvletToken.DOC_COMMENT
     override def singleQuoteString: WvletToken    = WvletToken.SINGLE_QUOTE_STRING
     override def doubleQuoteString: WvletToken    = WvletToken.DOUBLE_QUOTE_STRING
     override def tripleQuoteString: WvletToken    = WvletToken.TRIPLE_QUOTE_STRING

@@ -287,10 +287,19 @@ abstract class ScannerBase[Token](sourceFile: SourceFile, config: ScannerConfig)
     getOperatorRest()
 
   protected def scanHyphen(): Unit =
+    // first hyphen
     putChar(ch)
     nextChar()
+    // second hyphen
     if ch == '-' then
-      getLineComment()
+      putChar(ch)
+      nextChar()
+      // third hyphen
+      if ch == '-' then
+        // triple hyphen -> Doc comment
+        getDocComment()
+      else
+        getLineComment()
     else
       getOperatorRest()
 
@@ -449,6 +458,35 @@ abstract class ScannerBase[Token](sourceFile: SourceFile, config: ScannerConfig)
     else
       if config.debugScanner then
         debug(s"skip comment: ${commentLine}")
+      fetchToken()
+
+  protected def getDocComment(): Unit =
+    @tailrec
+    def readToTripleHyphen(): Unit =
+      putChar(ch)
+      nextRawChar()
+      if ch == '-' then
+        putChar(ch)
+        nextRawChar()
+        if ch == '-' then
+          putChar(ch)
+          nextRawChar()
+          if ch == '-' then
+            putChar(ch)
+            nextRawChar()
+          else
+            readToTripleHyphen()
+        else
+          readToTripleHyphen()
+      else if ch != SU then
+        readToTripleHyphen()
+
+    readToTripleHyphen()
+    val commentDoc = flushTokenString()
+    if !config.skipComments then
+      current.token = tokenTypeInfo.docCommentToken
+      current.str = commentDoc
+    else
       fetchToken()
 
   protected def getSingleQuoteString(): Unit =
