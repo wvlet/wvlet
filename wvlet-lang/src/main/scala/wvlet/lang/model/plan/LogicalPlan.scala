@@ -420,35 +420,6 @@ trait LogicalPlan extends SyntaxTreeNode with Product:
     else
       this
 
-  protected def copyInstance(newArgs: Seq[AnyRef]): this.type =
-    // Using non-JVM reflection to support Scala.js/Scala Native
-    try
-      val args = newArgs.map { (x: Any) =>
-        x match
-          case s: Span =>
-            // Span can be a plain Long type due to optimization
-            s.coordinate
-          case other =>
-            other
-      }
-      val newObj = newInstance(args*)
-      newObj match
-        case t: SyntaxTreeNode =>
-          if this.symbol.tree != null then
-            // Update the tree reference to the rewritten one
-            this.symbol.tree = t
-          t.symbol = this.symbol
-        case _ =>
-      newObj.asInstanceOf[this.type]
-    catch
-      case e: IllegalArgumentException =>
-        throw StatusCode
-          .COMPILATION_FAILURE
-          .newException(
-            s"Failed to create ${nodeName} node with args: ${newArgs.mkString(", ")}",
-            e
-          )
-
   /**
     * List all input expressions to the plan
     *
