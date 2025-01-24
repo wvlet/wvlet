@@ -13,6 +13,7 @@ trait TokenTypeInfo[Token]:
   def doubleLiteral: Token
   def floatLiteral: Token
   def commentToken: Token
+  def docCommentToken: Token
   def singleQuoteString: Token
   def doubleQuoteString: Token
   def tripleQuoteString: Token
