@@ -17,6 +17,7 @@ import wvlet.lang.api.SourceLocation
 import wvlet.lang.api.Span
 import wvlet.lang.compiler.{CompilationUnit, Context, SourceFile, Symbol}
 import wvlet.lang.compiler.ContextUtil.*
+import wvlet.lang.compiler.parser.TokenData
 
 /**
   * A base class for LogicalPlan and Expression
@@ -24,10 +25,20 @@ import wvlet.lang.compiler.ContextUtil.*
 trait TreeNode extends TreeNodeCompat
 
 trait SyntaxTreeNode extends TreeNode:
-  private var _symbol: Symbol = Symbol.NoSymbol
+  private var _symbol: Symbol                  = Symbol.NoSymbol
+  private var _comment: List[TokenData[_]]     = Nil
+  private var _postComment: List[TokenData[_]] = Nil
 
   def symbol: Symbol            = _symbol
   def symbol_=(s: Symbol): Unit = _symbol = s
+
+  def withComment(d: TokenData[?]): this.type =
+    _comment = d :: _comment
+    this
+
+  def withPostComment(d: TokenData[?]): this.type =
+    _postComment = d :: _postComment
+    this
 
   /**
     * @return
@@ -44,3 +55,5 @@ trait SyntaxTreeNode extends TreeNode:
   def nodeName: String =
     val n = this.getClass.getSimpleName
     n.stripSuffix("$")
+
+end SyntaxTreeNode
