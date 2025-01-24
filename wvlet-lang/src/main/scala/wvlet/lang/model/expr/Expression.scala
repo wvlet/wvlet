@@ -41,30 +41,6 @@ trait Expression extends SyntaxTreeNode with Product with LogSupport:
       case _ =>
         false
 
-  protected def copyInstance(newArgs: Seq[AnyRef]): this.type =
-    try
-      val args = newArgs.map { (x: Any) =>
-        x match
-          case s: Span =>
-            // Span (AnyVal) becomes a Long type due to optimization
-            s.coordinate
-          case other =>
-            other
-      }
-
-      val newObj = getSingletonObject.getOrElse(newInstance(args*))
-      newObj.asInstanceOf[this.type]
-    catch
-      case e: IllegalArgumentException =>
-        throw StatusCode
-          .NON_RETRYABLE_INTERNAL_ERROR
-          .newException(
-            s"Failed to create a new instance for ${this
-                .getClass
-                .getSimpleName} with args [${newArgs.mkString(", ")}]",
-            e
-          )
-
   def transformPlan(rule: PartialFunction[LogicalPlan, LogicalPlan]): Expression =
     def recursiveTransform(arg: Any): AnyRef =
       arg match
