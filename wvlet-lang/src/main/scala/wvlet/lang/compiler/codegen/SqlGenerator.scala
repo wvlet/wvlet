@@ -241,6 +241,9 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         selectExpr(sql)
       case g: GroupBy =>
         groupBy(g, block)
+      case c: Count =>
+        val d = relation(c.child, block)
+        selectAll(indentedParen(d), SQLBlock(selectItems = c.selectItems))
       case s: Selection =>
         if block.acceptSelectItems then
           relation(s.child, block.copy(selectItems = s.selectItems))
