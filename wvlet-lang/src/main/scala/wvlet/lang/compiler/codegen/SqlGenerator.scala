@@ -183,10 +183,10 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
           .queryDefs
           .map { w =>
             val subQuery = query(w.child, SQLBlock())(using InStatement)
-            ws(tableAliasOf(w), "as", indentedParen(subQuery))
+            wl(tableAliasOf(w), "as", indentedParen(subQuery))
           }
         val body     = query(q.queryBody, SQLBlock())
-        val withStmt = ws("with", concat(subQueries, text(",") + linebreak))
+        val withStmt = wl("with", concat(subQueries, text(",") + linebreak))
         selectExpr(withStmt + linebreak + body)
       case o: Offset if block.acceptOffset =>
         relation(o.child, block.copy(offset = Some(o.rows)))
@@ -223,21 +223,19 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         // pivot + agg combination
         val p: Pivot = a.child.asInstanceOf[Pivot]
         val onExpr   = pivotOnExpr(p)
-        val aggItems = cs(a.selectItems.map(x => expr(x)))
+        val aggItems = cl(a.selectItems.map(x => expr(x)))
         val pivotExpr =
           val child = relation(p.child, SQLBlock())(using InFromClause)
           group(
-            group(text("pivot") + whitespaceOrNewline + child) +
-              nest(whitespaceOrNewline + ws(text("on"), onExpr)) +
-              nest(whitespaceOrNewline + ws(text("using"), aggItems))
+            group(text("pivot") + wsOrNL + child) + nest(wsOrNL + wl(text("on"), onExpr)) +
+              nest(wsOrNL + wl(text("using"), aggItems))
           )
         val sql =
           if p.groupingKeys.isEmpty then
             pivotExpr
           else
-            val groupByItems = cs(p.groupingKeys.map(x => expr(x)))
-            pivotExpr + whitespaceOrNewline +
-              group(text("group by") + nest(whitespaceOrNewline + groupByItems))
+            val groupByItems = cl(p.groupingKeys.map(x => expr(x)))
+            pivotExpr + wsOrNL + group(text("group by") + nest(wsOrNL + groupByItems))
         selectExpr(sql)
       case g: GroupBy =>
         groupBy(g, block)
@@ -265,14 +263,14 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         // For a simple table input,
         a.child match
           case t: TableInput =>
-            selectAll(group(ws(expr(t.sqlExpr), "as", tableAlias)), block)
+            selectAll(group(wl(expr(t.sqlExpr), "as", tableAlias)), block)
           case v: Values if block.isEmpty && sc.inFromClause =>
-            group(ws(values(v), "as", tableAlias))
+            group(wl(values(v), "as", tableAlias))
           case v: Values =>
-            selectAll(group(ws(values(v), "as", tableAlias)), block)
+            selectAll(group(wl(values(v), "as", tableAlias)), block)
           case _ =>
             selectAll(
-              group(ws(relation(a.child, SQLBlock())(using InSubQuery), "as", tableAlias)),
+              group(wl(relation(a.child, SQLBlock())(using InSubQuery), "as", tableAlias)),
               block
             )
       case p: BracedRelation =>
@@ -290,7 +288,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         val asof: Option[Doc] =
           if j.asof then
             if dbType.supportAsOfJoin then
-              Some(text("asof") + whitespace)
+              Some(text("asof") + ws)
             else
               throw StatusCode.SYNTAX_ERROR.newException(s"AsOf join is not supported in ${dbType}")
           else
@@ -299,15 +297,15 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         val joinType: Doc =
           j.joinType match
             case InnerJoin =>
-              whitespaceOrNewline + asof + text("join")
+              wsOrNL + asof + text("join")
             case LeftOuterJoin =>
-              whitespaceOrNewline + asof + text("left join")
+              wsOrNL + asof + text("left join")
             case RightOuterJoin =>
-              whitespaceOrNewline + asof + text("right join")
+              wsOrNL + asof + text("right join")
             case FullOuterJoin =>
-              whitespaceOrNewline + asof + text("full outer join")
+              wsOrNL + asof + text("full outer join")
             case CrossJoin =>
-              whitespaceOrNewline + asof + text("cross join")
+              wsOrNL + asof + text("cross join")
             case ImplicitJoin =>
               text(",")
 
@@ -321,14 +319,12 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             case NaturalJoin(_) =>
               None
             case u: JoinOnTheSameColumns =>
-              Some(
-                whitespaceOrNewline + text("using") + whitespace + paren(cs(u.columns.map(expr)))
-              )
+              Some(wsOrNL + text("using") + ws + paren(cl(u.columns.map(expr))))
             case JoinOn(e, _) =>
-              Some(whitespaceOrNewline + ws("on", expr(e)))
+              Some(wsOrNL + wl("on", expr(e)))
             case JoinOnEq(keys, _) =>
-              Some(whitespaceOrNewline + ws("on", expr(Expression.concatWithEq(keys))))
-        val joinSQL: Doc = group(l + joinType + whitespaceOrNewline + r + c)
+              Some(wsOrNL + wl("on", expr(Expression.concatWithEq(keys))))
+        val joinSQL: Doc = group(l + joinType + wsOrNL + r + c)
         // Append select * from (left) join (right) where ...
         val sql = selectAll(joinSQL, block)
         sql
@@ -347,8 +343,8 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       case p: Pivot => // pivot without explicit aggregations
         selectExpr(
           group(
-            text("pivot") + whitespaceOrNewline +
-              ws(relation(p.child, SQLBlock())(using InFromClause), "on", pivotOnExpr(p))
+            text("pivot") + wsOrNL +
+              wl(relation(p.child, SQLBlock())(using InFromClause), "on", pivotOnExpr(p))
           )
         )
       case d: Debug =>
@@ -370,7 +366,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
                   case Percentage(percentage) =>
                     text(s"${percentage}%")
               group(
-                ws(
+                wl(
                   "select",
                   "*",
                   "from",
@@ -384,10 +380,10 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
               s.size match
                 case Rows(n) =>
                   // Supported only in td-trino
-                  group(ws("select", cs("*", s"reservoir_sample(${n}) over()"), "from", child))
+                  group(wl("select", cl("*", s"reservoir_sample(${n}) over()"), "from", child))
                 case Percentage(percentage) =>
                   group(
-                    ws(
+                    wl(
                       "select",
                       "*",
                       "from",
@@ -413,9 +409,9 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
 
         val sql: Doc =
           if fields.isEmpty then
-            ws(
+            wl(
               "select",
-              cs(
+              cl(
                 // empty values
                 "'' as column_name",
                 "'' as column_type"
@@ -423,19 +419,19 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
               "limit 0"
             )
           else
-            val values = cs(
+            val values = cl(
               fields.map { f =>
                 paren(
-                  cs(
+                  cl(
                     text("'") + f.name.name + text("'"),
                     text("'") + f.dataType.typeName.toString + text("'")
                   )
                 )
               }
             )
-            ws(
+            wl(
               "select * from",
-              paren(ws("values", values)),
+              paren(wl("values", values)),
               "as table_schema(column_name, column_type)"
             )
         selectExpr(sql)
@@ -444,7 +440,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         // TODO Dump output to the file logger
         relation(r.child, block)
       case s: Show if s.showType == ShowType.tables =>
-        val baseSql: Doc = ws("select", "table_name as name", "from", "information_schema.tables")
+        val baseSql: Doc = wl("select", "table_name as name", "from", "information_schema.tables")
         val cond         = List.newBuilder[Expression]
 
         val opts                    = ctx.global.compilerOptions
@@ -481,15 +477,15 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
           if conds.size == 0 then
             baseSql
           else
-            ws(baseSql, "where", expr(Expression.concatWithAnd(conds)))
+            wl(baseSql, "where", expr(Expression.concatWithAnd(conds)))
 
-        val sql = ws(body, "order by name")
+        val sql = wl(body, "order by name")
 
         selectExpr(sql)
       case s: Show if s.showType == ShowType.schemas =>
-        val baseSql: Doc = ws(
+        val baseSql: Doc = wl(
           "select",
-          cs("catalog_name as \"catalog\"", "schema_name as name"),
+          cl("catalog_name as \"catalog\"", "schema_name as name"),
           "from",
           "information_schema.schemata"
         )
@@ -515,16 +511,16 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
           if conds.size == 0 then
             baseSql
           else
-            ws(baseSql, "where", expr(Expression.concatWithAnd(conds)))
+            wl(baseSql, "where", expr(Expression.concatWithAnd(conds)))
 
-        val sql = ws(body, "order by name")
+        val sql = wl(body, "order by name")
         selectExpr(sql)
       case s: Show if s.showType == ShowType.catalogs =>
         val sql = lines(
           List(
-            group(ws("select distinct", "catalog_name as name")),
-            group(ws("from", "information_schema.schemata")),
-            group(ws("order by", "name"))
+            group(wl("select distinct", "catalog_name as name")),
+            group(wl("from", "information_schema.schemata")),
+            group(wl("order by", "name"))
           )
         )
         selectExpr(sql)
@@ -570,9 +566,9 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
           .map(x => s"(${x})")
         val sql =
           if modelValues.isEmpty then
-            ws(
+            wl(
               "select",
-              cs(
+              cl(
                 "cast(null as varchar) as name",
                 "cast(null as varchar) as args",
                 "cast(null as varchar) as package_name"
@@ -580,11 +576,11 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
               "limit 0"
             )
           else
-            ws(
+            wl(
               "select",
               "*",
               "from",
-              paren(ws("values", cs(modelValues))),
+              paren(wl("values", cl(modelValues))),
               "as",
               "__models(name, args, package_name)"
             )
@@ -605,7 +601,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
     val name = expr(a.alias)
     a.columnNames match
       case Some(columns) =>
-        val cols = cs(columns.map(c => text(c.toSQLAttributeName)))
+        val cols = cl(columns.map(c => text(c.toSQLAttributeName)))
         name + paren(cols)
       case None =>
         name
@@ -618,35 +614,35 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         if block.selectItems.isEmpty then
           text("*")
         else
-          cs(block.selectItems.map(x => expr(x)))
+          cl(block.selectItems.map(x => expr(x)))
       val selectExpr =
-        ws(
+        wl(
           text("select"),
           if block.isDistinct then
             Some("distinct")
           else
             None
-        ) + nest(whitespaceOrNewline + selectItems)
+        ) + nest(wsOrNL + selectItems)
 
       val s = List.newBuilder[Doc]
       s += group(selectExpr)
       if sc.inFromClause then
         s += input
       else if !input.isEmpty then
-        s += ws("from", input)
+        s += wl("from", input)
 
       if block.whereFilter.nonEmpty then
-        s += group(ws("where", indented(cs(block.whereFilter.map(x => expr(x.filterExpr))))))
+        s += group(wl("where", indented(cl(block.whereFilter.map(x => expr(x.filterExpr))))))
       if block.groupingKeys.nonEmpty then
-        s += group(ws("group by", indented(cs(block.groupingKeys.map(x => expr(x))))))
+        s += group(wl("group by", indented(cl(block.groupingKeys.map(x => expr(x))))))
       if block.having.nonEmpty then
-        s += group(ws("having", indented(cs(block.having.map(x => expr(x.filterExpr))))))
+        s += group(wl("having", indented(cl(block.having.map(x => expr(x.filterExpr))))))
       if block.orderBy.nonEmpty then
-        s += group(ws("order by", indented(cs(block.orderBy.map(x => expr(x))))))
+        s += group(wl("order by", indented(cl(block.orderBy.map(x => expr(x))))))
       if block.limit.nonEmpty then
-        s += group(ws("limit", indented(expr(block.limit.get))))
+        s += group(wl("limit", indented(expr(block.limit.get))))
       if block.offset.nonEmpty then
-        s += group(ws("offset", indented(expr(block.offset.get))))
+        s += group(wl("offset", indented(expr(block.offset.get))))
 
       val sql = lines(s.result())
       if sc.isNested then
@@ -765,20 +761,20 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       .rows
       .map {
         case a: ArrayConstructor =>
-          paren(cs(a.values.map(expr)))
+          paren(cl(a.values.map(expr)))
         case other =>
           expr(other)
       }
-    paren(text("values") + nest(whitespaceOrNewline + cs(rows)))
+    paren(text("values") + nest(wsOrNL + cl(rows)))
 
-  private def pivotOnExpr(p: Pivot)(using sc: SyntaxContext): Doc = cs(
+  private def pivotOnExpr(p: Pivot)(using sc: SyntaxContext): Doc = cl(
     p.pivotKeys
       .map { k =>
-        val values = cs(k.values.map(v => expr(v)))
+        val values = cl(k.values.map(v => expr(v)))
         if k.values.isEmpty then
           expr(k.name)
         else
-          ws(expr(k.name), "in", paren(values))
+          wl(expr(k.name), "in", paren(values))
       }
   )
   end pivotOnExpr
@@ -789,35 +785,35 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         expr(g.child)
       case f: FunctionApply =>
         val base = expr(f.base)
-        val args = paren(cs(f.args.map(x => expr(x))))
+        val args = paren(cl(f.args.map(x => expr(x))))
         val w    = f.window.map(x => expr(x))
         val stem = base + args
-        ws(stem, w)
+        wl(stem, w)
       case w: WindowApply =>
         val base   = expr(w.base)
         val window = expr(w.window)
-        ws(base, window)
+        wl(base, window)
       case f: FunctionArg =>
         // TODO handle arg name mapping
         if f.isDistinct then
-          ws("distinct", expr(f.value))
+          wl("distinct", expr(f.value))
         else
           expr(f.value)
       case w: Window =>
         val s = List.newBuilder[Doc]
         if w.partitionBy.nonEmpty then
-          s += ws("partition by", cs(w.partitionBy.map(x => expr(x))))
+          s += wl("partition by", cl(w.partitionBy.map(x => expr(x))))
         if w.orderBy.nonEmpty then
-          s += ws("order by", cs(w.orderBy.map(x => expr(x))))
+          s += wl("order by", cl(w.orderBy.map(x => expr(x))))
         w.frame
           .foreach { f =>
-            s += ws(text(f.frameType.expr), "between", f.start.expr, "and", f.end.expr)
+            s += wl(text(f.frameType.expr), "between", f.start.expr, "and", f.end.expr)
           }
-        ws("over", paren(ws(s.result())))
+        wl("over", paren(wl(s.result())))
       case Eq(left, n: NullLiteral, _) =>
-        ws(expr(left), "is null")
+        wl(expr(left), "is null")
       case NotEq(left, n: NullLiteral, _) =>
-        ws(expr(left), "is not null")
+        wl(expr(left), "is not null")
       case a: ArithmeticUnaryExpr =>
         a.sign match
           case Sign.NoSign =>
@@ -828,9 +824,9 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             text("-") + expr(a.child)
       case c: LogicalConditionalExpression =>
         // For adding optional newlines for AND/OR
-        expr(c.left) + whitespaceOrNewline + text(c.operatorName) + whitespace + expr(c.right)
+        expr(c.left) + wsOrNL + text(c.operatorName) + ws + expr(c.right)
       case b: BinaryExpression =>
-        ws(expr(b.left), b.operatorName, expr(b.right))
+        wl(expr(b.left), b.operatorName, expr(b.right))
       case s: StringPart =>
         text(s.stringValue)
       case l: Literal =>
@@ -841,8 +837,8 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       case i: Identifier =>
         text(i.strExpr)
       case s: SortItem =>
-        expr(s.sortKey) + s.ordering.map(x => whitespace + text(x.expr)) +
-          s.nullOrdering.map(x => whitespace + text(x.expr))
+        expr(s.sortKey) + s.ordering.map(x => ws + text(x.expr)) +
+          s.nullOrdering.map(x => ws + text(x.expr))
       case s: SingleColumn =>
         expr(s.expr) match
           case left if s.nameExpr.isEmpty =>
@@ -852,7 +848,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             // alias is the same with the expression
             t
           case left =>
-            ws(left, "as", s.nameExpr.toSQLAttributeName)
+            wl(left, "as", s.nameExpr.toSQLAttributeName)
       case a: Attribute =>
         text(a.fullName)
       case t: TypedExpression =>
@@ -866,11 +862,11 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         val sql = query(s.query, SQLBlock())(using InStatement)
         parenBlock(sql)
       case i: IfExpr =>
-        text("if") + paren(cs(expr(i.cond), expr(i.onTrue), expr(i.onFalse)))
+        text("if") + paren(cl(expr(i.cond), expr(i.onTrue), expr(i.onFalse)))
       case n: Not =>
-        ws("not", expr(n.child))
+        wl("not", expr(n.child))
       case l: ListExpr =>
-        cs(l.exprs.map(x => expr(x)))
+        cl(l.exprs.map(x => expr(x)))
       case d @ DotRef(qual: Expression, name: NameExpr, _, _) =>
         expr(qual) + "." + expr(name)
       case in: In =>
@@ -880,8 +876,8 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             case (s: SubQueryExpression) :: Nil =>
               expr(s)
             case _ =>
-              paren(cs(in.list.map(x => expr(x))))
-        ws(left, "in", right)
+              paren(cl(in.list.map(x => expr(x))))
+        wl(left, "in", right)
       case notIn: NotIn =>
         val left = expr(notIn.a)
         val right =
@@ -889,31 +885,31 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             case (s: SubQueryExpression) :: Nil =>
               expr(s)
             case _ =>
-              paren(cs(notIn.list.map(x => expr(x))))
-        ws(left, "not in", right)
+              paren(cl(notIn.list.map(x => expr(x))))
+        wl(left, "not in", right)
       case a: ArrayConstructor =>
-        text("ARRAY") + bracket(cs(a.values.map(expr(_))))
+        text("ARRAY") + bracket(cl(a.values.map(expr(_))))
       case a: ArrayAccess =>
         expr(a.arrayExpr) + text("[") + expr(a.index) + text("]")
       case c: CaseExpr =>
-        ws(
-          ws("case", c.target.map(expr)),
+        wl(
+          wl("case", c.target.map(expr)),
           c.whenClauses
             .map { w =>
-              nest(newline + ws("when", group(expr(w.condition)), "then", expr(w.result)))
+              nest(newline + wl("when", group(expr(w.condition)), "then", expr(w.result)))
             },
           c.elseClause
             .map { e =>
-              nest(newline + ws("else", group(expr(e))))
+              nest(newline + wl("else", group(expr(e))))
             },
           maybeNewline + "end"
         )
       case l: LambdaExpr =>
-        val args = cs(l.args.map(expr(_)))
+        val args = cl(l.args.map(expr(_)))
         if l.args.size == 1 then
-          args + whitespace + "->" + whitespaceOrNewline + expr(l.body)
+          args + ws + "->" + wsOrNL + expr(l.body)
         else
-          paren(args) + whitespace + "->" + whitespaceOrNewline + expr(l.body)
+          paren(args) + ws + "->" + wsOrNL + expr(l.body)
       case s: StructValue if dbType.supportRowExpr =>
         // For Trino
         val fields = s
@@ -925,17 +921,17 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
           .fields
           .map { f =>
             val sqlType = DataType.toSQLType(f.value.dataType, dbType)
-            group(text(f.name) + whitespace + sqlType)
+            group(text(f.name) + ws + sqlType)
           }
-        text("cast") + paren(cs(fields)) + whitespaceOrNewline + text("as") + whitespace +
-          text("row") + paren(cs(schema))
+        text("cast") + paren(cl(fields)) + wsOrNL + text("as") + ws + text("row") +
+          paren(cl(schema))
       case s: StructValue =>
         val fields = s
           .fields
           .map { f =>
-            group(text(f.name) + ":" + whitespace + expr(f.value))
+            group(text(f.name) + ":" + ws + expr(f.value))
           }
-        brace(cs(fields))
+        brace(cl(fields))
       case m: MapValue =>
         def keyExpr(e: Expression): Expression =
           e match
@@ -951,23 +947,23 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             val entries: List[Doc] = m
               .entries
               .map { e =>
-                group(ws(expr(keyExpr(e.key)) + ":", expr(e.value)))
+                group(wl(expr(keyExpr(e.key)) + ":", expr(e.value)))
               }
-            ws("MAP", brace(cs(entries)))
+            wl("MAP", brace(cl(entries)))
           case SQLDialect.MapSyntax.ArrayPair =>
             val keys   = ArrayConstructor(m.entries.map(x => keyExpr(x.key)), m.span)
             val values = ArrayConstructor(m.entries.map(_.value), m.span)
-            text("MAP") + paren(cs(List(expr(keys), expr(values))))
+            text("MAP") + paren(cl(List(expr(keys), expr(values))))
       case b: Between =>
-        ws(expr(b.e), "between", expr(b.a), "and", expr(b.b))
+        wl(expr(b.e), "between", expr(b.a), "and", expr(b.b))
       case b: NotBetween =>
-        ws(expr(b.e), "not between", expr(b.a), "and", expr(b.b))
+        wl(expr(b.e), "not between", expr(b.a), "and", expr(b.b))
       case c: Cast =>
-        group(ws(text("cast") + paren(ws(expr(c.child), "as", text(c.tpe.typeName.name)))))
+        group(wl(text("cast") + paren(wl(expr(c.child), "as", text(c.tpe.typeName.name)))))
       case n: NativeExpression =>
         expr(ExpressionEvaluator.eval(n))
       case e: Exists =>
-        ws(text("exists"), expr(e.child))
+        wl(text("exists"), expr(e.child))
       case other =>
         unsupportedNode(s"Expression ${other.nodeName}", other.span)
 
