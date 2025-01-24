@@ -102,11 +102,33 @@ abstract class ScannerBase[Token](sourceFile: SourceFile, config: ScannerConfig)
   // The start offset of the current line
   protected var lineStartOffset: Int = config.startFrom
 
+  private var commentBuffer: List[TokenData[Token]] = Nil
+
   inline protected def offset: Int = current.offset
   inline private def length: Int   = buf.length
 
   // Initialization for populating the first character
   nextChar()
+
+  /**
+    * Push the current token into the comment list
+    */
+  private def pushComment(): Unit =
+    val t = current.toTokenData(lastCharOffset)
+    commentBuffer = t :: commentBuffer
+    if config.skipComments then
+      if config.debugScanner then
+        debug(s"skipped comment: ${t}")
+      fetchToken()
+
+  /**
+    * Get the list of comment tokens before the current token, and clear the comment buffer
+    * @return
+    */
+  def flushCommentTokens(): List[TokenData[Token]] =
+    val lst = commentBuffer
+    commentBuffer = Nil
+    lst
 
   /**
     * Consume and return the next token
@@ -157,6 +179,9 @@ abstract class ScannerBase[Token](sourceFile: SourceFile, config: ScannerConfig)
       if c < ' ' then
         fetchLineEnd()
 
+  /**
+    * Fetch the next raw character including CR and LF
+    */
   protected def nextRawChar(): Unit =
     val index = charOffset
     lastCharOffset = index
@@ -452,13 +477,9 @@ abstract class ScannerBase[Token](sourceFile: SourceFile, config: ScannerConfig)
 
     readToLineEnd()
     val commentLine = flushTokenString()
-    if !config.skipComments then
-      current.token = tokenTypeInfo.commentToken
-      current.str = commentLine
-    else
-      if config.debugScanner then
-        debug(s"skip comment: ${commentLine}")
-      fetchToken()
+    current.token = tokenTypeInfo.commentToken
+    current.str = commentLine
+    pushComment()
 
   protected def getDocComment(): Unit =
     @tailrec
@@ -483,11 +504,9 @@ abstract class ScannerBase[Token](sourceFile: SourceFile, config: ScannerConfig)
 
     readToTripleHyphen()
     val commentDoc = flushTokenString()
-    if !config.skipComments then
-      current.token = tokenTypeInfo.docCommentToken
-      current.str = commentDoc
-    else
-      fetchToken()
+    current.token = tokenTypeInfo.docCommentToken
+    current.str = commentDoc
+    pushComment()
 
   protected def getSingleQuoteString(): Unit =
     consume('\'')
@@ -583,6 +602,7 @@ abstract class ScannerBase[Token](sourceFile: SourceFile, config: ScannerConfig)
     readToCommentEnd()
     current.token = tokenTypeInfo.commentToken
     current.str = flushTokenString()
+    pushComment()
 
 end ScannerBase
 
