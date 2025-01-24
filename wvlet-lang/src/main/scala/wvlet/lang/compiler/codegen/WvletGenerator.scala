@@ -124,6 +124,8 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
           group(text("from") + block(expr(t.sqlExpr)))
       case a: AddColumnsToRelation =>
         unary(a, "add", a.newColumns)
+      case p: PrependColumnsToRelation =>
+        unary(a, "prepend", p.newColumns)
       case s: ShiftColumns =>
         if s.isLeftShift then
           unary(s, "shift", s.shiftItems)
