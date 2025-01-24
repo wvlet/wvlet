@@ -67,7 +67,8 @@ Wvlet provides various relational operators to process input data and generate o
 | [__from__ `expr`](#from)                                                                       | Rows from the given source table, model, value, or file                                                                                       |
 | [__where__ `cond`](#where)                                                                     | Rows that satisfy the given condition. Multiple `where` clauses can be used in the same query                                                 |
 | [__count__](#count)                                                                            | Count the number of input rows                                                                                                                |
-| [__add__ `expr` (__as__ `alias`)?, ...](#add)                                                  | Same rows with new columns                                                                                                                    |
+| [__add__ `expr` (__as__ `alias`)?, ...](#add)                                                  | Same rows with new columns added to the right                                                                                                 |
+| [__prepend__ `expr` (__as__ `alias`)?, ...](#prepend)                                          | Same rows with new columns prepended to the left                                                                                              |
 | [__select__ `expr`, ...](#select)                                                              | Rows with the given expressions. `select *` is allowed                                                                                        |
 | __select distinct__ `expr`,...                                                                 | Rows with distinct values of the given expressions                                                                                            |
 | __select__ `alias` __=__ `expr`, ...                                                           | Rows with the given expressions with aliases                                                                                                  |
@@ -522,6 +523,30 @@ limit 5;
 │ CANADA    │ CAN    │
 │ EGYPT     │ EGY    │
 ├───────────┴────────┤
+│ 5 rows             │
+└────────────────────┘
+```
+
+### prepend
+
+Prepend a new column to the left side of the input:
+
+```sql
+from nation
+select n_name
+prepend n_name.substring(1, 3) as prefix
+limit 5;
+
+┌────────┬───────────┐
+│ prefix │  n_name   │
+│ string │  string   │
+├────────┼───────────┤
+│ ALG    │ ALGERIA   │
+│ ARG    │ ARGENTINA │
+│ BRA    │ BRAZIL    │
+│ CAN    │ CANADA    │
+│ EGY    │ EGYPT     │
+├────────┴───────────┤
 │ 5 rows             │
 └────────────────────┘
 ```

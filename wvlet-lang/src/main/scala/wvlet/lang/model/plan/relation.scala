@@ -361,6 +361,28 @@ case class AddColumnsToRelation(child: Relation, newColumns: List[Attribute], sp
     )
     pt
 
+case class PrependColumnsToRelation(child: Relation, newColumns: List[Attribute], span: Span)
+    extends UnaryRelation
+    with Selection
+    with LogSupport:
+  override def toString: String = s"Prepend[${newColumns.mkString(", ")}](${child})"
+  override def selectItems: List[Attribute] =
+    newColumns ++ List(AllColumns(Wildcard(NoSpan), None, NoSpan))
+
+  override lazy val relationType: RelationType =
+    val cols = List.newBuilder[NamedType]
+    cols ++=
+      newColumns.map { x =>
+        NamedType(Name.termName(x.nameExpr.leafName), x.dataType)
+      }
+    cols ++= inputRelationType.fields
+    val pt = ProjectedType(
+      Name.typeName(RelationType.newRelationTypeName),
+      cols.result(),
+      child.relationType
+    )
+    pt
+
 case class ExcludeColumnsFromRelation(child: Relation, columnNames: List[NameExpr], span: Span)
     extends Selection
     with LogSupport:

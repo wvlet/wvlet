@@ -889,6 +889,8 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         Filter(input, cond, spanFrom(t))
       case WvletToken.ADD =>
         addColumnsExpr(input)
+      case WvletToken.PREPEND =>
+        prependColumnsExpr(input)
       case WvletToken.EXCLUDE =>
         excludeColumnExpr(input)
       case WvletToken.RENAME =>
@@ -1034,6 +1036,11 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     val t     = consume(WvletToken.ADD)
     val items = selectItems()
     AddColumnsToRelation(input, items, spanFrom(t))
+
+  def prependColumnsExpr(input: Relation): PrependColumnsToRelation =
+    val t     = consume(WvletToken.PREPEND)
+    val items = selectItems()
+    PrependColumnsToRelation(input, items, spanFrom(t))
 
   def excludeColumnExpr(input: Relation): ExcludeColumnsFromRelation =
     val t     = consume(WvletToken.EXCLUDE)
