@@ -345,6 +345,26 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
               wl(relation(p.child, SQLBlock())(using InFromClause), "on", pivotOnExpr(p))
           )
         )
+      case u: Unpivot =>
+        // TODO This is a DuckDB unpivot syntax. Support other DBMS syntax
+        def unpivotExpr(): Doc =
+          nest(wsOrNL + group(wl("on", cl(u.unpivotKey.targetColumns.map(expr))))) +
+            nest(
+              wsOrNL +
+                group(
+                  wl(
+                    "into",
+                    "name",
+                    expr(u.unpivotKey.unpivotColumnName),
+                    "value",
+                    expr(u.unpivotKey.valueColumnName)
+                  )
+                )
+            )
+
+        selectExpr(
+          group(wl("unpivot", relation(u.child, SQLBlock())(using InFromClause), unpivotExpr()))
+        )
       case d: Debug =>
         // Skip debug expression
         relation(d.inputRelation, block)

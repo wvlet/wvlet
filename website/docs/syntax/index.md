@@ -87,6 +87,7 @@ Wvlet provides various relational operators to process input data and generate o
 | [__dedup__](#dedup)                                                                            | Rows with duplicated rows removed. Equivalent to `select distinct *`                                                                          |
 | ([__intersect__](#intersect) \| [__except__](#except)) __all__? ...                            | Rows with the intersection (difference) of the given sources. By default set semantics is used. If `all` is given, bag semantics will be used |
 | [__pivot on__ `pivot_column` (__in__ (`v1`, `v2`, ...) )?](#pivot)                             | Rows whose column values in the pivot column are expanded as columns                                                                          |
+| [__unpivot__ `new_column` __for__ `unpivot_column` __in__ (`v1`, `v2`, ...) ](#unpivot)        | Rows whose columns are transformed into single column values                                                                                  |
 | __\|__ `func(args, ...)`                                                                       | Rows processed by the given table function (pipe operator)                                                                                    |
 | [__with__ `alias` __as__ \{ `(query)` \}](#with)                                               | Define a local query alias, which is the same with a common-table expression (CTE) in SQL                                                     |
 | __sample__ `method`? (`(rows)` \| `(percentage)%`)                                             | Randomly sampled rows. Sampling method can be reservoir (default), system, or bernoulli                                                       |
@@ -737,6 +738,47 @@ agg _.count;
 └───────────────────────────────────┘
 ```
 
+### unpivot
+
+The `unpivot` operator transforms multiple columns into rows. This is useful when you need to transform wide table into a long table. Currently, unpivot is available only in DuckDB backend.
+
+Example:
+```sql
+from [
+ [1, 'electronics', 1, 2, 3, 4, 5, 6],
+ [2, 'clothes', 10, 20, 30, 40, 50, 60],
+ [3, 'cars', 100, 200, 300, 400, 500, 600]
+] as sales(id, dept, jan, feb, mar, apr, may, jun)
+unpivot
+  sales for month in (jan, feb, mar, apr, may, jun)
+
+┌─────┬─────────────┬────────┬───────┐
+│ id  │    dept     │ month  │ sales │
+│ int │   string    │ string │  int  │
+├─────┼─────────────┼────────┼───────┤
+│   1 │ electronics │ jan    │     1 │
+│   1 │ electronics │ feb    │     2 │
+│   1 │ electronics │ mar    │     3 │
+│   1 │ electronics │ apr    │     4 │
+│   1 │ electronics │ may    │     5 │
+│   1 │ electronics │ jun    │     6 │
+│   2 │ clothes     │ jan    │    10 │
+│   2 │ clothes     │ feb    │    20 │
+│   2 │ clothes     │ mar    │    30 │
+│   2 │ clothes     │ apr    │    40 │
+│   2 │ clothes     │ may    │    50 │
+│   2 │ clothes     │ jun    │    60 │
+│   3 │ cars        │ jan    │   100 │
+│   3 │ cars        │ feb    │   200 │
+│   3 │ cars        │ mar    │   300 │
+│   3 │ cars        │ apr    │   400 │
+│   3 │ cars        │ may    │   500 │
+│   3 │ cars        │ jun    │   600 │
+├─────┴─────────────┴────────┴───────┤
+│ 18 rows                            │
+└────────────────────────────────────┘
+
+```
 
 ### with
 

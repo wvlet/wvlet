@@ -65,9 +65,10 @@ queryBlock: '|' queryBlock  // pipe operator for explicit split
           | 'where' booleanExpression
           | 'select' 'distinct'? selectItems
           | 'agg' selectItems
-          | 'pivot' 'on' pivotItem (',' pivotItem)*
+          | 'pivot' 'on' pivotItem (',' pivotItem)* ','?
                ('group' 'by' groupByItemList)?
                ('agg' selectItems)?
+          | 'unpivot' unpivotItem (',' unpivotItem)* ','?
           | 'limit' INTEGER_VALUE
           | 'offset' INTEGER_VALUE
           | 'order' 'by' sortItem (',' sortItem)* ','?)?
@@ -125,7 +126,9 @@ sampleSize:  ((integerLiteral 'rows'?) | (floatLiteral '%'))
 
 sortItem: expression ('asc' | 'desc')? ('nulls' ('first' | 'last'))?
 
-pivotKey: identifier ('in' '(' (valueExpression (',' valueExpression)*) ')')?
+pivotItem: identifier ('in' '(' (valueExpression (',' valueExpression)*) ')')?
+
+unpivotItem: identifier 'for' identifier 'in' '(' identifier (',' identifier)*')' ('with' 'nulls')?
 
 typeDef    : 'type' identifier typeParams? context? typeExtends? ':' typeElem* 'end'
 typeParams : '[' typeParam (',' typeParam)* ']'

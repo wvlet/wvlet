@@ -1020,6 +1020,8 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         countExpr(input)
       case WvletToken.PIVOT =>
         pivotExpr(input)
+      case WvletToken.UNPIVOT =>
+        unpivotExpr(input)
       case WvletToken.SELECT =>
         selectExpr(input)
       case WvletToken.LIMIT =>
@@ -1345,6 +1347,46 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         case _ =>
           Nil
     Pivot(input, keys, groupByItems, spanFrom(t))
+  }
+
+  def unpivotExpr(input: Relation): Unpivot = node {
+    def identifiers(): List[Identifier] =
+      val id = identifierSingle()
+      val t  = scanner.lookAhead()
+      t.token match
+        case WvletToken.COMMA =>
+          consume(WvletToken.COMMA)
+          id :: identifiers()
+        case _ =>
+          List(id)
+
+    def unpivotKey(): UnpivotKey =
+      val valueColumn = identifierSingle()
+      consume(WvletToken.FOR)
+      val unpivotColumn = identifierSingle()
+      consume(WvletToken.IN)
+      consume(WvletToken.L_PAREN)
+      val targetColumns = identifiers()
+      consume(WvletToken.R_PAREN)
+//      val includeNulls =
+//        scanner.lookAhead().token match
+//          case WvletToken.WITH =>
+//            consume(WvletToken.WITH)
+//            consume(WvletToken.NULLS)
+//            true
+//          case _ =>
+//            false
+      UnpivotKey(
+        valueColumn,
+        unpivotColumn,
+        targetColumns,
+        // includeNulls,
+        spanFrom(valueColumn.span)
+      )
+
+    val t   = consume(WvletToken.UNPIVOT)
+    val key = unpivotKey()
+    Unpivot(input, key, spanFrom(t))
   }
 
   def groupByItemList(): List[GroupingKey] =
