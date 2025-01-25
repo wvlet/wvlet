@@ -632,11 +632,13 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         s += wl("from", input)
 
       if block.whereFilter.nonEmpty then
-        s += group(wl("where", indented(cl(block.whereFilter.map(x => expr(x.filterExpr))))))
+        val cond = Expression.concatWithAnd(block.whereFilter.map(_.filterExpr))
+        s += group(wl("where", indented(expr(cond))))
       if block.groupingKeys.nonEmpty then
         s += group(wl("group by", indented(cl(block.groupingKeys.map(x => expr(x))))))
       if block.having.nonEmpty then
-        s += group(wl("having", indented(cl(block.having.map(x => expr(x.filterExpr))))))
+        val cond = Expression.concatWithAnd(block.having.map(_.filterExpr))
+        s += group(wl("having", indented(expr(cond))))
       if block.orderBy.nonEmpty then
         s += group(wl("order by", indented(cl(block.orderBy.map(x => expr(x))))))
       if block.limit.nonEmpty then
