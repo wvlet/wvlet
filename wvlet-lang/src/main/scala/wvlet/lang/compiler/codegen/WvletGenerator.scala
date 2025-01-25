@@ -44,18 +44,22 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
                     d + linebreak + concatStmts(tail)
           end concatStmts
 
-          if p.name.isEmpty then
-            concatStmts(p.statements)
-          else
-            group(text("package") + ws + expr(p.name)(using InStatement)) + linebreak +
+          code(p) {
+            if p.name.isEmpty then
               concatStmts(p.statements)
+            else
+              group(text("package") + ws + expr(p.name)(using InStatement)) + linebreak +
+                concatStmts(p.statements)
+          }
         case r: Relation =>
           relation(r)(using InStatement)
         case s: TopLevelStatement =>
           statement(s)(using InStatement)
         case other =>
           warn(s"Unsupported plan: ${other}")
-          text(s"-- ${other.toString}")
+          code(other) {
+            text(s"-- ${other.toString}")
+          }
 
     toDoc(l)
 
@@ -100,6 +104,8 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
 
     if n.postComments.isEmpty then
       dd
+    else if n.postComments.size > 1 then
+      dd + ws + concat(n.postComments.map(c => text(c.str)), linebreak)
     else
       wl(dd, wl(n.postComments.map(c => text(c.str))))
 

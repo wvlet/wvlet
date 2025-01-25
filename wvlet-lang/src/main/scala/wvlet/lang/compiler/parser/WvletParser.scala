@@ -71,8 +71,8 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     * @return
     */
   private def attachComments(l: LogicalPlan): LogicalPlan =
-    val nodes =
-      l.collectAllNodes.filter(_.span.nonEmpty).sortBy(x => (x.span.start, x.span.end)).toList
+    val allNodes =
+      l.collectAllNodes.filter(_.span.nonEmpty).sortBy(x => (x.span.start, -x.span.end)).toList
 
     def attachComments(
         comments: List[TokenData[WvletToken]],
@@ -114,8 +114,12 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       nodes match
         case Nil =>
           // Attach remaining comments to the last node
-          comments.foreach: c =>
-            lastNode.withPostComment(c)
+          val remainingComments = attachLineComment(comments)
+          // Attach end-of-file comments to the PackageNode
+          val packageNode = allNodes.head
+          remainingComments.foreach { c =>
+            packageNode.withPostComment(c)
+          }
         case n :: rest =>
           if lastNode.span.start == n.span.start then
             // Select the most inner node if the start point is the same
@@ -128,9 +132,9 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
             attachComments(remainingComments, rest, n)
     end attachComments
 
-    if nodes.nonEmpty then
+    if allNodes.nonEmpty then
       val sortedComments = scanner.getCommentTokens().sortBy(_.span.end)
-      attachComments(sortedComments, nodes.tail, nodes.head)
+      attachComments(sortedComments, allNodes.tail, allNodes.head)
 
     l
 
