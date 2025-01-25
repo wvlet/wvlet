@@ -61,67 +61,76 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
   private var lastToken: TokenData[WvletToken] = null
   private var lastNode: SyntaxTreeNode         = null
 
+  /**
+    * Attach comment tokens to syntax tree nodes (LogicalPlan or Expression).
+    *
+    *   - If a comment token follows a node in the same line, it will be attached as a post comment
+    *   - Otherwise, the comment will be attached to the following node.
+    *
+    * @param l
+    * @return
+    */
   private def attachComments(l: LogicalPlan): LogicalPlan =
-    val comments = scanner.getCommentTokens()
-    warn(comments.mkString("\n"))
-
     val nodes =
       l.collectAllNodes.filter(_.span.nonEmpty).sortBy(x => (x.span.start, x.span.end)).toList
-    info(nodes.map(n => s"${n.span}: ${n.nodeName}").mkString("\n"))
 
-    var remainingComments = comments.sortBy(c => c.span.end)
+    def attachComments(
+        comments: List[TokenData[WvletToken]],
+        nodes: List[SyntaxTreeNode],
+        lastNode: SyntaxTreeNode
+    ): Unit =
+      val lastLine = src.offsetToLine(lastNode.span.end)
 
-    def attachComments(nodes: List[SyntaxTreeNode], lastNode: SyntaxTreeNode): Unit =
-
-      def fetchNextComments(pos: Int): List[TokenData[WvletToken]] =
-        remainingComments match
+      def attachLineComment(lst: List[TokenData[WvletToken]]): List[TokenData[WvletToken]] =
+        lst match
           case Nil =>
             Nil
           case c :: rest =>
-            if c.span.end <= pos then
-              remainingComments = rest
-              c :: fetchNextComments(pos)
+            val commentLine = src.offsetToLine(c.span.end)
+            if lastNode.span.end <= c.span.start && lastLine == commentLine then
+              // If the comment fits in the same line, attach it to the previous node
+              trace(
+                s"<-- ${c} to ${lastNode.nodeName}(${lastNode.sourceLocationOfCompilationUnit})"
+              )
+              lastNode.withPostComment(c)
+              attachLineComment(rest)
             else
-              Nil
+              lst
+
+      def attachPrecedingComments(lst: List[TokenData[WvletToken]]): List[TokenData[WvletToken]] =
+        lst match
+          case Nil =>
+            Nil
+          case c :: rest =>
+            if c.span.end <= lastNode.span.start then
+              trace(
+                s"--> ${c} to ${lastNode.nodeName}(${lastNode.sourceLocationOfCompilationUnit})"
+              )
+              lastNode.withComment(c)
+              attachPrecedingComments(rest)
+            else
+              lst
 
       nodes match
         case Nil =>
           // Attach remaining comments to the last node
-          for
-            l <- Option(lastNode);
-            c <- remainingComments
-          do
-            l.withPostComment(c)
+          comments.foreach: c =>
+            lastNode.withPostComment(c)
         case n :: rest =>
-          rest match
-            case next :: rest if next.span.start == n.span.start =>
-              // Skip the same start nodes to use the most inner node
-              attachComments(rest, n)
-            case _ =>
-              val prevComments = fetchNextComments(n.span.start)
-              prevComments.foreach { c =>
-                val lastLine =
-                  if lastNode == null then
-                    -1
-                  else
-                    src.offsetToLine(lastNode.span.end)
-                val commentLine = src.offsetToLine(c.span.end)
-                if lastLine == commentLine then
-                  // If the comment fits in the same line, attach it to the previous node
-                  warn(
-                    s"<-- ${c} to ${lastNode.nodeName}(${lastNode.sourceLocationOfCompilationUnit})"
-                  )
-                  lastNode.withPostComment(c)
-                else
-                  // Attach the comment to the next closest nodes
-                  warn(s"--> ${c} to ${n.nodeName}(${n.sourceLocationOfCompilationUnit})")
-                  n.withComment(c)
-              }
-              attachComments(rest, n)
-      end match
+          if lastNode.span.start == n.span.start then
+            // Select the most inner node if the start point is the same
+            attachComments(comments, rest, n)
+          else
+            // Attach the preceding comments to the last node
+            var remainingComments = attachPrecedingComments(comments)
+            // Attach end-of-line comments to the last node
+            remainingComments = attachLineComment(remainingComments)
+            attachComments(remainingComments, rest, n)
     end attachComments
 
-    attachComments(nodes, null)
+    if nodes.nonEmpty then
+      val sortedComments = scanner.getCommentTokens().sortBy(_.span.end)
+      attachComments(sortedComments, nodes.tail, nodes.head)
 
     l
 
