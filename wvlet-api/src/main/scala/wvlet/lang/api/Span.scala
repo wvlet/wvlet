@@ -49,6 +49,9 @@ class Span(val coordinate: Long) extends AnyVal:
   def isEmpty: Boolean  = !exists
   def nonEmpty: Boolean = exists
 
+  def precedes(offset: Int): Boolean          = end <= offset
+  def follows(offset: Int): Boolean           = start >= offset
+  def contains(other: Span): Boolean          = start <= other.start && other.end <= end
   def contains(offset: Int): Boolean          = start <= offset && offset < end
   def containsInclusive(offset: Int): Boolean = start <= offset && offset <= end
 
@@ -110,7 +113,7 @@ object Span:
   /**
     * Non-existing span
     */
-  val NoSpan: Span = within(1, 0)
+  val NoSpan: Span = within(0, 0)
 
   def at(offset: Int): Span              = within(offset, offset)
   def within(start: Int, end: Int): Span = apply(start, end, 0)

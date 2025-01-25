@@ -58,7 +58,7 @@ class WvletScanner(sourceFile: SourceFile, config: ScannerConfig = ScannerConfig
           fetchToken()
     else
       current.copyFrom(next)
-      next.token = WvletToken.EMPTY
+      resetNextToken()
 
   /**
     * Fetch the next token and set it to the current ScannerState

@@ -49,15 +49,26 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
 
   def parse(): LogicalPlan =
     val t = scanner.lookAhead()
-    t.token match
-      case WvletToken.PACKAGE =>
-        packageDef()
-      case _ =>
-        val stmts = statements()
-        PackageDef(EmptyName, stmts, unit.sourceFile, spanFrom(t))
+    val plan =
+      t.token match
+        case WvletToken.PACKAGE =>
+          packageDef()
+        case _ =>
+          val stmts = statements()
+          PackageDef(EmptyName, stmts, unit.sourceFile, spanFrom(t))
+    attachComments(plan)
 
   private var lastToken: TokenData[WvletToken] = null
   private var lastNode: SyntaxTreeNode         = null
+
+  private def attachComments(l: LogicalPlan): LogicalPlan =
+    val comments = scanner.getCommentTokens()
+    warn(comments.mkString("\n"))
+
+    val nodes = l.collectAllNodes.sortBy(x => (x.span.start, x.span.end))
+    info(nodes.map(n => s"${n.span}: ${n.nodeName}").mkString("\n"))
+
+    l
 
   // private def sourceLocation: SourceLocation = SourceLocation(unit.sourceFile, nodeLocation())
   def consume(expected: WvletToken)(using code: SourceCode): TokenData[WvletToken] =
@@ -105,26 +116,31 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         expr.sourceLocationOfCompilationUnit
       )
 
-  private def node[A <: SyntaxTreeNode](x: => A): A =
-    // Fetch the current comment tokens
-    val comments = scanner.flushCommentTokens()
-    // Generate node
-    val node = x
-    // Remenber the last node for attach comments
-    val prevNode = lastNode
-    lastNode = node
-    if comments.isEmpty then
-      node
-    else
-      comments.foreach { c =>
-        if c.span.start < node.span.start then
-          // Attach the comment to the next node
-          node.withComment(c)
-        else if prevNode != null then
-          // Associate the comment to the previous node
-          prevNode.withPostComment(c)
-      }
-      node
+  private def node[A <: SyntaxTreeNode](x: => A): A = x
+//    // Fetch the current comment tokens
+//    val comments = scanner.flushCommentTokens()
+//    // Remember the last node for attach comments
+//    val prevNode = lastNode
+//    // Generate node
+//    val node = x
+//    info(s"${comments}\nlastNode: ${prevNode}\ncurrent: ${node}")
+//    lastNode = node
+//    if comments.isEmpty then
+//      node
+//    else
+//      comments.foreach { c =>
+//        if prevNode != null && prevNode.span.end <= c.span.start &&
+//          src.offsetToLine(prevNode.span.end) == src.offsetToLine(c.span.end)
+//        then
+//          // If the comment fits in the same line, attach it to the previous node
+//          warn(s"<-- ${c} to ${prevNode.nodeName}(${prevNode.sourceLocationOfCompilationUnit})")
+//          prevNode.withPostComment(c)
+//        else
+//          // Attach the comment to the next node
+//          warn(s"--> ${c} to ${node.nodeName}(${node.sourceLocationOfCompilationUnit})")
+//          node.withComment(c)
+//      }
+//      node
 
   def identifier(): QualifiedName = node {
     val t = scanner.lookAhead()
@@ -713,11 +729,11 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         case _ =>
           Query(r, spanFrom(t))
 
-    updateRelationIfExists(r)
+    updateOpsIfExists(r)
   }
   end query
 
-  def updateRelationIfExists(r: Relation): Relation = node {
+  def updateOpsIfExists(r: Relation): Relation = node {
 
     def saveOptions(): List[SaveOption] =
       val t = scanner.lookAhead()
@@ -791,10 +807,10 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         r
     end match
   }
-  end updateRelationIfExists
+  end updateOpsIfExists
 
   def querySingle(): Relation = node {
-    def readRest(input: Relation): Relation =
+    def readRest(input: Relation): Relation = node {
       scanner.lookAhead().token match
         case WvletToken.COMMA =>
           val ct    = consume(WvletToken.COMMA)
@@ -810,6 +826,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           readRest(rel)
         case _ =>
           input
+    }
 
     var r: Relation = null
     val t           = scanner.lookAhead()
@@ -1546,7 +1563,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           val next =
             scanner.lookAhead().token match
               case WvletToken.SAVE | WvletToken.APPEND | WvletToken.DELETE =>
-                updateRelationIfExists(r)
+                updateOpsIfExists(r)
               case _ =>
                 queryBlockSingle(r)
           if r eq next then
