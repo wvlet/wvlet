@@ -100,12 +100,12 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
       if n.comments.isEmpty then
         d
       else
-        lines(n.comments.map(c => text(c.str))) / d
+        lines(n.comments.reverse.map(c => text(c.str))) / d
 
     if n.postComments.isEmpty then
       dd
     else if n.postComments.size > 1 then
-      dd + ws + concat(n.postComments.map(c => text(c.str)), linebreak)
+      dd + wsOrNL + concat(n.postComments.reverse.map(c => text(c.str)), linebreak)
     else
       wl(dd, wl(n.postComments.map(c => text(c.str))))
 

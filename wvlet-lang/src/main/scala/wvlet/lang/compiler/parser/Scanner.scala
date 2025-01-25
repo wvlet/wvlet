@@ -322,6 +322,8 @@ abstract class ScannerBase[Token](sourceFile: SourceFile, config: ScannerConfig)
       nextChar()
       // third hyphen
       if ch == '-' then
+        putChar(ch)
+        nextRawChar()
         // triple hyphen -> Doc comment
         getDocComment()
       else
@@ -476,7 +478,8 @@ abstract class ScannerBase[Token](sourceFile: SourceFile, config: ScannerConfig)
       if (ch != CR) && (ch != LF) && (ch != SU) then
         readToLineEnd()
 
-    readToLineEnd()
+    if (ch != CR) && (ch != LF) && (ch != SU) then
+      readToLineEnd()
     val commentLine = flushTokenString()
     current.token = tokenTypeInfo.commentToken
     current.str = commentLine
