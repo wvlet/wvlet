@@ -1,5 +1,6 @@
 ---
-unpivot opreator folds columns into a column values:
+unpivot opreator folds columns into
+two column values (column_name, value_column):
 
 unpivot (value_column) for (column_name) in (column_list)
 ---

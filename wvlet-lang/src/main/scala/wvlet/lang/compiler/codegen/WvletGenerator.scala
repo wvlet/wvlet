@@ -290,6 +290,22 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
           }
         val t = prev / pivot
         t
+      case u: Unpivot =>
+        val prev = relation(u.child)
+        val unpivot =
+          code(u) {
+            group(
+              wl(
+                "unpivot",
+                expr(u.unpivotKey.valueColumnName),
+                "for",
+                expr(u.unpivotKey.unpivotColumnName),
+                "in",
+                paren(cl(u.unpivotKey.targetColumns.map(expr)))
+              )
+            )
+          }
+        prev / unpivot
       case d: Delete =>
         unary(d, "delete", Nil)
       case a: AppendTo =>
