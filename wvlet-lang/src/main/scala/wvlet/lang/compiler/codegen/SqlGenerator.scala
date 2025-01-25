@@ -267,7 +267,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
           case v: Values if block.isEmpty && sc.inFromClause =>
             group(wl(values(v), "as", tableAlias))
           case v: Values =>
-            selectAll(group(wl(values(v), "as", tableAlias)), block)
+            indentedParen(selectAll(group(wl(values(v), "as", tableAlias)), block))
           case _ =>
             selectAll(
               group(wl(relation(a.child, SQLBlock())(using InSubQuery), "as", tableAlias)),
@@ -324,7 +324,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
               Some(wsOrNL + wl("on", expr(e)))
             case JoinOnEq(keys, _) =>
               Some(wsOrNL + wl("on", expr(Expression.concatWithEq(keys))))
-        val joinSQL: Doc = group(l + joinType + wsOrNL + r + c)
+        val joinSQL: Doc = group(l + joinType + ws + r + c)
         // Append select * from (left) join (right) where ...
         val sql = selectAll(joinSQL, block)
         sql
@@ -626,9 +626,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
 
       val s = List.newBuilder[Doc]
       s += group(selectExpr)
-      if sc.inFromClause then
-        s += input
-      else if !input.isEmpty then
+      if !input.isEmpty then
         s += wl("from", input)
 
       if block.whereFilter.nonEmpty then

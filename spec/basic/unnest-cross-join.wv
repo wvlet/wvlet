@@ -21,6 +21,7 @@ from [
 ] as tests(student, scores)
 where student = 'John'
 cross join unnest(scores) as t(score)
+select student, score
 test _.rows should be [
   ['John', 7],
   ['John', 10],
