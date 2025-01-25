@@ -182,31 +182,9 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         expr.sourceLocationOfCompilationUnit
       )
 
-  private def node[A <: SyntaxTreeNode](x: => A): A = x
-//    // Fetch the current comment tokens
-//    val comments = scanner.flushCommentTokens()
-//    // Remember the last node for attach comments
-//    val prevNode = lastNode
-//    // Generate node
-//    val node = x
-//    info(s"${comments}\nlastNode: ${prevNode}\ncurrent: ${node}")
-//    lastNode = node
-//    if comments.isEmpty then
-//      node
-//    else
-//      comments.foreach { c =>
-//        if prevNode != null && prevNode.span.end <= c.span.start &&
-//          src.offsetToLine(prevNode.span.end) == src.offsetToLine(c.span.end)
-//        then
-//          // If the comment fits in the same line, attach it to the previous node
-//          warn(s"<-- ${c} to ${prevNode.nodeName}(${prevNode.sourceLocationOfCompilationUnit})")
-//          prevNode.withPostComment(c)
-//        else
-//          // Attach the comment to the next node
-//          warn(s"--> ${c} to ${node.nodeName}(${node.sourceLocationOfCompilationUnit})")
-//          node.withComment(c)
-//      }
-//      node
+  private inline def node[A <: SyntaxTreeNode](x: => A): A =
+    // TODO: Use this for tracking parsing contexts with stack
+    x
 
   def identifier(): QualifiedName = node {
     val t = scanner.lookAhead()
