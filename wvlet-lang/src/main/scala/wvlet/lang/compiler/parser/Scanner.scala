@@ -90,8 +90,9 @@ abstract class ScannerBase[Token](sourceFile: SourceFile, config: ScannerConfig)
 
   // Is the current token the first one after a newline?
 
-  protected val tokenBuffer           = TokenBuffer()
-  protected var currentRegion: Region = Indented(0, null)
+  protected val tokenBuffer                           = TokenBuffer()
+  protected var currentRegion: Region                 = Indented(0, null)
+  protected var commentBuffer: List[TokenData[Token]] = Nil
 
   // The last read character
   protected var ch: Char = _
@@ -101,8 +102,6 @@ abstract class ScannerBase[Token](sourceFile: SourceFile, config: ScannerConfig)
   protected var lastCharOffset: Int = config.startFrom
   // The start offset of the current line
   protected var lineStartOffset: Int = config.startFrom
-
-  private var commentBuffer: List[TokenData[Token]] = Nil
 
   inline protected def offset: Int = current.offset
   inline private def length: Int   = buf.length
@@ -114,21 +113,20 @@ abstract class ScannerBase[Token](sourceFile: SourceFile, config: ScannerConfig)
     * Push the current token into the comment list
     */
   private def pushComment(): Unit =
-    val t = current.toTokenData(lastCharOffset)
-    commentBuffer = t :: commentBuffer
+    val commentToken = current.toTokenData(lastCharOffset)
+    commentBuffer = commentToken :: commentBuffer
     if config.skipComments then
       if config.debugScanner then
-        debug(s"skipped comment: ${t}")
+        debug(s"skipped comment: ${commentToken}")
       fetchToken()
 
   /**
-    * Get the list of comment tokens before the current token, and clear the comment buffer
+    * Get the list of comment tokens pushed before the current token
     * @return
     */
-  def flushCommentTokens(): List[TokenData[Token]] =
-    val lst = commentBuffer
-    commentBuffer = Nil
-    lst
+  def getCommentTokens(): List[TokenData[Token]] = commentBuffer
+
+  def resetNextToken(): Unit = next.token = tokenTypeInfo.empty
 
   /**
     * Consume and return the next token
@@ -137,6 +135,7 @@ abstract class ScannerBase[Token](sourceFile: SourceFile, config: ScannerConfig)
     val lastToken = current.token
     try
       getNextToken(lastToken)
+
       val t = current.toTokenData(lastCharOffset)
       if config.debugScanner then
         debug(s"${currentRegion} $t")
@@ -162,7 +161,9 @@ abstract class ScannerBase[Token](sourceFile: SourceFile, config: ScannerConfig)
     */
   def lookAhead(): TokenData[Token] =
     if next.token == tokenTypeInfo.empty then
+      // prev <- current, current <- newToken
       peekAhead()
+      // current, next
       shiftTokenHistory()
     next.toTokenData(lastCharOffset)
 

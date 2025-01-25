@@ -16,8 +16,8 @@ where id = 1
 ```
 ---
 model my_model =
-  -- scan a json file
-  from 'person.json' -- Load data from 'person.json'
+  -- scan a file
+  from 'person.json' -- Load data from json
   -- ETL
   where id is not null -- cleanup
 end

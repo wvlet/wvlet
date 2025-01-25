@@ -49,15 +49,96 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
 
   def parse(): LogicalPlan =
     val t = scanner.lookAhead()
-    t.token match
-      case WvletToken.PACKAGE =>
-        packageDef()
-      case _ =>
-        val stmts = statements()
-        PackageDef(EmptyName, stmts, unit.sourceFile, spanFrom(t))
+    val plan =
+      t.token match
+        case WvletToken.PACKAGE =>
+          packageDef()
+        case _ =>
+          val stmts = statements()
+          PackageDef(EmptyName, stmts, unit.sourceFile, spanFrom(t))
+    attachComments(plan)
 
   private var lastToken: TokenData[WvletToken] = null
   private var lastNode: SyntaxTreeNode         = null
+
+  /**
+    * Attach comment tokens to syntax tree nodes (LogicalPlan or Expression).
+    *
+    *   - If a comment token follows a node in the same line, it will be attached as a post comment
+    *   - Otherwise, the comment will be attached to the following node.
+    *
+    * @param l
+    * @return
+    */
+  private def attachComments(l: LogicalPlan): LogicalPlan =
+    val allNodes =
+      l.collectAllNodes.filter(_.span.nonEmpty).sortBy(x => (x.span.start, -x.span.end)).toList
+
+    def attachComments(
+        comments: List[TokenData[WvletToken]],
+        nodes: List[SyntaxTreeNode],
+        lastNode: SyntaxTreeNode
+    ): Unit =
+      val lastLine = src.offsetToLine(lastNode.span.end)
+
+      def attachLineComment(lst: List[TokenData[WvletToken]]): List[TokenData[WvletToken]] =
+        lst match
+          case Nil =>
+            Nil
+          case c :: rest =>
+            val commentLine = src.offsetToLine(c.span.end)
+            if lastNode.span.end <= c.span.start && lastLine == commentLine then
+              // If the comment fits in the same line, attach it to the previous node
+              trace(
+                s"<-- ${c} to ${lastNode.nodeName}(${lastNode.sourceLocationOfCompilationUnit})"
+              )
+              lastNode.withPostComment(c)
+              attachLineComment(rest)
+            else
+              lst
+
+      def attachPrecedingComments(lst: List[TokenData[WvletToken]]): List[TokenData[WvletToken]] =
+        lst match
+          case Nil =>
+            Nil
+          case c :: rest =>
+            if c.span.end <= lastNode.span.start then
+              trace(
+                s"--> ${c} to ${lastNode.nodeName}(${lastNode.sourceLocationOfCompilationUnit})"
+              )
+              lastNode.withComment(c)
+              attachPrecedingComments(rest)
+            else
+              lst
+
+      nodes match
+        case Nil =>
+          // Attach remaining comments to the last node
+          val remainingComments = attachLineComment(comments)
+          // Attach end-of-file comments to the PackageNode
+          val packageNode = allNodes.head
+          remainingComments.foreach { c =>
+            packageNode.withPostComment(c)
+          }
+        case n :: rest =>
+          if lastNode.span.start == n.span.start then
+            // Select the most inner node if the start point is the same
+            attachComments(comments, rest, n)
+          else
+            // Attach the preceding comments to the last node
+            var remainingComments = attachPrecedingComments(comments)
+            // Attach end-of-line comments to the last node
+            remainingComments = attachLineComment(remainingComments)
+            attachComments(remainingComments, rest, n)
+    end attachComments
+
+    if allNodes.nonEmpty then
+      val sortedComments = scanner.getCommentTokens().sortBy(_.span.end)
+      attachComments(sortedComments, allNodes.tail, allNodes.head)
+
+    l
+
+  end attachComments
 
   // private def sourceLocation: SourceLocation = SourceLocation(unit.sourceFile, nodeLocation())
   def consume(expected: WvletToken)(using code: SourceCode): TokenData[WvletToken] =
@@ -105,26 +186,9 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         expr.sourceLocationOfCompilationUnit
       )
 
-  private def node[A <: SyntaxTreeNode](x: => A): A =
-    // Fetch the current comment tokens
-    val comments = scanner.flushCommentTokens()
-    // Generate node
-    val node = x
-    // Remenber the last node for attach comments
-    val prevNode = lastNode
-    lastNode = node
-    if comments.isEmpty then
-      node
-    else
-      comments.foreach { c =>
-        if c.span.start < node.span.start then
-          // Attach the comment to the next node
-          node.withComment(c)
-        else if prevNode != null then
-          // Associate the comment to the previous node
-          prevNode.withPostComment(c)
-      }
-      node
+  private inline def node[A <: SyntaxTreeNode](x: => A): A =
+    // TODO: Use this for tracking parsing contexts with stack
+    x
 
   def identifier(): QualifiedName = node {
     val t = scanner.lookAhead()
@@ -713,11 +777,11 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         case _ =>
           Query(r, spanFrom(t))
 
-    updateRelationIfExists(r)
+    updateOpsIfExists(r)
   }
   end query
 
-  def updateRelationIfExists(r: Relation): Relation = node {
+  def updateOpsIfExists(r: Relation): Relation = node {
 
     def saveOptions(): List[SaveOption] =
       val t = scanner.lookAhead()
@@ -791,10 +855,10 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         r
     end match
   }
-  end updateRelationIfExists
+  end updateOpsIfExists
 
   def querySingle(): Relation = node {
-    def readRest(input: Relation): Relation =
+    def readRest(input: Relation): Relation = node {
       scanner.lookAhead().token match
         case WvletToken.COMMA =>
           val ct    = consume(WvletToken.COMMA)
@@ -810,6 +874,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           readRest(rel)
         case _ =>
           input
+    }
 
     var r: Relation = null
     val t           = scanner.lookAhead()
@@ -1546,7 +1611,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           val next =
             scanner.lookAhead().token match
               case WvletToken.SAVE | WvletToken.APPEND | WvletToken.DELETE =>
-                updateRelationIfExists(r)
+                updateOpsIfExists(r)
               case _ =>
                 queryBlockSingle(r)
           if r eq next then

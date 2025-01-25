@@ -15,7 +15,7 @@ class SqlScanner(sourceFile: SourceFile, config: ScannerConfig = ScannerConfig()
       fetchToken()
     else
       current.copyFrom(next)
-      next.token = SqlToken.EMPTY
+      resetNextToken()
 
   override protected def fetchToken(): Unit =
     initOffset()

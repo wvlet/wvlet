@@ -27,7 +27,7 @@ enum PlanProperty:
   // Used for recording a Symbol defined for the tree
   case SymbolOfTree
 
-trait LogicalPlan extends SyntaxTreeNode with Product:
+trait LogicalPlan extends SyntaxTreeNode:
   // Ephemeral properties of the plan node, which will be used during compilation phases
   private var properties = Map.empty[PlanProperty, Any]
 

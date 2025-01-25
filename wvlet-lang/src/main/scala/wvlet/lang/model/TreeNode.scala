@@ -17,16 +17,41 @@ import wvlet.lang.api.{SourceLocation, Span, StatusCode}
 import wvlet.lang.compiler.{CompilationUnit, Context, SourceFile, Symbol}
 import wvlet.lang.compiler.ContextUtil.*
 import wvlet.lang.compiler.parser.TokenData
+import wvlet.log.LogSupport
 
 /**
   * A base class for LogicalPlan and Expression
   */
 trait TreeNode extends TreeNodeCompat
 
-trait SyntaxTreeNode extends TreeNode:
+trait SyntaxTreeNode extends TreeNode with Product with LogSupport:
   private var _symbol: Symbol                  = Symbol.NoSymbol
   private var _comment: List[TokenData[_]]     = Nil
   private var _postComment: List[TokenData[_]] = Nil
+
+  def childNodes: List[SyntaxTreeNode] =
+    val l = List.newBuilder[SyntaxTreeNode]
+    def loop(x: Any): Unit =
+      x match
+        case n: SyntaxTreeNode =>
+          l += n
+        case xs: Seq[?] =>
+          xs.foreach(loop)
+        case i: Iterator[?] =>
+          i.foreach(loop)
+        case _ =>
+    loop(this.productIterator)
+    l.result()
+
+  def collectAllNodes: List[SyntaxTreeNode] =
+    val lst = List.newBuilder[SyntaxTreeNode]
+    lst += this
+    this
+      .childNodes
+      .foreach { n =>
+        lst ++= n.collectAllNodes
+      }
+    lst.result()
 
   def copyMetadatFrom(t: SyntaxTreeNode): Unit =
     // Copy symbol, comment
@@ -36,6 +61,9 @@ trait SyntaxTreeNode extends TreeNode:
 
   def symbol: Symbol            = _symbol
   def symbol_=(s: Symbol): Unit = _symbol = s
+
+  def comments: List[TokenData[_]]     = _comment
+  def postComments: List[TokenData[_]] = _postComment
 
   def withComment(d: TokenData[?]): this.type =
     _comment = d :: _comment
