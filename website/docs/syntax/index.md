@@ -740,7 +740,7 @@ agg _.count;
 
 ### unpivot
 
-The `unpivot` operator transforms multiple columns into rows. This is useful when you need to transform wide table into a long table.
+The `unpivot` operator transforms multiple columns into rows. This is useful when you need to transform wide table into a long table. Currently, unpivot is available only in DuckDB backend.
 
 Example:
 ```sql
