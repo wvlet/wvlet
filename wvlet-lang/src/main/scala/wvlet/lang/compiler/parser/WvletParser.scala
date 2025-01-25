@@ -164,9 +164,11 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     * @param startToken
     * @return
     */
-  private def spanFrom(startToken: TokenData[WvletToken]): Span = startToken
-    .span
-    .extendTo(lastToken.span)
+  private def spanFrom(startToken: TokenData[WvletToken]): Span =
+    if lastToken != null then
+      startToken.span.extendTo(lastToken.span)
+    else
+      startToken.span
 
   private def spanFrom(startSpan: Span): Span = startSpan.extendTo(lastToken.span)
 
