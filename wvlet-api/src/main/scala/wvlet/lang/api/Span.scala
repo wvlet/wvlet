@@ -113,7 +113,7 @@ object Span:
   /**
     * Non-existing span
     */
-  val NoSpan: Span = within(0, 0)
+  val NoSpan: Span = within(1, 0)
 
   def at(offset: Int): Span              = within(offset, offset)
   def within(start: Int, end: Int): Span = apply(start, end, 0)

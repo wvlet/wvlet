@@ -65,10 +65,67 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     val comments = scanner.getCommentTokens()
     warn(comments.mkString("\n"))
 
-    val nodes = l.collectAllNodes.sortBy(x => (x.span.start, x.span.end))
+    val nodes =
+      l.collectAllNodes.filter(_.span.nonEmpty).sortBy(x => (x.span.start, x.span.end)).toList
     info(nodes.map(n => s"${n.span}: ${n.nodeName}").mkString("\n"))
 
+    var remainingComments = comments.sortBy(c => c.span.end)
+
+    def attachComments(nodes: List[SyntaxTreeNode], lastNode: SyntaxTreeNode): Unit =
+
+      def fetchNextComments(pos: Int): List[TokenData[WvletToken]] =
+        remainingComments match
+          case Nil =>
+            Nil
+          case c :: rest =>
+            if c.span.end <= pos then
+              remainingComments = rest
+              c :: fetchNextComments(pos)
+            else
+              Nil
+
+      nodes match
+        case Nil =>
+          // Attach remaining comments to the last node
+          for
+            l <- Option(lastNode);
+            c <- remainingComments
+          do
+            l.withPostComment(c)
+        case n :: rest =>
+          rest match
+            case next :: rest if next.span.start == n.span.start =>
+              // Skip the same start nodes to use the most inner node
+              attachComments(rest, n)
+            case _ =>
+              val prevComments = fetchNextComments(n.span.start)
+              prevComments.foreach { c =>
+                val lastLine =
+                  if lastNode == null then
+                    -1
+                  else
+                    src.offsetToLine(lastNode.span.end)
+                val commentLine = src.offsetToLine(c.span.end)
+                if lastLine == commentLine then
+                  // If the comment fits in the same line, attach it to the previous node
+                  warn(
+                    s"<-- ${c} to ${lastNode.nodeName}(${lastNode.sourceLocationOfCompilationUnit})"
+                  )
+                  lastNode.withPostComment(c)
+                else
+                  // Attach the comment to the next closest nodes
+                  warn(s"--> ${c} to ${n.nodeName}(${n.sourceLocationOfCompilationUnit})")
+                  n.withComment(c)
+              }
+              attachComments(rest, n)
+      end match
+    end attachComments
+
+    attachComments(nodes, null)
+
     l
+
+  end attachComments
 
   // private def sourceLocation: SourceLocation = SourceLocation(unit.sourceFile, nodeLocation())
   def consume(expected: WvletToken)(using code: SourceCode): TokenData[WvletToken] =
