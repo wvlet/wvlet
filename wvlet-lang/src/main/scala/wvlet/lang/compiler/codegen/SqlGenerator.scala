@@ -262,14 +262,10 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
 
         // For a simple table input,
         a.child match
-          case t: TableInput if block.isEmpty && sc.inFromClause =>
-            group(wl(expr(t.sqlExpr), "as", tableAlias))
           case t: TableInput =>
-            indentedParen(selectAll(group(wl(expr(t.sqlExpr), "as", tableAlias)), block))
-          case v: Values if block.isEmpty && sc.inFromClause =>
-            group(wl(values(v), "as", tableAlias))
+            selectAll(group(wl(expr(t.sqlExpr), "as", tableAlias)), block)
           case v: Values =>
-            indentedParen(selectAll(group(wl(values(v), "as", tableAlias)), block))
+            selectAll(group(wl(values(v), "as", tableAlias)), block)
           case _ =>
             selectAll(
               group(wl(relation(a.child, SQLBlock())(using InSubQuery), "as", tableAlias)),
