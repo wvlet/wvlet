@@ -1,17 +1,15 @@
 package wvlet.lang.compiler.codegen
 
+import wvlet.lang.api.Span
 import wvlet.lang.compiler.Context
+import wvlet.lang.compiler.codegen.SyntaxContext.*
 import wvlet.lang.compiler.formatter.CodeFormatter.*
 import wvlet.lang.compiler.formatter.{CodeFormatter, CodeFormatterConfig}
 import wvlet.lang.compiler.transform.ExpressionEvaluator
+import wvlet.lang.model.SyntaxTreeNode
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
-import wvlet.lang.api.Span
 import wvlet.log.LogSupport
-import SyntaxContext.*
-import wvlet.lang.model.SyntaxTreeNode
-
-import scala.annotation.tailrec
 
 class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
     ctx: Context = Context.NoContext
@@ -76,7 +74,12 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
         None
       else
         Some(nest(maybeNewline + cl(lst)))
-    val d = in / group(wl(text(op), argBlock))
+
+    val opBlock =
+      code(r) {
+        group(wl(text(op), argBlock))
+      }
+    val d = in / opBlock
     d
 
   private def tableAliasOf(a: AliasedRelation)(using sc: SyntaxContext): Doc =
@@ -101,11 +104,13 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
       wl(dd, wl(n.postComments.map(c => text(c.str))))
 
   private def relation(r: Relation)(using sc: SyntaxContext): Doc =
-    code(r) {
-      r match
-        case q: Query =>
+    r match
+      case q: Query =>
+        code(q) {
           relation(q.child)
-        case w: WithQuery =>
+        }
+      case w: WithQuery =>
+        code(w) {
           val defs = w
             .queryDefs
             .map { d =>
@@ -114,41 +119,45 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
               text("with") + ws + alias + ws + text("as") + ws + indentedBrace(body)
             }
           lines(defs) + linebreak + relation(w.queryBody)
-        case s: Sort =>
-          unary(s, "order by", s.orderBy.toList)
-        case p: Project =>
-          unary(p, "select", p.selectItems)
-        case g: GroupBy =>
-          unary(g, "group by", g.groupingKeys)
-        case a: Agg =>
-          unary(a, "agg", a.aggExprs)
-        case f: Filter =>
-          unary(f, "where", f.filterExpr)
-        case l: Limit =>
-          unary(l, "limit", l.limit)
-        case o: Offset =>
-          unary(o, "offset", o.rows)
-        case c: Count =>
-          unary(c, "count", Nil)
-        case t: TableInput =>
+        }
+      case s: Sort =>
+        unary(s, "order by", s.orderBy.toList)
+      case p: Project =>
+        unary(p, "select", p.selectItems)
+      case g: GroupBy =>
+        unary(g, "group by", g.groupingKeys)
+      case a: Agg =>
+        unary(a, "agg", a.aggExprs)
+      case f: Filter =>
+        unary(f, "where", f.filterExpr)
+      case l: Limit =>
+        unary(l, "limit", l.limit)
+      case o: Offset =>
+        unary(o, "offset", o.rows)
+      case c: Count =>
+        unary(c, "count", Nil)
+      case t: TableInput =>
+        code(t) {
           if sc.inFromClause then
             expr(t.sqlExpr)
           else
             group(text("from") + block(expr(t.sqlExpr)))
-        case a: AddColumnsToRelation =>
-          unary(a, "add", a.newColumns)
-        case p: PrependColumnsToRelation =>
-          unary(p, "prepend", p.newColumns)
-        case s: ShiftColumns =>
-          if s.isLeftShift then
-            unary(s, "shift", s.shiftItems)
-          else
-            unary(s, "shift to right", s.shiftItems)
-        case e: ExcludeColumnsFromRelation =>
-          unary(e, "exclude", e.columnNames)
-        case r: RenameColumnsFromRelation =>
-          unary(r, "rename", r.columnAliases)
-        case a: AliasedRelation =>
+        }
+      case a: AddColumnsToRelation =>
+        unary(a, "add", a.newColumns)
+      case p: PrependColumnsToRelation =>
+        unary(p, "prepend", p.newColumns)
+      case s: ShiftColumns =>
+        if s.isLeftShift then
+          unary(s, "shift", s.shiftItems)
+        else
+          unary(s, "shift to right", s.shiftItems)
+      case e: ExcludeColumnsFromRelation =>
+        unary(e, "exclude", e.columnNames)
+      case r: RenameColumnsFromRelation =>
+        unary(r, "rename", r.columnAliases)
+      case a: AliasedRelation =>
+        code(a) {
           val tableAlias: Doc = tableAliasOf(a)
           a.child match
             case t: TableInput if sc.inFromClause =>
@@ -162,126 +171,151 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
                 wl("from", indentedBrace(relation(a.child)(using InSubQuery))) +
                   nest(ws + "as" + ws + tableAlias)
               )
-        case j: Join =>
-          val left  = relation(j.left)
-          val right = relation(j.right)(using InFromClause)
+        }
+      case j: Join =>
+        val left  = relation(j.left)
+        val right = relation(j.right)(using InFromClause)
 
-          val asof: Option[Doc] =
-            if j.asof then
-              Some(text("asof") + ws)
-            else
+        val asof: Option[Doc] =
+          if j.asof then
+            Some(text("asof") + ws)
+          else
+            None
+
+        val joinType =
+          j.joinType match
+            case JoinType.InnerJoin =>
+              wsOrNL + asof + text("join")
+            case JoinType.LeftOuterJoin =>
+              wsOrNL + asof + text("left join")
+            case JoinType.RightOuterJoin =>
+              wsOrNL + asof + text("right join")
+            case JoinType.FullOuterJoin =>
+              wsOrNL + asof + text("full join")
+            case JoinType.CrossJoin =>
+              wsOrNL + asof + text("cross join")
+            case JoinType.ImplicitJoin =>
+              text(",")
+
+        val cond =
+          j.cond match
+            case NoJoinCriteria =>
               None
+            case n: NaturalJoin =>
+              None
+            case u: JoinOnTheSameColumns =>
+              if u.columns.size == 1 then
+                Some(group(wsOrNL + wl("on", expr(u.columns.head))))
+              else
+                Some(group(wsOrNL + wl("on", paren(cl(u.columns.map(expr))))))
+            case u: JoinOn =>
+              Some(group(wsOrNL + wl("on", expr(u.expr))))
+            case u: JoinOnEq =>
+              Some(group(wsOrNL + wl("on", expr(Expression.concatWithEq(u.keys)))))
 
-          val joinType =
-            j.joinType match
-              case JoinType.InnerJoin =>
-                wsOrNL + asof + text("join")
-              case JoinType.LeftOuterJoin =>
-                wsOrNL + asof + text("left join")
-              case JoinType.RightOuterJoin =>
-                wsOrNL + asof + text("right join")
-              case JoinType.FullOuterJoin =>
-                wsOrNL + asof + text("full join")
-              case JoinType.CrossJoin =>
-                wsOrNL + asof + text("cross join")
-              case JoinType.ImplicitJoin =>
-                text(",")
-
-          val cond =
-            j.cond match
-              case NoJoinCriteria =>
-                None
-              case n: NaturalJoin =>
-                None
-              case u: JoinOnTheSameColumns =>
-                if u.columns.size == 1 then
-                  Some(group(wsOrNL + wl("on", expr(u.columns.head))))
-                else
-                  Some(group(wsOrNL + wl("on", paren(cl(u.columns.map(expr))))))
-              case u: JoinOn =>
-                Some(group(wsOrNL + wl("on", expr(u.expr))))
-              case u: JoinOnEq =>
-                Some(group(wsOrNL + wl("on", expr(Expression.concatWithEq(u.keys)))))
-
+        code(j) {
           group(left + joinType + wsOrNL + right + cond)
-        case u: Union if u.isDistinct =>
-          // union is not supported in Wvlet, so rewrite it to dedup(concat)
+        }
+      case u: Union if u.isDistinct =>
+        // union is not supported in Wvlet, so rewrite it to dedup(concat)
+        code(u) {
           relation(Dedup(Concat(u.left, u.right, u.span), u.span))
-        case s: SetOperation =>
-          val rels: List[Doc] =
-            s.children.toList match
-              case Nil =>
-                Nil
-              case head :: tail =>
-                val hd = relation(head)
-                val tl = tail.map(x => indentedBrace(relation(x)))
-                hd :: tl
+        }
+      case s: SetOperation =>
+        val rels: List[Doc] =
+          s.children.toList match
+            case Nil =>
+              Nil
+            case head :: tail =>
+              val hd = relation(head)
+              val tl = tail.map(x => indentedBrace(relation(x)))
+              hd :: tl
 
-          // TODO union is not supported in Wvlet. Replace tree to dedup(concat)
-          val op = s.toWvOp
+        // TODO union is not supported in Wvlet. Replace tree to dedup(concat)
+        val op = s.toWvOp
+        code(s) {
           append(rels, text(op))
-        case d: Dedup =>
-          unary(d, "dedup", Nil)
-        case d: Distinct =>
-          unary(d.child, "select distinct", d.child.selectItems)
-        case d: Describe =>
-          unary(d, "describe", Nil)
-        case s: SelectAsAlias =>
-          unary(s, "select as", s.target)
-        case t: TestRelation =>
-          unary(t, "test", t.testExpr)
-        case d: Debug =>
-          val r = relation(d.child)
-          // Render the debug expr like a top-level query
-          val body      = relation(d.partialDebugExpr)(using InStatement)
-          val debugExpr = text("debug") + ws + indentedBrace(body)
-          r / debugExpr
-        case s: Sample =>
-          val prev = relation(s.child)
-          val opts =
-            s.method match
-              case Some(m) =>
-                text(m.toString) + paren(text(s.size.toExpr))
-              case None =>
-                text(s.size.toExpr)
-          prev / group(wl("sample", opts))
-        case v: Values =>
-          values(v)
-        case b: BracedRelation =>
+        }
+      case d: Dedup =>
+        unary(d, "dedup", Nil)
+      case d: Distinct =>
+        unary(d.child, "select distinct", d.child.selectItems)
+      case d: Describe =>
+        unary(d, "describe", Nil)
+      case s: SelectAsAlias =>
+        unary(s, "select as", s.target)
+      case t: TestRelation =>
+        unary(t, "test", t.testExpr)
+      case d: Debug =>
+        val r = relation(d.child)
+        // Render the debug expr like a top-level query
+        val body = relation(d.partialDebugExpr)(using InStatement)
+        val debugExpr =
+          code(d) {
+            text("debug") + ws + indentedBrace(body)
+          }
+        r / debugExpr
+      case s: Sample =>
+        val prev = relation(s.child)
+        val opts =
+          s.method match
+            case Some(m) =>
+              text(m.toString) + paren(text(s.size.toExpr))
+            case None =>
+              text(s.size.toExpr)
+        prev /
+          code(s) {
+            group(wl("sample", opts))
+          }
+      case v: Values =>
+        values(v)
+      case b: BracedRelation =>
+        code(b) {
           codeBlock(relation(b.child)(using InSubQuery))
-        case p: Pivot =>
-          val prev      = relation(p.child)
-          val pivotKeys = p.pivotKeys.map(expr)
-          // TODO Add grouping keys
-          // val groupingKeys = cs(p.groupingKeys.map(expr))
-          val pivot = group(wl("pivot", "on", cl(pivotKeys)))
-          val t     = prev / pivot
-          t
-        case d: Delete =>
-          unary(d, "delete", Nil)
-        case a: AppendTo =>
-          relation(a.child) / group(wl("append to", expr(a.target)))
-        case s: SaveTo =>
-          val prev = relation(s.child)
-          val path = expr(s.target)
-          val opts =
-            if s.saveOptions.isEmpty then
-              None
-            else
-              val lst = s
-                .saveOptions
-                .map { x =>
-                  expr(x)
-                }
-              Some(ws + "with" + nest(wsOrNL + cl(lst)))
-          prev / group(wl("save to", path) + opts)
-        case e: EmptyRelation =>
-          empty
-        case s: Show =>
+        }
+      case p: Pivot =>
+        val prev      = relation(p.child)
+        val pivotKeys = p.pivotKeys.map(expr)
+        // TODO Add grouping keys
+        // val groupingKeys = cs(p.groupingKeys.map(expr))
+        val pivot =
+          code(p) {
+            group(wl("pivot", "on", cl(pivotKeys)))
+          }
+        val t = prev / pivot
+        t
+      case d: Delete =>
+        unary(d, "delete", Nil)
+      case a: AppendTo =>
+        relation(a.child) /
+          code(a) {
+            group(wl("append to", expr(a.target)))
+          }
+      case s: SaveTo =>
+        val prev = relation(s.child)
+        val path = expr(s.target)
+        val opts =
+          if s.saveOptions.isEmpty then
+            None
+          else
+            val lst = s
+              .saveOptions
+              .map { x =>
+                expr(x)
+              }
+            Some(ws + "with" + nest(wsOrNL + cl(lst)))
+        prev /
+          code(s) {
+            group(wl("save to", path) + opts)
+          }
+      case e: EmptyRelation =>
+        empty
+      case s: Show =>
+        code(s) {
           wl("show", s.showType.toString, s.inExpr.map(x => wl("in", expr(x))))
-        case other =>
-          unsupportedNode(s"relation ${other.nodeName}", other.span)
-    }
+        }
+      case other =>
+        unsupportedNode(s"relation ${other.nodeName}", other.span)
 
   private def unsupportedNode(nodeType: String, span: Span): Doc =
     val loc = ctx.sourceLocationAt(span)
@@ -298,10 +332,13 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
   private def values(values: Values)(using sc: SyntaxContext): Doc =
     val rows: List[Doc] = values.rows.map(expr)
     def newBlock        = bracket(cl(rows))
-    if sc.inFromClause then
-      newBlock
-    else
-      group(text("from") + ws + newBlock)
+
+    code(values) {
+      if sc.inFromClause then
+        newBlock
+      else
+        group(text("from") + ws + newBlock)
+    }
 
   private def statement(s: TopLevelStatement)(using sc: SyntaxContext): Doc =
     code(s) {
