@@ -1,0 +1,32 @@
+
+--
+
+-- hello comment
+
+---
+Here is a triple-hyphen block for Markdown style comment
+# Markdown
+
+- item
+- item2
+
+---
+
+/**
+ * Here is a block comment for traditional SQL
+ */
+
+-- regular comment
+
+-- Empty comment
+--
+model hello =
+ select 1
+end
+
+-- Empty triple hyphen comment
+---
+---
+model hello2 =
+ select 2
+end
