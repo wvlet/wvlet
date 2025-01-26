@@ -86,7 +86,7 @@ object ExecutionPlanner extends Phase("execution-plan"):
           ExecutionPlan.empty
 
     val executionPlan = plan(targetPlan, evalQuery = true)
-    trace(s"[Logical plan]:\n${targetPlan.pp})")
+    trace(s"[Logical plan]:\n${targetPlan.pp}")
     debug(s"[Execution plan]:\n${executionPlan.pp}")
     executionPlan
 

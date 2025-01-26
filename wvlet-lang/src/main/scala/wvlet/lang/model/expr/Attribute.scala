@@ -141,11 +141,11 @@ case class SingleColumn(override val nameExpr: NameExpr, expr: Expression, span:
   override def dataType: DataType = expr.dataType
 
   override def inputAttributes: Seq[Attribute] = Seq(this)
-
+  
   override def outputAttributes: Seq[Attribute] = inputAttributes
-
+  
   override def children: Seq[Expression] = Seq(expr)
-
+  
   override def toString = s"${fullName}:${dataTypeName} := ${expr}"
 
 case class UnresolvedAttribute(override val nameExpr: NameExpr, span: Span) extends Attribute:

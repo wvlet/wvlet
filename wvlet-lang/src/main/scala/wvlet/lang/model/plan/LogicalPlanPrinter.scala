@@ -14,322 +14,316 @@
 package wvlet.lang.model.plan
 
 import wvlet.lang.model.DataType.EmptyRelationType
-import wvlet.lang.model.{DataType, RelationType}
+import wvlet.lang.model.{DataType, RelationType, SyntaxTreeNode}
 import wvlet.lang.model.expr.*
+import wvlet.lang.compiler.formatter.CodeFormatter.*
+import wvlet.lang.compiler.Name
 import wvlet.lang.api.Span
+import wvlet.lang.compiler.codegen.SyntaxContext.InSubQuery
+import wvlet.lang.compiler.formatter.CodeFormatterConfig
 import wvlet.log.LogSupport
 
 import java.io.{PrintWriter, StringWriter}
 
 object LogicalPlanPrinter extends LogSupport:
 
-  extension (expr: Expression)
-    def sqlExpr: String = printExpression(expr)
-
-  def concat(lst: Seq[Any], sep: String = ""): String =
-    val s = List.newBuilder[String]
-
-    def add(x: Any): Unit =
-      x match
-        case str: String =>
-          s += str
-        case e: Expression =>
-          s += printExpression(e)
-
-        case Some(e) =>
-          add(e)
-        case None =>
-        case Nil  =>
-        case lst: Seq[?] if lst.nonEmpty =>
-          lst.foreach(add)
-        case null =>
-        case _ =>
-          s += x.toString
-
-    lst.foreach(add)
-    s.result().mkString(sep)
-
   def print(m: LogicalPlan): String =
-    val s = new StringWriter()
-    val p = new PrintWriter(s)
-    print(m, p, 0)
-    p.close()
-    s.toString
+    val d = plan(m)
+    d.render(CodeFormatterConfig(maxLineWidth = 120))
 
-  def print(m: LogicalPlan, out: PrintWriter, level: Int): Unit =
-    def printChildExprs(children: Seq[Expression]): Unit =
-      val attr    = children.map(x => printExpression(x))
-      val ws      = "  " * (level + 1)
-      val attrStr = attr.map(x => s"${ws}- ${x}").mkString("\n")
-      out.println(attrStr)
+  def print(e: Expression): String =
+    val d = expr(e)
+    d.render()
 
-    m match
-      case null | EmptyRelation(_) =>
-      // print nothing
-//      case f: FunctionDef =>
-//        val rt = f.resultType.map(x => s": ${x}").getOrElse("")
-//        out.println(s"[FunctionDef] ${f.name}")
-//        out.println(
-//          s"  def ${f.name}(${f.args.map(x => s"${x.name}").mkString(", ")})${rt} = ${printExpression(f.bodyExpr)}"
-//        )
-      case t: TypeDef =>
-        val s = concat(
-          List(
-            "  " * level,
-            "[TypeDef ",
-            t.span,
-            "] ",
-            t.name,
-            if t.params.isEmpty then
-              Nil
-            else
-              List("[", t.params.map(_.typeDescription).mkString(", "), "]")
-            ,
-            if t.defContexts.isEmpty then
-              Nil
-            else
-              List(" in ", concat(t.defContexts, ", "))
-            ,
-            if t.parent.isEmpty then
-              Nil
-            else
-              List(" extends ", t.parent)
-          )
-        )
-        out.println("")
-        out.println(s)
-        printChildExprs(t.elems)
-      case _ =>
-        val ws = "  " * level
-
-        def wrap[A](v: A): String =
-          v match
-            case s: Seq[String] @unchecked if s.length <= 1 =>
-              s.headOption.map(_.toString).getOrElse("empty")
-            case s: Seq[String] =>
-              s"(${s.mkString(", ")})"
-            case other =>
-              other.toString
-
-        def printRelationType(r: RelationType): String = s"<${r.typeDescription}>"
-
-//        val inputType =
-//          m.inputRelationType match
-//            case EmptyRelationType =>
-//              ""
-//            case other: RelationType =>
-//              wrap(printRelationType(other))
+//  def print(m: LogicalPlan, out: PrintWriter, level: Int): Unit =
+//    def printChildExprs(children: Seq[Expression]): Unit =
+//      val attr    = children.map(x => expr(x))
+//      val ws      = "  " * (level + 1)
+//      val attrStr = attr.map(x => s"${ws}- ${x}").mkString("\n")
+//      out.println(attrStr)
 //
-        val outputType =
-          m.relationType match
-            case DataType.EmptyRelationType =>
-              ""
-            case r: RelationType =>
-              wrap(printRelationType(r))
+//    m match
+//      case null | EmptyRelation(_) =>
+//      // print nothing
+////      case f: FunctionDef =>
+////        val rt = f.resultType.map(x => s": ${x}").getOrElse("")
+////        out.println(s"[FunctionDef] ${f.name}")
+////        out.println(
+////          s"  def ${f.name}(${f.args.map(x => s"${x.name}").mkString(", ")})${rt} = ${printExpression(f.bodyExpr)}"
+////        )
+//      case t: TypeDef =>
+//        val s = concat(
+//          List(
+//            "  " * level,
+//            "[TypeDef ",
+//            t.span,
+//            "] ",
+//            t.name,
+//            if t.params.isEmpty then
+//              Nil
+//            else
+//              List("[", t.params.map(_.typeDescription).mkString(", "), "]")
+//            ,
+//            if t.defContexts.isEmpty then
+//              Nil
+//            else
+//              List(" in ", concat(t.defContexts, ", "))
+//            ,
+//            if t.parent.isEmpty then
+//              Nil
+//            else
+//              List(" extends ", t.parent)
+//          )
+//        )
+//        out.println("")
+//        out.println(s)
+//        printChildExprs(t.elems)
+//      case _ =>
+//        val ws = "  " * level
+//
+//        def wrap[A](v: A): String =
+//          v match
+//            case s: Seq[String] @unchecked if s.length <= 1 =>
+//              s.headOption.map(_.toString).getOrElse("empty")
+//            case s: Seq[String] =>
+//              s"(${s.mkString(", ")})"
+//            case other =>
+//              other.toString
+//
+//        def printRelationType(r: RelationType): String = s"<${r.typeDescription}>"
+//
+////        val inputType =
+////          m.inputRelationType match
+////            case EmptyRelationType =>
+////              ""
+////            case other: RelationType =>
+////              wrap(printRelationType(other))
+////
+//        val outputType =
+//          m.relationType match
+//            case DataType.EmptyRelationType =>
+//              ""
+//            case r: RelationType =>
+//              wrap(printRelationType(r))
+//
+//        val inputAttrs  = m.inputRelationType.fields
+//        val outputAttrs = m.relationType.fields
+//
+//        val attr        = m.childExpressions.map(expr)
+//        val functionSig = s" => ${outputType}"
+//
+//        val resolvedSign =
+//          if m.resolved then
+//            ""
+//          else
+//            "*"
+//        val loc = m.span.map(l => s" ${l}").getOrElse("")
+//        val prefix =
+//          m match
+//            case t: HasTableName =>
+//              s"${ws}[${resolvedSign}${m.nodeName}${loc}] ${t.name}${functionSig}"
+//            case src: HasSourceFile =>
+//              s"${ws}[${resolvedSign}${m.nodeName} ${src.sourceFile.fileName}${loc}]${functionSig} "
+//            case _ =>
+//              s"${ws}[${resolvedSign}${m.nodeName}${loc}]${functionSig}"
+//
+//        m match
+//          case p: PackageDef =>
+//          // do not add new line
+//          case m: ModelDef =>
+//            out.println()
+//          case l: LanguageStatement =>
+//            // add a new line for language statement
+//            out.println()
+//          case _ =>
+//
+//        attr.length match
+//          case 0 =>
+//            out.println(prefix)
+//          case _ =>
+//            out.println(s"${prefix}")
+//            printChildExprs(m.childExpressions)
+//
+//        for c <- m.children do
+//          // Add indent for child relations
+//          print(c, out, level + 1)
+//
+//    end match
+//
+//  end print
 
-        val inputAttrs  = m.inputRelationType.fields
-        val outputAttrs = m.relationType.fields
-
-        val attr        = m.childExpressions.map(expr => printExpression(expr))
-        val functionSig = s" => ${outputType}"
-
-        val resolvedSign =
-          if m.resolved then
-            ""
+  def plan(l: LogicalPlan): Doc =
+    l match
+      case null | EmptyRelation(_) =>
+        empty
+      case p: PackageDef =>
+        val pkg =
+          if p.name.isEmpty then
+            empty
           else
-            "*"
-        val loc = m.span.map(l => s" ${l}").getOrElse("")
-        val prefix =
-          m match
-            case t: HasTableName =>
-              s"${ws}[${resolvedSign}${m.nodeName}${loc}] ${t.name}${functionSig}"
-            case src: HasSourceFile =>
-              s"${ws}[${resolvedSign}${m.nodeName} ${src.sourceFile.fileName}${loc}]${functionSig} "
-            case _ =>
-              s"${ws}[${resolvedSign}${m.nodeName}${loc}]${functionSig}"
+            group(wl("package", expr(p.name))) + linebreak
+        pkg + concat(p.statements.map(plan), linebreak + linebreak)
+      case other: LogicalPlan =>
+        node(other)
 
-        m match
-          case p: PackageDef =>
-          // do not add new line
-          case m: ModelDef =>
-            out.println()
-          case l: LanguageStatement =>
-            // add a new line for language statement
-            out.println()
-          case _ =>
-
-        attr.length match
-          case 0 =>
-            out.println(prefix)
-          case _ =>
-            out.println(s"${prefix}")
-            printChildExprs(m.childExpressions)
-
-        for c <- m.children do
-          // Add indent for child relations
-          print(c, out, level + 1)
-
-    end match
-
-  end print
-
-  def printExpression(e: Expression): String =
+  def expr(e: Expression): Doc =
     e match
       case i: Identifier =>
-        i.strExpr
-//      case f: FunctionCall =>
-//        f.toString
+        text(i.strExpr)
       case d: DefArg =>
-        concat(
-          List(
-            d.name,
-            ": ",
-            d.dataType.typeDescription,
-            if d.defaultValue.isEmpty then
-              Nil
-            else
-              List(" = ", d.defaultValue)
-          )
+        wl(
+          text(d.name.name) + ": ",
+          d.dataType.typeDescription,
+          d.defaultValue.map(v => wl("=", v))
         )
-//      case d: Dereference =>
-//        s"Dereference(${printExpression(d.base)}, ${printExpression(d.next)})"
       case s: SingleColumn =>
-        s"${s.fullName}:${s.dataTypeName} := ${printExpression(s.expr)}"
+        val body = expr(s.expr)
+        if s.nameExpr.isEmpty || body.toString == s.fullName then
+          expr(s.expr) + ":" + s.dataTypeName
+        else
+          wl(text(s.fullName) + ":" + s.dataTypeName, ":=", body)
       case a: Alias =>
-        s"<${a.fullName}> ${printExpression(a.expr)}"
+        wl(expr(a.expr), "as", a.fullName)
       case g: GroupingKey =>
-        printExpression(g.child)
+        expr(g.child)
       case b: ArithmeticBinaryExpr =>
-        s"${printExpression(b.left)} ${b.exprType.expr} ${printExpression(b.right)}"
+        wl(expr(b.left), b.exprType.expr, expr(b.right))
       case s: StringLiteral =>
-        s"\"${s.stringValue}\""
+        text(s.stringValue)
       case l: Literal =>
-        l.stringValue
+        text(l.stringValue)
       case s: SortItem =>
-        s"sort key:${printExpression(s.sortKey)}${s.ordering.map(x => s" ${x}").getOrElse("")}"
+        wl("sort key:", expr(s.sortKey), s.ordering.map(x => x.expr))
       case a: ArrayConstructor =>
-        s"[${a.children.map(printExpression).mkString(", ")}]"
+        bracket(cl(a.children.map(expr)))
       case t: FunctionDef =>
-        concat(
-          List(
-            "def ",
-            t.name,
-            if t.args.isEmpty then
-              Nil
-            else
-              List("(", concat(t.args, ", "), ")")
-            ,
-            if t.retType.isEmpty then
-              Nil
-            else
-              List(": ", t.retType)
-            ,
-            if t.expr.isEmpty then
-              Nil
-            else
-              List(" = ", t.expr)
-          )
-        )
+        val b = List.newBuilder[Doc]
+        b += text("def")
+        b += text(t.name.name) + {
+          // function args
+          if t.args.isEmpty then
+            None
+          else
+            Some(paren(cl(t.args.map(expr))))
+        }
+        t.retType
+          .foreach { r =>
+            b += text(":")
+            b += text(r.typeName.name)
+          }
+        t.expr
+          .foreach { body =>
+            b += text("=") + nest(wsOrNL + expr(body))
+          }
+        wl(b.result())
       case t: FieldDef =>
-        concat(
-          List(
-            "val ",
-            t.name,
-            ": ",
-            t.tpe,
-            if t.body.isEmpty then
-              Nil
-            else
-              List(" = ", t.body)
+        group(
+          wl(
+            "val",
+            t.name.name + ":",
+            expr(t.tpe),
+            t.body
+              .map { b =>
+                "=" + nest(wsOrNL + expr(b))
+              }
           )
         )
       case c: ConditionalExpression =>
-        printConditionalExpression(c)
-      case b: BinaryExpression =>
-        s"${b.operatorName}(${printExpression(b.left)}, ${printExpression(b.right)})"
+        cond(c)
       case p: ParenthesizedExpression =>
-        s"(${p.child.sqlExpr})"
+        paren(expr(p.child))
       case null =>
-        "null"
+        text("null")
       case arg: FunctionArg =>
         arg.name match
           case Some(name) =>
-            concat(List(name, " = ", arg.value))
+            wl(name.name, "=", expr(arg.value))
           case None =>
-            concat(List(arg.value))
+            expr(arg.value)
       case i: InterpolatedString =>
-        s"${printExpression(i.prefix)}\"${i.parts.map(printExpression).mkString}\""
+        cat(expr(i.prefix) + "\"" + cat(i.parts.map(expr)) + "\"")
       case r: DotRef =>
-        s"${printExpression(r.qualifier)}.${printExpression(r.name)}"
+        cat(expr(r.qualifier), ".", expr(r.name))
       case t: This =>
-        "this"
+        text("this")
       case d: DefContext =>
         if d.name.isEmpty then
-          concat(List(d.tpe))
+          expr(d.tpe)
         else
-          concat(List(d.name, ": ", d.tpe), ", ")
+          expr(d.name.get) + ": " + expr(d.tpe)
       case ShouldExpr(testType, left, right, _) =>
-        s"${left.sqlExpr} ${testType.expr} ${right.sqlExpr}"
+        wl(expr(left), testType.expr, expr(right))
       case other =>
-        e.toString
+        node(other)
 
-  def printConditionalExpression(c: ConditionalExpression): String =
+  def cond(c: ConditionalExpression): Doc =
     c match
       case NoOp(_) =>
-        ""
-      case Eq(a, b, _) =>
-        b match
-          case n: NullLiteral =>
-            s"IsNull(${a.sqlExpr})"
-          case _ =>
-            s"Eq(${a.sqlExpr}, ${b.sqlExpr})"
-      case n @ NotEq(a, b, _) =>
-        b match
-          case n: NullLiteral =>
-            s"NotNull(${a.sqlExpr})"
-          case _ =>
-            s"NotEq(${a.sqlExpr}, ${b.sqlExpr})"
-      case And(a, b, _) =>
-        s"And(${a.sqlExpr}, ${b.sqlExpr})"
-      case Or(a, b, _) =>
-        s"Or(${a.sqlExpr}, ${b.sqlExpr})"
-      case Not(e, _) =>
-        s"Not(${e.sqlExpr})"
-      case LessThan(a, b, _) =>
-        s"${a.sqlExpr} < ${b.sqlExpr}"
-      case LessThanOrEq(a, b, _) =>
-        s"${a.sqlExpr} <= ${b.sqlExpr}"
-      case GreaterThan(a, b, _) =>
-        s"${a.sqlExpr} > ${b.sqlExpr}"
-      case GreaterThanOrEq(a, b, _) =>
-        s"${a.sqlExpr} >= ${b.sqlExpr}"
+        empty
+      case l: LogicalConditionalExpression =>
+        expr(l.left) + wsOrNL + l.operatorName + ws + expr(l.right)
+      case b: BinaryExpression =>
+        wl(expr(b.left), b.operatorName, expr(b.right))
       case Between(e, a, b, _) =>
-        s"${e.sqlExpr} between ${a.sqlExpr} and ${b.sqlExpr}"
+        wl(expr(e), "between", expr(a), expr(b))
       case NotBetween(e, a, b, _) =>
-        s"${e.sqlExpr} not between ${a.sqlExpr} and ${b.sqlExpr}"
-      case IsNull(a, _) =>
-        s"IsNull(${a.sqlExpr})"
-      case IsNotNull(a, _) =>
-        s"IsNotNull(${a.sqlExpr})"
+        wl(expr(e), "not between", expr(a), expr(b))
       case In(a, list, _) =>
-        val in = list.map(x => x.sqlExpr).mkString(", ")
-        s"${a.sqlExpr} in (${in})"
+        val in = cl(list.map(x => expr(x)))
+        wl(expr(a), "in", paren(in))
       case NotIn(a, list, _) =>
-        val in = list.map(x => x.sqlExpr).mkString(", ")
-        s"${a.sqlExpr} not in (${in})"
-//      case InSubQuery(a, in, _) =>
-//        s"${a.sqlExpr} IN (${printRelation(in)})"
-//      case NotInSubQuery(a, in, _) =>
-//        s"${a.sqlExpr} NOT IN (${printRelation(in)})"
-      case Like(a, e, _) =>
-        s"${a.sqlExpr} like ${e.sqlExpr}"
-      case NotLike(a, e, _) =>
-        s"${a.sqlExpr} not like ${e.sqlExpr}"
-      case DistinctFrom(a, e, _) =>
-        s"${a.sqlExpr} is distinct from ${e.sqlExpr}"
-      case NotDistinctFrom(a, e, _) =>
-        s"${a.sqlExpr} is not distinct from ${e.sqlExpr}"
+        val in = cl(list.map(expr))
+        wl(expr(a), "not in", paren(in))
       case other =>
-        other.toString
+        node(other)
+
+  def node(n: SyntaxTreeNode): Doc =
+    val attr = List.newBuilder[Doc]
+    val l    = List.newBuilder[Doc]
+
+    def iter(x: Any): Unit =
+      x match
+        case null =>
+        // skip
+        case Nil =>
+        // skip
+        case None =>
+        // skip
+        case s: String =>
+          attr += text(s)
+        case n: Name =>
+          attr += text(n.name)
+        case e: Expression =>
+          attr += expr(e)
+        case p: LogicalPlan =>
+          l += plan(p)
+        case s: Seq[?] =>
+          s.foreach(iter)
+        case o: Option[?] =>
+          o.foreach(iter)
+        case i: Iterator[?] =>
+          i.foreach(iter)
+        case it: Iterable[?] =>
+          it.foreach(iter)
+        case other =>
+
+    n.productIterator.foreach(iter)
+    val childNodes = l.result().filter(_.nonEmpty)
+
+    var d          = text(s"${n.nodeName} ${n.span}")
+    val attributes = attr.result().filter(_.nonEmpty)
+
+    if attributes.nonEmpty then
+      if attributes.size > 2 then
+        d = group(d + ":" + nest(newline + cl(attributes)))
+      else
+        d = group(d + ":" + nest(wsOrNL + cl(attributes)))
+
+    if childNodes.isEmpty then
+      d
+    else
+      d + nest(linebreak + concat(childNodes, linebreak))
+
+  end node
 
 end LogicalPlanPrinter
