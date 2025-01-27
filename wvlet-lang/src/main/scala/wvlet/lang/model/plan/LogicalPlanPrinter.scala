@@ -13,142 +13,28 @@
  */
 package wvlet.lang.model.plan
 
-import wvlet.lang.compiler.Name
+import wvlet.lang.compiler.{Context, Name}
 import wvlet.lang.compiler.formatter.CodeFormatter.*
 import wvlet.lang.compiler.formatter.CodeFormatterConfig
 import wvlet.lang.catalog.Catalog.TableName
-import wvlet.lang.model.SyntaxTreeNode
+import wvlet.lang.compiler.Context.NoContext
+import wvlet.lang.model.{DataType, SyntaxTreeNode}
 import wvlet.lang.model.expr.*
 import wvlet.log.LogSupport
 
 object LogicalPlanPrinter extends LogSupport:
 
-  def print(m: LogicalPlan): String =
-    val d = plan(m)
+  def print(m: LogicalPlan)(using ctx: Context = NoContext): String =
+    val fileName = ctx.compilationUnit.sourceFile.fileName
+    val prefix   = text(s"[LogicalPlan: ${fileName}]")
+    val d        = prefix / plan(m)
     d.render(CodeFormatterConfig(maxLineWidth = 100, indentWidth = 2))
 
-  def print(e: Expression): String =
+  def printExpr(e: Expression)(using ctx: Context = NoContext): String =
     val d = expr(e)
     d.render()
 
-//  def print(m: LogicalPlan, out: PrintWriter, level: Int): Unit =
-//    def printChildExprs(children: Seq[Expression]): Unit =
-//      val attr    = children.map(x => expr(x))
-//      val ws      = "  " * (level + 1)
-//      val attrStr = attr.map(x => s"${ws}- ${x}").mkString("\n")
-//      out.println(attrStr)
-//
-//    m match
-//      case null | EmptyRelation(_) =>
-//      // print nothing
-////      case f: FunctionDef =>
-////        val rt = f.resultType.map(x => s": ${x}").getOrElse("")
-////        out.println(s"[FunctionDef] ${f.name}")
-////        out.println(
-////          s"  def ${f.name}(${f.args.map(x => s"${x.name}").mkString(", ")})${rt} = ${printExpression(f.bodyExpr)}"
-////        )
-//      case t: TypeDef =>
-//        val s = concat(
-//          List(
-//            "  " * level,
-//            "[TypeDef ",
-//            t.span,
-//            "] ",
-//            t.name,
-//            if t.params.isEmpty then
-//              Nil
-//            else
-//              List("[", t.params.map(_.typeDescription).mkString(", "), "]")
-//            ,
-//            if t.defContexts.isEmpty then
-//              Nil
-//            else
-//              List(" in ", concat(t.defContexts, ", "))
-//            ,
-//            if t.parent.isEmpty then
-//              Nil
-//            else
-//              List(" extends ", t.parent)
-//          )
-//        )
-//        out.println("")
-//        out.println(s)
-//        printChildExprs(t.elems)
-//      case _ =>
-//        val ws = "  " * level
-//
-//        def wrap[A](v: A): String =
-//          v match
-//            case s: Seq[String] @unchecked if s.length <= 1 =>
-//              s.headOption.map(_.toString).getOrElse("empty")
-//            case s: Seq[String] =>
-//              s"(${s.mkString(", ")})"
-//            case other =>
-//              other.toString
-//
-//        def printRelationType(r: RelationType): String = s"<${r.typeDescription}>"
-//
-////        val inputType =
-////          m.inputRelationType match
-////            case EmptyRelationType =>
-////              ""
-////            case other: RelationType =>
-////              wrap(printRelationType(other))
-////
-//        val outputType =
-//          m.relationType match
-//            case DataType.EmptyRelationType =>
-//              ""
-//            case r: RelationType =>
-//              wrap(printRelationType(r))
-//
-//        val inputAttrs  = m.inputRelationType.fields
-//        val outputAttrs = m.relationType.fields
-//
-//        val attr        = m.childExpressions.map(expr)
-//        val functionSig = s" => ${outputType}"
-//
-//        val resolvedSign =
-//          if m.resolved then
-//            ""
-//          else
-//            "*"
-//        val loc = m.span.map(l => s" ${l}").getOrElse("")
-//        val prefix =
-//          m match
-//            case t: HasTableName =>
-//              s"${ws}[${resolvedSign}${m.nodeName}${loc}] ${t.name}${functionSig}"
-//            case src: HasSourceFile =>
-//              s"${ws}[${resolvedSign}${m.nodeName} ${src.sourceFile.fileName}${loc}]${functionSig} "
-//            case _ =>
-//              s"${ws}[${resolvedSign}${m.nodeName}${loc}]${functionSig}"
-//
-//        m match
-//          case p: PackageDef =>
-//          // do not add new line
-//          case m: ModelDef =>
-//            out.println()
-//          case l: LanguageStatement =>
-//            // add a new line for language statement
-//            out.println()
-//          case _ =>
-//
-//        attr.length match
-//          case 0 =>
-//            out.println(prefix)
-//          case _ =>
-//            out.println(s"${prefix}")
-//            printChildExprs(m.childExpressions)
-//
-//        for c <- m.children do
-//          // Add indent for child relations
-//          print(c, out, level + 1)
-//
-//    end match
-//
-//  end print
-
-  def plan(l: LogicalPlan): Doc =
+  def plan(l: LogicalPlan)(using ctx: Context): Doc =
     l match
       case null | EmptyRelation(_) =>
         empty
@@ -159,6 +45,8 @@ object LogicalPlanPrinter extends LogSupport:
           else
             group(wl("package", expr(p.name))) + linebreak
         pkg + concat(p.statements.map(plan), linebreak + linebreak)
+      case q: Query =>
+        wl("▶︎ Query", lineLocOf(q)) + nest(linebreak + plan(q.child))
       case m: ModelDef =>
         val params =
           if m.params.isEmpty then
@@ -166,7 +54,7 @@ object LogicalPlanPrinter extends LogSupport:
           else
             Some(paren(cl(m.params.map(expr))))
         wl(
-          s"ModelDef${m.span}:",
+          s"ModelDef: ${lineLocOf(m)}",
           text(m.name.fullName) + params + m.givenRelationType.map(t => wl(":", t.typeName.name)),
           "="
         ) + nest(linebreak + plan(m.child))
@@ -175,7 +63,7 @@ object LogicalPlanPrinter extends LogSupport:
         val defs = concat(
           w.queryDefs
             .map { q =>
-              wl("with", expr(q.alias), "as:", w.span.toString, nest(linebreak + plan(q.child)))
+              wl("with", expr(q.alias), "as:", lineLocOf(q), nest(linebreak + plan(q.child)))
             },
           linebreak
         )
@@ -185,7 +73,7 @@ object LogicalPlanPrinter extends LogSupport:
       case other: LogicalPlan =>
         node(other)
 
-  def expr(e: Expression): Doc =
+  def expr(e: Expression)(using ctx: Context): Doc =
     e match
       case i: Identifier =>
         text(i.strExpr)
@@ -285,7 +173,7 @@ object LogicalPlanPrinter extends LogSupport:
       case other =>
         node(other)
 
-  def node(n: SyntaxTreeNode): Doc =
+  private def node(n: SyntaxTreeNode)(using ctx: Context): Doc =
     val attr = List.newBuilder[Doc]
     val l    = List.newBuilder[Doc]
 
@@ -332,16 +220,18 @@ object LogicalPlanPrinter extends LogSupport:
       else
         text(n.nodeName)
 
+    val loc = s" ${lineLocOf(n)}"
+
     if isPlan then
       if attributes.size == 1 then
         val list = attributes.map(a => ws + a)
-        d = group(d + n.span.toString + ":" + nest(maybeNewline + list.head))
+        d = group(d + ":" + nest(maybeNewline + list.head) + loc)
       else
         val list = attributes.map(a => wl("-", a))
         if list.nonEmpty then
-          d = d + n.span.toString + ":" + nest(linebreak + concat(list, linebreak))
+          d = d + ":" + loc + nest(linebreak + concat(list, linebreak))
         else
-          d = d + n.span.toString
+          d = d + loc
     else
       d = d + group(text("(") + nest(maybeNewline + cl(attributes) + text(")")))
       // d = d + paren(cl(attributes))
@@ -355,5 +245,10 @@ object LogicalPlanPrinter extends LogSupport:
         c + nest(linebreak + concat(rest, linebreak + linebreak)) + linebreak + text("↙ ") + d
 
   end node
+
+  private def lineLocOf(n: SyntaxTreeNode)(using ctx: Context): String =
+    val sourceLoc = n.sourceLocation
+    // val sourceLoc = n.sourceLocation
+    s"- (line:${sourceLoc.lineAndColString})"
 
 end LogicalPlanPrinter

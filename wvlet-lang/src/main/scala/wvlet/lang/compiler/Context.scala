@@ -57,6 +57,7 @@ case class GlobalContext(compilerOptions: CompilerOptions):
 
   def getRootContext: Context                             = rootContext
   def getContextUnit: Option[CompilationUnit]             = contextUnit
+  def setContextUnit(unit: CompilationUnit): Unit         = contextUnit = Some(unit)
   def setContextUnit(unit: Option[CompilationUnit]): Unit = contextUnit = unit
 
   def newSymbolId: Int =

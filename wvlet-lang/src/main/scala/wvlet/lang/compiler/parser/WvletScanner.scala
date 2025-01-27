@@ -27,8 +27,7 @@ import Tokens.*
   * Scan *.wv files
   */
 class WvletScanner(sourceFile: SourceFile, config: ScannerConfig = ScannerConfig())
-    extends ScannerBase[WvletToken](sourceFile, config)
-    with LogSupport:
+    extends ScannerBase[WvletToken](sourceFile, config):
   import WvletToken.*
 
   def inStringInterpolation: Boolean =

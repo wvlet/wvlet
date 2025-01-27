@@ -13,7 +13,7 @@
  */
 package wvlet.lang.model.plan
 
-import wvlet.lang.compiler.{Name, SourceFile}
+import wvlet.lang.compiler.{Context, Name, SourceFile}
 import wvlet.lang.model.DataType.EmptyRelationType
 import wvlet.lang.model.expr.NameExpr.EmptyName
 import wvlet.lang.model.expr.{Attribute, AttributeList, Expression, NameExpr}
@@ -41,7 +41,7 @@ trait LogicalPlan extends SyntaxTreeNode:
   def isEmpty: Boolean  = false
   def nonEmpty: Boolean = !isEmpty
 
-  def pp: String = LogicalPlanPrinter.print(this)
+  def pp(using ctx: Context = Context.NoContext): String = LogicalPlanPrinter.print(this)
 
   // True if all input attributes are resolved.
   lazy val resolved: Boolean = childExpressions.forall(_.resolved) && resolvedChildren
