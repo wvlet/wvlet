@@ -192,8 +192,6 @@ object LogicalPlanPrinter extends LogSupport:
         text(s.stringValue)
       case l: Literal =>
         text(l.stringValue)
-      case s: SortItem =>
-        wl("sort key:", expr(s.sortKey), s.ordering.map(x => x.expr))
       case a: ArrayConstructor =>
         bracket(cl(a.children.map(expr)))
       case t: FunctionDef =>
@@ -253,6 +251,8 @@ object LogicalPlanPrinter extends LogSupport:
           expr(d.name.get) + ": " + expr(d.tpe)
       case ShouldExpr(testType, left, right, _) =>
         wl(expr(left), testType.expr, expr(right))
+      case w: WindowFrame =>
+        bracket(cat(text(w.start.wvExpr), ",", text(w.end.wvExpr)))
       case other =>
         node(other)
 
@@ -308,21 +308,37 @@ object LogicalPlanPrinter extends LogSupport:
         case other =>
 
     n.productIterator.foreach(iter)
+    val attributes = attr.result().filter(_.nonEmpty)
     val childNodes = l.result().filter(_.nonEmpty)
 
-    var d          = text(s"${n.nodeName} ${n.span}")
-    val attributes = attr.result().filter(_.nonEmpty)
+    val isPlan =
+      n match
+        case _: LogicalPlan =>
+          true
+        case _ =>
+          false
 
-    if attributes.nonEmpty then
-      if attributes.size > 2 then
-        d = group(d + ":" + nest(newline + cl(attributes)))
+    var d = text(n.nodeName)
+
+    val pipe = linebreak
+
+    if isPlan then
+      if attributes.size == 1 then
+        d = d + wl(":", attributes.head, n.span.toString)
       else
-        d = group(d + ":" + nest(wsOrNL + cl(attributes)))
-
-    if childNodes.isEmpty then
-      d
+        val list = attributes.map(a => wl("-", a))
+        if list.nonEmpty then
+          d = d + wl(":", n.span.toString) + nest(pipe + concat(list, pipe))
     else
-      d + nest(linebreak + concat(childNodes, linebreak))
+      d = d + paren(cl(attributes))
+
+    childNodes match
+      case Nil =>
+        d
+      case c :: Nil =>
+        c + linebreak + text("↓ ") + d
+      case c :: rest =>
+        c + nest(pipe + concat(rest, pipe + linebreak)) + linebreak + text("↓↙ ") + d
 
   end node
 

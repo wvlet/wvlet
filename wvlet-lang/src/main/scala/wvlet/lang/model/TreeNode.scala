@@ -28,7 +28,7 @@ trait SyntaxTreeNode extends TreeNode with Product with LogSupport:
   private var _symbol: Symbol                  = Symbol.NoSymbol
   private var _comment: List[TokenData[_]]     = Nil
   private var _postComment: List[TokenData[_]] = Nil
-
+  
   def childNodes: List[SyntaxTreeNode] =
     val l = List.newBuilder[SyntaxTreeNode]
     def loop(x: Any): Unit =
