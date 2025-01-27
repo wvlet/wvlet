@@ -13,23 +13,18 @@
  */
 package wvlet.lang.model.plan
 
-import wvlet.lang.model.DataType.EmptyRelationType
-import wvlet.lang.model.{DataType, RelationType, SyntaxTreeNode}
-import wvlet.lang.model.expr.*
-import wvlet.lang.compiler.formatter.CodeFormatter.*
 import wvlet.lang.compiler.Name
-import wvlet.lang.api.Span
-import wvlet.lang.compiler.codegen.SyntaxContext.InSubQuery
+import wvlet.lang.compiler.formatter.CodeFormatter.*
 import wvlet.lang.compiler.formatter.CodeFormatterConfig
+import wvlet.lang.model.SyntaxTreeNode
+import wvlet.lang.model.expr.*
 import wvlet.log.LogSupport
-
-import java.io.{PrintWriter, StringWriter}
 
 object LogicalPlanPrinter extends LogSupport:
 
   def print(m: LogicalPlan): String =
     val d = plan(m)
-    d.render(CodeFormatterConfig(maxLineWidth = 120))
+    d.render(CodeFormatterConfig(maxLineWidth = 120, indentWidth = 2))
 
   def print(e: Expression): String =
     val d = expr(e)
@@ -163,6 +158,17 @@ object LogicalPlanPrinter extends LogSupport:
           else
             group(wl("package", expr(p.name))) + linebreak
         pkg + concat(p.statements.map(plan), linebreak + linebreak)
+      case w: WithQuery =>
+        val defs = concat(
+          w.queryDefs
+            .map { q =>
+              wl("with", expr(q.alias), "as:", nest(linebreak + plan(q.child)))
+            },
+          linebreak
+        )
+        defs + linebreak + plan(w.queryBody)
+      case f: Filter =>
+        node(f)
       case other: LogicalPlan =>
         node(other)
 
@@ -186,6 +192,8 @@ object LogicalPlanPrinter extends LogSupport:
         wl(expr(a.expr), "as", a.fullName)
       case g: GroupingKey =>
         expr(g.child)
+      case s: SubQueryExpression =>
+        indentedBrace(plan(s.query))
       case b: ArithmeticBinaryExpr =>
         wl(expr(b.left), b.exprType.expr, expr(b.right))
       case s: StringLiteral =>
@@ -226,8 +234,6 @@ object LogicalPlanPrinter extends LogSupport:
               }
           )
         )
-      case c: ConditionalExpression =>
-        cond(c)
       case p: ParenthesizedExpression =>
         paren(expr(p.child))
       case null =>
@@ -256,38 +262,13 @@ object LogicalPlanPrinter extends LogSupport:
       case other =>
         node(other)
 
-  def cond(c: ConditionalExpression): Doc =
-    c match
-      case NoOp(_) =>
-        empty
-      case l: LogicalConditionalExpression =>
-        expr(l.left) + wsOrNL + l.operatorName + ws + expr(l.right)
-      case b: BinaryExpression =>
-        wl(expr(b.left), b.operatorName, expr(b.right))
-      case Between(e, a, b, _) =>
-        wl(expr(e), "between", expr(a), expr(b))
-      case NotBetween(e, a, b, _) =>
-        wl(expr(e), "not between", expr(a), expr(b))
-      case In(a, list, _) =>
-        val in = cl(list.map(x => expr(x)))
-        wl(expr(a), "in", paren(in))
-      case NotIn(a, list, _) =>
-        val in = cl(list.map(expr))
-        wl(expr(a), "not in", paren(in))
-      case other =>
-        node(other)
-
   def node(n: SyntaxTreeNode): Doc =
     val attr = List.newBuilder[Doc]
     val l    = List.newBuilder[Doc]
 
     def iter(x: Any): Unit =
       x match
-        case null =>
-        // skip
-        case Nil =>
-        // skip
-        case None =>
+        case null | Nil | None =>
         // skip
         case s: String =>
           attr += text(s)
@@ -318,18 +299,26 @@ object LogicalPlanPrinter extends LogSupport:
         case _ =>
           false
 
-    var d = text(n.nodeName)
+    val isLeaf = isPlan && childNodes.isEmpty
 
-    val pipe = linebreak
+    var d =
+      if isLeaf then
+        text(s"▼ ${n.nodeName}")
+      else
+        text(n.nodeName)
 
     if isPlan then
       if attributes.size == 1 then
-        d = d + wl(":", attributes.head, n.span.toString)
+        val list = attributes.map(a => ws + a)
+        d = group(d + n.span.toString + ":" + nest(maybeNewline + list.head))
       else
         val list = attributes.map(a => wl("-", a))
         if list.nonEmpty then
-          d = d + wl(":", n.span.toString) + nest(pipe + concat(list, pipe))
+          d = d + n.span.toString + ":" + nest(linebreak + concat(list, linebreak))
+        else
+          d = d + n.span.toString
     else
+      // d = d + group(text("(") + nest(maybeNewline + cl(attributes) + text(")")))
       d = d + paren(cl(attributes))
 
     childNodes match
@@ -338,7 +327,7 @@ object LogicalPlanPrinter extends LogSupport:
       case c :: Nil =>
         c + linebreak + text("↓ ") + d
       case c :: rest =>
-        c + nest(pipe + concat(rest, pipe + linebreak)) + linebreak + text("↓↙ ") + d
+        c + nest(linebreak + concat(rest, linebreak + linebreak)) + linebreak + text("↙ ") + d
 
   end node
 

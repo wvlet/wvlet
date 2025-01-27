@@ -1411,7 +1411,6 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
 
   def selectExpr(input: Relation): Relation = node {
     val t = consume(WvletToken.SELECT)
-
     def proj: Project =
       val items = selectItems()
       Project(input, items, spanFrom(t))
@@ -1730,8 +1729,8 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     t.token match
       case WvletToken.EXCLAMATION | WvletToken.NOT =>
         consume(t.token)
-        val e = booleanExpression()
-        Not(e, spanFrom(t))
+        val expr = valueExpression()
+        booleanExpressionRest(Not(expr, spanFrom(t)))
       case _ =>
         val expr = valueExpression()
         booleanExpressionRest(expr)
