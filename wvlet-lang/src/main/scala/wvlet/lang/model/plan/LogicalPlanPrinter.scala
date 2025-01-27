@@ -24,7 +24,7 @@ object LogicalPlanPrinter extends LogSupport:
 
   def print(m: LogicalPlan): String =
     val d = plan(m)
-    d.render(CodeFormatterConfig(maxLineWidth = 120, indentWidth = 2))
+    d.render(CodeFormatterConfig(maxLineWidth = 100, indentWidth = 2))
 
   def print(e: Expression): String =
     val d = expr(e)
@@ -259,6 +259,8 @@ object LogicalPlanPrinter extends LogSupport:
         wl(expr(left), testType.expr, expr(right))
       case w: WindowFrame =>
         bracket(cat(text(w.start.wvExpr), ",", text(w.end.wvExpr)))
+      case NoJoinCriteria =>
+        empty
       case other =>
         node(other)
 
@@ -318,8 +320,8 @@ object LogicalPlanPrinter extends LogSupport:
         else
           d = d + n.span.toString
     else
-      // d = d + group(text("(") + nest(maybeNewline + cl(attributes) + text(")")))
-      d = d + paren(cl(attributes))
+      d = d + group(text("(") + nest(maybeNewline + cl(attributes) + text(")")))
+      // d = d + paren(cl(attributes))
 
     childNodes match
       case Nil =>
