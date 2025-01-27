@@ -24,7 +24,8 @@ object CodeFormatter:
     def render(conf: CodeFormatterConfig = CodeFormatterConfig()): String = CodeFormatter(conf)
       .render(0, this)
 
-    def isEmpty: Boolean = this eq empty
+    def isEmpty: Boolean  = this eq empty
+    def nonEmpty: Boolean = !isEmpty
 
     /**
       * Compute the text length if rendered into a single line
@@ -231,6 +232,8 @@ object CodeFormatter:
     * @return
     */
   def wl(lst: Any*): Doc = concat(to_list(lst*), ws)
+
+  def cat(lst: Any*): Doc = to_list(lst*).reduce(_ + _)
 
   def lines(lst: List[Doc]): Doc = concat(lst, newline)
 

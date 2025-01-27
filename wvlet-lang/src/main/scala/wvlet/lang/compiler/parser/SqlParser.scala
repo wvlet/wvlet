@@ -692,8 +692,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     t.token match
       case SqlToken.EXCLAMATION | SqlToken.NOT =>
         consume(t.token)
-        val e = booleanExpression()
-        Not(e, spanFrom(t))
+        val e = valueExpression()
+        booleanExpressionRest(Not(e, spanFrom(t)))
       case _ =>
         val expr = valueExpression()
         booleanExpressionRest(expr)

@@ -37,6 +37,8 @@ trait SyntaxTreeNode extends TreeNode with Product with LogSupport:
           l += n
         case xs: Seq[?] =>
           xs.foreach(loop)
+        case o: Option[?] =>
+          o.foreach(loop)
         case i: Iterator[?] =>
           i.foreach(loop)
         case _ =>

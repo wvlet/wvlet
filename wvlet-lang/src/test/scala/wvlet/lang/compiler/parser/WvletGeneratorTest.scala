@@ -28,7 +28,7 @@ abstract class WvletGeneratorTest(path: String) extends AirSpec:
         val wvUnit  = CompilationUnit.fromWvletString(wv)
         val newCtx  = globalCtx.getContextOf(wvUnit)
         val newPlan = ParserPhase.parse(wvUnit, newCtx)
-        trace(plan.pp)
+        trace(newPlan.pp)
       }
     }
 

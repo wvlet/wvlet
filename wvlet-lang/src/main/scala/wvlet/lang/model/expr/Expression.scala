@@ -23,7 +23,7 @@ import wvlet.log.LogSupport
 /**
   */
 trait Expression extends SyntaxTreeNode with LogSupport:
-  def pp: String = LogicalPlanPrinter.printExpression(this)
+  def pp: String = LogicalPlanPrinter.print(this)
   def children: Seq[Expression]
 
   /**
