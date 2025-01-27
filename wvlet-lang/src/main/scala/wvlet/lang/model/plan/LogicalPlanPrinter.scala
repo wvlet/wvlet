@@ -16,6 +16,7 @@ package wvlet.lang.model.plan
 import wvlet.lang.compiler.Name
 import wvlet.lang.compiler.formatter.CodeFormatter.*
 import wvlet.lang.compiler.formatter.CodeFormatterConfig
+import wvlet.lang.catalog.Catalog.TableName
 import wvlet.lang.model.SyntaxTreeNode
 import wvlet.lang.model.expr.*
 import wvlet.log.LogSupport
@@ -158,11 +159,23 @@ object LogicalPlanPrinter extends LogSupport:
           else
             group(wl("package", expr(p.name))) + linebreak
         pkg + concat(p.statements.map(plan), linebreak + linebreak)
+      case m: ModelDef =>
+        val params =
+          if m.params.isEmpty then
+            None
+          else
+            Some(paren(cl(m.params.map(expr))))
+        wl(
+          s"ModelDef${m.span}:",
+          text(m.name.fullName) + params + m.givenRelationType.map(t => wl(":", t.typeName.name)),
+          "="
+        ) + nest(linebreak + plan(m.child))
+
       case w: WithQuery =>
         val defs = concat(
           w.queryDefs
             .map { q =>
-              wl("with", expr(q.alias), "as:", nest(linebreak + plan(q.child)))
+              wl("with", expr(q.alias), "as:", w.span.toString, nest(linebreak + plan(q.child)))
             },
           linebreak
         )
@@ -176,12 +189,6 @@ object LogicalPlanPrinter extends LogSupport:
     e match
       case i: Identifier =>
         text(i.strExpr)
-      case d: DefArg =>
-        wl(
-          text(d.name.name) + ": ",
-          d.dataType.typeDescription,
-          d.defaultValue.map(v => wl("=", v))
-        )
       case s: SingleColumn =>
         val body = expr(s.expr)
         if s.nameExpr.isEmpty || body.toString == s.fullName then
@@ -211,17 +218,23 @@ object LogicalPlanPrinter extends LogSupport:
             None
           else
             Some(paren(cl(t.args.map(expr))))
-        }
-        t.retType
-          .foreach { r =>
-            b += text(":")
-            b += text(r.typeName.name)
-          }
+        } + {
+          if t.defContexts.isEmpty then
+            None
+          else
+            Some(wl("in", cl(t.defContexts.map(expr))))
+        } +
+          t.retType
+            .map { r =>
+              wl(":", r.typeName.name)
+            }
         t.expr
           .foreach { body =>
             b += text("=") + nest(wsOrNL + expr(body))
           }
-        wl(b.result())
+        group(wl(b.result()))
+      case d: DefArg =>
+        wl(text(d.name.name) + ":", d.dataType.typeDescription, d.defaultValue.map(v => wl("=", v)))
       case t: FieldDef =>
         group(
           wl(
@@ -245,7 +258,15 @@ object LogicalPlanPrinter extends LogSupport:
           case None =>
             expr(arg.value)
       case i: InterpolatedString =>
-        cat(expr(i.prefix) + "\"" + cat(i.parts.map(expr)) + "\"")
+        val parts = i
+          .parts
+          .map {
+            case s: StringPart =>
+              expr(s)
+            case other =>
+              cat("$", brace(expr(other)))
+          }
+        cat(expr(i.prefix) + "\"" + cat(parts) + "\"")
       case r: DotRef =>
         cat(expr(r.qualifier), ".", expr(r.name))
       case t: This =>
@@ -274,6 +295,8 @@ object LogicalPlanPrinter extends LogSupport:
         // skip
         case s: String =>
           attr += text(s)
+        case t: TableName =>
+          attr += text(t.fullName)
         case n: Name =>
           attr += text(n.name)
         case e: Expression =>
