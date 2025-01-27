@@ -21,6 +21,13 @@ case class SourceLocation(
     position: LinePosition
 ):
   override def toString: String = locationString
+
+  def lineAndColString: String =
+    if position.isEmpty then
+      path
+    else
+      s"${position.line}.${position.column}"
+
   def lineLocationString: String =
     if position.isEmpty then
       path
