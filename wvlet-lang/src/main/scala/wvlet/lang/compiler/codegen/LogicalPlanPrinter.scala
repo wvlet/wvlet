@@ -14,8 +14,8 @@
 package wvlet.lang.model.plan
 
 import wvlet.lang.compiler.{Context, Name}
-import wvlet.lang.compiler.formatter.CodeFormatter.*
-import wvlet.lang.compiler.formatter.CodeFormatterConfig
+import wvlet.lang.compiler.codegen.CodeFormatter.*
+import wvlet.lang.compiler.codegen.CodeFormatterConfig
 import wvlet.lang.catalog.Catalog.TableName
 import wvlet.lang.compiler.Context.NoContext
 import wvlet.lang.model.{DataType, SyntaxTreeNode}
@@ -198,6 +198,8 @@ class LogicalPlanPrinter(using ctx: Context) extends LogSupport:
         // skip
         case s: String =>
           attr += text(s)
+        case s: Boolean =>
+          attr += text(s.toString)
         case t: TableName =>
           attr += text(t.fullName)
         case n: Name =>

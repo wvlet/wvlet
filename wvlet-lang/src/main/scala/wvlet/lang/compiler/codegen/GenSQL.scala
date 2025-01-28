@@ -19,7 +19,7 @@ import wvlet.lang.api.{SourceLocation, StatusCode}
 import wvlet.lang.catalog.Catalog.TableName
 import wvlet.lang.compiler.DBType.{DuckDB, Trino}
 import wvlet.lang.compiler.analyzer.TypeResolver
-import wvlet.lang.compiler.formatter.CodeFormatterConfig
+import wvlet.lang.compiler.codegen.CodeFormatterConfig
 import wvlet.lang.compiler.planner.ExecutionPlanner
 import wvlet.lang.compiler.transform.{ExpressionEvaluator, PreprocessLocalExpr}
 import wvlet.lang.compiler.{

@@ -1,4 +1,4 @@
-package wvlet.lang.compiler.formatter
+package wvlet.lang.compiler.codegen
 
 import wvlet.airspec.AirSpec
 import wvlet.lang.compiler.parser.ParserPhase

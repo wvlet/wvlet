@@ -1,4 +1,4 @@
-package wvlet.lang.compiler.formatter
+package wvlet.lang.compiler.codegen
 
 import wvlet.lang.compiler.DBType
 
@@ -255,9 +255,18 @@ object CodeFormatter:
       case head :: tail =>
         head + concat(tail)
 
-  // Create subexpression block wrapped with braces
+  def verticalAppend(lst: List[Doc], separator: Doc): Doc =
+    lst match
+      case Nil =>
+        empty
+      case head :: Nil =>
+        head
+      case head :: tail =>
+        (head / separator) / verticalAppend(tail, separator)
+
+  // Create an indented subexpression block wrapped with braces
   def indentedBrace(d: Doc): Doc = text("{") + nest(linebreak + d) + linebreak + text("}")
-  // Create subexpression block wrapped with parentheses
+  // Create an indented subexpression block wrapped with parentheses
   def indentedParen(d: Doc): Doc = text("(") + nest(linebreak + d) + linebreak + text(")")
 
   def brace(d: Doc): Doc   = group(text("{") + lineBlock(d) + text("}"))
@@ -385,14 +394,5 @@ class CodeFormatter(config: CodeFormatterConfig = CodeFormatterConfig()):
           head
       case head :: tail =>
         head + text(",") + newline + itemList(tail)
-
-  protected def append(lst: List[Doc], separator: Doc): Doc =
-    lst match
-      case Nil =>
-        empty
-      case head :: Nil =>
-        head
-      case head :: tail =>
-        (head / separator) / append(tail, separator)
 
 end CodeFormatter

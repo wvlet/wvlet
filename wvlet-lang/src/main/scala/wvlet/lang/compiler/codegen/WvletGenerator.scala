@@ -3,8 +3,7 @@ package wvlet.lang.compiler.codegen
 import wvlet.lang.api.Span
 import wvlet.lang.compiler.Context
 import wvlet.lang.compiler.codegen.SyntaxContext.*
-import wvlet.lang.compiler.formatter.CodeFormatter.*
-import wvlet.lang.compiler.formatter.{CodeFormatter, CodeFormatterConfig}
+import wvlet.lang.compiler.codegen.{CodeFormatter, CodeFormatterConfig}
 import wvlet.lang.compiler.transform.ExpressionEvaluator
 import wvlet.lang.model.SyntaxTreeNode
 import wvlet.lang.model.expr.*
@@ -13,8 +12,11 @@ import wvlet.log.LogSupport
 
 class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
     ctx: Context = Context.NoContext
-) extends CodeFormatter(config)
-    with LogSupport:
+) extends LogSupport:
+
+  import CodeFormatter.*
+
+  private val formatter = CodeFormatter(config)
 
   /**
     * Generate a formatted Wvlet code from the given logical plan
@@ -22,7 +24,9 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
     */
   def print(l: LogicalPlan): String =
     val doc: Doc = convert(l)
-    render(0, doc)
+    formatter.render(0, doc)
+
+  def render(d: Doc): String = formatter.render(0, d)
 
   def convert(l: LogicalPlan): Doc =
     def toDoc(plan: LogicalPlan): Doc =
@@ -246,7 +250,7 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
         // TODO union is not supported in Wvlet. Replace tree to dedup(concat)
         val op = s.toWvOp
         code(s) {
-          append(rels, text(op))
+          verticalAppend(rels, text(op))
         }
       case d: Dedup =>
         unary(d, "dedup", Nil)
@@ -491,7 +495,7 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
           wl(expr(a.expr), "as", expr(a.nameExpr))
         case s: SingleColumn =>
           val left    = expr(s.expr)
-          val leftStr = render(0, left)
+          val leftStr = formatter.render(0, left)
           if s.nameExpr.isEmpty then
             left
           else if leftStr != s.nameExpr.toWvletAttributeName then
