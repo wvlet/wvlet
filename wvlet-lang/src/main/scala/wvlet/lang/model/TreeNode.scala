@@ -13,7 +13,7 @@
  */
 package wvlet.lang.model
 
-import wvlet.lang.api.{SourceLocation, Span, StatusCode}
+import wvlet.lang.api.{LinePosition, SourceLocation, Span, StatusCode}
 import wvlet.lang.compiler.{CompilationUnit, Context, SourceFile, Symbol}
 import wvlet.lang.compiler.ContextUtil.*
 import wvlet.lang.compiler.parser.TokenData
@@ -28,6 +28,11 @@ trait SyntaxTreeNode extends TreeNode with Product with LogSupport:
   private var _symbol: Symbol                  = Symbol.NoSymbol
   private var _comment: List[TokenData[_]]     = Nil
   private var _postComment: List[TokenData[_]] = Nil
+
+  def linePosition(using ctx: Context): LinePosition = ctx.sourceLocationAt(span).position
+
+  def endLinePosition(using ctx: Context): LinePosition =
+    ctx.compilationUnit.sourceFile.sourceLocationAt(span.end).position
 
   def childNodes: List[SyntaxTreeNode] =
     val l = List.newBuilder[SyntaxTreeNode]
