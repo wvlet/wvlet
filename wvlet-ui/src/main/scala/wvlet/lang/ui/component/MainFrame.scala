@@ -46,7 +46,7 @@ object MainFrame extends RxComponent:
           div(
             cls -> "flex flex-1 items-center justify-center sm:items-stretch sm:justify-start",
             div(
-              cls -> "flex flex-shrink-0 items-center",
+              cls -> "flex shrink-0 items-center",
               a(
                 href -> "https://wvlet.org/",
                 img(
