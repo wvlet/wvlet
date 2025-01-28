@@ -21,9 +21,8 @@ with stock(symbol, date, price) as [
   ['AAPL', '2024-11-09', 100],
 ]
 from holding
-  asof join stock
-on
-  stock.symbol = holding.symbol
+asof join stock
+  on stock.symbol = holding.symbol
   and stock.date <= holding.date
 add stock.price * holding.shares as holding_value
 select symbol, date, shares, price, holding_value
