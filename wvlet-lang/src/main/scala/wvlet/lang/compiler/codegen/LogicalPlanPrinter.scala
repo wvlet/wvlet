@@ -13,16 +13,15 @@
  */
 package wvlet.lang.model.plan
 
-import wvlet.lang.compiler.{Context, Name}
-import wvlet.lang.compiler.codegen.CodeFormatter.*
-import wvlet.lang.compiler.codegen.CodeFormatterConfig
 import wvlet.lang.catalog.Catalog.TableName
 import wvlet.lang.compiler.Context.NoContext
-import wvlet.lang.model.{DataType, SyntaxTreeNode}
+import wvlet.lang.compiler.analyzer.{LogicalPlanRank, LogicalPlanRankTable}
+import wvlet.lang.compiler.codegen.CodeFormatter.*
+import wvlet.lang.compiler.codegen.CodeFormatterConfig
+import wvlet.lang.compiler.{Context, Name}
+import wvlet.lang.model.SyntaxTreeNode
 import wvlet.lang.model.expr.*
 import wvlet.log.LogSupport
-
-import scala.collection.immutable.ListMap
 
 object LogicalPlanPrinter extends LogSupport:
 
@@ -38,15 +37,11 @@ object LogicalPlanPrinter extends LogSupport:
     val d       = printer.expr(e)
     d.render()
 
-  case class NodeRank(syntaxRank: Int, dataflowRank: Int)
-
-  type RankTable = ListMap[LogicalPlan, NodeRank]
-
-import LogicalPlanPrinter.*
-
 class LogicalPlanPrinter(using ctx: Context) extends LogSupport:
 
-  def plan(l: LogicalPlan)(using rankTable: RankTable = ListMap.empty[LogicalPlan, NodeRank]): Doc =
+  def plan(
+      l: LogicalPlan
+  )(using dataflowRank: LogicalPlanRankTable = LogicalPlanRankTable.empty): Doc =
     l match
       case null | EmptyRelation(_) =>
         empty
@@ -58,7 +53,7 @@ class LogicalPlanPrinter(using ctx: Context) extends LogSupport:
             group(wl("package", expr(p.name))) + linebreak
         pkg + concat(p.statements.map(plan), linebreak + linebreak)
       case q: Query =>
-        given RankTable = computeRank(q)
+        given LogicalPlanRankTable = LogicalPlanRank.dataflowRank(q)
         wl("▶︎ Query", lineLocOf(q)) + nest(linebreak + plan(q.child))
       case m: ModelDef =>
         val params =
@@ -86,7 +81,9 @@ class LogicalPlanPrinter(using ctx: Context) extends LogSupport:
       case other: LogicalPlan =>
         node(other)
 
-  def expr(e: Expression)(using rankTable: RankTable = ListMap.empty[LogicalPlan, NodeRank]): Doc =
+  def expr(
+      e: Expression
+  )(using dataflowRank: LogicalPlanRankTable = LogicalPlanRankTable.empty): Doc =
     e match
       case i: Identifier =>
         text(i.strExpr)
@@ -187,7 +184,7 @@ class LogicalPlanPrinter(using ctx: Context) extends LogSupport:
         node(other)
 
   private def node(n: SyntaxTreeNode)(using
-      rankTable: RankTable = ListMap.empty[LogicalPlan, NodeRank]
+      dataflowRank: LogicalPlanRankTable = LogicalPlanRankTable.empty
   ): Doc =
     val attr = List.newBuilder[Doc]
     val l    = List.newBuilder[Doc]
@@ -233,10 +230,10 @@ class LogicalPlanPrinter(using ctx: Context) extends LogSupport:
 
     val dataflowOrder: Option[Doc] =
       if isPlan then
-        rankTable
+        dataflowRank
           .get(n.asInstanceOf[LogicalPlan])
-          .map { r =>
-            text(s"${r.dataflowRank})")
+          .map { rank =>
+            text(s"${rank})")
           }
       else
         None
@@ -277,75 +274,5 @@ class LogicalPlanPrinter(using ctx: Context) extends LogSupport:
     val sourceLoc = n.sourceLocation
     // val sourceLoc = n.sourceLocation
     s"- (line:${sourceLoc.lineAndColString})"
-
-  /**
-    * Compute syntax-position rank (line position order) and dataflow order rank (dfs post-order)
-    *
-    * @param l
-    * @return
-    */
-  private def computeRank(l: LogicalPlan): RankTable =
-    val postOrder = List.newBuilder[LogicalPlan]
-
-    def dfs(p: LogicalPlan): Unit =
-      def traverseChildren(plan: LogicalPlan): Unit = plan
-        .childNodes
-        .foreach {
-          case c: LogicalPlan =>
-            dfs(c)
-          case e: Expression =>
-            e.traversePlanOnce { case n: LogicalPlan =>
-              dfs(n)
-            }
-          case _ =>
-        }
-
-      p match
-        case q: Query =>
-          dfs(q.body)
-        case p: PackageDef =>
-          p.statements.foreach(dfs)
-        case w: WithQuery =>
-          w.queryDefs
-            .foreach { n =>
-              // Skip AliasedRelation
-              dfs(n.child)
-            }
-          dfs(w.queryBody)
-        case plan: LogicalPlan =>
-          traverseChildren(plan)
-          postOrder += plan
-
-    dfs(l)
-
-    val topologicalOrderList = postOrder.result()
-    val syntaxOrderTable: Map[LogicalPlan, Int] = topologicalOrderList
-      .sortBy { x =>
-        val pos = x.sourceLocation.position
-        (pos.line, pos.column)
-      }
-      .zipWithIndex
-      .map { (n, rank) =>
-        n -> (rank + 1)
-      }
-      .toMap[LogicalPlan, Int]
-
-    val rankTable: ListMap[LogicalPlan, NodeRank] = ListMap.from(
-      postOrder
-        .result()
-        .zipWithIndex
-        .map { (n, i) =>
-          n -> NodeRank(syntaxOrderTable(n), i + 1)
-        }
-    )
-    //    info(
-    //      rankTable
-    //        .map { (n, rank) =>
-    //          s"[${rank.dataflowRank}] ${n.nodeName}"
-    //        }
-    //        .mkString("\n")
-    //    )
-    rankTable
-  end computeRank
 
 end LogicalPlanPrinter
