@@ -927,16 +927,26 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           consume(WvletToken.AS)
 
           // with query
-          consume(WvletToken.L_BRACE)
-          val q = queryBody()
-          consume(WvletToken.R_BRACE)
-          val a = AliasedRelation(q, name, columns, spanFrom(t))
-          // Read next if exists
+          val t2 = scanner.lookAhead()
+          val queryDef =
+            t2.token match
+              case WvletToken.L_BRACE =>
+                consume(WvletToken.L_BRACE)
+                val q = queryBody()
+                consume(WvletToken.R_BRACE)
+                AliasedRelation(q, name, columns, spanFrom(t2))
+                // Read next if exists
+              case WvletToken.L_BRACKET =>
+                val v = arrayValue()
+                AliasedRelation(v, name, columns, spanFrom(t2))
+              case other =>
+                unexpected(t2)
+
           scanner.lookAhead().token match
             case WvletToken.WITH =>
-              a :: withExpr()
+              queryDef :: withExpr()
             case other =>
-              List(a)
+              List(queryDef)
         case _ =>
           unexpected(t)
     end withExpr
