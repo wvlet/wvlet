@@ -21,7 +21,7 @@ abstract class WvletGeneratorTest(path: String) extends AirSpec:
         val g = WvletGenerator()
         val d = g.convert(plan)
         // trace(d.pp)
-        val wv = g.render(0, d)
+        val wv = g.render(d)
         debug(s"[formatted ${file}]\n${wv}")
 
         // Test parsing the generated Wvlet query

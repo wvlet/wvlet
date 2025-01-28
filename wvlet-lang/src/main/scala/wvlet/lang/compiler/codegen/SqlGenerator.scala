@@ -13,9 +13,9 @@ import wvlet.lang.model.plan.*
 import wvlet.lang.model.plan.SamplingSize.{Percentage, Rows}
 import wvlet.log.LogSupport
 import SyntaxContext.*
-import wvlet.lang.compiler.formatter.CodeFormatter
-import wvlet.lang.compiler.formatter.CodeFormatter.*
-import wvlet.lang.compiler.formatter.CodeFormatterConfig
+import wvlet.lang.compiler.codegen.CodeFormatter
+import wvlet.lang.compiler.codegen.CodeFormatter.*
+import wvlet.lang.compiler.codegen.CodeFormatterConfig
 import wvlet.lang.model.plan.SamplingMethod.reservoir
 
 import scala.collection.immutable.ListMap
@@ -80,19 +80,20 @@ end SqlGenerator
   * @param ctx
   */
 class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoContext)
-    extends CodeFormatter(config)
-    with LogSupport:
+    extends LogSupport:
   import SqlGenerator.*
+  import CodeFormatter.*
 
+  private val formatter      = CodeFormatter(config)
   private def dbType: DBType = config.sqlDBType
 
   def print(l: LogicalPlan): String =
     val doc: Doc = toDoc(l)
-    render(0, doc)
+    formatter.render(0, doc)
 
   def print(e: Expression): String =
     val doc = expr(e)
-    render(0, doc)
+    formatter.render(0, doc)
 
   def toDoc(l: LogicalPlan): Doc =
     def iter(plan: LogicalPlan): Doc =
@@ -336,7 +337,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
               val tl = tail.map(x => query(x, SQLBlock())(using sc))
               hd :: tl
         val op  = text(s.toSQLOp)
-        val sql = append(rels, op)
+        val sql = verticalAppend(rels, op)
         selectExpr(sql)
       case p: Pivot => // pivot without explicit aggregations
         selectExpr(
@@ -678,51 +679,6 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
 
   end selectAll
 
-//  private def select(r: Relation, block: SQLBlock)(using sc: SyntaxContext): Doc =
-//    def pullUpChildFilters(r: Relation, block: SQLBlock): SQLBlock =
-//      def collectFilters(plan: Relation, filters: List[Filter]): SQLBlock =
-//        plan match
-//          case f: Filter =>
-//            collectFilters(f.child, f :: filters)
-//          case g: GroupBy =>
-//            pullUpChildFilters(
-//              g.child,
-//              block.copy(groupingKeys = g.groupingKeys, having = filters ++ block.having)
-//            )
-//          case other =>
-//            block.copy(child = Some(other), whereFilter = filters ++ block.whereFilter)
-//
-//      r match
-//        case s: Selection if block.selectItems.isEmpty =>
-//          pullUpChildFilters(s.child, block.copy(selectItems = s.selectItems))
-//        case other =>
-//          collectFilters(r, Nil)
-//    end pullUpChildFilters
-//
-//    // Pull up child filters to the parent
-//    lazy val newBlock: SQLBlock = pullUpChildFilters(r, block)
-//
-//    def child = newBlock
-//      .child
-//      .getOrElse {
-//        throw StatusCode
-//          .UNEXPECTED_STATE
-//          .newException(s"Child relation not found in ${r}", r.sourceLocation)
-//      }
-//
-//    def fromStmt =
-//      child match
-//        case e: EmptyRelation =>
-//          empty
-//        case t: TableInput =>
-//          expr(t.sqlExpr)
-//        case _ =>
-//          relation(child, SQLBlock())(using InSubQuery)
-//
-//    selectAll(fromStmt, newBlock)
-//
-//  end select
-
   private def groupBy(g: GroupBy, block: SQLBlock)(using sc: SyntaxContext): Doc =
     // Translate GroupBy node without any projection (select) to Agg node
     def keys: List[Attribute] = g
@@ -730,7 +686,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       .map { k =>
         val keyName =
           if k.name.isEmpty then
-            NameExpr.fromString(render(0, expr(k)), k.span)
+            NameExpr.fromString(formatter.render(0, expr(k)), k.span)
           else
             k.name
         SingleColumn(keyName, k.child, NoSpan)
@@ -754,7 +710,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
               EmptyName
             case _ =>
               val exprStr = expr(ex)
-              NameExpr.fromString(render(0, exprStr))
+              NameExpr.fromString(formatter.render(0, exprStr))
         SingleColumn(name, ex, NoSpan)
       }
 

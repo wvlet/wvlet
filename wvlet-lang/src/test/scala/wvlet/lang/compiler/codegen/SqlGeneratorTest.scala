@@ -3,7 +3,7 @@ package wvlet.lang.compiler.parser
 import wvlet.airspec.AirSpec
 import wvlet.lang.compiler.{CompilationUnit, DBType}
 import wvlet.lang.compiler.codegen.SqlGenerator
-import wvlet.lang.compiler.formatter.CodeFormatterConfig
+import wvlet.lang.compiler.codegen.CodeFormatterConfig
 
 abstract class SqlGeneratorSpec(path: String) extends AirSpec:
   private val name = path.split("\\/").lastOption.getOrElse(path)
