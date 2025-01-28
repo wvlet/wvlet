@@ -37,7 +37,8 @@ abstract class WvletGeneratorTest(path: String) extends AirSpec:
 
 end WvletGeneratorTest
 
-class WvletGeneratorBasicSpec extends WvletGeneratorTest("spec/basic")
+class WvletGeneratorBasicSpec  extends WvletGeneratorTest("spec/basic")
+class WvletGeneratorWvTPCHSPec extends WvletGeneratorTest("spec/tpch")
 
 class WvletGeneratorTPCHSpec extends WvletGeneratorTest("spec/sql/tpc-h")
 
