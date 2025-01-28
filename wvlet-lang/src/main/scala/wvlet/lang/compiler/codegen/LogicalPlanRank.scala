@@ -17,17 +17,13 @@ object LogicalPlanRank extends LogSupport:
     val nodes = List.newBuilder[LogicalPlan]
     l.dfs {
       case q: Query =>
-        // Query node is just a place holder
-        q
+      // Query node is a placeholder
       case p: PackageDef =>
-        // Ignore package definition
-        p
+      // Ignore package definition
       case w: WithQuery =>
-        // Ignore with definition as it's always preceeds the main query
-        w
+      // Ignore with definition as it's always preceeds the main query
       case b: BracedRelation =>
-        // Ignore the brace only node
-        b
+      // Ignore the brace only node
       case plan: LogicalPlan =>
         nodes += plan
     }
