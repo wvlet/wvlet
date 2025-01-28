@@ -226,7 +226,7 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
               Some(wl("on", expr(Expression.concatWithEq(u.keys))))
 
         code(j) {
-          group(left + joinType + ws + right + nest(maybeNewline + cond))
+          group(left + joinType + ws + right + nest(wsOrNL + cond))
         }
       case u: Union if u.isDistinct =>
         // union is not supported in Wvlet, so rewrite it to dedup(concat)
