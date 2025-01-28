@@ -203,6 +203,16 @@ trait LogicalPlan extends SyntaxTreeNode:
     .foreach(child => recursiveTraverseOnce(rule)(child))
 
   /**
+    * Recursively traverse LogicalPlan and apply the rule in the depth-first manner.
+    * @param rule
+    * @return
+    */
+  def dfs(rule: PartialFunction[LogicalPlan, Unit]): Unit =
+    traverseChildrenOnce(_.dfs(rule))
+    if rule.isDefinedAt(this) then
+      rule.apply(this)
+
+  /**
     * Iterate through LogicalPlans and apply matching rules for transformation. The transformation
     * will be applied to the current node as well.
     *

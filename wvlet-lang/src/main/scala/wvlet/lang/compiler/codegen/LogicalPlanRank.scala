@@ -3,17 +3,32 @@ package wvlet.lang.compiler.analyzer
 import wvlet.lang.model.plan.{LogicalPlan, PackageDef, Query, WithQuery}
 import wvlet.lang.compiler.Context
 import wvlet.lang.model.expr.Expression
+import wvlet.log.LogSupport
 
 import scala.collection.immutable.ListMap
 
 /**
   * Mappings from LogicalPlan and its rank (e.g., syntax order, dataflow order)
   */
-type LogicalPlanRankTable = ListMap[LogicalPlan, Int]
+type LogicalPlanRankTable = Map[LogicalPlan, Int]
 object LogicalPlanRankTable:
-  val empty: LogicalPlanRankTable = ListMap.empty[LogicalPlan, Int]
+  val empty: LogicalPlanRankTable = Map.empty[LogicalPlan, Int]
 
-object LogicalPlanRank:
+object LogicalPlanRank extends LogSupport:
+
+  private def collectNodesInPostOrder(l: LogicalPlan): List[LogicalPlan] =
+    val nodes = List.newBuilder[LogicalPlan]
+    l.dfs {
+      case q: Query =>
+        q
+      case p: PackageDef =>
+        p
+      case w: WithQuery =>
+        w
+      case plan: LogicalPlan =>
+        nodes += plan
+    }
+    nodes.result()
 
   /**
     * Compute the syntax rank (based on line position in the source code) table of the LogicalPlan
@@ -23,16 +38,9 @@ object LogicalPlanRank:
     * @return
     */
   def syntaxRank(l: LogicalPlan)(using ctx: Context): LogicalPlanRankTable =
-    val nodes = List.newBuilder[LogicalPlan]
-
-    nodes += l
-    l.traverse { case c: LogicalPlan =>
-      nodes += c
-    }
-
-    ListMap.from(
+    val nodes = collectNodesInPostOrder(l)
+    Map.from(
       nodes
-        .result()
         .sortBy(n => n.sourceLocation.position)
         .zipWithIndex
         .map: (n, rank) =>
@@ -45,47 +53,26 @@ object LogicalPlanRank:
     * @return
     */
   def dataflowRank(l: LogicalPlan): LogicalPlanRankTable =
-    val postOrder = List.newBuilder[LogicalPlan]
-
-    def dfs(p: LogicalPlan): Unit =
-      def traverseChildren(plan: LogicalPlan): Unit = plan
-        .childNodes
-        .foreach {
-          case c: LogicalPlan =>
-            dfs(c)
-          case e: Expression =>
-            e.traversePlanOnce { case n: LogicalPlan =>
-              dfs(n)
-            }
-          case _ =>
-        }
-
-      p match
-        case q: Query =>
-          dfs(q.body)
-        case p: PackageDef =>
-          p.statements.foreach(dfs)
-        case w: WithQuery =>
-          w.queryDefs
-            .foreach { n =>
-              // Skip AliasedRelation
-              dfs(n.child)
-            }
-          dfs(w.queryBody)
-        case plan: LogicalPlan =>
-          traverseChildren(plan)
-          postOrder += plan
-    end dfs
-
-    dfs(l)
-
-    ListMap.from(
+    val postOrder = collectNodesInPostOrder(l)
+    Map.from(
       postOrder
-        .result()
         .zipWithIndex
         .map: (n, i) =>
           n -> (i + 1)
     )
   end dataflowRank
+
+  def syntaxReadability(l: LogicalPlan)(using ctx: Context): Unit =
+    val syntaxRanks   = syntaxRank(l)
+    val dataflowRanks = dataflowRank(l)
+
+    // Compute eye-movement distance
+    syntaxRanks.toSeq.sortBy(c => dataflowRanks(c._1)) map { (plan, syntaxRank) =>
+      val dataflowRank = dataflowRanks(plan)
+      val distance     = math.abs(syntaxRank - dataflowRank)
+      info(f"${dataflowRank}%2s) [${syntaxRank}%2s] ${plan.nodeName}%16s dist:${distance}")
+    }
+
+    ()
 
 end LogicalPlanRank
