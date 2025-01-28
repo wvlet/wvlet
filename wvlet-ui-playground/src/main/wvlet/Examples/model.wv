@@ -1,4 +1,7 @@
--- Define a new model
+---
+Define a new model.
+You can describe the model description inside a triple-hyphen block.
+---
 model my_model =
   from lineitem
   where l_quantity > 10.0
