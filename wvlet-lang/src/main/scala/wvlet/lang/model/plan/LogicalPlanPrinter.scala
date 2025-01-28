@@ -22,19 +22,31 @@ import wvlet.lang.model.{DataType, SyntaxTreeNode}
 import wvlet.lang.model.expr.*
 import wvlet.log.LogSupport
 
+import scala.collection.immutable.ListMap
+
 object LogicalPlanPrinter extends LogSupport:
 
   def print(m: LogicalPlan)(using ctx: Context = NoContext): String =
     val fileName = ctx.compilationUnit.sourceFile.fileName
     val prefix   = text(s"[LogicalPlan: ${fileName}]")
-    val d        = prefix / plan(m)
+    val printer  = LogicalPlanPrinter()
+    val d        = prefix / printer.plan(m)
     d.render(CodeFormatterConfig(maxLineWidth = 100, indentWidth = 2))
 
   def printExpr(e: Expression)(using ctx: Context = NoContext): String =
-    val d = expr(e)
+    val printer = LogicalPlanPrinter()
+    val d       = printer.expr(e)
     d.render()
 
-  def plan(l: LogicalPlan)(using ctx: Context): Doc =
+  case class NodeRank(syntaxRank: Int, dataflowRank: Int)
+
+  type RankTable = ListMap[LogicalPlan, NodeRank]
+
+import LogicalPlanPrinter.*
+
+class LogicalPlanPrinter(using ctx: Context) extends LogSupport:
+
+  def plan(l: LogicalPlan)(using rankTable: RankTable = ListMap.empty[LogicalPlan, NodeRank]): Doc =
     l match
       case null | EmptyRelation(_) =>
         empty
@@ -46,6 +58,7 @@ object LogicalPlanPrinter extends LogSupport:
             group(wl("package", expr(p.name))) + linebreak
         pkg + concat(p.statements.map(plan), linebreak + linebreak)
       case q: Query =>
+        given RankTable = computeRank(q)
         wl("▶︎ Query", lineLocOf(q)) + nest(linebreak + plan(q.child))
       case m: ModelDef =>
         val params =
@@ -173,7 +186,9 @@ object LogicalPlanPrinter extends LogSupport:
       case other =>
         node(other)
 
-  private def node(n: SyntaxTreeNode)(using ctx: Context): Doc =
+  private def node(n: SyntaxTreeNode)(using
+      rankTable: RankTable = ListMap.empty[LogicalPlan, NodeRank]
+  ): Doc =
     val attr = List.newBuilder[Doc]
     val l    = List.newBuilder[Doc]
 
@@ -214,11 +229,21 @@ object LogicalPlanPrinter extends LogSupport:
 
     val isLeaf = isPlan && childNodes.isEmpty
 
+    val dataflowOrder: Option[Doc] =
+      if isPlan then
+        rankTable
+          .get(n.asInstanceOf[LogicalPlan])
+          .map { r =>
+            text(s"${r.dataflowRank})")
+          }
+      else
+        None
+
     var d =
       if isLeaf then
-        text(s"▼ ${n.nodeName}")
+        wl("▼", dataflowOrder, n.nodeName)
       else
-        text(n.nodeName)
+        wl(dataflowOrder, n.nodeName)
 
     val loc = s" ${lineLocOf(n)}"
 
@@ -246,9 +271,75 @@ object LogicalPlanPrinter extends LogSupport:
 
   end node
 
-  private def lineLocOf(n: SyntaxTreeNode)(using ctx: Context): String =
+  private def lineLocOf(n: SyntaxTreeNode): String =
     val sourceLoc = n.sourceLocation
     // val sourceLoc = n.sourceLocation
     s"- (line:${sourceLoc.lineAndColString})"
+
+  /**
+    * Compute syntax-position rank (line position order) and dataflow order rank (dfs post-order)
+    *
+    * @param l
+    * @return
+    */
+  private def computeRank(l: LogicalPlan): RankTable =
+    val postOrder = List.newBuilder[LogicalPlan]
+
+    def dfs(p: LogicalPlan): Unit =
+      def traverseChildren(plan: LogicalPlan): Unit = plan
+        .childNodes
+        .foreach {
+          case c: LogicalPlan =>
+            dfs(c)
+          case _ =>
+        }
+
+      p match
+        case q: Query =>
+          dfs(q.body)
+        case p: PackageDef =>
+          p.statements.foreach(dfs)
+        case w: WithQuery =>
+          w.queryDefs
+            .foreach { n =>
+              // Skip AliasedRelation
+              dfs(n.child)
+            }
+          dfs(w.queryBody)
+        case plan: LogicalPlan =>
+          traverseChildren(plan)
+          postOrder += plan
+
+    dfs(l)
+
+    val topologicalOrderList = postOrder.result()
+    val syntaxOrderTable: Map[LogicalPlan, Int] = topologicalOrderList
+      .sortBy { x =>
+        val pos = x.sourceLocation.position
+        (pos.line, pos.column)
+      }
+      .zipWithIndex
+      .map { (n, rank) =>
+        n -> (rank + 1)
+      }
+      .toMap[LogicalPlan, Int]
+
+    val rankTable: ListMap[LogicalPlan, NodeRank] = ListMap.from(
+      postOrder
+        .result()
+        .zipWithIndex
+        .map { (n, i) =>
+          n -> NodeRank(syntaxOrderTable(n), i + 1)
+        }
+    )
+    //    info(
+    //      rankTable
+    //        .map { (n, rank) =>
+    //          s"[${rank.dataflowRank}] ${n.nodeName}"
+    //        }
+    //        .mkString("\n")
+    //    )
+    rankTable
+  end computeRank
 
 end LogicalPlanPrinter

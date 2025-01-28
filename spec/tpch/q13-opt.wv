@@ -1,0 +1,9 @@
+-- q13.wv: group by, select -> agg
+from customer
+left join orders
+  on c_custkey = o_custkey and o_comment not like '%special%requests%'
+group by c_custkey
+agg o_orderkey.count as c_count
+group by c_count
+agg _.count as custdist
+order by custdist desc, c_count desc
