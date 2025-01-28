@@ -32,6 +32,7 @@ export const language = <languages.IMonarchLanguage> {
     tokenPostfix: '.wv',
 
     keywords: [
+        "asof",
         "case",
         "when",
         "test",
@@ -76,6 +77,7 @@ export const language = <languages.IMonarchLanguage> {
         "inner",
         "cross",
         "add",
+        "prepend",
         "exclude",
         "rename",
         "shift",
@@ -130,7 +132,8 @@ export const language = <languages.IMonarchLanguage> {
         "array",
         "map",
         "date",
-        "decimal"
+        "decimal",
+        "interval"
     ],
 
     operators: [
