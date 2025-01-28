@@ -86,7 +86,7 @@ class LogicalPlanPrinter(using ctx: Context) extends LogSupport:
       case other: LogicalPlan =>
         node(other)
 
-  def expr(e: Expression)(using ctx: Context): Doc =
+  def expr(e: Expression)(using rankTable: RankTable = ListMap.empty[LogicalPlan, NodeRank]): Doc =
     e match
       case i: Identifier =>
         text(i.strExpr)
@@ -291,6 +291,10 @@ class LogicalPlanPrinter(using ctx: Context) extends LogSupport:
         .foreach {
           case c: LogicalPlan =>
             dfs(c)
+          case e: Expression =>
+            e.traversePlanOnce { case n: LogicalPlan =>
+              dfs(n)
+            }
           case _ =>
         }
 
