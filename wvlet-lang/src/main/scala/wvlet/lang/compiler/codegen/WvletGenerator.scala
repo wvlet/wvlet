@@ -121,8 +121,14 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
             .queryDefs
             .map { d =>
               val alias = tableAliasOf(d)
-              val body  = relation(d.child)(using InStatement)
-              text("with") + ws + alias + ws + text("as") + ws + indentedBrace(body)
+              val body =
+                d.child match
+                  case v: Values =>
+                    // Values inside with clause is supported
+                    values(v)(using InFromClause)
+                  case _ =>
+                    indentedBrace(relation(d.child)(using InStatement))
+              text("with") + ws + alias + ws + text("as") + ws + body
             }
           lines(defs) + linebreak + relation(w.queryBody)
         }
@@ -211,16 +217,16 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
               None
             case u: JoinOnTheSameColumns =>
               if u.columns.size == 1 then
-                Some(group(wsOrNL + wl("on", expr(u.columns.head))))
+                Some(wl("on", expr(u.columns.head)))
               else
-                Some(group(wsOrNL + wl("on", paren(cl(u.columns.map(expr))))))
+                Some(wl("on", paren(cl(u.columns.map(expr)))))
             case u: JoinOn =>
-              Some(group(wsOrNL + wl("on", expr(u.expr))))
+              Some(wl("on", expr(u.expr)))
             case u: JoinOnEq =>
-              Some(group(wsOrNL + wl("on", expr(Expression.concatWithEq(u.keys)))))
+              Some(wl("on", expr(Expression.concatWithEq(u.keys))))
 
         code(j) {
-          group(left + joinType + wsOrNL + right + cond)
+          group(left + joinType + ws + right + nest(maybeNewline + cond))
         }
       case u: Union if u.isDistinct =>
         // union is not supported in Wvlet, so rewrite it to dedup(concat)

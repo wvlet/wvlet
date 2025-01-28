@@ -49,15 +49,21 @@ querySingle: 'from' relation (',' relation)* ','? queryBlock*
            | 'select' selectItems queryBlock*
            // For braced query, do not continue queryBlock for disambiguation
            | '{' queryBody '}' ('as' identifier)?
+           | 'with' tableAlias 'as' '{' queryBody '}'
+
+tableAlias: identifier '(' columnAlias (',' columnAlias)* ')'
+columnAlias: identifier (':' identifier)? // column alias (: type)
 
 // relation that can be used after 'from', 'join', 'concat' (set operation), etc.:
-relation       : relationPrimary ('as' identifier)?
+relation       : relationPrimary ('as' tableAlias)?
 relationPrimary: qualifiedId ('(' functionArg (',' functionArg)* ')')?
                | querySingle
                | str               // file scan
                | strInterpolation  // embedded raw SQL
                | arrayValue
 arrayValue     : '[' arrayValue (',' arrayValue)* ','? ']'
+
+
 
 queryBlock: '|' queryBlock  // pipe operator for explicit split
           |  joinExpr

@@ -9,19 +9,19 @@ AsOf join is useful when you want to join two tables by looking at the most rece
 
 For example, if you want to know the share holding value at a specific date, you can join the holding table with the stock table by looking at the most recent stock price at the holding date:
 ```sql
-from [
+with holding(symbol, date, shares) as [
   ['AAPL', '2024-11-07', 1.0],
   ['AAPL', '2024-11-08', 2.0],
   ['AAPL', '2024-11-09', 3.0],
   ['AAPL', '2024-11-10', 4.0],
-] as holding(symbol, date, shares)
-asof join (
-from [
+]
+with stock(symbol, date, price) as [
   ['AAPL', '2024-11-07', 10],
   ['AAPL', '2024-11-08', 50],
   ['AAPL', '2024-11-09', 100],
-] as stock(symbol, date, price)
-)
+]
+from holding
+  asof join stock
 on
   stock.symbol = holding.symbol
   and stock.date <= holding.date
