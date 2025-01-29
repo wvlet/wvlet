@@ -522,7 +522,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           // Note: Parsing the rest as a new relation is important to build a left-deep plan
           val next = relation()
           relationRest(
-            Join(JoinType.ImplicitJoin, r, next, NoJoinCriteria, asof = false, spanFrom(t))
+            Join(JoinType.ImplicitJoin, r, next, NoJoinCriteria, asof = false, spanFrom(next.span))
           )
         case SqlToken.LEFT | SqlToken.RIGHT | SqlToken.INNER | SqlToken.FULL | SqlToken.CROSS |
             SqlToken.ASOF | SqlToken.JOIN =>
