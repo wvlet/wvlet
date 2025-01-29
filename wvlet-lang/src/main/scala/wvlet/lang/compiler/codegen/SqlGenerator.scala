@@ -561,15 +561,42 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
                 e += "name" -> s"'${m.name.name}'"
 
                 // model argument types
+                val t = m.symbol.tree
+                val description: String =
+                  if t.comments.isEmpty then
+                    "''"
+                  else
+                    val desc: String =
+                      t.comments
+                        .map(
+                          // Exclude comments
+                          _.str
+                            .trim
+                            .stripPrefix("---")
+                            .stripPrefix("--")
+                            .stripSuffix("---")
+                            .stripSuffix("--")
+                        )
+                        .mkString("\n")
+                        .trim
+                    StringLiteral.fromString(desc, NoSpan).sqlExpr
+
                 m.symbol.tree match
                   case md: ModelDef if md.params.nonEmpty =>
-                    val args = md.params.map(arg => s"${arg.name}:${arg.dataType.typeDescription}")
-                    e += "args" -> args.mkString("'", ", ", "'")
+                    val args: String = md
+                      .params
+                      .map(arg => s"${arg.name}:${arg.dataType.typeDescription}")
+                      .mkString("'", ", ", "'")
+                    e += "args" -> args
                   case _ =>
                     e += "args" -> "cast(null as varchar)"
 
+                e += "description" -> description
+
                 // package_name
-                if !m.owner.isNoSymbol && m.owner != ctx.global.defs.RootPackage then
+                if !m.owner.isNoSymbol && m.owner != ctx.global.defs.RootPackage &&
+                  !m.owner.name.isEmpty
+                then
                   e += "package_name" -> s"'${m.owner.name}'"
                 else
                   e += "package_name" -> "cast(null as varchar)"
@@ -578,11 +605,21 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
               }
           }
 
-        val modelValues = models
-          .map { x =>
-            List(x("name"), x.getOrElse("args", ""), x.getOrElse("package_name", "")).mkString(",")
+        val modelValues = cl(
+          models.map { x =>
+            group(
+              paren(
+                cl(
+                  x("name"),
+                  x.getOrElse("args", ""),
+                  x.getOrElse("description", ""),
+                  x.getOrElse("package_name", "")
+                )
+              )
+            )
           }
-          .map(x => s"(${x})")
+        )
+
         val sql =
           if modelValues.isEmpty then
             wl(
@@ -590,6 +627,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
               cl(
                 "cast(null as varchar) as name",
                 "cast(null as varchar) as args",
+                "cast(null as varchar) as description",
                 "cast(null as varchar) as package_name"
               ),
               "limit 0"
@@ -601,7 +639,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
               "from",
               paren(wl("values", cl(modelValues))),
               "as",
-              "__models(name, args, package_name)"
+              "__models(name, args, description, package_name)"
             )
 
         selectExpr(sql)

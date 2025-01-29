@@ -1,0 +1,7 @@
+show models
+where name = 'person_filter'
+exclude package_name
+
+test _.rows = [
+  ['person_filter', 'bound:int', 'Nested model representation']
+]

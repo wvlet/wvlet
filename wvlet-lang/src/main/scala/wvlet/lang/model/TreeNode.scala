@@ -17,6 +17,7 @@ import wvlet.lang.api.{LinePosition, SourceLocation, Span, StatusCode}
 import wvlet.lang.compiler.{CompilationUnit, Context, SourceFile, Symbol}
 import wvlet.lang.compiler.ContextUtil.*
 import wvlet.lang.compiler.parser.TokenData
+import wvlet.lang.model.plan.LogicalPlan
 import wvlet.log.LogSupport
 
 /**
