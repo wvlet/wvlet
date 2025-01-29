@@ -23,9 +23,9 @@ class WvletParserTest extends AirSpec:
     WvletParser(CompilationUnit.fromWvletString("from A select _")).parse()
 
   test("model span"):
-    given unit: CompilationUnit = CompilationUnit.fromWvletString(s"""model A =
+    given unit: CompilationUnit = CompilationUnit.fromWvletString(s"""model A = {
         |  from x
-        |end
+        |}
         |""".stripMargin)
     val plan = WvletParser(unit).parse()
 
@@ -37,7 +37,7 @@ class WvletParserTest extends AirSpec:
       startLoc.column shouldBe 1
       val endLoc = unit.endLinePositionAt(m.span)
       endLoc.line shouldBe 3
-      endLoc.column shouldBe 4
+      endLoc.column shouldBe 2
     }
     found shouldBe true
 

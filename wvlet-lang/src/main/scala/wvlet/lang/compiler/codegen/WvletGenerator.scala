@@ -402,9 +402,25 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
                   Some(paren(cl(m.params.map(x => expr(x)))))
               },
               m.givenRelationType.map(t => wl(": ", t.typeName)),
-              "="
+              "= {"
             )
-          ) + nest(linebreak + relation(m.child)) + linebreak + "end" + linebreak
+          ) + nest(linebreak + relation(m.child)) + linebreak + "}" + linebreak
+        case t: TypeDef =>
+          val typeParams =
+            if t.params.isEmpty then
+              empty
+            else
+              bracket(cl(t.params.map(_.wvExpr)))
+          val defContexts = wl(t.defContexts.map(x => wl("in", expr(x.tpe))))
+          val parent      = t.parent.map(p => wl("extends", expr(p)))
+
+          val sep =
+            if t.elems.isEmpty then
+              empty
+            else
+              "= "
+          group(wl("type", text(t.name.name) + typeParams, defContexts, parent, sep)) +
+            indentedBrace(concat(t.elems.map(e => group(expr(e))), linebreak))
         case t: ShowQuery =>
           group(wl("show", "query", expr(t.name)))
         case other =>
@@ -621,6 +637,8 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
             d.name.name + ":" + d.dataType.typeName.toString,
             d.defaultValue.map(x => wl("=", expr(x)))
           )
+        case f: FieldDef =>
+          group(wl(f.name.name + ":", expr(f.tpe), f.body.map(b => wl("=", expr(b)))))
         case other =>
           unsupportedNode(s"expression ${other}", other.span)
     }

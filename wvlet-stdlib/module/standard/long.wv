@@ -1,6 +1,6 @@
 package wvlet.standard
 
-type long:
+type long = {
   def to_int: int = sql"cast(${this} as bigint)"
   def to_long: long = sql"cast(${this} as bigint)"
   def to_float: float = sql"cast(${this} as double)"
@@ -17,14 +17,14 @@ type long:
   def not_in(v:any*): boolean = sql"${this} not in (${v})"
 
   def between(l:long, r:long): boolean = sql"${this} between ${l} and ${r}"
-end
+}
 
-type long in td_trino:
+type long in td_trino = {
   def within(duration:string): boolean = sql"td_interval(${this}, ${duration})"
   def td_time_string(format:string): string = sql"td_time_string(${this}, ${format})"
-end
+}
 
-type long in td_hive:
+type long in td_hive = {
   def td_interval(duration:string): boolean = sql"td_interval(${this}, ${duration})"
   def td_time_string(format:string): string = sql"td_time_string(${this}, ${format})"
-end
+}

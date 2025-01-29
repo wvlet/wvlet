@@ -2,10 +2,10 @@
 Define a new model.
 You can describe the model description inside a triple-hyphen block.
 ---
-model my_model =
+model my_model = {
   from lineitem
   where l_quantity > 10.0
-end
+}
 
 -- Refer to the model
 from my_model

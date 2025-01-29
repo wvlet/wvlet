@@ -1,6 +1,6 @@
 package cdp
 
-type td_sdk_log:
+type td_sdk_log = {
   td_client_id: string
   td_host: string
   td_path: string
@@ -37,9 +37,9 @@ type td_sdk_log:
       or not regexp_like(td_browser, '^(?:Googlebot(?:-.*)?|BingPreview|bingbot|YandexBot|PingdomBot)$')
     )
     and td_host is not 'gtm-msr.appspot.com'
-end
+}
 
-type ip_address in trino extends string:
+type ip_address in trino extends string = {
   def country_name: string = sql"td_ip_to_country_name(${this})"
   def city_name: string = sql"td_ip_to_city_name(${this})"
   def city_latitude: string = sql"td_ip_to_latitude(${this})"
@@ -52,9 +52,9 @@ type ip_address in trino extends string:
   def subdivision_names: string = sql"td_ip_to_subdivision_names(${this})"
   def connection_type: string = sql"td_ip_to_connection_type(${this})"
   def domain: string = sql"td_ip_to_domain(${this})"
-end
+}
 
-type ip_address in duckdb extends string:
+type ip_address in duckdb extends string = {
   def country_name: string = sql"'N/A'"
   def city_name: string = sql"'N/A'"
   def city_latitude: string = sql"'N/A'"
@@ -67,41 +67,41 @@ type ip_address in duckdb extends string:
   def subdivision_names: string = sql"'N/A'"
   def connection_type: string = sql"'N/A'"
   def domain: string = sql"'N/A'"
-end
+}
 
-type user_agent in trino extends string:
+type user_agent in trino extends string = {
   def category: string = sql"td_parse_agent(${this})('category')"
   def name: string = sql"td_parse_agent(${this})('name')"
   def os: string = sql"td_parse_agent(${this})('os')"
   def os_version =  sql"td_parse_agent(${this})('os_version')"
   def vendor: string = sql"td_parse_agent(${this})('vendor')"
   def version: string = sql"td_parse_agent(${this})('version')"
-end
+}
 
-type user_agent in duckdb extends string:
+type user_agent in duckdb extends string = {
   def category: string = sql"'N/A'"
   def name: string = sql"'N/A'"
   def os: string = sql"'N/A'"
   def os_version =  sql"'N/A'"
   def vendor: string = sql"'N/A'"
   def version: string = sql"'N/A'"
-end
+}
 
-type url in trino extends string:
+type url in trino extends string = {
   def utm_campaign: string = sql"parse_url(${this}, 'QUERY', 'utm_campaign')"
   def utm_medium: string = sql"parse_url(${this}, 'QUERY', 'utm_medium')"
   def utm_source: string = sql"parse_url(${this}, 'QUERY', 'utm_source')"
-end
+}
 
 
-type url in duckdb extends string:
+type url in duckdb extends string = {
   def utm_campaign: string = sql"'N/A'"
   def utm_medium: string = sql"'N/A'"
   def utm_source: string = sql"'N/A'"
-end
+}
 
 
-type weblog_users:
+type weblog_users = {
   td_client_id: string
   name: string
   age: int
@@ -111,25 +111,24 @@ type weblog_users:
   address: string
   naid: string
   time: int
-end
+}
 
-type weblog_user_attr3:
+type weblog_user_attr3 = {
   td_client_id: string
   age: int
   very_long_attr_for_test_cdp_465: string
   time: int
-end
+}
 
-type weblog_user_attr2:
+type weblog_user_attr2 = {
   td_client_id: string
   td_language: string
   td_os: string
   time: int
-end
+}
 
-type weblog_users_first_purchased_at:
+type weblog_users_first_purchased_at = {
   naid: string
   first_purchased_at: int
   time: int
-end
-
+}

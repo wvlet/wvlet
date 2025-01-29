@@ -1,6 +1,6 @@
 package wvlet.standard
 
 
-type date:
+type date = {
   def extract(field:string): int = sql"extract(${field} from ${this})"
-end
+}

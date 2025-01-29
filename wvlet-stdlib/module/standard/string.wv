@@ -1,6 +1,6 @@
 package wvlet.standard
 
-type string:
+type string = {
   def to_int: int = sql"cast(${this} as bigint)"
   def to_long: long = sql"cast(${this} as bigint)"
   def to_float: float = sql"cast(${this} as double)"
@@ -22,19 +22,19 @@ type string:
 
   def in(v:any*): boolean = sql"${this} in (${v})"
   def not_in(expr:any*): boolean = sql"${this} not in (${expr})"
-end
+}
 
 -- Using query engine specific dialects
-type string in duckdb:
+type string in duckdb = {
   -- TODO support context-specific functions
   -- def substring(start:int): string = sql"substring(${this},{start},strlen({this}))"
   def regexp_like(pattern:string): boolean = sql"regexp_matches(${this},${pattern})"
-end
+}
 
 
-type string in trino:
+type string in trino = {
   -- TODO support context-specific functions
   -- def substring(start:int, end:int): string = sql"substring(${this},{start},{end})"
   def regexp_like(pattern:string): boolean = sql"regexp_like(${this},${pattern})"
-end
+}
 

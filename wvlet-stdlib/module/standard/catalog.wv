@@ -1,17 +1,17 @@
 package wvlet.standard
 
-model wv_tables() =
+model wv_tables() = {
   from information_schema.tables
   select
     table_catalog as `catalog`,
     table_schema as `schema`,
     table_name as `name`,
     table_type as `table_type`,
-end
+}
 
-model wv_schemas() =
+model wv_schemas() = {
   from information_schema.schemata
   select
     catalog_name as `catalog`,
     schema_name as `name`
-end
+}

@@ -1,6 +1,6 @@
 package wvlet.standard
 
-type null:
+type null = {
   def to_int: int = sql"cast(${this} as bigint)"
   def to_long: long = sql"cast(${this} as bigint)"
   def to_float: float = sql"cast(${this} as double)"
@@ -8,5 +8,5 @@ type null:
   def to_boolean: boolean = sql"cast(${this} as boolean)"
   def to_date: date = sql"cast(${this} as date)"
   def to_string: string = sql"cast(${this} as varchar)"
-end
+}
 

@@ -364,6 +364,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         case _ =>
           None
     consume(WvletToken.EQ)
+    consume(WvletToken.L_BRACE)
     val q: Query =
       query() match
         case q: Query =>
@@ -375,7 +376,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
               s"Expected a query block, but found ${other}",
               other.sourceLocationOfCompilationUnit
             )
-    consume(WvletToken.END)
+    consume(WvletToken.R_BRACE)
     ModelDef(
       TableName(name.fullName),
       params,
@@ -428,18 +429,25 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     val tp      = typeParams()
     val scopes  = context()
     val parents = typeExtends()
-    consume(WvletToken.COLON)
-    val elems = typeElems()
-    consume(WvletToken.END)
-    if parents.size > 1 then
-      throw StatusCode
-        .SYNTAX_ERROR
-        .newException(
-          s"extending multiple types is not supported: ${name} extends ${parents
-              .map(_.fullName)
-              .mkString(", ")}",
-          t.sourceLocation
-        )
+
+    var elems: List[TypeElem] = Nil
+    scanner.lookAhead().token match
+      case WvletToken.EQ =>
+        consume(WvletToken.EQ)
+        consume(WvletToken.L_BRACE)
+        elems = typeElems()
+        consume(WvletToken.R_BRACE)
+        if parents.size > 1 then
+          throw StatusCode
+            .SYNTAX_ERROR
+            .newException(
+              s"extending multiple types is not supported: ${name} extends ${parents
+                  .map(_.fullName)
+                  .mkString(", ")}",
+              t.sourceLocation
+            )
+      case _ =>
+      // no body
     TypeDef(name, tp, scopes, parents.headOption, elems, spanFrom(t))
   }
 
@@ -489,7 +497,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
             case WvletToken.COMMA =>
               consume(WvletToken.COMMA)
               nextParent
-            case WvletToken.COLON =>
+            case WvletToken.EQ | WvletToken.EOF =>
             // ok
             case _ =>
               parents += identifier()
@@ -502,7 +510,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
   def typeElems(): List[TypeElem] =
     val t = scanner.lookAhead()
     t.token match
-      case WvletToken.EOF | WvletToken.END =>
+      case WvletToken.EOF | WvletToken.R_BRACE =>
         List.empty
       case _ =>
         val e = typeElem()
@@ -555,7 +563,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
   def namedTypes(): List[NamedType] =
     val t = scanner.lookAhead()
     t.token match
-      case WvletToken.EOF | WvletToken.END | WvletToken.R_PAREN =>
+      case WvletToken.EOF | WvletToken.R_PAREN =>
         List.empty
       case WvletToken.COMMA =>
         consume(WvletToken.COMMA)
@@ -2025,7 +2033,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           map()
         case id if id.isIdentifier =>
           identifier()
-        case WvletToken.STAR | WvletToken.END =>
+        case WvletToken.STAR =>
           identifier()
         case t if t.isNonReservedKeyword =>
           // For count(*), concat(...) expressions

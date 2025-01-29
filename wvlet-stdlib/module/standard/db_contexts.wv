@@ -1,22 +1,17 @@
 package wvlet.standard
 
-type db_context:
-end
+type db_context
 
-type duckdb extends db_context:
-end
+type duckdb extends db_context
 
-type trino extends db_context:
-end
+type trino extends db_context
 
-type hive extends db_context:
-end
+type hive extends db_context
 
 -- Contexts for defining Treasure Data specific Trino/Hive dialects.
 -- It can also use extensions for standard Trino/Hive
-type td_trino extends trino:
-end
+type td_trino extends trino
 
-type td_hive extends hive:
-end
+type td_hive extends hive
+
 
