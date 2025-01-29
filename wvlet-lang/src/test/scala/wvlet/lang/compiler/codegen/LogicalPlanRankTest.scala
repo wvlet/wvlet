@@ -33,7 +33,7 @@ class LogicalPlanRankTest extends AirSpec:
           trace(wvPlan.pp)
           val wvScore = LogicalPlanRank.syntaxReadability(wvPlan)
           // debug(wv)
-          debug(s"[${unit.sourceFile.fileName}]\nsql  : ${sqlScore}\nwvlet: ${wvScore}")
+          debug(s"[${unit.sourceFile.fileName}]\nsql  : ${sqlScore.pp}\nwvlet: ${wvScore.pp}")
         }
 
       }

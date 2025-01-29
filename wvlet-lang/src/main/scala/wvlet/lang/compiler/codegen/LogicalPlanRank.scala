@@ -69,8 +69,17 @@ object LogicalPlanRank extends LogSupport:
       syntaxRankDist: Int,
       numPlanNodes: Int
   ):
-    override def toString: String =
-      s"eyeMovement:${eyeMovement}, lineMovement:${lineMovement}, inversions:${inversionCount}, syntaxRankDist:${syntaxRankDist}"
+    def maxSyntaxRankDist: Int = numPlanNodes * (numPlanNodes - 1) / 2
+    def maxInversionCount: Int = numPlanNodes - 1
+
+    def inversionScore: Double = 1.0 - (inversionCount.toDouble / maxInversionCount)
+    def syntaxRankScore: Double =
+      1.0 - ((syntaxRankDist.toDouble - numPlanNodes + 1) / (maxSyntaxRankDist - numPlanNodes + 1))
+
+    def normalizedScore: Double = (inversionScore + syntaxRankScore) / 2.0
+
+    def pp: String =
+      f"score: ${normalizedScore}%.2f, eye movement: ${eyeMovement}, line movement: ${lineMovement}, inversion: ${inversionCount}, syntax rank dist: ${syntaxRankDist}"
 
   def syntaxReadability(l: LogicalPlan)(using ctx: Context): ReadabilityScore =
     val syntaxRanks = syntaxRank(l)
