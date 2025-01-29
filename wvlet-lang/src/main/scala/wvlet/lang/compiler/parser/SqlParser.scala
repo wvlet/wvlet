@@ -514,11 +514,30 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
   end select
 
   def fromClause(): Relation =
+    def relationRest(r: Relation): Relation =
+      val t = scanner.lookAhead()
+      t.token match
+        case SqlToken.COMMA =>
+          consume(SqlToken.COMMA)
+          // Note: Parsing the rest as a new relation is important to build a left-deep plan
+          val next = relation()
+          relationRest(
+            Join(JoinType.ImplicitJoin, r, next, NoJoinCriteria, asof = false, spanFrom(t))
+          )
+        case SqlToken.LEFT | SqlToken.RIGHT | SqlToken.INNER | SqlToken.FULL | SqlToken.CROSS |
+            SqlToken.ASOF | SqlToken.JOIN =>
+          relationRest(join(r))
+        case _ =>
+          r
+    end relationRest
+
     val t = scanner.lookAhead()
     t.token match
       case SqlToken.FROM =>
         consume(SqlToken.FROM)
-        relation()
+        var r = relation()
+        r = relationRest(r)
+        r
       case _ =>
         unexpected(t)
 
@@ -1353,34 +1372,15 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
   end window
 
   def relation(): Relation =
-    def singleTable(): Relation =
-      val r = relationPrimary()
-      scanner.lookAhead().token match
-        case SqlToken.AS =>
-          consume(SqlToken.AS)
-          tableAlias(r)
-        case id if id.isIdentifier =>
-          tableAlias(r)
-        case _ =>
-          r
-
-    def relationRest(r: Relation): Relation =
-      val t = scanner.lookAhead()
-      t.token match
-        case SqlToken.COMMA =>
-          consume(SqlToken.COMMA)
-          // Note: Parsing the rest as a new relation is important to build a left-deep plan
-          val next = relation()
-          relationRest(
-            Join(JoinType.ImplicitJoin, r, next, NoJoinCriteria, asof = false, spanFrom(t))
-          )
-        case SqlToken.LEFT | SqlToken.RIGHT | SqlToken.INNER | SqlToken.FULL | SqlToken.CROSS |
-            SqlToken.ASOF | SqlToken.JOIN =>
-          relationRest(join(r))
-        case _ =>
-          r
-
-    relationRest(singleTable())
+    val r = relationPrimary()
+    scanner.lookAhead().token match
+      case SqlToken.AS =>
+        consume(SqlToken.AS)
+        tableAlias(r)
+      case id if id.isIdentifier =>
+        tableAlias(r)
+      case _ =>
+        r
 
   def relationPrimary(): Relation =
     val t = scanner.lookAhead()
