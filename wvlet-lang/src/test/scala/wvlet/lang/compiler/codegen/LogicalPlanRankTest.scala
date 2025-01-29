@@ -6,38 +6,46 @@ import wvlet.lang.compiler.parser.ParserPhase
 import wvlet.lang.compiler.{CompilationUnit, Context}
 
 class LogicalPlanRankTest extends AirSpec:
-  private val path      = "spec/sql/tpc-h"
-  private val globalCtx = Context.testGlobalContext(path)
 
-  CompilationUnit
-    .fromPath(path)
-    .foreach { unit =>
-      test(s"Evaluate the readability of ${unit.sourceFile.fileName}") {
+  def spec(path: String): Unit =
+    val specName = path.split("/").lastOption.getOrElse(path)
 
-        given ctx: Context = globalCtx.getContextOf(unit)
+    val globalCtx = Context.testGlobalContext(path)
 
-        val sqlPlan = ParserPhase.parse(unit, ctx)
+    CompilationUnit
+      .fromPath(path)
+      .foreach { unit =>
+        test(s"Evaluate the readability of ${specName}:${unit.sourceFile.fileName}") {
 
-        trace(unit.sourceFile.getContentAsString)
-        trace(sqlPlan.pp)
-        val sqlScore = LogicalPlanRank.syntaxReadability(sqlPlan)
+          given ctx: Context = globalCtx.getContextOf(unit)
 
-        val g  = WvletGenerator()
-        val wv = g.print(sqlPlan)
-        {
-          val wvUnit = CompilationUnit.fromWvletString(wv)
+          val sqlPlan = ParserPhase.parse(unit, ctx)
 
-          given newCtx: Context = globalCtx.getContextOf(wvUnit)
+          trace(unit.sourceFile.getContentAsString)
+          trace(sqlPlan.pp)
+          val sqlScore = LogicalPlanRank.syntaxReadability(sqlPlan)
 
-          globalCtx.setContextUnit(wvUnit)
-          val wvPlan = ParserPhase.parse(wvUnit, newCtx)
-          trace(wv)
-          trace(wvPlan.pp)
-          val wvScore = LogicalPlanRank.syntaxReadability(wvPlan)
-          debug(s"[${unit.sourceFile.fileName}]\nsql  : ${sqlScore.pp}\nwvlet: ${wvScore.pp}")
+          val g  = WvletGenerator()
+          val wv = g.print(sqlPlan)
+          {
+            val wvUnit = CompilationUnit.fromWvletString(wv)
+
+            given newCtx: Context = globalCtx.getContextOf(wvUnit)
+
+            globalCtx.setContextUnit(wvUnit)
+            val wvPlan = ParserPhase.parse(wvUnit, newCtx)
+            trace(wv)
+            trace(wvPlan.pp)
+            val wvScore = LogicalPlanRank.syntaxReadability(wvPlan)
+            debug(s"[${unit.sourceFile.fileName}]\nsql  : ${sqlScore.pp}\nwvlet: ${wvScore.pp}")
+          }
+
         }
-
       }
-    }
+
+  end spec
+
+  spec("spec/sql/tpc-h")
+  spec("spec/sql/tpc-ds")
 
 end LogicalPlanRankTest
