@@ -4,8 +4,8 @@ model sample_model1 = {
   agg v.max as v2
 }
 
-from sample_model1
 -- Apply a filtering condition to aggregated expr in the model
+from sample_model1
 where v2.between(7, 10)
 order by v2
 

@@ -5,7 +5,7 @@ import wvlet.lang.api.Span.NoSpan
 import wvlet.lang.api.StatusCode
 import wvlet.lang.compiler.transform.ExpressionEvaluator
 import wvlet.lang.compiler.{Context, DBType, ModelSymbolInfo, SQLDialect}
-import wvlet.lang.model.DataType
+import wvlet.lang.model.{DataType, SyntaxTreeNode}
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.expr.NameExpr.EmptyName
 import wvlet.lang.model.plan.JoinType.*
@@ -156,6 +156,26 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
   private def query(r: Relation, block: SQLBlock)(using sc: SyntaxContext): Doc = relation(r, block)
 
   /**
+    * Propagate the comments to the generated SQL
+    * @param n
+    * @param d
+    * @return
+    */
+  private def code(n: SyntaxTreeNode)(d: Doc): Doc =
+    def toSQLComment(s: String): Doc =
+      if s.startsWith("---") && s.endsWith("---") then
+        val comment = s.stripPrefix("---").stripSuffix("---").trim
+        text("/*") + linebreak + comment + linebreak + text("*/")
+      else
+        text(s)
+
+    // warn(s"${n.nodeName} ${n.comments}")
+    if n.comments.isEmpty then
+      d
+    else
+      lines(n.comments.reverse.map(c => toSQLComment(c.str))) + linebreak + d
+
+  /**
     * Print Relation nodes while tracking the parent nodes (e.g., filter, sort) for merging them
     * later into a single SELECT statement.
     * @param r
@@ -176,7 +196,9 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
 
     r match
       case q: Query =>
-        query(q.body, block)
+        code(q) {
+          relation(q.body, block)
+        }
       case e: EmptyRelation =>
         selectAll(empty, block)
       case q: WithQuery =>
@@ -417,7 +439,9 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         selectExpr(body)
       case t: TestRelation =>
         // Skip test expression
-        relation(t.inputRelation, block)
+        code(t) {
+          relation(t.inputRelation, block)
+        }
       case s: SelectAsAlias =>
         // Just generate the inner bodSQL
         relation(s.child, block)

@@ -75,7 +75,7 @@ class QueryExecutor(
     trace(s"Selected statement: ${targetStatement}, ${querySelection}")
     val ctx = rootContext.withCompilationUnit(u).newContext(Symbol.NoSymbol)
 
-    val executionPlan = ExecutionPlanner.plan(u, targetStatement, ctx)
+    val executionPlan = ExecutionPlanner.plan(u, targetStatement)(using ctx)
     val result        = execute(executionPlan, ctx)
 
     workEnv.info(s"Completed ${u.sourceFile.fileName}")

@@ -14,36 +14,25 @@
 package wvlet.lang.compiler.codegen
 
 import wvlet.lang.BuildInfo
-import wvlet.lang.api.Span.NoSpan
 import wvlet.lang.api.{SourceLocation, StatusCode}
 import wvlet.lang.catalog.Catalog.TableName
-import wvlet.lang.compiler.DBType.{DuckDB, Trino}
 import wvlet.lang.compiler.analyzer.TypeResolver
-import wvlet.lang.compiler.codegen.CodeFormatterConfig
 import wvlet.lang.compiler.planner.ExecutionPlanner
 import wvlet.lang.compiler.transform.{ExpressionEvaluator, PreprocessLocalExpr}
 import wvlet.lang.compiler.{
   CompilationUnit,
   Context,
   DBType,
-  ModelSymbolInfo,
   Name,
   Phase,
-  SQLDialect,
   SourceIO,
   Symbol,
   TermName,
   ValSymbolInfo
 }
-import wvlet.lang.model.DataType
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
 import wvlet.lang.model.plan.JoinType.*
-import wvlet.lang.model.plan.SamplingSize.{Percentage, Rows}
-import wvlet.log.LogSupport
-
-import java.io.File
-import scala.collection.immutable.ListMap
 
 case class GeneratedSQL(sql: String, plan: Relation)
 
@@ -109,7 +98,7 @@ object GenSQL extends Phase("generate-sql"):
           unit.executionPlan
       else
         // Create an execution plan for sub queries
-        ExecutionPlanner.plan(unit, targetPlan.get, ctx)
+        ExecutionPlanner.plan(unit, targetPlan.get)(using ctx)
     loop(executionPlan)
     val queries = statements.result()
     val sql     = queries.mkString("\n;\n")
@@ -320,7 +309,8 @@ object GenSQL extends Phase("generate-sql"):
             }
 
           // Replace function argument references in the model body with the actual expressions
-          val modelBody = transformExpr(md.child, newCtx)
+          // TODO: How to propagate comments in the model Query body?
+          val modelBody = transformExpr(md.child.body, newCtx)
           expand(modelBody, newCtx)
         case other =>
           warn(s"Unknown model tree for ${m.name}: ${other}")
@@ -328,19 +318,15 @@ object GenSQL extends Phase("generate-sql"):
 
     // TODO expand expressions and inline macros as well
     relation
-      .transformUp {
-        case m: ModelScan =>
-          lookupType(Name.termName(m.name.name), ctx) match
-            case Some(sym) =>
-              val rel = transformModelScan(m, sym)
-              // Finally resolve types again
-              TypeResolver.resolve(rel, ctx)
-            case None =>
-              warn(s"unknown model: ${m.name}")
-              m
-        case q: Query =>
-          // unwrap
-          q.child
+      .transformUp { case m: ModelScan =>
+        lookupType(Name.termName(m.name.name), ctx) match
+          case Some(sym) =>
+            val rel = transformModelScan(m, sym)
+            // Finally resolve types again
+            TypeResolver.resolve(rel, ctx)
+          case None =>
+            warn(s"unknown model: ${m.name}")
+            m
       }
       .transformOnce { case r: Relation =>
         // Evaluate identifiers
