@@ -14,6 +14,7 @@
 package wvlet.lang.model.plan
 
 import wvlet.lang.api.{LinePosition, StatusCode}
+import wvlet.lang.compiler.Context
 import wvlet.lang.model.expr.{Attribute, NameExpr}
 import wvlet.airframe.ulid.ULID
 import wvlet.lang.model.TreeNode
@@ -26,7 +27,7 @@ sealed trait ExecutionPlan extends TreeNode with Product:
   def isEmpty: Boolean = false
   def planName: String = this.getClass.getSimpleName.stripSuffix("$")
 
-  def pp: String =
+  def pp(using ctx: Context = Context.NoContext): String =
     def iter(p: ExecutionPlan, level: Int): String =
       def indent(s: String, level: Int = level): String =
         val lines = s.split("\n")
