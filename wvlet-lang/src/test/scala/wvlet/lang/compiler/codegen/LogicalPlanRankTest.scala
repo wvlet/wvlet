@@ -18,6 +18,7 @@ class LogicalPlanRankTest extends AirSpec:
 
         val sqlPlan = ParserPhase.parse(unit, ctx)
 
+        trace(unit.sourceFile.getContentAsString)
         trace(sqlPlan.pp)
         val sqlScore = LogicalPlanRank.syntaxReadability(sqlPlan)
 
@@ -30,9 +31,9 @@ class LogicalPlanRankTest extends AirSpec:
 
           globalCtx.setContextUnit(wvUnit)
           val wvPlan = ParserPhase.parse(wvUnit, newCtx)
+          trace(wv)
           trace(wvPlan.pp)
           val wvScore = LogicalPlanRank.syntaxReadability(wvPlan)
-          // debug(wv)
           debug(s"[${unit.sourceFile.fileName}]\nsql  : ${sqlScore.pp}\nwvlet: ${wvScore.pp}")
         }
 

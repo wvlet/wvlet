@@ -319,7 +319,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         case _ =>
           None
     consume(SqlToken.USING)
-    val using = tablePrimary()
+    val using = relationPrimary()
     consume(SqlToken.ON)
     val on = expression()
     val whenMatched =
@@ -352,7 +352,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
   def delete(): Delete =
     val t = consume(SqlToken.DELETE)
     consume(SqlToken.FROM)
-    val target = tablePrimary()
+    val target = relationPrimary()
 
     val filteredRelation =
       scanner.lookAhead().token match
@@ -518,7 +518,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     t.token match
       case SqlToken.FROM =>
         consume(SqlToken.FROM)
-        table()
+        relation()
       case _ =>
         unexpected(t)
 
@@ -1352,9 +1352,9 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         None
   end window
 
-  def table(): Relation =
+  def relation(): Relation =
     def singleTable(): Relation =
-      val r = tablePrimary()
+      val r = relationPrimary()
       scanner.lookAhead().token match
         case SqlToken.AS =>
           consume(SqlToken.AS)
@@ -1363,9 +1363,26 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           tableAlias(r)
         case _ =>
           r
-    tableRest(singleTable())
 
-  def tablePrimary(): Relation =
+    def relationRest(r: Relation): Relation =
+      val t = scanner.lookAhead()
+      t.token match
+        case SqlToken.COMMA =>
+          consume(SqlToken.COMMA)
+          // Note: Parsing the rest as a new relation is important to build a left-deep plan
+          val next = relation()
+          relationRest(
+            Join(JoinType.ImplicitJoin, r, next, NoJoinCriteria, asof = false, spanFrom(t))
+          )
+        case SqlToken.LEFT | SqlToken.RIGHT | SqlToken.INNER | SqlToken.FULL | SqlToken.CROSS |
+            SqlToken.ASOF | SqlToken.JOIN =>
+          relationRest(join(r))
+        case _ =>
+          r
+
+    relationRest(singleTable())
+
+  def relationPrimary(): Relation =
     val t = scanner.lookAhead()
     val r =
       t.token match
@@ -1399,7 +1416,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     end r
 
     r
-  end tablePrimary
+  end relationPrimary
 
   def tableAlias(input: Relation): AliasedRelation =
     val alias = identifier()
@@ -1413,19 +1430,6 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         case _ =>
           None
     AliasedRelation(input, alias, columns, spanFrom(alias.span))
-
-  def tableRest(r: Relation): Relation =
-    val t = scanner.lookAhead()
-    t.token match
-      case SqlToken.COMMA =>
-        consume(SqlToken.COMMA)
-        val next = table()
-        tableRest(Join(JoinType.ImplicitJoin, r, next, NoJoinCriteria, asof = false, spanFrom(t)))
-      case SqlToken.LEFT | SqlToken.RIGHT | SqlToken.INNER | SqlToken.FULL | SqlToken.CROSS |
-          SqlToken.ASOF | SqlToken.JOIN =>
-        tableRest(join(r))
-      case _ =>
-        r
 
   def queryRest(r: Relation): Relation =
     val t = scanner.lookAhead()
@@ -1506,16 +1510,16 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       case SqlToken.CROSS =>
         consume(SqlToken.CROSS)
         consume(SqlToken.JOIN)
-        val right = table()
+        val right = relation()
         Join(JoinType.CrossJoin, r, right, NoJoinCriteria, asof = isAsOfJoin, spanFrom(t))
       case SqlToken.JOIN =>
         consume(SqlToken.JOIN)
-        val right  = table()
+        val right  = relation()
         val joinOn = joinCriteria()
         Join(JoinType.InnerJoin, r, right, joinOn, asof = isAsOfJoin, spanFrom(t))
       case SqlToken.LEFT | SqlToken.RIGHT | SqlToken.INNER | SqlToken.FULL =>
         val joinTpe = joinType()
-        val right   = table()
+        val right   = relation()
         val joinOn  = joinCriteria()
         Join(joinTpe, r, right, joinOn, asof = isAsOfJoin, spanFrom(t))
       case _ =>
