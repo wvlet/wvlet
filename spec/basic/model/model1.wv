@@ -1,3 +1,6 @@
+---
+A simple model to scan a JSON file
+---
 model person =
   from 'person.json'
 end
@@ -9,6 +12,9 @@ model person_with_age_group =
     age / 10 as age_group
 end
 
+---
+Nested model representation
+---
 model person_filter(bound:int) =
   -- reference another model
   from person_with_age_group

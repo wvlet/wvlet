@@ -1021,6 +1021,7 @@ case class Show(showType: ShowType, inExpr: NameExpr, span: Span) extends Relati
           columnTypes = List[NamedType](
             NamedType(Name.termName("name"), DataType.StringType),
             NamedType(Name.termName("args"), DataType.StringType),
+            NamedType(Name.termName("description"), DataType.StringType),
             NamedType(Name.termName("package_name"), DataType.StringType)
           )
         )
