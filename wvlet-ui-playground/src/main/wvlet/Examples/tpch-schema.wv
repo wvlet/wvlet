@@ -16,7 +16,7 @@ type lineitem = {
   l_shipinstruct: string
   l_shipmode: string
   l_comment: string
-end
+}
 
 type customer = {
   c_custkey: int
