@@ -70,7 +70,6 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
         ""
     )
     .variable(LineReader.INDENTATION, 2)
-    .option(LineReader.Option.INSERT_BRACKET, true)
     // Coloring keywords
     .highlighter(new ReplHighlighter)
     .build()
@@ -412,12 +411,18 @@ object WvletREPL extends LogSupport:
       def incomplete = throw EOFError(-1, -1, null)
       def accept     = parser.parse(line, cursor, context)
 
-      val cmd     = line.trim
-      val cmdName = cmd.split("\\s").headOption.getOrElse("")
+      val cmd            = line.trim
+      val openBraces     = cmd.count(_ == '{')
+      val closeBraces    = cmd.count(_ == '}')
+      val needsMoreInput = openBraces > closeBraces
+      val cmdName        = cmd.split("\\s").headOption.getOrElse("")
       if cmdName.isEmpty || knownCommands.contains(cmdName) || context == ParseContext.COMPLETE then
         accept
       else if cmd.endsWith(";") && cursor >= line.length then
         accept
+      else if needsMoreInput then
+        // Trigger indentation
+        throw new EOFError(-1, -1, "missing '}'", "}", openBraces - closeBraces, "}")
       else
         val unit        = CompilationUnit.fromWvletString(line)
         val wvletParser = WvletParser(unit)
@@ -471,6 +476,8 @@ object WvletREPL extends LogSupport:
             builder.append(rawString)
           case WvletToken.COMMENT =>
             builder.append(rawString, AttributedStyle.DEFAULT.foreground(AttributedStyle.YELLOW))
+          case WvletToken.DOC_COMMENT =>
+            builder.append(rawString, AttributedStyle.DEFAULT.foreground(AttributedStyle.BLUE))
           case token if token.isLiteral =>
             builder.append(rawString, AttributedStyle.DEFAULT.foreground(AttributedStyle.GREEN))
           case token if token.isReservedKeyword =>
