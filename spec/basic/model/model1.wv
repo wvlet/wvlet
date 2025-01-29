@@ -1,26 +1,25 @@
 ---
 A simple model to scan a JSON file
 ---
-model person =
+model person = {
   from 'person.json'
-end
+}
 
-model person_with_age_group =
+model person_with_age_group = {
   from person
   add
     -- Add a new column for aggregation
     age / 10 as age_group
-end
+}
 
 ---
 Nested model representation
 ---
-model person_filter(bound:int) =
+model person_filter(bound:int) = {
   -- reference another model
   from person_with_age_group
   where age_group >= bound
-end
-
+}
 
 from person_filter(bound = 2)
 

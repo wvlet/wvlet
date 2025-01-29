@@ -36,8 +36,8 @@ importStatement: 'import' importRef (from str)?
 importRef      : qualifiedId ('.' '*')?
                | qualifiedId 'as' identifier
 
-modelDef   : 'model' identifier modelParams? (':' qualifiedId)? '=' modelBody
-modelBody  : query 'end'
+modelDef   : 'model' identifier modelParams? (':' qualifiedId)? '=' '{' modelBody
+modelBody  : query '}'
 modelParams: '(' modelParam (',' modelParam)* ')'
 modelParam : identifier ':' identifier ('=' expression)?
 
@@ -136,7 +136,7 @@ pivotItem: identifier ('in' '(' (valueExpression (',' valueExpression)*) ')')?
 
 unpivotItem: identifier 'for' identifier 'in' '(' identifier (',' identifier)*')' ('with' 'nulls')?
 
-typeDef    : 'type' identifier typeParams? context? typeExtends? ':' typeElem* 'end'
+typeDef    : 'type' identifier typeParams? context? typeExtends? '=' '{' typeElem* '}'
 typeParams : '[' typeParam (',' typeParam)* ']'
 typeParam  : identifier ('of' identifier)?
 typeExtends: 'extends' qualifiedId (',' qualifiedId)*

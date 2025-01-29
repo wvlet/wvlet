@@ -8,9 +8,9 @@ from [
 ] as person(id, name)
 select as s`person_quote_ref_${1}`
 
-model person_tbl_ref(id:int) =
+model person_tbl_ref(id:int) = {
   from s`person_quote_ref_${id}`
-end
+}
 
 from person_tbl_ref(0)
 test _.rows should be [[1, "alice"]]

@@ -199,10 +199,10 @@ Define reusable data model functions.
 
 Example: 
 ```sql
-model lookup(person_id: int) =
+model lookup(person_id: int) = {
   from persons
   where id = ${person_id}
-end
+}
 ```
 
 Calling this model:
@@ -249,10 +249,10 @@ Build reproducible data processing pipelines with incremental processing.
 Example:
 ```sql
 @config(watermark_column='time', window_size='1h')
-model weblog_records =
+model weblog_records = {
   from upstream_web_records
   select time, user_id, path,
-end
+}
 
 -- Subscribe newly inserted records in weblog_records
 -- and save filtered records to downstream_web_records

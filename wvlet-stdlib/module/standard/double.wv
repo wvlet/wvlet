@@ -1,6 +1,6 @@
 package wvlet.standard
 
-type double:
+type double = {
   def to_int: int = sql"cast(${this} as bigint)"
   def to_long: long = sql"cast(${this} as bigint)"
   def to_float: float = sql"cast(${this} as double)"
@@ -17,4 +17,4 @@ type double:
 
   -- TODO Add between(int, int), etc.
   def between(l:double, r:double): boolean = sql"${this} between ${l} and ${r}"
-end
+}

@@ -4,8 +4,8 @@ package example
 -- type person_t(id: int, name: string)
 
 -- Multi-line parameter definitions
-type person_t2:
+type person_t2 = {
   id: int
   name: string
-end
+}
 

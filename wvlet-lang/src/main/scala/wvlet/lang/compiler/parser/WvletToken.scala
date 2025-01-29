@@ -244,7 +244,7 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   case ELSE extends WvletToken(Keyword, "else")
   case CASE extends WvletToken(Keyword, "case")
   case WHEN extends WvletToken(Keyword, "when")
-  case END  extends WvletToken(Keyword, "end")
+  // case END  extends WvletToken(Keyword, "end")
 
   // Condition keywords
   case AND     extends WvletToken(Keyword, "and")
@@ -316,7 +316,7 @@ object WvletToken:
 
   val queryDelimiters = Set(
     WvletToken.EOF,
-    WvletToken.END,
+    // WvletToken.END,
     WvletToken.R_BRACE,
     WvletToken.R_PAREN,
     WvletToken.SEMICOLON,

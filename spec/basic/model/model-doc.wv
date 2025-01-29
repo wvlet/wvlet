@@ -15,9 +15,9 @@ from my_model
 where id = 1
 ```
 ---
-model my_model =
+model my_model = {
   -- scan a file
   from 'person.json' -- Load data from json
   -- ETL
   where id is not null -- cleanup
-end
+}

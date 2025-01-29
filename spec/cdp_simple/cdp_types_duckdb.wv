@@ -1,6 +1,6 @@
 package cdp
 
-type td_sdk_log:
+type td_sdk_log = {
   td_client_id: string
   td_host: string
   td_path: string
@@ -37,9 +37,9 @@ type td_sdk_log:
     )
     and td_host is not 'gtm-msr.appspot.com'
 
-end
+}
 
-type ip_address in duckdb extends string:
+type ip_address in duckdb extends string = {
   def country_name: string = sql"'N/A'"
   def city_name: string = sql"'N/A'"
   def city_latitude: string = sql"'N/A'"
@@ -52,19 +52,19 @@ type ip_address in duckdb extends string:
   def subdivision_names: string = sql"'N/A'"
   def connection_type: string = sql"'N/A'"
   def domain: string = sql"'N/A'"
-end
+}
 
-type user_agent in duckdb extends string:
+type user_agent in duckdb extends string = {
   def category: string = sql"'N/A'"
   def name: string = sql"'N/A'"
   def os: string = sql"'N/A'"
   def os_version: string =  sql"'N/A'"
   def vendor: string = sql"'N/A'"
   def version: string = sql"'N/A'"
-end
+}
 
-type url in duckdb extends string:
+type url in duckdb extends string = {
   def utm_campaign: string = sql"'N/A'"
   def utm_medium: string = sql"'N/A'"
   def utm_source: string = sql"'N/A'"
-end
+}

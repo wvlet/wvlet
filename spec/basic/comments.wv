@@ -20,13 +20,13 @@ Here is a triple-hyphen block for Markdown style comment
 
 -- Empty comment
 --
-model hello =
- select 1
-end
+model hello = {
+  select 1
+}
 
 -- Empty triple hyphen comment
 ---
 ---
-model hello2 =
- select 2
-end
+model hello2 = {
+  select 2
+}
