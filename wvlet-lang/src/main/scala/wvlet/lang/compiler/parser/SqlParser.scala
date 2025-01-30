@@ -1391,6 +1391,9 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         case id if id.isIdentifier =>
           val name = qualifiedName()
           TableRef(name, spanFrom(t))
+        case SqlToken.DOUBLE_QUOTE_STRING =>
+          val name = qualifiedName()
+          TableRef(name, spanFrom(t))
         case SqlToken.LATERAL =>
           consume(SqlToken.LATERAL)
           // TODO Support LATERAL TABLE ...
