@@ -538,6 +538,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         var r = relation()
         r = relationRest(r)
         r
+      case d if d.isQueryDelimiter =>
+        EmptyRelation(spanFrom(t))
       case _ =>
         unexpected(t)
 

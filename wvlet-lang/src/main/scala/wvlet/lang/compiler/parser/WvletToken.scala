@@ -159,8 +159,9 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   // Data type keywords
   case MAP extends WvletToken(Keyword, "map")
 
-  case SHOW   extends WvletToken(Keyword, "show")
-  case SAMPLE extends WvletToken(Keyword, "sample")
+  case SHOW    extends WvletToken(Keyword, "show")
+  case EXPLAIN extends WvletToken(Keyword, "explain")
+  case SAMPLE  extends WvletToken(Keyword, "sample")
 
   // Operator prepositions
   case OF   extends WvletToken(Keyword, "of")
@@ -290,6 +291,7 @@ object WvletToken:
   val keywordAndSymbolTable = allKeywordAndSymbol.map(x => x.str -> x).toMap
 
   val joinKeywords = List(
+    WvletToken.ASOF,
     WvletToken.JOIN,
     WvletToken.ON,
     WvletToken.LEFT,

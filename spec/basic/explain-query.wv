@@ -1,0 +1,7 @@
+explain
+from 'person.json'
+where id > 1
+order by id
+;
+
+

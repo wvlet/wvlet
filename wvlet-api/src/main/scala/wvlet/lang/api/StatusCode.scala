@@ -34,8 +34,9 @@ enum StatusCode(statusType: StatusType):
   case EXIT_SUCCESSFULLY extends StatusCode(StatusType.Success)
 
   // User errors
-  case SYNTAX_ERROR     extends StatusCode(StatusType.UserError)
-  case UNEXPECTED_TOKEN extends StatusCode(StatusType.UserError)
+  case SYNTAX_ERROR               extends StatusCode(StatusType.UserError)
+  case UNEXPECTED_TOKEN           extends StatusCode(StatusType.UserError)
+  case UNCLOSED_MULTILINE_LITERAL extends StatusCode(StatusType.UserError)
 
   case INVALID_ARGUMENT      extends StatusCode(StatusType.UserError)
   case SCHEMA_NOT_FOUND      extends StatusCode(StatusType.UserError)

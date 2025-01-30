@@ -109,12 +109,21 @@ Wvlet provides update operators to save the query result as a new table or file,
 | __append to__ `'file_name'`                         | Append the query result to the target file. It will create a new file if the file doesn't exist      |
 | __delete__                                          | Delete input rows from the source table                                                              |
 
+### Relation Inspection Commands
+
+| Operator                  | Description                                    |
+|---------------------------|------------------------------------------------|
+| __describe__ `query`      | Display the schema of the input query result   |
+| __explain__ `query`       | Display the LogicalPlan of the query           |
+| __expalain__ sql"""...""" | Display a LogicalPlan of the raw SQL statement |
+
 ### Raw SQL Commands
 
-| Operator             | Description                                                |
-|----------------------|------------------------------------------------------------|
-| __execute__ sql"..." | Execute a raw SQL statement in the context engine          |
-| __from__ sql"..."    | Execute a raw SQL statement and read the result as a table |
+| Operator              | Description                                                |
+|-----------------------|------------------------------------------------------------|
+| __execute__ sql"..."  | Execute a raw SQL statement in the context engine          |
+| __from__ sql"..."     | Execute a raw SQL statement and read the result as a table |
+
 
 ## Expressions
 
