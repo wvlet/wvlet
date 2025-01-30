@@ -115,7 +115,7 @@ Wvlet provides update operators to save the query result as a new table or file,
 |---------------------------|------------------------------------------------|
 | __describe__ `query`      | Display the schema of the input query result   |
 | __explain__ `query`       | Display the LogicalPlan of the query           |
-| __expalain__ sql"""...""" | Display a LogicalPlan of the raw SQL statement |
+| __explain__ sql"""...""" | Display a LogicalPlan of the raw SQL statement |
 
 ### Raw SQL Commands
 
