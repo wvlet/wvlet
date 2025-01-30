@@ -227,7 +227,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         values()
       case SqlToken.INSERT | SqlToken.UPSERT =>
         insert()
-      case SqlToken.UPDATE =>
+      case SqlToken.CREATE | SqlToken.UPDATE =>
         update()
       case SqlToken.MERGE =>
         merge()
@@ -275,20 +275,98 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     end match
   end insert
 
-  def update(): UpdateRows =
-    val t      = consume(SqlToken.UPDATE)
-    val target = qualifiedName()
-    consume(SqlToken.SET)
+  def update(): LogicalPlan =
 
-    val lst = assignments()
-    val cond =
-      scanner.lookAhead().token match
-        case SqlToken.WHERE =>
-          consume(SqlToken.WHERE)
-          Some(expression())
+    def consumeTableToken(): Unit =
+      val t = scanner.lookAhead()
+      t.token match
+        case SqlToken.IDENTIFIER if t.str.toLowerCase() == "table" =>
+          consume(SqlToken.IDENTIFIER)
         case _ =>
-          None
-    UpdateRows(target, lst, cond, spanFrom(t))
+          unexpected(t)
+
+    def tableElems(): List[ColumnDef] =
+      val t = scanner.lookAhead()
+      t.token match
+        case id if id.isIdentifier =>
+          val col = identifier()
+          val tpe = typeName()
+          val cd  = ColumnDef(col, tpe, spanFrom(col.span))
+          scanner.lookAhead().token match
+            case SqlToken.COMMA =>
+              consume(SqlToken.COMMA)
+              cd :: tableElems()
+            case _ =>
+              List(cd)
+        case _ =>
+          Nil
+
+    val t = scanner.lookAhead()
+    t.token match
+      case SqlToken.CREATE =>
+        consume(SqlToken.CREATE)
+        val replace =
+          scanner.lookAhead().token match
+            case SqlToken.OR =>
+              consume(SqlToken.OR)
+              consume(SqlToken.REPLACE)
+              true
+            case _ =>
+              false
+
+        consumeTableToken()
+        val createMode =
+          scanner.lookAhead().token match
+            case SqlToken.IF if !replace =>
+              consume(SqlToken.IF)
+              consume(SqlToken.NOT)
+              consume(SqlToken.EXISTS)
+              CreateMode.IfNotExists
+            case _ =>
+              if replace then
+                CreateMode.Replace
+              else
+                CreateMode.NoOverwrite
+        val tbl = qualifiedName()
+        scanner.lookAhead().token match
+          case SqlToken.L_PAREN =>
+            consume(SqlToken.L_PAREN)
+            val elems = tableElems()
+            val ct    = CreateTable(tbl, createMode == CreateMode.IfNotExists, elems, spanFrom(t))
+            consume(SqlToken.R_PAREN)
+            ct
+          case SqlToken.AS =>
+            consume(SqlToken.AS)
+            val q = query()
+            CreateTableAs(q, tbl, createMode, q, spanFrom(t))
+      case SqlToken.DROP =>
+        consume(SqlToken.DROP)
+        consumeTableToken()
+
+        val ifExists =
+          scanner.lookAhead().token match
+            case SqlToken.IF =>
+              consume(SqlToken.IF)
+              consume(SqlToken.EXISTS)
+              true
+            case _ =>
+              false
+        val tbl = qualifiedName()
+        DropTable(tbl, ifExists = ifExists, spanFrom(t))
+      case SqlToken.UPDATE =>
+        val target = qualifiedName()
+        consume(SqlToken.SET)
+
+        val lst = assignments()
+        val cond =
+          scanner.lookAhead().token match
+            case SqlToken.WHERE =>
+              consume(SqlToken.WHERE)
+              Some(expression())
+            case _ =>
+              None
+        UpdateRows(target, lst, cond, spanFrom(t))
+    end match
 
   end update
 
@@ -628,22 +706,31 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         input
 
   def values(): Values =
-    def valueList(): List[Expression] =
+    def value(): Expression =
       val t = scanner.lookAhead()
       t.token match
         case SqlToken.L_PAREN =>
           consume(SqlToken.L_PAREN)
           val values = expressionList()
           consume(SqlToken.R_PAREN)
-          values
+          ArrayConstructor(values, spanFrom(t))
         case _ =>
-          unexpected(t)
+          expression()
+
+    def valueList(): List[Expression] =
+      val v = value()
+      scanner.lookAhead().token match
+        case SqlToken.COMMA =>
+          consume(SqlToken.COMMA)
+          v :: valueList()
+        case _ =>
+          List(v)
 
     val t = scanner.lookAhead()
     t.token match
       case SqlToken.VALUES =>
         consume(t.token)
-        val values = expressionList()
+        val values = valueList()
         Values(values, spanFrom(t))
       case _ =>
         unexpected(t)

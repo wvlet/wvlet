@@ -187,7 +187,7 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   //  case CATALOG        extends SqlToken(Keyword, "catalog")
   //  case DATABASE       extends SqlToken(Keyword, "database")
   //  case SCHEMA         extends SqlToken(Keyword, "schema")
-  //  case TABLE          extends SqlToken(Keyword, "table")
+  //  case TABLE extends SqlToken(Keyword, "table")
   //  case STATEMENT      extends SqlToken(Keyword, "statement")
 
   case INSERT  extends SqlToken(Keyword, "insert")
@@ -199,8 +199,9 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   case SET     extends SqlToken(Keyword, "set")
   case DELETE  extends SqlToken(Keyword, "delete")
   case CREATE  extends SqlToken(Keyword, "create")
-
-  case DROP extends SqlToken(Keyword, "drop")
+  case DROP    extends SqlToken(Keyword, "drop")
+  case IF      extends SqlToken(Keyword, "if")
+  case REPLACE extends SqlToken(Keyword, "replace")
 
   case ADD        extends SqlToken(Keyword, "add")
   case COLUMN     extends SqlToken(Keyword, "column")

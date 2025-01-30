@@ -30,3 +30,23 @@ case class AppendTo(child: Relation, target: TableOrFileName, span: Span) extend
 case class Delete(child: Relation, target: TableOrFileName, span: Span) extends Save
 
 case class Truncate(target: TableOrFileName, span: Span) extends Update with LeafPlan
+
+// SQL equivalent
+
+enum CreateMode:
+  case NoOverwrite
+  case Replace
+  case IfNotExists
+
+case class CreateTableAs(
+    query: Relation,
+    target: TableOrFileName,
+    createMode: CreateMode,
+    child: Relation,
+    span: Span
+) extends Save:
+  override def relationType: RelationType = EmptyRelationType
+
+case class InsertInto(target: TableOrFileName, columns: List[NameExpr], child: Relation, span: Span)
+    extends Save:
+  override def relationType: RelationType = EmptyRelationType

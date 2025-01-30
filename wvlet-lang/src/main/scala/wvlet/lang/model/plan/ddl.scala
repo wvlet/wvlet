@@ -51,9 +51,10 @@ case class RenameDatabase(database: NameExpr, renameTo: NameExpr, span: Span) ex
 case class CreateTable(
     table: NameExpr,
     ifNotExists: Boolean,
-    tableElems: Seq[TableElement],
+    tableElems: List[ColumnDef],
     span: Span
 ) extends DDL
+
 
 case class DropTable(table: NameExpr, ifExists: Boolean, span: Span) extends DDL
 
