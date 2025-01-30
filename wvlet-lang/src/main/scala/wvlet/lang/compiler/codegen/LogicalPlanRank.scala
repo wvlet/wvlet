@@ -66,6 +66,8 @@ object LogicalPlanRank extends LogSupport:
       eyeMovement: Int,
       lineMovement: Int,
       inversionCount: Int,
+      // join or set operation count
+      joinCount: Int,
       syntaxRankDist: Int,
       numPlanNodes: Int
   ):
@@ -79,31 +81,45 @@ object LogicalPlanRank extends LogSupport:
     def normalizedScore: Double = (inversionScore + syntaxRankScore) / 2.0
 
     def pp: String =
-      f"score: ${normalizedScore}%.2f, eye movement: ${eyeMovement}, line movement: ${lineMovement}, inversion: ${inversionCount}, syntax rank dist: ${syntaxRankDist}"
+      f"score: ${normalizedScore}%.2f, inversion: ${inversionCount} (${joinCount} joins), syntax rank dist: ${syntaxRankDist}, eye movement: ${eyeMovement}, line movement: ${lineMovement}"
 
   def syntaxReadability(l: LogicalPlan)(using ctx: Context): ReadabilityScore =
+    def isConnectNode(p: LogicalPlan): Boolean =
+      p match
+        case _: Join | _: SetOperation =>
+          true
+        case _ =>
+          false
+
     val syntaxRanks = syntaxRank(l)
     // Sort nodes in the order of dataflow
     val dataflowRanks = dataflowRank(l).toSeq.sortBy(_._2)
 
-    var eyeMovement: Int    = 0
-    var lineMovement: Int   = 0
-    var syntaxRankDiff: Int = 0
+    // Init with the first eye movement to the leaf node
+    var eyeMovement: Int    = dataflowRanks(0)._1.span.start
+    var lineMovement: Int   = dataflowRanks(0)._1.linePosition.line
+    var syntaxRankDiff: Int = syntaxRanks(dataflowRanks(0)._1)
     var inversionCount: Int = 0
+    var joinCount: Int =
+      if isConnectNode(dataflowRanks(0)._1) then
+        1
+      else
+        0
 
     // Compute eye-movement distance
     dataflowRanks.reduce { (prev, current) =>
       val dataflowRank1 = prev._2
       val dataflowRank2 = current._2
 
-      val syntaxRank1 = syntaxRanks(prev._1)
-      val syntaxRank2 = syntaxRanks(current._1)
-      syntaxRankDiff += (syntaxRank2 - syntaxRank1).abs
-
       // end line -> next start line
       val line1 = prev._1.endLinePosition.line
       val line2 = current._1.linePosition.line
       lineMovement += (line2 - line1).abs
+
+      // Compute the syntax rank distance to remove the effect of text formatting differences
+      val syntaxRank1 = syntaxRanks(prev._1)
+      val syntaxRank2 = syntaxRanks(current._1)
+      syntaxRankDiff += (syntaxRank2 - syntaxRank1).abs
 
       // end offset -> next start offset
       val offset1             = prev._1.span.end
@@ -120,8 +136,12 @@ object LogicalPlanRank extends LogSupport:
       )
 
       // Check if the syntax rank is inverted
-      if syntaxRank1 > syntaxRank2 then
+      if line1 != line2 && syntaxRank1 > syntaxRank2 then
         inversionCount += 1
+
+      // Check if the current node is a join or set operation node
+      if isConnectNode(current._1) then
+        joinCount += 1
 
       // pass the current node to the next iteration
       current
@@ -132,8 +152,10 @@ object LogicalPlanRank extends LogSupport:
       eyeMovement,
       lineMovement,
       inversionCount,
+      joinCount,
       syntaxRankDiff,
-      numPlanNodes = syntaxRanks.size
+      // +1 for the beggining of the query
+      numPlanNodes = syntaxRanks.size + 1
     )
   end syntaxReadability
 
