@@ -18,9 +18,6 @@ case class AlterVariable(
     span: Span
 ) extends DDL
 
-case class ExplainPlan(child: LogicalPlan, span: Span) extends TopLevelStatement with UnaryPlan:
-  override def relationType: RelationType = EmptyRelationType
-
 //enum DescribeTarget:
 //  case DATABASE
 //  case CATALOG

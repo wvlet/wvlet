@@ -18,7 +18,8 @@ import wvlet.lang.api.v1.query.QuerySelection
 import wvlet.lang.api.{LinePosition, StatusCode, WvletLangException}
 import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.*
-import wvlet.lang.compiler.codegen.GenSQL
+import wvlet.lang.compiler.codegen.{CodeFormatterConfig, GenSQL, SqlGenerator}
+import wvlet.lang.compiler.parser.SqlParser
 import wvlet.lang.compiler.planner.ExecutionPlanner
 import wvlet.lang.compiler.query.{QueryProgressMonitor, QuerySelector}
 import wvlet.lang.compiler.transform.ExpressionEvaluator
@@ -181,6 +182,25 @@ class QueryExecutor(
         val cmd = GenSQL.generateExecute(e.expr)
         executeStatement(List(cmd))
         QueryResult.empty
+      case e: ExplainPlan =>
+        // Expand RawSQL to a logical plan
+        val plan = e
+          .child
+          .transformUp { case r: RawSQL =>
+            val sql     = SqlGenerator(CodeFormatterConfig(sqlDBType = context.dbType)).print(r.sql)
+            val unit    = CompilationUnit.fromSqlString(sql)
+            val sqlPlan = SqlParser(unit).parse()
+            var query: Option[Query] = None
+            sqlPlan.traverseOnce { case q: Query =>
+              query = Some(q)
+            }
+            query.getOrElse {
+              throw StatusCode.SYNTAX_ERROR.newException(s"Failed to find query within SQL: ${sql}")
+            }
+          }
+        val logicalPlanString = plan.pp
+        println(s"\n${logicalPlanString}")
+        QueryResult.empty
       case s: ShowQuery =>
         context.findTermSymbolByName(s.name.fullName) match
           case Some(sym) =>
@@ -204,6 +224,7 @@ class QueryExecutor(
             QueryResult.empty
           case None =>
             WarningResult(s"${s.name} is not found", s.sourceLocation(using context))
+    end match
 
   end executeCommand
 

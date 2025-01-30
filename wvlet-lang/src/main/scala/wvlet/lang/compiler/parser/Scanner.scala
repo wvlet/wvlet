@@ -220,12 +220,16 @@ abstract class ScannerBase[Token](sourceFile: SourceFile, config: ScannerConfig)
     if tokenBuffer.nonEmpty && isNumberSeparator(tokenBuffer.last) then
       reportError("trailing number separator", offset)
 
-  protected def reportError(msg: String, offset: Int): Unit =
+  protected def reportError(
+      msg: String,
+      offset: Int,
+      code: StatusCode = StatusCode.UNEXPECTED_TOKEN
+  ): Unit =
     if config.reportErrorToken then
-      throw StatusCode.UNEXPECTED_TOKEN.newException(msg)
+      throw code.newException(msg)
     else
       val loc = sourceFile.sourceLocationAt(offset)
-      error(s"${msg} at ${loc}")
+      error(s"[${code.name}] ${msg} at ${loc}")
 
   protected def consume(expectedChar: Char): Unit =
     if ch != expectedChar then
@@ -564,7 +568,11 @@ abstract class ScannerBase[Token](sourceFile: SourceFile, config: ScannerConfig)
       else
         getRawStringLiteral(resultingToken)
     else if ch == SU then
-      reportError("Unclosed multi-line string literal", offset)
+      reportError(
+        "Unclosed multi-line string literal",
+        offset,
+        StatusCode.UNCLOSED_MULTILINE_LITERAL
+      )
     else
       putChar(ch)
       nextRawChar()

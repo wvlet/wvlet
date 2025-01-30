@@ -26,7 +26,7 @@ import wvlet.airframe.*
 import wvlet.airframe.control.{Shell, ThreadUtil}
 import wvlet.airframe.log.AnsiColorPalette
 import wvlet.airframe.metrics.{Count, ElapsedTime}
-import wvlet.lang.api.{LinePosition, WvletLangException}
+import wvlet.lang.api.{LinePosition, StatusCode, WvletLangException}
 import wvlet.lang.api.v1.query.QueryRequest
 import wvlet.lang.api.v1.query.QuerySelection.{All, Describe, Subquery}
 import wvlet.lang.compiler.parser.*
@@ -411,12 +411,25 @@ object WvletREPL extends LogSupport:
       def incomplete = throw EOFError(-1, -1, null)
       def accept     = parser.parse(line, cursor, context)
 
-      val cmd            = line.trim
-      val openBraces     = cmd.count(_ == '{')
-      val closeBraces    = cmd.count(_ == '}')
-      val needsMoreInput = openBraces > closeBraces
-      val cmdName        = cmd.split("\\s").headOption.getOrElse("")
-      if cmdName.isEmpty || knownCommands.contains(cmdName) || context == ParseContext.COMPLETE then
+      def countTripleQuotes(s: String): Int =
+        s.indexOf("\"\"\"") match
+          case -1 =>
+            0
+          case i =>
+            1 + countTripleQuotes(s.substring(i + 3))
+
+      val cmd         = line.trim
+      val openBraces  = cmd.count(_ == '{')
+      val closeBraces = cmd.count(_ == '}')
+      // Count the number of triple quote `"""` characters to accept incomplete multiline strings
+      val tripleQuotes    = countTripleQuotes(cmd)
+      val needsMoreString = tripleQuotes % 2 == 1
+      val needsMoreInput  = openBraces > closeBraces
+      val cmdName         = cmd.split("\\s").headOption.getOrElse("")
+      if needsMoreString then
+        incomplete
+      else if cmdName.isEmpty || knownCommands.contains(cmdName) || context == ParseContext.COMPLETE
+      then
         accept
       else if cmd.endsWith(";") && cursor >= line.length then
         accept
@@ -443,6 +456,7 @@ object WvletREPL extends LogSupport:
           case e: WvletLangException =>
             // Move to the secondary prompt until seeing a semicolon
             incomplete
+      end if
 
     end parse
 
@@ -463,29 +477,37 @@ object WvletREPL extends LogSupport:
       var toContinue = true
       var lastOffset = 0
       while toContinue do
-        val t = scanner.nextToken()
+        try
+          val t = scanner.nextToken()
 
-        // Extract the raw string between the last offset and the current token
-        val rawString: String = src.getContent.slice(lastOffset, t.offset + t.length).mkString
-        lastOffset = t.offset + t.length
+          // Extract the raw string between the last offset and the current token
+          val rawString: String = src.getContent.slice(lastOffset, t.offset + t.length).mkString
+          lastOffset = t.offset + t.length
 
-        t.token match
-          case WvletToken.EOF =>
+          t.token match
+            case WvletToken.EOF =>
+              toContinue = false
+            case WvletToken.ERROR =>
+              builder.append(rawString)
+            case WvletToken.COMMENT =>
+              builder.append(rawString, AttributedStyle.DEFAULT.foreground(AttributedStyle.YELLOW))
+            case WvletToken.DOC_COMMENT =>
+              builder.append(rawString, AttributedStyle.DEFAULT.foreground(AttributedStyle.BLUE))
+            case token if token.isLiteral =>
+              builder.append(rawString, AttributedStyle.DEFAULT.foreground(AttributedStyle.GREEN))
+            case token if token.isReservedKeyword =>
+              builder.append(rawString, AttributedStyle.DEFAULT.foreground(AttributedStyle.CYAN))
+            case WvletToken.IDENTIFIER =>
+              builder.append(rawString, AttributedStyle.DEFAULT.foreground(AttributedStyle.WHITE))
+            case _ =>
+              builder.append(rawString)
+        catch
+          case e: WvletLangException if e.statusCode == StatusCode.UNCLOSED_MULTILINE_LITERAL =>
+            // Skip the rest of the line
+            builder.append(src.getContent.slice(lastOffset, src.getContent.length).mkString)
             toContinue = false
-          case WvletToken.ERROR =>
-            builder.append(rawString)
-          case WvletToken.COMMENT =>
-            builder.append(rawString, AttributedStyle.DEFAULT.foreground(AttributedStyle.YELLOW))
-          case WvletToken.DOC_COMMENT =>
-            builder.append(rawString, AttributedStyle.DEFAULT.foreground(AttributedStyle.BLUE))
-          case token if token.isLiteral =>
-            builder.append(rawString, AttributedStyle.DEFAULT.foreground(AttributedStyle.GREEN))
-          case token if token.isReservedKeyword =>
-            builder.append(rawString, AttributedStyle.DEFAULT.foreground(AttributedStyle.CYAN))
-          case WvletToken.IDENTIFIER =>
-            builder.append(rawString, AttributedStyle.DEFAULT.foreground(AttributedStyle.WHITE))
-          case _ =>
-            builder.append(rawString)
+      end while
+
       builder.toAttributedString
 
     end highlight

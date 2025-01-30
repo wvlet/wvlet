@@ -301,8 +301,20 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         consume(WvletToken.DESCRIBE)
         val r = relationPrimary()
         Describe(r, spanFrom(t))
+      case WvletToken.EXPLAIN =>
+        consume(WvletToken.EXPLAIN)
+        val t2 = scanner.lookAhead()
+        val r =
+          t2.token match
+            case i if i.isInterpolatedStringPrefix && t2.str == "sql" =>
+              val rawSQL = interpolatedString()
+              RawSQL(rawSQL, spanFrom(t))
+            case _ =>
+              query()
+        ExplainPlan(r, spanFrom(t))
       case _ =>
         unexpected(t)
+    end match
   }
   end statement
 

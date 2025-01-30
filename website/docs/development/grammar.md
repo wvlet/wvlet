@@ -89,6 +89,7 @@ queryBlock: '|' queryBlock  // pipe operator for explicit split
           | 'dedup'
           | 'describe'
           | 'debug' '{' (queryBlock | update)+ '}'
+          | 'explain' (query | rawSql)
 
 update       : 'save' 'as' updateTarget saveOptions?
              | 'append' 'to' updateTarget
