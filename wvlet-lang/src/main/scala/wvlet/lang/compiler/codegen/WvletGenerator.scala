@@ -8,6 +8,7 @@ import wvlet.lang.compiler.transform.ExpressionEvaluator
 import wvlet.lang.model.SyntaxTreeNode
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
+import wvlet.lang.model.plan.CreateMode.Replace
 import wvlet.log.LogSupport
 
 class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
@@ -55,6 +56,10 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
               group(text("package") + ws + expr(p.name)(using InStatement)) + linebreak +
                 concatStmts(p.statements)
           }
+        case d: DDL =>
+          ddl(d)(using InStatement)
+        case u: Update =>
+          update(u)(using InStatement)
         case r: Relation =>
           relation(r)(using InStatement)
         case s: TopLevelStatement =>
@@ -112,6 +117,44 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
       dd + wsOrNL + concat(n.postComments.reverse.map(c => text(c.str)), linebreak)
     else
       wl(dd, wl(n.postComments.map(c => text(c.str))))
+
+  private def ddl(d: DDL)(using sc: SyntaxContext): Doc =
+    d match
+      case _ =>
+        val sqlGen = SqlGenerator(config)
+        val doc    = sqlGen.toDoc(d)
+        group(wl("execute", "sql\"\"\"" + linebreak + doc + linebreak + "\"\"\""))
+
+  private def update(u: Update)(using sc: SyntaxContext): Doc =
+    u match
+      case c: CreateTableAs if c.createMode == CreateMode.Replace =>
+        val query  = relation(c.child)(using InStatement)
+        val target = expr(c.target)
+        val stmt =
+          code(c) {
+            query / group(wl("save to", target))
+          }
+        stmt
+      case i: InsertInto =>
+        val query  = relation(i.child)(using InStatement)
+        val target = expr(i.target)
+        val cols =
+          if i.columns.isEmpty then
+            None
+          else
+            Some(paren(cl(i.columns.map(expr))))
+        // TODO:
+        //  Translating `insert into` to `append to` is not always the correct behavior
+        //  especially when the user wans to protect a wrong insertion to a non-existent table
+        val stmt =
+          code(i) {
+            query / group(wl("append to", target + cols))
+          }
+        stmt
+      case _ =>
+        val sqlGen = SqlGenerator(config)
+        val d      = sqlGen.toDoc(u)
+        group(wl("execute", "sql\"\"\"" + linebreak + d + linebreak + "\"\"\""))
 
   private def relation(r: Relation)(using sc: SyntaxContext): Doc =
     r match

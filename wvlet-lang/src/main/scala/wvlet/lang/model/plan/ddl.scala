@@ -55,7 +55,6 @@ case class CreateTable(
     span: Span
 ) extends DDL
 
-
 case class DropTable(table: NameExpr, ifExists: Boolean, span: Span) extends DDL
 
 case class RenameTable(table: NameExpr, renameTo: NameExpr, span: Span) extends DDL

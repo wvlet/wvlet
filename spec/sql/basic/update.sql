@@ -23,7 +23,7 @@ from (values (1, 'a'), (2, 'b')) as t(id, name)
 ;
 
 insert
-  into tmp_talble
+  into tmp_table
 select *
 from tmp_table limit 1
 ;

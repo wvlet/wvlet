@@ -205,6 +205,8 @@ class LogicalPlanPrinter(using ctx: Context) extends LogSupport:
           attr += expr(e)
         case p: LogicalPlan =>
           l += plan(p)
+        case c: CreateMode =>
+          attr += text(c.toString)
         case s: Seq[?] =>
           s.foreach(iter)
         case o: Option[?] =>

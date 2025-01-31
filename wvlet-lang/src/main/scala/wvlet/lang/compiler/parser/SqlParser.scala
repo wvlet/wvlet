@@ -225,8 +225,6 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         query()
       case SqlToken.VALUES =>
         values()
-      case SqlToken.INSERT | SqlToken.UPSERT =>
-        insert()
       case SqlToken.CREATE | SqlToken.UPDATE =>
         update()
       case SqlToken.MERGE =>
@@ -237,24 +235,41 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         unexpected(t)
   end queryOrUpdate
 
-  def insert(): InsertOps =
+  def insert(): Update =
     val t = scanner.lookAhead()
     t.token match
       case SqlToken.INSERT =>
         consume(SqlToken.INSERT)
-        val target = qualifiedName()
-        val columns =
-          scanner.lookAhead().token match
-            case SqlToken.L_PAREN =>
-              consume(SqlToken.L_PAREN)
-              val cols = identifierList()
-              consume(SqlToken.R_PAREN)
-              cols
-            case _ =>
-              Nil
-        consume(SqlToken.VALUES)
-        val q = query()
-        Insert(target, columns, q, spanFrom(t))
+        scanner.lookAhead().token match
+          case SqlToken.INTO =>
+            consume(SqlToken.INTO)
+            val target = qualifiedName()
+            val columns =
+              scanner.lookAhead().token match
+                case SqlToken.L_PAREN =>
+                  consume(SqlToken.L_PAREN)
+                  val cols = identifierList()
+                  consume(SqlToken.R_PAREN)
+                  cols
+                case _ =>
+                  Nil
+            val q = query()
+            InsertInto(target, columns, q, spanFrom(t))
+          case _ =>
+            val target = qualifiedName()
+            val columns =
+              scanner.lookAhead().token match
+                case SqlToken.L_PAREN =>
+                  consume(SqlToken.L_PAREN)
+                  val cols = identifierList()
+                  consume(SqlToken.R_PAREN)
+                  cols
+                case _ =>
+                  Nil
+            consume(SqlToken.VALUES)
+            val q = query()
+            Insert(target, columns, q, spanFrom(t))
+        end match
       case SqlToken.UPSERT =>
         consume(SqlToken.UPSERT)
         val target = qualifiedName()
@@ -328,7 +343,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
               else
                 CreateMode.NoOverwrite
         val tbl = qualifiedName()
-        scanner.lookAhead().token match
+        val t2  = scanner.lookAhead()
+        t2.token match
           case SqlToken.L_PAREN =>
             consume(SqlToken.L_PAREN)
             val elems = tableElems()
@@ -338,7 +354,12 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           case SqlToken.AS =>
             consume(SqlToken.AS)
             val q = query()
-            CreateTableAs(q, tbl, createMode, q, spanFrom(t))
+            CreateTableAs(tbl, createMode, q, spanFrom(t))
+          case _ =>
+            unexpected(t2)
+
+      case SqlToken.INSERT =>
+        insert()
       case SqlToken.DROP =>
         consume(SqlToken.DROP)
         consumeTableToken()
@@ -366,6 +387,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
             case _ =>
               None
         UpdateRows(target, lst, cond, spanFrom(t))
+      case _ =>
+        unexpected(t)
     end match
 
   end update

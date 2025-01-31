@@ -31,15 +31,14 @@ case class Delete(child: Relation, target: TableOrFileName, span: Span) extends 
 
 case class Truncate(target: TableOrFileName, span: Span) extends Update with LeafPlan
 
-// SQL equivalent
+// SQL equivalent operators
 
 enum CreateMode:
   case NoOverwrite
-  case Replace
   case IfNotExists
+  case Replace
 
 case class CreateTableAs(
-    query: Relation,
     target: TableOrFileName,
     createMode: CreateMode,
     child: Relation,
