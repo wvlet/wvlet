@@ -301,7 +301,7 @@ lazy val cli = project
               .process
               .Process(
                 List("npm", "install", "--silent", "--no-audit", "--no-fund"),
-                (uiMain / baseDirectory).value
+                (ThisBuild / baseDirectory).value
               )
               .!
             // Trigger compilation from Scala.js to JS
@@ -311,8 +311,8 @@ lazy val cli = project
               .sys
               .process
               .Process(
-                List("npm", "run", "build", "--silent", "--no-audit", "--no-fund"),
-                (uiMain / baseDirectory).value
+                List("npm", "run", "build-ui", "--silent", "--no-audit", "--no-fund"),
+                (ThisBuild / baseDirectory).value
               )
               .!
           },
