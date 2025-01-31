@@ -10,6 +10,8 @@
   },
   "dependencies": {
     "@duckdb/duckdb-wasm": "^1.29.0",
+    "@tailwindcss/postcss": "^4.0.2",
+    "@tailwindcss/vite": "^4.0.2",
     "apache-arrow": "^19.0.0",
     "monaco-editor": "^0.52.2",
     "rollup": "^4.32.0"
@@ -18,7 +20,7 @@
     "@rollup/plugin-replace": "^6.0.2",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.5.1",
-    "tailwindcss": "^4.0.0",
+    "tailwindcss": "^4.0.2",
     "typescript": "^5.7.3",
     "vite": "^6.0.11"
   }
