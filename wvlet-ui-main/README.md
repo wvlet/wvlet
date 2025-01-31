@@ -29,6 +29,5 @@ sbt:wvlet> clientJS/airframeHttpReload
 
 __Run a local web server for the UI__
 ```sh
-$ cd wvlet-ui-main
-$ npm run dev 
+$ npm run ui
 ```
