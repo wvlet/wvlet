@@ -98,6 +98,10 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
   def toDoc(l: LogicalPlan): Doc =
     def iter(plan: LogicalPlan): Doc =
       plan match
+        case d: DDL =>
+          ddl(d)(using InStatement)
+        case u: Update =>
+          update(u)(using InStatement)
         case r: Relation =>
           query(r, SQLBlock())(using InStatement)
         case p: PackageDef =>
@@ -117,34 +121,6 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       indentedParen(body)
     else
       body
-
-  private def hasSelection(r: Relation, nestingLevel: Int = 0): Boolean =
-    r match
-      case w: WithQuery =>
-        true
-      case s: Selection =>
-        true
-      case s: Sample =>
-        true
-      case g: GroupBy =>
-        // Wvlet allows GroupBy without any projection (select)
-        true
-      case r: RawSQL =>
-        true
-      case s: SetOperation =>
-        // The left operand of set operation will be a selection
-        true
-      case j: Join if nestingLevel > 0 =>
-        // The left operand of join will be a selection
-        true
-      case s: Show =>
-        true
-      case r: RelationInspector =>
-        true
-      case r: UnaryRelation =>
-        hasSelection(r.child, nestingLevel + 1)
-      case _ =>
-        false
 
   /**
     * Print a query matching with SELECT statement in SQL
@@ -174,6 +150,63 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       d
     else
       lines(n.comments.reverse.map(c => toSQLComment(c.str))) + linebreak + d
+
+  def ddl(d: DDL)(using sc: SyntaxContext): Doc =
+    d match
+      case d: DropTable =>
+        group(
+          wl(
+            "drop",
+            "table",
+            if d.ifExists then
+              Some("if exists")
+            else
+              None
+            ,
+            expr(d.table)
+          )
+        )
+      case c: CreateTable =>
+        val columns =
+          if c.tableElems.isEmpty then
+            None
+          else
+            Some(paren(cl(c.tableElems.map(x => expr(x)))))
+        group(
+          wl(
+            "create",
+            "table",
+            if c.ifNotExists then
+              Some("if not exists")
+            else
+              None
+            ,
+            expr(c.table) + columns
+          )
+        )
+      case _ =>
+        unsupportedNode(s"DDL ${d.nodeName}", d.span)
+
+  def update(u: Update)(using sc: SyntaxContext): Doc =
+    u match
+      case c: CreateTableAs =>
+        val sql = query(c.child, SQLBlock())(using InStatement)
+        group(
+          wl(
+            "create",
+            "table",
+            if c.createMode == CreateMode.IfNotExists then
+              Some("if not exists")
+            else
+              None
+            ,
+            expr(c.target),
+            "as",
+            linebreak + sql
+          )
+        )
+      case _ =>
+        unsupportedNode(s"Update ${u.nodeName}", u.span)
 
   /**
     * Print Relation nodes while tracking the parent nodes (e.g., filter, sort) for merging them
@@ -1002,6 +1035,14 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         expr(ExpressionEvaluator.eval(n))
       case e: Exists =>
         wl(text("exists"), expr(e.child))
+      case c: ColumnDef =>
+        wl(
+          expr(c.columnName),
+          text(c.tpe.sqlExpr)
+          // TODO add nullable or other constraints
+          // c.nullable.map(x => text(x.expr)),
+          // c.comment.map(x => text(x.expr))
+        )
       case other =>
         unsupportedNode(s"Expression ${other.nodeName}", other.span)
 

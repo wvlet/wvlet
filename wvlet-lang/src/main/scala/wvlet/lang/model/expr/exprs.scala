@@ -858,18 +858,18 @@ case class SchemaProperty(key: NameExpr, value: Expression, span: Span) extends 
 
 sealed trait TableElement extends Expression
 
-case class ColumnDef(columnName: NameExpr, tpe: ColumnType, span: Span)
+case class ColumnDef(columnName: NameExpr, tpe: DataType, span: Span)
     extends TableElement
     with UnaryExpression:
-  override def toString: String  = s"${columnName.strExpr}:${tpe.tpe}"
+  override def toString: String  = s"${columnName.strExpr}:${tpe.wvExpr}"
   override def child: Expression = columnName
-
-case class ColumnType(tpe: NameExpr, span: Span) extends LeafExpression
-
-case class ColumnDefLike(tableName: NameExpr, includeProperties: Boolean, span: Span)
-    extends TableElement
-    with UnaryExpression:
-  override def child: Expression = tableName
+//
+//case class ColumnType(tpe: NameExpr, span: Span) extends LeafExpression
+//
+//case class ColumnDefLike(tableName: NameExpr, includeProperties: Boolean, span: Span)
+//    extends TableElement
+//    with UnaryExpression:
+//  override def child: Expression = tableName
 
 // Aggregation
 trait GroupingKey extends UnaryExpression:

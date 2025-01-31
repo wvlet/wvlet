@@ -30,6 +30,12 @@ abstract class DataType(val typeName: TypeName, override val typeParams: List[Da
 
   def isUnknownType: Boolean = this == DataType.UnknownType
 
+  def sqlExpr: String =
+    if typeParams.isEmpty then
+      typeName.name
+    else
+      s"${typeName}(${typeParams.map(_.sqlExpr).mkString(",")})"
+
   def wvExpr: String =
     if typeParams.isEmpty then
       typeName.name
