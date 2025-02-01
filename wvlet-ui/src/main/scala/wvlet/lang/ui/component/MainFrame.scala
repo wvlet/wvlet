@@ -13,6 +13,7 @@
  */
 package wvlet.lang.ui.component
 
+import wvlet.airframe.rx.{Rx, RxVar}
 import wvlet.airframe.rx.html.all.*
 import wvlet.airframe.rx.html.svgTags.*
 import wvlet.airframe.rx.html.svgAttrs
@@ -21,6 +22,12 @@ import wvlet.airframe.rx.html.{RxComponent, RxElement}
 object MainFrame extends RxComponent:
 
   val navBarHeightPx = 44
+
+  enum Page:
+    case Editor,
+      Converter
+
+  val selectedPage: RxVar[Page] = Rx.variable(Page.Editor)
 
   object NavBar extends RxElement:
     // Based on https://tailwindui.com/components/application-ui/navigation/navbars
@@ -61,7 +68,25 @@ object MainFrame extends RxComponent:
               cls -> "hidden sm:ml-6 sm:block",
               div(
                 cls -> "flex space-x-4",
-                navItem("Editor", isSelected = true),
+                navItem(
+                  a(
+                    href -> "#editor",
+                    onclick -> { _ =>
+                      selectedPage := Page.Editor
+                    },
+                    "Editor"
+                  ),
+                  isSelected = true
+                ),
+                navItem(
+                  a(
+                    href -> "#converter",
+                    onclick -> { _ =>
+                      selectedPage := Page.Converter
+                    },
+                    "SQL Converter"
+                  )
+                ),
                 navItem(
                   a(
                     href   -> "https://wvlet.org/wvlet/docs/syntax",

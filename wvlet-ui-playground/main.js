@@ -30,6 +30,9 @@ import '../wvlet-ui-main/src/main/scala/wvlet/lang/ui/component/monaco/WvletLang
 //     import('monaco-editor').then((monaco) => {
 //         console.log("Monaco Editor loaded successfully");
 //
+//     // Make the MonacoEditor class accessible from @JSGlobal in Scala.js
+//     window.MonacoEditor = MonacoEditor;
+//
 //
 //     }).catch((error) => {
 //         console.error('Failed to load Monaco Editor:', error);
@@ -38,6 +41,5 @@ import '../wvlet-ui-main/src/main/scala/wvlet/lang/ui/component/monaco/WvletLang
 
 // Make the MonacoEditor class accessible from @JSGlobal in Scala.js
 window.MonacoEditor = MonacoEditor;
-
 // Start Scala.js code
 import('__target__/main.js')
