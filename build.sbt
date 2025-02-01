@@ -423,7 +423,7 @@ lazy val uiMain = project
     buildSettings,
     uiSettings,
     name        := "wvlet-ui-main",
-    description := "UI main code compiled with Vite.js"
+    description := "UI main code for wvlet ui command"
   )
   .dependsOn(ui, lang.js)
 
@@ -434,14 +434,14 @@ lazy val playground = project
     buildSettings,
     uiSettings,
     name        := "wvlet-ui-playground",
-    description := "Playground for wvlet",
+    description := "Online playground for wvlet",
     Compile / sourceGenerators +=
       Def
         .task {
           // Generate a Scala file containing all .wv files in wvlet-stdlib
           val libDir = baseDirectory.value / "src/main/wvlet/Examples"
           val targetFile = (Compile / sourceManaged).value /
-            "wvlet/langu/ui/playground/SampleQuery.scala"
+            "wvlet/lang/ui/playground/SampleQuery.scala"
           val body = generateWvletLib(libDir, "wvlet.lang.ui.playground", "SampleQuery")
           state.value.log.debug(s"Generating stdlib.scala:\n${body}")
           IO.write(targetFile, body)
@@ -459,9 +459,11 @@ def uiSettings: Seq[Setting[?]] = Seq(
   }
 )
 
-def linkerConfig(config: StandardConfig): StandardConfig = config
-  // Check IR works properly since Scala.js 1.18.2 https://github.com/scala-js/scala-js/pull/4867
-  .withCheckIR(true)
-  .withSourceMap(true)
-  .withModuleKind(ModuleKind.ESModule)
-  .withModuleSplitStyle(ModuleSplitStyle.SmallModulesFor(List("wvlet.lang.ui")))
+def linkerConfig(config: StandardConfig): StandardConfig = {
+  config
+    // Check IR works properly since Scala.js 1.18.2 https://github.com/scala-js/scala-js/pull/4867
+    .withCheckIR(true)
+    .withSourceMap(true)
+    .withModuleKind(ModuleKind.ESModule)
+    .withModuleSplitStyle(ModuleSplitStyle.SmallModulesFor(List("wvlet.lang.ui")))
+}
