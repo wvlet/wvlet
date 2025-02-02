@@ -11,7 +11,7 @@ import wvlet.airframe.ulid.ULID
 import wvlet.lang.api.v1.frontend.FileApi.FileRequest
 import wvlet.lang.api.v1.frontend.FrontendRPC.RPCAsyncClient
 import wvlet.lang.api.v1.io.FileEntry
-import wvlet.lang.ui.component.GlobalState.selectedPath
+import wvlet.lang.ui.component.GlobalState.{Page, SelectedPage, selectedPage}
 import wvlet.lang.ui.component.{GlobalState, Icon}
 
 class FileNav(rpcClient: RPCAsyncClient) extends RxElement:
@@ -41,7 +41,7 @@ class FileNav(rpcClient: RPCAsyncClient) extends RxElement:
             onclick -> { e =>
               e.preventDefault()
               hideAll
-              selectedPath := ""
+              selectedPage := GlobalState.SelectedPage(GlobalState.Page.Editor)
             }
           ),
         // List files in the directory
@@ -82,37 +82,45 @@ class FileNav(rpcClient: RPCAsyncClient) extends RxElement:
 
   end NewFileButton
 
-  override def render: RxElement = selectedPath.map { path =>
-    nav(
-      cls -> "flex px-2 h-4 text-sm text-gray-400",
-      ol(role -> "list", cls -> "flex space-x-4 rounded-md px-1 shadow"),
-      rpcClient
-        .FileApi
-        .getPath(FileRequest(path))
-        .map { pathEntries =>
-          var parentEntry = FileEntry("", "", true, true, 0, 0)
-          val elems       = List.newBuilder[PathElem]
-          // home directory
-          elems +=
-            PathElem(Icon.home(cls -> "size-4"), FileEntry("", "", true, true, 0, 0), isRoot = true)
+  override def render: RxElement = selectedPage
+    .map { p =>
+      p.params.find(_._1 == "path").map(_._2).getOrElse("")
+    }
+    .map { path =>
+      nav(
+        cls -> "flex px-2 h-4 text-sm text-gray-400",
+        ol(role -> "list", cls -> "flex space-x-4 rounded-md px-1 shadow"),
+        rpcClient
+          .FileApi
+          .getPath(FileRequest(path))
+          .map { pathEntries =>
+            var parentEntry = FileEntry("", "", true, true, 0, 0)
+            val elems       = List.newBuilder[PathElem]
+            // home directory
+            elems +=
+              PathElem(
+                Icon.home(cls -> "size-4"),
+                FileEntry("", "", true, true, 0, 0),
+                isRoot = true
+              )
 
-          pathEntries.foreach { p =>
-            elems += PathElem(p.name, parentEntry)
-            parentEntry = p
-          }
-          // If the last path is directory, add "..." to lookup files in the directory
-          if parentEntry.isDirectory then
-            elems += PathElem("...", parentEntry)
+            pathEntries.foreach { p =>
+              elems += PathElem(p.name, parentEntry)
+              parentEntry = p
+            }
+            // If the last path is directory, add "..." to lookup files in the directory
+            if parentEntry.isDirectory then
+              elems += PathElem("...", parentEntry)
 
-          pathElems := elems.result()
-          // Add a dummy element
-          span()
-        },
-      pathElems.map { pathElems =>
-        Seq[RxElement](pathElems, NewFileButton(path, pathElems.last.parentEntry))
-      }
-    )
-  }
+            pathElems := elems.result()
+            // Add a dummy element
+            span()
+          },
+        pathElems.map { pathElems =>
+          Seq[RxElement](pathElems, NewFileButton(path, pathElems.last.parentEntry))
+        }
+      )
+    }
 
 end FileNav
 
@@ -161,7 +169,7 @@ class FileSelectorPopup extends RxElement:
                   id       -> s"menu-item-${i}",
                   onclick -> { (event: MouseEvent) =>
                     event.preventDefault()
-                    selectedPath := e.path
+                    selectedPage := SelectedPage(Page.Editor, List("path" -> e.path))
                   },
                   rx.html.when(e.isDirectory, Icon.folder),
                   span(cls -> "pl-1", e.name)
