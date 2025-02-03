@@ -17,7 +17,7 @@
     "@tailwindcss/vite": "^4.0.3",
     "apache-arrow": "^19.0.0",
     "monaco-editor": "^0.52.2",
-    "rollup": "^4.32.0"
+    "rollup": "^4.34.1"
   },
   "devDependencies": {
     "@rollup/plugin-replace": "^6.0.2",
