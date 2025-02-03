@@ -27,8 +27,8 @@ class SQLPreview(currentQuery: CurrentQuery, windowSize: WindowSize, queryRunner
       CompilationUnit(SourceFile.fromString(q.name, q.query))
     }
 
-  override def onMount: Unit =
-    super.onMount
+  override def onMount(node: Any): Unit =
+    super.onMount(node)
     editor.enableWordWrap()
     monitor = currentQuery
       .wvletQueryRequest

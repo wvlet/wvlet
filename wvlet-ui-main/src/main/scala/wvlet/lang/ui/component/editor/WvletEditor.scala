@@ -75,8 +75,8 @@ class WvletMonacoEditor(
 
   private var errorMonitor: Cancelable = Cancelable.empty
 
-  override def onMount: Unit =
-    super.onMount
+  override def onMount(node: Any): Unit =
+    super.onMount(node)
     errorMonitor = errorReports.subscribe { (errors: List[QueryError]) =>
       // TODO set error markers
     }

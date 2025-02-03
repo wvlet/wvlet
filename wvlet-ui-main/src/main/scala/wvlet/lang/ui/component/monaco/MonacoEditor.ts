@@ -47,6 +47,7 @@ export class MonacoEditor {
         // Use relative font size (rem) to adjust the editor font size
         var fontSize = 0.80 * parseFloat(getComputedStyle(document.documentElement).fontSize);
 
+
         this.editor = monaco.editor.create(document.getElementById(this.id), {
             value: this.initialText,
             language: this.lang,

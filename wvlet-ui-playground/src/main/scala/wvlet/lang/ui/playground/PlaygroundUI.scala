@@ -4,8 +4,9 @@ import wvlet.airframe.Design
 import wvlet.airframe.rx.html.RxElement
 import wvlet.log.LogSupport
 import wvlet.airframe.rx.html.all.*
+import wvlet.lang.ui.component.GlobalState.Page
 import wvlet.lang.ui.component.monaco.EditorBase
-import wvlet.lang.ui.component.{Icon, MainFrame}
+import wvlet.lang.ui.component.{GlobalState, Icon, MainFrame}
 import wvlet.lang.ui.playground.PlaygroundUI.{editorMarginHeight, queryNavigatorWidth}
 
 import scalajs.js
@@ -31,8 +32,21 @@ object PlaygroundUI extends LogSupport:
     }
 
   def main(args: Array[String]): Unit =
-    val ui = design.newSession.build[PlaygroundUI]
+    val ui = design.newSession.build[UISelector]
     MainFrame(ui).renderTo("main")
+
+  class UISelector(playgroundUI: PlaygroundUI, converterUI: ConverterUI) extends RxElement:
+    override def render = div(
+      GlobalState
+        .selectedPage
+        .map(_.page)
+        .map {
+          case Page.Editor =>
+            playgroundUI
+          case Page.Converter =>
+            converterUI
+        }
+    )
 
 end PlaygroundUI
 
