@@ -5,8 +5,6 @@ import wvlet.airframe.rx.html.RxElement
 import wvlet.airframe.rx.html.all.*
 import wvlet.lang.ui.component.GlobalState.{Page, SelectedPage}
 
-import scala.collection.immutable.ListMap
-
 class URLParamManager extends RxElement:
   initFromURL()
 
