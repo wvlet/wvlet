@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@duckdb/duckdb-wasm": "^1.29.0",
-    "@tailwindcss/postcss": "^4.0.3",
+    "@tailwindcss/postcss": "^4.0.5",
     "@tailwindcss/vite": "^4.0.5",
     "apache-arrow": "^19.0.0",
     "monaco-editor": "^0.52.2",
