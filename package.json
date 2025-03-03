@@ -14,7 +14,7 @@
   "dependencies": {
     "@duckdb/duckdb-wasm": "^1.29.0",
     "@tailwindcss/postcss": "^4.0.9",
-    "@tailwindcss/vite": "^4.0.8",
+    "@tailwindcss/vite": "^4.0.9",
     "apache-arrow": "^19.0.1",
     "monaco-editor": "^0.52.2",
     "rollup": "^4.34.8"
