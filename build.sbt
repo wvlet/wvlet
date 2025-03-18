@@ -1,7 +1,7 @@
 import scala.scalanative.build.BuildTarget
 
-val AIRFRAME_VERSION    = "2025.1.0"
-val AIRSPEC_VERSION     = "2025.1.0"
+val AIRFRAME_VERSION    = "2025.1.8"
+val AIRSPEC_VERSION     = "2025.1.8"
 val TRINO_VERSION       = "472"
 val AWS_SDK_VERSION     = "2.20.146"
 val SCALAJS_DOM_VERSION = "2.8.0"
@@ -91,8 +91,8 @@ def generateWvletLib(path: File, packageName: String, className: String): String
       methodNames += methodName
       val content = IO
         .read(f)
-        .replaceAll("""\$""", """\$\$""")
-        .replaceAll("""\"\"\"""", """\${"\\"\\"\\""}""")
+        .replaceAll("""\\$""", """\\$\\$""")
+        .replaceAll("""\"\"\".""", """\\${"\\\"\\\"\\\"""}""")
       s"""|  def _${methodName}: String = s\"\"\"${content}\"\"\"
           |""".stripMargin
     }
