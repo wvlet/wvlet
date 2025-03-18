@@ -91,8 +91,8 @@ def generateWvletLib(path: File, packageName: String, className: String): String
       methodNames += methodName
       val content = IO
         .read(f)
-        .replaceAll("""\\$""", """\\$\\$""")
-        .replaceAll("""\"\"\".""", """\\${"\\\"\\\"\\\"""}""")
+        .replaceAll("""\$""", """\$\$""")
+        .replaceAll("""\"\"\"""", """\${"\\"\\"\\""}""")
       s"""|  def _${methodName}: String = s\"\"\"${content}\"\"\"
           |""".stripMargin
     }
