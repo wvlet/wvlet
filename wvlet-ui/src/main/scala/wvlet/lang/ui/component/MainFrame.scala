@@ -14,8 +14,6 @@
 package wvlet.lang.ui.component
 
 import wvlet.airframe.rx.html.all.*
-import wvlet.airframe.rx.html.svgTags.*
-import wvlet.airframe.rx.html.svgAttrs
 import wvlet.airframe.rx.html.{RxComponent, RxElement}
 
 object MainFrame extends RxComponent:
