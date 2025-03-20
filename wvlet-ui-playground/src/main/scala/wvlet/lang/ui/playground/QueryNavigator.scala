@@ -32,6 +32,7 @@ class QueryNavigator(currentQuery: CurrentQuery, queryEditor: QueryEditor) exten
                       q.name,
                       onclick -> { e =>
                         e.preventDefault()
+                        MainFrame.showSideBar := false
                         currentQuery.setQuery(q)
                         queryEditor.setText(q.query)
                       }
