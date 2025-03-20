@@ -59,12 +59,24 @@ class PlaygroundUI(
     div(
       cls   -> "flex",
       style -> s"width: max-screen; height: calc(100vh - ${MainFrame.navBarHeightPx}px);",
-      div(cls -> "w-40 h-full", fileExplorer),
+      div(cls -> "hidden md:block w-40 h-full", fileExplorer),
+      div(
+        cls -> "md:hidden",
+        MainFrame
+          .showSideBar
+          .filter(_ == true)
+          .map { _ =>
+            div(
+              cls   -> "fixed index-0 z-50 h-full",
+              style -> s"top: ${MainFrame.navBarHeightPx}px;",
+              fileExplorer
+            )
+          }
+      ),
       div(
         cls -> "w-full h-full bg-slate-900",
         div(
-          cls   -> "flex flex-col h-full",
-          style -> s"width: calc(100vw - ${queryNavigatorWidth}px);",
+          cls -> "flex flex-col h-full",
           // Editor header
           div(
             cls -> "h-7 text-xs font-light bg-stone-900 text-slate-400 p-2",
