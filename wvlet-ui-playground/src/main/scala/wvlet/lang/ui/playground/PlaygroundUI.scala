@@ -61,17 +61,19 @@ class PlaygroundUI(
       style -> s"width: max-screen; height: calc(100vh - ${MainFrame.navBarHeightPx}px);",
       div(cls -> "hidden md:block w-40 h-full", fileExplorer),
       div(
-        cls -> "md:hidden",
         MainFrame
           .showSideBar
-          .filter(_ == true)
-          .map { _ =>
-            div(
-              cls   -> "fixed index-0 z-50 h-full",
-              style -> s"top: ${MainFrame.navBarHeightPx}px;",
-              fileExplorer
-            )
-          }
+          .map {
+            case true =>
+              cls -> "md:hidden"
+            case false =>
+              cls -> "hidden"
+          },
+        div(
+          cls   -> "fixed index-0 z-50 h-full",
+          style -> s"top: ${MainFrame.navBarHeightPx}px;",
+          fileExplorer
+        )
       ),
       div(
         cls -> "w-full h-full bg-slate-900",
