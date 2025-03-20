@@ -19,8 +19,8 @@ class QueryEditor(currentQuery: CurrentQuery, windowSize: WindowSize)
 
   private var monitor = Cancelable.empty
 
-  override def onMount: Unit =
-    super.onMount
+  override def onMount(node: Any): Unit =
+    super.onMount(node)
     monitor = Rx
       .intervalMillis(100)
       .map { _ =>
