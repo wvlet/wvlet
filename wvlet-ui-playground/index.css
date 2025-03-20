@@ -15,5 +15,5 @@
 
 
 body {
-    @apply text-white bg-gray-800 text-sky-300;
+    @apply text-white bg-gray-800
 }
