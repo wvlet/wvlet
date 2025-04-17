@@ -1,7 +1,7 @@
 import scala.scalanative.build.BuildTarget
 
-val AIRFRAME_VERSION    = "2025.1.9"
-val AIRSPEC_VERSION     = "2025.1.9"
+val AIRFRAME_VERSION    = "2025.1.10"
+val AIRSPEC_VERSION     = "2025.1.10"
 val TRINO_VERSION       = "474"
 val AWS_SDK_VERSION     = "2.20.146"
 val SCALAJS_DOM_VERSION = "2.8.0"
