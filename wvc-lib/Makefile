@@ -10,7 +10,7 @@ test-select-rust:
 	$(MAKE) rust ARGS="-q 'select 1'"
 
 clean:
-	rm -rf $(TARGET)/test-* $(OUT_DIR)/libwvlet*
+	rm -rf $(TARGET)/test-* $(OUT_DIR)/*.a $(OUT_DIR)/*.so
 
 # check is Mac OS
 ifeq ($(shell uname),Darwin)
@@ -29,7 +29,7 @@ LIB_NAME:=wvlet
 LINKER_OPTS:=$(addprefix -L, $(subst :, ,$(LIB_DIRS))) -l$(LIB_NAME) -lpthread -lcrypto
 
 $(LIB_SHARED):
-	. && ./sbt "wvcLib/nativeLink"
+	cd .. && ./sbt "wvcLib/nativeLink"
 
 # Ensure the static library is built
 $(STATIC_LIB):

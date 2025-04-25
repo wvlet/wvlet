@@ -7,7 +7,7 @@ ThisBuild / libraryDependencySchemes ++=
   )
 
 // ThisBuild / resolvers ++= Resolver.sonatypeOssRepos("snapshots")
-val AIRFRAME_VERSION = sys.env.getOrElse("AIRFRAME_VERSION", "2025.1.9")
+val AIRFRAME_VERSION = sys.env.getOrElse("AIRFRAME_VERSION", "2025.1.10")
 
 addSbtPlugin("org.scalameta"      % "sbt-scalafmt"  % "2.5.4")
 addSbtPlugin("com.eed3si9n"       % "sbt-buildinfo" % "0.13.1")
@@ -20,7 +20,7 @@ addSbtPlugin("org.jetbrains.scala" % "sbt-ide-settings" % "1.1.2")
 addSbtPlugin("io.spray" % "sbt-revolver" % "0.10.0")
 
 // For Scala.js
-val SCALAJS_VERSION                    = sys.env.getOrElse("SCALAJS_VERSION", "1.18.2")
+val SCALAJS_VERSION                    = sys.env.getOrElse("SCALAJS_VERSION", "1.19.0")
 addSbtPlugin("org.scala-js"       % "sbt-scalajs"              % SCALAJS_VERSION)
 addSbtPlugin("org.portable-scala" % "sbt-scalajs-crossproject" % "1.3.2")
 
@@ -40,7 +40,7 @@ addSbtPlugin("com.github.sbt" % "sbt-dynver" % "5.1.0")
 addSbtPlugin("org.xerial.sbt" % "sbt-pack" % "0.20")
 
 // For compiling model classes from SQL templates
-libraryDependencies += "org.duckdb" % "duckdb_jdbc" % "1.2.1"
+libraryDependencies += "org.duckdb" % "duckdb_jdbc" % "1.2.2.0"
 addSbtPlugin("org.xerial.sbt" % "sbt-sql" % "0.19")
 
 scalacOptions ++= Seq("-deprecation", "-feature")

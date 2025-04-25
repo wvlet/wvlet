@@ -1,7 +1,7 @@
 import scala.scalanative.build.{BuildTarget, GC, Mode}
 
-val AIRFRAME_VERSION    = "2025.1.9"
-val AIRSPEC_VERSION     = "2025.1.9"
+val AIRFRAME_VERSION    = "2025.1.10"
+val AIRSPEC_VERSION     = "2025.1.10"
 val TRINO_VERSION       = "474"
 val AWS_SDK_VERSION     = "2.20.146"
 val SCALAJS_DOM_VERSION = "2.8.0"
@@ -137,7 +137,7 @@ lazy val lang = crossProject(JVMPlatform, JSPlatform, NativePlatform)
         "org.wvlet.airframe" %% "airframe-config" % AIRFRAME_VERSION,
         "org.wvlet.airframe" %% "airframe-ulid"   % AIRFRAME_VERSION,
         // For resolving parquet file schema
-        "org.duckdb" % "duckdb_jdbc" % "1.2.1",
+        "org.duckdb" % "duckdb_jdbc" % "1.2.2.0",
         // Add a reference implementation of the compiler
         "org.scala-lang" %% "scala3-compiler" % SCALA_3 % Test
       ),
@@ -348,7 +348,7 @@ lazy val runner = project
         "org.wvlet.airframe"           %% "airframe-launcher" % AIRFRAME_VERSION,
         "com.github.ben-manes.caffeine" % "caffeine"          % "3.2.0",
         "org.apache.arrow"              % "arrow-vector"      % "18.2.0",
-        "org.duckdb"                    % "duckdb_jdbc"       % "1.2.1",
+        "org.duckdb"                    % "duckdb_jdbc"       % "1.2.2.0",
         "io.trino"                      % "trino-jdbc"        % TRINO_VERSION,
         // exclude() and jar() are necessary to avoid https://github.com/sbt/sbt/issues/7407
         // tpc-h connector neesd to download GB's of jar, so excluding it
@@ -465,7 +465,7 @@ def uiSettings: Seq[Setting[?]] = Seq(
 
 def linkerConfig(config: StandardConfig): StandardConfig = {
   config
-    // Check IR works properly since Scala.js 1.18.2 https://github.com/scala-js/scala-js/pull/4867
+    // Check IR works properly since Scala.js 1.19.0 https://github.com/scala-js/scala-js/pull/4867
     .withCheckIR(true)
     .withSourceMap(true)
     .withModuleKind(ModuleKind.ESModule)

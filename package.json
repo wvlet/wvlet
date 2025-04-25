@@ -13,20 +13,20 @@
   },
   "dependencies": {
     "@duckdb/duckdb-wasm": "^1.29.0",
-    "@tailwindcss/postcss": "^4.1.2",
-    "@tailwindcss/vite": "^4.1.2",
+    "@tailwindcss/postcss": "^4.1.4",
+    "@tailwindcss/vite": "^4.1.4",
     "apache-arrow": "^19.0.1",
     "monaco-editor": "^0.52.2",
-    "rollup": "^4.39.0"
+    "rollup": "^4.40.0"
   },
   "devDependencies": {
     "@rollup/plugin-replace": "^6.0.2",
     "autoprefixer": "^10.4.21",
-    "jsdom": "^26.0.0",
+    "jsdom": "^26.1.0",
     "postcss": "^8.5.3",
     "tailwindcss": "^4.0.17",
-    "typescript": "^5.8.2",
-    "vite": "^6.2.5",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.3",
     "vite-plugin-monaco-editor": "^1.1.0"
   }
 }
