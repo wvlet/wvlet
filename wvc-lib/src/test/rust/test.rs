@@ -1,10 +1,9 @@
 use std::ffi::CString;
 use std::os::raw::c_char;
-use std::os::raw::c_void;
 use std::env;
+use std::process::exit;
 
 extern "C" {
-    fn ScalaNativeInit() -> i32;
     fn wvlet_compile_main(json: *const c_char) -> i32;
 }
 
@@ -18,9 +17,10 @@ fn main() {
             .collect::<Vec<String>>()
             .join(","));
 
-    let query = CString::new(json_array).unwrap();
+    let query = CString::new(json_array).expect("Failed to create CString");
 
     unsafe {
-        wvlet_compile_main(query.as_ptr());
+        let exit_code = wvlet_compile_main(query.as_ptr());
+        exit(exit_code);
     }
 }

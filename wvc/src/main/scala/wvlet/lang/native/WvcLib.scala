@@ -17,7 +17,6 @@ object WvcLib extends LogSupport:
   def compile_main(argJson: CString): Int =
     try
       val json = fromCString(argJson)
-      trace(s"args: ${json}")
       val args = MessageCodec.of[Array[String]].fromJson(json)
       WvcMain.main(args)
       0
