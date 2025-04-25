@@ -1,4 +1,4 @@
-import scala.scalanative.build.BuildTarget
+import scala.scalanative.build.{BuildTarget, GC, Mode}
 
 val AIRFRAME_VERSION    = "2025.1.10"
 val AIRSPEC_VERSION     = "2025.1.10"
@@ -188,6 +188,10 @@ lazy val wvcLib = project
       c.withBuildTarget(BuildTarget.libraryDynamic)
         // Generates libwvlet.so, libwvlet.dylib, libwvlet.dll
         .withBaseName("wvlet")
+        .withMultithreading(true)
+        .withSourceLevelDebuggingConfig(_.enableAll) // enable generation of debug information
+        // Disable GC to avoid Segmentation Fault
+        .withGC(GC.none)
     }
   )
   .dependsOn(wvc)

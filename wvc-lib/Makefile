@@ -59,3 +59,4 @@ c: $(TARGET)/test-c
 
 $(TARGET)/test-c: src/test/c/test.c
 	gcc $(LINKER_OPTS) $< -o $@
+
