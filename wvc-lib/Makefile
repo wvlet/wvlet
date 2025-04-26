@@ -4,11 +4,6 @@ OUT_DIR=$(TARGET)/scala-$(SCALA_VERSION)
 
 ARGS:="--help"
 
-test: $(OUT_DIR)/libwvlet.dylib rust c++ c
-
-test-select-rust:
-	$(MAKE) rust ARGS="-q 'select 1'"
-
 clean:
 	rm -rf $(TARGET)/test-* $(OUT_DIR)/*.a $(OUT_DIR)/*.so
 
@@ -28,35 +23,32 @@ endif
 LIB_NAME:=wvlet
 LINKER_OPTS:=$(addprefix -L, $(subst :, ,$(LIB_DIRS))) -l$(LIB_NAME) -lpthread -lcrypto
 
+test: $(LIB_SHARED)
+	$(MAKE) rust c c++ ARGS="-q 'select 1'"
+
 $(LIB_SHARED):
+	$(MAKE) -p $(OUT_DIR)
 	cd .. && ./sbt "wvcLib/nativeLink"
 
 # Ensure the static library is built
 $(STATIC_LIB):
 	cd .. && ./sbt "wvcLib/nativeLinkStatic"
 
-# Add static library to the test targets
-test: $(OUT_DIR)/libwvlet.dylib $(STATIC_LIB) rust c++ c
-
-# Add static library to the test targets
-test: $(OUT_DIR)/libwvlet.dylib $(STATIC_LIB) rust c++ c
-
 rust: $(TARGET)/test-rust
 	$(RUN_OPTS) $< $(ARGS)
 
-$(TARGET)/test-rust: src/test/rust/test.rs $(LIB) $(STATIC_LIB)
-	mkdir -p $(TARGET)
+$(TARGET)/test-rust: src/test/rust/test.rs $(LIB_SHARED)
 	rustc $(LINKER_OPTS) $< -o $@
 
 c++: $(TARGET)/test-c++
 	$(RUN_OPTS) $< $(ARGS)
 
-$(TARGET)/test-c++: src/test/c++/test.cpp
+$(TARGET)/test-c++: src/test/c++/test.cpp $(LIB_SHARED)
 	g++ $(LINKER_OPTS) $< -o $@
 
 c: $(TARGET)/test-c
 	$(RUN_OPTS) $< $(ARGS)
 
-$(TARGET)/test-c: src/test/c/test.c
+$(TARGET)/test-c: src/test/c/test.c $(LIB_SHARED)
 	gcc $(LINKER_OPTS) $< -o $@
 
