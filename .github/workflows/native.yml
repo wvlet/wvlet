@@ -60,6 +60,8 @@ jobs:
           distribution: 'temurin'
           java-version: '23'
           cache: sbt
+      - name: Install libgc
+        run: sudo apt-get install libgc-dev
       - name: Set SCALA_VERSION env
         run: |
           SCALA_VERSION=$(cat SCALA_VERSION)
