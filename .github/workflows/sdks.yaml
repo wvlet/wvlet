@@ -7,8 +7,28 @@ on:
       - main
 
 jobs:
-  python:
+  dll:
+    name: DLL
+    runs-on: ubuntu-latest
+    steps:
+        - uses: actions/checkout@v4
+        - name: Set up Java 23
+          uses: actions/setup-java@v4
+          with:
+            distribution: 'temurin'
+            java-version: '23'
+            cache: sbt
+        - name: Install Rust
+          run: rustup update
+        - name: Install libgc
+          run: sudo apt-get install libgc-dev
+        - name: Build DLL
+          run: ./sbt "wvcLib/nativeLink"
+        - name: Test DLL
+          run: make test
+          working-directory: wvc-lib
 
+  python:
     runs-on: ubuntu-latest
     strategy:
       matrix:
