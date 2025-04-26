@@ -21,7 +21,8 @@ LIB_STATIC:=$(OUT_DIR)/libwvlet.a
 endif
 
 LIB_NAME:=wvlet
-LINKER_OPTS:=$(addprefix -L, $(subst :, ,$(LIB_DIRS))) -l$(LIB_NAME) -lpthread -lcrypto
+LINKER_OPTS:=$(addprefix -L, $(subst :, ,$(LIB_DIRS)))
+LIBS:=-l$(LIB_NAME) -lpthread -lcrypto
 
 test: $(LIB_SHARED)
 	$(MAKE) rust c c++ ARGS="-q 'select 1'"
@@ -38,17 +39,17 @@ rust: $(TARGET)/test-rust
 	$(RUN_OPTS) $< $(ARGS)
 
 $(TARGET)/test-rust: src/test/rust/test.rs $(LIB_SHARED)
-	rustc $(LINKER_OPTS) $< -o $@
+	rustc $(LINKER_OPTS) $< $(LIBS) -o $@
 
 c++: $(TARGET)/test-c++
 	$(RUN_OPTS) $< $(ARGS)
 
 $(TARGET)/test-c++: src/test/c++/test.cpp $(LIB_SHARED)
-	g++ $(LINKER_OPTS) $< -o $@
+	g++ $(LINKER_OPTS) $< $(LIBS) -o $@
 
 c: $(TARGET)/test-c
 	$(RUN_OPTS) $< $(ARGS)
 
 $(TARGET)/test-c: src/test/c/test.c $(LIB_SHARED)
-	gcc -I$(OUT_DIR) $(LINKER_OPTS) $< -o $@ -Wl,-rpath,$(OUT_DIR)
+	gcc $(LINKER_OPTS) $< $(LIBS) -o $@
 
