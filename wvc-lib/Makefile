@@ -50,5 +50,5 @@ c: $(TARGET)/test-c
 	$(RUN_OPTS) $< $(ARGS)
 
 $(TARGET)/test-c: src/test/c/test.c $(LIB_SHARED)
-	gcc $(LINKER_OPTS) $< -o $@
+	gcc -I$(OUT_DIR) $(LINKER_OPTS) $< -o $@ -Wl,-rpath,$(OUT_DIR)
 
