@@ -52,4 +52,3 @@ c: $(TARGET)/test-c
 
 $(TARGET)/test-c: src/test/c/test.c $(LIB_SHARED)
 	gcc $(LINKER_OPTS) $< $(LIBS) -o $@
-
