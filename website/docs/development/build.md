@@ -49,7 +49,7 @@ The server will be reloaded automatically when you update .md files.
 Wvlet can be compiled to a native library using Scala Native, which compiles Scala code to a native binary for the target OS and CPU architecture.
 
 :::info
-To build native libraries, you need to install `clang` and `llvm`, and `libstdc++-12-dev` on your system. See also [Scala Native Setup](https://scala-native.org/en/latest/user/setup.html). 
+To build native libraries, you need to install `clang`, `llvm`, `libstdc++-12-dev`, and `libgc` (Boehm GC) on your system. See also [Scala Native Setup](https://scala-native.org/en/latest/user/setup.html). 
 :::
 
 To build libwvlet.so (Linux) or libwvlet.dylib (macOS), run the following command:
@@ -59,7 +59,7 @@ $ ./sbt
 sbt:wvlet> wvcLib/nativeLink 
 ```
 
-The library files will be generated in `wvc-lib/target/scala-3.3.4/` directory.
+The library files will be generated in `wvc-lib/target/scala-(SCALA_VERSION)/` directory.
 
 You can use methods defined in this library from C, C++, Rust, etc. 
 
@@ -69,10 +69,7 @@ $ cd wvc-lib
 $ make rust
 ```
 
-:::warning
-Dynamic link library libwvlet is still experimental due to miscellaneous issues (e.g., segmentation fault). 
-:::
-
+Test compiling Wvlet into SQL:
 ```
 $ make rust ARGS='-q "select 1"'
 ```
