@@ -42,9 +42,9 @@ jobs:
 #            arch: arm64
 #            name: mac
 # TODO It seems arm64 is not available yet (2024-11)
-#          - os: ubuntu-latest
-#            arch: arm64
-#            name: linux
+          - os: ubuntu-24.04-arm
+            arch: arm64
+            name: linux
           - os: ubuntu-latest
             arch: x64
             name: linux
