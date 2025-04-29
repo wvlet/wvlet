@@ -77,7 +77,7 @@ jobs:
       - name: Upload native binary
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.name }}-${{ matrix.arch }}/libwvlet.${{ matrix.suffix }}
+          name: ${{ matrix.name }}-${{ matrix.arch }}
           path: wvc-lib/target/scala-${{ env.SCALA_VERSION }}/libwvlet.${{ matrix.suffix }}
   collect_artifact:
     name: Collect wvc dll
@@ -89,3 +89,4 @@ jobs:
         with:
           name: wvc-lib
           delete-merged: true
+          separate-directories: true
