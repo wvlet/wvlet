@@ -24,6 +24,3 @@ jobs:
           author-name: 'scala-steward'
           author-email: 'leo+bot@xerial.org'
           other-args: '--do-not-fork --add-labels'
-      # Prevent GitHub to suspend actions after 60 days of no activity
-      - name: Keep Alive GitHub Action
-        uses: gautamkrishnar/keepalive-workflow@v2
