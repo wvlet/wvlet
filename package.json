@@ -9,7 +9,8 @@
     "ui": "npm run dev --workspace=wvlet-ui-main",
     "build-ui": "npm run build --workspace=wvlet-ui-main",
     "playground": "npm run dev --workspace=wvlet-ui-playground",
-    "build-playground": "npm run build --workspace=wvlet-ui-playground"
+    "build-playground": "npm run build --workspace=wvlet-ui-playground",
+    "build-vscode-extension": "cd vscode-wvlet && npm install && npm run package"
   },
   "dependencies": {
     "@duckdb/duckdb-wasm": "^1.29.0",
