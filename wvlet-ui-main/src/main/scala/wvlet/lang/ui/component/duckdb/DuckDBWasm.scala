@@ -57,14 +57,59 @@ object Arrow extends LogSupport:
       case x: js.Any =>
         x
 
+  private def formatDateValue(value: Any, typeName: String): Any =
+    val normalizedType = typeName.toLowerCase.trim
+    normalizedType match
+      case tpe if tpe.startsWith("date32") || tpe.contains("date32") =>
+        // Date32 represents days since Unix epoch (1970-01-01)
+        value match
+          case days: Double =>
+            val msPerDay = 24 * 60 * 60 * 1000L
+            val epochMs = (days * msPerDay).toLong
+            new js.Date(epochMs.toDouble).toISOString().split("T")(0)
+          case days: Int =>
+            val msPerDay = 24 * 60 * 60 * 1000L
+            val epochMs = days.toLong * msPerDay
+            new js.Date(epochMs.toDouble).toISOString().split("T")(0)
+          case _ => value
+      case tpe if tpe.startsWith("date64") || tpe.contains("date64") =>
+        // Date64 represents milliseconds since Unix epoch
+        value match
+          case ms: Double =>
+            new js.Date(ms).toISOString().split("T")(0)
+          case ms: Long =>
+            new js.Date(ms.toDouble).toISOString().split("T")(0)
+          case _ => value
+      case "date" =>
+        // Handle DuckDB's native date type which might be represented as days since epoch
+        value match
+          case days: Double =>
+            val msPerDay = 24 * 60 * 60 * 1000L
+            val epochMs = (days * msPerDay).toLong
+            new js.Date(epochMs.toDouble).toISOString().split("T")(0)
+          case days: Int =>
+            val msPerDay = 24 * 60 * 60 * 1000L
+            val epochMs = days.toLong * msPerDay
+            new js.Date(epochMs.toDouble).toISOString().split("T")(0)
+          case _ => value
+      case _ => value
+
   extension (t: ArrowTable)
-    def asScalaArray: Seq[Seq[Any]] = t
-      .toArray()
-      .toSeq
-      .map { row =>
-        val dict = row.asInstanceOf[js.Dictionary[js.Any]]
-        dict.map(_._2).toSeq
-      }
+    def asScalaArray: Seq[Seq[Any]] = 
+      val schema = t.schema
+      val fields = schema.fields.toSeq
+      val fieldTypes = fields.map(f => f.`type`.toString.toLowerCase)
+      
+      t.toArray()
+        .toSeq
+        .map { row =>
+          val dict = row.asInstanceOf[js.Dictionary[js.Any]]
+          val values = dict.map(_._2).toSeq
+          // Format date values based on their types
+          values.zip(fieldTypes).map { case (value, typeName) =>
+            formatDateValue(eval(value), typeName)
+          }
+        }
 
   @js.native
   @JSImport("arrow", "Schema")
