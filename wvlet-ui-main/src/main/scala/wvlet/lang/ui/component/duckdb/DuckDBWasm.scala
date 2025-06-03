@@ -63,34 +63,55 @@ object Arrow extends LogSupport:
       case tpe if tpe.startsWith("date32") || tpe.contains("date32") =>
         // Date32 represents days since Unix epoch (1970-01-01)
         value match
+          case null => null
           case days: Double =>
-            val msPerDay = 24 * 60 * 60 * 1000L
-            val epochMs = (days * msPerDay).toLong
-            new js.Date(epochMs.toDouble).toISOString().split("T")(0)
+            try
+              val msPerDay = 24 * 60 * 60 * 1000L
+              val epochMs = (days * msPerDay).toLong
+              new js.Date(epochMs.toDouble).toISOString().split("T")(0)
+            catch
+              case _: Throwable => value
           case days: Int =>
-            val msPerDay = 24 * 60 * 60 * 1000L
-            val epochMs = days.toLong * msPerDay
-            new js.Date(epochMs.toDouble).toISOString().split("T")(0)
+            try
+              val msPerDay = 24 * 60 * 60 * 1000L
+              val epochMs = days.toLong * msPerDay
+              new js.Date(epochMs.toDouble).toISOString().split("T")(0)
+            catch
+              case _: Throwable => value
           case _ => value
       case tpe if tpe.startsWith("date64") || tpe.contains("date64") =>
         // Date64 represents milliseconds since Unix epoch
         value match
+          case null => null
           case ms: Double =>
-            new js.Date(ms).toISOString().split("T")(0)
+            try
+              new js.Date(ms).toISOString().split("T")(0)
+            catch
+              case _: Throwable => value
           case ms: Long =>
-            new js.Date(ms.toDouble).toISOString().split("T")(0)
+            try
+              new js.Date(ms.toDouble).toISOString().split("T")(0)
+            catch
+              case _: Throwable => value
           case _ => value
       case "date" =>
         // Handle DuckDB's native date type which might be represented as days since epoch
         value match
+          case null => null
           case days: Double =>
-            val msPerDay = 24 * 60 * 60 * 1000L
-            val epochMs = (days * msPerDay).toLong
-            new js.Date(epochMs.toDouble).toISOString().split("T")(0)
+            try
+              val msPerDay = 24 * 60 * 60 * 1000L
+              val epochMs = (days * msPerDay).toLong
+              new js.Date(epochMs.toDouble).toISOString().split("T")(0)
+            catch
+              case _: Throwable => value
           case days: Int =>
-            val msPerDay = 24 * 60 * 60 * 1000L
-            val epochMs = days.toLong * msPerDay
-            new js.Date(epochMs.toDouble).toISOString().split("T")(0)
+            try
+              val msPerDay = 24 * 60 * 60 * 1000L
+              val epochMs = days.toLong * msPerDay
+              new js.Date(epochMs.toDouble).toISOString().split("T")(0)
+            catch
+              case _: Throwable => value
           case _ => value
       case _ => value
 
