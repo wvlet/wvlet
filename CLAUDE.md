@@ -40,21 +40,22 @@ sbt scalafmtCheck
 # Run all tests
 ./sbt test
 
+
 # Run specific module tests
 ./sbt "runner/test"
+./sbt "langJVM/test"
 
 # Run specific test class
-./sbt "testOnly *BasicSpec"
+./sbt "runner/testOnly *BasicSpec"
+
+# Run a specific .wv spec file in BasicSpec
+./sbt "runner/testOnly *BasicSpec -- spec:basic:hello.wv"
 
 # Run test and stay in SBT shell
 ./sbt
 sbt:wvlet> test
 sbt:wvlet> runner/test
 sbt:wvlet> testOnly *SpecRunner*
-
-# Run a specific .wv spec file in BasicSpec
-sbt:wvlet> "runner/testOnly *BasicSpec -- spec:basic:hello.wv"
-
 
 # Test native library with various languages
 cd wvc-lib && make test

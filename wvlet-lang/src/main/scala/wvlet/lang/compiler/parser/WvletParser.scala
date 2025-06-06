@@ -2024,7 +2024,10 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
               case _ =>
                 false
 
-          nextExpression
+          if !nextExpression then
+            // If nextExpression returned false, we encountered an unexpected token
+            val t2 = scanner.lookAhead()
+            unexpected(t2)
           consume(WvletToken.R_PAREN)
           val args = exprs.result()
 
