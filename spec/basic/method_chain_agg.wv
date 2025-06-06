@@ -8,7 +8,7 @@ test _.output should be """
 │ sum_str │
 │ string  │
 ├─────────┤
-│ 74.0    │
+│ 74      │
 ├─────────┤
 │ 1 rows  │
 └─────────┘
