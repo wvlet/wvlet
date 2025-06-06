@@ -958,8 +958,14 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             case _ =>
               paren(cl(notIn.list.map(x => expr(x))))
         wl(left, "not in", right)
+      case tupleIn: TupleIn =>
+        generateTupleInExpression(tupleIn.tuple, tupleIn.list, "in")
+      case tupleNotIn: TupleNotIn =>
+        generateTupleInExpression(tupleNotIn.tuple, tupleNotIn.list, "not in")
       case a: ArrayConstructor =>
         text("ARRAY") + bracket(cl(a.values.map(expr(_))))
+      case r: RowConstructor =>
+        paren(cl(r.values.map(expr(_))))
       case a: ArrayAccess =>
         expr(a.arrayExpr) + text("[") + expr(a.index) + text("]")
       case c: CaseExpr =>
@@ -1045,6 +1051,20 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         )
       case other =>
         unsupportedNode(s"Expression ${other.nodeName}", other.span)
+
+  private def generateTupleInExpression(
+      tuple: Expression,
+      list: List[Expression],
+      operator: String
+  ): Doc =
+    val left = expr(tuple)
+    val right =
+      list match
+        case (s: SubQueryExpression) :: Nil =>
+          expr(s)
+        case _ =>
+          paren(cl(list.map(x => expr(x))))
+    wl(left, operator, right)
 
   private def unsupportedNode(nodeType: String, span: Span): Doc =
     val loc = ctx.sourceLocationAt(span)

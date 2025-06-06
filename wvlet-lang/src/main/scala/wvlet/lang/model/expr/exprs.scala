@@ -438,6 +438,22 @@ case class InRelation(a: Expression, in: Relation, span: Span) extends Condition
 case class NotInRelation(a: Expression, in: Relation, span: Span) extends ConditionalExpression:
   override def children: Seq[Expression] = Seq(a) ++ in.childExpressions
 
+case class TupleIn(tuple: Expression, list: List[Expression], span: Span)
+    extends ConditionalExpression:
+  override def children: Seq[Expression] = Seq(tuple) ++ list
+
+case class TupleNotIn(tuple: Expression, list: List[Expression], span: Span)
+    extends ConditionalExpression:
+  override def children: Seq[Expression] = Seq(tuple) ++ list
+
+case class TupleInRelation(tuple: Expression, in: Relation, span: Span)
+    extends ConditionalExpression:
+  override def children: Seq[Expression] = Seq(tuple) ++ in.childExpressions
+
+case class TupleNotInRelation(tuple: Expression, in: Relation, span: Span)
+    extends ConditionalExpression:
+  override def children: Seq[Expression] = Seq(tuple) ++ in.childExpressions
+
 case class Like(left: Expression, right: Expression, span: Span)
     extends ConditionalExpression
     with BinaryExpression:

@@ -617,10 +617,28 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
           val left  = expr(notIn.a)
           val right = cl(notIn.list.map(x => expr(x)))
           wl(left, "not in", paren(right))
+        case tupleIn: TupleIn =>
+          val left  = expr(tupleIn.tuple)
+          val right = cl(tupleIn.list.map(x => expr(x)))
+          wl(left, "in", paren(right))
+        case tupleNotIn: TupleNotIn =>
+          val left  = expr(tupleNotIn.tuple)
+          val right = cl(tupleNotIn.list.map(x => expr(x)))
+          wl(left, "not in", paren(right))
+        case tupleInRel: TupleInRelation =>
+          val left  = expr(tupleInRel.tuple)
+          val right = codeBlock(relation(tupleInRel.in)(using InStatement))
+          wl(left, "in", right)
+        case tupleNotInRel: TupleNotInRelation =>
+          val left  = expr(tupleNotInRel.tuple)
+          val right = codeBlock(relation(tupleNotInRel.in)(using InStatement))
+          wl(left, "not in", right)
         case e: Exists =>
           wl("exists", expr(e.child))
         case a: ArrayConstructor =>
           bracket(cl(a.values.map(x => expr(x))))
+        case r: RowConstructor =>
+          paren(cl(r.values.map(x => expr(x))))
         case a: ArrayAccess =>
           expr(a.arrayExpr) + text("[") + expr(a.index) + text("]")
         case c: CaseExpr =>

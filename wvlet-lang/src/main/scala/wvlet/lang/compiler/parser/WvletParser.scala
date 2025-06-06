@@ -1863,7 +1863,11 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       case WvletToken.IN =>
         consume(WvletToken.IN)
         val valueList = inExprList()
-        In(expr, valueList, spanFrom(t))
+        expr match
+          case RowConstructor(_, _) =>
+            TupleIn(expr, valueList, spanFrom(t))
+          case _ =>
+            In(expr, valueList, spanFrom(t))
       case WvletToken.LIKE =>
         consume(WvletToken.LIKE)
         val right = valueExpression()
@@ -1879,7 +1883,11 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           case WvletToken.IN =>
             consume(WvletToken.IN)
             val valueList = inExprList()
-            NotIn(expr, valueList, spanFrom(t))
+            expr match
+              case RowConstructor(_, _) =>
+                TupleNotIn(expr, valueList, spanFrom(t))
+              case _ =>
+                NotIn(expr, valueList, spanFrom(t))
           case other =>
             unexpected(t2)
       case WvletToken.BETWEEN =>
@@ -1997,48 +2005,43 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
               struct(lt)
         case WvletToken.L_PAREN =>
           consume(WvletToken.L_PAREN)
-          val t2 = scanner.lookAhead()
-          t2.token match
-            case WvletToken.IDENTIFIER =>
-              val exprs = List.newBuilder[Expression]
+          val exprs = List.newBuilder[Expression]
 
-              // true if the expression is a list of identifiers
-              def nextIdentifier: Boolean =
-                scanner.lookAhead().token match
-                  case WvletToken.COMMA =>
-                    consume(WvletToken.COMMA)
-                    nextIdentifier
-                  case WvletToken.R_PAREN =>
-                    // ok
-                    true
-                  case _ =>
-                    val expr = expression()
-                    exprs += expr
-                    expr match
-                      case i: Identifier =>
-                        nextIdentifier
-                      case _ =>
-                        false
+          // Parse first expression
+          val firstExpr = expression()
+          exprs += firstExpr
 
-              val isIdentifierList = nextIdentifier
-              consume(WvletToken.R_PAREN)
-              val args = exprs.result()
-              val t3   = scanner.lookAhead()
-              t3.token match
-                case WvletToken.R_ARROW if isIdentifierList =>
-                  // Lambda
-                  consume(WvletToken.R_ARROW)
-                  val body = expression()
-                  LambdaExpr(args.map(_.asInstanceOf[Identifier]), body, spanFrom(t))
-                case _ if args.size == 1 =>
-                  ParenthesizedExpression(args.head, spanFrom(t))
-                case _ =>
-                  unexpected(t3)
+          // Check if there are more expressions (comma-separated)
+          def nextExpression: Boolean =
+            scanner.lookAhead().token match
+              case WvletToken.COMMA =>
+                consume(WvletToken.COMMA)
+                val expr = expression()
+                exprs += expr
+                nextExpression
+              case WvletToken.R_PAREN =>
+                true
+              case _ =>
+                false
+
+          if !nextExpression then
+            // If nextExpression returned false, we encountered an unexpected token
+            val t2 = scanner.lookAhead()
+            unexpected(t2)
+          consume(WvletToken.R_PAREN)
+          val args = exprs.result()
+
+          val t3 = scanner.lookAhead()
+          t3.token match
+            case WvletToken.R_ARROW if args.forall(_.isInstanceOf[Identifier]) =>
+              // Lambda - only if all expressions are identifiers
+              consume(WvletToken.R_ARROW)
+              val body = expression()
+              LambdaExpr(args.map(_.asInstanceOf[Identifier]), body, spanFrom(t))
+            case _ if args.size == 1 =>
+              ParenthesizedExpression(args.head, spanFrom(t))
             case _ =>
-              val e = expression()
-              consume(WvletToken.R_PAREN)
-              ParenthesizedExpression(e, spanFrom(t))
-          end match
+              RowConstructor(args, spanFrom(t))
         case WvletToken.L_BRACKET =>
           array()
         case WvletToken.MAP =>
