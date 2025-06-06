@@ -57,14 +57,108 @@ object Arrow extends LogSupport:
       case x: js.Any =>
         x
 
+  // Constants for date conversion
+  private val MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000L
+
+  private def convertDaysToDateString(days: Double): String =
+    val epochMs = (days * MILLISECONDS_PER_DAY).toLong
+    new js.Date(epochMs.toDouble).toISOString().split("T")(0)
+
+  private def convertDaysToDateString(days: Int): String =
+    val epochMs = days.toLong * MILLISECONDS_PER_DAY
+    new js.Date(epochMs.toDouble).toISOString().split("T")(0)
+
+  private def convertMillisToDateString(ms: Double): String =
+    new js.Date(ms).toISOString().split("T")(0)
+
+  private def convertMillisToDateString(ms: Long): String =
+    new js.Date(ms.toDouble).toISOString().split("T")(0)
+
+  private def formatDateValue(value: Any, typeName: String): Any =
+    val normalizedType = typeName.toLowerCase.trim
+    normalizedType match
+      case tpe if tpe.startsWith("date32") =>
+        // Date32 represents days since Unix epoch (1970-01-01)
+        value match
+          case null =>
+            null
+          case days: Double =>
+            try
+              convertDaysToDateString(days)
+            catch
+              case _: Throwable =>
+                value
+          case days: Int =>
+            try
+              convertDaysToDateString(days)
+            catch
+              case _: Throwable =>
+                value
+          case _ =>
+            value
+      case tpe if tpe.startsWith("date64") =>
+        // Date64 represents milliseconds since Unix epoch
+        value match
+          case null =>
+            null
+          case ms: Double =>
+            try
+              convertMillisToDateString(ms)
+            catch
+              case _: Throwable =>
+                value
+          case ms: Long =>
+            try
+              convertMillisToDateString(ms)
+            catch
+              case _: Throwable =>
+                value
+          case _ =>
+            value
+      case "date" =>
+        // Handle DuckDB's native date type which is represented as days since epoch
+        value match
+          case null =>
+            null
+          case days: Double =>
+            try
+              convertDaysToDateString(days)
+            catch
+              case _: Throwable =>
+                value
+          case days: Int =>
+            try
+              convertDaysToDateString(days)
+            catch
+              case _: Throwable =>
+                value
+          case _ =>
+            value
+      case _ =>
+        value
+
+    end match
+
+  end formatDateValue
+
   extension (t: ArrowTable)
-    def asScalaArray: Seq[Seq[Any]] = t
-      .toArray()
-      .toSeq
-      .map { row =>
-        val dict = row.asInstanceOf[js.Dictionary[js.Any]]
-        dict.map(_._2).toSeq
-      }
+    def asScalaArray: Seq[Seq[Any]] =
+      val schema     = t.schema
+      val fields     = schema.fields.toSeq
+      val fieldTypes = fields.map(f => f.`type`.toString.toLowerCase)
+
+      t.toArray()
+        .toSeq
+        .map { row =>
+          val dict   = row.asInstanceOf[js.Dictionary[js.Any]]
+          val values = dict.map(_._2).toSeq
+          // Process each value: eval() handles nested JS structures, then formatDateValue() converts dates
+          values
+            .zip(fieldTypes)
+            .map { case (value, typeName) =>
+              formatDateValue(eval(value), typeName)
+            }
+        }
 
   @js.native
   @JSImport("arrow", "Schema")
