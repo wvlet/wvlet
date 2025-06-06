@@ -130,6 +130,8 @@ jobs:
           distribution: 'temurin'
           java-version: '23'
           cache: sbt
+      - name: Install native dependencies
+        run: sudo apt-get update && sudo apt-get install -y libgc-dev
       - name: Scala Native test
         run: ./sbt projectNative/test
       - name: Publish Test Report
