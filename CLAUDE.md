@@ -51,6 +51,9 @@ sbt scalafmtCheck
 # Run a specific .wv spec file in BasicSpec
 ./sbt "runner/testOnly *BasicSpec -- spec:basic:hello.wv"
 
+# Run a specific .wv spec files with wild card pattern
+./sbt "runner/testOnly *BasicSpec -- spec:basic:query*.wv"
+
 # Run test and stay in SBT shell
 ./sbt
 sbt:wvlet> test
