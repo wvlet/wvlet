@@ -75,7 +75,7 @@ class MyTest extends AirSpec:
     a shouldBe b
     a shouldNotBeTheSameInstanceAs b
 
-    // Patten matcher
+    // Pattern matcher
     Seq(1, 2) shouldMatch {
       case Seq(1, _) => // ok
     }

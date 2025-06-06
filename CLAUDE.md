@@ -49,7 +49,7 @@ cd wvc-lib && make test
 # Start main UI development server
 npm run ui
 
-# Start playground development server  
+# Start playground development server
 npm run playground
 
 # Build UI for production
@@ -101,7 +101,7 @@ cd website && npm run build
 The project uses a unique **spec-driven testing approach** where `.wv` files in `spec/` directory serve as executable test cases:
 
 - `spec/basic/`: Core functionality tests (149+ .wv files)
-- `spec/tpch/`: TPC-H benchmark queries  
+- `spec/tpch/`: TPC-H benchmark queries
 - `spec/neg/`: Negative test cases (expect compilation/execution errors)
 - `spec/cdp_*/`: Customer Data Platform behavior tests
 
@@ -112,7 +112,7 @@ The project uses a unique **spec-driven testing approach** where `.wv` files in 
 ```wv
 from 'data.json'
 test _.size should be 10
-test _.columns should contain 'user_id'  
+test _.columns should contain 'user_id'
 test _.output should be """
 | user_id | name     |
 |---------|----------|
@@ -142,7 +142,7 @@ test _.output should be """
         - `def noTimeout(): Config = copy(timeout = None)`
 
 ### Multi-Platform Considerations
-- Use `%%% ` for cross-platform library dependencies (JVM/JS/Native)
+- Use `%%%` for cross-platform library dependencies (JVM/JS/Native)
 - Avoid platform-specific APIs in shared code (`wvlet-api`, `wvlet-lang`)
 - Native builds require specific C library dependencies
 
@@ -165,9 +165,13 @@ The project follows semantic versioning and uses SBT plugins for cross-platform 
 ## Git and Development Workflow
 
 ### Branching
-- Create new branches with timestamp: `git switch -c feature/$(date +"%Y%m%d_%H%M%S")`
+- Create descriptive branches with timestamp for uniqueness
+- Pattern: `<prefix>/<description>-$(date +"%Y%m%d_%H%M%S")` or `<prefix>/$(date +"%Y%m%d_%H%M%S")-<description>`
 - Use appropriate prefixes: `feature/`, `fix/`, `doc/`, `internal/`
-- Optionally add brief description: `fix/$(date +"%Y%m%d_%H%M%S")-correct-off-by-one-error`
+- Examples:
+  - `feature/add-claude-guidance-20250605_205837`
+  - `fix/20250605_210000-correct-sbt-syntax`
+  - `doc/improve-testing-docs-20250605_210100`
 
 ### Commit Messages
 - Use prefixes: `feature` (new features), `fix` (bug fixes), `internal` (non-user facing), `doc` (documentation)
