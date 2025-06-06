@@ -57,61 +57,58 @@ object Arrow extends LogSupport:
       case x: js.Any =>
         x
 
+  // Constants for date conversion
+  private val MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000L
+
+  private def convertDaysToDateString(days: Double): String =
+    val epochMs = (days * MILLISECONDS_PER_DAY).toLong
+    new js.Date(epochMs.toDouble).toISOString().split("T")(0)
+
+  private def convertDaysToDateString(days: Int): String =
+    val epochMs = days.toLong * MILLISECONDS_PER_DAY
+    new js.Date(epochMs.toDouble).toISOString().split("T")(0)
+
+  private def convertMillisToDateString(ms: Double): String =
+    new js.Date(ms).toISOString().split("T")(0)
+
+  private def convertMillisToDateString(ms: Long): String =
+    new js.Date(ms.toDouble).toISOString().split("T")(0)
+
   private def formatDateValue(value: Any, typeName: String): Any =
     val normalizedType = typeName.toLowerCase.trim
     normalizedType match
-      case tpe if tpe.startsWith("date32") || tpe.contains("date32") =>
+      case tpe if tpe.startsWith("date32") =>
         // Date32 represents days since Unix epoch (1970-01-01)
         value match
           case null => null
           case days: Double =>
-            try
-              val msPerDay = 24 * 60 * 60 * 1000L
-              val epochMs = (days * msPerDay).toLong
-              new js.Date(epochMs.toDouble).toISOString().split("T")(0)
-            catch
-              case _: Throwable => value
+            try convertDaysToDateString(days)
+            catch case _: Throwable => value
           case days: Int =>
-            try
-              val msPerDay = 24 * 60 * 60 * 1000L
-              val epochMs = days.toLong * msPerDay
-              new js.Date(epochMs.toDouble).toISOString().split("T")(0)
-            catch
-              case _: Throwable => value
+            try convertDaysToDateString(days)
+            catch case _: Throwable => value
           case _ => value
-      case tpe if tpe.startsWith("date64") || tpe.contains("date64") =>
+      case tpe if tpe.startsWith("date64") =>
         // Date64 represents milliseconds since Unix epoch
         value match
           case null => null
           case ms: Double =>
-            try
-              new js.Date(ms).toISOString().split("T")(0)
-            catch
-              case _: Throwable => value
+            try convertMillisToDateString(ms)
+            catch case _: Throwable => value
           case ms: Long =>
-            try
-              new js.Date(ms.toDouble).toISOString().split("T")(0)
-            catch
-              case _: Throwable => value
+            try convertMillisToDateString(ms)
+            catch case _: Throwable => value
           case _ => value
       case "date" =>
-        // Handle DuckDB's native date type which might be represented as days since epoch
+        // Handle DuckDB's native date type which is represented as days since epoch
         value match
           case null => null
           case days: Double =>
-            try
-              val msPerDay = 24 * 60 * 60 * 1000L
-              val epochMs = (days * msPerDay).toLong
-              new js.Date(epochMs.toDouble).toISOString().split("T")(0)
-            catch
-              case _: Throwable => value
+            try convertDaysToDateString(days)
+            catch case _: Throwable => value
           case days: Int =>
-            try
-              val msPerDay = 24 * 60 * 60 * 1000L
-              val epochMs = days.toLong * msPerDay
-              new js.Date(epochMs.toDouble).toISOString().split("T")(0)
-            catch
-              case _: Throwable => value
+            try convertDaysToDateString(days)
+            catch case _: Throwable => value
           case _ => value
       case _ => value
 
@@ -126,7 +123,7 @@ object Arrow extends LogSupport:
         .map { row =>
           val dict = row.asInstanceOf[js.Dictionary[js.Any]]
           val values = dict.map(_._2).toSeq
-          // Format date values based on their types
+          // Process each value: eval() handles nested JS structures, then formatDateValue() converts dates
           values.zip(fieldTypes).map { case (value, typeName) =>
             formatDateValue(eval(value), typeName)
           }
