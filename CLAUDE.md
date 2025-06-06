@@ -23,6 +23,18 @@ sbt:wvlet> wvcLib/nativeLink
 sbt:wvlet> wvc/nativeLink
 ```
 
+### Code Formatting
+
+Ensure the code is formatted with `scalafmtAll` command for consistent code style. CI will check formatting on pull requests.
+
+```bash
+# Format code
+sbt scalafmtAll
+
+# Check formatting
+sbt scalafmtCheck
+```
+
 ### Testing
 ```bash
 # Run all tests
@@ -39,6 +51,10 @@ sbt:wvlet> wvc/nativeLink
 sbt:wvlet> test
 sbt:wvlet> runner/test
 sbt:wvlet> testOnly *SpecRunner*
+
+# Run a specific .wv spec file in BasicSpec
+sbt:wvlet> "runner/testOnly *BasicSpec -- spec:basic:hello.wv"
+
 
 # Test native library with various languages
 cd wvc-lib && make test
@@ -107,6 +123,7 @@ The project uses a unique **spec-driven testing approach** where `.wv` files in 
 
 - **Embedded Assertions**: `.wv` files contain `test` statements for validation
 - **SpecRunner**: Core engine that compiles and executes .wv files as test cases
+
 
 ### Test Assertions in .wv Files
 ```wv

@@ -1,0 +1,18 @@
+-- Test tuple IN with subquery
+from [
+  [1, 'a', 10],
+  [2, 'b', 20], 
+  [3, 'c', 30],
+  [4, 'd', 40]
+] as t(id, name, value)
+where (id, name) in (
+  from [
+    [1, 'a'],
+    [2, 'b']
+  ] as s(sid, sname)
+  select sid, sname
+)
+test _.size should be 2
+test _.columns should contain 'id'
+test _.columns should contain 'name'
+test _.columns should contain 'value'
