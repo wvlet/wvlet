@@ -7,12 +7,12 @@ select student, score
 
 test _.columns should be ['student', 'score']
 test _.rows should be [
-  ['John', 7],
-  ['John', 10],
-  ['John', 9],
   ['Mary', 4],
   ['Mary', 8],
-  ['Mary', 9]
+  ['Mary', 9],
+  ['John', 7],
+  ['John', 10],
+  ['John', 9]
 ]
 
 from [

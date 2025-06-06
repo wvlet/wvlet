@@ -16,6 +16,7 @@ on
   and stock.date <= holding.date
 add stock.price * holding.shares as holding_value
 select symbol, date, shares, price, holding_value
+order by date
 
 test _.rows should be [
   ['AAPL', '2024-11-07', 1.0, 10, 10.0],
