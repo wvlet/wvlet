@@ -49,7 +49,7 @@ Static catalogs are organized by database type and catalog name:
 ]
 ```
 
-#### <schema_name>.json (e.g., main.json)
+#### `<schema_name>.json` (e.g., main.json)
 ```json
 [
   {
