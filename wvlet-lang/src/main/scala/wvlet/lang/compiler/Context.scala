@@ -56,8 +56,7 @@ case class GlobalContext(compilerOptions: CompilerOptions):
     if compilerOptions.useStaticCatalog && compilerOptions.staticCatalogPath.isDefined then
       val catalogPath = Paths.get(compilerOptions.staticCatalogPath.get)
       val catalogName = compilerOptions.catalog.getOrElse("default")
-      // Try to determine DB type from the path or use DuckDB as default
-      val dbType = DBType.DuckDB
+      val dbType      = compilerOptions.dbType
 
       StaticCatalogProvider.loadCatalog(catalogName, dbType, catalogPath) match
         case Some(staticCatalog) =>

@@ -91,6 +91,8 @@ case class CompilerOptions(
     catalog: Option[String] = None,
     // context database schema
     schema: Option[String] = None,
+    // Database type (e.g., DuckDB, Trino)
+    dbType: DBType = DBType.DuckDB,
     // Path to static catalog metadata
     staticCatalogPath: Option[String] = None,
     // Use static catalog mode (no remote calls)
@@ -103,6 +105,8 @@ case class CompilerOptions(
   )
 
   def noStaticCatalog(): CompilerOptions = copy(staticCatalogPath = None, useStaticCatalog = false)
+
+  def withDBType(dbType: DBType): CompilerOptions = copy(dbType = dbType)
 
 class Compiler(val compilerOptions: CompilerOptions) extends LogSupport:
 

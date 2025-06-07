@@ -216,3 +216,7 @@ The project follows semantic versioning and uses SBT plugins for cross-platform 
 ## Error Handling
 
 For error reporting, use WvletLangException and StatusCode enum. If necessary error code is missing, add to StatusCode
+
+## Deployment and Documentation
+
+- For new features, update the documentation at website/docs folder
