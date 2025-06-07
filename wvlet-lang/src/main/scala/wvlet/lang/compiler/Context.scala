@@ -20,7 +20,6 @@ import wvlet.lang.model.expr.NameExpr
 import wvlet.lang.model.plan.Import
 import wvlet.log.LogSupport
 
-import java.nio.file.{Path, Paths}
 import java.util.concurrent.ConcurrentHashMap
 import scala.jdk.CollectionConverters.*
 
@@ -47,25 +46,10 @@ case class GlobalContext(compilerOptions: CompilerOptions):
   // Globally available definitions (Name and Symbols)
   var defs: GlobalDefinitions = _
 
-  var defaultCatalog: Catalog = initializeCatalog()
+  var defaultCatalog: Catalog = CatalogLoader.loadStaticCatalog(compilerOptions)
   var defaultSchema: String   = compilerOptions.schema.getOrElse("main")
 
   var workEnv: WorkEnv = compilerOptions.workEnv
-
-  private def initializeCatalog(): Catalog =
-    if compilerOptions.useStaticCatalog && compilerOptions.staticCatalogPath.isDefined then
-      val catalogPath = Paths.get(compilerOptions.staticCatalogPath.get)
-      val catalogName = compilerOptions.catalog.getOrElse("default")
-      val dbType      = compilerOptions.dbType
-
-      StaticCatalogProvider.loadCatalog(catalogName, dbType, catalogPath) match
-        case Some(staticCatalog) =>
-          staticCatalog
-        case None =>
-          // Fall back to in-memory catalog if static catalog loading fails
-          InMemoryCatalog(catalogName = catalogName, functions = Nil)
-    else
-      InMemoryCatalog(catalogName = compilerOptions.catalog.getOrElse("memory"), functions = Nil)
 
   def init(using rootContext: Context): Unit =
     this.rootContext = rootContext

@@ -130,11 +130,18 @@ val result = compiler.compile()
 - **Lookups**: O(1) HashMap lookups for schemas and tables
 - **Memory usage**: Proportional to catalog size (all metadata loaded in memory)
 
+## Platform Support
+
+- **JVM**: Full support for static catalog loading from filesystem
+- **Scala.js**: Not supported (no file I/O capabilities)
+- **Scala Native**: Not supported (limited file I/O support)
+
 ## Limitations
 
 - Read-only: Cannot create or modify schemas/tables
 - Manual updates: Catalog files must be updated externally
 - No automatic refresh: Changes require compiler restart
+- Platform-specific: Only available on JVM platform
 
 ## Future Enhancements
 

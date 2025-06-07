@@ -17,8 +17,6 @@ import wvlet.airspec.AirSpec
 import wvlet.lang.api.{StatusCode, WvletLangException}
 import wvlet.lang.compiler.DBType
 import wvlet.lang.model.DataType
-import java.nio.file.{Files, Path}
-import scala.jdk.CollectionConverters.*
 
 class StaticCatalogTest extends AirSpec:
 
