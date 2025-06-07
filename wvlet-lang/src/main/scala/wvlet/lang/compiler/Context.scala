@@ -14,7 +14,7 @@
 package wvlet.lang.compiler
 
 import wvlet.lang.api.{SourceLocation, Span, StatusCode}
-import wvlet.lang.catalog.{Catalog, InMemoryCatalog}
+import wvlet.lang.catalog.{Catalog, InMemoryCatalog, StaticCatalog, StaticCatalogProvider}
 import wvlet.lang.compiler.query.QueryProgressMonitor
 import wvlet.lang.model.expr.NameExpr
 import wvlet.lang.model.plan.Import
@@ -46,7 +46,7 @@ case class GlobalContext(compilerOptions: CompilerOptions):
   // Globally available definitions (Name and Symbols)
   var defs: GlobalDefinitions = _
 
-  var defaultCatalog: Catalog = InMemoryCatalog(catalogName = "memory", functions = Nil)
+  var defaultCatalog: Catalog = Compat.loadStaticCatalog(compilerOptions)
   var defaultSchema: String   = compilerOptions.schema.getOrElse("main")
 
   var workEnv: WorkEnv = compilerOptions.workEnv
