@@ -208,3 +208,11 @@ The project follows semantic versioning and uses SBT plugins for cross-platform 
 ### Code Reviews
 
 - Gemini will review pull requests for code quality, adherence to guidelines, and test coverage. Reflect on feedback and make necessary changes.
+
+### Development Workflow
+
+- To develop a code, create a new branch and create a pull request
+
+## Error Handling
+
+For error reporting, use WvletLangException and StatusCode enum. If necessary error code is missing, add to StatusCode
