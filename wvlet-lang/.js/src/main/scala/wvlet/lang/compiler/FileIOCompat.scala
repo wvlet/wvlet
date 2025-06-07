@@ -18,7 +18,7 @@ import wvlet.lang.catalog.{Catalog, InMemoryCatalog}
 /**
   * Scala.js implementation that doesn't support static catalog loading
   */
-object CatalogLoader:
-  def loadStaticCatalog(compilerOptions: CompilerOptions): Catalog =
+trait FileIOCompatImpl extends FileIOCompat:
+  override def loadStaticCatalog(compilerOptions: CompilerOptions): Catalog =
     // Static catalog loading is not supported in Scala.js
     InMemoryCatalog(catalogName = compilerOptions.catalog.getOrElse("memory"), functions = Nil)

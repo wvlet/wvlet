@@ -173,9 +173,15 @@ test _.output should be """
 
 ### Multi-Platform Considerations
 - Use `%%%` for cross-platform library dependencies (JVM/JS/Native)
-- **To support Scala.js, which has no file I/O support, avoid using java File I/O modules**
+- To add platform specific code, use or create Compat object, or extend the class with XXXCompat trait, e.g., FileIOCompat. Scala.js has no file I/O support, but JVM and Scala Native can read files
 - Native builds require specific C library dependencies
 - **In Scala.js code, avoid using Java-specific libraries**
+- Platform-specific implementations:
+  - Shared trait in `src/main/scala`: `trait FileIOCompat`
+  - JVM implementation in `.jvm/src/main/scala`: `trait FileIOCompatImpl extends FileIOCompat`
+  - JS implementation in `.js/src/main/scala`: `trait FileIOCompatImpl extends FileIOCompat`
+  - Native implementation in `.native/src/main/scala`: `trait FileIOCompatImpl extends FileIOCompat`
+  - Shared object: `object Compat extends FileIOCompatImpl`
 
 ### Performance
 - Parser uses efficient TokenBuffer for lookahead

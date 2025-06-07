@@ -17,24 +17,18 @@ import wvlet.lang.compiler.DBType
 import wvlet.log.LogSupport
 
 /**
-  * Scala Native implementation of StaticCatalogProvider that doesn't support file I/O
+  * Scala.js implementation of StaticCatalogCompat that doesn't support file I/O
   */
-trait StaticCatalogProvider:
-  def loadCatalog(catalogName: String, dbType: DBType, basePath: Any): Option[StaticCatalog]
-  def listAvailableCatalogs(basePath: Any): List[(String, DBType)]
-
-object StaticCatalogProvider extends StaticCatalogProvider with LogSupport:
+trait StaticCatalogCompatImpl extends StaticCatalogCompat with LogSupport:
 
   override def loadCatalog(
       catalogName: String,
       dbType: DBType,
       basePath: Any
   ): Option[StaticCatalog] =
-    warn("Static catalog loading is not supported in Scala Native")
+    warn("Static catalog loading is not supported in Scala.js")
     None
 
   override def listAvailableCatalogs(basePath: Any): List[(String, DBType)] =
-    warn("Static catalog listing is not supported in Scala Native")
+    warn("Static catalog listing is not supported in Scala.js")
     List.empty
-
-end StaticCatalogProvider

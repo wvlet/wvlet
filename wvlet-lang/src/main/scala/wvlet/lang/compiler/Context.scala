@@ -46,7 +46,7 @@ case class GlobalContext(compilerOptions: CompilerOptions):
   // Globally available definitions (Name and Symbols)
   var defs: GlobalDefinitions = _
 
-  var defaultCatalog: Catalog = CatalogLoader.loadStaticCatalog(compilerOptions)
+  var defaultCatalog: Catalog = Compat.loadStaticCatalog(compilerOptions)
   var defaultSchema: String   = compilerOptions.schema.getOrElse("main")
 
   var workEnv: WorkEnv = compilerOptions.workEnv

@@ -17,10 +17,10 @@ import wvlet.lang.catalog.{Catalog, InMemoryCatalog, StaticCatalogProvider}
 import java.nio.file.Paths
 
 /**
-  * JVM-specific catalog loader that can handle file paths
+  * JVM implementation of FileIOCompat that can handle file paths
   */
-object CatalogLoader:
-  def loadStaticCatalog(compilerOptions: CompilerOptions): Catalog =
+trait FileIOCompatImpl extends FileIOCompat:
+  override def loadStaticCatalog(compilerOptions: CompilerOptions): Catalog =
     if compilerOptions.useStaticCatalog && compilerOptions.staticCatalogPath.isDefined then
       val catalogPath = Paths.get(compilerOptions.staticCatalogPath.get)
       val catalogName = compilerOptions.catalog.getOrElse("default")

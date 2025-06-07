@@ -13,12 +13,10 @@
  */
 package wvlet.lang.compiler
 
-import wvlet.lang.catalog.{Catalog, InMemoryCatalog}
+import wvlet.lang.catalog.Catalog
 
 /**
-  * Scala Native implementation that doesn't support static catalog loading
+  * Platform-specific file I/O compatibility trait
   */
-object CatalogLoader:
-  def loadStaticCatalog(compilerOptions: CompilerOptions): Catalog =
-    // Static catalog loading is not supported in Scala Native
-    InMemoryCatalog(catalogName = compilerOptions.catalog.getOrElse("memory"), functions = Nil)
+trait FileIOCompat:
+  def loadStaticCatalog(compilerOptions: CompilerOptions): Catalog
