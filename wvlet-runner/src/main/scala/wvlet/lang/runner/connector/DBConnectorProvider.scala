@@ -61,4 +61,14 @@ class DBConnectorProvider(workEnv: WorkEnv) extends LogSupport with AutoCloseabl
 
   end getConnector
 
+  def getConnector(dbType: DBType, profileName: Option[String]): DBConnector =
+    val profile =
+      profileName match
+        case Some(name) =>
+          Profile.getProfile(name).getOrElse(Profile.defaultProfileFor(dbType))
+        case None =>
+          // Create a minimal profile for the given DB type
+          Profile.defaultProfileFor(dbType)
+    getConnector(profile)
+
 end DBConnectorProvider
