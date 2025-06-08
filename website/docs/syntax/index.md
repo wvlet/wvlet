@@ -905,7 +905,7 @@ order by id;
 └──────────────┘
 ```
 
-The ordering of rows are not guaranteed in the `concat` operator. If you need to sort the output, use the `order by` operator after the `concat` operator.
+The ordering of rows is not guaranteed in the `concat` operator. If you need to sort the output, use the `order by` operator after the `concat` operator.
 
 You can concatenate multiple subqueries:
 
