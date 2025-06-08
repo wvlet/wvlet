@@ -610,29 +610,231 @@ shift to right n_comment
 
 ### group by
 
-Create a list of grouped rows by the given column:
+The `group by` operator groups rows by one or more columns, creating groups of rows that share the same values in the specified columns.
+
+#### Basic Grouping
 
 ```sql
-from nation
-group by n_regionkey
+from [[1, "A", 100], [2, "B", 200], [1, "A", 150], [2, "B", 50], [3, "C", 300]]
+  as data(id, category, value)
+group by id, category;
+
+┌─────┬──────────┬───────┐
+│ id  │ category │ value │
+│ int │  string  │  int  │
+├─────┼──────────┼───────┤
+│   1 │ A        │   100 │
+│   2 │ B        │   200 │
+│   3 │ C        │   300 │
+├─────┴──────────┴───────┤
+│ 3 rows                 │
+└────────────────────────┘
 ```
 
-In SQL, you need to specify some aggregation operators like `count`, `sum`, `avg`, etc. to generate the output.
-In Wvlet, the default aggegation operator `arbitrary (any)` is used to generate the output from `group by` operator. If you want to
-use other aggregation operators, use the `agg` operator.
+:::note
+In SQL, you need to specify aggregation operators like `count`, `sum`, `avg`, etc. to generate output from `GROUP BY`.
+In Wvlet, the default aggregation operator `arbitrary (any)` is used, which returns an arbitrary value from each group.
+:::
+
+#### Referencing Grouping Keys
+
+After grouping, you can reference grouping keys by their column names directly:
+
+```sql
+from [[1, "A", 100], [2, "B", 200], [1, "A", 150], [2, "B", 50]]
+  as data(id, category, value)
+group by id, category
+select id, category;
+
+┌─────┬──────────┐
+│ id  │ category │
+│ int │  string  │
+├─────┼──────────┤
+│   1 │ A        │
+│   2 │ B        │
+├─────┴──────────┤
+│ 2 rows         │
+└────────────────┘
+```
+
+:::tip
+While you can also reference grouping keys using `_1`, `_2`, etc. in the order they appear in the `group by` clause, it's recommended to use column names for better readability and maintainability.
+:::
 
 ### agg
 
-Add an aggregation expression to the grouped rows:
+The `agg` operator adds aggregation expressions. It is typically used after a `group by` clause to aggregate data within groups, but can also be used without `group by` to aggregate all rows in the input.
+
+#### Basic Aggregations
 
 ```sql
-from nation
-group by n_regionkey
-agg _.count as count
+from [[1, "A", 100], [2, "B", 200], [1, "A", 150], [2, "B", 50], [3, "C", 300]]
+  as data(id, category, value)
+group by category
+agg 
+  _.count as item_count,
+  value.sum as total_value,
+  value.avg as avg_value;
+
+┌──────────┬────────────┬─────────────┬──────────────┐
+│ category │ item_count │ total_value │  avg_value   │
+│  string  │    long    │     int     │ decimal(17,4) │
+├──────────┼────────────┼─────────────┼──────────────┤
+│ A        │          2 │         250 │     125.0000 │
+│ B        │          2 │         250 │     125.0000 │
+│ C        │          1 │         300 │     300.0000 │
+├──────────┴────────────┴─────────────┴──────────────┤
+│ 3 rows                                             │
+└────────────────────────────────────────────────────┘
 ```
 
-`_` denotes a list of rows in a group and can follow SQL aggregation expressions with dot notation.
-For example, `_.sum`, `_.avg`, `_.max`, `_.min`, `_.max_by(sort_col)`, `_.min_by(sort_col)`, etc. can be used in agg statement.
+#### Available Aggregation Functions
+
+The underscore `_` represents the group of rows and supports various aggregation functions:
+
+```sql
+from [[1, 10, "A"], [2, 20, "B"], [1, 30, "C"], [2, 40, "D"], [1, 50, "E"]]
+  as sales(store_id, amount, product)
+group by store_id
+agg 
+  _.count as transaction_count,
+  amount.sum as total_sales,
+  amount.avg as avg_sale,
+  amount.min as min_sale,
+  amount.max as max_sale,
+  _.count_distinct(product) as unique_products,
+  _.max_by(product, amount) as best_product,
+  _.min_by(product, amount) as worst_product;
+
+┌──────────┬───────────────────┬─────────────┬──────────────┬──────────┬──────────┬─────────────────┬──────────────┬───────────────┐
+│ store_id │ transaction_count │ total_sales │   avg_sale   │ min_sale │ max_sale │ unique_products │ best_product │ worst_product │
+│   int    │       long        │     int     │ decimal(17,4) │   int    │   int    │      long       │    string    │    string     │
+├──────────┼───────────────────┼─────────────┼──────────────┼──────────┼──────────┼─────────────────┼──────────────┼───────────────┤
+│        1 │                 3 │          90 │      30.0000 │       10 │       50 │               3 │ E            │ A             │
+│        2 │                 2 │          60 │      30.0000 │       20 │       40 │               2 │ D            │ B             │
+├──────────┴───────────────────┴─────────────┴──────────────┴──────────┴──────────┴─────────────────┴──────────────┴───────────────┤
+│ 2 rows                                                                                                                             │
+└────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Filtering Groups (HAVING clause)
+
+You can filter groups after aggregation using a `where` clause after `agg`:
+
+```sql
+from [[1, "Electronics", 1000], [2, "Books", 50], [3, "Electronics", 2000], 
+      [4, "Books", 75], [5, "Toys", 500], [6, "Electronics", 1500]]
+  as orders(id, category, amount)
+group by category
+agg 
+  _.count as order_count,
+  amount.sum as total_amount
+where total_amount > 1000
+order by total_amount desc;
+
+┌─────────────┬─────────────┬──────────────┐
+│  category   │ order_count │ total_amount │
+│   string    │    long     │     int      │
+├─────────────┼─────────────┼──────────────┤
+│ Electronics │           3 │         4500 │
+├─────────────┴─────────────┴──────────────┤
+│ 1 rows                                    │
+└───────────────────────────────────────────┘
+```
+
+#### Multiple Grouping with Complex Aggregations
+
+```sql
+from [["2024-01-01", "A", "Electronics", 100],
+      ["2024-01-01", "B", "Books", 50],
+      ["2024-01-02", "A", "Electronics", 200],
+      ["2024-01-02", "A", "Books", 75],
+      ["2024-01-03", "B", "Electronics", 150]]
+  as sales(date, store, category, amount)
+group by date, store
+agg 
+  _.count as transactions,
+  amount.sum as daily_total,
+  _.array_agg(category) as categories_sold,
+  _.array_agg(amount) as amounts;
+
+┌────────────┬───────┬──────────────┬─────────────┬───────────────────────┬───────────────┐
+│    date    │ store │ transactions │ daily_total │   categories_sold     │    amounts    │
+│   string   │ string│     long     │     int     │     array(string)     │   array(int)  │
+├────────────┼───────┼──────────────┼─────────────┼───────────────────────┼───────────────┤
+│ 2024-01-01 │ A     │            1 │         100 │ [Electronics]         │ [100]         │
+│ 2024-01-01 │ B     │            1 │          50 │ [Books]               │ [50]          │
+│ 2024-01-02 │ A     │            2 │         275 │ [Electronics, Books]  │ [200, 75]     │
+│ 2024-01-03 │ B     │            1 │         150 │ [Electronics]         │ [150]         │
+├────────────┴───────┴──────────────┴─────────────┴───────────────────────┴───────────────┤
+│ 4 rows                                                                                    │
+└───────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Using Aggregations Without group by
+
+You can use aggregations directly without `group by` to aggregate all rows:
+
+```sql
+from [[1, 100], [2, 200], [3, 300], [4, 400], [5, 500]]
+  as data(id, value)
+agg 
+  _.count as total_rows,
+  value.sum as sum_all,
+  value.avg as average;
+
+┌────────────┬─────────┬──────────────┐
+│ total_rows │ sum_all │   average    │
+│    long    │   int   │ decimal(17,4) │
+├────────────┼─────────┼──────────────┤
+│          5 │    1500 │     300.0000 │
+├────────────┴─────────┴──────────────┤
+│ 1 rows                               │
+└──────────────────────────────────────┘
+```
+
+#### Practical Example: Sales Analysis
+
+Here's a practical example analyzing sales data:
+
+```sql
+from [["2024-01", "North", "Laptop", 5, 1200],
+      ["2024-01", "North", "Phone", 10, 800],
+      ["2024-01", "South", "Laptop", 3, 1200],
+      ["2024-01", "South", "Tablet", 7, 600],
+      ["2024-02", "North", "Laptop", 8, 1200],
+      ["2024-02", "North", "Tablet", 5, 600],
+      ["2024-02", "South", "Phone", 12, 800],
+      ["2024-02", "South", "Laptop", 4, 1200]]
+  as sales(month, region, product, quantity, unit_price)
+group by month, region
+agg 
+  _.count as num_orders,
+  quantity.sum as total_units_sold,
+  (quantity * unit_price).sum as total_revenue,
+  _.count_distinct(product) as unique_products
+where total_revenue > 10000
+order by month, total_revenue desc;
+
+┌─────────┬────────┬────────────┬──────────────────┬───────────────┬─────────────────┐
+│  month  │ region │ num_orders │ total_units_sold │ total_revenue │ unique_products │
+│ string  │ string │    long    │       int        │      int      │      long       │
+├─────────┼────────┼────────────┼──────────────────┼───────────────┼─────────────────┤
+│ 2024-01 │ North  │          2 │               15 │         14000 │               2 │
+│ 2024-02 │ South  │          2 │               16 │         14400 │               2 │
+│ 2024-02 │ North  │          2 │               13 │         12600 │               2 │
+├─────────┴────────┴────────────┴──────────────────┴───────────────┴─────────────────┤
+│ 3 rows                                                                              │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+:::tip
+The `_` underscore in aggregations represents the group of rows. You can use it with various aggregation functions like `_.count`, `_.sum`, `_.avg`, `_.max`, `_.min`, `_.count_distinct()`, `_.array_agg()`, `_.max_by()`, `_.min_by()`, etc.
+:::
+
+:::note
+The `where` clause after `agg` is equivalent to SQL's `HAVING` clause - it filters groups based on aggregated values, not individual rows.
+:::
 
 ### limit
 
