@@ -83,18 +83,43 @@ Static catalogs are organized by database type and catalog name:
 
 ## Usage
 
+### CLI Usage
+
+The recommended way to use static catalogs is through the Wvlet CLI:
+
+```bash
+# Import catalog from database
+wv catalog import --name mydb
+
+# List available catalogs
+wv catalog list
+
+# Show catalog details
+wv catalog show duckdb/mydb
+
+# Compile with static catalog
+wvlet compile -f query.wv --use-static-catalog --catalog mydb
+```
+
+See [Catalog Management](../usage/catalog-management.md) for detailed CLI usage.
+
 ### Programmatic Usage
 
 ```scala
-import wvlet.lang.compiler.{Compiler, CompilerOptions, DBType}
+import wvlet.lang.compiler.{Compiler, CompilerOptions, DBType, WorkEnv}
 import wvlet.log.LogLevel
 
+val workEnv = WorkEnv(".", LogLevel.INFO)
+
 val compilerOptions = CompilerOptions(
-  workEnv = WorkEnv(".", logLevel = LogLevel.INFO),
+  sourceFolders = List("."),
+  workEnv = workEnv,
   catalog = Some("my_catalog"),
   schema = Some("main"),
-  dbType = DBType.DuckDB
-).withStaticCatalog("/path/to/catalog/base")
+  dbType = DBType.DuckDB,
+  useStaticCatalog = true,
+  staticCatalogPath = Some("/path/to/catalog/base")
+)
 
 val compiler = Compiler(compilerOptions)
 val result = compiler.compile()
@@ -102,11 +127,13 @@ val result = compiler.compile()
 
 ### Configuration Options
 
-- `staticCatalogPath`: Base directory containing catalog metadata
-- `useStaticCatalog`: Boolean flag to enable static catalog mode
-- `dbType`: Database type (DuckDB, Trino, etc.)
+- `sourceFolders`: List of directories containing .wv files
+- `workEnv`: Working environment with path and log level
 - `catalog`: Catalog name to load
 - `schema`: Default schema name
+- `dbType`: Target database type (DuckDB, Trino, etc.)
+- `useStaticCatalog`: Boolean flag to enable static catalog mode
+- `staticCatalogPath`: Base directory containing catalog metadata
 
 ## Implementation Details
 
@@ -145,6 +172,9 @@ val result = compiler.compile()
 
 ## Future Enhancements
 
-- **Phase 2**: CLI commands for importing/exporting catalog metadata
-- **Phase 3**: Automatic catalog refresh and incremental updates
-- **Phase 4**: Support for partial catalogs and lazy loading
+- **Incremental Updates**: Support for updating only changed schemas/tables
+- **Schema Evolution**: Handle schema changes gracefully with versioning
+- **Partial Loading**: Load only required schemas for better performance
+- **Remote Storage**: Support for S3, GCS, and other cloud storage backends
+- **Catalog Diff**: Show differences between catalog versions
+- **Multi-Platform Support**: Extend to Scala.js and Scala Native platforms
