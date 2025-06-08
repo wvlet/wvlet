@@ -171,9 +171,21 @@ class CatalogCommandTest extends AirSpec:
   test("handle invalid catalog specification") {
     withTempCatalog { tempPath =>
       val catalogCommand = new CatalogCommand()
-      // This should log an error but not throw
-      catalogCommand.show(tempPath.toString, "invalid-format")
-      // Test passes if no exception is thrown
+
+      // Test various invalid formats
+      val invalidSpecs = List(
+        "invalid-format",  // Missing slash
+        "duckdb/",         // Empty catalog name
+        "/catalog",        // Empty db type
+        "duckdb//catalog", // Double slash
+        " / "              // Only spaces
+      )
+
+      invalidSpecs.foreach { spec =>
+        // This should log an error but not throw
+        catalogCommand.show(tempPath.toString, spec)
+      }
+      // Test passes if no exceptions are thrown
     }
   }
 

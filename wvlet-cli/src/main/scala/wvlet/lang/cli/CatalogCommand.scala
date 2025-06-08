@@ -149,12 +149,12 @@ class CatalogCommand extends LogSupport:
       catalogSpec: String
   ): Unit =
     val parts = catalogSpec.split("/")
-    if parts.length != 2 then
+    if parts.length != 2 || parts.exists(_.trim.isEmpty) then
       error(s"Invalid catalog specification: ${catalogSpec}. Use format: dbtype/catalog")
       return
 
-    val dbTypeStr   = parts(0)
-    val catalogName = parts(1)
+    val dbTypeStr   = parts(0).trim
+    val catalogName = parts(1).trim
 
     val dbType =
       try
