@@ -16,9 +16,17 @@ package wvlet.lang.compiler
 import wvlet.lang.catalog.{Catalog, InMemoryCatalog}
 
 /**
-  * Scala.js implementation that doesn't support static catalog loading
+  * Scala.js implementation that doesn't support file I/O
   */
 trait FileIOCompatImpl extends FileIOCompat:
   override def loadStaticCatalog(compilerOptions: CompilerOptions): Catalog =
     // Static catalog loading is not supported in Scala.js
     InMemoryCatalog(catalogName = compilerOptions.catalog.getOrElse("memory"), functions = Nil)
+
+  override def isDirectory(path: Any): Boolean = false
+
+  override def listDirectories(path: Any): List[String] = List.empty
+
+  override def resolvePath(basePath: Any, segments: String*): Any = basePath
+
+  override def readFileIfExists(path: Any): Option[String] = None

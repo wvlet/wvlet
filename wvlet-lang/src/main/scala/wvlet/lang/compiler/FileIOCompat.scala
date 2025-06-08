@@ -20,3 +20,23 @@ import wvlet.lang.catalog.Catalog
   */
 trait FileIOCompat:
   def loadStaticCatalog(compilerOptions: CompilerOptions): Catalog
+
+  /**
+    * Check if a path exists and is a directory
+    */
+  def isDirectory(path: Any): Boolean
+
+  /**
+    * List subdirectories of a given path
+    */
+  def listDirectories(path: Any): List[String]
+
+  /**
+    * Resolve a path with subdirectories
+    */
+  def resolvePath(basePath: Any, segments: String*): Any
+
+  /**
+    * Read file content as string if it exists
+    */
+  def readFileIfExists(path: Any): Option[String]

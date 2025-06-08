@@ -14,7 +14,8 @@
 package wvlet.lang.compiler
 
 import wvlet.lang.catalog.{Catalog, InMemoryCatalog, StaticCatalogProvider}
-import java.nio.file.Paths
+import java.nio.file.{Files, Path, Paths}
+import scala.jdk.CollectionConverters.*
 
 /**
   * JVM implementation of FileIOCompat that can handle file paths
@@ -34,3 +35,45 @@ trait FileIOCompatImpl extends FileIOCompat:
           InMemoryCatalog(catalogName = catalogName, functions = Nil)
     else
       InMemoryCatalog(catalogName = compilerOptions.catalog.getOrElse("memory"), functions = Nil)
+
+  override def isDirectory(path: Any): Boolean =
+    path match
+      case p: Path =>
+        Files.exists(p) && Files.isDirectory(p)
+      case _ =>
+        false
+
+  override def listDirectories(path: Any): List[String] =
+    path match
+      case p: Path =>
+        if Files.exists(p) && Files.isDirectory(p) then
+          Files
+            .list(p)
+            .iterator()
+            .asScala
+            .filter(Files.isDirectory(_))
+            .map(_.getFileName.toString)
+            .toList
+        else
+          List.empty
+      case _ =>
+        List.empty
+
+  override def resolvePath(basePath: Any, segments: String*): Any =
+    basePath match
+      case p: Path =>
+        segments.foldLeft(p)((path, segment) => path.resolve(segment))
+      case _ =>
+        basePath
+
+  override def readFileIfExists(path: Any): Option[String] =
+    path match
+      case p: Path =>
+        if Files.exists(p) then
+          Some(Files.readString(p))
+        else
+          None
+      case _ =>
+        None
+
+end FileIOCompatImpl
