@@ -62,7 +62,7 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '23'
+          java-version: '24'
           cache: sbt
       - name: Install libgc
         run: sudo apt-get install libgc-dev

@@ -12,11 +12,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
         - uses: actions/checkout@v4
-        - name: Set up Java 23
+        - name: Set up Java 24
           uses: actions/setup-java@v4
           with:
             distribution: 'temurin'
-            java-version: '23'
+            java-version: '24'
             cache: sbt
         - name: Install Rust
           run: rustup update
