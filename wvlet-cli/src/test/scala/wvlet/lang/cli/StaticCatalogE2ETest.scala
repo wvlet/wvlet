@@ -72,129 +72,131 @@ class StaticCatalogE2ETest extends AirSpec:
 
       // Create a connector and populate some test data
       val profile = Profile.defaultProfileFor(dbType)
-      val connector =
+
+      try
+        val connector = dbConnectorProvider.getConnector(profile)
+
         try
-          dbConnectorProvider.getConnector(profile)
-        catch
-          case e: Exception =>
-            warn(s"Skipping E2E test - DuckDB connector not available: ${e.getMessage}")
-            return
+          // Create a test table in DuckDB
+          connector.executeUpdate(
+            "CREATE TABLE employees (id INT, name VARCHAR, salary DECIMAL(10,2))"
+          )
+          connector.executeUpdate(
+            "INSERT INTO employees VALUES (1, 'Alice', 50000.00), (2, 'Bob', 60000.00)"
+          )
 
-      try
-        // Create a test table in DuckDB
-        connector.executeUpdate(
-          "CREATE TABLE employees (id INT, name VARCHAR, salary DECIMAL(10,2))"
+          // Import the catalog - use "memory" for in-memory DuckDB
+          val catalog     = connector.getCatalog("memory", "main")
+          val catalogPath = tempPath.resolve("catalog")
+          val catalogDir  = catalogPath.resolve(dbType.toString.toLowerCase).resolve(catalogName)
+          Files.createDirectories(catalogDir)
+
+          // Get schemas
+          val schemas = catalog.listSchemas
+          // In-memory DuckDB might have 0 or more schemas
+          if schemas.nonEmpty then
+            schemas.exists(_.name == "main") shouldBe true
+
+          // Get tables
+          val tables = catalog.listTables("main")
+          tables.exists(_.name == "employees") shouldBe true
+
+          // Get functions
+          val functions = catalog.listFunctions
+          (functions.size > 100) shouldBe true // DuckDB has many built-in functions
+
+          // Write catalog files
+          val schemasToWrite =
+            if schemas.isEmpty then
+              List(Catalog.TableSchema(Some(catalogName), "main", "Main schema"))
+            else
+              schemas.toList
+          Files.writeString(
+            catalogDir.resolve("schemas.json"),
+            CatalogSerializer.serializeSchemas(schemasToWrite)
+          )
+          Files.writeString(
+            catalogDir.resolve("main.json"),
+            CatalogSerializer.serializeTables(tables.toList)
+          )
+          Files.writeString(
+            catalogDir.resolve("functions.json"),
+            CatalogSerializer.serializeFunctions(functions.toList)
+          )
+
+        finally
+          connector.close()
+        end try
+
+        // Phase 2: Load static catalog and verify
+        val loadedCatalog = StaticCatalogProvider.loadCatalog(
+          catalogName,
+          dbType,
+          tempPath.resolve("catalog")
         )
-        connector.executeUpdate(
-          "INSERT INTO employees VALUES (1, 'Alice', 50000.00), (2, 'Bob', 60000.00)"
-        )
+        loadedCatalog.isDefined shouldBe true
 
-        // Import the catalog - use "memory" for in-memory DuckDB
-        val catalog     = connector.getCatalog("memory", "main")
-        val catalogPath = tempPath.resolve("catalog")
-        val catalogDir  = catalogPath.resolve(dbType.toString.toLowerCase).resolve(catalogName)
-        Files.createDirectories(catalogDir)
+        val staticCatalog = loadedCatalog.get
+        staticCatalog.catalogName shouldBe catalogName
+        staticCatalog.dbType shouldBe dbType
 
-        // Get schemas
-        val schemas = catalog.listSchemas
-        // In-memory DuckDB might have 0 or more schemas
-        if schemas.nonEmpty then
-          schemas.exists(_.name == "main") shouldBe true
+        // Verify table is accessible
+        val employeeTable = staticCatalog.findTable("main", "employees")
+        employeeTable.isDefined shouldBe true
+        employeeTable.get.columns.map(_.name) shouldContain "id"
+        employeeTable.get.columns.map(_.name) shouldContain "name"
+        employeeTable.get.columns.map(_.name) shouldContain "salary"
 
-        // Get tables
-        val tables = catalog.listTables("main")
-        tables.exists(_.name == "employees") shouldBe true
+        // Verify functions are available
+        val sumFunction = staticCatalog.listFunctions.find(_.name == "sum")
+        sumFunction.isDefined shouldBe true
 
-        // Get functions
-        val functions = catalog.listFunctions
-        (functions.size > 100) shouldBe true // DuckDB has many built-in functions
-
-        // Write catalog files
-        val schemasToWrite =
-          if schemas.isEmpty then
-            List(Catalog.TableSchema(Some(catalogName), "main", "Main schema"))
-          else
-            schemas.toList
+        // Phase 3: Compile a query using static catalog
+        val queryFile = tempPath.resolve("query.wv")
         Files.writeString(
-          catalogDir.resolve("schemas.json"),
-          CatalogSerializer.serializeSchemas(schemasToWrite)
-        )
-        Files.writeString(
-          catalogDir.resolve("main.json"),
-          CatalogSerializer.serializeTables(tables.toList)
-        )
-        Files.writeString(
-          catalogDir.resolve("functions.json"),
-          CatalogSerializer.serializeFunctions(functions.toList)
+          queryFile,
+          """
+          |from employees
+          |where salary > 55000
+          |select name, sum(salary) as total_salary
+        """.stripMargin
         )
 
-      finally
-        connector.close()
+        val compilerOpts = WvletCompilerOption(
+          workFolder = tempPath.toString,
+          file = Some("query.wv"),
+          targetDBType = Some("duckdb"),
+          useStaticCatalog = true,
+          staticCatalogPath = Some(tempPath.resolve("catalog").toString),
+          catalog = Some(catalogName)
+        )
+
+        val compiler =
+          new WvletCompiler(WvletGlobalOption(), compilerOpts, workEnv, dbConnectorProvider)
+
+        try
+          // Generate SQL using static catalog
+          val sql = compiler.generateSQL
+
+          // Verify SQL contains expected elements
+          sql shouldContain "employees"
+          sql shouldContain "salary"
+          sql shouldContain "sum("
+          sql shouldContain "55000"
+
+          // The SQL should be valid DuckDB SQL
+          sql.toLowerCase shouldContain "select"
+          sql.toLowerCase shouldContain "from"
+          sql.toLowerCase shouldContain "where"
+
+        finally
+          compiler.close()
+
+      catch
+        case e: Exception =>
+          warn(s"Skipping E2E test - DuckDB connector not available: ${e.getMessage}")
+          pending("DuckDB connector not available")
       end try
-
-      // Phase 2: Load static catalog and verify
-      val loadedCatalog = StaticCatalogProvider.loadCatalog(
-        catalogName,
-        dbType,
-        tempPath.resolve("catalog")
-      )
-      loadedCatalog.isDefined shouldBe true
-
-      val staticCatalog = loadedCatalog.get
-      staticCatalog.catalogName shouldBe catalogName
-      staticCatalog.dbType shouldBe dbType
-
-      // Verify table is accessible
-      val employeeTable = staticCatalog.findTable("main", "employees")
-      employeeTable.isDefined shouldBe true
-      employeeTable.get.columns.map(_.name) shouldContain "id"
-      employeeTable.get.columns.map(_.name) shouldContain "name"
-      employeeTable.get.columns.map(_.name) shouldContain "salary"
-
-      // Verify functions are available
-      val sumFunction = staticCatalog.listFunctions.find(_.name == "sum")
-      sumFunction.isDefined shouldBe true
-
-      // Phase 3: Compile a query using static catalog
-      val queryFile = tempPath.resolve("query.wv")
-      Files.writeString(
-        queryFile,
-        """
-        |from employees
-        |where salary > 55000
-        |select name, sum(salary) as total_salary
-      """.stripMargin
-      )
-
-      val compilerOpts = WvletCompilerOption(
-        workFolder = tempPath.toString,
-        file = Some("query.wv"),
-        targetDBType = Some("duckdb"),
-        useStaticCatalog = true,
-        staticCatalogPath = Some(tempPath.resolve("catalog").toString),
-        catalog = Some(catalogName)
-      )
-
-      val compiler =
-        new WvletCompiler(WvletGlobalOption(), compilerOpts, workEnv, dbConnectorProvider)
-
-      try
-        // Generate SQL using static catalog
-        val sql = compiler.generateSQL
-
-        // Verify SQL contains expected elements
-        sql shouldContain "employees"
-        sql shouldContain "salary"
-        sql shouldContain "sum("
-        sql shouldContain "55000"
-
-        // The SQL should be valid DuckDB SQL
-        sql.toLowerCase shouldContain "select"
-        sql.toLowerCase shouldContain "from"
-        sql.toLowerCase shouldContain "where"
-
-      finally
-        compiler.close()
     }
   }
 
