@@ -251,4 +251,12 @@ For error reporting, use WvletLangException and StatusCode enum. If necessary er
   - Ensure the guidance remains clear, concise, and helpful for developers
 
 ## Memory
+- 
 - For creating temporary files, use target folder, which will be ignored in git
+
+## Workflow for PR Checks
+
+- Check pr status and fix issues like code format, compilation failure, test failures
+- After merging pr, updated the related issues to reflect completed and remaining tasks
+
+

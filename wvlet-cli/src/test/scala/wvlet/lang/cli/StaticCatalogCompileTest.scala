@@ -27,14 +27,10 @@ class StaticCatalogCompileTest extends AirSpec:
     val targetDir = Paths.get("target/test-temp")
     Files.createDirectories(targetDir)
     val tempDir = Files.createTempDirectory(targetDir, "static-catalog-test")
-    try
-      f(tempDir)
+    try f(tempDir)
     finally
       // Cleanup
-      Files
-        .walk(tempDir)
-        .sorted(java.util.Comparator.reverseOrder())
-        .forEach(Files.delete)
+      Files.walk(tempDir).sorted(java.util.Comparator.reverseOrder()).forEach(Files.delete)
 
   test("compile with static catalog") {
     withTempCatalog { catalogPath =>
@@ -46,11 +42,7 @@ class StaticCatalogCompileTest extends AirSpec:
 
       // Create minimal catalog metadata
       val schemas = List(
-        Catalog.TableSchema(
-          catalog = Some(catalogName),
-          name = "main",
-          description = "Main schema"
-        )
+        Catalog.TableSchema(catalog = Some(catalogName), name = "main", description = "Main schema")
       )
       val tables = List(
         Catalog.TableDef(
@@ -64,9 +56,15 @@ class StaticCatalogCompileTest extends AirSpec:
       )
 
       // Write catalog files
-      Files.writeString(catalogDir.resolve("schemas.json"), CatalogSerializer.serializeSchemas(schemas))
+      Files.writeString(
+        catalogDir.resolve("schemas.json"),
+        CatalogSerializer.serializeSchemas(schemas)
+      )
       Files.writeString(catalogDir.resolve("main.json"), CatalogSerializer.serializeTables(tables))
-      Files.writeString(catalogDir.resolve("functions.json"), CatalogSerializer.serializeFunctions(Nil))
+      Files.writeString(
+        catalogDir.resolve("functions.json"),
+        CatalogSerializer.serializeFunctions(Nil)
+      )
 
       // Create a test query that references the table
       val queryFile = catalogPath.resolve("test.wv")
@@ -78,24 +76,20 @@ class StaticCatalogCompileTest extends AirSpec:
 
       val compilerOpts = WvletCompilerOption(
         workFolder = catalogPath.toString,
-        file = Some("test.wv"),  // Use relative path, not absolute
+        file = Some("test.wv"), // Use relative path, not absolute
         targetDBType = Some("duckdb"),
         useStaticCatalog = true,
         staticCatalogPath = Some(catalogPath.toString),
         catalog = Some("test")
       )
 
-      val compiler = new WvletCompiler(
-        WvletGlobalOption(),
-        compilerOpts,
-        workEnv,
-        dbConnectorProvider
-      )
+      val compiler =
+        new WvletCompiler(WvletGlobalOption(), compilerOpts, workEnv, dbConnectorProvider)
 
       try
         // Test that compilation succeeds with static catalog
         val sql = compiler.generateSQL
-        
+
         // Verify the generated SQL references the table
         sql shouldContain "users"
         sql shouldContain "id"
@@ -116,14 +110,16 @@ class StaticCatalogCompileTest extends AirSpec:
 
       // Create minimal catalog
       val schemas = List(
-        Catalog.TableSchema(
-          catalog = Some(catalogName),
-          name = "main",
-          description = "Main schema"
-        )
+        Catalog.TableSchema(catalog = Some(catalogName), name = "main", description = "Main schema")
       )
-      Files.writeString(catalogDir.resolve("schemas.json"), CatalogSerializer.serializeSchemas(schemas))
-      Files.writeString(catalogDir.resolve("functions.json"), CatalogSerializer.serializeFunctions(Nil))
+      Files.writeString(
+        catalogDir.resolve("schemas.json"),
+        CatalogSerializer.serializeSchemas(schemas)
+      )
+      Files.writeString(
+        catalogDir.resolve("functions.json"),
+        CatalogSerializer.serializeFunctions(Nil)
+      )
 
       // Create a simple query
       val queryFile = tempPath.resolve("test.wv")
@@ -134,18 +130,14 @@ class StaticCatalogCompileTest extends AirSpec:
 
       val compilerOpts = WvletCompilerOption(
         workFolder = tempPath.toString,
-        file = Some("test.wv"),  // Use relative path, not absolute
+        file = Some("test.wv"), // Use relative path, not absolute
         targetDBType = Some("duckdb"),
         useStaticCatalog = true
         // Note: staticCatalogPath is not specified, should default to ./catalog
       )
 
-      val compiler = new WvletCompiler(
-        WvletGlobalOption(),
-        compilerOpts,
-        workEnv,
-        dbConnectorProvider
-      )
+      val compiler =
+        new WvletCompiler(WvletGlobalOption(), compilerOpts, workEnv, dbConnectorProvider)
 
       try
         // Should compile successfully even without tables (using VALUES clause)
