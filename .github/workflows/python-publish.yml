@@ -152,13 +152,20 @@ jobs:
           name: python-distributions
           path: dist/
       
+      - name: List available wheels
+        run: |
+          echo "Available wheels:"
+          ls -la dist/
+      
       - name: Install wheel
         run: |
           # Install the appropriate wheel for this platform
           if [[ "${{ runner.arch }}" == "ARM64" ]]; then
-            pip install dist/wvlet-*-manylinux2014_aarch64.whl
+            echo "Installing ARM64 wheel..."
+            pip install dist/wvlet-*-py3-none-manylinux2014_aarch64.whl
           else
-            pip install dist/wvlet-*-manylinux2014_x86_64.whl
+            echo "Installing x86_64 wheel..."
+            pip install dist/wvlet-*-py3-none-manylinux2014_x86_64.whl
           fi
       
       - name: Test import and basic functionality

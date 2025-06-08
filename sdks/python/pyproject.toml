@@ -52,3 +52,4 @@ wvlet = [
 [tool.setuptools_scm]
 # Use git tags for versioning
 root = "../.."
+fallback_version = "0.1.0"
