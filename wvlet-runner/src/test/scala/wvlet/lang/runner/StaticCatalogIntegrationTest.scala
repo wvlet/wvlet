@@ -133,7 +133,7 @@ class StaticCatalogIntegrationTest extends AirSpec with LogSupport:
       )
 
       val compiler = Compiler(compilerOptions)
-      val unit     = CompilationUnit(SourceFile.fromPath(queryFile.toString), false)
+      val unit     = CompilationUnit(SourceFile.fromFile(queryFile.toString), false)
       val result   = compiler.compileSingleUnit(unit)
 
       result.hasFailures shouldBe false
