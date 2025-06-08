@@ -638,13 +638,13 @@ In Wvlet, the default aggregation operator `arbitrary (any)` is used, which retu
 
 #### Referencing Grouping Keys
 
-After grouping, you can reference grouping keys using `_1`, `_2`, etc. in the order they appear in the `group by` clause:
+After grouping, you can reference grouping keys by their column names directly:
 
 ```sql
 from [[1, "A", 100], [2, "B", 200], [1, "A", 150], [2, "B", 50]]
   as data(id, category, value)
 group by id, category
-select _1 as id, _2 as category;
+select id, category;
 
 ┌─────┬──────────┐
 │ id  │ category │
@@ -657,9 +657,13 @@ select _1 as id, _2 as category;
 └────────────────┘
 ```
 
+:::tip
+While you can also reference grouping keys using `_1`, `_2`, etc. in the order they appear in the `group by` clause, it's recommended to use column names for better readability and maintainability.
+:::
+
 ### agg
 
-The `agg` operator adds aggregation expressions to grouped rows. It must follow a `group by` clause.
+The `agg` operator adds aggregation expressions. It is typically used after a `group by` clause to aggregate data within groups, but can also be used without `group by` to aggregate all rows in the input.
 
 #### Basic Aggregations
 
@@ -817,8 +821,8 @@ order by month, total_revenue desc;
 │ string  │ string │    long    │       int        │      int      │      long       │
 ├─────────┼────────┼────────────┼──────────────────┼───────────────┼─────────────────┤
 │ 2024-01 │ North  │          2 │               15 │         14000 │               2 │
-│ 2024-02 │ North  │          2 │               13 │         12600 │               2 │
 │ 2024-02 │ South  │          2 │               16 │         14400 │               2 │
+│ 2024-02 │ North  │          2 │               13 │         12600 │               2 │
 ├─────────┴────────┴────────────┴──────────────────┴───────────────┴─────────────────┤
 │ 3 rows                                                                              │
 └─────────────────────────────────────────────────────────────────────────────────────┘
