@@ -106,14 +106,17 @@ See [Catalog Management](../usage/catalog-management.md) for detailed CLI usage.
 ### Programmatic Usage
 
 ```scala
-import wvlet.lang.compiler.{Compiler, CompilerOptions, DBType}
+import wvlet.lang.compiler.{Compiler, CompilerOptions, DBType, WorkEnv}
 import wvlet.log.LogLevel
 
+val workEnv = WorkEnv(".", LogLevel.INFO)
+
 val compilerOptions = CompilerOptions(
-  workingDirectory = ".",
+  sourceFolders = List("."),
+  workEnv = workEnv,
   catalog = Some("my_catalog"),
   schema = Some("main"),
-  targetDBType = Some(DBType.DuckDB),
+  dbType = DBType.DuckDB,
   useStaticCatalog = true,
   staticCatalogPath = Some("/path/to/catalog/base")
 )
@@ -124,11 +127,13 @@ val result = compiler.compile()
 
 ### Configuration Options
 
-- `staticCatalogPath`: Base directory containing catalog metadata
-- `useStaticCatalog`: Boolean flag to enable static catalog mode
-- `targetDBType`: Target database type (DuckDB, Trino, etc.)
+- `sourceFolders`: List of directories containing .wv files
+- `workEnv`: Working environment with path and log level
 - `catalog`: Catalog name to load
 - `schema`: Default schema name
+- `dbType`: Target database type (DuckDB, Trino, etc.)
+- `useStaticCatalog`: Boolean flag to enable static catalog mode
+- `staticCatalogPath`: Base directory containing catalog metadata
 
 ## Implementation Details
 

@@ -20,16 +20,16 @@ Export your database catalog to local JSON files:
 
 ```bash
 # Import from DuckDB (default)
-wv catalog import --name mydb
+wvlet catalog import --name mydb
 
 # Import from Trino
-wv catalog import --type trino --name prod_catalog --profile mytrino
+wvlet catalog import --type trino --name prod_catalog --profile mytrino
 
 # Import specific schema only
-wv catalog import --name mydb --schema sales
+wvlet catalog import --name mydb --schema sales
 
 # Custom catalog directory
-wv catalog import --path ./my-catalogs --name mydb
+wvlet catalog import --path ./my-catalogs --name mydb
 ```
 
 ### 2. List Available Catalogs
@@ -37,10 +37,10 @@ wv catalog import --path ./my-catalogs --name mydb
 View all imported catalogs:
 
 ```bash
-wv catalog list
+wvlet catalog list
 
 # With custom path
-wv catalog list --path ./my-catalogs
+wvlet catalog list --path ./my-catalogs
 ```
 
 Output:
@@ -55,7 +55,7 @@ Available static catalogs:
 Inspect a specific catalog:
 
 ```bash
-wv catalog show duckdb/mydb
+wvlet catalog show duckdb/mydb
 ```
 
 Output:
@@ -103,14 +103,14 @@ Static catalogs are stored as JSON files in the following structure:
 
 1. **Initial Setup**: Import catalog from development database
    ```bash
-   wv catalog import --name dev_db
+   wvlet catalog import --name dev_db
    ```
 
 2. **Write Queries**: Develop queries with auto-completion and validation
    ```wv
    -- queries/customer_analysis.wv
    from sales.customers c
-   join sales.orders o on c.id = o.customer_id
+   join sales.orders o on c.customer_id = o.customer_id
    where o.created_at > date '2024-01-01'
    select c.name, count(*) as order_count
    group by c.name
@@ -142,7 +142,7 @@ Static catalogs are stored as JSON files in the following structure:
 
 1. **Shared Catalog**: One team member exports the catalog
    ```bash
-   wv catalog import --name shared_db --path ./shared-catalog
+   wvlet catalog import --name shared_db --path ./shared-catalog
    ```
 
 2. **Distribution**: Share via git, S3, or other storage
@@ -163,12 +163,12 @@ Static catalogs are stored as JSON files in the following structure:
 Refresh catalog when schema changes:
 
 ```bash
-wv catalog refresh --name mydb
+wvlet catalog refresh --name mydb
 ```
 
 This is equivalent to re-importing:
 ```bash
-wv catalog import --name mydb
+wvlet catalog import --name mydb
 ```
 
 ### Automated Updates
@@ -178,7 +178,7 @@ Set up a scheduled job to keep catalogs current:
 ```bash
 #!/bin/bash
 # update-catalog.sh
-wv catalog import --name prod_db --profile production
+wvlet catalog import --name prod_db --profile production
 git add catalog/
 git commit -m "Auto-update catalog $(date +%Y-%m-%d)"
 git push
@@ -213,12 +213,12 @@ git push
 ### Common Issues
 
 1. **"Catalog not found" error**
-   - Check catalog path: `wv catalog list --path ./catalog`
+   - Check catalog path: `wvlet catalog list --path ./catalog`
    - Verify catalog name matches exactly
    - Ensure JSON files exist in catalog directory
 
 2. **"Table not found" during compilation**
-   - Refresh catalog if schema changed: `wv catalog refresh --name mydb`
+   - Refresh catalog if schema changed: `wvlet catalog refresh --name mydb`
    - Check if table exists in correct schema
    - Verify catalog was imported from correct database
 
@@ -231,7 +231,7 @@ git push
 
 ```bash
 # Check what's in the catalog
-wv catalog show duckdb/mydb
+wvlet catalog show duckdb/mydb
 
 # Verify catalog file structure
 ls -la catalog/duckdb/mydb/

@@ -8,6 +8,10 @@ sidebar_label: CLI Reference
 
 This page provides a comprehensive reference for all Wvlet CLI commands.
 
+:::note
+The `wv` command is a shortcut available in the REPL environment. For all other contexts, use the full `wvlet` command.
+:::
+
 ## Global Options
 
 These options can be used with any command:

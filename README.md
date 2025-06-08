@@ -51,10 +51,10 @@ Wvlet can export database catalog metadata (schemas, tables, columns) to JSON fi
 
 ```bash
 # Export catalog metadata
-wv catalog import --name mydb
+wvlet catalog import --name mydb
 
 # Compile queries offline
-wv compile query.wv --use-static-catalog --catalog mydb
+wvlet compile query.wv --use-static-catalog --catalog mydb
 ```
 
 See [Catalog Management](https://wvlet.org/wvlet/docs/usage/catalog-management) for more details.

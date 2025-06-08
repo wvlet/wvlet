@@ -8,19 +8,19 @@ This example demonstrates how to use Wvlet's static catalog feature for offline 
 
 ```bash
 # For DuckDB
-wv catalog import --name example_db
+wvlet catalog import --name example_db
 
 # For Trino
-wv catalog import --type trino --name prod_catalog --profile production
+wvlet catalog import --type trino --name prod_catalog --profile production
 ```
 
 2. **Verify the catalog was imported:**
 
 ```bash
-wv catalog list
+wvlet catalog list
 # Output: duckdb/example_db
 
-wv catalog show duckdb/example_db
+wvlet catalog show duckdb/example_db
 # Output: Catalog details with schemas and table counts
 ```
 
@@ -106,7 +106,12 @@ jobs:
 validate-queries:
   stage: test
   script:
-    - wvlet compile -f queries/*.wv --use-static-catalog --catalog prod_db
+    # Compile each query file individually
+    - |
+      for query in queries/*.wv; do
+        echo "Validating: $query"
+        wvlet compile -f "$query" --use-static-catalog --catalog prod_db
+      done
   only:
     changes:
       - queries/**/*.wv
@@ -122,7 +127,7 @@ validate-queries:
 # update-catalog.sh
 
 echo "Updating catalog from production..."
-wv catalog import --name prod_db --profile production
+wvlet catalog import --name prod_db --profile production
 
 echo "Checking for changes..."
 if git diff --quiet catalog/; then
@@ -154,7 +159,8 @@ fi
 
 If queries fail to compile:
 
-1. Check catalog is up to date: `wv catalog refresh --name example_db`
-2. Verify table exists: `wv catalog show duckdb/example_db | grep table_name`
+1. Check catalog is up to date: `wvlet catalog refresh --name example_db`
+2. Verify table exists: `wvlet catalog show duckdb/example_db | grep table_name`
 3. Check schema name is correct in the query
 4. Enable debug logging: `wvlet compile -f query.wv --use-static-catalog --debug`
+
