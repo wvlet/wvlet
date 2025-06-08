@@ -28,20 +28,38 @@ object DataTypeCodec extends MessageCodec[DataType] with LogSupport:
     // Serialize DataType as its string representation
     p.packString(v.toString)
 
+  /**
+    * Deserialize a DataType from its string representation.
+    *
+    * This method attempts to parse the string using DataType.parse(). If parsing fails (e.g., for
+    * complex types from external systems like DuckDB that use unsupported syntax), it falls back to
+    * creating a GenericType with the original string representation. This ensures catalog
+    * import/export works reliably across different database systems.
+    *
+    * @param u
+    *   The unpacker to read from
+    * @param v
+    *   The message context to set the result in
+    */
   override def unpack(u: Unpacker, v: MessageContext): Unit =
     try
       val typeStr = u.unpackString
-      val dataType = 
+      val dataType =
         try
           DataType.parse(typeStr)
         catch
           case e: Exception =>
             // Fallback to GenericType for types that can't be parsed
-            warn(s"Failed to parse DataType '$typeStr', using GenericType as fallback: ${e.getMessage}")
+            // Using debug level as this is expected for complex types from external systems
+            debug(
+              s"Failed to parse DataType '$typeStr', using GenericType as fallback: ${e.getMessage}"
+            )
             DataType.GenericType(Name.typeName(typeStr))
       v.setObject(dataType)
     catch
       case e: Exception =>
-        v.setError(new IllegalArgumentException(s"Failed to parse DataType from string: ${e.getMessage}", e))
+        v.setError(
+          new IllegalArgumentException(s"Failed to parse DataType from string: ${e.getMessage}", e)
+        )
 
 end DataTypeCodec

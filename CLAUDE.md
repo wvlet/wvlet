@@ -225,6 +225,7 @@ The project follows semantic versioning and uses SBT plugins for cross-platform 
 ### Code Reviews
 
 - Gemini will review pull requests for code quality, adherence to guidelines, and test coverage. Reflect on feedback and make necessary changes.
+- After creating a PR, wait for review from Gemini for a while, and reflect on the suggestions, and update the PR.
 - To ask Gemini review the code change again, comment `/gemini review` to the pull request 
 
 ### Development Workflow

@@ -24,9 +24,9 @@ import wvlet.log.LogSupport
 object CatalogSerializer extends LogSupport:
 
   // Create a custom codec factory that includes our DataType codec
-  private val codecFactory = MessageCodecFactory.defaultFactory.withCodecs(
-    Map(Surface.of[DataType] -> DataTypeCodec)
-  )
+  private val codecFactory = MessageCodecFactory
+    .defaultFactory
+    .withCodecs(Map(Surface.of[DataType] -> DataTypeCodec))
 
   // Codec for table definitions
   private val tableDefCodec = codecFactory.of[List[Catalog.TableDef]]

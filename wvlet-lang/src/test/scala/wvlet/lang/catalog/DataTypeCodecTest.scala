@@ -28,7 +28,7 @@ class DataTypeCodecTest extends AirSpec:
       DataType.DoubleType,
       DataType.ArrayType(DataType.IntType),
       DataType.MapType(DataType.StringType, DataType.IntType),
-      DataType.DecimalType.of(18, 3),
+      DataType.DecimalType.of(18, 3)
       // DataType.ArrayType(DataType.DecimalType.of(18, 3)) // This can't be parsed back from string
     )
 
@@ -49,9 +49,9 @@ class DataTypeCodecTest extends AirSpec:
       returnType = DataType.DecimalType.of(38, 3)
     )
 
-    val json = CatalogSerializer.serializeFunctions(List(function))
+    val json    = CatalogSerializer.serializeFunctions(List(function))
     val decoded = CatalogSerializer.deserializeFunctions(json)
-    
+
     decoded.size shouldBe 1
     val decodedFunc = decoded.head
     decodedFunc.name shouldBe "sum"
@@ -63,25 +63,19 @@ class DataTypeCodecTest extends AirSpec:
 
   test("handle complex nested DataTypes") {
     val complexType = DataType.ArrayType(
-      DataType.MapType(
-        DataType.StringType,
-        DataType.ArrayType(DataType.IntType)
-      )
+      DataType.MapType(DataType.StringType, DataType.ArrayType(DataType.IntType))
     )
-    val json = DataTypeCodec.toJson(complexType)
+    val json    = DataTypeCodec.toJson(complexType)
     val decoded = DataTypeCodec.fromJson(json)
     decoded.toString shouldBe complexType.toString
   }
 
   test("fallback to GenericType for unparseable types") {
     // These type strings can't be parsed by DataType.parse()
-    val unparseableTypes = List(
-      "array(decimal(18,3))",
-      "struct(a:int,b:string)"
-    )
-    
+    val unparseableTypes = List("array(decimal(18,3))", "struct(a:int,b:string)")
+
     unparseableTypes.foreach { typeStr =>
-      val json = s""""$typeStr""""
+      val json    = s""""$typeStr""""
       val decoded = DataTypeCodec.fromJson(json)
       decoded.isInstanceOf[DataType.GenericType] shouldBe true
       decoded.toString shouldBe typeStr
