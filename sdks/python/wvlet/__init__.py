@@ -23,6 +23,10 @@ Wvlet SDK for Python provides an interface to compile Wvlet code into SQL querie
 Typical usage
 -------------
 
+  from wvlet import compile
+  sql = compile("from users select name, age")
+
+  # Or using the compiler class directly:
   from wvlet.compiler import WvletCompiler
   c = WvletCompiler()
   sql = c.compile("show tables")
@@ -31,3 +35,22 @@ Typical usage
 By translating an Wvlet query into SQL, we can utilize existing code assets like SQLAlchemy and Pandas (e.g. pd.read_sql).
 
 """
+
+from .compiler import WvletCompiler
+
+def compile(query: str, target: str = None) -> str:
+    """
+    Compile a Wvlet query into SQL.
+    
+    Args:
+        query (str): The Wvlet query to compile.
+        target (str): Optional target database (e.g., 'trino', 'duckdb').
+    
+    Returns:
+        str: The compiled SQL query.
+    
+    Raises:
+        ValueError: If the compilation fails.
+    """
+    compiler = WvletCompiler(target=target)
+    return compiler.compile(query)

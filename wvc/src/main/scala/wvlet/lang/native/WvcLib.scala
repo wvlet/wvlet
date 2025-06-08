@@ -4,6 +4,7 @@ import wvlet.airframe.codec.MessageCodec
 import wvlet.log.LogSupport
 
 import scala.scalanative.unsafe.*
+import scala.scalanative.libc.stdlib
 
 object WvcLib extends LogSupport:
 
@@ -30,7 +31,7 @@ object WvcLib extends LogSupport:
     * @param argJson
     *   json string representing command line arguments ["arg1", "arg2", ...]
     * @return
-    *   generated SQL as a CString
+    *   generated SQL as a CString (allocated on heap, managed by GC)
     */
   @exported("wvlet_compile_query")
   def compile_query(argJson: CString): CString =
@@ -39,16 +40,21 @@ object WvcLib extends LogSupport:
       val args     = MessageCodec.of[Array[String]].fromJson(json)
       val (sql, _) = WvcMain.compileWvletQuery(args)
 
-      val buffer = stackalloc[CChar](sql.length + 1)
+      // Allocate string on heap using malloc (managed by Boehm GC)
+      val len    = sql.length + 1
+      val buffer = stdlib.malloc(len).asInstanceOf[CString]
       var i      = 0
       while i < sql.length do
         buffer(i) = sql.charAt(i).toByte
         i += 1
       buffer(sql.length) = 0.toByte
-      buffer.asInstanceOf[CString]
+      buffer
     catch
       case e: Throwable =>
         warn(e)
-        stackalloc[CChar](1).asInstanceOf[CString]
+        // Return empty string on error
+        val buffer = stdlib.malloc(1).asInstanceOf[CString]
+        buffer(0) = 0.toByte
+        buffer
 
 end WvcLib
