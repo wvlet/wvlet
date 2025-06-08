@@ -29,10 +29,10 @@ Ensure the code is formatted with `scalafmtAll` command for consistent code styl
 
 ```bash
 # Format code
-sbt scalafmtAll
+./sbt scalafmtAll
 
 # Check formatting
-sbt scalafmtCheck
+./sbt scalafmtCheck
 ```
 
 ### Testing
@@ -40,15 +40,14 @@ sbt scalafmtCheck
 # Run all tests
 ./sbt test
 
-
 # Run specific module tests
 ./sbt "runner/test"
 ./sbt "langJVM/test"
 
-# Test compiler for Scala.js
+# Test specific module for Scala.js
 ./sbt "langJS/test"
 
-# Compile src and test for individual platforms
+# Compile all projects for individual platforms
 ./sbt "projectJVM/Test/compile"
 ./sbt "projectJS/Test/compile"
 ./sbt "projectNative/Test/compile"
