@@ -848,17 +848,16 @@ select users.name, accounts.account_id, balances.amount;
 
 #### Self Join
 
-A table can be joined with itself (self join) by using aliases:
+A table can be joined with itself (self join) by using aliases. The `with` statement helps avoid duplicating the data:
 
 ```sql
-from [[1, "Alice", 2], [2, "Bob", 3], [3, "Charlie", null]]
-  as employees(id, name, manager_id)
-  as emp
-left join {
+with employees as {
   from [[1, "Alice", 2], [2, "Bob", 3], [3, "Charlie", null]]
-    as employees(id, name, manager_id)
-} as mgr
-on emp.manager_id = mgr.id
+    as data(id, name, manager_id)
+}
+from employees as emp
+left join employees as mgr
+  on emp.manager_id = mgr.id
 select emp.name as employee, mgr.name as manager;
 
 ┌──────────┬─────────┐
