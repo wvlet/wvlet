@@ -1,8 +1,51 @@
+[build-system]
+requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
+build-backend = "setuptools.build_meta"
+
 [project]
-# EOL of 3.8 was 2024-10-07
-requires-python = ">= 3.9"
 name = "wvlet"
-dynamic = ["version"]
-dependencies = [
-    "pytest>=6.0"
+version = "0.1.0"
+description = "Python SDK for Wvlet - A flow-style query language"
+readme = "README.md"
+requires-python = ">= 3.9"
+license = {text = "Apache-2.0"}
+authors = [
+    {name = "wvlet.org", email = "taro.saito@wvlet.org"},
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS :: MacOS X",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Database",
+    "Topic :: Software Development :: Compilers",
+]
+
+[project.urls]
+Homepage = "https://wvlet.org/"
+Documentation = "https://wvlet.org/"
+Repository = "https://github.com/wvlet/wvlet"
+Issues = "https://github.com/wvlet/wvlet/issues"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=6.0",
+]
+
+[tool.setuptools]
+packages = ["wvlet"]
+
+[tool.setuptools.package-data]
+wvlet = [
+    "libs/linux_x86_64/*.so",
+    "libs/linux_aarch64/*.so", 
+    "libs/darwin_arm64/*.dylib",
+    "libs/.gitkeep",
 ]

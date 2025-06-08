@@ -1,0 +1,154 @@
+name: Build and Publish Python SDK
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  pull_request:
+    paths:
+      - 'sdks/python/**'
+      - '.github/workflows/python-publish.yml'
+  workflow_dispatch:
+
+jobs:
+  build-wheels:
+    name: Build Python wheels
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      # First, trigger a native build or use existing artifacts
+      - name: Download native library artifacts from latest workflow
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          workflow: native.yml
+          workflow_conclusion: success
+          name: wvc-lib
+          path: native-libs/
+          if_no_artifact_found: fail
+      
+      - name: Display structure of downloaded files
+        run: ls -laR native-libs/
+      
+      - name: Copy native libraries to Python package
+        run: |
+          # Create directories for each platform
+          mkdir -p sdks/python/wvlet/libs/linux_x86_64
+          mkdir -p sdks/python/wvlet/libs/linux_aarch64
+          
+          # Copy the libraries to the appropriate directories
+          cp native-libs/linux-x64/libwvlet.so sdks/python/wvlet/libs/linux_x86_64/
+          cp native-libs/linux-arm64/libwvlet.so sdks/python/wvlet/libs/linux_aarch64/
+          
+          # Note: macOS support is not yet available in native.yml due to signing requirements
+          
+          # Display the final structure
+          ls -laR sdks/python/wvlet/libs/
+      
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install build wheel setuptools
+      
+      - name: Build source distribution
+        run: |
+          cd sdks/python
+          python -m build --sdist
+      
+      - name: Build platform-specific wheels
+        run: |
+          cd sdks/python
+          # Build wheels for each platform
+          # Note: We're building on Linux but creating platform-specific wheels
+          # This works because we're bundling pre-built native libraries
+          
+          # Linux x86_64
+          python setup.py bdist_wheel --plat-name manylinux2014_x86_64
+          
+          # Linux aarch64
+          python setup.py bdist_wheel --plat-name manylinux2014_aarch64
+          
+      
+      - name: Display built distributions
+        run: ls -la sdks/python/dist/
+      
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-distributions
+          path: sdks/python/dist/
+
+  test-wheels:
+    name: Test wheels on ${{ matrix.os }}
+    needs: build-wheels
+    strategy:
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm]
+        python-version: ['3.9', '3.11', '3.13']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      
+      - name: Download built wheels
+        uses: actions/download-artifact@v4
+        with:
+          name: python-distributions
+          path: dist/
+      
+      - name: Install wheel
+        run: |
+          # Install the appropriate wheel for this platform
+          if [[ "${{ runner.arch }}" == "ARM64" ]]; then
+            pip install dist/wvlet-*-manylinux2014_aarch64.whl
+          else
+            pip install dist/wvlet-*-manylinux2014_x86_64.whl
+          fi
+      
+      - name: Test import and basic functionality
+        run: |
+          python -c "from wvlet import compile; print('Import successful')"
+          python -c "from wvlet import compile; sql = compile('select 1'); print(f'Compiled SQL: {sql}')"
+      
+      - name: Run tests
+        run: |
+          pip install pytest
+          cd sdks/python
+          pytest tests/
+
+  publish:
+    name: Publish to PyPI
+    needs: test-wheels
+    runs-on: ubuntu-latest
+    # Only publish on tagged releases
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    environment:
+      name: pypi
+      url: https://pypi.org/p/wvlet
+    permissions:
+      id-token: write  # For PyPI trusted publishing
+    steps:
+      - name: Download built distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: python-distributions
+          path: dist/
+      
+      - name: Display distributions to publish
+        run: ls -la dist/
+      
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
