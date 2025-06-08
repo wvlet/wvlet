@@ -19,7 +19,7 @@ import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
 
 /**
-  * Scala Native implementation of StaticCatalogCompat with file I/O support
+  * JVM implementation of StaticCatalogCompat with file I/O support
   */
 trait StaticCatalogCompatImpl extends StaticCatalogCompat with LogSupport:
 
@@ -30,6 +30,11 @@ trait StaticCatalogCompatImpl extends StaticCatalogCompat with LogSupport:
   ): Option[StaticCatalog] =
     basePath match
       case path: Path =>
+        // Validate catalog name to prevent directory traversal
+        if catalogName.contains("..") || catalogName.contains("/") || catalogName.contains("\\")
+        then
+          warn(s"Invalid catalog name: ${catalogName}")
+          return None
         val catalogPath = path.resolve(dbType.toString.toLowerCase).resolve(catalogName)
 
         if Files.exists(catalogPath) && Files.isDirectory(catalogPath) then
@@ -40,8 +45,15 @@ trait StaticCatalogCompatImpl extends StaticCatalogCompat with LogSupport:
             val schemasFile = catalogPath.resolve("schemas.json")
             val schemas =
               if Files.exists(schemasFile) then
-                val json = Files.readString(schemasFile)
-                CatalogSerializer.deserializeSchemas(json)
+                try
+                  val json = Files.readString(schemasFile)
+                  CatalogSerializer.deserializeSchemas(json)
+                catch
+                  case e: Exception =>
+                    throw new Exception(
+                      s"Failed to load schemas from ${schemasFile}: ${e.getMessage}",
+                      e
+                    )
               else
                 List.empty
 
@@ -51,9 +63,16 @@ trait StaticCatalogCompatImpl extends StaticCatalogCompat with LogSupport:
                 .map { schema =>
                   val schemaFile = catalogPath.resolve(s"${schema.name}.json")
                   if Files.exists(schemaFile) then
-                    val json      = Files.readString(schemaFile)
-                    val tableDefs = CatalogSerializer.deserializeTables(json)
-                    schema.name -> tableDefs
+                    try
+                      val json      = Files.readString(schemaFile)
+                      val tableDefs = CatalogSerializer.deserializeTables(json)
+                      schema.name -> tableDefs
+                    catch
+                      case e: Exception =>
+                        throw new Exception(
+                          s"Failed to load tables from ${schemaFile}: ${e.getMessage}",
+                          e
+                        )
                   else
                     schema.name -> List.empty[Catalog.TableDef]
                 }
@@ -63,8 +82,15 @@ trait StaticCatalogCompatImpl extends StaticCatalogCompat with LogSupport:
             val functionsFile = catalogPath.resolve("functions.json")
             val functions =
               if Files.exists(functionsFile) then
-                val json = Files.readString(functionsFile)
-                CatalogSerializer.deserializeFunctions(json)
+                try
+                  val json = Files.readString(functionsFile)
+                  CatalogSerializer.deserializeFunctions(json)
+                catch
+                  case e: Exception =>
+                    throw new Exception(
+                      s"Failed to load functions from ${functionsFile}: ${e.getMessage}",
+                      e
+                    )
               else
                 List.empty
 
@@ -79,14 +105,18 @@ trait StaticCatalogCompatImpl extends StaticCatalogCompat with LogSupport:
             )
           catch
             case e: Exception =>
-              error(s"Failed to load static catalog from ${catalogPath}: ${e.getMessage}")
+              error(
+                s"Failed to load static catalog '${catalogName}' from ${catalogPath}: ${e
+                    .getMessage}",
+                e
+              )
               None
         else
           debug(s"Static catalog path does not exist: ${catalogPath}")
           None
         end if
       case _ =>
-        warn("Invalid basePath type for Scala Native")
+        warn("Invalid basePath type for JVM")
         None
 
   override def listAvailableCatalogs(basePath: Any): List[(String, DBType)] =
@@ -111,7 +141,7 @@ trait StaticCatalogCompatImpl extends StaticCatalogCompat with LogSupport:
         else
           List.empty
       case _ =>
-        warn("Invalid basePath type for Scala Native")
+        warn("Invalid basePath type for JVM")
         List.empty
 
 end StaticCatalogCompatImpl
