@@ -30,7 +30,7 @@ object WvcLib extends LogSupport:
     * @param argJson
     *   json string representing command line arguments ["arg1", "arg2", ...]
     * @return
-    *   generated SQL as a CString
+    *   generated SQL as a CString (allocated on heap, managed by GC)
     */
   @exported("wvlet_compile_query")
   def compile_query(argJson: CString): CString =
@@ -39,16 +39,16 @@ object WvcLib extends LogSupport:
       val args     = MessageCodec.of[Array[String]].fromJson(json)
       val (sql, _) = WvcMain.compileWvletQuery(args)
 
-      val buffer = stackalloc[CChar](sql.length + 1)
-      var i      = 0
-      while i < sql.length do
-        buffer(i) = sql.charAt(i).toByte
-        i += 1
-      buffer(sql.length) = 0.toByte
-      buffer.asInstanceOf[CString]
+      // Use Zone for heap allocation that is managed by Boehm GC
+      Zone { implicit z =>
+        toCString(sql)
+      }
     catch
       case e: Throwable =>
         warn(e)
-        stackalloc[CChar](1).asInstanceOf[CString]
+        // Return empty string on error
+        Zone { implicit z =>
+          toCString("")
+        }
 
 end WvcLib

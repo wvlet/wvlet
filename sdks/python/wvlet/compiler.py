@@ -14,7 +14,6 @@
 # limitations under the License.
 #
 
-import sys
 from typing import Optional
 import shutil
 import subprocess
@@ -142,8 +141,15 @@ class WvletCompiler():
                 command.append(f"--target:{self.target}")
             command.append(query)
             process = subprocess.run(command, capture_output=True, text=True)
-            print(process.stdout, end="")
-            print(process.stderr, file=sys.stderr, end="")
+            
             if process.returncode != 0:
-                raise ValueError("Failed to compile")
-            return "\n".join(process.stdout.split("\n")[1:])
+                error_msg = "Failed to compile"
+                if process.stderr:
+                    error_msg += f": {process.stderr.strip()}"
+                raise ValueError(error_msg)
+            
+            # Return the SQL output (skip the first line which contains query echo)
+            lines = process.stdout.strip().split("\n")
+            if len(lines) > 1:
+                return "\n".join(lines[1:])
+            return process.stdout
