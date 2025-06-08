@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "wvlet"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Python SDK for Wvlet - A flow-style query language"
 readme = "README.md"
 requires-python = ">= 3.9"
@@ -47,5 +47,8 @@ wvlet = [
     "libs/linux_x86_64/*.so",
     "libs/linux_aarch64/*.so", 
     "libs/darwin_arm64/*.dylib",
-    "libs/.gitkeep",
 ]
+
+[tool.setuptools_scm]
+# Use git tags for versioning
+root = "../.."
