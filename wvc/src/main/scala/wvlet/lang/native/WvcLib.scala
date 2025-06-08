@@ -4,6 +4,7 @@ import wvlet.airframe.codec.MessageCodec
 import wvlet.log.LogSupport
 
 import scala.scalanative.unsafe.*
+import scala.scalanative.libc.stdlib
 
 object WvcLib extends LogSupport:
 
@@ -39,16 +40,21 @@ object WvcLib extends LogSupport:
       val args     = MessageCodec.of[Array[String]].fromJson(json)
       val (sql, _) = WvcMain.compileWvletQuery(args)
 
-      // Use Zone for heap allocation that is managed by Boehm GC
-      Zone { implicit z =>
-        toCString(sql)
-      }
+      // Allocate string on heap using malloc (managed by Boehm GC)
+      val len    = sql.length + 1
+      val buffer = stdlib.malloc(len).asInstanceOf[CString]
+      var i      = 0
+      while i < sql.length do
+        buffer(i) = sql.charAt(i).toByte
+        i += 1
+      buffer(sql.length) = 0.toByte
+      buffer
     catch
       case e: Throwable =>
         warn(e)
         // Return empty string on error
-        Zone { implicit z =>
-          toCString("")
-        }
+        val buffer = stdlib.malloc(1).asInstanceOf[CString]
+        buffer(0) = 0.toByte
+        buffer
 
 end WvcLib
