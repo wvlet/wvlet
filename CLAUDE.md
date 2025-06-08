@@ -23,6 +23,8 @@ sbt:wvlet> wvcLib/nativeLink
 sbt:wvlet> wvc/nativeLink
 ```
 
+Note: The `wv` command is implemented in WvletREPLMain, while `wvlet` is implemented in WvletMain.
+
 ### Code Formatting
 
 Ensure the code is formatted with `scalafmtAll` command for consistent code style. CI will check formatting on pull requests.

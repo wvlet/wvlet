@@ -34,7 +34,11 @@ case class WvletCompilerOption(
     @option(prefix = "--catalog", description = "Context database catalog to use")
     catalog: Option[String] = None,
     @option(prefix = "--schema", description = "Context database schema to use")
-    schema: Option[String] = None
+    schema: Option[String] = None,
+    @option(prefix = "--use-static-catalog", description = "Use static catalog for compilation")
+    useStaticCatalog: Boolean = false,
+    @option(prefix = "--static-catalog-path", description = "Path to static catalog files")
+    staticCatalogPath: Option[String] = None
 )
 
 class WvletCompiler(
@@ -70,21 +74,35 @@ class WvletCompiler(
   override def close(): Unit = Option(_dbConnector).foreach(_.close())
 
   private val compiler: Compiler =
+    val dbType = compilerOption.targetDBType.map(DBType.fromString).getOrElse(currentProfile.dbType)
+
     val compiler = Compiler(
       CompilerOptions(
         phases = Compiler.allPhases,
         sourceFolders = List(compilerOption.workFolder),
         workEnv = workEnv,
         catalog = currentProfile.catalog,
-        schema = currentProfile.schema
+        schema = currentProfile.schema,
+        dbType = dbType,
+        useStaticCatalog = compilerOption.useStaticCatalog,
+        staticCatalogPath = compilerOption
+          .staticCatalogPath
+          .orElse(
+            if compilerOption.useStaticCatalog then
+              Some("./catalog")
+            else
+              None
+          )
       )
     )
-    currentProfile
-      .catalog
-      .foreach { catalog =>
-        val schema = currentProfile.schema.getOrElse("main")
-        compiler.setDefaultCatalog(getDBConnector.getCatalog(catalog, schema))
-      }
+    // Only set catalog from connector if not using static catalog
+    if !compilerOption.useStaticCatalog then
+      currentProfile
+        .catalog
+        .foreach { catalog =>
+          val schema = currentProfile.schema.getOrElse("main")
+          compiler.setDefaultCatalog(getDBConnector.getCatalog(catalog, schema))
+        }
 
     currentProfile
       .schema
@@ -93,6 +111,8 @@ class WvletCompiler(
       }
 
     compiler
+
+  end compiler
 
   private lazy val inputUnit: CompilationUnit =
     (compilerOption.file, compilerOption.query) match

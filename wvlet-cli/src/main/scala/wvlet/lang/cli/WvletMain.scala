@@ -82,4 +82,7 @@ class WvletMain(opts: WvletGlobalOption) extends LogSupport:
     }
   }
 
+  @command(description = "Manage static catalog metadata")
+  def catalog = new CatalogCommand()
+
 end WvletMain
