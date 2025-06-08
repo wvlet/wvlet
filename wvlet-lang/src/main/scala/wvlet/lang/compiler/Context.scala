@@ -14,7 +14,7 @@
 package wvlet.lang.compiler
 
 import wvlet.lang.api.{SourceLocation, Span, StatusCode}
-import wvlet.lang.catalog.{Catalog, InMemoryCatalog}
+import wvlet.lang.catalog.{Catalog, InMemoryCatalog, StaticCatalog, StaticCatalogProvider}
 import wvlet.lang.compiler.query.QueryProgressMonitor
 import wvlet.lang.model.expr.NameExpr
 import wvlet.lang.model.plan.Import
@@ -46,7 +46,7 @@ case class GlobalContext(compilerOptions: CompilerOptions):
   // Globally available definitions (Name and Symbols)
   var defs: GlobalDefinitions = _
 
-  var defaultCatalog: Catalog = InMemoryCatalog(catalogName = "memory", functions = Nil)
+  var defaultCatalog: Catalog = loadCatalog(compilerOptions)
   var defaultSchema: String   = compilerOptions.schema.getOrElse("main")
 
   var workEnv: WorkEnv = compilerOptions.workEnv
@@ -65,6 +65,25 @@ case class GlobalContext(compilerOptions: CompilerOptions):
     symbolCount
 
   def getFile(name: NameExpr): VirtualFile = files.getOrElseUpdate(name, LocalFile(name.fullName))
+
+  private def loadCatalog(compilerOptions: CompilerOptions): Catalog =
+    if compilerOptions.useStaticCatalog && compilerOptions.staticCatalogPath.isDefined then
+      val catalogName = compilerOptions.catalog.getOrElse("default")
+      val dbType      = compilerOptions.dbType
+
+      // Use the path string directly - platform-specific IOCompat will handle conversion
+      StaticCatalogProvider.loadCatalog(
+        catalogName,
+        dbType,
+        compilerOptions.staticCatalogPath.get
+      ) match
+        case Some(staticCatalog) =>
+          staticCatalog
+        case None =>
+          // Fall back to in-memory catalog if static catalog loading fails
+          InMemoryCatalog(catalogName = catalogName, functions = Nil)
+    else
+      InMemoryCatalog(catalogName = compilerOptions.catalog.getOrElse("memory"), functions = Nil)
 
   /**
     * Get the context corresponding to the specific source file in the CompilationUnit

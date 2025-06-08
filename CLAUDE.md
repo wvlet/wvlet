@@ -29,10 +29,10 @@ Ensure the code is formatted with `scalafmtAll` command for consistent code styl
 
 ```bash
 # Format code
-sbt scalafmtAll
+./sbt scalafmtAll
 
 # Check formatting
-sbt scalafmtCheck
+./sbt scalafmtCheck
 ```
 
 ### Testing
@@ -40,10 +40,17 @@ sbt scalafmtCheck
 # Run all tests
 ./sbt test
 
-
 # Run specific module tests
 ./sbt "runner/test"
 ./sbt "langJVM/test"
+
+# Test specific module for Scala.js
+./sbt "langJS/test"
+
+# Compile all projects for individual platforms
+./sbt "projectJVM/Test/compile"
+./sbt "projectJS/Test/compile"
+./sbt "projectNative/Test/compile"
 
 # Run specific test class
 ./sbt "runner/testOnly *BasicSpec"
@@ -147,6 +154,7 @@ test _.output should be """
 - `.wv` files: Wvlet query language source files
 - Scala sources: Follow standard Maven/SBT directory structure
 - Cross-platform code: Use `%%%` for multi-platform dependencies
+- **Platform specific code needs to be placed in .jvm/src/main/scala, .js/src/main/scala, .native/src/main/scala folders**
 
 ### Code Style
 - **Scala 3**: Latest Scala version (check `SCALA_VERSION` file). No Scala 2 support needed.
@@ -164,8 +172,15 @@ test _.output should be """
 
 ### Multi-Platform Considerations
 - Use `%%%` for cross-platform library dependencies (JVM/JS/Native)
-- Avoid platform-specific APIs in shared code (`wvlet-api`, `wvlet-lang`)
+- To add platform-specific code, use XXXCompat trait, e.g., IOCompat. IOCompat consumes file I/O differences between Scala.js, which has no file I/O support, and others. No need to support file I/O in Scala.js code.
 - Native builds require specific C library dependencies
+- **In Scala.js code, avoid using Java-specific libraries**
+- Platform-specific implementations:
+  - Shared trait in `src/main/scala`: `trait FileIOCompat`
+  - JVM implementation in `.jvm/src/main/scala`: `trait FileIOCompatImpl extends FileIOCompat`
+  - JS implementation in `.js/src/main/scala`: `trait FileIOCompatImpl extends FileIOCompat`
+  - Native implementation in `.native/src/main/scala`: `trait FileIOCompatImpl extends FileIOCompat`
+  - Shared object: `object Compat extends FileIOCompatImpl`
 
 ### Performance
 - Parser uses efficient TokenBuffer for lookahead
@@ -208,3 +223,25 @@ The project follows semantic versioning and uses SBT plugins for cross-platform 
 ### Code Reviews
 
 - Gemini will review pull requests for code quality, adherence to guidelines, and test coverage. Reflect on feedback and make necessary changes.
+- To ask Gemini review the code change again, comment `/gemini review` to the pull request 
+
+### Development Workflow
+
+- To develop a code, create a new branch and create a pull request
+
+## Error Handling
+
+For error reporting, use WvletLangException and StatusCode enum. If necessary error code is missing, add to StatusCode
+
+## Deployment and Documentation
+
+- For new features, update the documentation at website/docs folder
+
+## Development Checklist
+- Before commiting changes, confirm compilation passes for src/main, src/test, and Scala.js
+
+## Commit Guidance
+
+- **Include CLAUDE.md changes as needed to the commit**
+  - If modifying project structure, development processes, or adding new guidelines, update this file
+  - Ensure the guidance remains clear, concise, and helpful for developers
