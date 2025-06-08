@@ -3,7 +3,7 @@
 
 ## Building from Source 
 
-To build Wvlet, you will need at least JDK17 or later. To test Trino connector, JDK23 or later is required (as of November 2024).  
+To build Wvlet, you will need at least JDK17 or later. To test Trino connector, JDK24 or later is required (as of December 2024).  
 
 ```bash
 # Clone the source code repository
