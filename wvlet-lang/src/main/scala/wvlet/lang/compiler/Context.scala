@@ -68,11 +68,15 @@ case class GlobalContext(compilerOptions: CompilerOptions):
 
   private def loadCatalog(compilerOptions: CompilerOptions): Catalog =
     if compilerOptions.useStaticCatalog && compilerOptions.staticCatalogPath.isDefined then
-      val catalogPath = java.nio.file.Paths.get(compilerOptions.staticCatalogPath.get)
       val catalogName = compilerOptions.catalog.getOrElse("default")
       val dbType      = compilerOptions.dbType
 
-      StaticCatalogProvider.loadCatalog(catalogName, dbType, catalogPath) match
+      // Use the path string directly - platform-specific IOCompat will handle conversion
+      StaticCatalogProvider.loadCatalog(
+        catalogName,
+        dbType,
+        compilerOptions.staticCatalogPath.get
+      ) match
         case Some(staticCatalog) =>
           staticCatalog
         case None =>

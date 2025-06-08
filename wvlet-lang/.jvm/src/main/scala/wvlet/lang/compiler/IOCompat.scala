@@ -89,7 +89,8 @@ trait IOCompat:
       case p: Path =>
         segments.foldLeft(p)((path, segment) => path.resolve(segment))
       case s: String =>
-        resolvePath(Path.of(s), segments*)
+        val path = Path.of(s)
+        segments.foldLeft(path)((p, segment) => p.resolve(segment))
       case _ =>
         basePath
 
