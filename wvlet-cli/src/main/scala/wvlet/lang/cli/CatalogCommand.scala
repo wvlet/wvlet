@@ -26,7 +26,7 @@ case class CatalogCommandOption(
     catalogPath: String = "./catalog",
     @option(prefix = "-t,--type", description = "Database type (duckdb, trino)")
     dbType: String = "duckdb",
-    @option(prefix = "-c,--catalog", description = "Catalog name to import")
+    @option(prefix = "-n,--name", description = "Catalog name to import")
     catalog: Option[String] = None,
     @option(prefix = "-s,--schema", description = "Schema name to import (default: all schemas)")
     schema: Option[String] = None,
