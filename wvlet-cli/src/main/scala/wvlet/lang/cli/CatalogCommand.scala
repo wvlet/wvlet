@@ -39,14 +39,24 @@ case class CatalogCommandOption(
   */
 class CatalogCommand extends LogSupport:
 
+  private def validateAndGetDBType(dbTypeStr: String): DBType =
+    val dbType = DBType.fromString(dbTypeStr)
+    // Check if it's a known database type (fromString returns Generic for unknown types)
+    if !DBType.values.map(_.toString.toLowerCase).contains(dbTypeStr.toLowerCase) then
+      error(s"Unknown database type: ${dbTypeStr}")
+      throw new IllegalArgumentException(s"Unknown database type: ${dbTypeStr}")
+    dbType
+
+  private def sanitizeCatalogName(name: String): String =
+    // Remove any path traversal attempts and dangerous characters
+    name.replaceAll("[./\\\\:]", "_").trim
+
   @command(description = "Import catalog metadata from a database")
   def `import`(opts: CatalogCommandOption): Unit =
+    // Note: Global log level is already set via WvletGlobalOption
+    // The WorkEnv log level here is only for WorkEnv-specific logging
     val workEnv = WorkEnv(".", LogLevel.INFO)
-    val dbType  = DBType.fromString(opts.dbType)
-    // Check if it's a known database type
-    if !DBType.values.map(_.toString.toLowerCase).contains(opts.dbType.toLowerCase) then
-      error(s"Unknown database type: ${opts.dbType}")
-      throw new IllegalArgumentException(s"Unknown database type: ${opts.dbType}")
+    val dbType  = validateAndGetDBType(opts.dbType)
 
     info(s"Importing catalog metadata from ${dbType}")
 
@@ -56,7 +66,7 @@ class CatalogCommand extends LogSupport:
 
     try
       // Get catalog name and schema
-      val catalogName = opts.catalog.getOrElse("default")
+      val catalogName = sanitizeCatalogName(opts.catalog.getOrElse("default"))
       val schemaName  = opts.schema.getOrElse("main")
 
       // Get the catalog
@@ -146,11 +156,12 @@ class CatalogCommand extends LogSupport:
     val dbTypeStr   = parts(0)
     val catalogName = parts(1)
 
-    val dbType = DBType.fromString(dbTypeStr)
-    // Check if it's a known database type
-    if !DBType.values.map(_.toString.toLowerCase).contains(dbTypeStr.toLowerCase) then
-      error(s"Unknown database type: ${dbTypeStr}")
-      return
+    val dbType =
+      try
+        validateAndGetDBType(dbTypeStr)
+      catch
+        case _: IllegalArgumentException =>
+          return
 
     val basePath = Paths.get(catalogPath)
     StaticCatalogProvider.loadCatalog(catalogName, dbType, basePath) match
