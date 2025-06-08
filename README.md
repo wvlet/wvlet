@@ -32,6 +32,32 @@ limit (limiting the number of output rows)
 
 With this flow style, you can describe data processing pipelines in a natural order to create complex queries. You can also add operators for testing or debugging data in the middle of the query. This flow syntax is gaining traction and has been adopted in Google's SQL to simplify writing SQL queries. For more details, see _[SQL Has Problems. We Can Fix Them: Pipe Syntax In SQL (VLDB 2024)](https://research.google/pubs/sql-has-problems-we-can-fix-them-pipe-syntax-in-sql/)_.
 
+## Key Features
+
+- **Flow-style syntax**: Write queries in the natural order of data processing
+- **Multi-database support**: Works with DuckDB, Trino, Hive, and more
+- **Static catalog support**: Compile queries offline without database connections
+- **Interactive REPL**: Explore data interactively with auto-completion
+- **Type-safe queries**: Catch errors at compile time with schema validation
+- **Modular queries**: Organize and reuse queries as functions
+
+### Static Catalog Support
+
+Wvlet can export database catalog metadata (schemas, tables, columns) to JSON files and use them for offline query compilation. This enables:
+
+- **CI/CD Integration**: Validate queries in pull requests without database access
+- **Faster Development**: Compile queries instantly without network latency
+- **Version Control**: Track schema changes alongside your queries
+
+```bash
+# Export catalog metadata
+wv catalog import --name mydb
+
+# Compile queries offline
+wv compile query.wv --use-static-catalog --catalog mydb
+```
+
+See [Catalog Management](https://wvlet.org/wvlet/docs/usage/catalog-management) for more details.
 
 ## Contributors
 
