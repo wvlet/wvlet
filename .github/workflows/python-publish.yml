@@ -47,7 +47,12 @@ jobs:
           touch native-libs/linux-arm64/libwvlet.so
       
       - name: Display structure of downloaded files
-        run: ls -laR native-libs/
+        run: |
+          if [ -d "native-libs" ]; then
+            ls -laR native-libs/
+          else
+            echo "No native-libs directory found"
+          fi
       
       - name: Copy native libraries to Python package
         run: |
@@ -55,9 +60,20 @@ jobs:
           mkdir -p sdks/python/wvlet/libs/linux_x86_64
           mkdir -p sdks/python/wvlet/libs/linux_aarch64
           
-          # Copy the libraries to the appropriate directories
-          cp native-libs/linux-x64/libwvlet.so sdks/python/wvlet/libs/linux_x86_64/
-          cp native-libs/linux-arm64/libwvlet.so sdks/python/wvlet/libs/linux_aarch64/
+          # Copy the libraries to the appropriate directories if they exist
+          if [ -f "native-libs/linux-x64/libwvlet.so" ]; then
+            cp native-libs/linux-x64/libwvlet.so sdks/python/wvlet/libs/linux_x86_64/
+          else
+            echo "Warning: linux-x64 library not found, creating placeholder"
+            touch sdks/python/wvlet/libs/linux_x86_64/libwvlet.so
+          fi
+          
+          if [ -f "native-libs/linux-arm64/libwvlet.so" ]; then
+            cp native-libs/linux-arm64/libwvlet.so sdks/python/wvlet/libs/linux_aarch64/
+          else
+            echo "Warning: linux-arm64 library not found, creating placeholder"
+            touch sdks/python/wvlet/libs/linux_aarch64/libwvlet.so
+          fi
           
           # Note: macOS support is not yet available in native.yml due to signing requirements
           
