@@ -26,7 +26,7 @@ case class CatalogCommandOption(
     catalogPath: String = "./catalog",
     @option(prefix = "-t,--type", description = "Database type (duckdb, trino)")
     dbType: String = "duckdb",
-    @option(prefix = "-c,--catalog", description = "Catalog name to import")
+    @option(prefix = "-n,--name", description = "Catalog name to import")
     catalog: Option[String] = None,
     @option(prefix = "-s,--schema", description = "Schema name to import (default: all schemas)")
     schema: Option[String] = None,
@@ -149,12 +149,12 @@ class CatalogCommand extends LogSupport:
       catalogSpec: String
   ): Unit =
     val parts = catalogSpec.split("/")
-    if parts.length != 2 then
+    if parts.length != 2 || parts.exists(_.trim.isEmpty) then
       error(s"Invalid catalog specification: ${catalogSpec}. Use format: dbtype/catalog")
       return
 
-    val dbTypeStr   = parts(0)
-    val catalogName = parts(1)
+    val dbTypeStr   = parts(0).trim
+    val catalogName = parts(1).trim
 
     val dbType =
       try
