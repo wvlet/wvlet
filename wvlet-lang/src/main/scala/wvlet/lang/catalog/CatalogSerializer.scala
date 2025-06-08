@@ -14,6 +14,7 @@
 package wvlet.lang.catalog
 
 import wvlet.airframe.codec.{MessageCodec, MessageCodecFactory}
+import wvlet.airframe.surface.Surface
 import wvlet.lang.model.DataType
 import wvlet.log.LogSupport
 
@@ -22,14 +23,19 @@ import wvlet.log.LogSupport
   */
 object CatalogSerializer extends LogSupport:
 
+  // Create a custom codec factory that includes our DataType codec
+  private val codecFactory = MessageCodecFactory.defaultFactory.withCodecs(
+    Map(Surface.of[DataType] -> DataTypeCodec)
+  )
+
   // Codec for table definitions
-  private val tableDefCodec = MessageCodec.of[List[Catalog.TableDef]]
+  private val tableDefCodec = codecFactory.of[List[Catalog.TableDef]]
 
   // Codec for SQL functions
-  private val sqlFunctionCodec = MessageCodec.of[List[SQLFunction]]
+  private val sqlFunctionCodec = codecFactory.of[List[SQLFunction]]
 
   // Codec for schema metadata
-  private val schemaCodec = MessageCodec.of[List[Catalog.TableSchema]]
+  private val schemaCodec = codecFactory.of[List[Catalog.TableSchema]]
 
   /**
     * Catalog metadata structure that includes all catalog information
@@ -44,7 +50,7 @@ object CatalogSerializer extends LogSupport:
       version: String = "1.0"
   )
 
-  private val catalogMetadataCodec = MessageCodec.of[CatalogMetadata]
+  private val catalogMetadataCodec = codecFactory.of[CatalogMetadata]
 
   def serializeTables(tables: List[Catalog.TableDef]): String = tableDefCodec.toJson(tables)
 

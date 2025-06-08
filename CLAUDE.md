@@ -230,6 +230,7 @@ The project follows semantic versioning and uses SBT plugins for cross-platform 
 ### Development Workflow
 
 - To develop a code, create a new branch and create a pull request
+- **Before addressing a new task, switch to main and pull, and then create a new branch**
 
 ## Error Handling
 
