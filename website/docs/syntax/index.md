@@ -656,53 +656,374 @@ limit 5
 The `order by` statement can follow `asc`, `desc` ordering specifier as in SQL.
 You can add `nulls first` or `nulls last` to specify the order of null values.
 
+### join
+
+The `join` operator combines rows from two or more tables based on a related column between them. Wvlet supports various types of joins similar to SQL, but with a more intuitive flow-style syntax.
+
+#### Basic Join (Inner Join)
+
+The basic `join` returns rows when there is a match in both tables:
+
+```sql
+from
+  [[1, "apple", 50], [2, "banana", 10], [3, "cherry", 70]]
+  as fruit(id, name, price)
+join {
+  from [["o1", 1, 10], ["o2", 2, 5]]
+  as fruit_order(order_id, fruit_id, qty)
+}
+on fruit.id = fruit_order.fruit_id
+select fruit.name, fruit_order.qty, fruit.price * fruit_order.qty as total_price;
+
+┌────────┬─────┬─────────────┐
+│  name  │ qty │ total_price │
+│ string │ int │     int     │
+├────────┼─────┼─────────────┤
+│ apple  │  10 │         500 │
+│ banana │   5 │          50 │
+├────────┴─────┴─────────────┤
+│ 2 rows                     │
+└────────────────────────────┘
+```
+
+#### Left Join
+
+A `left join` returns all rows from the left table, and matched rows from the right table. If no match, NULL values are returned for right table columns:
+
+```sql
+from [[1, "Alice"], [2, "Bob"], [3, "Charlie"]] as users(id, name)
+left join {
+  from [[1, "order1"], [1, "order2"], [3, "order3"]]
+  as orders(user_id, order_id)
+}
+on users.id = orders.user_id
+select users.name, orders.order_id;
+
+┌─────────┬──────────┐
+│  name   │ order_id │
+│ string  │  string  │
+├─────────┼──────────┤
+│ Alice   │ order1   │
+│ Alice   │ order2   │
+│ Bob     │ null     │
+│ Charlie │ order3   │
+├─────────┴──────────┤
+│ 4 rows             │
+└────────────────────┘
+```
+
+#### Right Join
+
+A `right join` returns all rows from the right table, and matched rows from the left table:
+
+```sql
+from [[1, "order1"], [1, "order2"], [3, "order3"], [4, "order4"]]
+  as orders(user_id, order_id)
+right join {
+  from [[1, "Alice"], [2, "Bob"], [3, "Charlie"]]
+  as users(id, name)
+}
+on orders.user_id = users.id
+select users.name, orders.order_id;
+
+┌─────────┬──────────┐
+│  name   │ order_id │
+│ string  │  string  │
+├─────────┼──────────┤
+│ Alice   │ order1   │
+│ Alice   │ order2   │
+│ Bob     │ null     │
+│ Charlie │ order3   │
+├─────────┴──────────┤
+│ 4 rows             │
+└────────────────────┘
+```
+
+#### Cross Join
+
+A `cross join` produces the Cartesian product of two tables, combining each row from the first table with every row from the second table:
+
+```sql
+from [[1, "A"], [2, "B"]] as t1(id, val)
+cross join {
+  from [["X"], ["Y"], ["Z"]] as t2(letter)
+}
+select t1.val, t2.letter;
+
+┌────────┬────────┐
+│  val   │ letter │
+│ string │ string │
+├────────┼────────┤
+│ A      │ X      │
+│ A      │ Y      │
+│ A      │ Z      │
+│ B      │ X      │
+│ B      │ Y      │
+│ B      │ Z      │
+├────────┴────────┤
+│ 6 rows         │
+└────────────────┘
+```
+
+#### Join with Multiple Conditions
+
+You can specify multiple conditions in the `on` clause using `and`/`or` operators:
+
+```sql
+from [[1, "A", 100], [2, "B", 200], [3, "C", 300]] as t1(id, code, value)
+join {
+  from [[1, "A", 10], [2, "B", 20], [3, "D", 30]] as t2(id, code, qty)
+}
+on t1.id = t2.id and t1.code = t2.code
+select t1.id, t1.code, t1.value, t2.qty;
+
+┌─────┬────────┬───────┬─────┐
+│ id  │  code  │ value │ qty │
+│ int │ string │  int  │ int │
+├─────┼────────┼───────┼─────┤
+│   1 │ A      │   100 │  10 │
+│   2 │ B      │   200 │  20 │
+├─────┴────────┴───────┴─────┤
+│ 2 rows                     │
+└────────────────────────────┘
+```
+
+#### Combining Joins with Other Operators
+
+Joins can be seamlessly combined with other Wvlet operators in a flow-style query:
+
+```sql
+from [[1, "Electronics", 1000], [2, "Books", 500], [3, "Clothing", 750]]
+  as categories(id, name, budget)
+left join {
+  from [[1, "Laptop", 800], [1, "Phone", 600], [2, "Novel", 20], [4, "Unknown", 100]]
+  as products(category_id, name, price)
+}
+on categories.id = products.category_id
+where products.price != null
+group by categories.name
+agg 
+  _.count as product_count,
+  products.price.sum as total_price
+order by product_count desc;
+
+┌─────────────┬───────────────┬─────────────┐
+│    name     │ product_count │ total_price │
+│   string    │     long      │     int     │
+├─────────────┼───────────────┼─────────────┤
+│ Electronics │             2 │        1400 │
+│ Books       │             1 │          20 │
+├─────────────┴───────────────┴─────────────┤
+│ 2 rows                                     │
+└────────────────────────────────────────────┘
+```
+
+#### Multiple Joins
+
+You can chain multiple join operations to combine data from several tables:
+
+```sql
+from [[1, "Alice"], [2, "Bob"], [3, "Charlie"]] as users(id, name)
+join {
+  from [[1, 101], [2, 102], [3, 103]] as accounts(user_id, account_id)
+}
+on users.id = accounts.user_id
+join {
+  from [[101, 1000], [102, 2000], [103, 1500]] as balances(account_id, amount)
+}
+on accounts.account_id = balances.account_id
+select users.name, accounts.account_id, balances.amount;
+
+┌─────────┬────────────┬────────┐
+│  name   │ account_id │ amount │
+│ string  │    int     │  int   │
+├─────────┼────────────┼────────┤
+│ Alice   │        101 │   1000 │
+│ Bob     │        102 │   2000 │
+│ Charlie │        103 │   1500 │
+├─────────┴────────────┴────────┤
+│ 3 rows                        │
+└───────────────────────────────┘
+```
+
+#### Self Join
+
+A table can be joined with itself (self join) by using aliases. The `with` statement helps avoid duplicating the data:
+
+```sql
+with employees as {
+  from [[1, "Alice", 2], [2, "Bob", 3], [3, "Charlie", null]]
+    as data(id, name, manager_id)
+}
+from employees as emp
+left join employees as mgr
+  on emp.manager_id = mgr.id
+select emp.name as employee, mgr.name as manager;
+
+┌──────────┬─────────┐
+│ employee │ manager │
+│  string  │ string  │
+├──────────┼─────────┤
+│ Alice    │ Bob     │
+│ Bob      │ Charlie │
+│ Charlie  │ null    │
+├──────────┴─────────┤
+│ 3 rows             │
+└────────────────────┘
+```
+
+:::tip
+Unlike SQL where you write `SELECT ... FROM table1 JOIN table2`, Wvlet's flow-style syntax starts with `from` and then adds `join` as a subsequent operation. This makes it easier to build queries incrementally and matches the logical flow of data processing.
+:::
+
+:::note
+For time-based joins, Wvlet also supports [AsOf Join](asof-join.md), which is useful for joining tables based on the most recent value at a specific time.
+:::
+
 ### concat
 
 The concat operator concatenates rows from multiple subqueries. This is similar to the UNION ALL operator in SQL.
 
 ```sql
+from [[1, "A"], [2, "B"]] as t1(id, val)
+concat {
+  from [[3, "C"], [4, "D"]] as t2(id, val)
+}
+order by id;
+
+┌─────┬────────┐
+│ id  │  val   │
+│ int │ string │
+├─────┼────────┤
+│   1 │ A      │
+│   2 │ B      │
+│   3 │ C      │
+│   4 │ D      │
+├─────┴────────┤
+│ 4 rows       │
+└──────────────┘
+```
+
+The ordering of rows is not guaranteed in the `concat` operator. If you need to sort the output, use the `order by` operator after the `concat` operator.
+
+You can concatenate multiple subqueries:
+
+```sql
 from nation
 where n_regionkey = 0
--- Append rows from another query
 concat {
   from nation
   where n_regionkey = 1
 }
+concat {
+  from nation
+  where n_regionkey = 2
+}
+select n_name, n_regionkey
+order by n_regionkey, n_name
 ```
-
-The ordering of rows are not guaranteed in the `concat` operator. If you need to sort the output, use the `order by` operator after the `concat` operator. 
 
 ### dedup
 
 The `dedup` operator removes duplicated rows from the input rows. This is equivalent to `select distinct *` in SQL.
 
 ```sql
-from nation
-dedup
+from [[1, "A"], [2, "B"], [1, "A"], [3, "C"], [2, "B"]]
+  as data(id, val)
+dedup;
+
+┌─────┬────────┐
+│ id  │  val   │
+│ int │ string │
+├─────┼────────┤
+│   1 │ A      │
+│   2 │ B      │
+│   3 │ C      │
+├─────┴────────┤
+│ 3 rows       │
+└──────────────┘
 ```
 
 ### intersect
 
-The `intersect` operator returns the intersection of the input rows from multiple subqueries. By default, set semantics are used, but you can use bag semantics by specifying `all`.
+The `intersect` operator returns the intersection of the input rows from multiple subqueries. By default, set semantics are used (duplicates removed).
 
 ```sql
-from nation
+from [[1, "A"], [2, "B"], [3, "C"], [4, "D"]] as t1(id, val)
+intersect {
+  from [[2, "B"], [3, "C"], [5, "E"]] as t2(id, val)
+};
+
+┌─────┬────────┐
+│ id  │  val   │
+│ int │ string │
+├─────┼────────┤
+│   2 │ B      │
+│   3 │ C      │
+├─────┴────────┤
+│ 2 rows       │
+└──────────────┘
+```
+
+With `all` keyword, bag semantics are used (duplicates preserved):
+
+```sql
+from [[1, "A"], [2, "B"], [2, "B"], [3, "C"]] as t1(id, val)
 intersect all {
-  from nation
-  where n_regionkey = 1
-}
+  from [[2, "B"], [2, "B"], [3, "C"], [3, "C"]] as t2(id, val)
+};
+
+┌─────┬────────┐
+│ id  │  val   │
+│ int │ string │
+├─────┼────────┤
+│   2 │ B      │
+│   2 │ B      │
+│   3 │ C      │
+├─────┴────────┤
+│ 3 rows       │
+└──────────────┘
 ```
 
 ### except
 
-The `except` operator returns the difference of the input rows from multiple subqueries. By default, set semantics are used, but you can use bag semantics by specifying `all`.
+The `except` operator returns the difference of the input rows from multiple subqueries (rows in the first query but not in the second). By default, set semantics are used.
 
 ```sql
-from nation
+from [[1, "A"], [2, "B"], [3, "C"], [4, "D"]] as t1(id, val)
 except {
-  from nation
-  where n_regionkey = 1
-}
+  from [[2, "B"], [4, "D"]] as t2(id, val)
+};
+
+┌─────┬────────┐
+│ id  │  val   │
+│ int │ string │
+├─────┼────────┤
+│   1 │ A      │
+│   3 │ C      │
+├─────┴────────┤
+│ 2 rows       │
+└──────────────┘
+```
+
+With `all` keyword, bag semantics are used:
+
+```sql
+from [[1, "A"], [2, "B"], [2, "B"], [3, "C"]] as t1(id, val)
+except all {
+  from [[2, "B"]] as t2(id, val)
+};
+
+┌─────┬────────┐
+│ id  │  val   │
+│ int │ string │
+├─────┼────────┤
+│   1 │ A      │
+│   2 │ B      │
+│   3 │ C      │
+├─────┴────────┤
+│ 3 rows       │
+└──────────────┘
 ```
 
 ### pivot
@@ -788,6 +1109,66 @@ unpivot
 └────────────────────────────────────┘
 
 ```
+
+### sample
+
+The `sample` operator randomly samples rows from the input data. You can specify either a fixed number of rows or a percentage.
+
+Sample a fixed number of rows:
+```sql
+from [[1], [2], [3], [4], [5], [6], [7], [8], [9], [10]] as numbers(n)
+sample 5;
+
+┌─────┐
+│  n  │
+│ int │
+├─────┤
+│   2 │
+│   4 │
+│   7 │
+│   8 │
+│  10 │
+├─────┤
+│ 5 … │
+└─────┘
+```
+
+Sample a percentage of rows:
+```sql
+from [[1], [2], [3], [4], [5], [6], [7], [8], [9], [10]] as numbers(n)
+sample 30%;
+
+┌─────┐
+│  n  │
+│ int │
+├─────┤
+│   3 │
+│   6 │
+│   9 │
+├─────┤
+│ 3 … │
+└─────┘
+```
+
+You can specify the sampling method - `reservoir` (default), `system`, or `bernoulli`:
+
+```sql
+-- Reservoir sampling (default) - good for getting exact sample size
+from large_table
+sample reservoir (1000)
+
+-- System sampling - faster but approximate, samples blocks of data
+from large_table  
+sample system (10%)
+
+-- Bernoulli sampling - samples individual rows with given probability
+from large_table
+sample bernoulli (10%)
+```
+
+:::tip
+Reservoir sampling guarantees the exact number of rows in the output (if available), while system and bernoulli sampling may return approximately the requested percentage of rows.
+:::
 
 ### with
 
