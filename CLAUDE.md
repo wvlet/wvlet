@@ -249,3 +249,6 @@ For error reporting, use WvletLangException and StatusCode enum. If necessary er
 - **Include CLAUDE.md changes as needed to the commit**
   - If modifying project structure, development processes, or adding new guidelines, update this file
   - Ensure the guidance remains clear, concise, and helpful for developers
+
+## Memory
+- For creating temporary files, use target folder, which will be ignored in git

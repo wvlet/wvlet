@@ -24,7 +24,9 @@ import scala.jdk.CollectionConverters.*
 class StaticCatalogCompileTest extends AirSpec:
 
   private def withTempCatalog[A](f: Path => A): A =
-    val tempDir = Files.createTempDirectory("static-catalog-test")
+    val targetDir = Paths.get("target/test-temp")
+    Files.createDirectories(targetDir)
+    val tempDir = Files.createTempDirectory(targetDir, "static-catalog-test")
     try
       f(tempDir)
     finally
