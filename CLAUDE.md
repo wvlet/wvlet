@@ -173,7 +173,7 @@ test _.output should be """
 
 ### Multi-Platform Considerations
 - Use `%%%` for cross-platform library dependencies (JVM/JS/Native)
-- To add platform specific code, use or create Compat object, or extend the class with XXXCompat trait, e.g., FileIOCompat. Scala.js has no file I/O support, but JVM and Scala Native can read files
+- To add platform-specific code, use XXXCompat trait, e.g., IOCompat. IOCompat consumes file I/O differences between Scala.js, which has no file I/O support, and others. No need to support file I/O in Scala.js code.
 - Native builds require specific C library dependencies
 - **In Scala.js code, avoid using Java-specific libraries**
 - Platform-specific implementations:

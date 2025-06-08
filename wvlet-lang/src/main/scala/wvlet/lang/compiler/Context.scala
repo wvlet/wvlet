@@ -46,7 +46,7 @@ case class GlobalContext(compilerOptions: CompilerOptions):
   // Globally available definitions (Name and Symbols)
   var defs: GlobalDefinitions = _
 
-  var defaultCatalog: Catalog = Compat.loadStaticCatalog(compilerOptions)
+  var defaultCatalog: Catalog = loadCatalog(compilerOptions)
   var defaultSchema: String   = compilerOptions.schema.getOrElse("main")
 
   var workEnv: WorkEnv = compilerOptions.workEnv
@@ -65,6 +65,21 @@ case class GlobalContext(compilerOptions: CompilerOptions):
     symbolCount
 
   def getFile(name: NameExpr): VirtualFile = files.getOrElseUpdate(name, LocalFile(name.fullName))
+
+  private def loadCatalog(compilerOptions: CompilerOptions): Catalog =
+    if compilerOptions.useStaticCatalog && compilerOptions.staticCatalogPath.isDefined then
+      val catalogPath = java.nio.file.Paths.get(compilerOptions.staticCatalogPath.get)
+      val catalogName = compilerOptions.catalog.getOrElse("default")
+      val dbType      = compilerOptions.dbType
+
+      StaticCatalogProvider.loadCatalog(catalogName, dbType, catalogPath) match
+        case Some(staticCatalog) =>
+          staticCatalog
+        case None =>
+          // Fall back to in-memory catalog if static catalog loading fails
+          InMemoryCatalog(catalogName = catalogName, functions = Nil)
+    else
+      InMemoryCatalog(catalogName = compilerOptions.catalog.getOrElse("memory"), functions = Nil)
 
   /**
     * Get the context corresponding to the specific source file in the CompilationUnit

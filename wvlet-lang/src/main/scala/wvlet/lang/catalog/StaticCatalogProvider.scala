@@ -13,7 +13,7 @@
  */
 package wvlet.lang.catalog
 
-import wvlet.lang.compiler.{DBType, Compat}
+import wvlet.lang.compiler.{DBType, SourceIO}
 import wvlet.log.LogSupport
 
 /**
@@ -27,16 +27,16 @@ object StaticCatalogProvider extends LogSupport:
       warn(s"Invalid catalog name: ${catalogName}")
       return None
 
-    val catalogPath = Compat.resolvePath(basePath, dbType.toString.toLowerCase, catalogName)
+    val catalogPath = SourceIO.resolvePath(basePath, dbType.toString.toLowerCase, catalogName)
 
-    if Compat.isDirectory(catalogPath) then
+    if SourceIO.isDirectory(catalogPath) then
       try
         debug(s"Loading static catalog from: ${catalogPath}")
 
         // Load schemas
-        val schemasPath = Compat.resolvePath(catalogPath, "schemas.json")
+        val schemasPath = SourceIO.resolvePath(catalogPath, "schemas.json")
         val schemas =
-          Compat.readFileIfExists(schemasPath) match
+          SourceIO.readFileIfExists(schemasPath) match
             case Some(json) =>
               try
                 CatalogSerializer.deserializeSchemas(json)
@@ -53,9 +53,9 @@ object StaticCatalogProvider extends LogSupport:
         val tables =
           schemas
             .map { schema =>
-              val schemaPath = Compat.resolvePath(catalogPath, s"${schema.name}.json")
+              val schemaPath = SourceIO.resolvePath(catalogPath, s"${schema.name}.json")
               val tableDefs =
-                Compat.readFileIfExists(schemaPath) match
+                SourceIO.readFileIfExists(schemaPath) match
                   case Some(json) =>
                     try
                       CatalogSerializer.deserializeTables(json)
@@ -72,9 +72,9 @@ object StaticCatalogProvider extends LogSupport:
             .toMap
 
         // Load functions
-        val functionsPath = Compat.resolvePath(catalogPath, "functions.json")
+        val functionsPath = SourceIO.resolvePath(catalogPath, "functions.json")
         val functions =
-          Compat.readFileIfExists(functionsPath) match
+          SourceIO.readFileIfExists(functionsPath) match
             case Some(json) =>
               try
                 CatalogSerializer.deserializeFunctions(json)
@@ -112,15 +112,15 @@ object StaticCatalogProvider extends LogSupport:
   end loadCatalog
 
   def listAvailableCatalogs(basePath: Any): List[(String, DBType)] =
-    if Compat.isDirectory(basePath) then
-      val dbTypeDirs = Compat.listDirectories(basePath)
+    if SourceIO.isDirectory(basePath) then
+      val dbTypeDirs = SourceIO.listDirectories(basePath)
 
       dbTypeDirs.flatMap { dbTypeDir =>
         val dbTypeName = dbTypeDir.toUpperCase
         DBType.values.find(_.toString.equalsIgnoreCase(dbTypeName)) match
           case Some(dbType) =>
-            val dbTypePath  = Compat.resolvePath(basePath, dbTypeDir)
-            val catalogDirs = Compat.listDirectories(dbTypePath)
+            val dbTypePath  = SourceIO.resolvePath(basePath, dbTypeDir)
+            val catalogDirs = SourceIO.listDirectories(dbTypePath)
             catalogDirs.map { catalogName =>
               (catalogName, dbType)
             }

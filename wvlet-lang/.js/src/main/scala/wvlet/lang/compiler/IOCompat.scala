@@ -17,3 +17,9 @@ trait IOCompat:
   def fileName(path: String): String        = path.split("/").lastOption.getOrElse(path)
   def fileExists(path: String): Boolean     = false
   def isDirectory(path: String): Boolean    = false
+
+  // Methods from FileIOCompat
+  def isDirectory(path: Any): Boolean                    = false
+  def listDirectories(path: Any): List[String]           = List.empty
+  def resolvePath(basePath: Any, segments: String*): Any = basePath
+  def readFileIfExists(path: Any): Option[String]        = None
