@@ -49,7 +49,10 @@ class StaticCatalogE2ETest extends AirSpec:
         catalogDir.resolve("schemas.json"),
         CatalogSerializer.serializeSchemas(schemas)
       )
-      Files.writeString(catalogDir.resolve("functions.json"), CatalogSerializer.serializeFunctions(Nil))
+      Files.writeString(
+        catalogDir.resolve("functions.json"),
+        CatalogSerializer.serializeFunctions(Nil)
+      )
 
       // Test loading
       val loaded = StaticCatalogProvider.loadCatalog(catalogName, dbType, catalogPath)
@@ -69,7 +72,7 @@ class StaticCatalogE2ETest extends AirSpec:
 
       // Create a connector and populate some test data
       val profile = Profile.defaultProfileFor(dbType)
-      val connector = 
+      val connector =
         try
           dbConnectorProvider.getConnector(profile)
         catch
