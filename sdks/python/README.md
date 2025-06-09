@@ -42,10 +42,11 @@ print(sql)
 
 # Use model references
 sql = compile("""
-model UserStats =
+model UserStats = {
   from users
   select user_id, count(*) as event_count
   group by user_id
+}
 
 from UserStats
 where event_count > 100
@@ -110,10 +111,11 @@ select
 
 ```python
 sql = compile("""
-model ActiveUsers = 
+model ActiveUsers = {
   from users 
   where last_login > current_date - interval '30' day
   select user_id, email
+}
 
 from ActiveUsers
 select count(*) as active_user_count
@@ -194,7 +196,6 @@ Platform | Architecture | Status
 Linux    | x86_64      | ✅ Supported
 Linux    | aarch64     | ✅ Supported
 macOS    | arm64       | ✅ Supported
-macOS    | x86_64      | 🔄 Planned
 Windows  | x86_64      | 🔄 Planned
 
 ### CLI Fallback

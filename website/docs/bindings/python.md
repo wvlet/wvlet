@@ -42,10 +42,11 @@ print(sql)
 
 # Use model references
 sql = compile("""
-model UserStats =
+model UserStats = {
   from users
   select user_id, count(*) as event_count
   group by user_id
+}
 
 from UserStats
 where event_count > 100
@@ -104,15 +105,17 @@ Models in Wvlet are like CTEs but more intuitive:
 
 ```python
 sql = compile("""
-model ActiveUsers = 
+model ActiveUsers = {
   from users 
   where last_login > current_date - interval '30' day
   select user_id, email
+}
 
-model UserOrders =
+model UserOrders = {
   from orders o
   join ActiveUsers u on o.user_id = u.user_id
   select o.*, u.email
+}
 
 from UserOrders
 select email, count(*) as order_count

@@ -100,10 +100,11 @@ def model_examples():
     
     # Simple model
     query = """
-    model HighValueOrders = 
+    model HighValueOrders = {
         from orders
         where total_amount > 1000
         select *
+    }
     
     from HighValueOrders
     select count(*) as high_value_count
@@ -115,18 +116,20 @@ def model_examples():
     
     # Multiple models
     query = """
-    model RecentOrders = 
+    model RecentOrders = {
         from orders
         where order_date > current_date - 30
         select *
+    }
     
-    model CustomerStats =
+    model CustomerStats = {
         from RecentOrders
         select 
             customer_id,
             count(*) as recent_order_count,
             sum(total_amount) as recent_total
         group by customer_id
+    }
     
     from CustomerStats
     where recent_order_count > 5

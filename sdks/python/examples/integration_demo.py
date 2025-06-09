@@ -59,13 +59,14 @@ def duckdb_integration():
     
     # More complex example with window functions
     wvlet_query = """
-    model MonthlySales =
+    model MonthlySales = {
         from sales
         select 
             date_trunc('month', date) as month,
             product,
             sum(amount) as monthly_total
         group by date_trunc('month', date), product
+    }
     
     from MonthlySales
     select 
@@ -123,7 +124,7 @@ def pandas_workflow():
         
         # Use Wvlet to generate analysis query
         wvlet_query = f"""
-        model UserStats =
+        model UserStats = {
             from '{orders_path}' o
             select 
                 user_id,
@@ -132,6 +133,7 @@ def pandas_workflow():
                 avg(amount) as avg_order_value,
                 max(order_date) as last_order_date
             group by user_id
+        }
         
         from '{users_path}' u
         left join UserStats s on u.user_id = s.user_id
@@ -248,10 +250,11 @@ def streaming_analytics_pattern():
     # that could be used with streaming systems
     
     wvlet_query = """
-    model EventStream =
+    model EventStream = {
         from events
         where event_time > current_timestamp - interval '1 hour'
         select *
+    }
     
     from EventStream
     select 
@@ -282,7 +285,7 @@ def batch_processing_example():
     # Generate SQL for a typical ETL/batch processing task
     wvlet_query = """
     -- Extract and transform user activity data
-    model DailyUserActivity =
+    model DailyUserActivity = {
         from raw_events
         where date(event_time) = current_date - 1
         select 
@@ -293,9 +296,10 @@ def batch_processing_example():
             sum(case when event_type = 'purchase' then 1 else 0 end) as purchase_count,
             sum(case when event_type = 'purchase' then event_value else 0 end) as revenue
         group by user_id, date(event_time)
+    }
     
     -- Merge with user dimensions
-    model EnrichedActivity =
+    model EnrichedActivity = {
         from DailyUserActivity a
         left join users u on a.user_id = u.user_id
         select 
@@ -303,6 +307,7 @@ def batch_processing_example():
             u.segment,
             u.acquisition_channel,
             u.country
+    }
     
     -- Final aggregated metrics
     from EnrichedActivity

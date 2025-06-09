@@ -88,10 +88,11 @@ print(sql)
 ### Using Models for Complex Queries
 ```python
 query = """
-model ActiveUsers = 
+model ActiveUsers = {
     from users 
     where last_login > current_date - 7
     select user_id, email
+}
 
 from ActiveUsers
 select count(*) as weekly_active_users
@@ -113,9 +114,9 @@ select
 ### Multi-step Data Transformations
 ```python
 query = """
-model Step1 = from raw_data select ...
-model Step2 = from Step1 where ...
-model Step3 = from Step2 join other_table ...
+model Step1 = { from raw_data select ... }
+model Step2 = { from Step1 where ... }
+model Step3 = { from Step2 join other_table ... }
 
 from Step3
 select final_results

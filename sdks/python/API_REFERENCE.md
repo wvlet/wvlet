@@ -225,10 +225,11 @@ select *
 
 ```python
 compile("""
-model TempResults = 
+model TempResults = {
     from source_table
     where condition
     select *
+}
 
 from TempResults
 select count(*)
