@@ -345,7 +345,7 @@ lazy val runner = project
       Seq(
         "org.jline"                     % "jline"             % "3.30.4",
         "org.wvlet.airframe"           %% "airframe-launcher" % AIRFRAME_VERSION,
-        "com.github.ben-manes.caffeine" % "caffeine"          % "3.2.0",
+        "com.github.ben-manes.caffeine" % "caffeine"          % "3.2.1",
         "org.apache.arrow"              % "arrow-vector"      % "18.3.0",
         "org.duckdb"                    % "duckdb_jdbc"       % "1.3.0.0",
         "io.trino"                      % "trino-jdbc"        % TRINO_VERSION,
