@@ -39,7 +39,7 @@ Quick Start
 
     >>> # Using models (CTEs)
     >>> sql = compile('''
-    ... model ActiveUsers = { from users where active = true select * }
+    ... model ActiveUsers = { from users where active = true }
     ... from ActiveUsers select count(*) as active_count
     ... ''')
 
@@ -111,8 +111,7 @@ def compile(query: str, target: str = None) -> str:
     >>> sql = compile('''
     ... model HighEarners = {
     ...     from employees 
-    ...     where salary > 100000 
-    ...     select *
+    ...     where salary > 100000
     ... }
     ... from HighEarners 
     ... select department, count(*) as count 

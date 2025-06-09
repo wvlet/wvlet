@@ -228,7 +228,6 @@ compile("""
 model TempResults = {
     from source_table
     where condition
-    select *
 }
 
 from TempResults

@@ -253,7 +253,6 @@ def streaming_analytics_pattern():
     model EventStream = {
         from events
         where event_time > current_timestamp - interval '1 hour'
-        select *
     }
     
     from EventStream

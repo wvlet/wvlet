@@ -103,7 +103,6 @@ def model_examples():
     model HighValueOrders = {
         from orders
         where total_amount > 1000
-        select *
     }
     
     from HighValueOrders
@@ -119,7 +118,6 @@ def model_examples():
     model RecentOrders = {
         from orders
         where order_date > current_date - 30
-        select *
     }
     
     model CustomerStats = {
@@ -133,7 +131,6 @@ def model_examples():
     
     from CustomerStats
     where recent_order_count > 5
-    select *
     """
     sql = compile(query)
     print(f"Multiple models:")
