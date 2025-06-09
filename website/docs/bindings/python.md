@@ -173,6 +173,7 @@ df = conn.execute(sql).fetchdf()
 
 ```python
 import pandas as pd
+import numpy as np
 import duckdb
 from wvlet import compile
 
@@ -216,7 +217,7 @@ group by c.name
 having sum(o.total) > 1000
 """
 
-sql = compile(wvlet_query, target="postgresql")
+sql = compile(wvlet_query)  # Uses default SQL dialect
 
 with engine.connect() as conn:
     result = conn.execute(text(sql))

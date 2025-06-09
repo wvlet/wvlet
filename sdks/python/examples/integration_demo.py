@@ -8,7 +8,7 @@ common data processing libraries.
 
 from wvlet import compile
 import os
-import sys
+import tempfile
 
 
 def duckdb_integration():
@@ -114,47 +114,47 @@ def pandas_workflow():
     })
     
     # Save to temporary parquet files
-    users.to_parquet('/tmp/users.parquet')
-    orders.to_parquet('/tmp/orders.parquet')
-    
-    # Use Wvlet to generate analysis query
-    wvlet_query = """
-    model UserStats =
-        from '/tmp/orders.parquet' o
+    with tempfile.TemporaryDirectory() as tmpdir:
+        users_path = os.path.join(tmpdir, 'users.parquet')
+        orders_path = os.path.join(tmpdir, 'orders.parquet')
+        
+        users.to_parquet(users_path)
+        orders.to_parquet(orders_path)
+        
+        # Use Wvlet to generate analysis query
+        wvlet_query = f"""
+        model UserStats =
+            from '{orders_path}' o
+            select 
+                user_id,
+                count(*) as order_count,
+                sum(amount) as total_spent,
+                avg(amount) as avg_order_value,
+                max(order_date) as last_order_date
+            group by user_id
+        
+        from '{users_path}' u
+        left join UserStats s on u.user_id = s.user_id
         select 
-            user_id,
-            count(*) as order_count,
-            sum(amount) as total_spent,
-            avg(amount) as avg_order_value,
-            max(order_date) as last_order_date
-        group by user_id
-    
-    from '/tmp/users.parquet' u
-    left join UserStats s on u.user_id = s.user_id
-    select 
-        u.region,
-        count(distinct u.user_id) as total_users,
-        count(distinct case when s.order_count > 0 then u.user_id end) as active_users,
-        sum(coalesce(s.total_spent, 0)) as revenue,
-        avg(coalesce(s.order_count, 0)) as avg_orders_per_user
-    group by u.region
-    order by revenue desc
-    """
-    
-    sql = compile(wvlet_query, target="duckdb")
-    print(f"Analysis query:\n{sql}\n")
-    
-    # Execute with DuckDB on parquet files
-    try:
-        import duckdb
-        result = duckdb.sql(sql).fetchdf()
-        print(f"Regional analysis results:\n{result}")
-    except ImportError:
-        print("Install duckdb to execute: pip install duckdb")
-    
-    # Cleanup
-    os.remove('/tmp/users.parquet')
-    os.remove('/tmp/orders.parquet')
+            u.region,
+            count(distinct u.user_id) as total_users,
+            count(distinct case when s.order_count > 0 then u.user_id end) as active_users,
+            sum(coalesce(s.total_spent, 0)) as revenue,
+            avg(coalesce(s.order_count, 0)) as avg_orders_per_user
+        group by u.region
+        order by revenue desc
+        """
+        
+        sql = compile(wvlet_query, target="duckdb")
+        print(f"Analysis query:\n{sql}\n")
+        
+        # Execute with DuckDB on parquet files
+        try:
+            import duckdb
+            result = duckdb.sql(sql).fetchdf()
+            print(f"Regional analysis results:\n{result}")
+        except ImportError:
+            print("Install duckdb to execute: pip install duckdb")
 
 
 def sqlalchemy_example():

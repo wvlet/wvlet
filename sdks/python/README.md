@@ -279,7 +279,7 @@ select c.name, sum(o.total) as weekly_total
 group by c.name
 """
 
-sql = compile(wvlet_query, target="postgresql")
+sql = compile(wvlet_query)  # Uses default SQL dialect
 
 with engine.connect() as conn:
     result = conn.execute(text(sql))

@@ -55,7 +55,7 @@ WvletCompiler(target: Optional[str] = None, wvlet_home: Optional[str] = None)
 
 **Parameters:**
 - `target` (Optional[str]): Default target SQL dialect for this compiler instance
-- `wvlet_home` (Optional[str]): Path to Wvlet home directory (defaults to `~/.wvlet`)
+- `wvlet_home` (Optional[str]): Path to Wvlet home directory (defaults to `~/.wvlet`). Reserved for future functionality such as caching, user catalogs, and local schema management. Currently not used.
 
 **Example:**
 ```python

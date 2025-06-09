@@ -157,7 +157,11 @@ class WvletCompiler:
             - None: Use default SQL dialect
         wvlet_home : str, optional
             Path to Wvlet home directory. Defaults to ~/.wvlet.
-            Currently not used but reserved for future functionality.
+            This parameter is reserved for future functionality such as:
+            - Caching compiled queries for performance
+            - Storing user-defined catalogs and configurations
+            - Managing local schema information
+            Currently not used by the Python SDK.
         
         Raises
         ------

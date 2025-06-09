@@ -7,7 +7,6 @@ including data transformation, aggregation, and analytical queries.
 """
 
 from wvlet import compile
-import json
 
 
 def sales_analysis():
