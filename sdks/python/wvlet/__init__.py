@@ -15,42 +15,116 @@
 #
 
 """
-Wvlet SDK for Python
-==========================
+Wvlet Python SDK
+================
 
-Wvlet SDK for Python provides an interface to compile Wvlet code into SQL queries of some target platforms.
+The Wvlet Python SDK provides a native Python interface for compiling Wvlet queries 
+to SQL. It offers high-performance compilation through a bundled native library 
+while maintaining a simple, Pythonic API.
 
-Typical usage
--------------
+Features
+--------
+- Fast native compilation using bundled library
+- Automatic fallback to CLI when native library is unavailable
+- Support for multiple SQL targets (DuckDB, Trino, etc.)
+- Zero dependencies
+- Cross-platform support (Linux x86_64/ARM64, macOS ARM64)
 
-  from wvlet import compile
-  sql = compile("from users select name, age")
+Quick Start
+-----------
+    >>> from wvlet import compile
+    >>> sql = compile("from users select name, age where age > 18")
+    >>> print(sql)
+    SELECT name, age FROM users WHERE age > 18
 
-  # Or using the compiler class directly:
-  from wvlet.compiler import WvletCompiler
-  c = WvletCompiler()
-  sql = c.compile("show tables")
+    >>> # Using models (CTEs)
+    >>> sql = compile('''
+    ... model ActiveUsers = from users where active = true select *
+    ... from ActiveUsers select count(*) as active_count
+    ... ''')
 
+Advanced Usage
+--------------
+For more control, use the WvletCompiler class directly:
 
-By translating an Wvlet query into SQL, we can utilize existing code assets like SQLAlchemy and Pandas (e.g. pd.read_sql).
+    >>> from wvlet.compiler import WvletCompiler
+    >>> compiler = WvletCompiler(target="trino")
+    >>> sql = compiler.compile("from orders select count(*)")
 
+Integration
+-----------
+The compiled SQL can be used with any SQL execution framework:
+
+    >>> import duckdb
+    >>> sql = compile("from 'data.parquet' select * limit 10", target="duckdb")
+    >>> duckdb.sql(sql).show()
+
+For more examples and documentation, visit: https://wvlet.org/docs/bindings/python/
 """
 
-from .compiler import WvletCompiler
+from .compiler import WvletCompiler, CompilationError
+
+__version__ = "0.1.0"
+__all__ = ["compile", "WvletCompiler", "CompilationError"]
+
 
 def compile(query: str, target: str = None) -> str:
     """
-    Compile a Wvlet query into SQL.
+    Compile a Wvlet query to SQL.
     
-    Args:
-        query (str): The Wvlet query to compile.
-        target (str): Optional target database (e.g., 'trino', 'duckdb').
+    This is the primary interface for compiling Wvlet queries. It automatically
+    handles native library loading and falls back to CLI if necessary.
     
-    Returns:
-        str: The compiled SQL query.
+    Parameters
+    ----------
+    query : str
+        The Wvlet query string to compile. Supports the full Wvlet syntax
+        including models, joins, aggregations, window functions, etc.
+    target : str, optional
+        Target SQL dialect. Supported values:
+        - "duckdb": DuckDB SQL dialect
+        - "trino": Trino/Presto SQL dialect
+        - None: Use default SQL dialect
     
-    Raises:
-        ValueError: If the compilation fails.
+    Returns
+    -------
+    str
+        The compiled SQL query string.
+    
+    Raises
+    ------
+    CompilationError
+        If the query has syntax errors or cannot be compiled.
+    NotImplementedError
+        If neither native library nor CLI is available.
+    
+    Examples
+    --------
+    Basic query compilation:
+    
+    >>> sql = compile("from employees select name, salary where salary > 50000")
+    >>> print(sql)
+    SELECT name, salary FROM employees WHERE salary > 50000
+    
+    Using models (CTEs):
+    
+    >>> sql = compile('''
+    ... model HighEarners = 
+    ...     from employees 
+    ...     where salary > 100000 
+    ...     select *
+    ... from HighEarners 
+    ... select department, count(*) as count 
+    ... group by department
+    ... ''')
+    
+    Target-specific compilation:
+    
+    >>> sql = compile("from logs select count(*)", target="trino")
+    
+    See Also
+    --------
+    WvletCompiler : The compiler class for more advanced usage.
     """
     compiler = WvletCompiler(target=target)
     return compiler.compile(query)
