@@ -1,22 +1,64 @@
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
-# Query Syntax
+# Query Syntax Reference
 
 Wvlet is a query language designed to be more human-readable and easier to write than SQL. If you are familiar to SQL, you will find it easy to learn Wvlet syntax due to the many similarities. If you know about [DataFrame in Python](https://pandas.pydata.org/docs/user_guide), it will help you understand the Wvlet query language, as chaining relational operators in flow-style is similar to using the DataFrame API.
 
-### Documentation Overview
+:::tip Getting Started
+New to Wvlet? Check out the [Quick Start](./quick-start.md) tutorial for a hands-on introduction.
+:::
 
-- [Quick Start](./quick-start.md)
-- [Relational Operators](#relational-operators)
+## Quick Navigation
+
+- [Operator Quick Reference](#operator-quick-reference)
+- [Data Source Operators](#data-source-operators)
+- [Filtering & Selection](#filtering--selection)
+- [Column Operations](#column-operations)
+- [Aggregation & Grouping](#aggregation--grouping)
+- [Joining & Combining Data](#joining--combining-data)
+- [Sorting & Transformation](#sorting--transformation)
+- [Advanced Operations](#advanced-operations)
 - [Expressions](#expressions)
-- [Examples](#examples)
-- [Data Models](./data-models.md)
+- [Common Query Patterns](#common-query-patterns)
+
+## Operator Quick Reference
+
+### Core Operators at a Glance
+
+| Operator | Description | SQL Equivalent | Example |
+|----------|-------------|----------------|----------|
+| **Data Sources** | | | |
+| `from` | Read data from table/file | `SELECT * FROM` | `from customers` |
+| `with` | Define reusable subquery | `WITH ... AS` | `with t as { from users }` |
+| `show tables` | List available tables | `SHOW TABLES` | `show tables` |
+| **Filtering & Selection** | | | |
+| `where` | Filter rows | `WHERE` | `where age > 21` |
+| `select` | Choose columns | `SELECT` | `select name, age` |
+| `limit` | Limit row count | `LIMIT` | `limit 10` |
+| `sample` | Random sampling | `TABLESAMPLE` | `sample 1000` |
+| **Column Operations** | | | |
+| `add` | Add new columns | `SELECT *, expr AS` | `add price * 0.9 as discounted` |
+| `exclude` | Remove columns | - | `exclude password` |
+| `rename` | Rename columns | `AS` | `rename user_id as id` |
+| `shift` | Reorder columns | - | `shift name, email` |
+| **Aggregation** | | | |
+| `group by` | Group rows | `GROUP BY` | `group by category` |
+| `agg` | Add aggregations | `SELECT agg_func()` | `agg _.count, revenue.sum` |
+| `pivot` | Pivot table | `PIVOT` | `pivot on month` |
+| **Joining Data** | | | |
+| `join` | Inner join | `JOIN` | `join orders on id = user_id` |
+| `left join` | Left outer join | `LEFT JOIN` | `left join orders on ...` |
+| `concat` | Union all | `UNION ALL` | `concat { from archive }` |
+| **Transformation** | | | |
+| `order by` | Sort rows | `ORDER BY` | `order by created_at desc` |
+| `dedup` | Remove duplicates | `DISTINCT` | `dedup` |
+| `unnest` | Expand arrays | `UNNEST` | `unnest(tags)` |
 
 ### Typical Flow of a Wvlet Query
 
 Wvlet queries start with the
-`from` keyword, and you can chain multiple [relational operators](#relational-operators) to process the input data and generate output data. Here's a typical flow:
+`from` keyword, and you can chain multiple relational operators to process the input data and generate output data. Here's a typical flow:
 
 ```sql
 from ...         -- Scan the input data
@@ -36,94 +78,143 @@ limit ...        -- Limit the number of rows to output
 Unlike SQL, whose queries always must follow the `SELECT ... FROM ... WHERE ... GROUP BY ... ORDER BY ... LIMIT ...` structure, Wvlet uses the flow-style syntax to match the order of data processing order as much as possible, facilitating more intuitive query writing. A query should have a `from` statement to read the data, but
 `select` is not mandatory in Wvlet.
 
-[//]: # (Some operators like `add`, `agg`, `exclude`, `shift`, etc. are not available in the standard SQL, but these new operators will reduce your query text size and make the query more readable and easier to compose. Eventually, these operators will be translated to the equivalent SQL syntax.)
-
 ## Relational Operators
 
-In Wvlet, you need to use __lower-case__ keywords for SQL-like operators. Below is a list of relational operators for manipulating table-format data (relation):
+In Wvlet, you need to use __lower-case__ keywords for SQL-like operators. Operators are organized by their primary function to help you find what you need quickly.
 
-### Catalog Operators
+## Data Source Operators
 
-Wvlet provides operators to list the available catalogs, schemas (databases), tables, and models in the current environment. The hierarchy of the catalog, schema, and table is as follows:
+These operators help you access and explore data sources in your environment.
 
-- catalog: A collection of schemas (databases)
-- schema (database, datasets): A collection of tables
-- table: A collection of rows (records)
+### Catalog Discovery
 
-| Operator                                                       | Output                                                       |
-|----------------------------------------------------------------|--------------------------------------------------------------|
-| [__show__ tables (__in__ `catalog`?(.`schema`)?](#show-tables) | Return a list of all tables in the current schema (database) |
-| [__show__ schemas (__in__ `catalog`)?](#show-schemas)          | Return a list of all schemas (databases) in the catalog      |
-| [__show__ catalogs](#show-catalogs)                            | Return a list of all catalogs                                |
-| __show__ models                                                | Return a list of all models                                  |
-| __describe__ (relation)                                        | Return the schema of the specified table or query            |
+| Operator | Description | SQL Equivalent |
+|----------|-------------|----------------|
+| [__show__ tables](#show-tables) | List all tables in current schema | `SHOW TABLES` |
+| [__show__ tables __in__ `schema`](#show-tables) | List tables in specific schema | `SHOW TABLES IN schema` |
+| [__show__ schemas](#show-schemas) | List all schemas in catalog | `SHOW SCHEMAS` |
+| [__show__ schemas __in__ `catalog`](#show-schemas) | List schemas in specific catalog | `SHOW SCHEMAS IN catalog` |
+| [__show__ catalogs](#show-catalogs) | List all available catalogs | `SHOW CATALOGS` |
+| __show__ models | List all available models | - |
+| __describe__ `table` | Show table/query schema | `DESCRIBE table` |
 
-### Query Operators
+### Reading Data
 
-Wvlet provides various relational operators to process input data and generate output data in the table format.
+| Operator | Description | SQL Equivalent |
+|----------|-------------|----------------|
+| [__from__ `table`](#from) | Read from table | `SELECT * FROM table` |
+| [__from__ `'file.parquet'`](#from) | Read from file | - |
+| [__from__ `[[...]]`](#from) | Read from inline values | `VALUES (...)` |
+| [__with__ `alias` __as__ { `query` }](#with) | Define reusable subquery | `WITH alias AS (query)` |
+| __from__ sql"..." | Execute raw SQL | - |
 
-| Operator                                                                                       | Output                                                                                                                                        |
-|------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------| 
-| [__from__ `expr`](#from)                                                                       | Rows from the given source table, model, value, or file                                                                                       |
-| [__where__ `cond`](#where)                                                                     | Rows that satisfy the given condition. Multiple `where` clauses can be used in the same query                                                 |
-| [__count__](#count)                                                                            | Count the number of input rows                                                                                                                |
-| [__add__ `expr` (__as__ `alias`)?, ...](#add)                                                  | Same rows with new columns added to the right                                                                                                 |
-| [__prepend__ `expr` (__as__ `alias`)?, ...](#prepend)                                          | Same rows with new columns prepended to the left                                                                                              |
-| [__select__ `expr`, ...](#select)                                                              | Rows with the given expressions. `select *` is allowed                                                                                        |
-| __select distinct__ `expr`,...                                                                 | Rows with distinct values of the given expressions                                                                                            |
-| __select__ `alias` __=__ `expr`, ...                                                           | Rows with the given expressions with aliases                                                                                                  |
-| __select__ `expr` __as__ `alias`, ...                                                          | Rows with the given expressions with aliases                                                                                                  |
-| __select as__ `alias`                                                                          | Add an alias to the query to reference it from another query                                                                                  |
-| [__rename__ `column` __as__ `alias`, ...](#rename)                                             | Same rows with the given columns renamed                                                                                                      |
-| [__exclude__ `column`, ...](#exclude)                                                          | Same rows except the given columns                                                                                                            |
-| [__shift__ (to left)? `column`, ...](#shift)                                                   | Same rows with selected column moved to the left                                                                                              |
-| [__shift to right__ `column`, ...](#shift)                                                     | Same rows with selected column moved to the right                                                                                             |
-| __group by__ `column`, ...                                                                     | Grouped rows by the given columns. Grouping keys can be referenced as `select _1, _2, ...`  in the subsequent operator                        |
-| [__agg__ `agg_expr`, ...](#agg)                                                                | Rows with the grouping keys in `group by` clause and aggregated values                                                                        |
-| [__order by__ `expr` (__asc__ \| __desc__)?, ...](#order-by)                                   | Rows sorted by the given expression. 1-origin column indexes can be used like `1`, `2`, ...                                                   |
-| [__limit__ `n`](#limit)                                                                        | Rows up to the given number                                                                                                                   |
-| [__asof__](asof-join.md)? (__left__ \| __right__ \| __cross__)? __join__ `table` __on__ `cond` | Joined rows with the given condition                                                                                                          |
-| [__concat__ \{ `query` \}](#concat)                                                            | Concatenated rows with the given subquery result. Same as `UNION ALL` in SQL                                                                  |
-| [__dedup__](#dedup)                                                                            | Rows with duplicated rows removed. Equivalent to `select distinct *`                                                                          |
-| ([__intersect__](#intersect) \| [__except__](#except)) __all__? ...                            | Rows with the intersection (difference) of the given sources. By default set semantics is used. If `all` is given, bag semantics will be used |
-| [__pivot on__ `pivot_column` (__in__ (`v1`, `v2`, ...) )?](#pivot)                             | Rows whose column values in the pivot column are expanded as columns                                                                          |
-| [__unpivot__ `new_column` __for__ `unpivot_column` __in__ (`v1`, `v2`, ...) ](#unpivot)        | Rows whose columns are transformed into single column values                                                                                  |
-| __\|__ `func(args, ...)`                                                                       | Rows processed by the given table function (pipe operator)                                                                                    |
-| [__with__ `alias` __as__ \{ `(query)` \}](#with)                                               | Define a local query alias, which is the same with a common-table expression (CTE) in SQL                                                     |
-| __sample__ `method`? (`(rows)` \| `(percentage)%`)                                             | Randomly sampled rows. Sampling method can be reservoir (default), system, or bernoulli                                                       |
-| [__unnest__(`array expr`)](unnest.md)                                                          | Expand an array into rows                                                                                                                     | 
-| [__test__ `(test_expr)`](test-syntax.md)                                                       | Test the query result, evaluated only in the test-run mode                                                                                    |
-| __debug__ \{ `(query)` \}                                                                      | Pass-through the input results (no-op), but run a debug query against the input rows                                                          |
-| __describe__                                                                                   | Return the schema of the input relation (column_name, column_type)                                                                            |
+## Filtering & Selection
 
-### Update Operators
+These operators help you filter rows and select specific columns from your data.
 
-Wvlet provides update operators to save the query result as a new table or file, append the query result to the target table, or delete input rows from the source table.
+| Operator | Description | SQL Equivalent |
+|----------|-------------|----------------|
+| [__where__ `condition`](#where) | Filter rows by condition | `WHERE condition` |
+| [__select__ `col1`, `col2`](#select) | Select specific columns | `SELECT col1, col2` |
+| __select__ * | Select all columns | `SELECT *` |
+| __select distinct__ `cols` | Select unique values | `SELECT DISTINCT cols` |
+| [__limit__ `n`](#limit) | Limit to n rows | `LIMIT n` |
+| [__sample__ `n`](#sample) | Random sample of n rows | `TABLESAMPLE` |
+| [__sample__ `n%`](#sample) | Random sample percentage | `TABLESAMPLE n PERCENT` |
+| __exists__ { `subquery` } | Check if subquery has results | `EXISTS (subquery)` |
 
-| Operator                                            | Description                                                                                          |
-|-----------------------------------------------------|------------------------------------------------------------------------------------------------------|
-| __save to__ `table_name`                            | Save the query result as a new table with the given name                                             |
-| __save to__ `table_name` __with__ p1:v1, p2:v2, ... | Save the query result as a new table with the given name and options                                 |
-| __save to__ `'file name'`                           | Save the query result as a file with the given name                                                  |
-| __append to__ `table_name`                          | Append the query result to the target table. If the target table doesn't exist, it creates a new one |
-| __append to__ `'file_name'`                         | Append the query result to the target file. It will create a new file if the file doesn't exist      |
-| __delete__                                          | Delete input rows from the source table                                                              |
+## Column Operations
 
-### Relation Inspection Commands
+These operators help you manipulate columns without changing the number of rows.
 
-| Operator                  | Description                                    |
-|---------------------------|------------------------------------------------|
-| __describe__ `query`      | Display the schema of the input query result   |
-| __explain__ `query`       | Display the LogicalPlan of the query           |
-| __explain__ sql"""...""" | Display a LogicalPlan of the raw SQL statement |
+| Operator | Description | SQL Equivalent |
+|----------|-------------|----------------|
+| [__add__ `expr` __as__ `name`](#add) | Add column to the right | `SELECT *, expr AS name` |
+| [__prepend__ `expr` __as__ `name`](#prepend) | Add column to the left | - |
+| [__exclude__ `col1`, `col2`](#exclude) | Remove specific columns | - |
+| [__rename__ `old` __as__ `new`](#rename) | Rename columns | `old AS new` |
+| [__shift__ `col1`, `col2`](#shift) | Move columns to left | - |
+| __shift to right__ `cols` | Move columns to right | - |
 
-### Raw SQL Commands
+## Aggregation & Grouping
 
-| Operator              | Description                                                |
-|-----------------------|------------------------------------------------------------|
-| __execute__ sql"..."  | Execute a raw SQL statement in the context engine          |
-| __from__ sql"..."     | Execute a raw SQL statement and read the result as a table |
+These operators help you aggregate data and perform group operations.
 
+| Operator | Description | SQL Equivalent |
+|----------|-------------|----------------|
+| [__group by__ `cols`](#group-by) | Group rows by columns | `GROUP BY cols` |
+| [__agg__ `expr1`, `expr2`](#agg) | Add aggregation expressions | `SELECT agg_func(...)` |
+| [__count__](#count) | Count all rows | `SELECT COUNT(*)` |
+| [__pivot on__ `col`](#pivot) | Pivot table on column values | `PIVOT` |
+| [__unpivot__ `val` __for__ `col` __in__ (...)](#unpivot) | Unpivot columns to rows | `UNPIVOT` |
+
+### Common Aggregation Functions
+
+When using `agg` after `group by`, you can use these aggregation functions:
+
+- `_.count` - Count rows in group
+- `column.sum` - Sum of column values
+- `column.avg` - Average of column values
+- `column.min` / `column.max` - Min/max values
+- `_.count_distinct(column)` - Count distinct values
+- `_.array_agg(column)` - Collect values into array
+
+## Joining & Combining Data
+
+These operators help you combine data from multiple sources.
+
+| Operator | Description | SQL Equivalent |
+|----------|-------------|----------------|
+| [__join__ `table` __on__ `condition`](#join) | Inner join | `JOIN table ON condition` |
+| [__left join__ `table` __on__ `condition`](#join) | Left outer join | `LEFT JOIN table ON condition` |
+| __right join__ `table` __on__ `condition` | Right outer join | `RIGHT JOIN table ON condition` |
+| __cross join__ `table` | Cartesian product | `CROSS JOIN table` |
+| [__asof join__](asof-join.md) | Time-based join | - |
+| [__concat__ { `query` }](#concat) | Union all results | `UNION ALL` |
+| [__intersect__ { `query` }](#intersect) | Set intersection | `INTERSECT` |
+| [__except__ { `query` }](#except) | Set difference | `EXCEPT` |
+
+## Sorting & Transformation
+
+These operators help you sort and transform your data.
+
+| Operator | Description | SQL Equivalent |
+|----------|-------------|----------------|
+| [__order by__ `col` __desc__](#order-by) | Sort descending | `ORDER BY col DESC` |
+| [__order by__ `col` __asc__](#order-by) | Sort ascending | `ORDER BY col ASC` |
+| [__dedup__](#dedup) | Remove duplicate rows | `SELECT DISTINCT *` |
+| [__unnest__(`array_col`)](unnest.md) | Expand array to rows | `UNNEST(array_col)` |
+
+## Advanced Operations
+
+These operators provide advanced functionality for testing and debugging.
+
+| Operator | Description | Use Case |
+|----------|-------------|----------|
+| [__test__ `condition`](test-syntax.md) | Assert test conditions | Testing queries |
+| __debug__ { `query` } | Debug intermediate results | Debugging |
+| __\|__ `function(args)` | Apply table function | Custom transformations |
+
+## Update Operations
+
+These operators allow you to save or modify data.
+
+| Operator | Description | Notes |
+|----------|-------------|-------|
+| __save to__ `table` | Create new table | Overwrites if exists |
+| __save to__ `'file.parquet'` | Save to file | Supports various formats |
+| __append to__ `table` | Append to existing table | Creates if not exists |
+| __delete__ | Delete matching rows | From source table |
+
+## Inspection Commands
+
+These commands help you understand query structure and data.
+
+| Operator | Description | Use Case |
+|----------|-------------|----------|
+| __describe__ `query` | Show query schema | Understanding output columns |
+| __explain__ `query` | Show logical plan | Query optimization |
+| __explain__ sql"..." | Explain raw SQL | SQL debugging |
 
 ## Expressions
 
@@ -1401,3 +1492,72 @@ from t2
 The `with` expression is similar to the common-table expression (CTE) in SQL, but for each subquery, you need to use a separate `with` clause. This is for convenience of adding multiple sub queries in separate line blocks without concatenating them with commas (,).
 :::
 
+## Common Query Patterns
+
+### Filter → Group → Aggregate
+
+A common pattern for analyzing data:
+
+```sql
+from sales
+where date >= '2024-01-01':date
+group by product_category
+agg 
+  _.count as num_sales,
+  revenue.sum as total_revenue
+order by total_revenue desc
+limit 10
+```
+
+### Join → Filter → Select
+
+Combining data from multiple tables:
+
+```sql
+from customers
+join {
+  from orders
+  where status = 'completed'
+}
+on customers.id = orders.customer_id
+select 
+  customers.name,
+  orders.total,
+  orders.created_at
+order by orders.created_at desc
+```
+
+### Pivot → Aggregate
+
+Creating cross-tab reports:
+
+```sql
+from sales_data
+pivot on month
+group by product
+agg revenue.sum
+```
+
+### Multiple CTEs → Complex Analysis
+
+Using CTEs for complex queries:
+
+```sql
+with active_users as {
+  from users
+  where last_login >= current_date - '30 days':interval
+}
+with user_orders as {
+  from orders
+  where created_at >= current_date - '30 days':interval
+}
+from active_users
+left join user_orders
+  on active_users.id = user_orders.user_id
+group by active_users.segment
+agg 
+  _.count as user_count,
+  user_orders.total.sum as revenue
+```
+
+This reference guide provides a comprehensive overview of Wvlet's query syntax. For hands-on examples and tutorials, check out the [Quick Start](./quick-start.md) guide.
