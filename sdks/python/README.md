@@ -44,8 +44,8 @@ print(sql)
 sql = compile("""
 model UserStats = {
   from users
-  select user_id, count(*) as event_count
   group by user_id
+  agg count(*) as event_count
 }
 
 from UserStats
@@ -127,8 +127,8 @@ select count(*) as active_user_count
 ```python
 sql = compile("""
 from sales
-pivot sum(amount) for category in ('Electronics', 'Clothing', 'Food')
 group by date
+pivot sum(amount) for category in ('Electronics', 'Clothing', 'Food')
 """)
 ```
 
@@ -250,10 +250,8 @@ from wvlet import compile
 wvlet_query = """
 from sales.csv
 where region = 'North America'
-select 
-  date,
-  sum(amount) as total_sales
 group by date
+agg sum(amount) as total_sales
 order by date
 """
 
@@ -276,8 +274,8 @@ wvlet_query = """
 from orders o
 join customers c on o.customer_id = c.id
 where o.created_at > current_date - 7
-select c.name, sum(o.total) as weekly_total
 group by c.name
+agg sum(o.total) as weekly_total
 """
 
 sql = compile(wvlet_query)  # Uses default SQL dialect

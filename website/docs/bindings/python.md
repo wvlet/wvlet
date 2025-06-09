@@ -118,8 +118,8 @@ model UserOrders = {
 }
 
 from UserOrders
-select email, count(*) as order_count
 group by email
+agg count(*) as order_count
 """)
 ```
 
@@ -141,8 +141,8 @@ select
 ```python
 sql = compile("""
 from sales
-pivot sum(amount) for category in ('Electronics', 'Clothing', 'Food')
 group by date
+pivot sum(amount) for category in ('Electronics', 'Clothing', 'Food')
 """)
 ```
 
@@ -158,10 +158,8 @@ from wvlet import compile
 wvlet_query = """
 from 'sales.parquet'
 where region = 'North America'
-select 
-  date_trunc('month', date) as month,
-  sum(amount) as total_sales
-group by date_trunc('month', date)
+group by date_trunc('month', date) as month
+agg sum(amount) as total_sales
 order by month
 """
 
@@ -193,11 +191,10 @@ df.to_parquet('users.parquet')
 # Analyze with Wvlet
 sql = compile("""
 from 'users.parquet'
-select 
-  category,
+group by category
+agg 
   avg(score) as avg_score,
   count(*) as user_count
-group by category
 """, target="duckdb")
 
 result = duckdb.sql(sql).fetchdf()
@@ -215,8 +212,8 @@ wvlet_query = """
 from orders o
 join customers c on o.customer_id = c.id
 where o.created_at > current_date - 7
-select c.name, sum(o.total) as weekly_total
 group by c.name
+agg sum(o.total) as weekly_total
 having sum(o.total) > 1000
 """
 

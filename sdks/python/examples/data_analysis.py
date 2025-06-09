@@ -17,12 +17,11 @@ def sales_analysis():
     query = """
     model MonthlySales = {
         from sales
-        select 
-            date_trunc('month', sale_date) as month,
+        group by date_trunc('month', sale_date) as month
+        agg 
             sum(amount) as total_sales,
             count(*) as num_transactions,
             count(distinct customer_id) as unique_customers
-        group by date_trunc('month', sale_date)
     }
     
     from MonthlySales
@@ -45,19 +44,15 @@ def sales_analysis():
     model CurrentYearSales = {
         from sales
         where year(sale_date) = year(current_date)
-        select 
-            month(sale_date) as month,
-            sum(amount) as sales_current
-        group by month(sale_date)
+        group by month(sale_date) as month
+        agg sum(amount) as sales_current
     }
     
     model LastYearSales = {
         from sales
         where year(sale_date) = year(current_date) - 1
-        select 
-            month(sale_date) as month,
-            sum(amount) as sales_last_year
-        group by month(sale_date)
+        group by month(sale_date) as month
+        agg sum(amount) as sales_last_year
     }
     
     from CurrentYearSales c
@@ -83,14 +78,13 @@ def customer_segmentation():
     query = """
     model CustomerMetrics = {
         from orders
-        select 
-            customer_id,
+        group by customer_id
+        agg 
             count(*) as order_count,
             sum(total_amount) as lifetime_value,
             avg(total_amount) as avg_order_value,
             max(order_date) as last_order_date,
             min(order_date) as first_order_date
-        group by customer_id
     }
     
     from CustomerMetrics
@@ -125,12 +119,10 @@ def product_performance():
     model ProductSales = {
         from order_items oi
         join products p on oi.product_id = p.id
-        select 
-            p.category,
-            p.name as product_name,
+        group by p.category, p.name as product_name
+        agg 
             sum(oi.quantity) as units_sold,
             sum(oi.quantity * oi.unit_price) as revenue
-        group by p.category, p.name
     }
     
     from ProductSales
@@ -166,11 +158,8 @@ def cohort_analysis():
     model CohortActivity = {
         from orders o
         join UserCohorts uc on o.user_id = uc.user_id
-        select 
-            uc.cohort_month,
-            date_trunc('month', o.order_date) as activity_month,
-            count(distinct o.user_id) as active_users
-        group by uc.cohort_month, date_trunc('month', o.order_date)
+        group by uc.cohort_month, date_trunc('month', o.order_date) as activity_month
+        agg count(distinct o.user_id) as active_users
     }
     
     from CohortActivity
@@ -196,13 +185,12 @@ def funnel_analysis():
     query = """
     model FunnelSteps = {
         from events
-        select 
-            user_id,
+        group by user_id
+        agg 
             max(case when event_name = 'page_view' then 1 else 0 end) as viewed,
             max(case when event_name = 'add_to_cart' then 1 else 0 end) as added_to_cart,
             max(case when event_name = 'checkout' then 1 else 0 end) as checked_out,
             max(case when event_name = 'purchase' then 1 else 0 end) as purchased
-        group by user_id
     }
     
     from FunnelSteps
@@ -232,11 +220,10 @@ def time_series_analysis():
     model DailyMetrics = {
         from events
         where event_date >= current_date - 90
-        select 
-            event_date as date,
+        group by event_date as date
+        agg 
             count(distinct user_id) as daily_active_users,
             count(*) as total_events
-        group by event_date
     }
     
     from DailyMetrics

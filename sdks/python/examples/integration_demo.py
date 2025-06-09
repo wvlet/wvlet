@@ -39,13 +39,11 @@ def duckdb_integration():
     # Compile Wvlet query
     wvlet_query = """
     from sales
-    select 
-        region,
-        product,
+    group by region, product
+    agg 
         sum(amount) as total_sales,
         avg(amount) as avg_sale,
         count(*) as num_sales
-    group by region, product
     order by region, total_sales desc
     """
     
@@ -61,11 +59,8 @@ def duckdb_integration():
     wvlet_query = """
     model MonthlySales = {
         from sales
-        select 
-            date_trunc('month', date) as month,
-            product,
-            sum(amount) as monthly_total
-        group by date_trunc('month', date), product
+        group by date_trunc('month', date) as month, product
+        agg sum(amount) as monthly_total
     }
     
     from MonthlySales
@@ -126,24 +121,22 @@ def pandas_workflow():
         wvlet_query = f"""
         model UserStats = {
             from '{orders_path}' o
-            select 
-                user_id,
+            group by user_id
+            agg 
                 count(*) as order_count,
                 sum(amount) as total_spent,
                 avg(amount) as avg_order_value,
                 max(order_date) as last_order_date
-            group by user_id
         }
         
         from '{users_path}' u
         left join UserStats s on u.user_id = s.user_id
-        select 
-            u.region,
+        group by u.region
+        agg 
             count(distinct u.user_id) as total_users,
             count(distinct case when s.order_count > 0 then u.user_id end) as active_users,
             sum(coalesce(s.total_spent, 0)) as revenue,
             avg(coalesce(s.order_count, 0)) as avg_orders_per_user
-        group by u.region
         order by revenue desc
         """
         
@@ -219,12 +212,11 @@ def sqlalchemy_example():
     wvlet_query = """
     from orders o
     join products p on o.product_id = p.id
-    select 
-        p.category,
+    group by p.category
+    agg 
         sum(o.quantity * p.price) as revenue,
         sum(o.quantity) as units_sold,
         count(distinct o.id) as num_orders
-    group by p.category
     order by revenue desc
     """
     
@@ -256,14 +248,12 @@ def streaming_analytics_pattern():
     }
     
     from EventStream
-    select 
-        date_trunc('minute', event_time) as minute,
-        event_type,
+    group by date_trunc('minute', event_time) as minute, event_type
+    agg 
         count(*) as event_count,
         count(distinct user_id) as unique_users,
         avg(response_time) as avg_response_time,
         percentile_cont(0.95) within group (order by response_time) as p95_response_time
-    group by date_trunc('minute', event_time), event_type
     order by minute desc, event_count desc
     """
     
@@ -287,14 +277,12 @@ def batch_processing_example():
     model DailyUserActivity = {
         from raw_events
         where date(event_time) = current_date - 1
-        select 
-            user_id,
-            date(event_time) as activity_date,
+        group by user_id, date(event_time) as activity_date
+        agg 
             count(*) as event_count,
             count(distinct session_id) as session_count,
             sum(case when event_type = 'purchase' then 1 else 0 end) as purchase_count,
             sum(case when event_type = 'purchase' then event_value else 0 end) as revenue
-        group by user_id, date(event_time)
     }
     
     -- Merge with user dimensions
@@ -310,16 +298,13 @@ def batch_processing_example():
     
     -- Final aggregated metrics
     from EnrichedActivity
-    select 
-        activity_date,
-        segment,
-        country,
+    group by activity_date, segment, country
+    agg 
         count(distinct user_id) as active_users,
         sum(event_count) as total_events,
         sum(purchase_count) as total_purchases,
         sum(revenue) as total_revenue,
         sum(revenue) / nullif(sum(purchase_count), 0) as avg_order_value
-    group by activity_date, segment, country
     """
     
     sql = compile(wvlet_query)

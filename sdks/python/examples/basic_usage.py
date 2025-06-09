@@ -36,12 +36,11 @@ def aggregation_examples():
     # Basic aggregation
     query = """
     from sales
-    select 
-        product_category,
+    group by product_category
+    agg 
         count(*) as num_sales,
         sum(amount) as total_revenue,
         avg(amount) as avg_sale
-    group by product_category
     """
     sql = compile(query)
     print(f"Aggregation query:")
@@ -51,8 +50,8 @@ def aggregation_examples():
     # Aggregation with HAVING
     query = """
     from orders
-    select customer_id, count(*) as order_count
     group by customer_id
+    agg count(*) as order_count
     having count(*) > 10
     """
     sql = compile(query)
@@ -122,11 +121,10 @@ def model_examples():
     
     model CustomerStats = {
         from RecentOrders
-        select 
-            customer_id,
+        group by customer_id
+        agg 
             count(*) as recent_order_count,
             sum(total_amount) as recent_total
-        group by customer_id
     }
     
     from CustomerStats

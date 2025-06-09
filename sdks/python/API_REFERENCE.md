@@ -190,15 +190,15 @@ compile("from table select * limit 10")
 # GROUP BY
 compile("""
 from sales
-select category, sum(amount) as total
 group by category
+agg sum(amount) as total
 """)
 
 # HAVING
 compile("""
 from sales
-select category, sum(amount) as total
 group by category
+agg sum(amount) as total
 having sum(amount) > 1000
 """)
 ```
