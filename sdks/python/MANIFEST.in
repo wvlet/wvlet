@@ -1,0 +1,4 @@
+include README.md
+include LICENSE
+recursive-include wvlet/libs *.so *.dylib *.dll
+recursive-include tests *.py
