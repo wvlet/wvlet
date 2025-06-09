@@ -1500,7 +1500,7 @@ A common pattern for analyzing data:
 
 ```sql
 from sales
-where date >= '2024-01-01'
+where date >= '2024-01-01':date
 group by product_category
 agg 
   _.count as num_sales,
@@ -1545,11 +1545,11 @@ Using CTEs for complex queries:
 ```sql
 with active_users as {
   from users
-  where last_login >= current_date - interval '30 days'
+  where last_login >= current_date - '30 days':interval
 }
 with user_orders as {
   from orders
-  where created_at >= current_date - interval '30 days'
+  where created_at >= current_date - '30 days':interval
 }
 from active_users
 left join user_orders
