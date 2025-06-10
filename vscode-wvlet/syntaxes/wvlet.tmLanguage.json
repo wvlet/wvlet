@@ -1,0 +1,200 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Wvlet",
+  "scopeName": "source.wvlet",
+  "patterns": [
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#numbers"
+    },
+    {
+      "include": "#keywords"
+    },
+    {
+      "include": "#type-keywords"
+    },
+    {
+      "include": "#operators"
+    },
+    {
+      "include": "#type-identifiers"
+    },
+    {
+      "include": "#identifiers"
+    }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.block.wvlet",
+          "begin": "---",
+          "end": "---",
+          "patterns": [
+            {
+              "name": "comment.block.wvlet",
+              "match": ".*"
+            }
+          ]
+        },
+        {
+          "name": "comment.line.double-dash.wvlet",
+          "match": "--.*$"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.triple.wvlet",
+          "begin": "\"\"\"",
+          "end": "\"\"\"",
+          "patterns": [
+            {
+              "include": "#string-interpolation"
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.double.wvlet",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.wvlet",
+              "match": "\\\\."
+            },
+            {
+              "include": "#string-interpolation"
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.single.wvlet",
+          "match": "'.*?'"
+        },
+        {
+          "name": "string.quoted.backtick.wvlet",
+          "match": "`.*?`"
+        }
+      ]
+    },
+    "string-interpolation": {
+      "patterns": [
+        {
+          "name": "meta.interpolation.wvlet",
+          "begin": "\\$\\{",
+          "end": "\\}",
+          "patterns": [
+            {
+              "include": "#numbers"
+            },
+            {
+              "include": "#operators"
+            },
+            {
+              "include": "#identifiers"
+            }
+          ]
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.float.wvlet",
+          "match": "\\b[1-9][0-9_]*\\.[0-9]+\\b"
+        },
+        {
+          "name": "constant.numeric.hex.wvlet",
+          "match": "\\b0[xX][0-9a-fA-F_]+\\b"
+        },
+        {
+          "name": "constant.numeric.integer.wvlet",
+          "match": "\\b[1-9][0-9_]*\\b"
+        },
+        {
+          "name": "constant.numeric.zero.wvlet",
+          "match": "\\b0\\b"
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.wvlet",
+          "match": "\\b(if|then|else|end|case|when)\\b"
+        },
+        {
+          "name": "keyword.operator.logical.wvlet",
+          "match": "\\b(and|or|not|is|like)\\b"
+        },
+        {
+          "name": "keyword.other.wvlet",
+          "match": "\\b(asof|test|should|be|contain|debug|def|inline|type|extends|native|show|sample|this|of|in|by|as|to|with|from|agg|select|for|let|where|group|having|order|limit|transform|pivot|distinct|asc|desc|join|on|left|right|full|inner|cross|add|prepend|exclude|rename|shift|drop|describe|concat|dedup|intersect|except|all|over|partition|unbounded|preceding|following|current|range|row|run|import|export|package|model|execute|val|save|append|delete|truncate)\\b"
+        }
+      ]
+    },
+    "type-keywords": {
+      "patterns": [
+        {
+          "name": "storage.type.wvlet",
+          "match": "\\b(boolean|double|byte|int|short|char|void|long|float|string|array|map|date|decimal|interval)\\b"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.arrow.wvlet",
+          "match": "(<-|->|=>)"
+        },
+        {
+          "name": "keyword.operator.comparison.wvlet",
+          "match": "(!=|<=|>=|<|>|=)"
+        },
+        {
+          "name": "keyword.operator.arithmetic.wvlet",
+          "match": "(\\+|-|\\*|/|//|%)"
+        },
+        {
+          "name": "keyword.operator.logical.wvlet",
+          "match": "(!|&|\\|)"
+        },
+        {
+          "name": "punctuation.separator.wvlet",
+          "match": "[,:;]"
+        },
+        {
+          "name": "punctuation.accessor.wvlet",
+          "match": "\\."
+        },
+        {
+          "name": "keyword.operator.other.wvlet",
+          "match": "[_@$*?#]"
+        }
+      ]
+    },
+    "type-identifiers": {
+      "patterns": [
+        {
+          "name": "entity.name.type.wvlet",
+          "match": "\\b[A-Z][a-zA-Z_0-9][a-zA-Z_\\.0-9]*\\b"
+        }
+      ]
+    },
+    "identifiers": {
+      "patterns": [
+        {
+          "name": "variable.other.wvlet",
+          "match": "\\b[a-z_][a-z_0-9\\.]*\\b"
+        }
+      ]
+    }
+  }
+}
