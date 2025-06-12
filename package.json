@@ -23,7 +23,7 @@
     "@rollup/plugin-replace": "^6.0.2",
     "autoprefixer": "^10.4.21",
     "jsdom": "^26.1.0",
-    "postcss": "^8.5.4",
+    "postcss": "^8.5.5",
     "tailwindcss": "^4.1.8",
     "typescript": "^5.8.3",
     "vite": "^6.3.5",
