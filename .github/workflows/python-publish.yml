@@ -15,19 +15,7 @@ on:
 jobs:
   build-wheels:
     name: Build Python wheels
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-latest
-            platform: linux
-            arch: x86_64
-          - os: ubuntu-latest
-            platform: linux  
-            arch: aarch64
-          - os: macos-latest
-            platform: macos
-            arch: arm64
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
@@ -102,85 +90,46 @@ jobs:
           # Display the final structure
           ls -laR sdks/python/wvlet/libs/
       
-      - name: Ad-hoc sign macOS library
-        if: matrix.platform == 'macos'
-        run: |
-          echo "Signing macOS library with ad-hoc signature..."
-          
-          # Check if the library exists and is a real file (not a placeholder)
-          if [ -f "sdks/python/wvlet/libs/darwin_arm64/libwvlet.dylib" ] && [ -s "sdks/python/wvlet/libs/darwin_arm64/libwvlet.dylib" ]; then
-            # Sign the library
-            codesign --sign - --force sdks/python/wvlet/libs/darwin_arm64/libwvlet.dylib
-            
-            # Remove quarantine attribute if present
-            xattr -cr sdks/python/wvlet/libs/darwin_arm64/libwvlet.dylib || true
-            
-            # Verify signature
-            codesign --verify --verbose sdks/python/wvlet/libs/darwin_arm64/libwvlet.dylib
-            
-            # Display signature info
-            codesign --display --verbose=2 sdks/python/wvlet/libs/darwin_arm64/libwvlet.dylib
-          else
-            echo "Warning: macOS library is a placeholder or doesn't exist, skipping signing"
-          fi
-      
       - name: Install build dependencies
         run: |
           python -m pip install --upgrade pip
           pip install build wheel setuptools
       
       - name: Build source distribution
-        if: matrix.platform == 'linux' && matrix.arch == 'x86_64'
         run: |
           cd sdks/python
           python -m build --sdist
       
-      - name: Install wheel building tools
-        run: |
-          if [ "${{ matrix.platform }}" = "macos" ]; then
-            pip install delocate
-          fi
-      
-      - name: Build platform-specific wheels
+      - name: Build platform wheels
         run: |
           cd sdks/python
           
-          if [ "${{ matrix.platform }}" = "linux" ]; then
-            # Build wheels for Linux
-            python -m build --wheel
-            
-            # Rename the wheel to be platform-specific
-            cd dist
-            for wheel in *.whl; do
+          # Build the wheel
+          python -m build --wheel
+          
+          # Create platform-specific wheels for each architecture
+          cd dist
+          for wheel in *.whl; do
+            if [[ $wheel == *"-py3-none-any.whl" ]]; then
               # Extract wheel name components
               name=$(echo $wheel | cut -d'-' -f1)
               version=$(echo $wheel | cut -d'-' -f2)
               
-              # Create platform-specific wheel based on architecture
-              if [ "${{ matrix.arch }}" = "x86_64" ]; then
-                mv $wheel ${name}-${version}-py3-none-manylinux2014_x86_64.whl
-              else
-                mv $wheel ${name}-${version}-py3-none-manylinux2014_aarch64.whl
-              fi
-            done
-            cd ..
-          elif [ "${{ matrix.platform }}" = "macos" ]; then
-            # Build wheel for macOS
-            python -m build --wheel
-            
-            # Use delocate to create proper macOS wheel
-            cd dist
-            for wheel in *.whl; do
-              # Rename to platform-specific name first
-              name=$(echo $wheel | cut -d'-' -f1)
-              version=$(echo $wheel | cut -d'-' -f2)
-              mv $wheel ${name}-${version}-py3-none-macosx_11_0_arm64.whl
-            done
-            
-            # Run delocate to ensure proper library bundling
-            delocate-wheel -v *.whl
-            cd ..
-          fi
+              # Create wheels for each platform
+              # Linux x86_64
+              cp $wheel ${name}-${version}-py3-none-manylinux2014_x86_64.whl
+              
+              # Linux ARM64
+              cp $wheel ${name}-${version}-py3-none-manylinux2014_aarch64.whl
+              
+              # macOS ARM64
+              cp $wheel ${name}-${version}-py3-none-macosx_11_0_arm64.whl
+              
+              # Remove the original any wheel
+              rm $wheel
+            fi
+          done
+          cd ..
           
           # Display the wheels
           ls -la dist/
@@ -200,7 +149,7 @@ jobs:
     needs: build-wheels
     strategy:
       matrix:
-        os: [ubuntu-latest, ubuntu-24.04-arm]
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest]
         python-version: ['3.9', '3.11', '3.13']
     runs-on: ${{ matrix.os }}
     steps:
@@ -227,11 +176,14 @@ jobs:
       - name: Install wheel
         run: |
           # Install the appropriate wheel for this platform
-          if [[ "${{ runner.arch }}" == "ARM64" ]]; then
-            echo "Installing ARM64 wheel..."
+          if [[ "${{ runner.os }}" == "macOS" ]]; then
+            echo "Installing macOS ARM64 wheel..."
+            pip install dist/wvlet-*-py3-none-macosx_11_0_arm64.whl
+          elif [[ "${{ runner.arch }}" == "ARM64" ]]; then
+            echo "Installing Linux ARM64 wheel..."
             pip install dist/wvlet-*-py3-none-manylinux2014_aarch64.whl
           else
-            echo "Installing x86_64 wheel..."
+            echo "Installing Linux x86_64 wheel..."
             pip install dist/wvlet-*-py3-none-manylinux2014_x86_64.whl
           fi
       
