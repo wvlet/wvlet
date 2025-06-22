@@ -25,7 +25,6 @@ while maintaining a simple, Pythonic API.
 Features
 --------
 - Fast native compilation using bundled library
-- Automatic fallback to CLI when native library is unavailable
 - Support for multiple SQL targets (DuckDB, Trino, etc.)
 - Zero dependencies
 - Cross-platform support (Linux x86_64/ARM64, macOS ARM64)
@@ -72,8 +71,8 @@ def compile(query: str, target: str = None) -> str:
     """
     Compile a Wvlet query to SQL.
     
-    This is the primary interface for compiling Wvlet queries. It automatically
-    handles native library loading and falls back to CLI if necessary.
+    This is the primary interface for compiling Wvlet queries. It uses the
+    native library for high-performance compilation.
     
     Parameters
     ----------
@@ -96,7 +95,7 @@ def compile(query: str, target: str = None) -> str:
     CompilationError
         If the query has syntax errors or cannot be compiled.
     NotImplementedError
-        If neither native library nor CLI is available.
+        If the native library is not available for the current platform.
     
     Examples
     --------

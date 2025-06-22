@@ -19,12 +19,10 @@ Wvlet Compiler Module
 ====================
 
 This module provides the core compiler functionality for the Wvlet Python SDK.
-It handles native library loading, CLI fallback, and query compilation.
+It handles native library loading and query compilation.
 """
 
 from typing import Optional
-import shutil
-import subprocess
 import ctypes
 import platform
 import os
@@ -110,16 +108,13 @@ class WvletCompiler:
     """
     The main compiler class for Wvlet queries.
     
-    This class provides the interface for compiling Wvlet queries into SQL.
-    It automatically uses the native library for high performance when available,
-    and falls back to the CLI executable if necessary.
+    This class provides the interface for compiling Wvlet queries into SQL
+    using the native library for high performance.
     
     Attributes
     ----------
     target : str, optional
         The default target SQL dialect for compilation.
-    use_native : bool
-        Whether the native library is being used (True) or CLI (False).
     
     Examples
     --------
@@ -132,14 +127,9 @@ class WvletCompiler:
     
     >>> trino_compiler = WvletCompiler(target="trino")
     >>> sql = trino_compiler.compile("from logs select count(*)")
-    
-    Use a specific wvlet executable:
-    
-    >>> compiler = WvletCompiler(executable_path="/opt/wvlet/bin/wvlet")
     """
 
     def __init__(self, 
-                 executable_path: Optional[str] = None, 
                  target: Optional[str] = None,
                  wvlet_home: Optional[str] = None):
         """
@@ -147,9 +137,6 @@ class WvletCompiler:
 
         Parameters
         ----------
-        executable_path : str, optional
-            Path to the wvlet executable. If not provided, the compiler will
-            first try to use the native library, then look for 'wvlet' in PATH.
         target : str, optional
             Default target SQL dialect for compilation. Valid values:
             - "duckdb": DuckDB SQL dialect
@@ -165,40 +152,15 @@ class WvletCompiler:
         
         Raises
         ------
-        ValueError
-            If the provided executable_path is invalid or doesn't exist.
         NotImplementedError
-            If neither the native library nor the wvlet executable is available.
-        
-        Notes
-        -----
-        The compiler will prefer the native library over CLI for better performance.
-        Set the WVLET_PYTHON_USE_CLI environment variable to force CLI usage.
+            If the native library is not available for the current platform.
         """
         self.target = target
-        self.use_native = False
-        self.path = None
         self.wvlet_home = wvlet_home or os.path.expanduser("~/.wvlet")
         
-        # Check if forced to use CLI
-        force_cli = os.environ.get('WVLET_PYTHON_USE_CLI', '').lower() in ('1', 'true', 'yes')
-        
-        if executable_path:
-            if shutil.which(executable_path) is None:
-                raise ValueError(f"Invalid executable_path: {executable_path}")
-            self.path = executable_path
-            return
-            
-        # Try to use native library first (unless forced to use CLI)
-        if not force_cli and _native_lib is not None:
-            self.use_native = True
-            return
-            
-        # Fall back to wvlet executable
-        path = shutil.which("wvlet")
-        if path is None:
-            raise NotImplementedError("This binding requires either the native library or wvlet executable")
-        self.path = path
+        # Check if native library is available
+        if _native_lib is None:
+            raise NotImplementedError("The native library is not available for the current platform")
 
     def compile(self, query: str, target: Optional[str] = None) -> str:
         """
@@ -245,36 +207,17 @@ class WvletCompiler:
         """
         # Use provided target or fall back to instance default
         compilation_target = target or self.target
-        if self.use_native:
-            # Use native library
-            args = ["-q", query]
-            if compilation_target:
-                args.extend(["--target", compilation_target])
-            
-            # Call native function
-            args_json = json.dumps(args).encode('utf-8')
-            result = _native_lib.wvlet_compile_query(args_json)
-            
-            if not result:
-                raise CompilationError("Failed to compile query")
-            
-            return result.decode('utf-8')
-        else:
-            # Use subprocess (CLI)
-            command = [self.path, "compile"]
-            if compilation_target:
-                command.append(f"--target:{compilation_target}")
-            command.append(query)
-            process = subprocess.run(command, capture_output=True, text=True)
-            
-            if process.returncode != 0:
-                error_msg = "Failed to compile query"
-                if process.stderr:
-                    error_msg = process.stderr.strip()
-                raise CompilationError(error_msg)
-            
-            # Return the SQL output (skip the first line which contains query echo)
-            lines = process.stdout.strip().split("\n")
-            if len(lines) > 1:
-                return "\n".join(lines[1:])
-            return process.stdout
+        
+        # Use native library
+        args = ["-q", query]
+        if compilation_target:
+            args.extend(["--target", compilation_target])
+        
+        # Call native function
+        args_json = json.dumps(args).encode('utf-8')
+        result = _native_lib.wvlet_compile_query(args_json)
+        
+        if not result:
+            raise CompilationError("Failed to compile query")
+        
+        return result.decode('utf-8')

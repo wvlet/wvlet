@@ -5,9 +5,8 @@ The Wvlet Python SDK provides a native Python interface for compiling Wvlet quer
 ## Features
 
 - 🚀 **Fast native compilation** - Uses bundled native library for high-performance query compilation
-- 🔄 **Automatic fallback** - Falls back to CLI when native library is unavailable
 - 🎯 **Multiple SQL targets** - Supports DuckDB, Trino, and other SQL engines
-- 📦 **Zero dependencies** - Pure Python with optional native acceleration
+- 📦 **Zero dependencies** - Pure Python with native acceleration
 - 🐍 **Pythonic API** - Simple and intuitive interface
 
 ## Installation
@@ -253,14 +252,6 @@ start = time.time()
 for _ in range(100):
     compile("from users select * where age > 21")
 print(f"Native: {time.time() - start:.2f}s")
-
-# Force CLI usage (if available)
-import os
-os.environ['WVLET_PYTHON_USE_CLI'] = '1'
-start = time.time()
-for _ in range(100):
-    compile("from users select * where age > 21")
-print(f"CLI: {time.time() - start:.2f}s")
 ```
 
 ## Platform Support
@@ -274,7 +265,6 @@ print(f"CLI: {time.time() - start:.2f}s")
 | macOS    | arm64       | ✅ Supported |
 | Windows  | x86_64      | 🔄 Planned |
 
-The SDK automatically falls back to the CLI if the native library is unavailable.
 
 ## API Reference
 
@@ -291,7 +281,7 @@ Compile a Wvlet query to SQL.
 
 **Raises:**
 - `CompilationError`: If the query cannot be compiled
-- `NotImplementedError`: If neither native library nor CLI is available
+- `NotImplementedError`: If the native library is not available for the current platform
 
 ### `wvlet.compiler.WvletCompiler`
 
@@ -325,7 +315,6 @@ If you see an error about the native library not being found:
 1. Check your platform is supported (see Platform Support above)
 2. Ensure you have the latest version: `pip install --upgrade wvlet`
 3. Try reinstalling: `pip install --force-reinstall wvlet`
-4. Use CLI fallback by installing the Wvlet CLI
 
 ### Compilation Errors
 

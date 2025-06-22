@@ -24,7 +24,7 @@ Compile a Wvlet query to SQL.
 
 **Raises:**
 - `CompilationError`: If the query has syntax errors or cannot be compiled
-- `NotImplementedError`: If neither native library nor CLI is available
+- `NotImplementedError`: If the native library is not available for the current platform
 
 **Example:**
 ```python
@@ -86,7 +86,7 @@ Compile a Wvlet query to SQL.
 
 **Raises:**
 - `CompilationError`: If compilation fails
-- `NotImplementedError`: If no compilation backend is available
+- `NotImplementedError`: If the native library is not available for the current platform
 
 **Example:**
 ```python
@@ -135,13 +135,6 @@ Path to the Wvlet home directory. Defaults to `~/.wvlet`.
 export WVLET_HOME=/opt/wvlet
 ```
 
-### `WVLET_PYTHON_USE_CLI`
-
-Force the SDK to use CLI instead of native library.
-
-```bash
-export WVLET_PYTHON_USE_CLI=1
-```
 
 ### `WVLET_LOG_LEVEL`
 
@@ -161,8 +154,6 @@ The SDK attempts to load the native library in the following order:
    - macOS ARM64: `wvlet/libs/darwin_arm64/libwvlet.dylib`
 
 2. From system library paths (if installed separately)
-
-3. Falls back to CLI if available in PATH
 
 ## Query Syntax
 
@@ -308,7 +299,7 @@ Wvlet supports the following SQL data types:
 1. **Native library not found**
    - Ensure you have the latest version: `pip install --upgrade wvlet`
    - Check platform compatibility
-   - Try CLI fallback by installing Wvlet CLI
+   - Verify your platform is supported
 
 2. **Compilation errors**
    - Verify query syntax
@@ -316,7 +307,7 @@ Wvlet supports the following SQL data types:
    - Ensure proper quote escaping in strings
 
 3. **Performance issues**
-   - Use native library instead of CLI
+   - Ensure native library is properly loaded
    - Reuse compiler instances
    - Consider batch compilation for multiple queries
 
