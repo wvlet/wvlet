@@ -41,13 +41,13 @@ jobs:
         working-directory: sdks/typescript
         run: npm install
       
-      - name: Build TypeScript
-        working-directory: sdks/typescript
-        run: npm run build
-      
       - name: Run tests
         working-directory: sdks/typescript
         run: npm run test:ci
+      
+      - name: Build TypeScript
+        working-directory: sdks/typescript
+        run: npm run build
       
       - name: Run example
         working-directory: sdks/typescript
