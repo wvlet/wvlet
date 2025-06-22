@@ -1,4 +1,4 @@
-name: TypeScript NPM Publish
+name: TypeScript Publish
 
 on:
   push:
