@@ -2,11 +2,47 @@ package wvlet.lang.native
 
 import wvlet.airframe.codec.MessageCodec
 import wvlet.log.LogSupport
+import wvlet.lang.api.{WvletLangException, SourceLocation, LinePosition, StatusCode}
 
 import scala.scalanative.unsafe.*
 import scala.scalanative.libc.stdlib
 
 object WvcLib extends LogSupport:
+
+  /**
+    * Helper function to allocate a string on heap as CString
+    */
+  private def toCString(str: String): CString =
+    val len    = str.length + 1
+    val buffer = stdlib.malloc(len).asInstanceOf[CString]
+    var i      = 0
+    while i < str.length do
+      buffer(i) = str.charAt(i).toByte
+      i += 1
+    buffer(str.length) = 0.toByte
+    buffer
+
+  // Response types for JSON serialization
+  case class CompileResponse(
+      success: Boolean,
+      sql: Option[String] = None,
+      error: Option[CompileError] = None
+  )
+
+  case class CompileError(
+      code: String,
+      statusType: String,
+      message: String,
+      location: Option[ErrorLocation] = None
+  )
+
+  case class ErrorLocation(
+      path: String,
+      fileName: String,
+      line: Int,
+      column: Int,
+      lineContent: Option[String] = None
+  )
 
   /**
     * Run WvcMain with the given arguments
@@ -39,22 +75,99 @@ object WvcLib extends LogSupport:
       val json     = fromCString(argJson)
       val args     = MessageCodec.of[Array[String]].fromJson(json)
       val (sql, _) = WvcMain.compileWvletQuery(args)
-
-      // Allocate string on heap using malloc (managed by Boehm GC)
-      val len    = sql.length + 1
-      val buffer = stdlib.malloc(len).asInstanceOf[CString]
-      var i      = 0
-      while i < sql.length do
-        buffer(i) = sql.charAt(i).toByte
-        i += 1
-      buffer(sql.length) = 0.toByte
-      buffer
+      toCString(sql)
     catch
       case e: Throwable =>
         warn(e)
         // Return empty string on error
-        val buffer = stdlib.malloc(1).asInstanceOf[CString]
-        buffer(0) = 0.toByte
-        buffer
+        toCString("")
+
+  /**
+    * Compile a Wvlet query and return the result as JSON
+    * @param argJson
+    *   json string representing command line arguments ["arg1", "arg2", ...]
+    * @return
+    *   JSON string with compilation result: Success: {"success": true, "sql": "..."} Error:
+    *   {"success": false, "error": {"code": "...", "statusType": "...", "message": "...",
+    *   "location": {...}}} Status types: Success, UserError, InternalError, ResourceExhausted
+    */
+  @exported("wvlet_compile_query_json")
+  def compile_query_json(argJson: CString): CString =
+    try
+      val json = fromCString(argJson)
+      val args = MessageCodec.of[Array[String]].fromJson(json)
+
+      val response =
+        try
+          val (sql, _) = WvcMain.compileWvletQuery(args)
+          CompileResponse(success = true, sql = Some(sql))
+        catch
+          case e: WvletLangException =>
+            // Determine status type based on StatusCode methods
+            val statusTypeStr =
+              if e.statusCode.isUserError then
+                "UserError"
+              else if e.statusCode.isInternalError then
+                "InternalError"
+              else if e.statusCode.isSuccess then
+                "Success"
+              else
+                "ResourceExhausted"
+
+            val locationOpt =
+              if e.sourceLocation != SourceLocation.NoSourceLocation then
+                Some(
+                  ErrorLocation(
+                    path = e.sourceLocation.path,
+                    fileName = e.sourceLocation.fileName,
+                    line = e.sourceLocation.position.line,
+                    column = e.sourceLocation.position.column,
+                    lineContent =
+                      if e.sourceLocation.codeLineAt.nonEmpty then
+                        Some(e.sourceLocation.codeLineAt)
+                      else
+                        None
+                  )
+                )
+              else
+                None
+
+            val error = CompileError(
+              code = e.statusCode.name,
+              statusType = statusTypeStr,
+              message = e.getMessage,
+              location = locationOpt
+            )
+            CompileResponse(success = false, error = Some(error))
+          case e: Throwable =>
+            val error = CompileError(
+              code = StatusCode.INTERNAL_ERROR.name,
+              statusType = "InternalError",
+              message = Option(e.getMessage).getOrElse(e.getClass.getName)
+            )
+            CompileResponse(success = false, error = Some(error))
+
+      // Convert response to JSON
+      val responseJson = MessageCodec.of[CompileResponse].toJson(response)
+      toCString(responseJson)
+    catch
+      case e: Throwable =>
+        warn(e)
+        // Return error response as JSON even if JSON serialization fails
+        val errorResponse = CompileResponse(
+          success = false,
+          error = Some(
+            CompileError(
+              code = StatusCode.COMPILATION_FAILURE.name,
+              statusType = "UserError",
+              message = Option(e.getMessage).getOrElse(
+                "Failed to serialize compilation result to JSON"
+              )
+            )
+          )
+        )
+        // Use MessageCodec for consistent JSON formatting
+        val errorJson = MessageCodec.of[CompileResponse].toJson(errorResponse)
+        toCString(errorJson)
 
 end WvcLib

@@ -253,9 +253,9 @@ For error reporting, use WvletLangException and StatusCode enum. If necessary er
 ## Memory
 - In git worktree environment, create a new branch based on origin/main
 - For creating temporary files, use target folder, which will be ignored in git
+- **Before making changes, always create a new branch for pull request**
 
 ## Workflow for PR Checks
 
 - Check pr status and fix issues like code format, compilation failure, test failures
 - After merging pr, updated the related issues to reflect completed and remaining tasks
-
