@@ -7,7 +7,8 @@
   "types": "dist/index.d.ts",
   "type": "module",
   "scripts": {
-    "build": "tsc",
+    "build:scalajs": "cd ../.. && ./sbt sdkJs/fastLinkJS",
+    "build": "npm run build:scalajs && tsc",
     "test": "vitest",
     "test:ci": "vitest run",
     "lint": "tsc --noEmit",
