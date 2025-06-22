@@ -47,10 +47,10 @@ All language SDKs use the same underlying native library (`libwvlet`) for consis
 | Platform | x86_64 | ARM64 |
 |----------|--------|-------|
 | Linux    | ✅     | ✅    |
-| macOS    | 🔄     | ✅    |
+| macOS    | ❌     | ✅    |
 | Windows  | 🔄     | 🔄    |
 
-✅ Supported | 🔄 Planned
+✅ Supported | 🔄 Planned | ❌ Not Supported
 
 ## Contributing
 

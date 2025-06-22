@@ -272,7 +272,6 @@ print(f"CLI: {time.time() - start:.2f}s")
 | Linux    | x86_64      | ✅ Supported |
 | Linux    | aarch64     | ✅ Supported |
 | macOS    | arm64       | ✅ Supported |
-| macOS    | x86_64      | 🔄 Planned |
 | Windows  | x86_64      | 🔄 Planned |
 
 The SDK automatically falls back to the CLI if the native library is unavailable.
