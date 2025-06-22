@@ -58,7 +58,8 @@ enum StatusCode(statusType: StatusType):
 
   case TEST_FAILED extends StatusCode(StatusType.UserError)
 
-  case INTERNAL_ERROR extends StatusCode(StatusType.InternalError)
+  case INTERNAL_ERROR      extends StatusCode(StatusType.InternalError)
+  case SERIALIZATION_ERROR extends StatusCode(StatusType.InternalError)
 
   case RESOURCE_EXHAUSTED extends StatusCode(StatusType.ResourceExhausted)
 

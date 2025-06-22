@@ -2,7 +2,7 @@ package wvlet.lang.native
 
 import wvlet.airframe.codec.MessageCodec
 import wvlet.log.LogSupport
-import wvlet.lang.api.{WvletLangException, SourceLocation, LinePosition}
+import wvlet.lang.api.{WvletLangException, SourceLocation, LinePosition, StatusCode}
 
 import scala.scalanative.unsafe.*
 import scala.scalanative.libc.stdlib
@@ -141,7 +141,7 @@ object WvcLib extends LogSupport:
             CompileResponse(success = false, error = Some(error))
           case e: Throwable =>
             val error = CompileError(
-              code = "INTERNAL_ERROR",
+              code = StatusCode.INTERNAL_ERROR.name,
               statusType = "InternalError",
               message = Option(e.getMessage).getOrElse(e.getClass.getName)
             )
@@ -154,16 +154,20 @@ object WvcLib extends LogSupport:
       case e: Throwable =>
         warn(e)
         // Return error response as JSON even if JSON serialization fails
-        // Escape the error message to prevent JSON injection
-        val escapedMessage = Option(e.getMessage)
-          .getOrElse("JSON serialization failed")
-          .replace("\\", "\\\\")
-          .replace("\"", "\\\"")
-          .replace("\n", "\\n")
-          .replace("\r", "\\r")
-          .replace("\t", "\\t")
-        val errorJson =
-          s"""{"success":false,"error":{"code":"JSON_ERROR","statusType":"InternalError","message":"$escapedMessage"}}"""
+        val errorResponse = CompileResponse(
+          success = false,
+          error = Some(
+            CompileError(
+              code = StatusCode.SERIALIZATION_ERROR.name,
+              statusType = "InternalError",
+              message = Option(e.getMessage).getOrElse(
+                "Failed to serialize compilation result to JSON"
+              )
+            )
+          )
+        )
+        // Use MessageCodec for consistent JSON formatting
+        val errorJson = MessageCodec.of[CompileResponse].toJson(errorResponse)
         toCString(errorJson)
 
 end WvcLib
