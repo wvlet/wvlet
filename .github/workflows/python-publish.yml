@@ -2,15 +2,15 @@ name: Build and Publish Python SDK
 
 on:
   push:
-    branches:
-      - main
     tags:
       - 'v*'
   pull_request:
-    paths:
-      - 'sdks/python/**'
-      - '.github/workflows/python-publish.yml'
+    # Only run on PRs with specific labels
+    types: [labeled, synchronize]
   workflow_dispatch:
+  schedule:
+    # Run full tests weekly on Sunday at 00:00 UTC
+    - cron: '0 0 * * 0'
 
 jobs:
   build-wheels:
@@ -147,6 +147,16 @@ jobs:
   test-wheels:
     name: Test wheels on ${{ matrix.os }}
     needs: build-wheels
+    # Only run full matrix tests on:
+    # - Version tags
+    # - PRs with 'test-wheels' label
+    # - Scheduled runs
+    # - Manual workflow dispatch
+    if: |
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+      (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'test-wheels'))
     strategy:
       matrix:
         os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest]
@@ -199,10 +209,15 @@ jobs:
 
   publish:
     name: Publish to PyPI
-    needs: test-wheels
+    needs: [build-wheels, test-wheels]
     runs-on: ubuntu-latest
     # Only publish on tagged releases
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    if: |
+      always() &&
+      needs.build-wheels.result == 'success' &&
+      (needs.test-wheels.result == 'success' || needs.test-wheels.result == 'skipped') &&
+      github.event_name == 'push' && 
+      startsWith(github.ref, 'refs/tags/v')
     environment:
       name: pypi
       url: https://pypi.org/p/wvlet

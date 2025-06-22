@@ -1,0 +1,43 @@
+name: Python SDK Tests
+
+on:
+  pull_request:
+    paths:
+      - 'sdks/python/**'
+      - '.github/workflows/python-test.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'sdks/python/**'
+      - '.github/workflows/python-test.yml'
+
+jobs:
+  quick-test:
+    name: Quick Python SDK Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Create dummy native libraries
+        run: |
+          mkdir -p sdks/python/wvlet/libs/linux_x86_64
+          touch sdks/python/wvlet/libs/linux_x86_64/libwvlet.so
+      
+      - name: Install dependencies
+        run: |
+          cd sdks/python
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      
+      - name: Run tests
+        run: |
+          cd sdks/python
+          pytest tests/ -v

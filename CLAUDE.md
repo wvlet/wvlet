@@ -259,3 +259,10 @@ For error reporting, use WvletLangException and StatusCode enum. If necessary er
 
 - Check pr status and fix issues like code format, compilation failure, test failures
 - After merging pr, updated the related issues to reflect completed and remaining tasks
+
+## CI Optimization
+
+### Python SDK Testing
+- Quick tests run on every PR (~2 minutes)
+- Full wheel tests run only on tags, PRs with `test-wheels` label, or weekly schedule
+- Add `test-wheels` label for platform-specific changes
