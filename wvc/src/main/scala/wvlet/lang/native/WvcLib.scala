@@ -158,8 +158,8 @@ object WvcLib extends LogSupport:
           success = false,
           error = Some(
             CompileError(
-              code = StatusCode.SERIALIZATION_ERROR.name,
-              statusType = "InternalError",
+              code = StatusCode.COMPILATION_FAILURE.name,
+              statusType = "UserError",
               message = Option(e.getMessage).getOrElse(
                 "Failed to serialize compilation result to JSON"
               )
