@@ -5,17 +5,17 @@ TypeScript/JavaScript SDK for [Wvlet](https://wvlet.org/) - A flow-style query l
 ## Installation
 
 ```bash
-npm install wvlet
+npm install @wvlet/wvlet
 # or
-yarn add wvlet
+yarn add @wvlet/wvlet
 # or
-pnpm add wvlet
+pnpm add @wvlet/wvlet
 ```
 
 ## Quick Start
 
 ```typescript
-import { WvletCompiler } from 'wvlet';
+import { WvletCompiler } from '@wvlet/wvlet';
 
 const compiler = new WvletCompiler();
 
@@ -30,7 +30,7 @@ console.log(sql);
 ### Basic Compilation
 
 ```typescript
-import { WvletCompiler } from 'wvlet';
+import { WvletCompiler } from '@wvlet/wvlet';
 
 const compiler = new WvletCompiler({
   target: 'duckdb' // or 'trino'
@@ -43,7 +43,7 @@ const sql = compiler.compile('from users where age > 18 select *');
 ### Error Handling
 
 ```typescript
-import { WvletCompiler, CompilationError } from 'wvlet';
+import { WvletCompiler, CompilationError } from '@wvlet/wvlet';
 
 const compiler = new WvletCompiler();
 
@@ -61,7 +61,7 @@ try {
 ### Convenience Function
 
 ```typescript
-import { compile } from 'wvlet';
+import { compile } from '@wvlet/wvlet';
 
 // Use the default compiler with a single function call
 const sql = compile('from orders select count(*)');

@@ -5,17 +5,17 @@ The Wvlet TypeScript SDK provides a native JavaScript implementation of the Wvle
 ## Installation
 
 ```bash
-npm install wvlet
+npm install @wvlet/wvlet
 # or
-yarn add wvlet
+yarn add @wvlet/wvlet
 # or
-pnpm add wvlet
+pnpm add @wvlet/wvlet
 ```
 
 ## Quick Start
 
 ```typescript
-import { WvletCompiler } from 'wvlet';
+import { WvletCompiler } from '@wvlet/wvlet';
 
 const compiler = new WvletCompiler();
 const sql = compiler.compile('from users select name, email');
@@ -37,7 +37,7 @@ console.log(sql);
 ### Basic Usage
 
 ```typescript
-import { WvletCompiler } from 'wvlet';
+import { WvletCompiler } from '@wvlet/wvlet';
 
 // Create a compiler instance
 const compiler = new WvletCompiler({
@@ -51,7 +51,7 @@ const sql = compiler.compile('from orders where total > 100 select *');
 ### Error Handling
 
 ```typescript
-import { WvletCompiler, CompilationError } from 'wvlet';
+import { WvletCompiler, CompilationError } from '@wvlet/wvlet';
 
 const compiler = new WvletCompiler();
 
@@ -71,7 +71,7 @@ try {
 ### Convenience Function
 
 ```typescript
-import { compile } from 'wvlet';
+import { compile } from '@wvlet/wvlet';
 
 // Quick compilation with default settings
 const sql = compile('from users select count(*)');
@@ -190,7 +190,7 @@ The SDK works directly in browsers that support ES modules:
 
 ```html
 <script type="module">
-  import { WvletCompiler } from 'https://unpkg.com/wvlet/dist/index.js';
+  import { WvletCompiler } from 'https://unpkg.com/@wvlet/wvlet/dist/index.js';
   
   const compiler = new WvletCompiler();
   const sql = compiler.compile('from users select *');
@@ -238,4 +238,4 @@ The SDK requires browsers that support:
 
 The TypeScript SDK source code is available at:
 - [GitHub: sdks/typescript](https://github.com/wvlet/wvlet/tree/main/sdks/typescript)
-- [NPM: wvlet](https://www.npmjs.com/package/wvlet)
+- [NPM: @wvlet/wvlet](https://www.npmjs.com/package/@wvlet/wvlet)

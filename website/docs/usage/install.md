@@ -65,7 +65,7 @@ pip install wvlet
 
 ### TypeScript/JavaScript
 ```bash
-npm install wvlet
+npm install @wvlet/wvlet
 ```
 
 See [Language Bindings](../bindings) for more details and usage examples.
