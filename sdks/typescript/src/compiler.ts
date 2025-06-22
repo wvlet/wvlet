@@ -33,19 +33,28 @@ export class WvletCompiler {
     const compileOptions = { ...this.options, ...options };
     const optionsJson = JSON.stringify(compileOptions);
     
-    const responseJson = WvletJS.compile(query, optionsJson);
-    const response: CompileResponse = JSON.parse(responseJson);
-    
-    if (response.success && response.sql) {
-      return response.sql;
-    } else if (response.error) {
-      throw new CompilationError(
-        response.error.message,
-        response.error.statusCode,
-        response.error.location
-      );
-    } else {
-      throw new Error('Invalid response from compiler');
+    try {
+      const responseJson = WvletJS.compile(query, optionsJson);
+      const response: CompileResponse = JSON.parse(responseJson);
+      
+      if (response.success && response.sql) {
+        return response.sql;
+      } else if (response.error) {
+        throw new CompilationError(
+          response.error.message,
+          response.error.statusCode,
+          response.error.location
+        );
+      } else {
+        throw new Error('Invalid response from compiler');
+      }
+    } catch (error) {
+      if (error instanceof CompilationError) {
+        throw error;
+      }
+      
+      // Re-throw original error to preserve stack trace
+      throw error;
     }
   }
 
