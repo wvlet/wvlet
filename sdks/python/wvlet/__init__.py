@@ -61,14 +61,13 @@ The compiled SQL can be used with any SQL execution framework:
 For more examples and documentation, visit: https://wvlet.org/docs/bindings/python/
 """
 
-from typing import Optional
 from .compiler import WvletCompiler, CompilationError
 
 __version__ = "0.1.0"
 __all__ = ["compile", "WvletCompiler", "CompilationError"]
 
 
-def compile(query: str, target: Optional[str] = None) -> str:
+def compile(query: str, target: str = None) -> str:
     """
     Compile a Wvlet query to SQL.
     
