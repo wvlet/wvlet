@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { WvletCompiler } from '../dist/index.js';
+import { WvletCompiler } from '../dist/src/index.js';
 
 function main() {
   console.log('Wvlet Compiler Example\n');

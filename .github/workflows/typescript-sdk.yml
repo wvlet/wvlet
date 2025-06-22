@@ -47,7 +47,7 @@ jobs:
       
       - name: Build TypeScript
         working-directory: sdks/typescript
-        run: npm run build
+        run: npx tsc
       
       - name: Run example
         working-directory: sdks/typescript
