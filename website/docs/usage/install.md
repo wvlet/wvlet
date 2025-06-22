@@ -14,7 +14,7 @@ Wvlet is available as a command-line tool. You can install wvlet using Homebrew 
 - [Web UI](ui.md)
 
 :::info
-We are also working on [language bingings](../bindings) for various programming languages. 
+Language SDKs are also available for [Python and TypeScript](../bindings) to compile Wvlet queries programmatically.
 :::
 
 ## Mac OS X
@@ -53,6 +53,22 @@ JDK17 or later is required to run wvlet. Set JAVA_HOME environment variable to t
 After installing wvlet, start learning the query syntax of Wvlet:
 - [Query Syntax](../syntax) to learn the query syntax
 
+
+## Language SDKs
+
+If you want to integrate Wvlet compilation into your applications, install one of our language SDKs:
+
+### Python
+```bash
+pip install wvlet
+```
+
+### TypeScript/JavaScript
+```bash
+npm install wvlet
+```
+
+See [Language Bindings](../bindings) for more details and usage examples.
 
 ## Building From Source
 

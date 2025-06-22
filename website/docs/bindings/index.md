@@ -8,7 +8,7 @@ Wvlet provides SDKs for various programming languages, allowing you to compile W
 ### [Python SDK](python.md) 
 [![PyPI version](https://badge.fury.io/py/wvlet.svg)](https://pypi.org/project/wvlet/)
 
-The Python SDK is now available with native performance and easy installation via pip:
+The Python SDK provides native performance with easy installation via pip:
 
 ```bash
 pip install wvlet
@@ -27,13 +27,35 @@ print(sql)  # SELECT name, age FROM users WHERE age > 18
 - Support for all Wvlet features
 - Integration with pandas, DuckDB, SQLAlchemy
 
+### [TypeScript/JavaScript SDK](typescript.md)
+[![npm version](https://badge.fury.io/js/wvlet.svg)](https://www.npmjs.com/package/wvlet)
+
+The TypeScript SDK enables Wvlet compilation in Node.js and browsers:
+
+```bash
+npm install wvlet
+```
+
+```typescript
+import { WvletCompiler } from 'wvlet';
+
+const compiler = new WvletCompiler();
+const sql = compiler.compile('from users select name, age where age > 18');
+console.log(sql);  // SELECT name, age FROM users WHERE age > 18
+```
+
+**Features:**
+- Pure JavaScript via Scala.js compilation
+- Works in browsers and Node.js
+- Full TypeScript support
+- No native dependencies
+
 ## Planned SDKs
 
 The following language bindings are planned for future releases:
 
 - **Java/Scala** - Native JVM integration
 - **Ruby** - Ruby gem with native extensions
-- **JavaScript/TypeScript** - npm package with WebAssembly support
 - **Rust** - Cargo crate with native bindings
 - **Go** - Go module with CGO bindings
 - **C/C++** - Header-only library

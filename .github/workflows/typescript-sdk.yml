@@ -21,7 +21,6 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
-        node-version: [18, 20, 22]
     
     steps:
       - uses: actions/checkout@v4
@@ -36,7 +35,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node-version }}
+          node-version: 22
       
       - name: Install libgc (Linux)
         if: runner.os == 'Linux'
@@ -75,7 +74,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
       
       - name: Install dependencies
         working-directory: sdks/typescript
