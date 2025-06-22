@@ -1,6 +1,7 @@
 {
   "name": "wvlet-ui",
   "private": true,
+  "type": "module",
   "workspaces": [
     "wvlet-ui-main",
     "wvlet-ui-playground"

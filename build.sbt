@@ -383,15 +383,6 @@ lazy val sdkJs = project
     name := "wvlet-sdk-js",
     // Configure Scala.js output as ES module
     scalaJSLinkerConfig ~= { _.withModuleKind(ModuleKind.ESModule) },
-    // Configure Node.js to use ES modules
-    Test / jsEnv := {
-      import org.scalajs.jsenv.nodejs._
-      new NodeJSEnv(
-        NodeJSEnv.Config()
-          .withArgs(List("--experimental-modules"))
-          .withEnv(Map("NODE_OPTIONS" -> "--experimental-modules"))
-      )
-    },
     // Configure output directory
     Compile / fastLinkJS / scalaJSLinkerOutputDirectory := 
       (ThisBuild / baseDirectory).value / "sdks" / "typescript" / "lib",
