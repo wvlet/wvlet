@@ -101,21 +101,40 @@ object WvcLib extends LogSupport:
           CompileResponse(success = true, sql = Some(sql))
         catch
           case e: WvletLangException =>
+            // Determine status type based on StatusCode methods
+            val statusTypeStr =
+              if e.statusCode.isUserError then
+                "UserError"
+              else if e.statusCode.isInternalError then
+                "InternalError"
+              else if e.statusCode.isSuccess then
+                "Success"
+              else
+                "ResourceExhausted"
+
+            val locationOpt =
+              if e.sourceLocation != SourceLocation.NoSourceLocation then
+                Some(
+                  ErrorLocation(
+                    path = e.sourceLocation.path,
+                    fileName = e.sourceLocation.fileName,
+                    line = e.sourceLocation.position.line,
+                    column = e.sourceLocation.position.column,
+                    lineContent =
+                      if e.sourceLocation.codeLineAt.nonEmpty then
+                        Some(e.sourceLocation.codeLineAt)
+                      else
+                        None
+                  )
+                )
+              else
+                None
+
             val error = CompileError(
               code = e.statusCode.name,
-              statusType = e.statusCode.statusType.toString,
+              statusType = statusTypeStr,
               message = e.getMessage,
-              location = e
-                .sourceLocation
-                .map { loc =>
-                  ErrorLocation(
-                    path = loc.path,
-                    fileName = loc.fileName,
-                    line = loc.position.line,
-                    column = loc.position.column,
-                    lineContent = loc.codeLineAt
-                  )
-                }
+              location = locationOpt
             )
             CompileResponse(success = false, error = Some(error))
           case e: Throwable =>
