@@ -9,6 +9,19 @@ import scala.scalanative.libc.stdlib
 
 object WvcLib extends LogSupport:
 
+  /**
+    * Helper function to allocate a string on heap as CString
+    */
+  private def toCString(str: String): CString =
+    val len    = str.length + 1
+    val buffer = stdlib.malloc(len).asInstanceOf[CString]
+    var i      = 0
+    while i < str.length do
+      buffer(i) = str.charAt(i).toByte
+      i += 1
+    buffer(str.length) = 0.toByte
+    buffer
+
   // Response types for JSON serialization
   case class CompileResponse(
       success: Boolean,
@@ -62,23 +75,12 @@ object WvcLib extends LogSupport:
       val json     = fromCString(argJson)
       val args     = MessageCodec.of[Array[String]].fromJson(json)
       val (sql, _) = WvcMain.compileWvletQuery(args)
-
-      // Allocate string on heap using malloc (managed by Boehm GC)
-      val len    = sql.length + 1
-      val buffer = stdlib.malloc(len).asInstanceOf[CString]
-      var i      = 0
-      while i < sql.length do
-        buffer(i) = sql.charAt(i).toByte
-        i += 1
-      buffer(sql.length) = 0.toByte
-      buffer
+      toCString(sql)
     catch
       case e: Throwable =>
         warn(e)
         // Return empty string on error
-        val buffer = stdlib.malloc(1).asInstanceOf[CString]
-        buffer(0) = 0.toByte
-        buffer
+        toCString("")
 
   /**
     * Compile a Wvlet query and return the result as JSON
@@ -147,30 +149,21 @@ object WvcLib extends LogSupport:
 
       // Convert response to JSON
       val responseJson = MessageCodec.of[CompileResponse].toJson(response)
-
-      // Allocate string on heap using malloc (managed by Boehm GC)
-      val len    = responseJson.length + 1
-      val buffer = stdlib.malloc(len).asInstanceOf[CString]
-      var i      = 0
-      while i < responseJson.length do
-        buffer(i) = responseJson.charAt(i).toByte
-        i += 1
-      buffer(responseJson.length) = 0.toByte
-      buffer
+      toCString(responseJson)
     catch
       case e: Throwable =>
         warn(e)
         // Return error response as JSON even if JSON serialization fails
+        // Escape the error message to prevent JSON injection
+        val escapedMessage = Option(e.getMessage)
+          .getOrElse("JSON serialization failed")
+          .replace("\\", "\\\\")
+          .replace("\"", "\\\"")
+          .replace("\n", "\\n")
+          .replace("\r", "\\r")
+          .replace("\t", "\\t")
         val errorJson =
-          s"""{"success":false,"error":{"code":"JSON_ERROR","statusType":"InternalError","message":"${e
-              .getMessage}"}}"""
-        val len    = errorJson.length + 1
-        val buffer = stdlib.malloc(len).asInstanceOf[CString]
-        var i      = 0
-        while i < errorJson.length do
-          buffer(i) = errorJson.charAt(i).toByte
-          i += 1
-        buffer(errorJson.length) = 0.toByte
-        buffer
+          s"""{"success":false,"error":{"code":"JSON_ERROR","statusType":"InternalError","message":"$escapedMessage"}}"""
+        toCString(errorJson)
 
 end WvcLib
