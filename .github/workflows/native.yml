@@ -37,12 +37,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-# TODO This works, but binary signing and notarization is required
-#          - os: macos-latest
-#            arch: arm64
-#            name: mac
-#            suffix: dylib
-# TODO It seems arm64 is not available yet (2024-11)
+          - os: macos-latest
+            arch: arm64
+            name: mac
+            suffix: dylib
           - os: ubuntu-24.04-arm
             arch: arm64
             name: linux
@@ -65,7 +63,12 @@ jobs:
           java-version: '24'
           cache: sbt
       - name: Install libgc
-        run: sudo apt-get install libgc-dev
+        run: |
+          if [[ "${{ runner.os }}" == "Linux" ]]; then
+            sudo apt-get install libgc-dev
+          elif [[ "${{ runner.os }}" == "macOS" ]]; then
+            brew install bdw-gc
+          fi
       - name: Set SCALA_VERSION env
         run: |
           SCALA_VERSION=$(cat SCALA_VERSION)
@@ -74,6 +77,21 @@ jobs:
       - name: Build native binary
         run: |
           ./sbt 'wvcLib/nativeLinkReleaseFast'
+      - name: Ad-hoc sign macOS library
+        if: runner.os == 'macOS'
+        run: |
+          echo "Signing macOS library with ad-hoc signature..."
+          # Sign the library
+          codesign --sign - --force wvc-lib/target/scala-${{ env.SCALA_VERSION }}/libwvlet.dylib
+          
+          # Remove quarantine attribute if present
+          xattr -cr wvc-lib/target/scala-${{ env.SCALA_VERSION }}/libwvlet.dylib || true
+          
+          # Verify signature
+          codesign --verify --verbose wvc-lib/target/scala-${{ env.SCALA_VERSION }}/libwvlet.dylib
+          
+          # Display signature info
+          codesign --display --verbose=2 wvc-lib/target/scala-${{ env.SCALA_VERSION }}/libwvlet.dylib
       - name: Upload native binary
         uses: actions/upload-artifact@v4
         with:
