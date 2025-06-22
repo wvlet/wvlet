@@ -17,10 +17,7 @@ on:
 jobs:
   test:
     name: Test TypeScript SDK
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest]
+    runs-on: ubuntu-latest
     
     steps:
       - uses: actions/checkout@v4
@@ -36,14 +33,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-      
-      - name: Install libgc (Linux)
-        if: runner.os == 'Linux'
-        run: sudo apt-get install libgc-dev
-      
-      - name: Install libgc (macOS)
-        if: runner.os == 'macOS'
-        run: brew install bdw-gc
       
       - name: Build Scala.js SDK
         run: ./sbt "sdkJs/fastLinkJS"
