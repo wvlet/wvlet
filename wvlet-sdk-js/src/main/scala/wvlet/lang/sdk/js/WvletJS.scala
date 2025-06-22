@@ -111,69 +111,6 @@ object WvletJS {
   def getVersion(): String = {
     wvlet.lang.BuildInfo.version
   }
-
-  /**
-    * Parse command-line style arguments and compile
-    * @param argsJson JSON array of command line arguments
-    * @return JSON string with compilation result
-    */
-  @JSExport
-  def compileWithArgs(argsJson: String): String = {
-    try {
-      val args = MessageCodec.of[Array[String]].fromJson(argsJson)
-      
-      // Parse arguments to extract query and options
-      var query: Option[String] = None
-      var target: Option[String] = None
-      var i = 0
-      
-      while (i < args.length) {
-        args(i) match {
-          case "-q" | "--query" =>
-            if (i + 1 < args.length) {
-              query = Some(args(i + 1))
-              i += 1
-            }
-          case "--target" =>
-            if (i + 1 < args.length) {
-              target = Some(args(i + 1))
-              i += 1
-            }
-          case arg if !arg.startsWith("-") && query.isEmpty =>
-            query = Some(arg)
-          case _ => // Ignore other arguments
-        }
-        i += 1
-      }
-      
-      query match {
-        case Some(q) =>
-          val options = CompileOptions(target = target)
-          compile(q, MessageCodec.of[CompileOptions].toJson(options))
-        case None =>
-          val error = CompileError(
-            statusCode = StatusCode.INVALID_ARGUMENT,
-            message = "No query provided"
-          )
-          val response = CompileResponse(
-            success = false,
-            error = Some(error)
-          )
-          MessageCodec.of[CompileResponse].toJson(response)
-      }
-    } catch {
-      case e: Throwable =>
-        val error = CompileError(
-          statusCode = StatusCode.INTERNAL_ERROR,
-          message = s"Failed to parse arguments: ${e.getMessage}"
-        )
-        val response = CompileResponse(
-          success = false,
-          error = Some(error)
-        )
-        MessageCodec.of[CompileResponse].toJson(response)
-    }
-  }
 }
 
 /**
