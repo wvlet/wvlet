@@ -269,5 +269,7 @@ For error reporting, use WvletLangException and StatusCode enum. If necessary er
   - PR has `test-wheels` label
   - Weekly schedule (Sundays)
   - Manual workflow dispatch
-- Add `test-wheels` label only when testing platform-specific changes
-- This reduces CI time from ~20 minutes to ~2 minutes for most PRs
+
+Add the `test-wheels` label only when testing platform-specific changes.
+
+This reduces CI time from ~20 minutes to ~2 minutes for most PRs.
