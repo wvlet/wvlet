@@ -38,7 +38,7 @@ lazy val jvmProjects: Seq[ProjectReference] = Seq(
   cli
 )
 
-lazy val jsProjects: Seq[ProjectReference] = Seq(api.js, client.js, lang.js, ui, uiMain, playground)
+lazy val jsProjects: Seq[ProjectReference] = Seq(api.js, client.js, lang.js, ui, uiMain, playground, sdkJs)
 
 lazy val nativeProjects: Seq[ProjectReference] = Seq(api.native, lang.native, wvc, wvcLib)
 
@@ -374,6 +374,22 @@ lazy val spec = project
   .in(file("wvlet-spec"))
   .settings(buildSettings, specRunnerSettings, noPublish, name := "wvlet-spec")
   .dependsOn(runner)
+
+lazy val sdkJs = project
+  .in(file("wvlet-sdk-js"))
+  .enablePlugins(ScalaJSPlugin)
+  .settings(
+    buildSettings,
+    name := "wvlet-sdk-js",
+    // Configure Scala.js output as ES module
+    scalaJSLinkerConfig ~= { _.withModuleKind(ModuleKind.ESModule) },
+    // Configure output directory
+    Compile / fastLinkJS / scalaJSLinkerOutputDirectory := 
+      (ThisBuild / baseDirectory).value / "sdks" / "typescript" / "lib",
+    Compile / fullLinkJS / scalaJSLinkerOutputDirectory := 
+      (ThisBuild / baseDirectory).value / "sdks" / "typescript" / "lib"
+  )
+  .dependsOn(lang.js)
 
 lazy val server = project
   .in(file("wvlet-server"))
