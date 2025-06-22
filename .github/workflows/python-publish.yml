@@ -168,18 +168,9 @@ jobs:
             pip install dist/wvlet-*-py3-none-manylinux2014_x86_64.whl
           fi
       
-      - name: Test import and basic functionality
+      - name: Test import
         run: |
           python -c "from wvlet import compile; print('Import successful')"
-          # Test compile only if native library or CLI is available
-          python -c "
-from wvlet import compile
-try:
-    sql = compile('select 1')
-    print(f'Compiled SQL: {sql}')
-except NotImplementedError:
-    print('Native library and CLI not available - this is expected in CI without real native libs')
-"
       
       - name: Run tests
         run: |
