@@ -25,7 +25,7 @@ import { WvletCompiler } from './compiler.js';
  * @returns The compiled SQL string
  * @throws {CompilationError} If compilation fails
  */
-export async function compile(query: string): Promise<string> {
+export function compile(query: string): string {
   const compiler = new WvletCompiler();
   return compiler.compile(query);
 }

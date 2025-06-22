@@ -2,7 +2,7 @@
 
 import { WvletCompiler } from '../dist/index.js';
 
-async function main() {
+function main() {
   console.log('Wvlet Compiler Example\n');
   
   const compiler = new WvletCompiler();
@@ -27,7 +27,7 @@ async function main() {
     console.log('\nCompiled SQL:');
     
     try {
-      const sql = await compiler.compile(query);
+      const sql = compiler.compile(query);
       console.log(sql);
     } catch (error) {
       console.error('Compilation error:', error.message);
@@ -45,10 +45,10 @@ async function main() {
   console.log(invalidQuery);
   
   try {
-    await compiler.compile(invalidQuery);
+    compiler.compile(invalidQuery);
   } catch (error) {
     console.error('\nExpected error:', error.message);
   }
 }
 
-main().catch(console.error);
+main();

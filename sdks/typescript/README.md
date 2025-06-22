@@ -20,7 +20,7 @@ import { WvletCompiler } from 'wvlet';
 const compiler = new WvletCompiler();
 
 // Compile a Wvlet query to SQL
-const sql = await compiler.compile('from users select name, email');
+const sql = compiler.compile('from users select name, email');
 console.log(sql);
 // Output: SELECT name, email FROM users
 ```
@@ -36,11 +36,8 @@ const compiler = new WvletCompiler({
   target: 'duckdb' // or 'trino'
 });
 
-// Async compilation
-const sql = await compiler.compile('from users where age > 18 select *');
-
-// Sync compilation
-const sqlSync = compiler.compileSync('from products select name, price');
+// Compile a query
+const sql = compiler.compile('from users where age > 18 select *');
 ```
 
 ### Error Handling
@@ -51,7 +48,7 @@ import { WvletCompiler, CompilationError } from 'wvlet';
 const compiler = new WvletCompiler();
 
 try {
-  const sql = await compiler.compile('invalid query syntax');
+  const sql = compiler.compile('invalid query syntax');
 } catch (error) {
   if (error instanceof CompilationError) {
     console.error(`Error at line ${error.location?.line}, column ${error.location?.column}`);
@@ -67,7 +64,7 @@ try {
 import { compile } from 'wvlet';
 
 // Use the default compiler with a single function call
-const sql = await compile('from orders select count(*)');
+const sql = compile('from orders select count(*)');
 ```
 
 ## API Reference
@@ -86,13 +83,9 @@ Options:
 
 #### Methods
 
-##### compile(query: string, options?: CompileOptions): Promise<string>
+##### compile(query: string, options?: CompileOptions): string
 
-Compiles a Wvlet query to SQL asynchronously.
-
-##### compileSync(query: string, options?: CompileOptions): string
-
-Compiles a Wvlet query to SQL synchronously.
+Compiles a Wvlet query to SQL.
 
 ##### static getVersion(): string
 
@@ -103,7 +96,7 @@ Returns the version of the Wvlet compiler.
 ### Query with JOIN
 
 ```typescript
-const sql = await compiler.compile(`
+const sql = compiler.compile(`
   from users u
   join orders o on u.id = o.user_id
   select u.name, count(*) as order_count
@@ -114,7 +107,7 @@ const sql = await compiler.compile(`
 ### Query with CTE
 
 ```typescript
-const sql = await compiler.compile(`
+const sql = compiler.compile(`
   with active_users as (
     from users
     where last_login > current_date - interval '30 days'

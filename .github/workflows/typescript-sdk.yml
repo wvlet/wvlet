@@ -1,0 +1,86 @@
+name: TypeScript SDK
+
+on:
+  pull_request:
+    paths:
+      - 'sdks/typescript/**'
+      - 'wvlet-sdk-js/**'
+      - '.github/workflows/typescript-sdk.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'sdks/typescript/**'
+      - 'wvlet-sdk-js/**'
+      - '.github/workflows/typescript-sdk.yml'
+
+jobs:
+  test:
+    name: Test TypeScript SDK
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        node-version: [18, 20, 22]
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '24'
+          cache: sbt
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+      
+      - name: Install libgc (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get install libgc-dev
+      
+      - name: Install libgc (macOS)
+        if: runner.os == 'macOS'
+        run: brew install bdw-gc
+      
+      - name: Build Scala.js SDK
+        run: ./sbt "sdkJs/fastLinkJS"
+      
+      - name: Install dependencies
+        working-directory: sdks/typescript
+        run: npm install
+      
+      - name: Build TypeScript
+        working-directory: sdks/typescript
+        run: npm run build
+      
+      - name: Run tests
+        working-directory: sdks/typescript
+        run: npm run test:ci
+      
+      - name: Run example
+        working-directory: sdks/typescript
+        run: node examples/node-example.js
+
+  lint:
+    name: Lint TypeScript
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      
+      - name: Install dependencies
+        working-directory: sdks/typescript
+        run: npm install
+      
+      - name: Type check
+        working-directory: sdks/typescript
+        run: npm run lint

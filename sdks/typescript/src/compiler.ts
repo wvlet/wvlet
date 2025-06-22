@@ -29,43 +29,7 @@ export class WvletCompiler {
    * @returns The compiled SQL string
    * @throws {CompilationError} If compilation fails
    */
-  async compile(query: string, options?: CompileOptions): Promise<string> {
-    const compileOptions = { ...this.options, ...options };
-    const optionsJson = JSON.stringify(compileOptions);
-    
-    try {
-      const responseJson = WvletJS.compile(query, optionsJson);
-      const response: CompileResponse = JSON.parse(responseJson);
-      
-      if (response.success && response.sql) {
-        return response.sql;
-      } else if (response.error) {
-        throw new CompilationError(
-          response.error.message,
-          response.error.statusCode,
-          response.error.location
-        );
-      } else {
-        throw new Error('Invalid response from compiler');
-      }
-    } catch (error) {
-      if (error instanceof CompilationError) {
-        throw error;
-      }
-      
-      // Handle any other errors (e.g., JSON parsing errors)
-      throw new Error(`Compilation failed: ${error}`);
-    }
-  }
-
-  /**
-   * Compile a Wvlet query synchronously
-   * @param query The Wvlet query string
-   * @param options Override compilation options for this query
-   * @returns The compiled SQL string
-   * @throws {CompilationError} If compilation fails
-   */
-  compileSync(query: string, options?: CompileOptions): string {
+  compile(query: string, options?: CompileOptions): string {
     const compileOptions = { ...this.options, ...options };
     const optionsJson = JSON.stringify(compileOptions);
     
