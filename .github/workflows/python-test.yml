@@ -1,4 +1,4 @@
-name: Python SDK Tests
+name: Python Test
 
 on:
   pull_request:
