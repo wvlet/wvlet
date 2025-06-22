@@ -106,17 +106,23 @@ jobs:
         if: matrix.platform == 'macos'
         run: |
           echo "Signing macOS library with ad-hoc signature..."
-          # Sign the library
-          codesign --sign - --force sdks/python/wvlet/libs/darwin_arm64/libwvlet.dylib
           
-          # Remove quarantine attribute if present
-          xattr -cr sdks/python/wvlet/libs/darwin_arm64/libwvlet.dylib || true
-          
-          # Verify signature
-          codesign --verify --verbose sdks/python/wvlet/libs/darwin_arm64/libwvlet.dylib
-          
-          # Display signature info
-          codesign --display --verbose=2 sdks/python/wvlet/libs/darwin_arm64/libwvlet.dylib
+          # Check if the library exists and is a real file (not a placeholder)
+          if [ -f "sdks/python/wvlet/libs/darwin_arm64/libwvlet.dylib" ] && [ -s "sdks/python/wvlet/libs/darwin_arm64/libwvlet.dylib" ]; then
+            # Sign the library
+            codesign --sign - --force sdks/python/wvlet/libs/darwin_arm64/libwvlet.dylib
+            
+            # Remove quarantine attribute if present
+            xattr -cr sdks/python/wvlet/libs/darwin_arm64/libwvlet.dylib || true
+            
+            # Verify signature
+            codesign --verify --verbose sdks/python/wvlet/libs/darwin_arm64/libwvlet.dylib
+            
+            # Display signature info
+            codesign --display --verbose=2 sdks/python/wvlet/libs/darwin_arm64/libwvlet.dylib
+          else
+            echo "Warning: macOS library is a placeholder or doesn't exist, skipping signing"
+          fi
       
       - name: Install build dependencies
         run: |
