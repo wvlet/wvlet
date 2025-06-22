@@ -42,7 +42,7 @@ class CompilationError(Exception):
     column : int, optional
         The column number where the error occurred (if available).
     """
-    def __init__(self, message: str, line: int = None, column: int = None):
+    def __init__(self, message: str, line: Optional[int] = None, column: Optional[int] = None):
         self.message = message
         self.line = line
         self.column = column

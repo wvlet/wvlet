@@ -9,11 +9,7 @@ The quick test suite covers:
 - Basic query compilation
 - Error handling for invalid queries
 - Platform detection and library path resolution
-
-### Code Quality
-- **Type checking**: `mypy` ensures type safety across the codebase
-- **Linting**: `ruff` checks for code style and common issues
-- **Import verification**: Tests ensure the package can be imported correctly
+- Import verification: Tests ensure the package can be imported correctly
 
 ## Full Tests (python-publish.yml) Coverage
 

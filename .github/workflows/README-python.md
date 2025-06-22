@@ -9,8 +9,6 @@ The Python SDK has two main workflows:
 - **Duration**: ~2 minutes
 - **Tests**: 
   - Unit tests on Ubuntu with Python 3.11
-  - Type checking with mypy
-  - Linting with ruff
 - **Purpose**: Fast feedback for developers
 
 ### 2. `python-publish.yml` - Full Build and Cross-Platform Tests

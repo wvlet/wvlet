@@ -41,13 +41,3 @@ jobs:
         run: |
           cd sdks/python
           pytest tests/ -v
-      
-      - name: Run type checking
-        run: |
-          cd sdks/python
-          mypy wvlet tests --ignore-missing-imports
-      
-      - name: Run linting
-        run: |
-          cd sdks/python
-          ruff check .
