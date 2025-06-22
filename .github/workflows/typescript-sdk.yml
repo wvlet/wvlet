@@ -60,10 +60,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '24'
+          cache: sbt
+      
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
+      
+      - name: Build Scala.js SDK
+        run: ./sbt "sdkJs/fastLinkJS"
       
       - name: Install dependencies
         working-directory: sdks/typescript
