@@ -2,7 +2,7 @@
  * Type definitions for Scala.js generated WvletJS module
  */
 
-export interface WvletJS {
+export interface WvletJSType {
   /**
    * Compile a Wvlet query and return the result as JSON
    * @param query The Wvlet query string
@@ -18,4 +18,5 @@ export interface WvletJS {
   getVersion(): string;
 }
 
-export const WvletJS: WvletJS;
+export const WvletJS: WvletJSType;
+export const log: any;
