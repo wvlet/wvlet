@@ -1,0 +1,1 @@
+SELECT ARRAY[1, 2, 3] AS int_array

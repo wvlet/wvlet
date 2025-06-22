@@ -1,0 +1,52 @@
+-- Test Struct/Object data types with Trino
+
+select {
+  'id': 1,
+  'name': 'Alice',
+  'age': 25
+} as person_struct
+;
+
+select 
+  {'id': 1, 'name': 'Alice', 'age': 25}.id as id,
+  {'id': 1, 'name': 'Alice', 'age': 25}['name'] as name
+;
+
+select {
+  'name': 'John',
+  'address': {
+    'street': '123 Main St',
+    'city': 'New York',
+    'state': 'NY',
+    'zip': '10001'
+  }
+} as person_with_address
+;
+
+select [
+  {'id': 1, 'name': 'Alice', 'age': 25},
+  {'id': 2, 'name': 'Bob', 'age': 30},
+  {'id': 3, 'name': 'Charlie', 'age': 35}
+] as people_array
+;
+
+select {
+  'company': 'company1',
+  'departments': [
+    {
+      'name': 'dept1',
+      'employees': [
+        {'name': 'Alice', 'salary': 100000},
+        {'name': 'Bob', 'salary': 90000}
+      ]
+    },
+    {
+      'name': 'dept2',
+      'employees': [
+        {'name': 'Charlie', 'salary': 95000},
+        {'name': 'David', 'salary': 85000}
+      ]
+    }
+  ]
+} as company_structure
+;

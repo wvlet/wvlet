@@ -1,0 +1,32 @@
+-- Test Array data types with Trino
+
+select [1, 2, 3] as int_array
+;
+
+select ['a', 'b', 'c'] as string_array
+;
+
+select [10, 20, 30][0] as first_element
+;
+
+select 
+  length([1, 2, 3, 4, 5]) as array_length,
+  array_min([3, 1, 4, 1, 5]) as min_value,
+  array_max([3, 1, 4, 1, 5]) as max_value
+;
+
+select [[1, 2], [3, 4]] as nested_array
+;
+
+from (
+  select 1 as id, 10 as value
+  union all
+  select 1 as id, 20 as value
+  union all
+  select 2 as id, 30 as value
+)
+group by id
+select 
+  id,
+  value.to_array as values_array
+;

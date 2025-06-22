@@ -1,0 +1,1 @@
+SELECT ROW(1, 'Alice', 25) AS person_struct
