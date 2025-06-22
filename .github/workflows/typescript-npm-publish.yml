@@ -1,8 +1,9 @@
 name: TypeScript NPM Publish
 
 on:
-  release:
-    types: [created]
+  push:
+    tags:
+      - 'v*.*.*'
   workflow_dispatch:
     inputs:
       version:
@@ -49,8 +50,8 @@ jobs:
         working-directory: sdks/typescript
         run: npm run test:ci
       
-      - name: Set version from release
-        if: github.event_name == 'release'
+      - name: Set version from tag
+        if: github.event_name == 'push'
         working-directory: sdks/typescript
         run: |
           VERSION=$(echo "${{ github.ref }}" | sed 's/refs\/tags\/v//')

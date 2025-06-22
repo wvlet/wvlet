@@ -6,9 +6,13 @@ This document describes how the TypeScript SDK is published to NPM.
 
 ### Release Versions
 
-When a new release is created on GitHub (with a tag like `v0.1.0`), the NPM package is automatically published:
+When a new version tag is pushed (like `v0.1.0`), the NPM package is automatically published:
 
-1. Create a GitHub release with a version tag (e.g., `v0.1.0`)
+1. Push a version tag to GitHub:
+   ```bash
+   git tag v0.1.0
+   git push origin v0.1.0
+   ```
 2. The `typescript-npm-publish.yml` workflow automatically:
    - Builds the Scala.js SDK
    - Runs tests
