@@ -37,9 +37,9 @@ case class CompileError(
   * Source location information for compilation errors
   */
 case class ErrorLocation(
-    path: String,
-    fileName: String,
-    line: Int,     // 1-origin line number
-    column: Int,   // 1-origin column number
+    path: String,     // Relative file path (e.g., "src/main/scala/Example.scala")
+    fileName: String, // Leaf file name only (e.g., "Example.scala")
+    line: Int,        // 1-origin line number
+    column: Int,      // 1-origin column number
     lineContent: Option[String] = None
 )
