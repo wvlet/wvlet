@@ -13,6 +13,8 @@
  */
 package wvlet.lang.api.v1.compile
 
+import wvlet.lang.api.StatusCode
+
 /**
   * Response format for compilation APIs
   */
@@ -26,8 +28,7 @@ case class CompileResponse(
   * Error information for compilation failures
   */
 case class CompileError(
-    code: String,
-    statusType: String,
+    statusCode: StatusCode,
     message: String,
     location: Option[ErrorLocation] = None
 )
@@ -38,8 +39,7 @@ case class CompileError(
 case class ErrorLocation(
     path: String,
     fileName: String,
-    line: Int,
-    column: Int,
+    line: Int,     // 1-origin line number
+    column: Int,   // 1-origin column number
     lineContent: Option[String] = None
 )
-

@@ -82,17 +82,6 @@ object WvcLib extends LogSupport:
           CompileResponse(success = true, sql = Some(sql))
         catch
           case e: WvletLangException =>
-            // Determine status type based on StatusCode methods
-            val statusTypeStr =
-              if e.statusCode.isUserError then
-                "UserError"
-              else if e.statusCode.isInternalError then
-                "InternalError"
-              else if e.statusCode.isSuccess then
-                "Success"
-              else
-                "ResourceExhausted"
-
             val locationOpt =
               if e.sourceLocation != SourceLocation.NoSourceLocation then
                 Some(
@@ -112,16 +101,14 @@ object WvcLib extends LogSupport:
                 None
 
             val error = CompileError(
-              code = e.statusCode.name,
-              statusType = statusTypeStr,
+              statusCode = e.statusCode,
               message = e.getMessage,
               location = locationOpt
             )
             CompileResponse(success = false, error = Some(error))
           case e: Throwable =>
             val error = CompileError(
-              code = StatusCode.INTERNAL_ERROR.name,
-              statusType = "InternalError",
+              statusCode = StatusCode.INTERNAL_ERROR,
               message = Option(e.getMessage).getOrElse(e.getClass.getName)
             )
             CompileResponse(success = false, error = Some(error))
@@ -137,8 +124,7 @@ object WvcLib extends LogSupport:
           success = false,
           error = Some(
             CompileError(
-              code = StatusCode.COMPILATION_FAILURE.name,
-              statusType = "UserError",
+              statusCode = StatusCode.COMPILATION_FAILURE,
               message = Option(e.getMessage).getOrElse(
                 "Failed to serialize compilation result to JSON"
               )
