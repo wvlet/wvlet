@@ -37,6 +37,8 @@ Issues = "https://github.com/wvlet/wvlet/issues"
 [project.optional-dependencies]
 dev = [
     "pytest>=6.0",
+    "mypy>=1.0",
+    "ruff>=0.1.0",
 ]
 
 [tool.setuptools]
