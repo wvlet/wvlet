@@ -263,13 +263,6 @@ For error reporting, use WvletLangException and StatusCode enum. If necessary er
 ## CI Optimization
 
 ### Python SDK Testing
-- Quick tests run on every PR via `python-test.yml` (~2 minutes)
-- Full cross-platform wheel tests only run when:
-  - Version tags are pushed
-  - PR has `test-wheels` label
-  - Weekly schedule (Sundays)
-  - Manual workflow dispatch
-
-Add the `test-wheels` label only when testing platform-specific changes.
-
-This reduces CI time from ~20 minutes to ~2 minutes for most PRs.
+- Quick tests run on every PR (~2 minutes)
+- Full wheel tests run only on tags, PRs with `test-wheels` label, or weekly schedule
+- Add `test-wheels` label for platform-specific changes
