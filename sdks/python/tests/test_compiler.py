@@ -15,28 +15,24 @@
 #
 
 import pytest
-from wvlet.compiler import WvletCompiler
+from wvlet.compiler import WvletCompiler, CompilationError
 from wvlet import compile as wvlet_compile
 
-def test_wvlet_invalid_path():
-    with pytest.raises(ValueError, match="Invalid executable_path: invalid"):
-        WvletCompiler(executable_path="invalid")
-
 def test_wvlet_initialization():
-    """Test that WvletCompiler can be initialized (either with native lib or executable)"""
+    """Test that WvletCompiler can be initialized with native library"""
     try:
         compiler = WvletCompiler()
-        # If we get here, either native library or executable is available
+        # If we get here, native library is available
         assert compiler is not None
     except NotImplementedError:
-        pytest.skip("Neither native library nor wvlet executable is available")
+        pytest.skip("Native library is not available for this platform")
 
 def test_compile_simple_query():
     """Test compiling a simple Wvlet query"""
     try:
         compiler = WvletCompiler()
     except NotImplementedError:
-        pytest.skip("Neither native library nor wvlet executable is available")
+        pytest.skip("Native library is not available for this platform")
     
     # Test a self-contained query that doesn't depend on external schema
     query = "select 1 as num"
@@ -57,7 +53,7 @@ def test_compile_function():
         assert 'select' in sql.lower()
         assert '1' in sql
     except NotImplementedError:
-        pytest.skip("Neither native library nor wvlet executable is available")
+        pytest.skip("Native library is not available for this platform")
 
 def test_native_library_loading():
     """Test that native library loading doesn't crash"""
@@ -72,9 +68,9 @@ def test_compile_error_handling():
     try:
         compiler = WvletCompiler()
     except NotImplementedError:
-        pytest.skip("Neither native library nor wvlet executable is available")
+        pytest.skip("Native library is not available for this platform")
     
     # Test with an invalid query
-    with pytest.raises(ValueError, match="Failed to compile"):
+    with pytest.raises(CompilationError):
         compiler.compile("invalid query syntax !@#")
 

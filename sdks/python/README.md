@@ -5,9 +5,8 @@ Python SDK for [Wvlet](https://wvlet.org) - A flow-style query language for func
 ## Features
 
 - 🚀 **Fast native compilation** - Uses bundled native library for high-performance query compilation
-- 🔄 **Automatic fallback** - Falls back to CLI when native library is unavailable
 - 🎯 **Multiple SQL targets** - Supports DuckDB, Trino, and other SQL engines
-- 📦 **Zero dependencies** - Pure Python with optional native acceleration
+- 📦 **Zero dependencies** - Pure Python with native acceleration
 - 🐍 **Pythonic API** - Simple and intuitive interface
 
 ## Installation
@@ -162,7 +161,7 @@ Compile a Wvlet query to SQL.
 
 **Raises:**
 - `CompilationError`: If the query cannot be compiled
-- `NotImplementedError`: If neither native library nor CLI is available
+- `NotImplementedError`: If the native library is not available for the current platform
 
 ### `wvlet.compiler.WvletCompiler`
 
@@ -198,25 +197,10 @@ Linux    | aarch64     | ✅ Supported
 macOS    | arm64       | ✅ Supported
 Windows  | x86_64      | 🔄 Planned
 
-### CLI Fallback
-
-The SDK automatically falls back to the Wvlet CLI if:
-1. Native library is not available for your platform
-2. Native library fails to load
-3. You explicitly disable native compilation
-
-To install the CLI for fallback support:
-```bash
-# Install via Homebrew (macOS/Linux)
-brew install wvlet/wvlet/wvlet
-
-# Or download from GitHub releases
-# https://github.com/wvlet/wvlet/releases
-```
 
 ## Performance
 
-The native library provides significant performance improvements over CLI:
+The native library provides high-performance query compilation:
 
 ```python
 import time
@@ -226,15 +210,7 @@ from wvlet import compile
 start = time.time()
 for _ in range(100):
     compile("from users select * where age > 21")
-print(f"Native: {time.time() - start:.2f}s")
-
-# Force CLI usage (if available)
-import os
-os.environ['WVLET_PYTHON_USE_CLI'] = '1'
-start = time.time()
-for _ in range(100):
-    compile("from users select * where age > 21")
-print(f"CLI: {time.time() - start:.2f}s")
+print(f"Compiled 100 queries in {time.time() - start:.2f}s")
 ```
 
 ## Integration Examples
