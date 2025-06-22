@@ -259,3 +259,15 @@ For error reporting, use WvletLangException and StatusCode enum. If necessary er
 
 - Check pr status and fix issues like code format, compilation failure, test failures
 - After merging pr, updated the related issues to reflect completed and remaining tasks
+
+## CI Optimization
+
+### Python SDK Testing
+- Quick tests run on every PR via `python-test.yml` (~2 minutes)
+- Full cross-platform wheel tests only run when:
+  - Version tags are pushed
+  - PR has `test-wheels` label
+  - Weekly schedule (Sundays)
+  - Manual workflow dispatch
+- Add `test-wheels` label only when testing platform-specific changes
+- This reduces CI time from ~20 minutes to ~2 minutes for most PRs
