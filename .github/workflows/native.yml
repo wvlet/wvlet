@@ -92,6 +92,14 @@ jobs:
           
           # Display signature info
           codesign --display --verbose=2 wvc-lib/target/scala-${{ env.SCALA_VERSION }}/libwvlet.dylib
+      - name: Install Rust for native tests
+        if: runner.os == 'Linux'
+        run: rustup update
+      - name: Test native library
+        run: |
+          echo "Testing native library..."
+          make test
+        working-directory: wvc-lib
       - name: Upload native binary
         uses: actions/upload-artifact@v4
         with:
