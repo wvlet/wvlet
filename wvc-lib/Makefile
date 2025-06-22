@@ -52,3 +52,9 @@ c: $(TARGET)/test-c
 
 $(TARGET)/test-c: src/test/c/test.c $(LIB_SHARED)
 	gcc $(LINKER_OPTS) $< $(LIBS) -o $@
+
+c-json: $(TARGET)/test-c-json
+	$(RUN_OPTS) $<
+
+$(TARGET)/test-c-json: src/test/c/test_json.c $(LIB_SHARED)
+	gcc $(LINKER_OPTS) $< $(LIBS) -o $@
