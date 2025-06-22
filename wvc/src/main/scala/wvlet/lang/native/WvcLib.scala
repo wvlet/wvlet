@@ -3,6 +3,7 @@ package wvlet.lang.native
 import wvlet.airframe.codec.MessageCodec
 import wvlet.log.LogSupport
 import wvlet.lang.api.{WvletLangException, SourceLocation, LinePosition, StatusCode}
+import wvlet.lang.api.v1.compile.{CompileResponse, CompileError, ErrorLocation}
 
 import scala.scalanative.unsafe.*
 import scala.scalanative.libc.stdlib
@@ -21,28 +22,6 @@ object WvcLib extends LogSupport:
       i += 1
     buffer(str.length) = 0.toByte
     buffer
-
-  // Response types for JSON serialization
-  case class CompileResponse(
-      success: Boolean,
-      sql: Option[String] = None,
-      error: Option[CompileError] = None
-  )
-
-  case class CompileError(
-      code: String,
-      statusType: String,
-      message: String,
-      location: Option[ErrorLocation] = None
-  )
-
-  case class ErrorLocation(
-      path: String,
-      fileName: String,
-      line: Int,
-      column: Int,
-      lineContent: Option[String] = None
-  )
 
   /**
     * Run WvcMain with the given arguments
