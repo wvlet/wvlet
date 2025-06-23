@@ -78,20 +78,28 @@ object RewriteExpr extends Phase("rewrite-expr"):
         context: Context
     ): Unit =
       (left, right) match
-        case (_: NullLiteral, _) | (_, _: NullLiteral) =>
+        case (_: NullLiteral, _) =>
           val suggestion =
-            (left, right) match
-              case (_: NullLiteral, _) if op == "=" =>
-                s"${right.pp} is null"
-              case (_, _: NullLiteral) if op == "=" =>
-                s"${left.pp} is null"
-              case (_: NullLiteral, _) if op == "!=" =>
-                s"${right.pp} is not null"
-              case (_, _: NullLiteral) if op == "!=" =>
-                s"${left.pp} is not null"
-              case _ =>
-                "Use 'is null' or 'is not null' for null comparisons"
-
+            s"${right.pp} is ${
+                if op == "!=" then
+                  "not "
+                else
+                  ""
+              }null"
+          val loc = context.sourceLocationAt(expr.span)
+          context
+            .workEnv
+            .warn(
+              s"${loc}: Comparison with null using '${op}' may yield undefined results. Consider using: ${suggestion}"
+            )
+        case (_, _: NullLiteral) =>
+          val suggestion =
+            s"${left.pp} is ${
+                if op == "!=" then
+                  "not "
+                else
+                  ""
+              }null"
           val loc = context.sourceLocationAt(expr.span)
           context
             .workEnv
