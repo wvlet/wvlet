@@ -85,4 +85,3 @@ class SQLValidator extends Phase("sql-validator"):
       // No warning needed
 
 end SQLValidator
-
