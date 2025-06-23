@@ -140,6 +140,24 @@ object GenSQL extends Phase("generate-sql"):
     given Context  = context
     val statements = List.newBuilder[String]
     save match
+      case c: CreateTableAs =>
+        val baseSQL = generateSQLFromRelation(c.inputRelation, addHeader = false)
+        val ctasCmd =
+          c.createMode match
+            case CreateMode.Replace =>
+              if context.dbType.supportCreateOrReplace then
+                "create or replace table"
+              else
+                // For databases that don't support CREATE OR REPLACE, we need to drop first
+                statements += withHeader(s"drop table if exists ${c.targetName}", c.sourceLocation)
+                "create table"
+            case CreateMode.IfNotExists =>
+              "create table if not exists"
+            case CreateMode.NoOverwrite =>
+              "create table"
+
+        val ctasSQL = withHeader(s"${ctasCmd} ${c.targetName} as\n${baseSQL.sql}", c.sourceLocation)
+        statements += ctasSQL
       case s: SaveTo if s.isForTable =>
         val baseSQL           = generateSQLFromRelation(save.inputRelation, addHeader = false)
         var needsTableCleanup = false
@@ -235,6 +253,18 @@ object GenSQL extends Phase("generate-sql"):
           sql += s"\nwhere ${expr}"
         }
         statements += sql
+      case i: InsertInto =>
+        val baseSQL = generateSQLFromRelation(i.inputRelation, addHeader = false)
+        val columns =
+          if i.columns.isEmpty then
+            ""
+          else
+            i.columns.map(_.fullName).mkString(" (", ", ", ")")
+        val insertSQL = withHeader(
+          s"insert into ${i.targetName}${columns}\n${baseSQL.sql}",
+          i.sourceLocation
+        )
+        statements += insertSQL
       case other =>
         throw StatusCode
           .NOT_IMPLEMENTED
