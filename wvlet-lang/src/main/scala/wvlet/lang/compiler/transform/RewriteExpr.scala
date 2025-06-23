@@ -8,7 +8,7 @@ import wvlet.lang.model.expr.*
 object RewriteExpr extends Phase("rewrite-expr"):
 
   def rewriteRules: List[ExpressionRewriteRule] =
-    RewriteStringConcat :: RewriteStringInterpolation :: WarnNullComparison :: Nil
+    RewriteStringConcat :: RewriteStringInterpolation :: Nil
 
   override def run(unit: CompilationUnit, context: Context): CompilationUnit =
     val resolvedPlan = unit.resolvedPlan
@@ -57,60 +57,5 @@ object RewriteExpr extends Phase("rewrite-expr"):
             span = s.span
           )
         }
-
-  /**
-    * Warn about null comparisons that may yield undefined results in SQL files. This warning is
-    * SQL-specific since null comparison behavior in SQL can be confusing (e.g., col = null
-    * evaluates to UNKNOWN, not TRUE or FALSE).
-    */
-  object WarnNullComparison extends ExpressionRewriteRule:
-    override def apply(context: Context) =
-      case eq @ Eq(left, right, span) if context.compilationUnit.sourceFile.isSQL =>
-        checkNullComparison(eq, left, right, "=", context)
-        eq
-      case neq @ NotEq(left, right, span) if context.compilationUnit.sourceFile.isSQL =>
-        checkNullComparison(neq, left, right, "!=", context)
-        neq
-
-    private def checkNullComparison(
-        expr: Expression,
-        left: Expression,
-        right: Expression,
-        op: String,
-        context: Context
-    ): Unit =
-      (left, right) match
-        case (_: NullLiteral, _) =>
-          val suggestion =
-            s"${right.pp} is ${
-                if op == "!=" then
-                  "not "
-                else
-                  ""
-              }null"
-          val loc = context.sourceLocationAt(expr.span)
-          context
-            .workEnv
-            .warn(
-              s"${loc}: Comparison with null using '${op}' may yield undefined results. Consider using: ${suggestion}"
-            )
-        case (_, _: NullLiteral) =>
-          val suggestion =
-            s"${left.pp} is ${
-                if op == "!=" then
-                  "not "
-                else
-                  ""
-              }null"
-          val loc = context.sourceLocationAt(expr.span)
-          context
-            .workEnv
-            .warn(
-              s"${loc}: Comparison with null using '${op}' may yield undefined results. Consider using: ${suggestion}"
-            )
-        case _ =>
-        // No warning needed
-
-  end WarnNullComparison
 
 end RewriteExpr
