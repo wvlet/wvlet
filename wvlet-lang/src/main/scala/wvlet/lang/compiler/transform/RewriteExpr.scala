@@ -8,7 +8,7 @@ import wvlet.lang.model.expr.*
 object RewriteExpr extends Phase("rewrite-expr"):
 
   def rewriteRules: List[ExpressionRewriteRule] =
-    RewriteStringConcat :: RewriteStringInterpolation :: Nil
+    RewriteStringConcat :: RewriteStringInterpolation :: WarnNullComparison :: Nil
 
   override def run(unit: CompilationUnit, context: Context): CompilationUnit =
     val resolvedPlan = unit.resolvedPlan
@@ -57,5 +57,50 @@ object RewriteExpr extends Phase("rewrite-expr"):
             span = s.span
           )
         }
+
+  /**
+    * Warn about null comparisons that may yield undefined results
+    */
+  object WarnNullComparison extends ExpressionRewriteRule:
+    override def apply(context: Context) =
+      case eq @ Eq(left, right, span) =>
+        checkNullComparison(eq, left, right, "=", context)
+        eq
+      case neq @ NotEq(left, right, span) =>
+        checkNullComparison(neq, left, right, "!=", context)
+        neq
+
+    private def checkNullComparison(
+        expr: Expression,
+        left: Expression,
+        right: Expression,
+        op: String,
+        context: Context
+    ): Unit =
+      (left, right) match
+        case (_: NullLiteral, _) | (_, _: NullLiteral) =>
+          val suggestion =
+            (left, right) match
+              case (_: NullLiteral, _) if op == "=" =>
+                s"${right.pp} is null"
+              case (_, _: NullLiteral) if op == "=" =>
+                s"${left.pp} is null"
+              case (_: NullLiteral, _) if op == "!=" =>
+                s"${right.pp} is not null"
+              case (_, _: NullLiteral) if op == "!=" =>
+                s"${left.pp} is not null"
+              case _ =>
+                "Use 'is null' or 'is not null' for null comparisons"
+
+          val loc = context.sourceLocationAt(expr.span)
+          context
+            .workEnv
+            .warn(
+              s"${loc}: Comparison with null using '${op}' may yield undefined results. Consider using: ${suggestion}"
+            )
+        case _ =>
+        // No warning needed
+
+  end WarnNullComparison
 
 end RewriteExpr
