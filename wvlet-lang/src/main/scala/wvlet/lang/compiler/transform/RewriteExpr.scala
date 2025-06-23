@@ -65,15 +65,11 @@ object RewriteExpr extends Phase("rewrite-expr"):
     */
   object WarnNullComparison extends ExpressionRewriteRule:
     override def apply(context: Context) =
-      case eq @ Eq(left, right, span) =>
-        // Only warn for SQL files
-        if context.compilationUnit.sourceFile.isSQL then
-          checkNullComparison(eq, left, right, "=", context)
+      case eq @ Eq(left, right, span) if context.compilationUnit.sourceFile.isSQL =>
+        checkNullComparison(eq, left, right, "=", context)
         eq
-      case neq @ NotEq(left, right, span) =>
-        // Only warn for SQL files
-        if context.compilationUnit.sourceFile.isSQL then
-          checkNullComparison(neq, left, right, "!=", context)
+      case neq @ NotEq(left, right, span) if context.compilationUnit.sourceFile.isSQL =>
+        checkNullComparison(neq, left, right, "!=", context)
         neq
 
     private def checkNullComparison(
