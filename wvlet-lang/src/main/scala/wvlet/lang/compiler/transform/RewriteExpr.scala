@@ -59,15 +59,21 @@ object RewriteExpr extends Phase("rewrite-expr"):
         }
 
   /**
-    * Warn about null comparisons that may yield undefined results
+    * Warn about null comparisons that may yield undefined results in SQL files. This warning is
+    * SQL-specific since null comparison behavior in SQL can be confusing (e.g., col = null
+    * evaluates to UNKNOWN, not TRUE or FALSE).
     */
   object WarnNullComparison extends ExpressionRewriteRule:
     override def apply(context: Context) =
       case eq @ Eq(left, right, span) =>
-        checkNullComparison(eq, left, right, "=", context)
+        // Only warn for SQL files
+        if context.compilationUnit.sourceFile.isSQL then
+          checkNullComparison(eq, left, right, "=", context)
         eq
       case neq @ NotEq(left, right, span) =>
-        checkNullComparison(neq, left, right, "!=", context)
+        // Only warn for SQL files
+        if context.compilationUnit.sourceFile.isSQL then
+          checkNullComparison(neq, left, right, "!=", context)
         neq
 
     private def checkNullComparison(
