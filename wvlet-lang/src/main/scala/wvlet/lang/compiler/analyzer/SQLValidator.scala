@@ -14,7 +14,7 @@
 package wvlet.lang.compiler.analyzer
 
 import wvlet.lang.compiler.{CompilationUnit, Context, Phase}
-import wvlet.lang.model.expr.{Eq, Expression, NotEq, NullLiteral}
+import wvlet.lang.model.expr.{Eq, Expression, IsNotNull, IsNull, NotEq, NullLiteral}
 import wvlet.lang.model.plan.LogicalPlan
 
 /**
@@ -42,6 +42,8 @@ class SQLValidator extends Phase("sql-validator"):
         checkNullComparison(eq, left, right, "=", context)
       case neq @ NotEq(left, right, span) =>
         checkNullComparison(neq, left, right, "!=", context)
+      case _: IsNull | _: IsNotNull =>
+      // IS NULL and IS NOT NULL are valid null checks, no warning needed
       case _ =>
       // No validation needed
 
