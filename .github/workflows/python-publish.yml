@@ -28,7 +28,7 @@ jobs:
       
       # First, try to download native library artifacts from latest workflow
       - name: Download native library artifacts from latest workflow
-        uses: dawidd6/action-download-artifact@v6
+        uses: dawidd6/action-download-artifact@v11
         continue-on-error: true
         id: download-artifacts
         with:
