@@ -15,33 +15,35 @@ class InsertIntoCodegenTest extends AirSpec:
   test("generate INSERT INTO for different DB types") {
     val sql = "INSERT INTO users VALUES (1, 'Alice', 25)"
 
-    // Generic SQL (no parentheses around VALUES)
-    val genericSQL = generateSQL(sql, DBType.Generic)
-    debug(s"Generic: $genericSQL")
-    genericSQL shouldContain "insert into users"
-    genericSQL shouldContain "values (1, 'Alice', 25)"
+    // Test different DB types and their expected VALUES syntax
+    val testCases = Seq(
+      (DBType.Generic, "values (1, 'Alice', 25)"),
+      (DBType.Trino, "(values (1, 'Alice', 25))"),
+      (DBType.DuckDB, "values (1, 'Alice', 25)")
+    )
 
-    // Trino (requires parentheses around VALUES)
-    val trinoSQL = generateSQL(sql, DBType.Trino)
-    debug(s"Trino: $trinoSQL")
-    trinoSQL shouldContain "(values (1, 'Alice', 25))"
-
-    // DuckDB (no parentheses around VALUES)
-    val duckdbSQL = generateSQL(sql, DBType.DuckDB)
-    debug(s"DuckDB: $duckdbSQL")
-    duckdbSQL shouldContain "values (1, 'Alice', 25)"
+    testCases.foreach { case (dbType, expectedValuesClause) =>
+      val generatedSQL = generateSQL(sql, dbType)
+      debug(s"$dbType: $generatedSQL")
+      generatedSQL shouldBe s"insert into users \n$expectedValuesClause"
+    }
   }
 
   test("generate INSERT INTO with column list") {
     val sql = "INSERT INTO users (id, name, age) VALUES (1, 'Alice', 25)"
 
-    val genericSQL = generateSQL(sql, DBType.Generic)
-    debug(genericSQL)
-    genericSQL shouldContain "insert into users (id, name, age)"
+    Seq(DBType.Generic, DBType.Trino).foreach { dbType =>
+      val generatedSQL = generateSQL(sql, dbType)
+      debug(s"$dbType: $generatedSQL")
+      val expectedPrefix = "insert into users (id, name, age) \n"
+      generatedSQL.startsWith(expectedPrefix) shouldBe true
 
-    val trinoSQL = generateSQL(sql, DBType.Trino)
-    debug(trinoSQL)
-    trinoSQL shouldContain "insert into users (id, name, age)"
+      // Verify the VALUES clause format
+      if dbType == DBType.Trino then
+        generatedSQL shouldContain "(values (1, 'Alice', 25))"
+      else
+        generatedSQL shouldContain "values (1, 'Alice', 25)"
+    }
   }
 
   test("generate INSERT INTO with multi-row VALUES") {
@@ -59,15 +61,13 @@ class InsertIntoCodegenTest extends AirSpec:
   test("generate INSERT INTO with SELECT") {
     val sql = "INSERT INTO users SELECT * FROM temp_users"
 
-    val genericSQL = generateSQL(sql, DBType.Generic)
-    debug(s"Generic SELECT: $genericSQL")
-    genericSQL.toLowerCase shouldContain "insert into users"
-    genericSQL.toLowerCase shouldContain "select"
+    Seq(DBType.Generic, DBType.Trino).foreach { dbType =>
+      val generatedSQL = generateSQL(sql, dbType)
+      debug(s"$dbType SELECT: $generatedSQL")
 
-    val trinoSQL = generateSQL(sql, DBType.Trino)
-    debug(s"Trino SELECT: $trinoSQL")
-    trinoSQL.toLowerCase shouldContain "insert into users"
-    trinoSQL.toLowerCase shouldContain "select"
+      // Verify exact structure
+      generatedSQL shouldBe "insert into users \nselect * from temp_users"
+    }
   }
 
   test("generate INSERT INTO with qualified table names") {
