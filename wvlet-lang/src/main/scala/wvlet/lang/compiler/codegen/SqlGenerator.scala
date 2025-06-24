@@ -205,6 +205,14 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             linebreak + sql
           )
         )
+      case i: InsertInto =>
+        val columns =
+          if i.columns.isEmpty then
+            empty
+          else
+            text(" ") + paren(cl(i.columns.map(c => expr(c))))
+        val childSQL = query(i.child, SQLBlock())(using InStatement)
+        group(wl("insert", "into", expr(i.target) + columns, linebreak + childSQL))
       case _ =>
         unsupportedNode(s"Update ${u.nodeName}", u.span)
 
@@ -836,7 +844,12 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         case other =>
           expr(other)
       }
-    paren(text("values") + nest(wsOrNL + cl(rows)))
+    val valuesDoc = text("values") + nest(wsOrNL + cl(rows))
+    // Trino requires parentheses around VALUES
+    if dbType.requireParenForValues then
+      paren(valuesDoc)
+    else
+      valuesDoc
 
   private def pivotOnExpr(p: Pivot)(using sc: SyntaxContext): Doc = cl(
     p.pivotKeys
