@@ -212,16 +212,17 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
           else
             text(" ") + paren(cl(i.columns.map(c => expr(c))))
         // Handle VALUES specially for INSERT INTO
-        val childSQL = i.child match
-          case v: Values =>
-            // For INSERT INTO, use VALUES directly without SELECT wrapper
-            if dbType.requireParenForValues then
-              paren(values(v))
-            else
-              values(v)
-          case _ =>
-            // For other expressions, use the regular query generation
-            query(i.child, SQLBlock())(using InStatement)
+        val childSQL =
+          i.child match
+            case v: Values =>
+              // For INSERT INTO, use VALUES directly without SELECT wrapper
+              if dbType.requireParenForValues then
+                paren(values(v))
+              else
+                values(v)
+            case _ =>
+              // For other expressions, use the regular query generation
+              query(i.child, SQLBlock())(using InStatement)
         group(wl("insert", "into", expr(i.target) + columns, linebreak + childSQL))
       case _ =>
         unsupportedNode(s"Update ${u.nodeName}", u.span)
