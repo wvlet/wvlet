@@ -1743,6 +1743,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       val id = identifier()
       scanner.lookAhead().token match
         case SqlToken.COMMA =>
+          consume(SqlToken.COMMA)
           id :: next()
         case _ =>
           List(id)
