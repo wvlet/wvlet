@@ -42,7 +42,23 @@ class InsertIntoParserTest extends AirSpec:
       case InsertInto(target, columns, child, _) =>
         getTableName(target) shouldBe "users"
         columns shouldBe Nil
-        child.isInstanceOf[Values] shouldBe true
+        child match
+          case v: Values =>
+            v.rows.size shouldBe 1
+            // Verify the structure of the first row
+            v.rows.head match
+              case arr: ArrayConstructor =>
+                arr.values.size shouldBe 3
+                // Check first value is a number literal
+                arr.values(0).isInstanceOf[LongLiteral] shouldBe true
+                // Check second value is a string literal
+                arr.values(1).isInstanceOf[SingleQuoteString] shouldBe true
+                // Check third value is a number literal
+                arr.values(2).isInstanceOf[LongLiteral] shouldBe true
+              case _ =>
+                fail("Expected ArrayConstructor for VALUES row")
+          case _ =>
+            fail(s"Expected Values, got ${child.getClass.getSimpleName}")
       case _ =>
         fail(s"Expected InsertInto, got ${plan.getClass.getSimpleName}")
   }
@@ -132,7 +148,22 @@ class InsertIntoParserTest extends AirSpec:
       case InsertInto(target, columns, child, _) =>
         getTableName(target) shouldBe "users"
         columns shouldBe Nil
-        child.isInstanceOf[Values] shouldBe true
+        child match
+          case v: Values =>
+            v.rows.size shouldBe 1
+            v.rows.head match
+              case arr: ArrayConstructor =>
+                arr.values.size shouldBe 3
+                // Check first value is a literal
+                arr.values(0).isInstanceOf[LongLiteral] shouldBe true
+                // Check second value is a function call (UPPER)
+                arr.values(1).isInstanceOf[FunctionApply] shouldBe true
+                // Check third value is an identifier (CURRENT_DATE)
+                arr.values(2).isInstanceOf[Identifier] shouldBe true
+              case _ =>
+                fail("Expected ArrayConstructor for VALUES row")
+          case _ =>
+            fail(s"Expected Values, got ${child.getClass.getSimpleName}")
       case _ =>
         fail(s"Expected InsertInto, got ${plan.getClass.getSimpleName}")
   }
@@ -153,7 +184,12 @@ class InsertIntoParserTest extends AirSpec:
       case InsertInto(target, columns, child, _) =>
         getTableName(target) shouldBe "summary_table"
         columns shouldBe Nil
-        // The child should be a more complex query plan
+        // Verify the child is a complex query plan
+        // The exact structure depends on the AST representation
+        child.isInstanceOf[Relation] shouldBe true
+        debug(s"Child plan type: ${child.getClass.getSimpleName}")
+        // At minimum, verify it's not a simple Values node
+        child.isInstanceOf[Values] shouldBe false
       case _ =>
         fail(s"Expected InsertInto, got ${plan.getClass.getSimpleName}")
   }
