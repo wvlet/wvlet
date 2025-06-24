@@ -211,7 +211,17 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             empty
           else
             text(" ") + paren(cl(i.columns.map(c => expr(c))))
-        val childSQL = query(i.child, SQLBlock())(using InStatement)
+        // Handle VALUES specially for INSERT INTO
+        val childSQL = i.child match
+          case v: Values =>
+            // For INSERT INTO, use VALUES directly without SELECT wrapper
+            if dbType.requireParenForValues then
+              paren(values(v))
+            else
+              values(v)
+          case _ =>
+            // For other expressions, use the regular query generation
+            query(i.child, SQLBlock())(using InStatement)
         group(wl("insert", "into", expr(i.target) + columns, linebreak + childSQL))
       case _ =>
         unsupportedNode(s"Update ${u.nodeName}", u.span)
@@ -320,7 +330,8 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       case t: TableInput =>
         selectAll(expr(t.sqlExpr), block)
       case v: Values =>
-        selectAll(values(v), block)
+        // VALUES in FROM clause needs parentheses
+        selectAll(paren(values(v)), block)
       case a: AliasedRelation =>
         val tableAlias: Doc = tableAliasOf(a)
 
@@ -329,7 +340,8 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
           case t: TableInput =>
             selectAll(group(wl(expr(t.sqlExpr), "as", tableAlias)), block)
           case v: Values =>
-            selectAll(group(wl(values(v), "as", tableAlias)), block)
+            // VALUES with alias needs parentheses
+            selectAll(group(wl(paren(values(v)), "as", tableAlias)), block)
           case _ =>
             selectAll(
               group(wl(relation(a.child, SQLBlock())(using InSubQuery), "as", tableAlias)),
@@ -844,12 +856,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         case other =>
           expr(other)
       }
-    val valuesDoc = text("values") + nest(wsOrNL + cl(rows))
-    // Trino requires parentheses around VALUES
-    if dbType.requireParenForValues then
-      paren(valuesDoc)
-    else
-      valuesDoc
+    text("values") + nest(wsOrNL + cl(rows))
 
   private def pivotOnExpr(p: Pivot)(using sc: SyntaxContext): Doc = cl(
     p.pivotKeys

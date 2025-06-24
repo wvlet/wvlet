@@ -268,7 +268,7 @@ For error reporting, use WvletLangException and StatusCode enum. If necessary er
 - Add `test-wheels` label for platform-specific changes
 
 ## Debugging
-- To monitor debug logs, use `-- -l debug` option. For example, ./sbt "langJVM/testOnly *Test -- -l debug"
+- To monitor debug logs, use `-l debug` option. For example, ./sbt "langJVM/testOnly *Test -- -l debug"
 
 ## Testing Notes
 - Use `shouldContain "(keyword)"` for checking string fragment in AirSpec

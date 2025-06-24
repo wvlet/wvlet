@@ -18,18 +18,18 @@ class InsertIntoCodegenTest extends AirSpec:
     // Generic SQL (no parentheses around VALUES)
     val genericSQL = generateSQL(sql, DBType.Generic)
     debug(s"Generic: $genericSQL")
-    genericSQL shouldContain "values"
-    genericSQL shouldContain "select * from values"
+    genericSQL shouldContain "insert into users"
+    genericSQL shouldContain "values (1, 'Alice', 25)"
 
     // Trino (requires parentheses around VALUES)
     val trinoSQL = generateSQL(sql, DBType.Trino)
     debug(s"Trino: $trinoSQL")
-    trinoSQL shouldContain "select * from (values"
+    trinoSQL shouldContain "(values (1, 'Alice', 25))"
 
     // DuckDB (no parentheses around VALUES)
     val duckdbSQL = generateSQL(sql, DBType.DuckDB)
     debug(s"DuckDB: $duckdbSQL")
-    duckdbSQL shouldContain "select * from values"
+    duckdbSQL shouldContain "values (1, 'Alice', 25)"
   }
 
   test("generate INSERT INTO with column list") {
