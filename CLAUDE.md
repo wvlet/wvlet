@@ -266,3 +266,9 @@ For error reporting, use WvletLangException and StatusCode enum. If necessary er
 - Quick tests run on every PR (~2 minutes)
 - Full wheel tests run only on tags, PRs with `test-wheels` label, or weekly schedule
 - Add `test-wheels` label for platform-specific changes
+
+## Debugging
+- To monitor debug logs, use `-l debug` option. For example, ./sbt "langJVM/testOnly *Test -- -l debug"
+
+## Testing Notes
+- Use `shouldContain "(keyword)"` for checking string fragment in AirSpec
