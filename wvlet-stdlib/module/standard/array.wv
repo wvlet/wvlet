@@ -24,9 +24,6 @@ type array[A] = {
 
   def to_array: array[A] = sql"array_agg(${this})"
 
-  def exclude(arr: array[A]): array[A] in duckdb = sql"array_filter(${this}, x -> array_contains(${arr}, x))"
-  def exclude(arr: array[A]): array[A] in trino = sql"array_except(${this}, ${arr})"
-
   def exists: boolean = sql"exists(${this})"
   def not_exists: boolean = sql"not exists(${this})"
 }
