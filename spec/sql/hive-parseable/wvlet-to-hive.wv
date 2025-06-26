@@ -1,0 +1,36 @@
+-- Wvlet queries that will generate Hive-specific SQL
+
+-- Array aggregation (will use collect_list in Hive)
+from events
+group by session_id
+select 
+    session_id,
+    array_agg(user_id) as user_ids
+
+-- Distinct array aggregation (will use collect_set in Hive)  
+from events
+group by session_id
+select
+    session_id,
+    array_distinct(user_id) as unique_users
+
+-- Pattern matching (will use regexp in Hive)
+from logs
+where regexp_like(message, 'ERROR.*timeout')
+select *
+
+-- Array literal (will use ARRAY[] syntax in Hive)
+select [1, 2, 3, 4, 5] as numbers
+
+-- Struct literal
+select {name: 'John', age: 30} as user_info
+
+-- Complex query with multiple transformations
+from sales as s
+join products as p on s.product_id = p.product_id
+where regexp_like(p.category, 'Electronics.*')
+group by p.category
+select
+    p.category,
+    array_agg(s.customer_id) as customers,
+    sum(s.amount) as total_sales
