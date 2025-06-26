@@ -18,43 +18,43 @@ class HiveParseSpec extends AirSpec:
       .foreach { unit =>
         test(s"parse ${unit.sourceFile.fileName}") {
           debug(s"Source:\n${unit.sourceFile.getContentAsString}")
-          
+
           // Parse as Wvlet
           val plan = WvletParser(unit).parse()
           debug(s"Parsed plan: ${plan.pp}")
-          
+
           // Generate Hive SQL (without transformations)
           val hiveGen = SqlGenerator(CodeFormatterConfig(sqlDBType = DBType.Hive))
           val hiveSql = hiveGen.print(plan)
           debug(s"Generated Hive SQL:\n${hiveSql}")
-          
+
           // Check for Hive-specific syntax
           // Note: Function transformations require full compilation pipeline
-          hiveSql shouldContain "ARRAY["  // Array syntax
-          hiveSql shouldContain "{name: 'John', age: 30}"  // Struct syntax
+          hiveSql shouldContain "ARRAY["                  // Array syntax
+          hiveSql shouldContain "{name: 'John', age: 30}" // Struct syntax
         }
       }
   }
 
   test("parse SQL queries") {
     val sqlFiles = Seq("basic-queries.sql", "values-syntax.sql")
-    
+
     sqlFiles.foreach { fileName =>
       CompilationUnit
         .fromPath(s"spec/sql/hive-parseable/${fileName}")
         .foreach { unit =>
           test(s"parse ${fileName}") {
             debug(s"Source:\n${unit.sourceFile.getContentAsString}")
-            
+
             // Parse as SQL
             val plan = SqlParser(unit).parse()
             debug(s"Parsed plan: ${plan.pp}")
-            
+
             // Generate Hive SQL
             val hiveGen = SqlGenerator(CodeFormatterConfig(sqlDBType = DBType.Hive))
             val hiveSql = hiveGen.print(plan)
             debug(s"Generated Hive SQL:\n${hiveSql}")
-            
+
             // Verify VALUES syntax for Hive
             if fileName == "values-syntax.sql" then
               hiveSql shouldContain "values"

@@ -11,8 +11,10 @@ This directory contains test files for Hive SQL parsing and generation that are 
 ## Testing
 
 These files are tested by:
-- `SqlHiveSpec` - Uses SpecRunner with parseOnly mode
 - `HiveParseSpec` - Custom test that focuses on parsing and SQL generation without execution
+  - Located in `wvlet-runner/src/test/scala/wvlet/lang/runner/HiveParseSpec.scala`
+  - Tests both Wvlet queries and SQL queries
+  - Verifies Hive-specific SQL syntax generation
 
 ## Note on Function Transformations
 
