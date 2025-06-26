@@ -21,7 +21,7 @@ class HiveSqlGeneratorTest extends AirSpec:
   test("array constructor syntax") {
     val sql = generateSQL("select [1, 2, 3] as arr")
     // Hive uses ARRAY prefix syntax
-    sql.contains("ARRAY[1, 2, 3]") shouldBe true
+    sql shouldContain "ARRAY[1, 2, 3]"
   }
 
   test("struct syntax for Hive") {
@@ -30,7 +30,7 @@ class HiveSqlGeneratorTest extends AirSpec:
     debug(s"Generated SQL: $sql")
     // For now, Wvlet outputs struct syntax as-is
     // TODO: Transform to named_struct('a', 1, 'b', 2) for Hive
-    sql.contains("{a: 1, b: 2}") shouldBe true
+    sql shouldContain "{a: 1, b: 2}"
   }
 
   test("LATERAL VIEW for unnest") {
@@ -43,8 +43,8 @@ class HiveSqlGeneratorTest extends AirSpec:
       cross join unnest(arr) as u(elem)
       select elem
     """)
-    sql.contains("LATERAL VIEW explode(arr)") shouldBe true
-    sql.contains("unnest") shouldBe false
+    sql shouldContain "LATERAL VIEW explode(arr)"
+    sql shouldNotContain "unnest"
   }
 
   test("VALUES without parentheses") {
@@ -53,8 +53,8 @@ class HiveSqlGeneratorTest extends AirSpec:
     val sql  = SqlGenerator(CodeFormatterConfig(sqlDBType = DBType.Hive)).print(plan)
     debug(s"Generated SQL: $sql")
     // Hive doesn't require parentheses around VALUES
-    sql.contains("values") shouldBe true
-    sql.contains("(values") shouldBe false
+    sql shouldContain "values"
+    sql shouldNotContain "(values"
   }
 
 end HiveSqlGeneratorTest
