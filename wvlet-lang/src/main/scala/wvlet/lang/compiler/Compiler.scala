@@ -132,6 +132,9 @@ class Compiler(val compilerOptions: CompilerOptions) extends LogSupport:
   def setDefaultCatalog(catalog: Catalog): Unit = globalContext.defaultCatalog = catalog
   def setDefaultSchema(schema: String): Unit    = globalContext.defaultSchema = schema
 
+  def getDefaultCatalog: Catalog = globalContext.defaultCatalog
+  def getDefaultSchema: String   = globalContext.defaultSchema
+
   private def newGlobalContext: GlobalContext =
     val global      = GlobalContext(compilerOptions)
     val rootContext = global.getContextOf(unit = CompilationUnit.empty, scope = Scope.newScope(0))

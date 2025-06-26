@@ -312,11 +312,25 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
             case _ =>
               query()
         ExplainPlan(r, spanFrom(t))
+      case WvletToken.USE =>
+        use()
       case _ =>
         unexpected(t)
     end match
   }
   end statement
+
+  def use(): UseSchema = node {
+    val t = consume(WvletToken.USE)
+    // Support both:
+    // - use <schema_name> (common case)
+    // - use schema <schema_name> (explicit form)
+    val nextToken = scanner.lookAhead()
+    if nextToken.token == WvletToken.IDENTIFIER && nextToken.str == "schema" then
+      consume(WvletToken.IDENTIFIER) // consume optional "schema" keyword
+    val schema = qualifiedId()
+    UseSchema(schema, spanFrom(t))
+  }
 
   def showExpr(): LogicalPlan = node {
     val t    = consume(WvletToken.SHOW)

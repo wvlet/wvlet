@@ -62,6 +62,9 @@ class WvletScriptRunner(
   def setResultRowLimit(limit: Int): Unit = resultRowLimits = limit
   def setMaxColWidth(size: Int): Unit     = resultMaxColWidth = size
 
+  def getCurrentCatalog: String = compiler.getDefaultCatalog.catalogName
+  def getCurrentSchema: String  = compiler.getDefaultSchema
+
   override def close(): Unit = queryExecutor.close()
 
   private val compiler =

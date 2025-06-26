@@ -224,6 +224,31 @@ class QueryExecutor(
             QueryResult.empty
           case None =>
             WarningResult(s"${s.name} is not found", s.sourceLocation(using context))
+      case u: UseSchema =>
+        // Update the global context with the new schema/catalog
+        val schemaName = u.schema
+        val fullName   = schemaName.fullName
+        val parts      = fullName.split("\\.")
+        parts.length match
+          case 1 =>
+            // use schema <schema_name>
+            context.global.defaultSchema = fullName
+            workEnv.info(s"Switched to schema: ${fullName}")
+            QueryResult.empty
+          case 2 =>
+            // use schema <catalog_name>.<schema_name>
+            val catalogName = parts(0)
+            val schema      = parts(1)
+            // For now, we only update the schema since catalog switching requires more complex handling
+            context.global.defaultSchema = schema
+            workEnv.info(s"Switched to schema: ${schema}")
+            QueryResult.empty
+          case _ =>
+            throw StatusCode
+              .SYNTAX_ERROR
+              .newException(
+                s"Invalid schema name: ${fullName}. Expected format: <schema_name> or <catalog_name>.<schema_name>"
+              )
     end match
 
   end executeCommand

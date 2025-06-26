@@ -63,6 +63,3 @@ case class Merge(
 ) extends Save:
   override def relationType: RelationType = EmptyRelationType
   override def child: Relation            = using
-
-case class UseSchema(schema: QualifiedName, span: Span) extends TopLevelStatement with LeafPlan:
-  override def relationType: RelationType = EmptyRelationType
