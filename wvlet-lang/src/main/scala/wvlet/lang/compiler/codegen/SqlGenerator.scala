@@ -721,6 +721,20 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             )
 
         selectExpr(sql)
+      case lv: LateralView =>
+        // Hive LATERAL VIEW syntax
+        val child = relation(lv.child, SQLBlock())(using InFromClause)
+        val lateralViewExpr = group(
+          wl(
+            child,
+            "lateral view",
+            cl(lv.exprs.map(expr)),
+            expr(lv.tableAlias),
+            "as",
+            cl(lv.columnAliases.map(expr))
+          )
+        )
+        selectAll(lateralViewExpr, block)
       case r: Relation =>
         selectExpr(
           // Start a new nested SQLBlock
@@ -988,7 +1002,11 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       case tupleNotIn: TupleNotIn =>
         generateTupleInExpression(tupleNotIn.tuple, tupleNotIn.list, "not in")
       case a: ArrayConstructor =>
-        text("ARRAY") + bracket(cl(a.values.map(expr(_))))
+        dbType.arrayConstructorSyntax match
+          case SQLDialect.ArraySyntax.ArrayPrefix =>
+            text("ARRAY") + bracket(cl(a.values.map(expr(_))))
+          case SQLDialect.ArraySyntax.ArrayLiteral =>
+            bracket(cl(a.values.map(expr(_))))
       case r: RowConstructor =>
         paren(cl(r.values.map(expr(_))))
       case a: ArrayAccess =>

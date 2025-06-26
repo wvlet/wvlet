@@ -55,7 +55,17 @@ enum DBType(
         requireParenForValues = true
       )
 
-  case Hive       extends DBType
+  case Hive
+      extends DBType(
+        supportCreateOrReplace = false,
+        supportCreateTableWithOption = true,
+        supportStructExpr = true,
+        supportRowExpr = false,
+        arrayConstructorSyntax = SQLDialect.ArraySyntax.ArrayPrefix,
+        mapConstructorSyntax = SQLDialect.MapSyntax.ArrayPair,
+        requireParenForValues = false
+      )
+
   case BigQuery   extends DBType
   case MySQL      extends DBType
   case PostgreSQL extends DBType
