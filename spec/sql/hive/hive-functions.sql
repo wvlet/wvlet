@@ -1,7 +1,8 @@
 -- Hive-specific function examples
 
 -- Array aggregation
-SELECT collect_list(user_id) as user_ids
+SELECT collect_list(user_id) as user_ids,
+       collect_set(user_id) as unique_user_ids
 FROM events
 GROUP BY session_id;
 

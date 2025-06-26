@@ -46,13 +46,39 @@ object HiveRewriteUnnest extends Phase("hive-rewrite-unnest"):
 
   private object rewriteUnnestToLateralView extends RewriteRule:
     override def apply(context: Context): RewriteRule.PlanRewriter =
-      case j @ Join(joinType, left, u: Unnest, cond, asof, span) if joinType == CrossJoin =>
+      // Handle aliased UNNEST
+      case j @ Join(joinType, left, ar @ AliasedRelation(u: Unnest, alias, columnNamesOpt, _), cond, asof, span) 
+          if joinType == CrossJoin =>
         // Transform CROSS JOIN UNNEST to LATERAL VIEW
         // For now, we support single column unnest
+        if u.columns.size == 1 && columnNamesOpt.exists(_.size == 1) then
+          val expr = u.columns.head
+          val columnAliases = columnNamesOpt.get.map(nt => NameExpr.fromString(nt.name.toString))
+          LateralView(
+            child = left,
+            exprs = Seq(
+              FunctionApply(
+                NameExpr.fromString("explode"),
+                List(FunctionArg(None, expr, false, NoSpan)),
+                None,
+                NoSpan
+              )
+            ),
+            tableAlias = alias,
+            columnAliases = columnAliases,
+            span = span
+          )
+        else
+          // Multi-column unnest or mismatched column alias count not supported yet
+          j
+      
+      // Handle non-aliased UNNEST (fallback for compatibility)
+      case j @ Join(joinType, left, u: Unnest, cond, asof, span) if joinType == CrossJoin =>
+        // Transform CROSS JOIN UNNEST to LATERAL VIEW with default aliases
         if u.columns.size == 1 then
           val expr        = u.columns.head
-          val tableAlias  = NameExpr.fromString(s"unnest_table")
-          val columnAlias = NameExpr.fromString(s"unnest_col")
+          val tableAlias  = NameExpr.fromString("unnest_table")
+          val columnAlias = NameExpr.fromString("unnest_col")
           LateralView(
             child = left,
             exprs = Seq(

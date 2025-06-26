@@ -5,6 +5,13 @@ SELECT order_id, item
 FROM orders
 LATERAL VIEW explode(items) items_table AS item;
 
+-- LATERAL VIEW with explicit aliases (from UNNEST syntax)
+-- Original: FROM orders CROSS JOIN UNNEST(items) AS t(item)
+-- Transformed to:
+SELECT order_id, item
+FROM orders
+LATERAL VIEW explode(items) t AS item;
+
 -- LATERAL VIEW with posexplode (position + value)
 SELECT order_id, pos, item
 FROM orders

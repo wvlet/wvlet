@@ -27,6 +27,7 @@ import wvlet.lang.compiler.analyzer.{
 import wvlet.lang.compiler.parser.{ParserPhase, WvletParser}
 import wvlet.lang.compiler.planner.{ExecutionPlanRewriter, ExecutionPlanner}
 import wvlet.lang.compiler.transform.{
+  HiveRewriteFunctions,
   HiveRewriteUnnest,
   Incrementalize,
   PreprocessLocalExpr,
@@ -65,10 +66,11 @@ object Compiler extends LogSupport:
     * Phases for transforming the logical plan trees
     */
   def transformPhases: List[Phase] = List(
-    RewriteExpr,       // Rewrite expressions in the logical plan
-    TrinoRewritePivot, // Rewrite pivot to group-by for engines not supporting pivot functions
-    HiveRewriteUnnest, // Rewrite UNNEST to LATERAL VIEW for Hive
-    Incrementalize     // Create an incrementalized plan for a subscription
+    RewriteExpr,          // Rewrite expressions in the logical plan
+    TrinoRewritePivot,    // Rewrite pivot to group-by for engines not supporting pivot functions
+    HiveRewriteFunctions, // Rewrite functions for Hive compatibility
+    HiveRewriteUnnest,    // Rewrite UNNEST to LATERAL VIEW for Hive
+    Incrementalize        // Create an incrementalized plan for a subscription
   )
 
   /**

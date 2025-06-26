@@ -727,10 +727,10 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         val lateralViewExpr = group(
           wl(
             child,
-            "LATERAL VIEW",
+            "lateral view",
             cl(lv.exprs.map(expr)),
             expr(lv.tableAlias),
-            "AS",
+            "as",
             cl(lv.columnAliases.map(expr))
           )
         )
@@ -890,23 +890,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       case g: UnresolvedGroupingKey =>
         expr(g.child)
       case f: FunctionApply =>
-        // Map function names for Hive
-        val functionName =
-          f.base match
-            case n: NameExpr if dbType == DBType.Hive =>
-              n.leafName match
-                case "array_agg" =>
-                  NameExpr.fromString("collect_list")
-                case "array_distinct" =>
-                  NameExpr.fromString("array_distinct")
-                case "regexp_like" =>
-                  NameExpr.fromString("regexp")
-                case _ =>
-                  n
-            case other =>
-              other
-
-        val base = expr(functionName)
+        val base = expr(f.base)
         val args = paren(cl(f.args.map(x => expr(x))))
         val w    = f.window.map(x => expr(x))
         val stem = base + args
