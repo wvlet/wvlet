@@ -41,20 +41,24 @@ jobs:
             arch: arm64
             name: mac
             suffix: dylib
+            run_on: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           - os: ubuntu-24.04-arm
             arch: arm64
             name: linux
             suffix: so
+            run_on: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           - os: ubuntu-latest
             arch: x64
             name: linux
             suffix: so
+            run_on: true
 # TODO Need some tweaks to run sbt on Windows
 #          - os: windows-latest
 #            arch: x64
 #            name: windows
 #            suffix: dll
     runs-on: ${{ matrix.os }}
+    if: ${{ matrix.run_on }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
