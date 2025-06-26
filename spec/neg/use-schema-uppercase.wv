@@ -1,0 +1,4 @@
+-- Test that uppercase keywords are rejected
+
+-- This should fail with a syntax error
+use SCHEMA test_schema
