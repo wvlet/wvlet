@@ -62,16 +62,19 @@ Wvlet shell basically uses [GNU readline](https://readline.kablamo.org/emacs.htm
 You can switch the database schema context in the REPL using the `use` statement:
 
 ```sql
--- Switch to a different schema
+-- Simplified syntax (recommended for common case)
+wv> use analytics
+
+-- Explicit syntax (optional)
 wv> use schema analytics
 
 -- Switch to a schema in a different catalog
-wv> use schema production.analytics
+wv> use production.analytics
 
 -- Show current context
 wv> context
 Current context: catalog=memory, schema=analytics
 ```
 
-The context switch affects all subsequent queries in the REPL session. Note that catalog switching support may be limited depending on the database backend.
+The context switch affects all subsequent queries in the REPL session. The simplified `use <schema_name>` syntax is recommended for the common case of switching schemas within the same catalog.
 

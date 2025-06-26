@@ -322,16 +322,12 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
 
   def use(): UseSchema = node {
     val t = consume(WvletToken.USE)
-    // For now, we only support "use schema"
-    // In the future, we could support "use catalog" as well
-    val schemaToken = scanner.lookAhead()
-    if schemaToken.token == WvletToken.IDENTIFIER && schemaToken.str == "schema" then
-      consume(WvletToken.IDENTIFIER) // consume "schema"
-    else if schemaToken.token == WvletToken.IDENTIFIER then
-      throw StatusCode.SYNTAX_ERROR.newException(
-        s"Expected 'schema' after 'use', but found '${schemaToken.str}'",
-        schemaToken.sourceLocation
-      )
+    // Support both:
+    // - use <schema_name> (common case)
+    // - use schema <schema_name> (explicit form)
+    val nextToken = scanner.lookAhead()
+    if nextToken.token == WvletToken.IDENTIFIER && nextToken.str == "schema" then
+      consume(WvletToken.IDENTIFIER) // consume optional "schema" keyword
     val schema = qualifiedId()
     UseSchema(schema, spanFrom(t))
   }

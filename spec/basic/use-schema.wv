@@ -1,14 +1,17 @@
 -- Test use schema statement
 
--- Test basic use schema
-use schema test_schema
+-- Test simplified syntax (common case)
+use test_schema
+
+-- Test explicit syntax with schema keyword
+use schema analytics
 
 -- Test use catalog.schema format  
-use schema memory.analytics
+use memory.main
 
 -- Test that we can use schema and it affects subsequent queries
-use schema main
+use main
 -- The following query would use the 'main' schema context
 
--- Test another schema switch
+-- Test another schema switch with explicit syntax
 use schema production
