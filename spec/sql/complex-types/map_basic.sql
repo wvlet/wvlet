@@ -1,0 +1,1 @@
+SELECT MAP(ARRAY['a', 'b', 'c'], ARRAY[1, 2, 3]) AS string_int_map
