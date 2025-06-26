@@ -324,6 +324,10 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
             else
               info(s"Set the column width to: ${width}")
               runner.setMaxColWidth(width)
+          case "context" =>
+            val catalog = runner.compiler.getDefaultCatalog.catalogName
+            val schema  = runner.compiler.getDefaultSchema
+            info(s"Current context: catalog=${catalog}, schema=${schema}")
           case stmt =>
             runStmt(trimmedLine)
         end match
@@ -367,7 +371,8 @@ object WvletREPL extends LogSupport:
     "clip-result",
     "clip-query",
     "rows",
-    "col-width"
+    "col-width",
+    "context"
   )
 
   private def helpMessage: String =
@@ -375,6 +380,7 @@ object WvletREPL extends LogSupport:
       | help       : Show this help message
       | quit/exit  : Exit the REPL
       | clear      : Clear the screen
+      | context    : Show current database context (catalog and schema)
       | clip       : Clip the last query and result to the clipboard
       | clip-result: Clip the last result to the clipboard in TSV format
       | clip-query : Clip the last query to the clipboard

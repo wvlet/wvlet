@@ -64,7 +64,7 @@ class WvletScriptRunner(
 
   override def close(): Unit = queryExecutor.close()
 
-  private val compiler =
+  val compiler =
     val c = Compiler(
       CompilerOptions(
         sourceFolders = List(workEnv.path),

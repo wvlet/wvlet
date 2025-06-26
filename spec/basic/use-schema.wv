@@ -1,0 +1,18 @@
+-- Test USE schema statement
+
+-- Test basic use schema
+use schema test_schema
+
+-- Test use catalog.schema format  
+use schema memory.analytics
+
+-- Test that we can use schema and it affects subsequent queries
+use schema main
+-- The following query would use the 'main' schema context
+
+-- Test lowercase command
+use schema production
+
+-- Test mixed case (SQL keywords are case-insensitive)
+USE SCHEMA development
+Use Schema staging

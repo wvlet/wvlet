@@ -236,6 +236,7 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   case PACKAGE extends WvletToken(Keyword, "package")
   case MODEL   extends WvletToken(Keyword, "model")
   case EXECUTE extends WvletToken(Keyword, "execute")
+  case USE     extends WvletToken(Keyword, "use")
 
   case VAL extends WvletToken(Keyword, "val")
 
@@ -288,7 +289,17 @@ object WvletToken:
 
   val allKeywordAndSymbol = keywords ++ literalStartKeywords ++ specialSymbols
 
-  val keywordAndSymbolTable = allKeywordAndSymbol.map(x => x.str -> x).toMap
+  val keywordAndSymbolTable =
+    val m = scala.collection.mutable.Map[String, WvletToken]()
+    allKeywordAndSymbol.foreach { t =>
+      m += t.str -> t
+      // Add uppercase version for keywords to support case-insensitive matching
+      if t.tokenType == Keyword then
+        m += t.str.toUpperCase -> t
+        // Also add title case for mixed case support (e.g., "Use")
+        m += t.str.capitalize -> t
+    }
+    m.toMap
 
   val joinKeywords = List(
     WvletToken.ASOF,

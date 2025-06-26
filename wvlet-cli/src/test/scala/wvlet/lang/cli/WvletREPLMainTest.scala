@@ -76,4 +76,20 @@ class WvletREPLMainTest extends AirSpec:
     WvletREPLMain.main("""-c 'execute sql"select 1"'""")
   }
 
+  test("use schema") {
+    WvletREPLMain.main("""-c 'use schema test_schema'""")
+  }
+
+  test("use catalog.schema") {
+    WvletREPLMain.main("""-c 'use schema memory.test_schema'""")
+  }
+
+  test("context command") {
+    WvletREPLMain.main("""-c 'context'""")
+  }
+
+  test("context switching") {
+    WvletREPLMain.main("""-c 'context' -c 'use schema test_schema' -c 'context'""")
+  }
+
 end WvletREPLMainTest
