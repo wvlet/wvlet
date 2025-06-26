@@ -244,7 +244,11 @@ class QueryExecutor(
             workEnv.info(s"Switched to schema: ${schema}")
             QueryResult.empty
           case _ =>
-            throw StatusCode.SYNTAX_ERROR.newException(s"Invalid schema name: ${fullName}")
+            throw StatusCode
+              .SYNTAX_ERROR
+              .newException(
+                s"Invalid schema name: ${fullName}. Expected format: <schema_name> or <catalog_name>.<schema_name>"
+              )
     end match
 
   end executeCommand

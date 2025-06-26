@@ -325,8 +325,8 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
               info(s"Set the column width to: ${width}")
               runner.setMaxColWidth(width)
           case "context" =>
-            val catalog = runner.compiler.getDefaultCatalog.catalogName
-            val schema  = runner.compiler.getDefaultSchema
+            val catalog = runner.getCurrentCatalog
+            val schema  = runner.getCurrentSchema
             info(s"Current context: catalog=${catalog}, schema=${schema}")
           case stmt =>
             runStmt(trimmedLine)
