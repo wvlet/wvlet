@@ -1,0 +1,28 @@
+-- count operator
+from 'person.json'
+count
+test _.rows = [[3]]
+
+-- function chain
+from 'person.json'
+select _.count
+test _.rows = [[3]]
+
+-- Regular SQL count
+from 'person.json'
+select count(*)
+test _.rows = [[3]]
+
+-- Count after trailing comma needs a pipe operator
+from 'person.json'
+select 1,
+| count
+test _.rows = [[3]]
+
+-- Count the number of groups
+from 'person.json'
+group by id
+count
+test _.rows = [[3]]
+
+

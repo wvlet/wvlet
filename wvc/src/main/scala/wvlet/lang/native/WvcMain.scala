@@ -113,7 +113,7 @@ object WvcMain extends LogSupport:
       return ("", returnResult)
     else
       // Compile
-      val inputUnit     = CompilationUnit.fromString(query)
+      val inputUnit     = CompilationUnit.fromWvletString(query)
       val compileResult = compiler.compileSingleUnit(inputUnit)
       compileResult.reportAllErrors
 
@@ -123,7 +123,7 @@ object WvcMain extends LogSupport:
         .withDebugRun(false)
         .newContext(Symbol.NoSymbol)
 
-      val sql = GenSQL.generateSQL(inputUnit, ctx)
+      val sql = GenSQL.generateSQL(inputUnit)(using ctx)
       return (sql, returnResult) // Return the SQL string and the flag
 
   end compileWvletQuery

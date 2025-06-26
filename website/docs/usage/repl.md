@@ -20,6 +20,7 @@ wv> help
  help       : Show this help message
  quit/exit  : Exit the REPL
  clear      : Clear the screen
+ context    : Show current database context (catalog and schema)
  clip       : Clip the last query and result to the clipboard
  clip-result: Clip the last result to the clipboard in TSV format
  rows       : Set the maximum number of query result rows to display (default: 40)
@@ -55,4 +56,25 @@ Wvlet shell basically uses [GNU readline](https://readline.kablamo.org/emacs.htm
 | ctrl-j ctrl-t | Test run the query fragment up to the line with debug mode |
 | ctrl-j ctrl-d | Describe the schema of the current line of the query fragment |
 | ctrl-c | Cancel the current query, or exit the shell |
+
+## Switching Database Context
+
+You can switch the database schema context in the REPL using the `use` statement:
+
+```sql
+-- Simplified syntax (recommended for common case)
+wv> use analytics
+
+-- Explicit syntax (optional)
+wv> use schema analytics
+
+-- Switch to a schema in a different catalog
+wv> use production.analytics
+
+-- Show current context
+wv> context
+Current context: catalog=memory, schema=analytics
+```
+
+The context switch affects all subsequent queries in the REPL session. The simplified `use <schema_name>` syntax is recommended for the common case of switching schemas within the same catalog.
 

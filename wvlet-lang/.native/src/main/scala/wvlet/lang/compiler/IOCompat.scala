@@ -14,36 +14,68 @@ trait IOCompat:
 
   def readAsString(uri: java.net.URI): String = ???
 
-  def listResource(path: String): List[URI] = listWvFiles(path, 0).map(File(_).toURI).toList
+  def listResources(path: String): List[VirtualFile] = listFiles(path).map(f =>
+    URIResource(File(f).toURI)
+  )
 
   def existsFile(path: String): Boolean = new java.io.File(path).exists()
 
   def lastUpdatedAt(path: String): Long = Files.getLastModifiedTime(Path.of(path)).toMillis
 
-  def listWvFiles(path: String, level: Int): Seq[String] =
-    val f = new java.io.File(path)
-    if f.isDirectory then
-      if level == 1 && SourceIO.ignoredFolders.contains(f.getName) then
-        Seq.empty
-      else
-        val files         = f.listFiles()
-        val hasAnyWvFiles = files.exists(_.getName.endsWith(".wv"))
-        if hasAnyWvFiles then
-          // Only scan sub-folders if there is any .wv files
-          files flatMap { file =>
-            listWvFiles(file.getPath, level + 1)
-          }
-        else
-          Seq.empty
-    else if f.isFile && f.getName.endsWith(".wv") then
-      Seq(f.getPath)
-    else
-      Seq.empty
-
-  def listFiles(path: String): Seq[String] =
-    Files.list(Path.of(path)).toList.asScala.map(_.toString).toSeq
+  def listFiles(path: String): List[String] =
+    Files.list(Path.of(path)).toList.asScala.map(_.toString).toList
 
   def fileName(path: String): String     = path.split("/").lastOption.getOrElse(path)
   def isDirectory(path: String): Boolean = Files.isDirectory(Path.of(path))
+
+  // Methods from FileIOCompat
+  def isDirectory(path: Any): Boolean =
+    path match
+      case p: Path =>
+        Files.exists(p) && Files.isDirectory(p)
+      case s: String =>
+        isDirectory(s)
+      case _ =>
+        false
+
+  def listDirectories(path: Any): List[String] =
+    path match
+      case p: Path =>
+        if Files.exists(p) && Files.isDirectory(p) then
+          Files
+            .list(p)
+            .iterator()
+            .asScala
+            .filter(Files.isDirectory(_))
+            .map(_.getFileName.toString)
+            .toList
+        else
+          List.empty
+      case s: String =>
+        listDirectories(Path.of(s))
+      case _ =>
+        List.empty
+
+  def resolvePath(basePath: Any, segments: String*): Any =
+    basePath match
+      case p: Path =>
+        segments.foldLeft(p)((path, segment) => path.resolve(segment))
+      case s: String =>
+        val path = Path.of(s)
+        segments.foldLeft(path)((p, segment) => p.resolve(segment))
+      case _ =>
+        basePath
+
+  def readFileIfExists(path: Any): Option[String] =
+    path match
+      case p: Path =>
+        if Files.exists(p) then
+          Some(Files.readString(p))
+        else
+          None
+      case s: String =>
+        readFileIfExists(Path.of(s))
+      case _ =>
+        None
 
 end IOCompat

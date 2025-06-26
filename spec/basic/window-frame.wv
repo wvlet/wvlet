@@ -7,19 +7,19 @@ from [
 ] as holding(symbol, date, shares)
 select
   -- rows between 1 preceding and current row
-  sum(shares) over (rows[-1:0]) as s1,
+  sum(shares) over (rows[-1,0]) as s1,
   -- rows between 1 preceding and unbounded following
-  sum(shares) over (rows[-1:]) as s2,
+  sum(shares) over (rows[-1,]) as s2,
   -- rows between 1 preceding and 1 following
-  sum(shares) over (rows[-1:1]) as s3,
+  sum(shares) over (rows[-1,1]) as s3,
   -- rows between unbounded preceding and current row
-  sum(shares) over (rows[:0]) as s4,
+  sum(shares) over (rows[,0]) as s4,
   -- rows between unbounded preceding and 1 following
-  sum(shares) over (rows[:1]) as s5,
+  sum(shares) over (rows[,1]) as s5,
   -- rows between current row and 1 following
-  sum(shares) over (rows[0:1]) as s6,
+  sum(shares) over (rows[0,1]) as s6,
   -- rows between current row and unbounded following
-  sum(shares) over (rows[0:]) as s7,
+  sum(shares) over (rows[0,]) as s7,
 
 -- TODO: Need to read hugeint values as Long in JDBCCodec
 -- test _.rows should be [

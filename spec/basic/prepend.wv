@@ -1,0 +1,10 @@
+from 'person.json'
+prepend 1 as index
+test _.columns should be ['index', 'id', 'name', 'age']
+
+
+from 'person.json'
+prepend
+  1 as index,
+  'a' as v,
+test _.columns should be ['index', 'v', 'id', 'name', 'age']

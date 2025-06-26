@@ -18,11 +18,12 @@ import wvlet.log.io.IOUtil
 import java.io.File
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
+import scala.util.Try
 
 /**
   * An abstraction over local files or files in remote GitHub repositories
   */
-trait VirtualFile:
+trait VirtualFile extends Ordered[VirtualFile]:
   /**
     * Leaf file name
     */
@@ -36,7 +37,14 @@ trait VirtualFile:
 
   def exists: Boolean
   def isDirectory: Boolean
-  def listFiles: Seq[VirtualFile]
+  def isFile: Boolean = !isDirectory
+  def listFiles: List[VirtualFile]
+  def listFilesRecursively: List[VirtualFile] = listFiles.flatMap { f =>
+    if f.isDirectory then
+      f :: f.listFilesRecursively
+    else
+      List(f)
+  }
 
   /**
     * Last updated time in milliseconds
@@ -45,6 +53,60 @@ trait VirtualFile:
   def lastUpdatedAt: Long
   def contentString: String
   def content: IArray[Char] = IArray.unsafeFromArray(contentString.toCharArray)
+
+  def isWv: Boolean         = name.endsWith(".wv")
+  def isSQL: Boolean        = name.endsWith(".sql")
+  def isSourceFile: Boolean = isWv || isSQL
+
+  override def compare(other: VirtualFile): Int =
+    def split(s: String): List[Any] =
+      val alphabetOrNumber = """[^\d]+|\d+""".r
+      val num              = "[0-9]+".r
+      val parts = alphabetOrNumber
+        .findAllIn(s)
+        .toList
+        .map {
+          case s if num.matches(s) =>
+            Try(s.toLong).getOrElse(s)
+          case x =>
+            x
+        }
+      parts
+
+    def cmp(x: List[Any], y: List[Any]): Int =
+      (x, y) match
+        case (Nil, Nil) =>
+          0
+        case (Nil, _) =>
+          -1
+        case (_, Nil) =>
+          1
+        case (hx :: tx, hy :: ty) =>
+          (hx, hy) match
+            case (hx: String, hy: String) =>
+              val c = hx.compareTo(hy)
+              if c == 0 then
+                cmp(tx, ty)
+              else
+                c
+            case (hx: Long, hy: Long) =>
+              val c = hx.compareTo(hy)
+              if c == 0 then
+                cmp(tx, ty)
+              else
+                c
+            case (hx: String, hy: Long) =>
+              -1
+            case (hx: Long, hy: String) =>
+              1
+            case (hx, hy) =>
+              hx.toString.compareTo(hy.toString)
+
+    cmp(split(path), split(other.path))
+
+  end compare
+
+end VirtualFile
 
 case class LocalFile(path: String) extends VirtualFile:
 
@@ -55,11 +117,11 @@ case class LocalFile(path: String) extends VirtualFile:
   override def contentString: String = SourceIO.readAsString(path)
 
   override def lastUpdatedAt: Long = SourceIO.lastUpdatedAt(path)
-  override def listFiles: Seq[VirtualFile] =
+  override def listFiles: List[VirtualFile] =
     if isDirectory then
       SourceIO.listFiles(path).map(p => LocalFile(p.toString))
     else
-      Seq.empty
+      Nil
 
 /**
   * TODO: Download GitHub archive to .cache/wvlet/repository/github/${owner}/${repo}/${ref} and
@@ -82,34 +144,34 @@ case class MemoryFile(path: String, contentString: String) extends VirtualFile:
   override def name: String         = path.split("/").last
   override def exists: Boolean      = true
   override def isDirectory: Boolean = false
-  override def listFiles            = Seq.empty
+  override def listFiles            = List.empty
 
 case object EmptyFile extends VirtualFile:
-  override def name: String                = "N/A"
-  override def path: String                = ""
-  override def exists: Boolean             = false
-  override def isDirectory: Boolean        = false
-  override def listFiles: Seq[VirtualFile] = Seq.empty
-  override def lastUpdatedAt: Long         = 0
-  override def contentString: String       = ""
+  override def name: String                 = "N/A"
+  override def path: String                 = ""
+  override def exists: Boolean              = false
+  override def isDirectory: Boolean         = false
+  override def listFiles: List[VirtualFile] = Nil
+  override def lastUpdatedAt: Long          = 0
+  override def contentString: String        = ""
 
 /**
   * A file in a resource folder or a jar file
   * @param path
   */
 case class FileInResource(path: String) extends VirtualFile:
-  val lastUpdatedAt: Long                  = System.currentTimeMillis()
-  override def name: String                = path.split("/").last
-  override def exists: Boolean             = true
-  override def isDirectory: Boolean        = false
-  override def listFiles: Seq[VirtualFile] = Seq.empty
-  override def contentString: String       = SourceIO.readAsString(path)
+  val lastUpdatedAt: Long                   = System.currentTimeMillis()
+  override def name: String                 = path.split("/").last
+  override def exists: Boolean              = true
+  override def isDirectory: Boolean         = false
+  override def listFiles: List[VirtualFile] = Nil
+  override def contentString: String        = SourceIO.readAsString(path)
 
 case class URIResource(url: java.net.URI) extends VirtualFile:
-  val lastUpdatedAt: Long                  = System.currentTimeMillis()
-  override def name: String                = url.getPath.split("/").last
-  override def path: String                = url.getPath
-  override def exists: Boolean             = true
-  override def isDirectory: Boolean        = false
-  override def listFiles: Seq[VirtualFile] = Seq.empty
-  override def contentString: String       = SourceIO.readAsString(url)
+  val lastUpdatedAt: Long                   = System.currentTimeMillis()
+  override def name: String                 = url.getPath.split("/").last
+  override def path: String                 = url.getPath
+  override def exists: Boolean              = true
+  override def isDirectory: Boolean         = false
+  override def listFiles: List[VirtualFile] = Nil
+  override def contentString: String        = SourceIO.readAsString(url)

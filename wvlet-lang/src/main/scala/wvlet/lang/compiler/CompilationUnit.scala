@@ -16,6 +16,7 @@ package wvlet.lang.compiler
 import wvlet.lang.api.{LinePosition, SourceLocation, Span}
 import wvlet.lang.compiler
 import wvlet.lang.compiler.SourceFile.NoSourceFile
+import wvlet.lang.compiler.analyzer.DependencyDAG
 import wvlet.lang.model.plan.{ExecutionPlan, LogicalPlan, NamedRelation, Relation}
 import wvlet.lang.stdlib.StdLib
 import wvlet.log.LogSupport
@@ -24,6 +25,7 @@ import wvlet.log.io.{IOUtil, Resource}
 import java.io.File
 import java.net.URLClassLoader
 import java.net.{URI, URL}
+import java.util.concurrent.ConcurrentHashMap
 import java.util.jar.JarFile
 
 /**
@@ -31,12 +33,15 @@ import java.util.jar.JarFile
   * trees) for the source file
   * @param sourceFile
   */
-case class CompilationUnit(sourceFile: SourceFile, isPreset: Boolean = false) extends LogSupport:
+case class CompilationUnit(sourceFile: SourceFile, isPreset: Boolean = false)
+    extends LogSupport
+    with Ordered[CompilationUnit]:
   // Untyped plan tree
   var unresolvedPlan: LogicalPlan = LogicalPlan.empty
   // Fully-typed plan tree
-  var resolvedPlan: LogicalPlan    = LogicalPlan.empty
-  var executionPlan: ExecutionPlan = ExecutionPlan.empty
+  var resolvedPlan: LogicalPlan        = LogicalPlan.empty
+  var modelDependencies: DependencyDAG = DependencyDAG.empty
+  var executionPlan: ExecutionPlan     = ExecutionPlan.empty
 
   var knownSymbols: List[Symbol] = List.empty
 
@@ -93,33 +98,51 @@ case class CompilationUnit(sourceFile: SourceFile, isPreset: Boolean = false) ex
     }
     result
 
+  override def compare(that: CompilationUnit): Int = sourceFile.file.compare(that.sourceFile.file)
+
 end CompilationUnit
+
+class CompilationUnitCache:
+  import scala.jdk.CollectionConverters.*
+  private var cache = ConcurrentHashMap[String, CompilationUnit]().asScala
+
+  def getOrElseUpdate(path: String, factory: => CompilationUnit): CompilationUnit = cache
+    .getOrElseUpdate(path, factory)
+
+end CompilationUnitCache
 
 object CompilationUnit extends LogSupport:
   val empty: CompilationUnit = CompilationUnit(NoSourceFile)
 
-  def fromString(text: String) = CompilationUnit(SourceFile.fromString(text))
+  def fromWvletString(text: String) = CompilationUnit(SourceFile.fromWvletString(text))
+  def fromSqlString(text: String)   = CompilationUnit(SourceFile.fromSqlString(text))
 
   def fromFile(path: String) = CompilationUnit(SourceFile.fromFile(path))
 
-  def fromPath(path: String): List[CompilationUnit] =
-    // List all *.wv files under the path
-    val files = SourceIO.listWvFiles(path, 0)
+  def fromPath(
+      path: String,
+      cache: CompilationUnitCache = CompilationUnitCache()
+  ): List[CompilationUnit] =
+    // List all *.wv and .sql files under the path
+    val files = SourceIO.listSourceFiles(path)
     val units =
       files
         .map { file =>
-          CompilationUnit(SourceFile.fromFile(file), isPreset = false)
+          cache.getOrElseUpdate(
+            file.path,
+            CompilationUnit(SourceFile.fromFile(file), isPreset = false)
+          )
         }
         .toList
-    units
-
-  private def listWvletFile(path: String): List[URI] = SourceIO.listResource(path)
+    units.sorted
 
   def fromResourcePath(path: String, isPreset: Boolean): List[CompilationUnit] =
-    val urls = listWvletFile(path)
-    urls.map { url =>
-      CompilationUnit(SourceFile.fromResource(url), isPreset = isPreset)
-    }
+    val resources = SourceIO.listResources(path)
+    resources
+      .filter(_.isSourceFile)
+      .map { r =>
+        CompilationUnit(SourceFile.fromFile(r), isPreset = isPreset)
+      }
 
   def stdLib: List[CompilationUnit] =
     StdLib

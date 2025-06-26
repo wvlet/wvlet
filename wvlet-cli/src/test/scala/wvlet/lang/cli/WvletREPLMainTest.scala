@@ -33,8 +33,9 @@ class WvletREPLMainTest extends AirSpec:
   }
 
   test("def new model") {
-    WvletREPLMain
-      .main("-w spec/basic/model -c 'model m(v:int) = from person where id = v end' -c 'from m(1)'")
+    WvletREPLMain.main(
+      "-w spec/basic/model -c 'model m(v:int) = from person where id = v end' -c 'from m(1)'"
+    )
   }
 
   test("show models") {
@@ -73,6 +74,26 @@ class WvletREPLMainTest extends AirSpec:
 
   test("run execute") {
     WvletREPLMain.main("""-c 'execute sql"select 1"'""")
+  }
+
+  test("use schema - simplified syntax") {
+    WvletREPLMain.main("""-c 'use test_schema'""")
+  }
+
+  test("use schema - explicit syntax") {
+    WvletREPLMain.main("""-c 'use schema test_schema'""")
+  }
+
+  test("use catalog.schema") {
+    WvletREPLMain.main("""-c 'use memory.test_schema'""")
+  }
+
+  test("context command") {
+    WvletREPLMain.main("""-c 'context'""")
+  }
+
+  test("context switching") {
+    WvletREPLMain.main("""-c 'context' -c 'use test_schema' -c 'context'""")
   }
 
 end WvletREPLMainTest

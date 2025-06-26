@@ -1,0 +1,58 @@
+name: TypeScript
+
+on:
+  pull_request:
+    paths:
+      - 'sdks/typescript/**'
+      - 'wvlet-sdk-js/**'
+      - '.github/workflows/typescript-test.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'sdks/typescript/**'
+      - 'wvlet-sdk-js/**'
+      - '.github/workflows/typescript-test.yml'
+
+jobs:
+  test:
+    name: TypeScript SDK
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '24'
+          cache: sbt
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      
+      - name: Build Scala.js SDK
+        run: ./sbt "sdkJs/fastLinkJS"
+      
+      - name: Install dependencies
+        working-directory: sdks/typescript
+        run: npm install
+      
+      - name: Type check
+        working-directory: sdks/typescript
+        run: npm run lint
+      
+      - name: Run tests
+        working-directory: sdks/typescript
+        run: npm run test:ci
+      
+      - name: Build TypeScript
+        working-directory: sdks/typescript
+        run: npx tsc
+      
+      - name: Run example
+        working-directory: sdks/typescript
+        run: node examples/node-example.js

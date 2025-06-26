@@ -13,6 +13,8 @@
  */
 
 import { defineConfig } from "vite";
+import tailwindcss from "@tailwindcss/vite";
+import monacoEditorPlugin from "vite-plugin-monaco-editor";
 import fs from 'fs'
 import replace from '@rollup/plugin-replace';
 
@@ -30,6 +32,8 @@ export default defineConfig({
     open: true,
   },
   plugins: [
+    tailwindcss(),
+    monacoEditorPlugin, // plugin for awaiting Monaco Editor loading
     replace({
       preventAssignment: true,
       __target__: scalaJsTarget

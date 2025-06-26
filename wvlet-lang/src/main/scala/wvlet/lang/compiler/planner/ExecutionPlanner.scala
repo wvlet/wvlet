@@ -9,13 +9,21 @@ object ExecutionPlanner extends Phase("execution-plan"):
       unit.executionPlan = plan(unit, context)
     unit
 
-  def plan(unit: CompilationUnit, context: Context): ExecutionPlan = plan(
-    unit,
-    unit.resolvedPlan,
-    context
-  )
+  def plan(unit: CompilationUnit, context: Context): ExecutionPlan =
+    plan(unit, unit.resolvedPlan)(using context)
 
-  def plan(unit: CompilationUnit, targetPlan: LogicalPlan, context: Context): ExecutionPlan =
+  def plan(unit: CompilationUnit, targetPlan: LogicalPlan)(using context: Context): ExecutionPlan =
+
+    def queryExecutePlan(r: Relation): ExecutionPlan =
+      // Remove any test and debug expressions
+      val queryWithoutTests = r.transformUp {
+        case r: TestRelation =>
+          r.child
+        case d: Debug =>
+          d.child
+      }
+      ExecuteQuery(queryWithoutTests)
+
     def plan(l: LogicalPlan, evalQuery: Boolean): ExecutionPlan =
       l match
         case p: PackageDef =>
@@ -26,9 +34,6 @@ object ExecutionPlanner extends Phase("execution-plan"):
             }
             .filter(!_.isEmpty)
           ExecutionPlan(plans)
-        case q: Query =>
-          // Skip the top-level query wrapping
-          plan(q.child, evalQuery)
         case d: Debug =>
           val debugPlan = plan(d.debugExpr, evalQuery = true)
           ExecuteDebug(d, debugPlan)
@@ -57,18 +62,33 @@ object ExecutionPlanner extends Phase("execution-plan"):
         case save: Save =>
           val queryPlan = plan(save.inputRelation, evalQuery = false)
           ExecuteSave(save, queryPlan)
-        case d: DeleteOps =>
-          val queryPlan = plan(d.inputRelation, evalQuery = false)
-          ExecuteDelete(d, queryPlan)
+        case q: Query =>
+          val plans = List.newBuilder[ExecutionPlan]
+          if evalQuery then
+            plans += queryExecutePlan(q)
+
+          // Evaluate inner query, debug, and test expressions
+          plans += plan(q.child, false)
+          ExecutionPlan(plans.result())
         case r: Relation =>
           val plans = List.newBuilder[ExecutionPlan]
           // Iterate through the children to find any test/debug queries
-          r.children
-            .map { child =>
-              plans += plan(child, evalQuery = false)
-            }
+          r match
+            case w: WithQuery =>
+              // WithQuery needs a specific tree traversal
+              w.queryDefs
+                .foreach { d =>
+                  plans += plan(d, evalQuery = false)
+                }
+              plans += plan(w.queryBody, evalQuery = false)
+            case other =>
+              r.children
+                .map { child =>
+                  plans += plan(child, evalQuery = false)
+                }
           if evalQuery then
-            plans += ExecuteQuery(r)
+            plans += queryExecutePlan(r)
+
           ExecutionPlan(plans.result())
         case c: Command =>
           ExecuteCommand(c)
@@ -80,7 +100,7 @@ object ExecutionPlanner extends Phase("execution-plan"):
           ExecutionPlan.empty
 
     val executionPlan = plan(targetPlan, evalQuery = true)
-    trace(s"[Logical plan]:\n${targetPlan.pp})")
+    trace(s"[Logical plan]:\n${targetPlan.pp}")
     debug(s"[Execution plan]:\n${executionPlan.pp}")
     executionPlan
 

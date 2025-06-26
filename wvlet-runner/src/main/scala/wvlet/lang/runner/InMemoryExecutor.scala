@@ -40,8 +40,8 @@ class InMemoryExecutor extends LogSupport:
       case t: TestRelation =>
         warn(s"Test execution is not supported yet: ${t}")
         QueryResult.empty
-      case r: JSONFileScan =>
-        val json = IO.readAsString(new File(r.path))
+      case r: FileScan if r.filePath.endsWith(".json") =>
+        val json = IO.readAsString(new File(r.filePath))
         trace(json)
         val codec = MessageCodec.of[Seq[ListMap[String, Any]]]
         val data  = codec.fromJson(json)

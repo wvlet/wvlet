@@ -3,22 +3,25 @@ package cdp
 import td_sdk_log
 
 -- Define source tables for behavior logs
-model weblogs: td_sdk_log =
+model weblogs: td_sdk_log = {
   from 'data/weblogs/*.parquet'
-end
+}
 
-model weblog_fluentd_ja: td_sdk_log =
+model weblog_fluentd_ja: td_sdk_log = {
   from 'data/weblog_fluentd_ja/*.parquet'
-end
+}
 
 -- CDP behavior table ETL example
 --@config(watermark_column='time', window_size='1h')
-model behavior_weblogs =
+model behavior_weblogs = {
   from weblogs
-  where _.is_valid_behavior
-end
+-- TODO Resolve _ as td_sdk_log type
+--  where _.is_valid_behavior
+}
 
-model behavior_weblog_fluentd_ja =
+model behavior_weblog_fluentd_ja = {
   from weblog_fluentd_ja
   where _.is_valid_behavior
-end
+}
+
+from behavior_weblogs.subscribe(watermark_column = 'time', window_size = '1h')

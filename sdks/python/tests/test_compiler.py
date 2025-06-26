@@ -15,15 +15,62 @@
 #
 
 import pytest
-from wvlet.compiler import WvletCompiler
+from wvlet.compiler import WvletCompiler, CompilationError
+from wvlet import compile as wvlet_compile
 
-def test_wvlet_invalid_path():
-    with pytest.raises(ValueError, match="Invalid executable_path: invalid"):
-        WvletCompiler(executable_path="invalid")
-
-def test_wvlet_not_found():
+def test_wvlet_initialization():
+    """Test that WvletCompiler can be initialized with native library"""
     try:
-        WvletCompiler()
+        compiler = WvletCompiler()
+        # If we get here, native library is available
+        assert compiler is not None
     except NotImplementedError:
-        pytest.skip("wvlet executable is not found")
+        pytest.skip("Native library is not available for this platform")
+
+def test_compile_simple_query():
+    """Test compiling a simple Wvlet query"""
+    try:
+        compiler = WvletCompiler()
+    except NotImplementedError:
+        pytest.skip("Native library is not available for this platform")
+    
+    # Test a self-contained query that doesn't depend on external schema
+    query = "select 1 as num"
+    sql = compiler.compile(query)
+    assert sql is not None
+    assert len(sql) > 0
+    # The compiled SQL should contain the select statement
+    assert 'select' in sql.lower()
+    assert '1' in sql
+
+def test_compile_function():
+    """Test the convenience compile function"""
+    try:
+        # Test a simple query using the convenience function
+        sql = wvlet_compile("select 1 as result")
+        assert sql is not None
+        assert len(sql) > 0
+        assert 'select' in sql.lower()
+        assert '1' in sql
+    except NotImplementedError:
+        pytest.skip("Native library is not available for this platform")
+
+def test_native_library_loading():
+    """Test that native library loading doesn't crash"""
+    from wvlet.compiler import _load_native_library
+    # This should not raise an exception, even if library is not found
+    lib = _load_native_library()
+    # lib can be None if platform is not supported or library not found
+    assert lib is None or hasattr(lib, 'wvlet_compile_query')
+
+def test_compile_error_handling():
+    """Test error handling for invalid queries"""
+    try:
+        compiler = WvletCompiler()
+    except NotImplementedError:
+        pytest.skip("Native library is not available for this platform")
+    
+    # Test with an invalid query
+    with pytest.raises(CompilationError):
+        compiler.compile("invalid query syntax !@#")
 

@@ -1,2 +1,9 @@
 from 'books.json'
 select distinct author
+order by author
+test _.rows = [
+  ['F. Scott Fitzgerald'],
+  ['Harper Lee'],
+  ['J.D. Salinger'],
+  ['John Steinbeck'],
+]

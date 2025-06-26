@@ -97,6 +97,7 @@ object Catalog:
   )
 
   case class TableName(catalog: Option[String], schema: Option[String], name: String):
+    override def toString: String = fullName
     def qName: List[String] =
       (catalog, schema) match
         case (Some(c), Some(s)) =>
@@ -154,7 +155,7 @@ object Catalog:
         // TODO resolve parent schema catalog types
         None,
         Name.typeName(name),
-        fields
+        fields.toList
       )
 
     def column(name: String): TableColumn = columns

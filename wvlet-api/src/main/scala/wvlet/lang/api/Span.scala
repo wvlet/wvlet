@@ -19,7 +19,10 @@ package wvlet.lang.api
   *   start |-----------| end
   *             ^ (point)
   * }}}
-  * Encoded as | 12 bit (pointDelta) | 26 bit (end) | 26 bit (start) |
+  * Encoded as a single Long (64-bit value):
+  * {{{
+  * | 12 bit (pointDelta) | 26 bit (end) | 26 bit (start) |
+  * }}}
   */
 class Span(val coordinate: Long) extends AnyVal:
   override def toString: String =
@@ -46,6 +49,9 @@ class Span(val coordinate: Long) extends AnyVal:
   def isEmpty: Boolean  = !exists
   def nonEmpty: Boolean = exists
 
+  def precedes(offset: Int): Boolean          = end <= offset
+  def follows(offset: Int): Boolean           = start >= offset
+  def contains(other: Span): Boolean          = start <= other.start && other.end <= end
   def contains(offset: Int): Boolean          = start <= offset && offset < end
   def containsInclusive(offset: Int): Boolean = start <= offset && offset <= end
 

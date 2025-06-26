@@ -14,7 +14,7 @@
 package wvlet.lang.compiler.analyzer
 
 import wvlet.airframe.msgpack.spi.MsgPack
-import wvlet.lang.api.StatusCode
+import wvlet.lang.api.{Span, StatusCode}
 import wvlet.lang.catalog.Catalog.TableName
 import wvlet.lang.compiler.RewriteRule.PlanRewriter
 import wvlet.lang.compiler.{
@@ -78,8 +78,9 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
       resolveModelScan ::             // Resolve scanned model types
       Nil
 
-  private def lookupType(name: Name, context: Context): Option[Symbol] = context
-    .findSymbolByName(name)
+  private def lookupType(name: Name, context: Context): Option[Symbol] = context.findSymbolByName(
+    name
+  )
 
   def resolve(plan: LogicalPlan, context: Context): LogicalPlan =
 
@@ -92,9 +93,11 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
           ctx.enter(m.symbol)
           ctx
         case q: Relation =>
-          q.traverseOnce { case s: HasRefName =>
+          q.traverseOnce { case s: HasTableOrFileName =>
             ctx.enter(s.symbol)
-            preScan(s.child, ctx)
+            s match
+              case u: UnaryRelation =>
+                preScan(u.child, ctx)
           }
           ctx
         case other =>
@@ -185,7 +188,7 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
             if updated then
               val newType = s.copy(columnTypes = newCols)
               trace(s"Resolved ${t.name} as ${newType}")
-              t.symbol.symbolInfo.dataType = newType
+              t.symbol.symbolInfo.withType(newType)
               newType
             else
               s
@@ -202,13 +205,15 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
   end resolveTypeDef
 
   /**
-    * Resolve schema of local file scans (e.g., JSON, Parquet)
+    * Resolve schema of local file scans (e.g., JSON, Parquet).
+    *
+    * TODO: Introduce lazy evaluation of the schema to avoid unnecessary schema resolution
     */
   private object resolveLocalFileScan extends RewriteRule:
     override def apply(context: Context): PlanRewriter =
-      case r: FileScan if r.path.endsWith(".wv") =>
-        // import a query from another .wv file
-        context.findCompilationUnit(r.path) match
+      case r: FileRef if r.filePath.endsWith(".wv") || r.filePath.endsWith(".sql") =>
+        // import a query from another .wv or .sql file
+        context.findCompilationUnit(r.filePath) match
           case None =>
             throw StatusCode.FILE_NOT_FOUND.newException(s"${r.path} is not found")
           case Some(unit) =>
@@ -226,16 +231,16 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
                 throw StatusCode
                   .SYNTAX_ERROR
                   .newException(s"${unit.sourceFile} is not a single query file")
-      case r: FileScan if r.path.endsWith(".json") =>
-        val file             = context.getDataFile(r.path)
+      case f: FileRef if f.filePath.endsWith(".json") =>
+        val file             = context.getDataFile(f.filePath)
         val jsonRelationType = JSONAnalyzer.analyzeJSONFile(file)
         val cols             = jsonRelationType.fields
-        JSONFileScan(file, jsonRelationType, cols, r.span)
-      case r: FileScan if r.path.endsWith(".parquet") =>
-        val file                = context.dataFilePath(r.path)
+        FileScan(SingleQuoteString(file, f.span), jsonRelationType, cols, f.span)
+      case f: FileRef if f.filePath.endsWith(".parquet") =>
+        val file                = context.dataFilePath(f.filePath)
         val parquetRelationType = ParquetAnalyzer.guessSchema(file)
         val cols                = parquetRelationType.fields
-        ParquetFileScan(file, parquetRelationType, cols, r.span)
+        FileScan(SingleQuoteString(file, f.span), parquetRelationType, cols, f.span)
 
     end apply
 
@@ -249,7 +254,7 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
             // given model type is already resolved
             m.symbol.symbolInfo match
               case t: ModelSymbolInfo =>
-                t.dataType = r
+                t.withDataType(r)
               case other =>
           case other =>
             context.logTrace(
@@ -266,7 +271,7 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
             si.dataType match
               case r: RelationType =>
                 context.logTrace(s"Resolved model type: ${m.name} as ${r}")
-                modelSymbolInfo.dataType = r
+                modelSymbolInfo.withDataType(r)
                 // TODO Develop safe copy or embed Symbol as Plan parameter
                 val newModel = m.copy(givenRelationType = Some(r))
                 newModel.symbol = m.symbol
@@ -356,7 +361,9 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
                       .workEnv
                       .errorLogger
                       .debug(
-                        s"Unresolved table ref: ${ref.name.fullName}: ${context.scope.getAllEntries}"
+                        s"Unresolved table ref: ${ref.name.fullName}: ${context
+                            .scope
+                            .getAllEntries}"
                       )
                     ref
       case ref: TableFunctionCall if !ref.relationType.isResolved =>
@@ -383,7 +390,7 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
   private object resolveSelectItem extends RewriteRule:
     def apply(context: Context): PlanRewriter = { case p: Project =>
       val resolvedChild = p.child.transform(resolveRelation(context)).asInstanceOf[Relation]
-      val resolvedColumns: Seq[Attribute] = p
+      val resolvedColumns: List[Attribute] = p
         .selectItems
         .map {
           case s: SingleColumn =>
@@ -451,8 +458,9 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
     override def apply(context: Context): PlanRewriter = {
       case r: Relation => // Regular relation and Filter etc.
         // context.logWarn(s"Resolving relation: ${r} with ${r.inputRelationType}")
-        val newRelation = r
-          .transformChildExpressions(resolveExpression(r.inputRelationType, context))
+        val newRelation = r.transformChildExpressions(
+          resolveExpression(r.inputRelationType, context)
+        )
         newRelation
     }
 
@@ -648,7 +656,7 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
         def mapArg(args: List[FunctionArg]): Unit =
           if !args.isEmpty then
             args.head match
-              case FunctionArg(None, expr, span) =>
+              case FunctionArg(None, expr, _, span) =>
                 if index >= functionArgTypes.length then
                   throw StatusCode
                     .SYNTAX_ERROR
@@ -663,7 +671,7 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
                     index += 1
                     resolvedArgs += argType.name -> expr
                     mapArg(args.tail)
-              case FunctionArg(Some(argName), expr, span) =>
+              case FunctionArg(Some(argName), expr, _, span) =>
                 functionArgTypes.find(_.name == argName) match
                   case Some(argType) =>
                     argType.dataType match
@@ -934,7 +942,9 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
       expr: Expression,
       inputRelationType: RelationType,
       context: Context
-  ): Expression = resolveExpression(inputRelationType, context)
-    .applyOrElse(expr, identity[Expression])
+  ): Expression = resolveExpression(inputRelationType, context).applyOrElse(
+    expr,
+    identity[Expression]
+  )
 
 end TypeResolver

@@ -1,0 +1,28 @@
+-- Test tuple NOT IN with subquery
+from [
+  [1, 'a', 10],
+  [2, 'b', 20], 
+  [3, 'c', 30],
+  [4, 'd', 40],
+  [5, 'e', 50]
+] as t(id, name, value)
+where (id, name) not in (
+  from [
+    [1, 'a'],
+    [2, 'b']
+  ] as s(sid, sname)
+  select sid, sname
+)
+test _.size should be 3
+test _.output should be """
+┌─────┬────────┬───────┐
+│ id  │  name  │ value │
+│ int │ string │  int  │
+├─────┼────────┼───────┤
+│   3 │ c      │    30 │
+│   4 │ d      │    40 │
+│   5 │ e      │    50 │
+├─────┴────────┴───────┤
+│ 3 rows               │
+└──────────────────────┘
+"""

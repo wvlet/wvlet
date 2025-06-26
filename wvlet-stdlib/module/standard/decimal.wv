@@ -1,6 +1,6 @@
 package wvlet.standard
 
-type decimal:
+type decimal = {
   def to_int: int = sql"cast(${this} as bigint)"
   def to_long: long = sql"cast(${this} as bigint)"
   def to_float: float = sql"cast(${this} as double)"
@@ -14,5 +14,5 @@ type decimal:
 
   def in(v:any*): boolean = sql"${this} in (${v})"
   def not_in(v:any*): boolean = sql"${this} not in (${v})"
-end
+}
 

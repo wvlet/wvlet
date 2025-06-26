@@ -44,7 +44,7 @@ import wvlet.log.LogSupport
   * @param sourceFile
   */
 object DataTypeParser extends LogSupport:
-  def parse(str: String): DataType = DataTypeParser(WvletScanner(SourceFile.fromString(str)))
+  def parse(str: String): DataType = DataTypeParser(WvletScanner(SourceFile.fromWvletString(str)))
     .parse()
 
   def parse(str: String, typeParams: List[DataType]): DataType = toDataType(str, typeParams)
@@ -86,13 +86,17 @@ end DataTypeParser
 class DataTypeParser(scanner: WvletScanner) extends LogSupport:
   import DataTypeParser.*
 
-  private def consume(expected: WvletToken): TokenData =
+  private def consume(expected: WvletToken): TokenData[WvletToken] =
     val t = scanner.nextToken()
     if t.token != expected then
       throw unexpected(s"Expected ${expected} but found ${t.token}")
     t
 
-  private def consumeIdentifier(expected: String): TokenData =
+  private def consumeToken(): TokenData[WvletToken] =
+    val t = scanner.nextToken()
+    t
+
+  private def consumeIdentifier(expected: String): TokenData[WvletToken] =
     val t = scanner.nextToken()
     if t.token != WvletToken.IDENTIFIER || t.str.toLowerCase != expected then
       throw unexpected(s"Expected ${expected} but found ${t.token}")
@@ -106,8 +110,8 @@ class DataTypeParser(scanner: WvletScanner) extends LogSupport:
       case WvletToken.NULL =>
         consume(WvletToken.NULL)
         NullType
-      case WvletToken.STRING_LITERAL if t.str.toLowerCase == "null" =>
-        consume(WvletToken.STRING_LITERAL)
+      case s if s.isStringLiteral && t.str.toLowerCase == "null" =>
+        consumeToken()
         NullType
       case token if token.isIdentifier || token.isReservedKeyword =>
         val id       = consume(t.token)
@@ -197,8 +201,8 @@ class DataTypeParser(scanner: WvletScanner) extends LogSupport:
       case WvletToken.INTEGER_LITERAL =>
         val i = consume(WvletToken.INTEGER_LITERAL)
         IntConstant(i.str.toInt)
-      case WvletToken.STRING_LITERAL =>
-        val ts        = consume(WvletToken.STRING_LITERAL)
+      case s if s.isStringLiteral =>
+        val ts        = consumeToken()
         val paramName = ts.str.toLowerCase
         val paramType = dataType()
         NamedType(Name.termName(paramName), paramType)

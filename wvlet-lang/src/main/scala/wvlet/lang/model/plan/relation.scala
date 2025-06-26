@@ -13,34 +13,20 @@
  */
 package wvlet.lang.model.plan
 
+import wvlet.airframe.ulid.ULID
+import wvlet.lang.api.Span.NoSpan
+import wvlet.lang.api.{Span, StatusCode}
 import wvlet.lang.catalog.Catalog
 import wvlet.lang.catalog.Catalog.TableName
-import wvlet.lang.compiler.{Name, TermName, TypeName}
-import wvlet.lang.model.expr.*
+import wvlet.lang.compiler.{Name, TermName}
 import wvlet.lang.model.*
-import wvlet.lang.model.DataType.{
-  AggregationType,
-  AliasedType,
-  ArrayType,
-  ConcatType,
-  EmptyRelationType,
-  NamedType,
-  ProjectedType,
-  RecordType,
-  SchemaType,
-  UnresolvedRelationType
-}
-import wvlet.lang.model.expr.NameExpr.EmptyName
-import wvlet.airframe.json.JSON
-import wvlet.airframe.ulid.ULID
-import wvlet.lang.api.StatusCode
-import wvlet.lang.api.Span
-import wvlet.lang.api.Span.NoSpan
+import wvlet.lang.model.DataType.*
+import wvlet.lang.model.expr.*
 import wvlet.log.LogSupport
 
 import scala.collection.immutable.ListMap
 
-sealed trait Relation extends LogicalPlan:
+trait Relation extends LogicalPlan:
   // Input attributes (column names) of the relation
   def relationType: RelationType
   override def inputRelationType: RelationType =
@@ -65,6 +51,8 @@ sealed trait Relation extends LogicalPlan:
       case _ =>
         false
 
+  def isLeaf: Boolean = children.isEmpty
+
 // A relation that takes a single input relation
 trait UnaryRelation extends Relation with UnaryPlan:
   def inputRelation: Relation                  = child
@@ -74,14 +62,32 @@ trait UnaryRelation extends Relation with UnaryPlan:
 trait HasTableName:
   def name: TableName
 
-trait HasRefName extends UnaryRelation:
-  def refName: NameExpr
+type TableOrFileName = StringLiteral | QualifiedName
 
-case class SelectAsAlias(child: Relation, alias: NameExpr, span: Span)
+/**
+  * A common trait for using a table name or a file name
+  */
+trait HasTableOrFileName:
+  def target: TableOrFileName
+  def isForFile: Boolean =
+    target match
+      case l: StringLiteral =>
+        true
+      case q: QualifiedName =>
+        false
+
+  def isForTable: Boolean = !isForFile
+  def targetName: String =
+    target match
+      case l: StringLiteral =>
+        l.unquotedValue
+      case q: QualifiedName =>
+        q.fullName
+
+case class SelectAsAlias(child: Relation, target: QualifiedName, span: Span)
     extends UnaryRelation
-    with HasRefName:
+    with HasTableOrFileName:
   override def relationType: RelationType = child.relationType
-  override def refName: NameExpr          = alias
 
 case class TestRelation(child: Relation, testExpr: Expression, span: Span) extends UnaryRelation:
   override def relationType: RelationType = child.relationType
@@ -92,7 +98,7 @@ case class BracedRelation(child: Relation, span: Span) extends UnaryRelation:
 case class AliasedRelation(
     child: Relation,
     alias: NameExpr,
-    columnNames: Option[Seq[NamedType]],
+    columnNames: Option[List[NamedType]],
     span: Span
 ) extends UnaryRelation
     with LogSupport:
@@ -128,16 +134,16 @@ case class NamedRelation(child: Relation, name: NameExpr, span: Span)
     with Selection:
   override def toString: String = s"NamedRelation[${name.strExpr}](${child})"
 
-  override def selectItems: Seq[Attribute] =
+  override def selectItems: List[Attribute] =
     // Produce a dummy AllColumns node for SQLGenerator
-    Seq(AllColumns(Wildcard(NoSpan), None, NoSpan))
+    List(AllColumns(Wildcard(NoSpan), None, NoSpan))
 
   override def relationType: RelationType = AliasedType(
     Name.typeName(name.leafName),
     child.relationType
   )
 
-case class Values(rows: Seq[Expression], span: Span) extends Relation with LeafPlan:
+case class Values(rows: List[Expression], span: Span) extends Relation with LeafPlan:
   override def toString: String = s"Values(${rows.mkString(", ")})"
 
   override val relationType: RelationType =
@@ -169,61 +175,56 @@ case class Values(rows: Seq[Expression], span: Span) extends Relation with LeafP
 //    }
 //    columns
 
+trait TableInput extends Relation with LeafPlan:
+  def sqlExpr: Expression
+  // def alias: NameExpr
+  // def columnNames: Option[Seq[NamedType]]
+
 /**
   * Reference to a table structured data (tables or other query results)
   * @param name
   * @param nodeLocation
   */
-case class TableRef(name: NameExpr, span: Span) extends Relation with LeafPlan:
+case class TableRef(name: QualifiedName, span: Span) extends TableInput:
+  override def sqlExpr: Expression        = name
   override def toString: String           = s"TableRef(${name})"
   override val relationType: RelationType = UnresolvedRelationType(name.fullName)
 
 case class TableFunctionCall(name: NameExpr, args: List[FunctionArg], span: Span)
-    extends Relation
-    with LeafPlan:
+    extends TableInput:
+  override def sqlExpr: Expression        = FunctionApply(name, args, None, span)
   override def toString: String           = s"TableFunctionCall(${name}, ${args})"
   override val relationType: RelationType = UnresolvedRelationType(name.fullName)
 
-case class FileScan(path: String, span: Span) extends Relation with LeafPlan:
-  override def toString: String           = s"FileScan(${path})"
-  override val relationType: RelationType = UnresolvedRelationType(RelationType.newRelationTypeName)
+case class FileRef(path: StringLiteral, span: Span) extends TableInput:
+  def filePath: String                    = path.unquotedValue
+  override def sqlExpr: Expression        = path
+  override def toString: String           = s"FileRef(${path})"
+  override val relationType: RelationType = UnresolvedRelationType(path.unquotedValue)
 
-case class PathScan(name: String, path: String, schema: RelationType, span: Span)
-    extends Relation
-    with LeafPlan:
-  override def toString: String           = s"PathScan(${path})"
-  override val relationType: RelationType = UnresolvedRelationType(RelationType.newRelationTypeName)
-
-case class JSONFileScan(path: String, schema: RelationType, columns: Seq[NamedType], span: Span)
-    extends Relation
-    with LeafPlan:
-  override def relationType: RelationType =
+case class FileScan(
+    path: StringLiteral,
+    // The schema of the file or UnknownRelationType before checking the file
+    schema: RelationType,
+    // Projected columns
+    columns: List[NamedType],
+    span: Span
+) extends TableInput:
+  def filePath: String             = path.unquotedValue
+  override def sqlExpr: Expression = path
+  override def toString: String    = s"FileScan(${filePath})"
+  override val relationType: RelationType =
     if columns.isEmpty then
       schema
     else
       ProjectedType(schema.typeName, columns, schema)
 
-  override def toString: String = s"JSONFileScan(path:${path}, columns:[${columns.mkString(", ")}])"
-  override lazy val resolved    = true
-
-case class ParquetFileScan(path: String, schema: RelationType, columns: Seq[NamedType], span: Span)
-    extends Relation
-    with LeafPlan:
-  override def relationType: RelationType =
-    if columns.isEmpty then
-      schema
-    else
-      ProjectedType(schema.typeName, columns, schema)
-
-  override def toString: String =
-    s"ParquetFileScan(path:${path}, columns:[${columns.mkString(", ")}])"
-
-  override lazy val resolved = true
-
-case class RawSQL(sql: Expression, span: Span) extends Relation with LeafPlan:
+case class RawSQL(sql: Expression, span: Span) extends TableInput:
+  override def sqlExpr: Expression        = sql
   override val relationType: RelationType = UnresolvedRelationType(RelationType.newRelationTypeName)
 
-case class RawJSON(json: Expression, span: Span) extends Relation with LeafPlan:
+case class RawJSON(json: Expression, span: Span) extends TableInput:
+  override def sqlExpr: Expression        = json
   override val relationType: RelationType = UnresolvedRelationType(RelationType.newRelationTypeName)
 
 // A base trait that will be translated to SELECT * in SQL
@@ -237,17 +238,42 @@ trait FilteringRelation extends GeneralSelection:
 
 // Deduplicate (duplicate elimination) the input relation
 case class Distinct(child: Project, span: Span) extends FilteringRelation with AggSelect:
-  override def selectItems: Seq[Attribute] = child.selectItems
-  override def toString: String            = s"Distinct(${child})"
+  override def selectItems: List[Attribute] = child.selectItems
+  override def toString: String             = s"Distinct(${child})"
 
-case class Sort(child: Relation, orderBy: Seq[SortItem], span: Span) extends FilteringRelation:
+case class Sort(child: Relation, orderBy: List[SortItem], span: Span) extends FilteringRelation:
   override def toString: String = s"Sort[${orderBy.mkString(", ")}](${child})"
 
 case class Limit(child: Relation, limit: LongLiteral, span: Span) extends FilteringRelation:
   override def toString: String = s"Limit[${limit.value}](${child})"
 
+case class Offset(child: Relation, rows: LongLiteral, span: Span) extends FilteringRelation:
+  override def toString: String = s"Offset[${rows.value}](${child})"
+
 case class Filter(child: Relation, filterExpr: Expression, span: Span) extends FilteringRelation:
   override def toString: String = s"Filter[${filterExpr}](${child})"
+
+case class Count(child: Relation, span: Span) extends UnaryRelation with AggSelect:
+  override def toString: String = s"Count(${child})"
+
+  override def selectItems: List[Attribute] = List(
+    SingleColumn(
+      NameExpr.EmptyName,
+      FunctionApply(
+        NameExpr.fromString("count", span),
+        List(FunctionArg(None, AllColumns(Wildcard(NoSpan), None, NoSpan), false, span)),
+        None,
+        span
+      ),
+      span
+    )
+  )
+
+  override lazy val relationType: RelationType = SchemaType(
+    parent = None,
+    typeName = LongType.typeName,
+    columnTypes = List(NamedType(Name.termName("count"), LongType))
+  )
 
 case class EmptyRelation(span: Span) extends Relation with LeafPlan:
   // Need to override this method so as not to create duplicate case object instances
@@ -257,12 +283,15 @@ case class EmptyRelation(span: Span) extends Relation with LeafPlan:
 
 // This node can be a pivot node for generating a SELECT statement
 sealed trait Selection extends GeneralSelection:
-  def selectItems: Seq[Attribute]
+  /**
+    * Attributes corresponding to SELECT items
+    */
+  def selectItems: List[Attribute]
 
 // This node can be a pivot node for generating a SELECT statement with aggregation functions
 trait AggSelect extends Selection
 
-case class Project(child: Relation, selectItems: Seq[Attribute], span: Span)
+case class Project(child: Relation, selectItems: List[Attribute], span: Span)
     extends UnaryRelation
     with AggSelect:
 
@@ -285,16 +314,16 @@ case class Project(child: Relation, selectItems: Seq[Attribute], span: Span)
   * @param transformItems
   * @param nodeLocation
   */
-case class Transform(child: Relation, transformItems: Seq[Attribute], span: Span)
+case class Transform(child: Relation, transformItems: List[Attribute], span: Span)
     extends UnaryRelation
     with Selection
     with LogSupport:
   override def toString: String = s"Transform[${transformItems.mkString(", ")}](${child})"
-  override def selectItems: Seq[Attribute] = transformItems
+  override def selectItems: List[Attribute] = transformItems
 
   override lazy val relationType: RelationType =
     val inputRelation = child.relationType
-    val newColumns    = Seq.newBuilder[NamedType]
+    val newColumns    = List.newBuilder[NamedType]
     // Detect newly added columns
     transformItems.foreach { x =>
       if inputRelation.fields.exists(p => p.name.name != x.fullName) then
@@ -307,14 +336,17 @@ case class Transform(child: Relation, transformItems: Seq[Attribute], span: Span
     )
     pt
 
-case class AddColumnsToRelation(child: Relation, newColumns: Seq[Attribute], span: Span)
+case class AddColumnsToRelation(child: Relation, newColumns: List[Attribute], span: Span)
     extends UnaryRelation
-    with GeneralSelection
+    with Selection
     with LogSupport:
   override def toString: String = s"Add[${newColumns.mkString(", ")}](${child})"
 
+  override def selectItems: List[Attribute] =
+    List(AllColumns(Wildcard(NoSpan), None, NoSpan)) ++ newColumns
+
   override lazy val relationType: RelationType =
-    val cols = Seq.newBuilder[NamedType]
+    val cols = List.newBuilder[NamedType]
     cols ++= inputRelationType.fields
     cols ++=
       newColumns.map { x =>
@@ -327,29 +359,52 @@ case class AddColumnsToRelation(child: Relation, newColumns: Seq[Attribute], spa
     )
     pt
 
-case class ExcludeColumnsFromRelation(child: Relation, columnNames: Seq[NameExpr], span: Span)
+case class PrependColumnsToRelation(child: Relation, newColumns: List[Attribute], span: Span)
     extends UnaryRelation
+    with Selection
     with LogSupport:
-  override def toString: String = s"Drop[${columnNames.mkString(", ")}](${child})"
+  override def toString: String = s"Prepend[${newColumns.mkString(", ")}](${child})"
+  override def selectItems: List[Attribute] =
+    newColumns ++ List(AllColumns(Wildcard(NoSpan), None, NoSpan))
 
   override lazy val relationType: RelationType =
-    val newColumns = Seq.newBuilder[NamedType]
-    // Detect newly added columns
-    newColumns ++=
-      inputRelationType
-        .fields
-        .filterNot { x =>
-          columnNames.exists(_.leafName == x.name.name)
-        }
+    val cols = List.newBuilder[NamedType]
+    cols ++=
+      newColumns.map { x =>
+        NamedType(Name.termName(x.nameExpr.leafName), x.dataType)
+      }
+    cols ++= inputRelationType.fields
     val pt = ProjectedType(
       Name.typeName(RelationType.newRelationTypeName),
-      newColumns.result(),
+      cols.result(),
       child.relationType
     )
     pt
 
-case class RenameColumnsFromRelation(child: Relation, columnAliases: Seq[Alias], span: Span)
-    extends UnaryRelation
+case class ExcludeColumnsFromRelation(child: Relation, columnNames: List[NameExpr], span: Span)
+    extends Selection
+    with LogSupport:
+  override def toString: String = s"Drop[${columnNames.mkString(", ")}](${child})"
+
+  private def outputColumns: List[NamedType] = inputRelationType
+    .fields
+    .filterNot(f => columnNames.exists(_.leafName == f.name.name))
+
+  override def selectItems: List[Attribute] = outputColumns.map { c =>
+    val name = NameExpr.fromString(c.toSQLAttributeName, span)
+    SingleColumn(NameExpr.EmptyName, name, span)
+  }
+
+  override lazy val relationType: RelationType =
+    val pt = ProjectedType(
+      Name.typeName(RelationType.newRelationTypeName),
+      outputColumns,
+      child.relationType
+    )
+    pt
+
+case class RenameColumnsFromRelation(child: Relation, columnAliases: List[Alias], span: Span)
+    extends Selection
     with LogSupport:
   override def toString: String = s"Rename[${columnAliases.mkString(", ")}](${child})"
 
@@ -365,8 +420,22 @@ case class RenameColumnsFromRelation(child: Relation, columnAliases: Seq[Alias],
       }
     renamedColumns.result()
 
+  override def selectItems: List[Attribute] = inputRelationType
+    .fields
+    .map { f =>
+      columnMapping.get(f.name) match
+        case Some(a) =>
+          SingleColumn(
+            NameExpr.fromString(a.toSQLAttributeName, span),
+            NameExpr.fromString(f.toSQLAttributeName, span),
+            span
+          )
+        case None =>
+          SingleColumn(NameExpr.EmptyName, NameExpr.fromString(f.toSQLAttributeName, span), span)
+    }
+
   override lazy val relationType: RelationType =
-    val newColumns = Seq.newBuilder[NamedType]
+    val newColumns = List.newBuilder[NamedType]
     // Detect newly added columns
     newColumns ++=
       inputRelationType
@@ -390,12 +459,17 @@ end RenameColumnsFromRelation
 case class ShiftColumns(
     child: Relation,
     isLeftShift: Boolean,
-    shiftItems: Seq[NameExpr],
+    shiftItems: List[NameExpr],
     span: Span
-) extends UnaryRelation:
+) extends Selection:
   override def toString: String = s"Shift[${shiftItems.mkString(", ")}](${child})"
 
-  override lazy val relationType: RelationType =
+  override def selectItems: List[Attribute] = outputColumns.map { c =>
+    val name = NameExpr.fromString(c.toSQLAttributeName, span)
+    SingleColumn(NameExpr.EmptyName, name, span)
+  }
+
+  private def outputColumns: List[NamedType] =
     var inputFields: ListMap[String, NamedType] = inputRelationType
       .fields
       .map { f =>
@@ -409,19 +483,21 @@ case class ShiftColumns(
           preferredColumns += f
           inputFields -= si.leafName
         case None =>
-        // skip
+      // skip
     }
     val remainingColumns = inputFields.values.toList
-    ProjectedType(
-      Name.typeName(RelationType.newRelationTypeName),
-      // Shift column positions
-      if isLeftShift then
-        preferredColumns.result() ++ remainingColumns
-      else
-        remainingColumns ++ preferredColumns.result()
-      ,
-      child.relationType
-    )
+
+    // Shift column positions
+    if isLeftShift then
+      preferredColumns.result() ++ remainingColumns
+    else
+      remainingColumns ++ preferredColumns.result()
+
+  override lazy val relationType: RelationType = ProjectedType(
+    Name.typeName(RelationType.newRelationTypeName),
+    outputColumns,
+    child.relationType
+  )
 
 end ShiftColumns
 
@@ -448,6 +524,8 @@ case class GroupBy(child: Relation, groupingKeys: List[GroupingKey], span: Span)
     child.relationType
   )
 
+end GroupBy
+
 /**
   * Agg(Select) is an operation to report grouping keys and aggregation expressions.
   *
@@ -455,9 +533,11 @@ case class GroupBy(child: Relation, groupingKeys: List[GroupingKey], span: Span)
   * @param selectItems
   * @param nodeLocation
   */
-case class Agg(child: Relation, selectItems: List[Attribute], span: Span)
+case class Agg(child: Relation, keys: List[Attribute], aggExprs: List[Attribute], span: Span)
     extends UnaryRelation
     with AggSelect:
+  override def selectItems: List[Attribute] = keys ++ aggExprs
+
   override def toString = s"AggSelect[${selectItems.mkString(", ")}](${child})"
 
   override lazy val relationType: RelationType = ProjectedType(
@@ -494,7 +574,46 @@ case class Pivot(
   )
 
 case class PivotKey(name: Identifier, values: List[Literal], span: Span) extends Expression:
-  override def children: Seq[Expression] = values
+  override def children: List[Expression] = values
+
+case class Unpivot(child: Relation, unpivotKey: UnpivotKey, span: Span) extends UnaryRelation:
+  override def toString = s"Unpivot(on:${unpivotKey},${child})"
+
+  override lazy val relationType: RelationType =
+    val inputFields      = child.relationType.fields
+    val unpivotedColumns = unpivotKey.targetColumns.map(_.fullName)
+
+    val nonPivotColumns = inputFields.filterNot(f => unpivotedColumns.contains(f.name.name))
+    val unpivotColumnType: DataType = inputFields
+      .find(f => f.name.name == unpivotKey.valueColumnName.fullName)
+      .map(_.dataType)
+      .getOrElse(DataType.UnknownType)
+
+    ProjectedType(
+      Name.typeName(RelationType.newRelationTypeName),
+      nonPivotColumns ++
+        List(
+          NamedType(unpivotKey.valueColumnName.toTermName, StringType),
+          NamedType(unpivotKey.unpivotColumnName.toTermName, unpivotColumnType)
+        ),
+      child.relationType
+    )
+
+/**
+  * unpivot (value column name) for (unpivot column name) for ((target columns),...)
+  * @param unpivotColumnName
+  * @param valueColumnName
+  * @param targetColumns
+  * @param span
+  */
+case class UnpivotKey(
+    valueColumnName: Identifier,
+    unpivotColumnName: Identifier,
+    targetColumns: List[Identifier],
+    // includeNulls: Boolean = false,
+    span: Span
+) extends Expression:
+  override def children: List[Expression] = Nil
 
 /**
   * Tradtional SQL aggregation node with SELECT clause
@@ -510,11 +629,15 @@ case class SQLSelect(
     groupingKeys: List[GroupingKey],
     having: List[Filter],
     filters: List[Filter],
+    orderBy: Seq[SortItem],
+    limit: Option[Expression],
     span: Span
 ) extends UnaryRelation
     with Selection:
   override def toString =
-    s"AggregateSelect[${groupingKeys.mkString(",")}](Select[${selectItems.mkString(", ")}](${child}))"
+    s"AggregateSelect[${groupingKeys.mkString(",")}](Select[${selectItems.mkString(
+        ", "
+      )}](${child}))"
 
   override lazy val relationType: RelationType = ProjectedType(
     Name.typeName(RelationType.newRelationTypeName),
@@ -533,8 +656,8 @@ trait QueryStatement extends UnaryRelation with TopLevelStatement
 
 case class Query(body: Relation, span: Span) extends QueryStatement with FilteringRelation:
   override def child: Relation = body
-  override def children: Seq[LogicalPlan] =
-    val b = Seq.newBuilder[LogicalPlan]
+  override def children: List[LogicalPlan] =
+    val b = List.newBuilder[LogicalPlan]
     b += body
     b.result()
 
@@ -550,9 +673,9 @@ case class Join(
     span: Span
 ) extends Relation
     with LogSupport:
-  override def modelName: String = joinType.toString
+  override def nodeName: String = joinType.toString
 
-  override def children: Seq[LogicalPlan] = Seq(left, right)
+  override def children: List[LogicalPlan] = List(left, right)
 
   override def toString: String          = s"${joinType}[${cond}](left:${left}, right:${right})"
   def withCond(cond: JoinCriteria): Join = this.copy(cond = cond)
@@ -578,7 +701,7 @@ case class Join(
     cond match
       case j: JoinOnTheSameColumns =>
         // If the join condition is on the same column names, merge the column types
-        val mergedColumns = Seq.newBuilder[NamedType]
+        val mergedColumns = List.newBuilder[NamedType]
 
         val joinColumns = j.columns.map(_.toTermName)
 
@@ -595,13 +718,13 @@ case class Join(
           mergedColumns.result(),
           ConcatType(
             Name.typeName(RelationType.newRelationTypeName),
-            Seq(left.relationType, right.relationType)
+            List(left.relationType, right.relationType)
           )
         )
       case _ =>
         ConcatType(
           Name.typeName(RelationType.newRelationTypeName),
-          Seq(left.relationType, right.relationType)
+          List(left.relationType, right.relationType)
         )
 
 end Join
@@ -622,9 +745,10 @@ enum JoinType(val symbol: String):
   case ImplicitJoin extends JoinType("J")
 
 sealed trait SetOperation extends Relation with LogSupport:
-  override def children: Seq[Relation]
+  override def children: List[Relation]
 
   def toSQLOp: String
+  def toWvOp: String
 
   override lazy val relationType: RelationType = children
     .headOption
@@ -691,9 +815,10 @@ sealed trait SetOperation extends Relation with LogSupport:
 end SetOperation
 
 case class Concat(left: Relation, right: Relation, span: Span) extends SetOperation:
-  override def toSQLOp: String         = "union all"
-  override def children: Seq[Relation] = Seq(left, right)
-  override def toString                = s"Concat(${left}, ${right})"
+  override def toSQLOp: String          = "union all"
+  override def toWvOp: String           = "concat"
+  override def children: List[Relation] = List(left, right)
+  override def toString                 = s"Concat(${left}, ${right})"
 
 case class Dedup(child: Relation, span: Span) extends FilteringRelation:
   override def toString = s"Dedup(${child})"
@@ -708,8 +833,10 @@ case class Intersect(left: Relation, right: Relation, isDistinct: Boolean, span:
           " all"
       }"
 
-  override def children: Seq[Relation] = Seq(left, right)
-  override def toString                = s"Intersect(${left}, ${right})"
+  override def toWvOp: String = toSQLOp
+
+  override def children: List[Relation] = List(left, right)
+  override def toString                 = s"Intersect(${left}, ${right})"
 
 case class Except(left: Relation, right: Relation, isDistinct: Boolean, span: Span)
     extends SetOperation:
@@ -721,8 +848,10 @@ case class Except(left: Relation, right: Relation, isDistinct: Boolean, span: Sp
           " all"
       }"
 
-  override def children: Seq[Relation] = Seq(left, right)
-  override def toString                = s"Except(${left}, ${right})"
+  override def toWvOp: String = toSQLOp
+
+  override def children: List[Relation] = List(left, right)
+  override def toString                 = s"Except(${left}, ${right})"
 
 /**
   * Union operation without involving duplicate elimination
@@ -732,18 +861,24 @@ case class Except(left: Relation, right: Relation, isDistinct: Boolean, span: Sp
 case class Union(left: Relation, right: Relation, isDistinct: Boolean, span: Span)
     extends SetOperation:
   override def toSQLOp: String =
-    s"except${
+    s"union${
         if isDistinct then
           ""
         else
           " all"
       }"
 
-  override def children: Seq[Relation] = Seq(left, right)
-  override def toString                = s"Union(${children.mkString(",")})"
+  override def toWvOp: String =
+    if isDistinct then
+      "union"
+    else
+      "concat"
+
+  override def children: List[Relation] = List(left, right)
+  override def toString                 = s"Union(${children.mkString(",")})"
 
 case class Unnest(columns: Seq[Expression], withOrdinality: Boolean, span: Span) extends Relation:
-  override def children: Seq[LogicalPlan] = Seq.empty
+  override def children: List[LogicalPlan] = Nil
 
   override def toString = s"Unnest(withOrdinality:${withOrdinality}, ${columns.mkString(",")})"
 
@@ -787,10 +922,11 @@ case class LateralView(
   * @param columns
   *   projected columns
   */
-case class TableScan(name: TableName, schema: RelationType, columns: Seq[NamedType], span: Span)
-    extends Relation
-    with LeafPlan
+case class TableScan(name: TableName, schema: RelationType, columns: List[NamedType], span: Span)
+    extends TableInput
     with HasTableName:
+
+  override def sqlExpr: Expression = NameExpr.fromString(name.fullName, span)
 
   override def relationType: RelationType =
     if columns.isEmpty then
@@ -844,12 +980,12 @@ case class Subscribe(
 //    params.find(_.name == "window_size").map(_.value)
 
 case class SubscribeParam(name: String, value: String, span: Span) extends Expression:
-  override def children: Seq[Expression] = Seq.empty
+  override def children: List[Expression] = Nil
 
 case class IncrementalTableScan(
     name: TableName,
     schema: RelationType,
-    columns: Seq[NamedType],
+    columns: List[NamedType],
     span: Span
 ) extends Relation
     with LeafPlan
@@ -872,6 +1008,7 @@ enum ShowType:
   case tables
   case schemas
   case catalogs
+  case databases
   case query
 
 case class Show(showType: ShowType, inExpr: NameExpr, span: Span) extends Relation with LeafPlan:
@@ -881,9 +1018,10 @@ case class Show(showType: ShowType, inExpr: NameExpr, span: Span) extends Relati
         SchemaType(
           parent = None,
           typeName = Name.typeName("model"),
-          columnTypes = Seq[NamedType](
+          columnTypes = List[NamedType](
             NamedType(Name.termName("name"), DataType.StringType),
             NamedType(Name.termName("args"), DataType.StringType),
+            NamedType(Name.termName("description"), DataType.StringType),
             NamedType(Name.termName("package_name"), DataType.StringType)
           )
         )
@@ -891,13 +1029,13 @@ case class Show(showType: ShowType, inExpr: NameExpr, span: Span) extends Relati
         SchemaType(
           parent = None,
           typeName = Name.typeName("table"),
-          columnTypes = Seq[NamedType](NamedType(Name.termName("name"), DataType.StringType))
+          columnTypes = List[NamedType](NamedType(Name.termName("name"), DataType.StringType))
         )
       case ShowType.schemas =>
         SchemaType(
           parent = None,
           typeName = Name.typeName("schema"),
-          columnTypes = Seq[NamedType](
+          columnTypes = List[NamedType](
             NamedType(Name.termName("catalog"), DataType.StringType),
             NamedType(Name.termName("name"), DataType.StringType)
           )
@@ -906,7 +1044,7 @@ case class Show(showType: ShowType, inExpr: NameExpr, span: Span) extends Relati
         SchemaType(
           parent = None,
           typeName = Name.typeName("catalog"),
-          columnTypes = Seq[NamedType](NamedType(Name.termName("name"), DataType.StringType))
+          columnTypes = List[NamedType](NamedType(Name.termName("name"), DataType.StringType))
         )
       case other =>
         throw StatusCode.UNEXPECTED_STATE.newException(s"Unexpected show type: ${other}")
@@ -932,8 +1070,8 @@ case class Describe(child: Relation, span: Span) extends RelationInspector:
       ListMap("column_name" -> f.name.name, "column_type" -> f.dataType.typeDescription)
     }
 
-case class Sample(child: Relation, method: SamplingMethod, size: SamplingSize, span: Span)
-    extends UnaryRelation:
+case class Sample(child: Relation, method: Option[SamplingMethod], size: SamplingSize, span: Span)
+    extends FilteringRelation:
   override def relationType: RelationType = child.relationType
 
 enum SamplingMethod:
@@ -942,6 +1080,13 @@ enum SamplingMethod:
   case bernoulli
 
 enum SamplingSize:
+  def toExpr: String =
+    this match
+      case Rows(rows) =>
+        rows.toString
+      case Percentage(p) =>
+        s"${p}%"
+
   case Rows(rows: Long)               extends SamplingSize
   case Percentage(percentage: Double) extends SamplingSize
 
@@ -954,6 +1099,35 @@ enum SamplingSize:
   * @param nodeLocation
   */
 case class Debug(child: Relation, debugExpr: Relation, span: Span) extends FilteringRelation:
+  /**
+    * A partial debug expression that only contains operators inside the debug expression
+    * @return
+    */
+  def partialDebugExpr: Relation = debugExpr
+    .transformUp { case l: LeafPlan =>
+      EmptyRelation(l.span)
+    }
+    .asInstanceOf[Relation]
 
   // Add debug expr as well for the ease of tree traversal
-  override def children: Seq[LogicalPlan] = Seq(child, debugExpr)
+  override def children: List[LogicalPlan] = List(child, debugExpr)
+
+/**
+  * A relation that contains a query body with query definitions.
+  *
+  * @param isRecursive
+  * @param queryDefs
+  * @param queryBody
+  * @param span
+  */
+case class WithQuery(
+    isRecursive: Boolean,
+    queryDefs: List[AliasedRelation],
+    queryBody: Relation,
+    span: Span
+) extends Relation:
+  override def children: List[LogicalPlan] =
+    // Technically, queryDefs are not the children, rather prerequisites of the queryBody
+    Nil
+
+  override def relationType: RelationType = queryBody.relationType

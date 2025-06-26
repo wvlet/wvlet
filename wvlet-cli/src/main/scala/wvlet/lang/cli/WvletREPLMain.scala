@@ -1,7 +1,7 @@
 package wvlet.lang.cli
 
 import wvlet.airframe.Design
-import wvlet.airframe.launcher.{Launcher, command, option}
+import wvlet.airframe.launcher.{Launcher, argument, command, option}
 import wvlet.lang.api.StatusCode.SYNTAX_ERROR
 import wvlet.lang.api.{StatusCode, WvletLangException}
 import wvlet.lang.catalog.Profile
@@ -17,7 +17,9 @@ import java.io.File
   * REPL command launcher (wv)
   */
 object WvletREPLMain extends LogSupport:
-  def launcher = Launcher.of[WvletREPLMain]
+  def launcher = Launcher
+    .of[WvletREPLMain]
+    .addModule[CatalogCommand](name = "catalog", description = "Manage static catalog metadata")
 
   private def wrap(body: => Unit): Unit =
     try
@@ -55,8 +57,12 @@ class WvletREPLMain(cliOption: WvletGlobalOption, replOpts: WvletREPLOption) ext
 
   @command(description = "Start REPL shell", isDefault = true)
   def repl(): Unit =
-    val currentProfile: Profile = Profile
-      .getProfile(replOpts.profile, replOpts.catalog, replOpts.schema, Profile.defaultDuckDBProfile)
+    val currentProfile: Profile = Profile.getProfile(
+      replOpts.profile,
+      replOpts.catalog,
+      replOpts.schema,
+      Profile.defaultDuckDBProfile
+    )
 
     val selectedCatalog = currentProfile.catalog
     val selectedSchema  = currentProfile.schema

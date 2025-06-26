@@ -13,20 +13,103 @@
  */
 package wvlet.lang.model
 
-import wvlet.lang.api.SourceLocation
-import wvlet.lang.api.Span
+import wvlet.lang.api.{LinePosition, SourceLocation, Span, StatusCode}
 import wvlet.lang.compiler.{CompilationUnit, Context, SourceFile, Symbol}
 import wvlet.lang.compiler.ContextUtil.*
+import wvlet.lang.compiler.parser.TokenData
+import wvlet.lang.model.plan.LogicalPlan
+import wvlet.log.LogSupport
 
 /**
   * A base class for LogicalPlan and Expression
   */
-trait TreeNode extends TreeNodeCompat:
+trait TreeNode extends TreeNodeCompat
 
-  private var _symbol: Symbol = Symbol.NoSymbol
+trait SyntaxTreeNode extends TreeNode with Product with LogSupport:
+  private var _symbol: Symbol                  = Symbol.NoSymbol
+  private var _comment: List[TokenData[_]]     = Nil
+  private var _postComment: List[TokenData[_]] = Nil
+
+  def linePosition(using ctx: Context): LinePosition = ctx.sourceLocationAt(span).position
+
+  def endLinePosition(using ctx: Context): LinePosition =
+    ctx.compilationUnit.sourceFile.sourceLocationAt(span.end).position
+
+  def childNodes: List[SyntaxTreeNode] =
+    val l = List.newBuilder[SyntaxTreeNode]
+    def loop(x: Any): Unit =
+      x match
+        case n: SyntaxTreeNode =>
+          l += n
+        case xs: Seq[?] =>
+          xs.foreach(loop)
+        case o: Option[?] =>
+          o.foreach(loop)
+        case i: Iterator[?] =>
+          i.foreach(loop)
+        case _ =>
+    loop(this.productIterator)
+    l.result()
+
+  def collectAllNodes: List[SyntaxTreeNode] =
+    val lst = List.newBuilder[SyntaxTreeNode]
+    lst += this
+    this
+      .childNodes
+      .foreach { n =>
+        lst ++= n.collectAllNodes
+      }
+    lst.result()
+
+  def copyMetadatFrom(t: SyntaxTreeNode): Unit =
+    // Copy symbol, comment
+    _symbol = t._symbol
+    _comment = t._comment
+    _postComment = t._postComment
 
   def symbol: Symbol            = _symbol
   def symbol_=(s: Symbol): Unit = _symbol = s
+
+  def comments: List[TokenData[_]]     = _comment
+  def postComments: List[TokenData[_]] = _postComment
+
+  def withComment(d: TokenData[?]): this.type =
+    _comment = d :: _comment
+    this
+
+  def withPostComment(d: TokenData[?]): this.type =
+    _postComment = d :: _postComment
+    this
+
+  protected def copyInstance(newArgs: Seq[AnyRef]): this.type =
+    // Using non-JVM reflection to support Scala.js/Scala Native
+    try
+      val args = newArgs.map { (x: Any) =>
+        x match
+          case s: Span =>
+            // Span can be a plain Long type due to Scala's internal optimization
+            s.coordinate
+          case other =>
+            other
+      }
+      val newObj = getSingletonObject.getOrElse(newInstance(args*))
+      newObj match
+        case t: SyntaxTreeNode =>
+          if this.symbol.tree != null then
+            // Update the tree reference with the rewritten tree
+            this.symbol.tree = t
+          // Copy metadata to preserve symbol and comments
+          t.copyMetadatFrom(this)
+        case _ =>
+      newObj.asInstanceOf[this.type]
+    catch
+      case e: IllegalArgumentException =>
+        throw StatusCode
+          .COMPILATION_FAILURE
+          .newException(
+            s"Failed to create ${nodeName} node with args: ${newArgs.mkString(", ")}",
+            e
+          )
 
   /**
     * @return
@@ -39,3 +122,9 @@ trait TreeNode extends TreeNodeCompat:
     .sourceLocationAt(span)
 
   def locationString(using ctx: Context): String = sourceLocation(using ctx).locationString
+
+  def nodeName: String =
+    val n = this.getClass.getSimpleName
+    n.stripSuffix("$")
+
+end SyntaxTreeNode

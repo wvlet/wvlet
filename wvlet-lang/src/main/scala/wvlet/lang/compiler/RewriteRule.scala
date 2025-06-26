@@ -32,7 +32,7 @@ object RewriteRule extends LogSupport:
       case r: Relation =>
         r
       case other =>
-        throw new IllegalStateException(s"Expected Relation but got ${other.modelName}")
+        throw new IllegalStateException(s"Expected Relation but got ${other.nodeName}")
 
   def rewrite(plan: LogicalPlan, rules: List[RewriteRule], context: Context): LogicalPlan =
     val rewrittenPlan =
@@ -122,8 +122,9 @@ trait RewriteRule extends LogSupport:
       val resolved = plan.transformUp(rule)
       if rewriteLogger.isEnabled(LogLevel.TRACE) && !(plan eq resolved) && plan != resolved then
         if context.isContextCompilationUnit then
-          rewriteLogger
-            .trace(s"Transformed with ${name}:\n[before]\n${plan.pp}\n[after]\n${resolved.pp}")
+          rewriteLogger.trace(
+            s"Transformed with ${name}:\n[before]\n${plan.pp}\n[after]\n${resolved.pp}"
+          )
 
       // Apply post-process filter
       postProcess(resolved, context)
@@ -141,8 +142,9 @@ trait ExpressionRewriteRule extends LogSupport:
     val resolved = plan.transformUpExpressions(rule)
     if rewriteLogger.isEnabled(LogLevel.TRACE) && !(plan eq resolved) && plan != resolved then
       if context.isContextCompilationUnit then
-        rewriteLogger
-          .trace(s"Transformed with ${name}:\n[before]\n${plan.pp}\n[after]\n${resolved.pp}")
+        rewriteLogger.trace(
+          s"Transformed with ${name}:\n[before]\n${plan.pp}\n[after]\n${resolved.pp}"
+        )
     resolved
 
   def transformExpression(expr: Expression, context: Context): Expression =

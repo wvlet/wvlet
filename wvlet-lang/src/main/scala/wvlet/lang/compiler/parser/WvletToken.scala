@@ -27,14 +27,23 @@ import TokenType.*
 import scala.annotation.switch
 
 enum WvletToken(val tokenType: TokenType, val str: String):
-  def isIdentifier: Boolean          = tokenType == Identifier
-  def isLiteral: Boolean             = tokenType == Literal
-  def isReservedKeyword: Boolean     = tokenType == Keyword
+  def isIdentifier: Boolean      = tokenType == Identifier
+  def isLiteral: Boolean         = tokenType == Literal
+  def isReservedKeyword: Boolean = tokenType == Keyword
+  def isNonReservedKeyword: Boolean =
+    tokenType == Keyword && WvletToken.nonReservedKeywords.contains(this)
+
+  def canStartSelectItem: Boolean =
+    tokenType != Keyword || WvletToken.literalStartKeywords.contains(this) ||
+      WvletToken.nonReservedKeywords.contains(this)
+
   def isOperator: Boolean            = tokenType == Op
   def isRightParenOrBracket: Boolean = this == WvletToken.R_PAREN || this == WvletToken.R_BRACKET
 
-  def isQueryDelimiter: Boolean = WvletToken.isQueryDelimiter(this)
-  def isStringStart: Boolean    = WvletToken.stringStartToken.contains(this)
+  def isQueryDelimiter: Boolean           = WvletToken.isQueryDelimiter(this)
+  def isStringStart: Boolean              = WvletToken.stringStartToken.contains(this)
+  def isStringLiteral: Boolean            = WvletToken.stringLiterals.contains(this)
+  def isInterpolatedStringPrefix: Boolean = WvletToken.stringInterpolationPrefixes.contains(this)
 
   // special tokens
   case EMPTY      extends WvletToken(Control, "<empty>")
@@ -45,19 +54,23 @@ enum WvletToken(val tokenType: TokenType, val str: String):
 
   // doc or comments
   case COMMENT extends WvletToken(Doc, "<comment>")
+  // doc comment enclosed with --- (triple hyphen)
+  case DOC_COMMENT extends WvletToken(Doc, "<doc comment>")
 
   // For indentation
   case INDENT  extends WvletToken(Control, "<indent>")
   case OUTDENT extends WvletToken(Control, "<outdent>")
 
   // Literals
-  case INTEGER_LITERAL extends WvletToken(Literal, "<integer literal>")
-  case DECIMAL_LITERAL extends WvletToken(Literal, "<decimal literal>")
-  case EXP_LITERAL     extends WvletToken(Literal, "<exp literal>")
-  case LONG_LITERAL    extends WvletToken(Literal, "<long literal>")
-  case FLOAT_LITERAL   extends WvletToken(Literal, "<float literal>")
-  case DOUBLE_LITERAL  extends WvletToken(Literal, "<double literal>")
-  case STRING_LITERAL  extends WvletToken(Literal, "<string literal>")
+  case INTEGER_LITERAL     extends WvletToken(Literal, "<integer literal>")
+  case DECIMAL_LITERAL     extends WvletToken(Literal, "<decimal literal>")
+  case EXP_LITERAL         extends WvletToken(Literal, "<exp literal>")
+  case LONG_LITERAL        extends WvletToken(Literal, "<long literal>")
+  case FLOAT_LITERAL       extends WvletToken(Literal, "<float literal>")
+  case DOUBLE_LITERAL      extends WvletToken(Literal, "<double literal>")
+  case SINGLE_QUOTE_STRING extends WvletToken(Literal, "<'string literal'>") // Single-quoted
+  case DOUBLE_QUOTE_STRING extends WvletToken(Literal, "<\"string literal\">")
+  case TRIPLE_QUOTE_STRING extends WvletToken(Literal, "<\"\"\"string literal\"\"\">")
 
   // literal keywords
   case NULL  extends WvletToken(Keyword, "null")
@@ -66,6 +79,9 @@ enum WvletToken(val tokenType: TokenType, val str: String):
 
   // For interpolated string, e.g., sql"...${expr}..."
   case STRING_INTERPOLATION_PREFIX extends WvletToken(Literal, "<string interpolation>")
+  case TRIPLE_QUOTE_INTERPOLATION_PREFIX
+      extends WvletToken(Literal, "<\"\"\"string interpolation\"\"\">")
+
   // For backquoted interpolation strings, e.g., s`table_name_${expr}...`
   case BACKQUOTE_INTERPOLATION_PREFIX extends WvletToken(Literal, "<backquote interpolation>")
   // A part in the string interpolation
@@ -121,8 +137,9 @@ enum WvletToken(val tokenType: TokenType, val str: String):
 
   case AMP  extends WvletToken(Op, "&")
   case PIPE extends WvletToken(Op, "|")
-
   case HASH extends WvletToken(Op, "#")
+
+  case EXISTS extends WvletToken(Keyword, "exists")
 
   // For testing
   case TEST    extends WvletToken(Keyword, "test")
@@ -142,8 +159,9 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   // Data type keywords
   case MAP extends WvletToken(Keyword, "map")
 
-  case SHOW   extends WvletToken(Keyword, "show")
-  case SAMPLE extends WvletToken(Keyword, "sample")
+  case SHOW    extends WvletToken(Keyword, "show")
+  case EXPLAIN extends WvletToken(Keyword, "explain")
+  case SAMPLE  extends WvletToken(Keyword, "sample")
 
   // Operator prepositions
   case OF   extends WvletToken(Keyword, "of")
@@ -153,24 +171,29 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   case TO   extends WvletToken(Keyword, "to")
   case WITH extends WvletToken(Keyword, "with")
 
-  case FROM      extends WvletToken(Keyword, "from")
-  case AGG       extends WvletToken(Keyword, "agg")
-  case SELECT    extends WvletToken(Keyword, "select")
-  case FOR       extends WvletToken(Keyword, "for")
-  case LET       extends WvletToken(Keyword, "let")
-  case WHERE     extends WvletToken(Keyword, "where")
-  case GROUP     extends WvletToken(Keyword, "group")
-  case HAVING    extends WvletToken(Keyword, "having")
-  case ORDER     extends WvletToken(Keyword, "order")
-  case LIMIT     extends WvletToken(Keyword, "limit")
-  case TRANSFORM extends WvletToken(Keyword, "transform")
-  case PIVOT     extends WvletToken(Keyword, "pivot")
+  case FROM   extends WvletToken(Keyword, "from")
+  case AGG    extends WvletToken(Keyword, "agg")
+  case SELECT extends WvletToken(Keyword, "select")
+  case FOR    extends WvletToken(Keyword, "for")
+  case LET    extends WvletToken(Keyword, "let")
+  case WHERE  extends WvletToken(Keyword, "where")
+  case GROUP  extends WvletToken(Keyword, "group")
+  case HAVING extends WvletToken(Keyword, "having")
+  case ORDER  extends WvletToken(Keyword, "order")
+  case LIMIT  extends WvletToken(Keyword, "limit")
+  // case TRANSFORM extends WvletToken(Keyword, "transform")
+  case PIVOT   extends WvletToken(Keyword, "pivot")
+  case UNPIVOT extends WvletToken(Keyword, "unpivot")
 
+  case COUNT    extends WvletToken(Keyword, "count")
   case DISTINCT extends WvletToken(Keyword, "distinct")
 
   // for order by
-  case ASC  extends WvletToken(Keyword, "asc")
-  case DESC extends WvletToken(Keyword, "desc")
+  case ASC   extends WvletToken(Keyword, "asc")
+  case DESC  extends WvletToken(Keyword, "desc")
+  case NULLS extends WvletToken(Keyword, "nulls")
+  case FIRST extends WvletToken(Keyword, "first")
+  case LAST  extends WvletToken(Keyword, "last")
 
   // join keywords
   case JOIN  extends WvletToken(Keyword, "join")
@@ -184,6 +207,7 @@ enum WvletToken(val tokenType: TokenType, val str: String):
 
   // column modification operators
   case ADD      extends WvletToken(Keyword, "add")
+  case PREPEND  extends WvletToken(Keyword, "prepend")
   case EXCLUDE  extends WvletToken(Keyword, "exclude")
   case RENAME   extends WvletToken(Keyword, "rename")
   case SHIFT    extends WvletToken(Keyword, "shift")
@@ -211,8 +235,8 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   case EXPORT  extends WvletToken(Keyword, "export")
   case PACKAGE extends WvletToken(Keyword, "package")
   case MODEL   extends WvletToken(Keyword, "model")
-  case QUERY   extends WvletToken(Keyword, "query")
   case EXECUTE extends WvletToken(Keyword, "execute")
+  case USE     extends WvletToken(Keyword, "use")
 
   case VAL extends WvletToken(Keyword, "val")
 
@@ -222,14 +246,15 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   case ELSE extends WvletToken(Keyword, "else")
   case CASE extends WvletToken(Keyword, "case")
   case WHEN extends WvletToken(Keyword, "when")
-  case END  extends WvletToken(Keyword, "end")
+  // case END  extends WvletToken(Keyword, "end")
 
   // Condition keywords
-  case AND  extends WvletToken(Keyword, "and")
-  case OR   extends WvletToken(Keyword, "or")
-  case NOT  extends WvletToken(Keyword, "not")
-  case IS   extends WvletToken(Keyword, "is")
-  case LIKE extends WvletToken(Keyword, "like")
+  case AND     extends WvletToken(Keyword, "and")
+  case OR      extends WvletToken(Keyword, "or")
+  case NOT     extends WvletToken(Keyword, "not")
+  case IS      extends WvletToken(Keyword, "is")
+  case LIKE    extends WvletToken(Keyword, "like")
+  case BETWEEN extends WvletToken(Keyword, "between")
 
   // DML operators
   case SAVE     extends WvletToken(Keyword, "save")
@@ -251,9 +276,12 @@ object WvletToken:
     WvletToken.MAP
   )
 
+  val nonReservedKeywords = Set(WvletToken.COUNT, WvletToken.CONCAT)
+
   val stringStartToken = List(
     WvletToken.IDENTIFIER,
     WvletToken.STRING_INTERPOLATION_PREFIX,
+    WvletToken.TRIPLE_QUOTE_INTERPOLATION_PREFIX,
     WvletToken.BACKQUOTED_IDENTIFIER,
     WvletToken.SINGLE_QUOTE,
     WvletToken.DOUBLE_QUOTE
@@ -264,6 +292,7 @@ object WvletToken:
   val keywordAndSymbolTable = allKeywordAndSymbol.map(x => x.str -> x).toMap
 
   val joinKeywords = List(
+    WvletToken.ASOF,
     WvletToken.JOIN,
     WvletToken.ON,
     WvletToken.LEFT,
@@ -284,68 +313,51 @@ object WvletToken:
       WvletToken.HAVING,
       WvletToken.ORDER,
       WvletToken.LIMIT,
-      WvletToken.TRANSFORM,
+      // WvletToken.TRANSFORM,
       WvletToken.TEST
     ) ++ joinKeywords
 
   val queryDelimiters = Set(
     WvletToken.EOF,
-    WvletToken.END,
+    // WvletToken.END,
     WvletToken.R_BRACE,
     WvletToken.R_PAREN,
     WvletToken.SEMICOLON,
     WvletToken.PIPE
   )
 
+  val stringLiterals = Set(
+    WvletToken.SINGLE_QUOTE_STRING,
+    WvletToken.DOUBLE_QUOTE_STRING,
+    WvletToken.TRIPLE_QUOTE_STRING
+  )
+
+  val stringInterpolationPrefixes = Set(
+    WvletToken.STRING_INTERPOLATION_PREFIX,
+    WvletToken.TRIPLE_QUOTE_INTERPOLATION_PREFIX
+  )
+
   def isQueryDelimiter(t: WvletToken): Boolean = queryDelimiters.contains(t)
 
-  // Line Feed '\n'
-  inline val LF = '\u000A'
-  // Form Feed '\f'
-  inline val FF = '\u000C'
-  // Carriage Return '\r'
-  inline val CR = '\u000D'
-  // Substitute (SUB), which is used as the EOF marker in Windows
-  inline val SU = '\u001A'
+  given tokenTypeInfo: TokenTypeInfo[WvletToken] with
+    override def empty: WvletToken                        = WvletToken.EMPTY
+    override def errorToken: WvletToken                   = WvletToken.ERROR
+    override def eofToken: WvletToken                     = WvletToken.EOF
+    override def identifier: WvletToken                   = WvletToken.IDENTIFIER
+    override def findToken(s: String): Option[WvletToken] = keywordAndSymbolTable.get(s)
+    override def integerLiteral: WvletToken               = WvletToken.INTEGER_LITERAL
+    override def longLiteral: WvletToken                  = WvletToken.LONG_LITERAL
+    override def decimalLiteral: WvletToken               = WvletToken.DECIMAL_LITERAL
+    override def expLiteral: WvletToken                   = WvletToken.EXP_LITERAL
+    override def doubleLiteral: WvletToken                = WvletToken.DOUBLE_LITERAL
+    override def floatLiteral: WvletToken                 = WvletToken.FLOAT_LITERAL
 
-  def isLineBreakChar(c: Char): Boolean =
-    (c: @switch) match
-      case LF | FF | CR | SU =>
-        true
-      case _ =>
-        false
-
-  /**
-    * White space character but not a new line (\n)
-    *
-    * @param c
-    * @return
-    */
-  def isWhiteSpaceChar(c: Char): Boolean =
-    (c: @switch) match
-      case ' ' | '\t' | CR =>
-        true
-      case _ =>
-        false
-
-  def isNumberSeparator(ch: Char): Boolean = ch == '_'
-
-  /**
-    * Convert a character to an integer value using the given base. Returns -1 upon failures
-    */
-  def digit2int(ch: Char, base: Int): Int =
-    val num =
-      if ch <= '9' then
-        ch - '0'
-      else if 'a' <= ch && ch <= 'z' then
-        ch - 'a' + 10
-      else if 'A' <= ch && ch <= 'Z' then
-        ch - 'A' + 10
-      else
-        -1
-    if 0 <= num && num < base then
-      num
-    else
-      -1
+    override def commentToken: WvletToken         = WvletToken.COMMENT
+    override def docCommentToken: WvletToken      = WvletToken.DOC_COMMENT
+    override def singleQuoteString: WvletToken    = WvletToken.SINGLE_QUOTE_STRING
+    override def doubleQuoteString: WvletToken    = WvletToken.DOUBLE_QUOTE_STRING
+    override def tripleQuoteString: WvletToken    = WvletToken.TRIPLE_QUOTE_STRING
+    override def whiteSpace: WvletToken           = WvletToken.WHITESPACE
+    override def backQuotedIdentifier: WvletToken = WvletToken.BACKQUOTED_IDENTIFIER
 
 end WvletToken

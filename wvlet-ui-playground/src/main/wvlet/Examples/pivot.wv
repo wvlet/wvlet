@@ -1,0 +1,7 @@
+from lineitem
+-- Transform l_linestatus values into columns
+pivot on l_linestatus
+group by l_returnflag
+agg _.count
+-- Order by some specific column values
+order by `F`

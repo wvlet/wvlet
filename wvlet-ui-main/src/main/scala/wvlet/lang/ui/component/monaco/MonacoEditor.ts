@@ -45,14 +45,14 @@ export class MonacoEditor {
         })
 
         // Use relative font size (rem) to adjust the editor font size
-        var fontSize = 0.8 * parseFloat(getComputedStyle(document.documentElement).fontSize);
+        var fontSize = 0.80 * parseFloat(getComputedStyle(document.documentElement).fontSize);
 
         this.editor = monaco.editor.create(document.getElementById(this.id), {
             value: this.initialText,
             language: this.lang,
             theme: theme,
             fontSize: fontSize,
-            fontFamily: 'Consolas, ui-monospace, SFMono-Regular, Menlo, Monaco, monospace',
+            fontFamily: 'Monaco, Consolas, ui-monospace, SFMono-Regular, Menlo, monospace',
             minimap: {
                 enabled: false
             },

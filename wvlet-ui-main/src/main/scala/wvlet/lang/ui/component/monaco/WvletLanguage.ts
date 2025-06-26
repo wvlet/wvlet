@@ -32,6 +32,7 @@ export const language = <languages.IMonarchLanguage> {
     tokenPostfix: '.wv',
 
     keywords: [
+        "asof",
         "case",
         "when",
         "test",
@@ -76,6 +77,7 @@ export const language = <languages.IMonarchLanguage> {
         "inner",
         "cross",
         "add",
+        "prepend",
         "exclude",
         "rename",
         "shift",
@@ -130,7 +132,8 @@ export const language = <languages.IMonarchLanguage> {
         "array",
         "map",
         "date",
-        "decimal"
+        "decimal",
+        "interval"
     ],
 
     operators: [
@@ -175,14 +178,15 @@ export const language = <languages.IMonarchLanguage> {
                }
             }],
             [/[A-Z][a-zA-Z_0-9][a-zA-Z_\.0-9]*/, 'type.identifier'],
+            [/---/, { token: 'comment', next:'@multilinecomment' }],
             [/--.*/, 'comment'],
-            [/"""/, { token: 'comment', next:'@multilinecomment' }],
             [/@symbols/, {
                 cases : {
                     '@operators': 'operator',
                     '@default': ''
                 }
             }],
+            [/"""/, { token: 'string.quote', next:'@string' }],
             [/"/, { token:'string.quote', next:'@string'}],
             [/'.*?'/, 'string'],
             [/`.*?`/, 'string.backquoted'],
@@ -191,10 +195,11 @@ export const language = <languages.IMonarchLanguage> {
             [/[1-9][0-9_]+/, 'number'],
         ],
         multilinecomment: [
-          [/"""/, { token: 'comment', next: '@pop' }],
+          [/---/, { token: 'comment', next: '@pop' }],
           [/./, 'comment']
         ],
         string: [
+          [/"""/, { token: 'string.quote', next: '@pop' }],
           [/"/, { token: 'string.quote', next: '@pop' }],
           [/\$\{/, { token: 'string.quote', next: '@interpolation' }],
           [/./, 'string']

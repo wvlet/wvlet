@@ -156,7 +156,7 @@ case class UnresolvedAttribute(override val nameExpr: NameExpr, span: Span) exte
   override def inputAttributes: Seq[Attribute]  = Seq.empty
   override def outputAttributes: Seq[Attribute] = Seq.empty
 
-case class AllColumns(override val nameExpr: NameExpr, columns: Option[Seq[Attribute]], span: Span)
+case class AllColumns(override val nameExpr: NameExpr, columns: Option[List[Attribute]], span: Span)
     extends Attribute
     with LogSupport:
   override def fullName: String = nameExpr.fullName

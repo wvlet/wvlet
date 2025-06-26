@@ -2,7 +2,8 @@ from [
   [1, 'apple', 100],
   [2, 'banana', 50]
 ] as fruit(id, name, price)
-concat
-from [
-  [3, 'coconut', 120],
-] as fruit(id, name, price)
+concat {
+  from [
+    [3, 'coconut', 120],
+  ] as fruit(id, name, price)
+}

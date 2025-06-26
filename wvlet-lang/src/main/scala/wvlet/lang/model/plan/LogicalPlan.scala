@@ -13,11 +13,11 @@
  */
 package wvlet.lang.model.plan
 
-import wvlet.lang.compiler.{Name, SourceFile}
+import wvlet.lang.compiler.{Context, Name, SourceFile}
 import wvlet.lang.model.DataType.EmptyRelationType
 import wvlet.lang.model.expr.NameExpr.EmptyName
 import wvlet.lang.model.expr.{Attribute, AttributeList, Expression, NameExpr}
-import wvlet.lang.model.{RelationType, RelationTypeList, TreeNode}
+import wvlet.lang.model.{RelationType, RelationTypeList, SyntaxTreeNode, TreeNode}
 import wvlet.airframe.ulid.ULID
 import wvlet.lang.api.StatusCode
 import wvlet.lang.api.{LinePosition, Span}
@@ -27,7 +27,7 @@ enum PlanProperty:
   // Used for recording a Symbol defined for the tree
   case SymbolOfTree
 
-trait LogicalPlan extends TreeNode with Product:
+trait LogicalPlan extends SyntaxTreeNode:
   // Ephemeral properties of the plan node, which will be used during compilation phases
   private var properties = Map.empty[PlanProperty, Any]
 
@@ -41,11 +41,7 @@ trait LogicalPlan extends TreeNode with Product:
   def isEmpty: Boolean  = false
   def nonEmpty: Boolean = !isEmpty
 
-  def modelName: String =
-    val n = this.getClass.getSimpleName
-    n.stripSuffix("$")
-
-  def pp: String = LogicalPlanPrinter.print(this)
+  def pp(using ctx: Context = Context.NoContext): String = LogicalPlanPrinter.print(this)
 
   // True if all input attributes are resolved.
   lazy val resolved: Boolean = childExpressions.forall(_.resolved) && resolvedChildren
@@ -69,7 +65,7 @@ trait LogicalPlan extends TreeNode with Product:
     *
     * @return
     */
-  def children: Seq[LogicalPlan]
+  def children: List[LogicalPlan]
 
   // Input attributes (column names) of the relation
   def relationType: RelationType
@@ -165,8 +161,9 @@ trait LogicalPlan extends TreeNode with Product:
     *
     * @param rule
     */
-  def traverseChildren[U](rule: PartialFunction[LogicalPlan, U]): Unit = productIterator
-    .foreach(child => recursiveTraverse(rule)(child))
+  def traverseChildren[U](rule: PartialFunction[LogicalPlan, U]): Unit = productIterator.foreach(
+    child => recursiveTraverse(rule)(child)
+  )
 
   private def recursiveTraverseOnce[U](f: PartialFunction[LogicalPlan, U])(arg: Any): Unit =
     def loop(v: Any): Unit =
@@ -204,6 +201,16 @@ trait LogicalPlan extends TreeNode with Product:
     */
   def traverseChildrenOnce[U](rule: PartialFunction[LogicalPlan, U]): Unit = productIterator
     .foreach(child => recursiveTraverseOnce(rule)(child))
+
+  /**
+    * Recursively traverse LogicalPlan and apply the rule in the depth-first manner.
+    * @param rule
+    * @return
+    */
+  def dfs(rule: PartialFunction[LogicalPlan, Unit]): Unit =
+    traverseChildrenOnce(_.dfs(rule))
+    if rule.isDefinedAt(this) then
+      rule.apply(this)
 
   /**
     * Iterate through LogicalPlans and apply matching rules for transformation. The transformation
@@ -423,35 +430,6 @@ trait LogicalPlan extends TreeNode with Product:
     else
       this
 
-  protected def copyInstance(newArgs: Seq[AnyRef]): this.type =
-    // TODO: Use non-reflection to support Scala.js/Scala Native
-    try
-      val args = newArgs.map { (x: Any) =>
-        x match
-          case s: Span =>
-            // Span can be a plain Long type due to optimization
-            s.coordinate
-          case other =>
-            other
-      }
-      val newObj = newInstance(args*)
-      newObj match
-        case t: TreeNode =>
-          if this.symbol.tree != null then
-            // Update the tree reference to the rewritten one
-            this.symbol.tree = t
-          t.symbol = this.symbol
-        case _ =>
-      newObj.asInstanceOf[this.type]
-    catch
-      case e: IllegalArgumentException =>
-        throw StatusCode
-          .COMPILATION_FAILURE
-          .newException(
-            s"Failed to create ${modelName} node with args: ${newArgs.mkString(", ")}",
-            e
-          )
-
   /**
     * List all input expressions to the plan
     *
@@ -512,12 +490,12 @@ trait LogicalPlan extends TreeNode with Product:
 end LogicalPlan
 
 trait LeafPlan extends LogicalPlan:
-  override def children: Seq[LogicalPlan]      = Nil
+  override def children: List[LogicalPlan]     = Nil
   override def inputRelationType: RelationType = EmptyRelationType
 
 trait UnaryPlan extends LogicalPlan:
   def child: LogicalPlan
-  override def children: Seq[LogicalPlan] = child :: Nil
+  override def children: List[LogicalPlan] = child :: Nil
   override def inputRelationType: RelationType =
     child match
       case r: Relation =>
@@ -528,7 +506,7 @@ trait UnaryPlan extends LogicalPlan:
 trait BinaryPlan extends LogicalPlan:
   def left: LogicalPlan
   def right: LogicalPlan
-  override def children: Seq[LogicalPlan] = Seq(left, right)
+  override def children: List[LogicalPlan] = List(left, right)
 
 object LogicalPlan:
   val empty = PackageDef(name = EmptyName, statements = Nil, span = NoSpan)

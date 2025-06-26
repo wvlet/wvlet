@@ -22,7 +22,7 @@ import wvlet.lang.model.expr.*
 /*
  * SQL statements for changing the table schema or catalog
  */
-sealed trait DDL extends LogicalPlan with LeafPlan:
+trait DDL extends TopLevelStatement with LeafPlan:
   override def relationType: RelationType = EmptyRelationType
 
 case class TableDef(name: NameExpr, params: Seq[TableDefParam], span: Span) extends DDL:
@@ -51,7 +51,7 @@ case class RenameDatabase(database: NameExpr, renameTo: NameExpr, span: Span) ex
 case class CreateTable(
     table: NameExpr,
     ifNotExists: Boolean,
-    tableElems: Seq[TableElement],
+    tableElems: List[ColumnDef],
     span: Span
 ) extends DDL
 

@@ -14,19 +14,29 @@
 package wvlet.lang.api
 
 enum StatusType:
+  // Success status
   case Success
+  // User or query errors, which is not retryable
   case UserError
-  case SystemError
-  case ExternalError
+  // Internal errors, which is usually retryable
+  case InternalError
+  // Insufficient resources to complete the task. Users can retry after the resource is available
+  case ResourceExhausted
 
+/**
+  * The standard error code for throwing exceptions
+  * @param statusType
+  */
 enum StatusCode(statusType: StatusType):
 
   case OK extends StatusCode(StatusType.Success)
-  // Used for successful exit using Exception
+  // Used for successful exit by throwing an Exception
   case EXIT_SUCCESSFULLY extends StatusCode(StatusType.Success)
 
-  case SYNTAX_ERROR     extends StatusCode(StatusType.UserError)
-  case UNEXPECTED_TOKEN extends StatusCode(StatusType.UserError)
+  // User errors
+  case SYNTAX_ERROR               extends StatusCode(StatusType.UserError)
+  case UNEXPECTED_TOKEN           extends StatusCode(StatusType.UserError)
+  case UNCLOSED_MULTILINE_LITERAL extends StatusCode(StatusType.UserError)
 
   case INVALID_ARGUMENT      extends StatusCode(StatusType.UserError)
   case SCHEMA_NOT_FOUND      extends StatusCode(StatusType.UserError)
@@ -48,9 +58,12 @@ enum StatusCode(statusType: StatusType):
 
   case TEST_FAILED extends StatusCode(StatusType.UserError)
 
+  case INTERNAL_ERROR extends StatusCode(StatusType.InternalError)
+
+  case RESOURCE_EXHAUSTED extends StatusCode(StatusType.ResourceExhausted)
+
   def isUserError: Boolean     = statusType == StatusType.UserError
-  def isSystemError: Boolean   = statusType == StatusType.SystemError
-  def isExternalError: Boolean = statusType == StatusType.ExternalError
+  def isInternalError: Boolean = statusType == StatusType.InternalError
   def isSuccess: Boolean       = statusType == StatusType.Success
 
   def name: String                                  = this.toString
@@ -71,7 +84,13 @@ enum StatusCode(statusType: StatusType):
       if line.isEmpty then
         s"${baseMsg} (${locString})"
       else
-        s"${baseMsg}\n${line} (${locString})\n${" " * (column - 1)}^\n"
+        var pos = 0
+        for i <- 0 until column.min(line.length) do
+          if line(i) == '\t' then
+            pos += 4
+          else
+            pos += 1
+        s"${baseMsg}\n${line} (${locString})\n${" " * (pos - 1)}^\n"
 
     WvletLangException(this, err, sourceLocation)
 

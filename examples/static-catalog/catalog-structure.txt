@@ -1,0 +1,69 @@
+# Example Catalog Directory Structure
+
+catalog/
+├── duckdb/
+│   └── example_db/
+│       ├── schemas.json       # List of database schemas
+│       ├── main.json         # Tables in 'main' schema
+│       ├── sales.json        # Tables in 'sales' schema  
+│       ├── analytics.json    # Tables in 'analytics' schema
+│       └── functions.json    # Available SQL functions
+└── trino/
+    └── prod_catalog/
+        ├── schemas.json
+        ├── default.json
+        ├── hive.json
+        └── functions.json
+
+# Sample schemas.json
+[
+  {
+    "catalog": "example_db",
+    "name": "main",
+    "description": "Main schema"
+  },
+  {
+    "catalog": "example_db", 
+    "name": "sales",
+    "description": "Sales data"
+  },
+  {
+    "catalog": "example_db",
+    "name": "analytics", 
+    "description": "Analytics tables"
+  }
+]
+
+# Sample sales.json (table definitions)
+[
+  {
+    "tableName": {
+      "catalog": "example_db",
+      "schema": "sales",
+      "name": "customers"
+    },
+    "columns": [
+      {"name": "customer_id", "dataType": {"typeName": "int"}},
+      {"name": "name", "dataType": {"typeName": "string"}},
+      {"name": "email", "dataType": {"typeName": "string"}},
+      {"name": "country", "dataType": {"typeName": "string"}},
+      {"name": "created_at", "dataType": {"typeName": "timestamp"}}
+    ],
+    "description": "Customer master data"
+  },
+  {
+    "tableName": {
+      "catalog": "example_db",
+      "schema": "sales",
+      "name": "orders"
+    },
+    "columns": [
+      {"name": "order_id", "dataType": {"typeName": "int"}},
+      {"name": "customer_id", "dataType": {"typeName": "int"}},
+      {"name": "order_date", "dataType": {"typeName": "date"}},
+      {"name": "total_amount", "dataType": {"typeName": "decimal", "precision": 10, "scale": 2}},
+      {"name": "status", "dataType": {"typeName": "string"}}
+    ],
+    "description": "Order transactions"
+  }
+]

@@ -13,6 +13,7 @@
  */
 
 import { defineConfig } from "vite";
+import tailwindcss from "@tailwindcss/vite";
 import fs from 'fs'
 import replace from '@rollup/plugin-replace';
 
@@ -32,6 +33,7 @@ export default defineConfig({
     }
   },
   plugins: [
+    tailwindcss(),
     replace({
       preventAssignment: true,
       __target__: scalaJsTarget

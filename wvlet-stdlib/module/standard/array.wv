@@ -1,7 +1,7 @@
 package wvlet.standard
 
 -- An array created by 'group by' clause
-type array[A]:
+type array[A] = {
   def length: int = sql"length(${this})"
   def size: int = sql"length(${this})"
   def get(index: int): A = sql"${this}[${index}]"
@@ -29,10 +29,10 @@ type array[A]:
 
   def exists: boolean = sql"exists(${this})"
   def not_exists: boolean = sql"not exists(${this})"
-end
+}
 
 -- array functions specific to numeric elements
-type array[A of numeric]:
+type array[A of numeric] = {
   def sum: A = sql"sum(${this})"
   def avg: A = sql"avg(${this})"
   def median: A = sql"median(${this})"
@@ -41,4 +41,4 @@ type array[A of numeric]:
 
   def approx_quantile(pos:double) in trino: A = sql"aprox_percentile(${this}, ${pos})"
   def approx_quantile(pos:double) in duckdb: A = sql"approx_quantile(${this}, ${pos})"
-end
+}

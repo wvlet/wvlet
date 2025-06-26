@@ -25,10 +25,16 @@ import scala.util.control.NonFatal
 trait SpecRunner(
     specPath: String,
     ignoredSpec: Map[String, String] = Map.empty,
-    prepareTPCH: Boolean = false
+    parseOnly: Boolean = false,
+    prepareTPCH: Boolean = false,
+    prepareTPCDS: Boolean = false
 ) extends AirSpec:
   private val workEnv = WorkEnv(path = specPath, logLevel = logger.getLogLevel)
-  private val profile = Profile.defaultDuckDBProfile.withProperty("prepareTPCH", prepareTPCH)
+  private val profile = Profile
+    .defaultDuckDBProfile
+    .withProperty("prepareTPCH", prepareTPCH)
+    .withProperty("prepareTPCDS", prepareTPCDS)
+
   private val dbConnectorProvider = DBConnectorProvider(workEnv)
   private val queryExecutor       = QueryExecutor(dbConnectorProvider, profile, workEnv)
   override def afterAll: Unit =
@@ -36,7 +42,16 @@ trait SpecRunner(
     dbConnectorProvider.close()
 
   private val compiler = Compiler(
-    CompilerOptions(sourceFolders = List(specPath), workEnv = workEnv)
+    CompilerOptions(
+      phases =
+        if parseOnly then
+          Compiler.parseOnlyPhases
+        else
+          Compiler.allPhases
+      ,
+      sourceFolders = List(specPath),
+      workEnv = workEnv
+    )
   )
 
   compiler.setDefaultCatalog(queryExecutor.getDBConnector(profile).getCatalog("memory", "main"))
@@ -53,8 +68,10 @@ trait SpecRunner(
     }
 
   protected def runSpec(unit: CompilationUnit): QueryResult =
+    trace(s"compiling: ${unit.sourceFile}")
     val compileResult = compiler.compileSingleUnit(unit)
-    val result        = queryExecutor.executeSingle(unit, compileResult.context.withDebugRun(true))
+    trace(s"compiled: ${unit.sourceFile}")
+    val result = queryExecutor.executeSingle(unit, compileResult.context.withDebugRun(true))
     debug(result.toPrettyBox(maxWidth = Some(120)))
     result
 
@@ -81,15 +98,11 @@ end SpecRunner
 
 class BasicSpec
     extends SpecRunner(
-      "spec/basic",
-      ignoredSpec = Map(
-        "values.wv" ->
-          "Need to support RawJSON data"
-          // "agg_col_type.wv" -> "Fix an issue that TypeVariable (array[A]) is parsed as GenericType"
-      )
+      "spec/basic"
+      // ignoredSpec = Map("values.wv" -> "Need to support array[struct] data")
     )
 
-class TPCHSpec extends SpecRunner("spec/tpch", prepareTPCH = true)
+class WvletTPCHSpec extends SpecRunner("spec/tpch", prepareTPCH = true)
 
 // Negative tests, expecting some errors
 class NegSpec extends SpecRunner("spec/neg"):
@@ -99,3 +112,9 @@ class NegSpec extends SpecRunner("spec/neg"):
       debug(e)
     case e: Throwable =>
       throw e
+
+class CDPBehaviorSpec
+    extends SpecRunner(
+      "spec/cdp_behavior",
+      ignoredSpec = Map("behavior.wv" -> "Need to support subscribe")
+    )

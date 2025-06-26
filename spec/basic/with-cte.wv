@@ -1,0 +1,24 @@
+with p as {
+  from 'person.json'
+  select id, name
+  where id > 1
+}
+from p
+count
+
+test _.rows = [[2]]
+;
+
+-- The table name in CTE is a local identifier, which
+-- is not visible outside the scope of the query
+with p as {
+  from 'person.json'
+}
+with p2 as {
+  from p
+  where id = 1
+}
+from p2
+count
+
+test _.rows = [[1]]

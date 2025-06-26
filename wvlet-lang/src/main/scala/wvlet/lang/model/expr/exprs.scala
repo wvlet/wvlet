@@ -15,12 +15,13 @@ package wvlet.lang.model.expr
 
 import wvlet.lang.api.{LinePosition, Span}
 import wvlet.lang.api.Span.NoSpan
-import wvlet.lang.compiler.{Name, TermName, TypeName}
+import wvlet.lang.compiler.{Name, TermName, TypeName, Printer}
 import wvlet.lang.model.DataType.{
   AnyType,
   ArrayType,
   EmbeddedRecordType,
   IntConstant,
+  NamedType,
   TimestampField,
   TypeVariable
 }
@@ -48,6 +49,9 @@ case class ParenthesizedExpression(child: Expression, span: Span) extends UnaryE
 case class TypedExpression(child: Expression, tpe: DataType, span: Span) extends UnaryExpression:
   override def dataType: DataType = tpe
 
+case class TableAlias(name: NameExpr, alias: NameExpr, span: Span) extends LeafExpression:
+  override def dataType: DataType = DataType.UnknownType
+
 /**
   * variable name, function name, type name, etc. The name might have a qualifier.
   */
@@ -56,7 +60,8 @@ sealed trait NameExpr extends Expression:
   def strExpr: String
   def leafName: String
   def fullName: String
-  def nonEmpty: Boolean = !isEmpty
+  def nonLeafName: String = fullName.stripSuffix(s".${leafName}")
+  def nonEmpty: Boolean   = !isEmpty
   def isEmpty: Boolean =
     // TODO: This part is a bit ad-hoc as EmptyName can be copied during the tree transformation, so
     // we can't use the object equality like this eq EmptyName
@@ -67,6 +72,12 @@ sealed trait NameExpr extends Expression:
   def toTermName: TermName = Name.termName(leafName)
   def toTypeName: TypeName = Name.typeName(leafName)
 
+  def map[A](f: Expression => A): Option[A] =
+    if this.isEmpty then
+      None
+    else
+      Some(f(this))
+
   def toSQLAttributeName: String =
     val s =
       this match
@@ -74,14 +85,28 @@ sealed trait NameExpr extends Expression:
           i.unquotedValue
         case _ =>
           fullName
-    if s.matches("^[_a-zA-Z][_a-zA-Z0-9]*$") && !sqlKeywords.contains(s) then
+    if s.matches("^[\\*_a-zA-Z][_a-zA-Z0-9\\*\\.]*$") && !sqlKeywords.contains(s) then
       s
     else
       s""""${s}""""
 
+  def toWvletAttributeName: String =
+    val s =
+      this match
+        case i: Identifier =>
+          i.unquotedValue
+        case _ =>
+          fullName
+    if s.matches("^[\\*_a-zA-Z][_a-zA-Z0-9\\*\\.]*$") && !sqlKeywords.contains(s) then
+      s
+    else
+      s"`${s}`"
+
+end NameExpr
+
 object NameExpr:
-  val EmptyName: Identifier           = UnquotedIdentifier("<empty>", NoSpan)
-  def fromString(s: String): NameExpr = UnquotedIdentifier(s, NoSpan)
+  val EmptyName: Identifier                                = UnquotedIdentifier("<empty>", NoSpan)
+  def fromString(s: String, span: Span = NoSpan): NameExpr = UnquotedIdentifier(s, span)
 
   private val sqlKeywords = Set(
     // TODO enumerate more SQL keywords
@@ -92,10 +117,11 @@ object NameExpr:
     "catalog"
   )
 
-case class Wildcard(span: Span) extends LeafExpression with QualifiedName:
-  override def leafName: String = "*"
-  override def fullName: String = "*"
-  override def strExpr: String  = "*"
+case class Wildcard(span: Span) extends LeafExpression with Identifier:
+  override def leafName: String      = "*"
+  override def fullName: String      = "*"
+  override def strExpr: String       = "*"
+  override def unquotedValue: String = "*"
 
   override def qualifier: Expression = NameExpr.EmptyName
 
@@ -183,9 +209,14 @@ case class DigitIdentifier(override val unquotedValue: String, span: Span) exten
 case class UnquotedIdentifier(override val unquotedValue: String, span: Span) extends Identifier:
   override def strExpr = unquotedValue
 
+/**
+  * Double quoted indentifier like "(column name)" for SQL. In Wvlet, use BackQuotedIdentifier
+  * @param unquotedValue
+  * @param span
+  */
 case class DoubleQuotedIdentifier(override val unquotedValue: String, span: Span)
     extends Identifier:
-  override def strExpr: String = s""""${unquotedValue}""""
+  override def strExpr: String = s"\"${unquotedValue}\""
 
 /**
   * Backquote is used for table or column names that conflicts with reserved words
@@ -202,7 +233,7 @@ case class BackQuotedIdentifier(
   override def strExpr: String                                      = s"`${unquotedValue}`"
   override def toResolved(dataType: DataType): BackQuotedIdentifier = this.copy(dataType = dataType)
 
-case class BackquoteInterpolatedString(
+case class BackquoteInterpolatedIdentifier(
     prefix: NameExpr,
     parts: List[Expression],
     override val dataType: DataType,
@@ -220,13 +251,14 @@ case class NaturalJoin(span: Span) extends JoinCriteria with LeafExpression:
   override def toString: String = "NaturalJoin"
 
 sealed trait JoinOnTheSameColumns extends JoinCriteria:
-  def columns: Seq[NameExpr]
+  def columns: List[NameExpr]
 
-case class JoinUsing(columns: Seq[NameExpr], span: Span) extends JoinOnTheSameColumns:
+case class JoinUsing(columns: List[NameExpr], span: Span) extends JoinOnTheSameColumns:
   override def children: Seq[Expression] = columns
 
-case class ResolvedJoinUsing(keys: Seq[MultiSourceColumn], span: Span) extends JoinOnTheSameColumns:
-  override def columns: Seq[NameExpr] = keys.map { k =>
+case class ResolvedJoinUsing(keys: List[MultiSourceColumn], span: Span)
+    extends JoinOnTheSameColumns:
+  override def columns: List[NameExpr] = keys.map { k =>
     k.nameExpr
   }
 
@@ -267,8 +299,8 @@ enum NullOrdering(val expr: String):
 
 // Window functions
 case class Window(
-    partitionBy: Seq[Expression],
-    orderBy: Seq[SortItem],
+    partitionBy: List[Expression],
+    orderBy: List[SortItem],
     frame: Option[WindowFrame],
     span: Span
 ) extends Expression:
@@ -278,12 +310,12 @@ enum FrameType(val expr: String):
   case RangeFrame extends FrameType("range")
   case RowsFrame  extends FrameType("rows")
 
-enum FrameBound(val expr: String):
-  case UnboundedPreceding extends FrameBound("unbounded preceding")
-  case UnboundedFollowing extends FrameBound("unbounded following")
-  case Preceding(n: Long) extends FrameBound(s"${n} preceding")
-  case Following(n: Long) extends FrameBound(s"${n} following")
-  case CurrentRow         extends FrameBound("current row")
+enum FrameBound(val expr: String, val wvExpr: String):
+  case UnboundedPreceding extends FrameBound("unbounded preceding", "")
+  case UnboundedFollowing extends FrameBound("unbounded following", "")
+  case Preceding(n: Long) extends FrameBound(s"${n} preceding", s"-${n}")
+  case Following(n: Long) extends FrameBound(s"${n} following", s"${n}")
+  case CurrentRow         extends FrameBound("current row", "0")
 
 case class WindowFrame(frameType: FrameType, start: FrameBound, end: FrameBound, span: Span)
     extends Expression
@@ -312,7 +344,8 @@ case class WindowApply(base: Expression, window: Window, span: Span) extends Exp
   override def children: Seq[Expression] = Seq(base, window)
   override def dataType: DataType        = base.dataType
 
-case class FunctionArg(name: Option[TermName], value: Expression, span: Span) extends Expression:
+case class FunctionArg(name: Option[TermName], value: Expression, isDistinct: Boolean, span: Span)
+    extends Expression:
   override def children: Seq[Expression] = Seq(value)
   override def dataType: DataType        = value.dataType
 
@@ -346,14 +379,13 @@ case class NotEq(left: Expression, right: Expression, span: Span)
   override def operatorName: String = "!="
   // require(operatorName == "<>" || operatorName == "!=", "NotEq.operatorName must be either <> or !=", nodeLocation)
 
+sealed trait LogicalConditionalExpression extends ConditionalExpression with BinaryExpression
+
 case class And(left: Expression, right: Expression, span: Span)
-    extends ConditionalExpression
-    with BinaryExpression:
+    extends LogicalConditionalExpression:
   override def operatorName: String = "and"
 
-case class Or(left: Expression, right: Expression, span: Span)
-    extends ConditionalExpression
-    with BinaryExpression:
+case class Or(left: Expression, right: Expression, span: Span) extends LogicalConditionalExpression:
   override def operatorName: String = "or"
 
 case class Not(child: Expression, span: Span) extends ConditionalExpression with UnaryExpression
@@ -394,17 +426,33 @@ case class IsNotNull(child: Expression, span: Span)
     with UnaryExpression:
   override def toString: String = s"IsNotNull(${child})"
 
-case class In(a: Expression, list: Seq[Expression], span: Span) extends ConditionalExpression:
+case class In(a: Expression, list: List[Expression], span: Span) extends ConditionalExpression:
   override def children: Seq[Expression] = Seq(a) ++ list
 
-case class NotIn(a: Expression, list: Seq[Expression], span: Span) extends ConditionalExpression:
+case class NotIn(a: Expression, list: List[Expression], span: Span) extends ConditionalExpression:
   override def children: Seq[Expression] = Seq(a) ++ list
 
-case class InSubQuery(a: Expression, in: Relation, span: Span) extends ConditionalExpression:
+case class InRelation(a: Expression, in: Relation, span: Span) extends ConditionalExpression:
   override def children: Seq[Expression] = Seq(a) ++ in.childExpressions
 
-case class NotInSubQuery(a: Expression, in: Relation, span: Span) extends ConditionalExpression:
+case class NotInRelation(a: Expression, in: Relation, span: Span) extends ConditionalExpression:
   override def children: Seq[Expression] = Seq(a) ++ in.childExpressions
+
+case class TupleIn(tuple: Expression, list: List[Expression], span: Span)
+    extends ConditionalExpression:
+  override def children: Seq[Expression] = Seq(tuple) ++ list
+
+case class TupleNotIn(tuple: Expression, list: List[Expression], span: Span)
+    extends ConditionalExpression:
+  override def children: Seq[Expression] = Seq(tuple) ++ list
+
+case class TupleInRelation(tuple: Expression, in: Relation, span: Span)
+    extends ConditionalExpression:
+  override def children: Seq[Expression] = Seq(tuple) ++ in.childExpressions
+
+case class TupleNotInRelation(tuple: Expression, in: Relation, span: Span)
+    extends ConditionalExpression:
+  override def children: Seq[Expression] = Seq(tuple) ++ in.childExpressions
 
 case class Like(left: Expression, right: Expression, span: Span)
     extends ConditionalExpression
@@ -575,9 +623,10 @@ case class ArithmeticUnaryExpr(sign: Sign, child: Expression, span: Span)
     extends ArithmeticExpression
     with UnaryExpression
 
-abstract sealed class Sign(val symbol: String)
-case object Positive extends Sign("+")
-case object Negative extends Sign("-")
+enum Sign(val symbol: String):
+  case NoSign   extends Sign("")
+  case Positive extends Sign("+")
+  case Negative extends Sign("-")
 
 // Set quantifier
 sealed trait SetQuantifier extends LeafExpression:
@@ -595,7 +644,19 @@ case class This(override val dataType: DataType, span: Span) extends LeafExpress
 
 // Literal
 sealed trait Literal extends Expression:
+  /**
+    * String representation of the literal, which may include quotation.
+    *
+    * This is for preserving the original representation of the literal (e.g., "0.123")
+    * @return
+    */
   def stringValue: String
+
+  /**
+    * SQL representation of this literal
+    * @return
+    */
+  def sqlExpr: String       = stringValue
   def unquotedValue: String = stringValue
 
 case class NullLiteral(span: Span) extends Literal with LeafExpression:
@@ -614,22 +675,47 @@ case class FalseLiteral(span: Span) extends BooleanLiteral with LeafExpression:
   override def stringValue: String   = "false"
   override def booleanValue: Boolean = false
 
-case class StringLiteral(value: String, span: Span) extends Literal with LeafExpression:
-  override def dataType: DataType  = DataType.StringType
-  override def stringValue: String = value
-  override def unquotedValue: String =
-    if value.startsWith("\"") then
-      value.stripPrefix("\"").stripSuffix("\"")
-    else if value.startsWith("'") then
-      value.stripPrefix("'").stripSuffix("'")
+sealed trait StringLiteral extends Literal with LeafExpression:
+  override def dataType: DataType = DataType.StringType
+
+object StringLiteral:
+  def fromString(s: String, span: Span = NoSpan): StringLiteral =
+    if s.contains("\n") then
+      TripleQuoteString(s, span)
+    else if s.contains("\"") then
+      SingleQuoteString(s, span)
     else
-      value
+      DoubleQuoteString(s, span)
+
+case class SingleQuoteString(override val unquotedValue: String, span: Span) extends StringLiteral:
+  override def stringValue: String =
+    // Need to escape `'` inside the string for SQL
+    s"'${unquotedValue.replaceAll("'", "''")}'"
+
+  override def sqlExpr: String = stringValue
+
+case class DoubleQuoteString(override val unquotedValue: String, span: Span) extends StringLiteral:
+  override def stringValue: String = s""""${unquotedValue}""""
+  override def sqlExpr: String =
+    // In SQL, double quote string means identifiers
+    // So replace double quote with single quote
+    s"'${unquotedValue.replaceAll("'", "''")}'"
+
+case class TripleQuoteString(override val unquotedValue: String, span: Span) extends StringLiteral:
+  override def stringValue: String = s"\"\"\"${unquotedValue}\"\"\""
+  override def sqlExpr: String =
+    // SQL doesn't support multi-line triple quotes,
+    // So split the string into multiple lines
+    val lines = unquotedValue.split("\n")
+    val parts: List[String] =
+      lines
+        .map { line =>
+          StringLiteral.fromString(line, span).sqlExpr
+        }
+        .toList
+    parts.mkString(" || ")
 
 case class StringPart(value: String, span: Span) extends Literal with LeafExpression:
-  override def dataType: DataType  = DataType.StringType
-  override def stringValue: String = value
-
-case class TripleQuoteLiteral(value: String, span: Span) extends Literal with LeafExpression:
   override def dataType: DataType  = DataType.StringType
   override def stringValue: String = value
 
@@ -645,7 +731,9 @@ case class TimestampLiteral(value: String, span: Span) extends Literal with Leaf
   override def dataType: DataType  = DataType.TimestampType(TimestampField.TIMESTAMP, false)
   override def stringValue: String = value
 
-case class DecimalLiteral(value: String, span: Span) extends Literal with LeafExpression:
+case class DecimalLiteral(value: String, override val stringValue: String, span: Span)
+    extends Literal
+    with LeafExpression:
   override lazy val dataType: DataType =
     value.split("\\.") match
       case Array(decimal, frac) =>
@@ -660,19 +748,30 @@ case class DecimalLiteral(value: String, span: Span) extends Literal with LeafEx
           TypeVariable(Name.typeName("scale"))
         )
 
-  override def stringValue: String = value
-
 case class CharLiteral(value: String, span: Span) extends Literal with LeafExpression:
   override def dataType: DataType  = DataType.CharType(None)
   override def stringValue: String = value
 
-case class DoubleLiteral(value: Double, span: Span) extends Literal with LeafExpression:
-  override def dataType: DataType  = DataType.DoubleType
-  override def stringValue: String = value.toString
+case class DoubleLiteral(value: Double, override val stringValue: String, span: Span)
+    extends Literal
+    with LeafExpression:
+  override def dataType: DataType = DataType.DoubleType
+  override def sqlExpr: String    = value.toString
 
-case class LongLiteral(value: Long, span: Span) extends Literal with LeafExpression:
-  override def dataType: DataType  = DataType.LongType
-  override def stringValue: String = value.toString
+case class LongLiteral(value: Long, override val stringValue: String, span: Span)
+    extends Literal
+    with LeafExpression:
+  override def dataType: DataType = DataType.LongType
+  override def sqlExpr: String    = value.toString
+
+case class GenericLiteral(tpe: DataType, value: String, span: Span)
+    extends Literal
+    with LeafExpression:
+  override def stringValue: String = value
+  override def sqlExpr             = s"${tpe.typeName} ${value}"
+
+case class BinaryLiteral(binary: String, span: Span) extends Literal with LeafExpression:
+  override def stringValue: String = binary
 
 case class IntervalLiteral(
     value: String,
@@ -681,44 +780,37 @@ case class IntervalLiteral(
     end: Option[IntervalField],
     span: Span
 ) extends Literal:
-  override def children: Seq[Expression] = Seq(startField) ++ end.toSeq
-  override def stringValue: String       = s"${sign.symbol} '${value}' ${startField}"
+  override def children: Seq[Expression] = Nil
+  override def stringValue: String =
+    if end.isEmpty then
+      if sign == Sign.NoSign then
+        s"'${value}' ${startField}"
+      else
+        s"${sign.symbol} '${value}' ${startField}"
+    else
+      s"${sign.symbol} between '${value}' ${startField} and ${end.get}"
 
-case class GenericLiteral(tpe: DataType, value: String, span: Span)
-    extends Literal
-    with LeafExpression:
-  override def stringValue: String = value
+  override def sqlExpr: String = s"interval ${stringValue}"
 
-case class BinaryLiteral(binary: String, span: Span) extends Literal with LeafExpression:
-  override def stringValue: String = binary
+object IntervalField:
+  def unapply(name: String): Option[IntervalField] = IntervalField.values.find(_.name == name)
 
-sealed trait IntervalField extends LeafExpression:
-  override def toString(): String = getClass.getSimpleName
+enum IntervalField(val name: String):
+  override def toString: String = name
 
-case class Year(span: Span)    extends IntervalField
-case class Quarter(span: Span) extends IntervalField
-case class Month(span: Span)   extends IntervalField
-case class Week(span: Span)    extends IntervalField
-case class Day(span: Span)     extends IntervalField
-
-case class DayOfWeek(span: Span) extends IntervalField:
-  override def toString(): String = "day_of_week"
-
-case class DayOfYear(span: Span) extends IntervalField:
-  override def toString(): String = "day_of_year"
-
-case class YearOfWeek(span: Span) extends IntervalField:
-  override def toString(): String = "year_of_week"
-
-case class Hour(span: Span)   extends IntervalField
-case class Minute(span: Span) extends IntervalField
-case class Second(span: Span) extends IntervalField
-
-case class TimezoneHour(span: Span) extends IntervalField:
-  override def toString(): String = "timezone_hour"
-
-case class TimezoneMinute(span: Span) extends IntervalField:
-  override def toString(): String = "timezone_minute"
+  case Year           extends IntervalField("year")
+  case Quarter        extends IntervalField("quarter")
+  case Month          extends IntervalField("month")
+  case Week           extends IntervalField("week")
+  case Day            extends IntervalField("day")
+  case DayOfWeek      extends IntervalField("day_of_week")
+  case DayOfYear      extends IntervalField("day_of_year")
+  case YearOfWeek     extends IntervalField("year_of_week")
+  case Hour           extends IntervalField("hour")
+  case Minute         extends IntervalField("minute")
+  case Second         extends IntervalField("second")
+  case TimezoneHour   extends IntervalField("timezone_hour")
+  case TimezoneMinute extends IntervalField("timezone_minute")
 
 // Value constructor
 case class ArrayConstructor(values: List[Expression], span: Span) extends Expression:
@@ -733,7 +825,7 @@ case class ArrayConstructor(values: List[Expression], span: Span) extends Expres
   override def dataType: DataType        = ArrayType(elementType)
   override def children: Seq[Expression] = values
 
-case class RowConstructor(values: Seq[Expression], span: Span) extends Expression:
+case class RowConstructor(values: List[Expression], span: Span) extends Expression:
   override def dataType: DataType        = EmbeddedRecordType(values.map(_.dataType))
   override def children: Seq[Expression] = values
   override def toString: String          = s"Row(${values.mkString(", ")})"
@@ -773,7 +865,7 @@ case class Parameter(index: Int, span: Span) extends LeafExpression
 case class SubQueryExpression(query: Relation, span: Span) extends Expression:
   override def children: Seq[Expression] = query.childExpressions
 
-case class Cast(expr: NameExpr, tpe: NameExpr, tryCast: Boolean = false, span: Span)
+case class Cast(expr: Expression, tpe: DataType, tryCast: Boolean = false, span: Span)
     extends UnaryExpression:
   override def child: Expression = expr
 
@@ -782,18 +874,18 @@ case class SchemaProperty(key: NameExpr, value: Expression, span: Span) extends 
 
 sealed trait TableElement extends Expression
 
-case class ColumnDef(columnName: NameExpr, tpe: ColumnType, span: Span)
+case class ColumnDef(columnName: NameExpr, tpe: DataType, span: Span)
     extends TableElement
     with UnaryExpression:
-  override def toString: String  = s"${columnName.strExpr}:${tpe.tpe}"
+  override def toString: String  = s"${columnName.strExpr}:${tpe.wvExpr}"
   override def child: Expression = columnName
-
-case class ColumnType(tpe: NameExpr, span: Span) extends LeafExpression
-
-case class ColumnDefLike(tableName: NameExpr, includeProperties: Boolean, span: Span)
-    extends TableElement
-    with UnaryExpression:
-  override def child: Expression = tableName
+//
+//case class ColumnType(tpe: NameExpr, span: Span) extends LeafExpression
+//
+//case class ColumnDefLike(tableName: NameExpr, includeProperties: Boolean, span: Span)
+//    extends TableElement
+//    with UnaryExpression:
+//  override def child: Expression = tableName
 
 // Aggregation
 trait GroupingKey extends UnaryExpression:
@@ -814,6 +906,7 @@ case class InterpolatedString(
     prefix: NameExpr,
     parts: List[Expression],
     override val dataType: DataType,
+    isTripleQuote: Boolean,
     span: Span
 ) extends Expression:
   override def children: Seq[Expression] = parts

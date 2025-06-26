@@ -13,18 +13,21 @@
  */
 package wvlet.lang.model.plan
 
-import wvlet.lang.api.LinePosition
+import wvlet.lang.api.{LinePosition, StatusCode}
+import wvlet.lang.compiler.Context
 import wvlet.lang.model.expr.{Attribute, NameExpr}
 import wvlet.airframe.ulid.ULID
+import wvlet.lang.model.TreeNode
 
 /**
   * Additional nodes that for organizing tasks for executing LogicalPlan nodes
   */
-sealed trait ExecutionPlan extends Product:
+
+sealed trait ExecutionPlan extends TreeNode with Product:
   def isEmpty: Boolean = false
   def planName: String = this.getClass.getSimpleName.stripSuffix("$")
 
-  def pp: String =
+  def pp(using ctx: Context = Context.NoContext): String =
     def iter(p: ExecutionPlan, level: Int): String =
       def indent(s: String, level: Int = level): String =
         val lines = s.split("\n")
@@ -39,7 +42,7 @@ sealed trait ExecutionPlan extends Product:
           case q: ExecuteQuery =>
             s"- ${header}:\n${indent(q.plan.pp, level + 1)}"
           case s: ExecuteSave =>
-            s"- ${header} as ${s.save.targetName}:\n${indent(s.queryPlan.pp, level + 1)}"
+            s"- ${header} to ${s.save.targetName}:\n${indent(s.queryPlan.pp, level + 1)}"
           case t: ExecuteTest =>
             s"- ${header} ${t.test.testExpr.pp}"
           case t: ExecuteDebug =>
@@ -52,6 +55,52 @@ sealed trait ExecutionPlan extends Product:
     iter(this, 0)
 
   end pp
+
+  def transformUp(p: PartialFunction[ExecutionPlan, ExecutionPlan]): ExecutionPlan =
+    val newPlan = mapChildren { x =>
+      if p.isDefinedAt(x) then
+        p(x)
+      else
+        x
+    }
+    p.applyOrElse(newPlan, identity)
+
+  def mapChildren(f: ExecutionPlan => ExecutionPlan): ExecutionPlan =
+    var changed = false
+
+    def iter(it: Any): AnyRef =
+      it match
+        case p: ExecutionPlan =>
+          val newP = f(p)
+          if !(newP eq p) then
+            changed = true
+          newP
+        case l: List[?] =>
+          l.map(iter)
+        case other =>
+          other.asInstanceOf[AnyRef]
+
+    val newArgs = productIterator.map(iter).toIndexedSeq
+    if changed then
+      copyInstance(newArgs)
+    else
+      this
+
+  protected def copyInstance(newArgs: Seq[AnyRef]): this.type =
+    // Using non-JVM reflection to support Scala.js/Scala Native
+    try
+      val newObj = newInstance(newArgs*)
+      newObj.asInstanceOf[this.type]
+    catch
+      case e: IllegalArgumentException =>
+        throw StatusCode
+          .COMPILATION_FAILURE
+          .newException(
+            s"Failed to create ${this.getClass.getSimpleName} node with args: ${newArgs.mkString(
+                ", "
+              )}",
+            e
+          )
 
 end ExecutionPlan
 
@@ -71,11 +120,10 @@ case object ExecuteNothing extends ExecutionPlan:
 
 case class ExecuteTasks(tasks: List[ExecutionPlan]) extends ExecutionPlan
 
-case class ExecuteQuery(plan: LogicalPlan)                            extends ExecutionPlan
-case class ExecuteSave(save: Save, queryPlan: ExecutionPlan)          extends ExecutionPlan
-case class ExecuteDelete(delete: DeleteOps, queryPlan: ExecutionPlan) extends ExecutionPlan
-case class ExecuteCommand(execute: Command)                           extends ExecutionPlan
-case class ExecuteTest(test: TestRelation)                            extends ExecutionPlan
+case class ExecuteQuery(plan: LogicalPlan)                   extends ExecutionPlan
+case class ExecuteSave(save: Save, queryPlan: ExecutionPlan) extends ExecutionPlan
+case class ExecuteCommand(execute: Command)                  extends ExecutionPlan
+case class ExecuteTest(test: TestRelation)                   extends ExecutionPlan
 
 case class ExecuteDebug(debug: Debug, debugExecutionPlan: ExecutionPlan) extends ExecutionPlan
 case class ExecuteValDef(v: ValDef)                                      extends ExecutionPlan

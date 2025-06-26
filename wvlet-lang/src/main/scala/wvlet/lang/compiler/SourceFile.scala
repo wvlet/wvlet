@@ -15,7 +15,7 @@ package wvlet.lang.compiler
 
 import wvlet.lang.api.{LinePosition, SourceLocation, Span, StatusCode}
 import wvlet.lang.compiler.parser.{WvletScanner, WvletToken}
-import wvlet.lang.compiler.parser.WvletToken.*
+import wvlet.lang.compiler.parser.Tokens.*
 import wvlet.airframe.ulid.ULID
 import wvlet.log.io.IOUtil
 
@@ -25,9 +25,14 @@ import scala.collection.mutable.ArrayBuffer
 
 object SourceFile:
   object NoSourceFile extends SourceFile(EmptyFile)
-  def fromFile(v: VirtualFile): SourceFile    = SourceFile(v)
-  def fromFile(file: String): SourceFile      = SourceFile(LocalFile(file))
-  def fromString(content: String): SourceFile = fromString(s"${ULID.newULIDString}.wv", content)
+  def fromFile(v: VirtualFile): SourceFile = SourceFile(v)
+  def fromFile(file: String): SourceFile   = SourceFile(LocalFile(file))
+  def fromWvletString(content: String): SourceFile = fromString(
+    s"${ULID.newULIDString}.wv",
+    content
+  )
+
+  def fromSqlString(content: String): SourceFile = fromString(s"${ULID.newULIDString}.sql", content)
   def fromString(wvName: String, content: String): SourceFile = SourceFile(
     MemoryFile(wvName, content)
   )
@@ -38,6 +43,10 @@ object SourceFile:
 class SourceFile(val file: VirtualFile):
   def isEmpty: Boolean          = file eq EmptyFile
   override def toString: String = file.path
+
+  def isSQL: Boolean        = file.isSQL
+  def isWv: Boolean         = file.isWv
+  def isSourceFile: Boolean = file.isSourceFile
 
   /**
     * Returns the leaf file name
@@ -58,6 +67,8 @@ class SourceFile(val file: VirtualFile):
     if isLoaded.compareAndSet(false, true) then
       loadContent
     content
+
+  def getContentAsString: String = getContent.mkString
 
   private def loadContent: IArray[Char] =
     try
@@ -85,7 +96,7 @@ class SourceFile(val file: VirtualFile):
         if ch == CR then
           i + 1 == txt.length || content(i + 1) != LF
         else
-          WvletToken.isLineBreakChar(ch)
+          isLineBreakChar(ch)
       if isLineBreak then
         buf += i + 1
       i += 1
@@ -102,7 +113,7 @@ class SourceFile(val file: VirtualFile):
 
   def sourceLocationAt(offset: Int): SourceLocation =
     val line   = offsetToLine(offset)
-    val codeAt = sourceLine(line)
+    val codeAt = sourceLine(line + 1)
     SourceLocation(
       relativeFilePath,
       fileName,

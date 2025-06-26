@@ -1,19 +1,9 @@
-facebook:
-  label: Facebook
-  permalink: /facebook
-  description: Facebook tag description
-
-hello:
-  label: Hello
-  permalink: /hello
-  description: Hello tag description
-
-docusaurus:
-  label: Docusaurus
-  permalink: /docusaurus
-  description: Docusaurus tag description
-
 tech:
   label: Tech
   permalink: /tech
   description: Technical Articles
+
+release:
+  label: Release
+  permalink: /release
+  description: Release Notes and Announcements

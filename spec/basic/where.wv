@@ -1,0 +1,5 @@
+from 'person.json'
+where id > 1
+where id < 3
+select id
+test _.rows is [[2]]

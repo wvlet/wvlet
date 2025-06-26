@@ -33,9 +33,17 @@ object ParserPhase extends Phase("parser") with LogSupport:
   def parse(compileUnit: CompilationUnit, ctx: Context): LogicalPlan =
     debug(s"Parsing ${compileUnit.sourceFile}")
 
-    val p    = WvletParser(unit = compileUnit, isContextUnit = ctx.isContextCompilationUnit)
-    val plan = p.parse()
+    val plan =
+      if compileUnit.sourceFile.isSQL then
+        val p = SqlParser(unit = compileUnit, isContextUnit = ctx.isContextCompilationUnit)
+        p.parse()
+      else
+        val p = WvletParser(unit = compileUnit, isContextUnit = ctx.isContextCompilationUnit)
+        p.parse()
+
     debug(
-      s"[parsed tree for ${compileUnit.sourceFile}:\n${plan.pp}\n${compileUnit.sourceFile.getContent}"
+      s"[parsed tree for ${compileUnit.sourceFile}:\n${plan.pp}\n${compileUnit
+          .sourceFile
+          .getContent}"
     )
     plan

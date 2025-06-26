@@ -1,7 +1,7 @@
 -- Define a table from json file
-model person =
+model person = {
   from 'person.json'
-end
+}
 
 -- limit
 from person

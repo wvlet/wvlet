@@ -30,7 +30,7 @@ wv> show tables;
 │ 8 rows     │
 └────────────┘
 ```
-The above `execute sql"call dbgen(sf=0.01)"` command calls DuckDB's [TPC-H extension](https://duckdb.org/docs/extensions/tpch.html) and creates an in-memory TPC-H benchmark database, which will be gone when you exit the wvlet shell. So you can try this command without worrying about the disk space.
+The `execute sql"call dbgen(sf=0.01)"` command calls DuckDB's [TPC-H extension](https://duckdb.org/docs/extensions/tpch.html) and creates an in-memory TPC-H benchmark database, which will be gone when you exit the wvlet shell. So you can try this command without worrying about the disk space.
 
 The simplest form of queries is `from (table name)`:
 ```sql
@@ -121,7 +121,7 @@ wv> from customer
 
 ### One-Liner Queries
 
-In wvlet, individual query line often matches with a single [relational operator](relational-operators.md), which processes a given input table data and return a new table data. Inserting newlines, however, is not mandatory. You can fit the whole query within a single line, which is convenient for quick data exploration:
+In Wvlet, individual query line often matches with a single [relational operator](./), which processes a given input table data and return a new table data. Inserting newlines, however, is not mandatory. You can fit the whole query within a single line, which is convenient for quick data exploration:
 
 ```sql
 wv> from customer where c_mktsegment = 'HOUSEHOLD' limit 5;
@@ -141,7 +141,7 @@ wv> from customer where c_mktsegment = 'HOUSEHOLD' limit 5;
 
 ### Adding Comments
 
-The multi-line syntax is convenient for improving readability of your queries. As Wvlet adopts a flow-style syntax, you can add comments to each line of the query:
+The multi-line syntax is convenient for improving the readability of your queries. As Wvlet adopts a flow-style syntax, you can add comments to each line of the query:
 
 ```sql
 wv> from customer
@@ -163,7 +163,7 @@ wv> from customer
 └───────────────────────────────┘
 ```
 
-Comments in wvlet start with `--` and continue to the end of the line.
+Comments in Wvlet start with `--` and continue to the end of the line.
 
 ## Exploring Data
 
@@ -208,7 +208,7 @@ wv> from customer
 
 ### Quick Schema Check
 
-A more convenient way to see the table schema is to use `ctrl-j ctrl-d` shortcut keys in the wvlet shell:
+A more convenient way to see the table schema is to use `ctrl-j ctrl-d` shortcut keys in the Wvlet shell:
 ```sql
 describe (line:1): from customer
 ┌──────────────┬─────────────┐
@@ -296,7 +296,7 @@ debug (line:2): select c_custkey, c_name, c_nationkey
 
 ## Reusing Queries
 
-In wvlet, you can name a query using `select as` operator, and refer to the named query result in the subsequent queries:
+In Wvlet, you can name a query using `select as` operator, and refer to the named query result in the subsequent queries:
 
 ```sql
 wv> from customer
@@ -323,7 +323,7 @@ wv> from domestic_customer
 └──────────────────────────────────────────────────────────────────────────────────────────>
 ```
 
-Unlike SQL views, which will be registered to the system catalog, named queries are available only in the current scope (e.g., the current wvlet shell session).
+Unlike SQL views, which will be registered to the system catalog, named queries are available only in the current scope (e.g., the current Wvlet shell session).
 
 ## Saving Queries in .wv Files
 

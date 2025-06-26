@@ -26,7 +26,7 @@ import wvlet.airframe.*
 import wvlet.airframe.control.{Shell, ThreadUtil}
 import wvlet.airframe.log.AnsiColorPalette
 import wvlet.airframe.metrics.{Count, ElapsedTime}
-import wvlet.lang.api.{LinePosition, WvletLangException}
+import wvlet.lang.api.{LinePosition, StatusCode, WvletLangException}
 import wvlet.lang.api.v1.query.QueryRequest
 import wvlet.lang.api.v1.query.QuerySelection.{All, Describe, Subquery}
 import wvlet.lang.compiler.parser.*
@@ -51,7 +51,8 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
     .builder()
     .name("wvlet-shell")
     // Use dumb terminal for sbt testing
-    .dumb(WvletMain.isInSbt).build()
+    .dumb(WvletMain.isInSbt)
+    .build()
 
   private val historyFile = new File(workEnv.cacheFolder, ".wv_history")
 
@@ -69,12 +70,13 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
         ""
     )
     .variable(LineReader.INDENTATION, 2)
-    .option(LineReader.Option.INSERT_BRACKET, true)
     // Coloring keywords
-    .highlighter(new ReplHighlighter).build()
+    .highlighter(new ReplHighlighter)
+    .build()
 
-  private val executorThreadManager = Executors
-    .newCachedThreadPool(ThreadUtil.newDaemonThreadFactory("wvlet-repl-executor"))
+  private val executorThreadManager = Executors.newCachedThreadPool(
+    ThreadUtil.newDaemonThreadFactory("wvlet-repl-executor")
+  )
 
   private given progressMonitor: QueryProgressMonitor =
     new QueryProgressMonitor:
@@ -112,7 +114,10 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
               lastUpdateTimeMillis = t
               val stats = m.stats
               val msg =
-                f"Query ${s"${stats.getState.toLowerCase}"} ${ElapsedTime.succinctMillis(stats.getElapsedTimeMillis)}%6s [${Count.succinct(stats.getProcessedRows)} rows] ${stats.getCompletedSplits}/${stats.getTotalSplits}"
+                f"Query ${s"${stats.getState.toLowerCase}"} ${ElapsedTime.succinctMillis(
+                    stats.getElapsedTimeMillis
+                  )}%6s [${Count.succinct(stats.getProcessedRows)} rows] ${stats
+                    .getCompletedSplits}/${stats.getTotalSplits}"
               printLine(msg)
           case _ =>
 
@@ -206,7 +211,8 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
       )(using QueryProgressMonitor.noOp) // Hide progress for descirbe query
     val str = result.toPrettyBox()
     reader.printAbove(
-      s"${Color.GREEN}describe${Color.RESET} ${Color.BLUE}(line:${lineNum})${Color.RESET}: ${Color.BRIGHT_RED}${lastLine}\n${Color.GRAY}${str}${AnsiColor.RESET}"
+      s"${Color.GREEN}describe${Color.RESET} ${Color.BLUE}(line:${lineNum})${Color.RESET}: ${Color
+          .BRIGHT_RED}${lastLine}\n${Color.GRAY}${str}${AnsiColor.RESET}"
     )
     true
 
@@ -221,10 +227,12 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
     val totalLines    = originalQuery.split("\n").size
     // Need to add newlines to display the debug output in a proper position in the terminal
     println(
-      s"${"\n" * (totalLines - lineNum + 1).max(0)}${Color.GREEN}debug${Color.RESET} ${Color.BLUE}(line:${lineNum})${Color.RESET}: ${Color.BRIGHT_RED}${lastLine}${AnsiColor.RESET}"
+      s"${"\n" * (totalLines - lineNum + 1).max(0)}${Color.GREEN}debug${Color.RESET} ${Color
+          .BLUE}(line:${lineNum})${Color.RESET}: ${Color.BRIGHT_RED}${lastLine}${AnsiColor.RESET}"
     )
-    val result = runner
-      .runStatement(QueryRequest(query = samplingQuery, querySelection = All, isDebugRun = true))
+    val result = runner.runStatement(
+      QueryRequest(query = samplingQuery, querySelection = All, isDebugRun = true)
+    )
     lastOutput = Some(runner.displayOutput(samplingQuery, result, terminal))
     val out = terminal.output()
     // Add enough blank lines to redisplay the user query
@@ -316,6 +324,10 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
             else
               info(s"Set the column width to: ${width}")
               runner.setMaxColWidth(width)
+          case "context" =>
+            val catalog = runner.getCurrentCatalog
+            val schema  = runner.getCurrentSchema
+            info(s"Current context: catalog=${catalog}, schema=${schema}")
           case stmt =>
             runStmt(trimmedLine)
         end match
@@ -359,7 +371,8 @@ object WvletREPL extends LogSupport:
     "clip-result",
     "clip-query",
     "rows",
-    "col-width"
+    "col-width",
+    "context"
   )
 
   private def helpMessage: String =
@@ -367,6 +380,7 @@ object WvletREPL extends LogSupport:
       | help       : Show this help message
       | quit/exit  : Exit the REPL
       | clear      : Clear the screen
+      | context    : Show current database context (catalog and schema)
       | clip       : Clip the last query and result to the clipboard
       | clip-result: Clip the last result to the clipboard in TSV format
       | clip-query : Clip the last query to the clipboard
@@ -403,14 +417,33 @@ object WvletREPL extends LogSupport:
       def incomplete = throw EOFError(-1, -1, null)
       def accept     = parser.parse(line, cursor, context)
 
-      val cmd     = line.trim
-      val cmdName = cmd.split("\\s").headOption.getOrElse("")
-      if cmdName.isEmpty || knownCommands.contains(cmdName) || context == ParseContext.COMPLETE then
+      def countTripleQuotes(s: String): Int =
+        s.indexOf("\"\"\"") match
+          case -1 =>
+            0
+          case i =>
+            1 + countTripleQuotes(s.substring(i + 3))
+
+      val cmd         = line.trim
+      val openBraces  = cmd.count(_ == '{')
+      val closeBraces = cmd.count(_ == '}')
+      // Count the number of triple quote `"""` characters to accept incomplete multiline strings
+      val tripleQuotes    = countTripleQuotes(cmd)
+      val needsMoreString = tripleQuotes % 2 == 1
+      val needsMoreInput  = openBraces > closeBraces
+      val cmdName         = cmd.split("\\s").headOption.getOrElse("")
+      if needsMoreString then
+        incomplete
+      else if cmdName.isEmpty || knownCommands.contains(cmdName) || context == ParseContext.COMPLETE
+      then
         accept
       else if cmd.endsWith(";") && cursor >= line.length then
         accept
+      else if needsMoreInput then
+        // Trigger indentation
+        throw new EOFError(-1, -1, "missing '}'", "}", openBraces - closeBraces, "}")
       else
-        val unit        = CompilationUnit.fromString(line)
+        val unit        = CompilationUnit.fromWvletString(line)
         val wvletParser = WvletParser(unit)
         try
           // Test whether the statement is a complete statement
@@ -429,6 +462,7 @@ object WvletREPL extends LogSupport:
           case e: WvletLangException =>
             // Move to the secondary prompt until seeing a semicolon
             incomplete
+      end if
 
     end parse
 
@@ -440,7 +474,7 @@ object WvletREPL extends LogSupport:
   private class ReplHighlighter extends org.jline.reader.Highlighter with LogSupport:
     override def highlight(reader: LineReader, buffer: String): AttributedString =
       val builder = AttributedStringBuilder()
-      val src     = SourceFile.fromString(buffer)
+      val src     = SourceFile.fromWvletString(buffer)
       val scanner = WvletScanner(
         src,
         ScannerConfig(skipComments = false, skipWhiteSpace = false, reportErrorToken = true)
@@ -449,27 +483,37 @@ object WvletREPL extends LogSupport:
       var toContinue = true
       var lastOffset = 0
       while toContinue do
-        val t = scanner.nextToken()
+        try
+          val t = scanner.nextToken()
 
-        // Extract the raw string between the last offset and the current token
-        val rawString: String = src.getContent.slice(lastOffset, t.offset + t.length).mkString
-        lastOffset = t.offset + t.length
+          // Extract the raw string between the last offset and the current token
+          val rawString: String = src.getContent.slice(lastOffset, t.offset + t.length).mkString
+          lastOffset = t.offset + t.length
 
-        t.token match
-          case WvletToken.EOF =>
+          t.token match
+            case WvletToken.EOF =>
+              toContinue = false
+            case WvletToken.ERROR =>
+              builder.append(rawString)
+            case WvletToken.COMMENT =>
+              builder.append(rawString, AttributedStyle.DEFAULT.foreground(AttributedStyle.YELLOW))
+            case WvletToken.DOC_COMMENT =>
+              builder.append(rawString, AttributedStyle.DEFAULT.foreground(AttributedStyle.BLUE))
+            case token if token.isLiteral =>
+              builder.append(rawString, AttributedStyle.DEFAULT.foreground(AttributedStyle.GREEN))
+            case token if token.isReservedKeyword =>
+              builder.append(rawString, AttributedStyle.DEFAULT.foreground(AttributedStyle.CYAN))
+            case WvletToken.IDENTIFIER =>
+              builder.append(rawString, AttributedStyle.DEFAULT.foreground(AttributedStyle.WHITE))
+            case _ =>
+              builder.append(rawString)
+        catch
+          case e: WvletLangException if e.statusCode == StatusCode.UNCLOSED_MULTILINE_LITERAL =>
+            // Skip the rest of the line
+            builder.append(src.getContent.slice(lastOffset, src.getContent.length).mkString)
             toContinue = false
-          case WvletToken.ERROR =>
-            builder.append(rawString)
-          case WvletToken.COMMENT =>
-            builder.append(rawString, AttributedStyle.DEFAULT.foreground(AttributedStyle.YELLOW))
-          case token if token.isLiteral =>
-            builder.append(rawString, AttributedStyle.DEFAULT.foreground(AttributedStyle.GREEN))
-          case token if token.isReservedKeyword =>
-            builder.append(rawString, AttributedStyle.DEFAULT.foreground(AttributedStyle.CYAN))
-          case WvletToken.IDENTIFIER =>
-            builder.append(rawString, AttributedStyle.DEFAULT.foreground(AttributedStyle.WHITE))
-          case _ =>
-            builder.append(rawString)
+      end while
+
       builder.toAttributedString
 
     end highlight

@@ -59,7 +59,7 @@ abstract class EditorBase(
 
   private var c = Cancelable.empty
 
-  override def onMount: Unit =
+  override def onMount(node: Any): Unit =
     editor.render()
     c = windowSize
       .getSize

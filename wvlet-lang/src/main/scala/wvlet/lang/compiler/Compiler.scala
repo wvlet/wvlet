@@ -16,8 +16,16 @@ package wvlet.lang.compiler
 import wvlet.lang.api.{StatusCode, WvletLangException}
 import wvlet.lang.catalog.Catalog
 import wvlet.lang.compiler.Compiler.presetLibraries
-import wvlet.lang.compiler.analyzer.{RemoveUnusedQueries, SymbolLabeler, TypeResolver}
+import wvlet.lang.compiler.analyzer.{
+  EmptyTypeResolver,
+  ModelDependencyAnalyzer,
+  RemoveUnusedQueries,
+  SQLValidator,
+  SymbolLabeler,
+  TypeResolver
+}
 import wvlet.lang.compiler.parser.{ParserPhase, WvletParser}
+import wvlet.lang.compiler.planner.{ExecutionPlanRewriter, ExecutionPlanner}
 import wvlet.lang.compiler.transform.{
   Incrementalize,
   PreprocessLocalExpr,
@@ -47,7 +55,9 @@ object Compiler extends LogSupport:
     PreprocessLocalExpr, // Preprocess local expressions (e.g., backquote strings and native expressions)
     SymbolLabeler, // Assign unique Symbol to each LogicalPlan and Expression nodes, a and assign a lazy DataType
     RemoveUnusedQueries(), // Exclude unused compilation units (e.g., out of scope queries) from the following phases
-    TypeResolver // Assign a concrete DataType to each LogicalPlan and Expression nodes
+    TypeResolver,   // Assign a concrete DataType to each LogicalPlan and Expression nodes
+    SQLValidator(), // Validate SQL-specific patterns and emit warnings
+    ModelDependencyAnalyzer()
   )
 
   /**
@@ -63,9 +73,13 @@ object Compiler extends LogSupport:
     * Generate SQL, Scala, or other code from the logical plan
     * @return
     */
-  def codeGenPhases: List[Phase] = List()
+  def codeGenPhases: List[Phase] = List(ExecutionPlanner, ExecutionPlanRewriter)
 
   def allPhases: List[List[Phase]] = List(analysisPhases, transformPhases, codeGenPhases)
+
+  def parseOnlyPhases: List[List[Phase]] = List(
+    List(ParserPhase, RemoveUnusedQueries(), EmptyTypeResolver)
+  )
 
   lazy val presetLibraries: List[CompilationUnit] = CompilationUnit.stdLib
 
@@ -78,20 +92,48 @@ case class CompilerOptions(
     // Context database catalog
     catalog: Option[String] = None,
     // context database schema
-    schema: Option[String] = None
-) {
+    schema: Option[String] = None,
+    // Database type (e.g., DuckDB, Trino)
+    dbType: DBType = DBType.DuckDB,
+    // Path to static catalog metadata
+    staticCatalogPath: Option[String] = None,
+    // Use static catalog mode (no remote calls)
+    useStaticCatalog: Boolean = false
+):
   // def workingFolder: String = workEnv.cacheFolder
-}
+  def withStaticCatalog(path: String): CompilerOptions = copy(
+    staticCatalogPath = Some(path),
+    useStaticCatalog = true
+  )
+
+  def noStaticCatalog(): CompilerOptions = copy(staticCatalogPath = None, useStaticCatalog = false)
+
+  def withDBType(dbType: DBType): CompilerOptions = copy(dbType = dbType)
 
 class Compiler(val compilerOptions: CompilerOptions) extends LogSupport:
 
   private lazy val globalContext = newGlobalContext
+
+  // A cache for skipping parsing the same file multiple times
+  private val compilationUnitCache = CompilationUnitCache()
+
   // Compilation units in the given source folders (except preset-libraries)
-  lazy val localCompilationUnits    = listLocalCompilationUnits(compilerOptions.sourceFolders)
+  def localCompilationUnits = listLocalCompilationUnits(compilerOptions.sourceFolders)
+
+  private def listLocalCompilationUnits(sourceFolders: List[String]): List[CompilationUnit] =
+    val sourcePaths = sourceFolders
+    val units = sourcePaths.flatMap { path =>
+      CompilationUnit.fromPath(path, compilationUnitCache)
+    }
+    units
+
   def compilationUnitsInSourcePaths = presetLibraries ++ localCompilationUnits
 
   def setDefaultCatalog(catalog: Catalog): Unit = globalContext.defaultCatalog = catalog
   def setDefaultSchema(schema: String): Unit    = globalContext.defaultSchema = schema
+
+  def getDefaultCatalog: Catalog = globalContext.defaultCatalog
+  def getDefaultSchema: String   = globalContext.defaultSchema
 
   private def newGlobalContext: GlobalContext =
     val global      = GlobalContext(compilerOptions)
@@ -99,13 +141,6 @@ class Compiler(val compilerOptions: CompilerOptions) extends LogSupport:
     // Need to initialize the global context before running the analysis phases
     global.init(using rootContext)
     global
-
-  private def listLocalCompilationUnits(sourceFolders: List[String]): List[CompilationUnit] =
-    val sourcePaths = sourceFolders
-    val units = sourcePaths.flatMap { path =>
-      CompilationUnit.fromPath(path)
-    }
-    units
 
   /**
     * @param sourceFolder
@@ -120,8 +155,9 @@ class Compiler(val compilerOptions: CompilerOptions) extends LogSupport:
     * @return
     */
   def compileSourcePaths(contextFile: Option[String]): CompileResult =
-    val contextUnit: Option[CompilationUnit] = contextFile
-      .flatMap(f => compilationUnitsInSourcePaths.find(_.sourceFile.fileName == f))
+    val contextUnit: Option[CompilationUnit] = contextFile.flatMap(f =>
+      compilationUnitsInSourcePaths.find(_.sourceFile.fileName == f)
+    )
 
     compileInternal(compilationUnitsInSourcePaths, contextUnit = contextUnit)
 

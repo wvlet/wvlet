@@ -1,0 +1,35 @@
+-- Filter only
+from 'person.json'
+where id > 1
+test _.size = 2
+;
+
+-- Filter and sort
+from 'person.json'
+where id > 1
+order by id desc
+test _.rows = [[3, "clark", 40], [2, "bob", 24]]
+;
+
+-- Filer and select
+from 'person.json'
+where id > 1
+select id
+order by id desc
+test _.rows = [[3], [2]]
+;
+
+-- sort and select
+from 'person.json'
+where id > 1
+order by id desc
+limit 1
+select id
+test _.rows = [[3]]
+;
+
+from 'person.json'
+select id, age
+group by age / 10 as age_group
+
+test _.columns = ["age_group", "arbitrary(id)", "arbitrary(age)"]

@@ -23,7 +23,7 @@ case class LinePosition(
     line: Int,
     // column position in the line (1-origin)
     column: Int
-):
+) extends Ordered[LinePosition]:
   override def toString: String =
     if isEmpty then
       "?:?"
@@ -38,6 +38,13 @@ case class LinePosition(
       None
     else
       Some(f(this))
+
+  override def compare(that: LinePosition): Int =
+    val cmp = line.compare(that.line)
+    if cmp != 0 then
+      cmp
+    else
+      column.compare(that.column)
 
 object LinePosition:
   val NoPosition: LinePosition = LinePosition(-1, 0)

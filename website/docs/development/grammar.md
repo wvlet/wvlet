@@ -36,8 +36,8 @@ importStatement: 'import' importRef (from str)?
 importRef      : qualifiedId ('.' '*')?
                | qualifiedId 'as' identifier
 
-modelDef   : 'model' identifier modelParams? (':' qualifiedId)? '=' modelBody
-modelBody  : query 'end'
+modelDef   : 'model' identifier modelParams? (':' qualifiedId)? '=' '{' modelBody
+modelBody  : query '}'
 modelParams: '(' modelParam (',' modelParam)* ')'
 modelParam : identifier ':' identifier ('=' expression)?
 
@@ -49,9 +49,13 @@ querySingle: 'from' relation (',' relation)* ','? queryBlock*
            | 'select' selectItems queryBlock*
            // For braced query, do not continue queryBlock for disambiguation
            | '{' queryBody '}' ('as' identifier)?
+           | 'with' tableAlias 'as' '{' queryBody '}'
+
+tableAlias: identifier '(' columnAlias (',' columnAlias)* ')'
+columnAlias: identifier (':' identifier)? // column alias (: type)
 
 // relation that can be used after 'from', 'join', 'concat' (set operation), etc.:
-relation       : relationPrimary ('as' identifier)?
+relation       : relationPrimary ('as' tableAlias)?
 relationPrimary: qualifiedId ('(' functionArg (',' functionArg)* ')')?
                | querySingle
                | str               // file scan
@@ -59,16 +63,20 @@ relationPrimary: qualifiedId ('(' functionArg (',' functionArg)* ')')?
                | arrayValue
 arrayValue     : '[' arrayValue (',' arrayValue)* ','? ']'
 
-queryBlock: joinExpr
+
+
+queryBlock: '|' queryBlock  // pipe operator for explicit split
+          |  joinExpr
           | 'group' 'by' groupByItemList
           | 'where' booleanExpression
-          | 'transform' transformExpr
           | 'select' 'distinct'? selectItems
           | 'agg' selectItems
-          | 'pivot' 'on' pivotItem (',' pivotItem)*
+          | 'pivot' 'on' pivotItem (',' pivotItem)* ','?
                ('group' 'by' groupByItemList)?
                ('agg' selectItems)?
+          | 'unpivot' unpivotItem (',' unpivotItem)* ','?
           | 'limit' INTEGER_VALUE
+          | 'offset' INTEGER_VALUE
           | 'order' 'by' sortItem (',' sortItem)* ','?)?
           | 'add' selectItems
           | 'exclude' identifier ((',' identifier)* ','?)?
@@ -81,6 +89,7 @@ queryBlock: joinExpr
           | 'dedup'
           | 'describe'
           | 'debug' '{' (queryBlock | update)+ '}'
+          | 'explain' (query | rawSql)
 
 update       : 'save' 'as' updateTarget saveOptions?
              | 'append' 'to' updateTarget
@@ -98,9 +107,6 @@ joinCriteria: 'on' booleanExpression
 
 groupByItemList: groupByItem (',' groupByItem)* ','?
 groupByItem    : expression ('as' identifier (':' identifier)?)?
-
-transformExpr: transformItem (',' transformItem)* ','?
-transformItem: qualifiedId '=' expression
 
 selectItems: selectItem (',' selectItem)* ','?
 selectItem : (identifier '=')? expression
@@ -125,11 +131,13 @@ sampleExpr: sampleSize
 
 sampleSize:  ((integerLiteral 'rows'?) | (floatLiteral '%'))
 
-sortItem: expression ('asc' | 'desc')?
+sortItem: expression ('asc' | 'desc')? ('nulls' ('first' | 'last'))?
 
-pivotKey: identifier ('in' '(' (valueExpression (',' valueExpression)*) ')')?
+pivotItem: identifier ('in' '(' (valueExpression (',' valueExpression)*) ')')?
 
-typeDef    : 'type' identifier typeParams? context? typeExtends? ':' typeElem* 'end'
+unpivotItem: identifier 'for' identifier 'in' '(' identifier (',' identifier)*')' ('with' 'nulls')?
+
+typeDef    : 'type' identifier typeParams? context? typeExtends? '=' '{' typeElem* '}'
 typeParams : '[' typeParam (',' typeParam)* ']'
 typeParam  : identifier ('of' identifier)?
 typeExtends: 'extends' qualifiedId (',' qualifiedId)*
@@ -155,9 +163,11 @@ expression        : booleanExpression
 booleanExpression : ('!' | 'not') booleanExpression
                   | valueExpression
                   | booleanExpression ('and' | 'or') booleanExpression
-valueExpression   : primaryExpression
+valueExpression   : ('-' | '+') valueExpression  
+                  | primaryExpression
                   | valueExpression arithmeticOperator valueExpression
                   | valueExpression comparisonOperator valueExpression
+                  | valueExpression 'between' valueExpression 'and' valueExpression
 
 arithmeticOperator: '+' | '-' | '*' | '/' | '%'
 comparisonOperator: '=' | '==' | 'is' | '!=' | 'is' 'not' | '<' | '<=' | '>' | '>=' | 'like' | 'contains' 
@@ -165,14 +175,14 @@ comparisonOperator: '=' | '==' | 'is' | '!=' | 'is' 'not' | '<' | '<=' | '>' | '
 // Expression that can be chained with '.' operator
 primaryExpression : 'this'
                   | '_'
-                  | literal
+                  | literal (':' identifier)?   # litral with optional type cast
                   | query
                   | 'case' expression? whenExpr+ elseExpr?                        # case-when
                   | '{' querySingle '}'                                           # subquery
                   | '(' expression ')'                                            # parenthesized expression
                   | '[' expression (',' expression)* ']'                          # array
-                  | '{' rowElem (',' rowElem)* '}'                       # struct, row
-                  | 'map' {' rowElem (',' rowElem)* '}'                       # map value
+                  | '{' rowElem (',' rowElem)* '}'                                # struct, row
+                  | 'map' {' rowElem (',' rowElem)* '}'                           # map value
                   | 'if' booleanExpresssion 'then' expression 'else' expression   # if-then-else
                   | qualifiedId
                   | primaryExpression '.' primaryExpression

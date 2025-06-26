@@ -25,16 +25,15 @@ object ContextUtil:
       val pos  = src.offsetToColumn(span.end)
       LinePosition(line + 1, pos)
 
-    def sourceLocationAt(span: Span): SourceLocation = sourceLocationAt(linePositionOf(span))
-
     def sourceLocationAt(nodeLocation: LinePosition): SourceLocation =
       val cu = ctx.compilationUnit
       cu.toSourceLocation(nodeLocation)
 
   extension (cu: CompilationUnit)
     def sourceLocationAt(span: Span): SourceLocation = sourceLocationAt(linePositionAt(span))
-    def sourceLocationAt(nodeLocation: LinePosition): SourceLocation = cu
-      .toSourceLocation(nodeLocation)
+    def sourceLocationAt(nodeLocation: LinePosition): SourceLocation = cu.toSourceLocation(
+      nodeLocation
+    )
 
     def endLinePositionAt(span: Span): LinePosition =
       val src  = cu.sourceFile

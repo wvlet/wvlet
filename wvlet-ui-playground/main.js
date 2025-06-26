@@ -25,17 +25,19 @@ window.arrow = arrow
 import { MonacoEditor } from '../wvlet-ui-main/src/main/scala/wvlet/lang/ui/component/monaco/MonacoEditor.ts'
 import '../wvlet-ui-main/src/main/scala/wvlet/lang/ui/component/monaco/WvletLanguage.ts'
 
-// Ensure that Monaco is loaded before assigning it to the window object
-document.addEventListener('DOMContentLoaded', () => {
-    import('monaco-editor').then((monaco) => {
-        console.log("Monaco Editor loaded successfully");
+// // Ensure that Monaco is loaded before assigning it to the window object
+// document.addEventListener('DOMContentLoaded', () => {
+//     import('monaco-editor').then((monaco) => {
+//         console.log("Monaco Editor loaded successfully");
+//
+//
+//     }).catch((error) => {
+//         console.error('Failed to load Monaco Editor:', error);
+//     });
+// });
 
-        // Make the MonacoEditor class accessible from @JSGlobal in Scala.js
-        window.MonacoEditor = MonacoEditor;
+// Make the MonacoEditor class accessible from @JSGlobal in Scala.js
+window.MonacoEditor = MonacoEditor;
 
-        // Start Scala.js code
-        import('__target__/main.js')
-    }).catch((error) => {
-        console.error('Failed to load Monaco Editor:', error);
-    });
-});
+// Start Scala.js code
+import('__target__/main.js')

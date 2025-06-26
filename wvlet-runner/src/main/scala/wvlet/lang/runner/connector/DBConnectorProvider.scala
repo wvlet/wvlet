@@ -39,19 +39,36 @@ class DBConnectorProvider(workEnv: WorkEnv) extends LogSupport with AutoCloseabl
             prepareTPCH = (profile.properties ++ properties)
               .getOrElse("prepareTPCH", "false")
               .toString
+              .toBoolean,
+            prepareTPCDS = (profile.properties ++ properties)
+              .getOrElse("prepareTPCDS", "false")
+              .toString
               .toBoolean
           )
         case DBType.Generic =>
           GenericConnector(workEnv)
         case other =>
           warn(
-            s"Connector for -t ${other.toString.toLowerCase} option is not implemented. Using GenericConnector for DuckDB as a fallback"
+            s"Connector for -t ${other
+                .toString
+                .toLowerCase} option is not implemented. Using GenericConnector for DuckDB as a fallback"
           )
           GenericConnector(workEnv)
+      end match
     end createConnector
 
     connectorCache.getOrElseUpdate(profile, createConnector)
 
   end getConnector
+
+  def getConnector(dbType: DBType, profileName: Option[String]): DBConnector =
+    val profile =
+      profileName match
+        case Some(name) =>
+          Profile.getProfile(name).getOrElse(Profile.defaultProfileFor(dbType))
+        case None =>
+          // Create a minimal profile for the given DB type
+          Profile.defaultProfileFor(dbType)
+    getConnector(profile)
 
 end DBConnectorProvider

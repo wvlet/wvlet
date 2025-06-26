@@ -13,8 +13,8 @@
  */
 package wvlet.lang.compiler
 
-import wvlet.lang.api.StatusCode
-import wvlet.lang.catalog.{Catalog, InMemoryCatalog}
+import wvlet.lang.api.{SourceLocation, Span, StatusCode}
+import wvlet.lang.catalog.{Catalog, InMemoryCatalog, StaticCatalog, StaticCatalogProvider}
 import wvlet.lang.compiler.query.QueryProgressMonitor
 import wvlet.lang.model.expr.NameExpr
 import wvlet.lang.model.plan.Import
@@ -46,7 +46,7 @@ case class GlobalContext(compilerOptions: CompilerOptions):
   // Globally available definitions (Name and Symbols)
   var defs: GlobalDefinitions = _
 
-  var defaultCatalog: Catalog = InMemoryCatalog(catalogName = "memory", functions = Nil)
+  var defaultCatalog: Catalog = loadCatalog(compilerOptions)
   var defaultSchema: String   = compilerOptions.schema.getOrElse("main")
 
   var workEnv: WorkEnv = compilerOptions.workEnv
@@ -57,6 +57,7 @@ case class GlobalContext(compilerOptions: CompilerOptions):
 
   def getRootContext: Context                             = rootContext
   def getContextUnit: Option[CompilationUnit]             = contextUnit
+  def setContextUnit(unit: CompilationUnit): Unit         = contextUnit = Some(unit)
   def setContextUnit(unit: Option[CompilationUnit]): Unit = contextUnit = unit
 
   def newSymbolId: Int =
@@ -64,6 +65,25 @@ case class GlobalContext(compilerOptions: CompilerOptions):
     symbolCount
 
   def getFile(name: NameExpr): VirtualFile = files.getOrElseUpdate(name, LocalFile(name.fullName))
+
+  private def loadCatalog(compilerOptions: CompilerOptions): Catalog =
+    if compilerOptions.useStaticCatalog && compilerOptions.staticCatalogPath.isDefined then
+      val catalogName = compilerOptions.catalog.getOrElse("default")
+      val dbType      = compilerOptions.dbType
+
+      // Use the path string directly - platform-specific IOCompat will handle conversion
+      StaticCatalogProvider.loadCatalog(
+        catalogName,
+        dbType,
+        compilerOptions.staticCatalogPath.get
+      ) match
+        case Some(staticCatalog) =>
+          staticCatalog
+        case None =>
+          // Fall back to in-memory catalog if static catalog loading fails
+          InMemoryCatalog(catalogName = catalogName, functions = Nil)
+    else
+      InMemoryCatalog(catalogName = compilerOptions.catalog.getOrElse("memory"), functions = Nil)
 
   /**
     * Get the context corresponding to the specific source file in the CompilationUnit
@@ -112,6 +132,10 @@ case class Context(
           ctxUnit eq compilationUnit
         }
 
+  def sourceLocationAt(span: Span): SourceLocation = compilationUnit
+    .sourceFile
+    .sourceLocationAt(span.start)
+
   // Get the context catalog
   // TODO support multiple catalogs
   def catalog: Catalog = global.defaultCatalog
@@ -122,16 +146,20 @@ case class Context(
   def workEnv: WorkEnv = global.workEnv
 
   def withDebugRun(isDebug: Boolean): Context = this.copy(isDebugRun = isDebug)
-  def withQueryProgressMonitor(monitor: QueryProgressMonitor): Context = this
-    .copy(queryProgressMonitor = monitor)
+  def withQueryProgressMonitor(monitor: QueryProgressMonitor): Context = this.copy(
+    queryProgressMonitor = monitor
+  )
 
   /**
     * Create a new context with an additional import
     * @param i
     * @return
     */
-  def withImport(i: Import): Context = this
-    .copy(outer = this, scope = scope, importDefs = i :: importDefs)
+  def withImport(i: Import): Context = this.copy(
+    outer = this,
+    scope = scope,
+    importDefs = i :: importDefs
+  )
 
   def withCompilationUnit[U](newCompileUnit: CompilationUnit): Context = global
     .getContextOf(newCompileUnit)
@@ -205,6 +233,11 @@ case class Context(
     else
       s"${global.compilerOptions.workEnv.path}/${relativePath}"
 
+  /**
+    * Return a resolved file path or URL
+    * @param path
+    * @return
+    */
   def getDataFile(path: String): String =
     findDataFile(path) match
       case None =>
@@ -216,3 +249,12 @@ end Context
 
 object Context:
   val NoContext: Context = Context(null)
+
+  def testGlobalContext(path: String): GlobalContext =
+    val global = GlobalContext(
+      CompilerOptions(sourceFolders = List(path), workEnv = WorkEnv(path = path))
+    )
+    val rootContext = global.getContextOf(unit = CompilationUnit.empty, scope = Scope.newScope(0))
+    // Need to initialize the global context before running the analysis phases
+    global.init(using rootContext)
+    global

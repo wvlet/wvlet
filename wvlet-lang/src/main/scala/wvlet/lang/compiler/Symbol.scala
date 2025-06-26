@@ -13,16 +13,19 @@
  */
 package wvlet.lang.compiler
 
-import wvlet.lang.model.{DataType, TreeNode, Type}
-import wvlet.lang.model.Type.PackageType
+import wvlet.lang.api.Span
+import wvlet.lang.model.{DataType, SyntaxTreeNode, TreeNode, Type}
+import wvlet.lang.model.Type.{ImportType, PackageType}
 import wvlet.lang.model.expr.NameExpr
 import wvlet.lang.model.expr.NameExpr.EmptyName
-import wvlet.lang.model.plan.LogicalPlan
+import wvlet.lang.model.plan.{Import, LogicalPlan}
 import wvlet.log.LogSupport
+
+import scala.annotation.compileTimeOnly
 
 object Symbol:
   val NoSymbol: Symbol =
-    new Symbol(-1):
+    new Symbol(-1, span = Span.NoSpan):
       override def computeSymbolInfo(using Context): SymbolInfo = NoSymbolInfo
 
   private val importName = Name.termName("<import>")
@@ -30,36 +33,45 @@ object Symbol:
 //  lazy val RootType: Symbol = newTypeDefSymbol(NoSymbol, NoName, DataType.UnknownType)
 //
   def newPackageSymbol(owner: Symbol, name: Name)(using context: Context): Symbol =
-    val symbol = Symbol(context.global.newSymbolId)
+    val symbol = Symbol(context.global.newSymbolId, Span.NoSpan)
     symbol.symbolInfo = PackageSymbolInfo(symbol, owner, name, PackageType(name), context.scope)
     symbol
 
-  def newImportSymbol(owner: Symbol, tpe: Type)(using context: Context): Symbol =
-    val symbol = Symbol(context.global.newSymbolId)
-    symbol.symbolInfo = NamedSymbolInfo(symbol, NoSymbol, importName, tpe)
+  def newImportSymbol(owner: Symbol, i: Import)(using context: Context): Symbol =
+    val symbol = Symbol(context.global.newSymbolId, i.span)
+    symbol.symbolInfo = SymbolInfo(SymbolType.Import, NoSymbol, symbol, importName, ImportType(i))
     symbol
 
 end Symbol
 
 /**
-  * Symbol is a permanent identifier for a TreeNode of LogicalPlan or Expression nodes. Symbol holds
-  * a cache of the resolved SymbolInfo, which contains DataType for the TreeNode.
+  * Symbol is a permanent identifier for a TreeNode (e.g., LogicalPlan or Expression nodes). Symbol
+  * holds a cache of the resolved SymbolInfo, which contains DataType for the TreeNode.
   *
   * @param name
   */
-class Symbol(val id: Int) extends LogSupport:
+class Symbol(val id: Int, val span: Span) extends LogSupport:
   private var _symbolInfo: SymbolInfo | Null = null
-  private var _tree: TreeNode | Null         = null
+  private var _tree: SyntaxTreeNode | Null   = null
 
   override def toString =
-    if _symbolInfo == null then
+    if id == -1 then
+      "NoSymbol"
+    else if _symbolInfo == null then
       s"Symbol($id)"
     else
-      _symbolInfo.toString
+      _symbolInfo.name.name
 
-  def name: Name = symbolInfo.name
+  def name: Name =
+    if _symbolInfo == null then
+      Name.NoName
+    else
+      symbolInfo.name
 
   def isNoSymbol: Boolean = this == Symbol.NoSymbol
+
+  def isDefined = !isNoSymbol
+  def isEmpty   = !isDefined
 
   def dataType: DataType =
     if _symbolInfo == null then
@@ -68,6 +80,13 @@ class Symbol(val id: Int) extends LogSupport:
       _symbolInfo.dataType
 
   private def isResolved: Boolean = dataType.isResolved
+
+  def isTypeSymbol: Boolean =
+    this match
+      case t: TypeSymbol =>
+        true
+      case _ =>
+        false
 
   def isModelDef: Boolean =
     symbolInfo match
@@ -83,13 +102,13 @@ class Symbol(val id: Int) extends LogSupport:
       case _ =>
         false
 
-  def tree: TreeNode =
+  def tree: SyntaxTreeNode =
     if _tree == null then
       LogicalPlan.empty
     else
       _tree
 
-  def tree_=(t: TreeNode): Unit =
+  def tree_=(t: SyntaxTreeNode): Unit =
     t match
       case l: LogicalPlan =>
         trace(s"Set Symbol(${id}) to ${l.pp}")
@@ -107,4 +126,5 @@ class Symbol(val id: Int) extends LogSupport:
 
 end Symbol
 
-class TypeSymbol(id: Int, file: SourceFile) extends Symbol(id)
+case class TypeSymbol(override val id: Int, override val span: Span, sourceFile: SourceFile)
+    extends Symbol(id, span)

@@ -3,10 +3,12 @@ package wvlet.lang.model.plan
 import wvlet.lang.api.Span
 import wvlet.lang.model.DataType.EmptyRelationType
 import wvlet.lang.model.RelationType
-import wvlet.lang.model.expr.{Expression, NameExpr}
+import wvlet.lang.model.expr.{Expression, NameExpr, QualifiedName}
 
 sealed trait Command extends TopLevelStatement with LeafPlan:
   override def relationType: RelationType = EmptyRelationType
 
-case class ExecuteExpr(expr: Expression, span: Span) extends Command
-case class ShowQuery(name: NameExpr, span: Span)     extends Command
+case class ShowQuery(name: NameExpr, span: Span)        extends Command
+case class ExecuteExpr(expr: Expression, span: Span)    extends Command
+case class ExplainPlan(child: LogicalPlan, span: Span)  extends Command
+case class UseSchema(schema: QualifiedName, span: Span) extends Command

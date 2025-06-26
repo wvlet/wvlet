@@ -27,13 +27,13 @@ class SQLPreview(currentQuery: CurrentQuery, windowSize: WindowSize, queryRunner
       CompilationUnit(SourceFile.fromString(q.name, q.query))
     }
 
-  override def onMount: Unit =
-    super.onMount
+  override def onMount(node: Any): Unit =
+    super.onMount(node)
     editor.enableWordWrap()
     monitor = currentQuery
       .wvletQueryRequest
       .flatMap { newWvletQueryRequest =>
-        val unit = CompilationUnit.fromString(newWvletQueryRequest.query)
+        val unit = CompilationUnit.fromWvletString(newWvletQueryRequest.query)
         try
           val compileResult = compiler.compileMultipleUnits(contextCompilationUnits, unit)
           if !compileResult.hasFailures then
@@ -48,7 +48,7 @@ class SQLPreview(currentQuery: CurrentQuery, windowSize: WindowSize, queryRunner
               newWvletQueryRequest.linePosition,
               newWvletQueryRequest.querySelection
             )
-            val sql = GenSQL.generateSQL(unit, ctx, targetPlan = Some(selectedPlan))
+            val sql = GenSQL.generateSQL(unit, targetPlan = Some(selectedPlan))(using ctx)
             setText(sql)
             queryRunner
               .runQuery("tpch", sql)

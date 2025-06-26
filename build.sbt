@@ -1,8 +1,8 @@
-import scala.scalanative.build.BuildTarget
+import scala.scalanative.build.{BuildTarget, GC, Mode}
 
-val AIRFRAME_VERSION    = "24.12.2"
-val AIRSPEC_VERSION     = "24.12.2"
-val TRINO_VERSION       = "468"
+val AIRFRAME_VERSION    = "2025.1.14"
+val AIRSPEC_VERSION     = "2025.1.14"
+val TRINO_VERSION       = "476"
 val AWS_SDK_VERSION     = "2.20.146"
 val SCALAJS_DOM_VERSION = "2.8.0"
 
@@ -38,7 +38,7 @@ lazy val jvmProjects: Seq[ProjectReference] = Seq(
   cli
 )
 
-lazy val jsProjects: Seq[ProjectReference] = Seq(api.js, client.js, lang.js, ui, uiMain, playground)
+lazy val jsProjects: Seq[ProjectReference] = Seq(api.js, client.js, lang.js, ui, uiMain, playground, sdkJs)
 
 lazy val nativeProjects: Seq[ProjectReference] = Seq(api.native, lang.native, wvc, wvcLib)
 
@@ -137,7 +137,7 @@ lazy val lang = crossProject(JVMPlatform, JSPlatform, NativePlatform)
         "org.wvlet.airframe" %% "airframe-config" % AIRFRAME_VERSION,
         "org.wvlet.airframe" %% "airframe-ulid"   % AIRFRAME_VERSION,
         // For resolving parquet file schema
-        "org.duckdb" % "duckdb_jdbc" % "1.1.3",
+        "org.duckdb" % "duckdb_jdbc" % "1.3.1.0",
         // Add a reference implementation of the compiler
         "org.scala-lang" %% "scala3-compiler" % SCALA_3 % Test
       ),
@@ -188,6 +188,9 @@ lazy val wvcLib = project
       c.withBuildTarget(BuildTarget.libraryDynamic)
         // Generates libwvlet.so, libwvlet.dylib, libwvlet.dll
         .withBaseName("wvlet")
+        .withSourceLevelDebuggingConfig(_.enableAll) // enable generation of debug information
+        // Boehm GC's non-moving behavior helps avoid Segmentation Fault in DLLs
+        .withGC(GC.boehm)
     }
   )
   .dependsOn(wvc)
@@ -301,7 +304,7 @@ lazy val cli = project
               .process
               .Process(
                 List("npm", "install", "--silent", "--no-audit", "--no-fund"),
-                (uiMain / baseDirectory).value
+                (ThisBuild / baseDirectory).value
               )
               .!
             // Trigger compilation from Scala.js to JS
@@ -311,8 +314,8 @@ lazy val cli = project
               .sys
               .process
               .Process(
-                List("npm", "run", "build", "--silent", "--no-audit", "--no-fund"),
-                (uiMain / baseDirectory).value
+                List("npm", "run", "build-ui", "--silent", "--no-audit", "--no-fund"),
+                (ThisBuild / baseDirectory).value
               )
               .!
           },
@@ -340,11 +343,11 @@ lazy val runner = project
     description := "wvlet query executor using trino, duckdb, etc.",
     libraryDependencies ++=
       Seq(
-        "org.jline"                     % "jline"             % "3.28.0",
+        "org.jline"                     % "jline"             % "3.30.4",
         "org.wvlet.airframe"           %% "airframe-launcher" % AIRFRAME_VERSION,
-        "com.github.ben-manes.caffeine" % "caffeine"          % "3.1.8",
-        "org.apache.arrow"              % "arrow-vector"      % "18.1.0",
-        "org.duckdb"                    % "duckdb_jdbc"       % "1.1.3",
+        "com.github.ben-manes.caffeine" % "caffeine"          % "3.2.1",
+        "org.apache.arrow"              % "arrow-vector"      % "18.3.0",
+        "org.duckdb"                    % "duckdb_jdbc"       % "1.3.1.0",
         "io.trino"                      % "trino-jdbc"        % TRINO_VERSION,
         // exclude() and jar() are necessary to avoid https://github.com/sbt/sbt/issues/7407
         // tpc-h connector neesd to download GB's of jar, so excluding it
@@ -372,6 +375,22 @@ lazy val spec = project
   .settings(buildSettings, specRunnerSettings, noPublish, name := "wvlet-spec")
   .dependsOn(runner)
 
+lazy val sdkJs = project
+  .in(file("wvlet-sdk-js"))
+  .enablePlugins(ScalaJSPlugin)
+  .settings(
+    buildSettings,
+    name := "wvlet-sdk-js",
+    // Configure Scala.js output as ES module
+    scalaJSLinkerConfig ~= { _.withModuleKind(ModuleKind.ESModule) },
+    // Configure output directory
+    Compile / fastLinkJS / scalaJSLinkerOutputDirectory := 
+      (ThisBuild / baseDirectory).value / "sdks" / "typescript" / "lib",
+    Compile / fullLinkJS / scalaJSLinkerOutputDirectory := 
+      (ThisBuild / baseDirectory).value / "sdks" / "typescript" / "lib"
+  )
+  .dependsOn(lang.js)
+
 lazy val server = project
   .in(file("wvlet-server"))
   .settings(
@@ -380,7 +399,7 @@ lazy val server = project
     libraryDependencies ++=
       Seq(
         // For redirecting slf4j logs to airframe-log
-        "org.slf4j"           % "slf4j-jdk14"         % "2.0.16",
+        "org.slf4j"           % "slf4j-jdk14"         % "2.0.17",
         "org.wvlet.airframe" %% "airframe-launcher"   % AIRFRAME_VERSION,
         "org.wvlet.airframe" %% "airframe-http-netty" % AIRFRAME_VERSION
       ),
@@ -423,7 +442,7 @@ lazy val uiMain = project
     buildSettings,
     uiSettings,
     name        := "wvlet-ui-main",
-    description := "UI main code compiled with Vite.js"
+    description := "UI main code for wvlet ui command"
   )
   .dependsOn(ui, lang.js)
 
@@ -434,14 +453,14 @@ lazy val playground = project
     buildSettings,
     uiSettings,
     name        := "wvlet-ui-playground",
-    description := "Playground for wvlet",
+    description := "Online playground for wvlet",
     Compile / sourceGenerators +=
       Def
         .task {
           // Generate a Scala file containing all .wv files in wvlet-stdlib
           val libDir = baseDirectory.value / "src/main/wvlet/Examples"
           val targetFile = (Compile / sourceManaged).value /
-            "wvlet/langu/ui/playground/SampleQuery.scala"
+            "wvlet/lang/ui/playground/SampleQuery.scala"
           val body = generateWvletLib(libDir, "wvlet.lang.ui.playground", "SampleQuery")
           state.value.log.debug(s"Generating stdlib.scala:\n${body}")
           IO.write(targetFile, body)
@@ -459,9 +478,11 @@ def uiSettings: Seq[Setting[?]] = Seq(
   }
 )
 
-def linkerConfig(config: StandardConfig): StandardConfig = config
-  // Check IR works properly since Scala.js 1.17.0 https://github.com/scala-js/scala-js/pull/4867
-  .withCheckIR(true)
-  .withSourceMap(true)
-  .withModuleKind(ModuleKind.ESModule)
-  .withModuleSplitStyle(ModuleSplitStyle.SmallModulesFor(List("wvlet.lang.ui")))
+def linkerConfig(config: StandardConfig): StandardConfig = {
+  config
+    // Check IR works properly since Scala.js 1.19.0 https://github.com/scala-js/scala-js/pull/4867
+    .withCheckIR(true)
+    .withSourceMap(true)
+    .withModuleKind(ModuleKind.ESModule)
+    .withModuleSplitStyle(ModuleSplitStyle.SmallModulesFor(List("wvlet.lang.ui")))
+}

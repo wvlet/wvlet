@@ -1,6 +1,6 @@
 package wvlet.standard
 
-type int:
+type int = {
   def to_int: int = sql"cast(${this} as bigint)"
   def to_long: long = sql"cast(${this} as bigint)"
   def to_float: float = sql"cast(${this} as double)"
@@ -17,5 +17,5 @@ type int:
   def not_in(v:any*): boolean = sql"${this} not in (${v})"
 
   def between(l:int, r:int): boolean = sql"${this} between ${l} and ${r}"
-end
+}
 

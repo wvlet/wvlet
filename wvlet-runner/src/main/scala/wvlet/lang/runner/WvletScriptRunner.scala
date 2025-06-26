@@ -62,6 +62,9 @@ class WvletScriptRunner(
   def setResultRowLimit(limit: Int): Unit = resultRowLimits = limit
   def setMaxColWidth(size: Int): Unit     = resultMaxColWidth = size
 
+  def getCurrentCatalog: String = compiler.getDefaultCatalog.catalogName
+  def getCurrentSchema: String  = compiler.getDefaultSchema
+
   override def close(): Unit = queryExecutor.close()
 
   private val compiler =
@@ -104,7 +107,7 @@ class WvletScriptRunner(
   def runStatement(request: QueryRequest)(using
       queryProgressMonitor: QueryProgressMonitor
   ): QueryResult =
-    val newUnit = CompilationUnit.fromString(request.query)
+    val newUnit = CompilationUnit.fromWvletString(request.query)
     units = newUnit :: units
 
     try
@@ -140,8 +143,10 @@ class WvletScriptRunner(
       val resultMaxWidth = str.split("\n").map(_.size).max
       if !config.interactive || resultMaxWidth <= terminal.getWidth then
         // The result fits in the terminal width
-        val output = queryResult
-          .toPrettyBox(maxWidth = Some(terminal.getWidth), maxColWidth = resultMaxColWidth)
+        val output = queryResult.toPrettyBox(
+          maxWidth = Some(terminal.getWidth),
+          maxColWidth = resultMaxColWidth
+        )
         if output.trim.nonEmpty then
           println(output)
       else

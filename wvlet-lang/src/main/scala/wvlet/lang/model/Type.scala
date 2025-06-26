@@ -15,18 +15,16 @@ package wvlet.lang.model
 
 import wvlet.lang.api.StatusCode
 import wvlet.lang.compiler.{Name, TypeName}
-import wvlet.lang.model.DataType.{NamedType, TypeParameter}
-import wvlet.lang.model.expr.Expression
+import wvlet.lang.model.DataType.NamedType
 import wvlet.lang.model.plan.Import
 import wvlet.log.LogSupport
-
-import scala.quoted.Expr
 
 abstract class Type:
   def typeDescription: String
   def isFunctionType: Boolean = false
   def isResolved: Boolean
-  def isBound: Boolean = true
+  def isNotResolved: Boolean = !isResolved
+  def isBound: Boolean       = true
   def bind(typeArgMap: Map[TypeName, DataType]): Type =
     this match
       case d: DataType =>
