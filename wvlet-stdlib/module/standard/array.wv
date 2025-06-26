@@ -24,6 +24,9 @@ type array[A] = {
 
   def to_array: array[A] = sql"array_agg(${this})"
 
+  def exclude(arr: sql) in duckdb: array[A] = sql"array_filter(${this}, x -> NOT array_contains(${arr}, x))"
+  def exclude(arr: sql) in trino: array[A] = sql"array_except(${this}, ${arr})"
+
   def exists: boolean = sql"exists(${this})"
   def not_exists: boolean = sql"not exists(${this})"
 }
@@ -36,6 +39,6 @@ type array[A of numeric] = {
   def variance: A = sql"variance(${this})"
   def stddev: A = sql"stddev(${this})"
 
-  def approx_quantile(pos:double) in trino: A = sql"aprox_percentile(${this}, ${pos})"
+  def approx_quantile(pos:double) in trino: A = sql"approx_percentile(${this}, ${pos})"
   def approx_quantile(pos:double) in duckdb: A = sql"approx_quantile(${this}, ${pos})"
 }
