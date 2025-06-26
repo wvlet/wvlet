@@ -8,7 +8,7 @@ import wvlet.lang.compiler.codegen.{CodeFormatterConfig, SqlGenerator}
 /**
   * Test parsing and SQL generation for Hive without execution
   */
-class HiveParseSpec extends AirSpec:
+class SqlHiveSpec extends AirSpec:
 
   private val workEnv = WorkEnv(path = "spec/sql/hive-parseable")
 
@@ -64,4 +64,4 @@ class HiveParseSpec extends AirSpec:
     }
   }
 
-end HiveParseSpec
+end SqlHiveSpec
