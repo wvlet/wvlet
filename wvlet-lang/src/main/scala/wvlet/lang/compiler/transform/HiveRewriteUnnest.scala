@@ -50,17 +50,19 @@ object HiveRewriteUnnest extends Phase("hive-rewrite-unnest"):
         // Transform CROSS JOIN UNNEST to LATERAL VIEW
         // For now, we support single column unnest
         if u.columns.size == 1 then
-          val expr = u.columns.head
-          val tableAlias = NameExpr.fromString(s"unnest_table")
+          val expr        = u.columns.head
+          val tableAlias  = NameExpr.fromString(s"unnest_table")
           val columnAlias = NameExpr.fromString(s"unnest_col")
           LateralView(
             child = left,
-            exprs = Seq(FunctionApply(
-              NameExpr.fromString("explode"),
-              List(FunctionArg(None, expr, false, NoSpan)),
-              None,
-              NoSpan
-            )),
+            exprs = Seq(
+              FunctionApply(
+                NameExpr.fromString("explode"),
+                List(FunctionArg(None, expr, false, NoSpan)),
+                None,
+                NoSpan
+              )
+            ),
             tableAlias = tableAlias,
             columnAliases = Seq(columnAlias),
             span = span
@@ -68,3 +70,5 @@ object HiveRewriteUnnest extends Phase("hive-rewrite-unnest"):
         else
           // Multi-column unnest not supported yet
           j
+
+end HiveRewriteUnnest

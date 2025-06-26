@@ -891,15 +891,21 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         expr(g.child)
       case f: FunctionApply =>
         // Map function names for Hive
-        val functionName = f.base match
-          case n: NameExpr if dbType == DBType.Hive =>
-            n.leafName match
-              case "array_agg" => NameExpr.fromString("collect_list")
-              case "array_distinct" => NameExpr.fromString("array_distinct")
-              case "regexp_like" => NameExpr.fromString("regexp")
-              case _ => n
-          case other => other
-        
+        val functionName =
+          f.base match
+            case n: NameExpr if dbType == DBType.Hive =>
+              n.leafName match
+                case "array_agg" =>
+                  NameExpr.fromString("collect_list")
+                case "array_distinct" =>
+                  NameExpr.fromString("array_distinct")
+                case "regexp_like" =>
+                  NameExpr.fromString("regexp")
+                case _ =>
+                  n
+            case other =>
+              other
+
         val base = expr(functionName)
         val args = paren(cl(f.args.map(x => expr(x))))
         val w    = f.window.map(x => expr(x))
@@ -1012,7 +1018,11 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       case tupleNotIn: TupleNotIn =>
         generateTupleInExpression(tupleNotIn.tuple, tupleNotIn.list, "not in")
       case a: ArrayConstructor =>
-        text("ARRAY") + bracket(cl(a.values.map(expr(_))))
+        dbType.arrayConstructorSyntax match
+          case SQLDialect.ArraySyntax.ArrayPrefix =>
+            text("ARRAY") + bracket(cl(a.values.map(expr(_))))
+          case SQLDialect.ArraySyntax.ArrayLiteral =>
+            bracket(cl(a.values.map(expr(_))))
       case r: RowConstructor =>
         paren(cl(r.values.map(expr(_))))
       case a: ArrayAccess =>

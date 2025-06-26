@@ -65,6 +65,7 @@ enum DBType(
         mapConstructorSyntax = SQLDialect.MapSyntax.ArrayPair,
         requireParenForValues = false
       )
+
   case BigQuery   extends DBType
   case MySQL      extends DBType
   case PostgreSQL extends DBType
