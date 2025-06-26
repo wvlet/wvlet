@@ -194,7 +194,7 @@ test _.output should be """
 - **JDK**: Minimum JDK 17, JDK 24+ required for Trino connector testing
 - **Native Builds**: clang, llvm, libstdc++-12-dev, libgc (Boehm GC)
 - **Node.js**: 18+ for UI development and documentation
-- **SBT**: 1.11.1 (specified in project/build.properties)
+- **SBT**: 1.11.2 (specified in project/build.properties)
 
 ## Release Process
 
@@ -207,7 +207,7 @@ The project follows semantic versioning and uses SBT plugins for cross-platform 
 - Pattern: `<prefix>/<description>-$(date +"%Y%m%d_%H%M%S")` or `<prefix>/$(date +"%Y%m%d_%H%M%S")-<description>`
 - Use appropriate prefixes: `feature/`, `fix/`, `doc/`, `internal/`
 - Examples:
-  - `feature/add-gemini-guidance-20250605_205837`
+  - `feature/add-gemini-guidance`
   - `fix/20250605_210000-correct-sbt-syntax`
   - `doc/improve-testing-docs-20250605_210100`
 
