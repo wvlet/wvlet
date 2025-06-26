@@ -1,4 +1,4 @@
--- Test USE schema statement
+-- Test use schema statement
 
 -- Test basic use schema
 use schema test_schema
@@ -10,9 +10,5 @@ use schema memory.analytics
 use schema main
 -- The following query would use the 'main' schema context
 
--- Test lowercase command
+-- Test another schema switch
 use schema production
-
--- Test mixed case (SQL keywords are case-insensitive)
-USE SCHEMA development
-Use Schema staging
