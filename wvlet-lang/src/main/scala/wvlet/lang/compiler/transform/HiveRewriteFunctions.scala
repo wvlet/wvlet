@@ -43,21 +43,21 @@ object HiveRewriteFunctions extends Phase("hive-rewrite-functions"):
     unit
 
   private object rewriteFunctions extends RewriteRule:
-    override def apply(context: Context): RewriteRule.PlanRewriter = { plan =>
-      plan.transformExpressions {
-        case f @ FunctionApply(n: NameExpr, args, window, span) =>
-          n.leafName match
-            case "array_agg" =>
-              FunctionApply(NameExpr.fromString("collect_list"), args, window, span)
-            case "array_distinct" =>
-              FunctionApply(NameExpr.fromString("collect_set"), args, window, span)
-            case "regexp_like" =>
-              FunctionApply(NameExpr.fromString("regexp"), args, window, span)
-            case _ =>
-              f
-        case other =>
-          other
-      }
-    }
+    override def apply(context: Context): RewriteRule.PlanRewriter =
+      plan =>
+        plan.transformExpressions {
+          case f @ FunctionApply(n: NameExpr, args, window, span) =>
+            n.leafName match
+              case "array_agg" =>
+                FunctionApply(NameExpr.fromString("collect_list"), args, window, span)
+              case "array_distinct" =>
+                FunctionApply(NameExpr.fromString("collect_set"), args, window, span)
+              case "regexp_like" =>
+                FunctionApply(NameExpr.fromString("regexp"), args, window, span)
+              case _ =>
+                f
+          case other =>
+            other
+        }
 
 end HiveRewriteFunctions
