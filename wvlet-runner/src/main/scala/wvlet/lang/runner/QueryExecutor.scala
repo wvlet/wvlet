@@ -233,6 +233,8 @@ class QueryExecutor(
           case 1 =>
             // use schema <schema_name>
             context.global.defaultSchema = fullName
+            // Notify the compiler about the schema change
+            context.global.onSchemaChange.foreach(_(fullName, None))
             workEnv.info(s"Switched to schema: ${fullName}")
             QueryResult.empty
           case 2 =>
@@ -241,6 +243,8 @@ class QueryExecutor(
             val schema      = parts(1)
             // For now, we only update the schema since catalog switching requires more complex handling
             context.global.defaultSchema = schema
+            // Notify the compiler about the schema change
+            context.global.onSchemaChange.foreach(_(schema, Some(catalogName)))
             workEnv.info(s"Switched to schema: ${schema}")
             QueryResult.empty
           case _ =>

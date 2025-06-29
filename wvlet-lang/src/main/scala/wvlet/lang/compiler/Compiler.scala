@@ -144,6 +144,15 @@ class Compiler(val compilerOptions: CompilerOptions) extends LogSupport:
     val rootContext = global.getContextOf(unit = CompilationUnit.empty, scope = Scope.newScope(0))
     // Need to initialize the global context before running the analysis phases
     global.init(using rootContext)
+    // Set up schema change callback
+    global.onSchemaChange = Some { (schema, catalogOpt) =>
+      catalogOpt match
+        case Some(catalog) =>
+          // For now, we don't support catalog switching in REPL
+          setDefaultSchema(schema)
+        case None =>
+          setDefaultSchema(schema)
+    }
     global
 
   /**
