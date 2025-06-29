@@ -96,4 +96,11 @@ class WvletREPLMainTest extends AirSpec:
     WvletREPLMain.main("""-c 'context' -c 'use test_schema' -c 'context'""")
   }
 
+  test("use schema persists in REPL session") {
+    // This test verifies that the schema change persists across commands in the same REPL session
+    WvletREPLMain.main(
+      """-c 'use schema my_test_schema' -c 'context' -c 'from values (1, 2, 3)' -c 'context'"""
+    )
+  }
+
 end WvletREPLMainTest
