@@ -23,7 +23,9 @@ import wvlet.log.LogLevel
 
 class UseSchemaTest extends AirSpec:
 
-  test("use schema should update both context and compiler") {
+  private case class TestSetup(compiler: Compiler, queryExecutor: QueryExecutor, workEnv: WorkEnv)
+
+  private def createTestSetup(): TestSetup =
     val workEnv = WorkEnv(".", LogLevel.DEBUG)
     val compilerOptions = CompilerOptions(
       workEnv = workEnv,
@@ -37,66 +39,52 @@ class UseSchemaTest extends AirSpec:
       defaultProfile = Profile.defaultDuckDBProfile,
       workEnv = workEnv
     )
+    TestSetup(compiler, queryExecutor, workEnv)
+
+  test("use schema should update both context and compiler") {
+    val setup = createTestSetup()
 
     // Initial state
-    compiler.getDefaultSchema shouldBe "main"
+    setup.compiler.getDefaultSchema shouldBe "main"
 
     // Compile and execute use schema command
     val useSchemaQuery = "use schema test_schema"
     val unit           = CompilationUnit.fromWvletString(useSchemaQuery)
-    val compileResult  = compiler.compileSingleUnit(unit)
+    val compileResult  = setup.compiler.compileSingleUnit(unit)
 
     compileResult.hasFailures shouldBe false
 
     val ctx = compileResult.context.global.getContextOf(unit)
-    val result = queryExecutor.executeSelectedStatement(
-      unit,
-      QuerySelection.All,
-      LinePosition(1, 1),
-      ctx
-    )
+    val result = setup
+      .queryExecutor
+      .executeSelectedStatement(unit, QuerySelection.All, LinePosition(1, 1), ctx)
 
     // Verify the schema was updated in both places
     ctx.global.defaultSchema shouldBe "test_schema"
-    compiler.getDefaultSchema shouldBe "test_schema"
+    setup.compiler.getDefaultSchema shouldBe "test_schema"
   }
 
   test("use catalog.schema should update schema") {
-    val workEnv = WorkEnv(".", LogLevel.DEBUG)
-    val compilerOptions = CompilerOptions(
-      workEnv = workEnv,
-      catalog = Some("memory"),
-      schema = Some("main")
-    )
-    val compiler            = Compiler(compilerOptions)
-    val dbConnectorProvider = DBConnectorProvider(workEnv)
-    val queryExecutor = QueryExecutor(
-      dbConnectorProvider = dbConnectorProvider,
-      defaultProfile = Profile.defaultDuckDBProfile,
-      workEnv = workEnv
-    )
+    val setup = createTestSetup()
 
     // Initial state
-    compiler.getDefaultSchema shouldBe "main"
+    setup.compiler.getDefaultSchema shouldBe "main"
 
     // Compile and execute use schema command with catalog
     val useSchemaQuery = "use schema my_catalog.my_schema"
     val unit           = CompilationUnit.fromWvletString(useSchemaQuery)
-    val compileResult  = compiler.compileSingleUnit(unit)
+    val compileResult  = setup.compiler.compileSingleUnit(unit)
 
     compileResult.hasFailures shouldBe false
 
     val ctx = compileResult.context.global.getContextOf(unit)
-    val result = queryExecutor.executeSelectedStatement(
-      unit,
-      QuerySelection.All,
-      LinePosition(1, 1),
-      ctx
-    )
+    val result = setup
+      .queryExecutor
+      .executeSelectedStatement(unit, QuerySelection.All, LinePosition(1, 1), ctx)
 
     // Verify the schema was updated (catalog switching not yet supported)
     ctx.global.defaultSchema shouldBe "my_schema"
-    compiler.getDefaultSchema shouldBe "my_schema"
+    setup.compiler.getDefaultSchema shouldBe "my_schema"
   }
 
 end UseSchemaTest

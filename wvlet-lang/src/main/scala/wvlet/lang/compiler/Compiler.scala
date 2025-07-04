@@ -146,12 +146,8 @@ class Compiler(val compilerOptions: CompilerOptions) extends LogSupport:
     global.init(using rootContext)
     // Set up schema change callback
     global.onSchemaChange = Some { (schema, catalogOpt) =>
-      catalogOpt match
-        case Some(catalog) =>
-          // For now, we don't support catalog switching in REPL
-          setDefaultSchema(schema)
-        case None =>
-          setDefaultSchema(schema)
+      // For now, we don't support catalog switching in REPL
+      setDefaultSchema(schema)
     }
     global
 
