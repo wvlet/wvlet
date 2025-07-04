@@ -51,9 +51,6 @@ case class GlobalContext(compilerOptions: CompilerOptions):
 
   var workEnv: WorkEnv = compilerOptions.workEnv
 
-  // Callback to notify schema changes
-  var onSchemaChange: Option[(String, Option[String]) => Unit] = None
-
   def init(using rootContext: Context): Unit =
     this.rootContext = rootContext
     defs = GlobalDefinitions(using rootContext)
