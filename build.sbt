@@ -38,7 +38,15 @@ lazy val jvmProjects: Seq[ProjectReference] = Seq(
   cli
 )
 
-lazy val jsProjects: Seq[ProjectReference] = Seq(api.js, client.js, lang.js, ui, uiMain, playground, sdkJs)
+lazy val jsProjects: Seq[ProjectReference] = Seq(
+  api.js,
+  client.js,
+  lang.js,
+  ui,
+  uiMain,
+  playground,
+  sdkJs
+)
 
 lazy val nativeProjects: Seq[ProjectReference] = Seq(api.native, lang.native, wvc, wvcLib)
 
@@ -137,7 +145,7 @@ lazy val lang = crossProject(JVMPlatform, JSPlatform, NativePlatform)
         "org.wvlet.airframe" %% "airframe-config" % AIRFRAME_VERSION,
         "org.wvlet.airframe" %% "airframe-ulid"   % AIRFRAME_VERSION,
         // For resolving parquet file schema
-        "org.duckdb" % "duckdb_jdbc" % "1.3.1.0",
+        "org.duckdb" % "duckdb_jdbc" % "1.3.2.0",
         // Add a reference implementation of the compiler
         "org.scala-lang" %% "scala3-compiler" % SCALA_3 % Test
       ),
@@ -347,7 +355,7 @@ lazy val runner = project
         "org.wvlet.airframe"           %% "airframe-launcher" % AIRFRAME_VERSION,
         "com.github.ben-manes.caffeine" % "caffeine"          % "3.2.1",
         "org.apache.arrow"              % "arrow-vector"      % "18.3.0",
-        "org.duckdb"                    % "duckdb_jdbc"       % "1.3.1.0",
+        "org.duckdb"                    % "duckdb_jdbc"       % "1.3.2.0",
         "io.trino"                      % "trino-jdbc"        % TRINO_VERSION,
         // exclude() and jar() are necessary to avoid https://github.com/sbt/sbt/issues/7407
         // tpc-h connector neesd to download GB's of jar, so excluding it
@@ -382,11 +390,13 @@ lazy val sdkJs = project
     buildSettings,
     name := "wvlet-sdk-js",
     // Configure Scala.js output as ES module
-    scalaJSLinkerConfig ~= { _.withModuleKind(ModuleKind.ESModule) },
+    scalaJSLinkerConfig ~= {
+      _.withModuleKind(ModuleKind.ESModule)
+    },
     // Configure output directory
-    Compile / fastLinkJS / scalaJSLinkerOutputDirectory := 
+    Compile / fastLinkJS / scalaJSLinkerOutputDirectory :=
       (ThisBuild / baseDirectory).value / "sdks" / "typescript" / "lib",
-    Compile / fullLinkJS / scalaJSLinkerOutputDirectory := 
+    Compile / fullLinkJS / scalaJSLinkerOutputDirectory :=
       (ThisBuild / baseDirectory).value / "sdks" / "typescript" / "lib"
   )
   .dependsOn(lang.js)
