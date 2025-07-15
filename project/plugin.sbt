@@ -14,7 +14,7 @@ addSbtPlugin("com.eed3si9n"       % "sbt-buildinfo" % "0.13.1")
 addSbtPlugin("org.wvlet.airframe" % "sbt-airframe"  % AIRFRAME_VERSION)
 
 // For IntelliJ IDEA
-addSbtPlugin("org.jetbrains.scala" % "sbt-ide-settings" % "1.1.2")
+addSbtPlugin("org.jetbrains.scala" % "sbt-ide-settings" % "1.1.3")
 
 // For restarting servers with reStart sbt command as you edit source files
 addSbtPlugin("io.spray" % "sbt-revolver" % "0.10.0")
