@@ -16,7 +16,7 @@
     "@duckdb/duckdb-wasm": "^1.29.0",
     "@tailwindcss/postcss": "^4.1.11",
     "@tailwindcss/vite": "^4.1.11",
-    "apache-arrow": "^20.0.0",
+    "apache-arrow": "^21.0.0",
     "monaco-editor": "^0.52.2",
     "rollup": "^4.45.1"
   },
