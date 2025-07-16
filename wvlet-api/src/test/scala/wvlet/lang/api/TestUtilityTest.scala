@@ -6,7 +6,8 @@ class TestUtilityTest extends AirSpec:
 
   test("formatMessage should combine prefix and message") {
     TestUtility.formatMessage("INFO", "Hello World") shouldBe "INFO: Hello World"
-    TestUtility.formatMessage("ERROR", "Something went wrong") shouldBe "ERROR: Something went wrong"
+    TestUtility.formatMessage("ERROR", "Something went wrong") shouldBe
+      "ERROR: Something went wrong"
   }
 
   test("isPalindrome should detect palindromes") {

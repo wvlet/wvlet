@@ -8,8 +8,7 @@ object TestUtility:
   /**
     * Simple string formatting utility
     */
-  def formatMessage(prefix: String, message: String): String =
-    s"${prefix}: ${message}"
+  def formatMessage(prefix: String, message: String): String = s"${prefix}: ${message}"
 
   /**
     * Check if a string is palindrome
@@ -22,5 +21,7 @@ object TestUtility:
     * Calculate factorial
     */
   def factorial(n: Int): Long =
-    if n <= 0 then 1
-    else (1 to n).map(_.toLong).product
+    if n <= 0 then
+      1
+    else
+      (1 to n).map(_.toLong).product
