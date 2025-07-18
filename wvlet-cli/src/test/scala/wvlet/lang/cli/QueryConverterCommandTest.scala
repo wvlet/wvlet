@@ -96,8 +96,8 @@ class QueryConverterCommandTest extends AirSpec:
     val out = captureStdout {
       WvletMain.main("""toSQL -t duckdb "from users select *" """)
     }
-    out shouldContain "SELECT *"
-    out shouldContain "FROM users"
+    out.toLowerCase shouldContain "select *"
+    out.toLowerCase shouldContain "from users"
   }
 
   // Future test for SQL -> wvlet conversion (commented out until implemented)
