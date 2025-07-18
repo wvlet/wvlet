@@ -254,6 +254,7 @@ For error reporting, use WvletLangException and StatusCode enum. If necessary er
 - In git worktree environment, create a new branch based on origin/main
 - For creating temporary files, use target folder, which will be ignored in git
 - **Before making changes, always create a new branch for pull request**
+- You can change the local java version with this command `export JAVA_HOME=`/usr/libexec/java_home -v "24"``
 
 ## Workflow for PR Checks
 
