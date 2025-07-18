@@ -1,3 +1,4 @@
+
 package wvlet.lang.cli
 
 import wvlet.airframe.control.Control
@@ -5,7 +6,8 @@ import wvlet.airframe.launcher.{argument, option}
 import wvlet.lang.api.StatusCode
 import wvlet.lang.api.v1.query.QuerySelection
 import wvlet.lang.catalog.Profile
-import wvlet.lang.compiler.codegen.GenSQL
+import wvlet.lang.compiler.parser.SqlParser
+import wvlet.lang.compiler.codegen.{GenSQL, WvletGenerator}
 import wvlet.lang.compiler.{
   CompilationUnit,
   CompileResult,
@@ -14,6 +16,7 @@ import wvlet.lang.compiler.{
   Context,
   DBType,
   Symbol,
+  SourceFile,
   WorkEnv
 }
 import wvlet.lang.runner.QueryExecutor
@@ -138,6 +141,37 @@ class WvletCompiler(
 
     GenSQL.generateSQL(inputUnit)(using ctx)
   end generateSQL
+
+  def generateWvlet: String = {
+    // Get SQL from input
+    val sqlInput = (compilerOption.file, compilerOption.query) match {
+      case (Some(f), None) =>
+        val filePath = s"${compilerOption.workFolder}/${f}".stripPrefix("./")
+        val sourceFile = SourceFile.fromFile(filePath)
+        sourceFile.getContentAsString
+      case (None, Some(q)) =>
+        q
+      case _ =>
+        throw StatusCode.INVALID_ARGUMENT.newException("Specify either --file or a SQL query argument")
+    }
+
+    // Parse SQL to get logical plan
+    val sqlUnit = CompilationUnit.fromSqlString(sqlInput)
+    // To parse SQL, we need a context, but we don't need to run a full compilation.
+    // So we can create a dummy compilation result to get the context.
+    val compileResult = compiler.compileSingleUnit(sqlUnit)
+    given ctx: Context = compileResult.context.withCompilationUnit(sqlUnit)
+    
+    val parser = SqlParser(sqlUnit)
+    val logicalPlan = parser.parse()
+
+    // Generate Wvlet from logical plan
+    val wvletGen = WvletGenerator()
+    val wvletCode = wvletGen.print(logicalPlan)
+    
+    // Return the Wvlet code
+    wvletCode
+  }
 
   def run(): Unit =
     Control.withResource(
