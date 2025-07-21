@@ -1,0 +1,27 @@
+-- Test Map data types with Trino
+
+select map {
+  "a": 1,
+  "b": 2,
+  "c": 3
+} as string_int_map
+;
+
+select map {
+  "name": "Alice",
+  "age": "30"
+}["name"] as name_value
+;
+
+select map {
+  "user1": map {"name": "Alice", "age": "25"},
+  "user2": map {"name": "Bob", "age": "30"}
+} as nested_map
+;
+
+select map {
+  "math": [90, 85, 88],
+  "science": [92, 89, 91],
+  "english": [85, 87, 90]
+} as subject_scores
+;
