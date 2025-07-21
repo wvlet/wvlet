@@ -85,16 +85,8 @@ class WvletMain(opts: WvletGlobalOption) extends LogSupport:
   @command(description = "Manage static catalog metadata")
   def catalog = new CatalogCommand()
 
-  @command(description = "Convert Wvlet query to SQL")
-  def toSQL(compilerOption: WvletCompilerOption): Unit = handleError {
-    design(compilerOption).build[WvletCompiler] { compiler =>
-      val sql = compiler.generateSQL
-      println(sql)
-    }
-  }
-
   @command(description = "Convert SQL to Wvlet query")
-  def toWvlet(compilerOption: WvletCompilerOption): Unit = handleError {
+  def to_wvlet(compilerOption: WvletCompilerOption): Unit = handleError {
     design(compilerOption).build[WvletCompiler] { compiler =>
       val wvlet = compiler.generateWvlet
       println(wvlet)
