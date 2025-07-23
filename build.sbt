@@ -4,7 +4,7 @@ val AIRFRAME_VERSION    = "2025.1.14"
 val AIRSPEC_VERSION     = "2025.1.14"
 val TRINO_VERSION       = "476"
 val AWS_SDK_VERSION     = "2.20.146"
-val SCALAJS_DOM_VERSION = "2.8.0"
+val SCALAJS_DOM_VERSION = "2.8.1"
 
 val SCALA_3 = IO.read(file("SCALA_VERSION")).trim
 ThisBuild / resolvers ++= Resolver.sonatypeOssRepos("snapshots")
