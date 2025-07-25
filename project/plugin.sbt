@@ -14,7 +14,7 @@ addSbtPlugin("com.eed3si9n"       % "sbt-buildinfo" % "0.13.1")
 addSbtPlugin("org.wvlet.airframe" % "sbt-airframe"  % AIRFRAME_VERSION)
 
 // For IntelliJ IDEA
-addSbtPlugin("org.jetbrains.scala" % "sbt-ide-settings" % "1.1.2")
+addSbtPlugin("org.jetbrains.scala" % "sbt-ide-settings" % "1.1.3")
 
 // For restarting servers with reStart sbt command as you edit source files
 addSbtPlugin("io.spray" % "sbt-revolver" % "0.10.0")
@@ -37,7 +37,7 @@ addDependencyTreePlugin
 addSbtPlugin("com.github.sbt" % "sbt-dynver" % "5.1.1")
 
 // For packaging Scala project into a executable folder
-addSbtPlugin("org.xerial.sbt" % "sbt-pack" % "0.20")
+addSbtPlugin("org.xerial.sbt" % "sbt-pack" % "0.21")
 
 // For compiling model classes from SQL templates
 libraryDependencies += "org.duckdb" % "duckdb_jdbc" % "1.3.2.0"

@@ -16,9 +16,9 @@
     "@duckdb/duckdb-wasm": "^1.29.0",
     "@tailwindcss/postcss": "^4.1.11",
     "@tailwindcss/vite": "^4.1.11",
-    "apache-arrow": "^20.0.0",
+    "apache-arrow": "^21.0.0",
     "monaco-editor": "^0.52.2",
-    "rollup": "^4.45.0"
+    "rollup": "^4.45.1"
   },
   "devDependencies": {
     "@rollup/plugin-replace": "^6.0.2",
@@ -27,7 +27,7 @@
     "postcss": "^8.5.6",
     "tailwindcss": "^4.1.11",
     "typescript": "^5.8.3",
-    "vite": "^7.0.4",
+    "vite": "^7.0.6",
     "vite-plugin-monaco-editor": "^1.1.0"
   }
 }
