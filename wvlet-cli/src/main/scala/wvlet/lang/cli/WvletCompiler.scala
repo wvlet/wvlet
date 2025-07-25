@@ -1,4 +1,3 @@
-
 package wvlet.lang.cli
 
 import wvlet.airframe.control.Control
@@ -117,22 +116,17 @@ class WvletCompiler(
 
   end compiler
 
-  private def isSQLQuery(query: String): Boolean = {
+  private def isSQLQuery(query: String): Boolean =
     val trimmed = query.trim.toLowerCase
-    trimmed.startsWith("select") || 
-    trimmed.startsWith("insert") || 
-    trimmed.startsWith("update") || 
-    trimmed.startsWith("delete") || 
-    trimmed.startsWith("create") || 
-    trimmed.startsWith("drop") || 
-    trimmed.startsWith("alter") || 
-    trimmed.startsWith("with")
-  }
+    trimmed.startsWith("select") || trimmed.startsWith("insert") || trimmed.startsWith("update") ||
+    trimmed.startsWith("delete") || trimmed.startsWith("create") || trimmed.startsWith("drop") ||
+    trimmed.startsWith("alter") || trimmed.startsWith("with")
 
   private lazy val inputUnit: CompilationUnit =
     (compilerOption.file, compilerOption.query) match
       case (Some(f), None) =>
-        CompilationUnit.fromFile(s"${compilerOption.workFolder}/${f}".stripPrefix("./"))
+        val filePath = new java.io.File(compilerOption.workFolder, f).getPath.stripPrefix("./")
+        CompilationUnit.fromFile(filePath)
       case (None, Some(q)) =>
         if isSQLQuery(q) then
           CompilationUnit.fromSqlString(q)
@@ -143,8 +137,16 @@ class WvletCompiler(
 
   private def compile(): CompileResult = compiler.compileSingleUnit(inputUnit)
 
-  private def compileInternal: Context =
-    val compileResult = compile()
+  private def compileInternal(parseOnly: Boolean = false): Context =
+    val compileResult =
+      if parseOnly then
+        val parsingCompiler = Compiler(
+          compiler.compilerOptions.copy(phases = Compiler.parseOnlyPhases)
+        )
+        parsingCompiler.compileSingleUnit(inputUnit)
+      else
+        compile()
+
     compileResult.reportAllErrors
 
     compileResult
@@ -155,19 +157,20 @@ class WvletCompiler(
       .newContext(Symbol.NoSymbol)
 
   def generateSQL: String =
-    val ctx = compileInternal
+    val ctx = compileInternal()
     GenSQL.generateSQL(inputUnit)(using ctx)
 
   def generateWvlet: String =
-    val ctx = compileInternal
-    
+    // For SQL to Wvlet conversion, we only need to parse the SQL, not run full compilation
+    val ctx = compileInternal(parseOnly = inputUnit.sourceFile.isSQL)
+
     // Get the resolved logical plan from the compilation unit
     val logicalPlan = inputUnit.resolvedPlan
-    
+
     // Create a WvletGenerator with the appropriate database type configuration
-    val config = CodeFormatterConfig(sqlDBType = ctx.dbType)
+    val config    = CodeFormatterConfig(sqlDBType = ctx.dbType)
     val generator = WvletGenerator(config)(using ctx)
-    
+
     // Convert the logical plan to Wvlet flow-style syntax
     generator.print(logicalPlan)
 
