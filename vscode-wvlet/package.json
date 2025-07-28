@@ -2,7 +2,7 @@
   "name": "wvlet-language-support",
   "displayName": "Wvlet Language Support",
   "description": "Syntax highlighting and language support for Wvlet query language",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "engines": {
     "vscode": "^1.74.0"
   },

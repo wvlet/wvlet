@@ -80,7 +80,13 @@
         },
         {
           "name": "string.quoted.backtick.wvlet",
-          "match": "`.*?`"
+          "begin": "`",
+          "end": "`",
+          "patterns": [
+            {
+              "include": "#string-interpolation"
+            }
+          ]
         }
       ]
     },
@@ -136,7 +142,7 @@
         },
         {
           "name": "keyword.other.wvlet",
-          "match": "\\b(asof|test|should|be|contain|debug|def|inline|type|extends|native|show|sample|this|of|in|by|as|to|with|from|agg|select|for|let|where|group|having|order|limit|transform|pivot|distinct|asc|desc|join|on|left|right|full|inner|cross|add|prepend|exclude|rename|shift|drop|describe|concat|dedup|intersect|except|all|over|partition|unbounded|preceding|following|current|range|row|run|import|export|package|model|execute|val|save|append|delete|truncate)\\b"
+          "match": "\\b(asof|test|should|be|contain|debug|def|inline|type|extends|native|show|sample|this|of|in|by|as|to|with|from|agg|select|for|let|where|group|having|order|limit|transform|pivot|distinct|asc|desc|join|on|left|right|full|inner|cross|add|prepend|exclude|rename|shift|drop|describe|concat|dedup|intersect|except|all|over|partition|unbounded|preceding|following|current|range|row|run|import|export|package|model|execute|val|save|append|delete|truncate|unnest|lateral|subscribe|watermark|incremental|insert|into|create)\\b"
         }
       ]
     },
@@ -176,7 +182,11 @@
         },
         {
           "name": "keyword.operator.other.wvlet",
-          "match": "[_@$*?#]"
+          "match": "[@$*?#]"
+        },
+        {
+          "name": "variable.language.underscore.wvlet",
+          "match": "\\b_\\b"
         }
       ]
     },
