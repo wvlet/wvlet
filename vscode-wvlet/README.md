@@ -1,4 +1,4 @@
-# Wvlet Language Support for VS Code
+# Wvlet for VS Code
 
 This extension provides syntax highlighting and language support for the Wvlet query language in Visual Studio Code.
 

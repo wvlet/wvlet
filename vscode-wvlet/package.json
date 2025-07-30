@@ -1,6 +1,6 @@
 {
-  "name": "wvlet-language-support",
-  "displayName": "Wvlet Language Support",
+  "name": "wvlet",
+  "displayName": "Wvlet",
   "description": "Syntax highlighting and language support for Wvlet query language",
   "version": "0.1.1",
   "engines": {

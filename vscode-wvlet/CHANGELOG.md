@@ -1,6 +1,6 @@
 # Change Log
 
-All notable changes to the Wvlet Language Support extension will be documented in this file.
+All notable changes to the Wvlet extension will be documented in this file.
 
 ## [0.1.1] - 2025-01-28
 
@@ -20,7 +20,7 @@ All notable changes to the Wvlet Language Support extension will be documented i
 ## [0.1.0] - 2024-01-XX
 
 ### Added
-- Initial release of Wvlet Language Support for VS Code
+- Initial release of Wvlet for VS Code
 - Syntax highlighting for `.wv` files
 - Language configuration with bracket matching and auto-closing
 - Support for all Wvlet keywords and operators
