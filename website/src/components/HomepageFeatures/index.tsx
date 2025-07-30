@@ -38,7 +38,16 @@ const FeatureList: FeatureItem[] = [
         ),
   },
   {
-      title: 'Exensible',
+      title: 'VS Code Extension',
+      description: (
+          <>
+              Write Wvlet queries with full syntax highlighting and language support in 
+              Visual Studio Code. Install from the <a href='https://marketplace.visualstudio.com/items?itemName=wvlet.wvlet'>VS Code Marketplace</a>.
+          </>
+      ),
+  },
+  {
+      title: 'Extensible',
       description: (
          <>
               Wvlet is extensible with table-value functions or compiler-plugins to add your custom
