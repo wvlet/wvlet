@@ -70,6 +70,26 @@ npm install @wvlet/wvlet
 
 See [Language Bindings](../bindings) for more details and usage examples.
 
+## VS Code Extension
+
+For VS Code users, we provide a language extension that adds syntax highlighting and language support for `.wv` files:
+
+### Installation
+
+Install directly from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=wvlet.wvlet) or search for "Wvlet" in the Extensions view (`Ctrl+Shift+X` / `Cmd+Shift+X`) within VS Code.
+
+### Features
+
+- Syntax highlighting for all Wvlet keywords, operators, and syntax
+- Bracket matching and auto-closing
+- Comment toggling support (`--` and `---`)
+- String interpolation highlighting
+- Number literal support (integers, floats, hex)
+
+The extension supports both stable and pre-release versions. Pre-release versions allow early access to new features.
+
+For full details, including troubleshooting and development guides, please see the [VS Code Extension documentation](./vscode.md).
+
 ## Building From Source
 
 See [Building Wvlet](../development/build.md) for building wvlet from source.

@@ -27,21 +27,12 @@ This extension provides syntax highlighting and language support for the Wvlet q
 
 Install directly from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=wvlet.wvlet) or search for "Wvlet" in the Extensions view (`Ctrl+Shift+X`) within VS Code.
 
-### From VSIX File
-
-1. Download the latest `.vsix` file from the releases
-2. Open VS Code
-3. Go to Extensions view (`Ctrl+Shift+X`)
-4. Click the "..." menu and select "Install from VSIX..."
-5. Select the downloaded `.vsix` file
-
 ### From Source
 
 1. Clone the repository
 2. Install dependencies from the root directory: `npm install`
 3. Build the extension: `npm run build-vscode-extension`
 4. The packaged `.vsix` file will be created in `vscode-wvlet/`
-5. Install the generated `.vsix` file using the steps above
 
 ## Development
 

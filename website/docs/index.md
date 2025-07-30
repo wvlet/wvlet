@@ -14,6 +14,7 @@ Wvlet (pronounced as weave-let) is a new flow-style query language designed for 
 - [Usage](./usage/install.md)
 - [Query Syntax](./syntax/)
 - [Language Bindings](./bindings/)
+- [VS Code Extension](./usage/vscode.md)
 - [Development](./development/build.md)
 
 ## Why Wvlet?

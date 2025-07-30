@@ -13,7 +13,9 @@ const FeatureList: FeatureItem[] = [
     title: 'Analyze As You Write',
     description: (
       <>
-        The flow-style query enables you to analyze data as you write queries for interactive data exploration.
+        The flow-style query enables you to analyze data as you write queries for interactive data exploration. 
+        Use our <a href='./docs/usage/repl'>interactive REPL</a> or write queries in <a href='https://marketplace.visualstudio.com/items?itemName=wvlet.wvlet'>VS Code</a> with 
+        full syntax highlighting.
       </>
     ),
   },
@@ -38,7 +40,7 @@ const FeatureList: FeatureItem[] = [
         ),
   },
   {
-      title: 'Exensible',
+      title: 'Extensible',
       description: (
          <>
               Wvlet is extensible with table-value functions or compiler-plugins to add your custom
