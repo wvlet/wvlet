@@ -13,7 +13,7 @@ This directory contains the VS Code extension for Wvlet language support.
 
 ### From VSIX File
 
-1. Build the extension: `npm run package` 
+1. Build the extension: `npm run package`
 2. Install in VS Code: Extensions → "..." → "Install from VSIX..." → select `wvlet-language-support-X.X.X.vsix`
 
 ### Development

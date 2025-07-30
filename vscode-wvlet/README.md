@@ -6,7 +6,7 @@ This extension provides syntax highlighting and language support for the Wvlet q
 
 - **Syntax Highlighting**: Full syntax highlighting for `.wv` files including:
   - Keywords and control structures
-  - Data types and type annotations  
+  - Data types and type annotations
   - Operators and expressions
   - String literals with interpolation support
   - Numeric literals (integers, floats, hex)
@@ -28,7 +28,7 @@ The extension recognizes Wvlet language keywords including:
 ### Control Flow
 - `if`, `then`, `else`, `end`, `case`, `when`
 
-### Query Operations  
+### Query Operations
 - `select`, `from`, `where`, `group`, `having`, `order`, `limit`
 - `join`, `on`, `left`, `right`, `full`, `inner`, `cross`
 - `transform`, `pivot`, `distinct`, `asc`, `desc`
@@ -44,7 +44,7 @@ The extension recognizes Wvlet language keywords including:
 
 ## Data Types
 
-- `boolean`, `int`, `long`, `float`, `double`, `string`
+- `boolean`, `int`, `long`, `float`, `double`, `string`, `byte`, `short`, `char`, `void`
 - `array`, `map`, `date`, `decimal`, `interval`
 
 ## Installation
