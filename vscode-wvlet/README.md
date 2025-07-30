@@ -21,32 +21,6 @@ This extension provides syntax highlighting and language support for the Wvlet q
 
 - `.wv` - Wvlet query files
 
-## Keywords
-
-The extension recognizes Wvlet language keywords including:
-
-### Control Flow
-- `if`, `then`, `else`, `end`, `case`, `when`
-
-### Query Operations
-- `select`, `from`, `where`, `group`, `having`, `order`, `limit`
-- `join`, `on`, `left`, `right`, `full`, `inner`, `cross`
-- `transform`, `pivot`, `distinct`, `asc`, `desc`
-
-### Data Operations
-- `add`, `prepend`, `exclude`, `rename`, `shift`, `drop`
-- `concat`, `dedup`, `intersect`, `except`
-
-### Other Language Features
-- `def`, `type`, `model`, `import`, `export`, `package`
-- `test`, `should`, `be`, `contain`, `debug`
-- `save`, `append`, `delete`, `truncate`
-
-## Data Types
-
-- `boolean`, `int`, `long`, `float`, `double`, `string`, `byte`, `short`, `char`, `void`
-- `array`, `map`, `date`, `decimal`, `interval`
-
 ## Installation
 
 ### From VSIX (Recommended)
