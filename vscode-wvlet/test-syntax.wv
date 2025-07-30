@@ -1,22 +1,37 @@
 -- Test file for VSCode syntax highlighting
 
 -- 1. New functions and keywords
-from behavior_weblogs.subscribe(watermark_column = 'time', window_size = '1h')
+-- Subscribe is used with streaming queries
+from behavior_weblogs
+subscribe watermark 'time'
 
-from unnest([1, 2, 3]) as t(number)
-lateral view explode(items) tbl as item
+-- Unnest expands arrays into rows
+from unnest([1, 2, 3])
 
--- 2. Insert Into syntax  
-insert into users (id, name) values (1, 'Alice')
+-- Lateral join example
+from orders
+lateral join unnest(order_items) as item
 
-from new_data
-insert into existing_table
+-- 2. Insert/Create syntax (note: insert into is for SQL execution)
+-- In Wvlet, use append to for adding data
+from [[1, 'Alice'], [2, 'Bob']] as new_data(id, name)
+append to users
 
--- 3. Create (Update/Alter are not supported in Wvlet)
-create table new_table as select * from old_table
+-- Create table from query
+create table new_users as {
+  from users
+  where active = true
+}
+
+-- 3. Create table (Update/Alter are not supported in Wvlet)
+-- Create table from another table
+from old_table
+save to new_table
 
 -- 4. Backtick with interpolation
-select `column_${env}_name` from table
+val env = 'prod'
+from table
+select s`column_${env}_name`
 
 -- 5. Underscore as special variable
 from users
@@ -24,23 +39,22 @@ where _.age > 21
 test _.count should be 100
 
 -- 6. Test syntax variations
-test result should contain 'success'
-test output should be """
-| id | name  |
-|----|-------|
-| 1  | Alice |
-"""
+from users
+test (_.count should be > 0)
+test (_['name'] should contain 'Alice')
 
--- 7. Incremental keywords
-incremental append
-watermark by timestamp_column
+-- 7. Incremental/watermark keywords
+-- These are typically used in streaming contexts
+from events
+watermark timestamp_column
+incremental
 
 -- 8. Complex example
 model UserStats(userId: int, name: string, signupDate: date)
 
 def getActiveUsers = 
   from UserStats 
-  where signupDate > date("2023-01-01")
+  where signupDate > '2023-01-01':date
   select userId, name
   order by signupDate desc
   limit 100
@@ -48,7 +62,6 @@ def getActiveUsers =
 val message = "User ${user.name} has score ${user.score}"
 
 -- Triple quoted strings
-execute sql"""
-  SELECT * FROM table
-  WHERE column = ${value}
-"""
+-- Execute raw SQL with interpolation
+val value = 123
+execute sql"SELECT * FROM table WHERE column = ${value}"
