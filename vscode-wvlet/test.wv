@@ -5,7 +5,7 @@ model UserStats(
   signupDate: date
 )
 
-model activeUsers = {
+def activeUsers = {
   from UserStats
   where signupDate > '2023-01-01':date
   select userId, name
@@ -14,7 +14,7 @@ model activeUsers = {
 }
 
 -- Test syntax in Wvlet
-from getActiveUsers
+from activeUsers
 test _.count > 0
 test _['userId'] != null
 
