@@ -6,3 +6,4 @@ npm-debug.log*
 .gitignore
 *.vsix
 package-lock.json
+../**
