@@ -21,15 +21,7 @@ Install from the [VS Code Marketplace](https://marketplace.visualstudio.com/item
 
 ## Example
 
-```sql
--- Query with syntax highlighting
-from lineitem
-where l_shipdate >= '2024-01-01'
-group by l_shipmode
-agg _.count as cnt,
-    l_quantity.sum.round(2) as total_qty
-order by cnt desc
-```
+![Wvlet syntax highlighting in VS Code](./vscode.png)
 
 ## Pre-release Versions
 
