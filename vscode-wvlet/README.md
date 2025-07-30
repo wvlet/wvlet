@@ -38,21 +38,20 @@ Install directly from the [VS Code Marketplace](https://marketplace.visualstudio
 ### From Source
 
 1. Clone the repository
-2. Navigate to the `vscode-wvlet` directory
-3. Install dependencies: `npm install`
-4. Package the extension: `npm run package`
-5. Install the generated `.vsix` file
+2. Install dependencies from the root directory: `npm install`
+3. Build the extension: `npm run build-vscode-extension`
+4. The packaged `.vsix` file will be created in `vscode-wvlet/`
+5. Install the generated `.vsix` file using the steps above
 
 ## Development
 
 To contribute to this extension:
 
 1. Clone the Wvlet repository
-2. Navigate to `vscode-wvlet/`
-3. Install dependencies: `npm install`
-4. Make your changes
-5. Test by pressing `F5` to launch a new VS Code window with the extension loaded
-6. Package with `npm run package`
+2. Install dependencies from the root: `npm install`
+3. Make your changes in `vscode-wvlet/`
+4. Test by opening `vscode-wvlet/` in VS Code and pressing `F5` to launch a new window with the extension loaded
+5. Build the extension: `npm run build-vscode-extension`
 
 ## License
 
