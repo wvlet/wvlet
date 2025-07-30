@@ -94,6 +94,8 @@ For VS Code users, we provide a language extension that adds syntax highlighting
 
 The extension supports both stable and pre-release versions. Pre-release versions allow early access to new features.
 
+For full details, including troubleshooting and development guides, please see the [VS Code Extension documentation](./vscode.md).
+
 ## Building From Source
 
 See [Building Wvlet](../development/build.md) for building wvlet from source.
