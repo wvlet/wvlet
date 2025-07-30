@@ -1,0 +1,60 @@
+{
+  "name": "wvlet",
+  "displayName": "Wvlet",
+  "description": "Wvlet query language support for Visual Studio Code",
+  "version": "2025.2.0",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "keywords": [
+    "wvlet",
+    "query",
+    "sql",
+    "data"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wvlet/wvlet"
+  },
+  "bugs": {
+    "url": "https://github.com/wvlet/wvlet/issues"
+  },
+  "homepage": "https://wvlet.org",
+  "publisher": "wvlet",
+  "icon": "icon.png",
+  "contributes": {
+    "languages": [
+      {
+        "id": "wvlet",
+        "aliases": [
+          "Wvlet",
+          "wvlet",
+          "wv"
+        ],
+        "extensions": [
+          ".wv"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "wvlet",
+        "scopeName": "source.wvlet",
+        "path": "./syntaxes/wvlet.tmLanguage.json"
+      }
+    ]
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.74.0",
+    "@vscode/vsce": "^3.4.2"
+  },
+  "scripts": {
+    "package": "vsce package"
+  },
+  "author": "Wvlet Team",
+  "license": "Apache-2.0"
+}

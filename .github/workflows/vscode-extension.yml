@@ -1,0 +1,74 @@
+name: VS Code Extension
+
+on:
+  push:
+    branches: [ main ]
+    paths: 
+      - 'vscode-wvlet/**'
+      - 'package.json'
+      - '.github/workflows/vscode-extension.yml'
+  pull_request:
+    branches: [ main ]
+    paths: 
+      - 'vscode-wvlet/**'
+      - 'package.json'
+      - '.github/workflows/vscode-extension.yml'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish to VS Code Marketplace'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Package extension
+      run: npm run build-vscode-extension
+    
+    - name: Upload VSIX artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: vscode-extension
+        path: vscode-wvlet/*.vsix
+        retention-days: 30
+    
+    - name: Determine release type
+      if: github.event.inputs.publish == 'true'
+      id: release_type
+      run: |
+        VERSION=$(node -p "require('./vscode-wvlet/package.json').version")
+        PATCH=$(echo $VERSION | cut -d'.' -f3)
+        if [ "$PATCH" = "0" ]; then
+          echo "type=stable" >> $GITHUB_OUTPUT
+          echo "Release type: stable (version $VERSION)"
+        else
+          echo "type=pre-release" >> $GITHUB_OUTPUT
+          echo "Release type: pre-release (version $VERSION)"
+        fi
+    
+    - name: Publish to VS Code Marketplace
+      if: github.event.inputs.publish == 'true'
+      run: |
+        cd vscode-wvlet
+        if [ "${{ steps.release_type.outputs.type }}" = "pre-release" ]; then
+          npx vsce publish --pre-release --pat ${{ secrets.VSCE_PAT }}
+        else
+          npx vsce publish --pat ${{ secrets.VSCE_PAT }}
+        fi
+      env:
+        VSCE_PAT: ${{ secrets.VSCE_PAT }}

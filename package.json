@@ -4,13 +4,15 @@
   "type": "module",
   "workspaces": [
     "wvlet-ui-main",
-    "wvlet-ui-playground"
+    "wvlet-ui-playground",
+    "vscode-wvlet"
   ],
   "scripts": {
     "ui": "npm run dev --workspace=wvlet-ui-main",
     "build-ui": "npm run build --workspace=wvlet-ui-main",
     "playground": "npm run dev --workspace=wvlet-ui-playground",
-    "build-playground": "npm run build --workspace=wvlet-ui-playground"
+    "build-playground": "npm run build --workspace=wvlet-ui-playground",
+    "build-vscode-extension": "npm run package --workspace=vscode-wvlet"
   },
   "dependencies": {
     "@duckdb/duckdb-wasm": "^1.29.0",
@@ -29,5 +31,8 @@
     "typescript": "^5.8.3",
     "vite": "^7.0.6",
     "vite-plugin-monaco-editor": "^1.1.0"
+  },
+  "optionalDependencies": {
+    "lightningcss-linux-x64-gnu": "^1.30.1"
   }
 }

@@ -1,0 +1,51 @@
+-- Sample Wvlet query file for testing syntax highlighting
+model UserStats(
+  userId: int,
+  name: string,
+  signupDate: date
+)
+
+def activeUsers = {
+  from UserStats
+  where signupDate > '2023-01-01':date
+  select userId, name
+  order by signupDate desc
+  limit 100
+}
+
+-- Test syntax in Wvlet
+from activeUsers
+test _.count > 0
+test _['userId'] != null
+
+-- Multi-line comment example
+---
+This is a multi-line comment
+describing the query logic
+---
+
+def processUsers(threshold: int) =
+  from UserStats u
+  join ActivityLog as a on u.userId = a.userId
+  where a.timestamp > '2023-01-01':date
+  group by u.userId, u.name
+  where count(*) > threshold
+  agg _.count as activity_count
+  add activity_count * 2.5 as score
+  add case
+    when score > 100 then 'premium'
+    when score > 50 then 'regular'
+    else 'basic'
+    as category
+  select userId, name, score, category
+
+-- String interpolation example
+val message = "User ${user.name} has score ${user.score}"
+val query = """
+  select * from users
+  where id = ${userId}
+"""
+
+-- Save query result to file
+from processUsers(10)
+save to 'output.parquet'
