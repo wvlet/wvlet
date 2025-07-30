@@ -2,7 +2,7 @@
   "name": "wvlet",
   "displayName": "Wvlet",
   "description": "Syntax highlighting and language support for Wvlet query language",
-  "version": "0.1.1",
+  "version": "2025.1.0",
   "engines": {
     "vscode": "^1.74.0"
   },

@@ -2,22 +2,7 @@
 
 All notable changes to the Wvlet extension will be documented in this file.
 
-## [0.1.1] - 2025-01-28
-
-### Added
-- Support for new SQL-related keywords: `insert`, `into`, `create`
-- Support for streaming/incremental keywords: `unnest`, `lateral`, `subscribe`, `watermark`, `incremental`
-- Enhanced backtick syntax with interpolation support
-- Special highlighting for underscore (`_`) as a language variable
-- Improved test assertion syntax highlighting
-
-### Fixed
-- Backtick strings now properly support interpolation like other string types
-
-### Removed
-- Removed `update` and `alter` keywords as they are not supported by Wvlet
-
-## [0.1.0] - 2024-01-XX
+## [2025.1.0] - 2025-01-28
 
 ### Added
 - Initial release of Wvlet for VS Code
