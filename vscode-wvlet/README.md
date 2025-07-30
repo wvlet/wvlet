@@ -23,7 +23,11 @@ This extension provides syntax highlighting and language support for the Wvlet q
 
 ## Installation
 
-### From VSIX (Recommended)
+### From VS Code Marketplace (Recommended)
+
+Install directly from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=wvlet.wvlet) or search for "Wvlet" in the Extensions view (`Ctrl+Shift+X`) within VS Code.
+
+### From VSIX File
 
 1. Download the latest `.vsix` file from the releases
 2. Open VS Code
