@@ -3,19 +3,20 @@ model UserStats(
   userId: int,
   name: string,
   signupDate: date
-) 
+)
 
-def getActiveUsers = 
-  from UserStats 
+model activeUsers = {
+  from UserStats
   where signupDate > '2023-01-01':date
   select userId, name
   order by signupDate desc
   limit 100
+}
 
 -- Test syntax in Wvlet
 from getActiveUsers
-test (_.count should be > 0)
-test (_['userId'] should be != null)
+test _.count > 0
+test _['userId'] != null
 
 -- Multi-line comment example
 ---
@@ -23,31 +24,25 @@ This is a multi-line comment
 describing the query logic
 ---
 
-val config = {
-  maxRows: 1000,
-  timeout: 30.5,
-  enabled: true
-}
-
-export def processUsers(threshold: int) =
+def processUsers(threshold: int) =
   from UserStats u
-  join ActivityLog a on u.userId = a.userId
-  where a.timestamp > '2023-01-01':date 
+  join ActivityLog as a on u.userId = a.userId
+  where a.timestamp > '2023-01-01':date
   group by u.userId, u.name
-  having count(*) > threshold
+  where count(*) > threshold
   agg _.count as activity_count
   add activity_count * 2.5 as score
-  add case 
+  add case
     when score > 100 then 'premium'
-    when score > 50 then 'regular' 
+    when score > 50 then 'regular'
     else 'basic'
-  end as category
+    as category
   select userId, name, score, category
 
--- String interpolation example  
+-- String interpolation example
 val message = "User ${user.name} has score ${user.score}"
 val query = """
-  select * from users 
+  select * from users
   where id = ${userId}
 """
 

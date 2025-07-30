@@ -1,63 +1,49 @@
 -- Test file for VSCode syntax highlighting
 
--- 1. New functions and keywords
--- Subscribe is used with streaming queries
-from behavior_weblogs
-subscribe watermark 'time'
+-- New functions and keywords
 
 -- Unnest expands arrays into rows
 from unnest([1, 2, 3])
 
--- Lateral join example
+-- Unnest example
 from orders
-lateral join unnest(order_items) as item
+cross join unnest(order_items) as t(item)
 
--- 2. Insert/Create syntax (note: insert into is for SQL execution)
+-- Insert/Create syntax (note: insert into is for SQL execution)
 -- In Wvlet, use append to for adding data
 from [[1, 'Alice'], [2, 'Bob']] as new_data(id, name)
 append to users
 
--- Create table from query
-create table new_users as {
-  from users
-  where active = true
-}
-
--- 3. Create table (Update/Alter are not supported in Wvlet)
 -- Create table from another table
 from old_table
 save to new_table
 
--- 4. Backtick with interpolation
+-- Backtick with interpolation
 val env = 'prod'
 from table
 select s`column_${env}_name`
 
--- 5. Underscore as special variable
+-- Underscore as special variable
 from users
 where _.age > 21
 test _.count should be 100
 
--- 6. Test syntax variations
+-- Test syntax variations
 from users
-test (_.count should be > 0)
-test (_['name'] should contain 'Alice')
+test _.count > 0
+test _['name'] should contain 'Alice'
 
--- 7. Incremental/watermark keywords
--- These are typically used in streaming contexts
-from events
-watermark timestamp_column
-incremental
 
 -- 8. Complex example
 model UserStats(userId: int, name: string, signupDate: date)
 
-def getActiveUsers = 
-  from UserStats 
+model activeUsers = {
+  from UserStats
   where signupDate > '2023-01-01':date
   select userId, name
   order by signupDate desc
   limit 100
+}
 
 val message = "User ${user.name} has score ${user.score}"
 
