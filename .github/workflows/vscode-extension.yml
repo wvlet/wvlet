@@ -15,6 +15,7 @@ on:
       - '.github/workflows/vscode-extension.yml'
   release:
     types: [ published ]
+  workflow_dispatch:
 
 jobs:
   build:
