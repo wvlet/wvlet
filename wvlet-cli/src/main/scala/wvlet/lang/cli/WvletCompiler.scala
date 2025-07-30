@@ -47,7 +47,8 @@ class WvletCompiler(
     opts: WvletGlobalOption,
     compilerOption: WvletCompilerOption,
     workEnv: WorkEnv,
-    dbConnectorProvider: DBConnectorProvider
+    dbConnectorProvider: DBConnectorProvider,
+    isProcessingSQL: Boolean = false
 ) extends LogSupport
     with AutoCloseable:
 
@@ -116,19 +117,14 @@ class WvletCompiler(
 
   end compiler
 
-  private def isSQLQuery(query: String): Boolean =
-    val trimmed = query.trim.toLowerCase
-    trimmed.startsWith("select") || trimmed.startsWith("insert") || trimmed.startsWith("update") ||
-    trimmed.startsWith("delete") || trimmed.startsWith("create") || trimmed.startsWith("drop") ||
-    trimmed.startsWith("alter") || trimmed.startsWith("with")
-
   private lazy val inputUnit: CompilationUnit =
     (compilerOption.file, compilerOption.query) match
       case (Some(f), None) =>
         val filePath = new java.io.File(compilerOption.workFolder, f).getPath.stripPrefix("./")
         CompilationUnit.fromFile(filePath)
       case (None, Some(q)) =>
-        if isSQLQuery(q) then
+        // Use command entry point to determine SQL vs Wvlet
+        if isProcessingSQL then
           CompilationUnit.fromSqlString(q)
         else
           CompilationUnit.fromWvletString(q)
