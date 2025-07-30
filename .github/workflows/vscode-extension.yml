@@ -3,19 +3,22 @@ name: VS Code Extension
 on:
   push:
     branches: [ main ]
-    paths: [ 'vscode-wvlet/**' ]
+    paths: 
+      - 'vscode-wvlet/**'
+      - 'package.json'
+      - '.github/workflows/vscode-extension.yml'
   pull_request:
     branches: [ main ]
-    paths: [ 'vscode-wvlet/**' ]
+    paths: 
+      - 'vscode-wvlet/**'
+      - 'package.json'
+      - '.github/workflows/vscode-extension.yml'
   release:
     types: [ published ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: vscode-wvlet
     
     steps:
     - uses: actions/checkout@v4
@@ -25,13 +28,12 @@ jobs:
       with:
         node-version: '18'
         cache: 'npm'
-        cache-dependency-path: vscode-wvlet/package-lock.json
     
     - name: Install dependencies
       run: npm ci
     
     - name: Package extension
-      run: npm run package
+      run: npm run build-vscode-extension
     
     - name: Upload VSIX artifact
       uses: actions/upload-artifact@v4
@@ -42,6 +44,6 @@ jobs:
     
     - name: Publish to VS Code Marketplace (on release)
       if: github.event_name == 'release'
-      run: npx vsce publish --pat ${{ secrets.VSCE_PAT }}
+      run: npm run package --workspace=vscode-wvlet && cd vscode-wvlet && npx vsce publish --pat ${{ secrets.VSCE_PAT }}
       env:
         VSCE_PAT: ${{ secrets.VSCE_PAT }}
