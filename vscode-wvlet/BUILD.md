@@ -9,14 +9,7 @@ This directory contains the VS Code extension for Wvlet language support.
 - Comment toggling support
 - Support for all Wvlet keywords, operators, and syntax
 
-## Installation
-
-### From VSIX File
-
-1. Build the extension: `npm run package`
-2. Install in VS Code: Extensions → "..." → "Install from VSIX..." → select `wvlet-X.X.X.vsix`
-
-### Development
+## Development
 
 1. Install dependencies: `npm install`
 2. Make changes to language files
