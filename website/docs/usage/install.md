@@ -76,13 +76,7 @@ For VS Code users, we provide a language extension that adds syntax highlighting
 
 ### Installation
 
-1. **From VS Code Marketplace** (Recommended):
-   - Install directly from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=wvlet.wvlet)
-   - Or search for "Wvlet" in the Extensions view (`Ctrl+Shift+X` / `Cmd+Shift+X`) within VS Code
-
-2. **From VSIX File**:
-   - Download the latest `.vsix` file from [GitHub Releases](https://github.com/wvlet/wvlet/releases)
-   - In VS Code: Extensions → "..." → "Install from VSIX..."
+Install directly from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=wvlet.wvlet) or search for "Wvlet" in the Extensions view (`Ctrl+Shift+X` / `Cmd+Shift+X`) within VS Code.
 
 ### Features
 
