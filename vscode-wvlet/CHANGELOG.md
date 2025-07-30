@@ -2,6 +2,12 @@
 
 All notable changes to the Wvlet extension will be documented in this file.
 
+## [2025.1.1] - 2025-01-29
+
+### Changed
+- Updated versioning scheme documentation
+- Added pre-release publishing instructions
+
 ## [2025.1.0] - 2025-01-28
 
 ### Added

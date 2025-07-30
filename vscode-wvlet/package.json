@@ -1,8 +1,8 @@
 {
   "name": "wvlet",
   "displayName": "Wvlet",
-  "description": "Syntax highlighting and language support for Wvlet query language",
-  "version": "2025.1.0",
+  "description": "Wvlet query language support for Visual Studio Code",
+  "version": "2025.1.1",
   "engines": {
     "vscode": "^1.74.0"
   },

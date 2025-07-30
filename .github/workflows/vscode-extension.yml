@@ -13,9 +13,13 @@ on:
       - 'vscode-wvlet/**'
       - 'package.json'
       - '.github/workflows/vscode-extension.yml'
-  release:
-    types: [ published ]
   workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish to VS Code Marketplace'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   build:
@@ -43,8 +47,28 @@ jobs:
         path: vscode-wvlet/*.vsix
         retention-days: 30
     
-    - name: Publish to VS Code Marketplace (on release)
-      if: github.event_name == 'release'
-      run: npm run package --workspace=vscode-wvlet && cd vscode-wvlet && npx vsce publish --pat ${{ secrets.VSCE_PAT }}
+    - name: Determine release type
+      if: github.event.inputs.publish == 'true'
+      id: release_type
+      run: |
+        VERSION=$(node -p "require('./vscode-wvlet/package.json').version")
+        PATCH=$(echo $VERSION | cut -d'.' -f3)
+        if [ "$PATCH" = "0" ]; then
+          echo "type=stable" >> $GITHUB_OUTPUT
+          echo "Release type: stable (version $VERSION)"
+        else
+          echo "type=pre-release" >> $GITHUB_OUTPUT
+          echo "Release type: pre-release (version $VERSION)"
+        fi
+    
+    - name: Publish to VS Code Marketplace
+      if: github.event.inputs.publish == 'true'
+      run: |
+        cd vscode-wvlet
+        if [ "${{ steps.release_type.outputs.type }}" = "pre-release" ]; then
+          npx vsce publish --pre-release --pat ${{ secrets.VSCE_PAT }}
+        else
+          npx vsce publish --pat ${{ secrets.VSCE_PAT }}
+        fi
       env:
         VSCE_PAT: ${{ secrets.VSCE_PAT }}

@@ -42,18 +42,57 @@ The conversion process involved:
 
 ## Versioning
 
-The extension uses two version types:
+The extension follows a YYYY.(milestone).(patch) versioning scheme:
+- **Stable releases**: YYYY.(milestone).0 (e.g., `2025.1.0`, `2025.2.0`)
+- **Pre-release versions**: YYYY.(milestone).(patch > 0) (e.g., `2025.1.1`, `2025.1.2`)
 
-1. **Development version**: `2025.1.0-dev` - For testing and development
-2. **Release version**: `2025.1.0` - For stable releases
+### Pre-release Versions
 
-To build a development version:
-1. Ensure `package.json` has `-dev` suffix in version
-2. Run `npm run build-vscode-extension`
-3. Test locally with the generated VSIX file
+Pre-release versions use patch numbers greater than 0 and are published for testing new features:
 
-For releases, remove the `-dev` suffix before publishing.
+1. Update `package.json` to increment the patch version (e.g., `2025.1.1`, `2025.1.2`)
+2. Build the extension: `npm run build-vscode-extension`
+3. Publish as pre-release: `vsce publish --pre-release`
+
+Pre-release versions:
+- Are marked with a "Pre-Release" badge in the marketplace
+- Users can opt-in to install pre-release versions through VS Code settings
+- Allow testing new features without affecting stable users
+
+### Stable Releases
+
+Stable releases always use patch version 0:
+
+1. Update `package.json` to a .0 version (e.g., `2025.1.0`, `2025.2.0`)
+2. Build: `npm run build-vscode-extension`
+3. Publish: `vsce publish`
+
+### Version Examples
+
+- `2025.1.1` - First pre-release for milestone 2025.1
+- `2025.1.2` - Second pre-release with bug fixes
+- `2025.1.0` - Stable release for milestone 2025.1
+- `2025.2.1` - First pre-release for milestone 2025.2
+- `2025.2.0` - Stable release for milestone 2025.2
 
 ## CI/CD
 
-The extension is automatically built on GitHub Actions when changes are made to this directory. The workflow can also publish to the VS Code Marketplace on releases.
+The extension is automatically built on GitHub Actions when changes are made to this directory.
+
+### Automated Releases
+
+The VS Code extension has its own release cycle independent of Wvlet releases. To publish:
+
+1. Update version in `package.json`:
+   - For pre-release: YYYY.(milestone).(patch > 0) e.g., `2025.1.1`
+   - For stable release: YYYY.(milestone).0 e.g., `2025.1.0`
+
+2. Push changes to main branch
+
+3. Go to Actions → VS Code Extension → Run workflow
+
+4. Check "Publish to VS Code Marketplace" and run
+
+The workflow will automatically determine the release type based on the version:
+- Patch version = 0 → Publishes as stable release
+- Patch version > 0 → Publishes as pre-release
