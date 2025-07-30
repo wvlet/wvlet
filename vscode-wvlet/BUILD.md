@@ -40,33 +40,19 @@ The conversion process involved:
 2. Adapting language configuration for VS Code
 3. Setting up proper file associations and scope names
 
-## Making a Pre-release
+## Versioning
 
-To create a pre-release version of the extension:
+The extension uses two version types:
 
-1. Update the version in `package.json` with a pre-release suffix:
-   - For development builds: `2025.1.0-dev`
-   - For beta releases: `2025.1.0-beta.1`
-   - For release candidates: `2025.1.0-rc.1`
+1. **Development version**: `2025.1.0-dev` - For testing and development
+2. **Release version**: `2025.1.0` - For stable releases
 
-2. Build the pre-release package:
-   ```bash
-   npm run build-vscode-extension
-   ```
+To build a development version:
+1. Ensure `package.json` has `-dev` suffix in version
+2. Run `npm run build-vscode-extension`
+3. Test locally with the generated VSIX file
 
-3. The VSIX file will be named with the pre-release version (e.g., `wvlet-2025.1.0-dev.vsix`)
-
-4. For testing:
-   - Install locally using the VSIX file
-   - Or share the VSIX file with beta testers
-
-5. To publish as a pre-release to the marketplace:
-   ```bash
-   cd vscode-wvlet
-   npx vsce publish --pre-release
-   ```
-
-Note: Pre-releases allow users to opt-in to test new features before stable release.
+For releases, remove the `-dev` suffix before publishing.
 
 ## CI/CD
 
