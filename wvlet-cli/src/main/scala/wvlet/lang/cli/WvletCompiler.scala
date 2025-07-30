@@ -120,7 +120,7 @@ class WvletCompiler(
   private lazy val inputUnit: CompilationUnit =
     (compilerOption.file, compilerOption.query) match
       case (Some(f), None) =>
-        val filePath = new java.io.File(compilerOption.workFolder, f).getPath.stripPrefix("./")
+        val filePath = java.nio.file.Paths.get(compilerOption.workFolder, f).toString
         CompilationUnit.fromFile(filePath)
       case (None, Some(q)) =>
         // Use command entry point to determine SQL vs Wvlet
