@@ -50,7 +50,7 @@
   },
   "devDependencies": {
     "@types/vscode": "^1.102.0",
-    "@vscode/vsce": "^3.4.2"
+    "@vscode/vsce": "^3.6.0"
   },
   "scripts": {
     "package": "vsce package"
