@@ -119,8 +119,7 @@ class WvletCompiler(
   private def getInputUnit(forSQL: Boolean = false): CompilationUnit =
     (compilerOption.file, compilerOption.query) match
       case (Some(f), None) =>
-        val filePath = java.nio.file.Paths.get(compilerOption.workFolder, f).toString
-        CompilationUnit.fromFile(filePath)
+        CompilationUnit.fromFile(s"${compilerOption.workFolder}/${f}".stripPrefix("./"))
       case (None, Some(q)) =>
         if forSQL then
           CompilationUnit.fromSqlString(q)
