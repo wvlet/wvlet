@@ -479,6 +479,8 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
           val base =
             f.base match
               case d: DoubleQuoteString =>
+                // Some SQL engines like Trino, DuckDB allow using double-quoted identifiers for function names, but
+                // Wvlet doesn't support double-quoted identifiers, so convert it to a backquoted identifier
                 expr(BackQuotedIdentifier(d.unquotedValue, d.dataType, d.span))
               case other =>
                 expr(other)
