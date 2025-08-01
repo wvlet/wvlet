@@ -115,8 +115,6 @@ class WvletCompiler(
 
   end createCompiler
 
-  private val compiler: Compiler = createCompiler()
-
   private def getInputUnit(forSQL: Boolean = false): CompilationUnit =
     (compilerOption.file, compilerOption.query) match
       case (Some(f), None) =>
@@ -129,9 +127,8 @@ class WvletCompiler(
       case _ =>
         throw StatusCode.INVALID_ARGUMENT.newException("Specify either --file or a query argument")
 
-  private def compile(inputUnit: CompilationUnit): CompileResult = compiler.compileSingleUnit(
-    inputUnit
-  )
+  private def compile(inputUnit: CompilationUnit): CompileResult = createCompiler()
+    .compileSingleUnit(inputUnit)
 
   private def compileInternal(inputUnit: CompilationUnit, parseOnly: Boolean = false): Context =
     val compileResult =
@@ -171,6 +168,7 @@ class WvletCompiler(
     generator.print(logicalPlan)
 
   def run(): Unit =
+    val compiler = createCompiler()
     Control.withResource(
       QueryExecutor(dbConnectorProvider, currentProfile, compiler.compilerOptions.workEnv)
     ) { executor =>
