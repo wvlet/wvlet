@@ -5,7 +5,6 @@ import wvlet.airframe.launcher.{argument, option}
 import wvlet.lang.api.StatusCode
 import wvlet.lang.api.v1.query.QuerySelection
 import wvlet.lang.catalog.Profile
-import wvlet.lang.compiler.parser.SqlParser
 import wvlet.lang.compiler.codegen.{CodeFormatterConfig, GenSQL, WvletGenerator}
 import wvlet.lang.compiler.{
   CompilationUnit,
@@ -15,7 +14,6 @@ import wvlet.lang.compiler.{
   Context,
   DBType,
   Symbol,
-  SourceFile,
   WorkEnv
 }
 import wvlet.lang.runner.QueryExecutor
