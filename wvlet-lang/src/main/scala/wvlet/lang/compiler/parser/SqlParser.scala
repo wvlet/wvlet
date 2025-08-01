@@ -1035,7 +1035,6 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
             case n: NameExpr =>
               functionApply(n)
             case l: Literal =>
-              warn(l)
               functionApply(l)
             case _ =>
               unexpected(expr)

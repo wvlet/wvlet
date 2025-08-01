@@ -1,0 +1,3 @@
+select `sum`(1)
+
+test _.rows should be [[1]]
