@@ -47,8 +47,7 @@ class WvletCompiler(
     opts: WvletGlobalOption,
     compilerOption: WvletCompilerOption,
     workEnv: WorkEnv,
-    dbConnectorProvider: DBConnectorProvider,
-    isProcessingSQL: Boolean = false
+    dbConnectorProvider: DBConnectorProvider
 ) extends LogSupport
     with AutoCloseable:
 
@@ -117,23 +116,24 @@ class WvletCompiler(
 
   end compiler
 
-  private lazy val inputUnit: CompilationUnit =
+  private def getInputUnit(forSQL: Boolean = false): CompilationUnit =
     (compilerOption.file, compilerOption.query) match
       case (Some(f), None) =>
         val filePath = java.nio.file.Paths.get(compilerOption.workFolder, f).toString
         CompilationUnit.fromFile(filePath)
       case (None, Some(q)) =>
-        // Use command entry point to determine SQL vs Wvlet
-        if isProcessingSQL then
+        if forSQL then
           CompilationUnit.fromSqlString(q)
         else
           CompilationUnit.fromWvletString(q)
       case _ =>
         throw StatusCode.INVALID_ARGUMENT.newException("Specify either --file or a query argument")
 
-  private def compile(): CompileResult = compiler.compileSingleUnit(inputUnit)
+  private def compile(inputUnit: CompilationUnit): CompileResult = compiler.compileSingleUnit(
+    inputUnit
+  )
 
-  private def compileInternal(parseOnly: Boolean = false): Context =
+  private def compileInternal(inputUnit: CompilationUnit, parseOnly: Boolean = false): Context =
     val compileResult =
       if parseOnly then
         val parsingCompiler = Compiler(
@@ -141,7 +141,7 @@ class WvletCompiler(
         )
         parsingCompiler.compileSingleUnit(inputUnit)
       else
-        compile()
+        compile(inputUnit)
 
     compileResult.reportAllErrors
 
@@ -153,12 +153,14 @@ class WvletCompiler(
       .newContext(Symbol.NoSymbol)
 
   def generateSQL: String =
-    val ctx = compileInternal()
+    val inputUnit = getInputUnit(forSQL = false)
+    val ctx       = compileInternal(inputUnit)
     GenSQL.generateSQL(inputUnit)(using ctx)
 
   def generateWvlet: String =
+    val inputUnit = getInputUnit(forSQL = true)
     // For SQL to Wvlet conversion, we only need to parse the SQL, not run full compilation
-    val ctx = compileInternal(parseOnly = inputUnit.sourceFile.isSQL)
+    val ctx = compileInternal(inputUnit, parseOnly = inputUnit.sourceFile.isSQL)
 
     // Get the resolved logical plan from the compilation unit
     val logicalPlan = inputUnit.resolvedPlan
@@ -174,7 +176,8 @@ class WvletCompiler(
     Control.withResource(
       QueryExecutor(dbConnectorProvider, currentProfile, compiler.compilerOptions.workEnv)
     ) { executor =>
-      val compileResult = compile()
+      val inputUnit     = getInputUnit(forSQL = false)
+      val compileResult = compile(inputUnit)
       given Context     = compileResult.context
 
       val queryResult = executor.executeSelectedStatement(

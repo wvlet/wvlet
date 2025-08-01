@@ -61,17 +61,20 @@ class WvletMain(opts: WvletGlobalOption) extends LogSupport:
           System.exit(1)
         throw e
 
-  private def design(compilerOptions: WvletCompilerOption, isSQL: Boolean = false): Design =
+  private def design(compilerOptions: WvletCompilerOption): Design =
     val workEnv = WorkEnv(compilerOptions.workFolder, opts.logLevel)
     Design
       .newSilentDesign
-      .bindInstance(
-        WvletCompiler(opts, compilerOptions, workEnv, DBConnectorProvider(workEnv), isSQL)
-      )
+      .bindInstance(WvletCompiler(opts, compilerOptions, workEnv, DBConnectorProvider(workEnv)))
+
+  private def withCompiler[A](compilerOption: WvletCompilerOption)(f: WvletCompiler => A): A =
+    design(compilerOption).run[WvletCompiler, A] { compiler =>
+      f(compiler)
+    }
 
   @command(description = "Compile .wv files")
   def compile(compilerOption: WvletCompilerOption): Unit = handleError {
-    design(compilerOption).build[WvletCompiler] { compiler =>
+    withCompiler(compilerOption) { compiler =>
       val sql = compiler.generateSQL
       println(sql)
     }
@@ -79,7 +82,7 @@ class WvletMain(opts: WvletGlobalOption) extends LogSupport:
 
   @command(description = "Run a query")
   def run(compilerOption: WvletCompilerOption): Unit = handleError {
-    design(compilerOption).build[WvletCompiler] { compiler =>
+    withCompiler(compilerOption) { compiler =>
       compiler.run()
     }
   }
@@ -89,7 +92,7 @@ class WvletMain(opts: WvletGlobalOption) extends LogSupport:
 
   @command(description = "Convert SQL to Wvlet query")
   def to_wvlet(compilerOption: WvletCompilerOption): Unit = handleError {
-    design(compilerOption, isSQL = true).build[WvletCompiler] { compiler =>
+    withCompiler(compilerOption) { compiler =>
       val wvlet = compiler.generateWvlet
       println(wvlet)
     }
