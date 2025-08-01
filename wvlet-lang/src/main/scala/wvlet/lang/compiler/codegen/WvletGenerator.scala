@@ -476,7 +476,14 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
         case g: UnresolvedGroupingKey =>
           expr(g.child)
         case f: FunctionApply =>
-          val base = expr(f.base)
+          val base =
+            f.base match
+              case d: DoubleQuoteString =>
+                // Some SQL engines like Trino, DuckDB allow using double-quoted identifiers for function names, but
+                // Wvlet doesn't support double-quoted identifiers, so convert it to a backquoted identifier
+                expr(BackQuotedIdentifier(d.unquotedValue, d.dataType, d.span))
+              case other =>
+                expr(other)
           val args = paren(cl(f.args.map(x => expr(x))))
           val w    = f.window.map(x => expr(x))
           val stem = base + args
