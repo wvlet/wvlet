@@ -890,7 +890,13 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       case g: UnresolvedGroupingKey =>
         expr(g.child)
       case f: FunctionApply =>
-        val base = expr(f.base)
+        val base =
+          f.base match
+            case d: DoubleQuoteString =>
+              // Handle double-quoted strings as identifiers when used as function names
+              text(doubleQuoteIfNecessary(d.unquotedValue))
+            case other =>
+              expr(other)
         val args = paren(cl(f.args.map(x => expr(x))))
         val w    = f.window.map(x => expr(x))
         val stem = base + args
