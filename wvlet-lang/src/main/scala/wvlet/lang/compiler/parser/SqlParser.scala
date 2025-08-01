@@ -1034,7 +1034,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           expr match
             case n: NameExpr =>
               functionApply(n)
-            case l: Literal =>
+            case l: DoubleQuoteString =>
               functionApply(l)
             case _ =>
               unexpected(expr)
