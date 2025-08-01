@@ -1022,15 +1022,21 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
             case _ =>
               primaryExpressionRest(DotRef(expr, next, DataType.UnknownType, spanFrom(t)))
         case SqlToken.L_PAREN =>
+          def functionApply(functionName: Expression) =
+            consume(SqlToken.L_PAREN)
+            val args = functionArgs()
+            consume(SqlToken.R_PAREN)
+            // Global function call
+            val w = window()
+            val f = FunctionApply(functionName, args, w, spanFrom(t))
+            primaryExpressionRest(f)
+
           expr match
             case n: NameExpr =>
-              consume(SqlToken.L_PAREN)
-              val args = functionArgs()
-              consume(SqlToken.R_PAREN)
-              // Global function call
-              val w = window()
-              val f = FunctionApply(n, args, w, spanFrom(t))
-              primaryExpressionRest(f)
+              functionApply(n)
+            case l: Literal =>
+              warn(l)
+              functionApply(l)
             case _ =>
               unexpected(expr)
         case SqlToken.L_BRACKET =>
@@ -1175,6 +1181,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           identifier()
         case _ =>
           unexpected(t)
+
     primaryExpressionRest(expr)
 
   end primaryExpression
