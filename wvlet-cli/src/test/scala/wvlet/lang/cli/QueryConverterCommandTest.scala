@@ -1,11 +1,10 @@
 package wvlet.lang.cli
 
 import wvlet.airspec.AirSpec
-import wvlet.log.io.IOUtil
 import wvlet.lang.compiler.{SourceIO, VirtualFile}
+import wvlet.log.io.IOUtil
 
 import java.io.ByteArrayOutputStream
-import java.io.PrintStream
 
 class QueryConverterCommandTest extends AirSpec:
   // TPC-H query paths
@@ -63,12 +62,12 @@ class QueryConverterCommandTest extends AirSpec:
     wvletFiles.foreach { wvFile =>
       val queryName = wvFile.name.stripSuffix(".wv")
 
-      test(s"compile converts ${queryName}") {
+      test(s"compile converts ${wvFile.name}") {
         val out = captureStdout {
           WvletMain.main(s"""compile -t trino -w ${tpchWvletQueryPath} -f ${wvFile.name}""")
         }
 
-        // Find corresponding SQL file
+        // Find a corresponding SQL file
         val sqlFile = sqlFiles.find(_.name == s"${queryName}.sql")
         sqlFile match
           case Some(expectedFile) =>
@@ -133,7 +132,7 @@ class QueryConverterCommandTest extends AirSpec:
     sqlFiles.foreach { sqlFile =>
       val queryName = sqlFile.name.stripSuffix(".sql")
 
-      test(s"to_wvlet converts ${queryName}") {
+      test(s"to_wvlet converts ${sqlFile.name}") {
         val out = captureStdout {
           WvletMain.main(s"""to_wvlet -t trino -w ${tpchSQLQueryPath} -f ${sqlFile.name}""")
         }
