@@ -67,9 +67,14 @@ class WvletMain(opts: WvletGlobalOption) extends LogSupport:
       .newSilentDesign
       .bindInstance(WvletCompiler(opts, compilerOptions, workEnv, DBConnectorProvider(workEnv)))
 
+  private def withCompiler[A](compilerOption: WvletCompilerOption)(f: WvletCompiler => A): A =
+    design(compilerOption).run[WvletCompiler, A] { compiler =>
+      f(compiler)
+    }
+
   @command(description = "Compile .wv files")
   def compile(compilerOption: WvletCompilerOption): Unit = handleError {
-    design(compilerOption).build[WvletCompiler] { compiler =>
+    withCompiler(compilerOption) { compiler =>
       val sql = compiler.generateSQL
       println(sql)
     }
@@ -77,12 +82,20 @@ class WvletMain(opts: WvletGlobalOption) extends LogSupport:
 
   @command(description = "Run a query")
   def run(compilerOption: WvletCompilerOption): Unit = handleError {
-    design(compilerOption).build[WvletCompiler] { compiler =>
+    withCompiler(compilerOption) { compiler =>
       compiler.run()
     }
   }
 
   @command(description = "Manage static catalog metadata")
   def catalog = new CatalogCommand()
+
+  @command(description = "Convert SQL to Wvlet query")
+  def to_wvlet(compilerOption: WvletCompilerOption): Unit = handleError {
+    withCompiler(compilerOption) { compiler =>
+      val wvlet = compiler.generateWvlet
+      println(wvlet)
+    }
+  }
 
 end WvletMain

@@ -5,7 +5,7 @@ import wvlet.airframe.launcher.{argument, option}
 import wvlet.lang.api.StatusCode
 import wvlet.lang.api.v1.query.QuerySelection
 import wvlet.lang.catalog.Profile
-import wvlet.lang.compiler.codegen.GenSQL
+import wvlet.lang.compiler.codegen.{CodeFormatterConfig, GenSQL, WvletGenerator}
 import wvlet.lang.compiler.{
   CompilationUnit,
   CompileResult,
@@ -13,6 +13,7 @@ import wvlet.lang.compiler.{
   CompilerOptions,
   Context,
   DBType,
+  Phase,
   Symbol,
   WorkEnv
 }
@@ -73,12 +74,12 @@ class WvletCompiler(
 
   override def close(): Unit = Option(_dbConnector).foreach(_.close())
 
-  private val compiler: Compiler =
+  private def createCompiler(phases: List[List[Phase]] = Compiler.allPhases): Compiler =
     val dbType = compilerOption.targetDBType.map(DBType.fromString).getOrElse(currentProfile.dbType)
 
     val compiler = Compiler(
       CompilerOptions(
-        phases = Compiler.allPhases,
+        phases = phases,
         sourceFolders = List(compilerOption.workFolder),
         workEnv = workEnv,
         catalog = currentProfile.catalog,
@@ -112,38 +113,67 @@ class WvletCompiler(
 
     compiler
 
-  end compiler
+  end createCompiler
 
-  private lazy val inputUnit: CompilationUnit =
+  private def getInputUnit(forSQL: Boolean = false): CompilationUnit =
     (compilerOption.file, compilerOption.query) match
       case (Some(f), None) =>
         CompilationUnit.fromFile(s"${compilerOption.workFolder}/${f}".stripPrefix("./"))
       case (None, Some(q)) =>
-        CompilationUnit.fromWvletString(q)
+        if forSQL then
+          CompilationUnit.fromSqlString(q)
+        else
+          CompilationUnit.fromWvletString(q)
       case _ =>
         throw StatusCode.INVALID_ARGUMENT.newException("Specify either --file or a query argument")
 
-  private def compile(): CompileResult = compiler.compileSingleUnit(inputUnit)
+  private def compile(inputUnit: CompilationUnit): CompileResult = createCompiler()
+    .compileSingleUnit(inputUnit)
 
-  def generateSQL: String =
-    val compileResult = compile()
+  private def compileInternal(inputUnit: CompilationUnit, parseOnly: Boolean = false): Context =
+    val compileResult =
+      if parseOnly then
+        val parsingCompiler = createCompiler(Compiler.parseOnlyPhases)
+        parsingCompiler.compileSingleUnit(inputUnit)
+      else
+        compile(inputUnit)
 
     compileResult.reportAllErrors
-    val ctx = compileResult
+
+    compileResult
       .context
       .withCompilationUnit(inputUnit)
       // Disable debug path as we can't run tests in plain SQL
       .withDebugRun(false)
       .newContext(Symbol.NoSymbol)
 
+  def generateSQL: String =
+    val inputUnit = getInputUnit(forSQL = false)
+    val ctx       = compileInternal(inputUnit)
     GenSQL.generateSQL(inputUnit)(using ctx)
-  end generateSQL
+
+  def generateWvlet: String =
+    val inputUnit = getInputUnit(forSQL = true)
+    // For SQL to Wvlet conversion, we only need to parse the SQL, not run full compilation
+    val ctx = compileInternal(inputUnit, parseOnly = inputUnit.sourceFile.isSQL)
+
+    // Get the resolved logical plan from the compilation unit
+    val logicalPlan = inputUnit.resolvedPlan
+
+    // Create a WvletGenerator with the appropriate database type configuration
+    val config    = CodeFormatterConfig(sqlDBType = ctx.dbType)
+    val generator = WvletGenerator(config)(using ctx)
+
+    // Convert the logical plan to Wvlet flow-style syntax
+    generator.print(logicalPlan)
 
   def run(): Unit =
+    val compiler = createCompiler()
     Control.withResource(
       QueryExecutor(dbConnectorProvider, currentProfile, compiler.compilerOptions.workEnv)
     ) { executor =>
-      val compileResult = compile()
+      val inputUnit     = getInputUnit(forSQL = false)
+      val compileResult = compile(inputUnit)
       given Context     = compileResult.context
 
       val queryResult = executor.executeSelectedStatement(
