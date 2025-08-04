@@ -260,7 +260,6 @@ object SqlToken:
     SqlToken.TRUE,
     SqlToken.FALSE,
     SqlToken.CASE,
-    SqlToken.IF,
     SqlToken.MAP,
     SqlToken.ARRAY,
     SqlToken.DATE,

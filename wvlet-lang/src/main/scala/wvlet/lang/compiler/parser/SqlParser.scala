@@ -503,7 +503,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     t.token match
       case token if token.isQueryDelimiter =>
         Nil
-      case t if t.tokenType == TokenType.Keyword && !SqlToken.literalStartKeywords.contains(t) =>
+      case t if t.tokenType == TokenType.Keyword && !SqlToken.literalStartKeywords.contains(t) && t != SqlToken.IF =>
         Nil
       case _ =>
         val item = selectItem()
@@ -1033,7 +1033,26 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
 
           expr match
             case n: NameExpr =>
-              functionApply(n)
+              // Special handling for IF function
+              if n.leafName.toUpperCase == "IF" then
+                consume(SqlToken.L_PAREN)
+                val condition = expression()
+                consume(SqlToken.COMMA)
+                val thenExpr = expression()
+                val elseExpr = 
+                  scanner.lookAhead().token match
+                    case SqlToken.COMMA =>
+                      consume(SqlToken.COMMA)
+                      expression()
+                    case _ =>
+                      NullLiteral(spanFrom(t))
+                consume(SqlToken.R_PAREN)
+                val w = window()
+                if w.isDefined then
+                  unexpected(t)
+                primaryExpressionRest(IfExpr(condition, thenExpr, elseExpr, spanFrom(t)))
+              else
+                functionApply(n)
             case l: DoubleQuoteString =>
               functionApply(l)
             case _ =>
@@ -1098,23 +1117,6 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           nextCase
           consume(SqlToken.END)
           CaseExpr(target, cases.result(), elseClause, spanFrom(t))
-        case SqlToken.IF =>
-          // Parse IF function as syntactic sugar for CASE expression
-          consume(SqlToken.IF)
-          consume(SqlToken.L_PAREN)
-          val condition = booleanExpression()
-          consume(SqlToken.COMMA)
-          val thenExpr = expression()
-          consume(SqlToken.COMMA)
-          val elseExpr = expression()
-          consume(SqlToken.R_PAREN)
-          // Convert IF(condition, then, else) to CASE WHEN condition THEN then ELSE else END
-          CaseExpr(
-            target = None,
-            whenClauses = List(WhenClause(condition, thenExpr, condition.span)),
-            elseClause = Some(elseExpr),
-            spanFrom(t)
-          )
         case SqlToken.EXISTS =>
           consume(SqlToken.EXISTS)
           consume(SqlToken.L_PAREN)
