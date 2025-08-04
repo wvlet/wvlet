@@ -1098,6 +1098,23 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           nextCase
           consume(SqlToken.END)
           CaseExpr(target, cases.result(), elseClause, spanFrom(t))
+        case SqlToken.IF =>
+          // Parse IF function as syntactic sugar for CASE expression
+          consume(SqlToken.IF)
+          consume(SqlToken.L_PAREN)
+          val condition = booleanExpression()
+          consume(SqlToken.COMMA)
+          val thenExpr = expression()
+          consume(SqlToken.COMMA)
+          val elseExpr = expression()
+          consume(SqlToken.R_PAREN)
+          // Convert IF(condition, then, else) to CASE WHEN condition THEN then ELSE else END
+          CaseExpr(
+            target = None,
+            whenClauses = List(WhenClause(condition, thenExpr, condition.span)),
+            elseClause = Some(elseExpr),
+            spanFrom(t)
+          )
         case SqlToken.EXISTS =>
           consume(SqlToken.EXISTS)
           consume(SqlToken.L_PAREN)
