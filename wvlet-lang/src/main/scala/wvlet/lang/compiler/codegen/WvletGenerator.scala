@@ -476,18 +476,32 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
         case g: UnresolvedGroupingKey =>
           expr(g.child)
         case f: FunctionApply =>
-          val base =
-            f.base match
-              case d: DoubleQuoteString =>
-                // Some SQL engines like Trino, DuckDB allow using double-quoted identifiers for function names, but
-                // Wvlet doesn't support double-quoted identifiers, so convert it to a backquoted identifier
-                expr(BackQuotedIdentifier(d.unquotedValue, d.dataType, d.span))
-              case other =>
-                expr(other)
-          val args = paren(cl(f.args.map(x => expr(x))))
-          val w    = f.window.map(x => expr(x))
-          val stem = base + args
-          wl(stem, w)
+          // Special handling for IF function - convert back to if-then-else syntax
+          f.base match
+            case n: NameExpr
+                if n.leafName.toLowerCase == "if" && (f.args.length == 2 || f.args.length == 3) =>
+              // IF(condition, true_value[, false_value]) -> if condition then true_value else false_value
+              val condition = expr(f.args(0).value)
+              val trueValue = expr(f.args(1).value)
+              val falseValue =
+                if f.args.length == 3 then
+                  expr(f.args(2).value)
+                else
+                  text("null")
+              wl("if", condition, "then", block(trueValue), "else", block(falseValue))
+            case _ =>
+              val base =
+                f.base match
+                  case d: DoubleQuoteString =>
+                    // Some SQL engines like Trino, DuckDB allow using double-quoted identifiers for function names, but
+                    // Wvlet doesn't support double-quoted identifiers, so convert it to a backquoted identifier
+                    expr(BackQuotedIdentifier(d.unquotedValue, d.dataType, d.span))
+                  case other =>
+                    expr(other)
+              val args = paren(cl(f.args.map(x => expr(x))))
+              val w    = f.window.map(x => expr(x))
+              val stem = base + args
+              wl(stem, w)
         case w: WindowApply =>
           val base   = expr(w.base)
           val window = expr(w.window)

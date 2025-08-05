@@ -890,10 +890,10 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       case g: UnresolvedGroupingKey =>
         expr(g.child)
       case f: FunctionApply =>
-        // Special handling for IF function in DuckDB with 2 arguments
+        // Special handling for IF function when database doesn't support it
         f.base match
           case n: NameExpr
-              if dbType == DBType.DuckDB && f.args.length == 2 &&
+              if !dbType.supportIfFunction && f.args.length == 2 &&
                 (n.leafName.toLowerCase == "if") =>
             // Convert IF(condition, true_value) to CASE WHEN condition THEN true_value END
             val condition = expr(f.args(0).value)
@@ -901,6 +901,21 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             val caseExpr =
               text("case when") + ws + condition + ws + text("then") + ws + trueValue + ws +
                 text("end")
+            f.window match
+              case Some(w) =>
+                caseExpr + ws + expr(w)
+              case None =>
+                caseExpr
+          case n: NameExpr
+              if !dbType.supportIfFunction && f.args.length == 3 &&
+                (n.leafName.toLowerCase == "if") =>
+            // Convert IF(condition, true_value, false_value) to CASE WHEN condition THEN true_value ELSE false_value END
+            val condition  = expr(f.args(0).value)
+            val trueValue  = expr(f.args(1).value)
+            val falseValue = expr(f.args(2).value)
+            val caseExpr =
+              text("case when") + ws + condition + ws + text("then") + ws + trueValue + ws +
+                text("else") + ws + falseValue + ws + text("end")
             f.window match
               case Some(w) =>
                 caseExpr + ws + expr(w)

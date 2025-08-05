@@ -31,7 +31,9 @@ enum DBType(
     // MAP {key: value, ...} syntax or MAP(ARRAY[k1, k2, ...], ARRAY[v1, v2, ...]) syntax
     val mapConstructorSyntax: SQLDialect.MapSyntax = KeyValue,
     // values 1, 2, ...   or (values 1, 2, ...)
-    val requireParenForValues: Boolean = false
+    val requireParenForValues: Boolean = false,
+    // IF(condition, true_value[, false_value]) function is supported
+    val supportIfFunction: Boolean = false
 ):
 
   case DuckDB
@@ -41,7 +43,8 @@ enum DBType(
         supportSaveAsFile = true,
         supportStructExpr = true,
         supportAsOfJoin = true,
-        mapConstructorSyntax = SQLDialect.MapSyntax.KeyValue
+        mapConstructorSyntax = SQLDialect.MapSyntax.KeyValue,
+        supportIfFunction = true
       )
 
   case Trino
@@ -66,13 +69,13 @@ enum DBType(
         requireParenForValues = false
       )
 
-  case BigQuery   extends DBType
-  case MySQL      extends DBType
+  case BigQuery   extends DBType(supportIfFunction = true)
+  case MySQL      extends DBType(supportIfFunction = true)
   case PostgreSQL extends DBType
-  case SQLite     extends DBType
+  case SQLite     extends DBType(supportIfFunction = true)
   case Redshift   extends DBType
   case Snowflake  extends DBType
-  case ClickHouse extends DBType
+  case ClickHouse extends DBType(supportIfFunction = true)
   case Oracle     extends DBType
   case SQLServer  extends DBType
   case InMemory
@@ -83,7 +86,8 @@ enum DBType(
         supportSaveAsFile = true,
         supportStructExpr = true,
         supportAsOfJoin = true,
-        mapConstructorSyntax = SQLDialect.MapSyntax.KeyValue
+        mapConstructorSyntax = SQLDialect.MapSyntax.KeyValue,
+        supportIfFunction = true
       )
 
   case Generic extends DBType
