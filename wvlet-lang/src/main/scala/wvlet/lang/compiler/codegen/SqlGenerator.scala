@@ -892,15 +892,20 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       case f: FunctionApply =>
         // Special handling for IF function in DuckDB with 2 arguments
         f.base match
-          case n: NameExpr if dbType == DBType.DuckDB && f.args.length == 2 && 
-            (n.leafName.toLowerCase == "if") =>
+          case n: NameExpr
+              if dbType == DBType.DuckDB && f.args.length == 2 &&
+                (n.leafName.toLowerCase == "if") =>
             // Convert IF(condition, true_value) to CASE WHEN condition THEN true_value END
             val condition = expr(f.args(0).value)
             val trueValue = expr(f.args(1).value)
-            val caseExpr = text("case when") + ws + condition + ws + text("then") + ws + trueValue + ws + text("end")
+            val caseExpr =
+              text("case when") + ws + condition + ws + text("then") + ws + trueValue + ws +
+                text("end")
             f.window match
-              case Some(w) => caseExpr + ws + expr(w)
-              case None => caseExpr
+              case Some(w) =>
+                caseExpr + ws + expr(w)
+              case None =>
+                caseExpr
           case _ =>
             val base =
               f.base match

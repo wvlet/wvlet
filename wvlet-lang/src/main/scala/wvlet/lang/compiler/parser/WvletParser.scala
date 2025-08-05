@@ -1996,7 +1996,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           Exists(SubQueryExpression(q, q.span), spanFrom(t))
         case WvletToken.IF =>
           // Check if this is a function call if(...) or an if-then-else statement
-          val ifToken = consume(WvletToken.IF)
+          val ifToken   = consume(WvletToken.IF)
           val nextToken = scanner.lookAhead()
           if nextToken.token == WvletToken.L_PAREN then
             // Treat as a function call like if(condition, true_value, false_value)
