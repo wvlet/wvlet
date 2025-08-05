@@ -890,11 +890,10 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       case g: UnresolvedGroupingKey =>
         expr(g.child)
       case f: FunctionApply =>
-        // Special handling for IF function when database doesn't support it
+        // Special handling for IF function
         f.base match
-          case n: NameExpr
-              if !dbType.supportIfFunction && f.args.length == 2 &&
-                (n.leafName.toLowerCase == "if") =>
+          case n: NameExpr if n.leafName.toLowerCase == "if" && f.args.length == 2 =>
+            // Always convert 2-argument IF to CASE WHEN (DuckDB requires 3 arguments)
             // Convert IF(condition, true_value) to CASE WHEN condition THEN true_value END
             val condition = expr(f.args(0).value)
             val trueValue = expr(f.args(1).value)
@@ -909,7 +908,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
           case n: NameExpr
               if !dbType.supportIfFunction && f.args.length == 3 &&
                 (n.leafName.toLowerCase == "if") =>
-            // Convert IF(condition, true_value, false_value) to CASE WHEN condition THEN true_value ELSE false_value END
+            // Convert IF(condition, true_value, false_value) to CASE WHEN for databases without IF support
             val condition  = expr(f.args(0).value)
             val trueValue  = expr(f.args(1).value)
             val falseValue = expr(f.args(2).value)
