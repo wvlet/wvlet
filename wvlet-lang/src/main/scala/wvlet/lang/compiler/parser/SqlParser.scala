@@ -503,8 +503,6 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     t.token match
       case token if token.isQueryDelimiter =>
         Nil
-      case t if t.tokenType == TokenType.Keyword && !SqlToken.literalStartKeywords.contains(t) && t != SqlToken.IF =>
-        Nil
       case _ =>
         val item = selectItem()
         scanner.lookAhead().token match
