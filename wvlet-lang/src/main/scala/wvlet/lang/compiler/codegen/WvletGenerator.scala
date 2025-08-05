@@ -481,9 +481,9 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
             case n: NameExpr
                 if n.leafName.toLowerCase == "if" && (f.args.length == 2 || f.args.length == 3) =>
               // IF(condition, true_value[, false_value]) -> if condition then true_value else false_value
-              val condition = expr(f.args(0).value)
-              val trueValue = expr(f.args(1).value)
-              val falseValue =
+              val condition: Doc = expr(f.args(0).value)
+              val trueValue: Doc = expr(f.args(1).value)
+              val falseValue: Doc =
                 if f.args.length == 3 then
                   expr(f.args(2).value)
                 else
