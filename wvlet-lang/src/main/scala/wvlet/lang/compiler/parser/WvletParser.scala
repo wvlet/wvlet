@@ -1995,13 +1995,20 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           consume(WvletToken.R_BRACE)
           Exists(SubQueryExpression(q, q.span), spanFrom(t))
         case WvletToken.IF =>
-          consume(WvletToken.IF)
-          val cond = booleanExpression()
-          consume(WvletToken.THEN)
-          val thenExpr = expression()
-          consume(WvletToken.ELSE)
-          val elseExpr = expression()
-          IfExpr(cond, thenExpr, elseExpr, spanFrom(t))
+          // Check if this is a function call if(...) or an if-then-else statement
+          val ifToken = consume(WvletToken.IF)
+          val nextToken = scanner.lookAhead()
+          if nextToken.token == WvletToken.L_PAREN then
+            // Treat as a function call like if(condition, true_value, false_value)
+            UnquotedIdentifier("if", spanFrom(ifToken))
+          else
+            // Treat as if-then-else statement - we already consumed IF
+            val cond = booleanExpression()
+            consume(WvletToken.THEN)
+            val thenExpr = expression()
+            consume(WvletToken.ELSE)
+            val elseExpr = expression()
+            IfExpr(cond, thenExpr, elseExpr, spanFrom(t))
         case i if i.isInterpolatedStringPrefix =>
           interpolatedString()
         case WvletToken.FROM =>
