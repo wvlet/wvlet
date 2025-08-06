@@ -8,7 +8,7 @@ import wvlet.lang.model.expr.*
 object RewriteExpr extends Phase("rewrite-expr"):
 
   def rewriteRules: List[ExpressionRewriteRule] =
-    RewriteStringConcat :: RewriteStringInterpolation :: Nil
+    RewriteStringConcat :: RewriteStringInterpolation :: RewriteIfExpr :: Nil
 
   override def run(unit: CompilationUnit, context: Context): CompilationUnit =
     val resolvedPlan = unit.resolvedPlan
@@ -57,5 +57,22 @@ object RewriteExpr extends Phase("rewrite-expr"):
             span = s.span
           )
         }
+
+  /**
+    * DuckDB doesn't support two-argument if expressions, so we need to populate the third argument
+    * with null, following the semantics of Trino.
+    */
+  object RewriteIfExpr extends ExpressionRewriteRule:
+    override def apply(context: Context) =
+      case f @ FunctionApply(base, args, window, span) =>
+        base match
+          case i: Identifier if i.fullName.toLowerCase == "if" && args.length == 3 =>
+            // Convert if(a, b, c) to IfExpr(a, b, c) if the base is "if"
+            IfExpr(args(0).value, args(1).value, args(2).value, span)
+          case i: Identifier if i.fullName.toLowerCase == "if" && args.length == 2 =>
+            // Convert if(a,b) to IfExpr(a, b, Null) if the base is "if"
+            IfExpr(args(0).value, args(1).value, NullLiteral(span), span)
+          case _ =>
+            f
 
 end RewriteExpr
