@@ -1761,10 +1761,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
   def identifier(): Identifier =
     val t = scanner.lookAhead()
     t.token match
-      case id if id.isIdentifier =>
-        consume(id)
-        UnquotedIdentifier(t.str, spanFrom(t))
-      case id if id.isNonReservedKeyword =>
+      case id if id.isIdentifier || id.isNonReservedKeyword =>
         consume(id)
         UnquotedIdentifier(t.str, spanFrom(t))
       case SqlToken.STAR =>
