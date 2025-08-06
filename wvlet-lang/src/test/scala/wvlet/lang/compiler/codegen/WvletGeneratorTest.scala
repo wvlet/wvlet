@@ -3,6 +3,7 @@ package wvlet.lang.compiler.parser
 import wvlet.airspec.AirSpec
 import wvlet.lang.compiler.*
 import wvlet.lang.compiler.codegen.WvletGenerator
+import wvlet.lang.compiler.transform.RewriteExpr
 
 abstract class WvletGeneratorTest(path: String) extends AirSpec:
   private val testPrefix = path.split("\\/").lastOption.getOrElse(path)
@@ -15,11 +16,16 @@ abstract class WvletGeneratorTest(path: String) extends AirSpec:
       test(s"Convert ${testPrefix}:${file} to Wvlet") {
         trace(s"[${file}]\n${unit.sourceFile.getContentAsString}")
         given ctx: Context = globalCtx.getContextOf(unit)
-        val plan           = ParserPhase.parse(unit, ctx)
-        trace(plan.pp)
+        val unresolvedPlan = ParserPhase.parse(unit, ctx)
+        // Set the unresolved plan to the unit without resolving types
+        unit.resolvedPlan = unresolvedPlan
+
+        // Run basic expression rewrites
+        RewriteExpr.run(unit, ctx)
+        trace(unit.resolvedPlan.pp)
 
         val g = WvletGenerator()
-        val d = g.convert(plan)
+        val d = g.convert(unit.resolvedPlan)
         // trace(d.pp)
         val wv = g.render(d)
         debug(s"[formatted ${file}]\n${wv}")

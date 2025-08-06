@@ -200,6 +200,7 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   case DELETE  extends SqlToken(Keyword, "delete")
   case CREATE  extends SqlToken(Keyword, "create")
   case DROP    extends SqlToken(Keyword, "drop")
+  // If needs to be a token for 'create table if not exists ...' syntax
   case IF      extends SqlToken(Keyword, "if")
   case REPLACE extends SqlToken(Keyword, "replace")
 
@@ -264,7 +265,8 @@ object SqlToken:
     SqlToken.ARRAY,
     SqlToken.DATE,
     SqlToken.INTERVAL,
-    SqlToken.CAST
+    SqlToken.CAST,
+    SqlToken.IF
   )
 
   val allKeywordsAndSymbols = keywords ++ literalStartKeywords ++ specialSymbols
