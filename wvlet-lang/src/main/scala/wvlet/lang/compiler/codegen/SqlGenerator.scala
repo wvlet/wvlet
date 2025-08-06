@@ -893,18 +893,25 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         // Special handling for IF function
         f.base match
           case n: NameExpr if n.leafName.toLowerCase == "if" && f.args.length == 2 =>
-            // Always convert 2-argument IF to CASE WHEN (DuckDB requires 3 arguments)
-            // Convert IF(condition, true_value) to CASE WHEN condition THEN true_value END
-            val condition = expr(f.args(0).value)
-            val trueValue = expr(f.args(1).value)
-            val caseExpr =
-              text("case when") + ws + condition + ws + text("then") + ws + trueValue + ws +
-                text("end")
-            f.window match
-              case Some(w) =>
-                caseExpr + ws + expr(w)
-              case None =>
-                caseExpr
+            // For 2-argument IF function: if(a, b) -> if(a, b, null)
+            if dbType.supportIfFunction then
+              // Add NULL as third argument for databases that support IF function
+              val base = expr(f.base)
+              val args = paren(cl(List(expr(f.args(0)), expr(f.args(1)), text("null"))))
+              val w    = f.window.map(x => expr(x))
+              wl(base + args, w)
+            else
+              // For databases without IF support, convert to CASE WHEN
+              val condition = expr(f.args(0).value)
+              val trueValue = expr(f.args(1).value)
+              val caseExpr =
+                text("case when") + ws + condition + ws + text("then") + ws + trueValue + ws +
+                  text("end")
+              f.window match
+                case Some(w) =>
+                  caseExpr + ws + expr(w)
+                case None =>
+                  caseExpr
           case n: NameExpr
               if !dbType.supportIfFunction && f.args.length == 3 &&
                 (n.leafName.toLowerCase == "if") =>

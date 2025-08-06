@@ -55,7 +55,8 @@ enum DBType(
         supportRowExpr = true,
         arrayConstructorSyntax = SQLDialect.ArraySyntax.ArrayPrefix,
         mapConstructorSyntax = SQLDialect.MapSyntax.ArrayPair,
-        requireParenForValues = true
+        requireParenForValues = true,
+        supportIfFunction = true
       )
 
   case Hive
@@ -66,7 +67,8 @@ enum DBType(
         supportRowExpr = false,
         arrayConstructorSyntax = SQLDialect.ArraySyntax.ArrayPrefix,
         mapConstructorSyntax = SQLDialect.MapSyntax.ArrayPair,
-        requireParenForValues = false
+        requireParenForValues = false,
+        supportIfFunction = true
       )
 
   case BigQuery   extends DBType(supportIfFunction = true)
