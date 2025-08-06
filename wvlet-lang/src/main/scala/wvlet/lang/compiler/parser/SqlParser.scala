@@ -415,7 +415,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     val target = qualifiedName()
     val alias =
       scanner.lookAhead().token match
-        case id if id.isIdentifier =>
+        case id if id.isIdentifier || id.isNonReservedKeyword =>
           Some(identifier())
         case _ =>
           None
@@ -503,7 +503,9 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     t.token match
       case token if token.isQueryDelimiter =>
         Nil
-      case t if t.tokenType == TokenType.Keyword && !SqlToken.literalStartKeywords.contains(t) =>
+      case t
+          if t.tokenType == TokenType.Keyword && !SqlToken.literalStartKeywords.contains(t) &&
+            !t.isNonReservedKeyword =>
         Nil
       case _ =>
         val item = selectItem()
@@ -1174,7 +1176,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           GenericLiteral(DataType.DateType, i.stringValue, spanFrom(t))
         case SqlToken.INTERVAL =>
           interval()
-        case id if id.isIdentifier || id.isReservedKeyword =>
+        case id if id.isIdentifier || id.isNonReservedKeyword =>
           identifier()
         case SqlToken.STAR =>
           identifier()
@@ -1503,7 +1505,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       case SqlToken.AS =>
         consume(SqlToken.AS)
         tableAlias(r)
-      case id if id.isIdentifier =>
+      case id if id.isIdentifier || id.isNonReservedKeyword =>
         tableAlias(r)
       case _ =>
         r
@@ -1512,7 +1514,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     val t = scanner.lookAhead()
     val r =
       t.token match
-        case id if id.isIdentifier =>
+        case id if id.isIdentifier || id.isNonReservedKeyword =>
           val name = qualifiedName()
           TableRef(name, spanFrom(t))
         case SqlToken.DOUBLE_QUOTE_STRING =>
@@ -1760,6 +1762,9 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     val t = scanner.lookAhead()
     t.token match
       case id if id.isIdentifier =>
+        consume(id)
+        UnquotedIdentifier(t.str, spanFrom(t))
+      case id if id.isNonReservedKeyword =>
         consume(id)
         UnquotedIdentifier(t.str, spanFrom(t))
       case SqlToken.STAR =>

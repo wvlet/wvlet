@@ -7,7 +7,10 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   def isIdentifier: Boolean      = tokenType == Identifier
   def isLiteral: Boolean         = tokenType == Literal
   def isReservedKeyword: Boolean = tokenType == Keyword
-  def isOperator: Boolean        = tokenType == Op
+  def isNonReservedKeyword: Boolean =
+    tokenType == Keyword && SqlToken.nonReservedKeywords.contains(this)
+
+  def isOperator: Boolean = tokenType == Op
 
   def isUpdateStart: Boolean    = updateStartTokens.contains(this)
   def isQueryStart: Boolean     = queryStartTokens.contains(this)
@@ -265,8 +268,40 @@ object SqlToken:
     SqlToken.ARRAY,
     SqlToken.DATE,
     SqlToken.INTERVAL,
-    SqlToken.CAST,
-    SqlToken.IF
+    SqlToken.CAST
+  )
+
+  // Keywords that can be used as unquoted identifiers
+  val nonReservedKeywords = Set(
+    SqlToken.IF, // IF can be used as a function name
+    SqlToken.KEY,
+    SqlToken.SYSTEM,
+    SqlToken.PRIMARY,
+    SqlToken.UNIQUE,
+    SqlToken.INDEX,
+    SqlToken.COLUMN,
+    SqlToken.DEFAULT,
+    SqlToken.CONSTRAINT,
+    SqlToken.FOREIGN,
+    SqlToken.REFERENCES,
+    SqlToken.CHECK,
+    SqlToken.FIRST,
+    SqlToken.LAST,
+    SqlToken.ASC,
+    SqlToken.DESC,
+    SqlToken.NULLS,
+    SqlToken.ROW,
+    SqlToken.ROWS,
+    SqlToken.RANGE,
+    SqlToken.PRECEDING,
+    SqlToken.FOLLOWING,
+    SqlToken.CURRENT,
+    SqlToken.EXCLUDE,
+    SqlToken.OTHERS,
+    SqlToken.TIES,
+    SqlToken.NO,
+    SqlToken.WITHOUT,
+    SqlToken.ORDINALITY
   )
 
   val allKeywordsAndSymbols = keywords ++ literalStartKeywords ++ specialSymbols
