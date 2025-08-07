@@ -184,6 +184,32 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             expr(c.table) + columns
           )
         )
+      case c: CreateSchema =>
+        group(
+          wl(
+            "create",
+            "schema",
+            if c.ifNotExists then
+              Some("if not exists")
+            else
+              None
+            ,
+            expr(c.schema)
+          )
+        )
+      case d: DropSchema =>
+        group(
+          wl(
+            "drop",
+            "schema",
+            if d.ifExists then
+              Some("if exists")
+            else
+              None
+            ,
+            expr(d.schema)
+          )
+        )
       case _ =>
         unsupportedNode(s"DDL ${d.nodeName}", d.span)
 
