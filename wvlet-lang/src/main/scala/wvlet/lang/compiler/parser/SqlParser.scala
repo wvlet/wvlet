@@ -295,7 +295,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     def consumeTableToken(): Unit =
       val t = scanner.lookAhead()
       t.token match
-        case SqlToken.IDENTIFIER if t.str.toLowerCase() == "table" =>
+        case SqlToken.IDENTIFIER if t.str.toLowerCase() == "table" || t.str.toLowerCase() == "schema" =>
           consume(SqlToken.IDENTIFIER)
         case _ =>
           unexpected(t)
