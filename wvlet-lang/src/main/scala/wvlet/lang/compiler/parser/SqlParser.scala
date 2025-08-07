@@ -292,13 +292,36 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
 
   def update(): LogicalPlan =
 
-    def consumeTableToken(): Unit =
+    def consumeEntityType(): SqlToken =
       val t = scanner.lookAhead()
       t.token match
-        case SqlToken.IDENTIFIER if t.str.toLowerCase() == "table" =>
-          consume(SqlToken.IDENTIFIER)
+        case SqlToken.TABLE =>
+          consume(SqlToken.TABLE)
+          SqlToken.TABLE
+        case SqlToken.SCHEMA =>
+          consume(SqlToken.SCHEMA)
+          SqlToken.SCHEMA
         case _ =>
-          unexpected(t)
+          SqlToken.TABLE // default to table
+
+    def parseIfNotExists(): Boolean =
+      scanner.lookAhead().token match
+        case SqlToken.IF =>
+          consume(SqlToken.IF)
+          consume(SqlToken.NOT)
+          consume(SqlToken.EXISTS)
+          true
+        case _ =>
+          false
+
+    def parseIfExists(): Boolean =
+      scanner.lookAhead().token match
+        case SqlToken.IF =>
+          consume(SqlToken.IF)
+          consume(SqlToken.EXISTS)
+          true
+        case _ =>
+          false
 
     def tableElems(): List[ColumnDef] =
       val t = scanner.lookAhead()
@@ -316,100 +339,66 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         case _ =>
           Nil
 
+    def parseCreateStatement(): LogicalPlan =
+      val t = consume(SqlToken.CREATE)
+      val replace =
+        scanner.lookAhead().token match
+          case SqlToken.OR =>
+            consume(SqlToken.OR)
+            consume(SqlToken.REPLACE)
+            true
+          case _ =>
+            false
+
+      val entityType = consumeEntityType()
+      entityType match
+        case SqlToken.SCHEMA =>
+          val ifNotExists = parseIfNotExists()
+          val schemaName = qualifiedName()
+          CreateSchema(schemaName, ifNotExists, None, spanFrom(t))
+        case SqlToken.TABLE | _ =>
+          val createMode =
+            if replace then
+              CreateMode.Replace
+            else if parseIfNotExists() then
+              CreateMode.IfNotExists
+            else
+              CreateMode.NoOverwrite
+          val tbl = qualifiedName()
+          scanner.lookAhead().token match
+            case SqlToken.L_PAREN =>
+              consume(SqlToken.L_PAREN)
+              val elems = tableElems()
+              val ct = CreateTable(tbl, createMode == CreateMode.IfNotExists, elems, spanFrom(t))
+              consume(SqlToken.R_PAREN)
+              ct
+            case SqlToken.AS =>
+              consume(SqlToken.AS)
+              val q = query()
+              CreateTableAs(tbl, createMode, q, spanFrom(t))
+            case t3 =>
+              unexpected(scanner.lookAhead())
+
+    def parseDropStatement(): LogicalPlan =
+      val t = consume(SqlToken.DROP)
+      val entityType = consumeEntityType()
+      val ifExists = parseIfExists()
+      val name = qualifiedName()
+      
+      entityType match
+        case SqlToken.SCHEMA =>
+          DropSchema(name, ifExists, spanFrom(t))
+        case SqlToken.TABLE | _ =>
+          DropTable(name, ifExists, spanFrom(t))
+
     val t = scanner.lookAhead()
     t.token match
       case SqlToken.CREATE =>
-        consume(SqlToken.CREATE)
-        val replace =
-          scanner.lookAhead().token match
-            case SqlToken.OR =>
-              consume(SqlToken.OR)
-              consume(SqlToken.REPLACE)
-              true
-            case _ =>
-              false
-
-        // Check if it's CREATE SCHEMA or CREATE TABLE
-        val t2 = scanner.lookAhead()
-        t2.token match
-          case SqlToken.IDENTIFIER if t2.str.toLowerCase() == "schema" =>
-            consumeToken()
-            val ifNotExists =
-              scanner.lookAhead().token match
-                case SqlToken.IF =>
-                  consume(SqlToken.IF)
-                  consume(SqlToken.NOT)
-                  consume(SqlToken.EXISTS)
-                  true
-                case _ =>
-                  false
-            val schemaName = qualifiedName()
-            CreateSchema(schemaName, ifNotExists, None, spanFrom(t))
-          case _ =>
-            // It's CREATE TABLE
-            consumeTableToken()
-            val createMode =
-              scanner.lookAhead().token match
-                case SqlToken.IF if !replace =>
-                  consume(SqlToken.IF)
-                  consume(SqlToken.NOT)
-                  consume(SqlToken.EXISTS)
-                  CreateMode.IfNotExists
-                case _ =>
-                  if replace then
-                    CreateMode.Replace
-                  else
-                    CreateMode.NoOverwrite
-            val tbl = qualifiedName()
-            val t3  = scanner.lookAhead()
-            t3.token match
-              case SqlToken.L_PAREN =>
-                consume(SqlToken.L_PAREN)
-                val elems = tableElems()
-                val ct = CreateTable(tbl, createMode == CreateMode.IfNotExists, elems, spanFrom(t))
-                consume(SqlToken.R_PAREN)
-                ct
-              case SqlToken.AS =>
-                consume(SqlToken.AS)
-                val q = query()
-                CreateTableAs(tbl, createMode, q, spanFrom(t))
-              case _ =>
-                unexpected(t3)
-        end match
-
+        parseCreateStatement()
       case SqlToken.INSERT =>
         insert()
       case SqlToken.DROP =>
-        consume(SqlToken.DROP)
-
-        // Check if it's DROP SCHEMA or DROP TABLE
-        val t2 = scanner.lookAhead()
-        t2.token match
-          case SqlToken.IDENTIFIER if t2.str.toLowerCase() == "schema" =>
-            consumeToken() // consume SCHEMA or "schema"
-            val ifExists =
-              scanner.lookAhead().token match
-                case SqlToken.IF =>
-                  consume(SqlToken.IF)
-                  consume(SqlToken.EXISTS)
-                  true
-                case _ =>
-                  false
-            val schemaName = qualifiedName()
-            DropSchema(schemaName, ifExists, spanFrom(t))
-          case _ =>
-            // It's DROP TABLE
-            consumeTableToken()
-            val ifExists =
-              scanner.lookAhead().token match
-                case SqlToken.IF =>
-                  consume(SqlToken.IF)
-                  consume(SqlToken.EXISTS)
-                  true
-                case _ =>
-                  false
-            val tbl = qualifiedName()
-            DropTable(tbl, ifExists = ifExists, spanFrom(t))
+        parseDropStatement()
       case SqlToken.UPDATE =>
         val target = qualifiedName()
         consume(SqlToken.SET)

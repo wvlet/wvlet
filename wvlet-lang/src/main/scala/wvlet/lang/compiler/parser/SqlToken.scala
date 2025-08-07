@@ -186,12 +186,12 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   case FOR            extends SqlToken(Keyword, "for")
   case DESCRIBE       extends SqlToken(Keyword, "describe")
 
-  // Do not treat them as keywords as they can be used as  table names
-  //  case CATALOG        extends SqlToken(Keyword, "catalog")
-  //  case DATABASE       extends SqlToken(Keyword, "database")
-  //  case SCHEMA         extends SqlToken(Keyword, "schema")
-  //  case TABLE extends SqlToken(Keyword, "table")
-  //  case STATEMENT      extends SqlToken(Keyword, "statement")
+  // DDL entity types (non-reserved so they can be used as table names)
+  case CATALOG        extends SqlToken(Keyword, "catalog")
+  case DATABASE       extends SqlToken(Keyword, "database")
+  case SCHEMA         extends SqlToken(Keyword, "schema")
+  case TABLE          extends SqlToken(Keyword, "table")
+  case STATEMENT      extends SqlToken(Keyword, "statement")
 
   case INSERT  extends SqlToken(Keyword, "insert")
   case UPSERT  extends SqlToken(Keyword, "upsert")
@@ -301,7 +301,13 @@ object SqlToken:
     SqlToken.TIES,
     SqlToken.NO,
     SqlToken.WITHOUT,
-    SqlToken.ORDINALITY
+    SqlToken.ORDINALITY,
+    // DDL entity types - non-reserved so they can be used as table/column names
+    SqlToken.CATALOG,
+    SqlToken.DATABASE,
+    SqlToken.SCHEMA,
+    SqlToken.TABLE,
+    SqlToken.STATEMENT
   )
 
   val allKeywordsAndSymbols = keywords ++ literalStartKeywords ++ specialSymbols
