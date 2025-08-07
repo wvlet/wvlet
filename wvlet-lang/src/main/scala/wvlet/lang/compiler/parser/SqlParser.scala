@@ -440,7 +440,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     val target = qualifiedName()
     val alias =
       scanner.lookAhead().token match
-        case id if id.isIdentifier || id.isNonReservedKeyword =>
+        case id if id.isIdentifier =>
           Some(identifier())
         case _ =>
           None
@@ -1530,7 +1530,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       case SqlToken.AS =>
         consume(SqlToken.AS)
         tableAlias(r)
-      case id if id.isIdentifier || id.isNonReservedKeyword =>
+      case id if id.isIdentifier =>
         tableAlias(r)
       case _ =>
         r
@@ -1539,7 +1539,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     val t = scanner.lookAhead()
     val r =
       t.token match
-        case id if id.isIdentifier || id.isNonReservedKeyword =>
+        case id if id.isIdentifier =>
           val name = qualifiedName()
           TableRef(name, spanFrom(t))
         case SqlToken.DOUBLE_QUOTE_STRING =>
@@ -1786,7 +1786,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
   def identifier(): Identifier =
     val t = scanner.lookAhead()
     t.token match
-      case id if id.isIdentifier || id.isNonReservedKeyword =>
+      case id if id.isIdentifier =>
         consume(id)
         UnquotedIdentifier(t.str, spanFrom(t))
       case SqlToken.STAR =>
