@@ -4,7 +4,7 @@ import TokenType.*
 
 enum SqlToken(val tokenType: TokenType, val str: String):
   import SqlToken.*
-  def isIdentifier: Boolean      = tokenType == Identifier
+  def isIdentifier: Boolean      = tokenType == Identifier || isNonReservedKeyword
   def isLiteral: Boolean         = tokenType == Literal
   def isReservedKeyword: Boolean = tokenType == Keyword
   def isNonReservedKeyword: Boolean =
