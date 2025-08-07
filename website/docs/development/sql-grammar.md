@@ -2,6 +2,24 @@
 
 The SQL parser in Wvlet is based on Apache Calcite's [SQL Language](https://calcite.apache.org/docs/reference.html) definition.
 
+## Identifiers and Keywords
+
+### Reserved Keywords
+Reserved keywords are SQL language tokens that have special meaning and cannot be used as unquoted identifiers. Examples include: `SELECT`, `FROM`, `WHERE`, `GROUP`, `BY`, `ORDER`, `JOIN`, etc.
+
+### Non-Reserved Keywords
+
+Non-reserved keywords are SQL language tokens that have special meaning in certain contexts but can still be used as unquoted identifiers. These keywords can be used as table names, column names, or function names without requiring quotes.
+
+Examples of non-reserved keywords:
+- `IF` - Can be used as a function name: `IF(condition, true_value, false_value)`
+- `KEY`, `PRIMARY`, `UNIQUE`, `INDEX` - Can be used as column names
+- `SYSTEM`, `FIRST`, `LAST`, `ASC`, `DESC` - Can be used as identifiers
+- `ROW`, `ROWS`, `RANGE` - Can be used in window specifications or as identifiers
+- And others related to DDL and window functions
+
+This allows for more flexible SQL writing without requiring quoted identifiers in many common cases.
+
 
 ```antlr4
 statement:

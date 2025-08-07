@@ -1201,7 +1201,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           GenericLiteral(DataType.DateType, i.stringValue, spanFrom(t))
         case SqlToken.INTERVAL =>
           interval()
-        case id if id.isIdentifier || id.isNonReservedKeyword =>
+        case id if id.isIdentifier =>
           identifier()
         case SqlToken.STAR =>
           identifier()
