@@ -1,9 +1,9 @@
--- Test case for schema.table with quoted identifiers
--- First create a table to test with
-drop table if exists "test_schema"."customers";
-drop schema if exists "test_schema";
-create schema "test_schema";
-create table "test_schema"."customers" as 
+-- Test case for schema.table with quoted identifiers using DuckDB's main schema
+-- DuckDB has a built-in 'main' schema that doesn't need to be created
+
+-- Create a test table in the main schema
+drop table if exists "main"."customers";
+create table "main"."customers" as 
 select * from (values 
   (1, 'Chris', 'Smith'),
   (2, 'John', 'Doe'),
@@ -13,9 +13,8 @@ select * from (values
 -- Now test the query with schema.table notation
 select
   a."cdp_customer_id"
-from "test_schema"."customers" a
+from "main"."customers" a
 where a."first_name" = 'Chris';
 
 -- Clean up
-drop table "test_schema"."customers";
-drop schema "test_schema"
+drop table "main"."customers"
