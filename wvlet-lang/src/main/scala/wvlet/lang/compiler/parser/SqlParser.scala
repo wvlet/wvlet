@@ -503,7 +503,9 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     t.token match
       case token if token.isQueryDelimiter =>
         Nil
-      case t if t.tokenType == TokenType.Keyword && !SqlToken.literalStartKeywords.contains(t) =>
+      case t
+          if t.tokenType == TokenType.Keyword && !SqlToken.literalStartKeywords.contains(t) &&
+            !t.isNonReservedKeyword =>
         Nil
       case _ =>
         val item = selectItem()
@@ -1174,7 +1176,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           GenericLiteral(DataType.DateType, i.stringValue, spanFrom(t))
         case SqlToken.INTERVAL =>
           interval()
-        case id if id.isIdentifier || id.isReservedKeyword =>
+        case id if id.isIdentifier =>
           identifier()
         case SqlToken.STAR =>
           identifier()
