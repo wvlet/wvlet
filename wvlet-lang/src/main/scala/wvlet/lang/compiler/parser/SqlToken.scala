@@ -187,11 +187,11 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   case DESCRIBE       extends SqlToken(Keyword, "describe")
 
   // DDL entity types (non-reserved so they can be used as table names)
-  case CATALOG        extends SqlToken(Keyword, "catalog")
-  case DATABASE       extends SqlToken(Keyword, "database")
-  case SCHEMA         extends SqlToken(Keyword, "schema")
-  case TABLE          extends SqlToken(Keyword, "table")
-  case STATEMENT      extends SqlToken(Keyword, "statement")
+  case CATALOG   extends SqlToken(Keyword, "catalog")
+  case DATABASE  extends SqlToken(Keyword, "database")
+  case SCHEMA    extends SqlToken(Keyword, "schema")
+  case TABLE     extends SqlToken(Keyword, "table")
+  case STATEMENT extends SqlToken(Keyword, "statement")
 
   case INSERT  extends SqlToken(Keyword, "insert")
   case UPSERT  extends SqlToken(Keyword, "upsert")

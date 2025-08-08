@@ -354,7 +354,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       entityType match
         case SqlToken.SCHEMA =>
           val ifNotExists = parseIfNotExists()
-          val schemaName = qualifiedName()
+          val schemaName  = qualifiedName()
           CreateSchema(schemaName, ifNotExists, None, spanFrom(t))
         case SqlToken.TABLE | _ =>
           val createMode =
@@ -369,7 +369,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
             case SqlToken.L_PAREN =>
               consume(SqlToken.L_PAREN)
               val elems = tableElems()
-              val ct = CreateTable(tbl, createMode == CreateMode.IfNotExists, elems, spanFrom(t))
+              val ct    = CreateTable(tbl, createMode == CreateMode.IfNotExists, elems, spanFrom(t))
               consume(SqlToken.R_PAREN)
               ct
             case SqlToken.AS =>
@@ -378,13 +378,14 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
               CreateTableAs(tbl, createMode, q, spanFrom(t))
             case t3 =>
               unexpected(scanner.lookAhead())
+    end parseCreateStatement
 
     def parseDropStatement(): LogicalPlan =
-      val t = consume(SqlToken.DROP)
+      val t          = consume(SqlToken.DROP)
       val entityType = consumeEntityType()
-      val ifExists = parseIfExists()
-      val name = qualifiedName()
-      
+      val ifExists   = parseIfExists()
+      val name       = qualifiedName()
+
       entityType match
         case SqlToken.SCHEMA =>
           DropSchema(name, ifExists, spanFrom(t))
