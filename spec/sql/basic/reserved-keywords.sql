@@ -40,10 +40,10 @@ join (values ('k1'), ('k3')) as t2(key) on t1.key = t2.key;
 -- SELECT * FROM system.information_schema.tables;
 
 -- Test system as identifier in VALUES clause
-select system from (values ('test_system')) as t(system);
+select "system" from (values ('test_system')) as t("system");
 
 -- Test case for using reserved keyword "table" as part of qualified table names
-select table from (values ('test_table')) as t(table);
+select "table" from (values ('test_table')) as t("table");
 
 -- Test case for using reserved keyword "schema" as part of qualified table names
-select schema from (values ('test_schema')) as t(schema);
+select "schema" from (values ('test_schema')) as t("schema");
