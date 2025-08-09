@@ -187,9 +187,9 @@ trait TableInput extends Relation with LeafPlan:
   * @param nodeLocation
   */
 case class TableRef(name: QualifiedName, span: Span) extends TableInput:
-  override def sqlExpr: Expression   = name
-  override def wvletExpr: Expression = NameExpr.fromString(name.toWvletAttributeName, name.span)
-  override def toString: String      = s"TableRef(${name})"
+  override def sqlExpr: Expression        = name
+  override def wvletExpr: Expression      = name
+  override def toString: String           = s"TableRef(${name})"
   override val relationType: RelationType = UnresolvedRelationType(name.fullName)
 
 case class TableFunctionCall(name: NameExpr, args: List[FunctionArg], span: Span)
