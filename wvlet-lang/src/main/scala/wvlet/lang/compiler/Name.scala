@@ -54,6 +54,8 @@ case class TermName private[compiler] (override val name: String) extends Name(n
   def toWvletAttributeName: String =
     if name.matches("^[_a-zA-Z][_a-zA-Z0-9]*$") then
       name
+    else if name.startsWith("\"") && name.endsWith("\"") then
+      s"`${name.substring(1, name.length - 1)}`"
     else
       s"`${name}`"
 
