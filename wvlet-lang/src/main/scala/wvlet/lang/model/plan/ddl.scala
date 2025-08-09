@@ -43,6 +43,8 @@ case class CreateSchema(
     span: Span
 ) extends DDL
 
+case class DropSchema(schema: NameExpr, ifExists: Boolean, span: Span) extends DDL
+
 case class DropDatabase(database: NameExpr, ifExists: Boolean, cascade: Boolean, span: Span)
     extends DDL
 
