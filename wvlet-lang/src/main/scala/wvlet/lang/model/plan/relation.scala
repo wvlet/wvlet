@@ -187,7 +187,8 @@ trait TableInput extends Relation with LeafPlan:
   * @param nodeLocation
   */
 case class TableRef(name: QualifiedName, span: Span) extends TableInput:
-  override def sqlExpr: Expression        = name
+  override def sqlExpr: Expression = name
+  // TODO Fix to generate a correct Wvlet expression for double-quoted or dot-separated table names
   override def wvletExpr: Expression      = name
   override def toString: String           = s"TableRef(${name})"
   override val relationType: RelationType = UnresolvedRelationType(name.fullName)
