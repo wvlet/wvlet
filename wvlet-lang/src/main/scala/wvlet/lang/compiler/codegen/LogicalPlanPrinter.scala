@@ -86,7 +86,7 @@ class LogicalPlanPrinter(using ctx: Context) extends LogSupport:
   )(using dataflowRank: LogicalPlanRankTable = LogicalPlanRankTable.empty): Doc =
     e match
       case i: Identifier =>
-        text(i.strExpr)
+        text(i.fullName)
       case s: SingleColumn =>
         val body = expr(s.expr)
         if s.nameExpr.isEmpty || body.toString == s.fullName then

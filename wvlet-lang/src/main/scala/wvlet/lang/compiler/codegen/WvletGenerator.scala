@@ -552,9 +552,9 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
         case bq: BackQuotedIdentifier =>
           text(s"`${bq.unquotedValue}`")
         case w: Wildcard =>
-          text(w.strExpr)
+          text(w.toWvletAttributeName)
         case i: Identifier =>
-          text(i.strExpr)
+          text(i.toWvletAttributeName)
         case s: SortItem =>
           wl(
             expr(s.sortKey),
@@ -715,12 +715,21 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
           unsupportedNode(s"expression ${other}", other.span)
     }
 
+  private def nameExpr(e: NameExpr)(using sc: SyntaxContext): Doc =
+    e match
+      case DotRef(qual, name, _, _) =>
+        expr(qual) + text(".") + nameExpr(name)
+      case b: BackquoteInterpolatedIdentifier =>
+        expr(b)
+      case other =>
+        text(e.toWvletAttributeName)
+
   private def tableInput(e: TableInput)(using sc: SyntaxContext): Doc =
     e match
       case t: TableRef =>
-        text(t.name.toWvletAttributeName)
+        nameExpr(t.name)
       case t: TableScan =>
-        expr(t.name.toExpr)
+        nameExpr(t.name.toExpr)
       case other =>
         expr(e.sqlExpr)
 

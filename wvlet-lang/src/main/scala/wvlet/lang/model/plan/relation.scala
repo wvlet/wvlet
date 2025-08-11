@@ -132,7 +132,7 @@ end AliasedRelation
 case class NamedRelation(child: Relation, name: NameExpr, span: Span)
     extends UnaryRelation
     with Selection:
-  override def toString: String = s"NamedRelation[${name.strExpr}](${child})"
+  override def toString: String = s"NamedRelation[${name.fullName}](${child})"
 
   override def selectItems: List[Attribute] =
     // Produce a dummy AllColumns node for SQLGenerator

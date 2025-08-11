@@ -46,8 +46,6 @@ case class TableAlias(name: NameExpr, alias: NameExpr, span: Span) extends LeafE
   * variable name, function name, type name, etc. The name might have a qualifier.
   */
 sealed trait NameExpr extends Expression:
-  /* string expression of the name */
-  def strExpr: String
   // name parts
   def nameParts: List[String] = List(leafName)
   def leafName: String        = nameParts.last
@@ -73,7 +71,9 @@ sealed trait NameExpr extends Expression:
 
   def toSQLAttributeName: String = nameParts
     .map { s =>
-      if requiresQuotation(s) then
+      if s.startsWith("\"") && s.endsWith("\"") then
+        s
+      else if requiresQuotation(s) then
         s""""${s}""""
       else
         s
@@ -82,7 +82,9 @@ sealed trait NameExpr extends Expression:
 
   def toWvletAttributeName: String = nameParts
     .map { s =>
-      if requiresQuotation(s) then
+      if s.startsWith("`") && s.endsWith("`") then
+        s
+      else if requiresQuotation(s) then
         s"""`${s}`"""
       else
         s
@@ -101,7 +103,6 @@ object NameExpr:
     !s.matches("^[\\*_a-zA-Z][_a-zA-Z0-9\\*\\.]*$") || sqlKeywords.contains(s)
 
 case class Wildcard(span: Span) extends LeafExpression with Identifier:
-  override def strExpr: String       = "*"
   override def unquotedValue: String = "*"
 
   override def qualifier: Expression = NameExpr.EmptyName
@@ -115,7 +116,6 @@ case class Wildcard(span: Span) extends LeafExpression with Identifier:
 case class ContextInputRef(override val dataType: DataType, span: Span)
     extends LeafExpression
     with Identifier:
-  override def strExpr: String       = "_"
   override def unquotedValue: String = "_"
 
 /**
@@ -144,7 +144,6 @@ case class DotRef(
       case _ =>
         List(qualifier.toString) ++ name.nameParts
 
-  override def strExpr: String           = fullName
   override def toString: String          = s"DotRef(${qualifier}:${qualifier.dataType},${name})"
   override def children: Seq[Expression] = Seq(qualifier)
 
@@ -155,7 +154,7 @@ sealed trait Identifier extends QualifiedName with LeafExpression:
   // Unquoted value
   def unquotedValue: String
 
-  override def attributeName: String = strExpr
+  override def attributeName: String = leafName
 
   override lazy val resolved: Boolean = false
   def toResolved(dataType: DataType): Identifier = ResolvedIdentifier(
@@ -169,7 +168,6 @@ case class ResolvedIdentifier(
     override val dataType: DataType,
     span: Span
 ) extends Identifier:
-  override def strExpr: String = unquotedValue
   override def toResolved(dataType: DataType) =
     if this.dataType == dataType then
       this
@@ -179,20 +177,16 @@ case class ResolvedIdentifier(
   override lazy val resolved: Boolean = dataType.isResolved
 
 // Used for group by 1, 2, 3 ...
-case class DigitIdentifier(override val unquotedValue: String, span: Span) extends Identifier:
-  override def strExpr = unquotedValue
+case class DigitIdentifier(override val unquotedValue: String, span: Span) extends Identifier
 
-case class UnquotedIdentifier(override val unquotedValue: String, span: Span) extends Identifier:
-  override def strExpr = unquotedValue
+case class UnquotedIdentifier(override val unquotedValue: String, span: Span) extends Identifier
 
 /**
   * Double quoted indentifier like "(column name)" for SQL. In Wvlet, use BackQuotedIdentifier
   * @param unquotedValue
   * @param span
   */
-case class DoubleQuotedIdentifier(override val unquotedValue: String, span: Span)
-    extends Identifier:
-  override def strExpr: String = s"\"${unquotedValue}\""
+case class DoubleQuotedIdentifier(override val unquotedValue: String, span: Span) extends Identifier
 
 /**
   * Backquote is used for table or column names that conflicts with reserved words
@@ -206,7 +200,6 @@ case class BackQuotedIdentifier(
 ) extends Identifier:
   override def leafName: String                                     = unquotedValue
   override def fullName: String                                     = unquotedValue
-  override def strExpr: String                                      = s"`${unquotedValue}`"
   override def toResolved(dataType: DataType): BackQuotedIdentifier = this.copy(dataType = dataType)
 
 case class BackquoteInterpolatedIdentifier(
@@ -216,8 +209,8 @@ case class BackquoteInterpolatedIdentifier(
     span: Span
 ) extends Identifier:
   override def children: Seq[Expression] = parts
-  override def strExpr: String           = "<backquote interpolation>"
-  override def unquotedValue: String     = ???
+  override def fullName: String          = "<backquote interpolation>"
+  override def unquotedValue: String     = "<backquote interpolation>"
 
 sealed trait JoinCriteria extends Expression
 case object NoJoinCriteria extends JoinCriteria with LeafExpression:
@@ -853,7 +846,7 @@ sealed trait TableElement extends Expression
 case class ColumnDef(columnName: NameExpr, tpe: DataType, span: Span)
     extends TableElement
     with UnaryExpression:
-  override def toString: String  = s"${columnName.strExpr}:${tpe.wvExpr}"
+  override def toString: String  = s"${columnName.leafName}:${tpe.wvExpr}"
   override def child: Expression = columnName
 //
 //case class ColumnType(tpe: NameExpr, span: Span) extends LeafExpression

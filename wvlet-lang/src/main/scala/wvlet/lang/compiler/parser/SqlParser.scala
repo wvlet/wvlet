@@ -1062,8 +1062,6 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           expr match
             case n: NameExpr =>
               functionApply(n)
-            case l: DoubleQuoteString =>
-              functionApply(l)
             case _ =>
               unexpected(expr)
         case SqlToken.L_BRACKET =>
@@ -1093,7 +1091,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       t.token match
         case SqlToken.NULL | SqlToken.INTEGER_LITERAL | SqlToken.DOUBLE_LITERAL | SqlToken
               .FLOAT_LITERAL | SqlToken.DECIMAL_LITERAL | SqlToken.EXP_LITERAL | SqlToken
-              .SINGLE_QUOTE_STRING | SqlToken.DOUBLE_QUOTE_STRING | SqlToken.TRIPLE_QUOTE_STRING =>
+              .SINGLE_QUOTE_STRING | SqlToken.TRIPLE_QUOTE_STRING =>
           literal()
         case SqlToken.CASE =>
           val cases                          = List.newBuilder[WhenClause]
@@ -1203,6 +1201,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         case SqlToken.INTERVAL =>
           interval()
         case id if id.isIdentifier =>
+          identifier()
+        case SqlToken.DOUBLE_QUOTE_STRING =>
           identifier()
         case SqlToken.STAR =>
           identifier()

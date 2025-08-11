@@ -13,6 +13,8 @@
  */
 package wvlet.lang.compiler
 
+import wvlet.lang.model.expr.NameExpr
+
 /**
   * Name represents a single leaf string value of term names (e.g., function name, variable, package
   * name) or type names (int, string, or user-defined types).
@@ -44,7 +46,7 @@ case class TermName private[compiler] (override val name: String) extends Name(n
   def toTypeName: TypeName   = _typeName
 
   def toSQLAttributeName: String =
-    if name.matches("^[_a-zA-Z][_a-zA-Z0-9]*$") then
+    if !NameExpr.requiresQuotation(name) then
       name
     else if name.startsWith("\"") && name.endsWith("\"") then
       name
@@ -52,7 +54,7 @@ case class TermName private[compiler] (override val name: String) extends Name(n
       s""""${name}""""
 
   def toWvletAttributeName: String =
-    if name.matches("^[_a-zA-Z][_a-zA-Z0-9]*$") then
+    if !NameExpr.requiresQuotation(name) then
       name
     else if name.startsWith("\"") && name.endsWith("\"") then
       s"`${name.substring(1, name.length - 1)}`"
