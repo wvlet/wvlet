@@ -198,9 +198,9 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
       case t: TableInput =>
         code(t) {
           if sc.inFromClause then
-            expr(t.wvletExpr)
+            tableInput(t)
           else
-            group(text("from") + block(expr(t.wvletExpr)))
+            group(text("from") + block(tableInput(t)))
         }
       case a: AddColumnsToRelation =>
         unary(a, "add", a.newColumns)
@@ -220,9 +220,9 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
           val tableAlias: Doc = tableAliasOf(a)
           a.child match
             case t: TableInput if sc.inFromClause =>
-              group(expr(t.wvletExpr) + wsOrNL + "as" + ws + tableAlias)
+              group(tableInput(t) + wsOrNL + "as" + ws + tableAlias)
             case t: TableInput if !sc.isNested =>
-              group(wl("from", expr(t.wvletExpr)) + wsOrNL + "as" + ws + tableAlias)
+              group(wl("from", tableInput(t)) + wsOrNL + "as" + ws + tableAlias)
             case v: Values =>
               group(values(v) + wsOrNL + "as" + ws + tableAlias)
             case _ =>
@@ -714,5 +714,14 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
         case other =>
           unsupportedNode(s"expression ${other}", other.span)
     }
+
+  private def tableInput(e: TableInput)(using sc: SyntaxContext): Doc =
+    e match
+      case t: TableRef =>
+        text(t.name.toWvletAttributeName)
+      case t: TableScan =>
+        expr(t.name.toExpr)
+      case other =>
+        expr(e.sqlExpr)
 
 end WvletGenerator

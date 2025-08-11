@@ -176,8 +176,10 @@ case class Values(rows: List[Expression], span: Span) extends Relation with Leaf
 //    columns
 
 trait TableInput extends Relation with LeafPlan:
+  /**
+    * SQL expression that represents this table input.
+    */
   def sqlExpr: Expression
-  def wvletExpr: Expression = sqlExpr
   // def alias: NameExpr
   // def columnNames: Option[Seq[NamedType]]
 
@@ -189,7 +191,6 @@ trait TableInput extends Relation with LeafPlan:
 case class TableRef(name: QualifiedName, span: Span) extends TableInput:
   override def sqlExpr: Expression = name
   // TODO Fix to generate a correct Wvlet expression for double-quoted or dot-separated table names
-  override def wvletExpr: Expression      = name
   override def toString: String           = s"TableRef(${name})"
   override val relationType: RelationType = UnresolvedRelationType(name.fullName)
 

@@ -15,11 +15,13 @@ package wvlet.lang.catalog
 
 import wvlet.log.LogSupport
 import wvlet.lang.model.expr.*
-import wvlet.lang.api.StatusCode
+import wvlet.lang.api.{Span, StatusCode}
 import wvlet.lang.model.DataType
 import Catalog.*
 import wvlet.lang.model.DataType.{NamedType, SchemaType}
 import wvlet.lang.compiler.{DBType, Name}
+
+import java.lang.invoke.MethodHandles.loop
 
 /**
   * connector -> catalog* -> schema* -> table* -> column*
@@ -97,6 +99,12 @@ object Catalog:
   )
 
   case class TableName(catalog: Option[String], schema: Option[String], name: String):
+    if catalog.nonEmpty then
+      require(
+        schema.nonEmpty,
+        s"Schema must be specified if catalog is specified: ${catalog.get}.???.${name}"
+      )
+
     override def toString: String = fullName
     def qName: List[String] =
       (catalog, schema) match
@@ -108,13 +116,20 @@ object Catalog:
           List(name)
 
     def fullName: String =
-      (catalog, schema) match
-        case (Some(c), Some(s)) =>
-          s"${c}.${s}.${name}"
-        case (None, Some(s)) =>
-          s"${s}.${name}"
-        case (_, _) =>
-          name
+      // Quote the catalog and schema names if they contain special characters
+      qName.mkString(".")
+
+    def toExpr: NameExpr =
+      def loop(prefix: String, rest: List[String]): NameExpr =
+        val qual = NameExpr.fromString(prefix)
+        if rest.isEmpty then
+          qual
+        else
+          DotRef(qual, loop(rest.head, rest.tail), DataType.NoType, Span.NoSpan)
+      val q = qName
+      loop(q.head, q.tail)
+
+  end TableName
 
   object TableName:
     def apply(s: String): TableName = parse(s)

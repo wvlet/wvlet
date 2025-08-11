@@ -13,24 +13,14 @@
  */
 package wvlet.lang.model.expr
 
-import wvlet.lang.api.{LinePosition, Span}
+import wvlet.lang.api.Span
 import wvlet.lang.api.Span.NoSpan
-import wvlet.lang.compiler.{Name, TermName, TypeName, Printer}
-import wvlet.lang.model.DataType.{
-  AnyType,
-  ArrayType,
-  EmbeddedRecordType,
-  IntConstant,
-  NamedType,
-  TimestampField,
-  TypeVariable
-}
-import wvlet.lang.model.expr.BinaryExprType.DivideInt
-import wvlet.lang.model.expr.NameExpr.sqlKeywords
+import wvlet.lang.compiler.parser.SqlToken
+import wvlet.lang.compiler.{Name, TermName, TypeName}
 import wvlet.lang.model.DataType
+import wvlet.lang.model.DataType.*
+import wvlet.lang.model.expr.NameExpr.requiresQuotation
 import wvlet.lang.model.plan.*
-
-import java.util.Locale
 
 /**
   * Native expression for running code implemented in Scala
@@ -58,8 +48,11 @@ case class TableAlias(name: NameExpr, alias: NameExpr, span: Span) extends LeafE
 sealed trait NameExpr extends Expression:
   /* string expression of the name */
   def strExpr: String
-  def leafName: String
-  def fullName: String
+  // name parts
+  def nameParts: List[String] = List(leafName)
+  def leafName: String        = nameParts.last
+  def fullName: String        = nameParts.mkString(".")
+
   def nonLeafName: String = fullName.stripSuffix(s".${leafName}")
   def nonEmpty: Boolean   = !isEmpty
   def isEmpty: Boolean =
@@ -78,29 +71,23 @@ sealed trait NameExpr extends Expression:
     else
       Some(f(this))
 
-  def toSQLAttributeName: String =
-    val s =
-      this match
-        case i: Identifier =>
-          i.unquotedValue
-        case _ =>
-          fullName
-    if s.matches("^[\\*_a-zA-Z][_a-zA-Z0-9\\*\\.]*$") && !sqlKeywords.contains(s) then
-      s
-    else
-      s""""${s}""""
+  def toSQLAttributeName: String = nameParts
+    .map { s =>
+      if requiresQuotation(s) then
+        s""""${s}""""
+      else
+        s
+    }
+    .mkString(".")
 
-  def toWvletAttributeName: String =
-    val s =
-      this match
-        case i: Identifier =>
-          i.unquotedValue
-        case _ =>
-          fullName
-    if s.matches("^[\\*_a-zA-Z][_a-zA-Z0-9\\*\\.]*$") && !sqlKeywords.contains(s) then
-      s
-    else
-      s"`${s}`"
+  def toWvletAttributeName: String = nameParts
+    .map { s =>
+      if requiresQuotation(s) then
+        s"""`${s}`"""
+      else
+        s
+    }
+    .mkString(".")
 
 end NameExpr
 
@@ -108,18 +95,12 @@ object NameExpr:
   val EmptyName: Identifier                                = UnquotedIdentifier("<empty>", NoSpan)
   def fromString(s: String, span: Span = NoSpan): NameExpr = UnquotedIdentifier(s, span)
 
-  private val sqlKeywords = Set(
-    // TODO enumerate more SQL keywords
-    "select",
-    "schema",
-    "table",
-    "from",
-    "catalog"
-  )
+  private val sqlKeywords = SqlToken.keywords.map(_.str).toSet
+
+  def requiresQuotation(s: String): Boolean =
+    !s.matches("^[\\*_a-zA-Z][_a-zA-Z0-9\\*\\.]*$") || sqlKeywords.contains(s)
 
 case class Wildcard(span: Span) extends LeafExpression with Identifier:
-  override def leafName: String      = "*"
-  override def fullName: String      = "*"
   override def strExpr: String       = "*"
   override def unquotedValue: String = "*"
 
@@ -134,8 +115,6 @@ case class Wildcard(span: Span) extends LeafExpression with Identifier:
 case class ContextInputRef(override val dataType: DataType, span: Span)
     extends LeafExpression
     with Identifier:
-  override def leafName: String      = "_"
-  override def fullName: String      = "_"
   override def strExpr: String       = "_"
   override def unquotedValue: String = "_"
 
@@ -158,23 +137,20 @@ case class DotRef(
     override val dataType: DataType,
     span: Span
 ) extends QualifiedName:
-  override def leafName: String = name.leafName
-  override def strExpr: String  = fullName
-  override def fullName: String =
+  override def nameParts: List[String] =
     qualifier match
       case q: NameExpr =>
-        s"${q.fullName}.${name.fullName}"
+        q.nameParts ++ name.nameParts
       case _ =>
-        // TODO print right expr
-        s"${qualifier}.${name.fullName}"
+        List(qualifier.toString) ++ name.nameParts
 
+  override def strExpr: String           = fullName
   override def toString: String          = s"DotRef(${qualifier}:${qualifier.dataType},${name})"
   override def children: Seq[Expression] = Seq(qualifier)
 
 sealed trait Identifier extends QualifiedName with LeafExpression:
-  override def qualifier: Expression = NameExpr.EmptyName
-  override def fullName: String      = leafName
-  override def leafName: String      = strExpr
+  override def qualifier: Expression   = NameExpr.EmptyName
+  override def nameParts: List[String] = List(unquotedValue)
 
   // Unquoted value
   def unquotedValue: String
