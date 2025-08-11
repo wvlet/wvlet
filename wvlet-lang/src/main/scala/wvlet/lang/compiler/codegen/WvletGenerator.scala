@@ -198,9 +198,9 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
       case t: TableInput =>
         code(t) {
           if sc.inFromClause then
-            expr(t.sqlExpr)
+            tableInput(t)
           else
-            group(text("from") + block(expr(t.sqlExpr)))
+            group(text("from") + block(tableInput(t)))
         }
       case a: AddColumnsToRelation =>
         unary(a, "add", a.newColumns)
@@ -220,9 +220,9 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
           val tableAlias: Doc = tableAliasOf(a)
           a.child match
             case t: TableInput if sc.inFromClause =>
-              group(expr(t.sqlExpr) + wsOrNL + "as" + ws + tableAlias)
+              group(tableInput(t) + wsOrNL + "as" + ws + tableAlias)
             case t: TableInput if !sc.isNested =>
-              group(wl("from", expr(t.sqlExpr)) + wsOrNL + "as" + ws + tableAlias)
+              group(wl("from", tableInput(t)) + wsOrNL + "as" + ws + tableAlias)
             case v: Values =>
               group(values(v) + wsOrNL + "as" + ws + tableAlias)
             case _ =>
@@ -552,9 +552,9 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
         case bq: BackQuotedIdentifier =>
           text(s"`${bq.unquotedValue}`")
         case w: Wildcard =>
-          text(w.strExpr)
+          text(w.toWvletAttributeName)
         case i: Identifier =>
-          text(i.strExpr)
+          text(i.toWvletAttributeName)
         case s: SortItem =>
           wl(
             expr(s.sortKey),
@@ -714,5 +714,23 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
         case other =>
           unsupportedNode(s"expression ${other}", other.span)
     }
+
+  private def nameExpr(e: NameExpr)(using sc: SyntaxContext): Doc =
+    e match
+      case DotRef(qual, name, _, _) =>
+        expr(qual) + text(".") + nameExpr(name)
+      case b: BackquoteInterpolatedIdentifier =>
+        expr(b)
+      case other =>
+        text(e.toWvletAttributeName)
+
+  private def tableInput(e: TableInput)(using sc: SyntaxContext): Doc =
+    e match
+      case t: TableRef =>
+        nameExpr(t.name)
+      case t: TableScan =>
+        nameExpr(t.name.toExpr)
+      case other =>
+        expr(e.sqlExpr)
 
 end WvletGenerator

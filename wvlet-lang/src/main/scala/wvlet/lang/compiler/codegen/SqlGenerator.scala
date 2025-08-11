@@ -184,6 +184,32 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             expr(c.table) + columns
           )
         )
+      case c: CreateSchema =>
+        group(
+          wl(
+            "create",
+            "schema",
+            if c.ifNotExists then
+              Some("if not exists")
+            else
+              None
+            ,
+            expr(c.schema)
+          )
+        )
+      case d: DropSchema =>
+        group(
+          wl(
+            "drop",
+            "schema",
+            if d.ifExists then
+              Some("if exists")
+            else
+              None
+            ,
+            expr(d.schema)
+          )
+        )
       case _ =>
         unsupportedNode(s"DDL ${d.nodeName}", d.span)
 
@@ -750,7 +776,11 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
     val name = expr(a.alias)
     a.columnNames match
       case Some(columns) =>
-        val cols = cl(columns.map(c => text(c.toSQLAttributeName)))
+        val cols = cl(
+          columns.map { c =>
+            text(c.toSQLAttributeName)
+          }
+        )
         name + paren(cols)
       case None =>
         name
@@ -763,7 +793,13 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         if block.selectItems.isEmpty then
           text("*")
         else
-          cl(block.selectItems.map(x => expr(x)))
+          cl(
+            block
+              .selectItems
+              .map { x =>
+                expr(x)
+              }
+          )
       val selectExpr =
         wl(
           text("select"),
@@ -951,7 +987,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         // SQL needs to use double quotes for back-quoted identifiers, which represents table or column names
         text("\"") + bq.unquotedValue + text("\"")
       case i: Identifier =>
-        text(i.strExpr)
+        text(i.toSQLAttributeName)
       case s: SortItem =>
         expr(s.sortKey) + s.ordering.map(x => ws + text(x.expr)) +
           s.nullOrdering.map(x => ws + text(x.expr))

@@ -13,24 +13,14 @@
  */
 package wvlet.lang.model.expr
 
-import wvlet.lang.api.{LinePosition, Span}
+import wvlet.lang.api.Span
 import wvlet.lang.api.Span.NoSpan
-import wvlet.lang.compiler.{Name, TermName, TypeName, Printer}
-import wvlet.lang.model.DataType.{
-  AnyType,
-  ArrayType,
-  EmbeddedRecordType,
-  IntConstant,
-  NamedType,
-  TimestampField,
-  TypeVariable
-}
-import wvlet.lang.model.expr.BinaryExprType.DivideInt
-import wvlet.lang.model.expr.NameExpr.sqlKeywords
+import wvlet.lang.compiler.parser.SqlToken
+import wvlet.lang.compiler.{Name, TermName, TypeName}
 import wvlet.lang.model.DataType
+import wvlet.lang.model.DataType.*
+import wvlet.lang.model.expr.NameExpr.requiresQuotation
 import wvlet.lang.model.plan.*
-
-import java.util.Locale
 
 /**
   * Native expression for running code implemented in Scala
@@ -56,10 +46,11 @@ case class TableAlias(name: NameExpr, alias: NameExpr, span: Span) extends LeafE
   * variable name, function name, type name, etc. The name might have a qualifier.
   */
 sealed trait NameExpr extends Expression:
-  /* string expression of the name */
-  def strExpr: String
-  def leafName: String
-  def fullName: String
+  // name parts
+  def nameParts: List[String] = List(leafName)
+  def leafName: String        = nameParts.last
+  def fullName: String        = nameParts.mkString(".")
+
   def nonLeafName: String = fullName.stripSuffix(s".${leafName}")
   def nonEmpty: Boolean   = !isEmpty
   def isEmpty: Boolean =
@@ -78,29 +69,27 @@ sealed trait NameExpr extends Expression:
     else
       Some(f(this))
 
-  def toSQLAttributeName: String =
-    val s =
-      this match
-        case i: Identifier =>
-          i.unquotedValue
-        case _ =>
-          fullName
-    if s.matches("^[\\*_a-zA-Z][_a-zA-Z0-9\\*\\.]*$") && !sqlKeywords.contains(s) then
-      s
-    else
-      s""""${s}""""
+  def toSQLAttributeName: String = nameParts
+    .map { s =>
+      if s.startsWith("\"") && s.endsWith("\"") then
+        s
+      else if requiresQuotation(s) then
+        s""""${s}""""
+      else
+        s
+    }
+    .mkString(".")
 
-  def toWvletAttributeName: String =
-    val s =
-      this match
-        case i: Identifier =>
-          i.unquotedValue
-        case _ =>
-          fullName
-    if s.matches("^[\\*_a-zA-Z][_a-zA-Z0-9\\*\\.]*$") && !sqlKeywords.contains(s) then
-      s
-    else
-      s"`${s}`"
+  def toWvletAttributeName: String = nameParts
+    .map { s =>
+      if s.startsWith("`") && s.endsWith("`") then
+        s
+      else if requiresQuotation(s) then
+        s"""`${s}`"""
+      else
+        s
+    }
+    .mkString(".")
 
 end NameExpr
 
@@ -108,19 +97,12 @@ object NameExpr:
   val EmptyName: Identifier                                = UnquotedIdentifier("<empty>", NoSpan)
   def fromString(s: String, span: Span = NoSpan): NameExpr = UnquotedIdentifier(s, span)
 
-  private val sqlKeywords = Set(
-    // TODO enumerate more SQL keywords
-    "select",
-    "schema",
-    "table",
-    "from",
-    "catalog"
-  )
+  private val sqlKeywords = SqlToken.keywords.map(_.str).toSet
+
+  def requiresQuotation(s: String): Boolean =
+    !s.matches("^[\\*_a-zA-Z][_a-zA-Z0-9\\*\\.]*$") || sqlKeywords.contains(s)
 
 case class Wildcard(span: Span) extends LeafExpression with Identifier:
-  override def leafName: String      = "*"
-  override def fullName: String      = "*"
-  override def strExpr: String       = "*"
   override def unquotedValue: String = "*"
 
   override def qualifier: Expression = NameExpr.EmptyName
@@ -134,9 +116,6 @@ case class Wildcard(span: Span) extends LeafExpression with Identifier:
 case class ContextInputRef(override val dataType: DataType, span: Span)
     extends LeafExpression
     with Identifier:
-  override def leafName: String      = "_"
-  override def fullName: String      = "_"
-  override def strExpr: String       = "_"
   override def unquotedValue: String = "_"
 
 /**
@@ -158,28 +137,24 @@ case class DotRef(
     override val dataType: DataType,
     span: Span
 ) extends QualifiedName:
-  override def leafName: String = name.leafName
-  override def strExpr: String  = fullName
-  override def fullName: String =
+  override def nameParts: List[String] =
     qualifier match
       case q: NameExpr =>
-        s"${q.fullName}.${name.fullName}"
+        q.nameParts ++ name.nameParts
       case _ =>
-        // TODO print right expr
-        s"${qualifier}.${name.fullName}"
+        List(qualifier.toString) ++ name.nameParts
 
   override def toString: String          = s"DotRef(${qualifier}:${qualifier.dataType},${name})"
   override def children: Seq[Expression] = Seq(qualifier)
 
 sealed trait Identifier extends QualifiedName with LeafExpression:
-  override def qualifier: Expression = NameExpr.EmptyName
-  override def fullName: String      = leafName
-  override def leafName: String      = strExpr
+  override def qualifier: Expression   = NameExpr.EmptyName
+  override def nameParts: List[String] = List(unquotedValue)
 
   // Unquoted value
   def unquotedValue: String
 
-  override def attributeName: String = strExpr
+  override def attributeName: String = leafName
 
   override lazy val resolved: Boolean = false
   def toResolved(dataType: DataType): Identifier = ResolvedIdentifier(
@@ -193,7 +168,6 @@ case class ResolvedIdentifier(
     override val dataType: DataType,
     span: Span
 ) extends Identifier:
-  override def strExpr: String = unquotedValue
   override def toResolved(dataType: DataType) =
     if this.dataType == dataType then
       this
@@ -203,20 +177,16 @@ case class ResolvedIdentifier(
   override lazy val resolved: Boolean = dataType.isResolved
 
 // Used for group by 1, 2, 3 ...
-case class DigitIdentifier(override val unquotedValue: String, span: Span) extends Identifier:
-  override def strExpr = unquotedValue
+case class DigitIdentifier(override val unquotedValue: String, span: Span) extends Identifier
 
-case class UnquotedIdentifier(override val unquotedValue: String, span: Span) extends Identifier:
-  override def strExpr = unquotedValue
+case class UnquotedIdentifier(override val unquotedValue: String, span: Span) extends Identifier
 
 /**
   * Double quoted indentifier like "(column name)" for SQL. In Wvlet, use BackQuotedIdentifier
   * @param unquotedValue
   * @param span
   */
-case class DoubleQuotedIdentifier(override val unquotedValue: String, span: Span)
-    extends Identifier:
-  override def strExpr: String = s"\"${unquotedValue}\""
+case class DoubleQuotedIdentifier(override val unquotedValue: String, span: Span) extends Identifier
 
 /**
   * Backquote is used for table or column names that conflicts with reserved words
@@ -230,7 +200,6 @@ case class BackQuotedIdentifier(
 ) extends Identifier:
   override def leafName: String                                     = unquotedValue
   override def fullName: String                                     = unquotedValue
-  override def strExpr: String                                      = s"`${unquotedValue}`"
   override def toResolved(dataType: DataType): BackQuotedIdentifier = this.copy(dataType = dataType)
 
 case class BackquoteInterpolatedIdentifier(
@@ -240,8 +209,8 @@ case class BackquoteInterpolatedIdentifier(
     span: Span
 ) extends Identifier:
   override def children: Seq[Expression] = parts
-  override def strExpr: String           = "<backquote interpolation>"
-  override def unquotedValue: String     = ???
+  override def fullName: String          = "<backquote interpolation>"
+  override def unquotedValue: String     = "<backquote interpolation>"
 
 sealed trait JoinCriteria extends Expression
 case object NoJoinCriteria extends JoinCriteria with LeafExpression:
@@ -877,7 +846,7 @@ sealed trait TableElement extends Expression
 case class ColumnDef(columnName: NameExpr, tpe: DataType, span: Span)
     extends TableElement
     with UnaryExpression:
-  override def toString: String  = s"${columnName.strExpr}:${tpe.wvExpr}"
+  override def toString: String  = s"${columnName.leafName}:${tpe.wvExpr}"
   override def child: Expression = columnName
 //
 //case class ColumnType(tpe: NameExpr, span: Span) extends LeafExpression

@@ -132,7 +132,7 @@ end AliasedRelation
 case class NamedRelation(child: Relation, name: NameExpr, span: Span)
     extends UnaryRelation
     with Selection:
-  override def toString: String = s"NamedRelation[${name.strExpr}](${child})"
+  override def toString: String = s"NamedRelation[${name.fullName}](${child})"
 
   override def selectItems: List[Attribute] =
     // Produce a dummy AllColumns node for SQLGenerator
@@ -176,6 +176,9 @@ case class Values(rows: List[Expression], span: Span) extends Relation with Leaf
 //    columns
 
 trait TableInput extends Relation with LeafPlan:
+  /**
+    * SQL expression that represents this table input.
+    */
   def sqlExpr: Expression
   // def alias: NameExpr
   // def columnNames: Option[Seq[NamedType]]
@@ -186,7 +189,8 @@ trait TableInput extends Relation with LeafPlan:
   * @param nodeLocation
   */
 case class TableRef(name: QualifiedName, span: Span) extends TableInput:
-  override def sqlExpr: Expression        = name
+  override def sqlExpr: Expression = name
+  // TODO Fix to generate a correct Wvlet expression for double-quoted or dot-separated table names
   override def toString: String           = s"TableRef(${name})"
   override val relationType: RelationType = UnresolvedRelationType(name.fullName)
 
