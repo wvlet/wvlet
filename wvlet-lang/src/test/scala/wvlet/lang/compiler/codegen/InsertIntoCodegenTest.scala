@@ -71,11 +71,12 @@ class InsertIntoCodegenTest extends AirSpec:
   }
 
   test("generate INSERT INTO with qualified table names") {
-    val sql = "INSERT INTO catalog.schema.users VALUES (1, 'Alice', 25)"
+    val sql = """INSERT INTO "catalog"."schema".users VALUES (1, 'Alice', 25)"""
 
     val trinoSQL = generateSQL(sql, DBType.Trino)
     debug(trinoSQL)
-    trinoSQL shouldContain "insert into catalog.schema.users"
+    // catalog and schema are SQL keywords, so they should be quoted
+    trinoSQL shouldContain """insert into "catalog"."schema".users"""
   }
 
 end InsertIntoCodegenTest
