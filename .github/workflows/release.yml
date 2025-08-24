@@ -23,7 +23,7 @@ jobs:
           gh release view "$GITHUB_REF_NAME" --repo="$GITHUB_REPOSITORY" | \
           # Create a new release note only when the release note is not created yet
           gh release create "$GITHUB_REF_NAME" --repo="$GITHUB_REPOSITORY" --generate-notes
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: '22'
