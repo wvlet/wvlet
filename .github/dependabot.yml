@@ -25,3 +25,13 @@ updates:
       react:
         patterns:
           - "@react/react(-dom)?"
+  - package-ecosystem: "npm"
+    directory: "/vscode-wvlet"
+    schedule:
+      interval: "weekly"
+    groups:
+      # Group VS Code related dependencies together
+      vscode:
+        patterns:
+          - "@types/vscode"
+          - "@vscode/*"
