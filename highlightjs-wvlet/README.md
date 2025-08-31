@@ -59,7 +59,7 @@ hljs.registerLanguage('wvlet', wvlet);
 <script src="https://cdn.jsdelivr.net/npm/highlight.js@11"></script>
 <script src="https://cdn.jsdelivr.net/npm/@wvlet/highlightjs-wvlet@latest/dist/wvlet.min.js"></script>
 <script>
-  hljs.registerLanguage('wvlet', window.hljsDefineWvlet);
+  hljs.registerLanguage('wvlet', window.hljsWvlet);
   hljs.highlightAll();
 </script>
 ```

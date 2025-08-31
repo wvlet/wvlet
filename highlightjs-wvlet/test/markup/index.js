@@ -12,7 +12,7 @@ const wvletFactory = eval(`(function() {
   var exports = {};
   var module = { exports: exports };
   ${wvletDist}
-  return module.exports || mockGlobal.hljsDefineWvlet;
+  return module.exports || mockGlobal.hljsWvlet;
 })()`)
 
 hljs.registerLanguage('wvlet', wvletFactory);

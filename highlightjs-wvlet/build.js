@@ -11,7 +11,7 @@ const umdWrapper = `(function (global, factory) {
   } else if (typeof define === 'function' && define.amd) {
     define(factory);
   } else {
-    global.hljsDefineWvlet = factory();
+    global.hljsWvlet = factory();
   }
 }(typeof self !== 'undefined' ? self : this, function () {
   ${source.replace('export default', 'return')}
