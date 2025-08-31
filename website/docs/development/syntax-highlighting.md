@@ -209,8 +209,6 @@ Contributions are welcome! If you find syntax highlighting issues or want to add
 4. Add test cases
 5. Submit a pull request
 
-See the [contribution guidelines](https://github.com/wvlet/wvlet/blob/main/CONTRIBUTING.md) for more details.
-
 ## Resources
 
 - **Prism.js Documentation**: [https://prismjs.com/](https://prismjs.com/)
