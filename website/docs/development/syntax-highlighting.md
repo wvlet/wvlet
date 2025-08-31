@@ -121,43 +121,6 @@ Both packages support multiple language aliases for flexibility:
 
 You can use either `class="language-wvlet"` or `class="language-wv"` in your HTML.
 
-## Supported Syntax Features
-
-The syntax highlighting packages recognize and highlight:
-
-### Keywords and Operators
-- **Flow operators**: `from`, `select`, `where`, `group by`, `order by`, `limit`, `agg`
-- **Data operators**: `add`, `rename`, `exclude`, `shift`, `drop`, `describe`
-- **Join types**: `join`, `left join`, `right join`, `full join`, `inner join`, `cross join`, `asof join`
-- **Set operations**: `concat`, `intersect`, `except`, `union`, `distinct`
-- **Control flow**: `if`, `then`, `else`, `case`, `when`
-
-### Definitions
-- **Models**: `model ModelName = { ... }`
-- **Functions**: `def functionName(...) = { ... }`  
-- **Types**: `type TypeName = ...`
-- **Variables**: `val variableName = ...`
-
-### Data Types and Literals
-- **Numbers**: Integers, decimals, scientific notation (`42`, `3.14`, `1e6`)
-- **Strings**: Single, double, and triple-quoted strings
-- **String interpolation**: `"Hello ${name}"` and `"""Multi-line ${variable}"""`
-- **Booleans**: `true`, `false`, `null`
-- **Identifiers**: Backquoted identifiers `` `column name` ``
-
-### Comments and Documentation
-- **Line comments**: `-- This is a comment`
-- **Doc comments**: `--- Documentation block ---`
-- **Doc tags**: `@param`, `@return`, etc.
-
-### Functions and Expressions
-- **Built-in functions**: `count`, `sum`, `avg`, `max`, `min`, etc.
-- **Aggregations**: `_.count`, `_.sum`, `_.avg`
-- **Method chaining**: `column.sum().round(2)`
-
-### Test Syntax
-- **Test definitions**: `test "description" should { ... }`
-- **Assertions**: `should be`, `should contain`, `should not contain`
 
 ## Integration Examples
 
