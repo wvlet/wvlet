@@ -122,10 +122,8 @@ test "User data validation" should {
   </div>
 
   <script>
-    // Register Wvlet language
-    hljs.registerLanguage('wvlet', hljsWvlet);
-    
-    // Initialize highlighting
+    // Wvlet language is auto-registered when the script loads
+    // Just initialize highlighting - will recognize class="language-wvlet"
     hljs.highlightAll();
     
     // Theme switcher

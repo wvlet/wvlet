@@ -212,7 +212,7 @@ export default function(hljs) {
 
   return {
     name: 'Wvlet',
-    aliases: ['wv'],
+    aliases: ['wvlet', 'wv'],
     case_insensitive: false,
     keywords: KEYWORDS,
     contains: [

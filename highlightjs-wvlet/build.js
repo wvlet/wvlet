@@ -4,14 +4,19 @@ const path = require('path');
 // Read the source file
 const source = fs.readFileSync(path.join(__dirname, 'src/languages/wvlet.js'), 'utf8');
 
-// Convert ES6 module to UMD format for browser compatibility
+// Convert ES6 module to UMD format for browser compatibility with auto-registration
 const umdWrapper = `(function (global, factory) {
   if (typeof exports === 'object' && typeof module !== 'undefined') {
     module.exports = factory();
   } else if (typeof define === 'function' && define.amd) {
     define(factory);
   } else {
-    global.hljsWvlet = factory();
+    // Auto-register with highlight.js if available
+    var hljsWvlet = factory();
+    if (typeof hljs !== 'undefined') {
+      hljs.registerLanguage('wvlet', hljsWvlet);
+    }
+    global.hljsWvlet = hljsWvlet;
   }
 }(typeof self !== 'undefined' ? self : this, function () {
   ${source.replace('export default', 'return')}

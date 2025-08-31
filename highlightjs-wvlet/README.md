@@ -79,9 +79,8 @@ hljs.registerLanguage('wvlet', wvlet);
   <script src="https://cdn.jsdelivr.net/npm/@wvlet/highlightjs-wvlet@2025.1.13/dist/wvlet.min.js"></script>
   
   <script>
-    // Register Wvlet language
-    hljs.registerLanguage('wvlet', window.hljsWvlet);
-    // Apply highlighting
+    // Wvlet language is auto-registered when loaded in browser
+    // Just apply highlighting
     hljs.highlightAll();
   </script>
 </body>
