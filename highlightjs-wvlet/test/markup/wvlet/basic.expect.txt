@@ -1,0 +1,68 @@
+<span class="hljs-comment">-- Comments and doc comments</span>
+<span class="hljs-comment">---
+This is a doc comment
+@param id The user identifier
+---</span>
+
+<span class="hljs-comment">-- Single line comment</span>
+<span class="hljs-function"><span class="hljs-keyword">model</span> <span class="hljs-title">user</span></span> = {
+  <span class="hljs-keyword">from</span> <span class="hljs-string">'users.parquet'</span>
+}
+
+<span class="hljs-comment">-- String literals</span>
+<span class="hljs-keyword">val</span> message = <span class="hljs-string">"Hello, World!"</span>
+<span class="hljs-keyword">val</span> multiline = <span class="hljs-string">"""
+  This is a
+  multiline string
+"""</span>
+<span class="hljs-keyword">val</span> path = <span class="hljs-string">'data/input.json'</span>
+
+<span class="hljs-comment">-- Numbers</span>
+<span class="hljs-keyword">val</span> integer = <span class="hljs-number">42</span>
+<span class="hljs-keyword">val</span> long = <span class="hljs-number">100L</span>
+<span class="hljs-keyword">val</span> decimal = <span class="hljs-number">3.14159</span>
+<span class="hljs-keyword">val</span> float = <span class="hljs-number">2.5f</span>
+<span class="hljs-keyword">val</span> exponential = <span class="hljs-number">1.23e-4</span>
+
+<span class="hljs-comment">-- Backquoted identifiers</span>
+<span class="hljs-keyword">select</span> <span class="hljs-symbol">`column with spaces`</span>, <span class="hljs-symbol">`reserved-keyword`</span>
+
+<span class="hljs-comment">-- Query operations</span>
+<span class="hljs-keyword">from</span> products
+<span class="hljs-keyword">where</span> price <span class="hljs-operator">&gt;</span> <span class="hljs-number">100.0</span> <span class="hljs-keyword">and</span> category <span class="hljs-operator">=</span> <span class="hljs-string">'Electronics'</span>
+<span class="hljs-keyword">group</span> <span class="hljs-keyword">by</span> brand
+<span class="hljs-keyword">having</span> <span class="hljs-keyword">count</span>(<span class="hljs-operator">*</span>) <span class="hljs-operator">&gt;</span> <span class="hljs-number">5</span>
+<span class="hljs-keyword">order</span> <span class="hljs-keyword">by</span> total_sales <span class="hljs-built_in">desc</span>
+<span class="hljs-keyword">limit</span> <span class="hljs-number">20</span>
+
+<span class="hljs-comment">-- Column operations</span>
+<span class="hljs-keyword">add</span> new_column <span class="hljs-operator">=</span> price <span class="hljs-operator">*</span> quantity
+<span class="hljs-keyword">exclude</span> temp_column
+<span class="hljs-keyword">rename</span> old_name <span class="hljs-keyword">to</span> new_name
+
+<span class="hljs-comment">-- Set operations</span>
+<span class="hljs-keyword">from</span> table1
+<span class="hljs-keyword">concat</span>
+<span class="hljs-keyword">from</span> table2
+<span class="hljs-keyword">dedup</span>
+
+<span class="hljs-comment">-- Window functions</span>
+<span class="hljs-keyword">select</span>
+  row_number() <span class="hljs-keyword">over</span> (<span class="hljs-keyword">partition</span> <span class="hljs-keyword">by</span> category <span class="hljs-keyword">order</span> <span class="hljs-keyword">by</span> price <span class="hljs-built_in">desc</span>) <span class="hljs-keyword">as</span> rank
+
+<span class="hljs-comment">-- Conditional expressions</span>
+<span class="hljs-keyword">case</span>
+  <span class="hljs-keyword">when</span> status <span class="hljs-operator">=</span> <span class="hljs-string">'active'</span> <span class="hljs-keyword">then</span> <span class="hljs-number">1</span>
+  <span class="hljs-keyword">when</span> status <span class="hljs-operator">=</span> <span class="hljs-string">'pending'</span> <span class="hljs-keyword">then</span> <span class="hljs-number">0.5</span>
+  <span class="hljs-keyword">else</span> <span class="hljs-number">0</span>
+<span class="hljs-keyword">end</span>
+
+<span class="hljs-comment">-- Lambda expressions</span>
+transform x <span class="hljs-operator">=&gt;</span> x <span class="hljs-operator">*</span> <span class="hljs-number">2</span>
+
+<span class="hljs-comment">-- Test assertions</span>
+<span class="hljs-meta">test output should be <span class="hljs-string">"""
+| id | name    |
+|----|---------|
+| 1  | Alice   |
+"""</span></span>

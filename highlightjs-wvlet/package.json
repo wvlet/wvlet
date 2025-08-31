@@ -1,0 +1,36 @@
+{
+  "name": "highlightjs-wvlet",
+  "version": "1.0.0",
+  "description": "Wvlet language syntax highlighting for highlight.js",
+  "main": "src/languages/wvlet.js",
+  "scripts": {
+    "test": "cd .. && npm test",
+    "build": "node build.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wvlet/highlightjs-wvlet.git"
+  },
+  "keywords": [
+    "wvlet",
+    "highlight.js",
+    "highlightjs",
+    "syntax",
+    "highlighting",
+    "sql",
+    "query",
+    "data"
+  ],
+  "author": "Wvlet Contributors",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/wvlet/highlightjs-wvlet/issues"
+  },
+  "homepage": "https://wvlet.org",
+  "peerDependencies": {
+    "highlight.js": "^11.0.0"
+  },
+  "devDependencies": {
+    "highlight.js": "^11.0.0"
+  }
+}
