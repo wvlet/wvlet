@@ -4,7 +4,12 @@
   } else if (typeof define === 'function' && define.amd) {
     define(factory);
   } else {
-    global.hljsWvlet = factory();
+    // Auto-register with highlight.js if available
+    var hljsWvlet = factory();
+    if (typeof hljs !== 'undefined') {
+      hljs.registerLanguage('wvlet', hljsWvlet);
+    }
+    global.hljsWvlet = hljsWvlet;
   }
 }(typeof self !== 'undefined' ? self : this, function () {
   /*
@@ -221,7 +226,7 @@ return function(hljs) {
 
   return {
     name: 'Wvlet',
-    aliases: ['wv'],
+    aliases: ['wvlet', 'wv'],
     case_insensitive: false,
     keywords: KEYWORDS,
     contains: [
