@@ -159,7 +159,7 @@ If you're using Docusaurus, you can integrate Wvlet syntax highlighting by swizz
 
 ### GitHub Integration
 
-GitHub automatically detects `.wv` files and applies basic syntax highlighting. For richer highlighting in README files and documentation, you can use the language tags:
+For syntax highlighting in GitHub README files and documentation, you can use the language tags:
 
 ````markdown
 ```wvlet
