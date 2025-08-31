@@ -143,20 +143,18 @@ save to 'output/results.parquet'</code></pre>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
-    <script type="module">
-        // Import the Wvlet language definition
-        import wvletLanguage from './src/languages/wvlet.js';
+    <script src="dist/wvlet.min.js"></script>
+    <script>
+        // Register Wvlet language
+        hljs.registerLanguage('wvlet', window.hljsDefineWvlet);
         
-        // Register the language
-        hljs.registerLanguage('wvlet', wvletLanguage);
-        
-        // Highlight all code blocks
+        // Apply highlighting
         hljs.highlightAll();
         
         // Theme switcher
-        window.changeTheme = function(theme) {
-            const link = document.querySelector('link[rel="stylesheet"]');
-            link.href = `https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/${theme}.min.css`;
+        function changeTheme(theme) {
+            document.querySelector('link[rel="stylesheet"]').href = 
+                `https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/${theme}.min.css`;
         }
     </script>
 </body>
