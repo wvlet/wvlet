@@ -28,12 +28,11 @@ jobs:
               - '**.conf'
               - '**.json'
               - '**.wv'
-              - '**.js'
-              - '**.html'
-              - '**.css'
-              - '**.ts'
+              - 'wvlet-*/**.js'
+              - 'wvlet-*/**.html'
+              - 'wvlet-*/**.css'
+              - 'wvlet-*/**.ts'
               - SCALA_VERSION
-              - '!highlightjs-wvlet/**'
   code_format:
     name: Code format
     needs: changes
