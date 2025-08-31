@@ -14,6 +14,7 @@
 package wvlet.lang.catalog
 
 import wvlet.airframe.codec.MessageCodec
+import wvlet.lang.api.{StatusCode, WvletLangException}
 import wvlet.lang.compiler.DBType
 import wvlet.log.LogSupport
 import wvlet.log.io.IOUtil
@@ -95,7 +96,22 @@ object Profile extends LogSupport:
         .split("\n")
         .map { line =>
           val envPattern = """\$([A-Za-z0-9_]+)""".r
-          envPattern.replaceAllIn(line, m => sys.env.getOrElse(m.group(1), m.matched))
+          envPattern.replaceAllIn(
+            line,
+            m =>
+              val envVar = m.group(1)
+              sys
+                .env
+                .getOrElse(
+                  envVar, {
+                    throw StatusCode
+                      .INVALID_ARGUMENT
+                      .newException(
+                        s"Environment variable '${envVar}' is not set but required in profile configuration at ${configPath}"
+                      )
+                  }
+                )
+          )
         }
         .mkString("\n")
 
