@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wvlet Syntax Highlighting Test</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github.min.css">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        h1 {
+            color: #333;
+        }
+        .code-container {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        pre {
+            margin: 0;
+            border-radius: 4px;
+        }
+        .theme-selector {
+            margin-bottom: 20px;
+        }
+        .theme-selector select {
+            padding: 8px;
+            font-size: 14px;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+        }
+    </style>
+</head>
+<body>
+    <h1>Wvlet Syntax Highlighting Demo (Standalone)</h1>
+    
+    <div class="theme-selector">
+        <label for="theme">Theme: </label>
+        <select id="theme" onchange="changeTheme(this.value)">
+            <option value="github">GitHub</option>
+            <option value="monokai">Monokai</option>
+            <option value="dracula">Dracula</option>
+            <option value="atom-one-dark">Atom One Dark</option>
+            <option value="vs2015">VS 2015</option>
+        </select>
+    </div>
+
+    <div class="code-container">
+        <h2>Basic Query Example</h2>
+        <pre><code class="language-wvlet">-- Define a model from JSON file
+model person = {
+  from 'person.json'
+}
+
+-- Query with filtering and aggregation
+from person
+where age >= 18 and status = 'active'
+group by department
+agg
+  employee_count = count(*),
+  avg_salary = avg(salary),
+  max_age = max(age)
+order by employee_count desc
+limit 10</code></pre>
+    </div>
+
+    <div class="code-container">
+        <h2>Advanced Features</h2>
+        <pre><code class="language-wvlet">-- Window functions
+from sales
+select
+  product_id,
+  sale_date,
+  amount,
+  running_total = sum(amount) over (
+    partition by product_id 
+    order by sale_date 
+    rows between unbounded preceding and current row
+  )
+
+-- Test assertions
+test _.size should be 100
+test _.columns should contain ['user_id', 'name']
+
+-- Save results
+save to 'output/results.parquet'</code></pre>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+    <script>
+        // Define Wvlet language inline
+        hljs.registerLanguage('wvlet', function(hljs) {
+            const KEYWORDS = {
+                keyword: 'model def type extends native inline val ' +
+                         'from select where group by having order limit agg ' +
+                         'join left right full inner cross asof on ' +
+                         'pivot unpivot partition over rows range ' +
+                         'add prepend exclude rename shift drop describe ' +
+                         'concat dedup intersect except all distinct ' +
+                         'save append delete truncate ' +
+                         'import export package execute use run ' +
+                         'test should be contain debug ' +
+                         'show explain sample count ' +
+                         'if then else case when end ' +
+                         'and or not is like between exists in as with to for let this',
+                literal: 'true false null',
+                built_in: 'asc desc nulls first last of map'
+            };
+
+            const STRING = {
+                className: 'string',
+                variants: [
+                    {
+                        begin: /"""/,
+                        end: /"""/
+                    },
+                    {
+                        begin: /"/,
+                        end: /"/,
+                        illegal: /\n/
+                    },
+                    {
+                        begin: /'/,
+                        end: /'/,
+                        illegal: /\n/
+                    }
+                ]
+            };
+
+            const NUMBER = {
+                className: 'number',
+                variants: [
+                    { begin: /\b\d+L\b/ },
+                    { begin: /\b\d+\.\d+[fF]\b/ },
+                    { begin: /\b\d+[fF]\b/ },
+                    { begin: /\b\d+\.\d+([eE][+-]?\d+)?\b/ },
+                    { begin: /\b\d+[eE][+-]?\d+\b/ },
+                    { begin: /\b\d+\b/ }
+                ],
+                relevance: 0
+            };
+
+            const COMMENT = hljs.COMMENT(/--/, /$/, {
+                relevance: 0
+            });
+
+            const DOC_COMMENT = hljs.COMMENT(/---/, /---/, {
+                relevance: 10
+            });
+
+            const BACKQUOTED_IDENT = {
+                className: 'symbol',
+                begin: /`/,
+                end: /`/
+            };
+
+            const OPERATORS = {
+                className: 'operator',
+                begin: /[=!<>]=?|->|=>|<-|\+|-|\*|\/|%|&|\||#/,
+                relevance: 0
+            };
+
+            return {
+                name: 'Wvlet',
+                aliases: ['wv'],
+                case_insensitive: false,
+                keywords: KEYWORDS,
+                contains: [
+                    DOC_COMMENT,
+                    COMMENT,
+                    STRING,
+                    NUMBER,
+                    BACKQUOTED_IDENT,
+                    OPERATORS,
+                    {
+                        className: 'function',
+                        beginKeywords: 'model def type',
+                        end: /[={]/,
+                        excludeEnd: true,
+                        contains: [
+                            {
+                                className: 'title',
+                                begin: /[a-zA-Z_][a-zA-Z0-9_]*/,
+                                relevance: 0
+                            }
+                        ]
+                    },
+                    {
+                        className: 'meta',
+                        begin: /^test\b/,
+                        end: /$/,
+                        keywords: 'test should be contain'
+                    }
+                ]
+            };
+        });
+
+        // Highlight all code blocks
+        hljs.highlightAll();
+        
+        // Theme switcher
+        function changeTheme(theme) {
+            const link = document.querySelector('link[rel="stylesheet"]');
+            link.href = `https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/${theme}.min.css`;
+        }
+    </script>
+</body>
+</html>
