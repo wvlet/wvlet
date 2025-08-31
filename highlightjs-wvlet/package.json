@@ -3,11 +3,6 @@
   "version": "1.0.0",
   "description": "Wvlet language syntax highlighting for highlight.js",
   "main": "src/languages/wvlet.js",
-  "scripts": {
-    "test": "mocha test.js",
-    "build": "node build.js",
-    "prepublishOnly": "npm run build && npm test"
-  },
   "repository": {
     "type": "git",
     "url": "https://github.com/wvlet/wvlet.git"
@@ -32,9 +27,6 @@
     "highlight.js": "^11.0.0"
   },
   "devDependencies": {
-    "chai": "^6.0.1",
-    "highlight.js": "^11.0.0",
-    "mocha": "^11.7.1",
-    "terser": "^5.43.1"
+    "highlight.js": "^11.0.0"
   }
 }
