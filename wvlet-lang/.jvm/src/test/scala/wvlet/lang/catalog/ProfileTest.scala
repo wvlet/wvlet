@@ -112,4 +112,43 @@ class ProfileTest extends AirSpec:
     }
   }
 
+  test("should handle missing environment variables with braces format") {
+    val profileContent =
+      """
+        |profiles:
+        |  - name: test
+        |    type: duckdb
+        |    host: ${MISSING_BRACES_VAR}
+        |    port: 5432
+        |""".stripMargin
+
+    withMockHome(profileContent) { _ =>
+      val exception = intercept[WvletLangException] {
+        Profile.getProfile("test")
+      }
+
+      exception.statusCode shouldBe StatusCode.INVALID_ARGUMENT
+      exception.message shouldContain "Environment variable 'MISSING_BRACES_VAR' is not set"
+      exception.message shouldContain "profile configuration"
+    }
+  }
+
+  test("should resolve environment variables with braces format") {
+    val profileContent =
+      """
+        |profiles:
+        |  - name: test
+        |    type: duckdb
+        |    host: ${USER}
+        |    port: 5432
+        |""".stripMargin
+
+    withMockHome(profileContent) { _ =>
+      val profile = Profile.getProfile("test")
+      profile shouldBe defined
+      profile.get.host shouldBe defined
+      profile.get.host shouldNotBe Some("${USER}") // Should be resolved
+    }
+  }
+
 end ProfileTest

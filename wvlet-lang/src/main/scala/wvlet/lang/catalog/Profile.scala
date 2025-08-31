@@ -95,7 +95,8 @@ object Profile extends LogSupport:
       val yamlStringEvaluated = yamlString
         .split("\n")
         .map { line =>
-          val envPattern = """\$([A-Za-z0-9_]+)""".r
+          // Support both $VAR and ${VAR} formats
+          val envPattern = """\$\{?([A-Za-z0-9_]+)\}?""".r
           envPattern.replaceAllIn(
             line,
             m =>
