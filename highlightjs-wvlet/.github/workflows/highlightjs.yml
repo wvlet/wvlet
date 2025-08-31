@@ -1,0 +1,146 @@
+name: highlight.js CI
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'highlightjs-wvlet/**'
+      - '.github/workflows/highlightjs.yml'
+  pull_request:
+    branches: [ main, master ]
+    paths:
+      - 'highlightjs-wvlet/**'
+      - '.github/workflows/highlightjs.yml'
+
+defaults:
+  run:
+    working-directory: highlightjs-wvlet
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Use Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+        cache-dependency-path: highlightjs-wvlet/package-lock.json
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Build
+      run: npm run build
+    
+    - name: Run tests
+      run: npm test
+    
+    - name: Run markup tests
+      run: npm run mocha
+    
+    - name: Verify dist files
+      run: |
+        if [ ! -f "dist/wvlet.js" ]; then
+          echo "dist/wvlet.js not found!"
+          exit 1
+        fi
+        if [ ! -f "dist/wvlet.min.js" ]; then
+          echo "dist/wvlet.min.js not found!"
+          exit 1
+        fi
+        echo "✅ Dist files generated successfully"
+
+  lint:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Use Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+        cache-dependency-path: highlightjs-wvlet/package-lock.json
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Check package.json
+      run: |
+        if ! grep -q '"name": "@wvlet/highlightjs-wvlet"' package.json; then
+          echo "Package name should be @wvlet/highlightjs-wvlet"
+          exit 1
+        fi
+        echo "✅ Package name is correct"
+    
+    - name: Validate syntax highlighting
+      run: |
+        node -e "
+        const hljs = require('highlight.js');
+        const fs = require('fs');
+        const path = require('path');
+        
+        // Load the built UMD file
+        const wvletDist = fs.readFileSync(path.join(__dirname, 'dist/wvlet.js'), 'utf8');
+        eval(wvletDist);
+        
+        // Register the language
+        hljs.registerLanguage('wvlet', hljsWvlet);
+        
+        // Test basic highlighting
+        const code = 'from users\\nwhere age > 18\\nselect name, email';
+        const result = hljs.highlight(code, { language: 'wvlet' });
+        
+        if (!result.value.includes('hljs-keyword')) {
+          console.error('Keyword highlighting failed');
+          process.exit(1);
+        }
+        
+        console.log('✅ Syntax highlighting works correctly');
+        "
+
+  publish-check:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Use Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+        cache-dependency-path: highlightjs-wvlet/package-lock.json
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Build
+      run: npm run build
+    
+    - name: Check npm package
+      run: |
+        npm pack --dry-run
+        echo "✅ Package is ready for publishing"
+    
+    - name: Check package size
+      run: |
+        SIZE=$(npm pack --dry-run 2>&1 | grep "npm notice" | grep "package size" | awk '{print $5}')
+        echo "📦 Package size: $SIZE"
+        
+        # Convert to KB for comparison (assuming format like "50.5 kB")
+        SIZE_KB=$(echo $SIZE | sed 's/[^0-9.]//g')
+        
+        if (( $(echo "$SIZE_KB > 500" | bc -l) )); then
+          echo "⚠️ Warning: Package size is larger than 500KB"
+        fi
