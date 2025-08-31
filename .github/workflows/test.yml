@@ -33,6 +33,7 @@ jobs:
               - '**.css'
               - '**.ts'
               - SCALA_VERSION
+              - '!highlightjs-wvlet/**'
   code_format:
     name: Code format
     needs: changes
