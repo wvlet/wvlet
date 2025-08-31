@@ -41,32 +41,34 @@ jobs:
             arch: arm64
             name: mac
             suffix: dylib
-            run_on: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+            skip: ${{ !(github.event_name == 'push' && github.ref == 'refs/heads/main') }}
           - os: ubuntu-24.04-arm
             arch: arm64
             name: linux
             suffix: so
-            run_on: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+            skip: ${{ !(github.event_name == 'push' && github.ref == 'refs/heads/main') }}
           - os: ubuntu-latest
             arch: x64
             name: linux
             suffix: so
-            run_on: true
+            skip: false
 # TODO Need some tweaks to run sbt on Windows
 #          - os: windows-latest
 #            arch: x64
 #            name: windows
 #            suffix: dll
     runs-on: ${{ matrix.os }}
-    if: ${{ matrix.run_on }}
     steps:
       - uses: actions/checkout@v5
+        if: ${{ !matrix.skip }}
       - uses: actions/setup-java@v5
+        if: ${{ !matrix.skip }}
         with:
           distribution: 'temurin'
           java-version: '24'
           cache: sbt
       - name: Install libgc
+        if: ${{ !matrix.skip }}
         run: |
           if [[ "${{ runner.os }}" == "Linux" ]]; then
             sudo apt-get install libgc-dev
@@ -74,15 +76,17 @@ jobs:
             brew install bdw-gc
           fi
       - name: Set SCALA_VERSION env
+        if: ${{ !matrix.skip }}
         run: |
           SCALA_VERSION=$(cat SCALA_VERSION)
           echo SCALA_VERSION: $SCALA_VERSION
           echo "SCALA_VERSION=$SCALA_VERSION" >> $GITHUB_ENV
       - name: Build native binary
+        if: ${{ !matrix.skip }}
         run: |
           ./sbt 'wvcLib/nativeLinkReleaseFast'
       - name: Ad-hoc sign macOS library
-        if: runner.os == 'macOS'
+        if: ${{ !matrix.skip && runner.os == 'macOS' }}
         run: |
           echo "Signing macOS library with ad-hoc signature..."
           # Sign the library
@@ -97,14 +101,16 @@ jobs:
           # Display signature info
           codesign --display --verbose=2 wvc-lib/target/scala-${{ env.SCALA_VERSION }}/libwvlet.dylib
       - name: Install Rust for native tests
-        if: runner.os == 'Linux'
+        if: ${{ !matrix.skip && runner.os == 'Linux' }}
         run: rustup update
       - name: Test native library
+        if: ${{ !matrix.skip }}
         run: |
           echo "Testing native library..."
           make test
         working-directory: wvc-lib
       - name: Upload native binary
+        if: ${{ !matrix.skip }}
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.name }}-${{ matrix.arch }}
