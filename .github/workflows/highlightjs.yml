@@ -27,7 +27,7 @@ jobs:
       with:
         node-version: 'latest'
         cache: 'npm'
-        cache-dependency-path: highlightjs-wvlet/package-lock.json
+        cache-dependency-path: package-lock.json
     
     - name: Install dependencies
       run: npm ci
