@@ -195,6 +195,13 @@ export default function(hljs) {
     ]
   };
 
+  // Function calls - any identifier followed by (
+  const FUNCTION_CALL = {
+    className: 'built_in',
+    begin: /\b[a-zA-Z_][a-zA-Z0-9_]*(?=\s*\()/,
+    relevance: 0
+  };
+
   // Define STRING_INTERPOLATION contents
   STRING_INTERPOLATION.contains = [
     STRING,
@@ -217,6 +224,7 @@ export default function(hljs) {
       MODEL_DEF,
       TEST_ASSERTION,
       FROM_STATEMENT,
+      FUNCTION_CALL,  // Add function call pattern
       BACKQUOTED_IDENT,
       UNDERSCORE,
       OPERATORS,

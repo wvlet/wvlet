@@ -48,7 +48,7 @@ This is a doc comment
 
 <span class="hljs-comment">-- Window functions</span>
 <span class="hljs-keyword">select</span>
-  row_number() <span class="hljs-keyword">over</span> (<span class="hljs-keyword">partition</span> <span class="hljs-keyword">by</span> category <span class="hljs-keyword">order</span> <span class="hljs-keyword">by</span> price <span class="hljs-built_in">desc</span>) <span class="hljs-keyword">as</span> rank
+  <span class="hljs-built_in">row_number</span>() <span class="hljs-keyword">over</span> (<span class="hljs-keyword">partition</span> <span class="hljs-keyword">by</span> category <span class="hljs-keyword">order</span> <span class="hljs-keyword">by</span> price <span class="hljs-built_in">desc</span>) <span class="hljs-keyword">as</span> rank
 
 <span class="hljs-comment">-- Conditional expressions</span>
 <span class="hljs-keyword">case</span>
