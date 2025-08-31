@@ -10,7 +10,7 @@
   <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/highlight.min.js"></script>
   
   <!-- Wvlet language support from npm CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/@wvlet/highlightjs-wvlet@2025.1.13/dist/wvlet.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@wvlet/highlightjs-wvlet@latest/dist/wvlet.min.js"></script>
   
   <style>
     body {
@@ -44,26 +44,38 @@
 <body>
   <h1>Wvlet Syntax Highlighting - CDN Test</h1>
   <p>This page tests the Wvlet language syntax highlighting using the CDN-hosted package from npm.</p>
-  <p>Package: <a href="https://www.npmjs.com/package/@wvlet/highlightjs-wvlet">@wvlet/highlightjs-wvlet</a></p>
+  <p>
+    Package: <a href="https://www.npmjs.com/package/@wvlet/highlightjs-wvlet">@wvlet/highlightjs-wvlet</a> |
+    CDN: <a href="https://cdn.jsdelivr.net/npm/@wvlet/highlightjs-wvlet@latest/dist/">Browse Files</a> |
+    GitHub: <a href="https://github.com/wvlet/wvlet/tree/main/highlightjs-wvlet">Source Code</a>
+  </p>
   
   <div class="theme-selector">
     <label>Theme:</label>
     <select id="theme-select" onchange="changeTheme(this.value)">
       <option value="default">Default</option>
       <option value="github">GitHub</option>
+      <option value="github-dark">GitHub Dark</option>
       <option value="monokai">Monokai</option>
       <option value="nord">Nord</option>
       <option value="vs">Visual Studio</option>
+      <option value="atom-one-dark">Atom One Dark</option>
     </select>
   </div>
+  
+  <p style="background: #f0f0f0; padding: 10px; border-radius: 5px;">
+    ℹ️ <strong>Note:</strong> The Wvlet language is automatically registered when the script loads. 
+    Both <code>class="language-wvlet"</code> and <code>class="language-wv"</code> work.
+  </p>
 
   <div class="example">
     <h3>Basic Model Definition</h3>
     <pre><code class="language-wvlet">-- Basic model definition
-model User = 
+model User = {
   from 'users.json'
   select name, age, email
   where age > 18
+}
 
 -- Using the model
 from User
@@ -74,7 +86,7 @@ limit 10</code></pre>
 
   <div class="example">
     <h3>Advanced Query with Functions</h3>
-    <pre><code class="language-wvlet">model Sales(year: Int) =
+    <pre><code class="language-wvlet">model Sales(year: Int) = {
   from 's3://bucket/sales/year=${year}/*.parquet'
   select 
     product_id,
@@ -83,6 +95,7 @@ limit 10</code></pre>
     count(*) as transaction_count
   group by product_id
   having total_quantity > 100
+}
 
 -- Join with another model
 from Sales(2024) s
@@ -96,7 +109,7 @@ order by revenue desc</code></pre>
 
   <div class="example">
     <h3>String Interpolation and Operators</h3>
-    <pre><code class="language-wvlet">model Report = 
+    <pre><code class="language-wvlet">model Report = {
   from Orders
   select 
     customer_id,
@@ -107,7 +120,8 @@ order by revenue desc</code></pre>
       when total >= 500 then 'Standard'
       else 'Basic'
     end as tier
-  where status != 'cancelled' and price > 0</code></pre>
+  where status != 'cancelled' and price > 0
+}</code></pre>
   </div>
 
   <div class="example">
@@ -118,6 +132,19 @@ test "User data validation" should {
   test _.size should be > 0
   test _.columns should contain 'email'
   test _.where(age < 0).size should be 0
+}</code></pre>
+  </div>
+
+  <div class="example">
+    <h3>Using 'wv' Alias (Alternative)</h3>
+    <pre><code class="language-wv">-- This uses class="language-wv" for backward compatibility
+model OrderSummary = {
+  from Orders
+  group by customer_id, date_trunc('month', order_date) as month
+  agg
+    total_orders = count(*),
+    total_revenue = sum(amount),
+    avg_order_value = avg(amount)
 }</code></pre>
   </div>
 
