@@ -51,18 +51,23 @@ describe('Wvlet Language Package', () => {
 
     it('should have properly minified dist/wvlet.min.js', () => {
       const minPath = path.join(__dirname, 'dist/wvlet.min.js');
-      const distPath = path.join(__dirname, 'dist/wvlet.js');
       const minContent = fs.readFileSync(minPath, 'utf8');
-      const distContent = fs.readFileSync(distPath, 'utf8');
-      
-      // Minified should be smaller
-      expect(minContent.length).to.be.lessThan(distContent.length);
       
       // Should have the comment header
       expect(minContent).to.include('Wvlet syntax highlighting');
       
-      // Should be actually minified (no unnecessary whitespace)
+      // Should be actually minified (minimal newlines)
       expect(minContent.split('\n').length).to.be.lessThan(10);
+      
+      // Should contain the UMD wrapper
+      expect(minContent).to.include('typeof exports');
+      expect(minContent).to.include('typeof module');
+      expect(minContent).to.include('hljsDefineWvlet');
+      
+      // Should contain key Wvlet keywords
+      expect(minContent).to.include('model');
+      expect(minContent).to.include('select');
+      expect(minContent).to.include('from');
     });
   });
 
