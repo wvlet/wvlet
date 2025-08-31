@@ -10,7 +10,7 @@ Let's start with a simple example. If you haven't installed `wv` command, [insta
 
 For the ease of learning, let's create a sample [TPC-H benchmark](https://www.tpc.org/tpch/) data set:
 
-```sql
+```wvlet
 $ wv
 wv> execute sql"call dbgen(sf=0.01)";
 wv> show tables;
@@ -33,7 +33,7 @@ wv> show tables;
 The `execute sql"call dbgen(sf=0.01)"` command calls DuckDB's [TPC-H extension](https://duckdb.org/docs/extensions/tpch.html) and creates an in-memory TPC-H benchmark database, which will be gone when you exit the wvlet shell. So you can try this command without worrying about the disk space.
 
 The simplest form of queries is `from (table name)`:
-```sql
+```wvlet
 wv> from customer;
 ┌───────────┬────────────────────┬─────────────────────────────────────────┬───────────>
 │ c_custkey │       c_name       │                c_address                │ c_nationke>
@@ -55,7 +55,7 @@ If the query result doesn't fit to the screen, wvlet shell enters [UNIX `less` c
 allows to navigate table data using arrow keys, page up/down keys, and `q` key to exit the mode. See [Interactive Shell](../usage/repl.md) for the list of the available shortcut keys.
 
 To limit the number of rows to display, you can use `limit` operator:
-```sql
+```wvlet
 wv> from customer
   │ limit 3;
 ┌───────────┬────────────────────┬────────────────────────────────┬─────────────┬──────>
@@ -77,7 +77,7 @@ Separators `|` between expressions are shown only while editing queries. You don
 
 To select specific columns, you can use `select` operator:
 
-```sql
+```wvlet
 from customer
 wv> from customer
   │ select c_name, c_nationkey
@@ -98,7 +98,7 @@ wv> from customer
 
 To select specific values from the table, you can use `where` operator:
 
-```sql 
+```wvlet 
 wv> from customer 
   │ where c_nationkey = 1
   │ select c_name, c_address
@@ -123,7 +123,7 @@ wv> from customer
 
 In Wvlet, individual query line often matches with a single [relational operator](./), which processes a given input table data and return a new table data. Inserting newlines, however, is not mandatory. You can fit the whole query within a single line, which is convenient for quick data exploration:
 
-```sql
+```wvlet
 wv> from customer where c_mktsegment = 'HOUSEHOLD' limit 5;
 ┌───────────┬────────────────────┬────────────────────────────────────────┬────────────>
 │ c_custkey │       c_name       │               c_address                │ c_nationkey>
@@ -143,7 +143,7 @@ wv> from customer where c_mktsegment = 'HOUSEHOLD' limit 5;
 
 The multi-line syntax is convenient for improving the readability of your queries. As Wvlet adopts a flow-style syntax, you can add comments to each line of the query:
 
-```sql
+```wvlet
 wv> from customer
   │ -- Select customers for each market segment, e.g., HOUSEHOLD, BUILDING, etc.
   │ group by c_mktsegment,
@@ -170,7 +170,7 @@ Comments in Wvlet start with `--` and continue to the end of the line.
 ### Describing Table Schema
 
 To learn about the table schema, the list of columns and types in the table, you can use `describe` operator:
-```sql
+```wvlet
 wv> from customer
   │ describe;
 ┌──────────────┬─────────────┐
@@ -192,7 +192,7 @@ wv> from customer
 
 `describe` is also a relational operator, which can be filtered by `where` operator:
 
-```sql
+```wvlet
 wv> from customer
   │ describe
   │ where column_name like '%name%';
@@ -209,7 +209,7 @@ wv> from customer
 ### Quick Schema Check
 
 A more convenient way to see the table schema is to use `ctrl-j ctrl-d` shortcut keys in the Wvlet shell:
-```sql
+```wvlet
 describe (line:1): from customer
 ┌──────────────┬─────────────┐
 │ column_name  │ column_type │
@@ -234,7 +234,7 @@ wv> from customer  -- Press ctrl-j ctrl-d sequence here
 `ctrl-j ctrl-d` shortcut key internally calls `(A query fragment up to the current line) describe`  to show the schema of the current query fragment.
 
 You can also check the schema in the middle of a query:
-```sql
+```wvlet
 describe (line:3): select c_name, c_nationkey
 ┌─────────────┬─────────────┐
 │ column_name │ column_type │
@@ -255,7 +255,7 @@ wv> from customer
 
 While editing queries, you will often need to look at the actual data. Type `ctrl-j` `ctrl-t` (test run) to see the intermediate query results at the line:
 
-```sql
+```wvlet
 wv> from customer -- type ctrl-j ctrl-t here
   │ where c_nationkey = 1
   │ select c_name, c_nationkey
@@ -278,7 +278,7 @@ debug (line:1): from customer
 ```
 
 Test run command is useful to refine your query as you add more relational operators:
-```sql
+```wvlet
 wv> from customer
   │ select c_custkey, c_name, c_nationkey -- type ctrl-j ctrl-t here
 debug (line:2): select c_custkey, c_name, c_nationkey
@@ -298,7 +298,7 @@ debug (line:2): select c_custkey, c_name, c_nationkey
 
 In Wvlet, you can name a query using `select as` operator, and refer to the named query result in the subsequent queries:
 
-```sql
+```wvlet
 wv> from customer
   │ where c_nationkey = 1
   │ -- Name the query as domestic_customer
@@ -306,7 +306,7 @@ wv> from customer
 ```
 
 You can refer to the named query result in the subsequent queries:
-```sql
+```wvlet
 wv> from domestic_customer
   │ limit 5;
 ┌───────────┬────────────────────┬─────────────────────────────────────────┬─────────────┬─>
@@ -329,14 +329,14 @@ Unlike SQL views, which will be registered to the system catalog, named queries 
 
 If you want to reuse the query in other sessions or share it with others, you can save the query to a file with `.wv` extension:
 
-```sql title="my_query.wv"
+```wvlet title="my_query.wv"
 from customer
 where c_nationkey = 1
 ```
 
 Queries in `.wv` files can be loaded in `from` operator:
 
-```sql
+```wvlet
 -- Load the query written in my_query.wv file
 from 'my_query.wv'
 ```

@@ -10,7 +10,7 @@ In wvlet, you can insert `test` statements in the middle of a query. For example
 ]
 ```
 
-```sql
+```wvlet
 from 'person.json'
 -- Test the query size and schema
 test _.size should be 3

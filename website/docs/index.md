@@ -39,7 +39,7 @@ Wvlet addresses this problem by starting queries with `from ...` (table scan sta
 from (table name)
 where column = 'filtering condition'
 ...
-where (Add more filtering conditions)
+where (more filtering conditions)
 -- Grouping records by keys
 group by key1, key2, ...
 -- HAVING clause after group by
