@@ -1,4 +1,4 @@
-name: Prism.js Wvlet
+name: Prism.js
 
 on:
   pull_request:
@@ -24,7 +24,7 @@ jobs:
               - '.github/workflows/prismjs.yml'
 
   test:
-    name: Prism.js Wvlet
+    name: Prism.js
     needs: changes
     if: ${{ needs.changes.outputs.prismjs == 'true' }}
     runs-on: ubuntu-latest
