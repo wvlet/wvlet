@@ -26,7 +26,7 @@ jobs:
               - '**.scala'
               - '**.sbt'
               - '**.conf'
-              - '**.json'
+              - 'wvlet-*/**.json'
               - '**.wv'
               - 'wvlet-*/**.js'
               - 'wvlet-*/**.html'
