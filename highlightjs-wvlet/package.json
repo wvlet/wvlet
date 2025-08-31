@@ -4,8 +4,9 @@
   "description": "Wvlet language syntax highlighting for highlight.js",
   "main": "src/languages/wvlet.js",
   "scripts": {
-    "test": "cd .. && npm test",
-    "build": "node build.js"
+    "test": "mocha test.js",
+    "build": "node build.js",
+    "prepublishOnly": "npm run build && npm test"
   },
   "repository": {
     "type": "git",
@@ -31,6 +32,9 @@
     "highlight.js": "^11.0.0"
   },
   "devDependencies": {
-    "highlight.js": "^11.0.0"
+    "chai": "^6.0.1",
+    "highlight.js": "^11.0.0",
+    "mocha": "^11.7.1",
+    "terser": "^5.43.1"
   }
 }
