@@ -7,7 +7,6 @@ node_modules/
 *.swo
 *~
 .npm
-package-lock.json
 
 # Include dist files for this package
 !dist/
