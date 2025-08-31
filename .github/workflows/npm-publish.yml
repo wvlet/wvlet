@@ -51,6 +51,7 @@ jobs:
           cache-dependency-path: package-lock.json
       
       - name: Build Scala.js SDK
+        working-directory: .
         run: ./sbt "sdkJs/fullLinkJS"
       
       - name: Install dependencies
