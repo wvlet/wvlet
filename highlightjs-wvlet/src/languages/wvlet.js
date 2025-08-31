@@ -220,7 +220,7 @@ export default function(hljs) {
       BACKQUOTED_IDENT,
       UNDERSCORE,
       OPERATORS,
-      COLUMN_REF,
+      // COLUMN_REF is removed - keywords will be handled by highlight.js automatically
       hljs.C_BLOCK_COMMENT_MODE
     ]
   };
