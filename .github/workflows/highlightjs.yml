@@ -2,12 +2,12 @@ name: highlight.js CI
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main ]
     paths:
       - 'highlightjs-wvlet/**'
       - '.github/workflows/highlightjs.yml'
   pull_request:
-    branches: [ main, master ]
+    branches: [ main ]
     paths:
       - 'highlightjs-wvlet/**'
       - '.github/workflows/highlightjs.yml'
@@ -110,7 +110,7 @@ jobs:
 
   publish-check:
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    if: github.ref == 'refs/heads/main'
     
     steps:
     - uses: actions/checkout@v4
