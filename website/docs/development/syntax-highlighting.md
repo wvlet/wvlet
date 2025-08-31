@@ -1,6 +1,4 @@
----
-
-# Syntax Highlighting Support
+# Syntax Highlighting
 
 Wvlet provides syntax highlighting support for popular code highlighting libraries, making it easier to display Wvlet code with proper syntax coloring in documentation, websites, and development tools.
 
@@ -156,21 +154,6 @@ If you're using Docusaurus, you can integrate Wvlet syntax highlighting by swizz
    }
    ```
    ````
-
-### GitHub Integration
-
-For syntax highlighting in GitHub README files and documentation, you can use the language tags:
-
-````markdown
-```wvlet
--- Query example
-from users
-where age >= 18
-select name, email, registration_date
-order by registration_date desc
-limit 100
-```
-````
 
 ## Development
 
