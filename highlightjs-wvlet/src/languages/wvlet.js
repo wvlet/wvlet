@@ -152,10 +152,10 @@ export default function(hljs) {
     relevance: 0
   };
 
-  // Operators
+  // Operators - match comparison and arithmetic operators
   const OPERATORS = {
     className: 'operator',
-    begin: /[=!<>]=?|->|=>|<-|\+|-|\*|\/|\/\/|%|&|\||#/,
+    begin: /!=|<>|<=|>=|::|->|<-|=>|\|\||&&|==|[=<>+\-*/%!]/,
     relevance: 0
   };
 
@@ -221,13 +221,13 @@ export default function(hljs) {
       TRIPLE_QUOTE_STRING,
       STRING,
       NUMBER,
+      OPERATORS,  // Move operators earlier for higher priority
       MODEL_DEF,
       TEST_ASSERTION,
       FROM_STATEMENT,
       FUNCTION_CALL,  // Add function call pattern
       BACKQUOTED_IDENT,
       UNDERSCORE,
-      OPERATORS,
       // COLUMN_REF is removed - keywords will be handled by highlight.js automatically
       hljs.C_BLOCK_COMMENT_MODE
     ]
