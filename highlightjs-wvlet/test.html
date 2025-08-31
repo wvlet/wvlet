@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wvlet Syntax Highlighting Test</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github.min.css">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        h1 {
+            color: #333;
+        }
+        .code-container {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        pre {
+            margin: 0;
+            border-radius: 4px;
+        }
+        .theme-selector {
+            margin-bottom: 20px;
+        }
+        .theme-selector select {
+            padding: 8px;
+            font-size: 14px;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+        }
+    </style>
+</head>
+<body>
+    <h1>Wvlet Syntax Highlighting Demo</h1>
+    
+    <div class="theme-selector">
+        <label for="theme">Theme: </label>
+        <select id="theme" onchange="changeTheme(this.value)">
+            <option value="github">GitHub</option>
+            <option value="monokai">Monokai</option>
+            <option value="dracula">Dracula</option>
+            <option value="atom-one-dark">Atom One Dark</option>
+            <option value="vs2015">VS 2015</option>
+        </select>
+    </div>
+
+    <div class="code-container">
+        <h2>Basic Query Example</h2>
+        <pre><code class="language-wvlet">-- Define a model from JSON file
+model person = {
+  from 'person.json'
+}
+
+-- Query with filtering and aggregation
+from person
+where age >= 18 and status = 'active'
+group by department
+agg
+  employee_count = count(*),
+  avg_salary = avg(salary),
+  max_age = max(age)
+order by employee_count desc
+limit 10</code></pre>
+    </div>
+
+    <div class="code-container">
+        <h2>Complex Query with Joins</h2>
+        <pre><code class="language-wvlet">--- 
+Sales Analysis Query
+@author Wvlet Team
+---
+
+-- Import required models
+import 'models/sales.wv'
+
+-- Define constants
+val YEAR = 2024
+val MIN_REVENUE = 1000.50
+
+-- Main query with multiple joins
+from orders
+left join customers on orders.customer_id = customers.id
+inner join products on orders.product_id = products.id
+where 
+  orders.order_date >= '2024-01-01' and
+  orders.status in ('completed', 'shipped')
+select
+  order_id = orders.id,
+  customer_name = customers.name,
+  product_name = products.name,
+  quantity = orders.quantity,
+  unit_price = products.price,
+  discount_pct = orders.discount * 100,
+  total_amount = orders.quantity * products.price * (1 - orders.discount)
+order by total_amount desc</code></pre>
+    </div>
+
+    <div class="code-container">
+        <h2>Advanced Features</h2>
+        <pre><code class="language-wvlet">-- Window functions
+from sales
+select
+  product_id,
+  sale_date,
+  amount,
+  running_total = sum(amount) over (
+    partition by product_id 
+    order by sale_date 
+    rows between unbounded preceding and current row
+  ),
+  rank = row_number() over (
+    partition by product_id 
+    order by amount desc
+  )
+
+-- Pivot operation
+from monthly_sales
+pivot month
+agg 
+  revenue = sum(amount),
+  transactions = count(*)
+
+-- Test assertions
+test _.size should be 100
+test _.columns should contain ['user_id', 'name', 'email']
+test _.output should be """
+| id | status  |
+|----|---------|
+| 1  | active  |
+| 2  | pending |
+"""
+
+-- Save results
+save to 'output/results.parquet'</code></pre>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
+    <script src="dist/wvlet.min.js"></script>
+    <script>
+        // Register Wvlet language
+        hljs.registerLanguage('wvlet', window.hljsWvlet);
+        
+        // Apply highlighting
+        hljs.highlightAll();
+        
+        // Theme switcher
+        function changeTheme(theme) {
+            document.querySelector('link[rel="stylesheet"]').href = 
+                `https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/${theme}.min.css`;
+        }
+    </script>
+</body>
+</html>

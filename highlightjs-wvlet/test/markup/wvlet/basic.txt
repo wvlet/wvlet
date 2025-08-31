@@ -1,0 +1,68 @@
+-- Comments and doc comments
+---
+This is a doc comment
+@param id The user identifier
+---
+
+-- Single line comment
+model user = {
+  from 'users.parquet'
+}
+
+-- String literals
+val message = "Hello, World!"
+val multiline = """
+  This is a
+  multiline string
+"""
+val path = 'data/input.json'
+
+-- Numbers
+val integer = 42
+val long = 100L
+val decimal = 3.14159
+val float = 2.5f
+val exponential = 1.23e-4
+
+-- Backquoted identifiers
+select `column with spaces`, `reserved-keyword`
+
+-- Query operations
+from products
+where price > 100.0 and category = 'Electronics'
+group by brand
+having count(*) > 5
+order by total_sales desc
+limit 20
+
+-- Column operations
+add new_column = price * quantity
+exclude temp_column
+rename old_name to new_name
+
+-- Set operations
+from table1
+concat
+from table2
+dedup
+
+-- Window functions
+select
+  row_number() over (partition by category order by price desc) as rank
+
+-- Conditional expressions
+case
+  when status = 'active' then 1
+  when status = 'pending' then 0.5
+  else 0
+end
+
+-- Lambda expressions
+transform x => x * 2
+
+-- Test assertions
+test output should be """
+| id | name    |
+|----|---------|
+| 1  | Alice   |
+"""

@@ -1,0 +1,12 @@
+node_modules/
+*.log
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.npm
+
+# Include dist files for this package
+!dist/

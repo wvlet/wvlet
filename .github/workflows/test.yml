@@ -26,12 +26,12 @@ jobs:
               - '**.scala'
               - '**.sbt'
               - '**.conf'
-              - '**.json'
+              - 'wvlet-*/**.json'
               - '**.wv'
-              - '**.js'
-              - '**.html'
-              - '**.css'
-              - '**.ts'
+              - 'wvlet-*/**.js'
+              - 'wvlet-*/**.html'
+              - 'wvlet-*/**.css'
+              - 'wvlet-*/**.ts'
               - SCALA_VERSION
   code_format:
     name: Code format
