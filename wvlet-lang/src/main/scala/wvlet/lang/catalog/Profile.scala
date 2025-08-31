@@ -102,15 +102,14 @@ object Profile extends LogSupport:
               val envVar = m.group(1)
               sys
                 .env
-                .getOrElse(
-                  envVar, {
-                    throw StatusCode
-                      .INVALID_ARGUMENT
-                      .newException(
-                        s"Environment variable '${envVar}' is not set but required in profile configuration at ${configPath}"
-                      )
-                  }
-                )
+                .get(envVar)
+                .getOrElse {
+                  throw StatusCode
+                    .INVALID_ARGUMENT
+                    .newException(
+                      s"Environment variable '${envVar}' is not set but required in profile configuration at ${configPath}"
+                    )
+                }
           )
         }
         .mkString("\n")
