@@ -7,7 +7,7 @@ Window function computes the data against the whole query result.
 - rows [start:end]: Define the range of rows in each window.
 
 This query calculates the total amount of orders for each customer:
-```sql
+```wvlet
 from orders
 select sum(amount) over (partition by customer_id order by order_date)
 ```
@@ -27,7 +27,7 @@ In Wvlet, you can specify range of rows in each window with the following syntax
 
 `rows [,0]` is the default window frame if no frame is specified. This means the window frame includes all rows from the first row of the partition to the current row. To explicitly specify the window frame, you can use the `rows` keyword as follows:
 
-```sql
+```wvlet
 from orders
 select amount.sum() over (
     partition by customer_id

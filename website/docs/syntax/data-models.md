@@ -8,7 +8,7 @@ This page is still work in progress.
 
 In Wvlet, you can define reusable data models, which wraps an Wvlet query with `model (model name) = { ... }` block:
 
-```sql
+```wvlet
 model my_model = {
   -- Write your query here
   from ...
@@ -18,7 +18,7 @@ model my_model = {
 
 Models can be used in other queries in the same manner with scanning a table:
 
-```sql
+```wvlet
 from my_model
 limit 10
 ```

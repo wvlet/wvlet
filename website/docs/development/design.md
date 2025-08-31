@@ -45,7 +45,7 @@ FROM tbl
 ```
 
 In Wvlet, you can clarify the intention of individual column operations:
-```sql
+```wvlet
 from tbl
 -- Add a simple aggregation 
 add c1.sum
@@ -81,7 +81,7 @@ where a = 1 AND b = 'Y'
 ```
 
 In Wvlet, writing multiple WHERE statement is totally acceptable:
-```sql
+```wvlet
 from tbl
 where a = 1 
 -- You can add more conditions in separate lines
@@ -105,7 +105,7 @@ cast(round(abs(sum(c1)), 1) as varchar)
 ```
 
 In Wvlet, this can be written with dot-chain notation:
-```sql
+```wvlet
 c1.sum.abs.round(1).to_string
 ```
 

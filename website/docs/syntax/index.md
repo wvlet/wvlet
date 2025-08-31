@@ -60,7 +60,7 @@ New to Wvlet? Check out the [Quick Start](./quick-start.md) tutorial for a hands
 Wvlet queries start with the
 `from` keyword, and you can chain multiple relational operators to process the input data and generate output data. Here's a typical flow:
 
-```sql
+```wvlet
 from ...         -- Scan the input data
 where ...        -- Apply filtering conditions
 where ...        -- [optional] Apply more filtering conditions
@@ -244,7 +244,7 @@ One of the major difference from traditional SQL is that wvlet uses single or do
 
 You can define a variable using `val` keyword:
 
-```sql
+```wvlet
 -- Define a new variable
 val name = 'wvlet'
 
@@ -281,7 +281,7 @@ select s"Hello ${x}!" as msg
 
 `if ... then .. else` expression can be used to switch the output value based on the condition:
 
-```sql
+```wvlet
 from lineitem
 select
   if l_returnflag = 'A' then 1 else 0
@@ -290,7 +290,7 @@ select
 
 The `if` expression can be nested as follows:
 
-```sql
+```wvlet
 from lineitem
 select
   if l_returnflag = 'A' then 1
@@ -303,7 +303,7 @@ select
 
 To switch the output value based on the input value, you can use the `case` expression:
 
-```sql
+```wvlet
 from lineitem
 select
   case l_returnflag
@@ -315,7 +315,7 @@ select
 
 You can also use the `case` expression with conditional expressions for clarity:
 
-```sql
+```wvlet
 from lineitem
 select 
   case 
@@ -339,13 +339,13 @@ Unlike SQL, Wvlet doesn't require `end` at the end of case expressions.
 
 You can construct array values with `[e1, e2, ...]` syntax:
 
-```sql
+```wvlet
 select ['a', 'b', 'c'] as arr
 ```
 
 Arrays can be accessed with index (1-origin):
 
-```sql
+```wvlet
 select ['a', 'b', 'c'] as arr
 select arr[1] as first_element
 ```
@@ -355,7 +355,7 @@ select arr[1] as first_element
 You can construct map values with
 `map {k1: v1, k2: v2, ...}` syntax. Unlike struct expressions, keys (k1, k2, ...) needs to be the same type values, and values (v1, v2, ...) also need to be the same type values:
 
-```sql
+```wvlet
 select map {'a': 1, 'b': 2} as m
 ```
 
@@ -363,7 +363,7 @@ select map {'a': 1, 'b': 2} as m
 
 Struct (row) expressions are used to represent key-value pairs. You can access the values by name:
 
-```sql
+```wvlet
 select {'i': 3, 's': 'str'} as obj
 select 
   -- Name based access
@@ -374,7 +374,7 @@ select
 
 Note that key names in a struct do not require quotes for plain key names:
 
-```sql
+```wvlet
 select {k1:1, k2:'v1'} as obj
 select obj.k1, obj.k2
 ```
@@ -383,7 +383,7 @@ select obj.k1, obj.k2
 
 To manipulate array values, you can use lambda expressions:
 
-```sql
+```wvlet
 select list_transform([4, 5, 6], x -> x + 1)
 ```
 
@@ -402,7 +402,7 @@ This query applies the lambda function `x -> x + 1` to each element of the input
 
 To pass multiple arguments to the lambda function, use the following syntax:
 
-```sql
+```wvlet
 select list_reduce([4, 5, 6], (a, b) -> a + b) as sum;
 
 ┌─────┐
@@ -417,7 +417,7 @@ select list_reduce([4, 5, 6], (a, b) -> a + b) as sum;
 
 Lambda functions can be nested as follows:
 
-```sql
+```wvlet
 select
   list_transform(
     [1, 2, 3],
@@ -440,13 +440,13 @@ select
 
 To find a target table to query in the current database (schema), you can use the `show tables` query:
 
-```sql
+```wvlet
 show tables
 ```
 
 The output of `show tables` can be followed by the `where` clause to filter the table names:
 
-```sql
+```wvlet
 show tables
 where name like 'n%';
 
@@ -464,7 +464,7 @@ where name like 'n%';
 
 To find a target database (schema) to query in the current catalog, you can use the `show schemas` query:
 
-```sql
+```wvlet
 show schemas;
 
 ┌─────────┬────────────────────┐
@@ -487,7 +487,7 @@ show schemas;
 
 These schema names can be used to specify the target schema in the `show tables` command:
 
-```sql
+```wvlet
 show tables in main 
 where name like 'p%';
 
@@ -506,7 +506,7 @@ where name like 'p%';
 
 List all available catalogs:
 
-```sql
+```wvlet
 show catalogs;
 
 ┌────────┐
@@ -525,19 +525,19 @@ show catalogs;
 
 Read rows from a given table:
 
-```sql
+```wvlet
 from nation
 ```
 
 In DuckDB backend, you can read data from local Parquet or JSON files:
 
-```sql
+```wvlet
 from 'sample.parquet' 
 ```
 
 Or from files on the Web:
 
-```sql
+```wvlet
 from 'https://(path to your data)/sample.parquet'
 ```
 
@@ -547,7 +547,7 @@ Reading data from an URL will also work for S3 Presigned URLs.
 
 In case you need to use a raw SQL statement, you can use the `sql` string interpolation:
 
-```sql
+```wvlet
 from sql"select * from nation"
 ```
 
@@ -560,14 +560,14 @@ which might slowdown the query or cause errors in the subsequent relational oper
 
 You can apply a filter condition to the input rows:
 
-```sql
+```wvlet
 from nation
 where n_regionkey = 1
 ```
 
 Unlike SQL, applying multiple `where` clauses is allowed in Wvlet:
 
-```sql
+```wvlet
 from nation
 where n_regionkey = 1
 where n_name like 'U%'
@@ -579,25 +579,25 @@ This is useful even when you need to generate Wvlet queries programatically as y
 
 Wvlet has a shorthand notation for counting the number of input rows:
 
-```sql
+```wvlet
 from nation
 count
 ```
 
 This is equilvalen to:
-```sql
+```wvlet
 from nation
 select _.count
 ```
 
 Or more SQL-like expression can be used too:
-```sql
+```wvlet
 from nation
 select count(*)
 ```
 
 For clarity, you can use pipe `|` before the count operator:
-```sql
+```wvlet
 from nation
 select n_name, n_regionkey,
 -- pipe (|) is required after trailing comma
@@ -608,7 +608,7 @@ select n_name, n_regionkey,
 
 Add a new column to the input. This operator is helpful to reduce the typing effort as you don't need to enumerate all the columns in the `select` clause:
 
-```sql
+```wvlet
 from nation
 select n_name
 add n_name.substring(1, 3) as prefix
@@ -632,7 +632,7 @@ limit 5;
 
 Prepend a new column to the left side of the input:
 
-```sql
+```wvlet
 from nation
 select n_name
 prepend n_name.substring(1, 3) as prefix
@@ -656,7 +656,7 @@ limit 5;
 
 Output only the selected columns from the input:
 
-```sql
+```wvlet
 from nation
 select n_name, n_regionkey
 ```
@@ -668,7 +668,7 @@ as the other column-at-a-time operators, like `add`, `exclude`, `shift`, etc. ca
 
 The `rename` operator changes the column names in the input rows. This is useful when you want to rename columns in the output.
 
-```sql
+```wvlet
 from nation
 rename n_name as nation_name
 ```
@@ -677,7 +677,7 @@ rename n_name as nation_name
 
 The `exclude` operator removes specified columns from the input rows. This is useful when you want to drop certain columns from the output.
 
-```sql
+```wvlet
 from nation
 exclude n_regionkey
 ```
@@ -687,13 +687,13 @@ exclude n_regionkey
 The `shift` operator changes the position of specified columns in the input rows. You can move columns to the left or right.
 
 Shift to the left (default):
-```sql
+```wvlet
 from nation
 shift n_name
 ```
 
 Shift to the right:
-```sql
+```wvlet
 from nation
 shift to right n_comment
 ```
@@ -705,7 +705,7 @@ The `group by` operator groups rows by one or more columns, creating groups of r
 
 #### Basic Grouping
 
-```sql
+```wvlet
 from [[1, "A", 100], [2, "B", 200], [1, "A", 150], [2, "B", 50], [3, "C", 300]]
   as data(id, category, value)
 group by id, category;
@@ -731,7 +731,7 @@ In Wvlet, the default aggregation operator `arbitrary (any)` is used, which retu
 
 After grouping, you can reference grouping keys by their column names directly:
 
-```sql
+```wvlet
 from [[1, "A", 100], [2, "B", 200], [1, "A", 150], [2, "B", 50]]
   as data(id, category, value)
 group by id, category
@@ -758,7 +758,7 @@ The `agg` operator adds aggregation expressions. It is typically used after a `g
 
 #### Basic Aggregations
 
-```sql
+```wvlet
 from [[1, "A", 100], [2, "B", 200], [1, "A", 150], [2, "B", 50], [3, "C", 300]]
   as data(id, category, value)
 group by category
@@ -783,7 +783,7 @@ agg
 
 The underscore `_` represents the group of rows and supports various aggregation functions:
 
-```sql
+```wvlet
 from [[1, 10, "A"], [2, 20, "B"], [1, 30, "C"], [2, 40, "D"], [1, 50, "E"]]
   as sales(store_id, amount, product)
 group by store_id
@@ -812,7 +812,7 @@ agg
 
 You can filter groups after aggregation using a `where` clause after `agg`:
 
-```sql
+```wvlet
 from [[1, "Electronics", 1000], [2, "Books", 50], [3, "Electronics", 2000], 
       [4, "Books", 75], [5, "Toys", 500], [6, "Electronics", 1500]]
   as orders(id, category, amount)
@@ -835,7 +835,7 @@ order by total_amount desc;
 
 #### Multiple Grouping with Complex Aggregations
 
-```sql
+```wvlet
 from [["2024-01-01", "A", "Electronics", 100],
       ["2024-01-01", "B", "Books", 50],
       ["2024-01-02", "A", "Electronics", 200],
@@ -866,7 +866,7 @@ agg
 
 You can use aggregations directly without `group by` to aggregate all rows:
 
-```sql
+```wvlet
 from [[1, 100], [2, 200], [3, 300], [4, 400], [5, 500]]
   as data(id, value)
 agg 
@@ -888,7 +888,7 @@ agg
 
 Here's a practical example analyzing sales data:
 
-```sql
+```wvlet
 from [["2024-01", "North", "Laptop", 5, 1200],
       ["2024-01", "North", "Phone", 10, 800],
       ["2024-01", "South", "Laptop", 3, 1200],
@@ -931,7 +931,7 @@ The `where` clause after `agg` is equivalent to SQL's `HAVING` clause - it filte
 
 Limit the number of output rows:
 
-```sql
+```wvlet
 from nation
 limit 10
 ```
@@ -940,7 +940,7 @@ limit 10
 
 Sort the output rows by the given column:
 
-```sql
+```wvlet
 from nation
 order by n_name
 limit 5
@@ -957,7 +957,7 @@ The `join` operator combines rows from two or more tables based on a related col
 
 The basic `join` returns rows when there is a match in both tables:
 
-```sql
+```wvlet
 from
   [[1, "apple", 50], [2, "banana", 10], [3, "cherry", 70]]
   as fruit(id, name, price)
@@ -983,7 +983,7 @@ select fruit.name, fruit_order.qty, fruit.price * fruit_order.qty as total_price
 
 A `left join` returns all rows from the left table, and matched rows from the right table. If no match, NULL values are returned for right table columns:
 
-```sql
+```wvlet
 from [[1, "Alice"], [2, "Bob"], [3, "Charlie"]] as users(id, name)
 left join {
   from [[1, "order1"], [1, "order2"], [3, "order3"]]
@@ -1009,7 +1009,7 @@ select users.name, orders.order_id;
 
 A `right join` returns all rows from the right table, and matched rows from the left table:
 
-```sql
+```wvlet
 from [[1, "order1"], [1, "order2"], [3, "order3"], [4, "order4"]]
   as orders(user_id, order_id)
 right join {
@@ -1036,7 +1036,7 @@ select users.name, orders.order_id;
 
 A `cross join` produces the Cartesian product of two tables, combining each row from the first table with every row from the second table:
 
-```sql
+```wvlet
 from [[1, "A"], [2, "B"]] as t1(id, val)
 cross join {
   from [["X"], ["Y"], ["Z"]] as t2(letter)
@@ -1062,7 +1062,7 @@ select t1.val, t2.letter;
 
 You can specify multiple conditions in the `on` clause using `and`/`or` operators:
 
-```sql
+```wvlet
 from [[1, "A", 100], [2, "B", 200], [3, "C", 300]] as t1(id, code, value)
 join {
   from [[1, "A", 10], [2, "B", 20], [3, "D", 30]] as t2(id, code, qty)
@@ -1085,7 +1085,7 @@ select t1.id, t1.code, t1.value, t2.qty;
 
 Joins can be seamlessly combined with other Wvlet operators in a flow-style query:
 
-```sql
+```wvlet
 from [[1, "Electronics", 1000], [2, "Books", 500], [3, "Clothing", 750]]
   as categories(id, name, budget)
 left join {
@@ -1115,7 +1115,7 @@ order by product_count desc;
 
 You can chain multiple join operations to combine data from several tables:
 
-```sql
+```wvlet
 from [[1, "Alice"], [2, "Bob"], [3, "Charlie"]] as users(id, name)
 join {
   from [[1, 101], [2, 102], [3, 103]] as accounts(user_id, account_id)
@@ -1143,7 +1143,7 @@ select users.name, accounts.account_id, balances.amount;
 
 A table can be joined with itself (self join) by using aliases. The `with` statement helps avoid duplicating the data:
 
-```sql
+```wvlet
 with employees as {
   from [[1, "Alice", 2], [2, "Bob", 3], [3, "Charlie", null]]
     as data(id, name, manager_id)
@@ -1177,7 +1177,7 @@ For time-based joins, Wvlet also supports [AsOf Join](asof-join.md), which is us
 
 The concat operator concatenates rows from multiple subqueries. This is similar to the UNION ALL operator in SQL.
 
-```sql
+```wvlet
 from [[1, "A"], [2, "B"]] as t1(id, val)
 concat {
   from [[3, "C"], [4, "D"]] as t2(id, val)
@@ -1201,7 +1201,7 @@ The ordering of rows is not guaranteed in the `concat` operator. If you need to 
 
 You can concatenate multiple subqueries:
 
-```sql
+```wvlet
 from nation
 where n_regionkey = 0
 concat {
@@ -1220,7 +1220,7 @@ order by n_regionkey, n_name
 
 The `dedup` operator removes duplicated rows from the input rows. This is equivalent to `select distinct *` in SQL.
 
-```sql
+```wvlet
 from [[1, "A"], [2, "B"], [1, "A"], [3, "C"], [2, "B"]]
   as data(id, val)
 dedup;
@@ -1241,7 +1241,7 @@ dedup;
 
 The `intersect` operator returns the intersection of the input rows from multiple subqueries. By default, set semantics are used (duplicates removed).
 
-```sql
+```wvlet
 from [[1, "A"], [2, "B"], [3, "C"], [4, "D"]] as t1(id, val)
 intersect {
   from [[2, "B"], [3, "C"], [5, "E"]] as t2(id, val)
@@ -1260,7 +1260,7 @@ intersect {
 
 With `all` keyword, bag semantics are used (duplicates preserved):
 
-```sql
+```wvlet
 from [[1, "A"], [2, "B"], [2, "B"], [3, "C"]] as t1(id, val)
 intersect all {
   from [[2, "B"], [2, "B"], [3, "C"], [3, "C"]] as t2(id, val)
@@ -1282,7 +1282,7 @@ intersect all {
 
 The `except` operator returns the difference of the input rows from multiple subqueries (rows in the first query but not in the second). By default, set semantics are used.
 
-```sql
+```wvlet
 from [[1, "A"], [2, "B"], [3, "C"], [4, "D"]] as t1(id, val)
 except {
   from [[2, "B"], [4, "D"]] as t2(id, val)
@@ -1301,7 +1301,7 @@ except {
 
 With `all` keyword, bag semantics are used:
 
-```sql
+```wvlet
 from [[1, "A"], [2, "B"], [2, "B"], [3, "C"]] as t1(id, val)
 except all {
   from [[2, "B"]] as t2(id, val)
@@ -1324,7 +1324,7 @@ except all {
 The `pivot` operator expands the column values as horizontal columns. In `pivot`, you need to specify grouping columns (`group by`) and aggregation expressions (`agg`) in the subsequent operators.
 
 Example:
-```sql
+```wvlet
 from orders
 pivot on o_orderpriority
 group by o_orderstatus
@@ -1343,7 +1343,7 @@ agg _.count;
 ```
 
 To specify the column values to expand, use `in` clause:
-```sql
+```wvlet
 from orders
 pivot on o_orderpriority in ('1-URGENT', '2-HIGH')
 group by o_orderstatus
@@ -1366,7 +1366,7 @@ agg _.count;
 The `unpivot` operator transforms multiple columns into rows. This is useful when you need to transform wide table into a long table. Currently, unpivot is available only in DuckDB backend.
 
 Example:
-```sql
+```wvlet
 from [
  [1, 'electronics', 1, 2, 3, 4, 5, 6],
  [2, 'clothes', 10, 20, 30, 40, 50, 60],
@@ -1408,7 +1408,7 @@ unpivot
 The `sample` operator randomly samples rows from the input data. You can specify either a fixed number of rows or a percentage.
 
 Sample a fixed number of rows:
-```sql
+```wvlet
 from [[1], [2], [3], [4], [5], [6], [7], [8], [9], [10]] as numbers(n)
 sample 5;
 
@@ -1427,7 +1427,7 @@ sample 5;
 ```
 
 Sample a percentage of rows:
-```sql
+```wvlet
 from [[1], [2], [3], [4], [5], [6], [7], [8], [9], [10]] as numbers(n)
 sample 30%;
 
@@ -1445,7 +1445,7 @@ sample 30%;
 
 You can specify the sampling method - `reservoir` (default), `system`, or `bernoulli`:
 
-```sql
+```wvlet
 -- Reservoir sampling (default) - good for getting exact sample size
 from large_table
 sample reservoir (1000)
@@ -1467,7 +1467,7 @@ Reservoir sampling guarantees the exact number of rows in the output (if availab
 
 To define a local subquery definition, use the `with` expression:
 
-```sql
+```wvlet
 with t1 as {
   from nation
   where n_regionkey = 1
@@ -1476,7 +1476,7 @@ from t1
 ```
 
 You can define multiple subqueries: 
-```sql
+```wvlet
 with t1 as {
   from nation
   where n_regionkey = 1
@@ -1498,7 +1498,7 @@ The `with` expression is similar to the common-table expression (CTE) in SQL, bu
 
 A common pattern for analyzing data:
 
-```sql
+```wvlet
 from sales
 where date >= '2024-01-01':date
 group by product_category
@@ -1513,7 +1513,7 @@ limit 10
 
 Combining data from multiple tables:
 
-```sql
+```wvlet
 from customers
 join {
   from orders
@@ -1531,7 +1531,7 @@ order by orders.created_at desc
 
 Creating cross-tab reports:
 
-```sql
+```wvlet
 from sales_data
 pivot on month
 group by product
@@ -1542,7 +1542,7 @@ agg revenue.sum
 
 Using CTEs for complex queries:
 
-```sql
+```wvlet
 with active_users as {
   from users
   where last_login >= current_date - '30 days':interval

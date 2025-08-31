@@ -8,7 +8,7 @@ Note: AsOf join is supported only in DuckDB, Snowflake, but not yet in Trino [tr
 AsOf join is useful when you want to join two tables by looking at the most recent value from the specific time (_as of this time_) for each record.
 
 For example, if you want to know the share holding value at a specific date, you can join the holding table with the stock table by looking at the most recent stock price at the holding date:
-```sql
+```wvlet
 with holding(symbol, date, shares) as [
   ['AAPL', '2024-11-07', 1.0],
   ['AAPL', '2024-11-08', 2.0],

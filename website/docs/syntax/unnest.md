@@ -3,7 +3,7 @@
 
 The `unnest` function is used to expand an array into table rows:
 
-```sql
+```wvlet
 from unnest([1, 2, 3]) as t(number)
 ```
 
@@ -21,7 +21,7 @@ from unnest([1, 2, 3]) as t(number)
 ```
 
 If used with other columns, `unnest` will expand the array into rows and duplicate the other columns:
-```sql
+```wvlet
 select unnest([1, 2, 3]), 10
 ```
 
@@ -40,7 +40,7 @@ select unnest([1, 2, 3]), 10
 
 Unnest can be used to expand an array column as individual rows if it is used with `cross join`:
 
-```sql
+```wvlet
 from [
   [''John'', [7, 10, 9]],
   [''Mary'', [4, 8, 9]],
