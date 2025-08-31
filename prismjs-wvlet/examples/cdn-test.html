@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wvlet Syntax Highlighting - Prism.js CDN Test</title>
+  
+  <!-- Prism.js core and theme -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1/themes/prism.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1/components/prism-core.min.js"></script>
+  
+  <!-- Wvlet language support from npm CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@wvlet/prismjs-wvlet@latest/dist/prism-wvlet.min.js"></script>
+  
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    h1 {
+      color: #333;
+    }
+    .example {
+      margin: 20px 0;
+    }
+    .example h3 {
+      color: #666;
+      margin-bottom: 10px;
+    }
+    pre {
+      border-radius: 5px;
+      overflow-x: auto;
+    }
+    .theme-selector {
+      margin: 20px 0;
+    }
+    .theme-selector label {
+      margin-right: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Wvlet Syntax Highlighting - Prism.js CDN Test</h1>
+  <p>This page tests the Wvlet language syntax highlighting using the Prism.js CDN-hosted package from npm.</p>
+  <p>
+    Package: <a href="https://www.npmjs.com/package/@wvlet/prismjs-wvlet">@wvlet/prismjs-wvlet</a> |
+    CDN: <a href="https://cdn.jsdelivr.net/npm/@wvlet/prismjs-wvlet@latest/dist/">Browse Files</a> |
+    GitHub: <a href="https://github.com/wvlet/wvlet/tree/main/prismjs-wvlet">Source Code</a>
+  </p>
+  
+  <div class="theme-selector">
+    <label>Theme:</label>
+    <select id="theme-select" onchange="changeTheme(this.value)">
+      <option value="prism">Default</option>
+      <option value="prism-dark">Dark</option>
+      <option value="prism-funky">Funky</option>
+      <option value="prism-okaidia">Okaidia</option>
+      <option value="prism-twilight">Twilight</option>
+      <option value="prism-coy">Coy</option>
+    </select>
+  </div>
+  
+  <p style="background: #f0f0f0; padding: 10px; border-radius: 5px;">
+    ℹ️ <strong>Note:</strong> The Wvlet language is automatically available when the script loads. 
+    Both <code>class="language-wvlet"</code> and <code>class="language-wv"</code> work.
+  </p>
+
+  <div class="example">
+    <h3>Basic Model Definition</h3>
+    <pre><code class="language-wvlet">-- Basic model definition
+model User = {
+  from 'users.json'
+  select name, age, email
+  where age > 18
+}
+
+-- Using the model
+from User
+where name like 'John%'
+order by age desc
+limit 10</code></pre>
+  </div>
+
+  <div class="example">
+    <h3>Advanced Query with Functions</h3>
+    <pre><code class="language-wvlet">model Sales(year: Int) = {
+  from 's3://bucket/sales/year=${year}/*.parquet'
+  select 
+    product_id,
+    sum(quantity) as total_quantity,
+    avg(price) as avg_price,
+    count(*) as transaction_count
+  group by product_id
+  having total_quantity > 100
+}
+
+-- Join with another model
+from Sales(2024) s
+join Product p on s.product_id = p.id
+select 
+  p.name,
+  s.total_quantity,
+  s.avg_price * s.total_quantity as revenue
+order by revenue desc</code></pre>
+  </div>
+
+  <div class="example">
+    <h3>String Interpolation and Operators</h3>
+    <pre><code class="language-wvlet">model Report = {
+  from Orders
+  select 
+    customer_id,
+    "Report for ${order_date}" as date,
+    price * quantity as total,
+    case 
+      when total >= 1000 then 'Premium'
+      when total >= 500 then 'Standard'
+      else 'Basic'
+    end as tier
+  where status != 'cancelled' and price > 0
+}</code></pre>
+  </div>
+
+  <div class="example">
+    <h3>Test Assertions</h3>
+    <pre><code class="language-wvlet">-- Test data quality
+test "User data validation" should {
+  from User
+  test _.size should be > 0
+  test _.columns should contain 'email'
+  test _.where(age < 0).size should be 0
+}</code></pre>
+  </div>
+
+  <div class="example">
+    <h3>Using 'wv' Alias (Alternative)</h3>
+    <pre><code class="language-wv">-- This uses class="language-wv" for backward compatibility
+model OrderSummary = {
+  from Orders
+  group by customer_id, date_trunc('month', order_date) as month
+  agg
+    total_orders = count(*),
+    total_revenue = sum(amount),
+    avg_order_value = avg(amount)
+}</code></pre>
+  </div>
+
+  <div class="example">
+    <h3>Triple-Quoted Strings with Interpolation</h3>
+    <pre><code class="language-wvlet">model ComplexReport = {
+  from Orders
+  select 
+    customer_id,
+    """
+    Multi-line report for customer ${customer_id}
+    Generated on: ${current_date}
+    Total orders: ${order_count}
+    """ as report_content
+}</code></pre>
+  </div>
+
+  <script>
+    // Apply highlighting to all code blocks
+    Prism.highlightAll();
+    
+    // Theme switcher
+    function changeTheme(theme) {
+      const link = document.querySelector('link[href*="prism"]');
+      link.href = `https://cdn.jsdelivr.net/npm/prismjs@1/themes/${theme}.min.css`;
+    }
+  </script>
+</body>
+</html>

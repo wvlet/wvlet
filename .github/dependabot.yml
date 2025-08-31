@@ -45,3 +45,13 @@ updates:
         patterns:
           - "highlight.js"
           - "highlightjs-*"
+  - package-ecosystem: "npm"
+    directory: "/prismjs-wvlet"
+    schedule:
+      interval: "weekly"
+    groups:
+      # Group Prism.js related dependencies together
+      prismjs:
+        patterns:
+          - "prismjs"
+          - "prism-*"
