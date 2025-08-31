@@ -27,6 +27,10 @@ npm install @wvlet/highlightjs-wvlet
 ### Using CDN
 
 ```html
+<!-- Using specific version (recommended for production) -->
+<script src="https://cdn.jsdelivr.net/npm/@wvlet/highlightjs-wvlet@0.1.0/dist/wvlet.min.js"></script>
+
+<!-- Using latest version -->
 <script src="https://cdn.jsdelivr.net/npm/@wvlet/highlightjs-wvlet@latest/dist/wvlet.min.js"></script>
 ```
 
@@ -55,14 +59,36 @@ hljs.registerLanguage('wvlet', wvlet);
 ### In the Browser
 
 ```html
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11/styles/default.min.css">
-<script src="https://cdn.jsdelivr.net/npm/highlight.js@11"></script>
-<script src="https://cdn.jsdelivr.net/npm/@wvlet/highlightjs-wvlet@latest/dist/wvlet.min.js"></script>
-<script>
-  hljs.registerLanguage('wvlet', window.hljsWvlet);
-  hljs.highlightAll();
-</script>
+<!DOCTYPE html>
+<html>
+<head>
+  <!-- highlight.js theme -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11/styles/default.min.css">
+</head>
+<body>
+  <!-- Your code blocks -->
+  <pre><code class="language-wvlet">
+  model User = 
+    from 'users.json'
+    select name, age, email
+  </code></pre>
+
+  <!-- highlight.js core -->
+  <script src="https://cdn.jsdelivr.net/npm/highlight.js@11/lib/core.min.js"></script>
+  <!-- Wvlet language support -->
+  <script src="https://cdn.jsdelivr.net/npm/@wvlet/highlightjs-wvlet@0.1.0/dist/wvlet.min.js"></script>
+  
+  <script>
+    // Register Wvlet language
+    hljs.registerLanguage('wvlet', window.hljsWvlet);
+    // Apply highlighting
+    hljs.highlightAll();
+  </script>
+</body>
+</html>
 ```
+
+For a complete example, see [test-cdn.html](test-cdn.html).
 
 ## Example
 
