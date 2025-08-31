@@ -88,9 +88,7 @@ class ProfileTest extends AirSpec:
     withMockHome(profileContent) { _ =>
       val profile = Profile.getProfile("test")
       profile shouldBe defined
-      // The host should be set to the value of the USER environment variable
-      profile.get.host shouldBe defined
-      profile.get.host shouldNotBe Some("$USER") // Should be resolved
+      profile.get.host shouldBe sys.env.get("USER")
     }
   }
 
@@ -109,6 +107,63 @@ class ProfileTest extends AirSpec:
       profile shouldBe defined
       profile.get.host shouldBe Some("localhost")
       profile.get.port shouldBe Some(5432)
+    }
+  }
+
+  test("should handle missing environment variables with braces format") {
+    val profileContent =
+      """
+        |profiles:
+        |  - name: test
+        |    type: duckdb
+        |    host: ${MISSING_BRACES_VAR}
+        |    port: 5432
+        |""".stripMargin
+
+    withMockHome(profileContent) { _ =>
+      val exception = intercept[WvletLangException] {
+        Profile.getProfile("test")
+      }
+
+      exception.statusCode shouldBe StatusCode.INVALID_ARGUMENT
+      exception.message shouldContain "Environment variable 'MISSING_BRACES_VAR' is not set"
+      exception.message shouldContain "profile configuration"
+    }
+  }
+
+  test("should resolve environment variables with braces format") {
+    val profileContent =
+      """
+        |profiles:
+        |  - name: test
+        |    type: duckdb
+        |    host: ${USER}
+        |    port: 5432
+        |""".stripMargin
+
+    withMockHome(profileContent) { _ =>
+      val profile = Profile.getProfile("test")
+      profile shouldBe defined
+      profile.get.host shouldBe sys.env.get("USER")
+    }
+  }
+
+  test("should handle mixed valid and invalid patterns correctly") {
+    val profileContent =
+      """
+        |profiles:
+        |  - name: test
+        |    type: duckdb
+        |    host: $USER}_suffix
+        |    port: 5432
+        |""".stripMargin
+
+    withMockHome(profileContent) { _ =>
+      val profile = Profile.getProfile("test")
+      profile shouldBe defined
+      // $USER should be substituted, but the extra }_suffix should remain
+      val expectedHost = sys.env.get("USER").map(_ + "}_suffix")
+      profile.get.host shouldBe expectedHost
     }
   }
 
