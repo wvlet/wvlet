@@ -48,36 +48,30 @@ object QueryResultFormat:
       val result    = new StringBuilder()
       var i         = 0
       var truncated = false
+      val matcher   = ansiEscapePattern.matcher(s)
 
       while i < s.length do
-        val c = s(i)
-
-        // Check for ANSI escape sequence
-        if c == '\u001B' && i + 1 < s.length && s(i + 1) == '[' then
-          // Find the end of the ANSI sequence (ends with 'm')
-          val startIndex = i
-          i += 2
-          while i < s.length && s(i) != 'm' do
-            i += 1
-          if i < s.length then
-            i += 1 // Include the 'm'
-
-          // Always add ANSI sequences without counting their width
-          result.append(s.substring(startIndex, i))
-        else if !truncated then
-          val w = wcWidth(c)
-          if len + w <= colSize - 1 then
-            result += c
-            len += w
-            i += 1
-          else
-            // Add ellipsis and mark as truncated
-            result += '…'
-            truncated = true
-            i += 1
+        // Check for an ANSI escape sequence at the current position
+        if matcher.find(i) && matcher.start() == i then
+          // Append the whole ANSI sequence and advance the index past it
+          result.append(matcher.group())
+          i = matcher.end()
         else
-          // Skip visible characters but continue to capture ANSI sequences
+          // Not an ANSI sequence, so it's a visible character
+          if !truncated then
+            val c = s(i)
+            val w = wcWidth(c)
+            if len + w <= colSize - 1 then
+              result += c
+              len += w
+            else
+              result += '…'
+              truncated = true
+            end if
+          end if
+          // Advance to the next character
           i += 1
+        end if
       end while
 
       result.toString
