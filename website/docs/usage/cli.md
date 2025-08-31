@@ -17,7 +17,7 @@ limit 10
 
 It's also possible to compile a query from a file:
 
-```sql title="query.wv"
+```wvlet title="query.wv"
 execute sql"call dbgen(sf=0.01)"
 
 from lineitem

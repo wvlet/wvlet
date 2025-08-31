@@ -34,7 +34,7 @@ In SQL, the syntactic order of `SELECT ...` statements does not align with the a
 
 Wvlet addresses this problem by starting queries with `from ...` (table scan statement), and then streamlining results through subsequent processing operators like `where`, `group by`, and `select`. This approach resembles passing table values through [a UNIX pipe](https://en.wikipedia.org/wiki/Pipeline_(Unix)):
 
-```sql
+```wvlet
 -- Starts from table scan
 from (table name)
 where column = 'filtering condition'
@@ -86,7 +86,7 @@ Wvlet queries are written in a flow-style, allowing for a natural description of
 - [Design Philosophy](./development/design)
 
 Example Wvlet Query:
-```sql
+```wvlet
 -- Starting with table scan
 from lineitem
 -- Filtering rows
@@ -123,7 +123,7 @@ Wvlet supports SQL syntax for compatibility with existing SQL queries. You can w
 Wvlet provides column-level operators to process selected columns efficiently. 
 
 Example:
-```sql
+```wvlet
 from lineitem
 -- Add a new column
 add l_quantity * l_extendedprice as revenue
@@ -165,7 +165,7 @@ limit 5
 Wvlet supports dot-notation for chaining function calls.
 
 Example:
-```sql
+```wvlet
 from lineitem
 group by l_shipmode
 agg _.count, l_quantity.sum.round(0);
@@ -199,7 +199,7 @@ group by l_shipmode
 Define reusable data model functions. 
 
 Example: 
-```sql
+```wvlet
 model lookup(person_id: int) = {
   from persons
   where id = ${person_id}
@@ -207,7 +207,7 @@ model lookup(person_id: int) = {
 ```
 
 Calling this model:
-```sql
+```wvlet
 from lookup(1)
 
 -- In the compiled SQL, ${person_id} will be replaced with the given input 1:
@@ -216,7 +216,7 @@ where id = 1
 ```
 
 Composing the model with another table:
-```sql
+```wvlet
 from lookup(1) as p
 join address_table 
   on p.id = address_table.person_id
@@ -231,7 +231,7 @@ This feature will be available in 2025.
 Queries saved as `.wv` files can be managed in local folders or GitHub repositories as modules. Import and reuse queries in other queries. 
 
 Example:
-```sql
+```wvlet
 -- import queries from a GitHub repository
 import github.com/my_project/my_query_library
 
@@ -248,7 +248,7 @@ Incremental processing feature is planned to be available in 2025.
 Build reproducible data processing pipelines with incremental processing. 
 
 Example:
-```sql
+```wvlet
 @config(watermark_column='time', window_size='1h')
 model weblog_records = {
   from upstream_web_records
