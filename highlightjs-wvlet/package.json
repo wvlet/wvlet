@@ -3,6 +3,10 @@
   "version": "1.0.0",
   "description": "Wvlet language syntax highlighting for highlight.js",
   "main": "src/languages/wvlet.js",
+  "scripts": {
+    "test": "mocha test --reporter spec",
+    "mocha": "mocha test/markup --reporter spec"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/wvlet/wvlet.git"
@@ -27,6 +31,8 @@
     "highlight.js": "^11.0.0"
   },
   "devDependencies": {
-    "highlight.js": "^11.0.0"
+    "highlight.js": "^11.0.0",
+    "mocha": "^11.7.1",
+    "should": "^13.2.3"
   }
 }
