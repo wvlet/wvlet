@@ -35,3 +35,13 @@ updates:
         patterns:
           - "@types/vscode"
           - "@vscode/*"
+  - package-ecosystem: "npm"
+    directory: "/highlightjs-wvlet"
+    schedule:
+      interval: "weekly"
+    groups:
+      # Group highlight.js related dependencies together
+      highlightjs:
+        patterns:
+          - "highlight.js"
+          - "highlightjs-*"
