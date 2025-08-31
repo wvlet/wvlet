@@ -96,11 +96,11 @@ object Profile extends LogSupport:
         .split("\n")
         .map { line =>
           // Support both $VAR and ${VAR} formats
-          val envPattern = """\$\{?([A-Za-z0-9_]+)\}?""".r
+          val envPattern = """\$([A-Za-z0-9_]+)|\$\{([A-Za-z0-9_]+)\}""".r
           envPattern.replaceAllIn(
             line,
             m =>
-              val envVar = m.group(1)
+              val envVar = Option(m.group(1)).getOrElse(m.group(2))
               sys
                 .env
                 .get(envVar)
