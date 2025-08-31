@@ -1,0 +1,28 @@
+-- Basic model definition
+model User = {
+  from 'users.json'
+  select name, age, email
+  where age > 18
+}
+
+-- Using the model
+from User
+where name like 'John%'
+order by age desc
+limit 10
+
+-- String interpolation
+model Report = {
+  from Orders
+  select 
+    customer_id,
+    "Report for ${order_date}" as date,
+    price * quantity as total
+}
+
+-- Test assertions
+test "User validation" should {
+  from User
+  test _.size should be > 0
+  test _.columns should contain 'email'
+}

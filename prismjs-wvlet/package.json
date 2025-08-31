@@ -1,0 +1,43 @@
+{
+  "name": "@wvlet/prismjs-wvlet",
+  "version": "2025.1.13",
+  "description": "Wvlet language support for Prism.js syntax highlighting",
+  "main": "components/prism-wvlet.js",
+  "browser": "dist/prism-wvlet.min.js",
+  "files": [
+    "components/",
+    "dist/",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "node build.js",
+    "test": "jest",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "peerDependencies": {
+    "prismjs": "^1.29.0"
+  },
+  "devDependencies": {
+    "prismjs": "^1.29.0",
+    "terser": "^5.0.0",
+    "jest": "^29.0.0"
+  },
+  "keywords": [
+    "prism",
+    "prismjs", 
+    "syntax",
+    "highlighting",
+    "wvlet",
+    "query",
+    "language",
+    "sql"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wvlet/wvlet.git",
+    "directory": "prismjs-wvlet"
+  },
+  "homepage": "https://wvlet.org",
+  "license": "Apache-2.0",
+  "author": "Wvlet Team"
+}

@@ -1,0 +1,64 @@
+name: Prism.js
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      prismjs: ${{ steps.filter.outputs.prismjs }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            prismjs:
+              - 'prismjs-wvlet/**'
+              - '.github/workflows/prismjs.yml'
+
+  test:
+    name: Prism.js
+    needs: changes
+    if: ${{ needs.changes.outputs.prismjs == 'true' }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: prismjs-wvlet
+    
+    steps:
+    - uses: actions/checkout@v5
+    
+    - name: Use Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 22
+        cache: 'npm'
+        cache-dependency-path: prismjs-wvlet/package-lock.json
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Build
+      run: npm run build
+    
+    - name: Run tests
+      run: npm test
+    
+    - name: Verify dist files
+      run: |
+        if [ ! -f "dist/prism-wvlet.js" ]; then
+          echo "dist/prism-wvlet.js not found!"
+          exit 1
+        fi
+        if [ ! -f "dist/prism-wvlet.min.js" ]; then
+          echo "dist/prism-wvlet.min.js not found!"
+          exit 1
+        fi
+        echo "✅ Dist files generated successfully"

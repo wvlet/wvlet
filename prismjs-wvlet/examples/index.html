@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wvlet Prism.js Local Test</title>
+  
+  <!-- Prism.js theme -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1/themes/prism.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1/components/prism-core.min.js"></script>
+  
+  <!-- Local Wvlet language definition -->
+  <script src="../dist/prism-wvlet.js"></script>
+  
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    h1 {
+      color: #333;
+    }
+    .example {
+      margin: 20px 0;
+    }
+    pre {
+      border-radius: 5px;
+      overflow-x: auto;
+    }
+  </style>
+</head>
+<body>
+  <h1>Wvlet Prism.js Local Test</h1>
+  <p>This page tests the locally built Prism.js Wvlet language definition.</p>
+
+  <div class="example">
+    <h3>Model Definition with Parameters</h3>
+    <pre><code class="language-wvlet">model UserMetrics(region: String, startDate: String) = {
+  from 'users.parquet'
+  where region == region and created_date >= startDate
+  select 
+    user_id,
+    name,
+    age,
+    email,
+    created_date
+  order by created_date desc
+}</code></pre>
+  </div>
+
+  <div class="example">
+    <h3>Complex Query with Aggregations</h3>
+    <pre><code class="language-wvlet">from UserMetrics('US', '2024-01-01')
+join Orders o on o.user_id = _.user_id
+group by age_group = case
+  when age < 25 then 'Young'
+  when age < 50 then 'Middle'
+  else 'Senior'
+agg
+  total_users = count(distinct user_id),
+  total_orders = count(o.order_id),
+  avg_order_value = avg(o.amount),
+  total_revenue = sum(o.amount)
+where total_users > 100
+order by total_revenue desc</code></pre>
+  </div>
+
+  <div class="example">
+    <h3>Function Definition</h3>
+    <pre><code class="language-wvlet">def calculateRisk(balance: Double, creditScore: Int): String = {
+  case
+    when balance > 10000 and creditScore > 750 then 'Low'
+    when balance > 5000 and creditScore > 650 then 'Medium'
+    else 'High'
+}</code></pre>
+  </div>
+
+  <script>
+    Prism.highlightAll();
+  </script>
+</body>
+</html>
