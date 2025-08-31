@@ -124,7 +124,7 @@ You can use either `class="language-wvlet"` or `class="language-wv"` in your HTM
 
 ### Docusaurus Integration
 
-If you're using Docusaurus, you can integrate Wvlet syntax highlighting by swizzling the `prism-include-languages` component:
+If you're using Docusaurus, you can integrate Wvlet syntax highlighting by swizzling the `prism-include-languages` component. For more details, see the [Docusaurus code blocks documentation](https://docusaurus.io/docs/markdown-features/code-blocks).
 
 1. Install the package:
    ```bash
