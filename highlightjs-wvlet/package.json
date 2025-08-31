@@ -1,6 +1,6 @@
 {
-  "name": "highlightjs-wvlet",
-  "version": "1.0.0",
+  "name": "@wvlet/highlightjs-wvlet",
+  "version": "2025.1.12",
   "description": "Wvlet language syntax highlighting for highlight.js",
   "main": "src/languages/wvlet.js",
   "scripts": {

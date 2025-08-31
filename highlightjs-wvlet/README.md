@@ -21,13 +21,13 @@ This package provides syntax highlighting for:
 ### Using npm
 
 ```bash
-npm install highlightjs-wvlet
+npm install @wvlet/highlightjs-wvlet
 ```
 
 ### Using CDN
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/highlightjs-wvlet@latest/dist/wvlet.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@wvlet/highlightjs-wvlet@latest/dist/wvlet.min.js"></script>
 ```
 
 ## Usage
@@ -36,7 +36,7 @@ npm install highlightjs-wvlet
 
 ```javascript
 const hljs = require('highlight.js');
-const wvlet = require('highlightjs-wvlet');
+const wvlet = require('@wvlet/highlightjs-wvlet');
 
 hljs.registerLanguage('wvlet', wvlet);
 
@@ -47,7 +47,7 @@ const highlightedCode = hljs.highlight(code, { language: 'wvlet' }).value;
 
 ```javascript
 import hljs from 'highlight.js';
-import wvlet from 'highlightjs-wvlet';
+import wvlet from '@wvlet/highlightjs-wvlet';
 
 hljs.registerLanguage('wvlet', wvlet);
 ```
@@ -57,7 +57,7 @@ hljs.registerLanguage('wvlet', wvlet);
 ```html
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11/styles/default.min.css">
 <script src="https://cdn.jsdelivr.net/npm/highlight.js@11"></script>
-<script src="https://cdn.jsdelivr.net/npm/highlightjs-wvlet@latest/dist/wvlet.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@wvlet/highlightjs-wvlet@latest/dist/wvlet.min.js"></script>
 <script>
   hljs.registerLanguage('wvlet', window.hljsDefineWvlet);
   hljs.highlightAll();
