@@ -89,36 +89,6 @@ hljs.registerLanguage('wvlet', wvlet);
 
 For a complete example, see [test-cdn.html](test-cdn.html).
 
-## Example
-
-```wvlet
--- Define a model from JSON file
-model person = {
-  from 'person.json'
-}
-
--- Query with filtering and aggregation
-from person
-where age >= 18
-group by department
-agg
-  employee_count = count(*),
-  avg_salary = avg(salary)
-order by employee_count desc
-limit 10
-
--- Join operations
-from orders
-left join customers on orders.customer_id = customers.id
-select
-  order_id = orders.id,
-  customer_name = customers.name,
-  total_amount = orders.amount * (1 - orders.discount)
-
--- Test assertions
-test _.size should be 100
-test _.columns should contain 'user_id'
-```
 
 ## Building
 

@@ -93,48 +93,6 @@ const highlightedCode = Prism.highlight(code, Prism.languages.wvlet, 'wvlet');
 
 For a complete example, see [examples/cdn-test.html](https://github.com/wvlet/wvlet/tree/main/prismjs-wvlet/examples/cdn-test.html).
 
-## Example
-
-```wvlet
--- Define a model from JSON file
-model Person = {
-  from 'person.json'
-}
-
--- Query with filtering and aggregation
-from Person
-where age >= 18
-group by department
-agg
-  employee_count = count(*),
-  avg_salary = avg(salary)
-order by employee_count desc
-limit 10
-
--- Join operations
-from orders
-left join customers on orders.customer_id = customers.id
-select
-  order_id = orders.id,
-  customer_name = customers.name,
-  total_amount = orders.amount * (1 - orders.discount)
-
--- String interpolation
-model Report = {
-  from Orders
-  select 
-    customer_id,
-    "Report for ${date}" as report_title,
-    price * quantity as total
-}
-
--- Test assertions
-test "Data validation" should {
-  from Person
-  test _.size should be > 0
-  test _.columns should contain 'email'
-}
-```
 
 ## Language Aliases
 
