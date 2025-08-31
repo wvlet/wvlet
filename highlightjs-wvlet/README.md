@@ -28,7 +28,7 @@ npm install @wvlet/highlightjs-wvlet
 
 ```html
 <!-- Using specific version (recommended for production) -->
-<script src="https://cdn.jsdelivr.net/npm/@wvlet/highlightjs-wvlet@0.1.0/dist/wvlet.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@wvlet/highlightjs-wvlet@2025.1.13/dist/wvlet.min.js"></script>
 
 <!-- Using latest version -->
 <script src="https://cdn.jsdelivr.net/npm/@wvlet/highlightjs-wvlet@latest/dist/wvlet.min.js"></script>
@@ -76,7 +76,7 @@ hljs.registerLanguage('wvlet', wvlet);
   <!-- highlight.js core -->
   <script src="https://cdn.jsdelivr.net/npm/highlight.js@11/lib/core.min.js"></script>
   <!-- Wvlet language support -->
-  <script src="https://cdn.jsdelivr.net/npm/@wvlet/highlightjs-wvlet@0.1.0/dist/wvlet.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@wvlet/highlightjs-wvlet@2025.1.13/dist/wvlet.min.js"></script>
   
   <script>
     // Register Wvlet language
