@@ -193,7 +193,7 @@ test _.output should be """
 
 - **JDK**: Minimum JDK 17, JDK 24+ required for Trino connector testing
 - **Native Builds**: clang, llvm, libstdc++-12-dev, libgc (Boehm GC)
-- **Node.js**: 18+ for UI development and documentation
+- **Node.js**: 22+ for UI development and documentation
 - **SBT**: 1.11.1 (specified in project/build.properties)
 
 ## Release Process
