@@ -19,32 +19,63 @@ import QueryResultFormat.*
 
 object QueryResultFormat:
   /**
+    * ANSI escape sequence pattern for stripping color codes and other control sequences
+    */
+  private val ansiEscapePattern = java.util.regex.Pattern.compile("\\u001B\\[[;\\d]*m")
+
+  /**
+    * Strip ANSI escape sequences from a string
+    * @param s
+    *   input string potentially containing ANSI codes
+    * @return
+    *   string with ANSI codes removed
+    */
+  def stripAnsiCodes(s: String): String = ansiEscapePattern.matcher(s).replaceAll("")
+
+  /**
     * Estimate the width of a UTF-16 character
     * @param ch
     * @return
     */
   def wcWidth(ch: Char): Int  = WCWidth.wcwidth(ch)
-  def wcWidth(s: String): Int = s.map(wcWidth).sum
+  def wcWidth(s: String): Int = stripAnsiCodes(s).map(wcWidth).sum
 
   def trimToWidth(s: String, colSize: Int): String =
     val wclen = wcWidth(s)
 
     def truncate(s: String, colSize: Int): String =
-      var len    = 0
-      val result = new StringBuilder(colSize)
-      for
-        c <- s
-        w = wcWidth(c)
-        if len + w <= colSize - 1
-      do
-        result += c
-        len += w
+      var len       = 0
+      val result    = new StringBuilder()
+      var i         = 0
+      var truncated = false
+      val matcher   = ansiEscapePattern.matcher(s)
 
-      // pad the rest of the column with spaces or dots
-      if len < colSize && len < wclen then
-        result += '…'
+      while i < s.length do
+        // Check for an ANSI escape sequence at the current position
+        if matcher.find(i) && matcher.start() == i then
+          // Append the whole ANSI sequence and advance the index past it
+          result.append(matcher.group())
+          i = matcher.end()
+        else
+          // Not an ANSI sequence, so it's a visible character
+          if !truncated then
+            val c = s(i)
+            val w = wcWidth(c)
+            if len + w <= colSize - 1 then
+              result += c
+              len += w
+            else
+              result += '…'
+              truncated = true
+            end if
+          end if
+          // Advance to the next character
+          i += 1
+        end if
+      end while
 
       result.toString
+    end truncate
 
     if wclen <= colSize then
       s
@@ -200,7 +231,7 @@ class PrettyBoxFormat(maxWidth: Option[Int], maxColWidth: Int)
     val maxColSize: IndexedSeq[Int] =
       tbl
         .map { row =>
-          row.map(_.size)
+          row.map(wcWidth)
         }
         .reduce { (r1, r2) =>
           r1.zip(r2)
