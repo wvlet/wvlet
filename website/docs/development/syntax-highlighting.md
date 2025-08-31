@@ -10,7 +10,8 @@ Wvlet provides syntax highlighting support for popular code highlighting librari
 
 ### Prism.js Support
 
-**Package**: [`@wvlet/prismjs-wvlet`](https://www.npmjs.com/package/@wvlet/prismjs-wvlet)
+**Package**: [`@wvlet/prismjs-wvlet`](https://www.npmjs.com/package/@wvlet/prismjs-wvlet)  
+**NPM**: https://www.npmjs.com/package/@wvlet/prismjs-wvlet
 
 Prism.js is a lightweight, extensible syntax highlighter used by many documentation sites including Docusaurus.
 
@@ -67,7 +68,8 @@ model User = {
 
 ### Highlight.js Support
 
-**Package**: [`@wvlet/highlightjs-wvlet`](https://www.npmjs.com/package/@wvlet/highlightjs-wvlet)
+**Package**: [`@wvlet/highlightjs-wvlet`](https://www.npmjs.com/package/@wvlet/highlightjs-wvlet)  
+**NPM**: https://www.npmjs.com/package/@wvlet/highlightjs-wvlet
 
 Highlight.js is a popular syntax highlighter with automatic language detection.
 
