@@ -137,7 +137,7 @@ If you're using Docusaurus, you can integrate Wvlet syntax highlighting by swizz
 
 2. Swizzle the component:
    ```bash
-   npx docusaurus swizzle @docusaurus/theme-classic prism-include-languages --eject
+   npx docusaurus swizzle @docusaurus/theme-classic prism-include-languages --wrap
    ```
 
 3. Update `src/theme/prism-include-languages.ts`:
