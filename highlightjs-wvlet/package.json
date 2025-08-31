@@ -5,7 +5,8 @@
   "main": "src/languages/wvlet.js",
   "scripts": {
     "test": "mocha test --reporter spec",
-    "mocha": "mocha test/markup --reporter spec"
+    "mocha": "mocha test/markup --reporter spec",
+    "build": "node build.js"
   },
   "repository": {
     "type": "git",
