@@ -91,7 +91,7 @@ const highlightedCode = Prism.highlight(code, Prism.languages.wvlet, 'wvlet');
 </html>
 ```
 
-For a complete example, see [examples/cdn-test.html](examples/cdn-test.html).
+For a complete example, see [examples/cdn-test.html](https://github.com/wvlet/wvlet/tree/main/prismjs-wvlet/examples/cdn-test.html).
 
 ## Example
 

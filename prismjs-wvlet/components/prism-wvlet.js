@@ -36,8 +36,8 @@ Prism.languages.wvlet = {
 						pattern: /^\$\{|\}$/,
 						alias: 'punctuation'
 					},
-					// Nested Wvlet grammar for interpolation content
-					'rest': Prism.languages.wvlet
+					// This will be populated recursively after the main grammar is defined
+					'rest': {}
 				}
 			}
 		}
@@ -98,10 +98,10 @@ Prism.languages.wvlet = {
 
 	// From statements with file paths
 	'url': {
-		pattern: /\bfrom\s+'[^']*'/,
+		pattern: /\bfrom\s+(?:'[^']*'|"[^"]*")/,
 		inside: {
 			'keyword': /^from/,
-			'string': /'[^']*'/
+			'string': /'[^']*'|"[^"]*"/
 		}
 	},
 
@@ -123,6 +123,9 @@ Prism.languages.wvlet = {
 	// Punctuation
 	'punctuation': /[{}[\]();,.:]/
 };
+
+// Add recursive grammar for interpolation
+Prism.languages.wvlet['template-string'].inside.interpolation.inside.rest = Prism.languages.wvlet;
 
 // Add aliases for backward compatibility
 Prism.languages.wv = Prism.languages.wvlet;
