@@ -93,7 +93,7 @@ limit 10</code></pre>
     avg(price) as avg_price,
     count(*) as transaction_count
   group by product_id
-  having total_quantity > 100
+  where total_quantity > 100
 }
 
 -- Join with another model
@@ -118,7 +118,7 @@ order by revenue desc</code></pre>
       when total >= 1000 then 'Premium'
       when total >= 500 then 'Standard'
       else 'Basic'
-    end as tier
+    as tier
   where status != 'cancelled' and price > 0
 }</code></pre>
   </div>

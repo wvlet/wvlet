@@ -58,13 +58,12 @@ group by age_group = case
   when age < 25 then 'Young'
   when age < 50 then 'Middle'
   else 'Senior'
-end
 agg
   total_users = count(distinct user_id),
   total_orders = count(o.order_id),
   avg_order_value = avg(o.amount),
   total_revenue = sum(o.amount)
-having total_users > 100
+where total_users > 100
 order by total_revenue desc</code></pre>
   </div>
 
@@ -75,7 +74,6 @@ order by total_revenue desc</code></pre>
     when balance > 10000 and creditScore > 750 then 'Low'
     when balance > 5000 and creditScore > 650 then 'Medium'
     else 'High'
-  end
 }</code></pre>
   </div>
 
