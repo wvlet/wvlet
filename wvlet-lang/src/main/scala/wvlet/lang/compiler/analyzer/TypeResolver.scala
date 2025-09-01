@@ -330,6 +330,18 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
               case m: ModelDef =>
                 val r = m.child.relationType
                 ModelScan(TableName(ref.name.fullName), Nil, r, ref.span)
+              case v: ValDef if v.tableColumns.isDefined =>
+                // Handle table value constants: val t1(id, val) = [[...]]
+                // The expression is an ArrayConstructor containing rows (each row is also an ArrayConstructor)
+                v.expr match
+                  case arr: ArrayConstructor =>
+                    // arr.values contains the rows - use them directly
+                    val values = Values(arr.values, arr.span)
+                    // Create an aliased relation with the column names
+                    // ref.name is already a QualifiedName/NameExpr
+                    AliasedRelation(values, ref.name, v.tableColumns, ref.span)
+                  case _ =>
+                    ref
               case _ =>
                 val si = sym.symbolInfo
                 si match

@@ -146,9 +146,15 @@ case class ValSymbolInfo(
     override val symbol: Symbol,
     override val name: Name,
     override val tpe: DataType,
-    expr: Expression
+    expr: Expression,
+    tableColumns: Option[List[DataType.NamedType]] = None
 ) extends SymbolInfo(SymbolType.ValDef, Symbol.NoSymbol, symbol, name, tpe):
-  override def toString: String = s"bounded ${name}: ${dataType} = ${expr}"
+  override def toString: String =
+    tableColumns match
+      case Some(cols) =>
+        s"table ${name}(${cols.map(c => s"${c.name}: ${c.dataType}").mkString(", ")})"
+      case None =>
+        s"bounded ${name}: ${dataType} = ${expr}"
 
 case class MultipleSymbolInfo(s1: SymbolInfo, s2: SymbolInfo)
     extends SymbolInfo(s1.symbolType, s1.owner, s1.symbol, s1.name, s1.tpe)

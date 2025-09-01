@@ -1,0 +1,56 @@
+-- Test table value constants
+
+-- Basic table value constant
+val t1(id, name) = [
+  [1, "Alice"],
+  [2, "Bob"],
+  [3, "Charlie"]
+]
+
+from t1
+test _.size should be 3
+
+-- Table value constant with types
+val t2(id:int, name:string, score:double) = [
+  [1, "Alice", 95.5],
+  [2, "Bob", 87.0],
+  [3, "Charlie", 92.3]
+]
+
+from t2
+test _.size should be 3
+
+-- Table value constant with trailing commas
+val t3(id, name) = [
+  [1, "Alice"],
+  [2, "Bob"],
+  [3, "Charlie"],
+]
+
+from t3
+test _.size should be 3
+
+-- Reuse table value constant multiple times
+val products(id, name, price) = [
+  [1, "Laptop", 999.99],
+  [2, "Mouse", 29.99],
+  [3, "Keyboard", 79.99],
+]
+
+from products
+where _.price > 50
+test _.size should be 2
+
+from products
+where _.price < 50
+test _.size should be 1
+
+-- Join with table value constant (simplified for now)
+val categories(id, category) = [
+  [1, "Electronics"],
+  [2, "Electronics"],
+  [3, "Electronics"],
+]
+
+from categories
+test _.size should be 3

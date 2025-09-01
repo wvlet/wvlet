@@ -1,0 +1,9 @@
+-- Simple test for table value constants
+
+val t1(id, name) = [
+  [1, "Alice"],
+  [2, "Bob"]
+]
+
+from t1
+test _.size should be 2
