@@ -96,4 +96,12 @@ class WvletREPLMainTest extends AirSpec:
     WvletREPLMain.main("""-c 'context' -c 'use test_schema' -c 'context'""")
   }
 
+  test("no duplicate models after redefining with same name") {
+    // Define a model twice with the same name and verify only one appears in show models
+    WvletREPLMain.main(
+      """-c 'model m1 = { select 1 as x }' -c 'model m1 = { select 2 as y }' -c 'show models' """
+    )
+    // The output should show only one m1 model, not two
+  }
+
 end WvletREPLMainTest

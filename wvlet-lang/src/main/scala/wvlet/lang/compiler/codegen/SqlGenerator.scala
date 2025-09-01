@@ -649,7 +649,8 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         selectExpr(sql)
       case s: Show if s.showType == ShowType.models =>
         // TODO: Show models should be handled outside of GenSQL
-        val models: Seq[ListMap[String, Any]] = ctx
+        // Collect all models from all contexts, then deduplicate by name (keeping the most recent)
+        val allModels = ctx
           .global
           .getAllContexts
           .flatMap { ctx =>
@@ -660,53 +661,60 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
               .collect { case m: ModelSymbolInfo =>
                 m
               }
-              .map { m =>
-                val e = ListMap.newBuilder[String, Any]
-                e += "name" -> s"'${m.name.name}'"
+          }
 
-                // model argument types
-                val t = m.symbol.tree
-                val description: String =
-                  if t.comments.isEmpty then
-                    "''"
-                  else
-                    val desc: String =
-                      t.comments
-                        .map(
-                          // Exclude comments
-                          _.str
-                            .trim
-                            .stripPrefix("---")
-                            .stripPrefix("--")
-                            .stripSuffix("---")
-                            .stripSuffix("--")
-                        )
-                        .mkString("\n")
+        // Deduplicate models by name, keeping only the first occurrence (most recent in REPL)
+        val modelsByName = allModels.groupBy(_.name.name)
+        val models: Seq[ListMap[String, Any]] = modelsByName
+          .values
+          .map(_.head)
+          .toSeq
+          .map { m =>
+            val e = ListMap.newBuilder[String, Any]
+            e += "name" -> s"'${m.name.name}'"
+
+            // model argument types
+            val t = m.symbol.tree
+            val description: String =
+              if t.comments.isEmpty then
+                "''"
+              else
+                val desc: String =
+                  t.comments
+                    .map(
+                      // Exclude comments
+                      _.str
                         .trim
-                    StringLiteral.fromString(desc, NoSpan).sqlExpr
+                        .stripPrefix("---")
+                        .stripPrefix("--")
+                        .stripSuffix("---")
+                        .stripSuffix("--")
+                    )
+                    .mkString("\n")
+                    .trim
+                StringLiteral.fromString(desc, NoSpan).sqlExpr
 
-                m.symbol.tree match
-                  case md: ModelDef if md.params.nonEmpty =>
-                    val args: String = md
-                      .params
-                      .map(arg => s"${arg.name}:${arg.dataType.typeDescription}")
-                      .mkString("'", ", ", "'")
-                    e += "args" -> args
-                  case _ =>
-                    e += "args" -> "cast(null as varchar)"
+            m.symbol.tree match
+              case md: ModelDef if md.params.nonEmpty =>
+                val args: String = md
+                  .params
+                  .map(arg => s"${arg.name}:${arg.dataType.typeDescription}")
+                  .mkString("'", ", ", "'")
+                e += "args" -> args
+              case _ =>
+                e += "args" -> "cast(null as varchar)"
 
-                e += "description" -> description
+            e += "description" -> description
 
-                // package_name
-                if !m.owner.isNoSymbol && m.owner != ctx.global.defs.RootPackage &&
-                  !m.owner.name.isEmpty
-                then
-                  e += "package_name" -> s"'${m.owner.name}'"
-                else
-                  e += "package_name" -> "cast(null as varchar)"
+            // package_name
+            if !m.owner.isNoSymbol && m.owner != ctx.global.defs.RootPackage &&
+              !m.owner.name.isEmpty
+            then
+              e += "package_name" -> s"'${m.owner.name}'"
+            else
+              e += "package_name" -> "cast(null as varchar)"
 
-                e.result()
-              }
+            e.result()
           }
 
         val modelValues = cl(

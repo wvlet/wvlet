@@ -341,6 +341,12 @@ object SymbolLabeler extends Phase("symbol-labeler"):
     val modelName = Name.termName(m.name.name)
     ctx.scope.lookupSymbol(modelName) match
       case Some(s) =>
+        // Update the existing model symbol to avoid duplicates in REPL
+        s.tree = m
+        val tpe = m.givenRelationType.getOrElse(m.relationType)
+        s.symbolInfo = ModelSymbolInfo(ctx.owner, s, modelName, tpe, ctx.compilationUnit)
+        m.symbol = s
+        trace(s"Updated existing model symbol ${s} for ${modelName}")
         s
       case None =>
         val sym = Symbol(ctx.global.newSymbolId, m.span)
