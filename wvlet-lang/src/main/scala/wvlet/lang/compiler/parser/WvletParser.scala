@@ -764,10 +764,22 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         None
 
     consume(WvletToken.EQ)
-    val expr         = expression()
-    val exprType     = expr.dataType
-    val resolvedType = valType.getOrElse(exprType)
-    ValDef(Name.termName(name.leafName), resolvedType, expr, tableColumns, spanFrom(t))
+    val expr     = expression()
+    val exprType = expr.dataType
+
+    // Create a SchemaType if table columns are specified
+    val resolvedType =
+      tableColumns match
+        case Some(columns) =>
+          DataType.SchemaType(
+            parent = None,
+            typeName = Name.typeName(name.leafName),
+            columnTypes = columns
+          )
+        case None =>
+          valType.getOrElse(exprType)
+
+    ValDef(Name.termName(name.leafName), resolvedType, expr, spanFrom(t))
   }
 
   def orderExpr(input: Relation): Sort = node {

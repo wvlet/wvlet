@@ -330,17 +330,55 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
               case m: ModelDef =>
                 val r = m.child.relationType
                 ModelScan(TableName(ref.name.fullName), Nil, r, ref.span)
-              case v: ValDef if v.tableColumns.isDefined =>
-                // Handle table value constants: val t1(id, val) = [[...]]
-                // The expression is an ArrayConstructor containing rows (each row is also an ArrayConstructor)
-                v.expr match
-                  case arr: ArrayConstructor =>
-                    // arr.values contains the rows - use them directly
-                    val values = Values(arr.values, arr.span)
-                    // Create an aliased relation with the column names
-                    // ref.name is already a QualifiedName/NameExpr
-                    AliasedRelation(values, ref.name, v.tableColumns, ref.span)
+              case v: ValDef =>
+                // Check if this is a table value constant by looking at the dataType
+                v.dataType match
+                  case schemaType: DataType.SchemaType =>
+                    // Handle table value constants: val t1(id, val) = [[...]]
+                    // The expression is an ArrayConstructor containing rows (each row is also an ArrayConstructor)
+                    v.expr match
+                      case arr: ArrayConstructor =>
+                        // Validate that all rows have the same number of columns as declared
+                        val declaredColumnCount = schemaType.columnTypes.size
+                        val invalidRows = arr
+                          .values
+                          .zipWithIndex
+                          .collect {
+                            case (row: ArrayConstructor, idx)
+                                if row.values.size != declaredColumnCount =>
+                              (idx + 1, row.values.size)
+                          }
+
+                        if invalidRows.nonEmpty then
+                          val errors = invalidRows
+                            .map { case (rowNum, colCount) =>
+                              s"Row $rowNum has $colCount columns, expected $declaredColumnCount"
+                            }
+                            .mkString(", ")
+                          throw StatusCode
+                            .INVALID_ARGUMENT
+                            .newException(
+                              s"Table value constant '${v
+                                  .name}' has mismatched column counts: $errors",
+                              context.sourceLocationAt(v.span)
+                            )
+                        else
+                          // arr.values contains the rows - use them directly
+                          val values = Values(arr.values, arr.span)
+                          // TODO: Column names from SchemaType are not being properly applied to Values
+                          // This needs further investigation of how to properly wrap Values with column names
+                          // without triggering tree transformation issues in AliasedRelation
+                          values
+                      case _ =>
+                        throw StatusCode
+                          .INVALID_ARGUMENT
+                          .newException(
+                            s"Table value constant '${v
+                                .name}' must be initialized with an array of arrays",
+                            context.sourceLocationAt(v.span)
+                          )
                   case _ =>
+                    // Regular val definition, not a table value constant
                     ref
               case _ =>
                 val si = sym.symbolInfo

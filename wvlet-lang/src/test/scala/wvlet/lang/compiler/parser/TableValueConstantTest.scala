@@ -33,10 +33,11 @@ class TableValueConstantTest extends AirSpec:
     val valDef = pkg.statements.head.asInstanceOf[ValDef]
 
     valDef.name.name shouldBe "t1"
-    valDef.tableColumns shouldBe defined
-    valDef.tableColumns.get.size shouldBe 2
-    valDef.tableColumns.get(0).name.name shouldBe "id"
-    valDef.tableColumns.get(1).name.name shouldBe "name"
+    valDef.dataType.isInstanceOf[DataType.SchemaType] shouldBe true
+    val schemaType = valDef.dataType.asInstanceOf[DataType.SchemaType]
+    schemaType.columnTypes.size shouldBe 2
+    schemaType.columnTypes(0).name.name shouldBe "id"
+    schemaType.columnTypes(1).name.name shouldBe "name"
   }
 
   test("parse table value constant with column types") {
@@ -47,12 +48,13 @@ class TableValueConstantTest extends AirSpec:
     val valDef = pkg.statements.head.asInstanceOf[ValDef]
 
     valDef.name.name shouldBe "t2"
-    valDef.tableColumns shouldBe defined
-    valDef.tableColumns.get.size shouldBe 2
-    valDef.tableColumns.get(0).name.name shouldBe "id"
-    valDef.tableColumns.get(0).dataType shouldBe DataType.IntType
-    valDef.tableColumns.get(1).name.name shouldBe "name"
-    valDef.tableColumns.get(1).dataType shouldBe DataType.StringType
+    valDef.dataType.isInstanceOf[DataType.SchemaType] shouldBe true
+    val schemaType = valDef.dataType.asInstanceOf[DataType.SchemaType]
+    schemaType.columnTypes.size shouldBe 2
+    schemaType.columnTypes(0).name.name shouldBe "id"
+    schemaType.columnTypes(0).dataType shouldBe DataType.IntType
+    schemaType.columnTypes(1).name.name shouldBe "name"
+    schemaType.columnTypes(1).dataType shouldBe DataType.StringType
   }
 
   test("parse table value constant with trailing comma") {
@@ -66,8 +68,9 @@ class TableValueConstantTest extends AirSpec:
     val valDef = pkg.statements.head.asInstanceOf[ValDef]
 
     valDef.name.name shouldBe "t3"
-    valDef.tableColumns shouldBe defined
-    valDef.tableColumns.get.size shouldBe 2
+    valDef.dataType.isInstanceOf[DataType.SchemaType] shouldBe true
+    val schemaType = valDef.dataType.asInstanceOf[DataType.SchemaType]
+    schemaType.columnTypes.size shouldBe 2
   }
 
   test("parse table value constant with trailing comma in rows") {
@@ -81,8 +84,9 @@ class TableValueConstantTest extends AirSpec:
     val valDef = pkg.statements.head.asInstanceOf[ValDef]
 
     valDef.name.name shouldBe "t4"
-    valDef.tableColumns shouldBe defined
-    valDef.tableColumns.get.size shouldBe 2
+    valDef.dataType.isInstanceOf[DataType.SchemaType] shouldBe true
+    val schemaType = valDef.dataType.asInstanceOf[DataType.SchemaType]
+    schemaType.columnTypes.size shouldBe 2
   }
 
   test("use table value constant in query") {
@@ -95,7 +99,7 @@ class TableValueConstantTest extends AirSpec:
 
     val valDef = pkg.statements(0).asInstanceOf[ValDef]
     valDef.name.name shouldBe "t1"
-    valDef.tableColumns shouldBe defined
+    valDef.dataType.isInstanceOf[DataType.SchemaType] shouldBe true
 
     val query = pkg.statements(1).asInstanceOf[Query]
     query shouldNotBe null
@@ -109,7 +113,33 @@ class TableValueConstantTest extends AirSpec:
     val valDef = pkg.statements.head.asInstanceOf[ValDef]
 
     valDef.name.name shouldBe "x"
-    valDef.tableColumns shouldBe None
+    valDef.dataType.isInstanceOf[DataType.SchemaType] shouldBe false
+  }
+
+  test("parse empty table value constant") {
+    val pkg = parse("""
+      val empty_table(id, name) = []
+    """)
+
+    val valDef = pkg.statements.head.asInstanceOf[ValDef]
+
+    valDef.name.name shouldBe "empty_table"
+    valDef.dataType.isInstanceOf[DataType.SchemaType] shouldBe true
+    val schemaType = valDef.dataType.asInstanceOf[DataType.SchemaType]
+    schemaType.columnTypes.size shouldBe 2
+  }
+
+  test("parse table value constant with single row") {
+    val pkg = parse("""
+      val single_row(x, y, z) = [[1, 2, 3]]
+    """)
+
+    val valDef = pkg.statements.head.asInstanceOf[ValDef]
+
+    valDef.name.name shouldBe "single_row"
+    valDef.dataType.isInstanceOf[DataType.SchemaType] shouldBe true
+    val schemaType = valDef.dataType.asInstanceOf[DataType.SchemaType]
+    schemaType.columnTypes.size shouldBe 3
   }
 
 end TableValueConstantTest

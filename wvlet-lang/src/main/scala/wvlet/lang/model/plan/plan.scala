@@ -116,11 +116,5 @@ case class ModelDef(
 
   override def relationType: RelationType = givenRelationType.getOrElse(child.relationType)
 
-case class ValDef(
-    name: TermName,
-    dataType: DataType,
-    expr: Expression,
-    tableColumns: Option[List[NamedType]] =
-      None, // For table value constants like val t1(id, val) = [[...]]
-    span: Span
-) extends LanguageStatement
+case class ValDef(name: TermName, dataType: DataType, expr: Expression, span: Span)
+    extends LanguageStatement

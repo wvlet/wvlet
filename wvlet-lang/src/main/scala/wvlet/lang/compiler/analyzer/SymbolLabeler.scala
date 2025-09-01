@@ -87,7 +87,7 @@ object SymbolLabeler extends Phase("symbol-labeler"):
           ctx
         case v: ValDef =>
           val sym = Symbol(ctx.global.newSymbolId, v.span)
-          sym.symbolInfo = ValSymbolInfo(ctx.owner, sym, v.name, v.dataType, v.expr, v.tableColumns)
+          sym.symbolInfo = ValSymbolInfo(ctx.owner, sym, v.name, v.dataType, v.expr)
           v.symbol = sym
           sym.tree = v
           ctx.compilationUnit.enter(sym)

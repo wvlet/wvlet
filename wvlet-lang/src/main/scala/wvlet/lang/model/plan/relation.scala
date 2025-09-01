@@ -102,6 +102,7 @@ case class AliasedRelation(
     span: Span
 ) extends UnaryRelation
     with LogSupport:
+
   override def toString: String =
     columnNames match
       case Some(columnNames) =>
