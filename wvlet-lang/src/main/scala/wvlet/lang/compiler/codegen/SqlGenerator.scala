@@ -663,7 +663,9 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
               }
           }
 
-        // Deduplicate models by name, keeping only the first occurrence (most recent in REPL)
+        // Deduplicate models by name. Since SymbolLabeler updates existing symbols when
+        // models are redefined, all duplicate ModelSymbolInfo instances will reference
+        // the latest definition, so picking any one (head) is sufficient.
         val modelsByName = allModels.groupBy(_.name.name)
         val models: Seq[ListMap[String, Any]] = modelsByName
           .values

@@ -14,8 +14,17 @@
 package wvlet.lang.cli
 
 import wvlet.airspec.AirSpec
+import java.io.ByteArrayOutputStream
 
 class WvletREPLMainTest extends AirSpec:
+
+  private def captureStdout(body: => Unit): String =
+    val out = new ByteArrayOutputStream()
+    Console.withOut(out) {
+      body
+    }
+    out.toString
+
   test("detect sbt") {
     WvletMain.isInSbt shouldBe true
   }
@@ -98,10 +107,24 @@ class WvletREPLMainTest extends AirSpec:
 
   test("no duplicate models after redefining with same name") {
     // Define a model twice with the same name and verify only one appears in show models
-    WvletREPLMain.main(
-      """-c 'model m1 = { select 1 as x }' -c 'model m1 = { select 2 as y }' -c 'show models' """
-    )
-    // The output should show only one m1 model, not two
+    val output = captureStdout {
+      WvletREPLMain.main(
+        """-c 'model m1 = { select 1 as x }' -c 'model m1 = { select 2 as y }' -c 'show models' """
+      )
+    }
+
+    // Split output into lines and find the table rows
+    val lines = output.split("\n")
+
+    // Find lines that contain "│ m1" (model name in table format)
+    val modelTableRows = lines.filter(_.contains("│ m1"))
+
+    // Should have exactly one row with m1 in the models table
+    modelTableRows.length shouldBe 1
+
+    // The output should show the models table
+    output shouldContain "name"
+    output shouldContain "3 rows" // wv_schemas, wv_tables, and m1
   }
 
 end WvletREPLMainTest
