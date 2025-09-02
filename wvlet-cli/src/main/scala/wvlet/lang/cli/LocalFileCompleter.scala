@@ -20,7 +20,7 @@ case class LocalFileCompleter(workEnv: WorkEnv) extends Completer:
   ): Unit =
     val buf    = reader.getBuffer
     val input  = buf.toString
-    val cursor = reader.getBuffer.cursor()
+    val cursor = buf.cursor()
 
     val quoteStart =
       input.lastIndexOf('\'') match
@@ -67,16 +67,24 @@ case class LocalFileCompleter(workEnv: WorkEnv) extends Completer:
       .filter(f => showHidden || !f.getName.startsWith("."))
       .filter(f => f.getName.toLowerCase.startsWith(leafPrefix.toLowerCase))
       .sortBy(_.getName.toLowerCase)
+      .take(200)
 
     // Build candidates that replace the entire quoted string with a fully quoted path
     entries.foreach { f =>
       val relPath =
-        if baseDir.getCanonicalPath == new File(workEnv.path).getCanonicalPath then
-          f.getName
-        else
+        try
           val base = new File(workEnv.path).getCanonicalFile
           val full = f.getCanonicalFile
-          base.toPath.relativize(full.toPath).toString.replace('\\', '/')
+          if base == full.getParentFile then
+            f.getName
+          else
+            base.toPath.relativize(full.toPath).toString.replace('\\', '/')
+        catch
+          case _: Throwable =>
+            if f.getParentFile == null then
+              f.getPath.replace('\\', '/')
+            else
+              f.getName
       val display =
         if f.isDirectory then
           s"${f.getName}/"
@@ -88,7 +96,8 @@ case class LocalFileCompleter(workEnv: WorkEnv) extends Completer:
              "/"
            else
              "")
-      val replacement = s"'${valuePath}'"
+      // Do NOT wrap with quotes; the user is already inside a quoted string
+      val replacement = valuePath
       candidates.add(
         new Candidate(
           replacement,  // value to insert (replaces the current word)
