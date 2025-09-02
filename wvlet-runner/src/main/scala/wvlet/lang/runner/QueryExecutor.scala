@@ -276,6 +276,8 @@ class QueryExecutor(
     import java.io.{BufferedWriter, File, FileWriter}
     import java.sql.ResultSet
     import java.util.UUID
+    import java.nio.file.{Files, Paths}
+    import scala.util.Using
 
     def isRemotePath(p: String): Boolean = p.startsWith("s3://") || p.startsWith("https://")
 
@@ -292,16 +294,16 @@ class QueryExecutor(
         .NOT_IMPLEMENTED
         .newException(s"Only Parquet is supported for Trino local save. Given: ${targetPath}")
 
-    val stageDir  = File(s"${workEnv.cacheFolder}/wvlet/stage/${UUID.randomUUID().toString}")
+    val uid       = UUID.randomUUID().toString.replace('-', '_')
+    val stageDir  = File(s"${workEnv.cacheFolder}/wvlet/stage/${uid}")
     val jsonlFile = File(stageDir, "export.jsonl")
     if !stageDir.exists() then
-      stageDir.mkdirs()
+      Files.createDirectories(Paths.get(stageDir.getPath))
 
     def writeJSONL(rs: ResultSet, out: File): Long =
       var rowCount = 0L
-      val w        = BufferedWriter(FileWriter(out))
       val rowCodec = MessageCodec.of[ListMap[String, Any]]
-      try
+      Using.resource(BufferedWriter(FileWriter(out))) { w =>
         val codec = JDBCCodec(rs)
         val it = codec.mapMsgPackMapRows { msgpack =>
           rowCodec.fromMsgPack(msgpack)
@@ -311,10 +313,8 @@ class QueryExecutor(
           w.write(rowCodec.toJson(row))
           w.newLine()
           rowCount += 1
-        rowCount
-      finally
-        w.flush()
-        w.close()
+      }
+      rowCount
 
     // 1) Execute on Trino (or current engine) and dump to JSONL
     val baseSQL = GenSQL.generateSQLFromRelation(save.child, addHeader = false)
@@ -327,7 +327,7 @@ class QueryExecutor(
 
     // 2) Load JSONL into DuckDB and write Parquet
     val duck                  = dbConnectorProvider.getConnector(DBType.DuckDB, None)
-    val tmp                   = s"__save_tmp_${UUID.randomUUID().toString.replace('-', '_')}"
+    val tmp                   = s"__save_tmp_${uid}"
     def sq(s: String): String = s.replace("'", "''")
     import scala.util.control.NonFatal
     try
@@ -340,21 +340,21 @@ class QueryExecutor(
       val copySQL  = s"copy (select * from ${tmp}) to '${sq(targetPath)}' ${copyOpts}"
       duck.execute(copySQL)
     finally
-      try
+      def safe(msg: String)(f: => Unit): Unit =
+        try
+          f
+        catch
+          case NonFatal(e) =>
+            workEnv.warn(s"${msg}: ${e.getMessage}")
+      safe(s"Failed to drop temporary table ${tmp}") {
         duck.execute(s"drop table if exists ${tmp}")
-      catch
-        case NonFatal(e) =>
-          workEnv.warn(s"Failed to drop temporary table ${tmp}: ${e.getMessage}")
-      try
+      }
+      safe(s"Failed to delete temporary JSONL ${jsonlFile.getPath}") {
         jsonlFile.delete()
-      catch
-        case NonFatal(e) =>
-          workEnv.warn(s"Failed to delete temporary JSONL ${jsonlFile.getPath}: ${e.getMessage}")
-      try
+      }
+      safe(s"Failed to delete stage dir ${stageDir.getPath}") {
         stageDir.delete()
-      catch
-        case NonFatal(e) =>
-          workEnv.warn(s"Failed to delete stage dir ${stageDir.getPath}: ${e.getMessage}")
+      }
 
     workEnv.info(s"Saved result to ${targetPath}")
     QueryResult.empty
