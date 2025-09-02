@@ -273,20 +273,113 @@ class QueryExecutor(
     * Note: This is a scaffolding entry point; full ingestion will follow.
     */
   private def executeSaveToLocalFileViaDuckDB(save: SaveTo)(using context: Context): QueryResult =
-    import java.io.File
-    val targetPath = context.dataFilePath(save.targetName)
-    val stageRoot  = new File(s"${workEnv.cacheFolder}/wvlet/stage")
-    if !stageRoot.exists() then
-      stageRoot.mkdirs()
+    import java.io.{BufferedWriter, File, FileWriter}
+    import java.sql.ResultSet
+    import java.util.UUID
 
+    def isRemotePath(p: String): Boolean = p.startsWith("s3://") || p.startsWith("https://")
+
+    val targetPath = context.dataFilePath(save.targetName)
+    if isRemotePath(targetPath) then
+      throw StatusCode
+        .NOT_IMPLEMENTED
+        .newException(
+          s"Remote path is not supported for local file save via DuckDB handoff: ${targetPath}"
+        )
+
+    if !targetPath.toLowerCase.endsWith(".parquet") then
+      throw StatusCode
+        .NOT_IMPLEMENTED
+        .newException(s"Only Parquet is supported for Trino local save. Given: ${targetPath}")
+
+    val stageDir = File(s"${workEnv.cacheFolder}/wvlet/stage/${UUID.randomUUID().toString}")
+    val csvFile  = File(stageDir, "export.csv")
+    if !stageDir.exists() then
+      stageDir.mkdirs()
+
+    def quoteCSV(s: String): String =
+      if s == null then
+        ""
+      else
+        val needQuote = s.exists(ch => ch == ',' || ch == '"' || ch == '\n' || ch == '\r')
+        val escaped   = s.replace("\"", "\"\"")
+        if needQuote then
+          s"\"${escaped}\""
+        else
+          escaped
+
+    def writeCSV(rs: ResultSet, out: File): Long =
+      var rowCount = 0L
+      val meta     = rs.getMetaData
+      val colCount = meta.getColumnCount
+      val w        = BufferedWriter(FileWriter(out))
+      try
+        // Header
+        val header = (1 to colCount).map(i => quoteCSV(meta.getColumnName(i))).mkString(",")
+        w.write(header)
+        w.newLine()
+        // Rows
+        while rs.next() do
+          val cols = new Array[String](colCount)
+          var i    = 1
+          while i <= colCount do
+            val v = rs.getObject(i)
+            cols(i - 1) = quoteCSV(Option(v).map(_.toString).orNull)
+            i += 1
+          w.write(cols.mkString(","))
+          w.newLine()
+          rowCount += 1
+        rowCount
+      finally
+        w.flush()
+        w.close()
+
+    // 1) Execute on Trino (or current engine) and dump to CSV
     val baseSQL = GenSQL.generateSQLFromRelation(save.child, addHeader = false)
-    val hint    = s"Staging under '${stageRoot.getPath}', target '${targetPath}'"
-    workEnv.warn(
-      s"Local file save via DuckDB handoff is not yet implemented. ${hint}\n[sql]\n${baseSQL.sql}"
-    )
-    throw StatusCode
-      .NOT_IMPLEMENTED
-      .newException(s"Cross-engine save to local file is under development (see issue #1143).")
+    given monitor: QueryProgressMonitor = context.queryProgressMonitor
+    getDBConnector(defaultProfile).runQuery(baseSQL.sql) { rs =>
+      val n = writeCSV(rs, csvFile)
+      workEnv.info(s"Exported ${n} rows to CSV at ${csvFile.getPath}")
+      n
+    }
+
+    // 2) Load CSV into DuckDB and write Parquet
+    val duck                  = dbConnectorProvider.getConnector(DBType.DuckDB, None)
+    val tmp                   = s"__save_tmp_${UUID.randomUUID().toString.replace('-', '_')}"
+    def sq(s: String): String = s.replace("'", "''")
+
+    val createTmp =
+      s"create temp table ${tmp} as select * from read_csv_auto('${sq(
+          csvFile.getPath
+        )}', HEADER=true)"
+    duck.execute(createTmp)
+
+    // Build COPY options (minimal): Parquet + atomic write
+    val copyOpts = "(FORMAT 'parquet', USE_TMP_FILE true)"
+    val copySQL  = s"copy (select * from ${tmp}) to '${sq(targetPath)}' ${copyOpts}"
+    duck.execute(copySQL)
+
+    // Cleanup temp table and CSV
+    try
+      duck.execute(s"drop table ${tmp}")
+    catch
+      case _: Throwable =>
+        ()
+    try
+      csvFile.delete()
+    catch
+      case _: Throwable =>
+        ()
+    try
+      stageDir.delete()
+    catch
+      case _: Throwable =>
+        ()
+
+    workEnv.info(s"Saved result to ${targetPath}")
+    QueryResult.empty
+
+  end executeSaveToLocalFileViaDuckDB
 
   private def executeQuery(plan: LogicalPlan)(using context: Context): QueryResult =
     trace(s"Executing query: ${plan.pp}")
