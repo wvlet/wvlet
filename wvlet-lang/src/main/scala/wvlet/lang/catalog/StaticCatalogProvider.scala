@@ -25,83 +25,83 @@ object StaticCatalogProvider extends LogSupport:
     // Validate catalog name to prevent directory traversal
     if catalogName.contains("..") || catalogName.contains("/") || catalogName.contains("\\") then
       warn(s"Invalid catalog name: ${catalogName}")
-      return None
-
-    val catalogPath = SourceIO.resolvePath(basePath, dbType.toString.toLowerCase, catalogName)
-
-    if SourceIO.isDirectory(catalogPath) then
-      try
-        debug(s"Loading static catalog from: ${catalogPath}")
-
-        // Load schemas
-        val schemasPath = SourceIO.resolvePath(catalogPath, "schemas.json")
-        val schemas =
-          SourceIO.readFileIfExists(schemasPath) match
-            case Some(json) =>
-              try
-                CatalogSerializer.deserializeSchemas(json)
-              catch
-                case e: Exception =>
-                  error(s"Failed to load schemas from ${schemasPath}: ${e.getMessage}", e)
-                  return None
-            case None =>
-              List.empty
-
-        // Load tables for each schema
-        val tables =
-          schemas
-            .map { schema =>
-              val schemaPath = SourceIO.resolvePath(catalogPath, s"${schema.name}.json")
-              val tableDefs =
-                SourceIO.readFileIfExists(schemaPath) match
-                  case Some(json) =>
-                    try
-                      CatalogSerializer.deserializeTables(json)
-                    catch
-                      case e: Exception =>
-                        error(s"Failed to load tables from ${schemaPath}: ${e.getMessage}", e)
-                        List.empty[Catalog.TableDef]
-                  case None =>
-                    List.empty[Catalog.TableDef]
-              schema.name -> tableDefs
-            }
-            .toMap
-
-        // Load functions
-        val functionsPath = SourceIO.resolvePath(catalogPath, "functions.json")
-        val functions =
-          SourceIO.readFileIfExists(functionsPath) match
-            case Some(json) =>
-              try
-                CatalogSerializer.deserializeFunctions(json)
-              catch
-                case e: Exception =>
-                  error(s"Failed to load functions from ${functionsPath}: ${e.getMessage}", e)
-                  List.empty
-            case None =>
-              List.empty
-
-        Some(
-          StaticCatalog(
-            catalogName = catalogName,
-            dbType = dbType,
-            schemas = schemas,
-            tablesBySchema = tables,
-            functions = functions
-          )
-        )
-      catch
-        case e: Exception =>
-          error(
-            s"Failed to load static catalog '${catalogName}' from ${catalogPath}: ${e.getMessage}",
-            e
-          )
-          None
-    else
-      debug(s"Static catalog path does not exist: ${catalogPath}")
       None
+    else
+      val catalogPath = SourceIO.resolvePath(basePath, dbType.toString.toLowerCase, catalogName)
 
-    end if
+      if SourceIO.isDirectory(catalogPath) then
+        try
+          debug(s"Loading static catalog from: ${catalogPath}")
+
+          // Load schemas
+          val schemasPath = SourceIO.resolvePath(catalogPath, "schemas.json")
+          val schemas =
+            SourceIO.readFileIfExists(schemasPath) match
+              case Some(json) =>
+                try
+                  CatalogSerializer.deserializeSchemas(json)
+                catch
+                  case e: Exception =>
+                    error(s"Failed to load schemas from ${schemasPath}: ${e.getMessage}", e)
+                    throw new RuntimeException("Failed to load schemas", e)
+              case None =>
+                List.empty
+
+          // Load tables for each schema
+          val tables =
+            schemas
+              .map { schema =>
+                val schemaPath = SourceIO.resolvePath(catalogPath, s"${schema.name}.json")
+                val tableDefs =
+                  SourceIO.readFileIfExists(schemaPath) match
+                    case Some(json) =>
+                      try
+                        CatalogSerializer.deserializeTables(json)
+                      catch
+                        case e: Exception =>
+                          error(s"Failed to load tables from ${schemaPath}: ${e.getMessage}", e)
+                          List.empty[Catalog.TableDef]
+                    case None =>
+                      List.empty[Catalog.TableDef]
+                schema.name -> tableDefs
+              }
+              .toMap
+
+          // Load functions
+          val functionsPath = SourceIO.resolvePath(catalogPath, "functions.json")
+          val functions =
+            SourceIO.readFileIfExists(functionsPath) match
+              case Some(json) =>
+                try
+                  CatalogSerializer.deserializeFunctions(json)
+                catch
+                  case e: Exception =>
+                    error(s"Failed to load functions from ${functionsPath}: ${e.getMessage}", e)
+                    List.empty
+              case None =>
+                List.empty
+
+          Some(
+            StaticCatalog(
+              catalogName = catalogName,
+              dbType = dbType,
+              schemas = schemas,
+              tablesBySchema = tables,
+              functions = functions
+            )
+          )
+        catch
+          case e: Exception =>
+            error(
+              s"Failed to load static catalog '${catalogName}' from ${catalogPath}: ${e
+                  .getMessage}",
+              e
+            )
+            None
+      else
+        debug(s"Static catalog path does not exist: ${catalogPath}")
+        None
+      end if
 
   end loadCatalog
 

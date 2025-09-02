@@ -127,19 +127,18 @@ class CatalogCommand extends LogSupport:
   ): Unit =
     val basePath = Paths.get(catalogPath)
 
-    if !Files.exists(basePath) then
-      info("No static catalogs found")
-      return
+    if Files.exists(basePath) then
+      val catalogs = StaticCatalogProvider.listAvailableCatalogs(basePath)
 
-    val catalogs = StaticCatalogProvider.listAvailableCatalogs(basePath)
-
-    if catalogs.isEmpty then
-      info("No static catalogs found")
+      if catalogs.isEmpty then
+        info("No static catalogs found")
+      else
+        info(s"Available static catalogs:")
+        catalogs.foreach { case (name, dbType) =>
+          info(s"  ${dbType.toString.toLowerCase}/${name}")
+        }
     else
-      info(s"Available static catalogs:")
-      catalogs.foreach { case (name, dbType) =>
-        info(s"  ${dbType.toString.toLowerCase}/${name}")
-      }
+      info("No static catalogs found")
 
   @command(description = "Show details of a static catalog")
   def show(
@@ -148,35 +147,34 @@ class CatalogCommand extends LogSupport:
       @argument(description = "Catalog name (format: dbtype/catalog)")
       catalogSpec: String
   ): Unit =
-    val parts = catalogSpec.split("/")
-    if parts.length != 2 || parts.exists(_.trim.isEmpty) then
+    val parts     = catalogSpec.split("/")
+    val validSpec = parts.length == 2 && !parts.exists(_.trim.isEmpty)
+    if !validSpec then
       error(s"Invalid catalog specification: ${catalogSpec}. Use format: dbtype/catalog")
-      return
+    else
+      val dbTypeStr   = parts(0).trim
+      val catalogName = parts(1).trim
 
-    val dbTypeStr   = parts(0).trim
-    val catalogName = parts(1).trim
-
-    val dbType =
-      try
-        validateAndGetDBType(dbTypeStr)
-      catch
-        case _: IllegalArgumentException =>
-          return
-
-    val basePath = Paths.get(catalogPath)
-    StaticCatalogProvider.loadCatalog(catalogName, dbType, basePath) match
-      case Some(catalog) =>
-        info(s"Catalog: ${catalog.catalogName} (${catalog.dbType})")
-        info(s"Schemas: ${catalog.listSchemas.size}")
-        catalog
-          .listSchemas
-          .foreach { schema =>
-            val tableCount = catalog.listTables(schema.name).size
-            info(s"  ${schema.name}: ${tableCount} tables")
-          }
-        info(s"Functions: ${catalog.listFunctions.size}")
-      case None =>
-        error(s"Catalog not found: ${catalogSpec}")
+      scala
+        .util
+        .Try(validateAndGetDBType(dbTypeStr))
+        .toOption
+        .foreach { dbType =>
+          val basePath = Paths.get(catalogPath)
+          StaticCatalogProvider.loadCatalog(catalogName, dbType, basePath) match
+            case Some(catalog) =>
+              info(s"Catalog: ${catalog.catalogName} (${catalog.dbType})")
+              info(s"Schemas: ${catalog.listSchemas.size}")
+              catalog
+                .listSchemas
+                .foreach { schema =>
+                  val tableCount = catalog.listTables(schema.name).size
+                  info(s"  ${schema.name}: ${tableCount} tables")
+                }
+              info(s"Functions: ${catalog.listFunctions.size}")
+            case None =>
+              error(s"Catalog not found: ${catalogSpec}")
+        }
 
   end show
 

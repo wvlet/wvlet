@@ -55,76 +55,79 @@ object WvcMain extends LogSupport:
 
     parseOption(args.toList)
 
-    if !parseSuccess then
-      System.exit(1)
-      return ("", false)
-    else if displayHelp then
-      val helpMessage =
-        """wvc (Wvlet Native Compiler)
-          |  Compile Wvlet files and generate SQL queries
-          |
-          |[usage]:
-          |  wvc [options] -q '(Wvlet query)'
-          |  cat query.wv | wvc [options]
-          |
-          |[options]
-          | -h, --help         Display help message
-          | -w <folder>        Working folder
-          | -q <query>         Query string
-          | -l <level>         Log level (info, debug, trace, warn, error)
-          | -L <pattern=level> Set log level for a class pattern
-          | -x                 Return the result instead of printing it
-          |""".stripMargin
-      return (helpMessage, returnResult)
+    val result: (String, Boolean) =
+      if !parseSuccess then
+        System.exit(1)
+        ("", false)
+      else if displayHelp then
+        val helpMessage =
+          """wvc (Wvlet Native Compiler)
+            |  Compile Wvlet files and generate SQL queries
+            |
+            |[usage]:
+            |  wvc [options] -q '(Wvlet query)'
+            |  cat query.wv | wvc [options]
+            |
+            |[options]
+            | -h, --help         Display help message
+            | -w <folder>        Working folder
+            | -q <query>         Query string
+            | -l <level>         Log level (info, debug, trace, warn, error)
+            | -L <pattern=level> Set log level for a class pattern
+            | -x                 Return the result instead of printing it
+            |""".stripMargin
+        (helpMessage, returnResult)
+      else
+        // Set log levels
+        Logger("wvlet.lang.compiler").setLogLevel(logLevel)
+        Logger("wvlet.lang.runner").setLogLevel(logLevel)
+        Logger("wvlet.lang.native").setLogLevel(logLevel)
+        logLevelPatterns.foreach { p =>
+          p.split("=") match
+            case Array(pattern, level) =>
+              debug(s"Set the log level for ${pattern} to ${level}")
+              Logger.setLogLevel(pattern, LogLevel(level))
+            case _ =>
+              error(s"Invalid log level pattern: ${p}")
+        }
 
-    // Set log levels
-    Logger("wvlet.lang.compiler").setLogLevel(logLevel)
-    Logger("wvlet.lang.runner").setLogLevel(logLevel)
-    Logger("wvlet.lang.native").setLogLevel(logLevel)
-    logLevelPatterns.foreach { p =>
-      p.split("=") match
-        case Array(pattern, level) =>
-          debug(s"Set the log level for ${pattern} to ${level}")
-          Logger.setLogLevel(pattern, LogLevel(level))
-        case _ =>
-          error(s"Invalid log level pattern: ${p}")
-    }
+        // Prepare a compiler and input source
+        val compiler = Compiler(
+          CompilerOptions(workEnv = WorkEnv(path = workFolder), sourceFolders = List(workFolder))
+        )
 
-    // Prepare a compiler and input source
-    val compiler = Compiler(
-      CompilerOptions(workEnv = WorkEnv(path = workFolder), sourceFolders = List(workFolder))
-    )
+        val query: String =
+          inputQuery match
+            case Some(q) =>
+              q
+            case None =>
+              import scala.scalanative.posix.unistd
+              val connectedToStdin = unistd.isatty(unistd.STDIN_FILENO) == 0
+              if connectedToStdin then
+                // Read from stdin
+                Iterator.continually(scala.io.StdIn.readLine()).takeWhile(_ != null).mkString("\n")
+              else
+                ""
 
-    val query: String =
-      inputQuery match
-        case Some(q) =>
-          q
-        case None =>
-          import scala.scalanative.posix.unistd
-          val connectedToStdin = unistd.isatty(unistd.STDIN_FILENO) == 0
-          if connectedToStdin then
-            // Read from stdin
-            Iterator.continually(scala.io.StdIn.readLine()).takeWhile(_ != null).mkString("\n")
-          else
-            ""
+        if query.trim.isEmpty then
+          warn(s"No query is given. Use -q 'query' option or stdin to feed the query")
+          ("", returnResult)
+        else
+          // Compile
+          val inputUnit     = CompilationUnit.fromWvletString(query)
+          val compileResult = compiler.compileSingleUnit(inputUnit)
+          compileResult.reportAllErrors
 
-    if query.trim.isEmpty then
-      warn(s"No query is given. Use -q 'query' option or stdin to feed the query")
-      return ("", returnResult)
-    else
-      // Compile
-      val inputUnit     = CompilationUnit.fromWvletString(query)
-      val compileResult = compiler.compileSingleUnit(inputUnit)
-      compileResult.reportAllErrors
+          val ctx = compileResult
+            .context
+            .withCompilationUnit(inputUnit)
+            .withDebugRun(false)
+            .newContext(Symbol.NoSymbol)
 
-      val ctx = compileResult
-        .context
-        .withCompilationUnit(inputUnit)
-        .withDebugRun(false)
-        .newContext(Symbol.NoSymbol)
+          val sql = GenSQL.generateSQL(inputUnit)(using ctx)
+          (sql, returnResult) // Return the SQL string and the flag
 
-      val sql = GenSQL.generateSQL(inputUnit)(using ctx)
-      return (sql, returnResult) // Return the SQL string and the flag
+    result
 
   end compileWvletQuery
 

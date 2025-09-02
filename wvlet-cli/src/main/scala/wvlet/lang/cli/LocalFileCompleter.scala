@@ -40,99 +40,97 @@ case class LocalFileCompleter(workEnv: WorkEnv) extends Completer:
           case end =>
             cursor <= end)
 
-    if !insideQuotes then
-      return
+    if insideQuotes then
+      // Extract the in-quote prefix up to the cursor
+      val afterQuote   = quoteStart + 1
+      val prefixInWord = input.substring(afterQuote, cursor)
 
-    // Extract the in-quote prefix up to the cursor
-    val afterQuote   = quoteStart + 1
-    val prefixInWord = input.substring(afterQuote, cursor)
+      // Resolve base directory and the leaf prefix
+      val (baseDir, leafPrefix) =
+        val lastSep = prefixInWord.lastIndexOf('/')
+        if lastSep >= 0 then
+          val dir = prefixInWord.substring(0, lastSep + 1)
+          (new File(workEnv.path, dir), prefixInWord.substring(lastSep + 1))
+        else
+          (new File(workEnv.path), prefixInWord)
 
-    // Resolve base directory and the leaf prefix
-    val (baseDir, leafPrefix) =
-      val lastSep = prefixInWord.lastIndexOf('/')
-      if lastSep >= 0 then
-        val dir = prefixInWord.substring(0, lastSep + 1)
-        (new File(workEnv.path, dir), prefixInWord.substring(lastSep + 1))
-      else
-        (new File(workEnv.path), prefixInWord)
+      if baseDir.exists() && baseDir.isDirectory then
+        def escapeSingleQuotes(s: String): String = s.replace("'", "''")
 
-    if !baseDir.exists() || !baseDir.isDirectory then
-      return
+        val showHidden = leafPrefix.startsWith(".")
+        val entries: Array[File] = Option(baseDir.listFiles())
+          .getOrElse(Array.empty[File])
+          .filter(f => showHidden || !f.getName.startsWith("."))
+          .filter(f => f.getName.toLowerCase.startsWith(leafPrefix.toLowerCase))
+          .sortBy(_.getName.toLowerCase)
+          .take(200)
 
-    def escapeSingleQuotes(s: String): String = s.replace("'", "''")
-
-    val showHidden = leafPrefix.startsWith(".")
-    val entries: Array[File] = Option(baseDir.listFiles())
-      .getOrElse(Array.empty[File])
-      .filter(f => showHidden || !f.getName.startsWith("."))
-      .filter(f => f.getName.toLowerCase.startsWith(leafPrefix.toLowerCase))
-      .sortBy(_.getName.toLowerCase)
-      .take(200)
-
-    // Precompute canonical bases once (avoid repeating in loop)
-    val (workBase, baseCanonical) =
-      val wb =
-        try
-          new File(workEnv.path).getCanonicalFile
-        catch
-          case _: Throwable =>
-            new File(workEnv.path).getAbsoluteFile
-      val bc =
-        try
-          baseDir.getCanonicalFile
-        catch
-          case _: Throwable =>
-            baseDir.getAbsoluteFile
-      (wb, bc)
-
-    // Build candidates for each entry
-    entries.foreach { f =>
-      val relPath =
-        try
-          val full =
+        // Precompute canonical bases once (avoid repeating in loop)
+        val (workBase, baseCanonical) =
+          val wb =
             try
-              f.getCanonicalFile
+              new File(workEnv.path).getCanonicalFile
             catch
               case _: Throwable =>
-                f.getAbsoluteFile
-          if baseCanonical == workBase then
-            // Base is the work directory; keep just the name
-            f.getName
-          else
-            workBase.toPath.relativize(full.toPath).toString.replace('\\', '/')
-        catch
-          case _: Throwable =>
-            Option(f.getParentFile) match
-              case None =>
-                f.getPath.replace('\\', '/')
-              case Some(_) =>
+                new File(workEnv.path).getAbsoluteFile
+          val bc =
+            try
+              baseDir.getCanonicalFile
+            catch
+              case _: Throwable =>
+                baseDir.getAbsoluteFile
+          (wb, bc)
+
+        // Build candidates for each entry
+        entries.foreach { f =>
+          val relPath =
+            try
+              val full =
+                try
+                  f.getCanonicalFile
+                catch
+                  case _: Throwable =>
+                    f.getAbsoluteFile
+              if baseCanonical == workBase then
+                // Base is the work directory; keep just the name
                 f.getName
-      val display =
-        if f.isDirectory then
-          s"${f.getName}/"
-        else
-          f.getName
-      val valuePath =
-        escapeSingleQuotes(relPath) +
-          (if f.isDirectory && !relPath.endsWith("/") then
-             "/"
-           else
-             "")
-      // Do NOT wrap with quotes; the user is already inside a quoted string
-      val replacement = valuePath
-      candidates.add(
-        new Candidate(
-          replacement, // value to insert (replaces the current word)
-          display,     // shown label
-          "files",     // group
-          null,        // description
-          null,        // suffix
-          null,        // key
-          !f
-            .isDirectory // directories should not be treated as complete to allow further completion
-        )
-      )
-    }
+              else
+                workBase.toPath.relativize(full.toPath).toString.replace('\\', '/')
+            catch
+              case _: Throwable =>
+                Option(f.getParentFile) match
+                  case None =>
+                    f.getPath.replace('\\', '/')
+                  case Some(_) =>
+                    f.getName
+          val display =
+            if f.isDirectory then
+              s"${f.getName}/"
+            else
+              f.getName
+          val valuePath =
+            escapeSingleQuotes(relPath) +
+              (if f.isDirectory && !relPath.endsWith("/") then
+                 "/"
+               else
+                 "")
+          // Do NOT wrap with quotes; the user is already inside a quoted string
+          val replacement = valuePath
+          candidates.add(
+            new Candidate(
+              replacement, // value to insert (replaces the current word)
+              display,     // shown label
+              "files",     // group
+              null,        // description
+              null,        // suffix
+              null,        // key
+              !f
+                .isDirectory // directories should not be treated as complete to allow further completion
+            )
+          )
+        }
+      end if
+    end if
 
   end complete
 
