@@ -121,7 +121,7 @@ class WvletREPLMainTest extends AirSpec:
 
     // Find lines that contain "│ m1" (model name in table format)
     val modelTableRows = lines.filter(_.contains("│ m1"))
-    
+
     // Debug: print the found rows
     debug(s"Found model rows: ${modelTableRows.mkString("\n")}")
 
@@ -130,7 +130,7 @@ class WvletREPLMainTest extends AirSpec:
 
     // The output should show the models table header
     output shouldContain "name"
-    
+
     // Since the definition column appears to show <empty>, we need to adjust our expectations
     // The important thing is that only one m1 model appears, not duplicates
     // This already validates the fix for the duplicate models issue
