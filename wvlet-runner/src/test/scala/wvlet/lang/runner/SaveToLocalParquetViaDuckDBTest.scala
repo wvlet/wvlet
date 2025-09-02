@@ -63,10 +63,10 @@ class SaveToLocalParquetViaDuckDBTest extends AirSpec:
     // Verify the content is readable as Parquet via DuckDB with small retries
     val duck = DuckDBConnector(work)
     try
-      val sql = s"select count(*) as c from read_parquet('${absOut.getPath.replace("'", "''")}')"
-      var attempts  = 0
+      val sql                          = s"select count(*) as c from read_parquet('${outPathEsc}')"
+      var attempts                     = 0
       var lastError: Option[Throwable] = None
-      var ok       = false
+      var ok                           = false
       while !ok && attempts < 10 do
         attempts += 1
         try
@@ -87,8 +87,17 @@ class SaveToLocalParquetViaDuckDBTest extends AirSpec:
       // Cleanup best-effort (tmpDir may contain build artifacts)
       absOut.delete()
       // Close runner/provider to release any background resources
-      try runner.close() catch case _: Throwable => ()
-      try provider.close() catch case _: Throwable => ()
+      try
+        runner.close()
+      catch
+        case _: Throwable =>
+          ()
+      try
+        provider.close()
+      catch
+        case _: Throwable =>
+          ()
+    end try
   }
 
 end SaveToLocalParquetViaDuckDBTest
