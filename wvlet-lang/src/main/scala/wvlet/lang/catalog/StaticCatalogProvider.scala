@@ -35,19 +35,22 @@ object StaticCatalogProvider extends LogSupport:
 
         // Load schemas
         val schemasPath = SourceIO.resolvePath(catalogPath, "schemas.json")
-        val schemas =
+        val schemasOpt =
           SourceIO.readFileIfExists(schemasPath) match
             case Some(json) =>
               try
-                CatalogSerializer.deserializeSchemas(json)
+                Some(CatalogSerializer.deserializeSchemas(json))
               catch
                 case e: Exception =>
-                  throw new Exception(
-                    s"Failed to load schemas from ${schemasPath}: ${e.getMessage}",
-                    e
-                  )
+                  error(s"Failed to load schemas from ${schemasPath}: ${e.getMessage}", e)
+                  None
             case None =>
-              List.empty
+              Some(List.empty)
+
+        // If schemas failed to load due to corruption, return None
+        val schemas = schemasOpt match
+          case None => return None
+          case Some(schemaList) => schemaList
 
         // Load tables for each schema
         val tables =
@@ -61,10 +64,8 @@ object StaticCatalogProvider extends LogSupport:
                       CatalogSerializer.deserializeTables(json)
                     catch
                       case e: Exception =>
-                        throw new Exception(
-                          s"Failed to load tables from ${schemaPath}: ${e.getMessage}",
-                          e
-                        )
+                        error(s"Failed to load tables from ${schemaPath}: ${e.getMessage}", e)
+                        List.empty[Catalog.TableDef]
                   case None =>
                     List.empty[Catalog.TableDef]
               schema.name -> tableDefs
@@ -80,10 +81,8 @@ object StaticCatalogProvider extends LogSupport:
                 CatalogSerializer.deserializeFunctions(json)
               catch
                 case e: Exception =>
-                  throw new Exception(
-                    s"Failed to load functions from ${functionsPath}: ${e.getMessage}",
-                    e
-                  )
+                  error(s"Failed to load functions from ${functionsPath}: ${e.getMessage}", e)
+                  List.empty
             case None =>
               List.empty
 
