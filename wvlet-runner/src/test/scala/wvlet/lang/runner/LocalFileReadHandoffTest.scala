@@ -105,8 +105,8 @@ class LocalFileReadHandoffTest extends AirSpec:
       n shouldBe 2L
     }
 
-      // cleanup best-effort (tmpDir may contain build artifacts)
-      out.delete()
+    // cleanup best-effort (tmpDir may contain build artifacts)
+    out.delete()
   }
 
 end LocalFileReadHandoffTest
