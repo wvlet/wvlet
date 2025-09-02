@@ -104,10 +104,21 @@ trait SyntaxTreeNode extends TreeNode with Product with LogSupport:
       newObj.asInstanceOf[this.type]
     catch
       case e: IllegalArgumentException =>
+        val details =
+          e.getCause match
+            case ce: ClassCastException =>
+              s"${e.getMessage}: ${ce.getMessage}"
+            case _ =>
+              e.getMessage
+
         throw StatusCode
           .COMPILATION_FAILURE
           .newException(
-            s"Failed to create ${nodeName} node with args: ${newArgs.mkString(", ")}",
+            s"Failed to create ${nodeName} node: ${details}\n[args]${newArgs.mkString(
+                "\n - ",
+                "\n - ",
+                ""
+              )}",
             e
           )
 

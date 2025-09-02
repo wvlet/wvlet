@@ -330,6 +330,22 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
               case m: ModelDef =>
                 val r = m.child.relationType
                 ModelScan(TableName(ref.name.fullName), Nil, r, ref.span)
+              case v: ValDef =>
+                // Check if this is a table value constant by looking at the dataType
+                v.dataType match
+                  case schemaType: DataType.SchemaType =>
+                    // Handle table value constants: val t1(id, val) = [[...]]
+                    // The expression is an ArrayConstructor containing rows (each row is also an ArrayConstructor)
+                    v.expr match
+                      case arr: ArrayConstructor =>
+                        // arr.values contains the rows - use them directly
+                        val values = Values(arr.values, schemaType, arr.span)
+                        values
+                      case other =>
+                        ref
+                  case _ =>
+                    // Regular val definition, not a table value constant
+                    ref
               case _ =>
                 val si = sym.symbolInfo
                 si match

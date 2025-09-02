@@ -4,8 +4,14 @@ import wvlet.airframe.SourceCode
 import wvlet.lang.api.{Span, StatusCode}
 import wvlet.lang.compiler.parser.SqlToken.{EOF, ROW, STAR}
 import wvlet.lang.compiler.{CompilationUnit, Name, SourceFile}
-import wvlet.lang.model.DataType
-import wvlet.lang.model.DataType.{IntConstant, NamedType, TypeParameter, UnresolvedTypeParameter}
+import wvlet.lang.model.{DataType, RelationType}
+import wvlet.lang.model.DataType.{
+  EmptyRelationType,
+  IntConstant,
+  NamedType,
+  TypeParameter,
+  UnresolvedTypeParameter
+}
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.expr.NameExpr.EmptyName
 import wvlet.lang.model.plan.*
@@ -782,7 +788,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       case SqlToken.VALUES =>
         consume(t.token)
         val values = valueList()
-        Values(values, spanFrom(t))
+        Values(values, EmptyRelationType, spanFrom(t))
       case _ =>
         unexpected(t)
 

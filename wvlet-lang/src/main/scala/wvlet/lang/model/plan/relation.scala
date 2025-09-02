@@ -102,6 +102,7 @@ case class AliasedRelation(
     span: Span
 ) extends UnaryRelation
     with LogSupport:
+
   override def toString: String =
     columnNames match
       case Some(columnNames) =>
@@ -143,11 +144,15 @@ case class NamedRelation(child: Relation, name: NameExpr, span: Span)
     child.relationType
   )
 
-case class Values(rows: List[Expression], span: Span) extends Relation with LeafPlan:
+case class Values(rows: List[Expression], schema: RelationType = EmptyRelationType, span: Span)
+    extends Relation
+    with LeafPlan:
   override def toString: String = s"Values(${rows.mkString(", ")})"
 
   override val relationType: RelationType =
-    if rows.isEmpty then
+    if schema != EmptyRelationType then
+      schema
+    else if rows.isEmpty then
       EmptyRelationType
     else
       val row = rows.head

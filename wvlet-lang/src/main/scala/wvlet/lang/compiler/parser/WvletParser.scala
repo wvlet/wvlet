@@ -740,19 +740,45 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     val t    = consume(WvletToken.VAL)
     val name = identifier()
 
-    val valType: Option[DataType] =
+    // Check for table column syntax: val t1(id, val) = [...]
+    val tableColumns: Option[List[NamedType]] =
       scanner.lookAhead().token match
-        case WvletToken.COLON =>
-          consume(WvletToken.COLON)
-          val typeName = identifier()
-          Some(DataType.parse(typeName.fullName))
+        case WvletToken.L_PAREN =>
+          consume(WvletToken.L_PAREN)
+          val columns = namedTypes()
+          consume(WvletToken.R_PAREN)
+          Some(columns)
         case _ =>
           None
 
+    val valType: Option[DataType] =
+      if tableColumns.isEmpty then
+        scanner.lookAhead().token match
+          case WvletToken.COLON =>
+            consume(WvletToken.COLON)
+            val typeName = identifier()
+            Some(DataType.parse(typeName.fullName))
+          case _ =>
+            None
+      else
+        None
+
     consume(WvletToken.EQ)
-    val expr         = expression()
-    val exprType     = expr.dataType
-    val resolvedType = valType.getOrElse(exprType)
+    val expr     = expression()
+    val exprType = expr.dataType
+
+    // Create a SchemaType if table columns are specified
+    val resolvedType =
+      tableColumns match
+        case Some(columns) =>
+          DataType.SchemaType(
+            parent = None,
+            typeName = Name.typeName(name.leafName),
+            columnTypes = columns
+          )
+        case None =>
+          valType.getOrElse(exprType)
+
     ValDef(Name.termName(name.leafName), resolvedType, expr, spanFrom(t))
   }
 
@@ -2108,7 +2134,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
 
     nextValue
     consume(WvletToken.R_BRACKET)
-    Values(values.result(), spanFrom(t))
+    Values(values.result(), EmptyRelationType, spanFrom(t))
   }
 
   def array(): ArrayConstructor = node {

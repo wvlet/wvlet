@@ -273,3 +273,4 @@ For error reporting, use WvletLangException and StatusCode enum. If necessary er
 
 ## Testing Notes
 - Use `shouldContain "(keyword)"` for checking string fragment in AirSpec
+- To debug SQL generator, add -L *GenSQL=trace to the test option

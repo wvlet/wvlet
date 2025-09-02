@@ -16,7 +16,7 @@ package wvlet.lang.model.plan
 import wvlet.lang.catalog.Catalog.TableName
 import wvlet.lang.api.{LinePosition, Span}
 import wvlet.lang.compiler.{TermName, TypeName, SourceFile}
-import wvlet.lang.model.DataType.{EmptyRelationType, TypeParameter}
+import wvlet.lang.model.DataType.{EmptyRelationType, NamedType, TypeParameter}
 import wvlet.lang.model.{DataType, RelationType}
 import wvlet.lang.model.expr.{Attribute, Expression, NameExpr, QualifiedName, StringLiteral}
 import wvlet.lang.model.plan.LogicalPlan

@@ -1,0 +1,10 @@
+-- Simple test for table value constants
+
+val ts(id, name) = [
+  [1, "Alice"],
+  [2, "Bob"]
+]
+
+from ts
+test _.columns should be ["id", "name"]
+test _.size should be 2

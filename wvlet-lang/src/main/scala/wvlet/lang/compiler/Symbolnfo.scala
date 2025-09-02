@@ -148,7 +148,15 @@ case class ValSymbolInfo(
     override val tpe: DataType,
     expr: Expression
 ) extends SymbolInfo(SymbolType.ValDef, Symbol.NoSymbol, symbol, name, tpe):
-  override def toString: String = s"bounded ${name}: ${dataType} = ${expr}"
+  override def toString: String =
+    tpe match
+      case schemaType: DataType.SchemaType =>
+        s"table ${name}(${schemaType
+            .columnTypes
+            .map(c => s"${c.name}: ${c.dataType}")
+            .mkString(", ")})"
+      case _ =>
+        s"bounded ${name}: ${dataType} = ${expr}"
 
 case class MultipleSymbolInfo(s1: SymbolInfo, s2: SymbolInfo)
     extends SymbolInfo(s1.symbolType, s1.owner, s1.symbol, s1.name, s1.tpe)

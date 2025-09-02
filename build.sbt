@@ -7,7 +7,7 @@ val AWS_SDK_VERSION     = "2.20.146"
 val SCALAJS_DOM_VERSION = "2.8.1"
 
 val SCALA_3 = IO.read(file("SCALA_VERSION")).trim
-ThisBuild / resolvers ++= Resolver.sonatypeOssRepos("snapshots")
+// ThisBuild / resolvers ++= Resolver.sonatypeOssRepos("snapshots")
 
 Global / onChangedBuildSource := ReloadOnSourceChanges
 Global / scalaVersion         := SCALA_3
@@ -349,6 +349,7 @@ lazy val runner = project
     specRunnerSettings,
     name        := "wvlet-runner",
     description := "wvlet query executor using trino, duckdb, etc.",
+    Test / javaOptions ++= Seq("--enable-native-access=ALL-UNNAMED"),
     libraryDependencies ++=
       Seq(
         "org.jline"                     % "jline"             % "3.30.5",
