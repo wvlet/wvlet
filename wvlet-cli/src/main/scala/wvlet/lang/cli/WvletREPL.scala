@@ -61,6 +61,7 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
     .terminal(terminal)
     .variable(LineReader.HISTORY_FILE, historyFile.toPath)
     .parser(new ReplParser())
+    .completer(LocalFileCompleter(workEnv))
     // For enabling multiline input
     .variable(
       LineReader.SECONDARY_PROMPT_PATTERN,
