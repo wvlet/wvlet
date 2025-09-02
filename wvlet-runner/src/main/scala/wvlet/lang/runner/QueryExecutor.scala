@@ -275,7 +275,7 @@ class QueryExecutor(
   private def executeSaveToLocalFileViaDuckDB(save: SaveTo)(using context: Context): QueryResult =
     import java.io.{BufferedWriter, File, FileWriter}
     import java.sql.ResultSet
-    import java.util.UUID
+    import wvlet.airframe.ulid.ULID
     import java.nio.file.{Files, Paths}
     import scala.util.Using
 
@@ -294,7 +294,7 @@ class QueryExecutor(
         .NOT_IMPLEMENTED
         .newException(s"Only Parquet is supported for Trino local save. Given: ${targetPath}")
 
-    val uid       = UUID.randomUUID().toString.replace('-', '_')
+    val uid       = ULID.newULID.toString
     val stageDir  = File(s"${workEnv.cacheFolder}/wvlet/stage/${uid}")
     val jsonlFile = File(stageDir, "export.jsonl")
     if !stageDir.exists() then
