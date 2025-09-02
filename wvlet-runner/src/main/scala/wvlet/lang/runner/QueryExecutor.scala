@@ -294,7 +294,7 @@ class QueryExecutor(
         .NOT_IMPLEMENTED
         .newException(s"Only Parquet is supported for Trino local save. Given: ${targetPath}")
 
-    val uid       = ULID.newULID.toString
+    val uid       = ULID.newULIDString
     val stageDir  = File(s"${workEnv.cacheFolder}/wvlet/stage/${uid}")
     val jsonlFile = File(stageDir, "export.jsonl")
     if !stageDir.exists() then
