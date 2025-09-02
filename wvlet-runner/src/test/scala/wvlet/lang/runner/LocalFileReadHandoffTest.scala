@@ -78,14 +78,11 @@ class LocalFileReadHandoffTest extends AirSpec:
           t
         case qrl: QueryResultList =>
           // Find the TableRows within the QueryResultList
-          qrl
-            .list
-            .find(_.isInstanceOf[TableRows])
-            .map(_.asInstanceOf[TableRows])
-            .getOrElse {
+          qrl.list.collectFirst { case t: TableRows => t } match
+            case Some(t) => t
+            case None =>
               fail(s"No TableRows found in QueryResultList: ${qrl}")
               throw new RuntimeException("unreachable")
-            }
         case other =>
           fail(s"Unexpected result type: ${other}")
           throw new RuntimeException("unreachable")
