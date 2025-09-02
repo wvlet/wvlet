@@ -10,7 +10,7 @@ import wvlet.lang.runner.connector.duckdb.DuckDBConnector
 
 import java.nio.file.{Files, Paths}
 
-class TrinoLocalSaveTest extends AirSpec:
+class SaveToLocalParquetViaDuckDBTest extends AirSpec:
 
   test("save to local parquet via DuckDB handoff (Generic profile)") {
     // Set up a temporary working directory for this test
@@ -91,4 +91,4 @@ class TrinoLocalSaveTest extends AirSpec:
       try provider.close() catch case _: Throwable => ()
   }
 
-end TrinoLocalSaveTest
+end SaveToLocalParquetViaDuckDBTest
