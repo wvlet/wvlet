@@ -54,13 +54,13 @@ class TrinoLocalSaveTest extends AirSpec:
     // Verify the content is readable as Parquet via DuckDB
     val duck = DuckDBConnector(work)
     try
-      duck.runQuery(s"select count(*) as c from read_parquet('${absOut.getPath.replace("'", "''")}')") {
-        rs =>
-          rs.next() shouldBe true
-          rs.getLong(1) shouldBe 2L
+      duck.runQuery(
+        s"select count(*) as c from read_parquet('${absOut.getPath.replace("'", "''")}')"
+      ) { rs =>
+        rs.next() shouldBe true
+        rs.getLong(1) shouldBe 2L
       }
-    finally
-      duck.close()
+    finally duck.close()
 
     // Cleanup
     absOut.delete() shouldBe true
