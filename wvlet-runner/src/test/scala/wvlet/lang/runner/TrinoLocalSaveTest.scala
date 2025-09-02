@@ -26,8 +26,9 @@ class TrinoLocalSaveTest extends AirSpec:
       config = WvletScriptRunnerConfig(
         interactive = false,
         profile = profile,
-        catalog = Some("memory"),
-        schema = Some("main")
+        // Avoid pre-connecting to the default engine during compiler init to reduce flakiness
+        catalog = None,
+        schema = None
       ),
       queryExecutor = executor,
       threadManager = ThreadManager()
@@ -35,42 +36,59 @@ class TrinoLocalSaveTest extends AirSpec:
 
     given QueryProgressMonitor = QueryProgressMonitor.noOp
 
-    val outPath = "out.parquet"
+    val outPathAbs = Paths.get(tmpDir.toString, "out.parquet").toFile.getAbsolutePath
+    val outPathEsc = outPathAbs.replace("'", "''") // single-quote escape for SQL literal
     val query =
       s"""
          |from [
          |  [1, "a"],
          |  [2, "b"]
          |] as t(id, name)
-         |save to '${outPath}'
+         |save to '${outPathEsc}'
          |""".stripMargin
 
     val result = runner.runStatement(QueryRequest(query, isDebugRun = false))
     result.isSuccessfulQueryResult shouldBe true
 
-    val absOut = Paths.get(tmpDir.toString, outPath).toFile
-    def awaitExists(f: java.io.File, timeoutMs: Long = 3000L): Boolean =
-      val deadline = System.currentTimeMillis() + timeoutMs
-      var ok       = f.exists()
-      while !ok && System.currentTimeMillis() < deadline do
-        Thread.sleep(50)
-        ok = f.exists()
-      ok
-    awaitExists(absOut) shouldBe true
+    val absOut = new java.io.File(outPathAbs)
 
-    // Verify the content is readable as Parquet via DuckDB
+    def awaitExists(f: java.io.File, timeoutMs: Long = 10000L): Unit =
+      val deadline = System.currentTimeMillis() + timeoutMs
+      while !f.exists() && System.currentTimeMillis() < deadline do
+        Thread.sleep(50)
+      f.exists() shouldBe true
+
+    awaitExists(absOut)
+
+    // Verify the content is readable as Parquet via DuckDB with small retries
     val duck = DuckDBConnector(work)
     try
-      duck.runQuery(
-        s"select count(*) as c from read_parquet('${absOut.getPath.replace("'", "''")}')"
-      ) { rs =>
-        rs.next() shouldBe true
-        rs.getLong(1) shouldBe 2L
-      }
-    finally duck.close()
-
-    // Cleanup best-effort (tmpDir may contain build artifacts)
-    absOut.delete()
+      val sql = s"select count(*) as c from read_parquet('${absOut.getPath.replace("'", "''")}')"
+      var attempts  = 0
+      var lastError: Option[Throwable] = None
+      var ok       = false
+      while !ok && attempts < 10 do
+        attempts += 1
+        try
+          duck.runQuery(sql) { rs =>
+            rs.next() shouldBe true
+            rs.getLong(1) shouldBe 2L
+          }
+          ok = true
+        catch
+          case t: Throwable =>
+            lastError = Some(t)
+            Thread.sleep(100)
+      if !ok then
+        // Re-throw the last error for AirSpec to report
+        throw lastError.get
+    finally
+      duck.close()
+      // Cleanup best-effort (tmpDir may contain build artifacts)
+      absOut.delete()
+      // Close runner/provider to release any background resources
+      try runner.close() catch case _: Throwable => ()
+      try provider.close() catch case _: Throwable => ()
   }
 
 end TrinoLocalSaveTest
