@@ -69,22 +69,44 @@ case class LocalFileCompleter(workEnv: WorkEnv) extends Completer:
       .sortBy(_.getName.toLowerCase)
       .take(200)
 
-    // Build candidates that replace the entire quoted string with a fully quoted path
+    // Precompute canonical bases once (avoid repeating in loop)
+    val (workBase, baseCanonical) =
+      val wb =
+        try
+          new File(workEnv.path).getCanonicalFile
+        catch
+          case _: Throwable =>
+            new File(workEnv.path).getAbsoluteFile
+      val bc =
+        try
+          baseDir.getCanonicalFile
+        catch
+          case _: Throwable =>
+            baseDir.getAbsoluteFile
+      (wb, bc)
+
+    // Build candidates for each entry
     entries.foreach { f =>
       val relPath =
         try
-          val base = new File(workEnv.path).getCanonicalFile
-          val full = f.getCanonicalFile
-          if base == full.getParentFile then
+          val full =
+            try
+              f.getCanonicalFile
+            catch
+              case _: Throwable =>
+                f.getAbsoluteFile
+          if baseCanonical == workBase then
+            // Base is the work directory; keep just the name
             f.getName
           else
-            base.toPath.relativize(full.toPath).toString.replace('\\', '/')
+            workBase.toPath.relativize(full.toPath).toString.replace('\\', '/')
         catch
           case _: Throwable =>
-            if f.getParentFile == null then
-              f.getPath.replace('\\', '/')
-            else
-              f.getName
+            Option(f.getParentFile) match
+              case None =>
+                f.getPath.replace('\\', '/')
+              case Some(_) =>
+                f.getName
       val display =
         if f.isDirectory then
           s"${f.getName}/"
@@ -100,13 +122,14 @@ case class LocalFileCompleter(workEnv: WorkEnv) extends Completer:
       val replacement = valuePath
       candidates.add(
         new Candidate(
-          replacement,  // value to insert (replaces the current word)
-          display,      // shown label
-          "files",      // group
-          null,         // description
-          null,         // suffix
-          null,         // key
-          f.isDirectory // complete only when unique; directories allow further completion
+          replacement, // value to insert (replaces the current word)
+          display,     // shown label
+          "files",     // group
+          null,        // description
+          null,        // suffix
+          null,        // key
+          !f
+            .isDirectory // directories should not be treated as complete to allow further completion
         )
       )
     }
