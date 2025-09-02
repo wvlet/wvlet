@@ -12,10 +12,6 @@ import java.nio.file.{Files, Paths}
 
 class LocalFileReadHandoffTest extends AirSpec:
 
-  // Temporarily skipped until we stabilize cross-engine selection for local file reads.
-  // The implementation is in place; this spec will be re-enabled in a follow-up.
-  skip("temporarily disabled: local-file auto-switch e2e")
-
   test("auto-switch to DuckDB for local file read") {
     // Isolate into a temporary working directory
     val tmpDir = Files.createTempDirectory("wvlet-local-read-")
@@ -47,6 +43,7 @@ class LocalFileReadHandoffTest extends AirSpec:
       config = WvletScriptRunnerConfig(
         interactive = false,
         profile = profile,
+        // Avoid pre-connecting to the default engine during compiler init
         catalog = None,
         schema = None
       ),
@@ -56,9 +53,19 @@ class LocalFileReadHandoffTest extends AirSpec:
 
     given QueryProgressMonitor = QueryProgressMonitor.noOp
 
-    val result = runner.runStatement(
-      QueryRequest(s"select count(*) as c from 'out.parquet'", isDebugRun = false)
-    )
+    // Ensure the file is visible to the runner before executing
+    def awaitExists(f: java.io.File, timeoutMs: Long = 3000L): Unit =
+      val deadline = System.currentTimeMillis() + timeoutMs
+      while !f.exists() && System.currentTimeMillis() < deadline do Thread.sleep(50)
+
+    awaitExists(out)
+
+    val q =
+      s"""
+         |from 'out.parquet'
+         |select count(*) as c
+         |""".stripMargin
+    val result = runner.runStatement(QueryRequest(q, isDebugRun = false))
     // Print for debugging in CI/local runs
     println(result.toPrettyBox())
     result.isSuccessfulQueryResult shouldBe true
