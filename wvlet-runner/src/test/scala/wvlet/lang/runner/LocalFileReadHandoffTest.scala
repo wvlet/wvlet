@@ -72,16 +72,19 @@ class LocalFileReadHandoffTest extends AirSpec:
     result.isSuccessfulQueryResult shouldBe true
 
     // Extract TableRows from the result, handling both direct TableRows and QueryResultList cases
-    val tableRows = result match
-      case t: TableRows =>
-        t
-      case qrl: QueryResultList =>
-        // Find the TableRows within the QueryResultList
-        qrl.list.find(_.isInstanceOf[TableRows]).map(_.asInstanceOf[TableRows]) match
-          case Some(t) => t
-          case None => fail(s"No TableRows found in QueryResultList: ${qrl}")
-      case other =>
-        fail(s"Unexpected result type: ${other}")
+    val tableRows =
+      result match
+        case t: TableRows =>
+          t
+        case qrl: QueryResultList =>
+          // Find the TableRows within the QueryResultList
+          qrl.list.find(_.isInstanceOf[TableRows]).map(_.asInstanceOf[TableRows]) match
+            case Some(t) =>
+              t
+            case None =>
+              fail(s"No TableRows found in QueryResultList: ${qrl}")
+        case other =>
+          fail(s"Unexpected result type: ${other}")
 
     tableRows.rows.size shouldBe 1
     val v = tableRows.rows.head("c")
