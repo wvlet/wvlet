@@ -292,41 +292,23 @@ class QueryExecutor(
         .NOT_IMPLEMENTED
         .newException(s"Only Parquet is supported for Trino local save. Given: ${targetPath}")
 
-    val stageDir = File(s"${workEnv.cacheFolder}/wvlet/stage/${UUID.randomUUID().toString}")
-    val csvFile  = File(stageDir, "export.csv")
+    val stageDir  = File(s"${workEnv.cacheFolder}/wvlet/stage/${UUID.randomUUID().toString}")
+    val jsonlFile = File(stageDir, "export.jsonl")
     if !stageDir.exists() then
       stageDir.mkdirs()
 
-    def quoteCSV(s: String): String =
-      if s == null then
-        ""
-      else
-        val needQuote = s.exists(ch => ch == ',' || ch == '"' || ch == '\n' || ch == '\r')
-        val escaped   = s.replace("\"", "\"\"")
-        if needQuote then
-          s"\"${escaped}\""
-        else
-          escaped
-
-    def writeCSV(rs: ResultSet, out: File): Long =
+    def writeJSONL(rs: ResultSet, out: File): Long =
       var rowCount = 0L
-      val meta     = rs.getMetaData
-      val colCount = meta.getColumnCount
       val w        = BufferedWriter(FileWriter(out))
+      val rowCodec = MessageCodec.of[ListMap[String, Any]]
       try
-        // Header
-        val header = (1 to colCount).map(i => quoteCSV(meta.getColumnName(i))).mkString(",")
-        w.write(header)
-        w.newLine()
-        // Rows
-        while rs.next() do
-          val cols = new Array[String](colCount)
-          var i    = 1
-          while i <= colCount do
-            val v = rs.getObject(i)
-            cols(i - 1) = quoteCSV(Option(v).map(_.toString).orNull)
-            i += 1
-          w.write(cols.mkString(","))
+        val codec = JDBCCodec(rs)
+        val it = codec.mapMsgPackMapRows { msgpack =>
+          rowCodec.fromMsgPack(msgpack)
+        }
+        while it.hasNext do
+          val row = it.next()
+          w.write(rowCodec.toJson(row))
           w.newLine()
           rowCount += 1
         rowCount
@@ -334,47 +316,45 @@ class QueryExecutor(
         w.flush()
         w.close()
 
-    // 1) Execute on Trino (or current engine) and dump to CSV
+    // 1) Execute on Trino (or current engine) and dump to JSONL
     val baseSQL = GenSQL.generateSQLFromRelation(save.child, addHeader = false)
     given monitor: QueryProgressMonitor = context.queryProgressMonitor
     getDBConnector(defaultProfile).runQuery(baseSQL.sql) { rs =>
-      val n = writeCSV(rs, csvFile)
-      workEnv.info(s"Exported ${n} rows to CSV at ${csvFile.getPath}")
+      val n = writeJSONL(rs, jsonlFile)
+      workEnv.info(s"Exported ${n} rows to JSONL at ${jsonlFile.getPath}")
       n
     }
 
-    // 2) Load CSV into DuckDB and write Parquet
+    // 2) Load JSONL into DuckDB and write Parquet
     val duck                  = dbConnectorProvider.getConnector(DBType.DuckDB, None)
     val tmp                   = s"__save_tmp_${UUID.randomUUID().toString.replace('-', '_')}"
     def sq(s: String): String = s.replace("'", "''")
-
-    val createTmp =
-      s"create temp table ${tmp} as select * from read_csv_auto('${sq(
-          csvFile.getPath
-        )}', HEADER=true)"
-    duck.execute(createTmp)
-
-    // Build COPY options (minimal): Parquet + atomic write
-    val copyOpts = "(FORMAT 'parquet', USE_TMP_FILE true)"
-    val copySQL  = s"copy (select * from ${tmp}) to '${sq(targetPath)}' ${copyOpts}"
-    duck.execute(copySQL)
-
-    // Cleanup temp table and CSV
+    import scala.util.control.NonFatal
     try
-      duck.execute(s"drop table ${tmp}")
-    catch
-      case _: Throwable =>
-        ()
-    try
-      csvFile.delete()
-    catch
-      case _: Throwable =>
-        ()
-    try
-      stageDir.delete()
-    catch
-      case _: Throwable =>
-        ()
+      val createTmp =
+        s"create temp table ${tmp} as select * from read_json_auto('${sq(jsonlFile.getPath)}')"
+      duck.execute(createTmp)
+
+      // Build COPY options (minimal): Parquet + atomic write
+      val copyOpts = "(FORMAT 'parquet', USE_TMP_FILE true)"
+      val copySQL  = s"copy (select * from ${tmp}) to '${sq(targetPath)}' ${copyOpts}"
+      duck.execute(copySQL)
+    finally
+      try
+        duck.execute(s"drop table if exists ${tmp}")
+      catch
+        case NonFatal(e) =>
+          workEnv.warn(s"Failed to drop temporary table ${tmp}: ${e.getMessage}")
+      try
+        jsonlFile.delete()
+      catch
+        case NonFatal(e) =>
+          workEnv.warn(s"Failed to delete temporary JSONL ${jsonlFile.getPath}: ${e.getMessage}")
+      try
+        stageDir.delete()
+      catch
+        case NonFatal(e) =>
+          workEnv.warn(s"Failed to delete stage dir ${stageDir.getPath}: ${e.getMessage}")
 
     workEnv.info(s"Saved result to ${targetPath}")
     QueryResult.empty
