@@ -38,8 +38,8 @@
 ## Commit & Pull Requests
 - Commit style: conventional prefixes seen in history (e.g., `fix: ...`, `feature: ...`, `build(deps): ...`, `docs:`). Use present tense, concise scope.
 - PRs must include: clear description, linked issues (`Fixes #123`), and screenshots/GIFs for UI changes.
-- Before committing/opening: run `./sbt scalafmtAll` (or `scalafmtCheck`) and `./sbt compile test`; for UI changes, also `npm run build-ui`.
-- Optional pre-commit: `echo '#!/bin/sh\n./sbt -batch scalafmtCheck || { echo "Run ./sbt scalafmtAll"; exit 1; }' > .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit`
+- Before committing/opening: run `./sbt scalafmtAll` (or `scalafmtCheck`) and `./sbt compile`.
+- Prefer scoped tests to keep feedback fast: `./sbt langJVM/test`, `./sbt runner/test`, `./sbt server/test`, or `./sbt "langJVM/testOnly *SqlParserTest"`. For UI workspaces, also `npm run build-ui`.
 
 ## Security & Configuration
 - Do not commit credentials. Use environment variables and reference them in `profile.yml` as `${VAR_NAME}`.
