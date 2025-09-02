@@ -70,7 +70,7 @@ class LocalFileReadHandoffTest extends AirSpec:
     flaky {
       val result = runner.runStatement(QueryRequest(q, isDebugRun = false))
       // Print for debugging in CI/local runs
-      println(result.toPrettyBox())
+      debug(result.toPrettyBox())
       result.isSuccessfulQueryResult shouldBe true
 
       // Extract TableRows from the result, handling both direct TableRows and QueryResultList cases
