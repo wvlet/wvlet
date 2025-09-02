@@ -62,9 +62,8 @@ class TrinoLocalSaveTest extends AirSpec:
       }
     finally duck.close()
 
-    // Cleanup
-    absOut.delete() shouldBe true
-    tmpDir.toFile.delete() shouldBe true
+    // Cleanup best-effort (tmpDir may contain build artifacts)
+    absOut.delete()
   }
 
 end TrinoLocalSaveTest
