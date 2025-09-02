@@ -36,8 +36,8 @@ class SaveToLocalParquetViaDuckDBTest extends AirSpec:
 
     given QueryProgressMonitor = QueryProgressMonitor.noOp
 
-    val outPathAbs = Paths.get(tmpDir.toString, "out.parquet").toFile.getAbsolutePath
-    val outPathEsc = outPathAbs.replace("'", "''") // single-quote escape for SQL literal
+    val outPathRel = "out.parquet"
+    val outPathEsc = outPathRel.replace("'", "''") // single-quote escape for SQL literal
     val query =
       s"""
          |from [
@@ -50,7 +50,7 @@ class SaveToLocalParquetViaDuckDBTest extends AirSpec:
     val result = runner.runStatement(QueryRequest(query, isDebugRun = false))
     result.isSuccessfulQueryResult shouldBe true
 
-    val absOut = new java.io.File(outPathAbs)
+    val absOut = Paths.get(tmpDir.toString, outPathRel).toFile
 
     def awaitExists(f: java.io.File, timeoutMs: Long = 10000L): Unit =
       val deadline = System.currentTimeMillis() + timeoutMs
@@ -63,7 +63,7 @@ class SaveToLocalParquetViaDuckDBTest extends AirSpec:
     // Verify the content is readable as Parquet via DuckDB with small retries
     val duck = DuckDBConnector(work)
     try
-      val sql                          = s"select count(*) as c from read_parquet('${outPathEsc}')"
+      val sql = s"select count(*) as c from read_parquet('${absOut.getPath.replace("'", "''")}')"
       var attempts                     = 0
       var lastError: Option[Throwable] = None
       var ok                           = false

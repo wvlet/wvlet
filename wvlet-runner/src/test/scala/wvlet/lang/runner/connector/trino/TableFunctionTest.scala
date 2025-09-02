@@ -41,7 +41,7 @@ class TableFunctionTest extends AirSpec:
            |from TABLE(
            |  duckdb.sql(
            |    'SELECT *
-           |     FROM ''https://shell.duckdb.org/data/tpch/0_01/parquet/customer.parquet''
+           |     FROM values(1, 15, ''25-989-741-2988'') as t(c_custkey, c_nationkey, c_phone)
            |     where c_custkey = 1'
            |  )
            |)
