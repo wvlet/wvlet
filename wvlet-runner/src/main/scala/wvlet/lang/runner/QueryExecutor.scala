@@ -273,20 +273,87 @@ class QueryExecutor(
     * Note: This is a scaffolding entry point; full ingestion will follow.
     */
   private def executeSaveToLocalFileViaDuckDB(save: SaveTo)(using context: Context): QueryResult =
-    import java.io.File
-    val targetPath = context.dataFilePath(save.targetName)
-    val stageRoot  = new File(s"${workEnv.cacheFolder}/wvlet/stage")
-    if !stageRoot.exists() then
-      stageRoot.mkdirs()
+    import java.io.{BufferedWriter, File, FileWriter}
+    import java.sql.ResultSet
+    import wvlet.airframe.ulid.ULID
+    import java.nio.file.{Files, Paths}
+    import scala.util.Using
 
+    def isRemotePath(p: String): Boolean = p.startsWith("s3://") || p.startsWith("https://")
+
+    val targetPath = context.dataFilePath(save.targetName)
+    if isRemotePath(targetPath) then
+      throw StatusCode
+        .NOT_IMPLEMENTED
+        .newException(
+          s"Remote path is not supported for local file save via DuckDB handoff: ${targetPath}"
+        )
+
+    if !targetPath.toLowerCase.endsWith(".parquet") then
+      throw StatusCode
+        .NOT_IMPLEMENTED
+        .newException(s"Only Parquet is supported for Trino local save. Given: ${targetPath}")
+
+    val uid       = ULID.newULIDString
+    val stageDir  = File(s"${workEnv.cacheFolder}/wvlet/stage/${uid}")
+    val jsonlFile = File(stageDir, "export.jsonl")
+    if !stageDir.exists() then
+      Files.createDirectories(Paths.get(stageDir.getPath))
+
+    def writeJSONL(rs: ResultSet, out: File): Long =
+      var rowCount = 0L
+      val rowCodec = MessageCodec.of[ListMap[String, Any]]
+      Using.resource(BufferedWriter(FileWriter(out))) { w =>
+        val codec = JDBCCodec(rs)
+        val it = codec.mapMsgPackMapRows { msgpack =>
+          rowCodec.fromMsgPack(msgpack)
+        }
+        while it.hasNext do
+          val row = it.next()
+          w.write(rowCodec.toJson(row))
+          w.newLine()
+          rowCount += 1
+      }
+      rowCount
+
+    // 1) Execute on Trino (or current engine) and dump to JSONL
     val baseSQL = GenSQL.generateSQLFromRelation(save.child, addHeader = false)
-    val hint    = s"Staging under '${stageRoot.getPath}', target '${targetPath}'"
-    workEnv.warn(
-      s"Local file save via DuckDB handoff is not yet implemented. ${hint}\n[sql]\n${baseSQL.sql}"
-    )
-    throw StatusCode
-      .NOT_IMPLEMENTED
-      .newException(s"Cross-engine save to local file is under development (see issue #1143).")
+    given monitor: QueryProgressMonitor = context.queryProgressMonitor
+    getDBConnector(defaultProfile).runQuery(baseSQL.sql) { rs =>
+      val n = writeJSONL(rs, jsonlFile)
+      workEnv.info(s"Exported ${n} rows to JSONL at ${jsonlFile.getPath}")
+      n
+    }
+
+    // 2) Directly COPY from read_json_auto() to Parquet via DuckDB
+    val duck                  = dbConnectorProvider.getConnector(DBType.DuckDB, None)
+    def sq(s: String): String = s.replace("'", "''")
+    import scala.util.control.NonFatal
+    try
+      val copyOpts = "(FORMAT 'parquet', USE_TMP_FILE true)"
+      val copySQL =
+        s"copy (select * from read_json_auto('${sq(jsonlFile.getPath)}')) to '${sq(
+            targetPath
+          )}' ${copyOpts}"
+      duck.execute(copySQL)
+    finally
+      def safe(msg: String)(f: => Unit): Unit =
+        try
+          f
+        catch
+          case NonFatal(e) =>
+            workEnv.warn(s"${msg}: ${e.getMessage}")
+      safe(s"Failed to delete temporary JSONL ${jsonlFile.getPath}") {
+        jsonlFile.delete()
+      }
+      safe(s"Failed to delete stage dir ${stageDir.getPath}") {
+        stageDir.delete()
+      }
+
+    workEnv.info(s"Saved result to ${targetPath}")
+    QueryResult.empty
+
+  end executeSaveToLocalFileViaDuckDB
 
   private def executeQuery(plan: LogicalPlan)(using context: Context): QueryResult =
     trace(s"Executing query: ${plan.pp}")
