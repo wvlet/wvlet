@@ -325,19 +325,16 @@ class QueryExecutor(
       n
     }
 
-    // 2) Load JSONL into DuckDB and write Parquet
+    // 2) Directly COPY from read_json_auto() to Parquet via DuckDB
     val duck                  = dbConnectorProvider.getConnector(DBType.DuckDB, None)
-    val tmp                   = s"__save_tmp_${uid}"
     def sq(s: String): String = s.replace("'", "''")
     import scala.util.control.NonFatal
     try
-      val createTmp =
-        s"create temp table ${tmp} as select * from read_json_auto('${sq(jsonlFile.getPath)}')"
-      duck.execute(createTmp)
-
-      // Build COPY options (minimal): Parquet + atomic write
       val copyOpts = "(FORMAT 'parquet', USE_TMP_FILE true)"
-      val copySQL  = s"copy (select * from ${tmp}) to '${sq(targetPath)}' ${copyOpts}"
+      val copySQL =
+        s"copy (select * from read_json_auto('${sq(jsonlFile.getPath)}')) to '${sq(
+            targetPath
+          )}' ${copyOpts}"
       duck.execute(copySQL)
     finally
       def safe(msg: String)(f: => Unit): Unit =
@@ -346,9 +343,6 @@ class QueryExecutor(
         catch
           case NonFatal(e) =>
             workEnv.warn(s"${msg}: ${e.getMessage}")
-      safe(s"Failed to drop temporary table ${tmp}") {
-        duck.execute(s"drop table if exists ${tmp}")
-      }
       safe(s"Failed to delete temporary JSONL ${jsonlFile.getPath}") {
         jsonlFile.delete()
       }
