@@ -16,6 +16,7 @@ import SyntaxContext.*
 import wvlet.lang.compiler.codegen.CodeFormatter
 import wvlet.lang.compiler.codegen.CodeFormatter.*
 import wvlet.lang.compiler.codegen.CodeFormatterConfig
+import wvlet.lang.model.DataType.{EmptyRelationType, NamedType, SchemaType}
 import wvlet.lang.model.plan.SamplingMethod.reservoir
 
 import scala.collection.immutable.ListMap
@@ -358,7 +359,16 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         selectAll(expr(t.sqlExpr), block)
       case v: Values =>
         // VALUES in FROM clause needs parentheses
-        selectAll(paren(values(v)), block)
+        v.relationType match
+          case s: SchemaType =>
+            // VALUES with alias and schema
+            val tableAlias: Doc = tableAliasOf(
+              NameExpr.fromString(s.typeName.name),
+              Some(s.columnTypes)
+            )
+            selectAll(group(wl(paren(values(v)), "as", tableAlias)), block)
+          case _ =>
+            selectAll(paren(values(v)), block)
       case a: AliasedRelation =>
         val tableAlias: Doc = tableAliasOf(a)
 
@@ -772,9 +782,11 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
 
   end relation
 
-  private def tableAliasOf(a: AliasedRelation)(using sc: SyntaxContext): Doc =
-    val name = expr(a.alias)
-    a.columnNames match
+  private def tableAliasOf(alias: NameExpr, columnNames: Option[List[NamedType]])(using
+      sc: SyntaxContext
+  ): Doc =
+    val name = expr(alias)
+    columnNames match
       case Some(columns) =>
         val cols = cl(
           columns.map { c =>
@@ -784,6 +796,11 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         name + paren(cols)
       case None =>
         name
+
+  private def tableAliasOf(a: AliasedRelation)(using sc: SyntaxContext): Doc = tableAliasOf(
+    a.alias,
+    a.columnNames
+  )
 
   private def indented(d: Doc): Doc = nest(maybeNewline + d)
 

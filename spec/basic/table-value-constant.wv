@@ -38,11 +38,11 @@ val products(id, name, price) = [
 ]
 
 from products
-where _.price > 50
+where price > 50
 test _.size should be 2
 
 from products
-where _.price < 50
+where price < 50
 test _.size should be 1
 
 -- Join with table value constant (simplified for now)

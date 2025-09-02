@@ -338,45 +338,11 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
                     // The expression is an ArrayConstructor containing rows (each row is also an ArrayConstructor)
                     v.expr match
                       case arr: ArrayConstructor =>
-                        // Validate that all rows have the same number of columns as declared
-                        val declaredColumnCount = schemaType.columnTypes.size
-                        val invalidRows = arr
-                          .values
-                          .zipWithIndex
-                          .collect {
-                            case (row: ArrayConstructor, idx)
-                                if row.values.size != declaredColumnCount =>
-                              (idx + 1, row.values.size)
-                          }
-
-                        if invalidRows.nonEmpty then
-                          val errors = invalidRows
-                            .map { case (rowNum, colCount) =>
-                              s"Row $rowNum has $colCount columns, expected $declaredColumnCount"
-                            }
-                            .mkString(", ")
-                          throw StatusCode
-                            .INVALID_ARGUMENT
-                            .newException(
-                              s"Table value constant '${v
-                                  .name}' has mismatched column counts: $errors",
-                              context.sourceLocationAt(v.span)
-                            )
-                        else
-                          // arr.values contains the rows - use them directly
-                          val values = Values(arr.values, arr.span)
-                          // TODO: Column names from SchemaType are not being properly applied to Values
-                          // This needs further investigation of how to properly wrap Values with column names
-                          // without triggering tree transformation issues in AliasedRelation
-                          values
+                        // arr.values contains the rows - use them directly
+                        val values = Values(arr.values, schemaType, arr.span)
+                        values
                       case other =>
-                        throw StatusCode
-                          .SYNTAX_ERROR
-                          .newException(
-                            s"Table value constant '${v
-                                .name}' must be an array literal, but found ${other.nodeName}",
-                            context.sourceLocationAt(other.span)
-                          )
+                        ref
                   case _ =>
                     // Regular val definition, not a table value constant
                     ref

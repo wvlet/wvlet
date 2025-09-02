@@ -2134,7 +2134,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
 
     nextValue
     consume(WvletToken.R_BRACKET)
-    Values(values.result(), spanFrom(t))
+    Values(values.result(), EmptyRelationType, spanFrom(t))
   }
 
   def array(): ArrayConstructor = node {
