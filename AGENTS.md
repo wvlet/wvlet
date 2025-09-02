@@ -31,11 +31,10 @@
   - Enable debug logs:
     - Append `-- -l debug` to test commands to see detailed logs.
     - Example: `./sbt "runner/testOnly *BasicSpec -- -l debug"`
-    - Alternative (from CLAUDE.md): `./sbt "langJVM/testOnly *Test -- -l debug"`
 
 ## Commit & Pull Requests
 - Commit style: conventional prefixes seen in history (e.g., `fix: ...`, `feature: ...`, `build(deps): ...`, `docs:`). Use present tense, concise scope.
-- PRs must include: clear description, linked issues (`Fixes #123`), test results (`./sbt test`), and screenshots/GIFs for UI changes.
+- PRs must include: clear description, linked issues (`Fixes #123`), and screenshots/GIFs for UI changes.
 - Before opening: run `./sbt compile test scalafmtAll` and relevant `npm run build-ui` if UI touched.
 
 ## Security & Configuration
