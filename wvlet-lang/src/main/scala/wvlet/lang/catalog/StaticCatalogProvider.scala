@@ -35,22 +35,17 @@ object StaticCatalogProvider extends LogSupport:
 
         // Load schemas
         val schemasPath = SourceIO.resolvePath(catalogPath, "schemas.json")
-        val schemasOpt =
+        val schemas =
           SourceIO.readFileIfExists(schemasPath) match
             case Some(json) =>
               try
-                Some(CatalogSerializer.deserializeSchemas(json))
+                CatalogSerializer.deserializeSchemas(json)
               catch
                 case e: Exception =>
                   error(s"Failed to load schemas from ${schemasPath}: ${e.getMessage}", e)
-                  None
+                  return None
             case None =>
-              Some(List.empty)
-
-        // If schemas failed to load due to corruption, return None
-        val schemas = schemasOpt match
-          case None => return None
-          case Some(schemaList) => schemaList
+              List.empty
 
         // Load tables for each schema
         val tables =
