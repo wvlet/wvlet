@@ -28,6 +28,9 @@
     - Class: `./sbt "runner/testOnly *BasicSpec"`
     - Specific .wv: `./sbt "runner/testOnly *BasicSpec -- spec:basic:hello.wv"`
     - Wildcard: `./sbt "runner/testOnly *BasicSpec -- spec:basic:query*.wv"`
+  - JVM-specific module:
+    - Run a single JVM test class in `wvlet-lang`: `./sbt "langJVM/testOnly *SqlParserTest"`
+    - Note: keep quotes to prevent shell globbing of `*`.
   - Enable debug logs:
     - Append `-- -l debug` to test commands to see detailed logs.
     - Example: `./sbt "runner/testOnly *BasicSpec -- -l debug"`
