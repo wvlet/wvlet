@@ -56,7 +56,8 @@ class LocalFileReadHandoffTest extends AirSpec:
     // Ensure the file is visible to the runner before executing
     def awaitExists(f: java.io.File, timeoutMs: Long = 3000L): Unit =
       val deadline = System.currentTimeMillis() + timeoutMs
-      while !f.exists() && System.currentTimeMillis() < deadline do Thread.sleep(50)
+      while !f.exists() && System.currentTimeMillis() < deadline do
+        Thread.sleep(50)
 
     awaitExists(out)
 
