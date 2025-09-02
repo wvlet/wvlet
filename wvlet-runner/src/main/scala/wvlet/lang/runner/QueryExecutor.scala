@@ -160,7 +160,14 @@ class QueryExecutor(
           report(QueryResult.empty)
 
     process(executionPlan)(using context)
-    QueryResult.fromList(results.result())
+    // Prefer the last successful result when no results were accumulated.
+    // This guards against execution paths that update `lastResult` but do not
+    // add to the `results` builder (e.g., nested task flows).
+    val aggregated = QueryResult.fromList(results.result())
+    if aggregated.isEmpty && !lastResult.isEmpty then
+      lastResult
+    else
+      aggregated
 
   end execute
 
