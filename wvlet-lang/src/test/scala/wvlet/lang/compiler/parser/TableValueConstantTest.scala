@@ -33,11 +33,11 @@ class TableValueConstantTest extends AirSpec:
     val valDef = pkg.statements.head.asInstanceOf[ValDef]
 
     valDef.name.name shouldBe "t1"
-    valDef.dataType.isInstanceOf[DataType.SchemaType] shouldBe true
-    val schemaType = valDef.dataType.asInstanceOf[DataType.SchemaType]
-    schemaType.columnTypes.size shouldBe 2
-    schemaType.columnTypes(0).name.name shouldBe "id"
-    schemaType.columnTypes(1).name.name shouldBe "name"
+    valDef.dataType shouldMatch { case schemaType: DataType.SchemaType =>
+      schemaType.columnTypes.size shouldBe 2
+      schemaType.columnTypes(0).name.name shouldBe "id"
+      schemaType.columnTypes(1).name.name shouldBe "name"
+    }
   }
 
   test("parse table value constant with column types") {
@@ -48,13 +48,13 @@ class TableValueConstantTest extends AirSpec:
     val valDef = pkg.statements.head.asInstanceOf[ValDef]
 
     valDef.name.name shouldBe "t2"
-    valDef.dataType.isInstanceOf[DataType.SchemaType] shouldBe true
-    val schemaType = valDef.dataType.asInstanceOf[DataType.SchemaType]
-    schemaType.columnTypes.size shouldBe 2
-    schemaType.columnTypes(0).name.name shouldBe "id"
-    schemaType.columnTypes(0).dataType shouldBe DataType.IntType
-    schemaType.columnTypes(1).name.name shouldBe "name"
-    schemaType.columnTypes(1).dataType shouldBe DataType.StringType
+    valDef.dataType shouldMatch { case schemaType: DataType.SchemaType =>
+      schemaType.columnTypes.size shouldBe 2
+      schemaType.columnTypes(0).name.name shouldBe "id"
+      schemaType.columnTypes(0).dataType shouldBe DataType.IntType
+      schemaType.columnTypes(1).name.name shouldBe "name"
+      schemaType.columnTypes(1).dataType shouldBe DataType.StringType
+    }
   }
 
   test("parse table value constant with trailing comma") {
@@ -68,9 +68,9 @@ class TableValueConstantTest extends AirSpec:
     val valDef = pkg.statements.head.asInstanceOf[ValDef]
 
     valDef.name.name shouldBe "t3"
-    valDef.dataType.isInstanceOf[DataType.SchemaType] shouldBe true
-    val schemaType = valDef.dataType.asInstanceOf[DataType.SchemaType]
-    schemaType.columnTypes.size shouldBe 2
+    valDef.dataType shouldMatch { case schemaType: DataType.SchemaType =>
+      schemaType.columnTypes.size shouldBe 2
+    }
   }
 
   test("parse table value constant with trailing comma in rows") {
@@ -84,9 +84,9 @@ class TableValueConstantTest extends AirSpec:
     val valDef = pkg.statements.head.asInstanceOf[ValDef]
 
     valDef.name.name shouldBe "t4"
-    valDef.dataType.isInstanceOf[DataType.SchemaType] shouldBe true
-    val schemaType = valDef.dataType.asInstanceOf[DataType.SchemaType]
-    schemaType.columnTypes.size shouldBe 2
+    valDef.dataType shouldMatch { case schemaType: DataType.SchemaType =>
+      schemaType.columnTypes.size shouldBe 2
+    }
   }
 
   test("use table value constant in query") {
@@ -99,7 +99,8 @@ class TableValueConstantTest extends AirSpec:
 
     val valDef = pkg.statements(0).asInstanceOf[ValDef]
     valDef.name.name shouldBe "t1"
-    valDef.dataType.isInstanceOf[DataType.SchemaType] shouldBe true
+    valDef.dataType shouldMatch { case _: DataType.SchemaType =>
+    }
 
     val query = pkg.statements(1).asInstanceOf[Query]
     query shouldNotBe null
@@ -113,7 +114,10 @@ class TableValueConstantTest extends AirSpec:
     val valDef = pkg.statements.head.asInstanceOf[ValDef]
 
     valDef.name.name shouldBe "x"
-    valDef.dataType.isInstanceOf[DataType.SchemaType] shouldBe false
+    valDef.dataType match
+      case _: DataType.SchemaType =>
+        fail("Regular val should not be SchemaType")
+      case _ => // ok
   }
 
   test("parse empty table value constant") {
@@ -124,9 +128,9 @@ class TableValueConstantTest extends AirSpec:
     val valDef = pkg.statements.head.asInstanceOf[ValDef]
 
     valDef.name.name shouldBe "empty_table"
-    valDef.dataType.isInstanceOf[DataType.SchemaType] shouldBe true
-    val schemaType = valDef.dataType.asInstanceOf[DataType.SchemaType]
-    schemaType.columnTypes.size shouldBe 2
+    valDef.dataType shouldMatch { case schemaType: DataType.SchemaType =>
+      schemaType.columnTypes.size shouldBe 2
+    }
   }
 
   test("parse table value constant with single row") {
@@ -137,9 +141,9 @@ class TableValueConstantTest extends AirSpec:
     val valDef = pkg.statements.head.asInstanceOf[ValDef]
 
     valDef.name.name shouldBe "single_row"
-    valDef.dataType.isInstanceOf[DataType.SchemaType] shouldBe true
-    val schemaType = valDef.dataType.asInstanceOf[DataType.SchemaType]
-    schemaType.columnTypes.size shouldBe 3
+    valDef.dataType shouldMatch { case schemaType: DataType.SchemaType =>
+      schemaType.columnTypes.size shouldBe 3
+    }
   }
 
 end TableValueConstantTest

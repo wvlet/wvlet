@@ -369,13 +369,13 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
                           // This needs further investigation of how to properly wrap Values with column names
                           // without triggering tree transformation issues in AliasedRelation
                           values
-                      case _ =>
+                      case other =>
                         throw StatusCode
-                          .INVALID_ARGUMENT
+                          .SYNTAX_ERROR
                           .newException(
                             s"Table value constant '${v
-                                .name}' must be initialized with an array of arrays",
-                            context.sourceLocationAt(v.span)
+                                .name}' must be an array literal, but found ${other.nodeName}",
+                            context.sourceLocationAt(other.span)
                           )
                   case _ =>
                     // Regular val definition, not a table value constant
