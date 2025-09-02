@@ -360,13 +360,39 @@ class QueryExecutor(
     workEnv.trace(s"Executing plan: ${plan.pp}")
     plan match
       case q: Relation =>
+        // Decide whether to auto-switch to DuckDB for simple local file reads
+        def isRemotePath(p: String): Boolean = p.startsWith("s3://") || p.startsWith("https://")
+        def prefersDuckDBForLocalRead(r: Relation): Boolean =
+          var hasLocalFile    = false
+          var hasNonFileInput = false
+          r.traverse {
+            case f: FileScan =>
+              if !isRemotePath(f.filePath) then
+                hasLocalFile = true
+            case f: FileRef =>
+              if !isRemotePath(f.filePath) then
+                hasLocalFile = true
+            case _: TableRef | _: TableFunctionCall | _: RawSQL | _: ModelScan =>
+              hasNonFileInput = true
+          }
+          hasLocalFile && !hasNonFileInput
+
+        val useDuck      = prefersDuckDBForLocalRead(q)
         val generatedSQL = GenSQL.generateSQLFromRelation(q)
+        if useDuck then
+          workEnv.info("Auto-switched to DuckDB for local file read.")
         workEnv.info(s"Executing SQL:\n${generatedSQL.sql}")
         debug(s"Executing SQL:\n${generatedSQL.sql}")
         try
           given monitor: QueryProgressMonitor = context.queryProgressMonitor
+          val connector =
+            if useDuck then
+              dbConnectorProvider.getConnector(DBType.DuckDB, None)
+            else
+              getDBConnector(defaultProfile)
+
           val result =
-            getDBConnector(defaultProfile).runQuery(generatedSQL.sql) { rs =>
+            connector.runQuery(generatedSQL.sql) { rs =>
               val metadata = rs.getMetaData
               val fields =
                 for i <- 1 to metadata.getColumnCount
@@ -401,7 +427,7 @@ class QueryExecutor(
           result
         catch
           case e: SQLException =>
-            // TODO: Switch error code based on the error type
+            // Preserve existing error shape including the SQL text
             throw StatusCode
               .SYNTAX_ERROR
               .newException(s"${e.getMessage}\n[sql]\n${generatedSQL.sql}", e)
