@@ -35,6 +35,7 @@ dist
 .ipynb_checkpoints
 .cache
 .scala-build
+.claude/
 
 ### VisualStudioCode ###
 .vscode/*

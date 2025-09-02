@@ -15,7 +15,7 @@
 - UI dev: `npm run ui` (runs `wvlet-ui-main` via Vite). Playground: `npm run playground`. Build UI: `npm run build-ui`.
 
 ## Coding Style & Naming
-- Language: Scala 3 (new syntax). Auto-format with Scalafmt (`.scalafmt.conf`, 100 col limit). Run `scalafmtAll` before PRs.
+- Language: Scala 3 (new syntax). Auto-format with Scalafmt (`.scalafmt.conf`, 100 col limit). Run `scalafmtAll` before commits and PRs.
 - Indentation: default Scalafmt (spaces). Use CamelCase for types/objects; lowerCamelCase for vals/defs; test classes end with `*Test` or `*Spec`.
 - JS/TS: Vite + TypeScript in UI workspaces; keep modules ESModule style.
 
@@ -38,7 +38,8 @@
 ## Commit & Pull Requests
 - Commit style: conventional prefixes seen in history (e.g., `fix: ...`, `feature: ...`, `build(deps): ...`, `docs:`). Use present tense, concise scope.
 - PRs must include: clear description, linked issues (`Fixes #123`), and screenshots/GIFs for UI changes.
-- Before opening: run `./sbt compile test scalafmtAll` and relevant `npm run build-ui` if UI touched.
+- Before committing/opening: run `./sbt scalafmtAll` (or `scalafmtCheck`) and `./sbt compile`.
+- Prefer scoped tests to keep feedback fast: `./sbt langJVM/test`, `./sbt runner/test`, `./sbt server/test`, or `./sbt "langJVM/testOnly *SqlParserTest"`. For UI workspaces, also `npm run build-ui`.
 
 ## Security & Configuration
 - Do not commit credentials. Use environment variables and reference them in `profile.yml` as `${VAR_NAME}`.

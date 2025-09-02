@@ -256,9 +256,37 @@ class QueryExecutor(
   private def executeSave(save: Save)(using context: Context): QueryResult =
     trace(s"Executing save:\n${save.pp}")
     workEnv.trace(s"Executing save: ${save.pp}")
-    val statements = GenSQL.generateSaveSQL(save, context)
-    executeStatement(statements)
-    QueryResult.empty
+    save match
+      case s: SaveTo if s.isForFile && !context.dbType.supportSaveAsFile =>
+        // Cross-engine handoff (e.g., Trino -> DuckDB) for local file output
+        executeSaveToLocalFileViaDuckDB(s)
+      case _ =>
+        val statements = GenSQL.generateSaveSQL(save, context)
+        executeStatement(statements)
+        QueryResult.empty
+
+  /**
+    * Cross-engine SaveTo implementation for local files when the current DB doesn't support direct
+    * file output. Streams from the current connector (e.g., Trino) and writes via DuckDB. Temporary
+    * artifacts live under workEnv.cacheFolder.
+    *
+    * Note: This is a scaffolding entry point; full ingestion will follow.
+    */
+  private def executeSaveToLocalFileViaDuckDB(save: SaveTo)(using context: Context): QueryResult =
+    import java.io.File
+    val targetPath = context.dataFilePath(save.targetName)
+    val stageRoot  = new File(s"${workEnv.cacheFolder}/wvlet/stage")
+    if !stageRoot.exists() then
+      stageRoot.mkdirs()
+
+    val baseSQL = GenSQL.generateSQLFromRelation(save.child, addHeader = false)
+    val hint    = s"Staging under '${stageRoot.getPath}', target '${targetPath}'"
+    workEnv.warn(
+      s"Local file save via DuckDB handoff is not yet implemented. ${hint}\n[sql]\n${baseSQL.sql}"
+    )
+    throw StatusCode
+      .NOT_IMPLEMENTED
+      .newException(s"Cross-engine save to local file is under development (see issue #1143).")
 
   private def executeQuery(plan: LogicalPlan)(using context: Context): QueryResult =
     trace(s"Executing query: ${plan.pp}")
