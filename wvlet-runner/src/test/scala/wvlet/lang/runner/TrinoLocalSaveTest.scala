@@ -49,7 +49,14 @@ class TrinoLocalSaveTest extends AirSpec:
     result.isSuccessfulQueryResult shouldBe true
 
     val absOut = Paths.get(tmpDir.toString, outPath).toFile
-    absOut.exists() shouldBe true
+    def awaitExists(f: java.io.File, timeoutMs: Long = 3000L): Boolean =
+      val deadline = System.currentTimeMillis() + timeoutMs
+      var ok       = f.exists()
+      while !ok && System.currentTimeMillis() < deadline do
+        Thread.sleep(50)
+        ok = f.exists()
+      ok
+    awaitExists(absOut) shouldBe true
 
     // Verify the content is readable as Parquet via DuckDB
     val duck = DuckDBConnector(work)
