@@ -815,7 +815,7 @@ val data(id, category, value) = [
 
 from data
 group by category
-agg 
+agg
   _.count as item_count,
   value.sum as total_value,
   value.avg as avg_value;
