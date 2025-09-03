@@ -280,8 +280,9 @@ class QueryExecutor(
     * Note: This is a scaffolding entry point; full ingestion will follow.
     */
   private def executeSaveToLocalFileViaDuckDB(save: SaveTo)(using context: Context): QueryResult =
-    import java.io.{BufferedWriter, File, FileWriter}
+    import java.io.{BufferedWriter, File, FileOutputStream, FileWriter, OutputStreamWriter}
     import java.sql.ResultSet
+    import java.util.zip.GZIPOutputStream
     import wvlet.airframe.ulid.ULID
     import java.nio.file.{Files, Paths}
     import scala.util.Using
@@ -303,23 +304,24 @@ class QueryExecutor(
 
     val uid       = ULID.newULIDString
     val stageDir  = File(s"${workEnv.cacheFolder}/wvlet/stage/${uid}")
-    val jsonlFile = File(stageDir, "export.jsonl")
+    val jsonlFile = File(stageDir, "export.jsonl.gz")
     if !stageDir.exists() then
       Files.createDirectories(Paths.get(stageDir.getPath))
 
     def writeJSONL(rs: ResultSet, out: File): Long =
       var rowCount = 0L
       val rowCodec = MessageCodec.of[ListMap[String, Any]]
-      Using.resource(BufferedWriter(FileWriter(out))) { w =>
-        val codec = JDBCCodec(rs)
-        val it = codec.mapMsgPackMapRows { msgpack =>
-          rowCodec.fromMsgPack(msgpack)
-        }
-        while it.hasNext do
-          val row = it.next()
-          w.write(rowCodec.toJson(row))
-          w.newLine()
-          rowCount += 1
+      Using.resource(BufferedWriter(OutputStreamWriter(GZIPOutputStream(FileOutputStream(out))))) {
+        w =>
+          val codec = JDBCCodec(rs)
+          val it = codec.mapMsgPackMapRows { msgpack =>
+            rowCodec.fromMsgPack(msgpack)
+          }
+          while it.hasNext do
+            val row = it.next()
+            w.write(rowCodec.toJson(row))
+            w.newLine()
+            rowCount += 1
       }
       rowCount
 
@@ -328,7 +330,7 @@ class QueryExecutor(
     given monitor: QueryProgressMonitor = context.queryProgressMonitor
     getDBConnector(defaultProfile).runQuery(baseSQL.sql) { rs =>
       val n = writeJSONL(rs, jsonlFile)
-      workEnv.info(s"Exported ${n} rows to JSONL at ${jsonlFile.getPath}")
+      workEnv.info(s"Exported ${n} rows to compressed JSONL at ${jsonlFile.getPath}")
       n
     }
 
@@ -350,7 +352,7 @@ class QueryExecutor(
         catch
           case NonFatal(e) =>
             workEnv.warn(s"${msg}: ${e.getMessage}")
-      safe(s"Failed to delete temporary JSONL ${jsonlFile.getPath}") {
+      safe(s"Failed to delete temporary compressed JSONL ${jsonlFile.getPath}") {
         jsonlFile.delete()
       }
       safe(s"Failed to delete stage dir ${stageDir.getPath}") {
