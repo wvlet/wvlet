@@ -15,6 +15,7 @@ package wvlet.lang.runner
 
 import wvlet.airspec.AirSpec
 import wvlet.lang.api.WvletLangException
+import wvlet.airframe.control.Control
 import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.{CompilationUnit, Compiler, CompilerOptions, WorkEnv}
 import wvlet.lang.runner.connector.DBConnectorProvider
@@ -42,10 +43,8 @@ trait TrinoSpecRunner(specPath: String) extends AirSpec:
   private val queryExecutor       = QueryExecutor(dbConnectorProvider, profile, workEnv)
 
   override def afterAll: Unit =
-    try queryExecutor.close()
-    finally
-      try dbConnectorProvider.close()
-      finally server.close()
+    // Close in reverse creation order
+    Control.closeResources(queryExecutor, dbConnectorProvider, server)
 
   private val compiler = Compiler(
     CompilerOptions(
