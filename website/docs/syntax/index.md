@@ -253,6 +253,37 @@ select s"Hello ${x}!" as msg
 -- Returns [['Hello wvlet!']]
 ```
 
+#### Table Variable Constants
+
+You can also define table constants using the `val` keyword with column names and data:
+
+```wvlet
+-- Basic table value constant
+val products(id, name, price) = [
+  [1, "Laptop", 999.99],
+  [2, "Mouse", 29.99],
+  [3, "Keyboard", 79.99],
+]
+
+from products
+where _.price > 50
+```
+
+You can specify type annotations for table columns:
+
+```wvlet
+-- With type annotations
+val users(id:int, name:string, active:boolean) = [
+  [1, "Alice", true],
+  [2, "Bob", false],
+]
+
+from users
+where active = true
+```
+
+This syntax allows you to define inline data tables that can be referenced in your queries, which is particularly useful for testing, small lookup tables, or providing sample data.
+
 ### Conditional Expressions
 
 | Operator                             | Description                                                                      |
