@@ -281,6 +281,7 @@ val users(id:int, name:string, active:boolean) = [
 
 from users
 where active = true
+-- Returns [[1, "Alice", true]]
 ```
 
 This syntax allows you to define inline data tables that can be referenced in your queries, which is particularly useful for testing, small lookup tables, or providing sample data.
