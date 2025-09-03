@@ -23,7 +23,12 @@ val buildSettings = Seq[Setting[?]](
   Test / javaOptions += "-Dwvlet.sbt.testing=true",
   Test / parallelExecution := true,
   Test / logBuffered       := false,
-  libraryDependencies ++= Seq("org.wvlet.airframe" %%% "airspec" % AIRSPEC_VERSION % Test),
+  libraryDependencies ++=
+    Seq(
+      // https://users.scala-lang.org/t/scala-js-with-3-7-0-package-scala-contains-object-and-package-with-same-name-caps/10786/5
+      "org.scala-lang"      %% "scala3-library" % scalaVersion.value,
+      "org.wvlet.airframe" %%% "airspec"        % AIRSPEC_VERSION % Test
+    ),
   testFrameworks += new TestFramework("wvlet.airspec.Framework"),
   // Don't use pipelining as it tends to slowdown the build
   usePipelining := false
