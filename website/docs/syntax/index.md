@@ -741,7 +741,7 @@ The `group by` operator groups rows by one or more columns, creating groups of r
 ```wvlet
 val data(id, category, value) = [
   [1, "A", 100],
-  [2, "B", 200], 
+  [2, "B", 200],
   [1, "A", 150],
   [2, "B", 50],
   [3, "C", 300]
