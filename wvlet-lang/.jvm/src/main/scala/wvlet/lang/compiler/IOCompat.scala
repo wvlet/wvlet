@@ -106,4 +106,20 @@ trait IOCompat:
       case _ =>
         None
 
+  def readAsGzString(filePath: String): String =
+    import java.io.{BufferedReader, FileInputStream, InputStreamReader}
+    import java.util.zip.GZIPInputStream
+    import java.nio.charset.StandardCharsets
+    Control.withResource(new GZIPInputStream(new FileInputStream(filePath))) { gzipStream =>
+      Control.withResource(new BufferedReader(new InputStreamReader(gzipStream, StandardCharsets.UTF_8))) { reader =>
+        val lines = scala.collection.mutable.ArrayBuffer[String]()
+        var line = reader.readLine()
+        while (line != null) {
+          lines += line
+          line = reader.readLine()
+        }
+        lines.mkString("\n")
+      }
+    }
+
 end IOCompat

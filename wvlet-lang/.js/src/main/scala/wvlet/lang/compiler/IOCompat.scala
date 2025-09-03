@@ -23,3 +23,6 @@ trait IOCompat:
   def listDirectories(path: Any): List[String]           = List.empty
   def resolvePath(basePath: Any, segments: String*): Any = basePath
   def readFileIfExists(path: Any): Option[String]        = None
+
+  def readAsGzString(filePath: String): String =
+    throw new UnsupportedOperationException("Gzip file reading not supported in browser environment")

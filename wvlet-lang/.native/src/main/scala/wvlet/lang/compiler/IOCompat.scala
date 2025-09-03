@@ -78,4 +78,14 @@ trait IOCompat:
       case _ =>
         None
 
+  def readAsGzString(filePath: String): String =
+    // For Scala Native, we use a simple gzip decompression
+    // Note: This is a basic implementation for Native environment
+    val bytes = java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(filePath))
+    // In a real implementation, we would use a native gzip library
+    // For now, throw an exception until proper gzip support is added
+    throw new UnsupportedOperationException(
+      s"Gzip file reading not yet implemented for Scala Native: ${filePath}"
+    )
+
 end IOCompat

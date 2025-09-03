@@ -1,0 +1,16 @@
+-- Test loading JSON files to ensure basic functionality
+-- This validates that the TypeResolver changes don't break existing JSON loading
+
+from 'person-small.json'
+
+test _.output should be """
+┌──────┬─────────┬──────┐
+│  id  │  name   │ age  │
+│ long │ string  │ long │
+├──────┼─────────┼──────┤
+│    1 │ alice   │   10 │
+│    2 │ bob     │   24 │
+├──────┴─────────┴──────┤
+│ 2 rows               │
+└──────────────────────┘
+"""
