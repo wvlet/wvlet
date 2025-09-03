@@ -95,7 +95,7 @@ abstract class ScannerBase[Token](sourceFile: SourceFile, config: ScannerConfig)
   protected var commentBuffer: List[TokenData[Token]] = Nil
 
   // The last read character
-  protected var ch: Char = _
+  protected var ch: Char = scala.compiletime.uninitialized
   // The offset +1 of the last read character
   protected var charOffset: Int = config.startFrom
   // The offset before the last read character
