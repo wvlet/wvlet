@@ -22,11 +22,35 @@ class DBConnectorProvider(workEnv: WorkEnv) extends LogSupport with AutoCloseabl
       debug(s"Get a connector for DBType:${dbType}")
       dbType match
         case DBType.Trino =>
+          val props = profile.properties ++ properties
+          def parseBoolean(v: Any): Option[Boolean] =
+            v match
+              case b: java.lang.Boolean =>
+                Some(b.booleanValue())
+              case b: Boolean =>
+                Some(b)
+              case n: java.lang.Integer =>
+                Some(n.intValue() != 0)
+              case n: Int =>
+                Some(n != 0)
+              case s: String =>
+                s.trim.toLowerCase match
+                  case "true" | "1" | "yes" | "y" | "on" =>
+                    Some(true)
+                  case "false" | "0" | "no" | "n" | "off" =>
+                    Some(false)
+                  case _ =>
+                    None
+              case _ =>
+                None
+
+          val useSSL = props.get("useSSL").flatMap(parseBoolean).getOrElse(true)
           TrinoConnector(
             TrinoConfig(
               catalog = profile.catalog.getOrElse("default"),
               schema = profile.schema.getOrElse("default"),
               hostAndPort = profile.host.getOrElse("localhost"),
+              useSSL = useSSL,
               user = profile.user,
               password = profile.password
             ),
