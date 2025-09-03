@@ -1,0 +1,10 @@
+from [
+  [1, 'a'],
+  [2, 'b']
+] as t(id, name)
+save to 'target/out.parquet'
+
+from 'target/out.parquet'
+
+test _.size should be 2
+
