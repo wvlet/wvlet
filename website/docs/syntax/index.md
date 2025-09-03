@@ -267,6 +267,7 @@ val products(id, name, price) = [
 
 from products
 where _.price > 50
+-- Returns [[1, "Laptop", 999.99], [3, "Keyboard", 79.99]]
 ```
 
 You can specify type annotations for table columns:
