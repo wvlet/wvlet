@@ -17,6 +17,7 @@ val buildSettings = Seq[Setting[?]](
   description       := "wvlet: A flow-style query language",
   crossPaths        := true,
   publishMavenStyle := true,
+  scalacOptions ++= Seq("-deprecation", "-feature"),
   // Tell the runtime that we are running tests in SBT
   Test / testOptions += Tests.Setup(_ => sys.props("wvlet.sbt.testing") = "true"),
   Test / javaOptions += "-Dwvlet.sbt.testing=true",

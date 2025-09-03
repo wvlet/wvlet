@@ -133,7 +133,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     end attachComments
 
     if allNodes.nonEmpty then
-      val sortedComments = scanner.getCommentTokens().sortBy(_.span.end)
+      val sortedComments = scanner.getCommentTokens().sortBy(_.span.end)(using Ordering.Int)
       attachComments(sortedComments, allNodes.tail, allNodes.head)
 
     l
