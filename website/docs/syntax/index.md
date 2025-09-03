@@ -739,8 +739,15 @@ The `group by` operator groups rows by one or more columns, creating groups of r
 #### Basic Grouping
 
 ```wvlet
-from [[1, "A", 100], [2, "B", 200], [1, "A", 150], [2, "B", 50], [3, "C", 300]]
-  as data(id, category, value)
+val data(id, category, value) = [
+  [1, "A", 100],
+  [2, "B", 200], 
+  [1, "A", 150],
+  [2, "B", 50],
+  [3, "C", 300]
+]
+
+from data
 group by id, category;
 
 ┌─────┬──────────┬───────┐
@@ -765,8 +772,14 @@ In Wvlet, the default aggregation operator `arbitrary (any)` is used, which retu
 After grouping, you can reference grouping keys by their column names directly:
 
 ```wvlet
-from [[1, "A", 100], [2, "B", 200], [1, "A", 150], [2, "B", 50]]
-  as data(id, category, value)
+val data(id, category, value) = [
+  [1, "A", 100],
+  [2, "B", 200],
+  [1, "A", 150],
+  [2, "B", 50]
+]
+
+from data
 group by id, category
 select id, category;
 
@@ -792,8 +805,15 @@ The `agg` operator adds aggregation expressions. It is typically used after a `g
 #### Basic Aggregations
 
 ```wvlet
-from [[1, "A", 100], [2, "B", 200], [1, "A", 150], [2, "B", 50], [3, "C", 300]]
-  as data(id, category, value)
+val data(id, category, value) = [
+  [1, "A", 100],
+  [2, "B", 200],
+  [1, "A", 150],
+  [2, "B", 50],
+  [3, "C", 300]
+]
+
+from data
 group by category
 agg 
   _.count as item_count,
@@ -817,8 +837,15 @@ agg
 The underscore `_` represents the group of rows and supports various aggregation functions:
 
 ```wvlet
-from [[1, 10, "A"], [2, 20, "B"], [1, 30, "C"], [2, 40, "D"], [1, 50, "E"]]
-  as sales(store_id, amount, product)
+val sales(store_id, amount, product) = [
+  [1, 10, "A"],
+  [2, 20, "B"],
+  [1, 30, "C"],
+  [2, 40, "D"],
+  [1, 50, "E"]
+]
+
+from sales
 group by store_id
 agg 
   _.count as transaction_count,
@@ -846,9 +873,16 @@ agg
 You can filter groups after aggregation using a `where` clause after `agg`:
 
 ```wvlet
-from [[1, "Electronics", 1000], [2, "Books", 50], [3, "Electronics", 2000], 
-      [4, "Books", 75], [5, "Toys", 500], [6, "Electronics", 1500]]
-  as orders(id, category, amount)
+val orders(id, category, amount) = [
+  [1, "Electronics", 1000],
+  [2, "Books", 50],
+  [3, "Electronics", 2000],
+  [4, "Books", 75],
+  [5, "Toys", 500],
+  [6, "Electronics", 1500]
+]
+
+from orders
 group by category
 agg 
   _.count as order_count,
@@ -869,12 +903,15 @@ order by total_amount desc;
 #### Multiple Grouping with Complex Aggregations
 
 ```wvlet
-from [["2024-01-01", "A", "Electronics", 100],
-      ["2024-01-01", "B", "Books", 50],
-      ["2024-01-02", "A", "Electronics", 200],
-      ["2024-01-02", "A", "Books", 75],
-      ["2024-01-03", "B", "Electronics", 150]]
-  as sales(date, store, category, amount)
+val sales(date, store, category, amount) = [
+  ["2024-01-01", "A", "Electronics", 100],
+  ["2024-01-01", "B", "Books", 50],
+  ["2024-01-02", "A", "Electronics", 200],
+  ["2024-01-02", "A", "Books", 75],
+  ["2024-01-03", "B", "Electronics", 150]
+]
+
+from sales
 group by date, store
 agg 
   _.count as transactions,
@@ -900,8 +937,15 @@ agg
 You can use aggregations directly without `group by` to aggregate all rows:
 
 ```wvlet
-from [[1, 100], [2, 200], [3, 300], [4, 400], [5, 500]]
-  as data(id, value)
+val data(id, value) = [
+  [1, 100],
+  [2, 200],
+  [3, 300],
+  [4, 400],
+  [5, 500]
+]
+
+from data
 agg 
   _.count as total_rows,
   value.sum as sum_all,
@@ -922,15 +966,18 @@ agg
 Here's a practical example analyzing sales data:
 
 ```wvlet
-from [["2024-01", "North", "Laptop", 5, 1200],
-      ["2024-01", "North", "Phone", 10, 800],
-      ["2024-01", "South", "Laptop", 3, 1200],
-      ["2024-01", "South", "Tablet", 7, 600],
-      ["2024-02", "North", "Laptop", 8, 1200],
-      ["2024-02", "North", "Tablet", 5, 600],
-      ["2024-02", "South", "Phone", 12, 800],
-      ["2024-02", "South", "Laptop", 4, 1200]]
-  as sales(month, region, product, quantity, unit_price)
+val sales(month, region, product, quantity, unit_price) = [
+  ["2024-01", "North", "Laptop", 5, 1200],
+  ["2024-01", "North", "Phone", 10, 800],
+  ["2024-01", "South", "Laptop", 3, 1200],
+  ["2024-01", "South", "Tablet", 7, 600],
+  ["2024-02", "North", "Laptop", 8, 1200],
+  ["2024-02", "North", "Tablet", 5, 600],
+  ["2024-02", "South", "Phone", 12, 800],
+  ["2024-02", "South", "Laptop", 4, 1200]
+]
+
+from sales
 group by month, region
 agg 
   _.count as num_orders,
@@ -991,13 +1038,19 @@ The `join` operator combines rows from two or more tables based on a related col
 The basic `join` returns rows when there is a match in both tables:
 
 ```wvlet
-from
-  [[1, "apple", 50], [2, "banana", 10], [3, "cherry", 70]]
-  as fruit(id, name, price)
-join {
-  from [["o1", 1, 10], ["o2", 2, 5]]
-  as fruit_order(order_id, fruit_id, qty)
-}
+val fruit(id, name, price) = [
+  [1, "apple", 50],
+  [2, "banana", 10],
+  [3, "cherry", 70]
+]
+
+val fruit_order(order_id, fruit_id, qty) = [
+  ["o1", 1, 10],
+  ["o2", 2, 5]
+]
+
+from fruit
+join fruit_order
 on fruit.id = fruit_order.fruit_id
 select fruit.name, fruit_order.qty, fruit.price * fruit_order.qty as total_price;
 
@@ -1017,11 +1070,20 @@ select fruit.name, fruit_order.qty, fruit.price * fruit_order.qty as total_price
 A `left join` returns all rows from the left table, and matched rows from the right table. If no match, NULL values are returned for right table columns:
 
 ```wvlet
-from [[1, "Alice"], [2, "Bob"], [3, "Charlie"]] as users(id, name)
-left join {
-  from [[1, "order1"], [1, "order2"], [3, "order3"]]
-  as orders(user_id, order_id)
-}
+val users(id, name) = [
+  [1, "Alice"],
+  [2, "Bob"],
+  [3, "Charlie"]
+]
+
+val orders(user_id, order_id) = [
+  [1, "order1"],
+  [1, "order2"],
+  [3, "order3"]
+]
+
+from users
+left join orders
 on users.id = orders.user_id
 select users.name, orders.order_id;
 
@@ -1043,12 +1105,21 @@ select users.name, orders.order_id;
 A `right join` returns all rows from the right table, and matched rows from the left table:
 
 ```wvlet
-from [[1, "order1"], [1, "order2"], [3, "order3"], [4, "order4"]]
-  as orders(user_id, order_id)
-right join {
-  from [[1, "Alice"], [2, "Bob"], [3, "Charlie"]]
-  as users(id, name)
-}
+val orders(user_id, order_id) = [
+  [1, "order1"],
+  [1, "order2"],
+  [3, "order3"],
+  [4, "order4"]
+]
+
+val users(id, name) = [
+  [1, "Alice"],
+  [2, "Bob"],
+  [3, "Charlie"]
+]
+
+from orders
+right join users
 on orders.user_id = users.id
 select users.name, orders.order_id;
 
@@ -1070,10 +1141,19 @@ select users.name, orders.order_id;
 A `cross join` produces the Cartesian product of two tables, combining each row from the first table with every row from the second table:
 
 ```wvlet
-from [[1, "A"], [2, "B"]] as t1(id, val)
-cross join {
-  from [["X"], ["Y"], ["Z"]] as t2(letter)
-}
+val t1(id, val) = [
+  [1, "A"],
+  [2, "B"]
+]
+
+val t2(letter) = [
+  ["X"],
+  ["Y"],
+  ["Z"]
+]
+
+from t1
+cross join t2
 select t1.val, t2.letter;
 
 ┌────────┬────────┐
@@ -1096,10 +1176,20 @@ select t1.val, t2.letter;
 You can specify multiple conditions in the `on` clause using `and`/`or` operators:
 
 ```wvlet
-from [[1, "A", 100], [2, "B", 200], [3, "C", 300]] as t1(id, code, value)
-join {
-  from [[1, "A", 10], [2, "B", 20], [3, "D", 30]] as t2(id, code, qty)
-}
+val t1(id, code, value) = [
+  [1, "A", 100],
+  [2, "B", 200],
+  [3, "C", 300]
+]
+
+val t2(id, code, qty) = [
+  [1, "A", 10],
+  [2, "B", 20],
+  [3, "D", 30]
+]
+
+from t1
+join t2
 on t1.id = t2.id and t1.code = t2.code
 select t1.id, t1.code, t1.value, t2.qty;
 
@@ -1119,12 +1209,21 @@ select t1.id, t1.code, t1.value, t2.qty;
 Joins can be seamlessly combined with other Wvlet operators in a flow-style query:
 
 ```wvlet
-from [[1, "Electronics", 1000], [2, "Books", 500], [3, "Clothing", 750]]
-  as categories(id, name, budget)
-left join {
-  from [[1, "Laptop", 800], [1, "Phone", 600], [2, "Novel", 20], [4, "Unknown", 100]]
-  as products(category_id, name, price)
-}
+val categories(id, name, budget) = [
+  [1, "Electronics", 1000],
+  [2, "Books", 500],
+  [3, "Clothing", 750]
+]
+
+val products(category_id, name, price) = [
+  [1, "Laptop", 800],
+  [1, "Phone", 600],
+  [2, "Novel", 20],
+  [4, "Unknown", 100]
+]
+
+from categories
+left join products
 on categories.id = products.category_id
 where products.price != null
 group by categories.name
@@ -1149,14 +1248,28 @@ order by product_count desc;
 You can chain multiple join operations to combine data from several tables:
 
 ```wvlet
-from [[1, "Alice"], [2, "Bob"], [3, "Charlie"]] as users(id, name)
-join {
-  from [[1, 101], [2, 102], [3, 103]] as accounts(user_id, account_id)
-}
+val users(id, name) = [
+  [1, "Alice"],
+  [2, "Bob"],
+  [3, "Charlie"]
+]
+
+val accounts(user_id, account_id) = [
+  [1, 101],
+  [2, 102],
+  [3, 103]
+]
+
+val balances(account_id, amount) = [
+  [101, 1000],
+  [102, 2000],
+  [103, 1500]
+]
+
+from users
+join accounts
 on users.id = accounts.user_id
-join {
-  from [[101, 1000], [102, 2000], [103, 1500]] as balances(account_id, amount)
-}
+join balances
 on accounts.account_id = balances.account_id
 select users.name, accounts.account_id, balances.amount;
 
@@ -1177,10 +1290,12 @@ select users.name, accounts.account_id, balances.amount;
 A table can be joined with itself (self join) by using aliases. The `with` statement helps avoid duplicating the data:
 
 ```wvlet
-with employees as {
-  from [[1, "Alice", 2], [2, "Bob", 3], [3, "Charlie", null]]
-    as data(id, name, manager_id)
-}
+val employees(id, name, manager_id) = [
+  [1, "Alice", 2],
+  [2, "Bob", 3],
+  [3, "Charlie", null]
+]
+
 from employees as emp
 left join employees as mgr
   on emp.manager_id = mgr.id
@@ -1211,9 +1326,19 @@ For time-based joins, Wvlet also supports [AsOf Join](asof-join.md), which is us
 The concat operator concatenates rows from multiple subqueries. This is similar to the UNION ALL operator in SQL.
 
 ```wvlet
-from [[1, "A"], [2, "B"]] as t1(id, val)
+val t1(id, val) = [
+  [1, "A"],
+  [2, "B"]
+]
+
+val t2(id, val) = [
+  [3, "C"],
+  [4, "D"]
+]
+
+from t1
 concat {
-  from [[3, "C"], [4, "D"]] as t2(id, val)
+  from t2
 }
 order by id;
 
@@ -1254,8 +1379,15 @@ order by n_regionkey, n_name
 The `dedup` operator removes duplicated rows from the input rows. This is equivalent to `select distinct *` in SQL.
 
 ```wvlet
-from [[1, "A"], [2, "B"], [1, "A"], [3, "C"], [2, "B"]]
-  as data(id, val)
+val data(id, val) = [
+  [1, "A"],
+  [2, "B"],
+  [1, "A"],
+  [3, "C"],
+  [2, "B"]
+]
+
+from data
 dedup;
 
 ┌─────┬────────┐
@@ -1275,9 +1407,22 @@ dedup;
 The `intersect` operator returns the intersection of the input rows from multiple subqueries. By default, set semantics are used (duplicates removed).
 
 ```wvlet
-from [[1, "A"], [2, "B"], [3, "C"], [4, "D"]] as t1(id, val)
+val t1(id, val) = [
+  [1, "A"],
+  [2, "B"],
+  [3, "C"],
+  [4, "D"]
+]
+
+val t2(id, val) = [
+  [2, "B"],
+  [3, "C"],
+  [5, "E"]
+]
+
+from t1
 intersect {
-  from [[2, "B"], [3, "C"], [5, "E"]] as t2(id, val)
+  from t2
 };
 
 ┌─────┬────────┐
@@ -1294,9 +1439,23 @@ intersect {
 With `all` keyword, bag semantics are used (duplicates preserved):
 
 ```wvlet
-from [[1, "A"], [2, "B"], [2, "B"], [3, "C"]] as t1(id, val)
+val t1(id, val) = [
+  [1, "A"],
+  [2, "B"],
+  [2, "B"],
+  [3, "C"]
+]
+
+val t2(id, val) = [
+  [2, "B"],
+  [2, "B"],
+  [3, "C"],
+  [3, "C"]
+]
+
+from t1
 intersect all {
-  from [[2, "B"], [2, "B"], [3, "C"], [3, "C"]] as t2(id, val)
+  from t2
 };
 
 ┌─────┬────────┐
@@ -1316,9 +1475,21 @@ intersect all {
 The `except` operator returns the difference of the input rows from multiple subqueries (rows in the first query but not in the second). By default, set semantics are used.
 
 ```wvlet
-from [[1, "A"], [2, "B"], [3, "C"], [4, "D"]] as t1(id, val)
+val t1(id, val) = [
+  [1, "A"],
+  [2, "B"],
+  [3, "C"],
+  [4, "D"]
+]
+
+val t2(id, val) = [
+  [2, "B"],
+  [4, "D"]
+]
+
+from t1
 except {
-  from [[2, "B"], [4, "D"]] as t2(id, val)
+  from t2
 };
 
 ┌─────┬────────┐
@@ -1335,9 +1506,20 @@ except {
 With `all` keyword, bag semantics are used:
 
 ```wvlet
-from [[1, "A"], [2, "B"], [2, "B"], [3, "C"]] as t1(id, val)
+val t1(id, val) = [
+  [1, "A"],
+  [2, "B"],
+  [2, "B"],
+  [3, "C"]
+]
+
+val t2(id, val) = [
+  [2, "B"]
+]
+
+from t1
 except all {
-  from [[2, "B"]] as t2(id, val)
+  from t2
 };
 
 ┌─────┬────────┐
@@ -1400,11 +1582,13 @@ The `unpivot` operator transforms multiple columns into rows. This is useful whe
 
 Example:
 ```wvlet
-from [
- [1, 'electronics', 1, 2, 3, 4, 5, 6],
- [2, 'clothes', 10, 20, 30, 40, 50, 60],
- [3, 'cars', 100, 200, 300, 400, 500, 600]
-] as sales(id, dept, jan, feb, mar, apr, may, jun)
+val sales(id, dept, jan, feb, mar, apr, may, jun) = [
+  [1, 'electronics', 1, 2, 3, 4, 5, 6],
+  [2, 'clothes', 10, 20, 30, 40, 50, 60],
+  [3, 'cars', 100, 200, 300, 400, 500, 600]
+]
+
+from sales
 unpivot
   sales for month in (jan, feb, mar, apr, may, jun)
 
@@ -1442,7 +1626,12 @@ The `sample` operator randomly samples rows from the input data. You can specify
 
 Sample a fixed number of rows:
 ```wvlet
-from [[1], [2], [3], [4], [5], [6], [7], [8], [9], [10]] as numbers(n)
+val numbers(n) = [
+  [1], [2], [3], [4], [5],
+  [6], [7], [8], [9], [10]
+]
+
+from numbers
 sample 5;
 
 ┌─────┐
@@ -1461,7 +1650,12 @@ sample 5;
 
 Sample a percentage of rows:
 ```wvlet
-from [[1], [2], [3], [4], [5], [6], [7], [8], [9], [10]] as numbers(n)
+val numbers(n) = [
+  [1], [2], [3], [4], [5],
+  [6], [7], [8], [9], [10]
+]
+
+from numbers
 sample 30%;
 
 ┌─────┐
