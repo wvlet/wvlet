@@ -51,7 +51,7 @@ trait Expression extends SyntaxTreeNode with LogSupport:
         case Some(x) =>
           Some(recursiveTransform(x))
         case s: Seq[?] =>
-          s.map(recursiveTransform _)
+          s.map(recursiveTransform)
         case other: AnyRef =>
           other
         case null =>
@@ -70,7 +70,7 @@ trait Expression extends SyntaxTreeNode with LogSupport:
         case Some(x) =>
           Some(recursiveTraverse(x))
         case s: Seq[?] =>
-          s.map(recursiveTraverse _)
+          s.map(recursiveTraverse)
         case other: AnyRef =>
         case null          =>
     productIterator.foreach(recursiveTraverse)
@@ -85,7 +85,7 @@ trait Expression extends SyntaxTreeNode with LogSupport:
         case Some(x) =>
           Some(recursiveTraverse(x))
         case s: Seq[?] =>
-          s.map(recursiveTraverse _)
+          s.map(recursiveTraverse)
         case other: AnyRef =>
         case null          =>
     productIterator.foreach(recursiveTraverse)
@@ -225,7 +225,7 @@ trait Expression extends SyntaxTreeNode with LogSupport:
         case Some(x) =>
           recursiveCollect(x)
         case s: Seq[?] =>
-          s.flatMap(recursiveCollect _).toList
+          s.flatMap(recursiveCollect).toList
         case other: AnyRef =>
           Nil
         case null =>
@@ -243,7 +243,7 @@ trait Expression extends SyntaxTreeNode with LogSupport:
         case Some(x) =>
           recursiveTraverse(x)
         case s: Seq[?] =>
-          s.foreach(recursiveTraverse _)
+          s.foreach(recursiveTraverse)
         case other: AnyRef =>
         case null          =>
 

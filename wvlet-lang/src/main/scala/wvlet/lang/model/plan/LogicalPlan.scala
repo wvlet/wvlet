@@ -87,7 +87,7 @@ trait LogicalPlan extends SyntaxTreeNode:
         case Some(x) =>
           collectExpression(x)
         case s: Iterable[?] =>
-          s.flatMap(collectExpression _).toSeq
+          s.flatMap(collectExpression).toSeq
         case other =>
           Nil
 
@@ -117,7 +117,7 @@ trait LogicalPlan extends SyntaxTreeNode:
         case Some(x) =>
           Some(transformElement(x))
         case s: Seq[?] =>
-          s.map(transformElement _)
+          s.map(transformElement)
         case other: AnyRef =>
           other
         case null =>
@@ -269,7 +269,7 @@ trait LogicalPlan extends SyntaxTreeNode:
         case Some(x) =>
           Some(transformElement(x))
         case s: Seq[?] =>
-          s.map(transformElement _)
+          s.map(transformElement)
         case other: AnyRef =>
           other
         case null =>
@@ -302,7 +302,7 @@ trait LogicalPlan extends SyntaxTreeNode:
         case Some(x) =>
           Some(recursiveTransform(x))
         case s: Seq[?] =>
-          s.map(recursiveTransform _)
+          s.map(recursiveTransform)
         case other: AnyRef =>
           other
         case null =>
@@ -337,7 +337,7 @@ trait LogicalPlan extends SyntaxTreeNode:
         case Some(x) =>
           Some(loopOnlyPlan(x))
         case s: Seq[?] =>
-          s.map(loopOnlyPlan _)
+          s.map(loopOnlyPlan)
         case other: AnyRef =>
           other
         case null =>
@@ -381,7 +381,7 @@ trait LogicalPlan extends SyntaxTreeNode:
         case Some(x) =>
           Some(iter(x))
         case s: Seq[?] =>
-          s.map(iter _)
+          s.map(iter)
         case other: AnyRef =>
           other
         case null =>
@@ -418,7 +418,7 @@ trait LogicalPlan extends SyntaxTreeNode:
         case Some(x) =>
           Some(iterOnce(x))
         case s: Seq[?] =>
-          s.map(iterOnce _)
+          s.map(iterOnce)
         case other: AnyRef =>
           other
         case null =>
@@ -445,7 +445,7 @@ trait LogicalPlan extends SyntaxTreeNode:
         case Some(x) =>
           recursiveCollect(x)
         case s: Seq[?] =>
-          s.flatMap(recursiveCollect _).toList
+          s.flatMap(recursiveCollect).toList
         case other: AnyRef =>
           Nil
         case null =>
@@ -481,7 +481,7 @@ trait LogicalPlan extends SyntaxTreeNode:
         case Some(x) =>
           recursiveTraverse(x)
         case s: Seq[?] =>
-          s.foreach(recursiveTraverse _)
+          s.foreach(recursiveTraverse)
         case other: AnyRef =>
         case null          =>
 

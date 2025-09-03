@@ -27,8 +27,8 @@ trait TreeNode extends TreeNodeCompat
 
 trait SyntaxTreeNode extends TreeNode with Product with LogSupport:
   private var _symbol: Symbol                  = Symbol.NoSymbol
-  private var _comment: List[TokenData[_]]     = Nil
-  private var _postComment: List[TokenData[_]] = Nil
+  private var _comment: List[TokenData[?]]     = Nil
+  private var _postComment: List[TokenData[?]] = Nil
 
   def linePosition(using ctx: Context): LinePosition = ctx.sourceLocationAt(span).position
 
@@ -70,8 +70,8 @@ trait SyntaxTreeNode extends TreeNode with Product with LogSupport:
   def symbol: Symbol            = _symbol
   def symbol_=(s: Symbol): Unit = _symbol = s
 
-  def comments: List[TokenData[_]]     = _comment
-  def postComments: List[TokenData[_]] = _postComment
+  def comments: List[TokenData[?]]     = _comment
+  def postComments: List[TokenData[?]] = _postComment
 
   def withComment(d: TokenData[?]): this.type =
     _comment = d :: _comment

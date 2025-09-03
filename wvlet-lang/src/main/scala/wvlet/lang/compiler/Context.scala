@@ -44,7 +44,7 @@ case class GlobalContext(compilerOptions: CompilerOptions):
   private val contextTable = new ConcurrentHashMap[SourceFile, Context]().asScala
 
   // Globally available definitions (Name and Symbols)
-  var defs: GlobalDefinitions = _
+  var defs: GlobalDefinitions = scala.compiletime.uninitialized
 
   var defaultCatalog: Catalog = loadCatalog(compilerOptions)
   var defaultSchema: String   = compilerOptions.schema.getOrElse("main")
