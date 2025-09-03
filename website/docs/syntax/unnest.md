@@ -41,10 +41,12 @@ select unnest([1, 2, 3]), 10
 Unnest can be used to expand an array column as individual rows if it is used with `cross join`:
 
 ```wvlet
-from [
-  [''John'', [7, 10, 9]],
-  [''Mary'', [4, 8, 9]],
-] as tests(student, scores)
+val tests(student, scores) = [
+  ['John', [7, 10, 9]],
+  ['Mary', [4, 8, 9]],
+]
+
+from tests
 cross join unnest(scores) as t(score)
 select student, score
 ```
