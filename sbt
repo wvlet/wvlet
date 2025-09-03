@@ -254,7 +254,7 @@ is_apple_silicon() { [[ "$(uname -s)" == "Darwin" && "$(uname -m)" == "arm64" ]]
 default_jvm_opts() {
   local -r v="$(java_version)"
   if [[ $v -ge 24 ]]; then
-    echo "default_jvm_opts_common --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED"
+    echo "$default_jvm_opts_common --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED"
   elif [[ $v -ge 17 ]]; then
     echo "$default_jvm_opts_common"
   elif [[ $v -ge 10 ]]; then

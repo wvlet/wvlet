@@ -311,22 +311,17 @@ class QueryExecutor(
     def writeJSONL(rs: ResultSet, out: File): Long =
       var rowCount = 0L
       val rowCodec = MessageCodec.of[ListMap[String, Any]]
-      Using.resource(
-        BufferedWriter(
-          OutputStreamWriter(
-            GZIPOutputStream(FileOutputStream(out))
-          )
-        )
-      ) { w =>
-        val codec = JDBCCodec(rs)
-        val it = codec.mapMsgPackMapRows { msgpack =>
-          rowCodec.fromMsgPack(msgpack)
-        }
-        while it.hasNext do
-          val row = it.next()
-          w.write(rowCodec.toJson(row))
-          w.newLine()
-          rowCount += 1
+      Using.resource(BufferedWriter(OutputStreamWriter(GZIPOutputStream(FileOutputStream(out))))) {
+        w =>
+          val codec = JDBCCodec(rs)
+          val it = codec.mapMsgPackMapRows { msgpack =>
+            rowCodec.fromMsgPack(msgpack)
+          }
+          while it.hasNext do
+            val row = it.next()
+            w.write(rowCodec.toJson(row))
+            w.newLine()
+            rowCount += 1
       }
       rowCount
 
