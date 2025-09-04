@@ -26,7 +26,6 @@ jobs:
               - '**.scala'
               - '**.sbt'
               - '**.conf'
-              - '**.json'
               - '**.wv'
               - SCALA_VERSION
   build_native:
