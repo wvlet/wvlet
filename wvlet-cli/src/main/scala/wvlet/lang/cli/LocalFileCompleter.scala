@@ -75,10 +75,13 @@ case class LocalFileCompleter(workEnv: WorkEnv) extends Completer:
 
       if baseDir.exists() && baseDir.isDirectory then
         def escapeQuotes(s: String, quoteChar: Char): String =
-          if quoteChar == '\'' then
-            s.replace("'", "''")
-          else
-            s.replace("\"", "\\\"")
+          quoteChar match
+            case '\'' =>
+              s.replace("'", "''")
+            case '"' =>
+              s.replace("\"", "\\\"")
+            case _ =>
+              s
 
         val showHidden = leafPrefix.startsWith(".")
         val entries: Array[File] = Option(baseDir.listFiles())
