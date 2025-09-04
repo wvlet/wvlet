@@ -106,6 +106,13 @@ Symbols provide stable identifiers for definitions and queries across phases.
 - Comments/doc: scanners surface `COMMENT` and `DOC_COMMENT` tokens; the parser attaches them to nodes so printers/SQL can preserve them.
 - Strings/interpolation: `WvletScanner` handles triple‑quoted and back‑quoted interpolation (`STRING_INTERPOLATION_PREFIX`, `BACKQUOTE_INTERPOLATION_PREFIX`) and emits `STRING_PART` tokens; `SqlScanner` recognizes double‑quoted identifiers and string literals.
 
+**Design philosophy**
+- Unlike the textbook split of “lexer → parser → AST” (e.g., the Dragon Book) where comments are discarded, Wvlet’s parser and tree model are designed to also serve as a syntax formatter.
+- Trees preserve source information for formatting and diagnostics:
+  - Comments are retained on every `SyntaxTreeNode` (see [TreeNode.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/TreeNode.scala)), then propagated in printers (e.g., `code(n)(d)` in [SqlGenerator.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/compiler/codegen/SqlGenerator.scala) and [LogicalPlanPrinter.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/compiler/codegen/LogicalPlanPrinter.scala)).
+  - Every node carries a precise `Span` and maps to a `SourceLocation` via `Context.sourceLocationAt`, used in error messages and headers. See [Context.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/compiler/Context.scala) and [CompilationUnit.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/compiler/CompilationUnit.scala).
+- The result is a “format‑aware” LogicalPlan/Expression tree that can regenerate readable Wvlet/SQL while preserving user comments where possible.
+
 A few special cases:
 - [ValDef](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/plan.scala): the parser sets `dataType` from explicit annotations, table column syntax (`val t(a,b) = [[...]]`), or the expression’s type. This is later reflected into the symbol.
 - Table/file references are parsed as [TableRef](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/relation.scala#L200)/[FileRef](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/relation.scala#L212) with `UnresolvedRelationType`.
