@@ -63,4 +63,4 @@ See [Catalog Management](https://wvlet.org/wvlet/docs/usage/catalog-management) 
 
 Many thanks to everyone who has contributed to our progress:
 
-[![Contributors](https://contrib.rocks/image?repo=wvlet/wvlet)](https://github.com/wvlet/wvlet/graphs/contributors)
+[![Contributors](https://contrib.rocks/image?repo=wvlet/wvlet&nocache=1)](https://github.com/wvlet/wvlet/graphs/contributors)
