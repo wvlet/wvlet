@@ -18,8 +18,8 @@ function HomepageHeader() {
                     <div>
                         <div className='row row--align-center'>
                             <div className='col col--3'>
-                               <img src="./img/logo.png" alt="wvlet logo" width={100}/>
-                               <h1>wvlet</h1>
+                               <img src="./img/logo.png" alt="Wvlet logo" width={100}/>
+                               <h1>Wvlet</h1>
                             </div>
                             <div className='col'>
                                 <p className={'text--left'}>
