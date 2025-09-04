@@ -59,13 +59,13 @@ The compiler processes one source file per CompilationUnit and records all inter
   - Created from files or strings via `CompilationUnit.fromPath|fromFile|fromWvletString|fromSqlString`.
   - Standard library and presets load as units with `isPreset = true`.
   - `reload()` clears phase markers and errors when the file changes; `needsRecompile` compares timestamps.
-- **Context integration**: Every `Context` carries a `compilationUnit`; phases log and look up symbols using it (e.g., `ctx.compilationUnit.enter(sym)`, error locations via `sourceLocationAt(span)`).
+- **Context integration**: Every [`Context`](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/compiler/Context.scala) carries a `compilationUnit`; phases log and look up symbols using it (e.g., `ctx.compilationUnit.enter(sym)`, error locations via `sourceLocationAt(span)`).
 
 ## Trees: LogicalPlan and Expressions
 
 The compiler uses two primary node families:
-- **Expression** (values, names, operators): see `model/expr/*.scala`. Each expression exposes `def dataType: DataType`, often computed structurally from its children.
-- **LogicalPlan** (relations/statements): see `model/plan/*.scala`. Every plan exposes `def relationType: RelationType` (a subtype of `DataType`) describing its output schema.
+- **Expression** (values, names, operators): see [Expression.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/expr/Expression.scala). Each expression exposes `def dataType: DataType`, often computed structurally from its children.
+- **LogicalPlan** (relations/statements): see [LogicalPlan.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/LogicalPlan.scala). Every plan exposes `def relationType: RelationType` (a subtype of `DataType`) describing its output schema.
 
 Common patterns:
 - **Immutability**: Trees are immutable products; transformation utilities (`transform`, `transformUp`, `transformExpressions`, etc.) rebuild nodes when children change.
@@ -73,22 +73,22 @@ Common patterns:
 - **Schema computation**: Plan nodes compute `relationType` functionally from inputs. Leaf/source nodes may carry a `schema: RelationType` (e.g., scans/files/values) used to compute `relationType`.
 
 Terminology:
-- `DataType` describes scalar and compound types (e.g., `int`, `varchar(10)`, `array[t]`).
-- `RelationType` extends `DataType` to represent table‑like schemas. Variants include `SchemaType`, `ProjectedType`, `AggregationType`, `ConcatType`, `RelationTypeList`, `UnresolvedRelationType`, `EmptyRelationType`.
-- `NamedType(name, dataType)` pairs a field name with a `DataType` and is used to enumerate columns.
+- [DataType.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/DataType.scala) defines scalar/compound types (e.g., int, varchar(10), array[t]).
+- RelationType extends `DataType` to represent table‑like schemas. Variants include `SchemaType`, `ProjectedType`, `AggregationType`, `ConcatType`, `RelationTypeList`, `UnresolvedRelationType`, `EmptyRelationType` (all in [DataType.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/DataType.scala)).
+- `NamedType(name, dataType)` pairs a field name with a `DataType` and is used to enumerate columns (see [DataType.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/DataType.scala)).
 
 ## Symbols and SymbolInfo
 
 Symbols provide stable identifiers for definitions and queries across phases.
 
-- **Symbol**: unique ID + back‑pointer to the owning tree (set during labeling and updated on copies).
-- **SymbolInfo**: phase‑mutable info attached to a symbol:
+- **Symbol**: unique ID + back‑pointer to the owning tree (set during labeling and updated on copies). See [Symbol.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/compiler/Symbol.scala).
+- **SymbolInfo**: phase‑mutable info attached to a symbol (see [Symbolnfo.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/compiler/Symbolnfo.scala)):
   - `symbolType`: `Package | Import | ModelDef | TypeDef | MethodDef | ValDef | Relation | Query | Expression`
   - `tpe` / `dataType`: the resolved `Type` (`DataType` for most symbols)
   - scope/owner: used for name resolution
 
 **Where symbols appear today**
-- Definitions: `PackageDef`, `Import`, `TypeDef`, `TopLevelFunctionDef`, `ModelDef`, `ValDef`, and the top‑level `Query` get symbols in `analyzer/SymbolLabeler.scala`.
+- Definitions: [PackageDef](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/plan.scala), [Import](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/plan.scala), [TypeDef](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/plan.scala), [TopLevelFunctionDef](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/plan.scala), [ModelDef](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/plan.scala), [ValDef](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/plan.scala), and the top‑level [Query](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/relation.scala#L666) get symbols in [SymbolLabeler.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/compiler/analyzer/SymbolLabeler.scala).
 - Other nodes may not have symbols yet; they rely on structural `relationType`/`dataType` until we broaden symbol coverage.
 
 **Invariants to keep in mind**
@@ -98,17 +98,17 @@ Symbols provide stable identifiers for definitions and queries across phases.
 ## Compilation Pipeline (Phases)
 
 ### 1) Parsing → Trees
-`WvletParser` (for `.wv`) and `SqlParser` (for `.sql`) turn source into `LogicalPlan`/`Expression` trees. Both parsers are driven by scanners that produce a stream of token records.
+[WvletParser](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/compiler/parser/WvletParser.scala) (for `.wv`) and [SqlParser](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/compiler/parser/SqlParser.scala) (for `.sql`) turn source into `LogicalPlan`/`Expression` trees. Both parsers are driven by scanners that produce a stream of token records.
 
 **Lexer/Scanner basics**
-- Token enums: `WvletToken` and `SqlToken` classify keywords, identifiers, operators, literals, quotes, and control tokens (comments, whitespace, EOF). They also encode reserved vs non‑reserved keywords.
-- Scanners: `WvletScanner` and `SqlScanner` extend a shared `ScannerBase`, which yields `TokenData` via `nextToken()`; parsers inspect tokens with `lookAhead()` and `consume(...)`.
+- Token enums: [WvletToken](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/compiler/parser/WvletToken.scala) and [SqlToken](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/compiler/parser/SqlToken.scala) classify keywords, identifiers, operators, literals, quotes, and control tokens (comments, whitespace, EOF). They also encode reserved vs non‑reserved keywords.
+- Scanners: [WvletScanner](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/compiler/parser/WvletScanner.scala) and [SqlScanner](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/compiler/parser/SqlScanner.scala) extend a shared [ScannerBase](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/compiler/parser/Scanner.scala), which yields `TokenData` via `nextToken()`; parsers inspect tokens with `lookAhead()` and `consume(...)`.
 - Comments/doc: scanners surface `COMMENT` and `DOC_COMMENT` tokens; the parser attaches them to nodes so printers/SQL can preserve them.
 - Strings/interpolation: `WvletScanner` handles triple‑quoted and back‑quoted interpolation (`STRING_INTERPOLATION_PREFIX`, `BACKQUOTE_INTERPOLATION_PREFIX`) and emits `STRING_PART` tokens; `SqlScanner` recognizes double‑quoted identifiers and string literals.
 
 A few special cases:
-- `ValDef`: the parser sets `dataType` from explicit annotations, table column syntax (`val t(a,b) = [[...]]`), or the expression’s type. This is later reflected into the symbol.
-- Table/file references are parsed as `TableRef`/`FileRef` with `UnresolvedRelationType`.
+- [ValDef](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/plan.scala): the parser sets `dataType` from explicit annotations, table column syntax (`val t(a,b) = [[...]]`), or the expression’s type. This is later reflected into the symbol.
+- Table/file references are parsed as [TableRef](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/relation.scala#L200)/[FileRef](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/relation.scala#L212) with `UnresolvedRelationType`.
 
 ### 2) Symbol Labeling
 `analyzer/SymbolLabeler.scala` assigns symbols and seeds `SymbolInfo`:
@@ -119,11 +119,11 @@ A few special cases:
 This phase also establishes scopes for packages, types, and methods so later passes can resolve names.
 
 ### 3) Type Resolution and Tree Rewrites
-`analyzer/TypeResolver.scala` resolves types and replaces unresolved leaves with concrete scans/values:
-- `TableRef` → `TableScan` via catalog lookup or known type definitions.
-- `FileRef` → `FileScan` by inspecting JSON/Parquet to obtain a `schema`.
-- `ModelScan` binds to the referenced `ModelDef`’s `relationType`.
-- `ValDef` table value constants: when referenced as a table, the resolver detects `SchemaType` on the `ValDef` and rewrites to a `Values` relation with that schema.
+[TypeResolver.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/compiler/analyzer/TypeResolver.scala) resolves types and replaces unresolved leaves with concrete scans/values:
+- [TableRef](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/relation.scala#L200) → [TableScan](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/relation.scala#L928) via catalog lookup or known type definitions.
+- [FileRef](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/relation.scala#L212) → [FileScan](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/relation.scala#L225) by inspecting JSON/Parquet to obtain a `schema`.
+- [ModelScan](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/relation.scala#L966) binds to the referenced [ModelDef](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/plan.scala)’s `relationType`.
+- [ValDef](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/plan.scala) table value constants: when referenced as a table, the resolver detects `SchemaType` on the `ValDef` and rewrites to a [Values](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/relation.scala#L147) relation with that schema.
 
 **Where types live today**
 - Expressions compute `def dataType` on demand.
@@ -138,7 +138,7 @@ Tree rewrites are expressed via `RewriteRule` and applied with the `transform*` 
 - Pushing projections/filters (future work)
 
 ### 5) Execution Planning
-`planner/ExecutionPlanner.scala` turns a `LogicalPlan` into an `ExecutionPlan` DAG used by runners:
+[`ExecutionPlanner.scala`](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/compiler/planner/ExecutionPlanner.scala) turns a `LogicalPlan` into an [`ExecutionPlan`](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/execution.scala) DAG used by runners:
 - Removes `TestRelation`/`Debug` from evaluated queries while generating separate tasks for them.
 - Emits tasks such as `ExecuteQuery`, `ExecuteSave`, `ExecuteValDef`.
 
