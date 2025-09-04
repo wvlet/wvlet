@@ -8,8 +8,8 @@ import scala.jdk.CollectionConverters.*
 
 /**
   * A simple completer that offers local filesystem paths when the cursor is inside a single-quoted
-  * string literal, e.g., from 'pa<TAB>'. Paths are resolved relative to WorkEnv.path and only local
-  * (non-remote) suggestions are provided.
+  * or double-quoted string literal, e.g., from 'pa<TAB>' or from "pa<TAB>". Paths are resolved 
+  * relative to WorkEnv.path and only local (non-remote) suggestions are provided.
   */
 case class LocalFileCompleter(workEnv: WorkEnv) extends Completer:
 
@@ -22,7 +22,8 @@ case class LocalFileCompleter(workEnv: WorkEnv) extends Completer:
     val input  = buf.toString
     val cursor = buf.cursor()
 
-    val quoteStart =
+    // Find the most recent quote (either single or double) before cursor
+    val singleQuoteStart =
       input.lastIndexOf('\'') match
         case -1 =>
           -1
@@ -31,10 +32,28 @@ case class LocalFileCompleter(workEnv: WorkEnv) extends Completer:
         case _ =>
           -1
 
-    // Only suggest when inside a single-quoted string
+    val doubleQuoteStart =
+      input.lastIndexOf('"') match
+        case -1 =>
+          -1
+        case i if i <= cursor =>
+          i
+        case _ =>
+          -1
+
+    // Determine which type of quote we're in (if any)
+    val (quoteStart, quoteChar) =
+      if singleQuoteStart > doubleQuoteStart then
+        (singleQuoteStart, '\'')
+      else if doubleQuoteStart >= 0 then
+        (doubleQuoteStart, '"')
+      else
+        (-1, ' ')
+
+    // Check if cursor is inside the quoted string
     val insideQuotes =
       quoteStart >= 0 &&
-        (input.indexOf('\'', quoteStart + 1) match
+        (input.indexOf(quoteChar, quoteStart + 1) match
           case -1 =>
             true
           case end =>
@@ -55,7 +74,11 @@ case class LocalFileCompleter(workEnv: WorkEnv) extends Completer:
           (new File(workEnv.path), prefixInWord)
 
       if baseDir.exists() && baseDir.isDirectory then
-        def escapeSingleQuotes(s: String): String = s.replace("'", "''")
+        def escapeQuotes(s: String, quoteChar: Char): String =
+          if quoteChar == '\'' then
+            s.replace("'", "''")
+          else
+            s.replace("\"", "\\\"")
 
         val showHidden = leafPrefix.startsWith(".")
         val entries: Array[File] = Option(baseDir.listFiles())
@@ -109,7 +132,7 @@ case class LocalFileCompleter(workEnv: WorkEnv) extends Completer:
             else
               f.getName
           val valuePath =
-            escapeSingleQuotes(relPath) +
+            escapeQuotes(relPath, quoteChar) +
               (if f.isDirectory && !relPath.endsWith("/") then
                  "/"
                else
