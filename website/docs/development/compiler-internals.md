@@ -191,21 +191,6 @@ The resolver rewrites leaves to `TableScan`/`FileScan` with an explicit `schema`
 **Targeted testing**
 - Parser/typing focused tests live under `wvlet-lang/src/test/scala/...` and can be run per class with `testOnly`.
 
-## Invariants and Guidelines (WIP)
-
-- **Avoid duplication**: Trees are immutable; types should not be stored twice when avoidable.
-- **Consistency**: If a plan node has both a symbol and an intrinsic schema, keep them consistent (`symbol.dataType == relationType`).
-- **Single source of truth**: Prefer computing types from children; use `SymbolInfo` as the single source of truth for definitions and named entities.
-- **Locality**: Keep rewrites local and explicit; avoid hidden global state.
-
-## Roadmap and Open Questions
-
-- Symbol‑centric typing (definitions first, then source relations). See [#1175](https://github.com/wvlet/wvlet/issues/1175).
-- Expand optimization passes (projection/filter pushdown, join key normalization).
-- SQL dialect backends.
-
-If you’re about to change phase ordering, add a short ADR (Architecture Decision Record) and link it here.
-
 ## GenSQL: SQL Generation
 
 GenSQL converts a resolved `LogicalPlan` (and its `ExecutionPlan` tasks) into executable SQL text for a target SQL engine. It orchestrates statement generation, handles dialect differences, and preserves useful metadata in header comments.
@@ -312,3 +297,18 @@ Tuning knobs live in `CodeFormatterConfig` (indent width, max line width, dialec
 ---
 
 Questions or proposals? Open an issue and tag “compiler” or send a PR updating this page alongside your change.
+
+## Invariants and Guidelines (WIP)
+
+- **Avoid duplication**: Trees are immutable; types should not be stored twice when avoidable.
+- **Consistency**: If a plan node has both a symbol and an intrinsic schema, keep them consistent (`symbol.dataType == relationType`).
+- **Single source of truth**: Prefer computing types from children; use `SymbolInfo` as the single source of truth for definitions and named entities.
+- **Locality**: Keep rewrites local and explicit; avoid hidden global state.
+
+## Roadmap and Open Questions
+
+- Symbol‑centric typing (definitions first, then source relations). See [#1175](https://github.com/wvlet/wvlet/issues/1175).
+- Expand optimization passes (projection/filter pushdown, join key normalization).
+- SQL dialect backends.
+
+If you’re about to change phase ordering, add a short ADR (Architecture Decision Record) and link it here.
