@@ -70,7 +70,7 @@ const config: Config = {
     // Replace with your project's social card
     image: 'img/logos/wvlet-banner-1280x640.png',
     navbar: {
-      title: 'wvlet',
+      title: 'Wvlet',
       logo: {
         alt: 'wvlet',
         src: 'img/logos/android-chrome-512x512.png',
