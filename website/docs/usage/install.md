@@ -92,4 +92,4 @@ For full details, including troubleshooting and development guides, please see t
 
 ## Building From Source
 
-See [Building Wvlet](../development/build.md) for building Wvlet from source.
+See [Building Wvlet](../development/build.md) for instructions on building it from source.
