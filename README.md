@@ -36,28 +36,9 @@ With this flow style, you can describe data processing pipelines in a natural or
 
 - **Flow-style syntax**: Write queries in the natural order of data processing
 - **Multi-database support**: Works with DuckDB, Trino, Hive, and more
-- **Static catalog support**: Compile queries offline without database connections
 - **Interactive REPL**: Explore data interactively with auto-completion
 - **Type-safe queries**: Catch errors at compile time with schema validation
 - **Modular queries**: Organize and reuse queries as functions
-
-### Static Catalog Support
-
-Wvlet can export database catalog metadata (schemas, tables, columns) to JSON files and use them for offline query compilation. This enables:
-
-- **CI/CD Integration**: Validate queries in pull requests without database access
-- **Faster Development**: Compile queries instantly without network latency
-- **Version Control**: Track schema changes alongside your queries
-
-```bash
-# Export catalog metadata
-wvlet catalog import --name mydb
-
-# Compile queries offline
-wvlet compile query.wv --use-static-catalog --catalog mydb
-```
-
-See [Catalog Management](https://wvlet.org/wvlet/docs/usage/catalog-management) for more details.
 
 ## Contributors
 
