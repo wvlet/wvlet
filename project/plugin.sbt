@@ -37,7 +37,7 @@ addDependencyTreePlugin
 addSbtPlugin("com.github.sbt" % "sbt-dynver" % "5.1.1")
 
 // For packaging Scala project into a executable folder
-addSbtPlugin("org.xerial.sbt" % "sbt-pack" % "0.21")
+addSbtPlugin("org.xerial.sbt" % "sbt-pack" % "0.22")
 
 // For compiling model classes from SQL templates
 libraryDependencies += "org.duckdb" % "duckdb_jdbc" % "1.3.2.1"

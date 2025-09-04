@@ -344,6 +344,13 @@ lazy val cli = project
         // wvlet compiler/run/ui server command launcher
         "wvlet" -> "wvlet.lang.cli.WvletMain"
       ),
+    packJvmVersionSpecificOpts := {
+      val java24Opts = Seq("--sun-misc-unsafe-memory-access=allow", "--enable-native-access=ALL-UNNAMED")
+      Map(
+        "wv"    -> Map(24 -> java24Opts),
+        "wvlet" -> Map(24 -> java24Opts)
+      )
+    },
     packResourceDir ++= Map(file("wvlet-ui-main/dist") -> "web")
   )
   .dependsOn(server)
