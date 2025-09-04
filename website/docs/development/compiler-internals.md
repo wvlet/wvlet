@@ -133,7 +133,9 @@ Tree rewrites are expressed via `RewriteRule` and applied with the `transform*` 
 - Emits tasks such as `ExecuteQuery`, `ExecuteSave`, `ExecuteValDef`.
 
 ### 6) Code Generation / Pretty Printing
-`codegen/WvletGenerator.scala` and `LogicalPlanPrinter.scala` render plans/expressions back to Wvlet syntax for `explain` and logs.
+`codegen/WvletGenerator.scala` and `LogicalPlanPrinter.scala` render plans/expressions back to Wvlet syntax for `explain` and logs. For SQL output and layout details, see:
+- [GenSQL: SQL Generation](#gensql-sql-generation) — end‑to‑end SQL statement generation and task handling.
+- [SQL Formatting (Wadler Doc)](#sql-formatting-wadler-doc) — how the pretty printer builds compact/expanded SQL.
 
 ## Typing Model
 
