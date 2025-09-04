@@ -6,7 +6,7 @@ sidebar_position: 1
 
 ## A Walk-Through Example
 
-Let's start with a simple example. If you haven't installed `wv` command, [install wvlet command](../usage/install.md) to your machine. `wv` command starts an [interactive shell](../usage/repl.md), which is backed by DuckDB in-memory database by default.
+Let's start with a simple example. If you haven't installed `wv` command, [install Wvlet command](../usage/install.md) to your machine. `wv` command starts an [interactive shell](../usage/repl.md), which is backed by DuckDB in-memory database by default.
 
 For the ease of learning, let's create a sample [TPC-H benchmark](https://www.tpc.org/tpch/) data set:
 
@@ -30,7 +30,7 @@ wv> show tables;
 │ 8 rows     │
 └────────────┘
 ```
-The `execute sql"call dbgen(sf=0.01)"` command calls DuckDB's [TPC-H extension](https://duckdb.org/docs/extensions/tpch.html) and creates an in-memory TPC-H benchmark database, which will be gone when you exit the wvlet shell. So you can try this command without worrying about the disk space.
+The `execute sql"call dbgen(sf=0.01)"` command calls DuckDB's [TPC-H extension](https://duckdb.org/docs/extensions/tpch.html) and creates an in-memory TPC-H benchmark database, which will be gone when you exit the Wvlet shell. So you can try this command without worrying about the disk space.
 
 The simplest form of queries is `from (table name)`:
 ```wvlet
@@ -51,7 +51,7 @@ wv> from customer;
 ```
 
 This query returns all the columns in the `customer` table.
-If the query result doesn't fit to the screen, wvlet shell enters [UNIX `less` command](https://en.wikipedia.org/wiki/Less_(Unix)#:~:text=less%20is%20a%20terminal%20pager,backward%20navigation%20through%20the%20file.) mode, which
+If the query result doesn't fit to the screen, Wvlet shell enters [UNIX `less` command](https://en.wikipedia.org/wiki/Less_(Unix)#:~:text=less%20is%20a%20terminal%20pager,backward%20navigation%20through%20the%20file.) mode, which
 allows to navigate table data using arrow keys, page up/down keys, and `q` key to exit the mode. See [Interactive Shell](../usage/repl.md) for the list of the available shortcut keys.
 
 To limit the number of rows to display, you can use `limit` operator:
@@ -71,7 +71,7 @@ wv> from customer
 ```
 
 :::tip
-Separators `|` between expressions are shown only while editing queries. You don't need to type `|` in the wvlet shell or in query files.
+Separators `|` between expressions are shown only while editing queries. You don't need to type `|` in the Wvlet shell or in query files.
 :::
 
 
