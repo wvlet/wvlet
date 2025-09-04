@@ -25,7 +25,7 @@ At a glance, a compilation unit flows through these stages:
 ![Architecture](../img/wvlet-architecture.svg)
 
 Key packages and files (links go to GitHub, labels show file names only):
-- **Parsing**: [WvletParser.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/compiler/parser/WvletParser.scala)
+- **Parsing**: [WvletParser.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/compiler/parser/WvletParser.scala), [SqlParser.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/compiler/parser/SqlParser.scala)
 - **Trees (expr)**: [Expression.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/expr/Expression.scala), [exprs.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/expr/exprs.scala), [Attribute.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/expr/Attribute.scala)
 - **Trees (plan)**: [LogicalPlan.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/LogicalPlan.scala), [relation.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/relation.scala), [plan.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/plan.scala), [ddl.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/ddl.scala), [sqlPlan.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/sqlPlan.scala), [execution.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/execution.scala)
 - **Types**: [DataType.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/DataType.scala), [TreeNode.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/TreeNode.scala)
@@ -96,7 +96,7 @@ Symbols provide stable identifiers for definitions and queries across phases.
 ## Compilation Pipeline (Phases)
 
 ### 1) Parsing → Trees
-`WvletParser` turns source into `LogicalPlan`/`Expression` trees. A few special cases:
+`WvletParser` (for `.wv`) and `SqlParser` (for `.sql`) turn source into `LogicalPlan`/`Expression` trees. A few special cases:
 - `ValDef`: the parser sets `dataType` from explicit annotations, table column syntax (`val t(a,b) = [[...]]`), or the expression’s type. This is later reflected into the symbol.
 - Table/file references are parsed as `TableRef`/`FileRef` with `UnresolvedRelationType`.
 
