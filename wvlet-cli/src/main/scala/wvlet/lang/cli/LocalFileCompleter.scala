@@ -8,7 +8,7 @@ import scala.jdk.CollectionConverters.*
 
 /**
   * A simple completer that offers local filesystem paths when the cursor is inside a single-quoted
-  * or double-quoted string literal, e.g., from 'pa<TAB>' or from "pa<TAB>". Paths are resolved 
+  * or double-quoted string literal, e.g., from 'pa<TAB>' or from "pa<TAB>". Paths are resolved
   * relative to WorkEnv.path and only local (non-remote) suggestions are provided.
   */
 case class LocalFileCompleter(workEnv: WorkEnv) extends Completer:
