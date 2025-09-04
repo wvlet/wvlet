@@ -5,7 +5,7 @@ sidebar_position: 1
 
 # Installation
 
-Wvlet is available as a command-line tool. You can install wvlet using Homebrew on macOS or download a binary package for other platforms.
+Wvlet is available as a command-line tool. You can install Wvlet using Homebrew on macOS or download a binary package for other platforms.
 
 ## Command Line Tools
 
@@ -19,7 +19,7 @@ Language SDKs are also available for [Python and TypeScript](../bindings) to com
 
 ## Mac OS X
 
-For macOS, you can install wvlet using [Homebrew](https://brew.sh/):
+For macOS, you can install Wvlet using [Homebrew](https://brew.sh/):
 
 ```bash
 brew install wvlet/wvlet/wvlet
@@ -27,7 +27,7 @@ brew install wvlet/wvlet/wvlet
 
 This will install `wv (wvlet)` command to your system.
 
-To upgrade wvlet, run:
+To upgrade Wvlet, run:
 ```bash
 brew upgrade wvlet
 ```
@@ -46,11 +46,11 @@ For other platforms (e.g., Linux, Windows, etc.), download a binary package wvle
 
 You can find wv command in the bin directory of the package. Add the bin directory to your PATH environment variable.
 
-JDK17 or later is required to run wvlet. Set JAVA_HOME environment variable to the JDK path.
+JDK17 or later is required to run Wvlet. Set JAVA_HOME environment variable to the JDK path.
 
 ## Quick Start
 
-After installing wvlet, start learning the query syntax of Wvlet:
+After installing Wvlet, start learning the query syntax of Wvlet:
 - [Query Syntax](../syntax) to learn the query syntax
 
 
@@ -92,4 +92,4 @@ For full details, including troubleshooting and development guides, please see t
 
 ## Building From Source
 
-See [Building Wvlet](../development/build.md) for building wvlet from source.
+See [Building Wvlet](../development/build.md) for building Wvlet from source.
