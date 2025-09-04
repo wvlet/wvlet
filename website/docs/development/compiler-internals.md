@@ -26,6 +26,8 @@ At a glance, a compilation unit flows through these stages:
 
 Key packages and files (links go to GitHub, labels show file names only):
 - **Parsing**: [WvletParser.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/compiler/parser/WvletParser.scala), [SqlParser.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/compiler/parser/SqlParser.scala)
+  - **Tokens**: [WvletToken.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/compiler/parser/WvletToken.scala), [SqlToken.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/compiler/parser/SqlToken.scala)
+  - **Scanners**: [WvletScanner.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/compiler/parser/WvletScanner.scala), [SqlScanner.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/compiler/parser/SqlScanner.scala), [Scanner.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/compiler/parser/Scanner.scala)
 - **Trees (expr)**: [Expression.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/expr/Expression.scala), [exprs.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/expr/exprs.scala), [Attribute.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/expr/Attribute.scala)
 - **Trees (plan)**: [LogicalPlan.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/LogicalPlan.scala), [relation.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/relation.scala), [plan.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/plan.scala), [ddl.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/ddl.scala), [sqlPlan.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/sqlPlan.scala), [execution.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/execution.scala)
 - **Types**: [DataType.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/DataType.scala), [TreeNode.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/TreeNode.scala)
@@ -96,7 +98,15 @@ Symbols provide stable identifiers for definitions and queries across phases.
 ## Compilation Pipeline (Phases)
 
 ### 1) Parsing → Trees
-`WvletParser` (for `.wv`) and `SqlParser` (for `.sql`) turn source into `LogicalPlan`/`Expression` trees. A few special cases:
+`WvletParser` (for `.wv`) and `SqlParser` (for `.sql`) turn source into `LogicalPlan`/`Expression` trees. Both parsers are driven by scanners that produce a stream of token records.
+
+**Lexer/Scanner basics**
+- Token enums: `WvletToken` and `SqlToken` classify keywords, identifiers, operators, literals, quotes, and control tokens (comments, whitespace, EOF). They also encode reserved vs non‑reserved keywords.
+- Scanners: `WvletScanner` and `SqlScanner` extend a shared `ScannerBase`, which yields `TokenData` via `nextToken()`; parsers inspect tokens with `lookAhead()` and `consume(...)`.
+- Comments/doc: scanners surface `COMMENT` and `DOC_COMMENT` tokens; the parser attaches them to nodes so printers/SQL can preserve them.
+- Strings/interpolation: `WvletScanner` handles triple‑quoted and back‑quoted interpolation (`STRING_INTERPOLATION_PREFIX`, `BACKQUOTE_INTERPOLATION_PREFIX`) and emits `STRING_PART` tokens; `SqlScanner` recognizes double‑quoted identifiers and string literals.
+
+A few special cases:
 - `ValDef`: the parser sets `dataType` from explicit annotations, table column syntax (`val t(a,b) = [[...]]`), or the expression’s type. This is later reflected into the symbol.
 - Table/file references are parsed as `TableRef`/`FileRef` with `UnresolvedRelationType`.
 
