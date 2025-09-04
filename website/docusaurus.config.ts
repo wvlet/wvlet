@@ -72,7 +72,7 @@ const config: Config = {
     navbar: {
       title: 'Wvlet',
       logo: {
-        alt: 'wvlet',
+        alt: 'Wvlet',
         src: 'img/logos/android-chrome-512x512.png',
       },
       items: [
