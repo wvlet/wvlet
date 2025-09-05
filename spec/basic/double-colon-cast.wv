@@ -1,0 +1,10 @@
+-- Test double-colon type casting syntax
+-- Comprehensive test covering: literals, strings, expressions, and null values
+select 
+  1::int as int_cast,
+  "42"::int as str_to_int,
+  (1 + 2)::int as expr_cast,
+  null::int as null_cast
+
+test _.columns should be ['int_cast', 'str_to_int', 'expr_cast', 'null_cast']
+test _.rows should be [[1, 42, 3, null]]

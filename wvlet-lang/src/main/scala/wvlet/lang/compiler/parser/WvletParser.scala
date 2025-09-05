@@ -1978,10 +1978,10 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         case WvletToken.UNDERSCORE =>
           consume(WvletToken.UNDERSCORE)
           ContextInputRef(DataType.UnknownType, spanFrom(t))
-        case WvletToken.NULL | WvletToken.INTEGER_LITERAL | WvletToken.DOUBLE_LITERAL | WvletToken
-              .FLOAT_LITERAL | WvletToken.DECIMAL_LITERAL | WvletToken.EXP_LITERAL | WvletToken
-              .SINGLE_QUOTE_STRING | WvletToken.DOUBLE_QUOTE_STRING | WvletToken
-              .TRIPLE_QUOTE_STRING =>
+        case WvletToken.NULL | WvletToken.TRUE | WvletToken.FALSE | WvletToken.INTEGER_LITERAL |
+            WvletToken.DOUBLE_LITERAL | WvletToken.FLOAT_LITERAL | WvletToken.DECIMAL_LITERAL |
+            WvletToken.EXP_LITERAL | WvletToken.SINGLE_QUOTE_STRING | WvletToken
+              .DOUBLE_QUOTE_STRING | WvletToken.TRIPLE_QUOTE_STRING =>
           literal()
         case WvletToken.CASE =>
           val cases                          = List.newBuilder[WhenClause]
@@ -2238,6 +2238,10 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       t.token match
         case WvletToken.NULL =>
           NullLiteral(spanFrom(t))
+        case WvletToken.TRUE =>
+          TrueLiteral(spanFrom(t))
+        case WvletToken.FALSE =>
+          FalseLiteral(spanFrom(t))
         case WvletToken.INTEGER_LITERAL =>
           LongLiteral(removeUnderscore(t.str).toLong, t.str, spanFrom(t))
         case WvletToken.DOUBLE_LITERAL =>
@@ -2393,6 +2397,10 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
             WindowApply(expr, w, spanFrom(t))
           case None =>
             expr
+      case WvletToken.DOUBLE_COLON =>
+        consume(WvletToken.DOUBLE_COLON)
+        val tpe = dataType()
+        primaryExpressionRest(Cast(expr, tpe, tryCast = false, spanFrom(expr.span)))
       case _ =>
         expr
     end match

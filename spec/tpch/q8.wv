@@ -17,7 +17,7 @@ from {
         and n1.n_regionkey = r_regionkey
         and r_name = 'AMERICA'
         and s_nationkey = n2.n_nationkey
-        and '1995-01-01'.to_date <= o_orderdate and o_orderdate <= '1996-12-31'.to_date
+        and '1995-01-01'::date <= o_orderdate and o_orderdate <= '1996-12-31'::date
         and p_type = 'ECONOMY ANODIZED STEEL'
     select
         o_year = o_orderdate.extract('year'),

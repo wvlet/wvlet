@@ -175,7 +175,8 @@ comparisonOperator: '=' | '==' | 'is' | '!=' | 'is' 'not' | '<' | '<=' | '>' | '
 // Expression that can be chained with '.' operator
 primaryExpression : 'this'
                   | '_'
-                  | literal (':' identifier)?   # litral with optional type cast
+                  | literal
+                  | primaryExpression '::' identifier # double-colon type cast
                   | query
                   | 'case' expression? whenExpr+ elseExpr?                        # case-when
                   | '{' querySingle '}'                                           # subquery

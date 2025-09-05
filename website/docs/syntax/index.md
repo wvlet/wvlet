@@ -286,9 +286,13 @@ One of the major difference from traditional SQL is that wvlet uses single or do
 | `agg_func(expr)` over (partition by ... order by ...) | [Window functions](window.md) for computing aggregate values computed from the entire query result. This follows similar window function syntax with SQL |
 | `_1`, `_2`, ...                                       | Refers to 1-origin grouping keys in the preceding `group by` clause                                                                                      |
 | `1`, `2`, ...                                         | Refers to 1-origin column index for `order by` clause                                                                                                    |
-| `expr`:`type`                                         | Cast the value to the target type. Equivalent to cast(`expr` as `type`) in SQL                                                                           |
-| '2025-01-01':date                                     | Cast the string to a date value                                                                                                                          |
-| '1 year':interval                                     | Cast the string to an interval of SQL                                                                                                                    |
+| `expr`::`type`                                        | Type cast the value to the target type. Equivalent to cast(`expr` as `type`) in SQL                                                                      |
+| '2025-01-01'::date                                    | Cast the string to a date value                                                                                                                          |
+| '1 year'::interval                                    | Cast the string to an interval of SQL                                                                                                                    |
+
+:::note Type Annotations vs Type Casting
+Single colon `:` is used for **type annotations** in declarations (e.g., `param: int`, `val name: string`), while double colon `::` is used for **runtime type casting** (e.g., `value::int`, `'2025-01-01'::date`).
+:::
 ### Variable Definition
 
 You can define a variable using `val` keyword:

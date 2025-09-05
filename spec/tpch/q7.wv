@@ -16,7 +16,7 @@ from {
                 and n2.n_name = 'GERMANY')
             or (n1.n_name = 'GERMANY'
                 and n2.n_name = 'FRANCE'))
-        and '1995-01-01'.to_date <= l_shipdate and l_shipdate <= '1996-12-31'.to_date
+        and '1995-01-01'::date <= l_shipdate and l_shipdate <= '1996-12-31'::date
     select
         supp_nation = n1.n_name,
         cust_nation = n2.n_name,
