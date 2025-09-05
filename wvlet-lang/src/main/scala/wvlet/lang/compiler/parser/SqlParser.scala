@@ -1564,7 +1564,29 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           consume(SqlToken.R_PAREN)
           Lateral(subQuery, spanFrom(t))
         case SqlToken.L_PAREN =>
-          query()
+          consume(SqlToken.L_PAREN)
+          val t2 = scanner.lookAhead()
+          // Check if this is a parenthesized relation (starts with identifier) or a subquery
+          if t2.token.isIdentifier || t2.token == SqlToken.DOUBLE_QUOTE_STRING then
+            // Parenthesized relation: (table alias LEFT JOIN ...)
+            var r = relation()
+            // Handle JOIN operations within parentheses
+            def relationRest(r: Relation): Relation =
+              val t = scanner.lookAhead()
+              t.token match
+                case SqlToken.LEFT | SqlToken.RIGHT | SqlToken.INNER | SqlToken.FULL | SqlToken.CROSS |
+                    SqlToken.ASOF | SqlToken.JOIN =>
+                  relationRest(join(r))
+                case _ =>
+                  r
+            r = relationRest(r)
+            consume(SqlToken.R_PAREN)
+            r
+          else
+            // Subquery: (SELECT ...)
+            val subQuery = query()
+            consume(SqlToken.R_PAREN)
+            subQuery
         case SqlToken.UNNEST =>
           consume(SqlToken.UNNEST)
           consume(SqlToken.L_PAREN)

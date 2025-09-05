@@ -5,6 +5,7 @@ val AIRSPEC_VERSION     = AIRFRAME_VERSION
 val TRINO_VERSION       = "476"
 val AWS_SDK_VERSION     = "2.20.146"
 val SCALAJS_DOM_VERSION = "2.8.1"
+val DUCKDB_JDBC_VERSION  = "1.3.2.1"
 
 val SCALA_3 = IO.read(file("SCALA_VERSION")).trim
 // ThisBuild / resolvers ++= Resolver.sonatypeOssRepos("snapshots")
@@ -151,7 +152,7 @@ lazy val lang = crossProject(JVMPlatform, JSPlatform, NativePlatform)
         "org.wvlet.airframe" %% "airframe-config" % AIRFRAME_VERSION,
         "org.wvlet.airframe" %% "airframe-ulid"   % AIRFRAME_VERSION,
         // For resolving parquet file schema
-        "org.duckdb" % "duckdb_jdbc" % "1.3.2.1",
+        "org.duckdb" % "duckdb_jdbc" % DUCKDB_JDBC_VERSION,
         // Add a reference implementation of the compiler
         "org.scala-lang" %% "scala3-compiler" % SCALA_3 % Test
       ),
@@ -369,7 +370,7 @@ lazy val runner = project
         "org.wvlet.airframe"           %% "airframe-launcher" % AIRFRAME_VERSION,
         "com.github.ben-manes.caffeine" % "caffeine"          % "3.2.2",
         "org.apache.arrow"              % "arrow-vector"      % "18.3.0",
-        "org.duckdb"                    % "duckdb_jdbc"       % "1.3.2.1",
+        "org.duckdb"                    % "duckdb_jdbc"       % DUCKDB_JDBC_VERSION,
         "io.trino"                      % "trino-jdbc"        % TRINO_VERSION,
         // exclude() and jar() are necessary to avoid https://github.com/sbt/sbt/issues/7407
         // tpc-h connector neesd to download GB's of jar, so excluding it
@@ -510,3 +511,14 @@ def linkerConfig(config: StandardConfig): StandardConfig = {
     .withModuleKind(ModuleKind.ESModule)
     .withModuleSplitStyle(ModuleSplitStyle.SmallModulesFor(List("wvlet.lang.ui")))
 }
+
+// For experimental projects
+lazy val labs = project
+  .in(file("wvlet-labs"))
+  .settings(buildSettings, noPublish, name := "wvlet-labs",
+    libraryDependencies ++= Seq(
+      "org.wvlet.airframe" %% "airframe-launcher" % AIRFRAME_VERSION,
+      "org.duckdb" % "duckdb_jdbc" % DUCKDB_JDBC_VERSION
+    )
+  )
+  .dependsOn(lang.jvm, lang.js)
