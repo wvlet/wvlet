@@ -287,7 +287,9 @@ One of the major difference from traditional SQL is that wvlet uses single or do
 | `_1`, `_2`, ...                                       | Refers to 1-origin grouping keys in the preceding `group by` clause                                                                                      |
 | `1`, `2`, ...                                         | Refers to 1-origin column index for `order by` clause                                                                                                    |
 | `expr`:`type`                                         | Cast the value to the target type. Equivalent to cast(`expr` as `type`) in SQL                                                                           |
+| `expr`::`type`                                        | PostgreSQL/DuckDB-style type cast. Same as single colon but more familiar to users from other SQL dialects                                               |
 | '2025-01-01':date                                     | Cast the string to a date value                                                                                                                          |
+| '2025-01-01'::date                                    | Same as above, using double-colon syntax                                                                                                                 |
 | '1 year':interval                                     | Cast the string to an interval of SQL                                                                                                                    |
 ### Variable Definition
 
