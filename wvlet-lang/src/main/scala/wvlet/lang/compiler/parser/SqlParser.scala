@@ -675,12 +675,14 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         r
       case d if d.isQueryDelimiter =>
         EmptyRelation(spanFrom(t))
-      case SqlToken.WHERE | SqlToken.GROUP | SqlToken.HAVING | SqlToken.ORDER | SqlToken.LIMIT | 
-           SqlToken.OFFSET | SqlToken.UNION | SqlToken.INTERSECT | SqlToken.EXCEPT =>
+      case SqlToken.WHERE | SqlToken.GROUP | SqlToken.HAVING | SqlToken.ORDER | SqlToken.LIMIT |
+          SqlToken.OFFSET | SqlToken.UNION | SqlToken.INTERSECT | SqlToken.EXCEPT =>
         // SELECT without FROM clause, followed by WHERE/GROUP BY/HAVING/ORDER BY/LIMIT/etc.
         EmptyRelation(spanFrom(t))
       case _ =>
         unexpected(t)
+
+  end fromClause
 
   def whereClause(input: Relation): Relation =
     val t = scanner.lookAhead()
@@ -1215,7 +1217,11 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         case SqlToken.DECIMAL =>
           consume(SqlToken.DECIMAL)
           val i = literal()
-          DecimalLiteral(i.stringValue.stripPrefix("'").stripSuffix("'"), s"DECIMAL ${i.stringValue}", spanFrom(t))
+          DecimalLiteral(
+            i.stringValue.stripPrefix("'").stripSuffix("'"),
+            s"DECIMAL ${i.stringValue}",
+            spanFrom(t)
+          )
         case SqlToken.INTERVAL =>
           interval()
         case id if id.isIdentifier =>
@@ -1582,8 +1588,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
             def relationRest(r: Relation): Relation =
               val t = scanner.lookAhead()
               t.token match
-                case SqlToken.LEFT | SqlToken.RIGHT | SqlToken.INNER | SqlToken.FULL | SqlToken.CROSS |
-                    SqlToken.ASOF | SqlToken.JOIN =>
+                case SqlToken.LEFT | SqlToken.RIGHT | SqlToken.INNER | SqlToken.FULL | SqlToken
+                      .CROSS | SqlToken.ASOF | SqlToken.JOIN =>
                   relationRest(join(r))
                 case _ =>
                   r
