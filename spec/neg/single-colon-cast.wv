@@ -1,0 +1,7 @@
+-- Test that single-colon type casting syntax should fail
+-- Single colon is reserved for type annotations, not runtime casting
+-- Use double-colon (::) syntax instead for type casting
+select
+  1:int as int_cast,
+  'test':string as string_cast,
+  null:int as null_cast
