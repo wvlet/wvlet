@@ -41,6 +41,8 @@ trait DuckDBSchemaAnalyzerCompat:
       EmptyRelationType
     else
       // Use DuckDB to analyze the schema of the file
+      // Note: File paths cannot be parameterized in DuckDB FROM clauses
+      // Path validation is handled by File.isFile() check above and DuckDB internally
       val sql = s"select * from '${path}' limit 0"
 
       withConnection { conn =>
