@@ -64,15 +64,16 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   case R_BRACKET extends SqlToken(Op, "]")
 
   // Special symbols
-  case COLON      extends SqlToken(Op, ":")
-  case SEMICOLON  extends SqlToken(Op, ";")
-  case COMMA      extends SqlToken(Op, ",")
-  case DOT        extends SqlToken(Op, ".")
-  case UNDERSCORE extends SqlToken(Op, "_")
-  case AT         extends SqlToken(Op, "@")
-  case DOLLAR     extends SqlToken(Op, "$")
-  case STAR       extends SqlToken(Op, "*")
-  case QUESTION   extends SqlToken(Op, "?")
+  case COLON        extends SqlToken(Op, ":")
+  case DOUBLE_COLON extends SqlToken(Op, "::")
+  case SEMICOLON    extends SqlToken(Op, ";")
+  case COMMA        extends SqlToken(Op, ",")
+  case DOT          extends SqlToken(Op, ".")
+  case UNDERSCORE   extends SqlToken(Op, "_")
+  case AT           extends SqlToken(Op, "@")
+  case DOLLAR       extends SqlToken(Op, "$")
+  case STAR         extends SqlToken(Op, "*")
+  case QUESTION     extends SqlToken(Op, "?")
 
   case R_ARROW extends SqlToken(Op, "->")
 

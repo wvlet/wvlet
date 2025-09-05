@@ -2400,7 +2400,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       case WvletToken.DOUBLE_COLON =>
         consume(WvletToken.DOUBLE_COLON)
         val tpe = dataType()
-        primaryExpressionRest(Cast(expr, tpe, tryCast = false, spanFrom(expr.span)))
+        primaryExpressionRest(Cast(expr, tpe, tryCast = false, spanFrom(t)))
       case _ =>
         expr
     end match
