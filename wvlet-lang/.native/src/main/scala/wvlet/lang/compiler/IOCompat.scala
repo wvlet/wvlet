@@ -1,5 +1,7 @@
 package wvlet.lang.compiler
 
+import wvlet.airframe.control.Control.withResource
+
 import java.net.URI
 import java.io.File
 import java.nio.file.{Files, Path}
@@ -13,8 +15,10 @@ trait IOCompat:
     new String(bytes, java.nio.charset.StandardCharsets.UTF_8)
 
   def readGzipAsString(filePath: String): String =
-    // Placeholder for native gzip support - not yet implemented
-    throw new UnsupportedOperationException("Gzip reading is not yet supported on Scala Native")
+    withResource(new java.util.zip.GZIPInputStream(Files.newInputStream(Path.of(filePath)))) {
+      gzipInputStream =>
+        new String(gzipInputStream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+    }
 
   def readAsString(uri: java.net.URI): String = ???
 
