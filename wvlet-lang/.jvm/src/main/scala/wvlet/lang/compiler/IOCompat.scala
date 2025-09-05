@@ -20,9 +20,10 @@ trait IOCompat:
     .readAsString(Path.of(filePath).toFile)
 
   def readGzipAsString(filePath: String): String =
-    val gzipInputStream = new java.util.zip.GZIPInputStream(Files.newInputStream(Path.of(filePath)))
-    try new String(gzipInputStream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
-    finally gzipInputStream.close()
+    withResource(new java.util.zip.GZIPInputStream(Files.newInputStream(Path.of(filePath)))) {
+      gzipInputStream =>
+        new String(gzipInputStream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+    }
 
   def readAsString(uri: URI): String =
     withResource(uri.toURL.openStream()) { in =>
