@@ -248,10 +248,8 @@ This model provides filtered customer data for analytics:
 - Adds calculated fields for analysis
 
 Example usage:
-```wvlet
-from customer_analysis
-where signup_date >= '2024-01-01':date
-```
+    from customer_analysis
+    where signup_date >= '2024-01-01':date
 ---
 model customer_analysis = {
   from customers
