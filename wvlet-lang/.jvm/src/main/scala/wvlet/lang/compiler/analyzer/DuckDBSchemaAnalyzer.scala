@@ -14,7 +14,6 @@
 package wvlet.lang.compiler.analyzer
 
 import org.duckdb.DuckDBConnection
-import wvlet.airframe.control.Control
 import wvlet.airframe.control.Control.withResource
 import wvlet.lang.api.StatusCode
 import wvlet.lang.compiler.Name
@@ -24,7 +23,10 @@ import wvlet.lang.model.{DataType, RelationType}
 import java.io.File
 import java.sql.DriverManager
 
-trait ParquetAnalyzerCompat:
+object DuckDBAnalyzer extends DuckDBSchemaAnalyzerCompat:
+  def guessSchema(path: String): RelationType = analyzeFileSchema(path)
+
+trait DuckDBSchemaAnalyzerCompat:
 
   private def withConnection[U](f: DuckDBConnection => U): U =
     Class.forName("org.duckdb.DuckDBDriver")
@@ -35,11 +37,11 @@ trait ParquetAnalyzerCompat:
       case other =>
         throw StatusCode.NOT_IMPLEMENTED.newException("duckdb connection is unavailable")
 
-  protected def guessSchemaInternal(path: String): RelationType =
+  protected def analyzeFileSchema(path: String): RelationType =
     if !new File(path).exists then
       EmptyRelationType
     else
-      // Use DuckDB to analyze the schema of the Parquet file
+      // Use DuckDB to analyze the schema of the file
       val sql = s"select * from '${path}' limit 0"
 
       withConnection { conn =>
@@ -57,4 +59,4 @@ trait ParquetAnalyzerCompat:
         }
       }
 
-end ParquetAnalyzerCompat
+end DuckDBSchemaAnalyzerCompat
