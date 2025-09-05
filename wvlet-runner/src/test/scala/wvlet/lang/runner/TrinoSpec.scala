@@ -58,12 +58,8 @@ trait TrinoSpecRunner(specPath: String) extends AirSpec:
   // Ensure the compiler knows we are targeting Trino
   compiler.setDefaultCatalog(dbConnectorProvider.getConnector(profile).getCatalog("memory", "main"))
 
-  private def isLocalSpec(u: CompilationUnit): Boolean =
-    val f = u.sourceFile.fileName
-    f.startsWith("local-") || f.startsWith("local_")
-
   // Compile .wv files and run only local-* specs in the folder
-  for unit <- compiler.localCompilationUnits.filter(isLocalSpec) do
+  for unit <- compiler.localCompilationUnits do
     test(unit.sourceFile.relativeFilePath.replaceAll("/", ":")) {
       try
         handleResult(runSpec(unit))
@@ -101,4 +97,7 @@ trait TrinoSpecRunner(specPath: String) extends AirSpec:
 
 end TrinoSpecRunner
 
+/**
+  * Specs evaluated with a local Trino server
+  */
 class LocalTrinoSpec extends TrinoSpecRunner("spec/trino")
