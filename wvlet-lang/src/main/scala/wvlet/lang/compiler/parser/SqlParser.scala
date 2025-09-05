@@ -648,23 +648,24 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
 
   end select
 
+  private def relationRest(r: Relation): Relation =
+    val t = scanner.lookAhead()
+    t.token match
+      case SqlToken.COMMA =>
+        consume(SqlToken.COMMA)
+        // Note: Parsing the rest as a new relation is important to build a left-deep plan
+        val next = relation()
+        relationRest(
+          Join(JoinType.ImplicitJoin, r, next, NoJoinCriteria, asof = false, spanFrom(next.span))
+        )
+      case SqlToken.LEFT | SqlToken.RIGHT | SqlToken.INNER | SqlToken.FULL | SqlToken.CROSS |
+          SqlToken.ASOF | SqlToken.JOIN =>
+        relationRest(join(r))
+      case _ =>
+        r
+  end relationRest
+
   def fromClause(): Relation =
-    def relationRest(r: Relation): Relation =
-      val t = scanner.lookAhead()
-      t.token match
-        case SqlToken.COMMA =>
-          consume(SqlToken.COMMA)
-          // Note: Parsing the rest as a new relation is important to build a left-deep plan
-          val next = relation()
-          relationRest(
-            Join(JoinType.ImplicitJoin, r, next, NoJoinCriteria, asof = false, spanFrom(next.span))
-          )
-        case SqlToken.LEFT | SqlToken.RIGHT | SqlToken.INNER | SqlToken.FULL | SqlToken.CROSS |
-            SqlToken.ASOF | SqlToken.JOIN =>
-          relationRest(join(r))
-        case _ =>
-          r
-    end relationRest
 
     val t = scanner.lookAhead()
     t.token match
@@ -1584,15 +1585,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           if t2.token.isIdentifier || t2.token == SqlToken.DOUBLE_QUOTE_STRING then
             // Parenthesized relation: (table alias LEFT JOIN ...)
             var r = relation()
-            // Handle JOIN operations within parentheses
-            def relationRest(r: Relation): Relation =
-              val t = scanner.lookAhead()
-              t.token match
-                case SqlToken.LEFT | SqlToken.RIGHT | SqlToken.INNER | SqlToken.FULL | SqlToken
-                      .CROSS | SqlToken.ASOF | SqlToken.JOIN =>
-                  relationRest(join(r))
-                case _ =>
-                  r
+            // Handle JOIN operations within parentheses (including comma-separated relations)
             r = relationRest(r)
             consume(SqlToken.R_PAREN)
             r

@@ -5,7 +5,8 @@ import wvlet.lang.compiler.*
 import wvlet.lang.compiler.codegen.WvletGenerator
 import wvlet.lang.compiler.transform.RewriteExpr
 
-abstract class WvletGeneratorTest(path: String, ignoredSpec: Map[String, String] = Map.empty) extends AirSpec:
+abstract class WvletGeneratorTest(path: String, ignoredSpec: Map[String, String] = Map.empty)
+    extends AirSpec:
   private val testPrefix = path.split("\\/").lastOption.getOrElse(path)
   private val globalCtx  = Context.testGlobalContext(path)
 
@@ -47,10 +48,13 @@ end WvletGeneratorTest
 class WvletGeneratorBasicSpec  extends WvletGeneratorTest("spec/basic")
 class WvletGeneratorWvTPCHSPec extends WvletGeneratorTest("spec/tpch")
 
-class WvletGeneratorTPCHSpec     extends WvletGeneratorTest("spec/sql/tpc-h")
-class WvletGeneratorSqlBasicSpec extends WvletGeneratorTest(
-  "spec/sql/basic",
-  ignoredSpec = Map("decimal-literals.sql" -> "Need to decide how to support DECIMAL type in Wvlet")
-)
+class WvletGeneratorTPCHSpec extends WvletGeneratorTest("spec/sql/tpc-h")
+class WvletGeneratorSqlBasicSpec
+    extends WvletGeneratorTest(
+      "spec/sql/basic",
+      ignoredSpec = Map(
+        "decimal-literals.sql" -> "Need to decide how to support DECIMAL type in Wvlet"
+      )
+    )
 
 class WvletGeneratorTPCDSSpec extends WvletGeneratorTest("spec/sql/tpc-ds")

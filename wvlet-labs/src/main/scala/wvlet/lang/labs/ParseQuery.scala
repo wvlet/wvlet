@@ -28,6 +28,34 @@ object ParseQuery extends LogSupport:
 // Test command for parsing queries in batch
 class ParseQuery() extends LogSupport:
 
+  private def writeErrorRecord(
+      errorWriter: PrintWriter,
+      queryCount: Int,
+      tdAccountId: String,
+      jobId: String,
+      queryId: String,
+      database: String,
+      sql: String,
+      errorType: String,
+      errors: Option[List[String]] = None,
+      exception: Option[Exception] = None
+  ): Unit =
+    val errorRecord = QueryErrorRecord(
+      queryIndex = queryCount,
+      td_account_id = tdAccountId,
+      job_id = jobId,
+      query_id = queryId,
+      database = database,
+      sql = sql,
+      errorType = errorType,
+      errors = errors,
+      exception = exception.map(_.getClass.getSimpleName),
+      message = exception.map(_.getMessage),
+      stackTrace = exception.map(_.getStackTrace.take(5).map(_.toString).toList)
+    )
+    errorWriter.println(MessageCodec.of[QueryErrorRecord].toJson(errorRecord))
+    errorWriter.flush()
+
   @command(isDefault = true, description = "Parse query log")
   def help(): Unit = info(s"Use 'parse' subcommand to parse query log")
 
@@ -90,18 +118,17 @@ class ParseQuery() extends LogSupport:
             if compileResult.hasFailures then
               errorCount += 1
               val errorMessages = compileResult.failureReport.map(_._2.getMessage).toList
-              val errorRecord = QueryErrorRecord(
-                queryIndex = queryCount,
-                td_account_id = tdAccountId,
-                job_id = jobId,
-                query_id = queryId,
-                database = database,
-                sql = sql,
-                errorType = "compilation_failure",
+              writeErrorRecord(
+                errorWriter,
+                queryCount,
+                tdAccountId,
+                jobId,
+                queryId,
+                database,
+                sql,
+                "compilation_failure",
                 errors = Some(errorMessages)
               )
-              errorWriter.println(MessageCodec.of[QueryErrorRecord].toJson(errorRecord))
-              errorWriter.flush()
               if errorCount % 100 == 0 then
                 info(s"Progress: ${errorCount} compilation failures so far...")
             else
@@ -112,20 +139,17 @@ class ParseQuery() extends LogSupport:
           catch
             case e: Exception =>
               errorCount += 1
-              val errorRecord = QueryErrorRecord(
-                queryIndex = queryCount,
-                td_account_id = tdAccountId,
-                job_id = jobId,
-                query_id = queryId,
-                database = database,
-                sql = sql,
-                errorType = "exception",
-                exception = Some(e.getClass.getSimpleName),
-                message = Some(e.getMessage),
-                stackTrace = Some(e.getStackTrace.take(5).map(_.toString).toList)
+              writeErrorRecord(
+                errorWriter,
+                queryCount,
+                tdAccountId,
+                jobId,
+                queryId,
+                database,
+                sql,
+                "exception",
+                exception = Some(e)
               )
-              errorWriter.println(MessageCodec.of[QueryErrorRecord].toJson(errorRecord))
-              errorWriter.flush()
               if errorCount % 100 == 0 then
                 info(s"Progress: ${errorCount} exceptions so far...")
           end try
