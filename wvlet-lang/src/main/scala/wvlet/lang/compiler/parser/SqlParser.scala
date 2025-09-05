@@ -675,6 +675,10 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         r
       case d if d.isQueryDelimiter =>
         EmptyRelation(spanFrom(t))
+      case SqlToken.WHERE | SqlToken.GROUP | SqlToken.HAVING | SqlToken.ORDER | SqlToken.LIMIT | 
+           SqlToken.OFFSET | SqlToken.UNION | SqlToken.INTERSECT | SqlToken.EXCEPT =>
+        // SELECT without FROM clause, followed by WHERE/GROUP BY/HAVING/ORDER BY/LIMIT/etc.
+        EmptyRelation(spanFrom(t))
       case _ =>
         unexpected(t)
 
@@ -1208,6 +1212,10 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           consume(SqlToken.DATE)
           val i = literal()
           GenericLiteral(DataType.DateType, i.stringValue, spanFrom(t))
+        case SqlToken.DECIMAL =>
+          consume(SqlToken.DECIMAL)
+          val i = literal()
+          DecimalLiteral(i.stringValue.stripPrefix("'").stripSuffix("'"), s"DECIMAL ${i.stringValue}", spanFrom(t))
         case SqlToken.INTERVAL =>
           interval()
         case id if id.isIdentifier =>

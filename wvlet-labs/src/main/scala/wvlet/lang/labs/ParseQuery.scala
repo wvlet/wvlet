@@ -27,6 +27,7 @@ object ParseQuery extends LogSupport:
     l.execute(args)
   }
 
+// Test command for parsing queries in batch
 class ParseQuery() extends LogSupport:
 
   @command(isDefault = true, description = "Parse query log")
