@@ -241,6 +241,11 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
         val parquetRelationType = ParquetAnalyzer.guessSchema(file)
         val cols                = parquetRelationType.fields
         FileScan(SingleQuoteString(file, f.span), parquetRelationType, cols, f.span)
+      case f: FileRef if f.filePath.endsWith(".csv") =>
+        val file            = context.dataFilePath(f.filePath)
+        val csvRelationType = CSVAnalyzer.guessSchema(file)
+        val cols            = csvRelationType.fields
+        FileScan(SingleQuoteString(file, f.span), csvRelationType, cols, f.span)
 
     end apply
 
