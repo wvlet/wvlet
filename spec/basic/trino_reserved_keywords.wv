@@ -1,0 +1,10 @@
+-- Test for Trino reserved keywords in GROUP BY operations
+-- This should work without generating nested quotes in aggregated labels
+
+val v(id, table) = [[1, "a"], [2, "b"]];
+from v
+| group by id;
+
+test _.columns should contain "id"
+test _.columns should contain "arbitrary(id)"
+test _.columns should contain "arbitrary(table)"

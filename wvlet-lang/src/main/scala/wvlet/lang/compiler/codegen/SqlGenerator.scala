@@ -902,8 +902,10 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
               // DuckDB generates human-friendly column name
               EmptyName
             case _ =>
-              val exprStr = expr(ex)
-              NameExpr.fromString(formatter.render(0, exprStr))
+              // Generate alias name without nested quotes to avoid issues like "arbitrary("table")"
+              // Use the unquoted column name for the function alias  
+              val columnName = f.name.name // Get the raw column name without quotes
+              NameExpr.fromString(s"arbitrary(${columnName})")
         SingleColumn(name, ex, NoSpan)
       }
 
