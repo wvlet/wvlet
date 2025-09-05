@@ -8,6 +8,12 @@ trait IOCompat:
 
   def readAsString(filePath: String): String  = ???
   def readAsString(uri: java.net.URI): String = ???
+
+  def readGzipAsString(filePath: String): String =
+    throw new UnsupportedOperationException(
+      "Gzip reading is not supported in Scala.js (browser environment)"
+    )
+
   def listResources(path: String): List[VirtualFile] =
     listFiles(path).map(f => URIResource(File(f).toURI)).toList
 

@@ -1,5 +1,7 @@
 package wvlet.lang.compiler
 
+import wvlet.airframe.control.Control.withResource
+
 import java.net.URI
 import java.io.File
 import java.nio.file.{Files, Path}
@@ -11,6 +13,12 @@ trait IOCompat:
   def readAsString(filePath: String): String =
     val bytes = java.nio.file.Files.newInputStream(java.nio.file.Paths.get(filePath)).readAllBytes()
     new String(bytes, java.nio.charset.StandardCharsets.UTF_8)
+
+  def readGzipAsString(filePath: String): String =
+    withResource(new java.util.zip.GZIPInputStream(Files.newInputStream(Path.of(filePath)))) {
+      gzipInputStream =>
+        new String(gzipInputStream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+    }
 
   def readAsString(uri: java.net.URI): String = ???
 

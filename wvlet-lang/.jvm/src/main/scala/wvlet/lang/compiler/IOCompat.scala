@@ -19,6 +19,12 @@ trait IOCompat:
     .IO
     .readAsString(Path.of(filePath).toFile)
 
+  def readGzipAsString(filePath: String): String =
+    withResource(new java.util.zip.GZIPInputStream(Files.newInputStream(Path.of(filePath)))) {
+      gzipInputStream =>
+        new String(gzipInputStream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+    }
+
   def readAsString(uri: URI): String =
     withResource(uri.toURL.openStream()) { in =>
       wvlet.airframe.control.IO.readAsString(in)

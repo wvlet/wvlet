@@ -24,10 +24,16 @@ import scala.collection.immutable.ListMap
 
 object JSONAnalyzer extends LogSupport:
   def analyzeJSONFile(path: String): RelationType =
-    val json = SourceIO.readAsString(path)
+    val json =
+      if path.endsWith(".gz") then
+        SourceIO.readGzipAsString(path)
+      else
+        SourceIO.readAsString(path)
+    analyzeJSONContent(json)
+
+  private def analyzeJSONContent(json: String): RelationType =
     debug(json)
     val jsonValue = JSON.parse(json)
-
     guessSchema(jsonValue)
 
   class TypeCountMap:
