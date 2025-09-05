@@ -105,8 +105,9 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   case R_BRACKET extends WvletToken(Op, "]")
 
   // Special symbols
-  case COLON      extends WvletToken(Op, ":")
-  case SEMICOLON  extends WvletToken(Op, ";")
+  case COLON        extends WvletToken(Op, ":")
+  case DOUBLE_COLON extends WvletToken(Op, "::")
+  case SEMICOLON    extends WvletToken(Op, ";")
   case COMMA      extends WvletToken(Op, ",")
   case DOT        extends WvletToken(Op, ".")
   case UNDERSCORE extends WvletToken(Op, "_")

@@ -1,0 +1,8 @@
+-- Test double-colon type casting syntax
+select 
+  1::int as int_cast,
+  "42"::int as str_to_int,
+  null::int as null_cast
+
+test _.columns should be ['int_cast', 'str_to_int', 'null_cast']
+test _.rows should be [[1, 42, null]]
