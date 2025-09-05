@@ -19,6 +19,7 @@ New to Wvlet? Check out the [Quick Start](./quick-start.md) tutorial for a hands
 - [Joining & Combining Data](#joining--combining-data)
 - [Sorting & Transformation](#sorting--transformation)
 - [Advanced Operations](#advanced-operations)
+- [Comments](#comments)
 - [Expressions](#expressions)
 - [Common Query Patterns](#common-query-patterns)
 
@@ -215,6 +216,54 @@ These commands help you understand query structure and data.
 | __describe__ `query` | Show query schema | Understanding output columns |
 | __explain__ `query` | Show logical plan | Query optimization |
 | __explain__ sql"..." | Explain raw SQL | SQL debugging |
+
+## Comments
+
+Wvlet supports two types of comments for documenting your queries:
+
+### Single-line Comments (`--`)
+
+Use double hyphens (`--`) for single-line comments. Everything after `--` on the same line is treated as a comment and ignored during query execution:
+
+```wvlet
+-- This is a single-line comment
+from customers
+where age > 18  -- Filter for adults only
+-- Another comment
+select name, email
+```
+
+### Documentation Comments (`---`)
+
+Use triple hyphens (`---`) for documentation comments, especially for documenting models. These comments support Markdown formatting and are used for generating documentation:
+
+```wvlet
+---
+## Customer Analysis Model
+
+This model provides filtered customer data for analytics:
+
+- Includes only active customers
+- Excludes test accounts
+- Adds calculated fields for analysis
+
+Example usage:
+  from customer_analysis
+  where signup_date >= '2024-01-01':date
+---
+model customer_analysis = {
+  from customers
+  where status = 'active'
+  where email not like '%test%'
+  add current_date - signup_date as days_since_signup
+}
+```
+
+Documentation comments are particularly useful for:
+- Describing the purpose and usage of models
+- Providing examples of how to use the model
+- Documenting data transformations and business logic
+- Adding metadata for team collaboration
 
 ## Expressions
 
