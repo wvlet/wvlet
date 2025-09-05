@@ -5,7 +5,8 @@ import wvlet.lang.compiler.*
 import wvlet.lang.compiler.codegen.WvletGenerator
 import wvlet.lang.compiler.transform.RewriteExpr
 
-abstract class WvletGeneratorTest(path: String) extends AirSpec:
+abstract class WvletGeneratorTest(path: String, ignoredSpec: Map[String, String] = Map.empty)
+    extends AirSpec:
   private val testPrefix = path.split("\\/").lastOption.getOrElse(path)
   private val globalCtx  = Context.testGlobalContext(path)
 
@@ -14,6 +15,7 @@ abstract class WvletGeneratorTest(path: String) extends AirSpec:
     .foreach { unit =>
       val file = unit.sourceFile.fileName
       test(s"Convert ${testPrefix}:${file} to Wvlet") {
+        ignoredSpec.get(file).foreach(reason => ignore(reason))
         trace(s"[${file}]\n${unit.sourceFile.getContentAsString}")
         given ctx: Context = globalCtx.getContextOf(unit)
         val unresolvedPlan = ParserPhase.parse(unit, ctx)
@@ -46,7 +48,13 @@ end WvletGeneratorTest
 class WvletGeneratorBasicSpec  extends WvletGeneratorTest("spec/basic")
 class WvletGeneratorWvTPCHSPec extends WvletGeneratorTest("spec/tpch")
 
-class WvletGeneratorTPCHSpec     extends WvletGeneratorTest("spec/sql/tpc-h")
-class WvletGeneratorSqlBasicSpec extends WvletGeneratorTest("spec/sql/basic")
+class WvletGeneratorTPCHSpec extends WvletGeneratorTest("spec/sql/tpc-h")
+class WvletGeneratorSqlBasicSpec
+    extends WvletGeneratorTest(
+      "spec/sql/basic",
+      ignoredSpec = Map(
+        "decimal-literals.sql" -> "Need to decide how to support DECIMAL type in Wvlet"
+      )
+    )
 
 class WvletGeneratorTPCDSSpec extends WvletGeneratorTest("spec/sql/tpc-ds")

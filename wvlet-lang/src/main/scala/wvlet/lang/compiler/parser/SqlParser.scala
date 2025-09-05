@@ -648,23 +648,24 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
 
   end select
 
+  private def relationRest(r: Relation): Relation =
+    val t = scanner.lookAhead()
+    t.token match
+      case SqlToken.COMMA =>
+        consume(SqlToken.COMMA)
+        // Note: Parsing the rest as a new relation is important to build a left-deep plan
+        val next = relation()
+        relationRest(
+          Join(JoinType.ImplicitJoin, r, next, NoJoinCriteria, asof = false, spanFrom(next.span))
+        )
+      case SqlToken.LEFT | SqlToken.RIGHT | SqlToken.INNER | SqlToken.FULL | SqlToken.CROSS |
+          SqlToken.ASOF | SqlToken.JOIN =>
+        relationRest(join(r))
+      case _ =>
+        r
+  end relationRest
+
   def fromClause(): Relation =
-    def relationRest(r: Relation): Relation =
-      val t = scanner.lookAhead()
-      t.token match
-        case SqlToken.COMMA =>
-          consume(SqlToken.COMMA)
-          // Note: Parsing the rest as a new relation is important to build a left-deep plan
-          val next = relation()
-          relationRest(
-            Join(JoinType.ImplicitJoin, r, next, NoJoinCriteria, asof = false, spanFrom(next.span))
-          )
-        case SqlToken.LEFT | SqlToken.RIGHT | SqlToken.INNER | SqlToken.FULL | SqlToken.CROSS |
-            SqlToken.ASOF | SqlToken.JOIN =>
-          relationRest(join(r))
-        case _ =>
-          r
-    end relationRest
 
     val t = scanner.lookAhead()
     t.token match
@@ -675,8 +676,14 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         r
       case d if d.isQueryDelimiter =>
         EmptyRelation(spanFrom(t))
+      case SqlToken.WHERE | SqlToken.GROUP | SqlToken.HAVING | SqlToken.ORDER | SqlToken.LIMIT |
+          SqlToken.OFFSET | SqlToken.UNION | SqlToken.INTERSECT | SqlToken.EXCEPT =>
+        // SELECT without FROM clause, followed by WHERE/GROUP BY/HAVING/ORDER BY/LIMIT/etc.
+        EmptyRelation(spanFrom(t))
       case _ =>
         unexpected(t)
+
+  end fromClause
 
   def whereClause(input: Relation): Relation =
     val t = scanner.lookAhead()
@@ -1208,6 +1215,14 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           consume(SqlToken.DATE)
           val i = literal()
           GenericLiteral(DataType.DateType, i.stringValue, spanFrom(t))
+        case SqlToken.DECIMAL =>
+          consume(SqlToken.DECIMAL)
+          val i = literal()
+          DecimalLiteral(
+            i.stringValue.stripPrefix("'").stripSuffix("'"),
+            s"DECIMAL ${i.stringValue}",
+            spanFrom(t)
+          )
         case SqlToken.INTERVAL =>
           interval()
         case id if id.isIdentifier =>
@@ -1564,7 +1579,21 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           consume(SqlToken.R_PAREN)
           Lateral(subQuery, spanFrom(t))
         case SqlToken.L_PAREN =>
-          query()
+          consume(SqlToken.L_PAREN)
+          val t2 = scanner.lookAhead()
+          // Check if this is a parenthesized relation (starts with identifier) or a subquery
+          if t2.token.isIdentifier || t2.token == SqlToken.DOUBLE_QUOTE_STRING then
+            // Parenthesized relation: (table alias LEFT JOIN ...)
+            var r = relation()
+            // Handle JOIN operations within parentheses (including comma-separated relations)
+            r = relationRest(r)
+            consume(SqlToken.R_PAREN)
+            r
+          else
+            // Subquery: (SELECT ...)
+            val subQuery = query()
+            consume(SqlToken.R_PAREN)
+            subQuery
         case SqlToken.UNNEST =>
           consume(SqlToken.UNNEST)
           consume(SqlToken.L_PAREN)
