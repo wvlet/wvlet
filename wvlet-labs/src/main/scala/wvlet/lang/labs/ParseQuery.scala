@@ -88,15 +88,14 @@ class ParseQuery() extends LogSupport:
                 )
             )
 
-          var queryCount   = 0
-          var successCount = 0
-          var errorCount   = 0
+          var queryCount = 0
+          var errorCount = 0
 
           // Create error log file in target folder
           val queryLogFileName = java.nio.file.Paths.get(queryLogFile).getFileName.toString
           val targetDir        = java.nio.file.Paths.get("target")
           java.nio.file.Files.createDirectories(targetDir)
-          val errorLogFile = s"target/${queryLogFileName}.errors.json"
+          val errorLogFile = targetDir.resolve(s"${queryLogFileName}.errors.json").toString
 
           Control.withResource(new PrintWriter(new FileWriter(errorLogFile))) { errorWriter =>
             // For each query, parse with WvletParser and generate a LogicalPlan
@@ -130,7 +129,6 @@ class ParseQuery() extends LogSupport:
                     errors = Some(errorMessages)
                   )
                 else
-                  successCount += 1
                   debug(s"Successfully parsed query ${queryCount} from database ${database}")
                   // Optionally log the logical plan
                   debug(s"Logical plan: ${compileResult.contextUnit.get.unresolvedPlan}")
