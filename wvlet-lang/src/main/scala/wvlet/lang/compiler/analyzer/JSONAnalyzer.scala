@@ -30,6 +30,13 @@ object JSONAnalyzer extends LogSupport:
 
     guessSchema(jsonValue)
 
+  def analyzeJSONGzFile(path: String): RelationType =
+    val json = SourceIO.readGzipAsString(path)
+    debug(json)
+    val jsonValue = JSON.parse(json)
+
+    guessSchema(jsonValue)
+
   class TypeCountMap:
     private var map                = Map.empty[DataType, Int]
     def mostFrequentType: DataType = map.maxBy(_._2)._1

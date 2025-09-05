@@ -12,6 +12,10 @@ trait IOCompat:
     val bytes = java.nio.file.Files.newInputStream(java.nio.file.Paths.get(filePath)).readAllBytes()
     new String(bytes, java.nio.charset.StandardCharsets.UTF_8)
 
+  def readGzipAsString(filePath: String): String =
+    // Placeholder for native gzip support - not yet implemented
+    throw new UnsupportedOperationException("Gzip reading is not yet supported on Scala Native")
+
   def readAsString(uri: java.net.URI): String = ???
 
   def listResources(path: String): List[VirtualFile] = listFiles(path).map(f =>

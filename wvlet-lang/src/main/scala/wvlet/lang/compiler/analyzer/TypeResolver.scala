@@ -236,6 +236,11 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
         val jsonRelationType = JSONAnalyzer.analyzeJSONFile(file)
         val cols             = jsonRelationType.fields
         FileScan(SingleQuoteString(file, f.span), jsonRelationType, cols, f.span)
+      case f: FileRef if f.filePath.endsWith(".json.gz") =>
+        val file             = context.getDataFile(f.filePath)
+        val jsonRelationType = JSONAnalyzer.analyzeJSONGzFile(file)
+        val cols             = jsonRelationType.fields
+        FileScan(SingleQuoteString(file, f.span), jsonRelationType, cols, f.span)
       case f: FileRef if f.filePath.endsWith(".parquet") =>
         val file                = context.dataFilePath(f.filePath)
         val parquetRelationType = ParquetAnalyzer.guessSchema(file)
