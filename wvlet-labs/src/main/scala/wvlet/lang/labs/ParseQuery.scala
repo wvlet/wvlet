@@ -69,9 +69,11 @@ class ParseQuery() extends LogSupport:
 
     Control.withResource(java.sql.DriverManager.getConnection("jdbc:duckdb:")) { connection =>
       Control.withResource(connection.createStatement()) { stmt =>
-        Control.withResource(stmt.executeQuery(
-          s"SELECT td_account_id, job_id, query_id, database, sql FROM '${queryLogFile}' WHERE error_code_name IS NULL"
-        )) { rs =>
+        Control.withResource(
+          stmt.executeQuery(
+            s"SELECT td_account_id, job_id, query_id, database, sql FROM '${queryLogFile}' WHERE error_code_name IS NULL"
+          )
+        ) { rs =>
 
           // Create a compiler with parseOnlyPhases for lightweight parsing
           val compiler =
@@ -150,15 +152,27 @@ class ParseQuery() extends LogSupport:
 
               // Report progress every 10,000 queries
               if queryCount % 10000 == 0 then
-                val errorRate = if queryCount > 0 then (errorCount.toDouble / queryCount * 100) else 0.0
-                info(f"Processed ${queryCount}%,d queries, ${errorCount}%,d failed (${errorRate}%.1f%% error rate)")
+                val errorRate =
+                  if queryCount > 0 then
+                    (errorCount.toDouble / queryCount * 100)
+                  else
+                    0.0
+                info(
+                  f"Processed ${queryCount}%,d queries, ${errorCount}%,d failed (${errorRate}%.1f%% error rate)"
+                )
             end while
 
             if errorCount > 0 then
               info(s"Errors logged to: ${errorLogFile}")
 
-            val errorRate = if queryCount > 0 then (errorCount.toDouble / queryCount * 100) else 0.0
-            info(f"Final: ${queryCount}%,d queries, ${errorCount}%,d failed (${errorRate}%.1f%% error rate)")
+            val errorRate =
+              if queryCount > 0 then
+                (errorCount.toDouble / queryCount * 100)
+              else
+                0.0
+            info(
+              f"Final: ${queryCount}%,d queries, ${errorCount}%,d failed (${errorRate}%.1f%% error rate)"
+            )
           }
         }
       }
