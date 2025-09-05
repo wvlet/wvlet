@@ -219,7 +219,7 @@ These commands help you understand query structure and data.
 
 ## Comments
 
-Wvlet supports two types of comments for documenting your queries and models:
+Wvlet supports two types of comments for documenting your queries:
 
 ### Single-line Comments (`--`)
 
@@ -248,8 +248,8 @@ This model provides filtered customer data for analytics:
 - Adds calculated fields for analysis
 
 Example usage:
-    from customer_analysis
-    where signup_date >= '2024-01-01':date
+  from customer_analysis
+  where signup_date >= '2024-01-01':date
 ---
 model customer_analysis = {
   from customers
