@@ -32,13 +32,12 @@ trait DuckDBSchemaAnalyzerCompat:
     Class.forName("org.duckdb.DuckDBDriver")
     DriverManager.getConnection("jdbc:duckdb:") match
       case conn: DuckDBConnection =>
-        try f(conn)
-        finally conn.close()
+        withResource(conn)(f)
       case other =>
         throw StatusCode.NOT_IMPLEMENTED.newException("duckdb connection is unavailable")
 
   protected def analyzeFileSchema(path: String): RelationType =
-    if !new File(path).exists then
+    if !new File(path).isFile then
       EmptyRelationType
     else
       // Use DuckDB to analyze the schema of the file
