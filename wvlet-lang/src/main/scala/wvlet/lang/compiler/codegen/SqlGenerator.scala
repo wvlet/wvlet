@@ -520,7 +520,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
                       "from",
                       child,
                       "TABLESAMPLE",
-                      text(samplingMethod.toString.toLowerCase) + paren(text(s"${percentage}%"))
+                      text(samplingMethod.toString.toLowerCase) + paren(text(s"${percentage}"))
                     )
                   )
             case _ =>

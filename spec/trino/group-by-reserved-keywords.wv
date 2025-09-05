@@ -5,4 +5,4 @@ group by id
 test _.columns should contain 'id'
 test _.columns should contain 'arbitrary(id)'
 test _.columns should contain 'arbitrary(table)'
-test _.rows.size should be 2
+test _.size should be 2
