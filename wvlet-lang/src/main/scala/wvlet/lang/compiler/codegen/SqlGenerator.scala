@@ -487,46 +487,111 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       case s: Sample =>
         val child          = relation(s.child, SQLBlock())(using InFromClause)
         val samplingMethod = s.method.getOrElse(reservoir)
+
         val body: Doc =
-          dbType match
-            case DBType.DuckDB =>
-              val size =
+          // Both Trino and DuckDB support TABLESAMPLE in FROM clause, but with different percentage format
+          if sc.inFromClause then
+            dbType match
+              case DBType.Trino =>
+                // Trino: TABLESAMPLE BERNOULLI(5) - integer percentage
+                val percentage =
+                  s.size match
+                    case Rows(n) =>
+                      text(n.toString)
+                    case Percentage(p) =>
+                      text(p.toString.stripSuffix(".0"))
+                group(
+                  wl(
+                    child,
+                    "TABLESAMPLE",
+                    text(samplingMethod.toString.toUpperCase),
+                    paren(percentage)
+                  )
+                )
+              case DBType.DuckDB =>
+                // DuckDB: TABLESAMPLE BERNOULLI(5%) - percentage with % sign
+                val percentage =
+                  s.size match
+                    case Rows(n) =>
+                      text(s"${n}%") // Convert rows to percentage for DuckDB
+                    case Percentage(p) =>
+                      text(s"${p.toString.stripSuffix(".0")}%")
+                group(
+                  wl(
+                    child,
+                    "TABLESAMPLE",
+                    text(samplingMethod.toString.toUpperCase),
+                    paren(percentage)
+                  )
+                )
+              case _ =>
+                warn(s"Unsupported TABLESAMPLE for ${dbType}, falling back to SELECT wrapper")
+                // Fallback to SELECT wrapper for unsupported databases
+                val size =
+                  s.size match
+                    case Rows(n) =>
+                      text(s"${n} rows")
+                    case Percentage(percentage) =>
+                      text(s"${percentage}%")
+                group(
+                  wl(
+                    "select",
+                    "*",
+                    "from",
+                    child,
+                    "using",
+                    "sample",
+                    text(samplingMethod.toString.toLowerCase) + paren(size)
+                  )
+                )
+          else
+            // Non-FROM contexts: use function-based sampling
+            dbType match
+              case DBType.Trino =>
                 s.size match
                   case Rows(n) =>
-                    text(s"${n} rows")
+                    // Supported only in td-trino
+                    group(wl("select", cl("*", s"reservoir_sample(${n}) over()"), "from", child))
                   case Percentage(percentage) =>
-                    text(s"${percentage}%")
-              group(
-                wl(
-                  "select",
-                  "*",
-                  "from",
-                  child,
-                  "using",
-                  "sample",
-                  text(samplingMethod.toString.toLowerCase) + paren(size)
-                )
-              )
-            case DBType.Trino =>
-              s.size match
-                case Rows(n) =>
-                  // Supported only in td-trino
-                  group(wl("select", cl("*", s"reservoir_sample(${n}) over()"), "from", child))
-                case Percentage(percentage) =>
-                  group(
-                    wl(
-                      "select",
-                      "*",
-                      "from",
-                      child,
-                      "TABLESAMPLE",
-                      text(samplingMethod.toString.toLowerCase) + paren(text(s"${percentage}"))
+                    // Use TABLESAMPLE with consistent formatting for non-FROM Trino contexts
+                    group(
+                      wl(
+                        "select",
+                        "*",
+                        "from",
+                        child,
+                        "TABLESAMPLE",
+                        text(samplingMethod.toString.toUpperCase),
+                        paren(text(percentage.toString.stripSuffix(".0")))
+                      )
                     )
+              case DBType.DuckDB =>
+                // DuckDB uses USING SAMPLE syntax for non-FROM contexts
+                val size =
+                  s.size match
+                    case Rows(n) =>
+                      text(s"${n} rows")
+                    case Percentage(percentage) =>
+                      text(s"${percentage}%")
+                group(
+                  wl(
+                    "select",
+                    "*",
+                    "from",
+                    child,
+                    "using",
+                    "sample",
+                    text(samplingMethod.toString.toLowerCase) + paren(size)
                   )
-            case _ =>
-              warn(s"Unsupported sampling method: ${samplingMethod} for ${dbType}")
-              child
-        selectExpr(body)
+                )
+              case _ =>
+                warn(s"Unsupported sampling method: ${samplingMethod} for ${dbType}")
+                child
+
+        if sc.inFromClause then
+          body
+        else
+          selectExpr(body)
       case t: TestRelation =>
         // Skip test expression
         code(t) {

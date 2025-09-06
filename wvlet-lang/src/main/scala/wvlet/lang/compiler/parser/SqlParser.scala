@@ -648,9 +648,46 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
 
   end select
 
+  private def handleTableSample(r: Relation): Relation =
+    scanner.lookAhead().token match
+      case SqlToken.TABLESAMPLE =>
+        consume(SqlToken.TABLESAMPLE)
+        val methodName = identifier() // e.g., BERNOULLI, SYSTEM
+        consume(SqlToken.L_PAREN)
+        val percentage = expression() // percentage value
+        consume(SqlToken.R_PAREN)
+
+        // Convert method name to SamplingMethod
+        val method =
+          try
+            SamplingMethod.valueOf(methodName.leafName.toLowerCase)
+          catch
+            case _: IllegalArgumentException =>
+              unexpected(methodName)
+
+        // Convert percentage expression to SamplingSize
+        // In Trino SQL, both BERNOULLI and SYSTEM use integer percentage values
+        val percentageValue =
+          percentage match
+            case LongLiteral(value, _, _) =>
+              value.toDouble
+            case DoubleLiteral(value, _, _) =>
+              value
+            case DecimalLiteral(value, _, _) =>
+              value.toDouble
+            case _ =>
+              unexpected(percentage)
+        Sample(r, Some(method), SamplingSize.Percentage(percentageValue), spanFrom(r.span))
+      case _ =>
+        r
+
   private def relationRest(r: Relation): Relation =
     val t = scanner.lookAhead()
     t.token match
+      case SqlToken.TABLESAMPLE =>
+        // Handle TABLESAMPLE and continue with other relation operations
+        val sampledR = handleTableSample(r)
+        relationRest(sampledR)
       case SqlToken.COMMA =>
         consume(SqlToken.COMMA)
         // Note: Parsing the rest as a new relation is important to build a left-deep plan
@@ -1571,6 +1608,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         tableAlias(r)
       case _ =>
         r
+
+  end relation
 
   def relationPrimary(): Relation =
     val t = scanner.lookAhead()
