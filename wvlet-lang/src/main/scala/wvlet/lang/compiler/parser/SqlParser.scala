@@ -682,6 +682,10 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
   private def relationRest(r: Relation): Relation =
     val t = scanner.lookAhead()
     t.token match
+      case SqlToken.TABLESAMPLE =>
+        // Handle TABLESAMPLE and continue with other relation operations
+        val sampledR = handleTableSample(r)
+        relationRest(sampledR)
       case SqlToken.COMMA =>
         consume(SqlToken.COMMA)
         // Note: Parsing the rest as a new relation is important to build a left-deep plan
@@ -1593,12 +1597,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
   end window
 
   def relation(): Relation =
-    var r = relationPrimary()
-
-    // Handle TABLESAMPLE clause
-    r = handleTableSample(r)
-
-    // Handle table alias
+    val r = relationPrimary()
     scanner.lookAhead().token match
       case SqlToken.AS =>
         consume(SqlToken.AS)
@@ -1630,16 +1629,12 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         case SqlToken.L_PAREN =>
           consume(SqlToken.L_PAREN)
           val t2 = scanner.lookAhead()
-          // Check if this is a parenthesized relation (starts with identifier) or a subquery
-          if t2.token.isIdentifier || t2.token == SqlToken.DOUBLE_QUOTE_STRING then
-            // Parenthesized relation: (table alias LEFT JOIN ... [TABLESAMPLE ...])
+          // Check if this is a parenthesized relation (starts with identifier or nested parentheses) or a subquery
+          if t2.token.isIdentifier || t2.token == SqlToken.DOUBLE_QUOTE_STRING || t2.token == SqlToken.L_PAREN then
+            // Parenthesized relation: (table alias LEFT JOIN ...)
             var r = relation()
             // Handle JOIN operations within parentheses (including comma-separated relations)
             r = relationRest(r)
-
-            // Handle TABLESAMPLE within parentheses
-            r = handleTableSample(r)
-
             consume(SqlToken.R_PAREN)
             r
           else
