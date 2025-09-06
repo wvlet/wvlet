@@ -698,6 +698,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       case SqlToken.LEFT | SqlToken.RIGHT | SqlToken.INNER | SqlToken.FULL | SqlToken.CROSS |
           SqlToken.ASOF | SqlToken.JOIN =>
         relationRest(join(r))
+      case SqlToken.EXCEPT | SqlToken.INTERSECT =>
+        relationRest(intersectOrExcept(r))
       case _ =>
         r
   end relationRest
@@ -1631,19 +1633,18 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         case SqlToken.L_PAREN =>
           consume(SqlToken.L_PAREN)
           val t2 = scanner.lookAhead()
-          // Check if this is a parenthesized relation (starts with identifier) or a subquery
-          if t2.token.isIdentifier || t2.token == SqlToken.DOUBLE_QUOTE_STRING then
-            // Parenthesized relation: (table alias LEFT JOIN ...)
-            var r = relation()
-            // Handle JOIN operations within parentheses (including comma-separated relations)
-            r = relationRest(r)
-            consume(SqlToken.R_PAREN)
-            r
-          else
-            // Subquery: (SELECT ...)
-            val subQuery = query()
-            consume(SqlToken.R_PAREN)
-            subQuery
+
+          t2.token match
+            case id if id.isIdentifier || id == SqlToken.DOUBLE_QUOTE_STRING =>
+              // Single level parenthesized relation: (table alias LEFT JOIN ...)
+              val r = relationRest(relation())
+              consume(SqlToken.R_PAREN)
+              r
+            case _ =>
+              // Subquery: (SELECT ...)
+              val subQuery = relationRest(relation())
+              consume(SqlToken.R_PAREN)
+              BracedRelation(subQuery, spanFrom(t2))
         case SqlToken.UNNEST =>
           consume(SqlToken.UNNEST)
           consume(SqlToken.L_PAREN)
@@ -1656,6 +1657,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
               Unnest(expr, withOrdinality = true, spanFrom(t))
             case _ =>
               Unnest(expr, withOrdinality = false, spanFrom(t))
+        case q if q.isQueryStart =>
+          query()
         case _ =>
           unexpected(t)
       end match
