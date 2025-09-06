@@ -672,9 +672,10 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
             Sample(r, Some(method), SamplingSize.Percentage(value.toDouble), spanFrom(r.span))
           case DoubleLiteral(value, _, _) =>
             Sample(r, Some(method), SamplingSize.Percentage(value), spanFrom(r.span))
+          case DecimalLiteral(value, _, _) =>
+            Sample(r, Some(method), SamplingSize.Percentage(value.toDouble), spanFrom(r.span))
           case _ =>
-            // Fallback for complex expressions - treat as percentage
-            Sample(r, Some(method), SamplingSize.Percentage(5.0), spanFrom(r.span))
+            unexpected(percentage)
       case _ =>
         r
 

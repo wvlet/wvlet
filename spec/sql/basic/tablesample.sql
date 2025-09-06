@@ -12,3 +12,6 @@ SELECT * FROM information_schema.tables TABLESAMPLE BERNOULLI (20) as sampled_ta
 
 -- TABLESAMPLE with SYSTEM method (integer percentage)
 SELECT * FROM information_schema.tables TABLESAMPLE SYSTEM (15);
+
+-- TABLESAMPLE with DECIMAL percentage
+SELECT * FROM information_schema.tables TABLESAMPLE BERNOULLI (DECIMAL '12');
