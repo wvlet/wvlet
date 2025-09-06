@@ -488,41 +488,27 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         val child          = relation(s.child, SQLBlock())(using InFromClause)
         val samplingMethod = s.method.getOrElse(reservoir)
 
-        // Check if we're generating TABLESAMPLE syntax (when used in FROM clause context)
-        if sc.inFromClause then
-          // Generate TABLESAMPLE syntax for FROM clause: table TABLESAMPLE method (percentage)
-          val percentage =
-            s.size match
-              case Rows(n) =>
-                text(n.toString)
-              case Percentage(p) =>
-                text(p.toString.stripSuffix(".0"))
-          group(
-            wl(child, "TABLESAMPLE", text(samplingMethod.toString.toUpperCase), paren(percentage))
-          )
-        else
-          // Generate Wvlet-style USING SAMPLE for other contexts
-          val body: Doc =
-            dbType match
-              case DBType.DuckDB =>
-                val size =
+        val body: Doc =
+          dbType match
+            case DBType.Trino =>
+              // Trino supports TABLESAMPLE syntax in FROM clause
+              if sc.inFromClause then
+                val percentage =
                   s.size match
                     case Rows(n) =>
-                      text(s"${n} rows")
-                    case Percentage(percentage) =>
-                      text(s"${percentage}%")
+                      text(n.toString)
+                    case Percentage(p) =>
+                      text(p.toString.stripSuffix(".0"))
                 group(
                   wl(
-                    "select",
-                    "*",
-                    "from",
                     child,
-                    "using",
-                    "sample",
-                    text(samplingMethod.toString.toLowerCase) + paren(size)
+                    "TABLESAMPLE",
+                    text(samplingMethod.toString.toUpperCase),
+                    paren(percentage)
                   )
                 )
-              case DBType.Trino =>
+              else
+                // Use function-based sampling for non-FROM contexts
                 s.size match
                   case Rows(n) =>
                     // Supported only in td-trino
@@ -538,9 +524,32 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
                         text(samplingMethod.toString.toLowerCase) + paren(text(s"${percentage}"))
                       )
                     )
-              case _ =>
-                warn(s"Unsupported sampling method: ${samplingMethod} for ${dbType}")
-                child
+            case DBType.DuckDB =>
+              // DuckDB uses USING SAMPLE syntax
+              val size =
+                s.size match
+                  case Rows(n) =>
+                    text(s"${n} rows")
+                  case Percentage(percentage) =>
+                    text(s"${percentage}%")
+              group(
+                wl(
+                  "select",
+                  "*",
+                  "from",
+                  child,
+                  "using",
+                  "sample",
+                  text(samplingMethod.toString.toLowerCase) + paren(size)
+                )
+              )
+            case _ =>
+              warn(s"Unsupported sampling method: ${samplingMethod} for ${dbType}")
+              child
+
+        if dbType == DBType.Trino && sc.inFromClause then
+          body
+        else
           selectExpr(body)
       case t: TestRelation =>
         // Skip test expression
