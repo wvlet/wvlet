@@ -1018,6 +1018,7 @@ enum ShowType:
   case schemas
   case catalogs
   case databases
+  case columns
   case query
 
 case class Show(showType: ShowType, inExpr: NameExpr, span: Span) extends Relation with LeafPlan:
@@ -1054,6 +1055,17 @@ case class Show(showType: ShowType, inExpr: NameExpr, span: Span) extends Relati
           parent = None,
           typeName = Name.typeName("catalog"),
           columnTypes = List[NamedType](NamedType(Name.termName("name"), DataType.StringType))
+        )
+      case ShowType.columns =>
+        SchemaType(
+          parent = None,
+          typeName = Name.typeName("column"),
+          columnTypes = List[NamedType](
+            NamedType(Name.termName("column_name"), DataType.StringType),
+            NamedType(Name.termName("data_type"), DataType.StringType),
+            NamedType(Name.termName("is_nullable"), DataType.BooleanType),
+            NamedType(Name.termName("column_default"), DataType.StringType)
+          )
         )
       case other =>
         throw StatusCode.UNEXPECTED_STATE.newException(s"Unexpected show type: ${other}")

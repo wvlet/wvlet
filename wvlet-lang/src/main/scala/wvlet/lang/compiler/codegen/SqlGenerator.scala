@@ -657,6 +657,19 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
           )
         )
         selectExpr(sql)
+      case s: Show if s.showType == ShowType.columns =>
+        val tableNameStr = s.inExpr match
+          case name: QualifiedName => name.fullName
+          case _ => "unknown_table"
+        val sql = lines(
+          List(
+            group(wl("select", cl("column_name", "data_type", "is_nullable", "column_default"))),
+            group(wl("from", "information_schema.columns")),
+            group(wl("where", s"table_name = '${tableNameStr}'")),
+            group(wl("order by", "ordinal_position"))
+          )
+        )
+        selectExpr(sql)
       case s: Show if s.showType == ShowType.models =>
         // TODO: Show models should be handled outside of GenSQL
         // Collect all models from all contexts, then deduplicate by name (keeping the most recent)
