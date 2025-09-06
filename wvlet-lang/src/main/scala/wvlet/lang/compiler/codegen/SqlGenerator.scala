@@ -487,46 +487,61 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       case s: Sample =>
         val child          = relation(s.child, SQLBlock())(using InFromClause)
         val samplingMethod = s.method.getOrElse(reservoir)
-        val body: Doc =
-          dbType match
-            case DBType.DuckDB =>
-              val size =
+
+        // Check if we're generating TABLESAMPLE syntax (when used in FROM clause context)
+        if sc.inFromClause then
+          // Generate TABLESAMPLE syntax for FROM clause: table TABLESAMPLE method (percentage)
+          val percentage =
+            s.size match
+              case Rows(n) =>
+                text(n.toString)
+              case Percentage(p) =>
+                text(p.toString.stripSuffix(".0"))
+          group(
+            wl(child, "TABLESAMPLE", text(samplingMethod.toString.toUpperCase), paren(percentage))
+          )
+        else
+          // Generate Wvlet-style USING SAMPLE for other contexts
+          val body: Doc =
+            dbType match
+              case DBType.DuckDB =>
+                val size =
+                  s.size match
+                    case Rows(n) =>
+                      text(s"${n} rows")
+                    case Percentage(percentage) =>
+                      text(s"${percentage}%")
+                group(
+                  wl(
+                    "select",
+                    "*",
+                    "from",
+                    child,
+                    "using",
+                    "sample",
+                    text(samplingMethod.toString.toLowerCase) + paren(size)
+                  )
+                )
+              case DBType.Trino =>
                 s.size match
                   case Rows(n) =>
-                    text(s"${n} rows")
+                    // Supported only in td-trino
+                    group(wl("select", cl("*", s"reservoir_sample(${n}) over()"), "from", child))
                   case Percentage(percentage) =>
-                    text(s"${percentage}%")
-              group(
-                wl(
-                  "select",
-                  "*",
-                  "from",
-                  child,
-                  "using",
-                  "sample",
-                  text(samplingMethod.toString.toLowerCase) + paren(size)
-                )
-              )
-            case DBType.Trino =>
-              s.size match
-                case Rows(n) =>
-                  // Supported only in td-trino
-                  group(wl("select", cl("*", s"reservoir_sample(${n}) over()"), "from", child))
-                case Percentage(percentage) =>
-                  group(
-                    wl(
-                      "select",
-                      "*",
-                      "from",
-                      child,
-                      "TABLESAMPLE",
-                      text(samplingMethod.toString.toLowerCase) + paren(text(s"${percentage}"))
+                    group(
+                      wl(
+                        "select",
+                        "*",
+                        "from",
+                        child,
+                        "TABLESAMPLE",
+                        text(samplingMethod.toString.toLowerCase) + paren(text(s"${percentage}"))
+                      )
                     )
-                  )
-            case _ =>
-              warn(s"Unsupported sampling method: ${samplingMethod} for ${dbType}")
-              child
-        selectExpr(body)
+              case _ =>
+                warn(s"Unsupported sampling method: ${samplingMethod} for ${dbType}")
+                child
+          selectExpr(body)
       case t: TestRelation =>
         // Skip test expression
         code(t) {

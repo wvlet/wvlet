@@ -1630,7 +1630,9 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           consume(SqlToken.L_PAREN)
           val t2 = scanner.lookAhead()
           // Check if this is a parenthesized relation (starts with identifier or nested parentheses) or a subquery
-          if t2.token.isIdentifier || t2.token == SqlToken.DOUBLE_QUOTE_STRING || t2.token == SqlToken.L_PAREN then
+          if t2.token.isIdentifier || t2.token == SqlToken.DOUBLE_QUOTE_STRING ||
+            t2.token == SqlToken.L_PAREN
+          then
             // Parenthesized relation: (table alias LEFT JOIN ...)
             var r = relation()
             // Handle JOIN operations within parentheses (including comma-separated relations)
