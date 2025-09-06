@@ -135,6 +135,9 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   case ORDINALITY  extends SqlToken(Keyword, "ordinality")
   case TABLESAMPLE extends SqlToken(Keyword, "tablesample")
   case BERNOULLI   extends SqlToken(Keyword, "bernoulli")
+  case SAMPLE      extends SqlToken(Keyword, "sample")
+  case PERCENT     extends SqlToken(Keyword, "percent")
+  case RESERVOIR   extends SqlToken(Keyword, "reservoir")
 
   case ALL      extends SqlToken(Keyword, "all")
   case DISTINCT extends SqlToken(Keyword, "distinct")
@@ -307,6 +310,9 @@ object SqlToken:
     SqlToken.NO,
     SqlToken.WITHOUT,
     SqlToken.ORDINALITY,
+    SqlToken.SAMPLE,
+    SqlToken.PERCENT,
+    SqlToken.RESERVOIR,
     // DDL entity types - non-reserved so they can be used as table/column names
     SqlToken.CATALOG,
     SqlToken.DATABASE,
