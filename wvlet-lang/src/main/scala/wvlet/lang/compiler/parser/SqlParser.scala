@@ -1631,7 +1631,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         case SqlToken.L_PAREN =>
           consume(SqlToken.L_PAREN)
           val t2 = scanner.lookAhead()
-          
+
           t2.token match
             case SqlToken.L_PAREN =>
               // Nested parentheses: ((relation)) - recursively parse as another parenthesized expression
