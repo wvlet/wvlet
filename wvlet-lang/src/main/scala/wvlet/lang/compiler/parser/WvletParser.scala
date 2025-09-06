@@ -337,7 +337,8 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     val name = identifier()
     try
       ShowType.valueOf(name.leafName) match
-        case ShowType.models | ShowType.tables | ShowType.schemas | ShowType.databases =>
+        case ShowType.models | ShowType.tables | ShowType.schemas | ShowType.databases | ShowType
+              .columns =>
           val inExpr: NameExpr =
             scanner.lookAhead().token match
               case WvletToken.IN =>

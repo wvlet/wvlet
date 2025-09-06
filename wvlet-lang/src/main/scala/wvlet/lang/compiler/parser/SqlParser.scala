@@ -818,6 +818,11 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           Show(tpe, in, spanFrom(t))
         case ShowType.catalogs =>
           Show(ShowType.catalogs, EmptyName, spanFrom(t))
+        case ShowType.columns =>
+          // Handle "SHOW COLUMNS FROM table" syntax
+          consume(SqlToken.FROM)
+          val tableName = qualifiedName()
+          Show(ShowType.columns, tableName, spanFrom(t))
         case _ =>
           unexpected(name)
     catch
@@ -825,6 +830,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         throw StatusCode
           .SYNTAX_ERROR
           .newException(s"Unknown SHOW type: ${name}", name.sourceLocationOfCompilationUnit)
+
+  end show
 
   def use(): UseSchema =
     val t      = consume(SqlToken.USE)

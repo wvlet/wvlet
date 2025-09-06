@@ -657,6 +657,54 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
           )
         )
         selectExpr(sql)
+      case s: Show if s.showType == ShowType.columns =>
+        val parts       = s.inExpr.nameParts.reverse
+        val tableName   = parts.headOption
+        val schemaName  = parts.lift(1)
+        val catalogName = parts.lift(2)
+
+        val cond = List.newBuilder[Expression]
+        tableName.foreach(t =>
+          cond +=
+            Eq(
+              UnquotedIdentifier("table_name", NoSpan),
+              StringLiteral.fromString(t, NoSpan),
+              NoSpan
+            )
+        )
+        schemaName.foreach(s =>
+          cond +=
+            Eq(
+              UnquotedIdentifier("table_schema", NoSpan),
+              StringLiteral.fromString(s, NoSpan),
+              NoSpan
+            )
+        )
+        catalogName.foreach(c =>
+          cond +=
+            Eq(
+              UnquotedIdentifier("table_catalog", NoSpan),
+              StringLiteral.fromString(c, NoSpan),
+              NoSpan
+            )
+        )
+
+        val conds = cond.result()
+        val wherePart =
+          if conds.isEmpty then
+            empty
+          else
+            group(wl("where", expr(Expression.concatWithAnd(conds))))
+
+        val sql = lines(
+          List(
+            group(wl("select", cl("column_name", "data_type", "is_nullable", "column_default"))),
+            group(wl("from", "information_schema.columns")),
+            wherePart,
+            group(wl("order by", "ordinal_position"))
+          )
+        )
+        selectExpr(sql)
       case s: Show if s.showType == ShowType.models =>
         // TODO: Show models should be handled outside of GenSQL
         // Collect all models from all contexts, then deduplicate by name (keeping the most recent)
