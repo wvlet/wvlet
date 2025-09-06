@@ -667,15 +667,17 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
 
         // Convert percentage expression to SamplingSize
         // In Trino SQL, both BERNOULLI and SYSTEM use integer percentage values
-        percentage match
-          case LongLiteral(value, _, _) =>
-            Sample(r, Some(method), SamplingSize.Percentage(value.toDouble), spanFrom(r.span))
-          case DoubleLiteral(value, _, _) =>
-            Sample(r, Some(method), SamplingSize.Percentage(value), spanFrom(r.span))
-          case DecimalLiteral(value, _, _) =>
-            Sample(r, Some(method), SamplingSize.Percentage(value.toDouble), spanFrom(r.span))
-          case _ =>
-            unexpected(percentage)
+        val percentageValue =
+          percentage match
+            case LongLiteral(value, _, _) =>
+              value.toDouble
+            case DoubleLiteral(value, _, _) =>
+              value
+            case DecimalLiteral(value, _, _) =>
+              value.toDouble
+            case _ =>
+              unexpected(percentage)
+        Sample(r, Some(method), SamplingSize.Percentage(percentageValue), spanFrom(r.span))
       case _ =>
         r
 
@@ -1629,10 +1631,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         case SqlToken.L_PAREN =>
           consume(SqlToken.L_PAREN)
           val t2 = scanner.lookAhead()
-          // Check if this is a parenthesized relation (starts with identifier or nested parentheses) or a subquery
-          if t2.token.isIdentifier || t2.token == SqlToken.DOUBLE_QUOTE_STRING ||
-            t2.token == SqlToken.L_PAREN
-          then
+          // Check if this is a parenthesized relation (starts with identifier) or a subquery
+          if t2.token.isIdentifier || t2.token == SqlToken.DOUBLE_QUOTE_STRING then
             // Parenthesized relation: (table alias LEFT JOIN ...)
             var r = relation()
             // Handle JOIN operations within parentheses (including comma-separated relations)

@@ -553,8 +553,18 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
                     // Supported only in td-trino
                     group(wl("select", cl("*", s"reservoir_sample(${n}) over()"), "from", child))
                   case Percentage(percentage) =>
-                    // Use SELECT wrapper for non-FROM Trino contexts
-                    group(wl("select", "*", "from", child))
+                    // Use TABLESAMPLE with consistent formatting for non-FROM Trino contexts
+                    group(
+                      wl(
+                        "select",
+                        "*",
+                        "from",
+                        child,
+                        "TABLESAMPLE",
+                        text(samplingMethod.toString.toUpperCase),
+                        paren(text(percentage.toString.stripSuffix(".0")))
+                      )
+                    )
               case DBType.DuckDB =>
                 // DuckDB uses USING SAMPLE syntax for non-FROM contexts
                 val size =
