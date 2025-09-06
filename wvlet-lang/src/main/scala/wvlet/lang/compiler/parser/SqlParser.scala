@@ -648,6 +648,36 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
 
   end select
 
+  private def handleTableSample(r: Relation): Relation =
+    scanner.lookAhead().token match
+      case SqlToken.TABLESAMPLE =>
+        consume(SqlToken.TABLESAMPLE)
+        val methodName = identifier() // e.g., BERNOULLI, SYSTEM
+        consume(SqlToken.L_PAREN)
+        val percentage = expression() // percentage value
+        consume(SqlToken.R_PAREN)
+
+        // Convert method name to SamplingMethod
+        val method =
+          try
+            SamplingMethod.valueOf(methodName.leafName.toLowerCase)
+          catch
+            case _: IllegalArgumentException =>
+              unexpected(methodName)
+
+        // Convert percentage expression to SamplingSize
+        // In Trino SQL, both BERNOULLI and SYSTEM use integer percentage values
+        percentage match
+          case LongLiteral(value, _, _) =>
+            Sample(r, Some(method), SamplingSize.Percentage(value.toDouble), spanFrom(r.span))
+          case DoubleLiteral(value, _, _) =>
+            Sample(r, Some(method), SamplingSize.Percentage(value), spanFrom(r.span))
+          case _ =>
+            // Fallback for complex expressions - treat as percentage
+            Sample(r, Some(method), SamplingSize.Percentage(5.0), spanFrom(r.span))
+      case _ =>
+        r
+
   private def relationRest(r: Relation): Relation =
     val t = scanner.lookAhead()
     t.token match
@@ -1565,34 +1595,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     var r = relationPrimary()
 
     // Handle TABLESAMPLE clause
-    scanner.lookAhead().token match
-      case SqlToken.TABLESAMPLE =>
-        consume(SqlToken.TABLESAMPLE)
-        val methodName = identifier() // e.g., BERNOULLI, SYSTEM
-        consume(SqlToken.L_PAREN)
-        val percentage = expression() // percentage value
-        consume(SqlToken.R_PAREN)
-
-        // Convert method name to SamplingMethod
-        val method =
-          try
-            SamplingMethod.valueOf(methodName.leafName.toLowerCase)
-          catch
-            case _: IllegalArgumentException =>
-              unexpected(methodName)
-
-        // Convert percentage expression to SamplingSize
-        // In Trino SQL, both BERNOULLI and SYSTEM use integer percentage values
-        percentage match
-          case LongLiteral(value, _, _) =>
-            r = Sample(r, Some(method), SamplingSize.Percentage(value.toDouble), spanFrom(r.span))
-          case DoubleLiteral(value, _, _) =>
-            r = Sample(r, Some(method), SamplingSize.Percentage(value), spanFrom(r.span))
-          case _ =>
-            // Fallback for complex expressions - treat as percentage
-            r = Sample(r, Some(method), SamplingSize.Percentage(5.0), spanFrom(r.span))
-      case _ =>
-      // No TABLESAMPLE
+    r = handleTableSample(r)
 
     // Handle table alias
     scanner.lookAhead().token match
@@ -1628,10 +1631,14 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           val t2 = scanner.lookAhead()
           // Check if this is a parenthesized relation (starts with identifier) or a subquery
           if t2.token.isIdentifier || t2.token == SqlToken.DOUBLE_QUOTE_STRING then
-            // Parenthesized relation: (table alias LEFT JOIN ...)
+            // Parenthesized relation: (table alias LEFT JOIN ... [TABLESAMPLE ...])
             var r = relation()
             // Handle JOIN operations within parentheses (including comma-separated relations)
             r = relationRest(r)
+
+            // Handle TABLESAMPLE within parentheses
+            r = handleTableSample(r)
+
             consume(SqlToken.R_PAREN)
             r
           else
