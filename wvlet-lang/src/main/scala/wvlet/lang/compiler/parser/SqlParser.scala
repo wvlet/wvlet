@@ -1631,19 +1631,27 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         case SqlToken.L_PAREN =>
           consume(SqlToken.L_PAREN)
           val t2 = scanner.lookAhead()
-          // Check if this is a parenthesized relation (starts with identifier) or a subquery
-          if t2.token.isIdentifier || t2.token == SqlToken.DOUBLE_QUOTE_STRING then
-            // Parenthesized relation: (table alias LEFT JOIN ...)
-            var r = relation()
-            // Handle JOIN operations within parentheses (including comma-separated relations)
-            r = relationRest(r)
-            consume(SqlToken.R_PAREN)
-            r
-          else
-            // Subquery: (SELECT ...)
-            val subQuery = query()
-            consume(SqlToken.R_PAREN)
-            subQuery
+          
+          t2.token match
+            case SqlToken.L_PAREN =>
+              // Nested parentheses: ((relation)) - recursively parse as another parenthesized expression
+              var innerRelation = relationPrimary()
+              // Use relationRest to handle any operations (TABLESAMPLE, JOIN, etc.) after the inner relation
+              innerRelation = relationRest(innerRelation)
+              consume(SqlToken.R_PAREN)
+              innerRelation
+            case id if id.isIdentifier || id == SqlToken.DOUBLE_QUOTE_STRING =>
+              // Single level parenthesized relation: (table alias LEFT JOIN ...)
+              var r = relation()
+              // Handle JOIN operations within parentheses (including comma-separated relations)
+              r = relationRest(r)
+              consume(SqlToken.R_PAREN)
+              r
+            case _ =>
+              // Subquery: (SELECT ...)
+              val subQuery = query()
+              consume(SqlToken.R_PAREN)
+              subQuery
         case SqlToken.UNNEST =>
           consume(SqlToken.UNNEST)
           consume(SqlToken.L_PAREN)
