@@ -831,6 +831,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           .SYNTAX_ERROR
           .newException(s"Unknown SHOW type: ${name}", name.sourceLocationOfCompilationUnit)
 
+  end show
+
   def use(): UseSchema =
     val t      = consume(SqlToken.USE)
     val schema = qualifiedName()
