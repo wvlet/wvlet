@@ -1563,27 +1563,27 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
 
   def relation(): Relation =
     var r = relationPrimary()
-    
+
     // Handle TABLESAMPLE clause
     scanner.lookAhead().token match
       case SqlToken.TABLESAMPLE =>
         consume(SqlToken.TABLESAMPLE)
         val methodName = identifier() // e.g., BERNOULLI, SYSTEM
         consume(SqlToken.L_PAREN)
-        val percentage = expression() // percentage value  
+        val percentage = expression() // percentage value
         consume(SqlToken.R_PAREN)
-        
+
         // Convert method name to SamplingMethod
-        val method = try {
-          SamplingMethod.valueOf(methodName.leafName.toLowerCase)
-        } catch {
-          case _: IllegalArgumentException => 
-            unexpected(methodName)
-        }
-        
+        val method =
+          try
+            SamplingMethod.valueOf(methodName.leafName.toLowerCase)
+          catch
+            case _: IllegalArgumentException =>
+              unexpected(methodName)
+
         // Convert percentage expression to SamplingSize
         // In Trino SQL, both BERNOULLI and SYSTEM use integer percentage values
-        percentage match {
+        percentage match
           case LongLiteral(value, _, _) =>
             r = Sample(r, Some(method), SamplingSize.Percentage(value.toDouble), spanFrom(r.span))
           case DoubleLiteral(value, _, _) =>
@@ -1591,10 +1591,9 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           case _ =>
             // Fallback for complex expressions - treat as percentage
             r = Sample(r, Some(method), SamplingSize.Percentage(5.0), spanFrom(r.span))
-        }
       case _ =>
-        // No TABLESAMPLE
-    
+      // No TABLESAMPLE
+
     // Handle table alias
     scanner.lookAhead().token match
       case SqlToken.AS =>
@@ -1604,6 +1603,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         tableAlias(r)
       case _ =>
         r
+
+  end relation
 
   def relationPrimary(): Relation =
     val t = scanner.lookAhead()
