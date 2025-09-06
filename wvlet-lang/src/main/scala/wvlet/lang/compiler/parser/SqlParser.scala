@@ -654,7 +654,26 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         consume(SqlToken.TABLESAMPLE)
         val methodName = identifier() // e.g., BERNOULLI, SYSTEM
         consume(SqlToken.L_PAREN)
-        val percentage = expression() // percentage value
+        val sizeExpr = expression() // percentage value or expression
+        
+        // Handle DuckDB percentage syntax: 10% or method(10%)
+        val (percentage, hasPercentSymbol) = sizeExpr match
+          case ArithmeticBinaryExpr(BinaryExprType.Modulus, percentageExpr, _, _) =>
+            // Handle "10 % " as percentage
+            val value = percentageExpr match
+              case LongLiteral(value, _, _) => value.toDouble
+              case DoubleLiteral(value, _, _) => value
+              case DecimalLiteral(value, _, _) => value.toDouble
+              case _ => unexpected(percentageExpr)
+            (value, true)
+          case other =>
+            val value = other match
+              case LongLiteral(value, _, _) => value.toDouble
+              case DoubleLiteral(value, _, _) => value
+              case DecimalLiteral(value, _, _) => value.toDouble
+              case _ => unexpected(other)
+            (value, false)
+        
         consume(SqlToken.R_PAREN)
 
         // Convert method name to SamplingMethod
@@ -665,19 +684,76 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
             case _: IllegalArgumentException =>
               unexpected(methodName)
 
-        // Convert percentage expression to SamplingSize
-        // In Trino SQL, both BERNOULLI and SYSTEM use integer percentage values
-        val percentageValue =
-          percentage match
-            case LongLiteral(value, _, _) =>
-              value.toDouble
-            case DoubleLiteral(value, _, _) =>
-              value
-            case DecimalLiteral(value, _, _) =>
-              value.toDouble
-            case _ =>
-              unexpected(percentage)
-        Sample(r, Some(method), SamplingSize.Percentage(percentageValue), spanFrom(r.span))
+        Sample(r, Some(method), SamplingSize.Percentage(percentage), spanFrom(r.span))
+      case SqlToken.USING =>
+        // Handle DuckDB USING SAMPLE syntax
+        consume(SqlToken.USING)
+        consume(SqlToken.SAMPLE)
+        
+        val sizeExpr = expression()
+        
+        // Check for optional keywords after the size expression
+        val (samplingSize, samplingMethod) = scanner.lookAhead().token match
+          case SqlToken.ROWS =>
+            consume(SqlToken.ROWS)
+            val rows = sizeExpr match
+              case LongLiteral(value, _, _) => value
+              case _ => unexpected(sizeExpr)
+            (SamplingSize.Rows(rows), None)
+          case SqlToken.PERCENT =>
+            consume(SqlToken.PERCENT)
+            val percentage = sizeExpr match
+              case LongLiteral(value, _, _) => value.toDouble
+              case DoubleLiteral(value, _, _) => value
+              case DecimalLiteral(value, _, _) => value.toDouble
+              case _ => unexpected(sizeExpr)
+            (SamplingSize.Percentage(percentage), None)
+          case SqlToken.L_PAREN =>
+            // Handle reservoir(10%) syntax
+            val methodName = sizeExpr match
+              case i: Identifier => i.leafName.toLowerCase
+              case _ => unexpected(sizeExpr)
+            
+            consume(SqlToken.L_PAREN)
+            val percentage = expression() match
+              case ArithmeticBinaryExpr(BinaryExprType.Modulus, percentageExpr, _, _) =>
+                percentageExpr match
+                  case LongLiteral(value, _, _) => value.toDouble
+                  case DoubleLiteral(value, _, _) => value
+                  case DecimalLiteral(value, _, _) => value.toDouble
+                  case _ => unexpected(percentageExpr)
+              case LongLiteral(value, _, _) => value.toDouble
+              case DoubleLiteral(value, _, _) => value
+              case DecimalLiteral(value, _, _) => value.toDouble
+              case other => unexpected(other)
+            consume(SqlToken.R_PAREN)
+            
+            val method = try
+              SamplingMethod.valueOf(methodName)
+            catch
+              case _: IllegalArgumentException => unexpected(sizeExpr)
+            
+            (SamplingSize.Percentage(percentage), Some(method))
+          case _ =>
+            // Default case: determine if it's rows or percentage based on the expression
+            sizeExpr match
+              case ArithmeticBinaryExpr(BinaryExprType.Modulus, percentageExpr, _, _) =>
+                val percentage = percentageExpr match
+                  case LongLiteral(value, _, _) => value.toDouble
+                  case DoubleLiteral(value, _, _) => value
+                  case DecimalLiteral(value, _, _) => value.toDouble
+                  case _ => unexpected(percentageExpr)
+                (SamplingSize.Percentage(percentage), None)
+              case LongLiteral(value, _, _) =>
+                // Could be rows or percentage - default to rows for USING SAMPLE
+                (SamplingSize.Rows(value), None)
+              case DoubleLiteral(value, _, _) =>
+                (SamplingSize.Percentage(value), None)
+              case DecimalLiteral(value, _, _) =>
+                (SamplingSize.Percentage(value.toDouble), None)
+              case _ => unexpected(sizeExpr)
+        
+        Sample(r, samplingMethod, samplingSize, spanFrom(r.span))
       case _ =>
         r
 
@@ -686,6 +762,10 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     t.token match
       case SqlToken.TABLESAMPLE =>
         // Handle TABLESAMPLE and continue with other relation operations
+        val sampledR = handleTableSample(r)
+        relationRest(sampledR)
+      case SqlToken.USING =>
+        // Handle USING SAMPLE and continue with other relation operations
         val sampledR = handleTableSample(r)
         relationRest(sampledR)
       case SqlToken.COMMA =>
