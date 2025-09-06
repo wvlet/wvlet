@@ -50,11 +50,8 @@ jobs:
           # track_progress: true
           
           # Optional: Advanced Claude configuration using claude_args
-          # claude_args: |
-          #   --model claude-opus-4-1-20250805
-          #   --allowedTools "Bash(npm install),Bash(npm run build),Bash(npm run test:*),Bash(npm run lint:*)"
-          #   --system-prompt "Follow our coding standards. Ensure all new code has tests. Use TypeScript for new files."
-          #   --max-turns 10
+          claude_args: |
+            --allowedTools './sbt scalafmtAll'
           
           # Optional: Custom settings including environment variables
           # settings: |
