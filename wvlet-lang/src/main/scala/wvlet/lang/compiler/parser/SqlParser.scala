@@ -648,6 +648,13 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
 
   end select
 
+  private def extractNumericValue(expr: Expression): Double =
+    expr match
+      case LongLiteral(value, _, _) => value.toDouble
+      case DoubleLiteral(value, _, _) => value
+      case DecimalLiteral(value, _, _) => value.toDouble
+      case _ => unexpected(expr)
+
   private def handleTableSample(r: Relation): Relation =
     scanner.lookAhead().token match
       case SqlToken.TABLESAMPLE =>
@@ -657,22 +664,12 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         val sizeExpr = expression() // percentage value or expression
         
         // Handle DuckDB percentage syntax: 10% or method(10%)
-        val (percentage, hasPercentSymbol) = sizeExpr match
+        val (percentage, _) = sizeExpr match
           case ArithmeticBinaryExpr(BinaryExprType.Modulus, percentageExpr, _, _) =>
             // Handle "10 % " as percentage
-            val value = percentageExpr match
-              case LongLiteral(value, _, _) => value.toDouble
-              case DoubleLiteral(value, _, _) => value
-              case DecimalLiteral(value, _, _) => value.toDouble
-              case _ => unexpected(percentageExpr)
-            (value, true)
+            (extractNumericValue(percentageExpr), true)
           case other =>
-            val value = other match
-              case LongLiteral(value, _, _) => value.toDouble
-              case DoubleLiteral(value, _, _) => value
-              case DecimalLiteral(value, _, _) => value.toDouble
-              case _ => unexpected(other)
-            (value, false)
+            (extractNumericValue(other), false)
         
         consume(SqlToken.R_PAREN)
 
@@ -702,11 +699,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
             (SamplingSize.Rows(rows), None)
           case SqlToken.PERCENT =>
             consume(SqlToken.PERCENT)
-            val percentage = sizeExpr match
-              case LongLiteral(value, _, _) => value.toDouble
-              case DoubleLiteral(value, _, _) => value
-              case DecimalLiteral(value, _, _) => value.toDouble
-              case _ => unexpected(sizeExpr)
+            val percentage = extractNumericValue(sizeExpr)
             (SamplingSize.Percentage(percentage), None)
           case SqlToken.L_PAREN =>
             // Handle reservoir(10%) syntax
@@ -717,15 +710,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
             consume(SqlToken.L_PAREN)
             val percentage = expression() match
               case ArithmeticBinaryExpr(BinaryExprType.Modulus, percentageExpr, _, _) =>
-                percentageExpr match
-                  case LongLiteral(value, _, _) => value.toDouble
-                  case DoubleLiteral(value, _, _) => value
-                  case DecimalLiteral(value, _, _) => value.toDouble
-                  case _ => unexpected(percentageExpr)
-              case LongLiteral(value, _, _) => value.toDouble
-              case DoubleLiteral(value, _, _) => value
-              case DecimalLiteral(value, _, _) => value.toDouble
-              case other => unexpected(other)
+                extractNumericValue(percentageExpr)
+              case other => extractNumericValue(other)
             consume(SqlToken.R_PAREN)
             
             val method = try
@@ -738,11 +724,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
             // Default case: determine if it's rows or percentage based on the expression
             sizeExpr match
               case ArithmeticBinaryExpr(BinaryExprType.Modulus, percentageExpr, _, _) =>
-                val percentage = percentageExpr match
-                  case LongLiteral(value, _, _) => value.toDouble
-                  case DoubleLiteral(value, _, _) => value
-                  case DecimalLiteral(value, _, _) => value.toDouble
-                  case _ => unexpected(percentageExpr)
+                val percentage = extractNumericValue(percentageExpr)
                 (SamplingSize.Percentage(percentage), None)
               case LongLiteral(value, _, _) =>
                 // Could be rows or percentage - default to rows for USING SAMPLE
