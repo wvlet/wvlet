@@ -5,7 +5,7 @@ val AIRSPEC_VERSION     = AIRFRAME_VERSION
 val TRINO_VERSION       = "476"
 val AWS_SDK_VERSION     = "2.20.146"
 val SCALAJS_DOM_VERSION = "2.8.1"
-val DUCKDB_JDBC_VERSION  = "1.3.2.1"
+val DUCKDB_JDBC_VERSION = "1.3.2.1"
 
 val SCALA_3 = IO.read(file("SCALA_VERSION")).trim
 // ThisBuild / resolvers ++= Resolver.sonatypeOssRepos("snapshots")
@@ -346,11 +346,11 @@ lazy val cli = project
         "wvlet" -> "wvlet.lang.cli.WvletMain"
       ),
     packJvmVersionSpecificOpts := {
-      val java24Opts = Seq("--sun-misc-unsafe-memory-access=allow", "--enable-native-access=ALL-UNNAMED")
-      Map(
-        "wv"    -> Map(24 -> java24Opts),
-        "wvlet" -> Map(24 -> java24Opts)
+      val java24Opts = Seq(
+        "--sun-misc-unsafe-memory-access=allow",
+        "--enable-native-access=ALL-UNNAMED"
       )
+      Map("wv" -> Map(24 -> java24Opts), "wvlet" -> Map(24 -> java24Opts))
     },
     packResourceDir ++= Map(file("wvlet-ui-main/dist") -> "web")
   )
@@ -505,7 +505,7 @@ def uiSettings: Seq[Setting[?]] = Seq(
 
 def linkerConfig(config: StandardConfig): StandardConfig = {
   config
-    // Check IR works properly since Scala.js 1.19.0 https://github.com/scala-js/scala-js/pull/4867
+    // Check IR works properly since Scala.js 1.20.1 https://github.com/scala-js/scala-js/pull/4867
     .withCheckIR(true)
     .withSourceMap(true)
     .withModuleKind(ModuleKind.ESModule)
@@ -515,10 +515,14 @@ def linkerConfig(config: StandardConfig): StandardConfig = {
 // For experimental projects
 lazy val labs = project
   .in(file("wvlet-labs"))
-  .settings(buildSettings, noPublish, name := "wvlet-labs",
-    libraryDependencies ++= Seq(
-      "org.wvlet.airframe" %% "airframe-launcher" % AIRFRAME_VERSION,
-      "org.duckdb" % "duckdb_jdbc" % DUCKDB_JDBC_VERSION
-    )
+  .settings(
+    buildSettings,
+    noPublish,
+    name := "wvlet-labs",
+    libraryDependencies ++=
+      Seq(
+        "org.wvlet.airframe" %% "airframe-launcher" % AIRFRAME_VERSION,
+        "org.duckdb"          % "duckdb_jdbc"       % DUCKDB_JDBC_VERSION
+      )
   )
   .dependsOn(lang.jvm, lang.js)
