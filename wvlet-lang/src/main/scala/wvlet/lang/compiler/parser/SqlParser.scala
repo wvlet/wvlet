@@ -1106,9 +1106,9 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     val t = scanner.lookAhead()
     val expr =
       t.token match
-        case SqlToken.NULL | SqlToken.INTEGER_LITERAL | SqlToken.DOUBLE_LITERAL | SqlToken
-              .FLOAT_LITERAL | SqlToken.DECIMAL_LITERAL | SqlToken.EXP_LITERAL | SqlToken
-              .SINGLE_QUOTE_STRING | SqlToken.TRIPLE_QUOTE_STRING =>
+        case SqlToken.NULL | SqlToken.TRUE | SqlToken.FALSE | SqlToken.INTEGER_LITERAL | SqlToken
+              .DOUBLE_LITERAL | SqlToken.FLOAT_LITERAL | SqlToken.DECIMAL_LITERAL | SqlToken
+              .EXP_LITERAL | SqlToken.SINGLE_QUOTE_STRING | SqlToken.TRIPLE_QUOTE_STRING =>
           literal()
         case SqlToken.CASE =>
           val cases                          = List.newBuilder[WhenClause]
@@ -1324,6 +1324,10 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     t.token match
       case SqlToken.NULL =>
         NullLiteral(spanFrom(t))
+      case SqlToken.TRUE =>
+        TrueLiteral(spanFrom(t))
+      case SqlToken.FALSE =>
+        FalseLiteral(spanFrom(t))
       case SqlToken.INTEGER_LITERAL =>
         LongLiteral(removeUnderscore(t.str).toLong, t.str, spanFrom(t))
       case SqlToken.DOUBLE_LITERAL =>
