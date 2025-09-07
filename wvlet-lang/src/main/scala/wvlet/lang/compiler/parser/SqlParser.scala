@@ -149,6 +149,9 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
             case SqlToken.SESSION =>
               consume(SqlToken.SESSION)
               AlterType.SESSION
+            case SqlToken.TABLE =>
+              // Handle ALTER TABLE operations
+              return parseAlterTable(spanFrom(t))
             case _ =>
               AlterType.DEFAULT
         case _ =>
@@ -175,6 +178,277 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         unexpected(t2)
 
   end alterStatement
+
+  def parseAlterTable(span: Span): LogicalPlan =
+    consume(SqlToken.TABLE)
+    
+    // Check for IF EXISTS
+    val ifExists = parseIfExists()
+    val tableName = qualifiedName()
+    
+    val nextToken = scanner.lookAhead()
+    nextToken.token match
+      case SqlToken.RENAME =>
+        parseAlterTableRename(tableName, span)
+      case SqlToken.ADD =>
+        parseAlterTableAdd(tableName, span)
+      case SqlToken.DROP =>
+        parseAlterTableDrop(tableName, span)
+      case SqlToken.ALTER =>
+        parseAlterTableAlterColumn(tableName, span)
+      case SqlToken.SET =>
+        parseAlterTableSet(tableName, span)
+      case SqlToken.EXECUTE =>
+        parseAlterTableExecute(tableName, span)
+      case _ =>
+        unexpected(nextToken)
+
+  end parseAlterTable
+
+  def parseAlterTableRename(tableName: NameExpr, span: Span): LogicalPlan =
+    consume(SqlToken.RENAME)
+    scanner.lookAhead().token match
+      case SqlToken.TO =>
+        // ALTER TABLE table RENAME TO new_name
+        consume(SqlToken.TO)
+        val newName = qualifiedName()
+        RenameTable(tableName, newName, span)
+      case SqlToken.COLUMN =>
+        // ALTER TABLE table RENAME COLUMN [IF EXISTS] old_name TO new_name
+        consume(SqlToken.COLUMN)
+        val ifExists = parseIfExists()
+        val oldColumnName = identifier()
+        consume(SqlToken.TO)
+        val newColumnName = identifier()
+        RenameColumn(tableName, oldColumnName, newColumnName, span)
+      case _ =>
+        unexpected(scanner.lookAhead())
+
+  def parseAlterTableAdd(tableName: NameExpr, span: Span): LogicalPlan =
+    consume(SqlToken.ADD)
+    scanner.lookAhead().token match
+      case SqlToken.COLUMN =>
+        consume(SqlToken.COLUMN)
+        val ifNotExists = parseIfNotExists()
+        val columnName = identifier()
+        val dataType = typeName()
+        
+        // Parse optional column attributes
+        var notNull = false
+        var comment: Option[String] = None
+        var defaultValue: Option[Expression] = None
+        var properties: List[(NameExpr, Expression)] = Nil
+        var position: Option[String] = None // FIRST, LAST, or AFTER column_name
+        
+        // Parse column attributes in a loop
+        var continue = true
+        while continue do
+          scanner.lookAhead().token match
+            case SqlToken.NOT =>
+              consume(SqlToken.NOT)
+              consume(SqlToken.NULL)
+              notNull = true
+            case SqlToken.COMMENT =>
+              consume(SqlToken.COMMENT)
+              val commentLiteral = literal()
+              comment = commentLiteral match
+                case SingleQuoteString(value, _) => Some(value)
+                case DoubleQuoteString(value, _) => Some(value)
+                case TripleQuoteString(value, _) => Some(value)
+                case _ => throw StatusCode.SYNTAX_ERROR.newException(
+                  "COMMENT must be followed by a string literal",
+                  commentLiteral.sourceLocationOfCompilationUnit(using compilationUnit)
+                )
+            case SqlToken.DEFAULT =>
+              consume(SqlToken.DEFAULT)
+              defaultValue = Some(expression())
+            case SqlToken.WITH =>
+              consume(SqlToken.WITH)
+              consume(SqlToken.L_PAREN)
+              properties = parsePropertyList()
+              consume(SqlToken.R_PAREN)
+            case SqlToken.FIRST =>
+              consume(SqlToken.FIRST)
+              position = Some("FIRST")
+            case SqlToken.LAST =>
+              consume(SqlToken.LAST)
+              position = Some("LAST")
+            case SqlToken.AFTER =>
+              consume(SqlToken.AFTER)
+              val afterColumn = identifier()
+              position = Some(s"AFTER ${afterColumn.fullName}")
+            case _ =>
+              continue = false
+        
+        val columnDef = ColumnDef(columnName, dataType, span)
+        AddColumn(tableName, columnDef, span)
+      case SqlToken.PRIMARY =>
+        consume(SqlToken.PRIMARY)
+        consume(SqlToken.KEY)
+        consume(SqlToken.L_PAREN)
+        val columns = parseIdentifierList()
+        consume(SqlToken.R_PAREN)
+        // For now, we'll just return a dummy DDL as this is not in our DDL case classes
+        // This would need a new case class like AddPrimaryKey
+        throw StatusCode.NOT_IMPLEMENTED.newException(
+          "ADD PRIMARY KEY is not yet supported"
+        )
+      case _ =>
+        unexpected(scanner.lookAhead())
+
+  def parseAlterTableDrop(tableName: NameExpr, span: Span): LogicalPlan =
+    consume(SqlToken.DROP)
+    scanner.lookAhead().token match
+      case SqlToken.COLUMN =>
+        consume(SqlToken.COLUMN)
+        val ifExists = parseIfExists()
+        val columnName = identifier()
+        DropColumn(tableName, columnName, span)
+      case _ =>
+        unexpected(scanner.lookAhead())
+
+  def parseAlterTableAlterColumn(tableName: NameExpr, span: Span): LogicalPlan =
+    consume(SqlToken.ALTER)
+    consume(SqlToken.COLUMN)
+    val columnName = identifier()
+    
+    scanner.lookAhead().token match
+      case SqlToken.SET =>
+        consume(SqlToken.SET)
+        scanner.lookAhead().token match
+          case SqlToken.DATA =>
+            consume(SqlToken.DATA)
+            consume(SqlToken.TYPE)
+            val newType = typeName()
+            val using = 
+              if scanner.lookAhead().token == SqlToken.USING then
+                consume(SqlToken.USING)
+                Some(expression())
+              else
+                None
+            AlterColumnSetDataType(tableName, columnName, newType, using, span)
+          case SqlToken.DEFAULT =>
+            consume(SqlToken.DEFAULT)
+            val defaultValue = expression()
+            AlterColumnSetDefault(tableName, columnName, defaultValue, span)
+          case SqlToken.NOT =>
+            consume(SqlToken.NOT)
+            consume(SqlToken.NULL)
+            AlterColumnSetNotNull(tableName, columnName, span)
+          case _ =>
+            unexpected(scanner.lookAhead())
+      case SqlToken.DROP =>
+        consume(SqlToken.DROP)
+        scanner.lookAhead().token match
+          case SqlToken.NOT =>
+            consume(SqlToken.NOT)
+            consume(SqlToken.NULL)
+            AlterColumnDropNotNull(tableName, columnName, span)
+          case SqlToken.DEFAULT =>
+            consume(SqlToken.DEFAULT)
+            AlterColumnDropDefault(tableName, columnName, span)
+          case _ =>
+            unexpected(scanner.lookAhead())
+      case SqlToken.TYPE =>
+        // ALTER TABLE table ALTER column TYPE new_type [USING expression]
+        consume(SqlToken.TYPE)
+        val newType = typeName()
+        val using = 
+          if scanner.lookAhead().token == SqlToken.USING then
+            consume(SqlToken.USING)
+            Some(expression())
+          else
+            None
+        AlterColumnSetDataType(tableName, columnName, newType, using, span)
+      case _ =>
+        unexpected(scanner.lookAhead())
+
+  def parseAlterTableSet(tableName: NameExpr, span: Span): LogicalPlan =
+    consume(SqlToken.SET)
+    scanner.lookAhead().token match
+      case SqlToken.AUTHORIZATION =>
+        consume(SqlToken.AUTHORIZATION)
+        consume(SqlToken.L_PAREN)
+        
+        val (principal, principalType) = scanner.lookAhead().token match
+          case SqlToken.USER =>
+            consume(SqlToken.USER)
+            val user = identifier()
+            (user, Some("USER"))
+          case SqlToken.ROLE =>
+            consume(SqlToken.ROLE)
+            val role = identifier()
+            (role, Some("ROLE"))
+          case _ =>
+            val principal = identifier()
+            (principal, None)
+        
+        consume(SqlToken.R_PAREN)
+        AlterTableSetAuthorization(tableName, principal, principalType, span)
+      case SqlToken.PROPERTIES =>
+        consume(SqlToken.PROPERTIES)
+        val properties = parsePropertyList()
+        AlterTableSetProperties(tableName, properties, span)
+      case _ =>
+        unexpected(scanner.lookAhead())
+
+  def parseAlterTableExecute(tableName: NameExpr, span: Span): LogicalPlan =
+    consume(SqlToken.EXECUTE)
+    val command = identifier()
+    
+    val parameters = 
+      if scanner.lookAhead().token == SqlToken.L_PAREN then
+        consume(SqlToken.L_PAREN)
+        val params = parseParameterList()
+        consume(SqlToken.R_PAREN)
+        params
+      else
+        Nil
+    
+    val where = 
+      if scanner.lookAhead().token == SqlToken.WHERE then
+        consume(SqlToken.WHERE)
+        Some(expression())
+      else
+        None
+    
+    AlterTableExecute(tableName, command, parameters, where, span)
+
+  def parsePropertyList(): List[(NameExpr, Expression)] =
+    val first = parseProperty()
+    if scanner.lookAhead().token == SqlToken.COMMA then
+      consume(SqlToken.COMMA)
+      first :: parsePropertyList()
+    else
+      List(first)
+
+  def parseProperty(): (NameExpr, Expression) =
+    val name = identifier()
+    consume(SqlToken.EQ)
+    val value = expression()
+    (name, value)
+
+  def parseParameterList(): List[(NameExpr, Expression)] =
+    val first = parseParameter()
+    if scanner.lookAhead().token == SqlToken.COMMA then
+      consume(SqlToken.COMMA)
+      first :: parseParameterList()
+    else
+      List(first)
+
+  def parseParameter(): (NameExpr, Expression) =
+    val name = identifier()
+    consume(SqlToken.EQ) // Using = for parameter assignment
+    val value = expression()
+    (name, value)
+
+  def parseIdentifierList(): List[NameExpr] =
+    val first = identifier()
+    if scanner.lookAhead().token == SqlToken.COMMA then
+      consume(SqlToken.COMMA)
+      first :: parseIdentifierList()
+    else
+      List(first)
 
   def explain(): ExplainPlan =
     val t = consume(SqlToken.EXPLAIN)
@@ -310,25 +584,6 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         case _ =>
           SqlToken.TABLE // default to table
 
-    def parseIfNotExists(): Boolean =
-      scanner.lookAhead().token match
-        case SqlToken.IF =>
-          consume(SqlToken.IF)
-          consume(SqlToken.NOT)
-          consume(SqlToken.EXISTS)
-          true
-        case _ =>
-          false
-
-    def parseIfExists(): Boolean =
-      scanner.lookAhead().token match
-        case SqlToken.IF =>
-          consume(SqlToken.IF)
-          consume(SqlToken.EXISTS)
-          true
-        case _ =>
-          false
-
     def tableElems(): List[ColumnDef] =
       val t = scanner.lookAhead()
       t.token match
@@ -424,6 +679,25 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     end match
 
   end update
+
+  def parseIfNotExists(): Boolean =
+    scanner.lookAhead().token match
+      case SqlToken.IF =>
+        consume(SqlToken.IF)
+        consume(SqlToken.NOT)
+        consume(SqlToken.EXISTS)
+        true
+      case _ =>
+        false
+
+  def parseIfExists(): Boolean =
+    scanner.lookAhead().token match
+      case SqlToken.IF =>
+        consume(SqlToken.IF)
+        consume(SqlToken.EXISTS)
+        true
+      case _ =>
+        false
 
   def assignments(): List[UpdateAssignment] =
     val t = scanner.lookAhead()
