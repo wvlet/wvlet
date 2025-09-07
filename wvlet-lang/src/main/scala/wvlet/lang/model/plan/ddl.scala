@@ -70,37 +70,42 @@ case class AddColumn(table: NameExpr, column: ColumnDef, span: Span) extends DDL
 
 // Additional ALTER TABLE operations
 case class AlterColumnSetDataType(
-    table: NameExpr, 
-    column: NameExpr, 
-    dataType: DataType, 
+    table: NameExpr,
+    column: NameExpr,
+    dataType: DataType,
     using: Option[Expression] = None,
     span: Span
 ) extends DDL
 
 case class AlterColumnDropNotNull(table: NameExpr, column: NameExpr, span: Span) extends DDL
 
-case class AlterColumnSetDefault(table: NameExpr, column: NameExpr, defaultValue: Expression, span: Span) extends DDL
+case class AlterColumnSetDefault(
+    table: NameExpr,
+    column: NameExpr,
+    defaultValue: Expression,
+    span: Span
+) extends DDL
 
 case class AlterColumnDropDefault(table: NameExpr, column: NameExpr, span: Span) extends DDL
 
 case class AlterColumnSetNotNull(table: NameExpr, column: NameExpr, span: Span) extends DDL
 
 case class AlterTableSetAuthorization(
-    table: NameExpr, 
-    principal: NameExpr, 
-    principalType: Option[String] = None, // "USER" or "ROLE" 
+    table: NameExpr,
+    principal: NameExpr,
+    principalType: Option[String] = None, // "USER" or "ROLE"
     span: Span
 ) extends DDL
 
 case class AlterTableSetProperties(
-    table: NameExpr, 
-    properties: List[(NameExpr, Expression)], 
+    table: NameExpr,
+    properties: List[(NameExpr, Expression)],
     span: Span
 ) extends DDL
 
 case class AlterTableExecute(
-    table: NameExpr, 
-    command: NameExpr, 
+    table: NameExpr,
+    command: NameExpr,
     parameters: List[(NameExpr, Expression)] = Nil,
     where: Option[Expression] = None,
     span: Span
