@@ -1803,6 +1803,14 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           consume(SqlToken.DATE)
           val i = literal()
           GenericLiteral(DataType.DateType, i.stringValue, spanFrom(t))
+        case SqlToken.TIMESTAMP =>
+          consume(SqlToken.TIMESTAMP)
+          val i = literal()
+          GenericLiteral(
+            DataType.TimestampType(DataType.TimestampField.TIMESTAMP, false),
+            i.stringValue,
+            spanFrom(t)
+          )
         case SqlToken.DECIMAL =>
           consume(SqlToken.DECIMAL)
           val i = literal()
