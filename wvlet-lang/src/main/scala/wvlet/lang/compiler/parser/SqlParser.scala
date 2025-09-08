@@ -83,21 +83,32 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
 
   private def spanFrom(startSpan: Span): Span = startSpan.extendTo(lastToken.span)
 
-  private def unexpected(t: TokenData[SqlToken])(using code: SourceCode): Nothing =
-    throw StatusCode
-      .SYNTAX_ERROR
-      .newException(
-        s"Unexpected token: <${t.token}> '${t.str}' (context: SqlParser.scala:${code.line})",
-        t.sourceLocation(using compilationUnit)
-      )
+  private def unexpected(t: TokenData[SqlToken])(using code: SourceCode): Nothing = unexpected(
+    t,
+    ""
+  )
 
-  private def unexpected(expr: Expression)(using code: SourceCode): Nothing =
+  private def unexpected(t: TokenData[SqlToken], message: String)(using code: SourceCode): Nothing =
+    val errorMessage =
+      if message == null || message.isEmpty then
+        s"Unexpected token: <${t.token}> '${t.str}' (context: SqlParser.scala:${code.line})"
+      else
+        s"${message} (context: SqlParser.scala:${code.line})"
     throw StatusCode
       .SYNTAX_ERROR
-      .newException(
-        s"Unexpected expression: ${expr} (context: SqlParser.scala:${code.line})",
-        expr.sourceLocationOfCompilationUnit(using compilationUnit)
-      )
+      .newException(errorMessage, t.sourceLocation(using compilationUnit))
+
+  private def unexpected(expr: Expression)(using code: SourceCode): Nothing = unexpected(expr, "")
+
+  private def unexpected(expr: Expression, message: String)(using code: SourceCode): Nothing =
+    val errorMessage =
+      if message == null || message.isEmpty then
+        s"Unexpected expression: ${expr} (context: SqlParser.scala:${code.line})"
+      else
+        s"${message} (context: SqlParser.scala:${code.line})"
+    throw StatusCode
+      .SYNTAX_ERROR
+      .newException(errorMessage, expr.sourceLocationOfCompilationUnit(using compilationUnit))
 
   def statementList(): List[LogicalPlan] =
     val t = scanner.lookAhead()
@@ -264,12 +275,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
                   case s: StringLiteral =>
                     Some(s.unquotedValue)
                   case _ =>
-                    throw StatusCode
-                      .SYNTAX_ERROR
-                      .newException(
-                        "COMMENT must be followed by a string literal",
-                        commentLiteral.sourceLocationOfCompilationUnit(using compilationUnit)
-                      )
+                    unexpected(commentLiteral, "COMMENT must be followed by a string literal")
             case SqlToken.DEFAULT =>
               consume(SqlToken.DEFAULT)
               defaultValue = Some(expression())
@@ -813,12 +819,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     if fromOrAs == SqlToken.FROM || fromOrAs == SqlToken.AS then
       consumeToken() // consume FROM or AS
     else
-      throw StatusCode
-        .SYNTAX_ERROR
-        .newException(
-          s"Expected FROM or AS after PREPARE statement name, but found ${fromOrAs}",
-          scanner.lookAhead().sourceLocation(using compilationUnit)
-        )
+      unexpected(scanner.lookAhead(), "Expected FROM or AS after PREPARE statement name")
     val statement = queryOrUpdate()
     PrepareStatement(name, statement, spanFrom(t))
 
@@ -1354,9 +1355,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           unexpected(name)
     catch
       case e: IllegalArgumentException =>
-        throw StatusCode
-          .SYNTAX_ERROR
-          .newException(s"Unknown SHOW type: ${name}", name.sourceLocationOfCompilationUnit)
+        unexpected(name, s"Unknown SHOW type: ${name.leafName}")
 
   end show
 
