@@ -518,24 +518,29 @@ abstract class ScannerBase[Token](sourceFile: SourceFile, config: ScannerConfig)
 
   protected def getSingleQuoteString(): Unit =
     consume('\'')
-    while ch != SU do
-      if ch == '\'' then
-        // Check if this is an escaped quote (two consecutive single quotes)
-        nextChar()
-        if ch == '\'' then
-          // Escaped quote: include one single quote in the string
-          putChar('\'')
+
+    @scala.annotation.tailrec
+    def readStringContent(): Unit =
+      ch match
+        case '\'' =>
           nextChar()
-        else
-          // End of string
-          current.token = tokenTypeInfo.singleQuoteString
-          current.str = flushTokenString()
-          return
-      else
-        putChar(ch)
-        nextChar()
-    // End of input reached without closing quote - this should be an error
-    consume('\'') // This will generate an error
+          ch match
+            case '\'' => // An escaped single quote
+              putChar('\'')
+              nextChar()
+              readStringContent()
+            case _ => // End of the string
+              current.token = tokenTypeInfo.singleQuoteString
+              current.str = flushTokenString()
+        case SU =>
+          // Unclosed string literal
+          consume('\'')
+        case _ =>
+          putChar(ch)
+          nextChar()
+          readStringContent()
+
+    readStringContent()
 
   protected def getDoubleQuoteString(resultingToken: Token): Unit =
     // Regular double quoted string
