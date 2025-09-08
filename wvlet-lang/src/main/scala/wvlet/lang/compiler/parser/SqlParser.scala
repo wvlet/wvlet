@@ -1898,29 +1898,58 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     consume(SqlToken.R_BRACKET)
     ArrayConstructor(elements.result(), spanFrom(t))
 
-  def map(): MapValue =
-    val entries = List.newBuilder[MapEntry]
-
-    def nextEntry: Unit =
-      val t = scanner.lookAhead()
-      t.token match
-        case SqlToken.COMMA =>
-          consume(SqlToken.COMMA)
-          nextEntry
-        case SqlToken.R_BRACE =>
-        // ok
-        case _ =>
-          val key = expression()
-          consume(SqlToken.COLON)
-          val value = expression()
-          entries += MapEntry(key, value, spanFrom(t))
-          nextEntry
-
+  def map(): Expression =
     val t = consume(SqlToken.MAP)
-    consume(SqlToken.L_BRACE)
-    nextEntry
-    consume(SqlToken.R_BRACE)
-    MapValue(entries.result(), spanFrom(t))
+
+    def parseMapLiteral(): MapValue =
+      val entries = List.newBuilder[MapEntry]
+
+      def nextEntry: Unit =
+        val t = scanner.lookAhead()
+        t.token match
+          case SqlToken.COMMA =>
+            consume(SqlToken.COMMA)
+            nextEntry
+          case SqlToken.R_BRACE =>
+          // ok
+          case _ =>
+            val key = expression()
+            consume(SqlToken.COLON)
+            val value = expression()
+            entries += MapEntry(key, value, spanFrom(t))
+            nextEntry
+
+      consume(SqlToken.L_BRACE)
+      nextEntry
+      consume(SqlToken.R_BRACE)
+      MapValue(entries.result(), spanFrom(t))
+
+    def parseMapFunction(): FunctionApply =
+      consume(SqlToken.L_PAREN)
+      val keyArray = expression()
+      consume(SqlToken.COMMA)
+      val valueArray = expression()
+      consume(SqlToken.R_PAREN)
+      // Create a MAP function call expression instead of literal MapValue
+      FunctionApply(
+        UnquotedIdentifier("map", spanFrom(t)),
+        List(
+          FunctionArg(None, keyArray, false, keyArray.span),
+          FunctionArg(None, valueArray, false, valueArray.span)
+        ),
+        None,
+        spanFrom(t)
+      )
+
+    scanner.lookAhead().token match
+      case SqlToken.L_BRACE =>
+        parseMapLiteral()
+      case SqlToken.L_PAREN =>
+        parseMapFunction()
+      case _ =>
+        unexpected(scanner.lookAhead(), "Expected '{' or '(' after MAP")
+
+  end map
 
   def interval(): IntervalLiteral =
     // interval : INTERVAL sign = (PLUS | MINUS) ? str intervalField (TO intervalField)?
