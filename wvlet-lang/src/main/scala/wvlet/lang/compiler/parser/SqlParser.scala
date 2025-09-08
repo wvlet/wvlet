@@ -1333,6 +1333,21 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           // For now, use a simple incrementing index. In a real implementation,
           // this would need to track parameter positions properly
           Parameter(1, spanFrom(t))
+        case SqlToken.DOLLAR =>
+          consume(SqlToken.DOLLAR)
+          val nextToken = scanner.lookAhead()
+          nextToken.token match
+            case SqlToken.INTEGER_LITERAL =>
+              val indexToken = consumeToken()
+              val index = indexToken.str.toInt
+              Parameter(index, spanFrom(t))
+            case id if id.isIdentifier =>
+              val nameToken = consumeToken()
+              // Named parameter: use negative index to distinguish from positional
+              // In a real implementation, this would need proper named parameter handling
+              NamedParameter(nameToken.str, spanFrom(t))
+            case _ =>
+              unexpected(nextToken)
         case _ =>
           unexpected(t)
 

@@ -128,3 +128,40 @@ class PreparedStatementParserTest extends AirSpec:
       case _ =>
         fail(s"Expected PackageDef, got ${parsed.getClass.getSimpleName}")
   }
+
+  test("parse PREPARE with DuckDB $1 style parameters") {
+    val sql = "PREPARE query_person AS SELECT * FROM person WHERE age >= $1 AND name = $2"
+    val stmt = parseStatement(sql)
+    debug(stmt.pp)
+    
+    stmt match
+      case prepareStmt: PrepareStatement =>
+        prepareStmt.name.leafName shouldBe "query_person"
+      case _ =>
+        fail(s"Expected PrepareStatement, got ${stmt.getClass.getSimpleName}")
+  }
+
+  test("parse PREPARE with DuckDB named parameters") {
+    val sql = "PREPARE query_person AS SELECT * FROM person WHERE age >= $minimum_age AND name = $name_start"
+    val stmt = parseStatement(sql)
+    debug(stmt.pp)
+    
+    stmt match
+      case prepareStmt: PrepareStatement =>
+        prepareStmt.name.leafName shouldBe "query_person"
+      case _ =>
+        fail(s"Expected PrepareStatement, got ${stmt.getClass.getSimpleName}")
+  }
+
+  test("parse EXECUTE with named parameters (DuckDB style)") {
+    val sql = "EXECUTE query_person(40, 'B')"
+    val stmt = parseStatement(sql)
+    debug(stmt.pp)
+    
+    stmt match
+      case executeStmt: ExecuteStatement =>
+        executeStmt.name.leafName shouldBe "query_person"
+        executeStmt.parameters.size shouldBe 2
+      case _ =>
+        fail(s"Expected ExecuteStatement, got ${stmt.getClass.getSimpleName}")
+  }
