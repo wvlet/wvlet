@@ -252,6 +252,7 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   case MAP       extends SqlToken(Keyword, "map")
   case ARRAY     extends SqlToken(Keyword, "array")
   case DATE      extends SqlToken(Keyword, "date")
+  case TIME      extends SqlToken(Keyword, "time")
   case TIMESTAMP extends SqlToken(Keyword, "timestamp")
   case DECIMAL   extends SqlToken(Keyword, "decimal")
   case JSON      extends SqlToken(Keyword, "json")
@@ -292,6 +293,7 @@ object SqlToken:
     SqlToken.MAP,
     SqlToken.ARRAY,
     SqlToken.DATE,
+    SqlToken.TIME,
     SqlToken.TIMESTAMP,
     SqlToken.DECIMAL,
     SqlToken.JSON,
