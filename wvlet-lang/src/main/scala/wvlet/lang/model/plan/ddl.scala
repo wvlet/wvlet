@@ -59,14 +59,22 @@ case class CreateTable(
 
 case class DropTable(table: NameExpr, ifExists: Boolean, span: Span) extends DDL
 
-case class RenameTable(table: NameExpr, renameTo: NameExpr, span: Span) extends DDL
-
-case class RenameColumn(table: NameExpr, column: NameExpr, renameTo: NameExpr, span: Span)
+case class RenameTable(table: NameExpr, renameTo: NameExpr, ifExists: Boolean = false, span: Span)
     extends DDL
 
-case class DropColumn(table: NameExpr, column: NameExpr, span: Span) extends DDL
+case class RenameColumn(
+    table: NameExpr,
+    column: NameExpr,
+    renameTo: NameExpr,
+    ifExists: Boolean = false,
+    span: Span
+) extends DDL
 
-case class AddColumn(table: NameExpr, column: ColumnDef, span: Span) extends DDL
+case class DropColumn(table: NameExpr, column: NameExpr, ifExists: Boolean = false, span: Span)
+    extends DDL
+
+case class AddColumn(table: NameExpr, column: ColumnDef, ifNotExists: Boolean = false, span: Span)
+    extends DDL
 
 // Additional ALTER TABLE operations
 case class AlterColumnSetDataType(

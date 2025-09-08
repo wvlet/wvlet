@@ -189,11 +189,11 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     val nextToken = scanner.lookAhead()
     nextToken.token match
       case SqlToken.RENAME =>
-        alterTableRename(tableName, span)
+        alterTableRename(tableName, ifExists, span)
       case SqlToken.ADD =>
-        alterTableAdd(tableName, span)
+        alterTableAdd(tableName, ifExists, span)
       case SqlToken.DROP =>
-        alterTableDrop(tableName, span)
+        alterTableDrop(tableName, ifExists, span)
       case SqlToken.ALTER =>
         alterTableAlterColumn(tableName, span)
       case SqlToken.SET =>
@@ -205,14 +205,14 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
 
   end alterTable
 
-  def alterTableRename(tableName: NameExpr, span: Span): LogicalPlan =
+  def alterTableRename(tableName: NameExpr, tableIfExists: Boolean, span: Span): LogicalPlan =
     consume(SqlToken.RENAME)
     scanner.lookAhead().token match
       case SqlToken.TO =>
         // ALTER TABLE table RENAME TO new_name
         consume(SqlToken.TO)
         val newName = qualifiedName()
-        RenameTable(tableName, newName, span)
+        RenameTable(tableName, newName, tableIfExists, span)
       case SqlToken.COLUMN =>
         // ALTER TABLE table RENAME COLUMN [IF EXISTS] old_name TO new_name
         consume(SqlToken.COLUMN)
@@ -220,11 +220,11 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         val oldColumnName = identifier()
         consume(SqlToken.TO)
         val newColumnName = identifier()
-        RenameColumn(tableName, oldColumnName, newColumnName, span)
+        RenameColumn(tableName, oldColumnName, newColumnName, ifExists, span)
       case _ =>
         unexpected(scanner.lookAhead())
 
-  def alterTableAdd(tableName: NameExpr, span: Span): LogicalPlan =
+  def alterTableAdd(tableName: NameExpr, tableIfExists: Boolean, span: Span): LogicalPlan =
     consume(SqlToken.ADD)
     scanner.lookAhead().token match
       case SqlToken.COLUMN =>
@@ -288,8 +288,17 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
               continue = false
         end while
 
-        val columnDef = ColumnDef(columnName, dataType, span)
-        AddColumn(tableName, columnDef, span)
+        val columnDef = ColumnDef(
+          columnName,
+          dataType,
+          span,
+          notNull = notNull,
+          comment = comment,
+          defaultValue = defaultValue,
+          properties = properties,
+          position = position
+        )
+        AddColumn(tableName, columnDef, ifNotExists, span)
       case SqlToken.PRIMARY =>
         consume(SqlToken.PRIMARY)
         consume(SqlToken.KEY)
@@ -306,14 +315,14 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
 
   end alterTableAdd
 
-  def alterTableDrop(tableName: NameExpr, span: Span): LogicalPlan =
+  def alterTableDrop(tableName: NameExpr, tableIfExists: Boolean, span: Span): LogicalPlan =
     consume(SqlToken.DROP)
     scanner.lookAhead().token match
       case SqlToken.COLUMN =>
         consume(SqlToken.COLUMN)
         val ifExists   = parseIfExists()
         val columnName = identifier()
-        DropColumn(tableName, columnName, span)
+        DropColumn(tableName, columnName, ifExists, span)
       case _ =>
         unexpected(scanner.lookAhead())
 
