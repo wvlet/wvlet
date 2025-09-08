@@ -90,9 +90,9 @@ Supports both active and inactive customer analysis.
 @return Aggregated customer metrics with revenue and activity data
 ---
 model customer_analysis(region: String, status: String = 'active') = {
-  from customers
+  from customers as c
   -- Filter by region and status
-  where region == region and (status == 'all' or customer_status == status)
+  where c.region = region and (status = 'all' or c.customer_status = status)
   -- Join with order data for revenue calculation  
   join orders on orders.customer_id = _.id
   group by 

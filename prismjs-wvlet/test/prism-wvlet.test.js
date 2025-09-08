@@ -77,18 +77,16 @@ model Test = {}`;
     
     // Verify line comment
     const lineComment = commentTokens.find(t => 
-      typeof t.content === 'string' && t.content.includes('Line comment')
+      t.content === '-- Line comment'
     );
     expect(lineComment).toBeDefined();
     
-    // Verify doc comment
-    const docComment = commentTokens.find(t => 
-      (typeof t.content === 'string' && t.content.includes('Doc comment')) ||
-      (Array.isArray(t.content) && t.content.some(c => 
-        typeof c === 'string' && c.includes('Doc comment')
-      ))
-    );
+    // Verify doc comment and its inner doctag
+    const docComment = commentTokens.find(t => Array.isArray(t.content));
     expect(docComment).toBeDefined();
+    const doctagToken = docComment.content.find(t => t.type === 'doctag');
+    expect(doctagToken).toBeDefined();
+    expect(doctagToken.content).toBe('@param');
   });
 
   test('should recognize boolean literals', () => {
