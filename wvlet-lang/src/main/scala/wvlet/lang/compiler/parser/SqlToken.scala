@@ -294,7 +294,8 @@ object SqlToken:
     SqlToken.DECIMAL,
     SqlToken.JSON,
     SqlToken.INTERVAL,
-    SqlToken.CAST
+    SqlToken.CAST,
+    SqlToken.TRY_CAST
   )
 
   // Keywords that can be used as unquoted identifiers

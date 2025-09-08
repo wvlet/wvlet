@@ -1309,7 +1309,12 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       case b: NotBetween =>
         wl(expr(b.e), "not between", expr(b.a), "and", expr(b.b))
       case c: Cast =>
-        group(wl(text("cast") + paren(wl(expr(c.child), "as", text(c.tpe.typeName.name)))))
+        val castKeyword =
+          if c.tryCast then
+            "try_cast"
+          else
+            "cast"
+        group(wl(text(castKeyword) + paren(wl(expr(c.child), "as", text(c.tpe.typeName.name)))))
       case n: NativeExpression =>
         expr(ExpressionEvaluator.eval(n))
       case e: Exists =>
