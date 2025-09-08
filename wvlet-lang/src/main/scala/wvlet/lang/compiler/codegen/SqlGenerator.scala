@@ -1122,6 +1122,15 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         wl(expr(b.left), b.operatorName, expr(b.right))
       case s: StringPart =>
         text(s.stringValue)
+      case j: JsonLiteral =>
+        dbType match
+          case DBType.Trino =>
+            text(s"json '${j.value}'")
+          case DBType.DuckDB =>
+            text(s"'${j.value}'::JSON")
+          case _ =>
+            // Default to Trino syntax for other databases
+            text(s"json '${j.value}'")
       case l: Literal =>
         text(l.sqlExpr)
       case bq: BackQuotedIdentifier =>
