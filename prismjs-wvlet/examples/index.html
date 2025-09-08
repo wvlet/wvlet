@@ -77,6 +77,40 @@ order by total_revenue desc</code></pre>
 }</code></pre>
   </div>
 
+  <div class="example">
+    <h3>Documentation Comments</h3>
+    <pre><code class="language-wvlet">---
+## Customer Analysis Model
+
+This model analyzes customer data with advanced filtering and aggregation.
+Supports both active and inactive customer analysis.
+
+@param region Geographic region for filtering customers
+@param status Customer status filter ('active', 'inactive', or 'all')
+@return Aggregated customer metrics with revenue and activity data
+---
+model customer_analysis(region: String, status: String = 'active') = {
+  from customers
+  -- Filter by region and status
+  where region == region and (status == 'all' or customer_status == status)
+  -- Join with order data for revenue calculation  
+  join orders on orders.customer_id = _.id
+  group by 
+    customer_tier = case 
+      when total_spent > 10000 then 'Premium'
+      when total_spent > 1000 then 'Standard' 
+      else 'Basic'
+    end
+  agg
+    customer_count = count(distinct id),
+    total_revenue = sum(orders.amount),
+    avg_order_value = avg(orders.amount)
+  -- Only include tiers with significant customer base
+  where customer_count >= 10
+  order by total_revenue desc
+}</code></pre>
+  </div>
+
   <script>
     Prism.highlightAll();
   </script>
