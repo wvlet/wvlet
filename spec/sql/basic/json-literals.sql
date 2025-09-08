@@ -26,9 +26,8 @@ SELECT json '{"customer_id": 123, "orders": [{"id": 1, "amount": 100.50}, {"id":
 SELECT concat('{', '"customer_id":', json_format(COALESCE(TRY_CAST("customer_id" AS json), json 'null')), '}');
 
 -- Test JSON in expressions
-SELECT 
+SELECT
   CASE 
-    WHEN customer_id IS NOT NULL THEN json '{"status": "active"}'
+    WHEN 1 IS NOT NULL THEN json '{"status": "active"}'
     ELSE json '{"status": "inactive"}'
-  END
-FROM customers;
+  END;

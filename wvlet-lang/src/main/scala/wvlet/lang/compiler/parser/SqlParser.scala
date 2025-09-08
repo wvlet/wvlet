@@ -1765,7 +1765,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         case SqlToken.JSON =>
           consume(SqlToken.JSON)
           val i = literal()
-          GenericLiteral(DataType.JsonType, i.stringValue, spanFrom(t))
+          JsonLiteral(i.unquotedValue, spanFrom(t))
         case SqlToken.INTERVAL =>
           interval()
         case id if id.isIdentifier =>
