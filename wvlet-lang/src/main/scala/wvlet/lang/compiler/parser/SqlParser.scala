@@ -1807,7 +1807,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           consume(SqlToken.TIME)
           val i = literal()
           GenericLiteral(
-            DataType.TimestampType(DataType.TimestampField.TIME, false),
+            DataType.TimestampType(DataType.TimestampField.TIME, true),
             i.stringValue,
             spanFrom(t)
           )
@@ -1815,7 +1815,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           consume(SqlToken.TIMESTAMP)
           val i = literal()
           GenericLiteral(
-            DataType.TimestampType(DataType.TimestampField.TIMESTAMP, false),
+            DataType.TimestampType(DataType.TimestampField.TIMESTAMP, true),
             i.stringValue,
             spanFrom(t)
           )
