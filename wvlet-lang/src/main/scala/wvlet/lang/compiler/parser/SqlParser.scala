@@ -1172,57 +1172,6 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       case _ =>
         r
 
-  private def handleUsingSample(r: Relation): Relation =
-    // Handle DuckDB USING SAMPLE syntax when USING is already consumed
-    consume(SqlToken.SAMPLE)
-
-    val sizeExpr = expression()
-
-    // Check for optional keywords after the size expression
-    val (samplingSize, samplingMethod) =
-      scanner.lookAhead().token match
-        case SqlToken.ROWS =>
-          consume(SqlToken.ROWS)
-          val rows =
-            sizeExpr match
-              case LongLiteral(value, _, _) =>
-                value
-              case _ =>
-                unexpected(sizeExpr)
-          (SamplingSize.Rows(rows), None)
-        case SqlToken.PERCENT =>
-          consume(SqlToken.PERCENT)
-          val percentage = extractNumericValue(sizeExpr)
-          (SamplingSize.Percentage(percentage), None)
-        case SqlToken.L_PAREN =>
-          // Handle method(percentage%) syntax
-          consume(SqlToken.L_PAREN)
-          val methodToken = scanner.lookAhead()
-          val methodName  = identifier()
-          consume(SqlToken.L_PAREN)
-          val percentageExpr = expression()
-          val percentage     = extractNumericValue(percentageExpr)
-          consume(SqlToken.PERCENT)
-          consume(SqlToken.R_PAREN)
-          consume(SqlToken.R_PAREN)
-
-          val method =
-            try
-              SamplingMethod.valueOf(methodName.leafName.toLowerCase)
-            catch
-              case _: IllegalArgumentException =>
-                unexpected(methodName)
-
-          (SamplingSize.Percentage(percentage), Some(method))
-        case _ =>
-          // Default to percentage
-          val percentage = extractNumericValue(sizeExpr)
-          (SamplingSize.Percentage(percentage), None)
-
-    Sample(r, samplingMethod, samplingSize, spanFrom(r.span))
-
-  end handleUsingSample
-
   private def relationRest(r: Relation): Relation =
     val t = scanner.lookAhead()
     t.token match
@@ -2310,23 +2259,9 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         case SqlToken.USING =>
           consume(SqlToken.USING)
           consume(SqlToken.L_PAREN)
-          val joinKeys = List.newBuilder[NameExpr]
-          joinKeys += identifier()
-
-          def nextKey: Unit =
-            val la = scanner.lookAhead()
-            la.token match
-              case SqlToken.COMMA =>
-                consume(SqlToken.COMMA)
-                joinKeys += identifier()
-                nextKey
-              case SqlToken.R_PAREN =>
-              // stop the search
-              case other =>
-                unexpected(la)
-          nextKey
+          val joinKeys = parseIdentifierList()
           consume(SqlToken.R_PAREN)
-          JoinUsing(joinKeys.result(), spanFrom(t))
+          JoinUsing(joinKeys, spanFrom(t))
         case _ =>
           NoJoinCriteria
       end match
