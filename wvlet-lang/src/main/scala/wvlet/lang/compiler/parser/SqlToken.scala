@@ -199,16 +199,19 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   case TABLE     extends SqlToken(Keyword, "table")
   case STATEMENT extends SqlToken(Keyword, "statement")
 
-  case INSERT  extends SqlToken(Keyword, "insert")
-  case UPSERT  extends SqlToken(Keyword, "upsert")
-  case INTO    extends SqlToken(Keyword, "into")
-  case MERGE   extends SqlToken(Keyword, "merge")
-  case MATCHED extends SqlToken(Keyword, "matched")
-  case UPDATE  extends SqlToken(Keyword, "update")
-  case SET     extends SqlToken(Keyword, "set")
-  case DELETE  extends SqlToken(Keyword, "delete")
-  case CREATE  extends SqlToken(Keyword, "create")
-  case DROP    extends SqlToken(Keyword, "drop")
+  case INSERT     extends SqlToken(Keyword, "insert")
+  case UPSERT     extends SqlToken(Keyword, "upsert")
+  case INTO       extends SqlToken(Keyword, "into")
+  case MERGE      extends SqlToken(Keyword, "merge")
+  case MATCHED    extends SqlToken(Keyword, "matched")
+  case UPDATE     extends SqlToken(Keyword, "update")
+  case SET        extends SqlToken(Keyword, "set")
+  case DELETE     extends SqlToken(Keyword, "delete")
+  case CREATE     extends SqlToken(Keyword, "create")
+  case DROP       extends SqlToken(Keyword, "drop")
+  case PREPARE    extends SqlToken(Keyword, "prepare")
+  case EXECUTE    extends SqlToken(Keyword, "execute")
+  case DEALLOCATE extends SqlToken(Keyword, "deallocate")
   // If needs to be a token for 'create table if not exists ...' syntax
   case IF      extends SqlToken(Keyword, "if")
   case REPLACE extends SqlToken(Keyword, "replace")
@@ -258,7 +261,6 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   case TYPE          extends SqlToken(Keyword, "type")
   case AUTHORIZATION extends SqlToken(Keyword, "authorization")
   case PROPERTIES    extends SqlToken(Keyword, "properties")
-  case EXECUTE       extends SqlToken(Keyword, "execute")
   case USER          extends SqlToken(Keyword, "user")
   case ROLE          extends SqlToken(Keyword, "role")
   case DATA          extends SqlToken(Keyword, "data")
@@ -336,7 +338,6 @@ object SqlToken:
     SqlToken.TYPE,
     SqlToken.AUTHORIZATION,
     SqlToken.PROPERTIES,
-    SqlToken.EXECUTE,
     SqlToken.USER,
     SqlToken.ROLE,
     SqlToken.DATA,
@@ -375,7 +376,10 @@ object SqlToken:
     SqlToken.MERGE,
     SqlToken.DELETE,
     SqlToken.CREATE,
-    SqlToken.DROP
+    SqlToken.DROP,
+    SqlToken.PREPARE,
+    SqlToken.EXECUTE,
+    SqlToken.DEALLOCATE
   )
 
   val queryDelimiters = Set(SqlToken.EOF, SqlToken.R_PAREN, SqlToken.SEMICOLON)

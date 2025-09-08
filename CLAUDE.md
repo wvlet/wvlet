@@ -63,6 +63,9 @@ Ensure the code is formatted with `scalafmtAll` command for consistent code styl
 # Run a specific .wv spec files with wild card pattern
 ./sbt "runner/testOnly *BasicSpec -- spec:basic:query*.wv"
 
+# Run a specific .sql spec file in BasicSpec
+./sbt "runner/testOnly *SqlBasicSpec -- spec:sql:basic:query.sql"
+
 # Run test and stay in SBT shell
 ./sbt
 sbt:wvlet> test
@@ -127,12 +130,17 @@ cd website && npm run build
 
 
 ### Spec-Driven Testing
+
 The project uses a unique **spec-driven testing approach** where `.wv` files in `spec/` directory serve as executable test cases:
 
-- `spec/basic/`: Core functionality tests (149+ .wv files)
+- `spec/basic/`: Core functionality tests (.wv files)
 - `spec/tpch/`: TPC-H benchmark queries
 - `spec/neg/`: Negative test cases (expect compilation/execution errors)
 - `spec/cdp_*/`: Customer Data Platform behavior tests
+
+For testing SqlParser, use `spec/sql/basic` directory:
+- `spec/sql/basic`: SQL-parser tests (.sql files) 
+- `spec/sql/tpc-h`: TPC-H benchmark queries
 
 - **Embedded Assertions**: `.wv` files contain `test` statements for validation
 - **SpecRunner**: Core engine that compiles and executes .wv files as test cases
