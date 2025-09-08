@@ -17,3 +17,12 @@ SELECT filter(filter(ARRAY[1, 2, NULL, 4], (x) -> (x IS NOT NULL)), (y) -> (y > 
 
 -- Test more complex lambda body
 SELECT filter(ARRAY[1, 2, 3, 4, 5], (x) -> (x > 2 AND x < 5));
+
+-- Test lambda with no parameters (Gemini's suggestion)
+SELECT transform(ARRAY[1], () -> 10);
+
+-- Test lambda returning a complex type (array) (Gemini's suggestion)
+SELECT transform(ARRAY[1, 2], x -> ARRAY[x, x + 1]);
+
+-- Test lambda returning a complex type (row/struct) (Gemini's suggestion)
+SELECT transform(ARRAY[1, 2], x -> ROW(x, CAST(x AS VARCHAR)));
