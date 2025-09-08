@@ -1192,10 +1192,6 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         // Handle TABLESAMPLE and continue with other relation operations
         val sampledR = handleTableSample(r)
         relationRest(sampledR)
-      case SqlToken.USING =>
-        // Handle USING SAMPLE and continue with other relation operations
-        val sampledR = handleTableSample(r)
-        relationRest(sampledR)
       case SqlToken.COMMA =>
         consume(SqlToken.COMMA)
         // Note: Parsing the rest as a new relation is important to build a left-deep plan
@@ -1791,6 +1787,10 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
             s"DECIMAL ${i.stringValue}",
             spanFrom(t)
           )
+        case SqlToken.JSON =>
+          consume(SqlToken.JSON)
+          val i = literal()
+          JsonLiteral(i.unquotedValue, spanFrom(t))
         case SqlToken.INTERVAL =>
           interval()
         case id if id.isIdentifier =>
@@ -2285,8 +2285,16 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
               JoinUsing(joinKeys.result(), spanFrom(t))
             case _ =>
               JoinOn(cond, spanFrom(t))
+        case SqlToken.USING =>
+          consume(SqlToken.USING)
+          consume(SqlToken.L_PAREN)
+          val joinKeys = parseIdentifierList()
+          consume(SqlToken.R_PAREN)
+          JoinUsing(joinKeys, spanFrom(t))
         case _ =>
           NoJoinCriteria
+      end match
+    end joinCriteria
 
     val isAsOfJoin =
       scanner.lookAhead().token match

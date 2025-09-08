@@ -253,6 +253,7 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   case ARRAY    extends SqlToken(Keyword, "array")
   case DATE     extends SqlToken(Keyword, "date")
   case DECIMAL  extends SqlToken(Keyword, "decimal")
+  case JSON     extends SqlToken(Keyword, "json")
   case INTERVAL extends SqlToken(Keyword, "interval")
 
   // For internal
@@ -291,6 +292,7 @@ object SqlToken:
     SqlToken.ARRAY,
     SqlToken.DATE,
     SqlToken.DECIMAL,
+    SqlToken.JSON,
     SqlToken.INTERVAL,
     SqlToken.CAST
   )
