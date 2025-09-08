@@ -261,7 +261,6 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   case TYPE          extends SqlToken(Keyword, "type")
   case AUTHORIZATION extends SqlToken(Keyword, "authorization")
   case PROPERTIES    extends SqlToken(Keyword, "properties")
-  case EXECUTE       extends SqlToken(Keyword, "execute")
   case USER          extends SqlToken(Keyword, "user")
   case ROLE          extends SqlToken(Keyword, "role")
   case DATA          extends SqlToken(Keyword, "data")
@@ -339,7 +338,6 @@ object SqlToken:
     SqlToken.TYPE,
     SqlToken.AUTHORIZATION,
     SqlToken.PROPERTIES,
-    SqlToken.EXECUTE,
     SqlToken.USER,
     SqlToken.ROLE,
     SqlToken.DATA,
