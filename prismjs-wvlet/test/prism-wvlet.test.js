@@ -58,8 +58,35 @@ describe('Prism Wvlet Grammar', () => {
     const code = '---\nThis is a doc comment\n@param id User ID\n---';
     const tokens = Prism.tokenize(code, Prism.languages.wvlet);
     
-    const docCommentToken = tokens.find(t => t.type === 'doc-comment');
+    const docCommentToken = tokens.find(t => t.type === 'comment');
     expect(docCommentToken).toBeDefined();
+  });
+
+  test('should treat both doc comments and line comments as comment type', () => {
+    const code = `-- Line comment
+---
+Doc comment with @param
+---
+model Test = {}`;
+    
+    const tokens = Prism.tokenize(code, Prism.languages.wvlet);
+    
+    // Both comment types should be tokenized as 'comment'
+    const commentTokens = tokens.filter(t => t.type === 'comment');
+    expect(commentTokens.length).toBe(2);
+    
+    // Verify line comment
+    const lineComment = commentTokens.find(t => 
+      t.content === '-- Line comment'
+    );
+    expect(lineComment).toBeDefined();
+    
+    // Verify doc comment and its inner doctag
+    const docComment = commentTokens.find(t => Array.isArray(t.content));
+    expect(docComment).toBeDefined();
+    const doctagToken = docComment.content.find(t => t.type === 'doctag');
+    expect(doctagToken).toBeDefined();
+    expect(doctagToken.content).toBe('@param');
   });
 
   test('should recognize boolean literals', () => {
