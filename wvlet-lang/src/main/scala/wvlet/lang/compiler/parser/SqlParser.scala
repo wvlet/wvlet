@@ -151,7 +151,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
               AlterType.SESSION
             case SqlToken.TABLE =>
               // Handle ALTER TABLE operations
-              return parseAlterTable(spanFrom(t))
+              return alterTable(spanFrom(t))
             case _ =>
               AlterType.DEFAULT
         case _ =>
@@ -179,7 +179,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
 
   end alterStatement
 
-  def parseAlterTable(span: Span): LogicalPlan =
+  def alterTable(span: Span): LogicalPlan =
     consume(SqlToken.TABLE)
 
     // Check for IF EXISTS
@@ -189,23 +189,23 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     val nextToken = scanner.lookAhead()
     nextToken.token match
       case SqlToken.RENAME =>
-        parseAlterTableRename(tableName, span)
+        alterTableRename(tableName, span)
       case SqlToken.ADD =>
-        parseAlterTableAdd(tableName, span)
+        alterTableAdd(tableName, span)
       case SqlToken.DROP =>
-        parseAlterTableDrop(tableName, span)
+        alterTableDrop(tableName, span)
       case SqlToken.ALTER =>
-        parseAlterTableAlterColumn(tableName, span)
+        alterTableAlterColumn(tableName, span)
       case SqlToken.SET =>
-        parseAlterTableSet(tableName, span)
+        alterTableSet(tableName, span)
       case SqlToken.EXECUTE =>
-        parseAlterTableExecute(tableName, span)
+        alterTableExecute(tableName, span)
       case _ =>
         unexpected(nextToken)
 
-  end parseAlterTable
+  end alterTable
 
-  def parseAlterTableRename(tableName: NameExpr, span: Span): LogicalPlan =
+  def alterTableRename(tableName: NameExpr, span: Span): LogicalPlan =
     consume(SqlToken.RENAME)
     scanner.lookAhead().token match
       case SqlToken.TO =>
@@ -224,7 +224,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       case _ =>
         unexpected(scanner.lookAhead())
 
-  def parseAlterTableAdd(tableName: NameExpr, span: Span): LogicalPlan =
+  def alterTableAdd(tableName: NameExpr, span: Span): LogicalPlan =
     consume(SqlToken.ADD)
     scanner.lookAhead().token match
       case SqlToken.COLUMN =>
@@ -304,9 +304,9 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
 
     end match
 
-  end parseAlterTableAdd
+  end alterTableAdd
 
-  def parseAlterTableDrop(tableName: NameExpr, span: Span): LogicalPlan =
+  def alterTableDrop(tableName: NameExpr, span: Span): LogicalPlan =
     consume(SqlToken.DROP)
     scanner.lookAhead().token match
       case SqlToken.COLUMN =>
@@ -317,7 +317,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       case _ =>
         unexpected(scanner.lookAhead())
 
-  def parseAlterTableAlterColumn(tableName: NameExpr, span: Span): LogicalPlan =
+  def alterTableAlterColumn(tableName: NameExpr, span: Span): LogicalPlan =
     consume(SqlToken.ALTER)
 
     // Check if COLUMN keyword is present (standard SQL) or if it's DuckDB syntax
@@ -382,9 +382,9 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
 
     end match
 
-  end parseAlterTableAlterColumn
+  end alterTableAlterColumn
 
-  def parseAlterTableSet(tableName: NameExpr, span: Span): LogicalPlan =
+  def alterTableSet(tableName: NameExpr, span: Span): LogicalPlan =
     consume(SqlToken.SET)
     scanner.lookAhead().token match
       case SqlToken.AUTHORIZATION =>
@@ -414,7 +414,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       case _ =>
         unexpected(scanner.lookAhead())
 
-  def parseAlterTableExecute(tableName: NameExpr, span: Span): LogicalPlan =
+  def alterTableExecute(tableName: NameExpr, span: Span): LogicalPlan =
     consume(SqlToken.EXECUTE)
     val command = identifier()
 
