@@ -45,3 +45,15 @@ DEALLOCATE my_select1;
 
 -- Test DEALLOCATE with complex name
 DEALLOCATE my_complex_query_name;
+
+-- Test DEALLOCATE PREPARE variant (common in many SQL dialects)
+DEALLOCATE PREPARE query_person;
+
+-- Test DEALLOCATE PREPARE with different name
+DEALLOCATE PREPARE my_select1;
+
+-- Test EXECUTE with empty parentheses (no parameters)
+EXECUTE my_select1();
+
+-- Test EXECUTE with empty parentheses different name
+EXECUTE simple_query();

@@ -831,9 +831,13 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     val parameters: List[Expression] =
       scanner.lookAhead().token match
         case SqlToken.L_PAREN =>
-          // DuckDB style: EXECUTE stmt(arg1, arg2)
+          // DuckDB style: EXECUTE stmt(arg1, arg2) or EXECUTE stmt()
           consume(SqlToken.L_PAREN)
-          val params = expressionList()
+          val params =
+            if scanner.lookAhead().token == SqlToken.R_PAREN then
+              Nil // Empty parentheses: EXECUTE stmt()
+            else
+              expressionList()
           consume(SqlToken.R_PAREN)
           params
         case SqlToken.USING =>
@@ -847,7 +851,9 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     ExecuteStatement(name, parameters, spanFrom(t))
 
   def deallocateStatement(): DeallocateStatement =
-    val t    = consume(SqlToken.DEALLOCATE)
+    val t = consume(SqlToken.DEALLOCATE)
+    // Optional PREPARE keyword (common in many dialects)
+    consumeIfExist(SqlToken.PREPARE)
     val name = identifier()
     DeallocateStatement(name, spanFrom(t))
 
@@ -1779,8 +1785,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
               Parameter(index, spanFrom(t))
             case id if id.isIdentifier =>
               val nameToken = consumeToken()
-              // Named parameter: use negative index to distinguish from positional
-              // In a real implementation, this would need proper named parameter handling
+              // Named parameter for prepared statements (e.g., $name_param)
               NamedParameter(nameToken.str, spanFrom(t))
             case _ =>
               unexpected(nextToken)
