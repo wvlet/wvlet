@@ -258,12 +258,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
               val commentLiteral = literal()
               comment =
                 commentLiteral match
-                  case SingleQuoteString(value, _) =>
-                    Some(value)
-                  case DoubleQuoteString(value, _) =>
-                    Some(value)
-                  case TripleQuoteString(value, _) =>
-                    Some(value)
+                  case s: StringLiteral =>
+                    Some(s.unquotedValue)
                   case _ =>
                     throw StatusCode
                       .SYNTAX_ERROR
@@ -429,7 +425,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         AlterTable(
           tableName,
           tableIfExists,
-          AlterColumnSetDataTypeOp(columnName, newType, using, columnName.span),
+          AlterColumnSetDataTypeOp(columnName, newType, using, spanFrom(alterToken)),
           span
         )
       case _ =>
