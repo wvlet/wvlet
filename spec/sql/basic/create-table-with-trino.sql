@@ -8,6 +8,15 @@ with (
   max_time_range = '30d'
 );
 
+-- CREATE TABLE with columns AND WITH properties (Gemini's suggestion)
+create table test_table_columns_and_props (
+  id int,
+  name string
+) with (
+  format = 'ORC',
+  transactional = true
+);
+
 -- CREATE TABLE WITH properties AS SELECT syntax
 create table test_table_with_props_as
 with (
@@ -28,4 +37,15 @@ WITH (
 ) AS SELECT
   col1, col2, col3
 FROM (VALUES (1, 'a', 'x'), (2, 'b', 'y')) AS t(col1, col2, col3)
+;
+
+-- Test all combinations: columns + WITH properties + AS SELECT
+CREATE TABLE test_table_all_clauses (
+  processed_col string
+) WITH (
+   partition_by = ARRAY['date'],
+   format = 'PARQUET'
+) AS SELECT
+  UPPER(col2) as processed_col
+FROM (VALUES ('hello'), ('world')) AS t(col2)
 ;

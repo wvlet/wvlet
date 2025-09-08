@@ -724,47 +724,43 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
             else
               CreateMode.NoOverwrite
           val tbl = qualifiedName()
-          scanner.lookAhead().token match
-            case SqlToken.L_PAREN =>
+
+          // Parse optional column definitions: (col1 type1, col2 type2, ...)
+          val columnDefs =
+            if scanner.lookAhead().token == SqlToken.L_PAREN then
               consume(SqlToken.L_PAREN)
               val elems = tableElems()
-              val ct = CreateTable(
-                tbl,
-                createMode == CreateMode.IfNotExists,
-                elems,
-                Nil,
-                spanFrom(t)
-              )
               consume(SqlToken.R_PAREN)
-              ct
-            case SqlToken.WITH =>
-              // Handle CREATE TABLE ... WITH (params ...) [AS SELECT] syntax
+              elems
+            else
+              Nil
+
+          // Parse optional WITH properties: WITH (prop1 = val1, prop2 = val2, ...)
+          val properties =
+            if scanner.lookAhead().token == SqlToken.WITH then
               consume(SqlToken.WITH)
               consume(SqlToken.L_PAREN)
-              val properties = parsePropertyList()
+              val props = parsePropertyList()
               consume(SqlToken.R_PAREN)
-              scanner.lookAhead().token match
-                case SqlToken.AS =>
-                  // WITH (params...) AS SELECT...
-                  consume(SqlToken.AS)
-                  val q = query()
-                  CreateTableAs(tbl, createMode, q, properties, spanFrom(t))
-                case _ =>
-                  // WITH (params...) only - create empty table with properties
-                  CreateTable(
-                    tbl,
-                    createMode == CreateMode.IfNotExists,
-                    Nil,
-                    properties,
-                    spanFrom(t)
-                  )
+              props
+            else
+              Nil
+
+          // Parse optional AS SELECT clause
+          scanner.lookAhead().token match
             case SqlToken.AS =>
               consume(SqlToken.AS)
               val q = query()
-              CreateTableAs(tbl, createMode, q, Nil, spanFrom(t))
-            case t3 =>
-              unexpected(scanner.lookAhead())
-          end match
+              CreateTableAs(tbl, createMode, q, properties, spanFrom(t))
+            case _ =>
+              // No AS SELECT clause - create table with columns and/or properties
+              CreateTable(
+                tbl,
+                createMode == CreateMode.IfNotExists,
+                columnDefs,
+                properties,
+                spanFrom(t)
+              )
       end match
     end parseCreateStatement
 
