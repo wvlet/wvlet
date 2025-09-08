@@ -1,7 +1,7 @@
 -- Advanced lambda expressions for Trino (may not work in DuckDB)
 
--- Test lambda with no parameters  
-SELECT transform(ARRAY[1], () -> 10);
+-- Note: transform() requires exactly 1 parameter, so () -> expression is not valid with transform
+-- Empty parameter lambdas work for parsing but may have limited SQL function compatibility
 
 -- Test lambda returning a complex type (array)
 SELECT transform(ARRAY[1, 2], x -> ARRAY[x, x + 1]);
