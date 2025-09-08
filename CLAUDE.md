@@ -127,6 +127,7 @@ cd website && npm run build
 
 
 ### Spec-Driven Testing
+
 The project uses a unique **spec-driven testing approach** where `.wv` files in `spec/` directory serve as executable test cases:
 
 - `spec/basic/`: Core functionality tests (.wv files)
@@ -136,6 +137,7 @@ The project uses a unique **spec-driven testing approach** where `.wv` files in 
 
 For testing SqlParser, use `spec/sql/basic` directory:
 - `spec/sql/basic`: SQL-parser tests (.sql files) 
+- `spec/sql/tpch`: TPC-H benchmark queries
 
 - **Embedded Assertions**: `.wv` files contain `test` statements for validation
 - **SpecRunner**: Core engine that compiles and executes .wv files as test cases
