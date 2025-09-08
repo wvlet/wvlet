@@ -300,7 +300,8 @@ object SqlToken:
 
   // Keywords that can be used as unquoted identifiers
   val nonReservedKeywords = Set(
-    SqlToken.IF, // IF can be used as a function name
+    SqlToken.IF,      // IF can be used as a function name
+    SqlToken.REPLACE, // REPLACE can be used as a function name
     SqlToken.KEY,
     SqlToken.SYSTEM,
     SqlToken.PRIMARY,
