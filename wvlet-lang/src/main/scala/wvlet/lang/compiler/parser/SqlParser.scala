@@ -406,6 +406,12 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         insert()
       case SqlToken.DROP =>
         parseDropStatement()
+      case SqlToken.PREPARE =>
+        parsePrepareStatement()
+      case SqlToken.EXECUTE =>
+        parseExecuteStatement()
+      case SqlToken.DEALLOCATE =>
+        parseDeallocateStatement()
       case SqlToken.UPDATE =>
         val target = qualifiedName()
         consume(SqlToken.SET)
@@ -440,6 +446,51 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
             List(UpdateAssignment(target, value, spanFrom(t)))
       case _ =>
         Nil
+
+  def parsePrepareStatement(): PrepareStatement =
+    val t = consume(SqlToken.PREPARE)
+    val name = identifier()
+    // Support both "FROM" (Trino) and "AS" (DuckDB) syntax
+    val fromOrAs = scanner.lookAhead().token
+    if fromOrAs == SqlToken.FROM || fromOrAs == SqlToken.AS then
+      consumeToken() // consume FROM or AS
+    else
+      throw StatusCode
+        .SYNTAX_ERROR
+        .newException(
+          s"Expected FROM or AS after PREPARE statement name, but found ${fromOrAs}",
+          scanner.lookAhead().sourceLocation(using compilationUnit)
+        )
+    val statement = queryOrUpdate()
+    PrepareStatement(name, statement, spanFrom(t))
+
+  def parseExecuteStatement(): ExecuteStatement =
+    val t = consume(SqlToken.EXECUTE)
+    val name = identifier()
+    
+    // Parse parameters - support both DuckDB style EXECUTE stmt(args) and Trino style EXECUTE stmt USING args
+    val parameters: List[Expression] =
+      scanner.lookAhead().token match
+        case SqlToken.L_PAREN =>
+          // DuckDB style: EXECUTE stmt(arg1, arg2)
+          consume(SqlToken.L_PAREN)
+          val params = expressionList()
+          consume(SqlToken.R_PAREN)
+          params
+        case SqlToken.USING =>
+          // Trino style: EXECUTE stmt USING arg1, arg2
+          consume(SqlToken.USING)
+          expressionList()
+        case _ =>
+          // No parameters
+          Nil
+    
+    ExecuteStatement(name, parameters, spanFrom(t))
+
+  def parseDeallocateStatement(): DeallocateStatement =
+    val t = consume(SqlToken.DEALLOCATE)
+    val name = identifier()
+    DeallocateStatement(name, spanFrom(t))
 
   def merge(): Merge =
     val t = consume(SqlToken.MERGE)
@@ -1277,6 +1328,11 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           identifier()
         case SqlToken.STAR =>
           identifier()
+        case SqlToken.QUESTION =>
+          consume(SqlToken.QUESTION)
+          // For now, use a simple incrementing index. In a real implementation,
+          // this would need to track parameter positions properly
+          Parameter(1, spanFrom(t))
         case _ =>
           unexpected(t)
 

@@ -204,8 +204,11 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   case UPDATE  extends SqlToken(Keyword, "update")
   case SET     extends SqlToken(Keyword, "set")
   case DELETE  extends SqlToken(Keyword, "delete")
-  case CREATE  extends SqlToken(Keyword, "create")
-  case DROP    extends SqlToken(Keyword, "drop")
+  case CREATE     extends SqlToken(Keyword, "create")
+  case DROP       extends SqlToken(Keyword, "drop")
+  case PREPARE    extends SqlToken(Keyword, "prepare")
+  case EXECUTE    extends SqlToken(Keyword, "execute")
+  case DEALLOCATE extends SqlToken(Keyword, "deallocate")
   // If needs to be a token for 'create table if not exists ...' syntax
   case IF      extends SqlToken(Keyword, "if")
   case REPLACE extends SqlToken(Keyword, "replace")
@@ -347,7 +350,10 @@ object SqlToken:
     SqlToken.MERGE,
     SqlToken.DELETE,
     SqlToken.CREATE,
-    SqlToken.DROP
+    SqlToken.DROP,
+    SqlToken.PREPARE,
+    SqlToken.EXECUTE,
+    SqlToken.DEALLOCATE
   )
 
   val queryDelimiters = Set(SqlToken.EOF, SqlToken.R_PAREN, SqlToken.SEMICOLON)
