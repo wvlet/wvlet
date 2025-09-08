@@ -64,11 +64,13 @@ case class Merge(
   override def relationType: RelationType = EmptyRelationType
   override def child: Relation            = using
 
-case class PrepareStatement(name: NameExpr, statement: LogicalPlan, span: Span) extends DDL
+case class PrepareStatement(name: NameExpr, statement: LogicalPlan, span: Span)
+    extends DDL
     with LeafPlan:
   override def relationType: RelationType = EmptyRelationType
 
-case class ExecuteStatement(name: NameExpr, parameters: List[Expression], span: Span) extends DDL
+case class ExecuteStatement(name: NameExpr, parameters: List[Expression], span: Span)
+    extends DDL
     with LeafPlan:
   override def relationType: RelationType = EmptyRelationType
 

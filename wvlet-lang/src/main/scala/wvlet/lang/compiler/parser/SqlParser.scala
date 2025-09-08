@@ -407,11 +407,11 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       case SqlToken.DROP =>
         parseDropStatement()
       case SqlToken.PREPARE =>
-        parsePrepareStatement()
+        prepareStatement()
       case SqlToken.EXECUTE =>
-        parseExecuteStatement()
+        executeStatement()
       case SqlToken.DEALLOCATE =>
-        parseDeallocateStatement()
+        deallocateStatement()
       case SqlToken.UPDATE =>
         val target = qualifiedName()
         consume(SqlToken.SET)
@@ -447,8 +447,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       case _ =>
         Nil
 
-  def parsePrepareStatement(): PrepareStatement =
-    val t = consume(SqlToken.PREPARE)
+  def prepareStatement(): PrepareStatement =
+    val t    = consume(SqlToken.PREPARE)
     val name = identifier()
     // Support both "FROM" (Trino) and "AS" (DuckDB) syntax
     val fromOrAs = scanner.lookAhead().token
@@ -464,10 +464,10 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     val statement = queryOrUpdate()
     PrepareStatement(name, statement, spanFrom(t))
 
-  def parseExecuteStatement(): ExecuteStatement =
-    val t = consume(SqlToken.EXECUTE)
+  def executeStatement(): ExecuteStatement =
+    val t    = consume(SqlToken.EXECUTE)
     val name = identifier()
-    
+
     // Parse parameters - support both DuckDB style EXECUTE stmt(args) and Trino style EXECUTE stmt USING args
     val parameters: List[Expression] =
       scanner.lookAhead().token match
@@ -484,11 +484,11 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         case _ =>
           // No parameters
           Nil
-    
+
     ExecuteStatement(name, parameters, spanFrom(t))
 
-  def parseDeallocateStatement(): DeallocateStatement =
-    val t = consume(SqlToken.DEALLOCATE)
+  def deallocateStatement(): DeallocateStatement =
+    val t    = consume(SqlToken.DEALLOCATE)
     val name = identifier()
     DeallocateStatement(name, spanFrom(t))
 
@@ -1339,7 +1339,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           nextToken.token match
             case SqlToken.INTEGER_LITERAL =>
               val indexToken = consumeToken()
-              val index = indexToken.str.toInt
+              val index      = indexToken.str.toInt
               Parameter(index, spanFrom(t))
             case id if id.isIdentifier =>
               val nameToken = consumeToken()
