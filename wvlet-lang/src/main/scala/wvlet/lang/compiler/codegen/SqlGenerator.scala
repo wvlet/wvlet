@@ -880,6 +880,44 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             )
 
         selectExpr(sql)
+      case s: Show if s.showType == ShowType.functions =>
+        // SHOW FUNCTIONS - database-specific implementation
+        dbType match
+          case DBType.DuckDB =>
+            // DuckDB uses duckdb_functions() function
+            val sql = wl(
+              "select",
+              cl("function_name as name", "description"),
+              "from",
+              "duckdb_functions()",
+              "order by name"
+            )
+            selectExpr(sql)
+          case DBType.Trino =>
+            // Trino supports SHOW FUNCTIONS directly
+            val sql = wl("show functions")
+            selectExpr(sql)
+          case _ =>
+            // Fallback for other databases - return empty result with proper schema
+            val sql = wl(
+              "select",
+              "cast(null as varchar) as name,",
+              "cast(null as varchar) as description",
+              "where false"
+            )
+            selectExpr(sql)
+      case s: Show if s.showType == ShowType.createView =>
+        // SHOW CREATE VIEW - delegate to database-specific implementation
+        val viewName = s.inExpr.nameParts.mkString(".")
+        dbType match
+          case DBType.Trino =>
+            // Trino supports SHOW CREATE VIEW directly
+            val sql = wl("show create view", viewName)
+            selectExpr(sql)
+          case _ =>
+            // For other databases, use DESCRIBE which is more widely supported
+            val sql = wl("describe", viewName)
+            selectExpr(sql)
       case lv: LateralView =>
         // Hive LATERAL VIEW syntax
         val child = relation(lv.child, SQLBlock())(using InFromClause)

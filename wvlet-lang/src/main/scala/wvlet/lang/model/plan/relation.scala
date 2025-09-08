@@ -1020,6 +1020,8 @@ enum ShowType:
   case databases
   case columns
   case query
+  case functions
+  case createView
 
 case class Show(showType: ShowType, inExpr: NameExpr, span: Span) extends Relation with LeafPlan:
   override def relationType: RelationType =
@@ -1065,6 +1067,23 @@ case class Show(showType: ShowType, inExpr: NameExpr, span: Span) extends Relati
             NamedType(Name.termName("data_type"), DataType.StringType),
             NamedType(Name.termName("is_nullable"), DataType.BooleanType),
             NamedType(Name.termName("column_default"), DataType.StringType)
+          )
+        )
+      case ShowType.functions =>
+        SchemaType(
+          parent = None,
+          typeName = Name.typeName("function"),
+          columnTypes = List[NamedType](
+            NamedType(Name.termName("name"), DataType.StringType),
+            NamedType(Name.termName("description"), DataType.StringType)
+          )
+        )
+      case ShowType.createView =>
+        SchemaType(
+          parent = None,
+          typeName = Name.typeName("create_view"),
+          columnTypes = List[NamedType](
+            NamedType(Name.termName("create_statement"), DataType.StringType)
           )
         )
       case other =>

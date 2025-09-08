@@ -671,6 +671,9 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         case SqlToken.SCHEMA =>
           consume(SqlToken.SCHEMA)
           SqlToken.SCHEMA
+        case SqlToken.VIEW =>
+          consume(SqlToken.VIEW)
+          SqlToken.VIEW
         case _ =>
           SqlToken.TABLE // default to table
 
@@ -707,6 +710,11 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           val ifNotExists = parseIfNotExists()
           val schemaName  = qualifiedName()
           CreateSchema(schemaName, ifNotExists, None, spanFrom(t))
+        case SqlToken.VIEW =>
+          val viewName = qualifiedName()
+          consume(SqlToken.AS)
+          val queryPlan = this.query() // Use 'this' to access the outer query method
+          CreateView(viewName, replace, queryPlan, spanFrom(t))
         case SqlToken.TABLE | _ =>
           val createMode =
             if replace then
@@ -729,6 +737,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
               CreateTableAs(tbl, createMode, q, spanFrom(t))
             case t3 =>
               unexpected(scanner.lookAhead())
+      end match
     end parseCreateStatement
 
     def parseDropStatement(): LogicalPlan =
@@ -740,6 +749,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       entityType match
         case SqlToken.SCHEMA =>
           DropSchema(name, ifExists, spanFrom(t))
+        case SqlToken.VIEW =>
+          DropView(name, ifExists, spanFrom(t))
         case SqlToken.TABLE | _ =>
           DropTable(name, ifExists, spanFrom(t))
 
@@ -751,6 +762,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         insert()
       case SqlToken.DROP =>
         parseDropStatement()
+      case SqlToken.DELETE =>
+        delete()
       case SqlToken.PREPARE =>
         prepareStatement()
       case SqlToken.EXECUTE =>
@@ -1340,24 +1353,40 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
 
     val t    = consume(SqlToken.SHOW)
     val name = identifier()
-    try
-      val tpe = ShowType.valueOf(name.leafName.toLowerCase)
-      tpe match
-        case ShowType.databases | ShowType.tables | ShowType.schemas =>
-          val in = inExpr()
-          Show(tpe, in, spanFrom(t))
-        case ShowType.catalogs =>
-          Show(ShowType.catalogs, EmptyName, spanFrom(t))
-        case ShowType.columns =>
-          // Handle "SHOW COLUMNS FROM table" syntax
-          consume(SqlToken.FROM)
-          val tableName = qualifiedName()
-          Show(ShowType.columns, tableName, spanFrom(t))
-        case _ =>
-          unexpected(name)
-    catch
-      case e: IllegalArgumentException =>
-        unexpected(name, s"Unknown SHOW type: ${name.leafName}")
+
+    // Handle multi-word SHOW commands
+    name.leafName.toLowerCase match
+      case "create" =>
+        // SHOW CREATE VIEW viewname
+        val next = identifier()
+        if next.leafName.toLowerCase == "view" then
+          val viewName = qualifiedName()
+          Show(ShowType.createView, viewName, spanFrom(t))
+        else
+          unexpected(next, s"Expected VIEW after CREATE, but found: ${next.leafName}")
+      case "functions" =>
+        Show(ShowType.functions, EmptyName, spanFrom(t))
+      case _ =>
+        // Handle existing single-word SHOW commands
+        try
+          val tpe = ShowType.valueOf(name.leafName.toLowerCase)
+          tpe match
+            case ShowType.databases | ShowType.tables | ShowType.schemas =>
+              val in = inExpr()
+              Show(tpe, in, spanFrom(t))
+            case ShowType.catalogs =>
+              Show(ShowType.catalogs, EmptyName, spanFrom(t))
+            case ShowType.columns =>
+              // Handle "SHOW COLUMNS FROM table" syntax
+              consume(SqlToken.FROM)
+              val tableName = qualifiedName()
+              Show(ShowType.columns, tableName, spanFrom(t))
+            case _ =>
+              unexpected(name)
+        catch
+          case e: IllegalArgumentException =>
+            unexpected(name, s"Unknown SHOW type: ${name.leafName}")
+    end match
 
   end show
 

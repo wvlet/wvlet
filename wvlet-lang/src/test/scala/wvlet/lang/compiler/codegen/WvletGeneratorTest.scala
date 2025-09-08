@@ -53,7 +53,8 @@ class WvletGeneratorSqlBasicSpec
     extends WvletGeneratorTest(
       "spec/sql/basic",
       ignoredSpec = Map(
-        "decimal-literals.sql" -> "Need to decide how to support DECIMAL type in Wvlet"
+        "decimal-literals.sql" -> "Need to decide how to support DECIMAL type in Wvlet",
+        "show-create-view.sql" -> "SHOW CREATE VIEW syntax not yet supported in Wvlet"
       )
     )
 
