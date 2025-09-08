@@ -7,12 +7,12 @@ drop table if exists customer_data;
 
 create table sales_data as
 select * from (values 
-  (1, 'North', 1000.0, 2024),
-  (2, 'South', 1500.0, 2024), 
-  (3, 'East', 2000.0, 2024),
-  (4, 'West', 1200.0, 2024),
-  (5, 'North', 800.0, 2023)
-) as t(id, region, amount, year);
+  (1, 1, 'North', 1000.0, 2024),
+  (2, 2, 'South', 1500.0, 2024), 
+  (3, 1, 'East', 2000.0, 2024),
+  (4, 3, 'West', 1200.0, 2024),
+  (5, 2, 'North', 800.0, 2023)
+) as t(id, customer_id, region, amount, year);
 
 create table customer_data as
 select * from (values 

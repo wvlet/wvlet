@@ -908,8 +908,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             selectExpr(sql)
       case s: Show if s.showType == ShowType.createView =>
         // SHOW CREATE VIEW - delegate to database-specific implementation
-        val parts    = s.inExpr.nameParts.reverse
-        val viewName = parts.mkString(".")
+        val viewName = s.inExpr.nameParts.mkString(".")
         dbType match
           case DBType.Trino =>
             // Trino supports SHOW CREATE VIEW directly
