@@ -54,6 +54,7 @@ case class CreateTable(
     table: NameExpr,
     ifNotExists: Boolean,
     tableElems: List[ColumnDef],
+    properties: List[(NameExpr, Expression)] = Nil,
     span: Span
 ) extends DDL
 
