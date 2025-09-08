@@ -846,8 +846,16 @@ case class SchemaProperty(key: NameExpr, value: Expression, span: Span) extends 
 
 sealed trait TableElement extends Expression
 
-case class ColumnDef(columnName: NameExpr, tpe: DataType, span: Span)
-    extends TableElement
+case class ColumnDef(
+    columnName: NameExpr,
+    tpe: DataType,
+    span: Span,
+    notNull: Boolean = false,
+    comment: Option[String] = None,
+    defaultValue: Option[Expression] = None,
+    properties: List[(NameExpr, Expression)] = Nil,
+    position: Option[String] = None // FIRST, LAST, or AFTER column_name
+) extends TableElement
     with UnaryExpression:
   override def toString: String  = s"${columnName.leafName}:${tpe.wvExpr}"
   override def child: Expression = columnName

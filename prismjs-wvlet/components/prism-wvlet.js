@@ -6,19 +6,21 @@ Category: data
 */
 
 Prism.languages.wvlet = {
-	// Doc comments (highest priority)
-	'doc-comment': {
-		pattern: /---[\s\S]*?---/,
-		greedy: true,
-		inside: {
-			'doctag': /@\w+/
+	// Comments (both doc and line comments)
+	'comment': [
+		{
+			// Doc comments (highest priority)
+			pattern: /---[\s\S]*?---/,
+			greedy: true,
+			inside: {
+				'doctag': /@\w+/
+			}
+		},
+		{
+			// Line comments
+			pattern: /--.*$/m
 		}
-	},
-
-	// Line comments
-	'comment': {
-		pattern: /--.*$/m
-	},
+	],
 
 	// Triple-quoted strings with interpolation
 	'template-string': {

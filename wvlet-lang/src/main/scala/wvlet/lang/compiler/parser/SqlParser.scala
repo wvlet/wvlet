@@ -149,6 +149,9 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
             case SqlToken.SESSION =>
               consume(SqlToken.SESSION)
               AlterType.SESSION
+            case SqlToken.TABLE =>
+              // Handle ALTER TABLE operations
+              return alterTable(spanFrom(t))
             case _ =>
               AlterType.DEFAULT
         case _ =>
@@ -175,6 +178,358 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         unexpected(t2)
 
   end alterStatement
+
+  def alterTable(span: Span): LogicalPlan =
+    consume(SqlToken.TABLE)
+
+    // Check for IF EXISTS
+    val ifExists  = parseIfExists()
+    val tableName = qualifiedName()
+
+    val nextToken = scanner.lookAhead()
+    nextToken.token match
+      case SqlToken.RENAME =>
+        alterTableRename(tableName, ifExists, span)
+      case SqlToken.ADD =>
+        alterTableAdd(tableName, ifExists, span)
+      case SqlToken.DROP =>
+        alterTableDrop(tableName, ifExists, span)
+      case SqlToken.ALTER =>
+        alterTableAlterColumn(tableName, ifExists, span)
+      case SqlToken.SET =>
+        alterTableSet(tableName, ifExists, span)
+      case SqlToken.EXECUTE =>
+        alterTableExecute(tableName, ifExists, span)
+      case _ =>
+        unexpected(nextToken)
+
+  end alterTable
+
+  def alterTableRename(tableName: NameExpr, tableIfExists: Boolean, span: Span): LogicalPlan =
+    consume(SqlToken.RENAME)
+    scanner.lookAhead().token match
+      case SqlToken.TO =>
+        // ALTER TABLE table RENAME TO new_name
+        val toToken = consume(SqlToken.TO)
+        val newName = qualifiedName()
+        AlterTable(tableName, tableIfExists, RenameTableOp(newName, spanFrom(toToken)), span)
+      case SqlToken.COLUMN =>
+        // ALTER TABLE table RENAME COLUMN [IF EXISTS] old_name TO new_name
+        val columnToken   = consume(SqlToken.COLUMN)
+        val ifExists      = parseIfExists()
+        val oldColumnName = identifier()
+        consume(SqlToken.TO)
+        val newColumnName = identifier()
+        AlterTable(
+          tableName,
+          tableIfExists,
+          RenameColumnOp(oldColumnName, newColumnName, ifExists, spanFrom(columnToken)),
+          span
+        )
+      case _ =>
+        unexpected(scanner.lookAhead())
+
+  def alterTableAdd(tableName: NameExpr, tableIfExists: Boolean, span: Span): LogicalPlan =
+    consume(SqlToken.ADD)
+    scanner.lookAhead().token match
+      case SqlToken.COLUMN =>
+        val columnToken = consume(SqlToken.COLUMN)
+        val ifNotExists = parseIfNotExists()
+        val columnName  = identifier()
+        val dataType    = typeName()
+
+        // Parse optional column attributes
+        var notNull                                  = false
+        var comment: Option[String]                  = None
+        var defaultValue: Option[Expression]         = None
+        var properties: List[(NameExpr, Expression)] = Nil
+        var position: Option[String]                 = None // FIRST, LAST, or AFTER column_name
+
+        // Parse column attributes in a loop
+        var continue = true
+        while continue do
+          scanner.lookAhead().token match
+            case SqlToken.NOT =>
+              consume(SqlToken.NOT)
+              consume(SqlToken.NULL)
+              notNull = true
+            case SqlToken.COMMENT =>
+              consume(SqlToken.COMMENT)
+              val commentLiteral = literal()
+              comment =
+                commentLiteral match
+                  case s: StringLiteral =>
+                    Some(s.unquotedValue)
+                  case _ =>
+                    throw StatusCode
+                      .SYNTAX_ERROR
+                      .newException(
+                        "COMMENT must be followed by a string literal",
+                        commentLiteral.sourceLocationOfCompilationUnit(using compilationUnit)
+                      )
+            case SqlToken.DEFAULT =>
+              consume(SqlToken.DEFAULT)
+              defaultValue = Some(expression())
+            case SqlToken.WITH =>
+              consume(SqlToken.WITH)
+              consume(SqlToken.L_PAREN)
+              properties = parsePropertyList()
+              consume(SqlToken.R_PAREN)
+            case SqlToken.FIRST =>
+              consume(SqlToken.FIRST)
+              position = Some("FIRST")
+            case SqlToken.LAST =>
+              consume(SqlToken.LAST)
+              position = Some("LAST")
+            case SqlToken.AFTER =>
+              consume(SqlToken.AFTER)
+              val afterColumn = identifier()
+              position = Some(s"AFTER ${afterColumn.fullName}")
+            case _ =>
+              continue = false
+        end while
+
+        val columnDef = ColumnDef(
+          columnName,
+          dataType,
+          span,
+          notNull = notNull,
+          comment = comment,
+          defaultValue = defaultValue,
+          properties = properties,
+          position = position
+        )
+        AlterTable(
+          tableName,
+          tableIfExists,
+          AddColumnOp(columnDef, ifNotExists, spanFrom(columnToken)),
+          span
+        )
+      case SqlToken.PRIMARY =>
+        consume(SqlToken.PRIMARY)
+        consume(SqlToken.KEY)
+        consume(SqlToken.L_PAREN)
+        val columns = parseIdentifierList()
+        consume(SqlToken.R_PAREN)
+        // For now, we'll just return a dummy DDL as this is not in our DDL case classes
+        // This would need a new case class like AddPrimaryKey
+        throw StatusCode.NOT_IMPLEMENTED.newException("ADD PRIMARY KEY is not yet supported")
+      case _ =>
+        unexpected(scanner.lookAhead())
+
+    end match
+
+  end alterTableAdd
+
+  def alterTableDrop(tableName: NameExpr, tableIfExists: Boolean, span: Span): LogicalPlan =
+    consume(SqlToken.DROP)
+    scanner.lookAhead().token match
+      case SqlToken.COLUMN =>
+        val columnToken = consume(SqlToken.COLUMN)
+        val ifExists    = parseIfExists()
+        val columnName  = identifier()
+        AlterTable(
+          tableName,
+          tableIfExists,
+          DropColumnOp(columnName, ifExists, spanFrom(columnToken)),
+          span
+        )
+      case _ =>
+        unexpected(scanner.lookAhead())
+
+  def alterTableAlterColumn(tableName: NameExpr, tableIfExists: Boolean, span: Span): LogicalPlan =
+    val alterToken = consume(SqlToken.ALTER)
+
+    // Check if COLUMN keyword is present (standard SQL) or if it's DuckDB syntax
+    val columnName =
+      if scanner.lookAhead().token == SqlToken.COLUMN then
+        consume(SqlToken.COLUMN)
+        identifier()
+      else
+        // DuckDB syntax: ALTER TABLE table ALTER column_name TYPE ...
+        identifier()
+
+    scanner.lookAhead().token match
+      case SqlToken.SET =>
+        consume(SqlToken.SET)
+        scanner.lookAhead().token match
+          case SqlToken.DATA =>
+            consume(SqlToken.DATA)
+            consume(SqlToken.TYPE)
+            val newType = typeName()
+            val using =
+              if scanner.lookAhead().token == SqlToken.USING then
+                consume(SqlToken.USING)
+                Some(expression())
+              else
+                None
+            AlterTable(
+              tableName,
+              tableIfExists,
+              AlterColumnSetDataTypeOp(columnName, newType, using, spanFrom(alterToken)),
+              span
+            )
+          case SqlToken.DEFAULT =>
+            consume(SqlToken.DEFAULT)
+            val defaultValue = expression()
+            AlterTable(
+              tableName,
+              tableIfExists,
+              AlterColumnSetDefaultOp(columnName, defaultValue, spanFrom(alterToken)),
+              span
+            )
+          case SqlToken.NOT =>
+            consume(SqlToken.NOT)
+            consume(SqlToken.NULL)
+            AlterTable(
+              tableName,
+              tableIfExists,
+              AlterColumnSetNotNullOp(columnName, spanFrom(alterToken)),
+              span
+            )
+          case _ =>
+            unexpected(scanner.lookAhead())
+        end match
+      case SqlToken.DROP =>
+        consume(SqlToken.DROP)
+        scanner.lookAhead().token match
+          case SqlToken.NOT =>
+            consume(SqlToken.NOT)
+            consume(SqlToken.NULL)
+            AlterTable(
+              tableName,
+              tableIfExists,
+              AlterColumnDropNotNullOp(columnName, spanFrom(alterToken)),
+              span
+            )
+          case SqlToken.DEFAULT =>
+            consume(SqlToken.DEFAULT)
+            AlterTable(
+              tableName,
+              tableIfExists,
+              AlterColumnDropDefaultOp(columnName, spanFrom(alterToken)),
+              span
+            )
+          case _ =>
+            unexpected(scanner.lookAhead())
+      case SqlToken.TYPE =>
+        // DuckDB syntax: ALTER TABLE table ALTER column TYPE new_type [USING expression]
+        consume(SqlToken.TYPE)
+        val newType = typeName()
+        val using =
+          if scanner.lookAhead().token == SqlToken.USING then
+            consume(SqlToken.USING)
+            Some(expression())
+          else
+            None
+        AlterTable(
+          tableName,
+          tableIfExists,
+          AlterColumnSetDataTypeOp(columnName, newType, using, spanFrom(alterToken)),
+          span
+        )
+      case _ =>
+        unexpected(scanner.lookAhead())
+
+    end match
+
+  end alterTableAlterColumn
+
+  def alterTableSet(tableName: NameExpr, tableIfExists: Boolean, span: Span): LogicalPlan =
+    val setToken = consume(SqlToken.SET)
+    scanner.lookAhead().token match
+      case SqlToken.AUTHORIZATION =>
+        consume(SqlToken.AUTHORIZATION)
+        consume(SqlToken.L_PAREN)
+
+        val (principal, principalType) =
+          scanner.lookAhead().token match
+            case SqlToken.USER =>
+              consume(SqlToken.USER)
+              val user = identifier()
+              (user, Some("USER"))
+            case SqlToken.ROLE =>
+              consume(SqlToken.ROLE)
+              val role = identifier()
+              (role, Some("ROLE"))
+            case _ =>
+              val principal = identifier()
+              (principal, None)
+
+        consume(SqlToken.R_PAREN)
+        AlterTable(
+          tableName,
+          tableIfExists,
+          SetAuthorizationOp(principal, principalType, spanFrom(setToken)),
+          span
+        )
+      case SqlToken.PROPERTIES =>
+        consume(SqlToken.PROPERTIES)
+        val properties = parsePropertyList()
+        AlterTable(tableName, tableIfExists, SetPropertiesOp(properties, spanFrom(setToken)), span)
+      case _ =>
+        unexpected(scanner.lookAhead())
+
+    end match
+
+  end alterTableSet
+
+  def alterTableExecute(tableName: NameExpr, tableIfExists: Boolean, span: Span): LogicalPlan =
+    val executeToken = consume(SqlToken.EXECUTE)
+    val command      = identifier()
+
+    val parameters =
+      if scanner.lookAhead().token == SqlToken.L_PAREN then
+        consume(SqlToken.L_PAREN)
+        val params = parseParameterList()
+        consume(SqlToken.R_PAREN)
+        params
+      else
+        Nil
+
+    val where =
+      if scanner.lookAhead().token == SqlToken.WHERE then
+        consume(SqlToken.WHERE)
+        Some(expression())
+      else
+        None
+
+    AlterTable(
+      tableName,
+      tableIfExists,
+      ExecuteOp(command, parameters, where, spanFrom(executeToken)),
+      span
+    )
+
+  private def parseCommaSeparatedList[T](parseElement: () => T): List[T] =
+    val elements = List.newBuilder[T]
+    elements += parseElement()
+    while scanner.lookAhead().token == SqlToken.COMMA do
+      consume(SqlToken.COMMA)
+      elements += parseElement()
+    elements.result()
+
+  def parsePropertyList(): List[(NameExpr, Expression)] = parseCommaSeparatedList(() =>
+    parseProperty()
+  )
+
+  def parseProperty(): (NameExpr, Expression) =
+    val name = identifier()
+    consume(SqlToken.EQ)
+    val value = expression()
+    (name, value)
+
+  def parseParameterList(): List[(NameExpr, Expression)] = parseCommaSeparatedList(() =>
+    parseParameter()
+  )
+
+  def parseParameter(): (NameExpr, Expression) =
+    val name = identifier()
+    consume(SqlToken.EQ) // Using = for parameter assignment
+    val value = expression()
+    (name, value)
+
+  def parseIdentifierList(): List[NameExpr] = parseCommaSeparatedList(() => identifier())
 
   def explain(): ExplainPlan =
     val t = consume(SqlToken.EXPLAIN)
@@ -310,25 +665,6 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         case _ =>
           SqlToken.TABLE // default to table
 
-    def parseIfNotExists(): Boolean =
-      scanner.lookAhead().token match
-        case SqlToken.IF =>
-          consume(SqlToken.IF)
-          consume(SqlToken.NOT)
-          consume(SqlToken.EXISTS)
-          true
-        case _ =>
-          false
-
-    def parseIfExists(): Boolean =
-      scanner.lookAhead().token match
-        case SqlToken.IF =>
-          consume(SqlToken.IF)
-          consume(SqlToken.EXISTS)
-          true
-        case _ =>
-          false
-
     def tableElems(): List[ColumnDef] =
       val t = scanner.lookAhead()
       t.token match
@@ -430,6 +766,25 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     end match
 
   end update
+
+  def parseIfNotExists(): Boolean =
+    scanner.lookAhead().token match
+      case SqlToken.IF =>
+        consume(SqlToken.IF)
+        consume(SqlToken.NOT)
+        consume(SqlToken.EXISTS)
+        true
+      case _ =>
+        false
+
+  def parseIfExists(): Boolean =
+    scanner.lookAhead().token match
+      case SqlToken.IF =>
+        consume(SqlToken.IF)
+        consume(SqlToken.EXISTS)
+        true
+      case _ =>
+        false
 
   def assignments(): List[UpdateAssignment] =
     val t = scanner.lookAhead()
@@ -699,13 +1054,34 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
 
   end select
 
+  private def extractNumericValue(expr: Expression): Double =
+    expr match
+      case LongLiteral(value, _, _) =>
+        value.toDouble
+      case DoubleLiteral(value, _, _) =>
+        value
+      case DecimalLiteral(value, _, _) =>
+        value.toDouble
+      case _ =>
+        unexpected(expr)
+
   private def handleTableSample(r: Relation): Relation =
     scanner.lookAhead().token match
       case SqlToken.TABLESAMPLE =>
         consume(SqlToken.TABLESAMPLE)
         val methodName = identifier() // e.g., BERNOULLI, SYSTEM
         consume(SqlToken.L_PAREN)
-        val percentage = expression() // percentage value
+        val sizeExpr = expression() // percentage value or expression
+
+        // Handle DuckDB percentage syntax: 10% or method(10%)
+        val (percentage, _) =
+          sizeExpr match
+            case ArithmeticBinaryExpr(BinaryExprType.Modulus, percentageExpr, _, _) =>
+              // Handle "10 % " as percentage
+              (extractNumericValue(percentageExpr), true)
+            case other =>
+              (extractNumericValue(other), false)
+
         consume(SqlToken.R_PAREN)
 
         // Convert method name to SamplingMethod
@@ -716,19 +1092,73 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
             case _: IllegalArgumentException =>
               unexpected(methodName)
 
-        // Convert percentage expression to SamplingSize
-        // In Trino SQL, both BERNOULLI and SYSTEM use integer percentage values
-        val percentageValue =
-          percentage match
-            case LongLiteral(value, _, _) =>
-              value.toDouble
-            case DoubleLiteral(value, _, _) =>
-              value
-            case DecimalLiteral(value, _, _) =>
-              value.toDouble
+        Sample(r, Some(method), SamplingSize.Percentage(percentage), spanFrom(r.span))
+      case SqlToken.USING =>
+        // Handle DuckDB USING SAMPLE syntax
+        consume(SqlToken.USING)
+        consume(SqlToken.SAMPLE)
+
+        val sizeExpr = expression()
+
+        // Check for optional keywords after the size expression
+        val (samplingSize, samplingMethod) =
+          scanner.lookAhead().token match
+            case SqlToken.ROWS =>
+              consume(SqlToken.ROWS)
+              val rows =
+                sizeExpr match
+                  case LongLiteral(value, _, _) =>
+                    value
+                  case _ =>
+                    unexpected(sizeExpr)
+              (SamplingSize.Rows(rows), None)
+            case SqlToken.PERCENT =>
+              consume(SqlToken.PERCENT)
+              val percentage = extractNumericValue(sizeExpr)
+              (SamplingSize.Percentage(percentage), None)
+            case SqlToken.L_PAREN =>
+              // Handle reservoir(10%) syntax
+              val methodName =
+                sizeExpr match
+                  case i: Identifier =>
+                    i.leafName.toLowerCase
+                  case _ =>
+                    unexpected(sizeExpr)
+
+              consume(SqlToken.L_PAREN)
+              val percentage =
+                expression() match
+                  case ArithmeticBinaryExpr(BinaryExprType.Modulus, percentageExpr, _, _) =>
+                    extractNumericValue(percentageExpr)
+                  case other =>
+                    extractNumericValue(other)
+              consume(SqlToken.R_PAREN)
+
+              val method =
+                try
+                  SamplingMethod.valueOf(methodName)
+                catch
+                  case _: IllegalArgumentException =>
+                    unexpected(sizeExpr)
+
+              (SamplingSize.Percentage(percentage), Some(method))
             case _ =>
-              unexpected(percentage)
-        Sample(r, Some(method), SamplingSize.Percentage(percentageValue), spanFrom(r.span))
+              // Default case: determine if it's rows or percentage based on the expression
+              sizeExpr match
+                case ArithmeticBinaryExpr(BinaryExprType.Modulus, percentageExpr, _, _) =>
+                  val percentage = extractNumericValue(percentageExpr)
+                  (SamplingSize.Percentage(percentage), None)
+                case LongLiteral(value, _, _) =>
+                  // Could be rows or percentage - default to rows for USING SAMPLE
+                  (SamplingSize.Rows(value), None)
+                case DoubleLiteral(value, _, _) =>
+                  (SamplingSize.Percentage(value), None)
+                case DecimalLiteral(value, _, _) =>
+                  (SamplingSize.Percentage(value.toDouble), None)
+                case _ =>
+                  unexpected(sizeExpr)
+
+        Sample(r, samplingMethod, samplingSize, spanFrom(r.span))
       case _ =>
         r
 
@@ -737,6 +1167,10 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     t.token match
       case SqlToken.TABLESAMPLE =>
         // Handle TABLESAMPLE and continue with other relation operations
+        val sampledR = handleTableSample(r)
+        relationRest(sampledR)
+      case SqlToken.USING =>
+        // Handle USING SAMPLE and continue with other relation operations
         val sampledR = handleTableSample(r)
         relationRest(sampledR)
       case SqlToken.COMMA =>

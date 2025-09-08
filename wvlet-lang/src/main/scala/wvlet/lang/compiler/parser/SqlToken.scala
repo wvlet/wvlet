@@ -135,6 +135,9 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   case ORDINALITY  extends SqlToken(Keyword, "ordinality")
   case TABLESAMPLE extends SqlToken(Keyword, "tablesample")
   case BERNOULLI   extends SqlToken(Keyword, "bernoulli")
+  case SAMPLE      extends SqlToken(Keyword, "sample")
+  case PERCENT     extends SqlToken(Keyword, "percent")
+  case RESERVOIR   extends SqlToken(Keyword, "reservoir")
 
   case ALL      extends SqlToken(Keyword, "all")
   case DISTINCT extends SqlToken(Keyword, "distinct")
@@ -252,6 +255,18 @@ enum SqlToken(val tokenType: TokenType, val str: String):
 
   // For internal
   case TO extends SqlToken(Keyword, "to")
+
+  // ALTER TABLE specific tokens
+  case RENAME        extends SqlToken(Keyword, "rename")
+  case TYPE          extends SqlToken(Keyword, "type")
+  case AUTHORIZATION extends SqlToken(Keyword, "authorization")
+  case PROPERTIES    extends SqlToken(Keyword, "properties")
+  case EXECUTE       extends SqlToken(Keyword, "execute")
+  case USER          extends SqlToken(Keyword, "user")
+  case ROLE          extends SqlToken(Keyword, "role")
+  case DATA          extends SqlToken(Keyword, "data")
+  case AFTER         extends SqlToken(Keyword, "after")
+
   // These should not be keyword tokens as it conflicts with function names
   //  case YEAR   extends SqlToken(Keyword, "year")
   //  case MONTH  extends SqlToken(Keyword, "month")
@@ -310,12 +325,25 @@ object SqlToken:
     SqlToken.NO,
     SqlToken.WITHOUT,
     SqlToken.ORDINALITY,
+    SqlToken.SAMPLE,
+    SqlToken.PERCENT,
+    SqlToken.RESERVOIR,
     // DDL entity types - non-reserved so they can be used as table/column names
     SqlToken.CATALOG,
     SqlToken.DATABASE,
     SqlToken.SCHEMA,
     SqlToken.TABLE,
-    SqlToken.STATEMENT
+    SqlToken.STATEMENT,
+    // ALTER TABLE specific tokens - non-reserved
+    SqlToken.RENAME,
+    SqlToken.TYPE,
+    SqlToken.AUTHORIZATION,
+    SqlToken.PROPERTIES,
+    SqlToken.EXECUTE,
+    SqlToken.USER,
+    SqlToken.ROLE,
+    SqlToken.DATA,
+    SqlToken.AFTER
   )
 
   val allKeywordsAndSymbols = keywords ++ literalStartKeywords ++ specialSymbols
