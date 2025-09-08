@@ -16,7 +16,7 @@ package wvlet.lang.model.plan
 import wvlet.lang.compiler.TermName
 import wvlet.lang.api.{LinePosition, Span, StatusCode}
 import wvlet.lang.model.DataType.EmptyRelationType
-import wvlet.lang.model.RelationType
+import wvlet.lang.model.{DataType, RelationType}
 import wvlet.lang.model.expr.*
 
 /*
@@ -59,14 +59,60 @@ case class CreateTable(
 
 case class DropTable(table: NameExpr, ifExists: Boolean, span: Span) extends DDL
 
-case class RenameTable(table: NameExpr, renameTo: NameExpr, span: Span) extends DDL
-
-case class RenameColumn(table: NameExpr, column: NameExpr, renameTo: NameExpr, span: Span)
+// Unified ALTER TABLE structure
+case class AlterTable(table: NameExpr, ifExists: Boolean, operation: AlterTableOps, span: Span)
     extends DDL
 
-case class DropColumn(table: NameExpr, column: NameExpr, span: Span) extends DDL
+// ALTER TABLE operations
+sealed trait AlterTableOps:
+  def span: Span
 
-case class AddColumn(table: NameExpr, column: ColumnDef, span: Span) extends DDL
+case class RenameTableOp(newName: NameExpr, span: Span) extends AlterTableOps
+
+case class AddColumnOp(column: ColumnDef, ifNotExists: Boolean = false, span: Span)
+    extends AlterTableOps
+
+case class DropColumnOp(column: NameExpr, ifExists: Boolean = false, span: Span)
+    extends AlterTableOps
+
+case class RenameColumnOp(
+    oldName: NameExpr,
+    newName: NameExpr,
+    ifExists: Boolean = false,
+    span: Span
+) extends AlterTableOps
+
+case class AlterColumnSetDataTypeOp(
+    column: NameExpr,
+    dataType: DataType,
+    using: Option[Expression] = None,
+    span: Span
+) extends AlterTableOps
+
+case class AlterColumnDropNotNullOp(column: NameExpr, span: Span) extends AlterTableOps
+
+case class AlterColumnSetDefaultOp(column: NameExpr, defaultValue: Expression, span: Span)
+    extends AlterTableOps
+
+case class AlterColumnDropDefaultOp(column: NameExpr, span: Span) extends AlterTableOps
+
+case class AlterColumnSetNotNullOp(column: NameExpr, span: Span) extends AlterTableOps
+
+case class SetAuthorizationOp(
+    principal: NameExpr,
+    principalType: Option[String] = None, // "USER" or "ROLE"
+    span: Span
+) extends AlterTableOps
+
+case class SetPropertiesOp(properties: List[(NameExpr, Expression)], span: Span)
+    extends AlterTableOps
+
+case class ExecuteOp(
+    command: NameExpr,
+    parameters: List[(NameExpr, Expression)] = Nil,
+    where: Option[Expression] = None,
+    span: Span
+) extends AlterTableOps
 
 case class CreateView(viewName: NameExpr, replace: Boolean, query: Relation, span: Span) extends DDL
 

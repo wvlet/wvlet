@@ -2,12 +2,15 @@ package wvlet.lang.compiler.parser
 
 import wvlet.airspec.AirSpec
 import wvlet.lang.compiler.CompilationUnit
+import wvlet.lang.model.plan.*
 
 class SqlParserTest extends AirSpec:
   test("parse") {
     val stmt = SqlParser(CompilationUnit.fromSqlString("select * from A")).parse()
     debug(stmt.pp)
   }
+
+end SqlParserTest
 
 class SqlParserTPCHSpec extends AirSpec:
   CompilationUnit
