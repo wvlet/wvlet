@@ -1756,6 +1756,17 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
               val subQuery = query()
               consume(SqlToken.R_PAREN)
               SubQueryExpression(subQuery, spanFrom(t))
+            case SqlToken.R_PAREN =>
+              // Empty parameter list for lambda: () -> expression
+              consume(SqlToken.R_PAREN)
+              scanner.lookAhead().token match
+                case SqlToken.R_ARROW =>
+                  consume(SqlToken.R_ARROW)
+                  val body = expression()
+                  LambdaExpr(Nil, body, spanFrom(t))
+                case _ =>
+                  // Not a lambda, just empty parentheses - should not happen in normal SQL
+                  ParenthesizedExpression(NullLiteral(spanFrom(t2)), spanFrom(t))
             case id if id.isIdentifier =>
               val exprs = List.newBuilder[Expression]
 
