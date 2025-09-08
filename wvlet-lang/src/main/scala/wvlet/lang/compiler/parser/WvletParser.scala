@@ -361,8 +361,8 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         case ShowType.createView =>
           // For Wvlet parser, we'll handle this as a simple show with the view name
           val viewName = nameExpression()
-          val s = Show(ShowType.createView, viewName, spanFrom(t))
-          val q = queryBlock(s)
+          val s        = Show(ShowType.createView, viewName, spanFrom(t))
+          val q        = queryBlock(s)
           Query(q, spanFrom(t))
         case ShowType.query =>
           val ref = nameExpression()
@@ -372,6 +372,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         throw StatusCode
           .SYNTAX_ERROR
           .newException(s"Unknown argument for show: ${name.leafName}", t.sourceLocation)
+    end try
   }
 
   def executeExpr(): ExecuteExpr = node {

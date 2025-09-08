@@ -737,6 +737,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
               CreateTableAs(tbl, createMode, q, spanFrom(t))
             case t3 =>
               unexpected(scanner.lookAhead())
+      end match
     end parseCreateStatement
 
     def parseDropStatement(): LogicalPlan =
@@ -1356,7 +1357,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
 
     val t    = consume(SqlToken.SHOW)
     val name = identifier()
-    
+
     // Handle multi-word SHOW commands
     name.leafName.toLowerCase match
       case "create" =>
@@ -1389,6 +1390,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         catch
           case e: IllegalArgumentException =>
             unexpected(name, s"Unknown SHOW type: ${name.leafName}")
+    end match
 
   end show
 
