@@ -63,6 +63,9 @@ Ensure the code is formatted with `scalafmtAll` command for consistent code styl
 # Run a specific .wv spec files with wild card pattern
 ./sbt "runner/testOnly *BasicSpec -- spec:basic:query*.wv"
 
+# Run a specific .sql spec file in BasicSpec
+./sbt "runner/testOnly *SqlBasicSpec -- spec:sql:basic:query.sql"
+
 # Run test and stay in SBT shell
 ./sbt
 sbt:wvlet> test
