@@ -1672,7 +1672,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           primaryExpressionRest(ArrayAccess(expr, index, spanFrom(t)))
         case SqlToken.R_ARROW if expr.isIdentifier =>
           consume(SqlToken.R_ARROW)
-          val body = identifier()
+          // In Trino, lambda bodies are full expressions (e.g., x IS NOT NULL, x + y)
+          val body = expression()
           primaryExpressionRest(
             LambdaExpr(args = List(expr.asInstanceOf[Identifier]), body, spanFrom(t))
           )
@@ -1782,9 +1783,9 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
               val t3   = scanner.lookAhead()
               t3.token match
                 case SqlToken.R_ARROW if isIdentifierList =>
-                  // Lambda
+                  // Lambda: parameters must be identifiers, body is a general expression
                   consume(SqlToken.R_ARROW)
-                  val body = identifier()
+                  val body = expression()
                   LambdaExpr(args.map(_.asInstanceOf[Identifier]), body, spanFrom(t))
                 case _ if args.size == 1 =>
                   ParenthesizedExpression(args.head, spanFrom(t))
