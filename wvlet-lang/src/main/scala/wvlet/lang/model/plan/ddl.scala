@@ -59,65 +59,60 @@ case class CreateTable(
 
 case class DropTable(table: NameExpr, ifExists: Boolean, span: Span) extends DDL
 
-case class RenameTable(table: NameExpr, renameTo: NameExpr, ifExists: Boolean = false, span: Span)
+// Unified ALTER TABLE structure
+case class AlterTable(table: NameExpr, ifExists: Boolean, operation: AlterTableOps, span: Span)
     extends DDL
 
-case class RenameColumn(
-    table: NameExpr,
-    column: NameExpr,
-    renameTo: NameExpr,
+// ALTER TABLE operations
+sealed trait AlterTableOps:
+  def span: Span
+
+case class RenameTableOp(newName: NameExpr, span: Span) extends AlterTableOps
+
+case class AddColumnOp(column: ColumnDef, ifNotExists: Boolean = false, span: Span)
+    extends AlterTableOps
+
+case class DropColumnOp(column: NameExpr, ifExists: Boolean = false, span: Span)
+    extends AlterTableOps
+
+case class RenameColumnOp(
+    oldName: NameExpr,
+    newName: NameExpr,
     ifExists: Boolean = false,
     span: Span
-) extends DDL
+) extends AlterTableOps
 
-case class DropColumn(table: NameExpr, column: NameExpr, ifExists: Boolean = false, span: Span)
-    extends DDL
-
-case class AddColumn(table: NameExpr, column: ColumnDef, ifNotExists: Boolean = false, span: Span)
-    extends DDL
-
-// Additional ALTER TABLE operations
-case class AlterColumnSetDataType(
-    table: NameExpr,
+case class AlterColumnSetDataTypeOp(
     column: NameExpr,
     dataType: DataType,
     using: Option[Expression] = None,
     span: Span
-) extends DDL
+) extends AlterTableOps
 
-case class AlterColumnDropNotNull(table: NameExpr, column: NameExpr, span: Span) extends DDL
+case class AlterColumnDropNotNullOp(column: NameExpr, span: Span) extends AlterTableOps
 
-case class AlterColumnSetDefault(
-    table: NameExpr,
-    column: NameExpr,
-    defaultValue: Expression,
-    span: Span
-) extends DDL
+case class AlterColumnSetDefaultOp(column: NameExpr, defaultValue: Expression, span: Span)
+    extends AlterTableOps
 
-case class AlterColumnDropDefault(table: NameExpr, column: NameExpr, span: Span) extends DDL
+case class AlterColumnDropDefaultOp(column: NameExpr, span: Span) extends AlterTableOps
 
-case class AlterColumnSetNotNull(table: NameExpr, column: NameExpr, span: Span) extends DDL
+case class AlterColumnSetNotNullOp(column: NameExpr, span: Span) extends AlterTableOps
 
-case class AlterTableSetAuthorization(
-    table: NameExpr,
+case class SetAuthorizationOp(
     principal: NameExpr,
     principalType: Option[String] = None, // "USER" or "ROLE"
     span: Span
-) extends DDL
+) extends AlterTableOps
 
-case class AlterTableSetProperties(
-    table: NameExpr,
-    properties: List[(NameExpr, Expression)],
-    span: Span
-) extends DDL
+case class SetPropertiesOp(properties: List[(NameExpr, Expression)], span: Span)
+    extends AlterTableOps
 
-case class AlterTableExecute(
-    table: NameExpr,
+case class ExecuteOp(
     command: NameExpr,
     parameters: List[(NameExpr, Expression)] = Nil,
     where: Option[Expression] = None,
     span: Span
-) extends DDL
+) extends AlterTableOps
 
 case class CreateView(viewName: NameExpr, replace: Boolean, query: Relation, span: Span) extends DDL
 
