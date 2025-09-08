@@ -42,6 +42,7 @@ case class CreateTableAs(
     target: TableOrFileName,
     createMode: CreateMode,
     child: Relation,
+    properties: List[(NameExpr, Expression)] = Nil,
     span: Span
 ) extends Save:
   override def relationType: RelationType = EmptyRelationType

@@ -728,15 +728,43 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
             case SqlToken.L_PAREN =>
               consume(SqlToken.L_PAREN)
               val elems = tableElems()
-              val ct    = CreateTable(tbl, createMode == CreateMode.IfNotExists, elems, spanFrom(t))
+              val ct = CreateTable(
+                tbl,
+                createMode == CreateMode.IfNotExists,
+                elems,
+                Nil,
+                spanFrom(t)
+              )
               consume(SqlToken.R_PAREN)
               ct
+            case SqlToken.WITH =>
+              // Handle CREATE TABLE ... WITH (params ...) [AS SELECT] syntax
+              consume(SqlToken.WITH)
+              consume(SqlToken.L_PAREN)
+              val properties = parsePropertyList()
+              consume(SqlToken.R_PAREN)
+              scanner.lookAhead().token match
+                case SqlToken.AS =>
+                  // WITH (params...) AS SELECT...
+                  consume(SqlToken.AS)
+                  val q = query()
+                  CreateTableAs(tbl, createMode, q, properties, spanFrom(t))
+                case _ =>
+                  // WITH (params...) only - create empty table with properties
+                  CreateTable(
+                    tbl,
+                    createMode == CreateMode.IfNotExists,
+                    Nil,
+                    properties,
+                    spanFrom(t)
+                  )
             case SqlToken.AS =>
               consume(SqlToken.AS)
               val q = query()
-              CreateTableAs(tbl, createMode, q, spanFrom(t))
+              CreateTableAs(tbl, createMode, q, Nil, spanFrom(t))
             case t3 =>
               unexpected(scanner.lookAhead())
+          end match
       end match
     end parseCreateStatement
 
