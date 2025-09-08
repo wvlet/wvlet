@@ -197,6 +197,7 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   case DATABASE  extends SqlToken(Keyword, "database")
   case SCHEMA    extends SqlToken(Keyword, "schema")
   case TABLE     extends SqlToken(Keyword, "table")
+  case VIEW      extends SqlToken(Keyword, "view")
   case STATEMENT extends SqlToken(Keyword, "statement")
 
   case INSERT     extends SqlToken(Keyword, "insert")
@@ -229,8 +230,9 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   case NULLABLE   extends SqlToken(Keyword, "nullable")
 
   // commands
-  case SHOW extends SqlToken(Keyword, "show")
-  case USE  extends SqlToken(Keyword, "use")
+  case SHOW      extends SqlToken(Keyword, "show")
+  case USE       extends SqlToken(Keyword, "use")
+  case FUNCTIONS extends SqlToken(Keyword, "functions")
 
   // logical expressions
   case NOT     extends SqlToken(Keyword, "not")
@@ -332,7 +334,9 @@ object SqlToken:
     SqlToken.DATABASE,
     SqlToken.SCHEMA,
     SqlToken.TABLE,
+    SqlToken.VIEW,
     SqlToken.STATEMENT,
+    SqlToken.FUNCTIONS,
     // ALTER TABLE specific tokens - non-reserved
     SqlToken.RENAME,
     SqlToken.TYPE,

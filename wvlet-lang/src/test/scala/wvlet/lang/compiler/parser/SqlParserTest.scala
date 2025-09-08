@@ -11,24 +11,32 @@ class SqlParserTest extends AirSpec:
   }
 
   test("test missing SQL syntaxes") {
-    val testCases = Map(
-      "DELETE FROM test_table WHERE id = 1" -> "Delete syntax should work",
-      "CREATE OR REPLACE VIEW test_view AS SELECT * FROM table1" -> "CREATE OR REPLACE VIEW should work",
-      "SHOW CREATE VIEW test_view" -> "SHOW CREATE VIEW should work", 
-      "SHOW FUNCTIONS" -> "SHOW FUNCTIONS should work"
+    val testCases = List(
+      ("DELETE FROM test_table WHERE id = 1", "Delete"),
+      ("CREATE OR REPLACE VIEW test_view AS SELECT * FROM table1", "CreateView"),
+      ("SHOW CREATE VIEW test_view", "Show"),
+      ("SHOW FUNCTIONS", "Show")
     )
     
-    testCases.foreach { case (sql, description) =>
+    testCases.foreach { case (sql, expectedType) =>
       debug(s"Testing: $sql")
-      try {
-        val unit = CompilationUnit.fromSqlString(sql)
-        val parser = SqlParser(unit)
-        val result = parser.parse()
-        debug(s"  SUCCESS: ${result.getClass.getSimpleName} - $description")
-      } catch {
-        case e: Exception =>
-          debug(s"  ERROR: ${e.getMessage} - $description")
-      }
+      val unit = CompilationUnit.fromSqlString(sql)
+      val parser = SqlParser(unit)
+      val result = parser.parse()
+      debug(s"  SUCCESS: ${result.getClass.getSimpleName}")
+      
+      // Extract the actual statement from PackageDef
+      result match
+        case pkg: PackageDef =>
+          pkg.statements.headOption match
+            case Some(stmt) =>
+              val stmtType = stmt.getClass.getSimpleName
+              debug(s"    Actual statement type: $stmtType")
+              stmtType shouldBe expectedType
+            case None =>
+              fail(s"No statements found in package for: $sql")
+        case _ =>
+          fail(s"Expected PackageDef but got: ${result.getClass.getSimpleName}")
     }
   }
 
