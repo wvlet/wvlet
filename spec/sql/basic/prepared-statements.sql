@@ -13,8 +13,11 @@ PREPARE query_person AS SELECT * FROM person WHERE age >= $1 AND name = $2;
 -- Test PREPARE with DuckDB named parameters
 PREPARE query_person AS SELECT * FROM person WHERE age >= $minimum_age AND name = $name_start;
 
--- Test PREPARE with more complex DuckDB syntax
+-- Test PREPARE with multiple ? parameters (should get sequential indices 1, 2)
 PREPARE query_person AS SELECT * FROM person WHERE starts_with(name, ?) AND age >= ?;
+
+-- Test PREPARE with many ? parameters (should get sequential indices 1, 2, 3, 4)
+PREPARE complex_query AS SELECT * FROM person WHERE name = ? AND age > ? AND city = ? AND salary < ?;
 
 -- Test PREPARE with DuckDB numbered parameters in different order
 PREPARE query_person AS SELECT * FROM person WHERE starts_with(name, $2) AND age >= $1;

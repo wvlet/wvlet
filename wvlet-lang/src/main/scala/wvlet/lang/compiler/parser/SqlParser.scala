@@ -33,6 +33,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
   )
 
   private var lastToken: TokenData[SqlToken] = null
+  private var questionMarkParamIndex: Int    = 0
 
   def parse(): LogicalPlan =
     val t     = scanner.lookAhead()
@@ -113,6 +114,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
             List(stmt)
 
   def statement(): LogicalPlan =
+    // Reset parameter counter for each statement
+    questionMarkParamIndex = 0
     val t = scanner.lookAhead()
     t.token match
       case SqlToken.ALTER | SqlToken.SET | SqlToken.RESET =>
@@ -1764,9 +1767,9 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           identifier()
         case SqlToken.QUESTION =>
           consume(SqlToken.QUESTION)
-          // For now, use a simple incrementing index. In a real implementation,
-          // this would need to track parameter positions properly
-          Parameter(1, spanFrom(t))
+          // Use a counter to track the position of '?' parameters
+          questionMarkParamIndex += 1
+          Parameter(questionMarkParamIndex, spanFrom(t))
         case SqlToken.DOLLAR =>
           consume(SqlToken.DOLLAR)
           val nextToken = scanner.lookAhead()
