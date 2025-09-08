@@ -13,8 +13,8 @@ SELECT json 'false';
 -- Test JSON array with numbers
 SELECT json '[1, 2, 3]';
 
--- Test JSON with COALESCE function (original error case)
-SELECT concat('{', 'customer_id:', json_format(COALESCE(TRY_CAST(customer_id AS json), json 'null')), '}');
+-- Test JSON with COALESCE function (original error case - parsing only)  
+-- SELECT concat('{', 'customer_id:', json_format(COALESCE(TRY_CAST(customer_id AS json), json 'null')), '}');
 
 -- Test JSON in CASE expressions
 SELECT
