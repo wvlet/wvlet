@@ -342,6 +342,7 @@ object SqlToken:
     SqlToken.FUNCTIONS,
     // ALTER TABLE specific tokens - non-reserved
     SqlToken.RENAME,
+    SqlToken.REPLACE, // REPLACE can be used as a function name
     SqlToken.TYPE,
     SqlToken.AUTHORIZATION,
     SqlToken.PROPERTIES,
