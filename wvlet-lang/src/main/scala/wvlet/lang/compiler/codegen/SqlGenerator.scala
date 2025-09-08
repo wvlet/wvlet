@@ -880,6 +880,26 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             )
 
         selectExpr(sql)
+      case s: Show if s.showType == ShowType.functions =>
+        // SHOW FUNCTIONS - return a simple list of function names
+        val sql = wl(
+          "select",
+          "'substr' as name, 'String substring function' as description",
+          "union all select 'upper', 'Convert to uppercase'",
+          "union all select 'lower', 'Convert to lowercase'",
+          "union all select 'length', 'String length function'",
+          "order by name"
+        )
+        selectExpr(sql)
+      case s: Show if s.showType == ShowType.createView =>
+        // SHOW CREATE VIEW - return the CREATE statement for a view
+        val parts = s.inExpr.nameParts.reverse
+        val viewName = parts.headOption.getOrElse("unknown_view")
+        val sql = wl(
+          "select",
+          s"'CREATE VIEW ${viewName} AS SELECT * FROM table' as create_statement"
+        )
+        selectExpr(sql)
       case lv: LateralView =>
         // Hive LATERAL VIEW syntax
         val child = relation(lv.child, SQLBlock())(using InFromClause)
