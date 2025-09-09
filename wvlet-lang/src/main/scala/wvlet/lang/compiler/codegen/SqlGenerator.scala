@@ -1043,7 +1043,9 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         // Use arbitrary(expr) for efficiency
         val ex: Expression = FunctionApply(
           NameExpr.fromString("arbitrary"),
-          args = List(FunctionArg(None, NameExpr.fromString(f.toSQLAttributeName), false, NoSpan)),
+          args = List(
+            FunctionArg(None, NameExpr.fromString(f.toSQLAttributeName), false, Nil, NoSpan)
+          ),
           None,
           NoSpan
         )
@@ -1176,10 +1178,21 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         wl(base, window)
       case f: FunctionArg =>
         // TODO handle arg name mapping
+        val parts = List.newBuilder[Doc]
+
+        // Add DISTINCT if present
         if f.isDistinct then
-          wl("distinct", expr(f.value))
-        else
-          expr(f.value)
+          parts += text("distinct")
+
+        // Add the main expression
+        parts += expr(f.value)
+
+        // Add ORDER BY if present
+        if f.orderBy.nonEmpty then
+          parts += text("order by")
+          parts += cl(f.orderBy.map(x => expr(x)))
+
+        wl(parts.result()*)
       case w: Window =>
         val s = List.newBuilder[Doc]
         if w.partitionBy.nonEmpty then

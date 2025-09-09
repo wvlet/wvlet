@@ -270,7 +270,7 @@ case class Count(child: Relation, span: Span) extends UnaryRelation with AggSele
       NameExpr.EmptyName,
       FunctionApply(
         NameExpr.fromString("count", span),
-        List(FunctionArg(None, AllColumns(Wildcard(NoSpan), None, NoSpan), false, span)),
+        List(FunctionArg(None, AllColumns(Wildcard(NoSpan), None, NoSpan), false, Nil, span)),
         None,
         span
       ),

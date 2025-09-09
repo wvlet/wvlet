@@ -65,7 +65,7 @@ object HiveRewriteUnnest extends Phase("hive-rewrite-unnest"):
             exprs = Seq(
               FunctionApply(
                 NameExpr.fromString("explode"),
-                List(FunctionArg(None, expr, false, NoSpan)),
+                List(FunctionArg(None, expr, false, Nil, NoSpan)),
                 None,
                 NoSpan
               )
@@ -90,7 +90,7 @@ object HiveRewriteUnnest extends Phase("hive-rewrite-unnest"):
             exprs = Seq(
               FunctionApply(
                 NameExpr.fromString("explode"),
-                List(FunctionArg(None, expr, false, NoSpan)),
+                List(FunctionArg(None, expr, false, Nil, NoSpan)),
                 None,
                 NoSpan
               )

@@ -672,7 +672,7 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
         def mapArg(args: List[FunctionArg]): Unit =
           if !args.isEmpty then
             args.head match
-              case FunctionArg(None, expr, _, span) =>
+              case FunctionArg(None, expr, _, _, span) =>
                 if index >= functionArgTypes.length then
                   throw StatusCode
                     .SYNTAX_ERROR
@@ -687,7 +687,7 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
                     index += 1
                     resolvedArgs += argType.name -> expr
                     mapArg(args.tail)
-              case FunctionArg(Some(argName), expr, _, span) =>
+              case FunctionArg(Some(argName), expr, _, _, span) =>
                 functionArgTypes.find(_.name == argName) match
                   case Some(argType) =>
                     argType.dataType match
