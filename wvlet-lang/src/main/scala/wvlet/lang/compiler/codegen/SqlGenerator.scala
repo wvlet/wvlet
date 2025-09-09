@@ -1145,17 +1145,13 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             // Build the TRIM expression
             val trimParts = List.newBuilder[Doc]
             trimType.foreach(t => trimParts += text(t))
-            trimChars.foreach { chars =>
-              if trimType.isDefined then
-                trimParts += text(" ")
-              trimParts += expr(chars)
-            }
+            trimChars.foreach(chars => trimParts += expr(chars))
             if trimType.isDefined || trimChars.isDefined then
-              trimParts += text(" from ")
-
+              trimParts += text("from")
+              
             fromExpr.foreach(e => trimParts += expr(e))
 
-            parts ++= trimParts.result()
+            parts += wl(trimParts.result()*)
             parts += text(")")
 
             val result = group(concat(parts.result()))
