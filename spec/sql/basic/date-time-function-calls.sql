@@ -28,4 +28,4 @@ SELECT
 
 -- Test 5: Original issue pattern - function call in WHERE clause
 -- This was the specific pattern from issue #1238 that was failing
-SELECT 1 WHERE date(cast(1755446400 as varchar)) >= DATE '2025-08-17'
+SELECT 1 FROM (VALUES (1)) AS t(x) WHERE date(cast(1755446400 as varchar)) >= DATE '2025-08-17'
