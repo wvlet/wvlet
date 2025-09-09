@@ -146,6 +146,10 @@ enum SqlToken(val tokenType: TokenType, val str: String):
 
   case CAST     extends SqlToken(Keyword, "cast")
   case TRY_CAST extends SqlToken(Keyword, "try_cast")
+  case TRIM     extends SqlToken(Keyword, "trim")
+  case LEADING  extends SqlToken(Keyword, "leading")
+  case TRAILING extends SqlToken(Keyword, "trailing")
+  case BOTH     extends SqlToken(Keyword, "both")
 
   // window spec
   case PARTITION extends SqlToken(Keyword, "partition")
@@ -306,6 +310,10 @@ object SqlToken:
   val nonReservedKeywords = Set(
     SqlToken.IF,      // IF can be used as a function name
     SqlToken.REPLACE, // REPLACE can be used as a function name
+    SqlToken.TRIM,    // TRIM can be used as a function name
+    SqlToken.LEADING,
+    SqlToken.TRAILING,
+    SqlToken.BOTH,
     SqlToken.KEY,
     SqlToken.SYSTEM,
     SqlToken.PRIMARY,
