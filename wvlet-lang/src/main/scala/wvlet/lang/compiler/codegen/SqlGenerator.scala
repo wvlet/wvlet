@@ -360,7 +360,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       case v: Values =>
         // VALUES in FROM clause needs parentheses
         v.relationType match
-          case s: SchemaType =>
+          case s: SchemaType if s.isFullyNamed =>
             // VALUES with alias and schema
             val tableAlias: Doc = tableAliasOf(
               NameExpr.fromString(s.typeName.name),
@@ -1107,7 +1107,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       case g: UnresolvedGroupingKey =>
         expr(g.child)
       case f: FunctionApply =>
-        // Special handling for TRIM function
+        // Special handling for specific functions
         f.base match
           case id: UnquotedIdentifier if id.unquotedValue.toLowerCase == "trim" =>
             // Generate special TRIM syntax
@@ -1317,6 +1317,32 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             bracket(cl(a.values.map(expr(_))))
       case r: RowConstructor =>
         paren(cl(r.values.map(expr(_))))
+      case j: JsonObjectConstructor =>
+        // Special handling for JSON_OBJECT based on database type
+        dbType match
+          case DBType.DuckDB =>
+            // DuckDB always uses: json_object('key1', value1, 'key2', value2)
+            val params = j
+              .jsonParams
+              .map { p =>
+                group(cl(expr(p.key), expr(p.value)))
+              }
+            text("json_object") + paren(cl(params*))
+          case _ =>
+            val params = j
+              .jsonParams
+              .map { p =>
+                group(
+                  wl(group(wl(text("KEY"), expr(p.key))), group(wl(text("VALUE"), expr(p.value))))
+                )
+              }
+            val modifiers = wl(
+              j.jsonObjectModifiers
+                .map { m =>
+                  text(m.expr)
+                }
+            )
+            text("json_object") + paren(cl(params, modifiers))
       case a: ArrayAccess =>
         expr(a.arrayExpr) + text("[") + expr(a.index) + text("]")
       case c: CaseExpr =>

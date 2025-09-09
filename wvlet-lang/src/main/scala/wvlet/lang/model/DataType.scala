@@ -200,9 +200,16 @@ object DataType extends LogSupport:
       override val typeName: TypeName,
       columnTypes: List[NamedType]
   ) extends RelationType(typeName, Nil):
+    def isEmpty: Boolean                 = columnTypes.isEmpty
     override def fields: List[NamedType] = columnTypes
 
     override def isResolved: Boolean = columnTypes.forall(_.isResolved)
+
+    /**
+      * @return
+      *   true if all column types have names
+      */
+    def isFullyNamed: Boolean = columnTypes.forall(!_.name.isEmpty)
 
   case object EmptyRelationType extends RelationType(Name.typeName("<empty>"), Nil):
     override def typeDescription: String = "empty"

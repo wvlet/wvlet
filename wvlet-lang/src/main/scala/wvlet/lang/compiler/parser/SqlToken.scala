@@ -141,8 +141,8 @@ enum SqlToken(val tokenType: TokenType, val str: String):
 
   case ALL      extends SqlToken(Keyword, "all")
   case DISTINCT extends SqlToken(Keyword, "distinct")
-  // case VALUE    extends SqlToken(Keyword, "value")
-  case VALUES extends SqlToken(Keyword, "values")
+  case VALUE    extends SqlToken(Keyword, "value")
+  case VALUES   extends SqlToken(Keyword, "values")
 
   case CAST     extends SqlToken(Keyword, "cast")
   case TRY_CAST extends SqlToken(Keyword, "try_cast")
@@ -262,6 +262,10 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   case JSON      extends SqlToken(Keyword, "json")
   case INTERVAL  extends SqlToken(Keyword, "interval")
 
+  // JSON OBJECT
+  case ABSENT extends SqlToken(Keyword, "absent")
+  case KEYS   extends SqlToken(Keyword, "keys")
+
   // For internal
   case TO extends SqlToken(Keyword, "to")
 
@@ -315,6 +319,7 @@ object SqlToken:
     SqlToken.TRAILING,
     SqlToken.BOTH,
     SqlToken.KEY,
+    SqlToken.VALUE, // VALUE can be used as a column name
     SqlToken.SYSTEM,
     SqlToken.PRIMARY,
     SqlToken.UNIQUE,
@@ -353,6 +358,9 @@ object SqlToken:
     SqlToken.VIEW,
     SqlToken.STATEMENT,
     SqlToken.FUNCTIONS,
+    // JSON object modifiers
+    SqlToken.ABSENT,
+    SqlToken.KEYS,
     // ALTER TABLE specific tokens - non-reserved
     SqlToken.RENAME,
     SqlToken.TYPE,

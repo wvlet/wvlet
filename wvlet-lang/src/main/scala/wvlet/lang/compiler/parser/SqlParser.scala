@@ -13,6 +13,7 @@ import wvlet.lang.model.DataType.{
   UnresolvedTypeParameter
 }
 import wvlet.lang.model.expr.*
+import wvlet.lang.model.expr.JsonObjectModifier.ABSENT_ON_NULL
 import wvlet.lang.model.expr.NameExpr.EmptyName
 import wvlet.lang.model.plan.*
 import wvlet.lang.model.plan.{Lateral, ShowType, TableRef, Unnest, Values}
@@ -1613,6 +1614,106 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           case _ =>
             List(arg)
 
+  def jsonParams(): List[JsonParam] =
+    val t = scanner.lookAhead()
+    t.token match
+      case SqlToken.R_PAREN | SqlToken.NULL | SqlToken.ABSENT | SqlToken.WITH | SqlToken.WITHOUT =>
+        // closing paren or object modifier start keywords
+        Nil
+      case _ =>
+        // Check if this is KEY...VALUE syntax
+        scanner.lookAhead().token match
+          case SqlToken.KEY =>
+            // KEY...VALUE syntax - parse KEY expression VALUE expression pairs
+            parseJsonKeyValuePairs()
+          case _ =>
+            // Simple alternating key-value syntax json_object(k1, v1, k2, v2, ...)
+            val key = expression()
+            val t2  = scanner.lookAhead()
+            t2.token match
+              case SqlToken.COMMA =>
+                consume(SqlToken.COMMA)
+                val value = expression()
+                consumeIfExist(SqlToken.COMMA)
+                JsonParam(key, value, spanFrom(key.span)) :: jsonParams()
+              case other =>
+                unexpected(t2)
+
+  private def parseJsonKeyValuePairs(): List[JsonParam] =
+    val t = scanner.lookAhead()
+
+    // Consume KEY
+    consume(SqlToken.KEY)
+    val keyExpr = expression()
+
+    // Expect VALUE
+    scanner.lookAhead().token match
+      case SqlToken.VALUE =>
+        consume(SqlToken.VALUE)
+        val valueExpr = expression()
+        val jsonParam = JsonParam(keyExpr, valueExpr, spanFrom(keyExpr.span))
+
+        // Check for more KEY...VALUE pairs or modifiers
+        scanner.lookAhead().token match
+          case SqlToken.COMMA =>
+            consume(SqlToken.COMMA)
+            scanner.lookAhead().token match
+              case SqlToken.KEY =>
+                // Another KEY...VALUE pair
+                jsonParam :: parseJsonKeyValuePairs()
+              case _ =>
+                // After a comma, we must have another KEY...VALUE pair
+                unexpected(
+                  scanner.lookAhead(),
+                  "Expected KEY after a comma in JSON_OBJECT arguments"
+                )
+          case _ =>
+            List(jsonParam)
+      case _ =>
+        unexpected(scanner.lookAhead(), "Expected VALUE after KEY")
+
+  end parseJsonKeyValuePairs
+
+  def parseJsonObjectModifiers(): List[JsonObjectModifier] =
+    val t = scanner.lookAhead()
+    t.token match
+      case SqlToken.R_PAREN =>
+        Nil
+      case SqlToken.NULL =>
+        consume(SqlToken.NULL)
+        consume(SqlToken.ON)
+        consume(SqlToken.NULL)
+        JsonObjectModifier.NULL_ON_NULL :: parseJsonObjectModifiers()
+      case SqlToken.ABSENT =>
+        consume(SqlToken.ABSENT)
+        consume(SqlToken.ON)
+        consume(SqlToken.NULL)
+        JsonObjectModifier.ABSENT_ON_NULL :: parseJsonObjectModifiers()
+      case SqlToken.WITH =>
+        consume(SqlToken.WITH)
+        consume(SqlToken.UNIQUE)
+        scanner.lookAhead().token match
+          case SqlToken.KEYS | SqlToken.KEY =>
+            consumeToken()
+            JsonObjectModifier.WITH_UNIQUE_KEYS :: parseJsonObjectModifiers()
+          case _ =>
+            Nil
+      case SqlToken.WITHOUT =>
+        consume(SqlToken.WITHOUT)
+        consume(SqlToken.UNIQUE)
+        scanner.lookAhead().token match
+          case SqlToken.KEYS | SqlToken.KEY =>
+            consumeToken()
+            JsonObjectModifier.WITHOUT_UNIQUE_KEYS :: parseJsonObjectModifiers()
+          case _ =>
+            Nil
+      case _ =>
+        Nil
+
+    end match
+
+  end parseJsonObjectModifiers
+
   def functionArg(): FunctionArg =
     val t = scanner.lookAhead()
 
@@ -1673,12 +1774,27 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         case SqlToken.L_PAREN =>
           def functionApply(functionName: Expression) =
             consume(SqlToken.L_PAREN)
-            val args = functionArgs()
-            consume(SqlToken.R_PAREN)
-            // Global function call
-            val w = window()
-            val f = FunctionApply(functionName, args, w, spanFrom(t))
-            primaryExpressionRest(f)
+            // Check if this is JSON_OBJECT to use specialized parsing
+            val isJsonObject =
+              functionName match
+                case id: Identifier =>
+                  id.unquotedValue.equalsIgnoreCase("JSON_OBJECT")
+                case other =>
+                  false
+
+            if isJsonObject then
+              val params              = jsonParams()
+              val jsonObjectModifiers = parseJsonObjectModifiers()
+              val jsonObj = JsonObjectConstructor(params, jsonObjectModifiers, spanFrom(t))
+              consume(SqlToken.R_PAREN)
+              jsonObj
+            else
+              val args = functionArgs()
+              consume(SqlToken.R_PAREN)
+              // Global function call
+              val w = window()
+              val f = FunctionApply(functionName, args, w, spanFrom(t))
+              primaryExpressionRest(f)
 
           expr match
             case n: NameExpr =>
