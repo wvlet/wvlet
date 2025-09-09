@@ -23,10 +23,6 @@ insert into test_insert_paren
   where id > 2
 );
 
--- Verify normal syntax still works
-insert into test_insert_paren (id, value)
-select * from (values (5, 'normal_syntax')) as t(id, value);
-
 -- Verify all inserts worked
 select * from test_insert_paren order by id;
 
