@@ -3,7 +3,7 @@ package wvlet.lang.compiler.parser
 import wvlet.airframe.SourceCode
 import wvlet.lang.api.{Span, StatusCode}
 import wvlet.lang.compiler.parser.SqlToken.{EOF, ROW, STAR}
-import wvlet.lang.compiler.{CompilationUnit, Name, SourceFile}
+import wvlet.lang.compiler.{CompilationUnit, Name, SourceFile, TermName}
 import wvlet.lang.model.{DataType, RelationType}
 import wvlet.lang.model.DataType.{
   EmptyRelationType,
@@ -1755,6 +1755,74 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           val dt = typeName()
           consume(SqlToken.R_PAREN)
           Cast(e, dt, isTryCast, spanFrom(t))
+        case SqlToken.TRIM =>
+          consumeToken()
+          consume(SqlToken.L_PAREN)
+
+          // Parse optional LEADING/TRAILING/BOTH
+          val trimType =
+            scanner.lookAhead().token match
+              case SqlToken.LEADING =>
+                consumeToken()
+                Some("LEADING")
+              case SqlToken.TRAILING =>
+                consumeToken()
+                Some("TRAILING")
+              case SqlToken.BOTH =>
+                consumeToken()
+                Some("BOTH")
+              case _ =>
+                None
+
+          // Check for the pattern: [chars] FROM string
+          // or just: string
+          // Special case: if we have trimType and next is FROM, there's no chars to trim
+          val (trimChars, trimFrom) =
+            if trimType.isDefined && scanner.lookAhead().token == SqlToken.FROM then
+              consume(SqlToken.FROM)
+              val fromExpr = expression()
+              (None, fromExpr)
+            else
+              val firstExpr = expression()
+              scanner.lookAhead().token match
+                case SqlToken.FROM =>
+                  consume(SqlToken.FROM)
+                  val fromExpr = expression()
+                  (Some(firstExpr), fromExpr)
+                case _ =>
+                  // No FROM clause, firstExpr is the string to trim
+                  (None, firstExpr)
+
+          consume(SqlToken.R_PAREN)
+
+          // Create a FunctionApply with the appropriate arguments
+          val funcName = UnquotedIdentifier("trim", spanFrom(t))
+          val args =
+            (trimType, trimChars) match
+              case (Some(tType), Some(chars)) =>
+                // TRIM(LEADING/TRAILING/BOTH chars FROM string)
+                List(
+                  FunctionArg(None, UnquotedIdentifier(tType, chars.span), false, chars.span),
+                  FunctionArg(None, chars, false, chars.span),
+                  FunctionArg(Some(TermName("from")), trimFrom, false, trimFrom.span)
+                )
+              case (Some(tType), None) =>
+                // TRIM(LEADING/TRAILING/BOTH FROM string)
+                List(
+                  FunctionArg(None, UnquotedIdentifier(tType, trimFrom.span), false, trimFrom.span),
+                  FunctionArg(Some(TermName("from")), trimFrom, false, trimFrom.span)
+                )
+              case (None, Some(chars)) =>
+                // TRIM(chars FROM string)
+                List(
+                  FunctionArg(None, chars, false, chars.span),
+                  FunctionArg(Some(TermName("from")), trimFrom, false, trimFrom.span)
+                )
+              case (None, None) =>
+                // TRIM(string)
+                List(FunctionArg(None, trimFrom, false, trimFrom.span))
+
+          FunctionApply(funcName, args, None, spanFrom(t))
         case SqlToken.L_PAREN =>
           consume(SqlToken.L_PAREN)
           val t2 = scanner.lookAhead()

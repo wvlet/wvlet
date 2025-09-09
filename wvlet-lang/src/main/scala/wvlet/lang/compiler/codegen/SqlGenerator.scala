@@ -1105,17 +1105,71 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       case g: UnresolvedGroupingKey =>
         expr(g.child)
       case f: FunctionApply =>
-        val base =
-          f.base match
-            case d: DoubleQuoteString =>
-              // Handle double-quoted strings as identifiers when used as function names
-              text(doubleQuoteIfNecessary(d.unquotedValue))
-            case other =>
-              expr(other)
-        val args = paren(cl(f.args.map(x => expr(x))))
-        val w    = f.window.map(x => expr(x))
-        val stem = base + args
-        wl(stem, w)
+        // Special handling for TRIM function
+        f.base match
+          case id: UnquotedIdentifier if id.unquotedValue.toLowerCase == "trim" =>
+            // Generate special TRIM syntax
+            val parts = List.newBuilder[Doc]
+            parts += text("trim")
+            parts += text("(")
+
+            // Parse the arguments to reconstruct TRIM syntax
+            var trimType: Option[String]      = None
+            var trimChars: Option[Expression] = None
+            var fromExpr: Option[Expression]  = None
+
+            f.args
+              .foreach { arg =>
+                arg.name match
+                  case Some(name) if name.name == "from" =>
+                    fromExpr = Some(arg.value)
+                  case _ =>
+                    arg.value match
+                      case id: UnquotedIdentifier if id.unquotedValue.toUpperCase == "LEADING" =>
+                        trimType = Some("LEADING")
+                      case id: UnquotedIdentifier if id.unquotedValue.toUpperCase == "TRAILING" =>
+                        trimType = Some("TRAILING")
+                      case id: UnquotedIdentifier if id.unquotedValue.toUpperCase == "BOTH" =>
+                        trimType = Some("BOTH")
+                      case _ =>
+                        if trimChars.isEmpty && fromExpr.isEmpty then
+                          // First non-keyword argument is either trimChars or the string to trim
+                          if f.args.exists(_.name.exists(_.name == "from")) then
+                            trimChars = Some(arg.value)
+                          else
+                            fromExpr = Some(arg.value)
+                        else if trimChars.isEmpty then
+                          trimChars = Some(arg.value)
+              }
+
+            // Build the TRIM expression
+            val trimParts = List.newBuilder[Doc]
+            trimType.foreach(t => trimParts += text(t))
+            trimChars.foreach(chars => trimParts += expr(chars))
+            if trimType.isDefined || trimChars.isDefined then
+              trimParts += text("from")
+
+            fromExpr.foreach(e => trimParts += expr(e))
+
+            parts += wl(trimParts.result()*)
+            parts += text(")")
+
+            val result = group(concat(parts.result()))
+            f.window.map(w => wl(result, expr(w))).getOrElse(result)
+
+          case _ =>
+            // Regular function handling
+            val base =
+              f.base match
+                case d: DoubleQuoteString =>
+                  // Handle double-quoted strings as identifiers when used as function names
+                  text(doubleQuoteIfNecessary(d.unquotedValue))
+                case other =>
+                  expr(other)
+            val args = paren(cl(f.args.map(x => expr(x))))
+            val w    = f.window.map(x => expr(x))
+            val stem = base + args
+            wl(stem, w)
       case w: WindowApply =>
         val base   = expr(w.base)
         val window = expr(w.window)
