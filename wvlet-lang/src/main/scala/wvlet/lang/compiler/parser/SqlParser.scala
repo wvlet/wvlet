@@ -2322,7 +2322,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       case SqlToken.AS =>
         consume(SqlToken.AS)
         tableAlias(r)
-      case id if id.isIdentifier =>
+      case id if id.isIdentifier || id == SqlToken.DOUBLE_QUOTE_STRING =>
         tableAlias(r)
       case _ =>
         r

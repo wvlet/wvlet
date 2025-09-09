@@ -169,7 +169,7 @@ class ParseQuery() extends LogSupport:
               else
                 0.0
             info(
-              f"Final: ${queryCount}%,d queries, ${errorCount}%,d failed (${errorRate}%.1f%% error rate)"
+              f"Final: ${queryCount}%,d queries, ${errorCount}%,d failed (${errorRate}%.3f%% error rate)"
             )
           }
         }
