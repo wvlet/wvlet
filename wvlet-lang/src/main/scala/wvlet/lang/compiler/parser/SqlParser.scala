@@ -1699,6 +1699,19 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       end match
     end primaryExpressionRest
 
+    def parseFunctionCallOrLiteral(
+        createLiteral: (TokenData[SqlToken], Literal) => GenericLiteral
+    ): Expression =
+      val keywordToken = consumeToken() // consume the DATE/TIME/TIMESTAMP token
+      if scanner.lookAhead().token == SqlToken.L_PAREN then
+        // Treat as a function call, e.g., date(...)
+        val identifier = UnquotedIdentifier(keywordToken.str, spanFrom(keywordToken))
+        primaryExpressionRest(identifier)
+      else
+        // Treat as a literal prefix, e.g., DATE '...'
+        val lit = literal()
+        createLiteral(keywordToken, lit)
+
     val t = scanner.lookAhead()
     val expr =
       t.token match
@@ -1887,52 +1900,25 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         case SqlToken.MAP =>
           map()
         case SqlToken.DATE =>
-          // Check if this is a function call (DATE(...)) or literal (DATE '...')
-          val dateToken = consumeToken() // consume the DATE token
-          val nextToken = scanner.lookAhead()
-          if nextToken.token == SqlToken.L_PAREN then
-            // Treat as function name: date(...)
-            val dateIdentifier = UnquotedIdentifier(dateToken.str, spanFrom(dateToken))
-            primaryExpressionRest(dateIdentifier)
-          else
-            // Treat as literal prefix: DATE '...'
-            val i = literal()
-            GenericLiteral(DataType.DateType, i.stringValue, spanFrom(dateToken))
+          parseFunctionCallOrLiteral { (token, lit) =>
+            GenericLiteral(DataType.DateType, lit.stringValue, spanFrom(token))
+          }
         case SqlToken.TIME =>
-          // Check if this is a function call (TIME(...)) or literal (TIME '...')
-          val timeToken = consumeToken() // consume the TIME token
-          val nextToken = scanner.lookAhead()
-          if nextToken.token == SqlToken.L_PAREN then
-            // Treat as function name: time(...)
-            val timeIdentifier = UnquotedIdentifier(timeToken.str, spanFrom(timeToken))
-            primaryExpressionRest(timeIdentifier)
-          else
-            // Treat as literal prefix: TIME '...'
-            val i = literal()
+          parseFunctionCallOrLiteral { (token, lit) =>
             GenericLiteral(
               DataType.TimestampType(DataType.TimestampField.TIME, true),
-              i.stringValue,
-              spanFrom(timeToken)
+              lit.stringValue,
+              spanFrom(token)
             )
+          }
         case SqlToken.TIMESTAMP =>
-          // Check if this is a function call (TIMESTAMP(...)) or literal (TIMESTAMP '...')
-          val timestampToken = consumeToken() // consume the TIMESTAMP token
-          val nextToken      = scanner.lookAhead()
-          if nextToken.token == SqlToken.L_PAREN then
-            // Treat as function name: timestamp(...)
-            val timestampIdentifier = UnquotedIdentifier(
-              timestampToken.str,
-              spanFrom(timestampToken)
-            )
-            primaryExpressionRest(timestampIdentifier)
-          else
-            // Treat as literal prefix: TIMESTAMP '...'
-            val i = literal()
+          parseFunctionCallOrLiteral { (token, lit) =>
             GenericLiteral(
               DataType.TimestampType(DataType.TimestampField.TIMESTAMP, true),
-              i.stringValue,
-              spanFrom(timestampToken)
+              lit.stringValue,
+              spanFrom(token)
             )
+          }
         case SqlToken.DECIMAL =>
           consume(SqlToken.DECIMAL)
           val i = literal()
