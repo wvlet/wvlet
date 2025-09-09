@@ -1888,7 +1888,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           map()
         case SqlToken.DATE =>
           // Check if this is a function call (DATE(...)) or literal (DATE '...')
-          val dateToken = consumeToken()  // consume the DATE token
+          val dateToken = consumeToken() // consume the DATE token
           val nextToken = scanner.lookAhead()
           if nextToken.token == SqlToken.L_PAREN then
             // Treat as function name: date(...)
@@ -1900,7 +1900,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
             GenericLiteral(DataType.DateType, i.stringValue, spanFrom(dateToken))
         case SqlToken.TIME =>
           // Check if this is a function call (TIME(...)) or literal (TIME '...')
-          val timeToken = consumeToken()  // consume the TIME token
+          val timeToken = consumeToken() // consume the TIME token
           val nextToken = scanner.lookAhead()
           if nextToken.token == SqlToken.L_PAREN then
             // Treat as function name: time(...)
@@ -1916,11 +1916,14 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
             )
         case SqlToken.TIMESTAMP =>
           // Check if this is a function call (TIMESTAMP(...)) or literal (TIMESTAMP '...')
-          val timestampToken = consumeToken()  // consume the TIMESTAMP token
-          val nextToken = scanner.lookAhead()
+          val timestampToken = consumeToken() // consume the TIMESTAMP token
+          val nextToken      = scanner.lookAhead()
           if nextToken.token == SqlToken.L_PAREN then
             // Treat as function name: timestamp(...)
-            val timestampIdentifier = UnquotedIdentifier(timestampToken.str, spanFrom(timestampToken))
+            val timestampIdentifier = UnquotedIdentifier(
+              timestampToken.str,
+              spanFrom(timestampToken)
+            )
             primaryExpressionRest(timestampIdentifier)
           else
             // Treat as literal prefix: TIMESTAMP '...'
