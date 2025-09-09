@@ -614,16 +614,23 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           case SqlToken.INTO =>
             consume(SqlToken.INTO)
             val target = qualifiedName()
-            val columns =
-              scanner.lookAhead().token match
-                case SqlToken.L_PAREN =>
-                  consume(SqlToken.L_PAREN)
-                  val cols = identifierList()
-                  consume(SqlToken.R_PAREN)
-                  cols
-                case _ =>
-                  Nil
-            val q = query()
+            val (columns, q) =
+              if scanner.lookAhead().token == SqlToken.L_PAREN then
+                consume(SqlToken.L_PAREN)
+                scanner.lookAhead().token match
+                  case SqlToken.SELECT | SqlToken.WITH | SqlToken.VALUES =>
+                    // This is a parenthesized query
+                    val subQuery = query()
+                    consume(SqlToken.R_PAREN)
+                    (Nil, subQuery)
+                  case _ =>
+                    // This is a column list
+                    val cols = identifierList()
+                    consume(SqlToken.R_PAREN)
+                    (cols, query())
+              else
+                // No column list or parenthesized query
+                (Nil, query())
             InsertInto(target, columns, q, spanFrom(t))
           case _ =>
             val target = qualifiedName()
