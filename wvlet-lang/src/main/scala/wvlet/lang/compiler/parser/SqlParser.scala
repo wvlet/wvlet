@@ -1,5 +1,6 @@
 package wvlet.lang.compiler.parser
 
+import scala.annotation.tailrec
 import wvlet.airframe.SourceCode
 import wvlet.lang.api.{Span, StatusCode}
 import wvlet.lang.compiler.parser.SqlToken.{EOF, ROW, STAR}
@@ -1356,14 +1357,15 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         case _ =>
           expression()
 
-    def valueList(): List[Expression] =
+    @tailrec
+    def valueList(acc: List[Expression] = Nil): List[Expression] =
       val v = value()
       scanner.lookAhead().token match
         case SqlToken.COMMA =>
           consume(SqlToken.COMMA)
-          v :: valueList()
+          valueList(v :: acc)
         case _ =>
-          List(v)
+          (v :: acc).reverse
 
     val t = scanner.lookAhead()
     t.token match
@@ -1428,16 +1430,17 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     UseSchema(schema, spanFrom(t))
 
   def expressionList(): List[Expression] =
-    def next(): List[Expression] =
+    @tailrec
+    def next(acc: List[Expression]): List[Expression] =
       val e = expression()
       scanner.lookAhead().token match
         case SqlToken.COMMA =>
           consume(SqlToken.COMMA)
-          e :: next()
+          next(e :: acc)
         case _ =>
-          List(e)
+          (e :: acc).reverse
 
-    next()
+    next(Nil)
 
   def expression(): Expression = booleanExpression()
 
@@ -1583,38 +1586,64 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
   end valueExpression
 
   def inExprList(): List[Expression] =
-    def rest(): List[Expression] =
+    @tailrec
+    def rest(acc: List[Expression]): List[Expression] =
       val t = scanner.lookAhead()
       t.token match
         case SqlToken.R_PAREN =>
           consume(SqlToken.R_PAREN)
-          Nil
+          acc.reverse
         case SqlToken.COMMA =>
           consume(SqlToken.COMMA)
-          rest()
+          rest(acc)
         case _ =>
           val e = valueExpression()
-          e :: rest()
+          rest(e :: acc)
 
     consume(SqlToken.L_PAREN)
-    rest()
+    rest(Nil)
 
   def functionArgs(): List[FunctionArg] =
+    @tailrec
+    def parseArgs(acc: List[FunctionArg]): List[FunctionArg] =
+      val arg = functionArg()
+      scanner.lookAhead().token match
+        case SqlToken.COMMA =>
+          consume(SqlToken.COMMA)
+          parseArgs(arg :: acc)
+        case _ =>
+          (arg :: acc).reverse
+
     val t = scanner.lookAhead()
     t.token match
       case SqlToken.R_PAREN =>
         // ok
         Nil
       case _ =>
-        val arg = functionArg()
-        scanner.lookAhead().token match
-          case SqlToken.COMMA =>
-            consume(SqlToken.COMMA)
-            arg :: functionArgs()
-          case _ =>
-            List(arg)
+        parseArgs(Nil)
 
   def jsonParams(): List[JsonParam] =
+    @tailrec
+    def parseParams(acc: List[JsonParam]): List[JsonParam] =
+      val t = scanner.lookAhead()
+      t.token match
+        case SqlToken.R_PAREN | SqlToken.NULL | SqlToken.ABSENT | SqlToken.WITH | SqlToken
+              .WITHOUT =>
+          // closing paren or object modifier start keywords
+          acc.reverse
+        case _ =>
+          // Simple alternating key-value syntax json_object(k1, v1, k2, v2, ...)
+          val key = expression()
+          val t2  = scanner.lookAhead()
+          t2.token match
+            case SqlToken.COMMA =>
+              consume(SqlToken.COMMA)
+              val value = expression()
+              consumeIfExist(SqlToken.COMMA)
+              parseParams(JsonParam(key, value, spanFrom(key.span)) :: acc)
+            case other =>
+              unexpected(t2)
+
     val t = scanner.lookAhead()
     t.token match
       case SqlToken.R_PAREN | SqlToken.NULL | SqlToken.ABSENT | SqlToken.WITH | SqlToken.WITHOUT =>
@@ -1627,50 +1656,45 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
             // KEY...VALUE syntax - parse KEY expression VALUE expression pairs
             parseJsonKeyValuePairs()
           case _ =>
-            // Simple alternating key-value syntax json_object(k1, v1, k2, v2, ...)
-            val key = expression()
-            val t2  = scanner.lookAhead()
-            t2.token match
-              case SqlToken.COMMA =>
-                consume(SqlToken.COMMA)
-                val value = expression()
-                consumeIfExist(SqlToken.COMMA)
-                JsonParam(key, value, spanFrom(key.span)) :: jsonParams()
-              case other =>
-                unexpected(t2)
+            parseParams(Nil)
+
+  end jsonParams
 
   private def parseJsonKeyValuePairs(): List[JsonParam] =
-    val t = scanner.lookAhead()
+    @tailrec
+    def parsePairs(acc: List[JsonParam]): List[JsonParam] =
+      // Consume KEY
+      consume(SqlToken.KEY)
+      val keyExpr = expression()
 
-    // Consume KEY
-    consume(SqlToken.KEY)
-    val keyExpr = expression()
+      // Expect VALUE
+      scanner.lookAhead().token match
+        case SqlToken.VALUE =>
+          consume(SqlToken.VALUE)
+          val valueExpr = expression()
+          val jsonParam = JsonParam(keyExpr, valueExpr, spanFrom(keyExpr.span))
 
-    // Expect VALUE
-    scanner.lookAhead().token match
-      case SqlToken.VALUE =>
-        consume(SqlToken.VALUE)
-        val valueExpr = expression()
-        val jsonParam = JsonParam(keyExpr, valueExpr, spanFrom(keyExpr.span))
+          // Check for more KEY...VALUE pairs or modifiers
+          scanner.lookAhead().token match
+            case SqlToken.COMMA =>
+              consume(SqlToken.COMMA)
+              scanner.lookAhead().token match
+                case SqlToken.KEY =>
+                  // Another KEY...VALUE pair
+                  parsePairs(jsonParam :: acc)
+                case _ =>
+                  // After a comma, we must have another KEY...VALUE pair
+                  unexpected(
+                    scanner.lookAhead(),
+                    "Expected KEY after a comma in JSON_OBJECT arguments"
+                  )
+            case _ =>
+              (jsonParam :: acc).reverse
+        case _ =>
+          unexpected(scanner.lookAhead(), "Expected VALUE after KEY")
+    end parsePairs
 
-        // Check for more KEY...VALUE pairs or modifiers
-        scanner.lookAhead().token match
-          case SqlToken.COMMA =>
-            consume(SqlToken.COMMA)
-            scanner.lookAhead().token match
-              case SqlToken.KEY =>
-                // Another KEY...VALUE pair
-                jsonParam :: parseJsonKeyValuePairs()
-              case _ =>
-                // After a comma, we must have another KEY...VALUE pair
-                unexpected(
-                  scanner.lookAhead(),
-                  "Expected KEY after a comma in JSON_OBJECT arguments"
-                )
-          case _ =>
-            List(jsonParam)
-      case _ =>
-        unexpected(scanner.lookAhead(), "Expected VALUE after KEY")
+    parsePairs(Nil)
 
   end parseJsonKeyValuePairs
 
