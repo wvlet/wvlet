@@ -313,9 +313,14 @@ case class WindowApply(base: Expression, window: Window, span: Span) extends Exp
   override def children: Seq[Expression] = Seq(base, window)
   override def dataType: DataType        = base.dataType
 
-case class FunctionArg(name: Option[TermName], value: Expression, isDistinct: Boolean, span: Span)
-    extends Expression:
-  override def children: Seq[Expression] = Seq(value)
+case class FunctionArg(
+    name: Option[TermName],
+    value: Expression,
+    isDistinct: Boolean,
+    orderBy: List[SortItem] = Nil,
+    span: Span
+) extends Expression:
+  override def children: Seq[Expression] = value +: orderBy
   override def dataType: DataType        = value.dataType
 
 case class ArrayAccess(arrayExpr: Expression, index: Expression, span: Span) extends Expression:

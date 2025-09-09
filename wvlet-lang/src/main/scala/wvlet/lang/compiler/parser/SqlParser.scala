@@ -1615,29 +1615,42 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
 
   def functionArg(): FunctionArg =
     val t = scanner.lookAhead()
-    scanner.lookAhead().token match
-      case SqlToken.DISTINCT =>
-        consume(SqlToken.DISTINCT)
-        val expr = expression()
-        FunctionArg(None, expr, true, spanFrom(t))
-      case id if id.isIdentifier =>
-        val nameOrArg = expression()
-        nameOrArg match
-          case i: Identifier =>
-            scanner.lookAhead().token match
-              case SqlToken.EQ =>
-                consume(SqlToken.EQ)
-                val expr = expression()
-                FunctionArg(Some(Name.termName(i.leafName)), expr, false, spanFrom(t))
-              case _ =>
-                FunctionArg(None, nameOrArg, false, spanFrom(t))
-          case Eq(i: Identifier, v: Expression, span) =>
-            FunctionArg(Some(Name.termName(i.leafName)), v, false, spanFrom(t))
-          case expr: Expression =>
-            FunctionArg(None, nameOrArg, false, spanFrom(t))
-      case _ =>
-        val nameOrArg = expression()
-        FunctionArg(None, nameOrArg, false, spanFrom(t))
+
+    // Parse the main argument part (DISTINCT, named arg, or expression)
+    val (name, expr, isDistinct) =
+      scanner.lookAhead().token match
+        case SqlToken.DISTINCT =>
+          consume(SqlToken.DISTINCT)
+          val e = expression()
+          (None, e, true)
+        case _ =>
+          val nameOrArg = expression()
+          nameOrArg match
+            // Check for named argument `arg = value`
+            case i: Identifier if scanner.lookAhead().token == SqlToken.EQ =>
+              consume(SqlToken.EQ)
+              val e = expression()
+              (Some(Name.termName(i.leafName)), e, false)
+            // This case handles `arg = value` when it's parsed as Eq expression.
+            case Eq(i: Identifier, v: Expression, _) =>
+              (Some(Name.termName(i.leafName)), v, false)
+            // Positional argument
+            case _ =>
+              (None, nameOrArg, false)
+
+    // Check for ORDER BY clause within the function argument
+    val orderByList =
+      scanner.lookAhead().token match
+        case SqlToken.ORDER =>
+          consume(SqlToken.ORDER)
+          consume(SqlToken.BY)
+          sortItems()
+        case _ =>
+          Nil
+
+    FunctionArg(name, expr, isDistinct, orderByList, spanFrom(t))
+
+  end functionArg
 
   def primaryExpression(): Expression =
     def primaryExpressionRest(expr: Expression): Expression =
@@ -1802,25 +1815,31 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
               case (Some(tType), Some(chars)) =>
                 // TRIM(LEADING/TRAILING/BOTH chars FROM string)
                 List(
-                  FunctionArg(None, UnquotedIdentifier(tType, chars.span), false, chars.span),
-                  FunctionArg(None, chars, false, chars.span),
-                  FunctionArg(Some(TermName("from")), trimFrom, false, trimFrom.span)
+                  FunctionArg(None, UnquotedIdentifier(tType, chars.span), false, Nil, chars.span),
+                  FunctionArg(None, chars, false, Nil, chars.span),
+                  FunctionArg(Some(TermName("from")), trimFrom, false, Nil, trimFrom.span)
                 )
               case (Some(tType), None) =>
                 // TRIM(LEADING/TRAILING/BOTH FROM string)
                 List(
-                  FunctionArg(None, UnquotedIdentifier(tType, trimFrom.span), false, trimFrom.span),
-                  FunctionArg(Some(TermName("from")), trimFrom, false, trimFrom.span)
+                  FunctionArg(
+                    None,
+                    UnquotedIdentifier(tType, trimFrom.span),
+                    false,
+                    Nil,
+                    trimFrom.span
+                  ),
+                  FunctionArg(Some(TermName("from")), trimFrom, false, Nil, trimFrom.span)
                 )
               case (None, Some(chars)) =>
                 // TRIM(chars FROM string)
                 List(
-                  FunctionArg(None, chars, false, chars.span),
-                  FunctionArg(Some(TermName("from")), trimFrom, false, trimFrom.span)
+                  FunctionArg(None, chars, false, Nil, chars.span),
+                  FunctionArg(Some(TermName("from")), trimFrom, false, Nil, trimFrom.span)
                 )
               case (None, None) =>
                 // TRIM(string)
-                List(FunctionArg(None, trimFrom, false, trimFrom.span))
+                List(FunctionArg(None, trimFrom, false, Nil, trimFrom.span))
 
           FunctionApply(funcName, args, None, spanFrom(t))
         case SqlToken.L_PAREN =>
@@ -2009,8 +2028,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       FunctionApply(
         UnquotedIdentifier("map", spanFrom(t)),
         List(
-          FunctionArg(None, keyArray, false, keyArray.span),
-          FunctionArg(None, valueArray, false, valueArray.span)
+          FunctionArg(None, keyArray, false, Nil, keyArray.span),
+          FunctionArg(None, valueArray, false, Nil, valueArray.span)
         ),
         None,
         spanFrom(t)

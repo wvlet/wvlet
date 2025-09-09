@@ -2444,19 +2444,19 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
               case WvletToken.EQ =>
                 consume(WvletToken.EQ)
                 val expr = expression()
-                FunctionArg(Some(Name.termName(i.leafName)), expr, isDistinct, spanFrom(t))
+                FunctionArg(Some(Name.termName(i.leafName)), expr, isDistinct, Nil, spanFrom(t))
               case _ =>
-                FunctionArg(None, nameOrArg, isDistinct, spanFrom(t))
+                FunctionArg(None, nameOrArg, isDistinct, Nil, spanFrom(t))
           case Eq(i: Identifier, v: Expression, span) =>
-            FunctionArg(Some(Name.termName(i.leafName)), v, isDistinct, spanFrom(t))
+            FunctionArg(Some(Name.termName(i.leafName)), v, isDistinct, Nil, spanFrom(t))
           case expr: Expression =>
-            FunctionArg(None, nameOrArg, isDistinct, spanFrom(t))
+            FunctionArg(None, nameOrArg, isDistinct, Nil, spanFrom(t))
       case WvletToken.DISTINCT =>
         consume(WvletToken.DISTINCT)
         functionArg(isDistinct = true)
       case _ =>
         val nameOrArg = expression()
-        FunctionArg(None, nameOrArg, isDistinct, spanFrom(t))
+        FunctionArg(None, nameOrArg, isDistinct, Nil, spanFrom(t))
   }
 
   /**
