@@ -1663,8 +1663,11 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
                 // Another KEY...VALUE pair
                 keyArg :: valueArg :: parseKeyValuePairs()
               case _ =>
-                // Not another KEY...VALUE, might be a modifier - just return what we have
-                List(keyArg, valueArg)
+                // After a comma, we must have another KEY...VALUE pair
+                unexpected(
+                  scanner.lookAhead(),
+                  "Expected KEY after a comma in JSON_OBJECT arguments"
+                )
           case SqlToken.NULL | SqlToken.IDENTIFIER | SqlToken.WITHOUT | SqlToken.WITH =>
             // Check for modifiers like NULL ON NULL, WITHOUT UNIQUE KEYS, etc
             val modifiers = parseJsonObjectModifiers()
@@ -1811,14 +1814,9 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
             // Check if this is JSON_OBJECT to use specialized parsing
             val isJsonObject =
               functionName match
-                case id: UnquotedIdentifier =>
-                  debug(s"functionName is UnquotedIdentifier: '${id.unquotedValue}'")
-                  id.unquotedValue.equalsIgnoreCase("JSON_OBJECT") ||
-                  id.unquotedValue.equalsIgnoreCase("json_object")
                 case id: Identifier =>
                   debug(s"functionName is Identifier: '${id.unquotedValue}'")
-                  id.unquotedValue.equalsIgnoreCase("JSON_OBJECT") ||
-                  id.unquotedValue.equalsIgnoreCase("json_object")
+                  id.unquotedValue.equalsIgnoreCase("JSON_OBJECT")
                 case other =>
                   debug(s"functionName is not Identifier, type = ${other.getClass.getName}")
                   false
