@@ -1047,6 +1047,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             FunctionArg(None, NameExpr.fromString(f.toSQLAttributeName), false, Nil, NoSpan)
           ),
           None,
+          None,
           NoSpan
         )
         val name: NameExpr =
@@ -1156,7 +1157,14 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             parts += wl(trimParts.result()*)
             parts += text(")")
 
-            val result = group(concat(parts.result()))
+            val baseResult = group(concat(parts.result()))
+            // Add FILTER clause if present for TRIM
+            val result =
+              f.filter match
+                case Some(filterExpr) =>
+                  baseResult + wl("filter", paren(wl("where", expr(filterExpr))))
+                case None =>
+                  baseResult
             f.window.map(w => wl(result, expr(w))).getOrElse(result)
 
           case _ =>
@@ -1169,9 +1177,15 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
                 case other =>
                   expr(other)
             val args = paren(cl(f.args.map(x => expr(x))))
-            val w    = f.window.map(x => expr(x))
-            val stem = base + args
-            wl(stem, w)
+            // Add FILTER clause if present
+            val withFilter =
+              f.filter match
+                case Some(filterExpr) =>
+                  base + args + wl("filter", paren(wl("where", expr(filterExpr))))
+                case None =>
+                  base + args
+            val w = f.window.map(x => expr(x))
+            wl(withFilter, w)
       case w: WindowApply =>
         val base   = expr(w.base)
         val window = expr(w.window)
