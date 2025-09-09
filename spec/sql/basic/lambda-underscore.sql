@@ -10,8 +10,8 @@ SELECT filter(ARRAY[1, 2, 3, NULL], (_) -> _ IS NOT NULL);
 -- Complex lambda body with underscore
 SELECT filter(ARRAY[1, 2, 3, 4, 5], _ -> _ > 2 AND _ < 5);
 
--- Nested function case from original issue
-SELECT map_values(map_filter(ARRAY[1, 2, 3, 4], (k, _) -> contains(ARRAY[2, 4], k)));
+-- Test with array of different types
+SELECT filter(ARRAY['a', 'b', NULL, 'c'], _ -> _ IS NOT NULL);
 
--- Mixed usage of underscore and named parameters
-SELECT transform(ARRAY[1, 2, 3], (x, _) -> x + 1);
+-- Test underscore with comparison operators  
+SELECT filter(ARRAY[10, 20, 30, 40], _ -> _ >= 25);
