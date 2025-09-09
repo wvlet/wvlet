@@ -1227,18 +1227,9 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         dbType match
           case DBType.DuckDB =>
             // DuckDB uses INTERVAL 1 DAY (no quotes around the value)
-            val signStr =
-              if i.sign == Sign.NoSign then
-                ""
-              else
-                s"${i.sign.symbol} "
+            val signStr  = Option.when(i.sign != Sign.NoSign)(s"${i.sign.symbol} ").getOrElse("")
             val valueStr = i.value.stripPrefix("'").stripSuffix("'") // Remove quotes if present
-            val endStr =
-              i.end match
-                case Some(endField) =>
-                  s" TO ${endField}"
-                case None =>
-                  ""
+            val endStr   = i.end.map(f => s" TO ${f}").getOrElse("")
             text(s"INTERVAL ${signStr}${valueStr} ${i.startField}${endStr}")
           case _ =>
             // Trino and others use INTERVAL '1' DAY (with quotes)
