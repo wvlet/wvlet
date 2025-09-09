@@ -1342,7 +1342,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
                   text(m.expr)
                 }
             )
-            text("json_object") + paren(cl(params, modifiers))
+            text("json_object") + paren(wl(params, modifiers))
       case a: ArrayAccess =>
         expr(a.arrayExpr) + text("[") + expr(a.index) + text("]")
       case c: CaseExpr =>

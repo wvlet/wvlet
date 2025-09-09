@@ -1697,7 +1697,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
             consumeToken()
             JsonObjectModifier.WITH_UNIQUE_KEYS :: parseJsonObjectModifiers()
           case _ =>
-            Nil
+            unexpected(scanner.lookAhead(), "Expected UNIQUE KEYS or UNIQUE KEY")
       case SqlToken.WITHOUT =>
         consume(SqlToken.WITHOUT)
         consume(SqlToken.UNIQUE)
@@ -1706,7 +1706,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
             consumeToken()
             JsonObjectModifier.WITHOUT_UNIQUE_KEYS :: parseJsonObjectModifiers()
           case _ =>
-            Nil
+            unexpected(scanner.lookAhead(), "Expected UNIQUE KEYS or UNIQUE KEY")
       case _ =>
         Nil
 
