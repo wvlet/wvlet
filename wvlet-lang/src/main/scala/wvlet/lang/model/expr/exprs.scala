@@ -314,9 +314,9 @@ case class WindowApply(base: Expression, window: Window, span: Span) extends Exp
   override def dataType: DataType        = base.dataType
 
 case class FunctionArg(
-    name: Option[TermName],
+    name: Option[TermName] = None,
     value: Expression,
-    isDistinct: Boolean,
+    isDistinct: Boolean = false,
     orderBy: List[SortItem] = Nil,
     span: Span
 ) extends Expression:
@@ -817,6 +817,22 @@ case class MapValue(entries: List[MapEntry], span: Span) extends Expression:
 
 case class MapEntry(key: Expression, value: Expression, span: Span) extends Expression:
   override def children: Seq[Expression] = Seq(key, value)
+
+case class JsonObjectConstructor(
+    jsonParams: List[JsonParam],
+    jsonObjectModifiers: List[JsonObjectModifier] = Nil,
+    span: Span
+) extends Expression:
+  override def children: Seq[Expression] = jsonParams
+
+case class JsonParam(key: Expression, value: Expression, span: Span) extends Expression:
+  override def children: Seq[Expression] = Seq(key, value)
+
+enum JsonObjectModifier:
+  case NULL_ON_NULL
+  case ABSENT_ON_NULL
+  case WITHOUT_UNIQUE_KEYS
+  case WITH_UNIQUE_KEYS
 
 abstract sealed class CurrentTimeBase(name: String, precision: Option[Int]) extends LeafExpression
 

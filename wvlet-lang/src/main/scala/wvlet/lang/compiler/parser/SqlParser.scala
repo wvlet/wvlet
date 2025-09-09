@@ -13,6 +13,7 @@ import wvlet.lang.model.DataType.{
   UnresolvedTypeParameter
 }
 import wvlet.lang.model.expr.*
+import wvlet.lang.model.expr.JsonObjectModifier.ABSENT_ON_NULL
 import wvlet.lang.model.expr.NameExpr.EmptyName
 import wvlet.lang.model.plan.*
 import wvlet.lang.model.plan.{Lateral, ShowType, TableRef, Unnest, Values}
@@ -1613,46 +1614,44 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           case _ =>
             List(arg)
 
-  def jsonObjectArgs(): List[FunctionArg] =
+  def jsonParams(): List[JsonParam] =
     val t = scanner.lookAhead()
     t.token match
-      case SqlToken.R_PAREN =>
+      case SqlToken.R_PAREN | SqlToken.NULL | SqlToken.ABSENT | SqlToken.WITH | SqlToken.WITHOUT =>
+        // closing paren or object modifier start keywords
         Nil
       case _ =>
         // Check if this is KEY...VALUE syntax
         scanner.lookAhead().token match
           case SqlToken.KEY =>
             // KEY...VALUE syntax - parse KEY expression VALUE expression pairs
-            parseKeyValuePairs()
+            parseJsonKeyValuePairs()
           case _ =>
-            // Simple alternating key-value syntax
-            val arg = functionArg()
-            scanner.lookAhead().token match
+            // Simple alternating key-value syntax json_object(k1, v1, k2, v2, ...)
+            val key = expression()
+            val t2  = scanner.lookAhead()
+            t2.token match
               case SqlToken.COMMA =>
                 consume(SqlToken.COMMA)
-                arg :: jsonObjectArgs()
-              case _ =>
-                List(arg)
+                val value = expression()
+                consumeIfExist(SqlToken.COMMA)
+                JsonParam(key, value, spanFrom(key.span)) :: jsonParams()
+              case other =>
+                unexpected(t2)
 
-  def parseKeyValuePairs(): List[FunctionArg] =
+  private def parseJsonKeyValuePairs(): List[JsonParam] =
     val t = scanner.lookAhead()
+
     // Consume KEY
     consume(SqlToken.KEY)
     val keyExpr = expression()
-    val keyArg  = FunctionArg(Some(Name.termName("__JSON_KEY")), keyExpr, false, Nil, spanFrom(t))
 
     // Expect VALUE
     scanner.lookAhead().token match
       case SqlToken.VALUE =>
         consume(SqlToken.VALUE)
         val valueExpr = expression()
-        val valueArg = FunctionArg(
-          Some(Name.termName("__JSON_VALUE")),
-          valueExpr,
-          false,
-          Nil,
-          spanFrom(t)
-        )
+        val jsonParam = JsonParam(keyExpr, valueExpr, spanFrom(keyExpr.span))
 
         // Check for more KEY...VALUE pairs or modifiers
         scanner.lookAhead().token match
@@ -1661,93 +1660,57 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
             scanner.lookAhead().token match
               case SqlToken.KEY =>
                 // Another KEY...VALUE pair
-                keyArg :: valueArg :: parseKeyValuePairs()
+                jsonParam :: parseJsonKeyValuePairs()
               case _ =>
                 // After a comma, we must have another KEY...VALUE pair
                 unexpected(
                   scanner.lookAhead(),
                   "Expected KEY after a comma in JSON_OBJECT arguments"
                 )
-          case SqlToken.NULL | SqlToken.IDENTIFIER | SqlToken.WITHOUT | SqlToken.WITH =>
-            // Check for modifiers like NULL ON NULL, WITHOUT UNIQUE KEYS, etc
-            val modifiers = parseJsonObjectModifiers()
-            keyArg :: valueArg :: modifiers
           case _ =>
-            List(keyArg, valueArg)
+            List(jsonParam)
       case _ =>
         unexpected(scanner.lookAhead(), "Expected VALUE after KEY")
 
+  end parseJsonKeyValuePairs
+
+  def parseJsonObjectModifiers(): List[JsonObjectModifier] =
+    val t = scanner.lookAhead()
+    t.token match
+      case SqlToken.R_PAREN =>
+        Nil
+      case SqlToken.NULL =>
+        consume(SqlToken.NULL)
+        consume(SqlToken.ON)
+        consume(SqlToken.NULL)
+        JsonObjectModifier.NULL_ON_NULL :: parseJsonObjectModifiers()
+      case SqlToken.IDENTIFIER if t.str.toUpperCase == "ABSENT" =>
+        consume(SqlToken.IDENTIFIER) // ABSENT
+        consume(SqlToken.ON)
+        consume(SqlToken.NULL)
+        JsonObjectModifier.ABSENT_ON_NULL :: parseJsonObjectModifiers()
+      case SqlToken.WITH =>
+        consume(SqlToken.WITH)
+        consume(SqlToken.UNIQUE)
+        scanner.lookAhead().token match
+          case SqlToken.KEYS | SqlToken.KEY =>
+            consumeToken()
+            JsonObjectModifier.WITH_UNIQUE_KEYS :: parseJsonObjectModifiers()
+          case _ =>
+            Nil
+      case SqlToken.WITHOUT =>
+        consume(SqlToken.WITHOUT)
+        consume(SqlToken.UNIQUE)
+        scanner.lookAhead().token match
+          case SqlToken.KEYS | SqlToken.KEY =>
+            consumeToken()
+            JsonObjectModifier.WITHOUT_UNIQUE_KEYS :: parseJsonObjectModifiers()
+          case _ =>
+            Nil
+      case _ =>
+        Nil
+
     end match
-
-  end parseKeyValuePairs
-
-  def parseJsonObjectModifiers(): List[FunctionArg] =
-    val t         = scanner.lookAhead()
-    val modifiers = List.newBuilder[FunctionArg]
-
-    var continue = true
-    while continue do
-      scanner.lookAhead().token match
-        case SqlToken.NULL =>
-          consume(SqlToken.NULL)
-          if scanner.lookAhead().token == SqlToken.ON then
-            consume(SqlToken.ON)
-            consume(SqlToken.NULL)
-            val modifier = UnquotedIdentifier("NULL_ON_NULL", spanFrom(t))
-            modifiers += FunctionArg(None, modifier, false, Nil, spanFrom(t))
-          else
-            continue = false
-        case SqlToken.IDENTIFIER =>
-          val id = scanner.lookAhead().str.toUpperCase
-          id match
-            case "ABSENT" =>
-              consume(SqlToken.IDENTIFIER) // ABSENT
-              if scanner.lookAhead().token == SqlToken.ON then
-                consume(SqlToken.ON)
-                consume(SqlToken.NULL)
-                val modifier = UnquotedIdentifier("ABSENT_ON_NULL", spanFrom(t))
-                modifiers += FunctionArg(None, modifier, false, Nil, spanFrom(t))
-              else
-                continue = false
-            case _ =>
-              continue = false
-        case SqlToken.WITHOUT =>
-          consume(SqlToken.WITHOUT)
-          if scanner.lookAhead().token == SqlToken.UNIQUE then
-            consume(SqlToken.UNIQUE)
-            if scanner.lookAhead().token == SqlToken.KEY ||
-              (scanner.lookAhead().token == SqlToken.IDENTIFIER &&
-                scanner.lookAhead().str.equalsIgnoreCase("KEYS"))
-            then
-              // Support both KEY and KEYS
-              scanner.nextToken()
-              val modifier = UnquotedIdentifier("WITHOUT_UNIQUE_KEYS", spanFrom(t))
-              modifiers += FunctionArg(None, modifier, false, Nil, spanFrom(t))
-            else
-              continue = false
-          else
-            continue = false
-        case SqlToken.WITH =>
-          consume(SqlToken.WITH)
-          if scanner.lookAhead().token == SqlToken.UNIQUE then
-            consume(SqlToken.UNIQUE)
-            if scanner.lookAhead().token == SqlToken.KEY ||
-              (scanner.lookAhead().token == SqlToken.IDENTIFIER &&
-                scanner.lookAhead().str.equalsIgnoreCase("KEYS"))
-            then
-              // Support both KEY and KEYS
-              scanner.nextToken()
-              val modifier = UnquotedIdentifier("WITH_UNIQUE_KEYS", spanFrom(t))
-              modifiers += FunctionArg(None, modifier, false, Nil, spanFrom(t))
-            else
-              continue = false
-          else
-            continue = false
-        case _ =>
-          continue = false
-    end while
-
-    modifiers.result()
 
   end parseJsonObjectModifiers
 
@@ -1815,24 +1778,23 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
             val isJsonObject =
               functionName match
                 case id: Identifier =>
-                  debug(s"functionName is Identifier: '${id.unquotedValue}'")
                   id.unquotedValue.equalsIgnoreCase("JSON_OBJECT")
                 case other =>
-                  debug(s"functionName is not Identifier, type = ${other.getClass.getName}")
                   false
 
-            debug(s"isJsonObject = $isJsonObject")
-
-            val args =
-              if isJsonObject then
-                jsonObjectArgs()
-              else
-                functionArgs()
-            consume(SqlToken.R_PAREN)
-            // Global function call
-            val w = window()
-            val f = FunctionApply(functionName, args, w, spanFrom(t))
-            primaryExpressionRest(f)
+            if isJsonObject then
+              val params              = jsonParams()
+              val jsonObjectModifiers = parseJsonObjectModifiers()
+              val jsonObj = JsonObjectConstructor(params, jsonObjectModifiers, spanFrom(t))
+              consume(SqlToken.R_PAREN)
+              jsonObj
+            else
+              val args = functionArgs()
+              consume(SqlToken.R_PAREN)
+              // Global function call
+              val w = window()
+              val f = FunctionApply(functionName, args, w, spanFrom(t))
+              primaryExpressionRest(f)
 
           expr match
             case n: NameExpr =>

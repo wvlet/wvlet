@@ -262,6 +262,10 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   case JSON      extends SqlToken(Keyword, "json")
   case INTERVAL  extends SqlToken(Keyword, "interval")
 
+  // JSON OBJECT
+  case ABSENT extends SqlToken(Keyword, "absent")
+  case KEYS   extends SqlToken(Keyword, "keys")
+
   // For internal
   case TO extends SqlToken(Keyword, "to")
 
@@ -354,6 +358,9 @@ object SqlToken:
     SqlToken.VIEW,
     SqlToken.STATEMENT,
     SqlToken.FUNCTIONS,
+    // JSON object modifiers
+    SqlToken.ABSENT,
+    SqlToken.KEYS,
     // ALTER TABLE specific tokens - non-reserved
     SqlToken.RENAME,
     SqlToken.TYPE,

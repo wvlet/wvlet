@@ -1109,83 +1109,6 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       case f: FunctionApply =>
         // Special handling for specific functions
         f.base match
-          case id: UnquotedIdentifier if id.unquotedValue.toLowerCase == "json_object" =>
-            // Special handling for JSON_OBJECT based on database type
-            dbType match
-              case DBType.DuckDB =>
-                // DuckDB always uses: json_object('key1', value1, 'key2', value2)
-                // Check if we have KEY...VALUE syntax by looking for __JSON_KEY markers
-                val hasKeyValueSyntax = f
-                  .args
-                  .exists(_.name.exists(n => n.name == "__JSON_KEY" || n.name == "__JSON_VALUE"))
-
-                val keyValuePairs = List.newBuilder[Doc]
-                if hasKeyValueSyntax then
-                  // Convert KEY...VALUE pairs to simple alternating key-value
-                  var i = 0
-                  while i < f.args.length do
-                    f.args(i) match
-                      case FunctionArg(Some(name), value, _, _, _) if name.name == "__JSON_KEY" =>
-                        // This is a KEY, next should be VALUE
-                        keyValuePairs += expr(value)
-                        if i + 1 < f.args.length then
-                          f.args(i + 1) match
-                            case FunctionArg(Some(vname), vvalue, _, _, _)
-                                if vname.name == "__JSON_VALUE" =>
-                              keyValuePairs += expr(vvalue)
-                              i += 2
-                            case _ =>
-                              // Just key without value - shouldn't happen
-                              i += 1
-                        else
-                          i += 1
-                      case _ =>
-                        // Skip other args (modifiers)
-                        i += 1
-                else
-                  // Already in simple alternating format - just add all args
-                  f.args
-                    .foreach { arg =>
-                      keyValuePairs += expr(arg.value)
-                    }
-
-                // Always output lowercase json_object for DuckDB
-                val args = paren(cl(keyValuePairs.result()))
-                text("json_object") + args
-              case _ =>
-                // Standard SQL: Reconstruct KEY...VALUE syntax if needed
-                val base = expr(f.base)
-                val hasKeyValueSyntax = f
-                  .args
-                  .exists(_.name.exists(n => n.name == "__JSON_KEY" || n.name == "__JSON_VALUE"))
-
-                if hasKeyValueSyntax then
-                  val argDocs = List.newBuilder[Doc]
-                  var i       = 0
-                  while i < f.args.length do
-                    f.args(i) match
-                      case FunctionArg(Some(name), value, _, _, _) if name.name == "__JSON_KEY" =>
-                        // Output KEY keyword and the expression
-                        argDocs += wl(text("KEY"), expr(value))
-                        i += 1
-                      case FunctionArg(Some(name), value, _, _, _) if name.name == "__JSON_VALUE" =>
-                        // Output VALUE keyword and the expression
-                        argDocs += wl(text("VALUE"), expr(value))
-                        i += 1
-                      case arg =>
-                        // Regular argument or modifier
-                        argDocs += expr(arg)
-                        i += 1
-                  val args = paren(cl(argDocs.result()))
-                  val w    = f.window.map(x => expr(x))
-                  val stem = base + args
-                  wl(stem, w)
-                else
-                  // Simple format - just output as-is
-                  val args = paren(cl(f.args.map(x => expr(x))))
-                  val w    = f.window.map(x => expr(x))
-                  val stem = base + args
-                  wl(stem, w)
           case id: UnquotedIdentifier if id.unquotedValue.toLowerCase == "trim" =>
             // Generate special TRIM syntax
             val parts = List.newBuilder[Doc]
@@ -1394,6 +1317,26 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             bracket(cl(a.values.map(expr(_))))
       case r: RowConstructor =>
         paren(cl(r.values.map(expr(_))))
+      case j: JsonObjectConstructor =>
+        // Special handling for JSON_OBJECT based on database type
+        dbType match
+          case DBType.DuckDB =>
+            // DuckDB always uses: json_object('key1', value1, 'key2', value2)
+            val params = j
+              .jsonParams
+              .map { p =>
+                group(cl(expr(p.key), expr(p.value)))
+              }
+            text("json_object") + paren(cl(params*))
+          case _ =>
+            val params = j
+              .jsonParams
+              .map { p =>
+                group(
+                  wl(group(wl(text("KEY"), expr(p.key))), group(wl(text("VALUE"), expr(p.value))))
+                )
+              }
+            text("json_object") + paren(cl(params))
       case a: ArrayAccess =>
         expr(a.arrayExpr) + text("[") + expr(a.index) + text("]")
       case c: CaseExpr =>
