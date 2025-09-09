@@ -1234,6 +1234,12 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       case c: LogicalConditionalExpression =>
         // For adding optional newlines for AND/OR
         expr(c.left) + wsOrNL + text(c.operatorName) + ws + expr(c.right)
+      case l: Like =>
+        val escapeClause = l.escape.map(e => ws + text("ESCAPE") + ws + expr(e)).getOrElse(empty)
+        expr(l.left) + ws + text(l.operatorName) + ws + expr(l.right) + escapeClause
+      case nl: NotLike =>
+        val escapeClause = nl.escape.map(e => ws + text("ESCAPE") + ws + expr(e)).getOrElse(empty)
+        expr(nl.left) + ws + text(nl.operatorName) + ws + expr(nl.right) + escapeClause
       case b: BinaryExpression =>
         wl(expr(b.left), b.operatorName, expr(b.right))
       case s: StringPart =>
