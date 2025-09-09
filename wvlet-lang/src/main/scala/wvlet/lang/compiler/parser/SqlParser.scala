@@ -1990,7 +1990,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
                 case _ =>
                   // Not a lambda, just empty parentheses - should not happen in normal SQL
                   ParenthesizedExpression(NullLiteral(spanFrom(t2)), spanFrom(t))
-            case id if id.isIdentifier =>
+            case id if id.isIdentifier || id == SqlToken.UNDERSCORE =>
               val exprs = List.newBuilder[Expression]
 
               // true if the expression is a list of identifiers
@@ -2073,6 +2073,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         case SqlToken.DOUBLE_QUOTE_STRING =>
           identifier()
         case SqlToken.STAR =>
+          identifier()
+        case SqlToken.UNDERSCORE =>
           identifier()
         case SqlToken.QUESTION =>
           consume(SqlToken.QUESTION)
@@ -2738,6 +2740,9 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       case SqlToken.STAR =>
         consume(SqlToken.STAR)
         Wildcard(spanFrom(t))
+      case SqlToken.UNDERSCORE =>
+        consume(SqlToken.UNDERSCORE)
+        UnquotedIdentifier(t.str, spanFrom(t))
       case SqlToken.INTEGER_LITERAL =>
         consume(SqlToken.INTEGER_LITERAL)
         DigitIdentifier(t.str, spanFrom(t))

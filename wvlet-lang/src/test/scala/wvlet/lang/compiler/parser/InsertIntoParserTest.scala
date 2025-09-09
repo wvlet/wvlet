@@ -21,16 +21,12 @@ class InsertIntoParserTest extends AirSpec:
         q.fullName
       case s: StringLiteral =>
         s.stringValue
-      case _ =>
-        throw new Exception(s"Unexpected target type: ${target}")
 
   def getColumnNames(columns: List[NameExpr]): List[String] = columns.map {
     case i: Identifier =>
       i.unquotedValue
     case q: QualifiedName =>
       q.fullName
-    case _ =>
-      throw new Exception("Expected Identifier or QualifiedName")
   }
 
   test("parse INSERT INTO with VALUES") {
