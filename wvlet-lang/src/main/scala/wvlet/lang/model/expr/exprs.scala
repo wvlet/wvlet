@@ -762,7 +762,7 @@ case class IntervalLiteral(
   override def sqlExpr: String = s"interval ${stringValue}"
 
 object IntervalField:
-  def unapply(name: String): Option[IntervalField] = IntervalField.values.find(_.name == name)
+  def unapply(name: String): Option[IntervalField] = IntervalField.values.find(_.name.equalsIgnoreCase(name))
 
 enum IntervalField(val name: String):
   override def toString: String = name
