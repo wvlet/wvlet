@@ -1623,24 +1623,20 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           consume(SqlToken.DISTINCT)
           val e = expression()
           (None, e, true)
-        case id if id.isIdentifier =>
-          val nameOrArg = expression()
-          nameOrArg match
-            case i: Identifier =>
-              scanner.lookAhead().token match
-                case SqlToken.EQ =>
-                  consume(SqlToken.EQ)
-                  val e = expression()
-                  (Some(Name.termName(i.leafName)), e, false)
-                case _ =>
-                  (None, nameOrArg, false)
-            case Eq(i: Identifier, v: Expression, span) =>
-              (Some(Name.termName(i.leafName)), v, false)
-            case expr: Expression =>
-              (None, nameOrArg, false)
         case _ =>
           val nameOrArg = expression()
-          (None, nameOrArg, false)
+          nameOrArg match
+            // Check for named argument `arg = value`
+            case i: Identifier if scanner.lookAhead().token == SqlToken.EQ =>
+              consume(SqlToken.EQ)
+              val e = expression()
+              (Some(Name.termName(i.leafName)), e, false)
+            // This case handles `arg = value` when it's parsed as Eq expression.
+            case Eq(i: Identifier, v: Expression, _) =>
+              (Some(Name.termName(i.leafName)), v, false)
+            // Positional argument
+            case _ =>
+              (None, nameOrArg, false)
 
     // Check for ORDER BY clause within the function argument
     val orderByList =
