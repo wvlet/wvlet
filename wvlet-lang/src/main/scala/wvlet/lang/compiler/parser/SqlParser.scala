@@ -1958,6 +1958,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           identifier()
         case SqlToken.STAR =>
           identifier()
+        case SqlToken.UNDERSCORE =>
+          identifier()
         case SqlToken.QUESTION =>
           consume(SqlToken.QUESTION)
           // Use a counter to track the position of '?' parameters
@@ -2622,6 +2624,9 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       case SqlToken.STAR =>
         consume(SqlToken.STAR)
         Wildcard(spanFrom(t))
+      case SqlToken.UNDERSCORE =>
+        consume(SqlToken.UNDERSCORE)
+        UnquotedIdentifier(t.str, spanFrom(t))
       case SqlToken.INTEGER_LITERAL =>
         consume(SqlToken.INTEGER_LITERAL)
         DigitIdentifier(t.str, spanFrom(t))
