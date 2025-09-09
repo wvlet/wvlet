@@ -114,8 +114,9 @@ class ParseQuery() extends LogSupport:
                 // Create a compilation unit from the SQL string
                 val unit = wvlet.lang.compiler.CompilationUnit.fromSqlString(sql)
                 // Parse the SQL using the compiler with parseOnlyPhases
-                ParserPhase.parse(unit, Context.NoContext)
-                val compileResult = CompileResult(List(unit), null, Context.NoContext, Some(unit))
+                val ctx = Context.NoContext
+                ParserPhase.parse(unit, ctx)
+                val compileResult = CompileResult(List(unit), null, ctx, Some(unit))
 
                 if compileResult.hasFailures then
                   errorCount += 1
@@ -136,8 +137,6 @@ class ParseQuery() extends LogSupport:
                   // Optionally log the logical plan
                   debug(s"Logical plan: ${compileResult.contextUnit.get.unresolvedPlan}")
               catch
-                case e: StackOverflowError =>
-                  warn(s"query:\n${sql}", e)
                 case e: Exception =>
                   errorCount += 1
                   writeErrorRecord(
