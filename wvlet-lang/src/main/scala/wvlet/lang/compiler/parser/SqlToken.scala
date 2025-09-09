@@ -184,6 +184,7 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   case WITHOUT   extends SqlToken(Keyword, "without")
   case RECURSIVE extends SqlToken(Keyword, "recursive")
   case HAVING    extends SqlToken(Keyword, "having")
+  case FILTER    extends SqlToken(Keyword, "filter")
 
   // DDL keywords
   case ALTER          extends SqlToken(Keyword, "alter")
@@ -315,6 +316,7 @@ object SqlToken:
     SqlToken.IF,      // IF can be used as a function name
     SqlToken.REPLACE, // REPLACE can be used as a function name
     SqlToken.TRIM,    // TRIM can be used as a function name
+    SqlToken.FILTER,  // FILTER can be used as a function name (e.g., filter(array, lambda))
     SqlToken.LEADING,
     SqlToken.TRAILING,
     SqlToken.BOTH,

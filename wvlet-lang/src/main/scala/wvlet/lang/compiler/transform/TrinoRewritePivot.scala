@@ -105,6 +105,7 @@ object TrinoRewritePivot extends Phase("rewrite-pivot"):
                     UnquotedIdentifier("count_if", NoSpan),
                     List(FunctionArg(None, Eq(targetColumn, v, NoSpan), false, Nil, NoSpan)),
                     None,
+                    None,
                     NoSpan
                   ),
                   NoSpan
@@ -125,6 +126,7 @@ object TrinoRewritePivot extends Phase("rewrite-pivot"):
                         FunctionArg(None, id, false, Nil, NoSpan),
                         FunctionArg(None, NullLiteral(NoSpan), false, Nil, NoSpan)
                       ),
+                      None,
                       None,
                       NoSpan
                     )

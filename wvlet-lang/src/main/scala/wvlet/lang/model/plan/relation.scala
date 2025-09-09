@@ -201,7 +201,7 @@ case class TableRef(name: QualifiedName, span: Span) extends TableInput:
 
 case class TableFunctionCall(name: NameExpr, args: List[FunctionArg], span: Span)
     extends TableInput:
-  override def sqlExpr: Expression        = FunctionApply(name, args, None, span)
+  override def sqlExpr: Expression        = FunctionApply(name, args, None, None, span)
   override def toString: String           = s"TableFunctionCall(${name}, ${args})"
   override val relationType: RelationType = UnresolvedRelationType(name.fullName)
 
@@ -271,6 +271,7 @@ case class Count(child: Relation, span: Span) extends UnaryRelation with AggSele
       FunctionApply(
         NameExpr.fromString("count", span),
         List(FunctionArg(None, AllColumns(Wildcard(NoSpan), None, NoSpan), false, Nil, span)),
+        None,
         None,
         span
       ),

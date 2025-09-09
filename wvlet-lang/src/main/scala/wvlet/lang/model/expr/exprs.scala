@@ -304,9 +304,10 @@ case class FunctionApply(
     base: Expression,
     args: List[FunctionArg],
     window: Option[Window],
+    filter: Option[Expression] = None,
     span: Span
 ) extends Expression:
-  override def children: Seq[Expression] = Seq(base) ++ args ++ window.toSeq
+  override def children: Seq[Expression] = Seq(base) ++ args ++ window.toSeq ++ filter.toSeq
   override def dataType: DataType        = base.dataType
 
 case class WindowApply(base: Expression, window: Window, span: Span) extends Expression:

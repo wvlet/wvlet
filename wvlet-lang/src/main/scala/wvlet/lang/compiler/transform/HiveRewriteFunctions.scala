@@ -46,18 +46,44 @@ object HiveRewriteFunctions extends Phase("hive-rewrite-functions"):
     override def apply(context: Context): RewriteRule.PlanRewriter =
       plan =>
         plan.transformExpressions {
-          case f @ FunctionApply(n: NameExpr, args, window, span) =>
-            n.leafName match
-              case "array_agg" =>
-                FunctionApply(NameExpr.fromString("collect_list"), args, window, span)
-              case "array_distinct" =>
-                FunctionApply(NameExpr.fromString("collect_set"), args, window, span)
-              case "regexp_like" =>
-                FunctionApply(NameExpr.fromString("regexp"), args, window, span)
+          case f @ FunctionApply(n: NameExpr, args, window, filter, span) =>
+            // Hive doesn't support FILTER clause. Rewrite to CASE expression.
+            val funcWithFilterHandled =
+              filter match
+                case Some(filterExpr) =>
+                  val newArgs = args.map { arg =>
+                    val valueExpr =
+                      arg.value match
+                        // count(*) becomes count(1) inside CASE
+                        case _: AllColumns =>
+                          LongLiteral(1, "1L", arg.value.span)
+                        case other =>
+                          other
+                    arg.copy(value =
+                      IfExpr(filterExpr, valueExpr, NullLiteral(arg.value.span), arg.value.span)
+                    )
+                  }
+                  f.copy(args = newArgs, filter = None)
+                case None =>
+                  f
+
+            funcWithFilterHandled.base match
+              case name: NameExpr =>
+                name.leafName match
+                  case "array_agg" =>
+                    funcWithFilterHandled.copy(base = NameExpr.fromString("collect_list"))
+                  case "array_distinct" =>
+                    funcWithFilterHandled.copy(base = NameExpr.fromString("collect_set"))
+                  case "regexp_like" =>
+                    funcWithFilterHandled.copy(base = NameExpr.fromString("regexp"))
+                  case _ =>
+                    funcWithFilterHandled
               case _ =>
-                f
+                funcWithFilterHandled
           case other =>
             other
         }
+
+  end rewriteFunctions
 
 end HiveRewriteFunctions

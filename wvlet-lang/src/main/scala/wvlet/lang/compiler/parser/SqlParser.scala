@@ -1795,7 +1795,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
               val args = functionArgs()
               consume(SqlToken.R_PAREN)
               val w = window()
-              val f = FunctionApply(sel, args, w, spanFrom(t))
+              val f = FunctionApply(sel, args, w, None, spanFrom(t))
               primaryExpressionRest(f)
             case _ =>
               primaryExpressionRest(DotRef(expr, next, DataType.UnknownType, spanFrom(t)))
@@ -1821,8 +1821,20 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
               consume(SqlToken.R_PAREN)
               // Global function call
               val w = window()
-              val f = FunctionApply(functionName, args, w, spanFrom(t))
+              // Check for FILTER clause after function arguments
+              val filter =
+                if scanner.lookAhead().token == SqlToken.FILTER then
+                  consume(SqlToken.FILTER)
+                  consume(SqlToken.L_PAREN)
+                  consume(SqlToken.WHERE)
+                  val filterExpr = expression()
+                  consume(SqlToken.R_PAREN)
+                  Some(filterExpr)
+                else
+                  None
+              val f = FunctionApply(functionName, args, w, filter, spanFrom(t))
               primaryExpressionRest(f)
+          end functionApply
 
           expr match
             case n: NameExpr =>
@@ -1998,7 +2010,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
                 // TRIM(string)
                 List(FunctionArg(None, trimFrom, false, Nil, trimFrom.span))
 
-          FunctionApply(funcName, args, None, spanFrom(t))
+          FunctionApply(funcName, args, None, None, spanFrom(t))
         case SqlToken.L_PAREN =>
           consume(SqlToken.L_PAREN)
           val t2 = scanner.lookAhead()
@@ -2190,6 +2202,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           FunctionArg(None, keyArray, false, Nil, keyArray.span),
           FunctionArg(None, valueArray, false, Nil, valueArray.span)
         ),
+        None,
         None,
         spanFrom(t)
       )
