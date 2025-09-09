@@ -19,7 +19,7 @@
     "@tailwindcss/postcss": "^4.1.13",
     "@tailwindcss/vite": "^4.1.13",
     "apache-arrow": "^21.0.0",
-    "monaco-editor": "^0.52.2",
+    "monaco-editor": "^0.53.0",
     "rollup": "^4.50.1"
   },
   "devDependencies": {
