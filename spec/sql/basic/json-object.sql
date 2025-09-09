@@ -28,4 +28,30 @@ WHERE col1 IS NOT NULL;
 SELECT JSON_OBJECT(KEY 'age' VALUE age NULL ON NULL)
 FROM (VALUES (25), (NULL)) AS t(age);
 
+-- Test ABSENT ON NULL modifier
+SELECT JSON_OBJECT(KEY 'data' VALUE data, KEY 'info' VALUE info ABSENT ON NULL)
+FROM (VALUES ('test', NULL), ('example', 'value')) AS t(data, info);
+
+-- Test WITHOUT UNIQUE KEYS modifier  
 SELECT JSON_OBJECT(KEY 'a' VALUE 1, KEY 'b' VALUE 2 WITHOUT UNIQUE KEYS);
+
+-- Test WITH UNIQUE KEYS modifier
+SELECT JSON_OBJECT(KEY 'x' VALUE 10, KEY 'y' VALUE 20 WITH UNIQUE KEYS);
+
+-- Test multiple modifiers with multiple key-value pairs
+SELECT JSON_OBJECT(
+  KEY 'name' VALUE name, 
+  KEY 'age' VALUE age, 
+  KEY 'city' VALUE city 
+  NULL ON NULL
+)
+FROM (VALUES ('Alice', 25, 'NYC'), ('Bob', NULL, 'LA')) AS users(name, age, city);
+
+-- Test complex modifier combinations
+SELECT JSON_OBJECT(
+  KEY 'status' VALUE status,
+  KEY 'count' VALUE count,
+  KEY 'metadata' VALUE metadata
+  ABSENT ON NULL WITHOUT UNIQUE KEYS
+)  
+FROM (VALUES ('active', 5, NULL), ('inactive', 0, '{}')) AS data(status, count, metadata);

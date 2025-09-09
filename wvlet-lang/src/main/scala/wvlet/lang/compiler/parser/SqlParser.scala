@@ -1684,8 +1684,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         consume(SqlToken.ON)
         consume(SqlToken.NULL)
         JsonObjectModifier.NULL_ON_NULL :: parseJsonObjectModifiers()
-      case SqlToken.IDENTIFIER if t.str.toUpperCase == "ABSENT" =>
-        consume(SqlToken.IDENTIFIER) // ABSENT
+      case SqlToken.ABSENT =>
+        consume(SqlToken.ABSENT)
         consume(SqlToken.ON)
         consume(SqlToken.NULL)
         JsonObjectModifier.ABSENT_ON_NULL :: parseJsonObjectModifiers()

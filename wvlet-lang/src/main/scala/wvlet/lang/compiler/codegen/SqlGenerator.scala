@@ -360,7 +360,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       case v: Values =>
         // VALUES in FROM clause needs parentheses
         v.relationType match
-          case s: SchemaType =>
+          case s: SchemaType if s.isFullyNamed =>
             // VALUES with alias and schema
             val tableAlias: Doc = tableAliasOf(
               NameExpr.fromString(s.typeName.name),
@@ -1336,7 +1336,13 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
                   wl(group(wl(text("KEY"), expr(p.key))), group(wl(text("VALUE"), expr(p.value))))
                 )
               }
-            text("json_object") + paren(cl(params))
+            val modifiers = wl(
+              j.jsonObjectModifiers
+                .map { m =>
+                  text(m.expr)
+                }
+            )
+            text("json_object") + paren(cl(params, modifiers))
       case a: ArrayAccess =>
         expr(a.arrayExpr) + text("[") + expr(a.index) + text("]")
       case c: CaseExpr =>

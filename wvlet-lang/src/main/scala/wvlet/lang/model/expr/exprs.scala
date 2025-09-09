@@ -828,11 +828,11 @@ case class JsonObjectConstructor(
 case class JsonParam(key: Expression, value: Expression, span: Span) extends Expression:
   override def children: Seq[Expression] = Seq(key, value)
 
-enum JsonObjectModifier:
-  case NULL_ON_NULL
-  case ABSENT_ON_NULL
-  case WITHOUT_UNIQUE_KEYS
-  case WITH_UNIQUE_KEYS
+enum JsonObjectModifier(val expr: String):
+  case NULL_ON_NULL        extends JsonObjectModifier("NULL ON NULL")
+  case ABSENT_ON_NULL      extends JsonObjectModifier("ABSENT ON NULL")
+  case WITHOUT_UNIQUE_KEYS extends JsonObjectModifier("WITHOUT UNIQUE KEYS")
+  case WITH_UNIQUE_KEYS    extends JsonObjectModifier("WITH UNIQUE KEYS")
 
 abstract sealed class CurrentTimeBase(name: String, precision: Option[Int]) extends LeafExpression
 
