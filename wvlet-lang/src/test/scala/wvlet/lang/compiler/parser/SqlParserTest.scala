@@ -12,6 +12,16 @@ class SqlParserTest extends AirSpec:
 
 end SqlParserTest
 
+class SqlParserBasicSpec extends AirSpec:
+  CompilationUnit
+    .fromPath("spec/sql/basic")
+    .foreach { unit =>
+      test(s"parse basic ${unit.sourceFile.fileName}") {
+        val stmt = SqlParser(unit, isContextUnit = true).parse()
+        debug(stmt.pp)
+      }
+    }
+
 class SqlParserTPCHSpec extends AirSpec:
   CompilationUnit
     .fromPath("spec/sql/tpc-h")
