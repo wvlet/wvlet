@@ -1236,6 +1236,17 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
           case _ =>
             // Default to Trino syntax for other databases
             text(s"json '${j.value}'")
+      case i: IntervalLiteral =>
+        dbType match
+          case DBType.DuckDB =>
+            // DuckDB uses INTERVAL 1 DAY (no quotes around the value)
+            val signStr  = Option.when(i.sign != Sign.NoSign)(s"${i.sign.symbol} ").getOrElse("")
+            val valueStr = i.value.stripPrefix("'").stripSuffix("'") // Remove quotes if present
+            val endStr   = i.end.map(f => s" TO ${f}").getOrElse("")
+            text(s"INTERVAL ${signStr}${valueStr} ${i.startField}${endStr}")
+          case _ =>
+            // Trino and others use INTERVAL '1' DAY (with quotes)
+            text(i.sqlExpr)
       case l: Literal =>
         text(l.sqlExpr)
       case bq: BackQuotedIdentifier =>
