@@ -1148,7 +1148,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             trimChars.foreach(chars => trimParts += expr(chars))
             if trimType.isDefined || trimChars.isDefined then
               trimParts += text("from")
-              
+
             fromExpr.foreach(e => trimParts += expr(e))
 
             parts += wl(trimParts.result()*)
