@@ -4,7 +4,10 @@ class SqlBasicSpec
     extends SpecRunner(
       "spec/sql/basic",
       ignoredSpec = Map(
-        "show-create-view.sql" -> "SHOW CREATE VIEW execution not yet fully supported"
+        "show-create-view.sql"              -> "SHOW CREATE VIEW execution not yet fully supported",
+        "date-time-function-calls.sql"      -> "Testing parser for date/time/timestamp functions - DuckDB lacks these functions",
+        "date-time-function-parse-test.sql" -> "Testing parser for date/time/timestamp functions - DuckDB lacks these functions",
+        "original-issue-pattern.sql"        -> "Testing parser with original issue pattern - table t_2ac11 doesn't exist"
       )
     )
 
