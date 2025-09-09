@@ -5,6 +5,8 @@ import wvlet.airframe.launcher.*
 import java.io.{FileWriter, PrintWriter}
 import wvlet.airframe.codec.MessageCodec
 import wvlet.airframe.control.Control
+import wvlet.lang.compiler.parser.ParserPhase
+import wvlet.lang.compiler.{CompileResult, Context}
 
 case class QueryErrorRecord(
     queryIndex: Int,
@@ -27,6 +29,8 @@ object ParseQuery extends LogSupport:
 
 // Test command for parsing queries in batch
 class ParseQuery() extends LogSupport:
+
+  private val codec = MessageCodec.of[QueryErrorRecord]
 
   private def writeErrorRecord(
       errorWriter: PrintWriter,
@@ -53,7 +57,7 @@ class ParseQuery() extends LogSupport:
       message = exception.map(_.getMessage),
       stackTrace = exception.map(_.getStackTrace.take(5).map(_.toString).toList)
     )
-    errorWriter.println(MessageCodec.of[QueryErrorRecord].toJson(errorRecord))
+    errorWriter.println(codec.toJson(errorRecord))
 
   @command(isDefault = true, description = "Parse query log")
   def help(): Unit = info(s"Use 'parse' subcommand to parse query log")
@@ -106,13 +110,13 @@ class ParseQuery() extends LogSupport:
               val database    = rs.getString("database")
               val sql         = rs.getString("sql")
               queryCount += 1
-
               try
                 // Create a compilation unit from the SQL string
                 val unit = wvlet.lang.compiler.CompilationUnit.fromSqlString(sql)
-
                 // Parse the SQL using the compiler with parseOnlyPhases
-                val compileResult = compiler.compileSingleUnit(unit)
+                val ctx = Context.NoContext
+                ParserPhase.parse(unit, ctx)
+                val compileResult = CompileResult(List(unit), null, ctx, Some(unit))
 
                 if compileResult.hasFailures then
                   errorCount += 1
