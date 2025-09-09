@@ -55,3 +55,11 @@ SELECT JSON_OBJECT(
   ABSENT ON NULL WITHOUT UNIQUE KEYS
 )  
 FROM (VALUES ('active', 5, NULL), ('inactive', 0, '{}')) AS data(status, count, metadata);
+
+-- Test case from the reported error (with VALUES construct)
+SELECT
+  f_d082a,
+  JSON_OBJECT(KEY 'age' VALUE age, KEY 'item_count' VALUE item_count, KEY 'ctr' VALUE ctr NULL ON NULL WITHOUT UNIQUE KEYS)
+FROM
+  (VALUES ('test1', 25, 10, 0.15), ('test2', 30, 20, 0.25)) AS t_3eea0(f_d082a, age, item_count, ctr)
+WHERE (f_d082a IS NOT NULL);

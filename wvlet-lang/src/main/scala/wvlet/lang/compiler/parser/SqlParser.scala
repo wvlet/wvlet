@@ -1787,7 +1787,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
               val jsonObjectModifiers = parseJsonObjectModifiers()
               val jsonObj = JsonObjectConstructor(params, jsonObjectModifiers, spanFrom(t))
               consume(SqlToken.R_PAREN)
-              jsonObj
+              primaryExpressionRest(jsonObj)
             else
               val args = functionArgs()
               consume(SqlToken.R_PAREN)
