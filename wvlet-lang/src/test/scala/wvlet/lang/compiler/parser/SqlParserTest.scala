@@ -8,6 +8,7 @@ trait SqlParserSpec(specPath: String, ignoredSpec: Map[String, String] = Map.emp
   for unit <- CompilationUnit.fromPath(specPath) do
     // Rename spec path / to : for test name
     test(unit.sourceFile.relativeFilePath.replaceAll("/", ":")) {
+      ignoredSpec.get(unit.sourceFile.fileName).foreach(reason => ignore(reason))
       val parser = SqlParser(unit, isContextUnit = true)
       val stmt   = parser.parse()
       debug(stmt.pp)
