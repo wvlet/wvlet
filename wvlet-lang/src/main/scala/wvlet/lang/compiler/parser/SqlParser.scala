@@ -1357,15 +1357,17 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         case _ =>
           expression()
 
-    @tailrec
-    def valueList(acc: List[Expression] = Nil): List[Expression] =
-      val v = value()
-      scanner.lookAhead().token match
-        case SqlToken.COMMA =>
-          consume(SqlToken.COMMA)
-          valueList(v :: acc)
-        case _ =>
-          (v :: acc).reverse
+    def valueList(): List[Expression] =
+      @tailrec
+      def loop(acc: List[Expression]): List[Expression] =
+        val v = value()
+        scanner.lookAhead().token match
+          case SqlToken.COMMA =>
+            consume(SqlToken.COMMA)
+            loop(v :: acc)
+          case _ =>
+            (v :: acc).reverse
+      loop(Nil)
 
     val t = scanner.lookAhead()
     t.token match
