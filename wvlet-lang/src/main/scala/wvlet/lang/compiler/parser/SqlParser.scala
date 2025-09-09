@@ -1376,6 +1376,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       case _ =>
         unexpected(t)
 
+  end values
+
   def show(): Show =
     def inExpr(): QualifiedName =
       scanner.lookAhead().token match
