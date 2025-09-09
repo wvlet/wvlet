@@ -1712,6 +1712,19 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       end match
     end primaryExpressionRest
 
+    def parseFunctionCallOrLiteral(
+        createLiteral: (TokenData[SqlToken], Literal) => GenericLiteral
+    ): Expression =
+      val keywordToken = consumeToken() // consume the DATE/TIME/TIMESTAMP token
+      if scanner.lookAhead().token == SqlToken.L_PAREN then
+        // Treat as a function call, e.g., date(...)
+        val identifier = UnquotedIdentifier(keywordToken.str, spanFrom(keywordToken))
+        primaryExpressionRest(identifier)
+      else
+        // Treat as a literal prefix, e.g., DATE '...'
+        val lit = literal()
+        createLiteral(keywordToken, lit)
+
     val t = scanner.lookAhead()
     val expr =
       t.token match
@@ -1906,25 +1919,25 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         case SqlToken.MAP =>
           map()
         case SqlToken.DATE =>
-          consume(SqlToken.DATE)
-          val i = literal()
-          GenericLiteral(DataType.DateType, i.stringValue, spanFrom(t))
+          parseFunctionCallOrLiteral { (token, lit) =>
+            GenericLiteral(DataType.DateType, lit.stringValue, spanFrom(token))
+          }
         case SqlToken.TIME =>
-          consume(SqlToken.TIME)
-          val i = literal()
-          GenericLiteral(
-            DataType.TimestampType(DataType.TimestampField.TIME, true),
-            i.stringValue,
-            spanFrom(t)
-          )
+          parseFunctionCallOrLiteral { (token, lit) =>
+            GenericLiteral(
+              DataType.TimestampType(DataType.TimestampField.TIME, true),
+              lit.stringValue,
+              spanFrom(token)
+            )
+          }
         case SqlToken.TIMESTAMP =>
-          consume(SqlToken.TIMESTAMP)
-          val i = literal()
-          GenericLiteral(
-            DataType.TimestampType(DataType.TimestampField.TIMESTAMP, true),
-            i.stringValue,
-            spanFrom(t)
-          )
+          parseFunctionCallOrLiteral { (token, lit) =>
+            GenericLiteral(
+              DataType.TimestampType(DataType.TimestampField.TIMESTAMP, true),
+              lit.stringValue,
+              spanFrom(token)
+            )
+          }
         case SqlToken.DECIMAL =>
           consume(SqlToken.DECIMAL)
           val i = literal()
