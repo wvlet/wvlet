@@ -1,9 +1,9 @@
--- Test subquery as standalone statement
+-- Test subquery as standalone statement with VALUES
 (
-   SELECT array_join(array_agg(concat(concat('MAP(ARRAY[''tag_discriminator''], ARRAY[''', f_77393), '''])')), ',') f_32cde
+   SELECT array_join(array_agg(concat(concat('MAP(ARRAY[''tag_discriminator''], ARRAY[''', col1), '''])')), ',') f_32cde
    FROM
-     d_3145c.t_ab67a
-   WHERE (f_6014e IN ('purchase_shop_todaysdish'))
+     (VALUES ('value1', 'purchase_shop_todaysdish'), ('value2', 'purchase_shop_todaysdish')) AS t(col1, col2)
+   WHERE (col2 IN ('purchase_shop_todaysdish'))
 );
 
 -- Simple subquery statement
