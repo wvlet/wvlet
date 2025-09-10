@@ -305,6 +305,7 @@ case class FunctionApply(
     args: List[FunctionArg],
     window: Option[Window],
     filter: Option[Expression] = None,
+    columnAliases: Option[List[Identifier]] = None,
     span: Span
 ) extends Expression:
   override def children: Seq[Expression] = Seq(base) ++ args ++ window.toSeq ++ filter.toSeq

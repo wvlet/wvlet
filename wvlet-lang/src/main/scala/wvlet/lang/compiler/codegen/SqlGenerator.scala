@@ -1053,6 +1053,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
           ),
           None,
           None,
+          None,
           NoSpan
         )
         val name: NameExpr =
