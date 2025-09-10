@@ -628,8 +628,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         unexpected(t)
   end queryOrUpdate
 
-  def withClause(): LogicalPlan =
-    val t = scanner.lookAhead()
+  private def parseWithCTEs(startToken: TokenData[SqlToken]): (Boolean, List[AliasedRelation]) =
     consume(SqlToken.WITH)
     val isRecursive = consumeIfExist(SqlToken.RECURSIVE)
 
@@ -649,7 +648,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       consume(SqlToken.L_PAREN)
       val body = query()
       consume(SqlToken.R_PAREN)
-      val r = AliasedRelation(body, alias, typeDefs, spanFrom(t))
+      val r = AliasedRelation(body, alias, typeDefs, spanFrom(startToken))
       scanner.lookAhead().token match
         case SqlToken.COMMA =>
           consume(SqlToken.COMMA)
@@ -657,7 +656,11 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         case _ =>
           List(r)
 
-    val withStmts = withQuery()
+    (isRecursive, withQuery())
+
+  def withClause(): LogicalPlan =
+    val t                        = scanner.lookAhead()
+    val (isRecursive, withStmts) = parseWithCTEs(t)
 
     // Check what follows the WITH clause
     scanner.lookAhead().token match
@@ -1073,34 +1076,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         values()
       case SqlToken.WITH =>
         // Handle WITH queries (CTEs)
-        consume(SqlToken.WITH)
-        val isRecursive = consumeIfExist(SqlToken.RECURSIVE)
-        def withQuery(): List[AliasedRelation] =
-          val alias = identifier()
-          val typeDefs =
-            scanner.lookAhead().token match
-              case SqlToken.L_PAREN =>
-                consume(SqlToken.L_PAREN)
-                val types = namedTypes()
-                consume(SqlToken.R_PAREN)
-                Some(types)
-              case _ =>
-                None
-
-          consume(SqlToken.AS)
-          consume(SqlToken.L_PAREN)
-          val body = query()
-          consume(SqlToken.R_PAREN)
-          val r = AliasedRelation(body, alias, typeDefs, spanFrom(t))
-          scanner.lookAhead().token match
-            case SqlToken.COMMA =>
-              consume(SqlToken.COMMA)
-              r :: withQuery()
-            case _ =>
-              List(r)
-
-        val withStmts = withQuery()
-        val body      = query()
+        val (isRecursive, withStmts) = parseWithCTEs(t)
+        val body                     = query()
         WithQuery(isRecursive, withStmts, body, spanFrom(t))
       case q if q.isQueryStart =>
         select()

@@ -24,3 +24,5 @@ class SqlParserHiveSpec
         "hive-data-types.sql" -> "Temporarily ignored - complex Hive data types not yet supported"
       )
     )
+
+class SqlParserUpdateSpec extends SqlParserSpec("spec/sql/update")
