@@ -49,7 +49,8 @@ object SqlGenerator:
       having: List[Filter] = Nil,
       orderBy: List[SortItem] = Nil,
       limit: Option[Expression] = None,
-      offset: Option[Expression] = None
+      offset: Option[Expression] = None,
+      partitionOptions: List[PartitionWriteOption] = Nil
   ):
     // def acceptSelectItems: Boolean = selectItems.isEmpty
     def acceptOffset: Boolean       = offset.isEmpty && limit.isEmpty
@@ -296,6 +297,13 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         relation(l.child, block.copy(limit = Some(l.limit)))
       case s: Sort if block.acceptOrderBy =>
         relation(s.child, block.copy(orderBy = s.orderBy))
+      case h: PartitioningHint =>
+        // Generate CLUSTER BY, DISTRIBUTE BY, SORT BY clauses only for Hive
+        if dbType == DBType.Hive then
+          relation(h.child, block.copy(partitionOptions = h.partitionWriteOptions))
+        else
+          // For other databases, ignore the hints and just process the child
+          relation(h.child, block)
       case d: Distinct =>
         relation(d.child, block.copy(isDistinct = true))
       case f: Filter =>
@@ -1011,6 +1019,17 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         s += group(wl("limit", indented(expr(block.limit.get))))
       if block.offset.nonEmpty then
         s += group(wl("offset", indented(expr(block.offset.get))))
+
+      // Add Hive partition clauses
+      if block.partitionOptions.nonEmpty then
+        for option <- block.partitionOptions do
+          option.mode match
+            case PartitionWriteMode.HIVE_CLUSTER_BY =>
+              s += group(wl("cluster by", indented(cl(option.expressions.map(x => expr(x))))))
+            case PartitionWriteMode.HIVE_DISTRIBUTE_BY =>
+              s += group(wl("distribute by", indented(cl(option.expressions.map(x => expr(x))))))
+            case PartitionWriteMode.HIVE_SORT_BY =>
+              s += group(wl("sort by", indented(cl(option.sortItems.map(x => expr(x))))))
 
       val sql = lines(s.result())
       if sc.isNested then

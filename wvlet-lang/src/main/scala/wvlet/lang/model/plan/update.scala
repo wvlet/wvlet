@@ -14,26 +14,21 @@ import scala.collection.immutable.ListMap
 trait Update extends TopLevelStatement with HasTableOrFileName:
   override def relationType: RelationType = EmptyRelationType
 
+object Update:
+  /**
+    * Extract partition write options from a relation if it's a PartitioningHint, and return the
+    * unwrapped child relation and the options.
+    */
+  def extractPartitionOptions(relation: Relation): (Relation, List[PartitionWriteOption]) =
+    relation match
+      case hint: PartitioningHint =>
+        (hint.child, hint.partitionWriteOptions)
+      case other =>
+        (other, Nil)
+
 trait Save extends Update with UnaryRelation
 
 case class SaveOption(key: Identifier, value: Expression, span: Span) extends LeafExpression
-
-/**
-  * Partition write strategies for ETL operations
-  */
-enum PartitionWriteMode:
-  case HIVE_CLUSTER_BY
-  case HIVE_DISTRIBUTE_BY
-  case HIVE_SORT_BY
-
-/**
-  * Generic partition write options for ETL operations
-  */
-case class PartitionWriteOption(
-    mode: PartitionWriteMode,
-    expressions: List[Expression] = Nil,
-    sortItems: List[SortItem] = Nil
-)
 
 case class SaveTo(
     child: Relation,
