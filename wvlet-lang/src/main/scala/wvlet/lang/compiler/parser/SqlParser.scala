@@ -1146,8 +1146,24 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       t.token match
         case SqlToken.AS =>
           consume(SqlToken.AS)
-          val alias = identifier()
-          SingleColumn(alias, item, spanFrom(t))
+          // Check if this is UDTF column aliases: function(...) AS (col1, col2, ...)
+          val nextToken = scanner.lookAhead()
+          if nextToken.token == SqlToken.L_PAREN && item.isInstanceOf[FunctionApply] then
+            consume(SqlToken.L_PAREN)
+            val aliases = List.newBuilder[Identifier]
+            aliases += identifier()
+            while scanner.lookAhead().token == SqlToken.COMMA do
+              consume(SqlToken.COMMA)
+              aliases += identifier()
+            consume(SqlToken.R_PAREN)
+            // Update the FunctionApply with column aliases
+            val f        = item.asInstanceOf[FunctionApply]
+            val udtfCall = f.copy(columnAliases = Some(aliases.result()))
+            SingleColumn(EmptyName, udtfCall, spanFrom(t))
+          else
+            // Regular AS alias
+            val alias = identifier()
+            SingleColumn(alias, item, spanFrom(t))
         case id if id.isIdentifier =>
           val alias = identifier()
           // Propagate the column name for a single column reference
@@ -1162,6 +1178,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
               SingleColumn(i, i, spanFrom(t))
             case _ =>
               SingleColumn(EmptyName, item, spanFrom(t))
+      end match
+    end selectItemWithAlias
 
     val expr = expression()
     selectItemWithAlias(expr)
@@ -1965,10 +1983,9 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
               val p    = consume(SqlToken.L_PAREN)
               val args = functionArgs()
               consume(SqlToken.R_PAREN)
-              val w            = window()
-              val f            = FunctionApply(sel, args, w, None, None, spanFrom(t))
-              val fWithAliases = functionApplyRest(f)
-              primaryExpressionRest(fWithAliases)
+              val w = window()
+              val f = FunctionApply(sel, args, w, None, None, spanFrom(t))
+              primaryExpressionRest(f)
             case _ =>
               primaryExpressionRest(DotRef(expr, next, DataType.UnknownType, spanFrom(t)))
         case SqlToken.L_PAREN =>
@@ -2004,9 +2021,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
                   Some(filterExpr)
                 else
                   None
-              val f            = FunctionApply(functionName, args, w, filter, None, spanFrom(t))
-              val fWithAliases = functionApplyRest(f)
-              primaryExpressionRest(fWithAliases)
+              val f = FunctionApply(functionName, args, w, filter, None, spanFrom(t))
+              primaryExpressionRest(f)
           end functionApply
 
           expr match
@@ -2046,30 +2062,6 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           expr
       end match
     end primaryExpressionRest
-
-    def functionApplyRest(funcApply: FunctionApply): Expression =
-      val t = scanner.lookAhead()
-      t.token match
-        case SqlToken.AS =>
-          // Check if this is UDTF column aliases: function(...) AS (col1, col2, ...)
-          consume(SqlToken.AS)
-          val nextToken = scanner.lookAhead()
-          if nextToken.token == SqlToken.L_PAREN then
-            consume(SqlToken.L_PAREN)
-            val aliases = List.newBuilder[Identifier]
-            aliases += identifier()
-            while scanner.lookAhead().token == SqlToken.COMMA do
-              consume(SqlToken.COMMA)
-              aliases += identifier()
-            consume(SqlToken.R_PAREN)
-            // Return FunctionApply with column aliases
-            funcApply.copy(columnAliases = Some(aliases.result()))
-          else
-            // No UDTF column aliases
-            funcApply
-        case _ =>
-          funcApply
-    end functionApplyRest
 
     def parseFunctionCallOrLiteral(
         createLiteral: (TokenData[SqlToken], Literal) => GenericLiteral

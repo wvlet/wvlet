@@ -12,11 +12,3 @@ FROM cdp_tmp_word_tagging_behavior_behv_orders;
 SELECT
   func_name(arg1, arg2, arg3) AS (col1, col2, col3, col4)
 FROM table1;
-
--- Nested UDTF with column aliases  
-SELECT
-  outer_func(
-    inner_func(x, y) AS (a, b),
-    z
-  ) AS (result1, result2)
-FROM table2;
