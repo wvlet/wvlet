@@ -31,7 +31,9 @@ enum DBType(
     // MAP {key: value, ...} syntax or MAP(ARRAY[k1, k2, ...], ARRAY[v1, v2, ...]) syntax
     val mapConstructorSyntax: SQLDialect.MapSyntax = KeyValue,
     // values 1, 2, ...   or (values 1, 2, ...)
-    val requireParenForValues: Boolean = false
+    val requireParenForValues: Boolean = false,
+    // RLIKE operator support (regex pattern matching)
+    val supportRLike: Boolean = false
 ):
 
   case DuckDB
@@ -52,7 +54,8 @@ enum DBType(
         supportRowExpr = true,
         arrayConstructorSyntax = SQLDialect.ArraySyntax.ArrayPrefix,
         mapConstructorSyntax = SQLDialect.MapSyntax.ArrayPair,
-        requireParenForValues = true
+        requireParenForValues = true,
+        supportRLike = true
       )
 
   case Hive
@@ -63,7 +66,8 @@ enum DBType(
         supportRowExpr = false,
         arrayConstructorSyntax = SQLDialect.ArraySyntax.ArrayPrefix,
         mapConstructorSyntax = SQLDialect.MapSyntax.ArrayPair,
-        requireParenForValues = false
+        requireParenForValues = false,
+        supportRLike = true
       )
 
   case BigQuery   extends DBType

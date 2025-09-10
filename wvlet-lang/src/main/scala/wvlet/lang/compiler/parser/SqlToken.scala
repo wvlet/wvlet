@@ -251,6 +251,7 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   case NOT     extends SqlToken(Keyword, "not")
   case EXISTS  extends SqlToken(Keyword, "exists")
   case LIKE    extends SqlToken(Keyword, "like")
+  case RLIKE   extends SqlToken(Keyword, "rlike")
   case ESCAPE  extends SqlToken(Keyword, "escape")
   case IN      extends SqlToken(Keyword, "in")
   case BETWEEN extends SqlToken(Keyword, "between")

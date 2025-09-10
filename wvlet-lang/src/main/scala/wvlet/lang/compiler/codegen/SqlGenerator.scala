@@ -1293,6 +1293,17 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       case l: LikeExpression =>
         val escapeClause = l.escape.map(e => ws + text("ESCAPE") + ws + expr(e)).getOrElse(empty)
         expr(l.left) + ws + text(l.operatorName) + ws + expr(l.right) + escapeClause
+      case r: RLikeExpression =>
+        // Handle RLIKE based on database support
+        if dbType.supportRLike then
+          expr(r.left) + ws + text(r.operatorName) + ws + expr(r.right)
+        else
+          // For databases that don't support RLIKE (e.g., DuckDB), use regexp_matches
+          r match
+            case _: RLike =>
+              text("regexp_matches") + paren(cl(expr(r.left), expr(r.right)))
+            case _: NotRLike =>
+              text("NOT") + ws + text("regexp_matches") + paren(cl(expr(r.left), expr(r.right)))
       case c: LogicalConditionalExpression =>
         // For adding optional newlines for AND/OR
         expr(c.left) + wsOrNL + text(c.operatorName) + ws + expr(c.right)

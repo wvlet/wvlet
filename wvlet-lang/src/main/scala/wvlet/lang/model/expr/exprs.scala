@@ -448,6 +448,14 @@ case class NotLike(
 ) extends LikeExpression:
   override def operatorName: String = "not like"
 
+sealed trait RLikeExpression extends ConditionalExpression with BinaryExpression
+
+case class RLike(left: Expression, right: Expression, span: Span) extends RLikeExpression:
+  override def operatorName: String = "rlike"
+
+case class NotRLike(left: Expression, right: Expression, span: Span) extends RLikeExpression:
+  override def operatorName: String = "not rlike"
+
 case class Contains(left: Expression, right: Expression, span: Span)
     extends ConditionalExpression
     with BinaryExpression:
