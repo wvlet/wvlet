@@ -2264,10 +2264,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       t.token match
         case SqlToken.L_PAREN =>
           (consume(SqlToken.L_PAREN), SqlToken.R_PAREN)
-        case SqlToken.L_BRACKET =>
-          (consume(SqlToken.L_BRACKET), SqlToken.R_BRACKET)
         case _ =>
-          // Default to bracket syntax if neither is found
+          // Default to bracket syntax
           (consume(SqlToken.L_BRACKET), SqlToken.R_BRACKET)
 
     val elements = List.newBuilder[Expression]
