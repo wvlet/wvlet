@@ -429,14 +429,23 @@ case class TupleNotInRelation(tuple: Expression, in: Relation, span: Span)
     extends ConditionalExpression:
   override def children: Seq[Expression] = Seq(tuple) ++ in.childExpressions
 
-case class Like(left: Expression, right: Expression, span: Span)
-    extends ConditionalExpression
-    with BinaryExpression:
+sealed trait LikeExpression extends ConditionalExpression:
+  def left: Expression
+  def right: Expression
+  def escape: Option[Expression]
+  def operatorName: String
+  override def children: Seq[Expression] = Seq(left, right) ++ escape.toSeq
+
+case class Like(left: Expression, right: Expression, escape: Option[Expression] = None, span: Span)
+    extends LikeExpression:
   override def operatorName: String = "like"
 
-case class NotLike(left: Expression, right: Expression, span: Span)
-    extends ConditionalExpression
-    with BinaryExpression:
+case class NotLike(
+    left: Expression,
+    right: Expression,
+    escape: Option[Expression] = None,
+    span: Span
+) extends LikeExpression:
   override def operatorName: String = "not like"
 
 case class Contains(left: Expression, right: Expression, span: Span)

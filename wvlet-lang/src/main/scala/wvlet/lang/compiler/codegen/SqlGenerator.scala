@@ -1231,6 +1231,9 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             text("+") + expr(a.child)
           case Sign.Negative =>
             text("-") + expr(a.child)
+      case l: LikeExpression =>
+        val escapeClause = l.escape.map(e => ws + text("ESCAPE") + ws + expr(e)).getOrElse(empty)
+        expr(l.left) + ws + text(l.operatorName) + ws + expr(l.right) + escapeClause
       case c: LogicalConditionalExpression =>
         // For adding optional newlines for AND/OR
         expr(c.left) + wsOrNL + text(c.operatorName) + ws + expr(c.right)

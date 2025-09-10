@@ -255,6 +255,7 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   case NOT     extends WvletToken(Keyword, "not")
   case IS      extends WvletToken(Keyword, "is")
   case LIKE    extends WvletToken(Keyword, "like")
+  case ESCAPE  extends WvletToken(Keyword, "escape")
   case BETWEEN extends WvletToken(Keyword, "between")
 
   // DML operators

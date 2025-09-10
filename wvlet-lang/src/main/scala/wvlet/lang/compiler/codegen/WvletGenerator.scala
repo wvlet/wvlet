@@ -525,6 +525,10 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
               text("+") + expr(a.child)
             case Sign.Negative =>
               text("-") + expr(a.child)
+        case l: LikeExpression =>
+          // Handle LIKE and NOT LIKE with optional ESCAPE clause
+          val escapeClause = l.escape.map(e => ws + text("escape") + ws + expr(e)).getOrElse(empty)
+          expr(l.left) + ws + text(l.operatorName) + ws + expr(l.right) + escapeClause
         case c: LogicalConditionalExpression =>
           expr(c.left) + wsOrNL + text(c.operatorName) + ws + expr(c.right)
         case b: BinaryExpression =>

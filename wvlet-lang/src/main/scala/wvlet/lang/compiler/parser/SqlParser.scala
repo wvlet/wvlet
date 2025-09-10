@@ -512,6 +512,13 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       span
     )
 
+  private def parseEscapeClause(): Option[Expression] =
+    if scanner.lookAhead().token == SqlToken.ESCAPE then
+      consume(SqlToken.ESCAPE)
+      Some(valueExpression())
+    else
+      None
+
   private def parseCommaSeparatedList[T](parseElement: () => T): List[T] =
     val elements = List.newBuilder[T]
     elements += parseElement()
@@ -1545,16 +1552,18 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           In(expr, values, spanFrom(t))
         case SqlToken.LIKE =>
           consume(SqlToken.LIKE)
-          val right = valueExpression()
-          Like(expr, right, spanFrom(t))
+          val right  = valueExpression()
+          val escape = parseEscapeClause()
+          Like(expr, right, escape, spanFrom(t))
         case SqlToken.NOT =>
           consume(SqlToken.NOT)
           val t2 = scanner.lookAhead()
           t2.token match
             case SqlToken.LIKE =>
               consume(SqlToken.LIKE)
-              val right = valueExpression()
-              NotLike(expr, right, spanFrom(t))
+              val right  = valueExpression()
+              val escape = parseEscapeClause()
+              NotLike(expr, right, escape, spanFrom(t))
             case SqlToken.IN =>
               consume(SqlToken.IN)
               val values = inExprList()

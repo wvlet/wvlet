@@ -1922,16 +1922,18 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
             In(expr, valueList, spanFrom(t))
       case WvletToken.LIKE =>
         consume(WvletToken.LIKE)
-        val right = valueExpression()
-        Like(expr, right, spanFrom(t))
+        val right  = valueExpression()
+        val escape = parseEscapeClause()
+        Like(expr, right, escape, spanFrom(t))
       case WvletToken.NOT =>
         consume(WvletToken.NOT)
         val t2 = scanner.lookAhead()
         t2.token match
           case WvletToken.LIKE =>
             consume(WvletToken.LIKE)
-            val right = valueExpression()
-            NotLike(expr, right, spanFrom(t))
+            val right  = valueExpression()
+            val escape = parseEscapeClause()
+            NotLike(expr, right, escape, spanFrom(t))
           case WvletToken.IN =>
             consume(WvletToken.IN)
             val valueList = inExprList()
@@ -2110,6 +2112,13 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     primaryExpressionRest(expr)
 
   }
+
+  private def parseEscapeClause(): Option[Expression] =
+    if scanner.lookAhead().token == WvletToken.ESCAPE then
+      consume(WvletToken.ESCAPE)
+      Some(valueExpression())
+    else
+      None
 
   def inExprList(): List[Expression] =
     def rest(): List[Expression] =
