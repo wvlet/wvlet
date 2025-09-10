@@ -20,6 +20,26 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
   private val formatter = CodeFormatter(config)
 
   /**
+    * Shared helper for formatting map keys to ensure Wvlet compatibility
+    */
+  private def mapKeyDoc(k: Expression)(using sc: SyntaxContext): Doc =
+    k match
+      case s: SingleQuoteString =>
+        text(s"\"${s.unquotedValue}\"")
+      case d: DoubleQuoteString =>
+        text(s"\"${d.unquotedValue}\"")
+      case l: LongLiteral =>
+        text(s"\"${l.stringValue}\"")
+      case d: DoubleLiteral =>
+        text(s"\"${d.stringValue}\"")
+      case bq: BackQuotedIdentifier =>
+        expr(bq)
+      case i: Identifier =>
+        expr(i)
+      case other =>
+        expr(other)
+
+  /**
     * Generate a formatted Wvlet code from the given logical plan
     * @param l
     */

@@ -2765,13 +2765,13 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
 
         // Read a single type parameter, supporting nested parentheses like row(key bigint, value bigint)
         def readOneParam(): Option[TypeParameter] =
+          // Skip any leading commas to avoid stack overflow from recursion
+          while scanner.lookAhead().token == SqlToken.COMMA do
+            consume(SqlToken.COMMA)
+
           val t0 = scanner.lookAhead()
           t0.token match
             case SqlToken.R_PAREN =>
-              None
-            case SqlToken.COMMA =>
-              consume(SqlToken.COMMA)
-              // Skip accidental leading commas (e.g., after previous empty)
               None
             case SqlToken.INTEGER_LITERAL =>
               val i = consume(SqlToken.INTEGER_LITERAL)

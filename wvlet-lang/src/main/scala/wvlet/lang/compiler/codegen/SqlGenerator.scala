@@ -1191,6 +1191,11 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
                       )
               // Variadic key/value arguments
               case _ =>
+                if args.length % 2 != 0 then
+                  throw IllegalArgumentException(
+                    s"The variadic map function must have an even number of arguments, but got ${args
+                        .length}"
+                  )
                 dbType.mapConstructorSyntax match
                   case SQLDialect.MapSyntax.KeyValue =>
                     val entries: List[Doc] = args
@@ -1201,18 +1206,14 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
                       }
                     wl("MAP", brace(cl(entries)))
                   case SQLDialect.MapSyntax.ArrayPair =>
-                    val keys: List[Expression] = args
-                      .grouped(2)
-                      .toList
-                      .collect { case List(k, _) =>
-                        k
-                      }
-                    val values: List[Expression] = args
-                      .grouped(2)
-                      .toList
-                      .collect { case List(_, v) =>
-                        v
-                      }
+                    val (keys, values) =
+                      args
+                        .grouped(2)
+                        .toList
+                        .collect { case List(k, v) =>
+                          (k, v)
+                        }
+                        .unzip
                     val keysArr   = ArrayConstructor(keys, f.span)
                     val valuesArr = ArrayConstructor(values, f.span)
                     text("MAP") + paren(cl(List(expr(keysArr), expr(valuesArr))))
@@ -1492,11 +1493,13 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             case DBType.DuckDB =>
               // Convert row(...) to struct(...), and array(T) to T[]
               val rowToStruct = generic.replaceAll("(?i)\\brow\\(", "struct(")
-              if rowToStruct.toLowerCase.startsWith("array(") && rowToStruct.endsWith(")") then
-                val inner = rowToStruct.substring(6, rowToStruct.length - 1)
-                s"${inner}[]"
-              else
-                rowToStruct
+              // Use regex for a more robust array type conversion
+              val arrayPattern = "(?i)^array\\((.*)\\)$".r
+              rowToStruct match
+                case arrayPattern(inner) =>
+                  s"${inner}[]"
+                case _ =>
+                  rowToStruct
             case _ =>
               generic
 
