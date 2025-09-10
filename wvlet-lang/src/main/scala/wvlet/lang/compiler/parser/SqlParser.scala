@@ -2211,25 +2211,15 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       // and variadic key-value pairs: map(k1, v1, k2, v2, ...)
       val args = List.newBuilder[FunctionArg]
 
-      def nextArg(): Unit =
-        var continue = true
-        while continue do
+      if scanner.lookAhead().token != SqlToken.R_PAREN then
+        var continueParsing = true
+        while continueParsing do
           val e = expression()
           args += FunctionArg(None, e, isDistinct = false, orderBy = Nil, spanFrom(t))
-          scanner.lookAhead().token match
-            case SqlToken.COMMA =>
-              consume(SqlToken.COMMA)
-              // Continue loop to parse next argument
-            case _ =>
-              continue = false
-
-      // Parse zero or more arguments
-      scanner.lookAhead().token match
-        case SqlToken.R_PAREN =>
-          // map() with no args
-          ()
-        case _ =>
-          nextArg()
+          if scanner.lookAhead().token == SqlToken.COMMA then
+            consume(SqlToken.COMMA)
+          else
+            continueParsing = false
 
       consume(SqlToken.R_PAREN)
       FunctionApply(UnquotedIdentifier("map", spanFrom(t)), args.result(), None, None, spanFrom(t))

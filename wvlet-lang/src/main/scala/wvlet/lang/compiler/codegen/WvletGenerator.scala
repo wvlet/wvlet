@@ -499,22 +499,6 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
           // Special handling for MAP(...) so we can emit Wvlet-native map { key: value, ... }
           f.base match
             case id: Identifier if id.unquotedValue.equalsIgnoreCase("map") =>
-              def mapKeyDoc(k: Expression): Doc =
-                k match
-                  case s: SingleQuoteString =>
-                    text(s"\"${s.unquotedValue}\"")
-                  case d: DoubleQuoteString =>
-                    text(s"\"${d.unquotedValue}\"")
-                  case l: LongLiteral =>
-                    text(s"\"${l.stringValue}\"")
-                  case d: DoubleLiteral =>
-                    text(s"\"${d.stringValue}\"")
-                  case bq: BackQuotedIdentifier =>
-                    expr(bq)
-                  case i: Identifier =>
-                    expr(i)
-                  case other =>
-                    expr(other)
 
               val entries: List[Doc] =
                 val args = f.args.map(_.value)
@@ -747,26 +731,6 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
           // Wvlet map syntax requires identifier-like keys. When the key is a string literal
           // (e.g., coming from SQL 'key'), render it as a double-quoted identifier
           // to keep the generated Wvlet code parseable: map { "key": value }
-          def mapKeyDoc(k: Expression): Doc =
-            k match
-              case s: SingleQuoteString =>
-                // Convert 'key' -> "key" for Wvlet identifier compatibility
-                text(s"\"${s.unquotedValue}\"")
-              case d: DoubleQuoteString =>
-                // Already double-quoted string; use as-is
-                text(s"\"${d.unquotedValue}\"")
-              case l: LongLiteral =>
-                text(s"\"${l.stringValue}\"")
-              case d: DoubleLiteral =>
-                text(s"\"${d.stringValue}\"")
-              case bq: BackQuotedIdentifier =>
-                // Backquoted identifiers are acceptable
-                expr(bq)
-              case i: Identifier =>
-                expr(i)
-              case other =>
-                // Fallback to expression rendering (best-effort)
-                expr(other)
 
           val entries = m
             .entries
