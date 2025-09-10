@@ -386,8 +386,7 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
           code(a) {
             val targetExpr =
               if a.columns.nonEmpty then
-                val columnList = a.columns.map(c => c.fullName).mkString("(", ", ", ")")
-                group(wl("append to", expr(a.target), columnList))
+                group(wl("append to", expr(a.target)) + paren(cl(a.columns.map(_.fullName))))
               else
                 group(wl("append to", expr(a.target)))
             targetExpr
