@@ -741,19 +741,15 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
               else
                 // No column list or parenthesized query
                 (Nil, query())
-            val (childRelation, hintOptions) = Update.extractPartitionOptions(q)
-            val explicitOptions              = partitionWriteOptions()
-            val allOptions                   = hintOptions ++ explicitOptions
+            val (childRelation, allOptions) = extractAllPartitionOptions(q)
             InsertInto(target, columns, childRelation, allOptions, spanFrom(t))
           case SqlToken.OVERWRITE =>
             consume(SqlToken.OVERWRITE)
             consume(SqlToken.TABLE)
             val target = qualifiedName()
             // Note: OVERWRITE TABLE doesn't support column lists in standard Hive syntax
-            val q                            = query()
-            val (childRelation, hintOptions) = Update.extractPartitionOptions(q)
-            val explicitOptions              = partitionWriteOptions()
-            val allOptions                   = hintOptions ++ explicitOptions
+            val q                           = query()
+            val (childRelation, allOptions) = extractAllPartitionOptions(q)
             InsertOverwrite(target, childRelation, allOptions, spanFrom(t))
           case _ =>
             val target = qualifiedName()
@@ -880,10 +876,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           scanner.lookAhead().token match
             case SqlToken.AS =>
               consume(SqlToken.AS)
-              val q                            = query()
-              val (childRelation, hintOptions) = Update.extractPartitionOptions(q)
-              val explicitOptions              = partitionWriteOptions()
-              val allOptions                   = hintOptions ++ explicitOptions
+              val q                           = query()
+              val (childRelation, allOptions) = extractAllPartitionOptions(q)
               CreateTableAs(tbl, createMode, childRelation, properties, allOptions, spanFrom(t))
             case _ =>
               // No AS SELECT clause - create table with columns and/or properties
@@ -3140,6 +3134,11 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     options.toList
 
   end partitionWriteOptions
+
+  private def extractAllPartitionOptions(q: Relation): (Relation, List[PartitionWriteOption]) =
+    val (childRelation, hintOptions) = Update.extractPartitionOptions(q)
+    val explicitOptions              = partitionWriteOptions()
+    (childRelation, hintOptions ++ explicitOptions)
 
   def hivePartitionClauses(input: Relation): Relation =
     val options = partitionWriteOptions()
