@@ -43,3 +43,15 @@ SELECT * FROM source_table;
 -- INSERT INTO with backquoted identifier without TABLE keyword
 INSERT INTO `cdp_tmp_customers`
 SELECT * FROM source_table;
+
+-- INSERT OVERWRITE TABLE (standard Hive syntax)
+INSERT OVERWRITE TABLE customers
+SELECT * FROM source_table;
+
+-- INSERT OVERWRITE TABLE with backquoted identifier
+INSERT OVERWRITE TABLE `cdp_tmp_customers`
+SELECT * FROM source_table;
+
+-- INSERT OVERWRITE TABLE with schema and backquoted table name
+INSERT OVERWRITE TABLE schema1.`table_name`
+SELECT * FROM source_table;
