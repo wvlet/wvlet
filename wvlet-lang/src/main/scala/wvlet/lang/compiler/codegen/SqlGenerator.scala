@@ -1296,10 +1296,9 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
           // For databases that don't support RLIKE (e.g., DuckDB), use regexp_matches
           r match
             case _: RLike =>
-              text("regexp_matches") + paren(expr(r.left) + comma + ws + expr(r.right))
+              text("regexp_matches") + paren(cl(expr(r.left), expr(r.right)))
             case _: NotRLike =>
-              text("NOT") + ws + text("regexp_matches") +
-                paren(expr(r.left) + comma + ws + expr(r.right))
+              text("NOT") + ws + text("regexp_matches") + paren(cl(expr(r.left), expr(r.right)))
       case c: LogicalConditionalExpression =>
         // For adding optional newlines for AND/OR
         expr(c.left) + wsOrNL + text(c.operatorName) + ws + expr(c.right)
