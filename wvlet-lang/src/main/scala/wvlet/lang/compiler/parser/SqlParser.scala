@@ -1508,16 +1508,13 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           consume(SqlToken.DIV)
           val right = valueExpression()
           ArithmeticBinaryExpr(BinaryExprType.Divide, expr, right, spanFrom(t))
-        case SqlToken.DIV_INT =>
-          consume(SqlToken.DIV_INT)
-          val right = valueExpression()
-          ArithmeticBinaryExpr(BinaryExprType.DivideInt, expr, right, spanFrom(t))
         case SqlToken.MOD =>
           consume(SqlToken.MOD)
           val right = valueExpression()
           ArithmeticBinaryExpr(BinaryExprType.Modulus, expr, right, spanFrom(t))
-        case id if id.isIdentifier && t.str.toUpperCase == "DIV" =>
-          // Support DIV keyword as integer division operator (Hive/MySQL)
+        case token
+            if token == SqlToken.DIV_INT || (token.isIdentifier && t.str.toUpperCase == "DIV") =>
+          // Support DIV keyword (Hive/MySQL) and // operator (DuckDB) for integer division
           consumeToken()
           val right = valueExpression()
           ArithmeticBinaryExpr(BinaryExprType.DivideInt, expr, right, spanFrom(t))
