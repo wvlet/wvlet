@@ -1647,6 +1647,10 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           val right  = valueExpression()
           val escape = parseEscapeClause()
           Like(expr, right, escape, spanFrom(t))
+        case SqlToken.RLIKE =>
+          consume(SqlToken.RLIKE)
+          val right = valueExpression()
+          RLike(expr, right, spanFrom(t))
         case SqlToken.NOT =>
           consume(SqlToken.NOT)
           val t2 = scanner.lookAhead()
@@ -1656,6 +1660,10 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
               val right  = valueExpression()
               val escape = parseEscapeClause()
               NotLike(expr, right, escape, spanFrom(t))
+            case SqlToken.RLIKE =>
+              consume(SqlToken.RLIKE)
+              val right = valueExpression()
+              NotRLike(expr, right, spanFrom(t))
             case SqlToken.IN =>
               consume(SqlToken.IN)
               val values = inExprList()
