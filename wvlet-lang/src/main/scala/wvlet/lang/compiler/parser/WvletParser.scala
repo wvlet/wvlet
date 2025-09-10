@@ -1922,7 +1922,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
             In(expr, valueList, spanFrom(t))
       case WvletToken.LIKE =>
         consume(WvletToken.LIKE)
-        val right = valueExpression()
+        val right  = valueExpression()
         val escape = parseEscapeClause()
         Like(expr, right, escape, spanFrom(t))
       case WvletToken.NOT =>
@@ -1931,7 +1931,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         t2.token match
           case WvletToken.LIKE =>
             consume(WvletToken.LIKE)
-            val right = valueExpression()
+            val right  = valueExpression()
             val escape = parseEscapeClause()
             NotLike(expr, right, escape, spanFrom(t))
           case WvletToken.IN =>
