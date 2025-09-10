@@ -623,6 +623,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         scanner.lookAhead().token match
           case SqlToken.INTO =>
             consume(SqlToken.INTO)
+            // Handle optional TABLE keyword after INSERT INTO (Hive syntax)
+            consumeIfExist(SqlToken.TABLE)
             val target = qualifiedName()
             val (columns, q) =
               if scanner.lookAhead().token == SqlToken.L_PAREN then
