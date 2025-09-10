@@ -262,6 +262,31 @@ case class Offset(child: Relation, rows: LongLiteral, span: Span) extends Filter
 case class Filter(child: Relation, filterExpr: Expression, span: Span) extends FilteringRelation:
   override def toString: String = s"Filter[${filterExpr}](${child})"
 
+/**
+  * Partition write strategies for ETL operations
+  */
+enum PartitionWriteMode:
+  case HIVE_CLUSTER_BY
+  case HIVE_DISTRIBUTE_BY
+  case HIVE_SORT_BY
+
+/**
+  * Generic partition write options for ETL operations
+  */
+case class PartitionWriteOption(
+    mode: PartitionWriteMode,
+    expressions: List[Expression] = Nil,
+    sortItems: List[SortItem] = Nil
+)
+
+case class PartitioningHint(
+    child: Relation,
+    partitionWriteOptions: List[PartitionWriteOption],
+    span: Span
+) extends FilteringRelation:
+  override def toString: String =
+    s"PartitioningHint[${partitionWriteOptions.mkString(", ")}](${child})"
+
 case class Count(child: Relation, span: Span) extends UnaryRelation with AggSelect:
   override def toString: String = s"Count(${child})"
 

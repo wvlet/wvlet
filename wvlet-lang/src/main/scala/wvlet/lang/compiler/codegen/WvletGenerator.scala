@@ -201,6 +201,9 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
         }
       case s: Sort =>
         unary(s, "order by", s.orderBy.toList)
+      case h: PartitioningHint =>
+        // Ignore Hive partition hints in Wvlet and just process the child
+        relation(h.child)
       case p: Project =>
         unary(p, "select", p.selectItems)
       case g: GroupBy =>

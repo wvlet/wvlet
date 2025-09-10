@@ -64,3 +64,27 @@ WITH RECURSIVE hierarchy AS (
 INSERT INTO org_chart
 SELECT * FROM hierarchy;
 
+-- WITH clause containing CLUSTER BY (the failing case from the error report)
+WITH tag_top_k AS (
+  SELECT
+    each_top_k(
+      20, cdp_customer_id, tag_score,
+      cdp_customer_id, tag
+    ) AS (rank, tag_score, cdp_customer_id, tag)
+  FROM (
+    SELECT
+      cdp_customer_id,
+      tag,
+      tag_score
+    FROM cdp_tmp_word_tagging_behavior_behv_orders
+    CLUSTER BY
+      cdp_customer_id
+  ) t
+)
+INSERT OVERWRITE TABLE `cdp_tmp_word_tagging_behavior_behv_orders_customers_tags`
+SELECT
+  cdp_customer_id,
+  tag
+FROM
+  tag_top_k;
+
