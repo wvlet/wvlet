@@ -2948,6 +2948,10 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       case SqlToken.L_PAREN =>
         val tpeParams = typeParams()
         DataType.parse(name.name, tpeParams)
+      case SqlToken.LT =>
+        // Support Hive-style array<T>, map<K,V> syntax with angle brackets
+        val tpeParams = typeParamsWithAngleBrackets()
+        DataType.parse(name.name, tpeParams)
       case _ =>
         DataType.parse(name.name)
 
@@ -3035,6 +3039,47 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         params.result()
       case _ =>
         Nil
+
+  def typeParamsWithAngleBrackets(): List[TypeParameter] =
+    consume(SqlToken.LT)
+    val params = List.newBuilder[TypeParameter]
+
+    def readOneParam(): TypeParameter =
+      val t0 = scanner.lookAhead()
+      t0.token match
+        case SqlToken.INTEGER_LITERAL =>
+          val i = consume(SqlToken.INTEGER_LITERAL)
+          IntConstant(i.str.toInt)
+        case _ =>
+          // Parse the type name, which might have angle brackets
+          val typeName = identifier()
+          val la       = scanner.lookAhead()
+          la.token match
+            case SqlToken.LT =>
+              // This type has its own type parameters
+              val nestedParams = typeParamsWithAngleBrackets()
+              val fullType     = DataType.parse(typeName.unquotedValue, nestedParams)
+              UnresolvedTypeParameter(fullType.toString, None)
+            case _ =>
+              // Simple type without parameters
+              UnresolvedTypeParameter(typeName.unquotedValue, None)
+      end match
+    end readOneParam
+
+    // Read parameters until '>'
+    while scanner.lookAhead().token != SqlToken.GT do
+      params += readOneParam()
+      // If the next token is a comma, consume it and continue
+      if scanner.lookAhead().token == SqlToken.COMMA then
+        consume(SqlToken.COMMA)
+      else if scanner.lookAhead().token != SqlToken.GT then
+        // Expected comma or closing bracket
+        unexpected(scanner.lookAhead())
+
+    consume(SqlToken.GT)
+    params.result()
+
+  end typeParamsWithAngleBrackets
 
   def identifierList(): List[QualifiedName] =
     val t = scanner.lookAhead()
