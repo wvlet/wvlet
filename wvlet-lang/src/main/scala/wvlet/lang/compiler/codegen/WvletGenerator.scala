@@ -691,6 +691,8 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
           wl(expr(b.e), "not between", expr(b.a), "and", expr(b.b))
         case c: Cast =>
           expr(c.child) + text(".") + text(s"to_${c.tpe.typeName}")
+        case a: AtTimeZone =>
+          expr(a.expr) + text(".atTimeZone") + paren(expr(a.timezone))
         case n: NativeExpression =>
           expr(ExpressionEvaluator.eval(n))
         case p: PivotKey =>

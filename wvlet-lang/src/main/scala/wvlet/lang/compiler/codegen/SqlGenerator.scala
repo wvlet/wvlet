@@ -1433,6 +1433,9 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
           else
             "cast"
         group(wl(text(castKeyword) + paren(wl(expr(c.child), "as", text(c.tpe.typeName.name)))))
+      case a: AtTimeZone =>
+        expr(a.expr) + ws + text("AT") + ws + text("TIME") + ws + text("ZONE") + ws +
+          expr(a.timezone)
       case n: NativeExpression =>
         expr(ExpressionEvaluator.eval(n))
       case e: Exists =>

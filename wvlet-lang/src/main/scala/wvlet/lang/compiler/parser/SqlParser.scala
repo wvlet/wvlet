@@ -1872,6 +1872,12 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           consume(SqlToken.DOUBLE_COLON)
           val tpe = typeName()
           primaryExpressionRest(Cast(expr, tpe, tryCast = false, spanFrom(t)))
+        case SqlToken.AT =>
+          consume(SqlToken.AT)
+          consume(SqlToken.TIME)
+          consume(SqlToken.ZONE)
+          val timezone = valueExpression()
+          primaryExpressionRest(AtTimeZone(expr, timezone, spanFrom(t)))
         case _ =>
           expr
       end match

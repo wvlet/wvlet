@@ -1,0 +1,2 @@
+-- Simple AT TIME ZONE test
+SELECT CAST('2024-01-01' AS timestamp) AT TIME ZONE 'UTC';
