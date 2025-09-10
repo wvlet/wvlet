@@ -648,7 +648,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
             val target = qualifiedName()
             // Note: OVERWRITE TABLE doesn't support column lists in standard Hive syntax
             val q = query()
-            SaveTo(q, target, Nil, spanFrom(t))
+            InsertOverwrite(target, q, spanFrom(t))
           case _ =>
             val target = qualifiedName()
             val columns =

@@ -50,3 +50,5 @@ case class CreateTableAs(
 case class InsertInto(target: TableOrFileName, columns: List[NameExpr], child: Relation, span: Span)
     extends Save:
   override def relationType: RelationType = EmptyRelationType
+
+case class InsertOverwrite(target: TableOrFileName, child: Relation, span: Span) extends Save
