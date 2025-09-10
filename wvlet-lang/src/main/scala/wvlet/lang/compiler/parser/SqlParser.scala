@@ -141,6 +141,9 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         update()
       case q if q.isQueryStart =>
         Query(query(), spanFrom(t))
+      case SqlToken.L_PAREN =>
+        // Handle parenthesized subquery as a statement
+        Query(query(), spanFrom(t))
       case SqlToken.SHOW =>
         show()
       case SqlToken.USE =>
