@@ -140,6 +140,11 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   case PERCENT     extends SqlToken(Keyword, "percent")
   case RESERVOIR   extends SqlToken(Keyword, "reservoir")
 
+  // Hive-specific keywords
+  case CLUSTER    extends SqlToken(Keyword, "cluster")
+  case DISTRIBUTE extends SqlToken(Keyword, "distribute")
+  case SORT       extends SqlToken(Keyword, "sort")
+
   case ALL      extends SqlToken(Keyword, "all")
   case DISTINCT extends SqlToken(Keyword, "distinct")
   case VALUE    extends SqlToken(Keyword, "value")
@@ -366,6 +371,12 @@ object SqlToken:
     SqlToken.VIEW,
     SqlToken.STATEMENT,
     SqlToken.FUNCTIONS,
+    // Data types - non-reserved so they can be used as column names
+    SqlToken.DATE,
+    SqlToken.TIME,
+    SqlToken.TIMESTAMP,
+    SqlToken.DECIMAL,
+    SqlToken.JSON,
     // JSON object modifiers
     SqlToken.ABSENT,
     SqlToken.KEYS,

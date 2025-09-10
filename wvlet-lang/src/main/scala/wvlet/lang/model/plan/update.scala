@@ -18,6 +18,23 @@ trait Save extends Update with UnaryRelation
 
 case class SaveOption(key: Identifier, value: Expression, span: Span) extends LeafExpression
 
+/**
+  * Partition write strategies for ETL operations
+  */
+enum PartitionWriteMode:
+  case HIVE_CLUSTER_BY
+  case HIVE_DISTRIBUTE_BY
+  case HIVE_SORT_BY
+
+/**
+  * Generic partition write options for ETL operations
+  */
+case class PartitionWriteOption(
+    mode: PartitionWriteMode,
+    expressions: List[Expression] = Nil,
+    sortItems: List[SortItem] = Nil
+)
+
 case class SaveTo(
     child: Relation,
     target: TableOrFileName,
@@ -48,12 +65,23 @@ case class CreateTableAs(
     createMode: CreateMode,
     child: Relation,
     properties: List[(NameExpr, Expression)] = Nil,
+    partitionWriteOptions: List[PartitionWriteOption] = Nil,
     span: Span
 ) extends Save:
   override def relationType: RelationType = EmptyRelationType
 
-case class InsertInto(target: TableOrFileName, columns: List[NameExpr], child: Relation, span: Span)
-    extends Save:
+case class InsertInto(
+    target: TableOrFileName,
+    columns: List[NameExpr],
+    child: Relation,
+    partitionWriteOptions: List[PartitionWriteOption] = Nil,
+    span: Span
+) extends Save:
   override def relationType: RelationType = EmptyRelationType
 
-case class InsertOverwrite(target: TableOrFileName, child: Relation, span: Span) extends Save
+case class InsertOverwrite(
+    target: TableOrFileName,
+    child: Relation,
+    partitionWriteOptions: List[PartitionWriteOption] = Nil,
+    span: Span
+) extends Save

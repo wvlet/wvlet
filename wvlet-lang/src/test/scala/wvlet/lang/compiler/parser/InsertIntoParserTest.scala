@@ -35,7 +35,7 @@ class InsertIntoParserTest extends AirSpec:
     debug(plan.pp)
 
     plan match
-      case InsertInto(target, columns, child, _) =>
+      case InsertInto(target, columns, child, _, _) =>
         getTableName(target) shouldBe "users"
         columns shouldBe Nil
         child match
@@ -65,7 +65,7 @@ class InsertIntoParserTest extends AirSpec:
     debug(plan.pp)
 
     plan match
-      case InsertInto(target, columns, child, _) =>
+      case InsertInto(target, columns, child, _, _) =>
         getTableName(target) shouldBe "users"
         getColumnNames(columns) shouldBe List("id", "name", "age")
         child.isInstanceOf[Values] shouldBe true
@@ -79,7 +79,7 @@ class InsertIntoParserTest extends AirSpec:
     debug(plan.pp)
 
     plan match
-      case InsertInto(target, columns, child, _) =>
+      case InsertInto(target, columns, child, _, _) =>
         getTableName(target) shouldBe "users"
         columns shouldBe Nil
         child.isInstanceOf[Project] shouldBe true
@@ -93,7 +93,7 @@ class InsertIntoParserTest extends AirSpec:
     debug(plan.pp)
 
     plan match
-      case InsertInto(target, columns, child, _) =>
+      case InsertInto(target, columns, child, _, _) =>
         getTableName(target) shouldBe "users"
         getColumnNames(columns) shouldBe List("id", "name")
         child.isInstanceOf[Project] shouldBe true
@@ -107,7 +107,7 @@ class InsertIntoParserTest extends AirSpec:
     debug(plan.pp)
 
     plan match
-      case InsertInto(target, columns, child, _) =>
+      case InsertInto(target, columns, child, _, _) =>
         getTableName(target) shouldBe "users"
         columns shouldBe Nil
         child match
@@ -127,7 +127,7 @@ class InsertIntoParserTest extends AirSpec:
     debug(plan.pp)
 
     plan match
-      case InsertInto(target, columns, child, _) =>
+      case InsertInto(target, columns, child, _, _) =>
         getTableName(target) shouldBe "catalog.schema.users"
         columns shouldBe Nil
         child.isInstanceOf[Values] shouldBe true
@@ -141,7 +141,7 @@ class InsertIntoParserTest extends AirSpec:
     debug(plan.pp)
 
     plan match
-      case InsertInto(target, columns, child, _) =>
+      case InsertInto(target, columns, child, _, _) =>
         getTableName(target) shouldBe "users"
         columns shouldBe Nil
         child match
@@ -177,7 +177,7 @@ class InsertIntoParserTest extends AirSpec:
     debug(plan.pp)
 
     plan match
-      case InsertInto(target, columns, child, _) =>
+      case InsertInto(target, columns, child, _, _) =>
         getTableName(target) shouldBe "summary_table"
         columns shouldBe Nil
         // Verify the child is a complex query plan
