@@ -8,7 +8,7 @@ SELECT next FROM table1;
 SELECT col1 AS next FROM table1;
 
 -- Test 3: Using 'next' in WHERE clause
-SELECT * FROM table1 WHERE next = 1;
+SELECT * FROM table1 WHERE next = '1';
 
 -- Test 4: Using 'next' in ORDER BY
 SELECT * FROM table1 ORDER BY next;
@@ -30,7 +30,7 @@ INSERT INTO table1 (id, next) VALUES (1, 'value');
 SELECT t1.next FROM table1 t1;
 
 -- Test 9: Using 'next' in JOIN conditions
-SELECT * FROM table1 t1 JOIN table2 t2 ON t1.next = t2.id;
+SELECT * FROM table1 t1 JOIN table2 t2 ON t1.next = CAST(t2.id AS VARCHAR(100));
 
 -- Test 10: Using NEXT as keyword in FETCH clause (should still work)
 SELECT * FROM table1 FETCH NEXT 10 ROWS ONLY;
