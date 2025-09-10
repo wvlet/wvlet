@@ -1165,6 +1165,37 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
               .getOrElse(baseResult)
             f.window.map(w => wl(result, expr(w))).getOrElse(result)
 
+          case baseId: Identifier if baseId.unquotedValue.toLowerCase == "map" =>
+            // Normalize MAP constructor based on dialect
+            val argValues = f.args.map(_.value)
+            dbType.mapConstructorSyntax match
+              case SQLDialect.MapSyntax.KeyValue =>
+                // Expect pairs: k1, v1, k2, v2, ...
+                val entries: List[Doc] = argValues
+                  .grouped(2)
+                  .toList
+                  .collect { case List(k, v) =>
+                    group(wl(expr(k) + ":", expr(v)))
+                  }
+                // MAP { key: value, ... }
+                wl("MAP", brace(cl(entries)))
+              case SQLDialect.MapSyntax.ArrayPair =>
+                val keys: List[Expression] = argValues
+                  .grouped(2)
+                  .toList
+                  .collect { case List(k, _) =>
+                    k
+                  }
+                val values: List[Expression] = argValues
+                  .grouped(2)
+                  .toList
+                  .collect { case List(_, v) =>
+                    v
+                  }
+                val keysArr   = ArrayConstructor(keys, f.span)
+                val valuesArr = ArrayConstructor(values, f.span)
+                text("MAP") + paren(cl(List(expr(keysArr), expr(valuesArr))))
+
           case _ =>
             // Regular function handling
             val base =
@@ -1432,7 +1463,22 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             "try_cast"
           else
             "cast"
-        group(wl(text(castKeyword) + paren(wl(expr(c.child), "as", text(c.tpe.typeName.name)))))
+
+        def formatTypeForDB(t: DataType): String =
+          val generic = t.sqlExpr
+          dbType match
+            case DBType.DuckDB =>
+              // Convert row(...) to struct(...), and array(T) to T[]
+              val rowToStruct = generic.replaceAll("(?i)\\brow\\(", "struct(")
+              if rowToStruct.toLowerCase.startsWith("array(") && rowToStruct.endsWith(")") then
+                val inner = rowToStruct.substring(6, rowToStruct.length - 1)
+                s"${inner}[]"
+              else
+                rowToStruct
+            case _ =>
+              generic
+
+        group(wl(text(castKeyword) + paren(wl(expr(c.child), "as", text(formatTypeForDB(c.tpe))))))
       case a: AtTimeZone =>
         expr(a.expr) + ws + text("AT") + ws + text("TIME") + ws + text("ZONE") + ws +
           expr(a.timezone)
