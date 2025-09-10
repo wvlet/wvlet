@@ -147,7 +147,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           case u: Update =>
             u
           case other =>
-            other
+            // This should not happen with current withClause() implementation
+            unexpected(t, s"Unexpected logical plan from withClause: ${other.nodeName}")
       case q if q.isQueryStart || q == SqlToken.L_PAREN =>
         // A query can start with SELECT, VALUES, or a parenthesis
         Query(query(), spanFrom(t))
@@ -671,9 +672,15 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           case InsertOverwrite(target, child, span) =>
             val withBody = WithQuery(isRecursive, withStmts, child, spanFrom(t))
             InsertOverwrite(target, withBody, span)
+          case Insert(target, columns, query, span) =>
+            val withBody = WithQuery(isRecursive, withStmts, query, spanFrom(t))
+            Insert(target, columns, withBody, span)
+          case Upsert(target, columns, query, span) =>
+            val withBody = WithQuery(isRecursive, withStmts, query, spanFrom(t))
+            Upsert(target, columns, withBody, span)
           case other =>
-            // For other insert types, just return as-is (may need adjustment)
-            other
+            // This should not happen with current insert() implementation
+            unexpected(t, s"Unexpected update type from insert(): ${other.nodeName}")
       case _ =>
         // Standard WITH ... SELECT
         val body = query()
