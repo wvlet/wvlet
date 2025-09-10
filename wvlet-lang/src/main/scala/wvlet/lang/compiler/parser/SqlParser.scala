@@ -2998,32 +2998,46 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
 
   def partitionWriteOptions(): List[PartitionWriteOption] =
     import PartitionWriteMode.*
+    import scala.collection.mutable.ListBuffer
 
-    def parseOptions(accum: List[PartitionWriteOption]): List[PartitionWriteOption] =
+    val options         = ListBuffer.empty[PartitionWriteOption]
+    var hasClusterBy    = false
+    var hasDistributeBy = false
+    var hasSortBy       = false
+    var continueLoop    = true
+
+    while continueLoop do
       val t = scanner.lookAhead()
       t.token match
         case SqlToken.CLUSTER =>
+          if hasDistributeBy || hasSortBy then
+            unexpected(t, "CLUSTER BY cannot be used with DISTRIBUTE BY or SORT BY")
           consume(SqlToken.CLUSTER)
           consume(SqlToken.BY)
           val expressions = expressionList()
-          val option      = PartitionWriteOption(HIVE_CLUSTER_BY, expressions = expressions)
-          parseOptions(accum :+ option)
+          options += PartitionWriteOption(HIVE_CLUSTER_BY, expressions = expressions)
+          hasClusterBy = true
         case SqlToken.DISTRIBUTE =>
+          if hasClusterBy then
+            unexpected(t, "DISTRIBUTE BY cannot be used with CLUSTER BY")
           consume(SqlToken.DISTRIBUTE)
           consume(SqlToken.BY)
           val expressions = expressionList()
-          val option      = PartitionWriteOption(HIVE_DISTRIBUTE_BY, expressions = expressions)
-          parseOptions(accum :+ option)
+          options += PartitionWriteOption(HIVE_DISTRIBUTE_BY, expressions = expressions)
+          hasDistributeBy = true
         case SqlToken.SORT =>
+          if hasClusterBy then
+            unexpected(t, "SORT BY cannot be used with CLUSTER BY")
           consume(SqlToken.SORT)
           consume(SqlToken.BY)
-          val items  = sortItems()
-          val option = PartitionWriteOption(HIVE_SORT_BY, sortItems = items)
-          parseOptions(accum :+ option)
+          val items = sortItems()
+          options += PartitionWriteOption(HIVE_SORT_BY, sortItems = items)
+          hasSortBy = true
         case _ =>
-          accum
+          continueLoop = false
+    options.toList
 
-    parseOptions(Nil)
+  end partitionWriteOptions
 
   def reserved(): Identifier =
     val t = consumeToken()

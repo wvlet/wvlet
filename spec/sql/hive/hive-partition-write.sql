@@ -66,12 +66,11 @@ INSERT INTO TABLE sorted_data
 SELECT * FROM raw_data
 SORT BY priority DESC, timestamp ASC, id;
 
--- All three options together
+-- CLUSTER BY is equivalent to DISTRIBUTE BY + SORT BY on same columns
+-- Cannot be combined with either DISTRIBUTE BY or SORT BY
 INSERT INTO TABLE optimized_table
 SELECT * FROM source_data
-DISTRIBUTE BY partition_key
-SORT BY sort_key1 ASC, sort_key2 DESC
-CLUSTER BY cluster_key;
+CLUSTER BY partition_key;
 
 -- CREATE TABLE IF NOT EXISTS with CLUSTER BY
 CREATE TABLE IF NOT EXISTS partitioned_table AS
