@@ -1,6 +1,7 @@
 package wvlet.lang.compiler.parser
 
 import scala.annotation.tailrec
+import scala.collection.mutable.ListBuffer
 import wvlet.airframe.SourceCode
 import wvlet.lang.api.{Span, StatusCode}
 import wvlet.lang.compiler.parser.SqlToken.{EOF, ROW, STAR}
@@ -1311,6 +1312,48 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       case _ =>
         r
 
+  private def parseLateralViewRest(child: Relation, lateralToken: TokenData[SqlToken]): Relation =
+    consume(SqlToken.VIEW)
+
+    // Check for optional OUTER keyword
+    val isOuter = consumeIfExist(SqlToken.OUTER)
+
+    // Parse the generator function (e.g., explode(word2freq))
+    val funcName = identifier()
+    consume(SqlToken.L_PAREN)
+    val args = expressionList()
+    consume(SqlToken.R_PAREN)
+
+    // Create the function expression
+    val funcExpr = FunctionApply(
+      funcName,
+      args.map(expr => FunctionArg(None, expr, false, Nil, expr.span)),
+      None,
+      None,
+      spanFrom(funcName.span)
+    )
+
+    // Parse table alias (e.g., t2)
+    val tableAlias = identifier()
+
+    // Parse AS keyword and column aliases (e.g., AS word, freq)
+    val columnAliases =
+      if consumeIfExist(SqlToken.AS) then
+        parseIdentifierList()
+      else
+        Seq.empty
+
+    LateralView(
+      child = child,
+      exprs = Seq(funcExpr),
+      tableAlias = tableAlias,
+      columnAliases = columnAliases,
+      isOuter = isOuter,
+      span = spanFrom(lateralToken)
+    )
+
+  end parseLateralViewRest
+
   private def relationRest(r: Relation): Relation =
     val t = scanner.lookAhead()
     t.token match
@@ -1318,6 +1361,20 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         // Handle TABLESAMPLE and continue with other relation operations
         val sampledR = handleTableSample(r)
         relationRest(sampledR)
+      case SqlToken.LATERAL =>
+        // Save token position for span tracking
+        val lateralToken = consume(SqlToken.LATERAL)
+        val nextToken    = scanner.lookAhead()
+        if nextToken.token == SqlToken.VIEW then
+          // Handle LATERAL VIEW
+          val lateralView = parseLateralViewRest(r, lateralToken)
+          relationRest(lateralView)
+        else
+          // Support for standalone LATERAL (subquery)
+          consume(SqlToken.L_PAREN)
+          val subQuery = query()
+          consume(SqlToken.R_PAREN)
+          relationRest(Lateral(subQuery, spanFrom(lateralToken)))
       case SqlToken.COMMA =>
         consume(SqlToken.COMMA)
         // Note: Parsing the rest as a new relation is important to build a left-deep plan
@@ -1332,6 +1389,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         relationRest(intersectOrExcept(r))
       case _ =>
         r
+    end match
   end relationRest
 
   def fromClause(): Relation =

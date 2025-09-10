@@ -73,6 +73,7 @@ object HiveRewriteUnnest extends Phase("hive-rewrite-unnest"):
             ),
             tableAlias = alias,
             columnAliases = columnAliases,
+            isOuter = false,
             span = span
           )
         else
@@ -99,6 +100,7 @@ object HiveRewriteUnnest extends Phase("hive-rewrite-unnest"):
             ),
             tableAlias = tableAlias,
             columnAliases = Seq(columnAlias),
+            isOuter = false,
             span = span
           )
         else

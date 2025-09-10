@@ -137,6 +137,7 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   case TABLESAMPLE extends SqlToken(Keyword, "tablesample")
   case BERNOULLI   extends SqlToken(Keyword, "bernoulli")
   case SAMPLE      extends SqlToken(Keyword, "sample")
+  case EXPLODE     extends SqlToken(Keyword, "explode")
   case PERCENT     extends SqlToken(Keyword, "percent")
   case RESERVOIR   extends SqlToken(Keyword, "reservoir")
 
@@ -323,6 +324,7 @@ object SqlToken:
     SqlToken.REPLACE, // REPLACE can be used as a function name
     SqlToken.TRIM,    // TRIM can be used as a function name
     SqlToken.FILTER,  // FILTER can be used as a function name (e.g., filter(array, lambda))
+    SqlToken.EXPLODE, // EXPLODE can be used as a function name (e.g., Hive's explode)
     SqlToken.LEADING,
     SqlToken.TRAILING,
     SqlToken.BOTH,
