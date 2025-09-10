@@ -2412,7 +2412,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
             val args = functionArgs()
             consume(WvletToken.R_PAREN)
             val w = window()
-            val f = FunctionApply(sel, args, w, None, p.span)
+            val f = FunctionApply(sel, args, w, None, None, p.span)
             primaryExpressionRest(f)
           case _ =>
             primaryExpressionRest(DotRef(expr, next, DataType.UnknownType, spanFrom(t)))
@@ -2424,7 +2424,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
             consume(WvletToken.R_PAREN)
             // Global function call
             val w = window()
-            val f = FunctionApply(n, args, w, None, spanFrom(t))
+            val f = FunctionApply(n, args, w, None, None, spanFrom(t))
             primaryExpressionRest(f)
           case _ =>
             unexpected(expr)

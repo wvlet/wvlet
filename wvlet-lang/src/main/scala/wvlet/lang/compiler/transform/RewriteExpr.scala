@@ -66,7 +66,7 @@ object RewriteExpr extends Phase("rewrite-expr"):
     */
   object RewriteIfExpr extends ExpressionRewriteRule:
     override def apply(context: Context) =
-      case f @ FunctionApply(base, args, window, filter, span) =>
+      case f @ FunctionApply(base, args, window, filter, columnAliases, span) =>
         base match
           case i: Identifier if i.fullName.toLowerCase == "if" && args.length == 3 =>
             // Convert if(a, b, c) to IfExpr(a, b, c) if the base is "if"

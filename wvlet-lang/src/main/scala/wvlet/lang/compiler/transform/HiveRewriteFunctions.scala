@@ -46,7 +46,7 @@ object HiveRewriteFunctions extends Phase("hive-rewrite-functions"):
     override def apply(context: Context): RewriteRule.PlanRewriter =
       plan =>
         plan.transformExpressions {
-          case f @ FunctionApply(n: NameExpr, args, window, filter, span) =>
+          case f @ FunctionApply(n: NameExpr, args, window, filter, columnAliases, span) =>
             // Hive doesn't support FILTER clause. Rewrite to CASE expression.
             val funcWithFilterHandled =
               filter match
