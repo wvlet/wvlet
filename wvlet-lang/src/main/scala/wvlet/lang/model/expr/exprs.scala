@@ -308,8 +308,10 @@ case class FunctionApply(
     columnAliases: Option[List[Identifier]] = None,
     span: Span
 ) extends Expression:
-  override def children: Seq[Expression] = Seq(base) ++ args ++ window.toSeq ++ filter.toSeq
-  override def dataType: DataType        = base.dataType
+  override def children: Seq[Expression] =
+    Seq(base) ++ args ++ window.toSeq ++ filter.toSeq ++ columnAliases.getOrElse(Nil)
+
+  override def dataType: DataType = base.dataType
 
 case class WindowApply(base: Expression, window: Window, span: Span) extends Expression:
   override def children: Seq[Expression] = Seq(base, window)
