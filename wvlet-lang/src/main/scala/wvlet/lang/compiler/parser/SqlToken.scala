@@ -366,6 +366,7 @@ object SqlToken:
     SqlToken.SAMPLE,
     SqlToken.PERCENT,
     SqlToken.RESERVOIR,
+    SqlToken.NEXT, // NEXT can be used as a column name in Hive
     // DDL entity types - non-reserved so they can be used as table/column names
     SqlToken.CATALOG,
     SqlToken.DATABASE,
