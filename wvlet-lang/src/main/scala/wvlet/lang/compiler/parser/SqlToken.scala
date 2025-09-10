@@ -70,7 +70,8 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   case COMMA        extends SqlToken(Op, ",")
   case DOT          extends SqlToken(Op, ".")
   case UNDERSCORE   extends SqlToken(Op, "_")
-  case AT           extends SqlToken(Op, "@")
+  case AT_SYMBOL    extends SqlToken(Op, "@")
+  case AT           extends SqlToken(Keyword, "at")
   case DOLLAR       extends SqlToken(Op, "$")
   case STAR         extends SqlToken(Op, "*")
   case QUESTION     extends SqlToken(Op, "?")
@@ -270,6 +271,9 @@ enum SqlToken(val tokenType: TokenType, val str: String):
 
   // For internal
   case TO extends SqlToken(Keyword, "to")
+  
+  // For AT TIME ZONE syntax
+  case ZONE extends SqlToken(Keyword, "zone")
 
   // ALTER TABLE specific tokens
   case RENAME        extends SqlToken(Keyword, "rename")
