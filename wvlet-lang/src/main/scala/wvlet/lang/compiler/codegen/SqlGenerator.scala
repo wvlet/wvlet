@@ -1165,6 +1165,60 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
               .getOrElse(baseResult)
             f.window.map(w => wl(result, expr(w))).getOrElse(result)
 
+          case baseId: Identifier if baseId.unquotedValue.toLowerCase == "map" =>
+            // Normalize MAP constructor across dialects and argument styles
+            val args = f.args.map(_.value)
+            args match
+              // Two-array form
+              case List(ArrayConstructor(keys, _), ArrayConstructor(values, _)) =>
+                dbType.mapConstructorSyntax match
+                  case SQLDialect.MapSyntax.KeyValue =>
+                    val entries = keys
+                      .zip(values)
+                      .map { case (k, v) =>
+                        group(wl(expr(k) + ":", expr(v)))
+                      }
+                    wl("MAP", brace(cl(entries)))
+                  case SQLDialect.MapSyntax.ArrayPair =>
+                    text("MAP") +
+                      paren(
+                        cl(
+                          List(
+                            expr(ArrayConstructor(keys, f.span)),
+                            expr(ArrayConstructor(values, f.span))
+                          )
+                        )
+                      )
+              // Variadic key/value arguments
+              case _ =>
+                if args.length % 2 != 0 then
+                  throw IllegalArgumentException(
+                    s"The variadic map function must have an even number of arguments, but got ${args
+                        .length}"
+                  )
+                dbType.mapConstructorSyntax match
+                  case SQLDialect.MapSyntax.KeyValue =>
+                    val entries: List[Doc] = args
+                      .grouped(2)
+                      .toList
+                      .collect { case List(k, v) =>
+                        group(wl(expr(k) + ":", expr(v)))
+                      }
+                    wl("MAP", brace(cl(entries)))
+                  case SQLDialect.MapSyntax.ArrayPair =>
+                    val (keys, values) =
+                      args
+                        .grouped(2)
+                        .toList
+                        .collect { case List(k, v) =>
+                          (k, v)
+                        }
+                        .unzip
+                    val keysArr   = ArrayConstructor(keys, f.span)
+                    val valuesArr = ArrayConstructor(values, f.span)
+                    text("MAP") + paren(cl(List(expr(keysArr), expr(valuesArr))))
+            end match
+
           case _ =>
             // Regular function handling
             val base =
@@ -1432,7 +1486,24 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             "try_cast"
           else
             "cast"
-        group(wl(text(castKeyword) + paren(wl(expr(c.child), "as", text(c.tpe.typeName.name)))))
+
+        def formatTypeForDB(t: DataType): String =
+          val generic = t.sqlExpr
+          dbType match
+            case DBType.DuckDB =>
+              // Convert row(...) to struct(...), and array(T) to T[]
+              val rowToStruct = generic.replaceAll("(?i)\\brow\\(", "struct(")
+              // Use regex for a more robust array type conversion
+              val arrayPattern = "(?i)^array\\((.*)\\)$".r
+              rowToStruct match
+                case arrayPattern(inner) =>
+                  s"${inner}[]"
+                case _ =>
+                  rowToStruct
+            case _ =>
+              generic
+
+        group(wl(text(castKeyword) + paren(wl(expr(c.child), "as", text(formatTypeForDB(c.tpe))))))
       case a: AtTimeZone =>
         expr(a.expr) + ws + text("AT") + ws + text("TIME") + ws + text("ZONE") + ws +
           expr(a.timezone)

@@ -2207,21 +2207,22 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
 
     def parseMapFunction(): FunctionApply =
       consume(SqlToken.L_PAREN)
-      val keyArray = expression()
-      consume(SqlToken.COMMA)
-      val valueArray = expression()
+      // Support both two-array form: map(keys, values)
+      // and variadic key-value pairs: map(k1, v1, k2, v2, ...)
+      val args = List.newBuilder[FunctionArg]
+
+      if scanner.lookAhead().token != SqlToken.R_PAREN then
+        var continueParsing = true
+        while continueParsing do
+          val e = expression()
+          args += FunctionArg(None, e, isDistinct = false, orderBy = Nil, spanFrom(t))
+          if scanner.lookAhead().token == SqlToken.COMMA then
+            consume(SqlToken.COMMA)
+          else
+            continueParsing = false
+
       consume(SqlToken.R_PAREN)
-      // Create a MAP function call expression instead of literal MapValue
-      FunctionApply(
-        UnquotedIdentifier("map", spanFrom(t)),
-        List(
-          FunctionArg(None, keyArray, false, Nil, keyArray.span),
-          FunctionArg(None, valueArray, false, Nil, valueArray.span)
-        ),
-        None,
-        None,
-        spanFrom(t)
-      )
+      FunctionApply(UnquotedIdentifier("map", spanFrom(t)), args.result(), None, None, spanFrom(t))
 
     scanner.lookAhead().token match
       case SqlToken.L_BRACE =>
@@ -2751,24 +2752,81 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       case SqlToken.L_PAREN =>
         consume(SqlToken.L_PAREN)
         val params = List.newBuilder[TypeParameter]
-        def nextParam: Unit =
-          val t = scanner.lookAhead()
-          t.token match
-            case SqlToken.COMMA =>
-              consume(SqlToken.COMMA)
-              nextParam
+
+        // Read a single type parameter, supporting nested parentheses like row(key bigint, value bigint)
+        def readOneParam(): Option[TypeParameter] =
+          // Skip any leading commas to avoid stack overflow from recursion
+          while scanner.lookAhead().token == SqlToken.COMMA do
+            consume(SqlToken.COMMA)
+
+          val t0 = scanner.lookAhead()
+          t0.token match
             case SqlToken.R_PAREN =>
-            // ok
+              None
             case SqlToken.INTEGER_LITERAL =>
-              // e.g., decimal[15, 2]
               val i = consume(SqlToken.INTEGER_LITERAL)
-              params += IntConstant(i.str.toInt)
-              nextParam
+              Some(IntConstant(i.str.toInt))
             case _ =>
-              val name = identifier()
-              params += UnresolvedTypeParameter(name.fullName, None)
-              nextParam
-        nextParam
+              // Capture a possibly complex type parameter as raw text, including nested (...) pairs.
+              // This allows expressions like ROW(key bigint, value bigint) to be treated as a single parameter.
+              val sb            = new StringBuilder
+              var parenDepth    = 0
+              var continueParam = true
+
+              def appendTokenText(tok: TokenData[SqlToken]): Unit =
+                // Minimal spacing rules to reconstruct a parsable type string
+                tok.token match
+                  case SqlToken.L_PAREN | SqlToken.L_BRACKET =>
+                    sb.append(tok.str)
+                  case SqlToken.R_PAREN | SqlToken.R_BRACKET =>
+                    sb.append(tok.str)
+                  case SqlToken.COMMA =>
+                    sb.append(", ")
+                  case _ =>
+                    if sb.nonEmpty then
+                      val last = sb.last
+                      if last != ' ' && last != '(' && last != '[' && last != ':' then
+                        sb.append(' ')
+                    sb.append(tok.str)
+
+              // Consume the first token of the parameter
+              appendTokenText(consumeToken())
+
+              while continueParam do
+                val la = scanner.lookAhead()
+                la.token match
+                  case SqlToken.L_PAREN =>
+                    parenDepth += 1
+                    appendTokenText(consumeToken())
+                  case SqlToken.R_PAREN =>
+                    if parenDepth > 0 then
+                      parenDepth -= 1
+                      appendTokenText(consumeToken())
+                    else
+                      // End of this parameter list (do not consume here)
+                      continueParam = false
+                  case SqlToken.COMMA if parenDepth == 0 =>
+                    // End of current parameter
+                    continueParam = false
+                  case _ =>
+                    appendTokenText(consumeToken())
+
+              Some(UnresolvedTypeParameter(sb.result().trim, None))
+          end match
+        end readOneParam
+
+        // Read parameters until ')'
+        var done = false
+        while !done do
+          readOneParam() match
+            case Some(p) =>
+              params += p
+              // If the next token is a comma, consume it and continue
+              if scanner.lookAhead().token == SqlToken.COMMA then
+                consume(SqlToken.COMMA)
+            case None =>
+              done = true
+
         consume(SqlToken.R_PAREN)
         params.result()
       case _ =>
