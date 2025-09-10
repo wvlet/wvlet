@@ -633,30 +633,41 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     val isRecursive = consumeIfExist(SqlToken.RECURSIVE)
 
     def withQuery(): List[AliasedRelation] =
-      val alias = identifier()
-      val typeDefs =
-        scanner.lookAhead().token match
-          case SqlToken.L_PAREN =>
-            consume(SqlToken.L_PAREN)
-            val types = namedTypes()
-            consume(SqlToken.R_PAREN)
-            Some(types)
-          case _ =>
-            None
+      // Use tail-recursive loop to avoid StackOverflowError with many CTEs
+      @annotation.tailrec
+      def loop(acc: List[AliasedRelation]): List[AliasedRelation] =
+        val t     = scanner.lookAhead()
+        val alias = identifier()
+        val typeDefs =
+          scanner.lookAhead().token match
+            case SqlToken.L_PAREN =>
+              consume(SqlToken.L_PAREN)
+              val types = namedTypes()
+              consume(SqlToken.R_PAREN)
+              Some(types)
+            case _ =>
+              None
 
-      consume(SqlToken.AS)
-      consume(SqlToken.L_PAREN)
-      val body = query()
-      consume(SqlToken.R_PAREN)
-      val r = AliasedRelation(body, alias, typeDefs, spanFrom(startToken))
-      scanner.lookAhead().token match
-        case SqlToken.COMMA =>
-          consume(SqlToken.COMMA)
-          r :: withQuery()
-        case _ =>
-          List(r)
+        consume(SqlToken.AS)
+        consume(SqlToken.L_PAREN)
+        val body = query()
+        consume(SqlToken.R_PAREN)
+        // Fix span calculation - use the CTE's own start token, not the WITH token
+        val r = AliasedRelation(body, alias, typeDefs, spanFrom(t))
+
+        scanner.lookAhead().token match
+          case SqlToken.COMMA =>
+            consume(SqlToken.COMMA)
+            loop(r :: acc)
+          case _ =>
+            (r :: acc).reverse
+
+      loop(Nil)
+    end withQuery
 
     (isRecursive, withQuery())
+
+  end parseWithCTEs
 
   def withClause(): LogicalPlan =
     val t                        = scanner.lookAhead()

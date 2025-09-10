@@ -907,13 +907,23 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           if scanner.lookAhead().token == WvletToken.L_PAREN then
             consume(WvletToken.L_PAREN)
             def parseColumns(): List[NameExpr] =
-              val id = identifier()
-              scanner.lookAhead().token match
-                case WvletToken.COMMA =>
-                  consume(WvletToken.COMMA)
-                  id :: parseColumns()
-                case _ =>
-                  List(id)
+              // Use tail-recursive loop to avoid StackOverflowError with many columns
+              @annotation.tailrec
+              def loop(acc: List[NameExpr]): List[NameExpr] =
+                val id = identifier()
+                scanner.lookAhead().token match
+                  case WvletToken.COMMA =>
+                    consume(WvletToken.COMMA)
+                    loop(id :: acc)
+                  case _ =>
+                    (id :: acc).reverse
+
+              // Handle empty column list
+              if scanner.lookAhead().token == WvletToken.R_PAREN then
+                Nil
+              else
+                loop(Nil)
+
             val cols = parseColumns()
             consume(WvletToken.R_PAREN)
             cols
