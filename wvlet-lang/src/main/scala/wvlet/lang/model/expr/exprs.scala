@@ -463,8 +463,7 @@ case class NotDistinctFrom(left: Expression, right: Expression, span: Span)
     with BinaryExpression:
   override def operatorName: String = "is not distinct from"
 
-case class AtTimeZone(expr: Expression, timezone: Expression, span: Span)
-    extends Expression:
+case class AtTimeZone(expr: Expression, timezone: Expression, span: Span) extends Expression:
   override def children: Seq[Expression] = Seq(expr, timezone)
 
 case class IfExpr(cond: Expression, onTrue: Expression, onFalse: Expression, span: Span)

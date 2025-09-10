@@ -271,7 +271,7 @@ enum SqlToken(val tokenType: TokenType, val str: String):
 
   // For internal
   case TO extends SqlToken(Keyword, "to")
-  
+
   // For AT TIME ZONE syntax
   case ZONE extends SqlToken(Keyword, "zone")
 
