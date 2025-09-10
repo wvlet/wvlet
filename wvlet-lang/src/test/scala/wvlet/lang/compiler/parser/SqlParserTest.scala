@@ -17,3 +17,4 @@ trait SqlParserSpec(specPath: String, ignoredSpec: Map[String, String] = Map.emp
 class SqlParserBasicSpec extends SqlParserSpec("spec/sql/basic")
 class SqlParserTPCHSpec  extends SqlParserSpec("spec/sql/tpc-h")
 class SqlParserTPCDSSpec extends SqlParserSpec("spec/sql/tpc-ds")
+class SqlParserHiveSpec  extends SqlParserSpec("spec/sql/hive")

@@ -209,6 +209,7 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   case INSERT     extends SqlToken(Keyword, "insert")
   case UPSERT     extends SqlToken(Keyword, "upsert")
   case INTO       extends SqlToken(Keyword, "into")
+  case OVERWRITE  extends SqlToken(Keyword, "overwrite")
   case MERGE      extends SqlToken(Keyword, "merge")
   case MATCHED    extends SqlToken(Keyword, "matched")
   case UPDATE     extends SqlToken(Keyword, "update")

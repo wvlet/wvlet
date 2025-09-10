@@ -642,6 +642,13 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
                 // No column list or parenthesized query
                 (Nil, query())
             InsertInto(target, columns, q, spanFrom(t))
+          case SqlToken.OVERWRITE =>
+            consume(SqlToken.OVERWRITE)
+            consume(SqlToken.TABLE)
+            val target = qualifiedName()
+            // Note: OVERWRITE TABLE doesn't support column lists in standard Hive syntax
+            val q = query()
+            SaveTo(q, target, Nil, spanFrom(t))
           case _ =>
             val target = qualifiedName()
             val columns =
