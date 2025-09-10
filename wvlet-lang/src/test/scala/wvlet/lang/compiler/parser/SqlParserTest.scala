@@ -21,7 +21,6 @@ class SqlParserHiveSpec
     extends SqlParserSpec(
       "spec/sql/hive",
       Map(
-        "hive-data-types.sql" -> "Temporarily ignored - complex Hive data types not yet supported",
-        "td-time-functions.sql" -> "Temporarily ignored - TD_TIME_RANGE parsing issue"
+        "hive-data-types.sql" -> "Temporarily ignored - complex Hive data types not yet supported"
       )
     )
