@@ -213,7 +213,12 @@ object GenSQL extends Phase("generate-sql"):
         val insertSQL =
           context.catalog.getTable(TableName.parse(fullTableName)) match
             case Some(t) =>
-              s"insert into ${fullTableName}\n${baseSQL.sql}"
+              val columnList =
+                if a.columns.nonEmpty then
+                  s" (${a.columns.map(_.fullName).mkString(", ")})"
+                else
+                  ""
+              s"insert into ${fullTableName}${columnList}\n${baseSQL.sql}"
             case None =>
               s"create table ${fullTableName} as\n${baseSQL.sql}"
         statements += withHeader(insertSQL, save.sourceLocation)

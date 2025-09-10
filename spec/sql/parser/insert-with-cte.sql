@@ -1,4 +1,4 @@
--- Test INSERT INTO with CTE as the data source
+-- Test INSERT INTO with CTE as the data source (parser test only)
 
 -- Basic INSERT INTO with CTE using VALUES
 INSERT INTO target_table
@@ -14,7 +14,7 @@ WITH
   cte2 AS (VALUES (1, 100), (2, 200))
 SELECT * FROM cte1 JOIN cte2 ON cte1.column1 = cte2.column1;
 
--- Complex example from the error report (simplified without NOW())
+-- Complex example from the error report (simplified)
 INSERT INTO t_57ac2
 WITH
   t_99f97 AS (
@@ -47,6 +47,3 @@ WITH
     GROUP BY column1
   )
 SELECT * FROM aggregated WHERE cnt > 1;
-
--- INSERT with VALUES followed by WITH (should fail - just for testing parser)
--- INSERT INTO t VALUES (1, 2) WITH cte AS (SELECT 1) SELECT * FROM cte;

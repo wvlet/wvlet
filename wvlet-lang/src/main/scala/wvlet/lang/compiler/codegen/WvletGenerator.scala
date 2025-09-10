@@ -384,7 +384,13 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
       case a: AppendTo =>
         relation(a.child) /
           code(a) {
-            group(wl("append to", expr(a.target)))
+            val targetExpr =
+              if a.columns.nonEmpty then
+                val columnList = a.columns.map(c => c.fullName).mkString("(", ", ", ")")
+                group(wl("append to", expr(a.target), columnList))
+              else
+                group(wl("append to", expr(a.target)))
+            targetExpr
           }
       case s: SaveTo =>
         val prev = relation(s.child)

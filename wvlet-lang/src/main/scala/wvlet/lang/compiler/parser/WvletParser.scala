@@ -902,7 +902,24 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         consume(WvletToken.APPEND)
         consume(WvletToken.TO)
         val target: StringLiteral | QualifiedName = literalOrQualifiedName()
-        AppendTo(r, target, spanFrom(t))
+        // Handle optional column list like: append to users(id, email)
+        val columns =
+          if scanner.lookAhead().token == WvletToken.L_PAREN then
+            consume(WvletToken.L_PAREN)
+            def parseColumns(): List[NameExpr] =
+              val id = identifier()
+              scanner.lookAhead().token match
+                case WvletToken.COMMA =>
+                  consume(WvletToken.COMMA)
+                  id :: parseColumns()
+                case _ =>
+                  List(id)
+            val cols = parseColumns()
+            consume(WvletToken.R_PAREN)
+            cols
+          else
+            Nil
+        AppendTo(r, target, columns, spanFrom(t))
       case WvletToken.DELETE =>
         consume(WvletToken.DELETE)
 
