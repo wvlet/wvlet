@@ -139,7 +139,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
 //       describe()
       case u if u.isUpdateStart =>
         update()
-      case q if q.isQueryStart =>
+      case q if q.isQueryStart || q == SqlToken.L_PAREN =>
+        // A query can start with SELECT, WITH, VALUES, or a parenthesis
         Query(query(), spanFrom(t))
       case SqlToken.SHOW =>
         show()
