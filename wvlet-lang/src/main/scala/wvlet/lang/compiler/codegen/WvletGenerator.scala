@@ -679,11 +679,27 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
             }
           brace(cl(fields))
         case m: MapValue =>
-          val entries = m
-            .entries
-            .map { e =>
-              wl(expr(e.key) + ":", expr(e.value))
-            }
+          // Wvlet map syntax requires identifier-like keys. When the key is a string literal
+          // (e.g., coming from SQL 'key'), render it as a double-quoted identifier
+          // to keep the generated Wvlet code parseable: map { "key": value }
+          def mapKeyDoc(k: Expression): Doc =
+            k match
+              case s: SingleQuoteString =>
+                // Convert 'key' -> "key" for Wvlet identifier compatibility
+                text(s"\"${s.unquotedValue}\"")
+              case d: DoubleQuoteString =>
+                // Already double-quoted string; use as-is
+                text(s"\"${d.unquotedValue}\"")
+              case bq: BackQuotedIdentifier =>
+                // Backquoted identifiers are acceptable
+                expr(bq)
+              case i: Identifier =>
+                expr(i)
+              case other =>
+                // Fallback to expression rendering (best-effort)
+                expr(other)
+
+          val entries = m.entries.map { e => wl(mapKeyDoc(e.key) + ":", expr(e.value)) }
           wl("map", brace(cl(entries)))
         case b: Between =>
           wl(expr(b.e), "between", expr(b.a), "and", expr(b.b))
