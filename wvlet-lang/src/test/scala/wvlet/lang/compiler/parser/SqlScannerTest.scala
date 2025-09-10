@@ -6,7 +6,7 @@ import wvlet.lang.compiler.SourceFile
 class SqlScannerTest extends AirSpec:
   inline def testScanToken(txt: String, expectedToken: SqlToken): Unit =
     test(s"scan ${txt}") {
-      val src     = SourceFile.fromWvletString(txt)
+      val src     = SourceFile.fromSqlString(txt)
       val scanner = SqlScanner(src)
       val token   = scanner.nextToken()
       debug(token)
@@ -23,6 +23,16 @@ class SqlScannerTest extends AirSpec:
       token2.length shouldBe 0
     }
 
+  def checkTokens(src: String, expected: (SqlToken, String)*): Unit =
+    val scanner = SqlScanner(SourceFile.fromSqlString(src))
+    for (expectedToken, expectedStr) <- expected do
+      val token = scanner.nextToken()
+      debug(token)
+      token.token shouldBe expectedToken
+      token.str shouldBe expectedStr
+    val eof = scanner.nextToken()
+    eof.token shouldBe SqlToken.EOF
+
   SqlToken
     .allKeywordsAndSymbols
     .foreach: t =>
@@ -32,7 +42,7 @@ class SqlScannerTest extends AirSpec:
     val src =
       """-- line comment
         |from A""".stripMargin
-    val scanner = SqlScanner(SourceFile.fromWvletString(src))
+    val scanner = SqlScanner(SourceFile.fromSqlString(src))
     var token   = scanner.nextToken()
     debug(token)
     token.token shouldBe SqlToken.COMMENT
@@ -54,7 +64,7 @@ class SqlScannerTest extends AirSpec:
     val src =
       """/* block comment */
         |from A""".stripMargin
-    val scanner = SqlScanner(SourceFile.fromWvletString(src))
+    val scanner = SqlScanner(SourceFile.fromSqlString(src))
     var token   = scanner.nextToken()
     debug(token)
     token.token shouldBe SqlToken.COMMENT
@@ -72,6 +82,31 @@ class SqlScannerTest extends AirSpec:
     token.token shouldBe SqlToken.EOF
     token.offset shouldBe src.length
     token.length shouldBe 0
+  }
+
+  test("scan >> as two GT tokens") {
+    checkTokens(">>", SqlToken.GT -> ">", SqlToken.GT -> ">")
+  }
+
+  test("scan >>> as three GT tokens") {
+    checkTokens(">>>", SqlToken.GT -> ">", SqlToken.GT -> ">", SqlToken.GT -> ">")
+  }
+
+  test("scan nested array type array<array<int>>") {
+    checkTokens(
+      "array<array<int>>",
+      SqlToken.ARRAY      -> "array",
+      SqlToken.LT         -> "<",
+      SqlToken.ARRAY      -> "array",
+      SqlToken.LT         -> "<",
+      SqlToken.IDENTIFIER -> "int",
+      SqlToken.GT         -> ">",
+      SqlToken.GT         -> ">"
+    )
+  }
+
+  test("ensure >= still works as single token") {
+    checkTokens(">=", SqlToken.GTEQ -> ">=")
   }
 
 end SqlScannerTest

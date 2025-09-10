@@ -58,3 +58,5 @@ dist
 
 # playground will be built at CI
 website/static/playground
+
+.worktree
