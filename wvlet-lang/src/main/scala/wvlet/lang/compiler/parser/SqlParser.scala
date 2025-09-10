@@ -3072,6 +3072,9 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       // If the next token is a comma, consume it and continue
       if scanner.lookAhead().token == SqlToken.COMMA then
         consume(SqlToken.COMMA)
+        if scanner.lookAhead().token == SqlToken.GT then
+          // A comma must be followed by a type parameter
+          unexpected(scanner.lookAhead(), "Trailing comma in type parameter list")
       else if scanner.lookAhead().token != SqlToken.GT then
         // Expected comma or closing bracket
         unexpected(scanner.lookAhead())
