@@ -2258,7 +2258,16 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
 
   def array(): ArrayConstructor =
     consumeIfExist(SqlToken.ARRAY)
-    val t        = consume(SqlToken.L_BRACKET)
+    // Support both ARRAY[...] and ARRAY(...) syntax for Hive compatibility
+    val t = scanner.lookAhead()
+    val (startToken, endToken) =
+      t.token match
+        case SqlToken.L_PAREN =>
+          (consume(SqlToken.L_PAREN), SqlToken.R_PAREN)
+        case _ =>
+          // Default to bracket syntax
+          (consume(SqlToken.L_BRACKET), SqlToken.R_BRACKET)
+
     val elements = List.newBuilder[Expression]
 
     def nextElement: Unit =
@@ -2267,15 +2276,17 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         case SqlToken.COMMA =>
           consume(SqlToken.COMMA)
           nextElement
-        case SqlToken.R_BRACKET =>
+        case token if token == endToken =>
         // ok
         case _ =>
           elements += expression()
           nextElement
 
     nextElement
-    consume(SqlToken.R_BRACKET)
-    ArrayConstructor(elements.result(), spanFrom(t))
+    consume(endToken)
+    ArrayConstructor(elements.result(), spanFrom(startToken))
+
+  end array
 
   def map(): Expression =
     val t = consume(SqlToken.MAP)
