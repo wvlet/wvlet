@@ -397,7 +397,17 @@ abstract class ScannerBase[Token](sourceFile: SourceFile, config: ScannerConfig)
   final protected def getOperatorRest(): Unit =
     trace(s"getOperatorRest[${offset}]: ch: '${String.valueOf(ch)}'")
     (ch: @switch) match
-      case '~' | '!' | '@' | '#' | '%' | '^' | '+' | '-' | '<' | '>' | '?' | ':' | '=' | '&' | '|' |
+      case '>' =>
+        // Special handling for '>>' to emit two GT tokens instead of one identifier
+        if tokenBuffer.nonEmpty && tokenBuffer.last == '>' then
+          // We already have a '>' in the buffer, don't consume the next '>'
+          // This will finish the current '>' token and let the next scan pick up the second '>'
+          finishNamedToken()
+        else
+          putChar(ch)
+          nextChar()
+          getOperatorRest()
+      case '~' | '!' | '@' | '#' | '%' | '^' | '+' | '-' | '<' | '?' | ':' | '=' | '&' | '|' |
           '\\' =>
         putChar(ch)
         nextChar()

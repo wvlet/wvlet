@@ -74,4 +74,124 @@ class SqlScannerTest extends AirSpec:
     token.length shouldBe 0
   }
 
+  test("scan >> as two GT tokens") {
+    val src     = ">>"
+    val scanner = SqlScanner(SourceFile.fromWvletString(src))
+
+    // First token should be GT
+    var token = scanner.nextToken()
+    debug(token)
+    token.token shouldBe SqlToken.GT
+    token.str shouldBe ">"
+    token.offset shouldBe 0
+    token.length shouldBe 1
+
+    // Second token should also be GT
+    token = scanner.nextToken()
+    debug(token)
+    token.token shouldBe SqlToken.GT
+    token.str shouldBe ">"
+    token.offset shouldBe 1
+    token.length shouldBe 1
+
+    // Third token should be EOF
+    token = scanner.nextToken()
+    debug(token)
+    token.token shouldBe SqlToken.EOF
+  }
+
+  test("scan >>> as three GT tokens") {
+    val src     = ">>>"
+    val scanner = SqlScanner(SourceFile.fromWvletString(src))
+
+    // First GT
+    var token = scanner.nextToken()
+    debug(token)
+    token.token shouldBe SqlToken.GT
+    token.str shouldBe ">"
+
+    // Second GT
+    token = scanner.nextToken()
+    debug(token)
+    token.token shouldBe SqlToken.GT
+    token.str shouldBe ">"
+
+    // Third GT
+    token = scanner.nextToken()
+    debug(token)
+    token.token shouldBe SqlToken.GT
+    token.str shouldBe ">"
+
+    // EOF
+    token = scanner.nextToken()
+    debug(token)
+    token.token shouldBe SqlToken.EOF
+  }
+
+  test("scan nested array type array<array<int>>") {
+    val src     = "array<array<int>>"
+    val scanner = SqlScanner(SourceFile.fromWvletString(src))
+
+    // array
+    var token = scanner.nextToken()
+    debug(token)
+    token.token shouldBe SqlToken.ARRAY
+    token.str shouldBe "array"
+
+    // <
+    token = scanner.nextToken()
+    debug(token)
+    token.token shouldBe SqlToken.LT
+    token.str shouldBe "<"
+
+    // array
+    token = scanner.nextToken()
+    debug(token)
+    token.token shouldBe SqlToken.ARRAY
+    token.str shouldBe "array"
+
+    // <
+    token = scanner.nextToken()
+    debug(token)
+    token.token shouldBe SqlToken.LT
+    token.str shouldBe "<"
+
+    // int
+    token = scanner.nextToken()
+    debug(token)
+    token.token shouldBe SqlToken.IDENTIFIER
+    token.str shouldBe "int"
+
+    // First >
+    token = scanner.nextToken()
+    debug(token)
+    token.token shouldBe SqlToken.GT
+    token.str shouldBe ">"
+
+    // Second >
+    token = scanner.nextToken()
+    debug(token)
+    token.token shouldBe SqlToken.GT
+    token.str shouldBe ">"
+
+    // EOF
+    token = scanner.nextToken()
+    debug(token)
+    token.token shouldBe SqlToken.EOF
+  }
+
+  test("ensure >= still works as single token") {
+    val src     = ">="
+    val scanner = SqlScanner(SourceFile.fromWvletString(src))
+
+    var token = scanner.nextToken()
+    debug(token)
+    token.token shouldBe SqlToken.GTEQ
+    token.str shouldBe ">="
+
+    token = scanner.nextToken()
+    debug(token)
+    token.token shouldBe SqlToken.EOF
+  }
+
 end SqlScannerTest
