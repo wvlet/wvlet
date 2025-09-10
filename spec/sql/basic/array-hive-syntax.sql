@@ -58,3 +58,12 @@ SELECT
       article_id
   ) t
   LATERAL VIEW explode(word2freq) t2 AS word, freq;
+
+-- Multiple LATERAL VIEW clauses
+SELECT
+    id,
+    col1,
+    col2
+  FROM table1
+  LATERAL VIEW explode(array_col1) t1 AS col1
+  LATERAL VIEW explode(array_col2) t2 AS col2;

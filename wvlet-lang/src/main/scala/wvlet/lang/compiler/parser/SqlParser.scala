@@ -1336,12 +1336,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     // Parse AS keyword and column aliases (e.g., AS word, freq)
     val columnAliases =
       if consumeIfExist(SqlToken.AS) then
-        // Parse column aliases separated by commas
-        val aliases = ListBuffer[NameExpr]()
-        aliases += identifier()
-        while consumeIfExist(SqlToken.COMMA) do
-          aliases += identifier()
-        aliases.toSeq
+        parseIdentifierList()
       else
         Seq.empty
 
