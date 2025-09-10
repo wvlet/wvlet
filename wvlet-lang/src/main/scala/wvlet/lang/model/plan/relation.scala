@@ -915,6 +915,7 @@ case class LateralView(
     exprs: Seq[Expression],
     tableAlias: NameExpr,
     columnAliases: Seq[NameExpr],
+    isOuter: Boolean = false,
     span: Span
 ) extends UnaryRelation:
 

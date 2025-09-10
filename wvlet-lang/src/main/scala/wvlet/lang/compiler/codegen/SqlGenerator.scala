@@ -921,10 +921,15 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       case lv: LateralView =>
         // Hive LATERAL VIEW syntax
         val child = relation(lv.child, SQLBlock())(using InFromClause)
+        val lateralViewKeywords =
+          if lv.isOuter then
+            "lateral view outer"
+          else
+            "lateral view"
         val lateralViewExpr = group(
           wl(
             child,
-            "lateral view",
+            lateralViewKeywords,
             cl(lv.exprs.map(expr)),
             expr(lv.tableAlias),
             "as",

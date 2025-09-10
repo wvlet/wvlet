@@ -1315,6 +1315,9 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
   private def parseLateralViewRest(child: Relation, lateralToken: TokenData[SqlToken]): Relation =
     consume(SqlToken.VIEW)
 
+    // Check for optional OUTER keyword
+    val isOuter = consumeIfExist(SqlToken.OUTER)
+
     // Parse the generator function (e.g., explode(word2freq))
     val funcName = identifier()
     consume(SqlToken.L_PAREN)
@@ -1345,6 +1348,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       exprs = Seq(funcExpr),
       tableAlias = tableAlias,
       columnAliases = columnAliases,
+      isOuter = isOuter,
       span = spanFrom(lateralToken)
     )
 
