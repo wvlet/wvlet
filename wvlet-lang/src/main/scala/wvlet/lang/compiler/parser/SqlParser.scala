@@ -1064,6 +1064,37 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     t.token match
       case SqlToken.VALUES =>
         values()
+      case SqlToken.WITH =>
+        // Handle WITH queries (CTEs)
+        consume(SqlToken.WITH)
+        val isRecursive = consumeIfExist(SqlToken.RECURSIVE)
+        def withQuery(): List[AliasedRelation] =
+          val alias = identifier()
+          val typeDefs =
+            scanner.lookAhead().token match
+              case SqlToken.L_PAREN =>
+                consume(SqlToken.L_PAREN)
+                val types = namedTypes()
+                consume(SqlToken.R_PAREN)
+                Some(types)
+              case _ =>
+                None
+
+          consume(SqlToken.AS)
+          consume(SqlToken.L_PAREN)
+          val body = query()
+          consume(SqlToken.R_PAREN)
+          val r = AliasedRelation(body, alias, typeDefs, spanFrom(t))
+          scanner.lookAhead().token match
+            case SqlToken.COMMA =>
+              consume(SqlToken.COMMA)
+              r :: withQuery()
+            case _ =>
+              List(r)
+
+        val withStmts = withQuery()
+        val body      = query()
+        WithQuery(isRecursive, withStmts, body, spanFrom(t))
       case q if q.isQueryStart =>
         select()
       case SqlToken.L_PAREN =>
@@ -1073,6 +1104,10 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         queryRest(subQuery)
       case _ =>
         unexpected(t)
+
+    end match
+
+  end query
 
   def selectItems(): List[Attribute] =
     val t = scanner.lookAhead()
