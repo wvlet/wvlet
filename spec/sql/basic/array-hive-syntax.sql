@@ -26,3 +26,35 @@ SELECT array_concat(
     array['middle1', 'middle2'],
     array('suffix')
 );
+
+-- Test LATERAL VIEW explode syntax (Hive specific)
+-- Simple LATERAL VIEW with explode
+SELECT
+    id,
+    col
+  FROM table1
+  LATERAL VIEW explode(array_col) t AS col;
+
+-- LATERAL VIEW with multiple column aliases
+SELECT
+    id,
+    key,
+    value
+  FROM table1
+  LATERAL VIEW explode(map_col) t AS key, value;
+
+-- Complex example with subquery
+SELECT
+    article_id,
+    word,
+    freq
+  FROM (
+    SELECT
+      article_id,
+      tf(word) AS word2freq
+    FROM
+      cdp_tmp_word_tagging_behavior_behv_orders_articles_tokens
+    GROUP BY
+      article_id
+  ) t
+  LATERAL VIEW explode(word2freq) t2 AS word, freq;
