@@ -2212,14 +2212,16 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       val args = List.newBuilder[FunctionArg]
 
       def nextArg(): Unit =
-        val e = expression()
-        args += FunctionArg(None, e, isDistinct = false, orderBy = Nil, spanFrom(t))
-        scanner.lookAhead().token match
-          case SqlToken.COMMA =>
-            consume(SqlToken.COMMA)
-            nextArg()
-          case _ =>
-            ()
+        var continue = true
+        while continue do
+          val e = expression()
+          args += FunctionArg(None, e, isDistinct = false, orderBy = Nil, spanFrom(t))
+          scanner.lookAhead().token match
+            case SqlToken.COMMA =>
+              consume(SqlToken.COMMA)
+              // Continue loop to parse next argument
+            case _ =>
+              continue = false
 
       // Parse zero or more arguments
       scanner.lookAhead().token match
@@ -2770,7 +2772,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
             case SqlToken.COMMA =>
               consume(SqlToken.COMMA)
               // Skip accidental leading commas (e.g., after previous empty)
-              readOneParam()
+              None
             case SqlToken.INTEGER_LITERAL =>
               val i = consume(SqlToken.INTEGER_LITERAL)
               Some(IntConstant(i.str.toInt))
