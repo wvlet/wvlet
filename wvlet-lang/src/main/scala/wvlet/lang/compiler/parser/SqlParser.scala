@@ -672,6 +672,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
   def withClause(): LogicalPlan =
     val t                        = scanner.lookAhead()
     val (isRecursive, withStmts) = parseWithCTEs(t)
+    // Capture the span of just the WITH clause and CTEs
+    val withClauseSpan = spanFrom(t)
 
     // Check what follows the WITH clause
     scanner.lookAhead().token match
@@ -680,18 +682,26 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         val insertStmt = insert()
         // Wrap the INSERT's query child with the WITH clause
         insertStmt match
-          case InsertInto(target, columns, child, span) =>
-            val withBody = WithQuery(isRecursive, withStmts, child, spanFrom(t))
-            InsertInto(target, columns, withBody, span)
-          case InsertOverwrite(target, child, span) =>
-            val withBody = WithQuery(isRecursive, withStmts, child, spanFrom(t))
-            InsertOverwrite(target, withBody, span)
-          case Insert(target, columns, query, span) =>
-            val withBody = WithQuery(isRecursive, withStmts, query, spanFrom(t))
-            Insert(target, columns, withBody, span)
-          case Upsert(target, columns, query, span) =>
-            val withBody = WithQuery(isRecursive, withStmts, query, spanFrom(t))
-            Upsert(target, columns, withBody, span)
+          case InsertInto(target, columns, child, _) =>
+            // WithQuery span should be from WITH to end of CTEs only
+            val withBody = WithQuery(isRecursive, withStmts, child, withClauseSpan)
+            // INSERT span should include entire WITH ... INSERT
+            InsertInto(target, columns, withBody, spanFrom(t))
+          case InsertOverwrite(target, child, _) =>
+            // WithQuery span should be from WITH to end of CTEs only
+            val withBody = WithQuery(isRecursive, withStmts, child, withClauseSpan)
+            // INSERT span should include entire WITH ... INSERT
+            InsertOverwrite(target, withBody, spanFrom(t))
+          case Insert(target, columns, query, _) =>
+            // WithQuery span should be from WITH to end of CTEs only
+            val withBody = WithQuery(isRecursive, withStmts, query, withClauseSpan)
+            // INSERT span should include entire WITH ... INSERT
+            Insert(target, columns, withBody, spanFrom(t))
+          case Upsert(target, columns, query, _) =>
+            // WithQuery span should be from WITH to end of CTEs only
+            val withBody = WithQuery(isRecursive, withStmts, query, withClauseSpan)
+            // UPSERT span should include entire WITH ... INSERT
+            Upsert(target, columns, withBody, spanFrom(t))
           case other =>
             // This should not happen with current insert() implementation
             unexpected(t, s"Unexpected update type from insert(): ${other.nodeName}")
@@ -699,6 +709,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         // Standard WITH ... SELECT
         val body = query()
         WithQuery(isRecursive, withStmts, body, spanFrom(t))
+    end match
   end withClause
 
   def insert(): Update =
