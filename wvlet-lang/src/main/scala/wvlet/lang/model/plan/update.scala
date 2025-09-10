@@ -25,7 +25,12 @@ case class SaveTo(
     span: Span
 ) extends Save
 
-case class AppendTo(child: Relation, target: TableOrFileName, span: Span) extends Save
+case class AppendTo(
+    child: Relation,
+    target: TableOrFileName,
+    columns: List[NameExpr] = Nil,
+    span: Span
+) extends Save
 
 case class Delete(child: Relation, target: TableOrFileName, span: Span) extends Save
 

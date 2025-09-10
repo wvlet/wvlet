@@ -139,8 +139,18 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
 //       describe()
       case u if u.isUpdateStart =>
         update()
+      case SqlToken.WITH =>
+        // Handle WITH ... SELECT or WITH ... INSERT
+        withClause() match
+          case q: Relation =>
+            Query(q, spanFrom(t))
+          case u: Update =>
+            u
+          case other =>
+            // This should not happen with current withClause() implementation
+            unexpected(t, s"Unexpected logical plan from withClause: ${other.nodeName}")
       case q if q.isQueryStart || q == SqlToken.L_PAREN =>
-        // A query can start with SELECT, WITH, VALUES, or a parenthesis
+        // A query can start with SELECT, VALUES, or a parenthesis
         Query(query(), spanFrom(t))
       case SqlToken.SHOW =>
         show()
@@ -601,7 +611,10 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
   def queryOrUpdate(): LogicalPlan =
     val t = scanner.lookAhead()
     t.token match
-      case SqlToken.WITH | SqlToken.SELECT =>
+      case SqlToken.WITH =>
+        // Handle WITH ... INSERT (Hive syntax) or WITH ... SELECT
+        withClause()
+      case SqlToken.SELECT =>
         query()
       case SqlToken.VALUES =>
         values()
@@ -614,6 +627,90 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       case _ =>
         unexpected(t)
   end queryOrUpdate
+
+  private def parseWithCTEs(startToken: TokenData[SqlToken]): (Boolean, List[AliasedRelation]) =
+    consume(SqlToken.WITH)
+    val isRecursive = consumeIfExist(SqlToken.RECURSIVE)
+
+    def withQuery(): List[AliasedRelation] =
+      // Use tail-recursive loop to avoid StackOverflowError with many CTEs
+      @annotation.tailrec
+      def loop(acc: List[AliasedRelation]): List[AliasedRelation] =
+        val t     = scanner.lookAhead()
+        val alias = identifier()
+        val typeDefs =
+          scanner.lookAhead().token match
+            case SqlToken.L_PAREN =>
+              consume(SqlToken.L_PAREN)
+              val types = namedTypes()
+              consume(SqlToken.R_PAREN)
+              Some(types)
+            case _ =>
+              None
+
+        consume(SqlToken.AS)
+        consume(SqlToken.L_PAREN)
+        val body = query()
+        consume(SqlToken.R_PAREN)
+        // Fix span calculation - use the CTE's own start token, not the WITH token
+        val r = AliasedRelation(body, alias, typeDefs, spanFrom(t))
+
+        scanner.lookAhead().token match
+          case SqlToken.COMMA =>
+            consume(SqlToken.COMMA)
+            loop(r :: acc)
+          case _ =>
+            (r :: acc).reverse
+
+      loop(Nil)
+    end withQuery
+
+    (isRecursive, withQuery())
+
+  end parseWithCTEs
+
+  def withClause(): LogicalPlan =
+    val t                        = scanner.lookAhead()
+    val (isRecursive, withStmts) = parseWithCTEs(t)
+    // Capture the span of just the WITH clause and CTEs
+    val withClauseSpan = spanFrom(t)
+
+    // Check what follows the WITH clause
+    scanner.lookAhead().token match
+      case SqlToken.INSERT =>
+        // Handle WITH ... INSERT (Hive syntax)
+        val insertStmt = insert()
+        // Wrap the INSERT's query child with the WITH clause
+        insertStmt match
+          case InsertInto(target, columns, child, _) =>
+            // WithQuery span should be from WITH to end of CTEs only
+            val withBody = WithQuery(isRecursive, withStmts, child, withClauseSpan)
+            // INSERT span should include entire WITH ... INSERT
+            InsertInto(target, columns, withBody, spanFrom(t))
+          case InsertOverwrite(target, child, _) =>
+            // WithQuery span should be from WITH to end of CTEs only
+            val withBody = WithQuery(isRecursive, withStmts, child, withClauseSpan)
+            // INSERT span should include entire WITH ... INSERT
+            InsertOverwrite(target, withBody, spanFrom(t))
+          case Insert(target, columns, query, _) =>
+            // WithQuery span should be from WITH to end of CTEs only
+            val withBody = WithQuery(isRecursive, withStmts, query, withClauseSpan)
+            // INSERT span should include entire WITH ... INSERT
+            Insert(target, columns, withBody, spanFrom(t))
+          case Upsert(target, columns, query, _) =>
+            // WithQuery span should be from WITH to end of CTEs only
+            val withBody = WithQuery(isRecursive, withStmts, query, withClauseSpan)
+            // UPSERT span should include entire WITH ... INSERT
+            Upsert(target, columns, withBody, spanFrom(t))
+          case other =>
+            // This should not happen with current insert() implementation
+            unexpected(t, s"Unexpected update type from insert(): ${other.nodeName}")
+      case _ =>
+        // Standard WITH ... SELECT
+        val body = query()
+        WithQuery(isRecursive, withStmts, body, spanFrom(t))
+    end match
+  end withClause
 
   def insert(): Update =
     val t = scanner.lookAhead()
@@ -999,6 +1096,11 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     t.token match
       case SqlToken.VALUES =>
         values()
+      case SqlToken.WITH =>
+        // Handle WITH queries (CTEs)
+        val (isRecursive, withStmts) = parseWithCTEs(t)
+        val body                     = query()
+        WithQuery(isRecursive, withStmts, body, spanFrom(t))
       case q if q.isQueryStart =>
         select()
       case SqlToken.L_PAREN =>
@@ -1008,6 +1110,10 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         queryRest(subQuery)
       case _ =>
         unexpected(t)
+
+    end match
+
+  end query
 
   def selectItems(): List[Attribute] =
     val t = scanner.lookAhead()
@@ -1091,36 +1197,6 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         r = offset(r)
         r = queryRest(r)
         r
-      case SqlToken.WITH =>
-        consume(SqlToken.WITH)
-        val isRecursive = consumeIfExist(SqlToken.RECURSIVE)
-        def withQuery(): List[AliasedRelation] =
-          val alias = identifier()
-          val typeDefs =
-            scanner.lookAhead().token match
-              case SqlToken.L_PAREN =>
-                consume(SqlToken.L_PAREN)
-                val types = namedTypes()
-                consume(SqlToken.R_PAREN)
-                Some(types)
-              case _ =>
-                None
-
-          consume(SqlToken.AS)
-          consume(SqlToken.L_PAREN)
-          val body = query()
-          consume(SqlToken.R_PAREN)
-          val r = AliasedRelation(body, alias, typeDefs, spanFrom(t))
-          scanner.lookAhead().token match
-            case SqlToken.COMMA =>
-              consume(SqlToken.COMMA)
-              r :: withQuery()
-            case _ =>
-              List(r)
-
-        val withStmts = withQuery()
-        val body      = query()
-        WithQuery(isRecursive, withStmts, body, spanFrom(t))
       case other =>
         unexpected(t)
     end match

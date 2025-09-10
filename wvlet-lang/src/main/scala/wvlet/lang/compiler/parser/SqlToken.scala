@@ -406,7 +406,7 @@ object SqlToken:
     SqlToken.ON
   )
 
-  val queryStartTokens = List(SqlToken.SELECT, SqlToken.WITH, SqlToken.VALUES)
+  val queryStartTokens = List(SqlToken.SELECT, SqlToken.VALUES, SqlToken.WITH)
   val updateStartTokens = List(
     SqlToken.INSERT,
     SqlToken.UPSERT,

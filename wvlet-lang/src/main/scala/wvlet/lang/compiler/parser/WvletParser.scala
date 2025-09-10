@@ -902,7 +902,34 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         consume(WvletToken.APPEND)
         consume(WvletToken.TO)
         val target: StringLiteral | QualifiedName = literalOrQualifiedName()
-        AppendTo(r, target, spanFrom(t))
+        // Handle optional column list like: append to users(id, email)
+        val columns =
+          if scanner.lookAhead().token == WvletToken.L_PAREN then
+            consume(WvletToken.L_PAREN)
+            def parseColumns(): List[NameExpr] =
+              // Use tail-recursive loop to avoid StackOverflowError with many columns
+              @annotation.tailrec
+              def loop(acc: List[NameExpr]): List[NameExpr] =
+                val id = identifier()
+                scanner.lookAhead().token match
+                  case WvletToken.COMMA =>
+                    consume(WvletToken.COMMA)
+                    loop(id :: acc)
+                  case _ =>
+                    (id :: acc).reverse
+
+              // Handle empty column list
+              if scanner.lookAhead().token == WvletToken.R_PAREN then
+                Nil
+              else
+                loop(Nil)
+
+            val cols = parseColumns()
+            consume(WvletToken.R_PAREN)
+            cols
+          else
+            Nil
+        AppendTo(r, target, columns, spanFrom(t))
       case WvletToken.DELETE =>
         consume(WvletToken.DELETE)
 
