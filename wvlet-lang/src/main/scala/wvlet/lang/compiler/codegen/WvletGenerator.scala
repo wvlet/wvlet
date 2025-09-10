@@ -476,18 +476,63 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
         case g: UnresolvedGroupingKey =>
           expr(g.child)
         case f: FunctionApply =>
-          val base =
-            f.base match
-              case d: DoubleQuoteString =>
-                // Some SQL engines like Trino, DuckDB allow using double-quoted identifiers for function names, but
-                // Wvlet doesn't support double-quoted identifiers, so convert it to a backquoted identifier
-                expr(BackQuotedIdentifier(d.unquotedValue, d.dataType, d.span))
-              case other =>
-                expr(other)
-          val args = paren(cl(f.args.map(x => expr(x))))
-          val w    = f.window.map(x => expr(x))
-          val stem = base + args
-          wl(stem, w)
+          // Special handling for MAP(...) so we can emit Wvlet-native map { key: value, ... }
+          f.base match
+            case id: Identifier if id.unquotedValue.equalsIgnoreCase("map") =>
+              def mapKeyDoc(k: Expression): Doc =
+                k match
+                  case s: SingleQuoteString =>
+                    text(s"\"${s.unquotedValue}\"")
+                  case d: DoubleQuoteString =>
+                    text(s"\"${d.unquotedValue}\"")
+                  case l: LongLiteral =>
+                    text(s"\"${l.stringValue}\"")
+                  case d: DoubleLiteral =>
+                    text(s"\"${d.stringValue}\"")
+                  case bq: BackQuotedIdentifier =>
+                    expr(bq)
+                  case i: Identifier =>
+                    expr(i)
+                  case other =>
+                    expr(other)
+
+              val entries: List[Doc] =
+                val args = f.args.map(_.value)
+                args match
+                  case List(ArrayConstructor(keys, _), ArrayConstructor(values, _)) =>
+                    keys
+                      .zip(values)
+                      .map { case (k, v) =>
+                        wl(mapKeyDoc(k) + ":", expr(v))
+                      }
+                  case _ if args.size % 2 == 0 =>
+                    args
+                      .grouped(2)
+                      .collect { case List(k, v) =>
+                        wl(mapKeyDoc(k) + ":", expr(v))
+                      }
+                      .toList
+                  case _ =>
+                    // Fallback: render as-is (function call)
+                    val base    = expr(f.base)
+                    val argsDoc = paren(cl(f.args.map(x => expr(x))))
+                    val w       = f.window.map(x => expr(x))
+                    return wl(base + argsDoc, w)
+
+              wl("map", brace(cl(entries)))
+            case _ =>
+              val base =
+                f.base match
+                  case d: DoubleQuoteString =>
+                    // Some SQL engines like Trino, DuckDB allow using double-quoted identifiers for function names, but
+                    // Wvlet doesn't support double-quoted identifiers, so convert it to a backquoted identifier
+                    expr(BackQuotedIdentifier(d.unquotedValue, d.dataType, d.span))
+                  case other =>
+                    expr(other)
+              val args = paren(cl(f.args.map(x => expr(x))))
+              val w    = f.window.map(x => expr(x))
+              val stem = base + args
+              wl(stem, w)
         case w: WindowApply =>
           val base   = expr(w.base)
           val window = expr(w.window)
@@ -690,6 +735,10 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
               case d: DoubleQuoteString =>
                 // Already double-quoted string; use as-is
                 text(s"\"${d.unquotedValue}\"")
+              case l: LongLiteral =>
+                text(s"\"${l.stringValue}\"")
+              case d: DoubleLiteral =>
+                text(s"\"${d.stringValue}\"")
               case bq: BackQuotedIdentifier =>
                 // Backquoted identifiers are acceptable
                 expr(bq)
@@ -699,7 +748,11 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
                 // Fallback to expression rendering (best-effort)
                 expr(other)
 
-          val entries = m.entries.map { e => wl(mapKeyDoc(e.key) + ":", expr(e.value)) }
+          val entries = m
+            .entries
+            .map { e =>
+              wl(mapKeyDoc(e.key) + ":", expr(e.value))
+            }
           wl("map", brace(cl(entries)))
         case b: Between =>
           wl(expr(b.e), "between", expr(b.a), "and", expr(b.b))

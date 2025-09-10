@@ -1166,35 +1166,57 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             f.window.map(w => wl(result, expr(w))).getOrElse(result)
 
           case baseId: Identifier if baseId.unquotedValue.toLowerCase == "map" =>
-            // Normalize MAP constructor based on dialect
-            val argValues = f.args.map(_.value)
-            dbType.mapConstructorSyntax match
-              case SQLDialect.MapSyntax.KeyValue =>
-                // Expect pairs: k1, v1, k2, v2, ...
-                val entries: List[Doc] = argValues
-                  .grouped(2)
-                  .toList
-                  .collect { case List(k, v) =>
-                    group(wl(expr(k) + ":", expr(v)))
-                  }
-                // MAP { key: value, ... }
-                wl("MAP", brace(cl(entries)))
-              case SQLDialect.MapSyntax.ArrayPair =>
-                val keys: List[Expression] = argValues
-                  .grouped(2)
-                  .toList
-                  .collect { case List(k, _) =>
-                    k
-                  }
-                val values: List[Expression] = argValues
-                  .grouped(2)
-                  .toList
-                  .collect { case List(_, v) =>
-                    v
-                  }
-                val keysArr   = ArrayConstructor(keys, f.span)
-                val valuesArr = ArrayConstructor(values, f.span)
-                text("MAP") + paren(cl(List(expr(keysArr), expr(valuesArr))))
+            // Normalize MAP constructor across dialects and argument styles
+            val args = f.args.map(_.value)
+            args match
+              // Two-array form
+              case List(ArrayConstructor(keys, _), ArrayConstructor(values, _)) =>
+                dbType.mapConstructorSyntax match
+                  case SQLDialect.MapSyntax.KeyValue =>
+                    val entries = keys
+                      .zip(values)
+                      .map { case (k, v) =>
+                        group(wl(expr(k) + ":", expr(v)))
+                      }
+                    wl("MAP", brace(cl(entries)))
+                  case SQLDialect.MapSyntax.ArrayPair =>
+                    text("MAP") +
+                      paren(
+                        cl(
+                          List(
+                            expr(ArrayConstructor(keys, f.span)),
+                            expr(ArrayConstructor(values, f.span))
+                          )
+                        )
+                      )
+              // Variadic key/value arguments
+              case _ =>
+                dbType.mapConstructorSyntax match
+                  case SQLDialect.MapSyntax.KeyValue =>
+                    val entries: List[Doc] = args
+                      .grouped(2)
+                      .toList
+                      .collect { case List(k, v) =>
+                        group(wl(expr(k) + ":", expr(v)))
+                      }
+                    wl("MAP", brace(cl(entries)))
+                  case SQLDialect.MapSyntax.ArrayPair =>
+                    val keys: List[Expression] = args
+                      .grouped(2)
+                      .toList
+                      .collect { case List(k, _) =>
+                        k
+                      }
+                    val values: List[Expression] = args
+                      .grouped(2)
+                      .toList
+                      .collect { case List(_, v) =>
+                        v
+                      }
+                    val keysArr   = ArrayConstructor(keys, f.span)
+                    val valuesArr = ArrayConstructor(values, f.span)
+                    text("MAP") + paren(cl(List(expr(keysArr), expr(valuesArr))))
+            end match
 
           case _ =>
             // Regular function handling
