@@ -683,16 +683,16 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         val insertStmt = insert()
         // Wrap the INSERT's query child with the WITH clause
         insertStmt match
-          case InsertInto(target, columns, child, _) =>
+          case InsertInto(target, columns, child, partitionOptions, _) =>
             // WithQuery span should be from WITH to end of CTEs only
             val withBody = WithQuery(isRecursive, withStmts, child, withClauseSpan)
             // INSERT span should include entire WITH ... INSERT
-            InsertInto(target, columns, withBody, spanFrom(t))
-          case InsertOverwrite(target, child, _) =>
+            InsertInto(target, columns, withBody, partitionOptions, spanFrom(t))
+          case InsertOverwrite(target, child, partitionOptions, _) =>
             // WithQuery span should be from WITH to end of CTEs only
             val withBody = WithQuery(isRecursive, withStmts, child, withClauseSpan)
             // INSERT span should include entire WITH ... INSERT
-            InsertOverwrite(target, withBody, spanFrom(t))
+            InsertOverwrite(target, withBody, partitionOptions, spanFrom(t))
           case Insert(target, columns, query, _) =>
             // WithQuery span should be from WITH to end of CTEs only
             val withBody = WithQuery(isRecursive, withStmts, query, withClauseSpan)
@@ -741,14 +741,16 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
               else
                 // No column list or parenthesized query
                 (Nil, query())
-            InsertInto(target, columns, q, spanFrom(t))
+            val partitionOptions = partitionWriteOptions()
+            InsertInto(target, columns, q, partitionOptions, spanFrom(t))
           case SqlToken.OVERWRITE =>
             consume(SqlToken.OVERWRITE)
             consume(SqlToken.TABLE)
             val target = qualifiedName()
             // Note: OVERWRITE TABLE doesn't support column lists in standard Hive syntax
-            val q = query()
-            InsertOverwrite(target, q, spanFrom(t))
+            val q                = query()
+            val partitionOptions = partitionWriteOptions()
+            InsertOverwrite(target, q, partitionOptions, spanFrom(t))
           case _ =>
             val target = qualifiedName()
             val columns =
@@ -874,8 +876,9 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           scanner.lookAhead().token match
             case SqlToken.AS =>
               consume(SqlToken.AS)
-              val q = query()
-              CreateTableAs(tbl, createMode, q, properties, spanFrom(t))
+              val q                = query()
+              val partitionOptions = partitionWriteOptions()
+              CreateTableAs(tbl, createMode, q, properties, partitionOptions, spanFrom(t))
             case _ =>
               // No AS SELECT clause - create table with columns and/or properties
               CreateTable(
@@ -3050,6 +3053,49 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
             dotRef(DotRef(expr, next, DataType.UnknownType, spanFrom(token)))
       case _ =>
         expr
+
+  def partitionWriteOptions(): List[PartitionWriteOption] =
+    import PartitionWriteMode.*
+    import scala.collection.mutable.ListBuffer
+
+    val options         = ListBuffer.empty[PartitionWriteOption]
+    var hasClusterBy    = false
+    var hasDistributeBy = false
+    var hasSortBy       = false
+    var continueLoop    = true
+
+    while continueLoop do
+      val t = scanner.lookAhead()
+      t.token match
+        case SqlToken.CLUSTER =>
+          if hasDistributeBy || hasSortBy then
+            unexpected(t, "CLUSTER BY cannot be used with DISTRIBUTE BY or SORT BY")
+          consume(SqlToken.CLUSTER)
+          consume(SqlToken.BY)
+          val expressions = expressionList()
+          options += PartitionWriteOption(HIVE_CLUSTER_BY, expressions = expressions)
+          hasClusterBy = true
+        case SqlToken.DISTRIBUTE =>
+          if hasClusterBy then
+            unexpected(t, "DISTRIBUTE BY cannot be used with CLUSTER BY")
+          consume(SqlToken.DISTRIBUTE)
+          consume(SqlToken.BY)
+          val expressions = expressionList()
+          options += PartitionWriteOption(HIVE_DISTRIBUTE_BY, expressions = expressions)
+          hasDistributeBy = true
+        case SqlToken.SORT =>
+          if hasClusterBy then
+            unexpected(t, "SORT BY cannot be used with CLUSTER BY")
+          consume(SqlToken.SORT)
+          consume(SqlToken.BY)
+          val items = sortItems()
+          options += PartitionWriteOption(HIVE_SORT_BY, sortItems = items)
+          hasSortBy = true
+        case _ =>
+          continueLoop = false
+    options.toList
+
+  end partitionWriteOptions
 
   def reserved(): Identifier =
     val t = consumeToken()
