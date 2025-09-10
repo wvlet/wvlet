@@ -377,7 +377,9 @@ object SqlToken:
     SqlToken.USER,
     SqlToken.ROLE,
     SqlToken.DATA,
-    SqlToken.AFTER
+    SqlToken.AFTER,
+    // TIME can be used as a column name (e.g., access.time in TD_TIME_RANGE)
+    SqlToken.TIME
   )
 
   val allKeywordsAndSymbols = keywords ++ literalStartKeywords ++ specialSymbols
