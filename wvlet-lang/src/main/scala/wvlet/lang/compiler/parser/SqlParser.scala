@@ -1900,7 +1900,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         // Treat as a function call, e.g., date(...)
         val identifier = UnquotedIdentifier(keywordToken.str, spanFrom(keywordToken))
         primaryExpressionRest(identifier)
-      else if SqlToken.nonReservedKeywords.contains(keywordToken.token) && 
+      else if keywordToken.token.isNonReservedKeyword && 
               nextToken != SqlToken.SINGLE_QUOTE_STRING && 
               nextToken != SqlToken.TRIPLE_QUOTE_STRING then
         // Non-reserved keyword used as identifier (e.g., column name)
