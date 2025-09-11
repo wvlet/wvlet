@@ -515,52 +515,54 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       List[(NameExpr, Expression)],
       Option[String]
   ) =
-    var notNull                                  = false
-    var comment: Option[String]                  = None
-    var defaultValue: Option[Expression]         = None
-    var properties: List[(NameExpr, Expression)] = Nil
-    var position: Option[String]                 = None // FIRST, LAST, or AFTER column_name
-
-    // Parse column attributes in a loop
-    var continue = true
-    while continue do
+    @scala.annotation.tailrec
+    def loop(
+        notNull: Boolean,
+        comment: Option[String],
+        defaultValue: Option[Expression],
+        properties: List[(NameExpr, Expression)],
+        position: Option[String]
+    ): (Boolean, Option[String], Option[Expression], List[(NameExpr, Expression)], Option[String]) =
       scanner.lookAhead().token match
         case SqlToken.NOT =>
           consume(SqlToken.NOT)
           consume(SqlToken.NULL)
-          notNull = true
+          loop(true, comment, defaultValue, properties, position)
         case SqlToken.COMMENT =>
           consume(SqlToken.COMMENT)
           val commentLiteral = literal()
-          comment =
+          val newComment =
             commentLiteral match
               case s: StringLiteral =>
                 Some(s.unquotedValue)
               case _ =>
                 unexpected(commentLiteral, "COMMENT must be followed by a string literal")
+          loop(notNull, newComment, defaultValue, properties, position)
         case SqlToken.DEFAULT =>
           consume(SqlToken.DEFAULT)
-          defaultValue = Some(expression())
+          val newDefaultValue = Some(expression())
+          loop(notNull, comment, newDefaultValue, properties, position)
         case SqlToken.WITH =>
           consume(SqlToken.WITH)
           consume(SqlToken.L_PAREN)
-          properties = parsePropertyList()
+          val newProperties = parsePropertyList()
           consume(SqlToken.R_PAREN)
+          loop(notNull, comment, defaultValue, newProperties, position)
         case SqlToken.FIRST =>
           consume(SqlToken.FIRST)
-          position = Some("FIRST")
+          loop(notNull, comment, defaultValue, properties, Some("FIRST"))
         case SqlToken.LAST =>
           consume(SqlToken.LAST)
-          position = Some("LAST")
+          loop(notNull, comment, defaultValue, properties, Some("LAST"))
         case SqlToken.AFTER =>
           consume(SqlToken.AFTER)
           val afterColumn = identifier()
-          position = Some(s"AFTER ${afterColumn.fullName}")
+          loop(notNull, comment, defaultValue, properties, Some(s"AFTER ${afterColumn.fullName}"))
         case _ =>
-          continue = false
-    end while
+          (notNull, comment, defaultValue, properties, position)
+    end loop
 
-    (notNull, comment, defaultValue, properties, position)
+    loop(notNull = false, comment = None, defaultValue = None, properties = Nil, position = None)
   end parseColumnAttributes
 
   def parsePropertyList(): List[(NameExpr, Expression)] = parseCommaSeparatedList(() =>
