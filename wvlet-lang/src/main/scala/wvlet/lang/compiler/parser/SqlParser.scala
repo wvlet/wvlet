@@ -201,20 +201,17 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     t2.token match
       case SqlToken.SET =>
         consume(SqlToken.SET)
-        // Check if next token is SESSION for SET SESSION syntax
-        val t3 = scanner.lookAhead()
-        if t3.token == SqlToken.SESSION && alterType == AlterType.DEFAULT then
-          // Handle SET SESSION case for Trino
-          consume(SqlToken.SESSION)
-          val id = qualifiedName()
-          consume(SqlToken.EQ)
-          val value = expression()
-          AlterVariable(AlterType.SESSION, false, id, Some(value), spanFrom(t))
-        else
-          val id = qualifiedName()
-          consume(SqlToken.EQ)
-          val value = expression()
-          AlterVariable(alterType, false, id, Some(value), spanFrom(t))
+        val effectiveAlterType =
+          if scanner.lookAhead().token == SqlToken.SESSION && alterType == AlterType.DEFAULT then
+            // Handle SET SESSION case for Trino
+            consume(SqlToken.SESSION)
+            AlterType.SESSION
+          else
+            alterType
+        val id = qualifiedName()
+        consume(SqlToken.EQ)
+        val value = expression()
+        AlterVariable(effectiveAlterType, false, id, Some(value), spanFrom(t))
       case SqlToken.RESET =>
         consume(SqlToken.RESET)
         scanner.lookAhead().token match
