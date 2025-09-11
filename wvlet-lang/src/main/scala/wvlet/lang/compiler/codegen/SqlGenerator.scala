@@ -1292,6 +1292,9 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
                 case d: DoubleQuoteString =>
                   // Handle double-quoted strings as identifiers when used as function names
                   text(doubleQuoteIfNecessary(d.unquotedValue))
+                case id: Identifier if id.unquotedValue.toLowerCase == "grouping" =>
+                  // Special handling for GROUPING function - don't quote it
+                  text("grouping")
                 case other =>
                   expr(other)
             val args = paren(cl(f.args.map(x => expr(x))))
