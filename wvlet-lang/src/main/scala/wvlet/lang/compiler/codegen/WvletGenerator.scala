@@ -343,10 +343,7 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
           val sizeDoc =
             s.size match
               case SamplingSize.Rows(n) =>
-                if s.method.isDefined then
-                  text(n.toString)
-                else
-                  text(s"${n} rows")
+                text(n.toString)
               case SamplingSize.Percentage(p) =>
                 text(s"${p}%")
               case SamplingSize.PercentageExpr(e) =>
