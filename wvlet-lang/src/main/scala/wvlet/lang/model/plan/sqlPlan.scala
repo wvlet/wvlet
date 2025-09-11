@@ -13,7 +13,7 @@ enum AlterType:
 case class AlterVariable(
     tpe: AlterType,
     isReset: Boolean = false,
-    identifier: Identifier,
+    identifier: QualifiedName,
     value: Option[Expression] = None,
     span: Span
 ) extends DDL
