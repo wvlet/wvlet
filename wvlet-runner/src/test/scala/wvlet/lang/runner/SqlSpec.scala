@@ -13,3 +13,5 @@ class SqlBasicSpec
 class SqlTPCHSpec extends SpecRunner("spec/sql/tpc-h", parseOnly = true, prepareTPCH = true)
 
 class SqlTPCDSSpec extends SpecRunner("spec/sql/tpc-ds", parseOnly = true, prepareTPCDS = true)
+
+class SqlParserTrinoSpec extends SpecRunner("spec/sql/trino", parseOnly = true)

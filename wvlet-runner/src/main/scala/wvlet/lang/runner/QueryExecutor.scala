@@ -256,6 +256,11 @@ class QueryExecutor(
               .newException(
                 s"Invalid schema name: ${fullName}. Expected format: <schema_name> or <catalog_name>.<schema_name>"
               )
+      case d: DescribeInput =>
+        // For now, just return empty result since DESCRIBE INPUT is mainly for parsing validation
+        // In a full implementation, this would query the prepared statement metadata
+        workEnv.info(s"DESCRIBE INPUT ${d.name.fullName}")
+        QueryResult.empty
     end match
 
   end executeCommand
