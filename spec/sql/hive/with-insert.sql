@@ -64,7 +64,7 @@ WITH RECURSIVE hierarchy AS (
 INSERT INTO org_chart
 SELECT * FROM hierarchy;
 
--- WITH clause containing CLUSTER BY (moved to outermost SELECT)
+-- WITH clause containing CLUSTER BY
 WITH tag_top_k AS (
   SELECT
     each_top_k(
@@ -78,6 +78,7 @@ WITH tag_top_k AS (
       tag_score
     FROM cdp_tmp_word_tagging_behavior_behv_orders
   ) t
+  CLUSTER BY cdp_customer_id
 )
 INSERT OVERWRITE TABLE `cdp_tmp_word_tagging_behavior_behv_orders_customers_tags`
 SELECT
@@ -85,5 +86,3 @@ SELECT
   tag
 FROM
   tag_top_k
-CLUSTER BY
-  cdp_customer_id;
