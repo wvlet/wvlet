@@ -44,3 +44,11 @@ class SqlParserCommentTest extends AirSpec:
     val stmt   = parser.parse()
     debug(stmt.pp)
   }
+
+  test("should handle single quotes in COMMENT strings") {
+    val sql    = "CREATE TABLE test ( name varchar COMMENT 'User''s full name' );"
+    val unit   = CompilationUnit.fromSqlString(sql)
+    val parser = SqlParser(unit, isContextUnit = true)
+    val stmt   = parser.parse()
+    debug(stmt.pp)
+  }

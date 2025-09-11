@@ -1640,7 +1640,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
               None
             ,
             // Add COMMENT attribute
-            c.comment.map(comment => wl(text("comment"), text(s"'${comment}'"))),
+            c.comment.map(comment => wl(text("comment"), text(s"'${comment.replace("'", "''")}'"))),
             // Add DEFAULT value
             c.defaultValue.map(default => wl(text("default"), expr(default))),
             // Add WITH properties
