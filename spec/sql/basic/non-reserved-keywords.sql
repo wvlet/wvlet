@@ -26,6 +26,15 @@ SELECT fetch FROM (VALUES ('fetch_data'), ('retrieve_info')) AS t(fetch);
 SELECT interval FROM (VALUES ('daily'), ('weekly'), ('monthly')) AS t(interval);
 SELECT interval, duration FROM (VALUES ('hourly', 60), ('daily', 1440)) AS t(interval, duration);
 
+-- Test INTERVAL in arithmetic expressions (multiplication and division work)
+SELECT interval * 2 FROM (VALUES (5), (10)) AS t(interval);
+SELECT interval / 2 FROM (VALUES (10), (20)) AS t(interval);
+
+-- Note: INTERVAL + literal and INTERVAL - literal are reserved for interval literals
+-- These would be parsed as interval literals and cause errors if not followed by time unit:
+-- SELECT interval + 1 FROM (VALUES (5)) AS t(interval); -- Would error: Expected time unit
+-- SELECT interval - 1 FROM (VALUES (5)) AS t(interval); -- Would error: Expected time unit
+
 -- Test LIMIT as identifier
 SELECT limit FROM (VALUES (100), (200), (500)) AS t(limit);
 SELECT limit * 2 AS double_limit FROM (VALUES (50), (75)) AS t(limit);

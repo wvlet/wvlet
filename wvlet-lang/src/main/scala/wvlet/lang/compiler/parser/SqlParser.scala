@@ -2654,49 +2654,54 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
   def intervalOrIdentifier(): Expression =
     // Check if INTERVAL is followed by a sign or literal to distinguish between
     // INTERVAL literal (e.g., INTERVAL '1' DAY) and INTERVAL as identifier
-    val t         = consume(SqlToken.INTERVAL)
-    val nextToken = scanner.lookAhead().token
-    nextToken match
-      case SqlToken.PLUS | SqlToken.MINUS =>
-        parseInterval(t)
-      case token if token.isLiteral =>
-        parseInterval(t)
-      case _ =>
-        // INTERVAL is used as an identifier, not as interval literal
-        // Create identifier from the already consumed INTERVAL token
-        UnquotedIdentifier(t.str, spanFrom(t))
+    val intervalToken = consume(SqlToken.INTERVAL)
 
-  private def parseInterval(intervalToken: TokenData[SqlToken]): IntervalLiteral =
-    // interval : INTERVAL sign = (PLUS | MINUS) ? str intervalField (TO intervalField)?
-    // intervalField: YEAR | MONTH | DAY | HOUR | MINUTE | SECOND;
+    // Inner function to parse interval literal after we've determined it's valid
+    def parseIntervalLiteral(sign: Sign): IntervalLiteral =
+      val value = literal()
 
-    val sign =
+      def intervalField(): IntervalField =
+        val t   = consumeToken()
+        val opt = IntervalField.unapply(t.str)
+        opt.getOrElse(unexpected(t))
+
+      val f1 = intervalField()
       scanner.lookAhead().token match
-        case SqlToken.PLUS =>
-          consume(SqlToken.PLUS)
-          Sign.Positive
-        case SqlToken.MINUS =>
-          consume(SqlToken.MINUS)
-          Sign.Negative
+        case SqlToken.TO =>
+          consume(SqlToken.TO)
+          val f2 = intervalField()
+          IntervalLiteral(value.unquotedValue, sign, f1, Some(f2), spanFrom(intervalToken))
         case _ =>
-          Sign.NoSign
+          IntervalLiteral(value.unquotedValue, sign, f1, None, spanFrom(intervalToken))
 
-    val value = literal()
-
-    def intervalField(): IntervalField =
-      val t   = consumeToken()
-      val opt = IntervalField.unapply(t.str)
-      opt.getOrElse(unexpected(t))
-
-    val f1 = intervalField()
+    // Determine what type of expression this is
     scanner.lookAhead().token match
-      case SqlToken.TO =>
-        consume(SqlToken.TO)
-        val f2 = intervalField()
-        IntervalLiteral(value.unquotedValue, sign, f1, Some(f2), spanFrom(intervalToken))
+      case SqlToken.PLUS | SqlToken.MINUS =>
+        // Could be INTERVAL +/- '1' DAY or interval +/- expression
+        val signToken = consumeToken()
+        val sign = signToken.token match
+          case SqlToken.PLUS  => Sign.Positive
+          case SqlToken.MINUS => Sign.Negative
+          case _              => Sign.NoSign // shouldn't happen
+
+        // Check if next is a literal
+        scanner.lookAhead().token match
+          case t if t.isLiteral =>
+            // It's INTERVAL +/- '1' DAY
+            parseIntervalLiteral(sign)
+          case _ =>
+            // It's arithmetic: interval +/- something
+            // Problem: we already consumed the sign token
+            // We need to error here since we can't push back
+            unexpected(scanner.lookAhead(), s"Expected literal after INTERVAL ${signToken.str}")
+
+      case token if token.isLiteral =>
+        // It's INTERVAL '1' DAY (no sign)
+        parseIntervalLiteral(Sign.NoSign)
+
       case _ =>
-        IntervalLiteral(value.unquotedValue, sign, f1, None, spanFrom(intervalToken))
-  end parseInterval
+        // INTERVAL is used as an identifier
+        UnquotedIdentifier(intervalToken.str, spanFrom(intervalToken))
 
   def extractExpression(): Extract =
     val t = consume(SqlToken.EXTRACT)
