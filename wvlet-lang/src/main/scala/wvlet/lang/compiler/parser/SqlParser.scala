@@ -201,10 +201,17 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     t2.token match
       case SqlToken.SET =>
         consume(SqlToken.SET)
-        val id = identifier()
+        val effectiveAlterType =
+          if scanner.lookAhead().token == SqlToken.SESSION && alterType == AlterType.DEFAULT then
+            // Handle SET SESSION case for Trino
+            consume(SqlToken.SESSION)
+            AlterType.SESSION
+          else
+            alterType
+        val id = qualifiedName()
         consume(SqlToken.EQ)
         val value = expression()
-        AlterVariable(alterType, false, id, Some(value), spanFrom(t))
+        AlterVariable(effectiveAlterType, false, id, Some(value), spanFrom(t))
       case SqlToken.RESET =>
         consume(SqlToken.RESET)
         scanner.lookAhead().token match
@@ -212,7 +219,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
             consume(SqlToken.ALL)
             AlterVariable(alterType, true, EmptyName, None, spanFrom(t))
           case _ =>
-            val id = identifier()
+            val id = qualifiedName()
             AlterVariable(alterType, false, id, None, spanFrom(t))
       case other =>
         unexpected(t2)
