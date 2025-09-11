@@ -910,13 +910,14 @@ case class ColumnDef(
     with UnaryExpression:
   override def toString: String  = s"${columnName.leafName}:${tpe.wvExpr}"
   override def child: Expression = columnName
+
 //
 //case class ColumnType(tpe: NameExpr, span: Span) extends LeafExpression
 //
-//case class ColumnDefLike(tableName: NameExpr, includeProperties: Boolean, span: Span)
-//    extends TableElement
-//    with UnaryExpression:
-//  override def child: Expression = tableName
+case class LikeTableDef(tableName: NameExpr, includeProperties: Boolean, span: Span)
+    extends TableElement
+    with UnaryExpression:
+  override def child: Expression = tableName
 
 // Aggregation
 trait GroupingKey extends UnaryExpression:

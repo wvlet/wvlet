@@ -806,9 +806,36 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         case _ =>
           SqlToken.TABLE // default to table
 
-    def tableElems(): List[ColumnDef] =
+    def tableElems(): List[TableElement] =
       val t = scanner.lookAhead()
       t.token match
+        case SqlToken.LIKE =>
+          val likeToken = consume(SqlToken.LIKE)
+          val tableName = qualifiedName()
+
+          // Check for optional INCLUDING/EXCLUDING PROPERTIES
+          val includeProperties =
+            scanner.lookAhead().token match
+              case SqlToken.INCLUDING =>
+                consume(SqlToken.INCLUDING)
+                consume(SqlToken.PROPERTIES)
+                true
+              case SqlToken.EXCLUDING =>
+                consume(SqlToken.EXCLUDING)
+                consume(SqlToken.PROPERTIES)
+                false
+              case _ =>
+                false // Default is EXCLUDING PROPERTIES
+
+          val likeTableDef = LikeTableDef(tableName, includeProperties, spanFrom(likeToken))
+
+          scanner.lookAhead().token match
+            case SqlToken.COMMA =>
+              consume(SqlToken.COMMA)
+              likeTableDef :: tableElems()
+            case _ =>
+              List(likeTableDef)
+
         case id if id.isIdentifier =>
           val col = identifier()
           val tpe = typeName()
@@ -821,6 +848,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
               List(cd)
         case _ =>
           Nil
+      end match
+    end tableElems
 
     def parseCreateStatement(): LogicalPlan =
       val t = consume(SqlToken.CREATE)
