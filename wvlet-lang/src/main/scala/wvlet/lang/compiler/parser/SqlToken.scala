@@ -208,6 +208,7 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   case FOR            extends SqlToken(Keyword, "for")
   case DESCRIBE       extends SqlToken(Keyword, "describe")
   case INPUT          extends SqlToken(Keyword, "input")
+  case OUTPUT         extends SqlToken(Keyword, "output")
 
   // DDL entity types (non-reserved so they can be used as table names)
   case CATALOG   extends SqlToken(Keyword, "catalog")
@@ -381,6 +382,7 @@ object SqlToken:
     SqlToken.STATEMENT,
     SqlToken.FUNCTIONS,
     SqlToken.INPUT,
+    SqlToken.OUTPUT,
     // Grouping keywords - can be used as function names
     SqlToken.GROUPING,
     SqlToken.SETS,
