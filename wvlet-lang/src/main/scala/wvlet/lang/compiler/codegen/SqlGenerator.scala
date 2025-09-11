@@ -1322,24 +1322,24 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
               case DBType.DuckDB =>
                 // DuckDB style: function(... IGNORE NULLS) OVER (...)
                 // Modify the function to include null treatment inside the parentheses
-                val modifiedBase =
-                  w.base match
-                    case f: FunctionApply =>
-                      val functionName = expr(f.base)
-                      val argsWithNullTreatment =
-                        if f.args.nonEmpty then
-                          // Apply null treatment to the first argument only
-                          cl(
-                            (expr(f.args.head) + ws + text(nullTreatment.expr)) ::
-                              f.args.tail.map(expr).toList
-                          )
-                        else
-                          text(nullTreatment.expr)
-                      val funcCall = functionName + paren(argsWithNullTreatment)
-                      funcCall
-                    case other =>
-                      base
-                wl(modifiedBase, window)
+                w.base match
+                  case f: FunctionApply =>
+                    val functionName = expr(f.base)
+                    val argsWithNullTreatment =
+                      if f.args.nonEmpty then
+                        // Apply null treatment to the first argument only
+                        cl(
+                          (expr(f.args.head) + ws + text(nullTreatment.expr)) ::
+                            f.args.tail.map(expr).toList
+                        )
+                      else
+                        text(nullTreatment.expr)
+                    val funcCall = functionName + paren(argsWithNullTreatment)
+                    wl(funcCall, window)
+                  case other =>
+                    // Fall back to Trino-style for non-FunctionApply expressions
+                    // to ensure null treatment is not silently dropped
+                    wl(base, text(nullTreatment.expr), window)
               case _ =>
                 // Default to Trino style for other databases
                 wl(base, text(nullTreatment.expr), window)
