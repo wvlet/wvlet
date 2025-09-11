@@ -136,8 +136,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         alterStatement()
       case SqlToken.EXPLAIN =>
         explain()
-//      case SqlToken.DESCRIBE =>
-//       describe()
+      case SqlToken.DESCRIBE =>
+        describe()
       case u if u.isUpdateStart =>
         update()
       case SqlToken.WITH =>
@@ -579,35 +579,18 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
 
   end explain
 
-//  def describe(): LogicalPlan =
-//    val t = consume(SqlToken.DESCRIBE)
-//    scanner.lookAhead().token match
-//      case SqlToken.DATABASE =>
-//        consume(SqlToken.DATABASE)
-//        val name = qualifiedName()
-//        DescribeStmt(DescribeTarget.DATABASE, name, spanFrom(t))
-//      case SqlToken.CATALOG =>
-//        consume(SqlToken.CATALOG)
-//        val name = qualifiedName()
-//        DescribeStmt(DescribeTarget.CATALOG, name, spanFrom(t))
-//      case SqlToken.SCHEMA =>
-//        consume(SqlToken.SCHEMA)
-//        val name = qualifiedName()
-//        DescribeStmt(DescribeTarget.SCHEMA, name, spanFrom(t))
-//      case SqlToken.TABLE =>
-//        consume(SqlToken.TABLE)
-//        val name = qualifiedName()
-//        DescribeStmt(DescribeTarget.TABLE, name, spanFrom(t))
-//      case tk if tk.isIdentifier =>
-//        val name = qualifiedName()
-//        DescribeStmt(DescribeTarget.TABLE, name, spanFrom(t))
-//      case SqlToken.STATEMENT =>
-//        consume(SqlToken.STATEMENT)
-//        val q = query()
-//        Describe(q, spanFrom(t))
-//      case tk if tk.isQueryStart =>
-//        val q = query()
-//        Describe(q, spanFrom(t))
+  def describe(): LogicalPlan =
+    val t = consume(SqlToken.DESCRIBE)
+    scanner.lookAhead().token match
+      case SqlToken.INPUT =>
+        consume(SqlToken.INPUT)
+        val name = identifier()
+        DescribeInput(name, spanFrom(t))
+      case tk =>
+        unexpected(
+          scanner.lookAhead(),
+          s"Unsupported DESCRIBE target: ${tk}. Only DESCRIBE INPUT is currently supported."
+        )
 
   def queryOrUpdate(): LogicalPlan =
     val t = scanner.lookAhead()
