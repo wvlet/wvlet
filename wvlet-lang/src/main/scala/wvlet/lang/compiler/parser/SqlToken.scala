@@ -414,7 +414,9 @@ object SqlToken:
     SqlToken.DATA,
     SqlToken.AFTER,
     // ZONE can be used as a column name in bracket expressions (e.g., map[zone])
-    SqlToken.ZONE
+    SqlToken.ZONE,
+    // Allow CLUSTER to be used as column name while preserving CLUSTER BY syntax
+    SqlToken.CLUSTER
   )
 
   val allKeywordsAndSymbols = keywords ++ literalStartKeywords ++ specialSymbols
