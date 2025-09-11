@@ -266,6 +266,8 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   case OR      extends SqlToken(Keyword, "or")
   case IS      extends SqlToken(Keyword, "is")
   case NULLS   extends SqlToken(Keyword, "nulls")
+  case IGNORE  extends SqlToken(Keyword, "ignore")
+  case RESPECT extends SqlToken(Keyword, "respect")
   case LAST    extends SqlToken(Keyword, "last")
   case UNKNOWN extends SqlToken(Keyword, "unknown")
   case CHECK   extends SqlToken(Keyword, "check")

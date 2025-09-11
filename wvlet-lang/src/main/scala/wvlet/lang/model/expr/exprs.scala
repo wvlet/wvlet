@@ -266,6 +266,10 @@ enum NullOrdering(val expr: String):
   case NullIsLast     extends NullOrdering("nulls last")
   case UndefinedOrder extends NullOrdering("")
 
+enum NullTreatment(val expr: String):
+  case IgnoreNulls  extends NullTreatment("ignore nulls")
+  case RespectNulls extends NullTreatment("respect nulls")
+
 // Window functions
 case class Window(
     partitionBy: List[Expression],
@@ -313,7 +317,12 @@ case class FunctionApply(
 
   override def dataType: DataType = base.dataType
 
-case class WindowApply(base: Expression, window: Window, span: Span) extends Expression:
+case class WindowApply(
+    base: Expression,
+    window: Window,
+    nullTreatment: Option[NullTreatment] = None,
+    span: Span
+) extends Expression:
   override def children: Seq[Expression] = Seq(base, window)
   override def dataType: DataType        = base.dataType
 

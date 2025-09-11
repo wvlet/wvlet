@@ -714,7 +714,7 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
 
         f.window match
           case Some(w) =>
-            WindowApply(expr.withDataType(m.ft.returnType), w, expr.span)
+            WindowApply(expr.withDataType(m.ft.returnType), w, None, expr.span)
           case None =>
             expr.withDataType(m.ft.returnType)
       case _ =>
