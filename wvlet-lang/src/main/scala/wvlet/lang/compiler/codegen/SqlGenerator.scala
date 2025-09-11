@@ -1324,7 +1324,11 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
                       val functionName = expr(f.base)
                       val argsWithNullTreatment =
                         if f.args.nonEmpty then
-                          cl(f.args.map(expr)) + ws + text(nullTreatment.expr)
+                          // Apply null treatment to the first argument only
+                          cl(
+                            (expr(f.args.head) + ws + text(nullTreatment.expr)) ::
+                              f.args.tail.map(expr).toList
+                          )
                         else
                           text(nullTreatment.expr)
                       val funcCall = functionName + paren(argsWithNullTreatment)
@@ -1337,6 +1341,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
                 wl(base, text(nullTreatment.expr), window)
           case None =>
             wl(base, window)
+        end match
       case f: FunctionArg =>
         // TODO handle arg name mapping
         val parts = List.newBuilder[Doc]

@@ -2094,18 +2094,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
               consume(SqlToken.R_PAREN)
 
               // Check for IGNORE/RESPECT NULLS clause (Trino style)
-              val nullTreatment =
-                scanner.lookAhead().token match
-                  case SqlToken.IGNORE =>
-                    consume(SqlToken.IGNORE)
-                    consume(SqlToken.NULLS)
-                    Some(NullTreatment.IgnoreNulls)
-                  case SqlToken.RESPECT =>
-                    consume(SqlToken.RESPECT)
-                    consume(SqlToken.NULLS)
-                    Some(NullTreatment.RespectNulls)
-                  case _ =>
-                    None
+              val nullTreatment = parseNullTreatment()
 
               // Global function call
               val w = window()
@@ -2160,16 +2149,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
               expr
         case SqlToken.IGNORE | SqlToken.RESPECT =>
           // Handle Trino-style IGNORE/RESPECT NULLS OVER (...)
-          val nullTreatment =
-            scanner.lookAhead().token match
-              case SqlToken.IGNORE =>
-                consume(SqlToken.IGNORE)
-                consume(SqlToken.NULLS)
-                NullTreatment.IgnoreNulls
-              case SqlToken.RESPECT =>
-                consume(SqlToken.RESPECT)
-                consume(SqlToken.NULLS)
-                NullTreatment.RespectNulls
+          val nullTreatment = parseNullTreatment().get
 
           window() match
             case Some(w) =>
@@ -3382,5 +3362,18 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         UnquotedIdentifier(t.str, spanFrom(t))
       case _ =>
         unexpected(t)
+
+  private def parseNullTreatment(): Option[NullTreatment] =
+    scanner.lookAhead().token match
+      case SqlToken.IGNORE =>
+        consume(SqlToken.IGNORE)
+        consume(SqlToken.NULLS)
+        Some(NullTreatment.IgnoreNulls)
+      case SqlToken.RESPECT =>
+        consume(SqlToken.RESPECT)
+        consume(SqlToken.NULLS)
+        Some(NullTreatment.RespectNulls)
+      case _ =>
+        None
 
 end SqlParser

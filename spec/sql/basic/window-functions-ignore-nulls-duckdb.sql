@@ -15,11 +15,11 @@ SELECT LEAD(col RESPECT NULLS) OVER (PARTITION BY id ORDER BY ts)
 FROM (VALUES (1, 'a', '2024-01-01'), (1, NULL, '2024-01-02')) AS t(id, col, ts);
 
 -- Test LAG with offset and default value (DuckDB style)
-SELECT LAG(col, 2, 0 IGNORE NULLS) OVER (PARTITION BY id ORDER BY ts)
+SELECT LAG(col IGNORE NULLS, 2, 0) OVER (PARTITION BY id ORDER BY ts)
 FROM (VALUES (1, 10, '2024-01-01'), (1, 20, '2024-01-02')) AS t(id, col, ts);
 
 -- Test LEAD with offset and default value (DuckDB style)
-SELECT LEAD(col, 1, 'default' RESPECT NULLS) OVER (PARTITION BY id ORDER BY ts)
+SELECT LEAD(col RESPECT NULLS, 1, 'default') OVER (PARTITION BY id ORDER BY ts)
 FROM (VALUES (1, 'a', '2024-01-01'), (1, 'b', '2024-01-02')) AS t(id, col, ts);
 
 -- Test FIRST_VALUE with IGNORE NULLS (DuckDB style)
