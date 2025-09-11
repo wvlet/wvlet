@@ -2517,7 +2517,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           val i = literal()
           JsonLiteral(i.unquotedValue, spanFrom(t))
         case SqlToken.INTERVAL =>
-          interval()
+          intervalOrIdentifier()
         case SqlToken.EXTRACT =>
           extractExpression()
         case id if id.isIdentifier =>
@@ -2650,6 +2650,19 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         unexpected(scanner.lookAhead(), "Expected '{' or '(' after MAP")
 
   end map
+
+  def intervalOrIdentifier(): Expression =
+    // Check if INTERVAL is followed by a sign or literal to distinguish between
+    // INTERVAL literal (e.g., INTERVAL '1' DAY) and INTERVAL as identifier
+    val nextToken = scanner.lookAhead().token
+    nextToken match
+      case SqlToken.PLUS | SqlToken.MINUS =>
+        interval()
+      case t if t.isLiteral =>
+        interval()
+      case _ =>
+        // INTERVAL is used as an identifier, not as interval literal
+        identifier()
 
   def interval(): IntervalLiteral =
     // interval : INTERVAL sign = (PLUS | MINUS) ? str intervalField (TO intervalField)?
