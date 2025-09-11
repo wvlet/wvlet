@@ -398,6 +398,7 @@ object SqlToken:
     SqlToken.TIME,
     SqlToken.TIMESTAMP,
     SqlToken.DECIMAL,
+    SqlToken.MAP, // MAP can be used as a table/column alias
     SqlToken.JSON,
     // JSON object modifiers
     SqlToken.ABSENT,
