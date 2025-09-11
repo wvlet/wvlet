@@ -1505,16 +1505,6 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       case SqlToken.CLUSTER | SqlToken.DISTRIBUTE | SqlToken.SORT =>
         val hinted = hivePartitionClauses(r)
         relationRest(hinted)
-      case id if id.isIdentifier =>
-        val t = scanner.lookAhead()
-        if t.str.equalsIgnoreCase("cluster") || t.str.equalsIgnoreCase("distribute") ||
-          t.str.equalsIgnoreCase("sort")
-        then
-          // Handle Hive partition keywords when they appear as identifiers due to being non-reserved keywords
-          val hinted = hivePartitionClauses(r)
-          relationRest(hinted)
-        else
-          r
       case _ =>
         r
     end match
@@ -2995,9 +2985,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
               val subQuery =
                 if t2.token.isQueryStart then
                   // Subquery: (SELECT ... UNION ...)
-                  val q = query()
-                  // Handle Hive partition clauses (CLUSTER BY, DISTRIBUTE BY, SORT BY) in subqueries
-                  hivePartitionClauses(q)
+                  query()
                 else
                   // Other parenthesized expressions or nested parentheses
                   relationRest(relation())
@@ -3452,41 +3440,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           val items = sortItems()
           options += PartitionWriteOption(HIVE_SORT_BY, sortItems = items)
           hasSortBy = true
-        case id
-            if id.isIdentifier &&
-              (t.str.equalsIgnoreCase("cluster") || t.str.equalsIgnoreCase("distribute") ||
-                t.str.equalsIgnoreCase("sort")) =>
-          // Handle Hive partition keywords when they appear as identifiers due to being non-reserved keywords
-          val keyword = t.str.toLowerCase
-          keyword match
-            case "cluster" =>
-              if hasDistributeBy || hasSortBy then
-                unexpected(t, "CLUSTER BY cannot be used with DISTRIBUTE BY or SORT BY")
-              consume(id)
-              consume(SqlToken.BY)
-              val expressions = expressionList()
-              options += PartitionWriteOption(HIVE_CLUSTER_BY, expressions = expressions)
-              hasClusterBy = true
-            case "distribute" =>
-              if hasClusterBy then
-                unexpected(t, "DISTRIBUTE BY cannot be used with CLUSTER BY")
-              consume(id)
-              consume(SqlToken.BY)
-              val expressions = expressionList()
-              options += PartitionWriteOption(HIVE_DISTRIBUTE_BY, expressions = expressions)
-              hasDistributeBy = true
-            case "sort" =>
-              if hasClusterBy then
-                unexpected(t, "SORT BY cannot be used with CLUSTER BY")
-              consume(id)
-              consume(SqlToken.BY)
-              val items = sortItems()
-              options += PartitionWriteOption(HIVE_SORT_BY, sortItems = items)
-              hasSortBy = true
         case _ =>
           continueLoop = false
-      end match
-    end while
     options.toList
 
   end partitionWriteOptions
