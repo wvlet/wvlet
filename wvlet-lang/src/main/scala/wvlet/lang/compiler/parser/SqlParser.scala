@@ -2591,7 +2591,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         parseMapFunction()
       case _ if t.token.isNonReservedKeyword =>
         // MAP used as identifier (table alias, column name, etc.)
-        UnquotedIdentifier("map", spanFrom(t))
+        UnquotedIdentifier(t.str, spanFrom(t))
       case _ =>
         unexpected(scanner.lookAhead(), "Expected '{' or '(' after MAP")
 

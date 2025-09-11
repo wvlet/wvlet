@@ -47,3 +47,9 @@ SELECT 123 AS map;
 -- MAP as a column alias in complex expressions
 SELECT CONCAT(u.first_name, ' ', u.last_name) AS map
 FROM users u;
+
+-- Test with uppercase MAP alias
+SELECT * FROM users MAP;
+
+-- Test with mixed-case MAP alias
+SELECT * FROM users mAp;
