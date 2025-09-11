@@ -580,16 +580,24 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
   end explain
 
   def describe(): LogicalPlan =
-    val t = consume(SqlToken.DESCRIBE)
-    scanner.lookAhead().token match
+    val t                  = consume(SqlToken.DESCRIBE)
+    val lookaheadTokenData = scanner.lookAhead()
+    lookaheadTokenData.token match
       case SqlToken.INPUT =>
         consume(SqlToken.INPUT)
         val name = identifier()
-        DescribeInput(name, spanFrom(t))
-      case tk =>
+        name match
+          case _: Wildcard =>
+            unexpected(name, "Statement name for DESCRIBE INPUT cannot be a wildcard (*).")
+          case _: DigitIdentifier =>
+            unexpected(name, "Statement name for DESCRIBE INPUT cannot be a numeric literal.")
+          case _ =>
+            DescribeInput(name, spanFrom(t))
+      case _ =>
         unexpected(
-          scanner.lookAhead(),
-          s"Unsupported DESCRIBE target: ${tk}. Only DESCRIBE INPUT is currently supported."
+          lookaheadTokenData,
+          s"Unsupported DESCRIBE target: ${lookaheadTokenData
+              .token}. Only DESCRIBE INPUT is currently supported."
         )
 
   def queryOrUpdate(): LogicalPlan =
