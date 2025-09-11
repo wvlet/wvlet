@@ -4,9 +4,12 @@ import TokenType.*
 
 enum SqlToken(val tokenType: TokenType, val str: String):
   import SqlToken.*
-  def isIdentifier: Boolean      = tokenType == Identifier || isNonReservedKeyword
-  def isLiteral: Boolean         = tokenType == Literal
-  def isReservedKeyword: Boolean = tokenType == Keyword
+  def isIdentifier: Boolean = tokenType == Identifier || isNonReservedKeyword
+  def isLiteral: Boolean    = tokenType == Literal
+  def isKeyword: Boolean    = tokenType == Keyword
+  def isReservedKeyword: Boolean =
+    tokenType == Keyword && !SqlToken.nonReservedKeywords.contains(this)
+
   def isNonReservedKeyword: Boolean =
     tokenType == Keyword && SqlToken.nonReservedKeywords.contains(this)
 
@@ -418,7 +421,7 @@ object SqlToken:
   val keywordAndSymbolTable =
     val m = Map.newBuilder[String, SqlToken]
     allKeywordsAndSymbols.foreach {
-      case t: SqlToken if t.isReservedKeyword =>
+      case t: SqlToken if t.isKeyword =>
         m += t.str -> t
         // Support upper-case keywords in SQL
         m += t.str.toUpperCase -> t

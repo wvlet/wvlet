@@ -238,7 +238,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
   def reserved(): Identifier = node {
     val t = consumeToken()
     t.token match
-      case token if token.isReservedKeyword =>
+      case token if token.isKeyword =>
         UnquotedIdentifier(t.str, spanFrom(t))
       case _ =>
         unexpected(t)

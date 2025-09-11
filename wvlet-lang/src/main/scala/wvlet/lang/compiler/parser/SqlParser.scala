@@ -3404,7 +3404,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
   def reserved(): Identifier =
     val t = consumeToken()
     t.token match
-      case token if token.isReservedKeyword =>
+      case token if token.isKeyword =>
         UnquotedIdentifier(t.str, spanFrom(t))
       case _ =>
         unexpected(t)
