@@ -417,7 +417,7 @@ object SqlToken:
     SqlToken.ZONE,
     // Hive partition keywords - allow as column names but preserve syntax functionality
     SqlToken.CLUSTER,
-    SqlToken.DISTRIBUTE,  
+    SqlToken.DISTRIBUTE,
     SqlToken.SORT
   )
 
