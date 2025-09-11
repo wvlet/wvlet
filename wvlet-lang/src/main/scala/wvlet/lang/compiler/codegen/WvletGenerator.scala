@@ -793,6 +793,9 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
           )
         case f: FieldDef =>
           group(wl(f.name.name + ":", expr(f.tpe), f.body.map(b => wl("=", expr(b)))))
+        case e: Extract =>
+          // Convert EXTRACT(field FROM expr) to expr.extract(field)
+          expr(e.expr) + text(".extract") + paren(text(s"'${e.interval.toString.toLowerCase}'"))
         case other =>
           unsupportedNode(s"expression ${other}", other.span)
     }
