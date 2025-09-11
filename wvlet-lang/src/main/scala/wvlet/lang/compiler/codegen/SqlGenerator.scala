@@ -1323,7 +1323,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
                 // DuckDB style: function(... IGNORE NULLS) OVER (...)
                 // Modify the function to include null treatment inside the parentheses
                 val modifiedBase =
-                  base match
+                  w.base match
                     case f: FunctionApply =>
                       val functionName = expr(f.base)
                       val argsWithNullTreatment =
