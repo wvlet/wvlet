@@ -13,8 +13,7 @@ SELECT
 SELECT * FROM (VALUES (1)) t(x) 
 WHERE CAST(JSON '{"zone": "active", "status": "ok"}' AS MAP(VARCHAR, VARCHAR))['zone'] = 'active';
 
--- Nested CAST with MAP zone access
-SELECT CAST(
-  CAST(JSON '{"data": {"zone": "prod", "env": "production"}}' AS MAP(VARCHAR, VARCHAR))['data'] 
-  AS MAP(VARCHAR, VARCHAR)
-)['zone'] as nested_zone;
+-- Multiple MAP accesses with zone keyword
+SELECT 
+  CAST(JSON '{"zone": "prod", "status": "active"}' AS MAP(VARCHAR, VARCHAR))['zone'] as env_zone,
+  CAST(JSON '{"zone": "test", "mode": "development"}' AS MAP(VARCHAR, VARCHAR))['zone'] as test_zone;
