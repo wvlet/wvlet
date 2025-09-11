@@ -258,7 +258,7 @@ class QueryExecutor(
               )
       case d: DescribeInput =>
         // For now, just return empty result since DESCRIBE INPUT is mainly for parsing validation
-        // In a full implementation, this would query the prepared statement metadata
+        // In a full implementation, this would query the prepared statement input metadata
         workEnv.info(s"DESCRIBE INPUT ${d.name.fullName}")
         QueryResult.empty
       case d: DescribeOutput =>
