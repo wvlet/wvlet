@@ -2986,16 +2986,11 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     // Check for with/without time zone
     val withTimeZone =
       scanner.lookAhead().token match
-        case SqlToken.WITH =>
-          consume(SqlToken.WITH)
-          consume(SqlToken.TIME) // consume TIME keyword
-          consume(SqlToken.ZONE) // consume ZONE keyword
-          true
-        case SqlToken.WITHOUT =>
-          consume(SqlToken.WITHOUT)
-          consume(SqlToken.TIME) // consume TIME keyword
-          consume(SqlToken.ZONE) // consume ZONE keyword
-          false
+        case token @ (SqlToken.WITH | SqlToken.WITHOUT) =>
+          consume(token)
+          consume(SqlToken.TIME)
+          consume(SqlToken.ZONE)
+          token == SqlToken.WITH
         case _ =>
           false // default to timestamp without time zone
 
