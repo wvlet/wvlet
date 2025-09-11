@@ -418,7 +418,28 @@ object SqlToken:
     // Hive partition keywords - allow as column names but preserve syntax functionality
     SqlToken.CLUSTER,
     SqlToken.DISTRIBUTE,
-    SqlToken.SORT
+    SqlToken.SORT,
+    // Additional keywords following Trino's non-reserved approach
+    // Statement keywords - can be used as identifiers when not in command position
+    SqlToken.ALL,       // Used in SELECT ALL but safe as identifier elsewhere
+    SqlToken.ADD,       // Only in ALTER TABLE ADD context, safe elsewhere
+    SqlToken.COMMENT,   // Column modifier, safe as identifier
+    SqlToken.DESCRIBE,  // Statement keyword, safe as identifier
+    SqlToken.EXPLAIN,   // Statement keyword, safe as identifier
+    SqlToken.FETCH,     // Part of FETCH FIRST but safe as identifier
+    SqlToken.INTERVAL,  // Can distinguish between literal INTERVAL '1' DAY and column name
+    SqlToken.MERGE,     // Statement keyword, safe as identifier
+    SqlToken.OFFSET,    // Clause keyword but safe as identifier
+    SqlToken.PARTITION, // Window/DDL context, safe as identifier
+    SqlToken.PLAN,      // Only after EXPLAIN, safe elsewhere
+    SqlToken.RESET,     // Statement keyword, safe as identifier
+    SqlToken.SESSION,   // Only after SET/ALTER, safe elsewhere
+    SqlToken.SET,       // Statement keyword, safe as identifier
+    SqlToken.SHOW,      // Statement keyword, safe as identifier
+    SqlToken.UPDATE,    // Statement keyword, safe as identifier
+    SqlToken.USE,       // Statement keyword, safe as identifier
+    // Non-SQL keyword that should be safe as identifier
+    SqlToken.IMPLEMENTATION
   )
 
   val allKeywordsAndSymbols = keywords ++ literalStartKeywords ++ specialSymbols
