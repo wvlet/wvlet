@@ -743,13 +743,17 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         val sql = wl(body, "order by name")
         selectExpr(sql)
       case s: Show if s.showType == ShowType.catalogs =>
-        val sql = lines(
-          List(
-            group(wl("select distinct", "catalog_name as name")),
-            group(wl("from", "information_schema.schemata")),
-            group(wl("order by", "name"))
-          )
+        val baseQuery = List(
+          group(wl("select distinct", "catalog_name as name")),
+          group(wl("from", "information_schema.schemata"))
         )
+        val queryWithFilter =
+          baseQuery ++
+            s.likePattern
+              .map { pattern =>
+                group(wl("where", "catalog_name", "like", expr(pattern)))
+              }
+        val sql = lines(queryWithFilter :+ group(wl("order by", "name")))
         selectExpr(sql)
       case s: Show if s.showType == ShowType.columns =>
         val parts       = s.inExpr.nameParts.reverse

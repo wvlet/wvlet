@@ -1051,7 +1051,9 @@ enum ShowType:
   case functions
   case createView
 
-case class Show(showType: ShowType, inExpr: NameExpr, span: Span) extends Relation with LeafPlan:
+case class Show(showType: ShowType, inExpr: NameExpr, likePattern: Option[Expression], span: Span)
+    extends Relation
+    with LeafPlan:
   override def relationType: RelationType =
     showType match
       case ShowType.models =>
