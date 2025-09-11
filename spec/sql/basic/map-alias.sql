@@ -37,3 +37,13 @@ RIGHT JOIN users u ON (map.user_id = u.id);
 SELECT map.id, map.bio, map.created_at
 FROM profiles map
 WHERE map.active = true;
+
+-- MAP as a column alias
+SELECT u.id AS map FROM users u;
+
+-- MAP as a column alias for a literal
+SELECT 123 AS map;
+
+-- MAP as a column alias in complex expressions
+SELECT CONCAT(u.first_name, ' ', u.last_name) AS map
+FROM users u;
