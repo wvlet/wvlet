@@ -930,6 +930,39 @@ case class UnresolvedGroupingKey(name: NameExpr, child: Expression, span: Span) 
   override def toString: String = s"GroupingKey(${index.map(i => s"${i}:").getOrElse("")}${child})"
   override lazy val resolved: Boolean = child.dataType.isResolved
 
+case class GroupingSets(groupingSets: List[List[GroupingKey]], span: Span) extends GroupingKey:
+  override def name: NameExpr     = NameExpr.EmptyName
+  override def index: Option[Int] = None
+  override def child: Expression = groupingSets
+    .headOption
+    .flatMap(_.headOption)
+    .getOrElse(NameExpr.EmptyName)
+
+  override def dataType: DataType = DataType.UnknownType
+  override def toString: String =
+    s"GROUPING SETS(${groupingSets.map(set => s"(${set.mkString(",")})").mkString(",")})"
+
+  override lazy val resolved: Boolean    = groupingSets.forall(_.forall(_.resolved))
+  override def children: Seq[Expression] = groupingSets.flatten
+
+case class Cube(groupingKeys: List[GroupingKey], span: Span) extends GroupingKey:
+  override def name: NameExpr            = NameExpr.EmptyName
+  override def index: Option[Int]        = None
+  override def child: Expression         = groupingKeys.headOption.getOrElse(NameExpr.EmptyName)
+  override def dataType: DataType        = DataType.UnknownType
+  override def toString: String          = s"CUBE(${groupingKeys.mkString(",")})"
+  override lazy val resolved: Boolean    = groupingKeys.forall(_.resolved)
+  override def children: Seq[Expression] = groupingKeys
+
+case class Rollup(groupingKeys: List[GroupingKey], span: Span) extends GroupingKey:
+  override def name: NameExpr            = NameExpr.EmptyName
+  override def index: Option[Int]        = None
+  override def child: Expression         = groupingKeys.headOption.getOrElse(NameExpr.EmptyName)
+  override def dataType: DataType        = DataType.UnknownType
+  override def toString: String          = s"ROLLUP(${groupingKeys.mkString(",")})"
+  override lazy val resolved: Boolean    = groupingKeys.forall(_.resolved)
+  override def children: Seq[Expression] = groupingKeys
+
 case class Extract(interval: IntervalField, expr: Expression, span: Span) extends Expression:
   override def children: Seq[Expression] = Seq(expr)
 

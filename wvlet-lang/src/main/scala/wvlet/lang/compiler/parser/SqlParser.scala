@@ -1460,6 +1460,25 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
   def groupByItemList(): List[GroupingKey] =
     val t = scanner.lookAhead()
     t.token match
+      case SqlToken.GROUPING =>
+        consume(SqlToken.GROUPING)
+        consume(SqlToken.SETS)
+        consume(SqlToken.L_PAREN)
+        val sets = parseGroupingSets()
+        consume(SqlToken.R_PAREN)
+        GroupingSets(sets, spanFrom(t)) :: groupByItemList()
+      case SqlToken.CUBE =>
+        consume(SqlToken.CUBE)
+        consume(SqlToken.L_PAREN)
+        val keys = parseGroupingKeyList()
+        consume(SqlToken.R_PAREN)
+        Cube(keys, spanFrom(t)) :: groupByItemList()
+      case SqlToken.ROLLUP =>
+        consume(SqlToken.ROLLUP)
+        consume(SqlToken.L_PAREN)
+        val keys = parseGroupingKeyList()
+        consume(SqlToken.R_PAREN)
+        Rollup(keys, spanFrom(t)) :: groupByItemList()
       case id if id.isIdentifier =>
         val item = selectItem()
         val key  = UnresolvedGroupingKey(item.nameExpr, item.expr, spanFrom(t))
@@ -1476,8 +1495,59 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       case _ =>
         // expression only
         val e   = expression()
-        val key = UnresolvedGroupingKey(EmptyName, e, e.span)
+        val key = UnresolvedGroupingKey(NameExpr.EmptyName, e, e.span)
         key :: groupByItemList()
+
+    end match
+
+  end groupByItemList
+
+  def parseGroupingSets(): List[List[GroupingKey]] =
+    val t = scanner.lookAhead()
+    t.token match
+      case SqlToken.L_PAREN =>
+        consume(SqlToken.L_PAREN)
+        val keys =
+          if scanner.lookAhead().token == SqlToken.R_PAREN then
+            // Empty grouping set ()
+            List.empty[GroupingKey]
+          else
+            parseGroupingKeyList()
+        consume(SqlToken.R_PAREN)
+        val remaining =
+          if scanner.lookAhead().token == SqlToken.COMMA then
+            consume(SqlToken.COMMA)
+            parseGroupingSets()
+          else
+            Nil
+        keys :: remaining
+      case _ =>
+        Nil
+
+  def parseGroupingKeyList(): List[GroupingKey] =
+    val t = scanner.lookAhead()
+    t.token match
+      case id if id.isIdentifier =>
+        val item = selectItem()
+        val key  = UnresolvedGroupingKey(item.nameExpr, item.expr, spanFrom(t))
+        val remaining =
+          if scanner.lookAhead().token == SqlToken.COMMA then
+            consume(SqlToken.COMMA)
+            parseGroupingKeyList()
+          else
+            Nil
+        key :: remaining
+      case _ =>
+        // expression only
+        val e   = expression()
+        val key = UnresolvedGroupingKey(NameExpr.EmptyName, e, e.span)
+        val remaining =
+          if scanner.lookAhead().token == SqlToken.COMMA then
+            consume(SqlToken.COMMA)
+            parseGroupingKeyList()
+          else
+            Nil
+        key :: remaining
 
   def having(input: Relation): Relation =
     val t = scanner.lookAhead()
