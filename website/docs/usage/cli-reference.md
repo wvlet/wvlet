@@ -48,8 +48,6 @@ wvlet compile [options] [query]
 | `-t, --target <type>` | Target database type (duckdb, trino) |
 | `--catalog <name>` | Use specific catalog |
 | `--schema <name>` | Use specific schema |
-| `--use-static-catalog` | Use static catalog for compilation |
-| `--static-catalog-path <path>` | Path to static catalog files |
 
 **Examples:**
 
@@ -63,8 +61,6 @@ wvlet compile -f queries/analysis.wv
 # Compile for specific target
 wvlet compile -f query.wv --target trino
 
-# Compile with static catalog
-wvlet compile -f query.wv --use-static-catalog --catalog mydb
 ```
 
 ### `wvlet run`
@@ -131,121 +127,6 @@ wvlet ui --port 9000
 wvlet ui --no-browser
 ```
 
-### `wvlet catalog`
-
-Manage static catalog metadata.
-
-```bash
-wvlet catalog <subcommand> [options]
-```
-
-#### `catalog import`
-
-Import catalog metadata from a database.
-
-```bash
-wvlet catalog import [options]
-```
-
-**Options:**
-
-| Option | Description |
-|--------|-------------|
-| `-p, --path <path>` | Catalog storage path (default: ./catalog) |
-| `-t, --type <type>` | Database type (duckdb, trino) |
-| `-n, --name <name>` | Catalog name to import |
-| `-s, --schema <name>` | Schema to import (default: all) |
-| `--profile <name>` | Connection profile to use |
-
-**Examples:**
-
-```bash
-# Import from DuckDB
-wvlet catalog import --name mydb
-
-# Import from Trino with profile
-wvlet catalog import --type trino --name prod --profile production
-
-# Import specific schema
-wvlet catalog import --name mydb --schema sales
-
-# Import to custom location
-wvlet catalog import --path /data/catalogs --name mydb
-```
-
-#### `catalog list`
-
-List available static catalogs.
-
-```bash
-wvlet catalog list [options]
-```
-
-**Options:**
-
-| Option | Description |
-|--------|-------------|
-| `-p, --path <path>` | Catalog directory path (default: ./catalog) |
-
-**Examples:**
-
-```bash
-# List catalogs in default location
-wvlet catalog list
-
-# List catalogs in custom location
-wvlet catalog list --path /data/catalogs
-```
-
-#### `catalog show`
-
-Show details of a specific catalog.
-
-```bash
-wvlet catalog show [options] <catalog-spec>
-```
-
-**Arguments:**
-
-- `<catalog-spec>`: Catalog specification in format `dbtype/name`
-
-**Options:**
-
-| Option | Description |
-|--------|-------------|
-| `-p, --path <path>` | Catalog directory path (default: ./catalog) |
-
-**Examples:**
-
-```bash
-# Show catalog details
-wvlet catalog show duckdb/mydb
-
-# Show from custom location
-wvlet catalog show --path /data/catalogs trino/prod
-```
-
-#### `catalog refresh`
-
-Refresh catalog metadata from database.
-
-```bash
-wvlet catalog refresh [options]
-```
-
-**Options:**
-
-Same as `catalog import`.
-
-**Examples:**
-
-```bash
-# Refresh existing catalog
-wvlet catalog refresh --name mydb
-
-# Refresh with different profile
-wvlet catalog refresh --name prod --profile production_readonly
-```
 
 ## Configuration
 
@@ -284,7 +165,6 @@ wvlet run -f query.wv --profile production
 |----------|-------------|
 | `WVLET_HOME` | Wvlet home directory (default: ~/.wvlet) |
 | `WVLET_LOG_LEVEL` | Default log level |
-| `WVLET_STATIC_CATALOG_PATH` | Default static catalog path |
 | `WVLET_DB_TYPE` | Default database type |
 
 ## Command Shortcuts
@@ -298,8 +178,8 @@ wv
 # Run REPL command
 wv "from users select count(*)"
 
-# Access catalog commands through wv
-wv catalog list
+# Access other wvlet commands through wv
+wv compile -f query.wv
 ```
 
 ## Examples
@@ -307,16 +187,13 @@ wv catalog list
 ### Typical Development Workflow
 
 ```bash
-# 1. Import catalog for offline development
-wvlet catalog import --name dev_db
+# 1. Write and test queries
+wvlet compile -f query.wv
 
-# 2. Write and test queries
-wvlet compile -f query.wv --use-static-catalog --catalog dev_db
-
-# 3. Run queries against actual database
+# 2. Run queries against database
 wvlet run -f query.wv
 
-# 4. Start UI for interactive development
+# 3. Start UI for interactive development
 wvlet ui
 ```
 
@@ -326,13 +203,10 @@ wvlet ui
 #!/bin/bash
 # ci-validate-queries.sh
 
-# Use static catalog for validation
+# Validate query syntax
 find queries -name "*.wv" | while read file; do
   echo "Validating: $file"
-  wvlet compile -f "$file" \
-    --use-static-catalog \
-    --static-catalog-path ./catalog \
-    --catalog prod_db
+  wvlet compile -f "$file"
 done
 ```
 
@@ -356,6 +230,5 @@ done
 ## See Also
 
 - [Installation Guide](./install.md)
-- [Catalog Management](./catalog-management.md)
 - [REPL Usage](./repl.md)
 - [Web UI](./ui.md)
