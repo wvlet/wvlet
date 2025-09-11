@@ -582,6 +582,10 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
           wl(expr(child), "is null")
         case IsNotNull(child, _) =>
           wl(expr(child), "is not null")
+        case DistinctFrom(left, right, _) =>
+          wl(expr(left), "!=", expr(right))
+        case NotDistinctFrom(left, right, _) =>
+          wl(expr(left), "=", expr(right))
         case a: ArithmeticUnaryExpr =>
           a.sign match
             case Sign.NoSign =>

@@ -1823,12 +1823,22 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
                 case SqlToken.NULL =>
                   consume(SqlToken.NULL)
                   IsNotNull(expr, spanFrom(t))
+                case SqlToken.DISTINCT =>
+                  consume(SqlToken.DISTINCT)
+                  consume(SqlToken.FROM)
+                  val right = valueExpression()
+                  NotDistinctFrom(expr, right, spanFrom(t))
                 case _ =>
                   val right = valueExpression()
                   NotEq(expr, right, spanFrom(t))
             case SqlToken.NULL =>
               consume(SqlToken.NULL)
               IsNull(expr, spanFrom(t))
+            case SqlToken.DISTINCT =>
+              consume(SqlToken.DISTINCT)
+              consume(SqlToken.FROM)
+              val right = valueExpression()
+              DistinctFrom(expr, right, spanFrom(t))
             case _ =>
               val right = valueExpression()
               Eq(expr, right, spanFrom(t))
