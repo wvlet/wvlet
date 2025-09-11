@@ -10,7 +10,10 @@ import wvlet.lang.model.{DataType, RelationType}
 import wvlet.lang.model.DataType.{
   EmptyRelationType,
   IntConstant,
+  IntType,
   NamedType,
+  TimestampField,
+  TimestampType,
   TypeParameter,
   UnresolvedTypeParameter
 }
@@ -2943,16 +2946,46 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
   def typeName(): DataType =
     val id   = identifier()
     val name = id.toTermName
-    scanner.lookAhead().token match
-      case SqlToken.L_PAREN =>
-        val tpeParams = typeParams()
-        DataType.parse(name.name, tpeParams)
-      case SqlToken.LT =>
-        // Support Hive-style array<T>, map<K,V> syntax with angle brackets
-        val tpeParams = typeParamsWithAngleBrackets()
-        DataType.parse(name.name, tpeParams)
-      case _ =>
-        DataType.parse(name.name)
+
+    // Special handling for timestamp types that may have "with time zone" or "without time zone"
+    if name.name.toLowerCase == "timestamp" then
+      parseTimestampType()
+    else
+      scanner.lookAhead().token match
+        case SqlToken.L_PAREN =>
+          val tpeParams = typeParams()
+          DataType.parse(name.name, tpeParams)
+        case SqlToken.LT =>
+          // Support Hive-style array<T>, map<K,V> syntax with angle brackets
+          val tpeParams = typeParamsWithAngleBrackets()
+          DataType.parse(name.name, tpeParams)
+        case _ =>
+          DataType.parse(name.name)
+
+  def parseTimestampType(): DataType =
+    // Check for optional precision parameter like timestamp(3)
+    val precision =
+      scanner.lookAhead().token match
+        case SqlToken.L_PAREN =>
+          consume(SqlToken.L_PAREN)
+          val t = consume(SqlToken.INTEGER_LITERAL)
+          consume(SqlToken.R_PAREN)
+          Some(IntConstant(t.str.toInt))
+        case _ =>
+          None
+
+    // Check for with/without time zone
+    val withTimeZone =
+      scanner.lookAhead().token match
+        case token @ (SqlToken.WITH | SqlToken.WITHOUT) =>
+          consume(token)
+          consume(SqlToken.TIME)
+          consume(SqlToken.ZONE)
+          token == SqlToken.WITH
+        case _ =>
+          false // default to timestamp without time zone
+
+    TimestampType(TimestampField.TIMESTAMP, withTimeZone, precision)
 
   def typeParams(): List[TypeParameter] =
     scanner.lookAhead().token match
