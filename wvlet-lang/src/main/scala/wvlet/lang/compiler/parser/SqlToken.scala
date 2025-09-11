@@ -104,6 +104,10 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   case WHERE       extends SqlToken(Keyword, "where")
   case GROUP       extends SqlToken(Keyword, "group")
   case BY          extends SqlToken(Keyword, "by")
+  case GROUPING    extends SqlToken(Keyword, "grouping")
+  case SETS        extends SqlToken(Keyword, "sets")
+  case CUBE        extends SqlToken(Keyword, "cube")
+  case ROLLUP      extends SqlToken(Keyword, "rollup")
   case ORDER       extends SqlToken(Keyword, "order")
   case ASC         extends SqlToken(Keyword, "asc")
   case DESC        extends SqlToken(Keyword, "desc")
@@ -381,6 +385,11 @@ object SqlToken:
     SqlToken.FUNCTIONS,
     SqlToken.INPUT,
     SqlToken.OUTPUT,
+    // Grouping keywords - can be used as function names
+    SqlToken.GROUPING,
+    SqlToken.SETS,
+    SqlToken.CUBE,
+    SqlToken.ROLLUP,
     // Data types - non-reserved so they can be used as column names
     SqlToken.DATE,
     SqlToken.TIME,

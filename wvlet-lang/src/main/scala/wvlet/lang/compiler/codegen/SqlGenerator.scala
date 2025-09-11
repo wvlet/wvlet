@@ -1153,6 +1153,26 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
     expression match
       case g: UnresolvedGroupingKey =>
         expr(g.child)
+      case gs: GroupingSets =>
+        val sets = gs
+          .groupingSets
+          .map { set =>
+            if set.isEmpty then
+              text("()")
+            else
+              paren(cl(set.map(k => expr(k))))
+          }
+        wl(text("grouping sets"), paren(cl(sets)))
+      case c: Cube =>
+        if c.groupingKeys.isEmpty then
+          text("cube ()")
+        else
+          wl(text("cube"), paren(cl(c.groupingKeys.map(k => expr(k)))))
+      case r: Rollup =>
+        if r.groupingKeys.isEmpty then
+          text("rollup ()")
+        else
+          wl(text("rollup"), paren(cl(r.groupingKeys.map(k => expr(k)))))
       case f: FunctionApply =>
         // Special handling for specific functions
         f.base match
@@ -1272,6 +1292,9 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
                 case d: DoubleQuoteString =>
                   // Handle double-quoted strings as identifiers when used as function names
                   text(doubleQuoteIfNecessary(d.unquotedValue))
+                case id: UnquotedIdentifier =>
+                  // Output unquoted identifiers as-is for function names
+                  text(id.unquotedValue)
                 case other =>
                   expr(other)
             val args = paren(cl(f.args.map(x => expr(x))))
