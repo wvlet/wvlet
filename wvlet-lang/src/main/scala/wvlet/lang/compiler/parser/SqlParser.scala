@@ -658,6 +658,10 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         merge()
       case SqlToken.DELETE =>
         delete()
+      case SqlToken.SHOW =>
+        show()
+      case SqlToken.USE =>
+        use()
       case _ =>
         unexpected(t)
   end queryOrUpdate
@@ -1737,11 +1741,11 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         val next = identifier()
         if next.leafName.toLowerCase == "view" then
           val viewName = qualifiedName()
-          Show(ShowType.createView, viewName, spanFrom(t))
+          Show(ShowType.createView, viewName, None, spanFrom(t))
         else
           unexpected(next, s"Expected VIEW after CREATE, but found: ${next.leafName}")
       case "functions" =>
-        Show(ShowType.functions, EmptyName, spanFrom(t))
+        Show(ShowType.functions, EmptyName, None, spanFrom(t))
       case _ =>
         // Handle existing single-word SHOW commands
         try
@@ -1749,14 +1753,21 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           tpe match
             case ShowType.databases | ShowType.tables | ShowType.schemas =>
               val in = inExpr()
-              Show(tpe, in, spanFrom(t))
+              Show(tpe, in, None, spanFrom(t))
             case ShowType.catalogs =>
-              Show(ShowType.catalogs, EmptyName, spanFrom(t))
+              val likePattern =
+                scanner.lookAhead().token match
+                  case SqlToken.LIKE =>
+                    consume(SqlToken.LIKE)
+                    Some(expression())
+                  case _ =>
+                    None
+              Show(ShowType.catalogs, EmptyName, likePattern, spanFrom(t))
             case ShowType.columns =>
               // Handle "SHOW COLUMNS FROM table" syntax
               consume(SqlToken.FROM)
               val tableName = qualifiedName()
-              Show(ShowType.columns, tableName, spanFrom(t))
+              Show(ShowType.columns, tableName, None, spanFrom(t))
             case _ =>
               unexpected(name)
         catch
