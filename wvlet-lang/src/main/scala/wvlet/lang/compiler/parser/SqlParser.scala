@@ -1226,6 +1226,30 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
 
   end select
 
+  private def toSamplingSize(expr: Expression): SamplingSize =
+    expr match
+      case ArithmeticBinaryExpr(BinaryExprType.Modulus, percentageExpr, _, _) =>
+        // Handle "10 % " as percentage
+        percentageExpr match
+          case LongLiteral(value, _, _) =>
+            SamplingSize.Percentage(value.toDouble)
+          case DoubleLiteral(value, _, _) =>
+            SamplingSize.Percentage(value)
+          case DecimalLiteral(value, _, _) =>
+            SamplingSize.Percentage(value.toDouble)
+          case _ =>
+            SamplingSize.PercentageExpr(expr)
+      case LongLiteral(value, _, _) =>
+        // For TABLESAMPLE BERNOULLI/SYSTEM, integer literals are percentages
+        SamplingSize.Percentage(value.toDouble)
+      case DoubleLiteral(value, _, _) =>
+        SamplingSize.Percentage(value)
+      case DecimalLiteral(value, _, _) =>
+        SamplingSize.Percentage(value.toDouble)
+      case _ =>
+        // For any other expression (parenthesized, arithmetic, etc.)
+        SamplingSize.PercentageExpr(expr)
+
   private def handleTableSample(r: Relation): Relation =
     scanner.lookAhead().token match
       case SqlToken.TABLESAMPLE =>
@@ -1235,29 +1259,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         val sizeExpr = expression() // percentage value or expression
 
         // Handle different expression types for sampling size
-        val samplingSize =
-          sizeExpr match
-            case ArithmeticBinaryExpr(BinaryExprType.Modulus, percentageExpr, _, _) =>
-              // Handle "10 % " as percentage
-              percentageExpr match
-                case LongLiteral(value, _, _) =>
-                  SamplingSize.Percentage(value.toDouble)
-                case DoubleLiteral(value, _, _) =>
-                  SamplingSize.Percentage(value)
-                case DecimalLiteral(value, _, _) =>
-                  SamplingSize.Percentage(value.toDouble)
-                case _ =>
-                  SamplingSize.PercentageExpr(sizeExpr)
-            case LongLiteral(value, _, _) =>
-              // For TABLESAMPLE BERNOULLI/SYSTEM, integer literals are percentages
-              SamplingSize.Percentage(value.toDouble)
-            case DoubleLiteral(value, _, _) =>
-              SamplingSize.Percentage(value)
-            case DecimalLiteral(value, _, _) =>
-              SamplingSize.Percentage(value.toDouble)
-            case _ =>
-              // For any other expression (parenthesized, arithmetic, etc.)
-              SamplingSize.PercentageExpr(sizeExpr)
+        val samplingSize = toSamplingSize(sizeExpr)
 
         consume(SqlToken.R_PAREN)
 
@@ -1291,16 +1293,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
               (SamplingSize.Rows(rows), None)
             case SqlToken.PERCENT =>
               consume(SqlToken.PERCENT)
-              val samplingSize =
-                sizeExpr match
-                  case LongLiteral(value, _, _) =>
-                    SamplingSize.Percentage(value.toDouble)
-                  case DoubleLiteral(value, _, _) =>
-                    SamplingSize.Percentage(value)
-                  case DecimalLiteral(value, _, _) =>
-                    SamplingSize.Percentage(value.toDouble)
-                  case _ =>
-                    SamplingSize.PercentageExpr(sizeExpr)
+              val samplingSize = toSamplingSize(sizeExpr)
               (samplingSize, None)
             case SqlToken.L_PAREN =>
               // Handle reservoir(10%) syntax
@@ -1312,27 +1305,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
                     unexpected(sizeExpr)
 
               consume(SqlToken.L_PAREN)
-              val expr = expression()
-              val samplingSize =
-                expr match
-                  case ArithmeticBinaryExpr(BinaryExprType.Modulus, percentageExpr, _, _) =>
-                    percentageExpr match
-                      case LongLiteral(value, _, _) =>
-                        SamplingSize.Percentage(value.toDouble)
-                      case DoubleLiteral(value, _, _) =>
-                        SamplingSize.Percentage(value)
-                      case DecimalLiteral(value, _, _) =>
-                        SamplingSize.Percentage(value.toDouble)
-                      case _ =>
-                        SamplingSize.PercentageExpr(expr)
-                  case LongLiteral(value, _, _) =>
-                    SamplingSize.Percentage(value.toDouble)
-                  case DoubleLiteral(value, _, _) =>
-                    SamplingSize.Percentage(value)
-                  case DecimalLiteral(value, _, _) =>
-                    SamplingSize.Percentage(value.toDouble)
-                  case _ =>
-                    SamplingSize.PercentageExpr(expr)
+              val expr         = expression()
+              val samplingSize = toSamplingSize(expr)
               consume(SqlToken.R_PAREN)
 
               val method =
@@ -1347,16 +1321,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
               // Default case: determine if it's rows or percentage based on the expression
               sizeExpr match
                 case ArithmeticBinaryExpr(BinaryExprType.Modulus, percentageExpr, _, _) =>
-                  val samplingSize =
-                    percentageExpr match
-                      case LongLiteral(value, _, _) =>
-                        SamplingSize.Percentage(value.toDouble)
-                      case DoubleLiteral(value, _, _) =>
-                        SamplingSize.Percentage(value)
-                      case DecimalLiteral(value, _, _) =>
-                        SamplingSize.Percentage(value.toDouble)
-                      case _ =>
-                        SamplingSize.PercentageExpr(sizeExpr)
+                  val samplingSize = toSamplingSize(sizeExpr)
                   (samplingSize, None)
                 case LongLiteral(value, _, _) =>
                   // Could be rows or percentage - default to rows for USING SAMPLE
