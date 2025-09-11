@@ -1384,13 +1384,38 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
 
   end parseLateralViewRest
 
-  private def relationRest(r: Relation): Relation =
+  private def relationRest(r: Relation): Relation = unionRest(r)
+
+  // Lowest precedence: UNION operations
+  private def unionRest(r: Relation): Relation =
+    val intersectResult = intersectRest(r)
+    val t               = scanner.lookAhead()
+    t.token match
+      case SqlToken.UNION =>
+        unionRest(union(intersectResult))
+      case _ =>
+        intersectResult
+  end unionRest
+
+  // Higher precedence: INTERSECT and EXCEPT operations
+  private def intersectRest(r: Relation): Relation =
+    val joinResult = joinRest(r)
+    val t          = scanner.lookAhead()
+    t.token match
+      case SqlToken.INTERSECT | SqlToken.EXCEPT =>
+        intersectRest(intersectOrExcept(joinResult))
+      case _ =>
+        joinResult
+  end intersectRest
+
+  // Highest precedence: JOIN, TABLESAMPLE, LATERAL operations
+  private def joinRest(r: Relation): Relation =
     val t = scanner.lookAhead()
     t.token match
       case SqlToken.TABLESAMPLE =>
         // Handle TABLESAMPLE and continue with other relation operations
         val sampledR = handleTableSample(r)
-        relationRest(sampledR)
+        joinRest(sampledR)
       case SqlToken.LATERAL =>
         // Save token position for span tracking
         val lateralToken = consume(SqlToken.LATERAL)
@@ -1398,34 +1423,30 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         if nextToken.token == SqlToken.VIEW then
           // Handle LATERAL VIEW
           val lateralView = parseLateralViewRest(r, lateralToken)
-          relationRest(lateralView)
+          joinRest(lateralView)
         else
           // Support for standalone LATERAL (subquery)
           consume(SqlToken.L_PAREN)
           val subQuery = query()
           consume(SqlToken.R_PAREN)
-          relationRest(Lateral(subQuery, spanFrom(lateralToken)))
+          joinRest(Lateral(subQuery, spanFrom(lateralToken)))
       case SqlToken.COMMA =>
         consume(SqlToken.COMMA)
         // Note: Parsing the rest as a new relation is important to build a left-deep plan
         val next = relation()
-        relationRest(
+        joinRest(
           Join(JoinType.ImplicitJoin, r, next, NoJoinCriteria, asof = false, spanFrom(next.span))
         )
       case SqlToken.LEFT | SqlToken.RIGHT | SqlToken.INNER | SqlToken.FULL | SqlToken.CROSS |
           SqlToken.ASOF | SqlToken.JOIN =>
-        relationRest(join(r))
-      case SqlToken.UNION =>
-        relationRest(union(r))
-      case SqlToken.EXCEPT | SqlToken.INTERSECT =>
-        relationRest(intersectOrExcept(r))
+        joinRest(join(r))
       case SqlToken.CLUSTER | SqlToken.DISTRIBUTE | SqlToken.SORT =>
         val hinted = hivePartitionClauses(r)
-        relationRest(hinted)
+        joinRest(hinted)
       case _ =>
         r
     end match
-  end relationRest
+  end joinRest
 
   def fromClause(): Relation =
 
