@@ -2479,15 +2479,15 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
   def extractExpression(): Extract =
     val t = consume(SqlToken.EXTRACT)
     consume(SqlToken.L_PAREN)
-    val fieldName = identifier().leafName
+    val fieldNode = identifier()
     val field = IntervalField
-      .unapply(fieldName)
+      .unapply(fieldNode.leafName)
       .getOrElse {
         throw StatusCode
           .SYNTAX_ERROR
           .newException(
-            s"Unknown extract field: ${fieldName}",
-            lastToken.sourceLocation(using compilationUnit)
+            s"Unknown extract field: ${fieldNode.leafName}",
+            fieldNode.sourceLocationOfCompilationUnit
           )
       }
     consume(SqlToken.FROM)
