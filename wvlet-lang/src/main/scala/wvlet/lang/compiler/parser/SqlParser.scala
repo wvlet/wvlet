@@ -119,7 +119,9 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
   private def canStartExpression(token: SqlToken): Boolean =
     token match
       case SqlToken.CAST | SqlToken.TRY_CAST | SqlToken.CASE | SqlToken.EXISTS | SqlToken.TRIM |
-          SqlToken.EXTRACT =>
+          SqlToken.EXTRACT | SqlToken.MAP | SqlToken.ARRAY | SqlToken.DATE | SqlToken.TIME |
+          SqlToken.TIMESTAMP | SqlToken.DECIMAL | SqlToken.JSON | SqlToken.INTERVAL | SqlToken
+            .NULL | SqlToken.TRUE | SqlToken.FALSE =>
         true
       case _ =>
         false
