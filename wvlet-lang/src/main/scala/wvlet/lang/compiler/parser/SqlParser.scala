@@ -1781,7 +1781,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
                   consume(SqlToken.DISTINCT)
                   consume(SqlToken.FROM)
                   val right = valueExpression()
-                  IsNotDistinctFrom(expr, right, spanFrom(t))
+                  NotDistinctFrom(expr, right, spanFrom(t))
                 case _ =>
                   val right = valueExpression()
                   NotEq(expr, right, spanFrom(t))
@@ -1792,7 +1792,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
               consume(SqlToken.DISTINCT)
               consume(SqlToken.FROM)
               val right = valueExpression()
-              IsDistinctFrom(expr, right, spanFrom(t))
+              DistinctFrom(expr, right, spanFrom(t))
             case _ =>
               val right = valueExpression()
               Eq(expr, right, spanFrom(t))

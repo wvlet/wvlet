@@ -357,16 +357,6 @@ case class NotEq(left: Expression, right: Expression, span: Span)
   override def operatorName: String = "!="
   // require(operatorName == "<>" || operatorName == "!=", "NotEq.operatorName must be either <> or !=", nodeLocation)
 
-case class IsDistinctFrom(left: Expression, right: Expression, span: Span)
-    extends ConditionalExpression
-    with BinaryExpression:
-  override def operatorName: String = "is distinct from"
-
-case class IsNotDistinctFrom(left: Expression, right: Expression, span: Span)
-    extends ConditionalExpression
-    with BinaryExpression:
-  override def operatorName: String = "is not distinct from"
-
 sealed trait LogicalConditionalExpression extends ConditionalExpression with BinaryExpression
 
 case class And(left: Expression, right: Expression, span: Span)
