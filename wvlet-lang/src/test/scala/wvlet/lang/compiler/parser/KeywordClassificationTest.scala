@@ -57,18 +57,21 @@ class KeywordClassificationTest extends AirSpec:
     identifier.isNonReservedKeyword shouldBe false
   }
 
-  test("should verify all keywords are either reserved or non-reserved") {
+  test("should verify all SqlToken keywords are either reserved or non-reserved") {
     val allSqlKeywords = SqlToken.values.filter(_.isKeyword)
 
     allSqlKeywords.foreach { token =>
       // Each keyword should be either reserved XOR non-reserved, but not both
-      val isReserved    = token.isReservedKeyword
-      val isNonReserved = token.isNonReservedKeyword
+      (token.isReservedKeyword ^ token.isNonReservedKeyword) shouldBe true
+    }
+  }
 
-      if isReserved && isNonReserved then
-        fail(s"SqlToken ${token} is both reserved and non-reserved")
-      else if !isReserved && !isNonReserved then
-        fail(s"SqlToken ${token} is neither reserved nor non-reserved")
+  test("should verify all WvletToken keywords are either reserved or non-reserved") {
+    val allWvletKeywords = WvletToken.values.filter(_.isKeyword)
+
+    allWvletKeywords.foreach { token =>
+      // Each keyword should be either reserved XOR non-reserved, but not both
+      (token.isReservedKeyword ^ token.isNonReservedKeyword) shouldBe true
     }
   }
 
