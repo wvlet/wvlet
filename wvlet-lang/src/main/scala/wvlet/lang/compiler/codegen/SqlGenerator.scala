@@ -748,12 +748,11 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
           group(wl("from", "information_schema.schemata"))
         )
         val queryWithFilter =
-          s.likePattern match
-            case Some(pattern) =>
-              val filterClause = group(wl("where", "catalog_name", "like", expr(pattern)))
-              baseQuery :+ filterClause
-            case None =>
-              baseQuery
+          baseQuery ++
+            s.likePattern
+              .map { pattern =>
+                group(wl("where", "catalog_name", "like", expr(pattern)))
+              }
         val sql = lines(queryWithFilter :+ group(wl("order by", "name")))
         selectExpr(sql)
       case s: Show if s.showType == ShowType.columns =>

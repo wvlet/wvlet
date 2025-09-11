@@ -1756,12 +1756,10 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
               Show(tpe, in, None, spanFrom(t))
             case ShowType.catalogs =>
               val likePattern =
-                scanner.lookAhead().token match
-                  case SqlToken.LIKE =>
-                    consume(SqlToken.LIKE)
-                    Some(expression())
-                  case _ =>
-                    None
+                if consumeIfExist(SqlToken.LIKE) then
+                  Some(expression())
+                else
+                  None
               Show(ShowType.catalogs, EmptyName, likePattern, spanFrom(t))
             case ShowType.columns =>
               // Handle "SHOW COLUMNS FROM table" syntax
