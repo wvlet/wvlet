@@ -27,10 +27,16 @@ SELECT * FROM VALUES (1, 'alice') t(id, name)
 LEFT JOIN VALUES (1, 'profile') at ON (t.id = at.id)
 LEFT JOIN VALUES (1, 'settings') s ON (t.id = s.id)
 
--- AT as column alias in field access
+-- AT as table alias in field access
 SELECT at.id, at.name FROM VALUES (1, 'test') at
 
 -- Mixed case with both AT TIME ZONE and AT as alias 
 -- (verify both contexts work)
 SELECT at.id, TIMESTAMP '2023-01-01 12:00:00' AT TIME ZONE 'UTC' as utc_time
 FROM VALUES (1, 'test') at
+
+-- AT as a column alias
+SELECT id AS at FROM VALUES (1) t(id)
+
+-- AT as a column alias for a literal
+SELECT 123 AS at
