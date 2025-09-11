@@ -1416,7 +1416,13 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           SqlToken.ASOF | SqlToken.JOIN =>
         relationRest(join(r))
       case SqlToken.UNION =>
-        queryRest(r)
+        // Handle UNION in nested parentheses contexts like ((SELECT...) UNION ...)
+        // Only delegate to queryRest if we're dealing with a BracedRelation
+        r match
+          case _: BracedRelation =>
+            queryRest(r)
+          case _ =>
+            r // For non-nested contexts, don't handle UNION here
       case SqlToken.EXCEPT | SqlToken.INTERSECT =>
         relationRest(intersectOrExcept(r))
       case SqlToken.CLUSTER | SqlToken.DISTRIBUTE | SqlToken.SORT =>
