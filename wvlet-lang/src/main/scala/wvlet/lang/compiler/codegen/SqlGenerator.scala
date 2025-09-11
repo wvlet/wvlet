@@ -1309,7 +1309,39 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       case w: WindowApply =>
         val base   = expr(w.base)
         val window = expr(w.window)
-        wl(base, window)
+        w.nullTreatment match
+          case Some(nullTreatment) =>
+            dbType match
+              case DBType.Trino =>
+                // Trino style: function(...) IGNORE NULLS OVER (...)
+                wl(base, text(nullTreatment.expr), window)
+              case DBType.DuckDB =>
+                // DuckDB style: function(... IGNORE NULLS) OVER (...)
+                // Modify the function to include null treatment inside the parentheses
+                val modifiedBase =
+                  base match
+                    case f: FunctionApply =>
+                      val functionName = expr(f.base)
+                      val argsWithNullTreatment =
+                        if f.args.nonEmpty then
+                          // Apply null treatment to the first argument only
+                          cl(
+                            (expr(f.args.head) + ws + text(nullTreatment.expr)) ::
+                              f.args.tail.map(expr).toList
+                          )
+                        else
+                          text(nullTreatment.expr)
+                      val funcCall = functionName + paren(argsWithNullTreatment)
+                      funcCall
+                    case other =>
+                      base
+                wl(modifiedBase, window)
+              case _ =>
+                // Default to Trino style for other databases
+                wl(base, text(nullTreatment.expr), window)
+          case None =>
+            wl(base, window)
+        end match
       case f: FunctionArg =>
         // TODO handle arg name mapping
         val parts = List.newBuilder[Doc]

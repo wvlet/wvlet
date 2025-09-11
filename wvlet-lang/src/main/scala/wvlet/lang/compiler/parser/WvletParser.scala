@@ -2442,7 +2442,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       case WvletToken.OVER =>
         window() match
           case Some(w) =>
-            WindowApply(expr, w, spanFrom(t))
+            WindowApply(expr, w, None, spanFrom(t))
           case None =>
             expr
       case WvletToken.DOUBLE_COLON =>

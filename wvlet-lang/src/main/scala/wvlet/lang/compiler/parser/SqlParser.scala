@@ -2121,6 +2121,10 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
             else
               val args = functionArgs()
               consume(SqlToken.R_PAREN)
+
+              // Check for IGNORE/RESPECT NULLS clause (Trino style)
+              val nullTreatment = parseNullTreatment()
+
               // Global function call
               val w = window()
               // Check for FILTER clause after function arguments
@@ -2134,8 +2138,19 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
                   Some(filterExpr)
                 else
                   None
+
               val f = FunctionApply(functionName, args, w, filter, None, spanFrom(t))
-              primaryExpressionRest(f)
+
+              // If we have both nullTreatment and window, create WindowApply with nullTreatment
+              val result =
+                (nullTreatment, w) match
+                  case (Some(nt), Some(window)) =>
+                    WindowApply(f.copy(window = None), window, Some(nt), spanFrom(t))
+                  case _ =>
+                    f
+
+              primaryExpressionRest(result)
+            end if
           end functionApply
 
           expr match
@@ -2158,7 +2173,16 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         case SqlToken.OVER =>
           window() match
             case Some(w) =>
-              WindowApply(expr, w, spanFrom(t))
+              WindowApply(expr, w, None, spanFrom(t))
+            case _ =>
+              expr
+        case SqlToken.IGNORE | SqlToken.RESPECT =>
+          // Handle Trino-style IGNORE/RESPECT NULLS OVER (...)
+          val nullTreatment = parseNullTreatment().get
+
+          window() match
+            case Some(w) =>
+              WindowApply(expr, w, Some(nullTreatment), spanFrom(t))
             case _ =>
               expr
         case SqlToken.DOUBLE_COLON =>
@@ -3367,5 +3391,18 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         UnquotedIdentifier(t.str, spanFrom(t))
       case _ =>
         unexpected(t)
+
+  private def parseNullTreatment(): Option[NullTreatment] =
+    scanner.lookAhead().token match
+      case SqlToken.IGNORE =>
+        consume(SqlToken.IGNORE)
+        consume(SqlToken.NULLS)
+        Some(NullTreatment.IgnoreNulls)
+      case SqlToken.RESPECT =>
+        consume(SqlToken.RESPECT)
+        consume(SqlToken.NULLS)
+        Some(NullTreatment.RespectNulls)
+      case _ =>
+        None
 
 end SqlParser
