@@ -1273,7 +1273,6 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         consume(SqlToken.SELECT)
         val isDistinct = consumeIfExist(SqlToken.DISTINCT)
         val items      = selectItems()
-        warn(items)
         var r          = fromClause()
         r = whereClause(r)
         val g = groupBy(r)
@@ -2655,7 +2654,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
   def intervalOrIdentifier(): Expression =
     // Check if INTERVAL is followed by a sign or literal to distinguish between
     // INTERVAL literal (e.g., INTERVAL '1' DAY) and INTERVAL as identifier
-    val t = consume(SqlToken.INTERVAL)
+    val t         = consume(SqlToken.INTERVAL)
     val nextToken = scanner.lookAhead().token
     nextToken match
       case SqlToken.PLUS | SqlToken.MINUS =>
