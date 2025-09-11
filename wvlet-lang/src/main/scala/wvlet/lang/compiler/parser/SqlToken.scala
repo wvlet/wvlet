@@ -27,7 +27,7 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   case WHITESPACE extends SqlToken(Control, "<whitespace>")
 
   // doc or comments
-  case COMMENT     extends SqlToken(Doc, "<comment>")
+  case COMMENT     extends SqlToken(Keyword, "comment")
   case DOC_COMMENT extends SqlToken(Doc, "<doc comment>")
 
   // Literals
