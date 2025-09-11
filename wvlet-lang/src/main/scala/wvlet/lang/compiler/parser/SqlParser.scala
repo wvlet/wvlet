@@ -116,6 +116,14 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       .SYNTAX_ERROR
       .newException(errorMessage, expr.sourceLocationOfCompilationUnit(using compilationUnit))
 
+  private def canStartExpression(token: SqlToken): Boolean =
+    token match
+      case SqlToken.CAST | SqlToken.TRY_CAST | SqlToken.CASE | SqlToken.EXISTS | SqlToken.TRIM |
+          SqlToken.EXTRACT =>
+        true
+      case _ =>
+        false
+
   def statementList(): List[LogicalPlan] =
     val t = scanner.lookAhead()
     t.token match
@@ -1503,7 +1511,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       case SqlToken.COMMA =>
         consume(SqlToken.COMMA)
         groupByItemList()
-      case t if t.tokenType == TokenType.Keyword =>
+      case token if token.tokenType == TokenType.Keyword && !canStartExpression(token) =>
         Nil
       case SqlToken.EOF =>
         Nil
