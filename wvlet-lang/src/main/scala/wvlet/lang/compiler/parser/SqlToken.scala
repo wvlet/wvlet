@@ -415,8 +415,10 @@ object SqlToken:
     SqlToken.AFTER,
     // ZONE can be used as a column name in bracket expressions (e.g., map[zone])
     SqlToken.ZONE,
-    // Allow CLUSTER to be used as column name while preserving CLUSTER BY syntax
-    SqlToken.CLUSTER
+    // Hive partition keywords - allow as column names but preserve syntax functionality
+    SqlToken.CLUSTER,
+    SqlToken.DISTRIBUTE,  
+    SqlToken.SORT
   )
 
   val allKeywordsAndSymbols = keywords ++ literalStartKeywords ++ specialSymbols
