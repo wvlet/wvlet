@@ -2429,64 +2429,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         case SqlToken.ARRAY | SqlToken.L_BRACKET =>
           array()
         case SqlToken.MAP =>
-          val keywordToken = consumeToken() // consume the MAP token
-          val nextToken    = scanner.lookAhead().token
-          if nextToken == SqlToken.L_PAREN || nextToken == SqlToken.L_BRACE then
-            // Treat as MAP constructor: MAP(...) or MAP{...}
-            // We already consumed MAP, so call the map body parsing directly
-            val t = keywordToken
-            if nextToken == SqlToken.L_BRACE then
-              // MAP{...} literal form
-              consume(SqlToken.L_BRACE)
-              val entries = List.newBuilder[MapEntry]
-              def nextEntry: Unit =
-                val entryToken = scanner.lookAhead()
-                entryToken.token match
-                  case SqlToken.COMMA =>
-                    consume(SqlToken.COMMA)
-                    nextEntry
-                  case SqlToken.R_BRACE =>
-                  // ok
-                  case _ =>
-                    val key = expression()
-                    consume(SqlToken.COLON)
-                    val value = expression()
-                    entries += MapEntry(key, value, spanFrom(entryToken))
-                    nextEntry
-              nextEntry
-              consume(SqlToken.R_BRACE)
-              MapValue(entries.result(), spanFrom(t))
-            else
-              // MAP(...) function form
-              consume(SqlToken.L_PAREN)
-              val args = List.newBuilder[FunctionArg]
-              if scanner.lookAhead().token != SqlToken.R_PAREN then
-                var continueParsing = true
-                while continueParsing do
-                  val e = expression()
-                  args += FunctionArg(None, e, isDistinct = false, orderBy = Nil, spanFrom(t))
-                  if scanner.lookAhead().token == SqlToken.COMMA then
-                    consume(SqlToken.COMMA)
-                  else
-                    continueParsing = false
-              consume(SqlToken.R_PAREN)
-              FunctionApply(
-                UnquotedIdentifier("map", spanFrom(t)),
-                args.result(),
-                None,
-                None,
-                None,
-                spanFrom(t)
-              )
-            end if
-          else if keywordToken.token.isNonReservedKeyword then
-            // Non-reserved keyword used as identifier (e.g., table alias, column name)
-            val identifier = UnquotedIdentifier(keywordToken.str, spanFrom(keywordToken))
-            primaryExpressionRest(identifier)
-          else
-            // Should not happen since MAP is now non-reserved
-            unexpected(keywordToken, "Expected MAP constructor or identifier")
-          end if
+          map()
         case SqlToken.DATE =>
           parseFunctionCallOrLiteral { (token, lit) =>
             GenericLiteral(DataType.DateType, lit.stringValue, spanFrom(token))
@@ -2646,6 +2589,9 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         parseMapLiteral()
       case SqlToken.L_PAREN =>
         parseMapFunction()
+      case _ if t.token.isNonReservedKeyword =>
+        // MAP used as identifier (table alias, column name, etc.)
+        UnquotedIdentifier("map", spanFrom(t))
       case _ =>
         unexpected(scanner.lookAhead(), "Expected '{' or '(' after MAP")
 
