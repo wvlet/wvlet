@@ -1601,6 +1601,12 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
           // c.nullable.map(x => text(x.expr)),
           // c.comment.map(x => text(x.expr))
         )
+      case l: LikeTableDef =>
+        if l.includeProperties then
+          wl("like", expr(l.tableName), "including", "properties")
+        else
+          // Default is EXCLUDING PROPERTIES, so we can omit it for cleaner output
+          wl("like", expr(l.tableName))
       case other =>
         unsupportedNode(s"Expression ${other.nodeName}", other.span)
 
