@@ -1273,6 +1273,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         consume(SqlToken.SELECT)
         val isDistinct = consumeIfExist(SqlToken.DISTINCT)
         val items      = selectItems()
+        warn(items)
         var r          = fromClause()
         r = whereClause(r)
         val g = groupBy(r)
@@ -2654,21 +2655,21 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
   def intervalOrIdentifier(): Expression =
     // Check if INTERVAL is followed by a sign or literal to distinguish between
     // INTERVAL literal (e.g., INTERVAL '1' DAY) and INTERVAL as identifier
+    val t = consume(SqlToken.INTERVAL)
     val nextToken = scanner.lookAhead().token
     nextToken match
       case SqlToken.PLUS | SqlToken.MINUS =>
-        interval()
-      case t if t.isLiteral =>
-        interval()
+        parseInterval(t)
+      case token if token.isLiteral =>
+        parseInterval(t)
       case _ =>
         // INTERVAL is used as an identifier, not as interval literal
-        identifier()
+        // Create identifier from the already consumed INTERVAL token
+        UnquotedIdentifier(t.str, spanFrom(t))
 
-  def interval(): IntervalLiteral =
+  private def parseInterval(intervalToken: TokenData[SqlToken]): IntervalLiteral =
     // interval : INTERVAL sign = (PLUS | MINUS) ? str intervalField (TO intervalField)?
     // intervalField: YEAR | MONTH | DAY | HOUR | MINUTE | SECOND;
-
-    val t = consume(SqlToken.INTERVAL)
 
     val sign =
       scanner.lookAhead().token match
@@ -2693,10 +2694,10 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       case SqlToken.TO =>
         consume(SqlToken.TO)
         val f2 = intervalField()
-        IntervalLiteral(value.unquotedValue, sign, f1, Some(f2), spanFrom(t))
+        IntervalLiteral(value.unquotedValue, sign, f1, Some(f2), spanFrom(intervalToken))
       case _ =>
-        IntervalLiteral(value.unquotedValue, sign, f1, None, spanFrom(t))
-  end interval
+        IntervalLiteral(value.unquotedValue, sign, f1, None, spanFrom(intervalToken))
+  end parseInterval
 
   def extractExpression(): Extract =
     val t = consume(SqlToken.EXTRACT)
