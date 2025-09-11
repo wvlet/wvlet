@@ -10,7 +10,7 @@ import wvlet.lang.model.expr.*
 import wvlet.lang.model.expr.NameExpr.EmptyName
 import wvlet.lang.model.plan.JoinType.*
 import wvlet.lang.model.plan.*
-import wvlet.lang.model.plan.SamplingSize.{Percentage, Rows}
+import wvlet.lang.model.plan.SamplingSize.{Percentage, PercentageExpr, Rows}
 import wvlet.log.LogSupport
 import SyntaxContext.*
 import wvlet.lang.compiler.codegen.CodeFormatter
@@ -508,6 +508,8 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
                       text(n.toString)
                     case Percentage(p) =>
                       text(p.toString.stripSuffix(".0"))
+                    case PercentageExpr(e) =>
+                      expr(e)
                 group(
                   wl(
                     child,
@@ -524,6 +526,8 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
                       text(s"${n}%") // Convert rows to percentage for DuckDB
                     case Percentage(p) =>
                       text(s"${p.toString.stripSuffix(".0")}%")
+                    case PercentageExpr(e) =>
+                      expr(e)
                 group(
                   wl(
                     child,
@@ -541,6 +545,8 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
                       text(s"${n} rows")
                     case Percentage(percentage) =>
                       text(s"${percentage}%")
+                    case PercentageExpr(e) =>
+                      expr(e)
                 group(
                   wl(
                     "select",
@@ -573,6 +579,19 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
                         paren(text(percentage.toString.stripSuffix(".0")))
                       )
                     )
+                  case PercentageExpr(e) =>
+                    // Use TABLESAMPLE with expression for non-FROM Trino contexts
+                    group(
+                      wl(
+                        "select",
+                        "*",
+                        "from",
+                        child,
+                        "TABLESAMPLE",
+                        text(samplingMethod.toString.toUpperCase),
+                        paren(expr(e))
+                      )
+                    )
               case DBType.DuckDB =>
                 // DuckDB uses USING SAMPLE syntax for non-FROM contexts
                 val size =
@@ -581,6 +600,8 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
                       text(s"${n} rows")
                     case Percentage(percentage) =>
                       text(s"${percentage}%")
+                    case PercentageExpr(e) =>
+                      expr(e)
                 group(
                   wl(
                     "select",

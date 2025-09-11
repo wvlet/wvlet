@@ -340,11 +340,25 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
       case s: Sample =>
         val prev = relation(s.child)
         val opts =
-          s.method match
-            case Some(m) =>
-              text(m.toString) + paren(text(s.size.toExpr))
-            case None =>
-              text(s.size.toExpr)
+          s.size match
+            case SamplingSize.Rows(n) =>
+              s.method match
+                case Some(m) =>
+                  text(m.toString) + paren(text(n.toString))
+                case None =>
+                  text(s"${n} rows")
+            case SamplingSize.Percentage(p) =>
+              s.method match
+                case Some(m) =>
+                  text(m.toString) + paren(text(s"${p}%"))
+                case None =>
+                  text(s"${p}%")
+            case SamplingSize.PercentageExpr(e) =>
+              s.method match
+                case Some(m) =>
+                  text(m.toString) + paren(expr(e))
+                case None =>
+                  expr(e)
         prev /
           code(s) {
             group(wl("sample", opts))

@@ -33,3 +33,8 @@ SELECT * FROM information_schema.tables USING SAMPLE 10 percent;
 
 -- DuckDB USING SAMPLE with reservoir method
 SELECT * FROM information_schema.tables USING SAMPLE reservoir(10%);
+
+-- Test cases for arithmetic expressions in TABLESAMPLE (should work after fix)
+SELECT * FROM information_schema.tables TABLESAMPLE BERNOULLI ((100 - 10));
+SELECT * FROM information_schema.tables TABLESAMPLE BERNOULLI (50 + 25);
+SELECT * FROM information_schema.tables TABLESAMPLE BERNOULLI (((10)));
