@@ -411,7 +411,9 @@ object SqlToken:
     SqlToken.DATA,
     SqlToken.AFTER,
     // TIME can be used as a column name (e.g., access.time in TD_TIME_RANGE)
-    SqlToken.TIME
+    SqlToken.TIME,
+    // ZONE can be used as a column name in bracket expressions (e.g., map[zone])
+    SqlToken.ZONE
   )
 
   val allKeywordsAndSymbols = keywords ++ literalStartKeywords ++ specialSymbols
