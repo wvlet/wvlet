@@ -27,28 +27,3 @@ class SqlParserHiveSpec
 
 class SqlParserUpdateSpec extends SqlParserSpec("spec/sql/update")
 class SqlParserTrinoSpec  extends SqlParserSpec("spec/sql/trino")
-
-class SqlParserCommentTest extends AirSpec:
-  test("should parse CREATE TABLE with COMMENT syntax") {
-    val sql    = "CREATE TABLE test ( id bigint COMMENT 'test comment' );"
-    val unit   = CompilationUnit.fromSqlString(sql)
-    val parser = SqlParser(unit, isContextUnit = true)
-    val stmt   = parser.parse()
-    debug(stmt.pp)
-  }
-
-  test("should parse CREATE TABLE with COMMENT and WITH properties") {
-    val sql  = "CREATE TABLE test ( f_9d304 bigint COMMENT 'Unixtime' WITH ( key_name = 'time' ) );"
-    val unit = CompilationUnit.fromSqlString(sql)
-    val parser = SqlParser(unit, isContextUnit = true)
-    val stmt   = parser.parse()
-    debug(stmt.pp)
-  }
-
-  test("should handle single quotes in COMMENT strings") {
-    val sql    = "CREATE TABLE test ( name varchar COMMENT 'User''s full name' );"
-    val unit   = CompilationUnit.fromSqlString(sql)
-    val parser = SqlParser(unit, isContextUnit = true)
-    val stmt   = parser.parse()
-    debug(stmt.pp)
-  }

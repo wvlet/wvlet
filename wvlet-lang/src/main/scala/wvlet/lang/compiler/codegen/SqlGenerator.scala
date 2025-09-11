@@ -1634,32 +1634,25 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         val columnAttributes =
           List(
             // Add NOT NULL constraint
-            if c.notNull then
-              Some(text("not null"))
-            else
-              None
-            ,
+            Option.when(c.notNull)(text("not null")),
             // Add COMMENT attribute
             c.comment.map(comment => wl(text("comment"), text(s"'${comment.replace("'", "''")}'"))),
             // Add DEFAULT value
             c.defaultValue.map(default => wl(text("default"), expr(default))),
             // Add WITH properties
-            if c.properties.nonEmpty then
-              Some(
-                wl(
-                  text("with"),
-                  paren(
-                    cl(
-                      c.properties
-                        .map { case (key, value) =>
-                          wl(expr(key), text("="), expr(value))
-                        }
-                    )
+            Option.when(c.properties.nonEmpty)(
+              wl(
+                text("with"),
+                paren(
+                  cl(
+                    c.properties
+                      .map { case (key, value) =>
+                        wl(expr(key), text("="), expr(value))
+                      }
                   )
                 )
               )
-            else
-              None
+            )
           ).flatten
 
         if columnAttributes.nonEmpty then
