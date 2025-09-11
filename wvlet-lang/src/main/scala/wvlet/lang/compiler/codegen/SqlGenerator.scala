@@ -1630,13 +1630,35 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       case e: Exists =>
         wl(text("exists"), expr(e.child))
       case c: ColumnDef =>
-        wl(
-          expr(c.columnName),
-          text(c.tpe.sqlExpr)
-          // TODO add nullable or other constraints
-          // c.nullable.map(x => text(x.expr)),
-          // c.comment.map(x => text(x.expr))
-        )
+        val baseColumn = wl(expr(c.columnName), text(c.tpe.sqlExpr))
+        val columnAttributes =
+          List(
+            // Add NOT NULL constraint
+            Option.when(c.notNull)(text("not null")),
+            // Add COMMENT attribute
+            c.comment.map(comment => wl(text("comment"), text(s"'${comment.replace("'", "''")}'"))),
+            // Add DEFAULT value
+            c.defaultValue.map(default => wl(text("default"), expr(default))),
+            // Add WITH properties
+            Option.when(c.properties.nonEmpty)(
+              wl(
+                text("with"),
+                paren(
+                  cl(
+                    c.properties
+                      .map { case (key, value) =>
+                        wl(expr(key), text("="), expr(value))
+                      }
+                  )
+                )
+              )
+            )
+          ).flatten
+
+        if columnAttributes.nonEmpty then
+          wl(baseColumn +: columnAttributes)
+        else
+          baseColumn
       case l: LikeTableDef =>
         if l.includeProperties then
           wl("like", expr(l.tableName), "including", "properties")
