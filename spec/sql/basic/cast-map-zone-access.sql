@@ -4,10 +4,14 @@
 -- Basic CAST with MAP type and zone access
 SELECT CAST(JSON '{"zone": "us-west", "region": "california"}' AS MAP(VARCHAR, VARCHAR))['zone'] as zone_value;
 
--- CAST with MAP and different bracket accessors including zone
-SELECT 
-  CAST(JSON '{"zone": "us-west", "region": "california"}' AS MAP(VARCHAR, VARCHAR))['zone'] as zone_val,
-  CAST(JSON '{"zone": "us-west", "region": "california"}' AS MAP(VARCHAR, VARCHAR))['region'] as region_val;
+-- CAST with MAP and different bracket accessors including zone using WITH clause
+WITH data AS (
+  SELECT CAST(JSON '{"zone": "us-west", "region": "california"}' AS MAP(VARCHAR, VARCHAR)) as m
+)
+SELECT
+  m['zone'] as zone_val,
+  m['region'] as region_val
+FROM data;
 
 -- CAST with MAP in WHERE clause using zone accessor
 SELECT * FROM (VALUES (1)) t(x) 
