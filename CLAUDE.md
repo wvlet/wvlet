@@ -145,6 +145,8 @@ For testing SqlParser, use `spec/sql/basic` directory:
 - `spec/sql/basic`: SQL-parser tests (.sql files) 
 - `spec/sql/tpc-h`: TPC-H benchmark queries
 
+In SQL specs, use `VALUES` expressions to avoid referencing non-existing tables, as these specs are tested against DuckDB.
+
 - **Embedded Assertions**: `.wv` files contain `test` statements for validation
 - **SpecRunner**: Core engine that compiles and executes .wv files as test cases
 
