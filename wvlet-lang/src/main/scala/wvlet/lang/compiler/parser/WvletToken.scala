@@ -29,9 +29,10 @@ import scala.annotation.switch
 enum WvletToken(val tokenType: TokenType, val str: String):
   def isIdentifier: Boolean      = tokenType == Identifier
   def isLiteral: Boolean         = tokenType == Literal
-  def isReservedKeyword: Boolean = tokenType == Keyword
-  def isNonReservedKeyword: Boolean =
-    tokenType == Keyword && WvletToken.nonReservedKeywords.contains(this)
+  def isKeyword: Boolean         = tokenType == Keyword
+  def isReservedKeyword: Boolean = isKeyword && !WvletToken.nonReservedKeywords.contains(this)
+
+  def isNonReservedKeyword: Boolean = isKeyword && WvletToken.nonReservedKeywords.contains(this)
 
   def canStartSelectItem: Boolean =
     tokenType != Keyword || WvletToken.literalStartKeywords.contains(this) ||
