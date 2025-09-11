@@ -2321,6 +2321,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           JsonLiteral(i.unquotedValue, spanFrom(t))
         case SqlToken.INTERVAL =>
           interval()
+        case SqlToken.EXTRACT =>
+          extractExpression()
         case id if id.isIdentifier =>
           identifier()
         case SqlToken.DOUBLE_QUOTE_STRING =>
@@ -2482,6 +2484,25 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       case _ =>
         IntervalLiteral(value.unquotedValue, sign, f1, None, spanFrom(t))
   end interval
+
+  def extractExpression(): Extract =
+    val t = consume(SqlToken.EXTRACT)
+    consume(SqlToken.L_PAREN)
+    val fieldNode = identifier()
+    val field = IntervalField
+      .unapply(fieldNode.leafName)
+      .getOrElse {
+        throw StatusCode
+          .SYNTAX_ERROR
+          .newException(
+            s"Unknown extract field: ${fieldNode.leafName}",
+            fieldNode.sourceLocationOfCompilationUnit
+          )
+      }
+    consume(SqlToken.FROM)
+    val expr = expression()
+    consume(SqlToken.R_PAREN)
+    Extract(field, expr, spanFrom(t))
 
   def literal(): Literal =
     def removeUnderscore(s: String): String = s.replaceAll("_", "")
