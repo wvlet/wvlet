@@ -2679,10 +2679,14 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       case SqlToken.PLUS | SqlToken.MINUS =>
         // Could be INTERVAL +/- '1' DAY or interval +/- expression
         val signToken = consumeToken()
-        val sign = signToken.token match
-          case SqlToken.PLUS  => Sign.Positive
-          case SqlToken.MINUS => Sign.Negative
-          case _              => Sign.NoSign // shouldn't happen
+        val sign =
+          signToken.token match
+            case SqlToken.PLUS =>
+              Sign.Positive
+            case SqlToken.MINUS =>
+              Sign.Negative
+            case _ =>
+              Sign.NoSign // shouldn't happen
 
         // Check if next is a literal
         scanner.lookAhead().token match
@@ -2702,6 +2706,10 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       case _ =>
         // INTERVAL is used as an identifier
         UnquotedIdentifier(intervalToken.str, spanFrom(intervalToken))
+
+    end match
+
+  end intervalOrIdentifier
 
   def extractExpression(): Extract =
     val t = consume(SqlToken.EXTRACT)

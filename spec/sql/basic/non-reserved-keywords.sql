@@ -35,10 +35,6 @@ SELECT interval / 2 FROM (VALUES (10), (20)) AS t(interval);
 -- SELECT interval + 1 FROM (VALUES (5)) AS t(interval); -- Would error: Expected time unit
 -- SELECT interval - 1 FROM (VALUES (5)) AS t(interval); -- Would error: Expected time unit
 
--- Test LIMIT as identifier
-SELECT limit FROM (VALUES (100), (200), (500)) AS t(limit);
-SELECT limit * 2 AS double_limit FROM (VALUES (50), (75)) AS t(limit);
-
 -- Test MERGE as identifier
 SELECT merge FROM (VALUES ('merge_strategy'), ('combine_method')) AS t(merge);
 
@@ -82,17 +78,17 @@ SELECT implementation FROM (VALUES ('java_impl'), ('scala_impl')) AS t(implement
 SELECT 
   all AS all_items,
   plan AS subscription_plan,
-  limit AS max_items,
+  row_limit AS max_items,
   offset AS start_position,
   session AS user_session
 FROM (VALUES 
   ('everything', 'premium', 1000, 0, 'sess_abc'),
   ('filtered', 'basic', 100, 50, 'sess_def')
-) AS t(all, plan, limit, offset, session);
+) AS t(all, plan, row_limit, offset, session);
 
 -- Test in WHERE clauses
-SELECT * FROM (VALUES ('plan1', 100), ('plan2', 200)) AS t(plan, limit)
-WHERE plan = 'plan1' AND limit > 50;
+SELECT * FROM (VALUES ('plan1', 100), ('plan2', 200)) AS t(plan, row_limit)
+WHERE plan = 'plan1' AND row_limit > 50;
 
 -- Test in GROUP BY
 SELECT plan, count(*) AS cnt
@@ -100,19 +96,19 @@ FROM (VALUES ('basic'), ('basic'), ('premium'), ('premium'), ('premium')) AS t(p
 GROUP BY plan;
 
 -- Test with table aliases using non-reserved keywords
-SELECT p.plan, l.limit
+SELECT p.plan, l.row_limit
 FROM (VALUES ('basic'), ('premium')) AS p(plan)
-JOIN (VALUES ('basic', 100), ('premium', 1000)) AS l(plan, limit) ON p.plan = l.plan;
+JOIN (VALUES ('basic', 100), ('premium', 1000)) AS l(plan, row_limit) ON p.plan = l.plan;
 
 -- Test nested expressions with non-reserved keywords
 SELECT 
-  concat(plan, '_', CAST(limit AS VARCHAR)) AS plan_description,
+  concat(plan, '_', CAST(row_limit AS VARCHAR)) AS plan_description,
   CASE 
-    WHEN limit > 500 THEN 'high'
-    WHEN limit > 100 THEN 'medium' 
+    WHEN row_limit > 500 THEN 'high'
+    WHEN row_limit > 100 THEN 'medium' 
     ELSE 'low'
   END AS limit_category
-FROM (VALUES ('basic', 100), ('premium', 1000), ('starter', 50)) AS t(plan, limit);
+FROM (VALUES ('basic', 100), ('premium', 1000), ('starter', 50)) AS t(plan, row_limit);
 
 -- Test function calls with non-reserved keyword column names
 SELECT 

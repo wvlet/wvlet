@@ -428,7 +428,6 @@ object SqlToken:
     SqlToken.EXPLAIN,   // Statement keyword, safe as identifier
     SqlToken.FETCH,     // Part of FETCH FIRST but safe as identifier
     SqlToken.INTERVAL,  // Can distinguish between literal INTERVAL '1' DAY and column name
-    SqlToken.LIMIT,     // Clause keyword but safe as identifier
     SqlToken.MERGE,     // Statement keyword, safe as identifier
     SqlToken.OFFSET,    // Clause keyword but safe as identifier
     SqlToken.PARTITION, // Window/DDL context, safe as identifier
