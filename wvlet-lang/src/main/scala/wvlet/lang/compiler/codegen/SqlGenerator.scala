@@ -1346,6 +1346,10 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         wl(expr(child), "is null")
       case IsNotNull(child, _) =>
         wl(expr(child), "is not null")
+      case IsDistinctFrom(left, right, _) =>
+        wl(expr(left), "is distinct from", expr(right))
+      case IsNotDistinctFrom(left, right, _) =>
+        wl(expr(left), "is not distinct from", expr(right))
       case a: ArithmeticUnaryExpr =>
         a.sign match
           case Sign.NoSign =>
