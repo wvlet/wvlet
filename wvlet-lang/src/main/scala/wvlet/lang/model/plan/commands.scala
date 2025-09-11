@@ -13,3 +13,4 @@ case class ExecuteExpr(expr: Expression, span: Span)    extends Command
 case class ExplainPlan(child: LogicalPlan, span: Span)  extends Command
 case class UseSchema(schema: QualifiedName, span: Span) extends Command
 case class DescribeInput(name: NameExpr, span: Span)    extends Command
+case class DescribeOutput(name: NameExpr, span: Span)   extends Command
