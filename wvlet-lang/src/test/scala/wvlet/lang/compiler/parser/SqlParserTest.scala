@@ -26,3 +26,4 @@ class SqlParserHiveSpec
     )
 
 class SqlParserUpdateSpec extends SqlParserSpec("spec/sql/update")
+class SqlParserTrinoSpec  extends SqlParserSpec("spec/sql/trino")
