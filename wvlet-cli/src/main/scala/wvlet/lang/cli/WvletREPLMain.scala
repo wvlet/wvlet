@@ -17,9 +17,7 @@ import java.io.File
   * REPL command launcher (wv)
   */
 object WvletREPLMain extends LogSupport:
-  def launcher = Launcher
-    .of[WvletREPLMain]
-    .addModule[CatalogCommand](name = "catalog", description = "Manage static catalog metadata")
+  def launcher = Launcher.of[WvletREPLMain]
 
   private def wrap(body: => Unit): Unit =
     try

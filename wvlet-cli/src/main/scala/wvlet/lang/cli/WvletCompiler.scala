@@ -35,11 +35,7 @@ case class WvletCompilerOption(
     @option(prefix = "--catalog", description = "Context database catalog to use")
     catalog: Option[String] = None,
     @option(prefix = "--schema", description = "Context database schema to use")
-    schema: Option[String] = None,
-    @option(prefix = "--use-static-catalog", description = "Use static catalog for compilation")
-    useStaticCatalog: Boolean = false,
-    @option(prefix = "--static-catalog-path", description = "Path to static catalog files")
-    staticCatalogPath: Option[String] = None
+    schema: Option[String] = None
 )
 
 class WvletCompiler(
@@ -84,26 +80,16 @@ class WvletCompiler(
         workEnv = workEnv,
         catalog = currentProfile.catalog,
         schema = currentProfile.schema,
-        dbType = dbType,
-        useStaticCatalog = compilerOption.useStaticCatalog,
-        staticCatalogPath = compilerOption
-          .staticCatalogPath
-          .orElse(
-            if compilerOption.useStaticCatalog then
-              Some("./catalog")
-            else
-              None
-          )
+        dbType = dbType
       )
     )
-    // Only set catalog from connector if not using static catalog
-    if !compilerOption.useStaticCatalog then
-      currentProfile
-        .catalog
-        .foreach { catalog =>
-          val schema = currentProfile.schema.getOrElse("main")
-          compiler.setDefaultCatalog(getDBConnector.getCatalog(catalog, schema))
-        }
+    // Set catalog from connector
+    currentProfile
+      .catalog
+      .foreach { catalog =>
+        val schema = currentProfile.schema.getOrElse("main")
+        compiler.setDefaultCatalog(getDBConnector.getCatalog(catalog, schema))
+      }
 
     currentProfile
       .schema
