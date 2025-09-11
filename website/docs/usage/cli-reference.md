@@ -178,7 +178,7 @@ wv
 # Run REPL command
 wv "from users select count(*)"
 
-# Access other wvlet commands through wv  
+# Access other wvlet commands through wv
 wv compile -f query.wv
 ```
 
@@ -190,7 +190,7 @@ wv compile -f query.wv
 # 1. Write and test queries
 wvlet compile -f query.wv
 
-# 2. Run queries against database  
+# 2. Run queries against database
 wvlet run -f query.wv
 
 # 3. Start UI for interactive development
