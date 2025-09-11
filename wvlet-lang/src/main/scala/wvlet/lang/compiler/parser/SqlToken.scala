@@ -154,6 +154,7 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   case CAST     extends SqlToken(Keyword, "cast")
   case TRY_CAST extends SqlToken(Keyword, "try_cast")
   case TRIM     extends SqlToken(Keyword, "trim")
+  case EXTRACT  extends SqlToken(Keyword, "extract")
   case LEADING  extends SqlToken(Keyword, "leading")
   case TRAILING extends SqlToken(Keyword, "trailing")
   case BOTH     extends SqlToken(Keyword, "both")
@@ -322,7 +323,8 @@ object SqlToken:
     SqlToken.JSON,
     SqlToken.INTERVAL,
     SqlToken.CAST,
-    SqlToken.TRY_CAST
+    SqlToken.TRY_CAST,
+    SqlToken.EXTRACT
   )
 
   // Keywords that can be used as unquoted identifiers
