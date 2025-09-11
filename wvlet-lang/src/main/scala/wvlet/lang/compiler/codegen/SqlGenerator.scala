@@ -1537,6 +1537,8 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         wl(expr(b.e), "between", expr(b.a), "and", expr(b.b))
       case b: NotBetween =>
         wl(expr(b.e), "not between", expr(b.a), "and", expr(b.b))
+      case e: Extract =>
+        wl("extract", paren(wl(text(e.interval.name.toUpperCase), "from", expr(e.expr))))
       case c: Cast =>
         val castKeyword =
           if c.tryCast then
