@@ -261,6 +261,11 @@ class QueryExecutor(
         // In a full implementation, this would query the prepared statement metadata
         workEnv.info(s"DESCRIBE INPUT ${d.name.fullName}")
         QueryResult.empty
+      case d: DescribeOutput =>
+        // For now, just return empty result since DESCRIBE OUTPUT is mainly for parsing validation
+        // In a full implementation, this would query the prepared statement output metadata
+        workEnv.info(s"DESCRIBE OUTPUT ${d.name.fullName}")
+        QueryResult.empty
     end match
 
   end executeCommand
