@@ -45,3 +45,12 @@ GROUP BY GROUPING SETS (
 SELECT country, region, SUM(amount)
 FROM sales
 GROUP BY GROUPING SETS ((country, region), (country), ());
+
+-- Empty CUBE and ROLLUP
+SELECT col1, SUM(col2)
+FROM table1
+GROUP BY CUBE ();
+
+SELECT col1, SUM(col2)
+FROM table1
+GROUP BY ROLLUP ();
