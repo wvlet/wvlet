@@ -2751,8 +2751,13 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
               val r = relationRest(relation())
               consume(SqlToken.R_PAREN)
               r
+            case q if q.isQueryStart =>
+              // Subquery: (SELECT ... UNION ...)
+              val subQuery = query()
+              consume(SqlToken.R_PAREN)
+              BracedRelation(subQuery, spanFrom(t2))
             case _ =>
-              // Subquery: (SELECT ...)
+              // Other parenthesized expressions or nested parentheses
               val subQuery = relationRest(relation())
               consume(SqlToken.R_PAREN)
               BracedRelation(subQuery, spanFrom(t2))
