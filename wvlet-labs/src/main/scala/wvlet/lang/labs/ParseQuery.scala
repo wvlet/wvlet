@@ -129,15 +129,10 @@ class ParseQuery() extends LogSupport:
       @argument(description = "query log parquet file, with database and sql parameters")
       queryLogFile: String,
       @option(prefix = "-p,--parallelism", description = "Number of parallel threads")
-      parallelism: Int = Runtime.getRuntime.availableProcessors(),
-      @option(
-        prefix = "--error-sampling",
-        description = "Error sampling rate (1 = log all errors, 10 = log every 10th error)"
-      )
-      errorSampling: Int = 10
+      parallelism: Int = Runtime.getRuntime.availableProcessors()
   ): Unit =
     info(s"Reading query logs from ${queryLogFile}")
-    info(s"Using parallelism: ${parallelism} threads, error sampling: 1/${errorSampling}")
+    info(s"Using parallelism: ${parallelism} threads")
 
     // Use DuckDB JDBC to read the parquet file
     Class.forName("org.duckdb.DuckDBDriver")
