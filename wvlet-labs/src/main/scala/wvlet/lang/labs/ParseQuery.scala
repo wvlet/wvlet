@@ -6,7 +6,7 @@ import wvlet.airframe.launcher.*
 import java.io.{FileWriter, PrintWriter}
 import wvlet.airframe.codec.MessageCodec
 import wvlet.airframe.control.{Control, Parallel}
-import wvlet.airframe.metrics.Count
+import wvlet.airframe.metrics.{Count, ElapsedTime}
 import wvlet.lang.compiler.parser.ParserPhase
 import wvlet.lang.compiler.{CompileResult, Context}
 import org.duckdb.DuckDBDriver
@@ -46,7 +46,8 @@ object ParseQuery extends LogSupport:
 // Test command for parsing queries in batch
 class ParseQuery() extends LogSupport:
 
-  private val codec = MessageCodec.of[QueryErrorRecord]
+  private val codec                    = MessageCodec.of[QueryErrorRecord]
+  private val PROGRESS_REPORT_INTERVAL = 10000
 
   private def writeErrorRecord(
       errorWriter: PrintWriter,
@@ -125,6 +126,26 @@ class ParseQuery() extends LogSupport:
         )
         true // Has error
 
+  private def formatProgressMessage(
+      queryCount: Int,
+      errorCount: Int,
+      startTimeNanos: Long
+  ): String =
+    val errorRate =
+      if queryCount > 0 then
+        (errorCount.toDouble / queryCount * 100)
+      else
+        0.0
+    val elapsedTime     = ElapsedTime.nanosSince(startTimeNanos)
+    val durationSeconds = elapsedTime.toMillis / 1000.0
+    val queriesPerMinute =
+      if durationSeconds > 0 then
+        (queryCount / durationSeconds) * 60.0
+      else
+        0.0
+    val queriesPerMinStr = Count.succinct(queriesPerMinute.toLong)
+    f"Processed ${queryCount}%,d queries, ${errorCount}%,d failed (${errorRate}%.2f%%), Elapsed ${elapsedTime}%6s, ${queriesPerMinStr} queries/min"
+
   @command(isDefault = true, description = "Parse query log")
   def help(): Unit = info(s"Use 'parse' subcommand to parse query log")
 
@@ -167,9 +188,9 @@ class ParseQuery() extends LogSupport:
               )
 
             // Thread-safe counters and timing
-            val queryCount = new AtomicInteger(0)
-            val errorCount = new AtomicInteger(0)
-            val startTime  = System.nanoTime()
+            val queryCount     = new AtomicInteger(0)
+            val errorCount     = new AtomicInteger(0)
+            val startTimeNanos = System.nanoTime()
 
             // Create error log file in target folder
             val queryLogFileName = java.nio.file.Paths.get(queryLogFile).getFileName.toString
@@ -206,25 +227,15 @@ class ParseQuery() extends LogSupport:
                   if hasError then
                     errorCount.incrementAndGet()
 
-                  // Report progress every 10,000 queries
+                  // Report progress at regular intervals
                   val currentQueryCount = queryCount.get()
-                  if currentQueryCount % 10000 == 0 then
+                  if currentQueryCount % PROGRESS_REPORT_INTERVAL == 0 then
                     val currentErrorCount = errorCount.get()
-                    val errorRate =
-                      if currentQueryCount > 0 then
-                        (currentErrorCount.toDouble / currentQueryCount * 100)
-                      else
-                        0.0
-                    val currentTime            = System.nanoTime()
-                    val currentDurationSeconds = (currentTime - startTime) / 1_000_000_000.0
-                    val currentQueriesPerMinute =
-                      if currentDurationSeconds > 0 then
-                        (currentQueryCount / currentDurationSeconds) * 60.0
-                      else
-                        0.0
-                    val queriesPerMinStr = Count.succinct(currentQueriesPerMinute.toLong)
-                    val progressMessage =
-                      f"Processed ${currentQueryCount}%,d queries, ${currentErrorCount}%,d failed (${errorRate}%.1f%% error rate), ${queriesPerMinStr} queries/min"
+                    val progressMessage = formatProgressMessage(
+                      currentQueryCount,
+                      currentErrorCount,
+                      startTimeNanos
+                    )
                     System.err.print(s"\r${AnsiColor.CYAN}${progressMessage}${AnsiColor.RESET}")
 
                   hasError
@@ -236,31 +247,16 @@ class ParseQuery() extends LogSupport:
 
               val finalQueryCount = queryCount.get()
               val finalErrorCount = errorCount.get()
-              val endTime         = System.nanoTime()
-              val durationSeconds = (endTime - startTime) / 1_000_000_000.0
-              val queriesPerSecond =
-                if durationSeconds > 0 then
-                  finalQueryCount / durationSeconds
-                else
-                  0.0
-              val queriesPerMinute = queriesPerSecond * 60.0
 
               if finalErrorCount > 0 then
                 info(s"Errors logged to: ${errorLogFile}")
 
-              val errorRate =
-                if finalQueryCount > 0 then
-                  (finalErrorCount.toDouble / finalQueryCount * 100)
-                else
-                  0.0
-
-              info(
-                f"Final: ${finalQueryCount}%,d queries, ${finalErrorCount}%,d failed (${errorRate}%.3f%% error rate)"
+              val finalMessage = formatProgressMessage(
+                finalQueryCount,
+                finalErrorCount,
+                startTimeNanos
               )
-              info(
-                f"Performance: ${Count.succinct(queriesPerMinute.toLong)} queries/min (${Count
-                    .succinct(queriesPerSecond.toLong)} queries/sec, ${durationSeconds}%.1fs total)"
-              )
+              info(finalMessage)
             }
           }
         }

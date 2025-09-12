@@ -527,4 +527,4 @@ lazy val labs = project
         "org.duckdb"          % "duckdb_jdbc"       % DUCKDB_JDBC_VERSION
       )
   )
-  .dependsOn(lang.jvm, lang.js)
+  .dependsOn(lang.jvm)
