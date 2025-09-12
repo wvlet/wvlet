@@ -2275,8 +2275,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
                 identifier.unquotedValue.toUpperCase match
                   case "IPADDRESS" =>
                     DataType.IpAddressType
-                  case _ =>
-                    DataType.StringType // Default to string for unknown types
+                  case typeName =>
+                    DataType.parse(typeName)
               GenericLiteral(dataType, lit.unquotedValue, identifier.span.extendTo(lit.span))
             case _ =>
               expr
