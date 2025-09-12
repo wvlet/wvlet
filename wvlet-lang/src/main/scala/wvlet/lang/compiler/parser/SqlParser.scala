@@ -2266,6 +2266,26 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           consume(SqlToken.ZONE)
           val timezone = valueExpression()
           primaryExpressionRest(AtTimeZone(expr, timezone, spanFrom(t)))
+        case token if token.isStringLiteral =>
+          // Handle identifier followed by string literal (e.g., IPADDRESS '192.168.1.1')
+          expr match
+            case identifier: Identifier =>
+              val lit = literal()
+              val dataType =
+                identifier.unquotedValue.toUpperCase match
+                  case "IPADDRESS" =>
+                    DataType.IpAddressType
+                  case "DATE" =>
+                    DataType.DateType
+                  case "TIME" =>
+                    DataType.TimestampType(DataType.TimestampField.TIME, true)
+                  case "TIMESTAMP" =>
+                    DataType.TimestampType(DataType.TimestampField.TIMESTAMP, true)
+                  case _ =>
+                    DataType.StringType // Default to string for unknown types
+              GenericLiteral(dataType, lit.unquotedValue, identifier.span.extendTo(lit.span))
+            case _ =>
+              expr
         case _ =>
           expr
       end match
@@ -2521,11 +2541,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         case SqlToken.EXTRACT =>
           extractExpression()
         case id if id.isIdentifier =>
-          // Check for IP address literal: IPADDRESS '192.168.1.1'
-          if t.str.toUpperCase == "IPADDRESS" then
-            ipAddress()
-          else
-            identifier()
+          identifier()
         case SqlToken.DOUBLE_QUOTE_STRING =>
           identifier()
         case SqlToken.STAR =>
@@ -2733,18 +2749,6 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     val expr = expression()
     consume(SqlToken.R_PAREN)
     Extract(field, expr, spanFrom(t))
-
-  def ipAddress(): Expression =
-    val identifierToken = consumeToken() // consume 'IPADDRESS'
-    val nextToken       = scanner.lookAhead().token
-    nextToken match
-      case token if token.isStringLiteral =>
-        // Treat as IP address literal, e.g., IPADDRESS '192.168.1.1'
-        val lit = literal()
-        GenericLiteral(DataType.IpAddressType, lit.unquotedValue, spanFrom(identifierToken))
-      case _ =>
-        // Treat as regular identifier (function call or column name)
-        UnquotedIdentifier(identifierToken.str, spanFrom(identifierToken))
 
   def literal(): Literal =
     def removeUnderscore(s: String): String = s.replaceAll("_", "")
