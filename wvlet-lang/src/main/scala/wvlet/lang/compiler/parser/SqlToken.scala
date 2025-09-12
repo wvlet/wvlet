@@ -304,6 +304,7 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   case PROPERTIES    extends SqlToken(Keyword, "properties")
   case USER          extends SqlToken(Keyword, "user")
   case ROLE          extends SqlToken(Keyword, "role")
+  case ROLES         extends SqlToken(Keyword, "roles")
   case DATA          extends SqlToken(Keyword, "data")
   case AFTER         extends SqlToken(Keyword, "after")
 
@@ -448,7 +449,8 @@ object SqlToken:
     SqlToken.GRANTS,
     SqlToken.STATS,
     SqlToken.BRANCHES,
-    SqlToken.MATERIALIZED
+    SqlToken.MATERIALIZED,
+    SqlToken.ROLES
   )
 
   val allKeywordsAndSymbols = keywords ++ literalStartKeywords ++ specialSymbols
