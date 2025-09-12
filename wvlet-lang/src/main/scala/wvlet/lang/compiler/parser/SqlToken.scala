@@ -224,12 +224,16 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   case GRAPHVIZ    extends SqlToken(Keyword, "graphviz")
 
   // DDL entity types (non-reserved so they can be used as table names)
-  case CATALOG   extends SqlToken(Keyword, "catalog")
-  case DATABASE  extends SqlToken(Keyword, "database")
-  case SCHEMA    extends SqlToken(Keyword, "schema")
-  case TABLE     extends SqlToken(Keyword, "table")
-  case VIEW      extends SqlToken(Keyword, "view")
-  case STATEMENT extends SqlToken(Keyword, "statement")
+  case CATALOG      extends SqlToken(Keyword, "catalog")
+  case DATABASE     extends SqlToken(Keyword, "database")
+  case SCHEMA       extends SqlToken(Keyword, "schema")
+  case TABLE        extends SqlToken(Keyword, "table")
+  case VIEW         extends SqlToken(Keyword, "view")
+  case STATEMENT    extends SqlToken(Keyword, "statement")
+  case GRANTS       extends SqlToken(Keyword, "grants")
+  case STATS        extends SqlToken(Keyword, "stats")
+  case BRANCHES     extends SqlToken(Keyword, "branches")
+  case MATERIALIZED extends SqlToken(Keyword, "materialized")
 
   case INSERT     extends SqlToken(Keyword, "insert")
   case UPSERT     extends SqlToken(Keyword, "upsert")
@@ -311,6 +315,7 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   case PROPERTIES    extends SqlToken(Keyword, "properties")
   case USER          extends SqlToken(Keyword, "user")
   case ROLE          extends SqlToken(Keyword, "role")
+  case ROLES         extends SqlToken(Keyword, "roles")
   case DATA          extends SqlToken(Keyword, "data")
   case AFTER         extends SqlToken(Keyword, "after")
 
@@ -460,7 +465,13 @@ object SqlToken:
     SqlToken.UPDATE,    // Statement keyword, safe as identifier
     SqlToken.USE,       // Statement keyword, safe as identifier
     // Non-SQL keyword that should be safe as identifier
-    SqlToken.IMPLEMENTATION
+    SqlToken.IMPLEMENTATION,
+    // Trino-specific SHOW statement keywords, safe as identifiers
+    SqlToken.GRANTS,
+    SqlToken.STATS,
+    SqlToken.BRANCHES,
+    SqlToken.MATERIALIZED,
+    SqlToken.ROLES
   )
 
   val allKeywordsAndSymbols = keywords ++ literalStartKeywords ++ specialSymbols

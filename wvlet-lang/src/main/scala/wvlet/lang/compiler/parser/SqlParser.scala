@@ -1788,23 +1788,102 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         case _ =>
           EmptyName
 
-    val t    = consume(SqlToken.SHOW)
-    val name = identifier()
+    val t = consume(SqlToken.SHOW)
 
-    // Handle multi-word SHOW commands
-    name.leafName.toLowerCase match
-      case "create" =>
-        // SHOW CREATE VIEW viewname
-        val next = identifier()
-        if next.leafName.toLowerCase == "view" then
-          val viewName = qualifiedName()
-          Show(ShowType.createView, viewName, None, spanFrom(t))
-        else
-          unexpected(next, s"Expected VIEW after CREATE, but found: ${next.leafName}")
-      case "functions" =>
+    // Use token pattern matching instead of consuming identifiers
+    scanner.lookAhead().token match
+      case SqlToken.CREATE =>
+        consume(SqlToken.CREATE)
+        scanner.lookAhead().token match
+          case SqlToken.TABLE =>
+            consume(SqlToken.TABLE)
+            val tableName = qualifiedName()
+            Show(ShowType.createTable, tableName, None, spanFrom(t))
+          case SqlToken.VIEW =>
+            consume(SqlToken.VIEW)
+            val viewName = qualifiedName()
+            Show(ShowType.createView, viewName, None, spanFrom(t))
+          case SqlToken.SCHEMA =>
+            consume(SqlToken.SCHEMA)
+            val schemaName = qualifiedName()
+            Show(ShowType.createSchema, schemaName, None, spanFrom(t))
+          case SqlToken.MATERIALIZED =>
+            consume(SqlToken.MATERIALIZED)
+            consume(SqlToken.VIEW)
+            val viewName = qualifiedName()
+            Show(ShowType.createMaterializedView, viewName, None, spanFrom(t))
+          case _ =>
+            // Handle FUNCTION as identifier since there's no FUNCTION token, only FUNCTIONS
+            val next = identifier()
+            if next.leafName.toLowerCase == "function" then
+              val functionName = qualifiedName()
+              Show(ShowType.createFunction, functionName, None, spanFrom(t))
+            else
+              unexpected(
+                next,
+                s"Expected TABLE, VIEW, SCHEMA, MATERIALIZED VIEW, or FUNCTION after CREATE, but found: ${next
+                    .leafName}"
+              )
+        end match
+      case SqlToken.FUNCTIONS =>
+        consume(SqlToken.FUNCTIONS)
         Show(ShowType.functions, EmptyName, None, spanFrom(t))
+      case SqlToken.GRANTS =>
+        consume(SqlToken.GRANTS)
+        val onExpr =
+          if consumeIfExist(SqlToken.ON) then
+            qualifiedName()
+          else
+            EmptyName
+        Show(ShowType.grants, onExpr, None, spanFrom(t))
+      case SqlToken.STATS =>
+        consume(SqlToken.STATS)
+        consume(SqlToken.FOR)
+        scanner.lookAhead().token match
+          case SqlToken.L_PAREN =>
+            // TODO: SHOW STATS FOR (query) - for now, skip query parsing
+            // This would require more sophisticated parsing of nested queries
+            throw StatusCode
+              .SYNTAX_ERROR
+              .newException("SHOW STATS FOR (query) is not yet supported")
+          case _ =>
+            // SHOW STATS FOR table
+            val tableName = qualifiedName()
+            Show(ShowType.stats, tableName, None, spanFrom(t))
+      case SqlToken.BRANCHES =>
+        consume(SqlToken.BRANCHES)
+        val inExpr =
+          if consumeIfExist(SqlToken.FROM) || consumeIfExist(SqlToken.IN) then
+            consume(SqlToken.TABLE)
+            qualifiedName()
+          else
+            EmptyName
+        Show(ShowType.branches, inExpr, None, spanFrom(t))
+      case SqlToken.CURRENT =>
+        consume(SqlToken.CURRENT)
+        consume(SqlToken.ROLES)
+        val inExpr =
+          if consumeIfExist(SqlToken.FROM) || consumeIfExist(SqlToken.IN) then
+            qualifiedName()
+          else
+            EmptyName
+        Show(ShowType.currentRoles, inExpr, None, spanFrom(t))
+      case SqlToken.ROLE =>
+        consume(SqlToken.ROLE)
+        consume(SqlToken.GRANTS)
+        val inExpr =
+          if consumeIfExist(SqlToken.FROM) || consumeIfExist(SqlToken.IN) then
+            qualifiedName()
+          else
+            EmptyName
+        Show(ShowType.roleGrants, inExpr, None, spanFrom(t))
+      case SqlToken.SESSION =>
+        consume(SqlToken.SESSION)
+        Show(ShowType.session, EmptyName, None, spanFrom(t))
       case _ =>
-        // Handle existing single-word SHOW commands
+        // Handle remaining SHOW commands that don't have specific tokens (like TABLES, COLUMNS, etc.)
+        // Fall back to identifier-based parsing for backwards compatibility
+        val name = identifier()
         try
           val tpe = ShowType.valueOf(name.leafName.toLowerCase)
           tpe match

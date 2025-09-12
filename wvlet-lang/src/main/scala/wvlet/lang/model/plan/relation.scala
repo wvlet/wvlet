@@ -1050,6 +1050,16 @@ enum ShowType:
   case query
   case functions
   case createView
+  case createTable
+  case createSchema
+  case createMaterializedView
+  case createFunction
+  case grants
+  case stats
+  case branches
+  case currentRoles
+  case roleGrants
+  case session
 
 case class Show(showType: ShowType, inExpr: NameExpr, likePattern: Option[Expression], span: Span)
     extends Relation
