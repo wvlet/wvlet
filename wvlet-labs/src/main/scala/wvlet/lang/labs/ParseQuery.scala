@@ -9,9 +9,7 @@ import wvlet.lang.compiler.parser.ParserPhase
 import wvlet.lang.compiler.{CompileResult, Context}
 import org.duckdb.DuckDBDriver
 import java.util.Properties
-import java.util.concurrent.ConcurrentLinkedQueue
-import java.util.concurrent.atomic.{AtomicInteger, AtomicLong}
-import scala.collection.mutable.ListBuffer
+import java.util.concurrent.atomic.AtomicInteger
 
 case class QueryRecord(
     queryIndex: Int,
@@ -131,13 +129,16 @@ class ParseQuery() extends LogSupport:
   def parse(
       @argument(description = "query log parquet file, with database and sql parameters")
       queryLogFile: String,
-      @option(prefix = "-b,--batch-size", description = "Batch size for parallel processing")
-      batchSize: Int = 1000,
       @option(prefix = "-p,--parallelism", description = "Number of parallel threads")
-      parallelism: Int = Runtime.getRuntime.availableProcessors()
+      parallelism: Int = Runtime.getRuntime.availableProcessors(),
+      @option(
+        prefix = "--error-sampling",
+        description = "Error sampling rate (1 = log all errors, 10 = log every 10th error)"
+      )
+      errorSampling: Int = 10
   ): Unit =
     info(s"Reading query logs from ${queryLogFile}")
-    info(s"Using batch size: ${batchSize}, parallelism: ${parallelism}")
+    info(s"Using parallelism: ${parallelism} threads, error sampling: 1/${errorSampling}")
 
     // Use DuckDB JDBC to read the parquet file
     Class.forName("org.duckdb.DuckDBDriver")
@@ -168,9 +169,8 @@ class ParseQuery() extends LogSupport:
               )
 
             // Thread-safe counters
-            val queryCount   = new AtomicInteger(0)
-            val errorCount   = new AtomicInteger(0)
-            var totalQueries = 0
+            val queryCount = new AtomicInteger(0)
+            val errorCount = new AtomicInteger(0)
 
             // Create error log file in target folder
             val queryLogFileName = java.nio.file.Paths.get(queryLogFile).getFileName.toString
@@ -179,38 +179,34 @@ class ParseQuery() extends LogSupport:
             val errorLogFile = targetDir.resolve(s"${queryLogFileName}.errors.json").toString
 
             Control.withResource(new PrintWriter(new FileWriter(errorLogFile))) { errorWriter =>
-              // Collect queries in batches and process them in parallel
-              var batch = ListBuffer[QueryRecord]()
+              // Create an Iterator that wraps the ResultSet for streaming processing
+              val queryIterator =
+                new Iterator[QueryRecord]:
+                  private var currentIndex = 0
 
-              while rs.next() do
-                val tdAccountId = rs.getString("td_account_id")
-                val jobId       = rs.getString("job_id")
-                val queryId     = rs.getString("query_id")
-                val database    = rs.getString("database")
-                val sql         = rs.getString("sql")
+                  def hasNext: Boolean = rs.next()
 
-                totalQueries += 1
-                batch +=
-                  QueryRecord(
-                    queryIndex = totalQueries,
-                    tdAccountId = tdAccountId,
-                    jobId = jobId,
-                    queryId = queryId,
-                    database = database,
-                    sql = sql
-                  )
+                  def next(): QueryRecord =
+                    currentIndex += 1
+                    QueryRecord(
+                      queryIndex = currentIndex,
+                      tdAccountId = rs.getString("td_account_id"),
+                      jobId = rs.getString("job_id"),
+                      queryId = rs.getString("query_id"),
+                      database = rs.getString("database"),
+                      sql = rs.getString("sql")
+                    )
 
-                // Process batch when it reaches the specified size
-                if batch.size >= batchSize then
-                  processBatch(
-                    batch.toList,
-                    compiler,
-                    errorWriter,
-                    queryCount,
-                    errorCount,
-                    parallelism
-                  )
-                  batch.clear()
+              // Process queries in parallel using Parallel.iterate for memory-efficient streaming
+              val results =
+                Parallel.iterate(queryIterator, parallelism = parallelism) { queryRecord =>
+                  val errorOpt = parseQueryRecord(queryRecord, compiler)
+
+                  // Update counters
+                  queryCount.incrementAndGet()
+                  errorOpt.foreach { _ =>
+                    errorCount.incrementAndGet()
+                  }
 
                   // Report progress every 10,000 queries
                   val currentQueryCount = queryCount.get()
@@ -224,18 +220,18 @@ class ParseQuery() extends LogSupport:
                     info(
                       f"Processed ${currentQueryCount}%,d queries, ${currentErrorCount}%,d failed (${errorRate}%.1f%% error rate)"
                     )
-              end while
 
-              // Process remaining queries in the last batch
-              if batch.nonEmpty then
-                processBatch(
-                  batch.toList,
-                  compiler,
-                  errorWriter,
-                  queryCount,
-                  errorCount,
-                  parallelism
-                )
+                  errorOpt
+                }
+
+              // Write errors to file as we iterate through results
+              results.foreach { errorOpt =>
+                errorOpt.foreach { errorRecord =>
+                  synchronized {
+                    errorWriter.println(codec.toJson(errorRecord))
+                  }
+                }
+              }
 
               val finalQueryCount = queryCount.get()
               val finalErrorCount = errorCount.get()
@@ -257,32 +253,5 @@ class ParseQuery() extends LogSupport:
     }
 
   end parse
-
-  private def processBatch(
-      batch: List[QueryRecord],
-      compiler: wvlet.lang.compiler.Compiler,
-      errorWriter: PrintWriter,
-      queryCount: AtomicInteger,
-      errorCount: AtomicInteger,
-      parallelism: Int
-  ): Unit =
-    // Process the batch in parallel
-    val errorResults =
-      Parallel.run(batch, parallelism = parallelism) { queryRecord =>
-        parseQueryRecord(queryRecord, compiler)
-      }
-
-    // Write errors and update counters
-    errorResults.foreach { errorOpt =>
-      queryCount.incrementAndGet()
-      errorOpt match
-        case Some(errorRecord) =>
-          errorCount.incrementAndGet()
-          synchronized {
-            errorWriter.println(codec.toJson(errorRecord))
-          }
-        case None =>
-        // Successfully parsed
-    }
 
 end ParseQuery
