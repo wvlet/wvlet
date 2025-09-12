@@ -2737,13 +2737,14 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
   def ipAddress(): Expression =
     val identifierToken = consumeToken() // consume 'IPADDRESS'
     val nextToken       = scanner.lookAhead().token
-    if nextToken == SqlToken.SINGLE_QUOTE_STRING || nextToken == SqlToken.TRIPLE_QUOTE_STRING then
-      // Treat as IP address literal, e.g., IPADDRESS '192.168.1.1'
-      val lit = literal()
-      GenericLiteral(DataType.IpAddressType, lit.stringValue, spanFrom(identifierToken))
-    else
-      // Treat as regular identifier (function call or column name)
-      UnquotedIdentifier(identifierToken.str, spanFrom(identifierToken))
+    nextToken match
+      case token if token.isStringLiteral =>
+        // Treat as IP address literal, e.g., IPADDRESS '192.168.1.1'
+        val lit = literal()
+        GenericLiteral(DataType.IpAddressType, lit.stringValue, spanFrom(identifierToken))
+      case _ =>
+        // Treat as regular identifier (function call or column name)
+        UnquotedIdentifier(identifierToken.str, spanFrom(identifierToken))
 
   def literal(): Literal =
     def removeUnderscore(s: String): String = s.replaceAll("_", "")

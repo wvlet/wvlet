@@ -15,3 +15,12 @@ SELECT * FROM VALUES (IPADDRESS '192.168.1.1') as t(ip) WHERE ip = IPADDRESS '19
 
 -- IP address as column name (should be treated as identifier)
 SELECT ipaddress FROM VALUES ('test') as t(ipaddress);
+
+-- Case-insensitivity
+SELECT ipaddress '127.0.0.1' as ip_lower;
+
+-- IPADDRESS as a function call (should be treated as a function)
+SELECT IPADDRESS('127.0.0.1') as ip_func;
+
+-- IPADDRESS with double-quoted string literal
+SELECT IPADDRESS "1.2.3.4" as ip_double_quoted;
