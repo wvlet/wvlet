@@ -124,6 +124,12 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
     else
       body
 
+  private def notSupported(feature: String): Nothing = 
+    throw StatusCode.NOT_IMPLEMENTED.newException(s"$feature is not supported for ${dbType}")
+  
+  private def syntaxError(message: String): Nothing = 
+    throw StatusCode.SYNTAX_ERROR.newException(message)
+
   /**
     * Print a query matching with SELECT statement in SQL
     * @param r
@@ -409,7 +415,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             if dbType.supportAsOfJoin then
               Some(text("asof") + ws)
             else
-              throw StatusCode.SYNTAX_ERROR.newException(s"AsOf join is not supported in ${dbType}")
+              syntaxError(s"AsOf join is not supported in ${dbType}")
           else
             None
 
@@ -957,28 +963,28 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             val tableName = s.inExpr.nameParts.mkString(".")
             selectExpr(wl("show create table", tableName))
           case _ =>
-            throw StatusCode.NOT_IMPLEMENTED.newException(s"SHOW CREATE TABLE is not supported for ${dbType}")
+            notSupported("SHOW CREATE TABLE")
       case s: Show if s.showType == ShowType.createSchema =>
         dbType match
           case DBType.Trino =>
             val schemaName = s.inExpr.nameParts.mkString(".")
             selectExpr(wl("show create schema", schemaName))
           case _ =>
-            throw StatusCode.NOT_IMPLEMENTED.newException(s"SHOW CREATE SCHEMA is not supported for ${dbType}")
+            notSupported("SHOW CREATE SCHEMA")
       case s: Show if s.showType == ShowType.createMaterializedView =>
         dbType match
           case DBType.Trino =>
             val viewName = s.inExpr.nameParts.mkString(".")
             selectExpr(wl("show create materialized view", viewName))
           case _ =>
-            throw StatusCode.NOT_IMPLEMENTED.newException(s"SHOW CREATE MATERIALIZED VIEW is not supported for ${dbType}")
+            notSupported("SHOW CREATE MATERIALIZED VIEW")
       case s: Show if s.showType == ShowType.createFunction =>
         dbType match
           case DBType.Trino =>
             val functionName = s.inExpr.nameParts.mkString(".")
             selectExpr(wl("show create function", functionName))
           case _ =>
-            throw StatusCode.NOT_IMPLEMENTED.newException(s"SHOW CREATE FUNCTION is not supported for ${dbType}")
+            notSupported("SHOW CREATE FUNCTION")
       case s: Show if s.showType == ShowType.grants =>
         dbType match
           case DBType.Trino =>
@@ -989,14 +995,14 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
               wl("show grants")
             selectExpr(sql)
           case _ =>
-            throw StatusCode.NOT_IMPLEMENTED.newException(s"SHOW GRANTS is not supported for ${dbType}")
+            notSupported("SHOW GRANTS")
       case s: Show if s.showType == ShowType.stats =>
         dbType match
           case DBType.Trino =>
             val tableName = s.inExpr.nameParts.mkString(".")
             selectExpr(wl("show stats for", tableName))
           case _ =>
-            throw StatusCode.NOT_IMPLEMENTED.newException(s"SHOW STATS FOR is not supported for ${dbType}")
+            notSupported("SHOW STATS FOR")
       case s: Show if s.showType == ShowType.branches =>
         dbType match
           case DBType.Trino =>
@@ -1007,7 +1013,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
               wl("show branches")
             selectExpr(sql)
           case _ =>
-            throw StatusCode.NOT_IMPLEMENTED.newException(s"SHOW BRANCHES is not supported for ${dbType}")
+            notSupported("SHOW BRANCHES")
       case s: Show if s.showType == ShowType.currentRoles =>
         dbType match
           case DBType.Trino =>
@@ -1018,7 +1024,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
               wl("show current roles")
             selectExpr(sql)
           case _ =>
-            throw StatusCode.NOT_IMPLEMENTED.newException(s"SHOW CURRENT ROLES is not supported for ${dbType}")
+            notSupported("SHOW CURRENT ROLES")
       case s: Show if s.showType == ShowType.roleGrants =>
         dbType match
           case DBType.Trino =>
@@ -1029,13 +1035,13 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
               wl("show role grants")
             selectExpr(sql)
           case _ =>
-            throw StatusCode.NOT_IMPLEMENTED.newException(s"SHOW ROLE GRANTS is not supported for ${dbType}")
+            notSupported("SHOW ROLE GRANTS")
       case s: Show if s.showType == ShowType.session =>
         dbType match
           case DBType.Trino =>
             selectExpr(wl("show session"))
           case _ =>
-            throw StatusCode.NOT_IMPLEMENTED.newException(s"SHOW SESSION is not supported for ${dbType}")
+            notSupported("SHOW SESSION")
       case lv: LateralView =>
         // Hive LATERAL VIEW syntax
         val child = relation(lv.child, SQLBlock())(using InFromClause)
