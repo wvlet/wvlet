@@ -2275,12 +2275,6 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
                 identifier.unquotedValue.toUpperCase match
                   case "IPADDRESS" =>
                     DataType.IpAddressType
-                  case "DATE" =>
-                    DataType.DateType
-                  case "TIME" =>
-                    DataType.TimestampType(DataType.TimestampField.TIME, true)
-                  case "TIMESTAMP" =>
-                    DataType.TimestampType(DataType.TimestampField.TIMESTAMP, true)
                   case _ =>
                     DataType.StringType // Default to string for unknown types
               GenericLiteral(dataType, lit.unquotedValue, identifier.span.extendTo(lit.span))
