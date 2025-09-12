@@ -602,25 +602,25 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       consume(SqlToken.ANALYZE)
       val verbose = consumeIfExist(SqlToken.VERBOSE)
       val body    = queryOrUpdate()
-      return ExplainPlan(body, analyze = true, verbose = verbose, span = spanFrom(t))
+      ExplainPlan(body, analyze = true, verbose = verbose, span = spanFrom(t))
+    else
+      // Check for parenthesized options (Trino syntax: EXPLAIN (option [, ...]) statement)
+      val options =
+        if scanner.lookAhead().token == SqlToken.L_PAREN then
+          parseExplainOptions()
+        else
+          Nil
 
-    // Check for parenthesized options (Trino syntax: EXPLAIN (option [, ...]) statement)
-    val options =
-      if scanner.lookAhead().token == SqlToken.L_PAREN then
-        parseExplainOptions()
-      else
-        Nil
+      // Calcite require PLAN keyword after EXPLAIN (backward compatibility)
+      if scanner.lookAhead().token == SqlToken.PLAN then
+        consume(SqlToken.PLAN)
 
-    // Calcite require PLAN keyword after EXPLAIN (backward compatibility)
-    if scanner.lookAhead().token == SqlToken.PLAN then
-      consume(SqlToken.PLAN)
+      // Calcite requires FOR keyword before the query (backward compatibility)
+      if scanner.lookAhead().token == SqlToken.FOR then
+        consume(SqlToken.FOR)
 
-    // Calcite requires FOR keyword before the query (backward compatibility)
-    if scanner.lookAhead().token == SqlToken.FOR then
-      consume(SqlToken.FOR)
-
-    val body = queryOrUpdate()
-    ExplainPlan(body, options = options, span = spanFrom(t))
+      val body = queryOrUpdate()
+      ExplainPlan(body, options = options, span = spanFrom(t))
 
   end explain
 
@@ -662,7 +662,10 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
             consume(SqlToken.IO)
             ExplainType("IO")
           case _ =>
-            unexpected(scanner.lookAhead(), "Expected LOGICAL, DISTRIBUTED, VALIDATE, or IO for TYPE option")
+            unexpected(
+              scanner.lookAhead(),
+              "Expected LOGICAL, DISTRIBUTED, VALIDATE, or IO for TYPE option"
+            )
       case _ =>
         unexpected(scanner.lookAhead(), "Expected FORMAT or TYPE for EXPLAIN option")
 
