@@ -2272,7 +2272,11 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
             case identifier: Identifier =>
               val lit      = literal()
               val dataType = DataType.parse(identifier.unquotedValue)
-              val genericLiteral = GenericLiteral(dataType, lit.unquotedValue, identifier.span.extendTo(lit.span))
+              val genericLiteral = GenericLiteral(
+                dataType,
+                lit.unquotedValue,
+                identifier.span.extendTo(lit.span)
+              )
               primaryExpressionRest(genericLiteral)
             case _ =>
               expr
