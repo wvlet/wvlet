@@ -2,6 +2,7 @@ package wvlet.lang.labs
 
 import wvlet.log.LogSupport
 import wvlet.airframe.launcher.*
+
 import java.io.{FileWriter, PrintWriter}
 import wvlet.airframe.codec.MessageCodec
 import wvlet.airframe.control.{Control, Parallel}
@@ -9,8 +10,10 @@ import wvlet.airframe.metrics.Count
 import wvlet.lang.compiler.parser.ParserPhase
 import wvlet.lang.compiler.{CompileResult, Context}
 import org.duckdb.DuckDBDriver
+
 import java.util.Properties
 import java.util.concurrent.atomic.AtomicInteger
+import scala.io.AnsiColor
 
 case class QueryRecord(
     queryIndex: Int,
@@ -212,15 +215,28 @@ class ParseQuery() extends LogSupport:
                         (currentErrorCount.toDouble / currentQueryCount * 100)
                       else
                         0.0
-                    info(
-                      f"Processed ${currentQueryCount}%,d queries, ${currentErrorCount}%,d failed (${errorRate}%.1f%% error rate)"
-                    )
+                    val currentTime            = System.nanoTime()
+                    val currentDurationSeconds = (currentTime - startTime) / 1_000_000_000.0
+                    val currentQueriesPerMinute =
+                      if currentDurationSeconds > 0 then
+                        (currentQueryCount / currentDurationSeconds) * 60.0
+                      else
+                        0.0
+                    System
+                      .err
+                      .print(
+                        f"\r${AnsiColor
+                            .CYAN}Processed ${currentQueryCount}%,d queries, ${currentErrorCount}%,d failed (${errorRate}%.1f%% error rate), ${Count
+                            .succinct(currentQueriesPerMinute.toLong)} queries/min${AnsiColor
+                            .RESET}"
+                      )
 
                   hasError
                 }
 
               // Consume the iterator to trigger parallel processing
               results.foreach(_ => ()) // Just consume the results
+              System.err.println()
 
               val finalQueryCount = queryCount.get()
               val finalErrorCount = errorCount.get()
