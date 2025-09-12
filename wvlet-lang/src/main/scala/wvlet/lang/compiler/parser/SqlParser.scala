@@ -597,30 +597,30 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
   def explain(): ExplainPlan =
     val t = consume(SqlToken.EXPLAIN)
 
-    // Check for ANALYZE keyword (Trino syntax: EXPLAIN ANALYZE [VERBOSE] statement)
-    if scanner.lookAhead().token == SqlToken.ANALYZE then
-      consume(SqlToken.ANALYZE)
-      val verbose = consumeIfExist(SqlToken.VERBOSE)
-      val body    = queryOrUpdate()
-      ExplainPlan(body, analyze = true, verbose = verbose, span = spanFrom(t))
-    else
-      // Check for parenthesized options (Trino syntax: EXPLAIN (option [, ...]) statement)
-      val options =
-        if scanner.lookAhead().token == SqlToken.L_PAREN then
-          parseExplainOptions()
-        else
-          Nil
+    scanner.lookAhead().token match
+      case SqlToken.ANALYZE =>
+        // Trino syntax: EXPLAIN ANALYZE [VERBOSE] statement
+        consume(SqlToken.ANALYZE)
+        val verbose = consumeIfExist(SqlToken.VERBOSE)
+        val body    = queryOrUpdate()
+        ExplainPlan(body, analyze = true, verbose = verbose, span = spanFrom(t))
+      case _ =>
+        // Parse parenthesized options (Trino syntax: EXPLAIN (option [, ...]) statement)
+        val options =
+          scanner.lookAhead().token match
+            case SqlToken.L_PAREN =>
+              parseExplainOptions()
+            case _ =>
+              Nil
 
-      // Calcite require PLAN keyword after EXPLAIN (backward compatibility)
-      if scanner.lookAhead().token == SqlToken.PLAN then
-        consume(SqlToken.PLAN)
+        // Calcite require PLAN keyword after EXPLAIN (backward compatibility)
+        consumeIfExist(SqlToken.PLAN)
 
-      // Calcite requires FOR keyword before the query (backward compatibility)
-      if scanner.lookAhead().token == SqlToken.FOR then
-        consume(SqlToken.FOR)
+        // Calcite requires FOR keyword before the query (backward compatibility)
+        consumeIfExist(SqlToken.FOR)
 
-      val body = queryOrUpdate()
-      ExplainPlan(body, options = options, span = spanFrom(t))
+        val body = queryOrUpdate()
+        ExplainPlan(body, options = options, span = spanFrom(t))
 
   end explain
 
