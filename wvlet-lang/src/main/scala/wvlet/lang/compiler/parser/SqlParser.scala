@@ -1737,15 +1737,84 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     // Handle multi-word SHOW commands
     name.leafName.toLowerCase match
       case "create" =>
-        // SHOW CREATE VIEW viewname
         val next = identifier()
-        if next.leafName.toLowerCase == "view" then
-          val viewName = qualifiedName()
-          Show(ShowType.createView, viewName, None, spanFrom(t))
-        else
-          unexpected(next, s"Expected VIEW after CREATE, but found: ${next.leafName}")
+        next.leafName.toLowerCase match
+          case "table" =>
+            val tableName = qualifiedName()
+            Show(ShowType.createTable, tableName, None, spanFrom(t))
+          case "view" =>
+            val viewName = qualifiedName()
+            Show(ShowType.createView, viewName, None, spanFrom(t))
+          case "schema" =>
+            val schemaName = qualifiedName()
+            Show(ShowType.createSchema, schemaName, None, spanFrom(t))
+          case "materialized" =>
+            consume(SqlToken.VIEW)
+            val viewName = qualifiedName()
+            Show(ShowType.createMaterializedView, viewName, None, spanFrom(t))
+          case "function" =>
+            val functionName = qualifiedName()
+            Show(ShowType.createFunction, functionName, None, spanFrom(t))
+          case _ =>
+            unexpected(
+              next,
+              s"Expected TABLE, VIEW, SCHEMA, MATERIALIZED VIEW, or FUNCTION after CREATE, but found: ${next
+                  .leafName}"
+            )
       case "functions" =>
         Show(ShowType.functions, EmptyName, None, spanFrom(t))
+      case "grants" =>
+        val onExpr =
+          if consumeIfExist(SqlToken.ON) then
+            qualifiedName()
+          else
+            EmptyName
+        Show(ShowType.grants, onExpr, None, spanFrom(t))
+      case "stats" =>
+        consume(SqlToken.FOR)
+        scanner.lookAhead().token match
+          case SqlToken.L_PAREN =>
+            // TODO: SHOW STATS FOR (query) - for now, skip query parsing
+            // This would require more sophisticated parsing of nested queries
+            throw StatusCode
+              .SYNTAX_ERROR
+              .newException("SHOW STATS FOR (query) is not yet supported")
+          case _ =>
+            // SHOW STATS FOR table
+            val tableName = qualifiedName()
+            Show(ShowType.stats, tableName, None, spanFrom(t))
+      case "branches" =>
+        val inExpr =
+          if consumeIfExist(SqlToken.FROM) || consumeIfExist(SqlToken.IN) then
+            consume(SqlToken.TABLE)
+            qualifiedName()
+          else
+            EmptyName
+        Show(ShowType.branches, inExpr, None, spanFrom(t))
+      case "current" =>
+        val next = identifier()
+        if next.leafName.toLowerCase == "roles" then
+          val inExpr =
+            if consumeIfExist(SqlToken.FROM) || consumeIfExist(SqlToken.IN) then
+              qualifiedName()
+            else
+              EmptyName
+          Show(ShowType.currentRoles, inExpr, None, spanFrom(t))
+        else
+          unexpected(next, s"Expected ROLES after CURRENT, but found: ${next.leafName}")
+      case "role" =>
+        val next = identifier()
+        if next.leafName.toLowerCase == "grants" then
+          val inExpr =
+            if consumeIfExist(SqlToken.FROM) || consumeIfExist(SqlToken.IN) then
+              qualifiedName()
+            else
+              EmptyName
+          Show(ShowType.roleGrants, inExpr, None, spanFrom(t))
+        else
+          unexpected(next, s"Expected GRANTS after ROLE, but found: ${next.leafName}")
+      case "session" =>
+        Show(ShowType.session, EmptyName, None, spanFrom(t))
       case _ =>
         // Handle existing single-word SHOW commands
         try

@@ -951,6 +951,127 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             // For other databases, use DESCRIBE which is more widely supported
             val sql = wl("describe", viewName)
             selectExpr(sql)
+      case s: Show if s.showType == ShowType.createTable =>
+        val tableName = s.inExpr.nameParts.mkString(".")
+        dbType match
+          case DBType.Trino =>
+            val sql = wl("show create table", tableName)
+            selectExpr(sql)
+          case _ =>
+            throw StatusCode
+              .NOT_IMPLEMENTED
+              .newException(s"SHOW CREATE TABLE is not supported for ${dbType}")
+      case s: Show if s.showType == ShowType.createSchema =>
+        val schemaName = s.inExpr.nameParts.mkString(".")
+        dbType match
+          case DBType.Trino =>
+            val sql = wl("show create schema", schemaName)
+            selectExpr(sql)
+          case _ =>
+            throw StatusCode
+              .NOT_IMPLEMENTED
+              .newException(s"SHOW CREATE SCHEMA is not supported for ${dbType}")
+      case s: Show if s.showType == ShowType.createMaterializedView =>
+        val viewName = s.inExpr.nameParts.mkString(".")
+        dbType match
+          case DBType.Trino =>
+            val sql = wl("show create materialized view", viewName)
+            selectExpr(sql)
+          case _ =>
+            throw StatusCode
+              .NOT_IMPLEMENTED
+              .newException(s"SHOW CREATE MATERIALIZED VIEW is not supported for ${dbType}")
+      case s: Show if s.showType == ShowType.createFunction =>
+        val functionName = s.inExpr.nameParts.mkString(".")
+        dbType match
+          case DBType.Trino =>
+            val sql = wl("show create function", functionName)
+            selectExpr(sql)
+          case _ =>
+            throw StatusCode
+              .NOT_IMPLEMENTED
+              .newException(s"SHOW CREATE FUNCTION is not supported for ${dbType}")
+      case s: Show if s.showType == ShowType.grants =>
+        dbType match
+          case DBType.Trino =>
+            val sql =
+              if s.inExpr != EmptyName then
+                val objectName = s.inExpr.nameParts.mkString(".")
+                wl("show grants on", objectName)
+              else
+                wl("show grants")
+            selectExpr(sql)
+          case _ =>
+            throw StatusCode
+              .NOT_IMPLEMENTED
+              .newException(s"SHOW GRANTS is not supported for ${dbType}")
+      case s: Show if s.showType == ShowType.stats =>
+        dbType match
+          case DBType.Trino =>
+            val tableName = s.inExpr.nameParts.mkString(".")
+            val sql =
+              if tableName.startsWith("(") && tableName.endsWith(")") then
+                // This is a query expression
+                wl("show stats for", tableName)
+              else
+                // This is a table name
+                wl("show stats for", tableName)
+            selectExpr(sql)
+          case _ =>
+            throw StatusCode
+              .NOT_IMPLEMENTED
+              .newException(s"SHOW STATS FOR is not supported for ${dbType}")
+      case s: Show if s.showType == ShowType.branches =>
+        dbType match
+          case DBType.Trino =>
+            val sql =
+              if s.inExpr != EmptyName then
+                val tableName = s.inExpr.nameParts.mkString(".")
+                wl("show branches from table", tableName)
+              else
+                wl("show branches")
+            selectExpr(sql)
+          case _ =>
+            throw StatusCode
+              .NOT_IMPLEMENTED
+              .newException(s"SHOW BRANCHES is not supported for ${dbType}")
+      case s: Show if s.showType == ShowType.currentRoles =>
+        dbType match
+          case DBType.Trino =>
+            val sql =
+              if s.inExpr != EmptyName then
+                val catalog = s.inExpr.nameParts.mkString(".")
+                wl("show current roles from", catalog)
+              else
+                wl("show current roles")
+            selectExpr(sql)
+          case _ =>
+            throw StatusCode
+              .NOT_IMPLEMENTED
+              .newException(s"SHOW CURRENT ROLES is not supported for ${dbType}")
+      case s: Show if s.showType == ShowType.roleGrants =>
+        dbType match
+          case DBType.Trino =>
+            val sql =
+              if s.inExpr != EmptyName then
+                val catalog = s.inExpr.nameParts.mkString(".")
+                wl("show role grants from", catalog)
+              else
+                wl("show role grants")
+            selectExpr(sql)
+          case _ =>
+            throw StatusCode
+              .NOT_IMPLEMENTED
+              .newException(s"SHOW ROLE GRANTS is not supported for ${dbType}")
+      case s: Show if s.showType == ShowType.session =>
+        dbType match
+          case DBType.Trino =>
+            val sql = wl("show session")
+            selectExpr(sql)
+          case _ =>
+            throw StatusCode
+              .NOT_IMPLEMENTED
+              .newException(s"SHOW SESSION is not supported for ${dbType}")
       case lv: LateralView =>
         // Hive LATERAL VIEW syntax
         val child = relation(lv.child, SQLBlock())(using InFromClause)

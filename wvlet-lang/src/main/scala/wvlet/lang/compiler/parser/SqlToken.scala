@@ -213,12 +213,16 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   case OUTPUT         extends SqlToken(Keyword, "output")
 
   // DDL entity types (non-reserved so they can be used as table names)
-  case CATALOG   extends SqlToken(Keyword, "catalog")
-  case DATABASE  extends SqlToken(Keyword, "database")
-  case SCHEMA    extends SqlToken(Keyword, "schema")
-  case TABLE     extends SqlToken(Keyword, "table")
-  case VIEW      extends SqlToken(Keyword, "view")
-  case STATEMENT extends SqlToken(Keyword, "statement")
+  case CATALOG      extends SqlToken(Keyword, "catalog")
+  case DATABASE     extends SqlToken(Keyword, "database")
+  case SCHEMA       extends SqlToken(Keyword, "schema")
+  case TABLE        extends SqlToken(Keyword, "table")
+  case VIEW         extends SqlToken(Keyword, "view")
+  case STATEMENT    extends SqlToken(Keyword, "statement")
+  case GRANTS       extends SqlToken(Keyword, "grants")
+  case STATS        extends SqlToken(Keyword, "stats")
+  case BRANCHES     extends SqlToken(Keyword, "branches")
+  case MATERIALIZED extends SqlToken(Keyword, "materialized")
 
   case INSERT     extends SqlToken(Keyword, "insert")
   case UPSERT     extends SqlToken(Keyword, "upsert")
@@ -439,7 +443,12 @@ object SqlToken:
     SqlToken.UPDATE,    // Statement keyword, safe as identifier
     SqlToken.USE,       // Statement keyword, safe as identifier
     // Non-SQL keyword that should be safe as identifier
-    SqlToken.IMPLEMENTATION
+    SqlToken.IMPLEMENTATION,
+    // Trino-specific SHOW statement keywords, safe as identifiers
+    SqlToken.GRANTS,
+    SqlToken.STATS,
+    SqlToken.BRANCHES,
+    SqlToken.MATERIALIZED
   )
 
   val allKeywordsAndSymbols = keywords ++ literalStartKeywords ++ specialSymbols
