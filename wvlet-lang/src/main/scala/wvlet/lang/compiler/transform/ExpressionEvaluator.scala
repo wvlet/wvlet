@@ -30,7 +30,8 @@ object ExpressionEvaluator:
             NullLiteral(n.span)
           case _ =>
             // TODO Support more literal types
-            GenericLiteral(n.dataType, v.toString, n.span)
+            val stringLiteral = StringLiteral.fromString(v.toString, n.span)
+            GenericLiteral(n.dataType, stringLiteral, n.span)
 
       case other =>
         other

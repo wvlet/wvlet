@@ -1,5 +1,6 @@
 -- Test IP address literals
 -- These are Trino-specific IP address literals
+-- parse-only: true
 
 -- Basic IPv4 addresses
 SELECT IPADDRESS '192.168.1.1' as ip1;

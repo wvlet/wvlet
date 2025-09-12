@@ -775,11 +775,11 @@ case class LongLiteral(value: Long, override val stringValue: String, span: Span
   override def dataType: DataType = DataType.LongType
   override def sqlExpr: String    = value.toString
 
-case class GenericLiteral(tpe: DataType, value: String, span: Span)
+case class GenericLiteral(tpe: DataType, value: Literal, span: Span)
     extends Literal
     with LeafExpression:
-  override def stringValue: String = value
-  override def sqlExpr             = s"${tpe.typeName} ${value}"
+  override def stringValue: String = value.stringValue
+  override def sqlExpr             = s"${tpe.typeName} ${value.sqlExpr}"
 
 case class BinaryLiteral(binary: String, span: Span) extends Literal with LeafExpression:
   override def stringValue: String = binary
