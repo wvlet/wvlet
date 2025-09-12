@@ -2741,7 +2741,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       case token if token.isStringLiteral =>
         // Treat as IP address literal, e.g., IPADDRESS '192.168.1.1'
         val lit = literal()
-        GenericLiteral(DataType.IpAddressType, lit.stringValue, spanFrom(identifierToken))
+        GenericLiteral(DataType.IpAddressType, lit.unquotedValue, spanFrom(identifierToken))
       case _ =>
         // Treat as regular identifier (function call or column name)
         UnquotedIdentifier(identifierToken.str, spanFrom(identifierToken))
