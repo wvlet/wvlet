@@ -518,6 +518,8 @@ lazy val labs = project
   .settings(
     buildSettings,
     noPublish,
+    // Override noPublish setting to allow IDEA import
+    ideSkipProject := false,
     name := "wvlet-labs",
     libraryDependencies ++=
       Seq(
