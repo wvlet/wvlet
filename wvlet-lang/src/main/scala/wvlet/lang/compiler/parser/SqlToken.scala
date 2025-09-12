@@ -212,6 +212,17 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   case INPUT          extends SqlToken(Keyword, "input")
   case OUTPUT         extends SqlToken(Keyword, "output")
 
+  // EXPLAIN-specific keywords for Trino syntax
+  case ANALYZE     extends SqlToken(Keyword, "analyze")
+  case VERBOSE     extends SqlToken(Keyword, "verbose")
+  case FORMAT      extends SqlToken(Keyword, "format")
+  case TEXT        extends SqlToken(Keyword, "text")
+  case DISTRIBUTED extends SqlToken(Keyword, "distributed")
+  case LOGICAL     extends SqlToken(Keyword, "logical")
+  case VALIDATE    extends SqlToken(Keyword, "validate")
+  case IO          extends SqlToken(Keyword, "io")
+  case GRAPHVIZ    extends SqlToken(Keyword, "graphviz")
+
   // DDL entity types (non-reserved so they can be used as table names)
   case CATALOG   extends SqlToken(Keyword, "catalog")
   case DATABASE  extends SqlToken(Keyword, "database")
@@ -419,6 +430,16 @@ object SqlToken:
     SqlToken.CLUSTER,
     SqlToken.DISTRIBUTE,
     SqlToken.SORT,
+    // EXPLAIN-specific keywords - non-reserved to allow as column names
+    SqlToken.ANALYZE,
+    SqlToken.VERBOSE,
+    SqlToken.FORMAT,
+    SqlToken.TEXT,
+    SqlToken.DISTRIBUTED, // Also added above for Hive but adding comment for EXPLAIN
+    SqlToken.LOGICAL,
+    SqlToken.VALIDATE,
+    SqlToken.IO,
+    SqlToken.GRAPHVIZ,
     // Additional keywords following Trino's non-reserved approach
     // Statement keywords - can be used as identifiers when not in command position
     SqlToken.ALL,       // Used in SELECT ALL but safe as identifier elsewhere

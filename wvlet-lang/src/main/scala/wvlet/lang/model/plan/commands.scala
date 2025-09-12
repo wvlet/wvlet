@@ -8,9 +8,22 @@ import wvlet.lang.model.expr.{Expression, NameExpr, QualifiedName}
 sealed trait Command extends TopLevelStatement with LeafPlan:
   override def relationType: RelationType = EmptyRelationType
 
-case class ShowQuery(name: NameExpr, span: Span)        extends Command
-case class ExecuteExpr(expr: Expression, span: Span)    extends Command
-case class ExplainPlan(child: LogicalPlan, span: Span)  extends Command
+// EXPLAIN options for Trino syntax support
+sealed trait ExplainOption
+
+case class ExplainFormat(format: String)    extends ExplainOption
+case class ExplainType(explainType: String) extends ExplainOption
+
+case class ShowQuery(name: NameExpr, span: Span)     extends Command
+case class ExecuteExpr(expr: Expression, span: Span) extends Command
+case class ExplainPlan(
+    child: LogicalPlan,
+    options: List[ExplainOption] = Nil,
+    analyze: Boolean = false,
+    verbose: Boolean = false,
+    span: Span
+) extends Command
+
 case class UseSchema(schema: QualifiedName, span: Span) extends Command
 case class DescribeInput(name: NameExpr, span: Span)    extends Command
 case class DescribeOutput(name: NameExpr, span: Span)   extends Command

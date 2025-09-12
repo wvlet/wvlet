@@ -597,20 +597,77 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
   def explain(): ExplainPlan =
     val t = consume(SqlToken.EXPLAIN)
 
-    // Calcite require PLAN keyword after EXPLAIN
-    if scanner.lookAhead().token == SqlToken.PLAN then
-      consume(SqlToken.PLAN)
+    scanner.lookAhead().token match
+      case SqlToken.ANALYZE =>
+        // Trino syntax: EXPLAIN ANALYZE [VERBOSE] statement
+        consume(SqlToken.ANALYZE)
+        val verbose = consumeIfExist(SqlToken.VERBOSE)
+        val body    = queryOrUpdate()
+        ExplainPlan(body, analyze = true, verbose = verbose, span = spanFrom(t))
+      case _ =>
+        // Parse parenthesized options (Trino syntax: EXPLAIN (option [, ...]) statement)
+        val options =
+          scanner.lookAhead().token match
+            case SqlToken.L_PAREN =>
+              parseExplainOptions()
+            case _ =>
+              Nil
 
-    // TODO Read EXPLAIN parameters
+        // Calcite require PLAN keyword after EXPLAIN (backward compatibility)
+        consumeIfExist(SqlToken.PLAN)
 
-    // Calcite requires FOR keyword before the query
-    if scanner.lookAhead().token == SqlToken.FOR then
-      consume(SqlToken.FOR)
+        // Calcite requires FOR keyword before the query (backward compatibility)
+        consumeIfExist(SqlToken.FOR)
 
-    val body = queryOrUpdate()
-    ExplainPlan(body, spanFrom(t))
+        val body = queryOrUpdate()
+        ExplainPlan(body, options = options, span = spanFrom(t))
 
   end explain
+
+  private def parseExplainOptions(): List[ExplainOption] =
+    consume(SqlToken.L_PAREN)
+    val options = parseCommaSeparatedList(() => parseExplainOption())
+    consume(SqlToken.R_PAREN)
+    options
+
+  private def parseExplainOption(): ExplainOption =
+    scanner.lookAhead().token match
+      case SqlToken.FORMAT =>
+        consume(SqlToken.FORMAT)
+        scanner.lookAhead().token match
+          case SqlToken.TEXT =>
+            consume(SqlToken.TEXT)
+            ExplainFormat("TEXT")
+          case SqlToken.GRAPHVIZ =>
+            consume(SqlToken.GRAPHVIZ)
+            ExplainFormat("GRAPHVIZ")
+          case SqlToken.JSON =>
+            consume(SqlToken.JSON)
+            ExplainFormat("JSON")
+          case _ =>
+            unexpected(scanner.lookAhead(), "Expected TEXT, GRAPHVIZ, or JSON for FORMAT option")
+      case SqlToken.TYPE =>
+        consume(SqlToken.TYPE)
+        scanner.lookAhead().token match
+          case SqlToken.LOGICAL =>
+            consume(SqlToken.LOGICAL)
+            ExplainType("LOGICAL")
+          case SqlToken.DISTRIBUTED =>
+            consume(SqlToken.DISTRIBUTED)
+            ExplainType("DISTRIBUTED")
+          case SqlToken.VALIDATE =>
+            consume(SqlToken.VALIDATE)
+            ExplainType("VALIDATE")
+          case SqlToken.IO =>
+            consume(SqlToken.IO)
+            ExplainType("IO")
+          case _ =>
+            unexpected(
+              scanner.lookAhead(),
+              "Expected LOGICAL, DISTRIBUTED, VALIDATE, or IO for TYPE option"
+            )
+      case _ =>
+        unexpected(scanner.lookAhead(), "Expected FORMAT or TYPE for EXPLAIN option")
 
   def describe(): LogicalPlan =
     val t                  = consume(SqlToken.DESCRIBE)
