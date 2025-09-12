@@ -46,7 +46,8 @@ object ParseQuery extends LogSupport:
 // Test command for parsing queries in batch
 class ParseQuery() extends LogSupport:
 
-  private val codec = MessageCodec.of[QueryErrorRecord]
+  private val codec                    = MessageCodec.of[QueryErrorRecord]
+  private val PROGRESS_REPORT_INTERVAL = 10000
 
   private def writeErrorRecord(
       errorWriter: PrintWriter,
@@ -128,13 +129,14 @@ class ParseQuery() extends LogSupport:
   private def formatProgressMessage(
       queryCount: Int,
       errorCount: Int,
-      elapsedTime: ElapsedTime
+      startTimeNanos: Long
   ): String =
     val errorRate =
       if queryCount > 0 then
         (errorCount.toDouble / queryCount * 100)
       else
         0.0
+    val elapsedTime     = ElapsedTime.nanosSince(startTimeNanos)
     val durationSeconds = elapsedTime.toMillis / 1000.0
     val queriesPerMinute =
       if durationSeconds > 0 then
@@ -225,15 +227,14 @@ class ParseQuery() extends LogSupport:
                   if hasError then
                     errorCount.incrementAndGet()
 
-                  // Report progress every 10,000 queries
+                  // Report progress at regular intervals
                   val currentQueryCount = queryCount.get()
-                  if currentQueryCount % 10000 == 0 then
-                    val currentErrorCount  = errorCount.get()
-                    val currentElapsedTime = ElapsedTime.nanosSince(startTimeNanos)
+                  if currentQueryCount % PROGRESS_REPORT_INTERVAL == 0 then
+                    val currentErrorCount = errorCount.get()
                     val progressMessage = formatProgressMessage(
                       currentQueryCount,
                       currentErrorCount,
-                      currentElapsedTime
+                      startTimeNanos
                     )
                     System.err.print(s"\r${AnsiColor.CYAN}${progressMessage}${AnsiColor.RESET}")
 
@@ -244,9 +245,8 @@ class ParseQuery() extends LogSupport:
               results.foreach(_ => ()) // Just consume the results
               System.err.println()
 
-              val finalQueryCount  = queryCount.get()
-              val finalErrorCount  = errorCount.get()
-              val totalElapsedTime = ElapsedTime.nanosSince(startTimeNanos)
+              val finalQueryCount = queryCount.get()
+              val finalErrorCount = errorCount.get()
 
               if finalErrorCount > 0 then
                 info(s"Errors logged to: ${errorLogFile}")
@@ -254,7 +254,7 @@ class ParseQuery() extends LogSupport:
               val finalMessage = formatProgressMessage(
                 finalQueryCount,
                 finalErrorCount,
-                totalElapsedTime,
+                startTimeNanos
               )
               info(finalMessage)
             }
