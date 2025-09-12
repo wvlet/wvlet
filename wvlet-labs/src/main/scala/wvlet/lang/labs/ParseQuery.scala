@@ -7,6 +7,8 @@ import wvlet.airframe.codec.MessageCodec
 import wvlet.airframe.control.Control
 import wvlet.lang.compiler.parser.ParserPhase
 import wvlet.lang.compiler.{CompileResult, Context}
+import org.duckdb.DuckDBDriver
+import java.util.Properties
 
 case class QueryErrorRecord(
     queryIndex: Int,
@@ -70,114 +72,118 @@ class ParseQuery() extends LogSupport:
     info(s"Reading query logs from ${queryLogFile}")
     // Use DuckDB JDBC to read the parquet file
     Class.forName("org.duckdb.DuckDBDriver")
+    // Enable streaming results to avoid OOM
+    val props = Properties()
+    props.setProperty(DuckDBDriver.JDBC_STREAM_RESULTS, String.valueOf(true))
 
-    Control.withResource(java.sql.DriverManager.getConnection("jdbc:duckdb:")) { connection =>
-      Control.withResource(connection.createStatement()) { stmt =>
-        Control.withResource(
-          stmt.executeQuery(
-            s"SELECT td_account_id, job_id, query_id, database, sql FROM '${queryLogFile}' WHERE error_code_name IS NULL"
-          )
-        ) { rs =>
-
-          // Create a compiler with parseOnlyPhases for lightweight parsing
-          val compiler =
-            new wvlet.lang.compiler.Compiler(
-              wvlet
-                .lang
-                .compiler
-                .CompilerOptions(
-                  phases = wvlet.lang.compiler.Compiler.parseOnlyPhases,
-                  sourceFolders = List("target/test"),
-                  workEnv = wvlet.lang.compiler.WorkEnv(".", logLevel = wvlet.log.LogLevel.INFO)
-                )
+    Control.withResource(java.sql.DriverManager.getConnection("jdbc:duckdb:", props)) {
+      connection =>
+        Control.withResource(connection.createStatement()) { stmt =>
+          Control.withResource(
+            stmt.executeQuery(
+              s"SELECT td_account_id, job_id, query_id, database, sql FROM '${queryLogFile}' WHERE error_code_name IS NULL"
             )
+          ) { rs =>
 
-          var queryCount = 0
-          var errorCount = 0
-
-          // Create error log file in target folder
-          val queryLogFileName = java.nio.file.Paths.get(queryLogFile).getFileName.toString
-          val targetDir        = java.nio.file.Paths.get("target")
-          java.nio.file.Files.createDirectories(targetDir)
-          val errorLogFile = targetDir.resolve(s"${queryLogFileName}.errors.json").toString
-
-          Control.withResource(new PrintWriter(new FileWriter(errorLogFile))) { errorWriter =>
-            // For each query, parse with WvletParser and generate a LogicalPlan
-            while rs.next() do
-              val tdAccountId = rs.getString("td_account_id")
-              val jobId       = rs.getString("job_id")
-              val queryId     = rs.getString("query_id")
-              val database    = rs.getString("database")
-              val sql         = rs.getString("sql")
-              queryCount += 1
-              try
-                // Create a compilation unit from the SQL string
-                val unit = wvlet.lang.compiler.CompilationUnit.fromSqlString(sql)
-                // Parse the SQL using the compiler with parseOnlyPhases
-                val ctx = Context.NoContext
-                ParserPhase.parse(unit, ctx)
-                val compileResult = CompileResult(List(unit), null, ctx, Some(unit))
-
-                if compileResult.hasFailures then
-                  errorCount += 1
-                  val errorMessages = compileResult.failureReport.map(_._2.getMessage).toList
-                  writeErrorRecord(
-                    errorWriter,
-                    queryCount,
-                    tdAccountId,
-                    jobId,
-                    queryId,
-                    database,
-                    sql,
-                    "compilation_failure",
-                    errors = Some(errorMessages)
+            // Create a compiler with parseOnlyPhases for lightweight parsing
+            val compiler =
+              new wvlet.lang.compiler.Compiler(
+                wvlet
+                  .lang
+                  .compiler
+                  .CompilerOptions(
+                    phases = wvlet.lang.compiler.Compiler.parseOnlyPhases,
+                    sourceFolders = List("target/test"),
+                    workEnv = wvlet.lang.compiler.WorkEnv(".", logLevel = wvlet.log.LogLevel.INFO)
                   )
-                else
-                  debug(s"Successfully parsed query ${queryCount} from database ${database}")
-                  // Optionally log the logical plan
-                  debug(s"Logical plan: ${compileResult.contextUnit.get.unresolvedPlan}")
-              catch
-                case e: Exception =>
-                  errorCount += 1
-                  writeErrorRecord(
-                    errorWriter,
-                    queryCount,
-                    tdAccountId,
-                    jobId,
-                    queryId,
-                    database,
-                    sql,
-                    "exception",
-                    exception = Some(e)
-                  )
-              end try
+              )
 
-              // Report progress every 10,000 queries
-              if queryCount % 10000 == 0 then
-                val errorRate =
-                  if queryCount > 0 then
-                    (errorCount.toDouble / queryCount * 100)
+            var queryCount = 0
+            var errorCount = 0
+
+            // Create error log file in target folder
+            val queryLogFileName = java.nio.file.Paths.get(queryLogFile).getFileName.toString
+            val targetDir        = java.nio.file.Paths.get("target")
+            java.nio.file.Files.createDirectories(targetDir)
+            val errorLogFile = targetDir.resolve(s"${queryLogFileName}.errors.json").toString
+
+            Control.withResource(new PrintWriter(new FileWriter(errorLogFile))) { errorWriter =>
+              // For each query, parse with WvletParser and generate a LogicalPlan
+              while rs.next() do
+                val tdAccountId = rs.getString("td_account_id")
+                val jobId       = rs.getString("job_id")
+                val queryId     = rs.getString("query_id")
+                val database    = rs.getString("database")
+                val sql         = rs.getString("sql")
+                queryCount += 1
+                try
+                  // Create a compilation unit from the SQL string
+                  val unit = wvlet.lang.compiler.CompilationUnit.fromSqlString(sql)
+                  // Parse the SQL using the compiler with parseOnlyPhases
+                  val ctx = Context.NoContext
+                  ParserPhase.parse(unit, ctx)
+                  val compileResult = CompileResult(List(unit), null, ctx, Some(unit))
+
+                  if compileResult.hasFailures then
+                    errorCount += 1
+                    val errorMessages = compileResult.failureReport.map(_._2.getMessage).toList
+                    writeErrorRecord(
+                      errorWriter,
+                      queryCount,
+                      tdAccountId,
+                      jobId,
+                      queryId,
+                      database,
+                      sql,
+                      "compilation_failure",
+                      errors = Some(errorMessages)
+                    )
                   else
-                    0.0
-                info(
-                  f"Processed ${queryCount}%,d queries, ${errorCount}%,d failed (${errorRate}%.1f%% error rate)"
-                )
-            end while
+                    debug(s"Successfully parsed query ${queryCount} from database ${database}")
+                    // Optionally log the logical plan
+                    debug(s"Logical plan: ${compileResult.contextUnit.get.unresolvedPlan}")
+                catch
+                  case e: Exception =>
+                    errorCount += 1
+                    writeErrorRecord(
+                      errorWriter,
+                      queryCount,
+                      tdAccountId,
+                      jobId,
+                      queryId,
+                      database,
+                      sql,
+                      "exception",
+                      exception = Some(e)
+                    )
+                end try
 
-            if errorCount > 0 then
-              info(s"Errors logged to: ${errorLogFile}")
+                // Report progress every 10,000 queries
+                if queryCount % 10000 == 0 then
+                  val errorRate =
+                    if queryCount > 0 then
+                      (errorCount.toDouble / queryCount * 100)
+                    else
+                      0.0
+                  info(
+                    f"Processed ${queryCount}%,d queries, ${errorCount}%,d failed (${errorRate}%.1f%% error rate)"
+                  )
+              end while
 
-            val errorRate =
-              if queryCount > 0 then
-                (errorCount.toDouble / queryCount * 100)
-              else
-                0.0
-            info(
-              f"Final: ${queryCount}%,d queries, ${errorCount}%,d failed (${errorRate}%.3f%% error rate)"
-            )
+              if errorCount > 0 then
+                info(s"Errors logged to: ${errorLogFile}")
+
+              val errorRate =
+                if queryCount > 0 then
+                  (errorCount.toDouble / queryCount * 100)
+                else
+                  0.0
+              info(
+                f"Final: ${queryCount}%,d queries, ${errorCount}%,d failed (${errorRate}%.3f%% error rate)"
+              )
+            }
           }
         }
-      }
     }
 
   end parse
