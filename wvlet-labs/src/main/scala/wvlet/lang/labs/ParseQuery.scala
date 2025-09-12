@@ -5,6 +5,7 @@ import wvlet.airframe.launcher.*
 import java.io.{FileWriter, PrintWriter}
 import wvlet.airframe.codec.MessageCodec
 import wvlet.airframe.control.{Control, Parallel}
+import wvlet.airframe.metrics.Count
 import wvlet.lang.compiler.parser.ParserPhase
 import wvlet.lang.compiler.{CompileResult, Context}
 import org.duckdb.DuckDBDriver
@@ -162,9 +163,10 @@ class ParseQuery() extends LogSupport:
                   )
               )
 
-            // Thread-safe counters
+            // Thread-safe counters and timing
             val queryCount = new AtomicInteger(0)
             val errorCount = new AtomicInteger(0)
+            val startTime = System.nanoTime()
 
             // Create error log file in target folder
             val queryLogFileName = java.nio.file.Paths.get(queryLogFile).getFileName.toString
@@ -222,6 +224,10 @@ class ParseQuery() extends LogSupport:
 
               val finalQueryCount = queryCount.get()
               val finalErrorCount = errorCount.get()
+              val endTime = System.nanoTime()
+              val durationSeconds = (endTime - startTime) / 1_000_000_000.0
+              val queriesPerSecond = if durationSeconds > 0 then finalQueryCount / durationSeconds else 0.0
+              val queriesPerMinute = queriesPerSecond * 60.0
 
               if finalErrorCount > 0 then
                 info(s"Errors logged to: ${errorLogFile}")
@@ -231,8 +237,12 @@ class ParseQuery() extends LogSupport:
                   (finalErrorCount.toDouble / finalQueryCount * 100)
                 else
                   0.0
+              
               info(
                 f"Final: ${finalQueryCount}%,d queries, ${finalErrorCount}%,d failed (${errorRate}%.3f%% error rate)"
+              )
+              info(
+                f"Performance: ${Count.succinct(queriesPerMinute.toLong)} queries/min (${Count.succinct(queriesPerSecond.toLong)} queries/sec, ${durationSeconds}%.1fs total)"
               )
             }
           }
