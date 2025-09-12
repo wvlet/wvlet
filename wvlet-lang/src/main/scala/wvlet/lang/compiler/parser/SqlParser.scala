@@ -2271,12 +2271,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           expr match
             case identifier: Identifier =>
               val lit = literal()
-              val dataType =
-                identifier.unquotedValue.toUpperCase match
-                  case "IPADDRESS" =>
-                    DataType.IpAddressType
-                  case typeName =>
-                    DataType.parse(typeName)
+              val dataType = DataType.parse(identifier.unquotedValue)
               GenericLiteral(dataType, lit.unquotedValue, identifier.span.extendTo(lit.span))
             case _ =>
               expr
