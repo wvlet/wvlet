@@ -222,14 +222,10 @@ class ParseQuery() extends LogSupport:
                         (currentQueryCount / currentDurationSeconds) * 60.0
                       else
                         0.0
-                    System
-                      .err
-                      .print(
-                        f"\r${AnsiColor
-                            .CYAN}Processed ${currentQueryCount}%,d queries, ${currentErrorCount}%,d failed (${errorRate}%.1f%% error rate), ${Count
-                            .succinct(currentQueriesPerMinute.toLong)} queries/min${AnsiColor
-                            .RESET}"
-                      )
+                    val queriesPerMinStr = Count.succinct(currentQueriesPerMinute.toLong)
+                    val progressMessage =
+                      f"Processed ${currentQueryCount}%,d queries, ${currentErrorCount}%,d failed (${errorRate}%.1f%% error rate), ${queriesPerMinStr} queries/min"
+                    System.err.print(s"\r${AnsiColor.CYAN}${progressMessage}${AnsiColor.RESET}")
 
                   hasError
                 }
