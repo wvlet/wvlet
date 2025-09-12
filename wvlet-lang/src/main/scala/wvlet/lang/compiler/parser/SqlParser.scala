@@ -1762,7 +1762,12 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
               val functionName = qualifiedName()
               Show(ShowType.createFunction, functionName, None, spanFrom(t))
             else
-              unexpected(next, s"Expected TABLE, VIEW, SCHEMA, MATERIALIZED VIEW, or FUNCTION after CREATE, but found: ${next.leafName}")
+              unexpected(
+                next,
+                s"Expected TABLE, VIEW, SCHEMA, MATERIALIZED VIEW, or FUNCTION after CREATE, but found: ${next
+                    .leafName}"
+              )
+        end match
       case SqlToken.FUNCTIONS =>
         consume(SqlToken.FUNCTIONS)
         Show(ShowType.functions, EmptyName, None, spanFrom(t))

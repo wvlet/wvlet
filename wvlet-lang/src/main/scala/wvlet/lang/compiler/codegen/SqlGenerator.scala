@@ -124,10 +124,10 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
     else
       body
 
-  private def notSupported(feature: String): Nothing = 
+  private def notSupported(feature: String): Nothing =
     throw StatusCode.NOT_IMPLEMENTED.newException(s"$feature is not supported for ${dbType}")
-  
-  private def syntaxError(message: String): Nothing = 
+
+  private def syntaxError(message: String): Nothing =
     throw StatusCode.SYNTAX_ERROR.newException(message)
 
   /**
@@ -988,11 +988,12 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       case s: Show if s.showType == ShowType.grants =>
         dbType match
           case DBType.Trino =>
-            val sql = if s.inExpr != EmptyName then
-              val objectName = s.inExpr.nameParts.mkString(".")
-              wl("show grants on", objectName)
-            else
-              wl("show grants")
+            val sql =
+              if s.inExpr != EmptyName then
+                val objectName = s.inExpr.nameParts.mkString(".")
+                wl("show grants on", objectName)
+              else
+                wl("show grants")
             selectExpr(sql)
           case _ =>
             notSupported("SHOW GRANTS")
@@ -1006,33 +1007,36 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       case s: Show if s.showType == ShowType.branches =>
         dbType match
           case DBType.Trino =>
-            val sql = if s.inExpr != EmptyName then
-              val tableName = s.inExpr.nameParts.mkString(".")
-              wl("show branches from table", tableName)
-            else
-              wl("show branches")
+            val sql =
+              if s.inExpr != EmptyName then
+                val tableName = s.inExpr.nameParts.mkString(".")
+                wl("show branches from table", tableName)
+              else
+                wl("show branches")
             selectExpr(sql)
           case _ =>
             notSupported("SHOW BRANCHES")
       case s: Show if s.showType == ShowType.currentRoles =>
         dbType match
           case DBType.Trino =>
-            val sql = if s.inExpr != EmptyName then
-              val catalog = s.inExpr.nameParts.mkString(".")
-              wl("show current roles from", catalog)
-            else
-              wl("show current roles")
+            val sql =
+              if s.inExpr != EmptyName then
+                val catalog = s.inExpr.nameParts.mkString(".")
+                wl("show current roles from", catalog)
+              else
+                wl("show current roles")
             selectExpr(sql)
           case _ =>
             notSupported("SHOW CURRENT ROLES")
       case s: Show if s.showType == ShowType.roleGrants =>
         dbType match
           case DBType.Trino =>
-            val sql = if s.inExpr != EmptyName then
-              val catalog = s.inExpr.nameParts.mkString(".")
-              wl("show role grants from", catalog)
-            else
-              wl("show role grants")
+            val sql =
+              if s.inExpr != EmptyName then
+                val catalog = s.inExpr.nameParts.mkString(".")
+                wl("show role grants from", catalog)
+              else
+                wl("show role grants")
             selectExpr(sql)
           case _ =>
             notSupported("SHOW ROLE GRANTS")
