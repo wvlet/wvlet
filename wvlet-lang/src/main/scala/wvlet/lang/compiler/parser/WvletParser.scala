@@ -2277,7 +2277,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           val tpe = dataType()
           tpe.typeName.name match
             case _ =>
-              GenericLiteral(tpe, l.stringValue, l.span)
+              GenericLiteral(tpe, l, l.span)
         case _ =>
           l
 

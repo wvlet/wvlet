@@ -615,7 +615,7 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
           val s = StringLiteral.fromString(i.stringValue, i.span)
           expr(s) + text(":interval")
         case g: GenericLiteral =>
-          text(s"${g.value}:${g.tpe.typeName}")
+          text(s"${g.value.stringValue}:${g.tpe.typeName}")
         case l: Literal =>
           text(l.stringValue)
         case bq: BackquoteInterpolatedIdentifier =>

@@ -2266,6 +2266,16 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           consume(SqlToken.ZONE)
           val timezone = valueExpression()
           primaryExpressionRest(AtTimeZone(expr, timezone, spanFrom(t)))
+        case token if token.isStringLiteral =>
+          // Handle identifier followed by string literal (e.g., IPADDRESS '192.168.1.1')
+          expr match
+            case identifier: Identifier =>
+              val lit            = literal()
+              val dataType       = DataType.parse(identifier.unquotedValue)
+              val genericLiteral = GenericLiteral(dataType, lit, identifier.span.extendTo(lit.span))
+              primaryExpressionRest(genericLiteral)
+            case _ =>
+              expr
         case _ =>
           expr
       end match
@@ -2486,13 +2496,13 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           map()
         case SqlToken.DATE =>
           parseFunctionCallOrLiteral { (token, lit) =>
-            GenericLiteral(DataType.DateType, lit.stringValue, spanFrom(token))
+            GenericLiteral(DataType.DateType, lit, spanFrom(token))
           }
         case SqlToken.TIME =>
           parseFunctionCallOrLiteral { (token, lit) =>
             GenericLiteral(
               DataType.TimestampType(DataType.TimestampField.TIME, true),
-              lit.stringValue,
+              lit,
               spanFrom(token)
             )
           }
@@ -2500,7 +2510,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           parseFunctionCallOrLiteral { (token, lit) =>
             GenericLiteral(
               DataType.TimestampType(DataType.TimestampField.TIMESTAMP, true),
-              lit.stringValue,
+              lit,
               spanFrom(token)
             )
           }
