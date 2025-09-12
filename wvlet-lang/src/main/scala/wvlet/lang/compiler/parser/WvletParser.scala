@@ -350,12 +350,11 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           val s = Show(ShowType.valueOf(name.leafName), inExpr, None, spanFrom(t))
           val q = queryBlock(s)
           Query(q, spanFrom(t))
-        case ShowType.catalogs =>
+        case ShowType.catalogs | ShowType.functions | ShowType.createTable | ShowType.createSchema |
+            ShowType.createMaterializedView | ShowType.createFunction | ShowType.grants | ShowType
+              .stats | ShowType.branches | ShowType.currentRoles | ShowType.roleGrants | ShowType
+              .session =>
           val s = Show(ShowType.valueOf(name.leafName), NameExpr.EmptyName, None, spanFrom(t))
-          val q = queryBlock(s)
-          Query(q, spanFrom(t))
-        case ShowType.functions =>
-          val s = Show(ShowType.functions, NameExpr.EmptyName, None, spanFrom(t))
           val q = queryBlock(s)
           Query(q, spanFrom(t))
         case ShowType.createView =>
