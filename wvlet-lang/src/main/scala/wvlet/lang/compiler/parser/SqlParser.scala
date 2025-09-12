@@ -2521,7 +2521,11 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         case SqlToken.EXTRACT =>
           extractExpression()
         case id if id.isIdentifier =>
-          identifier()
+          // Check for IP address literal: IPADDRESS '192.168.1.1'
+          if t.str.toUpperCase == "IPADDRESS" then
+            ipAddress()
+          else
+            identifier()
         case SqlToken.DOUBLE_QUOTE_STRING =>
           identifier()
         case SqlToken.STAR =>
@@ -2729,6 +2733,23 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     val expr = expression()
     consume(SqlToken.R_PAREN)
     Extract(field, expr, spanFrom(t))
+
+  def ipAddress(): Expression =
+    val identifierToken = consumeToken() // consume 'IPADDRESS'
+    val nextToken       = scanner.lookAhead().token
+    if nextToken == SqlToken.L_PAREN then
+      // Treat as a function call, e.g., ipaddress(...)
+      val identifier = UnquotedIdentifier(identifierToken.str, spanFrom(identifierToken))
+      primaryExpressionRest(identifier)
+    else if nextToken == SqlToken.SINGLE_QUOTE_STRING || nextToken == SqlToken.TRIPLE_QUOTE_STRING
+    then
+      // Treat as IP address literal, e.g., IPADDRESS '192.168.1.1'
+      val lit = literal()
+      GenericLiteral(DataType.IpAddressType, lit.stringValue, spanFrom(identifierToken))
+    else
+      // Treat as regular identifier
+      val identifier = UnquotedIdentifier(identifierToken.str, spanFrom(identifierToken))
+      primaryExpressionRest(identifier)
 
   def literal(): Literal =
     def removeUnderscore(s: String): String = s.replaceAll("_", "")

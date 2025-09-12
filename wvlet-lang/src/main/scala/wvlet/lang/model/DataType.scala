@@ -508,8 +508,9 @@ object DataType extends LogSupport:
         case _ =>
           throw IllegalArgumentException(s"Invalid DecimalType parameters (${precision}, ${scale})")
 
-  case object JsonType   extends PrimitiveType("json")
-  case object BinaryType extends PrimitiveType("binary")
+  case object JsonType      extends PrimitiveType("json")
+  case object IpAddressType extends PrimitiveType("ipaddress")
+  case object BinaryType    extends PrimitiveType("binary")
 
   case class ArrayType(elemType: DataType) extends DataType(Name.typeName("array"), List(elemType)):
     override def isResolved: Boolean = elemType.isResolved
