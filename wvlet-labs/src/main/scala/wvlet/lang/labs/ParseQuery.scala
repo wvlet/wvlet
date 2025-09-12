@@ -75,8 +75,9 @@ class ParseQuery() extends LogSupport:
 
   private def parseQueryRecord(
       queryRecord: QueryRecord,
-      compiler: wvlet.lang.compiler.Compiler
-  ): Option[QueryErrorRecord] =
+      compiler: wvlet.lang.compiler.Compiler,
+      errorWriter: PrintWriter
+  ): Boolean =
     try
       // Create a compilation unit from the SQL string
       val unit = wvlet.lang.compiler.CompilationUnit.fromSqlString(queryRecord.sql)
@@ -87,40 +88,38 @@ class ParseQuery() extends LogSupport:
 
       if compileResult.hasFailures then
         val errorMessages = compileResult.failureReport.map(_._2.getMessage).toList
-        Some(
-          QueryErrorRecord(
-            queryIndex = queryRecord.queryIndex,
-            td_account_id = queryRecord.tdAccountId,
-            job_id = queryRecord.jobId,
-            query_id = queryRecord.queryId,
-            database = queryRecord.database,
-            sql = queryRecord.sql,
-            errorType = "compilation_failure",
-            errors = Some(errorMessages)
-          )
+        writeErrorRecord(
+          errorWriter,
+          queryRecord.queryIndex,
+          queryRecord.tdAccountId,
+          queryRecord.jobId,
+          queryRecord.queryId,
+          queryRecord.database,
+          queryRecord.sql,
+          "compilation_failure",
+          errors = Some(errorMessages)
         )
+        true // Has error
       else
         debug(
           s"Successfully parsed query ${queryRecord.queryIndex} from database ${queryRecord
               .database}"
         )
-        None
+        false // No error
     catch
       case e: Exception =>
-        Some(
-          QueryErrorRecord(
-            queryIndex = queryRecord.queryIndex,
-            td_account_id = queryRecord.tdAccountId,
-            job_id = queryRecord.jobId,
-            query_id = queryRecord.queryId,
-            database = queryRecord.database,
-            sql = queryRecord.sql,
-            errorType = "exception",
-            exception = Some(e.getClass.getSimpleName),
-            message = Some(e.getMessage),
-            stackTrace = Some(e.getStackTrace.take(5).map(_.toString).toList)
-          )
+        writeErrorRecord(
+          errorWriter,
+          queryRecord.queryIndex,
+          queryRecord.tdAccountId,
+          queryRecord.jobId,
+          queryRecord.queryId,
+          queryRecord.database,
+          queryRecord.sql,
+          "exception",
+          exception = Some(e)
         )
+        true // Has error
 
   @command(isDefault = true, description = "Parse query log")
   def help(): Unit = info(s"Use 'parse' subcommand to parse query log")
@@ -200,13 +199,12 @@ class ParseQuery() extends LogSupport:
               // Process queries in parallel using Parallel.iterate for memory-efficient streaming
               val results =
                 Parallel.iterate(queryIterator, parallelism = parallelism) { queryRecord =>
-                  val errorOpt = parseQueryRecord(queryRecord, compiler)
+                  val hasError = parseQueryRecord(queryRecord, compiler, errorWriter)
 
                   // Update counters
                   queryCount.incrementAndGet()
-                  errorOpt.foreach { _ =>
+                  if hasError then
                     errorCount.incrementAndGet()
-                  }
 
                   // Report progress every 10,000 queries
                   val currentQueryCount = queryCount.get()
@@ -221,17 +219,11 @@ class ParseQuery() extends LogSupport:
                       f"Processed ${currentQueryCount}%,d queries, ${currentErrorCount}%,d failed (${errorRate}%.1f%% error rate)"
                     )
 
-                  errorOpt
+                  hasError
                 }
 
-              // Write errors to file as we iterate through results
-              results.foreach { errorOpt =>
-                errorOpt.foreach { errorRecord =>
-                  synchronized {
-                    errorWriter.println(codec.toJson(errorRecord))
-                  }
-                }
-              }
+              // Consume the iterator to trigger parallel processing
+              results.foreach(_ => ()) // Just consume the results
 
               val finalQueryCount = queryCount.get()
               val finalErrorCount = errorCount.get()
