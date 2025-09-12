@@ -311,7 +311,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
               RawSQL(rawSQL, spanFrom(t))
             case _ =>
               query()
-        ExplainPlan(r, spanFrom(t))
+        ExplainPlan(r, span = spanFrom(t))
       case WvletToken.USE =>
         use()
       case _ =>

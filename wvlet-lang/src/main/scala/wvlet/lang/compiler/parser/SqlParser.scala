@@ -597,20 +597,68 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
   def explain(): ExplainPlan =
     val t = consume(SqlToken.EXPLAIN)
 
-    // Calcite require PLAN keyword after EXPLAIN
+    // Check for ANALYZE keyword (Trino syntax: EXPLAIN ANALYZE [VERBOSE] statement)
+    if scanner.lookAhead().token == SqlToken.ANALYZE then
+      consume(SqlToken.ANALYZE)
+      val verbose = consumeIfExist(SqlToken.VERBOSE)
+      val body    = queryOrUpdate()
+      return ExplainPlan(body, analyze = true, verbose = verbose, span = spanFrom(t))
+
+    // Check for parenthesized options (Trino syntax: EXPLAIN (option [, ...]) statement)
+    val options =
+      if scanner.lookAhead().token == SqlToken.L_PAREN then
+        parseExplainOptions()
+      else
+        Nil
+
+    // Calcite require PLAN keyword after EXPLAIN (backward compatibility)
     if scanner.lookAhead().token == SqlToken.PLAN then
       consume(SqlToken.PLAN)
 
-    // TODO Read EXPLAIN parameters
-
-    // Calcite requires FOR keyword before the query
+    // Calcite requires FOR keyword before the query (backward compatibility)
     if scanner.lookAhead().token == SqlToken.FOR then
       consume(SqlToken.FOR)
 
     val body = queryOrUpdate()
-    ExplainPlan(body, spanFrom(t))
+    ExplainPlan(body, options = options, span = spanFrom(t))
 
   end explain
+
+  private def parseExplainOptions(): List[ExplainOption] =
+    consume(SqlToken.L_PAREN)
+    val options = parseCommaSeparatedList(() => parseExplainOption())
+    consume(SqlToken.R_PAREN)
+    options
+
+  private def parseExplainOption(): ExplainOption =
+    val optionName = identifier()
+    optionName.leafName.toLowerCase match
+      case "format" =>
+        val value = identifier()
+        value.leafName.toLowerCase match
+          case "text" | "graphviz" | "json" =>
+            ExplainFormat(value.leafName.toUpperCase)
+          case _ =>
+            unexpected(
+              value,
+              s"Expected TEXT, GRAPHVIZ, or JSON for FORMAT option, but found: ${value.leafName}"
+            )
+      case "type" =>
+        val value = identifier()
+        value.leafName.toLowerCase match
+          case "logical" | "distributed" | "validate" | "io" =>
+            ExplainType(value.leafName.toUpperCase)
+          case _ =>
+            unexpected(
+              value,
+              s"Expected LOGICAL, DISTRIBUTED, VALIDATE, or IO for TYPE option, but found: ${value
+                  .leafName}"
+            )
+      case _ =>
+        unexpected(
+          optionName,
+          s"Unknown EXPLAIN option: ${optionName.leafName}. Expected FORMAT or TYPE"
+        )
 
   def describe(): LogicalPlan =
     val t                  = consume(SqlToken.DESCRIBE)
