@@ -215,6 +215,8 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   // EXPLAIN-specific keywords for Trino syntax
   case ANALYZE     extends SqlToken(Keyword, "analyze")
   case VERBOSE     extends SqlToken(Keyword, "verbose")
+  case FORMAT      extends SqlToken(Keyword, "format")
+  case TEXT        extends SqlToken(Keyword, "text")
   case DISTRIBUTED extends SqlToken(Keyword, "distributed")
   case LOGICAL     extends SqlToken(Keyword, "logical")
   case VALIDATE    extends SqlToken(Keyword, "validate")
@@ -431,6 +433,8 @@ object SqlToken:
     // EXPLAIN-specific keywords - non-reserved to allow as column names
     SqlToken.ANALYZE,
     SqlToken.VERBOSE,
+    SqlToken.FORMAT,
+    SqlToken.TEXT,
     SqlToken.DISTRIBUTED, // Also added above for Hive but adding comment for EXPLAIN
     SqlToken.LOGICAL,
     SqlToken.VALIDATE,

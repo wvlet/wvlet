@@ -631,34 +631,40 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     options
 
   private def parseExplainOption(): ExplainOption =
-    val optionName = identifier()
-    optionName.leafName.toLowerCase match
-      case "format" =>
-        val value = identifier()
-        value.leafName.toLowerCase match
-          case "text" | "graphviz" | "json" =>
-            ExplainFormat(value.leafName.toUpperCase)
+    scanner.lookAhead().token match
+      case SqlToken.FORMAT =>
+        consume(SqlToken.FORMAT)
+        scanner.lookAhead().token match
+          case SqlToken.TEXT =>
+            consume(SqlToken.TEXT)
+            ExplainFormat("TEXT")
+          case SqlToken.GRAPHVIZ =>
+            consume(SqlToken.GRAPHVIZ)
+            ExplainFormat("GRAPHVIZ")
+          case SqlToken.JSON =>
+            consume(SqlToken.JSON)
+            ExplainFormat("JSON")
           case _ =>
-            unexpected(
-              value,
-              s"Expected TEXT, GRAPHVIZ, or JSON for FORMAT option, but found: ${value.leafName}"
-            )
-      case "type" =>
-        val value = identifier()
-        value.leafName.toLowerCase match
-          case "logical" | "distributed" | "validate" | "io" =>
-            ExplainType(value.leafName.toUpperCase)
+            unexpected(scanner.lookAhead(), "Expected TEXT, GRAPHVIZ, or JSON for FORMAT option")
+      case SqlToken.TYPE =>
+        consume(SqlToken.TYPE)
+        scanner.lookAhead().token match
+          case SqlToken.LOGICAL =>
+            consume(SqlToken.LOGICAL)
+            ExplainType("LOGICAL")
+          case SqlToken.DISTRIBUTED =>
+            consume(SqlToken.DISTRIBUTED)
+            ExplainType("DISTRIBUTED")
+          case SqlToken.VALIDATE =>
+            consume(SqlToken.VALIDATE)
+            ExplainType("VALIDATE")
+          case SqlToken.IO =>
+            consume(SqlToken.IO)
+            ExplainType("IO")
           case _ =>
-            unexpected(
-              value,
-              s"Expected LOGICAL, DISTRIBUTED, VALIDATE, or IO for TYPE option, but found: ${value
-                  .leafName}"
-            )
+            unexpected(scanner.lookAhead(), "Expected LOGICAL, DISTRIBUTED, VALIDATE, or IO for TYPE option")
       case _ =>
-        unexpected(
-          optionName,
-          s"Unknown EXPLAIN option: ${optionName.leafName}. Expected FORMAT or TYPE"
-        )
+        unexpected(scanner.lookAhead(), "Expected FORMAT or TYPE for EXPLAIN option")
 
   def describe(): LogicalPlan =
     val t                  = consume(SqlToken.DESCRIBE)
