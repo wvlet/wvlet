@@ -83,9 +83,14 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     * @param startToken
     * @return
     */
-  private def spanFrom(startToken: TokenData[SqlToken]): Span = startToken
-    .span
-    .extendTo(lastToken.span)
+  private def spanFrom(startToken: TokenData[SqlToken]): Span =
+  {
+    if lastToken == null then
+      Span.NoSpan
+    else
+      startToken.span
+      .extendTo(lastToken.span)
+  }
 
   private def spanFrom(startSpan: Span): Span = startSpan.extendTo(lastToken.span)
 
