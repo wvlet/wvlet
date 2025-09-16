@@ -12,7 +12,7 @@ object RewriteExpr extends Phase("rewrite-expr"):
 
   override def run(unit: CompilationUnit, context: Context): CompilationUnit =
     val resolvedPlan = unit.resolvedPlan
-    val newPlan = rewriteOnly(unit.resolvedPlan, context)
+    val newPlan      = rewriteOnly(unit.resolvedPlan, context)
     unit.resolvedPlan = newPlan
     unit
 

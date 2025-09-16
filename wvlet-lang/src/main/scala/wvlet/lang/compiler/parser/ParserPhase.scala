@@ -38,17 +38,20 @@ object ParserPhase extends Phase("parser") with LogSupport:
     plan
 
   /**
-   * Just parse the given CompilationUnit and return an unresolved LogicalPlan
-   * @param compilationUnit
-   * @param isContextUnit
-   * @return
-   */
-  def parseOnly(compilationUnit: CompilationUnit, isContextUnit:Boolean = true): LogicalPlan =
-    val plan = if compilationUnit.sourceFile.isSQL then
-      val p = SqlParser(unit = compilationUnit, isContextUnit = isContextUnit)
-      p.parse()
-    else
-      val p = WvletParser(unit = compilationUnit, isContextUnit = isContextUnit)
-      p.parse()
+    * Just parse the given CompilationUnit and return an unresolved LogicalPlan
+    * @param compilationUnit
+    * @param isContextUnit
+    * @return
+    */
+  def parseOnly(compilationUnit: CompilationUnit, isContextUnit: Boolean = true): LogicalPlan =
+    val plan =
+      if compilationUnit.sourceFile.isSQL then
+        val p = SqlParser(unit = compilationUnit, isContextUnit = isContextUnit)
+        p.parse()
+      else
+        val p = WvletParser(unit = compilationUnit, isContextUnit = isContextUnit)
+        p.parse()
 
     plan
+
+end ParserPhase

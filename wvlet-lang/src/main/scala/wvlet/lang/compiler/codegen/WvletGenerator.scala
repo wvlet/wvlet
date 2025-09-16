@@ -12,7 +12,8 @@ import wvlet.log.LogSupport
 
 class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
     ctx: Context = Context.NoContext
-) extends QueryPrinter(CodeFormatter(config)) with LogSupport:
+) extends QueryPrinter(CodeFormatter(config))
+    with LogSupport:
 
   import CodeFormatter.*
 
@@ -35,7 +36,6 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
         expr(i)
       case other =>
         expr(other)
-
 
   override def render(l: LogicalPlan): Doc =
     def toDoc(plan: LogicalPlan): Doc =
