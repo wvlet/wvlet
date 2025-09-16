@@ -1,6 +1,8 @@
-execute sql"install ulid from community"
-execute sql"load ulid"
+execute sql"install inet"
+execute sql"load inet"
 
-select ulid() as ulid
+select
+  '127.0.0.1'::inet as ipv4,
+  '2001:db8:3c4d::/48'::inet as ipv6;
 
 

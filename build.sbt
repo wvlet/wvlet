@@ -5,7 +5,7 @@ val AIRSPEC_VERSION     = AIRFRAME_VERSION
 val TRINO_VERSION       = "476"
 val AWS_SDK_VERSION     = "2.20.146"
 val SCALAJS_DOM_VERSION = "2.8.1"
-val DUCKDB_JDBC_VERSION = "1.3.2.1"
+val DUCKDB_JDBC_VERSION = "1.4.0.0"
 
 val SCALA_3 = IO.read(file("SCALA_VERSION")).trim
 // ThisBuild / resolvers ++= Resolver.sonatypeOssRepos("snapshots")
@@ -520,7 +520,7 @@ lazy val labs = project
     noPublish,
     // Override noPublish setting to allow IDEA import
     ideSkipProject := false,
-    name := "wvlet-labs",
+    name           := "wvlet-labs",
     libraryDependencies ++=
       Seq(
         "org.wvlet.airframe" %% "airframe-launcher" % AIRFRAME_VERSION,

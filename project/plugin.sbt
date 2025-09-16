@@ -40,7 +40,7 @@ addSbtPlugin("com.github.sbt" % "sbt-dynver" % "5.1.1")
 addSbtPlugin("org.xerial.sbt" % "sbt-pack" % "0.22")
 
 // For compiling model classes from SQL templates
-libraryDependencies += "org.duckdb" % "duckdb_jdbc" % "1.3.2.1"
+libraryDependencies += "org.duckdb" % "duckdb_jdbc" % "1.4.0.0"
 addSbtPlugin("org.xerial.sbt" % "sbt-sql" % "0.19")
 
 scalacOptions ++= Seq("-deprecation", "-feature")
