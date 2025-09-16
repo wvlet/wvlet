@@ -323,7 +323,7 @@ import CodeFormatter.*
 
 import scala.annotation.tailrec
 
-class CodeFormatter(config: CodeFormatterConfig = CodeFormatterConfig()):
+class CodeFormatter(val config: CodeFormatterConfig = CodeFormatterConfig()):
   protected def fits(level: Int, doc: Doc): Boolean =
     level * config.indentWidth + doc.length <= config.maxLineWidth
 

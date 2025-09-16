@@ -82,22 +82,17 @@ end SqlGenerator
   * @param ctx
   */
 class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoContext)
-    extends LogSupport:
+    extends QueryPrinter(CodeFormatter(config)) with LogSupport:
   import SqlGenerator.*
   import CodeFormatter.*
 
-  private val formatter      = CodeFormatter(config)
   private def dbType: DBType = config.sqlDBType
-
-  def print(l: LogicalPlan): String =
-    val doc: Doc = toDoc(l)
-    formatter.render(0, doc)
 
   def print(e: Expression): String =
     val doc = expr(e)
     formatter.render(0, doc)
 
-  def toDoc(l: LogicalPlan): Doc =
+  override def render(l: LogicalPlan): Doc =
     def iter(plan: LogicalPlan): Doc =
       plan match
         case d: DDL =>

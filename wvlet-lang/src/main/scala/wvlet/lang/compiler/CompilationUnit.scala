@@ -36,6 +36,9 @@ import java.util.jar.JarFile
 case class CompilationUnit(sourceFile: SourceFile, isPreset: Boolean = false)
     extends LogSupport
     with Ordered[CompilationUnit]:
+
+  export sourceFile.{isSQL, isWv, relativeFilePath, fileName}
+
   // Untyped plan tree
   var unresolvedPlan: LogicalPlan = LogicalPlan.empty
   // Fully-typed plan tree

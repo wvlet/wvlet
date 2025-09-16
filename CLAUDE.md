@@ -55,7 +55,7 @@ Ensure the code is formatted with `scalafmtAll` command for consistent code styl
 ./sbt "projectNative/Test/compile"
 
 # Parsing test for a specific SQL in spec/sql/basic folder:
-./sbt "langJVM/testOnly *SqlParserBasicSpec -- spec:sql:basic:query.sql"
+./sbt "langJVM/testOnly *SqlParserSpecBasic -- spec:sql:basic:query.sql"
 
 # Run specific test class
 ./sbt "runner/testOnly *BasicSpec"

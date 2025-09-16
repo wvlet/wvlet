@@ -4,10 +4,50 @@ import wvlet.airspec.AirSpec
 import wvlet.lang.compiler.CompilationUnit
 
 trait ParserSpec(specPath: String, ignoredSpec: Map[String, String] = Map.empty) extends AirSpec:
-  for unit <- CompilationUnit.fromPath(specPath) do
+  for unit <- CompilationUnit.fromPath(specPath) do {
+    val specName = unit.sourceFile.relativeFilePath.replaceAll("/", ":")
     // Rename spec path's / (slash) to : to enable filtering by test names
-    test(unit.sourceFile.relativeFilePath.replaceAll("/", ":")) {
+    test(s"parse ${specName}") {
+      // If the file matches to the ignoredSpec, ignore the test   
       ignoredSpec.get(unit.sourceFile.fileName).foreach(reason => ignore(reason))
+      
       val plan = ParserPhase.parseOnly(unit)
       debug(plan.pp)
     }
+  }
+
+// Basic Wvlet queries
+class WvletParserSpecBasic extends ParserSpec("spec/basic")
+// TD CDP simple queries written in Wvlet
+class WvletParserSpecCDPSimple extends ParserSpec("spec/cdp_simple")
+// TD CDP behavior queries written in Wvlet
+class WvletParserSpecCDPBehavior extends ParserSpec("spec/cdp_behavior")
+
+// TPC-H queries translated into Wvlet
+class WvletParserSpecTPCH extends ParserSpec("spec/tpch")
+// Trino queries written in Wvlet
+class WvletParserSpecTrino extends ParserSpec("spec/trino")
+// TD-Trino specific queries
+class WvletParserSpecTDTrino extends ParserSpec("spec/td-trino")
+
+// Basic SQL queries
+class SqlParserSpecBasic extends ParserSpec("spec/sql/basic")
+// TPC-H SQL
+class SqlParserSpecTPCH  extends ParserSpec("spec/sql/tpc-h")
+// TPC-DS SQL
+class SqlParserSpecTPCDS extends ParserSpec("spec/sql/tpc-ds")
+
+// Trino SQL
+class SqlParserSpecTrino  extends ParserSpec("spec/sql/trino")
+
+// Hive SQL
+class SqlParserSpecHive
+        extends ParserSpec(
+          "spec/sql/hive",
+          Map(
+            "hive-data-types.sql" -> "Temporarily ignored - complex Hive data types not yet supported"
+          )
+        )
+
+// Update SQL
+class SqlParserSpecUpdate extends ParserSpec("spec/sql/update")

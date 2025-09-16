@@ -8,16 +8,13 @@ import wvlet.lang.compiler.transform.ExpressionEvaluator
 import wvlet.lang.model.SyntaxTreeNode
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
-import wvlet.lang.model.plan.CreateMode.Replace
 import wvlet.log.LogSupport
 
 class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
     ctx: Context = Context.NoContext
-) extends LogSupport:
+) extends QueryPrinter(CodeFormatter(config)) with LogSupport:
 
   import CodeFormatter.*
-
-  private val formatter = CodeFormatter(config)
 
   /**
     * Shared helper for formatting map keys to ensure Wvlet compatibility
@@ -39,17 +36,8 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
       case other =>
         expr(other)
 
-  /**
-    * Generate a formatted Wvlet code from the given logical plan
-    * @param l
-    */
-  def print(l: LogicalPlan): String =
-    val doc: Doc = convert(l)
-    formatter.render(0, doc)
 
-  def render(d: Doc): String = formatter.render(0, d)
-
-  def convert(l: LogicalPlan): Doc =
+  override def render(l: LogicalPlan): Doc =
     def toDoc(plan: LogicalPlan): Doc =
       plan match
         case p: PackageDef =>
@@ -92,7 +80,7 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
 
     toDoc(l)
 
-  end convert
+  end render
 
   private def unary(r: UnaryRelation, op: String, item: Expression)(using sc: SyntaxContext): Doc =
     unary(r, op, List(item))
@@ -141,8 +129,8 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
   private def ddl(d: DDL)(using sc: SyntaxContext): Doc =
     d match
       case _ =>
-        val sqlGen = SqlGenerator(config)
-        val doc    = sqlGen.toDoc(d)
+        val sqlGen = SqlGenerator(formatter.config)
+        val doc    = sqlGen.render(d)
         group(wl("execute", "sql\"\"\"" + linebreak + doc + linebreak + "\"\"\""))
 
   private def update(u: Update)(using sc: SyntaxContext): Doc =
@@ -172,8 +160,8 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
           }
         stmt
       case _ =>
-        val sqlGen = SqlGenerator(config)
-        val d      = sqlGen.toDoc(u)
+        val sqlGen = SqlGenerator(formatter.config)
+        val d      = sqlGen.render(u)
         group(wl("execute", "sql\"\"\"" + linebreak + d + linebreak + "\"\"\""))
 
   private def relation(r: Relation)(using sc: SyntaxContext): Doc =

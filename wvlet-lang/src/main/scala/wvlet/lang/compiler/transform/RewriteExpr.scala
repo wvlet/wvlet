@@ -2,7 +2,7 @@ package wvlet.lang.compiler.transform
 
 import wvlet.lang.compiler.*
 import wvlet.lang.model.DataType
-import wvlet.lang.model.plan.Query
+import wvlet.lang.model.plan.{LogicalPlan, Query}
 import wvlet.lang.model.expr.*
 
 object RewriteExpr extends Phase("rewrite-expr"):
@@ -12,11 +12,15 @@ object RewriteExpr extends Phase("rewrite-expr"):
 
   override def run(unit: CompilationUnit, context: Context): CompilationUnit =
     val resolvedPlan = unit.resolvedPlan
-    val newPlan = resolvedPlan.transformUp { case q: Query =>
-      RewriteRule.rewriteExpr(q, rewriteRules, context)
-    }
+    val newPlan = rewriteOnly(unit.resolvedPlan, context)
     unit.resolvedPlan = newPlan
     unit
+
+  def rewriteOnly(plan: LogicalPlan, context: Context = Context.NoContext): LogicalPlan =
+    val newPlan: LogicalPlan = plan.transformUp { case q: Query =>
+      RewriteRule.rewriteExpr(q, rewriteRules, context)
+    }
+    newPlan
 
   /**
     * 'a' + 'b' -> concat('a', 'b')
