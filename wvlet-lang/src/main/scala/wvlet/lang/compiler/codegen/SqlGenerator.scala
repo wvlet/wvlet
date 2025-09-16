@@ -229,6 +229,109 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             expr(d.schema)
           )
         )
+      case a: AlterTable =>
+        def alterOp(op: AlterTableOps): Doc = op match
+          case r: RenameTableOp =>
+            wl(
+              "rename",
+              "to",
+              expr(r.newName)
+            )
+          case c: AddColumnOp =>
+            wl(
+              "add", "column",
+              expr(c.column)
+            )
+          case d: DropColumnOp =>
+            wl(
+              "drop", "column",
+              expr(d.column)
+            )
+          case r: RenameColumnOp =>
+            wl(
+              "rename", "column",
+              expr(r.oldName), "to", expr(r.newName)
+            )
+          case c: AlterColumnSetDataTypeOp =>
+            wl(
+              "alter",
+              expr(c.column),
+              "type",
+              c.dataType.typeName.toString
+            )
+          case c: AlterColumnDropNotNullOp =>
+            wl(
+              "alter",
+              "column",
+              expr(c.column),
+              "drop",
+              "not",
+              "null"
+            )
+          case c: AlterColumnSetDefaultOp =>
+            wl(
+              "alter",
+              "column",
+              expr(c.column),
+              "set",
+              "default",
+              expr(c.defaultValue)
+            )
+          case c: AlterColumnDropDefaultOp =>
+            wl(
+              "alter",
+              "column",
+              expr(c.column),
+              "drop",
+              "default"
+            )
+          case c: AlterColumnSetNotNullOp =>
+            wl(
+              "alter",
+              "column",
+              expr(c.column),
+              "set",
+              "not",
+              "null"
+            )
+          case s: SetAuthorizationOp =>
+            val principalType = s.principalType.map(text).getOrElse(empty)
+            wl(
+              "set",
+              "authorization",
+              paren(wl(principalType, expr(s.principal)))
+            )
+          case s: SetPropertiesOp =>
+            val props = s.properties.map { case (k, v) =>
+              wl(expr(k), "=", expr(v))
+            }
+            wl("set", "properties", cl(props))
+          case e: ExecuteOp =>
+            val params =
+              if e.parameters.nonEmpty then
+                val paramList = e.parameters.map { case (k, v) =>
+                  wl(expr(k), "=", expr(v))
+                }
+                Some(paren(cl(paramList)))
+              else
+                None
+            val whereClause = e.where.map(w => wl("where", expr(w)))
+            wl("execute", expr(e.command), params, whereClause)
+          case _ =>
+            unsupportedNode(s"alter table ${op.nodeName}", d.span)
+
+        group(
+          wl(
+            "alter",
+            "table",
+            Option.when(a.ifExists) {
+              "if exists"
+            },
+            expr(a.table),
+            group(alterOp(a.operation))
+          )
+        )
+
       case _ =>
         unsupportedNode(s"DDL ${d.nodeName}", d.span)
 
