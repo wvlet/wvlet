@@ -203,6 +203,17 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             linebreak + sql
           )
         )
+      case d: DropView =>
+        group(
+          wl(
+            "drop",
+            "view",
+            Option.when(d.ifExists) {
+              "if exists"
+            },
+            expr(d.viewName)
+          )
+        )
       case c: CreateSchema =>
         group(
           wl(
