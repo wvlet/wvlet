@@ -9,7 +9,7 @@ SELECT MAP(ARRAY['key1', 'key2'], ARRAY['value1', 'value2']) as simple_map;
 
 -- Complex nested structures
 SELECT MAP(
-    ARRAY['user_info', 'preferences'], 
+    ARRAY['user_info', 'preferences'],
     ARRAY[
         named_struct('name', 'John', 'age', 30),
         named_struct('theme', 'dark', 'language', 'en')
@@ -29,7 +29,7 @@ FROM users;
 
 -- VALUES clause without parentheses
 INSERT INTO test_table
-VALUES 
+VALUES
     (1, 'first'),
     (2, 'second'),
     (3, 'third');
@@ -41,7 +41,6 @@ CREATE TABLE IF NOT EXISTS user_sessions (
     events ARRAY<STRUCT<
         timestamp: TIMESTAMP,
         event_type: STRING,
-        properties: MAP<STRING, STRING>
-    >>,
+        properties: MAP<STRING, STRING>>>,
     metadata MAP<STRING, STRING>
 ) STORED AS PARQUET;
