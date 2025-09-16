@@ -45,11 +45,11 @@ case class AppendTo(
 ) extends Save
 
 /**
- * Delete qualifying rows from the target table
- * @param child
- * @param target
- * @param span
- */
+  * Delete qualifying rows from the target table
+  * @param child
+  * @param target
+  * @param span
+  */
 case class Delete(child: Relation, target: TableOrFileName, span: Span) extends Save
 
 case class Truncate(target: TableOrFileName, span: Span) extends Update with LeafPlan

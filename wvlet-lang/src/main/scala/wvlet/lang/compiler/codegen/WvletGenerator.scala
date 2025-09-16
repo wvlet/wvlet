@@ -159,6 +159,10 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
             query / group(wl("append to", target + cols))
           }
         stmt
+      case s: SaveTo =>
+        relation(s)
+      case a: AppendTo =>
+        relation(a)
       case _ =>
         val sqlGen = SqlGenerator(formatter.config)
         val d      = sqlGen.render(u)
@@ -490,6 +494,10 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
             indentedBrace(concat(t.elems.map(e => group(expr(e))), linebreak))
         case t: ShowQuery =>
           group(wl("show", "query", expr(t.name)))
+        case u: UseSchema =>
+          group(wl("use", expr(u.schema)))
+        case e: ExplainPlan =>
+          group(wl("explain", render(e.child)))
         case other =>
           unsupportedNode(s"statement ${other.nodeName}", other.span)
     }

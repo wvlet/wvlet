@@ -16,31 +16,31 @@ trait ParserSpec(specPath: String, ignoredSpec: Map[String, String] = Map.empty)
     }
 
 // Basic Wvlet queries
-class WvletParserSpecBasic extends ParserSpec("spec/basic")
+class ParserSpecBasic extends ParserSpec("spec/basic")
 // TD CDP simple queries written in Wvlet
-class WvletParserSpecCDPSimple extends ParserSpec("spec/cdp_simple")
+class ParserSpecCDPSimple extends ParserSpec("spec/cdp_simple")
 // TD CDP behavior queries written in Wvlet
-class WvletParserSpecCDPBehavior extends ParserSpec("spec/cdp_behavior")
+class ParserSpecCDPBehavior extends ParserSpec("spec/cdp_behavior")
 
 // TPC-H queries translated into Wvlet
-class WvletParserSpecTPCH extends ParserSpec("spec/tpch")
+class ParserSpecTPCH extends ParserSpec("spec/tpch")
 // Trino queries written in Wvlet
-class WvletParserSpecTrino extends ParserSpec("spec/trino")
+class ParserSpecTrino extends ParserSpec("spec/trino")
 // TD-Trino specific queries
-class WvletParserSpecTDTrino extends ParserSpec("spec/td-trino")
+class ParserSpecTDTrino extends ParserSpec("spec/td-trino")
 
 // Basic SQL queries
-class SqlParserSpecBasic extends ParserSpec("spec/sql/basic")
+class ParserSpecSqlBasic extends ParserSpec("spec/sql/basic")
 // TPC-H SQL
-class SqlParserSpecTPCH extends ParserSpec("spec/sql/tpc-h")
+class ParserSpecSqlTPCH extends ParserSpec("spec/sql/tpc-h")
 // TPC-DS SQL
-class SqlParserSpecTPCDS extends ParserSpec("spec/sql/tpc-ds")
+class ParserSpecSqlTPCDS extends ParserSpec("spec/sql/tpc-ds")
 
 // Trino SQL
-class SqlParserSpecTrino extends ParserSpec("spec/sql/trino")
+class ParserSpecSqlTrino extends ParserSpec("spec/sql/trino")
 
 // Hive SQL
-class SqlParserSpecHive
+class ParserSpecSqlHive
     extends ParserSpec(
       "spec/sql/hive",
       Map(
@@ -49,4 +49,4 @@ class SqlParserSpecHive
     )
 
 // Update SQL
-class SqlParserSpecUpdate extends ParserSpec("spec/sql/update")
+class ParserSpecSqlUpdate extends ParserSpec("spec/sql/update")

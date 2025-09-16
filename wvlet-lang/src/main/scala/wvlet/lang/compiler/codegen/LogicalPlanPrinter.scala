@@ -182,11 +182,11 @@ class LogicalPlanPrinter(using ctx: Context) extends LogSupport:
         bracket(cat(text(w.start.wvExpr), ",", text(w.end.wvExpr)))
       case NoJoinCriteria =>
         empty
-      case p:NoNameParameter =>
+      case p: NoNameParameter =>
         text("?")
-      case p:IndexedParameter =>
+      case p: IndexedParameter =>
         text(s"$$${p.index}")
-      case n:NamedParameter =>
+      case n: NamedParameter =>
         text(s"$$${n.name}")
       case other =>
         node(other)

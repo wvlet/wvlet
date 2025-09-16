@@ -50,8 +50,8 @@ abstract class RoundTripSpec(path: String, ignoredSpec: Map[String, String] = Ma
 
 end RoundTripSpec
 
-class WvletRoundTripSpecBasic extends RoundTripSpec("spec/basic")
-class WvletRoundTripSpecTPCH  extends RoundTripSpec("spec/tpch")
+class RoundTripSpecBasic extends RoundTripSpec("spec/basic")
+class RoundTripSpecTPCH  extends RoundTripSpec("spec/tpch")
 //class WvletRoundTripSpecSqlBasic
 //    extends RoundTripSpec(
 //      "spec/sql/basic",
@@ -60,12 +60,12 @@ class WvletRoundTripSpecTPCH  extends RoundTripSpec("spec/tpch")
 //        "show-create-view.sql" -> "SHOW CREATE VIEW syntax not yet supported in Wvlet"
 //      )
 //    )
-class WvletRoundTripSpecTPCDS extends RoundTripSpec("spec/sql/tpc-ds")
 
-class SqlRoundTripSpecBasic extends RoundTripSpec("spec/sql/basic",
-  ignoredSpec = Map(
-    "row-map-types.sql" -> "Need to parse `type_name`[]"
-  )
-)
-class SqlRoundTripSpecTPCH  extends RoundTripSpec("spec/sql/tpc-h")
-class SqlRoundTripSpecTPCD  extends RoundTripSpec("spec/sql/tpc-ds")
+class RoundTripSpecSqlBasic
+    extends RoundTripSpec(
+      "spec/sql/basic",
+      ignoredSpec = Map("row-map-types.sql" -> "Need to parse `type_name`[]")
+    )
+
+class RoundTripSpecSqlTPCH extends RoundTripSpec("spec/sql/tpc-h")
+class RoundTripSpecSqlTPCD extends RoundTripSpec("spec/sql/tpc-ds")

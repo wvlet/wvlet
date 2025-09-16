@@ -83,13 +83,10 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     * @return
     */
   private def spanFrom(startToken: TokenData[SqlToken]): Span =
-  {
     if lastToken == null then
       Span.NoSpan
     else
-      startToken.span
-      .extendTo(lastToken.span)
-  }
+      startToken.span.extendTo(lastToken.span)
 
   private def spanFrom(startSpan: Span): Span = startSpan.extendTo(lastToken.span)
 
@@ -1120,10 +1117,9 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     val name = identifier()
     // Support both "FROM" (Trino) and "AS" (DuckDB) syntax
     val fromOrAs = scanner.lookAhead().token
-    if fromOrAs == SqlToken.FROM || fromOrAs == SqlToken.AS then {
+    if fromOrAs == SqlToken.FROM || fromOrAs == SqlToken.AS then
       // TODO Preserve FROM or AS
       consumeToken()
-    }
     else
       unexpected(scanner.lookAhead(), "Expected FROM or AS after PREPARE statement name")
     val statement = queryOrUpdate()
@@ -2671,7 +2667,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         nextToken.token match
           case SqlToken.INTEGER_LITERAL =>
             val indexToken = consumeToken()
-            val index = indexToken.str.toInt
+            val index      = indexToken.str.toInt
             IndexedParameter(index, spanFrom(t))
           case id if id.isIdentifier =>
             val nameToken = consumeToken()
@@ -3486,7 +3482,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
               UnresolvedTypeParameter(typeName.unquotedValue, None)
       end match
     end readOneParam
-    
+
     // Read parameters until '>'
     while scanner.lookAhead().token != SqlToken.GT do
       params += readOneParam()
