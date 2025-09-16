@@ -39,7 +39,6 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
   )
 
   private var lastToken: TokenData[SqlToken] = null
-  private var questionMarkParamIndex: Int    = 0
 
   def parse(): LogicalPlan =
     val t     = scanner.lookAhead()
@@ -146,7 +145,6 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
 
   def statement(): LogicalPlan =
     // Reset parameter counter for each statement
-    questionMarkParamIndex = 0
     val t = scanner.lookAhead()
     t.token match
       case SqlToken.ALTER | SqlToken.SET | SqlToken.RESET =>
@@ -1122,8 +1120,10 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     val name = identifier()
     // Support both "FROM" (Trino) and "AS" (DuckDB) syntax
     val fromOrAs = scanner.lookAhead().token
-    if fromOrAs == SqlToken.FROM || fromOrAs == SqlToken.AS then
-      consumeToken() // consume FROM or AS
+    if fromOrAs == SqlToken.FROM || fromOrAs == SqlToken.AS then {
+      // TODO Preserve FROM or AS
+      consumeToken()
+    }
     else
       unexpected(scanner.lookAhead(), "Expected FROM or AS after PREPARE statement name")
     val statement = queryOrUpdate()
@@ -2066,6 +2066,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           consume(SqlToken.MINUS)
           val v = valueExpression()
           ArithmeticUnaryExpr(Sign.Negative, v, spanFrom(t))
+        case SqlToken.QUESTION | SqlToken.DOLLAR =>
+          queryParameter()
         case _ =>
           primaryExpression()
     valueExpressionRest(expr)
@@ -2648,31 +2650,36 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           identifier()
         case SqlToken.UNDERSCORE =>
           identifier()
-        case SqlToken.QUESTION =>
-          consume(SqlToken.QUESTION)
-          // Use a counter to track the position of '?' parameters
-          questionMarkParamIndex += 1
-          Parameter(questionMarkParamIndex, spanFrom(t))
-        case SqlToken.DOLLAR =>
-          consume(SqlToken.DOLLAR)
-          val nextToken = scanner.lookAhead()
-          nextToken.token match
-            case SqlToken.INTEGER_LITERAL =>
-              val indexToken = consumeToken()
-              val index      = indexToken.str.toInt
-              Parameter(index, spanFrom(t))
-            case id if id.isIdentifier =>
-              val nameToken = consumeToken()
-              // Named parameter for prepared statements (e.g., $name_param)
-              NamedParameter(nameToken.str, spanFrom(t))
-            case _ =>
-              unexpected(nextToken)
         case _ =>
           unexpected(t)
 
     primaryExpressionRest(expr)
 
   end primaryExpression
+
+  def queryParameter(): Parameter =
+    val t = scanner.lookAhead()
+    t.token match
+      case SqlToken.QUESTION =>
+        consume(SqlToken.QUESTION)
+        // Use a counter to track the position of '?' parameters
+        NoNameParameter(spanFrom(t))
+      case SqlToken.DOLLAR =>
+        consume(SqlToken.DOLLAR)
+        val nextToken = scanner.lookAhead()
+        nextToken.token match
+          case SqlToken.INTEGER_LITERAL =>
+            val indexToken = consumeToken()
+            val index = indexToken.str.toInt
+            IndexedParameter(index, spanFrom(t))
+          case id if id.isIdentifier =>
+            val nameToken = consumeToken()
+            // Named parameter for prepared statements (e.g., $name_param)
+            NamedParameter(nameToken.str, spanFrom(t))
+          case _ =>
+            unexpected(nextToken)
+      case _ =>
+        unexpected(t)
 
   def array(): ArrayConstructor =
     consumeIfExist(SqlToken.ARRAY)

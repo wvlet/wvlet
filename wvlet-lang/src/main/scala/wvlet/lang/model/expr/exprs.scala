@@ -888,11 +888,14 @@ case class CurrentLocalTime(precision: Option[Int], span: Span)
 case class CurrentLocalTimeStamp(precision: Option[Int], span: Span)
     extends CurrentTimeBase("localtimestamp", precision)
 
-// 1-origin parameter
-case class Parameter(index: Int, span: Span) extends LeafExpression
-
-// Named parameter for prepared statements (e.g., $name)
-case class NamedParameter(name: String, span: Span) extends LeafExpression
+// Parameter for prepared statements
+sealed trait Parameter extends LeafExpression
+// parameter: ?
+case class NoNameParameter(span: Span) extends Parameter
+// $1, $2, ..
+case class IndexedParameter(index: Int, span: Span) extends Parameter
+// $a, $b, ...
+case class NamedParameter(name: String, span: Span) extends Parameter
 
 case class SubQueryExpression(query: Relation, span: Span) extends Expression:
   override def children: Seq[Expression] = query.childExpressions

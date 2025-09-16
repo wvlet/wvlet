@@ -407,7 +407,7 @@ abstract class ScannerBase[Token](sourceFile: SourceFile, config: ScannerConfig)
           putChar(ch)
           nextChar()
           getOperatorRest()
-      case '~' | '!' | '@' | '#' | '%' | '^' | '+' | '-' | '<' | '?' | ':' | '=' | '&' | '|' |
+      case '~' | '!' | '@' | '#' | '$' | '%' | '^' | '+' | '-' | '<' | '?' | ':' | '=' | '&' | '|' |
           '\\' =>
         putChar(ch)
         nextChar()

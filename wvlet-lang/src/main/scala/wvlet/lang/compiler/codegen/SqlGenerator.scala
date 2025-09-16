@@ -331,7 +331,15 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             group(alterOp(a.operation))
           )
         )
-
+      case p: PrepareStatement =>
+        group(
+          wl(
+            "prepare",
+            expr(p.name),
+            "as",
+            render(p.statement)
+          )
+        )
       case _ =>
         unsupportedNode(s"DDL ${d.nodeName}", d.span)
 
@@ -1780,6 +1788,12 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         else
           // Default is EXCLUDING PROPERTIES, so we can omit it for cleaner output
           wl("like", expr(l.tableName))
+      case p: NoNameParameter =>
+        text("?")
+      case i: IndexedParameter =>
+        text(s"$$${i.index}")
+      case n: NamedParameter =>
+        text(s"$$${n.name}")
       case other =>
         unsupportedNode(s"Expression ${other.nodeName}", other.span)
 
