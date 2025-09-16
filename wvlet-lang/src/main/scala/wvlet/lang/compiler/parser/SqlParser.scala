@@ -1216,6 +1216,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           val cond = expression()
           Filter(target, cond, spanFrom(t))
         case _ =>
+          // TODO Support delete form tbl using ...
           target
 
     def deleteExpr(x: Relation): Delete =

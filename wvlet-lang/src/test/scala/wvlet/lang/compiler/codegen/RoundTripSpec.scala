@@ -67,5 +67,5 @@ class SqlRoundTripSpecBasic extends RoundTripSpec("spec/sql/basic",
     "row-map-types.sql" -> "Need to parse `type_name`[]"
   )
 )
-class SplRoundTripSpecTPCH  extends RoundTripSpec("spec/sql/tpc-h")
+class SqlRoundTripSpecTPCH  extends RoundTripSpec("spec/sql/tpc-h")
 class SqlRoundTripSpecTPCD  extends RoundTripSpec("spec/sql/tpc-ds")

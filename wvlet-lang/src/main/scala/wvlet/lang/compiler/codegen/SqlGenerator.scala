@@ -425,6 +425,24 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
               // For other expressions, use the regular query generation
               query(i.child, SQLBlock())(using InStatement)
         group(wl("insert", "into", expr(i.target) + columns, linebreak + childSQL))
+      case d: Delete =>
+        val filteringQuery: Doc =
+          d.child match
+            case f: Filter =>
+              wl(maybeNewline + "where", expr(f.filterExpr))
+            case other =>
+              // TODO support DELETE FROM ... USING ...
+              empty
+
+        group(
+          wl(
+            "delete",
+            "from",
+            expr(d.target),
+            filteringQuery
+          )
+        )
+
       case _ =>
         unsupportedNode(s"Update ${u.nodeName}", u.span)
 
