@@ -927,7 +927,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
             case _ =>
               List(likeTableDef)
 
-        case id if id.isIdentifier =>
+        case id if id.isIdentifier || id.isStringLiteral =>
           val col = identifier()
           val tpe = typeName()
 
