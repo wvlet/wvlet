@@ -13,6 +13,7 @@ import wvlet.lang.model.plan.*
 import wvlet.lang.model.plan.SamplingSize.{Percentage, PercentageExpr, Rows}
 import wvlet.log.LogSupport
 import SyntaxContext.*
+import wvlet.lang.compiler.DBType.Trino
 import wvlet.lang.compiler.codegen.CodeFormatter
 import wvlet.lang.compiler.codegen.CodeFormatter.*
 import wvlet.lang.compiler.codegen.CodeFormatterConfig
@@ -82,22 +83,18 @@ end SqlGenerator
   * @param ctx
   */
 class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoContext)
-    extends LogSupport:
+    extends QueryPrinter(CodeFormatter(config))
+    with LogSupport:
   import SqlGenerator.*
   import CodeFormatter.*
 
-  private val formatter      = CodeFormatter(config)
   private def dbType: DBType = config.sqlDBType
-
-  def print(l: LogicalPlan): String =
-    val doc: Doc = toDoc(l)
-    formatter.render(0, doc)
 
   def print(e: Expression): String =
     val doc = expr(e)
     formatter.render(0, doc)
 
-  def toDoc(l: LogicalPlan): Doc =
+  override def render(l: LogicalPlan): Doc =
     def iter(plan: LogicalPlan): Doc =
       plan match
         case d: DDL =>
@@ -192,6 +189,31 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             expr(c.table) + columns
           )
         )
+      case c: CreateView =>
+        val sql = query(c.query, SQLBlock())(using InStatement)
+        group(
+          wl(
+            "create",
+            Option.when(c.replace) {
+              "or replace"
+            },
+            "view",
+            expr(c.viewName),
+            "as",
+            linebreak + sql
+          )
+        )
+      case d: DropView =>
+        group(
+          wl(
+            "drop",
+            "view",
+            Option.when(d.ifExists) {
+              "if exists"
+            },
+            expr(d.viewName)
+          )
+        )
       case c: CreateSchema =>
         group(
           wl(
@@ -218,6 +240,86 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             expr(d.schema)
           )
         )
+      case a: AlterTable =>
+        def alterOp(op: AlterTableOps): Doc =
+          op match
+            case r: RenameTableOp =>
+              wl("rename", "to", expr(r.newName))
+            case c: AddColumnOp =>
+              wl("add", "column", expr(c.column))
+            case d: DropColumnOp =>
+              wl("drop", "column", expr(d.column))
+            case r: RenameColumnOp =>
+              wl("rename", "column", expr(r.oldName), "to", expr(r.newName))
+            case c: AlterColumnSetDataTypeOp =>
+              wl("alter", expr(c.column), "type", c.dataType.typeName.toString)
+            case c: AlterColumnDropNotNullOp =>
+              wl("alter", "column", expr(c.column), "drop", "not", "null")
+            case c: AlterColumnSetDefaultOp =>
+              wl("alter", "column", expr(c.column), "set", "default", expr(c.defaultValue))
+            case c: AlterColumnDropDefaultOp =>
+              wl("alter", "column", expr(c.column), "drop", "default")
+            case c: AlterColumnSetNotNullOp =>
+              wl("alter", "column", expr(c.column), "set", "not", "null")
+            case s: SetAuthorizationOp =>
+              val principalType = s.principalType.map(text).getOrElse(empty)
+              wl("set", "authorization", paren(wl(principalType, expr(s.principal))))
+            case s: SetPropertiesOp =>
+              val props = s
+                .properties
+                .map { case (k, v) =>
+                  wl(expr(k), "=", expr(v))
+                }
+              wl("set", "properties", cl(props))
+            case e: ExecuteOp =>
+              val params =
+                if e.parameters.nonEmpty then
+                  val paramList = e
+                    .parameters
+                    .map { case (k, v) =>
+                      wl(expr(k), "=", expr(v))
+                    }
+                  Some(paren(cl(paramList)))
+                else
+                  None
+              val whereClause = e.where.map(w => wl("where", expr(w)))
+              wl("execute", expr(e.command), params, whereClause)
+            case _ =>
+              unsupportedNode(s"alter table ${op.nodeName}", d.span)
+
+        group(
+          wl(
+            "alter",
+            "table",
+            Option.when(a.ifExists) {
+              "if exists"
+            },
+            expr(a.table),
+            group(alterOp(a.operation))
+          )
+        )
+      case p: PrepareStatement =>
+        group(wl("prepare", expr(p.name), "as", render(p.statement)))
+      case e: ExecuteStatement =>
+        if dbType == DBType.Trino then
+          // Trino: USING p1, p2, ...
+          group(wl("execute", expr(e.name), "using", cl(e.parameters.map(expr))))
+        else
+          // DuckDB: execute func(p1, p2, ...)
+          group(
+            wl(
+              "execute",
+              cat(
+                expr(e.name),
+                Option.when(e.parameters.nonEmpty) {
+                  paren(cl(e.parameters.map(expr)*))
+                }
+              )
+            )
+          )
+      case d: DeallocateStatement =>
+        group(wl("deallocate", expr(d.name)))
+
       case _ =>
         unsupportedNode(s"DDL ${d.nodeName}", d.span)
 
@@ -258,6 +360,17 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
               // For other expressions, use the regular query generation
               query(i.child, SQLBlock())(using InStatement)
         group(wl("insert", "into", expr(i.target) + columns, linebreak + childSQL))
+      case d: Delete =>
+        val filteringQuery: Doc =
+          d.child match
+            case f: Filter =>
+              wl(maybeNewline + "where", expr(f.filterExpr))
+            case other =>
+              // TODO support DELETE FROM ... USING ...
+              empty
+
+        group(wl("delete", "from", expr(d.target), filteringQuery))
+
       case _ =>
         unsupportedNode(s"Update ${u.nodeName}", u.span)
 
@@ -504,124 +617,36 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
 
         val body: Doc =
           // Both Trino and DuckDB support TABLESAMPLE in FROM clause, but with different percentage format
-          if sc.inFromClause then
-            dbType match
-              case DBType.Trino =>
+          val percentage =
+            s.size match
+              case Rows(n) =>
+                text(s"${n}")
+              case Percentage(p) if dbType == Trino =>
                 // Trino: TABLESAMPLE BERNOULLI(5) - integer percentage
-                val percentage =
-                  s.size match
-                    case Rows(n) =>
-                      text(n.toString)
-                    case Percentage(p) =>
-                      text(p.toString.stripSuffix(".0"))
-                    case PercentageExpr(e) =>
-                      expr(e)
-                group(
-                  wl(
-                    child,
-                    "TABLESAMPLE",
-                    text(samplingMethod.toString.toUpperCase),
-                    paren(percentage)
-                  )
-                )
-              case DBType.DuckDB =>
+                text(p.toString.stripSuffix(".0"))
+              case Percentage(p) if dbType == DBType.DuckDB =>
                 // DuckDB: TABLESAMPLE BERNOULLI(5%) - percentage with % sign
-                val percentage =
-                  s.size match
-                    case Rows(n) =>
-                      text(s"${n}%") // Convert rows to percentage for DuckDB
-                    case Percentage(p) =>
-                      text(s"${p.toString.stripSuffix(".0")}%")
-                    case PercentageExpr(e) =>
-                      expr(e)
-                group(
-                  wl(
-                    child,
-                    "TABLESAMPLE",
-                    text(samplingMethod.toString.toUpperCase),
-                    paren(percentage)
-                  )
-                )
-              case _ =>
-                warn(s"Unsupported TABLESAMPLE for ${dbType}, falling back to SELECT wrapper")
-                // Fallback to SELECT wrapper for unsupported databases
-                val size =
-                  s.size match
-                    case Rows(n) =>
-                      text(s"${n} rows")
-                    case Percentage(percentage) =>
-                      text(s"${percentage}%")
-                    case PercentageExpr(e) =>
-                      expr(e)
-                group(
-                  wl(
-                    "select",
-                    "*",
-                    "from",
-                    child,
-                    "using",
-                    "sample",
-                    text(samplingMethod.toString.toLowerCase) + paren(size)
-                  )
-                )
+                text(s"${p.toString.stripSuffix(".0")}%")
+              case PercentageExpr(e) =>
+                expr(e)
+
+          if sc.inFromClause then
+            group(wl(child, "tablesample", text(samplingMethod.toString), paren(percentage)))
           else
-            // Non-FROM contexts: use function-based sampling
-            dbType match
-              case DBType.Trino =>
-                s.size match
-                  case Rows(n) =>
-                    // Supported only in td-trino
-                    group(wl("select", cl("*", s"reservoir_sample(${n}) over()"), "from", child))
-                  case Percentage(percentage) =>
-                    // Use TABLESAMPLE with consistent formatting for non-FROM Trino contexts
-                    group(
-                      wl(
-                        "select",
-                        "*",
-                        "from",
-                        child,
-                        "TABLESAMPLE",
-                        text(samplingMethod.toString.toUpperCase),
-                        paren(text(percentage.toString.stripSuffix(".0")))
-                      )
-                    )
-                  case PercentageExpr(e) =>
-                    // Use TABLESAMPLE with expression for non-FROM Trino contexts
-                    group(
-                      wl(
-                        "select",
-                        "*",
-                        "from",
-                        child,
-                        "TABLESAMPLE",
-                        text(samplingMethod.toString.toUpperCase),
-                        paren(expr(e))
-                      )
-                    )
-              case DBType.DuckDB =>
-                // DuckDB uses USING SAMPLE syntax for non-FROM contexts
-                val size =
-                  s.size match
-                    case Rows(n) =>
-                      text(s"${n} rows")
-                    case Percentage(percentage) =>
-                      text(s"${percentage}%")
-                    case PercentageExpr(e) =>
-                      expr(e)
-                group(
-                  wl(
-                    "select",
-                    "*",
-                    "from",
-                    child,
-                    "using",
-                    "sample",
-                    text(samplingMethod.toString.toLowerCase) + paren(size)
-                  )
-                )
-              case _ =>
-                warn(s"Unsupported sampling method: ${samplingMethod} for ${dbType}")
-                child
+            // TODO: Use reservoir_sample in td-trino:
+            //   group(wl("select", cl("*", s"reservoir_sample(${n}) over()"), "from", child))
+            group(
+              wl(
+                "select",
+                "*",
+                "from",
+                child,
+                "tablesample",
+                text(samplingMethod.toString),
+                paren(text(percentage.toString.stripSuffix(".0")))
+              )
+            )
+        end body
 
         if sc.inFromClause then
           body
@@ -946,17 +971,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             )
             selectExpr(sql)
       case s: Show if s.showType == ShowType.createView =>
-        // SHOW CREATE VIEW - delegate to database-specific implementation
-        val viewName = s.inExpr.nameParts.mkString(".")
-        dbType match
-          case DBType.Trino =>
-            // Trino supports SHOW CREATE VIEW directly
-            val sql = wl("show create view", viewName)
-            selectExpr(sql)
-          case _ =>
-            // For other databases, use DESCRIBE which is more widely supported
-            val sql = wl("describe", viewName)
-            selectExpr(sql)
+        wl("show", "create", "view", expr(s.inExpr))
       case s: Show if s.showType == ShowType.createTable =>
         dbType match
           case DBType.Trino =>
@@ -1764,6 +1779,12 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         else
           // Default is EXCLUDING PROPERTIES, so we can omit it for cleaner output
           wl("like", expr(l.tableName))
+      case p: NoNameParameter =>
+        text("?")
+      case i: IndexedParameter =>
+        text(s"$$${i.index}")
+      case n: NamedParameter =>
+        text(s"$$${n.name}")
       case other =>
         unsupportedNode(s"Expression ${other.nodeName}", other.span)
 
@@ -1781,7 +1802,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
           paren(cl(list.map(x => expr(x))))
     wl(left, operator, right)
 
-  private def unsupportedNode(nodeType: String, span: Span): Doc =
+  inline private def unsupportedNode(nodeType: String, span: Span): Doc =
     val loc = ctx.sourceLocationAt(span)
     val msg = s"Unsupported ${nodeType} (${loc})"
     warn(msg)

@@ -1,33 +1,79 @@
 -- Test table value constants
+-- Comprehensive tests covering all TableValueConstantTest scenarios
 
--- Basic table value constant
-val t1(id, name) = [
-  [1, "Alice"],
-  [2, "Bob"],
-  [3, "Charlie"]
-]
+-- Basic table value constant with column names
+val t1(id, name) = [[1, "Alice"], [2, "Bob"]]
 
 from t1
-test _.size should be 3
+test _.columns should be ["id", "name"]
+test _.size should be 2
+test _.rows should be [
+  [1, "Alice"],
+  [2, "Bob"]
+]
 
--- Table value constant with types
-val t2(id:int, name:string, score:double) = [
+-- Table value constant with column types
+val t2(id:int, name:string) = [[1, "Alice"], [2, "Bob"]]
+
+from t2
+test _.columns should be ["id", "name"]
+test _.size should be 2
+test _.rows should be [
+  [1, "Alice"],
+  [2, "Bob"]
+]
+
+-- Table value constant with trailing comma
+val t3(id, name) = [
+  [1, "Alice"],
+  [2, "Bob"],
+]
+
+from t3
+test _.columns should be ["id", "name"]
+test _.size should be 2
+
+-- Table value constant with trailing comma in rows
+val t4(id, name) = [
+  [1, "Alice",],
+  [2, "Bob",],
+]
+
+from t4
+test _.columns should be ["id", "name"]
+test _.size should be 2
+
+-- Empty table value constant
+val empty_table(id, name) = []
+
+from empty_table
+test _.columns should be ["id", "name"]
+test _.size should be 0
+
+-- Table value constant with single row
+val single_row(x, y, z) = [[1, 2, 3]]
+
+from single_row
+test _.columns should be ["x", "y", "z"]
+test _.size should be 1
+test _.rows should be [
+  [1, 2, 3]
+]
+
+-- Regular val definition (non-table)
+val x = 42
+
+select x
+test _.rows should be [[42]]
+
+-- Extended tests with more complex scenarios
+val t5(id, name, score) = [
   [1, "Alice", 95.5],
   [2, "Bob", 87.0],
   [3, "Charlie", 92.3]
 ]
 
-from t2
-test _.size should be 3
-
--- Table value constant with trailing commas
-val t3(id, name) = [
-  [1, "Alice"],
-  [2, "Bob"],
-  [3, "Charlie"],
-]
-
-from t3
+from t5
 test _.size should be 3
 
 -- Reuse table value constant multiple times

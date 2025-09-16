@@ -39,7 +39,6 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
   )
 
   private var lastToken: TokenData[SqlToken] = null
-  private var questionMarkParamIndex: Int    = 0
 
   def parse(): LogicalPlan =
     val t     = scanner.lookAhead()
@@ -83,9 +82,11 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     * @param startToken
     * @return
     */
-  private def spanFrom(startToken: TokenData[SqlToken]): Span = startToken
-    .span
-    .extendTo(lastToken.span)
+  private def spanFrom(startToken: TokenData[SqlToken]): Span =
+    if lastToken == null then
+      Span.NoSpan
+    else
+      startToken.span.extendTo(lastToken.span)
 
   private def spanFrom(startSpan: Span): Span = startSpan.extendTo(lastToken.span)
 
@@ -141,7 +142,6 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
 
   def statement(): LogicalPlan =
     // Reset parameter counter for each statement
-    questionMarkParamIndex = 0
     val t = scanner.lookAhead()
     t.token match
       case SqlToken.ALTER | SqlToken.SET | SqlToken.RESET =>
@@ -927,7 +927,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
             case _ =>
               List(likeTableDef)
 
-        case id if id.isIdentifier =>
+        case id if id.isIdentifier || id.isStringLiteral =>
           val col = identifier()
           val tpe = typeName()
 
@@ -976,7 +976,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         case SqlToken.VIEW =>
           val viewName = qualifiedName()
           consume(SqlToken.AS)
-          val queryPlan = this.query() // Use 'this' to access the outer query method
+          val queryPlan = query()
           CreateView(viewName, replace, queryPlan, spanFrom(t))
         case SqlToken.TABLE | _ =>
           val createMode =
@@ -1118,7 +1118,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     // Support both "FROM" (Trino) and "AS" (DuckDB) syntax
     val fromOrAs = scanner.lookAhead().token
     if fromOrAs == SqlToken.FROM || fromOrAs == SqlToken.AS then
-      consumeToken() // consume FROM or AS
+      // TODO Preserve FROM or AS
+      consumeToken()
     else
       unexpected(scanner.lookAhead(), "Expected FROM or AS after PREPARE statement name")
     val statement = queryOrUpdate()
@@ -1211,6 +1212,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           val cond = expression()
           Filter(target, cond, spanFrom(t))
         case _ =>
+          // TODO Support delete form tbl using ...
           target
 
     def deleteExpr(x: Relation): Delete =
@@ -1363,117 +1365,86 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
 
   end select
 
-  private def toSamplingSize(expr: Expression): SamplingSize =
-    expr match
-      case ArithmeticBinaryExpr(BinaryExprType.Modulus, percentageExpr, _, _) =>
-        // Handle "10 % " as percentage
-        percentageExpr match
-          case LongLiteral(value, _, _) =>
-            SamplingSize.Percentage(value.toDouble)
-          case DoubleLiteral(value, _, _) =>
-            SamplingSize.Percentage(value)
-          case DecimalLiteral(value, _, _) =>
-            SamplingSize.Percentage(value.toDouble)
-          case _ =>
-            SamplingSize.PercentageExpr(expr)
-      case LongLiteral(value, _, _) =>
-        // For TABLESAMPLE BERNOULLI/SYSTEM, integer literals are percentages
-        SamplingSize.Percentage(value.toDouble)
-      case DoubleLiteral(value, _, _) =>
-        SamplingSize.Percentage(value)
-      case DecimalLiteral(value, _, _) =>
-        SamplingSize.Percentage(value.toDouble)
-      case _ =>
-        // For any other expression (parenthesized, arithmetic, etc.)
-        SamplingSize.PercentageExpr(expr)
-
   private def handleTableSample(r: Relation): Relation =
+    def samplingSize(): SamplingSize =
+      val t = scanner.lookAhead()
+      t.token match
+        case SqlToken.INTEGER_LITERAL =>
+          consumeToken()
+          consumeIfExist(SqlToken.ROWS)
+          // TODO: In Trino, INTEGER sampling size is a percentage
+          SamplingSize.Rows(removeUnderscore(t.str).toLong)
+        case SqlToken.DOUBLE_LITERAL =>
+          consumeToken()
+          // % is not required in Trino
+          consumeIfExist(SqlToken.MOD)
+          SamplingSize.Percentage(t.str.toDouble)
+        case SqlToken.FLOAT_LITERAL =>
+          // % is not required in Trino
+          consumeIfExist(SqlToken.MOD)
+          consumeToken()
+          SamplingSize.Percentage(t.str.toFloat)
+        case SqlToken.DECIMAL_LITERAL =>
+          consumeToken()
+          SamplingSize.Percentage(t.str.toDouble)
+        case _ =>
+          // For any other expression (parenthesized, arithmetic, etc.)
+          val expr = expression()
+          SamplingSize.PercentageExpr(expr)
+
+    def samplingMethod(): SamplingMethod =
+      val t = scanner.lookAhead()
+      val methodName =
+        t.token match
+          case SqlToken.SYSTEM =>
+            consumeToken()
+            t.str
+          case id if id.isIdentifier =>
+            consumeToken()
+            t.str
+          case _ =>
+            unexpected(t)
+      try
+        SamplingMethod.valueOf(methodName.toLowerCase)
+      catch
+        case e: IllegalArgumentException =>
+          unexpected(t)
+
     scanner.lookAhead().token match
       case SqlToken.TABLESAMPLE =>
         consume(SqlToken.TABLESAMPLE)
-        val methodName = identifier() // e.g., BERNOULLI, SYSTEM
+        val m = samplingMethod() // e.g., BERNOULLI, SYSTEM
         consume(SqlToken.L_PAREN)
-        val sizeExpr = expression() // percentage value or expression
-
         // Handle different expression types for sampling size
-        val samplingSize = toSamplingSize(sizeExpr)
-
+        val size = samplingSize()
         consume(SqlToken.R_PAREN)
-
-        // Convert method name to SamplingMethod
-        val method =
-          try
-            SamplingMethod.valueOf(methodName.leafName.toLowerCase)
-          catch
-            case _: IllegalArgumentException =>
-              unexpected(methodName)
-
-        Sample(r, Some(method), samplingSize, spanFrom(r.span))
+        Sample(r, Some(m), size, spanFrom(r.span))
       case SqlToken.USING =>
         // Handle DuckDB USING SAMPLE syntax
         consume(SqlToken.USING)
         consume(SqlToken.SAMPLE)
 
-        val sizeExpr = expression()
-
-        // Check for optional keywords after the size expression
-        val (samplingSize, samplingMethod) =
+        val (method, size) =
           scanner.lookAhead().token match
-            case SqlToken.ROWS =>
-              consume(SqlToken.ROWS)
-              val rows =
-                sizeExpr match
-                  case LongLiteral(value, _, _) =>
-                    value
-                  case _ =>
-                    unexpected(sizeExpr)
-              (SamplingSize.Rows(rows), None)
-            case SqlToken.PERCENT =>
-              consume(SqlToken.PERCENT)
-              val samplingSize = toSamplingSize(sizeExpr)
-              (samplingSize, None)
-            case SqlToken.L_PAREN =>
-              // Handle reservoir(10%) syntax
-              val methodName =
-                sizeExpr match
-                  case i: Identifier =>
-                    i.leafName.toLowerCase
-                  case _ =>
-                    unexpected(sizeExpr)
-
+            case t if t.isIdentifier =>
+              // sampling-method sample-size
+              val m = samplingMethod()
               consume(SqlToken.L_PAREN)
-              val expr         = expression()
-              val samplingSize = toSamplingSize(expr)
-              consume(SqlToken.R_PAREN)
-
-              val method =
-                try
-                  SamplingMethod.valueOf(methodName)
-                catch
-                  case _: IllegalArgumentException =>
-                    unexpected(sizeExpr)
-
-              (samplingSize, Some(method))
+              val s = samplingSize()
+              (m, s)
             case _ =>
-              // Default case: determine if it's rows or percentage based on the expression
-              sizeExpr match
-                case ArithmeticBinaryExpr(BinaryExprType.Modulus, percentageExpr, _, _) =>
-                  val samplingSize = toSamplingSize(sizeExpr)
-                  (samplingSize, None)
-                case LongLiteral(value, _, _) =>
-                  // Could be rows or percentage - default to rows for USING SAMPLE
-                  (SamplingSize.Rows(value), None)
-                case DoubleLiteral(value, _, _) =>
-                  (SamplingSize.Percentage(value), None)
-                case DecimalLiteral(value, _, _) =>
-                  (SamplingSize.Percentage(value.toDouble), None)
-                case _ =>
-                  // For any other expression (parenthesized, arithmetic, etc.)
-                  (SamplingSize.PercentageExpr(sizeExpr), None)
-
-        Sample(r, samplingMethod, samplingSize, spanFrom(r.span))
+              val s = samplingSize()
+              consume(SqlToken.L_PAREN)
+              val m = samplingMethod()
+              (m, s)
+        consume(SqlToken.R_PAREN)
+        Sample(r, Some(method), size, spanFrom(r.span))
       case _ =>
         r
+
+    end match
+
+  end handleTableSample
 
   private def parseLateralViewRest(child: Relation, lateralToken: TokenData[SqlToken]): Relation =
     consume(SqlToken.VIEW)
@@ -2092,6 +2063,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           consume(SqlToken.MINUS)
           val v = valueExpression()
           ArithmeticUnaryExpr(Sign.Negative, v, spanFrom(t))
+        case SqlToken.QUESTION | SqlToken.DOLLAR =>
+          queryParameter()
         case _ =>
           primaryExpression()
     valueExpressionRest(expr)
@@ -2674,31 +2647,36 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           identifier()
         case SqlToken.UNDERSCORE =>
           identifier()
-        case SqlToken.QUESTION =>
-          consume(SqlToken.QUESTION)
-          // Use a counter to track the position of '?' parameters
-          questionMarkParamIndex += 1
-          Parameter(questionMarkParamIndex, spanFrom(t))
-        case SqlToken.DOLLAR =>
-          consume(SqlToken.DOLLAR)
-          val nextToken = scanner.lookAhead()
-          nextToken.token match
-            case SqlToken.INTEGER_LITERAL =>
-              val indexToken = consumeToken()
-              val index      = indexToken.str.toInt
-              Parameter(index, spanFrom(t))
-            case id if id.isIdentifier =>
-              val nameToken = consumeToken()
-              // Named parameter for prepared statements (e.g., $name_param)
-              NamedParameter(nameToken.str, spanFrom(t))
-            case _ =>
-              unexpected(nextToken)
         case _ =>
           unexpected(t)
 
     primaryExpressionRest(expr)
 
   end primaryExpression
+
+  def queryParameter(): Parameter =
+    val t = scanner.lookAhead()
+    t.token match
+      case SqlToken.QUESTION =>
+        consume(SqlToken.QUESTION)
+        // Use a counter to track the position of '?' parameters
+        NoNameParameter(spanFrom(t))
+      case SqlToken.DOLLAR =>
+        consume(SqlToken.DOLLAR)
+        val nextToken = scanner.lookAhead()
+        nextToken.token match
+          case SqlToken.INTEGER_LITERAL =>
+            val indexToken = consumeToken()
+            val index      = indexToken.str.toInt
+            IndexedParameter(index, spanFrom(t))
+          case id if id.isIdentifier =>
+            val nameToken = consumeToken()
+            // Named parameter for prepared statements (e.g., $name_param)
+            NamedParameter(nameToken.str, spanFrom(t))
+          case _ =>
+            unexpected(nextToken)
+      case _ =>
+        unexpected(t)
 
   def array(): ArrayConstructor =
     consumeIfExist(SqlToken.ARRAY)
@@ -2876,9 +2854,9 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     consume(SqlToken.R_PAREN)
     Extract(field, expr, spanFrom(t))
 
-  def literal(): Literal =
-    def removeUnderscore(s: String): String = s.replaceAll("_", "")
+  private def removeUnderscore(s: String): String = s.replaceAll("_", "")
 
+  def literal(): Literal =
     val t = consumeToken()
     t.token match
       case SqlToken.NULL =>

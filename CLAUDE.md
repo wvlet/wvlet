@@ -54,20 +54,23 @@ Ensure the code is formatted with `scalafmtAll` command for consistent code styl
 ./sbt "projectJS/Test/compile"
 ./sbt "projectNative/Test/compile"
 
+# Parsing test for a specific Wvlet in spec/sql/basic folder:
+./sbt "langJVM/testOnly *ParserSpecBasic -- spec:basic:query.sql"
+
 # Parsing test for a specific SQL in spec/sql/basic folder:
-./sbt "langJVM/testOnly *SqlParserBasicSpec -- spec:sql:basic:query.sql"
+./sbt "langJVM/testOnly *ParserSpecSqlBasic -- spec:sql:basic:query.sql"
 
-# Run specific test class
-./sbt "runner/testOnly *BasicSpec"
+# Run test spec queries in spec/basic folder 
+./sbt "runner/testOnly *RunnerSpecBasic"
 
-# Run a specific .wv spec file in BasicSpec
-./sbt "runner/testOnly *BasicSpec -- spec:basic:hello.wv"
+# Run a specific .wv spec file 
+./sbt "runner/testOnly *RunnerSpecBasic -- spec:basic:hello.wv"
 
 # Run a specific .wv spec files with wild card pattern
-./sbt "runner/testOnly *BasicSpec -- spec:basic:query*.wv"
+./sbt "runner/testOnly *RunnerSpecBasic -- spec:basic:query*.wv"
 
-# Run a specific .sql spec file in BasicSpec
-./sbt "runner/testOnly *SqlBasicSpec -- spec:sql:basic:query.sql"
+# Run a specific .sql spec file 
+./sbt "runner/testOnly *RunnerSpecSqlBasic -- spec:sql:basic:query.sql"
 
 # Run test and stay in SBT shell
 ./sbt

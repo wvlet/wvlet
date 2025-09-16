@@ -66,6 +66,7 @@ case class AlterTable(table: NameExpr, ifExists: Boolean, operation: AlterTableO
 
 // ALTER TABLE operations
 sealed trait AlterTableOps:
+  def nodeName: String = this.getClass.getSimpleName
   def span: Span
 
 case class RenameTableOp(newName: NameExpr, span: Span) extends AlterTableOps

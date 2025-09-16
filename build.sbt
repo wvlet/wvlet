@@ -22,7 +22,7 @@ val buildSettings = Seq[Setting[?]](
   // Tell the runtime that we are running tests in SBT
   Test / testOptions += Tests.Setup(_ => sys.props("wvlet.sbt.testing") = "true"),
   Test / javaOptions += "-Dwvlet.sbt.testing=true",
-  Test / parallelExecution := true,
+  Test / parallelExecution := false,
   Test / logBuffered       := false,
   libraryDependencies ++=
     Seq(

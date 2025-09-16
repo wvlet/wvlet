@@ -22,7 +22,7 @@ import wvlet.lang.runner.connector.duckdb.DuckDBConnector
 
 import scala.util.control.NonFatal
 
-trait SpecRunner(
+trait RunnerSpec(
     specPath: String,
     ignoredSpec: Map[String, String] = Map.empty,
     parseOnly: Boolean = false,
@@ -94,18 +94,18 @@ trait SpecRunner(
     case e: Throwable =>
       throw e
 
-end SpecRunner
+end RunnerSpec
 
-class BasicSpec
-    extends SpecRunner(
-      "spec/basic"
-      // ignoredSpec = Map("values.wv" -> "Need to support array[struct] data")
+class RunnerSpecBasic
+    extends RunnerSpec(
+      "spec/basic",
+      ignoredSpec = Map("table-value-constant.wv" -> "Need to support table value constant")
     )
 
-class WvletTPCHSpec extends SpecRunner("spec/tpch", prepareTPCH = true)
+class RunnerSpecTPCH extends RunnerSpec("spec/tpch", prepareTPCH = true)
 
 // Negative tests, expecting some errors
-class NegSpec extends SpecRunner("spec/neg"):
+class RunnerSpecNeg extends RunnerSpec("spec/neg"):
   override protected def handleError: Throwable => Unit =
     case e: WvletLangException if e.statusCode.isUserError =>
       // Expected error
@@ -113,8 +113,25 @@ class NegSpec extends SpecRunner("spec/neg"):
     case e: Throwable =>
       throw e
 
-class CDPBehaviorSpec
-    extends SpecRunner(
+class RunnerSpecCDPBehavior
+    extends RunnerSpec(
       "spec/cdp_behavior",
       ignoredSpec = Map("behavior.wv" -> "Need to support subscribe")
     )
+
+class RunnerSpecSqlBasic
+    extends RunnerSpec(
+      "spec/sql/basic",
+      ignoredSpec = Map(
+        "show-create-view.sql" -> "SHOW CREATE VIEW execution not yet fully supported",
+        "date-time-function-calls.sql" ->
+          "Testing parser for date/time/timestamp functions - DuckDB lacks these functions",
+        "nested-parentheses-tablesample.sql" -> "Handle engine specific samplign percentage",
+        "tablesample.sql"                    -> "Handle engine specific samplign percentage"
+      )
+    )
+
+class RunnerSpecSqlTPCH extends RunnerSpec("spec/sql/tpc-h", parseOnly = true, prepareTPCH = true)
+
+class RunnerSpecSqlTPCDS
+    extends RunnerSpec("spec/sql/tpc-ds", parseOnly = true, prepareTPCDS = true)

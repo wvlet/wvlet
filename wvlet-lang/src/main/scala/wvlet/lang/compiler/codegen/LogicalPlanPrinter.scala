@@ -55,6 +55,8 @@ class LogicalPlanPrinter(using ctx: Context) extends LogSupport:
       case q: Query =>
         given LogicalPlanRankTable = LogicalPlanRank.dataflowRank(q)
         wl("▶︎ Query", lineLocOf(q)) + nest(linebreak + plan(q.child))
+      case p: PrepareStatement =>
+        wl("▶︎ Prepare:", expr(p.name), lineLocOf(p)) + nest(linebreak + plan(p.statement))
       case m: ModelDef =>
         val params =
           if m.params.isEmpty then
@@ -180,6 +182,12 @@ class LogicalPlanPrinter(using ctx: Context) extends LogSupport:
         bracket(cat(text(w.start.wvExpr), ",", text(w.end.wvExpr)))
       case NoJoinCriteria =>
         empty
+      case p: NoNameParameter =>
+        text("?")
+      case p: IndexedParameter =>
+        text(s"$$${p.index}")
+      case n: NamedParameter =>
+        text(s"$$${n.name}")
       case other =>
         node(other)
 

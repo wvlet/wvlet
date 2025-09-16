@@ -140,11 +140,9 @@ enum SqlToken(val tokenType: TokenType, val str: String):
   case UNNEST      extends SqlToken(Keyword, "unnest")
   case ORDINALITY  extends SqlToken(Keyword, "ordinality")
   case TABLESAMPLE extends SqlToken(Keyword, "tablesample")
-  case BERNOULLI   extends SqlToken(Keyword, "bernoulli")
   case SAMPLE      extends SqlToken(Keyword, "sample")
   case EXPLODE     extends SqlToken(Keyword, "explode")
   case PERCENT     extends SqlToken(Keyword, "percent")
-  case RESERVOIR   extends SqlToken(Keyword, "reservoir")
 
   // Hive-specific keywords
   case CLUSTER    extends SqlToken(Keyword, "cluster")
@@ -392,7 +390,6 @@ object SqlToken:
     SqlToken.ORDINALITY,
     SqlToken.SAMPLE,
     SqlToken.PERCENT,
-    SqlToken.RESERVOIR,
     SqlToken.NEXT, // NEXT can be used as a column name in Hive
     // DDL entity types - non-reserved so they can be used as table/column names
     SqlToken.CATALOG,
