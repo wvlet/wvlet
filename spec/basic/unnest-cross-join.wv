@@ -23,10 +23,11 @@ from [
 where student = 'John'
 cross join unnest(scores) as t(score)
 select student, score
+order by score
 test _.rows should be [
   ['John', 7],
-  ['John', 10],
   ['John', 9],
+  ['John', 10],
 ]
 
 
@@ -35,9 +36,10 @@ from 'unnest-test.json' as tests(student, scores)
 where student = 'John'
 cross join unnest(scores) as t(score)
 select student, score
+order by score
 test _.rows should be [
   ['John', 7],
-  ['John', 10],
   ['John', 9],
+  ['John', 10],
 ]
 

@@ -13,7 +13,7 @@
  */
 package wvlet.lang.compiler.parser
 
-import wvlet.lang.api.{WvletLangException, StatusCode}
+import wvlet.lang.api.{StatusCode, WvletLangException}
 import wvlet.lang.compiler.{Name, SourceFile}
 import wvlet.lang.model.DataType
 import wvlet.lang.model.DataType.{
@@ -31,7 +31,7 @@ import wvlet.lang.model.DataType.{
   TypeVariable,
   VarcharType
 }
-import wvlet.lang.model.expr.Identifier
+import wvlet.lang.model.expr.{Identifier, Literal}
 import wvlet.log.LogSupport
 
 /**
@@ -110,7 +110,7 @@ class DataTypeParser(scanner: WvletScanner) extends LogSupport:
       case WvletToken.NULL =>
         consume(WvletToken.NULL)
         NullType
-      case s if s.isStringLiteral && t.str.toLowerCase == "null" =>
+      case l if l.isStringLiteral && t.str.toLowerCase == "null" =>
         consumeToken()
         NullType
       case token if token.isIdentifier || token.isKeyword =>
@@ -201,6 +201,10 @@ class DataTypeParser(scanner: WvletScanner) extends LogSupport:
       case WvletToken.INTEGER_LITERAL =>
         val i = consume(WvletToken.INTEGER_LITERAL)
         IntConstant(i.str.toInt)
+      case s if s.isStringLiteral && t.str.toLowerCase == "null" =>
+        // A workaround for MAP("NULL", "NULL") type in duckdb 1.4.0
+        consumeToken()
+        NullType
       case s if s.isStringLiteral =>
         val ts        = consumeToken()
         val paramName = ts.str.toLowerCase
