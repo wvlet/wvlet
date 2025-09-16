@@ -340,6 +340,40 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             render(p.statement)
           )
         )
+      case e: ExecuteStatement =>
+        if dbType == DBType.Trino then
+          // Trino: USING p1, p2, ...
+          group(
+            wl(
+              "execute",
+              expr(e.name),
+              "using",
+              cl(e.parameters.map(expr))
+            )
+          )
+        else
+          // DuckDB: execute func(p1, p2, ...)
+          group(
+            wl(
+              "execute",
+              cat(
+                expr(e.name),
+                Option.when(e.parameters.nonEmpty) {
+                  paren(
+                    cl(e.parameters.map(expr)*)
+                  )
+                }
+              )
+            )
+          )
+      case d: DeallocateStatement =>
+        group(
+          wl(
+            "deallocate",
+            expr(d.name)
+          )
+        )
+
       case _ =>
         unsupportedNode(s"DDL ${d.nodeName}", d.span)
 
