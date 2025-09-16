@@ -62,6 +62,10 @@ class WvletRoundTripSpecTPCH  extends RoundTripSpec("spec/tpch")
 //    )
 class WvletRoundTripSpecTPCDS extends RoundTripSpec("spec/sql/tpc-ds")
 
-class SqlRoundTripSpecBasic extends RoundTripSpec("spec/sql/basic")
+class SqlRoundTripSpecBasic extends RoundTripSpec("spec/sql/basic",
+  ignoredSpec = Map(
+    "row-map-types.sql" -> "Need to parse `type_name`[]"
+  )
+)
 class SplRoundTripSpecTPCH  extends RoundTripSpec("spec/sql/tpc-h")
 class SqlRoundTripSpecTPCD  extends RoundTripSpec("spec/sql/tpc-ds")

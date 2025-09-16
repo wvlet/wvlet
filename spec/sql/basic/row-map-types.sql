@@ -1,5 +1,5 @@
 -- Test ROW types with named fields
--- ROW type with named fields in CAST expression  
+-- ROW type with named fields in CAST expression
 -- Use non-keyword field names first
 SELECT CAST(ARRAY[ROW(1, 'a'), ROW(2, 'b')] AS array(ROW(id bigint, name varchar)));
 

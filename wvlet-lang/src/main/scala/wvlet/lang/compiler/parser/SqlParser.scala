@@ -3485,7 +3485,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
               UnresolvedTypeParameter(typeName.unquotedValue, None)
       end match
     end readOneParam
-
+    
     // Read parameters until '>'
     while scanner.lookAhead().token != SqlToken.GT do
       params += readOneParam()
