@@ -976,7 +976,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         case SqlToken.VIEW =>
           val viewName = qualifiedName()
           consume(SqlToken.AS)
-          val queryPlan = this.query() // Use 'this' to access the outer query method
+          val queryPlan = query()
           CreateView(viewName, replace, queryPlan, spanFrom(t))
         case SqlToken.TABLE | _ =>
           val createMode =

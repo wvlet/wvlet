@@ -189,6 +189,20 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             expr(c.table) + columns
           )
         )
+      case c: CreateView =>
+        val sql = query(c.query, SQLBlock())(using InStatement)
+        group(
+          wl(
+            "create",
+            Option.when(c.replace) {
+              "or replace"
+            },
+            "view",
+            expr(c.viewName),
+            "as",
+            linebreak + sql
+          )
+        )
       case c: CreateSchema =>
         group(
           wl(
@@ -855,17 +869,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             )
             selectExpr(sql)
       case s: Show if s.showType == ShowType.createView =>
-        // SHOW CREATE VIEW - delegate to database-specific implementation
-        val viewName = s.inExpr.nameParts.mkString(".")
-        dbType match
-          case DBType.Trino =>
-            // Trino supports SHOW CREATE VIEW directly
-            val sql = wl("show create view", viewName)
-            selectExpr(sql)
-          case _ =>
-            // For other databases, use DESCRIBE which is more widely supported
-            val sql = wl("describe", viewName)
-            selectExpr(sql)
+        wl("show", "create", "view", expr(s.inExpr))
       case s: Show if s.showType == ShowType.createTable =>
         dbType match
           case DBType.Trino =>
@@ -1690,7 +1694,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
           paren(cl(list.map(x => expr(x))))
     wl(left, operator, right)
 
-  private def unsupportedNode(nodeType: String, span: Span): Doc =
+  inline private def unsupportedNode(nodeType: String, span: Span): Doc =
     val loc = ctx.sourceLocationAt(span)
     val msg = s"Unsupported ${nodeType} (${loc})"
     warn(msg)
