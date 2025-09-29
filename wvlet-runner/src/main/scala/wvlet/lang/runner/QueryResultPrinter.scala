@@ -56,13 +56,7 @@ object QueryResultFormat:
         if matcher.lookingAt() then
           // Append the whole ANSI sequence and advance the index past it
           result.append(matcher.group())
-          val matchEnd = matcher.end()
-          // Ensure we always advance at least one position to prevent infinite loop
-          i =
-            if matchEnd > i then
-              matchEnd
-            else
-              i + 1
+          i = matcher.end()
         else
           // Not an ANSI sequence, so it's a visible character
           if !truncated then
