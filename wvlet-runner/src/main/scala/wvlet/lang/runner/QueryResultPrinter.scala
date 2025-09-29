@@ -52,7 +52,8 @@ object QueryResultFormat:
 
       while i < s.length do
         // Check for an ANSI escape sequence at the current position
-        if matcher.find(i) && matcher.start() == i then
+        matcher.region(i, s.length)
+        if matcher.lookingAt() then
           // Append the whole ANSI sequence and advance the index past it
           result.append(matcher.group())
           i = matcher.end()
