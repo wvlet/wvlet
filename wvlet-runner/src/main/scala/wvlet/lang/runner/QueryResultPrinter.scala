@@ -55,7 +55,12 @@ object QueryResultFormat:
         if matcher.find(i) && matcher.start() == i then
           // Append the whole ANSI sequence and advance the index past it
           result.append(matcher.group())
+          val prev = i
           i = matcher.end()
+          // Defensive guard: In theory our pattern always consumes at least one char, but
+          // if a future change introduces a zero-length match, ensure progress to avoid an infinite loop
+          if i <= prev then
+            i += 1
         else
           // Not an ANSI sequence, so it's a visible character
           if !truncated then
@@ -224,7 +229,7 @@ class PrettyBoxFormat(maxWidth: Option[Int], maxColWidth: Int)
             Option(v).map(v => printElem(v)).getOrElse("")
           }
           rowCount += 1
-          rows += sanitizedRow.toSeq
+            rows += sanitizedRow.toSeq
         }
       rows.result()
 
@@ -339,7 +344,7 @@ class PrettyBoxFormat(maxWidth: Option[Int], maxColWidth: Int)
       case null =>
         "null"
       case s: String =>
-        s""""${s}""""
+        s"""${s}"""
       case x =>
         x.toString
 

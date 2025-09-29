@@ -90,4 +90,15 @@ class QueryResultFormatTest extends AirSpec:
     QueryResultFormat.wcWidth(centered1) shouldBe 10
   }
 
+  test("no infinite loop with many consecutive ANSI codes") {
+    // Construct a string with many consecutive color start codes followed by text and a reset
+    val prefix = (0 until 1000).map(_ => "\u001b[31m").mkString
+    val input  = prefix + "hello world" + "\u001b[0m"
+    // If there were an infinite loop risk, this call would hang. We just assert the semantic output.
+    val out = QueryResultFormat.trimToWidth(input, 8)
+    QueryResultFormat.stripAnsiCodes(out) shouldBe "hello w…"
+    // Ensure trailing reset is preserved
+    out.endsWith("\u001b[0m") shouldBe true
+  }
+
 end QueryResultFormatTest
