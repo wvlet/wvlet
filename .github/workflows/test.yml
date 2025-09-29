@@ -32,6 +32,8 @@ jobs:
               - 'wvlet-*/**.html'
               - 'wvlet-*/**.css'
               - 'wvlet-*/**.ts'
+              - 'package.json'
+              - 'package-lock.json'
               - SCALA_VERSION
   code_format:
     name: Code format
