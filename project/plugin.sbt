@@ -29,7 +29,7 @@ addSbtPlugin("org.scala-native"   % "sbt-scala-native"              % "0.5.8")
 addSbtPlugin("org.portable-scala" % "sbt-scala-native-crossproject" % "1.3.2")
 
 // For testing Scala.js code with Node.js
-libraryDependencies += "org.scala-js" %% "scalajs-env-jsdom-nodejs" % "1.1.0"
+libraryDependencies += "org.scala-js" %% "scalajs-env-jsdom-nodejs" % "1.1.1"
 
 addDependencyTreePlugin
 
