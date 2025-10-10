@@ -49,7 +49,7 @@
     ]
   },
   "devDependencies": {
-    "@types/vscode": "^1.104.0",
+    "@types/vscode": "^1.105.0",
     "@vscode/vsce": "^3.6.2"
   },
   "scripts": {
