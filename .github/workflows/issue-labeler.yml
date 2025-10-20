@@ -23,5 +23,7 @@ jobs:
     steps:
       # Runs only pull-request labeler
       - uses: release-drafter/release-drafter@v6
+        with:
+          disable-releaser: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
