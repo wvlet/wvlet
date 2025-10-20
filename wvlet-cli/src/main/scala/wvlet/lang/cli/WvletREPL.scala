@@ -50,8 +50,9 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
   private val terminal = TerminalBuilder
     .builder()
     .name("wvlet-shell")
-    // Use dumb terminal for sbt testing
-    .dumb(WvletMain.isInSbt)
+    // Use dumb terminal for sbt testing or non-TTY environments (e.g., Claude Code, CI/CD)
+    // When TTY env var is not set, we're not in a real terminal
+    .dumb(WvletMain.isInSbt || sys.env.get("TTY").isEmpty)
     .build()
 
   private val historyFile = new File(workEnv.cacheFolder, ".wv_history")
