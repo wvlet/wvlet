@@ -78,7 +78,7 @@ jobs:
           distribution: 'temurin'
           java-version: '24'
           cache: sbt
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v6
         with:
           node-version: '22'
           cache: npm
@@ -109,7 +109,7 @@ jobs:
           distribution: 'temurin'
           java-version: '24'
           cache: sbt
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v6
         with:
           node-version: '22'
           cache: npm
