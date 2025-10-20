@@ -16,8 +16,8 @@
   },
   "dependencies": {
     "@docusaurus/core": "3.9.1",
-    "@docusaurus/plugin-google-gtag": "^3.9.1",
-    "@docusaurus/preset-classic": "^3.9.1",
+    "@docusaurus/plugin-google-gtag": "^3.9.2",
+    "@docusaurus/preset-classic": "^3.9.2",
     "@mdx-js/react": "^3.1.1",
     "@wvlet/prismjs-wvlet": "^2025.1.21",
     "clsx": "^2.0.0",
@@ -27,9 +27,9 @@
     "react-github-btn": "^1.4.0"
   },
   "devDependencies": {
-    "@docusaurus/module-type-aliases": "3.9.1",
-    "@docusaurus/tsconfig": "3.9.1",
-    "@docusaurus/types": "3.9.1",
+    "@docusaurus/module-type-aliases": "3.9.2",
+    "@docusaurus/tsconfig": "3.9.2",
+    "@docusaurus/types": "3.9.2",
     "typescript": "~5.9.3"
   },
   "browserslist": {
