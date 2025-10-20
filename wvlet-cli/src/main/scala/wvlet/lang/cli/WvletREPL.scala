@@ -50,8 +50,10 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
   private val terminal = TerminalBuilder
     .builder()
     .name("wvlet-shell")
-    // Use dumb terminal for sbt testing
-    .dumb(WvletMain.isInSbt)
+    // Use dumb terminal for sbt testing or non-TTY environments (e.g., Claude Code, CI/CD)
+    // Note: We check TTY env var instead of System.console() == null because System.console()
+    // returns ProxyingConsole (not null) in Java 24+ even in non-TTY environments
+    .dumb(WvletMain.isInSbt || sys.env.get("TTY").isEmpty)
     .build()
 
   private val historyFile = new File(workEnv.cacheFolder, ".wv_history")
