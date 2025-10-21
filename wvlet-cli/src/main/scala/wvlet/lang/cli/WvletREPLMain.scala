@@ -40,7 +40,7 @@ case class WvletREPLOption(
     profile: Option[String] = None,
     @option(prefix = "-c", description = "Run a command and exit")
     commands: List[String] = Nil,
-    @option(prefix = "--file", description = "Run commands in a file and exit")
+    @option(prefix = "-f,--file", description = "Run commands in a file and exit")
     inputFile: Option[String] = None,
     @option(prefix = "-w", description = "Working folder")
     workFolder: String = ".",
