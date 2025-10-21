@@ -1,0 +1,28 @@
+-- Test table val references in asof join conditions (from issue #1380)
+val quotes(timestamp, symbol, bid_price, ask_price) = [
+  ["2024-01-15 09:30:00", "AAPL", 150.00, 150.10],
+  ["2024-01-15 09:31:00", "AAPL", 150.50, 150.60],
+  ["2024-01-15 09:32:00", "AAPL", 151.00, 151.10],
+  ["2024-01-15 09:33:00", "AAPL", 150.80, 150.90],
+  ["2024-01-15 09:30:30", "GOOGL", 2800.00, 2801.00],
+  ["2024-01-15 09:32:30", "GOOGL", 2805.00, 2806.00],
+  ["2024-01-15 09:34:00", "GOOGL", 2803.00, 2804.00]
+]
+
+val trades(trade_time, symbol, quantity, executed_price) = [
+  ["2024-01-15 09:30:45", "AAPL", 100, 150.05],
+  ["2024-01-15 09:31:30", "AAPL", 200, 150.55],
+  ["2024-01-15 09:33:15", "AAPL", 150, 150.85],
+  ["2024-01-15 09:31:00", "GOOGL", 50, 2800.50],
+  ["2024-01-15 09:33:00", "GOOGL", 75, 2805.25],
+  ["2024-01-15 09:35:00", "GOOGL", 100, 2803.50]
+]
+
+from trades
+asof join quotes
+  on trades.symbol = quotes.symbol
+  and trades.trade_time >= quotes.timestamp
+add
+  executed_price - bid_price as price_vs_bid,
+  executed_price - ask_price as price_vs_ask
+order by trades.symbol, trade_time

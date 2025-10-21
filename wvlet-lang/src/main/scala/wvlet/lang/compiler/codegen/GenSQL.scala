@@ -30,6 +30,7 @@ import wvlet.lang.compiler.{
   TermName,
   ValSymbolInfo
 }
+import wvlet.lang.model.DataType
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
 import wvlet.lang.model.plan.JoinType.*
@@ -296,24 +297,68 @@ object GenSQL extends Phase("generate-sql"):
   def expand(relation: Relation, ctx: Context): Relation =
     // expand referenced models
 
-    def transformExpr(r: Relation, ctx: Context): Relation = r
-      .transformUpExpressions {
-        case b: BackquoteInterpolatedIdentifier =>
-          PreprocessLocalExpr.EvalBackquoteInterpolation.transformExpression(b, ctx)
-        case i: Identifier =>
-          val nme = Name.termName(i.leafName)
-          ctx.scope.lookupSymbol(nme) match
-            case Some(sym) =>
-              sym.symbolInfo match
-                case b: ValSymbolInfo =>
-                  // Replace to the bounded expression
-                  b.expr
-                case _ =>
-                  i
-            case None =>
-              i
+    def transformExpr(r: Relation, ctx: Context): Relation =
+      // First, collect all table val identifiers that appear as qualifiers in DotRef expressions
+      // These should not be replaced with their literal values
+      val tableRefQualifiers = scala.collection.mutable.Set.empty[String]
+
+      r.transformUpExpressions {
+        case d: DotRef =>
+          d.qualifier match
+            case i: Identifier =>
+              val nme = Name.termName(i.leafName)
+              ctx.scope.lookupSymbol(nme) match
+                case Some(s) =>
+                  s.symbolInfo match
+                    case v: ValSymbolInfo =>
+                      // Check if this is a table val by checking the symbol's tree (ValDef)
+                      val isTableVal =
+                        s.tree match
+                          case vd: ValDef if vd.dataType.isInstanceOf[DataType.SchemaType] =>
+                            true
+                          case _ =>
+                            v.tpe.isInstanceOf[DataType.SchemaType]
+                      if isTableVal then
+                        // This is a table val used as a qualifier, don't replace it
+                        tableRefQualifiers += i.leafName
+                    case _ =>
+                case None =>
+                  // Symbol might be in global scope
+                  lookupType(nme, ctx) match
+                    case Some(s) =>
+                      s.symbolInfo match
+                        case v: ValSymbolInfo if v.tpe.isInstanceOf[DataType.SchemaType] =>
+                          tableRefQualifiers += i.leafName
+                        case _ =>
+                    case None =>
+            case _ =>
+          d
+        case other =>
+          other
       }
-      .asInstanceOf[Relation]
+
+      r.transformUpExpressions {
+          case b: BackquoteInterpolatedIdentifier =>
+            PreprocessLocalExpr.EvalBackquoteInterpolation.transformExpression(b, ctx)
+          case i: Identifier =>
+            // Don't replace identifiers that are table references in qualified names
+            if tableRefQualifiers.contains(i.leafName) then
+              i
+            else
+              val nme = Name.termName(i.leafName)
+              ctx.scope.lookupSymbol(nme) match
+                case Some(sym) =>
+                  sym.symbolInfo match
+                    case b: ValSymbolInfo =>
+                      // Replace to the bounded expression
+                      b.expr
+                    case _ =>
+                      i
+                case None =>
+                  i
+        }
+        .asInstanceOf[Relation]
+    end transformExpr
 
     def transformModelScan(m: ModelScan, sym: Symbol): Relation =
       sym.tree match
