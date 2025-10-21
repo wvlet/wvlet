@@ -1,0 +1,176 @@
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package wvlet.lang.model.plan
+
+import wvlet.lang.api.{LinePosition, Span}
+import wvlet.lang.model.{DataType, RelationType}
+import wvlet.lang.api.Span.NoSpan
+
+/**
+  * AST nodes for Markdown documents Represents the structure of parsed Markdown following
+  * CommonMark specification
+  */
+
+/**
+  * Root node representing a complete Markdown document
+  */
+case class MarkdownDocument(
+    blocks: List[MarkdownBlock],
+    nodeLocation: LinePosition = LinePosition.NoPosition,
+    span: Span = NoSpan
+) extends LogicalPlan:
+  override def children: List[LogicalPlan]     = blocks
+  override def relationType: RelationType      = DataType.EmptyRelationType
+  override def inputRelationType: RelationType = DataType.EmptyRelationType
+
+/**
+  * Base trait for block-level Markdown elements
+  */
+sealed trait MarkdownBlock extends LogicalPlan:
+  override def relationType: RelationType      = DataType.EmptyRelationType
+  override def inputRelationType: RelationType = DataType.EmptyRelationType
+
+/**
+  * Heading (# through ######)
+  */
+case class Heading(
+    level: Int,
+    text: String,
+    nodeLocation: LinePosition = LinePosition.NoPosition,
+    span: Span = NoSpan
+) extends MarkdownBlock:
+  override def children: List[LogicalPlan] = Nil
+
+/**
+  * Code block with optional language hint
+  */
+case class CodeBlock(
+    language: Option[String],
+    code: String,
+    nodeLocation: LinePosition = LinePosition.NoPosition,
+    span: Span = NoSpan
+) extends MarkdownBlock:
+  override def children: List[LogicalPlan] = Nil
+
+/**
+  * Blockquote (> quoted text)
+  */
+case class Blockquote(
+    content: List[MarkdownBlock],
+    nodeLocation: LinePosition = LinePosition.NoPosition,
+    span: Span = NoSpan
+) extends MarkdownBlock:
+  override def children: List[LogicalPlan] = content
+
+/**
+  * List (ordered or unordered)
+  */
+case class ListBlock(
+    items: List[ListItem],
+    ordered: Boolean = false,
+    nodeLocation: LinePosition = LinePosition.NoPosition,
+    span: Span = NoSpan
+) extends MarkdownBlock:
+  override def children: List[LogicalPlan] = items
+
+/**
+  * List item
+  */
+case class ListItem(
+    content: String,
+    nodeLocation: LinePosition = LinePosition.NoPosition,
+    span: Span = NoSpan
+) extends MarkdownBlock:
+  override def children: List[LogicalPlan] = Nil
+
+/**
+  * Horizontal rule (---, ***, ___)
+  */
+case class HorizontalRule(nodeLocation: LinePosition = LinePosition.NoPosition, span: Span = NoSpan)
+    extends MarkdownBlock:
+  override def children: List[LogicalPlan] = Nil
+
+/**
+  * Paragraph containing inline content
+  */
+case class Paragraph(
+    content: List[InlineContent],
+    nodeLocation: LinePosition = LinePosition.NoPosition,
+    span: Span = NoSpan
+) extends MarkdownBlock:
+  override def children: List[LogicalPlan] = content
+
+/**
+  * Base trait for inline Markdown elements
+  */
+sealed trait InlineContent extends LogicalPlan:
+  override def relationType: RelationType      = DataType.EmptyRelationType
+  override def inputRelationType: RelationType = DataType.EmptyRelationType
+  override def children: List[LogicalPlan]     = Nil
+
+/**
+  * Plain text
+  */
+case class Text(
+    text: String,
+    nodeLocation: LinePosition = LinePosition.NoPosition,
+    span: Span = NoSpan
+) extends InlineContent
+
+/**
+  * Bold text (**text** or __text__)
+  */
+case class Bold(
+    text: String,
+    nodeLocation: LinePosition = LinePosition.NoPosition,
+    span: Span = NoSpan
+) extends InlineContent
+
+/**
+  * Italic text (*text* or _text_)
+  */
+case class Italic(
+    text: String,
+    nodeLocation: LinePosition = LinePosition.NoPosition,
+    span: Span = NoSpan
+) extends InlineContent
+
+/**
+  * Inline code span (`code`)
+  */
+case class CodeSpan(
+    code: String,
+    nodeLocation: LinePosition = LinePosition.NoPosition,
+    span: Span = NoSpan
+) extends InlineContent
+
+/**
+  * Link [text](url)
+  */
+case class Link(
+    text: String,
+    url: String,
+    nodeLocation: LinePosition = LinePosition.NoPosition,
+    span: Span = NoSpan
+) extends InlineContent
+
+/**
+  * Image ![alt](url)
+  */
+case class Image(
+    altText: String,
+    url: String,
+    nodeLocation: LinePosition = LinePosition.NoPosition,
+    span: Span = NoSpan
+) extends InlineContent
