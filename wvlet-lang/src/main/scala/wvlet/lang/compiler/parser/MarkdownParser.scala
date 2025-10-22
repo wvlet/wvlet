@@ -223,11 +223,7 @@ class MarkdownParser(unit: CompilationUnit) extends LogSupport:
   private def parseParagraph(): Paragraph =
     val inlineContent = parseInlineContent()
 
-    Paragraph(
-      content = inlineContent,
-      nodeLocation = LinePosition.NoPosition,
-      span = Span.NoSpan
-    )
+    Paragraph(content = inlineContent, nodeLocation = LinePosition.NoPosition, span = Span.NoSpan)
 
   /**
     * Parse inline content (text, bold, italic, links, etc.)
