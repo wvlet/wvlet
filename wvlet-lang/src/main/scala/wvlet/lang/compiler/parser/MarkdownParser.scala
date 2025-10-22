@@ -201,11 +201,24 @@ class MarkdownParser(unit: CompilationUnit) extends LogSupport:
   private def parseListItem(): ListItem =
     val bulletToken = scanner.nextToken()
 
-    // Parse inline content until end of line
-    val inlineContent = parseInlineContent()
+    // Read content until end of line
+    val contentTokens = List.newBuilder[String]
+    var done          = false
+
+    while !done do
+      val token = scanner.lookAhead()
+      token.token match
+        case MarkdownToken.NEWLINE | MarkdownToken.EOF =>
+          done = true
+        case MarkdownToken.WHITESPACE =>
+          scanner.nextToken()
+          contentTokens += " "
+        case _ =>
+          val t = scanner.nextToken()
+          contentTokens += t.str
 
     ListItem(
-      content = inlineContent,
+      content = contentTokens.result().mkString.trim(),
       nodeLocation = bulletToken.nodeLocation,
       span = bulletToken.span
     )
@@ -221,19 +234,18 @@ class MarkdownParser(unit: CompilationUnit) extends LogSupport:
     * Parse paragraph with inline content
     */
   private def parseParagraph(): Paragraph =
-    val inlineContent = parseInlineContent()
-    // Note: Cannot access nodeLocation from InlineContent trait directly
-    // Would need to add nodeLocation to trait or use default location
-    Paragraph(content = inlineContent, nodeLocation = LinePosition.NoPosition, span = Span.NoSpan)
+    val inlineExpr = parseInlineExpression()
+    Paragraph(content = inlineExpr, nodeLocation = LinePosition.NoPosition, span = Span.NoSpan)
 
   /**
-    * Parse inline content (text, bold, italic, links, etc.)
+    * Parse inline expression (simplified - returns first non-whitespace element) TODO: Support
+    * proper nesting and multiple inline elements
     */
-  private def parseInlineContent(): List[InlineContent] =
-    val content = List.newBuilder[InlineContent]
+  private def parseInlineExpression(): MarkdownExpression =
+    var result: Option[MarkdownExpression] = None
+    var done                               = false
 
-    var done = false
-    while !done do
+    while !done && result.isEmpty do
       val token = scanner.lookAhead()
       token.token match
         case MarkdownToken.EOF | MarkdownToken.NEWLINE =>
@@ -244,79 +256,91 @@ class MarkdownParser(unit: CompilationUnit) extends LogSupport:
           done = true
         case MarkdownToken.WHITESPACE =>
           scanner.nextToken()
-          // Skip whitespace or accumulate it
+          // Skip whitespace
         case MarkdownToken.BOLD =>
-          content += parseBold()
+          result = Some(parseBold())
         case MarkdownToken.ITALIC =>
-          content += parseItalic()
+          result = Some(parseItalic())
         case MarkdownToken.CODE_SPAN =>
-          content += parseCodeSpan()
+          result = Some(parseCodeSpan())
         case MarkdownToken.LINK =>
-          content += parseLink()
+          result = Some(parseLink())
         case MarkdownToken.IMAGE =>
-          content += parseImage()
+          result = Some(parseImage())
         case MarkdownToken.TEXT =>
-          content += parseText()
+          result = Some(parseText())
         case _ =>
-          // Unknown inline token, treat as text
-          val t = scanner.nextToken()
-          content += Text(t.str, t.nodeLocation, t.span)
+          // Unknown inline token, consume and continue
+          scanner.nextToken()
 
-    content.result()
+    // Return found expression or empty text
+    result.getOrElse(MarkdownText("", LinePosition.NoPosition, Span.NoSpan))
 
-  end parseInlineContent
+  end parseInlineExpression
 
   /**
     * Parse bold text: **text** or __text__
     */
-  private def parseBold(): Bold =
+  private def parseBold(): MarkdownBold =
     val token = scanner.nextToken()
-    // Strip the leading ** or __ markers
-    val text = token.str.substring(2)
-    Bold(text = text, nodeLocation = token.nodeLocation, span = token.span)
+    // For now, treat content as simple text (TODO: parse nested inline elements)
+    val text = token.str
+    MarkdownBold(content = MarkdownText(text), nodeLocation = token.nodeLocation, span = token.span)
 
   /**
     * Parse italic text: *text* or _text_
     */
-  private def parseItalic(): Italic =
+  private def parseItalic(): MarkdownItalic =
     val token = scanner.nextToken()
-    // Strip the leading * or _ marker
-    val text = token.str.substring(1)
-    Italic(text = text, nodeLocation = token.nodeLocation, span = token.span)
+    // For now, treat content as simple text (TODO: parse nested inline elements)
+    val text = token.str
+    MarkdownItalic(
+      content = MarkdownText(text),
+      nodeLocation = token.nodeLocation,
+      span = token.span
+    )
 
   /**
     * Parse inline code span: `code`
     */
-  private def parseCodeSpan(): CodeSpan =
+  private def parseCodeSpan(): MarkdownCodeSpan =
     val token = scanner.nextToken()
-    // Strip the leading backtick marker
-    val code = token.str.substring(1)
-    CodeSpan(code = code, nodeLocation = token.nodeLocation, span = token.span)
+    MarkdownCodeSpan(code = token.str, nodeLocation = token.nodeLocation, span = token.span)
 
   /**
     * Parse link: [text](url)
     */
-  private def parseLink(): Link =
+  private def parseLink(): MarkdownLink =
     val token       = scanner.nextToken()
     val (text, url) = parseLinkComponents(token.str)
 
-    Link(text = text, url = url, nodeLocation = token.nodeLocation, span = token.span)
+    MarkdownLink(
+      text = MarkdownText(text),
+      url = url,
+      nodeLocation = token.nodeLocation,
+      span = token.span
+    )
 
   /**
     * Parse image: ![alt](url)
     */
-  private def parseImage(): Image =
+  private def parseImage(): MarkdownImage =
     val token          = scanner.nextToken()
     val (altText, url) = parseLinkComponents(token.str.drop(1)) // Remove leading !
 
-    Image(altText = altText, url = url, nodeLocation = token.nodeLocation, span = token.span)
+    MarkdownImage(
+      altText = altText,
+      url = url,
+      nodeLocation = token.nodeLocation,
+      span = token.span
+    )
 
   /**
     * Parse plain text
     */
-  private def parseText(): Text =
+  private def parseText(): MarkdownText =
     val token = scanner.nextToken()
-    Text(text = token.str, nodeLocation = token.nodeLocation, span = token.span)
+    MarkdownText(text = token.str, nodeLocation = token.nodeLocation, span = token.span)
 
   /**
     * Parse link components from [text](url) format

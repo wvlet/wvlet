@@ -15,6 +15,7 @@ package wvlet.lang.model.plan
 
 import wvlet.lang.api.{LinePosition, Span}
 import wvlet.lang.model.{DataType, RelationType}
+import wvlet.lang.model.expr.Expression
 import wvlet.lang.api.Span.NoSpan
 
 /**
@@ -88,11 +89,11 @@ case class ListBlock(
   * List item
   */
 case class ListItem(
-    content: List[InlineContent],
+    content: String,
     nodeLocation: LinePosition = LinePosition.NoPosition,
     span: Span = NoSpan
 ) extends MarkdownBlock:
-  override def children: List[LogicalPlan] = content
+  override def children: List[LogicalPlan] = Nil
 
 /**
   * Horizontal rule (---, ***, ___)
@@ -105,72 +106,80 @@ case class HorizontalRule(nodeLocation: LinePosition = LinePosition.NoPosition, 
   * Paragraph containing inline content
   */
 case class Paragraph(
-    content: List[InlineContent],
+    content: MarkdownExpression,
     nodeLocation: LinePosition = LinePosition.NoPosition,
     span: Span = NoSpan
 ) extends MarkdownBlock:
-  override def children: List[LogicalPlan] = content
+  override def children: List[LogicalPlan] = Nil
 
 /**
-  * Base trait for inline Markdown elements
+  * Base trait for inline Markdown elements (extends Expression, not LogicalPlan) This allows proper
+  * nesting: MarkdownBold(MarkdownLink(...)), MarkdownItalic(MarkdownBold(...)), etc.
   */
-sealed trait InlineContent extends LogicalPlan:
-  override def relationType: RelationType      = DataType.EmptyRelationType
-  override def inputRelationType: RelationType = DataType.EmptyRelationType
-  override def children: List[LogicalPlan]     = Nil
+sealed trait MarkdownExpression extends Expression:
+  override def children: Seq[Expression] = Seq.empty
+  override def dataType: DataType        = DataType.StringType
+
+/**
+  * Convenience alias for backward compatibility
+  */
+type InlineContent = MarkdownExpression
 
 /**
   * Plain text
   */
-case class Text(
+case class MarkdownText(
     text: String,
     nodeLocation: LinePosition = LinePosition.NoPosition,
     span: Span = NoSpan
-) extends InlineContent
+) extends MarkdownExpression
 
 /**
-  * Bold text (**text** or __text__)
+  * Bold text (**text** or __text__) Can contain nested inline elements
   */
-case class Bold(
-    text: String,
+case class MarkdownBold(
+    content: MarkdownExpression,
     nodeLocation: LinePosition = LinePosition.NoPosition,
     span: Span = NoSpan
-) extends InlineContent
+) extends MarkdownExpression:
+  override def children: Seq[Expression] = Seq(content)
 
 /**
-  * Italic text (*text* or _text_)
+  * Italic text (*text* or _text_) Can contain nested inline elements
   */
-case class Italic(
-    text: String,
+case class MarkdownItalic(
+    content: MarkdownExpression,
     nodeLocation: LinePosition = LinePosition.NoPosition,
     span: Span = NoSpan
-) extends InlineContent
+) extends MarkdownExpression:
+  override def children: Seq[Expression] = Seq(content)
 
 /**
   * Inline code span (`code`)
   */
-case class CodeSpan(
+case class MarkdownCodeSpan(
     code: String,
     nodeLocation: LinePosition = LinePosition.NoPosition,
     span: Span = NoSpan
-) extends InlineContent
+) extends MarkdownExpression
 
 /**
-  * Link [text](url)
+  * Link [text](url) Text can contain inline formatting
   */
-case class Link(
-    text: String,
+case class MarkdownLink(
+    text: MarkdownExpression,
     url: String,
     nodeLocation: LinePosition = LinePosition.NoPosition,
     span: Span = NoSpan
-) extends InlineContent
+) extends MarkdownExpression:
+  override def children: Seq[Expression] = Seq(text)
 
 /**
   * Image ![alt](url)
   */
-case class Image(
+case class MarkdownImage(
     altText: String,
     url: String,
     nodeLocation: LinePosition = LinePosition.NoPosition,
     span: Span = NoSpan
-) extends InlineContent
+) extends MarkdownExpression
