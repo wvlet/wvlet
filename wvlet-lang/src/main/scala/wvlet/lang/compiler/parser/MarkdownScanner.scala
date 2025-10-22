@@ -50,8 +50,6 @@ class MarkdownScanner(sourceFile: SourceFile, config: ScannerConfig = ScannerCon
     (ch: @switch) match
       case ' ' | '\t' | CR | LF | FF =>
         scanWhiteSpaces()
-        if ch == LF || ch == CR then
-          isLineStart = true
       case '#' if isLineStart =>
         scanHeading()
       case '`' =>
@@ -402,6 +400,7 @@ class MarkdownScanner(sourceFile: SourceFile, config: ScannerConfig = ScannerCon
       if ch == LF || ch == CR then
         putChar('\n')
         nextChar()
+        isLineStart = true
         current.token = MarkdownToken.NEWLINE
         current.str = flushTokenString()
         return
