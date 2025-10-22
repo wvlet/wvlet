@@ -81,7 +81,8 @@ class MarkdownParserTest extends AirSpec:
         p
       }
     paragraphs.size shouldBe 1
-    paragraphs(0).content.isInstanceOf[MarkdownExpression] shouldBe true
+    paragraphs(0).content shouldMatch { case _: MarkdownExpression =>
+    }
 
   test("parse list"):
     val input =
