@@ -222,12 +222,11 @@ class MarkdownParser(unit: CompilationUnit) extends LogSupport:
     */
   private def parseParagraph(): Paragraph =
     val inlineContent = parseInlineContent()
-    val firstToken    = inlineContent.headOption
 
     Paragraph(
       content = inlineContent,
-      nodeLocation = firstToken.map(_.nodeLocation).getOrElse(LinePosition.NoPosition),
-      span = firstToken.map(_.span).getOrElse(Span.NoSpan)
+      nodeLocation = LinePosition.NoPosition,
+      span = Span.NoSpan
     )
 
   /**
