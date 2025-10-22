@@ -88,11 +88,11 @@ case class ListBlock(
   * List item
   */
 case class ListItem(
-    content: String,
+    content: List[InlineContent],
     nodeLocation: LinePosition = LinePosition.NoPosition,
     span: Span = NoSpan
 ) extends MarkdownBlock:
-  override def children: List[LogicalPlan] = Nil
+  override def children: List[LogicalPlan] = content
 
 /**
   * Horizontal rule (---, ***, ___)

@@ -113,7 +113,9 @@ class MarkdownParser(unit: CompilationUnit) extends LogSupport:
         case MarkdownToken.EOF =>
           done = true
         case _ =>
-          scanner.nextToken() // Skip unexpected tokens
+          // Treat unexpected tokens as part of the code content to prevent data loss
+          val unexpectedToken = scanner.nextToken()
+          codeLines += unexpectedToken.str
 
     CodeBlock(
       language = languageHint,
@@ -141,8 +143,9 @@ class MarkdownParser(unit: CompilationUnit) extends LogSupport:
   private def parseBlockquote(): Blockquote =
     val quoteToken = scanner.nextToken()
 
-    // For simplicity, treat blockquote content as a paragraph
-    // In a full implementation, this would recursively parse nested blocks
+    // TODO: For CommonMark compliance, this should recursively parse nested blocks within blockquotes
+    // including support for multiple paragraphs, lists, and nested blockquotes.
+    // Current implementation is simplified and only handles a single paragraph of content.
     val content = List.newBuilder[MarkdownBlock]
 
     var done = false
@@ -171,6 +174,9 @@ class MarkdownParser(unit: CompilationUnit) extends LogSupport:
     val items      = List.newBuilder[ListItem]
     val firstToken = scanner.lookAhead()
 
+    // Detect if this is an ordered list by checking the first list item marker
+    val isOrdered = firstToken.str.exists(_.isDigit)
+
     var done = false
     while !done do
       val token = scanner.lookAhead()
@@ -184,7 +190,7 @@ class MarkdownParser(unit: CompilationUnit) extends LogSupport:
 
     ListBlock(
       items = items.result(),
-      ordered = false,
+      ordered = isOrdered,
       nodeLocation = firstToken.nodeLocation,
       span = firstToken.span
     )
@@ -195,24 +201,11 @@ class MarkdownParser(unit: CompilationUnit) extends LogSupport:
   private def parseListItem(): ListItem =
     val bulletToken = scanner.nextToken()
 
-    // Read content until end of line
-    val contentTokens = List.newBuilder[String]
-    var done          = false
-
-    while !done do
-      val token = scanner.lookAhead()
-      token.token match
-        case MarkdownToken.NEWLINE | MarkdownToken.EOF =>
-          done = true
-        case MarkdownToken.WHITESPACE =>
-          scanner.nextToken()
-          contentTokens += " "
-        case _ =>
-          val t = scanner.nextToken()
-          contentTokens += t.str
+    // Parse inline content until end of line
+    val inlineContent = parseInlineContent()
 
     ListItem(
-      content = contentTokens.result().mkString.trim(),
+      content = inlineContent,
       nodeLocation = bulletToken.nodeLocation,
       span = bulletToken.span
     )
@@ -231,7 +224,11 @@ class MarkdownParser(unit: CompilationUnit) extends LogSupport:
     val inlineContent = parseInlineContent()
     val firstToken    = inlineContent.headOption
 
-    Paragraph(content = inlineContent, nodeLocation = LinePosition.NoPosition, span = Span.NoSpan)
+    Paragraph(
+      content = inlineContent,
+      nodeLocation = firstToken.map(_.nodeLocation).getOrElse(LinePosition.NoPosition),
+      span = firstToken.map(_.span).getOrElse(Span.NoSpan)
+    )
 
   /**
     * Parse inline content (text, bold, italic, links, etc.)
@@ -278,21 +275,27 @@ class MarkdownParser(unit: CompilationUnit) extends LogSupport:
     */
   private def parseBold(): Bold =
     val token = scanner.nextToken()
-    Bold(text = token.str, nodeLocation = token.nodeLocation, span = token.span)
+    // Strip the leading ** or __ markers
+    val text = token.str.substring(2)
+    Bold(text = text, nodeLocation = token.nodeLocation, span = token.span)
 
   /**
     * Parse italic text: *text* or _text_
     */
   private def parseItalic(): Italic =
     val token = scanner.nextToken()
-    Italic(text = token.str, nodeLocation = token.nodeLocation, span = token.span)
+    // Strip the leading * or _ marker
+    val text = token.str.substring(1)
+    Italic(text = text, nodeLocation = token.nodeLocation, span = token.span)
 
   /**
     * Parse inline code span: `code`
     */
   private def parseCodeSpan(): CodeSpan =
     val token = scanner.nextToken()
-    CodeSpan(code = token.str, nodeLocation = token.nodeLocation, span = token.span)
+    // Strip the leading backtick marker
+    val code = token.str.substring(1)
+    CodeSpan(code = code, nodeLocation = token.nodeLocation, span = token.span)
 
   /**
     * Parse link: [text](url)

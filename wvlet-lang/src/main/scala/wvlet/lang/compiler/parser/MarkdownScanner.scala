@@ -330,6 +330,11 @@ class MarkdownScanner(sourceFile: SourceFile, config: ScannerConfig = ScannerCon
     * Scan link [text](url) or image ![alt](url)
     */
   private def scanLinkOrImage(isImage: Boolean): Unit =
+    // TODO: For CommonMark compliance, this implementation needs to properly handle:
+    // 1. Nested brackets in link text (e.g., [a link with [nested] brackets](...))
+    // 2. Parentheses in URLs (e.g., [text](url_with_(parens)))
+    // 3. Escaped characters within links
+    // Current implementation uses simple character matching which can fail on edge cases.
     if isImage then
       putChar(ch) // !
       nextChar()
