@@ -222,7 +222,8 @@ class MarkdownParser(unit: CompilationUnit) extends LogSupport:
     */
   private def parseParagraph(): Paragraph =
     val inlineContent = parseInlineContent()
-
+    // Note: Cannot access nodeLocation from InlineContent trait directly
+    // Would need to add nodeLocation to trait or use default location
     Paragraph(content = inlineContent, nodeLocation = LinePosition.NoPosition, span = Span.NoSpan)
 
   /**
