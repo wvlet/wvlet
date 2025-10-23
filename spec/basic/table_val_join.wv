@@ -1,0 +1,13 @@
+-- Test table val references in join conditions
+val trades(trade_time, symbol, quantity, executed_price) = [
+  ["2024-01-15 09:30:45", "AAPL", 100, 150.05],
+  ["2024-01-15 09:31:30", "AAPL", 200, 150.55]
+]
+
+val quotes(timestamp, symbol, bid_price, ask_price) = [
+  ["2024-01-15 09:30:00", "AAPL", 150.00, 150.10],
+  ["2024-01-15 09:31:00", "AAPL", 150.50, 150.60]
+]
+
+from trades
+join quotes on trades.symbol = quotes.symbol
