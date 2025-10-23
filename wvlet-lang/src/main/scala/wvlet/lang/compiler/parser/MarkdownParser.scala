@@ -178,7 +178,9 @@ class MarkdownParser(unit: CompilationUnit) extends LogSupport:
     val items      = List.newBuilder[ListItem]
     val firstToken = scanner.lookAhead()
 
-    // Detect if this is an ordered list by checking the first list item marker
+    // TODO: Ordered list detection is incomplete. The scanner currently only generates LIST_ITEM
+    // tokens for unordered lists (-, *, +). Need to add support for ordered list markers (1., 2., etc.)
+    // in the scanner before this detection logic will work correctly.
     val isOrdered = firstToken.str.exists(_.isDigit)
 
     var done = false
@@ -226,7 +228,15 @@ class MarkdownParser(unit: CompilationUnit) extends LogSupport:
     */
   private def parseParagraph(): Paragraph =
     val inlineExpr = parseInlineExpression()
-    Paragraph(content = inlineExpr, nodeLocation = LinePosition.NoPosition, span = Span.NoSpan)
+    // Extract location from the expression by pattern matching
+    val (location, spanInfo) =
+      inlineExpr match
+        case seq: MarkdownSequence if seq.parts.nonEmpty =>
+          (seq.nodeLocation, seq.span)
+        case expr: MarkdownExpression =>
+          // Use span from SyntaxTreeNode trait
+          (LinePosition.NoPosition, expr.span)
+    Paragraph(content = inlineExpr, nodeLocation = location, span = spanInfo)
 
   /**
     * Parse inline content for a paragraph by accumulating inline tokens until a terminating
@@ -352,6 +362,13 @@ class MarkdownParser(unit: CompilationUnit) extends LogSupport:
 
   /**
     * Parse link components from [text](url) format
+    *
+    * TODO: This is a simplified implementation that doesn't handle CommonMark edge cases like:
+    *   - Nested brackets in link text: [a link with [nested] brackets](url)
+    *   - Parentheses in URLs: [text](http://example.com/path(with)parens)
+    *   - Escaped characters and other complex scenarios For better CommonMark compliance, consider
+    *     having the scanner emit finer-grained tokens (L_BRACKET, R_BRACKET, L_PAREN, R_PAREN) and
+    *     handle structural parsing here.
     */
   private def parseLinkComponents(linkStr: String): (String, String) =
     val textStart = linkStr.indexOf('[')
