@@ -166,7 +166,7 @@ class MarkdownParserTest extends AirSpec:
 
   test("parse document with only whitespace"):
     val doc = parse("   \n\n  \n")
-    // With blank line preservation, whitespace-only docs contain BlankLine blocks
-    doc.blocks.forall(_.isInstanceOf[BlankLine]) shouldBe true
+    // Whitespace and newlines are skipped, so document should be empty
+    doc.blocks.isEmpty shouldBe true
 
 end MarkdownParserTest
