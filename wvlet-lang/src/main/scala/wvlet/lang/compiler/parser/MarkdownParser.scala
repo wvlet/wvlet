@@ -205,24 +205,11 @@ class MarkdownParser(unit: CompilationUnit) extends LogSupport:
   private def parseListItem(): ListItem =
     val bulletToken = scanner.nextToken()
 
-    // Read content until end of line
-    val contentTokens = List.newBuilder[String]
-    var done          = false
-
-    while !done do
-      val token = scanner.lookAhead()
-      token.token match
-        case MarkdownToken.NEWLINE | MarkdownToken.EOF =>
-          done = true
-        case MarkdownToken.WHITESPACE =>
-          scanner.nextToken()
-          contentTokens += " "
-        case _ =>
-          val t = scanner.nextToken()
-          contentTokens += t.str
+    // Parse inline content until end of line
+    val inlineContent = parseInlineExpression()
 
     ListItem(
-      content = contentTokens.result().mkString.trim(),
+      content = List(inlineContent),
       nodeLocation = bulletToken.nodeLocation,
       span = bulletToken.span
     )

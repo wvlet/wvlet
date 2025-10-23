@@ -31,16 +31,16 @@ case class MarkdownDocument(
     nodeLocation: LinePosition = LinePosition.NoPosition,
     span: Span = NoSpan
 ) extends LogicalPlan:
-  override def children: List[LogicalPlan]     = blocks
+  // Blocks are expressions (structured content), not plans
+  override def children: List[LogicalPlan]     = Nil
   override def relationType: RelationType      = DataType.EmptyRelationType
   override def inputRelationType: RelationType = DataType.EmptyRelationType
 
 /**
-  * Base trait for block-level Markdown elements
+  * Base trait for block-level Markdown elements Blocks are expressions representing structured
+  * content, not executable plans
   */
-sealed trait MarkdownBlock extends LogicalPlan:
-  override def relationType: RelationType      = DataType.EmptyRelationType
-  override def inputRelationType: RelationType = DataType.EmptyRelationType
+sealed trait MarkdownBlock extends MarkdownExpression
 
 /**
   * Heading (# through ######)
@@ -50,8 +50,7 @@ case class Heading(
     text: String,
     nodeLocation: LinePosition = LinePosition.NoPosition,
     span: Span = NoSpan
-) extends MarkdownBlock:
-  override def children: List[LogicalPlan] = Nil
+) extends MarkdownBlock
 
 /**
   * Code block with optional language hint
@@ -61,8 +60,7 @@ case class CodeBlock(
     code: String,
     nodeLocation: LinePosition = LinePosition.NoPosition,
     span: Span = NoSpan
-) extends MarkdownBlock:
-  override def children: List[LogicalPlan] = Nil
+) extends MarkdownBlock
 
 /**
   * Blockquote (> quoted text)
@@ -72,7 +70,7 @@ case class Blockquote(
     nodeLocation: LinePosition = LinePosition.NoPosition,
     span: Span = NoSpan
 ) extends MarkdownBlock:
-  override def children: List[LogicalPlan] = content
+  override def children: Seq[Expression] = content
 
 /**
   * List (ordered or unordered)
@@ -83,32 +81,30 @@ case class ListBlock(
     nodeLocation: LinePosition = LinePosition.NoPosition,
     span: Span = NoSpan
 ) extends MarkdownBlock:
-  override def children: List[LogicalPlan] = items
+  override def children: Seq[Expression] = items
 
 /**
   * List item
   */
 case class ListItem(
-    content: String,
+    content: List[InlineContent],
     nodeLocation: LinePosition = LinePosition.NoPosition,
     span: Span = NoSpan
 ) extends MarkdownBlock:
-  override def children: List[LogicalPlan] = Nil
+  override def children: Seq[Expression] = content
 
 /**
   * Horizontal rule (---, ***, ___)
   */
 case class HorizontalRule(nodeLocation: LinePosition = LinePosition.NoPosition, span: Span = NoSpan)
-    extends MarkdownBlock:
-  override def children: List[LogicalPlan] = Nil
+    extends MarkdownBlock
 
 /**
   * Blank line(s) between blocks Preserves empty lines for accurate document structure
   * representation
   */
 case class BlankLine(nodeLocation: LinePosition = LinePosition.NoPosition, span: Span = NoSpan)
-    extends MarkdownBlock:
-  override def children: List[LogicalPlan] = Nil
+    extends MarkdownBlock
 
 /**
   * Paragraph containing inline content
@@ -118,7 +114,7 @@ case class Paragraph(
     nodeLocation: LinePosition = LinePosition.NoPosition,
     span: Span = NoSpan
 ) extends MarkdownBlock:
-  override def children: List[LogicalPlan] = Nil
+  override def children: Seq[Expression] = Seq(content)
 
 /**
   * Base trait for inline Markdown elements (extends Expression, not LogicalPlan) This allows proper
