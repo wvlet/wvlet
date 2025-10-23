@@ -51,8 +51,12 @@ class MarkdownParser(unit: CompilationUnit) extends LogSupport:
       token.token match
         case MarkdownToken.EOF =>
           done = true
-        case MarkdownToken.WHITESPACE | MarkdownToken.NEWLINE =>
-          scanner.nextToken() // Skip
+        case MarkdownToken.WHITESPACE =>
+          scanner.nextToken() // Skip horizontal whitespace
+        case MarkdownToken.NEWLINE =>
+          // Preserve blank lines as BlankLine blocks
+          val nlToken = scanner.nextToken()
+          blocks += BlankLine(nodeLocation = nlToken.nodeLocation, span = nlToken.span)
         case MarkdownToken.HEADING =>
           blocks += parseHeading()
         case MarkdownToken.FENCE_MARKER =>

@@ -103,6 +103,14 @@ case class HorizontalRule(nodeLocation: LinePosition = LinePosition.NoPosition, 
   override def children: List[LogicalPlan] = Nil
 
 /**
+  * Blank line(s) between blocks Preserves empty lines for accurate document structure
+  * representation
+  */
+case class BlankLine(nodeLocation: LinePosition = LinePosition.NoPosition, span: Span = NoSpan)
+    extends MarkdownBlock:
+  override def children: List[LogicalPlan] = Nil
+
+/**
   * Paragraph containing inline content
   */
 case class Paragraph(
