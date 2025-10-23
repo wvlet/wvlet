@@ -238,43 +238,60 @@ class MarkdownParser(unit: CompilationUnit) extends LogSupport:
     Paragraph(content = inlineExpr, nodeLocation = LinePosition.NoPosition, span = Span.NoSpan)
 
   /**
-    * Parse inline expression (simplified - returns first non-whitespace element) TODO: Support
-    * proper nesting and multiple inline elements
+    * Parse inline content for a paragraph by accumulating inline tokens until a terminating
+    * newline/EOF or a new block-level token appears. Returns a single MarkdownExpression: either a
+    * single element or a MarkdownSequence wrapping multiple inline elements.
     */
   private def parseInlineExpression(): MarkdownExpression =
-    var result: Option[MarkdownExpression] = None
-    var done                               = false
+    val parts = List.newBuilder[MarkdownExpression]
+    var done  = false
 
-    while !done && result.isEmpty do
+    while !done do
       val token = scanner.lookAhead()
       token.token match
         case MarkdownToken.EOF | MarkdownToken.NEWLINE =>
           done = true
         case MarkdownToken.HEADING | MarkdownToken.FENCE_MARKER | MarkdownToken.BLOCKQUOTE |
             MarkdownToken.LIST_ITEM | MarkdownToken.HORIZONTAL_RULE =>
-          // Block-level token, stop parsing inline content
+          // Encountered a block-level token; finish the current paragraph
           done = true
         case MarkdownToken.WHITESPACE =>
+          // Collapse any whitespace into a single space within a paragraph
           scanner.nextToken()
-          // Skip whitespace
+          parts += MarkdownText(" ")
         case MarkdownToken.BOLD =>
-          result = Some(parseBold())
+          parts += parseBold()
         case MarkdownToken.ITALIC =>
-          result = Some(parseItalic())
+          parts += parseItalic()
         case MarkdownToken.CODE_SPAN =>
-          result = Some(parseCodeSpan())
+          parts += parseCodeSpan()
         case MarkdownToken.LINK =>
-          result = Some(parseLink())
+          parts += parseLink()
         case MarkdownToken.IMAGE =>
-          result = Some(parseImage())
+          parts += parseImage()
         case MarkdownToken.TEXT =>
-          result = Some(parseText())
+          parts += parseText()
         case _ =>
-          // Unknown inline token, consume and continue
+          // Unknown inline token, consume and continue to avoid infinite loop
           scanner.nextToken()
 
-    // Return found expression or empty text
-    result.getOrElse(MarkdownText("", LinePosition.NoPosition, Span.NoSpan))
+    // Normalize: drop empty text nodes introduced by whitespace handling
+    val normalized = parts
+      .result()
+      .filter {
+        case MarkdownText(t, _, _) =>
+          t.nonEmpty
+        case _ =>
+          true
+      }
+
+    normalized match
+      case Nil =>
+        MarkdownText("", LinePosition.NoPosition, Span.NoSpan)
+      case single :: Nil =>
+        single
+      case many =>
+        MarkdownSequence(many, LinePosition.NoPosition, Span.NoSpan)
 
   end parseInlineExpression
 

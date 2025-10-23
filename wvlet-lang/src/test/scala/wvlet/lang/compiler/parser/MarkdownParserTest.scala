@@ -84,6 +84,32 @@ class MarkdownParserTest extends AirSpec:
     paragraphs(0).content shouldMatch { case _: MarkdownExpression =>
     }
 
+  test("parse paragraph accumulates mixed inline elements on one line"):
+    val doc = parse("This paragraph has **bold** and *italic*.")
+    val paragraphs = doc
+      .blocks
+      .collect { case p: Paragraph =>
+        p
+      }
+    paragraphs.size shouldBe 1
+    // Top-level content should be a sequence to hold multiple inline parts
+    (paragraphs.head.content.isInstanceOf[MarkdownSequence]) shouldBe true
+    // Ensure bold and italic appear somewhere within the paragraph
+    val hasBold =
+      paragraphs.head.content match
+        case seq: MarkdownSequence =>
+          seq.parts.exists(_.isInstanceOf[MarkdownBold])
+        case single =>
+          single.isInstanceOf[MarkdownBold]
+    val hasItalic =
+      paragraphs.head.content match
+        case seq: MarkdownSequence =>
+          seq.parts.exists(_.isInstanceOf[MarkdownItalic])
+        case single =>
+          single.isInstanceOf[MarkdownItalic]
+    hasBold shouldBe true
+    hasItalic shouldBe true
+
   test("parse list"):
     val input =
       """- Item 1

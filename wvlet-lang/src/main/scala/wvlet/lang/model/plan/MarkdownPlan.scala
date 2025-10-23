@@ -126,6 +126,17 @@ sealed trait MarkdownExpression extends Expression:
 type InlineContent = MarkdownExpression
 
 /**
+  * A container for multiple inline elements within a paragraph. This allows paragraphs to preserve
+  * mixed inline formatting by representing them as an ordered sequence rather than a single node.
+  */
+case class MarkdownSequence(
+    parts: List[MarkdownExpression],
+    nodeLocation: LinePosition = LinePosition.NoPosition,
+    span: Span = NoSpan
+) extends MarkdownExpression:
+  override def children: Seq[Expression] = parts
+
+/**
   * Plain text
   */
 case class MarkdownText(
