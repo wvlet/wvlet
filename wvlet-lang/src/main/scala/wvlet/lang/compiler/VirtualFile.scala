@@ -54,10 +54,13 @@ trait VirtualFile extends Ordered[VirtualFile]:
   def contentString: String
   def content: IArray[Char] = IArray.unsafeFromArray(contentString.toCharArray)
 
-  def isWv: Boolean         = name.endsWith(".wv")
-  def isSQL: Boolean        = name.endsWith(".sql")
-  def isMarkdown: Boolean   = name.endsWith(".md")
-  def isSourceFile: Boolean = isWv || isSQL || isMarkdown
+  def isWv: Boolean       = name.endsWith(".wv")
+  def isSQL: Boolean      = name.endsWith(".sql")
+  def isMarkdown: Boolean = name.endsWith(".md")
+  // Note: Markdown files are NOT automatically included as source files to avoid
+  // compiling documentation files (README.md, CLAUDE.md, etc.). Markdown files
+  // should be explicitly passed to the compiler when needed.
+  def isSourceFile: Boolean = isWv || isSQL
 
   override def compare(other: VirtualFile): Int =
     def split(s: String): List[Any] =
