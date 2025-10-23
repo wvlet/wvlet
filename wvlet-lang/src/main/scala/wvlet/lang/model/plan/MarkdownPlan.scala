@@ -194,3 +194,20 @@ case class MarkdownImage(
     nodeLocation: LinePosition = LinePosition.NoPosition,
     span: Span = NoSpan
 ) extends MarkdownExpression
+
+/**
+  * Whitespace (space characters) within inline content Preserves whitespace for accurate Markdown
+  * representation
+  */
+case class MarkdownWhitespace(
+    nodeLocation: LinePosition = LinePosition.NoPosition,
+    span: Span = NoSpan
+) extends MarkdownExpression
+
+/**
+  * Hard line break within a paragraph (two trailing spaces + newline in CommonMark)
+  */
+case class MarkdownLineBreak(
+    nodeLocation: LinePosition = LinePosition.NoPosition,
+    span: Span = NoSpan
+) extends MarkdownExpression

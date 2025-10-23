@@ -256,9 +256,9 @@ class MarkdownParser(unit: CompilationUnit) extends LogSupport:
           // Encountered a block-level token; finish the current paragraph
           done = true
         case MarkdownToken.WHITESPACE =>
-          // Collapse any whitespace into a single space within a paragraph
-          scanner.nextToken()
-          parts += MarkdownText(" ")
+          // Preserve whitespace as a dedicated expression type
+          val wsToken = scanner.nextToken()
+          parts += MarkdownWhitespace(nodeLocation = wsToken.nodeLocation, span = wsToken.span)
         case MarkdownToken.BOLD =>
           parts += parseBold()
         case MarkdownToken.ITALIC =>
