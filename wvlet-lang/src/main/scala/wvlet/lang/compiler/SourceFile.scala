@@ -44,9 +44,10 @@ class SourceFile(val file: VirtualFile):
   def isEmpty: Boolean          = file eq EmptyFile
   override def toString: String = file.path
 
-  def isSQL: Boolean        = file.isSQL
-  def isWv: Boolean         = file.isWv
-  def isMarkdown: Boolean   = file.isMarkdown
+  def isSQL: Boolean      = file.isSQL
+  def isWv: Boolean       = file.isWv
+  def isMarkdown: Boolean = file.isMarkdown
+  // isSourceFile excludes markdown until parser is stable
   def isSourceFile: Boolean = file.isSourceFile
 
   /**

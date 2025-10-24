@@ -14,6 +14,7 @@
 package wvlet.lang.compiler.parser
 
 import wvlet.lang.compiler.{CompilationUnit, Context, Phase, SourceFile}
+import wvlet.lang.model.expr.MarkdownPlan
 import wvlet.lang.model.plan.{LogicalPlan, PackageDef}
 import wvlet.log.LogSupport
 
@@ -52,7 +53,7 @@ object ParserPhase extends Phase("parser") with LogSupport:
         val p   = MarkdownParser(unit = compilationUnit)
         val doc = p.parse()
         // Wrap MarkdownDocument (Expression) in MarkdownPlan (LogicalPlan)
-        wvlet.lang.model.expr.MarkdownPlan(doc, doc.span)
+        MarkdownPlan(doc, doc.span)
       else
         val p = WvletParser(unit = compilationUnit, isContextUnit = isContextUnit)
         p.parse()
