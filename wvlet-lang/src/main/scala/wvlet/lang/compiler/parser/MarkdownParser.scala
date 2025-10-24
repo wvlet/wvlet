@@ -120,7 +120,6 @@ class MarkdownParser(unit: CompilationUnit) extends LogSupport:
         None
 
     val startSpan = fenceToken.span
-    val codeLines = List.newBuilder[String]
 
     // Read until closing fence
     var inCode = true
@@ -132,7 +131,7 @@ class MarkdownParser(unit: CompilationUnit) extends LogSupport:
           // Found closing fence
           inCode = false
         case _ =>
-          codeLines += t.str
+        // Skip content tokens - text will be extracted from span
 
     val endSpan =
       if lastToken != null then

@@ -57,7 +57,7 @@ class MarkdownScanner(sourceFile: SourceFile, config: ScannerConfig = ScannerCon
         scanBacktick()
       case '>' if isAtLineStart =>
         scanBlockquote()
-      case '-' | '*' | '+' if isAtLineStart =>
+      case '-' | '*' | '+' | '_' if isAtLineStart =>
         scanListOrHr()
       case '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' if isAtLineStart =>
         scanOrderedList()
@@ -224,11 +224,16 @@ class MarkdownScanner(sourceFile: SourceFile, config: ScannerConfig = ScannerCon
     * Scan regular text until special character or newline
     */
   private def scanText(): Unit =
-    while ch != '\n' && ch != '\r' && ch != SU && ch != '#' && ch != '`' && ch != '>' &&
-      ch != '-' && ch != '*' && ch != '+'
-    do
-      putChar(ch)
-      nextChar()
+    import scala.annotation.switch
+
+    var continue = true
+    while continue do
+      (ch: @switch) match
+        case '\n' | '\r' | SU | '#' | '`' | '>' | '-' | '*' | '+' | '_' =>
+          continue = false
+        case _ =>
+          putChar(ch)
+          nextChar()
 
     if charOffset > offset then
       current.token = TEXT
