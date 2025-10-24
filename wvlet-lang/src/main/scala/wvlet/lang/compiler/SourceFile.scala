@@ -46,6 +46,7 @@ class SourceFile(val file: VirtualFile):
 
   def isSQL: Boolean        = file.isSQL
   def isWv: Boolean         = file.isWv
+  def isMarkdown: Boolean   = file.isMarkdown
   def isSourceFile: Boolean = file.isSourceFile
 
   /**

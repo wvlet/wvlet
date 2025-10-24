@@ -50,3 +50,6 @@ class ParserSpecSqlHive
 
 // Update SQL
 class ParserSpecSqlUpdate extends ParserSpec("spec/sql/update")
+
+// Markdown
+class ParserSpecMarkdown extends ParserSpec("spec/markdown")

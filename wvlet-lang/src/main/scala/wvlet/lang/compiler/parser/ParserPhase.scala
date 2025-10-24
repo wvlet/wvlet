@@ -48,6 +48,11 @@ object ParserPhase extends Phase("parser") with LogSupport:
       if compilationUnit.sourceFile.isSQL then
         val p = SqlParser(unit = compilationUnit, isContextUnit = isContextUnit)
         p.parse()
+      else if compilationUnit.sourceFile.isMarkdown then
+        val p   = MarkdownParser(unit = compilationUnit)
+        val doc = p.parse()
+        // Wrap MarkdownDocument (Expression) in MarkdownPlan (LogicalPlan)
+        wvlet.lang.model.expr.MarkdownPlan(doc, doc.span)
       else
         val p = WvletParser(unit = compilationUnit, isContextUnit = isContextUnit)
         p.parse()
