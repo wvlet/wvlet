@@ -88,8 +88,6 @@ class MarkdownParser(unit: CompilationUnit) extends LogSupport:
         parseListItem(t)
       case MarkdownToken.HR =>
         MarkdownHorizontalRule(t.span)
-      case MarkdownToken.BLANK_LINE =>
-        MarkdownBlankLine(t.span)
       case MarkdownToken.TEXT =>
         parseParagraph(t)
       case MarkdownToken.NEWLINE | MarkdownToken.WHITESPACE =>
@@ -166,14 +164,16 @@ class MarkdownParser(unit: CompilationUnit) extends LogSupport:
           lastToken = t
           currentSpan = currentSpan.extendTo(t.span)
         case MarkdownToken.NEWLINE =>
-          // Check if double newline (blank line)
-          scanner.nextToken()
+          // Consume the newline to check if it's a blank line
+          val newlineToken = scanner.nextToken()
+          lastToken = newlineToken
           val next = scanner.lookAhead()
           if next.token == MarkdownToken.NEWLINE || next.token == MarkdownToken.BLANK_LINE then
+            // Double newline = blank line, end paragraph
             continue = false
           else
-            lastToken = scanner.lookAhead()
-            currentSpan = currentSpan.extendTo(lastToken.span)
+            // Single newline within paragraph (soft line break)
+            currentSpan = currentSpan.extendTo(newlineToken.span)
         case _ =>
           continue = false
 
