@@ -57,7 +57,7 @@ trait VirtualFile extends Ordered[VirtualFile]:
   def isWv: Boolean         = name.endsWith(".wv")
   def isSQL: Boolean        = name.endsWith(".sql")
   def isMarkdown: Boolean   = name.endsWith(".md")
-  def isSourceFile: Boolean = isWv || isSQL || isMarkdown
+  def isSourceFile: Boolean = isWv || isSQL
 
   override def compare(other: VirtualFile): Int =
     def split(s: String): List[Any] =

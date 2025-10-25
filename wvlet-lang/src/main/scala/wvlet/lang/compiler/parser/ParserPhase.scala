@@ -54,9 +54,11 @@ object ParserPhase extends Phase("parser") with LogSupport:
         val doc = p.parse()
         // Wrap MarkdownDocument (Expression) in MarkdownPlan (LogicalPlan)
         MarkdownPlan(doc, doc.span)
-      else
+      else if compilationUnit.sourceFile.isWv then
         val p = WvletParser(unit = compilationUnit, isContextUnit = isContextUnit)
         p.parse()
+      else
+        LogicalPlan.empty
 
     plan
 
