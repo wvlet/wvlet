@@ -27,9 +27,11 @@ case class MarkdownDocument(blocks: List[MarkdownBlock], span: Span) extends Exp
 /**
   * Base trait for markdown block elements
   */
-sealed trait MarkdownBlock extends Expression with LeafExpression:
+sealed trait MarkdownBlock extends Expression:
   def span: Span
   def raw: String
+  def childBlocks: List[MarkdownBlock]   = Nil
+  override def children: Seq[Expression] = childBlocks
 
 /**
   * Heading with level (1-6 corresponding to #, ##, etc.)
@@ -70,17 +72,21 @@ case class MarkdownCodeBlock(language: Option[String], span: Span, raw: String)
   */
 case class MarkdownList(ordered: Boolean, items: List[MarkdownListItem], span: Span, raw: String)
     extends MarkdownBlock:
-  override def children: Seq[Expression] = items
+  override def childBlocks: List[MarkdownBlock] = items
 
 /**
   * List item
   */
-case class MarkdownListItem(span: Span, raw: String) extends MarkdownBlock
+case class MarkdownListItem(span: Span, raw: String, blocks: List[MarkdownBlock] = Nil)
+    extends MarkdownBlock:
+  override def childBlocks: List[MarkdownBlock] = blocks
 
 /**
   * Blockquote
   */
-case class MarkdownBlockquote(span: Span, raw: String) extends MarkdownBlock
+case class MarkdownBlockquote(span: Span, raw: String, blocks: List[MarkdownBlock] = Nil)
+    extends MarkdownBlock:
+  override def childBlocks: List[MarkdownBlock] = blocks
 
 /**
   * Horizontal rule (---, ***, ___)

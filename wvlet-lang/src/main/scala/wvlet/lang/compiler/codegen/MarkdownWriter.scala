@@ -89,16 +89,27 @@ class MarkdownWriter(using ctx: Context) extends LogSupport:
 
   private def writeParagraph(para: MarkdownParagraph, sb: StringBuilder): Unit = sb.append(para.raw)
 
-  private def writeList(list: MarkdownList, sb: StringBuilder): Unit = list
+  private def writeList(list: MarkdownList, sb: StringBuilder, indent: Int = 0): Unit = list
     .items
     .zipWithIndex
     .foreach { case (item, idx) =>
+      sb.append(" " * indent)
       if list.ordered then
         sb.append(s"${idx + 1}. ")
       else
         sb.append("- ")
       sb.append(item.raw)
       sb.append("\n")
+      item
+        .blocks
+        .foreach {
+          case nested: MarkdownList =>
+            writeList(nested, sb, indent + 2)
+          case block =>
+            sb.append(" " * (indent + 2))
+            writeBlock(block, sb)
+            sb.append("\n")
+        }
     }
 
   private def writeListItem(item: MarkdownListItem, sb: StringBuilder): Unit =

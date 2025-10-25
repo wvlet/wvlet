@@ -87,7 +87,11 @@ class MarkdownParser(unit: CompilationUnit) extends LogSupport:
       case MarkdownToken.BLOCKQUOTE =>
         parseBlockquote()
       case MarkdownToken.LIST_MARKER =>
-        parseListItem()
+        val list = parseList(indentationOf(lookahead))
+        if list != null then
+          list
+        else
+          MarkdownText(lookahead.span, textOf(lookahead.span))
       case MarkdownToken.HR =>
         val t = scanner.nextToken()
         lastToken = t
@@ -105,6 +109,10 @@ class MarkdownParser(unit: CompilationUnit) extends LogSupport:
         val t = scanner.nextToken()
         lastToken = t
         MarkdownText(t.span, textOf(t.span))
+
+    end match
+
+  end parseBlock
 
   private def parseHeading(): MarkdownHeading =
     val startToken = scanner.nextToken()
@@ -161,10 +169,97 @@ class MarkdownParser(unit: CompilationUnit) extends LogSupport:
     lastToken = t
     MarkdownBlockquote(t.span, textOf(t.span))
 
-  private def parseListItem(): MarkdownListItem =
-    val t = scanner.nextToken()
-    lastToken = t
-    MarkdownListItem(t.span, textOf(t.span))
+  private def parseList(baseIndent: Int): MarkdownList | Null =
+    val startToken = scanner.lookAhead()
+    val ordered    = isOrderedListToken(startToken)
+    val items      = List.newBuilder[MarkdownListItem]
+    var lastSpan   = startToken.span
+    var continue   = true
+
+    while continue do
+      val lookahead = scanner.lookAhead()
+      lookahead.token match
+        case MarkdownToken.LIST_MARKER =>
+          val indent = indentationOf(lookahead)
+          if indent < baseIndent then
+            continue = false
+          else if indent == baseIndent then
+            val item = parseListItem(baseIndent)
+            if item != null then
+              items += item
+              lastSpan = item.span
+          else
+            // Nested list will be handled by current item's parser
+            continue = false
+        case MarkdownToken.NEWLINE | MarkdownToken.WHITESPACE =>
+          scanner.nextToken()
+        case _ =>
+          continue = false
+
+    val collected = items.result()
+    if collected.isEmpty then
+      null
+    else
+      val span   = Span(startToken.span.start, lastSpan.end, 0)
+      val rawTxt = textOf(span)
+      MarkdownList(ordered, collected, span, rawTxt)
+
+  end parseList
+
+  private def parseListItem(baseIndent: Int): MarkdownListItem =
+    val markerToken = scanner.nextToken()
+    lastToken = markerToken
+
+    var itemSpan = markerToken.span
+    val children = List.newBuilder[MarkdownBlock]
+
+    val headlineSpan = listItemContentSpan(markerToken)
+    headlineSpan.foreach { span =>
+      val para = MarkdownParagraph(span, textOf(span))
+      children += para
+      itemSpan = itemSpan.extendTo(span)
+    }
+
+    var continue = true
+    while continue do
+      val lookahead = scanner.lookAhead()
+      lookahead.token match
+        case MarkdownToken.NEWLINE =>
+          val newlineToken = scanner.nextToken()
+          lastToken = newlineToken
+          itemSpan = itemSpan.extendTo(newlineToken.span)
+          if isBlankLineAfter(newlineToken) then
+            continue = false
+        case MarkdownToken.WHITESPACE =>
+          val ws = scanner.nextToken()
+          lastToken = ws
+          itemSpan = itemSpan.extendTo(ws.span)
+        case MarkdownToken.LIST_MARKER =>
+          val indent = indentationOf(lookahead)
+          if indent > baseIndent then
+            val nested = parseList(indent)
+            if nested != null then
+              children += nested
+              itemSpan = itemSpan.extendTo(nested.span)
+          else
+            continue = false
+        case MarkdownToken.TEXT | MarkdownToken.HEADING | MarkdownToken.FENCE | MarkdownToken
+              .BLOCKQUOTE =>
+          val block = parseBlock()
+          if block != null then
+            children += block
+            itemSpan = itemSpan.extendTo(block.span)
+        case MarkdownToken.EOF =>
+          continue = false
+        case _ =>
+          continue = false
+      end match
+    end while
+
+    val itemRaw = headlineSpan.map(textOf).getOrElse(textOf(itemSpan)).trim
+    MarkdownListItem(itemSpan, itemRaw, children.result())
+
+  end parseListItem
 
   private def parseParagraph(): MarkdownParagraph | Null =
     val startToken = scanner.nextToken()
@@ -218,6 +313,38 @@ class MarkdownParser(unit: CompilationUnit) extends LogSupport:
       val start = math.max(0, math.min(span.start, buf.length))
       val end   = math.max(start, math.min(span.end, buf.length))
       buf.slice(start, end).mkString
+
+  private def indentationOf(token: TokenData[MarkdownToken]): Int =
+    val lineStart = src.startOfLine(token.span.start)
+    val buf       = src.getContent
+    var idx       = lineStart
+    var indent    = 0
+    while idx < token.span.start && idx < buf.length do
+      buf(idx) match
+        case ' ' =>
+          indent += 1
+        case '\t' =>
+          indent += 2
+        case _ =>
+          return indent
+      idx += 1
+    indent
+
+  private def isOrderedListToken(token: TokenData[MarkdownToken]): Boolean =
+    val trimmed = token.str.trim
+    trimmed.nonEmpty && trimmed.headOption.exists(_.isDigit)
+
+  private def listItemContentSpan(token: TokenData[MarkdownToken]): Option[Span] =
+    val raw        = token.str
+    val firstSpace = raw.indexWhere(ch => ch == ' ' || ch == '\t')
+    if firstSpace >= 0 then
+      val start = token.span.start + firstSpace + 1
+      if start < token.span.end then
+        Some(Span(start, token.span.end, 0))
+      else
+        None
+    else
+      None
 
   private def isBlankLineAfter(newlineToken: TokenData[MarkdownToken]): Boolean =
     val content = src.getContent
