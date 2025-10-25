@@ -40,12 +40,7 @@ class MarkdownParser(unit: CompilationUnit) extends LogSupport:
       if block != null then
         blocks += block
 
-    val docSpan =
-      startTokenOpt match
-        case Some(startToken) =>
-          spanFrom(startToken)
-        case None =>
-          Span.NoSpan
+    val docSpan = Span(0, src.length, 0)
 
     val doc = MarkdownDocument(blocks.result(), docSpan)
 

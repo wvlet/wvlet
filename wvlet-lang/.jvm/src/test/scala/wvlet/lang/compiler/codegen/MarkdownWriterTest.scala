@@ -14,7 +14,15 @@
 package wvlet.lang.compiler.codegen
 
 import wvlet.airspec.AirSpec
-import wvlet.lang.compiler.{CompilationUnit, Context, LocalFile, SourceFile}
+import wvlet.lang.compiler.{
+  CompilationUnit,
+  Context,
+  LocalFile,
+  SourceFile,
+  GlobalContext,
+  CompilerOptions,
+  WorkEnv
+}
 import wvlet.lang.compiler.parser.MarkdownParser
 
 /**
@@ -36,7 +44,8 @@ class MarkdownWriterTest extends AirSpec:
     val parser       = MarkdownParser(unit)
     val doc          = parser.parse()
 
-    given Context = Context.NoContext
+    val global    = GlobalContext(CompilerOptions(workEnv = WorkEnv()))
+    given Context = Context(global = global, compilationUnit = unit)
     val writer    = MarkdownWriter()
 
     // Span-based extraction should be perfect roundtrip

@@ -19,7 +19,7 @@ import wvlet.lang.model.RelationType
 import wvlet.lang.model.plan.{LeafPlan, LogicalPlan}
 
 /**
-  * Markdown document root node (CST approach - spans only; child blocks carry raw text)
+  * Markdown document root node (span covers entire file; child blocks hold raw slices)
   */
 case class MarkdownDocument(blocks: List[MarkdownBlock], span: Span) extends Expression:
   override def children: Seq[Expression] = blocks

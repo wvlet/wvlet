@@ -30,10 +30,7 @@ class MarkdownWriter(using ctx: Context) extends LogSupport:
     */
   def writeFromSpans(doc: MarkdownDocument): String =
     val ctx = summon[Context]
-    if doc.span == Span.NoSpan then
-      doc.blocks.map(_.raw).mkString("\n")
-    else
-      ctx.compilationUnit.text(doc.span)
+    ctx.compilationUnit.text(doc.span)
 
   /**
     * Write markdown from CST by reconstructing from structure (validates CST)
