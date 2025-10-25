@@ -24,9 +24,9 @@ class MarkdownScannerTest extends AirSpec:
     val sourceFile = SourceFile.fromString("test.md", markdown)
     val scanner    = MarkdownScanner(sourceFile)
 
-    var seenEOF   = false
-    var iter      = 0
-    val maxIters  = markdown.length + 8
+    var seenEOF  = false
+    var iter     = 0
+    val maxIters = markdown.length + 8
     while !seenEOF && iter < maxIters do
       val t = scanner.nextToken()
       if t.token == MarkdownToken.EOF then

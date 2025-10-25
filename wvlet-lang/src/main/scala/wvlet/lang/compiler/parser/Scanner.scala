@@ -135,7 +135,6 @@ abstract class ScannerBase[Token](sourceFile: SourceFile, config: ScannerConfig)
     val lastToken = current.token
     try
       getNextToken(lastToken)
-
       val t = current.toTokenData(lastCharOffset)
       if config.debugScanner then
         debug(s"${currentRegion} $t")

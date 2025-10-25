@@ -37,8 +37,13 @@ class MarkdownScanner(sourceFile: SourceFile, config: ScannerConfig = ScannerCon
   def getBlankLineTokens(): List[TokenData[MarkdownToken]] = blankLineBuffer
 
   override protected def getNextToken(lastToken: MarkdownToken): Unit =
-    initOffset()
-    fetchToken()
+    if next.token == MarkdownToken.EMPTY then
+      initOffset()
+      fetchToken()
+    else
+      // Reuse the prefetched token produced by lookAhead()
+      current.copyFrom(next)
+      resetNextToken()
 
   override protected def fetchToken(): Unit =
     initOffset()
@@ -64,7 +69,9 @@ class MarkdownScanner(sourceFile: SourceFile, config: ScannerConfig = ScannerCon
       case _ =>
         scanText()
 
-  private def isAtLineStart: Boolean = current.isAfterLineEnd
+  private def isAtLineStart: Boolean =
+    // At the beginning of the file (offset 0) or after a line end
+    current.offset == 0 || current.isAfterLineEnd
 
   /**
     * Scan newline and detect blank lines (consecutive newlines)
@@ -226,6 +233,12 @@ class MarkdownScanner(sourceFile: SourceFile, config: ScannerConfig = ScannerCon
   private def scanText(): Unit =
     import scala.annotation.switch
 
+    // First, consume at least one character as text
+    // (we're here because the current char didn't match any special pattern)
+    putChar(ch)
+    nextChar()
+
+    // Then continue consuming until we hit a special character
     var continue = true
     while continue do
       (ch: @switch) match
@@ -234,18 +247,9 @@ class MarkdownScanner(sourceFile: SourceFile, config: ScannerConfig = ScannerCon
         case _ =>
           putChar(ch)
           nextChar()
-    // If we actually consumed any characters for text, emit TEXT.
-    // Using the token buffer state is robust; relying on offsets can yield
-    // a zero-length token when a special char is encountered immediately.
-    if tokenBuffer.nonEmpty then
-      current.token = TEXT
-      current.str = flushTokenString()
-    else
-      // No text consumed, skip character
-      putChar(ch)
-      nextChar()
-      current.token = TEXT
-      current.str = flushTokenString()
+
+    current.token = TEXT
+    current.str = flushTokenString()
 
   override protected def getWhiteSpaces(): Unit =
     while ch == ' ' || ch == '\t' do

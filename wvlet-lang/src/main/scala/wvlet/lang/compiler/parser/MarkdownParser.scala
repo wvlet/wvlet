@@ -34,10 +34,15 @@ class MarkdownParser(unit: CompilationUnit) extends LogSupport:
     val blocks        = List.newBuilder[MarkdownBlock]
     val startTokenOpt = Option(scanner.lookAhead())
 
-    while scanner.lookAhead().token != MarkdownToken.EOF do
-      val block = parseBlock()
-      if block != null then
-        blocks += block
+    var continue = true
+    while continue do
+      val lookahead = scanner.lookAhead()
+      if lookahead.token == MarkdownToken.EOF then
+        continue = false
+      else
+        val block = parseBlock()
+        if block != null then
+          blocks += block
 
     val doc =
       startTokenOpt match
@@ -74,32 +79,39 @@ class MarkdownParser(unit: CompilationUnit) extends LogSupport:
     doc
 
   private def parseBlock(): MarkdownBlock =
-    val t = scanner.nextToken()
-    lastToken = t
+    val lookahead = scanner.lookAhead()
 
-    t.token match
+    lookahead.token match
       case MarkdownToken.HEADING =>
-        parseHeading(t)
+        parseHeading()
       case MarkdownToken.FENCE =>
-        parseCodeBlock(t)
+        parseCodeBlock()
       case MarkdownToken.BLOCKQUOTE =>
-        parseBlockquote(t)
+        parseBlockquote()
       case MarkdownToken.LIST_MARKER =>
-        parseListItem(t)
+        parseListItem()
       case MarkdownToken.HR =>
+        val t = scanner.nextToken()
+        lastToken = t
         MarkdownHorizontalRule(t.span)
       case MarkdownToken.TEXT =>
-        parseParagraph(t)
+        parseParagraph()
       case MarkdownToken.NEWLINE | MarkdownToken.WHITESPACE =>
         // Skip newlines and whitespace between blocks
+        scanner.nextToken()
         null
       case MarkdownToken.EOF =>
         null
       case _ =>
         // Unknown token, treat as text
+        val t = scanner.nextToken()
+        lastToken = t
         MarkdownText(t.span)
 
-  private def parseHeading(startToken: TokenData[MarkdownToken]): MarkdownHeading =
+  private def parseHeading(): MarkdownHeading =
+    val startToken = scanner.nextToken()
+    lastToken = startToken
+
     // Count # characters to determine level
     val text  = startToken.str
     var level = 0
@@ -110,7 +122,10 @@ class MarkdownParser(unit: CompilationUnit) extends LogSupport:
 
     MarkdownHeading(level, startToken.span)
 
-  private def parseCodeBlock(fenceToken: TokenData[MarkdownToken]): MarkdownCodeBlock =
+  private def parseCodeBlock(): MarkdownCodeBlock =
+    val fenceToken = scanner.nextToken()
+    lastToken = fenceToken
+
     // Extract language hint from fence token
     val fenceText = fenceToken.str
     val language =
@@ -142,15 +157,19 @@ class MarkdownParser(unit: CompilationUnit) extends LogSupport:
 
   end parseCodeBlock
 
-  private def parseBlockquote(t: TokenData[MarkdownToken]): MarkdownBlockquote = MarkdownBlockquote(
-    t.span
-  )
+  private def parseBlockquote(): MarkdownBlockquote =
+    val t = scanner.nextToken()
+    lastToken = t
+    MarkdownBlockquote(t.span)
 
-  private def parseListItem(t: TokenData[MarkdownToken]): MarkdownListItem = MarkdownListItem(
-    t.span
-  )
+  private def parseListItem(): MarkdownListItem =
+    val t = scanner.nextToken()
+    lastToken = t
+    MarkdownListItem(t.span)
 
-  private def parseParagraph(startToken: TokenData[MarkdownToken]): MarkdownParagraph =
+  private def parseParagraph(): MarkdownParagraph =
+    val startToken = scanner.nextToken()
+    lastToken = startToken
     var currentSpan = startToken.span
 
     // Read consecutive text tokens until blank line or block marker

@@ -11,6 +11,7 @@ trait ParserSpec(specPath: String, ignoredSpec: Map[String, String] = Map.empty)
       // If the file matches to the ignoredSpec, ignore the test
       ignoredSpec.get(unit.sourceFile.fileName).foreach(reason => ignore(reason))
 
+      trace(s"Parse ${unit.sourceFile.relativeFilePath}")
       val plan = ParserPhase.parseOnly(unit)
       debug(plan.pp)
     }

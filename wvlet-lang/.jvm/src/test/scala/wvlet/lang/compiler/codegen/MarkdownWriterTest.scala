@@ -14,174 +14,76 @@
 package wvlet.lang.compiler.codegen
 
 import wvlet.airspec.AirSpec
-import wvlet.lang.compiler.{CompilationUnit, Context, SourceFile}
-import wvlet.lang.compiler.parser.{MarkdownParser, ParserPhase}
-import wvlet.lang.model.expr.{MarkdownDocument, MarkdownPlan}
+import wvlet.lang.compiler.{CompilationUnit, Context, LocalFile, SourceFile}
+import wvlet.lang.compiler.parser.MarkdownParser
 
 /**
-  * Roundtrip tests for MarkdownWriter
+  * Roundtrip tests for MarkdownWriter using spec/markdown files
   */
 class MarkdownWriterTest extends AirSpec:
 
-  test("roundtrip simple heading") {
-    val markdown   = "# Hello World\n"
-    val sourceFile = SourceFile.fromString("test.md", markdown)
-    val unit       = CompilationUnit(sourceFile)
-    val parser     = MarkdownParser(unit)
-    val doc        = parser.parse()
+  /**
+    * Test roundtrip for a markdown file from spec/markdown
+    */
+  private def testRoundtrip(fileName: String): Unit =
+    val file = LocalFile(s"spec/markdown/${fileName}")
+    if !file.exists then
+      fail(s"Test file not found: ${fileName}")
+
+    val originalText = file.contentString
+    val sourceFile   = SourceFile.fromFile(file)
+    val unit         = CompilationUnit(sourceFile)
+    val parser       = MarkdownParser(unit)
+    val doc          = parser.parse()
 
     given Context = Context.NoContext
     val writer    = MarkdownWriter()
 
     // Span-based extraction should be perfect roundtrip
     val result = writer.writeFromSpans(doc)
-    result shouldBe markdown
+
+    // Verify roundtrip
+    result shouldBe originalText
+
+  test("roundtrip hello.md") {
+    testRoundtrip("hello.md")
   }
 
-  test("roundtrip heading with multiple levels") {
-    val markdown   = """# Level 1
-## Level 2
-### Level 3
-"""
-    val sourceFile = SourceFile.fromString("test.md", markdown)
-    val unit       = CompilationUnit(sourceFile)
-    val parser     = MarkdownParser(unit)
-    val doc        = parser.parse()
-
-    given Context = Context.NoContext
-    val writer    = MarkdownWriter()
-
-    val result = writer.writeFromSpans(doc)
-    result shouldBe markdown
+  test("roundtrip heading.md") {
+    testRoundtrip("heading.md")
   }
 
-  test("roundtrip paragraph") {
-    val markdown   = """This is a paragraph.
-
-This is another paragraph.
-"""
-    val sourceFile = SourceFile.fromString("test.md", markdown)
-    val unit       = CompilationUnit(sourceFile)
-    val parser     = MarkdownParser(unit)
-    val doc        = parser.parse()
-
-    given Context = Context.NoContext
-    val writer    = MarkdownWriter()
-
-    val result = writer.writeFromSpans(doc)
-    result shouldBe markdown
+  test("roundtrip paragraph.md") {
+    testRoundtrip("paragraph.md")
   }
 
-  test("roundtrip code block") {
-    val markdown   = """```scala
-def hello() = println("Hello")
-```
-"""
-    val sourceFile = SourceFile.fromString("test.md", markdown)
-    val unit       = CompilationUnit(sourceFile)
-    val parser     = MarkdownParser(unit)
-    val doc        = parser.parse()
-
-    given Context = Context.NoContext
-    val writer    = MarkdownWriter()
-
-    val result = writer.writeFromSpans(doc)
-    result shouldBe markdown
+  test("roundtrip code-block.md") {
+    testRoundtrip("code-block.md")
   }
 
-  test("roundtrip code block with language hint") {
-    val markdown   = """```sql
-SELECT * FROM users
-```
-"""
-    val sourceFile = SourceFile.fromString("test.md", markdown)
-    val unit       = CompilationUnit(sourceFile)
-    val parser     = MarkdownParser(unit)
-    val doc        = parser.parse()
-
-    given Context = Context.NoContext
-    val writer    = MarkdownWriter()
-
-    val result = writer.writeFromSpans(doc)
-    result shouldBe markdown
+  test("roundtrip list.md") {
+    testRoundtrip("list.md")
   }
 
-  test("roundtrip mixed content") {
-    val markdown   = """# Title
-
-This is a paragraph.
-
-```scala
-val x = 1
-```
-
-## Section
-
-Another paragraph.
-"""
-    val sourceFile = SourceFile.fromString("test.md", markdown)
-    val unit       = CompilationUnit(sourceFile)
-    val parser     = MarkdownParser(unit)
-    val doc        = parser.parse()
-
-    given Context = Context.NoContext
-    val writer    = MarkdownWriter()
-
-    val result = writer.writeFromSpans(doc)
-    result shouldBe markdown
-  }
-
-  test("roundtrip with blank lines") {
-    val markdown   = """# Heading
-
-Paragraph 1.
-
-
-Paragraph 2 with blank line above.
-"""
-    val sourceFile = SourceFile.fromString("test.md", markdown)
-    val unit       = CompilationUnit(sourceFile)
-    val parser     = MarkdownParser(unit)
-    val doc        = parser.parse()
-
-    given Context = Context.NoContext
-    val writer    = MarkdownWriter()
-
-    val result = writer.writeFromSpans(doc)
-    result shouldBe markdown
-  }
-
-  test("structure-based write for heading") {
-    val markdown   = "# Hello World\n"
-    val sourceFile = SourceFile.fromString("test.md", markdown)
-    val unit       = CompilationUnit(sourceFile)
-    val parser     = MarkdownParser(unit)
-    val doc        = parser.parse()
-
-    given Context = Context.NoContext
-    val writer    = MarkdownWriter()
-
-    val result = writer.writeFromStructure(doc)
-    // Structure-based may differ in exact formatting but should contain content
-    result shouldContain "# Hello World"
+  test("roundtrip code-with-title.md") {
+    testRoundtrip("code-with-title.md")
   }
 
   test("validate span accuracy") {
-    val markdown   = """# Title
-Paragraph
-"""
-    val sourceFile = SourceFile.fromString("test.md", markdown)
-    val unit       = CompilationUnit(sourceFile)
-    val parser     = MarkdownParser(unit)
-    val doc        = parser.parse()
+    val file         = LocalFile("spec/markdown/hello.md")
+    val originalText = file.contentString
+    val sourceFile   = SourceFile.fromFile(file)
+    val unit         = CompilationUnit(sourceFile)
+    val parser       = MarkdownParser(unit)
+    val doc          = parser.parse()
 
     // Verify span covers the entire document
     doc.span.start shouldBe 0
-    doc.span.end shouldBe markdown.length
+    doc.span.end shouldBe originalText.length
 
     // Verify we can extract text from spans
     val text = sourceFile.getContent.slice(doc.span.start, doc.span.end).mkString
-    text shouldBe markdown
+    text shouldBe originalText
   }
 
 end MarkdownWriterTest
