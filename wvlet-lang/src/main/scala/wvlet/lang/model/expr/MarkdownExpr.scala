@@ -22,53 +22,56 @@ import wvlet.lang.model.plan.{LeafPlan, LogicalPlan}
 /**
   * Markdown document root node (CST approach - stores only spans, text extracted on-demand)
   */
-case class MarkdownDocument(blocks: List[MarkdownBlock], span: Span) extends Expression:
+case class MarkdownDocument(blocks: List[MarkdownBlock], span: Span, raw: String)
+    extends Expression:
   override def children: Seq[Expression] = blocks
 
   /**
-    * Extract full source text from span
+    * Full document text captured during parsing
     */
-  def sourceText(using ctx: Context): String =
-    ctx.compilationUnit.sourceFile.getContent.slice(span.start, span.end).mkString
+  def sourceText: String = raw
 
 /**
   * Base trait for markdown block elements
   */
 sealed trait MarkdownBlock extends Expression with LeafExpression:
   def span: Span
+  def raw: String
 
   /**
-    * Extract source text for this block
+    * Original markdown snippet for this block
     */
-  def sourceText(using ctx: Context): String =
-    ctx.compilationUnit.sourceFile.getContent.slice(span.start, span.end).mkString
+  def sourceText: String = raw
 
 /**
   * Heading with level (1-6 corresponding to #, ##, etc.)
   */
-case class MarkdownHeading(level: Int, span: Span) extends MarkdownBlock:
+case class MarkdownHeading(level: Int, span: Span, raw: String) extends MarkdownBlock:
   /**
     * Extract heading text without # markers
     */
-  def text(using ctx: Context): String =
-    val full = sourceText
+  def text: String =
+    val full = raw
     // Remove leading # characters and trim
     full.dropWhile(_ == '#').trim
+
+  def text(using ctx: Context): String = text
 
 /**
   * Paragraph of text (may contain inline formatting in future)
   */
-case class MarkdownParagraph(span: Span) extends MarkdownBlock
+case class MarkdownParagraph(span: Span, raw: String) extends MarkdownBlock
 
 /**
   * Code block with optional language hint
   */
-case class MarkdownCodeBlock(language: Option[String], span: Span) extends MarkdownBlock:
+case class MarkdownCodeBlock(language: Option[String], span: Span, raw: String)
+    extends MarkdownBlock:
   /**
     * Extract code without fence markers
     */
-  def code(using ctx: Context): String =
-    val full = sourceText
+  def code: String =
+    val full = raw
     // Remove opening ``` and closing ```
     val lines = full.split("\n")
     if lines.length > 2 then
@@ -76,37 +79,39 @@ case class MarkdownCodeBlock(language: Option[String], span: Span) extends Markd
     else
       ""
 
+  def code(using ctx: Context): String = code
+
 /**
   * List (ordered or unordered)
   */
-case class MarkdownList(ordered: Boolean, items: List[MarkdownListItem], span: Span)
+case class MarkdownList(ordered: Boolean, items: List[MarkdownListItem], span: Span, raw: String)
     extends MarkdownBlock:
   override def children: Seq[Expression] = items
 
 /**
   * List item
   */
-case class MarkdownListItem(span: Span) extends MarkdownBlock
+case class MarkdownListItem(span: Span, raw: String) extends MarkdownBlock
 
 /**
   * Blockquote
   */
-case class MarkdownBlockquote(span: Span) extends MarkdownBlock
+case class MarkdownBlockquote(span: Span, raw: String) extends MarkdownBlock
 
 /**
   * Horizontal rule (---, ***, ___)
   */
-case class MarkdownHorizontalRule(span: Span) extends MarkdownBlock
+case class MarkdownHorizontalRule(span: Span, raw: String) extends MarkdownBlock
 
 /**
   * Blank line (for spacing preservation)
   */
-case class MarkdownBlankLine(span: Span) extends MarkdownBlock
+case class MarkdownBlankLine(span: Span, raw: String) extends MarkdownBlock
 
 /**
   * Text block (fallback for unparsed content)
   */
-case class MarkdownText(span: Span) extends MarkdownBlock
+case class MarkdownText(span: Span, raw: String) extends MarkdownBlock
 
 /**
   * Wrapper plan for markdown documents (since MarkdownDocument extends Expression, not LogicalPlan)

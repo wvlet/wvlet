@@ -43,12 +43,15 @@ class MarkdownParser(unit: CompilationUnit) extends LogSupport:
       if block != null then
         blocks += block
 
-    val doc =
+    val (docSpan, docRaw) =
       startTokenOpt match
         case Some(startToken) =>
-          MarkdownDocument(blocks.result(), spanFrom(startToken))
+          val span = spanFrom(startToken)
+          span -> textOf(span)
         case None =>
-          MarkdownDocument(blocks.result(), Span.NoSpan)
+          Span.NoSpan -> ""
+
+    val doc = MarkdownDocument(blocks.result(), docSpan, docRaw)
 
     // Attach blank lines to blocks (similar to comment attachment in WvletParser)
     attachBlankLines(doc)
@@ -92,7 +95,7 @@ class MarkdownParser(unit: CompilationUnit) extends LogSupport:
       case MarkdownToken.HR =>
         val t = scanner.nextToken()
         lastToken = t
-        MarkdownHorizontalRule(t.span)
+        MarkdownHorizontalRule(t.span, textOf(t.span))
       case MarkdownToken.TEXT | MarkdownToken.WHITESPACE =>
         parseParagraph()
       case MarkdownToken.NEWLINE =>
@@ -105,7 +108,7 @@ class MarkdownParser(unit: CompilationUnit) extends LogSupport:
         // Unknown token, treat as text
         val t = scanner.nextToken()
         lastToken = t
-        MarkdownText(t.span)
+        MarkdownText(t.span, textOf(t.span))
 
   private def parseHeading(): MarkdownHeading =
     val startToken = scanner.nextToken()
@@ -119,7 +122,7 @@ class MarkdownParser(unit: CompilationUnit) extends LogSupport:
       level += 1
       i += 1
 
-    MarkdownHeading(level, startToken.span)
+    MarkdownHeading(level, startToken.span, textOf(startToken.span))
 
   private def parseCodeBlock(): MarkdownCodeBlock =
     val fenceToken = scanner.nextToken()
@@ -152,19 +155,20 @@ class MarkdownParser(unit: CompilationUnit) extends LogSupport:
         lastToken.span
       else
         startSpan
-    MarkdownCodeBlock(language, startSpan.extendTo(endSpan))
+    val blockSpan = startSpan.extendTo(endSpan)
+    MarkdownCodeBlock(language, blockSpan, textOf(blockSpan))
 
   end parseCodeBlock
 
   private def parseBlockquote(): MarkdownBlockquote =
     val t = scanner.nextToken()
     lastToken = t
-    MarkdownBlockquote(t.span)
+    MarkdownBlockquote(t.span, textOf(t.span))
 
   private def parseListItem(): MarkdownListItem =
     val t = scanner.nextToken()
     lastToken = t
-    MarkdownListItem(t.span)
+    MarkdownListItem(t.span, textOf(t.span))
 
   private def parseParagraph(): MarkdownParagraph | Null =
     val startToken = scanner.nextToken()
@@ -198,7 +202,7 @@ class MarkdownParser(unit: CompilationUnit) extends LogSupport:
           continue = false
 
     if hasText then
-      MarkdownParagraph(currentSpan)
+      MarkdownParagraph(currentSpan, textOf(currentSpan))
     else
       null
 
@@ -207,6 +211,15 @@ class MarkdownParser(unit: CompilationUnit) extends LogSupport:
       startToken.span.extendTo(lastToken.span)
     else
       startToken.span
+
+  private def textOf(span: Span): String =
+    if span == Span.NoSpan || span.start < 0 || span.end <= span.start then
+      ""
+    else
+      val buf   = src.getContent
+      val start = math.max(0, math.min(span.start, buf.length))
+      val end   = math.max(start, math.min(span.end, buf.length))
+      buf.slice(start, end).mkString
 
   private def isBlankLineAfter(newlineToken: TokenData[MarkdownToken]): Boolean =
     val content = src.getContent
