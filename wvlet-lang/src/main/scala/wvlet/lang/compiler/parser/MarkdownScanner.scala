@@ -82,13 +82,24 @@ class MarkdownScanner(sourceFile: SourceFile, config: ScannerConfig = ScannerCon
     current.token = NEWLINE
     current.str = flushTokenString()
 
-    // Check if the next line is also empty (= blank line)
-    if ch == '\n' || ch == '\r' then
-      // Found a blank line
+    // Check if the following line only contains whitespace and a newline
+    if isNextLineBlank then
       val blankLineToken = current.toTokenData(lastCharOffset)
       blankLineBuffer = blankLineToken :: blankLineBuffer
       if config.debugScanner then
         debug(s"blank line detected: ${blankLineToken}")
+
+  private def isNextLineBlank: Boolean =
+    var lookaheadOffset = 0
+    var nextCharValue   = ch
+
+    if nextCharValue == '\n' || nextCharValue == '\r' then
+      true
+    else
+      while nextCharValue == ' ' || nextCharValue == '\t' do
+        nextCharValue = lookAheadChar(lookaheadOffset)
+        lookaheadOffset += 1
+      nextCharValue == '\n' || nextCharValue == '\r'
 
   /**
     * Scan heading (# characters at line start)

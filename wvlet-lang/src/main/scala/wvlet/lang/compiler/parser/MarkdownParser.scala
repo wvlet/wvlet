@@ -15,6 +15,7 @@ package wvlet.lang.compiler.parser
 
 import wvlet.lang.api.Span
 import wvlet.lang.compiler.{CompilationUnit, SourceFile}
+import wvlet.lang.compiler.parser.ScannerConfig
 import wvlet.lang.model.SyntaxTreeNode
 import wvlet.lang.model.expr.*
 import wvlet.log.LogSupport
@@ -26,7 +27,10 @@ class MarkdownParser(unit: CompilationUnit) extends LogSupport:
   given src: SourceFile                  = unit.sourceFile
   given compilationUnit: CompilationUnit = unit
 
-  private val scanner = MarkdownScanner(unit.sourceFile)
+  private val scanner = MarkdownScanner(
+    unit.sourceFile,
+    ScannerConfig(skipWhiteSpace = false)
+  )
 
   private var lastToken: TokenData[MarkdownToken] = null
 
@@ -34,15 +38,10 @@ class MarkdownParser(unit: CompilationUnit) extends LogSupport:
     val blocks        = List.newBuilder[MarkdownBlock]
     val startTokenOpt = Option(scanner.lookAhead())
 
-    var continue = true
-    while continue do
-      val lookahead = scanner.lookAhead()
-      if lookahead.token == MarkdownToken.EOF then
-        continue = false
-      else
-        val block = parseBlock()
-        if block != null then
-          blocks += block
+    while scanner.lookAhead().token != MarkdownToken.EOF do
+      val block = parseBlock()
+      if block != null then
+        blocks += block
 
     val doc =
       startTokenOpt match
@@ -94,10 +93,10 @@ class MarkdownParser(unit: CompilationUnit) extends LogSupport:
         val t = scanner.nextToken()
         lastToken = t
         MarkdownHorizontalRule(t.span)
-      case MarkdownToken.TEXT =>
+      case MarkdownToken.TEXT | MarkdownToken.WHITESPACE =>
         parseParagraph()
-      case MarkdownToken.NEWLINE | MarkdownToken.WHITESPACE =>
-        // Skip newlines and whitespace between blocks
+      case MarkdownToken.NEWLINE =>
+        // Skip standalone newlines between blocks
         scanner.nextToken()
         null
       case MarkdownToken.EOF =>
@@ -167,40 +166,62 @@ class MarkdownParser(unit: CompilationUnit) extends LogSupport:
     lastToken = t
     MarkdownListItem(t.span)
 
-  private def parseParagraph(): MarkdownParagraph =
+  private def parseParagraph(): MarkdownParagraph | Null =
     val startToken = scanner.nextToken()
     lastToken = startToken
     var currentSpan = startToken.span
+    var hasText     = startToken.token == MarkdownToken.TEXT
 
     // Read consecutive text tokens until blank line or block marker
     var continue = true
-    while continue && scanner.lookAhead().token != MarkdownToken.EOF do
+    while continue do
       val lookahead = scanner.lookAhead()
       lookahead.token match
         case MarkdownToken.TEXT | MarkdownToken.WHITESPACE =>
           val t = scanner.nextToken()
           lastToken = t
           currentSpan = currentSpan.extendTo(t.span)
+          if t.token == MarkdownToken.TEXT then
+            hasText = true
         case MarkdownToken.NEWLINE =>
           // Consume the newline to check if it's a blank line
           val newlineToken = scanner.nextToken()
           lastToken = newlineToken
-          val next = scanner.lookAhead()
-          if next.token == MarkdownToken.NEWLINE || next.token == MarkdownToken.BLANK_LINE then
-            // Double newline = blank line, end paragraph
+          if isBlankLineAfter(newlineToken) then
             continue = false
           else
             // Single newline within paragraph (soft line break)
             currentSpan = currentSpan.extendTo(newlineToken.span)
+        case MarkdownToken.EOF =>
+          continue = false
         case _ =>
           continue = false
 
-    MarkdownParagraph(currentSpan)
+    if hasText then
+      MarkdownParagraph(currentSpan)
+    else
+      null
 
   private def spanFrom(startToken: TokenData[MarkdownToken]): Span =
     if lastToken != null then
       startToken.span.extendTo(lastToken.span)
     else
       startToken.span
+
+  private def isBlankLineAfter(newlineToken: TokenData[MarkdownToken]): Boolean =
+    val content = src.getContent
+    val length  = content.length
+    var idx     = newlineToken.span.end
+
+    while idx < length do
+      content(idx) match
+        case ' ' | '\t' =>
+          idx += 1
+        case '\r' | '\n' =>
+          return true
+        case _ =>
+          return false
+
+    false
 
 end MarkdownParser
