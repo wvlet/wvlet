@@ -56,6 +56,7 @@ object WvletServer extends LogSupport:
       info(s"Press ctrl+c to stop the server")
 
       if !config.quitImmediately then
+        warn(s"--quit-immediately is set. The server will quit immediately after starting.")
         if OS.isMacOS && openBrowser then
           // Open the web browser
           Shell.exec(s"open http://localhost:${config.port}")
