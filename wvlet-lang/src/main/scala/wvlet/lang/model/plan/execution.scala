@@ -34,7 +34,7 @@ sealed trait ExecutionPlan extends TreeNode with Product:
         lines.map(l => s"${("  " * level)}${l}").mkString("\n")
 
       val header = p.planName
-      val body =
+      val body   =
         p match
           case t: ExecuteTasks =>
             val tasks = t.tasks.filterNot(_ eq ExecuteNothing).map(iter(_, level)).mkString("\n")
@@ -105,7 +105,7 @@ sealed trait ExecutionPlan extends TreeNode with Product:
 end ExecutionPlan
 
 object ExecutionPlan:
-  def empty: ExecutionPlan = ExecuteNothing
+  def empty: ExecutionPlan                             = ExecuteNothing
   def apply(tasks: List[ExecutionPlan]): ExecutionPlan =
     tasks match
       case Nil =>

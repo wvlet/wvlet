@@ -58,7 +58,7 @@ class SymbolInfo(
   def declScope: Scope                 = _declScope
   def declScope_=(s: Scope): Unit      = _declScope = s
 
-  def tpe: Type = _tpe
+  def tpe: Type                    = _tpe
   def withType(t: Type): this.type =
     _tpe = t
     this

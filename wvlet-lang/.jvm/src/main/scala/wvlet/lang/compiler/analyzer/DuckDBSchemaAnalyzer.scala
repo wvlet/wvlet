@@ -48,7 +48,7 @@ trait DuckDBSchemaAnalyzerCompat:
       withConnection { conn =>
         withResource(conn.createStatement().executeQuery(sql)) { rs =>
           val metadata = rs.getMetaData
-          val columns = (1 to metadata.getColumnCount)
+          val columns  = (1 to metadata.getColumnCount)
             .map { i =>
               val name     = metadata.getColumnName(i)
               val dataType = metadata.getColumnTypeName(i).toLowerCase

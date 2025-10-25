@@ -555,7 +555,7 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
           }
       case d @ DotRef(qual, method: Identifier, _, _) =>
         val methodName = method.toTermName
-        val qualType =
+        val qualType   =
           if qual.dataType.isResolved then
             qual.dataType
           else

@@ -106,7 +106,7 @@ object Catalog:
       )
 
     override def toString: String = fullName
-    def qName: List[String] =
+    def qName: List[String]       =
       (catalog, schema) match
         case (Some(c), Some(s)) =>
           List(c, s, name)

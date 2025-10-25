@@ -55,7 +55,7 @@ abstract class DataType(val typeName: TypeName, override val typeParams: List[Da
 
   def baseTypeName: TypeName    = typeName
   override def isBound: Boolean = typeParams.forall(_.isBound)
-  def isNumeric: Boolean =
+  def isNumeric: Boolean        =
     this match
       case _: DataType.NumericType =>
         true
@@ -99,7 +99,7 @@ sealed abstract class RelationType(
       }"
 
 object RelationType:
-  private var typeCount: Int = 0
+  private var typeCount: Int      = 0
   def newRelationTypeName: String =
     typeCount += 1
     // ULID.newULIDString
@@ -150,8 +150,8 @@ object DataType extends LogSupport:
         other.typeName.toString.toLowerCase
 
   case class UnresolvedType(leafName: String) extends DataType(Name.typeName(leafName), Nil):
-    override def typeDescription: String = s"${leafName}?"
-    override def isResolved: Boolean     = false
+    override def typeDescription: String                             = s"${leafName}?"
+    override def isResolved: Boolean                                 = false
     override def bind(typeArgMap: Map[TypeName, DataType]): DataType =
       typeArgMap.get(typeName) match
         case Some(resolved) =>

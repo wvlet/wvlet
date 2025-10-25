@@ -114,7 +114,7 @@ class Compiler(val compilerOptions: CompilerOptions) extends LogSupport:
 
   private def listLocalCompilationUnits(sourceFolders: List[String]): List[CompilationUnit] =
     val sourcePaths = sourceFolders
-    val units = sourcePaths.flatMap { path =>
+    val units       = sourcePaths.flatMap { path =>
       CompilationUnit.fromPath(path, compilationUnitCache)
     }
     units
@@ -224,7 +224,7 @@ case class CompileResult(
 ) extends LogSupport:
   def typedPlans: List[LogicalPlan] = units.map(_.resolvedPlan).filter(_.nonEmpty)
 
-  def hasFailures: Boolean = units.exists(_.isFailed)
+  def hasFailures: Boolean                               = units.exists(_.isFailed)
   def failureReport: ListMap[CompilationUnit, Throwable] =
     val l = ListMap.newBuilder[CompilationUnit, Throwable]
     units.filter(_.isFailed).foreach(unit => l += unit -> unit.lastError.get)

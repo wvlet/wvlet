@@ -60,7 +60,7 @@ case class CompilationUnit(sourceFile: SourceFile, isPreset: Boolean = false)
   def isFailed: Boolean = lastError.isDefined
 
   def isFinished(phase: Phase): Boolean = finishedPhases.contains(phase.name)
-  def setFinished(phase: Phase): Unit =
+  def setFinished(phase: Phase): Unit   =
     finishedPhases += phase.name
     lastCompiledAt = Some(System.currentTimeMillis())
 

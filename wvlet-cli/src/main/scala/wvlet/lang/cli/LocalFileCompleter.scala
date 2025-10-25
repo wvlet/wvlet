@@ -83,7 +83,7 @@ case class LocalFileCompleter(workEnv: WorkEnv) extends Completer:
             case _ =>
               s
 
-        val showHidden = leafPrefix.startsWith(".")
+        val showHidden           = leafPrefix.startsWith(".")
         val entries: Array[File] = Option(baseDir.listFiles())
           .getOrElse(Array.empty[File])
           .filter(f => showHidden || !f.getName.startsWith("."))

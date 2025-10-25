@@ -22,7 +22,7 @@ class DBConnectorProvider(workEnv: WorkEnv) extends LogSupport with AutoCloseabl
       debug(s"Get a connector for DBType:${dbType}")
       dbType match
         case DBType.Trino =>
-          val props = profile.properties ++ properties
+          val props                                 = profile.properties ++ properties
           def parseBoolean(v: Any): Option[Boolean] =
             v match
               case b: java.lang.Boolean =>

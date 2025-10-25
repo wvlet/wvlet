@@ -115,8 +115,8 @@ class DuckDBConnector(workEnv: WorkEnv, prepareTPCH: Boolean = false, prepareTPC
         |description
         |from duckdb_functions()""".stripMargin) { rs =>
       while rs.next() do
-        val argNames = jsonArrayCodec.fromJson(rs.getString("parameters"))
-        val argTypes = jsonArrayCodec.fromJson(rs.getString("parameter_types"))
+        val argNames            = jsonArrayCodec.fromJson(rs.getString("parameters"))
+        val argTypes            = jsonArrayCodec.fromJson(rs.getString("parameter_types"))
         val args: Seq[DataType] = argNames
           .zipAll(argTypes, "", "")
           .map {

@@ -25,8 +25,8 @@ import scala.collection.mutable.ArrayBuffer
 
 object SourceFile:
   object NoSourceFile extends SourceFile(EmptyFile)
-  def fromFile(v: VirtualFile): SourceFile = SourceFile(v)
-  def fromFile(file: String): SourceFile   = SourceFile(LocalFile(file))
+  def fromFile(v: VirtualFile): SourceFile         = SourceFile(v)
+  def fromFile(file: String): SourceFile           = SourceFile(LocalFile(file))
   def fromWvletString(content: String): SourceFile = fromString(
     s"${ULID.newULIDString}.wv",
     content

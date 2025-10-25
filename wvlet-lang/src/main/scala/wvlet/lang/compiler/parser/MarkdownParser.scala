@@ -129,7 +129,7 @@ class MarkdownParser(unit: CompilationUnit) extends LogSupport:
 
     // Extract language hint from fence token
     val fenceText = fenceToken.str
-    val language =
+    val language  =
       if fenceText.length > 3 then
         Some(fenceText.substring(3).trim).filter(_.nonEmpty)
       else

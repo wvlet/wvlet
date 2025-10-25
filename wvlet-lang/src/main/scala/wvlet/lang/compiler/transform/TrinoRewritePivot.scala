@@ -31,7 +31,7 @@ object TrinoRewritePivot extends Phase("rewrite-pivot"):
 
   override def run(unit: CompilationUnit, context: Context): CompilationUnit =
     val resolvedPlan = unit.resolvedPlan
-    val newPlan =
+    val newPlan      =
       if context.dbType != Trino then
         resolvedPlan
       else
@@ -62,7 +62,7 @@ object TrinoRewritePivot extends Phase("rewrite-pivot"):
 
   private def rewritePivot(p: Pivot, aggExprs: List[Attribute]): Relation =
     // Rewrite pivot function for Trino
-    val pivotKeyNames = p.pivotKeys.map(_.name.fullName)
+    val pivotKeyNames                        = p.pivotKeys.map(_.name.fullName)
     val pivotGroupingKeys: List[GroupingKey] =
       if p.groupingKeys.isEmpty then
         // If no grouping key is given, use all columns in the relation
@@ -91,7 +91,7 @@ object TrinoRewritePivot extends Phase("rewrite-pivot"):
       .pivotKeys
       .flatMap { pivotKey =>
         val targetColumn = pivotKey.name
-        val pivotExprs = pivotKey
+        val pivotExprs   = pivotKey
           .values
           .flatMap { v =>
             val exprs = List.newBuilder[SingleColumn]

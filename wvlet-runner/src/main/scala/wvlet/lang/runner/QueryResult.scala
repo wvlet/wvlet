@@ -72,8 +72,8 @@ case class PlanResult(plan: LogicalPlan, result: QueryResult) extends QueryResul
 case class TableRows(schema: RelationType, rows: Seq[ListMap[String, Any]], totalRows: Int)
     extends QueryResult:
   def isTruncated: Boolean = rows.size < totalRows
-  def toJsonLines: String =
-    val codec = MessageCodec.of[ListMap[String, Any]]
+  def toJsonLines: String  =
+    val codec     = MessageCodec.of[ListMap[String, Any]]
     val jsonLines = rows
       .map { row =>
         codec.toJson(row)

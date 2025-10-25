@@ -80,7 +80,7 @@ case class GlobalContext(compilerOptions: CompilerOptions):
   def getContextOf(unit: CompilationUnit, scope: Scope = Scope.NoScope): Context = contextTable
     .getOrElseUpdate(unit.sourceFile, Context(global = this, scope = scope, compilationUnit = unit))
 
-  def getAllContexts: List[Context] = contextTable.values.toList
+  def getAllContexts: List[Context]                 = contextTable.values.toList
   def getAllCompilationUnits: List[CompilationUnit] = getAllContexts
     .map(_.compilationUnit)
     .filter(!_.isEmpty)

@@ -25,7 +25,7 @@ class ExecutionPlanTest extends AirSpec:
   test("create an execution plan") {
     val workEnv = WorkEnv()
     val duckdb  = new DuckDBConnector(workEnv)
-    val trino =
+    val trino   =
       new TrinoConnector(
         TrinoConfig(catalog = "memory", schema = "main", hostAndPort = "localhost:8080"),
         workEnv

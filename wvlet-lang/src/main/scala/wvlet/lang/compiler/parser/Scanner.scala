@@ -336,7 +336,7 @@ abstract class ScannerBase[Token](sourceFile: SourceFile, config: ScannerConfig)
       getOperatorRest()
 
   protected def scanZero(): Unit =
-    var base: Int = 10
+    var base: Int                = 10
     def fetchLeadingZero(): Unit =
       putChar(ch)
       nextChar()

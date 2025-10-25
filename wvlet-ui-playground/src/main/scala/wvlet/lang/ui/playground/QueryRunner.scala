@@ -31,7 +31,7 @@ class QueryRunner extends AutoCloseable with LogSupport:
     connector
   ).query(sql)
     .map { tbl =>
-      val rows = tbl.asScalaArray
+      val rows                                    = tbl.asScalaArray
       val (truncatedRows, totalRows: Option[Int]) =
         if rows.size > rowLimit then
           (rows.take(rowLimit), Some(rows.size))

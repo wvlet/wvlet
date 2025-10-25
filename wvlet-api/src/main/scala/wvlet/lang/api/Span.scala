@@ -115,8 +115,8 @@ object Span:
     */
   val NoSpan: Span = within(1, 0)
 
-  def at(offset: Int): Span              = within(offset, offset)
-  def within(start: Int, end: Int): Span = apply(start, end, 0)
+  def at(offset: Int): Span                              = within(offset, offset)
+  def within(start: Int, end: Int): Span                 = apply(start, end, 0)
   def apply(start: Int, end: Int, pointDelta: Int): Span =
     val p = (pointDelta.toLong & POSITION_MASK).toLong
     new Span(

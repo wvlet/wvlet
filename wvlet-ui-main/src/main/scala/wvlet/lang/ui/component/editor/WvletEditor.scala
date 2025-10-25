@@ -15,7 +15,7 @@ object WvletEditor:
   val editorWidthRem: Int  = 40 // rem (chars)
   val editorHeightRem: Int = 24 // rem (lines)
   val previewHeightPx: Int = 512
-  def editorStyle =
+  def editorStyle          =
     s"min-width: ${editorWidthRem}rem; max-width: ${editorWidthRem}rem; min-height: ${editorHeightRem}rem;"
 
 class WvletEditor(

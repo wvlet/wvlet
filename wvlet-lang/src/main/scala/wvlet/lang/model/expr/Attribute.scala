@@ -120,7 +120,7 @@ case class AttributeRef(attr: Attribute)(val exprId: ULID = ULID.newULID) extend
   override def inputAttributes: Seq[Attribute]  = attr.inputAttributes
   override def outputAttributes: Seq[Attribute] = attr.inputAttributes
 
-  override def hashCode(): Int = super.hashCode()
+  override def hashCode(): Int           = super.hashCode()
   override def equals(obj: Any): Boolean =
     obj match
       case that: AttributeRef =>

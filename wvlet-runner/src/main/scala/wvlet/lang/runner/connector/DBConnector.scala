@@ -121,7 +121,7 @@ trait DBConnector(val dbType: DBType, workEnv: WorkEnv) extends AutoCloseable wi
     def showWarnings(w: SQLWarning): Unit =
       w match
         case null =>
-        case _ =>
+        case _    =>
           warn(w.getMessage)
           showWarnings(w.getNextWarning)
     showWarnings(w)

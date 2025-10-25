@@ -26,7 +26,7 @@ abstract class RoundTripSpec(path: String, ignoredSpec: Map[String, String] = Ma
       debug(rewrittenPlan.pp)
 
       val config = CodeFormatterConfig()
-      val g =
+      val g      =
         if unit.isSQL then
           SqlGenerator(config)
         else

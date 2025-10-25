@@ -37,7 +37,7 @@ trait RunnerSpec(
 
   private val dbConnectorProvider = DBConnectorProvider(workEnv)
   private val queryExecutor       = QueryExecutor(dbConnectorProvider, profile, workEnv)
-  override def afterAll: Unit =
+  override def afterAll: Unit     =
     queryExecutor.close()
     dbConnectorProvider.close()
 
@@ -123,7 +123,7 @@ class RunnerSpecSqlBasic
     extends RunnerSpec(
       "spec/sql/basic",
       ignoredSpec = Map(
-        "show-create-view.sql" -> "SHOW CREATE VIEW execution not yet fully supported",
+        "show-create-view.sql"         -> "SHOW CREATE VIEW execution not yet fully supported",
         "date-time-function-calls.sql" ->
           "Testing parser for date/time/timestamp functions - DuckDB lacks these functions",
         "nested-parentheses-tablesample.sql" -> "Handle engine specific samplign percentage",

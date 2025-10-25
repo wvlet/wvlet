@@ -41,7 +41,7 @@ class QueryConverterCommandTest extends AirSpec:
 
   test("compile command should convert a simple query") {
     val inputQuery = "from users select name, age where age > 20"
-    val out = captureStdout {
+    val out        = captureStdout {
       WvletMain.main(s"""compile "$inputQuery" """)
     }
 
@@ -115,7 +115,7 @@ class QueryConverterCommandTest extends AirSpec:
 
   test("to_wvlet command should convert a simple query") {
     val sqlQuery = "SELECT name, age FROM users WHERE age > 20"
-    val out = captureStdout {
+    val out      = captureStdout {
       WvletMain.main(s"""to_wvlet "$sqlQuery" """)
     }
 

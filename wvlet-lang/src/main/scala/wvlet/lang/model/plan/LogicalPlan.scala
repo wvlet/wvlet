@@ -495,7 +495,7 @@ trait LeafPlan extends LogicalPlan:
 
 trait UnaryPlan extends LogicalPlan:
   def child: LogicalPlan
-  override def children: List[LogicalPlan] = child :: Nil
+  override def children: List[LogicalPlan]     = child :: Nil
   override def inputRelationType: RelationType =
     child match
       case r: Relation =>

@@ -16,7 +16,7 @@ package wvlet.lang.model.expr
 //case class TableIdentifier(catalog: Option[String], database: Option[String], table: String)
 
 class Qualifier(val parts: Seq[String]):
-  def prefix: String = parts.mkString(".")
+  def prefix: String                      = parts.mkString(".")
   def qualifiedName(name: String): String =
     if parts.isEmpty then
       name

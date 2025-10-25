@@ -303,7 +303,7 @@ lazy val cli = project
     buildSettings,
     name := "wvlet-cli",
     // Need to fork a JVM to avoid DuckDB crash while running runner/cli test simultaneously
-    Test / fork := true,
+    Test / fork          := true,
     Test / baseDirectory :=
       (ThisBuild / baseDirectory).value,
     packQuick :=
@@ -483,7 +483,7 @@ lazy val playground = project
       Def
         .task {
           // Generate a Scala file containing all .wv files in wvlet-stdlib
-          val libDir = baseDirectory.value / "src/main/wvlet/Examples"
+          val libDir     = baseDirectory.value / "src/main/wvlet/Examples"
           val targetFile = (Compile / sourceManaged).value /
             "wvlet/lang/ui/playground/SampleQuery.scala"
           val body = generateWvletLib(libDir, "wvlet.lang.ui.playground", "SampleQuery")

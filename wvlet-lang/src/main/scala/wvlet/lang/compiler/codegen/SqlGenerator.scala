@@ -23,7 +23,7 @@ import wvlet.lang.model.plan.SamplingMethod.reservoir
 import scala.collection.immutable.ListMap
 
 object SqlGenerator:
-  private val identifierPattern = "^[_a-zA-Z][_a-zA-Z0-9]*$".r
+  private val identifierPattern                         = "^[_a-zA-Z][_a-zA-Z0-9]*$".r
   private def doubleQuoteIfNecessary(s: String): String =
     if identifierPattern.matches(s) then
       s
@@ -450,9 +450,9 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             relation(child, block.copy(whereFilter = f :: block.whereFilter))
       case a: Agg if a.child.isPivot =>
         // pivot + agg combination
-        val p: Pivot = a.child.asInstanceOf[Pivot]
-        val onExpr   = pivotOnExpr(p)
-        val aggItems = cl(a.selectItems.map(x => expr(x)))
+        val p: Pivot  = a.child.asInstanceOf[Pivot]
+        val onExpr    = pivotOnExpr(p)
+        val aggItems  = cl(a.selectItems.map(x => expr(x)))
         val pivotExpr =
           val child = relation(p.child, SQLBlock())(using InFromClause)
           group(
@@ -548,8 +548,8 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
               text(",")
 
         // Generate SQL for left and right relations in a flat structure
-        val l = relation(j.left, SQLBlock())(using InFromClause)
-        val r = relation(j.right, SQLBlock())(using InFromClause)
+        val l              = relation(j.left, SQLBlock())(using InFromClause)
+        val r              = relation(j.right, SQLBlock())(using InFromClause)
         val c: Option[Doc] =
           j.cond match
             case NoJoinCriteria =>
@@ -731,7 +731,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         }
 
         val conds = cond.result()
-        val body =
+        val body  =
           if conds.size == 0 then
             baseSql
           else
@@ -765,7 +765,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             )
         }
         val conds = cond.result()
-        val body =
+        val body  =
           if conds.size == 0 then
             baseSql
           else
@@ -818,7 +818,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             )
         )
 
-        val conds = cond.result()
+        val conds     = cond.result()
         val wherePart =
           if conds.isEmpty then
             empty
@@ -853,7 +853,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         // Deduplicate models by name. Since SymbolLabeler updates existing symbols when
         // models are redefined, all duplicate ModelSymbolInfo instances will reference
         // the latest definition, so picking any one (head) is sufficient.
-        val modelsByName = allModels.groupBy(_.name.name)
+        val modelsByName                      = allModels.groupBy(_.name.name)
         val models: Seq[ListMap[String, Any]] = modelsByName
           .values
           .map(_.head)
@@ -863,7 +863,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             e += "name" -> s"'${m.name.name}'"
 
             // model argument types
-            val t = m.symbol.tree
+            val t                   = m.symbol.tree
             val description: String =
               if t.comments.isEmpty then
                 "''"
@@ -1063,7 +1063,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             notSupported("SHOW SESSION")
       case lv: LateralView =>
         // Hive LATERAL VIEW syntax
-        val child = relation(lv.child, SQLBlock())(using InFromClause)
+        val child               = relation(lv.child, SQLBlock())(using InFromClause)
         val lateralViewKeywords =
           if lv.isOuter then
             "lateral view outer"
@@ -1434,11 +1434,11 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
                 // Modify the function to include null treatment inside the parentheses
                 w.base match
                   case f: FunctionApply =>
-                    val functionName = expr(f.base)
+                    val functionName          = expr(f.base)
                     val argsWithNullTreatment =
                       if f.args.nonEmpty then
                         // Apply null treatment to the last argument
-                        val regularArgs = f.args.init.map(expr).toList
+                        val regularArgs              = f.args.init.map(expr).toList
                         val lastArgWithNullTreatment =
                           expr(f.args.last) + ws + text(nullTreatment.expr)
                         cl(regularArgs :+ lastArgWithNullTreatment)
@@ -1586,7 +1586,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       case d @ DotRef(qual: Expression, name: NameExpr, _, _) =>
         expr(qual) + "." + expr(name)
       case in: In =>
-        val left = expr(in.a)
+        val left  = expr(in.a)
         val right =
           in.list match
             case (s: SubQueryExpression) :: Nil =>
@@ -1595,7 +1595,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
               paren(cl(in.list.map(x => expr(x))))
         wl(left, "in", right)
       case notIn: NotIn =>
-        val left = expr(notIn.a)
+        val left  = expr(notIn.a)
         val right =
           notIn.list match
             case (s: SubQueryExpression) :: Nil =>
@@ -1744,7 +1744,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       case e: Exists =>
         wl(text("exists"), expr(e.child))
       case c: ColumnDef =>
-        val baseColumn = wl(expr(c.columnName), text(c.tpe.sqlExpr))
+        val baseColumn       = wl(expr(c.columnName), text(c.tpe.sqlExpr))
         val columnAttributes =
           List(
             // Add NOT NULL constraint
@@ -1793,7 +1793,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       list: List[Expression],
       operator: String
   ): Doc =
-    val left = expr(tuple)
+    val left  = expr(tuple)
     val right =
       list match
         case (s: SubQueryExpression) :: Nil =>

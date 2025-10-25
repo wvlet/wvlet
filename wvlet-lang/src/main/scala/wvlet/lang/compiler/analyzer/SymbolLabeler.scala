@@ -169,12 +169,12 @@ object SymbolLabeler extends Phase("symbol-labeler"):
           throw new IllegalArgumentException(s"Invalid package name: ${name}")
 
     val pkgLeafName = Name.termName(pkgName.leafName)
-    val pkgSymbol =
+    val pkgSymbol   =
       pkgOwner.symbolInfo.declScope.lookupSymbol(pkgLeafName) match
         case Some(s) =>
           s
         case None =>
-          val sym = Symbol(ctx.global.newSymbolId, pkgName.span)
+          val sym        = Symbol(ctx.global.newSymbolId, pkgName.span)
           val pkgSymInfo = PackageSymbolInfo(
             sym,
             pkgOwner,
@@ -222,7 +222,7 @@ object SymbolLabeler extends Phase("symbol-labeler"):
             val typeScope = ts.declScope
             t.elems
               .collect { case f: FunctionDef =>
-                val ft = toFunctionType(f, t.defContexts)
+                val ft             = toFunctionType(f, t.defContexts)
                 val funSym: Symbol =
                   typeScope.lookupSymbol(f.name) match
                     case Some(funSym) =>
@@ -259,7 +259,7 @@ object SymbolLabeler extends Phase("symbol-labeler"):
         // Register method defs to the type scope
         t.elems
           .collect { case f: FunctionDef =>
-            val ft = toFunctionType(f, t.defContexts)
+            val ft     = toFunctionType(f, t.defContexts)
             val funSym =
               typeScope.lookupSymbol(f.name) match
                 case Some(sym) =>
