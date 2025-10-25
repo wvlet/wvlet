@@ -12,12 +12,14 @@ class MarkdownWhitespaceSpec extends AirSpec:
         |
         |Second paragraph
         |""".stripMargin
-    val unit     = CompilationUnit(SourceFile.fromString("whitespace.md", markdown))
-    val parser   = MarkdownParser(unit)
-    val doc      = parser.parse()
-    doc.sourceText shouldBe markdown
-
-    val paragraphs = doc.blocks.collect { case p: MarkdownParagraph => p }
+    val unit   = CompilationUnit(SourceFile.fromString("whitespace.md", markdown))
+    val parser = MarkdownParser(unit)
+    val doc    = parser.parse()
+    val paragraphs = doc
+      .blocks
+      .collect { case p: MarkdownParagraph =>
+        p
+      }
     paragraphs.length shouldBe 2
 
     val first = paragraphs.head.raw

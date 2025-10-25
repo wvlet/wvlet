@@ -14,22 +14,15 @@
 package wvlet.lang.model.expr
 
 import wvlet.lang.api.Span
-import wvlet.lang.compiler.{CompilationUnit, Context}
 import wvlet.lang.model.DataType.EmptyRelationType
 import wvlet.lang.model.RelationType
 import wvlet.lang.model.plan.{LeafPlan, LogicalPlan}
 
 /**
-  * Markdown document root node (CST approach - stores only spans, text extracted on-demand)
+  * Markdown document root node (CST approach - spans only; child blocks carry raw text)
   */
-case class MarkdownDocument(blocks: List[MarkdownBlock], span: Span, raw: String)
-    extends Expression:
+case class MarkdownDocument(blocks: List[MarkdownBlock], span: Span) extends Expression:
   override def children: Seq[Expression] = blocks
-
-  /**
-    * Full document text captured during parsing
-    */
-  def sourceText: String = raw
 
 /**
   * Base trait for markdown block elements
@@ -37,11 +30,6 @@ case class MarkdownDocument(blocks: List[MarkdownBlock], span: Span, raw: String
 sealed trait MarkdownBlock extends Expression with LeafExpression:
   def span: Span
   def raw: String
-
-  /**
-    * Original markdown snippet for this block
-    */
-  def sourceText: String = raw
 
 /**
   * Heading with level (1-6 corresponding to #, ##, etc.)
@@ -54,8 +42,6 @@ case class MarkdownHeading(level: Int, span: Span, raw: String) extends Markdown
     val full = raw
     // Remove leading # characters and trim
     full.dropWhile(_ == '#').trim
-
-  def text(using ctx: Context): String = text
 
 /**
   * Paragraph of text (may contain inline formatting in future)
@@ -78,8 +64,6 @@ case class MarkdownCodeBlock(language: Option[String], span: Span, raw: String)
       lines.slice(1, lines.length - 1).mkString("\n")
     else
       ""
-
-  def code(using ctx: Context): String = code
 
 /**
   * List (ordered or unordered)

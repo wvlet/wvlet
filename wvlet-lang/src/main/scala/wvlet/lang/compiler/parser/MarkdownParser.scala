@@ -27,10 +27,7 @@ class MarkdownParser(unit: CompilationUnit) extends LogSupport:
   given src: SourceFile                  = unit.sourceFile
   given compilationUnit: CompilationUnit = unit
 
-  private val scanner = MarkdownScanner(
-    unit.sourceFile,
-    ScannerConfig(skipWhiteSpace = false)
-  )
+  private val scanner = MarkdownScanner(unit.sourceFile, ScannerConfig(skipWhiteSpace = false))
 
   private var lastToken: TokenData[MarkdownToken] = null
 
@@ -43,15 +40,14 @@ class MarkdownParser(unit: CompilationUnit) extends LogSupport:
       if block != null then
         blocks += block
 
-    val (docSpan, docRaw) =
+    val docSpan =
       startTokenOpt match
         case Some(startToken) =>
-          val span = spanFrom(startToken)
-          span -> textOf(span)
+          spanFrom(startToken)
         case None =>
-          Span.NoSpan -> ""
+          Span.NoSpan
 
-    val doc = MarkdownDocument(blocks.result(), docSpan, docRaw)
+    val doc = MarkdownDocument(blocks.result(), docSpan)
 
     // Attach blank lines to blocks (similar to comment attachment in WvletParser)
     attachBlankLines(doc)
@@ -205,6 +201,8 @@ class MarkdownParser(unit: CompilationUnit) extends LogSupport:
       MarkdownParagraph(currentSpan, textOf(currentSpan))
     else
       null
+
+  end parseParagraph
 
   private def spanFrom(startToken: TokenData[MarkdownToken]): Span =
     if lastToken != null then

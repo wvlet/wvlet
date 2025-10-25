@@ -54,9 +54,9 @@ trait VirtualFile extends Ordered[VirtualFile]:
   def contentString: String
   def content: IArray[Char] = IArray.unsafeFromArray(contentString.toCharArray)
 
-  def isWv: Boolean       = name.endsWith(".wv")
-  def isSQL: Boolean      = name.endsWith(".sql")
-  def isMarkdown: Boolean = name.endsWith(".md")
+  def isWv: Boolean         = name.endsWith(".wv")
+  def isSQL: Boolean        = name.endsWith(".sql")
+  def isMarkdown: Boolean   = name.endsWith(".md")
   def isSourceFile: Boolean = isWv || isSQL || isMarkdown
 
   override def compare(other: VirtualFile): Int =

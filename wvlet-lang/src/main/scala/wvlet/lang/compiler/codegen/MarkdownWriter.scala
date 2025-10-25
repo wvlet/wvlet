@@ -13,6 +13,7 @@
  */
 package wvlet.lang.compiler.codegen
 
+import wvlet.lang.api.Span
 import wvlet.lang.compiler.Context
 import wvlet.lang.model.expr.*
 import wvlet.log.LogSupport
@@ -27,7 +28,12 @@ class MarkdownWriter(using ctx: Context) extends LogSupport:
   /**
     * Write markdown from CST by extracting text from spans (perfect roundtrip)
     */
-  def writeFromSpans(doc: MarkdownDocument): String = doc.sourceText
+  def writeFromSpans(doc: MarkdownDocument): String =
+    val ctx = summon[Context]
+    if doc.span == Span.NoSpan then
+      doc.blocks.map(_.raw).mkString("\n")
+    else
+      ctx.compilationUnit.text(doc.span)
 
   /**
     * Write markdown from CST by reconstructing from structure (validates CST)
@@ -60,7 +66,7 @@ class MarkdownWriter(using ctx: Context) extends LogSupport:
       case blank: MarkdownBlankLine =>
         sb.append("")
       case text: MarkdownText =>
-        sb.append(text.sourceText)
+        sb.append(text.raw)
       case item: MarkdownListItem =>
         writeListItem(item, sb)
 
@@ -81,9 +87,7 @@ class MarkdownWriter(using ctx: Context) extends LogSupport:
     sb.append(codeBlock.code)
     sb.append("\n```")
 
-  private def writeParagraph(para: MarkdownParagraph, sb: StringBuilder): Unit = sb.append(
-    para.sourceText
-  )
+  private def writeParagraph(para: MarkdownParagraph, sb: StringBuilder): Unit = sb.append(para.raw)
 
   private def writeList(list: MarkdownList, sb: StringBuilder): Unit = list
     .items
@@ -93,17 +97,17 @@ class MarkdownWriter(using ctx: Context) extends LogSupport:
         sb.append(s"${idx + 1}. ")
       else
         sb.append("- ")
-      sb.append(item.sourceText)
+      sb.append(item.raw)
       sb.append("\n")
     }
 
   private def writeListItem(item: MarkdownListItem, sb: StringBuilder): Unit =
     sb.append("- ")
-    sb.append(item.sourceText)
+    sb.append(item.raw)
 
   private def writeBlockquote(blockquote: MarkdownBlockquote, sb: StringBuilder): Unit =
     sb.append("> ")
-    sb.append(blockquote.sourceText)
+    sb.append(blockquote.raw)
 
 end MarkdownWriter
 
