@@ -52,5 +52,4 @@ class ParserSpecSqlHive
 class ParserSpecSqlUpdate extends ParserSpec("spec/sql/update")
 
 // Markdown
-// TODO: Re-enable once parser infinite loop is fixed
-// class ParserSpecMarkdown extends ParserSpec("spec/markdown")
+class ParserSpecMarkdown extends ParserSpec("spec/markdown")

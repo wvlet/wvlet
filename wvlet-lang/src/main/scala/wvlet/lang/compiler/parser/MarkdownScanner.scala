@@ -234,8 +234,10 @@ class MarkdownScanner(sourceFile: SourceFile, config: ScannerConfig = ScannerCon
         case _ =>
           putChar(ch)
           nextChar()
-
-    if charOffset > offset then
+    // If we actually consumed any characters for text, emit TEXT.
+    // Using the token buffer state is robust; relying on offsets can yield
+    // a zero-length token when a special char is encountered immediately.
+    if tokenBuffer.nonEmpty then
       current.token = TEXT
       current.str = flushTokenString()
     else
