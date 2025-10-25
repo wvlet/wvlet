@@ -24,7 +24,7 @@ class FileApiImpl(workEnv: WorkEnv) extends FileApi with LogSupport:
   private def getFile(path: String): java.io.File = new java.io.File(workEnv.path, path)
 
   override def listFiles(request: FileApi.FileRequest): List[FileEntry] =
-    val f = getFile(request.relativePath)
+    val f                          = getFile(request.relativePath)
     val files: Array[java.io.File] =
       if !f.exists() then
         Array.empty

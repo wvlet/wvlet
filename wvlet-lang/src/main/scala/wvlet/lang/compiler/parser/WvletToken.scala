@@ -268,8 +268,8 @@ enum WvletToken(val tokenType: TokenType, val str: String):
 end WvletToken
 
 object WvletToken:
-  val keywords       = WvletToken.values.filter(_.tokenType == Keyword).toSeq
-  val specialSymbols = WvletToken.values.filter(_.tokenType == Op).toSeq
+  val keywords             = WvletToken.values.filter(_.tokenType == Keyword).toSeq
+  val specialSymbols       = WvletToken.values.filter(_.tokenType == Op).toSeq
   val literalStartKeywords = List(
     WvletToken.NULL,
     WvletToken.TRUE,

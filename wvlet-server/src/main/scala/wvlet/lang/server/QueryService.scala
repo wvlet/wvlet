@@ -30,7 +30,7 @@ class QueryService(scriptRunner: WvletScriptRunner) extends LogSupport with Auto
 
   def enqueue(request: QueryRequest): QueryResponse =
     // Enqueue the query request
-    val queryId = ULID.newULID
+    val queryId        = ULID.newULID
     val firstQueryInfo = QueryInfo(
       queryId = queryId,
       pageToken = "0",
@@ -78,7 +78,7 @@ class QueryService(scriptRunner: WvletScriptRunner) extends LogSupport with Auto
           preview = Some(preview)
         )
     else
-      val errors: Seq[Throwable] = queryResult.getAllErrors
+      val errors: Seq[Throwable]        = queryResult.getAllErrors
       val errorReport: List[QueryError] =
         errors
           .map {

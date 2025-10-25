@@ -80,7 +80,7 @@ enum StatusCode(statusType: StatusType):
     val locString = s"${sourceLocation.locationString}"
     val column    = sourceLocation.position.map(_.column).getOrElse(1)
     val line      = sourceLocation.codeLineAt
-    val err =
+    val err       =
       if line.isEmpty then
         s"${baseMsg} (${locString})"
       else

@@ -72,8 +72,8 @@ class FileNav(rpcClient: RPCAsyncClient) extends RxElement:
 
   private class NewFileButton(path: String, fileEntry: FileEntry) extends RxElement:
     override def render: RxElement = button(
-      cls   -> "text-sm px-1 text-gray-500 hover:text-gray-300",
-      title -> "New",
+      cls     -> "text-sm px-1 text-gray-500 hover:text-gray-300",
+      title   -> "New",
       onclick -> { (e: MouseEvent) =>
         ConsoleLog.writeError(s"[NOT IMPLEMENTED] Add a file at ${fileEntry}")
       },
@@ -120,7 +120,7 @@ class FileSelectorPopup extends RxElement:
   private val entries = Rx.variable(List.empty[FileEntry])
   private val toShow  = Rx.variable(false)
 
-  val selectorId = s"selector-${ULID.newULID}"
+  val selectorId                                = s"selector-${ULID.newULID}"
   def updateEntries(lst: List[FileEntry]): Unit =
     entries := lst
     toShow  := true
@@ -159,7 +159,7 @@ class FileSelectorPopup extends RxElement:
                   role     -> "menuitem",
                   tabindex -> "-1",
                   id       -> s"menu-item-${i}",
-                  onclick -> { (event: MouseEvent) =>
+                  onclick  -> { (event: MouseEvent) =>
                     event.preventDefault()
                     selectedPath := e.path
                   },

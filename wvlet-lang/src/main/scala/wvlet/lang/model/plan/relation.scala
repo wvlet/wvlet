@@ -77,7 +77,7 @@ trait HasTableOrFileName:
         false
 
   def isForTable: Boolean = !isForFile
-  def targetName: String =
+  def targetName: String  =
     target match
       case l: StringLiteral =>
         l.unquotedValue
@@ -219,9 +219,9 @@ case class FileScan(
     columns: List[NamedType],
     span: Span
 ) extends TableInput:
-  def filePath: String             = path.unquotedValue
-  override def sqlExpr: Expression = path
-  override def toString: String    = s"FileScan(${filePath})"
+  def filePath: String                    = path.unquotedValue
+  override def sqlExpr: Expression        = path
+  override def toString: String           = s"FileScan(${filePath})"
   override val relationType: RelationType =
     if columns.isEmpty then
       schema
@@ -399,7 +399,7 @@ case class PrependColumnsToRelation(child: Relation, newColumns: List[Attribute]
     extends UnaryRelation
     with Selection
     with LogSupport:
-  override def toString: String = s"Prepend[${newColumns.mkString(", ")}](${child})"
+  override def toString: String             = s"Prepend[${newColumns.mkString(", ")}](${child})"
   override def selectItems: List[Attribute] =
     newColumns ++ List(AllColumns(Wildcard(NoSpan), None, NoSpan))
 
@@ -691,7 +691,7 @@ trait TopLevelStatement extends LogicalPlan
 trait QueryStatement extends UnaryRelation with TopLevelStatement
 
 case class Query(body: Relation, span: Span) extends QueryStatement with FilteringRelation:
-  override def child: Relation = body
+  override def child: Relation             = body
   override def children: List[LogicalPlan] =
     val b = List.newBuilder[LogicalPlan]
     b += body

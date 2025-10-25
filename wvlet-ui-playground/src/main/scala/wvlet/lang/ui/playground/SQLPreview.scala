@@ -20,7 +20,7 @@ class SQLPreview(currentQuery: CurrentQuery, windowSize: WindowSize, queryRunner
 
   private var monitor = Cancelable.empty
 
-  private val compiler = Compiler.default(".")
+  private val compiler                = Compiler.default(".")
   private val contextCompilationUnits = DemoQuerySet
     .defaultQuerySet
     .map { q =>

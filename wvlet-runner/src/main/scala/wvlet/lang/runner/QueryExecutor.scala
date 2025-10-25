@@ -324,7 +324,7 @@ class QueryExecutor(
       Using.resource(BufferedWriter(OutputStreamWriter(GZIPOutputStream(FileOutputStream(out))))) {
         w =>
           val codec = JDBCCodec(rs)
-          val it = codec.mapMsgPackMapRows { msgpack =>
+          val it    = codec.mapMsgPackMapRows { msgpack =>
             rowCodec.fromMsgPack(msgpack)
           }
           while it.hasNext do
@@ -350,7 +350,7 @@ class QueryExecutor(
     import scala.util.control.NonFatal
     try
       val copyOpts = "(FORMAT 'parquet', USE_TMP_FILE true)"
-      val copySQL =
+      val copySQL  =
         s"copy (select * from read_json_auto('${sq(jsonlFile.getPath)}')) to '${sq(
             targetPath
           )}' ${copyOpts}"
@@ -404,7 +404,7 @@ class QueryExecutor(
         debug(s"Executing SQL:\n${generatedSQL.sql}")
         try
           given monitor: QueryProgressMonitor = context.queryProgressMonitor
-          val connector =
+          val connector                       =
             if useDuck then
               dbConnectorProvider.getConnector(DBType.DuckDB, None)
             else
@@ -413,7 +413,7 @@ class QueryExecutor(
           val result =
             connector.runQuery(generatedSQL.sql) { rs =>
               val metadata = rs.getMetaData
-              val fields =
+              val fields   =
                 for i <- 1 to metadata.getColumnCount
                 yield NamedType(
                   Name.termName(metadata.getColumnName(i)),
@@ -427,7 +427,7 @@ class QueryExecutor(
               val codec    = JDBCCodec(rs)
               val rowCodec = MessageCodec.of[ListMap[String, Any]]
               var rowCount = 0
-              val it = codec.mapMsgPackMapRows { msgpack =>
+              val it       = codec.mapMsgPackMapRows { msgpack =>
                 if rowCount <= config.rowLimit then
                   rowCodec.fromMsgPack(msgpack)
                 else

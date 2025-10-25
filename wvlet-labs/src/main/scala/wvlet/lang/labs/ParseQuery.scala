@@ -136,8 +136,8 @@ class ParseQuery() extends LogSupport:
         (errorCount.toDouble / queryCount * 100)
       else
         0.0
-    val elapsedTime     = ElapsedTime.nanosSince(startTimeNanos)
-    val durationSeconds = elapsedTime.toMillis / 1000.0
+    val elapsedTime      = ElapsedTime.nanosSince(startTimeNanos)
+    val durationSeconds  = elapsedTime.toMillis / 1000.0
     val queriesPerMinute =
       if durationSeconds > 0 then
         (queryCount / durationSeconds) * 60.0
@@ -231,7 +231,7 @@ class ParseQuery() extends LogSupport:
                   val currentQueryCount = queryCount.get()
                   if currentQueryCount % PROGRESS_REPORT_INTERVAL == 0 then
                     val currentErrorCount = errorCount.get()
-                    val progressMessage = formatProgressMessage(
+                    val progressMessage   = formatProgressMessage(
                       currentQueryCount,
                       currentErrorCount,
                       startTimeNanos

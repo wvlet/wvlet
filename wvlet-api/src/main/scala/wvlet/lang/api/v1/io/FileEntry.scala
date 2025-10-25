@@ -13,7 +13,7 @@ case class FileEntry(
     lastUpdatedAtMillis: Long,
     content: Option[String] = None
 ) extends Ordered[FileEntry]:
-  def isFile: Boolean = !isDirectory
+  def isFile: Boolean    = !isDirectory
   def parentPath: String =
     if path.isEmpty || path == "." then
       ""

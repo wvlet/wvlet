@@ -33,7 +33,7 @@ case class Profile(
     schema: Option[String] = None,
     properties: Map[String, Any] = Map.empty
 ):
-  def dbType: DBType = DBType.fromString(`type`)
+  def dbType: DBType                                 = DBType.fromString(`type`)
   def withProperty(key: String, value: Any): Profile = copy(properties =
     properties + (key -> value)
   )

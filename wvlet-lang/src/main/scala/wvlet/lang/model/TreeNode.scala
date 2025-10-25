@@ -36,7 +36,7 @@ trait SyntaxTreeNode extends TreeNode with Product with LogSupport:
     ctx.compilationUnit.sourceFile.sourceLocationAt(span.end).position
 
   def childNodes: List[SyntaxTreeNode] =
-    val l = List.newBuilder[SyntaxTreeNode]
+    val l                  = List.newBuilder[SyntaxTreeNode]
     def loop(x: Any): Unit =
       x match
         case n: SyntaxTreeNode =>

@@ -204,7 +204,7 @@ object HelloTableFunction extends ConnectorTableFunction:
     def getMsg: String = msg
 
   class SplitProcessor(msg: String) extends io.trino.spi.function.table.TableFunctionSplitProcessor:
-    private var count = 0
+    private var count                                   = 0
     override def process(): TableFunctionProcessorState =
       if count == 0 then
         count += 1

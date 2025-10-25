@@ -27,7 +27,7 @@ object HiveRewriteFunctions extends Phase("hive-rewrite-functions"):
 
   override def run(unit: CompilationUnit, context: Context): CompilationUnit =
     val resolvedPlan = unit.resolvedPlan
-    val newPlan =
+    val newPlan      =
       if context.dbType != Hive then
         resolvedPlan
       else

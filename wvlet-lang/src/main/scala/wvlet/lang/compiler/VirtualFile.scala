@@ -63,7 +63,7 @@ trait VirtualFile extends Ordered[VirtualFile]:
     def split(s: String): List[Any] =
       val alphabetOrNumber = """[^\d]+|\d+""".r
       val num              = "[0-9]+".r
-      val parts = alphabetOrNumber
+      val parts            = alphabetOrNumber
         .findAllIn(s)
         .toList
         .map {
@@ -117,7 +117,7 @@ case class LocalFile(path: String) extends VirtualFile:
 
   override def contentString: String = SourceIO.readAsString(path)
 
-  override def lastUpdatedAt: Long = SourceIO.lastUpdatedAt(path)
+  override def lastUpdatedAt: Long          = SourceIO.lastUpdatedAt(path)
   override def listFiles: List[VirtualFile] =
     if isDirectory then
       SourceIO.listFiles(path).map(p => LocalFile(p.toString))

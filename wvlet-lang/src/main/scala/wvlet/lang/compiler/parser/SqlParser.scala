@@ -177,7 +177,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
   end statement
 
   def alterStatement(): LogicalPlan =
-    val t = scanner.lookAhead()
+    val t                    = scanner.lookAhead()
     val alterType: AlterType =
       t.token match
         case SqlToken.ALTER =>
@@ -356,7 +356,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
             consume(SqlToken.DATA)
             consume(SqlToken.TYPE)
             val newType = typeName()
-            val using =
+            val using   =
               if scanner.lookAhead().token == SqlToken.USING then
                 consume(SqlToken.USING)
                 Some(expression())
@@ -415,7 +415,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         // DuckDB syntax: ALTER TABLE table ALTER column TYPE new_type [USING expression]
         consume(SqlToken.TYPE)
         val newType = typeName()
-        val using =
+        val using   =
           if scanner.lookAhead().token == SqlToken.USING then
             consume(SqlToken.USING)
             Some(expression())
@@ -538,7 +538,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         case SqlToken.COMMENT =>
           consume(SqlToken.COMMENT)
           val commentLiteral = literal()
-          val newComment =
+          val newComment     =
             commentLiteral match
               case s: StringLiteral =>
                 Some(s.unquotedValue)
@@ -731,8 +731,8 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       // Use tail-recursive loop to avoid StackOverflowError with many CTEs
       @annotation.tailrec
       def loop(acc: List[AliasedRelation]): List[AliasedRelation] =
-        val t     = scanner.lookAhead()
-        val alias = identifier()
+        val t        = scanner.lookAhead()
+        val alias    = identifier()
         val typeDefs =
           scanner.lookAhead().token match
             case SqlToken.L_PAREN =>
@@ -817,7 +817,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
             consume(SqlToken.INTO)
             // Handle optional TABLE keyword after INSERT INTO (Hive syntax)
             consumeIfExist(SqlToken.TABLE)
-            val target = qualifiedName()
+            val target       = qualifiedName()
             val (columns, q) =
               if scanner.lookAhead().token == SqlToken.L_PAREN then
                 consume(SqlToken.L_PAREN)
@@ -846,7 +846,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
             val (childRelation, allOptions) = extractAllPartitionOptions(q)
             InsertOverwrite(target, childRelation, allOptions, spanFrom(t))
           case _ =>
-            val target = qualifiedName()
+            val target  = qualifiedName()
             val columns =
               scanner.lookAhead().token match
                 case SqlToken.L_PAREN =>
@@ -862,7 +862,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         end match
       case SqlToken.UPSERT =>
         consume(SqlToken.UPSERT)
-        val target = qualifiedName()
+        val target  = qualifiedName()
         val columns =
           scanner.lookAhead().token match
             case SqlToken.L_PAREN =>
@@ -957,7 +957,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     end tableElems
 
     def parseCreateStatement(): LogicalPlan =
-      val t = consume(SqlToken.CREATE)
+      val t       = consume(SqlToken.CREATE)
       val replace =
         scanner.lookAhead().token match
           case SqlToken.OR =>
@@ -1062,7 +1062,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         val target = qualifiedName()
         consume(SqlToken.SET)
 
-        val lst = assignments()
+        val lst  = assignments()
         val cond =
           scanner.lookAhead().token match
             case SqlToken.WHERE =>
@@ -1163,7 +1163,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     val t = consume(SqlToken.MERGE)
     consume(SqlToken.INTO)
     val target = qualifiedName()
-    val alias =
+    val alias  =
       scanner.lookAhead().token match
         case id if id.isIdentifier =>
           Some(identifier())
@@ -1172,7 +1172,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     consume(SqlToken.USING)
     val using = relationPrimary()
     consume(SqlToken.ON)
-    val on = expression()
+    val on          = expression()
     val whenMatched =
       scanner.lookAhead().token match
         case SqlToken.WHEN =>
@@ -1393,7 +1393,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
           SamplingSize.PercentageExpr(expr)
 
     def samplingMethod(): SamplingMethod =
-      val t = scanner.lookAhead()
+      val t          = scanner.lookAhead()
       val methodName =
         t.token match
           case SqlToken.SYSTEM =>
@@ -1655,7 +1655,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         Nil
 
   def parseGroupingKeyList(): List[GroupingKey] =
-    val t = scanner.lookAhead()
+    val t   = scanner.lookAhead()
     val key =
       t.token match
         case id if id.isIdentifier =>
@@ -2052,7 +2052,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       end match
     end valueExpressionRest
 
-    val t = scanner.lookAhead()
+    val t    = scanner.lookAhead()
     val expr =
       t.token match
         case SqlToken.PLUS =>
@@ -2410,7 +2410,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         val lit = literal()
         createLiteral(keywordToken, lit)
 
-    val t = scanner.lookAhead()
+    val t    = scanner.lookAhead()
     val expr =
       t.token match
         case SqlToken.NULL | SqlToken.TRUE | SqlToken.FALSE | SqlToken.INTEGER_LITERAL | SqlToken
@@ -2420,7 +2420,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
         case SqlToken.CASE =>
           val cases                          = List.newBuilder[WhenClause]
           var elseClause: Option[Expression] = None
-          def nextCase: Unit =
+          def nextCase: Unit                 =
             val t = scanner.lookAhead()
             t.token match
               case SqlToken.WHEN =>
@@ -2508,7 +2508,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
 
           // Create a FunctionApply with the appropriate arguments
           val funcName = UnquotedIdentifier("trim", spanFrom(t))
-          val args =
+          val args     =
             (trimType, trimChars) match
               case (Some(tType), Some(chars)) =>
                 // TRIM(LEADING/TRAILING/BOTH chars FROM string)
@@ -2681,7 +2681,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
   def array(): ArrayConstructor =
     consumeIfExist(SqlToken.ARRAY)
     // Support both ARRAY[...] and ARRAY(...) syntax for Hive compatibility
-    val t = scanner.lookAhead()
+    val t                      = scanner.lookAhead()
     val (startToken, endToken) =
       t.token match
         case SqlToken.L_PAREN =>
@@ -2803,7 +2803,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
       case SqlToken.PLUS | SqlToken.MINUS =>
         // Could be INTERVAL +/- '1' DAY or interval +/- expression
         val signToken = consumeToken()
-        val sign =
+        val sign      =
           signToken.token match
             case SqlToken.PLUS =>
               Sign.Positive
@@ -2839,7 +2839,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     val t = consume(SqlToken.EXTRACT)
     consume(SqlToken.L_PAREN)
     val fieldNode = identifier()
-    val field = IntervalField
+    val field     = IntervalField
       .unapply(fieldNode.leafName)
       .getOrElse {
         throw StatusCode
@@ -2964,7 +2964,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
 
     def windowFrame(): Option[WindowFrame] =
       def bracketWindowFrame(): WindowFrame =
-        val t = consume(SqlToken.L_BRACKET)
+        val t                      = consume(SqlToken.L_BRACKET)
         val frameStart: FrameBound =
           val t = scanner.lookAhead()
           t.token match
@@ -3024,7 +3024,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
               case _ =>
                 unexpected(t)
           case _ =>
-            val t = scanner.lookAhead()
+            val t           = scanner.lookAhead()
             val bound: Long =
               expression() match
                 case l: LongLiteral =>
@@ -3164,7 +3164,7 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
   end relationPrimary
 
   def tableAlias(input: Relation): AliasedRelation =
-    val alias = identifier()
+    val alias                            = identifier()
     val columns: Option[List[NamedType]] =
       scanner.lookAhead().token match
         case SqlToken.L_PAREN =>

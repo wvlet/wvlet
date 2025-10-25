@@ -74,7 +74,7 @@ object LogicalPlanRank extends LogSupport:
     def maxSyntaxRankDist: Int = numPlanNodes * (numPlanNodes - 1) / 2
     def maxInversionCount: Int = numPlanNodes - 1
 
-    def inversionScore: Double = 1.0 - (inversionCount.toDouble / maxInversionCount)
+    def inversionScore: Double  = 1.0 - (inversionCount.toDouble / maxInversionCount)
     def syntaxRankScore: Double =
       1.0 - ((syntaxRankDist.toDouble - numPlanNodes + 1) / (maxSyntaxRankDist - numPlanNodes + 1))
 
@@ -100,7 +100,7 @@ object LogicalPlanRank extends LogSupport:
     var lineMovement: Int   = dataflowRanks(0)._1.linePosition.line
     var syntaxRankDiff: Int = syntaxRanks(dataflowRanks(0)._1)
     var inversionCount: Int = 0
-    var joinCount: Int =
+    var joinCount: Int      =
       if isConnectNode(dataflowRanks(0)._1) then
         1
       else

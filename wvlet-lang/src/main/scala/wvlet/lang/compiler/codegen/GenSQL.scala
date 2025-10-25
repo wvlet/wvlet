@@ -162,7 +162,7 @@ object GenSQL extends Phase("generate-sql"):
       case s: SaveTo if s.isForTable =>
         val baseSQL           = generateSQLFromRelation(save.inputRelation, addHeader = false)
         var needsTableCleanup = false
-        val ctasCmd =
+        val ctasCmd           =
           if context.dbType.supportCreateOrReplace then
             s"create or replace table"
           else
@@ -193,11 +193,11 @@ object GenSQL extends Phase("generate-sql"):
         val baseSQL    = GenSQL.generateSQLFromRelation(save.inputRelation, addHeader = false)
         val targetPath = context.dataFilePath(s.targetName)
         val copySQL    = s"copy (${baseSQL.sql}) to '${targetPath}'"
-        val sql =
+        val sql        =
           if s.saveOptions.isEmpty then
             copySQL
           else
-            val g = sqlGeneratorFor(context.dbType)
+            val g    = sqlGeneratorFor(context.dbType)
             val opts = s
               .saveOptions
               .map { opt =>
@@ -211,7 +211,7 @@ object GenSQL extends Phase("generate-sql"):
         val tbl           = TableName.parse(a.targetName)
         val schema        = tbl.schema.getOrElse(context.defaultSchema)
         val fullTableName = s"${schema}.${tbl.name}"
-        val insertSQL =
+        val insertSQL     =
           context.catalog.getTable(TableName.parse(fullTableName)) match
             case Some(t) =>
               val columnList =
@@ -239,7 +239,7 @@ object GenSQL extends Phase("generate-sql"):
           val sql = s"create (${baseSQL.sql}) to '${targetPath}'"
           statements += withHeader(sql, a.sourceLocation)
       case d: Delete =>
-        val gen = sqlGeneratorFor(context.dbType)
+        val gen                                     = sqlGeneratorFor(context.dbType)
         def filterExpr(x: Relation): Option[String] =
           x match
             case q: Query =>

@@ -150,7 +150,7 @@ object TSVFormat extends QueryResultFormat:
   def printTableRows(tableRows: TableRows): String =
     val fieldNames = tableRows.schema.fields.map(_.name.name).toIndexedSeq
     val header     = fieldNames.mkString("\t")
-    val data = tableRows
+    val data       = tableRows
       .rows
       .map { row =>
         fieldNames

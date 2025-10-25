@@ -88,8 +88,8 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
   private def unary(r: UnaryRelation, op: String, items: List[Expression])(using
       sc: SyntaxContext
   ): Doc =
-    val in  = relation(r.child)
-    val lst = items.map(expr)
+    val in       = relation(r.child)
+    val lst      = items.map(expr)
     val argBlock =
       if lst.isEmpty then
         None
@@ -138,7 +138,7 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
       case c: CreateTableAs if c.createMode == CreateMode.Replace =>
         val query  = relation(c.child)(using InStatement)
         val target = expr(c.target)
-        val stmt =
+        val stmt   =
           code(c) {
             query / group(wl("save to", target))
           }
@@ -146,7 +146,7 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
       case i: InsertInto =>
         val query  = relation(i.child)(using InStatement)
         val target = expr(i.target)
-        val cols =
+        val cols   =
           if i.columns.isEmpty then
             None
           else
@@ -180,7 +180,7 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
             .queryDefs
             .map { d =>
               val alias = tableAliasOf(d)
-              val body =
+              val body  =
                 d.child match
                   case v: Values =>
                     // Values inside with clause is supported
@@ -323,7 +323,7 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
       case d: Debug =>
         val r = relation(d.child)
         // Render the debug expr like a top-level query
-        val body = relation(d.partialDebugExpr)(using InStatement)
+        val body      = relation(d.partialDebugExpr)(using InStatement)
         val debugExpr =
           code(d) {
             text("debug") + ws + indentedBrace(body)
@@ -367,7 +367,7 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
         val t = prev / pivot
         t
       case u: Unpivot =>
-        val prev = relation(u.child)
+        val prev    = relation(u.child)
         val unpivot =
           code(u) {
             group(
@@ -454,8 +454,8 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
           val fromSource = i.fromSource.map(x => wl("from", expr(x)))
           group(wl("import", importRef, alias, fromSource))
         case v: ValDef =>
-          val name = v.name.name
-          val body = expr(v.expr)
+          val name             = v.name.name
+          val body             = expr(v.expr)
           val nameAndType: Doc =
             if v.dataType.isUnknownType then
               text(name)
@@ -615,7 +615,7 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
         case l: Literal =>
           text(l.stringValue)
         case bq: BackquoteInterpolatedIdentifier =>
-          val p = expr(bq.prefix)
+          val p    = expr(bq.prefix)
           val body = bq
             .parts
             .map {

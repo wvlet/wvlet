@@ -18,7 +18,7 @@ case class QueryRequest(
 ):
   def queryLine: String =
     val lines = query.split("\n")
-    val line =
+    val line  =
       if linePosition.isEmpty then
         0
       else

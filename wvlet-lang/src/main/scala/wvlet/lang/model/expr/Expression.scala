@@ -96,7 +96,7 @@ trait Expression extends SyntaxTreeNode with LogSupport:
     * @return
     */
   def transformExpression(rule: PartialFunction[Expression, Expression]): Expression =
-    var changed = false
+    var changed                              = false
     def recursiveTransform(arg: Any): AnyRef =
       arg match
         case e: Expression =>
@@ -140,7 +140,7 @@ trait Expression extends SyntaxTreeNode with LogSupport:
     * @return
     */
   def transformUpExpression(rule: PartialFunction[Expression, Expression]): Expression =
-    var changed = false
+    var changed                = false
     def iter(arg: Any): AnyRef =
       arg match
         case e: Expression =>
@@ -257,7 +257,7 @@ trait Expression extends SyntaxTreeNode with LogSupport:
     traverseExpressions(
       new PartialFunction[Expression, Unit]:
         override def isDefinedAt(x: Expression): Boolean = cond.isDefinedAt(x)
-        override def apply(v1: Expression): Unit =
+        override def apply(v1: Expression): Unit         =
           if cond.apply(v1) then
             l += v1
     )

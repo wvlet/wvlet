@@ -156,7 +156,7 @@ sealed trait Identifier extends QualifiedName with LeafExpression:
 
   override def attributeName: String = leafName
 
-  override lazy val resolved: Boolean = false
+  override lazy val resolved: Boolean            = false
   def toResolved(dataType: DataType): Identifier = ResolvedIdentifier(
     this.unquotedValue,
     dataType,
@@ -212,7 +212,7 @@ case class BackquoteInterpolatedIdentifier(
   override def fullName: String          = "<backquote interpolation>"
   override def unquotedValue: String     = "<backquote interpolation>"
 
-sealed trait JoinCriteria extends Expression
+sealed trait JoinCriteria  extends Expression
 case object NoJoinCriteria extends JoinCriteria with LeafExpression:
   override def span: Span = NoSpan
 
@@ -485,7 +485,7 @@ case class NotDistinctFrom(left: Expression, right: Expression, span: Span)
 
 case class AtTimeZone(expr: Expression, timezone: Expression, span: Span) extends Expression:
   override def children: Seq[Expression] = Seq(expr, timezone)
-  override def dataType: DataType = DataType.TimestampType(
+  override def dataType: DataType        = DataType.TimestampType(
     DataType.TimestampField.TIMESTAMP,
     withTimeZone = true
   )
@@ -717,7 +717,7 @@ case class TripleQuoteString(override val unquotedValue: String, span: Span) ext
   override def sqlExpr: String =
     // SQL doesn't support multi-line triple quotes,
     // So split the string into multiple lines
-    val lines = unquotedValue.split("\n")
+    val lines               = unquotedValue.split("\n")
     val parts: List[String] =
       lines
         .map { line =>
@@ -792,7 +792,7 @@ case class IntervalLiteral(
     span: Span
 ) extends Literal:
   override def children: Seq[Expression] = Nil
-  override def stringValue: String =
+  override def stringValue: String       =
     if end.isEmpty then
       if sign == Sign.NoSign then
         s"'${value}' ${startField}"
@@ -946,13 +946,13 @@ case class UnresolvedGroupingKey(name: NameExpr, child: Expression, span: Span) 
 case class GroupingSets(groupingSets: List[List[GroupingKey]], span: Span) extends GroupingKey:
   override def name: NameExpr     = NameExpr.EmptyName
   override def index: Option[Int] = None
-  override def child: Expression = groupingSets
+  override def child: Expression  = groupingSets
     .headOption
     .flatMap(_.headOption)
     .getOrElse(NameExpr.EmptyName)
 
   override def dataType: DataType = DataType.UnknownType
-  override def toString: String =
+  override def toString: String   =
     s"GROUPING SETS(${groupingSets.map(set => s"(${set.mkString(",")})").mkString(",")})"
 
   override lazy val resolved: Boolean    = groupingSets.forall(_.forall(_.resolved))

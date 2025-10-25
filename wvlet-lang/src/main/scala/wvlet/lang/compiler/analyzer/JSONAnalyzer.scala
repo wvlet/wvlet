@@ -37,9 +37,9 @@ object JSONAnalyzer extends LogSupport:
     guessSchema(jsonValue)
 
   class TypeCountMap:
-    private var map                = Map.empty[DataType, Int]
-    def mostFrequentType: DataType = map.maxBy(_._2)._1
-    override def toString: String  = map.toString()
+    private var map                       = Map.empty[DataType, Int]
+    def mostFrequentType: DataType        = map.maxBy(_._2)._1
+    override def toString: String         = map.toString()
     def observe(dataType: DataType): Unit =
       val count = map.getOrElse(dataType, 0)
       map = map.updated(dataType, count + 1)

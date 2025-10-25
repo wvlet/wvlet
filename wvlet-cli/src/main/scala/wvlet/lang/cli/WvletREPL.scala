@@ -83,7 +83,7 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
 
   private given progressMonitor: QueryProgressMonitor =
     new QueryProgressMonitor:
-      private var lines = 0
+      private var lines      = 0
       private val CLEAR_LINE =
         if isRealTerminal() then
           "\u001b[2K"
@@ -116,7 +116,7 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
             if t - lastUpdateTimeMillis > 300 then
               lastUpdateTimeMillis = t
               val stats = m.stats
-              val msg =
+              val msg   =
                 f"Query ${s"${stats.getState.toLowerCase}"} ${ElapsedTime.succinctMillis(
                     stats.getElapsedTimeMillis
                   )}%6s [${Count.succinct(stats.getProcessedRows)} rows] ${stats
@@ -203,7 +203,7 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
     val lines         = queryFragment.split("\n")
     val lastLine      = lines.lastOption.getOrElse("")
     val lineNum       = lines.size
-    val result =
+    val result        =
       runner.runStatement(
         QueryRequest(
           query = queryFragment,

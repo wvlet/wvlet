@@ -495,7 +495,7 @@ object SqlToken:
     SqlToken.ON
   )
 
-  val queryStartTokens = List(SqlToken.SELECT, SqlToken.VALUES, SqlToken.WITH)
+  val queryStartTokens  = List(SqlToken.SELECT, SqlToken.VALUES, SqlToken.WITH)
   val updateStartTokens = List(
     SqlToken.INSERT,
     SqlToken.UPSERT,
@@ -510,7 +510,7 @@ object SqlToken:
   )
 
   val queryDelimiters = Set(SqlToken.EOF, SqlToken.R_PAREN, SqlToken.SEMICOLON)
-  val stringLiterals = Set(
+  val stringLiterals  = Set(
     SqlToken.SINGLE_QUOTE_STRING,
     SqlToken.DOUBLE_QUOTE_STRING,
     SqlToken.TRIPLE_QUOTE_STRING

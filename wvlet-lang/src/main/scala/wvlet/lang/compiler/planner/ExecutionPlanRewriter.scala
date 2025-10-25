@@ -57,7 +57,7 @@ object ExecutionPlanRewriter extends Phase("exec-plan-rewriter") with ContextLog
           val newPlans = List.newBuilder[ExecutionPlan]
           subscriptionTarget.map { t =>
             // TODO Append time conditions for subscription
-            val query = TableRef(t, Span.NoSpan)
+            val query                   = TableRef(t, Span.NoSpan)
             val resolvedQuery: Relation = TypeResolver
               .resolve(query, context)
               .asInstanceOf[Relation]

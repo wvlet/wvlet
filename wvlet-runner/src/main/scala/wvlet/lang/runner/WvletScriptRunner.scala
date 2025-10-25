@@ -153,7 +153,7 @@ class WvletScriptRunner(
         // Launch less command to enable scrolling of query results in the terminal
         // TODO Use jline3's internal less
         val proc = ProcessUtil.launchInteractiveProcess("less", "-FXRSn")
-        val out =
+        val out  =
           new BufferedWriter(
             new OutputStreamWriter(
               // Need to use a FilterOutputStream to accept keyboard events for less command along with the query result string

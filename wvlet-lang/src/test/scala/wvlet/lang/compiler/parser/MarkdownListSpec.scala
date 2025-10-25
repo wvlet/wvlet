@@ -23,7 +23,7 @@ class MarkdownListSpec extends AirSpec:
     list.items.map(_.raw.trim) shouldBe Seq("Parent", "Sibling")
 
     val firstItem = list.items.head
-    val nested = firstItem
+    val nested    = firstItem
       .blocks
       .collect { case l: MarkdownList =>
         l
