@@ -15,11 +15,14 @@ package wvlet.lang.catalog
 
 import wvlet.log.LogSupport
 import wvlet.lang.model.expr.*
-import wvlet.lang.api.{Span, StatusCode}
+import wvlet.lang.api.Span
+import wvlet.lang.api.StatusCode
 import wvlet.lang.model.DataType
 import Catalog.*
-import wvlet.lang.model.DataType.{NamedType, SchemaType}
-import wvlet.lang.compiler.{DBType, Name}
+import wvlet.lang.model.DataType.NamedType
+import wvlet.lang.model.DataType.SchemaType
+import wvlet.lang.compiler.DBType
+import wvlet.lang.compiler.Name
 
 import java.lang.invoke.MethodHandles.loop
 

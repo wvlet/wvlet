@@ -16,7 +16,8 @@ package wvlet.lang.runner
 import wvlet.airframe.codec.MessageCodec
 import wvlet.lang.api.StatusCode
 import wvlet.lang.api.SourceLocation
-import wvlet.lang.model.{DataType, RelationType}
+import wvlet.lang.model.DataType
+import wvlet.lang.model.RelationType
 import wvlet.lang.model.plan.LogicalPlan
 import wvlet.log.LogSupport
 

@@ -2,7 +2,8 @@ package wvlet.lang.catalog
 
 import wvlet.airspec.AirSpec
 import wvlet.lang.catalog.Catalog.TableName
-import wvlet.lang.model.expr.{DotRef, NameExpr}
+import wvlet.lang.model.expr.DotRef
+import wvlet.lang.model.expr.NameExpr
 
 class TableNameTest extends AirSpec:
   test("create a table name with catalog and schema") {

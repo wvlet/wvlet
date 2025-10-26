@@ -1,6 +1,9 @@
 package wvlet.lang.cli
 
-import org.jline.reader.{Candidate, Completer, LineReader, ParsedLine}
+import org.jline.reader.Candidate
+import org.jline.reader.Completer
+import org.jline.reader.LineReader
+import org.jline.reader.ParsedLine
 import wvlet.lang.compiler.WorkEnv
 
 import java.io.File

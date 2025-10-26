@@ -1,4 +1,6 @@
-import scala.scalanative.build.{BuildTarget, GC, Mode}
+import scala.scalanative.build.BuildTarget
+import scala.scalanative.build.GC
+import scala.scalanative.build.Mode
 
 val AIRFRAME_VERSION    = "2025.1.20"
 val AIRSPEC_VERSION     = AIRFRAME_VERSION
@@ -439,8 +441,10 @@ lazy val client = crossProject(JVMPlatform, JSPlatform)
   .settings(buildSettings, airframeHttpClients := Seq("wvlet.lang.api.v1.frontend:rpc:FrontendRPC"))
   .dependsOn(api)
 
-import org.scalajs.linker.interface.{OutputPatterns, StandardConfig}
-import org.scalajs.linker.interface.{ModuleKind, ModuleSplitStyle}
+import org.scalajs.linker.interface.OutputPatterns
+import org.scalajs.linker.interface.StandardConfig
+import org.scalajs.linker.interface.ModuleKind
+import org.scalajs.linker.interface.ModuleSplitStyle
 
 lazy val ui = project
   .enablePlugins(ScalaJSPlugin)

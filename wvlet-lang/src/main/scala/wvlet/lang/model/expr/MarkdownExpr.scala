@@ -16,7 +16,8 @@ package wvlet.lang.model.expr
 import wvlet.lang.api.Span
 import wvlet.lang.model.DataType.EmptyRelationType
 import wvlet.lang.model.RelationType
-import wvlet.lang.model.plan.{LeafPlan, LogicalPlan}
+import wvlet.lang.model.plan.LeafPlan
+import wvlet.lang.model.plan.LogicalPlan
 
 /**
   * Markdown document root node (span covers entire file; child blocks hold raw slices)

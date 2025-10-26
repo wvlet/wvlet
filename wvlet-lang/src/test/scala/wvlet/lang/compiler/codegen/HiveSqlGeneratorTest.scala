@@ -1,8 +1,10 @@
 package wvlet.lang.compiler.codegen
 
 import wvlet.airspec.AirSpec
-import wvlet.lang.compiler.{CompilationUnit, DBType}
-import wvlet.lang.compiler.parser.{SqlParser, WvletParser}
+import wvlet.lang.compiler.CompilationUnit
+import wvlet.lang.compiler.DBType
+import wvlet.lang.compiler.parser.SqlParser
+import wvlet.lang.compiler.parser.WvletParser
 
 class HiveSqlGeneratorTest extends AirSpec:
 

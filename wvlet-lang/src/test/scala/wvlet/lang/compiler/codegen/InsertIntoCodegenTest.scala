@@ -1,7 +1,8 @@
 package wvlet.lang.compiler.codegen
 
 import wvlet.airspec.AirSpec
-import wvlet.lang.compiler.{CompilationUnit, DBType}
+import wvlet.lang.compiler.CompilationUnit
+import wvlet.lang.compiler.DBType
 import wvlet.lang.compiler.parser.SqlParser
 
 class InsertIntoCodegenTest extends AirSpec:

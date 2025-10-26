@@ -1,6 +1,8 @@
 package wvlet.lang.api.v1.frontend
 
-import wvlet.airframe.http.{RPC, RxRouter, RxRouterProvider}
+import wvlet.airframe.http.RPC
+import wvlet.airframe.http.RxRouter
+import wvlet.airframe.http.RxRouterProvider
 import wvlet.lang.api.v1.io.FileEntry
 
 @RPC

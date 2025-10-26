@@ -1,7 +1,8 @@
 package wvlet.lang.compiler.parser
 
 import wvlet.airspec.AirSpec
-import wvlet.lang.compiler.{CompilationUnit, SourceFile}
+import wvlet.lang.compiler.CompilationUnit
+import wvlet.lang.compiler.SourceFile
 import wvlet.lang.model.expr.MarkdownParagraph
 
 class MarkdownWhitespaceSpec extends AirSpec:

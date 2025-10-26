@@ -3,7 +3,9 @@ package wvlet.lang.model.plan
 import wvlet.lang.api.Span
 import wvlet.lang.model.DataType.EmptyRelationType
 import wvlet.lang.model.RelationType
-import wvlet.lang.model.expr.{Expression, NameExpr, QualifiedName}
+import wvlet.lang.model.expr.Expression
+import wvlet.lang.model.expr.NameExpr
+import wvlet.lang.model.expr.QualifiedName
 
 sealed trait Command extends TopLevelStatement with LeafPlan:
   override def relationType: RelationType = EmptyRelationType

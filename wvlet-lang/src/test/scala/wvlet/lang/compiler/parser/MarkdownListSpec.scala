@@ -1,8 +1,10 @@
 package wvlet.lang.compiler.parser
 
 import wvlet.airspec.AirSpec
-import wvlet.lang.compiler.{CompilationUnit, SourceFile}
-import wvlet.lang.model.expr.{MarkdownList, MarkdownListItem}
+import wvlet.lang.compiler.CompilationUnit
+import wvlet.lang.compiler.SourceFile
+import wvlet.lang.model.expr.MarkdownList
+import wvlet.lang.model.expr.MarkdownListItem
 
 class MarkdownListSpec extends AirSpec:
   test("parse nested unordered lists") {

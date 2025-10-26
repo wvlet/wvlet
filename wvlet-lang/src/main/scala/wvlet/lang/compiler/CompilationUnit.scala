@@ -13,18 +13,25 @@
  */
 package wvlet.lang.compiler
 
-import wvlet.lang.api.{LinePosition, SourceLocation, Span}
+import wvlet.lang.api.LinePosition
+import wvlet.lang.api.SourceLocation
+import wvlet.lang.api.Span
 import wvlet.lang.compiler
 import wvlet.lang.compiler.SourceFile.NoSourceFile
 import wvlet.lang.compiler.analyzer.DependencyDAG
-import wvlet.lang.model.plan.{ExecutionPlan, LogicalPlan, NamedRelation, Relation}
+import wvlet.lang.model.plan.ExecutionPlan
+import wvlet.lang.model.plan.LogicalPlan
+import wvlet.lang.model.plan.NamedRelation
+import wvlet.lang.model.plan.Relation
 import wvlet.lang.stdlib.StdLib
 import wvlet.log.LogSupport
-import wvlet.log.io.{IOUtil, Resource}
+import wvlet.log.io.IOUtil
+import wvlet.log.io.Resource
 
 import java.io.File
 import java.net.URLClassLoader
-import java.net.{URI, URL}
+import java.net.URI
+import java.net.URL
 import java.util.concurrent.ConcurrentHashMap
 import java.util.jar.JarFile
 
@@ -37,7 +44,10 @@ case class CompilationUnit(sourceFile: SourceFile, isPreset: Boolean = false)
     extends LogSupport
     with Ordered[CompilationUnit]:
 
-  export sourceFile.{isSQL, isWv, relativeFilePath, fileName}
+  export sourceFile.isSQL
+  export sourceFile.isWv
+  export sourceFile.relativeFilePath
+  export sourceFile.fileName
 
   // Untyped plan tree
   var unresolvedPlan: LogicalPlan = LogicalPlan.empty

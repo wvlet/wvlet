@@ -3,7 +3,8 @@ package wvlet.lang.compiler.codegen
 import wvlet.lang.api.Span
 import wvlet.lang.compiler.Context
 import wvlet.lang.compiler.codegen.SyntaxContext.*
-import wvlet.lang.compiler.codegen.{CodeFormatter, CodeFormatterConfig}
+import wvlet.lang.compiler.codegen.CodeFormatter
+import wvlet.lang.compiler.codegen.CodeFormatterConfig
 import wvlet.lang.compiler.transform.ExpressionEvaluator
 import wvlet.lang.model.SyntaxTreeNode
 import wvlet.lang.model.expr.*

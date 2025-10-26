@@ -1,24 +1,26 @@
 package wvlet.lang.cli
 
 import wvlet.airframe.control.Control
-import wvlet.airframe.launcher.{argument, option}
+import wvlet.airframe.launcher.argument
+import wvlet.airframe.launcher.option
 import wvlet.lang.api.StatusCode
 import wvlet.lang.api.v1.query.QuerySelection
 import wvlet.lang.catalog.Profile
-import wvlet.lang.compiler.codegen.{CodeFormatterConfig, GenSQL, WvletGenerator}
-import wvlet.lang.compiler.{
-  CompilationUnit,
-  CompileResult,
-  Compiler,
-  CompilerOptions,
-  Context,
-  DBType,
-  Phase,
-  Symbol,
-  WorkEnv
-}
+import wvlet.lang.compiler.codegen.CodeFormatterConfig
+import wvlet.lang.compiler.codegen.GenSQL
+import wvlet.lang.compiler.codegen.WvletGenerator
+import wvlet.lang.compiler.CompilationUnit
+import wvlet.lang.compiler.CompileResult
+import wvlet.lang.compiler.Compiler
+import wvlet.lang.compiler.CompilerOptions
+import wvlet.lang.compiler.Context
+import wvlet.lang.compiler.DBType
+import wvlet.lang.compiler.Phase
+import wvlet.lang.compiler.Symbol
+import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.runner.QueryExecutor
-import wvlet.lang.runner.connector.{DBConnector, DBConnectorProvider}
+import wvlet.lang.runner.connector.DBConnector
+import wvlet.lang.runner.connector.DBConnectorProvider
 import wvlet.log.LogSupport
 
 case class WvletCompilerOption(

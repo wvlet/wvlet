@@ -17,8 +17,11 @@ import org.duckdb.DuckDBConnection
 import wvlet.airframe.control.Control.withResource
 import wvlet.lang.api.StatusCode
 import wvlet.lang.compiler.Name
-import wvlet.lang.model.DataType.{EmptyRelationType, NamedType, SchemaType}
-import wvlet.lang.model.{DataType, RelationType}
+import wvlet.lang.model.DataType.EmptyRelationType
+import wvlet.lang.model.DataType.NamedType
+import wvlet.lang.model.DataType.SchemaType
+import wvlet.lang.model.DataType
+import wvlet.lang.model.RelationType
 
 import java.io.File
 import java.sql.DriverManager

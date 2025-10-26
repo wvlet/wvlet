@@ -1,11 +1,15 @@
 package wvlet.lang.ui.playground
 
 import wvlet.airframe.rx.html.all.s
-import wvlet.airframe.rx.{Cancelable, Rx}
+import wvlet.airframe.rx.Cancelable
+import wvlet.airframe.rx.Rx
 import wvlet.lang.api.WvletLangException
 import wvlet.lang.compiler.codegen.GenSQL
 import wvlet.lang.compiler.query.QuerySelector
-import wvlet.lang.compiler.{CompilationUnit, Compiler, SourceFile, Symbol}
+import wvlet.lang.compiler.CompilationUnit
+import wvlet.lang.compiler.Compiler
+import wvlet.lang.compiler.SourceFile
+import wvlet.lang.compiler.Symbol
 import wvlet.lang.ui.component.WindowSize
 import wvlet.lang.ui.component.monaco.EditorBase
 

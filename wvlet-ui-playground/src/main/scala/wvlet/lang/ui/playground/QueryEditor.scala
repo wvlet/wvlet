@@ -1,11 +1,14 @@
 package wvlet.lang.ui.playground
 
-import wvlet.airframe.rx.{Cancelable, Rx}
+import wvlet.airframe.rx.Cancelable
+import wvlet.airframe.rx.Rx
 import wvlet.lang.api.LinePosition
-import wvlet.lang.api.v1.query.{QueryRequest, QuerySelection}
+import wvlet.lang.api.v1.query.QueryRequest
+import wvlet.lang.api.v1.query.QuerySelection
 import wvlet.lang.api.v1.query.QuerySelection.Describe
 import wvlet.lang.compiler.query.QuerySelector
-import wvlet.lang.ui.component.{MainFrame, WindowSize}
+import wvlet.lang.ui.component.MainFrame
+import wvlet.lang.ui.component.WindowSize
 import wvlet.lang.ui.component.monaco.EditorBase
 
 class QueryEditor(currentQuery: CurrentQuery, windowSize: WindowSize)

@@ -1,13 +1,19 @@
 package wvlet.lang.ui.component.editor
 
-import wvlet.airframe.rx.{Cancelable, Rx, RxVar}
-import wvlet.lang.api.v1.frontend.FrontendApi.{QueryInfoRequest, QueryResponse}
+import wvlet.airframe.rx.Cancelable
+import wvlet.airframe.rx.Rx
+import wvlet.airframe.rx.RxVar
+import wvlet.lang.api.v1.frontend.FrontendApi.QueryInfoRequest
+import wvlet.lang.api.v1.frontend.FrontendApi.QueryResponse
 import wvlet.lang.api.v1.frontend.FrontendRPC.RPCAsyncClient
-import wvlet.lang.api.v1.query.{QueryError, QueryInfo, QueryRequest}
+import wvlet.lang.api.v1.query.QueryError
+import wvlet.lang.api.v1.query.QueryInfo
+import wvlet.lang.api.v1.query.QueryRequest
 import wvlet.log.LogSupport
 
 import java.util.concurrent.TimeUnit
-import scala.util.{Failure, Success}
+import scala.util.Failure
+import scala.util.Success
 
 class QueryResultReader(rpcClient: RPCAsyncClient, errorReports: RxVar[List[QueryError]])
     extends LogSupport:

@@ -1,7 +1,14 @@
 package wvlet.lang.compiler.analyzer
 
-import wvlet.lang.compiler.{CompilationUnit, Context, Phase, Symbol}
-import wvlet.lang.model.plan.{LogicalPlan, ModelDef, ModelScan, PackageDef, QueryStatement}
+import wvlet.lang.compiler.CompilationUnit
+import wvlet.lang.compiler.Context
+import wvlet.lang.compiler.Phase
+import wvlet.lang.compiler.Symbol
+import wvlet.lang.model.plan.LogicalPlan
+import wvlet.lang.model.plan.ModelDef
+import wvlet.lang.model.plan.ModelScan
+import wvlet.lang.model.plan.PackageDef
+import wvlet.lang.model.plan.QueryStatement
 
 import scala.collection.immutable.ListMap
 

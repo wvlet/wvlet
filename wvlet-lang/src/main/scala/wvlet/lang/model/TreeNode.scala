@@ -13,8 +13,14 @@
  */
 package wvlet.lang.model
 
-import wvlet.lang.api.{LinePosition, SourceLocation, Span, StatusCode}
-import wvlet.lang.compiler.{CompilationUnit, Context, SourceFile, Symbol}
+import wvlet.lang.api.LinePosition
+import wvlet.lang.api.SourceLocation
+import wvlet.lang.api.Span
+import wvlet.lang.api.StatusCode
+import wvlet.lang.compiler.CompilationUnit
+import wvlet.lang.compiler.Context
+import wvlet.lang.compiler.SourceFile
+import wvlet.lang.compiler.Symbol
 import wvlet.lang.compiler.ContextUtil.*
 import wvlet.lang.compiler.parser.TokenData
 import wvlet.lang.model.plan.LogicalPlan

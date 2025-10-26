@@ -15,8 +15,11 @@ package wvlet.lang.compiler
 
 import wvlet.lang.compiler.RewriteRule.rewriteLogger
 import wvlet.lang.model.expr.Expression
-import wvlet.lang.model.plan.{LogicalPlan, Relation}
-import wvlet.log.{LogLevel, LogSupport, Logger}
+import wvlet.lang.model.plan.LogicalPlan
+import wvlet.lang.model.plan.Relation
+import wvlet.log.LogLevel
+import wvlet.log.LogSupport
+import wvlet.log.Logger
 
 import scala.util.control.NonFatal
 

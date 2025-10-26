@@ -15,13 +15,22 @@ package wvlet.lang.runner.connector.trino
 
 import com.google.common.collect.ImmutableList
 import com.google.inject.multibindings.MapBinder.newMapBinder
-import com.google.inject.{Binder, Inject, Module, Scopes}
-import io.trino.filesystem.{Location, TrinoFileSystemFactory}
+import com.google.inject.Binder
+import com.google.inject.Inject
+import com.google.inject.Module
+import com.google.inject.Scopes
+import io.trino.filesystem.Location
+import io.trino.filesystem.TrinoFileSystemFactory
 import io.trino.plugin.deltalake.transactionlog.writer.TransactionLogSynchronizer
-import io.trino.plugin.deltalake.{DeltaLakeConnectorFactory, DeltaLakePlugin}
-import io.trino.spi.connector.{Connector, ConnectorContext, ConnectorFactory, ConnectorSession}
+import io.trino.plugin.deltalake.DeltaLakeConnectorFactory
+import io.trino.plugin.deltalake.DeltaLakePlugin
+import io.trino.spi.connector.Connector
+import io.trino.spi.connector.ConnectorContext
+import io.trino.spi.connector.ConnectorFactory
+import io.trino.spi.connector.ConnectorSession
 
-import java.io.{IOException, UncheckedIOException}
+import java.io.IOException
+import java.io.UncheckedIOException
 import java.nio.file.Path
 
 class TestingDeltaLakePlugin(localFileSystemRootPath: Path) extends DeltaLakePlugin:

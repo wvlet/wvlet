@@ -1,7 +1,8 @@
 package wvlet.lang.cli
 
 import wvlet.airspec.AirSpec
-import wvlet.lang.compiler.{SourceIO, VirtualFile}
+import wvlet.lang.compiler.SourceIO
+import wvlet.lang.compiler.VirtualFile
 import wvlet.log.io.IOUtil
 
 import java.io.ByteArrayOutputStream

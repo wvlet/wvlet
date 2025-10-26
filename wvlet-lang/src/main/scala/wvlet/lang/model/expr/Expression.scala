@@ -14,10 +14,12 @@
 package wvlet.lang.model.expr
 
 import wvlet.lang.api.Span.NoSpan
-import wvlet.lang.api.{Span, StatusCode}
+import wvlet.lang.api.Span
+import wvlet.lang.api.StatusCode
 import wvlet.lang.model.*
 import wvlet.lang.model.DataType.*
-import wvlet.lang.model.plan.{LogicalPlan, LogicalPlanPrinter}
+import wvlet.lang.model.plan.LogicalPlan
+import wvlet.lang.model.plan.LogicalPlanPrinter
 import wvlet.log.LogSupport
 
 /**

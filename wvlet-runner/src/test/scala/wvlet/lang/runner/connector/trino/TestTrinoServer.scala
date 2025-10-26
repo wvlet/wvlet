@@ -13,15 +13,18 @@
  */
 package wvlet.lang.runner.connector.trino
 
-import io.trino.plugin.deltalake.{DeltaLakeConnectorFactory, DeltaLakePlugin}
+import io.trino.plugin.deltalake.DeltaLakeConnectorFactory
+import io.trino.plugin.deltalake.DeltaLakePlugin
 import io.trino.plugin.memory.MemoryPlugin
 import io.trino.server.testing.TestingTrinoServer
 import wvlet.airframe.control.Resource
 import wvlet.airframe.ulid.ULID
-import wvlet.log.{LogSupport, Logger}
+import wvlet.log.LogSupport
+import wvlet.log.Logger
 
 import java.io.File
-import java.nio.file.{Files, Path}
+import java.nio.file.Files
+import java.nio.file.Path
 import java.util.logging.Level
 import scala.jdk.CollectionConverters.*
 

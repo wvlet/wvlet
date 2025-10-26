@@ -2,8 +2,13 @@ package wvlet.lang.native
 
 import wvlet.airframe.codec.MessageCodec
 import wvlet.log.LogSupport
-import wvlet.lang.api.{WvletLangException, SourceLocation, LinePosition, StatusCode}
-import wvlet.lang.api.v1.compile.{CompileResponse, CompileError, ErrorLocation}
+import wvlet.lang.api.WvletLangException
+import wvlet.lang.api.SourceLocation
+import wvlet.lang.api.LinePosition
+import wvlet.lang.api.StatusCode
+import wvlet.lang.api.v1.compile.CompileResponse
+import wvlet.lang.api.v1.compile.CompileError
+import wvlet.lang.api.v1.compile.ErrorLocation
 
 import scala.scalanative.unsafe.*
 import scala.scalanative.libc.stdlib

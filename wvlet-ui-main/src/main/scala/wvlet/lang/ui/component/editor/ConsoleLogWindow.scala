@@ -1,10 +1,12 @@
 package wvlet.lang.ui.component.editor
 
-import wvlet.airframe.rx.{Rx, RxVar}
+import wvlet.airframe.rx.Rx
+import wvlet.airframe.rx.RxVar
 import wvlet.airframe.rx.html.RxElement
 import wvlet.airframe.rx.html.all.*
 import wvlet.lang.BuildInfo
-import wvlet.lang.ui.component.{MainFrame, WindowSize}
+import wvlet.lang.ui.component.MainFrame
+import wvlet.lang.ui.component.WindowSize
 import wvlet.log.LogTimestampFormatter
 
 object ConsoleLog:

@@ -16,11 +16,13 @@ package wvlet.lang.ui
 import org.scalajs.macrotaskexecutor.MacrotaskExecutor.Implicits.*
 import wvlet.airframe.Design
 import wvlet.airframe.http.Http
-import wvlet.airframe.rx.{Rx, RxVar}
+import wvlet.airframe.rx.Rx
+import wvlet.airframe.rx.RxVar
 import wvlet.lang.api.v1.frontend.FrontendRPC
 import wvlet.lang.api.v1.query.QueryError
 import wvlet.lang.ui.component.MainFrame
-import wvlet.lang.ui.component.editor.{FileNav, WvletEditor}
+import wvlet.lang.ui.component.editor.FileNav
+import wvlet.lang.ui.component.editor.WvletEditor
 import wvlet.log.LogSupport
 
 object WvletUIMain extends LogSupport:

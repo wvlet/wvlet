@@ -4,7 +4,8 @@ import wvlet.airspec.AirSpec
 import wvlet.lang.compiler.analyzer.LogicalPlanRank
 import wvlet.lang.compiler.analyzer.LogicalPlanRank.ReadabilityScore
 import wvlet.lang.compiler.parser.ParserPhase
-import wvlet.lang.compiler.{CompilationUnit, Context}
+import wvlet.lang.compiler.CompilationUnit
+import wvlet.lang.compiler.Context
 
 class LogicalPlanRankTest extends AirSpec:
 

@@ -2,7 +2,8 @@ package wvlet.lang.compiler.transform
 
 import wvlet.lang.compiler.*
 import wvlet.lang.model.DataType
-import wvlet.lang.model.plan.{LogicalPlan, Query}
+import wvlet.lang.model.plan.LogicalPlan
+import wvlet.lang.model.plan.Query
 import wvlet.lang.model.expr.*
 
 object RewriteExpr extends Phase("rewrite-expr"):

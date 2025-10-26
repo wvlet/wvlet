@@ -13,17 +13,23 @@
  */
 package wvlet.lang.runner.connector.trino
 
-import io.trino.jdbc.{QueryStats, TrinoConnection, TrinoDriver, TrinoStatement}
+import io.trino.jdbc.QueryStats
+import io.trino.jdbc.TrinoConnection
+import io.trino.jdbc.TrinoDriver
+import io.trino.jdbc.TrinoStatement
 import wvlet.airframe.control.Control
-import wvlet.airframe.metrics.{Count, ElapsedTime}
+import wvlet.airframe.metrics.Count
+import wvlet.airframe.metrics.ElapsedTime
 import wvlet.lang.catalog.SQLFunction
-import wvlet.lang.compiler.{DBType, WorkEnv}
+import wvlet.lang.compiler.DBType
+import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.compiler.query.QueryProgressMonitor
 import wvlet.lang.model.DataType
 import wvlet.lang.runner.connector.*
 import wvlet.log.LogSupport
 
-import java.sql.{Connection, Statement}
+import java.sql.Connection
+import java.sql.Statement
 import java.util.Properties
 import java.util.function.Consumer
 

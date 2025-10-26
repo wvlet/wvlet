@@ -13,11 +13,15 @@
  */
 package wvlet.lang.compiler
 
-import wvlet.lang.model.{DataType, Type}
-import Type.{FunctionType, PackageType}
+import wvlet.lang.model.DataType
+import wvlet.lang.model.Type
+import Type.FunctionType
+import Type.PackageType
 import wvlet.lang.compiler.Symbol.NoSymbol
 import wvlet.lang.model.expr.Expression
-import wvlet.lang.model.plan.{DefContext, EmptyRelation, LogicalPlan}
+import wvlet.lang.model.plan.DefContext
+import wvlet.lang.model.plan.EmptyRelation
+import wvlet.lang.model.plan.LogicalPlan
 import wvlet.log.LogSupport
 
 enum SymbolType:

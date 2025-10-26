@@ -15,10 +15,12 @@ package wvlet.lang.model.plan
 
 import wvlet.airframe.ulid.ULID
 import wvlet.lang.api.Span.NoSpan
-import wvlet.lang.api.{Span, StatusCode}
+import wvlet.lang.api.Span
+import wvlet.lang.api.StatusCode
 import wvlet.lang.catalog.Catalog
 import wvlet.lang.catalog.Catalog.TableName
-import wvlet.lang.compiler.{Name, TermName}
+import wvlet.lang.compiler.Name
+import wvlet.lang.compiler.TermName
 import wvlet.lang.model.*
 import wvlet.lang.model.DataType.*
 import wvlet.lang.model.expr.*

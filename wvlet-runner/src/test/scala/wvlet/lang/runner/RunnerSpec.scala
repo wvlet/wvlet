@@ -16,7 +16,10 @@ package wvlet.lang.runner
 import wvlet.airspec.AirSpec
 import wvlet.lang.api.WvletLangException
 import wvlet.lang.catalog.Profile
-import wvlet.lang.compiler.{CompilationUnit, Compiler, CompilerOptions, WorkEnv}
+import wvlet.lang.compiler.CompilationUnit
+import wvlet.lang.compiler.Compiler
+import wvlet.lang.compiler.CompilerOptions
+import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.runner.connector.DBConnectorProvider
 import wvlet.lang.runner.connector.duckdb.DuckDBConnector
 

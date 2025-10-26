@@ -4,7 +4,8 @@ import wvlet.airframe.control.Control.withResource
 
 import java.net.URI
 import java.io.File
-import java.nio.file.{Files, Path}
+import java.nio.file.Files
+import java.nio.file.Path
 import scala.jdk.CollectionConverters.*
 
 trait IOCompat:

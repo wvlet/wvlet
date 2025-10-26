@@ -3,25 +3,34 @@ package wvlet.lang.compiler.parser
 import scala.annotation.tailrec
 import scala.collection.mutable.ListBuffer
 import wvlet.airframe.SourceCode
-import wvlet.lang.api.{Span, StatusCode}
-import wvlet.lang.compiler.parser.SqlToken.{EOF, ROW, STAR}
-import wvlet.lang.compiler.{CompilationUnit, Name, SourceFile, TermName}
-import wvlet.lang.model.{DataType, RelationType}
-import wvlet.lang.model.DataType.{
-  EmptyRelationType,
-  IntConstant,
-  IntType,
-  NamedType,
-  TimestampField,
-  TimestampType,
-  TypeParameter,
-  UnresolvedTypeParameter
-}
+import wvlet.lang.api.Span
+import wvlet.lang.api.StatusCode
+import wvlet.lang.compiler.parser.SqlToken.EOF
+import wvlet.lang.compiler.parser.SqlToken.ROW
+import wvlet.lang.compiler.parser.SqlToken.STAR
+import wvlet.lang.compiler.CompilationUnit
+import wvlet.lang.compiler.Name
+import wvlet.lang.compiler.SourceFile
+import wvlet.lang.compiler.TermName
+import wvlet.lang.model.DataType
+import wvlet.lang.model.RelationType
+import wvlet.lang.model.DataType.EmptyRelationType
+import wvlet.lang.model.DataType.IntConstant
+import wvlet.lang.model.DataType.IntType
+import wvlet.lang.model.DataType.NamedType
+import wvlet.lang.model.DataType.TimestampField
+import wvlet.lang.model.DataType.TimestampType
+import wvlet.lang.model.DataType.TypeParameter
+import wvlet.lang.model.DataType.UnresolvedTypeParameter
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.expr.JsonObjectModifier.ABSENT_ON_NULL
 import wvlet.lang.model.expr.NameExpr.EmptyName
 import wvlet.lang.model.plan.*
-import wvlet.lang.model.plan.{Lateral, ShowType, TableRef, Unnest, Values}
+import wvlet.lang.model.plan.Lateral
+import wvlet.lang.model.plan.ShowType
+import wvlet.lang.model.plan.TableRef
+import wvlet.lang.model.plan.Unnest
+import wvlet.lang.model.plan.Values
 import wvlet.log.LogSupport
 
 class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends LogSupport:

@@ -5,8 +5,10 @@ import wvlet.airframe.rx.html.RxElement
 import wvlet.log.LogSupport
 import wvlet.airframe.rx.html.all.*
 import wvlet.lang.ui.component.monaco.EditorBase
-import wvlet.lang.ui.component.{Icon, MainFrame}
-import wvlet.lang.ui.playground.PlaygroundUI.{editorMarginHeight, queryNavigatorWidth}
+import wvlet.lang.ui.component.Icon
+import wvlet.lang.ui.component.MainFrame
+import wvlet.lang.ui.playground.PlaygroundUI.editorMarginHeight
+import wvlet.lang.ui.playground.PlaygroundUI.queryNavigatorWidth
 
 import scalajs.js
 

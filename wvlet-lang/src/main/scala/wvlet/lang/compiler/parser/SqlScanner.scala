@@ -1,7 +1,10 @@
 package wvlet.lang.compiler.parser
 
-import wvlet.lang.api.{LinePosition, SourceLocation, Span}
-import wvlet.lang.compiler.{CompilationUnit, SourceFile}
+import wvlet.lang.api.LinePosition
+import wvlet.lang.api.SourceLocation
+import wvlet.lang.api.Span
+import wvlet.lang.compiler.CompilationUnit
+import wvlet.lang.compiler.SourceFile
 import wvlet.lang.compiler.parser.Tokens.*
 
 import scala.annotation.switch

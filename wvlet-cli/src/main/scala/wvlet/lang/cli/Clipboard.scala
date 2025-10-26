@@ -17,7 +17,8 @@ import wvlet.lang.compiler.OS
 import wvlet.lang.runner.ProcessUtil
 import wvlet.log.LogSupport
 
-import java.io.{BufferedWriter, OutputStreamWriter}
+import java.io.BufferedWriter
+import java.io.OutputStreamWriter
 
 object Clipboard extends LogSupport:
 

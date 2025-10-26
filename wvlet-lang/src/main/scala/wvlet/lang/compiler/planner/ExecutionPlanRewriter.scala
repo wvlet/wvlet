@@ -2,8 +2,15 @@ package wvlet.lang.compiler.planner
 
 import wvlet.lang.api.Span
 import wvlet.lang.compiler.analyzer.TypeResolver
-import wvlet.lang.compiler.{CompilationUnit, Context, ContextLogSupport, Phase}
-import wvlet.lang.model.expr.{DotRef, Identifier, NameExpr, QualifiedName, UnquotedIdentifier}
+import wvlet.lang.compiler.CompilationUnit
+import wvlet.lang.compiler.Context
+import wvlet.lang.compiler.ContextLogSupport
+import wvlet.lang.compiler.Phase
+import wvlet.lang.model.expr.DotRef
+import wvlet.lang.model.expr.Identifier
+import wvlet.lang.model.expr.NameExpr
+import wvlet.lang.model.expr.QualifiedName
+import wvlet.lang.model.expr.UnquotedIdentifier
 import wvlet.lang.model.plan.*
 
 trait ExecutionPlanRewriteRule:

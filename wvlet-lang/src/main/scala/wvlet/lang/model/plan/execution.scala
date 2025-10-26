@@ -13,9 +13,11 @@
  */
 package wvlet.lang.model.plan
 
-import wvlet.lang.api.{LinePosition, StatusCode}
+import wvlet.lang.api.LinePosition
+import wvlet.lang.api.StatusCode
 import wvlet.lang.compiler.Context
-import wvlet.lang.model.expr.{Attribute, NameExpr}
+import wvlet.lang.model.expr.Attribute
+import wvlet.lang.model.expr.NameExpr
 import wvlet.airframe.ulid.ULID
 import wvlet.lang.model.TreeNode
 

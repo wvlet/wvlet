@@ -1,10 +1,15 @@
 package wvlet.lang.compiler.transform
 
-import wvlet.lang.compiler.{CompilationUnit, Context, ExpressionRewriteRule, Phase, RewriteRule}
+import wvlet.lang.compiler.CompilationUnit
+import wvlet.lang.compiler.Context
+import wvlet.lang.compiler.ExpressionRewriteRule
+import wvlet.lang.compiler.Phase
+import wvlet.lang.compiler.RewriteRule
 import wvlet.lang.model.DataType
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.Query
-import wvlet.log.{LogSupport, Logger}
+import wvlet.log.LogSupport
+import wvlet.log.Logger
 
 /**
   * Preprocess compile-time expressions, such as backquote strings and native expressions

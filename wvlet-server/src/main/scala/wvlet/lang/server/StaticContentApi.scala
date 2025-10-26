@@ -1,6 +1,8 @@
 package wvlet.lang.server
 
-import wvlet.airframe.http.{Endpoint, HttpMessage, StaticContent}
+import wvlet.airframe.http.Endpoint
+import wvlet.airframe.http.HttpMessage
+import wvlet.airframe.http.StaticContent
 import wvlet.log.LogSupport
 
 import java.io.File

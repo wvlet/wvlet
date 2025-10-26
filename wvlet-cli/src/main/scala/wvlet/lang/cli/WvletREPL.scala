@@ -19,23 +19,40 @@ import org.jline.reader.Parser.ParseContext
 import org.jline.reader.impl.DefaultParser
 import org.jline.reader.impl.DefaultParser.Bracket
 import org.jline.terminal.Terminal.Signal
-import org.jline.terminal.{Size, Terminal, TerminalBuilder}
-import org.jline.utils.{AttributedString, AttributedStringBuilder, AttributedStyle, InfoCmp, Status}
+import org.jline.terminal.Size
+import org.jline.terminal.Terminal
+import org.jline.terminal.TerminalBuilder
+import org.jline.utils.AttributedString
+import org.jline.utils.AttributedStringBuilder
+import org.jline.utils.AttributedStyle
+import org.jline.utils.InfoCmp
+import org.jline.utils.Status
 import org.jline.widget.AutopairWidgets
 import wvlet.airframe.*
-import wvlet.airframe.control.{Shell, ThreadUtil}
+import wvlet.airframe.control.Shell
+import wvlet.airframe.control.ThreadUtil
 import wvlet.airframe.log.AnsiColorPalette
-import wvlet.airframe.metrics.{Count, ElapsedTime}
-import wvlet.lang.api.{LinePosition, StatusCode, WvletLangException}
+import wvlet.airframe.metrics.Count
+import wvlet.airframe.metrics.ElapsedTime
+import wvlet.lang.api.LinePosition
+import wvlet.lang.api.StatusCode
+import wvlet.lang.api.WvletLangException
 import wvlet.lang.api.v1.query.QueryRequest
-import wvlet.lang.api.v1.query.QuerySelection.{All, Describe, Subquery}
+import wvlet.lang.api.v1.query.QuerySelection.All
+import wvlet.lang.api.v1.query.QuerySelection.Describe
+import wvlet.lang.api.v1.query.QuerySelection.Subquery
 import wvlet.lang.compiler.parser.*
-import wvlet.lang.compiler.{CompilationUnit, SourceFile, WorkEnv}
-import wvlet.lang.compiler.query.{QueryMetric, QueryProgressMonitor}
+import wvlet.lang.compiler.CompilationUnit
+import wvlet.lang.compiler.SourceFile
+import wvlet.lang.compiler.WorkEnv
+import wvlet.lang.compiler.query.QueryMetric
+import wvlet.lang.compiler.query.QueryProgressMonitor
 import wvlet.lang.model.plan.QueryStatement
 import wvlet.lang.runner.connector.TrinoQueryMetric
-import wvlet.lang.runner.{LastOutput, WvletScriptRunner}
-import wvlet.log.{LogSupport, Logger}
+import wvlet.lang.runner.LastOutput
+import wvlet.lang.runner.WvletScriptRunner
+import wvlet.log.LogSupport
+import wvlet.log.Logger
 
 import java.io.File
 import java.util.concurrent.Executors

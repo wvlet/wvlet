@@ -13,9 +13,13 @@
  */
 package wvlet.lang.compiler.parser
 
-import wvlet.lang.compiler.{CompilationUnit, Context, Phase, SourceFile}
+import wvlet.lang.compiler.CompilationUnit
+import wvlet.lang.compiler.Context
+import wvlet.lang.compiler.Phase
+import wvlet.lang.compiler.SourceFile
 import wvlet.lang.model.expr.MarkdownPlan
-import wvlet.lang.model.plan.{LogicalPlan, PackageDef}
+import wvlet.lang.model.plan.LogicalPlan
+import wvlet.lang.model.plan.PackageDef
 import wvlet.log.LogSupport
 
 /**

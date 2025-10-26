@@ -1,12 +1,19 @@
 package wvlet.lang.compiler.parser
 
-import wvlet.lang.api.{LinePosition, SourceLocation, Span, StatusCode, WvletLangException}
-import wvlet.lang.compiler.{CompilationUnit, SourceFile}
+import wvlet.lang.api.LinePosition
+import wvlet.lang.api.SourceLocation
+import wvlet.lang.api.Span
+import wvlet.lang.api.StatusCode
+import wvlet.lang.api.WvletLangException
+import wvlet.lang.compiler.CompilationUnit
+import wvlet.lang.compiler.SourceFile
 import wvlet.lang.compiler.ContextUtil.*
-import wvlet.lang.compiler.parser.Scanner.{Indented, Region}
+import wvlet.lang.compiler.parser.Scanner.Indented
+import wvlet.lang.compiler.parser.Scanner.Region
 import wvlet.log.LogSupport
 
-import scala.annotation.{switch, tailrec}
+import scala.annotation.switch
+import scala.annotation.tailrec
 
 case class TokenData[Token](token: Token, str: String, offset: Int, length: Int):
   override def toString: String = f"[${offset}%3d:${length}%2d] ${token}%10s: ${str}"

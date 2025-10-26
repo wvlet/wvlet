@@ -6,13 +6,15 @@ import wvlet.airframe.rx.html.RxElement
 import wvlet.airframe.rx.html.all.*
 import wvlet.airframe.rx.html.compat.MouseEvent
 import wvlet.airframe.rx.html.svgAttrs.*
-import wvlet.airframe.rx.{Rx, RxVar}
+import wvlet.airframe.rx.Rx
+import wvlet.airframe.rx.RxVar
 import wvlet.airframe.ulid.ULID
 import wvlet.lang.api.v1.frontend.FileApi.FileRequest
 import wvlet.lang.api.v1.frontend.FrontendRPC.RPCAsyncClient
 import wvlet.lang.api.v1.io.FileEntry
 import wvlet.lang.ui.component.GlobalState.selectedPath
-import wvlet.lang.ui.component.{GlobalState, Icon}
+import wvlet.lang.ui.component.GlobalState
+import wvlet.lang.ui.component.Icon
 
 class FileNav(rpcClient: RPCAsyncClient) extends RxElement:
 

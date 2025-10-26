@@ -13,22 +13,32 @@
  */
 package wvlet.lang.runner
 
-import wvlet.airframe.codec.{JDBCCodec, MessageCodec}
+import wvlet.airframe.codec.JDBCCodec
+import wvlet.airframe.codec.MessageCodec
 import wvlet.lang.api.v1.query.QuerySelection
-import wvlet.lang.api.{LinePosition, StatusCode, WvletLangException}
+import wvlet.lang.api.LinePosition
+import wvlet.lang.api.StatusCode
+import wvlet.lang.api.WvletLangException
 import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.*
-import wvlet.lang.compiler.codegen.{CodeFormatterConfig, GenSQL, SqlGenerator}
+import wvlet.lang.compiler.codegen.CodeFormatterConfig
+import wvlet.lang.compiler.codegen.GenSQL
+import wvlet.lang.compiler.codegen.SqlGenerator
 import wvlet.lang.compiler.parser.SqlParser
 import wvlet.lang.compiler.planner.ExecutionPlanner
-import wvlet.lang.compiler.query.{QueryProgressMonitor, QuerySelector}
+import wvlet.lang.compiler.query.QueryProgressMonitor
+import wvlet.lang.compiler.query.QuerySelector
 import wvlet.lang.compiler.transform.ExpressionEvaluator
 import wvlet.lang.model.DataType
-import wvlet.lang.model.DataType.{NamedType, SchemaType, UnresolvedType}
+import wvlet.lang.model.DataType.NamedType
+import wvlet.lang.model.DataType.SchemaType
+import wvlet.lang.model.DataType.UnresolvedType
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
-import wvlet.lang.runner.connector.{DBConnector, DBConnectorProvider}
-import wvlet.log.{LogLevel, LogSupport}
+import wvlet.lang.runner.connector.DBConnector
+import wvlet.lang.runner.connector.DBConnectorProvider
+import wvlet.log.LogLevel
+import wvlet.log.LogSupport
 
 import java.sql.SQLException
 import scala.collection.immutable.ListMap

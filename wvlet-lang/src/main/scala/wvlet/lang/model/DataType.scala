@@ -13,10 +13,17 @@
  */
 package wvlet.lang.model
 
-import wvlet.lang.api.{StatusCode, WvletLangException}
+import wvlet.lang.api.StatusCode
+import wvlet.lang.api.WvletLangException
 import wvlet.lang.compiler.parser.DataTypeParser
-import wvlet.lang.compiler.{DBType, Name, TermName, TypeName}
-import wvlet.lang.model.DataType.{GenericType, NamedType, PrimitiveType, TypeParameter}
+import wvlet.lang.compiler.DBType
+import wvlet.lang.compiler.Name
+import wvlet.lang.compiler.TermName
+import wvlet.lang.compiler.TypeName
+import wvlet.lang.model.DataType.GenericType
+import wvlet.lang.model.DataType.NamedType
+import wvlet.lang.model.DataType.PrimitiveType
+import wvlet.lang.model.DataType.TypeParameter
 import wvlet.lang.model.expr.NameExpr
 import wvlet.log.LogSupport
 

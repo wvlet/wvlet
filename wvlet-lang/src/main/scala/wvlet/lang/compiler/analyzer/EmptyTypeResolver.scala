@@ -1,6 +1,8 @@
 package wvlet.lang.compiler.analyzer
 
-import wvlet.lang.compiler.{CompilationUnit, Context, Phase}
+import wvlet.lang.compiler.CompilationUnit
+import wvlet.lang.compiler.Context
+import wvlet.lang.compiler.Phase
 
 /**
   * A dummy type resolver for skipping TypeResolver phase

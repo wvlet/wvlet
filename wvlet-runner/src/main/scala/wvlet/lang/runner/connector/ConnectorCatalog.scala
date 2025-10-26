@@ -13,13 +13,17 @@
  */
 package wvlet.lang.runner.connector
 
-import com.github.benmanes.caffeine.cache.{CacheLoader, Caffeine}
+import com.github.benmanes.caffeine.cache.CacheLoader
+import com.github.benmanes.caffeine.cache.Caffeine
 import wvlet.airframe.codec.MessageCodec
 import wvlet.lang.api.StatusCode
 import wvlet.lang.catalog.Catalog.TableName
-import wvlet.lang.catalog.{Catalog, SQLFunction}
-import wvlet.lang.compiler.{DBType, WorkEnv}
-import wvlet.lang.runner.{ThreadManager, ThreadUtil}
+import wvlet.lang.catalog.Catalog
+import wvlet.lang.catalog.SQLFunction
+import wvlet.lang.compiler.DBType
+import wvlet.lang.compiler.WorkEnv
+import wvlet.lang.runner.ThreadManager
+import wvlet.lang.runner.ThreadUtil
 import wvlet.log.LogSupport
 
 import java.util.concurrent.TimeUnit

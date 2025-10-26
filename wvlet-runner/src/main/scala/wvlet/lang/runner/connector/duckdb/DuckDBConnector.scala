@@ -17,19 +17,24 @@ import wvlet.lang.api.StatusCode
 import wvlet.lang.catalog.SQLFunction
 import wvlet.lang.catalog.SQLFunction.FunctionType
 import wvlet.lang.compiler.DBType.DuckDB
-import wvlet.lang.compiler.{Name, WorkEnv}
+import wvlet.lang.compiler.Name
+import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.model.DataType
 import wvlet.lang.model.DataType.NamedType
 import wvlet.lang.runner.ThreadUtil
-import wvlet.lang.runner.connector.{DBConnection, DBConnector}
+import wvlet.lang.runner.connector.DBConnection
+import wvlet.lang.runner.connector.DBConnector
 import org.duckdb.DuckDBConnection
 import wvlet.airframe.codec.MessageCodec
 import wvlet.airframe.metrics.ElapsedTime
 import wvlet.log.LogSupport
 
-import java.sql.{Connection, DriverManager, SQLException}
+import java.sql.Connection
+import java.sql.DriverManager
+import java.sql.SQLException
 import java.util.concurrent.atomic.AtomicBoolean
-import scala.util.{Try, Using}
+import scala.util.Try
+import scala.util.Using
 
 class DuckDBConnector(workEnv: WorkEnv, prepareTPCH: Boolean = false, prepareTPCDS: Boolean = false)
     extends DBConnector(DuckDB, workEnv)

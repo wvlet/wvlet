@@ -14,16 +14,22 @@
 package wvlet.lang.runner
 
 import org.jline.terminal.Terminal
-import wvlet.airframe.control.{Control, Shell}
+import wvlet.airframe.control.Control
+import wvlet.airframe.control.Shell
 import wvlet.lang.api.WvletLangException
-import wvlet.lang.api.v1.query.{QueryRequest, QuerySelection}
+import wvlet.lang.api.v1.query.QueryRequest
+import wvlet.lang.api.v1.query.QuerySelection
 import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.*
 import wvlet.lang.compiler.query.QueryProgressMonitor
 import wvlet.lang.runner.*
-import wvlet.log.{LogRotationHandler, LogSupport, Logger}
+import wvlet.log.LogRotationHandler
+import wvlet.log.LogSupport
+import wvlet.log.Logger
 
-import java.io.{BufferedWriter, FilterOutputStream, OutputStreamWriter}
+import java.io.BufferedWriter
+import java.io.FilterOutputStream
+import java.io.OutputStreamWriter
 import java.sql.SQLException
 import scala.util.control.NonFatal
 
