@@ -2,7 +2,9 @@ package wvlet.lang.compiler.parser
 
 import wvlet.airspec.AirSpec
 import wvlet.lang.compiler.*
-import wvlet.lang.compiler.codegen.{CodeFormatterConfig, SqlGenerator, WvletGenerator}
+import wvlet.lang.compiler.codegen.CodeFormatterConfig
+import wvlet.lang.compiler.codegen.SqlGenerator
+import wvlet.lang.compiler.codegen.WvletGenerator
 import wvlet.lang.compiler.transform.RewriteExpr
 
 /**

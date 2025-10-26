@@ -16,14 +16,12 @@ package wvlet.lang.compiler.parser
 import wvlet.lang.api.WvletLangException
 import wvlet.lang.compiler.Name
 import wvlet.lang.model.DataType
-import wvlet.lang.model.DataType.{
-  ArrayType,
-  FixedSizeArrayType,
-  GenericType,
-  IntConstant,
-  MapType,
-  TimestampField
-}
+import wvlet.lang.model.DataType.ArrayType
+import wvlet.lang.model.DataType.FixedSizeArrayType
+import wvlet.lang.model.DataType.GenericType
+import wvlet.lang.model.DataType.IntConstant
+import wvlet.lang.model.DataType.MapType
+import wvlet.lang.model.DataType.TimestampField
 import wvlet.airspec.AirSpec
 
 class DataTypeParserTest extends AirSpec:

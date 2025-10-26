@@ -1,13 +1,15 @@
 package wvlet.lang.cli
 
 import wvlet.airframe.Design
-import wvlet.airframe.launcher.{Launcher, command}
+import wvlet.airframe.launcher.Launcher
+import wvlet.airframe.launcher.command
 import wvlet.lang.BuildInfo
 import wvlet.lang.api.WvletLangException
 import wvlet.lang.cli.WvletMain.isInSbt
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.runner.connector.DBConnectorProvider
-import wvlet.lang.server.{WvletServer, WvletServerConfig}
+import wvlet.lang.server.WvletServer
+import wvlet.lang.server.WvletServerConfig
 import wvlet.log.LogSupport
 
 object WvletMain:

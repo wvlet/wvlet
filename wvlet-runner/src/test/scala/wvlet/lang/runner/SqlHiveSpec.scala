@@ -1,9 +1,15 @@
 package wvlet.lang.runner
 
 import wvlet.airspec.AirSpec
-import wvlet.lang.compiler.{CompilationUnit, Compiler, CompilerOptions, DBType, WorkEnv}
-import wvlet.lang.compiler.parser.{SqlParser, WvletParser}
-import wvlet.lang.compiler.codegen.{CodeFormatterConfig, SqlGenerator}
+import wvlet.lang.compiler.CompilationUnit
+import wvlet.lang.compiler.Compiler
+import wvlet.lang.compiler.CompilerOptions
+import wvlet.lang.compiler.DBType
+import wvlet.lang.compiler.WorkEnv
+import wvlet.lang.compiler.parser.SqlParser
+import wvlet.lang.compiler.parser.WvletParser
+import wvlet.lang.compiler.codegen.CodeFormatterConfig
+import wvlet.lang.compiler.codegen.SqlGenerator
 
 /**
   * Test parsing and SQL generation for Hive without execution

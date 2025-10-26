@@ -13,29 +13,29 @@
  */
 package wvlet.lang.compiler
 
-import wvlet.lang.api.{StatusCode, WvletLangException}
+import wvlet.lang.api.StatusCode
+import wvlet.lang.api.WvletLangException
 import wvlet.lang.catalog.Catalog
 import wvlet.lang.compiler.Compiler.presetLibraries
-import wvlet.lang.compiler.analyzer.{
-  EmptyTypeResolver,
-  ModelDependencyAnalyzer,
-  RemoveUnusedQueries,
-  SQLValidator,
-  SymbolLabeler,
-  TypeResolver
-}
-import wvlet.lang.compiler.parser.{ParserPhase, WvletParser}
-import wvlet.lang.compiler.planner.{ExecutionPlanRewriter, ExecutionPlanner}
-import wvlet.lang.compiler.transform.{
-  HiveRewriteFunctions,
-  HiveRewriteUnnest,
-  Incrementalize,
-  PreprocessLocalExpr,
-  RewriteExpr,
-  TrinoRewritePivot
-}
+import wvlet.lang.compiler.analyzer.EmptyTypeResolver
+import wvlet.lang.compiler.analyzer.ModelDependencyAnalyzer
+import wvlet.lang.compiler.analyzer.RemoveUnusedQueries
+import wvlet.lang.compiler.analyzer.SQLValidator
+import wvlet.lang.compiler.analyzer.SymbolLabeler
+import wvlet.lang.compiler.analyzer.TypeResolver
+import wvlet.lang.compiler.parser.ParserPhase
+import wvlet.lang.compiler.parser.WvletParser
+import wvlet.lang.compiler.planner.ExecutionPlanRewriter
+import wvlet.lang.compiler.planner.ExecutionPlanner
+import wvlet.lang.compiler.transform.HiveRewriteFunctions
+import wvlet.lang.compiler.transform.HiveRewriteUnnest
+import wvlet.lang.compiler.transform.Incrementalize
+import wvlet.lang.compiler.transform.PreprocessLocalExpr
+import wvlet.lang.compiler.transform.RewriteExpr
+import wvlet.lang.compiler.transform.TrinoRewritePivot
 import wvlet.lang.model.plan.LogicalPlan
-import wvlet.log.{LogLevel, LogSupport}
+import wvlet.log.LogLevel
+import wvlet.log.LogSupport
 
 import scala.collection.immutable.ListMap
 

@@ -14,8 +14,10 @@
 package wvlet.lang.model.expr
 
 import wvlet.lang.catalog.Catalog
-import wvlet.lang.api.{LinePosition, Span}
-import wvlet.lang.compiler.{Name, TermName}
+import wvlet.lang.api.LinePosition
+import wvlet.lang.api.Span
+import wvlet.lang.compiler.Name
+import wvlet.lang.compiler.TermName
 import wvlet.lang.model.DataType
 import wvlet.lang.model.plan.*
 import wvlet.log.LogSupport

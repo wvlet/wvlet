@@ -1,15 +1,20 @@
 package wvlet.lang.ui.component.editor
 
 import wvlet.airframe.rx
-import wvlet.airframe.rx.{Cancelable, RxVar}
+import wvlet.airframe.rx.Cancelable
+import wvlet.airframe.rx.RxVar
 import wvlet.airframe.rx.html.RxElement
 import wvlet.airframe.rx.html.all.*
-import wvlet.airframe.rx.html.svgAttrs.{style as _, xmlns as _}
+import wvlet.airframe.rx.html.svgAttrs.style as _
+import wvlet.airframe.rx.html.svgAttrs.xmlns as _
 import wvlet.lang.api.v1.frontend.FrontendRPC.RPCAsyncClient
-import wvlet.lang.api.v1.query.{QueryError, QueryRequest, QuerySelection}
+import wvlet.lang.api.v1.query.QueryError
+import wvlet.lang.api.v1.query.QueryRequest
+import wvlet.lang.api.v1.query.QuerySelection
 import wvlet.lang.api.v1.query.QuerySelection.Describe
 import wvlet.lang.ui.component.monaco.EditorBase
-import wvlet.lang.ui.component.{MainFrame, WindowSize}
+import wvlet.lang.ui.component.MainFrame
+import wvlet.lang.ui.component.WindowSize
 
 object WvletEditor:
   val editorWidthRem: Int  = 40 // rem (chars)

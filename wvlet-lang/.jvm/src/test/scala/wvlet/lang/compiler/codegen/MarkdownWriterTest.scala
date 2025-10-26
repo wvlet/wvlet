@@ -14,15 +14,13 @@
 package wvlet.lang.compiler.codegen
 
 import wvlet.airspec.AirSpec
-import wvlet.lang.compiler.{
-  CompilationUnit,
-  Context,
-  LocalFile,
-  SourceFile,
-  GlobalContext,
-  CompilerOptions,
-  WorkEnv
-}
+import wvlet.lang.compiler.CompilationUnit
+import wvlet.lang.compiler.Context
+import wvlet.lang.compiler.LocalFile
+import wvlet.lang.compiler.SourceFile
+import wvlet.lang.compiler.GlobalContext
+import wvlet.lang.compiler.CompilerOptions
+import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.compiler.parser.MarkdownParser
 
 /**

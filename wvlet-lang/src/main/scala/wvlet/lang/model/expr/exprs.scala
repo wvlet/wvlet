@@ -16,7 +16,9 @@ package wvlet.lang.model.expr
 import wvlet.lang.api.Span
 import wvlet.lang.api.Span.NoSpan
 import wvlet.lang.compiler.parser.SqlToken
-import wvlet.lang.compiler.{Name, TermName, TypeName}
+import wvlet.lang.compiler.Name
+import wvlet.lang.compiler.TermName
+import wvlet.lang.compiler.TypeName
 import wvlet.lang.model.DataType
 import wvlet.lang.model.DataType.*
 import wvlet.lang.model.expr.NameExpr.requiresQuotation

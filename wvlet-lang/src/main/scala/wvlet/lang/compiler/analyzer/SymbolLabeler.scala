@@ -13,30 +13,35 @@
  */
 package wvlet.lang.compiler.analyzer
 
-import wvlet.lang.compiler.{
-  ValSymbolInfo,
-  CompilationUnit,
-  Context,
-  MethodSymbolInfo,
-  ModelSymbolInfo,
-  MultipleSymbolInfo,
-  Name,
-  PackageSymbolInfo,
-  Phase,
-  QuerySymbol,
-  RelationAliasSymbolInfo,
-  SavedRelationSymbolInfo,
-  Scope,
-  Symbol,
-  TermName,
-  TypeSymbol,
-  TypeSymbolInfo
-}
-import wvlet.lang.model.DataType.{NamedType, SchemaType}
-import wvlet.lang.model.Type.{FunctionType, ImportType, PackageType}
-import wvlet.lang.model.expr.{DotRef, Identifier, NameExpr, QualifiedName}
+import wvlet.lang.compiler.ValSymbolInfo
+import wvlet.lang.compiler.CompilationUnit
+import wvlet.lang.compiler.Context
+import wvlet.lang.compiler.MethodSymbolInfo
+import wvlet.lang.compiler.ModelSymbolInfo
+import wvlet.lang.compiler.MultipleSymbolInfo
+import wvlet.lang.compiler.Name
+import wvlet.lang.compiler.PackageSymbolInfo
+import wvlet.lang.compiler.Phase
+import wvlet.lang.compiler.QuerySymbol
+import wvlet.lang.compiler.RelationAliasSymbolInfo
+import wvlet.lang.compiler.SavedRelationSymbolInfo
+import wvlet.lang.compiler.Scope
+import wvlet.lang.compiler.Symbol
+import wvlet.lang.compiler.TermName
+import wvlet.lang.compiler.TypeSymbol
+import wvlet.lang.compiler.TypeSymbolInfo
+import wvlet.lang.model.DataType.NamedType
+import wvlet.lang.model.DataType.SchemaType
+import wvlet.lang.model.Type.FunctionType
+import wvlet.lang.model.Type.ImportType
+import wvlet.lang.model.Type.PackageType
+import wvlet.lang.model.expr.DotRef
+import wvlet.lang.model.expr.Identifier
+import wvlet.lang.model.expr.NameExpr
+import wvlet.lang.model.expr.QualifiedName
 import wvlet.lang.model.plan.*
-import wvlet.lang.model.{DataType, Type}
+import wvlet.lang.model.DataType
+import wvlet.lang.model.Type
 
 /**
   * Assign unique Symbol to PackageDef, Import, TypeDef, and ModelDef nodes, and assign a lazy

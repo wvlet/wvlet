@@ -15,7 +15,8 @@ package wvlet.lang.ui.component
 
 import wvlet.airframe.rx.Rx
 import wvlet.airframe.rx.html.all.*
-import wvlet.airframe.rx.html.{RxComponent, RxElement}
+import wvlet.airframe.rx.html.RxComponent
+import wvlet.airframe.rx.html.RxElement
 import org.scalajs.dom
 
 object MainFrame extends RxComponent:

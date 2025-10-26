@@ -3,10 +3,19 @@ package wvlet.lang.sdk.js
 import scala.scalajs.js
 import scala.scalajs.js.annotation.*
 import wvlet.airframe.codec.MessageCodec
-import wvlet.lang.compiler.{CompilationUnit, Compiler, CompilerOptions, DBType, Symbol, WorkEnv}
+import wvlet.lang.compiler.CompilationUnit
+import wvlet.lang.compiler.Compiler
+import wvlet.lang.compiler.CompilerOptions
+import wvlet.lang.compiler.DBType
+import wvlet.lang.compiler.Symbol
+import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.compiler.codegen.GenSQL
-import wvlet.lang.api.{WvletLangException, StatusCode, SourceLocation}
-import wvlet.lang.api.v1.compile.{CompileResponse, CompileError, ErrorLocation}
+import wvlet.lang.api.WvletLangException
+import wvlet.lang.api.StatusCode
+import wvlet.lang.api.SourceLocation
+import wvlet.lang.api.v1.compile.CompileResponse
+import wvlet.lang.api.v1.compile.CompileError
+import wvlet.lang.api.v1.compile.ErrorLocation
 import wvlet.lang.BuildInfo
 
 /**

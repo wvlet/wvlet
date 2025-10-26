@@ -13,8 +13,10 @@
  */
 package wvlet.lang.compiler.analyzer
 
-import wvlet.lang.compiler.{Compiler, Name}
-import wvlet.lang.model.plan.{Query, Subscribe}
+import wvlet.lang.compiler.Compiler
+import wvlet.lang.compiler.Name
+import wvlet.lang.model.plan.Query
+import wvlet.lang.model.plan.Subscribe
 import wvlet.airspec.AirSpec
 
 class AnalyzerTest extends AirSpec:

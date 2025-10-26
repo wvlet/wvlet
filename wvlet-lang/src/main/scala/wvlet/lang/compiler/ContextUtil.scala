@@ -1,6 +1,8 @@
 package wvlet.lang.compiler
 
-import wvlet.lang.api.{LinePosition, SourceLocation, Span}
+import wvlet.lang.api.LinePosition
+import wvlet.lang.api.SourceLocation
+import wvlet.lang.api.Span
 import wvlet.log.LogSupport
 
 /**

@@ -1,10 +1,12 @@
 package wvlet.lang.runner.connector
 
 import wvlet.lang.catalog.Profile
-import wvlet.lang.compiler.{DBType, WorkEnv}
+import wvlet.lang.compiler.DBType
+import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.compiler.DBType.DuckDB
 import wvlet.lang.runner.connector.duckdb.DuckDBConnector
-import wvlet.lang.runner.connector.trino.{TrinoConfig, TrinoConnector}
+import wvlet.lang.runner.connector.trino.TrinoConfig
+import wvlet.lang.runner.connector.trino.TrinoConnector
 import wvlet.log.LogSupport
 
 import java.util.concurrent.ConcurrentHashMap

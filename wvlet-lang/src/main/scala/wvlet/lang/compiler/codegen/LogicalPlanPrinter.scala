@@ -15,10 +15,12 @@ package wvlet.lang.model.plan
 
 import wvlet.lang.catalog.Catalog.TableName
 import wvlet.lang.compiler.Context.NoContext
-import wvlet.lang.compiler.analyzer.{LogicalPlanRank, LogicalPlanRankTable}
+import wvlet.lang.compiler.analyzer.LogicalPlanRank
+import wvlet.lang.compiler.analyzer.LogicalPlanRankTable
 import wvlet.lang.compiler.codegen.CodeFormatter.*
 import wvlet.lang.compiler.codegen.CodeFormatterConfig
-import wvlet.lang.compiler.{Context, Name}
+import wvlet.lang.compiler.Context
+import wvlet.lang.compiler.Name
 import wvlet.lang.model.SyntaxTreeNode
 import wvlet.lang.model.expr.*
 import wvlet.log.LogSupport

@@ -13,8 +13,15 @@
  */
 package wvlet.lang.compiler.analyzer
 
-import wvlet.lang.compiler.{CompilationUnit, Context, Phase}
-import wvlet.lang.model.expr.{Eq, Expression, IsNotNull, IsNull, NotEq, NullLiteral}
+import wvlet.lang.compiler.CompilationUnit
+import wvlet.lang.compiler.Context
+import wvlet.lang.compiler.Phase
+import wvlet.lang.model.expr.Eq
+import wvlet.lang.model.expr.Expression
+import wvlet.lang.model.expr.IsNotNull
+import wvlet.lang.model.expr.IsNull
+import wvlet.lang.model.expr.NotEq
+import wvlet.lang.model.expr.NullLiteral
 import wvlet.lang.model.plan.LogicalPlan
 
 /**

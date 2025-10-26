@@ -2,7 +2,9 @@ package wvlet.lang.compiler
 
 import wvlet.log.LogFormatter.SourceCodeLogFormatter
 import wvlet.log.LogLevel.ALL
-import wvlet.log.{LogLevel, LogRotationHandler, Logger}
+import wvlet.log.LogLevel
+import wvlet.log.LogRotationHandler
+import wvlet.log.Logger
 
 /**
   * Working directory for finding .wv files and target folders for logs and cache

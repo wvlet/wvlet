@@ -5,7 +5,8 @@ import wvlet.airframe.rx.html.all.*
 import wvlet.lang.api.v1.query.QueryResult
 import wvlet.lang.compiler.TablePrinter
 import org.scalajs.dom
-import wvlet.lang.api.v1.query.QuerySelection.{Describe, Subquery}
+import wvlet.lang.api.v1.query.QuerySelection.Describe
+import wvlet.lang.api.v1.query.QuerySelection.Subquery
 import wvlet.lang.ui.component.WindowSize
 
 class QueryResultViewer(currentQuery: CurrentQuery, windowSize: WindowSize) extends RxElement:

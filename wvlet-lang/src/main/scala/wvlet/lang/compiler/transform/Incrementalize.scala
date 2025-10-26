@@ -15,7 +15,10 @@ package wvlet.lang.compiler.transform
 
 import wvlet.lang.catalog.Catalog.TableName
 import wvlet.lang.compiler.RewriteRule.PlanRewriter
-import wvlet.lang.compiler.{CompilationUnit, Context, Phase, RewriteRule}
+import wvlet.lang.compiler.CompilationUnit
+import wvlet.lang.compiler.Context
+import wvlet.lang.compiler.Phase
+import wvlet.lang.compiler.RewriteRule
 import wvlet.lang.model.plan.*
 
 /**

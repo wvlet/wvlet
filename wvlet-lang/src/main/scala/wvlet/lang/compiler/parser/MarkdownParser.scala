@@ -14,7 +14,8 @@
 package wvlet.lang.compiler.parser
 
 import wvlet.lang.api.Span
-import wvlet.lang.compiler.{CompilationUnit, SourceFile}
+import wvlet.lang.compiler.CompilationUnit
+import wvlet.lang.compiler.SourceFile
 import wvlet.lang.compiler.parser.ScannerConfig
 import wvlet.lang.model.SyntaxTreeNode
 import wvlet.lang.model.expr.*

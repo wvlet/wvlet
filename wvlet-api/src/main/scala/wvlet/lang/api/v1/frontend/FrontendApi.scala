@@ -13,12 +13,16 @@
  */
 package wvlet.lang.api.v1.frontend
 
-import wvlet.airframe.http.{RPC, RxRouter, RxRouterProvider}
+import wvlet.airframe.http.RPC
+import wvlet.airframe.http.RxRouter
+import wvlet.airframe.http.RxRouterProvider
 import wvlet.airframe.metrics.ElapsedTime
 import wvlet.airframe.ulid.ULID
 import wvlet.lang.BuildInfo
 import wvlet.lang.api.LinePosition
-import wvlet.lang.api.v1.query.{QueryInfo, QueryRequest, QuerySelection}
+import wvlet.lang.api.v1.query.QueryInfo
+import wvlet.lang.api.v1.query.QueryRequest
+import wvlet.lang.api.v1.query.QuerySelection
 
 @RPC
 trait FrontendApi:

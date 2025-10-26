@@ -14,7 +14,9 @@
 package wvlet.lang.compiler.parser
 
 import wvlet.lang.compiler.CompilationUnit
-import wvlet.lang.model.plan.{PackageDef, TableRef, Query}
+import wvlet.lang.model.plan.PackageDef
+import wvlet.lang.model.plan.TableRef
+import wvlet.lang.model.plan.Query
 import wvlet.airspec.AirSpec
 
 class ParserTest extends AirSpec:

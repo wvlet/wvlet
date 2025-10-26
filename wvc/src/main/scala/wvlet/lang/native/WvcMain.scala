@@ -1,8 +1,14 @@
 package wvlet.lang.native
 
 import wvlet.lang.compiler.codegen.GenSQL
-import wvlet.lang.compiler.{CompilationUnit, Compiler, CompilerOptions, Symbol, WorkEnv}
-import wvlet.log.{LogLevel, LogSupport, Logger}
+import wvlet.lang.compiler.CompilationUnit
+import wvlet.lang.compiler.Compiler
+import wvlet.lang.compiler.CompilerOptions
+import wvlet.lang.compiler.Symbol
+import wvlet.lang.compiler.WorkEnv
+import wvlet.log.LogLevel
+import wvlet.log.LogSupport
+import wvlet.log.Logger
 
 object WvcMain extends LogSupport:
 

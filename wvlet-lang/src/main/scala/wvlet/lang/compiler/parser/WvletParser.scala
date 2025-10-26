@@ -14,16 +14,22 @@
 package wvlet.lang.compiler.parser
 
 import wvlet.airframe.SourceCode
-import wvlet.lang.api.{Span, StatusCode}
+import wvlet.lang.api.Span
+import wvlet.lang.api.StatusCode
 import wvlet.lang.api.Span.NoSpan
 import wvlet.lang.catalog.Catalog.TableName
 import wvlet.lang.compiler.parser.WvletToken.isQueryDelimiter
-import wvlet.lang.compiler.{CompilationUnit, Name, SourceFile}
+import wvlet.lang.compiler.CompilationUnit
+import wvlet.lang.compiler.Name
+import wvlet.lang.compiler.SourceFile
 import wvlet.lang.model.DataType.*
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.expr.NameExpr.EmptyName
 import wvlet.lang.model.plan.*
-import wvlet.lang.model.{DataType, SyntaxTreeNode, TreeNode, plan}
+import wvlet.lang.model.DataType
+import wvlet.lang.model.SyntaxTreeNode
+import wvlet.lang.model.TreeNode
+import wvlet.lang.model.plan
 import wvlet.log.LogSupport
 
 import scala.collection.immutable.ListMap

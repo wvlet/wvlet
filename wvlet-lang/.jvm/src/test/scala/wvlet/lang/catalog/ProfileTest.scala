@@ -14,10 +14,13 @@
 package wvlet.lang.catalog
 
 import wvlet.airspec.AirSpec
-import wvlet.lang.api.{StatusCode, WvletLangException}
+import wvlet.lang.api.StatusCode
+import wvlet.lang.api.WvletLangException
 
 import java.io.File
-import java.nio.file.{Files, Path, Paths}
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.Paths
 
 class ProfileTest extends AirSpec:
 

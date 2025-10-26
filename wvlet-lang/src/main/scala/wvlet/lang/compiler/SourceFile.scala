@@ -13,13 +13,18 @@
  */
 package wvlet.lang.compiler
 
-import wvlet.lang.api.{LinePosition, SourceLocation, Span, StatusCode}
-import wvlet.lang.compiler.parser.{WvletScanner, WvletToken}
+import wvlet.lang.api.LinePosition
+import wvlet.lang.api.SourceLocation
+import wvlet.lang.api.Span
+import wvlet.lang.api.StatusCode
+import wvlet.lang.compiler.parser.WvletScanner
+import wvlet.lang.compiler.parser.WvletToken
 import wvlet.lang.compiler.parser.Tokens.*
 import wvlet.airframe.ulid.ULID
 import wvlet.log.io.IOUtil
 
-import java.net.{URI, URL}
+import java.net.URI
+import java.net.URL
 import java.util.concurrent.atomic.AtomicBoolean
 import scala.collection.mutable.ArrayBuffer
 

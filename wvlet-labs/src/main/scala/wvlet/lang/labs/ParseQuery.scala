@@ -3,12 +3,16 @@ package wvlet.lang.labs
 import wvlet.log.LogSupport
 import wvlet.airframe.launcher.*
 
-import java.io.{FileWriter, PrintWriter}
+import java.io.FileWriter
+import java.io.PrintWriter
 import wvlet.airframe.codec.MessageCodec
-import wvlet.airframe.control.{Control, Parallel}
-import wvlet.airframe.metrics.{Count, ElapsedTime}
+import wvlet.airframe.control.Control
+import wvlet.airframe.control.Parallel
+import wvlet.airframe.metrics.Count
+import wvlet.airframe.metrics.ElapsedTime
 import wvlet.lang.compiler.parser.ParserPhase
-import wvlet.lang.compiler.{CompileResult, Context}
+import wvlet.lang.compiler.CompileResult
+import wvlet.lang.compiler.Context
 import org.duckdb.DuckDBDriver
 
 import java.util.Properties
@@ -173,7 +177,6 @@ class ParseQuery() extends LogSupport:
               s"SELECT td_account_id, job_id, query_id, database, sql FROM '${queryLogFile}' WHERE error_code_name IS NULL"
             )
           ) { rs =>
-
             // Create a compiler with parseOnlyPhases for lightweight parsing
             val compiler =
               new wvlet.lang.compiler.Compiler(

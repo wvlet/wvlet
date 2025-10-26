@@ -14,7 +14,8 @@
 package wvlet.lang.catalog
 
 import wvlet.airframe.codec.MessageCodec
-import wvlet.lang.api.{StatusCode, WvletLangException}
+import wvlet.lang.api.StatusCode
+import wvlet.lang.api.WvletLangException
 import wvlet.lang.compiler.DBType
 import wvlet.log.LogSupport
 import wvlet.log.io.IOUtil

@@ -1,7 +1,8 @@
 package wvlet.lang.api.v1.query
 
 import wvlet.airframe.ulid.ULID
-import wvlet.lang.api.{SourceLocation, StatusCode}
+import wvlet.lang.api.SourceLocation
+import wvlet.lang.api.StatusCode
 
 import java.time.Instant
 

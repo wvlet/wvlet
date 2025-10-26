@@ -17,7 +17,8 @@ import org.apache.arrow.flatbuf.TimeUnit
 import wvlet.airframe.ulid.ULID
 
 import java.util.concurrent
-import java.util.concurrent.{Executors, Future}
+import java.util.concurrent.Executors
+import java.util.concurrent.Future
 
 object ThreadUtil:
   def runBackgroundTask(f: () => Unit): Thread =

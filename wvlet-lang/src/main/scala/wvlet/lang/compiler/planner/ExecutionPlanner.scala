@@ -1,6 +1,8 @@
 package wvlet.lang.compiler.planner
 
-import wvlet.lang.compiler.{CompilationUnit, Context, Phase}
+import wvlet.lang.compiler.CompilationUnit
+import wvlet.lang.compiler.Context
+import wvlet.lang.compiler.Phase
 import wvlet.lang.model.plan.*
 
 object ExecutionPlanner extends Phase("execution-plan"):

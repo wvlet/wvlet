@@ -14,22 +14,22 @@
 package wvlet.lang.compiler.codegen
 
 import wvlet.lang.BuildInfo
-import wvlet.lang.api.{SourceLocation, StatusCode}
+import wvlet.lang.api.SourceLocation
+import wvlet.lang.api.StatusCode
 import wvlet.lang.catalog.Catalog.TableName
 import wvlet.lang.compiler.analyzer.TypeResolver
 import wvlet.lang.compiler.planner.ExecutionPlanner
-import wvlet.lang.compiler.transform.{ExpressionEvaluator, PreprocessLocalExpr}
-import wvlet.lang.compiler.{
-  CompilationUnit,
-  Context,
-  DBType,
-  Name,
-  Phase,
-  SourceIO,
-  Symbol,
-  TermName,
-  ValSymbolInfo
-}
+import wvlet.lang.compiler.transform.ExpressionEvaluator
+import wvlet.lang.compiler.transform.PreprocessLocalExpr
+import wvlet.lang.compiler.CompilationUnit
+import wvlet.lang.compiler.Context
+import wvlet.lang.compiler.DBType
+import wvlet.lang.compiler.Name
+import wvlet.lang.compiler.Phase
+import wvlet.lang.compiler.SourceIO
+import wvlet.lang.compiler.Symbol
+import wvlet.lang.compiler.TermName
+import wvlet.lang.compiler.ValSymbolInfo
 import wvlet.lang.model.DataType
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*

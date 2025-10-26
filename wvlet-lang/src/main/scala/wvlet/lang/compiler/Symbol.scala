@@ -14,11 +14,16 @@
 package wvlet.lang.compiler
 
 import wvlet.lang.api.Span
-import wvlet.lang.model.{DataType, SyntaxTreeNode, TreeNode, Type}
-import wvlet.lang.model.Type.{ImportType, PackageType}
+import wvlet.lang.model.DataType
+import wvlet.lang.model.SyntaxTreeNode
+import wvlet.lang.model.TreeNode
+import wvlet.lang.model.Type
+import wvlet.lang.model.Type.ImportType
+import wvlet.lang.model.Type.PackageType
 import wvlet.lang.model.expr.NameExpr
 import wvlet.lang.model.expr.NameExpr.EmptyName
-import wvlet.lang.model.plan.{Import, LogicalPlan}
+import wvlet.lang.model.plan.Import
+import wvlet.lang.model.plan.LogicalPlan
 import wvlet.log.LogSupport
 
 import scala.annotation.compileTimeOnly

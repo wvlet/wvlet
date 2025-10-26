@@ -13,11 +13,13 @@
  */
 package wvlet.lang.runner
 
-import wvlet.lang.compiler.{CompilationUnit, WorkEnv}
+import wvlet.lang.compiler.CompilationUnit
+import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.compiler.parser.WvletParser
 import wvlet.lang.runner.connector.DBConnector
 import wvlet.lang.runner.connector.duckdb.DuckDBConnector
-import wvlet.lang.runner.connector.trino.{TrinoConfig, TrinoConnector}
+import wvlet.lang.runner.connector.trino.TrinoConfig
+import wvlet.lang.runner.connector.trino.TrinoConnector
 import wvlet.airspec.AirSpec
 
 class ExecutionPlanTest extends AirSpec:

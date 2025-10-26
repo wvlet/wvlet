@@ -14,37 +14,35 @@
 package wvlet.lang.compiler.analyzer
 
 import wvlet.airframe.msgpack.spi.MsgPack
-import wvlet.lang.api.{Span, StatusCode}
+import wvlet.lang.api.Span
+import wvlet.lang.api.StatusCode
 import wvlet.lang.catalog.Catalog.TableName
 import wvlet.lang.compiler.RewriteRule.PlanRewriter
-import wvlet.lang.compiler.{
-  CompilationUnit,
-  Context,
-  ContextLogSupport,
-  MethodSymbolInfo,
-  ModelSymbolInfo,
-  MultipleSymbolInfo,
-  Name,
-  Phase,
-  RelationAliasSymbolInfo,
-  RewriteRule,
-  Symbol,
-  TermName,
-  TypeName,
-  TypeSymbolInfo
-}
-import wvlet.lang.model.DataType.{
-  AnyType,
-  NamedType,
-  SchemaType,
-  TypeParameter,
-  TypeVariable,
-  UnknownType,
-  VarArgType
-}
+import wvlet.lang.compiler.CompilationUnit
+import wvlet.lang.compiler.Context
+import wvlet.lang.compiler.ContextLogSupport
+import wvlet.lang.compiler.MethodSymbolInfo
+import wvlet.lang.compiler.ModelSymbolInfo
+import wvlet.lang.compiler.MultipleSymbolInfo
+import wvlet.lang.compiler.Name
+import wvlet.lang.compiler.Phase
+import wvlet.lang.compiler.RelationAliasSymbolInfo
+import wvlet.lang.compiler.RewriteRule
+import wvlet.lang.compiler.Symbol
+import wvlet.lang.compiler.TermName
+import wvlet.lang.compiler.TypeName
+import wvlet.lang.compiler.TypeSymbolInfo
+import wvlet.lang.model.DataType.AnyType
+import wvlet.lang.model.DataType.NamedType
+import wvlet.lang.model.DataType.SchemaType
+import wvlet.lang.model.DataType.TypeParameter
+import wvlet.lang.model.DataType.TypeVariable
+import wvlet.lang.model.DataType.UnknownType
+import wvlet.lang.model.DataType.VarArgType
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
-import wvlet.lang.model.{DataType, RelationType}
+import wvlet.lang.model.DataType
+import wvlet.lang.model.RelationType
 import wvlet.log.LogSupport
 import wvlet.lang.compiler.ContextUtil.*
 
@@ -125,7 +123,6 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
         val stmts        = List.newBuilder[LogicalPlan]
         p.statements
           .foreach { stmt =>
-
             ctx.logTrace(s"Untyped plan:\n${stmt.pp}")
 
             var newStmt = RewriteRule.rewrite(stmt, defaultRules, ctx)

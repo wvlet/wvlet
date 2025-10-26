@@ -1,13 +1,18 @@
 package wvlet.lang.cli
 
 import wvlet.airframe.Design
-import wvlet.airframe.launcher.{Launcher, argument, command, option}
+import wvlet.airframe.launcher.Launcher
+import wvlet.airframe.launcher.argument
+import wvlet.airframe.launcher.command
+import wvlet.airframe.launcher.option
 import wvlet.lang.api.StatusCode.SYNTAX_ERROR
-import wvlet.lang.api.{StatusCode, WvletLangException}
+import wvlet.lang.api.StatusCode
+import wvlet.lang.api.WvletLangException
 import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.runner.WvletScriptRunnerConfig
-import wvlet.lang.runner.connector.{DBConnector, DBConnectorProvider}
+import wvlet.lang.runner.connector.DBConnector
+import wvlet.lang.runner.connector.DBConnectorProvider
 import wvlet.log.LogSupport
 import wvlet.log.io.IOUtil
 

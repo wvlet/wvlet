@@ -16,20 +16,32 @@ package wvlet.lang.runner.connector
 import wvlet.airframe.control.Control.withResource
 import DBConnector.*
 import io.trino.jdbc.QueryStats
-import wvlet.lang.catalog.{Catalog, SQLFunction}
-import wvlet.lang.catalog.Catalog.{TableColumn, TableName, TableSchema}
-import wvlet.lang.compiler.{DBType, Name, WorkEnv}
+import wvlet.lang.catalog.Catalog
+import wvlet.lang.catalog.SQLFunction
+import wvlet.lang.catalog.Catalog.TableColumn
+import wvlet.lang.catalog.Catalog.TableName
+import wvlet.lang.catalog.Catalog.TableSchema
+import wvlet.lang.compiler.DBType
+import wvlet.lang.compiler.Name
+import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.compiler.query.QueryProgressMonitor
-import wvlet.lang.model.DataType.{NamedType, SchemaType}
-import wvlet.lang.model.{DataType, RelationType}
+import wvlet.lang.model.DataType.NamedType
+import wvlet.lang.model.DataType.SchemaType
+import wvlet.lang.model.DataType
+import wvlet.lang.model.RelationType
 import wvlet.lang.model.plan.LogicalPlan
 import wvlet.lang.model.plan.*
 import wvlet.airframe.codec.JDBCCodec.ResultSetCodec
-import wvlet.airframe.metrics.{Count, ElapsedTime}
+import wvlet.airframe.metrics.Count
+import wvlet.airframe.metrics.ElapsedTime
 import wvlet.lang.api.StatusCode
 import wvlet.log.LogSupport
 
-import java.sql.{Connection, ResultSet, SQLException, SQLWarning, Statement}
+import java.sql.Connection
+import java.sql.ResultSet
+import java.sql.SQLException
+import java.sql.SQLWarning
+import java.sql.Statement
 import java.util.concurrent.ConcurrentHashMap
 import scala.jdk.CollectionConverters.*
 

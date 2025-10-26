@@ -15,10 +15,14 @@ package wvlet.lang.spec
 
 import wvlet.airspec.AirSpec
 import wvlet.lang.catalog.Profile
-import wvlet.lang.compiler.{Compiler, CompilerOptions, WorkEnv}
+import wvlet.lang.compiler.Compiler
+import wvlet.lang.compiler.CompilerOptions
+import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.runner.QueryExecutor
-import wvlet.lang.runner.connector.trino.{TrinoConfig, TrinoConnector}
-import wvlet.lang.api.{StatusCode, WvletLangException}
+import wvlet.lang.runner.connector.trino.TrinoConfig
+import wvlet.lang.runner.connector.trino.TrinoConnector
+import wvlet.lang.api.StatusCode
+import wvlet.lang.api.WvletLangException
 import wvlet.lang.runner.connector.DBConnectorProvider
 
 trait TDTrinoSpecRunner(specPath: String) extends AirSpec:

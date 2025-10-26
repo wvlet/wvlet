@@ -1,7 +1,9 @@
 package wvlet.lang.ui.playground
 
-import wvlet.airframe.rx.{Rx, RxVar}
-import wvlet.lang.api.v1.query.{QueryRequest, QueryResult}
+import wvlet.airframe.rx.Rx
+import wvlet.airframe.rx.RxVar
+import wvlet.lang.api.v1.query.QueryRequest
+import wvlet.lang.api.v1.query.QueryResult
 
 class CurrentQuery:
   val queryName: RxVar[String]               = Rx.variable("sample.wv")

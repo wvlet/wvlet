@@ -1,15 +1,25 @@
 package wvlet.lang.runner.connector.trino
 
-import com.fasterxml.jackson.annotation.{JsonCreator, JsonProperty}
+import com.fasterxml.jackson.annotation.JsonCreator
+import com.fasterxml.jackson.annotation.JsonProperty
 import com.google.common.collect.ImmutableList
-import com.google.inject.{Inject, Injector, Scopes}
-import io.airlift.bootstrap.{Bootstrap, LifeCycleManager}
+import com.google.inject.Inject
+import com.google.inject.Injector
+import com.google.inject.Scopes
+import io.airlift.bootstrap.Bootstrap
+import io.airlift.bootstrap.LifeCycleManager
 import io.airlift.json.JsonModule
-import io.airlift.slice.{Slice, Slices}
+import io.airlift.slice.Slice
+import io.airlift.slice.Slices
 import io.trino.plugin.memory.*
-import io.trino.spi.{Page, Plugin}
-import io.trino.spi.`type`.{BooleanType, DoubleType, IntegerType, VarcharType}
-import io.trino.spi.block.{Block, VariableWidthBlockBuilder}
+import io.trino.spi.Page
+import io.trino.spi.Plugin
+import io.trino.spi.`type`.BooleanType
+import io.trino.spi.`type`.DoubleType
+import io.trino.spi.`type`.IntegerType
+import io.trino.spi.`type`.VarcharType
+import io.trino.spi.block.Block
+import io.trino.spi.block.VariableWidthBlockBuilder
 import io.trino.spi.connector.ConnectorSplitSource.ConnectorSplitBatch
 import io.trino.spi.connector.*
 import io.trino.spi.function.FunctionProvider
@@ -20,13 +30,15 @@ import wvlet.airframe.codec.MessageCodec
 import wvlet.airframe.msgpack.spi.MessagePack
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.runner.connector.duckdb.DuckDBConnector
-import wvlet.lang.runner.connector.trino.DuckDBSQLFunction.{DuckDBFunctionHandle, DuckDBQuerySplit}
+import wvlet.lang.runner.connector.trino.DuckDBSQLFunction.DuckDBFunctionHandle
+import wvlet.lang.runner.connector.trino.DuckDBSQLFunction.DuckDBQuerySplit
 import wvlet.log.LogSupport
 
 import java.util.Optional
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.atomic.AtomicBoolean
-import java.{lang, util}
+import java.lang
+import java.util
 import scala.collection.immutable.ListMap
 import scala.jdk.CollectionConverters.*
 

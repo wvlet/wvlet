@@ -4,20 +4,28 @@ import wvlet.lang.api.Span
 import wvlet.lang.api.Span.NoSpan
 import wvlet.lang.api.StatusCode
 import wvlet.lang.compiler.transform.ExpressionEvaluator
-import wvlet.lang.compiler.{Context, DBType, ModelSymbolInfo, SQLDialect}
-import wvlet.lang.model.{DataType, SyntaxTreeNode}
+import wvlet.lang.compiler.Context
+import wvlet.lang.compiler.DBType
+import wvlet.lang.compiler.ModelSymbolInfo
+import wvlet.lang.compiler.SQLDialect
+import wvlet.lang.model.DataType
+import wvlet.lang.model.SyntaxTreeNode
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.expr.NameExpr.EmptyName
 import wvlet.lang.model.plan.JoinType.*
 import wvlet.lang.model.plan.*
-import wvlet.lang.model.plan.SamplingSize.{Percentage, PercentageExpr, Rows}
+import wvlet.lang.model.plan.SamplingSize.Percentage
+import wvlet.lang.model.plan.SamplingSize.PercentageExpr
+import wvlet.lang.model.plan.SamplingSize.Rows
 import wvlet.log.LogSupport
 import SyntaxContext.*
 import wvlet.lang.compiler.DBType.Trino
 import wvlet.lang.compiler.codegen.CodeFormatter
 import wvlet.lang.compiler.codegen.CodeFormatter.*
 import wvlet.lang.compiler.codegen.CodeFormatterConfig
-import wvlet.lang.model.DataType.{EmptyRelationType, NamedType, SchemaType}
+import wvlet.lang.model.DataType.EmptyRelationType
+import wvlet.lang.model.DataType.NamedType
+import wvlet.lang.model.DataType.SchemaType
 import wvlet.lang.model.plan.SamplingMethod.reservoir
 
 import scala.collection.immutable.ListMap

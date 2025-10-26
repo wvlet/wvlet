@@ -1,9 +1,12 @@
 package wvlet.lang.server
 
 import wvlet.airframe.http.netty.NettyServer
-import wvlet.airframe.launcher.{Launcher, command, option}
+import wvlet.airframe.launcher.Launcher
+import wvlet.airframe.launcher.command
+import wvlet.airframe.launcher.option
 import wvlet.lang.compiler.WorkEnv
-import wvlet.log.{LogLevel, LogSupport}
+import wvlet.log.LogLevel
+import wvlet.log.LogSupport
 
 object WvletServerMain:
   private def launcher: Launcher      = Launcher.of[WvletServerMain]

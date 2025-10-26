@@ -1,6 +1,7 @@
 package wvlet.lang.model.plan
 
-import wvlet.lang.api.{LinePosition, Span}
+import wvlet.lang.api.LinePosition
+import wvlet.lang.api.Span
 import wvlet.lang.model.DataType.EmptyRelationType
 import wvlet.lang.model.RelationType
 import wvlet.lang.model.expr.*

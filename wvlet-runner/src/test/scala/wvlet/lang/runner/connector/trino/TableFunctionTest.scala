@@ -22,7 +22,6 @@ class TableFunctionTest extends AirSpec:
   }
 
   test("Run table functions") { (trino: TrinoConnector) =>
-
     test("hello table function") {
       trino.runQuery("select * from TABLE(wvlet.hello('wvlet'))") { rs =>
         rs.next() shouldBe true

@@ -1,14 +1,21 @@
 package wvlet.lang.ui.component.monaco
 
 import org.scalajs.dom
-import org.scalajs.dom.{HTMLElement, ResizeObserver}
+import org.scalajs.dom.HTMLElement
+import org.scalajs.dom.ResizeObserver
 import wvlet.airframe.rx.html.RxElement
 import wvlet.airframe.rx.html.all.*
-import wvlet.airframe.rx.{Cancelable, Rx, RxVar}
-import wvlet.lang.api.{LinePosition, WvletLangException}
+import wvlet.airframe.rx.Cancelable
+import wvlet.airframe.rx.Rx
+import wvlet.airframe.rx.RxVar
+import wvlet.lang.api.LinePosition
+import wvlet.lang.api.WvletLangException
 import wvlet.lang.compiler.codegen.GenSQL
-import wvlet.lang.compiler.{CompilationUnit, Compiler, Symbol}
-import wvlet.lang.ui.component.{MainFrame, WindowSize}
+import wvlet.lang.compiler.CompilationUnit
+import wvlet.lang.compiler.Compiler
+import wvlet.lang.compiler.Symbol
+import wvlet.lang.ui.component.MainFrame
+import wvlet.lang.ui.component.WindowSize
 import wvlet.lang.ui.component.MainFrame.NavBar
 import wvlet.log.LogSupport
 

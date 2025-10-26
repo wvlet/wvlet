@@ -13,14 +13,23 @@
  */
 package wvlet.lang.model.plan
 
-import wvlet.lang.compiler.{Context, Name, SourceFile}
+import wvlet.lang.compiler.Context
+import wvlet.lang.compiler.Name
+import wvlet.lang.compiler.SourceFile
 import wvlet.lang.model.DataType.EmptyRelationType
 import wvlet.lang.model.expr.NameExpr.EmptyName
-import wvlet.lang.model.expr.{Attribute, AttributeList, Expression, NameExpr}
-import wvlet.lang.model.{RelationType, RelationTypeList, SyntaxTreeNode, TreeNode}
+import wvlet.lang.model.expr.Attribute
+import wvlet.lang.model.expr.AttributeList
+import wvlet.lang.model.expr.Expression
+import wvlet.lang.model.expr.NameExpr
+import wvlet.lang.model.RelationType
+import wvlet.lang.model.RelationTypeList
+import wvlet.lang.model.SyntaxTreeNode
+import wvlet.lang.model.TreeNode
 import wvlet.airframe.ulid.ULID
 import wvlet.lang.api.StatusCode
-import wvlet.lang.api.{LinePosition, Span}
+import wvlet.lang.api.LinePosition
+import wvlet.lang.api.Span
 import wvlet.lang.api.Span.NoSpan
 
 enum PlanProperty:

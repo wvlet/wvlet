@@ -13,8 +13,11 @@
  */
 package wvlet.lang.compiler.analyzer
 
-import wvlet.lang.compiler.{CompilationUnit, Context, Phase}
-import wvlet.lang.model.plan.{ModelDef, TypeDef}
+import wvlet.lang.compiler.CompilationUnit
+import wvlet.lang.compiler.Context
+import wvlet.lang.compiler.Phase
+import wvlet.lang.model.plan.ModelDef
+import wvlet.lang.model.plan.TypeDef
 
 /**
   * Check unused compilation units and exclude them

@@ -13,8 +13,11 @@
  */
 package wvlet.lang.compiler
 
-import wvlet.lang.api.{SourceLocation, Span, StatusCode}
-import wvlet.lang.catalog.{Catalog, InMemoryCatalog}
+import wvlet.lang.api.SourceLocation
+import wvlet.lang.api.Span
+import wvlet.lang.api.StatusCode
+import wvlet.lang.catalog.Catalog
+import wvlet.lang.catalog.InMemoryCatalog
 import wvlet.lang.compiler.query.QueryProgressMonitor
 import wvlet.lang.model.expr.NameExpr
 import wvlet.lang.model.plan.Import

@@ -2,10 +2,18 @@ package wvlet.lang.server
 
 import wvlet.airframe.control.ThreadUtil
 import wvlet.airframe.ulid.ULID
-import wvlet.lang.api.{SourceLocation, StatusCode, WvletLangException}
-import wvlet.lang.api.v1.frontend.FrontendApi.{QueryInfoRequest, QueryResponse}
-import wvlet.lang.api.v1.query.{QueryError, QueryInfo, QueryRequest, QueryResult, QueryStatus}
-import wvlet.lang.api.v1.query.QueryStatus.{QUEUED, RUNNING}
+import wvlet.lang.api.SourceLocation
+import wvlet.lang.api.StatusCode
+import wvlet.lang.api.WvletLangException
+import wvlet.lang.api.v1.frontend.FrontendApi.QueryInfoRequest
+import wvlet.lang.api.v1.frontend.FrontendApi.QueryResponse
+import wvlet.lang.api.v1.query.QueryError
+import wvlet.lang.api.v1.query.QueryInfo
+import wvlet.lang.api.v1.query.QueryRequest
+import wvlet.lang.api.v1.query.QueryResult
+import wvlet.lang.api.v1.query.QueryStatus
+import wvlet.lang.api.v1.query.QueryStatus.QUEUED
+import wvlet.lang.api.v1.query.QueryStatus.RUNNING
 import wvlet.lang.compiler.query.QueryProgressMonitor
 import wvlet.lang.runner.QueryExecutor
 import wvlet.lang.runner.WvletScriptRunner
@@ -13,7 +21,8 @@ import wvlet.lang.runner.connector.DBConnector
 import wvlet.log.LogSupport
 
 import java.time.Instant
-import java.util.concurrent.{ConcurrentHashMap, Executors}
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
 import scala.jdk.CollectionConverters.*
 
 class QueryService(scriptRunner: WvletScriptRunner) extends LogSupport with AutoCloseable:
