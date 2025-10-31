@@ -78,7 +78,7 @@ enum DBType(
   case Snowflake
       extends DBType(
         supportCreateOrReplace = true,
-        supportCreateTableWithOption = true,
+        supportCreateTableWithOption = false, // Snowflake doesn't use WITH (...) syntax
         arrayConstructorSyntax = SQLDialect.ArraySyntax.ArrayPrefix,
         mapConstructorSyntax = SQLDialect.MapSyntax.KeyValue,
         requireParenForValues = true,

@@ -64,8 +64,20 @@ class DBConnectorProvider(workEnv: WorkEnv) extends LogSupport with AutoCloseabl
           val props = profile.properties ++ properties
           SnowflakeConnector(
             SnowflakeConfig(
-              account = profile.host.getOrElse(""),
-              database = profile.catalog.getOrElse(""),
+              account = profile
+                .host
+                .getOrElse(
+                  throw IllegalArgumentException(
+                    "Snowflake profile requires 'host' (account identifier)"
+                  )
+                ),
+              database = profile
+                .catalog
+                .getOrElse(
+                  throw IllegalArgumentException(
+                    "Snowflake profile requires 'catalog' (database name)"
+                  )
+                ),
               schema = profile.schema.getOrElse("PUBLIC"),
               warehouse = props.get("warehouse").map(_.toString),
               role = props.get("role").map(_.toString),

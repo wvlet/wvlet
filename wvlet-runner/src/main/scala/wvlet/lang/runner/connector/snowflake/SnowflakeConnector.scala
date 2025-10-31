@@ -109,6 +109,8 @@ class SnowflakeConnector(val config: SnowflakeConfig, workEnv: WorkEnv)
   override def listFunctions(catalog: String): List[SQLFunction] =
     val functionList = List.newBuilder[SQLFunction]
     // Snowflake uses information_schema.functions to list functions
+    // Escape single quotes to prevent SQL injection
+    val escapedCatalog = catalog.replace("'", "''")
     runQuery(s"""
         |SELECT
         |  function_name,
@@ -116,7 +118,7 @@ class SnowflakeConnector(val config: SnowflakeConfig, workEnv: WorkEnv)
         |  argument_signature,
         |  function_definition
         |FROM information_schema.functions
-        |WHERE function_catalog = '${catalog}'
+        |WHERE function_catalog = '${escapedCatalog}'
         |""".stripMargin) { rs =>
       while rs.next() do
         val functionName = rs.getString("function_name")
