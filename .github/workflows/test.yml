@@ -54,7 +54,7 @@ jobs:
       - uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
-          java-version: '24'
+          java-version: '25'
           cache: sbt
       - name: Scala 3.x test
         run: ./sbt projectJVM/test
@@ -76,7 +76,7 @@ jobs:
       - uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
-          java-version: '24'
+          java-version: '25'
           cache: sbt
       - uses: actions/setup-node@v6
         with:
@@ -107,7 +107,7 @@ jobs:
       - uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
-          java-version: '24'
+          java-version: '25'
           cache: sbt
       - uses: actions/setup-node@v6
         with:
@@ -130,7 +130,7 @@ jobs:
       - uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
-          java-version: '24'
+          java-version: '25'
           cache: sbt
       - name: Install native dependencies
         run: sudo apt-get update && sudo apt-get install -y libgc-dev
