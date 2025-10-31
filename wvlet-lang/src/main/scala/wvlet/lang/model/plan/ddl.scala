@@ -26,7 +26,8 @@ import wvlet.lang.model.expr.*
  * SQL statements for changing the table schema or catalog
  */
 trait DDL extends TopLevelStatement with LeafPlan:
-  override def relationType: RelationType = EmptyRelationType
+  override def relationType: RelationType  = EmptyRelationType
+  override def category: StatementCategory = StatementCategory.DDL
 
 case class TableDef(name: NameExpr, params: Seq[TableDefParam], span: Span) extends DDL:
 

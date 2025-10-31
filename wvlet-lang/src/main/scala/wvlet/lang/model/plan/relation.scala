@@ -688,7 +688,37 @@ case class SQLSelect(
     child.relationType
   )
 
-trait TopLevelStatement extends LogicalPlan
+/**
+  * SQL statement categories for classification purposes. This is separate from the Update trait
+  * which is used for JDBC execution routing (executeUpdate() vs executeQuery()).
+  */
+enum StatementCategory:
+  case DDL     // Data Definition Language: CREATE, ALTER, DROP, etc.
+  case DML     // Data Manipulation Language: INSERT, UPDATE, DELETE, etc.
+  case DQL     // Data Query Language: SELECT
+  case DCL     // Data Control Language: GRANT, REVOKE, prepared statements
+  case TCL     // Transaction Control Language: COMMIT, ROLLBACK, etc.
+  case Utility // Utility commands: SHOW, DESCRIBE, EXPLAIN, USE, etc.
+  case Unknown // Unclassified statements
+
+trait TopLevelStatement extends LogicalPlan:
+  /**
+    * Statement category for privilege checks and optimization. The default is Unknown. This is
+    * purely informational and separate from the Update trait which determines JDBC routing.
+    */
+  def category: StatementCategory = StatementCategory.Unknown
+
+  /** Helper method to check if this is a DDL statement */
+  def isDDL: Boolean = category == StatementCategory.DDL
+
+  /** Helper method to check if this is a DML statement */
+  def isDML: Boolean = category == StatementCategory.DML
+
+  /** Helper method to check if this is a DQL statement */
+  def isDQL: Boolean = category == StatementCategory.DQL
+
+  /** Helper method to check if this statement requires executeUpdate() for JDBC */
+  def requiresExecuteUpdate: Boolean = this.isInstanceOf[Update]
 
 trait QueryStatement extends UnaryRelation with TopLevelStatement
 
@@ -699,7 +729,8 @@ case class Query(body: Relation, span: Span) extends QueryStatement with Filteri
     b += body
     b.result()
 
-  override def relationType: RelationType = body.relationType
+  override def relationType: RelationType  = body.relationType
+  override def category: StatementCategory = StatementCategory.DQL
 
 // Joins
 case class Join(

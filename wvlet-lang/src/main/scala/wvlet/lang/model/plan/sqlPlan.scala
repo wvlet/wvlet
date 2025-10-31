@@ -68,11 +68,17 @@ case class PrepareStatement(name: NameExpr, statement: LogicalPlan, span: Span)
     extends DDL
     with LeafPlan:
   override def relationType: RelationType = EmptyRelationType
+  // PrepareStatement is DCL (session control), not DDL
+  override def category: StatementCategory = StatementCategory.DCL
 
 case class ExecuteStatement(name: NameExpr, parameters: List[Expression], span: Span)
     extends DDL
     with LeafPlan:
   override def relationType: RelationType = EmptyRelationType
+  // ExecuteStatement is DCL (session control), not DDL
+  override def category: StatementCategory = StatementCategory.DCL
 
 case class DeallocateStatement(name: NameExpr, span: Span) extends DDL with LeafPlan:
   override def relationType: RelationType = EmptyRelationType
+  // DeallocateStatement is DCL (session control), not DDL
+  override def category: StatementCategory = StatementCategory.DCL
