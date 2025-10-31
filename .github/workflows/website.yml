@@ -34,7 +34,7 @@ jobs:
       - uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
-          java-version: '24'
+          java-version: '25'
           cache: sbt
       - uses: actions/setup-node@v6
         with:

@@ -64,7 +64,7 @@ jobs:
         if: ${{ !matrix.skip }}
         with:
           distribution: 'temurin'
-          java-version: '24'
+          java-version: '25'
           cache: sbt
       - name: Install libgc
         if: ${{ !matrix.skip }}
