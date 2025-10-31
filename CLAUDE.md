@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Wvlet is a cross-SQL flow-style query language for functional data modeling and interactive data exploration. It compiles .wv query files into SQL for various database engines (DuckDB, Trino, Hive). The project consists of a language compiler, runtime system, web UI, and multi-platform bindings.
+Wvlet is a cross-SQL flow-style query language for functional data modeling and interactive data exploration. It compiles .wv query files into SQL for various database engines (DuckDB, Trino, Snowflake, Hive). The project consists of a language compiler, runtime system, web UI, and multi-platform bindings.
 
 ## Key Development Commands
 
@@ -122,6 +122,7 @@ cd website && npm run build
 ### Database Connectors
 - **DuckDB**: Default for testing and lightweight execution
 - **Trino**: Production distributed query engine
+- **Snowflake**: Cloud data warehouse via JDBC
 - **Delta Lake**: Support for Delta table format
 
 ## Testing Framework

@@ -75,7 +75,16 @@ enum DBType(
   case PostgreSQL extends DBType
   case SQLite     extends DBType
   case Redshift   extends DBType
-  case Snowflake  extends DBType
+  case Snowflake
+      extends DBType(
+        supportCreateOrReplace = true,
+        supportCreateTableWithOption = true,
+        arrayConstructorSyntax = SQLDialect.ArraySyntax.ArrayPrefix,
+        mapConstructorSyntax = SQLDialect.MapSyntax.KeyValue,
+        requireParenForValues = true,
+        supportRLike = true
+      )
+
   case ClickHouse extends DBType
   case Oracle     extends DBType
   case SQLServer  extends DBType
