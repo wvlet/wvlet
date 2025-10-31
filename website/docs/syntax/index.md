@@ -288,7 +288,7 @@ One of the major difference from traditional SQL is that wvlet uses single or do
 | `1`, `2`, ...                                         | Refers to 1-origin column index for `order by` clause                                                                                                    |
 | `expr`::`type`                                        | Type cast the value to the target type. Equivalent to cast(`expr` as `type`) in SQL                                                                      |
 | '2025-01-01'::date                                    | Cast the string to a date value                                                                                                                          |
-| '1 year'::interval or '30 days':interval              | Cast the string to an interval value. Supports units: day, days, hour, hours, minute, minutes, second, seconds, month, months, year, years, etc.        |
+| '1 year':interval, '30 days':interval              | Cast the string to an interval value. Supports units: day, days, hour, hours, minute, minutes, second, seconds, month, months, year, years, etc.        |
 
 :::note Type Annotations vs Type Casting
 Single colon `:` is used for **type annotations** in declarations (e.g., `param: int`, `val name: string`), while double colon `::` is used for **runtime type casting** (e.g., `value::int`, `'2025-01-01'::date`).
@@ -1894,11 +1894,11 @@ order by total_revenue desc
 **Time window aggregation:**
 ```wvlet
 val orders(id, order_date, amount) = [
-  ["2025-10-25", "2025-10-25", 100],
-  ["2025-10-24", "2025-10-24", 150],
-  ["2025-10-23", "2025-10-23", 200],
-  ["2025-10-20", "2025-10-20", 75],
-  ["2025-10-18", "2025-10-18", 125]
+  [1, "2025-10-25", 100],
+  [2, "2025-10-24", 150],
+  [3, "2025-10-23", 200],
+  [4, "2025-10-20", 75],
+  [5, "2025-10-18", 125]
 ]
 
 from orders
