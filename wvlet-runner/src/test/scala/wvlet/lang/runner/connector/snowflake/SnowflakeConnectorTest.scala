@@ -20,8 +20,8 @@ import wvlet.lang.compiler.WorkEnv
 /**
   * Tests for SnowflakeConnector
   *
-  * Note: These tests require actual Snowflake credentials to run. Set the following environment
-  * variables:
+  * Note: Integration tests require actual Snowflake credentials to run. Set the following
+  * environment variables:
   *   - SNOWFLAKE_ACCOUNT
   *   - SNOWFLAKE_USER
   *   - SNOWFLAKE_PASSWORD
@@ -30,11 +30,11 @@ import wvlet.lang.compiler.WorkEnv
   *   - SNOWFLAKE_WAREHOUSE (optional)
   *   - SNOWFLAKE_ROLE (optional)
   *
-  * Tests will be skipped if credentials are not available.
+  * Integration tests will be skipped if credentials are not available.
   */
 class SnowflakeConnectorTest extends AirSpec:
 
-  private def getSnowflakeConfig: Option[SnowflakeConfig] =
+  private val snowflakeConfig: Option[SnowflakeConfig] =
     for
       account  <- sys.env.get("SNOWFLAKE_ACCOUNT")
       user     <- sys.env.get("SNOWFLAKE_USER")
@@ -50,6 +50,9 @@ class SnowflakeConnectorTest extends AirSpec:
       user = Some(user),
       password = Some(password)
     )
+
+  if snowflakeConfig.isEmpty then
+    skip("Snowflake credentials not available. Set SNOWFLAKE_* environment variables to run integration tests.")
 
   test("should create SnowflakeConfig with proper withXXX methods") {
     val config = SnowflakeConfig(
@@ -77,48 +80,44 @@ class SnowflakeConnectorTest extends AirSpec:
   }
 
   test("should connect to Snowflake and execute basic queries") {
-    getSnowflakeConfig match
-      case Some(config) =>
-        val workEnv   = WorkEnv()
-        val connector = SnowflakeConnector(config, workEnv)
+    val config    = snowflakeConfig.get
+    val workEnv   = WorkEnv()
+    val connector = SnowflakeConnector(config, workEnv)
 
-        try
-          // Test basic query
-          connector.runQuery("SELECT 1 as test_col") { rs =>
-            rs.next() shouldBe true
-            rs.getInt("test_col") shouldBe 1
-          }
+    try
+      // Test basic query
+      connector.runQuery("SELECT 1 as test_col") { rs =>
+        rs.next() shouldBe true
+        rs.getInt("test_col") shouldBe 1
+      }
 
-          // Test catalog listing
-          val catalogs = connector.getCatalogNames
-          debug(s"Available catalogs: ${catalogs.mkString(", ")}")
-          catalogs shouldNotBe empty
+      // Test catalog listing
+      val catalogs = connector.getCatalogNames
+      debug(s"Available catalogs: ${catalogs.mkString(", ")}")
+      catalogs shouldNotBe empty
 
-          // Test schema listing
-          val schemas = connector.listSchemas(config.database)
-          debug(s"Available schemas in ${config.database}: ${schemas.map(_.name).mkString(", ")}")
-          schemas shouldNotBe empty
+      // Test schema listing
+      val schemas = connector.listSchemas(config.database)
+      debug(s"Available schemas in ${config.database}: ${schemas.map(_.name).mkString(", ")}")
+      schemas shouldNotBe empty
 
-          // Test table listing
-          val tables = connector.listTables(config.database, config.schema)
-          debug(
-            s"Available tables in ${config.database}.${config.schema}: ${tables
-                .map(_.name)
-                .mkString(", ")}"
-          )
+      // Test table listing
+      val tables = connector.listTables(config.database, config.schema)
+      debug(
+        s"Available tables in ${config.database}.${config.schema}: ${tables
+            .map(_.name)
+            .mkString(", ")}"
+      )
 
-          // Test function listing
-          test("list functions") {
-            val functions = connector.listFunctions(config.database)
-            debug(s"Found ${functions.size} functions")
-            functions shouldNotBe empty
-          }
-        finally
-          connector.close()
-        end try
-
-      case None =>
-        pending("Snowflake credentials not available. Set environment variables to run this test.")
+      // Test function listing
+      test("list functions") {
+        val functions = connector.listFunctions(config.database)
+        debug(s"Found ${functions.size} functions")
+        functions shouldNotBe empty
+      }
+    finally
+      connector.close()
+    end try
   }
 
 end SnowflakeConnectorTest
