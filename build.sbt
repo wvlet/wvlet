@@ -348,11 +348,11 @@ lazy val cli = project
         "wvlet" -> "wvlet.lang.cli.WvletMain"
       ),
     packJvmVersionSpecificOpts := {
-      val java24Opts = Seq(
+      val java25Opts = Seq(
         "--sun-misc-unsafe-memory-access=allow",
         "--enable-native-access=ALL-UNNAMED"
       )
-      Map("wv" -> Map(24 -> java24Opts), "wvlet" -> Map(24 -> java24Opts))
+      Map("wv" -> Map(25 -> java25Opts), "wvlet" -> Map(25 -> java25Opts))
     },
     packResourceDir ++= Map(file("wvlet-ui-main/dist") -> "web")
   )

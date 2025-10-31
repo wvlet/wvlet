@@ -46,7 +46,7 @@ For other platforms (e.g., Linux, Windows, etc.), download a binary package wvle
 
 You can find wv command in the bin directory of the package. Add the bin directory to your PATH environment variable.
 
-JDK17 or later is required to run Wvlet. Set JAVA_HOME environment variable to the JDK path.
+JDK 25 or later is required to run Wvlet. Set JAVA_HOME environment variable to the JDK path.
 
 ## Quick Start
 

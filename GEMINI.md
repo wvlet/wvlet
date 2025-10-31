@@ -191,7 +191,7 @@ test _.output should be """
 
 ## Environment Requirements
 
-- **JDK**: Minimum JDK 17, JDK 24+ required for Trino connector testing
+- **JDK**: Minimum JDK 25 (LTS)
 - **Native Builds**: clang, llvm, libstdc++-12-dev, libgc (Boehm GC)
 - **Node.js**: 18+ for UI development and documentation
 - **SBT**: 1.11.2 (specified in project/build.properties)
