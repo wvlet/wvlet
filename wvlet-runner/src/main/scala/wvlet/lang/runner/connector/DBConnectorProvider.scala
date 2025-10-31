@@ -5,6 +5,8 @@ import wvlet.lang.compiler.DBType
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.compiler.DBType.DuckDB
 import wvlet.lang.runner.connector.duckdb.DuckDBConnector
+import wvlet.lang.runner.connector.snowflake.SnowflakeConfig
+import wvlet.lang.runner.connector.snowflake.SnowflakeConnector
 import wvlet.lang.runner.connector.trino.TrinoConfig
 import wvlet.lang.runner.connector.trino.TrinoConnector
 import wvlet.log.LogSupport
@@ -53,6 +55,32 @@ class DBConnectorProvider(workEnv: WorkEnv) extends LogSupport with AutoCloseabl
               schema = profile.schema.getOrElse("default"),
               hostAndPort = profile.host.getOrElse("localhost"),
               useSSL = useSSL,
+              user = profile.user,
+              password = profile.password
+            ),
+            workEnv
+          )
+        case DBType.Snowflake =>
+          val props = profile.properties ++ properties
+          SnowflakeConnector(
+            SnowflakeConfig(
+              account = profile
+                .host
+                .getOrElse(
+                  throw IllegalArgumentException(
+                    "Snowflake profile requires 'host' (account identifier)"
+                  )
+                ),
+              database = profile
+                .catalog
+                .getOrElse(
+                  throw IllegalArgumentException(
+                    "Snowflake profile requires 'catalog' (database name)"
+                  )
+                ),
+              schema = profile.schema.getOrElse("PUBLIC"),
+              warehouse = props.get("warehouse").map(_.toString),
+              role = props.get("role").map(_.toString),
               user = profile.user,
               password = profile.password
             ),
