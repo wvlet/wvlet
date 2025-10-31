@@ -288,7 +288,7 @@ One of the major difference from traditional SQL is that wvlet uses single or do
 | `1`, `2`, ...                                         | Refers to 1-origin column index for `order by` clause                                                                                                    |
 | `expr`::`type`                                        | Type cast the value to the target type. Equivalent to cast(`expr` as `type`) in SQL                                                                      |
 | '2025-01-01'::date                                    | Cast the string to a date value                                                                                                                          |
-| '1 year'::interval                                    | Cast the string to an interval of SQL                                                                                                                    |
+| '1 year'::interval or '30 days':interval              | Cast the string to an interval value. Supports units: day, days, hour, hours, minute, minutes, second, seconds, month, months, year, years, etc.        |
 
 :::note Type Annotations vs Type Casting
 Single colon `:` is used for **type annotations** in declarations (e.g., `param: int`, `val name: string`), while double colon `::` is used for **runtime type casting** (e.g., `value::int`, `'2025-01-01'::date`).
@@ -1828,19 +1828,94 @@ Using CTEs for complex queries:
 ```wvlet
 with active_users as {
   from users
-  where last_login >= current_date - '30 days':interval
+  where last_login >= current_date() - '30 days':interval
 }
 with user_orders as {
   from orders
-  where created_at >= current_date - '30 days':interval
+  where created_at >= current_date() - '30 days':interval
 }
 from active_users
 left join user_orders
   on active_users.id = user_orders.user_id
 group by active_users.segment
-agg 
+agg
   _.count as user_count,
   user_orders.total.sum as revenue
 ```
+
+### Interval Queries → Filter by Time Ranges
+
+Intervals are useful for filtering data by time ranges. In Wvlet, you can use the `:interval` type casting syntax to specify time intervals:
+
+#### Basic Interval Filtering
+
+```wvlet
+from events
+where timestamp >= current_date() - '7 days':interval
+```
+
+This query returns events from the last 7 days. The `:interval` syntax casts a string to an interval value that can be subtracted from a date or timestamp.
+
+#### Interval Syntax
+
+Supported interval units include:
+- **Day units**: `'1 day'`, `'7 days'`, `'30 days'`
+- **Hour units**: `'1 hour'`, `'24 hours'`
+- **Minute/Second units**: `'30 minutes'`, `'45 seconds'`
+- **Month/Year units**: `'1 month'`, `'3 months'`, `'1 year'`, `'2 years'`
+
+#### Common Interval Filtering Patterns
+
+**Last N days:**
+```wvlet
+from transactions
+where created_at >= current_date() - '30 days':interval
+select customer_id, amount
+order by created_at desc
+```
+
+**Last N hours:**
+```wvlet
+from logs
+where timestamp >= current_timestamp() - '6 hours':interval
+where level = 'ERROR'
+```
+
+**Date range with intervals:**
+```wvlet
+from sales
+where sale_date >= current_date() - '90 days':interval
+where sale_date < current_date()
+group by product_id
+agg revenue.sum as total_revenue
+order by total_revenue desc
+```
+
+**Time window aggregation:**
+```wvlet
+val orders(id, order_date, amount) = [
+  ["2025-10-25", "2025-10-25", 100],
+  ["2025-10-24", "2025-10-24", 150],
+  ["2025-10-23", "2025-10-23", 200],
+  ["2025-10-20", "2025-10-20", 75],
+  ["2025-10-18", "2025-10-18", 125]
+]
+
+from orders
+where order_date >= current_date() - '7 days':interval
+group by order_date
+agg
+  _.count as order_count,
+  amount.sum as daily_revenue
+order by order_date desc
+```
+
+:::tip
+The `current_date()` returns today's date, while `current_timestamp()` returns the current date and time. Use `current_timestamp()` when you need to filter by specific time ranges within a day.
+:::
+
+:::note
+Unlike SQL which uses `interval '30' day`, Wvlet uses the `:interval` type casting syntax: `'30 days':interval`. Both are equivalent in functionality.
+:::
 
 This reference guide provides a comprehensive overview of Wvlet's query syntax. For hands-on examples and tutorials, check out the [Quick Start](./quick-start.md) guide.
