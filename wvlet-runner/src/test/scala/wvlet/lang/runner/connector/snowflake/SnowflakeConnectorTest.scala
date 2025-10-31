@@ -13,6 +13,7 @@
  */
 package wvlet.lang.runner.connector.snowflake
 
+import wvlet.airframe.Design
 import wvlet.airframe.codec.JDBCCodec.ResultSetCodec
 import wvlet.airspec.AirSpec
 import wvlet.lang.compiler.WorkEnv
@@ -52,7 +53,22 @@ class SnowflakeConnectorTest extends AirSpec:
     )
 
   if snowflakeConfig.isEmpty then
-    skip("Snowflake credentials not available. Set SNOWFLAKE_* environment variables to run integration tests.")
+    skip(
+      "Snowflake credentials not available. Set SNOWFLAKE_* environment variables to run integration tests."
+    )
+
+  initDesign { d =>
+    snowflakeConfig match
+      case Some(config) =>
+        d.bindInstance[SnowflakeConfig](config)
+          .bindInstance[WorkEnv](WorkEnv())
+          .bind[SnowflakeConnector]
+          .toProvider { (cfg: SnowflakeConfig, env: WorkEnv) =>
+            SnowflakeConnector(cfg, env)
+          }
+      case None =>
+        d
+  }
 
   test("should create SnowflakeConfig with proper withXXX methods") {
     val config = SnowflakeConfig(
@@ -80,11 +96,7 @@ class SnowflakeConnectorTest extends AirSpec:
   }
 
   test("should connect to Snowflake and execute basic queries") {
-    val config    = snowflakeConfig.get
-    val workEnv   = WorkEnv()
-    val connector = SnowflakeConnector(config, workEnv)
-
-    try
+    (connector: SnowflakeConnector, config: SnowflakeConfig) =>
       // Test basic query
       connector.runQuery("SELECT 1 as test_col") { rs =>
         rs.next() shouldBe true
@@ -115,9 +127,6 @@ class SnowflakeConnectorTest extends AirSpec:
         debug(s"Found ${functions.size} functions")
         functions shouldNotBe empty
       }
-    finally
-      connector.close()
-    end try
   }
 
 end SnowflakeConnectorTest
