@@ -1475,9 +1475,22 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           List(id)
 
     def unpivotKey(): UnpivotKey =
-      val valueColumn = identifierSingle()
-      consume(WvletToken.FOR)
-      val unpivotColumn = identifierSingle()
+      val startSpan = scanner.lookAhead().span
+      // Check if FOR token appears first (optional value column syntax)
+      val (valueColumn, unpivotColumn) =
+        scanner.lookAhead().token match
+          case WvletToken.FOR =>
+            // Optional value column syntax: for (unpivot column) in (...)
+            consume(WvletToken.FOR)
+            val unpivotCol = identifierSingle()
+            (None, unpivotCol)
+          case _ =>
+            // Traditional syntax: (value column) for (unpivot column) in (...)
+            val valueCol = identifierSingle()
+            consume(WvletToken.FOR)
+            val unpivotCol = identifierSingle()
+            (Some(valueCol), unpivotCol)
+
       consume(WvletToken.IN)
       consume(WvletToken.L_PAREN)
       val targetColumns = identifiers()
@@ -1495,8 +1508,9 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         unpivotColumn,
         targetColumns,
         // includeNulls,
-        spanFrom(valueColumn.span)
+        spanFrom(startSpan)
       )
+    end unpivotKey
 
     val t   = consume(WvletToken.UNPIVOT)
     val key = unpivotKey()

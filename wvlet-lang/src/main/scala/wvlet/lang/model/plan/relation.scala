@@ -622,8 +622,9 @@ case class Unpivot(child: Relation, unpivotKey: UnpivotKey, span: Span) extends 
     val unpivotedColumns = unpivotKey.targetColumns.map(_.fullName)
 
     val nonPivotColumns = inputFields.filterNot(f => unpivotedColumns.contains(f.name.name))
+    val valueColumnName = unpivotKey.getValueColumnName
     val unpivotColumnType: DataType = inputFields
-      .find(f => f.name.name == unpivotKey.valueColumnName.fullName)
+      .find(f => f.name.name == valueColumnName.fullName)
       .map(_.dataType)
       .getOrElse(DataType.UnknownType)
 
@@ -631,8 +632,8 @@ case class Unpivot(child: Relation, unpivotKey: UnpivotKey, span: Span) extends 
       Name.typeName(RelationType.newRelationTypeName),
       nonPivotColumns ++
         List(
-          NamedType(unpivotKey.valueColumnName.toTermName, StringType),
-          NamedType(unpivotKey.unpivotColumnName.toTermName, unpivotColumnType)
+          NamedType(unpivotKey.unpivotColumnName.toTermName, StringType),
+          NamedType(valueColumnName.toTermName, unpivotColumnType)
         ),
       child.relationType
     )
@@ -645,13 +646,16 @@ case class Unpivot(child: Relation, unpivotKey: UnpivotKey, span: Span) extends 
   * @param span
   */
 case class UnpivotKey(
-    valueColumnName: Identifier,
+    valueColumnName: Option[Identifier],
     unpivotColumnName: Identifier,
     targetColumns: List[Identifier],
     // includeNulls: Boolean = false,
     span: Span
 ) extends Expression:
   override def children: List[Expression] = Nil
+
+  /** Get the value column name, using "value" as default if not specified */
+  def getValueColumnName: Identifier = valueColumnName.getOrElse(Identifier(QName("value"), span))
 
 /**
   * Tradtional SQL aggregation node with SELECT clause
