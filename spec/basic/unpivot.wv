@@ -34,3 +34,36 @@ test _.rows = [
   [3, 'cars', 'jun', 600]
 ]
 
+---
+Test unpivot with optional value column name (defaults to "value")
+---
+from [
+ [1, 'electronics', 1, 2, 3, 4, 5, 6],
+ [2, 'clothes', 10, 20, 30, 40, 50, 60],
+ [3, 'cars', 100, 200, 300, 400, 500, 600]
+] as sales(id, dept, jan, feb, mar, apr, may, jun)
+unpivot
+  for month in (jan, feb, mar, apr, may, jun)
+
+test _.columns = ["id", "dept", "month", "value"]
+test _.rows = [
+  [1, 'electronics', 'jan', 1],
+  [1, 'electronics', 'feb', 2],
+  [1, 'electronics', 'mar', 3],
+  [1, 'electronics', 'apr', 4],
+  [1, 'electronics', 'may', 5],
+  [1, 'electronics', 'jun', 6],
+  [2, 'clothes', 'jan', 10],
+  [2, 'clothes', 'feb', 20],
+  [2, 'clothes', 'mar', 30],
+  [2, 'clothes', 'apr', 40],
+  [2, 'clothes', 'may', 50],
+  [2, 'clothes', 'jun', 60],
+  [3, 'cars', 'jan', 100],
+  [3, 'cars', 'feb', 200],
+  [3, 'cars', 'mar', 300],
+  [3, 'cars', 'apr', 400],
+  [3, 'cars', 'may', 500],
+  [3, 'cars', 'jun', 600]
+]
+
