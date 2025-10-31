@@ -57,18 +57,10 @@ class SnowflakeConnectorTest extends AirSpec:
       "Snowflake credentials not available. Set SNOWFLAKE_* environment variables to run integration tests."
     )
 
-  initDesign { d =>
-    snowflakeConfig match
-      case Some(config) =>
-        d.bindInstance[SnowflakeConfig](config)
-          .bindInstance[WorkEnv](WorkEnv())
-          .bind[SnowflakeConnector]
-          .toProvider { (cfg: SnowflakeConfig, env: WorkEnv) =>
-            SnowflakeConnector(cfg, env)
-          }
-      case None =>
-        d
-  }
+  initDesign:
+    _.bindInstance[SnowflakeConfig](snowflakeConfig.get)
+      .bindInstance[WorkEnv](WorkEnv())
+      .bindSingleton[SnowflakeConnector]
 
   test("should create SnowflakeConfig with proper withXXX methods") {
     val config = SnowflakeConfig(
@@ -95,38 +87,38 @@ class SnowflakeConnectorTest extends AirSpec:
     cleared.password shouldBe None
   }
 
-  test("should connect to Snowflake and execute basic queries") {
-    (connector: SnowflakeConnector, config: SnowflakeConfig) =>
-      // Test basic query
-      connector.runQuery("SELECT 1 as test_col") { rs =>
-        rs.next() shouldBe true
-        rs.getInt("test_col") shouldBe 1
-      }
+  test("should connect to Snowflake and execute basic queries") { (connector: SnowflakeConnector) =>
+    val config = connector.config
+    // Test basic query
+    connector.runQuery("SELECT 1 as test_col") { rs =>
+      rs.next() shouldBe true
+      rs.getInt("test_col") shouldBe 1
+    }
 
-      // Test catalog listing
-      val catalogs = connector.getCatalogNames
-      debug(s"Available catalogs: ${catalogs.mkString(", ")}")
-      catalogs shouldNotBe empty
+    // Test catalog listing
+    val catalogs = connector.getCatalogNames
+    debug(s"Available catalogs: ${catalogs.mkString(", ")}")
+    catalogs shouldNotBe empty
 
-      // Test schema listing
-      val schemas = connector.listSchemas(config.database)
-      debug(s"Available schemas in ${config.database}: ${schemas.map(_.name).mkString(", ")}")
-      schemas shouldNotBe empty
+    // Test schema listing
+    val schemas = connector.listSchemas(config.database)
+    debug(s"Available schemas in ${config.database}: ${schemas.map(_.name).mkString(", ")}")
+    schemas shouldNotBe empty
 
-      // Test table listing
-      val tables = connector.listTables(config.database, config.schema)
-      debug(
-        s"Available tables in ${config.database}.${config.schema}: ${tables
-            .map(_.name)
-            .mkString(", ")}"
-      )
+    // Test table listing
+    val tables = connector.listTables(config.database, config.schema)
+    debug(
+      s"Available tables in ${config.database}.${config.schema}: ${tables
+          .map(_.name)
+          .mkString(", ")}"
+    )
 
-      // Test function listing
-      test("list functions") {
-        val functions = connector.listFunctions(config.database)
-        debug(s"Found ${functions.size} functions")
-        functions shouldNotBe empty
-      }
+    // Test function listing
+    test("list functions") {
+      val functions = connector.listFunctions(config.database)
+      debug(s"Found ${functions.size} functions")
+      functions shouldNotBe empty
+    }
   }
 
 end SnowflakeConnectorTest
