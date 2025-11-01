@@ -691,6 +691,15 @@ case class SQLSelect(
 /**
   * SQL statement categories for classification purposes. This is separate from the Update trait
   * which is used for JDBC execution routing (executeUpdate() vs executeQuery()).
+  *
+  * Categories are based on SQL standard classifications:
+  *   - DDL: Data Definition Language - schema modifications (CREATE, ALTER, DROP)
+  *   - DML: Data Manipulation Language - data modifications (INSERT, UPDATE, DELETE)
+  *   - DQL: Data Query Language - data retrieval (SELECT)
+  *   - DCL: Data Control Language - access control and session management (GRANT, REVOKE, PREPARE)
+  *   - TCL: Transaction Control Language - transaction management (COMMIT, ROLLBACK)
+  *   - Utility: Database utilities (SHOW, DESCRIBE, EXPLAIN, USE)
+  *   - Unknown: Unclassified statements
   */
 enum StatementCategory:
   case DDL     // Data Definition Language: CREATE, ALTER, DROP, etc.
@@ -705,6 +714,15 @@ trait TopLevelStatement extends LogicalPlan:
   /**
     * Statement category for privilege checks and optimization. The default is Unknown. This is
     * purely informational and separate from the Update trait which determines JDBC routing.
+    *
+    * Examples:
+    *   - A statement can be category=DDL but still require executeUpdate() (e.g., Truncate,
+    *     CreateTableAs)
+    *   - The category reflects the semantic purpose of the statement per SQL standards
+    *   - Use requiresExecuteUpdate to check if JDBC executeUpdate() is needed
+    *
+    * @return
+    *   the statement category
     */
   def category: StatementCategory = StatementCategory.Unknown
 
@@ -718,7 +736,7 @@ trait TopLevelStatement extends LogicalPlan:
   def isDQL: Boolean = category == StatementCategory.DQL
 
   /** Helper method to check if this statement requires executeUpdate() for JDBC */
-  def requiresExecuteUpdate: Boolean = this.isInstanceOf[Update]
+  def requiresExecuteUpdate: Boolean = false
 
 trait QueryStatement extends UnaryRelation with TopLevelStatement
 

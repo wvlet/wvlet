@@ -15,7 +15,8 @@ import scala.collection.immutable.ListMap
 trait Update extends TopLevelStatement with HasTableOrFileName:
   override def relationType: RelationType = EmptyRelationType
   // Default category for Update is DML, but can be overridden (e.g., Truncate is DDL)
-  override def category: StatementCategory = StatementCategory.DML
+  override def category: StatementCategory    = StatementCategory.DML
+  override def requiresExecuteUpdate: Boolean = true
 
 object Update:
   /**

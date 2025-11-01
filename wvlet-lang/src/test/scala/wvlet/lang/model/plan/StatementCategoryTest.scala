@@ -15,9 +15,7 @@ package wvlet.lang.model.plan
 
 import wvlet.airspec.AirSpec
 import wvlet.lang.api.Span.NoSpan
-import wvlet.lang.model.expr.Identifier
-import wvlet.lang.model.expr.NameExpr
-import wvlet.lang.model.expr.QualifiedName
+import wvlet.lang.model.expr.UnquotedIdentifier
 import wvlet.lang.model.plan.*
 
 /**
@@ -29,28 +27,44 @@ class StatementCategoryTest extends AirSpec:
 
   test("DDL statements should be classified as DDL") {
     // DDL trait default
-    val createSchema = CreateSchema(NameExpr("schema1"), ifNotExists = false, None, NoSpan)
+    val createSchema = CreateSchema(
+      UnquotedIdentifier("schema1", NoSpan),
+      ifNotExists = false,
+      None,
+      NoSpan
+    )
     createSchema.category shouldBe StatementCategory.DDL
     createSchema.isDDL shouldBe true
 
-    val dropSchema = DropSchema(NameExpr("schema1"), ifExists = false, NoSpan)
+    val dropSchema = DropSchema(UnquotedIdentifier("schema1", NoSpan), ifExists = false, NoSpan)
     dropSchema.category shouldBe StatementCategory.DDL
 
-    val createTable = CreateTable(NameExpr("table1"), ifNotExists = false, Nil, Nil, NoSpan)
+    val createTable = CreateTable(
+      UnquotedIdentifier("table1", NoSpan),
+      ifNotExists = false,
+      Nil,
+      Nil,
+      NoSpan
+    )
     createTable.category shouldBe StatementCategory.DDL
 
-    val dropTable = DropTable(NameExpr("table1"), ifExists = false, NoSpan)
+    val dropTable = DropTable(UnquotedIdentifier("table1", NoSpan), ifExists = false, NoSpan)
     dropTable.category shouldBe StatementCategory.DDL
 
-    val createView = CreateView(NameExpr("view1"), replace = false, EmptyRelation(NoSpan), NoSpan)
+    val createView = CreateView(
+      UnquotedIdentifier("view1", NoSpan),
+      replace = false,
+      EmptyRelation(NoSpan),
+      NoSpan
+    )
     createView.category shouldBe StatementCategory.DDL
 
-    val dropView = DropView(NameExpr("view1"), ifExists = false, NoSpan)
+    val dropView = DropView(UnquotedIdentifier("view1", NoSpan), ifExists = false, NoSpan)
     dropView.category shouldBe StatementCategory.DDL
   }
 
   test("Truncate should be DDL but kept under Update for JDBC routing") {
-    val truncate = Truncate(TableOrFileName.TableName(NameExpr("table1")), NoSpan)
+    val truncate = Truncate(UnquotedIdentifier("table1", NoSpan), NoSpan)
 
     // Category is DDL per SQL standards
     truncate.category shouldBe StatementCategory.DDL
@@ -63,7 +77,7 @@ class StatementCategoryTest extends AirSpec:
 
   test("CreateTableAs should be DDL but kept under Update for JDBC routing") {
     val ctas = CreateTableAs(
-      TableOrFileName.TableName(NameExpr("table1")),
+      UnquotedIdentifier("table1", NoSpan),
       CreateMode.NoOverwrite,
       EmptyRelation(NoSpan),
       Nil,
@@ -82,35 +96,26 @@ class StatementCategoryTest extends AirSpec:
   }
 
   test("DML statements should be classified as DML") {
-    val saveTo = SaveTo(
-      EmptyRelation(NoSpan),
-      TableOrFileName.TableName(NameExpr("table1")),
-      Nil,
-      NoSpan
-    )
+    val saveTo = SaveTo(EmptyRelation(NoSpan), UnquotedIdentifier("table1", NoSpan), Nil, NoSpan)
     saveTo.category shouldBe StatementCategory.DML
     saveTo.isDML shouldBe true
     saveTo.requiresExecuteUpdate shouldBe true
 
     val appendTo = AppendTo(
       EmptyRelation(NoSpan),
-      TableOrFileName.TableName(NameExpr("table1")),
+      UnquotedIdentifier("table1", NoSpan),
       Nil,
       NoSpan
     )
     appendTo.category shouldBe StatementCategory.DML
     appendTo.isDML shouldBe true
 
-    val delete = Delete(
-      EmptyRelation(NoSpan),
-      TableOrFileName.TableName(NameExpr("table1")),
-      NoSpan
-    )
+    val delete = Delete(EmptyRelation(NoSpan), UnquotedIdentifier("table1", NoSpan), NoSpan)
     delete.category shouldBe StatementCategory.DML
     delete.isDML shouldBe true
 
     val insertInto = InsertInto(
-      TableOrFileName.TableName(NameExpr("table1")),
+      UnquotedIdentifier("table1", NoSpan),
       Nil,
       EmptyRelation(NoSpan),
       Nil,
@@ -119,37 +124,27 @@ class StatementCategoryTest extends AirSpec:
     insertInto.category shouldBe StatementCategory.DML
 
     val insertOverwrite = InsertOverwrite(
-      TableOrFileName.TableName(NameExpr("table1")),
+      UnquotedIdentifier("table1", NoSpan),
       EmptyRelation(NoSpan),
       Nil,
       NoSpan
     )
     insertOverwrite.category shouldBe StatementCategory.DML
 
-    val updateRows = UpdateRows(TableOrFileName.TableName(NameExpr("table1")), Nil, None, NoSpan)
+    val updateRows = UpdateRows(UnquotedIdentifier("table1", NoSpan), Nil, None, NoSpan)
     updateRows.category shouldBe StatementCategory.DML
 
-    val insert = Insert(
-      TableOrFileName.TableName(NameExpr("table1")),
-      Nil,
-      EmptyRelation(NoSpan),
-      NoSpan
-    )
+    val insert = Insert(UnquotedIdentifier("table1", NoSpan), Nil, EmptyRelation(NoSpan), NoSpan)
     insert.category shouldBe StatementCategory.DML
 
-    val upsert = Upsert(
-      TableOrFileName.TableName(NameExpr("table1")),
-      Nil,
-      EmptyRelation(NoSpan),
-      NoSpan
-    )
+    val upsert = Upsert(UnquotedIdentifier("table1", NoSpan), Nil, EmptyRelation(NoSpan), NoSpan)
     upsert.category shouldBe StatementCategory.DML
 
     val merge = Merge(
-      TableOrFileName.TableName(NameExpr("table1")),
+      UnquotedIdentifier("table1", NoSpan),
       None,
       EmptyRelation(NoSpan),
-      Identifier("true"),
+      UnquotedIdentifier("true", NoSpan),
       None,
       None,
       NoSpan
@@ -169,43 +164,42 @@ class StatementCategoryTest extends AirSpec:
   }
 
   test("Prepared statement operations should be classified as DCL") {
-    val prepare = PrepareStatement(NameExpr("stmt1"), Query(EmptyRelation(NoSpan), NoSpan), NoSpan)
+    val prepare = PrepareStatement(
+      UnquotedIdentifier("stmt1", NoSpan),
+      Query(EmptyRelation(NoSpan), NoSpan),
+      NoSpan
+    )
     prepare.category shouldBe StatementCategory.DCL
 
-    val execute = ExecuteStatement(NameExpr("stmt1"), Nil, NoSpan)
+    val execute = ExecuteStatement(UnquotedIdentifier("stmt1", NoSpan), Nil, NoSpan)
     execute.category shouldBe StatementCategory.DCL
 
-    val deallocate = DeallocateStatement(NameExpr("stmt1"), NoSpan)
+    val deallocate = DeallocateStatement(UnquotedIdentifier("stmt1", NoSpan), NoSpan)
     deallocate.category shouldBe StatementCategory.DCL
   }
 
   test("Utility commands should be classified as Utility") {
-    val showQuery = ShowQuery(NameExpr("table1"), NoSpan)
+    val showQuery = ShowQuery(UnquotedIdentifier("table1", NoSpan), NoSpan)
     showQuery.category shouldBe StatementCategory.Utility
 
     val explainPlan = ExplainPlan(Query(EmptyRelation(NoSpan), NoSpan), Nil, false, false, NoSpan)
     explainPlan.category shouldBe StatementCategory.Utility
 
-    val useSchema = UseSchema(QualifiedName(List("schema1")), NoSpan)
+    val useSchema = UseSchema(UnquotedIdentifier("schema1", NoSpan), NoSpan)
     useSchema.category shouldBe StatementCategory.Utility
 
-    val describeInput = DescribeInput(NameExpr("table1"), NoSpan)
+    val describeInput = DescribeInput(UnquotedIdentifier("table1", NoSpan), NoSpan)
     describeInput.category shouldBe StatementCategory.Utility
 
-    val describeOutput = DescribeOutput(NameExpr("table1"), NoSpan)
+    val describeOutput = DescribeOutput(UnquotedIdentifier("table1", NoSpan), NoSpan)
     describeOutput.category shouldBe StatementCategory.Utility
   }
 
   test("Update trait should imply requiresExecuteUpdate") {
-    val saveTo = SaveTo(
-      EmptyRelation(NoSpan),
-      TableOrFileName.TableName(NameExpr("table1")),
-      Nil,
-      NoSpan
-    )
+    val saveTo = SaveTo(EmptyRelation(NoSpan), UnquotedIdentifier("table1", NoSpan), Nil, NoSpan)
     saveTo.requiresExecuteUpdate shouldBe true
 
-    val truncate = Truncate(TableOrFileName.TableName(NameExpr("table1")), NoSpan)
+    val truncate = Truncate(UnquotedIdentifier("table1", NoSpan), NoSpan)
     truncate.requiresExecuteUpdate shouldBe true
 
     val query = Query(EmptyRelation(NoSpan), NoSpan)
@@ -213,17 +207,18 @@ class StatementCategoryTest extends AirSpec:
   }
 
   test("Helper methods should work correctly") {
-    val ddl = CreateTable(NameExpr("table1"), ifNotExists = false, Nil, Nil, NoSpan)
+    val ddl = CreateTable(
+      UnquotedIdentifier("table1", NoSpan),
+      ifNotExists = false,
+      Nil,
+      Nil,
+      NoSpan
+    )
     ddl.isDDL shouldBe true
     ddl.isDML shouldBe false
     ddl.isDQL shouldBe false
 
-    val dml = SaveTo(
-      EmptyRelation(NoSpan),
-      TableOrFileName.TableName(NameExpr("table1")),
-      Nil,
-      NoSpan
-    )
+    val dml = SaveTo(EmptyRelation(NoSpan), UnquotedIdentifier("table1", NoSpan), Nil, NoSpan)
     dml.isDDL shouldBe false
     dml.isDML shouldBe true
     dml.isDQL shouldBe false
