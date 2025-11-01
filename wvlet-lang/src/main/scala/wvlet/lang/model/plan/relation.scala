@@ -623,8 +623,10 @@ case class Unpivot(child: Relation, unpivotKey: UnpivotKey, span: Span) extends 
 
     val nonPivotColumns = inputFields.filterNot(f => unpivotedColumns.contains(f.name.name))
     val valueColumnName = unpivotKey.getValueColumnName
-    val unpivotColumnType: DataType = inputFields
-      .find(f => f.name.name == valueColumnName.fullName)
+    val unpivotColumnType: DataType = unpivotKey
+      .targetColumns
+      .headOption
+      .flatMap(targetCol => inputFields.find(f => f.name.name == targetCol.fullName))
       .map(_.dataType)
       .getOrElse(DataType.UnknownType)
 
@@ -655,7 +657,7 @@ case class UnpivotKey(
   override def children: List[Expression] = Nil
 
   /** Get the value column name, using "value" as default if not specified */
-  def getValueColumnName: Identifier = valueColumnName.getOrElse(Identifier(QName("value"), span))
+  def getValueColumnName: Identifier = valueColumnName.getOrElse(UnquotedIdentifier("value", span))
 
 /**
   * Tradtional SQL aggregation node with SELECT clause
