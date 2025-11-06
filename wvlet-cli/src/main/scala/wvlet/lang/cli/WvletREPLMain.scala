@@ -83,16 +83,20 @@ class WvletREPLMain(cliOption: WvletGlobalOption, replOpts: WvletREPLOption) ext
           throw StatusCode.FILE_NOT_FOUND.newException(s"File not found: ${f.getAbsolutePath()}")
       }
 
-    val inputScripts = commandInputs.result()
+    val inputScripts  = commandInputs.result()
+    val isInteractive = inputScripts.isEmpty
 
     val design = Design
       .newSilentDesign
-      .bindSingleton[WvletREPL]
+      .bind[WvletREPL]
+      .toProvider { (workEnv: WorkEnv, runner: WvletScriptRunner) =>
+        WvletREPL(workEnv, runner, isInteractive)
+      }
       .bindInstance[Profile](currentProfile)
       .bindInstance[WorkEnv](WorkEnv(path = replOpts.workFolder, logLevel = cliOption.logLevel))
       .bindInstance[WvletScriptRunnerConfig](
         WvletScriptRunnerConfig(
-          interactive = inputScripts.isEmpty,
+          interactive = isInteractive,
           profile = currentProfile,
           catalog = selectedCatalog,
           schema = selectedSchema

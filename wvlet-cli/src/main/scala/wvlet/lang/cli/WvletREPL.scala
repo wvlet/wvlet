@@ -61,10 +61,13 @@ import java.util.regex.Pattern
 import scala.io.AnsiColor
 import scala.jdk.CollectionConverters.*
 
-class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseable with LogSupport:
+class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner, interactive: Boolean)
+    extends AutoCloseable
+    with LogSupport:
   import WvletREPL.*
 
-  private val terminal = TerminalBuilder
+  // Lazy initialization: only create terminal/reader for interactive mode
+  private lazy val terminal = TerminalBuilder
     .builder()
     .name("wvlet-shell")
     // Use dumb terminal for sbt testing or non-TTY environments (e.g., Claude Code, CI/CD)
@@ -73,9 +76,9 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
     .dumb(WvletMain.isInSbt || sys.env.get("TTY").isEmpty)
     .build()
 
-  private val historyFile = new File(workEnv.cacheFolder, ".wv_history")
+  private lazy val historyFile = new File(workEnv.cacheFolder, ".wv_history")
 
-  private val reader = LineReaderBuilder
+  private lazy val reader = LineReaderBuilder
     .builder()
     .terminal(terminal)
     .variable(LineReader.HISTORY_FILE, historyFile.toPath)
@@ -142,8 +145,10 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
           case _ =>
 
   override def close(): Unit =
-    reader.getHistory.save()
-    terminal.close()
+    // Only close terminal/reader if they were initialized (interactive mode)
+    if interactive then
+      reader.getHistory.save()
+      terminal.close()
     executorThreadManager.shutdown()
 
   private def isRealTerminal() =
@@ -170,9 +175,15 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
           val result = runner.runStatement(
             QueryRequest(query = trimmedLine, querySelection = All, isDebugRun = true)
           )
-          reader.getTerminal.writer()
-          val output = runner.displayOutput(trimmedLine, result, terminal)
-          lastOutput = Some(output)
+          if interactive then
+            reader.getTerminal.writer()
+            val output = runner.displayOutput(trimmedLine, result, terminal)
+            lastOutput = Some(output)
+          else
+            // In headless mode, just print to stdout without terminal formatting
+            val output = result.toPrettyBox()
+            if output.trim.nonEmpty then
+              println(output)
         catch
           case e: InterruptedException =>
             logger.error("Cancelled the query")
@@ -264,38 +275,41 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner) extends AutoCloseab
     true
 
   def start(commands: List[String] = Nil): Unit =
-    // Set the default size when opening a new window or inside sbt console
-    if terminal.getWidth == 0 || terminal.getHeight == 0 then
-      terminal.setSize(Size(120, 40))
+    // Skip terminal setup in headless mode (when commands are provided via -f or -c)
+    if interactive then
+      // Set the default size when opening a new window or inside sbt console
+      if terminal.getWidth == 0 || terminal.getHeight == 0 then
+        terminal.setSize(Size(120, 40))
 
-    terminal.handle(Signal.INT, _ => currentThread.get().interrupt())
+      terminal.handle(Signal.INT, _ => currentThread.get().interrupt())
 
-    // Add shortcut keys
-    val keyMaps = reader.getKeyMaps().get("main")
+      // Add shortcut keys
+      val keyMaps = reader.getKeyMaps().get("main")
 
-    import scala.jdk.CollectionConverters.*
-    // Clean up some default key bindings
-    reader
-      .getKeyMaps()
-      .values()
-      .asScala
-      .foreach { keyMap =>
-        // Remove ctrl-j (accept line) to enable our custom key bindings
-        keyMap.unbind(KeyMap.ctrl('J'))
-        // Disable insert_close_curly command, which disrupts screen
-        // keyMap.unbind("}")
-      }
+      import scala.jdk.CollectionConverters.*
+      // Clean up some default key bindings
+      reader
+        .getKeyMaps()
+        .values()
+        .asScala
+        .foreach { keyMap =>
+          // Remove ctrl-j (accept line) to enable our custom key bindings
+          keyMap.unbind(KeyMap.ctrl('J'))
+          // Disable insert_close_curly command, which disrupts screen
+          // keyMap.unbind("}")
+        }
 
-    // Bind shortcut keys Ctrl+J, ... sequence
-    keyMaps.bind(moveToTop, KeyMap.translate("^J^A"))
-    keyMaps.bind(moveToEnd, KeyMap.translate("^J^E"))
-    keyMaps.bind(enterStmt, KeyMap.translate("^J^R"))
-    keyMaps.bind(describeLine, KeyMap.translate("^J^D"))
-    keyMaps.bind(subqueryRun, KeyMap.translate("^J^T"))
+      // Bind shortcut keys Ctrl+J, ... sequence
+      keyMaps.bind(moveToTop, KeyMap.translate("^J^A"))
+      keyMaps.bind(moveToEnd, KeyMap.translate("^J^E"))
+      keyMaps.bind(enterStmt, KeyMap.translate("^J^R"))
+      keyMaps.bind(describeLine, KeyMap.translate("^J^D"))
+      keyMaps.bind(subqueryRun, KeyMap.translate("^J^T"))
 
-    // Load the command history so that we can use ctrl-r (keyword), ctrl+p/n (previous/next) for history search
-    val history = reader.getHistory
-    history.attach(reader)
+      // Load the command history so that we can use ctrl-r (keyword), ctrl+p/n (previous/next) for history search
+      val history = reader.getHistory
+      history.attach(reader)
+    end if
 
     var toContinue = true
     while toContinue do
