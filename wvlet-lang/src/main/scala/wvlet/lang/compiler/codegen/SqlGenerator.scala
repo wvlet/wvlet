@@ -292,8 +292,8 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
                   None
               val whereClause = e.where.map(w => wl("where", expr(w)))
               wl("execute", expr(e.command), params, whereClause)
-            case _ =>
-              unsupportedNode(s"alter table ${op.nodeName}", d.span)
+            case null =>
+              unsupportedNode(s"alter table operation (null)", d.span)
 
         group(
           wl(
@@ -635,6 +635,9 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
               case Percentage(p) if dbType == DBType.DuckDB =>
                 // DuckDB: TABLESAMPLE BERNOULLI(5%) - percentage with % sign
                 text(s"${p.toString.stripSuffix(".0")}%")
+              case Percentage(p) =>
+                // Default for other databases - use percentage without % sign (Trino style)
+                text(p.toString.stripSuffix(".0"))
               case PercentageExpr(e) =>
                 expr(e)
 
