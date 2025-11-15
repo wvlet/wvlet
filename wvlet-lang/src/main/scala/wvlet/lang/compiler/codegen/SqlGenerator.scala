@@ -605,7 +605,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
                     "name",
                     expr(u.unpivotKey.unpivotColumnName),
                     "value",
-                    expr(u.unpivotKey.valueColumnName)
+                    expr(u.unpivotKey.getValueColumnName)
                   )
                 )
             )
