@@ -163,19 +163,22 @@ class StatementCategoryTest extends AirSpec:
     query.isInstanceOf[Update] shouldBe false
   }
 
-  test("Prepared statement operations should be classified as DCL") {
+  test("DCL statements should be classified as DCL and extend DCL trait") {
     val prepare = PrepareStatement(
       UnquotedIdentifier("stmt1", NoSpan),
       Query(EmptyRelation(NoSpan), NoSpan),
       NoSpan
     )
     prepare.category shouldBe StatementCategory.DCL
+    prepare.isInstanceOf[DCL] shouldBe true
 
     val execute = ExecuteStatement(UnquotedIdentifier("stmt1", NoSpan), Nil, NoSpan)
     execute.category shouldBe StatementCategory.DCL
+    execute.isInstanceOf[DCL] shouldBe true
 
     val deallocate = DeallocateStatement(UnquotedIdentifier("stmt1", NoSpan), NoSpan)
     deallocate.category shouldBe StatementCategory.DCL
+    deallocate.isInstanceOf[DCL] shouldBe true
   }
 
   test("Utility commands should be classified as Utility") {

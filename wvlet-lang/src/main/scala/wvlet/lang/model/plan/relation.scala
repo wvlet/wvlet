@@ -699,7 +699,7 @@ case class SQLSelect(
   *   - DCL: Data Control Language - access control and session management (GRANT, REVOKE, PREPARE)
   *   - TCL: Transaction Control Language - transaction management (COMMIT, ROLLBACK)
   *   - Utility: Database utilities (SHOW, DESCRIBE, EXPLAIN, USE)
-  *   - Unknown: Unclassified statements
+  *   - Others: Unclassified statements
   */
 enum StatementCategory:
   case DDL     // Data Definition Language: CREATE, ALTER, DROP, etc.
@@ -708,11 +708,11 @@ enum StatementCategory:
   case DCL     // Data Control Language: GRANT, REVOKE, prepared statements
   case TCL     // Transaction Control Language: COMMIT, ROLLBACK, etc.
   case Utility // Utility commands: SHOW, DESCRIBE, EXPLAIN, USE, etc.
-  case Unknown // Unclassified statements
+  case Others  // Unclassified statements
 
 trait TopLevelStatement extends LogicalPlan:
   /**
-    * Statement category for privilege checks and optimization. The default is Unknown. This is
+    * Statement category for privilege checks and optimization. The default is Others. This is
     * purely informational and separate from the Update trait which determines JDBC routing.
     *
     * Examples:
@@ -724,7 +724,7 @@ trait TopLevelStatement extends LogicalPlan:
     * @return
     *   the statement category
     */
-  def category: StatementCategory = StatementCategory.Unknown
+  def category: StatementCategory = StatementCategory.Others
 
   /** Helper method to check if this is a DDL statement */
   def isDDL: Boolean = category == StatementCategory.DDL
@@ -737,6 +737,18 @@ trait TopLevelStatement extends LogicalPlan:
 
   /** Helper method to check if this statement requires executeUpdate() for JDBC */
   def requiresExecuteUpdate: Boolean = false
+
+/**
+  * Data Control Language (DCL) statements. DCL statements are used for access control, session
+  * management, and prepared statement handling.
+  *
+  * Examples:
+  *   - GRANT, REVOKE (access control)
+  *   - PREPARE, EXECUTE, DEALLOCATE (prepared statements)
+  */
+trait DCL extends TopLevelStatement with LeafPlan:
+  override def relationType: RelationType  = EmptyRelationType
+  override def category: StatementCategory = StatementCategory.DCL
 
 trait QueryStatement extends UnaryRelation with TopLevelStatement
 
