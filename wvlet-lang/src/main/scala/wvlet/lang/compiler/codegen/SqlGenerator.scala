@@ -159,10 +159,20 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         text(s)
 
     // warn(s"${n.nodeName} ${n.comments}")
-    if n.comments.isEmpty then
-      d
+    val dd =
+      if n.comments.isEmpty then
+        d
+      else
+        lines(n.comments.reverse.map(c => toSQLComment(c.str))) + linebreak + d
+
+    if n.postComments.isEmpty then
+      dd
     else
-      lines(n.comments.reverse.map(c => toSQLComment(c.str))) + linebreak + d
+      val comments = n.postComments.reverse.map(c => toSQLComment(c.str))
+      if comments.size > 1 then
+        dd + wsOrNL + concat(comments, linebreak)
+      else
+        wl(dd, comments.head)
 
   def ddl(d: DDL)(using sc: SyntaxContext): Doc =
     d match
