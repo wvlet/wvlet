@@ -50,9 +50,6 @@ object RewriteExpr extends Phase("rewrite-expr"):
             e match
               case s: StringPart =>
                 StringLiteral.fromString(s.value, s.span)
-              case f: FunctionApply =>
-                // Don't cast concat results - they're already strings
-                f
               case _ =>
                 // Cast non-string values to ensure compatibility across database engines
                 if e.dataType != DataType.StringType then
