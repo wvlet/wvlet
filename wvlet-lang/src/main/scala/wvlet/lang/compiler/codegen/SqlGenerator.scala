@@ -629,14 +629,11 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             s.size match
               case Rows(n) =>
                 text(s"${n}")
-              case Percentage(p) if dbType == Trino =>
-                // Trino: TABLESAMPLE BERNOULLI(5) - integer percentage
-                text(p.toString.stripSuffix(".0"))
               case Percentage(p) if dbType == DBType.DuckDB =>
                 // DuckDB: TABLESAMPLE BERNOULLI(5%) - percentage with % sign
                 text(s"${p.toString.stripSuffix(".0")}%")
               case Percentage(p) =>
-                // Default for other databases - use percentage without % sign (Trino style)
+                // Default for other databases (including Trino) - percentage without % sign
                 text(p.toString.stripSuffix(".0"))
               case PercentageExpr(e) =>
                 expr(e)
