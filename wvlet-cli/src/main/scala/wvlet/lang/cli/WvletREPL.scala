@@ -13,22 +13,13 @@
  */
 package wvlet.lang.cli
 
-import org.jline.keymap.KeyMap
 import org.jline.reader.*
 import org.jline.reader.Parser.ParseContext
 import org.jline.reader.impl.DefaultParser
-import org.jline.reader.impl.DefaultParser.Bracket
-import org.jline.terminal.Terminal.Signal
-import org.jline.terminal.Size
 import org.jline.terminal.Terminal
-import org.jline.terminal.TerminalBuilder
 import org.jline.utils.AttributedString
 import org.jline.utils.AttributedStringBuilder
 import org.jline.utils.AttributedStyle
-import org.jline.utils.InfoCmp
-import org.jline.utils.Status
-import org.jline.widget.AutopairWidgets
-import wvlet.airframe.*
 import wvlet.airframe.control.Shell
 import wvlet.airframe.control.ThreadUtil
 import wvlet.airframe.log.AnsiColorPalette
@@ -40,11 +31,11 @@ import wvlet.lang.api.WvletLangException
 import wvlet.lang.api.v1.query.QueryRequest
 import wvlet.lang.api.v1.query.QuerySelection.All
 import wvlet.lang.api.v1.query.QuerySelection.Describe
-import wvlet.lang.api.v1.query.QuerySelection.Subquery
+import wvlet.lang.cli.terminal.JLine3Terminal
+import wvlet.lang.cli.terminal.REPLTerminal
 import wvlet.lang.compiler.parser.*
 import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.compiler.SourceFile
-import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.compiler.query.QueryMetric
 import wvlet.lang.compiler.query.QueryProgressMonitor
 import wvlet.lang.model.plan.QueryStatement
@@ -52,50 +43,24 @@ import wvlet.lang.runner.connector.TrinoQueryMetric
 import wvlet.lang.runner.LastOutput
 import wvlet.lang.runner.WvletScriptRunner
 import wvlet.log.LogSupport
-import wvlet.log.Logger
 
-import java.io.File
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicReference
 import java.util.regex.Pattern
 import scala.io.AnsiColor
-import scala.jdk.CollectionConverters.*
 
-class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner, interactive: Boolean)
+/**
+  * Wvlet REPL with pluggable terminal implementation
+  *
+  * @param runner
+  *   Script runner for executing queries
+  * @param terminal
+  *   Terminal implementation (JLine3 for interactive, Headless for non-interactive)
+  */
+class WvletREPL(runner: WvletScriptRunner, terminal: REPLTerminal)
     extends AutoCloseable
     with LogSupport:
   import WvletREPL.*
-
-  // Lazy initialization: only create terminal/reader for interactive mode
-  private lazy val terminal = TerminalBuilder
-    .builder()
-    .name("wvlet-shell")
-    // Use dumb terminal for sbt testing or non-TTY environments (e.g., Claude Code, CI/CD)
-    // Note: We check TTY env var instead of System.console() == null because System.console()
-    // returns ProxyingConsole (not null) in Java 24+ even in non-TTY environments
-    .dumb(WvletMain.isInSbt || sys.env.get("TTY").isEmpty)
-    .build()
-
-  private lazy val historyFile = new File(workEnv.cacheFolder, ".wv_history")
-
-  private lazy val reader = LineReaderBuilder
-    .builder()
-    .terminal(terminal)
-    .variable(LineReader.HISTORY_FILE, historyFile.toPath)
-    .parser(new ReplParser())
-    .completer(LocalFileCompleter(workEnv))
-    // For enabling multiline input
-    .variable(
-      LineReader.SECONDARY_PROMPT_PATTERN,
-      if isRealTerminal() then
-        AttributedString(s"%P  ${Color.GRAY}│${Color.RESET} ")
-      else
-        ""
-    )
-    .variable(LineReader.INDENTATION, 2)
-    // Coloring keywords
-    .highlighter(new ReplHighlighter)
-    .build()
 
   private val executorThreadManager = Executors.newCachedThreadPool(
     ThreadUtil.newDaemonThreadFactory("wvlet-repl-executor")
@@ -105,7 +70,7 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner, interactive: Boolea
     new QueryProgressMonitor:
       private var lines      = 0
       private val CLEAR_LINE =
-        if isRealTerminal() then
+        if terminal.isRealTerminal then
           "\u001b[2K"
         else
           "\r"
@@ -113,14 +78,14 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner, interactive: Boolea
       private var lastUpdateTimeMillis = 0L
 
       private def printLine(line: String): Unit =
-        if isRealTerminal() then
-          terminal.writer().print(s"\r${Color.GRAY}${CLEAR_LINE}${line}${Color.RESET}")
+        if terminal.isRealTerminal then
+          terminal.write(s"\r${Color.GRAY}${CLEAR_LINE}${line}${Color.RESET}")
           terminal.flush()
           lines = 1
 
       override def close(): Unit =
         if lines > 0 then
-          terminal.writer().print(s"${CLEAR_LINE}\r")
+          terminal.write(s"${CLEAR_LINE}\r")
           terminal.flush()
           lines = 0
 
@@ -132,7 +97,7 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner, interactive: Boolea
         metric match
           case m: TrinoQueryMetric =>
             val t = System.currentTimeMillis()
-            // Show report every 1s
+            // Show report every 300ms
             if t - lastUpdateTimeMillis > 300 then
               lastUpdateTimeMillis = t
               val stats = m.stats
@@ -145,14 +110,8 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner, interactive: Boolea
           case _ =>
 
   override def close(): Unit =
-    // Only close terminal/reader if they were initialized (interactive mode)
-    if interactive then
-      reader.getHistory.save()
-      terminal.close()
+    terminal.close()
     executorThreadManager.shutdown()
-
-  private def isRealTerminal() =
-    terminal.getType != Terminal.TYPE_DUMB && terminal.getType != Terminal.TYPE_DUMB_COLOR
 
   private var lastOutput: Option[LastOutput] = None
   // Handle ctrl-c (int) or ctrl-d (quit) to interrupt the current thread
@@ -175,15 +134,24 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner, interactive: Boolea
           val result = runner.runStatement(
             QueryRequest(query = trimmedLine, querySelection = All, isDebugRun = true)
           )
-          if interactive then
-            reader.getTerminal.writer()
-            val output = runner.displayOutput(trimmedLine, result, terminal)
-            lastOutput = Some(output)
-          else
-            // In headless mode, just print to stdout without terminal formatting
-            val output = result.toPrettyBox()
-            if output.trim.nonEmpty then
-              println(output)
+          // Display output and save for clip commands
+          val output =
+            if terminal.isRealTerminal then
+              // For JLine3Terminal, need to cast to access displayOutput with Terminal
+              terminal match
+                case jline3: JLine3Terminal =>
+                  runner.displayOutput(trimmedLine, result, jline3.getJLineTerminal)
+                case _ =>
+                  // Fallback: just use pretty box
+                  LastOutput(trimmedLine, result.toPrettyBox(), result)
+            else
+              // In headless mode, print to stdout
+              val outputStr = result.toPrettyBox()
+              if outputStr.trim.nonEmpty then
+                println(outputStr)
+              LastOutput(trimmedLine, outputStr, result)
+
+          lastOutput = Some(output)
         catch
           case e: InterruptedException =>
             logger.error("Cancelled the query")
@@ -196,33 +164,29 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner, interactive: Boolea
       override def apply(): Boolean = body()
 
   private def moveToTop = newWidget: () =>
-    val buf = reader.getBuffer
-    buf.cursor(0)
+    terminal.moveCursor(0)
     true
 
   private def moveToEnd = newWidget: () =>
-    val buf = reader.getBuffer
-    buf.cursor(buf.length())
+    terminal.moveCursor(terminal.getBufferLength)
     true
 
   private def enterStmt = newWidget: () =>
-    val buf = reader.getBuffer
-    buf.cursor(buf.length())
-    val line = buf.toString
+    terminal.moveCursor(terminal.getBufferLength)
+    val line = terminal.getBuffer
     if !line.trim.endsWith(";") then
-      buf.write(";")
-      buf.cursor(buf.length())
-    reader.callWidget(LineReader.ACCEPT_LINE)
+      terminal.writeToBuffer(";")
+      terminal.moveCursor(terminal.getBufferLength)
+    terminal.callWidget(LineReader.ACCEPT_LINE)
     true
 
   private def extractQueryFragment: String =
-    val buf        = reader.getBuffer
-    val lastCursor = buf.cursor()
-    if buf.currChar() != '\n' then
-      reader.callWidget(LineReader.END_OF_LINE)
-    val queryFragment = trimLine(buf.upToCursor())
+    val lastCursor = terminal.getCursorPosition
+    if terminal.getCurrentChar != '\n' then
+      terminal.callWidget(LineReader.END_OF_LINE)
+    val queryFragment = trimLine(terminal.getBufferUpToCursor)
     // Move back cursor
-    buf.cursor(lastCursor)
+    terminal.moveCursor(lastCursor)
     queryFragment
 
   private def describeLine = newWidget: () =>
@@ -239,18 +203,18 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner, interactive: Boolea
           linePosition = LinePosition(lineNum, 1),
           isDebugRun = true
         )
-      )(using QueryProgressMonitor.noOp) // Hide progress for descirbe query
+      )(using QueryProgressMonitor.noOp) // Hide progress for describe query
     val str = result.toPrettyBox()
-    reader.printAbove(
+    terminal.printAbove(
       s"${Color.GREEN}describe${Color.RESET} ${Color.BLUE}(line:${lineNum})${Color.RESET}: ${Color
           .BRIGHT_RED}${lastLine}\n${Color.GRAY}${str}${AnsiColor.RESET}"
     )
     true
 
   private def subqueryRun = newWidget: () =>
-    val originalQuery = reader.getBuffer.toString
+    val originalQuery = terminal.getBuffer
     val queryFragment = extractQueryFragment
-    reader.getHistory.add(queryFragment)
+    terminal.getHistory.add(queryFragment)
     val lines         = queryFragment.split("\n")
     val lastLine      = lines.lastOption.getOrElse("")
     val lineNum       = lines.size
@@ -264,52 +228,39 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner, interactive: Boolea
     val result = runner.runStatement(
       QueryRequest(query = samplingQuery, querySelection = All, isDebugRun = true)
     )
-    lastOutput = Some(runner.displayOutput(samplingQuery, result, terminal))
-    val out = terminal.output()
+
+    // Display output
+    val output =
+      terminal match
+        case jline3: JLine3Terminal =>
+          runner.displayOutput(samplingQuery, result, jline3.getJLineTerminal)
+        case _ =>
+          val outputStr = result.toPrettyBox()
+          if outputStr.trim.nonEmpty then
+            println(outputStr)
+          LastOutput(samplingQuery, outputStr, result)
+
+    lastOutput = Some(output)
+
+    val out = terminal.getOutput
     // Add enough blank lines to redisplay the user query
-    for i <- 1 until lineNum do
-      out.write('\n')
+    if out != null then
+      val writer = out.asInstanceOf[java.io.Writer]
+      for i <- 1 until lineNum do
+        writer.write('\n')
 
     // Redisplay the original query
-    reader.callWidget(LineReader.REDRAW_LINE)
+    terminal.redrawLine()
     true
 
   def start(commands: List[String] = Nil): Unit =
-    // Skip terminal setup in headless mode (when commands are provided via -f or -c)
-    if interactive then
-      // Set the default size when opening a new window or inside sbt console
-      if terminal.getWidth == 0 || terminal.getHeight == 0 then
-        terminal.setSize(Size(120, 40))
-
-      terminal.handle(Signal.INT, _ => currentThread.get().interrupt())
-
-      // Add shortcut keys
-      val keyMaps = reader.getKeyMaps().get("main")
-
-      import scala.jdk.CollectionConverters.*
-      // Clean up some default key bindings
-      reader
-        .getKeyMaps()
-        .values()
-        .asScala
-        .foreach { keyMap =>
-          // Remove ctrl-j (accept line) to enable our custom key bindings
-          keyMap.unbind(KeyMap.ctrl('J'))
-          // Disable insert_close_curly command, which disrupts screen
-          // keyMap.unbind("}")
-        }
-
-      // Bind shortcut keys Ctrl+J, ... sequence
-      keyMaps.bind(moveToTop, KeyMap.translate("^J^A"))
-      keyMaps.bind(moveToEnd, KeyMap.translate("^J^E"))
-      keyMaps.bind(enterStmt, KeyMap.translate("^J^R"))
-      keyMaps.bind(describeLine, KeyMap.translate("^J^D"))
-      keyMaps.bind(subqueryRun, KeyMap.translate("^J^T"))
-
-      // Load the command history so that we can use ctrl-r (keyword), ctrl+p/n (previous/next) for history search
-      val history = reader.getHistory
-      history.attach(reader)
-    end if
+    // Setup interactive mode for JLine3 terminals
+    terminal match
+      case jline3: JLine3Terminal =>
+        jline3.setupInteractiveMode(moveToTop, moveToEnd, enterStmt, describeLine, subqueryRun)
+        terminal.handleInterrupt(currentThread.get().interrupt())
+      case _ =>
+      // Headless mode doesn't need setup
 
     var toContinue = true
     while toContinue do
@@ -320,8 +271,7 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner, interactive: Boolea
           case "exit" | "quit" =>
             toContinue = false
           case "clear" =>
-            terminal.puts(InfoCmp.Capability.clear_screen)
-            terminal.flush()
+            terminal.clearScreen()
           case "help" =>
             println(helpMessage)
           case "git" | "gh" =>
@@ -369,14 +319,14 @@ class WvletREPL(workEnv: WorkEnv, runner: WvletScriptRunner, interactive: Boolea
 
       try
         if commands.nonEmpty then
-          // If a command is given, run it and exist
+          // If a command is given, run it and exit
           for line <- commands do
             println(s"wv> ${line}")
             eval(line)
           toContinue = false
         else
           // Or read from the user input
-          val line = reader.readLine("wv> ")
+          val line = terminal.readLine("wv> ")
           eval(line)
       catch
         case e: UserInterruptException =>
@@ -440,7 +390,7 @@ object WvletREPL extends LogSupport:
   /**
     * A custom parser to enable receiving multiline inputs in REPL
     */
-  private class ReplParser extends org.jline.reader.Parser with LogSupport:
+  private[cli] class ReplParser extends org.jline.reader.Parser with LogSupport:
     private val parser = new DefaultParser()
     parser.setEofOnUnclosedBracket(DefaultParser.Bracket.CURLY)
 
@@ -505,7 +455,7 @@ object WvletREPL extends LogSupport:
   /**
     * Parse incomplete strings and highlight keywords
     */
-  private class ReplHighlighter extends org.jline.reader.Highlighter with LogSupport:
+  private[cli] class ReplHighlighter extends org.jline.reader.Highlighter with LogSupport:
     override def highlight(reader: LineReader, buffer: String): AttributedString =
       val builder = AttributedStringBuilder()
       val src     = SourceFile.fromWvletString(buffer)

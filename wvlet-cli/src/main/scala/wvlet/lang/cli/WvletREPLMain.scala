@@ -9,6 +9,9 @@ import wvlet.lang.api.StatusCode.SYNTAX_ERROR
 import wvlet.lang.api.StatusCode
 import wvlet.lang.api.WvletLangException
 import wvlet.lang.catalog.Profile
+import wvlet.lang.cli.terminal.HeadlessTerminal
+import wvlet.lang.cli.terminal.JLine3Terminal
+import wvlet.lang.cli.terminal.REPLTerminal
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.runner.WvletScriptRunner
 import wvlet.lang.runner.WvletScriptRunnerConfig
@@ -89,9 +92,16 @@ class WvletREPLMain(cliOption: WvletGlobalOption, replOpts: WvletREPLOption) ext
 
     val design = Design
       .newSilentDesign
+      .bind[REPLTerminal]
+      .toProvider { (workEnv: WorkEnv) =>
+        if isInteractive then
+          JLine3Terminal(workEnv)
+        else
+          HeadlessTerminal()
+      }
       .bind[WvletREPL]
-      .toProvider { (workEnv: WorkEnv, runner: WvletScriptRunner) =>
-        WvletREPL(workEnv, runner, isInteractive)
+      .toProvider { (runner: WvletScriptRunner, terminal: REPLTerminal) =>
+        WvletREPL(runner, terminal)
       }
       .bindInstance[Profile](currentProfile)
       .bindInstance[WorkEnv](WorkEnv(path = replOpts.workFolder, logLevel = cliOption.logLevel))
