@@ -8,7 +8,8 @@ import wvlet.lang.model.expr.NameExpr
 import wvlet.lang.model.expr.QualifiedName
 
 sealed trait Command extends TopLevelStatement with LeafPlan:
-  override def relationType: RelationType = EmptyRelationType
+  override def relationType: RelationType  = EmptyRelationType
+  override def category: StatementCategory = StatementCategory.Utility
 
 // EXPLAIN options for Trino syntax support
 sealed trait ExplainOption

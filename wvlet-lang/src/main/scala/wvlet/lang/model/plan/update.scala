@@ -14,6 +14,9 @@ import scala.collection.immutable.ListMap
   */
 trait Update extends TopLevelStatement with HasTableOrFileName:
   override def relationType: RelationType = EmptyRelationType
+  // Default category for Update is DML, but can be overridden (e.g., Truncate is DDL)
+  override def category: StatementCategory    = StatementCategory.DML
+  override def requiresExecuteUpdate: Boolean = true
 
 object Update:
   /**
@@ -71,6 +74,8 @@ case class CreateTableAs(
     span: Span
 ) extends Save:
   override def relationType: RelationType = EmptyRelationType
+  // CreateTableAs is semantically DDL (creates schema), kept under Save/Update for JDBC routing
+  override def category: StatementCategory = StatementCategory.DDL
 
 case class InsertInto(
     target: TableOrFileName,

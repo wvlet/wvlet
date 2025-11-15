@@ -688,7 +688,67 @@ case class SQLSelect(
     child.relationType
   )
 
-trait TopLevelStatement extends LogicalPlan
+/**
+  * SQL statement categories for classification purposes. This is separate from the Update trait
+  * which is used for JDBC execution routing (executeUpdate() vs executeQuery()).
+  *
+  * Categories are based on SQL standard classifications:
+  *   - DDL: Data Definition Language - schema modifications (CREATE, ALTER, DROP)
+  *   - DML: Data Manipulation Language - data modifications (INSERT, UPDATE, DELETE)
+  *   - DQL: Data Query Language - data retrieval (SELECT)
+  *   - DCL: Data Control Language - access control and session management (GRANT, REVOKE, PREPARE)
+  *   - TCL: Transaction Control Language - transaction management (COMMIT, ROLLBACK)
+  *   - Utility: Database utilities (SHOW, DESCRIBE, EXPLAIN, USE)
+  *   - Others: Unclassified statements
+  */
+enum StatementCategory:
+  case DDL     // Data Definition Language: CREATE, ALTER, DROP, etc.
+  case DML     // Data Manipulation Language: INSERT, UPDATE, DELETE, etc.
+  case DQL     // Data Query Language: SELECT
+  case DCL     // Data Control Language: GRANT, REVOKE, prepared statements
+  case TCL     // Transaction Control Language: COMMIT, ROLLBACK, etc.
+  case Utility // Utility commands: SHOW, DESCRIBE, EXPLAIN, USE, etc.
+  case Others  // Unclassified statements
+
+trait TopLevelStatement extends LogicalPlan:
+  /**
+    * Statement category for privilege checks and optimization. The default is Others. This is
+    * purely informational and separate from the Update trait which determines JDBC routing.
+    *
+    * Examples:
+    *   - A statement can be category=DDL but still require executeUpdate() (e.g., Truncate,
+    *     CreateTableAs)
+    *   - The category reflects the semantic purpose of the statement per SQL standards
+    *   - Use requiresExecuteUpdate to check if JDBC executeUpdate() is needed
+    *
+    * @return
+    *   the statement category
+    */
+  def category: StatementCategory = StatementCategory.Others
+
+  /** Helper method to check if this is a DDL statement */
+  def isDDL: Boolean = category == StatementCategory.DDL
+
+  /** Helper method to check if this is a DML statement */
+  def isDML: Boolean = category == StatementCategory.DML
+
+  /** Helper method to check if this is a DQL statement */
+  def isDQL: Boolean = category == StatementCategory.DQL
+
+  /** Helper method to check if this statement requires executeUpdate() for JDBC */
+  def requiresExecuteUpdate: Boolean = false
+
+/**
+  * Data Control Language (DCL) statements. DCL statements are used for access control, session
+  * management, and prepared statement handling.
+  *
+  * Examples:
+  *   - GRANT, REVOKE (access control)
+  *   - PREPARE, EXECUTE, DEALLOCATE (prepared statements)
+  */
+trait DCL extends TopLevelStatement with LeafPlan:
+  override def relationType: RelationType  = EmptyRelationType
+  override def category: StatementCategory = StatementCategory.DCL
 
 trait QueryStatement extends UnaryRelation with TopLevelStatement
 
@@ -699,7 +759,8 @@ case class Query(body: Relation, span: Span) extends QueryStatement with Filteri
     b += body
     b.result()
 
-  override def relationType: RelationType = body.relationType
+  override def relationType: RelationType  = body.relationType
+  override def category: StatementCategory = StatementCategory.DQL
 
 // Joins
 case class Join(
