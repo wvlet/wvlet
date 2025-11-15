@@ -56,9 +56,7 @@ case class AppendTo(
   */
 case class Delete(child: Relation, target: TableOrFileName, span: Span) extends Save
 
-case class Truncate(target: TableOrFileName, span: Span) extends Update with LeafPlan:
-  // Truncate is DDL per SQL standards, but kept under Update for JDBC routing
-  override def category: StatementCategory = StatementCategory.DDL
+case class Truncate(target: TableOrFileName, span: Span) extends Update with LeafPlan
 
 // SQL equivalent operators
 

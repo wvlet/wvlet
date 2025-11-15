@@ -63,14 +63,14 @@ class StatementCategoryTest extends AirSpec:
     dropView.category shouldBe StatementCategory.DDL
   }
 
-  test("Truncate should be DDL but kept under Update for JDBC routing") {
+  test("Truncate should be DML as it removes data, not schema") {
     val truncate = Truncate(UnquotedIdentifier("table1", NoSpan), NoSpan)
 
-    // Category is DDL per SQL standards
-    truncate.category shouldBe StatementCategory.DDL
-    truncate.isDDL shouldBe true
+    // Category is DML (removes table contents, doesn't modify schema)
+    truncate.category shouldBe StatementCategory.DML
+    truncate.isDML shouldBe true
 
-    // But it's still an Update for JDBC routing
+    // It extends Update for JDBC routing
     truncate.requiresExecuteUpdate shouldBe true
     truncate.isInstanceOf[Update] shouldBe true
   }
