@@ -374,7 +374,7 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
             group(
               wl(
                 "unpivot",
-                expr(u.unpivotKey.valueColumnName),
+                expr(u.unpivotKey.getValueColumnName),
                 "for",
                 expr(u.unpivotKey.unpivotColumnName),
                 "in",
