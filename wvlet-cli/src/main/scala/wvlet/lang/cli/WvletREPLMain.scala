@@ -9,7 +9,11 @@ import wvlet.lang.api.StatusCode.SYNTAX_ERROR
 import wvlet.lang.api.StatusCode
 import wvlet.lang.api.WvletLangException
 import wvlet.lang.catalog.Profile
+import wvlet.lang.cli.terminal.HeadlessTerminal
+import wvlet.lang.cli.terminal.JLine3Terminal
+import wvlet.lang.cli.terminal.REPLTerminal
 import wvlet.lang.compiler.WorkEnv
+import wvlet.lang.runner.WvletScriptRunner
 import wvlet.lang.runner.WvletScriptRunnerConfig
 import wvlet.lang.runner.connector.DBConnector
 import wvlet.lang.runner.connector.DBConnectorProvider
@@ -83,16 +87,27 @@ class WvletREPLMain(cliOption: WvletGlobalOption, replOpts: WvletREPLOption) ext
           throw StatusCode.FILE_NOT_FOUND.newException(s"File not found: ${f.getAbsolutePath()}")
       }
 
-    val inputScripts = commandInputs.result()
+    val inputScripts  = commandInputs.result()
+    val isInteractive = inputScripts.isEmpty
 
     val design = Design
       .newSilentDesign
-      .bindSingleton[WvletREPL]
+      .bind[REPLTerminal]
+      .toProvider { (workEnv: WorkEnv) =>
+        if isInteractive then
+          JLine3Terminal(workEnv)
+        else
+          HeadlessTerminal()
+      }
+      .bind[WvletREPL]
+      .toProvider { (runner: WvletScriptRunner, terminal: REPLTerminal) =>
+        WvletREPL(runner, terminal)
+      }
       .bindInstance[Profile](currentProfile)
       .bindInstance[WorkEnv](WorkEnv(path = replOpts.workFolder, logLevel = cliOption.logLevel))
       .bindInstance[WvletScriptRunnerConfig](
         WvletScriptRunnerConfig(
-          interactive = inputScripts.isEmpty,
+          interactive = isInteractive,
           profile = currentProfile,
           catalog = selectedCatalog,
           schema = selectedSchema
