@@ -47,12 +47,93 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
     )
   )
 
-  private var lastToken: TokenData[SqlToken] = null
+  private var lastToken: TokenData[SqlToken]            = null
+  private var lastNode: wvlet.lang.model.SyntaxTreeNode = null
 
   def parse(): LogicalPlan =
     val t     = scanner.lookAhead()
     val stmts = statementList()
-    PackageDef(EmptyName, stmts, unit.sourceFile, spanFrom(t))
+    val plan  = PackageDef(EmptyName, stmts, unit.sourceFile, spanFrom(t))
+    attachComments(plan)
+
+  /**
+    * Attach comment tokens to syntax tree nodes (LogicalPlan or Expression).
+    *
+    *   - If a comment token follows a node in the same line, it will be attached as a post comment
+    *   - Otherwise, the comment will be attached to the following node.
+    *
+    * @param l
+    * @return
+    */
+  private def attachComments(l: LogicalPlan): LogicalPlan =
+    val allNodes =
+      l.collectAllNodes.filter(_.span.nonEmpty).sortBy(x => (x.span.start, -x.span.end)).toList
+
+    def attachComments(
+        comments: List[TokenData[SqlToken]],
+        nodes: List[wvlet.lang.model.SyntaxTreeNode],
+        lastNode: wvlet.lang.model.SyntaxTreeNode
+    ): Unit =
+      val lastLine = src.offsetToLine(lastNode.span.end)
+
+      def attachLineComment(lst: List[TokenData[SqlToken]]): List[TokenData[SqlToken]] =
+        lst match
+          case Nil =>
+            Nil
+          case c :: rest =>
+            val commentLine = src.offsetToLine(c.span.end)
+            if lastNode.span.end <= c.span.start && lastLine == commentLine then
+              // If the comment fits in the same line, attach it to the previous node
+              trace(
+                s"<-- ${c} to ${lastNode.nodeName}(${lastNode.sourceLocationOfCompilationUnit})"
+              )
+              lastNode.withPostComment(c)
+              attachLineComment(rest)
+            else
+              lst
+
+      def attachPrecedingComments(lst: List[TokenData[SqlToken]]): List[TokenData[SqlToken]] =
+        lst match
+          case Nil =>
+            Nil
+          case c :: rest =>
+            if c.span.end <= lastNode.span.start then
+              trace(
+                s"--> ${c} to ${lastNode.nodeName}(${lastNode.sourceLocationOfCompilationUnit})"
+              )
+              lastNode.withComment(c)
+              attachPrecedingComments(rest)
+            else
+              lst
+
+      nodes match
+        case Nil =>
+          // Attach remaining comments to the last node
+          val remainingComments = attachLineComment(comments)
+          // Attach end-of-file comments to the PackageNode
+          val packageNode = allNodes.head
+          remainingComments.foreach { c =>
+            packageNode.withPostComment(c)
+          }
+        case n :: rest =>
+          if lastNode.span.start == n.span.start then
+            // Select the most inner node if the start point is the same
+            attachComments(comments, rest, n)
+          else
+            // Attach the preceding comments to the last node
+            var remainingComments = attachPrecedingComments(comments)
+            // Attach end-of-line comments to the last node
+            remainingComments = attachLineComment(remainingComments)
+            attachComments(remainingComments, rest, n)
+    end attachComments
+
+    if allNodes.nonEmpty then
+      val sortedComments = scanner.getCommentTokens().sortBy(_.span.end)(using Ordering.Int)
+      attachComments(sortedComments, allNodes.tail, allNodes.head)
+
+    l
+
+  end attachComments
 
   /**
     * Consume the expected token if it exists and return true, otherwise return false
