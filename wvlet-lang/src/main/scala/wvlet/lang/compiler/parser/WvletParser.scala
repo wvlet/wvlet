@@ -1478,18 +1478,15 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       val startSpan = scanner.lookAhead().span
       // Check if FOR token appears first (optional value column syntax)
       val (valueColumn, unpivotColumn) =
-        scanner.lookAhead().token match
-          case WvletToken.FOR =>
-            // Optional value column syntax: for (unpivot column) in (...)
-            consume(WvletToken.FOR)
-            val unpivotCol = identifierSingle()
-            (None, unpivotCol)
-          case _ =>
-            // Traditional syntax: (value column) for (unpivot column) in (...)
-            val valueCol = identifierSingle()
-            consume(WvletToken.FOR)
-            val unpivotCol = identifierSingle()
-            (Some(valueCol), unpivotCol)
+        val valueCol =
+          scanner.lookAhead().token match
+            case WvletToken.FOR =>
+              None
+            case _ =>
+              Some(identifierSingle())
+        consume(WvletToken.FOR)
+        val unpivotCol = identifierSingle()
+        (valueCol, unpivotCol)
 
       consume(WvletToken.IN)
       consume(WvletToken.L_PAREN)
