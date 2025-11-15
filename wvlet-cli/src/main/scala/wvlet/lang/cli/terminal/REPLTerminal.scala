@@ -116,9 +116,17 @@ trait REPLTerminal extends AutoCloseable:
   def redrawLine(): Unit
 
   /**
-    * Get terminal output writer (for advanced terminal operations)
+    * Get terminal output writer for advanced operations (JLine3 only)
     */
-  def getOutput: Any
+  def getOutputWriter: Option[java.io.Writer]
+
+  /**
+    * Write blank lines to the terminal output
+    *
+    * @param count
+    *   Number of blank lines to write
+    */
+  def writeNewlines(count: Int): Unit
 
 end REPLTerminal
 

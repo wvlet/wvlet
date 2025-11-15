@@ -135,14 +135,17 @@ class WvletREPL(runner: WvletScriptRunner, terminal: REPLTerminal)
             QueryRequest(query = trimmedLine, querySelection = All, isDebugRun = true)
           )
           // Display output and save for clip commands
+          // Note: Pattern matching is necessary here because WvletScriptRunner.displayOutput()
+          // requires the underlying JLine3 Terminal for advanced formatting (e.g., launching
+          // less for wide output). This is a controlled use of downcasting that's safe because
+          // we know JLine3Terminal is only used in interactive mode.
           val output =
             if terminal.isRealTerminal then
-              // For JLine3Terminal, need to cast to access displayOutput with Terminal
               terminal match
                 case jline3: JLine3Terminal =>
                   runner.displayOutput(trimmedLine, result, jline3.getJLineTerminal)
                 case _ =>
-                  // Fallback: just use pretty box
+                  // Fallback: simple formatting without terminal features
                   LastOutput(trimmedLine, result.toPrettyBox(), result)
             else
               // In headless mode, print to stdout
@@ -229,7 +232,7 @@ class WvletREPL(runner: WvletScriptRunner, terminal: REPLTerminal)
       QueryRequest(query = samplingQuery, querySelection = All, isDebugRun = true)
     )
 
-    // Display output
+    // Display output with terminal-specific formatting (see runStmt for explanation of pattern matching)
     val output =
       terminal match
         case jline3: JLine3Terminal =>
@@ -242,12 +245,8 @@ class WvletREPL(runner: WvletScriptRunner, terminal: REPLTerminal)
 
     lastOutput = Some(output)
 
-    val out = terminal.getOutput
     // Add enough blank lines to redisplay the user query
-    if out != null then
-      val writer = out.asInstanceOf[java.io.Writer]
-      for i <- 1 until lineNum do
-        writer.write('\n')
+    terminal.writeNewlines(lineNum - 1)
 
     // Redisplay the original query
     terminal.redrawLine()
@@ -389,6 +388,10 @@ object WvletREPL extends LogSupport:
 
   /**
     * A custom parser to enable receiving multiline inputs in REPL
+    *
+    * Note: Visibility is `private[cli]` (not `private`) because `JLine3Terminal` needs access to
+    * this class for initialization. The terminal package is a subpackage of `cli`, so
+    * `private[cli]` grants access while keeping the class hidden from outside the CLI module.
     */
   private[cli] class ReplParser extends org.jline.reader.Parser with LogSupport:
     private val parser = new DefaultParser()
@@ -454,6 +457,9 @@ object WvletREPL extends LogSupport:
 
   /**
     * Parse incomplete strings and highlight keywords
+    *
+    * Note: Visibility is `private[cli]` for the same reason as `ReplParser` - needed by
+    * `JLine3Terminal` for syntax highlighting initialization.
     */
   private[cli] class ReplHighlighter extends org.jline.reader.Highlighter with LogSupport:
     override def highlight(reader: LineReader, buffer: String): AttributedString =

@@ -121,7 +121,12 @@ class JLine3Terminal(workEnv: WorkEnv) extends REPLTerminal:
 
   override def getBufferUpToCursor: String = jlineReader.getBuffer.upToCursor()
 
-  override def getCurrentChar: Char = jlineReader.getBuffer.currChar().toChar
+  override def getCurrentChar: Char =
+    val c = jlineReader.getBuffer.currChar()
+    if c == -1 then
+      '\u0000'
+    else
+      c.toChar
 
   override def writeToBuffer(s: String): Unit = jlineReader.getBuffer.write(s)
 
@@ -129,7 +134,12 @@ class JLine3Terminal(workEnv: WorkEnv) extends REPLTerminal:
 
   override def redrawLine(): Unit = jlineReader.callWidget(LineReader.REDRAW_LINE)
 
-  override def getOutput: Any = jlineTerminal.output()
+  override def getOutputWriter: Option[java.io.Writer] = Some(jlineTerminal.writer())
+
+  override def writeNewlines(count: Int): Unit =
+    val writer = jlineTerminal.writer()
+    for i <- 1 until count do
+      writer.write('\n')
 
   /**
     * Get access to the JLine3 reader for advanced operations

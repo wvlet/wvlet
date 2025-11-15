@@ -71,7 +71,11 @@ class HeadlessTerminal extends REPLTerminal:
 
   override def redrawLine(): Unit = ()
 
-  override def getOutput: Any = null
+  override def getOutputWriter: Option[java.io.Writer] = None
+
+  override def writeNewlines(count: Int): Unit =
+    // No-op in headless mode
+    ()
 
   override def close(): Unit =
     // Nothing to close in headless mode
