@@ -1,25 +1,27 @@
+-- Test with string literal interpolation
 select s"hello ${'wvlet'}!"
-test _.output should be """
-┌────────────────────────────────────────┐
-│ concat(concat('hello ', 'wvlet'), '!') │
-│                 string                 │
-├────────────────────────────────────────┤
-│ hello wvlet!                           │
-├────────────────────────────────────────┤
-│ 1 rows                                 │
-└────────────────────────────────────────┘
-"""
+test _.rows should be [['hello wvlet!']]
 ;
 
+-- Test with integer expression interpolation
 select s"hello ${2000 + 24}!"
-test _.output should be """
-┌────────────────────────────────────────────┐
-│ concat(concat('hello ', (2000 + 24)), '!') │
-│                   string                   │
-├────────────────────────────────────────────┤
-│ hello 2024!                                │
-├────────────────────────────────────────────┤
-│ 1 rows                                     │
-└────────────────────────────────────────────┘
-"""
+test _.rows should be [['hello 2024!']]
+;
+
+-- Test with multiple non-string interpolations
+val year = 2000
+val month = 12
+select s"Date: ${year}-${month}"
+test _.rows should be [['Date: 2000-12']]
+;
+
+-- Test with boolean interpolation
+val flag = true
+select s"Active: ${flag}"
+test _.rows should be [['Active: true']]
+;
+
+-- Test with decimal interpolation
+select s"Price: $${99.99}"
+test _.rows should be [['Price: $99.99']]
 ;

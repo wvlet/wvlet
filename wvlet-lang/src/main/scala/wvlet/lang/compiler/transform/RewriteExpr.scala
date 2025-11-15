@@ -51,7 +51,11 @@ object RewriteExpr extends Phase("rewrite-expr"):
               case s: StringPart =>
                 StringLiteral.fromString(s.value, s.span)
               case _ =>
-                e
+                // Cast non-string values to ensure compatibility across database engines
+                if e.dataType != DataType.StringType then
+                  Cast(e, DataType.StringType, tryCast = false, e.span)
+                else
+                  e
 
           FunctionApply(
             base = NameExpr.fromString("concat"),
