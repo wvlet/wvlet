@@ -143,41 +143,121 @@ object TyperRules:
 
       op
 
-    // Comparison operators
+    // Comparison operators - require comparable types
     case op: Eq =>
-      op.left.tpe
-      op.right.tpe
+      val leftTpe  = op.left.tpe
+      val rightTpe = op.right.tpe
+      // Equality is allowed for any types (including null checks)
       op.tpe = BooleanType
       op
 
     case op: NotEq =>
-      op.left.tpe
-      op.right.tpe
+      val leftTpe  = op.left.tpe
+      val rightTpe = op.right.tpe
+      // Inequality is allowed for any types (including null checks)
       op.tpe = BooleanType
       op
 
     case op: LessThan =>
-      op.left.tpe
-      op.right.tpe
-      op.tpe = BooleanType
+      val leftTpe  = op.left.tpe
+      val rightTpe = op.right.tpe
+      op.tpe =
+        (leftTpe, rightTpe) match
+          // Numeric comparisons
+          case (
+                IntType | LongType | FloatType | DoubleType,
+                IntType | LongType | FloatType | DoubleType
+              ) =>
+            BooleanType
+          // String comparisons
+          case (StringType, StringType) =>
+            BooleanType
+          // Same types (for custom types that support ordering)
+          case (l, r) if l == r && l != BooleanType =>
+            BooleanType
+          // NoType means untyped yet - allow it
+          case (NoType, _) | (_, NoType) =>
+            BooleanType
+          // Propagate errors
+          case (e: ErrorType, _) =>
+            e
+          case (_, e: ErrorType) =>
+            e
+          // Type mismatch
+          case _ =>
+            ErrorType(s"Cannot compare $leftTpe < $rightTpe: incompatible types")
       op
 
     case op: LessThanOrEq =>
-      op.left.tpe
-      op.right.tpe
-      op.tpe = BooleanType
+      val leftTpe  = op.left.tpe
+      val rightTpe = op.right.tpe
+      op.tpe =
+        (leftTpe, rightTpe) match
+          case (
+                IntType | LongType | FloatType | DoubleType,
+                IntType | LongType | FloatType | DoubleType
+              ) =>
+            BooleanType
+          case (StringType, StringType) =>
+            BooleanType
+          case (l, r) if l == r && l != BooleanType =>
+            BooleanType
+          case (NoType, _) | (_, NoType) =>
+            BooleanType
+          case (e: ErrorType, _) =>
+            e
+          case (_, e: ErrorType) =>
+            e
+          case _ =>
+            ErrorType(s"Cannot compare $leftTpe <= $rightTpe: incompatible types")
       op
 
     case op: GreaterThan =>
-      op.left.tpe
-      op.right.tpe
-      op.tpe = BooleanType
+      val leftTpe  = op.left.tpe
+      val rightTpe = op.right.tpe
+      op.tpe =
+        (leftTpe, rightTpe) match
+          case (
+                IntType | LongType | FloatType | DoubleType,
+                IntType | LongType | FloatType | DoubleType
+              ) =>
+            BooleanType
+          case (StringType, StringType) =>
+            BooleanType
+          case (l, r) if l == r && l != BooleanType =>
+            BooleanType
+          case (NoType, _) | (_, NoType) =>
+            BooleanType
+          case (e: ErrorType, _) =>
+            e
+          case (_, e: ErrorType) =>
+            e
+          case _ =>
+            ErrorType(s"Cannot compare $leftTpe > $rightTpe: incompatible types")
       op
 
     case op: GreaterThanOrEq =>
-      op.left.tpe
-      op.right.tpe
-      op.tpe = BooleanType
+      val leftTpe  = op.left.tpe
+      val rightTpe = op.right.tpe
+      op.tpe =
+        (leftTpe, rightTpe) match
+          case (
+                IntType | LongType | FloatType | DoubleType,
+                IntType | LongType | FloatType | DoubleType
+              ) =>
+            BooleanType
+          case (StringType, StringType) =>
+            BooleanType
+          case (l, r) if l == r && l != BooleanType =>
+            BooleanType
+          case (NoType, _) | (_, NoType) =>
+            BooleanType
+          case (e: ErrorType, _) =>
+            e
+          case (_, e: ErrorType) =>
+            e
+          case _ =>
+            ErrorType(s"Cannot compare $leftTpe >= $rightTpe: incompatible types")
       op
 
     // Logical operators

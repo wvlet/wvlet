@@ -148,4 +148,60 @@ class TyperTest extends AirSpec:
     val typed = TyperRules.binaryOpRules.apply(andOp)
     typed.tpe.isInstanceOf[ErrorType] shouldBe true
 
+  test("TyperRules should produce ErrorType for comparison type mismatches"):
+    given ctx: TyperContext = TyperContext(
+      owner = Symbol.NoSymbol,
+      scope = Scope.newScope(0),
+      compilationUnit = CompilationUnit.empty,
+      context = null
+    )
+
+    // Long < String should error
+    val left1 = LongLiteral(10, "10", Span.NoSpan)
+    left1.tpe = LongType
+    val right1 = StringLiteral.fromString("hello", Span.NoSpan)
+    right1.tpe = StringType
+
+    val ltOp   = LessThan(left1, right1, Span.NoSpan)
+    val typed1 = TyperRules.binaryOpRules.apply(ltOp)
+    typed1.tpe.isInstanceOf[ErrorType] shouldBe true
+
+    // Boolean < Boolean should error (booleans are not orderable)
+    val left2 = TrueLiteral(Span.NoSpan)
+    left2.tpe = BooleanType
+    val right2 = FalseLiteral(Span.NoSpan)
+    right2.tpe = BooleanType
+
+    val ltOp2  = LessThan(left2, right2, Span.NoSpan)
+    val typed2 = TyperRules.binaryOpRules.apply(ltOp2)
+    typed2.tpe.isInstanceOf[ErrorType] shouldBe true
+
+  test("TyperRules should allow valid comparisons"):
+    given ctx: TyperContext = TyperContext(
+      owner = Symbol.NoSymbol,
+      scope = Scope.newScope(0),
+      compilationUnit = CompilationUnit.empty,
+      context = null
+    )
+
+    // Long < Long is valid
+    val left1 = LongLiteral(10, "10", Span.NoSpan)
+    left1.tpe = LongType
+    val right1 = LongLiteral(20, "20", Span.NoSpan)
+    right1.tpe = LongType
+
+    val ltOp1  = LessThan(left1, right1, Span.NoSpan)
+    val typed1 = TyperRules.binaryOpRules.apply(ltOp1)
+    typed1.tpe shouldBe BooleanType
+
+    // String < String is valid
+    val left2 = StringLiteral.fromString("abc", Span.NoSpan)
+    left2.tpe = StringType
+    val right2 = StringLiteral.fromString("def", Span.NoSpan)
+    right2.tpe = StringType
+
+    val ltOp2  = LessThan(left2, right2, Span.NoSpan)
+    val typed2 = TyperRules.binaryOpRules.apply(ltOp2)
+    typed2.tpe shouldBe BooleanType
+
 end TyperTest

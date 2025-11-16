@@ -149,7 +149,7 @@ object TyperRules:
 wvlet-lang/src/main/scala/wvlet/lang/compiler/typer/
 ├── Typer.scala                   # Main typer phase
 ├── TyperContext.scala            # Typing context with given/using
-├── TyperRules.scala             # Composable PartialFunction rules
+├── TyperRules.scala              # Composable PartialFunction rules
 ├── rules/
 │   ├── ExpressionRules.scala    # Expression typing rules
 │   ├── RelationRules.scala      # Relation typing rules

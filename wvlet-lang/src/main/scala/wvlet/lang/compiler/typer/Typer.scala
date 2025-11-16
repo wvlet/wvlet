@@ -32,15 +32,22 @@ object Typer extends Phase("typer") with LogSupport:
   override def run(unit: CompilationUnit, context: Context): CompilationUnit =
     trace(s"Running new typer on ${unit.sourceFile.fileName}")
 
-    // For now, just pass through without typing
-    // This allows us to wire up the new typer in the pipeline
-    // without breaking existing functionality
+    // Type the plan bottom-up
+    given typerCtx: TyperContext = TyperContext.from(context, unit)
+    val typed                    = typePlan(unit.unresolvedPlan)
 
-    // TODO: Implement actual typing logic
-    // given TyperContext = TyperContext.from(context, unit)
-    // val typed = typePlan(unit.unresolvedPlan)
-    // unit.copy(typedPlan = typed)
+    // TODO: Report errors collected in TyperContext
+    if typerCtx.hasErrors then
+      warn(s"Typing errors in ${unit.sourceFile.fileName}:")
+      typerCtx
+        .errors
+        .reverse
+        .foreach { err =>
+          warn(s"  ${err.message} at ${err.sourceLocation(using context)}")
+        }
 
+    // For now, just return the unit unchanged
+    // TODO: Store typed plan in CompilationUnit once we have a field for it
     unit
 
   /**

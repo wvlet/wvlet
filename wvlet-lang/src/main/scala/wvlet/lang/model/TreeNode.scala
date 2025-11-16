@@ -69,7 +69,7 @@ trait SyntaxTreeNode extends TreeNode with Product with LogSupport:
       }
     lst.result()
 
-  def copyMetadatFrom(t: SyntaxTreeNode): Unit =
+  def copyMetadataFrom(t: SyntaxTreeNode): Unit =
     // Copy symbol, type, and comments
     _symbol = t._symbol
     _tpe = t._tpe
@@ -115,7 +115,7 @@ trait SyntaxTreeNode extends TreeNode with Product with LogSupport:
             // Update the tree reference with the rewritten tree
             this.symbol.tree = t
           // Copy metadata to preserve symbol and comments
-          t.copyMetadatFrom(this)
+          t.copyMetadataFrom(this)
         case _ =>
       newObj.asInstanceOf[this.type]
     catch
