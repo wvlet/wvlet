@@ -42,25 +42,25 @@ import scala.collection.immutable.ListMap
 
 object Compiler extends LogSupport:
 
-  def default(sourcePath: String): Compiler =
-    Compiler(
-      CompilerOptions(
-        sourceFolders = List(sourcePath),
-        workEnv = WorkEnv(sourcePath, logLevel = LogLevel.INFO)
-      )
+  def default(sourcePath: String): Compiler = Compiler(
+    CompilerOptions(
+      sourceFolders = List(sourcePath),
+      workEnv = WorkEnv(sourcePath, logLevel = LogLevel.INFO)
     )
+  )
 
   /**
     * Create a compiler with parse-only phases for syntax checking
     */
-  def parseOnly(options: CompilerOptions): Compiler =
-    Compiler(options, parseOnlyPhases)
+  def parseOnly(options: CompilerOptions): Compiler = Compiler(options, parseOnlyPhases)
 
   /**
     * Create a compiler with the new typer enabled
     */
-  def withNewTyper(options: CompilerOptions): Compiler =
-    Compiler(options, allPhasesWithTyper(useNewTyper = true))
+  def withNewTyper(options: CompilerOptions): Compiler = Compiler(
+    options,
+    allPhasesWithTyper(useNewTyper = true)
+  )
 
   /**
     * Phases for text-based analysis of the source code
@@ -126,7 +126,10 @@ case class CompilerOptions(
 ):
   def withDBType(dbType: DBType): CompilerOptions = copy(dbType = dbType)
 
-class Compiler(val compilerOptions: CompilerOptions, val phases: List[List[Phase]] = Compiler.allPhases) extends LogSupport:
+class Compiler(
+    val compilerOptions: CompilerOptions,
+    val phases: List[List[Phase]] = Compiler.allPhases
+) extends LogSupport:
 
   private lazy val globalContext = newGlobalContext
 

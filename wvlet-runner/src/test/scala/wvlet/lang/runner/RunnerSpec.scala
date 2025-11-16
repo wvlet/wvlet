@@ -45,10 +45,7 @@ trait RunnerSpec(
     dbConnectorProvider.close()
 
   private val compiler =
-    val options = CompilerOptions(
-      sourceFolders = List(specPath),
-      workEnv = workEnv
-    )
+    val options = CompilerOptions(sourceFolders = List(specPath), workEnv = workEnv)
     if parseOnly then
       Compiler.parseOnly(options)
     else
