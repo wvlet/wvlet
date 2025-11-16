@@ -43,12 +43,24 @@ import scala.collection.immutable.ListMap
 object Compiler extends LogSupport:
 
   def default(sourcePath: String): Compiler =
-    new Compiler(
+    Compiler(
       CompilerOptions(
         sourceFolders = List(sourcePath),
         workEnv = WorkEnv(sourcePath, logLevel = LogLevel.INFO)
       )
     )
+
+  /**
+    * Create a compiler with parse-only phases for syntax checking
+    */
+  def parseOnly(options: CompilerOptions): Compiler =
+    Compiler(options, parseOnlyPhases)
+
+  /**
+    * Create a compiler with the new typer enabled
+    */
+  def withNewTyper(options: CompilerOptions): Compiler =
+    Compiler(options, allPhasesWithTyper(useNewTyper = true))
 
   /**
     * Phases for text-based analysis of the source code
@@ -110,19 +122,11 @@ case class CompilerOptions(
     // context database schema
     schema: Option[String] = None,
     // Database type (e.g., DuckDB, Trino)
-    dbType: DBType = DBType.DuckDB,
-    // Enable new typer (experimental)
-    useNewTyper: Boolean = sys.env.get("WVLET_NEW_TYPER").contains("true"),
-    // Phases can be customized, defaults based on useNewTyper
-    customPhases: Option[List[List[Phase]]] = None
+    dbType: DBType = DBType.DuckDB
 ):
-  def withDBType(dbType: DBType): CompilerOptions    = copy(dbType = dbType)
-  def withNewTyper(enable: Boolean): CompilerOptions = copy(useNewTyper = enable)
+  def withDBType(dbType: DBType): CompilerOptions = copy(dbType = dbType)
 
-  // Get the actual phases to use
-  def phases: List[List[Phase]] = customPhases.getOrElse(Compiler.allPhasesWithTyper(useNewTyper))
-
-class Compiler(val compilerOptions: CompilerOptions) extends LogSupport:
+class Compiler(val compilerOptions: CompilerOptions, val phases: List[List[Phase]] = Compiler.allPhases) extends LogSupport:
 
   private lazy val globalContext = newGlobalContext
 
@@ -220,7 +224,7 @@ class Compiler(val compilerOptions: CompilerOptions) extends LogSupport:
         unit
     }
     for
-      phaseGroup <- compilerOptions.phases
+      phaseGroup <- phases
       phase      <- phaseGroup
     do
       debug(s"Running phase ${phase.name}")

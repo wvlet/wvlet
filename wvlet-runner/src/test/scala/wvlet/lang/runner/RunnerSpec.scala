@@ -44,18 +44,15 @@ trait RunnerSpec(
     queryExecutor.close()
     dbConnectorProvider.close()
 
-  private val compiler = Compiler(
-    CompilerOptions(
-      customPhases =
-        if parseOnly then
-          Some(Compiler.parseOnlyPhases)
-        else
-          None // Use default phases
-      ,
+  private val compiler =
+    val options = CompilerOptions(
       sourceFolders = List(specPath),
       workEnv = workEnv
     )
-  )
+    if parseOnly then
+      Compiler.parseOnly(options)
+    else
+      Compiler(options) // Uses default allPhases
 
   compiler.setDefaultCatalog(queryExecutor.getDBConnector(profile).getCatalog("memory", "main"))
 
