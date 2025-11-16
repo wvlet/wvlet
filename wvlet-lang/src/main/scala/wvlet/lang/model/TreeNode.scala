@@ -84,7 +84,7 @@ trait SyntaxTreeNode extends TreeNode with Product with LogSupport:
   def tpe_=(t: Type): Unit = _tpe = t
 
   // Helper to check if node is typed
-  def isTyped: Boolean = _tpe != NoType && _tpe != Type.UnknownType
+  def isTyped: Boolean = _tpe != NoType
 
   def comments: List[TokenData[?]]     = _comment
   def postComments: List[TokenData[?]] = _postComment

@@ -103,7 +103,7 @@ object NoSymbolInfo
       Symbol.NoSymbol,
       Symbol.NoSymbol,
       Name.NoName,
-      Type.UnknownType
+      Type.NoType
     ):
   override def toString: String = "NoSymbol"
 

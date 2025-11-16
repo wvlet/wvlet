@@ -36,11 +36,6 @@ abstract class Type:
   def typeParams: Seq[DataType] = Nil
 
 object Type:
-  val UnknownType: Type =
-    new Type:
-      override def typeDescription: String = "<Unknown>"
-      override def isResolved: Boolean     = false
-
   /**
     * Represents an untyped node (initial state before typing)
     */
