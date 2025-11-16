@@ -1,5 +1,7 @@
 ![wvlet](logos/wvlet-banner-300.png)
 
+[![](https://deepwiki.com/badge.svg)](https://deepwiki.com/wvlet/wvlet)
+
 Wvlet, pronounced as weave-let, is a new cross-SQL flow-style query language for functional data modeling and interactive data exploration. Wvlet works with various types of SQL-based database engines, including [DuckDB](https://duckdb.org/), [Trino](https://trino.io/), [Hive](https://hive.apache.org/), etc.
 
 - [Documentation](https://wvlet.org/wvlet/)
