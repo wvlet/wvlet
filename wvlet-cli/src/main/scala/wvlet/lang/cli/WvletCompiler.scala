@@ -72,19 +72,22 @@ class WvletCompiler(
 
   override def close(): Unit = Option(_dbConnector).foreach(_.close())
 
-  private def createCompiler(phases: List[List[Phase]] = Compiler.allPhases): Compiler =
+  private def createCompiler(parseOnly: Boolean = false): Compiler =
     val dbType = compilerOption.targetDBType.map(DBType.fromString).getOrElse(currentProfile.dbType)
 
-    val compiler = Compiler(
-      CompilerOptions(
-        phases = phases,
-        sourceFolders = List(compilerOption.workFolder),
-        workEnv = workEnv,
-        catalog = currentProfile.catalog,
-        schema = currentProfile.schema,
-        dbType = dbType
-      )
+    val options = CompilerOptions(
+      sourceFolders = List(compilerOption.workFolder),
+      workEnv = workEnv,
+      catalog = currentProfile.catalog,
+      schema = currentProfile.schema,
+      dbType = dbType
     )
+
+    val compiler =
+      if parseOnly then
+        Compiler.parseOnly(options)
+      else
+        Compiler(options)
     // Set catalog from connector
     currentProfile
       .catalog
@@ -121,7 +124,7 @@ class WvletCompiler(
   private def compileInternal(inputUnit: CompilationUnit, parseOnly: Boolean = false): Context =
     val compileResult =
       if parseOnly then
-        val parsingCompiler = createCompiler(Compiler.parseOnlyPhases)
+        val parsingCompiler = createCompiler(parseOnly = true)
         parsingCompiler.compileSingleUnit(inputUnit)
       else
         compile(inputUnit)

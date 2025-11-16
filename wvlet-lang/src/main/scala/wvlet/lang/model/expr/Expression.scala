@@ -273,7 +273,7 @@ trait Expression extends SyntaxTreeNode with LogSupport:
   def withDataType(dt: DataType): Expression =
     this match
       case e: TypedExpression =>
-        e.copy(tpe = dt)
+        e.copy(targetType = dt)
       case _ =>
         TypedExpression(this, dt, this.span)
 

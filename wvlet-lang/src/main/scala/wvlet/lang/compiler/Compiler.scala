@@ -24,6 +24,7 @@ import wvlet.lang.compiler.analyzer.SQLValidator
 import wvlet.lang.compiler.analyzer.SymbolLabeler
 import wvlet.lang.compiler.analyzer.TypeResolver
 import wvlet.lang.compiler.parser.ParserPhase
+import wvlet.lang.compiler.typer.Typer
 import wvlet.lang.compiler.parser.WvletParser
 import wvlet.lang.compiler.planner.ExecutionPlanRewriter
 import wvlet.lang.compiler.planner.ExecutionPlanner
@@ -41,23 +42,41 @@ import scala.collection.immutable.ListMap
 
 object Compiler extends LogSupport:
 
-  def default(sourcePath: String): Compiler =
-    new Compiler(
-      CompilerOptions(
-        sourceFolders = List(sourcePath),
-        workEnv = WorkEnv(sourcePath, logLevel = LogLevel.INFO)
-      )
+  def default(sourcePath: String): Compiler = Compiler(
+    CompilerOptions(
+      sourceFolders = List(sourcePath),
+      workEnv = WorkEnv(sourcePath, logLevel = LogLevel.INFO)
     )
+  )
+
+  /**
+    * Create a compiler with parse-only phases for syntax checking
+    */
+  def parseOnly(options: CompilerOptions): Compiler = Compiler(options, parseOnlyPhases)
+
+  /**
+    * Create a compiler with the new typer enabled
+    */
+  def withNewTyper(options: CompilerOptions): Compiler = Compiler(
+    options,
+    allPhasesWithTyper(useNewTyper = true)
+  )
 
   /**
     * Phases for text-based analysis of the source code
     */
-  def analysisPhases: List[Phase] = List(
+  def analysisPhases: List[Phase] = analysisPhasesWithTyper(useNewTyper = false)
+
+  def analysisPhasesWithTyper(useNewTyper: Boolean): List[Phase] = List(
     ParserPhase, // Parse *.wv files and create untyped plans
     PreprocessLocalExpr, // Preprocess local expressions (e.g., backquote strings and native expressions)
     SymbolLabeler, // Assign unique Symbol to each LogicalPlan and Expression nodes, a and assign a lazy DataType
     RemoveUnusedQueries(), // Exclude unused compilation units (e.g., out of scope queries) from the following phases
-    TypeResolver,   // Assign a concrete DataType to each LogicalPlan and Expression nodes
+    if useNewTyper then
+      Typer
+    else
+      TypeResolver
+    ,               // Assign a concrete DataType to each LogicalPlan and Expression nodes
     SQLValidator(), // Validate SQL-specific patterns and emit warnings
     ModelDependencyAnalyzer()
   )
@@ -79,7 +98,13 @@ object Compiler extends LogSupport:
     */
   def codeGenPhases: List[Phase] = List(ExecutionPlanner, ExecutionPlanRewriter)
 
-  def allPhases: List[List[Phase]] = List(analysisPhases, transformPhases, codeGenPhases)
+  def allPhases: List[List[Phase]] = allPhasesWithTyper(useNewTyper = false)
+
+  def allPhasesWithTyper(useNewTyper: Boolean): List[List[Phase]] = List(
+    analysisPhasesWithTyper(useNewTyper),
+    transformPhases,
+    codeGenPhases
+  )
 
   def parseOnlyPhases: List[List[Phase]] = List(
     List(ParserPhase, RemoveUnusedQueries(), EmptyTypeResolver)
@@ -90,7 +115,6 @@ object Compiler extends LogSupport:
 end Compiler
 
 case class CompilerOptions(
-    phases: List[List[Phase]] = Compiler.allPhases,
     sourceFolders: List[String] = List("."),
     workEnv: WorkEnv,
     // Context database catalog
@@ -102,7 +126,10 @@ case class CompilerOptions(
 ):
   def withDBType(dbType: DBType): CompilerOptions = copy(dbType = dbType)
 
-class Compiler(val compilerOptions: CompilerOptions) extends LogSupport:
+class Compiler(
+    val compilerOptions: CompilerOptions,
+    val phases: List[List[Phase]] = Compiler.allPhases
+) extends LogSupport:
 
   private lazy val globalContext = newGlobalContext
 
@@ -200,7 +227,7 @@ class Compiler(val compilerOptions: CompilerOptions) extends LogSupport:
         unit
     }
     for
-      phaseGroup <- compilerOptions.phases
+      phaseGroup <- phases
       phase      <- phaseGroup
     do
       debug(s"Running phase ${phase.name}")

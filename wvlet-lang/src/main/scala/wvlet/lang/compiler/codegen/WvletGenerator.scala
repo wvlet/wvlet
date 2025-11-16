@@ -483,7 +483,7 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
               empty
             else
               bracket(cl(t.params.map(_.wvExpr)))
-          val defContexts = wl(t.defContexts.map(x => wl("in", expr(x.tpe))))
+          val defContexts = wl(t.defContexts.map(x => wl("in", expr(x.contextType))))
           val parent      = t.parent.map(p => wl("extends", expr(p)))
 
           val sep =
@@ -612,7 +612,7 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
           val s = StringLiteral.fromString(i.stringValue, i.span)
           expr(s) + text(":interval")
         case g: GenericLiteral =>
-          text(s"${g.value.stringValue}:${g.tpe.typeName}")
+          text(s"${g.value.stringValue}:${g.literalType.typeName}")
         case l: Literal =>
           text(l.stringValue)
         case bq: BackquoteInterpolatedIdentifier =>
@@ -767,7 +767,7 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
         case b: NotBetween =>
           wl(expr(b.e), "not between", expr(b.a), "and", expr(b.b))
         case c: Cast =>
-          expr(c.child) + text(".") + text(s"to_${c.tpe.typeName}")
+          expr(c.child) + text(".") + text(s"to_${c.castType.typeName}")
         case a: AtTimeZone =>
           expr(a.expr) + text(".atTimeZone") + paren(expr(a.timezone))
         case n: NativeExpression =>
@@ -793,7 +793,7 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
             d.defaultValue.map(x => wl("=", expr(x)))
           )
         case f: FieldDef =>
-          group(wl(f.name.name + ":", expr(f.tpe), f.body.map(b => wl("=", expr(b)))))
+          group(wl(f.name.name + ":", expr(f.fieldType), f.body.map(b => wl("=", expr(b)))))
         case e: Extract =>
           // Convert EXTRACT(field FROM expr) to expr.extract(field)
           expr(e.expr) + text(".extract") + paren(text(s"'${e.interval.toString.toLowerCase}'"))

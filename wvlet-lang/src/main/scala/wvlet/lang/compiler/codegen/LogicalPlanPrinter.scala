@@ -142,7 +142,7 @@ class LogicalPlanPrinter(using ctx: Context) extends LogSupport:
           wl(
             "val",
             t.name.name + ":",
-            expr(t.tpe),
+            expr(t.fieldType),
             t.body
               .map { b =>
                 "=" + nest(wsOrNL + expr(b))
@@ -175,9 +175,9 @@ class LogicalPlanPrinter(using ctx: Context) extends LogSupport:
         text("this")
       case d: DefContext =>
         if d.name.isEmpty then
-          expr(d.tpe)
+          expr(d.contextType)
         else
-          expr(d.name.get) + ": " + expr(d.tpe)
+          expr(d.name.get) + ": " + expr(d.contextType)
       case ShouldExpr(testType, left, right, _) =>
         wl(expr(left), testType.expr, expr(right))
       case w: WindowFrame =>

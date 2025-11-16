@@ -97,7 +97,7 @@ case class DefArg(
 
 case class FieldDef(
     name: TermName,
-    tpe: NameExpr,
+    fieldType: NameExpr,
     params: List[TypeParameter],
     body: Option[Expression],
     span: Span
@@ -110,7 +110,7 @@ case class FieldDef(
   * @param tpe
   * @param nodeLocation
   */
-case class DefContext(name: Option[NameExpr], tpe: NameExpr, span: Span) extends Expression:
+case class DefContext(name: Option[NameExpr], contextType: NameExpr, span: Span) extends Expression:
   override def children: List[Expression] = Nil
 
 case class ModelDef(

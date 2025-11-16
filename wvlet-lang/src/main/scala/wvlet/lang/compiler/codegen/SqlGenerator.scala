@@ -1753,7 +1753,9 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             case _ =>
               generic
 
-        group(wl(text(castKeyword) + paren(wl(expr(c.child), "as", text(formatTypeForDB(c.tpe))))))
+        group(
+          wl(text(castKeyword) + paren(wl(expr(c.child), "as", text(formatTypeForDB(c.castType)))))
+        )
       case a: AtTimeZone =>
         expr(a.expr) + ws + text("AT") + ws + text("TIME") + ws + text("ZONE") + ws +
           expr(a.timezone)
@@ -1762,7 +1764,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       case e: Exists =>
         wl(text("exists"), expr(e.child))
       case c: ColumnDef =>
-        val baseColumn       = wl(expr(c.columnName), text(c.tpe.sqlExpr))
+        val baseColumn       = wl(expr(c.columnName), text(c.columnType.sqlExpr))
         val columnAttributes =
           List(
             // Add NOT NULL constraint

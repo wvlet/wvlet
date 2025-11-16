@@ -24,6 +24,7 @@ import wvlet.lang.compiler.Symbol
 import wvlet.lang.compiler.ContextUtil.*
 import wvlet.lang.compiler.parser.TokenData
 import wvlet.lang.model.plan.LogicalPlan
+import wvlet.lang.model.Type.NoType
 import wvlet.log.LogSupport
 
 /**
@@ -33,6 +34,7 @@ trait TreeNode extends TreeNodeCompat
 
 trait SyntaxTreeNode extends TreeNode with Product with LogSupport:
   private var _symbol: Symbol                  = Symbol.NoSymbol
+  private var _tpe: Type                       = NoType
   private var _comment: List[TokenData[?]]     = Nil
   private var _postComment: List[TokenData[?]] = Nil
 
@@ -67,14 +69,22 @@ trait SyntaxTreeNode extends TreeNode with Product with LogSupport:
       }
     lst.result()
 
-  def copyMetadatFrom(t: SyntaxTreeNode): Unit =
-    // Copy symbol, comment
+  def copyMetadataFrom(t: SyntaxTreeNode): Unit =
+    // Copy symbol, type, and comments
     _symbol = t._symbol
+    _tpe = t._tpe
     _comment = t._comment
     _postComment = t._postComment
 
   def symbol: Symbol            = _symbol
   def symbol_=(s: Symbol): Unit = _symbol = s
+
+  // Type accessors
+  def tpe: Type            = _tpe
+  def tpe_=(t: Type): Unit = _tpe = t
+
+  // Helper to check if node is typed
+  def isTyped: Boolean = _tpe != NoType
 
   def comments: List[TokenData[?]]     = _comment
   def postComments: List[TokenData[?]] = _postComment
@@ -105,7 +115,7 @@ trait SyntaxTreeNode extends TreeNode with Product with LogSupport:
             // Update the tree reference with the rewritten tree
             this.symbol.tree = t
           // Copy metadata to preserve symbol and comments
-          t.copyMetadatFrom(this)
+          t.copyMetadataFrom(this)
         case _ =>
       newObj.asInstanceOf[this.type]
     catch
