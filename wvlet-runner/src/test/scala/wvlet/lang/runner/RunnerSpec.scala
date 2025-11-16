@@ -46,11 +46,11 @@ trait RunnerSpec(
 
   private val compiler = Compiler(
     CompilerOptions(
-      phases =
+      customPhases =
         if parseOnly then
-          Compiler.parseOnlyPhases
+          Some(Compiler.parseOnlyPhases)
         else
-          Compiler.allPhases
+          None // Use default phases
       ,
       sourceFolders = List(specPath),
       workEnv = workEnv
