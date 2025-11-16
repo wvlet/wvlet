@@ -24,6 +24,7 @@ import wvlet.lang.compiler.analyzer.SQLValidator
 import wvlet.lang.compiler.analyzer.SymbolLabeler
 import wvlet.lang.compiler.analyzer.TypeResolver
 import wvlet.lang.compiler.parser.ParserPhase
+import wvlet.lang.compiler.typer.Typer
 import wvlet.lang.compiler.parser.WvletParser
 import wvlet.lang.compiler.planner.ExecutionPlanRewriter
 import wvlet.lang.compiler.planner.ExecutionPlanner
@@ -52,12 +53,18 @@ object Compiler extends LogSupport:
   /**
     * Phases for text-based analysis of the source code
     */
-  def analysisPhases: List[Phase] = List(
+  def analysisPhases: List[Phase] = analysisPhasesWithTyper(useNewTyper = false)
+
+  def analysisPhasesWithTyper(useNewTyper: Boolean): List[Phase] = List(
     ParserPhase, // Parse *.wv files and create untyped plans
     PreprocessLocalExpr, // Preprocess local expressions (e.g., backquote strings and native expressions)
     SymbolLabeler, // Assign unique Symbol to each LogicalPlan and Expression nodes, a and assign a lazy DataType
     RemoveUnusedQueries(), // Exclude unused compilation units (e.g., out of scope queries) from the following phases
-    TypeResolver,   // Assign a concrete DataType to each LogicalPlan and Expression nodes
+    if useNewTyper then
+      Typer
+    else
+      TypeResolver
+    ,               // Assign a concrete DataType to each LogicalPlan and Expression nodes
     SQLValidator(), // Validate SQL-specific patterns and emit warnings
     ModelDependencyAnalyzer()
   )
@@ -79,7 +86,13 @@ object Compiler extends LogSupport:
     */
   def codeGenPhases: List[Phase] = List(ExecutionPlanner, ExecutionPlanRewriter)
 
-  def allPhases: List[List[Phase]] = List(analysisPhases, transformPhases, codeGenPhases)
+  def allPhases: List[List[Phase]] = allPhasesWithTyper(useNewTyper = false)
+
+  def allPhasesWithTyper(useNewTyper: Boolean): List[List[Phase]] = List(
+    analysisPhasesWithTyper(useNewTyper),
+    transformPhases,
+    codeGenPhases
+  )
 
   def parseOnlyPhases: List[List[Phase]] = List(
     List(ParserPhase, RemoveUnusedQueries(), EmptyTypeResolver)
@@ -90,7 +103,6 @@ object Compiler extends LogSupport:
 end Compiler
 
 case class CompilerOptions(
-    phases: List[List[Phase]] = Compiler.allPhases,
     sourceFolders: List[String] = List("."),
     workEnv: WorkEnv,
     // Context database catalog
@@ -98,9 +110,17 @@ case class CompilerOptions(
     // context database schema
     schema: Option[String] = None,
     // Database type (e.g., DuckDB, Trino)
-    dbType: DBType = DBType.DuckDB
+    dbType: DBType = DBType.DuckDB,
+    // Enable new typer (experimental)
+    useNewTyper: Boolean = sys.env.get("WVLET_NEW_TYPER").contains("true"),
+    // Phases can be customized, defaults based on useNewTyper
+    customPhases: Option[List[List[Phase]]] = None
 ):
-  def withDBType(dbType: DBType): CompilerOptions = copy(dbType = dbType)
+  def withDBType(dbType: DBType): CompilerOptions    = copy(dbType = dbType)
+  def withNewTyper(enable: Boolean): CompilerOptions = copy(useNewTyper = enable)
+
+  // Get the actual phases to use
+  def phases: List[List[Phase]] = customPhases.getOrElse(Compiler.allPhasesWithTyper(useNewTyper))
 
 class Compiler(val compilerOptions: CompilerOptions) extends LogSupport:
 

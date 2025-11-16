@@ -41,6 +41,34 @@ object Type:
       override def typeDescription: String = "<Unknown>"
       override def isResolved: Boolean     = false
 
+  /**
+    * Represents an untyped node (initial state before typing)
+    */
+  case object NoType extends Type:
+    override def typeDescription: String = "NoType"
+    override def isResolved: Boolean     = false
+
+  /**
+    * Represents a type error with an error message
+    */
+  case class ErrorType(msg: String) extends Type:
+    override def typeDescription: String = s"ErrorType($msg)"
+    override def isResolved: Boolean     = false
+
+  /**
+    * Represents the unit type (no value produced)
+    */
+  case object UnitType extends Type:
+    override def typeDescription: String = "Unit"
+    override def isResolved: Boolean     = true
+
+  /**
+    * Type variable for type inference (future use)
+    */
+  case class TypeVar(id: Int) extends Type:
+    override def typeDescription: String = s"?T$id"
+    override def isResolved: Boolean     = false
+
   case class ImportType(i: Import) extends Type:
     override def typeDescription: String = s"import ${i.importRef}"
     override def isResolved: Boolean     = true

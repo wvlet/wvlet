@@ -211,7 +211,7 @@ object SymbolLabeler extends Phase("symbol-labeler"):
         },
       returnType = f.retType.getOrElse(DataType.UnknownType),
       // TODO resolve qualified name
-      contextNames = defContexts.map(x => Name.typeName(x.tpe.leafName))
+      contextNames = defContexts.map(x => Name.typeName(x.contextType.leafName))
     )
 
   private def registerTypeDefSymbol(t: TypeDef)(using ctx: Context): Symbol =
@@ -294,7 +294,7 @@ object SymbolLabeler extends Phase("symbol-labeler"):
           .collect { case v: FieldDef =>
             // Resolve simple primitive types earlier.
             // TODO: DataType.parse(typeName) for complex types, including UnknownTypes
-            val dt = DataType.parse(v.tpe.fullName, v.params)
+            val dt = DataType.parse(v.fieldType.fullName, v.params)
             NamedType(v.name, dt)
           }
 

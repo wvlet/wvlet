@@ -36,6 +36,7 @@ dist
 .cache
 .scala-build
 .claude/
+.serena/
 
 ### VisualStudioCode ###
 .vscode/*

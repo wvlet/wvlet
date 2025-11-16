@@ -38,8 +38,9 @@ case class NativeExpression(name: String, retType: Option[DataType], span: Span)
 case class ParenthesizedExpression(child: Expression, span: Span) extends UnaryExpression:
   override def dataType: DataType = child.dataType
 
-case class TypedExpression(child: Expression, tpe: DataType, span: Span) extends UnaryExpression:
-  override def dataType: DataType = tpe
+case class TypedExpression(child: Expression, targetType: DataType, span: Span)
+    extends UnaryExpression:
+  override def dataType: DataType = targetType
 
 case class TableAlias(name: NameExpr, alias: NameExpr, span: Span) extends LeafExpression:
   override def dataType: DataType = DataType.UnknownType
@@ -777,11 +778,12 @@ case class LongLiteral(value: Long, override val stringValue: String, span: Span
   override def dataType: DataType = DataType.LongType
   override def sqlExpr: String    = value.toString
 
-case class GenericLiteral(tpe: DataType, value: Literal, span: Span)
+case class GenericLiteral(literalType: DataType, value: Literal, span: Span)
     extends Literal
     with LeafExpression:
   override def stringValue: String = value.stringValue
-  override def sqlExpr             = s"${tpe.typeName} ${value.sqlExpr}"
+  override def sqlExpr             = s"${literalType.typeName} ${value.sqlExpr}"
+  override def dataType: DataType  = literalType
 
 case class BinaryLiteral(binary: String, span: Span) extends Literal with LeafExpression:
   override def stringValue: String = binary
@@ -902,9 +904,10 @@ case class NamedParameter(name: String, span: Span) extends Parameter
 case class SubQueryExpression(query: Relation, span: Span) extends Expression:
   override def children: Seq[Expression] = query.childExpressions
 
-case class Cast(expr: Expression, tpe: DataType, tryCast: Boolean = false, span: Span)
+case class Cast(expr: Expression, castType: DataType, tryCast: Boolean = false, span: Span)
     extends UnaryExpression:
-  override def child: Expression = expr
+  override def child: Expression  = expr
+  override def dataType: DataType = castType
 
 case class SchemaProperty(key: NameExpr, value: Expression, span: Span) extends Expression:
   override def children: Seq[Expression] = Seq(key, value)
@@ -913,7 +916,7 @@ sealed trait TableElement extends Expression
 
 case class ColumnDef(
     columnName: NameExpr,
-    tpe: DataType,
+    columnType: DataType,
     span: Span,
     notNull: Boolean = false,
     comment: Option[String] = None,
@@ -922,8 +925,9 @@ case class ColumnDef(
     position: Option[String] = None // FIRST, LAST, or AFTER column_name
 ) extends TableElement
     with UnaryExpression:
-  override def toString: String  = s"${columnName.leafName}:${tpe.wvExpr}"
-  override def child: Expression = columnName
+  override def toString: String   = s"${columnName.leafName}:${columnType.wvExpr}"
+  override def child: Expression  = columnName
+  override def dataType: DataType = columnType
 
 //
 //case class ColumnType(tpe: NameExpr, span: Span) extends LeafExpression

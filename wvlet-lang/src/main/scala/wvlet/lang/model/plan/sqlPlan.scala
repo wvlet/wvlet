@@ -11,7 +11,7 @@ enum AlterType:
   case SESSION
 
 case class AlterVariable(
-    tpe: AlterType,
+    alterType: AlterType,
     isReset: Boolean = false,
     identifier: QualifiedName,
     value: Option[Expression] = None,
