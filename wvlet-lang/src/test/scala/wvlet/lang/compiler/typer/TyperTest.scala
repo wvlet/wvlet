@@ -22,12 +22,16 @@ import wvlet.lang.model.DataType.LongType
 import wvlet.lang.model.DataType.DoubleType
 import wvlet.lang.model.DataType.StringType
 import wvlet.lang.model.DataType.NullType
+import wvlet.lang.model.DataType.SchemaType
+import wvlet.lang.model.DataType.NamedType
 import wvlet.lang.model.expr.*
+import wvlet.lang.model.expr.UnquotedIdentifier
 import wvlet.lang.model.plan.LogicalPlan
 import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.compiler.Compiler
 import wvlet.lang.compiler.CompilerOptions
 import wvlet.lang.compiler.Context
+import wvlet.lang.compiler.Name
 import wvlet.lang.compiler.Scope
 import wvlet.lang.compiler.Symbol
 import wvlet.lang.compiler.WorkEnv
@@ -203,5 +207,146 @@ class TyperTest extends AirSpec:
     val ltOp2  = LessThan(left2, right2, Span.NoSpan)
     val typed2 = TyperRules.binaryOpRules.apply(ltOp2)
     typed2.tpe shouldBe BooleanType
+
+  test("TyperRules should type Cast expressions"):
+    given ctx: TyperContext = TyperContext(
+      owner = Symbol.NoSymbol,
+      scope = Scope.newScope(0),
+      compilationUnit = CompilationUnit.empty,
+      context = null
+    )
+
+    val expr = LongLiteral(42, "42", Span.NoSpan)
+    expr.tpe = LongType
+
+    val castExpr = Cast(expr, DoubleType, tryCast = false, Span.NoSpan)
+    val typed    = TyperRules.castRules.apply(castExpr)
+
+    typed.tpe shouldBe DoubleType
+
+  test("TyperRules should type Case expressions with same types"):
+    given ctx: TyperContext = TyperContext(
+      owner = Symbol.NoSymbol,
+      scope = Scope.newScope(0),
+      compilationUnit = CompilationUnit.empty,
+      context = null
+    )
+
+    val cond1 = TrueLiteral(Span.NoSpan)
+    cond1.tpe = BooleanType
+    val result1 = LongLiteral(1, "1", Span.NoSpan)
+    result1.tpe = LongType
+
+    val cond2 = FalseLiteral(Span.NoSpan)
+    cond2.tpe = BooleanType
+    val result2 = LongLiteral(2, "2", Span.NoSpan)
+    result2.tpe = LongType
+
+    val whenClause1 = WhenClause(cond1, result1, Span.NoSpan)
+    val whenClause2 = WhenClause(cond2, result2, Span.NoSpan)
+
+    val caseExpr = CaseExpr(None, List(whenClause1, whenClause2), None, Span.NoSpan)
+    val typed    = TyperRules.caseExprRules.apply(caseExpr)
+
+    typed.tpe shouldBe LongType
+
+  test("TyperRules should type Case expressions with type promotion"):
+    given ctx: TyperContext = TyperContext(
+      owner = Symbol.NoSymbol,
+      scope = Scope.newScope(0),
+      compilationUnit = CompilationUnit.empty,
+      context = null
+    )
+
+    val cond1 = TrueLiteral(Span.NoSpan)
+    cond1.tpe = BooleanType
+    val result1 = LongLiteral(1, "1", Span.NoSpan)
+    result1.tpe = LongType
+
+    val cond2 = FalseLiteral(Span.NoSpan)
+    cond2.tpe = BooleanType
+    val result2 = DoubleLiteral(2.5, "2.5", Span.NoSpan)
+    result2.tpe = DoubleType
+
+    val whenClause1 = WhenClause(cond1, result1, Span.NoSpan)
+    val whenClause2 = WhenClause(cond2, result2, Span.NoSpan)
+
+    val caseExpr = CaseExpr(None, List(whenClause1, whenClause2), None, Span.NoSpan)
+    val typed    = TyperRules.caseExprRules.apply(caseExpr)
+
+    // Should promote to DoubleType (Long -> Double)
+    typed.tpe shouldBe DoubleType
+
+  test("TyperRules should type Case expressions with ELSE clause"):
+    given ctx: TyperContext = TyperContext(
+      owner = Symbol.NoSymbol,
+      scope = Scope.newScope(0),
+      compilationUnit = CompilationUnit.empty,
+      context = null
+    )
+
+    val cond1 = TrueLiteral(Span.NoSpan)
+    cond1.tpe = BooleanType
+    val result1 = LongLiteral(1, "1", Span.NoSpan)
+    result1.tpe = LongType
+
+    val elseResult = DoubleLiteral(3.14, "3.14", Span.NoSpan)
+    elseResult.tpe = DoubleType
+
+    val whenClause1 = WhenClause(cond1, result1, Span.NoSpan)
+    val caseExpr    = CaseExpr(None, List(whenClause1), Some(elseResult), Span.NoSpan)
+    val typed       = TyperRules.caseExprRules.apply(caseExpr)
+
+    // Should promote to DoubleType
+    typed.tpe shouldBe DoubleType
+
+  test("TyperRules should type FunctionApply expressions"):
+    given ctx: TyperContext = TyperContext(
+      owner = Symbol.NoSymbol,
+      scope = Scope.newScope(0),
+      compilationUnit = CompilationUnit.empty,
+      context = null
+    )
+
+    // Function base is an identifier with a type
+    val funcId = UnquotedIdentifier("upper", Span.NoSpan)
+    funcId.tpe = StringType
+
+    val arg = StringLiteral.fromString("hello", Span.NoSpan)
+    arg.tpe = StringType
+    val funcArg  = FunctionArg(None, arg, false, Nil, Span.NoSpan)
+    val funcCall = FunctionApply(funcId, List(funcArg), None, None, None, Span.NoSpan)
+
+    val typed = TyperRules.functionApplyRules.apply(funcCall)
+
+    // Should get type from base
+    typed.tpe shouldBe StringType
+
+  test("TyperRules should type DotRef with SchemaType"):
+    given ctx: TyperContext = TyperContext(
+      owner = Symbol.NoSymbol,
+      scope = Scope.newScope(0),
+      compilationUnit = CompilationUnit.empty,
+      context = null
+    )
+
+    val schema = SchemaType(
+      parent = None,
+      typeName = Name.typeName("users"),
+      columnTypes = List(
+        NamedType(Name.termName("id"), LongType),
+        NamedType(Name.termName("name"), StringType)
+      )
+    )
+
+    val qualifier = UnquotedIdentifier("users", Span.NoSpan)
+    qualifier.tpe = schema
+
+    val nameExpr = UnquotedIdentifier("name", Span.NoSpan)
+    val dotRef   = DotRef(qualifier, nameExpr, DataType.UnknownType, Span.NoSpan)
+
+    val typed = TyperRules.dotRefRules.apply(dotRef)
+
+    typed.tpe shouldBe StringType
 
 end TyperTest

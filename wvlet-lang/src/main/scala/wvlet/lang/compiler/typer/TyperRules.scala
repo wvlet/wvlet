@@ -31,7 +31,8 @@ object TyperRules:
     * All typing rules for expressions
     */
   def exprRules(using ctx: TyperContext): PartialFunction[Expression, Expression] =
-    literalRules orElse identifierRules orElse binaryOpRules
+    literalRules orElse identifierRules orElse binaryOpRules orElse castRules orElse
+      caseExprRules orElse dotRefRules orElse functionApplyRules
 
   /**
     * All typing rules composed together for LogicalPlan
@@ -287,5 +288,123 @@ object TyperRules:
 
       op
   }
+
+  /**
+    * Rules for typing Cast expressions
+    */
+  def castRules(using ctx: TyperContext): PartialFunction[Expression, Expression] = {
+    case cast: Cast =>
+      // Cast expression type is simply the target cast type
+      cast.tpe = cast.castType
+      cast
+  }
+
+  /**
+    * Rules for typing Case/When expressions
+    */
+  def caseExprRules(using ctx: TyperContext): PartialFunction[Expression, Expression] = {
+    case caseExpr: CaseExpr =>
+      // Find common type among all WHEN result clauses and ELSE clause
+      val resultTypes = caseExpr.whenClauses.map(_.result.tpe) ++ caseExpr.elseClause.map(_.tpe)
+
+      // Filter out NoType (untyped)
+      val typedResults = resultTypes.filter(_ != NoType)
+
+      if typedResults.isEmpty then
+        // No typed results yet, keep as NoType
+        caseExpr.tpe = NoType
+      else
+        // Find common type
+        val commonType = findCommonType(typedResults)
+        caseExpr.tpe = commonType
+
+      caseExpr
+  }
+
+  /**
+    * Rules for typing DotRef expressions (field access)
+    */
+  def dotRefRules(using ctx: TyperContext): PartialFunction[Expression, Expression] = {
+    case dotRef: DotRef =>
+      val qualifierType = dotRef.qualifier.tpe
+      val fieldName     = dotRef.name.leafName
+
+      qualifierType match
+        case schema: SchemaType =>
+          // Look up field in schema
+          schema.fields.find(_.name.name == fieldName) match
+            case Some(field) =>
+              dotRef.tpe = field.dataType
+            case None =>
+              dotRef.tpe = ErrorType(s"Field $fieldName not found in schema")
+
+        case NoType =>
+          // Qualifier not typed yet, keep as NoType
+          dotRef.tpe = NoType
+
+        case _: ErrorType =>
+          // Propagate error from qualifier
+          dotRef.tpe = qualifierType
+
+        case _ =>
+          // For other types, use the dataType already set on DotRef
+          // (it may have been set by the parser or previous phases)
+          if dotRef.dataType != DataType.UnknownType then
+            dotRef.tpe = dotRef.dataType
+          else
+            dotRef.tpe = NoType
+
+      dotRef
+  }
+
+  /**
+    * Rules for typing FunctionApply expressions
+    */
+  def functionApplyRules(using ctx: TyperContext): PartialFunction[Expression, Expression] = {
+    case funcApply: FunctionApply =>
+      // For now, use the base expression's data type
+      // The base should be an identifier that's already been typed
+      funcApply.tpe = funcApply.base.tpe
+      funcApply
+  }
+
+  /**
+    * Find common type among a list of types (simple type coercion)
+    */
+  private def findCommonType(types: Seq[Type]): Type =
+    if types.isEmpty then
+      NoType
+    else if types.forall(_ == types.head) then
+      // All types are the same
+      types.head
+    else
+      // Check for numeric type promotion
+      val allNumeric = types.forall {
+        case IntType | LongType | FloatType | DoubleType =>
+          true
+        case _ =>
+          false
+      }
+
+      if allNumeric then
+        // Promote to widest numeric type
+        if types.exists(_ == DoubleType) then
+          DoubleType
+        else if types.exists(_ == FloatType) then
+          FloatType
+        else if types.exists(_ == LongType) then
+          LongType
+        else
+          IntType
+      else
+        // Check if any are error types
+        types.collectFirst { case e: ErrorType =>
+          e
+        } match
+          case Some(error) =>
+            error
+          case None =>
+            // No common type found
+            ErrorType(s"No common type found among: ${types.mkString(", ")}")
 
 end TyperRules
