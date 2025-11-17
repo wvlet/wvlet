@@ -40,6 +40,13 @@ import wvlet.airspec.AirSpec
 
 class TyperTest extends AirSpec:
 
+  private def testContext: TyperContext = TyperContext(
+    owner = Symbol.NoSymbol,
+    scope = Scope.newScope(0),
+    compilationUnit = CompilationUnit.empty,
+    context = null
+  )
+
   test("tpe field should be accessible on all SyntaxTreeNode instances"):
     val lit = LongLiteral(42, "42", Span.NoSpan)
 
@@ -54,12 +61,7 @@ class TyperTest extends AirSpec:
     lit.isTyped.shouldBe(true)
 
   test("TyperRules should type literals correctly"):
-    given ctx: TyperContext = TyperContext(
-      owner = Symbol.NoSymbol,
-      scope = Scope.newScope(0),
-      compilationUnit = CompilationUnit.empty,
-      context = null // We don't need a full context for this test
-    )
+    given ctx: TyperContext = testContext
 
     val longLit   = LongLiteral(42, "42", Span.NoSpan)
     val doubleLit = DoubleLiteral(3.14, "3.14", Span.NoSpan)
@@ -81,12 +83,7 @@ class TyperTest extends AirSpec:
     typedNull.tpe shouldBe NullType
 
   test("TyperRules should type arithmetic operations"):
-    given ctx: TyperContext = TyperContext(
-      owner = Symbol.NoSymbol,
-      scope = Scope.newScope(0),
-      compilationUnit = CompilationUnit.empty,
-      context = null
-    )
+    given ctx: TyperContext = testContext
 
     val left = LongLiteral(10, "10", Span.NoSpan)
     left.tpe = LongType
@@ -99,12 +96,7 @@ class TyperTest extends AirSpec:
     typed.tpe shouldBe LongType
 
   test("TyperRules should type comparison operations"):
-    given ctx: TyperContext = TyperContext(
-      owner = Symbol.NoSymbol,
-      scope = Scope.newScope(0),
-      compilationUnit = CompilationUnit.empty,
-      context = null
-    )
+    given ctx: TyperContext = testContext
 
     val left = LongLiteral(10, "10", Span.NoSpan)
     left.tpe = LongType
@@ -117,12 +109,7 @@ class TyperTest extends AirSpec:
     typed.tpe shouldBe BooleanType
 
   test("TyperRules should type logical operations"):
-    given ctx: TyperContext = TyperContext(
-      owner = Symbol.NoSymbol,
-      scope = Scope.newScope(0),
-      compilationUnit = CompilationUnit.empty,
-      context = null
-    )
+    given ctx: TyperContext = testContext
 
     val left = TrueLiteral(Span.NoSpan)
     left.tpe = BooleanType
@@ -135,12 +122,7 @@ class TyperTest extends AirSpec:
     typed.tpe shouldBe BooleanType
 
   test("TyperRules should produce ErrorType for type mismatches"):
-    given ctx: TyperContext = TyperContext(
-      owner = Symbol.NoSymbol,
-      scope = Scope.newScope(0),
-      compilationUnit = CompilationUnit.empty,
-      context = null
-    )
+    given ctx: TyperContext = testContext
 
     val left = LongLiteral(10, "10", Span.NoSpan)
     left.tpe = LongType
@@ -153,12 +135,7 @@ class TyperTest extends AirSpec:
     typed.tpe.isInstanceOf[ErrorType] shouldBe true
 
   test("TyperRules should produce ErrorType for comparison type mismatches"):
-    given ctx: TyperContext = TyperContext(
-      owner = Symbol.NoSymbol,
-      scope = Scope.newScope(0),
-      compilationUnit = CompilationUnit.empty,
-      context = null
-    )
+    given ctx: TyperContext = testContext
 
     // Long < String should error
     val left1 = LongLiteral(10, "10", Span.NoSpan)
@@ -181,12 +158,7 @@ class TyperTest extends AirSpec:
     typed2.tpe.isInstanceOf[ErrorType] shouldBe true
 
   test("TyperRules should allow valid comparisons"):
-    given ctx: TyperContext = TyperContext(
-      owner = Symbol.NoSymbol,
-      scope = Scope.newScope(0),
-      compilationUnit = CompilationUnit.empty,
-      context = null
-    )
+    given ctx: TyperContext = testContext
 
     // Long < Long is valid
     val left1 = LongLiteral(10, "10", Span.NoSpan)
@@ -209,12 +181,7 @@ class TyperTest extends AirSpec:
     typed2.tpe shouldBe BooleanType
 
   test("TyperRules should type Cast expressions"):
-    given ctx: TyperContext = TyperContext(
-      owner = Symbol.NoSymbol,
-      scope = Scope.newScope(0),
-      compilationUnit = CompilationUnit.empty,
-      context = null
-    )
+    given ctx: TyperContext = testContext
 
     val expr = LongLiteral(42, "42", Span.NoSpan)
     expr.tpe = LongType
@@ -225,12 +192,7 @@ class TyperTest extends AirSpec:
     typed.tpe shouldBe DoubleType
 
   test("TyperRules should type Case expressions with same types"):
-    given ctx: TyperContext = TyperContext(
-      owner = Symbol.NoSymbol,
-      scope = Scope.newScope(0),
-      compilationUnit = CompilationUnit.empty,
-      context = null
-    )
+    given ctx: TyperContext = testContext
 
     val cond1 = TrueLiteral(Span.NoSpan)
     cond1.tpe = BooleanType
@@ -251,12 +213,7 @@ class TyperTest extends AirSpec:
     typed.tpe shouldBe LongType
 
   test("TyperRules should type Case expressions with type promotion"):
-    given ctx: TyperContext = TyperContext(
-      owner = Symbol.NoSymbol,
-      scope = Scope.newScope(0),
-      compilationUnit = CompilationUnit.empty,
-      context = null
-    )
+    given ctx: TyperContext = testContext
 
     val cond1 = TrueLiteral(Span.NoSpan)
     cond1.tpe = BooleanType
@@ -278,12 +235,7 @@ class TyperTest extends AirSpec:
     typed.tpe shouldBe DoubleType
 
   test("TyperRules should type Case expressions with ELSE clause"):
-    given ctx: TyperContext = TyperContext(
-      owner = Symbol.NoSymbol,
-      scope = Scope.newScope(0),
-      compilationUnit = CompilationUnit.empty,
-      context = null
-    )
+    given ctx: TyperContext = testContext
 
     val cond1 = TrueLiteral(Span.NoSpan)
     cond1.tpe = BooleanType
@@ -301,16 +253,19 @@ class TyperTest extends AirSpec:
     typed.tpe shouldBe DoubleType
 
   test("TyperRules should type FunctionApply expressions"):
-    given ctx: TyperContext = TyperContext(
-      owner = Symbol.NoSymbol,
-      scope = Scope.newScope(0),
-      compilationUnit = CompilationUnit.empty,
-      context = null
+    given ctx: TyperContext = testContext
+
+    // Create a function type with StringType as return type
+    val funcType = Type.FunctionType(
+      name = Name.termName("upper"),
+      args = List(NamedType(Name.termName("input"), StringType)),
+      returnType = StringType,
+      contextNames = Nil
     )
 
-    // Function base is an identifier with a type
+    // Function base is an identifier with a FunctionType
     val funcId = UnquotedIdentifier("upper", Span.NoSpan)
-    funcId.tpe = StringType
+    funcId.tpe = funcType
 
     val arg = StringLiteral.fromString("hello", Span.NoSpan)
     arg.tpe = StringType
@@ -319,16 +274,11 @@ class TyperTest extends AirSpec:
 
     val typed = TyperRules.functionApplyRules.apply(funcCall)
 
-    // Should get type from base
+    // Should get return type from the function type
     typed.tpe shouldBe StringType
 
   test("TyperRules should type DotRef with SchemaType"):
-    given ctx: TyperContext = TyperContext(
-      owner = Symbol.NoSymbol,
-      scope = Scope.newScope(0),
-      compilationUnit = CompilationUnit.empty,
-      context = null
-    )
+    given ctx: TyperContext = testContext
 
     val schema = SchemaType(
       parent = None,
@@ -348,5 +298,27 @@ class TyperTest extends AirSpec:
     val typed = TyperRules.dotRefRules.apply(dotRef)
 
     typed.tpe shouldBe StringType
+
+  test("TyperRules should produce ErrorType for Case expressions with incompatible types"):
+    given ctx: TyperContext = testContext
+
+    val cond1 = TrueLiteral(Span.NoSpan)
+    cond1.tpe = BooleanType
+    val result1 = StringLiteral.fromString("hello", Span.NoSpan)
+    result1.tpe = StringType
+
+    val cond2 = FalseLiteral(Span.NoSpan)
+    cond2.tpe = BooleanType
+    val result2 = LongLiteral(42, "42", Span.NoSpan)
+    result2.tpe = LongType
+
+    val whenClause1 = WhenClause(cond1, result1, Span.NoSpan)
+    val whenClause2 = WhenClause(cond2, result2, Span.NoSpan)
+
+    val caseExpr = CaseExpr(None, List(whenClause1, whenClause2), None, Span.NoSpan)
+    val typed    = TyperRules.caseExprRules.apply(caseExpr)
+
+    // Should produce ErrorType for incompatible types (String vs Long)
+    typed.tpe.isInstanceOf[ErrorType] shouldBe true
 
 end TyperTest

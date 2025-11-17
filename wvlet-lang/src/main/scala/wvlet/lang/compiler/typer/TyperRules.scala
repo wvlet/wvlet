@@ -347,12 +347,8 @@ object TyperRules:
           dotRef.tpe = qualifierType
 
         case _ =>
-          // For other types, use the dataType already set on DotRef
-          // (it may have been set by the parser or previous phases)
-          if dotRef.dataType != DataType.UnknownType then
-            dotRef.tpe = dotRef.dataType
-          else
-            dotRef.tpe = NoType
+          // If qualifier has been typed and is not a SchemaType, it's a type error
+          dotRef.tpe = ErrorType(s"Type ${qualifierType} does not support field access via '.'")
 
       dotRef
   }
@@ -362,9 +358,19 @@ object TyperRules:
     */
   def functionApplyRules(using ctx: TyperContext): PartialFunction[Expression, Expression] = {
     case funcApply: FunctionApply =>
-      // For now, use the base expression's data type
-      // The base should be an identifier that's already been typed
-      funcApply.tpe = funcApply.base.tpe
+      // The type of a function application is the function's return type
+      funcApply.base.tpe match
+        case ft: Type.FunctionType =>
+          funcApply.tpe = ft.returnType
+        case NoType =>
+          // Base not typed yet
+          funcApply.tpe = NoType
+        case et: ErrorType =>
+          // Propagate error from base
+          funcApply.tpe = et
+        case other =>
+          // Not a function type
+          funcApply.tpe = ErrorType(s"Cannot apply non-function type ${other}")
       funcApply
   }
 
@@ -388,14 +394,8 @@ object TyperRules:
 
       if allNumeric then
         // Promote to widest numeric type
-        if types.exists(_ == DoubleType) then
-          DoubleType
-        else if types.exists(_ == FloatType) then
-          FloatType
-        else if types.exists(_ == LongType) then
-          LongType
-        else
-          IntType
+        val promotionOrder = Seq(DoubleType, FloatType, LongType, IntType)
+        promotionOrder.find(t => types.exists(_ == t)).getOrElse(IntType)
       else
         // Check if any are error types
         types.collectFirst { case e: ErrorType =>
