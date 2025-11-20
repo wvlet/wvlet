@@ -357,49 +357,72 @@ Wvlet includes a sophisticated type system:
 
 ### 5.1 High-Level Architecture
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                        User Layer                            │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐   │
-│  │   CLI    │  │   REPL   │  │ VS Code  │  │  Web UI  │   │
-│  └──────────┘  └──────────┘  └──────────┘  └──────────┘   │
-└─────────────────────────────────────────────────────────────┘
-                          │
-┌─────────────────────────────────────────────────────────────┐
-│                    Wvlet Compiler                            │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │  Parser (.wv, .sql) → AST (LogicalPlan + Expression) │  │
-│  └──────────────────────────────────────────────────────┘  │
-│                          ↓                                   │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │  Symbol Labeler → Assign symbols to definitions      │  │
-│  └──────────────────────────────────────────────────────┘  │
-│                          ↓                                   │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │  Type Resolver → Resolve types & schemas             │  │
-│  └──────────────────────────────────────────────────────┘  │
-│                          ↓                                   │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │  Execution Planner → Generate execution tasks         │  │
-│  └──────────────────────────────────────────────────────┘  │
-│                          ↓                                   │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │  Code Generator → Emit SQL for target database       │  │
-│  └──────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
-                          │
-┌─────────────────────────────────────────────────────────────┐
-│                   Database Connectors                        │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐   │
-│  │  DuckDB  │  │  Trino   │  │Snowflake │  │   Hive   │   │
-│  └──────────┘  └──────────┘  └──────────┘  └──────────┘   │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph UserLayer["User Layer"]
+        CLI["CLI"]
+        REPL["REPL"]
+        VSCode["VS Code"]
+        WebUI["Web UI"]
+    end
+
+    subgraph WvletCompiler["Wvlet Compiler"]
+        Parser["Parser (.wv, .sql)<br/>↓<br/>AST (LogicalPlan + Expression)"]
+        SymbolLabeler["Symbol Labeler<br/>↓<br/>Assign symbols to definitions"]
+        TypeResolver["Type Resolver<br/>↓<br/>Resolve types & schemas"]
+        ExecutionPlanner["Execution Planner<br/>↓<br/>Generate execution tasks"]
+        CodeGenerator["Code Generator<br/>↓<br/>Emit SQL for target database"]
+
+        Parser --> SymbolLabeler
+        SymbolLabeler --> TypeResolver
+        TypeResolver --> ExecutionPlanner
+        ExecutionPlanner --> CodeGenerator
+    end
+
+    subgraph DatabaseConnectors["Database Connectors"]
+        DuckDB["DuckDB"]
+        Trino["Trino"]
+        Snowflake["Snowflake"]
+        Hive["Hive"]
+    end
+
+    UserLayer --> Parser
+    CodeGenerator --> DatabaseConnectors
+
+    style UserLayer fill:#e1f5ff
+    style WvletCompiler fill:#fff4e1
+    style DatabaseConnectors fill:#e8f5e9
 ```
 
 ### 5.2 Compilation Pipeline
 
 The Wvlet compiler processes queries through multiple phases:
 
+```mermaid
+flowchart LR
+    A["Source Text<br/>(.wv or .sql)"] --> B["Parsing"]
+    B --> C["AST<br/>(LogicalPlan +<br/>Expression)"]
+    C --> D["Symbol Labeling"]
+    D --> E["Labeled AST<br/>(with Symbols)"]
+    E --> F["Type Resolution"]
+    F --> G["Typed AST<br/>(with Types &<br/>Schemas)"]
+    G --> H["Normalization"]
+    H --> I["Optimized AST"]
+    I --> J["Execution Planning"]
+    J --> K["Execution Plan<br/>(Tasks)"]
+    K --> L["Code Generation"]
+    L --> M["SQL Code<br/>(for target DB)"]
+
+    style A fill:#e3f2fd
+    style C fill:#f3e5f5
+    style E fill:#f3e5f5
+    style G fill:#f3e5f5
+    style I fill:#f3e5f5
+    style K fill:#fff9c4
+    style M fill:#e8f5e9
+```
+
+**Phase Details**:
 1. **Parsing**: Source text → AST (LogicalPlan + Expression trees)
 2. **Symbol Labeling**: Assign unique identifiers to definitions
 3. **Type Resolution**: Resolve types and schemas throughout the tree
@@ -416,6 +439,62 @@ Each phase is designed to be:
 ### 5.3 Multi-Module Structure
 
 Wvlet is organized into multiple SBT modules:
+
+```mermaid
+flowchart TB
+    subgraph CoreLanguage["Core Language Modules"]
+        wvletLang["wvlet-lang<br/>(Compiler: parser, analyzer,<br/>type resolver, codegen)"]
+        wvletAPI["wvlet-api<br/>(Cross-platform APIs)"]
+        wvletStdlib["wvlet-stdlib<br/>(Standard library)"]
+    end
+
+    subgraph Execution["Execution Modules"]
+        wvletRunner["wvlet-runner<br/>(Query execution engine)"]
+        wvletCLI["wvlet-cli<br/>(CLI interface)"]
+    end
+
+    subgraph WebStack["Web Stack"]
+        wvletServer["wvlet-server<br/>(HTTP API server)"]
+        wvletUI["wvlet-ui<br/>(React + Scala.js)"]
+        wvletPlayground["wvlet-ui-playground<br/>(Interactive playground)"]
+    end
+
+    subgraph SDKs["Language Bindings"]
+        pythonSDK["sdks/python<br/>(Python SDK)"]
+        tsSDK["sdks/typescript<br/>(TypeScript SDK)"]
+        wvcLib["wvc-lib<br/>(C/C++/Rust FFI)"]
+    end
+
+    subgraph Platforms["Platform Targets"]
+        JVM["JVM<br/>(Full features)"]
+        JS["JavaScript<br/>(Browser editor)"]
+        Native["Native<br/>(Standalone CLI)"]
+    end
+
+    wvletLang --> wvletRunner
+    wvletLang --> wvletCLI
+    wvletLang --> wvletServer
+    wvletAPI --> wvletLang
+    wvletStdlib --> wvletLang
+
+    wvletRunner --> wvletCLI
+    wvletServer --> wvletUI
+    wvletServer --> wvletPlayground
+
+    wvletServer --> pythonSDK
+    wvletServer --> tsSDK
+    wvletLang --> wvcLib
+
+    wvletLang --> Platforms
+
+    style CoreLanguage fill:#e1f5ff
+    style Execution fill:#fff4e1
+    style WebStack fill:#f3e5f5
+    style SDKs fill:#e8f5e9
+    style Platforms fill:#fff9c4
+```
+
+**Module Categories**:
 
 #### Core Language Modules
 - **wvlet-lang**: Compiler (parser, analyzer, type resolver, codegen)
@@ -604,29 +683,92 @@ case class ExecuteDebug(debug: Debug, relation: LogicalPlan) extends ExecutionPl
 
 ### 7.1 Type Hierarchy
 
-```
-Type
-├── DataType
-│   ├── PrimitiveType
-│   │   ├── IntType, LongType, FloatType, DoubleType
-│   │   ├── StringType, VarcharType, CharType
-│   │   ├── BooleanType
-│   │   ├── DateType, TimeType, TimestampType
-│   │   └── BinaryType
-│   ├── DecimalType(precision, scale)
-│   ├── ArrayType(elementType)
-│   ├── MapType(keyType, valueType)
-│   ├── StructType(fields: Seq[NamedType])
-│   └── RelationType
-│       ├── SchemaType(name, fields)
-│       ├── ProjectedType(parent, fields)
-│       ├── AggregationType(keys, aggregates)
-│       ├── ConcatType(types)
-│       ├── UnresolvedRelationType
-│       └── EmptyRelationType
-├── ErrorType(message)
-├── UnknownType
-└── NoType
+```mermaid
+classDiagram
+    class Type {
+        <<abstract>>
+    }
+
+    class DataType {
+        <<abstract>>
+    }
+
+    class PrimitiveType {
+        <<abstract>>
+    }
+
+    class RelationType {
+        <<abstract>>
+    }
+
+    Type <|-- DataType
+    Type <|-- ErrorType
+    Type <|-- UnknownType
+    Type <|-- NoType
+
+    DataType <|-- PrimitiveType
+    DataType <|-- DecimalType
+    DataType <|-- ArrayType
+    DataType <|-- MapType
+    DataType <|-- StructType
+    DataType <|-- RelationType
+
+    PrimitiveType <|-- IntType
+    PrimitiveType <|-- LongType
+    PrimitiveType <|-- FloatType
+    PrimitiveType <|-- DoubleType
+    PrimitiveType <|-- StringType
+    PrimitiveType <|-- VarcharType
+    PrimitiveType <|-- CharType
+    PrimitiveType <|-- BooleanType
+    PrimitiveType <|-- DateType
+    PrimitiveType <|-- TimeType
+    PrimitiveType <|-- TimestampType
+    PrimitiveType <|-- BinaryType
+
+    RelationType <|-- SchemaType
+    RelationType <|-- ProjectedType
+    RelationType <|-- AggregationType
+    RelationType <|-- ConcatType
+    RelationType <|-- UnresolvedRelationType
+    RelationType <|-- EmptyRelationType
+
+    class DecimalType {
+        +precision: Int
+        +scale: Int
+    }
+
+    class ArrayType {
+        +elementType: DataType
+    }
+
+    class MapType {
+        +keyType: DataType
+        +valueType: DataType
+    }
+
+    class StructType {
+        +fields: Seq[NamedType]
+    }
+
+    class SchemaType {
+        +name: String
+        +fields: Seq[NamedType]
+    }
+
+    class ProjectedType {
+        +parent: RelationType
+        +fields: Seq[NamedType]
+    }
+
+    class AggregationType {
+        +keys: Seq[Expression]
+        +aggregates: Seq[NamedExpression]
+    }
+
+    class ErrorType {
+        +message: String
+    }
 ```
 
 ### 7.2 Type Inference
@@ -673,19 +815,28 @@ agg count(*), avg(income) → AggregationType(
 
 Schema information flows through the pipeline:
 
-```wvlet
-from customers                    -- SchemaType(c_id, c_name, c_city, ...)
-where c_city = 'Tokyo'            -- SchemaType (unchanged)
-add c_name.upper() as upper_name  -- SchemaType (+ upper_name column)
-exclude c_city                    -- SchemaType (- c_city column)
-select c_id, upper_name           -- ProjectedType([c_id, upper_name])
+```mermaid
+flowchart TD
+    A["from customers<br/>SchemaType:<br/>[c_id, c_name, c_city,<br/>c_email, c_phone]"] --> B["where c_city = 'Tokyo'<br/>SchemaType:<br/>[c_id, c_name, c_city,<br/>c_email, c_phone]<br/>(unchanged)"]
+
+    B --> C["add c_name.upper()<br/>as upper_name<br/>SchemaType:<br/>[c_id, c_name, c_city,<br/>c_email, c_phone,<br/>upper_name]<br/>(+ upper_name)"]
+
+    C --> D["exclude c_city<br/>SchemaType:<br/>[c_id, c_name,<br/>c_email, c_phone,<br/>upper_name]<br/>(- c_city)"]
+
+    D --> E["select c_id, upper_name<br/>ProjectedType:<br/>[c_id, upper_name]"]
+
+    style A fill:#e3f2fd
+    style B fill:#e3f2fd
+    style C fill:#fff9c4
+    style D fill:#ffebee
+    style E fill:#f3e5f5
 ```
 
 **Schema Operations**:
-- **Preserve**: Filter, sort, limit
-- **Add columns**: Add, join
-- **Remove columns**: Exclude, select (implicitly)
-- **Transform all**: Aggregate, distinct
+- **Preserve** (blue): Filter, sort, limit - Schema unchanged
+- **Add columns** (yellow): Add, join - Schema extended
+- **Remove columns** (red): Exclude - Schema reduced
+- **Transform** (purple): Select, aggregate, distinct - New schema type
 
 ---
 
@@ -695,6 +846,38 @@ select c_id, upper_name           -- ProjectedType([c_id, upper_name])
 
 The code generator (GenSQL) performs these steps:
 
+```mermaid
+sequenceDiagram
+    participant LP as LogicalPlan
+    participant EP as ExecutionPlanner
+    participant ME as ModelExpander
+    participant EE as ExpressionEvaluator
+    participant SG as SqlGenerator
+    participant CF as CodeFormatter
+    participant SQL as SQL Output
+
+    LP->>EP: plan(logicalPlan)
+    EP->>EP: Extract tasks<br/>(Query, Save, Test)
+    EP-->>ME: ExecutionPlan
+
+    ME->>ME: Inline ModelScan<br/>with parameters
+    ME->>ME: Substitute model<br/>arguments
+    ME-->>EE: Expanded Plan
+
+    EE->>EE: Evaluate backquote<br/>interpolation
+    EE->>EE: Evaluate compile-time<br/>expressions
+    EE-->>SG: Evaluated Plan
+
+    SG->>SG: Convert to SQL AST
+    SG->>CF: Pretty print with<br/>Wadler algorithm
+    CF->>CF: Apply formatting<br/>rules
+    CF-->>SQL: Formatted SQL
+
+    Note over SQL: Add header with<br/>version & location
+    Note over SQL: Combine multiple<br/>statements
+```
+
+**Pipeline Steps**:
 1. **Task Planning**: ExecutionPlanner generates execution tasks
 2. **Model Expansion**: Inline model definitions with parameter substitution
 3. **Expression Evaluation**: Evaluate compile-time expressions (backquote interpolation)
@@ -806,6 +989,48 @@ from t
 ---
 
 ## 9. Multi-Platform Support
+
+```mermaid
+flowchart TB
+    subgraph SharedCode["Shared Scala Code"]
+        Parser["Parser"]
+        TypeChecker["Type Checker"]
+        AST["AST Nodes"]
+        CoreAPI["Core API"]
+    end
+
+    subgraph JVMPlatform["JVM Platform"]
+        JVMCompiler["Full Compiler"]
+        JVMRunner["Query Runner"]
+        DBConnectors["DB Connectors<br/>(DuckDB, Trino,<br/>Snowflake, Hive)"]
+        HTTPServer["HTTP Server"]
+        FileIO1["File I/O"]
+    end
+
+    subgraph JSPlatform["JavaScript Platform (Scala.js)"]
+        JSParser["Parser"]
+        JSTypeChecker["Type Checker"]
+        ReactUI["React UI"]
+        BrowserEditor["Browser Editor"]
+    end
+
+    subgraph NativePlatform["Native Platform (Scala Native)"]
+        NativeCompiler["Lightweight Compiler"]
+        NativeRunner["Query Runner"]
+        DuckDBFFI["DuckDB (via FFI)"]
+        NativeFileIO["Native File I/O"]
+        CLI["CLI Tool"]
+    end
+
+    SharedCode --> JVMPlatform
+    SharedCode --> JSPlatform
+    SharedCode --> NativePlatform
+
+    style SharedCode fill:#e1f5ff
+    style JVMPlatform fill:#fff4e1
+    style JSPlatform fill:#f3e5f5
+    style NativePlatform fill:#e8f5e9
+```
 
 ### 9.1 Platform Targets
 
