@@ -24,6 +24,8 @@
   },
   "devDependencies": {
     "@rollup/plugin-replace": "^6.0.3",
+    "@types/vscode": "^1.104.0",
+    "@vscode/vsce": "^3.7.0",
     "autoprefixer": "^10.4.22",
     "jsdom": "27.2.0",
     "postcss": "^8.5.6",

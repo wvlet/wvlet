@@ -13,6 +13,18 @@ updates:
     directory: "/"
     schedule:
       interval: "daily"
+    groups:
+      # Group VS Code related dependencies together (hoisted from vscode-wvlet)
+      vscode:
+        patterns:
+          - "@types/vscode"
+          - "@vscode/*"
+    ignore:
+      # Avoid major version updates for VS Code dependencies without manual review
+      - dependency-name: "@types/vscode"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@vscode/vsce"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: "npm"
     directory: "/website"
     schedule:
@@ -29,12 +41,8 @@ updates:
     directory: "/vscode-wvlet"
     schedule:
       interval: "weekly"
-    groups:
-      # Group VS Code related dependencies together
-      vscode:
-        patterns:
-          - "@types/vscode"
-          - "@vscode/*"
+    # Note: VS Code dependencies (@types/vscode, @vscode/vsce) are now hoisted to workspace root
+    # This directory monitors vscode-wvlet for any future local dependencies
   - package-ecosystem: "npm"
     directory: "/highlightjs-wvlet"
     schedule:
