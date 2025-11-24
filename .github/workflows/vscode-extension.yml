@@ -49,6 +49,26 @@ jobs:
         node-version: '22'
         cache: 'npm'
 
+    - name: Validate VS Code version consistency
+      run: |
+        # Extract versions from package.json files
+        TYPES_VERSION=$(node -p "require('./package.json').devDependencies['@types/vscode']" | grep -oP '\d+\.\d+')
+        ENGINE_VERSION=$(node -p "require('./vscode-wvlet/package.json').engines.vscode" | grep -oP '\d+\.\d+')
+
+        echo "Root @types/vscode version: $TYPES_VERSION"
+        echo "VS Code extension engine version: $ENGINE_VERSION"
+
+        if [ "$TYPES_VERSION" != "$ENGINE_VERSION" ]; then
+          echo "❌ Error: Version mismatch detected!"
+          echo "  - @types/vscode in package.json: $TYPES_VERSION"
+          echo "  - engines.vscode in vscode-wvlet/package.json: $ENGINE_VERSION"
+          echo ""
+          echo "These versions must stay in sync. Please update both to the same version."
+          exit 1
+        fi
+
+        echo "✅ VS Code versions are in sync: $TYPES_VERSION"
+
     - name: Install dependencies
       run: npm ci
 
