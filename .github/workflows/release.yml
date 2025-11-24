@@ -14,7 +14,7 @@ jobs:
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         # We need to fetch all tags to get the latest tag
         with:
          fetch-depth: 0
@@ -64,7 +64,7 @@ jobs:
         run: echo "user-id=$(gh api "/users/${{ steps.app-token.outputs.app-slug }}[bot]" --jq .id)" >> "$GITHUB_OUTPUT"
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           # Need to specify the repository to set the write scope for git push
           repository: wvlet/homebrew-wvlet
