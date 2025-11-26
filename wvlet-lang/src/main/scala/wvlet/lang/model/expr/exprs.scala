@@ -56,7 +56,7 @@ sealed trait NameExpr extends Expression:
 
   def nonLeafName: String = fullName.stripSuffix(s".${leafName}")
   def nonEmpty: Boolean   = !isEmpty
-  def isEmpty: Boolean =
+  def isEmpty: Boolean    =
     // TODO: This part is a bit ad-hoc as EmptyName can be copied during the tree transformation, so
     // we can't use the object equality like this eq EmptyName
     this.leafName == "<empty>"
@@ -710,14 +710,14 @@ case class SingleQuoteString(override val unquotedValue: String, span: Span) ext
 
 case class DoubleQuoteString(override val unquotedValue: String, span: Span) extends StringLiteral:
   override def stringValue: String = s""""${unquotedValue}""""
-  override def sqlExpr: String =
+  override def sqlExpr: String     =
     // In SQL, double quote string means identifiers
     // So replace double quote with single quote
     s"'${unquotedValue.replaceAll("'", "''")}'"
 
 case class TripleQuoteString(override val unquotedValue: String, span: Span) extends StringLiteral:
   override def stringValue: String = s"\"\"\"${unquotedValue}\"\"\""
-  override def sqlExpr: String =
+  override def sqlExpr: String     =
     // SQL doesn't support multi-line triple quotes,
     // So split the string into multiple lines
     val lines               = unquotedValue.split("\n")
