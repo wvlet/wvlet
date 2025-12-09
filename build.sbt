@@ -7,7 +7,7 @@ val AIRSPEC_VERSION        = AIRFRAME_VERSION
 val TRINO_VERSION          = "476"
 val AWS_SDK_VERSION        = "2.20.146"
 val SCALAJS_DOM_VERSION    = "2.8.1"
-val DUCKDB_JDBC_VERSION    = "1.4.2.0"
+val DUCKDB_JDBC_VERSION    = "1.4.3.0"
 val SNOWFLAKE_JDBC_VERSION = "3.27.1"
 
 val SCALA_3 = IO.read(file("SCALA_VERSION")).trim
