@@ -27,7 +27,7 @@
     "autoprefixer": "^10.4.22",
     "jsdom": "27.3.0",
     "postcss": "^8.5.6",
-    "tailwindcss": "^4.1.16",
+    "tailwindcss": "^4.1.18",
     "typescript": "^5.9.3",
     "vite": "^7.2.7",
     "vite-plugin-monaco-editor": "^1.1.0"
