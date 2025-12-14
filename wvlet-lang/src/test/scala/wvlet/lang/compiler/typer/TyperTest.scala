@@ -299,6 +299,71 @@ class TyperTest extends AirSpec:
 
     typed.tpe shouldBe StringType
 
+  test("TyperRules should produce ErrorType for DotRef with non-existent field"):
+    given ctx: TyperContext = testContext
+
+    val schema = SchemaType(
+      parent = None,
+      typeName = Name.typeName("users"),
+      columnTypes = List(
+        NamedType(Name.termName("id"), LongType),
+        NamedType(Name.termName("name"), StringType)
+      )
+    )
+
+    val qualifier = UnquotedIdentifier("users", Span.NoSpan)
+    qualifier.tpe = schema
+
+    val nameExpr = UnquotedIdentifier("nonexistent", Span.NoSpan)
+    val dotRef   = DotRef(qualifier, nameExpr, DataType.UnknownType, Span.NoSpan)
+
+    val typed = TyperRules.dotRefRules.apply(dotRef)
+
+    typed.tpe.isInstanceOf[ErrorType] shouldBe true
+    typed.tpe.asInstanceOf[ErrorType].msg.shouldContain("nonexistent")
+
+  test("TyperRules should return NoType for DotRef when qualifier has NoType"):
+    given ctx: TyperContext = testContext
+
+    val qualifier = UnquotedIdentifier("unknown", Span.NoSpan)
+    // qualifier.tpe is NoType by default
+
+    val nameExpr = UnquotedIdentifier("field", Span.NoSpan)
+    val dotRef   = DotRef(qualifier, nameExpr, DataType.UnknownType, Span.NoSpan)
+
+    val typed = TyperRules.dotRefRules.apply(dotRef)
+
+    typed.tpe shouldBe NoType
+
+  test("TyperRules should propagate ErrorType from DotRef qualifier"):
+    given ctx: TyperContext = testContext
+
+    val qualifier = UnquotedIdentifier("bad", Span.NoSpan)
+    qualifier.tpe = ErrorType("Unresolved identifier: bad")
+
+    val nameExpr = UnquotedIdentifier("field", Span.NoSpan)
+    val dotRef   = DotRef(qualifier, nameExpr, DataType.UnknownType, Span.NoSpan)
+
+    val typed = TyperRules.dotRefRules.apply(dotRef)
+
+    typed.tpe.isInstanceOf[ErrorType] shouldBe true
+    typed.tpe.asInstanceOf[ErrorType].msg.shouldContain("Unresolved identifier: bad")
+
+  test("TyperRules should produce ErrorType for DotRef on primitive type"):
+    given ctx: TyperContext = testContext
+
+    val qualifier = LongLiteral(42, "42", Span.NoSpan)
+    qualifier.tpe = LongType
+
+    val nameExpr = UnquotedIdentifier("field", Span.NoSpan)
+    val dotRef   = DotRef(qualifier, nameExpr, DataType.UnknownType, Span.NoSpan)
+
+    val typed = TyperRules.dotRefRules.apply(dotRef)
+
+    typed.tpe.isInstanceOf[ErrorType] shouldBe true
+    typed.tpe.asInstanceOf[ErrorType].msg.shouldContain("long")
+    typed.tpe.asInstanceOf[ErrorType].msg.shouldContain("does not support field access")
+
   test("TyperRules should produce ErrorType for Case expressions with incompatible types"):
     given ctx: TyperContext = testContext
 
