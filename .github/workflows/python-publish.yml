@@ -139,7 +139,7 @@ jobs:
         run: ls -la sdks/python/dist/
       
       - name: Upload artifacts
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: python-distributions
           path: sdks/python/dist/
