@@ -291,10 +291,12 @@ object TyperRules:
 
   /**
     * Rules for typing Cast expressions
+    *
+    * TODO: When castType is an UnresolvedType (e.g., user-defined type alias), we need to resolve it
+    * via symbol table lookup. Currently assumes castType is already resolved (works for primitives).
     */
   def castRules(using ctx: TyperContext): PartialFunction[Expression, Expression] = {
     case cast: Cast =>
-      // Cast expression type is simply the target cast type
       cast.tpe = cast.castType
       cast
   }
