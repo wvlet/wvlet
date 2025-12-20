@@ -26,7 +26,10 @@ import wvlet.lang.model.Type
   * @param errors
   *   Accumulated typing errors
   */
-case class TyperState(inputType: RelationType = EmptyRelationType, errors: List[TyperError] = Nil):
+case class TyperState(
+    inputType: RelationType = EmptyRelationType,
+    private val errors: List[TyperError] = Nil
+):
 
   /**
     * Set the input relation type for typing expressions

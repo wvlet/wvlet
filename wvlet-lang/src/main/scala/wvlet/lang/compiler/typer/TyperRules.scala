@@ -87,8 +87,8 @@ object TyperRules:
     */
   def identifierRules(using ctx: Context): PartialFunction[Expression, Expression] = {
     case id: Identifier =>
-      // First check if it's a named symbol in scope
-      ctx.scope.lookupSymbol(id.toTermName) match
+      // Look up symbol from scope, imports, and global scope
+      ctx.findSymbolByName(id.toTermName) match
         case Some(sym) =>
           id.symbol = sym // Attach symbol for named reference
           id.tpe = sym.dataType
