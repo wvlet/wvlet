@@ -40,12 +40,14 @@ import wvlet.airspec.AirSpec
 
 class TyperTest extends AirSpec:
 
-  private def testContext: TyperContext = TyperContext(
-    owner = Symbol.NoSymbol,
-    scope = Scope.newScope(0),
-    compilationUnit = CompilationUnit.empty,
-    context = null
-  )
+  private def testContext: Context =
+    val global = Context.testGlobalContext(".")
+    Context(
+      global = global,
+      owner = Symbol.NoSymbol,
+      scope = Scope.newScope(0),
+      compilationUnit = CompilationUnit.empty
+    )
 
   test("tpe field should be accessible on all SyntaxTreeNode instances"):
     val lit = LongLiteral(42, "42", Span.NoSpan)
@@ -61,7 +63,7 @@ class TyperTest extends AirSpec:
     lit.isTyped.shouldBe(true)
 
   test("TyperRules should type literals correctly"):
-    given ctx: TyperContext = testContext
+    given ctx: Context = testContext
 
     val longLit   = LongLiteral(42, "42", Span.NoSpan)
     val doubleLit = DoubleLiteral(3.14, "3.14", Span.NoSpan)
@@ -83,7 +85,7 @@ class TyperTest extends AirSpec:
     typedNull.tpe shouldBe NullType
 
   test("TyperRules should type arithmetic operations"):
-    given ctx: TyperContext = testContext
+    given ctx: Context = testContext
 
     val left = LongLiteral(10, "10", Span.NoSpan)
     left.tpe = LongType
@@ -96,7 +98,7 @@ class TyperTest extends AirSpec:
     typed.tpe shouldBe LongType
 
   test("TyperRules should type comparison operations"):
-    given ctx: TyperContext = testContext
+    given ctx: Context = testContext
 
     val left = LongLiteral(10, "10", Span.NoSpan)
     left.tpe = LongType
@@ -109,7 +111,7 @@ class TyperTest extends AirSpec:
     typed.tpe shouldBe BooleanType
 
   test("TyperRules should type logical operations"):
-    given ctx: TyperContext = testContext
+    given ctx: Context = testContext
 
     val left = TrueLiteral(Span.NoSpan)
     left.tpe = BooleanType
@@ -122,7 +124,7 @@ class TyperTest extends AirSpec:
     typed.tpe shouldBe BooleanType
 
   test("TyperRules should produce ErrorType for type mismatches"):
-    given ctx: TyperContext = testContext
+    given ctx: Context = testContext
 
     val left = LongLiteral(10, "10", Span.NoSpan)
     left.tpe = LongType
@@ -135,7 +137,7 @@ class TyperTest extends AirSpec:
     typed.tpe.isInstanceOf[ErrorType] shouldBe true
 
   test("TyperRules should produce ErrorType for comparison type mismatches"):
-    given ctx: TyperContext = testContext
+    given ctx: Context = testContext
 
     // Long < String should error
     val left1 = LongLiteral(10, "10", Span.NoSpan)
@@ -158,7 +160,7 @@ class TyperTest extends AirSpec:
     typed2.tpe.isInstanceOf[ErrorType] shouldBe true
 
   test("TyperRules should allow valid comparisons"):
-    given ctx: TyperContext = testContext
+    given ctx: Context = testContext
 
     // Long < Long is valid
     val left1 = LongLiteral(10, "10", Span.NoSpan)
@@ -181,7 +183,7 @@ class TyperTest extends AirSpec:
     typed2.tpe shouldBe BooleanType
 
   test("TyperRules should type Cast expressions"):
-    given ctx: TyperContext = testContext
+    given ctx: Context = testContext
 
     val expr = LongLiteral(42, "42", Span.NoSpan)
     expr.tpe = LongType
@@ -192,7 +194,7 @@ class TyperTest extends AirSpec:
     typed.tpe shouldBe DoubleType
 
   test("TyperRules should type Case expressions with same types"):
-    given ctx: TyperContext = testContext
+    given ctx: Context = testContext
 
     val cond1 = TrueLiteral(Span.NoSpan)
     cond1.tpe = BooleanType
@@ -213,7 +215,7 @@ class TyperTest extends AirSpec:
     typed.tpe shouldBe LongType
 
   test("TyperRules should type Case expressions with type promotion"):
-    given ctx: TyperContext = testContext
+    given ctx: Context = testContext
 
     val cond1 = TrueLiteral(Span.NoSpan)
     cond1.tpe = BooleanType
@@ -235,7 +237,7 @@ class TyperTest extends AirSpec:
     typed.tpe shouldBe DoubleType
 
   test("TyperRules should type Case expressions with ELSE clause"):
-    given ctx: TyperContext = testContext
+    given ctx: Context = testContext
 
     val cond1 = TrueLiteral(Span.NoSpan)
     cond1.tpe = BooleanType
@@ -253,7 +255,7 @@ class TyperTest extends AirSpec:
     typed.tpe shouldBe DoubleType
 
   test("TyperRules should type FunctionApply expressions"):
-    given ctx: TyperContext = testContext
+    given ctx: Context = testContext
 
     // Create a function type with StringType as return type
     val funcType = Type.FunctionType(
@@ -278,7 +280,7 @@ class TyperTest extends AirSpec:
     typed.tpe shouldBe StringType
 
   test("TyperRules should type DotRef with SchemaType"):
-    given ctx: TyperContext = testContext
+    given ctx: Context = testContext
 
     val schema = SchemaType(
       parent = None,
@@ -300,7 +302,7 @@ class TyperTest extends AirSpec:
     typed.tpe shouldBe StringType
 
   test("TyperRules should produce ErrorType for DotRef with non-existent field"):
-    given ctx: TyperContext = testContext
+    given ctx: Context = testContext
 
     val schema = SchemaType(
       parent = None,
@@ -323,7 +325,7 @@ class TyperTest extends AirSpec:
     typed.tpe.asInstanceOf[ErrorType].msg.shouldContain("nonexistent")
 
   test("TyperRules should return NoType for DotRef when qualifier has NoType"):
-    given ctx: TyperContext = testContext
+    given ctx: Context = testContext
 
     val qualifier = UnquotedIdentifier("unknown", Span.NoSpan)
     // qualifier.tpe is NoType by default
@@ -336,7 +338,7 @@ class TyperTest extends AirSpec:
     typed.tpe shouldBe NoType
 
   test("TyperRules should propagate ErrorType from DotRef qualifier"):
-    given ctx: TyperContext = testContext
+    given ctx: Context = testContext
 
     val qualifier = UnquotedIdentifier("bad", Span.NoSpan)
     qualifier.tpe = ErrorType("Unresolved identifier: bad")
@@ -350,7 +352,7 @@ class TyperTest extends AirSpec:
     typed.tpe.asInstanceOf[ErrorType].msg.shouldContain("Unresolved identifier: bad")
 
   test("TyperRules should produce ErrorType for DotRef on primitive type"):
-    given ctx: TyperContext = testContext
+    given ctx: Context = testContext
 
     val qualifier = LongLiteral(42, "42", Span.NoSpan)
     qualifier.tpe = LongType
@@ -365,7 +367,7 @@ class TyperTest extends AirSpec:
     typed.tpe.asInstanceOf[ErrorType].msg.shouldContain("does not support field access")
 
   test("TyperRules should produce ErrorType for Case expressions with incompatible types"):
-    given ctx: TyperContext = testContext
+    given ctx: Context = testContext
 
     val cond1 = TrueLiteral(Span.NoSpan)
     cond1.tpe = BooleanType
