@@ -458,4 +458,34 @@ class TyperTest extends AirSpec:
 
     typed.tpe.isInstanceOf[ErrorType] shouldBe true
 
+  // ============================================
+  // Relation typing tests
+  // ============================================
+
+  test("TyperRules.relationRules should set tpe from relationType"):
+    import wvlet.lang.model.plan.*
+
+    given ctx: Context = testContext
+
+    // Create a simple Values relation with a schema
+    val schema = SchemaType(
+      parent = None,
+      typeName = Name.typeName("test"),
+      columnTypes = List(
+        NamedType(Name.termName("id"), LongType),
+        NamedType(Name.termName("name"), StringType)
+      )
+    )
+    val values = Values(Nil, schema, Span.NoSpan)
+
+    // Before typing, tpe should be NoType
+    values.tpe shouldBe NoType
+
+    // Apply relation rules
+    val typed = TyperRules.relationRules.apply(values)
+
+    // After typing, tpe should be set to relationType
+    typed.tpe shouldBe values.relationType
+    typed.tpe shouldBe schema
+
 end TyperTest

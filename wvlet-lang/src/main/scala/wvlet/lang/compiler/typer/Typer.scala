@@ -207,24 +207,37 @@ object Typer extends Phase("typer") with LogSupport:
     */
   private def typeRelation(r: Relation)(using ctx: Context): Relation =
     // First type children (bottom-up)
-    val withTypedChildren = r.mapChildren {
-      case child: Relation =>
-        typeRelation(child)
-      case child: LogicalPlan =>
-        typePlan(child)
-    }
+    val withTypedChildren = r
+      .mapChildren {
+        case child: Relation =>
+          typeRelation(child)
+        case child: LogicalPlan =>
+          typePlan(child)
+      }
+      .asInstanceOf[Relation]
 
     // Get input type from children
     val inputType = withTypedChildren.inputRelationType
 
     // Type expressions with the input type context
     val exprCtx              = ctx.withInputType(inputType)
-    val withTypedExpressions = withTypedChildren.transformChildExpressions { expr =>
-      typeExpression(expr)(using exprCtx)
-    }
+    val withTypedExpressions = withTypedChildren
+      .transformChildExpressions { expr =>
+        typeExpression(expr)(using exprCtx)
+      }
+      .asInstanceOf[Relation]
 
-    // Apply typing rules to the relation itself
-    typeNode(withTypedExpressions).asInstanceOf[Relation]
+    // Apply relation typing rules (sets tpe from relationType)
+    TyperRules
+      .relationRules
+      .applyOrElse(
+        withTypedExpressions,
+        (rel: Relation) =>
+          rel.tpe = rel.relationType
+          rel
+      )
+
+  end typeRelation
 
   /**
     * Type an expression using TyperRules
