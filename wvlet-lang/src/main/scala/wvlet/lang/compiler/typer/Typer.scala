@@ -146,7 +146,7 @@ object Typer extends Phase("typer") with LogSupport:
         val modelCtx = ctx.newContext(m.symbol)
         // Register parameters in input type
         val paramTypes = m.params.map(p => NamedType(p.name, p.dataType))
-        val inputType = SchemaType(
+        val inputType  = SchemaType(
           parent = None,
           typeName = Name.typeName(s"${m.name.name}_params"),
           columnTypes = paramTypes
@@ -186,17 +186,13 @@ object Typer extends Phase("typer") with LogSupport:
     elem match
       case f: FunctionDef =>
         // Add function args to input type
-        val argTypes = f.args.map(arg => NamedType(arg.name, arg.dataType))
+        val argTypes      = f.args.map(arg => NamedType(arg.name, arg.dataType))
         val inputWithArgs =
           ctx.inputType match
             case st: SchemaType =>
               st.copy(columnTypes = st.columnTypes ++ argTypes)
             case _ =>
-              SchemaType(
-                parent = None,
-                typeName = Name.NoTypeName,
-                columnTypes = argTypes
-              )
+              SchemaType(parent = None, typeName = Name.NoTypeName, columnTypes = argTypes)
         val funcCtx   = ctx.withInputType(inputWithArgs)
         val typedExpr = f.expr.map(e => typeExpression(e)(using funcCtx))
         f.copy(expr = typedExpr)
