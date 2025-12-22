@@ -15,7 +15,10 @@ package wvlet.lang.compiler.typer
 
 import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.compiler.Context
+import wvlet.lang.compiler.Name
 import wvlet.lang.compiler.Phase
+import wvlet.lang.model.DataType.NamedType
+import wvlet.lang.model.DataType.SchemaType
 import wvlet.lang.model.expr.Expression
 import wvlet.lang.model.plan.*
 import wvlet.lang.model.Type
@@ -97,12 +100,8 @@ object Typer extends Phase("typer") with LogSupport:
     * Pre-scan a relation to register table/file symbols
     */
   private def preScanRelation(r: Relation)(using ctx: Context): Context =
-    r.traverseOnce { case s: HasTableOrFileName =>
+    r.traverse { case s: HasTableOrFileName =>
       ctx.enter(s.symbol)
-      s match
-        case u: UnaryRelation =>
-          preScanRelation(u.child)
-        case _ =>
     }
     ctx
 
@@ -146,19 +145,20 @@ object Typer extends Phase("typer") with LogSupport:
       case m: ModelDef =>
         val modelCtx = ctx.newContext(m.symbol)
         // Register parameters in input type
-        val paramTypes = m.params.map(p => wvlet.lang.model.DataType.NamedType(p.name, p.dataType))
-        val inputType  = wvlet
-          .lang
-          .model
-          .DataType
-          .SchemaType(
-            parent = None,
-            typeName = wvlet.lang.compiler.Name.typeName(s"${m.name.name}_params"),
-            columnTypes = paramTypes
-          )
+        val paramTypes = m.params.map(p => NamedType(p.name, p.dataType))
+        val inputType = SchemaType(
+          parent = None,
+          typeName = Name.typeName(s"${m.name.name}_params"),
+          columnTypes = paramTypes
+        )
         val bodyCtx    = modelCtx.withInputType(inputType)
         val typedChild = typePlan(m.child)(using bodyCtx)
-        m.copy(child = typedChild.asInstanceOf[Query])
+        typedChild match
+          case q: Query =>
+            m.copy(child = q)
+          case _ =>
+            // Should not happen for well-formed ModelDef
+            m
 
       // Handle Relation - propagate input type through relational operators
       case r: Relation =>
@@ -186,23 +186,17 @@ object Typer extends Phase("typer") with LogSupport:
     elem match
       case f: FunctionDef =>
         // Add function args to input type
-        val argTypes = f
-          .args
-          .map(arg => wvlet.lang.model.DataType.NamedType(arg.name, arg.dataType))
+        val argTypes = f.args.map(arg => NamedType(arg.name, arg.dataType))
         val inputWithArgs =
           ctx.inputType match
-            case st: wvlet.lang.model.DataType.SchemaType =>
+            case st: SchemaType =>
               st.copy(columnTypes = st.columnTypes ++ argTypes)
             case _ =>
-              wvlet
-                .lang
-                .model
-                .DataType
-                .SchemaType(
-                  parent = None,
-                  typeName = wvlet.lang.compiler.Name.NoTypeName,
-                  columnTypes = argTypes
-                )
+              SchemaType(
+                parent = None,
+                typeName = Name.NoTypeName,
+                columnTypes = argTypes
+              )
         val funcCtx   = ctx.withInputType(inputWithArgs)
         val typedExpr = f.expr.map(e => typeExpression(e)(using funcCtx))
         f.copy(expr = typedExpr)
