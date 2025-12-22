@@ -490,7 +490,7 @@ class TyperTest extends AirSpec:
   // Statement typing tests
   // ============================================
 
-  test("TyperRules.statementRules should type PackageDef with PackageType"):
+  test("TyperRules.typeStatement should type PackageDef with PackageType"):
     given ctx: Context = testContext
 
     val packageDef = PackageDef(
@@ -511,13 +511,13 @@ class TyperTest extends AirSpec:
     // Before typing, tpe should be NoType
     packageDef.tpe shouldBe NoType
 
-    // Apply statement rules
-    val typed = TyperRules.statementRules.apply(packageDef)
+    // Apply statement typing
+    TyperRules.typeStatement(packageDef)
 
     // After typing, tpe should be PackageType
-    typed.tpe.isInstanceOf[Type.PackageType] shouldBe true
+    packageDef.tpe.isInstanceOf[Type.PackageType] shouldBe true
 
-  test("TyperRules.statementRules should type Import with UnitType"):
+  test("TyperRules.typeStatement should type Import with UnitType"):
     given ctx: Context = testContext
 
     val importDef = Import(
@@ -530,10 +530,10 @@ class TyperTest extends AirSpec:
     // Before typing, tpe should be NoType
     importDef.tpe shouldBe NoType
 
-    // Apply statement rules
-    val typed = TyperRules.statementRules.apply(importDef)
+    // Apply statement typing
+    TyperRules.typeStatement(importDef)
 
     // After typing, tpe should be UnitType
-    typed.tpe shouldBe Type.UnitType
+    importDef.tpe shouldBe Type.UnitType
 
 end TyperTest

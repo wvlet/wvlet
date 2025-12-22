@@ -430,30 +430,21 @@ object TyperRules:
     * Note: FunctionDef and FieldDef are TypeElem (extend Expression, not LogicalPlan) and are
     * handled directly in Typer.typeTypeElem.
     */
-  def statementRules(using ctx: Context): PartialFunction[LogicalPlan, LogicalPlan] = {
-    case p: PackageDef =>
-      p.tpe = PackageType(wvlet.lang.compiler.Name.termName(p.name.fullName))
-      p
-
-    case t: TypeDef =>
-      t.tpe = t.symbol.dataType
-      t
-
-    case m: ModelDef =>
-      m.tpe = m.child.tpe
-      m
-
-    case i: Import =>
-      i.tpe = UnitType
-      i
-
-    case v: ValDef =>
-      v.tpe = v.dataType
-      v
-
-    case t: TopLevelFunctionDef =>
-      t.tpe = t.functionDef.tpe
-      t
-  }
+  def typeStatement(plan: LogicalPlan)(using ctx: Context): Unit =
+    plan match
+      case p: PackageDef =>
+        p.tpe = PackageType(wvlet.lang.compiler.Name.termName(p.name.fullName))
+      case t: TypeDef =>
+        t.tpe = t.symbol.dataType
+      case m: ModelDef =>
+        m.tpe = m.child.tpe
+      case i: Import =>
+        i.tpe = UnitType
+      case v: ValDef =>
+        v.tpe = v.dataType
+      case t: TopLevelFunctionDef =>
+        t.tpe = t.functionDef.tpe
+      case _ =>
+        () // Other statements don't need typing
 
 end TyperRules

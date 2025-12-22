@@ -129,8 +129,8 @@ object Typer extends Phase("typer") with LogSupport:
             typedStmt
           }
         val typedPackage = p.copy(statements = typedStatements)
-        TyperRules.statementRules.applyOrElse(typedPackage, identity[LogicalPlan])
-
+        TyperRules.typeStatement(typedPackage)
+        typedPackage
       // Handle TypeDef - enters type scope for methods
       case t: TypeDef =>
         val typeCtx = ctx.newContext(t.symbol)
@@ -143,8 +143,8 @@ object Typer extends Phase("typer") with LogSupport:
             typeTypeElem(elem)(using bodyCtx)
           }
         val typedTypeDef = t.copy(elems = typedElems)
-        TyperRules.statementRules.applyOrElse(typedTypeDef, identity[LogicalPlan])
-
+        TyperRules.typeStatement(typedTypeDef)
+        typedTypeDef
       // Handle ModelDef - enters model scope with parameters
       case m: ModelDef =>
         val modelCtx = ctx.newContext(m.symbol)
@@ -164,13 +164,12 @@ object Typer extends Phase("typer") with LogSupport:
             case _ =>
               // Should not happen for well-formed ModelDef
               m
-        TyperRules.statementRules.applyOrElse(typedModelDef, identity[LogicalPlan])
-
+        TyperRules.typeStatement(typedModelDef)
+        typedModelDef
       // Handle Relation - propagate input type through relational operators
       case r: Relation =>
         typeRelation(r)
         r // Return same instance - typing is done in-place
-
       // Default: bottom-up typing for other nodes
       case other =>
         val withTypedChildren = other.mapChildren(typePlan)
@@ -208,7 +207,6 @@ object Typer extends Phase("typer") with LogSupport:
         val contextNames = f.defContexts.flatMap(_.name.map(n => Name.termName(n.leafName)))
         typedFunc.tpe = Type.FunctionType(f.name, argTypes, retType, contextNames)
         typedFunc
-
       case fd: FieldDef =>
         // Type field body if present
         val typedBody  = fd.body.map(e => typeExpression(e)(using ctx))
