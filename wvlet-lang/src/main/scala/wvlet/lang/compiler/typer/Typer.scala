@@ -209,21 +209,23 @@ object Typer extends Phase("typer") with LogSupport:
     */
   private def typeRelation(r: Relation)(using ctx: Context): Unit =
     // First type children (bottom-up) - in place
-    r.children.foreach {
-      case child: Relation =>
-        typeRelation(child)
-      case child: LogicalPlan =>
-        typePlan(child)
-    }
+    r.children
+      .foreach {
+        case child: Relation =>
+          typeRelation(child)
+        case child: LogicalPlan =>
+          typePlan(child)
+      }
 
     // Get input type from children (now typed)
     val inputType = r.inputRelationType
 
     // Type direct child expressions with the input type context - in place
     val exprCtx = ctx.withInputType(inputType)
-    r.childExpressions.foreach { expr =>
-      typeExpression(expr)(using exprCtx)
-    }
+    r.childExpressions
+      .foreach { expr =>
+        typeExpression(expr)(using exprCtx)
+      }
 
     // Set tpe from relationType
     r.tpe = r.relationType
