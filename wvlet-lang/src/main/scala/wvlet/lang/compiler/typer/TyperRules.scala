@@ -14,7 +14,7 @@
 package wvlet.lang.compiler.typer
 
 import wvlet.lang.compiler.Context
-import wvlet.lang.model.plan.LogicalPlan
+import wvlet.lang.model.plan.*
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.Type
 import wvlet.lang.model.Type.NoType
@@ -38,20 +38,9 @@ object TyperRules:
       caseExprRules orElse dotRefRules orElse functionApplyRules
 
   /**
-    * All typing rules composed together for LogicalPlan
+    * All typing rules for relations. Sets tpe field from relationType.
     */
-  def allRules(using ctx: Context): PartialFunction[LogicalPlan, LogicalPlan] = {
-    case e: Expression if exprRules.isDefinedAt(e) =>
-      exprRules(e).asInstanceOf[LogicalPlan]
-  }
-  // More rules will be added here as we implement them:
-  // orElse functionApplyRules
-  // orElse dotRefRules
-  // orElse projectRules
-  // orElse filterRules
-  // orElse joinRules
-  // orElse modelDefRules
-  // orElse packageDefRules
+  def relationRules(using ctx: Context): PartialFunction[Relation, Relation] = defaultRelationRules
 
   /**
     * Rules for typing literal expressions
@@ -411,5 +400,20 @@ object TyperRules:
           case None =>
             // No common type found
             ErrorType(s"No common type found among: ${types.mkString(", ")}")
+
+  // ============================================
+  // Relation Typing Rules
+  // ============================================
+
+  /**
+    * Default rule for all relations. Sets tpe from relationType. The existing relationType methods
+    * in the Relation type hierarchy handle schema computation, so this rule just bridges to the tpe
+    * field.
+    */
+  def defaultRelationRules(using ctx: Context): PartialFunction[Relation, Relation] = {
+    case r: Relation =>
+      r.tpe = r.relationType
+      r
+  }
 
 end TyperRules

@@ -26,7 +26,7 @@ import wvlet.lang.model.DataType.SchemaType
 import wvlet.lang.model.DataType.NamedType
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.expr.UnquotedIdentifier
-import wvlet.lang.model.plan.LogicalPlan
+import wvlet.lang.model.plan.*
 import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.compiler.Compiler
 import wvlet.lang.compiler.CompilerOptions
@@ -457,5 +457,33 @@ class TyperTest extends AirSpec:
     val typed  = TyperRules.identifierRules.apply(idExpr)
 
     typed.tpe.isInstanceOf[ErrorType] shouldBe true
+
+  // ============================================
+  // Relation typing tests
+  // ============================================
+
+  test("TyperRules.relationRules should set tpe from relationType"):
+    given ctx: Context = testContext
+
+    // Create a simple Values relation with a schema
+    val schema = SchemaType(
+      parent = None,
+      typeName = Name.typeName("test"),
+      columnTypes = List(
+        NamedType(Name.termName("id"), LongType),
+        NamedType(Name.termName("name"), StringType)
+      )
+    )
+    val values = Values(Nil, schema, Span.NoSpan)
+
+    // Before typing, tpe should be NoType
+    values.tpe shouldBe NoType
+
+    // Apply relation rules
+    val typed = TyperRules.relationRules.apply(values)
+
+    // After typing, tpe should be set to relationType
+    typed.tpe shouldBe values.relationType
+    typed.tpe shouldBe schema
 
 end TyperTest
