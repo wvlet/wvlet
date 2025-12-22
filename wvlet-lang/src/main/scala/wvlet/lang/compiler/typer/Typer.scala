@@ -16,7 +16,8 @@ package wvlet.lang.compiler.typer
 import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.compiler.Context
 import wvlet.lang.compiler.Phase
-import wvlet.lang.model.plan.LogicalPlan
+import wvlet.lang.model.expr.Expression
+import wvlet.lang.model.plan.*
 import wvlet.lang.model.Type
 import wvlet.lang.model.Type.NoType
 import wvlet.log.LogSupport
@@ -26,20 +27,26 @@ import wvlet.log.LogSupport
   * the current TypeResolver with a more efficient single-pass approach.
   *
   * Context carries TyperState for typing-specific state (following Scala 3 pattern).
+  *
+  * The typer operates in two phases:
+  *   1. Pre-scan: Register symbols (TypeDef, ModelDef) before typing so they can be referenced
+  *   2. Type: Bottom-up traversal with context-aware scope management
   */
 object Typer extends Phase("typer") with LogSupport:
 
   override def run(unit: CompilationUnit, context: Context): CompilationUnit =
     trace(s"Running new typer on ${unit.sourceFile.fileName}")
 
-    // Type the plan bottom-up using Context with embedded TyperState
-    given ctx: Context = context
-    val typed          = typePlan(unit.unresolvedPlan)
+    // Phase 1: Pre-scan to register symbols
+    val preScanCtx = preScan(unit.unresolvedPlan)(using context)
+
+    // Phase 2: Type the plan bottom-up with context-aware scope management
+    val typed = typePlan(unit.unresolvedPlan)(using preScanCtx)
 
     // Report any typing errors
-    if ctx.hasTyperErrors then
+    if preScanCtx.hasTyperErrors then
       warn(s"Typing errors in ${unit.sourceFile.fileName}:")
-      ctx
+      preScanCtx
         .typerErrors
         .foreach { err =>
           warn(s"  ${err.message} at ${err.sourceLocation(using context)}")
@@ -49,15 +56,195 @@ object Typer extends Phase("typer") with LogSupport:
     // TODO: Store typed plan in CompilationUnit once we have a field for it
     unit
 
+  // ============================================
+  // Phase 1: Pre-scanning for symbol registration
+  // ============================================
+
   /**
-    * Main typing entry point - will type a plan bottom-up
+    * Pre-scan the plan to register symbols before typing. This ensures that forward references can
+    * be resolved during the typing phase.
+    */
+  private def preScan(plan: LogicalPlan)(using ctx: Context): Context =
+    plan match
+      case p: PackageDef =>
+        // Enter package scope and pre-scan statements
+        val packageCtx = ctx.newContext(p.symbol)
+        p.statements.foldLeft(packageCtx)(preScanStatement)
+      case r: Relation =>
+        preScanRelation(r)
+      case _ =>
+        ctx
+
+  /**
+    * Pre-scan a statement to register its symbol
+    */
+  private def preScanStatement(ctx: Context, stmt: LogicalPlan): Context =
+    stmt match
+      case t: TypeDef =>
+        ctx.enter(t.symbol)
+        ctx
+      case m: ModelDef =>
+        ctx.enter(m.symbol)
+        ctx
+      case i: Import =>
+        ctx.withImport(i)
+      case r: Relation =>
+        preScanRelation(r)(using ctx)
+      case _ =>
+        ctx
+
+  /**
+    * Pre-scan a relation to register table/file symbols
+    */
+  private def preScanRelation(r: Relation)(using ctx: Context): Context =
+    r.traverseOnce { case s: HasTableOrFileName =>
+      ctx.enter(s.symbol)
+      s match
+        case u: UnaryRelation =>
+          preScanRelation(u.child)
+        case _ =>
+    }
+    ctx
+
+  // ============================================
+  // Phase 2: Context-aware typing
+  // ============================================
+
+  /**
+    * Main typing entry point - types a plan with context-aware scope management
     */
   private def typePlan(plan: LogicalPlan)(using ctx: Context): LogicalPlan =
-    // Bottom-up: type children first, then type the node itself
-    val withTypedChildren = plan.mapChildren(typePlan)
+    plan match
+      // Handle PackageDef - creates new scope for statements
+      case p: PackageDef =>
+        val packageCtx      = ctx.newContext(p.symbol)
+        var currentCtx      = packageCtx
+        val typedStatements = p
+          .statements
+          .map { stmt =>
+            val typedStmt = typePlan(stmt)(using currentCtx)
+            // Update context for imports
+            currentCtx = updateContextForStatement(typedStmt, currentCtx)
+            typedStmt
+          }
+        p.copy(statements = typedStatements)
 
-    // Type current node
-    typeNode(withTypedChildren)
+      // Handle TypeDef - enters type scope for methods
+      case t: TypeDef =>
+        val typeCtx = ctx.newContext(t.symbol)
+        // Set input type from the type's schema for field access
+        val inputType  = t.symbol.dataType
+        val bodyCtx    = typeCtx.withInputType(inputType)
+        val typedElems = t
+          .elems
+          .map { elem =>
+            typeTypeElem(elem)(using bodyCtx)
+          }
+        t.copy(elems = typedElems)
+
+      // Handle ModelDef - enters model scope with parameters
+      case m: ModelDef =>
+        val modelCtx = ctx.newContext(m.symbol)
+        // Register parameters in input type
+        val paramTypes = m.params.map(p => wvlet.lang.model.DataType.NamedType(p.name, p.dataType))
+        val inputType  = wvlet
+          .lang
+          .model
+          .DataType
+          .SchemaType(
+            parent = None,
+            typeName = wvlet.lang.compiler.Name.typeName(s"${m.name.name}_params"),
+            columnTypes = paramTypes
+          )
+        val bodyCtx    = modelCtx.withInputType(inputType)
+        val typedChild = typePlan(m.child)(using bodyCtx)
+        m.copy(child = typedChild.asInstanceOf[Query])
+
+      // Handle Relation - propagate input type through relational operators
+      case r: Relation =>
+        typeRelation(r)
+
+      // Default: bottom-up typing for other nodes
+      case other =>
+        val withTypedChildren = other.mapChildren(typePlan)
+        typeNode(withTypedChildren)
+
+  /**
+    * Update context based on a typed statement (e.g., adding imports)
+    */
+  private def updateContextForStatement(stmt: LogicalPlan, ctx: Context): Context =
+    stmt match
+      case i: Import =>
+        ctx.withImport(i)
+      case _ =>
+        ctx
+
+  /**
+    * Type a type element (method or field definition)
+    */
+  private def typeTypeElem(elem: TypeElem)(using ctx: Context): TypeElem =
+    elem match
+      case f: FunctionDef =>
+        // Add function args to input type
+        val argTypes = f
+          .args
+          .map(arg => wvlet.lang.model.DataType.NamedType(arg.name, arg.dataType))
+        val inputWithArgs =
+          ctx.inputType match
+            case st: wvlet.lang.model.DataType.SchemaType =>
+              st.copy(columnTypes = st.columnTypes ++ argTypes)
+            case _ =>
+              wvlet
+                .lang
+                .model
+                .DataType
+                .SchemaType(
+                  parent = None,
+                  typeName = wvlet.lang.compiler.Name.NoTypeName,
+                  columnTypes = argTypes
+                )
+        val funcCtx   = ctx.withInputType(inputWithArgs)
+        val typedExpr = f.expr.map(e => typeExpression(e)(using funcCtx))
+        f.copy(expr = typedExpr)
+
+      case fd: FieldDef =>
+        // Type field body if present
+        val typedBody = fd.body.map(e => typeExpression(e)(using ctx))
+        fd.copy(body = typedBody)
+
+  /**
+    * Type a relation with input type propagation
+    */
+  private def typeRelation(r: Relation)(using ctx: Context): Relation =
+    // First type children (bottom-up)
+    val withTypedChildren = r.mapChildren {
+      case child: Relation =>
+        typeRelation(child)
+      case child: LogicalPlan =>
+        typePlan(child)
+    }
+
+    // Get input type from children
+    val inputType = withTypedChildren.inputRelationType
+
+    // Type expressions with the input type context
+    val exprCtx              = ctx.withInputType(inputType)
+    val withTypedExpressions = withTypedChildren.transformChildExpressions { expr =>
+      typeExpression(expr)(using exprCtx)
+    }
+
+    // Apply typing rules to the relation itself
+    typeNode(withTypedExpressions).asInstanceOf[Relation]
+
+  /**
+    * Type an expression using TyperRules
+    */
+  private def typeExpression(expr: Expression)(using ctx: Context): Expression =
+    // Bottom-up: type children first
+    val withTypedChildren = expr.transformChildExpressions(typeExpression)
+
+    // Apply expression rules
+    TyperRules.exprRules.applyOrElse(withTypedChildren, identity[Expression])
 
   /**
     * Type a single node using composable rules

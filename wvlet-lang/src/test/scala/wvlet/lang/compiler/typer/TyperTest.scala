@@ -388,4 +388,74 @@ class TyperTest extends AirSpec:
     // Should produce ErrorType for incompatible types (String vs Long)
     typed.tpe.isInstanceOf[ErrorType] shouldBe true
 
+  // ============================================
+  // Context and TyperState tests
+  // ============================================
+
+  test("TyperState should track inputType"):
+    val state = TyperState.empty
+    state.inputType shouldBe DataType.EmptyRelationType
+
+    val schema = SchemaType(
+      parent = None,
+      typeName = Name.typeName("test"),
+      columnTypes = List(NamedType(Name.termName("id"), LongType))
+    )
+    val updated = state.withInputType(schema)
+    updated.inputType shouldBe schema
+
+  test("Context.withInputType should propagate to typerState"):
+    val ctx = testContext
+    ctx.inputType shouldBe DataType.EmptyRelationType
+
+    val schema = SchemaType(
+      parent = None,
+      typeName = Name.typeName("test"),
+      columnTypes = List(NamedType(Name.termName("name"), StringType))
+    )
+    val updated = ctx.withInputType(schema)
+    updated.inputType shouldBe schema
+
+  test("Context.newContext should create child context with inherited typerState"):
+    val ctx    = testContext
+    val schema = SchemaType(
+      parent = None,
+      typeName = Name.typeName("test"),
+      columnTypes = List(NamedType(Name.termName("x"), LongType))
+    )
+    val ctxWithInput = ctx.withInputType(schema)
+
+    val childCtx = ctxWithInput.newContext(Symbol.NoSymbol)
+    // Child context should inherit typerState
+    childCtx.inputType shouldBe schema
+
+  test("TyperRules.identifierRules should resolve from inputType"):
+    val schema = SchemaType(
+      parent = None,
+      typeName = Name.typeName("users"),
+      columnTypes = List(
+        NamedType(Name.termName("id"), LongType),
+        NamedType(Name.termName("name"), StringType)
+      )
+    )
+    given ctx: Context = testContext.withInputType(schema)
+
+    val idExpr = UnquotedIdentifier("name", Span.NoSpan)
+    val typed  = TyperRules.identifierRules.apply(idExpr)
+
+    typed.tpe shouldBe StringType
+
+  test("TyperRules.identifierRules should produce ErrorType for unknown column"):
+    val schema = SchemaType(
+      parent = None,
+      typeName = Name.typeName("users"),
+      columnTypes = List(NamedType(Name.termName("id"), LongType))
+    )
+    given ctx: Context = testContext.withInputType(schema)
+
+    val idExpr = UnquotedIdentifier("unknown", Span.NoSpan)
+    val typed  = TyperRules.identifierRules.apply(idExpr)
+
+    typed.tpe.isInstanceOf[ErrorType] shouldBe true
+
 end TyperTest
