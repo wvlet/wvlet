@@ -45,16 +45,12 @@ object TyperRules:
   /**
     * All typing rules composed together for LogicalPlan
     */
-  def allRules(using ctx: Context): PartialFunction[LogicalPlan, LogicalPlan] =
-    val relationToLogicalPlan: PartialFunction[LogicalPlan, LogicalPlan] = {
-      case r: Relation if relationRules.isDefinedAt(r) =>
-        relationRules(r)
-    }
-    val exprToLogicalPlan: PartialFunction[LogicalPlan, LogicalPlan] = {
-      case e: Expression if exprRules.isDefinedAt(e) =>
-        exprRules(e).asInstanceOf[LogicalPlan]
-    }
-    relationToLogicalPlan orElse exprToLogicalPlan
+  def allRules(using ctx: Context): PartialFunction[LogicalPlan, LogicalPlan] = {
+    case r: Relation =>
+      relationRules(r)
+    case e: Expression if exprRules.isDefinedAt(e) =>
+      exprRules(e).asInstanceOf[LogicalPlan]
+  }
 
   /**
     * Rules for typing literal expressions

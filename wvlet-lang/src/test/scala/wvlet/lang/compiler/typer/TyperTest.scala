@@ -26,7 +26,7 @@ import wvlet.lang.model.DataType.SchemaType
 import wvlet.lang.model.DataType.NamedType
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.expr.UnquotedIdentifier
-import wvlet.lang.model.plan.LogicalPlan
+import wvlet.lang.model.plan.*
 import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.compiler.Compiler
 import wvlet.lang.compiler.CompilerOptions
@@ -463,8 +463,6 @@ class TyperTest extends AirSpec:
   // ============================================
 
   test("TyperRules.relationRules should set tpe from relationType"):
-    import wvlet.lang.model.plan.*
-
     given ctx: Context = testContext
 
     // Create a simple Values relation with a schema
