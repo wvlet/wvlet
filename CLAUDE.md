@@ -246,10 +246,12 @@ The project follows semantic versioning and uses SBT plugins for cross-platform 
 ### Pull Requests
 - Use [`gh pr create`](https://cli.github.com/manual/gh_pr_create) with clear title and detailed body
 - Follow .github/pull_request_template.md format
-- Merge with squash via `gh pr merge --squash --auto` for clean history
 - Check PR status and fix issues like code format, compilation failure, test failures
 - After merging PR, update the related issues to reflect completed and remaining tasks
 - **After PR is merged, switch to main branch and pull to get latest changes**
+- **NEVER merge a PR or enable auto-merge without explicit user approval**
+  - After CI passes and reviews are addressed, ask the user before merging
+  - Only run `gh pr merge --squash --auto` when the user explicitly requests it
 
 ### Code Reviews
 - Gemini will review pull requests for code quality, adherence to guidelines, and test coverage. Reflect on feedback and make necessary changes
