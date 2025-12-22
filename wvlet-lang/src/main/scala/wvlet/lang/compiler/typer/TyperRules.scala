@@ -19,7 +19,7 @@ import wvlet.lang.model.expr.*
 import wvlet.lang.model.Type
 import wvlet.lang.model.Type.NoType
 import wvlet.lang.model.Type.ErrorType
-import wvlet.lang.model.Type.UnitType
+import wvlet.lang.model.Type.ImportType
 import wvlet.lang.model.Type.PackageType
 import wvlet.lang.model.Type.FunctionType
 import wvlet.lang.model.DataType
@@ -439,7 +439,7 @@ object TyperRules:
       case m: ModelDef =>
         m.tpe = m.child.tpe
       case i: Import =>
-        i.tpe = UnitType
+        i.tpe = ImportType(i)
       case v: ValDef =>
         v.tpe = v.dataType
       case t: TopLevelFunctionDef =>

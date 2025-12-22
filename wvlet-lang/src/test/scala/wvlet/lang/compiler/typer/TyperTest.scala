@@ -517,7 +517,7 @@ class TyperTest extends AirSpec:
     // After typing, tpe should be PackageType
     packageDef.tpe.isInstanceOf[Type.PackageType] shouldBe true
 
-  test("TyperRules.typeStatement should type Import with UnitType"):
+  test("TyperRules.typeStatement should type Import with ImportType"):
     given ctx: Context = testContext
 
     val importDef = Import(
@@ -533,7 +533,7 @@ class TyperTest extends AirSpec:
     // Apply statement typing
     TyperRules.typeStatement(importDef)
 
-    // After typing, tpe should be UnitType
-    importDef.tpe shouldBe Type.UnitType
+    // After typing, tpe should be ImportType
+    importDef.tpe.isInstanceOf[Type.ImportType] shouldBe true
 
 end TyperTest
