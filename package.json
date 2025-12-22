@@ -15,7 +15,7 @@
     "build-vscode-extension": "npm run package --workspace=vscode-wvlet"
   },
   "dependencies": {
-    "@duckdb/duckdb-wasm": "^1.30.0",
+    "@duckdb/duckdb-wasm": "^1.32.0",
     "@tailwindcss/postcss": "^4.1.18",
     "@tailwindcss/vite": "^4.1.18",
     "apache-arrow": "^21.1.0",
