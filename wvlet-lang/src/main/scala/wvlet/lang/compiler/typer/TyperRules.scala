@@ -13,6 +13,7 @@
  */
 package wvlet.lang.compiler.typer
 
+import wvlet.lang.compiler.Context
 import wvlet.lang.model.plan.LogicalPlan
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.Type
@@ -24,20 +25,22 @@ import wvlet.lang.model.DataType.*
 /**
   * Composable typing rules using PartialFunction pattern. Each rule types a specific kind of
   * SyntaxTreeNode (LogicalPlan or Expression).
+  *
+  * Context carries TyperState with inputType and errors (following Scala 3 pattern).
   */
 object TyperRules:
 
   /**
     * All typing rules for expressions
     */
-  def exprRules(using ctx: TyperContext): PartialFunction[Expression, Expression] =
+  def exprRules(using ctx: Context): PartialFunction[Expression, Expression] =
     literalRules orElse identifierRules orElse binaryOpRules orElse castRules orElse
       caseExprRules orElse dotRefRules orElse functionApplyRules
 
   /**
     * All typing rules composed together for LogicalPlan
     */
-  def allRules(using ctx: TyperContext): PartialFunction[LogicalPlan, LogicalPlan] = {
+  def allRules(using ctx: Context): PartialFunction[LogicalPlan, LogicalPlan] = {
     case e: Expression if exprRules.isDefinedAt(e) =>
       exprRules(e).asInstanceOf[LogicalPlan]
   }
@@ -53,7 +56,7 @@ object TyperRules:
   /**
     * Rules for typing literal expressions
     */
-  def literalRules(using ctx: TyperContext): PartialFunction[Expression, Expression] = {
+  def literalRules(using ctx: Context): PartialFunction[Expression, Expression] = {
     case lit: LongLiteral =>
       lit.tpe = LongType
       lit
@@ -82,10 +85,10 @@ object TyperRules:
   /**
     * Rules for typing identifiers
     */
-  def identifierRules(using ctx: TyperContext): PartialFunction[Expression, Expression] = {
+  def identifierRules(using ctx: Context): PartialFunction[Expression, Expression] = {
     case id: Identifier =>
-      // First check if it's a named symbol in scope
-      ctx.findSymbol(id.toTermName) match
+      // Look up symbol from scope, imports, and global scope
+      ctx.findSymbolByName(id.toTermName) match
         case Some(sym) =>
           id.symbol = sym // Attach symbol for named reference
           id.tpe = sym.dataType
@@ -106,7 +109,7 @@ object TyperRules:
   /**
     * Rules for typing binary operations
     */
-  def binaryOpRules(using ctx: TyperContext): PartialFunction[Expression, Expression] = {
+  def binaryOpRules(using ctx: Context): PartialFunction[Expression, Expression] = {
     // Arithmetic binary expressions
     case op: ArithmeticBinaryExpr =>
       val leftTpe  = op.left.tpe
@@ -296,16 +299,15 @@ object TyperRules:
     * it via symbol table lookup. Currently assumes castType is already resolved (works for
     * primitives).
     */
-  def castRules(using ctx: TyperContext): PartialFunction[Expression, Expression] = {
-    case cast: Cast =>
-      cast.tpe = cast.castType
-      cast
+  def castRules(using ctx: Context): PartialFunction[Expression, Expression] = { case cast: Cast =>
+    cast.tpe = cast.castType
+    cast
   }
 
   /**
     * Rules for typing Case/When expressions
     */
-  def caseExprRules(using ctx: TyperContext): PartialFunction[Expression, Expression] = {
+  def caseExprRules(using ctx: Context): PartialFunction[Expression, Expression] = {
     case caseExpr: CaseExpr =>
       // Find common type among all WHEN result clauses and ELSE clause
       val resultTypes = caseExpr.whenClauses.map(_.result.tpe) ++ caseExpr.elseClause.map(_.tpe)
@@ -327,7 +329,7 @@ object TyperRules:
   /**
     * Rules for typing DotRef expressions (field access)
     */
-  def dotRefRules(using ctx: TyperContext): PartialFunction[Expression, Expression] = {
+  def dotRefRules(using ctx: Context): PartialFunction[Expression, Expression] = {
     case dotRef: DotRef =>
       val qualifierType = dotRef.qualifier.tpe
       val fieldName     = dotRef.name.leafName
@@ -359,7 +361,7 @@ object TyperRules:
   /**
     * Rules for typing FunctionApply expressions
     */
-  def functionApplyRules(using ctx: TyperContext): PartialFunction[Expression, Expression] = {
+  def functionApplyRules(using ctx: Context): PartialFunction[Expression, Expression] = {
     case funcApply: FunctionApply =>
       // The type of a function application is the function's return type
       funcApply.base.tpe match

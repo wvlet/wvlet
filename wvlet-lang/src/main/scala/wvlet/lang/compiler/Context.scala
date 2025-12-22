@@ -19,6 +19,10 @@ import wvlet.lang.api.StatusCode
 import wvlet.lang.catalog.Catalog
 import wvlet.lang.catalog.InMemoryCatalog
 import wvlet.lang.compiler.query.QueryProgressMonitor
+import wvlet.lang.compiler.typer.TyperError
+import wvlet.lang.compiler.typer.TyperState
+import wvlet.lang.model.RelationType
+import wvlet.lang.model.Type
 import wvlet.lang.model.expr.NameExpr
 import wvlet.lang.model.plan.Import
 import wvlet.log.LogSupport
@@ -109,7 +113,9 @@ case class Context(
     importDefs: List[Import] = Nil,
     // If true, evaluate test expressions
     isDebugRun: Boolean = false,
-    queryProgressMonitor: QueryProgressMonitor = QueryProgressMonitor.noOp
+    queryProgressMonitor: QueryProgressMonitor = QueryProgressMonitor.noOp,
+    // Typer-specific state (following Scala 3 pattern)
+    typerState: TyperState = TyperState.empty
 ) extends LogSupport:
   def isGlobalContext: Boolean = compilationUnit.isPreset || owner.isNoSymbol
 
@@ -139,6 +145,43 @@ case class Context(
     queryProgressMonitor = monitor
   )
 
+  // Typer-specific methods (following Scala 3 pattern)
+
+  /**
+    * Set a new typer state
+    */
+  def withTyperState(ts: TyperState): Context = copy(typerState = ts)
+
+  /**
+    * Set the input relation type for typing expressions
+    */
+  def withInputType(tpe: RelationType): Context = copy(typerState = typerState.withInputType(tpe))
+
+  /**
+    * Set the input type from a generic Type
+    */
+  def withInputType(tpe: Type): Context = copy(typerState = typerState.withInputType(tpe))
+
+  /**
+    * Get the current input relation type
+    */
+  def inputType: RelationType = typerState.inputType
+
+  /**
+    * Add a typing error
+    */
+  def addTyperError(err: TyperError): Context = copy(typerState = typerState.addError(err))
+
+  /**
+    * Check if there are any typing errors
+    */
+  def hasTyperErrors: Boolean = typerState.hasErrors
+
+  /**
+    * Get typing errors in order they were added
+    */
+  def typerErrors: List[TyperError] = typerState.errorsInOrder
+
   /**
     * Create a new context with an additional import
     * @param i
@@ -167,7 +210,8 @@ case class Context(
     compilationUnit = compilationUnit,
     importDefs = Nil,
     isDebugRun = isDebugRun,
-    queryProgressMonitor = queryProgressMonitor
+    queryProgressMonitor = queryProgressMonitor,
+    typerState = typerState
   )
 
   def findTermSymbolByName(name: String): Option[Symbol] = findSymbolByName(Name.termName(name))

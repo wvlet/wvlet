@@ -25,23 +25,22 @@ import wvlet.log.LogSupport
   * New typer implementation using bottom-up traversal and tpe field. This is designed to replace
   * the current TypeResolver with a more efficient single-pass approach.
   *
-  * Currently, this is a stub that delegates to the existing TypeResolver for gradual migration.
+  * Context carries TyperState for typing-specific state (following Scala 3 pattern).
   */
 object Typer extends Phase("typer") with LogSupport:
 
   override def run(unit: CompilationUnit, context: Context): CompilationUnit =
     trace(s"Running new typer on ${unit.sourceFile.fileName}")
 
-    // Type the plan bottom-up
-    given typerCtx: TyperContext = TyperContext.from(context, unit)
-    val typed                    = typePlan(unit.unresolvedPlan)
+    // Type the plan bottom-up using Context with embedded TyperState
+    given ctx: Context = context
+    val typed          = typePlan(unit.unresolvedPlan)
 
-    // TODO: Report errors collected in TyperContext
-    if typerCtx.hasErrors then
+    // Report any typing errors
+    if ctx.hasTyperErrors then
       warn(s"Typing errors in ${unit.sourceFile.fileName}:")
-      typerCtx
-        .errors
-        .reverse
+      ctx
+        .typerErrors
         .foreach { err =>
           warn(s"  ${err.message} at ${err.sourceLocation(using context)}")
         }
@@ -53,7 +52,7 @@ object Typer extends Phase("typer") with LogSupport:
   /**
     * Main typing entry point - will type a plan bottom-up
     */
-  private def typePlan(plan: LogicalPlan)(using ctx: TyperContext): LogicalPlan =
+  private def typePlan(plan: LogicalPlan)(using ctx: Context): LogicalPlan =
     // Bottom-up: type children first, then type the node itself
     val withTypedChildren = plan.mapChildren(typePlan)
 
@@ -63,7 +62,7 @@ object Typer extends Phase("typer") with LogSupport:
   /**
     * Type a single node using composable rules
     */
-  private def typeNode(plan: LogicalPlan)(using ctx: TyperContext): LogicalPlan =
+  private def typeNode(plan: LogicalPlan)(using ctx: Context): LogicalPlan =
     // Apply typing rules
     val typed = TyperRules.allRules.applyOrElse(plan, identity[LogicalPlan])
 
@@ -76,7 +75,7 @@ object Typer extends Phase("typer") with LogSupport:
   /**
     * Fallback type inference for nodes not covered by rules
     */
-  private def inferType(plan: LogicalPlan)(using ctx: TyperContext): Type =
+  private def inferType(plan: LogicalPlan)(using ctx: Context): Type =
     // For now, return NoType
     // This will be expanded as we implement specific typing logic
     NoType
