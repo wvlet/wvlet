@@ -110,7 +110,7 @@ jobs:
         working-directory: wvc-lib
       - name: Upload native binary
         if: ${{ !matrix.skip }}
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.name }}-${{ matrix.arch }}
           path: wvc-lib/target/scala-${{ env.SCALA_VERSION }}/libwvlet.${{ matrix.suffix }}
@@ -120,7 +120,7 @@ jobs:
     needs: build_native
     steps:
       - name: Merge artifacts
-        uses: actions/upload-artifact/merge@v5
+        uses: actions/upload-artifact/merge@v6
         with:
           name: wvc-lib
           delete-merged: true
