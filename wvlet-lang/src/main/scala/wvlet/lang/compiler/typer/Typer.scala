@@ -242,17 +242,13 @@ object Typer extends Phase("typer") with LogSupport:
     TyperRules.exprRules.applyOrElse(expr, identity[Expression])
 
   /**
-    * Type a single node using composable rules
+    * Type a single node (fallback for nodes not handled by specific typing methods)
     */
   private def typeNode(plan: LogicalPlan)(using ctx: Context): LogicalPlan =
-    // Apply typing rules
-    val typed = TyperRules.allRules.applyOrElse(plan, identity[LogicalPlan])
-
     // Ensure type is set
-    if typed.tpe == NoType then
-      typed.tpe = inferType(typed)
-
-    typed
+    if plan.tpe == NoType then
+      plan.tpe = inferType(plan)
+    plan
 
   /**
     * Fallback type inference for nodes not covered by rules

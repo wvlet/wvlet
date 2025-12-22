@@ -43,16 +43,6 @@ object TyperRules:
   def relationRules(using ctx: Context): PartialFunction[Relation, Relation] = defaultRelationRules
 
   /**
-    * All typing rules composed together for LogicalPlan
-    */
-  def allRules(using ctx: Context): PartialFunction[LogicalPlan, LogicalPlan] = {
-    case r: Relation =>
-      relationRules(r)
-    case e: Expression if exprRules.isDefinedAt(e) =>
-      exprRules(e).asInstanceOf[LogicalPlan]
-  }
-
-  /**
     * Rules for typing literal expressions
     */
   def literalRules(using ctx: Context): PartialFunction[Expression, Expression] = {
