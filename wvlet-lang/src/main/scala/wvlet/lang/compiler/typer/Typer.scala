@@ -17,12 +17,14 @@ import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.compiler.Context
 import wvlet.lang.compiler.Name
 import wvlet.lang.compiler.Phase
+import wvlet.lang.model.DataType
 import wvlet.lang.model.DataType.NamedType
 import wvlet.lang.model.DataType.SchemaType
 import wvlet.lang.model.expr.Expression
 import wvlet.lang.model.plan.*
 import wvlet.lang.model.Type
 import wvlet.lang.model.Type.NoType
+import wvlet.lang.model.Type.FunctionType
 import wvlet.log.LogSupport
 
 /**
@@ -126,7 +128,8 @@ object Typer extends Phase("typer") with LogSupport:
             currentCtx = updateContextForStatement(typedStmt, currentCtx)
             typedStmt
           }
-        p.copy(statements = typedStatements)
+        val typedPackage = p.copy(statements = typedStatements)
+        TyperRules.statementRules.applyOrElse(typedPackage, identity[LogicalPlan])
 
       // Handle TypeDef - enters type scope for methods
       case t: TypeDef =>
@@ -139,7 +142,8 @@ object Typer extends Phase("typer") with LogSupport:
           .map { elem =>
             typeTypeElem(elem)(using bodyCtx)
           }
-        t.copy(elems = typedElems)
+        val typedTypeDef = t.copy(elems = typedElems)
+        TyperRules.statementRules.applyOrElse(typedTypeDef, identity[LogicalPlan])
 
       // Handle ModelDef - enters model scope with parameters
       case m: ModelDef =>
@@ -151,14 +155,16 @@ object Typer extends Phase("typer") with LogSupport:
           typeName = Name.typeName(s"${m.name.name}_params"),
           columnTypes = paramTypes
         )
-        val bodyCtx    = modelCtx.withInputType(inputType)
-        val typedChild = typePlan(m.child)(using bodyCtx)
-        typedChild match
-          case q: Query =>
-            m.copy(child = q)
-          case _ =>
-            // Should not happen for well-formed ModelDef
-            m
+        val bodyCtx       = modelCtx.withInputType(inputType)
+        val typedChild    = typePlan(m.child)(using bodyCtx)
+        val typedModelDef =
+          typedChild match
+            case q: Query =>
+              m.copy(child = q)
+            case _ =>
+              // Should not happen for well-formed ModelDef
+              m
+        TyperRules.statementRules.applyOrElse(typedModelDef, identity[LogicalPlan])
 
       // Handle Relation - propagate input type through relational operators
       case r: Relation =>
@@ -196,12 +202,20 @@ object Typer extends Phase("typer") with LogSupport:
               SchemaType(parent = None, typeName = Name.NoTypeName, columnTypes = argTypes)
         val funcCtx   = ctx.withInputType(inputWithArgs)
         val typedExpr = f.expr.map(e => typeExpression(e)(using funcCtx))
-        f.copy(expr = typedExpr)
+        val typedFunc = f.copy(expr = typedExpr)
+        // Set FunctionType
+        val retType = f.retType.getOrElse(typedExpr.map(_.dataType).getOrElse(DataType.UnknownType))
+        val contextNames = f.defContexts.flatMap(_.name.map(n => Name.termName(n.leafName)))
+        typedFunc.tpe = Type.FunctionType(f.name, argTypes, retType, contextNames)
+        typedFunc
 
       case fd: FieldDef =>
         // Type field body if present
-        val typedBody = fd.body.map(e => typeExpression(e)(using ctx))
-        fd.copy(body = typedBody)
+        val typedBody  = fd.body.map(e => typeExpression(e)(using ctx))
+        val typedField = fd.copy(body = typedBody)
+        // Set field type from symbol
+        typedField.tpe = fd.symbol.dataType
+        typedField
 
   /**
     * Type a relation with input type propagation. Uses in-place traversal for efficiency - only

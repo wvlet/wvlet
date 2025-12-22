@@ -19,6 +19,9 @@ import wvlet.lang.model.expr.*
 import wvlet.lang.model.Type
 import wvlet.lang.model.Type.NoType
 import wvlet.lang.model.Type.ErrorType
+import wvlet.lang.model.Type.UnitType
+import wvlet.lang.model.Type.PackageType
+import wvlet.lang.model.Type.FunctionType
 import wvlet.lang.model.DataType
 import wvlet.lang.model.DataType.*
 
@@ -414,6 +417,43 @@ object TyperRules:
     case r: Relation =>
       r.tpe = r.relationType
       r
+  }
+
+  // ============================================
+  // Statement Typing Rules
+  // ============================================
+
+  /**
+    * Typing rules for statements. Sets tpe field on all statement types to ensure all nodes are
+    * typed after the typing phase.
+    *
+    * Note: FunctionDef and FieldDef are TypeElem (extend Expression, not LogicalPlan) and are
+    * handled directly in Typer.typeTypeElem.
+    */
+  def statementRules(using ctx: Context): PartialFunction[LogicalPlan, LogicalPlan] = {
+    case p: PackageDef =>
+      p.tpe = PackageType(wvlet.lang.compiler.Name.termName(p.name.fullName))
+      p
+
+    case t: TypeDef =>
+      t.tpe = t.symbol.dataType
+      t
+
+    case m: ModelDef =>
+      m.tpe = m.child.tpe
+      m
+
+    case i: Import =>
+      i.tpe = UnitType
+      i
+
+    case v: ValDef =>
+      v.tpe = v.dataType
+      v
+
+    case t: TopLevelFunctionDef =>
+      t.tpe = t.functionDef.tpe
+      t
   }
 
 end TyperRules
