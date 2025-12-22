@@ -163,6 +163,7 @@ object Typer extends Phase("typer") with LogSupport:
       // Handle Relation - propagate input type through relational operators
       case r: Relation =>
         typeRelation(r)
+        r // Return same instance - typing is done in-place
 
       // Default: bottom-up typing for other nodes
       case other =>
@@ -203,51 +204,40 @@ object Typer extends Phase("typer") with LogSupport:
         fd.copy(body = typedBody)
 
   /**
-    * Type a relation with input type propagation
+    * Type a relation with input type propagation. Uses in-place traversal for efficiency - only
+    * updates mutable tpe fields without creating new tree instances.
     */
-  private def typeRelation(r: Relation)(using ctx: Context): Relation =
-    // First type children (bottom-up)
-    val withTypedChildren = r
-      .mapChildren {
-        case child: Relation =>
-          typeRelation(child)
-        case child: LogicalPlan =>
-          typePlan(child)
-      }
-      .asInstanceOf[Relation]
+  private def typeRelation(r: Relation)(using ctx: Context): Unit =
+    // First type children (bottom-up) - in place
+    r.children.foreach {
+      case child: Relation =>
+        typeRelation(child)
+      case child: LogicalPlan =>
+        typePlan(child)
+    }
 
-    // Get input type from children
-    val inputType = withTypedChildren.inputRelationType
+    // Get input type from children (now typed)
+    val inputType = r.inputRelationType
 
-    // Type expressions with the input type context
-    val exprCtx              = ctx.withInputType(inputType)
-    val withTypedExpressions = withTypedChildren
-      .transformChildExpressions { expr =>
-        typeExpression(expr)(using exprCtx)
-      }
-      .asInstanceOf[Relation]
+    // Type direct child expressions with the input type context - in place
+    val exprCtx = ctx.withInputType(inputType)
+    r.childExpressions.foreach { expr =>
+      typeExpression(expr)(using exprCtx)
+    }
 
-    // Apply relation typing rules (sets tpe from relationType)
-    TyperRules
-      .relationRules
-      .applyOrElse(
-        withTypedExpressions,
-        (rel: Relation) =>
-          rel.tpe = rel.relationType
-          rel
-      )
-
-  end typeRelation
+    // Set tpe from relationType
+    r.tpe = r.relationType
 
   /**
-    * Type an expression using TyperRules
+    * Type an expression using TyperRules. Uses in-place traversal for efficiency - only updates
+    * mutable tpe fields without creating new tree instances.
     */
   private def typeExpression(expr: Expression)(using ctx: Context): Expression =
-    // Bottom-up: type children first
-    val withTypedChildren = expr.transformChildExpressions(typeExpression)
+    // Bottom-up: type children first - in place
+    expr.children.foreach(typeExpression)
 
-    // Apply expression rules
-    TyperRules.exprRules.applyOrElse(withTypedChildren, identity[Expression])
+    // Apply expression rules - modifies tpe field in place, returns same instance
+    TyperRules.exprRules.applyOrElse(expr, identity[Expression])
 
   /**
     * Type a single node using composable rules
