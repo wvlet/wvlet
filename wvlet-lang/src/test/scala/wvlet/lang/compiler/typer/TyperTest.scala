@@ -486,4 +486,54 @@ class TyperTest extends AirSpec:
     typed.tpe shouldBe values.relationType
     typed.tpe shouldBe schema
 
+  // ============================================
+  // Statement typing tests
+  // ============================================
+
+  test("TyperRules.typeStatement should type PackageDef with PackageType"):
+    given ctx: Context = testContext
+
+    val packageDef = PackageDef(
+      name = wvlet
+        .lang
+        .model
+        .expr
+        .DotRef(
+          wvlet.lang.model.expr.UnquotedIdentifier("test", Span.NoSpan),
+          wvlet.lang.model.expr.UnquotedIdentifier("pkg", Span.NoSpan),
+          DataType.UnknownType,
+          Span.NoSpan
+        ),
+      statements = Nil,
+      span = Span.NoSpan
+    )
+
+    // Before typing, tpe should be NoType
+    packageDef.tpe shouldBe NoType
+
+    // Apply statement typing
+    TyperRules.typeStatement(packageDef)
+
+    // After typing, tpe should be PackageType
+    packageDef.tpe.isInstanceOf[Type.PackageType] shouldBe true
+
+  test("TyperRules.typeStatement should type Import with ImportType"):
+    given ctx: Context = testContext
+
+    val importDef = Import(
+      importRef = wvlet.lang.model.expr.UnquotedIdentifier("some_module", Span.NoSpan),
+      alias = None,
+      fromSource = None,
+      span = Span.NoSpan
+    )
+
+    // Before typing, tpe should be NoType
+    importDef.tpe shouldBe NoType
+
+    // Apply statement typing
+    TyperRules.typeStatement(importDef)
+
+    // After typing, tpe should be ImportType
+    importDef.tpe.isInstanceOf[Type.ImportType] shouldBe true
+
 end TyperTest

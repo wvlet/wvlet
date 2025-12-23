@@ -19,6 +19,9 @@ import wvlet.lang.model.expr.*
 import wvlet.lang.model.Type
 import wvlet.lang.model.Type.NoType
 import wvlet.lang.model.Type.ErrorType
+import wvlet.lang.model.Type.ImportType
+import wvlet.lang.model.Type.PackageType
+import wvlet.lang.model.Type.FunctionType
 import wvlet.lang.model.DataType
 import wvlet.lang.model.DataType.*
 
@@ -415,5 +418,33 @@ object TyperRules:
       r.tpe = r.relationType
       r
   }
+
+  // ============================================
+  // Statement Typing Rules
+  // ============================================
+
+  /**
+    * Typing rules for statements. Sets tpe field on all statement types to ensure all nodes are
+    * typed after the typing phase.
+    *
+    * Note: FunctionDef and FieldDef are TypeElem (extend Expression, not LogicalPlan) and are
+    * handled directly in Typer.typeTypeElem.
+    */
+  def typeStatement(plan: LogicalPlan)(using ctx: Context): Unit =
+    plan match
+      case p: PackageDef =>
+        p.tpe = PackageType(wvlet.lang.compiler.Name.termName(p.name.fullName))
+      case t: TypeDef =>
+        t.tpe = t.symbol.dataType
+      case m: ModelDef =>
+        m.tpe = m.child.tpe
+      case i: Import =>
+        i.tpe = ImportType(i)
+      case v: ValDef =>
+        v.tpe = v.dataType
+      case t: TopLevelFunctionDef =>
+        t.tpe = t.functionDef.tpe
+      case _ =>
+        () // Other statements don't need typing
 
 end TyperRules
