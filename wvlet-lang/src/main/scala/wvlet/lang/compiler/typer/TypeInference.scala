@@ -35,8 +35,7 @@ object TypeInference:
   /**
     * Numeric type promotion order (widest first)
     */
-  private val numericPromotionOrder: Seq[DataType] =
-    Seq(DoubleType, FloatType, LongType, IntType)
+  private val numericPromotionOrder: Seq[DataType] = Seq(DoubleType, FloatType, LongType, IntType)
 
   /**
     * Find the common type among a list of types. Used for CASE/WHEN branches, UNION columns, etc.
@@ -62,7 +61,9 @@ object TypeInference:
         nonNullTypes.head
       else
         // Check for error types first
-        types.collectFirst { case e: ErrorType => e } match
+        types.collectFirst { case e: ErrorType =>
+          e
+        } match
           case Some(error) =>
             error
           case None =>
@@ -76,8 +77,10 @@ object TypeInference:
     */
   private def findNumericCommonType(types: Seq[Type]): Option[Type] =
     val allNumeric = types.forall {
-      case IntType | LongType | FloatType | DoubleType => true
-      case _                                           => false
+      case IntType | LongType | FloatType | DoubleType =>
+        true
+      case _ =>
+        false
     }
     if allNumeric then
       numericPromotionOrder.find(t => types.exists(_ == t))
@@ -118,9 +121,12 @@ object TypeInference:
         case (NoType, _) | (_, NoType) =>
           true
         // Numeric promotions (widening)
-        case (IntType, LongType | FloatType | DoubleType)   => true
-        case (LongType, FloatType | DoubleType)             => true
-        case (FloatType, DoubleType)                        => true
+        case (IntType, LongType | FloatType | DoubleType) =>
+          true
+        case (LongType, FloatType | DoubleType) =>
+          true
+        case (FloatType, DoubleType) =>
+          true
         // String coercion (for concatenation)
         case (IntType | LongType | FloatType | DoubleType | BooleanType, StringType) =>
           true
@@ -167,24 +173,38 @@ object TypeInference:
     else
       (t1, t2) match
         // NoType unifies with anything
-        case (NoType, t) => t
-        case (t, NoType) => t
+        case (NoType, t) =>
+          t
+        case (t, NoType) =>
+          t
         // NULL unifies to the other type
-        case (NullType, t) => t
-        case (t, NullType) => t
+        case (NullType, t) =>
+          t
+        case (t, NullType) =>
+          t
         // TypeVar unifies with any type (placeholder for inference)
-        case (_: TypeVar, t) => t
-        case (t, _: TypeVar) => t
+        case (_: TypeVar, t) =>
+          t
+        case (t, _: TypeVar) =>
+          t
         // Numeric unification - promote to wider type
-        case (IntType, LongType) | (LongType, IntType)     => LongType
-        case (IntType, FloatType) | (FloatType, IntType)   => FloatType
-        case (IntType, DoubleType) | (DoubleType, IntType) => DoubleType
-        case (LongType, FloatType) | (FloatType, LongType) => FloatType
-        case (LongType, DoubleType) | (DoubleType, LongType) => DoubleType
-        case (FloatType, DoubleType) | (DoubleType, FloatType) => DoubleType
+        case (IntType, LongType) | (LongType, IntType) =>
+          LongType
+        case (IntType, FloatType) | (FloatType, IntType) =>
+          FloatType
+        case (IntType, DoubleType) | (DoubleType, IntType) =>
+          DoubleType
+        case (LongType, FloatType) | (FloatType, LongType) =>
+          FloatType
+        case (LongType, DoubleType) | (DoubleType, LongType) =>
+          DoubleType
+        case (FloatType, DoubleType) | (DoubleType, FloatType) =>
+          DoubleType
         // ErrorType propagates
-        case (e: ErrorType, _) => e
-        case (_, e: ErrorType) => e
+        case (e: ErrorType, _) =>
+          e
+        case (_, e: ErrorType) =>
+          e
         // No unification possible
         case _ =>
           ErrorType(s"Cannot unify types: ${t1} and ${t2}")
