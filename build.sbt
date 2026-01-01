@@ -49,7 +49,12 @@ def applyNixCrossSettings(config: NativeConfig): NativeConfig = {
     includePathOpts
 
   // On macOS, use -search_paths_first to prioritize -L paths over default paths
-  val searchPathsFirst = if (scala.util.Properties.isMac) Seq("-Wl,-search_paths_first") else Seq.empty
+  // Check target triple for cross-compilation, fall back to host OS for native builds
+  val isMacOSTarget = triple match {
+    case Some(t) => t.contains("darwin") || t.contains("apple")
+    case None    => scala.util.Properties.isMac
+  }
+  val searchPathsFirst = if (isMacOSTarget) Seq("-Wl,-search_paths_first") else Seq.empty
 
   val extraLinkOpts =
     searchPathsFirst ++
