@@ -37,6 +37,12 @@ def applyNixCrossSettings(config: NativeConfig): NativeConfig = {
     .map(_.split(":").filter(_.nonEmpty).map(p => s"-L$p").toSeq)
     .getOrElse(Seq.empty)
 
+  // Also add -B flags to help clang find CRT files (crtbeginS.o, etc.)
+  // -B tells clang to add a path to its search list for executables, libraries, and data files
+  val crtSearchPaths = libraryPath
+    .map(_.split(":").filter(_.nonEmpty).map(p => s"-B$p").toSeq)
+    .getOrElse(Seq.empty)
+
   // Convert C_INCLUDE_PATH to -I flags
   val includePathOpts = cIncludePath
     .map(_.split(":").filter(_.nonEmpty).map(p => s"-I$p").toSeq)
@@ -58,6 +64,7 @@ def applyNixCrossSettings(config: NativeConfig): NativeConfig = {
 
   val extraLinkOpts =
     searchPathsFirst ++
+    crtSearchPaths ++   // -B flags to find CRT files (crtbeginS.o, etc.)
     libraryPathOpts ++  // Put Nix library paths first
     sysroot.map(s => s"--sysroot=$s").toSeq ++
     gcLib.map(l => s"-L$l").toSeq ++
