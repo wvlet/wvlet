@@ -64,6 +64,7 @@
             # Get cross-compiled dependencies
             crossBoehmgc = crossPkgs.boehmgc;
             crossOpenssl = crossPkgs.openssl;
+            crossGlibc = crossPkgs.stdenv.cc.libc;
 
             # Determine the correct clang/lld for cross-compilation
             # Always use clang for Scala Native (it passes clang-specific flags like -target)
@@ -129,14 +130,15 @@
               export SCALANATIVE_TARGET_TRIPLE="${targetConfig.llvmTriple}"
 
               ${if targetConfig.crossSystem != null then ''
-                export SCALANATIVE_SYSROOT="${crossPkgs.stdenv.cc.libc}"
+                export SCALANATIVE_SYSROOT="${crossGlibc}"
                 export CROSS_GC_INCLUDE="${crossBoehmgc.dev}/include"
                 export CROSS_GC_LIB="${crossBoehmgc}/lib"
                 export CROSS_OPENSSL_INCLUDE="${crossOpenssl.dev}/include"
                 export CROSS_OPENSSL_LIB="${crossOpenssl.out}/lib"
                 # Set library paths for cross-compilation
                 export LIBRARY_PATH="${crossBoehmgc}/lib:${crossOpenssl.out}/lib:${crossPkgs.zlib}/lib''${LIBRARY_PATH:+:$LIBRARY_PATH}"
-                export C_INCLUDE_PATH="${crossBoehmgc.dev}/include:${crossOpenssl.dev}/include:${crossPkgs.zlib.dev}/include''${C_INCLUDE_PATH:+:$C_INCLUDE_PATH}"
+                # Include glibc headers for cross-compilation (needed when using unwrapped clang)
+                export C_INCLUDE_PATH="${crossGlibc.dev}/include:${crossBoehmgc.dev}/include:${crossOpenssl.dev}/include:${crossPkgs.zlib.dev}/include''${C_INCLUDE_PATH:+:$C_INCLUDE_PATH}"
               '' else ''
                 # Set library paths for native build - prioritize Nix packages over Homebrew
                 export LIBRARY_PATH="${pkgs.boehmgc}/lib:${pkgs.openssl.out}/lib:${pkgs.zlib}/lib''${LIBRARY_PATH:+:$LIBRARY_PATH}"
