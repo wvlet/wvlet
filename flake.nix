@@ -80,31 +80,23 @@
             mingwPthreads = if isWindowsTarget then crossPkgs.windows.pthreads else null;
 
             # Determine the correct clang/lld for cross-compilation
-            # Always use clang for Scala Native (it passes clang-specific flags like -target)
-            isDarwinHost = pkgs.stdenv.isDarwin;
-
-            # Use unwrapped clang for cross-compilation from macOS or for Windows targets
-            # - Windows: MinGW GCC doesn't understand -target flag
-            # - macOS cross to Linux: nixpkgs provides GCC wrapper, not clang
-            # The unwrapped clang works with Scala Native's --target flag
-            useUnwrappedClang = isWindowsTarget || (isDarwinHost && targetConfig.crossSystem != null);
-
-
+            # Always use clang for Scala Native (it emits LLVM IR and uses clang-specific flags like --target)
+            # nixpkgs defaults to GCC on Linux, so we must explicitly use llvmPackages.clang-unwrapped
+            # for all cross-compilation scenarios to avoid the "GCC trap"
             crossClang =
               if targetConfig.crossSystem == null then
                 "${pkgs.llvmPackages.clang}/bin/clang"
-              else if useUnwrappedClang then
-                "${pkgs.llvmPackages.clang-unwrapped}/bin/clang"
               else
-                "${crossPkgs.stdenv.cc}/bin/${targetConfig.llvmTriple}-cc";
+                # Always use unwrapped clang for cross-compilation
+                # - Scala Native requires Clang (not GCC)
+                # - The --target flag tells clang which architecture to compile for
+                "${pkgs.llvmPackages.clang-unwrapped}/bin/clang";
 
             crossClangpp =
               if targetConfig.crossSystem == null then
                 "${pkgs.llvmPackages.clang}/bin/clang++"
-              else if useUnwrappedClang then
-                "${pkgs.llvmPackages.clang-unwrapped}/bin/clang++"
               else
-                "${crossPkgs.stdenv.cc}/bin/${targetConfig.llvmTriple}-c++";
+                "${pkgs.llvmPackages.clang-unwrapped}/bin/clang++";
 
             # Select the appropriate linker based on target
             # - ld64.lld for macOS (useLd64 = true)
