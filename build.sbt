@@ -3,7 +3,7 @@ import scala.scalanative.build.GC
 import scala.scalanative.build.Mode
 import scala.scalanative.build.NativeConfig
 
-val AIRFRAME_VERSION       = "2025.1.21"
+val AIRFRAME_VERSION = "2025.1.22"
 
 // Helper function to apply Nix-provided cross-compilation settings to NativeConfig
 def applyNixCrossSettings(config: NativeConfig): NativeConfig = {
@@ -44,25 +44,26 @@ def applyNixCrossSettings(config: NativeConfig): NativeConfig = {
 
   // Apply sysroot and library paths for cross-compilation
   val extraCompileOpts =
-    sysroot.map(s => s"--sysroot=$s").toSeq ++
-    gcInclude.map(i => s"-I$i").toSeq ++
-    includePathOpts
+    sysroot.map(s => s"--sysroot=$s").toSeq ++ gcInclude.map(i => s"-I$i").toSeq ++ includePathOpts
 
   // On macOS, use -search_paths_first to prioritize -L paths over default paths
-  val searchPathsFirst = if (scala.util.Properties.isMac) Seq("-Wl,-search_paths_first") else Seq.empty
+  val searchPathsFirst =
+    if (scala.util.Properties.isMac)
+      Seq("-Wl,-search_paths_first")
+    else
+      Seq.empty
 
   val extraLinkOpts =
-    searchPathsFirst ++
-    libraryPathOpts ++  // Put Nix library paths first
-    sysroot.map(s => s"--sysroot=$s").toSeq ++
-    gcLib.map(l => s"-L$l").toSeq ++
-    lld.map(l => s"-fuse-ld=$l").toSeq
+    searchPathsFirst ++ libraryPathOpts ++ // Put Nix library paths first
+      sysroot.map(s => s"--sysroot=$s").toSeq ++ gcLib.map(l => s"-L$l").toSeq ++
+      lld.map(l => s"-fuse-ld=$l").toSeq
 
   c = c.withCompileOptions(c.compileOptions ++ extraCompileOpts)
   c = c.withLinkingOptions(c.linkingOptions ++ extraLinkOpts)
 
   c
 }
+
 val AIRSPEC_VERSION        = AIRFRAME_VERSION
 val TRINO_VERSION          = "476"
 val AWS_SDK_VERSION        = "2.20.146"
@@ -283,9 +284,7 @@ lazy val wvcLibStatic = project
     name   := "wvc-lib",
     target := target.value / "static",
     nativeConfig ~= { c =>
-      applyNixCrossSettings(
-        c.withBuildTarget(BuildTarget.libraryStatic).withBaseName("wvlet")
-      )
+      applyNixCrossSettings(c.withBuildTarget(BuildTarget.libraryStatic).withBaseName("wvlet"))
     }
   )
   .dependsOn(wvc)
