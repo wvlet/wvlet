@@ -48,10 +48,6 @@ def applyNixCrossSettings(config: NativeConfig): NativeConfig = {
     .map(_.split(":").filter(_.nonEmpty).map(p => s"-I$p").toSeq)
     .getOrElse(Seq.empty)
 
-  // Apply sysroot and library paths for cross-compilation
-  val extraCompileOpts =
-    sysroot.map(s => s"--sysroot=$s").toSeq ++ gcInclude.map(i => s"-I$i").toSeq ++ includePathOpts
-
   // On macOS, use -search_paths_first to prioritize -L paths over default paths
   // Check target triple for cross-compilation, fall back to host OS for native builds
   val isMacOSTarget = triple match {
@@ -59,6 +55,19 @@ def applyNixCrossSettings(config: NativeConfig): NativeConfig = {
     case None    => scala.util.Properties.isMac
   }
   val searchPathsFirst = if (isMacOSTarget) Seq("-Wl,-search_paths_first") else Seq.empty
+
+  // Check if targeting Windows (mingw)
+  val isWindowsTarget = triple.exists(t => t.contains("mingw") || t.contains("windows"))
+  // Disable debug info for Windows cross-compilation to avoid LLVM CodeViewDebug crash
+  // See: https://github.com/llvm/llvm-project/issues/61039
+  val windowsDebugWorkaround = if (isWindowsTarget) Seq("-g0") else Seq.empty
+
+  // Apply sysroot and library paths for cross-compilation
+  val extraCompileOpts =
+    windowsDebugWorkaround ++
+    sysroot.map(s => s"--sysroot=$s").toSeq ++
+    gcInclude.map(i => s"-I$i").toSeq ++
+    includePathOpts
 
   val extraLinkOpts =
     searchPathsFirst ++
