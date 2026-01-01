@@ -3,7 +3,7 @@ import scala.scalanative.build.GC
 import scala.scalanative.build.Mode
 import scala.scalanative.build.NativeConfig
 
-val AIRFRAME_VERSION       = "2025.1.21"
+val AIRFRAME_VERSION = "2025.1.22"
 
 // Helper function to apply Nix-provided cross-compilation settings to NativeConfig
 def applyNixCrossSettings(config: NativeConfig): NativeConfig = {
@@ -50,9 +50,7 @@ def applyNixCrossSettings(config: NativeConfig): NativeConfig = {
 
   // Apply sysroot and library paths for cross-compilation
   val extraCompileOpts =
-    sysroot.map(s => s"--sysroot=$s").toSeq ++
-    gcInclude.map(i => s"-I$i").toSeq ++
-    includePathOpts
+    sysroot.map(s => s"--sysroot=$s").toSeq ++ gcInclude.map(i => s"-I$i").toSeq ++ includePathOpts
 
   // On macOS, use -search_paths_first to prioritize -L paths over default paths
   // Check target triple for cross-compilation, fall back to host OS for native builds
@@ -75,6 +73,7 @@ def applyNixCrossSettings(config: NativeConfig): NativeConfig = {
 
   c
 }
+
 val AIRSPEC_VERSION        = AIRFRAME_VERSION
 val TRINO_VERSION          = "476"
 val AWS_SDK_VERSION        = "2.20.146"
@@ -295,9 +294,7 @@ lazy val wvcLibStatic = project
     name   := "wvc-lib",
     target := target.value / "static",
     nativeConfig ~= { c =>
-      applyNixCrossSettings(
-        c.withBuildTarget(BuildTarget.libraryStatic).withBaseName("wvlet")
-      )
+      applyNixCrossSettings(c.withBuildTarget(BuildTarget.libraryStatic).withBaseName("wvlet"))
     }
   )
   .dependsOn(wvc)
