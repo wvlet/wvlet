@@ -79,6 +79,25 @@
             mingwRuntime = if isWindowsTarget then crossPkgs.windows.mingw_w64 else null;
             mingwPthreads = if isWindowsTarget then crossPkgs.windows.pthreads else null;
 
+            # Create unified sysroot containing both libraries and headers
+            # Nix splits packages into multiple outputs (lib, dev, etc.)
+            # Clang expects sysroot to contain both, so we use symlinkJoin to merge them
+            crossSysroot =
+              if targetConfig.crossSystem == null then null
+              else if isWindowsTarget then
+                pkgs.symlinkJoin {
+                  name = "mingw-sysroot";
+                  paths = [ mingwRuntime ];
+                }
+              else
+                pkgs.symlinkJoin {
+                  name = "linux-sysroot";
+                  paths = [
+                    crossLibc
+                    crossLibc.dev
+                  ] ++ pkgs.lib.optional (crossLibgcc != null) crossLibgcc;
+                };
+
             # Determine the correct clang/lld for cross-compilation
             # Always use clang for Scala Native (it emits LLVM IR and uses clang-specific flags like --target)
             # nixpkgs defaults to GCC on Linux, so we must explicitly use llvmPackages.clang-unwrapped
@@ -136,36 +155,20 @@
               export SCALANATIVE_LLD="${crossLld}"
               export SCALANATIVE_TARGET_TRIPLE="${targetConfig.llvmTriple}"
 
-              ${if targetConfig.crossSystem != null then
-                if isWindowsTarget then ''
-                  # Windows/MinGW cross-compilation
-                  export SCALANATIVE_SYSROOT="${mingwRuntime}"
-                  export CROSS_GC_INCLUDE="${crossBoehmgc.dev}/include"
-                  export CROSS_GC_LIB="${crossBoehmgc}/lib"
-                  export CROSS_OPENSSL_INCLUDE="${crossOpenssl.dev}/include"
-                  export CROSS_OPENSSL_LIB="${crossOpenssl.out}/lib"
-                  # MinGW library paths
-                  export LIBRARY_PATH="${mingwRuntime}/lib:${crossBoehmgc}/lib:${crossOpenssl.out}/lib:${crossZlib}/lib"
-                  export C_INCLUDE_PATH="${mingwRuntime}/include:${crossBoehmgc.dev}/include:${crossOpenssl.dev}/include:${crossZlib.dev}/include"
-                '' else ''
-                  # Linux cross-compilation
-                  export SCALANATIVE_SYSROOT="${crossLibc}"
-                  export CROSS_GC_INCLUDE="${crossBoehmgc.dev}/include"
-                  export CROSS_GC_LIB="${crossBoehmgc}/lib"
-                  export CROSS_OPENSSL_INCLUDE="${crossOpenssl.dev}/include"
-                  export CROSS_OPENSSL_LIB="${crossOpenssl.out}/lib"
-                  # Set library paths for cross-compilation
-                  # IMPORTANT: Don't inherit from existing LIBRARY_PATH to avoid picking up host (Homebrew) libraries
-                  ${if crossLibgcc != null then ''
-                    # libgcc contains crtbeginS.o, crtendS.o needed for Linux linking
-                    export LIBRARY_PATH="${crossLibgcc}/lib:${crossLibc}/lib:${crossBoehmgc}/lib:${crossOpenssl.out}/lib:${crossZlib}/lib"
-                  '' else ''
-                    export LIBRARY_PATH="${crossLibc}/lib:${crossBoehmgc}/lib:${crossOpenssl.out}/lib:${crossZlib}/lib"
-                  ''}
-                  # Include glibc headers for cross-compilation (needed when using unwrapped clang)
-                  export C_INCLUDE_PATH="${crossLibc.dev}/include:${crossBoehmgc.dev}/include:${crossOpenssl.dev}/include:${crossZlib.dev}/include"
-                ''
-              else ''
+              ${if targetConfig.crossSystem != null then ''
+                # Cross-compilation environment
+                # Use unified sysroot containing both libraries and headers
+                export SCALANATIVE_SYSROOT="${crossSysroot}"
+                export CROSS_GC_INCLUDE="${crossBoehmgc.dev}/include"
+                export CROSS_GC_LIB="${crossBoehmgc}/lib"
+                export CROSS_OPENSSL_INCLUDE="${crossOpenssl.dev}/include"
+                export CROSS_OPENSSL_LIB="${crossOpenssl.out}/lib"
+                # Library paths for cross-compilation
+                # IMPORTANT: Don't inherit from existing LIBRARY_PATH to avoid picking up host libraries
+                export LIBRARY_PATH="${crossSysroot}/lib:${crossBoehmgc}/lib:${crossOpenssl.out}/lib:${crossZlib}/lib"
+                # Include paths (sysroot already has libc headers, add other dependencies)
+                export C_INCLUDE_PATH="${crossSysroot}/include:${crossBoehmgc.dev}/include:${crossOpenssl.dev}/include:${crossZlib.dev}/include"
+              '' else ''
                 # Set library paths for native build - prioritize Nix packages over Homebrew
                 export LIBRARY_PATH="${pkgs.boehmgc}/lib:${pkgs.openssl.out}/lib:${pkgs.zlib}/lib''${LIBRARY_PATH:+:$LIBRARY_PATH}"
                 export C_INCLUDE_PATH="${pkgs.boehmgc.dev}/include:${pkgs.openssl.dev}/include:${pkgs.zlib.dev}/include''${C_INCLUDE_PATH:+:$C_INCLUDE_PATH}"
