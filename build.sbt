@@ -43,7 +43,7 @@ def applyNixCrossSettings(config: NativeConfig): NativeConfig = {
     .getOrElse(Seq.empty)
 
   // Apply sysroot and library paths for cross-compilation
-  val extraCompileOpts = Seq.empty[String] ++
+  val extraCompileOpts =
     sysroot.map(s => s"--sysroot=$s").toSeq ++
     gcInclude.map(i => s"-I$i").toSeq ++
     includePathOpts
@@ -51,19 +51,15 @@ def applyNixCrossSettings(config: NativeConfig): NativeConfig = {
   // On macOS, use -search_paths_first to prioritize -L paths over default paths
   val searchPathsFirst = if (scala.util.Properties.isMac) Seq("-Wl,-search_paths_first") else Seq.empty
 
-  val extraLinkOpts = Seq.empty[String] ++
+  val extraLinkOpts =
     searchPathsFirst ++
     libraryPathOpts ++  // Put Nix library paths first
     sysroot.map(s => s"--sysroot=$s").toSeq ++
     gcLib.map(l => s"-L$l").toSeq ++
     lld.map(l => s"-fuse-ld=$l").toSeq
 
-  if (extraCompileOpts.nonEmpty) {
-    c = c.withCompileOptions(c.compileOptions ++ extraCompileOpts)
-  }
-  if (extraLinkOpts.nonEmpty) {
-    c = c.withLinkingOptions(c.linkingOptions ++ extraLinkOpts)
-  }
+  c = c.withCompileOptions(c.compileOptions ++ extraCompileOpts)
+  c = c.withLinkingOptions(c.linkingOptions ++ extraLinkOpts)
 
   c
 }
@@ -313,10 +309,8 @@ def nativeCrossProject(
     .settings(
       target := (ThisBuild / baseDirectory).value / id / "target",
       nativeConfig ~= { c =>
-        // Apply Nix cross-settings first, then override with explicit settings
-        // Nix env vars take precedence if set
-        applyNixCrossSettings(c)
-          .withTargetTriple(sys.env.getOrElse("SCALANATIVE_TARGET_TRIPLE", llvmTriple))
+        // Set default target triple first, then let applyNixCrossSettings override if env var is set
+        applyNixCrossSettings(c.withTargetTriple(llvmTriple))
           .withCompileOptions(c.compileOptions ++ compileOptions)
           .withLinkingOptions(c.linkingOptions ++ linkerOptions)
           .withBuildTarget(BuildTarget.libraryDynamic)

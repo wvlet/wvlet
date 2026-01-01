@@ -45,8 +45,8 @@ let
         crossOpenssl
       ];
 
-      # SBT needs a writable home directory
-      HOME = "/tmp/sbt-home";
+      # SBT needs a writable home directory (use relative path for sandboxed isolation)
+      HOME = "./.sbt-home";
 
       # Environment variables for Scala Native
       SCALANATIVE_TARGET_TRIPLE = targetConfig.llvmTriple;
@@ -79,7 +79,7 @@ let
         mkdir -p $out/lib
 
         # Copy the built library
-        cp wvlet-native-lib/target/scala-*/libwvlet.${targetConfig.libSuffix} $out/lib/ || true
+        cp $(find wvc-lib/target -type f -name "libwvlet.${targetConfig.libSuffix}") $out/lib/
 
         # Copy headers if available
         if [ -d wvc-lib/include ]; then

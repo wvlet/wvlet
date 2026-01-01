@@ -166,11 +166,10 @@
               export LIBRARY_PATH="${pkgs.boehmgc}/lib:${pkgs.openssl.out}/lib:${pkgs.zlib}/lib''${LIBRARY_PATH:+:$LIBRARY_PATH}"
               export C_INCLUDE_PATH="${pkgs.boehmgc.dev}/include:${pkgs.openssl.dev}/include:${pkgs.zlib.dev}/include''${C_INCLUDE_PATH:+:$C_INCLUDE_PATH}"
 
-              # Set macOS deployment target to current version
-              export MACOSX_DEPLOYMENT_TARGET="15.0"
-
-              # Force linker to search our paths first
-              export NIX_ENFORCE_NO_NATIVE="1"
+              ${pkgs.lib.optionalString pkgs.stdenv.isDarwin ''
+                # Set macOS deployment target to a compatible version
+                export MACOSX_DEPLOYMENT_TARGET="${pkgs.stdenv.hostPlatform.darwinMinVersion}"
+              ''}
 
               echo "LIBRARY_PATH=$LIBRARY_PATH"
               echo "MACOSX_DEPLOYMENT_TARGET=$MACOSX_DEPLOYMENT_TARGET"
