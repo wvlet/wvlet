@@ -18,7 +18,9 @@ import wvlet.lang.model.Type.NoType
 import wvlet.lang.model.Type.ErrorType
 import wvlet.lang.model.DataType
 import wvlet.lang.model.DataType.BooleanType
+import wvlet.lang.model.DataType.IntType
 import wvlet.lang.model.DataType.LongType
+import wvlet.lang.model.DataType.FloatType
 import wvlet.lang.model.DataType.DoubleType
 import wvlet.lang.model.DataType.StringType
 import wvlet.lang.model.DataType.NullType
@@ -535,5 +537,52 @@ class TyperTest extends AirSpec:
 
     // After typing, tpe should be ImportType
     importDef.tpe.isInstanceOf[Type.ImportType] shouldBe true
+
+  // ============================================
+  // TypeInference tests
+  // ============================================
+
+  test("TypeInference.findCommonType should return same type when all types match"):
+    TypeInference.findCommonType(Seq(IntType, IntType, IntType)) shouldBe IntType
+    TypeInference.findCommonType(Seq(StringType, StringType)) shouldBe StringType
+
+  test("TypeInference.findCommonType should promote numeric types"):
+    TypeInference.findCommonType(Seq(IntType, LongType)) shouldBe LongType
+    TypeInference.findCommonType(Seq(IntType, DoubleType)) shouldBe DoubleType
+    TypeInference.findCommonType(Seq(FloatType, DoubleType)) shouldBe DoubleType
+    TypeInference.findCommonType(Seq(IntType, LongType, FloatType, DoubleType)) shouldBe DoubleType
+
+  test("TypeInference.findCommonType should handle NullType"):
+    TypeInference.findCommonType(Seq(NullType, IntType)) shouldBe IntType
+    TypeInference.findCommonType(Seq(StringType, NullType)) shouldBe StringType
+    TypeInference.findCommonType(Seq(NullType, NullType)) shouldBe NullType
+
+  test("TypeInference.findCommonType should return NoType for empty list"):
+    TypeInference.findCommonType(Seq.empty) shouldBe NoType
+
+  test("TypeInference.findCommonType should return ErrorType for incompatible types"):
+    val result = TypeInference.findCommonType(Seq(IntType, BooleanType))
+    result.isInstanceOf[ErrorType] shouldBe true
+
+  test("TypeInference.canCoerce should allow NULL to any type"):
+    TypeInference.canCoerce(NullType, IntType) shouldBe true
+    TypeInference.canCoerce(NullType, StringType) shouldBe true
+
+  test("TypeInference.canCoerce should allow numeric widening"):
+    TypeInference.canCoerce(IntType, LongType) shouldBe true
+    TypeInference.canCoerce(IntType, DoubleType) shouldBe true
+    TypeInference.canCoerce(FloatType, DoubleType) shouldBe true
+    // But not narrowing
+    TypeInference.canCoerce(LongType, IntType) shouldBe false
+    TypeInference.canCoerce(DoubleType, IntType) shouldBe false
+
+  test("TypeInference.unify should find common type"):
+    TypeInference.unify(IntType, IntType) shouldBe IntType
+    TypeInference.unify(IntType, LongType) shouldBe LongType
+    TypeInference.unify(NullType, StringType) shouldBe StringType
+
+  test("TypeInference.unify should return ErrorType for incompatible types"):
+    val result = TypeInference.unify(IntType, BooleanType)
+    result.isInstanceOf[ErrorType] shouldBe true
 
 end TyperTest

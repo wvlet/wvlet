@@ -372,37 +372,9 @@ object TyperRules:
   }
 
   /**
-    * Find common type among a list of types (simple type coercion)
+    * Find common type among a list of types. Delegates to TypeInference.
     */
-  private def findCommonType(types: Seq[Type]): Type =
-    if types.isEmpty then
-      NoType
-    else if types.forall(_ == types.head) then
-      // All types are the same
-      types.head
-    else
-      // Check for numeric type promotion
-      val allNumeric = types.forall {
-        case IntType | LongType | FloatType | DoubleType =>
-          true
-        case _ =>
-          false
-      }
-
-      if allNumeric then
-        // Promote to widest numeric type
-        val promotionOrder = Seq(DoubleType, FloatType, LongType, IntType)
-        promotionOrder.find(t => types.exists(_ == t)).getOrElse(IntType)
-      else
-        // Check if any are error types
-        types.collectFirst { case e: ErrorType =>
-          e
-        } match
-          case Some(error) =>
-            error
-          case None =>
-            // No common type found
-            ErrorType(s"No common type found among: ${types.mkString(", ")}")
+  private def findCommonType(types: Seq[Type]): Type = TypeInference.findCommonType(types)
 
   // ============================================
   // Relation Typing Rules
