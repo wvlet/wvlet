@@ -112,9 +112,6 @@ jobs:
           name: ${{ matrix.name }}-${{ matrix.arch }}
           path: wvc-lib/target/scala-${{ env.SCALA_VERSION }}/libwvlet.${{ matrix.suffix }}
   # Windows cross-compilation using Nix with MinGW-w64 toolchain
-  # Currently disabled due to LLVM CodeViewDebug crash when cross-compiling for Windows:
-  # https://github.com/llvm/llvm-project/issues/61039
-  # Enable when LLVM fixes this issue or when building natively on Windows runners
   build_windows:
     name: Cross build for Windows
     needs: changes
@@ -125,32 +122,24 @@ jobs:
         include:
           - arch: x64
             target: windows-x64
-            skip: true  # LLVM CodeViewDebug crash - see comment above
           - arch: arm64
             target: windows-arm64
-            skip: true  # LLVM CodeViewDebug crash - see comment above
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-        if: ${{ !matrix.skip }}
       - name: Install Nix
-        if: ${{ !matrix.skip }}
         uses: DeterminateSystems/nix-installer-action@main
       - name: Setup Nix cache
-        if: ${{ !matrix.skip }}
         uses: DeterminateSystems/magic-nix-cache-action@main
       - name: Set SCALA_VERSION env
-        if: ${{ !matrix.skip }}
         run: |
           SCALA_VERSION=$(cat SCALA_VERSION)
           echo SCALA_VERSION: $SCALA_VERSION
           echo "SCALA_VERSION=$SCALA_VERSION" >> $GITHUB_ENV
       - name: Build Windows DLL
-        if: ${{ !matrix.skip }}
         run: |
           nix develop .#${{ matrix.target }} --command ./sbt 'wvcLib/nativeLinkReleaseFast'
       - name: Upload Windows DLL
-        if: ${{ !matrix.skip }}
         uses: actions/upload-artifact@v6
         with:
           name: windows-${{ matrix.arch }}
