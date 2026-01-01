@@ -56,15 +56,8 @@ def applyNixCrossSettings(config: NativeConfig): NativeConfig = {
   }
   val searchPathsFirst = if (isMacOSTarget) Seq("-Wl,-search_paths_first") else Seq.empty
 
-  // Check if targeting Windows (mingw)
-  val isWindowsTarget = triple.exists(t => t.contains("mingw") || t.contains("windows"))
-  // Disable debug info for Windows cross-compilation to avoid LLVM CodeViewDebug crash
-  // See: https://github.com/llvm/llvm-project/issues/61039
-  val windowsDebugWorkaround = if (isWindowsTarget) Seq("-g0") else Seq.empty
-
   // Apply sysroot and library paths for cross-compilation
   val extraCompileOpts =
-    windowsDebugWorkaround ++
     sysroot.map(s => s"--sysroot=$s").toSeq ++
     gcInclude.map(i => s"-I$i").toSeq ++
     includePathOpts
