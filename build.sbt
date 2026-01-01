@@ -1,8 +1,72 @@
 import scala.scalanative.build.BuildTarget
 import scala.scalanative.build.GC
 import scala.scalanative.build.Mode
+import scala.scalanative.build.NativeConfig
 
 val AIRFRAME_VERSION       = "2025.1.21"
+
+// Helper function to apply Nix-provided cross-compilation settings to NativeConfig
+def applyNixCrossSettings(config: NativeConfig): NativeConfig = {
+  val clang        = sys.env.get("SCALANATIVE_CLANG")
+  val clangpp      = sys.env.get("SCALANATIVE_CLANGPP")
+  val lld          = sys.env.get("SCALANATIVE_LLD")
+  val triple       = sys.env.get("SCALANATIVE_TARGET_TRIPLE")
+  val sysroot      = sys.env.get("SCALANATIVE_SYSROOT")
+  val gcInclude    = sys.env.get("CROSS_GC_INCLUDE")
+  val gcLib        = sys.env.get("CROSS_GC_LIB")
+  val libraryPath  = sys.env.get("LIBRARY_PATH")
+  val cIncludePath = sys.env.get("C_INCLUDE_PATH")
+
+  var c = config
+
+  // Apply clang paths if provided
+  clang.foreach { path =>
+    c = c.withClang(java.nio.file.Paths.get(path))
+  }
+  clangpp.foreach { path =>
+    c = c.withClangPP(java.nio.file.Paths.get(path))
+  }
+
+  // Apply target triple if provided
+  triple.foreach { t =>
+    c = c.withTargetTriple(t)
+  }
+
+  // Convert LIBRARY_PATH to -L flags (prioritize Nix libraries over system)
+  val libraryPathOpts = libraryPath
+    .map(_.split(":").filter(_.nonEmpty).map(p => s"-L$p").toSeq)
+    .getOrElse(Seq.empty)
+
+  // Convert C_INCLUDE_PATH to -I flags
+  val includePathOpts = cIncludePath
+    .map(_.split(":").filter(_.nonEmpty).map(p => s"-I$p").toSeq)
+    .getOrElse(Seq.empty)
+
+  // Apply sysroot and library paths for cross-compilation
+  val extraCompileOpts = Seq.empty[String] ++
+    sysroot.map(s => s"--sysroot=$s").toSeq ++
+    gcInclude.map(i => s"-I$i").toSeq ++
+    includePathOpts
+
+  // On macOS, use -search_paths_first to prioritize -L paths over default paths
+  val searchPathsFirst = if (scala.util.Properties.isMac) Seq("-Wl,-search_paths_first") else Seq.empty
+
+  val extraLinkOpts = Seq.empty[String] ++
+    searchPathsFirst ++
+    libraryPathOpts ++  // Put Nix library paths first
+    sysroot.map(s => s"--sysroot=$s").toSeq ++
+    gcLib.map(l => s"-L$l").toSeq ++
+    lld.map(l => s"-fuse-ld=$l").toSeq
+
+  if (extraCompileOpts.nonEmpty) {
+    c = c.withCompileOptions(c.compileOptions ++ extraCompileOpts)
+  }
+  if (extraLinkOpts.nonEmpty) {
+    c = c.withLinkingOptions(c.linkingOptions ++ extraLinkOpts)
+  }
+
+  c
+}
 val AIRSPEC_VERSION        = AIRFRAME_VERSION
 val TRINO_VERSION          = "476"
 val AWS_SDK_VERSION        = "2.20.146"
@@ -203,12 +267,14 @@ lazy val wvcLib = project
     buildSettings,
     name := "wvc-lib",
     nativeConfig ~= { c =>
-      c.withBuildTarget(BuildTarget.libraryDynamic)
-        // Generates libwvlet.so, libwvlet.dylib, libwvlet.dll
-        .withBaseName("wvlet")
-        .withSourceLevelDebuggingConfig(_.enableAll) // enable generation of debug information
-        // Boehm GC's non-moving behavior helps avoid Segmentation Fault in DLLs
-        .withGC(GC.boehm)
+      applyNixCrossSettings(
+        c.withBuildTarget(BuildTarget.libraryDynamic)
+          // Generates libwvlet.so, libwvlet.dylib, libwvlet.dll
+          .withBaseName("wvlet")
+          .withSourceLevelDebuggingConfig(_.enableAll) // enable generation of debug information
+          // Boehm GC's non-moving behavior helps avoid Segmentation Fault in DLLs
+          .withGC(GC.boehm)
+      )
     }
   )
   .dependsOn(wvc)
@@ -221,7 +287,9 @@ lazy val wvcLibStatic = project
     name   := "wvc-lib",
     target := target.value / "static",
     nativeConfig ~= { c =>
-      c.withBuildTarget(BuildTarget.libraryStatic).withBaseName("wvlet")
+      applyNixCrossSettings(
+        c.withBuildTarget(BuildTarget.libraryStatic).withBaseName("wvlet")
+      )
     }
   )
   .dependsOn(wvc)
@@ -245,7 +313,10 @@ def nativeCrossProject(
     .settings(
       target := (ThisBuild / baseDirectory).value / id / "target",
       nativeConfig ~= { c =>
-        c.withTargetTriple(llvmTriple)
+        // Apply Nix cross-settings first, then override with explicit settings
+        // Nix env vars take precedence if set
+        applyNixCrossSettings(c)
+          .withTargetTriple(sys.env.getOrElse("SCALANATIVE_TARGET_TRIPLE", llvmTriple))
           .withCompileOptions(c.compileOptions ++ compileOptions)
           .withLinkingOptions(c.linkingOptions ++ linkerOptions)
           .withBuildTarget(BuildTarget.libraryDynamic)
@@ -264,11 +335,7 @@ lazy val nativeCliMacArm = nativeCrossProject(
   linkerOptions = Seq("-fuse-ld=ld64.lld")
 )
 
-lazy val nativeCliMacIntel = nativeCrossProject(
-  "mac-x64",
-  "x86_64-apple-darwin",
-  linkerOptions = Seq("-fuse-ld=ld64.lld")
-)
+// Note: macOS Intel (x86_64-apple-darwin) target removed - Apple no longer sells Intel Macs
 
 lazy val nativeCliLinuxIntel = nativeCrossProject(
   "linux-x64",
