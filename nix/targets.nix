@@ -48,11 +48,7 @@
   # Windows ARM64 - cross from Linux only
   windows-arm64 = {
     llvmTriple = "aarch64-w64-mingw32";
-    crossSystem = {
-      config = "aarch64-w64-mingw32";
-      libc = "msvcrt";
-    };
-    buildHosts = [ "x86_64-linux" "aarch64-linux" ];
+    buildHosts = [ "x86_64-linux" "aarch64-linux" "aarch64-darwin" ];
     libSuffix = "dll";
     useLd64 = false;
     isWindows = true;
