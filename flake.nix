@@ -77,6 +77,10 @@
             # The unwrapped clang works with Scala Native's --target flag
             useUnwrappedClang = isWindowsTarget || (isDarwinHost && targetConfig.crossSystem != null);
 
+            # Detect if we're cross-compiling from Darwin to a non-Darwin target
+            # In this case, we need to override os.name to prevent macOS-specific linker flags
+            isDarwinToNonDarwinCross = isDarwinHost && targetConfig.crossSystem != null && !(targetConfig.useLd64 or false);
+
             crossClang =
               if targetConfig.crossSystem == null then
                 "${pkgs.llvmPackages.clang}/bin/clang"
@@ -156,7 +160,13 @@
                 echo "  SCALANATIVE_SYSROOT=$SCALANATIVE_SYSROOT"
               '' else ""}
               echo ""
-              echo "Run: ./sbt wvcLib/nativeLink"
+              ${if isDarwinToNonDarwinCross then ''
+                echo "Run: ./sbt -Dos.name=linux wvcLib/nativeLink"
+                echo ""
+                echo "Note: -Dos.name=linux is required to prevent macOS-specific linker flags"
+              '' else ''
+                echo "Run: ./sbt wvcLib/nativeLink"
+              ''}
             '';
           };
 

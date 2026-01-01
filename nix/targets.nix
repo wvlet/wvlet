@@ -17,30 +17,29 @@
     useLd64 = true;
   };
 
-  # Linux ARM64 - native on ARM, cross from x86_64 Linux
-  # Note: Cross-compilation from macOS doesn't work because Scala Native
-  # passes host-specific linker flags (e.g., -search_paths_first) to the
-  # cross-linker, which doesn't understand them.
+  # Linux ARM64 - native on ARM, cross from x86_64 Linux or macOS
+  # Note: Cross-compilation from macOS requires -Dos.name=linux to prevent
+  # macOS-specific linker flags from being passed to the cross-linker.
   linux-arm64 = {
     llvmTriple = "aarch64-unknown-linux-gnu";
     crossSystem = {
       config = "aarch64-unknown-linux-gnu";
       system = "aarch64-linux";
     };
-    buildHosts = [ "aarch64-linux" "x86_64-linux" ];
+    buildHosts = [ "aarch64-linux" "x86_64-linux" "aarch64-darwin" ];
     libSuffix = "so";
     useLd64 = false;
   };
 
-  # Linux x86_64 - native on x86_64, cross from ARM Linux
-  # Note: Cross-compilation from macOS doesn't work (same reason as above)
+  # Linux x86_64 - native on x86_64, cross from ARM Linux or macOS
+  # Note: Cross-compilation from macOS requires -Dos.name=linux (same as above)
   linux-x64 = {
     llvmTriple = "x86_64-unknown-linux-gnu";
     crossSystem = {
       config = "x86_64-unknown-linux-gnu";
       system = "x86_64-linux";
     };
-    buildHosts = [ "x86_64-linux" "aarch64-linux" ];
+    buildHosts = [ "x86_64-linux" "aarch64-linux" "aarch64-darwin" ];
     libSuffix = "so";
     useLd64 = false;
   };
