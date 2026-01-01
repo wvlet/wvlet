@@ -111,6 +111,10 @@ jobs:
         with:
           name: ${{ matrix.name }}-${{ matrix.arch }}
           path: wvc-lib/target/scala-${{ env.SCALA_VERSION }}/libwvlet.${{ matrix.suffix }}
+  # Windows cross-compilation using Nix with MinGW-w64 toolchain
+  # Currently disabled due to LLVM CodeViewDebug crash when cross-compiling for Windows:
+  # https://github.com/llvm/llvm-project/issues/61039
+  # Enable when LLVM fixes this issue or when building natively on Windows runners
   build_windows:
     name: Cross build for Windows
     needs: changes
@@ -121,10 +125,10 @@ jobs:
         include:
           - arch: x64
             target: windows-x64
-            skip: false
+            skip: true  # LLVM CodeViewDebug crash - see comment above
           - arch: arm64
             target: windows-arm64
-            skip: false
+            skip: true  # LLVM CodeViewDebug crash - see comment above
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
