@@ -65,6 +65,10 @@
             crossBoehmgc = crossPkgs.boehmgc;
             crossOpenssl = crossPkgs.openssl;
             crossGlibc = crossPkgs.stdenv.cc.libc;
+            # GCC runtime (crtbeginS.o, crtendS.o, libgcc) needed for Linux linking
+            crossGccLib = if targetConfig.crossSystem != null && !(targetConfig.isWindows or false)
+              then crossPkgs.stdenv.cc.cc.lib
+              else null;
 
             # Determine the correct clang/lld for cross-compilation
             # Always use clang for Scala Native (it passes clang-specific flags like -target)
@@ -140,9 +144,16 @@
                 export CROSS_OPENSSL_INCLUDE="${crossOpenssl.dev}/include"
                 export CROSS_OPENSSL_LIB="${crossOpenssl.out}/lib"
                 # Set library paths for cross-compilation
-                export LIBRARY_PATH="${crossBoehmgc}/lib:${crossOpenssl.out}/lib:${crossPkgs.zlib}/lib''${LIBRARY_PATH:+:$LIBRARY_PATH}"
+                # IMPORTANT: Don't inherit from existing LIBRARY_PATH to avoid picking up host (Homebrew) libraries
+                ${if crossGccLib != null then ''
+                  # Find GCC runtime directory containing crtbeginS.o
+                  GCC_LIB_DIR=$(find ${crossGccLib}/lib -name "crtbeginS.o" -printf "%h" 2>/dev/null | head -1)
+                  export LIBRARY_PATH="$GCC_LIB_DIR:${crossGlibc}/lib:${crossBoehmgc}/lib:${crossOpenssl.out}/lib:${crossPkgs.zlib}/lib"
+                '' else ''
+                  export LIBRARY_PATH="${crossGlibc}/lib:${crossBoehmgc}/lib:${crossOpenssl.out}/lib:${crossPkgs.zlib}/lib"
+                ''}
                 # Include glibc headers for cross-compilation (needed when using unwrapped clang)
-                export C_INCLUDE_PATH="${crossGlibc.dev}/include:${crossBoehmgc.dev}/include:${crossOpenssl.dev}/include:${crossPkgs.zlib.dev}/include''${C_INCLUDE_PATH:+:$C_INCLUDE_PATH}"
+                export C_INCLUDE_PATH="${crossGlibc.dev}/include:${crossBoehmgc.dev}/include:${crossOpenssl.dev}/include:${crossPkgs.zlib.dev}/include"
               '' else ''
                 # Set library paths for native build - prioritize Nix packages over Homebrew
                 export LIBRARY_PATH="${pkgs.boehmgc}/lib:${pkgs.openssl.out}/lib:${pkgs.zlib}/lib''${LIBRARY_PATH:+:$LIBRARY_PATH}"
