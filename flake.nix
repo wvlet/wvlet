@@ -66,8 +66,8 @@
             crossOpenssl = crossPkgs.openssl;
             crossGlibc = crossPkgs.stdenv.cc.libc;
             # GCC runtime (crtbeginS.o, crtendS.o, libgcc) needed for Linux linking
-            crossGccLib = if targetConfig.crossSystem != null && !(targetConfig.isWindows or false)
-              then crossPkgs.stdenv.cc.cc.lib
+            crossLibgcc = if targetConfig.crossSystem != null && !(targetConfig.isWindows or false)
+              then crossPkgs.libgcc
               else null;
 
             # Determine the correct clang/lld for cross-compilation
@@ -142,14 +142,9 @@
                 export CROSS_OPENSSL_LIB="${crossOpenssl.out}/lib"
                 # Set library paths for cross-compilation
                 # IMPORTANT: Don't inherit from existing LIBRARY_PATH to avoid picking up host (Homebrew) libraries
-                ${if crossGccLib != null then ''
-                  # Find GCC runtime directory containing crtbeginS.o (use dirname for macOS compatibility)
-                  GCC_LIB_DIR=$(dirname "$(find ${crossGccLib}/lib -name "crtbeginS.o" 2>/dev/null | head -1)" 2>/dev/null)
-                  if [ -n "$GCC_LIB_DIR" ] && [ "$GCC_LIB_DIR" != "." ]; then
-                    export LIBRARY_PATH="$GCC_LIB_DIR:${crossGlibc}/lib:${crossBoehmgc}/lib:${crossOpenssl.out}/lib:${crossPkgs.zlib}/lib"
-                  else
-                    export LIBRARY_PATH="${crossGlibc}/lib:${crossBoehmgc}/lib:${crossOpenssl.out}/lib:${crossPkgs.zlib}/lib"
-                  fi
+                ${if crossLibgcc != null then ''
+                  # libgcc contains crtbeginS.o, crtendS.o needed for Linux linking
+                  export LIBRARY_PATH="${crossLibgcc}/lib:${crossGlibc}/lib:${crossBoehmgc}/lib:${crossOpenssl.out}/lib:${crossPkgs.zlib}/lib"
                 '' else ''
                   export LIBRARY_PATH="${crossGlibc}/lib:${crossBoehmgc}/lib:${crossOpenssl.out}/lib:${crossPkgs.zlib}/lib"
                 ''}
@@ -170,9 +165,6 @@
               echo "  LIBRARY_PATH=$LIBRARY_PATH"
               ${if targetConfig.crossSystem != null then ''
                 echo "  SCALANATIVE_SYSROOT=$SCALANATIVE_SYSROOT"
-                ${if crossGccLib != null then ''
-                  echo "  GCC_LIB_DIR=$GCC_LIB_DIR"
-                '' else ""}
               '' else ""}
               echo ""
               echo "Run: ./sbt wvcLib/nativeLink"
