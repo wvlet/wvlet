@@ -98,10 +98,12 @@
               else
                 "${crossPkgs.stdenv.cc}/bin/${targetConfig.llvmTriple}-c++";
 
+            # Select the appropriate linker based on target
+            # - ld64.lld for macOS (useLd64 = true)
+            # - lld-link for Windows
+            # - ld.lld for Linux/ELF
             crossLld =
-              if targetConfig.crossSystem == null then
-                "${pkgs.llvmPackages.lld}/bin/ld.lld"
-              else if targetConfig.useLd64 or false then
+              if targetConfig.useLd64 or false then
                 "${pkgs.llvmPackages.lld}/bin/ld64.lld"
               else if isWindowsTarget then
                 "${pkgs.llvmPackages.lld}/bin/lld-link"

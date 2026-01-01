@@ -9,8 +9,9 @@
 
 {
   # macOS ARM64 - native build only on macOS ARM
+  # Use arm64-apple-darwin to match Nix's clang wrapper expectations
   darwin-arm64 = {
-    llvmTriple = "aarch64-apple-darwin";
+    llvmTriple = "arm64-apple-darwin";
     crossSystem = null;  # Native build only
     buildHosts = [ "aarch64-darwin" ];
     libSuffix = "dylib";
