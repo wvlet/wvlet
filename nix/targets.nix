@@ -17,31 +17,31 @@
     useLd64 = true;
   };
 
-  # Linux ARM64 - native on ARM, cross from x86_64
+  # Linux ARM64 - native on ARM, cross from x86_64 Linux or macOS
   linux-arm64 = {
     llvmTriple = "aarch64-unknown-linux-gnu";
     crossSystem = {
       config = "aarch64-unknown-linux-gnu";
       system = "aarch64-linux";
     };
-    buildHosts = [ "aarch64-linux" "x86_64-linux" ];
+    buildHosts = [ "aarch64-linux" "x86_64-linux" "aarch64-darwin" ];
     libSuffix = "so";
     useLd64 = false;
   };
 
-  # Linux x86_64 - native on x86_64, cross from ARM
+  # Linux x86_64 - native on x86_64, cross from ARM Linux or macOS
   linux-x64 = {
     llvmTriple = "x86_64-unknown-linux-gnu";
     crossSystem = {
       config = "x86_64-unknown-linux-gnu";
       system = "x86_64-linux";
     };
-    buildHosts = [ "x86_64-linux" "aarch64-linux" ];
+    buildHosts = [ "x86_64-linux" "aarch64-linux" "aarch64-darwin" ];
     libSuffix = "so";
     useLd64 = false;
   };
 
-  # Windows ARM64 - cross from Linux only
+  # Windows ARM64 - cross from Linux only (macOS has LLVM CodeViewDebug crash)
   windows-arm64 = {
     llvmTriple = "aarch64-w64-mingw32";
     crossSystem = {
@@ -54,7 +54,7 @@
     isWindows = true;
   };
 
-  # Windows x86_64 - cross from Linux only
+  # Windows x86_64 - cross from Linux only (macOS has LLVM CodeViewDebug crash)
   windows-x64 = {
     llvmTriple = "x86_64-w64-mingw32";
     crossSystem = {

@@ -66,15 +66,29 @@
             crossOpenssl = crossPkgs.openssl;
 
             # Determine the correct clang/lld for cross-compilation
+            # Always use clang for Scala Native (it passes clang-specific flags like -target)
+            isWindowsTarget = targetConfig.isWindows or false;
+            isDarwinHost = pkgs.stdenv.isDarwin;
+
+            # Use unwrapped clang for cross-compilation from macOS or for Windows targets
+            # - Windows: MinGW GCC doesn't understand -target flag
+            # - macOS cross to Linux: nixpkgs provides GCC wrapper, not clang
+            # The unwrapped clang works with Scala Native's --target flag
+            useUnwrappedClang = isWindowsTarget || (isDarwinHost && targetConfig.crossSystem != null);
+
             crossClang =
               if targetConfig.crossSystem == null then
                 "${pkgs.llvmPackages.clang}/bin/clang"
+              else if useUnwrappedClang then
+                "${pkgs.llvmPackages.clang-unwrapped}/bin/clang"
               else
                 "${crossPkgs.stdenv.cc}/bin/${targetConfig.llvmTriple}-cc";
 
             crossClangpp =
               if targetConfig.crossSystem == null then
                 "${pkgs.llvmPackages.clang}/bin/clang++"
+              else if useUnwrappedClang then
+                "${pkgs.llvmPackages.clang-unwrapped}/bin/clang++"
               else
                 "${crossPkgs.stdenv.cc}/bin/${targetConfig.llvmTriple}-c++";
 
@@ -83,6 +97,8 @@
                 "${pkgs.llvmPackages.lld}/bin/ld.lld"
               else if targetConfig.useLd64 or false then
                 "${pkgs.llvmPackages.lld}/bin/ld64.lld"
+              else if isWindowsTarget then
+                "${pkgs.llvmPackages.lld}/bin/lld-link"
               else
                 "${pkgs.llvmPackages.lld}/bin/ld.lld";
 

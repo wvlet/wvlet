@@ -28,6 +28,8 @@ jobs:
               - '**.conf'
               - '**.wv'
               - SCALA_VERSION
+              - 'flake.nix'
+              - 'nix/**'
   build_native:
     name: Cross build with Scala Native
     needs: changes
@@ -51,11 +53,6 @@ jobs:
             name: linux
             suffix: so
             skip: false
-# TODO Need some tweaks to run sbt on Windows
-#          - os: windows-latest
-#            arch: x64
-#            name: windows
-#            suffix: dll
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
@@ -114,10 +111,50 @@ jobs:
         with:
           name: ${{ matrix.name }}-${{ matrix.arch }}
           path: wvc-lib/target/scala-${{ env.SCALA_VERSION }}/libwvlet.${{ matrix.suffix }}
+  build_windows:
+    name: Cross build for Windows
+    needs: changes
+    if: ${{ needs.changes.outputs.src == 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            target: windows-x64
+            skip: false
+          - arch: arm64
+            target: windows-arm64
+            skip: false
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        if: ${{ !matrix.skip }}
+      - name: Install Nix
+        if: ${{ !matrix.skip }}
+        uses: DeterminateSystems/nix-installer-action@main
+      - name: Setup Nix cache
+        if: ${{ !matrix.skip }}
+        uses: DeterminateSystems/magic-nix-cache-action@main
+      - name: Set SCALA_VERSION env
+        if: ${{ !matrix.skip }}
+        run: |
+          SCALA_VERSION=$(cat SCALA_VERSION)
+          echo SCALA_VERSION: $SCALA_VERSION
+          echo "SCALA_VERSION=$SCALA_VERSION" >> $GITHUB_ENV
+      - name: Build Windows DLL
+        if: ${{ !matrix.skip }}
+        run: |
+          nix develop .#${{ matrix.target }} --command ./sbt 'wvcLib/nativeLinkReleaseFast'
+      - name: Upload Windows DLL
+        if: ${{ !matrix.skip }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: windows-${{ matrix.arch }}
+          path: wvc-lib/target/scala-${{ env.SCALA_VERSION }}/libwvlet.dll
   collect_artifact:
     name: Collect wvc dll
     runs-on: ubuntu-latest
-    needs: build_native
+    needs: [build_native, build_windows]
     steps:
       - name: Merge artifacts
         uses: actions/upload-artifact/merge@v6
