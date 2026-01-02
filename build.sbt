@@ -5,65 +5,6 @@ import scala.scalanative.build.NativeConfig
 
 val AIRFRAME_VERSION = "2025.1.22"
 
-// Helper function to apply Nix-provided cross-compilation settings to NativeConfig
-def applyNixCrossSettings(config: NativeConfig): NativeConfig = {
-  val clang        = sys.env.get("SCALANATIVE_CLANG")
-  val clangpp      = sys.env.get("SCALANATIVE_CLANGPP")
-  val lld          = sys.env.get("SCALANATIVE_LLD")
-  val triple       = sys.env.get("SCALANATIVE_TARGET_TRIPLE")
-  val sysroot      = sys.env.get("SCALANATIVE_SYSROOT")
-  val gcInclude    = sys.env.get("CROSS_GC_INCLUDE")
-  val gcLib        = sys.env.get("CROSS_GC_LIB")
-  val libraryPath  = sys.env.get("LIBRARY_PATH")
-  val cIncludePath = sys.env.get("C_INCLUDE_PATH")
-
-  var c = config
-
-  // Apply clang paths if provided
-  clang.foreach { path =>
-    c = c.withClang(java.nio.file.Paths.get(path))
-  }
-  clangpp.foreach { path =>
-    c = c.withClangPP(java.nio.file.Paths.get(path))
-  }
-
-  // Apply target triple if provided
-  triple.foreach { t =>
-    c = c.withTargetTriple(t)
-  }
-
-  // Convert LIBRARY_PATH to -L flags (prioritize Nix libraries over system)
-  val libraryPathOpts = libraryPath
-    .map(_.split(":").filter(_.nonEmpty).map(p => s"-L$p").toSeq)
-    .getOrElse(Seq.empty)
-
-  // Convert C_INCLUDE_PATH to -I flags
-  val includePathOpts = cIncludePath
-    .map(_.split(":").filter(_.nonEmpty).map(p => s"-I$p").toSeq)
-    .getOrElse(Seq.empty)
-
-  // Apply sysroot and library paths for cross-compilation
-  val extraCompileOpts =
-    sysroot.map(s => s"--sysroot=$s").toSeq ++ gcInclude.map(i => s"-I$i").toSeq ++ includePathOpts
-
-  // On macOS, use -search_paths_first to prioritize -L paths over default paths
-  val searchPathsFirst =
-    if (scala.util.Properties.isMac)
-      Seq("-Wl,-search_paths_first")
-    else
-      Seq.empty
-
-  val extraLinkOpts =
-    searchPathsFirst ++ libraryPathOpts ++ // Put Nix library paths first
-      sysroot.map(s => s"--sysroot=$s").toSeq ++ gcLib.map(l => s"-L$l").toSeq ++
-      lld.map(l => s"-fuse-ld=$l").toSeq
-
-  c = c.withCompileOptions(c.compileOptions ++ extraCompileOpts)
-  c = c.withLinkingOptions(c.linkingOptions ++ extraLinkOpts)
-
-  c
-}
-
 val AIRSPEC_VERSION        = AIRFRAME_VERSION
 val TRINO_VERSION          = "476"
 val AWS_SDK_VERSION        = "2.20.146"
@@ -264,14 +205,12 @@ lazy val wvcLib = project
     buildSettings,
     name := "wvc-lib",
     nativeConfig ~= { c =>
-      applyNixCrossSettings(
-        c.withBuildTarget(BuildTarget.libraryDynamic)
-          // Generates libwvlet.so, libwvlet.dylib, libwvlet.dll
-          .withBaseName("wvlet")
-          .withSourceLevelDebuggingConfig(_.enableAll) // enable generation of debug information
-          // Boehm GC's non-moving behavior helps avoid Segmentation Fault in DLLs
-          .withGC(GC.boehm)
-      )
+      c.withBuildTarget(BuildTarget.libraryDynamic)
+        // Generates libwvlet.so, libwvlet.dylib, libwvlet.dll
+        .withBaseName("wvlet")
+        .withSourceLevelDebuggingConfig(_.enableAll) // enable generation of debug information
+        // Boehm GC's non-moving behavior helps avoid Segmentation Fault in DLLs
+        .withGC(GC.boehm)
     }
   )
   .dependsOn(wvc)
@@ -284,7 +223,7 @@ lazy val wvcLibStatic = project
     name   := "wvc-lib",
     target := target.value / "static",
     nativeConfig ~= { c =>
-      applyNixCrossSettings(c.withBuildTarget(BuildTarget.libraryStatic).withBaseName("wvlet"))
+      c.withBuildTarget(BuildTarget.libraryStatic).withBaseName("wvlet")
     }
   )
   .dependsOn(wvc)
@@ -308,8 +247,7 @@ def nativeCrossProject(
     .settings(
       target := (ThisBuild / baseDirectory).value / id / "target",
       nativeConfig ~= { c =>
-        // Set default target triple first, then let applyNixCrossSettings override if env var is set
-        applyNixCrossSettings(c.withTargetTriple(llvmTriple))
+        c.withTargetTriple(llvmTriple)
           .withCompileOptions(c.compileOptions ++ compileOptions)
           .withLinkingOptions(c.linkingOptions ++ linkerOptions)
           .withBuildTarget(BuildTarget.libraryDynamic)
