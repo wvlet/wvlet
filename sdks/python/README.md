@@ -195,7 +195,8 @@ Platform | Architecture | Status
 Linux    | x86_64      | ✅ Supported
 Linux    | aarch64     | ✅ Supported
 macOS    | arm64       | ✅ Supported
-Windows  | x86_64      | 🔄 Planned
+Windows  | x86_64      | ✅ Supported
+Windows  | arm64       | ✅ Supported
 
 
 ## Performance
