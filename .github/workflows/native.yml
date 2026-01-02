@@ -137,7 +137,19 @@ jobs:
           choco install sbt -y
       - name: Install LLVM and Clang
         run: |
-          choco install llvm -y
+          if ("${{ matrix.arch }}" -eq "arm64") {
+            # Chocolatey LLVM package doesn't support ARM64, download directly
+            $llvmVersion = "19.1.7"
+            $url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$llvmVersion/LLVM-$llvmVersion-woa64.exe"
+            Write-Host "Downloading LLVM $llvmVersion for ARM64..."
+            Invoke-WebRequest -Uri $url -OutFile "llvm-installer.exe"
+            Write-Host "Installing LLVM..."
+            Start-Process -FilePath ".\llvm-installer.exe" -ArgumentList "/S","/D=C:\Program Files\LLVM" -Wait
+            echo "C:\Program Files\LLVM\bin" >> $env:GITHUB_PATH
+          } else {
+            choco install llvm -y
+          }
+        shell: pwsh
       - name: Install native dependencies (Boehm GC, zlib, OpenSSL)
         run: |
           $triplet = if ("${{ matrix.arch }}" -eq "arm64") { "arm64-windows" } else { "x64-windows" }
