@@ -142,11 +142,12 @@ jobs:
         run: |
           $triplet = if ("${{ matrix.arch }}" -eq "arm64") { "arm64-windows" } else { "x64-windows" }
           vcpkg install bdwgc:$triplet zlib:$triplet
-          $libPath = "$env:VCPKG_INSTALLATION_ROOT\installed\$triplet\lib"
+          $vcpkgLibPath = "$env:VCPKG_INSTALLATION_ROOT\installed\$triplet\lib"
           echo "C_INCLUDE_PATH=$env:VCPKG_INSTALLATION_ROOT\installed\$triplet\include" >> $env:GITHUB_ENV
-          echo "LIBRARY_PATH=$libPath" >> $env:GITHUB_ENV
-          # Add to LIB for MSVC linker
-          echo "LIB=$libPath;$env:LIB" >> $env:GITHUB_ENV
+          echo "LIBRARY_PATH=$vcpkgLibPath" >> $env:GITHUB_ENV
+          # Prepend vcpkg lib path to LIB for MSVC linker (keep existing paths)
+          $currentLib = if ($env:LIB) { $env:LIB } else { "" }
+          echo "LIB=$vcpkgLibPath;$currentLib" >> $env:GITHUB_ENV
         shell: pwsh
       - name: Set SCALA_VERSION env
         run: |
