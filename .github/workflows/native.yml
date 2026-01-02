@@ -138,10 +138,10 @@ jobs:
       - name: Install LLVM and Clang
         run: |
           choco install llvm -y
-      - name: Install native dependencies (Boehm GC, zlib)
+      - name: Install native dependencies (Boehm GC, zlib, OpenSSL)
         run: |
           $triplet = if ("${{ matrix.arch }}" -eq "arm64") { "arm64-windows" } else { "x64-windows" }
-          vcpkg install bdwgc:$triplet zlib:$triplet
+          vcpkg install bdwgc:$triplet zlib:$triplet openssl:$triplet
           echo "C_INCLUDE_PATH=$env:VCPKG_INSTALLATION_ROOT\installed\$triplet\include" >> $env:GITHUB_ENV
           echo "VCPKG_LIB_PATH=$env:VCPKG_INSTALLATION_ROOT\installed\$triplet\lib" >> $env:GITHUB_ENV
         shell: pwsh
