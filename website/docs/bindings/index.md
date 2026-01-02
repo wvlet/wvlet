@@ -70,9 +70,9 @@ All language SDKs use the same underlying native library (`libwvlet`) for consis
 |----------|--------|-------|
 | Linux    | ✅     | ✅    |
 | macOS    | ❌     | ✅    |
-| Windows  | 🔄     | 🔄    |
+| Windows  | ✅     | ✅    |
 
-✅ Supported | 🔄 Planned | ❌ Not Supported
+✅ Supported | ❌ Not Supported
 
 ## Contributing
 
