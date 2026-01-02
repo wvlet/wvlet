@@ -124,7 +124,7 @@ jobs:
           cache: sbt
       - name: Install sbt
         run: |
-          choco install sbt --version=1.10.11 -y
+          choco install sbt -y
       - name: Install LLVM and Clang
         run: |
           choco install llvm -y
