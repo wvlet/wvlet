@@ -27,9 +27,11 @@ jobs:
               - '**.sbt'
               - '**.conf'
               - '**.wv'
+              - 'flake.nix'
+              - 'flake.lock'
               - SCALA_VERSION
   build_native:
-    name: Cross build with Scala Native
+    name: Build native on ${{ matrix.name }}-${{ matrix.arch }}
     needs: changes
     if: ${{ needs.changes.outputs.src == 'true' }}
     strategy:
@@ -51,11 +53,6 @@ jobs:
             name: linux
             suffix: so
             skip: false
-# TODO Need some tweaks to run sbt on Windows
-#          - os: windows-latest
-#            arch: x64
-#            name: windows
-#            suffix: dll
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
@@ -66,14 +63,11 @@ jobs:
           distribution: 'temurin'
           java-version: '25'
           cache: sbt
-      - name: Install libgc
+      - name: Install Nix
         if: ${{ !matrix.skip }}
-        run: |
-          if [[ "${{ runner.os }}" == "Linux" ]]; then
-            sudo apt-get install libgc-dev
-          elif [[ "${{ runner.os }}" == "macOS" ]]; then
-            brew install bdw-gc
-          fi
+        uses: cachix/install-nix-action@v31
+        with:
+          nix_path: nixpkgs=channel:nixos-24.11
       - name: Set SCALA_VERSION env
         if: ${{ !matrix.skip }}
         run: |
@@ -83,7 +77,7 @@ jobs:
       - name: Build native binary
         if: ${{ !matrix.skip }}
         run: |
-          ./sbt 'wvcLib/nativeLinkReleaseFast'
+          nix develop .#ci --command bash -c './sbt wvcLib/nativeLinkReleaseFast'
       - name: Ad-hoc sign macOS library
         if: ${{ !matrix.skip && runner.os == 'macOS' }}
         run: |
