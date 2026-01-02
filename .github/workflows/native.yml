@@ -142,8 +142,16 @@ jobs:
         run: |
           $triplet = if ("${{ matrix.arch }}" -eq "arm64") { "arm64-windows" } else { "x64-windows" }
           vcpkg install bdwgc:$triplet zlib:$triplet openssl:$triplet
+          $libDir = "$env:VCPKG_INSTALLATION_ROOT\installed\$triplet\lib"
+          # Create symlinks for OpenSSL libraries (Scala Native looks for crypto.lib, vcpkg provides libcrypto.lib)
+          if (Test-Path "$libDir\libcrypto.lib") {
+            Copy-Item "$libDir\libcrypto.lib" "$libDir\crypto.lib"
+          }
+          if (Test-Path "$libDir\libssl.lib") {
+            Copy-Item "$libDir\libssl.lib" "$libDir\ssl.lib"
+          }
           echo "C_INCLUDE_PATH=$env:VCPKG_INSTALLATION_ROOT\installed\$triplet\include" >> $env:GITHUB_ENV
-          echo "VCPKG_LIB_PATH=$env:VCPKG_INSTALLATION_ROOT\installed\$triplet\lib" >> $env:GITHUB_ENV
+          echo "VCPKG_LIB_PATH=$libDir" >> $env:GITHUB_ENV
         shell: pwsh
       - name: Set SCALA_VERSION env
         run: |
