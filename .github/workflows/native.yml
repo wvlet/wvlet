@@ -142,12 +142,8 @@ jobs:
         run: |
           $triplet = if ("${{ matrix.arch }}" -eq "arm64") { "arm64-windows" } else { "x64-windows" }
           vcpkg install bdwgc:$triplet zlib:$triplet
-          $vcpkgLibPath = "$env:VCPKG_INSTALLATION_ROOT\installed\$triplet\lib"
           echo "C_INCLUDE_PATH=$env:VCPKG_INSTALLATION_ROOT\installed\$triplet\include" >> $env:GITHUB_ENV
-          echo "LIBRARY_PATH=$vcpkgLibPath" >> $env:GITHUB_ENV
-          # Prepend vcpkg lib path to LIB for MSVC linker (keep existing paths)
-          $currentLib = if ($env:LIB) { $env:LIB } else { "" }
-          echo "LIB=$vcpkgLibPath;$currentLib" >> $env:GITHUB_ENV
+          echo "VCPKG_LIB_PATH=$env:VCPKG_INSTALLATION_ROOT\installed\$triplet\lib" >> $env:GITHUB_ENV
         shell: pwsh
       - name: Set SCALA_VERSION env
         run: |
@@ -158,9 +154,15 @@ jobs:
           # Set target triple for Scala Native
           echo "SCALANATIVE_TARGET_TRIPLE=${{ matrix.target_triple }}" >> $env:GITHUB_ENV
         shell: pwsh
+      - name: Setup Visual Studio environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.arch }}
       - name: Build native binary
         run: |
           echo "Target triple: %SCALANATIVE_TARGET_TRIPLE%"
+          set "LIB=%VCPKG_LIB_PATH%;%LIB%"
+          echo "LIB: %LIB%"
           sbt wvcLib/nativeLinkReleaseFast
         shell: cmd
       - name: Upload native binary
