@@ -107,8 +107,15 @@ object WvcMain extends LogSupport:
             case Some(q) =>
               q
             case None =>
-              import scala.scalanative.posix.unistd
-              val connectedToStdin = unistd.isatty(unistd.STDIN_FILENO) == 0
+              import scala.scalanative.meta.LinktimeInfo
+              // On Windows, POSIX unistd is not available, so we skip the isatty check
+              // and assume stdin is connected if no query is provided
+              val connectedToStdin =
+                if LinktimeInfo.isWindows then
+                  true // On Windows, assume stdin is available when no -q is provided
+                else
+                  import scala.scalanative.posix.unistd
+                  unistd.isatty(unistd.STDIN_FILENO) == 0
               if connectedToStdin then
                 // Read from stdin
                 Iterator.continually(scala.io.StdIn.readLine()).takeWhile(_ != null).mkString("\n")
