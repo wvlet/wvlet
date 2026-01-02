@@ -66,17 +66,23 @@ def _load_native_library():
     -----
     Supported platforms:
     - Linux x86_64: libwvlet.so
-    - Linux ARM64: libwvlet.so  
+    - Linux ARM64: libwvlet.so
     - macOS ARM64: libwvlet.dylib
+    - Windows x86_64: wvlet.dll
+    - Windows ARM64: wvlet.dll
     """
     system = platform.system()
     machine = platform.machine()
-    
+
     # Map platform to library path
+    # Note: Windows uses 'AMD64' for x86_64 and 'ARM64' for ARM64
+    # Windows DLLs don't have 'lib' prefix
     lib_map = {
         ('Linux', 'x86_64'): 'linux_x86_64/libwvlet.so',
         ('Linux', 'aarch64'): 'linux_aarch64/libwvlet.so',
         ('Darwin', 'arm64'): 'darwin_arm64/libwvlet.dylib',
+        ('Windows', 'AMD64'): 'windows_x86_64/wvlet.dll',
+        ('Windows', 'ARM64'): 'windows_arm64/wvlet.dll',
     }
     
     key = (system, machine)

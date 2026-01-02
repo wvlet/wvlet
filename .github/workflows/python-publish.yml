@@ -46,9 +46,13 @@ jobs:
           mkdir -p native-libs/linux-x64
           mkdir -p native-libs/linux-arm64
           mkdir -p native-libs/mac-arm64
+          mkdir -p native-libs/windows-x64
+          mkdir -p native-libs/windows-arm64
           touch native-libs/linux-x64/libwvlet.so
           touch native-libs/linux-arm64/libwvlet.so
           touch native-libs/mac-arm64/libwvlet.dylib
+          touch native-libs/windows-x64/wvlet.dll
+          touch native-libs/windows-arm64/wvlet.dll
       
       - name: Display structure of downloaded files
         run: |
@@ -64,7 +68,9 @@ jobs:
           mkdir -p sdks/python/wvlet/libs/linux_x86_64
           mkdir -p sdks/python/wvlet/libs/linux_aarch64
           mkdir -p sdks/python/wvlet/libs/darwin_arm64
-          
+          mkdir -p sdks/python/wvlet/libs/windows_x86_64
+          mkdir -p sdks/python/wvlet/libs/windows_arm64
+
           # Copy the libraries to the appropriate directories if they exist
           if [ -f "native-libs/linux-x64/libwvlet.so" ]; then
             cp native-libs/linux-x64/libwvlet.so sdks/python/wvlet/libs/linux_x86_64/
@@ -72,21 +78,35 @@ jobs:
             echo "Warning: linux-x64 library not found, creating placeholder"
             touch sdks/python/wvlet/libs/linux_x86_64/libwvlet.so
           fi
-          
+
           if [ -f "native-libs/linux-arm64/libwvlet.so" ]; then
             cp native-libs/linux-arm64/libwvlet.so sdks/python/wvlet/libs/linux_aarch64/
           else
             echo "Warning: linux-arm64 library not found, creating placeholder"
             touch sdks/python/wvlet/libs/linux_aarch64/libwvlet.so
           fi
-          
+
           if [ -f "native-libs/mac-arm64/libwvlet.dylib" ]; then
             cp native-libs/mac-arm64/libwvlet.dylib sdks/python/wvlet/libs/darwin_arm64/
           else
             echo "Warning: mac-arm64 library not found, creating placeholder"
             touch sdks/python/wvlet/libs/darwin_arm64/libwvlet.dylib
           fi
-          
+
+          if [ -f "native-libs/windows-x64/wvlet.dll" ]; then
+            cp native-libs/windows-x64/wvlet.dll sdks/python/wvlet/libs/windows_x86_64/
+          else
+            echo "Warning: windows-x64 library not found, creating placeholder"
+            touch sdks/python/wvlet/libs/windows_x86_64/wvlet.dll
+          fi
+
+          if [ -f "native-libs/windows-arm64/wvlet.dll" ]; then
+            cp native-libs/windows-arm64/wvlet.dll sdks/python/wvlet/libs/windows_arm64/
+          else
+            echo "Warning: windows-arm64 library not found, creating placeholder"
+            touch sdks/python/wvlet/libs/windows_arm64/wvlet.dll
+          fi
+
           # Display the final structure
           ls -laR sdks/python/wvlet/libs/
       
@@ -114,17 +134,23 @@ jobs:
               # Extract wheel name components
               name=$(echo $wheel | cut -d'-' -f1)
               version=$(echo $wheel | cut -d'-' -f2)
-              
+
               # Create wheels for each platform
               # Linux x86_64
               cp $wheel ${name}-${version}-py3-none-manylinux2014_x86_64.whl
-              
+
               # Linux ARM64
               cp $wheel ${name}-${version}-py3-none-manylinux2014_aarch64.whl
-              
+
               # macOS ARM64
               cp $wheel ${name}-${version}-py3-none-macosx_11_0_arm64.whl
-              
+
+              # Windows x86_64
+              cp $wheel ${name}-${version}-py3-none-win_amd64.whl
+
+              # Windows ARM64
+              cp $wheel ${name}-${version}-py3-none-win_arm64.whl
+
               # Remove the original any wheel
               rm $wheel
             fi
@@ -159,7 +185,7 @@ jobs:
       (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'test-wheels'))
     strategy:
       matrix:
-        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest]
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest]
         python-version: ['3.9', '3.11', '3.13']
     runs-on: ${{ matrix.os }}
     steps:
@@ -189,6 +215,9 @@ jobs:
           if [[ "${{ runner.os }}" == "macOS" ]]; then
             echo "Installing macOS ARM64 wheel..."
             pip install dist/wvlet-*-py3-none-macosx_11_0_arm64.whl
+          elif [[ "${{ runner.os }}" == "Windows" ]]; then
+            echo "Installing Windows x86_64 wheel..."
+            pip install dist/wvlet-*-py3-none-win_amd64.whl
           elif [[ "${{ runner.arch }}" == "ARM64" ]]; then
             echo "Installing Linux ARM64 wheel..."
             pip install dist/wvlet-*-py3-none-manylinux2014_aarch64.whl
@@ -196,6 +225,7 @@ jobs:
             echo "Installing Linux x86_64 wheel..."
             pip install dist/wvlet-*-py3-none-manylinux2014_x86_64.whl
           fi
+        shell: bash
       
       - name: Test import
         run: |
