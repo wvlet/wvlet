@@ -212,7 +212,8 @@ jobs:
     name: Collect wvc dll
     runs-on: ubuntu-latest
     needs: [build_native, build_windows]
-    if: ${{ always() }}
+    # Only run if at least one upstream job succeeded (skip when all are skipped or failed)
+    if: ${{ always() && (needs.build_native.result == 'success' || needs.build_windows.result == 'success') }}
     steps:
       - name: Merge artifacts
         uses: actions/upload-artifact/merge@v6
