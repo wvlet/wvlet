@@ -75,10 +75,10 @@
           '';
         };
 
-        # CI shell - minimal dependencies for GitHub Actions (Java/SBT provided externally)
+        # CI shell - dependencies for GitHub Actions (includes sbt for cross-platform consistency)
         devShells.ci = pkgs.mkShell {
           name = "wvlet-ci";
-          nativeBuildInputs = buildDeps;
+          nativeBuildInputs = buildDeps ++ [ pkgs.sbt pkgs.gnumake ];
 
           shellHook = ''
             ${setupHook}
