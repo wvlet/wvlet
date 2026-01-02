@@ -206,12 +206,18 @@ lazy val wvcLib = project
     buildSettings,
     name := "wvc-lib",
     nativeConfig ~= { c =>
-      c.withBuildTarget(BuildTarget.libraryDynamic)
+      val baseConfig = c
+        .withBuildTarget(BuildTarget.libraryDynamic)
         // Generates libwvlet.so, libwvlet.dylib, libwvlet.dll
         .withBaseName("wvlet")
         .withSourceLevelDebuggingConfig(_.enableAll) // enable generation of debug information
         // Boehm GC's non-moving behavior helps avoid Segmentation Fault in DLLs
         .withGC(GC.boehm)
+      // Allow overriding target triple via environment variable for cross-compilation
+      sys.env.get("SCALANATIVE_TARGET_TRIPLE") match {
+        case Some(triple) => baseConfig.withTargetTriple(triple)
+        case None         => baseConfig
+      }
     }
   )
   .dependsOn(wvc)

@@ -120,8 +120,10 @@ jobs:
         include:
           - os: windows-latest
             arch: x64
+            target_triple: x86_64-pc-windows-msvc
           - os: windows-11-arm
             arch: arm64
+            target_triple: aarch64-pc-windows-msvc
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
@@ -149,9 +151,12 @@ jobs:
           $scalaVersion = $scalaVersion.Trim()
           echo "SCALA_VERSION=$scalaVersion" >> $env:GITHUB_ENV
           echo "SCALA_VERSION: $scalaVersion"
+          # Set target triple for Scala Native
+          echo "SCALANATIVE_TARGET_TRIPLE=${{ matrix.target_triple }}" >> $env:GITHUB_ENV
         shell: pwsh
       - name: Build native binary
         run: |
+          echo "Target triple: %SCALANATIVE_TARGET_TRIPLE%"
           sbt wvcLib/nativeLinkReleaseFast
         shell: cmd
       - name: Upload native binary
