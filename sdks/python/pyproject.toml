@@ -18,6 +18,7 @@ classifiers = [
     "License :: OSI Approved :: Apache Software License",
     "Operating System :: POSIX :: Linux",
     "Operating System :: MacOS :: MacOS X",
+    "Operating System :: Microsoft :: Windows",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
@@ -45,8 +46,10 @@ packages = ["wvlet"]
 [tool.setuptools.package-data]
 wvlet = [
     "libs/linux_x86_64/*.so",
-    "libs/linux_aarch64/*.so", 
+    "libs/linux_aarch64/*.so",
     "libs/darwin_arm64/*.dylib",
+    "libs/windows_x86_64/*.dll",
+    "libs/windows_arm64/*.dll",
 ]
 
 [tool.setuptools_scm]
