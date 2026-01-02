@@ -208,6 +208,7 @@ jobs:
         run: |
           echo "Available wheels:"
           ls -la dist/
+        shell: bash
       
       - name: Install wheel
         run: |
