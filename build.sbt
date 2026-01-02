@@ -105,7 +105,8 @@ def generateWvletLib(path: File, packageName: String, className: String): String
 
   def resourceDefs: String = wvFiles
     .map { f =>
-      val name = f.relativeTo(srcDir).get.getPath.stripSuffix(".wv").replaceAll("/", "__")
+      // Use replace instead of replaceAll to handle both Unix and Windows path separators
+      val name = f.relativeTo(srcDir).get.getPath.stripSuffix(".wv").replace("/", "__").replace("\\", "__")
 
       val methodName = name.replaceAll("-", "_")
       methodNames += methodName
