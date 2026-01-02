@@ -34,12 +34,22 @@
           git
         ];
 
+        # Common shell hook for setting up library paths
+        setupHook = ''
+          # Set library paths for Scala Native
+          export LIBRARY_PATH="${pkgs.boehmgc}/lib:${pkgs.openssl.out}/lib:${pkgs.zlib}/lib''${LIBRARY_PATH:+:$LIBRARY_PATH}"
+          export C_INCLUDE_PATH="${pkgs.boehmgc.dev}/include:${pkgs.openssl.dev}/include:${pkgs.zlib.dev}/include''${C_INCLUDE_PATH:+:$C_INCLUDE_PATH}"
+
+          ${pkgs.lib.optionalString pkgs.stdenv.isDarwin ''
+            export MACOSX_DEPLOYMENT_TARGET="${pkgs.stdenv.hostPlatform.darwinMinVersion}"
+          ''}
+        '';
+
       in {
         # Development shell with all dependencies
         devShells.default = pkgs.mkShell {
           name = "wvlet-dev";
           nativeBuildInputs = devDeps ++ buildDeps;
-          buildInputs = with pkgs; [ boehmgc openssl zlib ];
 
           shellHook = ''
             echo "Wvlet Scala Native development environment"
@@ -52,13 +62,7 @@
             echo "  zlib:    ${pkgs.zlib}"
             echo ""
 
-            # Set library paths for Scala Native
-            export LIBRARY_PATH="${pkgs.boehmgc}/lib:${pkgs.openssl.out}/lib:${pkgs.zlib}/lib''${LIBRARY_PATH:+:$LIBRARY_PATH}"
-            export C_INCLUDE_PATH="${pkgs.boehmgc.dev}/include:${pkgs.openssl.dev}/include:${pkgs.zlib.dev}/include''${C_INCLUDE_PATH:+:$C_INCLUDE_PATH}"
-
-            ${pkgs.lib.optionalString pkgs.stdenv.isDarwin ''
-              export MACOSX_DEPLOYMENT_TARGET="${pkgs.stdenv.hostPlatform.darwinMinVersion}"
-            ''}
+            ${setupHook}
 
             echo "Environment:"
             echo "  LIBRARY_PATH=$LIBRARY_PATH"
@@ -75,16 +79,9 @@
         devShells.ci = pkgs.mkShell {
           name = "wvlet-ci";
           nativeBuildInputs = buildDeps;
-          buildInputs = with pkgs; [ boehmgc openssl zlib ];
 
           shellHook = ''
-            # Set library paths for Scala Native
-            export LIBRARY_PATH="${pkgs.boehmgc}/lib:${pkgs.openssl.out}/lib:${pkgs.zlib}/lib''${LIBRARY_PATH:+:$LIBRARY_PATH}"
-            export C_INCLUDE_PATH="${pkgs.boehmgc.dev}/include:${pkgs.openssl.dev}/include:${pkgs.zlib.dev}/include''${C_INCLUDE_PATH:+:$C_INCLUDE_PATH}"
-
-            ${pkgs.lib.optionalString pkgs.stdenv.isDarwin ''
-              export MACOSX_DEPLOYMENT_TARGET="${pkgs.stdenv.hostPlatform.darwinMinVersion}"
-            ''}
+            ${setupHook}
 
             # Export paths for use in CI scripts
             echo "LIBRARY_PATH=$LIBRARY_PATH" >> $GITHUB_ENV 2>/dev/null || true
