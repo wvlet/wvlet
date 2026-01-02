@@ -111,10 +111,18 @@ jobs:
           path: wvc-lib/target/scala-${{ env.SCALA_VERSION }}/libwvlet.${{ matrix.suffix }}
 
   build_windows:
-    name: Build native on Windows
+    name: Build native on Windows (${{ matrix.arch }})
     needs: changes
     if: ${{ needs.changes.outputs.src == 'true' }}
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            arch: x64
+          - os: windows-11-arm
+            arch: arm64
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-java@v5
@@ -128,13 +136,6 @@ jobs:
       - name: Install LLVM and Clang
         run: |
           choco install llvm -y
-      - name: Install Boehm GC
-        run: |
-          # Download and extract Boehm GC for Windows
-          Invoke-WebRequest -Uri "https://github.com/pshved/libatomic_ops-release/releases/download/v7.8.0/libatomic_ops-7.8.0.zip" -OutFile "libatomic_ops.zip"
-          Expand-Archive -Path "libatomic_ops.zip" -DestinationPath "C:\libatomic_ops"
-          # For now, we'll try building without pre-installed gc and see what happens
-          # Scala Native on Windows might handle this differently
       - name: Set SCALA_VERSION env
         run: |
           $scalaVersion = Get-Content SCALA_VERSION -Raw
@@ -149,7 +150,7 @@ jobs:
       - name: Upload native binary
         uses: actions/upload-artifact@v6
         with:
-          name: windows-x64
+          name: windows-${{ matrix.arch }}
           path: wvc-lib/target/scala-${{ env.SCALA_VERSION }}/libwvlet.dll
 
   collect_artifact:
