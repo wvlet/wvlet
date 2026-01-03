@@ -3,7 +3,7 @@ import scala.scalanative.build.GC
 import scala.scalanative.build.Mode
 import scala.scalanative.build.NativeConfig
 
-val AIRFRAME_VERSION = "2025.1.22"
+val AIRFRAME_VERSION = "2025.1.23"
 
 val AIRSPEC_VERSION        = AIRFRAME_VERSION
 val TRINO_VERSION          = "476"
@@ -106,7 +106,13 @@ def generateWvletLib(path: File, packageName: String, className: String): String
   def resourceDefs: String = wvFiles
     .map { f =>
       // Use replace instead of replaceAll to handle both Unix and Windows path separators
-      val name = f.relativeTo(srcDir).get.getPath.stripSuffix(".wv").replace("/", "__").replace("\\", "__")
+      val name = f
+        .relativeTo(srcDir)
+        .get
+        .getPath
+        .stripSuffix(".wv")
+        .replace("/", "__")
+        .replace("\\", "__")
 
       val methodName = name.replaceAll("-", "_")
       methodNames += methodName
@@ -215,8 +221,10 @@ lazy val wvcLib = project
         .withGC(GC.boehm)
       // Allow overriding target triple via environment variable for cross-compilation
       sys.env.get("SCALANATIVE_TARGET_TRIPLE") match {
-        case Some(triple) => baseConfig.withTargetTriple(triple)
-        case None         => baseConfig
+        case Some(triple) =>
+          baseConfig.withTargetTriple(triple)
+        case None =>
+          baseConfig
       }
     }
   )
