@@ -106,7 +106,13 @@ def generateWvletLib(path: File, packageName: String, className: String): String
   def resourceDefs: String = wvFiles
     .map { f =>
       // Use replace instead of replaceAll to handle both Unix and Windows path separators
-      val name = f.relativeTo(srcDir).get.getPath.stripSuffix(".wv").replace("/", "__").replace("\\", "__")
+      val name = f
+        .relativeTo(srcDir)
+        .get
+        .getPath
+        .stripSuffix(".wv")
+        .replace("/", "__")
+        .replace("\\", "__")
 
       val methodName = name.replaceAll("-", "_")
       methodNames += methodName
@@ -215,8 +221,10 @@ lazy val wvcLib = project
         .withGC(GC.boehm)
       // Allow overriding target triple via environment variable for cross-compilation
       sys.env.get("SCALANATIVE_TARGET_TRIPLE") match {
-        case Some(triple) => baseConfig.withTargetTriple(triple)
-        case None         => baseConfig
+        case Some(triple) =>
+          baseConfig.withTargetTriple(triple)
+        case None =>
+          baseConfig
       }
     }
   )
@@ -516,7 +524,7 @@ def uiSettings: Seq[Setting[?]] = Seq(
 
 def linkerConfig(config: StandardConfig): StandardConfig = {
   config
-    // Check IR works properly since Scala.js 1.20.1 https://github.com/scala-js/scala-js/pull/4867
+    // Check IR works properly since Scala.js 1.20.2 https://github.com/scala-js/scala-js/pull/4867
     .withCheckIR(true)
     .withSourceMap(true)
     .withModuleKind(ModuleKind.ESModule)
