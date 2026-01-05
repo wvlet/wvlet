@@ -36,6 +36,7 @@ import wvlet.lang.cli.terminal.REPLTerminal
 import wvlet.lang.compiler.parser.*
 import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.compiler.SourceFile
+import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.compiler.query.QueryMetric
 import wvlet.lang.compiler.query.QueryProgressMonitor
 import wvlet.lang.model.plan.QueryStatement
@@ -56,8 +57,10 @@ import scala.io.AnsiColor
   *   Script runner for executing queries
   * @param terminal
   *   Terminal implementation (JLine3 for interactive, Headless for non-interactive)
+  * @param workEnv
+  *   Working environment for file operations
   */
-class WvletREPL(runner: WvletScriptRunner, terminal: REPLTerminal)
+class WvletREPL(runner: WvletScriptRunner, terminal: REPLTerminal, workEnv: WorkEnv)
     extends AutoCloseable
     with LogSupport:
   import WvletREPL.*
@@ -311,6 +314,48 @@ class WvletREPL(runner: WvletScriptRunner, terminal: REPLTerminal)
             val catalog = runner.getCurrentCatalog
             val schema  = runner.getCurrentSchema
             info(s"Current context: catalog=${catalog}, schema=${schema}")
+          case "edit" =>
+            val args = trimmedLine.split("\\s+", 2)
+            if args.length < 2 then
+              error("Usage: edit <file>")
+            else
+              val filePath = args(1)
+              FileEditor.editFile(filePath, workEnv)
+          case "cat" =>
+            val args = trimmedLine.split("\\s+", 2)
+            if args.length < 2 then
+              error("Usage: cat <file>")
+            else
+              val filePath = args(1)
+              FileEditor.readFile(filePath, workEnv) match
+                case Some(content) =>
+                  println(content)
+                case None =>
+                // Error already logged by FileEditor
+          case "save" =>
+            val args = trimmedLine.split("\\s+", 2)
+            if args.length < 2 then
+              error("Usage: save <file>")
+            else
+              val filePath = args(1)
+              lastOutput match
+                case Some(output) =>
+                  FileEditor.saveFile(filePath, output.line, workEnv)
+                case None =>
+                  error("No query to save. Run a query first.")
+          case "new" =>
+            val args = trimmedLine.split("\\s+", 2)
+            if args.length < 2 then
+              error("Usage: new <file>")
+            else
+              val filePath = args(1)
+              FileEditor.newFile(filePath, workEnv)
+          case "ls" =>
+            val files = FileEditor.listWvFiles(workEnv, recursive = true)
+            if files.isEmpty then
+              info("No .wv files found in the working directory")
+            else
+              println(files.mkString("\n"))
           case stmt =>
             runStmt(trimmedLine)
         end match
@@ -355,7 +400,12 @@ object WvletREPL extends LogSupport:
     "clip-query",
     "rows",
     "col-width",
-    "context"
+    "context",
+    "edit",
+    "cat",
+    "save",
+    "new",
+    "ls"
   )
 
   private def helpMessage: String =
@@ -371,6 +421,13 @@ object WvletREPL extends LogSupport:
       | col-width  : Set the maximum column width to display (default: 150)
       | git        : Run a git command in the shell
       | gh         : Run a GitHub command in the shell
+      |
+      |[file operations]
+      | edit <file>: Open a .wv file in external editor ($EDITOR, or vi/nano)
+      | new <file> : Create a new .wv file and open in editor
+      | cat <file> : Display file contents
+      | save <file>: Save the last query to a file
+      | ls         : List .wv files in the working directory
       |""".stripMargin
 
   object Keys:

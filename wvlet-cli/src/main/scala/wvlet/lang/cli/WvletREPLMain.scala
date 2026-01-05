@@ -100,8 +100,8 @@ class WvletREPLMain(cliOption: WvletGlobalOption, replOpts: WvletREPLOption) ext
           HeadlessTerminal()
       }
       .bind[WvletREPL]
-      .toProvider { (runner: WvletScriptRunner, terminal: REPLTerminal) =>
-        WvletREPL(runner, terminal)
+      .toProvider { (runner: WvletScriptRunner, terminal: REPLTerminal, workEnv: WorkEnv) =>
+        WvletREPL(runner, terminal, workEnv)
       }
       .bindInstance[Profile](currentProfile)
       .bindInstance[WorkEnv](WorkEnv(path = replOpts.workFolder, logLevel = cliOption.logLevel))
