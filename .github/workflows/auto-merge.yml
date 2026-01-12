@@ -16,7 +16,7 @@ jobs:
       - name: Dependabot metadata
         id: metadata
         if: ${{ github.actor == 'dependabot[bot]' }}
-        uses: dependabot/fetch-metadata@v2.4.0
+        uses: dependabot/fetch-metadata@v2.5.0
       - name: Enable auto-merge PR for minor updates
         if: ${{ steps.metadata.outputs.update-type != 'version-update:semver-major' }}
         run: gh pr merge --squash --auto "${{ github.event.pull_request.html_url }}"
