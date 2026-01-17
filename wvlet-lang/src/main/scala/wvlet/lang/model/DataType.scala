@@ -434,11 +434,10 @@ object DataType extends LogSupport:
     "function"
   ).map(x => Name.typeName(x))
 
-  val knownTypeNames: Set[String] =
-    (
-      primitiveTypeTable.map(_._1.name) ++ knownGenericTypeNames.map(_.name) ++
-        Set("array", "map", "row", "struct")
-    ).toSet
+  val knownTypeNames: Set[String] = (
+    primitiveTypeTable.map(_._1.name) ++ knownGenericTypeNames.map(_.name) ++
+      Set("array", "map", "row", "struct")
+  ).toSet
 
   def isKnownTypeName(s: String): Boolean = knownTypeNames.contains(s)
 
