@@ -55,12 +55,13 @@ case class LocalFileCompleter(workEnv: WorkEnv) extends Completer:
 
     // Check if cursor is inside the quoted string
     val insideQuotes =
-      quoteStart >= 0 &&
-        (input.indexOf(quoteChar, quoteStart + 1) match
+      quoteStart >= 0 && (
+        input.indexOf(quoteChar, quoteStart + 1) match
           case -1 =>
             true
           case end =>
-            cursor <= end)
+            cursor <= end
+      )
 
     if insideQuotes then
       // Extract the in-quote prefix up to the cursor
@@ -138,11 +139,12 @@ case class LocalFileCompleter(workEnv: WorkEnv) extends Completer:
             else
               f.getName
           val valuePath =
-            escapeQuotes(relPath, quoteChar) +
-              (if f.isDirectory && !relPath.endsWith("/") then
-                 "/"
-               else
-                 "")
+            escapeQuotes(relPath, quoteChar) + (
+              if f.isDirectory && !relPath.endsWith("/") then
+                "/"
+              else
+                ""
+            )
           // Do NOT wrap with quotes; the user is already inside a quoted string
           val replacement = valuePath
           candidates.add(

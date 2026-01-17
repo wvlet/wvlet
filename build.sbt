@@ -155,8 +155,7 @@ lazy val lang = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     buildSettings,
     name := "wvlet-lang",
     // Embed the standard library in the jar
-    Compile / unmanagedResourceDirectories +=
-      (ThisBuild / baseDirectory).value / "wvlet-stdlib",
+    Compile / unmanagedResourceDirectories += (ThisBuild / baseDirectory).value / "wvlet-stdlib",
     libraryDependencies ++=
       Seq(
         "org.wvlet.airframe" %% "airframe" % AIRFRAME_VERSION,
@@ -191,8 +190,7 @@ val specRunnerSettings = Seq(
   // Fork JVM to enable JVM options for Trino
   Test / fork := true,
   // When forking, the base directory should be set to the root directory
-  Test / baseDirectory :=
-    (ThisBuild / baseDirectory).value,
+  Test / baseDirectory := (ThisBuild / baseDirectory).value,
   // Watch changes of example .wv files upon testing
   Test / watchSources ++=
     ((ThisBuild / baseDirectory).value / "spec" ** "*.wv").get ++
@@ -320,9 +318,8 @@ lazy val cli = project
     name := "wvlet-cli",
     // Need to fork a JVM to avoid DuckDB crash while running runner/cli test simultaneously
     Test / fork          := true,
-    Test / baseDirectory :=
-      (ThisBuild / baseDirectory).value,
-    packQuick :=
+    Test / baseDirectory := (ThisBuild / baseDirectory).value,
+    packQuick            :=
       // Run the default pack task
       (Runtime / pack).value,
     pack :=
@@ -445,8 +442,7 @@ lazy val server = project
         "org.wvlet.airframe" %% "airframe-launcher"   % AIRFRAME_VERSION,
         "org.wvlet.airframe" %% "airframe-http-netty" % AIRFRAME_VERSION
       ),
-    reStart / baseDirectory :=
-      (ThisBuild / baseDirectory).value
+    reStart / baseDirectory := (ThisBuild / baseDirectory).value
   )
   .dependsOn(api.jvm, client.jvm, runner)
 
