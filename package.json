@@ -20,7 +20,7 @@
     "@tailwindcss/vite": "^4.1.18",
     "apache-arrow": "^21.1.0",
     "monaco-editor": "^0.55.1",
-    "rollup": "^4.55.3"
+    "rollup": "^4.56.0"
   },
   "devDependencies": {
     "@rollup/plugin-replace": "^6.0.3",
