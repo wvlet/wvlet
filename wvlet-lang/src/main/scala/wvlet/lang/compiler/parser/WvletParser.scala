@@ -480,13 +480,26 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     names.toList
 
   /**
-    * Parse flow switch expression: `switch { case cond -> target; ... }`
+    * Parse flow route expression: `route { case cond -> target; ... }` or `route by hash(key) {
+    * case 50% -> target; ... }`
+    *
+    * Supports both conditional routing (case expr -> target) and percentage-based routing (case N%
+    * -> target).
     */
-  def flowSwitchExpr(input: Relation): FlowSwitch = node {
-    val t = consume(WvletToken.SWITCH)
+  def flowRouteExpr(input: Relation): FlowRoute = node {
+    val t = consume(WvletToken.ROUTE)
+
+    // Parse optional 'by' clause for deterministic partitioning
+    val byExpr: Option[Expression] =
+      if scanner.lookAhead().token == WvletToken.BY then
+        consume(WvletToken.BY)
+        Some(expression())
+      else
+        None
+
     consume(WvletToken.L_BRACE)
 
-    val cases      = ListBuffer.empty[FlowCase]
+    val cases      = ListBuffer.empty[FlowRouteCase]
     var elseTarget = Option.empty[NameExpr]
 
     while scanner.lookAhead().token == WvletToken.CASE ||
@@ -496,65 +509,42 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       caseT.token match
         case WvletToken.CASE =>
           consume(WvletToken.CASE)
-          val cond = expression()
+          val caseExpr = expression()
           consume(WvletToken.R_ARROW)
           val target = identifier()
-          cases += FlowCase(cond, target, spanFrom(caseT))
+
+          // When 'by' clause is present, integer cases are treated as percentages
+          // Otherwise, all cases are treated as conditions
+          val routeCase =
+            caseExpr match
+              case LongLiteral(value, _, _) if byExpr.isDefined =>
+                // Pattern: route by hash(key) { case 50 -> target }
+                if value < 0 || value > 100 then
+                  throw StatusCode
+                    .SYNTAX_ERROR
+                    .newException(
+                      s"Expected percentage in [0, 100], but got: ${value}",
+                      caseT.sourceLocation
+                    )
+                FlowRouteCase(None, Some(value.toInt), target, spanFrom(caseT))
+              case _ =>
+                // Conditional routing: route { case expr -> target }
+                FlowRouteCase(Some(caseExpr), None, target, spanFrom(caseT))
+          cases += routeCase
         case WvletToken.ELSE =>
           consume(WvletToken.ELSE)
           consume(WvletToken.R_ARROW)
           elseTarget = Some(identifier())
         case _ =>
           ()
+      end match
       // Skip optional semicolons
       while scanner.lookAhead().token == WvletToken.SEMICOLON do
         consume(WvletToken.SEMICOLON)
+    end while
 
     consume(WvletToken.R_BRACE)
-    FlowSwitch(input, cases.toList, elseTarget, spanFrom(t))
-  }
-
-  /**
-    * Parse flow split expression: `split { case 50 -> target; ... }` Percentages are specified as
-    * integers (0-100).
-    */
-  def flowSplitExpr(input: Relation): FlowSplit = node {
-    val t = consume(WvletToken.SPLIT)
-    consume(WvletToken.L_BRACE)
-
-    val cases = ListBuffer.empty[FlowSplitCase]
-
-    while scanner.lookAhead().token == WvletToken.CASE do
-      val caseT = consume(WvletToken.CASE)
-      // Parse percentage as integer
-      val percentExpr = expression()
-      val percent     =
-        percentExpr match
-          case LongLiteral(value, _, _) =>
-            if value < 0 || value > 100 then
-              throw StatusCode
-                .SYNTAX_ERROR
-                .newException(
-                  s"Expected integer percentage in [0, 100] for split case, but got: ${value}",
-                  caseT.sourceLocation
-                )
-            value.toInt
-          case other =>
-            throw StatusCode
-              .SYNTAX_ERROR
-              .newException(
-                s"Expected integer percentage (0-100) in split case, got: ${other}",
-                caseT.sourceLocation
-              )
-      consume(WvletToken.R_ARROW)
-      val target = identifier()
-      cases += FlowSplitCase(percent, target, spanFrom(caseT))
-      // Skip optional semicolons
-      while scanner.lookAhead().token == WvletToken.SEMICOLON do
-        consume(WvletToken.SEMICOLON)
-
-    consume(WvletToken.R_BRACE)
-    FlowSplit(input, cases.toList, spanFrom(t))
+    FlowRoute(input, byExpr, cases.toList, elseTarget, spanFrom(t))
   }
 
   /**
@@ -1537,10 +1527,8 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       case WvletToken.DEBUG =>
         debugExpr(input)
       // Flow operators
-      case WvletToken.SWITCH =>
-        flowSwitchExpr(input)
-      case WvletToken.SPLIT =>
-        flowSplitExpr(input)
+      case WvletToken.ROUTE =>
+        flowRouteExpr(input)
       case WvletToken.FORK =>
         flowForkExpr(input)
       case WvletToken.WAIT =>

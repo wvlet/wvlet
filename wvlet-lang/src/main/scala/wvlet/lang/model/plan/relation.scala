@@ -460,63 +460,53 @@ case class StageDef(
     s"StageDef[${name.name}]${inputs}${deps}${bodyStr}"
 
 /**
-  * FlowSwitch represents conditional routing based on expressions.
+  * FlowRoute represents unified routing - both conditional and percentage-based.
   *
-  * Routes data to different stages based on case conditions. Each case has a condition expression
-  * and a target stage name.
+  * Routes data to different stages based on conditions or percentages.
   *
-  * Example:
+  * Example (conditional):
   * {{{
-  * switch {
-  *   case _.email_opens > 5  -> high_engagement
-  *   case _.email_opens <= 2 -> low_engagement
-  *   else                    -> moderate_engagement
+  * route {
+  *   case _.age > 18 -> adult
+  *   else -> minor
+  * }
+  * }}}
+  *
+  * Example (percentage with deterministic partitioning):
+  * {{{
+  * route by hash(user_id) {
+  *   case 50% -> variant_a
+  *   case 50% -> variant_b
   * }
   * }}}
   */
-case class FlowSwitch(
+case class FlowRoute(
     child: Relation,
-    cases: List[FlowCase],
+    byExpr: Option[Expression],
+    cases: List[FlowRouteCase],
     elseTarget: Option[NameExpr],
     span: Span
 ) extends UnaryRelation:
   override def relationType: RelationType = child.relationType
 
 /**
-  * FlowCase represents a single case in a FlowSwitch.
+  * FlowRouteCase represents a single case in a FlowRoute.
+  *
+  * Either condition or percentage should be set, not both.
   *
   * @param condition
-  *   The condition expression (can be a boolean expression or percentage)
-  * @param target
-  *   The target stage name to route to
-  */
-case class FlowCase(condition: Expression, target: NameExpr, span: Span)
-
-/**
-  * FlowSplit represents percentage-based routing (A/B testing).
-  *
-  * Routes data to different stages based on percentages. The percentages should sum to 100.
-  *
-  * Example:
-  * {{{
-  * split {
-  *   case 50% -> variant_a
-  *   case 50% -> variant_b
-  * }
-  * }}}
-  */
-case class FlowSplit(child: Relation, cases: List[FlowSplitCase], span: Span) extends UnaryRelation:
-  override def relationType: RelationType = child.relationType
-
-/**
-  * FlowSplitCase represents a single case in a FlowSplit.
-  *
+  *   The condition expression for conditional routing (e.g., _.age > 18)
   * @param percentage
-  *   The percentage of data to route (0-100)
+  *   The percentage for percentage-based routing (0-100)
   * @param target
   *   The target stage name to route to
   */
-case class FlowSplitCase(percentage: Int, target: NameExpr, span: Span)
+case class FlowRouteCase(
+    condition: Option[Expression],
+    percentage: Option[Int],
+    target: NameExpr,
+    span: Span
+)
 
 /**
   * FlowFork represents parallel execution of multiple stages.

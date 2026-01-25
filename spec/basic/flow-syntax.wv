@@ -14,10 +14,10 @@ flow ParameterizedFlow(segment: string) = {
 }
 ;
 
--- Flow with switch (conditional routing)
-flow SwitchFlow = {
+-- Flow with route (conditional routing)
+flow ConditionalRouteFlow = {
   stage entry = from users
-  stage check = from entry | switch {
+  stage check = from entry | route {
     case _.age > 18 -> adult
     else -> minor
   }
@@ -54,10 +54,10 @@ flow ForkFlow = {
 }
 ;
 
--- Flow with split (percentage-based routing)
+-- Flow with route by (percentage-based routing with deterministic partitioning)
 flow ABTestFlow = {
   stage entry = from users
-  stage test = from entry | split {
+  stage test = from entry | route by hash(user_id) {
     case 50 -> variant_a
     case 50 -> variant_b
   }
@@ -69,7 +69,7 @@ flow ABTestFlow = {
 -- Flow with jump to another flow
 flow MainFlow = {
   stage entry = from users
-  stage check = from entry | switch {
+  stage check = from entry | route {
     case _.active -> active_path
     else -> inactive_path
   }

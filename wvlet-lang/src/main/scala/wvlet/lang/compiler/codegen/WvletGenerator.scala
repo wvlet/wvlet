@@ -467,28 +467,23 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
         code(s) {
           group(wl("stage", text(s.name.name), "=", deps, body))
         }
-      case sw: FlowSwitch =>
-        val prev  = relation(sw.child)
-        val cases = sw
+      case r: FlowRoute =>
+        val prev     = relation(r.child)
+        val byClause = r.byExpr.map(e => wl("by", expr(e))).getOrElse(empty)
+        val cases    = r
           .cases
           .map { c =>
-            wl("case", expr(c.condition), "->", expr(c.target))
+            c.percentage match
+              case Some(pct) =>
+                wl("case", text(s"${pct}"), "->", expr(c.target))
+              case None =>
+                wl("case", expr(c.condition.get), "->", expr(c.target))
           }
-        val elseCase = sw.elseTarget.map(t => wl("else", "->", expr(t)))
+        val elseCase = r.elseTarget.map(t => wl("else", "->", expr(t)))
         prev /
-          code(sw) {
-            text("switch {") + nest(linebreak + lines(cases ++ elseCase.toList)) + linebreak + "}"
-          }
-      case sp: FlowSplit =>
-        val prev  = relation(sp.child)
-        val cases = sp
-          .cases
-          .map { c =>
-            wl("case", text(s"${c.percentage}"), "->", expr(c.target))
-          }
-        prev /
-          code(sp) {
-            text("split {") + nest(linebreak + lines(cases)) + linebreak + "}"
+          code(r) {
+            wl("route", byClause) + text(" {") + nest(linebreak + lines(cases ++ elseCase.toList)) +
+              linebreak + "}"
           }
       case f: FlowFork =>
         val prev   = relation(f.child)
