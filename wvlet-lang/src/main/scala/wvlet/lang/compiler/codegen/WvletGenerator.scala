@@ -127,6 +127,30 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
     else
       wl(dd, wl(n.postComments.map(c => text(c.str))))
 
+  /**
+    * Flatten a Doc tree replacing VList (newlines) with explicit pipe operators. This is used for
+    * stage bodies in flows where newline-as-implicit-pipe doesn't work due to parsing ambiguity.
+    */
+  private def flattenWithPipes(d: Doc): Doc =
+    import CodeFormatter.*
+    d match
+      case VList(d1, d2) =>
+        flattenWithPipes(d1) + text(" | ") + flattenWithPipes(d2)
+      case HList(d1, d2) =>
+        flattenWithPipes(d1) + flattenWithPipes(d2)
+      case Nest(inner) =>
+        flattenWithPipes(inner)
+      case Block(inner) =>
+        ws + flattenWithPipes(inner)
+      case Group(inner) =>
+        flattenWithPipes(inner)
+      case NewLine | WhiteSpaceOrNewLine | MaybeNewLine =>
+        ws
+      case LineBreak =>
+        d // preserve explicit line breaks
+      case _ =>
+        d
+
   private def ddl(d: DDL)(using sc: SyntaxContext): Doc =
     d match
       case _ =>
@@ -428,6 +452,78 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
         code(s) {
           wl("show", s.showType.toString, s.inExpr.map(x => wl("in", expr(x))))
         }
+      // Flow-related relations
+      case s: StageDef =>
+        // Note: inputRefs are tracked for dependency analysis but the body already contains
+        // the full relation (including 'from' clause), so we only output the body.
+        // Use flattenWithPipes to output stage body inline with explicit pipes,
+        // avoiding parsing ambiguity with newline-as-implicit-pipe inside flows.
+        val deps =
+          if s.dependsOn.isEmpty then
+            empty
+          else
+            wl("depends on", cl(s.dependsOn.map(d => expr(d))))
+        val body = s.body.map(b => flattenWithPipes(relation(b))).getOrElse(empty)
+        code(s) {
+          group(wl("stage", text(s.name.name), "=", deps, body))
+        }
+      case r: FlowRoute =>
+        val prev     = relation(r.child)
+        val byClause = r.byExpr.map(e => wl("by", expr(e))).getOrElse(empty)
+        val cases    = r
+          .cases
+          .map { c =>
+            c.percentage match
+              case Some(pct) =>
+                wl("case", text(s"${pct}"), "->", expr(c.target))
+              case None =>
+                wl("case", expr(c.condition.get), "->", expr(c.target))
+          }
+        val elseCase = r.elseTarget.map(t => wl("else", "->", expr(t)))
+        prev /
+          code(r) {
+            wl("route", byClause) + text(" {") + nest(linebreak + lines(cases ++ elseCase.toList)) +
+              linebreak + "}"
+          }
+      case f: FlowFork =>
+        val prev   = relation(f.child)
+        val stages = f.stages.map(s => relation(s))
+        prev /
+          code(f) {
+            text("fork {") + nest(linebreak + lines(stages)) + linebreak + "}"
+          }
+      case m: FlowMerge =>
+        val sources  = cl(m.sources.map(s => expr(s)))
+        val joinCond = m.joinCondition.map(c => wl("on", expr(c)))
+        code(m) {
+          group(wl("merge", sources, joinCond))
+        }
+      case w: FlowWait =>
+        val prev = relation(w.child)
+        prev /
+          code(w) {
+            group(wl("wait", paren(expr(w.duration))))
+          }
+      case a: FlowActivate =>
+        val prev    = relation(a.child)
+        val allArgs = expr(a.target) :: a.params.map(p => expr(p))
+        val params  = paren(cl(allArgs))
+        prev /
+          code(a) {
+            group(wl("activate", params))
+          }
+      case j: FlowJump =>
+        val prev = relation(j.child)
+        prev /
+          code(j) {
+            group(wl("->", expr(j.targetFlow)))
+          }
+      case e: FlowEnd =>
+        val prev = relation(e.child)
+        prev /
+          code(e) {
+            text("end()")
+          }
       case other =>
         unsupportedNode(s"relation ${other.nodeName}", other.span)
 
@@ -510,6 +606,14 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
             else
               paren(cl(p.params.map(x => expr(x))))
           group(wl("def", text(p.name.name) + params, "=")) + nest(linebreak + relation(p.body))
+        case f: FlowDef =>
+          val params =
+            if f.params.isEmpty then
+              empty
+            else
+              paren(cl(f.params.map(x => expr(x))))
+          group(wl("flow", text(f.name.name) + params, "= {")) +
+            nest(linebreak + lines(f.stages.map(s => relation(s)))) + linebreak + "}"
         case t: ShowQuery =>
           group(wl("show", "query", expr(t.name)))
         case u: UseSchema =>

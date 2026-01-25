@@ -39,6 +39,7 @@ enum SymbolType:
   case Query
   case Expression
   case PartialQueryDef
+  case FlowDef
 
 /**
   * SymbolInfo is the result of resolving a name (Symbol) during the compilation phase.

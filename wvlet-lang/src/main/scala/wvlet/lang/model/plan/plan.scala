@@ -141,3 +141,32 @@ case class ValDef(name: TermName, dataType: DataType, expr: Expression, span: Sp
   */
 case class PartialQueryDef(name: TermName, params: List[DefArg], body: Relation, span: Span)
     extends LanguageStatement
+
+/**
+  * FlowDef represents a data flow/workflow definition.
+  *
+  * A flow is a collection of named stages that define a data pipeline with branching, merging, and
+  * control flow capabilities. Unlike PartialQueryDef which is a reusable query fragment, FlowDef
+  * represents a complete workflow with multiple interconnected stages.
+  *
+  * Example:
+  * {{{
+  * flow CustomerJourney(entry_segment: string) = {
+  *   stage entry = from users | where segment_id = entry_segment
+  *   stage check = from entry | switch { case _.active -> engaged; else -> dormant }
+  *   stage engaged = from check | activate('email')
+  *   stage dormant = from check | end()
+  * }
+  * }}}
+  *
+  * @param name
+  *   The name of the flow
+  * @param params
+  *   Parameters for the flow
+  * @param stages
+  *   List of stage definitions within the flow
+  * @param span
+  *   Source location
+  */
+case class FlowDef(name: TermName, params: List[DefArg], stages: List[StageDef], span: Span)
+    extends LanguageStatement
