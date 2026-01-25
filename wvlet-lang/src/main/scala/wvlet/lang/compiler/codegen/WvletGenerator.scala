@@ -510,12 +510,9 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
             group(wl("wait", paren(expr(w.duration))))
           }
       case a: FlowActivate =>
-        val prev   = relation(a.child)
-        val params =
-          if a.params.isEmpty then
-            paren(expr(a.target))
-          else
-            paren(cl(expr(a.target) :: a.params.map(p => expr(p))))
+        val prev    = relation(a.child)
+        val allArgs = expr(a.target) :: a.params.map(p => expr(p))
+        val params  = paren(cl(allArgs))
         prev /
           code(a) {
             group(wl("activate", params))

@@ -455,7 +455,8 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
             Some(queryBlock(body))
           else
             Some(body)
-        (refs, finalBody)
+        // inputRefs should be empty for merge, as sources are in FlowMerge node
+        (Nil, finalBody)
       case WvletToken.DEPENDS =>
         // depends on only, no data input
         (Nil, None)
@@ -530,6 +531,13 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       val percent     =
         percentExpr match
           case LongLiteral(value, _, _) =>
+            if value < 0 || value > 100 then
+              throw StatusCode
+                .SYNTAX_ERROR
+                .newException(
+                  s"Expected integer percentage in [0, 100] for split case, but got: ${value}",
+                  caseT.sourceLocation
+                )
             value.toInt
           case other =>
             throw StatusCode

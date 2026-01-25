@@ -78,8 +78,9 @@ flow MainFlow = {
 }
 ;
 
--- Flow with depends on (control dependency)
-flow DependencyFlow = {
+-- Flow with data dependencies (stages reference other stages via 'from')
+-- Note: Control dependencies via 'depends on' syntax are not yet fully implemented
+flow DataDependencyFlow = {
   stage load = from source | select *
   stage validate = from load | activate('validation_service')
   stage report = from load | select *
