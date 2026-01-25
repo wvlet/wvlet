@@ -250,6 +250,52 @@ Start with **Option A** (unified `stage`) for simplicity. The `depends on` claus
 
 ---
 
+## Design Decision: Unified `route` Syntax (2026-01-25)
+
+After discussion with Codex, decided to **unify `switch` and `split` under a single `route` keyword** to make the syntax more general-purpose (not CDP-specific).
+
+### Rationale
+
+1. **`split` felt CDP-specific** - percentage-based A/B testing is too narrow
+2. **Can be generalized** as routing/partitioning in a DAG
+3. **SQL-like alternatives**: maps to `CASE`, `TABLESAMPLE`, `NTILE`, hash modulo
+
+### Final Syntax
+
+```wv
+-- Conditional routing (replaces switch)
+stage check = from entry
+  | route {
+      case _.age > 18 -> adult
+      case _.age <= 18 -> minor
+    }
+
+-- Percentage-based routing with deterministic partitioning (replaces split)
+stage test = from entry
+  | route by hash(user_id) {
+      case 50% -> variant_a
+      case 50% -> variant_b
+    }
+```
+
+### Key Decisions
+
+| Decision | Choice | Rationale |
+|----------|--------|-----------|
+| Keyword | `route` | General-purpose, not CDP-specific |
+| Arrow syntax | `->` | Consistent with Wvlet lambdas |
+| Case syntax | `case expr -> target` | Uniform for conditions and percentages |
+| Deterministic split | `route by hash(key)` | Explicit, SQL-like (MOD/NTILE) |
+
+### Follow-up Changes Needed
+
+1. Rename `FlowSwitch` to `FlowRoute` in AST
+2. Rename `FlowSplit` to `FlowRoute` (merge with switch)
+3. Add `by` clause parsing for deterministic partitioning
+4. Remove `SWITCH` and `SPLIT` tokens, add `ROUTE` token
+
+---
+
 ## Implementation Notes (PR #1527)
 
 ### What Was Implemented
