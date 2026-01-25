@@ -374,3 +374,121 @@ Added 10 new keywords as **non-reserved**:
 1. **Type Checking PR**: Add flow/stage symbol types, resolve stage references
 2. **Execution PR**: Runtime support for flow execution
 3. **Enhanced Syntax PR**: Named params, depends-on-only stages, error handling
+
+---
+
+## Design Discussion: Flow Operators vs Relation (2026-01-25)
+
+### Current Implementation
+
+Flow operators currently extend `Relation` or `UnaryRelation`:
+
+```scala
+// Current hierarchy
+LogicalPlan (trait)
+  └── Relation (trait) - adds relationType for schema
+        └── UnaryRelation (trait) - adds child: Relation
+              ├── FlowRoute
+              ├── FlowFork
+              ├── FlowWait
+              ├── FlowActivate
+              ├── FlowJump
+              └── FlowEnd
+        └── FlowMerge
+        └── StageDef
+```
+
+### Codex Recommendation
+
+Codex recommends **separating Flow operators from Relation**:
+
+> "Keep `Relation` for data-transforming algebra, and introduce a `FlowNode` (or `FlowOp`) hierarchy for control flow. A `FlowStage` node can *contain* a `Relation` (the actual query), and you can still reuse traversal/transform machinery by moving that to a small shared AST base trait."
+
+**Why this aligns with other systems:**
+- **Airflow/Prefect/Dagster**: Tasks/ops are control nodes in a DAG; data processing is an implementation detail inside a task. The DAG is typed around dependencies, not relational schemas.
+- **dbt**: Models are SQL, but the graph nodes are *models* and *dependencies*, not SQL operators. The SQL compiler is separate from the DAG semantics.
+- In all of them, "control flow" and "data transformation" are different axes.
+
+**Suggested hierarchy:**
+```scala
+LogicalPlan (trait) - shared traversal (children, transform, mapChildren)
+  ├── Relation (trait) - "what data is produced"
+  │     └── Select, Filter, Join, GroupBy, etc.
+  └── FlowNode (trait) - "when and how stages are executed"
+        ├── FlowStage(relation: Relation, ...) - wraps a relation
+        ├── FlowRoute, FlowWait, FlowFork, etc.
+        └── FlowMerge, FlowJump, FlowEnd
+```
+
+### Arguments For Keeping Current Design (Relation)
+
+1. **Flow operators DO transform data**: `FlowRoute` routes rows based on conditions, `FlowWait` delays rows - these have input/output schemas
+2. **Code reuse**: Existing `Relation` traversal/transformation infrastructure works out of the box
+3. **Simplicity**: No need to introduce new traits or change existing code paths
+4. **Schema propagation**: Flow operators naturally inherit schema handling via `relationType`
+
+### Arguments For Separate FlowNode
+
+1. **Semantic clarity**: Flow operators are control flow (dependencies, timing, routing), not data transformations
+2. **Type safety**: Can distinguish `Relation` from `FlowNode` in pattern matching
+3. **Different concerns**: Relations care about schemas, Flows care about dependencies/ordering
+4. **Cleaner compiler passes**: Type checking for Relations vs Flows can be separate
+
+### Decision
+
+**For PR #1527 (Design-only)**: Keep current design with Flow operators extending `Relation`. This is the minimal change to prove the syntax works.
+
+**Future consideration**: When implementing type checking and execution, evaluate whether:
+1. Schema propagation through flow operators makes semantic sense
+2. Compiler passes would be cleaner with separate hierarchies
+3. The "flow as relation wrapper" model (FlowStage containing Relation) would better serve execution semantics
+
+The refactoring to separate FlowNode can be done later if the current design proves awkward during type checking/execution implementation.
+
+---
+
+## FlowOp Marker Trait Refactoring (PR #1528)
+
+### Implementation
+
+Introduced `FlowOp` as a marker trait that extends `Relation`. This provides:
+- **Semantic clarity**: Flow operators can be identified via `case f: FlowOp` pattern matching
+- **Compatibility**: Works with existing parser pipe chain infrastructure
+- **Future flexibility**: Can be further separated from `Relation` if execution requires different semantics
+
+### New File: `flow.scala`
+
+Created `wvlet-lang/src/main/scala/wvlet/lang/model/plan/flow.scala` containing:
+
+```scala
+// Marker trait for flow operators (extends Relation for compatibility)
+trait FlowOp extends Relation
+
+// Unary flow operator with child relation
+trait UnaryFlowOp extends FlowOp with UnaryRelation:
+  override def relationType: RelationType = child.relationType
+
+// Flow operator classes
+case class StageDef(...) extends FlowOp
+case class FlowRoute(...) extends UnaryFlowOp
+case class FlowFork(...) extends UnaryFlowOp
+case class FlowMerge(...) extends FlowOp
+case class FlowWait(...) extends UnaryFlowOp
+case class FlowActivate(...) extends UnaryFlowOp
+case class FlowJump(...) extends UnaryFlowOp
+case class FlowEnd(...) extends UnaryFlowOp
+```
+
+### Changes to `relation.scala`
+
+Removed all Flow-related classes (moved to `flow.scala`). Added comment:
+```scala
+// Flow-related classes have been moved to flow.scala
+```
+
+### Benefits
+
+1. **Code organization**: Flow operators are now in a dedicated file
+2. **Pattern matching**: Can use `case f: FlowOp =>` to match flow operators specifically
+3. **Documentation**: Clear separation of concerns in the codebase
+4. **Extensibility**: Easy to add new flow operators in `flow.scala`
