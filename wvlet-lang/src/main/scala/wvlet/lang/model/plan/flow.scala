@@ -136,7 +136,11 @@ case class FlowRouteCase(
     percentage: Option[Int],
     target: NameExpr,
     span: Span
-)
+):
+  require(
+    condition.isDefined != percentage.isDefined,
+    "Either condition or percentage must be set, but not both"
+  )
 
 /**
   * FlowFork represents parallel execution of multiple stages.
