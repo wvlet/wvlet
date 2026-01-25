@@ -404,6 +404,193 @@ case class PartialQueryApply(
   // The relation type will be determined after the partial query is resolved
   override def relationType: RelationType = child.relationType
 
+/**
+  * StageDef represents a named stage within a FlowDef.
+  *
+  * A stage is a named step in a data flow that can reference other stages and apply
+  * transformations. Stages can have optional input sources (via `from` or `merge`) and control
+  * dependencies (via `depends on`).
+  *
+  * Example:
+  * {{{
+  * -- Stage with data input
+  * stage transform = from entry | select user_id, sum(amount)
+  *
+  * -- Stage with merge (fan-in)
+  * stage merged = merge stage_a, stage_b on _.user_id = _.user_id
+  *
+  * -- Stage with control dependency only
+  * stage validate = depends on etl_complete | run_validation()
+  * }}}
+  *
+  * @param name
+  *   The name of the stage
+  * @param inputRefs
+  *   References to input stages (from `from` or `merge`)
+  * @param dependsOn
+  *   References to stages for control-only dependencies
+  * @param body
+  *   The relation/query body of the stage (optional for control-only stages)
+  * @param span
+  *   Source location
+  */
+case class StageDef(
+    name: TermName,
+    inputRefs: List[NameExpr],
+    dependsOn: List[NameExpr],
+    body: Option[Relation],
+    span: Span
+) extends Relation:
+  override def children: List[LogicalPlan] = body.toList
+
+  override def relationType: RelationType = body.map(_.relationType).getOrElse(EmptyRelationType)
+
+  override def toString: String =
+    val inputs =
+      if inputRefs.isEmpty then
+        ""
+      else
+        s" from ${inputRefs.map(_.fullName).mkString(", ")}"
+    val deps =
+      if dependsOn.isEmpty then
+        ""
+      else
+        s" depends on ${dependsOn.map(_.fullName).mkString(", ")}"
+    val bodyStr = body.map(b => s" | ${b}").getOrElse("")
+    s"StageDef[${name.name}]${inputs}${deps}${bodyStr}"
+
+/**
+  * FlowSwitch represents conditional routing based on expressions.
+  *
+  * Routes data to different stages based on case conditions. Each case has a condition expression
+  * and a target stage name.
+  *
+  * Example:
+  * {{{
+  * switch {
+  *   case _.email_opens > 5  -> high_engagement
+  *   case _.email_opens <= 2 -> low_engagement
+  *   else                    -> moderate_engagement
+  * }
+  * }}}
+  */
+case class FlowSwitch(
+    child: Relation,
+    cases: List[FlowCase],
+    elseTarget: Option[NameExpr],
+    span: Span
+) extends UnaryRelation:
+  override def relationType: RelationType = child.relationType
+
+/**
+  * FlowCase represents a single case in a FlowSwitch.
+  *
+  * @param condition
+  *   The condition expression (can be a boolean expression or percentage)
+  * @param target
+  *   The target stage name to route to
+  */
+case class FlowCase(condition: Expression, target: NameExpr, span: Span)
+
+/**
+  * FlowSplit represents percentage-based routing (A/B testing).
+  *
+  * Routes data to different stages based on percentages. The percentages should sum to 100.
+  *
+  * Example:
+  * {{{
+  * split {
+  *   case 50% -> variant_a
+  *   case 50% -> variant_b
+  * }
+  * }}}
+  */
+case class FlowSplit(child: Relation, cases: List[FlowSplitCase], span: Span) extends UnaryRelation:
+  override def relationType: RelationType = child.relationType
+
+/**
+  * FlowSplitCase represents a single case in a FlowSplit.
+  *
+  * @param percentage
+  *   The percentage of data to route (0-100)
+  * @param target
+  *   The target stage name to route to
+  */
+case class FlowSplitCase(percentage: Int, target: NameExpr, span: Span)
+
+/**
+  * FlowFork represents parallel execution of multiple stages.
+  *
+  * Executes multiple stages in parallel with the same input data.
+  *
+  * Example:
+  * {{{
+  * fork {
+  *   stage email = activate('email')
+  *   stage sms = activate('sms')
+  *   stage push = activate('push')
+  * }
+  * }}}
+  */
+case class FlowFork(child: Relation, stages: List[StageDef], span: Span) extends UnaryRelation:
+  override def relationType: RelationType = child.relationType
+
+/**
+  * FlowMerge represents fan-in from multiple stages.
+  *
+  * Merges data from multiple upstream stages, optionally with a join condition.
+  *
+  * Example:
+  * {{{
+  * -- Join multiple stages
+  * merge stage_a, stage_b on _.user_id = _.user_id
+  *
+  * -- Union multiple stages
+  * merge stage_a, stage_b | union
+  * }}}
+  */
+case class FlowMerge(sources: List[NameExpr], joinCondition: Option[Expression], span: Span)
+    extends Relation:
+  override def children: List[LogicalPlan] = Nil // Sources are name references, not plans
+  override def relationType: RelationType = EmptyRelationType // Resolved later
+
+/**
+  * FlowWait represents a time-based delay in the flow.
+  *
+  * Pauses execution for a specified duration.
+  *
+  * Example: `wait('7 days')`
+  */
+case class FlowWait(child: Relation, duration: Expression, span: Span) extends UnaryRelation:
+  override def relationType: RelationType = child.relationType
+
+/**
+  * FlowActivate represents sending data to an external system.
+  *
+  * Example: `activate('email', template: 'promo_v1')`
+  */
+case class FlowActivate(child: Relation, target: Expression, params: List[Expression], span: Span)
+    extends UnaryRelation:
+  override def relationType: RelationType = child.relationType
+
+/**
+  * FlowJump represents a jump to another flow.
+  *
+  * Transfers control to another flow definition.
+  *
+  * Example: `-> RetentionFlow`
+  */
+case class FlowJump(child: Relation, targetFlow: NameExpr, span: Span) extends UnaryRelation:
+  override def relationType: RelationType = child.relationType
+
+/**
+  * FlowEnd represents the termination of a flow path.
+  *
+  * Example: `end()`
+  */
+case class FlowEnd(child: Relation, span: Span) extends UnaryRelation:
+  override def relationType: RelationType = child.relationType
+
 case class AddColumnsToRelation(child: Relation, newColumns: List[Attribute], span: Span)
     extends UnaryRelation
     with Selection

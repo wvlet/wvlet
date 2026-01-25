@@ -428,6 +428,87 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
         code(s) {
           wl("show", s.showType.toString, s.inExpr.map(x => wl("in", expr(x))))
         }
+      // Flow-related relations
+      case s: StageDef =>
+        val inputs =
+          if s.inputRefs.isEmpty then
+            empty
+          else
+            wl("from", cl(s.inputRefs.map(r => expr(r))))
+        val deps =
+          if s.dependsOn.isEmpty then
+            empty
+          else
+            wl("depends on", cl(s.dependsOn.map(d => expr(d))))
+        val body = s.body.map(b => relation(b)).getOrElse(empty)
+        code(s) {
+          group(wl("stage", text(s.name.name), "=", inputs, deps)) + nest(linebreak + body)
+        }
+      case sw: FlowSwitch =>
+        val prev  = relation(sw.child)
+        val cases = sw
+          .cases
+          .map { c =>
+            wl("case", expr(c.condition), "->", expr(c.target))
+          }
+        val elseCase = sw.elseTarget.map(t => wl("else", "->", expr(t)))
+        prev /
+          code(sw) {
+            text("switch {") + nest(linebreak + lines(cases ++ elseCase.toList)) + linebreak + "}"
+          }
+      case sp: FlowSplit =>
+        val prev  = relation(sp.child)
+        val cases = sp
+          .cases
+          .map { c =>
+            wl("case", text(s"${c.percentage}"), "->", expr(c.target))
+          }
+        prev /
+          code(sp) {
+            text("split {") + nest(linebreak + lines(cases)) + linebreak + "}"
+          }
+      case f: FlowFork =>
+        val prev   = relation(f.child)
+        val stages = f.stages.map(s => relation(s))
+        prev /
+          code(f) {
+            text("fork {") + nest(linebreak + lines(stages)) + linebreak + "}"
+          }
+      case m: FlowMerge =>
+        val sources  = cl(m.sources.map(s => expr(s)))
+        val joinCond = m.joinCondition.map(c => wl("on", expr(c)))
+        code(m) {
+          group(wl("merge", sources, joinCond))
+        }
+      case w: FlowWait =>
+        val prev = relation(w.child)
+        prev /
+          code(w) {
+            group(wl("wait", paren(expr(w.duration))))
+          }
+      case a: FlowActivate =>
+        val prev   = relation(a.child)
+        val params =
+          if a.params.isEmpty then
+            paren(expr(a.target))
+          else
+            paren(cl(expr(a.target) :: a.params.map(p => expr(p))))
+        prev /
+          code(a) {
+            group(wl("activate", params))
+          }
+      case j: FlowJump =>
+        val prev = relation(j.child)
+        prev /
+          code(j) {
+            group(wl("->", expr(j.targetFlow)))
+          }
+      case e: FlowEnd =>
+        val prev = relation(e.child)
+        prev /
+          code(e) {
+            text("end()")
+          }
       case other =>
         unsupportedNode(s"relation ${other.nodeName}", other.span)
 
@@ -510,6 +591,14 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
             else
               paren(cl(p.params.map(x => expr(x))))
           group(wl("def", text(p.name.name) + params, "=")) + nest(linebreak + relation(p.body))
+        case f: FlowDef =>
+          val params =
+            if f.params.isEmpty then
+              empty
+            else
+              paren(cl(f.params.map(x => expr(x))))
+          group(wl("flow", text(f.name.name) + params, "= {")) +
+            nest(linebreak + lines(f.stages.map(s => relation(s)))) + linebreak + "}"
         case t: ShowQuery =>
           group(wl("show", "query", expr(t.name)))
         case u: UseSchema =>

@@ -254,7 +254,6 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   case ELSE extends WvletToken(Keyword, "else")
   case CASE extends WvletToken(Keyword, "case")
   case WHEN extends WvletToken(Keyword, "when")
-  // case END  extends WvletToken(Keyword, "end")
 
   // Condition keywords
   case AND     extends WvletToken(Keyword, "and")
@@ -271,6 +270,18 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   case DELETE   extends WvletToken(Keyword, "delete")
   case TRUNCATE extends WvletToken(Keyword, "truncate")
 
+  // Flow/workflow keywords
+  case FLOW     extends WvletToken(Keyword, "flow")
+  case STAGE    extends WvletToken(Keyword, "stage")
+  case SWITCH   extends WvletToken(Keyword, "switch")
+  case SPLIT    extends WvletToken(Keyword, "split")
+  case FORK     extends WvletToken(Keyword, "fork")
+  case MERGE    extends WvletToken(Keyword, "merge")
+  case DEPENDS  extends WvletToken(Keyword, "depends")
+  case WAIT     extends WvletToken(Keyword, "wait")
+  case ACTIVATE extends WvletToken(Keyword, "activate")
+  case END      extends WvletToken(Keyword, "end")
+
 end WvletToken
 
 object WvletToken:
@@ -285,7 +296,21 @@ object WvletToken:
     WvletToken.MAP
   )
 
-  val nonReservedKeywords = Set(WvletToken.COUNT, WvletToken.CONCAT)
+  val nonReservedKeywords = Set(
+    WvletToken.COUNT,
+    WvletToken.CONCAT,
+    // Flow-related keywords that can also be used as identifiers
+    WvletToken.END,
+    WvletToken.WAIT,
+    WvletToken.ACTIVATE,
+    WvletToken.SPLIT,
+    WvletToken.FORK,
+    WvletToken.MERGE,
+    WvletToken.FLOW,
+    WvletToken.STAGE,
+    WvletToken.SWITCH,
+    WvletToken.DEPENDS
+  )
 
   val stringStartToken = List(
     WvletToken.IDENTIFIER,

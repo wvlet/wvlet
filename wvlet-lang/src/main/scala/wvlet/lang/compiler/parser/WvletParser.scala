@@ -33,6 +33,7 @@ import wvlet.lang.model.plan
 import wvlet.log.LogSupport
 
 import scala.collection.immutable.ListMap
+import scala.collection.mutable.ListBuffer
 import scala.util.Try
 
 /**
@@ -221,6 +222,10 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       case WvletToken.DOUBLE_QUOTE_STRING =>
         consume(WvletToken.DOUBLE_QUOTE_STRING)
         DoubleQuotedIdentifier(t.str, spanFrom(t))
+      case kw if kw.isNonReservedKeyword =>
+        // Non-reserved keywords can be used as identifiers
+        consume(t.token)
+        UnquotedIdentifier(t.str, spanFrom(t))
       case _ =>
         // TODO Define what is reserved (e.g., select, add, true, etc.) or not (e.g., count, table, user)
         reserved()
@@ -237,6 +242,10 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       case WvletToken.BACKQUOTED_IDENTIFIER =>
         consume(WvletToken.BACKQUOTED_IDENTIFIER)
         BackQuotedIdentifier(t.str, DataType.UnknownType, spanFrom(t))
+      case kw if kw.isNonReservedKeyword =>
+        // Non-reserved keywords can be used as identifiers
+        consume(t.token)
+        UnquotedIdentifier(t.str, spanFrom(t))
       case _ =>
         reserved()
   }
@@ -356,6 +365,255 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         )
   }
 
+  /**
+    * Parse a flow definition: `flow Name(params) = { stage ... }`
+    */
+  def flowDef(): FlowDef = node {
+    val t    = consume(WvletToken.FLOW)
+    val name = identifier()
+
+    val params: List[DefArg] =
+      scanner.lookAhead().token match
+        case WvletToken.L_PAREN =>
+          consume(WvletToken.L_PAREN)
+          val args = defArgs()
+          consume(WvletToken.R_PAREN)
+          args
+        case _ =>
+          Nil
+
+    consume(WvletToken.EQ)
+    consume(WvletToken.L_BRACE)
+
+    // Parse stage definitions inside the flow
+    val stages = ListBuffer.empty[StageDef]
+    while scanner.lookAhead().token == WvletToken.STAGE do
+      stages += stageDef()
+      // Skip optional semicolons or newlines between stages
+      while scanner.lookAhead().token == WvletToken.SEMICOLON do
+        consume(WvletToken.SEMICOLON)
+
+    consume(WvletToken.R_BRACE)
+    FlowDef(Name.termName(name.leafName), params, stages.toList, spanFrom(t))
+  }
+
+  /**
+    * Parse a stage definition: `stage name = from ... | ...`
+    */
+  def stageDef(): StageDef = node {
+    val t    = consume(WvletToken.STAGE)
+    val name = identifier()
+    consume(WvletToken.EQ)
+
+    // Parse input references (from or merge)
+    val (inputRefs, body) = parseStageInput()
+
+    // Parse optional depends on clause
+    val dependsOn: List[NameExpr] =
+      if scanner.lookAhead().token == WvletToken.DEPENDS then
+        consume(WvletToken.DEPENDS)
+        consume(WvletToken.ON)
+        parseNameList()
+      else
+        Nil
+
+    StageDef(Name.termName(name.leafName), inputRefs, dependsOn, body, spanFrom(t))
+  }
+
+  /**
+    * Parse stage input (from, merge, or depends on only)
+    */
+  private def parseStageInput(): (List[NameExpr], Option[Relation]) =
+    val t = scanner.lookAhead()
+    t.token match
+      case WvletToken.FROM =>
+        consume(WvletToken.FROM)
+        val inputRef = identifier()
+        // Create a TableRef to reference the stage
+        val tableRef = TableRef(inputRef, inputRef.span)
+        // Check for pipeline operators
+        val body =
+          if scanner.lookAhead().token == WvletToken.PIPE then
+            Some(queryBlock(tableRef))
+          else
+            Some(tableRef)
+        (List(inputRef), body)
+      case WvletToken.MERGE =>
+        consume(WvletToken.MERGE)
+        val refs = parseNameList()
+        // Check for optional join condition
+        val joinCond =
+          if scanner.lookAhead().token == WvletToken.ON then
+            consume(WvletToken.ON)
+            Some(expression())
+          else
+            None
+        val body = FlowMerge(refs, joinCond, spanFrom(t))
+        // Check for pipeline operators
+        val finalBody =
+          if scanner.lookAhead().token == WvletToken.PIPE then
+            Some(queryBlock(body))
+          else
+            Some(body)
+        (refs, finalBody)
+      case WvletToken.DEPENDS =>
+        // depends on only, no data input
+        (Nil, None)
+      case _ =>
+        // Direct relation/expression
+        val body = relation()
+        (Nil, Some(body))
+    end match
+
+  end parseStageInput
+
+  /**
+    * Parse a comma-separated list of names
+    */
+  private def parseNameList(): List[NameExpr] =
+    val names = ListBuffer.empty[NameExpr]
+    names += identifier()
+    while scanner.lookAhead().token == WvletToken.COMMA do
+      consume(WvletToken.COMMA)
+      names += identifier()
+    names.toList
+
+  /**
+    * Parse flow switch expression: `switch { case cond -> target; ... }`
+    */
+  def flowSwitchExpr(input: Relation): FlowSwitch = node {
+    val t = consume(WvletToken.SWITCH)
+    consume(WvletToken.L_BRACE)
+
+    val cases      = ListBuffer.empty[FlowCase]
+    var elseTarget = Option.empty[NameExpr]
+
+    while scanner.lookAhead().token == WvletToken.CASE ||
+      scanner.lookAhead().token == WvletToken.ELSE
+    do
+      val caseT = scanner.lookAhead()
+      caseT.token match
+        case WvletToken.CASE =>
+          consume(WvletToken.CASE)
+          val cond = expression()
+          consume(WvletToken.R_ARROW)
+          val target = identifier()
+          cases += FlowCase(cond, target, spanFrom(caseT))
+        case WvletToken.ELSE =>
+          consume(WvletToken.ELSE)
+          consume(WvletToken.R_ARROW)
+          elseTarget = Some(identifier())
+        case _ =>
+          ()
+      // Skip optional semicolons
+      while scanner.lookAhead().token == WvletToken.SEMICOLON do
+        consume(WvletToken.SEMICOLON)
+
+    consume(WvletToken.R_BRACE)
+    FlowSwitch(input, cases.toList, elseTarget, spanFrom(t))
+  }
+
+  /**
+    * Parse flow split expression: `split { case 50 -> target; ... }` Percentages are specified as
+    * integers (0-100).
+    */
+  def flowSplitExpr(input: Relation): FlowSplit = node {
+    val t = consume(WvletToken.SPLIT)
+    consume(WvletToken.L_BRACE)
+
+    val cases = ListBuffer.empty[FlowSplitCase]
+
+    while scanner.lookAhead().token == WvletToken.CASE do
+      val caseT = consume(WvletToken.CASE)
+      // Parse percentage as integer
+      val percentExpr = expression()
+      val percent     =
+        percentExpr match
+          case LongLiteral(value, _, _) =>
+            value.toInt
+          case other =>
+            throw StatusCode
+              .SYNTAX_ERROR
+              .newException(
+                s"Expected integer percentage (0-100) in split case, got: ${other}",
+                caseT.sourceLocation
+              )
+      consume(WvletToken.R_ARROW)
+      val target = identifier()
+      cases += FlowSplitCase(percent, target, spanFrom(caseT))
+      // Skip optional semicolons
+      while scanner.lookAhead().token == WvletToken.SEMICOLON do
+        consume(WvletToken.SEMICOLON)
+
+    consume(WvletToken.R_BRACE)
+    FlowSplit(input, cases.toList, spanFrom(t))
+  }
+
+  /**
+    * Parse flow fork expression: `fork { stage a = ...; stage b = ...; }`
+    */
+  def flowForkExpr(input: Relation): FlowFork = node {
+    val t = consume(WvletToken.FORK)
+    consume(WvletToken.L_BRACE)
+
+    val stages = ListBuffer.empty[StageDef]
+    while scanner.lookAhead().token == WvletToken.STAGE do
+      stages += stageDef()
+      // Skip optional semicolons
+      while scanner.lookAhead().token == WvletToken.SEMICOLON do
+        consume(WvletToken.SEMICOLON)
+
+    consume(WvletToken.R_BRACE)
+    FlowFork(input, stages.toList, spanFrom(t))
+  }
+
+  /**
+    * Parse flow wait expression: `wait('7 days')`
+    */
+  def flowWaitExpr(input: Relation): FlowWait = node {
+    val t = consume(WvletToken.WAIT)
+    consume(WvletToken.L_PAREN)
+    val duration = expression()
+    consume(WvletToken.R_PAREN)
+    FlowWait(input, duration, spanFrom(t))
+  }
+
+  /**
+    * Parse flow activate expression: `activate('email', template: 'promo_v1')`
+    */
+  def flowActivateExpr(input: Relation): FlowActivate = node {
+    val t = consume(WvletToken.ACTIVATE)
+    consume(WvletToken.L_PAREN)
+    val target = expression()
+    val params =
+      if scanner.lookAhead().token == WvletToken.COMMA then
+        consume(WvletToken.COMMA)
+        functionArgs()
+      else
+        Nil
+    consume(WvletToken.R_PAREN)
+    FlowActivate(input, target, params, spanFrom(t))
+  }
+
+  /**
+    * Parse flow end expression: `end()`
+    */
+  def flowEndExpr(input: Relation): FlowEnd = node {
+    val t = consume(WvletToken.END)
+    consume(WvletToken.L_PAREN)
+    consume(WvletToken.R_PAREN)
+    FlowEnd(input, spanFrom(t))
+  }
+
+  /**
+    * Parse flow jump expression: `-> FlowName`
+    */
+  def flowJumpExpr(input: Relation): FlowJump = node {
+    val t      = consume(WvletToken.R_ARROW)
+    val target = identifier()
+    FlowJump(input, target, spanFrom(t))
+  }
+
   def statement(): LogicalPlan = node {
     val t = scanner.lookAhead()
     t.token match
@@ -369,6 +627,8 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         modelDef()
       case WvletToken.DEF =>
         defStatement()
+      case WvletToken.FLOW =>
+        flowDef()
       case WvletToken.VAL =>
         valDef()
       case WvletToken.SHOW =>
@@ -1268,6 +1528,21 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         Dedup(input, spanFrom(t))
       case WvletToken.DEBUG =>
         debugExpr(input)
+      // Flow operators
+      case WvletToken.SWITCH =>
+        flowSwitchExpr(input)
+      case WvletToken.SPLIT =>
+        flowSplitExpr(input)
+      case WvletToken.FORK =>
+        flowForkExpr(input)
+      case WvletToken.WAIT =>
+        flowWaitExpr(input)
+      case WvletToken.ACTIVATE =>
+        flowActivateExpr(input)
+      case WvletToken.END =>
+        flowEndExpr(input)
+      case WvletToken.R_ARROW =>
+        flowJumpExpr(input)
       case id if id.isIdentifier =>
         // Potential partial query application: `relation | partial_query` or `relation | partial_query(args)`
         val name = identifier()

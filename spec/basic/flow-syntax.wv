@@ -1,0 +1,87 @@
+-- Test flow syntax parsing (design only - execution support to be added later)
+
+-- Basic flow definition with stages
+flow SimpleFlow = {
+  stage entry = from users
+  stage output = from entry | select name
+}
+;
+
+-- Flow with parameters
+flow ParameterizedFlow(segment: string) = {
+  stage entry = from users | where segment_id = segment
+  stage output = from entry | select name
+}
+;
+
+-- Flow with switch (conditional routing)
+flow SwitchFlow = {
+  stage entry = from users
+  stage check = from entry | switch {
+    case _.age > 18 -> adult
+    else -> minor
+  }
+  stage adult = from check | select name, 'adult' as category
+  stage minor = from check | select name, 'minor' as category
+}
+;
+
+-- Flow with wait and activate
+flow JourneyFlow = {
+  stage entry = from users | select name, email
+  stage delayed = from entry | wait('7 days')
+  stage send = from delayed | activate('email')
+  stage done = from send | end()
+}
+;
+
+-- Flow with merge (fan-in)
+flow MergeFlow = {
+  stage source_a = from users | where region = 'US'
+  stage source_b = from users | where region = 'EU'
+  stage merged = merge source_a, source_b
+  stage output = from merged | select name
+}
+;
+
+-- Flow with fork (parallel execution)
+flow ForkFlow = {
+  stage entry = from users
+  stage parallel = from entry | fork {
+    stage email = from entry | activate('email')
+    stage sms = from entry | activate('sms')
+  }
+}
+;
+
+-- Flow with split (percentage-based routing)
+flow ABTestFlow = {
+  stage entry = from users
+  stage test = from entry | split {
+    case 50 -> variant_a
+    case 50 -> variant_b
+  }
+  stage variant_a = from test | activate('email_template_a')
+  stage variant_b = from test | activate('email_template_b')
+}
+;
+
+-- Flow with jump to another flow
+flow MainFlow = {
+  stage entry = from users
+  stage check = from entry | switch {
+    case _.active -> active_path
+    else -> inactive_path
+  }
+  stage active_path = from check | activate('welcome')
+  stage inactive_path = from check | -> RetentionFlow
+}
+;
+
+-- Flow with depends on (control dependency)
+flow DependencyFlow = {
+  stage load = from source | select *
+  stage validate = from load | activate('validation_service')
+  stage report = from load | select *
+}
+;
