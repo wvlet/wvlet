@@ -74,47 +74,83 @@ pending ──→ running ──→ success (terminal)           │
 
 **Note:** `max_retries_exceeded` in the diagram is an **event** (transition condition), not a state.
 
-### Dependency Rules
+### Dependency and Trigger Model
 
-Stages form a DAG based on three types of edges:
+**Design principle:** Separate data source from execution trigger:
+- `from` → **where data comes from** (data dependency)
+- `triggers on` → **when to execute** (execution condition)
+- `with { }` → **how to execute** (retry, timeout, backoff)
 
-| Edge Type | Syntax | Trigger Behavior |
-|-----------|--------|------------------|
-| **Data dependency** | `from stage_name` | Requires upstream `success` (default `all_success` trigger) |
-| **Control dependency** | `depends on stage_name` | Requires upstream `success` (default `all_success` trigger) |
-| **Failure dependency** | `on_failure: stage_name` | Requires upstream `failed` (implicit `all_failed` trigger) |
+### Trigger Clause Syntax
 
-**Important:** `on_failure` modifies trigger evaluation:
+Use `triggers on <condition>` as a **prefix clause** before `=`:
 
-1. **Without explicit `trigger`:** Each dependency type has its own requirement:
-   - Data dependencies (`from`) require `success`
-   - Control dependencies (`depends on`) require `success`
-   - Failure dependencies (`on_failure`) require `failed`
-   - ALL requirements must be met for the stage to run
+```wv
+stage <name> [triggers on <condition>] [with { config }] = <body>
+```
 
-2. **With explicit `trigger`:** The `trigger` rule applies to success-based dependencies only:
-   - `on_failure` dependencies still require `failed` (not affected by `trigger`)
-   - `trigger` modifies how `from` and `depends on` are evaluated
-   - Example: `trigger: one_success` + `on_failure: X` means "X must fail AND at least one other upstream must succeed"
+**Trigger conditions** use function-like predicates:
 
-3. **`cancelled` and `skipped` handling:**
-   - `on_failure` triggers ONLY on `failed` state (not `cancelled` or `skipped`)
-   - `cancelled` is treated as non-success for success-based triggers
-   - `skipped` is treated as non-failure for `none_failed` trigger
+| Condition | Meaning |
+|-----------|---------|
+| `success(A)` | Stage A succeeded |
+| `failure(A)` | Stage A failed (after all retries) |
+| `all_success(A, B)` | ALL of A and B succeeded |
+| `one_success(A, B)` | AT LEAST ONE of A or B succeeded |
+| `all_failure(A, B)` | ALL of A and B failed |
+| `one_failure(A, B)` | AT LEAST ONE of A or B failed |
+| `done(A)` | Stage A reached any terminal state |
 
-### Trigger Rules
+**Boolean operators** for complex conditions:
+- `success(A) and failure(B)` — A succeeded AND B failed
+- `success(A) or success(B)` — A or B succeeded (same as `one_success(A, B)`)
 
-Determine when a stage executes based on **terminal states** of upstream stages:
+### Default Behavior
 
-| Rule | Runs when... | Skipped when... |
-|------|--------------|-----------------|
-| `all_success` | ALL upstreams are `success` | Any upstream is `failed`, `skipped`, or `cancelled` |
-| `one_success` | AT LEAST ONE upstream is `success` | ALL upstreams are `failed`, `skipped`, or `cancelled` |
-| `none_failed` | NO upstream is `failed` (allows `success`, `skipped`) | Any upstream is `failed` |
-| `all_done` | ALL upstreams reached terminal state | Never (always runs) |
-| `always` | Immediately when dependencies allow | Never (always runs) |
+When `triggers on` is omitted, the default trigger is **implicit success of all `from` sources**:
 
-**Note:** `cancelled` is treated as a non-success terminal state. Stages with `cancelled` upstreams will be skipped under `all_success` but may run under `one_success` if other upstreams succeeded.
+```wv
+-- These are equivalent:
+stage B = from A | transform()
+stage B triggers on success(A) = from A | transform()
+```
+
+### Examples
+
+```wv
+flow ResilientPipeline = {
+  -- Simple: run when A succeeds (default behavior)
+  stage process = from load | transform()
+
+  -- Explicit trigger: same as above but explicit
+  stage process triggers on success(load) = from load | transform()
+
+  -- Fallback: run when primary fails, get data from source (not primary)
+  stage fallback triggers on failure(primary) = from source | backup_api()
+
+  -- Fan-in: run when either A or B succeeds
+  stage merge triggers on one_success(A, B) = from A, B | combine()
+
+  -- Mixed: get data from A, but only run when B fails
+  stage recover triggers on failure(B) = from A | recovery_logic()
+
+  -- Complex: run when A succeeds AND B fails
+  stage conditional triggers on success(A) and failure(B) = from A | special_case()
+}
+```
+
+### Trigger Evaluation
+
+Triggers evaluate based on **terminal states** of referenced stages:
+
+| Terminal State | Matches |
+|----------------|---------|
+| `success` | `success()`, `one_success()`, `all_success()`, `done()` |
+| `failed` | `failure()`, `one_failure()`, `all_failure()`, `done()` |
+| `skipped` | `done()` only |
+| `cancelled` | `done()` only |
+
+**Note:** `cancelled` and `skipped` do NOT match `success()` or `failure()` predicates.
 
 ---
 
@@ -175,7 +211,24 @@ schedule_expr := "cron" "(" STRING ")"
 ### Stage Definition
 
 ```
-stage_def := "stage" IDENT [stage_config] "=" stage_body
+stage_def := "stage" IDENT [trigger_clause] [stage_config] "=" stage_body
+
+trigger_clause := "triggers" "on" trigger_condition
+
+trigger_condition := trigger_predicate
+                   | trigger_condition "and" trigger_condition
+                   | trigger_condition "or" trigger_condition
+                   | "(" trigger_condition ")"
+
+trigger_predicate := "success" "(" stage_list ")"
+                   | "failure" "(" stage_list ")"
+                   | "all_success" "(" stage_list ")"
+                   | "one_success" "(" stage_list ")"
+                   | "all_failure" "(" stage_list ")"
+                   | "one_failure" "(" stage_list ")"
+                   | "done" "(" stage_list ")"
+
+stage_list := IDENT ("," IDENT)*
 
 stage_config := "with" "{" stage_config_items "}"
 
@@ -187,15 +240,15 @@ stage_config_item := "retries" ":" INTEGER
                    | "max_retry_delay" ":" DURATION
                    | "heartbeat" ":" DURATION
                    | "backoff" ":" BACKOFF_STRATEGY
-                   | "trigger" ":" TRIGGER_RULE
-                   | "on_failure" ":" IDENT
                    | "parent_close" ":" PARENT_CLOSE_POLICY
                    | "idempotency_key" ":" IDENT
 
-stage_body := "from" stage_ref_list [pipe_chain]
-            | "call" flow_call
-            | "merge" stage_ref_list [join_clause]
-            | "depends" "on" IDENT
+stage_body := stage_input [pipe_chain]
+
+stage_input := "from" stage_ref_list
+             | "call" flow_call
+             | "merge" stage_ref_list [join_clause]
+             | "depends" "on" IDENT  -- control-only, no data
 
 stage_ref_list := stage_ref ("," stage_ref)*
 
@@ -282,44 +335,39 @@ flow DataPipeline = {
 
 ---
 
-### Error Handling with Trigger Rules
+### Error Handling with Triggers
 
-Explicit error handling with clear dependency semantics:
+Explicit error handling using `triggers on` clause:
 
 ```wv
 flow ResilientPipeline = {
+  -- Primary stage with retries
   stage primary with {
     retries: 3
   } = from source | call_primary_api()
 
-  -- Runs only if primary fails (after all retries exhausted)
-  -- on_failure creates a failure dependency (waits for primary to fail)
-  -- from source creates a data dependency (requires source success)
-  stage fallback with {
-    on_failure: primary
-  } = from source | call_backup_api()
+  -- Fallback: runs only if primary fails, gets fresh data from source
+  stage fallback triggers on failure(primary) = from source | call_backup_api()
 
-  -- Runs if either primary or fallback succeeds
-  stage continue with {
-    trigger: one_success
-  } = from primary, fallback | process()
+  -- Continue: runs if either primary or fallback succeeds
+  stage continue triggers on one_success(primary, fallback) = from primary, fallback | process()
 }
 ```
 
 **Execution semantics:**
 
-1. `source` runs first
-2. `primary` runs after `source` succeeds (data dependency)
-3. `fallback` has two dependencies:
-   - `from source` → requires `source` to be `success`
-   - `on_failure: primary` → requires `primary` to be `failed`
-   - Both conditions must be met: source succeeded AND primary failed
-4. `continue` runs when either `primary` OR `fallback` reaches `success`
+1. `source` runs first (no trigger = runs immediately)
+2. `primary` runs after `source` succeeds (implicit `triggers on success(source)`)
+3. `fallback` triggers on `failure(primary)`:
+   - Waits for `primary` to reach terminal `failed` state
+   - Gets data from `source` (not from `primary`)
+4. `continue` triggers on `one_success(primary, fallback)`:
+   - Runs when either `primary` OR `fallback` reaches `success`
 
-**Key rules:**
-- `on_failure` does NOT override other dependencies; all must be satisfied
-- A stage with only `on_failure` (no `from`) will have no data input
-- `trigger: one_success` evaluates ALL listed upstreams (`primary, fallback`)
+**Key benefits of this syntax:**
+- Clear separation: `triggers on` controls WHEN, `from` controls WHERE data comes from
+- Readable: `triggers on failure(X)` clearly means "run when X fails"
+- Composable: boolean operators allow complex conditions
 
 ---
 
