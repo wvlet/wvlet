@@ -36,39 +36,56 @@ Design syntax extensions for wvlet's flow language to support task management fe
 Each stage has a well-defined execution state:
 
 ```
-pending → running → success (terminal)
-              ↓
-           failed → retrying → running → success (terminal)
-              ↓         ↓
-              ↓    exhausted → failed (terminal)
-              ↓
-           skipped (terminal) ← [upstream failed + trigger rule]
-              ↓
-           cancelled (terminal) ← [user/parent cancellation]
+                    ┌─────────────────────────────────┐
+                    ↓                                 │
+pending ──→ running ──→ success (terminal)           │
+   │           │                                     │
+   │           ↓                                     │
+   │       attempt_failed ──→ retrying ──────────────┘
+   │                              ↓
+   │                         max_retries_exceeded
+   │                              ↓
+   │                         failed (terminal)
+   │
+   ├──→ skipped (terminal)   [trigger rule evaluated upstream as non-success]
+   │
+   └──→ cancelled (terminal) [user/parent cancellation at any point]
 ```
 
-**Terminal vs Transient States:**
+**State Definitions:**
 
 | State | Terminal? | Description |
 |-------|-----------|-------------|
-| `pending` | No | Waiting for dependencies to complete |
+| `pending` | No | Waiting for upstream dependencies to reach terminal state |
 | `running` | No | Currently executing |
 | `success` | **Yes** | Completed successfully |
+| `attempt_failed` | No | Current attempt failed, will retry if attempts remain |
+| `retrying` | No | Waiting for retry delay before next attempt |
 | `failed` | **Yes** | All retry attempts exhausted, permanently failed |
-| `retrying` | No | Transient: waiting to retry after a failure |
-| `skipped` | **Yes** | Bypassed due to trigger rule (e.g., upstream failed) |
+| `skipped` | **Yes** | Bypassed due to trigger rule (upstream non-success) |
 | `cancelled` | **Yes** | Stopped by user action or parent flow closure |
 
-**Important:** `on_failure` and trigger rules operate on **terminal states only**:
-- `on_failure: stage_name` activates when the named stage reaches terminal `failed` state (all retries exhausted)
-- Trigger rules evaluate terminal states of all upstream stages
+**Transitions:**
+- `pending → skipped`: When trigger rule evaluates and determines stage should not run
+- `pending → cancelled` or `running → cancelled`: External cancellation at any time
+- `running → attempt_failed → retrying → running`: Retry loop until success or exhausted
+- `retrying → failed`: When `max_retries_exceeded` (retries exhausted)
 
 ### Dependency Rules
 
-Stages form a DAG based on:
-1. **Data dependencies**: `from stage_name` creates an edge
-2. **Control dependencies**: `depends on stage_name` creates an edge without data flow
-3. **Failure dependencies**: `on_failure: stage_name` creates a conditional edge (runs only if source fails)
+Stages form a DAG based on three types of edges:
+
+| Edge Type | Syntax | Trigger Behavior |
+|-----------|--------|------------------|
+| **Data dependency** | `from stage_name` | Requires upstream `success` (default `all_success` trigger) |
+| **Control dependency** | `depends on stage_name` | Requires upstream `success` (default `all_success` trigger) |
+| **Failure dependency** | `on_failure: stage_name` | Requires upstream `failed` (implicit `all_failed` trigger) |
+
+**Important:** `on_failure` creates a **separate trigger context**:
+- Stages with `on_failure` do NOT use the default `all_success` trigger
+- Instead, they use an implicit `all_failed` trigger for the failure source
+- Other dependencies (e.g., `from source`) still require `success` for those edges
+- This allows fallback patterns where fallback runs only when primary fails
 
 ### Trigger Rules
 
@@ -154,10 +171,30 @@ stage_config_item := "retries" ":" INTEGER
                    | "parent_close" ":" PARENT_CLOSE_POLICY
                    | "idempotency_key" ":" IDENT
 
-stage_body := "from" stage_ref [pipe_chain]
-            | "call" IDENT "(" [call_args] ")"
-            | "merge" stage_ref ("," stage_ref)*
+stage_body := "from" stage_ref_list [pipe_chain]
+            | "call" flow_call
+            | "merge" stage_ref_list [join_clause]
             | "depends" "on" IDENT
+
+stage_ref_list := stage_ref ("," stage_ref)*
+
+stage_ref := IDENT                    -- reference to another stage
+           | STRING                   -- literal data source (file, table)
+           | expression               -- inline data expression
+
+pipe_chain := ("|" pipe_op)*
+
+pipe_op := IDENT [call_args]          -- e.g., select, where, group by
+         | flow_operator              -- route, fork, wait, activate, end
+
+flow_call := IDENT "(" [call_args] ")"
+
+call_args := call_arg ("," call_arg)*
+
+call_arg := IDENT ":" expression      -- named argument
+          | expression                -- positional argument
+
+join_clause := "on" expression
 ```
 
 ### Tokens and Literals
@@ -232,8 +269,10 @@ flow ResilientPipeline = {
   } = from source | call_primary_api()
 
   -- Runs only if primary fails (after all retries exhausted)
+  -- on_failure creates a failure dependency (waits for primary to fail)
+  -- from source creates a data dependency (requires source success)
   stage fallback with {
-    on_failure: primary   -- creates conditional dependency edge
+    on_failure: primary
   } = from source | call_backup_api()
 
   -- Runs if either primary or fallback succeeds
@@ -243,10 +282,20 @@ flow ResilientPipeline = {
 }
 ```
 
-**Semantics:**
-- `on_failure: stage_name` creates an edge that activates only when the named stage fails
-- The fallback stage receives the same input as the failed stage (via `from source`)
-- `trigger: one_success` allows downstream to proceed if any upstream succeeded
+**Execution semantics:**
+
+1. `source` runs first
+2. `primary` runs after `source` succeeds (data dependency)
+3. `fallback` has two dependencies:
+   - `from source` → requires `source` to be `success`
+   - `on_failure: primary` → requires `primary` to be `failed`
+   - Both conditions must be met: source succeeded AND primary failed
+4. `continue` runs when either `primary` OR `fallback` reaches `success`
+
+**Key rules:**
+- `on_failure` does NOT override other dependencies; all must be satisfied
+- A stage with only `on_failure` (no `from`) will have no data input
+- `trigger: one_success` evaluates ALL listed upstreams (`primary, fallback`)
 
 ---
 
