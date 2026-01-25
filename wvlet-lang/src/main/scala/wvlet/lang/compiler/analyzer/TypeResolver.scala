@@ -298,15 +298,26 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
           case Some(sym) =>
             sym.symbolInfo match
               case pqInfo: PartialQuerySymbolInfo =>
+                // Check for argument count mismatch
+                if pqInfo.params.length != p.args.length then
+                  throw StatusCode
+                    .INVALID_ARGUMENT
+                    .newException(
+                      s"Partial query '${partialQueryName}' expects ${pqInfo
+                          .params
+                          .length} arguments, but ${p.args.length} were provided",
+                      context.sourceLocationAt(p.span)
+                    )
+
                 // Inline the partial query body
                 val body = pqInfo.body
 
                 // Substitute parameters if any
                 val substitutedBody =
-                  if pqInfo.params.isEmpty || p.args.isEmpty then
-                    body
-                  else
+                  if pqInfo.params.nonEmpty then
                     substituteParams(body, pqInfo.params, p.args)
+                  else
+                    body
 
                 // Replace EmptyRelation in the body with the input relation
                 val inlinedBody = inlinePartialQueryBody(p.child, substitutedBody)
@@ -320,6 +331,9 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
           case None =>
             context.logWarn(s"Partial query '${partialQueryName}' not found")
             p
+        end match
+
+    end apply
 
     /**
       * Replace EmptyRelation nodes in the partial query body with the input relation.

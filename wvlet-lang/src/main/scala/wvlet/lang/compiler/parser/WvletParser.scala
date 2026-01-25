@@ -318,9 +318,10 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     // Skip optional return type (: type)
     if idx < tokens.length && tokens(idx).token == WvletToken.COLON then
       idx += 1
-      // Skip type name
+      // Skip type name (including qualified names with dots like my.pkg.Type)
       while idx < tokens.length && (
-          tokens(idx).token.isIdentifier || tokens(idx).token == WvletToken.L_BRACKET ||
+          tokens(idx).token.isIdentifier || tokens(idx).token == WvletToken.DOT ||
+            tokens(idx).token == WvletToken.L_BRACKET ||
             tokens(idx).token == WvletToken.R_BRACKET || tokens(idx).token == WvletToken.COMMA
         )
       do

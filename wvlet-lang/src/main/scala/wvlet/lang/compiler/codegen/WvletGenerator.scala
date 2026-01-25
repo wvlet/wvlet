@@ -414,6 +414,16 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
           }
       case e: EmptyRelation =>
         empty
+      case p: PartialQueryApply =>
+        val partialQueryCall =
+          if p.args.isEmpty then
+            expr(p.partialQueryRef)
+          else
+            expr(p.partialQueryRef) + paren(cl(p.args.map(a => expr(a))))
+        relation(p.child) /
+          code(p) {
+            text("|") + ws + partialQueryCall
+          }
       case s: Show =>
         code(s) {
           wl("show", s.showType.toString, s.inExpr.map(x => wl("in", expr(x))))
@@ -493,6 +503,13 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
               "= "
           group(wl("type", text(t.name.name) + typeParams, defContexts, parent, sep)) +
             indentedBrace(concat(t.elems.map(e => group(expr(e))), linebreak))
+        case p: PartialQueryDef =>
+          val params =
+            if p.params.isEmpty then
+              empty
+            else
+              paren(cl(p.params.map(x => expr(x))))
+          group(wl("def", text(p.name.name) + params, "=")) + nest(linebreak + relation(p.body))
         case t: ShowQuery =>
           group(wl("show", "query", expr(t.name)))
         case u: UseSchema =>
