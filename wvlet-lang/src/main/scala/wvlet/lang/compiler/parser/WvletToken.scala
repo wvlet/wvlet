@@ -265,6 +265,18 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   case DELETE   extends WvletToken(Keyword, "delete")
   case TRUNCATE extends WvletToken(Keyword, "truncate")
 
+  // Flow/workflow keywords
+  case FLOW     extends WvletToken(Keyword, "flow")
+  case STAGE    extends WvletToken(Keyword, "stage")
+  case MERGE    extends WvletToken(Keyword, "merge")
+  case FORK     extends WvletToken(Keyword, "fork")
+  case DEPENDS  extends WvletToken(Keyword, "depends")
+  case SWITCH   extends WvletToken(Keyword, "switch")
+  case SPLIT    extends WvletToken(Keyword, "split")
+  case WAIT     extends WvletToken(Keyword, "wait")
+  case ACTIVATE extends WvletToken(Keyword, "activate")
+  case END      extends WvletToken(Keyword, "end")
+
 end WvletToken
 
 object WvletToken:

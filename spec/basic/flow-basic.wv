@@ -1,0 +1,31 @@
+-- Basic flow definition test
+
+flow SimpleFlow = {
+  stage entry = from users
+
+  stage filtered = from entry
+    | where active = true
+
+  stage output = from filtered
+    | select user_id, name
+}
+
+flow FlowWithSwitch = {
+  stage entry = from users
+
+  stage check = from entry
+    | switch {
+        case _.score > 100 -> high
+        case _.score > 50 -> medium
+        else -> low
+      }
+
+  stage high = from check
+    | activate('email', template = 'premium')
+
+  stage medium = from check
+    | wait('7 days')
+
+  stage low = from check
+    | end()
+}

@@ -283,6 +283,57 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         val stmt: LogicalPlan = statement()
         stmt :: statements()
 
+  /**
+    * Look ahead to determine if the current DEF statement defines a partial query. A partial query
+    * def has the form: def name(...) = <partial-query-operator> where <partial-query-operator> is
+    * where, select, group, order, etc.
+    */
+  private def isPartialQueryDefLookAhead(): Boolean =
+    // Save the current position
+    val tokens = scanner.peekAhead()
+    // Skip: DEF name [( args )] [: type] =
+    var idx = 0
+    // Skip DEF
+    if idx < tokens.length && tokens(idx).token == WvletToken.DEF then
+      idx += 1
+    else
+      return false
+    // Skip name (identifier)
+    if idx < tokens.length && tokens(idx).token.isIdentifier then
+      idx += 1
+    else
+      return false
+    // Skip optional parameters (...)
+    if idx < tokens.length && tokens(idx).token == WvletToken.L_PAREN then
+      var parenDepth = 1
+      idx += 1
+      while idx < tokens.length && parenDepth > 0 do
+        tokens(idx).token match
+          case WvletToken.L_PAREN =>
+            parenDepth += 1
+          case WvletToken.R_PAREN =>
+            parenDepth -= 1
+          case _ =>
+        idx += 1
+    // Skip optional return type (: type)
+    if idx < tokens.length && tokens(idx).token == WvletToken.COLON then
+      idx += 1
+      // Skip type name
+      while idx < tokens.length && (
+          tokens(idx).token.isIdentifier || tokens(idx).token == WvletToken.L_BRACKET ||
+            tokens(idx).token == WvletToken.R_BRACKET || tokens(idx).token == WvletToken.COMMA
+        )
+      do
+        idx += 1
+    // Check for = followed by partial query operator
+    if idx < tokens.length && tokens(idx).token == WvletToken.EQ then
+      idx += 1
+      if idx < tokens.length then
+        return isPartialQueryOperator(tokens(idx).token)
+    false
+
+  end isPartialQueryDefLookAhead
+
   def statement(): LogicalPlan = node {
     val t = scanner.lookAhead()
     t.token match
@@ -294,9 +345,15 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         typeDef()
       case WvletToken.MODEL =>
         modelDef()
+      case WvletToken.FLOW =>
+        flowDef()
       case WvletToken.DEF =>
-        val d = funDef()
-        TopLevelFunctionDef(d, spanFrom(t))
+        // Look ahead to determine if this is a partial query def or regular function def
+        if isPartialQueryDefLookAhead() then
+          partialQueryDef()
+        else
+          val d = funDef()
+          TopLevelFunctionDef(d, spanFrom(t))
       case WvletToken.VAL =>
         valDef()
       case WvletToken.SHOW =>
@@ -431,6 +488,327 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
   }
 
   end modelDef
+
+  /**
+    * Parse a flow definition.
+    *
+    * Syntax:
+    * {{{
+    * flow FlowName(params) = {
+    *   stage entry = from users | where active = true
+    *   stage process = from entry | switch { case cond -> target }
+    * }
+    * }}}
+    */
+  def flowDef(): FlowDef = node {
+    val t      = consume(WvletToken.FLOW)
+    val name   = identifierSingle()
+    val params =
+      scanner.lookAhead().token match
+        case WvletToken.L_PAREN =>
+          consume(WvletToken.L_PAREN)
+          val args = defArgs()
+          consume(WvletToken.R_PAREN)
+          args
+        case _ =>
+          Nil
+    consume(WvletToken.EQ)
+    consume(WvletToken.L_BRACE)
+
+    // Parse stages
+    val stages = List.newBuilder[StageDef]
+    while scanner.lookAhead().token == WvletToken.STAGE do
+      stages += stageDef()
+
+    consume(WvletToken.R_BRACE)
+    FlowDef(Name.termName(name.leafName), params, stages.result(), spanFrom(t))
+  }
+
+  end flowDef
+
+  /**
+    * Parse a stage definition within a flow.
+    *
+    * Syntax:
+    * {{{
+    * stage entry = from users | where active = true
+    * stage merged = merge stage_a, stage_b on cond
+    * stage control = depends on etl_complete | run_validation()
+    * }}}
+    */
+  def stageDef(): StageDef = node {
+    val t    = consume(WvletToken.STAGE)
+    val name = identifierSingle()
+    consume(WvletToken.EQ)
+
+    // Parse stage input
+    val input = stageInput()
+
+    // Parse optional relation body and stage operations
+    var body: Option[Relation] = None
+    val ops                    = List.newBuilder[StageOp]
+
+    // Continue parsing pipe operations
+    while scanner.lookAhead().token == WvletToken.PIPE do
+      consume(WvletToken.PIPE)
+      scanner.lookAhead().token match
+        case WvletToken.SWITCH =>
+          ops += switchOp()
+        case WvletToken.SPLIT =>
+          ops += splitOp()
+        case WvletToken.FORK =>
+          ops += forkOp()
+        case WvletToken.WAIT =>
+          ops += waitOp()
+        case WvletToken.ACTIVATE =>
+          ops += activateOp()
+        case WvletToken.END =>
+          ops += endFlowOp()
+        case WvletToken.R_ARROW =>
+          ops += jumpToOp()
+        case WvletToken.DEPENDS =>
+          // depends on clause in pipe position (for mixed data + control)
+          val depsOp = dependsOnOp()
+          // Store as additional dependency but don't change input
+          ops += depsOp
+        case _ =>
+          // Regular relation operation - parse it and update body
+          body match
+            case Some(currentBody) =>
+              body = Some(queryBlockSingle(currentBody))
+            case None =>
+              // First body operation after input
+              input match
+                case FromStage(ref, _) =>
+                  // Convert from stage reference to a table ref and continue
+                  body = Some(queryBlockSingle(TableRef(ref, ref.span)))
+                case _ =>
+                  // For merge, depends, etc., start with empty relation
+                  body = Some(queryBlockSingle(EmptyRelation(spanFrom(t))))
+      end match
+    end while
+
+    // If no body was set but we have a FromStage input, use the reference as the body
+    if body.isEmpty then
+      input match
+        case FromStage(ref, _) =>
+          body = Some(TableRef(ref, ref.span))
+        case _ =>
+        // No body for merge/depends only stages
+
+    StageDef(Name.termName(name.leafName), input, body, ops.result(), spanFrom(t))
+  }
+
+  end stageDef
+
+  /**
+    * Parse stage input: from, merge, or depends on.
+    */
+  private def stageInput(): StageInput = node {
+    val t = scanner.lookAhead()
+    t.token match
+      case WvletToken.FROM =>
+        consume(WvletToken.FROM)
+        val ref = identifier()
+        // Check for underscore (no input)
+        if ref.leafName == "_" then
+          NoStageInput(spanFrom(t))
+        else
+          FromStage(ref, spanFrom(t))
+      case WvletToken.MERGE =>
+        consume(WvletToken.MERGE)
+        val refs = List.newBuilder[NameExpr]
+        refs += identifier()
+        while scanner.lookAhead().token == WvletToken.COMMA do
+          consume(WvletToken.COMMA)
+          refs += identifier()
+        val cond: Option[Expression] =
+          scanner.lookAhead().token match
+            case WvletToken.ON =>
+              consume(WvletToken.ON)
+              Some(booleanExpression())
+            case _ =>
+              None
+        MergeInput(refs.result(), cond, spanFrom(t))
+      case WvletToken.DEPENDS =>
+        consume(WvletToken.DEPENDS)
+        consume(WvletToken.ON)
+        val refs = List.newBuilder[NameExpr]
+        refs += identifier()
+        while scanner.lookAhead().token == WvletToken.COMMA do
+          consume(WvletToken.COMMA)
+          refs += identifier()
+        DependsOn(refs.result(), spanFrom(t))
+      case _ =>
+        unexpected(t)
+    end match
+  }
+
+  /**
+    * Parse a switch operation for conditional routing.
+    *
+    * Syntax:
+    * {{{
+    * switch {
+    *   case cond1 -> target1
+    *   case cond2 -> target2
+    *   else -> default
+    * }
+    * }}}
+    */
+  private def switchOp(): SwitchOp = node {
+    val t = consume(WvletToken.SWITCH)
+    consume(WvletToken.L_BRACE)
+    val cases = List.newBuilder[SwitchCase]
+    while scanner.lookAhead().token == WvletToken.CASE ||
+      scanner.lookAhead().token == WvletToken.ELSE
+    do
+      val caseStart = scanner.lookAhead()
+      if caseStart.token == WvletToken.ELSE then
+        consume(WvletToken.ELSE)
+        consume(WvletToken.R_ARROW)
+        val target = identifier()
+        cases += SwitchCase(None, target, spanFrom(caseStart))
+      else
+        consume(WvletToken.CASE)
+        val cond = booleanExpression()
+        consume(WvletToken.R_ARROW)
+        val target = identifier()
+        cases += SwitchCase(Some(cond), target, spanFrom(caseStart))
+    end while
+    consume(WvletToken.R_BRACE)
+    SwitchOp(cases.result(), spanFrom(t))
+  }
+
+  /**
+    * Parse a split operation for percentage-based routing (A/B testing).
+    *
+    * Syntax:
+    * {{{
+    * split {
+    *   case 50% -> variant_a
+    *   case 50% -> variant_b
+    * }
+    * }}}
+    */
+  private def splitOp(): SplitOp = node {
+    val t = consume(WvletToken.SPLIT)
+    consume(WvletToken.L_BRACE)
+    val cases = List.newBuilder[SplitCase]
+    while scanner.lookAhead().token == WvletToken.CASE do
+      val caseStart = consume(WvletToken.CASE)
+      // Parse percentage: INTEGER followed by %
+      val percentToken = scanner.lookAhead()
+      val percentage   =
+        if percentToken.token == WvletToken.INTEGER_LITERAL then
+          consume(WvletToken.INTEGER_LITERAL)
+          val pct = percentToken.str.toInt
+          consume(WvletToken.MOD) // % symbol
+          pct
+        else
+          throw StatusCode
+            .SYNTAX_ERROR
+            .newException(
+              s"Expected percentage value, but found ${percentToken.token}",
+              percentToken.sourceLocation
+            )
+      consume(WvletToken.R_ARROW)
+      val target = identifier()
+      cases += SplitCase(percentage, target, spanFrom(caseStart))
+    end while
+    consume(WvletToken.R_BRACE)
+    SplitOp(cases.result(), spanFrom(t))
+  }
+
+  /**
+    * Parse a fork operation for parallel execution.
+    *
+    * Syntax:
+    * {{{
+    * fork {
+    *   stage email = activate('email')
+    *   stage sms = activate('sms')
+    * }
+    * }}}
+    */
+  private def forkOp(): ForkOp = node {
+    val t = consume(WvletToken.FORK)
+    consume(WvletToken.L_BRACE)
+    val stages = List.newBuilder[StageDef]
+    while scanner.lookAhead().token == WvletToken.STAGE do
+      stages += stageDef()
+    consume(WvletToken.R_BRACE)
+    ForkOp(stages.result(), spanFrom(t))
+  }
+
+  /**
+    * Parse a wait operation.
+    *
+    * Syntax: `wait('7 days')`
+    */
+  private def waitOp(): WaitOp = node {
+    val t = consume(WvletToken.WAIT)
+    consume(WvletToken.L_PAREN)
+    val duration = expression()
+    consume(WvletToken.R_PAREN)
+    WaitOp(duration, spanFrom(t))
+  }
+
+  /**
+    * Parse an activate operation.
+    *
+    * Syntax: `activate('email', template: 'promo_v1')`
+    */
+  private def activateOp(): ActivateOp = node {
+    val t = consume(WvletToken.ACTIVATE)
+    consume(WvletToken.L_PAREN)
+    val target = expression()
+    val args   =
+      if scanner.lookAhead().token == WvletToken.COMMA then
+        consume(WvletToken.COMMA)
+        functionArgs()
+      else
+        Nil
+    consume(WvletToken.R_PAREN)
+    ActivateOp(target, args, spanFrom(t))
+  }
+
+  /**
+    * Parse an end flow operation.
+    *
+    * Syntax: `end()`
+    */
+  private def endFlowOp(): EndFlow = node {
+    val t = consume(WvletToken.END)
+    consume(WvletToken.L_PAREN)
+    consume(WvletToken.R_PAREN)
+    EndFlow(spanFrom(t))
+  }
+
+  /**
+    * Parse a jump to operation.
+    *
+    * Syntax: `-> OtherFlow`
+    */
+  private def jumpToOp(): JumpTo = node {
+    val t       = consume(WvletToken.R_ARROW)
+    val flowRef = identifier()
+    JumpTo(flowRef, spanFrom(t))
+  }
+
+  /**
+    * Parse a depends on operation (for use in pipe context).
+    */
+  private def dependsOnOp(): ControlDependencyOp = node {
+    val t = consume(WvletToken.DEPENDS)
+    consume(WvletToken.ON)
+    val refs = List.newBuilder[NameExpr]
+    refs += identifier()
+    while scanner.lookAhead().token == WvletToken.COMMA do
+      consume(WvletToken.COMMA)
+      refs += identifier()
+    ControlDependencyOp(refs.result(), spanFrom(t))
+  }
 
   def importStatement(): Import = node {
     val d: Import = importRef()
@@ -683,7 +1061,66 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
 
     FunctionDef(Name.termName(name.leafName), args, defScope, retType, body, spanFrom(t))
   }
-  end funDef
+
+  /**
+    * Check if the given token can start a partial query (query operator without 'from').
+    */
+  private def isPartialQueryOperator(token: WvletToken): Boolean =
+    token match
+      case WvletToken.WHERE | WvletToken.SELECT | WvletToken.GROUP | WvletToken.ORDER | WvletToken
+            .LIMIT | WvletToken.ADD | WvletToken.PREPEND | WvletToken.EXCLUDE | WvletToken.RENAME |
+          WvletToken.SHIFT | WvletToken.AGG | WvletToken.COUNT | WvletToken.PIVOT | WvletToken
+            .UNPIVOT | WvletToken.SAMPLE | WvletToken.CONCAT | WvletToken.DEBUG | WvletToken
+            .DESCRIBE | WvletToken.TEST | WvletToken.DEDUP | WvletToken.DISTINCT =>
+        true
+      case _ =>
+        false
+
+  /**
+    * Parse a partial query definition: def <name>(<args>) = <query-operators> Partial queries start
+    * with operators like where, select, group by, etc. without a from clause, and can be applied to
+    * any relation via pipe.
+    */
+  def partialQueryDef(): PartialQueryDef = node {
+    def funName(): NameExpr =
+      val t = scanner.lookAhead()
+      t.token match
+        case id if id.isIdentifier =>
+          identifier()
+        case _ =>
+          reserved()
+
+    val t                  = consume(WvletToken.DEF)
+    val name               = funName()
+    val args: List[DefArg] =
+      scanner.lookAhead().token match
+        case WvletToken.L_PAREN =>
+          consume(WvletToken.L_PAREN)
+          val args = defArgs()
+          consume(WvletToken.R_PAREN)
+          args
+        case _ =>
+          Nil
+
+    consume(WvletToken.EQ)
+
+    // Parse the partial query body starting with EmptyRelation
+    val body = partialQueryBody()
+
+    PartialQueryDef(Name.termName(name.leafName), args, body, spanFrom(t))
+  }
+
+  /**
+    * Parse a partial query body: a chain of query operators without a from clause. Uses
+    * EmptyRelation as the implicit input that will be replaced when applied via pipe.
+    */
+  private def partialQueryBody(): Relation = node {
+    val t = scanner.lookAhead()
+    // Start with EmptyRelation as the implicit input
+    val input = EmptyRelation(t.span)
+    // Parse query operators chained with pipe
+    queryBlock(input)
+  }
 
   def defArgs(): List[DefArg] =
     val t = scanner.lookAhead()
@@ -1185,6 +1622,19 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         Dedup(input, spanFrom(t))
       case WvletToken.DEBUG =>
         debugExpr(input)
+      case id if id.isIdentifier =>
+        // Potential partial query application: `relation | partial_query` or `relation | partial_query(args)`
+        val name = identifier()
+        val args =
+          scanner.lookAhead().token match
+            case WvletToken.L_PAREN =>
+              consume(WvletToken.L_PAREN)
+              val argList = functionArgs()
+              consume(WvletToken.R_PAREN)
+              argList
+            case _ =>
+              Nil
+        PartialQueryApply(input, name, args, spanFrom(t))
       case _ =>
         input
     end match
