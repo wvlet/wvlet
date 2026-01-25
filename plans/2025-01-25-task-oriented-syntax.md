@@ -66,10 +66,13 @@ pending ──→ running ──→ success (terminal)           │
 | `cancelled` | **Yes** | Stopped by user action or parent flow closure |
 
 **Transitions:**
-- `pending → skipped`: When trigger rule evaluates and determines stage should not run
-- `pending → cancelled` or `running → cancelled`: External cancellation at any time
-- `running → attempt_failed → retrying → running`: Retry loop until success or exhausted
-- `retrying → failed`: When `max_retries_exceeded` (retries exhausted)
+- `pending → skipped`: When trigger rule evaluates and upstream has non-success terminal state
+- `pending → cancelled`: External cancellation before execution starts
+- `running → cancelled`: External cancellation during execution
+- `running → attempt_failed → retrying → running`: Retry loop continues
+- `retrying → failed`: When retry count exceeds `retries` config (max retries exceeded)
+
+**Note:** `max_retries_exceeded` in the diagram is an **event** (transition condition), not a state.
 
 ### Dependency Rules
 
@@ -81,11 +84,23 @@ Stages form a DAG based on three types of edges:
 | **Control dependency** | `depends on stage_name` | Requires upstream `success` (default `all_success` trigger) |
 | **Failure dependency** | `on_failure: stage_name` | Requires upstream `failed` (implicit `all_failed` trigger) |
 
-**Important:** `on_failure` creates a **separate trigger context**:
-- Stages with `on_failure` do NOT use the default `all_success` trigger
-- Instead, they use an implicit `all_failed` trigger for the failure source
-- Other dependencies (e.g., `from source`) still require `success` for those edges
-- This allows fallback patterns where fallback runs only when primary fails
+**Important:** `on_failure` modifies trigger evaluation:
+
+1. **Without explicit `trigger`:** Each dependency type has its own requirement:
+   - Data dependencies (`from`) require `success`
+   - Control dependencies (`depends on`) require `success`
+   - Failure dependencies (`on_failure`) require `failed`
+   - ALL requirements must be met for the stage to run
+
+2. **With explicit `trigger`:** The `trigger` rule applies to success-based dependencies only:
+   - `on_failure` dependencies still require `failed` (not affected by `trigger`)
+   - `trigger` modifies how `from` and `depends on` are evaluated
+   - Example: `trigger: one_success` + `on_failure: X` means "X must fail AND at least one other upstream must succeed"
+
+3. **`cancelled` and `skipped` handling:**
+   - `on_failure` triggers ONLY on `failed` state (not `cancelled` or `skipped`)
+   - `cancelled` is treated as non-success for success-based triggers
+   - `skipped` is treated as non-failure for `none_failed` trigger
 
 ### Trigger Rules
 
@@ -136,7 +151,13 @@ backoff: exponential  -- Exponentially increasing delay (default)
 ### Flow Definition
 
 ```
-flow_def := "flow" IDENT [flow_config] "=" "{" stage_def* "}"
+flow_def := "flow" IDENT [flow_params] [flow_config] "=" "{" stage_def* "}"
+
+flow_params := "(" param_list ")"
+
+param_list := param_def ("," param_def)*
+
+param_def := IDENT ":" type_expr ["=" expression]  -- name: type [= default]
 
 flow_config := "with" "{" flow_config_items "}"
 
@@ -184,8 +205,11 @@ stage_ref := IDENT                    -- reference to another stage
 
 pipe_chain := ("|" pipe_op)*
 
-pipe_op := IDENT [call_args]          -- e.g., select, where, group by
+pipe_op := query_operator             -- existing wvlet operators: select, where, group by, etc.
          | flow_operator              -- route, fork, wait, activate, end
+
+-- Note: query_operator and flow_operator are defined in existing wvlet grammar
+-- This document extends the grammar with task configuration, not redefines base operators
 
 flow_call := IDENT "(" [call_args] ")"
 
