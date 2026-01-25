@@ -128,3 +128,16 @@ case class ModelDef(
 
 case class ValDef(name: TermName, dataType: DataType, expr: Expression, span: Span)
     extends LanguageStatement
+
+/**
+  * A partial query definition that can be applied to relations via pipe. Unlike ModelDef which
+  * defines a complete query starting with 'from', PartialQueryDef defines a query fragment starting
+  * with an operator (where, select, etc.) that can be composed with any relation.
+  *
+  * Example: def is_active = where age > 18 def core_fields = select id, name def older_than(min:
+  * int) = where age > min
+  *
+  * Usage: from users | is_active | core_fields
+  */
+case class PartialQueryDef(name: TermName, params: List[DefArg], body: Relation, span: Span)
+    extends LanguageStatement
