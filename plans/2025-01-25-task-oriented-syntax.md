@@ -36,22 +36,32 @@ Design syntax extensions for wvlet's flow language to support task management fe
 Each stage has a well-defined execution state:
 
 ```
-pending → running → success
-                  ↘ failed → retrying → success
-                           ↘ failed (exhausted)
-                  ↘ skipped
-                  ↘ cancelled
+pending → running → success (terminal)
+              ↓
+           failed → retrying → running → success (terminal)
+              ↓         ↓
+              ↓    exhausted → failed (terminal)
+              ↓
+           skipped (terminal) ← [upstream failed + trigger rule]
+              ↓
+           cancelled (terminal) ← [user/parent cancellation]
 ```
 
-| State | Description |
-|-------|-------------|
-| `pending` | Waiting for dependencies |
-| `running` | Currently executing |
-| `success` | Completed successfully |
-| `failed` | Execution failed (may retry) |
-| `retrying` | Retrying after failure |
-| `skipped` | Skipped due to upstream failure or trigger rule |
-| `cancelled` | Cancelled by user or parent flow |
+**Terminal vs Transient States:**
+
+| State | Terminal? | Description |
+|-------|-----------|-------------|
+| `pending` | No | Waiting for dependencies to complete |
+| `running` | No | Currently executing |
+| `success` | **Yes** | Completed successfully |
+| `failed` | **Yes** | All retry attempts exhausted, permanently failed |
+| `retrying` | No | Transient: waiting to retry after a failure |
+| `skipped` | **Yes** | Bypassed due to trigger rule (e.g., upstream failed) |
+| `cancelled` | **Yes** | Stopped by user action or parent flow closure |
+
+**Important:** `on_failure` and trigger rules operate on **terminal states only**:
+- `on_failure: stage_name` activates when the named stage reaches terminal `failed` state (all retries exhausted)
+- Trigger rules evaluate terminal states of all upstream stages
 
 ### Dependency Rules
 
@@ -62,15 +72,17 @@ Stages form a DAG based on:
 
 ### Trigger Rules
 
-Determine when a stage executes based on upstream states:
+Determine when a stage executes based on **terminal states** of upstream stages:
 
-| Rule | Description |
-|------|-------------|
-| `all_success` | Run only if ALL upstream stages succeeded (default) |
-| `one_success` | Run if AT LEAST ONE upstream succeeded |
-| `none_failed` | Run if NO upstream failed (success or skipped) |
-| `all_done` | Run after all upstreams complete (any state) |
-| `always` | Always run regardless of upstream state |
+| Rule | Runs when... | Skipped when... |
+|------|--------------|-----------------|
+| `all_success` | ALL upstreams are `success` | Any upstream is `failed`, `skipped`, or `cancelled` |
+| `one_success` | AT LEAST ONE upstream is `success` | ALL upstreams are `failed`, `skipped`, or `cancelled` |
+| `none_failed` | NO upstream is `failed` (allows `success`, `skipped`) | Any upstream is `failed` |
+| `all_done` | ALL upstreams reached terminal state | Never (always runs) |
+| `always` | Immediately when dependencies allow | Never (always runs) |
+
+**Note:** `cancelled` is treated as a non-success terminal state. Stages with `cancelled` upstreams will be skipped under `all_success` but may run under `one_success` if other upstreams succeeded.
 
 ---
 
@@ -104,32 +116,70 @@ backoff: exponential  -- Exponentially increasing delay (default)
 
 ## Grammar Rules
 
-### Config Block Syntax
-
-Use only `with { }` block syntax (no `[ ]` shorthand to avoid parsing ambiguity):
+### Flow Definition
 
 ```
-stage_def := "stage" IDENT [config_block] "=" stage_body
+flow_def := "flow" IDENT [flow_config] "=" "{" stage_def* "}"
 
-config_block := "with" "{" config_items "}"
+flow_config := "with" "{" flow_config_items "}"
 
-config_items := (config_item NEWLINE)*
+flow_config_items := (flow_config_item NEWLINE)*
 
-config_item := IDENT ":" config_value
+flow_config_item := "schedule" ":" schedule_expr
+                  | "timezone" ":" STRING
+                  | "concurrency" ":" INTEGER
+                  | "timeout" ":" DURATION
 
-config_value := INTEGER           -- retries: 3
-              | DURATION          -- timeout: 5m
-              | BACKOFF_STRATEGY  -- backoff: exponential
-              | TRIGGER_RULE      -- trigger: all_success
-              | IDENT             -- on_failure: fallback_stage
+schedule_expr := "cron" "(" STRING ")"
+               | "interval" "(" DURATION ")"
+```
+
+### Stage Definition
+
+```
+stage_def := "stage" IDENT [stage_config] "=" stage_body
+
+stage_config := "with" "{" stage_config_items "}"
+
+stage_config_items := (stage_config_item NEWLINE)*
+
+stage_config_item := "retries" ":" INTEGER
+                   | "timeout" ":" DURATION
+                   | "retry_delay" ":" DURATION
+                   | "max_retry_delay" ":" DURATION
+                   | "heartbeat" ":" DURATION
+                   | "backoff" ":" BACKOFF_STRATEGY
+                   | "trigger" ":" TRIGGER_RULE
+                   | "on_failure" ":" IDENT
+                   | "parent_close" ":" PARENT_CLOSE_POLICY
+                   | "idempotency_key" ":" IDENT
+
+stage_body := "from" stage_ref [pipe_chain]
+            | "call" IDENT "(" [call_args] ")"
+            | "merge" stage_ref ("," stage_ref)*
+            | "depends" "on" IDENT
+```
+
+### Tokens and Literals
+
+```
+DURATION := INTEGER DURATION_UNIT
+DURATION_UNIT := "ms" | "s" | "m" | "h" | "d"
+
+BACKOFF_STRATEGY := "constant" | "linear" | "exponential"
+
+TRIGGER_RULE := "all_success" | "one_success" | "none_failed"
+              | "all_done" | "always"
+
+PARENT_CLOSE_POLICY := "terminate" | "request_cancel" | "abandon"
 ```
 
 ### Precedence
 
-1. `with { }` binds to the immediately preceding `stage` name
-2. `=` separates config from stage body
+1. `with { }` binds to the immediately preceding `flow` or `stage` name
+2. `=` separates config from body
 3. `|` chains operations within stage body
-4. `->` is a flow operator (jump), not used in config
+4. `call` is a stage body expression for child flow invocation
 
 ---
 
