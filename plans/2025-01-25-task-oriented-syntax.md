@@ -89,30 +89,55 @@ Use `triggers on <condition>` as a **prefix clause** before `=`:
 stage <name> [triggers on <condition>] [with { config }] = <body>
 ```
 
-**Trigger conditions** use function-like predicates:
+**Trigger conditions** use function-like predicates with **single stage argument**:
 
 | Condition | Meaning |
 |-----------|---------|
 | `success(A)` | Stage A succeeded |
 | `failure(A)` | Stage A failed (after all retries) |
-| `all_success(A, B)` | ALL of A and B succeeded |
-| `one_success(A, B)` | AT LEAST ONE of A or B succeeded |
-| `all_failure(A, B)` | ALL of A and B failed |
-| `one_failure(A, B)` | AT LEAST ONE of A or B failed |
 | `done(A)` | Stage A reached any terminal state |
 
-**Boolean operators** for complex conditions:
-- `success(A) and failure(B)` — A succeeded AND B failed
-- `success(A) or success(B)` — A or B succeeded (same as `one_success(A, B)`)
+**Boolean operators** for combining conditions:
+- `and` — both conditions must be true (higher precedence)
+- `or` — either condition must be true (lower precedence)
+- `()` — parentheses for explicit grouping
+
+**Operator precedence:** `and` binds tighter than `or`:
+- `success(A) or success(B) and failure(C)` = `success(A) or (success(B) and failure(C))`
+
+**Shorthand predicates** for common multi-stage patterns:
+
+| Shorthand | Equivalent |
+|-----------|------------|
+| `all_success(A, B)` | `success(A) and success(B)` |
+| `one_success(A, B)` | `success(A) or success(B)` |
+| `all_failure(A, B)` | `failure(A) and failure(B)` |
+| `one_failure(A, B)` | `failure(A) or failure(B)` |
 
 ### Default Behavior
 
-When `triggers on` is omitted, the default trigger is **implicit success of all `from` sources**:
+When `triggers on` is omitted, default triggers are inferred from the stage input:
 
+| Stage Input | Default Trigger | Meaning |
+|-------------|-----------------|---------|
+| `from A` | `success(A)` | Run when A succeeds |
+| `from A, B` | `all_success(A, B)` | Run when both A and B succeed |
+| `from 'file.csv'` | (none) | Run immediately (literal source) |
+| `call ChildFlow()` | (none) | Run immediately |
+| `depends on A` | `success(A)` | Run when A succeeds (no data) |
+| `merge A, B` | `all_success(A, B)` | Run when both A and B succeed |
+
+**Examples:**
 ```wv
 -- These are equivalent:
 stage B = from A | transform()
 stage B triggers on success(A) = from A | transform()
+
+-- Literal source has no default trigger (runs immediately)
+stage load = from 'data.csv' | parse()
+
+-- Explicit trigger required for non-standard behavior
+stage fallback triggers on failure(primary) = from 'backup.csv' | parse()
 ```
 
 ### Examples
@@ -213,22 +238,27 @@ schedule_expr := "cron" "(" STRING ")"
 ```
 stage_def := "stage" IDENT [trigger_clause] [stage_config] "=" stage_body
 
-trigger_clause := "triggers" "on" trigger_condition
+trigger_clause := "triggers" "on" trigger_or_expr
 
-trigger_condition := trigger_predicate
-                   | trigger_condition "and" trigger_condition
-                   | trigger_condition "or" trigger_condition
-                   | "(" trigger_condition ")"
+-- Precedence: 'and' binds tighter than 'or'
+trigger_or_expr := trigger_and_expr ("or" trigger_and_expr)*
 
-trigger_predicate := "success" "(" stage_list ")"
-                   | "failure" "(" stage_list ")"
+trigger_and_expr := trigger_primary ("and" trigger_primary)*
+
+trigger_primary := trigger_predicate
+                 | "(" trigger_or_expr ")"
+
+-- Single-stage predicates
+trigger_predicate := "success" "(" IDENT ")"
+                   | "failure" "(" IDENT ")"
+                   | "done" "(" IDENT ")"
+                   -- Multi-stage shorthands
                    | "all_success" "(" stage_list ")"
                    | "one_success" "(" stage_list ")"
                    | "all_failure" "(" stage_list ")"
                    | "one_failure" "(" stage_list ")"
-                   | "done" "(" stage_list ")"
 
-stage_list := IDENT ("," IDENT)*
+stage_list := IDENT ("," IDENT)+  -- requires 2+ stages
 
 stage_config := "with" "{" stage_config_items "}"
 
@@ -282,10 +312,10 @@ DURATION_UNIT := "ms" | "s" | "m" | "h" | "d"
 
 BACKOFF_STRATEGY := "constant" | "linear" | "exponential"
 
-TRIGGER_RULE := "all_success" | "one_success" | "none_failed"
-              | "all_done" | "always"
-
 PARENT_CLOSE_POLICY := "terminate" | "request_cancel" | "abandon"
+
+-- Note: Trigger predicates (success, failure, done, all_success, etc.)
+-- are defined in trigger_predicate rule above, not as separate tokens
 ```
 
 ### Precedence
