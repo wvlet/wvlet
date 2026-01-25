@@ -57,8 +57,8 @@ object Typer extends Phase("typer") with LogSupport:
           warn(s"  ${err.message} at ${err.sourceLocation(using context)}")
         }
 
-    // For now, just return the unit unchanged
-    // TODO: Store typed plan in CompilationUnit once we have a field for it
+    // Store the typed plan in CompilationUnit
+    unit.resolvedPlan = typed
     unit
 
   // ============================================

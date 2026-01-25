@@ -585,4 +585,26 @@ class TyperTest extends AirSpec:
     val result = TypeInference.unify(IntType, BooleanType)
     result.isInstanceOf[ErrorType] shouldBe true
 
+  // ============================================
+  // Typer integration tests
+  // ============================================
+
+  test("Typer.run should store typed plan in CompilationUnit.resolvedPlan"):
+    val wvletSource = "from values(1, 2, 3) as t(x)"
+
+    // Compile with new Typer
+    val options  = CompilerOptions(workEnv = WorkEnv("."))
+    val compiler = Compiler.withNewTyper(options)
+    val unit     = CompilationUnit.fromWvletString(wvletSource)
+
+    // Before compilation, resolvedPlan should be empty
+    unit.resolvedPlan shouldBe LogicalPlan.empty
+
+    // Compile
+    compiler.compileSingleUnit(unit)
+
+    // After compilation, resolvedPlan should be set (not empty)
+    unit.resolvedPlan shouldNotBe LogicalPlan.empty
+    unit.resolvedPlan.isInstanceOf[PackageDef] shouldBe true
+
 end TyperTest
