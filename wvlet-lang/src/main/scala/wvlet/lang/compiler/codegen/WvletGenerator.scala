@@ -127,6 +127,30 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
     else
       wl(dd, wl(n.postComments.map(c => text(c.str))))
 
+  /**
+    * Flatten a Doc tree replacing VList (newlines) with explicit pipe operators. This is used for
+    * stage bodies in flows where newline-as-implicit-pipe doesn't work due to parsing ambiguity.
+    */
+  private def flattenWithPipes(d: Doc): Doc =
+    import CodeFormatter.*
+    d match
+      case VList(d1, d2) =>
+        flattenWithPipes(d1) + text(" | ") + flattenWithPipes(d2)
+      case HList(d1, d2) =>
+        flattenWithPipes(d1) + flattenWithPipes(d2)
+      case Nest(inner) =>
+        flattenWithPipes(inner)
+      case Block(inner) =>
+        ws + flattenWithPipes(inner)
+      case Group(inner) =>
+        flattenWithPipes(inner)
+      case NewLine | WhiteSpaceOrNewLine | MaybeNewLine =>
+        ws
+      case LineBreak =>
+        d // preserve explicit line breaks
+      case _ =>
+        d
+
   private def ddl(d: DDL)(using sc: SyntaxContext): Doc =
     d match
       case _ =>
@@ -430,19 +454,18 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
         }
       // Flow-related relations
       case s: StageDef =>
-        val inputs =
-          if s.inputRefs.isEmpty then
-            empty
-          else
-            wl("from", cl(s.inputRefs.map(r => expr(r))))
+        // Note: inputRefs are tracked for dependency analysis but the body already contains
+        // the full relation (including 'from' clause), so we only output the body.
+        // Use flattenWithPipes to output stage body inline with explicit pipes,
+        // avoiding parsing ambiguity with newline-as-implicit-pipe inside flows.
         val deps =
           if s.dependsOn.isEmpty then
             empty
           else
             wl("depends on", cl(s.dependsOn.map(d => expr(d))))
-        val body = s.body.map(b => relation(b)).getOrElse(empty)
+        val body = s.body.map(b => flattenWithPipes(relation(b))).getOrElse(empty)
         code(s) {
-          group(wl("stage", text(s.name.name), "=", inputs, deps)) + nest(linebreak + body)
+          group(wl("stage", text(s.name.name), "=", deps, body))
         }
       case sw: FlowSwitch =>
         val prev  = relation(sw.child)
