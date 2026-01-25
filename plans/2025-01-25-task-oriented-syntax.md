@@ -78,16 +78,21 @@ pending ──→ running ──→ success (terminal)           │
 
 **Design principle:** Separate data source from execution trigger:
 - `from` → **where data comes from** (data dependency)
-- `triggers on` → **when to execute** (execution condition)
+- `on` → **when to execute** (execution condition)
 - `with { }` → **how to execute** (retry, timeout, backoff)
 
 ### Trigger Clause Syntax
 
-Use `triggers on <condition>` as a **prefix clause** before `=`:
+Use `on <condition>` as a **prefix clause** before `=`:
 
 ```wv
-stage <name> [triggers on <condition>] [with { config }] = <body>
+stage <name> [on <condition>] [with { config }] = <body>
 ```
+
+**Why no `triggers` keyword?**
+- The `on` prefix is unambiguous because it appears before `=`
+- Shorter and more readable: `on failure(A)` vs `triggers on failure(A)`
+- Consistent with SQL patterns like `ON UPDATE CASCADE`
 
 **Trigger conditions** use function-like predicates with **single stage argument**:
 
@@ -116,7 +121,7 @@ stage <name> [triggers on <condition>] [with { config }] = <body>
 
 ### Default Behavior
 
-When `triggers on` is omitted, default triggers are inferred from the stage input:
+When `on` clause is omitted, default triggers are inferred from the stage input:
 
 | Stage Input | Default Trigger | Meaning |
 |-------------|-----------------|---------|
@@ -124,20 +129,29 @@ When `triggers on` is omitted, default triggers are inferred from the stage inpu
 | `from A, B` | `all_success(A, B)` | Run when both A and B succeed |
 | `from 'file.csv'` | (none) | Run immediately (literal source) |
 | `call ChildFlow()` | (none) | Run immediately |
-| `depends on A` | `success(A)` | Run when A succeeds (no data) |
 | `merge A, B` | `all_success(A, B)` | Run when both A and B succeed |
+
+**Note on `depends on`:**
+- `depends on A` is syntactic sugar for `on success(A)` when no data is needed
+- It's kept for backward compatibility and readability
+- Semantically equivalent: `depends on A` = `on success(A)` (control-only dependency)
 
 **Examples:**
 ```wv
 -- These are equivalent:
 stage B = from A | transform()
-stage B triggers on success(A) = from A | transform()
+stage B on success(A) = from A | transform()
 
 -- Literal source has no default trigger (runs immediately)
 stage load = from 'data.csv' | parse()
 
 -- Explicit trigger required for non-standard behavior
-stage fallback triggers on failure(primary) = from 'backup.csv' | parse()
+stage fallback on failure(primary) = from 'backup.csv' | parse()
+
+-- Control-only dependency (no data flow):
+stage notify depends on process = call notify_service()
+-- Equivalent to:
+stage notify on success(process) = call notify_service()
 ```
 
 ### Examples
@@ -148,19 +162,19 @@ flow ResilientPipeline = {
   stage process = from load | transform()
 
   -- Explicit trigger: same as above but explicit
-  stage process triggers on success(load) = from load | transform()
+  stage process on success(load) = from load | transform()
 
   -- Fallback: run when primary fails, get data from source (not primary)
-  stage fallback triggers on failure(primary) = from source | backup_api()
+  stage fallback on failure(primary) = from source | backup_api()
 
   -- Fan-in: run when either A or B succeeds
-  stage merge triggers on one_success(A, B) = from A, B | combine()
+  stage merge on one_success(A, B) = from A, B | combine()
 
   -- Mixed: get data from A, but only run when B fails
-  stage recover triggers on failure(B) = from A | recovery_logic()
+  stage recover on failure(B) = from A | recovery_logic()
 
   -- Complex: run when A succeeds AND B fails
-  stage conditional triggers on success(A) and failure(B) = from A | special_case()
+  stage conditional on success(A) and failure(B) = from A | special_case()
 }
 ```
 
@@ -238,7 +252,7 @@ schedule_expr := "cron" "(" STRING ")"
 ```
 stage_def := "stage" IDENT [trigger_clause] [stage_config] "=" stage_body
 
-trigger_clause := "triggers" "on" trigger_or_expr
+trigger_clause := "on" trigger_or_expr
 
 -- Precedence: 'and' binds tighter than 'or'
 trigger_or_expr := trigger_and_expr ("or" trigger_and_expr)*
@@ -278,7 +292,9 @@ stage_body := stage_input [pipe_chain]
 stage_input := "from" stage_ref_list
              | "call" flow_call
              | "merge" stage_ref_list [join_clause]
-             | "depends" "on" IDENT  -- control-only, no data
+
+-- Note: "depends on A" is syntactic sugar for "on success(A)" with no data input.
+-- It is kept for backward compatibility and readability.
 
 stage_ref_list := stage_ref ("," stage_ref)*
 
@@ -367,7 +383,7 @@ flow DataPipeline = {
 
 ### Error Handling with Triggers
 
-Explicit error handling using `triggers on` clause:
+Explicit error handling using `on` clause:
 
 ```wv
 flow ResilientPipeline = {
@@ -377,17 +393,17 @@ flow ResilientPipeline = {
   } = from source | call_primary_api()
 
   -- Fallback: runs only if primary fails, gets fresh data from source
-  stage fallback triggers on failure(primary) = from source | call_backup_api()
+  stage fallback on failure(primary) = from source | call_backup_api()
 
   -- Continue: runs if either primary or fallback succeeds
-  stage continue triggers on one_success(primary, fallback) = from primary, fallback | process()
+  stage continue on one_success(primary, fallback) = from primary, fallback | process()
 }
 ```
 
 **Execution semantics:**
 
 1. `source` runs first (no trigger = runs immediately)
-2. `primary` runs after `source` succeeds (implicit `triggers on success(source)`)
+2. `primary` runs after `source` succeeds (implicit `on success(source)`)
 3. `fallback` triggers on `failure(primary)`:
    - Waits for `primary` to reach terminal `failed` state
    - Gets data from `source` (not from `primary`)
@@ -395,9 +411,10 @@ flow ResilientPipeline = {
    - Runs when either `primary` OR `fallback` reaches `success`
 
 **Key benefits of this syntax:**
-- Clear separation: `triggers on` controls WHEN, `from` controls WHERE data comes from
-- Readable: `triggers on failure(X)` clearly means "run when X fails"
+- Clear separation: `on` controls WHEN, `from` controls WHERE data comes from
+- Readable: `on failure(X)` clearly means "run when X fails"
 - Composable: boolean operators allow complex conditions
+- Concise: no redundant `triggers` keyword
 
 ---
 
