@@ -1,0 +1,63 @@
+-- Test partial query definitions (composable query fragments)
+
+-- Simple filter partial query
+def is_adult = where age >= 18
+
+from 'person.json' | is_adult
+test _.size should be 2
+;
+
+-- Parameterized partial query
+def older_than(min_age: int) = where age > min_age
+
+from 'person.json' | older_than(20)
+test _.size should be 2
+;
+
+-- Projection partial query
+def name_only = select name
+
+from 'person.json' | name_only
+test _.columns should be ["name"]
+;
+
+-- Chained partial query definition
+def adult_names = where age >= 18 | select name
+
+from 'person.json' | adult_names
+test _.columns should be ["name"]
+test _.size should be 2
+;
+
+-- Multiple partial queries in pipeline
+from 'person.json' | is_adult | name_only
+test _.columns should be ["name"]
+test _.size should be 2
+;
+
+-- Order partial query
+def by_age_desc = order by age desc
+
+from 'person.json' | by_age_desc | select name | limit 1
+test _.rows should be [["clark"]]
+;
+
+-- Limit partial query
+def top_1 = limit 1
+
+from 'person.json' | by_age_desc | top_1
+test _.size should be 1
+;
+
+-- Partial query with group by
+def count_by_adult = select age >= 18 as is_adult | group by is_adult | agg count(*)
+
+from 'person.json' | count_by_adult
+test _.size should be 2
+;
+
+-- Duck-typing: same partial query on different relations
+val employees(id, name, age) = [[1, "Alice", 25], [2, "Bob", 17], [3, "Charlie", 30]]
+
+from employees | is_adult
+test _.size should be 2

@@ -283,6 +283,57 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         val stmt: LogicalPlan = statement()
         stmt :: statements()
 
+  /**
+    * Look ahead to determine if the current DEF statement defines a partial query. A partial query
+    * def has the form: def name(...) = <partial-query-operator> where <partial-query-operator> is
+    * where, select, group, order, etc.
+    */
+  private def isPartialQueryDefLookAhead(): Boolean =
+    // Save the current position
+    val tokens = scanner.peekAhead()
+    // Skip: DEF name [( args )] [: type] =
+    var idx = 0
+    // Skip DEF
+    if idx < tokens.length && tokens(idx).token == WvletToken.DEF then
+      idx += 1
+    else
+      return false
+    // Skip name (identifier)
+    if idx < tokens.length && tokens(idx).token.isIdentifier then
+      idx += 1
+    else
+      return false
+    // Skip optional parameters (...)
+    if idx < tokens.length && tokens(idx).token == WvletToken.L_PAREN then
+      var parenDepth = 1
+      idx += 1
+      while idx < tokens.length && parenDepth > 0 do
+        tokens(idx).token match
+          case WvletToken.L_PAREN =>
+            parenDepth += 1
+          case WvletToken.R_PAREN =>
+            parenDepth -= 1
+          case _ =>
+        idx += 1
+    // Skip optional return type (: type)
+    if idx < tokens.length && tokens(idx).token == WvletToken.COLON then
+      idx += 1
+      // Skip type name
+      while idx < tokens.length && (
+          tokens(idx).token.isIdentifier || tokens(idx).token == WvletToken.L_BRACKET ||
+            tokens(idx).token == WvletToken.R_BRACKET || tokens(idx).token == WvletToken.COMMA
+        )
+      do
+        idx += 1
+    // Check for = followed by partial query operator
+    if idx < tokens.length && tokens(idx).token == WvletToken.EQ then
+      idx += 1
+      if idx < tokens.length then
+        return isPartialQueryOperator(tokens(idx).token)
+    false
+
+  end isPartialQueryDefLookAhead
+
   def statement(): LogicalPlan = node {
     val t = scanner.lookAhead()
     t.token match
@@ -295,8 +346,12 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       case WvletToken.MODEL =>
         modelDef()
       case WvletToken.DEF =>
-        val d = funDef()
-        TopLevelFunctionDef(d, spanFrom(t))
+        // Look ahead to determine if this is a partial query def or regular function def
+        if isPartialQueryDefLookAhead() then
+          partialQueryDef()
+        else
+          val d = funDef()
+          TopLevelFunctionDef(d, spanFrom(t))
       case WvletToken.VAL =>
         valDef()
       case WvletToken.SHOW =>
@@ -683,7 +738,66 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
 
     FunctionDef(Name.termName(name.leafName), args, defScope, retType, body, spanFrom(t))
   }
-  end funDef
+
+  /**
+    * Check if the given token can start a partial query (query operator without 'from').
+    */
+  private def isPartialQueryOperator(token: WvletToken): Boolean =
+    token match
+      case WvletToken.WHERE | WvletToken.SELECT | WvletToken.GROUP | WvletToken.ORDER | WvletToken
+            .LIMIT | WvletToken.ADD | WvletToken.PREPEND | WvletToken.EXCLUDE | WvletToken.RENAME |
+          WvletToken.SHIFT | WvletToken.AGG | WvletToken.COUNT | WvletToken.PIVOT | WvletToken
+            .UNPIVOT | WvletToken.SAMPLE | WvletToken.CONCAT | WvletToken.DEBUG | WvletToken
+            .DESCRIBE | WvletToken.TEST | WvletToken.DEDUP | WvletToken.DISTINCT =>
+        true
+      case _ =>
+        false
+
+  /**
+    * Parse a partial query definition: def <name>(<args>) = <query-operators> Partial queries start
+    * with operators like where, select, group by, etc. without a from clause, and can be applied to
+    * any relation via pipe.
+    */
+  def partialQueryDef(): PartialQueryDef = node {
+    def funName(): NameExpr =
+      val t = scanner.lookAhead()
+      t.token match
+        case id if id.isIdentifier =>
+          identifier()
+        case _ =>
+          reserved()
+
+    val t                  = consume(WvletToken.DEF)
+    val name               = funName()
+    val args: List[DefArg] =
+      scanner.lookAhead().token match
+        case WvletToken.L_PAREN =>
+          consume(WvletToken.L_PAREN)
+          val args = defArgs()
+          consume(WvletToken.R_PAREN)
+          args
+        case _ =>
+          Nil
+
+    consume(WvletToken.EQ)
+
+    // Parse the partial query body starting with EmptyRelation
+    val body = partialQueryBody()
+
+    PartialQueryDef(Name.termName(name.leafName), args, body, spanFrom(t))
+  }
+
+  /**
+    * Parse a partial query body: a chain of query operators without a from clause. Uses
+    * EmptyRelation as the implicit input that will be replaced when applied via pipe.
+    */
+  private def partialQueryBody(): Relation = node {
+    val t = scanner.lookAhead()
+    // Start with EmptyRelation as the implicit input
+    val input = EmptyRelation(t.span)
+    // Parse query operators chained with pipe
+    queryBlock(input)
+  }
 
   def defArgs(): List[DefArg] =
     val t = scanner.lookAhead()
@@ -1185,6 +1299,19 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         Dedup(input, spanFrom(t))
       case WvletToken.DEBUG =>
         debugExpr(input)
+      case id if id.isIdentifier =>
+        // Potential partial query application: `relation | partial_query` or `relation | partial_query(args)`
+        val name = identifier()
+        val args =
+          scanner.lookAhead().token match
+            case WvletToken.L_PAREN =>
+              consume(WvletToken.L_PAREN)
+              val argList = functionArgs()
+              consume(WvletToken.R_PAREN)
+              argList
+            case _ =>
+              Nil
+        PartialQueryApply(input, name, args, spanFrom(t))
       case _ =>
         input
     end match

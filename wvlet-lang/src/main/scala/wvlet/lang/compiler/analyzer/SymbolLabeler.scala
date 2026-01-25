@@ -21,6 +21,7 @@ import wvlet.lang.compiler.ModelSymbolInfo
 import wvlet.lang.compiler.MultipleSymbolInfo
 import wvlet.lang.compiler.Name
 import wvlet.lang.compiler.PackageSymbolInfo
+import wvlet.lang.compiler.PartialQuerySymbolInfo
 import wvlet.lang.compiler.Phase
 import wvlet.lang.compiler.QuerySymbol
 import wvlet.lang.compiler.RelationAliasSymbolInfo
@@ -90,6 +91,9 @@ object SymbolLabeler extends Phase("symbol-labeler"):
         case f: TopLevelFunctionDef =>
           registerTopLevelFunction(f)(using ctx)
           ctx
+        case p: PartialQueryDef =>
+          registerPartialQueryDef(p)(using ctx)
+          ctx
         case v: ValDef =>
           val sym = Symbol(ctx.global.newSymbolId, v.span)
           sym.symbolInfo = ValSymbolInfo(ctx.owner, sym, v.name, v.dataType, v.expr)
@@ -144,6 +148,47 @@ object SymbolLabeler extends Phase("symbol-labeler"):
     sym.tree = t
     ctx.compilationUnit.enter(sym)
     sym
+
+  /**
+    * Register a partial query definition symbol. Partial queries are reusable query fragments that
+    * can be applied to relations via pipe.
+    */
+  private def registerPartialQueryDef(p: PartialQueryDef)(using ctx: Context): Symbol =
+    val partialQueryName = p.name
+    ctx.scope.lookupSymbol(partialQueryName) match
+      case Some(s) =>
+        // Update existing symbol (for REPL)
+        s.tree = p
+        s.symbolInfo = PartialQuerySymbolInfo(
+          ctx.owner,
+          s,
+          partialQueryName,
+          p.params,
+          p.body,
+          ctx.compilationUnit
+        )
+        p.symbol = s
+        trace(s"Updated existing partial query symbol ${s} for ${partialQueryName}")
+        s
+      case None =>
+        val sym = Symbol(ctx.global.newSymbolId, p.span)
+        ctx.compilationUnit.enter(sym)
+        sym.tree = p
+        sym.symbolInfo = PartialQuerySymbolInfo(
+          ctx.owner,
+          sym,
+          partialQueryName,
+          p.params,
+          p.body,
+          ctx.compilationUnit
+        )
+        p.symbol = sym
+        trace(s"Created new partial query symbol ${sym} for ${partialQueryName}")
+        ctx.scope.add(partialQueryName, sym)
+        sym
+    end match
+
+  end registerPartialQueryDef
 
   private def registerSelectAsAlias(s: SelectAsAlias)(using ctx: Context): Symbol =
     val aliasName = s.target.toTermName
