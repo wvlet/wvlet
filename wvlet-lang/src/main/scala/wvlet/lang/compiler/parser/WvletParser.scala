@@ -221,6 +221,10 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       case WvletToken.DOUBLE_QUOTE_STRING =>
         consume(WvletToken.DOUBLE_QUOTE_STRING)
         DoubleQuotedIdentifier(t.str, spanFrom(t))
+      case token if token.isNonReservedKeyword =>
+        // Non-reserved keywords can be used as identifiers
+        consumeToken()
+        UnquotedIdentifier(t.str, spanFrom(t))
       case _ =>
         // TODO Define what is reserved (e.g., select, add, true, etc.) or not (e.g., count, table, user)
         reserved()
@@ -237,6 +241,10 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       case WvletToken.BACKQUOTED_IDENTIFIER =>
         consume(WvletToken.BACKQUOTED_IDENTIFIER)
         BackQuotedIdentifier(t.str, DataType.UnknownType, spanFrom(t))
+      case token if token.isNonReservedKeyword =>
+        // Non-reserved keywords can be used as identifiers
+        consumeToken()
+        UnquotedIdentifier(t.str, spanFrom(t))
       case _ =>
         reserved()
   }

@@ -27,7 +27,7 @@ import TokenType.*
 import scala.annotation.switch
 
 enum WvletToken(val tokenType: TokenType, val str: String):
-  def isIdentifier: Boolean      = tokenType == Identifier
+  def isIdentifier: Boolean      = tokenType == Identifier || isNonReservedKeyword
   def isLiteral: Boolean         = tokenType == Literal
   def isKeyword: Boolean         = tokenType == Keyword
   def isReservedKeyword: Boolean = isKeyword && !WvletToken.nonReservedKeywords.contains(this)
@@ -291,7 +291,21 @@ object WvletToken:
     WvletToken.MAP
   )
 
-  val nonReservedKeywords = Set(WvletToken.COUNT, WvletToken.CONCAT)
+  val nonReservedKeywords = Set(
+    WvletToken.COUNT,
+    WvletToken.CONCAT,
+    // Flow-related keywords that can also be used as identifiers
+    WvletToken.END,
+    WvletToken.WAIT,
+    WvletToken.ACTIVATE,
+    WvletToken.SPLIT,
+    WvletToken.FORK,
+    WvletToken.MERGE,
+    WvletToken.FLOW,
+    WvletToken.STAGE,
+    WvletToken.SWITCH,
+    WvletToken.DEPENDS
+  )
 
   val stringStartToken = List(
     WvletToken.IDENTIFIER,
