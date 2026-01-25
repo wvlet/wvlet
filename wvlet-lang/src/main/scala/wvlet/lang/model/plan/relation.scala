@@ -374,6 +374,36 @@ case class Transform(child: Relation, transformItems: List[Attribute], span: Spa
     )
     pt
 
+/**
+  * Application of a partial query to an input relation. This is an intermediate representation that
+  * gets resolved by TypeResolver to inline the partial query body.
+  *
+  * Example: `from users | is_active` becomes PartialQueryApply(TableRef(users), is_active, ...)
+  *
+  * @param child
+  *   The input relation
+  * @param partialQueryRef
+  *   Reference to the partial query (identifier or function call with args)
+  * @param args
+  *   Arguments if the partial query is parameterized
+  * @param span
+  *   Source location
+  */
+case class PartialQueryApply(
+    child: Relation,
+    partialQueryRef: NameExpr,
+    args: List[Expression],
+    span: Span
+) extends UnaryRelation:
+  override def toString: String =
+    if args.isEmpty then
+      s"PartialQueryApply[${partialQueryRef.fullName}](${child})"
+    else
+      s"PartialQueryApply[${partialQueryRef.fullName}(${args.mkString(", ")})](${child})"
+
+  // The relation type will be determined after the partial query is resolved
+  override def relationType: RelationType = child.relationType
+
 case class AddColumnsToRelation(child: Relation, newColumns: List[Attribute], span: Span)
     extends UnaryRelation
     with Selection

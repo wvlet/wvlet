@@ -46,6 +46,12 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   def isStringLiteral: Boolean            = WvletToken.stringLiterals.contains(this)
   def isInterpolatedStringPrefix: Boolean = WvletToken.stringInterpolationPrefixes.contains(this)
 
+  /**
+    * Check if this token can start a partial query (query operator without 'from'). These are
+    * operators that can appear after a pipe in a partial query definition.
+    */
+  def isPartialQueryOperator: Boolean = WvletToken.partialQueryOperators.contains(this)
+
   // special tokens
   case EMPTY      extends WvletToken(Control, "<empty>")
   case ERROR      extends WvletToken(Control, "<erroneous token>")
@@ -319,6 +325,28 @@ object WvletToken:
       // WvletToken.TRANSFORM,
       WvletToken.TEST
     ) ++ joinKeywords
+
+  /**
+    * Tokens that can start a partial query (query operator without 'from'). These operators can
+    * appear after a pipe in a partial query definition.
+    */
+  val partialQueryOperators: Set[WvletToken] = Set(
+    WvletToken.WHERE,
+    WvletToken.SELECT,
+    WvletToken.GROUP,
+    WvletToken.ORDER,
+    WvletToken.LIMIT,
+    WvletToken.AGG,
+    WvletToken.ADD,
+    WvletToken.EXCLUDE,
+    WvletToken.PREPEND,
+    WvletToken.SHIFT,
+    WvletToken.RENAME,
+    WvletToken.DISTINCT,
+    WvletToken.PIVOT,
+    WvletToken.UNPIVOT,
+    WvletToken.TEST
+  )
 
   val queryDelimiters = Set(
     WvletToken.EOF,

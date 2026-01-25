@@ -19,9 +19,11 @@ import Type.FunctionType
 import Type.PackageType
 import wvlet.lang.compiler.Symbol.NoSymbol
 import wvlet.lang.model.expr.Expression
+import wvlet.lang.model.plan.DefArg
 import wvlet.lang.model.plan.DefContext
 import wvlet.lang.model.plan.EmptyRelation
 import wvlet.lang.model.plan.LogicalPlan
+import wvlet.lang.model.plan.Relation
 import wvlet.log.LogSupport
 
 enum SymbolType:
@@ -36,6 +38,7 @@ enum SymbolType:
   case Relation
   case Query
   case Expression
+  case PartialQueryDef
 
 /**
   * SymbolInfo is the result of resolving a name (Symbol) during the compilation phase.
@@ -144,6 +147,33 @@ case class ModelSymbolInfo(
     compilationUnit: CompilationUnit
 ) extends SymbolInfo(SymbolType.ModelDef, symbol, owner, name, tpe):
   override def toString: String = s"model ${owner}.${name}: ${dataType}"
+
+/**
+  * Symbol info for partial query definitions. Partial queries are reusable query fragments (where,
+  * select, etc.) that can be applied via pipe.
+  *
+  * @param owner
+  *   The owning symbol (typically package)
+  * @param symbol
+  *   The symbol for this partial query
+  * @param name
+  *   The name of the partial query
+  * @param params
+  *   Parameters for the partial query
+  * @param body
+  *   The relation body (operators like Filter, Project, etc. with EmptyRelation as input)
+  * @param compilationUnit
+  *   The compilation unit where this is defined
+  */
+case class PartialQuerySymbolInfo(
+    override val owner: Symbol,
+    override val symbol: Symbol,
+    override val name: Name,
+    params: List[DefArg],
+    body: Relation,
+    compilationUnit: CompilationUnit
+) extends SymbolInfo(SymbolType.PartialQueryDef, owner, symbol, name, DataType.UnknownType):
+  override def toString: String = s"partial ${owner}.${name}(${params.map(_.name).mkString(", ")})"
 
 case class ValSymbolInfo(
     override val owner: Symbol,

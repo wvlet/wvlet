@@ -47,6 +47,28 @@ class WvletScanner(sourceFile: SourceFile, config: ScannerConfig = ScannerConfig
       case _ =>
         false
 
+  /**
+    * Peek ahead multiple tokens without consuming them. Returns an array of the next n tokens for
+    * lookahead purposes. This creates a temporary scanner starting from the next token position.
+    */
+  def peekAhead(maxTokens: Int = 20): Array[TokenData[WvletToken]] =
+    // Use next.offset if available (after lookAhead was called), otherwise use current.offset
+    val startPos =
+      if next.token != WvletToken.EMPTY then
+        next.offset
+      else
+        current.offset
+    val tempScanner = WvletScanner(
+      sourceFile,
+      config.copy(startFrom = startPos, skipComments = true)
+    )
+    val tokens = Array.newBuilder[TokenData[WvletToken]]
+    var count  = 0
+    while count < maxTokens && tempScanner.currentToken.token != WvletToken.EOF do
+      tokens += tempScanner.nextToken()
+      count += 1
+    tokens.result()
+
   private def inMultiLineStringInterpolation: Boolean =
     currentRegion match
       case InBraces(InString(true, _)) =>

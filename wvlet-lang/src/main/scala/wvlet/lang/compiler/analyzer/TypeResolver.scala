@@ -25,6 +25,7 @@ import wvlet.lang.compiler.MethodSymbolInfo
 import wvlet.lang.compiler.ModelSymbolInfo
 import wvlet.lang.compiler.MultipleSymbolInfo
 import wvlet.lang.compiler.Name
+import wvlet.lang.compiler.PartialQuerySymbolInfo
 import wvlet.lang.compiler.Phase
 import wvlet.lang.compiler.RelationAliasSymbolInfo
 import wvlet.lang.compiler.RewriteRule
@@ -61,6 +62,7 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
       resolveLocalFileScan ::         // resolve local file scans for DuckDb
       resolveTableRef ::              // resolve table reference (model or schema) types
       resolveModelDef ::              // resolve ModelDef
+      resolvePartialQueryApply ::     // resolve partial query applications (before selectItem)
       resolveSelectItem ::            // resolve select items (projected columns)
       resolveGroupingKey ::           // resolve Aggregate keys
       resolveGroupingKeyIndexes ::    // resolve grouping key indexes, _1, _2, .. in select clauses
@@ -282,6 +284,92 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
     }
 
   end resolveModelDef
+
+  /**
+    * Resolve PartialQueryApply nodes by inlining the partial query body. This transforms
+    * `from users | is_active` where `def is_active = where age > 18` into
+    * `from users | where age > 18`.
+    */
+  private object resolvePartialQueryApply extends RewriteRule:
+    override def apply(context: Context): PlanRewriter =
+      case p: PartialQueryApply =>
+        val partialQueryName = Name.termName(p.partialQueryRef.leafName)
+        lookupType(partialQueryName, context) match
+          case Some(sym) =>
+            sym.symbolInfo match
+              case pqInfo: PartialQuerySymbolInfo =>
+                // Check for argument count mismatch
+                if pqInfo.params.length != p.args.length then
+                  throw StatusCode
+                    .INVALID_ARGUMENT
+                    .newException(
+                      s"Partial query '${partialQueryName}' expects ${pqInfo
+                          .params
+                          .length} arguments, but ${p.args.length} were provided",
+                      context.sourceLocationAt(p.span)
+                    )
+
+                // Inline the partial query body
+                val body = pqInfo.body
+
+                // Substitute parameters if any
+                val substitutedBody =
+                  if pqInfo.params.nonEmpty then
+                    substituteParams(body, pqInfo.params, p.args)
+                  else
+                    body
+
+                // Replace EmptyRelation in the body with the input relation
+                val inlinedBody = inlinePartialQueryBody(p.child, substitutedBody)
+
+                // Continue resolving the result
+                inlinedBody
+              case _ =>
+                // Not a partial query, keep as is (might be an error)
+                context.logWarn(s"'${partialQueryName}' is not a partial query definition")
+                p
+          case None =>
+            context.logWarn(s"Partial query '${partialQueryName}' not found")
+            p
+        end match
+
+    end apply
+
+    /**
+      * Replace EmptyRelation nodes in the partial query body with the input relation.
+      */
+    private def inlinePartialQueryBody(input: Relation, body: Relation): Relation = body
+      .transformUp { case e: EmptyRelation =>
+        input
+      }
+      .asInstanceOf[Relation]
+
+    /**
+      * Substitute parameter references in the partial query body with actual argument values.
+      */
+    private def substituteParams(
+        body: Relation,
+        params: List[DefArg],
+        args: List[Expression]
+    ): Relation =
+      // Create a mapping from parameter names to argument values
+      val paramMap =
+        params
+          .zip(args)
+          .map { case (param, arg) =>
+            param.name -> arg
+          }
+          .toMap
+
+      // Replace identifier references to parameters with their argument values
+      body
+        .transformUpExpressions {
+          case i: Identifier if paramMap.contains(Name.termName(i.leafName)) =>
+            paramMap(Name.termName(i.leafName))
+        }
+        .asInstanceOf[Relation]
+
+  end resolvePartialQueryApply
 
   private object resolveModelScan extends RewriteRule:
     override def apply(context: Context): PlanRewriter =
