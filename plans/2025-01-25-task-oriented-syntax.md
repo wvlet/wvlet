@@ -169,7 +169,7 @@ flow Cleanup if DailyETL.done = {
 | `from A` | A succeeds | Run when A succeeds |
 | `from A, B` | A and B succeed | Run when both succeed |
 | `from 'file.csv'` | (none) | Run immediately (literal source) |
-| `call ChildFlow()` | (none) | Run immediately |
+| `call ChildFlow()` | (none) | Invoked when parent stage executes |
 
 **Flows:** No implicit dependency. Use `depends on` explicitly.
 
@@ -226,12 +226,18 @@ flow Reporting depends on DailyETL = {
   stage publish = from generate | upload_to_dashboard()
 }
 
--- Flow with schedule AND dependency
+-- Flow with schedule AND dependency (both must be satisfied)
+-- Runs at 3 AM only if Ingestion has succeeded since last run
 flow Analytics depends on Ingestion with {
   schedule: cron('0 3 * * *')
 } = {
   stage analyze = from data | run_analytics()
 }
+
+-- Note: When both 'depends on' and 'schedule' are specified:
+-- - The schedule determines WHEN to check the dependency
+-- - The dependency determines IF the flow actually runs
+-- - If Ingestion hasn't succeeded, the scheduled run is skipped
 
 -- Recovery flow: runs when Pipeline fails
 flow Recovery if Pipeline.failed = {
@@ -363,8 +369,8 @@ stage_input := "from" stage_ref_list
              | "call" flow_call
              | "merge" stage_ref_list [join_clause]
 
--- Note: "depends on A" is syntactic sugar for "on success(A)" with no data input.
--- It is kept for backward compatibility and readability.
+-- Note: Stages use 'from' for data dependencies (success implied).
+-- 'depends on' is only used at the flow level for cross-flow dependencies.
 
 stage_ref_list := stage_ref ("," stage_ref)*
 
@@ -477,8 +483,8 @@ flow ResilientPipeline = {
 3. `fallback` triggers if `primary.failed`:
    - Waits for `primary` to reach terminal `failed` state
    - Gets fresh data from `source` (not from `primary`)
-4. `continue` runs when both `primary` and `fallback` finish:
-   - Uses data from whichever succeeded
+4. `continue` runs when both `primary` and `fallback` reach terminal state:
+   - Uses data from the successful upstream path (either `primary` or `fallback`)
 
 **Key benefits:**
 - **Simple**: `from` for data + success trigger (stages)
@@ -664,4 +670,17 @@ flow BatchProcess = {
 1. Should `heartbeat` trigger automatic stage restart or just monitoring?
 2. How should `schedule` interact with manual flow triggers?
 3. Should child flows inherit parent's retry configuration by default?
-4. How to handle circular dependencies in `on_failure` chains?
+4. How to handle circular dependencies in `if X.failed` chains?
+
+### Circular Dependency Detection
+
+Circular dependencies in error handling chains (e.g., `A if B.failed`, `B if A.failed`) must be
+detected at compile time. The compiler should:
+
+1. **Build a dependency graph** including both success (`from`) and failure (`if X.failed`) edges
+2. **Detect cycles** using standard graph algorithms (DFS-based cycle detection)
+3. **Report clear errors** identifying the cycle path (e.g., "Circular dependency: A → B → A")
+
+**Prevention strategy:** The type checker will reject flows containing cycles in the combined
+dependency graph. This is a compile-time check, not a runtime check, ensuring invalid flows
+cannot be deployed.
