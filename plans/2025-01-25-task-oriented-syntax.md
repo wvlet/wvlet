@@ -76,35 +76,40 @@ pending ──→ running ──→ success (terminal)           │
 
 ### Dependency and Trigger Model
 
-**Design principle:** Separate data source from execution trigger:
-- `from` → **where data comes from** (data dependency)
-- `on` → **when to execute** (execution condition)
+**Design principle:** Clear separation between stages and flows:
+
+| Scope | Data + Success | Error/Cleanup Override |
+|-------|----------------|------------------------|
+| **Stage** | `from A` | `on A.failed`, `on A.done` |
+| **Flow** | `depends on FlowA` | `on FlowA.failed`, `on FlowA.done` |
+
+**Stage dependencies** (within a flow):
+- `from A` → data from A, runs when A succeeds (default trigger)
+- `on A.failed` → override: run when A fails
+- `on A.done` → override: run when A finishes (any state)
+
+**Flow dependencies** (cross-flow):
+- `depends on FlowA` → run when FlowA succeeds
+- `on FlowA.failed` → run when FlowA fails
+- `on FlowA.done` → run when FlowA finishes (any state)
+
+**Configuration:**
 - `with { }` → **how to execute** (retry, timeout, backoff)
 
-### Trigger Clause Syntax
+### Stage Trigger Syntax
 
-Two forms for specifying when a stage/flow runs:
+Stages use `from` for data dependencies (success implied), with optional `on` override:
 
 ```wv
--- Success dependency (common case): concise syntax
-stage <name> depends on <ref> [, <ref>]* [with { config }] = <body>
-
--- Conditional trigger (error handling, cleanup): property-access syntax
-stage <name> on <condition> [with { config }] = <body>
+stage <name> [on <condition>] [with { config }] = <body>
 ```
-
-**Design rationale:**
-- `depends on` — optimized for the common case (success dependencies)
-- `on X.failed` / `on X.done` — explicit for error handling and cleanup
 
 **State predicates** (for `on` clause):
 
 | Predicate | Meaning |
 |-----------|---------|
-| `A.failed` | Stage/flow A failed (after all retries) |
-| `A.done` | Stage/flow A reached any terminal state |
-
-**Note:** `.succeeded` is intentionally omitted — use `depends on A` instead for cleaner syntax.
+| `A.failed` | Stage A failed (after all retries) |
+| `A.done` | Stage A reached any terminal state |
 
 **Boolean operators** for combining conditions:
 - `and` — both conditions must be true (higher precedence)
@@ -113,11 +118,11 @@ stage <name> on <condition> [with { config }] = <body>
 
 **Examples:**
 ```wv
--- Success dependency (common case)
-stage transform depends on extract = from extract | clean()
-stage merge depends on A, B = from A, B | combine()
+-- Data dependency (success implied)
+stage transform = from extract | clean()
+stage merge = from A, B | combine()
 
--- Error handling
+-- Error handling (trigger override)
 stage fallback on primary.failed = from backup | recover()
 
 -- Cleanup (runs regardless of success/failure)
@@ -127,97 +132,135 @@ stage cleanup on process.done = call cleanup_service()
 stage alert on A.failed or B.failed = call send_alert()
 ```
 
-### Default Behavior
+### Flow Dependency Syntax
 
-When no dependency clause is specified, defaults are inferred from the stage input:
+Flows use `depends on` for cross-flow success dependencies:
 
-| Stage Input | Default Behavior | Meaning |
-|-------------|------------------|---------|
-| `from A` | `depends on A` | Run when A succeeds |
-| `from A, B` | `depends on A, B` | Run when both succeed |
-| `from 'file.csv'` | (none) | Run immediately (literal source) |
-| `call ChildFlow()` | (none) | Run immediately |
-| `merge A, B` | `depends on A, B` | Run when both succeed |
+```wv
+flow <name> depends on <FlowName> [with { config }] = { ... }
+flow <name> on <FlowName>.<state> [with { config }] = { ... }
+```
 
 **Examples:**
 ```wv
--- These are equivalent (implicit depends on):
-stage B = from A | transform()
-stage B depends on A = from A | transform()
+-- Run after another flow succeeds
+flow Reporting depends on DailyETL = {
+  stage generate = from warehouse | create_report()
+}
 
--- Literal source has no dependency (runs immediately)
-stage load = from 'data.csv' | parse()
+-- Run after another flow fails (recovery flow)
+flow Recovery on DailyETL.failed = {
+  stage alert = call send_alert()
+  stage retry = call manual_retry()
+}
 
--- Error handling requires explicit 'on' clause
-stage fallback on primary.failed = from backup | recover()
+-- Run after another flow finishes (cleanup)
+flow Cleanup on DailyETL.done = {
+  stage archive = from logs | compress()
+}
+```
 
--- Control-only dependency (no data flow):
-stage notify depends on process = call notify_service()
+### Default Behavior
+
+**Stages:** The `from` clause implies success dependency on the source:
+
+| Stage Input | Implied Trigger | Meaning |
+|-------------|-----------------|---------|
+| `from A` | A succeeds | Run when A succeeds |
+| `from A, B` | A and B succeed | Run when both succeed |
+| `from 'file.csv'` | (none) | Run immediately (literal source) |
+| `call ChildFlow()` | (none) | Run immediately |
+
+**Flows:** No implicit dependency. Use `depends on` explicitly.
+
+**Examples:**
+```wv
+flow Pipeline = {
+  -- 'from' implies success dependency
+  stage extract = from 'data.csv' | parse()      -- runs immediately
+  stage transform = from extract | clean()       -- runs when extract succeeds
+  stage load = from transform | save()           -- runs when transform succeeds
+
+  -- 'on' overrides for error/cleanup
+  stage fallback on extract.failed = from backup | recover()
+  stage notify on load.done = call notify_service()
+}
+
+-- Flow dependency requires explicit 'depends on'
+flow Reporting depends on Pipeline = {
+  stage report = from warehouse | generate()
+}
 ```
 
 ### Examples
 
 ```wv
 flow ResilientPipeline = {
-  -- Simple: run when load succeeds (implicit depends on)
-  stage process = from load | transform()
+  -- Data dependency via 'from' (success implied)
+  stage extract = from source | fetch_data()
+  stage transform = from extract | clean()
+  stage load = from transform | save to warehouse
 
-  -- Explicit dependency: same as above but explicit
-  stage process depends on load = from load | transform()
+  -- Error handling with 'on'
+  stage fallback on extract.failed = from backup_source | fetch_data()
 
-  -- Fallback: run when primary fails
-  stage fallback on primary.failed = from source | backup_api()
+  -- Fan-in: data from multiple stages
+  stage merge = from A, B | combine()
 
-  -- Fan-in with explicit dependency
-  stage merge depends on A, B = from A, B | combine()
+  -- Cleanup: runs when load finishes (any state)
+  stage cleanup on load.done = call cleanup_service()
 
-  -- Mixed: get data from A, but only run when B fails
-  stage recover on B.failed = from A | recovery_logic()
-
-  -- Cleanup: run when process finishes (success or failure)
-  stage cleanup on process.done = call cleanup_service()
+  -- Alert: runs if any stage fails
+  stage alert on extract.failed or transform.failed = call send_alert()
 }
 ```
 
 ### Cross-Flow Dependencies
 
-Flows can depend on other flows:
+Flows use `depends on` for success, `on` for error/cleanup:
 
 ```wv
--- Flow that runs after another flow succeeds
+-- Flow runs after another flow succeeds
 flow Reporting depends on DailyETL = {
   stage generate = from warehouse | create_report()
   stage publish = from generate | upload_to_dashboard()
 }
 
--- Flow with both schedule and dependency
+-- Flow with schedule AND dependency
 flow Analytics depends on Ingestion with {
-  schedule: cron('0 3 * * *')  -- Also scheduled as fallback
+  schedule: cron('0 3 * * *')
 } = {
   stage analyze = from data | run_analytics()
 }
 
--- Cleanup flow: runs when Reporting finishes (any state)
-flow Cleanup on Reporting.done = {
-  stage archive = from logs | compress_and_archive()
+-- Recovery flow: runs when Pipeline fails
+flow Recovery on Pipeline.failed = {
+  stage alert = call send_alert()
+  stage log = call log_failure()
+}
+
+-- Cleanup flow: runs when Pipeline finishes (any state)
+flow Cleanup on Pipeline.done = {
+  stage archive = from logs | compress()
 }
 ```
 
 ### Trigger Evaluation
 
-Triggers evaluate based on **terminal states** of referenced stages/flows:
+Triggers evaluate based on **terminal states**:
 
-| Terminal State | `depends on` | `.failed` | `.done` |
-|----------------|--------------|-----------|---------|
-| `success` | ✓ runs | — | ✓ runs |
-| `failed` | — skipped | ✓ runs | ✓ runs |
-| `skipped` | — skipped | — | ✓ runs |
-| `cancelled` | — skipped | — | ✓ runs |
+| Terminal State | `from A` (stage) | `depends on` (flow) | `.failed` | `.done` |
+|----------------|------------------|---------------------|-----------|---------|
+| `success` | ✓ runs | ✓ runs | — | ✓ runs |
+| `failed` | — skipped | — skipped | ✓ runs | ✓ runs |
+| `skipped` | — skipped | — skipped | — | ✓ runs |
+| `cancelled` | — skipped | — skipped | — | ✓ runs |
 
-**Notes:**
-- `depends on A` only runs when A succeeds
-- `on A.failed` only runs when A fails (after retries exhausted)
-- `on A.done` runs when A reaches any terminal state (cleanup use case)
+**Summary:**
+- `from A` (stages): Implicit success trigger from data source
+- `depends on FlowA` (flows): Explicit success dependency on another flow
+- `.failed`: Error handling (runs only on failure)
+- `.done`: Cleanup (runs on any terminal state)
 
 ---
 
@@ -254,10 +297,11 @@ backoff: exponential  -- Exponentially increasing delay (default)
 ### Flow Definition
 
 ```
-flow_def := "flow" IDENT [dependency_clause] [flow_params] [flow_config] "=" "{" stage_def* "}"
+flow_def := "flow" IDENT [flow_dependency] [flow_params] [flow_config] "=" "{" stage_def* "}"
 
-dependency_clause := "depends" "on" IDENT
-                   | "on" trigger_expr
+-- Flow-level dependencies (cross-flow)
+flow_dependency := "depends" "on" IDENT          -- success dependency
+                 | "on" IDENT "." STATE_NAME     -- error/cleanup dependency
 
 flow_params := "(" param_list ")"
 
@@ -281,12 +325,11 @@ schedule_expr := "cron" "(" STRING ")"
 ### Stage Definition
 
 ```
-stage_def := "stage" IDENT [dependency_clause] [stage_config] "=" stage_body
+stage_def := "stage" IDENT [trigger_override] [stage_config] "=" stage_body
 
-dependency_clause := "depends" "on" ident_list
-                   | "on" trigger_expr
-
-ident_list := IDENT ("," IDENT)*
+-- Stage trigger override (for error handling / cleanup)
+-- Note: Success dependency is implicit via 'from' clause in stage_body
+trigger_override := "on" trigger_expr
 
 -- Precedence: 'and' binds tighter than 'or'
 trigger_expr := trigger_and ("or" trigger_and)*
@@ -300,7 +343,6 @@ trigger_primary := state_predicate
 state_predicate := IDENT "." STATE_NAME
 
 STATE_NAME := "failed" | "done"
--- Note: "succeeded" is intentionally omitted; use "depends on" instead
 
 stage_config := "with" "{" stage_config_items "}"
 
@@ -420,30 +462,29 @@ flow ResilientPipeline = {
     retries: 3
   } = from source | call_primary_api()
 
-  -- Fallback: runs only if primary fails, gets fresh data from source
+  -- Fallback: runs only if primary fails
   stage fallback on primary.failed = from source | call_backup_api()
 
-  -- Continue: runs if either primary or fallback succeeds
-  stage continue depends on primary, fallback = from primary, fallback | process()
+  -- Continue: runs after both primary and fallback complete
+  stage continue = from primary, fallback | process()
 }
 ```
 
 **Execution semantics:**
 
-1. `source` runs first (no dependency = runs immediately)
-2. `primary` runs after `source` succeeds (implicit `depends on source`)
+1. `source` runs first (literal source = runs immediately)
+2. `primary` runs after `source` succeeds (implicit from `from source`)
 3. `fallback` triggers on `primary.failed`:
    - Waits for `primary` to reach terminal `failed` state
-   - Gets data from `source` (not from `primary`)
-4. `continue` depends on `primary, fallback`:
-   - Runs when both `primary` AND `fallback` reach terminal state
-   - At least one must succeed for data to be available
+   - Gets fresh data from `source` (not from `primary`)
+4. `continue` runs when both `primary` and `fallback` finish:
+   - Uses data from whichever succeeded
 
-**Key benefits of this syntax:**
-- **Concise**: `depends on A` for common success case
-- **Flow-style**: Reads left-to-right (`on primary.failed` = "on primary failed")
-- **Clear separation**: dependency controls WHEN, `from` controls WHERE data comes from
-- **Unified**: Same syntax for stage and flow dependencies
+**Key benefits:**
+- **Simple**: `from` for data + success trigger (stages)
+- **Explicit**: `depends on` for flow-level dependencies
+- **Flow-style**: Reads left-to-right (`on primary.failed`)
+- **Clear separation**: `from` = data source, `on` = trigger override
 
 ---
 
