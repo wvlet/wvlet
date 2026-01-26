@@ -571,6 +571,12 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
 
   /**
     * Parse a config value, which can be a duration literal (e.g., 5m, 30s) or a regular expression.
+    *
+    * Duration literals are recognized when an integer is immediately followed by a duration suffix
+    * (ms, s, m, h, d). For other expressions, use the general expression parser.
+    *
+    * Note: Numeric expressions like `1 + 2` starting with an integer literal are not directly
+    * supported in config values. Use computed values or parentheses for complex expressions.
     */
   private def configValue(): Expression =
     val t = scanner.lookAhead()
@@ -578,14 +584,16 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       case WvletToken.INTEGER_LITERAL =>
         val numToken = consumeToken()
         val numValue = numToken.str.replaceAll("_", "").toLong
-        scanner.lookAhead().token match
+        // Check if followed by a duration suffix
+        val next = scanner.lookAhead()
+        next.token match
           case WvletToken.IDENTIFIER =>
-            val unitToken = scanner.lookAhead()
-            DurationUnit.fromSuffix(unitToken.str) match
+            DurationUnit.fromSuffix(next.str) match
               case Some(unit) =>
-                consumeToken()
+                consumeToken() // consume the unit identifier
                 DurationLiteral(numValue, unit, spanFrom(numToken))
               case None =>
+                // Not a duration suffix, return as integer literal
                 LongLiteral(numValue, numToken.str, spanFrom(numToken))
           case _ =>
             LongLiteral(numValue, numToken.str, spanFrom(numToken))
