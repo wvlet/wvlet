@@ -4,6 +4,39 @@
 
 Design syntax extensions for wvlet's flow language to support task management features found in modern workflow orchestration tools (Temporal, Airflow, Dagster, Prefect).
 
+## Definition Guidelines
+
+| Construct | Purpose | Scope | Reusable |
+|-----------|---------|-------|----------|
+| `def` | Reusable function/logic | Global | Yes, callable |
+| `model` | Reusable data artifact | Global | Yes, queryable |
+| `flow` | Orchestration container | Global | Yes, triggerable |
+| `stage` | Execution step in flow | Inside `flow` | No, flow-specific |
+
+**Key distinction:**
+- `model` defines **what** data to produce (reusable data artifact)
+- `stage` defines **when/how** to execute (orchestration step with retries, triggers)
+
+**Example:**
+```wv
+-- Reusable logic
+def clean(input) = input | where valid = true
+
+-- Reusable data artifacts (queryable standalone)
+model stg_customers = from source.customers | clean(_)
+model stg_orders = from source.orders | clean(_)
+
+-- Orchestrated pipeline
+flow DailyETL with { schedule: cron('0 2 * * *') } = {
+  stage refresh_customers with { retries: 3 } =
+    from stg_customers | save to warehouse.customers
+  stage refresh_orders =
+    from stg_orders | save to warehouse.orders
+  stage notify if refresh_orders.done =
+    call notify_service()
+}
+```
+
 ## Research Summary
 
 ### Key Concepts from Workflow Tools
