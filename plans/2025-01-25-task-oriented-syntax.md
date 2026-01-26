@@ -315,17 +315,11 @@ param_list := param_def ("," param_def)*
 
 param_def := IDENT ":" type_expr ["=" expression]  -- name: type [= default]
 
-flow_config := "with" "{" flow_config_items "}"
+flow_config := "with" "{" config_items "}"
 
-flow_config_items := (flow_config_item NEWLINE)*
-
-flow_config_item := "schedule" ":" schedule_expr
-                  | "timezone" ":" STRING
-                  | "concurrency" ":" INTEGER
-                  | "timeout" ":" DURATION
-
-schedule_expr := "cron" "(" STRING ")"
-               | "interval" "(" DURATION ")"
+-- Same generic key-value syntax as stage_config
+-- Known flow properties: schedule, timezone, concurrency, timeout
+-- Validation happens in semantic analysis, not parsing
 ```
 
 ### Stage Definition
@@ -350,18 +344,12 @@ state_predicate := IDENT "." STATE_NAME
 
 STATE_NAME := "failed" | "done"
 
-stage_config := "with" "{" stage_config_items "}"
+stage_config := "with" "{" config_items "}"
 
-stage_config_items := (stage_config_item NEWLINE)*
+-- Generic key-value pairs (validation happens in semantic analysis)
+config_items := (config_item NEWLINE)*
 
-stage_config_item := "retries" ":" INTEGER
-                   | "timeout" ":" DURATION
-                   | "retry_delay" ":" DURATION
-                   | "max_retry_delay" ":" DURATION
-                   | "heartbeat" ":" DURATION
-                   | "backoff" ":" BACKOFF_STRATEGY
-                   | "parent_close" ":" PARENT_CLOSE_POLICY
-                   | "idempotency_key" ":" IDENT
+config_item := IDENT ":" expression
 
 stage_body := stage_input [pipe_chain]
 
@@ -402,12 +390,9 @@ join_clause := "on" expression
 DURATION := INTEGER DURATION_UNIT
 DURATION_UNIT := "ms" | "s" | "m" | "h" | "d"
 
-BACKOFF_STRATEGY := "constant" | "linear" | "exponential"
-
-PARENT_CLOSE_POLICY := "terminate" | "request_cancel" | "abandon"
-
--- Note: Trigger predicates (success, failure, done, all_success, etc.)
--- are defined in trigger_predicate rule above, not as separate tokens
+-- Note: Property values like 'exponential', 'terminate', etc. are parsed
+-- as regular identifiers. Semantic analysis validates them against known
+-- enums for specific properties (backoff, parent_close, etc.).
 ```
 
 ### Precedence
@@ -662,6 +647,7 @@ flow BatchProcess = {
 4. **Declarative** - configuration over imperative code
 5. **Type-safe** - duration literals and enums prevent errors
 6. **Unambiguous grammar** - single syntax form, clear precedence
+7. **Generic configuration** - `with { }` accepts any key-value pairs; property names are not tokens, validation happens in semantic analysis (extensible without parser changes)
 
 ---
 
