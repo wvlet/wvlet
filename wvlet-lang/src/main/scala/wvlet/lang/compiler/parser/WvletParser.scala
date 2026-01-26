@@ -537,7 +537,8 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         val items = ListBuffer.empty[ConfigItem]
 
         while scanner.lookAhead().token != WvletToken.R_BRACE do
-          val la = scanner.lookAhead()
+          val startOffset = scanner.lookAhead().offset
+          val la          = scanner.lookAhead()
           la.token match
             case WvletToken.IDENTIFIER | _ if la.token.isNonReservedKeyword =>
               val key = identifierSingle()
@@ -551,6 +552,17 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
             scanner.lookAhead().token == WvletToken.COMMA
           do
             consumeToken()
+
+          // Ensure progress is made to prevent infinite loop
+          if startOffset == scanner.lookAhead().offset &&
+            scanner.lookAhead().token != WvletToken.R_BRACE
+          then
+            throw StatusCode
+              .SYNTAX_ERROR
+              .newException(
+                s"Unexpected token in config block: ${scanner.lookAhead().token}",
+                la.sourceLocation
+              )
 
         consume(WvletToken.R_BRACE)
         items.toList

@@ -977,13 +977,23 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
 
   /**
     * Generate code for a stage trigger expression.
+    *
+    * Handles operator precedence by wrapping TriggerOr in parentheses when inside TriggerAnd, since
+    * 'and' has higher precedence than 'or'.
     */
   private def triggerExpr(t: StageTrigger)(using sc: SyntaxContext): Doc =
     t match
       case StatePredicate(stageName, stateName, _) =>
         expr(stageName) + text(".") + text(stateName)
       case TriggerAnd(left, right, _) =>
-        triggerExpr(left) + text(" and ") + triggerExpr(right)
+        // Wrap TriggerOr children in parentheses to preserve precedence
+        def childDoc(c: StageTrigger): Doc =
+          c match
+            case _: TriggerOr =>
+              paren(triggerExpr(c))
+            case _ =>
+              triggerExpr(c)
+        childDoc(left) + text(" and ") + childDoc(right)
       case TriggerOr(left, right, _) =>
         triggerExpr(left) + text(" or ") + triggerExpr(right)
 
