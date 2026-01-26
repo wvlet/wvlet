@@ -87,20 +87,21 @@ Use `on <condition>` as a **prefix clause** before `=`:
 
 ```wv
 stage <name> [on <condition>] [with { config }] = <body>
+flow <name> [on <condition>] [with { config }] = { ... }
 ```
 
-**Why no `triggers` keyword?**
-- The `on` prefix is unambiguous because it appears before `=`
-- Shorter and more readable: `on failure(A)` vs `triggers on failure(A)`
-- Consistent with SQL patterns like `ON UPDATE CASCADE`
+**Flow-style design:** Conditions read left-to-right using property-access syntax:
+- Subject first (stage or flow name), then state
+- Example: `on primary.failed` reads as "on primary failed"
+- Natural English reading order
 
-**Trigger conditions** use function-like predicates with **single stage argument**:
+**State predicates** (property-access style):
 
-| Condition | Meaning |
+| Predicate | Meaning |
 |-----------|---------|
-| `success(A)` | Stage A succeeded |
-| `failure(A)` | Stage A failed (after all retries) |
-| `done(A)` | Stage A reached any terminal state |
+| `A.succeeded` | Stage/flow A completed successfully |
+| `A.failed` | Stage/flow A failed (after all retries) |
+| `A.done` | Stage/flow A reached any terminal state |
 
 **Boolean operators** for combining conditions:
 - `and` — both conditions must be true (higher precedence)
@@ -108,16 +109,22 @@ stage <name> [on <condition>] [with { config }] = <body>
 - `()` — parentheses for explicit grouping
 
 **Operator precedence:** `and` binds tighter than `or`:
-- `success(A) or success(B) and failure(C)` = `success(A) or (success(B) and failure(C))`
+- `A.succeeded or B.succeeded and C.failed` = `A.succeeded or (B.succeeded and C.failed)`
 
-**Shorthand predicates** for common multi-stage patterns:
+**Examples:**
+```wv
+-- Single condition
+stage fallback on primary.failed = ...
 
-| Shorthand | Equivalent |
-|-----------|------------|
-| `all_success(A, B)` | `success(A) and success(B)` |
-| `one_success(A, B)` | `success(A) or success(B)` |
-| `all_failure(A, B)` | `failure(A) and failure(B)` |
-| `one_failure(A, B)` | `failure(A) or failure(B)` |
+-- All must succeed (AND)
+stage merge on A.succeeded and B.succeeded = ...
+
+-- Any can succeed (OR)
+stage continue on primary.succeeded or fallback.succeeded = ...
+
+-- Complex condition
+stage recover on A.failed and B.succeeded = ...
+```
 
 ### Default Behavior
 
@@ -125,71 +132,95 @@ When `on` clause is omitted, default triggers are inferred from the stage input:
 
 | Stage Input | Default Trigger | Meaning |
 |-------------|-----------------|---------|
-| `from A` | `success(A)` | Run when A succeeds |
-| `from A, B` | `all_success(A, B)` | Run when both A and B succeed |
+| `from A` | `A.succeeded` | Run when A succeeds |
+| `from A, B` | `A.succeeded and B.succeeded` | Run when both succeed |
 | `from 'file.csv'` | (none) | Run immediately (literal source) |
 | `call ChildFlow()` | (none) | Run immediately |
-| `merge A, B` | `all_success(A, B)` | Run when both A and B succeed |
+| `merge A, B` | `A.succeeded and B.succeeded` | Run when both succeed |
 
 **Note on `depends on`:**
-- `depends on A` is syntactic sugar for `on success(A)` when no data is needed
-- It's kept for backward compatibility and readability
-- Semantically equivalent: `depends on A` = `on success(A)` (control-only dependency)
+- `depends on A` is syntactic sugar for `on A.succeeded` when no data is needed
+- Kept for backward compatibility and readability
+- Semantically equivalent: `depends on A` = `on A.succeeded` (control-only dependency)
 
 **Examples:**
 ```wv
 -- These are equivalent:
 stage B = from A | transform()
-stage B on success(A) = from A | transform()
+stage B on A.succeeded = from A | transform()
 
 -- Literal source has no default trigger (runs immediately)
 stage load = from 'data.csv' | parse()
 
 -- Explicit trigger required for non-standard behavior
-stage fallback on failure(primary) = from 'backup.csv' | parse()
+stage fallback on primary.failed = from 'backup.csv' | parse()
 
 -- Control-only dependency (no data flow):
 stage notify depends on process = call notify_service()
 -- Equivalent to:
-stage notify on success(process) = call notify_service()
+stage notify on process.succeeded = call notify_service()
 ```
 
 ### Examples
 
 ```wv
 flow ResilientPipeline = {
-  -- Simple: run when A succeeds (default behavior)
+  -- Simple: run when load succeeds (default behavior)
   stage process = from load | transform()
 
   -- Explicit trigger: same as above but explicit
-  stage process on success(load) = from load | transform()
+  stage process on load.succeeded = from load | transform()
 
   -- Fallback: run when primary fails, get data from source (not primary)
-  stage fallback on failure(primary) = from source | backup_api()
+  stage fallback on primary.failed = from source | backup_api()
 
   -- Fan-in: run when either A or B succeeds
-  stage merge on one_success(A, B) = from A, B | combine()
+  stage merge on A.succeeded or B.succeeded = from A, B | combine()
 
   -- Mixed: get data from A, but only run when B fails
-  stage recover on failure(B) = from A | recovery_logic()
+  stage recover on B.failed = from A | recovery_logic()
 
   -- Complex: run when A succeeds AND B fails
-  stage conditional on success(A) and failure(B) = from A | special_case()
+  stage conditional on A.succeeded and B.failed = from A | special_case()
+}
+```
+
+### Cross-Flow Dependencies
+
+Flows can depend on other flows:
+
+```wv
+-- Flow that runs after another flow succeeds
+flow Reporting on DailyETL.succeeded = {
+  stage generate = from warehouse | create_report()
+  stage publish = from generate | upload_to_dashboard()
+}
+
+-- Flow with both schedule and dependency
+flow Analytics on Ingestion.succeeded with {
+  schedule: cron('0 3 * * *')  -- Also scheduled as fallback
+} = {
+  stage analyze = from data | run_analytics()
+}
+
+-- Chain of dependent flows
+flow Cleanup on Reporting.done = {
+  stage archive = from logs | compress_and_archive()
 }
 ```
 
 ### Trigger Evaluation
 
-Triggers evaluate based on **terminal states** of referenced stages:
+Triggers evaluate based on **terminal states** of referenced stages/flows:
 
 | Terminal State | Matches |
 |----------------|---------|
-| `success` | `success()`, `one_success()`, `all_success()`, `done()` |
-| `failed` | `failure()`, `one_failure()`, `all_failure()`, `done()` |
-| `skipped` | `done()` only |
-| `cancelled` | `done()` only |
+| `success` | `.succeeded`, `.done` |
+| `failed` | `.failed`, `.done` |
+| `skipped` | `.done` only |
+| `cancelled` | `.done` only |
 
-**Note:** `cancelled` and `skipped` do NOT match `success()` or `failure()` predicates.
+**Note:** `cancelled` and `skipped` do NOT match `.succeeded` or `.failed` predicates.
 
 ---
 
@@ -226,7 +257,7 @@ backoff: exponential  -- Exponentially increasing delay (default)
 ### Flow Definition
 
 ```
-flow_def := "flow" IDENT [flow_params] [flow_config] "=" "{" stage_def* "}"
+flow_def := "flow" IDENT [trigger_clause] [flow_params] [flow_config] "=" "{" stage_def* "}"
 
 flow_params := "(" param_list ")"
 
@@ -259,20 +290,13 @@ trigger_or_expr := trigger_and_expr ("or" trigger_and_expr)*
 
 trigger_and_expr := trigger_primary ("and" trigger_primary)*
 
-trigger_primary := trigger_predicate
+trigger_primary := state_predicate
                  | "(" trigger_or_expr ")"
 
--- Single-stage predicates
-trigger_predicate := "success" "(" IDENT ")"
-                   | "failure" "(" IDENT ")"
-                   | "done" "(" IDENT ")"
-                   -- Multi-stage shorthands
-                   | "all_success" "(" stage_list ")"
-                   | "one_success" "(" stage_list ")"
-                   | "all_failure" "(" stage_list ")"
-                   | "one_failure" "(" stage_list ")"
+-- Property-access style predicates (flow-style, left-to-right)
+state_predicate := IDENT "." STATE_NAME
 
-stage_list := IDENT ("," IDENT)+  -- requires 2+ stages
+STATE_NAME := "succeeded" | "failed" | "done"
 
 stage_config := "with" "{" stage_config_items "}"
 
@@ -393,28 +417,29 @@ flow ResilientPipeline = {
   } = from source | call_primary_api()
 
   -- Fallback: runs only if primary fails, gets fresh data from source
-  stage fallback on failure(primary) = from source | call_backup_api()
+  stage fallback on primary.failed = from source | call_backup_api()
 
   -- Continue: runs if either primary or fallback succeeds
-  stage continue on one_success(primary, fallback) = from primary, fallback | process()
+  stage continue on primary.succeeded or fallback.succeeded =
+    from primary, fallback | process()
 }
 ```
 
 **Execution semantics:**
 
 1. `source` runs first (no trigger = runs immediately)
-2. `primary` runs after `source` succeeds (implicit `on success(source)`)
-3. `fallback` triggers on `failure(primary)`:
+2. `primary` runs after `source` succeeds (implicit `on source.succeeded`)
+3. `fallback` triggers on `primary.failed`:
    - Waits for `primary` to reach terminal `failed` state
    - Gets data from `source` (not from `primary`)
-4. `continue` triggers on `one_success(primary, fallback)`:
+4. `continue` triggers on `primary.succeeded or fallback.succeeded`:
    - Runs when either `primary` OR `fallback` reaches `success`
 
 **Key benefits of this syntax:**
-- Clear separation: `on` controls WHEN, `from` controls WHERE data comes from
-- Readable: `on failure(X)` clearly means "run when X fails"
-- Composable: boolean operators allow complex conditions
-- Concise: no redundant `triggers` keyword
+- **Flow-style**: Reads left-to-right (`on primary.failed` = "on primary failed")
+- **Clear separation**: `on` controls WHEN, `from` controls WHERE data comes from
+- **Composable**: Boolean operators for complex conditions
+- **Unified**: Same syntax for stage and flow dependencies
 
 ---
 
