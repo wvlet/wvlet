@@ -539,14 +539,12 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         while scanner.lookAhead().token != WvletToken.R_BRACE do
           val startOffset = scanner.lookAhead().offset
           val la          = scanner.lookAhead()
-          la.token match
-            case WvletToken.IDENTIFIER | _ if la.token.isNonReservedKeyword =>
-              val key = identifierSingle()
-              consume(WvletToken.COLON)
-              val value = configValue()
-              items += ConfigItem(key, value, key.span.extendTo(value.span))
-            case _ =>
-              ()
+          // Check if token can start a config item (identifier or non-reserved keyword)
+          if la.token == WvletToken.IDENTIFIER || la.token.isNonReservedKeyword then
+            val key = identifierSingle()
+            consume(WvletToken.COLON)
+            val value = configValue()
+            items += ConfigItem(key, value, key.span.extendTo(value.span))
           // Skip optional separators (semicolons or commas)
           while scanner.lookAhead().token == WvletToken.SEMICOLON ||
             scanner.lookAhead().token == WvletToken.COMMA
