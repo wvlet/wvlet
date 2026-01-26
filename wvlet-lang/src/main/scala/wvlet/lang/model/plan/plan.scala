@@ -143,47 +143,6 @@ case class PartialQueryDef(name: TermName, params: List[DefArg], body: Relation,
     extends LanguageStatement
 
 /**
-  * FlowDependency represents a dependency relationship between flows.
-  *
-  * Allows flows to depend on other flows, enabling:
-  *   - Sequential flow execution (depends on FlowA)
-  *   - Error handling flows (if FlowA.failed)
-  *
-  * Example:
-  * {{{
-  * flow DependentFlow depends on ScheduledFlow = { ... }
-  * flow RecoveryFlow if ScheduledFlow.failed = { ... }
-  * }}}
-  */
-sealed trait FlowDependency:
-  def span: Span
-
-/**
-  * DependsOnFlow represents a sequential dependency on another flow.
-  *
-  * The current flow will only execute after the referenced flow completes successfully.
-  *
-  * @param flowName
-  *   The name of the flow to depend on
-  * @param span
-  *   Source location
-  */
-case class DependsOnFlow(flowName: NameExpr, span: Span) extends FlowDependency
-
-/**
-  * FlowStatePredicate represents a condition based on another flow's state.
-  *
-  * @param flowName
-  *   The name of the flow to check
-  * @param stateName
-  *   The state to check for ("failed" or "done")
-  * @param span
-  *   Source location
-  */
-case class FlowStatePredicate(flowName: NameExpr, stateName: String, span: Span)
-    extends FlowDependency
-
-/**
   * FlowDef represents a data flow/workflow definition.
   *
   * A flow is a collection of named stages that define a data pipeline with branching, merging, and

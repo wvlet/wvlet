@@ -285,3 +285,45 @@ case class FlowJump(child: Relation, targetFlow: NameExpr, span: Span) extends U
   * Example: `end()`
   */
 case class FlowEnd(child: Relation, span: Span) extends UnaryFlowOp
+
+
+/**
+  * FlowDependency represents a dependency relationship between flows.
+  *
+  * Allows flows to depend on other flows, enabling:
+  *   - Sequential flow execution (depends on FlowA)
+  *   - Error handling flows (if FlowA.failed)
+  *
+  * Example:
+  * {{{
+  * flow DependentFlow depends on ScheduledFlow = { ... }
+  * flow RecoveryFlow if ScheduledFlow.failed = { ... }
+  * }}}
+  */
+sealed trait FlowDependency:
+  def span: Span
+
+/**
+  * DependsOnFlow represents a sequential dependency on another flow.
+  *
+  * The current flow will only execute after the referenced flow completes successfully.
+  *
+  * @param flowName
+  *   The name of the flow to depend on
+  * @param span
+  *   Source location
+  */
+case class DependsOnFlow(flowName: NameExpr, span: Span) extends FlowDependency
+
+/**
+  * FlowStatePredicate represents a condition based on another flow's state.
+  *
+  * @param flowName
+  *   The name of the flow to check
+  * @param stateName
+  *   The state to check for ("failed" or "done")
+  * @param span
+  *   Source location
+  */
+case class FlowStatePredicate(flowName: NameExpr, stateName: String, span: Span)
+    extends FlowDependency
