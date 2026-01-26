@@ -367,11 +367,42 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
 
   /**
     * Parse a flow definition: `flow Name(params) = { stage ... }`
+    *
+    * Supports:
+    *   - Flow dependency: `flow Name depends on OtherFlow = { ... }`
+    *   - Flow trigger: `flow Name if OtherFlow.failed = { ... }`
+    *   - Flow config: `flow Name with { schedule: cron(...) } = { ... }`
     */
   def flowDef(): FlowDef = node {
     val t    = consume(WvletToken.FLOW)
     val name = identifier()
 
+    // Parse optional flow dependency or trigger
+    val dependency: Option[FlowDependency] =
+      scanner.lookAhead().token match
+        case WvletToken.DEPENDS =>
+          consume(WvletToken.DEPENDS)
+          consume(WvletToken.ON)
+          val flowName = identifier()
+          Some(DependsOnFlow(flowName, spanFrom(t)))
+        case WvletToken.IF =>
+          consume(WvletToken.IF)
+          val flowName = identifier()
+          consume(WvletToken.DOT)
+          val stateToken = consumeToken()
+          val stateName  = stateToken.str
+          if stateName != "failed" && stateName != "done" then
+            throw StatusCode
+              .SYNTAX_ERROR
+              .newException(
+                s"Expected 'failed' or 'done', but found '${stateName}'",
+                stateToken.sourceLocation
+              )
+          Some(FlowStatePredicate(flowName, stateName, spanFrom(t)))
+        case _ =>
+          None
+
+    // Parse optional parameters
     val params: List[DefArg] =
       scanner.lookAhead().token match
         case WvletToken.L_PAREN =>
@@ -381,6 +412,9 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           args
         case _ =>
           Nil
+
+    // Parse optional config block
+    val config = parseConfigBlock()
 
     consume(WvletToken.EQ)
     consume(WvletToken.L_BRACE)
@@ -394,15 +428,26 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         consume(WvletToken.SEMICOLON)
 
     consume(WvletToken.R_BRACE)
-    FlowDef(Name.termName(name.leafName), params, stages.toList, spanFrom(t))
+    FlowDef(Name.termName(name.leafName), dependency, params, config, stages.toList, spanFrom(t))
   }
 
   /**
     * Parse a stage definition: `stage name = from ... | ...`
+    *
+    * Supports:
+    *   - Stage trigger: `stage name if primary.failed = ...`
+    *   - Stage config: `stage name with { retries: 3 } = ...`
     */
   def stageDef(): StageDef = node {
     val t    = consume(WvletToken.STAGE)
     val name = identifier()
+
+    // Parse optional trigger
+    val trigger = parseStageTrigger()
+
+    // Parse optional config block
+    val config = parseConfigBlock()
+
     consume(WvletToken.EQ)
 
     // Parse input references (from or merge)
@@ -417,7 +462,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       else
         Nil
 
-    StageDef(Name.termName(name.leafName), inputRefs, dependsOn, body, spanFrom(t))
+    StageDef(Name.termName(name.leafName), inputRefs, dependsOn, trigger, config, body, spanFrom(t))
   }
 
   /**
@@ -478,6 +523,122 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       consume(WvletToken.COMMA)
       names += identifier()
     names.toList
+
+  /**
+    * Parse a config block: `with { key: value; ... }`
+    *
+    * Returns empty list if no `with` keyword is present.
+    */
+  private def parseConfigBlock(): List[ConfigItem] =
+    scanner.lookAhead().token match
+      case WvletToken.WITH =>
+        val t = consume(WvletToken.WITH)
+        consume(WvletToken.L_BRACE)
+        val items = ListBuffer.empty[ConfigItem]
+
+        while scanner.lookAhead().token != WvletToken.R_BRACE do
+          val la = scanner.lookAhead()
+          la.token match
+            case WvletToken.IDENTIFIER | _ if la.token.isNonReservedKeyword =>
+              val key = identifierSingle()
+              consume(WvletToken.COLON)
+              val value = configValue()
+              items += ConfigItem(key, value, key.span.extendTo(value.span))
+            case _ =>
+              ()
+          // Skip optional separators (semicolons or commas)
+          while scanner.lookAhead().token == WvletToken.SEMICOLON ||
+            scanner.lookAhead().token == WvletToken.COMMA
+          do
+            consumeToken()
+
+        consume(WvletToken.R_BRACE)
+        items.toList
+      case _ =>
+        Nil
+
+  /**
+    * Parse a config value, which can be a duration literal (e.g., 5m, 30s) or a regular expression.
+    */
+  private def configValue(): Expression =
+    val t = scanner.lookAhead()
+    t.token match
+      case WvletToken.INTEGER_LITERAL =>
+        val numToken = consumeToken()
+        val numValue = numToken.str.replaceAll("_", "").toLong
+        scanner.lookAhead().token match
+          case WvletToken.IDENTIFIER =>
+            val unitToken = scanner.lookAhead()
+            DurationUnit.fromSuffix(unitToken.str) match
+              case Some(unit) =>
+                consumeToken()
+                DurationLiteral(numValue, unit, spanFrom(numToken))
+              case None =>
+                LongLiteral(numValue, numToken.str, spanFrom(numToken))
+          case _ =>
+            LongLiteral(numValue, numToken.str, spanFrom(numToken))
+      case _ =>
+        expression()
+
+  /**
+    * Parse a stage trigger: `if stage.failed` or `if stage.done`
+    *
+    * Returns None if no `if` keyword is present.
+    */
+  private def parseStageTrigger(): Option[StageTrigger] =
+    scanner.lookAhead().token match
+      case WvletToken.IF =>
+        consume(WvletToken.IF)
+        Some(parseTriggerOr())
+      case _ =>
+        None
+
+  /**
+    * Parse OR-level trigger expression (lowest precedence).
+    */
+  private def parseTriggerOr(): StageTrigger =
+    var left = parseTriggerAnd()
+    while scanner.lookAhead().token == WvletToken.OR do
+      consume(WvletToken.OR)
+      val right = parseTriggerAnd()
+      left = TriggerOr(left, right, left.span.extendTo(right.span))
+    left
+
+  /**
+    * Parse AND-level trigger expression.
+    */
+  private def parseTriggerAnd(): StageTrigger =
+    var left = parseTriggerPrimary()
+    while scanner.lookAhead().token == WvletToken.AND do
+      consume(WvletToken.AND)
+      val right = parseTriggerPrimary()
+      left = TriggerAnd(left, right, left.span.extendTo(right.span))
+    left
+
+  /**
+    * Parse primary trigger expression: `stage.state` or `(expr)`.
+    */
+  private def parseTriggerPrimary(): StageTrigger =
+    val t = scanner.lookAhead()
+    t.token match
+      case WvletToken.L_PAREN =>
+        consume(WvletToken.L_PAREN)
+        val inner = parseTriggerOr()
+        consume(WvletToken.R_PAREN)
+        inner
+      case _ =>
+        val stageName = identifier()
+        consume(WvletToken.DOT)
+        val stateToken = consumeToken()
+        val stateName  = stateToken.str
+        if stateName != "failed" && stateName != "done" then
+          throw StatusCode
+            .SYNTAX_ERROR
+            .newException(
+              s"Expected 'failed' or 'done', but found '${stateName}'",
+              stateToken.sourceLocation
+            )
+        StatePredicate(stageName, stateName, spanFrom(t))
 
   /**
     * Parse flow route expression: `route { case cond -> target; ... }` or `route by hash(key) {

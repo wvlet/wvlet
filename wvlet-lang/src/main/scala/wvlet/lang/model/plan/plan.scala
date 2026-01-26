@@ -143,6 +143,47 @@ case class PartialQueryDef(name: TermName, params: List[DefArg], body: Relation,
     extends LanguageStatement
 
 /**
+  * FlowDependency represents a dependency relationship between flows.
+  *
+  * Allows flows to depend on other flows, enabling:
+  *   - Sequential flow execution (depends on FlowA)
+  *   - Error handling flows (if FlowA.failed)
+  *
+  * Example:
+  * {{{
+  * flow DependentFlow depends on ScheduledFlow = { ... }
+  * flow RecoveryFlow if ScheduledFlow.failed = { ... }
+  * }}}
+  */
+sealed trait FlowDependency:
+  def span: Span
+
+/**
+  * DependsOnFlow represents a sequential dependency on another flow.
+  *
+  * The current flow will only execute after the referenced flow completes successfully.
+  *
+  * @param flowName
+  *   The name of the flow to depend on
+  * @param span
+  *   Source location
+  */
+case class DependsOnFlow(flowName: NameExpr, span: Span) extends FlowDependency
+
+/**
+  * FlowStatePredicate represents a condition based on another flow's state.
+  *
+  * @param flowName
+  *   The name of the flow to check
+  * @param stateName
+  *   The state to check for ("failed" or "done")
+  * @param span
+  *   Source location
+  */
+case class FlowStatePredicate(flowName: NameExpr, stateName: String, span: Span)
+    extends FlowDependency
+
+/**
   * FlowDef represents a data flow/workflow definition.
   *
   * A flow is a collection of named stages that define a data pipeline with branching, merging, and
@@ -161,12 +202,22 @@ case class PartialQueryDef(name: TermName, params: List[DefArg], body: Relation,
   *
   * @param name
   *   The name of the flow
+  * @param dependency
+  *   Optional dependency on another flow
   * @param params
   *   Parameters for the flow
+  * @param config
+  *   Configuration items for the flow (e.g., schedule, timezone)
   * @param stages
   *   List of stage definitions within the flow
   * @param span
   *   Source location
   */
-case class FlowDef(name: TermName, params: List[DefArg], stages: List[StageDef], span: Span)
-    extends LanguageStatement
+case class FlowDef(
+    name: TermName,
+    dependency: Option[FlowDependency],
+    params: List[DefArg],
+    config: List[ConfigItem],
+    stages: List[StageDef],
+    span: Span
+) extends LanguageStatement

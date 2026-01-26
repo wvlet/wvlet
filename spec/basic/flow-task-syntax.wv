@@ -1,0 +1,95 @@
+-- Test task-oriented flow syntax (Phase 1)
+
+-- Stage with config block
+flow ConfiguredStage = {
+  stage extract with {
+    retries: 3
+    timeout: 5m
+    retry_delay: 1s
+    backoff: 'exponential'
+  } = from source
+  stage transform = from extract | select *
+}
+;
+
+-- Stage with trigger condition
+flow TriggerFlow = {
+  stage primary with { retries: 3 } = from source
+  stage fallback if primary.failed = from backup
+  stage cleanup if primary.done = from primary | select *
+}
+;
+
+-- Complex trigger conditions
+flow ComplexTriggerFlow = {
+  stage a = from source
+  stage b = from source
+  stage alert if a.failed or b.failed = from source | select 'alert'
+}
+;
+
+-- Flow with schedule config
+flow ScheduledFlow with {
+  schedule: cron('0 2 * * *')
+  timezone: 'UTC'
+  concurrency: 1
+} = {
+  stage extract = from source | select *
+}
+;
+
+-- Flow dependency
+flow DependentFlow depends on ScheduledFlow = {
+  stage report = from warehouse | select *
+}
+;
+
+-- Flow with error trigger
+flow RecoveryFlow if ScheduledFlow.failed = {
+  stage alert = from source | select 'error'
+}
+;
+
+-- Duration literals
+flow DurationTest = {
+  stage test with {
+    timeout: 100ms
+    retry_delay: 30s
+    max_delay: 5m
+    heartbeat: 2h
+    cooldown: 1d
+  } = from source | select *
+}
+;
+
+-- Stage trigger with AND
+flow TriggerAndFlow = {
+  stage a = from source
+  stage b = from source
+  stage c if a.done and b.done = from source | select 'both done'
+}
+;
+
+-- Stage trigger with OR and AND combined
+flow TriggerCombinedFlow = {
+  stage a = from source
+  stage b = from source
+  stage c = from source
+  stage d if a.failed or (b.done and c.done) = from source | select *
+}
+;
+
+-- Backward compatibility - flows without new syntax
+flow BackwardCompatible = {
+  stage entry = from users
+  stage output = from entry | select name
+}
+;
+
+-- Flow with both parameters and config
+flow ParameterizedWithConfig(segment: string) with {
+  schedule: cron('0 0 * * *')
+} = {
+  stage entry = from users | where segment_id = segment
+}
+;

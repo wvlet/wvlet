@@ -807,6 +807,41 @@ case class IntervalLiteral(
 
   override def sqlExpr: String = s"interval ${stringValue}"
 
+/**
+  * Duration unit for task-oriented flow syntax (e.g., 5m, 30s, 2h, 1d, 100ms)
+  */
+enum DurationUnit(val suffix: String, val toMillis: Long => Long):
+  case Milliseconds extends DurationUnit("ms", identity)
+  case Seconds      extends DurationUnit("s", _ * 1000L)
+  case Minutes      extends DurationUnit("m", _ * 60000L)
+  case Hours        extends DurationUnit("h", _ * 3600000L)
+  case Days         extends DurationUnit("d", _ * 86400000L)
+
+object DurationUnit:
+  def fromSuffix(s: String): Option[DurationUnit] =
+    s match
+      case "ms" =>
+        Some(DurationUnit.Milliseconds)
+      case "s" =>
+        Some(DurationUnit.Seconds)
+      case "m" =>
+        Some(DurationUnit.Minutes)
+      case "h" =>
+        Some(DurationUnit.Hours)
+      case "d" =>
+        Some(DurationUnit.Days)
+      case _ =>
+        None
+
+/**
+  * Duration literal for task-oriented flow syntax (e.g., 5m, 30s, 2h, 1d, 100ms)
+  */
+case class DurationLiteral(value: Long, unit: DurationUnit, span: Span) extends Literal:
+  override def children: Seq[Expression] = Nil
+  override def stringValue: String       = s"${value}${unit.suffix}"
+  override def sqlExpr: String           = stringValue
+  def toMillis: Long                     = unit.toMillis(value)
+
 object IntervalField:
   def unapply(name: String): Option[IntervalField] = IntervalField
     .values

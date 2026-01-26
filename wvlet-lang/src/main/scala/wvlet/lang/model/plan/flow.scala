@@ -39,6 +39,62 @@ import wvlet.lang.model.plan.*
 trait FlowOp extends Relation
 
 /**
+  * ConfigItem represents a key-value configuration item in a with { } block.
+  *
+  * Example:
+  * {{{
+  * with {
+  *   retries: 3
+  *   timeout: 5m
+  * }
+  * }}}
+  *
+  * @param key
+  *   The configuration key identifier
+  * @param value
+  *   The configuration value expression
+  * @param span
+  *   Source location
+  */
+case class ConfigItem(key: Identifier, value: Expression, span: Span) extends LeafExpression
+
+/**
+  * StageTrigger represents a condition that determines when a stage should run.
+  *
+  * Triggers allow stages to execute based on the state of other stages.
+  *
+  * Example:
+  * {{{
+  * stage fallback if primary.failed = from backup | recover()
+  * stage cleanup if a.done and b.done = call cleanup_service()
+  * }}}
+  */
+sealed trait StageTrigger:
+  def span: Span
+
+/**
+  * StatePredicate represents a condition based on a stage's state.
+  *
+  * @param stageName
+  *   The name of the stage to check
+  * @param stateName
+  *   The state to check for ("failed" or "done")
+  * @param span
+  *   Source location
+  */
+case class StatePredicate(stageName: NameExpr, stateName: String, span: Span) extends StageTrigger
+
+/**
+  * TriggerAnd represents a logical AND of two trigger conditions.
+  */
+case class TriggerAnd(left: StageTrigger, right: StageTrigger, span: Span) extends StageTrigger
+
+/**
+  * TriggerOr represents a logical OR of two trigger conditions.
+  */
+case class TriggerOr(left: StageTrigger, right: StageTrigger, span: Span) extends StageTrigger
+
+/**
   * UnaryFlowOp is a flow operator with a single child relation.
   *
   * Most flow operators transform or wrap a single input relation. The relation type is propagated
@@ -53,6 +109,8 @@ trait UnaryFlowOp extends FlowOp with UnaryRelation:
   * A stage is a named step in a data pipeline that can:
   *   - Read from other stages (via inputRefs)
   *   - Have control dependencies (via dependsOn)
+  *   - Have conditional triggers (via trigger)
+  *   - Have configuration (via config)
   *   - Transform data (via body)
   *
   * @param name
@@ -61,6 +119,10 @@ trait UnaryFlowOp extends FlowOp with UnaryRelation:
   *   References to source stages (from clause)
   * @param dependsOn
   *   References to stages for control-only dependencies
+  * @param trigger
+  *   Optional trigger condition for the stage (e.g., if primary.failed)
+  * @param config
+  *   Configuration items for the stage (e.g., retries, timeout)
   * @param body
   *   The relation/query body of the stage (optional for control-only stages)
   * @param span
@@ -70,6 +132,8 @@ case class StageDef(
     name: TermName,
     inputRefs: List[NameExpr],
     dependsOn: List[NameExpr],
+    trigger: Option[StageTrigger],
+    config: List[ConfigItem],
     body: Option[Relation],
     span: Span
 ) extends FlowOp:
@@ -82,13 +146,25 @@ case class StageDef(
         ""
       else
         s" from ${inputRefs.map(_.fullName).mkString(", ")}"
+    val trig =
+      if trigger.isEmpty then
+        ""
+      else
+        s" if ${trigger.get}"
+    val conf =
+      if config.isEmpty then
+        ""
+      else
+        s" with { ${config.map(c => s"${c.key.unquotedValue}: ${c.value}").mkString(", ")} }"
     val deps =
       if dependsOn.isEmpty then
         ""
       else
         s" depends on ${dependsOn.map(_.fullName).mkString(", ")}"
     val bodyStr = body.map(b => s" | ${b}").getOrElse("")
-    s"StageDef[${name.name}]${inputs}${deps}${bodyStr}"
+    s"StageDef[${name.name}]${inputs}${trig}${conf}${deps}${bodyStr}"
+
+end StageDef
 
 /**
   * FlowRoute represents unified routing - both conditional and percentage-based.
