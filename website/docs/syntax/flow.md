@@ -176,9 +176,8 @@ flow DurationExample = {
   stage work with {
     timeout: 100ms
     retry_delay: 30s
-    max_delay: 5m
+    max_retry_delay: 5m
     heartbeat: 2h
-    cooldown: 1d
   } = from source | select *
 }
 ```
@@ -399,10 +398,10 @@ flow ResilientPipeline = {
   -- Fallback: runs only if primary fails
   stage fallback if primary.failed = from backup_api | fetch_data()
 
-  -- Transform: takes data from whichever upstream succeeded
+  -- Transform: runs when primary succeeds
   stage transform = from primary | normalize()
 
   -- Notify on completion
-  stage notify if transform.done = from transform | select 'pipeline complete'
+  stage notify if primary.done = from primary | select 'pipeline complete'
 }
 ```
