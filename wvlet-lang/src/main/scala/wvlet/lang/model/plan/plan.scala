@@ -161,12 +161,22 @@ case class PartialQueryDef(name: TermName, params: List[DefArg], body: Relation,
   *
   * @param name
   *   The name of the flow
+  * @param dependency
+  *   Optional dependency on another flow
   * @param params
   *   Parameters for the flow
+  * @param config
+  *   Configuration items for the flow (e.g., schedule, timezone)
   * @param stages
   *   List of stage definitions within the flow
   * @param span
   *   Source location
   */
-case class FlowDef(name: TermName, params: List[DefArg], stages: List[StageDef], span: Span)
-    extends LanguageStatement
+case class FlowDef(
+    name: TermName,
+    dependency: Option[FlowDependency],
+    params: List[DefArg],
+    config: List[ConfigItem],
+    stages: List[StageDef],
+    span: Span
+) extends LanguageStatement

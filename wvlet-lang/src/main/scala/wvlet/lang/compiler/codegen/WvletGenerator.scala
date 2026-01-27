@@ -458,6 +458,17 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
         // the full relation (including 'from' clause), so we only output the body.
         // Use flattenWithPipes to output stage body inline with explicit pipes,
         // avoiding parsing ambiguity with newline-as-implicit-pipe inside flows.
+        val trigger =
+          s.trigger match
+            case Some(t) =>
+              wl("if", triggerExpr(t))
+            case None =>
+              empty
+        val config =
+          if s.config.isEmpty then
+            empty
+          else
+            wl("with", "{") + nest(linebreak + configItems(s.config)) + linebreak + "}"
         val deps =
           if s.dependsOn.isEmpty then
             empty
@@ -465,7 +476,7 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
             wl("depends on", cl(s.dependsOn.map(d => expr(d))))
         val body = s.body.map(b => flattenWithPipes(relation(b))).getOrElse(empty)
         code(s) {
-          group(wl("stage", text(s.name.name), "=", deps, body))
+          group(wl("stage", text(s.name.name), trigger, config, "=", deps, body))
         }
       case r: FlowRoute =>
         val prev     = relation(r.child)
@@ -607,12 +618,25 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
               paren(cl(p.params.map(x => expr(x))))
           group(wl("def", text(p.name.name) + params, "=")) + nest(linebreak + relation(p.body))
         case f: FlowDef =>
+          val dependency =
+            f.dependency match
+              case Some(DependsOnFlow(flowName, _)) =>
+                wl("depends", "on", expr(flowName))
+              case Some(FlowStatePredicate(flowName, stateName, _)) =>
+                wl("if", expr(flowName) + "." + stateName)
+              case None =>
+                empty
           val params =
             if f.params.isEmpty then
               empty
             else
               paren(cl(f.params.map(x => expr(x))))
-          group(wl("flow", text(f.name.name) + params, "= {")) +
+          val config =
+            if f.config.isEmpty then
+              empty
+            else
+              wl("with", "{") + nest(linebreak + configItems(f.config)) + linebreak + "}"
+          group(wl("flow", text(f.name.name), dependency, params, config, "= {")) +
             nest(linebreak + lines(f.stages.map(s => relation(s)))) + linebreak + "}"
         case t: ShowQuery =>
           group(wl("show", "query", expr(t.name)))
@@ -732,8 +756,12 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
         case i: IntervalLiteral =>
           val s = StringLiteral.fromString(i.stringValue, i.span)
           expr(s) + text(":interval")
+        case d: DurationLiteral =>
+          text(d.stringValue)
         case g: GenericLiteral =>
           text(s"${g.value.stringValue}:${g.literalType.typeName}")
+        case c: ConfigItem =>
+          wl(expr(c.key) + ":", expr(c.value))
         case l: Literal =>
           text(l.stringValue)
         case bq: BackquoteInterpolatedIdentifier =>
@@ -939,5 +967,34 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
         nameExpr(t.name.toExpr)
       case other =>
         expr(e.sqlExpr)
+
+  /**
+    * Generate code for a list of config items.
+    */
+  private def configItems(items: List[ConfigItem])(using sc: SyntaxContext): Doc = lines(
+    items.map(item => group(wl(expr(item.key) + ":", expr(item.value))))
+  )
+
+  /**
+    * Generate code for a stage trigger expression.
+    *
+    * Handles operator precedence by wrapping TriggerOr in parentheses when inside TriggerAnd, since
+    * 'and' has higher precedence than 'or'.
+    */
+  private def triggerExpr(t: StageTrigger)(using sc: SyntaxContext): Doc =
+    t match
+      case StatePredicate(stageName, stateName, _) =>
+        expr(stageName) + text(".") + text(stateName)
+      case TriggerAnd(left, right, _) =>
+        // Wrap TriggerOr children in parentheses to preserve precedence
+        def childDoc(c: StageTrigger): Doc =
+          c match
+            case _: TriggerOr =>
+              paren(triggerExpr(c))
+            case _ =>
+              triggerExpr(c)
+        childDoc(left) + text(" and ") + childDoc(right)
+      case TriggerOr(left, right, _) =>
+        triggerExpr(left) + text(" or ") + triggerExpr(right)
 
 end WvletGenerator
