@@ -6,15 +6,17 @@ sidebar_position: 2
 
 Wvlet provides `flow` and `stage` constructs for defining data pipelines with orchestration capabilities such as retries, timeouts, scheduling, and error handling. Flows organize stages into directed acyclic graphs (DAGs) with explicit data and control dependencies.
 
-:::tip Relationship to Other Constructs
+## From Queries to Data Flows
+
 | Construct | Purpose | Scope | Reusable |
 |-----------|---------|-------|----------|
-| `def` | Reusable function/logic | Global | Yes, callable |
-| `model` | Reusable data artifact | Global | Yes, queryable |
-| `flow` | Orchestration container | Global | Yes, triggerable |
+| `def` | Reusable function/logic | Module | Yes, callable |
+| `model` | Reusable data artifact | Module | Yes, queryable |
+| `flow` | Orchestration container | Module | Yes, triggerable |
 | `stage` | Execution step in flow | Inside `flow` | No, flow-specific |
 
-**Key distinction:** `model` defines **what** data to produce (a reusable data artifact), while `stage` defines **when/how** to execute (an orchestration step with retries, triggers, etc.).
+:::tip
+`model` defines **what** data to produce (a reusable data artifact), while `stage` defines **when/how** to execute (an orchestration step with retries, triggers, etc.).
 :::
 
 ## Quick Navigation
@@ -34,7 +36,7 @@ Wvlet provides `flow` and `stage` constructs for defining data pipelines with or
 A `flow` is an orchestration container that groups stages into a pipeline:
 
 ```wvlet
-flow MyPipeline = {
+flow my_pipeline = {
   stage extract = from source | select *
   stage transform = from extract | where valid = true
   stage load = from transform | save to warehouse
@@ -46,7 +48,7 @@ flow MyPipeline = {
 Flows can accept parameters, similar to functions:
 
 ```wvlet
-flow CustomerPipeline(segment: string) = {
+flow customer_pipeline(segment: string) = {
   stage entry = from users | where segment_id = segment
   stage output = from entry | select name, email
 }
@@ -55,7 +57,7 @@ flow CustomerPipeline(segment: string) = {
 ### Flow Grammar
 
 ```
-flow <name> [(<params>)] [depends on <FlowName>] [if <FlowName>.<state>] [with { <config> }] = {
+flow <name> [(<params>)] [depends on <flow_name>] [if <flow_name>.<state>] [with { <config> }] = {
   <stage definitions>
 }
 ```
@@ -65,7 +67,7 @@ flow <name> [(<params>)] [depends on <FlowName>] [if <FlowName>.<state>] [with {
 A `stage` is an execution step within a flow. Each stage defines a data transformation using standard wvlet query operators:
 
 ```wvlet
-flow Pipeline = {
+flow my_pipeline = {
   stage extract = from 'data.csv'
   stage transform = from extract | where active = true | select name, email
   stage load = from transform | save to warehouse.customers
@@ -77,7 +79,7 @@ flow Pipeline = {
 Stages reference other stages via `from`, which creates an implicit success dependency. A stage runs only after its upstream stages succeed:
 
 ```wvlet
-flow Pipeline = {
+flow my_pipeline = {
   stage a = from source             -- runs immediately (literal source)
   stage b = from a | select *       -- runs when a succeeds
   stage c = from b | select *       -- runs when b succeeds
@@ -97,7 +99,7 @@ Both flows and stages support `with { }` blocks for configuration. Configuration
 ### Stage Configuration
 
 ```wvlet
-flow DataPipeline = {
+flow data_pipeline = {
   stage extract with {
     retries: 3
     timeout: 5m
@@ -127,7 +129,7 @@ flow DataPipeline = {
 ### Flow Configuration
 
 ```wvlet
-flow DailyETL with {
+flow daily_etl with {
   schedule: cron('0 2 * * *')
   timezone: 'UTC'
   concurrency: 1
@@ -152,7 +154,7 @@ flow DailyETL with {
 Flows can have both parameters and a configuration block:
 
 ```wvlet
-flow ParameterizedFlow(segment: string) with {
+flow parameterized_flow(segment: string) with {
   schedule: cron('0 0 * * *')
 } = {
   stage entry = from users | where segment_id = segment
@@ -172,7 +174,7 @@ Wvlet supports typed duration literals for configuration values. A duration lite
 | Days | `d` | `1d` |
 
 ```wvlet
-flow DurationExample = {
+flow duration_example = {
   stage work with {
     timeout: 100ms
     retry_delay: 30s
@@ -198,7 +200,7 @@ By default, stages run when their upstream data sources succeed (implicit via `f
 Use `if <stage>.failed` to define fallback stages that run when a stage fails:
 
 ```wvlet
-flow ResilientPipeline = {
+flow resilient_pipeline = {
   stage primary with { retries: 3 } = from source
   stage fallback if primary.failed = from backup_source
 }
@@ -209,7 +211,7 @@ flow ResilientPipeline = {
 Use `if <stage>.done` to define stages that run regardless of success or failure:
 
 ```wvlet
-flow PipelineWithCleanup = {
+flow pipeline_with_cleanup = {
   stage process = from source | transform()
   stage cleanup if process.done = from process | archive()
 }
@@ -220,7 +222,7 @@ flow PipelineWithCleanup = {
 Combine trigger conditions with `and` (higher precedence) and `or` (lower precedence). Use parentheses for explicit grouping:
 
 ```wvlet
-flow ComplexTriggers = {
+flow complex_triggers = {
   stage a = from source
   stage b = from source
   stage c = from source
@@ -243,7 +245,7 @@ flow ComplexTriggers = {
 Use `depends on` to create cross-flow dependencies. The dependent flow runs only after the upstream flow succeeds:
 
 ```wvlet
-flow Reporting depends on DailyETL = {
+flow reporting depends on daily_etl = {
   stage generate = from warehouse | create_report()
   stage publish = from generate | upload_to_dashboard()
 }
@@ -251,17 +253,17 @@ flow Reporting depends on DailyETL = {
 
 ### Error and Cleanup Flows
 
-Use `if <FlowName>.failed` or `if <FlowName>.done` for error handling and cleanup at the flow level:
+Use `if <flow_name>.failed` or `if <flow_name>.done` for error handling and cleanup at the flow level:
 
 ```wvlet
--- Recovery flow: runs when Pipeline fails
-flow Recovery if DailyETL.failed = {
+-- Recovery flow: runs when daily_etl fails
+flow recovery if daily_etl.failed = {
   stage alert = from source | select 'error'
   stage log = from source | log_failure()
 }
 
--- Cleanup flow: runs when Pipeline finishes (any state)
-flow Cleanup if DailyETL.done = {
+-- Cleanup flow: runs when daily_etl finishes (any state)
+flow cleanup if daily_etl.done = {
   stage archive = from logs | compress()
 }
 ```
@@ -271,8 +273,8 @@ flow Cleanup if DailyETL.done = {
 When both `depends on` and `schedule` are specified, the schedule determines **when** to check the dependency, and the dependency determines **if** the flow runs:
 
 ```wvlet
--- Runs at 3 AM, but only if Ingestion has succeeded since last run
-flow Analytics depends on Ingestion with {
+-- Runs at 3 AM, but only if ingestion has succeeded since last run
+flow analytics depends on ingestion with {
   schedule: cron('0 3 * * *')
 } = {
   stage analyze = from data | run_analytics()
@@ -284,7 +286,7 @@ flow Analytics depends on Ingestion with {
 Flows can be scheduled using cron expressions:
 
 ```wvlet
-flow ScheduledFlow with {
+flow scheduled_flow with {
   schedule: cron('0 2 * * *')  -- 2 AM daily
   timezone: 'UTC'
   concurrency: 1               -- prevent overlapping runs
@@ -297,21 +299,27 @@ flow ScheduledFlow with {
 
 Each stage progresses through a well-defined state machine:
 
-```
-                    ┌─────────────────────────────────┐
-                    ↓                                 │
-pending ──→ running ──→ success (terminal)           │
-   │           │                                     │
-   │           ↓                                     │
-   │       attempt_failed ──→ retrying ──────────────┘
-   │                              ↓
-   │                         max_retries_exceeded
-   │                              ↓
-   │                         failed (terminal)
-   │
-   ├──→ skipped (terminal)
-   │
-   └──→ cancelled (terminal)
+```mermaid
+stateDiagram-v2
+    [*] --> pending
+    pending --> running
+    pending --> skipped: trigger rule evaluates\nupstream non-success
+    pending --> cancelled: user/parent cancellation
+
+    running --> success
+    running --> attempt_failed
+    running --> cancelled: user/parent cancellation
+
+    attempt_failed --> retrying: retries remaining
+    retrying --> running: retry delay elapsed
+
+    attempt_failed --> failed: max retries exceeded
+    retrying --> failed: max retries exceeded
+
+    success --> [*]
+    failed --> [*]
+    skipped --> [*]
+    cancelled --> [*]
 ```
 
 ### State Reference
@@ -348,7 +356,7 @@ model stg_customers = from source.customers | where valid = true
 model stg_orders = from source.orders | where valid = true
 
 -- Orchestrated pipeline with retries and error handling
-flow DailyETL with {
+flow daily_etl with {
   schedule: cron('0 2 * * *')
   timezone: 'UTC'
   concurrency: 1
@@ -375,12 +383,12 @@ flow DailyETL with {
 }
 
 -- Downstream reporting depends on ETL success
-flow DailyReporting depends on DailyETL = {
+flow daily_reporting depends on daily_etl = {
   stage report = from warehouse | create_report()
 }
 
 -- Recovery flow handles ETL failure
-flow ETLRecovery if DailyETL.failed = {
+flow etl_recovery if daily_etl.failed = {
   stage notify = from source | select 'ETL failed, manual intervention needed'
 }
 ```
@@ -388,7 +396,7 @@ flow ETLRecovery if DailyETL.failed = {
 ### Multi-Stage Pipeline with Fallback
 
 ```wvlet
-flow ResilientPipeline = {
+flow resilient_pipeline = {
   -- Primary path with retries
   stage primary with {
     retries: 3
