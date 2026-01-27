@@ -286,7 +286,6 @@ case class FlowJump(child: Relation, targetFlow: NameExpr, span: Span) extends U
   */
 case class FlowEnd(child: Relation, span: Span) extends UnaryFlowOp
 
-
 /**
   * FlowDependency represents a dependency relationship between flows.
   *
