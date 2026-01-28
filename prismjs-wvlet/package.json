@@ -1,6 +1,6 @@
 {
   "name": "@wvlet/prismjs-wvlet",
-  "version": "2025.1.13",
+  "version": "2026.1.1",
   "description": "Wvlet language support for Prism.js syntax highlighting",
   "main": "components/prism-wvlet.js",
   "browser": "dist/prism-wvlet.min.js",
