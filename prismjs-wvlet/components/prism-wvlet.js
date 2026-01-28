@@ -81,8 +81,8 @@ Prism.languages.wvlet = {
 		}
 	},
 
-	// Keywords  
-	'keyword': /\b(?:model|def|type|extends|native|inline|val|from|select|where|group|by|order|limit|agg|join|left|right|full|inner|cross|asof|on|pivot|unpivot|partition|over|rows|range|add|prepend|exclude|rename|shift|drop|describe|concat|dedup|intersect|except|all|distinct|save|append|delete|truncate|import|export|package|execute|use|run|test|should|be|contain|debug|show|explain|sample|count|if|then|else|case|when|and|or|not|is|like|between|exists|in|as|with|to|for|let|this)\b/i,
+	// Keywords
+	'keyword': /\b(?:model|def|type|extends|native|inline|val|from|select|where|group|by|having|order|limit|agg|join|left|right|full|inner|cross|asof|on|pivot|unpivot|partition|over|rows|range|add|prepend|exclude|rename|shift|drop|describe|concat|dedup|intersect|except|all|distinct|save|append|delete|truncate|import|export|package|execute|use|run|test|should|be|contain|debug|show|explain|sample|count|if|then|else|end|case|when|and|or|not|is|like|between|exists|in|as|with|to|for|let|this|flow|stage|route|fork|merge|depends|wait|activate|escape|nulls)\b/i,
 
 	// Literals
 	'boolean': /\b(?:true|false|null)\b/i,

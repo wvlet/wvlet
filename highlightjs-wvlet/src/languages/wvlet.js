@@ -18,7 +18,8 @@ export default function(hljs) {
              'test should be contain debug ' +
              'show explain sample count ' +
              'if then else case when end ' +
-             'and or not is like between exists in as with to for let this',
+             'and or not is like between exists in as with to for let this escape ' +
+             'flow stage route fork merge depends wait activate',
     literal: 'true false null',
     built_in: 'asc desc nulls first last of map'
   };
