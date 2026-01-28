@@ -155,8 +155,7 @@ case class LocalFileCompleter(workEnv: WorkEnv) extends Completer:
               null,        // description
               null,        // suffix
               null,        // key
-              !f
-                .isDirectory // directories should not be treated as complete to allow further completion
+              !f.isDirectory // directories should not be treated as complete to allow further completion
             )
           )
         }
