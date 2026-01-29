@@ -167,9 +167,9 @@ object Typer extends Phase("typer") with LogSupport:
         TyperRules.typeStatement(typedModelDef)
         typedModelDef
       // Handle Relation - propagate input type through relational operators
+      // Returns potentially transformed relation (e.g., TableRef -> TableScan)
       case r: Relation =>
         typeRelation(r)
-        r // Return same instance - typing is done in-place
       // Default: bottom-up typing for other nodes
       case other =>
         val withTypedChildren = other.mapChildren(typePlan)
@@ -222,29 +222,42 @@ object Typer extends Phase("typer") with LogSupport:
     * For table references (TableRef, FileRef, TableFunctionCall), applies tableRefRules to resolve
     * them to concrete scans (TableScan, FileScan, ModelScan) via type definition lookup.
     */
-  private def typeRelation(r: Relation)(using ctx: Context): Unit =
-    // First type children (bottom-up) - in place
-    r.children
-      .foreach {
-        case child: Relation =>
-          typeRelation(child)
-        case child: LogicalPlan =>
-          typePlan(child)
-      }
+  private def typeRelation(r: Relation)(using ctx: Context): Relation =
+    // First transform and type children (bottom-up)
+    // Use mapChildren to properly replace child relations that get transformed
+    val withTypedChildren = r.mapChildren { child =>
+      child match
+        case childRel: Relation =>
+          typeRelation(childRel)
+        case other =>
+          typePlan(other)
+    }
+
+    // Work with the tree that has typed children
+    val relation =
+      withTypedChildren match
+        case rel: Relation =>
+          rel
+        case other =>
+          r // Shouldn't happen, but fallback to original
 
     // Get input type from children (now typed)
-    val inputType = r.inputRelationType
+    val inputType = relation.inputRelationType
 
     // Type direct child expressions with the input type context - in place
     val exprCtx = ctx.withInputType(inputType)
-    r.childExpressions
+    relation
+      .childExpressions
       .foreach { expr =>
         typeExpression(expr)(using exprCtx)
       }
 
     // Apply relation rules (includes tableRefRules for resolving table references)
     // This handles TableRef -> TableScan, FileRef -> FileScan, etc.
-    TyperRules.relationRules.applyOrElse(r, identity[Relation])
+    val resolved = TyperRules.relationRules.applyOrElse(relation, identity[Relation])
+    resolved
+
+  end typeRelation
 
   /**
     * Type an expression using TyperRules. Uses in-place traversal for efficiency - only updates
