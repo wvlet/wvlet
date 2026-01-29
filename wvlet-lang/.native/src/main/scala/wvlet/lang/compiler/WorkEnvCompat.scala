@@ -1,12 +1,10 @@
 package wvlet.lang.compiler
 
-import wvlet.airframe.control.IO
 import wvlet.lang.model.DataType.SchemaType
 import wvlet.log.Logger
 
 import java.io.File
 import java.security.MessageDigest
-import scala.util.Try
 
 trait WorkEnvCompat:
   self: WorkEnv =>
@@ -46,25 +44,9 @@ trait WorkEnvCompat:
     * Load a cached file schema from disk if it exists and the mtime matches.
     */
   protected def loadFileSchemaCacheImpl(filePath: String): Option[CachedFileSchema] =
-    val cacheKey  = cacheKeyFor(filePath)
-    val cacheFile = new File(s"${schemaCacheFolder}/${cacheKey}")
-
-    if cacheFile.exists() then
-      Try {
-        val content = IO.readAsString(cacheFile)
-        val lines   = content.split("\n", 3)
-        if lines.length >= 3 then
-          val cachedPath = lines(0)
-          val mtime      = lines(1).toLong
-          // For now, we only cache the schema definition string
-          // Full schema deserialization would require a schema serializer
-          // This is a placeholder for future implementation
-          None
-        else
-          None
-      }.getOrElse(None)
-    else
-      None
+    // TODO: Implement full schema deserialization from cache.
+    // This is a placeholder for now and does not load from cache.
+    None
 
   /**
     * Save a file schema to disk cache.

@@ -36,6 +36,8 @@ import wvlet.lang.compiler.Context
 import wvlet.lang.compiler.Name
 import wvlet.lang.compiler.Scope
 import wvlet.lang.compiler.Symbol
+import wvlet.lang.compiler.SymbolInfo
+import wvlet.lang.compiler.SymbolType
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.api.Span
 import wvlet.airspec.AirSpec
@@ -616,11 +618,8 @@ class TyperTest extends AirSpec:
     */
   private def registerTypeSymbol(typeName: String, schema: SchemaType)(using ctx: Context): Symbol =
     val name    = Name.typeName(typeName)
-    val typeSym = wvlet.lang.compiler.Symbol(ctx.global.newSymbolId, Span.NoSpan)
-    val symInfo = wvlet
-      .lang
-      .compiler
-      .SymbolInfo(wvlet.lang.compiler.SymbolType.TypeDef, ctx.owner, typeSym, name, schema)
+    val typeSym = Symbol(ctx.global.newSymbolId, Span.NoSpan)
+    val symInfo = SymbolInfo(SymbolType.TypeDef, ctx.owner, typeSym, name, schema)
     typeSym.symbolInfo = symInfo
     ctx.enter(typeSym)
     typeSym

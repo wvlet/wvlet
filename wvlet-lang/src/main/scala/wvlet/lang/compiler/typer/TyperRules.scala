@@ -408,41 +408,49 @@ object TyperRules:
     val name = ref.name
 
     // 1. Look up as Model definition
-    ctx.findTermSymbolByName(name.fullName) match
-      case Some(sym) if sym.tree.isInstanceOf[ModelDef] =>
-        val m = sym.tree.asInstanceOf[ModelDef]
-        val r = m.child.relationType
-        return ModelScan(TableName(name.fullName), Nil, r, ref.span)
-      case _ =>
-        ()
-
-    // 2. Look up as Type definition (NEW: table schema from type)
-    val typeName = Name.typeName(name.leafName)
-    ctx.findSymbolByName(typeName) match
-      case Some(sym) =>
-        sym.symbolInfo.dataType match
-          case schema: SchemaType =>
-            // Found type definition - use as table schema
-            val tableName = TableName.parse(name.fullName)
-            val tableScan = TableScan(tableName, schema, schema.fields, ref.span)
-            tableScan.tpe = tableScan.relationType
-            return tableScan
+    ctx
+      .findTermSymbolByName(name.fullName)
+      .flatMap { sym =>
+        sym.tree match
+          case m: ModelDef =>
+            val r = m.child.relationType
+            Some(ModelScan(TableName(name.fullName), Nil, r, ref.span))
           case _ =>
-            ()
-      case None =>
-        ()
-
-    // 3. Fallback to catalog lookup (for migration compatibility)
-    val tableName = TableName.parse(name.fullName)
-    ctx.catalog.findTable(tableName.schema.getOrElse(ctx.defaultSchema), tableName.name) match
-      case Some(tbl) =>
-        val tableScan = TableScan(tableName, tbl.schemaType, tbl.schemaType.fields, ref.span)
-        tableScan.tpe = tableScan.relationType
-        tableScan
-      case None =>
+            None
+      }
+      .orElse {
+        // 2. Look up as Type definition (NEW: table schema from type)
+        val typeName = Name.typeName(name.leafName)
+        ctx
+          .findSymbolByName(typeName)
+          .flatMap { sym =>
+            sym.symbolInfo.dataType match
+              case schema: SchemaType =>
+                val tableName = TableName.parse(name.fullName)
+                val tableScan = TableScan(tableName, schema, schema.fields, ref.span)
+                tableScan.tpe = tableScan.relationType
+                Some(tableScan)
+              case _ =>
+                None
+          }
+      }
+      .orElse {
+        // 3. Fallback to catalog lookup (for migration compatibility)
+        val tableName = TableName.parse(name.fullName)
+        ctx
+          .catalog
+          .findTable(tableName.schema.getOrElse(ctx.defaultSchema), tableName.name)
+          .map { tbl =>
+            val tableScan = TableScan(tableName, tbl.schemaType, tbl.schemaType.fields, ref.span)
+            tableScan.tpe = tableScan.relationType
+            tableScan
+          }
+      }
+      .getOrElse {
         // Leave unresolved - will be typed with UnresolvedRelationType
         ref.tpe = ref.relationType
         ref
+      }
 
   end resolveTableRef
 
