@@ -14,6 +14,8 @@
 package wvlet.lang.compiler.typer
 
 import wvlet.lang.compiler.Context
+import wvlet.lang.compiler.Name
+import wvlet.lang.catalog.Catalog.TableName
 import wvlet.lang.model.plan.*
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.Type
@@ -41,9 +43,11 @@ object TyperRules:
       caseExprRules orElse dotRefRules orElse functionApplyRules
 
   /**
-    * All typing rules for relations. Sets tpe field from relationType.
+    * All typing rules for relations. Includes table reference resolution and default relation
+    * rules.
     */
-  def relationRules(using ctx: Context): PartialFunction[Relation, Relation] = defaultRelationRules
+  def relationRules(using ctx: Context): PartialFunction[Relation, Relation] =
+    tableRefRules orElse defaultRelationRules
 
   /**
     * Rules for typing literal expressions
@@ -379,6 +383,96 @@ object TyperRules:
   // ============================================
   // Relation Typing Rules
   // ============================================
+
+  /**
+    * Rules for resolving table references via type definitions.
+    *
+    * Resolution order:
+    *   1. Look up as Model definition (existing behavior)
+    *   2. Look up as Type definition (NEW: table schema from type)
+    *   3. Fallback to catalog lookup (for migration compatibility)
+    */
+  def tableRefRules(using ctx: Context): PartialFunction[Relation, Relation] = {
+    case ref: TableRef if !ref.relationType.isResolved =>
+      resolveTableRef(ref)
+    case ref: FileRef if !ref.relationType.isResolved =>
+      resolveFileRef(ref)
+    case call: TableFunctionCall if !call.relationType.isResolved =>
+      resolveTableFunctionCall(call)
+  }
+
+  /**
+    * Resolve a TableRef by looking up its name as a model, type, or catalog table.
+    */
+  private def resolveTableRef(ref: TableRef)(using ctx: Context): Relation =
+    val name = ref.name
+
+    // 1. Look up as Model definition
+    ctx.findTermSymbolByName(name.fullName) match
+      case Some(sym) if sym.tree.isInstanceOf[ModelDef] =>
+        val m = sym.tree.asInstanceOf[ModelDef]
+        val r = m.child.relationType
+        return ModelScan(TableName(name.fullName), Nil, r, ref.span)
+      case _ =>
+        ()
+
+    // 2. Look up as Type definition (NEW: table schema from type)
+    val typeName = Name.typeName(name.leafName)
+    ctx.findSymbolByName(typeName) match
+      case Some(sym) =>
+        sym.symbolInfo.dataType match
+          case schema: SchemaType =>
+            // Found type definition - use as table schema
+            val tableName = TableName.parse(name.fullName)
+            val tableScan = TableScan(tableName, schema, schema.fields, ref.span)
+            tableScan.tpe = tableScan.relationType
+            return tableScan
+          case _ =>
+            ()
+      case None =>
+        ()
+
+    // 3. Fallback to catalog lookup (for migration compatibility)
+    val tableName = TableName.parse(name.fullName)
+    ctx.catalog.findTable(tableName.schema.getOrElse(ctx.defaultSchema), tableName.name) match
+      case Some(tbl) =>
+        val tableScan = TableScan(tableName, tbl.schemaType, tbl.schemaType.fields, ref.span)
+        tableScan.tpe = tableScan.relationType
+        tableScan
+      case None =>
+        // Leave unresolved - will be typed with UnresolvedRelationType
+        ref.tpe = ref.relationType
+        ref
+
+  end resolveTableRef
+
+  /**
+    * Resolve a FileRef by looking up file schema from cache or inferring from file.
+    */
+  private def resolveFileRef(ref: FileRef)(using ctx: Context): Relation =
+    // For now, delegate to existing behavior - file schema inference will be added
+    // when WorkEnv caching is implemented
+    ref.tpe = ref.relationType
+    ref
+
+  /**
+    * Resolve a TableFunctionCall (model with arguments) by looking up the model definition.
+    */
+  private def resolveTableFunctionCall(call: TableFunctionCall)(using ctx: Context): Relation =
+    val name = call.name
+
+    // Look up as Model definition with parameters
+    ctx.findTermSymbolByName(name.fullName) match
+      case Some(sym) if sym.tree.isInstanceOf[ModelDef] =>
+        val m         = sym.tree.asInstanceOf[ModelDef]
+        val r         = m.child.relationType
+        val modelScan = ModelScan(TableName(name.fullName), call.args, r, call.span)
+        modelScan.tpe = modelScan.relationType
+        modelScan
+      case _ =>
+        // Leave unresolved
+        call.tpe = call.relationType
+        call
 
   /**
     * Default rule for all relations. Sets tpe from relationType. The existing relationType methods

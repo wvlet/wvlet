@@ -218,6 +218,9 @@ object Typer extends Phase("typer") with LogSupport:
   /**
     * Type a relation with input type propagation. Uses in-place traversal for efficiency - only
     * updates mutable tpe fields without creating new tree instances.
+    *
+    * For table references (TableRef, FileRef, TableFunctionCall), applies tableRefRules to resolve
+    * them to concrete scans (TableScan, FileScan, ModelScan) via type definition lookup.
     */
   private def typeRelation(r: Relation)(using ctx: Context): Unit =
     // First type children (bottom-up) - in place
@@ -239,8 +242,9 @@ object Typer extends Phase("typer") with LogSupport:
         typeExpression(expr)(using exprCtx)
       }
 
-    // Set tpe from relationType
-    r.tpe = r.relationType
+    // Apply relation rules (includes tableRefRules for resolving table references)
+    // This handles TableRef -> TableScan, FileRef -> FileScan, etc.
+    TyperRules.relationRules.applyOrElse(r, identity[Relation])
 
   /**
     * Type an expression using TyperRules. Uses in-place traversal for efficiency - only updates

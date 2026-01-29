@@ -607,4 +607,132 @@ class TyperTest extends AirSpec:
     unit.resolvedPlan shouldNotBe LogicalPlan.empty
     unit.resolvedPlan.isInstanceOf[PackageDef] shouldBe true
 
+  // ============================================
+  // Table type resolution tests
+  // ============================================
+
+  /**
+    * Helper to create a symbol with type information registered in the context.
+    */
+  private def registerTypeSymbol(typeName: String, schema: SchemaType)(using ctx: Context): Symbol =
+    val name    = Name.typeName(typeName)
+    val typeSym = wvlet.lang.compiler.Symbol(ctx.global.newSymbolId, Span.NoSpan)
+    val symInfo = wvlet
+      .lang
+      .compiler
+      .SymbolInfo(wvlet.lang.compiler.SymbolType.TypeDef, ctx.owner, typeSym, name, schema)
+    typeSym.symbolInfo = symInfo
+    ctx.enter(typeSym)
+    typeSym
+
+  test("TyperRules.tableRefRules should resolve TableRef via type definition"):
+    given ctx: Context = testContext
+
+    // Create a schema type definition for 'users'
+    val usersSchema = SchemaType(
+      parent = None,
+      typeName = Name.typeName("users"),
+      columnTypes = List(
+        NamedType(Name.termName("id"), LongType),
+        NamedType(Name.termName("name"), StringType),
+        NamedType(Name.termName("email"), StringType)
+      )
+    )
+
+    // Register the type in the context's scope
+    registerTypeSymbol("users", usersSchema)
+
+    // Create a TableRef for 'users'
+    val tableRef = TableRef(name = UnquotedIdentifier("users", Span.NoSpan), span = Span.NoSpan)
+
+    // Initially should have UnresolvedRelationType
+    tableRef.relationType.isResolved shouldBe false
+
+    // Apply tableRefRules
+    val resolved = TyperRules.tableRefRules.applyOrElse(tableRef, identity[Relation])
+
+    // Should resolve to TableScan with the schema from type definition
+    resolved.isInstanceOf[TableScan] shouldBe true
+    val tableScan = resolved.asInstanceOf[TableScan]
+    tableScan.schema shouldBe usersSchema
+    tableScan.columns.size shouldBe 3
+    tableScan.columns.map(_.name.name) shouldBe List("id", "name", "email")
+
+  test("TyperRules.tableRefRules should leave TableRef unresolved if type not found"):
+    given ctx: Context = testContext
+
+    // Create a TableRef for 'unknown_table' (no type definition)
+    val tableRef = TableRef(
+      name = UnquotedIdentifier("unknown_table", Span.NoSpan),
+      span = Span.NoSpan
+    )
+
+    // Apply tableRefRules
+    val resolved = TyperRules.tableRefRules.applyOrElse(tableRef, identity[Relation])
+
+    // Should remain as TableRef (unresolved)
+    resolved.isInstanceOf[TableRef] shouldBe true
+    resolved.relationType.isResolved shouldBe false
+
+  test("TyperRules.relationRules should include tableRefRules"):
+    given ctx: Context = testContext
+
+    // Create a schema type definition
+    val ordersSchema = SchemaType(
+      parent = None,
+      typeName = Name.typeName("orders"),
+      columnTypes = List(
+        NamedType(Name.termName("order_id"), LongType),
+        NamedType(Name.termName("amount"), DoubleType)
+      )
+    )
+
+    // Register the type
+    registerTypeSymbol("orders", ordersSchema)
+
+    // Create a TableRef
+    val tableRef = TableRef(name = UnquotedIdentifier("orders", Span.NoSpan), span = Span.NoSpan)
+
+    // Apply relationRules (which includes tableRefRules)
+    val resolved = TyperRules.relationRules.applyOrElse(tableRef, identity[Relation])
+
+    // Should resolve to TableScan
+    resolved.isInstanceOf[TableScan] shouldBe true
+    val tableScan = resolved.asInstanceOf[TableScan]
+    tableScan.columns.size shouldBe 2
+
+  test("TyperRules.tableRefRules should handle qualified table names"):
+    given ctx: Context = testContext
+
+    // Create a schema type definition for 'products'
+    val productsSchema = SchemaType(
+      parent = None,
+      typeName = Name.typeName("products"),
+      columnTypes = List(
+        NamedType(Name.termName("product_id"), LongType),
+        NamedType(Name.termName("name"), StringType),
+        NamedType(Name.termName("price"), DoubleType)
+      )
+    )
+
+    // Register the type
+    registerTypeSymbol("products", productsSchema)
+
+    // Create a TableRef with qualified name (schema.products)
+    val tableRef = TableRef(
+      name = DotRef(
+        UnquotedIdentifier("myschema", Span.NoSpan),
+        UnquotedIdentifier("products", Span.NoSpan),
+        DataType.UnknownType,
+        Span.NoSpan
+      ),
+      span = Span.NoSpan
+    )
+
+    // Apply tableRefRules
+    val resolved = TyperRules.tableRefRules.applyOrElse(tableRef, identity[Relation])
+
+    // Should resolve to TableScan using the leaf name lookup
+    resolved.isInstanceOf[TableScan] shouldBe true
+
 end TyperTest
