@@ -1,10 +1,23 @@
 package wvlet.lang.compiler
 
+import wvlet.lang.model.DataType.SchemaType
 import wvlet.log.LogFormatter.SourceCodeLogFormatter
 import wvlet.log.LogLevel.ALL
 import wvlet.log.LogLevel
 import wvlet.log.LogRotationHandler
 import wvlet.log.Logger
+
+/**
+  * Cache entry for file schemas, keyed by file path and modification time.
+  *
+  * @param filePath
+  *   Absolute path to the source file
+  * @param schema
+  *   Inferred schema from the file
+  * @param lastModified
+  *   File modification timestamp used for cache invalidation
+  */
+case class CachedFileSchema(filePath: String, schema: SchemaType, lastModified: Long)
 
 /**
   * Working directory for finding .wv files and target folders for logs and cache
@@ -77,5 +90,35 @@ case class WorkEnv(path: String = ".", logLevel: LogLevel = Logger.getDefaultLog
     if !isScalaJS then
       outLogger.error(msg)
       errorLogger.error(msg)
+
+  /**
+    * Schema cache folder location for cached file schemas.
+    */
+  def schemaCacheFolder: String = s"${cacheFolder}/schemas"
+
+  /**
+    * Load a cached file schema from the cache folder.
+    *
+    * @param filePath
+    *   The file path to look up
+    * @return
+    *   Cached schema if exists and mtime matches, None otherwise
+    */
+  def loadFileSchemaCache(filePath: String): Option[CachedFileSchema] = loadFileSchemaCacheImpl(
+    filePath
+  )
+
+  /**
+    * Save a file schema to the cache folder.
+    *
+    * @param filePath
+    *   The file path as cache key
+    * @param schema
+    *   The inferred schema to cache
+    * @param lastModified
+    *   File modification timestamp for invalidation
+    */
+  def saveFileSchemaCache(filePath: String, schema: SchemaType, lastModified: Long): Unit =
+    saveFileSchemaCacheImpl(filePath, schema, lastModified)
 
 end WorkEnv

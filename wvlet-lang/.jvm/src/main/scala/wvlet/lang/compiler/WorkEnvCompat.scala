@@ -1,9 +1,12 @@
 package wvlet.lang.compiler
 
-import wvlet.airframe.control.IO
+import wvlet.lang.model.DataType.SchemaType
 import wvlet.log.LogFormatter.SourceCodeLogFormatter
 import wvlet.log.LogRotationHandler
 import wvlet.log.Logger
+
+import java.io.File
+import java.security.MessageDigest
 
 trait WorkEnvCompat:
   self: WorkEnv =>
@@ -30,3 +33,42 @@ trait WorkEnvCompat:
   protected def initLogger(l: Logger, fileName: String): Logger =
     l.resetHandler(LogRotationHandler(fileName = fileName, formatter = SourceCodeLogFormatter))
     l
+
+  // File schema cache implementation for JVM
+
+  /**
+    * Generate a cache key from file path using MD5 hash.
+    */
+  private def cacheKeyFor(filePath: String): String =
+    val digest = MessageDigest.getInstance("MD5")
+    val hash   = digest.digest(filePath.getBytes("UTF-8"))
+    hash.map("%02x".format(_)).mkString + ".schema"
+
+  /**
+    * Load a cached file schema from disk if it exists and the mtime matches.
+    */
+  protected def loadFileSchemaCacheImpl(filePath: String): Option[CachedFileSchema] =
+    // TODO: Implement full schema deserialization from cache.
+    // This is a placeholder for now and does not load from cache.
+    None
+
+  /**
+    * Save a file schema to disk cache.
+    */
+  protected def saveFileSchemaCacheImpl(
+      filePath: String,
+      schema: SchemaType,
+      lastModified: Long
+  ): Unit =
+    val cacheKey  = cacheKeyFor(filePath)
+    val cacheFile = new File(s"${schemaCacheFolder}/${cacheKey}")
+    Option(cacheFile.getParentFile).foreach(_.mkdirs())
+
+    // For now, store basic metadata
+    // Full schema serialization would require a schema serializer
+    val content = s"${filePath}\n${lastModified}\n${schema.typeName}"
+    val out     = new java.io.PrintWriter(cacheFile)
+    try out.write(content)
+    finally out.close()
+
+end WorkEnvCompat
