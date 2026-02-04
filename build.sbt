@@ -3,7 +3,7 @@ import scala.scalanative.build.GC
 import scala.scalanative.build.Mode
 import scala.scalanative.build.NativeConfig
 
-val AIRFRAME_VERSION = "2025.1.27"
+val AIRFRAME_VERSION = "2026.1.0"
 
 val AIRSPEC_VERSION        = AIRFRAME_VERSION
 val TRINO_VERSION          = "476"
