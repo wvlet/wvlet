@@ -199,7 +199,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
       
       - name: Download built wheels
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: python-distributions
           path: dist/
@@ -256,7 +256,7 @@ jobs:
       id-token: write  # For PyPI trusted publishing
     steps:
       - name: Download built distributions
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: python-distributions
           path: dist/
