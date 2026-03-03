@@ -379,7 +379,7 @@ lazy val runner = project
     Test / javaOptions ++= Seq("--enable-native-access=ALL-UNNAMED"),
     libraryDependencies ++=
       Seq(
-        "org.jline"                     % "jline"             % "3.30.6",
+        "org.jline"                     % "jline"             % "3.30.7",
         "org.wvlet.airframe"           %% "airframe-launcher" % AIRFRAME_VERSION,
         "com.github.ben-manes.caffeine" % "caffeine"          % "3.2.3",
         "org.apache.arrow"              % "arrow-vector"      % "18.3.0",
