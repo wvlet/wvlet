@@ -104,7 +104,7 @@ jobs:
         working-directory: wvc-lib
       - name: Upload native binary
         if: ${{ !matrix.skip }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.name }}-${{ matrix.arch }}
           path: wvc-lib/target/scala-${{ env.SCALA_VERSION }}/libwvlet.${{ matrix.suffix }}
@@ -202,7 +202,7 @@ jobs:
           dir wvc-lib\target\scala-${{ env.SCALA_VERSION }}\
         shell: cmd
       - name: Upload native binary
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: windows-${{ matrix.arch }}
           # Windows doesn't use lib prefix - Scala Native generates wvlet.dll
@@ -216,7 +216,7 @@ jobs:
     if: ${{ always() && (needs.build_native.result == 'success' || needs.build_windows.result == 'success') }}
     steps:
       - name: Merge artifacts
-        uses: actions/upload-artifact/merge@v6
+        uses: actions/upload-artifact/merge@v7
         with:
           name: wvc-lib
           delete-merged: true
