@@ -382,7 +382,7 @@ lazy val runner = project
         "org.jline"                     % "jline"             % "4.0.4",
         "org.wvlet.airframe"           %% "airframe-launcher" % AIRFRAME_VERSION,
         "com.github.ben-manes.caffeine" % "caffeine"          % "3.2.3",
-        "org.apache.arrow"              % "arrow-vector"      % "18.3.0",
+        "org.apache.arrow"              % "arrow-vector"      % "19.0.0",
         "org.duckdb"                    % "duckdb_jdbc"       % DUCKDB_JDBC_VERSION,
         "io.trino"                      % "trino-jdbc"        % TRINO_VERSION,
         "net.snowflake"                 % "snowflake-jdbc"    % SNOWFLAKE_JDBC_VERSION,
