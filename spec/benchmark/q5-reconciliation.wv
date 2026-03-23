@@ -1,0 +1,39 @@
+-- Q5: Multi-Source Reconciliation (⭐⭐⭐⭐⭐)
+-- Business question: Find revenue discrepancies between orders and payments systems.
+--
+-- Verifiability advantage: Derived columns like `discrepancy` and `discrepancy_type` are computed
+-- in sequence and reused in subsequent steps (e.g., `discrepancy_type` in the `where` clause).
+-- This avoids repeating complex expressions, a common issue in SQL. Mid-pipeline debugging lets
+-- you truncate at any step to verify intermediate results.
+
+val order_totals(order_id, customer_id, expected_total) = [
+  [1, 'C001', 145.80],
+  [2, 'C002', 69.00],
+  [3, 'C003', 102.60],
+  [4, 'C004', 96.00]
+]
+
+val payment_totals(pt_order_id, paid_total, payment_count) = [
+  [1, 145.00, 1],
+  [2, 60.00, 1],
+  [3, 102.60, 1],
+  [4, 90.00, 1]
+]
+
+-- Join order totals with payments and classify discrepancies
+from order_totals
+left join payment_totals on order_id = pt_order_id
+add
+  paid = coalesce(paid_total, 0),
+  discrepancy = expected_total - coalesce(paid_total, 0)
+add discrepancy_type = case
+  when paid_total is null then 'no_payment'
+  when abs(discrepancy) < 0.01 then 'match'
+  when paid < expected_total then 'underpaid'
+  when paid > expected_total then 'overpaid'
+select order_id, customer_id, expected_total, paid, discrepancy, discrepancy_type
+where discrepancy_type != 'match'
+order by abs(discrepancy) desc
+
+test _.columns should be ['order_id', 'customer_id', 'expected_total', 'paid', 'discrepancy', 'discrepancy_type']
+test _.size should be 3

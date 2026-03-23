@@ -128,6 +128,10 @@ class RunnerSpecSqlBasic
       )
     )
 
+class RunnerSpecBenchmark extends RunnerSpec("spec/benchmark")
+
+class RunnerSpecSqlBenchmark extends RunnerSpec("spec/sql/benchmark")
+
 class RunnerSpecSqlTPCH extends RunnerSpec("spec/sql/tpc-h", parseOnly = true, prepareTPCH = true)
 
 class RunnerSpecSqlTPCDS

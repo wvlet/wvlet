@@ -1,0 +1,29 @@
+-- Q3: Window Functions — Ranking + Running Total (⭐⭐⭐)
+-- Business question: For each customer, rank orders by amount and show running cumulative total.
+--
+-- Verifiability advantage: `add` isolates window computations from source columns, making it
+-- immediately clear what's computed vs. what's from the source. The filter appears before
+-- the window functions, matching execution order. SQL embeds window functions in SELECT
+-- alongside plain columns, requiring careful parsing to distinguish them.
+
+from [
+  [1, 'C001', 100, 'completed', '2025-01-10'],
+  [2, 'C001', 250, 'completed', '2025-01-15'],
+  [3, 'C001', 150, 'completed', '2025-01-20'],
+  [4, 'C002', 300, 'completed', '2025-01-12'],
+  [5, 'C002', 200, 'completed', '2025-01-18'],
+  [6, 'C002', 100, 'pending',   '2025-01-25']
+] as orders(order_id, customer_id, amount, status, order_date)
+where status = 'completed'
+add
+  rank = row_number() over (partition by customer_id order by amount desc),
+  cumulative_total = sum(amount) over (
+    partition by customer_id
+    order by order_date
+    rows[,0]
+  )
+select customer_id, order_id, amount, rank, cumulative_total
+order by customer_id, rank
+
+test _.columns should be ['customer_id', 'order_id', 'amount', 'rank', 'cumulative_total']
+test _.size should be 5

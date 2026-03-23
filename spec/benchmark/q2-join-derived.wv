@@ -1,0 +1,30 @@
+-- Q2: Multi-table Join with Derived Column (⭐⭐)
+-- Business question: For each order, show customer name, product name, and line total with discount.
+--
+-- Verifiability advantage: Wvlet's linear flow (join → filter → derive → select) reads top-to-bottom.
+-- `add` explicitly separates the derived column from source columns, making the calculation
+-- independently auditable. SQL inlines the expression in SELECT alongside source columns.
+
+from [
+  [1, 101, 201, 2, 50.00, 0.1, '2025-03-01'],
+  [2, 102, 202, 1, 30.00, null, '2025-02-15'],
+  [3, 101, 203, 3, 20.00, 0.2, '2025-03-10'],
+  [4, 103, 201, 1, 50.00, 0.0, '2024-12-01']
+] as orders(order_id, customer_id, product_id, quantity, unit_price, discount, order_date)
+join [
+  [101, 'Alice'],
+  [102, 'Bob'],
+  [103, 'Carol']
+] as customers(id, customer_name) on orders.customer_id = customers.id
+join [
+  [201, 'Widget'],
+  [202, 'Gadget'],
+  [203, 'Gizmo']
+] as products(id, product_name) on orders.product_id = products.id
+where order_date >= '2025-01-01'
+add line_total = quantity * unit_price * (1 - coalesce(discount, 0))
+select customer_name, product_name, quantity, unit_price, line_total
+order by line_total desc
+
+test _.columns should be ['customer_name', 'product_name', 'quantity', 'unit_price', 'line_total']
+test _.size should be 3

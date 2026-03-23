@@ -1,0 +1,41 @@
+-- Q4: Multi-step Aggregation — Aggregate → Classify → Re-aggregate (⭐⭐⭐⭐)
+-- Business question: Classify customers into tiers based on purchase behavior, then summarize tiers.
+--
+-- Verifiability advantage: Single continuous flow (filter → aggregate → classify → re-aggregate)
+-- vs SQL's two CTEs + final query. Each step can be debugged mid-pipeline by truncating.
+-- No CTE naming overhead — the flow itself is the structure.
+
+from [
+  [1, 'C001', 500, 'completed', '2025-01-05'],
+  [2, 'C001', 800, 'completed', '2025-01-10'],
+  [3, 'C001', 200, 'completed', '2025-01-15'],
+  [4, 'C002', 3000, 'completed', '2025-01-08'],
+  [5, 'C002', 4000, 'completed', '2025-01-12'],
+  [6, 'C002', 3500, 'completed', '2025-01-20'],
+  [7, 'C003', 150, 'completed', '2025-01-03'],
+  [8, 'C004', 6000, 'completed', '2025-01-02'],
+  [9, 'C004', 5000, 'completed', '2025-01-09'],
+  [10, 'C004', 4500, 'cancelled', '2025-01-15']
+] as orders(order_id, customer_id, amount, status, order_date)
+where status = 'completed'
+group by customer_id
+agg
+  purchase_count = _.count,
+  total_spend = amount.sum
+add tier = case
+  when total_spend >= 10000 and purchase_count >= 3 then 'platinum'
+  when total_spend >= 5000 and purchase_count >= 2 then 'gold'
+  when total_spend >= 1000 then 'silver'
+  else 'bronze'
+group by tier
+agg
+  customer_count = _.count,
+  avg_spend = total_spend.avg
+order by case tier
+  when 'platinum' then 1
+  when 'gold' then 2
+  when 'silver' then 3
+  else 4
+
+test _.columns should be ['tier', 'customer_count', 'avg_spend']
+test _.size should be 4

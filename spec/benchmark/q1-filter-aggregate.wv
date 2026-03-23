@@ -1,0 +1,27 @@
+-- Q1: Simple Filter + Aggregate (⭐)
+-- Business question: How many active orders per customer, with total spend?
+--
+-- Verifiability advantage: Wvlet flows top-to-bottom (filter → group → aggregate → filter),
+-- matching execution order. Named aggregation results (`total_spend`) are reused directly
+-- in the post-aggregation filter, avoiding SQL's HAVING duplication of expressions.
+
+from [
+  [1, 'C001', 'active',  500],
+  [2, 'C001', 'active',  800],
+  [3, 'C002', 'active',  300],
+  [4, 'C002', 'active',  900],
+  [5, 'C003', 'active',  200],
+  [6, 'C003', 'cancelled', 400],
+  [7, 'C001', 'active', 1200],
+  [8, 'C004', 'active',  100]
+] as orders(order_id, customer_id, status, amount)
+where status = 'active'
+group by customer_id
+agg
+  order_count = _.count,
+  total_spend = amount.sum
+where total_spend > 1000
+order by total_spend desc
+
+test _.columns should be ['customer_id', 'order_count', 'total_spend']
+test _.size should be 2
