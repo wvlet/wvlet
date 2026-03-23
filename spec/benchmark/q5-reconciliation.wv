@@ -1,10 +1,10 @@
 -- Q5: Multi-Source Reconciliation (⭐⭐⭐⭐⭐)
 -- Business question: Find revenue discrepancies between orders and payments systems.
 --
--- Verifiability advantage: `subtotal` is computed once with `agg` and reused by name
--- (single source of truth), while SQL repeats the expression 3 times. Mid-pipeline
--- debugging lets you truncate at any step to verify intermediate results. Named columns
--- (`discrepancy_type`) are reused in the filter, avoiding SQL's expression re-derivation.
+-- Verifiability advantage: Derived columns like `discrepancy` and `discrepancy_type` are computed
+-- in sequence and reused in subsequent steps (e.g., `discrepancy_type` in the `where` clause).
+-- This avoids repeating complex expressions, a common issue in SQL. Mid-pipeline debugging lets
+-- you truncate at any step to verify intermediate results.
 
 val order_totals(order_id, customer_id, expected_total) = [
   [1, 'C001', 145.80],
