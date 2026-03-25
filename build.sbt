@@ -6,7 +6,7 @@ import scala.scalanative.build.NativeConfig
 val AIRFRAME_VERSION = "2026.1.4"
 
 val AIRSPEC_VERSION        = AIRFRAME_VERSION
-val TRINO_VERSION          = "476"
+val TRINO_VERSION          = "480"
 val AWS_SDK_VERSION        = "2.20.146"
 val SCALAJS_DOM_VERSION    = "2.8.1"
 val DUCKDB_JDBC_VERSION    = "1.5.1.0"
