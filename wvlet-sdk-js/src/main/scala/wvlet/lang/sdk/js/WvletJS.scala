@@ -116,6 +116,26 @@ object WvletJS:
   @JSExport
   def getVersion(): String = wvlet.lang.BuildInfo.version
 
+  // Cached compiler instance for diagnostics (avoids repeated initialization and filesystem scans)
+  private lazy val diagnosticsCompiler = Compiler(CompilerOptions(workEnv = WorkEnv(path = ".")))
+
+  private def makeDiagnostic(
+      line: Int,
+      column: Int,
+      endLine: Int,
+      endColumn: Int,
+      message: String,
+      statusCode: String
+  ): LspDiagnostic = LspDiagnostic(
+    line = line,
+    column = column,
+    endLine = endLine,
+    endColumn = endColumn,
+    message = message,
+    severity = "error",
+    statusCode = statusCode
+  )
+
   /**
     * Analyze a Wvlet source and return diagnostics (errors/warnings) as JSON.
     * @param content
@@ -128,46 +148,33 @@ object WvletJS:
   def analyzeDiagnostics(content: String): String =
     val diagnostics = ListBuffer.empty[LspDiagnostic]
     try
-      val compiler  = Compiler(CompilerOptions(workEnv = WorkEnv(path = ".")))
       val inputUnit = CompilationUnit.fromWvletString(content)
-      val result    = compiler.compileSingleUnit(inputUnit)
+      val result    = diagnosticsCompiler.compileSingleUnit(inputUnit)
       result.reportAllErrors
     catch
       case e: WvletLangException =>
         val loc = e.sourceLocation
         if loc != SourceLocation.NoSourceLocation then
           diagnostics +=
-            LspDiagnostic(
-              line = loc.position.line,
-              column = loc.position.column,
-              endLine = loc.position.line,
-              endColumn = loc.position.column,
-              message = e.getMessage,
-              severity = "error",
-              statusCode = e.statusCode.toString
+            makeDiagnostic(
+              loc.position.line,
+              loc.position.column,
+              loc.position.line,
+              loc.position.column,
+              e.getMessage,
+              e.statusCode.toString
             )
         else
-          // Error without location — report at line 1, column 1
-          diagnostics +=
-            LspDiagnostic(
-              line = 1,
-              column = 1,
-              endLine = 1,
-              endColumn = 1,
-              message = e.getMessage,
-              severity = "error",
-              statusCode = e.statusCode.toString
-            )
+          diagnostics += makeDiagnostic(1, 1, 1, 1, e.getMessage, e.statusCode.toString)
       case e: Throwable =>
         diagnostics +=
-          LspDiagnostic(
-            line = 1,
-            column = 1,
-            endLine = 1,
-            endColumn = 1,
-            message = Option(e.getMessage).getOrElse(e.getClass.getName),
-            severity = "error",
-            statusCode = StatusCode.INTERNAL_ERROR.toString
+          makeDiagnostic(
+            1,
+            1,
+            1,
+            1,
+            Option(e.getMessage).getOrElse(e.getClass.getName),
+            StatusCode.INTERNAL_ERROR.toString
           )
     end try
 

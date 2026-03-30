@@ -15,33 +15,12 @@ import {
 
 import { TextDocument } from 'vscode-languageserver-textdocument';
 
-// Interface for the Scala.js WvletJS module
+import type { WvletJSType } from '../../sdks/typescript/lib/main';
+import type { LspDiagnostic, LspSymbol } from '../../sdks/typescript/src/types';
+
+// The Scala.js module exports WvletJS as a named export
 interface WvletJSModule {
-  WvletJS: {
-    compile(query: string, options?: string): string;
-    getVersion(): string;
-    analyzeDiagnostics(content: string): string;
-    getDocumentSymbols(content: string): string;
-  };
-}
-
-interface LspDiagnostic {
-  line: number;
-  column: number;
-  endLine: number;
-  endColumn: number;
-  message: string;
-  severity: string;
-  statusCode: string;
-}
-
-interface LspSymbol {
-  name: string;
-  kind: number;
-  startLine: number;
-  startColumn: number;
-  endLine: number;
-  endColumn: number;
+  WvletJS: WvletJSType;
 }
 
 // Create the LSP connection
