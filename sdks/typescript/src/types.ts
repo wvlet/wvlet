@@ -97,3 +97,28 @@ export class CompilationError extends Error {
     this.name = 'CompilationError';
   }
 }
+
+/**
+ * LSP diagnostic from the Wvlet compiler
+ */
+export interface LspDiagnostic {
+  line: number;
+  column: number;
+  endLine: number;
+  endColumn: number;
+  message: string;
+  severity: string;
+  statusCode: string;
+}
+
+/**
+ * LSP document symbol from the Wvlet compiler
+ */
+export interface LspSymbol {
+  name: string;
+  kind: number;
+  startLine: number;
+  startColumn: number;
+  endLine: number;
+  endColumn: number;
+}
