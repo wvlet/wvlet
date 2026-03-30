@@ -2,10 +2,11 @@
   "name": "wvlet",
   "displayName": "Wvlet",
   "description": "Wvlet query language support for Visual Studio Code",
-  "version": "2025.2.1",
+  "version": "2025.3.0",
   "engines": {
     "vscode": "^1.104.0"
   },
+  "main": "./out/extension.js",
   "categories": [
     "Programming Languages"
   ],
@@ -48,12 +49,21 @@
       }
     ]
   },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1",
+    "vscode-languageserver": "^9.0.1",
+    "vscode-languageserver-textdocument": "^1.0.12"
+  },
   "devDependencies": {
     "@types/vscode": "^1.104.0",
-    "@vscode/vsce": "^3.7.1"
+    "@vscode/vsce": "^3.7.1",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.9.0"
   },
   "scripts": {
-    "package": "vsce package"
+    "compile": "node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "package": "npm run compile && vsce package"
   },
   "author": "Wvlet Team",
   "license": "Apache-2.0"

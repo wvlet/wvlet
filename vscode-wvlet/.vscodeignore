@@ -1,4 +1,5 @@
 node_modules/
+src/
 *.log
 npm-debug.log*
 .DS_Store
@@ -6,4 +7,6 @@ npm-debug.log*
 .gitignore
 *.vsix
 package-lock.json
+tsconfig.json
+esbuild.js
 ../**

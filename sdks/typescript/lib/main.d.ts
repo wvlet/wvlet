@@ -16,6 +16,20 @@ export interface WvletJSType {
    * @returns The version string
    */
   getVersion(): string;
+
+  /**
+   * Analyze a Wvlet source and return diagnostics as JSON
+   * @param content The Wvlet source code
+   * @returns JSON array of diagnostics
+   */
+  analyzeDiagnostics(content: string): string;
+
+  /**
+   * Extract document symbols from a Wvlet source as JSON
+   * @param content The Wvlet source code
+   * @returns JSON array of symbols
+   */
+  getDocumentSymbols(content: string): string;
 }
 
 export const WvletJS: WvletJSType;
