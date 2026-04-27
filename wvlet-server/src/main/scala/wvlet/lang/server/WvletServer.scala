@@ -21,7 +21,7 @@ import wvlet.lang.runner.connector.DBConnector
 import wvlet.lang.runner.connector.DBConnectorProvider
 import wvlet.lang.runner.QueryExecutor
 import wvlet.lang.runner.WvletScriptRunnerConfig
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 import wvlet.log.io.IOUtil
 
 import scala.annotation.tailrec

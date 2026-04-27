@@ -13,9 +13,9 @@
  */
 package wvlet.lang.runner
 
-import wvlet.airspec.AirSpec
+import wvlet.uni.test.UniTest
 
-class QueryResultFormatTest extends AirSpec:
+class QueryResultFormatTest extends UniTest:
   test("unicode width") {
     for ch <- 'a' to 'Z' do
       QueryResultFormat.wcWidth(ch) shouldBe 1

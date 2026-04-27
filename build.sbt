@@ -477,6 +477,7 @@ lazy val ui = project
         "org.wvlet.airframe" %%% "airframe"         % AIRFRAME_VERSION,
         "org.wvlet.airframe" %%% "airframe-http"    % AIRFRAME_VERSION,
         "org.wvlet.airframe" %%% "airframe-rx-html" % AIRFRAME_VERSION,
+        "org.wvlet.uni"      %%% "uni"              % UNI_VERSION,
         "org.scala-js"       %%% "scalajs-dom"      % SCALAJS_DOM_VERSION
       )
   )

@@ -17,7 +17,7 @@ import wvlet.lang.compiler.Symbol
 import wvlet.lang.ui.component.MainFrame
 import wvlet.lang.ui.component.WindowSize
 import wvlet.lang.ui.component.MainFrame.NavBar
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 
 import java.util.concurrent.TimeUnit
 import org.scalajs.dom

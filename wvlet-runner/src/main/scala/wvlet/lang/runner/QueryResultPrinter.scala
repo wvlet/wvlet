@@ -14,7 +14,7 @@
 package wvlet.lang.runner
 
 import org.jline.utils.WCWidth
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 import QueryResultFormat.*
 
 object QueryResultFormat:

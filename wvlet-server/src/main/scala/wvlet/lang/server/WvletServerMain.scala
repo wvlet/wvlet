@@ -5,8 +5,8 @@ import wvlet.airframe.launcher.Launcher
 import wvlet.airframe.launcher.command
 import wvlet.airframe.launcher.option
 import wvlet.lang.compiler.WorkEnv
-import wvlet.log.LogLevel
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogLevel
+import wvlet.uni.log.LogSupport
 
 object WvletServerMain:
   private def launcher: Launcher      = Launcher.of[WvletServerMain]

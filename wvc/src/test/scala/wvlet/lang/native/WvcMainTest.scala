@@ -1,8 +1,8 @@
 package wvlet.lang.native
 
-import wvlet.airspec.AirSpec
+import wvlet.uni.test.UniTest
 
-class WvcMainTest extends AirSpec:
+class WvcMainTest extends UniTest:
 
   def captureOut(body: => Unit): String =
     val out = new java.io.ByteArrayOutputStream()

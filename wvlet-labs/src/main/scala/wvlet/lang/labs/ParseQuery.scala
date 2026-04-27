@@ -1,6 +1,6 @@
 package wvlet.lang.labs
 
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 import wvlet.airframe.launcher.*
 
 import java.io.FileWriter

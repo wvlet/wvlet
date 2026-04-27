@@ -1,8 +1,8 @@
 package wvlet.lang.cli
 
-import wvlet.airspec.AirSpec
+import wvlet.uni.test.UniTest
 
-class WvletMainTest extends AirSpec:
+class WvletMainTest extends UniTest:
   test("help") {
     WvletMain.main("--help")
     WvletMain.main("")

@@ -13,7 +13,7 @@
  */
 package wvlet.lang.runner
 
-import wvlet.airspec.AirSpec
+import wvlet.uni.test.UniTest
 import wvlet.lang.api.WvletLangException
 import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.CompilationUnit
@@ -31,7 +31,7 @@ trait RunnerSpec(
     parseOnly: Boolean = false,
     prepareTPCH: Boolean = false,
     prepareTPCDS: Boolean = false
-) extends AirSpec:
+) extends UniTest:
   private val workEnv = WorkEnv(path = specPath, logLevel = logger.getLogLevel)
   private val profile = Profile
     .defaultDuckDBProfile

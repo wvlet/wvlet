@@ -37,8 +37,8 @@ import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
 import wvlet.lang.runner.connector.DBConnector
 import wvlet.lang.runner.connector.DBConnectorProvider
-import wvlet.log.LogLevel
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogLevel
+import wvlet.uni.log.LogSupport
 
 import java.sql.SQLException
 import scala.collection.immutable.ListMap

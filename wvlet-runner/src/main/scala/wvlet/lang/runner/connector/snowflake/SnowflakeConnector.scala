@@ -19,7 +19,7 @@ import wvlet.lang.compiler.DBType
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.model.DataType
 import wvlet.lang.runner.connector.*
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 
 import java.sql.Connection
 import java.sql.DriverManager

@@ -17,7 +17,7 @@ import wvlet.lang.runner.WvletScriptRunner
 import wvlet.lang.runner.WvletScriptRunnerConfig
 import wvlet.lang.runner.connector.DBConnector
 import wvlet.lang.runner.connector.DBConnectorProvider
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 import wvlet.log.io.IOUtil
 
 import java.io.File

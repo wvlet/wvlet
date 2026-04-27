@@ -32,7 +32,7 @@ import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.runner.connector.duckdb.DuckDBConnector
 import wvlet.lang.runner.connector.trino.DuckDBSQLFunction.DuckDBFunctionHandle
 import wvlet.lang.runner.connector.trino.DuckDBSQLFunction.DuckDBQuerySplit
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 
 import java.util.Optional
 import java.util.concurrent.CompletableFuture

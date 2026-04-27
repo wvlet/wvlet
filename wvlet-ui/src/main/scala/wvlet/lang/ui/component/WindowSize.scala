@@ -4,7 +4,7 @@ import org.scalajs.dom
 import org.scalajs.dom.ResizeObserver
 import wvlet.airframe.rx.Rx
 import wvlet.airframe.rx.RxVar
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 
 class WindowSize extends AutoCloseable with LogSupport:
   private val innerWidth: RxVar[Int]  = Rx.variable(dom.window.innerWidth.toInt)

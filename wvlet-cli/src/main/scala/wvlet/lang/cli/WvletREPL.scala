@@ -42,7 +42,7 @@ import wvlet.lang.model.plan.QueryStatement
 import wvlet.lang.runner.connector.TrinoQueryMetric
 import wvlet.lang.runner.LastOutput
 import wvlet.lang.runner.WvletScriptRunner
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicReference

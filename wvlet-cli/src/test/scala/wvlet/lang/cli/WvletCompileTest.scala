@@ -1,10 +1,10 @@
 package wvlet.lang.cli
 
-import wvlet.airspec.AirSpec
+import wvlet.uni.test.UniTest
 
 import java.io.ByteArrayOutputStream
 
-class WvletCompileTest extends AirSpec:
+class WvletCompileTest extends UniTest:
   test("help") {
     WvletMain.main("compile --help")
   }

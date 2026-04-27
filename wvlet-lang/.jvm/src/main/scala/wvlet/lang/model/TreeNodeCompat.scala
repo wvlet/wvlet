@@ -10,6 +10,6 @@ trait TreeNodeCompat:
   protected def getSingletonObject: Option[Any] =
     val className = this.getClass.getName
     if className.endsWith("$") then
-      Reflect.companionOf(this.getClass)
+      Reflect.companionOfUnchecked(this.getClass)
     else
       None

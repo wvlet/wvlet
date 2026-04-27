@@ -35,7 +35,7 @@ import wvlet.airframe.codec.JDBCCodec.ResultSetCodec
 import wvlet.airframe.metrics.Count
 import wvlet.airframe.metrics.ElapsedTime
 import wvlet.lang.api.StatusCode
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 
 import java.sql.Connection
 import java.sql.ResultSet

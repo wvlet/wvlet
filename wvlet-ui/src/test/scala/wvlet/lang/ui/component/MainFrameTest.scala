@@ -14,9 +14,9 @@
 package wvlet.lang.ui.component
 
 import wvlet.airframe.rx.html.all.*
-import wvlet.airspec.AirSpec
+import wvlet.uni.test.UniTest
 
-class MainFrameTest extends AirSpec:
+class MainFrameTest extends UniTest:
   test("sanity test") {
     MainFrame.render(div("hello wvlet"))
   }

@@ -7,7 +7,7 @@ import wvlet.airframe.rx.html.all.*
 import wvlet.lang.BuildInfo
 import wvlet.lang.ui.component.MainFrame
 import wvlet.lang.ui.component.WindowSize
-import wvlet.log.LogTimestampFormatter
+import wvlet.uni.log.LogTimestampFormatter
 
 object ConsoleLog:
 

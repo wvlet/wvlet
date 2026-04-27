@@ -1,7 +1,7 @@
 package wvlet.lang.native
 
 import wvlet.airframe.codec.MessageCodec
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 import wvlet.lang.api.WvletLangException
 import wvlet.lang.api.SourceLocation
 import wvlet.lang.api.LinePosition
