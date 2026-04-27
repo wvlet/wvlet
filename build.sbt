@@ -37,10 +37,11 @@ val buildSettings = Seq[Setting[?]](
       "org.wvlet.airframe" %%% "airspec"        % AIRSPEC_VERSION % Test,
       "org.wvlet.uni"      %%% "uni-test"       % UNI_VERSION     % Test
     ),
-  testFrameworks ++= Seq(
-    new TestFramework("wvlet.airspec.Framework"),
-    new TestFramework("wvlet.uni.test.Framework")
-  ),
+  testFrameworks ++=
+    Seq(
+      new TestFramework("wvlet.airspec.Framework"),
+      new TestFramework("wvlet.uni.test.Framework")
+    ),
   // Don't use pipelining as it tends to slowdown the build
   usePipelining := false
 )
@@ -386,7 +387,7 @@ lazy val runner = project
     Test / javaOptions ++= Seq("--enable-native-access=ALL-UNNAMED"),
     libraryDependencies ++=
       Seq(
-        "org.jline"                     % "jline"             % "4.0.12",
+        "org.jline"                     % "jline"             % "4.0.13",
         "org.wvlet.airframe"           %% "airframe-launcher" % AIRFRAME_VERSION,
         "com.github.ben-manes.caffeine" % "caffeine"          % "3.2.3",
         "org.apache.arrow"              % "arrow-vector"      % "19.0.0",
