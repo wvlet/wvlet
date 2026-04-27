@@ -14,8 +14,6 @@
 package wvlet.lang.runner
 
 import org.jline.terminal.Terminal
-import wvlet.airframe.control.Control
-import wvlet.airframe.control.Shell
 import wvlet.lang.api.WvletLangException
 import wvlet.lang.api.v1.query.QueryRequest
 import wvlet.lang.api.v1.query.QuerySelection

@@ -17,10 +17,9 @@ import io.trino.plugin.deltalake.DeltaLakeConnectorFactory
 import io.trino.plugin.deltalake.DeltaLakePlugin
 import io.trino.plugin.memory.MemoryPlugin
 import io.trino.server.testing.TestingTrinoServer
-import wvlet.airframe.control.Resource
-import wvlet.airframe.ulid.ULID
 import wvlet.uni.log.LogSupport
 import wvlet.uni.log.Logger
+import wvlet.uni.util.ULID
 
 import java.io.File
 import java.nio.file.Files

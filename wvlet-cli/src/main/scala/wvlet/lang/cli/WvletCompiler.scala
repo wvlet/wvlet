@@ -1,8 +1,8 @@
 package wvlet.lang.cli
 
-import wvlet.airframe.control.Control
 import wvlet.airframe.launcher.argument
 import wvlet.airframe.launcher.option
+import wvlet.uni.control.Control
 import wvlet.lang.api.StatusCode
 import wvlet.lang.api.v1.query.QuerySelection
 import wvlet.lang.catalog.Profile

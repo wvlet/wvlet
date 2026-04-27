@@ -14,7 +14,7 @@
 package wvlet.lang.runner
 
 import org.apache.arrow.flatbuf.TimeUnit
-import wvlet.airframe.ulid.ULID
+import wvlet.uni.util.ULID
 
 import java.util.concurrent
 import java.util.concurrent.Executors
@@ -33,7 +33,7 @@ object ThreadUtil:
 
 class ThreadManager() extends AutoCloseable:
   private val executor = Executors.newCachedThreadPool(
-    wvlet.airframe.control.ThreadUtil.newDaemonThreadFactory(s"wvlet-task-${ULID.newULID}")
+    wvlet.uni.util.ThreadUtil.newDaemonThreadFactory(s"wvlet-task-${ULID.newULID}")
   )
 
   override def close(): Unit =

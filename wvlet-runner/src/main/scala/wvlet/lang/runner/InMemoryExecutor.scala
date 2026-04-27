@@ -15,11 +15,11 @@ package wvlet.lang.runner
 
 import wvlet.lang.compiler.Context
 import wvlet.lang.model.plan.*
-import wvlet.airframe.codec.MessageCodec
-import wvlet.airframe.control.IO
+import wvlet.uni.io.IO
 import wvlet.uni.log.LogSupport
+import wvlet.uni.weaver.Weaver
+import wvlet.uni.weaver.codec.PrimitiveWeaver.given
 
-import java.io.File
 import scala.collection.immutable.ListMap
 
 object InMemoryExecutor:
@@ -40,8 +40,8 @@ class InMemoryExecutor extends LogSupport:
         warn(s"Test execution is not supported yet: ${t}")
         QueryResult.empty
       case r: FileScan if r.filePath.endsWith(".json") =>
-        val json = IO.readAsString(new File(r.filePath))
+        val json = IO.readString(IO.path(r.filePath))
         trace(json)
-        val codec = MessageCodec.of[Seq[ListMap[String, Any]]]
+        val codec = summon[Weaver[Seq[ListMap[String, Any]]]]
         val data  = codec.fromJson(json)
         TableRows(r.schema, data, data.size)

@@ -13,8 +13,8 @@
  */
 package wvlet.lang.runner.connector.snowflake
 
-import wvlet.airframe.control.Control
 import wvlet.lang.catalog.SQLFunction
+import wvlet.uni.control.Control
 import wvlet.lang.compiler.DBType
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.model.DataType

@@ -13,7 +13,7 @@
  */
 package wvlet.lang.runner.connector
 
-import wvlet.airframe.control.Control.withResource
+import wvlet.uni.control.Control.withResource
 import DBConnector.*
 import io.trino.jdbc.QueryStats
 import wvlet.lang.catalog.Catalog
@@ -31,9 +31,6 @@ import wvlet.lang.model.DataType
 import wvlet.lang.model.RelationType
 import wvlet.lang.model.plan.LogicalPlan
 import wvlet.lang.model.plan.*
-import wvlet.airframe.codec.JDBCCodec.ResultSetCodec
-import wvlet.airframe.metrics.Count
-import wvlet.airframe.metrics.ElapsedTime
 import wvlet.lang.api.StatusCode
 import wvlet.uni.log.LogSupport
 

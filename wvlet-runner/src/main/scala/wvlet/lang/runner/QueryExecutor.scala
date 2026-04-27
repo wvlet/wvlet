@@ -14,7 +14,6 @@
 package wvlet.lang.runner
 
 import wvlet.airframe.codec.JDBCCodec
-import wvlet.airframe.codec.MessageCodec
 import wvlet.lang.api.v1.query.QuerySelection
 import wvlet.lang.api.LinePosition
 import wvlet.lang.api.StatusCode
@@ -39,6 +38,8 @@ import wvlet.lang.runner.connector.DBConnector
 import wvlet.lang.runner.connector.DBConnectorProvider
 import wvlet.uni.log.LogLevel
 import wvlet.uni.log.LogSupport
+import wvlet.uni.weaver.Weaver
+import wvlet.uni.weaver.codec.PrimitiveWeaver.given
 
 import java.sql.SQLException
 import scala.collection.immutable.ListMap
@@ -303,7 +304,7 @@ class QueryExecutor(
     import java.io.{BufferedWriter, File, FileOutputStream, FileWriter, OutputStreamWriter}
     import java.sql.ResultSet
     import java.util.zip.GZIPOutputStream
-    import wvlet.airframe.ulid.ULID
+    import wvlet.uni.util.ULID
     import java.nio.file.{Files, Paths}
     import scala.util.Using
 
@@ -330,12 +331,12 @@ class QueryExecutor(
 
     def writeJSONL(rs: ResultSet, out: File): Long =
       var rowCount = 0L
-      val rowCodec = MessageCodec.of[ListMap[String, Any]]
+      val rowCodec = summon[Weaver[ListMap[String, Any]]]
       Using.resource(BufferedWriter(OutputStreamWriter(GZIPOutputStream(FileOutputStream(out))))) {
         w =>
           val codec = JDBCCodec(rs)
           val it    = codec.mapMsgPackMapRows { msgpack =>
-            rowCodec.fromMsgPack(msgpack)
+            rowCodec.unweave(msgpack)
           }
           while it.hasNext do
             val row = it.next()
@@ -435,11 +436,11 @@ class QueryExecutor(
               trace(outputType)
 
               val codec    = JDBCCodec(rs)
-              val rowCodec = MessageCodec.of[ListMap[String, Any]]
+              val rowCodec = summon[Weaver[ListMap[String, Any]]]
               var rowCount = 0
               val it       = codec.mapMsgPackMapRows { msgpack =>
                 if rowCount <= config.rowLimit then
-                  rowCodec.fromMsgPack(msgpack)
+                  rowCodec.unweave(msgpack)
                 else
                   null
               }

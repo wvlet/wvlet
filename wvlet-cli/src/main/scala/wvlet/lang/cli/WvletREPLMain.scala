@@ -1,10 +1,10 @@
 package wvlet.lang.cli
 
-import wvlet.airframe.Design
 import wvlet.airframe.launcher.Launcher
 import wvlet.airframe.launcher.argument
 import wvlet.airframe.launcher.command
 import wvlet.airframe.launcher.option
+import wvlet.uni.design.Design
 import wvlet.lang.api.StatusCode.SYNTAX_ERROR
 import wvlet.lang.api.StatusCode
 import wvlet.lang.api.WvletLangException
@@ -17,8 +17,8 @@ import wvlet.lang.runner.WvletScriptRunner
 import wvlet.lang.runner.WvletScriptRunnerConfig
 import wvlet.lang.runner.connector.DBConnector
 import wvlet.lang.runner.connector.DBConnectorProvider
+import wvlet.uni.io.IO
 import wvlet.uni.log.LogSupport
-import wvlet.log.io.IOUtil
 
 import java.io.File
 
@@ -81,7 +81,7 @@ class WvletREPLMain(cliOption: WvletGlobalOption, replOpts: WvletREPLOption) ext
       .foreach { file =>
         val f = new File(replOpts.workFolder, file)
         if f.exists() then
-          val contents = IOUtil.readAsString(f)
+          val contents = IO.readString(IO.path(f.getPath))
           commandInputs += contents
         else
           throw StatusCode.FILE_NOT_FOUND.newException(s"File not found: ${f.getAbsolutePath()}")
@@ -92,16 +92,15 @@ class WvletREPLMain(cliOption: WvletGlobalOption, replOpts: WvletREPLOption) ext
 
     val design = Design
       .newSilentDesign
-      .bind[REPLTerminal]
-      .toProvider { (workEnv: WorkEnv) =>
+      .bindProvider[WorkEnv, REPLTerminal] { (workEnv: WorkEnv) =>
         if isInteractive then
           JLine3Terminal(workEnv)
         else
           HeadlessTerminal()
       }
-      .bind[WvletREPL]
-      .toProvider { (runner: WvletScriptRunner, terminal: REPLTerminal) =>
-        WvletREPL(runner, terminal)
+      .bindProvider[WvletScriptRunner, REPLTerminal, WvletREPL] {
+        (runner: WvletScriptRunner, terminal: REPLTerminal) =>
+          WvletREPL(runner, terminal)
       }
       .bindInstance[Profile](currentProfile)
       .bindInstance[WorkEnv](WorkEnv(path = replOpts.workFolder, logLevel = cliOption.logLevel))

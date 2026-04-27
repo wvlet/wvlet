@@ -13,7 +13,7 @@
  */
 package wvlet.lang.runner.connector.duckdb
 
-import wvlet.airframe.control.Control.withResource
+import wvlet.uni.control.Control.withResource
 import wvlet.lang.compiler.Name
 import wvlet.lang.model.DataType
 import wvlet.lang.model.DataType.NamedType

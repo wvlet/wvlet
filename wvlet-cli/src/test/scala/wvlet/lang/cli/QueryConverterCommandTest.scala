@@ -3,7 +3,7 @@ package wvlet.lang.cli
 import wvlet.uni.test.UniTest
 import wvlet.lang.compiler.SourceIO
 import wvlet.lang.compiler.VirtualFile
-import wvlet.log.io.IOUtil
+import wvlet.uni.io.IO
 
 import java.io.ByteArrayOutputStream
 
@@ -72,10 +72,10 @@ class QueryConverterCommandTest extends UniTest:
         val sqlFile = sqlFiles.find(_.name == s"${queryName}.sql")
         sqlFile match
           case Some(expectedFile) =>
-            val expectedSQL = IOUtil.readAsString(expectedFile.path)
+            val expectedSQL = IO.readString(IO.path(expectedFile.path))
 
             debug(s"=== Query: ${queryName} ===")
-            val queryContent = IOUtil.readAsString(wvFile.path)
+            val queryContent = IO.readString(IO.path(wvFile.path))
             debug(s"\nInput Wvlet Query: '${queryContent}'")
             debug(s"Generated SQL Output: '${out.trim}'")
 
@@ -142,7 +142,7 @@ class QueryConverterCommandTest extends UniTest:
         val wvFile = wvletFiles.find(_.name == s"${queryName}.wv")
         wvFile match
           case Some(expectedFile) =>
-            val expectedWvlet = IOUtil.readAsString(expectedFile.path)
+            val expectedWvlet = IO.readString(IO.path(expectedFile.path))
             debug(s"Expected Wvlet for ${queryName}: ${expectedWvlet}")
             debug(s"Generated Wvlet: ${out}")
           case None =>

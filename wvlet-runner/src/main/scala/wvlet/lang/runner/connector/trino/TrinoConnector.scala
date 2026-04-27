@@ -17,10 +17,10 @@ import io.trino.jdbc.QueryStats
 import io.trino.jdbc.TrinoConnection
 import io.trino.jdbc.TrinoDriver
 import io.trino.jdbc.TrinoStatement
-import wvlet.airframe.control.Control
-import wvlet.airframe.metrics.Count
-import wvlet.airframe.metrics.ElapsedTime
 import wvlet.lang.catalog.SQLFunction
+import wvlet.uni.control.Control
+import wvlet.uni.util.Count
+import wvlet.uni.util.ElapsedTime
 import wvlet.lang.compiler.DBType
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.compiler.query.QueryProgressMonitor
