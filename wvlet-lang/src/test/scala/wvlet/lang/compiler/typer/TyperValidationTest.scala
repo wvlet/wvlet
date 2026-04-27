@@ -13,7 +13,7 @@
  */
 package wvlet.lang.compiler.typer
 
-import wvlet.airspec.AirSpec
+import wvlet.uni.test.UniTest
 import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.compiler.Compiler
 import wvlet.lang.compiler.CompilerOptions
@@ -24,13 +24,13 @@ import wvlet.lang.model.plan.Relation
 import wvlet.lang.model.expr.Expression
 import wvlet.lang.model.Type
 import wvlet.lang.model.Type.NoType
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 
 /**
   * Validation tests that compare TypeResolver and Typer outputs. These tests help identify gaps
   * between the old TypeResolver and the new Typer implementation.
   */
-class TyperValidationTest extends AirSpec with LogSupport:
+class TyperValidationTest extends UniTest with LogSupport:
 
   private def compileWithTypeResolver(wvletSource: String): CompilationUnit =
     val options  = CompilerOptions(workEnv = WorkEnv("."))

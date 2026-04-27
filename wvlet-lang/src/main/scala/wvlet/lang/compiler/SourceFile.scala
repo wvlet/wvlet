@@ -20,8 +20,8 @@ import wvlet.lang.api.StatusCode
 import wvlet.lang.compiler.parser.WvletScanner
 import wvlet.lang.compiler.parser.WvletToken
 import wvlet.lang.compiler.parser.Tokens.*
-import wvlet.airframe.ulid.ULID
-import wvlet.log.io.IOUtil
+import wvlet.uni.util.ULID
+import wvlet.uni.io.IO
 
 import java.net.URI
 import java.net.URL

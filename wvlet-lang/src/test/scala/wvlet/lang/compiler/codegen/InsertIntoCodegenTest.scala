@@ -1,11 +1,11 @@
 package wvlet.lang.compiler.codegen
 
-import wvlet.airspec.AirSpec
+import wvlet.uni.test.UniTest
 import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.compiler.DBType
 import wvlet.lang.compiler.parser.SqlParser
 
-class InsertIntoCodegenTest extends AirSpec:
+class InsertIntoCodegenTest extends UniTest:
 
   private def generateSQL(sql: String, dbType: DBType = DBType.Generic): String =
     val unit      = CompilationUnit.fromSqlString(sql)

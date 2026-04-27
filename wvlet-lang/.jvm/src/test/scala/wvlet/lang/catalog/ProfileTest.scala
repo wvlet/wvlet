@@ -13,7 +13,8 @@
  */
 package wvlet.lang.catalog
 
-import wvlet.airspec.AirSpec
+import wvlet.uni.test.UniTest
+import wvlet.uni.test.{defined, empty}
 import wvlet.lang.api.StatusCode
 import wvlet.lang.api.WvletLangException
 
@@ -22,7 +23,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 
-class ProfileTest extends AirSpec:
+class ProfileTest extends UniTest:
 
   private def withTempProfileFile[A](content: String)(f: String => A): A =
     val targetDir = Paths.get("target/test-temp")

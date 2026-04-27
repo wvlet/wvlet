@@ -14,7 +14,7 @@
 package wvlet.lang.compiler.parser
 
 import wvlet.lang.compiler.SourceFile
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 
 import Tokens.*
 

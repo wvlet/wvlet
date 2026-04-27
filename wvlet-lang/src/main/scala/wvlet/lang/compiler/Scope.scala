@@ -14,7 +14,7 @@
 package wvlet.lang.compiler
 
 import wvlet.lang.api.StatusCode
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 
 object Scope:
   val NoScope = Scope(null, 0)

@@ -25,7 +25,7 @@ import wvlet.lang.model.RelationType
 import wvlet.lang.model.Type
 import wvlet.lang.model.expr.NameExpr
 import wvlet.lang.model.plan.Import
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 
 import java.util.concurrent.ConcurrentHashMap
 import scala.jdk.CollectionConverters.*

@@ -13,12 +13,12 @@
  */
 package wvlet.lang.catalog
 
-import wvlet.airframe.codec.MessageCodec
+import wvlet.uni.weaver.Weaver
 import wvlet.lang.api.StatusCode
 import wvlet.lang.api.WvletLangException
 import wvlet.lang.compiler.DBType
-import wvlet.log.LogSupport
-import wvlet.log.io.IOUtil
+import wvlet.uni.log.LogSupport
+import wvlet.uni.io.IO
 
 import java.io.File
 import scala.jdk.CollectionConverters.*
@@ -91,7 +91,7 @@ object Profile extends LogSupport:
     if !configFile.exists() then
       None
     else
-      val yamlString = IOUtil.readAsString(configPath)
+      val yamlString = IO.readString(IO.path(configPath))
       // replace environment variables ($xxxx) in the yaml to real env values
       val yamlStringEvaluated = yamlString
         .split("\n")
@@ -124,7 +124,7 @@ object Profile extends LogSupport:
           .toMap
       yamlMap.get("profiles") match
         case Some(profs: java.util.List[?]) =>
-          val codec = MessageCodec.of[Profile]
+          val weaver = Weaver.of[Profile]
           profs
             .asScala
             .collect { case p: java.util.HashMap[?, ?] =>
@@ -135,7 +135,7 @@ object Profile extends LogSupport:
                 .toMap[String, Any]
             }
             .map { (m: Map[String, Any]) =>
-              codec.fromMap(m)
+              weaver.fromMap(m)
             }
             .find(_.name == profile)
         case _ =>

@@ -1,11 +1,11 @@
 package wvlet.lang.compiler.parser
 
-import wvlet.airspec.AirSpec
+import wvlet.uni.test.UniTest
 import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.model.plan.*
 import wvlet.lang.model.expr.*
 
-class InsertIntoParserTest extends AirSpec:
+class InsertIntoParserTest extends UniTest:
 
   def parseInsert(sql: String): LogicalPlan =
     val parsed = SqlParser(CompilationUnit.fromSqlString(sql)).parse()

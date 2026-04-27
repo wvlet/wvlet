@@ -1,13 +1,13 @@
 package wvlet.lang.compiler.codegen
 
-import wvlet.airspec.AirSpec
+import wvlet.uni.test.UniTest
 import wvlet.lang.compiler.analyzer.LogicalPlanRank
 import wvlet.lang.compiler.analyzer.LogicalPlanRank.ReadabilityScore
 import wvlet.lang.compiler.parser.ParserPhase
 import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.compiler.Context
 
-class LogicalPlanRankTest extends AirSpec:
+class LogicalPlanRankTest extends UniTest:
 
   def spec(path: String): Unit =
     val specName  = path.split("/").lastOption.getOrElse(path)

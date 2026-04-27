@@ -1,6 +1,6 @@
 package wvlet.lang.compiler
 
-import wvlet.log.Logger
+import wvlet.uni.log.Logger
 
 trait WorkEnvCompat:
   self: WorkEnv =>

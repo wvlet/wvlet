@@ -1,9 +1,9 @@
 package wvlet.lang.compiler.parser
 
-import wvlet.airspec.AirSpec
+import wvlet.uni.test.UniTest
 import wvlet.lang.compiler.SourceFile
 
-class SqlScannerTest extends AirSpec:
+class SqlScannerTest extends UniTest:
   inline def testScanToken(txt: String, expectedToken: SqlToken): Unit =
     test(s"scan ${txt}") {
       val src     = SourceFile.fromSqlString(txt)

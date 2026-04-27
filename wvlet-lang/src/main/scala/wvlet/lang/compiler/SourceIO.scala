@@ -1,6 +1,6 @@
 package wvlet.lang.compiler
 
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 
 object SourceIO extends IOCompat with LogSupport:
   val ignoredFolders: Set[String] = Set("spec", "target")

@@ -10,7 +10,7 @@ import wvlet.lang.compiler.SourceFile
 import wvlet.lang.compiler.ContextUtil.*
 import wvlet.lang.compiler.parser.Scanner.Indented
 import wvlet.lang.compiler.parser.Scanner.Region
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 
 import scala.annotation.switch
 import scala.annotation.tailrec

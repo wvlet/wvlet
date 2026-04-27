@@ -1,6 +1,6 @@
 package wvlet.lang.compiler.parser
 
-import wvlet.airspec.AirSpec
+import wvlet.uni.test.UniTest
 import wvlet.lang.compiler.*
 import wvlet.lang.compiler.codegen.CodeFormatterConfig
 import wvlet.lang.compiler.codegen.SqlGenerator
@@ -14,7 +14,7 @@ import wvlet.lang.compiler.transform.RewriteExpr
   *   - parse the printed query again
   */
 abstract class RoundTripSpec(path: String, ignoredSpec: Map[String, String] = Map.empty)
-    extends AirSpec:
+    extends UniTest:
 
   for unit <- CompilationUnit.fromPath(path) do
     val specName = unit.relativeFilePath.replaceAll("/", ":")

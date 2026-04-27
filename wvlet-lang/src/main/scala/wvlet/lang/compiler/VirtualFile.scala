@@ -13,7 +13,7 @@
  */
 package wvlet.lang.compiler
 
-import wvlet.log.io.IOUtil
+import wvlet.uni.io.IO
 
 import java.io.File
 import java.nio.file.Files

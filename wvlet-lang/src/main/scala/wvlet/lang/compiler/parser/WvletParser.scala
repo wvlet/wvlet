@@ -13,7 +13,7 @@
  */
 package wvlet.lang.compiler.parser
 
-import wvlet.airframe.SourceCode
+import wvlet.uni.util.SourceCode
 import wvlet.lang.api.Span
 import wvlet.lang.api.StatusCode
 import wvlet.lang.api.Span.NoSpan
@@ -30,7 +30,7 @@ import wvlet.lang.model.DataType
 import wvlet.lang.model.SyntaxTreeNode
 import wvlet.lang.model.TreeNode
 import wvlet.lang.model.plan
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 
 import scala.collection.immutable.ListMap
 import scala.collection.mutable.ListBuffer

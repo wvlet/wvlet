@@ -13,9 +13,9 @@
  */
 package wvlet.lang.compiler
 
-import wvlet.airspec.AirSpec
+import wvlet.uni.test.UniTest
 
-class NameTest extends AirSpec:
+class NameTest extends UniTest:
 
   //
   test("Create Name") {

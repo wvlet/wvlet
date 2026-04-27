@@ -25,7 +25,7 @@ import wvlet.lang.model.DataType.NamedType
 import wvlet.lang.model.DataType.PrimitiveType
 import wvlet.lang.model.DataType.TypeParameter
 import wvlet.lang.model.expr.NameExpr
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 
 import scala.util.Try
 import scala.util.control.NonFatal

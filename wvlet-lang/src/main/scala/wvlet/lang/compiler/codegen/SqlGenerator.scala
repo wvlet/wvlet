@@ -17,7 +17,7 @@ import wvlet.lang.model.plan.*
 import wvlet.lang.model.plan.SamplingSize.Percentage
 import wvlet.lang.model.plan.SamplingSize.PercentageExpr
 import wvlet.lang.model.plan.SamplingSize.Rows
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 import SyntaxContext.*
 import wvlet.lang.compiler.DBType.Trino
 import wvlet.lang.compiler.codegen.CodeFormatter

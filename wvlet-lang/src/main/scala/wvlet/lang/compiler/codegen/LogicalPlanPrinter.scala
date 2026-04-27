@@ -23,7 +23,7 @@ import wvlet.lang.compiler.Context
 import wvlet.lang.compiler.Name
 import wvlet.lang.model.SyntaxTreeNode
 import wvlet.lang.model.expr.*
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 
 object LogicalPlanPrinter extends LogSupport:
 

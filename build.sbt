@@ -4,6 +4,7 @@ import scala.scalanative.build.Mode
 import scala.scalanative.build.NativeConfig
 
 val AIRFRAME_VERSION = "2026.1.6"
+val UNI_VERSION      = "2026.1.4"
 
 val AIRSPEC_VERSION        = AIRFRAME_VERSION
 val TRINO_VERSION          = "476"
@@ -33,9 +34,13 @@ val buildSettings = Seq[Setting[?]](
     Seq(
       // https://users.scala-lang.org/t/scala-js-with-3-7-0-package-scala-contains-object-and-package-with-same-name-caps/10786/5
       "org.scala-lang"      %% "scala3-library" % scalaVersion.value,
-      "org.wvlet.airframe" %%% "airspec"        % AIRSPEC_VERSION % Test
+      "org.wvlet.airframe" %%% "airspec"        % AIRSPEC_VERSION % Test,
+      "org.wvlet.uni"      %%% "uni-test"       % UNI_VERSION     % Test
     ),
-  testFrameworks += new TestFramework("wvlet.airspec.Framework"),
+  testFrameworks ++= Seq(
+    new TestFramework("wvlet.airspec.Framework"),
+    new TestFramework("wvlet.uni.test.Framework")
+  ),
   // Don't use pipelining as it tends to slowdown the build
   usePipelining := false
 )
@@ -162,6 +167,8 @@ lazy val lang = crossProject(JVMPlatform, JSPlatform, NativePlatform)
         // For reading profile
         "org.wvlet.airframe" %% "airframe-config" % AIRFRAME_VERSION,
         "org.wvlet.airframe" %% "airframe-ulid"   % AIRFRAME_VERSION,
+        // uni replaces airframe progressively in wvlet-lang
+        "org.wvlet.uni" %%% "uni" % UNI_VERSION,
         // For resolving parquet file schema
         "org.duckdb" % "duckdb_jdbc" % DUCKDB_JDBC_VERSION,
         // Add a reference implementation of the compiler

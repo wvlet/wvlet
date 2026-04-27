@@ -17,11 +17,11 @@ import wvlet.lang.model.DataType.EmbeddedRecordType
 import wvlet.lang.model.DataType.NamedType
 import wvlet.lang.model.DataType
 import wvlet.lang.compiler.Name
-import wvlet.airframe.ulid.ULID
+import wvlet.uni.util.ULID
 import wvlet.lang.api.LinePosition
 import wvlet.lang.api.Span
 import wvlet.lang.api.Span.NoSpan
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 
 /**
   * Attribute is used for column names of relational table inputs and outputs

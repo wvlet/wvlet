@@ -13,15 +13,15 @@
  */
 package wvlet.lang.compiler.analyzer
 
-import wvlet.airframe.json.JSON
-import wvlet.airframe.json.JSON.*
+import wvlet.uni.json.JSON
+import wvlet.uni.json.JSON.*
 import wvlet.lang.compiler.SourceIO
 import wvlet.lang.compiler.Name
 import wvlet.lang.model.DataType.NamedType
 import wvlet.lang.model.DataType.SchemaType
 import wvlet.lang.model.DataType
 import wvlet.lang.model.RelationType
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 
 import scala.collection.immutable.ListMap
 

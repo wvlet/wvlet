@@ -26,7 +26,7 @@ import wvlet.lang.compiler.parser.Scanner.Region
 import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.compiler.SourceFile
 import wvlet.lang.compiler.ContextUtil.*
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 
 import java.io.ObjectInputFilter.Status
 import scala.annotation.switch

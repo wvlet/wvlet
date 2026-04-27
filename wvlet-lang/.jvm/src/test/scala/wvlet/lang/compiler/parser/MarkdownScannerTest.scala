@@ -13,10 +13,10 @@
  */
 package wvlet.lang.compiler.parser
 
-import wvlet.airspec.AirSpec
+import wvlet.uni.test.UniTest
 import wvlet.lang.compiler.SourceFile
 
-class MarkdownScannerTest extends AirSpec:
+class MarkdownScannerTest extends UniTest:
 
   test("should not emit zero-length TEXT tokens when special char starts a text run") {
     // '#' in the middle of a line should be treated as TEXT, not cause zero-length token

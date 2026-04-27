@@ -1,7 +1,7 @@
 package wvlet.lang.compiler
 
-import wvlet.airframe.control.IO
-import wvlet.log.Logger
+import wvlet.uni.control.IO
+import wvlet.uni.log.Logger
 
 trait WorkEnvCompat:
   self: WorkEnv =>

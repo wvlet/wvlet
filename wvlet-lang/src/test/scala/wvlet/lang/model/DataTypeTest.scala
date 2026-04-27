@@ -14,9 +14,9 @@
 package wvlet.lang.model
 
 import wvlet.lang.compiler.Name
-import wvlet.airspec.AirSpec
+import wvlet.uni.test.UniTest
 
-class DataTypeTest extends AirSpec:
+class DataTypeTest extends UniTest:
   test("isNumeric") {
     DataType.IntType.isNumeric shouldBe true
     DataType.LongType.isNumeric shouldBe true

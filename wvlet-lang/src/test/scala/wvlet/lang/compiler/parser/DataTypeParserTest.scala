@@ -22,9 +22,9 @@ import wvlet.lang.model.DataType.GenericType
 import wvlet.lang.model.DataType.IntConstant
 import wvlet.lang.model.DataType.MapType
 import wvlet.lang.model.DataType.TimestampField
-import wvlet.airspec.AirSpec
+import wvlet.uni.test.UniTest
 
-class DataTypeParserTest extends AirSpec:
+class DataTypeParserTest extends UniTest:
 
   private def parse(s: String): DataType = DataType.parse(s)
 

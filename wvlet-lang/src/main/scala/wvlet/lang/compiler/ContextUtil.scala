@@ -3,7 +3,7 @@ package wvlet.lang.compiler
 import wvlet.lang.api.LinePosition
 import wvlet.lang.api.SourceLocation
 import wvlet.lang.api.Span
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 
 /**
   * Handy method collection to extend Context class to resolve Source or Node locations in source

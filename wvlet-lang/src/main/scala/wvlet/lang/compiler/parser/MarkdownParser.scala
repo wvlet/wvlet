@@ -19,7 +19,7 @@ import wvlet.lang.compiler.SourceFile
 import wvlet.lang.compiler.parser.ScannerConfig
 import wvlet.lang.model.SyntaxTreeNode
 import wvlet.lang.model.expr.*
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 
 /**
   * Parser for Markdown files with blank line attachment support
