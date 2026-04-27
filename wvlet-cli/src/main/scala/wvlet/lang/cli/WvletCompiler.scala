@@ -21,7 +21,7 @@ import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.runner.QueryExecutor
 import wvlet.lang.runner.connector.DBConnector
 import wvlet.lang.runner.connector.DBConnectorProvider
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 
 case class WvletCompilerOption(
     @option(prefix = "-w", description = "Working folder")

@@ -14,9 +14,9 @@
 package wvlet.lang.compiler
 
 import wvlet.lang.compiler.SourceFile
-import wvlet.airspec.AirSpec
+import wvlet.uni.test.UniTest
 
-class SourceFileTest extends AirSpec:
+class SourceFileTest extends UniTest:
   test("find line and column positions") {
     val src = SourceFile.fromWvletString("a\nb\nc")
     src.length shouldBe 5

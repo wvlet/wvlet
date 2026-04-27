@@ -20,9 +20,9 @@ import wvlet.lang.runner.connector.DBConnector
 import wvlet.lang.runner.connector.duckdb.DuckDBConnector
 import wvlet.lang.runner.connector.trino.TrinoConfig
 import wvlet.lang.runner.connector.trino.TrinoConnector
-import wvlet.airspec.AirSpec
+import wvlet.uni.test.UniTest
 
-class ExecutionPlanTest extends AirSpec:
+class ExecutionPlanTest extends UniTest:
 
   test("create an execution plan") {
     val workEnv = WorkEnv()

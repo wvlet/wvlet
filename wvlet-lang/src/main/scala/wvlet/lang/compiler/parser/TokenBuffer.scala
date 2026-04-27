@@ -13,7 +13,7 @@
  */
 package wvlet.lang.compiler.parser
 
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 
 class TokenBuffer(initialSize: Int = 1024) extends LogSupport:
   private var buf: Array[Char] = new Array[Char](initialSize)

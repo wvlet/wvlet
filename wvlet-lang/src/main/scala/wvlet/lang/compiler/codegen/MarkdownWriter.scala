@@ -16,7 +16,7 @@ package wvlet.lang.compiler.codegen
 import wvlet.lang.api.Span
 import wvlet.lang.compiler.Context
 import wvlet.lang.model.expr.*
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 
 /**
   * MarkdownWriter converts MarkdownDocument CST back to markdown text. Supports two modes:

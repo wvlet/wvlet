@@ -13,7 +13,7 @@
  */
 package wvlet.lang.compiler.codegen
 
-import wvlet.airspec.AirSpec
+import wvlet.uni.test.UniTest
 import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.compiler.Context
 import wvlet.lang.compiler.LocalFile
@@ -26,7 +26,7 @@ import wvlet.lang.compiler.parser.MarkdownParser
 /**
   * Roundtrip tests for MarkdownWriter using spec/markdown files
   */
-class MarkdownWriterTest extends AirSpec:
+class MarkdownWriterTest extends UniTest:
 
   /**
     * Test roundtrip for a markdown file from spec/markdown

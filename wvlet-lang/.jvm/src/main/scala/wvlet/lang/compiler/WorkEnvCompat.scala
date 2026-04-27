@@ -1,9 +1,9 @@
 package wvlet.lang.compiler
 
-import wvlet.airframe.control.IO
-import wvlet.log.LogFormatter.SourceCodeLogFormatter
-import wvlet.log.LogRotationHandler
-import wvlet.log.Logger
+import wvlet.uni.control.IO
+import wvlet.uni.log.LogFormatter.SourceCodeLogFormatter
+import wvlet.uni.log.LogRotationHandler
+import wvlet.uni.log.Logger
 
 trait WorkEnvCompat:
   self: WorkEnv =>

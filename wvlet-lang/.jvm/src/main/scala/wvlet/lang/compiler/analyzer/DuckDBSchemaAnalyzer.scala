@@ -14,7 +14,7 @@
 package wvlet.lang.compiler.analyzer
 
 import org.duckdb.DuckDBConnection
-import wvlet.airframe.control.Control.withResource
+import wvlet.uni.control.Control.withResource
 import wvlet.lang.api.StatusCode
 import wvlet.lang.compiler.Name
 import wvlet.lang.model.DataType.EmptyRelationType

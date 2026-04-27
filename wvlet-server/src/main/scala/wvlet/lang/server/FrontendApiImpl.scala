@@ -8,7 +8,7 @@ import wvlet.lang.api.v1.query.QueryInfo
 import wvlet.lang.api.v1.query.QueryRequest
 import wvlet.lang.api.v1.frontend.FrontendApi
 import wvlet.lang.compiler.WorkEnv
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 
 class FrontendApiImpl(queryService: QueryService, workEnv: WorkEnv)
     extends FrontendApi

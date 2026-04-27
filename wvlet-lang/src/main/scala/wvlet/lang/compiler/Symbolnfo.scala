@@ -24,7 +24,7 @@ import wvlet.lang.model.plan.DefContext
 import wvlet.lang.model.plan.EmptyRelation
 import wvlet.lang.model.plan.LogicalPlan
 import wvlet.lang.model.plan.Relation
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 
 enum SymbolType:
   case Undefined

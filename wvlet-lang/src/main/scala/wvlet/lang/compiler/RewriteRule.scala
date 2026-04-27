@@ -17,9 +17,9 @@ import wvlet.lang.compiler.RewriteRule.rewriteLogger
 import wvlet.lang.model.expr.Expression
 import wvlet.lang.model.plan.LogicalPlan
 import wvlet.lang.model.plan.Relation
-import wvlet.log.LogLevel
-import wvlet.log.LogSupport
-import wvlet.log.Logger
+import wvlet.uni.log.LogLevel
+import wvlet.uni.log.LogSupport
+import wvlet.uni.log.Logger
 
 import scala.util.control.NonFatal
 

@@ -25,7 +25,7 @@ import wvlet.lang.model.plan.*
 import wvlet.lang.model.Type
 import wvlet.lang.model.Type.NoType
 import wvlet.lang.model.Type.FunctionType
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 
 /**
   * New typer implementation using bottom-up traversal and tpe field. This is designed to replace

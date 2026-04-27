@@ -3,9 +3,9 @@ package wvlet.lang.cli
 import wvlet.airframe.launcher.option
 import wvlet.lang.BuildInfo
 import wvlet.lang.api.StatusCode
-import wvlet.log.LogLevel
-import wvlet.log.LogSupport
-import wvlet.log.Logger
+import wvlet.uni.log.LogLevel
+import wvlet.uni.log.LogSupport
+import wvlet.uni.log.Logger
 
 case class WvletGlobalOption(
     @option(prefix = "-h,--help", description = "Display help message", isHelp = true)

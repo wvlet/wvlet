@@ -6,9 +6,9 @@ import wvlet.lang.compiler.Compiler
 import wvlet.lang.compiler.CompilerOptions
 import wvlet.lang.compiler.Symbol
 import wvlet.lang.compiler.WorkEnv
-import wvlet.log.LogLevel
-import wvlet.log.LogSupport
-import wvlet.log.Logger
+import wvlet.uni.log.LogLevel
+import wvlet.uni.log.LogSupport
+import wvlet.uni.log.Logger
 
 object WvcMain extends LogSupport:
 

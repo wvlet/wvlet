@@ -4,7 +4,7 @@ import wvlet.airframe.rx.Rx
 import wvlet.lang.api.v1.query.Column
 import wvlet.lang.api.StatusCode
 import wvlet.lang.api.WvletLangException
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 
 import scala.concurrent.Future
 import scala.scalajs.js

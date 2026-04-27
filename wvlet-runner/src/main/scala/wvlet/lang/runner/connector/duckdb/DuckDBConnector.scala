@@ -27,7 +27,7 @@ import wvlet.lang.runner.connector.DBConnector
 import org.duckdb.DuckDBConnection
 import wvlet.airframe.codec.MessageCodec
 import wvlet.airframe.metrics.ElapsedTime
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 
 import java.sql.Connection
 import java.sql.DriverManager

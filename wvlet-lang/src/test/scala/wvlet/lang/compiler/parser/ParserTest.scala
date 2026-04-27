@@ -17,9 +17,9 @@ import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.model.plan.PackageDef
 import wvlet.lang.model.plan.TableRef
 import wvlet.lang.model.plan.Query
-import wvlet.airspec.AirSpec
+import wvlet.uni.test.UniTest
 
-class ParserTest extends AirSpec:
+class ParserTest extends UniTest:
   test("parse package") {
     val p = WvletParser(CompilationUnit.fromWvletString("""package org.app.example
         |from A

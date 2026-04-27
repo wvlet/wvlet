@@ -1,12 +1,13 @@
 package wvlet.lang.compiler.parser
 
-import wvlet.airspec.AirSpec
+import wvlet.uni.test.UniTest
+import wvlet.uni.test.{defined, empty}
 import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.compiler.SourceFile
 import wvlet.lang.model.expr.MarkdownList
 import wvlet.lang.model.expr.MarkdownListItem
 
-class MarkdownListSpec extends AirSpec:
+class MarkdownListSpec extends UniTest:
   test("parse nested unordered lists") {
     val markdown =
       """- Parent

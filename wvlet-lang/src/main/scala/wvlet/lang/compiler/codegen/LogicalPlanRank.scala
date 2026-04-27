@@ -2,7 +2,7 @@ package wvlet.lang.compiler.analyzer
 
 import wvlet.lang.compiler.Context
 import wvlet.lang.model.plan.*
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 
 /**
   * Mappings from LogicalPlan and its rank (e.g., syntax order, dataflow order)

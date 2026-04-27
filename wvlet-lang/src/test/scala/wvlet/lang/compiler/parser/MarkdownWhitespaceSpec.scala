@@ -1,11 +1,11 @@
 package wvlet.lang.compiler.parser
 
-import wvlet.airspec.AirSpec
+import wvlet.uni.test.UniTest
 import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.compiler.SourceFile
 import wvlet.lang.model.expr.MarkdownParagraph
 
-class MarkdownWhitespaceSpec extends AirSpec:
+class MarkdownWhitespaceSpec extends UniTest:
   test("preserve leading whitespace and blank-line separation") {
     val markdown =
       """    first paragraph

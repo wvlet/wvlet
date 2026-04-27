@@ -13,11 +13,12 @@
  */
 package wvlet.lang.compiler
 
-import wvlet.airspec.AirSpec
+import wvlet.uni.test.UniTest
+import wvlet.uni.test.{defined, empty}
 import wvlet.lang.api.Span
 import wvlet.lang.api.Span.NoSpan
 
-class ScopeTest extends AirSpec:
+class ScopeTest extends UniTest:
 
   test("NoScope") {
     val scope = Scope.NoScope

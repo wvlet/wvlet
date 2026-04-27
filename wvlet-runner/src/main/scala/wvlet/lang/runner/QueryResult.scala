@@ -19,7 +19,7 @@ import wvlet.lang.api.SourceLocation
 import wvlet.lang.model.DataType
 import wvlet.lang.model.RelationType
 import wvlet.lang.model.plan.LogicalPlan
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 
 import scala.collection.immutable.ListMap
 

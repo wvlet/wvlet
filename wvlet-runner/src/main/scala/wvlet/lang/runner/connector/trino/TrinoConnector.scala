@@ -26,7 +26,7 @@ import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.compiler.query.QueryProgressMonitor
 import wvlet.lang.model.DataType
 import wvlet.lang.runner.connector.*
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 
 import java.sql.Connection
 import java.sql.Statement

@@ -9,7 +9,7 @@ import wvlet.lang.compiler.transform.ExpressionEvaluator
 import wvlet.lang.model.SyntaxTreeNode
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 
 class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
     ctx: Context = Context.NoContext

@@ -14,10 +14,10 @@
 package wvlet.lang.compiler.parser
 
 import wvlet.lang.compiler.SourceFile
-import wvlet.airspec.AirSpec
-import wvlet.log.io.IOUtil
+import wvlet.uni.test.UniTest
+import wvlet.uni.io.IO
 
-class WvletScannerTest extends AirSpec:
+class WvletScannerTest extends UniTest:
   test("scan text") {
     val src     = SourceFile.fromWvletString("from A")
     val scanner = WvletScanner(src)

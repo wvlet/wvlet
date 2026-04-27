@@ -33,7 +33,7 @@ import wvlet.lang.model.DataType.TypeVariable
 import wvlet.lang.model.DataType.VarcharType
 import wvlet.lang.model.expr.Identifier
 import wvlet.lang.model.expr.Literal
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 
 /**
   * {{{

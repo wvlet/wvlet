@@ -35,8 +35,8 @@ import wvlet.lang.compiler.transform.PreprocessLocalExpr
 import wvlet.lang.compiler.transform.RewriteExpr
 import wvlet.lang.compiler.transform.TrinoRewritePivot
 import wvlet.lang.model.plan.LogicalPlan
-import wvlet.log.LogLevel
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogLevel
+import wvlet.uni.log.LogSupport
 
 import scala.collection.immutable.ListMap
 

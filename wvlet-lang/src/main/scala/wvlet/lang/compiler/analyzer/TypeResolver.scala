@@ -13,7 +13,6 @@
  */
 package wvlet.lang.compiler.analyzer
 
-import wvlet.airframe.msgpack.spi.MsgPack
 import wvlet.lang.api.Span
 import wvlet.lang.api.StatusCode
 import wvlet.lang.catalog.Catalog.TableName
@@ -44,7 +43,7 @@ import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
 import wvlet.lang.model.DataType
 import wvlet.lang.model.RelationType
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 import wvlet.lang.compiler.ContextUtil.*
 
 import scala.util.Try

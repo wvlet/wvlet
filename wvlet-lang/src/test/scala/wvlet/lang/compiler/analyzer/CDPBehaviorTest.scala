@@ -15,9 +15,10 @@ package wvlet.lang.compiler.analyzer
 
 import wvlet.lang.compiler.Compiler
 import wvlet.lang.model.plan.LogicalPlan
-import wvlet.airspec.AirSpec
+import wvlet.uni.test.UniTest
+import wvlet.uni.test.{defined, empty}
 
-class CDPBehaviorTest extends AirSpec:
+class CDPBehaviorTest extends UniTest:
 
   test("cdp_behavior") {
     val result = Compiler.default("spec/cdp_behavior").compile()

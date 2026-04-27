@@ -17,9 +17,10 @@ import wvlet.lang.compiler.Compiler
 import wvlet.lang.compiler.Name
 import wvlet.lang.model.plan.Query
 import wvlet.lang.model.plan.Subscribe
-import wvlet.airspec.AirSpec
+import wvlet.uni.test.UniTest
+import wvlet.uni.test.{defined, empty}
 
-class AnalyzerTest extends AirSpec:
+class AnalyzerTest extends UniTest:
 
   test("analyze stdlib") {
     if isScalaNative then

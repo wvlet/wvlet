@@ -1,6 +1,6 @@
 package wvlet.lang.model
 
-import wvlet.airframe.surface.reflect.ReflectTypeUtil
+import wvlet.uni.reflect.Reflect
 
 trait TreeNodeCompat:
   protected def newInstance(args: Any*): Any =
@@ -10,6 +10,6 @@ trait TreeNodeCompat:
   protected def getSingletonObject: Option[Any] =
     val className = this.getClass.getName
     if className.endsWith("$") then
-      ReflectTypeUtil.companionObject(this.getClass)
+      Reflect.companionOfUnchecked(this.getClass)
     else
       None

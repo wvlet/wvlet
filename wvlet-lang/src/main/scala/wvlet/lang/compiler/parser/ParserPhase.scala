@@ -20,7 +20,7 @@ import wvlet.lang.compiler.SourceFile
 import wvlet.lang.model.expr.MarkdownPlan
 import wvlet.lang.model.plan.LogicalPlan
 import wvlet.lang.model.plan.PackageDef
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 
 /**
   * Parse *.wv files and create untyped plans

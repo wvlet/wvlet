@@ -18,7 +18,7 @@ import wvlet.lang.compiler.Name
 import wvlet.lang.compiler.TypeName
 import wvlet.lang.model.DataType.NamedType
 import wvlet.lang.model.plan.Import
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 
 abstract class Type:
   def typeDescription: String

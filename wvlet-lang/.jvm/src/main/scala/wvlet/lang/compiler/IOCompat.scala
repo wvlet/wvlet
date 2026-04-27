@@ -1,7 +1,8 @@
 package wvlet.lang.compiler
 
-import wvlet.airframe.control.Control
-import wvlet.airframe.control.Control.withResource
+import wvlet.uni.control.Control
+import wvlet.uni.control.Control.withResource
+import wvlet.uni.control.IO as UniIO
 
 import java.io.File
 import java.net.URI
@@ -13,11 +14,7 @@ import scala.jdk.CollectionConverters.*
 trait IOCompat:
   self: SourceIO.type =>
 
-  def readAsString(filePath: String): String = wvlet
-    .airframe
-    .control
-    .IO
-    .readAsString(Path.of(filePath).toFile)
+  def readAsString(filePath: String): String = UniIO.readAsString(Path.of(filePath).toFile)
 
   def readGzipAsString(filePath: String): String =
     withResource(new java.util.zip.GZIPInputStream(Files.newInputStream(Path.of(filePath)))) {
@@ -27,7 +24,7 @@ trait IOCompat:
 
   def readAsString(uri: URI): String =
     withResource(uri.toURL.openStream()) { in =>
-      wvlet.airframe.control.IO.readAsString(in)
+      UniIO.readAsString(in)
     }
 
   def listResources(path: String): List[VirtualFile] =

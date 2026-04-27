@@ -26,7 +26,7 @@ import wvlet.lang.model.RelationType
 import wvlet.lang.model.RelationTypeList
 import wvlet.lang.model.SyntaxTreeNode
 import wvlet.lang.model.TreeNode
-import wvlet.airframe.ulid.ULID
+import wvlet.uni.util.ULID
 import wvlet.lang.api.StatusCode
 import wvlet.lang.api.LinePosition
 import wvlet.lang.api.Span

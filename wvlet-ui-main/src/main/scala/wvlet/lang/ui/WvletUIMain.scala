@@ -23,7 +23,7 @@ import wvlet.lang.api.v1.query.QueryError
 import wvlet.lang.ui.component.MainFrame
 import wvlet.lang.ui.component.editor.FileNav
 import wvlet.lang.ui.component.editor.WvletEditor
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 
 object WvletUIMain extends LogSupport:
   def main(args: Array[String]): Unit = render

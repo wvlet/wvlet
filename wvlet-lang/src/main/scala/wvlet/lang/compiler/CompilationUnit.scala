@@ -24,9 +24,8 @@ import wvlet.lang.model.plan.LogicalPlan
 import wvlet.lang.model.plan.NamedRelation
 import wvlet.lang.model.plan.Relation
 import wvlet.lang.stdlib.StdLib
-import wvlet.log.LogSupport
-import wvlet.log.io.IOUtil
-import wvlet.log.io.Resource
+import wvlet.uni.log.LogSupport
+import wvlet.uni.io.IO
 
 import java.io.File
 import java.net.URLClassLoader

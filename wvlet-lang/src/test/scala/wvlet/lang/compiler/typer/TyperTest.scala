@@ -38,9 +38,9 @@ import wvlet.lang.compiler.Scope
 import wvlet.lang.compiler.Symbol
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.api.Span
-import wvlet.airspec.AirSpec
+import wvlet.uni.test.UniTest
 
-class TyperTest extends AirSpec:
+class TyperTest extends UniTest:
 
   private def testContext: Context =
     val global = Context.testGlobalContext(".")

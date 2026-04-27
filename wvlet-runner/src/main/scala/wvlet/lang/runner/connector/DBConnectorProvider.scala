@@ -9,7 +9,7 @@ import wvlet.lang.runner.connector.snowflake.SnowflakeConfig
 import wvlet.lang.runner.connector.snowflake.SnowflakeConnector
 import wvlet.lang.runner.connector.trino.TrinoConfig
 import wvlet.lang.runner.connector.trino.TrinoConnector
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 
 import java.util.concurrent.ConcurrentHashMap
 import scala.jdk.CollectionConverters.*

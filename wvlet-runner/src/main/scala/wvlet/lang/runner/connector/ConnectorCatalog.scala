@@ -24,7 +24,7 @@ import wvlet.lang.compiler.DBType
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.runner.ThreadManager
 import wvlet.lang.runner.ThreadUtil
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 
 import java.util.concurrent.TimeUnit
 import scala.jdk.CollectionConverters.*

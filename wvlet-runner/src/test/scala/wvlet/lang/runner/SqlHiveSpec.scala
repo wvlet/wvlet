@@ -1,6 +1,6 @@
 package wvlet.lang.runner
 
-import wvlet.airspec.AirSpec
+import wvlet.uni.test.UniTest
 import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.compiler.Compiler
 import wvlet.lang.compiler.CompilerOptions
@@ -14,7 +14,7 @@ import wvlet.lang.compiler.codegen.SqlGenerator
 /**
   * Test parsing and SQL generation for Hive without execution
   */
-class SqlHiveSpec extends AirSpec:
+class SqlHiveSpec extends UniTest:
 
   private val workEnv = WorkEnv(path = "spec/sql/hive-parseable")
 

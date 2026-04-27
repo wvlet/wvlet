@@ -19,8 +19,8 @@ import io.trino.plugin.memory.MemoryPlugin
 import io.trino.server.testing.TestingTrinoServer
 import wvlet.airframe.control.Resource
 import wvlet.airframe.ulid.ULID
-import wvlet.log.LogSupport
-import wvlet.log.Logger
+import wvlet.uni.log.LogSupport
+import wvlet.uni.log.Logger
 
 import java.io.File
 import java.nio.file.Files

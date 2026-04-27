@@ -13,10 +13,10 @@
  */
 package wvlet.lang.cli
 
-import wvlet.airspec.AirSpec
+import wvlet.uni.test.UniTest
 import java.io.ByteArrayOutputStream
 
-class WvletREPLMainTest extends AirSpec:
+class WvletREPLMainTest extends UniTest:
 
   private def captureStdout(body: => Unit): String =
     val out = new ByteArrayOutputStream()

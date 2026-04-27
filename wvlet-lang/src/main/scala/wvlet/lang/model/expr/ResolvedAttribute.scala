@@ -20,7 +20,7 @@ import wvlet.lang.compiler.Name
 import wvlet.lang.compiler.TermName
 import wvlet.lang.model.DataType
 import wvlet.lang.model.plan.*
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 
 case class SourceColumn(table: Catalog.TableDef, column: Catalog.TableColumn):
   def fullName: String = s"${table.name}.${column.name}"

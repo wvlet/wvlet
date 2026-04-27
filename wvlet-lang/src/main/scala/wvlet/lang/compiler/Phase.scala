@@ -13,9 +13,9 @@
  */
 package wvlet.lang.compiler
 
-import wvlet.log.LogSource
-import wvlet.log.LogSupport
-import wvlet.log.Logger
+import wvlet.uni.log.LogSource
+import wvlet.uni.log.LogSupport
+import wvlet.uni.log.Logger
 
 import scala.util.control.NonFatal
 

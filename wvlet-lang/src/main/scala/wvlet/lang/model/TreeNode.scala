@@ -25,7 +25,7 @@ import wvlet.lang.compiler.ContextUtil.*
 import wvlet.lang.compiler.parser.TokenData
 import wvlet.lang.model.plan.LogicalPlan
 import wvlet.lang.model.Type.NoType
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 
 /**
   * A base class for LogicalPlan and Expression

@@ -8,8 +8,8 @@ import wvlet.lang.compiler.RewriteRule
 import wvlet.lang.model.DataType
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.Query
-import wvlet.log.LogSupport
-import wvlet.log.Logger
+import wvlet.uni.log.LogSupport
+import wvlet.uni.log.Logger
 
 /**
   * Preprocess compile-time expressions, such as backquote strings and native expressions

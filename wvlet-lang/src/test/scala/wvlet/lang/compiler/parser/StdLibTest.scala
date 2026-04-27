@@ -14,9 +14,9 @@
 package wvlet.lang.compiler.parser
 
 import wvlet.lang.compiler.CompilationUnit
-import wvlet.airspec.AirSpec
+import wvlet.uni.test.UniTest
 
-class StdLibTest extends AirSpec:
+class StdLibTest extends UniTest:
   test("parse stdlib") {
     val units = CompilationUnit.fromPath("wvlet-stdlib/module/standard")
     units.foreach { u =>

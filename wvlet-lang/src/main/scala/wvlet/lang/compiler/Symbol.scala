@@ -24,7 +24,7 @@ import wvlet.lang.model.expr.NameExpr
 import wvlet.lang.model.expr.NameExpr.EmptyName
 import wvlet.lang.model.plan.Import
 import wvlet.lang.model.plan.LogicalPlan
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 
 import scala.annotation.compileTimeOnly
 

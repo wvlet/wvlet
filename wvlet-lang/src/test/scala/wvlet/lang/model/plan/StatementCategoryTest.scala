@@ -13,7 +13,7 @@
  */
 package wvlet.lang.model.plan
 
-import wvlet.airspec.AirSpec
+import wvlet.uni.test.UniTest
 import wvlet.lang.api.Span.NoSpan
 import wvlet.lang.model.expr.UnquotedIdentifier
 import wvlet.lang.model.plan.*
@@ -23,7 +23,7 @@ import wvlet.lang.model.plan.*
   * classified as DDL, DML, DQL, DCL, Utility, etc., while preserving the Update trait for JDBC
   * routing.
   */
-class StatementCategoryTest extends AirSpec:
+class StatementCategoryTest extends UniTest:
 
   test("DDL statements should be classified as DDL") {
     // DDL trait default

@@ -3,7 +3,7 @@ package wvlet.lang.server
 import wvlet.lang.api.v1.frontend.FileApi
 import wvlet.lang.api.v1.io.FileEntry
 import wvlet.lang.compiler.WorkEnv
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 import wvlet.log.io.IOUtil
 
 class FileApiImpl(workEnv: WorkEnv) extends FileApi with LogSupport:

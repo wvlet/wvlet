@@ -1,6 +1,6 @@
 package wvlet.lang.compiler
 
-import wvlet.airframe.control.Control.withResource
+import wvlet.uni.control.Control.withResource
 
 import java.net.URI
 import java.io.File

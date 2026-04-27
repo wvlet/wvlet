@@ -1,13 +1,13 @@
 package wvlet.lang.cli
 
-import wvlet.airspec.AirSpec
+import wvlet.uni.test.UniTest
 import wvlet.lang.compiler.SourceIO
 import wvlet.lang.compiler.VirtualFile
 import wvlet.log.io.IOUtil
 
 import java.io.ByteArrayOutputStream
 
-class QueryConverterCommandTest extends AirSpec:
+class QueryConverterCommandTest extends UniTest:
   // TPC-H query paths
   private val tpchWvletQueryPath = "spec/tpch"
   private val tpchSQLQueryPath   = "spec/sql/tpc-h"

@@ -5,7 +5,7 @@ import wvlet.lang.api.v1.query.QueryRequest
 import wvlet.lang.api.v1.query.QueryResult
 import wvlet.lang.ui.component.duckdb.Arrow.*
 import wvlet.lang.ui.component.duckdb.DuckDB
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 
 import java.util.concurrent.ConcurrentHashMap
 import scala.jdk.CollectionConverters.*

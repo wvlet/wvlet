@@ -2,7 +2,7 @@ package wvlet.lang.compiler.parser
 
 import scala.annotation.tailrec
 import scala.collection.mutable.ListBuffer
-import wvlet.airframe.SourceCode
+import wvlet.uni.util.SourceCode
 import wvlet.lang.api.Span
 import wvlet.lang.api.StatusCode
 import wvlet.lang.compiler.parser.SqlToken.EOF
@@ -31,7 +31,7 @@ import wvlet.lang.model.plan.ShowType
 import wvlet.lang.model.plan.TableRef
 import wvlet.lang.model.plan.Unnest
 import wvlet.lang.model.plan.Values
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 
 class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends LogSupport:
 

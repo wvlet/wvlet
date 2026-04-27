@@ -18,7 +18,7 @@ import wvlet.lang.compiler.query.QueryProgressMonitor
 import wvlet.lang.runner.QueryExecutor
 import wvlet.lang.runner.WvletScriptRunner
 import wvlet.lang.runner.connector.DBConnector
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap

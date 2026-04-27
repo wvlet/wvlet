@@ -1,12 +1,12 @@
 package wvlet.lang.compiler.codegen
 
-import wvlet.airspec.AirSpec
+import wvlet.uni.test.UniTest
 import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.compiler.DBType
 import wvlet.lang.compiler.parser.SqlParser
 import wvlet.lang.compiler.parser.WvletParser
 
-class HiveSqlGeneratorTest extends AirSpec:
+class HiveSqlGeneratorTest extends UniTest:
 
   private def generateSQL(wvlet: String): String =
     val unit      = CompilationUnit.fromWvletString(wvlet)

@@ -46,7 +46,11 @@ trait TDTrinoSpecRunner(specPath: String) extends AirSpec:
     password = profile.password
   )
 
-  private val workEnv             = WorkEnv(path = specPath, logLevel = logger.getLogLevel)
+  private val workEnv = WorkEnv(
+    path = specPath,
+    logLevel = wvlet.uni.log.LogLevel(logger.getLogLevel.name)
+  )
+
   private val dbConnectorProvider = DBConnectorProvider(workEnv)
   private val executor            = QueryExecutor(dbConnectorProvider, profile, workEnv)
 

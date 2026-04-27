@@ -9,7 +9,7 @@ import wvlet.lang.api.v1.frontend.FrontendRPC.RPCAsyncClient
 import wvlet.lang.api.v1.query.QueryError
 import wvlet.lang.api.v1.query.QueryInfo
 import wvlet.lang.api.v1.query.QueryRequest
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 
 import java.util.concurrent.TimeUnit
 import scala.util.Failure

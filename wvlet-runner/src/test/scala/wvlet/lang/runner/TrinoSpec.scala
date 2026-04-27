@@ -13,7 +13,7 @@
  */
 package wvlet.lang.runner
 
-import wvlet.airspec.AirSpec
+import wvlet.uni.test.UniTest
 import wvlet.lang.api.WvletLangException
 import wvlet.airframe.control.Control
 import wvlet.lang.catalog.Profile
@@ -26,7 +26,7 @@ import wvlet.lang.runner.connector.trino.TestTrinoServer
 
 import scala.util.control.NonFatal
 
-trait TrinoSpecRunner(specPath: String) extends AirSpec:
+trait TrinoSpecRunner(specPath: String) extends UniTest:
 
   // Launch embedded Trino with an in-memory catalog
   private val server  = TestTrinoServer().withCustomMemoryPlugin

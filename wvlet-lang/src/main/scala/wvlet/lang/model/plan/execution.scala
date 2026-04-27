@@ -18,7 +18,7 @@ import wvlet.lang.api.StatusCode
 import wvlet.lang.compiler.Context
 import wvlet.lang.model.expr.Attribute
 import wvlet.lang.model.expr.NameExpr
-import wvlet.airframe.ulid.ULID
+import wvlet.uni.util.ULID
 import wvlet.lang.model.TreeNode
 
 /**

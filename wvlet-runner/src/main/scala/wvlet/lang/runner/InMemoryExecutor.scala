@@ -17,8 +17,7 @@ import wvlet.lang.compiler.Context
 import wvlet.lang.model.plan.*
 import wvlet.airframe.codec.MessageCodec
 import wvlet.airframe.control.IO
-import wvlet.log.LogSupport
-import wvlet.log.io.IOUtil
+import wvlet.uni.log.LogSupport
 
 import java.io.File
 import scala.collection.immutable.ListMap

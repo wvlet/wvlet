@@ -10,7 +10,7 @@ import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.runner.connector.DBConnectorProvider
 import wvlet.lang.server.WvletServer
 import wvlet.lang.server.WvletServerConfig
-import wvlet.log.LogSupport
+import wvlet.uni.log.LogSupport
 
 object WvletMain:
   private def launcher: Launcher = Launcher.of[WvletMain]

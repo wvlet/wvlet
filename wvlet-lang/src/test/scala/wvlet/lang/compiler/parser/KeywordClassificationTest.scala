@@ -13,9 +13,9 @@
  */
 package wvlet.lang.compiler.parser
 
-import wvlet.airspec.AirSpec
+import wvlet.uni.test.UniTest
 
-class KeywordClassificationTest extends AirSpec:
+class KeywordClassificationTest extends UniTest:
 
   test("SqlToken keyword classification should be mutually exclusive") {
     // Test reserved keywords

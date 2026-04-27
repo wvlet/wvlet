@@ -1,9 +1,9 @@
 package wvlet.lang.compiler.parser
 
-import wvlet.airspec.AirSpec
+import wvlet.uni.test.UniTest
 import wvlet.lang.compiler.CompilationUnit
 
-trait ParserSpec(specPath: String, ignoredSpec: Map[String, String] = Map.empty) extends AirSpec:
+trait ParserSpec(specPath: String, ignoredSpec: Map[String, String] = Map.empty) extends UniTest:
   for unit <- CompilationUnit.fromPath(specPath) do
     val specName = unit.sourceFile.relativeFilePath.replaceAll("/", ":")
     // Rename spec path's / (slash) to : to enable filtering by test names
