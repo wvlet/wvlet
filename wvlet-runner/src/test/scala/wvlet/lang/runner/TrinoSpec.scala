@@ -15,8 +15,8 @@ package wvlet.lang.runner
 
 import wvlet.uni.test.UniTest
 import wvlet.lang.api.WvletLangException
-import wvlet.airframe.control.Control
 import wvlet.lang.catalog.Profile
+import wvlet.uni.control.Control
 import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.compiler.Compiler
 import wvlet.lang.compiler.CompilerOptions

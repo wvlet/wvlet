@@ -1,8 +1,8 @@
 package wvlet.lang.cli
 
-import wvlet.airframe.Design
 import wvlet.airframe.launcher.Launcher
 import wvlet.airframe.launcher.command
+import wvlet.uni.design.Design
 import wvlet.lang.BuildInfo
 import wvlet.lang.api.WvletLangException
 import wvlet.lang.cli.WvletMain.isInSbt

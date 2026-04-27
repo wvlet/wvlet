@@ -13,8 +13,9 @@
  */
 package wvlet.lang.runner
 
-import wvlet.airframe.codec.MessageCodec
 import wvlet.lang.api.StatusCode
+import wvlet.uni.weaver.Weaver
+import wvlet.uni.weaver.codec.PrimitiveWeaver.given
 import wvlet.lang.api.SourceLocation
 import wvlet.lang.model.DataType
 import wvlet.lang.model.RelationType
@@ -74,7 +75,7 @@ case class TableRows(schema: RelationType, rows: Seq[ListMap[String, Any]], tota
     extends QueryResult:
   def isTruncated: Boolean = rows.size < totalRows
   def toJsonLines: String  =
-    val codec     = MessageCodec.of[ListMap[String, Any]]
+    val codec     = summon[Weaver[ListMap[String, Any]]]
     val jsonLines = rows
       .map { row =>
         codec.toJson(row)

@@ -20,11 +20,11 @@ import org.jline.terminal.Terminal
 import org.jline.utils.AttributedString
 import org.jline.utils.AttributedStringBuilder
 import org.jline.utils.AttributedStyle
-import wvlet.airframe.control.Shell
-import wvlet.airframe.control.ThreadUtil
-import wvlet.airframe.log.AnsiColorPalette
-import wvlet.airframe.metrics.Count
-import wvlet.airframe.metrics.ElapsedTime
+import wvlet.uni.io.IO
+import wvlet.uni.log.AnsiColorPalette
+import wvlet.uni.util.Count
+import wvlet.uni.util.ElapsedTime
+import wvlet.uni.util.ThreadUtil
 import wvlet.lang.api.LinePosition
 import wvlet.lang.api.StatusCode
 import wvlet.lang.api.WvletLangException
@@ -274,7 +274,7 @@ class WvletREPL(runner: WvletScriptRunner, terminal: REPLTerminal)
           case "help" =>
             println(helpMessage)
           case "git" | "gh" =>
-            Shell.exec(trimmedLine)
+            IO.run(trimmedLine)
           case "clip" =>
             lastOutput match
               case Some(output) =>

@@ -25,9 +25,10 @@ import wvlet.lang.runner.ThreadUtil
 import wvlet.lang.runner.connector.DBConnection
 import wvlet.lang.runner.connector.DBConnector
 import org.duckdb.DuckDBConnection
-import wvlet.airframe.codec.MessageCodec
-import wvlet.airframe.metrics.ElapsedTime
 import wvlet.uni.log.LogSupport
+import wvlet.uni.util.ElapsedTime
+import wvlet.uni.weaver.Weaver
+import wvlet.uni.weaver.codec.PrimitiveWeaver.given
 
 import java.sql.Connection
 import java.sql.DriverManager
@@ -113,7 +114,7 @@ class DuckDBConnector(workEnv: WorkEnv, prepareTPCH: Boolean = false, prepareTPC
   override def listFunctions(catalog: String): List[SQLFunction] =
     val functionList = List.newBuilder[SQLFunction]
 
-    val jsonArrayCodec = MessageCodec.of[Seq[String]]
+    val jsonArrayCodec = summon[Weaver[Seq[String]]]
     runQuery("""select function_name, function_type,
         |parameters::json as parameters, parameter_types::json parameter_types,
         |return_type,
