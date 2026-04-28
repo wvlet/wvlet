@@ -15,7 +15,6 @@ package wvlet.lang.runner.connector
 
 import com.github.benmanes.caffeine.cache.CacheLoader
 import com.github.benmanes.caffeine.cache.Caffeine
-import wvlet.airframe.codec.MessageCodec
 import wvlet.lang.api.StatusCode
 import wvlet.lang.catalog.Catalog.TableName
 import wvlet.lang.catalog.Catalog
@@ -25,6 +24,8 @@ import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.runner.ThreadManager
 import wvlet.lang.runner.ThreadUtil
 import wvlet.uni.log.LogSupport
+import wvlet.uni.weaver.Weaver
+import wvlet.uni.weaver.codec.PrimitiveWeaver.given
 
 import java.util.concurrent.TimeUnit
 import scala.jdk.CollectionConverters.*
@@ -38,7 +39,8 @@ class ConnectorCatalog(
 ) extends Catalog
     with LogSupport:
 
-  private val tableDefCodec = MessageCodec.of[List[Catalog.TableDef]]
+  private given Weaver[Catalog.TableDef] = Weaver.of[Catalog.TableDef]
+  private val tableDefCodec               = summon[Weaver[List[Catalog.TableDef]]]
 
   private val tablesInSchemaCache = Caffeine
     .newBuilder()
