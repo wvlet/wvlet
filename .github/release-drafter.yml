@@ -1,5 +1,8 @@
 name-template: 'v$RESOLVED_VERSION'
 tag-template: 'v$RESOLVED_VERSION'
+# Releases are produced by .github/workflows/release.yml; this config is only
+# used by the autolabeler in .github/workflows/issue-labeler.yml.
+disable-releaser: true
 categories:
   - title: '🔥 Breaking Changes'
     labels:
