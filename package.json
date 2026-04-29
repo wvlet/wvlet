@@ -35,5 +35,8 @@
   },
   "optionalDependencies": {
     "lightningcss-linux-x64-gnu": "^1.32.0"
+  },
+  "overrides": {
+    "dompurify": "^3.4.0"
   }
 }
