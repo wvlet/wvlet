@@ -14,8 +14,8 @@
 package wvlet.lang.runner.connector.trino
 
 import wvlet.airframe.Design
-import wvlet.airframe.codec.JDBCCodec
-import wvlet.airframe.codec.JDBCCodec.ResultSetCodec
+import wvlet.lang.runner.codec.JDBCCodec
+import wvlet.lang.runner.codec.JDBCCodec.ResultSetCodec
 import wvlet.airframe.control.Control
 import wvlet.airframe.control.Control.withResource
 import wvlet.airspec.AirSpec

@@ -14,9 +14,9 @@
 package wvlet.lang.runner.connector.snowflake
 
 import wvlet.airframe.Design
-import wvlet.airframe.codec.JDBCCodec.ResultSetCodec
 import wvlet.airspec.AirSpec
 import wvlet.lang.compiler.WorkEnv
+import wvlet.lang.runner.codec.JDBCCodec.ResultSetCodec
 
 /**
   * Tests for SnowflakeConnector
