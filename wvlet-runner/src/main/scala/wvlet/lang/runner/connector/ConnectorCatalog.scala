@@ -40,7 +40,7 @@ class ConnectorCatalog(
     with LogSupport:
 
   private given Weaver[Catalog.TableDef] = Weaver.of[Catalog.TableDef]
-  private val tableDefCodec               = summon[Weaver[List[Catalog.TableDef]]]
+  private val tableDefCodec              = summon[Weaver[List[Catalog.TableDef]]]
 
   private val tablesInSchemaCache = Caffeine
     .newBuilder()
