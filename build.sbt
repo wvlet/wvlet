@@ -387,7 +387,7 @@ lazy val runner = project
     Test / javaOptions ++= Seq("--enable-native-access=ALL-UNNAMED"),
     libraryDependencies ++=
       Seq(
-        "org.jline"                     % "jline"          % "4.0.13",
+        "org.jline"                     % "jline"          % "4.0.14",
         "com.github.ben-manes.caffeine" % "caffeine"       % "3.2.3",
         "org.apache.arrow"              % "arrow-vector"   % "19.0.0",
         "org.duckdb"                    % "duckdb_jdbc"    % DUCKDB_JDBC_VERSION,
