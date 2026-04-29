@@ -1,15 +1,13 @@
 package wvlet.lang.cli
 
-import wvlet.airframe.launcher.option
 import wvlet.lang.BuildInfo
 import wvlet.lang.api.StatusCode
+import wvlet.uni.cli.launcher.option
 import wvlet.uni.log.LogLevel
 import wvlet.uni.log.LogSupport
 import wvlet.uni.log.Logger
 
 case class WvletGlobalOption(
-    @option(prefix = "-h,--help", description = "Display help message", isHelp = true)
-    displayHelp: Boolean = false,
     @option(prefix = "--version", description = "Display the version")
     displayVersion: Boolean = false,
     @option(prefix = "--debug", description = "Enable debug log")

@@ -1,9 +1,9 @@
 package wvlet.lang.cli
 
-import wvlet.airframe.launcher.Launcher
-import wvlet.airframe.launcher.argument
-import wvlet.airframe.launcher.command
-import wvlet.airframe.launcher.option
+import wvlet.uni.cli.launcher.Launcher
+import wvlet.uni.cli.launcher.argument
+import wvlet.uni.cli.launcher.command
+import wvlet.uni.cli.launcher.option
 import wvlet.uni.design.Design
 import wvlet.lang.api.StatusCode.SYNTAX_ERROR
 import wvlet.lang.api.StatusCode

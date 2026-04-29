@@ -1,7 +1,7 @@
 package wvlet.lang.cli
 
-import wvlet.airframe.launcher.argument
-import wvlet.airframe.launcher.option
+import wvlet.uni.cli.launcher.argument
+import wvlet.uni.cli.launcher.option
 import wvlet.uni.control.Control
 import wvlet.lang.api.StatusCode
 import wvlet.lang.api.v1.query.QuerySelection
