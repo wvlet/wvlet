@@ -10,7 +10,7 @@ val AIRSPEC_VERSION        = AIRFRAME_VERSION
 val TRINO_VERSION          = "476"
 val AWS_SDK_VERSION        = "2.20.146"
 val SCALAJS_DOM_VERSION    = "2.8.1"
-val DUCKDB_JDBC_VERSION    = "1.5.2.0"
+val DUCKDB_JDBC_VERSION    = "1.5.2.1"
 val SNOWFLAKE_JDBC_VERSION = "4.1.0"
 
 val SCALA_3 = IO.read(file("SCALA_VERSION")).trim
@@ -387,12 +387,12 @@ lazy val runner = project
     Test / javaOptions ++= Seq("--enable-native-access=ALL-UNNAMED"),
     libraryDependencies ++=
       Seq(
-        "org.jline"                     % "jline"    % "4.0.13",
-        "com.github.ben-manes.caffeine" % "caffeine" % "3.2.3",
-        "org.apache.arrow"              % "arrow-vector"      % "19.0.0",
-        "org.duckdb"                    % "duckdb_jdbc"       % DUCKDB_JDBC_VERSION,
-        "io.trino"                      % "trino-jdbc"        % TRINO_VERSION,
-        "net.snowflake"                 % "snowflake-jdbc"    % SNOWFLAKE_JDBC_VERSION,
+        "org.jline"                     % "jline"          % "4.0.13",
+        "com.github.ben-manes.caffeine" % "caffeine"       % "3.2.3",
+        "org.apache.arrow"              % "arrow-vector"   % "19.0.0",
+        "org.duckdb"                    % "duckdb_jdbc"    % DUCKDB_JDBC_VERSION,
+        "io.trino"                      % "trino-jdbc"     % TRINO_VERSION,
+        "net.snowflake"                 % "snowflake-jdbc" % SNOWFLAKE_JDBC_VERSION,
         // exclude() and jar() are necessary to avoid https://github.com/sbt/sbt/issues/7407
         // tpc-h connector neesd to download GB's of jar, so excluding it
         "io.trino" % "trino-testing" % TRINO_VERSION % Test exclude ("io.trino", "trino-tpch"),
