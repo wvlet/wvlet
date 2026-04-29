@@ -4,7 +4,7 @@
   "description": "Wvlet query language support for Visual Studio Code",
   "version": "2025.3.0",
   "engines": {
-    "vscode": "^1.104.0"
+    "vscode": "^1.116.0"
   },
   "main": "./out/extension.js",
   "categories": [
@@ -55,8 +55,8 @@
     "vscode-languageserver-textdocument": "^1.0.12"
   },
   "devDependencies": {
-    "@types/vscode": "^1.104.0",
-    "@vscode/vsce": "^3.7.1",
+    "@types/vscode": "^1.116.0",
+    "@vscode/vsce": "^3.9.1",
     "esbuild": "^0.28.0",
     "typescript": "^5.9.0"
   },
