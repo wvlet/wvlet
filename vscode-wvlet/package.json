@@ -58,7 +58,7 @@
     "@types/vscode": "^1.116.0",
     "@vscode/vsce": "^3.9.1",
     "esbuild": "^0.28.0",
-    "typescript": "^5.9.0"
+    "typescript": "^6.0.3"
   },
   "scripts": {
     "compile": "node esbuild.js",
