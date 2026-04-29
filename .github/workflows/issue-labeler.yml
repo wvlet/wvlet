@@ -21,9 +21,11 @@ jobs:
       pull-requests: write
     runs-on: ubuntu-latest
     steps:
-      # Runs only pull-request labeler. Releaser is disabled via
-      # disable-releaser in .github/release-drafter.yml (releases are
-      # produced separately by .github/workflows/release.yml).
-      - uses: release-drafter/release-drafter@v7
+      # Use the dedicated autolabeler sub-action. The top-level
+      # release-drafter/release-drafter@v7 action is the drafter (creates
+      # GitHub releases) and requires contents: write; we only want
+      # autolabeling here. Releases are produced by
+      # .github/workflows/release.yml.
+      - uses: release-drafter/release-drafter/autolabeler@v7
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
