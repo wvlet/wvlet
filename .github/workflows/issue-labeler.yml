@@ -21,7 +21,9 @@ jobs:
       pull-requests: write
     runs-on: ubuntu-latest
     steps:
-      # Runs only pull-request labeler
+      # Runs only pull-request labeler. Releaser is disabled via
+      # disable-releaser in .github/release-drafter.yml (releases are
+      # produced separately by .github/workflows/release.yml).
       - uses: release-drafter/release-drafter@v7
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
