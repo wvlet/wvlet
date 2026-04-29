@@ -1,7 +1,7 @@
 package wvlet.lang.cli
 
-import wvlet.airframe.launcher.Launcher
-import wvlet.airframe.launcher.command
+import wvlet.uni.cli.launcher.Launcher
+import wvlet.uni.cli.launcher.command
 import wvlet.uni.design.Design
 import wvlet.lang.BuildInfo
 import wvlet.lang.api.WvletLangException
