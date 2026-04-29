@@ -1,6 +1,6 @@
 package wvlet.lang.runner.connector.trino
 
-import wvlet.airframe.codec.JDBCCodec.ResultSetCodec
+import wvlet.lang.runner.codec.JDBCCodec.ResultSetCodec
 import wvlet.airspec.AirSpec
 
 class TableFunctionTest extends AirSpec:

@@ -25,14 +25,14 @@ import io.trino.spi.connector.*
 import io.trino.spi.function.FunctionProvider
 import io.trino.spi.function.table.ReturnTypeSpecification.DescribedTable
 import io.trino.spi.function.table.*
-import wvlet.airframe.codec.JDBCCodec.ResultSetCodec
-import wvlet.airframe.codec.MessageCodec
-import wvlet.airframe.msgpack.spi.MessagePack
 import wvlet.lang.compiler.WorkEnv
+import wvlet.lang.runner.codec.JDBCCodec.ResultSetCodec
 import wvlet.lang.runner.connector.duckdb.DuckDBConnector
 import wvlet.lang.runner.connector.trino.DuckDBSQLFunction.DuckDBFunctionHandle
 import wvlet.lang.runner.connector.trino.DuckDBSQLFunction.DuckDBQuerySplit
 import wvlet.uni.log.LogSupport
+import wvlet.uni.weaver.Weaver
+import wvlet.uni.weaver.codec.PrimitiveWeaver.given
 
 import java.util.Optional
 import java.util.concurrent.CompletableFuture
@@ -389,7 +389,7 @@ object DuckDBSQLFunction extends ConnectorTableFunction with LogSupport:
             debug(s"column types: ${types}")
 
             val json    = ResultSetCodec(rs).toJson
-            val records = MessageCodec.of[Seq[ListMap[String, Any]]].fromJson(json)
+            val records = summon[Weaver[Seq[ListMap[String, Any]]]].fromJson(json)
             debug(s"=== ${records}")
             toPage(columnNames.toIndexedSeq, types.toIndexedSeq, records)
           }

@@ -13,8 +13,8 @@
  */
 package wvlet.lang.runner
 
-import wvlet.airframe.codec.JDBCCodec
 import wvlet.lang.api.v1.query.QuerySelection
+import wvlet.lang.runner.codec.JDBCCodec
 import wvlet.lang.api.LinePosition
 import wvlet.lang.api.StatusCode
 import wvlet.lang.api.WvletLangException
