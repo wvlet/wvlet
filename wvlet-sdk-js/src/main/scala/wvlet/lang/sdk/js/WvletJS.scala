@@ -2,7 +2,6 @@ package wvlet.lang.sdk.js
 
 import scala.scalajs.js
 import scala.scalajs.js.annotation.*
-import wvlet.airframe.codec.MessageCodec
 import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.compiler.Compiler
 import wvlet.lang.compiler.CompilerOptions
@@ -19,6 +18,8 @@ import wvlet.lang.api.v1.compile.ErrorLocation
 import wvlet.lang.BuildInfo
 import wvlet.lang.compiler.parser.ParserPhase
 import wvlet.lang.model.plan.*
+import wvlet.uni.weaver.Weaver
+import wvlet.uni.weaver.codec.PrimitiveWeaver.given
 
 import scala.collection.mutable.ListBuffer
 
@@ -41,7 +42,7 @@ object WvletJS:
   @JSExport
   def compile(query: String, options: String = "{}"): String =
     try
-      val opts = MessageCodec.of[CompileOptions].fromJson(options)
+      val opts = Weaver.of[CompileOptions].fromJson(options)
 
       // Create compiler with options
       val targetDB =
@@ -69,7 +70,7 @@ object WvletJS:
 
       val response = CompileResponse(success = true, sql = Some(sql))
 
-      MessageCodec.of[CompileResponse].toJson(response)
+      Weaver.of[CompileResponse].toJson(response)
     catch
       case e: WvletLangException =>
         val locationOpt =
@@ -98,7 +99,7 @@ object WvletJS:
 
         val response = CompileResponse(success = false, error = Some(error))
 
-        MessageCodec.of[CompileResponse].toJson(response)
+        Weaver.of[CompileResponse].toJson(response)
 
       case e: Throwable =>
         val error = CompileError(
@@ -108,7 +109,7 @@ object WvletJS:
 
         val response = CompileResponse(success = false, error = Some(error))
 
-        MessageCodec.of[CompileResponse].toJson(response)
+        Weaver.of[CompileResponse].toJson(response)
 
   /**
     * Get the version of the Wvlet compiler
@@ -178,7 +179,8 @@ object WvletJS:
           )
     end try
 
-    MessageCodec.of[List[LspDiagnostic]].toJson(diagnostics.toList)
+    given Weaver[LspDiagnostic] = Weaver.of[LspDiagnostic]
+    summon[Weaver[List[LspDiagnostic]]].toJson(diagnostics.toList)
 
   end analyzeDiagnostics
 
@@ -243,7 +245,8 @@ object WvletJS:
 
     extractSymbols(inputUnit.unresolvedPlan)
 
-    MessageCodec.of[List[LspSymbol]].toJson(symbols.toList)
+    given Weaver[LspSymbol] = Weaver.of[LspSymbol]
+    summon[Weaver[List[LspSymbol]]].toJson(symbols.toList)
 
   end getDocumentSymbols
 

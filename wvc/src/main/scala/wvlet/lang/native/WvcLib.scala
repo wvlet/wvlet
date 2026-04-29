@@ -1,7 +1,8 @@
 package wvlet.lang.native
 
-import wvlet.airframe.codec.MessageCodec
 import wvlet.uni.log.LogSupport
+import wvlet.uni.weaver.Weaver
+import wvlet.uni.weaver.codec.PrimitiveWeaver.given
 import wvlet.lang.api.WvletLangException
 import wvlet.lang.api.SourceLocation
 import wvlet.lang.api.LinePosition
@@ -38,7 +39,7 @@ object WvcLib extends LogSupport:
   def compile_main(argJson: CString): Int =
     try
       val json = fromCString(argJson)
-      val args = MessageCodec.of[Array[String]].fromJson(json)
+      val args = summon[Weaver[Array[String]]].fromJson(json)
       WvcMain.main(args)
       0
     catch
@@ -57,7 +58,7 @@ object WvcLib extends LogSupport:
   def compile_query(argJson: CString): CString =
     try
       val json     = fromCString(argJson)
-      val args     = MessageCodec.of[Array[String]].fromJson(json)
+      val args     = summon[Weaver[Array[String]]].fromJson(json)
       val (sql, _) = WvcMain.compileWvletQuery(args)
       toCString(sql)
     catch
@@ -79,7 +80,7 @@ object WvcLib extends LogSupport:
   def compile_query_json(argJson: CString): CString =
     try
       val json = fromCString(argJson)
-      val args = MessageCodec.of[Array[String]].fromJson(json)
+      val args = summon[Weaver[Array[String]]].fromJson(json)
 
       val response =
         try
@@ -119,7 +120,7 @@ object WvcLib extends LogSupport:
             CompileResponse(success = false, error = Some(error))
 
       // Convert response to JSON
-      val responseJson = MessageCodec.of[CompileResponse].toJson(response)
+      val responseJson = Weaver.of[CompileResponse].toJson(response)
       toCString(responseJson)
     catch
       case e: Throwable =>
@@ -137,7 +138,7 @@ object WvcLib extends LogSupport:
           )
         )
         // Use MessageCodec for consistent JSON formatting
-        val errorJson = MessageCodec.of[CompileResponse].toJson(errorResponse)
+        val errorJson = Weaver.of[CompileResponse].toJson(errorResponse)
         toCString(errorJson)
 
 end WvcLib
