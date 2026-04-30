@@ -1,9 +1,9 @@
 package wvlet.lang.runner.connector.trino
 
 import wvlet.lang.runner.codec.JDBCCodec.ResultSetCodec
-import wvlet.airspec.AirSpec
+import wvlet.lang.test.WvletDITest
 
-class TableFunctionTest extends AirSpec:
+class TableFunctionTest extends WvletDITest:
   if inCI then
     skip(s"This is a demo function for integrating Trino with DuckDB")
 
@@ -21,8 +21,9 @@ class TableFunctionTest extends AirSpec:
       }
   }
 
-  test("Run table functions") { (trino: TrinoConnector) =>
+  test("Run table functions") {
     test("hello table function") {
+      val trino = dep[TrinoConnector]
       trino.runQuery("select * from TABLE(wvlet.hello('wvlet'))") { rs =>
         rs.next() shouldBe true
         val name = rs.getString(1)
@@ -33,6 +34,7 @@ class TableFunctionTest extends AirSpec:
     }
 
     test("hello duckdb table function") {
+      val trino = dep[TrinoConnector]
       trino.runQuery(s"""
            |-- Projection in Trino
            |select c_custkey, c_nationkey, c_phone

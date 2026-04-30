@@ -53,7 +53,8 @@ lazy val jvmProjects: Seq[ProjectReference] = Seq(
   runner,
   client.jvm,
   spec,
-  cli
+  cli,
+  testUtil
 )
 
 lazy val jsProjects: Seq[ProjectReference] = Seq(
@@ -377,6 +378,24 @@ lazy val cli = project
   )
   .dependsOn(server)
 
+/**
+  * Shared test helpers that wrap uni-test (e.g., AirSpec-DI-style `initDesign` + per-test
+  * dependency injection).
+  */
+lazy val testUtil = project
+  .in(file("wvlet-test-util"))
+  .settings(
+    buildSettings,
+    noPublish,
+    ideSkipProject := false,
+    name           := "wvlet-test-util",
+    libraryDependencies ++=
+      Seq(
+        "org.wvlet.uni" %% "uni"      % UNI_VERSION,
+        "org.wvlet.uni" %% "uni-test" % UNI_VERSION
+      )
+  )
+
 lazy val runner = project
   .in(file("wvlet-runner"))
   .settings(
@@ -412,12 +431,12 @@ lazy val runner = project
         //        ) cross (CrossVersion.for3Use2_13)
       )
   )
-  .dependsOn(lang.jvm)
+  .dependsOn(lang.jvm, testUtil % Test)
 
 lazy val spec = project
   .in(file("wvlet-spec"))
   .settings(buildSettings, specRunnerSettings, noPublish, name := "wvlet-spec")
-  .dependsOn(runner)
+  .dependsOn(runner, testUtil % Test)
 
 lazy val sdkJs = project
   .in(file("wvlet-sdk-js"))
@@ -451,7 +470,7 @@ lazy val server = project
       ),
     reStart / baseDirectory := (ThisBuild / baseDirectory).value
   )
-  .dependsOn(api.jvm, client.jvm, runner)
+  .dependsOn(api.jvm, client.jvm, runner, testUtil % Test)
 
 lazy val client = crossProject(JVMPlatform, JSPlatform)
   .in(file("wvlet-client"))

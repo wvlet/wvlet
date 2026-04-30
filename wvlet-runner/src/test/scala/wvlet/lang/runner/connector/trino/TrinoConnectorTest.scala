@@ -13,16 +13,15 @@
  */
 package wvlet.lang.runner.connector.trino
 
-import wvlet.airframe.Design
 import wvlet.lang.runner.codec.JDBCCodec
 import wvlet.lang.runner.codec.JDBCCodec.ResultSetCodec
-import wvlet.airframe.control.Control
-import wvlet.airframe.control.Control.withResource
-import wvlet.airspec.AirSpec
+import wvlet.lang.test.WvletDITest
+import wvlet.uni.control.Control
+import wvlet.uni.control.Control.withResource
 
 import java.io.File
 
-class TrinoConnectorTest extends AirSpec:
+class TrinoConnectorTest extends WvletDITest:
 
   initDesign { d =>
     d.bindInstance[TestTrinoServer](new TestTrinoServer().withDeltaLakePlugin)
@@ -38,7 +37,8 @@ class TrinoConnectorTest extends AirSpec:
       }
   }
 
-  test("Create an in-memory schema and table") { (trino: TrinoConnector) =>
+  test("Create an in-memory schema and table") {
+    val trino = dep[TrinoConnector]
     trino.createSchema("memory", "main")
     trino.getSchema("memory", "main") shouldBe defined
 
@@ -47,20 +47,28 @@ class TrinoConnectorTest extends AirSpec:
     trino.getTableDef("memory", "main", "a") shouldBe defined
 
     test("drop table") {
+      val trino = dep[TrinoConnector]
       trino.dropTable("memory", "main", "a")
       trino.getTableDef("memory", "main", "a") shouldBe empty
     }
 
     test("drop schema") {
+      val trino = dep[TrinoConnector]
       trino.dropSchema("memory", "main")
     }
 
     test("Create delta Lake table") {
-      val baseDir = new File(sys.props("user.dir")).getAbsolutePath
-
+      // The schema is created on the (shared) TestTrinoServer once here; nested tests below
+      // derive their own delta-configured connector via dep[TrinoConnector].withConfig(...).
+      val trino      = dep[TrinoConnector]
+      val baseDir    = new File(sys.props("user.dir")).getAbsolutePath
       val trinoDelta = trino.withConfig(trino.config.copy(catalog = "delta", schema = "delta_db"))
       trinoDelta.createSchema("delta", "delta_db")
+
       test("create a local delta lake file") {
+        val trinoDelta = dep[TrinoConnector].withConfig(
+          dep[TrinoConfig].copy(catalog = "delta", schema = "delta_db")
+        )
         trinoDelta.executeUpdate("create table a as select 1 as id, 'leo' as name")
         trinoDelta.executeUpdate("insert into a values(2, 'yui')")
         trinoDelta.runQuery("select * from a"): rs =>
@@ -69,6 +77,9 @@ class TrinoConnectorTest extends AirSpec:
       }
 
       test("register a local delta lake table") {
+        val trinoDelta = dep[TrinoConnector].withConfig(
+          dep[TrinoConfig].copy(catalog = "delta", schema = "delta_db")
+        )
         trinoDelta.execute(
           s"call delta.system.register_table(schema_name => 'delta_db', table_name => 'www_access', table_location => 'file://${baseDir}/spec/delta/data/www_access')"
         )
@@ -80,6 +91,7 @@ class TrinoConnectorTest extends AirSpec:
     }
 
     test("list functions") {
+      val trino     = dep[TrinoConnector]
       val functions = trino.listFunctions("memory")
       debug(functions.mkString("\n"))
     }

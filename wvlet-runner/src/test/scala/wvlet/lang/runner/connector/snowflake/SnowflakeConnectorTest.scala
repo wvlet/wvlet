@@ -13,10 +13,9 @@
  */
 package wvlet.lang.runner.connector.snowflake
 
-import wvlet.airframe.Design
-import wvlet.airspec.AirSpec
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.runner.codec.JDBCCodec.ResultSetCodec
+import wvlet.lang.test.WvletDITest
 
 /**
   * Tests for SnowflakeConnector
@@ -33,7 +32,7 @@ import wvlet.lang.runner.codec.JDBCCodec.ResultSetCodec
   *
   * Integration tests will be skipped if credentials are not available.
   */
-class SnowflakeConnectorTest extends AirSpec:
+class SnowflakeConnectorTest extends WvletDITest:
 
   private val snowflakeConfig: Option[SnowflakeConfig] =
     for
@@ -87,8 +86,9 @@ class SnowflakeConnectorTest extends AirSpec:
     cleared.password shouldBe None
   }
 
-  test("should connect to Snowflake and execute basic queries") { (connector: SnowflakeConnector) =>
-    val config = connector.config
+  test("should connect to Snowflake and execute basic queries") {
+    val connector = dep[SnowflakeConnector]
+    val config    = connector.config
     // Test basic query
     connector.runQuery("SELECT 1 as test_col") { rs =>
       rs.next() shouldBe true
