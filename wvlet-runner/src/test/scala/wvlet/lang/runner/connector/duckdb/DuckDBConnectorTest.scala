@@ -13,32 +13,34 @@
  */
 package wvlet.lang.runner.connector.duckdb
 
-import wvlet.uni.control.Control.withResource
 import wvlet.lang.compiler.Name
 import wvlet.lang.model.DataType
 import wvlet.lang.model.DataType.NamedType
-import wvlet.airspec.AirSpec
+import wvlet.lang.test.WvletDITest
+import wvlet.uni.control.Control.withResource
 
-class DuckDBConnectorTest extends AirSpec:
+class DuckDBConnectorTest extends WvletDITest:
   initDesign:
     _.bindSingleton[DuckDBConnector]
 
-  test("Create an in-memory schema and table"): (duckdb: DuckDBConnector) =>
+  test("Create an in-memory schema and table"):
+    val duckdb = dep[DuckDBConnector]
     duckdb.withConnection: conn =>
-      val ret = conn.createStatement().execute("create table a(id bigint)")
+      conn.createStatement().execute("create table a(id bigint)")
 
     duckdb.getTableDef("memory", "main", "a") shouldBe defined
 
-    test("drop table"):
-      duckdb.dropTable("memory", "main", "a")
-      duckdb.getTableDef("memory", "main", "a") shouldBe empty
+    // drop the table so subsequent tests in this spec see a clean slate
+    duckdb.dropTable("memory", "main", "a")
+    duckdb.getTableDef("memory", "main", "a") shouldBe empty
 
-  test("Create an in-memory schema"): (duckdb: DuckDBConnector) =>
-    test("drop schema"):
-      duckdb.dropSchema("memory", "b")
-      duckdb.getSchema("memory", "b") shouldBe empty
+  test("Create an in-memory schema and drop it"):
+    val duckdb = dep[DuckDBConnector]
+    duckdb.dropSchema("memory", "b")
+    duckdb.getSchema("memory", "b") shouldBe empty
 
-  test("Read SchemaType"): (duckdb: DuckDBConnector) =>
+  test("Read SchemaType"):
+    val duckdb = dep[DuckDBConnector]
     duckdb.withConnection: conn =>
       withResource(conn.createStatement()): stmt =>
         stmt.execute("create table a(c1 bigint, c2 varchar, c3 integer[])")
@@ -51,13 +53,15 @@ class DuckDBConnectorTest extends AirSpec:
         NamedType(Name.termName("c3"), DataType.ArrayType(DataType.IntType))
       )
 
-  test("read catalog"): (duckdb: DuckDBConnector) =>
+  test("read catalog"):
+    val duckdb  = dep[DuckDBConnector]
     val catalog = duckdb.getCatalog("memory", "main")
     catalog.catalogName shouldBe "memory"
     catalog.listSchemaNames shouldContain "main"
     catalog.listTableNames("main")
 
-  test("read functions"): (duckdb: DuckDBConnector) =>
+  test("read functions"):
+    val duckdb    = dep[DuckDBConnector]
     val functions = duckdb.listFunctions("memory")
     functions shouldNotBe empty
 

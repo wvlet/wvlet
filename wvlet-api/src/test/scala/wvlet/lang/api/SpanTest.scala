@@ -13,9 +13,9 @@
  */
 package wvlet.lang.api
 
-import wvlet.airspec.AirSpec
+import wvlet.uni.test.UniTest
 
-class SpanTest extends AirSpec:
+class SpanTest extends UniTest:
   test("create a span") {
     val span = Span.within(1, 2)
     span.toString shouldBe "[1..2)"
