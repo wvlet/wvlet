@@ -101,7 +101,8 @@ lazy val api = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     libraryDependencies ++=
       Seq(
         "org.wvlet.airframe" %%% "airframe-http"    % AIRFRAME_VERSION,
-        "org.wvlet.airframe" %%% "airframe-metrics" % AIRFRAME_VERSION
+        "org.wvlet.airframe" %%% "airframe-metrics" % AIRFRAME_VERSION,
+        "org.wvlet.uni"      %%% "uni"              % UNI_VERSION
       )
   )
 

@@ -1,10 +1,8 @@
 package wvlet.lang.server
 
-import wvlet.airframe.http.netty.NettyServer
-import wvlet.airframe.launcher.Launcher
-import wvlet.airframe.launcher.command
-import wvlet.airframe.launcher.option
 import wvlet.lang.compiler.WorkEnv
+import wvlet.uni.cli.launcher.Launcher
+import wvlet.uni.cli.launcher.command
 import wvlet.uni.log.LogLevel
 import wvlet.uni.log.LogSupport
 
