@@ -2,16 +2,10 @@ package wvlet.lang.server
 
 import org.jline.nativ.OSInfo
 import wvlet.airframe.Design
-import wvlet.airframe.control.Control.withResource
-import wvlet.airframe.control.Control
-import wvlet.airframe.control.Shell
 import wvlet.airframe.http.netty.Netty
 import wvlet.airframe.http.netty.NettyServer
 import wvlet.airframe.http.Http
 import wvlet.airframe.http.RxRouter
-import wvlet.airframe.launcher.Launcher
-import wvlet.airframe.launcher.command
-import wvlet.airframe.launcher.option
 import wvlet.lang.api.v1.frontend.FrontendRPC
 import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.OS
@@ -21,6 +15,10 @@ import wvlet.lang.runner.connector.DBConnector
 import wvlet.lang.runner.connector.DBConnectorProvider
 import wvlet.lang.runner.QueryExecutor
 import wvlet.lang.runner.WvletScriptRunnerConfig
+import wvlet.uni.cli.launcher.option
+import wvlet.uni.control.Control
+import wvlet.uni.control.Control.withResource
+import wvlet.uni.io.IO
 import wvlet.uni.log.LogSupport
 import wvlet.log.io.IOUtil
 
@@ -67,7 +65,7 @@ object WvletServer extends LogSupport:
         warn(s"--quit-immediately is set. The server will quit immediately after starting.")
         if OS.isMacOS && openBrowser then
           // Open the web browser
-          Shell.exec(s"open http://localhost:${config.port}")
+          IO.run(s"open http://localhost:${config.port}")
         server.awaitTermination()
     }
 
