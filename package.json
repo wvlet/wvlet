@@ -26,7 +26,7 @@
     "@rollup/plugin-replace": "^6.0.3",
     "autoprefixer": "^10.4.27",
     "esbuild": "^0.28.0",
-    "jsdom": "29.1.0",
+    "jsdom": "29.1.1",
     "postcss": "^8.5.8",
     "tailwindcss": "^4.2.2",
     "typescript": "^5.9.3",
