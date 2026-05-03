@@ -53,9 +53,14 @@ In scope:
   1. `~/.wvlet/profiles.json` (primary)
   2. `~/.wvlet/profiles.jsonc` (alternate; same syntax)
 - If neither exists but `~/.wvlet/profiles.yml` (or `.yaml`) does:
-  log a single WARN with a `yq` one-liner for migration, then
-  return `None`. (Don't try to keep parsing YAML — the whole point
-  is to drop snakeyaml.)
+  **throw** `WvletLangException(INVALID_ARGUMENT)` with a `yq`
+  one-liner for migration. (Don't try to keep parsing YAML — the
+  whole point is to drop snakeyaml.) **Throwing, not returning
+  None, is load-bearing**: the caller `getProfile(Some(name), …)`
+  silently falls back to a default profile when the named lookup
+  returns None, so a `--profile td-prod` with only a YAML file
+  on disk would otherwise execute against `local/duckdb`. Codex
+  flagged this as a P1 on the first draft of the PR.
 - Update `ProfileTest` (`.jvm/src/test/.../ProfileTest.scala`) to
   write `profiles.json` fixtures with comments, exercising both
   the JSONC path and the deprecation-warning path.

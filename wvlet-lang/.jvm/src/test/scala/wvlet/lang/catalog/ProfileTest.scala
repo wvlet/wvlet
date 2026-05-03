@@ -14,7 +14,7 @@
 package wvlet.lang.catalog
 
 import wvlet.uni.test.UniTest
-import wvlet.uni.test.{defined, empty}
+import wvlet.uni.test.defined
 import wvlet.lang.api.StatusCode
 import wvlet.lang.api.WvletLangException
 
@@ -180,10 +180,24 @@ class ProfileTest extends UniTest:
     }
   }
 
-  test("should warn and return None when only profiles.yml exists") {
+  test("should throw INVALID_ARGUMENT when only profiles.yml exists") {
     withMockHome("profiles.yml", "profiles:\n  - name: legacy\n    type: duckdb\n") { _ =>
-      val profile = Profile.getProfile("legacy")
-      profile shouldBe empty
+      val exception = intercept[WvletLangException] {
+        Profile.getProfile("legacy")
+      }
+      exception.statusCode shouldBe StatusCode.INVALID_ARGUMENT
+      exception.message shouldContain "no longer supported"
+      exception.message shouldContain "profiles.json"
+      exception.message shouldContain "yq -o=json"
+    }
+  }
+
+  test("should throw INVALID_ARGUMENT when only profiles.yaml (long extension) exists") {
+    withMockHome("profiles.yaml", "profiles:\n  - name: legacy2\n    type: duckdb\n") { _ =>
+      val exception = intercept[WvletLangException] {
+        Profile.getProfile("legacy2")
+      }
+      exception.statusCode shouldBe StatusCode.INVALID_ARGUMENT
     }
   }
 

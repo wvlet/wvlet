@@ -106,21 +106,28 @@ object Profile extends LogSupport:
 
   end getProfile
 
-  // Returns the path of the first profile config file found, or None.
-  // Falls back to a deprecation warning when only a YAML file is present.
+  // Returns the path of the first profile config file found, or None when
+  // no config exists at all.
+  //
+  // If only a legacy YAML file is present we throw INVALID_ARGUMENT instead
+  // of returning None — otherwise upstream `getProfile(Some(name), ...)` would
+  // silently fall back to the local default and execute `--profile td-prod`
+  // against DuckDB. Force the user to convert before any query runs.
   private def resolveConfigPath(configDir: String): Option[String] =
     val candidates = Seq("profiles.json", "profiles.jsonc")
     val found = candidates.iterator.map(name => s"${configDir}/${name}").find(p => File(p).exists())
     found.orElse {
-      val legacy = Seq("profiles.yml", "profiles.yaml")
+      Seq("profiles.yml", "profiles.yaml")
         .map(name => s"${configDir}/${name}")
         .find(p => File(p).exists())
-      legacy.foreach { path =>
-        warn(
-          s"YAML profile config at ${path} is no longer read. Convert it to ${configDir}/profiles.json " +
-            s"(JSONC: comments and trailing commas allowed). Quick conversion: `yq -o=json ${path} > ${configDir}/profiles.json`."
-        )
-      }
+        .foreach { path =>
+          throw StatusCode
+            .INVALID_ARGUMENT
+            .newException(
+              s"YAML profile config at ${path} is no longer supported. Convert it to ${configDir}/profiles.json " +
+                s"(JSONC: comments and trailing commas allowed). Quick conversion: `yq -o=json ${path} > ${configDir}/profiles.json`."
+            )
+        }
       None
     }
 
