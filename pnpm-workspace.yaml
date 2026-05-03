@@ -1,0 +1,8 @@
+packages:
+  - 'wvlet-ui-main'
+  - 'wvlet-ui-playground'
+  - 'vscode-wvlet'
+  - 'website'
+  - 'highlightjs-wvlet'
+  - 'prismjs-wvlet'
+  - 'sdks/typescript'

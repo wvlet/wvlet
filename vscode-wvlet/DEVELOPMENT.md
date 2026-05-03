@@ -22,7 +22,7 @@ Example:
 
 ```bash
 # Package the extension
-npm run package
+pnpm --filter wvlet run package
 ```
 
 ## CI Requirements

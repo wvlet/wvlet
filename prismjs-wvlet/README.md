@@ -103,11 +103,12 @@ Both `wvlet` and `wv` are supported:
 
 ## Building
 
-To build the distribution files:
+This package is part of the [wvlet](https://github.com/wvlet/wvlet) pnpm
+workspace. To build the distribution files:
 
 ```bash
-npm install
-npm run build
+pnpm install
+pnpm --filter @wvlet/prismjs-wvlet run build
 ```
 
 This will create `dist/prism-wvlet.js` and `dist/prism-wvlet.min.js`.
@@ -117,7 +118,7 @@ This will create `dist/prism-wvlet.js` and `dist/prism-wvlet.min.js`.
 Run the tests with:
 
 ```bash
-npm test
+pnpm --filter @wvlet/prismjs-wvlet test
 ```
 
 ## License

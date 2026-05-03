@@ -9,12 +9,11 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+  # All JS/TS packages live in the same pnpm workspace (see pnpm-workspace.yaml),
+  # so Dependabot only needs to look at the root pnpm-lock.yaml. It still opens
+  # one PR per package.json under the workspace.
   - package-ecosystem: "npm"
     directory: "/"
-    schedule:
-      interval: "daily"
-  - package-ecosystem: "npm"
-    directory: "/website"
     schedule:
       interval: "weekly"
     groups:
@@ -24,33 +23,16 @@ updates:
           - "@docusaurus/*"
       react:
         patterns:
-          - "@react/react(-dom)?"
-  - package-ecosystem: "npm"
-    directory: "/vscode-wvlet"
-    schedule:
-      interval: "weekly"
-    groups:
-      # Group VS Code related dependencies together
+          - "react"
+          - "react-dom"
       vscode:
         patterns:
           - "@types/vscode"
           - "@vscode/*"
-  - package-ecosystem: "npm"
-    directory: "/highlightjs-wvlet"
-    schedule:
-      interval: "weekly"
-    groups:
-      # Group highlight.js related dependencies together
       highlightjs:
         patterns:
           - "highlight.js"
           - "highlightjs-*"
-  - package-ecosystem: "npm"
-    directory: "/prismjs-wvlet"
-    schedule:
-      interval: "weekly"
-    groups:
-      # Group Prism.js related dependencies together
       prismjs:
         patterns:
           - "prismjs"

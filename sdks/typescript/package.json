@@ -8,11 +8,11 @@
   "type": "module",
   "scripts": {
     "build:scalajs": "cd ../.. && ./sbt sdkJs/fastLinkJS",
-    "build": "npm run build:scalajs && tsc",
+    "build": "pnpm run build:scalajs && tsc",
     "test": "vitest",
     "test:ci": "vitest run",
     "lint": "tsc --noEmit",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "pnpm run build"
   },
   "files": [
     "dist",
@@ -44,5 +44,6 @@
   },
   "engines": {
     "node": ">=20.0.0"
-  }
+  },
+  "packageManager": "pnpm@10.7.1"
 }

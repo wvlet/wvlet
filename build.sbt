@@ -336,14 +336,11 @@ lazy val cli = project
       Def
         .sequential(
           Def.task[Unit] {
-            // Install NPM dependencies
+            // Install pnpm dependencies
             scala
               .sys
               .process
-              .Process(
-                List("npm", "install", "--silent", "--no-audit", "--no-fund"),
-                (ThisBuild / baseDirectory).value
-              )
+              .Process(List("pnpm", "install", "--silent"), (ThisBuild / baseDirectory).value)
               .!
             // Trigger compilation from Scala.js to JS
             val assetFiles = (uiMain / Compile / fullLinkJS).value
@@ -352,7 +349,7 @@ lazy val cli = project
               .sys
               .process
               .Process(
-                List("npm", "run", "build-ui", "--silent", "--no-audit", "--no-fund"),
+                List("pnpm", "run", "--silent", "build-ui"),
                 (ThisBuild / baseDirectory).value
               )
               .!

@@ -39,5 +39,6 @@
   },
   "homepage": "https://wvlet.org",
   "license": "Apache-2.0",
-  "author": "Wvlet Team"
+  "author": "Wvlet Team",
+  "packageManager": "pnpm@10.7.1"
 }

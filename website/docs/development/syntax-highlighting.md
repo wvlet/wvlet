@@ -133,7 +133,7 @@ If you're using Docusaurus, you can integrate Wvlet syntax highlighting by swizz
 
 2. Swizzle the component:
    ```bash
-   npx docusaurus swizzle @docusaurus/theme-classic prism-include-languages --wrap
+   pnpm dlx docusaurus swizzle @docusaurus/theme-classic prism-include-languages --wrap
    ```
 
 3. Update `src/theme/prism-include-languages.ts`:
@@ -169,15 +169,14 @@ Both packages are open source and maintained in the [Wvlet repository](https://g
 git clone https://github.com/wvlet/wvlet.git
 cd wvlet
 
-# Build Prism.js package
-cd prismjs-wvlet
-npm install
-npm run build
+# Install JS deps once (uses pnpm workspaces)
+pnpm install
 
-# Build Highlight.js package  
-cd ../highlightjs-wvlet
-npm install
-npm run build
+# Build Prism.js package
+pnpm --filter @wvlet/prismjs-wvlet run build
+
+# Build Highlight.js package
+pnpm --filter @wvlet/highlightjs-wvlet run build
 ```
 
 ### Contributing

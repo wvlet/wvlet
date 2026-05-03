@@ -36,8 +36,5 @@
     "mocha": "^11.7.1",
     "should": "^13.2.3"
   },
-  "overrides": {
-    "serialize-javascript": "^7.0.5",
-    "diff": "^9.0.0"
-  }
+  "packageManager": "pnpm@10.7.1"
 }

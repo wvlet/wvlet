@@ -11,10 +11,10 @@ This directory contains the VS Code extension for Wvlet language support.
 
 ## Development
 
-1. Install dependencies: `npm install`
+1. Install dependencies from the repo root: `pnpm install`
 2. Make changes to language files
 3. Test: Press `F5` in VS Code to launch a new window with the extension
-4. Package: `npm run package`
+4. Package: `pnpm --filter wvlet run package`
 
 ## Files
 
@@ -44,7 +44,7 @@ The extension follows a YYYY.(milestone).(patch) versioning scheme:
 Pre-release versions use patch numbers greater than 0 and are published for testing new features:
 
 1. Update `package.json` to increment the patch version (e.g., `2025.1.1`, `2025.1.2`)
-2. Build the extension: `npm run build-vscode-extension`
+2. Build the extension: `pnpm run build-vscode-extension`
 3. Publish as pre-release: `vsce publish --pre-release`
 
 Pre-release versions:
@@ -57,7 +57,7 @@ Pre-release versions:
 Stable releases always use patch version 0:
 
 1. Update `package.json` to a .0 version (e.g., `2025.1.0`, `2025.2.0`)
-2. Build: `npm run build-vscode-extension`
+2. Build: `pnpm run build-vscode-extension`
 3. Publish: `vsce publish`
 
 ### Version Examples
