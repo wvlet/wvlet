@@ -63,7 +63,7 @@
   "scripts": {
     "compile": "node esbuild.js",
     "watch": "node esbuild.js --watch",
-    "package": "npm run compile && vsce package"
+    "package": "pnpm run compile && vsce package --no-dependencies"
   },
   "author": "Wvlet Team",
   "license": "Apache-2.0"

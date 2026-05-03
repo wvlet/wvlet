@@ -45,9 +45,9 @@ The workflows require an NPM token to be set up as a GitHub secret:
 
 Before creating a release:
 
-1. Ensure all tests pass: `npm test`
-2. Build the package: `npm run build`
-3. Test the package locally: `npm pack`
+1. Ensure all tests pass: `pnpm --filter @wvlet/wvlet test`
+2. Build the package: `pnpm --filter @wvlet/wvlet run build`
+3. Test the package locally: `pnpm --filter @wvlet/wvlet pack`
 4. Verify the package contents
 
 ## Package Contents

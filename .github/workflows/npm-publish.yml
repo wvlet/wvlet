@@ -26,57 +26,58 @@ jobs:
       (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
       (github.event_name == 'workflow_dispatch' && inputs.package == 'typescript-sdk')
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: sdks/typescript
     permissions:
       contents: read
       id-token: write
-    
+
     steps:
       - uses: actions/checkout@v6
-      
+
       - name: Set up Java
         uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: '25'
           cache: sbt
-      
+
+      - uses: pnpm/action-setup@v4
+
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
           node-version: 22
           registry-url: 'https://registry.npmjs.org'
-          cache: 'npm'
-          cache-dependency-path: package-lock.json
-      
+          cache: 'pnpm'
+          cache-dependency-path: pnpm-lock.yaml
+
       - name: Build Scala.js SDK
-        working-directory: .
         run: ./sbt "sdkJs/fullLinkJS"
-      
+
       - name: Install dependencies
-        run: npm install
-      
+        run: pnpm install --frozen-lockfile
+
       - name: Build TypeScript
-        run: npm run build
-      
+        run: pnpm --filter @wvlet/wvlet run build
+
       - name: Run tests
-        run: npm run test:ci
-      
+        run: pnpm --filter @wvlet/wvlet run test:ci
+
       - name: Set version from tag
         if: github.event_name == 'push'
+        working-directory: sdks/typescript
         run: |
           VERSION=$(echo "${{ github.ref }}" | sed 's/refs\/tags\/v//')
-          npm version $VERSION --no-git-tag-version
-      
+          pnpm version $VERSION --no-git-tag-version
+
       - name: Set version from input
         if: github.event_name == 'workflow_dispatch'
+        working-directory: sdks/typescript
         run: |
-          npm version ${{ inputs.version }} --no-git-tag-version
-      
+          pnpm version ${{ inputs.version }} --no-git-tag-version
+
       - name: Publish to NPM
-        run: npm publish --provenance --access public
+        working-directory: sdks/typescript
+        run: pnpm publish --no-git-checks --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -86,46 +87,48 @@ jobs:
       (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
       (github.event_name == 'workflow_dispatch' && inputs.package == 'prismjs-wvlet')
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: prismjs-wvlet
     permissions:
       contents: read
       id-token: write
-    
+
     steps:
       - uses: actions/checkout@v6
-      
+
+      - uses: pnpm/action-setup@v4
+
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
           node-version: 22
           registry-url: 'https://registry.npmjs.org'
-          cache: 'npm'
-          cache-dependency-path: package-lock.json
-      
+          cache: 'pnpm'
+          cache-dependency-path: pnpm-lock.yaml
+
       - name: Install dependencies
-        run: npm ci
-      
+        run: pnpm install --frozen-lockfile
+
       - name: Build
-        run: npm run build
-      
+        run: pnpm --filter @wvlet/prismjs-wvlet run build
+
       - name: Run tests
-        run: npm test
-      
+        run: pnpm --filter @wvlet/prismjs-wvlet test
+
       - name: Set version from tag
         if: github.event_name == 'push'
+        working-directory: prismjs-wvlet
         run: |
           VERSION=$(echo "${{ github.ref }}" | sed 's/refs\/tags\/v//')
-          npm version $VERSION --no-git-tag-version
-      
+          pnpm version $VERSION --no-git-tag-version
+
       - name: Set version from input
         if: github.event_name == 'workflow_dispatch'
+        working-directory: prismjs-wvlet
         run: |
-          npm version ${{ inputs.version }} --no-git-tag-version
-      
+          pnpm version ${{ inputs.version }} --no-git-tag-version
+
       - name: Publish to NPM
-        run: npm publish --provenance --access public
+        working-directory: prismjs-wvlet
+        run: pnpm publish --no-git-checks --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -135,48 +138,50 @@ jobs:
       (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
       (github.event_name == 'workflow_dispatch' && inputs.package == 'highlightjs-wvlet')
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: highlightjs-wvlet
     permissions:
       contents: read
       id-token: write
-    
+
     steps:
       - uses: actions/checkout@v6
-      
+
+      - uses: pnpm/action-setup@v4
+
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
           node-version: 22
           registry-url: 'https://registry.npmjs.org'
-          cache: 'npm'
-          cache-dependency-path: package-lock.json
-      
+          cache: 'pnpm'
+          cache-dependency-path: pnpm-lock.yaml
+
       - name: Install dependencies
-        run: npm ci
-      
+        run: pnpm install --frozen-lockfile
+
       - name: Build
-        run: npm run build
-      
+        run: pnpm --filter @wvlet/highlightjs-wvlet run build
+
       - name: Run tests
-        run: npm test
-      
+        run: pnpm --filter @wvlet/highlightjs-wvlet test
+
       - name: Run markup tests
-        run: npm run mocha
-      
+        run: pnpm --filter @wvlet/highlightjs-wvlet run mocha
+
       - name: Set version from tag
         if: github.event_name == 'push'
+        working-directory: highlightjs-wvlet
         run: |
           VERSION=$(echo "${{ github.ref }}" | sed 's/refs\/tags\/v//')
-          npm version $VERSION --no-git-tag-version
-      
+          pnpm version $VERSION --no-git-tag-version
+
       - name: Set version from input
         if: github.event_name == 'workflow_dispatch'
+        working-directory: highlightjs-wvlet
         run: |
-          npm version ${{ inputs.version }} --no-git-tag-version
-      
+          pnpm version ${{ inputs.version }} --no-git-tag-version
+
       - name: Publish to NPM
-        run: npm publish --provenance --access public
+        working-directory: highlightjs-wvlet
+        run: pnpm publish --no-git-checks --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

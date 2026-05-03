@@ -31,7 +31,8 @@ jobs:
             vscode:
               - 'vscode-wvlet/**'
               - 'package.json'
-              - 'package-lock.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
               - '.github/workflows/vscode-extension.yml'
 
   build:
@@ -43,17 +44,20 @@ jobs:
     steps:
     - uses: actions/checkout@v6
 
+    - uses: pnpm/action-setup@v4
+
     - name: Setup Node.js
       uses: actions/setup-node@v6
       with:
         node-version: '22'
-        cache: 'npm'
+        cache: 'pnpm'
+        cache-dependency-path: pnpm-lock.yaml
 
     - name: Install dependencies
-      run: npm ci
+      run: pnpm install --frozen-lockfile
 
     - name: Package extension
-      run: npm run build-vscode-extension
+      run: pnpm run build-vscode-extension
 
     - name: Upload VSIX artifact
       uses: actions/upload-artifact@v7
@@ -81,9 +85,9 @@ jobs:
       run: |
         cd vscode-wvlet
         if [ "${{ steps.release_type.outputs.type }}" = "pre-release" ]; then
-          npx vsce publish --pre-release --pat ${{ secrets.VSCE_PAT }}
+          pnpm exec vsce publish --no-dependencies --pre-release --pat ${{ secrets.VSCE_PAT }}
         else
-          npx vsce publish --pat ${{ secrets.VSCE_PAT }}
+          pnpm exec vsce publish --no-dependencies --pat ${{ secrets.VSCE_PAT }}
         fi
       env:
         VSCE_PAT: ${{ secrets.VSCE_PAT }}

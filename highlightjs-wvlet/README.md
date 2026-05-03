@@ -92,11 +92,12 @@ For a complete example, see [test-cdn.html](test-cdn.html).
 
 ## Building
 
-To build the minified version for distribution:
+This package is part of the [wvlet](https://github.com/wvlet/wvlet) pnpm
+workspace. To build the minified version for distribution:
 
 ```bash
-npm install
-npm run build
+pnpm install
+pnpm --filter @wvlet/highlightjs-wvlet run build
 ```
 
 This will create `dist/wvlet.min.js`.
@@ -106,7 +107,7 @@ This will create `dist/wvlet.min.js`.
 Run the tests with:
 
 ```bash
-npm test
+pnpm --filter @wvlet/highlightjs-wvlet test
 ```
 
 ## License

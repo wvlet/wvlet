@@ -75,24 +75,27 @@ cd wvc-lib && make test
 
 ### UI Development
 ```bash
+# Install JS dependencies once after clone
+pnpm install
+
 # Start main UI development server
-npm run ui
+pnpm run ui
 
 # Start playground development server
-npm run playground
+pnpm run playground
 
 # Build UI for production
-npm run build-ui
-npm run build-playground
+pnpm run build-ui
+pnpm run build-playground
 ```
 
 ### Documentation
 ```bash
 # Start documentation server at localhost:3000
-cd website && npm start
+pnpm --filter website run start
 
 # Build documentation
-cd website && npm run build
+pnpm --filter website run build
 ```
 
 ## Architecture Overview

@@ -34,8 +34,12 @@ cd website
 
 Then start a documentation server at localhost:3000:
 ```bash
-npm start
+pnpm --filter website run start
 ```
+
+(The repository uses [pnpm](https://pnpm.io) workspaces. Install pnpm with
+`corepack enable` or `npm install -g pnpm`. Run `pnpm install` once at the
+repo root before the first build.)
 
 The server will be reloaded automatically when you update .md files.
 
