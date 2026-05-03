@@ -1,6 +1,6 @@
 package wvlet.lang.api.v1.query
 
-import wvlet.airframe.ulid.ULID
+import wvlet.uni.util.ULID
 import wvlet.lang.api.SourceLocation
 import wvlet.lang.api.StatusCode
 
