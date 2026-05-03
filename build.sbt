@@ -48,6 +48,7 @@ val buildSettings = Seq[Setting[?]](
 
 lazy val jvmProjects: Seq[ProjectReference] = Seq(
   api.jvm,
+  httpServer,
   server,
   lang.jvm,
   runner,
@@ -453,6 +454,21 @@ lazy val sdkJs = project
   )
   .dependsOn(lang.js)
 
+// JVM-only host for the airframe-http server runtime that wvlet is vendoring in.
+// Files here are ported verbatim from airframe and migrated to uni HTTP types
+// across phases 1–3 of #1662; consumers (wvlet-server) switch over in phase 2.
+lazy val httpServer = project
+  .in(file("wvlet-http-server"))
+  .settings(
+    buildSettings,
+    name := "wvlet-http-server",
+    libraryDependencies ++=
+      Seq(
+        "org.wvlet.airframe" %% "airframe-http" % AIRFRAME_VERSION,
+        "org.wvlet.uni"      %% "uni"           % UNI_VERSION
+      )
+  )
+
 lazy val server = project
   .in(file("wvlet-server"))
   .settings(
@@ -467,7 +483,7 @@ lazy val server = project
       ),
     reStart / baseDirectory := (ThisBuild / baseDirectory).value
   )
-  .dependsOn(api.jvm, client.jvm, runner, testUtil % Test)
+  .dependsOn(api.jvm, client.jvm, runner, httpServer, testUtil % Test)
 
 lazy val client = crossProject(JVMPlatform, JSPlatform)
   .in(file("wvlet-client"))
