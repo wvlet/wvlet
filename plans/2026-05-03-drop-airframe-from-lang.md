@@ -59,7 +59,8 @@ Two options were considered for `Profile.scala`:
   shared `libraryDependencies`.** Minimal-risk, behavior-preserving.
   But it leaves a JVM-only artifact on the langJS/langNative compile
   classpath — exactly what airframe-config had been quietly doing
-  via transitive resolution. The CLAUDE.md style guide says
+  via transitive resolution. The repo styleguide
+  (`CLAUDE.md` / `GEMINI.md`, `.gemini/styleguide.md`) says
   "Platform specific code needs to be placed in .jvm/src/main/scala…"
   and "In Scala.js code, avoid using Java-specific libraries".
 - **B. Move `Profile.scala` to `.jvm/src/main/scala`, scope the
