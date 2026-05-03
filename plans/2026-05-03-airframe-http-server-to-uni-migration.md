@@ -174,6 +174,63 @@ a wvlet module that produces an equivalent `NettyServer` symbol the
 consumers can switch to. Build green; `wvlet-server` still uses
 airframe-http.
 
+> **Phase 1a outcome (#1664, merged 2026-05-03).** Done.
+> `wvlet-http-server` module wired in (JVM-only, depends on
+> `airframe-http` + `uni`); `wvlet-server` now `dependsOn(httpServer)`
+> but consumes nothing from it yet. Ported `StaticContent` under
+> `wvlet.lang.http.server.static` with a 3-test smoke suite (200 / 404
+> / 403). Codex/Gemini reviews surfaced three issues that landed as a
+> follow-up commit: literal NUL byte in source (replaced with the
+> ` ` escape so the file isn't classified as binary by git),
+> hard-coded fixture path (switched to classpath-resource lookup), and
+> CRLF-on-Windows test brittleness (normalize line endings before
+> comparing). Gemini's second pass raised quality issues about the
+> *original airframe code* (OOM on `IOUtil.readFully`, no cache
+> headers, missing MIME types) — left for a phase 6+ follow-up to
+> preserve the verbatim-port invariant.
+
+> **Phase 1b lesson learned.** A first attempt to slice Phase 1
+> further (1b = Automaton + Route + RouteMatcher only) failed to
+> compile. `Route.scala` accesses
+> `wvlet.airframe.http.HttpBackend.TLS_KEY_RPC`, which is
+> `private[http]` in airframe — and once the file moves to
+> `wvlet.lang.http.server.router`, the access check fires. Closing
+> that hole requires pulling `HttpBackend` along too, which in turn
+> drags in `compat.defaultExecutionContext` (cross-platform) and the
+> rest of the http core types. The verbatim-port files in airframe
+> are tightly interlocked across `private[http]`-protected internals;
+> any slice that doesn't include the full set of files protected by a
+> shared access scope hits the same wall.
+>
+> **Revised plan: Phase 1 ships as a single PR**, with the staging
+> below for sequencing within the branch (not separate PRs):
+>
+> - **1a (done):** module skeleton + `StaticContent` (#1664).
+> - **1b–1d (remaining):** in one PR, port the rest as one
+>   transactionally consistent set —
+>   - `airframe-http/.jvm/.../router/*` (8 files: Automaton,
+>     Route, RouteMatcher, ControllerProvider,
+>     HttpEndpointExecutionContext, HttpRequestDispatcher,
+>     HttpRequestMapper, ResponseHandler) plus `Router.scala`,
+>   - `airframe-http/src/main/scala/wvlet/airframe/http/{HttpBackend,
+>     HttpFilter, HttpContext, HttpServer, HttpLogger, RPCContext,
+>     RPCMethod, RPCEncoding, RxRouter, RxRouterProvider,
+>     RxHttpBackend, RxHttpEndpoint, RxHttpFilter}`,
+>   - `airframe-http/src/main/scala/wvlet/airframe/http/internal/{HttpLogs,
+>     HttpMultiMapCodec, HttpResponseBodyCodec, RPCCallContext,
+>     RPCResponseFilter}`,
+>   - `airframe-http/src/main/scala/wvlet/airframe/http/filter/CorsFilter`,
+>   - the Scala-3 `RxRouterBase` + Scala-2 `RxRouterMacros`,
+>   - `airframe-http-netty/.../netty/*` (7 files),
+>   - `airframe-http/.jvm/.../HttpAccessLogWriter`,
+>     `LogRotationHttpLogger`, `TLSSupport`, `LocalRPCContext`.
+>
+>   That's ~25 files / ~3.3k LOC. Mechanical. Reviewers can diff
+>   each file against its airframe counterpart — the changes will be
+>   limited to package renames, intra-package import rewrites, and
+>   widening of `private[http]` modifiers (probably to `private[server]`
+>   inside `wvlet.lang.http.server` or just public).
+
 **Phase 2 — Switch `wvlet-server` and `wvlet-api` to the new module's
 symbols.** Replace `wvlet.airframe.http.netty.{Netty, NettyServer}` with
 `wvlet.lang.http.server.{Netty, NettyServer}` in `WvletServer.scala`.
