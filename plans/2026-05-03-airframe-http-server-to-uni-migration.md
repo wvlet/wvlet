@@ -140,6 +140,31 @@ equivalents exist; otherwise defer to Phase 2. Verify
 produces from the airframe-http surface here — only the leaf data types
 change.
 
+> **Phase 0 outcome (#1663, merged 2026-05-03).** Done. Key empirical
+> finding: `airframe-codec` correctly round-trips
+> `wvlet.uni.util.ULID` over the airframe-http RPC stack via its
+> surface-derived generic codec, even though no built-in
+> `MessageCodec[wvlet.uni.util.ULID]` exists. Initial concern (raised by
+> Codex review) was that the generic-codec fallback would null-encode
+> the private constructor field; `UlidRpcRoundTripTest` disproved this
+> with a real Netty + `FrontendRPC` round-trip. This unblocks Phase 1
+> without first having to migrate the codec layer. The test is pinned
+> in `wvlet-server` and must remain green through Phase 4.
+>
+> Also touched (forced by the api-type change):
+> `wvlet-server/.../FrontendApiImpl.scala`, `QueryService.scala`,
+> `wvlet-ui-main/.../FileNav.scala`. Drop of `airframe-metrics` from
+> `wvlet-api` deps was safe — wvlet-labs still pulls it transitively
+> via `airframe-launcher`.
+>
+> **Test isolation gotcha.** AirSpec's per-test session scoping calls
+> `close()` on `AutoCloseable` singletons between tests in the same
+> spec. `QueryService` extends `AutoCloseable` and shuts down its
+> thread pool on close, so a second test in the same spec that issues
+> `submitQuery` hits a terminated executor. Future Phase 2+ tests that
+> want to share a Netty boot across multiple test cases must either
+> rebind `QueryService` per test or split into separate specs.
+
 **Phase 1 — Create `wvlet-http-server` module, copy Netty + router code
 verbatim under new package.** Add Netty dep. Wire it into the `server`
 project (replacing `airframe-http-netty`). Adjust imports in copied
