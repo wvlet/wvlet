@@ -12,7 +12,6 @@ val AWS_SDK_VERSION        = "2.20.146"
 val SCALAJS_DOM_VERSION    = "2.8.1"
 val DUCKDB_JDBC_VERSION    = "1.5.2.1"
 val SNOWFLAKE_JDBC_VERSION = "4.1.0"
-val SNAKE_YAML_VERSION     = "2.5"
 
 val SCALA_3 = IO.read(file("SCALA_VERSION")).trim
 // ThisBuild / resolvers ++= Resolver.sonatypeOssRepos("snapshots")
@@ -190,9 +189,6 @@ lazy val lang = crossProject(JVMPlatform, JSPlatform, NativePlatform)
       ((ThisBuild / baseDirectory).value / "spec" ** "*.wv").get ++
         ((ThisBuild / baseDirectory).value / "wvlet-stdlib" ** "*.wv").get
   )
-  // SnakeYAML is JVM-only and is consumed only by Profile.scala (in .jvm/src), which
-  // reads ~/.wvlet/profiles.yml. Scoped here so it never reaches Scala.js / Native.
-  .jvmSettings(libraryDependencies += "org.yaml" % "snakeyaml" % SNAKE_YAML_VERSION)
   .dependsOn(api)
 
 val specRunnerSettings = Seq(
