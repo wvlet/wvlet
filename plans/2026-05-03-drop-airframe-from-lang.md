@@ -31,44 +31,48 @@ new org.yaml.snakeyaml.Yaml().load(yamlStringEvaluated)
 
 In scope:
 - Remove the three airframe declarations from `lang` in `build.sbt`.
-- Add `org.yaml:snakeyaml` as a direct dep on `lang` (JVM artifact,
+- Move `Profile.scala` from shared sources
+  (`wvlet-lang/src/main/scala/wvlet/lang/catalog/Profile.scala`) to
+  the JVM-specific source tree
+  (`wvlet-lang/.jvm/src/main/scala/wvlet/lang/catalog/Profile.scala`)
+  — it was the only file pulling in JVM-only `org.yaml.snakeyaml`,
+  and `ProfileTest` was already in `.jvm/src/test`.
+- Add `org.yaml:snakeyaml` as a JVM-scoped dep via `.jvmSettings`,
   pinned to `2.5` to match what airframe-config was previously pulling
-  — `airframe/build.sbt:28`).
+  (`airframe/build.sbt:28`).
 - Add a `SNAKE_YAML_VERSION` constant alongside the other version
   pins in `build.sbt`.
 
 Out of scope:
-- Refactoring `Profile.scala` to a `Compat`-style platform split. The
-  YAML reader is shared-source today and only ever runs on JVM in
-  practice; the JS/Native compile-only classpath has been quietly
-  dragging in the snakeyaml jar via airframe-config for the entire
-  migration, so this PR preserves that behavior verbatim.
 - Touching the `httpServer`, `server`, `runner`, `cli`, or `client`
   modules — they have their own airframe deps that the umbrella
   migration will address per its phase plan.
-- Any code change outside `build.sbt`.
+- Doing the same JVM-scoping cleanup for `duckdb_jdbc`, which has
+  the same shared-libraryDependencies leak. Pre-existing tech debt;
+  worth a follow-up but conflating it here would expand scope.
 
-## 2. Why snakeyaml stays as a direct dep (not a Compat split)
+## 2. Why move `Profile.scala`, not just keep snakeyaml shared
 
 Two options were considered for `Profile.scala`:
 
-- **A. Add snakeyaml as a direct JVM dep** (chosen).
-  Profile.scala stays in shared sources; snakeyaml jar is on the
-  compile classpath for langJVM/langJS/langNative as it was before.
-  Scala.js/Native linker would fail if any code path actually called
-  `Profile.getProfile`, but no JS/Native consumer does — `Profile`
-  is read only by JVM-side runner/cli code.
-- **B. Move `Profile` to a JVM-only `Compat` impl.**
-  Cleaner separation of concerns, but requires (i) restructuring
-  `lang` away from `CrossType.Pure`, (ii) inventing a no-op
-  JS/Native `Profile` shim, and (iii) auditing every call site for
-  cross-platform safety. None of that is required to drop airframe.
-  This refactor is a fine future task but conflates two changes.
+- **A. Leave `Profile.scala` in shared sources, add snakeyaml to the
+  shared `libraryDependencies`.** Minimal-risk, behavior-preserving.
+  But it leaves a JVM-only artifact on the langJS/langNative compile
+  classpath — exactly what airframe-config had been quietly doing
+  via transitive resolution. The CLAUDE.md style guide says
+  "Platform specific code needs to be placed in .jvm/src/main/scala…"
+  and "In Scala.js code, avoid using Java-specific libraries".
+- **B. Move `Profile.scala` to `.jvm/src/main/scala`, scope the
+  snakeyaml dep via `.jvmSettings`** (chosen, after Gemini's review
+  of the initial PR). Aligns with the style guide. Cheap because
+  the lang module already has `.jvm/.js/.native` source trees with
+  Compat shims, no JS/Native consumer of `Profile` exists in the
+  repo (verified with grep across lang/ui/uiMain/playground/sdkJs),
+  and `ProfileTest` was already JVM-only.
 
-A is the minimal-risk, behavior-preserving choice. The empirical
-evidence is the existing build: langJS has been compiling with the
-same shared `Profile.scala` and the same JVM-only snakeyaml jar on
-its compile classpath the whole time.
+The first version of this PR shipped with Option A. Gemini's review
+(see PR #1667) flagged it as a style-guide violation; switched to
+Option B in the same PR rather than carrying forward the leak.
 
 ## 3. Migration steps
 
@@ -76,18 +80,22 @@ its compile classpath the whole time.
    - add `val SNAKE_YAML_VERSION = "2.5"` next to the other version
      constants;
    - in the `lang` project's `libraryDependencies`, drop the three
-     airframe entries and add `"org.yaml" % "snakeyaml" %
-     SNAKE_YAML_VERSION` with a comment explaining why it sits next
-     to a cross-built crossProject.
-2. Verify `langJVM/Test/compile`, `langJS/Test/compile`,
+     airframe entries (no replacement — uni already provides what
+     `wvlet-lang/src` actually uses);
+   - append `.jvmSettings(libraryDependencies += "org.yaml" %
+     "snakeyaml" % SNAKE_YAML_VERSION)` to the lang crossProject so
+     snakeyaml is JVM-scoped only.
+2. `git mv wvlet-lang/src/main/scala/wvlet/lang/catalog/Profile.scala
+   wvlet-lang/.jvm/src/main/scala/wvlet/lang/catalog/Profile.scala`.
+3. Verify `langJVM/Test/compile`, `langJS/Test/compile`,
    `langNative/Test/compile`.
-3. Verify aggregates: `projectJVM/Test/compile`,
+4. Verify aggregates: `projectJVM/Test/compile`,
    `projectJS/Test/compile`, `projectNative/Test/compile` — to catch
    any downstream module that was relying on lang's transitive
    airframe pull.
-4. Run `langJVM/test` to make sure runtime behavior is unchanged
+5. Run `langJVM/test` to make sure runtime behavior is unchanged
    (Profile YAML reader, etc.).
-5. `scalafmtAll` (no source file changes are expected, but run
+6. `scalafmtAll` (no source file changes are expected, but run
    anyway).
 
 ## 4. Verification (run before opening PR)
@@ -123,7 +131,10 @@ CI on the PR will repeat these and add formatting checks.
 
 ## 6. Out-of-scope follow-ups (not in this PR)
 
-- Move `Profile.scala` to a JVM Compat trait so JS/Native don't pull
-  the snakeyaml jar at all (Option B above).
+- Apply the same JVM-scoping cleanup to `duckdb_jdbc` in the lang
+  block — it has the same shared-libraryDependencies leak as
+  snakeyaml had pre-fix. `DuckDBSchemaAnalyzer.scala` already lives
+  in `.jvm/.js/.native/src` Compat trees, so the file move is even
+  more localized; only the dep needs a `.jvmSettings` scoping.
 - Drop airframe from the remaining wvlet modules (`api`, `runner`,
   `server`, `cli`, `client`) per the umbrella plan's Phase 2–5.

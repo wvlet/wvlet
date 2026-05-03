@@ -168,9 +168,6 @@ lazy val lang = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     libraryDependencies ++=
       Seq(
         "org.wvlet.uni" %%% "uni" % UNI_VERSION,
-        // For reading profile YAML; runtime use is JVM-only (Profile.getProfile),
-        // pulled in for compile on JS/Native too because sources are CrossType.Pure.
-        "org.yaml" % "snakeyaml" % SNAKE_YAML_VERSION,
         // For resolving parquet file schema
         "org.duckdb" % "duckdb_jdbc" % DUCKDB_JDBC_VERSION,
         // Add a reference implementation of the compiler
@@ -193,6 +190,9 @@ lazy val lang = crossProject(JVMPlatform, JSPlatform, NativePlatform)
       ((ThisBuild / baseDirectory).value / "spec" ** "*.wv").get ++
         ((ThisBuild / baseDirectory).value / "wvlet-stdlib" ** "*.wv").get
   )
+  // SnakeYAML is JVM-only and is consumed only by Profile.scala (in .jvm/src), which
+  // reads ~/.wvlet/profiles.yml. Scoped here so it never reaches Scala.js / Native.
+  .jvmSettings(libraryDependencies += "org.yaml" % "snakeyaml" % SNAKE_YAML_VERSION)
   .dependsOn(api)
 
 val specRunnerSettings = Seq(
