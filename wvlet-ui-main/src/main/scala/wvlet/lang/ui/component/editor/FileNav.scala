@@ -8,7 +8,7 @@ import wvlet.airframe.rx.html.compat.MouseEvent
 import wvlet.airframe.rx.html.svgAttrs.*
 import wvlet.airframe.rx.Rx
 import wvlet.airframe.rx.RxVar
-import wvlet.airframe.ulid.ULID
+import wvlet.uni.util.ULID
 import wvlet.lang.api.v1.frontend.FileApi.FileRequest
 import wvlet.lang.api.v1.frontend.FrontendRPC.RPCAsyncClient
 import wvlet.lang.api.v1.io.FileEntry

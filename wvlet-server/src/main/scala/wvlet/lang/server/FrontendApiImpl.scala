@@ -5,7 +5,7 @@ import wvlet.lang.api.v1.io.FileEntry
 import wvlet.lang.api.v1.query.QueryInfo
 import wvlet.lang.api.v1.query.QueryRequest
 import wvlet.lang.api.v1.frontend.FrontendApi
-import wvlet.airframe.metrics.ElapsedTime
+import wvlet.uni.util.ElapsedTime
 import wvlet.lang.compiler.WorkEnv
 import wvlet.uni.log.LogSupport
 

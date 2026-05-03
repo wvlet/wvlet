@@ -15,10 +15,10 @@ import wvlet.lang.api.v1.query.QueryStatus.RUNNING
 import wvlet.lang.compiler.query.QueryProgressMonitor
 import wvlet.lang.runner.QueryExecutor
 import wvlet.lang.runner.WvletScriptRunner
-import wvlet.airframe.ulid.ULID
 import wvlet.lang.runner.connector.DBConnector
 import wvlet.uni.log.LogSupport
 import wvlet.uni.util.ThreadUtil
+import wvlet.uni.util.ULID
 
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
