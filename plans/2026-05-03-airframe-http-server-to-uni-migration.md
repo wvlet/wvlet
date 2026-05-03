@@ -238,8 +238,13 @@ Targeted suites:
 
 ## Critical files
 
-- wvlet-server/src/main/scala/wvlet/lang/server/WvletServer.scala
-- wvlet-api/src/main/scala/wvlet/lang/api/v1/frontend/FrontendApi.scala
-- build.sbt
-- /Users/leo/work/airframe/airframe-http-netty/src/main/scala/wvlet/airframe/http/netty/NettyServer.scala
-- /Users/leo/work/airframe/airframe-http/.jvm/src/main/scala/wvlet/airframe/http/router/HttpRequestDispatcher.scala
+In this repository:
+
+- `wvlet-server/src/main/scala/wvlet/lang/server/WvletServer.scala`
+- `wvlet-api/src/main/scala/wvlet/lang/api/v1/frontend/FrontendApi.scala`
+- `build.sbt`
+
+In the `wvlet/airframe` repository (sources to port):
+
+- `airframe-http-netty/src/main/scala/wvlet/airframe/http/netty/NettyServer.scala`
+- `airframe-http/.jvm/src/main/scala/wvlet/airframe/http/router/HttpRequestDispatcher.scala`
