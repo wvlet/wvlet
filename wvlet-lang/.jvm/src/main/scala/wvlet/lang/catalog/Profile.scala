@@ -115,11 +115,11 @@ object Profile extends LogSupport:
   // against DuckDB. Force the user to convert before any query runs.
   private def resolveConfigPath(configDir: String): Option[String] =
     val candidates = Seq("profiles.json", "profiles.jsonc")
-    val found = candidates.iterator.map(name => s"${configDir}/${name}").find(p => File(p).exists())
+    val found = candidates.iterator.map(name => s"${configDir}/${name}").find(p => File(p).isFile)
     found.orElse {
       Seq("profiles.yml", "profiles.yaml")
         .map(name => s"${configDir}/${name}")
-        .find(p => File(p).exists())
+        .find(p => File(p).isFile)
         .foreach { path =>
           throw StatusCode
             .INVALID_ARGUMENT
