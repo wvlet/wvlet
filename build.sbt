@@ -391,10 +391,7 @@ lazy val testUtil = project
     ideSkipProject := false,
     name           := "wvlet-test-util",
     libraryDependencies ++=
-      Seq(
-        "org.wvlet.uni" %% "uni"      % UNI_VERSION,
-        "org.wvlet.uni" %% "uni-test" % UNI_VERSION
-      )
+      Seq("org.wvlet.uni" %% "uni" % UNI_VERSION, "org.wvlet.uni" %% "uni-test" % UNI_VERSION)
   )
 
 lazy val runner = project
@@ -408,7 +405,7 @@ lazy val runner = project
     libraryDependencies ++=
       Seq(
         "org.jline"                     % "jline"          % "4.0.14",
-        "com.github.ben-manes.caffeine" % "caffeine"       % "3.2.3",
+        "com.github.ben-manes.caffeine" % "caffeine"       % "3.2.4",
         "org.apache.arrow"              % "arrow-vector"   % "19.0.0",
         "org.duckdb"                    % "duckdb_jdbc"    % DUCKDB_JDBC_VERSION,
         "io.trino"                      % "trino-jdbc"     % TRINO_VERSION,
