@@ -23,12 +23,15 @@ import wvlet.airspec.AirSpec
   */
 class StaticContentTest extends AirSpec:
 
-  private val content = StaticContent.fromDirectory("./wvlet-http-server/src/test/resources/static")
+  // Resolve via classpath so the test runs from any working directory and
+  // doesn't fail on Windows checkouts where text fixtures may be CRLF-converted.
+  private val content = StaticContent.fromResource("static")
 
   test("serve a known file") {
     val resp = content("hello.txt")
     resp.status shouldBe HttpStatus.Ok_200
-    resp.contentString shouldBe "hello\n"
+    // Normalize line endings so a Windows checkout with autocrlf doesn't break the assertion.
+    resp.contentString.replace("\r\n", "\n") shouldBe "hello\n"
     resp.contentType shouldBe Some("text/plain")
   }
 
