@@ -13,15 +13,18 @@
  */
 package wvlet.lang.catalog
 
+import wvlet.uni.json.JSON
+import wvlet.uni.json.JSON.JSONArray
+import wvlet.uni.json.JSON.JSONObject
+import wvlet.uni.json.JSON.JSONString
+import wvlet.uni.json.JSON.JSONValue
 import wvlet.uni.weaver.Weaver
 import wvlet.lang.api.StatusCode
-import wvlet.lang.api.WvletLangException
 import wvlet.lang.compiler.DBType
 import wvlet.uni.log.LogSupport
 import wvlet.uni.io.IO
 
 import java.io.File
-import scala.jdk.CollectionConverters.*
 
 case class Profile(
     name: String,
@@ -40,6 +43,14 @@ case class Profile(
   )
 
 object Profile extends LogSupport:
+
+  // Matches both $VAR and ${VAR} forms anywhere in the file text.
+  // Groups: 1 = bare $VAR; 2 = ${VAR}.
+  private val envVarPattern = """\$\{([A-Za-z0-9_]+)\}|\$([A-Za-z0-9_]+)""".r
+
+  // Wraps the top-level shape of profiles.json: {"profiles": [Profile, ...]}.
+  // Private to keep the on-disk schema an implementation detail.
+  private case class ProfileConfig(profiles: Seq[Profile] = Seq.empty)
 
   def defaultGenericProfile = Profile(name = "local", `type` = "generic")
 
@@ -86,62 +97,85 @@ object Profile extends LogSupport:
   end getProfile
 
   def getProfile(profile: String): Option[Profile] =
-    val configPath = sys.props("user.home") + "/.wvlet/profiles.yml"
-    val configFile = new File(configPath)
-    if !configFile.exists() then
-      None
-    else
-      val yamlString = IO.readString(IO.path(configPath))
-      // replace environment variables ($xxxx) in the yaml to real env values
-      val yamlStringEvaluated = yamlString
-        .split("\n")
-        .map { line =>
-          // Support both $VAR and ${VAR} formats
-          val envPattern = """\$([A-Za-z0-9_]+)|\$\{([A-Za-z0-9_]+)\}""".r
-          envPattern.replaceAllIn(
-            line,
-            m =>
-              val envVar = Option(m.group(1)).getOrElse(m.group(2))
-              sys
-                .env
-                .get(envVar)
-                .getOrElse {
-                  throw StatusCode
-                    .INVALID_ARGUMENT
-                    .newException(
-                      s"Environment variable '${envVar}' is not set but required in profile configuration at ${configPath}"
-                    )
-                }
-          )
-        }
-        .mkString("\n")
-
-      val yamlMap =
-        new org.yaml.snakeyaml.Yaml()
-          .load(yamlStringEvaluated)
-          .asInstanceOf[java.util.Map[AnyRef, AnyRef]]
-          .asScala
-          .toMap
-      yamlMap.get("profiles") match
-        case Some(profs: java.util.List[?]) =>
-          val weaver = Weaver.of[Profile]
-          profs
-            .asScala
-            .collect { case p: java.util.HashMap[?, ?] =>
-              p.asScala
-                .map { case (k, v) =>
-                  k.toString -> v
-                }
-                .toMap[String, Any]
-            }
-            .map { (m: Map[String, Any]) =>
-              weaver.fromMap(m)
-            }
-            .find(_.name == profile)
-        case _ =>
-          None
-    end if
+    val configDir = sys.props("user.home") + "/.wvlet"
+    resolveConfigPath(configDir) match
+      case Some(configPath) =>
+        readProfileConfig(configPath).profiles.find(_.name == profile)
+      case None =>
+        None
 
   end getProfile
+
+  // Returns the path of the first profile config file found, or None when
+  // no config exists at all.
+  //
+  // If only a legacy YAML file is present we throw INVALID_ARGUMENT instead
+  // of returning None — otherwise upstream `getProfile(Some(name), ...)` would
+  // silently fall back to the local default and execute `--profile td-prod`
+  // against DuckDB. Force the user to convert before any query runs.
+  private def resolveConfigPath(configDir: String): Option[String] =
+    val candidates = Seq("profiles.json", "profiles.jsonc")
+    val found = candidates.iterator.map(name => s"${configDir}/${name}").find(p => File(p).isFile)
+    found.orElse {
+      Seq("profiles.yml", "profiles.yaml")
+        .map(name => s"${configDir}/${name}")
+        .find(p => File(p).isFile)
+        .foreach { path =>
+          throw StatusCode
+            .INVALID_ARGUMENT
+            .newException(
+              s"YAML profile config at ${path} is no longer supported. Convert it to ${configDir}/profiles.json " +
+                s"(JSONC: comments and trailing commas allowed). Quick conversion: `yq -o=json ${path} > ${configDir}/profiles.json`."
+            )
+        }
+      None
+    }
+
+  private def readProfileConfig(configPath: String): ProfileConfig =
+    val rawText  = IO.readString(IO.path(configPath))
+    val parsed   = JSON.parse(rawText)
+    val expanded = expandEnvVarsInStrings(parsed, configPath)
+    Weaver.of[ProfileConfig].fromJSONValue(expanded)
+
+  // Walk the parsed JSON and replace $VAR / ${VAR} occurrences inside string
+  // values with values from the process env. Operating on the parsed tree (not
+  // the raw text) means JSONC comments like `// uses ${TD_API_KEY}` and
+  // metadata keys like `"$schema"` don't trigger env lookup, and the env
+  // values bypass JSON escaping entirely (Weaver consumes JSONString directly).
+  private def expandEnvVarsInStrings(value: JSONValue, configPath: String): JSONValue =
+    value match
+      case JSONString(s) =>
+        JSONString(interpolate(s, configPath))
+      case JSONObject(pairs) =>
+        JSONObject(
+          pairs.map { case (k, v) =>
+            k -> expandEnvVarsInStrings(v, configPath)
+          }
+        )
+      case JSONArray(items) =>
+        JSONArray(items.map(expandEnvVarsInStrings(_, configPath)))
+      case other =>
+        other
+
+  // Substitute $VAR / ${VAR} occurrences in a single string literal.
+  // Throws WvletLangException(INVALID_ARGUMENT) for any unresolved variable so
+  // typos in config never silently produce a profile pointing at the wrong host.
+  private def interpolate(text: String, configPath: String): String = envVarPattern.replaceAllIn(
+    text,
+    m =>
+      val envVar = Option(m.group(1)).getOrElse(m.group(2))
+      val value  = sys
+        .env
+        .getOrElse(
+          envVar,
+          throw StatusCode
+            .INVALID_ARGUMENT
+            .newException(
+              s"Environment variable '${envVar}' is not set but required in profile configuration at ${configPath}"
+            )
+        )
+      // Escape regex backreferences ($, \) so values like passwords with $ chars don't blow up.
+      java.util.regex.Matcher.quoteReplacement(value)
+  )
 
 end Profile

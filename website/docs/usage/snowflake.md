@@ -4,20 +4,26 @@ Wvlet supports connecting to Snowflake databases via JDBC.
 
 ## Connecting to Snowflake
 
-To connect to Snowflake, create a profile in `~/.wvlet/profiles.yml`:
+To connect to Snowflake, create a profile in `~/.wvlet/profiles.json`. The file is parsed as JSONC, so `// line comments`, `/* block comments */`, and trailing commas are allowed.
 
-```yaml title='~/.wvlet/profiles.yml'
-profiles:
-  - name: snowflake
-    type: snowflake
-    user: (your Snowflake user name)
-    password: (your password)
-    host: (your account identifier, e.g., myorg-myaccount)
-    catalog: (your database name)
-    schema: (your schema name, e.g., PUBLIC)
-    properties:
-      warehouse: (your warehouse name)
-      role: (your role name, optional)
+```jsonc title='~/.wvlet/profiles.json'
+{
+  "profiles": [
+    {
+      "name": "snowflake",
+      "type": "snowflake",
+      "user": "(your Snowflake user name)",
+      "password": "(your password)",
+      "host": "(your account identifier, e.g., myorg-myaccount)",
+      "catalog": "(your database name)",
+      "schema": "(your schema name, e.g., PUBLIC)",
+      "properties": {
+        "warehouse": "(your warehouse name)",
+        "role": "(your role name, optional)"
+      }
+    }
+  ]
+}
 ```
 
 Then connect using the profile:

@@ -32,7 +32,7 @@ trait TDTrinoSpecRunner(specPath: String) extends WvletDITest:
   private val profile: Profile = Profile
     .getProfile("td-dev")
     .getOrElse {
-      skip("Skip as td-dev profile is not found in ~/.wvlet/profiles.yml").asInstanceOf[Profile]
+      skip("Skip as td-dev profile is not found in ~/.wvlet/profiles.json").asInstanceOf[Profile]
     }
 
   private val defaultCatalog = profile.catalog.getOrElse("td")
