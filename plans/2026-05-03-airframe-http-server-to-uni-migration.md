@@ -330,3 +330,65 @@ In the `wvlet/airframe` repository (sources to port):
 
 - `airframe-http-netty/src/main/scala/wvlet/airframe/http/netty/NettyServer.scala`
 - `airframe-http/.jvm/src/main/scala/wvlet/airframe/http/router/HttpRequestDispatcher.scala`
+
+## 7. Major course correction (2026-05-03)
+
+**Critical revision: uni already ships the full HTTP server runtime.**
+The Section 1 / Phase 1b–1d plan to port ~3.3k LOC of airframe-http
+into `wvlet.lang.http.server.*` is **abandoned**. Inspecting Maven
+Central revealed:
+
+- `uni-netty_3` (2026.1.8) publishes a complete Netty server runtime —
+  `NettyServer`, `NettyServerConfig`, `NettyHttpServer`,
+  `RouterHandler`, `RxHttpHandler`, `RxHttpFilter`, `RPCHandler`,
+  `NettyRequestHandler`.
+- `uni_3` already ships the full router stack
+  (`Router, Route, RouteMatcher, RxRouter, RxRouterProvider,
+  ControllerProvider, HttpRequestMapper, ResponseConverter,
+  RouterMacros`) and the full RPC stack (`RPCStatus, RPCException,
+  RPCRoute, RPCRouter, RPCClient, MethodCodec`).
+
+Two simplifying findings the user surfaced:
+
+1. **No `@RPC` annotation needed.** uni's `RPCRouter.of[T]` scans a
+   service trait via Surface; no annotation is required. So the
+   migration drops `wvlet.airframe.http.RPC` from `FrontendApi` /
+   `FileApi` rather than vendor-or-substitute.
+2. **airframe's `Netty.server.withRouter(...).design.bindXxx` chain
+   is just sugar for a regular `Design`.** uni-netty exposes
+   `NettyServerConfig` directly; equivalent wvlet code constructs the
+   config and binds it via uni's `Design` plus lifecycle hooks.
+3. **Codegen.** uni publishes `sbt-uni_sbt2_3` (sbt 2.x) with HTTP
+   codegen. wvlet currently uses sbt 1.11.1, so adopting the uni
+   codegen plugin is gated on a separate sbt 1→2 migration —
+   investigate before Phase 4.
+
+### Revised phase plan
+
+Each phase is one PR. The remaining work shrinks dramatically.
+
+- **Phase 1b (this PR).** Re-vendor `StaticContent` against uni HTTP
+  types (`wvlet.uni.http.{Response, HttpStatus, HttpHeader}`,
+  `wvlet.uni.control.{Control, IO}`, `wvlet.uni.log.LogSupport`).
+  Replace airframe's `wvlet.log.io.Resource.find` with classloader
+  `getResource`. Drop `airframe-http` from `wvlet-http-server` deps;
+  add `uni-netty`. Update `StaticContentTest` to `UniTest` +
+  `wvlet.uni.http.HttpStatus`. Replace literal NUL byte with
+  `path.indexOf(0) >= 0` (avoids any unicode-escape preprocessing
+  that would re-introduce a NUL byte at compile time, while still
+  catching path-null injection).
+- **Phase 2.** Migrate `wvlet-server/WvletServer.scala` and
+  `StaticContentApi.scala` to uni `NettyServer` + uni router/Design.
+  Translate the `Netty.server.withRouter(rxRouter).design...` chain
+  into `Design.newDesign.bindInstance[NettyServerConfig](...)` plus
+  uni-netty lifecycle wiring. Migrate `wvlet-ui-main/WvletUIMain.Http`
+  import. Drop `airframe-http-netty` from `wvlet-server` deps.
+- **Phase 3.** Migrate `wvlet-api` (`FrontendApi`, `FileApi`) to uni
+  router types. Drop `@RPC` annotations entirely; let
+  `RPCRouter.of[T]` discover routes from the trait surface. Verify
+  the JS/Native cross-builds still link.
+- **Phase 4.** Switch RPC codegen from `AirframeHttpPlugin` to uni's
+  HTTP codegen. Predicated on `sbt-uni` having a sbt 1.x build, or on
+  wvlet migrating to sbt 2.x — investigate first.
+- **Phase 5.** Drop `airframe-http` and any remaining airframe HTTP
+  transitive deps from `build.sbt` once Phase 4 lands.

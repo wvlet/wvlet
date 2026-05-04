@@ -11,18 +11,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-// Ported verbatim from airframe-http/.jvm/.../wvlet/airframe/http/StaticContent.scala
-// (#1662, phase 1a). Imports still consume airframe-http types; phase 3 swaps
-// them to wvlet.uni.http.* once the rest of the server runtime is in place.
 package wvlet.lang.http.server.static
 
 import java.io.{File, IOException}
 import java.net.URL
-import wvlet.airframe.control.Control
-import wvlet.airframe.http.HttpMessage.Response
-import wvlet.airframe.http.{Http, HttpStatus}
-import wvlet.log.LogSupport
-import wvlet.log.io.{IOUtil, Resource}
+import wvlet.uni.control.{Control, IO}
+import wvlet.uni.http.{HttpHeader, HttpStatus, Response}
+import wvlet.uni.log.LogSupport
 
 import java.nio.file.Paths
 import scala.annotation.tailrec
@@ -69,9 +64,17 @@ object StaticContent extends LogSupport:
         None
 
   case class ClasspathResource(basePath: String) extends ResourceType:
-    override def find(relativePath: String): Option[URL] = Resource.find(
-      s"${basePath}/${relativePath}"
-    )
+    override def find(relativePath: String): Option[URL] =
+      // ClassLoader.getResource rejects leading slashes, so normalize the
+      // joined path to match airframe Resource.find semantics where callers
+      // could pass either "/static" or "static" or even an empty basePath.
+      val resourcePath = s"${basePath}/${relativePath}".dropWhile(_ == '/')
+      val cl           = Option(Thread.currentThread().getContextClassLoader).getOrElse(
+        getClass.getClassLoader
+      )
+      Option(cl.getResource(resourcePath)).orElse(
+        Option(getClass.getClassLoader.getResource(resourcePath))
+      )
 
   private def isSafeRelativePath(path: String): Boolean =
     @tailrec
@@ -86,7 +89,7 @@ object StaticContent extends LogSupport:
         loop(pos + 1, path.tail)
 
     // Check for null characters
-    if path.contains("\u0000") then
+    if path.indexOf(0) >= 0 then
       false
     else if path.startsWith("/") || path.isEmpty || path.contains("//") then
       false
@@ -187,21 +190,22 @@ case class StaticContent(resourcePaths: List[StaticContent.ResourceType] = List.
 
   def apply(relativePath: String): Response =
     if !isSafeRelativePath(relativePath) then
-      Http.response(HttpStatus.Forbidden_403)
+      Response(HttpStatus.Forbidden_403)
     else
       find(relativePath)
         .map { uri =>
           val mediaType = findContentType(relativePath)
           // Read the resource file as binary
           Control.withResource(uri.openStream()) { in =>
-            IOUtil.readFully(in) { content =>
-              // TODO cache control (e.g., max-age, last-updated)
-              Http.response(HttpStatus.Ok_200).withContent(content).withContentType(mediaType)
-            }
+            val content = IO.readFully(in)
+            // TODO cache control (e.g., max-age, last-updated)
+            Response(HttpStatus.Ok_200)
+              .withBytesContent(content)
+              .setHeader(HttpHeader.ContentType, mediaType)
           }
         }
         .getOrElse {
-          Http.response(HttpStatus.NotFound_404)
+          Response(HttpStatus.NotFound_404)
         }
 
 end StaticContent

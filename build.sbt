@@ -446,9 +446,10 @@ lazy val sdkJs = project
   )
   .dependsOn(lang.js)
 
-// JVM-only host for the airframe-http server runtime that wvlet is vendoring in.
-// Files here are ported verbatim from airframe and migrated to uni HTTP types
-// across phases 1–3 of #1662; consumers (wvlet-server) switch over in phase 2.
+// JVM-only host for HTTP server bits that wvlet maintains. Hosts the few
+// pieces uni doesn't ship (e.g. StaticContent) and re-exports uni-netty as a
+// transitive runtime for downstream modules. Part of the airframe→uni
+// migration in #1662 (wvlet-server consumers move over in subsequent PRs).
 lazy val httpServer = project
   .in(file("wvlet-http-server"))
   .settings(
@@ -456,8 +457,8 @@ lazy val httpServer = project
     name := "wvlet-http-server",
     libraryDependencies ++=
       Seq(
-        "org.wvlet.airframe" %% "airframe-http" % AIRFRAME_VERSION,
-        "org.wvlet.uni"      %% "uni"           % UNI_VERSION
+        "org.wvlet.uni" %% "uni"       % UNI_VERSION,
+        "org.wvlet.uni" %% "uni-netty" % UNI_VERSION
       )
   )
 
