@@ -65,16 +65,16 @@ object StaticContent extends LogSupport:
 
   case class ClasspathResource(basePath: String) extends ResourceType:
     override def find(relativePath: String): Option[URL] =
-      // ClassLoader.getResource rejects leading slashes, so normalize the
-      // joined path to match airframe Resource.find semantics where callers
-      // could pass either "/static" or "static" or even an empty basePath.
-      val resourcePath = s"${basePath}/${relativePath}".dropWhile(_ == '/')
-      val cl           = Option(Thread.currentThread().getContextClassLoader).getOrElse(
-        getClass.getClassLoader
-      )
-      Option(cl.getResource(resourcePath)).orElse(
-        Option(getClass.getClassLoader.getResource(resourcePath))
-      )
+      // Match airframe Resource.find: callers may pass leading slashes ("/static"),
+      // trailing slashes ("static/"), or an empty basePath. ClassLoader.getResource
+      // rejects leading slashes and many loaders mishandle "//", so collapse the
+      // joined path into a clean "a/b/c" before lookup.
+      val resourcePath = s"${basePath}/${relativePath}".split("/").filter(_.nonEmpty).mkString("/")
+      val tccl         = Option(Thread.currentThread().getContextClassLoader)
+      val ownLoader    = Option(getClass.getClassLoader)
+      tccl
+        .flatMap(cl => Option(cl.getResource(resourcePath)))
+        .orElse(ownLoader.flatMap(cl => Option(cl.getResource(resourcePath))))
 
   private def isSafeRelativePath(path: String): Boolean =
     @tailrec

@@ -46,6 +46,14 @@ class StaticContentTest extends UniTest:
     content("foo//bar").status shouldBe HttpStatus.Forbidden_403
   }
 
+  // Pin the NUL-byte rejection. The implementation uses indexOf(0) so the
+  // source itself stays ASCII; constructing the NUL char at runtime here
+  // keeps the test file ASCII too.
+  test("403 on path with embedded NUL byte") {
+    val nul = 0.toChar.toString
+    content(s"hello${nul}.txt").status shouldBe HttpStatus.Forbidden_403
+  }
+
   // Match airframe Resource.find semantics: leading slashes on the basePath
   // and empty basePath should still resolve files relative to the classpath
   // root. ClassLoader.getResource rejects leading slashes, so the helper has
