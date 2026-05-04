@@ -25,7 +25,7 @@
     "jsdom": "29.1.1",
     "postcss": "^8.5.13",
     "tailwindcss": "^4.2.2",
-    "typescript": "^5.9.3",
+    "typescript": "^6.0.3",
     "vite": "^8.0.1",
     "vite-plugin-monaco-editor": "^1.1.0"
   },

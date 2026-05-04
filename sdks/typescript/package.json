@@ -39,7 +39,7 @@
   "homepage": "https://wvlet.org/",
   "devDependencies": {
     "@types/node": "^25.6.0",
-    "typescript": "^5.5.0",
+    "typescript": "^6.0.3",
     "vitest": "^4.0.0"
   },
   "engines": {
