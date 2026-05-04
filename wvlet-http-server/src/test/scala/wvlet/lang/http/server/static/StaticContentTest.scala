@@ -13,15 +13,14 @@
  */
 package wvlet.lang.http.server.static
 
-import wvlet.airframe.http.HttpStatus
-import wvlet.airspec.AirSpec
+import wvlet.uni.http.HttpStatus
+import wvlet.uni.test.UniTest
 
 /**
-  * Unit-level smoke test for the verbatim port from airframe (#1662 phase 1a). Exercises the helper
-  * directly — Netty-backed integration tests live in the airframe source and are deferred until
-  * later phases of #1662.
+  * Smoke test for the static-content helper. Exercises the StaticContent helper directly via
+  * classpath lookup; Netty-backed integration is covered by uni-netty.
   */
-class StaticContentTest extends AirSpec:
+class StaticContentTest extends UniTest:
 
   // Resolve via classpath so the test runs from any working directory and
   // doesn't fail on Windows checkouts where text fixtures may be CRLF-converted.
@@ -31,8 +30,9 @@ class StaticContentTest extends AirSpec:
     val resp = content("hello.txt")
     resp.status shouldBe HttpStatus.Ok_200
     // Normalize line endings so a Windows checkout with autocrlf doesn't break the assertion.
-    resp.contentString.replace("\r\n", "\n") shouldBe "hello\n"
-    resp.contentType shouldBe Some("text/plain")
+    val body = resp.contentAsString.getOrElse("").replace("\r\n", "\n")
+    body shouldBe "hello\n"
+    resp.header("Content-Type") shouldBe Some("text/plain")
   }
 
   test("404 on missing file") {
@@ -45,3 +45,25 @@ class StaticContentTest extends AirSpec:
     content("/etc/passwd").status shouldBe HttpStatus.Forbidden_403
     content("foo//bar").status shouldBe HttpStatus.Forbidden_403
   }
+
+  // Pin the NUL-byte rejection. The implementation uses indexOf(0) so the
+  // source itself stays ASCII; constructing the NUL char at runtime here
+  // keeps the test file ASCII too.
+  test("403 on path with embedded NUL byte") {
+    val nul = 0.toChar.toString
+    content(s"hello${nul}.txt").status shouldBe HttpStatus.Forbidden_403
+  }
+
+  // Match airframe Resource.find semantics: leading slashes on the basePath
+  // and empty basePath should still resolve files relative to the classpath
+  // root. ClassLoader.getResource rejects leading slashes, so the helper has
+  // to normalize.
+  test("normalize basePath with leading slash") {
+    StaticContent.fromResource("/static")("hello.txt").status shouldBe HttpStatus.Ok_200
+  }
+
+  test("empty basePath resolves classpath-rooted relative path") {
+    StaticContent.fromResource("")("static/hello.txt").status shouldBe HttpStatus.Ok_200
+  }
+
+end StaticContentTest
