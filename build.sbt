@@ -396,7 +396,7 @@ lazy val runner = project
     Test / javaOptions ++= Seq("--enable-native-access=ALL-UNNAMED"),
     libraryDependencies ++=
       Seq(
-        "org.jline"                     % "jline"          % "4.0.14",
+        "org.jline"                     % "jline"          % "4.0.15",
         "com.github.ben-manes.caffeine" % "caffeine"       % "3.2.4",
         "org.apache.arrow"              % "arrow-vector"   % "19.0.0",
         "org.duckdb"                    % "duckdb_jdbc"    % DUCKDB_JDBC_VERSION,
@@ -456,10 +456,7 @@ lazy val httpServer = project
     buildSettings,
     name := "wvlet-http-server",
     libraryDependencies ++=
-      Seq(
-        "org.wvlet.uni" %% "uni"       % UNI_VERSION,
-        "org.wvlet.uni" %% "uni-netty" % UNI_VERSION
-      )
+      Seq("org.wvlet.uni" %% "uni" % UNI_VERSION, "org.wvlet.uni" %% "uni-netty" % UNI_VERSION)
   )
 
 lazy val server = project
