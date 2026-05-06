@@ -25,10 +25,10 @@ import wvlet.uni.http.{
 }
 import wvlet.uni.log.LogSupport
 import wvlet.uni.rx.Rx
-import wvlet.uni.surface.Surface
 import wvlet.log.io.IOUtil
 
 import scala.util.Try
+import scala.util.control.NonFatal
 
 case class WvletServerConfig(
     @option(prefix = "-p,--port", description = "Web UI server port. default:9090")
@@ -92,7 +92,7 @@ object WvletServer extends LogSupport:
           case value =>
             Rx.single(successResponse(value, route))
       catch
-        case e: Exception =>
+        case NonFatal(e) =>
           warn(s"RPC error on ${request.path}: ${e.getMessage}", e)
           Rx.single(errorResponse(e))
 
@@ -132,13 +132,13 @@ object WvletServer extends LogSupport:
     .build[NettyHttpServer] { server =>
       info(s"- log file path: ${config.workEnv.logFile}")
       info(s"- error file path: ${config.workEnv.errorFile}")
-      info(s"Wvlet UI server started at http://localhost:${config.port}")
+      info(s"Wvlet UI server started at http://localhost:${server.localPort}")
       info(s"Press ctrl+c to stop the server")
 
       if !config.quitImmediately then
         warn(s"--quit-immediately is set. The server will quit immediately after starting.")
         if OS.isMacOS && openBrowser then
-          IO.run(s"open http://localhost:${config.port}")
+          IO.run(s"open http://localhost:${server.localPort}")
         server.awaitTermination()
     }
 
@@ -159,16 +159,19 @@ object WvletServer extends LogSupport:
       unusedPortFrom(start, counter + 1)
 
   def design(config: WvletServerConfig): Design =
-    val port = unusedPortFrom(config.port)
+    // Bind the actual port that was acquired so downstream consumers of
+    // WvletServerConfig observe the same port the Netty server is listening on.
+    val port         = unusedPortFrom(config.port)
+    val resolvedConf = config.copy(port = port)
     Design
       .newSilentDesign
-      .bindInstance[WvletServerConfig](config)
-      .bindInstance[WorkEnv](config.workEnv)
+      .bindInstance[WvletServerConfig](resolvedConf)
+      .bindInstance[WorkEnv](resolvedConf.workEnv)
       .bindInstance[Profile](
         Profile.getProfile(
-          config.profile,
-          config.catalog,
-          config.schema,
+          resolvedConf.profile,
+          resolvedConf.catalog,
+          resolvedConf.schema,
           Profile.defaultDuckDBProfile
         )
       )
@@ -185,12 +188,10 @@ object WvletServer extends LogSupport:
       .bindImpl[FileApi, FileApiImpl]
       .bindSingleton[StaticContentApi]
       .bindProvider[Session, NettyHttpServer] { (session: Session) =>
-        val frontendApi = session.getInstanceOf(Surface.of[FrontendApi]).asInstanceOf[FrontendApi]
-        val fileApi     = session.getInstanceOf(Surface.of[FileApi]).asInstanceOf[FileApi]
-        val staticApi   = session
-          .getInstanceOf(Surface.of[StaticContentApi])
-          .asInstanceOf[StaticContentApi]
-        val rpc = MultiRpcHandler(
+        val frontendApi = session.build[FrontendApi]
+        val fileApi     = session.build[FileApi]
+        val staticApi   = session.build[StaticContentApi]
+        val rpc         = MultiRpcHandler(
           Seq(RPCRouter.of[FrontendApi](frontendApi), RPCRouter.of[FileApi](fileApi))
         )
         val handler = withStaticFallback(rpc, staticApi)

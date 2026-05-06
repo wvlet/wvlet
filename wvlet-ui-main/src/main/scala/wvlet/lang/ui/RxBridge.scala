@@ -31,15 +31,13 @@ import wvlet.uni.rx.Rx as UniRx
 object RxBridge:
   def toAirframe[A](u: UniRx[A])(using ec: ExecutionContext): AirframeRx[A] =
     val p = Promise[A]()
-    u.recover { case e =>
-        if !p.isCompleted then
-          p.failure(e)
-        // Re-throw: uni's `recover` substitutes a value, but we only need the side effect here.
-        throw e
-      }
-      .tap { a =>
+    u.tap { a =>
         if !p.isCompleted then
           p.success(a)
+      }
+      .tapOnFailure { e =>
+        if !p.isCompleted then
+          p.failure(e)
       }
       .run()
     AirframeRx.future(p.future)
