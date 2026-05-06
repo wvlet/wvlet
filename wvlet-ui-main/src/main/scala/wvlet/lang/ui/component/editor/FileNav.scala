@@ -9,9 +9,11 @@ import wvlet.airframe.rx.html.svgAttrs.*
 import wvlet.airframe.rx.Rx
 import wvlet.airframe.rx.RxVar
 import wvlet.uni.util.ULID
+import org.scalajs.macrotaskexecutor.MacrotaskExecutor.Implicits.*
 import wvlet.lang.api.v1.frontend.FileApi.FileRequest
 import wvlet.lang.api.v1.frontend.FrontendRPC.RPCAsyncClient
 import wvlet.lang.api.v1.io.FileEntry
+import wvlet.lang.ui.RxBridge
 import wvlet.lang.ui.component.GlobalState.selectedPath
 import wvlet.lang.ui.component.GlobalState
 import wvlet.lang.ui.component.Icon
@@ -88,9 +90,8 @@ class FileNav(rpcClient: RPCAsyncClient) extends RxElement:
     nav(
       cls -> "flex px-2 h-4 text-sm text-gray-400",
       ol(role -> "list", cls -> "flex space-x-4 rounded-md px-1 shadow"),
-      rpcClient
-        .FileApi
-        .getPath(FileRequest(path))
+      RxBridge
+        .toAirframe(rpcClient.FileApi.getPath(FileRequest(path)))
         .map { pathEntries =>
           var parentEntry = FileEntry("", "", true, true, 0, 0)
           val elems       = List.newBuilder[PathElem]
