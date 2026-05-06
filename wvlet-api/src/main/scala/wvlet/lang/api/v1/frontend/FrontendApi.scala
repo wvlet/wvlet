@@ -13,9 +13,8 @@
  */
 package wvlet.lang.api.v1.frontend
 
-import wvlet.airframe.http.RPC
-import wvlet.airframe.http.RxRouter
-import wvlet.airframe.http.RxRouterProvider
+import wvlet.uni.http.router.RxRouter
+import wvlet.uni.http.router.RxRouterProvider
 import wvlet.uni.util.ElapsedTime
 import wvlet.uni.util.ULID
 import wvlet.lang.BuildInfo
@@ -24,7 +23,6 @@ import wvlet.lang.api.v1.query.QueryInfo
 import wvlet.lang.api.v1.query.QueryRequest
 import wvlet.lang.api.v1.query.QuerySelection
 
-@RPC
 trait FrontendApi:
   import FrontendApi.*
 

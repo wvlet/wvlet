@@ -1,8 +1,8 @@
 package wvlet.lang.server
 
-import wvlet.airspec.AirSpec
 import wvlet.lang.api.v1.frontend.FrontendRPC
 import wvlet.lang.api.v1.query.QueryRequest
+import wvlet.lang.test.WvletDITest
 import wvlet.uni.util.ULID
 
 /**
@@ -11,18 +11,20 @@ import wvlet.uni.util.ULID
   * airframe-http (phases 0–4 of #1662).
   *
   * Lives in a dedicated spec because `QueryService` is `AutoCloseable`; sharing a spec with
-  * `WvletServerTest` would shut its thread pool down between tests under AirSpec's per-test session
-  * scoping.
+  * `WvletServerTest` would shut its thread pool down between tests under per-test session scoping.
   */
-class UlidRpcRoundTripTest extends AirSpec:
+class UlidRpcRoundTripTest extends WvletDITest:
 
   initDesign:
     _.add(WvletServer.testDesign)
 
-  test("submitQuery returns a parseable ULID over RPC") { (client: FrontendRPC.RPCSyncClient) =>
+  test("submitQuery returns a parseable ULID over RPC") {
+    val client   = dep[FrontendRPC.RPCSyncClient]
     val request  = QueryRequest(query = "select 1")
     val response = client.FrontendApi.submitQuery(request)
 
     response.requestId shouldBe request.requestId
     ULID.isValid(response.queryId.toString) shouldBe true
   }
+
+end UlidRpcRoundTripTest

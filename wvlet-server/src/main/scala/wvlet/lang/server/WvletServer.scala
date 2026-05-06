@@ -1,28 +1,33 @@
 package wvlet.lang.server
 
 import org.jline.nativ.OSInfo
-import wvlet.airframe.Design
-import wvlet.airframe.http.netty.Netty
-import wvlet.airframe.http.netty.NettyServer
-import wvlet.airframe.http.Http
-import wvlet.airframe.http.RxRouter
-import wvlet.lang.api.v1.frontend.FrontendRPC
+import wvlet.lang.api.v1.frontend.{FileApi, FrontendApi, FrontendRPC}
 import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.OS
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.runner.connector.duckdb.DuckDBConnector
-import wvlet.lang.runner.connector.DBConnector
-import wvlet.lang.runner.connector.DBConnectorProvider
-import wvlet.lang.runner.QueryExecutor
-import wvlet.lang.runner.WvletScriptRunnerConfig
+import wvlet.lang.runner.connector.{DBConnector, DBConnectorProvider}
+import wvlet.lang.runner.{QueryExecutor, WvletScriptRunnerConfig}
 import wvlet.uni.cli.launcher.option
-import wvlet.uni.control.Control
 import wvlet.uni.control.Control.withResource
 import wvlet.uni.io.IO
+import wvlet.uni.design.{Design, Session}
+import wvlet.uni.http.netty.{NettyHttpServer, NettyServerConfig, RxHttpHandler}
+import wvlet.uni.http.rpc.{RPCRoute, RPCRouter, RPCStatus}
+import wvlet.uni.http.{
+  Http,
+  HttpHeader,
+  HttpMethod,
+  HttpStatus,
+  JVMHttpChannelFactory,
+  Request,
+  Response
+}
 import wvlet.uni.log.LogSupport
+import wvlet.uni.rx.Rx
+import wvlet.uni.surface.Surface
 import wvlet.log.io.IOUtil
 
-import scala.annotation.tailrec
 import scala.util.Try
 
 case class WvletServerConfig(
@@ -47,15 +52,84 @@ case class WvletServerConfig(
   lazy val workEnv: WorkEnv = WorkEnv(path = workDir)
 
 object WvletServer extends LogSupport:
-  def router: RxRouter = RxRouter.of(
-    RxRouter.of[FrontendApiImpl],
-    RxRouter.of[FileApiImpl],
-    RxRouter.of[StaticContentApi]
-  )
+
+  /**
+    * Multi-service RPC dispatcher. uni-netty's `RPCHandler` only takes a single `RPCRouter`, so
+    * this wraps multiple routers into one `RxHttpHandler` by building a path-keyed lookup. Mirrors
+    * uni-netty `RPCHandler`'s wire format exactly: POST request, JSON `{"request": {...}}` body,
+    * Weaver-encoded JSON response with `RPCStatus` header.
+    */
+  private class MultiRpcHandler(routers: Seq[RPCRouter]) extends RxHttpHandler with LogSupport:
+    private val routeMap: Map[String, (RPCRoute, Any)] =
+      routers.flatMap(r => r.routes.map(route => route.path -> (route, r.instance))).toMap
+
+    override def handle(request: Request): Rx[Response] =
+      if request.method != HttpMethod.POST then
+        Rx.single(
+          RPCStatus
+            .INVALID_REQUEST_U1
+            .newException(s"RPC requires POST method, got: ${request.method}")
+            .toResponse
+        )
+      else
+        routeMap.get(request.path) match
+          case Some((route, instance)) =>
+            handleRPC(request, route, instance)
+          case None =>
+            Rx.single(Response.notFound)
+
+    private def handleRPC(request: Request, route: RPCRoute, instance: Any): Rx[Response] =
+      try
+        val body   = request.content.asString.getOrElse("")
+        val args   = route.codec.decodeParams(body)
+        val result = route.codec.method.call(instance, args*)
+        result match
+          case rx: Rx[?] =>
+            rx.map(v => successResponse(v, route))
+              .recover { case e =>
+                errorResponse(e)
+              }
+          case value =>
+            Rx.single(successResponse(value, route))
+      catch
+        case e: Exception =>
+          warn(s"RPC error on ${request.path}: ${e.getMessage}", e)
+          Rx.single(errorResponse(e))
+
+    private def successResponse(value: Any, route: RPCRoute): Response = Response
+      .ok
+      .addHeader(HttpHeader.XRPCStatus, RPCStatus.SUCCESS_S0.code.toString)
+      .withJsonContent(route.codec.encodeResult(value))
+
+    private def errorResponse(e: Throwable): Response =
+      e match
+        case rpc: wvlet.uni.http.rpc.RPCException =>
+          rpc.toResponse
+        case _ =>
+          RPCStatus.INTERNAL_ERROR_I0.newException(e.getMessage, e).toResponse
+
+  end MultiRpcHandler
+
+  // Wrap an RPC handler with a static-content fallback. uni's path matcher doesn't support
+  // airframe's "/*splat" pattern, so we cannot register a catch-all controller endpoint.
+  // Anything the RPC handler answers with 404 is delegated to StaticContentApi.
+  private def withStaticFallback(
+      rpc: RxHttpHandler,
+      staticContentApi: StaticContentApi
+  ): RxHttpHandler =
+    (request) =>
+      rpc
+        .handle(request)
+        .flatMap { resp =>
+          if resp.status == HttpStatus.NotFound_404 then
+            Rx.single(staticContentApi.serve(request.path))
+          else
+            Rx.single(resp)
+        }
 
   def startServer(config: WvletServerConfig, openBrowser: Boolean = false): Unit = design(config)
     .withProductionMode
-    .build[NettyServer] { server =>
+    .build[NettyHttpServer] { server =>
       info(s"- log file path: ${config.workEnv.logFile}")
       info(s"- error file path: ${config.workEnv.errorFile}")
       info(s"Wvlet UI server started at http://localhost:${config.port}")
@@ -64,7 +138,6 @@ object WvletServer extends LogSupport:
       if !config.quitImmediately then
         warn(s"--quit-immediately is set. The server will quit immediately after starting.")
         if OS.isMacOS && openBrowser then
-          // Open the web browser
           IO.run(s"open http://localhost:${config.port}")
         server.awaitTermination()
     }
@@ -87,12 +160,8 @@ object WvletServer extends LogSupport:
 
   def design(config: WvletServerConfig): Design =
     val port = unusedPortFrom(config.port)
-    Netty
-      .server
-      .withName("wvlet-ui")
-      .withPort(config.port)
-      .withRouter(router)
-      .design
+    Design
+      .newSilentDesign
       .bindInstance[WvletServerConfig](config)
       .bindInstance[WorkEnv](config.workEnv)
       .bindInstance[Profile](
@@ -112,10 +181,39 @@ object WvletServer extends LogSupport:
         )
       }
       .bindSingleton[QueryExecutor]
+      .bindImpl[FrontendApi, FrontendApiImpl]
+      .bindImpl[FileApi, FileApiImpl]
+      .bindSingleton[StaticContentApi]
+      .bindProvider[Session, NettyHttpServer] { (session: Session) =>
+        val frontendApi = session.getInstanceOf(Surface.of[FrontendApi]).asInstanceOf[FrontendApi]
+        val fileApi     = session.getInstanceOf(Surface.of[FileApi]).asInstanceOf[FileApi]
+        val staticApi   = session
+          .getInstanceOf(Surface.of[StaticContentApi])
+          .asInstanceOf[StaticContentApi]
+        val rpc = MultiRpcHandler(
+          Seq(RPCRouter.of[FrontendApi](frontendApi), RPCRouter.of[FileApi](fileApi))
+        )
+        val handler = withStaticFallback(rpc, staticApi)
+        NettyHttpServer(
+          NettyServerConfig().withName("wvlet-ui").withPort(port).withRxHandler(handler)
+        )
+      }
+      .onStart(_.start())
+      .onShutdown(_.stop())
+
+  end design
 
   def testDesign: Design = design(WvletServerConfig(port = IOUtil.unusedPort)).bindProvider {
-    (server: NettyServer) =>
-      FrontendRPC.newRPCSyncClient(Http.client.newSyncClient(server.localAddress))
+    (server: NettyHttpServer) =>
+      // Force the JVM HTTP channel factory before constructing the client.
+      // HttpCompat (which auto-registers the factory) is package-private, so we
+      // can't trigger its static init from outside wvlet.uni.http. Calling
+      // setDefaultChannelFactory directly is idempotent and matches what
+      // HttpCompat would do.
+      Http.setDefaultChannelFactory(JVMHttpChannelFactory)
+      FrontendRPC.newRPCSyncClient(
+        Http.client.withBaseUri(s"http://localhost:${server.localPort}").newSyncClient
+      )
   }
 
 end WvletServer

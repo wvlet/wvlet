@@ -15,9 +15,9 @@ package wvlet.lang.ui
 
 import org.scalajs.macrotaskexecutor.MacrotaskExecutor.Implicits.*
 import wvlet.airframe.Design
-import wvlet.airframe.http.Http
 import wvlet.airframe.rx.Rx
 import wvlet.airframe.rx.RxVar
+import wvlet.uni.http.Http
 import wvlet.lang.api.v1.frontend.FrontendRPC
 import wvlet.lang.api.v1.query.QueryError
 import wvlet.lang.ui.component.MainFrame
@@ -28,7 +28,9 @@ import wvlet.uni.log.LogSupport
 object WvletUIMain extends LogSupport:
   def main(args: Array[String]): Unit = render
 
-  private val rpcClient = FrontendRPC.newRPCAsyncClient(Http.client.newJSClient)
+  // The JS HTTP channel factory is auto-installed by wvlet.uni.http.HttpCompat
+  // when the uni module is loaded.
+  private val rpcClient = FrontendRPC.newRPCAsyncClient(Http.client.newAsyncClient)
 
   protected[ui] def design: Design = Design
     .newDesign
@@ -38,7 +40,7 @@ object WvletUIMain extends LogSupport:
 
   def render: Unit = rpcClient
     .FrontendApi
-    .status()
+    .status
     .map { status =>
       info(s"Connected to the server: ${status}")
       val frame = MainFrame()

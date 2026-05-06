@@ -4,7 +4,7 @@ import scala.scalanative.build.Mode
 import scala.scalanative.build.NativeConfig
 
 val AIRFRAME_VERSION = "2026.1.6"
-val UNI_VERSION      = "2026.1.8"
+val UNI_VERSION      = "2026.1.9"
 
 val AIRSPEC_VERSION        = AIRFRAME_VERSION
 val TRINO_VERSION          = "476"
@@ -470,18 +470,21 @@ lazy val server = project
     libraryDependencies ++=
       Seq(
         // For redirecting slf4j logs to airframe-log
-        "org.slf4j"           % "slf4j-jdk14"         % "2.0.17",
-        "org.wvlet.airframe" %% "airframe-launcher"   % AIRFRAME_VERSION,
-        "org.wvlet.airframe" %% "airframe-http-netty" % AIRFRAME_VERSION
+        "org.slf4j"           % "slf4j-jdk14"       % "2.0.17",
+        "org.wvlet.airframe" %% "airframe-launcher" % AIRFRAME_VERSION
+        // airframe-http-netty dropped in #1662 phase 2: the server runtime
+        // now uses uni-netty, pulled transitively from wvlet-http-server.
       ),
     reStart / baseDirectory := (ThisBuild / baseDirectory).value
   )
   .dependsOn(api.jvm, client.jvm, runner, httpServer, testUtil % Test)
 
+// Hand-written uni-RPC clients live in wvlet-client/{shared,jvm,js}/src/main/scala. The
+// AirframeHttpPlugin codegen was dropped in #1662 phase 2; client surface preserved via the
+// FrontendRPC shim that wraps the per-service clients.
 lazy val client = crossProject(JVMPlatform, JSPlatform)
   .in(file("wvlet-client"))
-  .enablePlugins(AirframeHttpPlugin)
-  .settings(buildSettings, airframeHttpClients := Seq("wvlet.lang.api.v1.frontend:rpc:FrontendRPC"))
+  .settings(buildSettings)
   .dependsOn(api)
 
 import org.scalajs.linker.interface.OutputPatterns
