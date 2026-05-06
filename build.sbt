@@ -46,6 +46,15 @@ val buildSettings = Seq[Setting[?]](
   usePipelining := false
 )
 
+// uni-core's JS compat$ references java.security.SecureRandom (uni#TBD). The Scala.js linker
+// needs the scalajs-java-securerandom polyfill on the classpath to resolve it. airframe's JS
+// jars used to make this reachable transitively; once they're dropped we declare it explicitly
+// on every JS-targeting module that ends up touching uni's randomness or ULID code paths.
+// Hard-coded artifact name (sjs1_2.13) because Scala.js 1.x publishes this only against the
+// Scala 2.13 binary ABI; %%% would not resolve under Scala 3.
+val scalajsJavaSecureRandom: ModuleID =
+  "org.scala-js" % "scalajs-java-securerandom_sjs1_2.13" % "1.0.0"
+
 lazy val jvmProjects: Seq[ProjectReference] = Seq(
   api.jvm,
   httpServer,
@@ -101,10 +110,12 @@ lazy val api = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     buildInfoPackage := "wvlet.lang",
     libraryDependencies ++=
       Seq(
-        "org.wvlet.airframe" %%% "airframe-http" % AIRFRAME_VERSION,
-        "org.wvlet.uni"      %%% "uni"           % UNI_VERSION
+        // airframe-http dropped: wvlet-api source no longer references any
+        // airframe.http types after the @RPC + RxRouter migration in #1678.
+        "org.wvlet.uni" %%% "uni" % UNI_VERSION
       )
   )
+  .jsSettings(libraryDependencies += scalajsJavaSecureRandom)
 
 def generateWvletLib(path: File, packageName: String, className: String): String = {
   val srcDir      = path
@@ -189,6 +200,7 @@ lazy val lang = crossProject(JVMPlatform, JSPlatform, NativePlatform)
       ((ThisBuild / baseDirectory).value / "spec" ** "*.wv").get ++
         ((ThisBuild / baseDirectory).value / "wvlet-stdlib" ** "*.wv").get
   )
+  .jsSettings(libraryDependencies += scalajsJavaSecureRandom)
   .dependsOn(api)
 
 val specRunnerSettings = Seq(
@@ -467,8 +479,9 @@ lazy val server = project
     libraryDependencies ++=
       Seq(
         // For redirecting slf4j logs to airframe-log
-        "org.slf4j"           % "slf4j-jdk14"       % "2.0.17",
-        "org.wvlet.airframe" %% "airframe-launcher" % AIRFRAME_VERSION
+        "org.slf4j" % "slf4j-jdk14" % "2.0.17"
+        // airframe-launcher dropped: wvlet-server uses wvlet.uni.cli.launcher.@option
+        // already and no source references the airframe launcher.
         // airframe-http-netty dropped in #1662 phase 2: the server runtime
         // now uses uni-netty, pulled transitively from wvlet-http-server.
       ),
@@ -482,6 +495,7 @@ lazy val server = project
 lazy val client = crossProject(JVMPlatform, JSPlatform)
   .in(file("wvlet-client"))
   .settings(buildSettings)
+  .jsSettings(libraryDependencies += scalajsJavaSecureRandom)
   .dependsOn(api)
 
 import org.scalajs.linker.interface.OutputPatterns
@@ -500,7 +514,9 @@ lazy val ui = project
     libraryDependencies ++=
       Seq(
         "org.wvlet.airframe" %%% "airframe"         % AIRFRAME_VERSION,
-        "org.wvlet.airframe" %%% "airframe-http"    % AIRFRAME_VERSION,
+        // airframe-http dropped: only airframe-rx-html is actually consumed from the
+        // airframe stack here. Migration off airframe-rx-html itself waits on uni
+        // shipping an rx-html replacement.
         "org.wvlet.airframe" %%% "airframe-rx-html" % AIRFRAME_VERSION,
         "org.wvlet.uni"      %%% "uni"              % UNI_VERSION,
         "org.scala-js"       %%% "scalajs-dom"      % SCALAJS_DOM_VERSION

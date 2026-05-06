@@ -3,8 +3,8 @@ package wvlet.lang.server
 import wvlet.lang.api.v1.frontend.FileApi
 import wvlet.lang.api.v1.io.FileEntry
 import wvlet.lang.compiler.WorkEnv
+import wvlet.uni.control.IO
 import wvlet.uni.log.LogSupport
-import wvlet.log.io.IOUtil
 
 class FileApiImpl(workEnv: WorkEnv) extends FileApi with LogSupport:
 
@@ -61,7 +61,7 @@ class FileApiImpl(workEnv: WorkEnv) extends FileApi with LogSupport:
       if !f.exists() then
         None
       else
-        Some(IOUtil.readAsString(f))
+        Some(IO.readAsString(f))
     )
 
   override def saveFile(request: FileApi.SaveFileRequest): Unit = ???
