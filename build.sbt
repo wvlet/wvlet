@@ -4,7 +4,7 @@ import scala.scalanative.build.Mode
 import scala.scalanative.build.NativeConfig
 
 val AIRFRAME_VERSION = "2026.1.6"
-val UNI_VERSION      = "2026.1.8"
+val UNI_VERSION      = "2026.1.9"
 
 val AIRSPEC_VERSION        = AIRFRAME_VERSION
 val TRINO_VERSION          = "476"
