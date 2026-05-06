@@ -14,9 +14,9 @@
 package wvlet.lang.ui
 
 import org.scalajs.macrotaskexecutor.MacrotaskExecutor.Implicits.*
-import wvlet.airframe.Design
 import wvlet.airframe.rx.Rx
 import wvlet.airframe.rx.RxVar
+import wvlet.uni.design.Design
 import wvlet.uni.http.Http
 import wvlet.lang.api.v1.frontend.FrontendRPC
 import wvlet.lang.api.v1.query.QueryError
@@ -44,7 +44,7 @@ object WvletUIMain extends LogSupport:
     .map { status =>
       info(s"Connected to the server: ${status}")
       val frame = MainFrame()
-      // Let Airframe DI design build UI components for WvletEditor
+      // Let the uni Design build UI components for WvletEditor
       val editor = design.newSession.build[WvletEditor]
       frame(editor).renderTo("main")
     }

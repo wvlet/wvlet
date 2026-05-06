@@ -101,8 +101,9 @@ lazy val api = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     buildInfoPackage := "wvlet.lang",
     libraryDependencies ++=
       Seq(
-        "org.wvlet.airframe" %%% "airframe-http" % AIRFRAME_VERSION,
-        "org.wvlet.uni"      %%% "uni"           % UNI_VERSION
+        // airframe-http dropped: wvlet-api source no longer references any
+        // airframe.http types after the @RPC + RxRouter migration in #1678.
+        "org.wvlet.uni" %%% "uni" % UNI_VERSION
       )
   )
 
@@ -467,8 +468,9 @@ lazy val server = project
     libraryDependencies ++=
       Seq(
         // For redirecting slf4j logs to airframe-log
-        "org.slf4j"           % "slf4j-jdk14"       % "2.0.17",
-        "org.wvlet.airframe" %% "airframe-launcher" % AIRFRAME_VERSION
+        "org.slf4j" % "slf4j-jdk14" % "2.0.17"
+        // airframe-launcher dropped: wvlet-server uses wvlet.uni.cli.launcher.@option
+        // already and no source references the airframe launcher.
         // airframe-http-netty dropped in #1662 phase 2: the server runtime
         // now uses uni-netty, pulled transitively from wvlet-http-server.
       ),
@@ -500,7 +502,9 @@ lazy val ui = project
     libraryDependencies ++=
       Seq(
         "org.wvlet.airframe" %%% "airframe"         % AIRFRAME_VERSION,
-        "org.wvlet.airframe" %%% "airframe-http"    % AIRFRAME_VERSION,
+        // airframe-http dropped: only airframe-rx-html is actually consumed from the
+        // airframe stack here. Migration off airframe-rx-html itself waits on uni
+        // shipping an rx-html replacement.
         "org.wvlet.airframe" %%% "airframe-rx-html" % AIRFRAME_VERSION,
         "org.wvlet.uni"      %%% "uni"              % UNI_VERSION,
         "org.scala-js"       %%% "scalajs-dom"      % SCALAJS_DOM_VERSION

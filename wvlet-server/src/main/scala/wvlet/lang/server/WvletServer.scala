@@ -25,7 +25,6 @@ import wvlet.uni.http.{
 }
 import wvlet.uni.log.LogSupport
 import wvlet.uni.rx.Rx
-import wvlet.log.io.IOUtil
 
 import scala.util.Try
 import scala.util.control.NonFatal
@@ -204,7 +203,9 @@ object WvletServer extends LogSupport:
 
   end design
 
-  def testDesign: Design = design(WvletServerConfig(port = IOUtil.unusedPort)).bindProvider {
+  // Bind port = 0 so the design's unusedPortFrom helper acquires whichever local
+  // port the OS hands back — same effect the dropped airframe IOUtil.unusedPort had.
+  def testDesign: Design = design(WvletServerConfig(port = 0)).bindProvider {
     (server: NettyHttpServer) =>
       // Force the JVM HTTP channel factory before constructing the client.
       // HttpCompat (which auto-registers the factory) is package-private, so we
