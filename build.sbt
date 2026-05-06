@@ -46,6 +46,15 @@ val buildSettings = Seq[Setting[?]](
   usePipelining := false
 )
 
+// uni-core's JS compat$ references java.security.SecureRandom (uni#TBD). The Scala.js linker
+// needs the scalajs-java-securerandom polyfill on the classpath to resolve it. airframe's JS
+// jars used to make this reachable transitively; once they're dropped we declare it explicitly
+// on every JS-targeting module that ends up touching uni's randomness or ULID code paths.
+// Hard-coded artifact name (sjs1_2.13) because Scala.js 1.x publishes this only against the
+// Scala 2.13 binary ABI; %%% would not resolve under Scala 3.
+val scalajsJavaSecureRandom: ModuleID =
+  "org.scala-js" % "scalajs-java-securerandom_sjs1_2.13" % "1.0.0"
+
 lazy val jvmProjects: Seq[ProjectReference] = Seq(
   api.jvm,
   httpServer,
@@ -106,6 +115,7 @@ lazy val api = crossProject(JVMPlatform, JSPlatform, NativePlatform)
         "org.wvlet.uni" %%% "uni" % UNI_VERSION
       )
   )
+  .jsSettings(libraryDependencies += scalajsJavaSecureRandom)
 
 def generateWvletLib(path: File, packageName: String, className: String): String = {
   val srcDir      = path
@@ -190,6 +200,7 @@ lazy val lang = crossProject(JVMPlatform, JSPlatform, NativePlatform)
       ((ThisBuild / baseDirectory).value / "spec" ** "*.wv").get ++
         ((ThisBuild / baseDirectory).value / "wvlet-stdlib" ** "*.wv").get
   )
+  .jsSettings(libraryDependencies += scalajsJavaSecureRandom)
   .dependsOn(api)
 
 val specRunnerSettings = Seq(
@@ -484,6 +495,7 @@ lazy val server = project
 lazy val client = crossProject(JVMPlatform, JSPlatform)
   .in(file("wvlet-client"))
   .settings(buildSettings)
+  .jsSettings(libraryDependencies += scalajsJavaSecureRandom)
   .dependsOn(api)
 
 import org.scalajs.linker.interface.OutputPatterns
