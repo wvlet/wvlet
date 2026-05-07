@@ -1,146 +1,53 @@
 package wvlet.lang.native
 
-import wvlet.lang.compiler.codegen.GenSQL
-import wvlet.lang.compiler.CompilationUnit
-import wvlet.lang.compiler.Compiler
-import wvlet.lang.compiler.CompilerOptions
-import wvlet.lang.compiler.Symbol
-import wvlet.lang.compiler.WorkEnv
-import wvlet.uni.log.LogLevel
-import wvlet.uni.log.LogSupport
-import wvlet.uni.log.Logger
+import wvlet.lang.cli.WvletCliCompileOption
+import wvlet.lang.cli.WvletCliCompiler
+import wvlet.lang.cli.WvletCliMain
 
-object WvcMain extends LogSupport:
+/**
+  * Native `wvc` CLI binary. The end-user surface (`wvc compile foo.wv`, `wvc version`, ...) is the
+  * unified `WvletCliMain` shared with the JVM and Node.js builds.
+  */
+object WvcMain:
+  def main(args: Array[String]): Unit = WvletCliMain.main(args)
 
-  def main(args: Array[String]): Unit =
-    // Call compileWvletQuery to process the query and check if -x flag was set
-    val (sqlResult, shouldReturn) = compileWvletQuery(args)
-    if !shouldReturn then
-      // If -x is not passed, print the result to stdout
-      println(sqlResult) // Print to stdout as usual
-
-  end main
-
+  /**
+    * Internal programmatic compile API, kept for [[WvcLib]] (the dynamic C library surface).
+    * Accepts legacy flag-style args (`-q "query"`, `-w "folder"`, `-f "file"`, `-t "dbtype"`, `-x`)
+    * and returns the generated SQL plus the `-x` (returnResult) flag. Maintained outside the
+    * unified subcommand CLI because the C ABI consumers passed pre-built arg arrays before the
+    * unification.
+    */
   def compileWvletQuery(args: Array[String]): (String, Boolean) =
-    var inputQuery: Option[String]     = None
-    var workFolder                     = "."
-    var displayHelp                    = false
-    var logLevel: LogLevel             = LogLevel.INFO
-    var logLevelPatterns: List[String] = List.empty[String]
-    var remainingArgs: List[String]    = Nil
-    var parseSuccess: Boolean          = false
-    var returnResult                   = false // Flag for -x option
+    var workFolder: String     = "."
+    var query: Option[String]  = None
+    var file: Option[String]   = None
+    var target: Option[String] = None
+    var returnResult           = false
 
-    // Option parsing
-    def parseOption(lst: List[String]): Unit =
-      lst match
-        case h :: tail if h == "-h" || h == "--help" =>
-          displayHelp = true
-          parseOption(tail)
-        case "-w" :: folder :: tail =>
-          workFolder = folder
-          parseOption(tail)
-        case "-q" :: query :: tail =>
-          inputQuery = Some(query.toString)
-          parseOption(tail)
-        case "-l" :: level :: tail =>
-          logLevel = LogLevel(level.toString)
-          parseOption(tail)
-        case "-L" :: pattern :: tail =>
-          logLevelPatterns = pattern.toString :: logLevelPatterns
-          parseOption(tail)
-        case "-x" :: tail =>
-          returnResult = true // Set returnResult to true if -x is present
-          parseOption(tail)
-        case h :: tail if h.startsWith("-") || h.startsWith("--") =>
-          warn(s"Unknown option: ${h}")
-          parseSuccess = false
-        case rest =>
-          parseSuccess = true
-          remainingArgs = rest
+    val it = args.iterator
+    while it.hasNext do
+      it.next() match
+        case "-w" if it.hasNext =>
+          workFolder = it.next()
+        case "-q" if it.hasNext =>
+          query = Some(it.next())
+        case "-f" | "--file" if it.hasNext =>
+          file = Some(it.next())
+        case "-t" | "--target" if it.hasNext =>
+          target = Some(it.next())
+        case "-x" =>
+          returnResult = true
+        case _ =>
+        // ignore unknown args; keeps behavior loose for FFI callers
 
-    parseOption(args.toList)
-
-    val result: (String, Boolean) =
-      if !parseSuccess then
-        System.exit(1)
-        ("", false)
-      else if displayHelp then
-        val helpMessage =
-          """wvc (Wvlet Native Compiler)
-            |  Compile Wvlet files and generate SQL queries
-            |
-            |[usage]:
-            |  wvc [options] -q '(Wvlet query)'
-            |  cat query.wv | wvc [options]
-            |
-            |[options]
-            | -h, --help         Display help message
-            | -w <folder>        Working folder
-            | -q <query>         Query string
-            | -l <level>         Log level (info, debug, trace, warn, error)
-            | -L <pattern=level> Set log level for a class pattern
-            | -x                 Return the result instead of printing it
-            |""".stripMargin
-        (helpMessage, returnResult)
-      else
-        // Set log levels
-        Logger("wvlet.lang.compiler").setLogLevel(logLevel)
-        Logger("wvlet.lang.runner").setLogLevel(logLevel)
-        Logger("wvlet.lang.native").setLogLevel(logLevel)
-        logLevelPatterns.foreach { p =>
-          p.split("=") match
-            case Array(pattern, level) =>
-              debug(s"Set the log level for ${pattern} to ${level}")
-              Logger.setLogLevel(pattern, LogLevel(level))
-            case _ =>
-              error(s"Invalid log level pattern: ${p}")
-        }
-
-        // Prepare a compiler and input source
-        val compiler = Compiler(
-          CompilerOptions(workEnv = WorkEnv(path = workFolder), sourceFolders = List(workFolder))
-        )
-
-        val query: String =
-          inputQuery match
-            case Some(q) =>
-              q
-            case None =>
-              import scala.scalanative.meta.LinktimeInfo
-              // On Windows, POSIX unistd is not available, so we skip the isatty check
-              // and assume stdin is connected if no query is provided
-              val connectedToStdin =
-                if LinktimeInfo.isWindows then
-                  true // On Windows, assume stdin is available when no -q is provided
-                else
-                  import scala.scalanative.posix.unistd
-                  unistd.isatty(unistd.STDIN_FILENO) == 0
-              if connectedToStdin then
-                // Read from stdin
-                Iterator.continually(scala.io.StdIn.readLine()).takeWhile(_ != null).mkString("\n")
-              else
-                ""
-
-        if query.trim.isEmpty then
-          warn(s"No query is given. Use -q 'query' option or stdin to feed the query")
-          ("", returnResult)
-        else
-          // Compile
-          val inputUnit     = CompilationUnit.fromWvletString(query)
-          val compileResult = compiler.compileSingleUnit(inputUnit)
-          compileResult.reportAllErrors
-
-          val ctx = compileResult
-            .context
-            .withCompilationUnit(inputUnit)
-            .withDebugRun(false)
-            .newContext(Symbol.NoSymbol)
-
-          val sql = GenSQL.generateSQL(inputUnit)(using ctx)
-          (sql, returnResult) // Return the SQL string and the flag
-
-    result
+    val opt = WvletCliCompileOption(
+      workFolder = workFolder,
+      file = file,
+      query = query,
+      targetDBType = target
+    )
+    (WvletCliCompiler(opt).generateSQL, returnResult)
 
   end compileWvletQuery
 

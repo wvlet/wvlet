@@ -55,6 +55,7 @@ lazy val jvmProjects: Seq[ProjectReference] = Seq(
   client.jvm,
   spec,
   cli,
+  cliCore.jvm,
   testUtil
 )
 
@@ -65,10 +66,12 @@ lazy val jsProjects: Seq[ProjectReference] = Seq(
   ui,
   uiMain,
   playground,
-  sdkJs
+  sdkJs,
+  cliCore.js
 )
 
-lazy val nativeProjects: Seq[ProjectReference] = Seq(api.native, lang.native, wvc, wvcLib)
+lazy val nativeProjects: Seq[ProjectReference] =
+  Seq(api.native, lang.native, cliCore.native, wvc, wvcLib)
 
 val noPublish = Seq(
   publishArtifact := false,
@@ -210,7 +213,7 @@ lazy val wvc = project
   .enablePlugins(ScalaNativePlugin)
   .in(file("wvc"))
   .settings(buildSettings, name := "wvc")
-  .dependsOn(lang.native)
+  .dependsOn(lang.native, cliCore.native)
 
 lazy val wvcLib = project
   .in(file("wvc-lib"))
@@ -449,6 +452,29 @@ lazy val sdkJs = project
       (ThisBuild / baseDirectory).value / "sdks" / "typescript" / "lib"
   )
   .dependsOn(lang.js)
+
+// Cross-platform wvlet CLI surface. Same `version` / `compile` / `to_wvlet` commands across
+// JVM, Node.js, and Scala Native. Compile-only — does not pull in wvlet-runner / wvlet-server,
+// so JS and Native bundles stay slim. The full-featured `wvlet` JVM command (run / ui / REPL)
+// is still produced by wvlet-cli, which can layer on top of this.
+lazy val cliCore = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("wvlet-cli-core"))
+  .settings(
+    buildSettings,
+    noPublish,
+    name := "wvlet-cli-core"
+  )
+  .jsSettings(
+    libraryDependencies += scalajsJavaSecureRandom,
+    scalaJSUseMainModuleInitializer := true,
+    Compile / mainClass             := Some("wvlet.lang.cli.WvletCliMain"),
+    scalaJSLinkerConfig ~= {
+      // The repo package.json sets "type": "module", so the linked .js must be an ES module.
+      _.withModuleKind(ModuleKind.ESModule)
+    }
+  )
+  .dependsOn(lang)
 
 // JVM-only host for HTTP server bits that wvlet maintains. Hosts the few pieces uni doesn't
 // ship (e.g. StaticContent) and re-exports uni-netty as a transitive runtime for downstream
