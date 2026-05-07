@@ -10,8 +10,6 @@ ThisBuild / libraryDependencySchemes ++=
 
 addSbtPlugin("org.scalameta" % "sbt-scalafmt"  % "2.6.0")
 addSbtPlugin("com.eed3si9n"  % "sbt-buildinfo" % "0.13.1")
-// sbt-airframe (AirframeHttpPlugin) dropped in #1662 phase 2: RPC client codegen
-// was replaced with hand-written uni-RPC clients under wvlet-client/{shared,jvm,js}.
 
 // For IntelliJ IDEA
 addSbtPlugin("org.jetbrains.scala" % "sbt-ide-settings" % "1.1.4")

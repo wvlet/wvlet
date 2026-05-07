@@ -3,8 +3,7 @@ import scala.scalanative.build.GC
 import scala.scalanative.build.Mode
 import scala.scalanative.build.NativeConfig
 
-val AIRFRAME_VERSION = "2026.1.6"
-val UNI_VERSION      = "2026.1.9"
+val UNI_VERSION = "2026.1.9"
 
 val TRINO_VERSION          = "476"
 val AWS_SDK_VERSION        = "2.20.146"
@@ -33,20 +32,17 @@ val buildSettings = Seq[Setting[?]](
     Seq(
       // https://users.scala-lang.org/t/scala-js-with-3-7-0-package-scala-contains-object-and-package-with-same-name-caps/10786/5
       "org.scala-lang" %% "scala3-library" % scalaVersion.value,
-      // airspec dropped: every test in the tree now extends UniTest / WvletDITest.
-      "org.wvlet.uni"  %%% "uni-test"       % UNI_VERSION     % Test
+      "org.wvlet.uni"  %%% "uni-test"      % UNI_VERSION % Test
     ),
   testFrameworks += new TestFramework("wvlet.uni.test.Framework"),
   // Don't use pipelining as it tends to slowdown the build
   usePipelining := false
 )
 
-// uni-core's JS compat$ references java.security.SecureRandom (uni#TBD). The Scala.js linker
-// needs the scalajs-java-securerandom polyfill on the classpath to resolve it. airframe's JS
-// jars used to make this reachable transitively; once they're dropped we declare it explicitly
-// on every JS-targeting module that ends up touching uni's randomness or ULID code paths.
-// Hard-coded artifact name (sjs1_2.13) because Scala.js 1.x publishes this only against the
-// Scala 2.13 binary ABI; %%% would not resolve under Scala 3.
+// uni-core's JS compat$ references java.security.SecureRandom, so any Scala.js module that
+// links uni's randomness or ULID code paths needs this polyfill on the classpath. The artifact
+// name is hard-coded with the sjs1_2.13 classifier because the polyfill is only published
+// against the Scala 2.13 binary ABI on Scala.js 1.x — `%%%` would not resolve under Scala 3.
 val scalajsJavaSecureRandom: ModuleID =
   "org.scala-js" % "scalajs-java-securerandom_sjs1_2.13" % "1.0.0"
 
@@ -103,12 +99,7 @@ lazy val api = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     buildInfoKeys := Seq[BuildInfoKey](name, version, scalaVersion, sbtVersion),
     buildInfoOptions += BuildInfoOption.BuildTime,
     buildInfoPackage := "wvlet.lang",
-    libraryDependencies ++=
-      Seq(
-        // airframe-http dropped: wvlet-api source no longer references any
-        // airframe.http types after the @RPC + RxRouter migration in #1678.
-        "org.wvlet.uni" %%% "uni" % UNI_VERSION
-      )
+    libraryDependencies += "org.wvlet.uni" %%% "uni" % UNI_VERSION
   )
   .jsSettings(libraryDependencies += scalajsJavaSecureRandom)
 
@@ -453,10 +444,9 @@ lazy val sdkJs = project
   )
   .dependsOn(lang.js)
 
-// JVM-only host for HTTP server bits that wvlet maintains. Hosts the few
-// pieces uni doesn't ship (e.g. StaticContent) and re-exports uni-netty as a
-// transitive runtime for downstream modules. Part of the airframe→uni
-// migration in #1662 (wvlet-server consumers move over in subsequent PRs).
+// JVM-only host for HTTP server bits that wvlet maintains. Hosts the few pieces uni doesn't
+// ship (e.g. StaticContent) and re-exports uni-netty as a transitive runtime for downstream
+// modules.
 lazy val httpServer = project
   .in(file("wvlet-http-server"))
   .settings(
@@ -471,23 +461,15 @@ lazy val server = project
   .settings(
     buildSettings,
     name := "wvlet-server",
-    libraryDependencies ++=
-      Seq(
-        // For redirecting slf4j logs to airframe-log
-        "org.slf4j" % "slf4j-jdk14" %
-          "2.0.17"
-          // airframe-launcher dropped: wvlet-server uses wvlet.uni.cli.launcher.@option
-          // already and no source references the airframe launcher.
-          // airframe-http-netty dropped in #1662 phase 2: the server runtime
-          // now uses uni-netty, pulled transitively from wvlet-http-server.
-      ),
+    // Route SLF4J calls (e.g. from JDBC drivers) into java.util.logging so they share the
+    // same handler as wvlet.uni.log.
+    libraryDependencies += "org.slf4j" % "slf4j-jdk14" % "2.0.17",
     reStart / baseDirectory := (ThisBuild / baseDirectory).value
   )
   .dependsOn(api.jvm, client.jvm, runner, httpServer, testUtil % Test)
 
 // Hand-written uni-RPC clients live in wvlet-client/{shared,jvm,js}/src/main/scala. The
-// AirframeHttpPlugin codegen was dropped in #1662 phase 2; client surface preserved via the
-// FrontendRPC shim that wraps the per-service clients.
+// FrontendRPC shim aggregates the per-service clients so consumers see a single surface.
 lazy val client = crossProject(JVMPlatform, JSPlatform)
   .in(file("wvlet-client"))
   .settings(buildSettings)
@@ -509,9 +491,6 @@ lazy val ui = project
     Test / jsEnv := new org.scalajs.jsenv.jsdomnodejs.JSDOMNodeJSEnv(),
     libraryDependencies ++=
       Seq(
-        // airframe and airframe-rx-html dropped: replaced by wvlet.uni.design /
-        // wvlet.uni.dom (uni 2026.1.9 ships RxElement, RxComponent, HtmlTags,
-        // SvgTags, and friends). Migration in #1662 phase 6.
         "org.wvlet.uni" %%% "uni"         % UNI_VERSION,
         "org.scala-js"  %%% "scalajs-dom" % SCALAJS_DOM_VERSION
       )
@@ -579,10 +558,6 @@ lazy val labs = project
     // Override noPublish setting to allow IDEA import
     ideSkipProject := false,
     name           := "wvlet-labs",
-    libraryDependencies ++=
-      Seq(
-        // airframe-launcher dropped: ParseQuery uses wvlet.uni.cli.launcher (#1662 phase 7).
-        "org.duckdb" % "duckdb_jdbc" % DUCKDB_JDBC_VERSION
-      )
+    libraryDependencies += "org.duckdb" % "duckdb_jdbc" % DUCKDB_JDBC_VERSION
   )
   .dependsOn(lang.jvm)
