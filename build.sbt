@@ -513,10 +513,10 @@ lazy val ui = project
     Test / jsEnv := new org.scalajs.jsenv.jsdomnodejs.JSDOMNodeJSEnv(),
     libraryDependencies ++=
       Seq(
-        "org.wvlet.airframe" %%% "airframe"         % AIRFRAME_VERSION,
-        // airframe-http dropped: only airframe-rx-html is actually consumed from the
-        // airframe stack here. Migration off airframe-rx-html itself waits on uni
-        // shipping an rx-html replacement.
+        // airframe (meta-DI package) and airframe-http already dropped; only
+        // airframe-rx-html is still consumed from the airframe stack here.
+        // Migration off airframe-rx-html itself waits on uni shipping an
+        // rx-html replacement.
         "org.wvlet.airframe" %%% "airframe-rx-html" % AIRFRAME_VERSION,
         "org.wvlet.uni"      %%% "uni"              % UNI_VERSION,
         "org.scala-js"       %%% "scalajs-dom"      % SCALAJS_DOM_VERSION

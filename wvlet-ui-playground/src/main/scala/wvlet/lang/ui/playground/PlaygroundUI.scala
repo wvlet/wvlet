@@ -1,9 +1,9 @@
 package wvlet.lang.ui.playground
 
-import wvlet.airframe.Design
 import wvlet.airframe.rx.html.RxElement
-import wvlet.uni.log.LogSupport
 import wvlet.airframe.rx.html.all.*
+import wvlet.uni.design.Design
+import wvlet.uni.log.LogSupport
 import wvlet.lang.ui.component.monaco.EditorBase
 import wvlet.lang.ui.component.Icon
 import wvlet.lang.ui.component.MainFrame
