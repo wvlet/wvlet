@@ -4,12 +4,10 @@ import wvlet.uni.log.LogSupport
 
 /**
   * Cross-platform file I/O for the wvlet compiler. All concrete file/system access lives in the
-  * platform-specific [[SourceIOCompat]] trait:
-  *   - JVM and Native back the methods with `wvlet.uni.io.IO` (full file I/O)
-  *   - Scala.js returns safe stubs (`false` / `Nil` / `0` / throwing for gzip) so that the browser
-  *     playground can link the compiler without dragging Node's `os` / `fs` / `path` / `zlib`
-  *     modules into the bundle. A future Node-targeted JS consumer can wire in a real filesystem by
-  *     calling `wvlet.uni.io.FileSystemInit.init()` from its own entry point.
+  * platform-specific [[SourceIOCompat]] trait, which on every supported platform (JVM, Node.js,
+  * Native) delegates to `wvlet.uni.io.IO`. Browser embedding is not a supported target —
+  * `wvlet-lang.js` is built with `ModuleKind.CommonJSModule` so uni's Node module imports
+  * (`os` / `fs` / `path` / `zlib`) resolve correctly.
   */
 object SourceIO extends SourceIOCompat with LogSupport:
   val ignoredFolders: Set[String] = Set("spec", "target")

@@ -89,29 +89,20 @@ Currently the playground compiler works because it never calls `SourceIO`. After
 - Q2: Guarded with `IO.exists(p)` first; non-existent paths return `0L` cleanly.
 - Q3: Confirmed zero callers — `URIResource`, `FileInResource`, `SourceFile.fromResource`, `CompilationUnit.fromResourcePath`, and `IOCompat.listResources` were all dead and got deleted.
 
-### Shape change forced by uni 2026.1.9 link semantics
+### Scope clarification: Node, not browser
 
-The original plan was to put `readAsString` / `existsFile` / etc. directly in shared `src/main/scala`
-and have all three platforms call `wvlet.uni.io.IO.*`. This proved unworkable for the browser
-playground:
+The original draft of this plan called out `BrowserFileSystem` as a graceful fallback, but
+**browser is out of scope**. wvlet-lang.js targets Node.js. uni's `FileSystemJS` declares Node
+modules (`os` / `fs` / `path` / `zlib`) via `@JSImport` — under `ModuleKind.NoModule` (the old
+langJS default) the Scala.js linker rejects them outright. Switching `wvlet-lang.js` to
+`ModuleKind.CommonJSModule` (the most compatible Node option) lets the imports resolve and
+makes file I/O actually work on Node tests. `JVMHttpChannelFactory`-style tricks are
+unnecessary because we're not trying to serve both Node and browser from one artifact.
 
-- `IO.readBytes(p)` and `Gzip.decompress(...)` reach `FileSystemJS$` and `NodeZlibModule$`, which
-  are declared with `@JSImport("os" | "fs" | "path" | "zlib", ...)`. Scala.js's reachability is
-  conservative under `@EnableReflectiveInstantiation` (used by `TreeNodeCompat`), so a single
-  reference from `JSONAnalyzer` is enough to pull the Node modules into the link graph.
-- With `ModuleKind.NoModule` (langJS Test default) the linker rejects them outright; with
-  `ModuleKind.ESModule` (playground) the imports succeed at link time but throw at module
-  load time on the browser, because the browser has no built-in `os`/`fs`/`path`/`zlib`.
-
-Resolution: keep `SourceIO`'s file-IO methods on the platform-specific `SourceIOCompat` trait.
-JVM and Native carry near-identical bodies (~50 lines each, both backed by `wvlet.uni.io.IO`).
-JS keeps the safe-stub bodies (`false` / `Nil` / `0L` / `???` for gzip), matching today's
-runtime behavior for the playground. JVM/Native versions also call `FileSystemInit.init()` once
-at trait load so consumers never see "FileSystem not initialized."
-
-`WorkEnvCompat` keeps `initLogger` per-platform (LogRotationHandler is JVM-only) but routes its
-`hasWvletFiles` / `saveToCache` / `loadCache` through `SourceIO.*` — so they pick up the right
-backend automatically.
+The browser playground (`wvlet-ui-playground`) still links because it sets
+`ModuleKind.ESModule` itself. Whether it executes correctly in a browser at runtime is a
+separate concern that's outside the scope of this PR — embedding the wvlet compiler in a
+browser would need a different consumer artifact that doesn't reach `FileSystemInit`.
 
 ### What actually landed
 
@@ -119,24 +110,23 @@ backend automatically.
 - Removed dead `URIResource`, `FileInResource`, `SourceFile.fromResource`,
   `CompilationUnit.fromResourcePath`, and stale `java.io.File` / `URLClassLoader` / `JarFile` /
   `java.nio.file.{Files, Path}` imports from shared code (-92 lines).
-- Added `SourceIOCompat.scala` per platform (+~70 lines total): JVM/Native via `uni.io.IO`,
-  JS as stubs.
+- Added `SourceIOCompat.scala` per platform (+~150 lines total): all three backends (JVM,
+  Node.js JS, Native) now delegate to `wvlet.uni.io.IO` and call `FileSystemInit.init()` once
+  at trait load. The bodies are near-identical across platforms — duplicated rather than
+  shared because crossProject (Pure) doesn't natively let JVM/JS/Native share a folder while
+  excluding browser-only consumers.
 - Folded `hasWvletFiles` / `saveToCache` / `loadCache` into shared `WorkEnv.scala` via
   `SourceIO.*`; only `isScalaJS` and `initLogger` remain in per-platform `WorkEnvCompat`.
-- Net: -325 / +33 in old files, +3 small new SourceIOCompat files.
+- `wvlet-lang.js` now sets `scalaJSLinkerConfig ~= { _.withModuleKind(ModuleKind.CommonJSModule) }`
+  in `.jsSettings` so uni's `@JSImport(os|fs|path|zlib)` resolves at link time on Node.
 
-### What remains for a future PR
+### Test impact
 
-A real Node-targeted JS consumer (e.g. a Node-based wvlet CLI) is still unsupported because
-landing it would require:
-
-1. Setting `ModuleKind.CommonJSModule` or `ESModule` for that consumer's link config (not for
-   langJS itself, which must stay browser-friendly).
-2. A separate `NodeSourceIO` (or similar) that calls `FileSystemInit.init()` and replaces the
-   stubbed JS methods with real `IO.*` calls.
-
-This isn't blocked by uni — uni 2026.1.9 has all the pieces. It's a follow-up that needs a
-target consumer to exist first.
+- `langJVM/test`: 1399 / 1399 (unchanged)
+- `langNative/test`: 1378 / 1378 (unchanged)
+- **`langJS/test`: 523 → 1379 tests passing** — the spec-driven tests that read `.wv` files
+  from `spec/*` folders (ParserSpec, RoundTripSpec, AnalyzerTest, etc.) now actually exercise
+  on Node.js. Before this PR they were no-ops because `IOCompat.listFiles` returned `Nil`.
 
 ## Why bother
 
