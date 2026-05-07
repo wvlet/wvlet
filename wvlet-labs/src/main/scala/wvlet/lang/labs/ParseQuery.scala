@@ -1,21 +1,20 @@
 package wvlet.lang.labs
 
-import wvlet.uni.log.LogSupport
-import wvlet.airframe.launcher.*
-
-import java.io.FileWriter
-import java.io.PrintWriter
-import wvlet.airframe.codec.MessageCodec
-import wvlet.airframe.control.Control
-import wvlet.airframe.control.Parallel
-import wvlet.airframe.metrics.Count
-import wvlet.airframe.metrics.ElapsedTime
+import org.duckdb.DuckDBDriver
 import wvlet.lang.compiler.parser.ParserPhase
 import wvlet.lang.compiler.CompileResult
 import wvlet.lang.compiler.Context
-import org.duckdb.DuckDBDriver
+import wvlet.uni.cli.launcher.*
+import wvlet.uni.control.Control
+import wvlet.uni.log.LogSupport
+import wvlet.uni.util.Count
+import wvlet.uni.util.ElapsedTime
+import wvlet.uni.weaver.Weaver
 
+import java.io.FileWriter
+import java.io.PrintWriter
 import java.util.Properties
+import java.util.concurrent.{ArrayBlockingQueue, Executors, ThreadPoolExecutor, TimeUnit}
 import java.util.concurrent.atomic.AtomicInteger
 import scala.io.AnsiColor
 
@@ -50,7 +49,7 @@ object ParseQuery extends LogSupport:
 // Test command for parsing queries in batch
 class ParseQuery() extends LogSupport:
 
-  private val codec                    = MessageCodec.of[QueryErrorRecord]
+  private val codec                    = Weaver.of[QueryErrorRecord]
   private val PROGRESS_REPORT_INTERVAL = 10000
 
   private def writeErrorRecord(
@@ -184,10 +183,13 @@ class ParseQuery() extends LogSupport:
                   .lang
                   .compiler
                   .CompilerOptions(
-                    phases = wvlet.lang.compiler.Compiler.parseOnlyPhases,
                     sourceFolders = List("target/test"),
-                    workEnv = wvlet.lang.compiler.WorkEnv(".", logLevel = wvlet.log.LogLevel.INFO)
-                  )
+                    workEnv = wvlet
+                      .lang
+                      .compiler
+                      .WorkEnv(".", logLevel = wvlet.uni.log.LogLevel.INFO)
+                  ),
+                phases = wvlet.lang.compiler.Compiler.parseOnlyPhases
               )
 
             // Thread-safe counters and timing
@@ -220,32 +222,43 @@ class ParseQuery() extends LogSupport:
                       sql = rs.getString("sql")
                     )
 
-              // Process queries in parallel using Parallel.iterate for memory-efficient streaming
-              val results =
-                Parallel.iterate(queryIterator, parallelism = parallelism) { queryRecord =>
-                  val hasError = parseQueryRecord(queryRecord, compiler, errorWriter)
-
-                  // Update counters
-                  queryCount.incrementAndGet()
-                  if hasError then
-                    errorCount.incrementAndGet()
-
-                  // Report progress at regular intervals
-                  val currentQueryCount = queryCount.get()
-                  if currentQueryCount % PROGRESS_REPORT_INTERVAL == 0 then
-                    val currentErrorCount = errorCount.get()
-                    val progressMessage   = formatProgressMessage(
-                      currentQueryCount,
-                      currentErrorCount,
-                      startTimeNanos
-                    )
-                    System.err.print(s"\r${AnsiColor.CYAN}${progressMessage}${AnsiColor.RESET}")
-
-                  hasError
-                }
-
-              // Consume the iterator to trigger parallel processing
-              results.foreach(_ => ()) // Just consume the results
+              // Process queries in parallel with bounded back-pressure. CallerRunsPolicy makes
+              // the producing thread (this loop) execute the task itself when the worker queue
+              // fills up — that throttles ResultSet reads, keeping memory bounded the same way
+              // airframe Parallel.iterate did. Replaces wvlet.airframe.control.Parallel.iterate.
+              val workQueue = ArrayBlockingQueue[Runnable](parallelism * 2)
+              val pool      = ThreadPoolExecutor(
+                parallelism,
+                parallelism,
+                0L,
+                TimeUnit.MILLISECONDS,
+                workQueue,
+                ThreadPoolExecutor.CallerRunsPolicy()
+              )
+              try
+                while queryIterator.hasNext do
+                  val queryRecord = queryIterator.next()
+                  pool.execute { () =>
+                    val hasError = parseQueryRecord(queryRecord, compiler, errorWriter)
+                    queryCount.incrementAndGet()
+                    if hasError then
+                      errorCount.incrementAndGet()
+                    val currentQueryCount = queryCount.get()
+                    if currentQueryCount % PROGRESS_REPORT_INTERVAL == 0 then
+                      val currentErrorCount = errorCount.get()
+                      val progressMessage   = formatProgressMessage(
+                        currentQueryCount,
+                        currentErrorCount,
+                        startTimeNanos
+                      )
+                      System.err.print(s"\r${AnsiColor.CYAN}${progressMessage}${AnsiColor.RESET}")
+                  }
+                pool.shutdown()
+                pool.awaitTermination(Long.MaxValue, TimeUnit.NANOSECONDS)
+              finally
+                if !pool.isTerminated then
+                  pool.shutdownNow()
+              end try
               System.err.println()
 
               val finalQueryCount = queryCount.get()
