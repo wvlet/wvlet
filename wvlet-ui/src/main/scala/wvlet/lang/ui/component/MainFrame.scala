@@ -13,10 +13,10 @@
  */
 package wvlet.lang.ui.component
 
-import wvlet.airframe.rx.Rx
-import wvlet.airframe.rx.html.all.*
-import wvlet.airframe.rx.html.RxComponent
-import wvlet.airframe.rx.html.RxElement
+import wvlet.uni.rx.Rx
+import wvlet.uni.dom.all.{*, given}
+import wvlet.uni.dom.RxComponent
+import wvlet.uni.dom.RxElement
 import org.scalajs.dom
 
 object MainFrame extends RxComponent:
@@ -49,8 +49,8 @@ object MainFrame extends RxComponent:
       div(
         cls -> "px-2 md:px-6 lg:px-8",
         div(
-          cls   -> "flex items-center",
-          style -> s"height: ${navBarHeightPx}px;",
+          cls       -> "flex items-center",
+          styleAttr -> s"height: ${navBarHeightPx}px;",
           div(
             cls -> "w-full",
             // show sidebar button for mobile

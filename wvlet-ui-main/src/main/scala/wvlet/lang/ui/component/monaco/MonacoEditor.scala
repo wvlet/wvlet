@@ -3,11 +3,11 @@ package wvlet.lang.ui.component.monaco
 import org.scalajs.dom
 import org.scalajs.dom.HTMLElement
 import org.scalajs.dom.ResizeObserver
-import wvlet.airframe.rx.html.RxElement
-import wvlet.airframe.rx.html.all.*
-import wvlet.airframe.rx.Cancelable
-import wvlet.airframe.rx.Rx
-import wvlet.airframe.rx.RxVar
+import wvlet.uni.dom.RxElement
+import wvlet.uni.dom.all.{*, given}
+import wvlet.uni.rx.Cancelable
+import wvlet.uni.rx.Rx
+import wvlet.uni.rx.RxVar
 import wvlet.lang.api.LinePosition
 import wvlet.lang.api.WvletLangException
 import wvlet.lang.compiler.codegen.GenSQL
@@ -47,12 +47,16 @@ class MonacoEditor(
   def getColumnPosition(): Double                     = js.native
   def enableWordWrap(): Unit                          = js.native
 
+// uni's RxElement does not extend LogSupport (airframe's did). EditorBase brings it back as
+// a mixin so subclasses (WvletMonacoEditor, QueryEditor, SQLPreview) keep their warn/info calls
+// without each one having to add the trait individually.
 abstract class EditorBase(
     windowSize: WindowSize,
     editorId: String,
     lang: String,
     marginHeight: Int = MainFrame.navBarHeightPx
-) extends RxElement:
+) extends RxElement
+    with LogSupport:
   protected def initialText: String
 
   protected val editor = new MonacoEditor(editorId, lang, initialText, action = action)

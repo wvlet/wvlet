@@ -1,12 +1,10 @@
 package wvlet.lang.ui.component.editor
 
-import wvlet.airframe.rx
-import wvlet.airframe.rx.Cancelable
-import wvlet.airframe.rx.RxVar
-import wvlet.airframe.rx.html.RxElement
-import wvlet.airframe.rx.html.all.*
-import wvlet.airframe.rx.html.svgAttrs.style as _
-import wvlet.airframe.rx.html.svgAttrs.xmlns as _
+import wvlet.uni.rx
+import wvlet.uni.rx.Cancelable
+import wvlet.uni.rx.RxVar
+import wvlet.uni.dom.RxElement
+import wvlet.uni.dom.all.{*, given}
 import wvlet.lang.api.v1.frontend.FrontendRPC.RPCAsyncClient
 import wvlet.lang.api.v1.query.QueryError
 import wvlet.lang.api.v1.query.QueryRequest
@@ -39,8 +37,8 @@ class WvletEditor(
   override def render =
     // grid
     div(
-      cls   -> "flex flex-col h-full bg-zinc-800",
-      style -> s"width: max-screen; height: calc(100vh - ${MainFrame.navBarHeightPx}px);",
+      cls       -> "flex flex-col h-full bg-zinc-800",
+      styleAttr -> s"width: max-screen; height: calc(100vh - ${MainFrame.navBarHeightPx}px);",
       div(fileNav),
       div(
         cls -> "grid grid-cols-2 h-full w-full",
@@ -50,7 +48,7 @@ class WvletEditor(
           windowSize
             .getInnerHeight
             .map { h =>
-              style -> s"height: ${(h - MainFrame.navBarHeightPx) / 2}px;"
+              styleAttr -> s"height: ${(h - MainFrame.navBarHeightPx) / 2}px;"
             },
           // span to the bottom of the screen
           title("Console"),

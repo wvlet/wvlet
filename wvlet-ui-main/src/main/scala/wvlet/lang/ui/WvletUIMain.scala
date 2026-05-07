@@ -14,16 +14,17 @@
 package wvlet.lang.ui
 
 import org.scalajs.macrotaskexecutor.MacrotaskExecutor.Implicits.*
-import wvlet.airframe.rx.Rx
-import wvlet.airframe.rx.RxVar
-import wvlet.uni.design.Design
-import wvlet.uni.http.Http
 import wvlet.lang.api.v1.frontend.FrontendRPC
 import wvlet.lang.api.v1.query.QueryError
 import wvlet.lang.ui.component.MainFrame
 import wvlet.lang.ui.component.editor.FileNav
 import wvlet.lang.ui.component.editor.WvletEditor
+import wvlet.uni.design.Design
+import wvlet.uni.dom.all.renderTo
+import wvlet.uni.http.Http
 import wvlet.uni.log.LogSupport
+import wvlet.uni.rx.Rx
+import wvlet.uni.rx.RxVar
 
 object WvletUIMain extends LogSupport:
   def main(args: Array[String]): Unit = render

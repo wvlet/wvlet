@@ -1,7 +1,7 @@
 package wvlet.lang.ui.playground
 
-import wvlet.airframe.rx.Rx
-import wvlet.airframe.rx.RxVar
+import wvlet.uni.rx.Rx
+import wvlet.uni.rx.RxVar
 import wvlet.lang.api.v1.query.QueryRequest
 import wvlet.lang.api.v1.query.QueryResult
 

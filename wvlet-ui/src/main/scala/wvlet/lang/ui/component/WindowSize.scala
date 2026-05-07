@@ -2,8 +2,8 @@ package wvlet.lang.ui.component
 
 import org.scalajs.dom
 import org.scalajs.dom.ResizeObserver
-import wvlet.airframe.rx.Rx
-import wvlet.airframe.rx.RxVar
+import wvlet.uni.rx.Rx
+import wvlet.uni.rx.RxVar
 import wvlet.uni.log.LogSupport
 
 class WindowSize extends AutoCloseable with LogSupport:

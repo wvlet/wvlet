@@ -513,13 +513,11 @@ lazy val ui = project
     Test / jsEnv := new org.scalajs.jsenv.jsdomnodejs.JSDOMNodeJSEnv(),
     libraryDependencies ++=
       Seq(
-        // airframe (meta-DI package) and airframe-http already dropped; only
-        // airframe-rx-html is still consumed from the airframe stack here.
-        // Migration off airframe-rx-html itself waits on uni shipping an
-        // rx-html replacement.
-        "org.wvlet.airframe" %%% "airframe-rx-html" % AIRFRAME_VERSION,
-        "org.wvlet.uni"      %%% "uni"              % UNI_VERSION,
-        "org.scala-js"       %%% "scalajs-dom"      % SCALAJS_DOM_VERSION
+        // airframe and airframe-rx-html dropped: replaced by wvlet.uni.design /
+        // wvlet.uni.dom (uni 2026.1.9 ships RxElement, RxComponent, HtmlTags,
+        // SvgTags, and friends). Migration in #1662 phase 6.
+        "org.wvlet.uni" %%% "uni"         % UNI_VERSION,
+        "org.scala-js"  %%% "scalajs-dom" % SCALAJS_DOM_VERSION
       )
   )
   .dependsOn(api.js, client.js)

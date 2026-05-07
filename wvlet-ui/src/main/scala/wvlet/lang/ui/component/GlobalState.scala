@@ -1,7 +1,7 @@
 package wvlet.lang.ui.component
 
-import wvlet.airframe.rx.Rx
-import wvlet.airframe.rx.RxVar
+import wvlet.uni.rx.Rx
+import wvlet.uni.rx.RxVar
 
 object GlobalState:
   var selectedPath: RxVar[String] = Rx.variable("")

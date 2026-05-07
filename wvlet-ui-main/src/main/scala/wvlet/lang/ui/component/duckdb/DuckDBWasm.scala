@@ -1,6 +1,6 @@
 package wvlet.lang.ui.component.duckdb
 
-import wvlet.airframe.rx.Rx
+import wvlet.uni.rx.Rx
 import wvlet.lang.api.v1.query.Column
 import wvlet.lang.api.StatusCode
 import wvlet.lang.api.WvletLangException

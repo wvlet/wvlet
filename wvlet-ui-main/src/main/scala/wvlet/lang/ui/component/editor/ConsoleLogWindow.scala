@@ -1,9 +1,9 @@
 package wvlet.lang.ui.component.editor
 
-import wvlet.airframe.rx.Rx
-import wvlet.airframe.rx.RxVar
-import wvlet.airframe.rx.html.RxElement
-import wvlet.airframe.rx.html.all.*
+import wvlet.uni.rx.Rx
+import wvlet.uni.rx.RxVar
+import wvlet.uni.dom.RxElement
+import wvlet.uni.dom.all.{*, given}
 import wvlet.lang.BuildInfo
 import wvlet.lang.ui.component.MainFrame
 import wvlet.lang.ui.component.WindowSize

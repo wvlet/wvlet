@@ -1,7 +1,7 @@
 package wvlet.lang.ui.playground
 
-import wvlet.airframe.rx.html.RxElement
-import wvlet.airframe.rx.html.all.*
+import wvlet.uni.dom.RxElement
+import wvlet.uni.dom.all.{*, given}
 import wvlet.lang.api.v1.query.QueryResult
 import wvlet.lang.compiler.TablePrinter
 import org.scalajs.dom
@@ -44,7 +44,7 @@ class QueryResultViewer(currentQuery: CurrentQuery, windowSize: WindowSize) exte
         // Ensure hiding the scrollbar for Edge on Windows
         cls -> "scrollbar-hidden",
         // Important: Setting the width relative to the viewport width in order to hide overflowed contents
-        style ->
+        styleAttr ->
           s"overflow-x: scroll; overflow-y: scroll; max-width: fit-content; height: ${consoleHeight}px; max-height: ${consoleHeight}px;",
         currentQuery
           .lastQueryResult

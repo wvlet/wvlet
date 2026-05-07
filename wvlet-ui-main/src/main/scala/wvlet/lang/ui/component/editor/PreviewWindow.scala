@@ -1,8 +1,8 @@
 package wvlet.lang.ui.component.editor
 
-import wvlet.airframe.rx.html.RxElement
-import wvlet.airframe.rx.html.all.*
-import wvlet.airframe.rx.Rx
+import wvlet.uni.dom.RxElement
+import wvlet.uni.dom.all.{*, given}
+import wvlet.uni.rx.Rx
 
 object PreviewWindow:
   val previewResult = Rx.variable("[query result]")
