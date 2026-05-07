@@ -186,7 +186,13 @@ lazy val lang = crossProject(JVMPlatform, JSPlatform, NativePlatform)
       ((ThisBuild / baseDirectory).value / "spec" ** "*.wv").get ++
         ((ThisBuild / baseDirectory).value / "wvlet-stdlib" ** "*.wv").get
   )
-  .jsSettings(libraryDependencies += scalajsJavaSecureRandom)
+  .jsSettings(
+    libraryDependencies += scalajsJavaSecureRandom,
+    // wvlet-lang.js targets Node.js — uni.io.FileSystemJS uses @JSImport for `os` / `fs` /
+    // `path` / `zlib`, which the linker can only emit under a real ModuleKind. CommonJSModule
+    // is the most compatible option for Node-side test runs and downstream consumers.
+    scalaJSLinkerConfig ~= { _.withModuleKind(ModuleKind.CommonJSModule) }
+  )
   .dependsOn(api)
 
 val specRunnerSettings = Seq(

@@ -11,6 +11,13 @@ import wvlet.uni.log.Logger
 case class WorkEnv(path: String = ".", logLevel: LogLevel = Logger.getDefaultLogLevel)
     extends WorkEnvCompat:
 
+  /**
+    * True iff `path` is an existing directory containing at least one `.wv` file. On the browser
+    * (uni `BrowserFileSystem`) this is naturally `false` because the in-memory FS is empty.
+    */
+  lazy val hasWvletFiles: Boolean =
+    SourceIO.isDirectory(path) && SourceIO.listFiles(path).exists(_.endsWith(".wv"))
+
   def targetFolder: String =
     if hasWvletFiles then
       s"${path}/target"
@@ -27,6 +34,18 @@ case class WorkEnv(path: String = ".", logLevel: LogLevel = Logger.getDefaultLog
     else
       // Use the global folder at the user home for an arbitrary directory
       s"${sys.props("user.home")}/.cache/wvlet"
+
+  def saveToCache(path: String, content: String): Unit = SourceIO.writeString(
+    s"${cacheFolder}/${path}",
+    content
+  )
+
+  def loadCache(path: String): Option[VirtualFile] =
+    val target = s"${cacheFolder}/${path}"
+    if SourceIO.existsFile(target) then
+      Some(LocalFile(target))
+    else
+      None
 
   val compilerLogger: Logger = Logger("wvlet.lang.runner")
 

@@ -4,14 +4,9 @@ import wvlet.uni.log.Logger
 
 trait WorkEnvCompat:
   self: WorkEnv =>
-  lazy val hasWvletFiles: Boolean = false
 
   def isScalaJS: Boolean = true
 
-  def saveToCache(path: String, content: String): Unit = {
-    // no-op
-  }
-
-  def loadCache(path: String): Option[VirtualFile] = None
-
+  // uni-log on Scala.js does not ship LogRotationHandler — keep the logger as-is. On Node, log
+  // writes route through the default console handler instead of a rotating file.
   protected def initLogger(l: Logger, fileName: String): Logger = l

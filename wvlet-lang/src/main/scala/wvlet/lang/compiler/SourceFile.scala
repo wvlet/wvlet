@@ -21,10 +21,7 @@ import wvlet.lang.compiler.parser.WvletScanner
 import wvlet.lang.compiler.parser.WvletToken
 import wvlet.lang.compiler.parser.Tokens.*
 import wvlet.uni.util.ULID
-import wvlet.uni.io.IO
 
-import java.net.URI
-import java.net.URL
 import java.util.concurrent.atomic.AtomicBoolean
 import scala.collection.mutable.ArrayBuffer
 
@@ -41,9 +38,6 @@ object SourceFile:
   def fromString(wvName: String, content: String): SourceFile = SourceFile(
     MemoryFile(wvName, content)
   )
-
-  def fromResource(uri: URI): SourceFile     = SourceFile(URIResource(uri))
-  def fromResource(path: String): SourceFile = SourceFile(FileInResource(path))
 
 class SourceFile(val file: VirtualFile):
   def isEmpty: Boolean          = file eq EmptyFile
