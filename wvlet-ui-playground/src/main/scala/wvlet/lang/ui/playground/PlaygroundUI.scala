@@ -1,9 +1,9 @@
 package wvlet.lang.ui.playground
 
-import wvlet.airframe.rx.html.RxElement
-import wvlet.airframe.rx.html.all.*
 import wvlet.uni.design.Design
+import wvlet.uni.dom.RxElement
 import wvlet.uni.log.LogSupport
+import wvlet.uni.dom.all.{*, given}
 import wvlet.lang.ui.component.monaco.EditorBase
 import wvlet.lang.ui.component.Icon
 import wvlet.lang.ui.component.MainFrame
@@ -48,9 +48,9 @@ class PlaygroundUI(
 
   override def render =
     def clipButton(editor: EditorBase) = button(
-      tpe   -> "button",
-      cls   -> "flex-none mr-4 rounded bg-white/5 hover:text-white text-white/50 px-2 py-0",
-      title -> "Copy to clipboard",
+      tpe       -> "button",
+      cls       -> "flex-none mr-4 rounded bg-white/5 hover:text-white text-white/50 px-2 py-0",
+      titleAttr -> "Copy to clipboard",
       Icon.clip,
       onclick -> { e =>
         val text = editor.getText
@@ -59,8 +59,8 @@ class PlaygroundUI(
     )
 
     div(
-      cls   -> "flex",
-      style -> s"width: max-screen; height: calc(100vh - ${MainFrame.navBarHeightPx}px);",
+      cls       -> "flex",
+      styleAttr -> s"width: max-screen; height: calc(100vh - ${MainFrame.navBarHeightPx}px);",
       div(cls -> "hidden md:block w-40 h-full", fileExplorer),
       div(
         MainFrame
@@ -72,8 +72,8 @@ class PlaygroundUI(
               cls -> "hidden"
           },
         div(
-          cls   -> "fixed index-0 z-50 h-full",
-          style -> s"top: ${MainFrame.navBarHeightPx}px;",
+          cls       -> "fixed index-0 z-50 h-full",
+          styleAttr -> s"top: ${MainFrame.navBarHeightPx}px;",
           fileExplorer
         )
       ),

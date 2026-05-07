@@ -1,7 +1,7 @@
 package wvlet.lang.ui.playground
 
-import wvlet.airframe.rx.Cancelable
-import wvlet.airframe.rx.Rx
+import wvlet.uni.rx.Cancelable
+import wvlet.uni.rx.Rx
 import wvlet.lang.api.LinePosition
 import wvlet.lang.api.v1.query.QueryRequest
 import wvlet.lang.api.v1.query.QuerySelection

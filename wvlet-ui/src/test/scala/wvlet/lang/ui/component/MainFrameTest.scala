@@ -13,7 +13,7 @@
  */
 package wvlet.lang.ui.component
 
-import wvlet.airframe.rx.html.all.*
+import wvlet.uni.dom.all.{*, given}
 import wvlet.uni.test.UniTest
 
 class MainFrameTest extends UniTest:

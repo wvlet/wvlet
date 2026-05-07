@@ -3,7 +3,7 @@ package wvlet.lang.ui.component.editor
 // Local Rx work runs on uni.rx (the RPC client returns it). RxVar stays on airframe.rx because
 // it's bound into airframe-rx-html UI components downstream — uni doesn't ship an rx-html
 // replacement yet.
-import wvlet.airframe.rx.RxVar
+import wvlet.uni.rx.RxVar
 import wvlet.uni.rx.Rx
 import wvlet.lang.api.v1.frontend.FrontendApi.QueryInfoRequest
 import wvlet.lang.api.v1.frontend.FrontendApi.QueryResponse

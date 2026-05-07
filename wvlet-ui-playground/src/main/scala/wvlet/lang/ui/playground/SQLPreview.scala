@@ -1,8 +1,7 @@
 package wvlet.lang.ui.playground
 
-import wvlet.airframe.rx.html.all.s
-import wvlet.airframe.rx.Cancelable
-import wvlet.airframe.rx.Rx
+import wvlet.uni.rx.Cancelable
+import wvlet.uni.rx.Rx
 import wvlet.lang.api.WvletLangException
 import wvlet.lang.compiler.codegen.GenSQL
 import wvlet.lang.compiler.query.QuerySelector

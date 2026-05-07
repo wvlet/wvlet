@@ -1,8 +1,8 @@
 package wvlet.lang.ui.component
 
 import org.scalajs.dom
-import wvlet.airframe.rx.html.RxElement
-import wvlet.airframe.rx.html.all.*
+import wvlet.uni.dom.RxElement
+import wvlet.uni.dom.all.{*, given}
 
 class URLParamManager extends RxElement:
   init()

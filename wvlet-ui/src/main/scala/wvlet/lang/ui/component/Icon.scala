@@ -1,9 +1,7 @@
 package wvlet.lang.ui.component
 
-import wvlet.airframe.rx.html.RxElement
-import wvlet.airframe.rx.html.all.*
-import wvlet.airframe.rx.html.svgTags.*
-import wvlet.airframe.rx.html.svgAttrs.{xmlns as _, style as _, *}
+import wvlet.uni.dom.RxElement
+import wvlet.uni.dom.all.{*, given}
 
 object Icon:
 

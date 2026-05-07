@@ -1,19 +1,16 @@
 package wvlet.lang.ui.component.editor
 
 import org.scalajs.dom
-import wvlet.airframe.rx
-import wvlet.airframe.rx.html.RxElement
-import wvlet.airframe.rx.html.all.*
-import wvlet.airframe.rx.html.compat.MouseEvent
-import wvlet.airframe.rx.html.svgAttrs.*
-import wvlet.airframe.rx.Rx
-import wvlet.airframe.rx.RxVar
+import org.scalajs.dom.MouseEvent
+import wvlet.uni.dom.RxElement
+import wvlet.uni.dom.all.{*, given}
+import wvlet.uni.dom.when
+import wvlet.uni.rx.Rx
+import wvlet.uni.rx.RxVar
 import wvlet.uni.util.ULID
-import org.scalajs.macrotaskexecutor.MacrotaskExecutor.Implicits.*
 import wvlet.lang.api.v1.frontend.FileApi.FileRequest
 import wvlet.lang.api.v1.frontend.FrontendRPC.RPCAsyncClient
 import wvlet.lang.api.v1.io.FileEntry
-import wvlet.lang.ui.RxBridge
 import wvlet.lang.ui.component.GlobalState.selectedPath
 import wvlet.lang.ui.component.GlobalState
 import wvlet.lang.ui.component.Icon
@@ -34,40 +31,38 @@ class FileNav(rpcClient: RPCAsyncClient) extends RxElement:
     private def pathElem(elem: RxElement, parentEntry: FileEntry, isRoot: Boolean = false) =
       def pathItem(x: RxElement): RxElement = button(
         // href          -> "#",
-        cls           -> "text-sm font-medium text-gray-500 hover:text-gray-300",
-        id            -> selector.selectorId,
-        aria.expanded -> "true",
-        aria.haspopup -> "true",
+        cls          -> "text-sm font-medium text-gray-500 hover:text-gray-300",
+        id           -> selector.selectorId,
+        ariaExpanded -> "true",
+        ariaHaspopup -> "true",
         // Select the root path
-        rx.html
-          .when(
-            isRoot,
-            onclick -> { e =>
-              e.preventDefault()
-              hideAll
-              selectedPath := ""
-            }
-          ),
+        when(
+          isRoot,
+          onclick -> { e =>
+            e.preventDefault()
+            hideAll
+            selectedPath := ""
+          }
+        ),
         // List files in the directory
-        rx.html
-          .when(
-            !isRoot && parentEntry.isDirectory,
-            onclick -> { e =>
-              e.preventDefault()
-              hideAll
-              rpcClient
-                .FileApi
-                .listFiles(FileRequest(parentEntry.path))
-                .map { lst =>
-                  selector.updateEntries(lst)
-                }
-            }
-          ),
+        when(
+          !isRoot && parentEntry.isDirectory,
+          onclick -> { e =>
+            e.preventDefault()
+            hideAll
+            rpcClient
+              .FileApi
+              .listFiles(FileRequest(parentEntry.path))
+              .map { lst =>
+                selector.updateEntries(lst)
+              }
+          }
+        ),
         x
       )
       li(
         cls -> "flex",
-        rx.html.when(!isRoot, Icon.slash),
+        when(!isRoot, Icon.slash),
         div(cls -> "flex items-center", div(cls -> "relative", pathItem(elem), selector))
       )
     end pathElem
@@ -76,9 +71,9 @@ class FileNav(rpcClient: RPCAsyncClient) extends RxElement:
 
   private class NewFileButton(path: String, fileEntry: FileEntry) extends RxElement:
     override def render: RxElement = button(
-      cls     -> "text-sm px-1 text-gray-500 hover:text-gray-300",
-      title   -> "New",
-      onclick -> { (e: MouseEvent) =>
+      cls       -> "text-sm px-1 text-gray-500 hover:text-gray-300",
+      titleAttr -> "New",
+      onclick   -> { (e: MouseEvent) =>
         ConsoleLog.writeError(s"[NOT IMPLEMENTED] Add a file at ${fileEntry}")
       },
       "+"
@@ -90,8 +85,9 @@ class FileNav(rpcClient: RPCAsyncClient) extends RxElement:
     nav(
       cls -> "flex px-2 h-4 text-sm text-gray-400",
       ol(role -> "list", cls -> "flex space-x-4 rounded-md px-1 shadow"),
-      RxBridge
-        .toAirframe(rpcClient.FileApi.getPath(FileRequest(path)))
+      rpcClient
+        .FileApi
+        .getPath(FileRequest(path))
         .map { pathEntries =>
           var parentEntry = FileEntry("", "", true, true, 0, 0)
           val elems       = List.newBuilder[PathElem]
@@ -142,10 +138,10 @@ class FileSelectorPopup extends RxElement:
   override def render: RxElement = div(
     cls ->
       "absolute left-0 z-10 mt-0 w-56 origin-top-right divide-y divide-gray-100 rounded-md bg-white shadow-lg ring-1 ring-black ring-black/5 focus:outline-none overflow-y-scroll max-h-96",
-    role             -> "menu",
-    aria.orientation -> "vertical",
-    aria.labelledby  -> selectorId,
-    tabindex         -> "-1",
+    role            -> "menu",
+    ariaOrientation -> "vertical",
+    ariaLabelledby  -> selectorId,
+    tabindex        -> "-1",
     toShow
       .filter(_ == true)
       .map { _ =>
@@ -166,7 +162,7 @@ class FileSelectorPopup extends RxElement:
                     event.preventDefault()
                     selectedPath := e.path
                   },
-                  rx.html.when(e.isDirectory, Icon.folder),
+                  when(e.isDirectory, Icon.folder),
                   span(cls -> "pl-1", e.name)
                 )
               }
