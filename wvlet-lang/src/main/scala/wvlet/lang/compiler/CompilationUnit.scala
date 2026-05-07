@@ -25,14 +25,8 @@ import wvlet.lang.model.plan.NamedRelation
 import wvlet.lang.model.plan.Relation
 import wvlet.lang.stdlib.StdLib
 import wvlet.uni.log.LogSupport
-import wvlet.uni.io.IO
 
-import java.io.File
-import java.net.URLClassLoader
-import java.net.URI
-import java.net.URL
 import java.util.concurrent.ConcurrentHashMap
-import java.util.jar.JarFile
 
 /**
   * Represents a unit for compilation (= source file) and records intermediate data (e.g., plan
@@ -147,14 +141,6 @@ object CompilationUnit extends LogSupport:
         }
         .toList
     units.sorted
-
-  def fromResourcePath(path: String, isPreset: Boolean): List[CompilationUnit] =
-    val resources = SourceIO.listResources(path)
-    resources
-      .filter(_.isSourceFile)
-      .map { r =>
-        CompilationUnit(SourceFile.fromFile(r), isPreset = isPreset)
-      }
 
   def stdLib: List[CompilationUnit] =
     StdLib

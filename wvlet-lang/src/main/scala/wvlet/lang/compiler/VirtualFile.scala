@@ -13,12 +13,6 @@
  */
 package wvlet.lang.compiler
 
-import wvlet.uni.io.IO
-
-import java.io.File
-import java.nio.file.Files
-import java.nio.file.Path
-import scala.jdk.CollectionConverters.*
 import scala.util.Try
 
 /**
@@ -156,24 +150,3 @@ case object EmptyFile extends VirtualFile:
   override def listFiles: List[VirtualFile] = Nil
   override def lastUpdatedAt: Long          = 0
   override def contentString: String        = ""
-
-/**
-  * A file in a resource folder or a jar file
-  * @param path
-  */
-case class FileInResource(path: String) extends VirtualFile:
-  val lastUpdatedAt: Long                   = System.currentTimeMillis()
-  override def name: String                 = path.split("/").last
-  override def exists: Boolean              = true
-  override def isDirectory: Boolean         = false
-  override def listFiles: List[VirtualFile] = Nil
-  override def contentString: String        = SourceIO.readAsString(path)
-
-case class URIResource(url: java.net.URI) extends VirtualFile:
-  val lastUpdatedAt: Long                   = System.currentTimeMillis()
-  override def name: String                 = url.getPath.split("/").last
-  override def path: String                 = url.getPath
-  override def exists: Boolean              = true
-  override def isDirectory: Boolean         = false
-  override def listFiles: List[VirtualFile] = Nil
-  override def contentString: String        = SourceIO.readAsString(url)
