@@ -11,7 +11,7 @@ val TRINO_VERSION          = "476"
 val AWS_SDK_VERSION        = "2.20.146"
 val SCALAJS_DOM_VERSION    = "2.8.1"
 val DUCKDB_JDBC_VERSION    = "1.5.2.1"
-val SNOWFLAKE_JDBC_VERSION = "4.1.0"
+val SNOWFLAKE_JDBC_VERSION = "4.2.0"
 
 val SCALA_3 = IO.read(file("SCALA_VERSION")).trim
 // ThisBuild / resolvers ++= Resolver.sonatypeOssRepos("snapshots")
@@ -479,11 +479,12 @@ lazy val server = project
     libraryDependencies ++=
       Seq(
         // For redirecting slf4j logs to airframe-log
-        "org.slf4j" % "slf4j-jdk14" % "2.0.17"
-        // airframe-launcher dropped: wvlet-server uses wvlet.uni.cli.launcher.@option
-        // already and no source references the airframe launcher.
-        // airframe-http-netty dropped in #1662 phase 2: the server runtime
-        // now uses uni-netty, pulled transitively from wvlet-http-server.
+        "org.slf4j" % "slf4j-jdk14" %
+          "2.0.17"
+          // airframe-launcher dropped: wvlet-server uses wvlet.uni.cli.launcher.@option
+          // already and no source references the airframe launcher.
+          // airframe-http-netty dropped in #1662 phase 2: the server runtime
+          // now uses uni-netty, pulled transitively from wvlet-http-server.
       ),
     reStart / baseDirectory := (ThisBuild / baseDirectory).value
   )
