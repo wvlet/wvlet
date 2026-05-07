@@ -585,8 +585,8 @@ lazy val labs = project
     name           := "wvlet-labs",
     libraryDependencies ++=
       Seq(
-        "org.wvlet.airframe" %% "airframe-launcher" % AIRFRAME_VERSION,
-        "org.duckdb"          % "duckdb_jdbc"       % DUCKDB_JDBC_VERSION
+        // airframe-launcher dropped: ParseQuery uses wvlet.uni.cli.launcher (#1662 phase 7).
+        "org.duckdb" % "duckdb_jdbc" % DUCKDB_JDBC_VERSION
       )
   )
   .dependsOn(lang.jvm)
