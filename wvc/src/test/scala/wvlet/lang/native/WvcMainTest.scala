@@ -12,23 +12,23 @@ class WvcMainTest extends UniTest:
     debug(out)
     out.toString
 
-  test("run command") {
+  test("compile a query") {
     val out = captureOut {
-      WvcMain.main(Array("-q", "select 1"))
+      WvcMain.main(Array("compile", "select 1"))
     }
     out shouldContain "select 1"
   }
 
   test("use stdlib") {
     val out = captureOut {
-      WvcMain.main(Array("-q", "select '1'.to_int"))
+      WvcMain.main(Array("compile", "select '1'.to_int"))
     }
     out shouldContain "cast('1' as bigint)"
   }
 
   test("load spec") {
     val out = captureOut {
-      WvcMain.main(Array("-w", "spec/basic", "-q", "from person"))
+      WvcMain.main(Array("compile", "-w", "spec/basic", "from person"))
     }
     out shouldContain "from 'spec/basic/person.json'"
   }
