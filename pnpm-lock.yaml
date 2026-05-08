@@ -90,6 +90,8 @@ importers:
         specifier: ^5.47.1
         version: 5.47.1
 
+  sdks/cli-node: {}
+
   sdks/typescript:
     devDependencies:
       '@types/node':

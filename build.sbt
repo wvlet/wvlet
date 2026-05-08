@@ -472,7 +472,14 @@ lazy val cliCore = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     scalaJSLinkerConfig ~= {
       // The repo package.json sets "type": "module", so the linked .js must be an ES module.
       _.withModuleKind(ModuleKind.ESModule)
-    }
+    },
+    // Link directly into the npm package layout. `bin/wvlet.js` imports `lib/main.js`, so
+    // `pnpm run build` (which calls `./sbt cliCoreJS/fullLinkJS`) drops the bundle straight
+    // into the publishable folder.
+    Compile / fastLinkJS / scalaJSLinkerOutputDirectory :=
+      (ThisBuild / baseDirectory).value / "sdks" / "cli-node" / "lib",
+    Compile / fullLinkJS / scalaJSLinkerOutputDirectory :=
+      (ThisBuild / baseDirectory).value / "sdks" / "cli-node" / "lib"
   )
   .dependsOn(lang)
 

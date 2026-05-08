@@ -1,0 +1,41 @@
+{
+  "name": "@wvlet/cli",
+  "version": "0.0.0",
+  "description": "wvlet command-line compiler for Node.js — compile .wv flow-style queries to SQL",
+  "type": "module",
+  "bin": {
+    "wvlet": "./bin/wvlet.js"
+  },
+  "scripts": {
+    "build:scalajs": "cd ../.. && ./sbt cliCoreJS/fullLinkJS",
+    "build:scalajs:dev": "cd ../.. && ./sbt cliCoreJS/fastLinkJS",
+    "build": "pnpm run build:scalajs",
+    "prepublishOnly": "pnpm run build"
+  },
+  "files": [
+    "bin",
+    "lib",
+    "README.md"
+  ],
+  "keywords": [
+    "wvlet",
+    "sql",
+    "query",
+    "compiler",
+    "cli"
+  ],
+  "author": "wvlet.org",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wvlet/wvlet.git",
+    "directory": "sdks/cli-node"
+  },
+  "bugs": {
+    "url": "https://github.com/wvlet/wvlet/issues"
+  },
+  "homepage": "https://wvlet.org/",
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
