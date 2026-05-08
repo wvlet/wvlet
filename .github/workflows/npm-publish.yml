@@ -12,6 +12,7 @@ on:
         type: choice
         options:
           - typescript-sdk
+          - cli-node
           - highlightjs-wvlet
           - prismjs-wvlet
       version:
@@ -77,6 +78,61 @@ jobs:
 
       - name: Publish to NPM
         working-directory: sdks/typescript
+        run: pnpm publish --no-git-checks --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  publish-cli-node:
+    name: Publish @wvlet/cli (Node.js) to NPM
+    if: |
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+      (github.event_name == 'workflow_dispatch' && inputs.package == 'cli-node')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '25'
+          cache: sbt
+
+      - uses: pnpm/action-setup@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          registry-url: 'https://registry.npmjs.org'
+          cache: 'pnpm'
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Build wvlet-cli-core JS bundle
+        run: ./sbt "cliCoreJS/fullLinkJS"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Set version from tag
+        if: github.event_name == 'push'
+        working-directory: sdks/cli-node
+        run: |
+          VERSION=$(echo "${{ github.ref }}" | sed 's/refs\/tags\/v//')
+          pnpm version $VERSION --no-git-tag-version
+
+      - name: Set version from input
+        if: github.event_name == 'workflow_dispatch'
+        working-directory: sdks/cli-node
+        run: |
+          pnpm version ${{ inputs.version }} --no-git-tag-version
+
+      - name: Publish to NPM
+        working-directory: sdks/cli-node
         run: pnpm publish --no-git-checks --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

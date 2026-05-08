@@ -6,3 +6,4 @@ packages:
   - 'highlightjs-wvlet'
   - 'prismjs-wvlet'
   - 'sdks/typescript'
+  - 'sdks/cli-node'
