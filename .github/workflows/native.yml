@@ -156,12 +156,12 @@ jobs:
         id: vcpkg-cache
         with:
           path: C:\vcpkg\installed
-          key: vcpkg-${{ runner.os }}-${{ matrix.arch }}-bdwgc-zlib-openssl-v1
-      - name: Install native dependencies (Boehm GC, zlib, OpenSSL)
+          key: vcpkg-${{ runner.os }}-${{ matrix.arch }}-bdwgc-zlib-openssl-duckdb-v1
+      - name: Install native dependencies (Boehm GC, zlib, OpenSSL, DuckDB)
         if: steps.vcpkg-cache.outputs.cache-hit != 'true'
         run: |
           $triplet = if ("${{ matrix.arch }}" -eq "arm64") { "arm64-windows" } else { "x64-windows" }
-          vcpkg install bdwgc:$triplet zlib:$triplet openssl:$triplet
+          vcpkg install bdwgc:$triplet zlib:$triplet openssl:$triplet duckdb:$triplet
         shell: pwsh
       - name: Configure paths and symlinks
         run: |

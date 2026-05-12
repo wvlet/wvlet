@@ -137,6 +137,18 @@ jobs:
           cache: sbt
       - name: Install native dependencies
         run: sudo apt-get update && sudo apt-get install -y libgc-dev
+      - name: Install libduckdb
+        # Ubuntu doesn't ship libduckdb-dev; pull the prebuilt artifact from DuckDB's
+        # GitHub release and drop it into /usr/local/{lib,include}. Required for
+        # wvc's @link("duckdb") schema-inference binding.
+        run: |
+          DUCKDB_VERSION=1.5.2
+          curl -sSfL -o /tmp/libduckdb.zip \
+            "https://github.com/duckdb/duckdb/releases/download/v${DUCKDB_VERSION}/libduckdb-linux-amd64.zip"
+          mkdir -p /tmp/libduckdb && unzip -q /tmp/libduckdb.zip -d /tmp/libduckdb
+          sudo cp /tmp/libduckdb/libduckdb.so /usr/local/lib/
+          sudo cp /tmp/libduckdb/duckdb.h /usr/local/include/
+          sudo ldconfig
       - name: Scala Native test
         run: ./sbt projectNative/test
       - name: Publish Test Report
