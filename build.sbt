@@ -32,7 +32,7 @@ val buildSettings = Seq[Setting[?]](
     Seq(
       // https://users.scala-lang.org/t/scala-js-with-3-7-0-package-scala-contains-object-and-package-with-same-name-caps/10786/5
       "org.scala-lang" %% "scala3-library" % scalaVersion.value,
-      "org.wvlet.uni"  %%% "uni-test"      % UNI_VERSION % Test
+      "org.wvlet.uni" %%% "uni-test"       % UNI_VERSION % Test
     ),
   testFrameworks += new TestFramework("wvlet.uni.test.Framework"),
   // Don't use pipelining as it tends to slowdown the build
@@ -70,8 +70,13 @@ lazy val jsProjects: Seq[ProjectReference] = Seq(
   cliCore.js
 )
 
-lazy val nativeProjects: Seq[ProjectReference] =
-  Seq(api.native, lang.native, cliCore.native, wvc, wvcLib)
+lazy val nativeProjects: Seq[ProjectReference] = Seq(
+  api.native,
+  lang.native,
+  cliCore.native,
+  wvc,
+  wvcLib
+)
 
 val noPublish = Seq(
   publishArtifact := false,
@@ -101,7 +106,7 @@ lazy val api = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     name          := "wvlet-api",
     buildInfoKeys := Seq[BuildInfoKey](name, version, scalaVersion, sbtVersion),
     buildInfoOptions += BuildInfoOption.BuildTime,
-    buildInfoPackage := "wvlet.lang",
+    buildInfoPackage                        := "wvlet.lang",
     libraryDependencies += "org.wvlet.uni" %%% "uni" % UNI_VERSION
   )
   .jsSettings(libraryDependencies += scalajsJavaSecureRandom)
@@ -194,7 +199,9 @@ lazy val lang = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     // wvlet-lang.js targets Node.js — uni.io.FileSystemJS uses @JSImport for `os` / `fs` /
     // `path` / `zlib`, which the linker can only emit under a real ModuleKind. CommonJSModule
     // is the most compatible option for Node-side test runs and downstream consumers.
-    scalaJSLinkerConfig ~= { _.withModuleKind(ModuleKind.CommonJSModule) }
+    scalaJSLinkerConfig ~= {
+      _.withModuleKind(ModuleKind.CommonJSModule)
+    }
   )
   .dependsOn(api)
 
@@ -460,11 +467,7 @@ lazy val sdkJs = project
 lazy val cliCore = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("wvlet-cli-core"))
-  .settings(
-    buildSettings,
-    noPublish,
-    name := "wvlet-cli-core"
-  )
+  .settings(buildSettings, noPublish, name := "wvlet-cli-core")
   .jsSettings(
     libraryDependencies += scalajsJavaSecureRandom,
     scalaJSUseMainModuleInitializer := true,
@@ -502,8 +505,8 @@ lazy val server = project
     name := "wvlet-server",
     // Route SLF4J calls (e.g. from JDBC drivers) into java.util.logging so they share the
     // same handler as wvlet.uni.log.
-    libraryDependencies += "org.slf4j" % "slf4j-jdk14" % "2.0.17",
-    reStart / baseDirectory := (ThisBuild / baseDirectory).value
+    libraryDependencies += "org.slf4j" % "slf4j-jdk14" % "2.0.18",
+    reStart / baseDirectory           := (ThisBuild / baseDirectory).value
   )
   .dependsOn(api.jvm, client.jvm, runner, httpServer, testUtil % Test)
 
@@ -595,8 +598,8 @@ lazy val labs = project
     buildSettings,
     noPublish,
     // Override noPublish setting to allow IDEA import
-    ideSkipProject := false,
-    name           := "wvlet-labs",
+    ideSkipProject                     := false,
+    name                               := "wvlet-labs",
     libraryDependencies += "org.duckdb" % "duckdb_jdbc" % DUCKDB_JDBC_VERSION
   )
   .dependsOn(lang.jvm)
