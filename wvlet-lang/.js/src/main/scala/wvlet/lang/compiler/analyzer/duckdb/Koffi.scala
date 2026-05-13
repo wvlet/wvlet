@@ -42,3 +42,19 @@ private[duckdb] trait KoffiLib extends js.Object:
   def func(signature: String): js.Function = js.native
 
 end KoffiLib
+
+/**
+  * Top-level koffi entry points we use directly (outside `Koffi.load(...).func(...)` bindings).
+  * `decode` is the key piece for chunk reading — it lets us read typed values at a byte offset
+  * within a raw pointer (including reading an inner pointer as `void *` so it stays a koffi pointer
+  * rather than getting auto-stringified to JS).
+  */
+@js.native
+@JSImport("koffi", JSImport.Namespace)
+private[duckdb] object KoffiOps extends js.Object:
+  def decode(value: js.Any, offset: Int, `type`: js.Any): js.Any = js.native
+  def decode(value: js.Any, `type`: js.Any): js.Any              = js.native
+  def array(elementType: String, count: Int): js.Any             = js.native
+  def address(ptr: js.Any): js.BigInt                            = js.native
+
+end KoffiOps
