@@ -58,6 +58,26 @@ private[duckdb] object DuckDBApi:
   def duckdb_column_type(result: Ptr[duckdb_result], col: idx_t): duckdb_type = extern
   def duckdb_result_error(result: Ptr[duckdb_result]): CString                = extern
 
+  // Chunk / vector API for row iteration. The deprecated `duckdb_value_*` row-API was
+  // neutered in DuckDB 1.5.2 (returns null/0), so the chunk API is the only working path.
+  type duckdb_data_chunk = Ptr[Byte]
+  type duckdb_vector     = Ptr[Byte]
+
+  def duckdb_destroy_data_chunk(chunk: Ptr[duckdb_data_chunk]): Unit                    = extern
+  def duckdb_data_chunk_get_size(chunk: duckdb_data_chunk): idx_t                       = extern
+  def duckdb_data_chunk_get_column_count(chunk: duckdb_data_chunk): idx_t               = extern
+  def duckdb_data_chunk_get_vector(chunk: duckdb_data_chunk, col: idx_t): duckdb_vector = extern
+  def duckdb_vector_get_data(vector: duckdb_vector): Ptr[Byte]                          = extern
+  def duckdb_vector_get_validity(vector: duckdb_vector): Ptr[ULong]                     = extern
+  def duckdb_validity_row_is_valid(validity: Ptr[ULong], row: idx_t): CBool             = extern
+
+  // C wrappers in wvlet_duckdb_helpers.c. The DuckDB C API takes `duckdb_result` and
+  // `duckdb_string_t` BY VALUE, which Scala Native's @extern ABI doesn't currently emit
+  // correctly for these struct sizes. The wrappers take a pointer and forward by-value
+  // internally on the C side.
+  def wvlet_duckdb_fetch_chunk(result: Ptr[duckdb_result]): duckdb_data_chunk = extern
+  def wvlet_duckdb_string_t_length(string_ptr: Ptr[Byte]): CInt               = extern
+
 end DuckDBApi
 
 /**
