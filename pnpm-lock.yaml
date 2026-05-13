@@ -93,7 +93,11 @@ importers:
         specifier: ^5.47.1
         version: 5.47.1
 
-  sdks/cli-node: {}
+  sdks/cli-node:
+    dependencies:
+      koffi:
+        specifier: ^2.16.0
+        version: 2.16.2
 
   sdks/typescript:
     devDependencies:
