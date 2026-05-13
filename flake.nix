@@ -21,6 +21,7 @@
           llvmPackages.llvm
           # Required native libraries
           boehmgc
+          duckdb     # libduckdb for wvc's @link("duckdb") schema inference
           openssl
           zlib
           # Build tools
@@ -36,9 +37,10 @@
 
         # Common shell hook for setting up library paths
         setupHook = ''
-          # Set library paths for Scala Native
-          export LIBRARY_PATH="${pkgs.boehmgc}/lib:${pkgs.openssl.out}/lib:${pkgs.zlib}/lib''${LIBRARY_PATH:+:$LIBRARY_PATH}"
-          export C_INCLUDE_PATH="${pkgs.boehmgc.dev}/include:${pkgs.openssl.dev}/include:${pkgs.zlib.dev}/include''${C_INCLUDE_PATH:+:$C_INCLUDE_PATH}"
+          # Set library paths for Scala Native. duckdb is multi-output: libraries live in `.lib`
+          # and headers in `.dev`, so we have to spell out both outputs explicitly.
+          export LIBRARY_PATH="${pkgs.boehmgc}/lib:${pkgs.duckdb.lib}/lib:${pkgs.openssl.out}/lib:${pkgs.zlib}/lib''${LIBRARY_PATH:+:$LIBRARY_PATH}"
+          export C_INCLUDE_PATH="${pkgs.boehmgc.dev}/include:${pkgs.duckdb.dev}/include:${pkgs.openssl.dev}/include:${pkgs.zlib.dev}/include''${C_INCLUDE_PATH:+:$C_INCLUDE_PATH}"
 
           ${pkgs.lib.optionalString pkgs.stdenv.isDarwin ''
             export MACOSX_DEPLOYMENT_TARGET="${pkgs.stdenv.hostPlatform.darwinMinVersion}"
@@ -58,6 +60,7 @@
             echo "  clang:   $(clang --version | head -1)"
             echo "  lld:     $(ld.lld --version | head -1)"
             echo "  gc:      ${pkgs.boehmgc}"
+            echo "  duckdb:  ${pkgs.duckdb.lib}"
             echo "  openssl: ${pkgs.openssl}"
             echo "  zlib:    ${pkgs.zlib}"
             echo ""
