@@ -6,48 +6,30 @@ Date: 2026-05-13
 Native intentionally still report `canExecute = false` and throw on `execute` for
 distinct reasons captured here.
 
-## Scala.js — koffi struct unpacking
+## Scala.js — ✅ landed
 
-**Why it doesn't work today**: DuckDB 1.5.2 disabled the deprecated row-based
-value API (`duckdb_value_varchar`, `duckdb_value_int64`, etc.) — they return
-`null` / `0` regardless of the actual cell. Verified via a koffi probe directly
-calling the C functions: all return null in 1.5.2, while `duckdb_column_*`
-metadata calls and the chunk API still work.
+DuckDB 1.5.2 disabled the deprecated row-based value API (`duckdb_value_varchar`
+etc. return null). The chunk/vector API is the only working path. Implemented
+via koffi using the following pattern:
 
-The replacement is the chunk/vector API:
+1. **Two-query approach**: schema probe (`SELECT * FROM (<sql>) ... LIMIT 0`)
+   for original column types, then `SELECT COLUMNS(*)::VARCHAR FROM (<sql>)`
+   for the data — every column is VARCHAR so we only need one chunk reader
+   path.
+2. **Per-row varchar unpacking**: each `duckdb_string_t` is 16 bytes — the
+   first 4 are length, then either 12 inlined bytes (length ≤ 12) or a
+   4-byte prefix + 8-byte heap pointer (length > 12).
+3. **The trick for following the heap pointer**: `koffi.decode(data, offset, "void *")`.
+   Using `"void *"` (rather than `"char *"`) keeps the inner pointer as a
+   koffi pointer instead of auto-stringifying via NUL termination. Then a
+   second `koffi.decode(innerPtr, koffi.array("uint8_t", length))` reads the
+   exact byte range.
+4. **Null check via the validity bitmap** (`duckdb_validity_row_is_valid`)
+   with `KoffiOps.address(p) == js.BigInt(0)` to detect when the chunk has
+   no validity bitmap (all valid).
 
-- `duckdb_fetch_chunk(result)` → `duckdb_data_chunk`
-- `duckdb_data_chunk_get_size(chunk)` → row count in chunk
-- `duckdb_data_chunk_get_vector(chunk, col)` → vector for a column
-- `duckdb_vector_get_data(vector)` → raw `void *` pointing to typed column data
-- `duckdb_vector_get_validity(vector)` → `uint64_t *` validity bitmap
-- `duckdb_validity_row_is_valid(validity, row)` → null check helper
-- `duckdb_destroy_data_chunk(&chunk)` → cleanup
-
-For varchar columns, the raw data is an array of 16-byte `duckdb_string_t`
-unions (length-prefixed; either inlined ≤ 12 bytes or out-of-line via pointer).
-`duckdb_string_t_data(struct *)` and `duckdb_string_t_length(struct)` are
-helpers but the latter takes the struct by value.
-
-**Path of least resistance**: wrap the user SQL with
-`SELECT COLUMNS(*)::VARCHAR FROM (<sql>)` so every column is VARCHAR — one
-chunk reader path instead of per-type dispatch (verified working with the
-DuckDB CLI). Then read each row's `duckdb_string_t` via koffi.
-
-**What got stuck**: koffi can read an array of structs via
-`koffi.decode(data, koffi.array("duckdb_string_t", n))`, but the inline-vs-
-pointer union is awkward to express in koffi's struct DSL. The cleanest way is
-to define `duckdb_string_t` with `{length: uint32_t, raw: uint8_t[12]}` and
-parse the 12 bytes manually based on `length` — for the out-of-line case
-that means rebuilding a koffi pointer from a BigInt address, which doesn't
-have a direct API (`koffi.as(bigint, "uint8_t *")` rejects BigInts).
-
-Working approaches (pick one in the follow-up PR):
-1. Read the whole vector as a `Uint8Array` view via `koffi.decode(data, koffi.array("uint8_t", n*16))` and reconstruct strings entirely in JS (for the out-of-line case, the 8-byte pointer at offset 8 needs to be passed back to libduckdb somehow — `duckdb_string_t_data` can be called with the 16-byte struct address since it handles both cases).
-2. Wrap the C API surface (specifically the chunk-readout for one row) in a tiny `.node` addon, or use [napi-rs](https://napi.rs/) style.
-3. Use the `apache-arrow` npm package + `duckdb_query_arrow` to get an Arrow IPC stream and parse it in JS — already a dep in the playground build.
-
-Estimated effort: ~half a day if going with option 1, longer for 2 or 3.
+`canExecute = true` on JS when koffi successfully loads libduckdb. Tests for
+`execute` now run on JS automatically.
 
 ## Scala Native — struct-by-value ABI mismatch
 

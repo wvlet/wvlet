@@ -69,6 +69,34 @@ private[duckdb] class DuckDBApi private (libPath: String):
     "int duckdb_column_type(duckdb_result *result, uint64_t col)"
   )
 
+  // Chunk / vector API for row iteration. The deprecated `duckdb_value_*` row API was
+  // neutered in DuckDB 1.5.2 (returns null/0), so the chunk API is the only working path.
+  // `duckdb_fetch_chunk` takes `duckdb_result` BY VALUE — koffi marshals our js.Object as the
+  // 48-byte struct automatically.
+  val duckdb_fetch_chunk: js.Function = lib.func("void *duckdb_fetch_chunk(duckdb_result result)")
+
+  val duckdb_destroy_data_chunk: js.Function = lib.func(
+    "void duckdb_destroy_data_chunk(_Inout_ void **chunk)"
+  )
+
+  val duckdb_data_chunk_get_size: js.Function = lib.func(
+    "uint64_t duckdb_data_chunk_get_size(void *chunk)"
+  )
+
+  val duckdb_data_chunk_get_vector: js.Function = lib.func(
+    "void *duckdb_data_chunk_get_vector(void *chunk, uint64_t col)"
+  )
+
+  val duckdb_vector_get_data: js.Function = lib.func("void *duckdb_vector_get_data(void *vector)")
+
+  val duckdb_vector_get_validity: js.Function = lib.func(
+    "uint64_t *duckdb_vector_get_validity(void *vector)"
+  )
+
+  val duckdb_validity_row_is_valid: js.Function = lib.func(
+    "bool duckdb_validity_row_is_valid(uint64_t *validity, uint64_t row)"
+  )
+
 end DuckDBApi
 
 private[duckdb] object DuckDBApi:
