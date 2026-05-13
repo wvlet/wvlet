@@ -16,7 +16,11 @@ import { defineConfig } from "vite";
 import tailwindcss from "@tailwindcss/vite";
 import monacoEditorPlugin from "vite-plugin-monaco-editor";
 import fs from 'fs'
+import path from 'path';
+import { fileURLToPath } from 'url';
 import replace from '@rollup/plugin-replace';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 function isDev() {
   return process.env.NODE_ENV !== "production";
@@ -30,6 +34,15 @@ export default defineConfig({
   base: "./",
   server: {
     open: true,
+  },
+  // `wvlet-lang.js` imports `koffi` for its Node-side DuckDB backend. koffi's index.js has
+  // platform-specific `require("./build/koffi/<platform>/koffi.node")` calls that the bundler
+  // can't follow. Replace koffi with a browser stub that throws on use — the playground never
+  // hits the DuckDB code path at runtime, so the stub stays dormant.
+  resolve: {
+    alias: {
+      koffi: path.resolve(__dirname, 'koffi-browser-stub.js')
+    }
   },
   plugins: [
     tailwindcss(),

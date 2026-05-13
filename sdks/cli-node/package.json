@@ -17,6 +17,9 @@
     "lib",
     "README.md"
   ],
+  "dependencies": {
+    "koffi": "^2.16.0"
+  },
   "keywords": [
     "wvlet",
     "sql",

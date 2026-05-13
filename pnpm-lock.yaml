@@ -27,6 +27,9 @@ importers:
       apache-arrow:
         specifier: ^21.1.0
         version: 21.1.0
+      koffi:
+        specifier: ^2.16.0
+        version: 2.16.2
       monaco-editor:
         specifier: ^0.55.1
         version: 0.55.1
@@ -90,7 +93,11 @@ importers:
         specifier: ^5.47.1
         version: 5.47.1
 
-  sdks/cli-node: {}
+  sdks/cli-node:
+    dependencies:
+      koffi:
+        specifier: ^2.16.0
+        version: 2.16.2
 
   sdks/typescript:
     devDependencies:
@@ -5458,6 +5465,9 @@ packages:
   kleur@3.0.3:
     resolution: {integrity: sha512-eTIzlVOSUR+JxdDFepEYcBMtZ9Qqdef+rnzWdRZuMbOywu5tO2w2N7rqjoANZ5k9vywhL6Br1VRjUIgTQx4E8w==}
     engines: {node: '>=6'}
+
+  koffi@2.16.2:
+    resolution: {integrity: sha512-owU0MRwv6xkrVqCd+33uw6BaYppkTRXbO/rVdJNI2dvZG0gzyRhYwW25eWtc5pauwK8TGh3AbkFONSezdykfSA==}
 
   langium@4.2.3:
     resolution: {integrity: sha512-sOPIi4hISFnY7twwV97ca1TsxpBtXq0URu/LL1AvxwccPG/RIBBlKS7a/f/EL6w8lTNaS0EFs/F+IdSOaqYpng==}
@@ -14922,6 +14932,8 @@ snapshots:
   kind-of@6.0.3: {}
 
   kleur@3.0.3: {}
+
+  koffi@2.16.2: {}
 
   langium@4.2.3:
     dependencies:

@@ -15,6 +15,7 @@
     "@tailwindcss/postcss": "^4.2.2",
     "@tailwindcss/vite": "^4.2.4",
     "apache-arrow": "^21.1.0",
+    "koffi": "^2.16.0",
     "monaco-editor": "^0.55.1",
     "rollup": "^4.60.3"
   },

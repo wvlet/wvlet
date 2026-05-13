@@ -2,7 +2,11 @@
   description = "Wvlet Scala Native build environment";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.11";
+    # Bumped from `nixos-24.11` to track `nixos-unstable` — needed for DuckDB 1.5.2
+    # (24.11 ships 1.1.3). The Native CI test job downloads libduckdb 1.5.2 separately, so
+    # the build-time linkage must match the run-time ABI. Channel pin reproducibility comes
+    # from flake.lock.
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
   };
 
