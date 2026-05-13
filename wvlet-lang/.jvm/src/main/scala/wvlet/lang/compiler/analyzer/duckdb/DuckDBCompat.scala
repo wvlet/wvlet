@@ -15,6 +15,7 @@ import java.sql.DriverManager
 
 trait DuckDBCompat:
   def isAvailable: Boolean = true
+  def canExecute: Boolean  = true
 
   def schemaOf(path: String): RelationType =
     if !File(path).isFile then
@@ -38,6 +39,39 @@ trait DuckDBCompat:
           SchemaType(None, Name.typeName(RelationType.newRelationTypeName), columns)
         }
       }
+
+  /**
+    * Run `sql` against a fresh in-memory DuckDB and return all rows materialized as strings. Values
+    * come back via `rs.getString(col)` — same string-coercion the JS/Native backends get from
+    * `duckdb_value_varchar`, so cross-platform output is consistent.
+    */
+  def execute(sql: String): QueryResult = withConnection { conn =>
+    withResource(conn.createStatement().executeQuery(sql)) { rs =>
+      val metadata = rs.getMetaData
+      val colCount = metadata.getColumnCount
+      val columns  = (1 to colCount)
+        .map { i =>
+          val name     = metadata.getColumnName(i)
+          val dataType = metadata.getColumnTypeName(i).toLowerCase
+          NamedType(Name.termName(name), DataType.parse(dataType))
+        }
+        .toList
+
+      val rows = List.newBuilder[QueryResultRow]
+      while rs.next() do
+        val values = (1 to colCount)
+          .map { i =>
+            val v = rs.getString(i)
+            if rs.wasNull() then
+              None
+            else
+              Option(v)
+          }
+          .toList
+        rows += QueryResultRow(values)
+      QueryResult(columns, rows.result())
+    }
+  }
 
   private def withConnection[U](f: DuckDBConnection => U): U =
     Class.forName("org.duckdb.DuckDBDriver")

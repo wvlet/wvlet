@@ -24,6 +24,15 @@ import scala.scalanative.unsigned.*
 trait DuckDBCompat:
   def isAvailable: Boolean = true
 
+  /**
+    * Not yet wired on Scala Native. `duckdb_fetch_chunk` takes the 48-byte `duckdb_result` struct
+    * BY VALUE in C, and Scala Native's struct-by-value calling convention for `CStruct6` doesn't
+    * currently match what the C ABI expects (the chunk pointer comes back null on the first fetch).
+    * Workarounds — a tiny C wrapper that takes the result by pointer, or binding to a different
+    * DuckDB API surface — are deferred to a follow-up.
+    */
+  def canExecute: Boolean = false
+
   def schemaOf(path: String): RelationType =
     if !Files.isRegularFile(Paths.get(path)) then
       EmptyRelationType
@@ -77,6 +86,11 @@ trait DuckDBCompat:
           DuckDBApi.duckdb_close(db)
         end try
       }
+
+  def execute(sql: String): QueryResult =
+    throw new UnsupportedOperationException(
+      "DuckDB.execute is not yet wired on Scala Native — see `canExecute` doc."
+    )
 
   /**
     * Map DuckDB's C-API type enum to a wvlet `DataType` via the same string-parse path the JVM

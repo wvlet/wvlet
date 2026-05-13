@@ -35,6 +35,21 @@ trait DuckDBCompat:
         case Some(api) =>
           schemaOfWith(api, path)
 
+  /**
+    * Whether `execute` is implemented on this backend. JS currently isn't — DuckDB 1.5.2 neutered
+    * the deprecated row-based value getters (`duckdb_value_varchar` returns null), and the
+    * chunk-based replacement requires more involved FFI plumbing than fits in this iteration.
+    * Tracked as a follow-up.
+    */
+  def canExecute: Boolean = false
+
+  def execute(sql: String): QueryResult =
+    throw new UnsupportedOperationException(
+      "DuckDB.execute is not yet wired on Scala.js — DuckDB 1.5.2 disabled the deprecated " +
+        "row-based value getters, and the chunk-API replacement is deferred to a follow-up. " +
+        "Use the JVM or Native backend for query execution."
+    )
+
   private def schemaOfWith(api: DuckDBApi, path: String): RelationType =
     val dbBox = js.Array[js.Any](null)
     if asInt(api.duckdb_open.call(null, null, dbBox)) != 0 then
