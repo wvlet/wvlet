@@ -28,6 +28,21 @@ import wvlet.lang.model.RelationType
   * implementation detail.
   */
 object DuckDBAnalyzer:
+
+  /**
+    * Infer the relation type (column names + data types) of the file at `path` for use as the shape
+    * of a `from '<path>'` clause. Routes JSON files through [[JSONAnalyzer]] and everything else
+    * through the [[DuckDB]] facade. The native Scala Native backend uses the `libduckdb` C API; the
+    * JVM backend uses the DuckDB JDBC driver.
+    *
+    * Returns `EmptyRelationType` if the file does not exist (per the backend's own pre-check) so
+    * that the typer can surface a cleaner downstream error.
+    *
+    * @param path
+    *   path to a local file (parquet, csv, json, …)
+    * @return
+    *   inferred `RelationType` for the file, or `EmptyRelationType` if the file is missing
+    */
   def guessSchema(path: String): RelationType =
     if path.endsWith(".json") || path.endsWith(".json.gz") then
       JSONAnalyzer.analyzeJSONFile(path)

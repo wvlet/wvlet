@@ -20,9 +20,10 @@ trait DuckDBCompat:
     if !File(path).isFile then
       EmptyRelationType
     else
-      // File paths cannot be parameterized in DuckDB FROM clauses; the File.isFile() check
-      // above (and DuckDB's own validation) keeps the inline path safe.
-      val sql = s"select * from '${path}' limit 0"
+      // File paths cannot be parameterized in DuckDB FROM clauses, so we inline. The
+      // File.isFile() check above pins the path to a real file, and `DuckDB.escapeSqlString`
+      // doubles single quotes so paths like `O'Reilly.parquet` produce valid SQL.
+      val sql = s"select * from '${DuckDB.escapeSqlString(path)}' limit 0"
       withConnection { conn =>
         withResource(conn.createStatement().executeQuery(sql)) { rs =>
           val metadata = rs.getMetaData

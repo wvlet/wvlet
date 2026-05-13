@@ -43,8 +43,10 @@ trait DuckDBCompat:
           try
             val result = stackalloc[DuckDBApi.duckdb_result]()
             // Path is interpolated inline because DuckDB doesn't parameterize FROM clauses.
-            // The Files.isRegularFile check above pins the path to something real.
-            val sql = toCString(s"select * from '${path}' limit 0")
+            // The Files.isRegularFile check above pins the path to a real file, and
+            // `DuckDB.escapeSqlString` doubles single quotes so paths like
+            // `O'Reilly.parquet` produce valid SQL.
+            val sql = toCString(s"select * from '${DuckDB.escapeSqlString(path)}' limit 0")
 
             if DuckDBApi.duckdb_query(!con, sql, result) != 0 then
               val err = fromCString(DuckDBApi.duckdb_result_error(result))
