@@ -87,6 +87,17 @@ jobs:
           cache-dependency-path: ./pnpm-lock.yaml
       - name: Install pnpm dependencies
         run: pnpm install --frozen-lockfile
+      - name: Install libduckdb
+        # Required by wvlet-lang.js's DuckDB backend (koffi loads libduckdb via FFI).
+        # Same install path as test_native — pull the prebuilt artifact from DuckDB's
+        # GitHub release into /usr/local/lib so koffi finds it.
+        run: |
+          DUCKDB_VERSION=1.5.2
+          curl -sSfL -o /tmp/libduckdb.zip \
+            "https://github.com/duckdb/duckdb/releases/download/v${DUCKDB_VERSION}/libduckdb-linux-amd64.zip"
+          mkdir -p /tmp/libduckdb && unzip -q /tmp/libduckdb.zip -d /tmp/libduckdb
+          sudo cp /tmp/libduckdb/libduckdb.so /usr/local/lib/
+          sudo ldconfig
       - name: Scala.js test
         run: JVM_OPTS=-Xmx4g ./sbt "projectJS/test"
       - name: Packaging wvlet-cli
