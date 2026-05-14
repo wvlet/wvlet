@@ -484,6 +484,18 @@ lazy val cliCore = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     Compile / fullLinkJS / scalaJSLinkerOutputDirectory :=
       (ThisBuild / baseDirectory).value / "sdks" / "cli-node" / "lib"
   )
+  .nativeSettings(
+    // The C wrapper in `lang.native`'s `src/main/resources/scala-native/` is unconditionally
+    // compiled and linked into every downstream Native binary, so its `duckdb_*` references
+    // need `-lduckdb` available at the final link step. Scala Native's `@link("duckdb")`
+    // annotation on `DuckDBApi` only triggers when that extern object is reachable, and
+    // cli-core tests / binaries typically don't reach the DuckDB code path. Add the flag
+    // explicitly here. (Local macOS linker tolerates the missing flag because the dylib is
+    // already on the search path; GNU ld on Linux is strict.)
+    nativeConfig ~= { c =>
+      c.withLinkingOptions(c.linkingOptions :+ "-lduckdb")
+    }
+  )
   .dependsOn(lang)
 
 // JVM-only host for HTTP server bits that wvlet maintains. Hosts the few pieces uni doesn't
