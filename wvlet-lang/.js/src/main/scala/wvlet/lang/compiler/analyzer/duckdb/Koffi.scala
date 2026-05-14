@@ -13,8 +13,12 @@ import scala.scalajs.js.annotation.JSImport
   *
   * Only the bits we actually use are surfaced here; the full koffi API is much larger.
   */
+// koffi is a CommonJS package; under `ModuleKind.ESModule` consumers (like wvlet-cli-core.js)
+// the CJS module's exports surface as the ES module's DEFAULT export. Using
+// `JSImport.Default` here makes the facade work under both CommonJSModule (langJS tests)
+// and ESModule (the cli-node bundle).
 @js.native
-@JSImport("koffi", JSImport.Namespace)
+@JSImport("koffi", JSImport.Default)
 private[duckdb] object Koffi extends js.Object:
 
   /**
@@ -50,7 +54,7 @@ end KoffiLib
   * rather than getting auto-stringified to JS).
   */
 @js.native
-@JSImport("koffi", JSImport.Namespace)
+@JSImport("koffi", JSImport.Default)
 private[duckdb] object KoffiOps extends js.Object:
   def decode(value: js.Any, offset: Int, `type`: js.Any): js.Any = js.native
   def decode(value: js.Any, `type`: js.Any): js.Any              = js.native
