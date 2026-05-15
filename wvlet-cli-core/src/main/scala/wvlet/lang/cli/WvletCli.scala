@@ -1,7 +1,10 @@
 package wvlet.lang.cli
 
 import wvlet.lang.compiler.analyzer.duckdb.DuckDB
+import wvlet.lang.compiler.analyzer.duckdb.QueryResult
 import wvlet.lang.compiler.analyzer.duckdb.QueryResultPrinter
+import wvlet.lang.compiler.analyzer.trino.Trino
+import wvlet.lang.compiler.analyzer.trino.TrinoConfig
 import wvlet.uni.cli.launcher.argument
 import wvlet.uni.cli.launcher.command
 import wvlet.uni.cli.launcher.option
@@ -25,15 +28,10 @@ class WvletCli(opts: WvletCliGlobalOption) extends LogSupport:
   @command(description = "Convert SQL to wvlet flow-style query")
   def to_wvlet(opt: WvletCliCompileOption): Unit = println(WvletCliCompiler(opt).generateWvlet)
 
-  @command(description = "Compile and execute a wvlet query against DuckDB")
+  @command(description = "Compile and execute a wvlet query against DuckDB or Trino")
   def run(opt: WvletCliRunOption): Unit =
-    if !DuckDB.canExecute then
-      throw new UnsupportedOperationException(
-        "DuckDB execution is not available on this platform. " +
-          "Ensure libduckdb is installed and discoverable, or set WVLET_LIBDUCKDB."
-      )
     val sql    = WvletCliCompiler(opt.toCompileOption).generateSQL
-    val result = DuckDB.execute(sql)
+    val result = executeAgainst(sql, opt)
     val output =
       opt.format.toLowerCase match
         case "csv" =>
@@ -43,6 +41,31 @@ class WvletCli(opts: WvletCliGlobalOption) extends LogSupport:
         case other =>
           throw new IllegalArgumentException(s"Unknown --format: ${other} (supported: box, csv)")
     print(output)
+
+  private def executeAgainst(sql: String, opt: WvletCliRunOption): QueryResult =
+    opt.targetDBType.map(_.toLowerCase).getOrElse("duckdb") match
+      case "duckdb" =>
+        if !DuckDB.canExecute then
+          throw new UnsupportedOperationException(
+            "DuckDB execution is not available on this platform. " +
+              "Ensure libduckdb is installed and discoverable, or set WVLET_LIBDUCKDB."
+          )
+        DuckDB.execute(sql)
+      case "trino" =>
+        val host = opt
+          .host
+          .getOrElse(throw new IllegalArgumentException("--host is required for --target=trino"))
+        val cfg = TrinoConfig(
+          host = host,
+          port = opt.port.getOrElse(8080),
+          user = opt.user.getOrElse("wvlet"),
+          catalog = opt.catalog,
+          schema = opt.schema,
+          useHttps = opt.useHttps
+        )
+        Trino.execute(sql, cfg)
+      case other =>
+        throw new IllegalArgumentException(s"Unsupported --target for `run`: ${other}")
 
 end WvletCli
 
@@ -69,10 +92,22 @@ case class WvletCliRunOption(
     file: Option[String] = None,
     @argument(description = "query")
     query: Option[String] = None,
-    @option(prefix = "-t,--target", description = "Target database type (always duckdb for `run`)")
+    @option(prefix = "-t,--target", description = "Backend: duckdb (default) or trino")
     targetDBType: Option[String] = None,
     @option(prefix = "--format", description = "Output format: box (default), csv")
-    format: String = "box"
+    format: String = "box",
+    @option(prefix = "--host", description = "Trino coordinator host (target=trino only)")
+    host: Option[String] = None,
+    @option(prefix = "--port", description = "Trino coordinator port (default 8080)")
+    port: Option[Int] = None,
+    @option(prefix = "--user", description = "Trino user (default 'wvlet')")
+    user: Option[String] = None,
+    @option(prefix = "--catalog", description = "Trino catalog")
+    catalog: Option[String] = None,
+    @option(prefix = "--schema", description = "Trino schema")
+    schema: Option[String] = None,
+    @option(prefix = "--https", description = "Use HTTPS to reach the Trino coordinator")
+    useHttps: Boolean = false
 ):
   def toCompileOption: WvletCliCompileOption = WvletCliCompileOption(
     workFolder = workFolder,
@@ -80,3 +115,5 @@ case class WvletCliRunOption(
     query = query,
     targetDBType = targetDBType
   )
+
+end WvletCliRunOption
