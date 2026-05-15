@@ -46,10 +46,9 @@ object Trino extends TrinoCompat with LogSupport:
     * Run `sql` against the Trino coordinator described by `config` and return the materialized
     * result. Blocks until the query reaches a terminal state.
     *
-    * Failures from the Trino server are surfaced as `StatusCode.NOT_IMPLEMENTED` exceptions whose
-    * message contains Trino's `errorName`/`message` payload. (We piggyback on `NOT_IMPLEMENTED`
-    * until a TRINO_QUERY_FAILURE status code is added — keep this in mind when reading the
-    * message.)
+    * Failures from the Trino server (errors in the `error` block, non-2xx responses, empty or
+    * non-JSON bodies) are surfaced as `StatusCode.QUERY_EXECUTION_FAILURE` exceptions whose message
+    * contains Trino's `errorName`/`message` payload when available.
     */
   def execute(sql: String, config: TrinoConfig): QueryResult =
     val client = Http.client.withBaseUri(config.baseUri).newSyncClient
@@ -88,7 +87,7 @@ object Trino extends TrinoCompat with LogSupport:
     val resp = client.send(req)
     if !resp.status.isSuccessful then
       throw StatusCode
-        .NOT_IMPLEMENTED
+        .QUERY_EXECUTION_FAILURE
         .newException(
           s"Trino request to ${req.uri} failed: ${resp.status.code} ${resp.status.reason}"
         )
@@ -102,10 +101,12 @@ object Trino extends TrinoCompat with LogSupport:
           obj
         case other =>
           throw StatusCode
-            .NOT_IMPLEMENTED
+            .QUERY_EXECUTION_FAILURE
             .newException(s"Unexpected Trino response (not a JSON object): ${other}")
     }
-    .getOrElse(throw StatusCode.NOT_IMPLEMENTED.newException("Empty body in Trino response"))
+    .getOrElse(
+      throw StatusCode.QUERY_EXECUTION_FAILURE.newException("Empty body in Trino response")
+    )
 
   private def stringField(json: JSONObject, name: String, default: String = "?"): String = json
     .get(name)
@@ -119,7 +120,7 @@ object Trino extends TrinoCompat with LogSupport:
     .foreach {
       case err: JSONObject =>
         throw StatusCode
-          .NOT_IMPLEMENTED
+          .QUERY_EXECUTION_FAILURE
           .newException(
             s"Trino query failed (${stringField(err, "errorName")}): ${stringField(err, "message")}"
           )
@@ -190,11 +191,16 @@ object Trino extends TrinoCompat with LogSupport:
     * Map a Trino type string (`bigint`, `varchar(100)`, `timestamp(3) with time zone`, …) to a
     * wvlet `DataType`. We strip trailing parameters before parsing because wvlet's `DataType.parse`
     * doesn't accept the full Trino type grammar — close-enough for column metadata used by the CLI
-    * printer.
+    * printer. Anything we still can't map (compound types like `array(bigint)`, vendor extensions,
+    * future Trino additions) falls back to `any` so column display never breaks rendering.
     */
-  private def parseTrinoType(name: String): DataType = DataType.parse(
-    name.takeWhile(c => c != '(' && c != ' ').toLowerCase
-  )
+  private def parseTrinoType(name: String): DataType =
+    val base = name.takeWhile(c => c != '(' && c != ' ').toLowerCase
+    try
+      DataType.parse(base)
+    catch
+      case _: Exception =>
+        DataType.AnyType
 
   private final class ResultState:
     var columns: Option[Seq[NamedType]]                                              = None

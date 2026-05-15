@@ -65,9 +65,11 @@ We went with (2) so callers (including the CLI) don't have to think about it. It
 
 Trino returns JSON values: `JSONString`, `JSONLong`, `JSONDouble`, `JSONBoolean`, `JSONNull`, and `JSONArray`/`JSONObject` for structured columns. The DuckDB backends already return values as `Option[String]` via `rs.getString` / `duckdb_value_varchar`. We string-coerce Trino values to match that surface so downstream printers don't have to branch on backend type. Structured columns fall back to `JSONValue.toJSON` — good enough for a CLI printer, replaceable later if we need typed access.
 
-### Why piggyback on `StatusCode.NOT_IMPLEMENTED` for Trino errors
+### Why `StatusCode.QUERY_EXECUTION_FAILURE` for Trino errors
 
-There's no `TRINO_QUERY_FAILURE` in `StatusCode` yet. Rather than introduce one in this PR, errors from Trino's `error` block are surfaced as `NOT_IMPLEMENTED` exceptions whose message contains the `errorName` + `message` payload — which is what callers actually need. A dedicated status code is a one-line follow-up when there's a second consumer of it.
+`StatusCode.QUERY_EXECUTION_FAILURE` (a `UserError`) already exists and fits both the Trino `error` block (SQL syntax, semantics, runtime errors) and transport-level oddities (non-2xx, empty body, non-JSON body) — those all surface as "your query didn't execute." The exception message carries Trino's `errorName` / `message` so downstream callers can render the actual diagnostic.
+
+The first cut of this PR used `NOT_IMPLEMENTED` as a placeholder; Gemini's review flagged it because `NOT_IMPLEMENTED` maps to HTTP 501 and misleads on what failed. Fixed before merge.
 
 ### Why a JVM-only smoke test instead of three platform suites
 

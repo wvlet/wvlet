@@ -73,6 +73,30 @@ class TrinoTest extends UniTest:
     }
   }
 
+  test("execute falls back to any for compound / unknown column types") {
+    val body =
+      """{
+      |  "id": "q4",
+      |  "columns": [
+      |    {"name": "ids", "type": "array(bigint)"},
+      |    {"name": "tags", "type": "map(varchar,varchar)"}
+      |  ],
+      |  "data": [[[1, 2], {"a": "b"}]],
+      |  "stats": {"state": "FINISHED"}
+      |}""".stripMargin
+    withFakeTrino(Seq(body)) { (port, _: () => Vector[Recorded]) =>
+      val cfg = TrinoConfig(host = "localhost", port = port, user = "u")
+      val r   = Trino.execute("select 1", cfg)
+      r.columns.map(_.name.name) shouldBe List("ids", "tags")
+      // Compound types map to AnyType rather than throwing; rows are still rendered as JSON.
+      r.columnCount shouldBe 2
+      r.rowCount shouldBe 1
+      val row = r.rows.head.values
+      row(0) shouldBe Some("[1,2]")
+      row(1) shouldBe Some("{\"a\":\"b\"}")
+    }
+  }
+
   test("execute surfaces Trino errors from the error block") {
     val errBody =
       """{
