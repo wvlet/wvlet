@@ -21,7 +21,6 @@ import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.*
 import wvlet.lang.compiler.query.QueryProgressMonitor
 import wvlet.lang.runner.*
-import wvlet.uni.log.LogRotationHandler
 import wvlet.uni.log.LogSupport
 import wvlet.uni.log.Logger
 

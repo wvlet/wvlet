@@ -148,7 +148,10 @@ jobs:
           java-version: '25'
           cache: sbt
       - name: Install native dependencies
-        run: sudo apt-get update && sudo apt-get install -y libgc-dev
+        # libcurl4-openssl-dev provides the unversioned libcurl.so symlink that the linker
+        # needs when @link("curl") (via uni's CurlBindings) becomes reachable through the
+        # cross-platform Trino client.
+        run: sudo apt-get update && sudo apt-get install -y libgc-dev libcurl4-openssl-dev
       - name: Install libduckdb
         # Ubuntu doesn't ship libduckdb-dev; pull the prebuilt artifact from DuckDB's
         # GitHub release and drop it into /usr/local/{lib,include}. Required for
