@@ -54,7 +54,7 @@ object Trino extends TrinoCompat with LogSupport:
     val client = Http.client.withBaseUri(config.baseUri).newSyncClient
     try
       val state = ResultState()
-      var resp  = sendOrThrow(client, startRequest(sql, config))
+      var resp  = sendOrThrow(client, withTrinoHeaders(startRequest(sql), config))
       var done  = false
       while !done do
         val json = parseBody(resp)
@@ -63,7 +63,11 @@ object Trino extends TrinoCompat with LogSupport:
         collectRows(json, state)
         nextUri(json) match
           case Some(uri) =>
-            resp = sendOrThrow(client, Request(method = HttpMethod.GET, uri = uri))
+            // Re-apply X-Trino-* headers on every poll. Some gateways (e.g. Treasure Data's
+            // Presto front-end) inspect the user header on every request to route to the right
+            // backend; omitting it on follow-up GETs fails with PERMISSION_DENIED.
+            val nextReq = withTrinoHeaders(Request(method = HttpMethod.GET, uri = uri), config)
+            resp = sendOrThrow(client, nextReq)
           case None =>
             done = true
       QueryResult(state.columns.getOrElse(Seq.empty[NamedType]), state.rows.result())
@@ -71,11 +75,13 @@ object Trino extends TrinoCompat with LogSupport:
       client.close()
   end execute
 
-  private def startRequest(sql: String, config: TrinoConfig): Request =
-    val base = Request(method = HttpMethod.POST, uri = "/v1/statement")
-      .withTextContent(sql)
-      .setHeader("X-Trino-User", config.user)
-      .setHeader("X-Trino-Source", config.source)
+  private def startRequest(sql: String): Request = Request(
+    method = HttpMethod.POST,
+    uri = "/v1/statement"
+  ).withTextContent(sql)
+
+  private def withTrinoHeaders(req: Request, config: TrinoConfig): Request =
+    val base = req.setHeader("X-Trino-User", config.user).setHeader("X-Trino-Source", config.source)
     val withCatalog = config.catalog.foldLeft(base)((r, c) => r.setHeader("X-Trino-Catalog", c))
     config.schema.foldLeft(withCatalog)((r, s) => r.setHeader("X-Trino-Schema", s))
 

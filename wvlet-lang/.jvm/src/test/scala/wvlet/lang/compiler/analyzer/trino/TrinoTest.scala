@@ -63,13 +63,20 @@ class TrinoTest extends UniTest:
       |  "stats": {"state": "FINISHED"}
       |}""".stripMargin
     withFakeTrino(Seq(page1, page2, page3)) { (port, calls) =>
-      val cfg = TrinoConfig(host = "localhost", port = port, user = "u")
+      val cfg = TrinoConfig(host = "localhost", port = port, user = "u", catalog = Some("c"))
       val r   = Trino.execute("select x from t", cfg)
       r.rows.map(_.values.head) shouldBe List(Some("1"), Some("2"), Some("3"), Some("4"))
       val recorded = calls()
       recorded.map(_.method) shouldBe List("POST", "GET", "GET")
       recorded.map(_.path) shouldBe
         List("/v1/statement", "/v1/statement/q2/2", "/v1/statement/q2/3")
+      // Every request — initial POST AND each follow-up nextUri GET — must carry the user/catalog
+      // headers. Some gateways (e.g. Treasure Data's Presto front-end) inspect them on every
+      // request; omitting them on follow-up GETs fails with PERMISSION_DENIED.
+      recorded.foreach { r =>
+        r.headers.get("x-trino-user") shouldBe Some("u")
+        r.headers.get("x-trino-catalog") shouldBe Some("c")
+      }
     }
   }
 
