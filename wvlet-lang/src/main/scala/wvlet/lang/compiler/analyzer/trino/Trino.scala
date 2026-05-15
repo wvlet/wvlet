@@ -38,9 +38,7 @@ import wvlet.uni.log.LogSupport
   * JVM, Node.js (via uni's worker_threads sync HTTP channel), and Scala Native (via the libcurl
   * channel).
   */
-object Trino extends TrinoCompat with LogSupport:
-  // Idempotent — ensures uni's `Http.client` resolves a real channel factory before any request.
-  installHttpFactory()
+object Trino extends LogSupport:
 
   /**
     * Run `sql` against the Trino coordinator described by `config` and return the materialized
