@@ -158,7 +158,10 @@ class TrinoConnector(val config: TrinoConfig, workEnv: WorkEnv)
       .map { r =>
         val row           = r.values
         val returnType    = col(row, "Return Type").map(DataType.parse).getOrElse(DataType.AnyType)
+        // Zero-arg functions (e.g. `now()`, `pi()`) report an empty `Argument Types` cell.
+        // `"".split(", ")` returns `Array("")` in Scala — guard before parsing.
         val argumentTypes = col(row, "Argument Types")
+          .filter(_.nonEmpty)
           .map(_.split(", ").iterator.map(DataType.parse).toList)
           .getOrElse(Nil)
         val prop = Map.newBuilder[String, Any]
