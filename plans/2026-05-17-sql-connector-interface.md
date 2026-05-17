@@ -122,6 +122,14 @@ object QueryState:
 - `./sbt "runner/test"` — JDBC `TrinoConnector` progress callback still fires.
 - Sanity: `./sbt cli/packInstall && wv 'select 1'` (DuckDB default, unaffected — smoke check no regression).
 
-## Plan-file relocation
+## Refinements during the PR cycle
 
-After plan approval, copy this plan to `plans/2026-05-17-sql-connector-interface.md` in the worktree (per project convention) so it commits with the PR.
+These design calls were made during review (codex + Gemini) and are worth capturing for future readers:
+
+1. **`await()` follows `nextUri`, not `stats.state`** (codex P2). Trino's protocol-canonical signal for "done" is `nextUri` absence — a coordinator can report `state: FINISHED`/`FAILED` while still serving a `nextUri` for buffered rows or the final error page. Trusting `state.isTerminal` as a secondary loop exit truncated results in those scenarios. `stats.state` is for progress reporting only; pagination is `nextUri`-driven. Regression test: `await keeps paginating while nextUri is present even if stats.state is FINISHED`.
+
+2. **`cancel()` updates state and notifies the progress monitor immediately** (codex + Gemini). The earlier design only transitioned `_stats.state` to `Canceled` in `await()`'s post-loop block. Threads polling `handle.state` after `cancel()` without awaiting would see stale `Running`, and the REPL status line would never receive the terminal transition through the progress channel. Fix: in `cancel()`, set `_stats = _stats.copy(state = Canceled)` AND call `progressMonitor.reportProgress(_stats)` before firing DELETE. Polling and push paths now agree.
+
+3. **`cancel()` uses a fresh `HttpSyncClient` for the DELETE.** The handle's `client` is consumed by `await()`'s GET loop. uni's `HttpSyncClient` isn't necessarily concurrent-safe (libcurl's `curl_easy` is single-threaded; Node's `worker_threads` channel is single-threaded; only Apache HttpClient is fully concurrent). Spinning up a short-lived second client for the DELETE makes the "safe from any thread" trait promise platform-independent at the cost of one extra connection per cancellation.
+
+4. **Cancel target is `DELETE nextUri`, not `partialCancelUri` or `DELETE /v1/query/{id}`.** Trino exposes three cancel paths in its protocol: (a) `DELETE nextUri` is the documented client-driven abort, releases coordinator resources, transitions state to `CANCELED`; (b) `partialCancelUri` aborts individual stages but lets the query keep running — wrong shape; (c) admin `DELETE /v1/query/{id}` requires elevated privileges. We use (a) and re-apply `X-Trino-*` headers on the DELETE because gateways like Treasure Data's Presto front-end route on those headers per request.
