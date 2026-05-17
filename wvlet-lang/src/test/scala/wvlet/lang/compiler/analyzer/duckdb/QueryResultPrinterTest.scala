@@ -1,6 +1,8 @@
 package wvlet.lang.compiler.analyzer.duckdb
 
 import wvlet.lang.compiler.Name
+import wvlet.lang.compiler.connector.QueryResult
+import wvlet.lang.compiler.connector.QueryResultRow
 import wvlet.lang.model.DataType
 import wvlet.lang.model.DataType.NamedType
 import wvlet.uni.test.UniTest

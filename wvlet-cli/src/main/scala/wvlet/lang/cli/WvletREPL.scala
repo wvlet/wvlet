@@ -36,10 +36,10 @@ import wvlet.lang.cli.terminal.REPLTerminal
 import wvlet.lang.compiler.parser.*
 import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.compiler.SourceFile
+import wvlet.lang.compiler.connector.QueryStats
 import wvlet.lang.compiler.query.QueryMetric
 import wvlet.lang.compiler.query.QueryProgressMonitor
 import wvlet.lang.model.plan.QueryStatement
-import wvlet.lang.runner.connector.TrinoQueryMetric
 import wvlet.lang.runner.LastOutput
 import wvlet.lang.runner.WvletScriptRunner
 import wvlet.uni.log.LogSupport
@@ -95,17 +95,19 @@ class WvletREPL(runner: WvletScriptRunner, terminal: REPLTerminal)
 
       override def reportProgress(metric: QueryMetric): Unit =
         metric match
-          case m: TrinoQueryMetric =>
+          case stats: QueryStats =>
             val t = System.currentTimeMillis()
             // Show report every 300ms
             if t - lastUpdateTimeMillis > 300 then
               lastUpdateTimeMillis = t
-              val stats = m.stats
-              val msg   =
-                f"Query ${s"${stats.getState.toLowerCase}"} ${ElapsedTime.succinctMillis(
-                    stats.getElapsedTimeMillis
-                  )}%6s [${Count.succinct(stats.getProcessedRows)} rows] ${stats
-                    .getCompletedSplits}/${stats.getTotalSplits}"
+              val elapsed = stats.elapsedMs.getOrElse(0L)
+              val rows    = stats.rowsProcessed.getOrElse(0L)
+              val done    = stats.splitsCompleted.getOrElse(0)
+              val total   = stats.splitsTotal.getOrElse(0)
+              val msg     =
+                f"Query ${stats.state.toString.toLowerCase} ${ElapsedTime.succinctMillis(
+                    elapsed
+                  )}%6s [${Count.succinct(rows)} rows] ${done}/${total}"
               printLine(msg)
           case _ =>
 

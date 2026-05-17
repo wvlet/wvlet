@@ -1,10 +1,10 @@
 package wvlet.lang.cli
 
 import wvlet.lang.compiler.analyzer.duckdb.DuckDB
-import wvlet.lang.compiler.analyzer.duckdb.QueryResult
 import wvlet.lang.compiler.analyzer.duckdb.QueryResultPrinter
 import wvlet.lang.compiler.analyzer.trino.Trino
 import wvlet.lang.compiler.analyzer.trino.TrinoConfig
+import wvlet.lang.compiler.connector.QueryResult
 import wvlet.uni.cli.launcher.argument
 import wvlet.uni.cli.launcher.command
 import wvlet.uni.cli.launcher.option
