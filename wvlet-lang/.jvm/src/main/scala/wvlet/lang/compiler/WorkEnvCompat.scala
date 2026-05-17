@@ -11,7 +11,6 @@ trait WorkEnvCompat:
   def isScalaJS: Boolean = false
 
   protected def initLogger(l: Logger, fileName: String): Logger =
-    l.resetHandler(
-      FileLogHandler(FileLogHandlerConfig(fileName).withFormatter(SourceCodeLogFormatter))
-    )
+    val config = FileLogHandlerConfig(fileName).withFormatter(SourceCodeLogFormatter)
+    l.resetHandler(FileLogHandler(config))
     l
