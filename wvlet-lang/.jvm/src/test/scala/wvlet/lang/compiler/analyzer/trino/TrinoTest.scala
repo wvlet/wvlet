@@ -155,6 +155,14 @@ class TrinoTest extends UniTest:
       |  "nextUri": "__SERVER__/v1/statement/q6/2",
       |  "stats": {"state": "RUNNING"}
       |}""".stripMargin
+    val observed               = scala.collection.mutable.ArrayBuffer.empty[QueryStats]
+    given QueryProgressMonitor =
+      new QueryProgressMonitor:
+        override def reportProgress(metric: QueryMetric): Unit =
+          metric match
+            case s: QueryStats =>
+              observed += s
+            case _ =>
     withFakeTrino(Seq(pendingPage)) { (port, calls) =>
       val cfg    = TrinoConfig(host = "localhost", port = port, user = "u", catalog = Some("c"))
       val handle = Trino.submit("select 1", cfg)
@@ -164,6 +172,9 @@ class TrinoTest extends UniTest:
         // State must flip to Canceled the moment cancel() returns, even before await is called —
         // otherwise a caller polling handle.state from another thread would see stale "Running".
         handle.state shouldBe QueryState.Canceled
+        // The progress monitor must observe the Canceled state too, so passive consumers (the REPL
+        // status line) see the terminal transition without having to await.
+        observed.map(_.state).toList shouldBe List(QueryState.Running, QueryState.Canceled)
         // After cancel, await returns the rows collected so far without re-entering the loop.
         val r = handle.await()
         r.rows.map(_.values.head) shouldBe List(Some("1"))

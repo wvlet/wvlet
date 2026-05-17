@@ -123,8 +123,11 @@ class TrinoQueryHandle(
       cancelRequested = true
       // Transition state to Canceled immediately so callers polling `handle.state` after `cancel()`
       // see the cancellation, even if `await()` is never called. The DELETE below is best-effort
-      // and may fail — the local state still reflects "the caller asked to stop".
+      // and may fail — the local state still reflects "the caller asked to stop". Also push the
+      // final stats through the progress monitor so passive consumers (e.g. the REPL status line)
+      // observe the terminal state without having to await.
       _stats = _stats.copy(state = QueryState.Canceled)
+      progressMonitor.reportProgress(_stats)
       lastNextUri.foreach { uri =>
         val cancelClient = Http.client.withBaseUri(config.baseUri).newSyncClient
         try

@@ -56,7 +56,7 @@ object Trino extends LogSupport:
       val resp = sendOrThrow(client, withTrinoHeaders(startRequest(sql), config))
       val json = parseBody(resp)
       checkError(json)
-      val handle = new TrinoQueryHandle(client, config, progressMonitor)
+      val handle = TrinoQueryHandle(client, config, progressMonitor)
       handle.consume(json)
       handle
     catch
