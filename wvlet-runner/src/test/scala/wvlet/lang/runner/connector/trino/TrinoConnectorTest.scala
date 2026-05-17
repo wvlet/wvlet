@@ -95,6 +95,20 @@ class TrinoConnectorTest extends WvletDITest:
       val functions = trino.listFunctions("memory")
       debug(functions.mkString("\n"))
     }
+
+    // Sanity for PR-A: the new `asSqlConnector` accessor talks to the same in-process server
+    // via the HTTP client (uni's `HttpSyncClient`) — no `trino-jdbc` on this path. PR-B will
+    // switch `QueryExecutor` over to this; for now both code paths coexist.
+    test("asSqlConnector executes against the same server via HTTP") {
+      val trino                                            = dep[TrinoConnector]
+      given wvlet.lang.compiler.query.QueryProgressMonitor =
+        wvlet.lang.compiler.query.QueryProgressMonitor.noOp
+      val result = trino.asSqlConnector.execute("select 1 as one, 'http' as src")
+      result.columnCount shouldBe 2
+      result.rowCount shouldBe 1
+      result.columns.map(_.name.name) shouldBe List("one", "src")
+      result.rows.head.values shouldBe List(Some("1"), Some("http"))
+    }
   }
 
 end TrinoConnectorTest

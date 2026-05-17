@@ -23,8 +23,12 @@ import wvlet.uni.util.Count
 import wvlet.uni.util.ElapsedTime
 import wvlet.lang.compiler.DBType
 import wvlet.lang.compiler.WorkEnv
+import wvlet.lang.compiler.analyzer.trino.TrinoConfig as TrinoXPConfig
+import wvlet.lang.compiler.analyzer.trino.TrinoSqlConnector
+import wvlet.lang.compiler.connector.QueryHandle
 import wvlet.lang.compiler.connector.QueryState
 import wvlet.lang.compiler.connector.QueryStats
+import wvlet.lang.compiler.connector.SqlConnector
 import wvlet.lang.compiler.query.QueryProgressMonitor
 import wvlet.lang.model.DataType
 import wvlet.lang.runner.connector.*
@@ -48,6 +52,49 @@ class TrinoConnector(val config: TrinoConfig, workEnv: WorkEnv)
     extends DBConnector(DBType.Trino, workEnv)
     with LogSupport:
   private lazy val driver = new TrinoDriver()
+
+  /**
+    * HTTP-backed [[SqlConnector]] view of this Trino instance, exposed as a separate accessor
+    * because [[DBConnector]] and [[SqlConnector]] both declare `execute(sql)` with different return
+    * types (Boolean vs QueryResult) and can't coexist on one class. Built lazily so the JDBC code
+    * path (still the default for `QueryExecutor`'s `runQuery` / `executeUpdate`) doesn't pay any
+    * HTTP setup cost when the caller never asks for it.
+    *
+    * Re-uses the cross-platform `TrinoSqlConnector` from `wvlet-lang` so the runner doesn't
+    * reimplement the protocol. Once `QueryExecutor` migrates to this path (PR-B), we can drop the
+    * JDBC half of `TrinoConnector` and stop dragging in `trino-jdbc`.
+    */
+  lazy val asSqlConnector: SqlConnector = TrinoSqlConnector(toCrossPlatformConfig)
+
+  /**
+    * Bridge the runner's JDBC-shaped [[TrinoConfig]] to the cross-platform variant in `wvlet-lang`.
+    * `hostAndPort` collapses host + port into a single string for the JDBC URL; the cross-platform
+    * shape wants them separate, with the port autoderived from the scheme when missing. `password`
+    * is currently dropped on the HTTP path — auth on the cross-platform connector is `X-Trino-User`
+    * only until the auth story (Basic/JWT) lands.
+    */
+  private def toCrossPlatformConfig: TrinoXPConfig =
+    val parts        = config.hostAndPort.split(":", 2)
+    val host         = parts(0)
+    val explicitPort =
+      if parts.length > 1 then
+        Some(parts(1).toInt)
+      else
+        None
+    val defaultPortFor =
+      if config.useSSL then
+        443
+      else
+        8080
+    TrinoXPConfig(
+      host = host,
+      port = explicitPort.getOrElse(defaultPortFor),
+      user = config.user.getOrElse("wvlet"),
+      catalog = Some(config.catalog),
+      schema = Some(config.schema),
+      useHttps = config.useSSL,
+      source = "wvlet-runner"
+    )
 
   private[connector] override lazy val newConnection: DBConnection =
     val jdbcUrl =
