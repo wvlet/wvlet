@@ -21,6 +21,7 @@ import wvlet.lang.compiler.connector.QueryState
 import wvlet.lang.compiler.connector.QueryStats
 import wvlet.lang.compiler.query.QueryProgressMonitor
 import wvlet.lang.model.DataType.NamedType
+import wvlet.uni.http.Http
 import wvlet.uni.http.HttpMethod
 import wvlet.uni.http.HttpSyncClient
 import wvlet.uni.http.Request
@@ -105,14 +106,21 @@ class TrinoQueryHandle(
     * iteration boundary, then issues `DELETE` on the last known `nextUri` so the server stops
     * working immediately. Idempotent and safe from any thread; failures from the DELETE are logged
     * but never thrown — callers expect cancel to be non-fatal.
+    *
+    * Uses a freshly-constructed `HttpSyncClient` for the DELETE rather than the handle's `client`,
+    * because uni's `HttpSyncClient` may not be safe under concurrent `send` calls on every
+    * platform (libcurl's `curl_easy` is single-threaded; Node's worker_threads channel is
+    * single-threaded; only Apache HttpClient is fully concurrent). One extra short-lived client
+    * costs little and makes thread-safety platform-independent.
     */
   override def cancel(): Unit =
     if !cancelRequested && !state.isTerminal then
       cancelRequested = true
       lastNextUri.foreach { uri =>
+        val cancelClient = Http.client.withBaseUri(config.baseUri).newSyncClient
         try
           val req  = Trino.withTrinoHeaders(Request(method = HttpMethod.DELETE, uri = uri), config)
-          val resp = client.send(req)
+          val resp = cancelClient.send(req)
           if !resp.status.isSuccessful then
             warn(
               s"Trino cancel for query ${_queryId.getOrElse("?")} returned ${resp
@@ -122,6 +130,7 @@ class TrinoQueryHandle(
         catch
           case e: Throwable =>
             warn(s"Trino cancel for query ${_queryId.getOrElse("?")} failed: ${e.getMessage}")
+        finally cancelClient.close()
       }
 
   override def close(): Unit =
