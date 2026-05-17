@@ -34,8 +34,10 @@ import wvlet.lang.model.DataType.SchemaType
 import wvlet.lang.model.DataType.UnresolvedType
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
+import wvlet.lang.compiler.connector.QueryResult as XPQueryResult
 import wvlet.lang.runner.connector.DBConnector
 import wvlet.lang.runner.connector.DBConnectorProvider
+import wvlet.lang.runner.connector.trino.TrinoConnector
 import wvlet.uni.log.LogLevel
 import wvlet.uni.log.LogSupport
 import wvlet.uni.weaver.Weaver
@@ -422,38 +424,47 @@ class QueryExecutor(
               getDBConnector(defaultProfile)
 
           val result =
-            connector.runQuery(generatedSQL.sql) { rs =>
-              val metadata = rs.getMetaData
-              val fields   =
-                for i <- 1 to metadata.getColumnCount
-                yield NamedType(
-                  Name.termName(metadata.getColumnName(i)),
-                  Try(DataType.parse(metadata.getColumnTypeName(i))).getOrElse {
-                    UnresolvedType(metadata.getColumnTypeName(i))
+            connector match
+              case trino: TrinoConnector =>
+                // PR-B: route Trino through the HTTP-backed SqlConnector view added in PR-A.
+                // No JDBC ResultSet, no `JDBCCodec` — `QueryResult.rows` already comes back as
+                // `Seq[Option[String]]` per column, which is the same shape DuckDB's
+                // `varchar`-coerced JDBC path produces downstream. DuckDB stays on the JDBC
+                // path below until it gets its own `SqlConnector` (PR-C+ in this series).
+                tableRowsFromXP(trino.asSqlConnector.execute(generatedSQL.sql))
+              case _ =>
+                connector.runQuery(generatedSQL.sql) { rs =>
+                  val metadata = rs.getMetaData
+                  val fields   =
+                    for i <- 1 to metadata.getColumnCount
+                    yield NamedType(
+                      Name.termName(metadata.getColumnName(i)),
+                      Try(DataType.parse(metadata.getColumnTypeName(i))).getOrElse {
+                        UnresolvedType(metadata.getColumnTypeName(i))
+                      }
+                    )
+                  val outputType = SchemaType(None, Name.NoTypeName, fields.toList)
+                  trace(outputType)
+
+                  val codec    = JDBCCodec(rs)
+                  val rowCodec = summon[Weaver[ListMap[String, Any]]]
+                  var rowCount = 0
+                  val it       = codec.mapMsgPackMapRows { msgpack =>
+                    if rowCount <= config.rowLimit then
+                      rowCodec.unweave(msgpack)
+                    else
+                      null
                   }
-                )
-              val outputType = SchemaType(None, Name.NoTypeName, fields.toList)
-              trace(outputType)
 
-              val codec    = JDBCCodec(rs)
-              val rowCodec = summon[Weaver[ListMap[String, Any]]]
-              var rowCount = 0
-              val it       = codec.mapMsgPackMapRows { msgpack =>
-                if rowCount <= config.rowLimit then
-                  rowCodec.unweave(msgpack)
-                else
-                  null
-              }
+                  val rows = Seq.newBuilder[ListMap[String, Any]]
+                  while it.hasNext do
+                    val row = it.next()
+                    rowCount += 1
+                    if row != null && rowCount <= config.rowLimit then
+                      rows += row
 
-              val rows = Seq.newBuilder[ListMap[String, Any]]
-              while it.hasNext do
-                val row = it.next()
-                rowCount += 1
-                if row != null && rowCount <= config.rowLimit then
-                  rows += row
-
-              TableRows(outputType, rows.result(), rowCount)
-            }
+                  TableRows(outputType, rows.result(), rowCount)
+                }
           result
         catch
           case e: SQLException =>
@@ -467,6 +478,32 @@ class QueryExecutor(
     end match
 
   end executeQuery
+
+  /**
+    * Adapt a cross-platform `XPQueryResult` (from `SqlConnector.execute`) into the runner's
+    * `TableRows`. Rows come back as `Seq[Option[String]]`; we zip with the declared column names to
+    * build the `ListMap[String, Any]` shape downstream renderers (web UI, REPL printer) already
+    * expect. `None` cells map to `null` to match the JDBC path, where `rs.getString` + `wasNull()`
+    * produces the same effective representation.
+    */
+  private def tableRowsFromXP(r: XPQueryResult): TableRows =
+    val outputType    = SchemaType(None, Name.NoTypeName, r.columns.toList)
+    val columnNames   = r.columns.map(_.name.name)
+    val truncatedRows =
+      r.rows
+        .iterator
+        .take(config.rowLimit)
+        .map { row =>
+          val pairs = columnNames
+            .iterator
+            .zip(row.values.iterator)
+            .map { case (name, value) =>
+              name -> value.orNull.asInstanceOf[Any]
+            }
+          ListMap.from(pairs)
+        }
+        .toList
+    TableRows(outputType, truncatedRows, r.rowCount)
 
   private def executeDebug(debugPlan: ExecuteDebug, lastResult: QueryResult)(using
       context: Context
