@@ -79,23 +79,28 @@ class TrinoQueryHandle(
   override def stats: QueryStats       = _stats
 
   /**
-    * Drive the pagination loop until the query reaches a terminal state or `nextUri` is absent.
-    * Subsequent calls return the cached result without re-running the loop.
+    * Drive the pagination loop until `nextUri` is absent (Trino's protocol-canonical signal that
+    * the query is fully drained, including any final error page) or the caller has cancelled. The
+    * `stats.state` value is intentionally NOT used as the loop condition: a coordinator can report
+    * `FINISHED`/`FAILED` while still serving a `nextUri` for buffered rows or the final error
+    * payload, and trusting `state` would truncate the result. `stats.state` is for progress
+    * reporting only. Errors land via `checkError(json)` inside `consume`.
+    *
+    * Idempotent — caches the materialized result so subsequent calls return the same value without
+    * re-running the loop.
     */
   override def await(): QueryResult = synchronized {
     cachedResult match
       case Some(r) =>
         r
       case None =>
-        while lastNextUri.isDefined && !cancelRequested && !state.isTerminal do
+        while lastNextUri.isDefined && !cancelRequested do
           val uri  = lastNextUri.get
           val req  = Trino.withTrinoHeaders(Request(method = HttpMethod.GET, uri = uri), config)
           val resp = Trino.sendOrThrow(client, req)
           val json = Trino.parseBody(resp)
           Trino.checkError(json)
           consume(json)
-        if cancelRequested && !state.isTerminal then
-          _stats = _stats.copy(state = QueryState.Canceled)
         val result = QueryResult(columnsSnapshot.getOrElse(Seq.empty), rowsBuilder.result())
         cachedResult = Some(result)
         result
@@ -116,6 +121,10 @@ class TrinoQueryHandle(
   override def cancel(): Unit =
     if !cancelRequested && !state.isTerminal then
       cancelRequested = true
+      // Transition state to Canceled immediately so callers polling `handle.state` after `cancel()`
+      // see the cancellation, even if `await()` is never called. The DELETE below is best-effort
+      // and may fail — the local state still reflects "the caller asked to stop".
+      _stats = _stats.copy(state = QueryState.Canceled)
       lastNextUri.foreach { uri =>
         val cancelClient = Http.client.withBaseUri(config.baseUri).newSyncClient
         try

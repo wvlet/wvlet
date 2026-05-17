@@ -161,7 +161,10 @@ class TrinoTest extends UniTest:
       try
         handle.state shouldBe QueryState.Running
         handle.cancel()
-        // After cancel, await returns the rows collected so far and the state is Canceled.
+        // State must flip to Canceled the moment cancel() returns, even before await is called —
+        // otherwise a caller polling handle.state from another thread would see stale "Running".
+        handle.state shouldBe QueryState.Canceled
+        // After cancel, await returns the rows collected so far without re-entering the loop.
         val r = handle.await()
         r.rows.map(_.values.head) shouldBe List(Some("1"))
         handle.state shouldBe QueryState.Canceled
@@ -173,6 +176,31 @@ class TrinoTest extends UniTest:
         recorded(1).headers.get("x-trino-catalog") shouldBe Some("c")
       finally
         handle.close()
+    }
+  }
+
+  test("await keeps paginating while nextUri is present even if stats.state is FINISHED") {
+    // Trino can report `state: FINISHED` while still serving a `nextUri` for buffered rows or the
+    // final error page. The await loop must follow `nextUri`, not `state` — otherwise we truncate
+    // the result. This is a regression guard for the protocol-vs-stats distinction.
+    val page1 =
+      """{
+      |  "id": "q8",
+      |  "columns": [{"name": "x", "type": "integer"}],
+      |  "data": [[1]],
+      |  "nextUri": "__SERVER__/v1/statement/q8/2",
+      |  "stats": {"state": "FINISHED"}
+      |}""".stripMargin
+    val page2 =
+      """{
+      |  "id": "q8",
+      |  "data": [[2], [3]],
+      |  "stats": {"state": "FINISHED"}
+      |}""".stripMargin
+    withFakeTrino(Seq(page1, page2)) { (port, _: () => Vector[Recorded]) =>
+      val cfg = TrinoConfig(host = "localhost", port = port, user = "u")
+      val r   = Trino.execute("select 1", cfg)
+      r.rows.map(_.values.head) shouldBe List(Some("1"), Some("2"), Some("3"))
     }
   }
 
