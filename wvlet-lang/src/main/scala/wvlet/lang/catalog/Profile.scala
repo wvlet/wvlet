@@ -24,8 +24,6 @@ import wvlet.lang.compiler.DBType
 import wvlet.uni.log.LogSupport
 import wvlet.uni.io.IO
 
-import java.io.File
-
 case class Profile(
     name: String,
     `type`: String,
@@ -35,6 +33,7 @@ case class Profile(
     port: Option[Int] = None,
     catalog: Option[String] = None,
     schema: Option[String] = None,
+    useHttps: Option[Boolean] = None,
     properties: Map[String, Any] = Map.empty
 ):
   def dbType: DBType                                 = DBType.fromString(`type`)
@@ -96,15 +95,23 @@ object Profile extends LogSupport:
 
   end getProfile
 
-  def getProfile(profile: String): Option[Profile] =
-    val configDir = sys.props("user.home") + "/.wvlet"
+  def getProfile(profile: String): Option[Profile] = getProfile(profile, defaultConfigDir)
+
+  /**
+    * Test-friendly overload that takes an explicit config directory instead of resolving
+    * `${HOME}/.wvlet`. Production code calls the single-arg version.
+    */
+  def getProfile(profile: String, configDir: String): Option[Profile] =
     resolveConfigPath(configDir) match
       case Some(configPath) =>
         readProfileConfig(configPath).profiles.find(_.name == profile)
       case None =>
         None
 
-  end getProfile
+  // Resolves `~/.wvlet` via uni's cross-platform `IO.homeDirectory`. JVM reads
+  // `System.getProperty("user.home")`, Node uses `os.homedir()`, Native uses libc's
+  // `getpwuid`/`HOME` fallback — so the profile config lives in the same place across all three.
+  private def defaultConfigDir: String = s"${IO.homeDirectory}/.wvlet"
 
   // Returns the path of the first profile config file found, or None when
   // no config exists at all.
@@ -115,11 +122,11 @@ object Profile extends LogSupport:
   // against DuckDB. Force the user to convert before any query runs.
   private def resolveConfigPath(configDir: String): Option[String] =
     val candidates = Seq("profiles.json", "profiles.jsonc")
-    val found = candidates.iterator.map(name => s"${configDir}/${name}").find(p => File(p).isFile)
+    val found      = candidates.iterator.map(name => s"${configDir}/${name}").find(IO.isFile)
     found.orElse {
       Seq("profiles.yml", "profiles.yaml")
         .map(name => s"${configDir}/${name}")
-        .find(p => File(p).isFile)
+        .find(IO.isFile)
         .foreach { path =>
           throw StatusCode
             .INVALID_ARGUMENT
@@ -132,7 +139,7 @@ object Profile extends LogSupport:
     }
 
   private def readProfileConfig(configPath: String): ProfileConfig =
-    val rawText  = IO.readString(IO.path(configPath))
+    val rawText  = IO.readString(configPath)
     val parsed   = JSON.parse(rawText)
     val expanded = expandEnvVarsInStrings(parsed, configPath)
     Weaver.of[ProfileConfig].fromJSONValue(expanded)
