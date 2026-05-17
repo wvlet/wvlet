@@ -13,7 +13,6 @@
  */
 package wvlet.lang.runner.connector.trino
 
-import wvlet.lang.compiler.connector.QueryResult
 import wvlet.lang.compiler.query.QueryProgressMonitor
 import wvlet.lang.test.WvletDITest
 
@@ -39,20 +38,6 @@ class TrinoConnectorTest extends WvletDITest:
   // `trino-jdbc` — only `trino-testing`'s in-process `TestingTrinoServer` (PR-C). PR-D removes
   // the JDBC half of `TrinoConnector` along with the `trino-jdbc` dep.
   private given QueryProgressMonitor = QueryProgressMonitor.noOp
-
-  private def render(r: QueryResult): String =
-    val cols = r.columns.map(_.name.name)
-    r.rows
-      .map { row =>
-        cols
-          .iterator
-          .zip(row.values.iterator)
-          .map { case (n, v) =>
-            s""""${n}":${v.map(s => s""""${s}"""").getOrElse("null")}"""
-          }
-          .mkString("{", ",", "}")
-      }
-      .mkString("[", ",", "]")
 
   test("Create an in-memory schema and table") {
     val trino = dep[TrinoConnector].asSqlConnector
@@ -85,7 +70,7 @@ class TrinoConnectorTest extends WvletDITest:
         trino.execute("create table delta.delta_db.a as select 1 as id, 'leo' as name")
         trino.execute("insert into delta.delta_db.a values(2, 'yui')")
         val r = trino.execute("select * from delta.delta_db.a order by id")
-        debug(render(r))
+        debug(r.rows.map(_.values))
         r.rowCount shouldBe 2
       }
 
@@ -94,7 +79,7 @@ class TrinoConnectorTest extends WvletDITest:
           s"call delta.system.register_table(schema_name => 'delta_db', table_name => 'www_access', table_location => 'file://${baseDir}/spec/delta/data/www_access')"
         )
         val r = trino.execute("select * from delta.delta_db.www_access limit 5")
-        debug(render(r))
+        debug(r.rows.map(_.values))
         r.rowCount shouldBe 5
       }
     }
