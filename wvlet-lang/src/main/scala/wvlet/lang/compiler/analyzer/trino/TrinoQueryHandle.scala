@@ -108,10 +108,10 @@ class TrinoQueryHandle(
     * but never thrown — callers expect cancel to be non-fatal.
     *
     * Uses a freshly-constructed `HttpSyncClient` for the DELETE rather than the handle's `client`,
-    * because uni's `HttpSyncClient` may not be safe under concurrent `send` calls on every
-    * platform (libcurl's `curl_easy` is single-threaded; Node's worker_threads channel is
-    * single-threaded; only Apache HttpClient is fully concurrent). One extra short-lived client
-    * costs little and makes thread-safety platform-independent.
+    * because uni's `HttpSyncClient` may not be safe under concurrent `send` calls on every platform
+    * (libcurl's `curl_easy` is single-threaded; Node's worker_threads channel is single-threaded;
+    * only Apache HttpClient is fully concurrent). One extra short-lived client costs little and
+    * makes thread-safety platform-independent.
     */
   override def cancel(): Unit =
     if !cancelRequested && !state.isTerminal then
@@ -130,7 +130,8 @@ class TrinoQueryHandle(
         catch
           case e: Throwable =>
             warn(s"Trino cancel for query ${_queryId.getOrElse("?")} failed: ${e.getMessage}")
-        finally cancelClient.close()
+        finally
+          cancelClient.close()
       }
 
   override def close(): Unit =
