@@ -13,7 +13,7 @@
  */
 package wvlet.lang.runner.connector.trino
 
-import io.trino.jdbc.QueryStats
+import io.trino.jdbc.QueryStats as TrinoJdbcStats
 import io.trino.jdbc.TrinoConnection
 import io.trino.jdbc.TrinoDriver
 import io.trino.jdbc.TrinoStatement
@@ -23,6 +23,8 @@ import wvlet.uni.util.Count
 import wvlet.uni.util.ElapsedTime
 import wvlet.lang.compiler.DBType
 import wvlet.lang.compiler.WorkEnv
+import wvlet.lang.compiler.connector.QueryState
+import wvlet.lang.compiler.connector.QueryStats
 import wvlet.lang.compiler.query.QueryProgressMonitor
 import wvlet.lang.model.DataType
 import wvlet.lang.runner.connector.*
@@ -76,9 +78,16 @@ class TrinoConnector(val config: TrinoConfig, workEnv: WorkEnv)
     Control.withResource(conn.createStatement().asInstanceOf[TrinoStatement]): stmt =>
       try
         stmt.setProgressMonitor(
-          new Consumer[QueryStats]:
-            override def accept(stats: QueryStats): Unit = queryProgressMonitor.reportProgress(
-              TrinoQueryMetric(stats)
+          new Consumer[TrinoJdbcStats]:
+            override def accept(stats: TrinoJdbcStats): Unit = queryProgressMonitor.reportProgress(
+              QueryStats(
+                state = QueryState.fromTrino(stats.getState),
+                rowsProcessed = Some(stats.getProcessedRows),
+                bytesProcessed = Some(stats.getProcessedBytes),
+                elapsedMs = Some(stats.getElapsedTimeMillis),
+                splitsCompleted = Some(stats.getCompletedSplits),
+                splitsTotal = Some(stats.getTotalSplits)
+              )
             )
         )
         body(stmt)

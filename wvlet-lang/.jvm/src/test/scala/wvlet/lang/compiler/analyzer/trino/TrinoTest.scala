@@ -3,6 +3,10 @@ package wvlet.lang.compiler.analyzer.trino
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpHandler
 import com.sun.net.httpserver.HttpServer
+import wvlet.lang.compiler.connector.QueryState
+import wvlet.lang.compiler.connector.QueryStats
+import wvlet.lang.compiler.query.QueryMetric
+import wvlet.lang.compiler.query.QueryProgressMonitor
 import wvlet.uni.test.UniTest
 
 import java.net.InetSocketAddress
@@ -121,6 +125,129 @@ class TrinoTest extends UniTest:
     }
   }
 
+  test("submit populates queryId, state, and stats before await") {
+    val body =
+      """{
+      |  "id": "q5",
+      |  "columns": [{"name": "n", "type": "bigint"}],
+      |  "data": [[1]],
+      |  "stats": {"state": "RUNNING", "processedRows": 7, "elapsedTimeMillis": 42}
+      |}""".stripMargin
+    withFakeTrino(Seq(body)) { (port, _: () => Vector[Recorded]) =>
+      val cfg    = TrinoConfig(host = "localhost", port = port, user = "u")
+      val handle = Trino.submit("select 1", cfg)
+      try
+        handle.queryId shouldBe Some("q5")
+        handle.state shouldBe QueryState.Running
+        handle.stats.rowsProcessed shouldBe Some(7L)
+        handle.stats.elapsedMs shouldBe Some(42L)
+      finally
+        handle.close()
+    }
+  }
+
+  test("cancel issues DELETE on the last nextUri and transitions state to Canceled") {
+    val pendingPage =
+      """{
+      |  "id": "q6",
+      |  "columns": [{"name": "x", "type": "integer"}],
+      |  "data": [[1]],
+      |  "nextUri": "__SERVER__/v1/statement/q6/2",
+      |  "stats": {"state": "RUNNING"}
+      |}""".stripMargin
+    val observed               = scala.collection.mutable.ArrayBuffer.empty[QueryStats]
+    given QueryProgressMonitor =
+      new QueryProgressMonitor:
+        override def reportProgress(metric: QueryMetric): Unit =
+          metric match
+            case s: QueryStats =>
+              observed += s
+            case _ =>
+    withFakeTrino(Seq(pendingPage)) { (port, calls) =>
+      val cfg    = TrinoConfig(host = "localhost", port = port, user = "u", catalog = Some("c"))
+      val handle = Trino.submit("select 1", cfg)
+      try
+        handle.state shouldBe QueryState.Running
+        handle.cancel()
+        // State must flip to Canceled the moment cancel() returns, even before await is called —
+        // otherwise a caller polling handle.state from another thread would see stale "Running".
+        handle.state shouldBe QueryState.Canceled
+        // The progress monitor must observe the Canceled state too, so passive consumers (the REPL
+        // status line) see the terminal transition without having to await.
+        observed.map(_.state).toList shouldBe List(QueryState.Running, QueryState.Canceled)
+        // After cancel, await returns the rows collected so far without re-entering the loop.
+        val r = handle.await()
+        r.rows.map(_.values.head) shouldBe List(Some("1"))
+        handle.state shouldBe QueryState.Canceled
+        val recorded = calls()
+        recorded.map(_.method) shouldBe List("POST", "DELETE")
+        recorded(1).path shouldBe "/v1/statement/q6/2"
+        // DELETE must carry the same X-Trino-* headers as GET/POST — some gateways route on them.
+        recorded(1).headers.get("x-trino-user") shouldBe Some("u")
+        recorded(1).headers.get("x-trino-catalog") shouldBe Some("c")
+      finally
+        handle.close()
+    }
+  }
+
+  test("await keeps paginating while nextUri is present even if stats.state is FINISHED") {
+    // Trino can report `state: FINISHED` while still serving a `nextUri` for buffered rows or the
+    // final error page. The await loop must follow `nextUri`, not `state` — otherwise we truncate
+    // the result. This is a regression guard for the protocol-vs-stats distinction.
+    val page1 =
+      """{
+      |  "id": "q8",
+      |  "columns": [{"name": "x", "type": "integer"}],
+      |  "data": [[1]],
+      |  "nextUri": "__SERVER__/v1/statement/q8/2",
+      |  "stats": {"state": "FINISHED"}
+      |}""".stripMargin
+    val page2 =
+      """{
+      |  "id": "q8",
+      |  "data": [[2], [3]],
+      |  "stats": {"state": "FINISHED"}
+      |}""".stripMargin
+    withFakeTrino(Seq(page1, page2)) { (port, _: () => Vector[Recorded]) =>
+      val cfg = TrinoConfig(host = "localhost", port = port, user = "u")
+      val r   = Trino.execute("select 1", cfg)
+      r.rows.map(_.values.head) shouldBe List(Some("1"), Some("2"), Some("3"))
+    }
+  }
+
+  test("progress monitor receives per-page QueryStats with state mapped to wvlet's enum") {
+    val page1 =
+      """{
+      |  "id": "q7",
+      |  "columns": [{"name": "x", "type": "integer"}],
+      |  "data": [[1]],
+      |  "nextUri": "__SERVER__/v1/statement/q7/2",
+      |  "stats": {"state": "RUNNING", "processedRows": 1, "completedSplits": 1, "totalSplits": 4}
+      |}""".stripMargin
+    val page2 =
+      """{
+      |  "id": "q7",
+      |  "data": [[2]],
+      |  "stats": {"state": "FINISHED", "processedRows": 2, "completedSplits": 4, "totalSplits": 4}
+      |}""".stripMargin
+    val observed               = scala.collection.mutable.ArrayBuffer.empty[QueryStats]
+    given QueryProgressMonitor =
+      new QueryProgressMonitor:
+        override def reportProgress(metric: QueryMetric): Unit =
+          metric match
+            case s: QueryStats =>
+              observed += s
+            case _ =>
+    withFakeTrino(Seq(page1, page2)) { (port, _: () => Vector[Recorded]) =>
+      val cfg = TrinoConfig(host = "localhost", port = port, user = "u")
+      Trino.execute("select 1", cfg)
+      observed.map(_.state).toList shouldBe List(QueryState.Running, QueryState.Finished)
+      observed.last.rowsProcessed shouldBe Some(2L)
+      observed.last.splitsCompleted shouldBe Some(4)
+      observed.last.splitsTotal shouldBe Some(4)
+    }
+  }
+
   private case class Recorded(
       method: String,
       path: String,
@@ -151,18 +278,24 @@ class TrinoTest extends UniTest:
             val bodyBytes = ex.getRequestBody.readAllBytes()
             recorded +=
               Recorded(method, path, headers, new String(bodyBytes, StandardCharsets.UTF_8))
-            val raw = pages(index.min(pages.size - 1))
-            index += 1
-            val payload = raw.replace(
-              "__SERVER__",
-              s"http://localhost:${server.getAddress.getPort}"
-            )
-            val bytes = payload.getBytes(StandardCharsets.UTF_8)
-            ex.getResponseHeaders.add("Content-Type", "application/json")
-            ex.sendResponseHeaders(200, bytes.length.toLong)
-            val os = ex.getResponseBody
-            try os.write(bytes)
-            finally os.close()
+            // DELETE is a client-driven abort; the server acknowledges with an empty 200 and the
+            // test's request log records it, but we don't consume a scripted page (the cancel can
+            // arrive between any two GETs).
+            if method == "DELETE" then
+              ex.sendResponseHeaders(200, -1L)
+            else
+              val raw = pages(index.min(pages.size - 1))
+              index += 1
+              val payload = raw.replace(
+                "__SERVER__",
+                s"http://localhost:${server.getAddress.getPort}"
+              )
+              val bytes = payload.getBytes(StandardCharsets.UTF_8)
+              ex.getResponseHeaders.add("Content-Type", "application/json")
+              ex.sendResponseHeaders(200, bytes.length.toLong)
+              val os = ex.getResponseBody
+              try os.write(bytes)
+              finally os.close()
           finally
             ex.close()
     )

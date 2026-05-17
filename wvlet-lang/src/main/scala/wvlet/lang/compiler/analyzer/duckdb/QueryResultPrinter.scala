@@ -1,5 +1,7 @@
 package wvlet.lang.compiler.analyzer.duckdb
 
+import wvlet.lang.compiler.connector.QueryResult
+
 /**
   * Cross-platform formatters for [[QueryResult]] — CSV (for piping) and a box-drawn table (for
   * terminal output). Kept deliberately minimal: no per-column type-aware alignment, no truncation,

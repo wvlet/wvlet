@@ -4,6 +4,8 @@ import org.duckdb.DuckDBConnection
 import wvlet.uni.control.Control.withResource
 import wvlet.lang.api.StatusCode
 import wvlet.lang.compiler.Name
+import wvlet.lang.compiler.connector.QueryResult
+import wvlet.lang.compiler.connector.QueryResultRow
 import wvlet.lang.model.DataType
 import wvlet.lang.model.DataType.EmptyRelationType
 import wvlet.lang.model.DataType.NamedType

@@ -1,18 +1,17 @@
 package wvlet.lang.compiler.analyzer.trino
 
 import wvlet.lang.api.StatusCode
-import wvlet.lang.compiler.Name
-import wvlet.lang.compiler.analyzer.duckdb.QueryResult
-import wvlet.lang.compiler.analyzer.duckdb.QueryResultRow
+import wvlet.lang.compiler.connector.QueryHandle
+import wvlet.lang.compiler.connector.QueryResult
+import wvlet.lang.compiler.connector.SqlConnector
+import wvlet.lang.compiler.query.QueryProgressMonitor
 import wvlet.lang.model.DataType
-import wvlet.lang.model.DataType.NamedType
 import wvlet.uni.http.Http
 import wvlet.uni.http.HttpMethod
 import wvlet.uni.http.HttpSyncClient
 import wvlet.uni.http.Request
 import wvlet.uni.http.Response
 import wvlet.uni.json.JSON
-import wvlet.uni.json.JSON.JSONArray
 import wvlet.uni.json.JSON.JSONBoolean
 import wvlet.uni.json.JSON.JSONDouble
 import wvlet.uni.json.JSON.JSONLong
@@ -28,7 +27,7 @@ import wvlet.uni.log.LogSupport
   * Drives the Trino [Client Protocol](https://trino.io/docs/current/develop/client-protocol.html):
   *
   *   1. `POST /v1/statement` with the SQL text and `X-Trino-{User,Catalog,Schema,Source}` headers.
-  *   2. Read `nextUri` from the response and `GET` it until either `nextUri` is absent (query is
+  *   2. Read `nextUri` from each response and `GET` it until either `nextUri` is absent (query is
   *      done) or `state` reaches a terminal value (`FINISHED`, `FAILED`, `CANCELED`).
   *   3. Decode the streaming `columns` + `data` payload into a [[QueryResult]] whose rows are the
   *      same `Seq[Option[String]]` shape DuckDB returns, so downstream printers don't need to care
@@ -37,8 +36,34 @@ import wvlet.uni.log.LogSupport
   * No JDBC, no platform-specific drivers — pure HTTP, which means the same code runs unchanged on
   * JVM, Node.js (via uni's worker_threads sync HTTP channel), and Scala Native (via the libcurl
   * channel).
+  *
+  * `submit` returns a [[TrinoQueryHandle]] so callers can poll progress, read live `stats`, and
+  * `cancel()` from another thread. `execute` is the synchronous facade for callers that just want
+  * the materialized result.
   */
 object Trino extends LogSupport:
+
+  /**
+    * Submit `sql` to the Trino coordinator described by `config`. Blocks only until the first
+    * response (so `queryId` is populated), then returns a handle the caller drives via `await()` or
+    * `cancel()`.
+    */
+  def submit(sql: String, config: TrinoConfig)(using
+      progressMonitor: QueryProgressMonitor = QueryProgressMonitor.noOp
+  ): TrinoQueryHandle =
+    val client = Http.client.withBaseUri(config.baseUri).newSyncClient
+    try
+      val resp = sendOrThrow(client, withTrinoHeaders(startRequest(sql), config))
+      val json = parseBody(resp)
+      checkError(json)
+      val handle = TrinoQueryHandle(client, config, progressMonitor)
+      handle.consume(json)
+      handle
+    catch
+      case e: Throwable =>
+        client.close()
+        throw e
+  end submit
 
   /**
     * Run `sql` against the Trino coordinator described by `config` and return the materialized
@@ -48,37 +73,24 @@ object Trino extends LogSupport:
     * non-JSON bodies) are surfaced as `StatusCode.QUERY_EXECUTION_FAILURE` exceptions whose message
     * contains Trino's `errorName`/`message` payload when available.
     */
-  def execute(sql: String, config: TrinoConfig): QueryResult =
-    val client = Http.client.withBaseUri(config.baseUri).newSyncClient
-    try
-      val state = ResultState()
-      var resp  = sendOrThrow(client, withTrinoHeaders(startRequest(sql), config))
-      var done  = false
-      while !done do
-        val json = parseBody(resp)
-        checkError(json)
-        collectColumns(json, state)
-        collectRows(json, state)
-        nextUri(json) match
-          case Some(uri) =>
-            // Re-apply X-Trino-* headers on every poll. Some gateways (e.g. Treasure Data's
-            // Presto front-end) inspect the user header on every request to route to the right
-            // backend; omitting it on follow-up GETs fails with PERMISSION_DENIED.
-            val nextReq = withTrinoHeaders(Request(method = HttpMethod.GET, uri = uri), config)
-            resp = sendOrThrow(client, nextReq)
-          case None =>
-            done = true
-      QueryResult(state.columns.getOrElse(Seq.empty[NamedType]), state.rows.result())
-    finally
-      client.close()
-  end execute
+  def execute(sql: String, config: TrinoConfig)(using
+      progressMonitor: QueryProgressMonitor = QueryProgressMonitor.noOp
+  ): QueryResult =
+    val h = submit(sql, config)
+    try h.await()
+    finally h.close()
 
-  private def startRequest(sql: String): Request = Request(
+  private[trino] def startRequest(sql: String): Request = Request(
     method = HttpMethod.POST,
     uri = "/v1/statement"
   ).withTextContent(sql)
 
-  private def withTrinoHeaders(req: Request, config: TrinoConfig): Request =
+  /**
+    * Re-apply `X-Trino-*` headers on every request. Some gateways (e.g. Treasure Data's Presto
+    * front-end) inspect the user header on every request to route to the right backend; omitting it
+    * on follow-up GETs / DELETEs fails with `PERMISSION_DENIED`.
+    */
+  private[trino] def withTrinoHeaders(req: Request, config: TrinoConfig): Request =
     val base = req.setHeader("X-Trino-User", config.user).setHeader("X-Trino-Source", config.source)
     val withCatalog = config.catalog.foldLeft(base)((r, c) => r.setHeader("X-Trino-Catalog", c))
     config.schema.foldLeft(withCatalog)((r, s) => r.setHeader("X-Trino-Schema", s))
@@ -87,7 +99,7 @@ object Trino extends LogSupport:
     * Send `req` and surface non-2xx responses as exceptions. `HttpSyncClient` already throws on
     * those codes; the explicit check is belt-and-braces in case retry policy changes upstream.
     */
-  private def sendOrThrow(client: HttpSyncClient, req: Request): Response =
+  private[trino] def sendOrThrow(client: HttpSyncClient, req: Request): Response =
     val resp = client.send(req)
     if !resp.status.isSuccessful then
       throw StatusCode
@@ -97,7 +109,7 @@ object Trino extends LogSupport:
         )
     resp
 
-  private def parseBody(resp: Response): JSONObject = resp
+  private[trino] def parseBody(resp: Response): JSONObject = resp
     .contentAsString
     .map { body =>
       JSON.parse(body) match
@@ -112,14 +124,15 @@ object Trino extends LogSupport:
       throw StatusCode.QUERY_EXECUTION_FAILURE.newException("Empty body in Trino response")
     )
 
-  private def stringField(json: JSONObject, name: String, default: String = "?"): String = json
-    .get(name)
-    .collect { case s: JSONString =>
-      s.v
-    }
-    .getOrElse(default)
+  private[trino] def stringField(json: JSONObject, name: String, default: String = "?"): String =
+    json
+      .get(name)
+      .collect { case s: JSONString =>
+        s.v
+      }
+      .getOrElse(default)
 
-  private def checkError(json: JSONObject): Unit = json
+  private[trino] def checkError(json: JSONObject): Unit = json
     .get("error")
     .foreach {
       case err: JSONObject =>
@@ -131,52 +144,12 @@ object Trino extends LogSupport:
       case _ =>
     }
 
-  private def collectColumns(json: JSONObject, state: ResultState): Unit =
-    if state.columns.isEmpty then
-      json
-        .get("columns")
-        .foreach {
-          case arr: JSONArray =>
-            val cols =
-              arr
-                .v
-                .collect { case obj: JSONObject =>
-                  NamedType(
-                    Name.termName(stringField(obj, "name")),
-                    parseTrinoType(stringField(obj, "type", "any"))
-                  )
-                }
-                .toList
-            state.columns = Some(cols)
-          case _ =>
-        }
-
-  private def collectRows(json: JSONObject, state: ResultState): Unit = json
-    .get("data")
-    .foreach {
-      case arr: JSONArray =>
-        arr
-          .v
-          .foreach {
-            case row: JSONArray =>
-              state.rows += QueryResultRow(row.v.map(stringifyCell).toList)
-            case _ =>
-          }
-      case _ =>
-    }
-
-  private def nextUri(json: JSONObject): Option[String] = json
-    .get("nextUri")
-    .collect { case s: JSONString =>
-      s.v
-    }
-
   /**
     * Coerce a single cell to the same `Option[String]` shape DuckDB returns. Trino sends scalars as
     * JSON primitives and arrays/objects as JSON values; we render the latter via `toJSON` so the
     * CLI printer doesn't crash on structured columns.
     */
-  private def stringifyCell(v: JSONValue): Option[String] =
+  private[trino] def stringifyCell(v: JSONValue): Option[String] =
     v match
       case _: JSONNull =>
         None
@@ -198,7 +171,7 @@ object Trino extends LogSupport:
     * printer. Anything we still can't map (compound types like `array(bigint)`, vendor extensions,
     * future Trino additions) falls back to `any` so column display never breaks rendering.
     */
-  private def parseTrinoType(name: String): DataType =
+  private[trino] def parseTrinoType(name: String): DataType =
     val base = name.takeWhile(c => c != '(' && c != ' ').toLowerCase
     try
       DataType.parse(base)
@@ -206,9 +179,17 @@ object Trino extends LogSupport:
       case _: Exception =>
         DataType.AnyType
 
-  private final class ResultState:
-    var columns: Option[Seq[NamedType]]                                              = None
-    val rows: scala.collection.mutable.Builder[QueryResultRow, List[QueryResultRow]] =
-      List.newBuilder
-
 end Trino
+
+/**
+  * `SqlConnector` implementation that talks Trino over uni's `HttpSyncClient`. Each `submit` builds
+  * its own short-lived `HttpSyncClient` (owned by the returned [[TrinoQueryHandle]]) so the
+  * connector instance itself holds no transport state.
+  */
+class TrinoSqlConnector(val config: TrinoConfig) extends SqlConnector:
+  override def submit(sql: String)(using progressMonitor: QueryProgressMonitor): QueryHandle = Trino
+    .submit(sql, config)
+
+  override def close(): Unit = ()
+
+end TrinoSqlConnector
