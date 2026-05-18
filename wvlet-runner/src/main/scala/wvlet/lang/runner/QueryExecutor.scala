@@ -348,14 +348,41 @@ class QueryExecutor(
       }
       rowCount
 
+    // Cross-platform variant for backends that don't expose a JDBC ResultSet (Trino HTTP).
+    // Stream the materialized QueryResult through the same JSON writer the JDBC path produces.
+    def writeJSONLFromXP(r: XPQueryResult, out: File): Long =
+      val rowCodec = summon[Weaver[ListMap[String, Any]]]
+      val names    = r.columns.map(_.name.name)
+      Using.resource(BufferedWriter(OutputStreamWriter(GZIPOutputStream(FileOutputStream(out))))) {
+        w =>
+          r.rows
+            .foreach { row =>
+              val pairs = names
+                .iterator
+                .zip(row.values.iterator)
+                .map { case (n, v) =>
+                  n -> v.orNull.asInstanceOf[Any]
+                }
+              w.write(rowCodec.toJson(ListMap.from(pairs)))
+              w.newLine()
+            }
+      }
+      r.rowCount.toLong
+
     // 1) Execute on Trino (or current engine) and dump to JSONL
     val baseSQL = GenSQL.generateSQLFromRelation(save.child, addHeader = false)
     given monitor: QueryProgressMonitor = context.queryProgressMonitor
-    getDBConnector(defaultProfile).runQuery(baseSQL.sql) { rs =>
-      val n = writeJSONL(rs, jsonlFile)
-      workEnv.info(s"Exported ${n} rows to compressed JSONL at ${jsonlFile.getPath}")
-      n
-    }
+    val sourceConn                      = getDBConnector(defaultProfile)
+    val n                               =
+      sourceConn match
+        case trino: TrinoConnector =>
+          // Trino flows through the HTTP path (PR-D): no JDBC ResultSet, materialize via SqlConnector.
+          writeJSONLFromXP(trino.asSqlConnector.execute(baseSQL.sql), jsonlFile)
+        case _ =>
+          sourceConn.runQuery(baseSQL.sql) { rs =>
+            writeJSONL(rs, jsonlFile)
+          }
+    workEnv.info(s"Exported ${n} rows to compressed JSONL at ${jsonlFile.getPath}")
 
     // 2) Directly COPY from read_json_auto() to Parquet via DuckDB
     val duck                  = dbConnectorProvider.getConnector(DBType.DuckDB, None)
