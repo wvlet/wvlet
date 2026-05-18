@@ -60,7 +60,11 @@ class TrinoConnector(val config: TrinoConfig, workEnv: WorkEnv)
 
   lazy val asSqlConnector: SqlConnector = TrinoSqlConnector(toCrossPlatformConfig)
 
-  private given QueryProgressMonitor = QueryProgressMonitor.noOp
+  // Metadata methods (listSchemas, listTables, getTableDef, …) don't take a caller-supplied
+  // QueryProgressMonitor because the base `DBConnector` doesn't either — so we feed the
+  // cross-platform connector a no-op monitor by default. Overrides that DO take a monitor
+  // (`executeUpdate`, `execute`) shadow this default at the method level.
+  private given defaultMonitor: QueryProgressMonitor = QueryProgressMonitor.noOp
 
   private def toCrossPlatformConfig: TrinoXPConfig =
     val parts        = config.hostAndPort.split(":", 2)
@@ -87,9 +91,18 @@ class TrinoConnector(val config: TrinoConfig, workEnv: WorkEnv)
 
   /**
     * Run a SQL string over the HTTP path and return the materialized [[QueryResult]]. Centralises
-    * the `asSqlConnector.execute` call so the overrides below stay one-liners.
+    * the `asSqlConnector.execute` call so the overrides below stay one-liners. Takes the progress
+    * monitor implicitly so callers that already have one (e.g. `execute` / `executeUpdate`) can
+    * thread it through, while metadata callers fall back to the class-level `noOp` default.
+    *
+    * Note: `SqlConnector.execute` materializes the full result set today — same tradeoff PR-B
+    * shipped for `QueryExecutor`'s Trino path. Large exports that previously streamed through the
+    * JDBC `ResultSet` now build the whole `QueryResult` in memory. Adding chunked iteration to
+    * `QueryHandle` is the right fix; tracked as a follow-up.
     */
-  private def http(sql: String): QueryResult = asSqlConnector.execute(sql)
+  private def http(sql: String)(using QueryProgressMonitor): QueryResult = asSqlConnector.execute(
+    sql
+  )
 
   /** SQL-safe literal escaping for the values we interpolate into information_schema queries. */
   private def lit(s: String): String = s"'${s.replace("'", "''")}'"
@@ -121,11 +134,18 @@ class TrinoConnector(val config: TrinoConfig, workEnv: WorkEnv)
 
   override def executeUpdate(sql: String)(using QueryProgressMonitor): Int =
     http(sql)
+    // Trino's HTTP API doesn't surface an "affected rows" count for DDL/DML the way JDBC
+    // `Statement.executeUpdate` does (the `updateCount` in stats is best-effort and not always
+    // populated). Return 0 to match the historical wvlet usage — every existing caller treats
+    // this as a fire-and-forget operation.
     0
 
-  override def execute(sql: String)(using QueryProgressMonitor): Boolean =
-    val r = http(sql)
-    r.columnCount > 0
+  override def execute(sql: String)(using monitor: QueryProgressMonitor): Boolean =
+    // Match the base class's monitor lifecycle so REPL/UI progress UI stays in sync —
+    // base impl calls `newQuery` before, `close` after.
+    monitor.newQuery(sql)
+    try http(sql).columnCount > 0
+    finally monitor.close()
 
   override def createSchema(catalog: String, schema: String): TableSchema =
     http(s"create schema if not exists ${catalog}.${schema}")
