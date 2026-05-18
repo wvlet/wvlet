@@ -414,7 +414,9 @@ lazy val runner = project
         "com.github.ben-manes.caffeine" % "caffeine"       % "3.2.4",
         "org.apache.arrow"              % "arrow-vector"   % "19.0.0",
         "org.duckdb"                    % "duckdb_jdbc"    % DUCKDB_JDBC_VERSION,
-        "io.trino"                      % "trino-jdbc"     % TRINO_VERSION,
+        // trino-jdbc removed in PR-D: TrinoConnector now talks the Trino REST protocol via uni's
+        // HttpSyncClient (see wvlet-lang's TrinoSqlConnector). trino-testing stays in test scope
+        // for the in-process TestingTrinoServer — that artifact doesn't pull in trino-jdbc.
         "net.snowflake"                 % "snowflake-jdbc" % SNOWFLAKE_JDBC_VERSION,
         // exclude() and jar() are necessary to avoid https://github.com/sbt/sbt/issues/7407
         // tpc-h connector neesd to download GB's of jar, so excluding it

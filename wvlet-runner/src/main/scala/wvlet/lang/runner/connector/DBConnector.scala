@@ -15,7 +15,6 @@ package wvlet.lang.runner.connector
 
 import wvlet.uni.control.Control.withResource
 import DBConnector.*
-import io.trino.jdbc.QueryStats
 import wvlet.lang.catalog.Catalog
 import wvlet.lang.catalog.SQLFunction
 import wvlet.lang.catalog.Catalog.TableColumn
