@@ -1,6 +1,6 @@
 package wvlet.lang.runner.connector.trino
 
-import wvlet.lang.runner.codec.JDBCCodec.ResultSetCodec
+import wvlet.lang.compiler.query.QueryProgressMonitor
 import wvlet.lang.test.WvletDITest
 
 class TableFunctionTest extends WvletDITest:
@@ -21,21 +21,19 @@ class TableFunctionTest extends WvletDITest:
       }
   }
 
+  private given QueryProgressMonitor = QueryProgressMonitor.noOp
+
   test("Run table functions") {
     test("hello table function") {
-      val trino = dep[TrinoConnector]
-      trino.runQuery("select * from TABLE(wvlet.hello('wvlet'))") { rs =>
-        rs.next() shouldBe true
-        val name = rs.getString(1)
-        debug(name)
-        name shouldBe "Hello wvlet!"
-        rs.next() shouldBe false
-      }
+      val trino = dep[TrinoConnector].asSqlConnector
+      val r     = trino.execute("select * from TABLE(wvlet.hello('wvlet'))")
+      r.rowCount shouldBe 1
+      r.rows.head.values.head shouldBe Some("Hello wvlet!")
     }
 
     test("hello duckdb table function") {
-      val trino = dep[TrinoConnector]
-      trino.runQuery(s"""
+      val trino = dep[TrinoConnector].asSqlConnector
+      val r     = trino.execute(s"""
            |-- Projection in Trino
            |select c_custkey, c_nationkey, c_phone
            |-- Read a parquet file with DuckDB
@@ -46,11 +44,10 @@ class TableFunctionTest extends WvletDITest:
            |     where c_custkey = 1'
            |  )
            |)
-           |""".stripMargin) { rs =>
-        val json = ResultSetCodec(rs).toJson
-        debug(json)
-        json shouldBe """[{"c_custkey":1,"c_nationkey":15,"c_phone":"25-989-741-2988"}]"""
-      }
+           |""".stripMargin)
+      r.rowCount shouldBe 1
+      r.columns.map(_.name.name) shouldBe List("c_custkey", "c_nationkey", "c_phone")
+      r.rows.head.values shouldBe List(Some("1"), Some("15"), Some("25-989-741-2988"))
     }
   }
 

@@ -141,25 +141,43 @@ class TrinoConnector(val config: TrinoConfig, workEnv: WorkEnv)
       finally
         stmt.clearProgressMonitor()
 
+  /**
+    * Trino's `show functions` over HTTP. Result columns are addressed by name rather than position
+    * because Trino reorders them between versions (e.g. 481 added a `Variadic` column); a
+    * positional lookup would silently break under those upgrades.
+    */
   override def listFunctions(catalog: String): List[SQLFunction] =
-    val functionList = List.newBuilder[SQLFunction]
-    runQuery("show functions") { rs =>
-      while rs.next() do
-        val returnType    = DataType.parse(rs.getString("Return Type"))
-        val argumentTypes = rs.getString("Argument Types").split(", ").map(DataType.parse).toList
-        val prop          = Map.newBuilder[String, Any]
-        Option(rs.getString("description")).foreach(x => prop += "description" -> x)
-        functionList +=
-          SQLFunction(
-            name = rs.getString("Function"),
-            functionType = SQLFunction
-              .FunctionType
-              .valueOf(rs.getString("Function Type").toUpperCase),
-            returnType = returnType,
-            args = argumentTypes,
-            properties = prop.result()
-          )
-    }
-    functionList.result()
+    given QueryProgressMonitor = QueryProgressMonitor.noOp
+    val result                 = asSqlConnector.execute("show functions")
+    val colIndex               = result.columns.map(_.name.name.toLowerCase).zipWithIndex.toMap
+    def col(row: Seq[Option[String]], name: String): Option[String] =
+      colIndex.get(name.toLowerCase).flatMap(row.lift).flatten
+    result
+      .rows
+      .iterator
+      .map { r =>
+        val row        = r.values
+        val returnType = col(row, "Return Type").map(DataType.parse).getOrElse(DataType.AnyType)
+        // Zero-arg functions (e.g. `now()`, `pi()`) report an empty `Argument Types` cell.
+        // `"".split(", ")` returns `Array("")` in Scala — guard before parsing.
+        val argumentTypes = col(row, "Argument Types")
+          .filter(_.nonEmpty)
+          .map(_.split(", ").iterator.map(DataType.parse).toList)
+          .getOrElse(Nil)
+        val prop = Map.newBuilder[String, Any]
+        col(row, "description").foreach(x => prop += "description" -> x)
+        SQLFunction(
+          name = col(row, "Function").getOrElse(""),
+          functionType = SQLFunction
+            .FunctionType
+            .valueOf(col(row, "Function Type").getOrElse("scalar").toUpperCase),
+          returnType = returnType,
+          args = argumentTypes,
+          properties = prop.result()
+        )
+      }
+      .toList
+
+  end listFunctions
 
 end TrinoConnector

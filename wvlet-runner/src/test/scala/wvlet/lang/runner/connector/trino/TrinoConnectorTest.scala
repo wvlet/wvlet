@@ -13,11 +13,8 @@
  */
 package wvlet.lang.runner.connector.trino
 
-import wvlet.lang.runner.codec.JDBCCodec
-import wvlet.lang.runner.codec.JDBCCodec.ResultSetCodec
+import wvlet.lang.compiler.query.QueryProgressMonitor
 import wvlet.lang.test.WvletDITest
-import wvlet.uni.control.Control
-import wvlet.uni.control.Control.withResource
 
 import java.io.File
 
@@ -37,73 +34,64 @@ class TrinoConnectorTest extends WvletDITest:
       }
   }
 
+  // All test SQL flows through `asSqlConnector` so this suite no longer depends on
+  // `trino-jdbc` — only `trino-testing`'s in-process `TestingTrinoServer` (PR-C). PR-D removes
+  // the JDBC half of `TrinoConnector` along with the `trino-jdbc` dep.
+  private given QueryProgressMonitor = QueryProgressMonitor.noOp
+
   test("Create an in-memory schema and table") {
-    val trino = dep[TrinoConnector]
-    trino.createSchema("memory", "main")
-    trino.getSchema("memory", "main") shouldBe defined
+    val trino = dep[TrinoConnector].asSqlConnector
+    trino.execute("create schema if not exists memory.main")
+    trino.execute("create table memory.main.a(id bigint)")
 
-    trino.executeUpdate("create table a(id bigint)")
-
-    trino.getTableDef("memory", "main", "a") shouldBe defined
+    test("describe the table") {
+      val r = trino.execute("describe memory.main.a")
+      r.rowCount shouldBe 1
+      r.rows.head.values.head shouldBe Some("id")
+    }
 
     test("drop table") {
-      val trino = dep[TrinoConnector]
-      trino.dropTable("memory", "main", "a")
-      trino.getTableDef("memory", "main", "a") shouldBe empty
+      trino.execute("drop table if exists memory.main.a")
+      val r = trino.execute(
+        "select count(*) as c from information_schema.tables where table_schema = 'main' and table_name = 'a'"
+      )
+      r.rows.head.values.head shouldBe Some("0")
     }
 
     test("drop schema") {
-      val trino = dep[TrinoConnector]
-      trino.dropSchema("memory", "main")
+      trino.execute("drop schema if exists memory.main")
     }
 
     test("Create delta Lake table") {
-      // The schema is created on the (shared) TestTrinoServer once here; nested tests below
-      // derive their own delta-configured connector via dep[TrinoConnector].withConfig(...).
-      val trino      = dep[TrinoConnector]
-      val baseDir    = new File(sys.props("user.dir")).getAbsolutePath
-      val trinoDelta = trino.withConfig(trino.config.copy(catalog = "delta", schema = "delta_db"))
-      trinoDelta.createSchema("delta", "delta_db")
+      val baseDir = new File(sys.props("user.dir")).getAbsolutePath
+      trino.execute("create schema if not exists delta.delta_db")
 
       test("create a local delta lake file") {
-        val trinoDelta = dep[TrinoConnector].withConfig(
-          dep[TrinoConfig].copy(catalog = "delta", schema = "delta_db")
-        )
-        trinoDelta.executeUpdate("create table a as select 1 as id, 'leo' as name")
-        trinoDelta.executeUpdate("insert into a values(2, 'yui')")
-        trinoDelta.runQuery("select * from a"): rs =>
-          val queryResultJson = ResultSetCodec(rs).toJson
-          debug(queryResultJson)
+        trino.execute("create table delta.delta_db.a as select 1 as id, 'leo' as name")
+        trino.execute("insert into delta.delta_db.a values(2, 'yui')")
+        val r = trino.execute("select * from delta.delta_db.a order by id")
+        debug(r.rows.map(_.values))
+        r.rowCount shouldBe 2
       }
 
       test("register a local delta lake table") {
-        val trinoDelta = dep[TrinoConnector].withConfig(
-          dep[TrinoConfig].copy(catalog = "delta", schema = "delta_db")
-        )
-        trinoDelta.execute(
+        trino.execute(
           s"call delta.system.register_table(schema_name => 'delta_db', table_name => 'www_access', table_location => 'file://${baseDir}/spec/delta/data/www_access')"
         )
-        trinoDelta.runQuery("select * from www_access limit 5") { rs =>
-          val queryResultJson = ResultSetCodec(rs).toJson
-          debug(queryResultJson)
-        }
+        val r = trino.execute("select * from delta.delta_db.www_access limit 5")
+        debug(r.rows.map(_.values))
+        r.rowCount shouldBe 5
       }
     }
 
     test("list functions") {
-      val trino     = dep[TrinoConnector]
-      val functions = trino.listFunctions("memory")
+      val functions = dep[TrinoConnector].listFunctions("memory")
       debug(functions.mkString("\n"))
+      functions.nonEmpty shouldBe true
     }
 
-    // Sanity for PR-A: the new `asSqlConnector` accessor talks to the same in-process server
-    // via the HTTP client (uni's `HttpSyncClient`) — no `trino-jdbc` on this path. PR-B will
-    // switch `QueryExecutor` over to this; for now both code paths coexist.
-    test("asSqlConnector executes against the same server via HTTP") {
-      val trino                                            = dep[TrinoConnector]
-      given wvlet.lang.compiler.query.QueryProgressMonitor =
-        wvlet.lang.compiler.query.QueryProgressMonitor.noOp
-      val result = trino.asSqlConnector.execute("select 1 as one, 'http' as src")
+    test("asSqlConnector executes a trivial select") {
+      val result = trino.execute("select 1 as one, 'http' as src")
       result.columnCount shouldBe 2
       result.rowCount shouldBe 1
       result.columns.map(_.name.name) shouldBe List("one", "src")
