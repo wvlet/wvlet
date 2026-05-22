@@ -24,7 +24,7 @@
     "autoprefixer": "^10.4.27",
     "esbuild": "^0.28.0",
     "jsdom": "29.1.1",
-    "postcss": "^8.5.13",
+    "postcss": "^8.5.15",
     "tailwindcss": "^4.2.2",
     "typescript": "^6.0.3",
     "vite": "^8.0.13",
