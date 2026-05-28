@@ -5,7 +5,7 @@ import scala.scalanative.build.NativeConfig
 
 val UNI_VERSION = "2026.1.11"
 
-val TRINO_VERSION          = "476"
+val TRINO_VERSION          = "481"
 val AWS_SDK_VERSION        = "2.20.146"
 val SCALAJS_DOM_VERSION    = "2.8.1"
 val DUCKDB_JDBC_VERSION    = "1.5.3.0"
