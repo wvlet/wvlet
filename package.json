@@ -25,7 +25,7 @@
     "esbuild": "^0.28.0",
     "jsdom": "29.1.1",
     "postcss": "^8.5.15",
-    "tailwindcss": "^4.2.2",
+    "tailwindcss": "^4.3.0",
     "typescript": "^6.0.3",
     "vite": "^8.0.14",
     "vite-plugin-monaco-editor": "^1.1.0"
