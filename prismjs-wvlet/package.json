@@ -19,7 +19,7 @@
   },
   "devDependencies": {
     "prismjs": "^1.29.0",
-    "terser": "^5.47.1",
+    "terser": "^5.48.0",
     "jest": "^30.4.2"
   },
   "keywords": [
