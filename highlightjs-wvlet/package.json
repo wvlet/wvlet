@@ -33,7 +33,7 @@
   },
   "devDependencies": {
     "highlight.js": "^11.0.0",
-    "mocha": "^11.7.1",
+    "mocha": "^11.7.6",
     "should": "^13.2.3"
   },
   "packageManager": "pnpm@10.7.1"
