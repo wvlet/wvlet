@@ -3,7 +3,7 @@ import scala.scalanative.build.GC
 import scala.scalanative.build.Mode
 import scala.scalanative.build.NativeConfig
 
-val UNI_VERSION = "2026.1.11"
+val UNI_VERSION = "2026.1.14"
 
 val TRINO_VERSION          = "476"
 val AWS_SDK_VERSION        = "2.20.146"
