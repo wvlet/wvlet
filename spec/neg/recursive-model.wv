@@ -1,0 +1,7 @@
+-- A self-recursive model reference must be reported as a user error,
+-- not a StackOverflowError
+model model_self = {
+  from model_self
+}
+
+from model_self

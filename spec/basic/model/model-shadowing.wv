@@ -1,0 +1,14 @@
+-- A model parameter must shadow a top-level val with the same name
+val bound = 100
+
+model people = {
+  from [[10, "a"], [25, "b"], [30, "c"]] as person(age, name)
+}
+
+model adults(bound: int) = {
+  from people
+  where age >= bound
+}
+
+from adults(bound = 18)
+test _.rows should be [[25, "b"], [30, "c"]]

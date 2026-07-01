@@ -46,6 +46,7 @@ enum StatusCode(statusType: StatusType):
   case PARTIAL_QUERY_NOT_FOUND      extends StatusCode(StatusType.UserError)
   case PARTIAL_QUERY_COLUMN_MISSING extends StatusCode(StatusType.UserError)
   case PARTIAL_QUERY_INVALID_BODY   extends StatusCode(StatusType.UserError)
+  case RECURSIVE_MODEL_REFERENCE    extends StatusCode(StatusType.UserError)
   case NOT_A_RELATION               extends StatusCode(StatusType.UserError)
   case FILE_NOT_FOUND               extends StatusCode(StatusType.UserError)
   case SCHEMA_ALREADY_EXISTS        extends StatusCode(StatusType.UserError)

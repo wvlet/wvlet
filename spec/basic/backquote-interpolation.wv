@@ -18,3 +18,10 @@ test _.rows should be [[1, "alice"]]
 from person_tbl_ref(1)
 test _.rows should be [[2, "bob"]]
 
+-- A model argument given as a val reference must be resolved
+-- in the caller's context before evaluating the interpolation
+val table_index = 1
+
+from person_tbl_ref(table_index)
+test _.rows should be [[2, "bob"]]
+
