@@ -14,6 +14,7 @@ import wvlet.lang.model.RelationType
 
 import java.io.File
 import java.sql.DriverManager
+import java.sql.ResultSet
 
 trait DuckDBCompat:
   def isAvailable: Boolean = true
@@ -46,34 +47,52 @@ trait DuckDBCompat:
     * Run `sql` against a fresh in-memory DuckDB and return all rows materialized as strings. Values
     * come back via `rs.getString(col)` — same string-coercion the JS/Native backends get from
     * `duckdb_value_varchar`, so cross-platform output is consistent.
+    *
+    * Statements without a ResultSet (e.g. `COPY ... TO`) are reported as a single `Count` row,
+    * matching the result shape DuckDB's C API gives the JS/Native backends.
     */
   def execute(sql: String): QueryResult = withConnection { conn =>
-    withResource(conn.createStatement().executeQuery(sql)) { rs =>
-      val metadata = rs.getMetaData
-      val colCount = metadata.getColumnCount
-      val columns  = (1 to colCount)
-        .map { i =>
-          val name     = metadata.getColumnName(i)
-          val dataType = metadata.getColumnTypeName(i).toLowerCase
-          NamedType(Name.termName(name), DataType.parse(dataType))
-        }
-        .toList
-
-      val rows = List.newBuilder[QueryResultRow]
-      while rs.next() do
-        val values = (1 to colCount)
-          .map { i =>
-            val v = rs.getString(i)
-            if rs.wasNull() then
-              None
-            else
-              Option(v)
-          }
-          .toList
-        rows += QueryResultRow(values)
-      QueryResult(columns, rows.result())
+    withResource(conn.createStatement()) { stmt =>
+      // JDBC's executeQuery() rejects statements that produce no ResultSet, so dispatch on
+      // execute() and fall back to the update count for COPY/DDL statements.
+      if stmt.execute(sql) then
+        withResource(stmt.getResultSet)(readResult)
+      else
+        val count = stmt.getUpdateCount
+        if count < 0 then
+          QueryResult(Nil, Nil)
+        else
+          QueryResult(
+            List(NamedType(Name.termName("Count"), DataType.LongType)),
+            List(QueryResultRow(List(Some(count.toString))))
+          )
     }
   }
+
+  private def readResult(rs: ResultSet): QueryResult =
+    val metadata = rs.getMetaData
+    val colCount = metadata.getColumnCount
+    val columns  = (1 to colCount)
+      .map { i =>
+        val name     = metadata.getColumnName(i)
+        val dataType = metadata.getColumnTypeName(i).toLowerCase
+        NamedType(Name.termName(name), DataType.parse(dataType))
+      }
+      .toList
+
+    val rows = List.newBuilder[QueryResultRow]
+    while rs.next() do
+      val values = (1 to colCount)
+        .map { i =>
+          val v = rs.getString(i)
+          if rs.wasNull() then
+            None
+          else
+            Option(v)
+        }
+        .toList
+      rows += QueryResultRow(values)
+    QueryResult(columns, rows.result())
 
   private def withConnection[U](f: DuckDBConnection => U): U =
     Class.forName("org.duckdb.DuckDBDriver")
