@@ -55,6 +55,19 @@ class DuckDBExecuteTest extends UniTest:
     r.rows.head.values shouldBe List(None, Some("present"))
   }
 
+  test("execute reports copy ... to statements as a Count row") {
+    skipIfUnavailable()
+    // COPY produces no regular ResultSet; every platform must surface DuckDB's `Count`
+    // result (JDBC update count on JVM, C-API result on JS/Native) with the same shape.
+    val r = DuckDB.execute(
+      "copy (select * from (values (1), (2), (3)) t(id)) to 'target/duckdb-execute-copy-test.parquet'"
+    )
+    r.columnCount shouldBe 1
+    r.columns.head.name.name shouldBe "Count"
+    r.rowCount shouldBe 1
+    r.rows.head.values.head shouldBe Some("3")
+  }
+
   test("execute compiles a query against a parquet fixture") {
     skipIfUnavailable()
     val r = DuckDB.execute(
