@@ -91,7 +91,41 @@ class ModelExpansionTest extends UniTest:
         |from adults(bound = 18)
         |""".stripMargin)
     sql shouldContain "age >= 18"
-    sql shouldNotContain "100"
+    sql shouldNotContain "age >= 100"
+  }
+
+  test("report a distinct error for a deep but non-recursive model chain") {
+    // Build a chain of 101 distinct models: m0 -> m1 -> ... -> m100, exceeding the
+    // maxModelExpansionDepth safety net without any cycle
+    val depth     = 101
+    val modelDefs = (0 until depth)
+      .map { i =>
+        if i == 0 then
+          s"model m0 = { from [[1]] as t(x) }"
+        else
+          s"model m${i} = { from m${i - 1} }"
+      }
+      .mkString("\n")
+    val e = intercept[WvletLangException] {
+      generateSQL(s"""${modelDefs}
+          |from m${depth - 1}
+          |""".stripMargin)
+    }
+    e.statusCode shouldBe StatusCode.MODEL_EXPANSION_LIMIT_EXCEEDED
+  }
+
+  test("report a user error when a model is called with too many arguments") {
+    val e = intercept[WvletLangException] {
+      generateSQL("""model filter_min(min_x: int) = {
+          |  from [[1], [2], [3]] as t(x)
+          |  where x >= min_x
+          |}
+          |
+          |from filter_min(1, 2)
+          |""".stripMargin)
+    }
+    e.statusCode shouldBe StatusCode.INVALID_ARGUMENT
+    e.getMessage shouldContain "takes 1 arguments, but 2 were given"
   }
 
   test("expand a diamond-shaped model reference without a false cycle error") {

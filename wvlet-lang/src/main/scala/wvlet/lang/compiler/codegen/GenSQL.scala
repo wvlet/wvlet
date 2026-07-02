@@ -388,36 +388,39 @@ object GenSQL extends Phase("generate-sql"):
     * a new child context
     */
   private def expandModelScan(m: ModelScan, sym: Symbol)(using ctx: Context): Relation =
-    if ctx.outersIterator.exists(_.owner eq sym) then
-      // The model is already being expanded in the active expansion path
-      val cyclePath = (
-        ctx
-          .outersIterator
-          .toList
-          .reverse
-          .collect {
-            case c if c.owner.isModelDef =>
-              c.owner.name.name
-          } :+ m.name.name
-      ).mkString(" -> ")
+    val modelName = m.name.name
+    // Models on the active expansion path, in the order they were entered. Only expandModelScan
+    // pushes model-owned contexts, so this reflects the current expansion stack.
+    val activeModels = ctx.outersIterator.map(_.owner).filter(_.isModelDef).toList.reverse
+    if activeModels.exists(_ eq sym) then
+      val cyclePath = (activeModels.map(_.name.name) :+ modelName).mkString(" -> ")
       throw StatusCode
         .RECURSIVE_MODEL_REFERENCE
         .newException(
           s"Recursive model reference detected: ${cyclePath}",
           ctx.sourceLocationAt(m.span)
         )
-    if ctx.outersIterator.count(_.owner.isModelDef) >= maxModelExpansionDepth then
+    if activeModels.size >= maxModelExpansionDepth then
+      // A safety net distinct from RECURSIVE_MODEL_REFERENCE: the eq-based check above already
+      // catches every cycle, so this only fires for a legitimately deep chain of distinct models
       throw StatusCode
-        .RECURSIVE_MODEL_REFERENCE
+        .MODEL_EXPANSION_LIMIT_EXCEEDED
         .newException(
-          s"Model expansion for ${m
-              .name
-              .name} exceeded the maximum depth ${maxModelExpansionDepth}",
+          s"Model expansion for ${modelName} exceeded the maximum depth ${maxModelExpansionDepth}",
           ctx.sourceLocationAt(m.span)
         )
 
     sym.tree match
       case md: ModelDef =>
+        if m.modelArgs.size > md.params.size then
+          throw StatusCode
+            .INVALID_ARGUMENT
+            .newException(
+              s"Model ${modelName} takes ${md.params.size} arguments, but ${m
+                  .modelArgs
+                  .size} were given",
+              ctx.sourceLocationAt(m.span)
+            )
         val newCtx = ctx.newContext(sym)
         m.modelArgs
           .zipWithIndex
@@ -445,6 +448,7 @@ object GenSQL extends Phase("generate-sql"):
       case other =>
         warn(s"Unknown model tree for ${m.name}: ${other}")
         m
+    end match
   end expandModelScan
 
   private def lookupType(name: Name, ctx: Context): Option[Symbol] = ctx
