@@ -119,6 +119,13 @@ case class Context(
 ) extends LogSupport:
   def isGlobalContext: Boolean = compilationUnit.isPreset || owner.isNoSymbol
 
+  /**
+    * Iterate this context and its enclosing (outer) contexts, innermost first
+    */
+  def outersIterator: Iterator[Context] = Iterator
+    .iterate(this)(_.outer)
+    .takeWhile(_ ne Context.NoContext)
+
   def isContextCompilationUnit: Boolean =
     !compilationUnit.isEmpty &&
       global

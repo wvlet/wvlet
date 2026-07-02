@@ -1,0 +1,11 @@
+-- Mutually recursive model references must be reported as a user error,
+-- not a StackOverflowError
+model model_a = {
+  from model_b
+}
+
+model model_b = {
+  from model_a
+}
+
+from model_a
