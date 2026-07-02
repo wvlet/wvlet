@@ -433,7 +433,7 @@ object GenSQL extends Phase("generate-sql"):
             // Register function arguments to the model's context scope
             val argSym = Symbol(ctx.global.newSymbolId, arg.span)
             argSym.symbolInfo = ValSymbolInfo(
-              ctx.owner,
+              newCtx.owner,
               symbol = argSym,
               name = argName,
               tpe = argValue.dataType,
