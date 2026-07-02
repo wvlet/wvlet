@@ -289,121 +289,167 @@ object GenSQL extends Phase("generate-sql"):
     withHeader(sql, expr.sourceLocation)
 
   /**
+    * The maximum depth of nested model expansions, used as a safety net against runaway expansion
+    */
+  private inline val maxModelExpansionDepth = 100
+
+  /**
     * Expand referenced model queries by populating model arguments
     * @param relation
     * @param ctx
     * @return
     */
-  def expand(relation: Relation, ctx: Context): Relation =
-    // expand referenced models
+  def expand(relation: Relation, ctx: Context): Relation = expandRelation(relation)(using ctx)
 
-    def transformExpr(r: Relation, ctx: Context): Relation =
-      // First, collect all table val identifiers that appear as qualifiers in DotRef expressions
-      // These should not be replaced with their literal values
-      val tableRefQualifiers = scala.collection.mutable.Set.empty[String]
-
-      r.traverseExpressions {
-        case d: DotRef =>
-          d.qualifier match
-            case i: Identifier =>
-              val nme       = Name.termName(i.leafName)
-              val symbolOpt = ctx.scope.lookupSymbol(nme).orElse(lookupType(nme, ctx))
-              symbolOpt.foreach { s =>
-                s.symbolInfo match
-                  case v: ValSymbolInfo =>
-                    // Check if this is a table val by checking the symbol's tree (ValDef) or type
-                    val isTableVal =
-                      s.tree match
-                        case vd: ValDef if vd.dataType.isInstanceOf[DataType.SchemaType] =>
-                          true
-                        case _ =>
-                          v.tpe.isInstanceOf[DataType.SchemaType]
-                    if isTableVal then
-                      tableRefQualifiers += i.leafName
-                  case _ =>
-              }
-            case _ =>
-        case _ =>
-      }
-
-      r.transformUpExpressions {
-          case b: BackquoteInterpolatedIdentifier =>
-            PreprocessLocalExpr.EvalBackquoteInterpolation.transformExpression(b, ctx)
-          case i: Identifier =>
-            // Don't replace identifiers that are table references in qualified names
-            if tableRefQualifiers.contains(i.leafName) then
-              i
-            else
-              val nme = Name.termName(i.leafName)
-              ctx.scope.lookupSymbol(nme) match
-                case Some(sym) =>
-                  sym.symbolInfo match
-                    case b: ValSymbolInfo =>
-                      // Replace to the bounded expression
-                      b.expr
-                    case _ =>
-                      i
-                case None =>
-                  i
-        }
-        .asInstanceOf[Relation]
-    end transformExpr
-
-    def transformModelScan(m: ModelScan, sym: Symbol): Relation =
-      sym.tree match
-        case md: ModelDef =>
-          val newCtx = ctx.newContext(sym)
-          // TODO add model args to the context sco
-          m.modelArgs
-            .zipWithIndex
-            .foreach { (arg, index) =>
-              val argName: TermName = arg.name.getOrElse(md.params(index).name)
-              val argValue          = arg.value
-
-              // Register function arguments to the current scope
-              val argSym = Symbol(ctx.global.newSymbolId, arg.span)
-
-              given Context = ctx
-
-              argSym.symbolInfo = ValSymbolInfo(
-                ctx.owner,
-                symbol = argSym,
-                name = argName,
-                tpe = argValue.dataType,
-                // TODO: This expr can be outdated after tree rewrite.
-                expr = argValue
-              )
-              newCtx.scope.add(argName, argSym)
-              argSym
-            }
-
-          // Replace function argument references in the model body with the actual expressions
-          // TODO: How to propagate comments in the model Query body?
-          val modelBody = transformExpr(md.child.body, newCtx)
-          expand(modelBody, newCtx)
-        case other =>
-          warn(s"Unknown model tree for ${m.name}: ${other}")
-          m
-
-    // TODO expand expressions and inline macros as well
-    relation
+  /**
+    * Expand model references in the given relation. The chain of enclosing contexts
+    * (Context.outersIterator) works as the expansion stack: each model expansion pushes a new
+    * Context owned by the model symbol, so nested expansions can detect cycles and resolve local
+    * bindings in the right frame.
+    */
+  private def expandRelation(relation: Relation)(using ctx: Context): Relation =
+    // Substitute identifiers bound in the current context (vals, model args) and evaluate
+    // backquote interpolations exactly once for this region. As ModelScan is a leaf plan,
+    // unexpanded model bodies are not in the tree yet, while ModelScan.modelArgs are. This
+    // resolves model arguments in the caller's context before they are bound in the callee.
+    val substituted = substituteContextBindings(relation)
+    // Inline model scans. Each expansion enters a new Context via ctx.newContext(modelSymbol)
+    substituted
       .transformUp { case m: ModelScan =>
         lookupType(Name.termName(m.name.name), ctx) match
           case Some(sym) =>
-            val rel = transformModelScan(m, sym)
+            val rel = expandModelScan(m, sym)
             // Finally resolve types again
             TypeResolver.resolve(rel, ctx)
           case None =>
             warn(s"unknown model: ${m.name}")
             m
       }
-      .transformOnce { case r: Relation =>
-        // Evaluate identifiers
-        transformExpr(r, ctx)
-      }
       .asInstanceOf[Relation]
 
-  end expand
+  /**
+    * Replace identifiers bound to val symbols in the current context with their expressions, and
+    * evaluate backquote interpolations
+    */
+  private def substituteContextBindings(r: Relation)(using ctx: Context): Relation =
+    // First, collect all table val identifiers that appear as qualifiers in DotRef expressions
+    // These should not be replaced with their literal values
+    val tableRefQualifiers = scala.collection.mutable.Set.empty[String]
+
+    r.traverseExpressions {
+      case d: DotRef =>
+        d.qualifier match
+          case i: Identifier =>
+            val nme       = Name.termName(i.leafName)
+            val symbolOpt = ctx.scope.lookupSymbol(nme).orElse(lookupType(nme, ctx))
+            symbolOpt.foreach { s =>
+              s.symbolInfo match
+                case v: ValSymbolInfo =>
+                  // Check if this is a table val by checking the symbol's tree (ValDef) or type
+                  val isTableVal =
+                    s.tree match
+                      case vd: ValDef if vd.dataType.isInstanceOf[DataType.SchemaType] =>
+                        true
+                      case _ =>
+                        v.tpe.isInstanceOf[DataType.SchemaType]
+                  if isTableVal then
+                    tableRefQualifiers += i.leafName
+                case _ =>
+            }
+          case _ =>
+      case _ =>
+    }
+
+    r.transformUpExpressions {
+        case b: BackquoteInterpolatedIdentifier =>
+          PreprocessLocalExpr.EvalBackquoteInterpolation.transformExpression(b, ctx)
+        case i: Identifier =>
+          // Don't replace identifiers that are table references in qualified names
+          if tableRefQualifiers.contains(i.leafName) then
+            i
+          else
+            val nme = Name.termName(i.leafName)
+            ctx.scope.lookupSymbol(nme) match
+              case Some(sym) =>
+                sym.symbolInfo match
+                  case b: ValSymbolInfo =>
+                    // Replace to the bounded expression
+                    b.expr
+                  case _ =>
+                    i
+              case None =>
+                i
+      }
+      .asInstanceOf[Relation]
+  end substituteContextBindings
+
+  /**
+    * Inline the body of the model referenced by the given ModelScan, binding the model arguments in
+    * a new child context
+    */
+  private def expandModelScan(m: ModelScan, sym: Symbol)(using ctx: Context): Relation =
+    val modelName = m.name.name
+    // Models on the active expansion path, in the order they were entered. Only expandModelScan
+    // pushes model-owned contexts, so this reflects the current expansion stack.
+    val activeModels = ctx.outersIterator.map(_.owner).filter(_.isModelDef).toList.reverse
+    if activeModels.exists(_ eq sym) then
+      val cyclePath = (activeModels.map(_.name.name) :+ modelName).mkString(" -> ")
+      throw StatusCode
+        .RECURSIVE_MODEL_REFERENCE
+        .newException(
+          s"Recursive model reference detected: ${cyclePath}",
+          ctx.sourceLocationAt(m.span)
+        )
+    if activeModels.size >= maxModelExpansionDepth then
+      // A safety net distinct from RECURSIVE_MODEL_REFERENCE: the eq-based check above already
+      // catches every cycle, so this only fires for a legitimately deep chain of distinct models
+      throw StatusCode
+        .MODEL_EXPANSION_LIMIT_EXCEEDED
+        .newException(
+          s"Model expansion for ${modelName} exceeded the maximum depth ${maxModelExpansionDepth}",
+          ctx.sourceLocationAt(m.span)
+        )
+
+    sym.tree match
+      case md: ModelDef =>
+        if m.modelArgs.size > md.params.size then
+          throw StatusCode
+            .INVALID_ARGUMENT
+            .newException(
+              s"Model ${modelName} takes ${md.params.size} arguments, but ${m
+                  .modelArgs
+                  .size} were given",
+              ctx.sourceLocationAt(m.span)
+            )
+        val newCtx = ctx.newContext(sym)
+        m.modelArgs
+          .zipWithIndex
+          .foreach { (arg, index) =>
+            val argName: TermName = arg.name.getOrElse(md.params(index).name)
+            // The argument value is already resolved in the caller's context
+            // by substituteContextBindings
+            val argValue = arg.value
+
+            // Register function arguments to the model's context scope
+            val argSym = Symbol(ctx.global.newSymbolId, arg.span)
+            argSym.symbolInfo = ValSymbolInfo(
+              newCtx.owner,
+              symbol = argSym,
+              name = argName,
+              tpe = argValue.dataType,
+              expr = argValue
+            )
+            newCtx.scope.add(argName, argSym)
+          }
+
+        // Substitute the model arguments in the model body, and expand nested model references
+        // TODO: How to propagate comments in the model Query body?
+        expandRelation(md.child.body)(using newCtx)
+      case other =>
+        warn(s"Unknown model tree for ${m.name}: ${other}")
+        m
+    end match
+  end expandModelScan
 
   private def lookupType(name: Name, ctx: Context): Option[Symbol] = ctx
     .scope

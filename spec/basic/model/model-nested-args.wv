@@ -1,0 +1,29 @@
+-- Model arguments must be resolved in the caller's context before they are
+-- passed down to nested model references
+model nums = {
+  from [[1], [2], [3]] as t(x)
+}
+
+model filter_min(min_x: int) = {
+  from nums
+  where x >= min_x
+}
+
+model filter_via(bound: int) = {
+  -- Pass a model parameter down to a nested model
+  from filter_min(min_x = bound)
+}
+
+model filter_via2(b: int) = {
+  -- Pass a parameter through two levels of nested models
+  from filter_via(bound = b)
+}
+
+from filter_via2(b = 2)
+test _.rows should be [[2], [3]]
+
+-- Pass a top-level val through nested model arguments
+val threshold = 3
+
+from filter_via2(b = threshold)
+test _.rows should be [[3]]
