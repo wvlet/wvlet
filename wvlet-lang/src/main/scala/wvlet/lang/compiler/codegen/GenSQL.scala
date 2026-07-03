@@ -17,8 +17,8 @@ import wvlet.lang.BuildInfo
 import wvlet.lang.api.SourceLocation
 import wvlet.lang.api.StatusCode
 import wvlet.lang.catalog.Catalog.TableName
-import wvlet.lang.compiler.analyzer.TypeResolver
 import wvlet.lang.compiler.planner.ExecutionPlanner
+import wvlet.lang.compiler.typer.Typer
 import wvlet.lang.compiler.transform.ExpressionEvaluator
 import wvlet.lang.compiler.transform.PreprocessLocalExpr
 import wvlet.lang.compiler.CompilationUnit
@@ -320,7 +320,7 @@ object GenSQL extends Phase("generate-sql"):
           case Some(sym) =>
             val rel = expandModelScan(m, sym)
             // Finally resolve types again
-            TypeResolver.resolve(rel, ctx)
+            Typer.resolveRelation(rel)
           case None =>
             warn(s"unknown model: ${m.name}")
             m
