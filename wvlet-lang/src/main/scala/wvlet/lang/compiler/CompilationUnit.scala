@@ -106,6 +106,16 @@ case class CompilationUnit(sourceFile: SourceFile, isPreset: Boolean = false)
     finishedPhases = Set.empty
     lastError = None
     lastCompiledAt = None
+    // Reset all state derived from the previous compilation. In particular, knownSymbols
+    // accumulates via enter(), so keeping it would duplicate symbols across incremental
+    // compilation runs
+    unresolvedPlan = LogicalPlan.empty
+    resolvedPlan = LogicalPlan.empty
+    modelDependencies = DependencyDAG.empty
+    executionPlan = ExecutionPlan.empty
+    knownSymbols = List.empty
+    typerErrors = Nil
+    subscriptionPlans = List.empty
     // The unit will be re-parsed, so the package declaration may change
     cachedPackageName = null
     this
