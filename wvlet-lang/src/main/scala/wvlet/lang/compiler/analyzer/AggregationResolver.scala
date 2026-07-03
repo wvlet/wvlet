@@ -55,7 +55,9 @@ object AggregationResolver extends ContextLogSupport:
         .find(_.name == nme)
         .map(_.symbolInfo)
         .collect { case m: MethodSymbolInfo =>
-          FunctionInliner.inlineFunctionBody(d, m, Nil)
+          // Inline with the transformed DotRef so aggregations already resolved in the
+          // qualifier's child expressions are preserved
+          FunctionInliner.inlineFunctionBody(dd, m, Nil)
         }
         .getOrElse(dd)
     case other =>

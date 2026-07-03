@@ -235,44 +235,48 @@ object Typer extends Phase("typer") with LogSupport:
         var rounds   = 0
         while continue && rounds < maxFunctionResolutionRounds do
           rounds += 1
-          // Type identifiers, parentheses, and method references in place from each relation's
-          // input type, so an enclosing call can resolve its qualifier type without inlining the
-          // reference (which would drop call arguments)
-          current.transformUp { case rel: Relation =>
-            val inputType = rel.inputRelationType
-            rel
-              .childExpressions
-              .foreach { root =>
-                root.transformUpExpression {
-                  case i: Identifier =>
-                    if !hasResolvedType(i) then
-                      inputType
-                        .find(_.name == i.fullName)
-                        .foreach { attr =>
-                          i.tpe = attr.dataType
-                        }
-                    i
-                  case p: ParenthesizedExpression =>
-                    // Propagate the child type through parentheses
-                    if !hasResolvedType(p) then
-                      if p.child.dataType.isResolved then
-                        p.tpe = p.child.dataType
-                      else if p.child.isTyped then
-                        p.tpe = p.child.tpe
-                    p
-                  case d: DotRef =>
-                    if !hasResolvedType(d) then
-                      FunctionInliner
-                        .findFunctionDef(d)
-                        .foreach { m =>
-                          if m.ft.returnType.isResolved then
-                            d.tpe = m.ft.returnType
-                        }
-                    d
+          // Type identifiers, parentheses, and method references from each relation's input
+          // type, so an enclosing call can resolve its qualifier type without inlining the
+          // reference (which would drop call arguments). Typing mutates the tpe field in place
+          // and every case returns the same node instance, so the tree structure is unchanged;
+          // the result is reassigned for safety should a case ever start rebuilding nodes
+          current = current
+            .transformUp { case rel: Relation =>
+              val inputType = rel.inputRelationType
+              rel
+                .childExpressions
+                .foreach { root =>
+                  root.transformUpExpression {
+                    case i: Identifier =>
+                      if !hasResolvedType(i) then
+                        inputType
+                          .find(_.name == i.fullName)
+                          .foreach { attr =>
+                            i.tpe = attr.dataType
+                          }
+                      i
+                    case p: ParenthesizedExpression =>
+                      // Propagate the child type through parentheses
+                      if !hasResolvedType(p) then
+                        if p.child.dataType.isResolved then
+                          p.tpe = p.child.dataType
+                        else if p.child.isTyped then
+                          p.tpe = p.child.tpe
+                      p
+                    case d: DotRef =>
+                      if !hasResolvedType(d) then
+                        FunctionInliner
+                          .findFunctionDef(d)
+                          .foreach { m =>
+                            if m.ft.returnType.isResolved then
+                              d.tpe = m.ft.returnType
+                          }
+                      d
+                  }
                 }
-              }
-            rel
-          }
+              rel
+            }
+            .asInstanceOf[Relation]
           // Inline function applications, then bare member references. Only no-arg methods are
           // inlined from a bare DotRef: a DotRef with declared arguments is the base of an
           // enclosing FunctionApply that must bind them first (possibly in a later round)
