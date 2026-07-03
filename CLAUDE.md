@@ -299,4 +299,6 @@ For error reporting, use WvletLangException and StatusCode enum. If necessary er
 ## Testing Notes
 - Use `shouldContain "(keyword)"` for checking string fragment in AirSpec
 - To debug SQL generator, add -L *GenSQL=trace to the test option
+- Typing coverage over spec/basic is guarded by a CI ratchet: `./sbt "langJVM/testOnly *TyperCoverageCheck"` (raise its thresholds when improving type resolution; never lower them)
+- For compiler performance work, compare before/after with `./sbt "langJVM/testOnly *TyperBench"` (log-only timing probe)
 
