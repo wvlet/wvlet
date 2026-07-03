@@ -548,7 +548,7 @@ object Typer extends Phase("typer") with LogSupport:
       u.transformChildExpressions { case expr: Expression =>
         expr.transformExpression {
           case ref: ContextInputRef if !ref.dataType.isResolved =>
-            ContextInputRef(dataType = contextType, ref.span)
+            ContextInputRef(givenDataType = contextType, ref.span)
         }
       }
 

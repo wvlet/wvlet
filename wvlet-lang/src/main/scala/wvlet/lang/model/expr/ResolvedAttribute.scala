@@ -27,12 +27,13 @@ case class SourceColumn(table: Catalog.TableDef, column: Catalog.TableColumn):
 
 case class ResolvedAttribute(
     name: TermName,
-    override val dataType: DataType,
+    givenDataType: DataType,
     // If this attribute directly refers to a table column, its source column will be set.
     sourceColumn: Option[SourceColumn],
     span: Span
 ) extends Attribute
     with LogSupport:
+  override protected def structuralType: DataType = givenDataType
 
   override def nameExpr: NameExpr = NameExpr.fromString(name.name)
   override def fullName: String   = nameExpr.toString

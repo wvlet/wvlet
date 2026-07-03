@@ -139,8 +139,8 @@ case class AttributeRef(attr: Attribute)(val exprId: ULID = ULID.newULID) extend
   */
 case class SingleColumn(override val nameExpr: NameExpr, expr: Expression, span: Span)
     extends Attribute:
-  override def fullName: String   = nameExpr.fullName
-  override def dataType: DataType = expr.dataType
+  override def fullName: String                   = nameExpr.fullName
+  override protected def structuralType: DataType = expr.dataType
 
   override def inputAttributes: Seq[Attribute] = Seq(this)
 
@@ -182,7 +182,7 @@ case class AllColumns(override val nameExpr: NameExpr, columns: Option[List[Attr
 
   override def outputAttributes: Seq[Attribute] = inputAttributes
 
-  override def dataType: DataType = columns
+  override protected def structuralType: DataType = columns
     .map(cols =>
       EmbeddedRecordType(cols.map(x => NamedType(Name.termName(x.nameExpr.leafName), x.dataType)))
     )
@@ -210,7 +210,7 @@ case class Alias(nameExpr: NameExpr, expr: Expression, span: Span) extends Attri
 
   override def toString: String = s"<${fullName}> := ${expr}"
 
-  override def dataType: DataType = expr.dataType
+  override protected def structuralType: DataType = expr.dataType
 
 /**
   * A single column merged from multiple input expressions (e.g., union, join)
@@ -237,4 +237,4 @@ case class MultiSourceColumn(nameExpr: NameExpr, inputs: Seq[Expression], span: 
     // MultiSourceColumn is a reference to the multiple columns. Do not traverse here
     Seq.empty
 
-  override def dataType: DataType = inputs.head.dataType
+  override protected def structuralType: DataType = inputs.head.dataType

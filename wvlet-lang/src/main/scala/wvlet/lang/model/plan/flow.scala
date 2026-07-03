@@ -57,7 +57,7 @@ trait FlowOp extends Relation
   *   Source location
   */
 case class ConfigItem(key: Identifier, value: Expression, span: Span) extends LeafExpression:
-  override def dataType: wvlet.lang.model.DataType = value.dataType
+  override protected def structuralType: wvlet.lang.model.DataType = value.dataType
 
 /**
   * StageTrigger represents a condition that determines when a stage should run.

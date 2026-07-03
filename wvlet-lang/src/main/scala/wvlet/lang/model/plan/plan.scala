@@ -89,11 +89,12 @@ case class FunctionDef(
 
 case class DefArg(
     name: TermName,
-    override val dataType: DataType,
+    givenDataType: DataType,
     defaultValue: Option[Expression],
     span: Span
 ) extends Expression:
-  override def children: List[Expression] = Nil
+  override protected def structuralType: DataType = givenDataType
+  override def children: List[Expression]         = Nil
 
 case class FieldDef(
     name: TermName,

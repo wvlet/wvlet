@@ -31,16 +31,16 @@ import wvlet.lang.model.plan.*
   */
 case class NativeExpression(name: String, retType: Option[DataType], span: Span)
     extends LeafExpression:
-  override def dataType: DataType = retType.getOrElse(DataType.UnknownType)
+  override protected def structuralType: DataType = retType.getOrElse(DataType.UnknownType)
 
 /**
   */
 case class ParenthesizedExpression(child: Expression, span: Span) extends UnaryExpression:
-  override def dataType: DataType = child.dataType
+  override protected def structuralType: DataType = child.dataType
 
 case class TypedExpression(child: Expression, targetType: DataType, span: Span)
     extends UnaryExpression:
-  override def dataType: DataType = targetType
+  override protected def structuralType: DataType = targetType
 
 case class TableAlias(name: NameExpr, alias: NameExpr, span: Span) extends LeafExpression
 
@@ -115,10 +115,11 @@ case class Wildcard(span: Span) extends LeafExpression with Identifier:
   * @param dataType
   * @param nodeLocation
   */
-case class ContextInputRef(override val dataType: DataType, span: Span)
+case class ContextInputRef(givenDataType: DataType, span: Span)
     extends LeafExpression
     with Identifier:
-  override def unquotedValue: String = "_"
+  override protected def structuralType: DataType = givenDataType
+  override def unquotedValue: String              = "_"
 
 /**
   * Name with qualifier
@@ -135,7 +136,7 @@ abstract trait QualifiedName extends NameExpr:
   */
 case class DotRef(qualifier: Expression, name: NameExpr, givenDataType: DataType, span: Span)
     extends QualifiedName:
-  override def dataType: DataType = typedOr(givenDataType)
+  override protected def structuralType: DataType = typedOr(givenDataType)
 
   override def nameParts: List[String] =
     qualifier match
@@ -165,14 +166,16 @@ sealed trait Identifier extends QualifiedName with LeafExpression:
 
 case class ResolvedIdentifier(
     override val unquotedValue: String,
-    override val dataType: DataType,
+    givenDataType: DataType,
     span: Span
 ) extends Identifier:
+  override protected def structuralType: DataType = givenDataType
+
   override def toResolved(dataType: DataType) =
     if this.dataType == dataType then
       this
     else
-      this.copy(dataType = dataType)
+      this.copy(givenDataType = dataType)
 
   override lazy val resolved: Boolean = dataType.isResolved
 
@@ -195,22 +198,26 @@ case class DoubleQuotedIdentifier(override val unquotedValue: String, span: Span
   */
 case class BackQuotedIdentifier(
     override val unquotedValue: String,
-    override val dataType: DataType,
+    givenDataType: DataType,
     span: Span
 ) extends Identifier:
+  override protected def structuralType: DataType                   = givenDataType
   override def leafName: String                                     = unquotedValue
   override def fullName: String                                     = unquotedValue
-  override def toResolved(dataType: DataType): BackQuotedIdentifier = this.copy(dataType = dataType)
+  override def toResolved(dataType: DataType): BackQuotedIdentifier = this.copy(givenDataType =
+    dataType
+  )
 
 case class BackquoteInterpolatedIdentifier(
     prefix: NameExpr,
     parts: List[Expression],
-    override val dataType: DataType,
+    givenDataType: DataType,
     span: Span
 ) extends Identifier:
-  override def children: Seq[Expression] = parts
-  override def fullName: String          = "<backquote interpolation>"
-  override def unquotedValue: String     = "<backquote interpolation>"
+  override protected def structuralType: DataType = givenDataType
+  override def children: Seq[Expression]          = parts
+  override def fullName: String                   = "<backquote interpolation>"
+  override def unquotedValue: String              = "<backquote interpolation>"
 
 sealed trait JoinCriteria  extends Expression
 case object NoJoinCriteria extends JoinCriteria with LeafExpression:
@@ -253,8 +260,8 @@ case class SortItem(
     span: Span
 ) extends Expression
     with UnaryExpression:
-  override def dataType: DataType = sortKey.dataType
-  override def child: Expression  = sortKey
+  override protected def structuralType: DataType = sortKey.dataType
+  override def child: Expression                  = sortKey
 
 // Sort ordering
 enum SortOrdering(val expr: String):
@@ -315,7 +322,7 @@ case class FunctionApply(
   override def children: Seq[Expression] =
     Seq(base) ++ args ++ window.toSeq ++ filter.toSeq ++ columnAliases.getOrElse(Nil)
 
-  override def dataType: DataType = typedOr(base.dataType)
+  override protected def structuralType: DataType = typedOr(base.dataType)
 
 case class WindowApply(
     base: Expression,
@@ -323,8 +330,8 @@ case class WindowApply(
     nullTreatment: Option[NullTreatment] = None,
     span: Span
 ) extends Expression:
-  override def children: Seq[Expression] = Seq(base, window)
-  override def dataType: DataType        = typedOr(base.dataType)
+  override def children: Seq[Expression]          = Seq(base, window)
+  override protected def structuralType: DataType = typedOr(base.dataType)
 
 case class FunctionArg(
     name: Option[TermName] = None,
@@ -333,8 +340,8 @@ case class FunctionArg(
     orderBy: List[SortItem] = Nil,
     span: Span
 ) extends Expression:
-  override def children: Seq[Expression] = value +: orderBy
-  override def dataType: DataType        = value.dataType
+  override def children: Seq[Expression]          = value +: orderBy
+  override protected def structuralType: DataType = value.dataType
 
 case class ArrayAccess(arrayExpr: Expression, index: Expression, span: Span) extends Expression:
   override def children: Seq[Expression] = Seq(arrayExpr, index)
@@ -485,8 +492,8 @@ case class NotDistinctFrom(left: Expression, right: Expression, span: Span)
   override def operatorName: String = "is not distinct from"
 
 case class AtTimeZone(expr: Expression, timezone: Expression, span: Span) extends Expression:
-  override def children: Seq[Expression] = Seq(expr, timezone)
-  override def dataType: DataType        = DataType.TimestampType(
+  override def children: Seq[Expression]          = Seq(expr, timezone)
+  override protected def structuralType: DataType = DataType.TimestampType(
     DataType.TimestampField.TIMESTAMP,
     withTimeZone = true
   )
@@ -545,7 +552,7 @@ case class ArithmeticBinaryExpr(
 ) extends ArithmeticExpression
     with BinaryExpression:
 
-  override def dataType: DataType =
+  override protected def structuralType: DataType =
     left.dataType match
       case l if l == right.dataType =>
         l
@@ -653,7 +660,8 @@ case class DistinctSet(span: Span) extends SetQuantifier:
   override def toString: String    = "DISTINCT"
   override def isDistinct: Boolean = true
 
-case class This(override val dataType: DataType, span: Span) extends LeafExpression
+case class This(givenDataType: DataType, span: Span) extends LeafExpression:
+  override protected def structuralType: DataType = givenDataType
 
 // Literal
 sealed trait Literal extends Expression:
@@ -754,7 +762,7 @@ case class TimestampLiteral(value: String, span: Span) extends Literal with Leaf
 case class DecimalLiteral(value: String, override val stringValue: String, span: Span)
     extends Literal
     with LeafExpression:
-  override lazy val dataType: DataType =
+  override protected lazy val structuralType: DataType =
     value.split("\\.") match
       case Array(decimal, frac) =>
         val p = decimal.length + frac.length
@@ -790,9 +798,9 @@ case class LongLiteral(value: Long, override val stringValue: String, span: Span
 case class GenericLiteral(literalType: DataType, value: Literal, span: Span)
     extends Literal
     with LeafExpression:
-  override def stringValue: String = value.stringValue
-  override def sqlExpr             = s"${literalType.typeName} ${value.sqlExpr}"
-  override def dataType: DataType  = literalType
+  override def stringValue: String                = value.stringValue
+  override def sqlExpr                            = s"${literalType.typeName} ${value.sqlExpr}"
+  override protected def structuralType: DataType = literalType
 
 case class BinaryLiteral(binary: String, span: Span) extends Literal with LeafExpression:
   override def stringValue: String = binary
@@ -883,13 +891,13 @@ case class ArrayConstructor(values: List[Expression], span: Span) extends Expres
     else
       AnyType
 
-  override def dataType: DataType        = ArrayType(elementType)
-  override def children: Seq[Expression] = values
+  override protected def structuralType: DataType = ArrayType(elementType)
+  override def children: Seq[Expression]          = values
 
 case class RowConstructor(values: List[Expression], span: Span) extends Expression:
-  override def dataType: DataType        = EmbeddedRecordType(values.map(_.dataType))
-  override def children: Seq[Expression] = values
-  override def toString: String          = s"Row(${values.mkString(", ")})"
+  override protected def structuralType: DataType = EmbeddedRecordType(values.map(_.dataType))
+  override def children: Seq[Expression]          = values
+  override def toString: String                   = s"Row(${values.mkString(", ")})"
 
 case class StructValue(fields: List[StructField], span: Span) extends Expression:
   override def children: Seq[Expression] = fields
@@ -950,8 +958,8 @@ case class SubQueryExpression(query: Relation, span: Span) extends Expression:
 
 case class Cast(expr: Expression, castType: DataType, tryCast: Boolean = false, span: Span)
     extends UnaryExpression:
-  override def child: Expression  = expr
-  override def dataType: DataType = castType
+  override def child: Expression                  = expr
+  override protected def structuralType: DataType = castType
 
 case class SchemaProperty(key: NameExpr, value: Expression, span: Span) extends Expression:
   override def children: Seq[Expression] = Seq(key, value)
@@ -969,9 +977,9 @@ case class ColumnDef(
     position: Option[String] = None // FIRST, LAST, or AFTER column_name
 ) extends TableElement
     with UnaryExpression:
-  override def toString: String   = s"${columnName.leafName}:${columnType.wvExpr}"
-  override def child: Expression  = columnName
-  override def dataType: DataType = columnType
+  override def toString: String                   = s"${columnName.leafName}:${columnType.wvExpr}"
+  override def child: Expression                  = columnName
+  override protected def structuralType: DataType = columnType
 
 //
 //case class ColumnType(tpe: NameExpr, span: Span) extends LeafExpression
@@ -988,8 +996,8 @@ trait GroupingKey extends UnaryExpression:
   override def child: Expression
 
 case class UnresolvedGroupingKey(name: NameExpr, child: Expression, span: Span) extends GroupingKey:
-  override def dataType: DataType = child.dataType
-  override def index: Option[Int] = None
+  override protected def structuralType: DataType = child.dataType
+  override def index: Option[Int]                 = None
   override def toString: String = s"GroupingKey(${index.map(i => s"${i}:").getOrElse("")}${child})"
   override lazy val resolved: Boolean = child.dataType.isResolved
 
@@ -1029,8 +1037,9 @@ case class Extract(interval: IntervalField, expr: Expression, span: Span) extend
 case class InterpolatedString(
     prefix: NameExpr,
     parts: List[Expression],
-    override val dataType: DataType,
+    givenDataType: DataType,
     isTripleQuote: Boolean,
     span: Span
 ) extends Expression:
-  override def children: Seq[Expression] = parts
+  override protected def structuralType: DataType = givenDataType
+  override def children: Seq[Expression]          = parts
