@@ -85,7 +85,16 @@ object BuiltinFunctions:
     */
   def returnTypeOf(name: String, args: List[FunctionArg]): Option[DataType] =
     val fn = name.toLowerCase
-    if longFunctions.contains(fn) then
+    if fn == "unnest" then
+      // unnest(array(T)) yields values of the element type T
+      args
+        .headOption
+        .map(_.value.dataType)
+        .collect {
+          case ArrayType(elem) if elem.isResolved =>
+            elem
+        }
+    else if longFunctions.contains(fn) then
       Some(LongType)
     else if booleanFunctions.contains(fn) then
       Some(BooleanType)

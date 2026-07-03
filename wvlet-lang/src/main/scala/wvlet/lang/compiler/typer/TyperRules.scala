@@ -145,12 +145,30 @@ object TyperRules:
           case (_, FloatType, DoubleType) | (_, DoubleType, FloatType) =>
             DoubleType
 
-          // String concatenation for Add
-          case (BinaryExprType.Add, StringType, StringType) =>
+          // Decimal arithmetic keeps the decimal type
+          case (_, d: DecimalType, _: DecimalType | IntType | LongType | FloatType | DoubleType) =>
+            d
+          case (_, IntType | LongType | FloatType | DoubleType, d: DecimalType) =>
+            d
+
+          // String concatenation for Add: a string operand absorbs the other side, which is
+          // coerced to string (see RewriteExpr.RewriteStringConcat)
+          case (BinaryExprType.Add, StringType, _) | (BinaryExprType.Add, _, StringType) =>
             StringType
 
-          // Type error
+          // Operands not typed yet - defer
+          case (_, NoType, _) | (_, _, NoType) =>
+            NoType
+
+          // Propagate operand errors
+          case (_, e: ErrorType, _) =>
+            e
+          case (_, _, e: ErrorType) =>
+            e
+
+          // Type error between two resolved, incompatible operand types
           case _ =>
+            ctx.addTyperError(TypeMismatch(leftTpe, rightTpe, op))
             ErrorType(s"Type error in ${op.exprType}: $leftTpe ${op.exprType} $rightTpe")
 
       op
@@ -177,8 +195,8 @@ object TyperRules:
         (leftTpe, rightTpe) match
           // Numeric comparisons
           case (
-                IntType | LongType | FloatType | DoubleType,
-                IntType | LongType | FloatType | DoubleType
+                IntType | LongType | FloatType | DoubleType | _: DecimalType,
+                IntType | LongType | FloatType | DoubleType | _: DecimalType
               ) =>
             BooleanType
           // String comparisons
@@ -197,6 +215,7 @@ object TyperRules:
             e
           // Type mismatch
           case _ =>
+            ctx.addTyperError(TypeMismatch(leftTpe, rightTpe, op))
             ErrorType(s"Cannot compare $leftTpe < $rightTpe: incompatible types")
       op
 
@@ -206,8 +225,8 @@ object TyperRules:
       op.tpe =
         (leftTpe, rightTpe) match
           case (
-                IntType | LongType | FloatType | DoubleType,
-                IntType | LongType | FloatType | DoubleType
+                IntType | LongType | FloatType | DoubleType | _: DecimalType,
+                IntType | LongType | FloatType | DoubleType | _: DecimalType
               ) =>
             BooleanType
           case (StringType, StringType) =>
@@ -221,6 +240,7 @@ object TyperRules:
           case (_, e: ErrorType) =>
             e
           case _ =>
+            ctx.addTyperError(TypeMismatch(leftTpe, rightTpe, op))
             ErrorType(s"Cannot compare $leftTpe <= $rightTpe: incompatible types")
       op
 
@@ -230,8 +250,8 @@ object TyperRules:
       op.tpe =
         (leftTpe, rightTpe) match
           case (
-                IntType | LongType | FloatType | DoubleType,
-                IntType | LongType | FloatType | DoubleType
+                IntType | LongType | FloatType | DoubleType | _: DecimalType,
+                IntType | LongType | FloatType | DoubleType | _: DecimalType
               ) =>
             BooleanType
           case (StringType, StringType) =>
@@ -245,6 +265,7 @@ object TyperRules:
           case (_, e: ErrorType) =>
             e
           case _ =>
+            ctx.addTyperError(TypeMismatch(leftTpe, rightTpe, op))
             ErrorType(s"Cannot compare $leftTpe > $rightTpe: incompatible types")
       op
 
@@ -254,8 +275,8 @@ object TyperRules:
       op.tpe =
         (leftTpe, rightTpe) match
           case (
-                IntType | LongType | FloatType | DoubleType,
-                IntType | LongType | FloatType | DoubleType
+                IntType | LongType | FloatType | DoubleType | _: DecimalType,
+                IntType | LongType | FloatType | DoubleType | _: DecimalType
               ) =>
             BooleanType
           case (StringType, StringType) =>
@@ -269,6 +290,7 @@ object TyperRules:
           case (_, e: ErrorType) =>
             e
           case _ =>
+            ctx.addTyperError(TypeMismatch(leftTpe, rightTpe, op))
             ErrorType(s"Cannot compare $leftTpe >= $rightTpe: incompatible types")
       op
 
@@ -281,7 +303,15 @@ object TyperRules:
         (leftTpe, rightTpe) match
           case (BooleanType, BooleanType) =>
             BooleanType
+          case (NoType, _) | (_, NoType) =>
+            // Operands not typed yet - defer
+            NoType
+          case (e: ErrorType, _) =>
+            e
+          case (_, e: ErrorType) =>
+            e
           case _ =>
+            ctx.addTyperError(TypeMismatch(BooleanType, leftTpe, op))
             ErrorType(s"Type error in AND: expected boolean operands, got $leftTpe AND $rightTpe")
 
       op
@@ -294,7 +324,15 @@ object TyperRules:
         (leftTpe, rightTpe) match
           case (BooleanType, BooleanType) =>
             BooleanType
+          case (NoType, _) | (_, NoType) =>
+            // Operands not typed yet - defer
+            NoType
+          case (e: ErrorType, _) =>
+            e
+          case (_, e: ErrorType) =>
+            e
           case _ =>
+            ctx.addTyperError(TypeMismatch(BooleanType, leftTpe, op))
             ErrorType(s"Type error in OR: expected boolean operands, got $leftTpe OR $rightTpe")
 
       op

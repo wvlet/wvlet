@@ -212,7 +212,13 @@ case class TableFunctionCall(name: NameExpr, args: List[FunctionArg], span: Span
     extends TableInput:
   override def sqlExpr: Expression        = FunctionApply(name, args, None, None, None, span)
   override def toString: String           = s"TableFunctionCall(${name}, ${args})"
-  override val relationType: RelationType = UnresolvedRelationType(name.fullName)
+  override def relationType: RelationType =
+    // A table function with a derivable schema (e.g. unnest) carries it in the tpe field
+    tpe match
+      case r: RelationType if r.isResolved =>
+        r
+      case _ =>
+        UnresolvedRelationType(name.fullName)
 
 case class FileRef(path: StringLiteral, span: Span) extends TableInput:
   def filePath: String                    = path.unquotedValue
