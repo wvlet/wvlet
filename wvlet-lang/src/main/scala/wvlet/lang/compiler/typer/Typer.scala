@@ -37,8 +37,7 @@ import wvlet.lang.model.Type.FunctionType
 import wvlet.uni.log.LogSupport
 
 /**
-  * New typer implementation using bottom-up traversal and tpe field. This is designed to replace
-  * the current TypeResolver with a more efficient single-pass approach.
+  * The type resolution phase, using bottom-up traversal and in-place tpe assignment.
   *
   * Context carries TyperState for typing-specific state (following Scala 3 pattern).
   *

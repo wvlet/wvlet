@@ -8,7 +8,7 @@ import wvlet.uni.test.UniTest
 
 /**
   * Cross-platform tests for [[DuckDBAnalyzer]] — the file-schema-inference dispatcher used by
-  * `TypeResolver.resolveLocalFileScan`.
+  * `RelationRefResolver.resolveDataFileRef`.
   *
   *   - JSON cases exercise the [[JSONAnalyzer]] dispatch path, which is pure-Scala and works
   *     identically on JVM, JS, and Native.

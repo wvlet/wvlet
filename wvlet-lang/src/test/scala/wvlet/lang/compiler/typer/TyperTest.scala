@@ -594,7 +594,7 @@ class TyperTest extends UniTest:
 
     // Compile with new Typer
     val options  = CompilerOptions(workEnv = WorkEnv("."))
-    val compiler = Compiler.withNewTyper(options)
+    val compiler = Compiler(options)
     val unit     = CompilationUnit.fromWvletString(wvletSource)
 
     // Before compilation, resolvedPlan should be empty

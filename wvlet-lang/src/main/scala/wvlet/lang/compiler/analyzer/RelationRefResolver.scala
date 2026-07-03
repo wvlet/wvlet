@@ -27,9 +27,9 @@ import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
 
 /**
-  * Resolution of table, model, and data-file references into concrete scan nodes, shared between
-  * the current TypeResolver and the new Typer. Compilation of `.wv`/`.sql` file imports stays in
-  * the owning phase because it requires re-running that phase on the referenced unit.
+  * Resolution of table, model, and data-file references into concrete scan nodes. Compilation of
+  * `.wv`/`.sql` file imports stays in the Typer because it requires re-running the phase on the
+  * referenced unit.
   */
 object RelationRefResolver extends ContextLogSupport:
 

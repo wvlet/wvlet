@@ -22,7 +22,6 @@ import wvlet.lang.compiler.analyzer.ModelDependencyAnalyzer
 import wvlet.lang.compiler.analyzer.RemoveUnusedQueries
 import wvlet.lang.compiler.analyzer.SQLValidator
 import wvlet.lang.compiler.analyzer.SymbolLabeler
-import wvlet.lang.compiler.analyzer.TypeResolver
 import wvlet.lang.compiler.parser.ParserPhase
 import wvlet.lang.compiler.typer.Typer
 import wvlet.lang.compiler.parser.WvletParser
@@ -55,37 +54,14 @@ object Compiler extends LogSupport:
   def parseOnly(options: CompilerOptions): Compiler = Compiler(options, parseOnlyPhases)
 
   /**
-    * Create a compiler with the new typer enabled
-    */
-  def withNewTyper(options: CompilerOptions): Compiler = Compiler(
-    options,
-    allPhasesWithTyper(useNewTyper = true)
-  )
-
-  /**
-    * Create a compiler with the legacy TypeResolver, kept as a fallback while the new Typer is
-    * being battle-tested (issue #1764). This will be removed together with TypeResolver
-    */
-  def withLegacyTypeResolver(options: CompilerOptions): Compiler = Compiler(
-    options,
-    allPhasesWithTyper(useNewTyper = false)
-  )
-
-  /**
     * Phases for text-based analysis of the source code
     */
-  def analysisPhases: List[Phase] = analysisPhasesWithTyper(useNewTyper = true)
-
-  def analysisPhasesWithTyper(useNewTyper: Boolean): List[Phase] = List(
+  def analysisPhases: List[Phase] = List(
     ParserPhase, // Parse *.wv files and create untyped plans
     PreprocessLocalExpr, // Preprocess local expressions (e.g., backquote strings and native expressions)
     SymbolLabeler, // Assign unique Symbol to each LogicalPlan and Expression nodes, a and assign a lazy DataType
     RemoveUnusedQueries(), // Exclude unused compilation units (e.g., out of scope queries) from the following phases
-    if useNewTyper then
-      Typer
-    else
-      TypeResolver
-    ,               // Assign a concrete DataType to each LogicalPlan and Expression nodes
+    Typer,          // Assign a concrete DataType to each LogicalPlan and Expression nodes
     SQLValidator(), // Validate SQL-specific patterns and emit warnings
     ModelDependencyAnalyzer()
   )
@@ -107,13 +83,7 @@ object Compiler extends LogSupport:
     */
   def codeGenPhases: List[Phase] = List(ExecutionPlanner, ExecutionPlanRewriter)
 
-  def allPhases: List[List[Phase]] = allPhasesWithTyper(useNewTyper = true)
-
-  def allPhasesWithTyper(useNewTyper: Boolean): List[List[Phase]] = List(
-    analysisPhasesWithTyper(useNewTyper),
-    transformPhases,
-    codeGenPhases
-  )
+  def allPhases: List[List[Phase]] = List(analysisPhases, transformPhases, codeGenPhases)
 
   def parseOnlyPhases: List[List[Phase]] = List(
     List(ParserPhase, RemoveUnusedQueries(), EmptyTypeResolver)

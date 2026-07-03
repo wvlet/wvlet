@@ -25,8 +25,7 @@ import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
 
 /**
-  * Resolution of aggregation expressions and grouping-key indexes, shared between the current
-  * TypeResolver and the new Typer.
+  * Resolution of aggregation expressions and grouping-key indexes.
   */
 object AggregationResolver extends ContextLogSupport:
 

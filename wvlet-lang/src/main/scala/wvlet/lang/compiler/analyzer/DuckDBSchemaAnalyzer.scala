@@ -24,7 +24,7 @@ import wvlet.lang.model.RelationType
   *     `@duckdb/node-api` and `libduckdb` bindings land)
   *
   * Naming: kept as `DuckDBAnalyzer` to avoid churn in the single call site
-  * (`TypeResolver.resolveLocalFileScan`). The non-DuckDB JSON dispatch is an internal
+  * (`RelationRefResolver.resolveDataFileRef`). The non-DuckDB JSON dispatch is an internal
   * implementation detail.
   */
 object DuckDBAnalyzer:
