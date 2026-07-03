@@ -76,7 +76,14 @@ object GenSQL extends Phase("generate-sql"):
         case ExecuteValDef(v) =>
           // TODO Refactor this with QueryExecutor
           val expr = ExpressionEvaluator.eval(v.expr)(using ctx)
-          v.symbol.symbolInfo = ValSymbolInfo(ctx.owner, v.symbol, v.name, expr.dataType, expr)
+          v.symbol.symbolInfo = ValSymbolInfo(
+            ctx.owner,
+            v.symbol,
+            v.name,
+            expr.dataType,
+            expr,
+            ctx.compilationUnit
+          )
           ctx.enter(v.symbol)
         case cmd: ExecuteCommand =>
           cmd.execute match
@@ -437,7 +444,8 @@ object GenSQL extends Phase("generate-sql"):
               symbol = argSym,
               name = argName,
               tpe = argValue.dataType,
-              expr = argValue
+              expr = argValue,
+              compilationUnit = ctx.compilationUnit
             )
             newCtx.scope.add(argName, argSym)
           }

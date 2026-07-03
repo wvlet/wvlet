@@ -172,6 +172,12 @@ class Symbol(val id: Int, val span: Span) extends LogSupport:
   def isCompleting: Boolean = _isCompleting
 
   /**
+    * The compilation unit where this symbol is defined (issue #71). Tracked in the SymbolInfo so
+    * that re-defining a symbol (e.g., in REPL) also updates its defining unit
+    */
+  def compilationUnit: CompilationUnit = symbolInfo.compilationUnit
+
+  /**
     * Assign the SymbolInfo directly, discarding any pending completer. Used when the info is known
     * at creation time or when a definition is replaced (e.g., re-defining a model in REPL)
     */

@@ -70,6 +70,12 @@ class SymbolInfo(
     */
   def declScope: Scope = Scope.NoScope
 
+  /**
+    * The compilation unit where this symbol is defined. Symbols that are not tied to a single
+    * source definition (e.g., packages, builtin symbols) return CompilationUnit.empty
+    */
+  def compilationUnit: CompilationUnit = CompilationUnit.empty
+
   def dataType =
     tpe match
       case t: DataType =>
@@ -114,7 +120,8 @@ class TypeSymbolInfo(
     override val name: Name,
     tpe: DataType,
     override val typeParams: Seq[DataType],
-    typeScope: Scope
+    typeScope: Scope,
+    override val compilationUnit: CompilationUnit
 ) extends SymbolInfo(SymbolType.TypeDef, owner, symbol, name, tpe):
   override def declScope: Scope = typeScope
 
@@ -128,7 +135,8 @@ case class MethodSymbolInfo(
     override val name: Name,
     ft: FunctionType,
     body: Option[Expression],
-    defContexts: List[DefContext]
+    defContexts: List[DefContext],
+    override val compilationUnit: CompilationUnit
 ) extends SymbolInfo(SymbolType.MethodDef, owner, symbol, name, ft)
     with LogSupport:
   override def toString: String = s"${owner}.${name}: ${ft}"
@@ -142,7 +150,7 @@ case class ModelSymbolInfo(
     override val symbol: Symbol,
     override val name: Name,
     override val tpe: DataType,
-    compilationUnit: CompilationUnit
+    override val compilationUnit: CompilationUnit
 ) extends SymbolInfo(SymbolType.ModelDef, owner, symbol, name, tpe):
   override def toString: String = s"model ${owner}.${name}: ${dataType}"
 
@@ -169,7 +177,7 @@ case class PartialQuerySymbolInfo(
     override val name: Name,
     params: List[DefArg],
     body: Relation,
-    compilationUnit: CompilationUnit
+    override val compilationUnit: CompilationUnit
 ) extends SymbolInfo(SymbolType.PartialQueryDef, owner, symbol, name, DataType.UnknownType):
   override def toString: String = s"partial ${owner}.${name}(${params.map(_.name).mkString(", ")})"
 
@@ -178,7 +186,8 @@ case class ValSymbolInfo(
     override val symbol: Symbol,
     override val name: Name,
     override val tpe: DataType,
-    expr: Expression
+    expr: Expression,
+    override val compilationUnit: CompilationUnit
 ) extends SymbolInfo(SymbolType.ValDef, owner, symbol, name, tpe):
   override def toString: String =
     tpe match
@@ -191,23 +200,26 @@ case class ValSymbolInfo(
         s"bounded ${name}: ${dataType} = ${expr}"
 
 case class MultipleSymbolInfo(s1: SymbolInfo, s2: SymbolInfo)
-    extends SymbolInfo(s1.symbolType, s1.owner, s1.symbol, s1.name, s1.tpe)
+    extends SymbolInfo(s1.symbolType, s1.owner, s1.symbol, s1.name, s1.tpe):
+  override def compilationUnit: CompilationUnit = s1.compilationUnit
 
 case class RelationAliasSymbolInfo(
     override val owner: Symbol,
     override val symbol: Symbol,
     override val name: Name,
-    compilationUnit: CompilationUnit
+    override val compilationUnit: CompilationUnit
 ) extends SymbolInfo(SymbolType.Relation, owner, symbol, name, DataType.UnknownType)
 
 case class SavedRelationSymbolInfo(
     override val owner: Symbol,
     override val symbol: Symbol,
-    override val name: Name
+    override val name: Name,
+    override val compilationUnit: CompilationUnit
 ) extends SymbolInfo(SymbolType.Relation, owner, symbol, name, DataType.UnknownType)
 
 case class QuerySymbol(
     override val owner: Symbol,
     override val symbol: Symbol,
-    override val name: Name
+    override val name: Name,
+    override val compilationUnit: CompilationUnit
 ) extends SymbolInfo(SymbolType.Query, owner, symbol, name, DataType.UnknownType)

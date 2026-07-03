@@ -166,7 +166,14 @@ class QueryExecutor(
           report(executeCommand(e))
         case ExecuteValDef(v) =>
           val expr = ExpressionEvaluator.eval(v.expr)(using context)
-          v.symbol.symbolInfo = ValSymbolInfo(context.owner, v.symbol, v.name, expr.dataType, expr)
+          v.symbol.symbolInfo = ValSymbolInfo(
+            context.owner,
+            v.symbol,
+            v.name,
+            expr.dataType,
+            expr,
+            context.compilationUnit
+          )
           context.enter(v.symbol)
           QueryResult.empty
         case ExecuteNothing =>
