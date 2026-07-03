@@ -31,12 +31,8 @@ object HiveRewriteFunctions extends Phase("hive-rewrite-functions"):
       if context.dbType != Hive then
         resolvedPlan
       else
-        resolvedPlan.transformUp {
-          case m: ModelDef =>
-            m.symbol.tree = m
-            m
-          case q: Query =>
-            RewriteRule.rewrite(q, rewriteRules, context)
+        resolvedPlan.transformUp { case q: Query =>
+          RewriteRule.rewrite(q, rewriteRules, context)
         }
 
     unit.resolvedPlan = newPlan
