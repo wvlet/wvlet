@@ -52,8 +52,13 @@ case class GlobalContext(compilerOptions: CompilerOptions):
 
   // Names already checked for duplicate top-level definitions across compilation units,
   // and the confirmed duplicates (name -> defining file names)
-  private val duplicateCheckedNames = new ConcurrentHashMap[Name, Boolean]().asScala
-  var duplicateDefinitions: List[(Name, List[String])] = Nil
+  private val duplicateCheckedNames    = new ConcurrentHashMap[Name, Boolean]().asScala
+  private val duplicateDefinitionQueue =
+    new java.util.concurrent.ConcurrentLinkedQueue[(Name, List[String])]()
+
+  def duplicateDefinitions: List[(Name, List[String])] =
+    import scala.jdk.CollectionConverters.*
+    duplicateDefinitionQueue.asScala.toList
 
   /**
     * Record and return whether the given name still needs a duplicate-definition check. The check
@@ -62,8 +67,8 @@ case class GlobalContext(compilerOptions: CompilerOptions):
   def needsDuplicateCheck(name: Name): Boolean =
     duplicateCheckedNames.putIfAbsent(name, true).isEmpty
 
-  def addDuplicateDefinition(name: Name, fileNames: List[String]): Unit =
-    duplicateDefinitions = (name, fileNames) :: duplicateDefinitions
+  def addDuplicateDefinition(name: Name, fileNames: List[String]): Unit = duplicateDefinitionQueue
+    .add(name -> fileNames)
 
   // Globally available definitions (Name and Symbols)
   var defs: GlobalDefinitions = scala.compiletime.uninitialized
@@ -271,17 +276,19 @@ case class Context(
       foundSymbol.foreach { sym =>
         if global.needsDuplicateCheck(name) then
           val definingFiles =
-            for
-              ctx <- global.getAllContexts.filter(_.isGlobalContext)
-              s   <- ctx.compilationUnit.knownSymbols
-              if s.name == name
-            yield ctx.compilationUnit.sourceFile.fileName
-          if definingFiles.distinct.size > 1 then
-            global.addDuplicateDefinition(name, definingFiles.distinct)
+            (
+              for
+                ctx <- global.getAllContexts.filter(_.isGlobalContext)
+                s   <- ctx.compilationUnit.knownSymbols
+                if s.name == name
+              yield ctx.compilationUnit.sourceFile.fileName
+            ).distinct
+          if definingFiles.size > 1 then
+            global.addDuplicateDefinition(name, definingFiles)
             warn(
-              s"Duplicate top-level definition of '${name}' in ${definingFiles
-                  .distinct
-                  .mkString(", ")}; the definition in ${definingFiles.head} is used"
+              s"Duplicate top-level definition of '${name}' in ${definingFiles.mkString(
+                  ", "
+                )}; the definition in ${definingFiles.head} is used"
             )
       }
 
