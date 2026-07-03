@@ -32,7 +32,7 @@ Key packages and files (links go to GitHub, labels show file names only):
 - **Trees (plan)**: [LogicalPlan.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/LogicalPlan.scala), [relation.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/relation.scala), [plan.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/plan.scala), [ddl.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/ddl.scala), [sqlPlan.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/sqlPlan.scala), [execution.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/execution.scala)
 - **Types**: [DataType.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/DataType.scala), [TreeNode.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/TreeNode.scala)
 - **Symbols**: [Symbol.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/compiler/Symbol.scala), [SymbolInfo.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/compiler/Symbolnfo.scala), [SymbolLabeler.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/compiler/analyzer/SymbolLabeler.scala)
-- **Type resolution**: [TypeResolver.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/compiler/analyzer/TypeResolver.scala)
+- **Type resolution**: [Typer.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/compiler/typer/Typer.scala), [TyperRules.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/compiler/typer/TyperRules.scala), with shared resolvers [FunctionInliner.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/compiler/analyzer/FunctionInliner.scala), [RelationRefResolver.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/compiler/analyzer/RelationRefResolver.scala), [AggregationResolver.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/compiler/analyzer/AggregationResolver.scala)
 - **Rewriting infra**: [RewriteRule.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/compiler/RewriteRule.scala)
 - **Execution planning**: [ExecutionPlanner.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/compiler/planner/ExecutionPlanner.scala)
 - **Pretty printing**: [WvletGenerator.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/compiler/codegen/WvletGenerator.scala), [LogicalPlanPrinter.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/compiler/codegen/LogicalPlanPrinter.scala)
@@ -126,18 +126,19 @@ A few special cases:
 This phase also establishes scopes for packages, types, and methods so later passes can resolve names.
 
 ### 3) Type Resolution and Tree Rewrites
-[TypeResolver.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/compiler/analyzer/TypeResolver.scala) resolves types and replaces unresolved leaves with concrete scans/values:
+[Typer.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/compiler/typer/Typer.scala) types the plan with in-place `tpe` assignment (following the Scala 3 compiler's design) and replaces unresolved leaves with concrete scans/values. A single bottom-up pass interleaves structural resolution and expression typing, followed by a fixpoint loop that inlines function calls and aggregation shorthands only when candidates are present:
 - [TableRef](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/relation.scala#L200) → [TableScan](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/relation.scala#L928) via catalog lookup or known type definitions.
 - [FileRef](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/relation.scala#L212) → [FileScan](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/relation.scala#L225) by inspecting JSON/Parquet to obtain a `schema`.
 - [ModelScan](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/relation.scala#L966) binds to the referenced [ModelDef](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/plan.scala)’s `relationType`.
 - [ValDef](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/plan.scala) table value constants: when referenced as a table, the resolver detects `SchemaType` on the `ValDef` and rewrites to a [Values](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/relation.scala#L147) relation with that schema.
 
 **Where types live today**
-- Expressions compute `def dataType` on demand.
-- Plans compute `def relationType`. Leaf/source plans also carry `schema: RelationType` in constructors.
+- The Typer assigns each expression's type to its mutable `tpe` field in place; the legacy `def dataType` reports a resolved `tpe` first and falls back to a structural computation (`typedOr`).
+- Plans compute `def relationType`. Leaf/source plans also carry `schema: RelationType` in constructors; locally-scoped references (CTE aliases, flow stages) carry their relation type in `tpe`.
 - Definitions store type on their `SymbolInfo` (authoritative for `ModelDef`, seeded for `ValDef`).
+- Genuine type mismatches are collected as per-unit diagnostics (`CompilationUnit.typerErrors`); `CompilerOptions.failOnTypeErrors` turns them into compile failures.
 
-Ongoing work: moving toward a symbol‑centric typing model (see “Typing Model” below and issue #1175).
+Ongoing work: unifying `dataType`/`tpe` into a single field (issue #71) and package-level scope management (issue #93); see issue #392 for the overall typing roadmap.
 
 ### 4) Normalization / Optimizations (ongoing)
 Tree rewrites are expressed via `RewriteRule` and applied with the `transform*` APIs on plans/exprs. Typical examples:
@@ -217,14 +218,14 @@ GenSQL converts a resolved `LogicalPlan` (and its `ExecutionPlan` tasks) into ex
 
 **Generating a SELECT**
 - `generateSQLFromRelation(relation)` performs:
-  1) **Expand**: Inline `ModelScan` bodies and function arguments; evaluate backquoted identifier interpolations; re-run `TypeResolver` on the inlined tree.
+  1) **Expand**: Inline `ModelScan` bodies and function arguments; evaluate backquoted identifier interpolations; re-run the `Typer` on the inlined tree.
   2) **Print**: Hand the expanded `Relation` to `SqlGenerator.print` with a `CodeFormatterConfig(sqlDBType = ctx.dbType)`.
   3) **Wrap**: Optionally add a header comment with compiler version and source position.
 
 **Expansion details (inline models and locals)**
 - **Model binding**: Looks up the referenced `ModelDef` and creates a child `Context` where model parameters are bound as `ValSymbolInfo` with their argument expressions.
 - **Rewrite & evaluate**: Rewrites the model body with those bindings and evaluates backquote‑interpolated identifiers and simple native expressions.
-- **Re‑resolve types**: Resolves the result again through `TypeResolver` to ensure types and schemas are consistent post‑inlining.
+- **Re‑resolve types**: Resolves the result again through `Typer.resolveRelation` to ensure types and schemas are consistent post‑inlining.
 
 **SqlGenerator (SELECT/DDL printer)**
 - **Purpose**: Works on `LogicalPlan` and `Expression` to produce a pretty‑printed SQL `Doc` using the Wadler‑inspired formatter.
