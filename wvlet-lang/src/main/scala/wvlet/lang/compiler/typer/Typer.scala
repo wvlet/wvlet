@@ -332,13 +332,16 @@ object Typer extends Phase("typer") with LogSupport:
             case id: Identifier if id.unresolved && id.nonEmpty && !hasResolvedType(id) =>
               FunctionInliner.findNativeFunction(ctx, id.fullName).getOrElse(id)
           }
-        if newExpr eq v.expr then
-          v
-        else
-          val copied = v.copy(expr = newExpr)
-          // A case-class copy does not carry over the mutable symbol/comment fields
-          copied.copyMetadataFrom(v)
-          copied
+        val typedValDef =
+          if newExpr eq v.expr then
+            v
+          else
+            val copied = v.copy(expr = newExpr)
+            // A case-class copy does not carry over the mutable symbol/comment fields
+            copied.copyMetadataFrom(v)
+            copied
+        TyperRules.typeStatement(typedValDef)
+        typedValDef
       // Default: bottom-up typing for other nodes
       case other =>
         val withTypedChildren = other.mapChildren(typePlan)

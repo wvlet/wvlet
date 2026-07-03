@@ -162,10 +162,10 @@ object FunctionInliner extends ContextLogSupport:
   def findNativeFunction(context: Context, name: String): Option[NativeExpression] = context
     .findTermSymbolByName(name)
     .map(_.symbolInfo)
-    .collect {
-      case m: MethodSymbolInfo if m.body.isDefined =>
-        m.body.get
+    .collect { case m: MethodSymbolInfo =>
+      m.body
     }
+    .flatten
     .collect { case n: NativeExpression =>
       n
     }
