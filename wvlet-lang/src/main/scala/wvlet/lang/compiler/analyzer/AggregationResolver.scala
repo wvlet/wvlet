@@ -63,13 +63,27 @@ object AggregationResolver extends ContextLogSupport:
       other.transformChildExpressions(resolveAggregationExpr(aggFunctions))
 
   /**
-    * Inline aggregation functions (e.g. {{{expr.sum}}}) applied without an explicit GroupBy node in
-    * selection expressions
+    * Resolve aggregation expressions in a single traversal: inline aggregation functions applied
+    * without an explicit GroupBy node (e.g. {{{expr.sum}}}) in selection expressions, and expand
+    * grouping-key indexes (_1, _2, ...) in select clauses
     */
-  def resolveNoGroupByAggregations(q: Relation)(using ctx: Context): Relation =
+  def resolveAggregations(q: Relation)(using ctx: Context): Relation =
     val aggFunctions = aggregationFunctions(ctx)
-    q.transformUp { case s: GeneralSelection =>
-        s.transformChildExpressions(resolveAggregationExpr(aggFunctions))
+    q.transformUp { case r: Relation =>
+        // A node can be both a GeneralSelection and an AggSelect (e.g. Agg), so apply both
+        // rewrites in sequence
+        val withAgg =
+          r match
+            case s: GeneralSelection =>
+              s.transformChildExpressions(resolveAggregationExpr(aggFunctions))
+                .asInstanceOf[Relation]
+            case _ =>
+              r
+        withAgg match
+          case p: AggSelect =>
+            resolveGroupingKeyIndexes(p)
+          case _ =>
+            withAgg
       }
       .asInstanceOf[Relation]
 
