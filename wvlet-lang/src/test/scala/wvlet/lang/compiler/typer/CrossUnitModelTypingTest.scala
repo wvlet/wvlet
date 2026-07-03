@@ -59,8 +59,7 @@ class CrossUnitModelTypingTest extends UniTest:
       .asInstanceOf[wvlet.lang.model.RelationType]
       .fields
       .find(_.name.name == "uname")
-    unameField.isDefined shouldBe true
-    unameField.get.dataType shouldBe DataType.StringType
+    unameField.map(_.dataType) shouldBe Some(DataType.StringType)
 
     // The full query expands through both models into plain SQL
     val sql = GenSQL.generateSQL(queryUnit)(using result.context)
