@@ -14,32 +14,32 @@
 package wvlet.lang.compiler
 
 import wvlet.lang.api.Span
+import wvlet.lang.api.StatusCode
 import wvlet.lang.model.DataType
 import wvlet.lang.model.SyntaxTreeNode
-import wvlet.lang.model.TreeNode
-import wvlet.lang.model.Type
 import wvlet.lang.model.Type.ImportType
 import wvlet.lang.model.Type.PackageType
-import wvlet.lang.model.expr.NameExpr
-import wvlet.lang.model.expr.NameExpr.EmptyName
 import wvlet.lang.model.plan.Import
 import wvlet.lang.model.plan.LogicalPlan
 import wvlet.uni.log.LogSupport
 
-import scala.annotation.compileTimeOnly
+/**
+  * Computes the SymbolInfo of a symbol on first access (following the lazy-completion design of
+  * Scala 3 compiler's Namer/LazyType). A completer is installed by SymbolLabeler when the
+  * SymbolInfo cannot be computed reliably at labeling time (e.g., it requires typing the
+  * definition), and captures whatever context it needs to complete later
+  */
+trait SymbolCompleter:
+  def complete(symbol: Symbol): SymbolInfo
 
 object Symbol:
-  val NoSymbol: Symbol =
-    new Symbol(-1, span = Span.NoSpan):
-      override def computeSymbolInfo(using Context): SymbolInfo = NoSymbolInfo
+  val NoSymbol: Symbol = Symbol(-1, Span.NoSpan)
 
   private val importName = Name.termName("<import>")
-//  lazy val EmptyPackage: Symbol = newPackageSymbol(rootPackageName)
-//  lazy val RootType: Symbol = newTypeDefSymbol(NoSymbol, NoName, DataType.UnknownType)
-//
+
   def newPackageSymbol(owner: Symbol, name: Name)(using context: Context): Symbol =
     val symbol = Symbol(context.global.newSymbolId, Span.NoSpan)
-    symbol.symbolInfo = PackageSymbolInfo(symbol, owner, name, PackageType(name), context.scope)
+    symbol.symbolInfo = PackageSymbolInfo(owner, symbol, name, PackageType(name), context.scope)
     symbol
 
   def newImportSymbol(owner: Symbol, i: Import)(using context: Context): Symbol =
@@ -51,38 +51,35 @@ end Symbol
 
 /**
   * Symbol is a permanent identifier for a TreeNode (e.g., LogicalPlan or Expression nodes). Symbol
-  * holds a cache of the resolved SymbolInfo, which contains DataType for the TreeNode.
+  * holds the resolved SymbolInfo, which contains the DataType of the TreeNode.
   *
-  * @param name
+  * The SymbolInfo is either assigned directly (when it is known at symbol-creation time) or
+  * computed lazily by a [[SymbolCompleter]] on the first access, so that definitions can be typed
+  * on demand independently of the compilation order of their compilation units
   */
 class Symbol(val id: Int, val span: Span) extends LogSupport:
-  private var _symbolInfo: SymbolInfo | Null = null
-  private var _tree: SyntaxTreeNode | Null   = null
+  private var _symbolInfo: SymbolInfo | Null     = null
+  private var _completer: SymbolCompleter | Null = null
+  private var _isCompleting: Boolean             = false
+  private var _tree: SyntaxTreeNode | Null       = null
 
   override def toString =
     if id == -1 then
       "NoSymbol"
     else if _symbolInfo == null then
-      s"Symbol($id)"
+      // Do not force completion from toString (e.g., debug logs)
+      s"Symbol(${id})"
     else
       _symbolInfo.name.name
 
-  def name: Name =
-    if _symbolInfo == null then
-      Name.NoName
-    else
-      symbolInfo.name
+  def name: Name = symbolInfo.name
 
   def isNoSymbol: Boolean = this == Symbol.NoSymbol
 
   def isDefined = !isNoSymbol
   def isEmpty   = !isDefined
 
-  def dataType: DataType =
-    if _symbolInfo == null then
-      DataType.UnknownType
-    else
-      _symbolInfo.dataType
+  def dataType: DataType = symbolInfo.dataType
 
   private def isResolved: Boolean = dataType.isResolved
 
@@ -120,14 +117,51 @@ class Symbol(val id: Int, val span: Span) extends LogSupport:
       case _ =>
     _tree = t
 
+  /**
+    * Returns true when this symbol already has a SymbolInfo or a completer that can produce one
+    */
+  def hasSymbolInfo: Boolean = _symbolInfo != null || _completer != null
+
+  /**
+    * Returns the SymbolInfo of this symbol, forcing the completer on the first access. Never
+    * returns null: an uncompleted symbol without a completer yields [[NoSymbolInfo]]
+    */
   def symbolInfo: SymbolInfo =
-//    if _symbolInfo == null then
-//      _symbolInfo = computeSymbolInfo
-    _symbolInfo
+    if _symbolInfo != null then
+      _symbolInfo
+    else
+      _completer match
+        case null =>
+          NoSymbolInfo
+        case completer =>
+          if _isCompleting then
+            throw StatusCode
+              .CYCLIC_SYMBOL_REFERENCE
+              .newException(s"Cyclic reference detected while resolving symbol ${id}")
+          _isCompleting = true
+          try
+            val info = completer.complete(this)
+            _symbolInfo = info
+            _completer = null
+            info
+          finally
+            _isCompleting = false
 
-  def symbolInfo_=(info: SymbolInfo): Unit = _symbolInfo = info
+  /**
+    * Assign the SymbolInfo directly, discarding any pending completer. Used when the info is known
+    * at creation time or when a definition is replaced (e.g., re-defining a model in REPL)
+    */
+  def symbolInfo_=(info: SymbolInfo): Unit =
+    _symbolInfo = info
+    _completer = null
 
-  def computeSymbolInfo(using Context): SymbolInfo = ???
+  /**
+    * Install a completer that computes the SymbolInfo on the first access, discarding any
+    * previously assigned info (e.g., when a definition is replaced in REPL)
+    */
+  def setCompleter(completer: SymbolCompleter): Unit =
+    _symbolInfo = null
+    _completer = completer
 
 end Symbol
 

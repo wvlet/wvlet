@@ -235,8 +235,8 @@ object SymbolLabeler extends Phase("symbol-labeler"):
         case None =>
           val sym        = Symbol(ctx.global.newSymbolId, pkgName.span)
           val pkgSymInfo = PackageSymbolInfo(
-            sym,
             pkgOwner,
+            sym,
             pkgLeafName,
             PackageType(pkgLeafName),
             // Create a fresh scope for defining global package
@@ -300,7 +300,7 @@ object SymbolLabeler extends Phase("symbol-labeler"):
                   f.expr,
                   t.defContexts ++ f.defContexts
                 )
-                if funSym.symbolInfo == null then
+                if !funSym.hasSymbolInfo then
                   funSym.symbolInfo = methodSymbolInfo
                 else
                   funSym.symbolInfo = MultipleSymbolInfo(methodSymbolInfo, funSym.symbolInfo)
@@ -336,7 +336,7 @@ object SymbolLabeler extends Phase("symbol-labeler"):
               f.expr,
               t.defContexts ++ f.defContexts
             )
-            if funSym.symbolInfo == null then
+            if !funSym.hasSymbolInfo then
               funSym.symbolInfo = newSymbolInfo
             else
               funSym.symbolInfo = MultipleSymbolInfo(newSymbolInfo, funSym.symbolInfo)
