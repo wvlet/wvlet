@@ -50,7 +50,7 @@ class TyperExecutionParityCheck extends UniTest:
       if useNewTyper then
         Compiler.withNewTyper(options)
       else
-        Compiler(options)
+        Compiler.withLegacyTypeResolver(options)
     compiler.setDefaultCatalog(catalog)
     compiler
 

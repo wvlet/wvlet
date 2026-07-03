@@ -55,7 +55,7 @@ class TyperParityCheck extends UniTest:
     val crashFiles = List.newBuilder[String]
 
     wvFiles.foreach { f =>
-      val oldCompiler = Compiler(CompilerOptions(workEnv = WorkEnv(".")))
+      val oldCompiler = Compiler.withLegacyTypeResolver(CompilerOptions(workEnv = WorkEnv(".")))
       val newCompiler = Compiler.withNewTyper(CompilerOptions(workEnv = WorkEnv(".")))
       val oldSQL      = generateSQL(oldCompiler, f.getPath)
       val newSQL      = generateSQL(newCompiler, f.getPath)

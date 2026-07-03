@@ -63,9 +63,18 @@ object Compiler extends LogSupport:
   )
 
   /**
+    * Create a compiler with the legacy TypeResolver, kept as a fallback while the new Typer is
+    * being battle-tested (issue #1764). This will be removed together with TypeResolver
+    */
+  def withLegacyTypeResolver(options: CompilerOptions): Compiler = Compiler(
+    options,
+    allPhasesWithTyper(useNewTyper = false)
+  )
+
+  /**
     * Phases for text-based analysis of the source code
     */
-  def analysisPhases: List[Phase] = analysisPhasesWithTyper(useNewTyper = false)
+  def analysisPhases: List[Phase] = analysisPhasesWithTyper(useNewTyper = true)
 
   def analysisPhasesWithTyper(useNewTyper: Boolean): List[Phase] = List(
     ParserPhase, // Parse *.wv files and create untyped plans
@@ -98,7 +107,7 @@ object Compiler extends LogSupport:
     */
   def codeGenPhases: List[Phase] = List(ExecutionPlanner, ExecutionPlanRewriter)
 
-  def allPhases: List[List[Phase]] = allPhasesWithTyper(useNewTyper = false)
+  def allPhases: List[List[Phase]] = allPhasesWithTyper(useNewTyper = true)
 
   def allPhasesWithTyper(useNewTyper: Boolean): List[List[Phase]] = List(
     analysisPhasesWithTyper(useNewTyper),
