@@ -68,6 +68,17 @@ case class GlobalContext(compilerOptions: CompilerOptions):
   def addDuplicateDefinition(name: Name, fileNames: List[String]): Unit = duplicateDefinitionQueue
     .add(name -> fileNames)
 
+  // Contexts sorted by source file name, cached until a new compilation unit is loaded, so
+  // that global symbol lookup stays fast while scanning units in a deterministic order
+  private var sortedContextCache: (Int, List[Context]) = (0, Nil)
+
+  def getAllContextsSorted: List[Context] =
+    val size = contextTable.size
+    if sortedContextCache._1 != size then
+      sortedContextCache =
+        (size, contextTable.values.toList.sortBy(_.compilationUnit.sourceFile.fileName))
+    sortedContextCache._2
+
   // Globally available definitions (Name and Symbols)
   var defs: GlobalDefinitions = scala.compiletime.uninitialized
 
@@ -263,14 +274,15 @@ case class Context(
       }
 
     if foundSymbol.isEmpty then
-      // Search global symbols
+      // Search global symbols. Contexts are scanned in source file name order so that a name
+      // defined in multiple files resolves deterministically (#93)
       for
-        ctx <- global.getAllContexts.filter(_.isGlobalContext)
-        if foundSymbol.isEmpty
+        ctx <- global.getAllContextsSorted
+        if foundSymbol.isEmpty && ctx.isGlobalContext
       do
         foundSymbol = ctx.compilationUnit.knownSymbols.find(_.name == name)
-      // The scan above takes the first match in an arbitrary unit order, so a top-level name
-      // defined in multiple files resolves nondeterministically (#93). Warn once per name
+      // A top-level name defined in multiple files still shadows the later definitions
+      // (#93). Warn once per name
       foundSymbol.foreach { sym =>
         if global.needsDuplicateCheck(name) then
           val definingFiles =
