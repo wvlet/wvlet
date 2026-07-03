@@ -17,6 +17,9 @@ import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.compiler.Context
 import wvlet.lang.compiler.Name
 import wvlet.lang.compiler.Phase
+import wvlet.lang.compiler.analyzer.FunctionInliner
+import wvlet.lang.model.expr.DotRef
+import wvlet.lang.model.expr.FunctionApply
 import wvlet.lang.model.DataType
 import wvlet.lang.model.DataType.NamedType
 import wvlet.lang.model.DataType.SchemaType
@@ -168,8 +171,33 @@ object Typer extends Phase("typer") with LogSupport:
         typedModelDef
       // Handle Relation - propagate input type through relational operators
       case r: Relation =>
-        typeRelation(r)
-        r // Return same instance - typing is done in-place
+        // Inline partial query applications first (plan-level rewrite with cycle detection)
+        val pqInlined = r
+          .transformUp { case p: PartialQueryApply =>
+            FunctionInliner.resolvePartialQuery(p)
+          }
+          .asInstanceOf[Relation]
+        // Type the relation so that function qualifiers get concrete types
+        typeRelation(pqInlined)
+        // Inline function applications, then no-arg member references (e.g. obj.method). These are
+        // separate passes: mixing them in one traversal would inline a member call's base DotRef
+        // before its enclosing FunctionApply and drop the arguments
+        val fnInlined = pqInlined
+          .transformUpExpressions { case f: FunctionApply =>
+            FunctionInliner.resolveFunctionApply(f)
+          }
+          .transformUpExpressions { case d: DotRef =>
+            FunctionInliner.findFunctionDef(d) match
+              case Some(m) =>
+                FunctionInliner.inlineFunctionBody(d, m, Nil)
+              case None =>
+                d
+          }
+          .asInstanceOf[Relation]
+        // Re-type so the inlined bodies get tpe assigned
+        if !(fnInlined eq pqInlined) then
+          typeRelation(fnInlined)
+        fnInlined
       // Default: bottom-up typing for other nodes
       case other =>
         val withTypedChildren = other.mapChildren(typePlan)
