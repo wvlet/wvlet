@@ -61,10 +61,9 @@ object TyperRules:
     * Catch-all rule so that the materialization above runs for expression classes that no dedicated
     * typing rule matches
     */
-  private def materializeStructuralTypeRules(using
-      ctx: Context
-  ): PartialFunction[Expression, Expression] = { case e: Expression =>
-    e
+  private def materializeStructuralTypeRules: PartialFunction[Expression, Expression] = {
+    case e: Expression =>
+      e
   }
 
   /**
