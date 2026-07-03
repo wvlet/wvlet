@@ -68,7 +68,7 @@ class Symbol(val id: Int, val span: Span) extends LogSupport:
     if id == -1 then
       "NoSymbol"
     else if _name.isEmpty then
-      s"Symbol($id)"
+      s"Symbol(${id})"
     else
       _name.name
 
