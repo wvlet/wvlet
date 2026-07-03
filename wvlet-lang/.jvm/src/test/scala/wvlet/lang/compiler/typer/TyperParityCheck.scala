@@ -40,9 +40,11 @@ class TyperParityCheck extends UniTest:
 
   test("new typer must not regress SQL parity over spec/basic") {
     val specDir = File("spec/basic")
-    val wvFiles = Option(specDir.listFiles())
+    // ulid.wv and val.wv generate compile-time ULIDs, so their SQL can never match across runs
+    val nonDeterministicSpecs = Set("ulid.wv", "val.wv")
+    val wvFiles               = Option(specDir.listFiles())
       .getOrElse(Array.empty[File])
-      .filter(f => f.isFile && f.getName.endsWith(".wv"))
+      .filter(f => f.isFile && f.getName.endsWith(".wv") && !nonDeterministicSpecs(f.getName))
       .sortBy(_.getName)
 
     var same       = 0
@@ -80,12 +82,11 @@ class TyperParityCheck extends UniTest:
     crashFiles.result().foreach(f => debug(s"[CRASH] ${f}"))
 
     // Current parity level (2026-07-02). Tighten as more TypeResolver behavior is ported:
-    // remaining diffs are grouping-key indexes (_1), aggregation-function inlining, native
-    // expressions (ulid), and file-path scans; crashes are unresolved TableRef for table values
-    if same < 44 then
-      fail(s"Typer SQL parity regressed: same=${same} (expected >= 44)")
-    if newFailed > 3 then
-      fail(s"Typer compilation crashes increased: newFailed=${newFailed} (expected <= 3)")
+    // remaining diffs are grouping-key indexes (_1) and aggregation-function inlining
+    if same < 48 then
+      fail(s"Typer SQL parity regressed: same=${same} (expected >= 48)")
+    if newFailed > 0 then
+      fail(s"Typer compilation crashes increased: newFailed=${newFailed} (expected 0)")
   }
 
 end TyperParityCheck
