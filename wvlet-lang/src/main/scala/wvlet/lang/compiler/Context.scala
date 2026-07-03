@@ -285,13 +285,13 @@ case class Context(
       // defined in multiple files resolves deterministically, and units in a named package are
       // visible only within that package or through an import (#93). Preset (standard library)
       // units and units without a package declaration stay globally visible
-      val currentPackage                                = compilationUnit.packageName
+      val currentPackage = compilationUnit.packageName
+      // Import references are materialized once per lookup; most units have no imports
+      val importRefs                                    = importDefs.map(_.importRef.fullName)
       def isVisibleUnit(unit: CompilationUnit): Boolean =
-        unit.isPreset || unit.packageName.isEmpty || unit.packageName == currentPackage ||
-          importDefs.exists { i =>
-            val ref = i.importRef.fullName
-            ref == unit.packageName || ref.startsWith(s"${unit.packageName}.")
-          }
+        val pkg = unit.packageName
+        pkg.isEmpty || pkg == currentPackage || unit.isPreset ||
+        importRefs.exists(ref => ref == pkg || ref.startsWith(s"${pkg}."))
       for
         ctx <- global.getAllContextsSorted
         if foundSymbol.isEmpty && ctx.isGlobalContext && isVisibleUnit(ctx.compilationUnit)

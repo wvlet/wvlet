@@ -45,16 +45,29 @@ case class CompilationUnit(sourceFile: SourceFile, isPreset: Boolean = false)
   // Untyped plan tree
   var unresolvedPlan: LogicalPlan = LogicalPlan.empty
 
+  // Cached after parsing; symbol lookup reads this on a hot path
+  private var cachedPackageName: String = null
+
   /**
     * The package this unit belongs to, or an empty string when the unit has no package declaration
     * (the shared default package)
     */
   def packageName: String =
-    unresolvedPlan match
-      case p: wvlet.lang.model.plan.PackageDef if p.name.nonEmpty =>
-        p.name.fullName
-      case _ =>
-        ""
+    if cachedPackageName != null then
+      cachedPackageName
+    else
+      unresolvedPlan match
+        case p: wvlet.lang.model.plan.PackageDef =>
+          val name =
+            if p.name.nonEmpty then
+              p.name.fullName
+            else
+              ""
+          cachedPackageName = name
+          name
+        case _ =>
+          // The unit is not parsed yet, so do not cache
+          ""
 
   // Fully-typed plan tree
   var resolvedPlan: LogicalPlan        = LogicalPlan.empty
