@@ -39,7 +39,7 @@ object Symbol:
 
   def newPackageSymbol(owner: Symbol, name: Name)(using context: Context): Symbol =
     val symbol = Symbol(context.global.newSymbolId, Span.NoSpan)
-    symbol.symbolInfo = PackageSymbolInfo(symbol, owner, name, PackageType(name), context.scope)
+    symbol.symbolInfo = PackageSymbolInfo(owner, symbol, name, PackageType(name), context.scope)
     symbol
 
   def newImportSymbol(owner: Symbol, i: Import)(using context: Context): Symbol =
