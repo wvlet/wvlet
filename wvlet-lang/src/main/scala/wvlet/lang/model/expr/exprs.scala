@@ -136,7 +136,7 @@ abstract trait QualifiedName extends NameExpr:
   */
 case class DotRef(qualifier: Expression, name: NameExpr, givenDataType: DataType, span: Span)
     extends QualifiedName:
-  override protected def structuralType: DataType = typedOr(givenDataType)
+  override protected def structuralType: DataType = givenDataType
 
   override def nameParts: List[String] =
     qualifier match
@@ -322,7 +322,7 @@ case class FunctionApply(
   override def children: Seq[Expression] =
     Seq(base) ++ args ++ window.toSeq ++ filter.toSeq ++ columnAliases.getOrElse(Nil)
 
-  override protected def structuralType: DataType = typedOr(base.dataType)
+  override protected def structuralType: DataType = base.dataType
 
 case class WindowApply(
     base: Expression,
@@ -331,7 +331,7 @@ case class WindowApply(
     span: Span
 ) extends Expression:
   override def children: Seq[Expression]          = Seq(base, window)
-  override protected def structuralType: DataType = typedOr(base.dataType)
+  override protected def structuralType: DataType = base.dataType
 
 case class FunctionArg(
     name: Option[TermName] = None,
