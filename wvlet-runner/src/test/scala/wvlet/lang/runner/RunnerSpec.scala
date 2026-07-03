@@ -30,7 +30,8 @@ trait RunnerSpec(
     ignoredSpec: Map[String, String] = Map.empty,
     parseOnly: Boolean = false,
     prepareTPCH: Boolean = false,
-    prepareTPCDS: Boolean = false
+    prepareTPCDS: Boolean = false,
+    useNewTyper: Boolean = false
 ) extends UniTest:
   private val workEnv = WorkEnv(path = specPath, logLevel = logger.getLogLevel)
   private val profile = Profile
@@ -48,6 +49,8 @@ trait RunnerSpec(
     val options = CompilerOptions(sourceFolders = List(specPath), workEnv = workEnv)
     if parseOnly then
       Compiler.parseOnly(options)
+    else if useNewTyper then
+      Compiler.withNewTyper(options)
     else
       Compiler(options) // Uses default allPhases
 
@@ -100,6 +103,17 @@ class RunnerSpecBasic
     )
 
 class RunnerSpecTPCH extends RunnerSpec("spec/tpch", prepareTPCH = true)
+
+// Execution parity gates for the new Typer (issue #1764): the same specs must run and pass with
+// the new typer before it can become the default
+class RunnerSpecBasicNewTyper
+    extends RunnerSpec(
+      "spec/basic",
+      ignoredSpec = Map("table-value-constant.wv" -> "Need to support table value constant"),
+      useNewTyper = true
+    )
+
+class RunnerSpecTPCHNewTyper extends RunnerSpec("spec/tpch", prepareTPCH = true, useNewTyper = true)
 
 // Negative tests, expecting some errors
 class RunnerSpecNeg extends RunnerSpec("spec/neg"):

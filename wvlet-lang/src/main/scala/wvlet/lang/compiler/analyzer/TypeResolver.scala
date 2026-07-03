@@ -490,25 +490,11 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
   end resolveFunctionBodyInTypeDef
 
   private object resolveNativeExpressions extends RewriteRule:
-
-    private def findNativeFunction(context: Context, name: String): Option[NativeExpression] =
-      context
-        .findTermSymbolByName(name)
-        .map(_.symbolInfo)
-        .collect {
-          case m: MethodSymbolInfo if m.body.isDefined =>
-            m.body.get
-        }
-        .collect { case n: NativeExpression =>
-          n
-        }
-
     def apply(context: Context): PlanRewriter = { case q: TopLevelStatement =>
       q.transformUpExpressions {
         case id: Identifier if id.unresolved && id.nonEmpty =>
           // Replace the id with the referenced native expression
-          val expr = findNativeFunction(context, id.fullName).getOrElse(id)
-          expr
+          FunctionInliner.findNativeFunction(context, id.fullName).getOrElse(id)
       }
     }
 

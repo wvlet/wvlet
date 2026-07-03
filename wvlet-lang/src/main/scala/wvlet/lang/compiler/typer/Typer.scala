@@ -13,6 +13,7 @@
  */
 package wvlet.lang.compiler.typer
 
+import wvlet.lang.api.StatusCode
 import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.compiler.Context
 import wvlet.lang.compiler.Name
@@ -167,6 +168,8 @@ object Typer extends Phase("typer") with LogSupport:
             typedStmt
           }
         val typedPackage = p.copy(statements = typedStatements)
+        // A case-class copy does not carry over the mutable symbol/comment fields
+        typedPackage.copyMetadataFrom(p)
         TyperRules.typeStatement(typedPackage)
         typedPackage
       // Handle TypeDef - enters type scope for methods
@@ -181,6 +184,8 @@ object Typer extends Phase("typer") with LogSupport:
             typeTypeElem(elem)(using bodyCtx)
           }
         val typedTypeDef = t.copy(elems = typedElems)
+        // A case-class copy does not carry over the mutable symbol/comment fields
+        typedTypeDef.copyMetadataFrom(t)
         TyperRules.typeStatement(typedTypeDef)
         typedTypeDef
       // Handle ModelDef - enters model scope with parameters
@@ -198,7 +203,10 @@ object Typer extends Phase("typer") with LogSupport:
         val typedModelDef =
           typedChild match
             case q: Query =>
-              m.copy(child = q)
+              val copied = m.copy(child = q)
+              // A case-class copy does not carry over the mutable symbol/comment fields
+              copied.copyMetadataFrom(m)
+              copied
             case _ =>
               // Should not happen for well-formed ModelDef
               m
@@ -216,6 +224,8 @@ object Typer extends Phase("typer") with LogSupport:
               RelationRefResolver.resolveTableFunctionCall(ref)
             case m: ModelScan if !m.resolved =>
               RelationRefResolver.resolveModelScan(m)
+            case f: FileRef if f.filePath.endsWith(".wv") || f.filePath.endsWith(".sql") =>
+              resolveQueryFileRef(f)
             case f: FileRef if RelationRefResolver.isDataFilePath(f.filePath) =>
               RelationRefResolver.resolveDataFileRef(f).getOrElse(f)
           }
@@ -291,6 +301,11 @@ object Typer extends Phase("typer") with LogSupport:
                 case _ =>
                   d
             }
+            .transformUpExpressions {
+              case id: Identifier if id.unresolved && id.nonEmpty && !hasResolvedType(id) =>
+                // Replace references to native (compile-time evaluated) functions
+                FunctionInliner.findNativeFunction(ctx, id.fullName).getOrElse(id)
+            }
             .asInstanceOf[Relation]
           // Inline aggregation functions applied via dot syntax (e.g. expr.sum) and expand
           // grouping-key indexes (_1, _2, ...) in select clauses
@@ -308,10 +323,50 @@ object Typer extends Phase("typer") with LogSupport:
             current = aggResolved
         end while
         current
+      // Handle ValDef - resolve native function references in the bound expression so it can be
+      // evaluated once at execution time (e.g. val id = ulid_string)
+      case v: ValDef =>
+        val newExpr = v
+          .expr
+          .transformUpExpression {
+            case id: Identifier if id.unresolved && id.nonEmpty && !hasResolvedType(id) =>
+              FunctionInliner.findNativeFunction(ctx, id.fullName).getOrElse(id)
+          }
+        if newExpr eq v.expr then
+          v
+        else
+          val copied = v.copy(expr = newExpr)
+          // A case-class copy does not carry over the mutable symbol/comment fields
+          copied.copyMetadataFrom(v)
+          copied
       // Default: bottom-up typing for other nodes
       case other =>
         val withTypedChildren = other.mapChildren(typePlan)
         typeNode(withTypedChildren)
+
+  /**
+    * Import a query from another .wv or .sql file by compiling the referenced unit with this phase
+    * and replacing the reference with its resolved single query
+    */
+  private def resolveQueryFileRef(r: FileRef)(using ctx: Context): Relation =
+    ctx.findCompilationUnit(r.filePath) match
+      case None =>
+        throw StatusCode.FILE_NOT_FOUND.newException(s"${r.path} is not found")
+      case Some(unit) =>
+        // compile the query
+        val compiledUnit =
+          if unit.isFinished(Typer) then
+            unit
+          else
+            run(unit, ctx.withCompilationUnit(unit))
+        // Replace with the resolved plan
+        compiledUnit.resolvedPlan match
+          case PackageDef(_, List(rel: Relation), _, _) =>
+            BracedRelation(rel, r.span)
+          case other =>
+            throw StatusCode
+              .SYNTAX_ERROR
+              .newException(s"${unit.sourceFile} is not a single query file")
 
   /**
     * Update context based on a typed statement (e.g., adding imports)
