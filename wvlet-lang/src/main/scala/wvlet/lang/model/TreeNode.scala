@@ -111,8 +111,10 @@ trait SyntaxTreeNode extends TreeNode with Product with LogSupport:
       val newObj = getSingletonObject.getOrElse(newInstance(args*))
       newObj match
         case t: SyntaxTreeNode =>
-          if this.symbol.tree != null then
-            // Update the tree reference with the rewritten tree
+          // Update the definition link only when this node IS the symbol's defining tree.
+          // Copying a node that merely references the symbol (e.g. an identifier carrying the
+          // symbol of its definition) must not re-point the definition to the reference
+          if this.symbol.tree eq this then
             this.symbol.tree = t
           // Copy metadata to preserve symbol and comments
           t.copyMetadataFrom(this)

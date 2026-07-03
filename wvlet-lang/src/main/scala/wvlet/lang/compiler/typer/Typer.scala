@@ -18,6 +18,7 @@ import wvlet.lang.compiler.Context
 import wvlet.lang.compiler.Name
 import wvlet.lang.compiler.Phase
 import wvlet.lang.compiler.analyzer.FunctionInliner
+import wvlet.lang.compiler.analyzer.RelationRefResolver
 import wvlet.lang.model.expr.DotRef
 import wvlet.lang.model.expr.FunctionApply
 import wvlet.lang.model.DataType
@@ -129,6 +130,13 @@ object Typer extends Phase("typer") with LogSupport:
             val typedStmt = typePlan(stmt)(using currentCtx)
             // Update context for imports
             currentCtx = updateContextForStatement(typedStmt, currentCtx)
+            // Point the symbol to the typed tree so later references (e.g. ModelScan) see it
+            typedStmt match
+              case m: ModelDef =>
+                m.symbol.tree = m
+              case t: TypeDef =>
+                t.symbol.tree = t
+              case _ =>
             typedStmt
           }
         val typedPackage = p.copy(statements = typedStatements)
@@ -171,8 +179,22 @@ object Typer extends Phase("typer") with LogSupport:
         typedModelDef
       // Handle Relation - propagate input type through relational operators
       case r: Relation =>
+        // Resolve table/model/file references into concrete scan nodes before typing so that
+        // relation types can propagate bottom-up
+        val refResolved = r
+          .transformUp {
+            case ref: TableRef if !ref.relationType.isResolved =>
+              RelationRefResolver.resolveTableRef(ref)
+            case ref: TableFunctionCall if !ref.relationType.isResolved =>
+              RelationRefResolver.resolveTableFunctionCall(ref)
+            case m: ModelScan if !m.resolved =>
+              RelationRefResolver.resolveModelScan(m)
+            case f: FileRef if RelationRefResolver.isDataFilePath(f.filePath) =>
+              RelationRefResolver.resolveDataFileRef(f).getOrElse(f)
+          }
+          .asInstanceOf[Relation]
         // Inline partial query applications first (plan-level rewrite with cycle detection)
-        val pqInlined = r
+        val pqInlined = refResolved
           .transformUp { case p: PartialQueryApply =>
             FunctionInliner.resolvePartialQuery(p)
           }
