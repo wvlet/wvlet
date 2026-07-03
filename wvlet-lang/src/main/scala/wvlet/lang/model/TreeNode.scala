@@ -69,12 +69,21 @@ trait SyntaxTreeNode extends TreeNode with Product with LogSupport:
       }
     lst.result()
 
+  /**
+    * Copy the symbol, type, and comments of the given node into this node. This is the metadata
+    * half of replacing a node in the plan: when the source node is its symbol's definition tree,
+    * the definition link follows the replacement, so symbol.tree always points to the latest
+    * version of a rewritten definition. Copying a node that merely references the symbol (e.g. an
+    * identifier carrying the symbol of its definition) does not re-point the definition
+    */
   def copyMetadataFrom(t: SyntaxTreeNode): Unit =
     // Copy symbol, type, and comments
     _symbol = t._symbol
     _tpe = t._tpe
     _comment = t._comment
     _postComment = t._postComment
+    if (_symbol ne Symbol.NoSymbol) && (_symbol.tree eq t) then
+      _symbol.tree = this
 
   def symbol: Symbol            = _symbol
   def symbol_=(s: Symbol): Unit = _symbol = s
@@ -111,12 +120,8 @@ trait SyntaxTreeNode extends TreeNode with Product with LogSupport:
       val newObj = getSingletonObject.getOrElse(newInstance(args*))
       newObj match
         case t: SyntaxTreeNode =>
-          // Update the definition link only when this node IS the symbol's defining tree.
-          // Copying a node that merely references the symbol (e.g. an identifier carrying the
-          // symbol of its definition) must not re-point the definition to the reference
-          if this.symbol.tree eq this then
-            this.symbol.tree = t
-          // Copy metadata to preserve symbol and comments
+          // Copy metadata to preserve symbol and comments, following the definition link when
+          // this node is the symbol's defining tree
           t.copyMetadataFrom(this)
         case _ =>
       newObj.asInstanceOf[this.type]
