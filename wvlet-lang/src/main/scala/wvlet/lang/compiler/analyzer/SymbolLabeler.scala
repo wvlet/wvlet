@@ -324,67 +324,14 @@ object SymbolLabeler extends Phase("symbol-labeler"):
         end match
         sym
       case None =>
-        // Create a new type symbol
+        // Create a new type symbol. Method registration, field parsing, and parent-type
+        // resolution are deferred to a completer, so a parent type defined in another
+        // compilation unit resolves once all units are labeled, independent of unit order
         val sym = TypeSymbol(ctx.global.newSymbolId, t.span, ctx.compilationUnit.sourceFile)
         ctx.compilationUnit.enter(sym)
         val typeCtx   = ctx.newContext(sym)
         val typeScope = typeCtx.scope
-
-        // Register method defs to the type scope
-        t.elems
-          .collect { case f: FunctionDef =>
-            val ft     = toFunctionType(f, t.defContexts)
-            val funSym =
-              typeScope.lookupSymbol(f.name) match
-                case Some(sym) =>
-                  sym
-                case None =>
-                  val newSym = Symbol(ctx.global.newSymbolId, f.span)
-                  typeScope.add(ft.name, newSym)
-                  newSym
-            f.symbol = funSym
-            val newSymbolInfo = MethodSymbolInfo(
-              sym,
-              funSym,
-              f.name,
-              ft,
-              f.expr,
-              t.defContexts ++ f.defContexts,
-              ctx.compilationUnit
-            )
-            if !funSym.hasSymbolInfo then
-              funSym.symbolInfo = newSymbolInfo
-            else
-              funSym.symbolInfo = MultipleSymbolInfo(newSymbolInfo, funSym.symbolInfo)
-            ft
-          }
-
-        val columns = t
-          .elems
-          .collect { case v: FieldDef =>
-            // Resolve simple primitive types earlier.
-            // TODO: DataType.parse(typeName) for complex types, including UnknownTypes
-            val dt = DataType.parse(v.fieldType.fullName, v.params)
-            NamedType(v.name, dt)
-          }
-
-        val parentSymbol = t.parent.map(registerParentSymbols).orElse(Some(ctx.owner))
-        val parentTpe    = parentSymbol.map(_.dataType)
-        val tpe          = SchemaType(parent = parentTpe, typeName, columns)
-        val typeParams   = t.params
-
-        // Associate TypeSymbolInfo with the symbol
-        sym.symbolInfo = TypeSymbolInfo(
-          owner = parentSymbol.get,
-          sym,
-          typeName,
-          tpe,
-          typeParams,
-          typeScope,
-          ctx.compilationUnit
-        )
-
-        trace(s"Created type symbol ${sym}: ${tpe}")
+        sym.setCompleter(typeName, s => computeTypeDefSymbolInfo(t, s, typeScope)(using ctx))
         sym.tree = t
 
         t.symbol = sym
@@ -394,10 +341,78 @@ object SymbolLabeler extends Phase("symbol-labeler"):
 
   end registerTypeDefSymbol
 
+  /**
+    * Compute the TypeSymbolInfo of a type definition: register its methods into the type scope,
+    * parse the field columns, and resolve the parent type. Runs on the first access to the type
+    * symbol's info (via SymbolCompleter), after all compilation units have been labeled
+    */
+  private def computeTypeDefSymbolInfo(t: TypeDef, sym: Symbol, typeScope: Scope)(using
+      ctx: Context
+  ): TypeSymbolInfo =
+    val typeName = t.name
+
+    // Register method defs to the type scope
+    t.elems
+      .collect { case f: FunctionDef =>
+        val ft     = toFunctionType(f, t.defContexts)
+        val funSym =
+          typeScope.lookupSymbol(f.name) match
+            case Some(sym) =>
+              sym
+            case None =>
+              val newSym = Symbol(ctx.global.newSymbolId, f.span)
+              typeScope.add(ft.name, newSym)
+              newSym
+        f.symbol = funSym
+        val newSymbolInfo = MethodSymbolInfo(
+          sym,
+          funSym,
+          f.name,
+          ft,
+          f.expr,
+          t.defContexts ++ f.defContexts,
+          ctx.compilationUnit
+        )
+        if !funSym.hasSymbolInfo then
+          funSym.symbolInfo = newSymbolInfo
+        else
+          funSym.symbolInfo = MultipleSymbolInfo(newSymbolInfo, funSym.symbolInfo)
+        ft
+      }
+
+    val columns = t
+      .elems
+      .collect { case v: FieldDef =>
+        // Resolve simple primitive types earlier.
+        // TODO: DataType.parse(typeName) for complex types, including UnknownTypes
+        val dt = DataType.parse(v.fieldType.fullName, v.params)
+        NamedType(v.name, dt)
+      }
+
+    val parentSymbol = t.parent.map(registerParentSymbols).getOrElse(ctx.owner)
+    val parentTpe    = parentSymbol.dataType
+    val tpe          = SchemaType(parent = Some(parentTpe), typeName, columns)
+    val typeParams   = t.params
+
+    trace(s"Completed type symbol ${sym}: ${tpe}")
+    TypeSymbolInfo(
+      owner = parentSymbol,
+      sym,
+      typeName,
+      tpe,
+      typeParams,
+      typeScope,
+      ctx.compilationUnit
+    )
+
+  end computeTypeDefSymbolInfo
+
   private def registerParentSymbols(parent: NameExpr)(using ctx: Context): Symbol =
     // TODO support full type path
     val typeName = Name.typeName(parent.leafName)
-    ctx.scope.lookupSymbol(typeName) match
+    // This runs from a completer after all units are labeled, so consult the global scope as
+    // well: the parent type may be defined in another compilation unit
+    ctx.scope.lookupSymbol(typeName).orElse(ctx.findSymbolByName(typeName)) match
       case Some(s) =>
         s
       case None =>
