@@ -28,6 +28,7 @@ import wvlet.lang.model.plan.Import
 import wvlet.uni.log.LogSupport
 
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicReference
 import scala.jdk.CollectionConverters.*
 
 /**
@@ -70,11 +71,7 @@ case class GlobalContext(compilerOptions: CompilerOptions):
 
   // Contexts sorted by source file name, cached until a new compilation unit is loaded, so
   // that global symbol lookup stays fast while scanning units in a deterministic order
-  private val sortedContextCache = java
-    .util
-    .concurrent
-    .atomic
-    .AtomicReference[(Int, List[Context])]((0, Nil))
+  private val sortedContextCache = AtomicReference[(Int, List[Context])]((0, Nil))
 
   def getAllContextsSorted: List[Context] =
     val cached = sortedContextCache.get()
