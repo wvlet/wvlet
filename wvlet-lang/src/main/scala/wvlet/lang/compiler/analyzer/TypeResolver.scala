@@ -292,116 +292,7 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
   private object resolvePartialQueryApply extends RewriteRule:
     override def apply(context: Context): PlanRewriter =
       case p: PartialQueryApply =>
-        resolvePartialQuery(p, Nil)(using context)
-
-    /**
-      * Inline the body of the partial query referenced by the given PartialQueryApply.
-      * `activeQueries` tracks the partial-query symbols currently being inlined (innermost first)
-      * so that recursive references are reported as user errors instead of looping forever.
-      */
-    private def resolvePartialQuery(p: PartialQueryApply, activeQueries: List[Symbol])(using
-        context: Context
-    ): Relation =
-      val partialQueryName = Name.termName(p.partialQueryRef.leafName)
-      lookupType(partialQueryName, context) match
-        case Some(sym) =>
-          sym.symbolInfo match
-            case pqInfo: PartialQuerySymbolInfo =>
-              if activeQueries.exists(_ eq sym) then
-                val cyclePath = (activeQueries.reverse.map(_.name.name) :+ partialQueryName.name)
-                  .mkString(" -> ")
-                throw StatusCode
-                  .RECURSIVE_PARTIAL_QUERY_REFERENCE
-                  .newException(
-                    s"Recursive partial query reference detected: ${cyclePath}",
-                    context.sourceLocationAt(p.span)
-                  )
-              if activeQueries.size >= maxInlineExpansionDepth then
-                // A safety net distinct from RECURSIVE_PARTIAL_QUERY_REFERENCE: the eq-based check
-                // above already catches every cycle, so this only fires for a legitimately deep
-                // chain of distinct partial queries
-                throw StatusCode
-                  .INLINE_EXPANSION_LIMIT_EXCEEDED
-                  .newException(
-                    s"Partial query inlining for ${partialQueryName} exceeded the maximum depth ${maxInlineExpansionDepth}",
-                    context.sourceLocationAt(p.span)
-                  )
-
-              // Check for argument count mismatch
-              if pqInfo.params.length != p.args.length then
-                throw StatusCode
-                  .INVALID_ARGUMENT
-                  .newException(
-                    s"Partial query '${partialQueryName}' expects ${pqInfo
-                        .params
-                        .length} arguments, but ${p.args.length} were provided",
-                    context.sourceLocationAt(p.span)
-                  )
-
-              // Inline the partial query body
-              val body = pqInfo.body
-
-              // Substitute parameters if any. Arguments were already resolved in the caller's
-              // frame by the bottom-up traversal, so substitute-first keeps caller-side scoping
-              val substitutedBody =
-                if pqInfo.params.nonEmpty then
-                  substituteParams(body, pqInfo.params, p.args)
-                else
-                  body
-
-              // Replace EmptyRelation in the body with the input relation
-              val inlinedBody = inlinePartialQueryBody(p.child, substitutedBody)
-
-              // Inline partial queries nested in the body, with this partial query on the active
-              // path so that self-referential or mutually recursive definitions are detected
-              inlinedBody
-                .transformUp { case np: PartialQueryApply =>
-                  resolvePartialQuery(np, sym :: activeQueries)
-                }
-                .asInstanceOf[Relation]
-            case _ =>
-              // Not a partial query, keep as is (might be an error)
-              context.logWarn(s"'${partialQueryName}' is not a partial query definition")
-              p
-        case None =>
-          context.logWarn(s"Partial query '${partialQueryName}' not found")
-          p
-      end match
-    end resolvePartialQuery
-
-    /**
-      * Replace EmptyRelation nodes in the partial query body with the input relation.
-      */
-    private def inlinePartialQueryBody(input: Relation, body: Relation): Relation = body
-      .transformUp { case e: EmptyRelation =>
-        input
-      }
-      .asInstanceOf[Relation]
-
-    /**
-      * Substitute parameter references in the partial query body with actual argument values.
-      */
-    private def substituteParams(
-        body: Relation,
-        params: List[DefArg],
-        args: List[Expression]
-    ): Relation =
-      // Create a mapping from parameter names to argument values
-      val paramMap =
-        params
-          .zip(args)
-          .map { case (param, arg) =>
-            param.name -> arg
-          }
-          .toMap
-
-      // Replace identifier references to parameters with their argument values
-      body
-        .transformUpExpressions {
-          case i: Identifier if paramMap.contains(Name.termName(i.leafName)) =>
-            paramMap(Name.termName(i.leafName))
-        }
-        .asInstanceOf[Relation]
+        FunctionInliner.resolvePartialQuery(p)(using context)
 
   end resolvePartialQueryApply
 
@@ -648,250 +539,15 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
     }
 
   /**
-    * Find a corresponding MethodSymbolInfo for the given function expression
-    * @param f
-    * @param context
-    * @return
-    */
-  private def findFunctionDef(f: Expression, knownArgs: List[FunctionArg] = Nil)(using
-      context: Context
-  ): Option[MethodSymbolInfo] =
-
-    f match
-      case fa: FunctionApply =>
-        findFunctionDef(fa.base, fa.args)
-      case i: Identifier =>
-        lookupType(i.toTermName, context)
-          .map(_.symbolInfo)
-          .collect {
-            case m: MethodSymbolInfo =>
-              m
-            case m: MultipleSymbolInfo =>
-              // TODO resolve one of the function type
-              throw StatusCode
-                .SYNTAX_ERROR
-                .newException(s"Ambiguous function call for ${i}", context.sourceLocationAt(i.span))
-          }
-      case d @ DotRef(qual, method: Identifier, _, _) =>
-        val methodName = method.toTermName
-        val qualType   =
-          if qual.dataType.isResolved then
-            qual.dataType
-          else
-            DataType.AnyType
-
-        val m: Option[MethodSymbolInfo] = lookupType(qualType.typeName, context)
-          .map { sym =>
-            // TODO: Resolve member with different arg types
-            sym.symbolInfo.findMember(methodName).symbolInfo
-          }
-          .collect {
-            case m: MethodSymbolInfo =>
-              m
-            case m: MultipleSymbolInfo =>
-              // TODO resolve one of the function type
-              throw StatusCode
-                .SYNTAX_ERROR
-                .newException(
-                  s"Ambiguous function call for ${method}",
-                  context.sourceLocationAt(d.span)
-                )
-          }
-          .map { mi =>
-            // Find the owner type of the method to build generic type mappings
-            lookupType(mi.owner.dataType.typeName, context).map(_.symbolInfo) match
-              case Some(ownerType: TypeSymbolInfo) =>
-                val typeMap: Map[TypeName, DataType] = ownerType
-                  .typeParams
-                  .zipAll(qualType.typeParams, UnknownType, UnknownType)
-                  .collect { case (t1: TypeParameter, t2) =>
-                    t1.typeName -> t2
-                  }
-                  .toMap[TypeName, DataType]
-                if typeMap.isEmpty then
-                  mi
-                else
-                  val bounded = mi.bind(typeMap)
-                  context.logTrace(s"Bind ${mi} with typeMap: ${typeMap} => ${bounded}")
-                  bounded
-              case _ =>
-                mi
-          }
-          .map { m =>
-            context.logTrace(s"Resolved method ${qualType}.${methodName} => ${m}")
-            m
-          }
-
-        if m.isEmpty then
-          context.logTrace(s"Failed to find function `${methodName}` for ${qual}:${qual.dataType}")
-
-        m
-      case _ =>
-        trace(s"Failed to find function definition for ${f}")
-        None
-    end match
-  end findFunctionDef
-
-  /**
     * Evaluate FunctionApply nodes with the given function definition
     */
   private object resolveFunctionApply extends RewriteRule:
     override def apply(context: Context): PlanRewriter = { case q: Query =>
       q.transformUpExpressions { case f: FunctionApply =>
-        resolveFunctionApply(f)(using context)
+        FunctionInliner.resolveFunctionApply(f)(using context)
       }
     }
 
-  end resolveFunctionApply
-
-  /**
-    * The maximum depth of nested function/partial-query inlining, used as a safety net against
-    * runaway expansion. Mirrors the model expansion depth limit in GenSQL.
-    */
-  private inline val maxInlineExpansionDepth = 100
-
-  /**
-    * Inline the body of the function definition, substituting `this` and function arguments.
-    * `activeFunctions` tracks the function symbols currently being inlined (innermost first) so
-    * that recursive references are reported as user errors instead of looping forever.
-    */
-  private def inlineFunctionBody(
-      base: Expression,
-      m: MethodSymbolInfo,
-      resolvedArgs: List[(TermName, Expression)],
-      activeFunctions: List[Symbol] = Nil
-  )(using context: Context): Expression =
-    val fnSym = m.symbol
-    if !fnSym.isNoSymbol && activeFunctions.exists(_ eq fnSym) then
-      val cyclePath = (activeFunctions.reverse.map(_.name.name) :+ m.name.name).mkString(" -> ")
-      throw StatusCode
-        .RECURSIVE_FUNCTION_REFERENCE
-        .newException(
-          s"Recursive function reference detected: ${cyclePath}",
-          context.sourceLocationAt(base.span)
-        )
-    if activeFunctions.size >= maxInlineExpansionDepth then
-      // A safety net distinct from RECURSIVE_FUNCTION_REFERENCE: the eq-based check above already
-      // catches every cycle, so this only fires for a legitimately deep chain of distinct functions
-      throw StatusCode
-        .INLINE_EXPANSION_LIMIT_EXCEEDED
-        .newException(
-          s"Function inlining for ${m.name} exceeded the maximum depth ${maxInlineExpansionDepth}",
-          context.sourceLocationAt(base.span)
-        )
-
-    val newExpr: Expression =
-      m.body match
-        case Some(methodBody) =>
-          // Substitute-first: bind `this` and the arguments resolved in the caller's frame
-          val substituted = methodBody.transformUpExpression {
-            case th: This =>
-              base match
-                case d: DotRef =>
-                  // Replace ${this} with ${qual} in DotRef(qual, method)
-                  d.qualifier
-                case _ =>
-                  th
-            case i: Identifier =>
-              // Replace function arguments to the resolved args
-              resolvedArgs.find(_._1 == i.toTermName) match
-                case Some((_, expr)) =>
-                  expr
-                case None =>
-                  i
-          }
-          // Then inline function calls nested in the body, with this function on the active path
-          // so that self-referential or mutually recursive definitions are detected. This must be
-          // a top-down traversal: a bottom-up one would visit the base DotRef of a member call
-          // like obj.method(args) before its enclosing FunctionApply and inline the method body
-          // without binding the arguments
-          val nextActive =
-            if fnSym.isNoSymbol then
-              activeFunctions
-            else
-              fnSym :: activeFunctions
-          substituted.transformExpression {
-            case f: FunctionApply =>
-              resolveFunctionApply(f, nextActive)
-            case d: DotRef =>
-              findFunctionDef(d) match
-                case Some(mi: MethodSymbolInfo) =>
-                  inlineFunctionBody(d, mi, Nil, nextActive)
-                case _ =>
-                  d
-          }
-        case None =>
-          // If the function definition has no body expression, return the original expression
-          base
-    context.logTrace(s"Resolving ${base} => ${newExpr}: ${m.ft.returnType}")
-    if newExpr.resolved || !m.ft.returnType.isResolved then
-      newExpr
-    else
-      newExpr.withDataType(m.ft.returnType)
-
-  end inlineFunctionBody
-
-  private def resolveFunctionApply(f: FunctionApply, activeFunctions: List[Symbol] = Nil)(using
-      context: Context
-  ) =
-    findFunctionDef(f) match
-      case Some(m: MethodSymbolInfo) =>
-        val functionArgTypes = m.ft.args
-        // Mapping function arguments aligned to the function definition
-        var index        = 0
-        val resolvedArgs = List.newBuilder[(TermName, Expression)]
-
-        def mapArg(args: List[FunctionArg]): Unit =
-          if !args.isEmpty then
-            args.head match
-              case FunctionArg(None, expr, _, _, span) =>
-                if index >= functionArgTypes.length then
-                  throw StatusCode
-                    .SYNTAX_ERROR
-                    .newException("Too many arguments", context.sourceLocationAt(span))
-                val argType = functionArgTypes(index)
-                argType.dataType match
-                  case VarArgType(elemType) =>
-                    index += 1
-                    resolvedArgs += argType.name -> ListExpr(args, span)
-                  // all args are consumed
-                  case _ =>
-                    index += 1
-                    resolvedArgs += argType.name -> expr
-                    mapArg(args.tail)
-              case FunctionArg(Some(argName), expr, _, _, span) =>
-                functionArgTypes.find(_.name == argName) match
-                  case Some(argType) =>
-                    argType.dataType match
-                      case VarArgType(elemType) =>
-                        resolvedArgs += argName -> ListExpr(args, expr.span)
-                      // all args are consumed
-                      case _ =>
-                        resolvedArgs += argName -> expr
-                        mapArg(args.tail)
-                  case None =>
-                    throw StatusCode
-                      .SYNTAX_ERROR
-                      .newException(
-                        "Unknown argument name: ${argName}",
-                        context.sourceLocationAt(span)
-                      )
-
-        // Resolve function arguments
-        mapArg(f.args)
-
-        // Resolve identifiers in the function body with the given function arguments
-        // context.logWarn(s"Resolved function args: ${f.base}")
-        val expr = inlineFunctionBody(f.base, m, resolvedArgs.result(), activeFunctions)
-
-        f.window match
-          case Some(w) =>
-            WindowApply(expr.withDataType(m.ft.returnType), w, None, expr.span)
-          case None =>
-            expr.withDataType(m.ft.returnType)
-      case _ =>
-        f
-    end match
   end resolveFunctionApply
 
   /**
@@ -900,10 +556,10 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
   private object resolveInlineRef extends RewriteRule:
     private def resolveRef(using ctx: Context): PartialFunction[Expression, Expression] =
       case ref: DotRef =>
-        findFunctionDef(ref) match
+        FunctionInliner.findFunctionDef(ref) match
           case Some(m: MethodSymbolInfo) =>
             // Replace {this} -> {qual}
-            inlineFunctionBody(ref, m, Nil)
+            FunctionInliner.inlineFunctionBody(ref, m, Nil)
           case _ =>
             ref
     end resolveRef
@@ -1022,7 +678,7 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
           .find(_.name == nme)
           .map(_.symbolInfo)
           .collect { case m: MethodSymbolInfo =>
-            inlineFunctionBody(d, m, Nil)
+            FunctionInliner.inlineFunctionBody(d, m, Nil)
           }
           .getOrElse(dd)
       case other =>
@@ -1050,7 +706,7 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
   ): PartialFunction[Expression, Expression] =
     case f: FunctionApply if !f.resolved =>
       val resolvedF = f.transformChildExpressions(resolveExpression(inputRelationType, context))
-      resolveFunctionApply(resolvedF)(using context)
+      FunctionInliner.resolveFunctionApply(resolvedF)(using context)
     case ref: DotRef if !ref.resolved =>
       val resolvedRef = ref.transformChildExpressions(resolveExpression(inputRelationType, context))
       val refName     = Name.termName(resolvedRef.name.leafName)
