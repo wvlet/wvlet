@@ -264,7 +264,7 @@ object FunctionInliner extends ContextLogSupport:
                     throw StatusCode
                       .SYNTAX_ERROR
                       .newException(
-                        "Unknown argument name: ${argName}",
+                        s"Unknown argument name: ${argName}",
                         context.sourceLocationAt(span)
                       )
 
