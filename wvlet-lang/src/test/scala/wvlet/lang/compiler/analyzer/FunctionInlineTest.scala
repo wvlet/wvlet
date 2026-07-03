@@ -19,8 +19,7 @@ import wvlet.lang.compiler.{CompilationUnit, Compiler, CompilerOptions, WorkEnv}
 import wvlet.lang.compiler.codegen.GenSQL
 
 /**
-  * Tests for the cycle/depth guarded inlining of function bodies and partial queries in
-  * TypeResolver
+  * Tests for the cycle/depth guarded inlining of function bodies and partial queries
   */
 class FunctionInlineTest extends UniTest:
 

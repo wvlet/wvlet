@@ -30,8 +30,7 @@ trait RunnerSpec(
     ignoredSpec: Map[String, String] = Map.empty,
     parseOnly: Boolean = false,
     prepareTPCH: Boolean = false,
-    prepareTPCDS: Boolean = false,
-    useLegacyTypeResolver: Boolean = false
+    prepareTPCDS: Boolean = false
 ) extends UniTest:
   private val workEnv = WorkEnv(path = specPath, logLevel = logger.getLogLevel)
   private val profile = Profile
@@ -49,10 +48,8 @@ trait RunnerSpec(
     val options = CompilerOptions(sourceFolders = List(specPath), workEnv = workEnv)
     if parseOnly then
       Compiler.parseOnly(options)
-    else if useLegacyTypeResolver then
-      Compiler.withLegacyTypeResolver(options)
     else
-      Compiler(options) // Uses default allPhases (the new Typer)
+      Compiler(options) // Uses default allPhases
 
   compiler.setDefaultCatalog(queryExecutor.getDBConnector(profile).getCatalog("memory", "main"))
 
@@ -103,17 +100,6 @@ class RunnerSpecBasic
     )
 
 class RunnerSpecTPCH extends RunnerSpec("spec/tpch", prepareTPCH = true)
-
-// The legacy TypeResolver remains covered by these suites until it is removed (issue #1764)
-class RunnerSpecBasicLegacyTypeResolver
-    extends RunnerSpec(
-      "spec/basic",
-      ignoredSpec = Map("table-value-constant.wv" -> "Need to support table value constant"),
-      useLegacyTypeResolver = true
-    )
-
-class RunnerSpecTPCHLegacyTypeResolver
-    extends RunnerSpec("spec/tpch", prepareTPCH = true, useLegacyTypeResolver = true)
 
 // Negative tests, expecting some errors
 class RunnerSpecNeg extends RunnerSpec("spec/neg"):

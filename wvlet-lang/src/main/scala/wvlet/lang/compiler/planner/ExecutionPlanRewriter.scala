@@ -1,7 +1,7 @@
 package wvlet.lang.compiler.planner
 
 import wvlet.lang.api.Span
-import wvlet.lang.compiler.analyzer.TypeResolver
+import wvlet.lang.compiler.typer.Typer
 import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.compiler.Context
 import wvlet.lang.compiler.ContextLogSupport
@@ -65,9 +65,7 @@ object ExecutionPlanRewriter extends Phase("exec-plan-rewriter") with ContextLog
           subscriptionTarget.map { t =>
             // TODO Append time conditions for subscription
             val query                   = TableRef(t, Span.NoSpan)
-            val resolvedQuery: Relation = TypeResolver
-              .resolve(query, context)
-              .asInstanceOf[Relation]
+            val resolvedQuery: Relation = Typer.resolveRelation(query)(using context)
 
             val save: Save = SaveTo(
               resolvedQuery,

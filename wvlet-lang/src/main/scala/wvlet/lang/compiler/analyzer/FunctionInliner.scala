@@ -33,9 +33,8 @@ import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
 
 /**
-  * Stack-based inlining of function bodies and partial queries, shared between the current
-  * TypeResolver and the new Typer so that both use a single implementation with cycle detection and
-  * depth guards.
+  * Stack-based inlining of function bodies and partial queries with cycle detection and depth
+  * guards.
   *
   * The active inlining path is threaded explicitly as a stack of symbols (innermost first) because
   * callers may run inside traversals that do not push per-frame Contexts.

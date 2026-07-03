@@ -376,7 +376,7 @@ case class Transform(child: Relation, transformItems: List[Attribute], span: Spa
 
 /**
   * Application of a partial query to an input relation. This is an intermediate representation that
-  * gets resolved by TypeResolver to inline the partial query body.
+  * gets resolved by the Typer to inline the partial query body.
   *
   * Example: `from users | is_active` becomes PartialQueryApply(TableRef(users), is_active, ...)
   *
