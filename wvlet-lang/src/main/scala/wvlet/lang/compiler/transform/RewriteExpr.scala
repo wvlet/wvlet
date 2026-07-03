@@ -30,7 +30,7 @@ object RewriteExpr extends Phase("rewrite-expr"):
     override def apply(context: Context) =
       case a @ ArithmeticBinaryExpr(BinaryExprType.Add, left, right, _)
           if left.dataType == DataType.StringType =>
-        FunctionApply(
+        val f = FunctionApply(
           base = NameExpr.fromString("concat"),
           args = List(
             FunctionArg(None, left, false, Nil, left.span),
@@ -40,6 +40,9 @@ object RewriteExpr extends Phase("rewrite-expr"):
           filter = None,
           span = a.span
         )
+        // This rule runs after the Typer, so stamp the known result type on the new node
+        f.tpe = DataType.StringType
+        f
 
   object RewriteStringInterpolation extends ExpressionRewriteRule:
     override def apply(context: Context) =
@@ -57,7 +60,7 @@ object RewriteExpr extends Phase("rewrite-expr"):
                 else
                   e
 
-          FunctionApply(
+          val f = FunctionApply(
             base = NameExpr.fromString("concat"),
             args = List(
               FunctionArg(None, quote(left), false, Nil, left.span),
@@ -67,7 +70,12 @@ object RewriteExpr extends Phase("rewrite-expr"):
             filter = None,
             span = s.span
           )
+          // This rule runs after the Typer, so stamp the known result type on the new node
+          f.tpe = DataType.StringType
+          f
         }
+
+  end RewriteStringInterpolation
 
   /**
     * DuckDB doesn't support two-argument if expressions, so we need to populate the third argument

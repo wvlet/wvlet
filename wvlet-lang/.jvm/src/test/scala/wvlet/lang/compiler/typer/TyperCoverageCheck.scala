@@ -103,6 +103,9 @@ class TyperCoverageCheck extends UniTest:
     var needsCatalog  = 0
     wvFiles.foreach { f =>
       try
+        // A fresh Compiler per file is deliberate: spec files share one global namespace, so
+        // reusing a compiler would make symbol resolution depend on the compilation order of
+        // unrelated files
         val compiler = Compiler(CompilerOptions(workEnv = WorkEnv(specDir.getPath)))
         val unit     = CompilationUnit.fromFile(f.getPath)
         compiler.compileSingleUnit(unit)
@@ -135,9 +138,9 @@ class TyperCoverageCheck extends UniTest:
     info(s"top unresolved relations: ${top(c.unresolvedRelations, 10)}")
     info(s"top untyped expressions:  ${top(c.untypedExprs, 10)}")
 
-    // Ratchet (2026-07-03 baseline). Raise these as coverage improves toward 1.0
-    val minRelationCoverage = 0.58
-    val minExprCoverage     = 0.70
+    // Ratchet (2026-07-03: 71.8% / 74.6%). Raise these as coverage improves toward 1.0
+    val minRelationCoverage = 0.70
+    val minExprCoverage     = 0.73
     if c.relationCoverage < minRelationCoverage then
       fail(
         f"Relation type coverage regressed: ${c.relationCoverage *

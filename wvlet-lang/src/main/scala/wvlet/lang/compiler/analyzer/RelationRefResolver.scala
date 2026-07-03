@@ -67,8 +67,10 @@ object RelationRefResolver extends ContextLogSupport:
                 // ArrayConstructor)
                 v.expr match
                   case arr: ArrayConstructor =>
-                    // arr.values contains the rows - use them directly
-                    Values(arr.values, schemaType, arr.span)
+                    // arr.values contains the rows - use them directly. The declared schema
+                    // (val t1(id, name) = ...) carries no column types, so refine them from
+                    // the first row's values
+                    Values(arr.values, refineSchemaFromRows(schemaType, arr.values), arr.span)
                   case other =>
                     ref
               case _ =>
@@ -110,6 +112,29 @@ object RelationRefResolver extends ContextLogSupport:
                 ref
     end match
   end resolveTableRef
+
+  /**
+    * Fill in unresolved column types of a table-value-constant schema from the literal values of
+    * the first row
+    */
+  private def refineSchemaFromRows(schema: SchemaType, rows: List[Expression]): SchemaType =
+    if schema.isResolved then
+      schema
+    else
+      rows.headOption match
+        case Some(row: ArrayConstructor) if row.values.length == schema.columnTypes.length =>
+          val refined = schema
+            .columnTypes
+            .zip(row.values)
+            .map { (col, v) =>
+              if col.dataType.isResolved then
+                col
+              else
+                DataType.NamedType(col.name, v.dataType)
+            }
+          schema.copy(columnTypes = refined)
+        case _ =>
+          schema
 
   /**
     * Resolve a table function call (e.g. a parameterized model reference) into a ModelScan

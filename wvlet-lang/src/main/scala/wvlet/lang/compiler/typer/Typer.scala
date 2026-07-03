@@ -280,19 +280,28 @@ object Typer extends Phase("typer") with LogSupport:
         // references in a single bottom-up pass. Only no-arg methods are inlined from a bare
         // DotRef: a DotRef with declared arguments is the base of an enclosing FunctionApply
         // that must bind them first (possibly in a later round)
+        val inlineRule: PartialFunction[Expression, Expression] =
+          case f: FunctionApply =>
+            FunctionInliner.resolveFunctionApply(f)
+          case d: DotRef =>
+            FunctionInliner.findFunctionDef(d) match
+              case Some(m) if m.ft.args.isEmpty =>
+                FunctionInliner.inlineFunctionBody(d, m, Nil)
+              case _ =>
+                d
+          case id: Identifier if id.unresolved && id.nonEmpty && !hasResolvedType(id) =>
+            // Replace references to native (compile-time evaluated) functions
+            FunctionInliner.findNativeFunction(ctx, id.fullName).getOrElse(id)
         val fnInlined = current
-          .transformUpExpressions {
-            case f: FunctionApply =>
-              FunctionInliner.resolveFunctionApply(f)
-            case d: DotRef =>
-              FunctionInliner.findFunctionDef(d) match
-                case Some(m) if m.ft.args.isEmpty =>
-                  FunctionInliner.inlineFunctionBody(d, m, Nil)
-                case _ =>
-                  d
-            case id: Identifier if id.unresolved && id.nonEmpty && !hasResolvedType(id) =>
-              // Replace references to native (compile-time evaluated) functions
-              FunctionInliner.findNativeFunction(ctx, id.fullName).getOrElse(id)
+          .transformUp {
+            // Test expressions form an assertion DSL evaluated by the test runner, so keep
+            // them as written (the aggregation resolver skips ShouldExpr for the same reason)
+            case t: TestRelation =>
+              t
+            case r: Relation =>
+              r.transformChildExpressions { case e: Expression =>
+                e.transformUpExpression(inlineRule)
+              }
           }
           .asInstanceOf[Relation]
         // Inline aggregation functions applied via dot syntax (e.g. expr.sum) and expand
