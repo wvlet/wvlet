@@ -58,6 +58,7 @@ end Symbol
   * on demand independently of the compilation order of their compilation units
   */
 class Symbol(val id: Int, val span: Span) extends LogSupport:
+  private var _name: Name                        = Name.NoName
   private var _symbolInfo: SymbolInfo | Null     = null
   private var _completer: SymbolCompleter | Null = null
   private var _isCompleting: Boolean             = false
@@ -66,20 +67,32 @@ class Symbol(val id: Int, val span: Span) extends LogSupport:
   override def toString =
     if id == -1 then
       "NoSymbol"
-    else if _symbolInfo == null then
-      // Do not force completion from toString (e.g., debug logs)
+    else if _name.isEmpty then
       s"Symbol($id)"
     else
-      _symbolInfo.name.name
+      _name.name
 
-  def name: Name = symbolInfo.name
+  /**
+    * The name of this symbol. The name is known eagerly (recorded when the SymbolInfo or a
+    * completer is installed), so reading it never forces the completion of a lazy SymbolInfo
+    */
+  def name: Name = _name
 
   def isNoSymbol: Boolean = this == Symbol.NoSymbol
 
   def isDefined = !isNoSymbol
   def isEmpty   = !isDefined
 
-  def dataType: DataType = symbolInfo.dataType
+  /**
+    * The data type of this symbol. While the symbol's own completion is running (e.g., a
+    * self-referencing definition), the type is not known yet, so UnknownType is returned instead of
+    * forcing the completer again
+    */
+  def dataType: DataType =
+    if _isCompleting then
+      DataType.UnknownType
+    else
+      symbolInfo.dataType
 
   private def isResolved: Boolean = dataType.isResolved
 
@@ -91,18 +104,22 @@ class Symbol(val id: Int, val span: Span) extends LogSupport:
         false
 
   def isModelDef: Boolean =
-    symbolInfo match
-      case m: ModelSymbolInfo =>
-        true
-      case _ =>
-        false
+    !_isCompleting && (
+      symbolInfo match
+        case m: ModelSymbolInfo =>
+          true
+        case _ =>
+          false
+    )
 
   def isRelationAlias: Boolean =
-    symbolInfo match
-      case r: RelationAliasSymbolInfo =>
-        true
-      case _ =>
-        false
+    !_isCompleting && (
+      symbolInfo match
+        case r: RelationAliasSymbolInfo =>
+          true
+        case _ =>
+          false
+    )
 
   def tree: SyntaxTreeNode =
     if _tree == null then
@@ -148,20 +165,30 @@ class Symbol(val id: Int, val span: Span) extends LogSupport:
             _isCompleting = false
 
   /**
+    * Returns true while the completer of this symbol is running. Resolution code that may be
+    * reached from within a completer (e.g., a recursive model reference) can check this to leave
+    * the reference unresolved instead of triggering a cyclic-completion error
+    */
+  def isCompleting: Boolean = _isCompleting
+
+  /**
     * Assign the SymbolInfo directly, discarding any pending completer. Used when the info is known
     * at creation time or when a definition is replaced (e.g., re-defining a model in REPL)
     */
   def symbolInfo_=(info: SymbolInfo): Unit =
     _symbolInfo = info
     _completer = null
+    _name = info.name
 
   /**
     * Install a completer that computes the SymbolInfo on the first access, discarding any
-    * previously assigned info (e.g., when a definition is replaced in REPL)
+    * previously assigned info (e.g., when a definition is replaced in REPL). The name is recorded
+    * eagerly so that scope registration does not force the completion
     */
-  def setCompleter(completer: SymbolCompleter): Unit =
+  def setCompleter(name: Name, completer: SymbolCompleter): Unit =
     _symbolInfo = null
     _completer = completer
+    _name = name
 
 end Symbol
 

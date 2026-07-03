@@ -16,6 +16,7 @@ package wvlet.lang.compiler.typer
 import wvlet.lang.api.StatusCode
 import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.compiler.Context
+import wvlet.lang.compiler.ModelSymbolInfo
 import wvlet.lang.compiler.Name
 import wvlet.lang.compiler.Phase
 import wvlet.lang.compiler.analyzer.AggregationResolver
@@ -222,6 +223,15 @@ object Typer extends Phase("typer") with LogSupport:
             typedStmt match
               case m: ModelDef =>
                 m.symbol.tree = m
+                // Complete the model symbol with the resolved relation type so a pending
+                // completer does not re-type the original (untyped) tree on a later access
+                m.symbol.symbolInfo = ModelSymbolInfo(
+                  currentCtx.owner,
+                  m.symbol,
+                  Name.termName(m.name.name),
+                  m.relationType,
+                  currentCtx.compilationUnit
+                )
               case t: TypeDef =>
                 t.symbol.tree = t
               case _ =>
@@ -255,28 +265,7 @@ object Typer extends Phase("typer") with LogSupport:
         typedTypeDef
       // Handle ModelDef - enters model scope with parameters
       case m: ModelDef =>
-        val modelCtx = ctx.newContext(m.symbol)
-        // Register parameters in input type
-        val paramTypes = m.params.map(p => NamedType(p.name, p.dataType))
-        val inputType  = SchemaType(
-          parent = None,
-          typeName = Name.typeName(s"${m.name.name}_params"),
-          columnTypes = paramTypes
-        )
-        val bodyCtx       = modelCtx.withInputType(inputType)
-        val typedChild    = typePlan(m.child)(using bodyCtx)
-        val typedModelDef =
-          typedChild match
-            case q: Query =>
-              val copied = m.copy(child = q)
-              // A case-class copy does not carry over the mutable symbol/comment fields
-              copied.copyMetadataFrom(m)
-              copied
-            case _ =>
-              // Should not happen for well-formed ModelDef
-              m
-        TyperRules.typeStatement(typedModelDef)
-        typedModelDef
+        typeModelDef(m)
       // Handle FlowDef - resolve stage bodies with previously-defined stages in scope
       case f: FlowDef =>
         resolveFlowDef(f)
@@ -306,6 +295,36 @@ object Typer extends Phase("typer") with LogSupport:
       case other =>
         val withTypedChildren = other.mapChildren(typePlan)
         typeNode(withTypedChildren)
+
+  /**
+    * Type a model definition: the model body is typed in a child context that carries the model
+    * parameters as the input schema. Called during the regular typing of a compilation unit, and by
+    * [[ModelDefCompleter]] to type a model on demand from its defining context when another unit
+    * references the model before its unit has been typed
+    */
+  def typeModelDef(m: ModelDef)(using ctx: Context): ModelDef =
+    val modelCtx = ctx.newContext(m.symbol)
+    // Register parameters in input type
+    val paramTypes = m.params.map(p => NamedType(p.name, p.dataType))
+    val inputType  = SchemaType(
+      parent = None,
+      typeName = Name.typeName(s"${m.name.name}_params"),
+      columnTypes = paramTypes
+    )
+    val bodyCtx       = modelCtx.withInputType(inputType)
+    val typedChild    = typePlan(m.child)(using bodyCtx)
+    val typedModelDef =
+      typedChild match
+        case q: Query =>
+          val copied = m.copy(child = q)
+          // A case-class copy does not carry over the mutable symbol/comment fields
+          copied.copyMetadataFrom(m)
+          copied
+        case _ =>
+          // Should not happen for well-formed ModelDef
+          m
+    TyperRules.typeStatement(typedModelDef)
+    typedModelDef
 
   private def hasUnresolvedUnderscore(r: Relation): Boolean =
     var found = false
