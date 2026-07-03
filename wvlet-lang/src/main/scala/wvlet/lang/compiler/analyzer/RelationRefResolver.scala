@@ -16,9 +16,11 @@ package wvlet.lang.compiler.analyzer
 import wvlet.lang.catalog.Catalog.TableName
 import wvlet.lang.compiler.Context
 import wvlet.lang.compiler.ContextLogSupport
+import wvlet.lang.compiler.ModelSymbolInfo
 import wvlet.lang.compiler.Name
 import wvlet.lang.compiler.RelationAliasSymbolInfo
 import wvlet.lang.compiler.Symbol
+import wvlet.lang.compiler.ValSymbolInfo
 import wvlet.lang.compiler.ContextUtil.*
 import wvlet.lang.model.DataType
 import wvlet.lang.model.DataType.SchemaType
@@ -53,12 +55,22 @@ object RelationRefResolver extends ContextLogSupport:
     */
   def resolveTableRef(ref: TableRef)(using context: Context): Relation =
     lookup(ref.name, context) match
+      case Some(sym) if sym.isCompleting =>
+        // A reference to a definition whose lazy completion is in progress, i.e. a recursive
+        // model reference. Leave it unresolved here so that model expansion can report the
+        // recursion with the full reference path
+        ref
       case Some(sym) =>
-        sym.tree match
-          case m: ModelDef =>
-            val r = m.child.relationType
-            ModelScan(TableName(ref.name.fullName), Nil, r, ref.span)
-          case v: ValDef =>
+        // Reading symbolInfo forces the lazy completion of the definition (typing it in its
+        // defining context), so cross-unit references resolve independently of unit order
+        sym.symbolInfo match
+          case mi: ModelSymbolInfo =>
+            mi.dataType match
+              case r: RelationType =>
+                ModelScan(TableName(ref.name.fullName), Nil, r, ref.span)
+              case _ =>
+                ref
+          case v: ValSymbolInfo =>
             // Check if this is a table value constant by looking at the dataType
             v.dataType match
               case schemaType: DataType.SchemaType =>
@@ -76,17 +88,15 @@ object RelationRefResolver extends ContextLogSupport:
               case _ =>
                 // Regular val definition, not a table value constant
                 ref
-          case _ =>
-            sym.symbolInfo match
-              case relAlias: RelationAliasSymbolInfo =>
-                // Replace alias to the referenced query
-                sym.tree match
-                  case r: Relation =>
-                    r
-                  case _ =>
-                    ref
+          case relAlias: RelationAliasSymbolInfo =>
+            // Replace alias to the referenced query
+            sym.tree match
+              case r: Relation =>
+                r
               case _ =>
                 ref
+          case _ =>
+            ref
       case None =>
         // Lookup known types
         val tblType = Name.typeName(ref.name.leafName)
@@ -142,6 +152,9 @@ object RelationRefResolver extends ContextLogSupport:
     */
   def resolveTableFunctionCall(ref: TableFunctionCall)(using context: Context): Relation =
     lookup(ref.name, context) match
+      case Some(sym) if sym.isCompleting =>
+        // A recursive parameterized-model reference; leave unresolved (see resolveTableRef)
+        ref
       case Some(sym) =>
         val si = sym.symbolInfo
         si.tpe match
@@ -159,7 +172,8 @@ object RelationRefResolver extends ContextLogSupport:
     */
   def resolveModelScan(m: ModelScan)(using context: Context): Relation =
     context.findTermSymbolByName(m.name.fullName) match
-      case Some(sym) if sym.isModelDef =>
+      case Some(sym) if !sym.isCompleting && sym.isModelDef =>
+        // isModelDef forces the lazy completion, so sym.tree is the typed model definition
         sym.tree match
           case md: ModelDef =>
             val newModelScan = m.copy(schema = md.relationType)

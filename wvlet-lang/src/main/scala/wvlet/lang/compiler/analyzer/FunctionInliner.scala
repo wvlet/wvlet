@@ -160,6 +160,9 @@ object FunctionInliner extends ContextLogSupport:
     */
   def findNativeFunction(context: Context, name: String): Option[NativeExpression] = context
     .findTermSymbolByName(name)
+    // A symbol whose lazy completion is in progress (e.g., a self-referencing model) cannot be a
+    // native function; skip it instead of re-forcing its completer
+    .filterNot(_.isCompleting)
     .map(_.symbolInfo)
     .collect { case m: MethodSymbolInfo =>
       m.body

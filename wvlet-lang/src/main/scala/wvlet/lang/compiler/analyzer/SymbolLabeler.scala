@@ -31,6 +31,7 @@ import wvlet.lang.compiler.Symbol
 import wvlet.lang.compiler.TermName
 import wvlet.lang.compiler.TypeSymbol
 import wvlet.lang.compiler.TypeSymbolInfo
+import wvlet.lang.compiler.typer.ModelDefCompleter
 import wvlet.lang.model.DataType.NamedType
 import wvlet.lang.model.DataType.SchemaType
 import wvlet.lang.model.Type.FunctionType
@@ -398,12 +399,24 @@ object SymbolLabeler extends Phase("symbol-labeler"):
 
   private def registerModelSymbol(m: ModelDef)(using ctx: Context): Symbol =
     val modelName = Name.termName(m.name.name)
+
+    // When the model declares its schema explicitly, the SymbolInfo is known at labeling time.
+    // Otherwise, computing the model type requires typing the body, so install a completer that
+    // types the definition on demand in this defining context. This avoids reading (and
+    // memoizing) the structural relation type of the untyped tree, and makes cross-unit model
+    // references independent of the compilation order of the units
+    def installSymbolInfo(sym: Symbol): Unit =
+      m.givenRelationType match
+        case Some(tpe) =>
+          sym.symbolInfo = ModelSymbolInfo(ctx.owner, sym, modelName, tpe, ctx.compilationUnit)
+        case None =>
+          sym.setCompleter(modelName, ModelDefCompleter(m, ctx.owner, modelName, ctx))
+
     ctx.scope.lookupSymbol(modelName) match
       case Some(s) =>
         // Update the existing model symbol to avoid duplicates in REPL
         s.tree = m
-        val tpe = m.givenRelationType.getOrElse(m.relationType)
-        s.symbolInfo = ModelSymbolInfo(ctx.owner, s, modelName, tpe, ctx.compilationUnit)
+        installSymbolInfo(s)
         m.symbol = s
         trace(s"Updated existing model symbol ${s} for ${modelName}")
         s
@@ -411,11 +424,12 @@ object SymbolLabeler extends Phase("symbol-labeler"):
         val sym = Symbol(ctx.global.newSymbolId, m.span)
         ctx.compilationUnit.enter(sym)
         sym.tree = m
-        val tpe = m.givenRelationType.getOrElse(m.relationType)
-        sym.symbolInfo = ModelSymbolInfo(ctx.owner, sym, modelName, tpe, ctx.compilationUnit)
+        installSymbolInfo(sym)
         m.symbol = sym
         trace(s"Created a new model symbol ${sym}")
         ctx.scope.add(modelName, sym)
         sym
+
+  end registerModelSymbol
 
 end SymbolLabeler

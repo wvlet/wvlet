@@ -29,6 +29,13 @@ class SymbolCompleterTest extends UniTest:
     DataType.LongType
   )
 
+  private def setCompleter(sym: Symbol, name: String)(f: Symbol => SymbolInfo): Unit = sym
+    .setCompleter(
+      Name.termName(name),
+      new SymbolCompleter:
+        override def complete(symbol: Symbol): SymbolInfo = f(symbol)
+    )
+
   test("should return NoSymbolInfo for a symbol without info or completer") {
     val sym = Symbol(1, Span.NoSpan)
     sym.hasSymbolInfo shouldBe false
@@ -45,11 +52,14 @@ class SymbolCompleterTest extends UniTest:
   test("should complete the symbol info lazily and only once") {
     val sym            = Symbol(2, Span.NoSpan)
     var completedCount = 0
-    sym.setCompleter { s =>
+    setCompleter(sym, "lazy_val") { s =>
       completedCount += 1
       newSymbolInfo(s, "lazy_val")
     }
     sym.hasSymbolInfo shouldBe true
+    completedCount shouldBe 0
+    // The name is known eagerly without forcing the completion
+    sym.name.name shouldBe "lazy_val"
     completedCount shouldBe 0
 
     sym.symbolInfo.name.name shouldBe "lazy_val"
@@ -62,30 +72,31 @@ class SymbolCompleterTest extends UniTest:
   test("should not force completion from toString") {
     val sym       = Symbol(3, Span.NoSpan)
     var completed = false
-    sym.setCompleter { s =>
+    setCompleter(sym, "quiet") { s =>
       completed = true
       newSymbolInfo(s, "quiet")
     }
-    sym.toString shouldBe "Symbol(3)"
+    sym.toString shouldBe "quiet"
     completed shouldBe false
   }
 
   test("should let a direct assignment override a pending completer") {
     val sym       = Symbol(4, Span.NoSpan)
     var completed = false
-    sym.setCompleter { s =>
+    setCompleter(sym, "stale") { s =>
       completed = true
       newSymbolInfo(s, "stale")
     }
     sym.symbolInfo = newSymbolInfo(sym, "fresh")
     sym.symbolInfo.name.name shouldBe "fresh"
+    sym.name.name shouldBe "fresh"
     completed shouldBe false
   }
 
   test("should let a completer override a previously assigned info (REPL redefinition)") {
     val sym = Symbol(5, Span.NoSpan)
     sym.symbolInfo = newSymbolInfo(sym, "old")
-    sym.setCompleter { s =>
+    setCompleter(sym, "new") { s =>
       newSymbolInfo(s, "new")
     }
     sym.symbolInfo.name.name shouldBe "new"
@@ -93,7 +104,7 @@ class SymbolCompleterTest extends UniTest:
 
   test("should detect cyclic symbol completion") {
     val sym = Symbol(6, Span.NoSpan)
-    sym.setCompleter { s =>
+    setCompleter(sym, "cyclic") { s =>
       // A completer that (indirectly) asks for its own symbol info
       s.symbolInfo
     }
@@ -103,10 +114,21 @@ class SymbolCompleterTest extends UniTest:
     e.statusCode shouldBe StatusCode.CYCLIC_SYMBOL_REFERENCE
   }
 
+  test("should report isCompleting while the completer is running") {
+    val sym = Symbol(7, Span.NoSpan)
+    setCompleter(sym, "probe") { s =>
+      s.isCompleting shouldBe true
+      newSymbolInfo(s, "probe")
+    }
+    sym.isCompleting shouldBe false
+    sym.symbolInfo.name.name shouldBe "probe"
+    sym.isCompleting shouldBe false
+  }
+
   test("should recover after a failed completion attempt") {
-    val sym     = Symbol(7, Span.NoSpan)
+    val sym     = Symbol(8, Span.NoSpan)
     var attempt = 0
-    sym.setCompleter { s =>
+    setCompleter(sym, "flaky") { s =>
       attempt += 1
       if attempt == 1 then
         throw IllegalStateException("transient failure")
