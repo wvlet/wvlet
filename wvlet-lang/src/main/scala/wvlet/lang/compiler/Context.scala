@@ -282,10 +282,19 @@ case class Context(
 
     if foundSymbol.isEmpty then
       // Search global symbols. Contexts are scanned in source file name order so that a name
-      // defined in multiple files resolves deterministically (#93)
+      // defined in multiple files resolves deterministically, and units in a named package are
+      // visible only within that package or through an import (#93). Preset (standard library)
+      // units and units without a package declaration stay globally visible
+      val currentPackage                                = compilationUnit.packageName
+      def isVisibleUnit(unit: CompilationUnit): Boolean =
+        unit.isPreset || unit.packageName.isEmpty || unit.packageName == currentPackage ||
+          importDefs.exists { i =>
+            val ref = i.importRef.fullName
+            ref == unit.packageName || ref.startsWith(s"${unit.packageName}.")
+          }
       for
         ctx <- global.getAllContextsSorted
-        if foundSymbol.isEmpty && ctx.isGlobalContext
+        if foundSymbol.isEmpty && ctx.isGlobalContext && isVisibleUnit(ctx.compilationUnit)
       do
         foundSymbol = ctx.compilationUnit.knownSymbols.find(_.name == name)
       // A top-level name defined in multiple files still shadows the later definitions
@@ -296,7 +305,7 @@ case class Context(
             (
               for
                 ctx <- global.getAllContextsSorted
-                if ctx.isGlobalContext
+                if ctx.isGlobalContext && isVisibleUnit(ctx.compilationUnit)
                 s <- ctx.compilationUnit.knownSymbols
                 if s.name == name
               yield ctx.compilationUnit.sourceFile.fileName
@@ -309,6 +318,7 @@ case class Context(
                 )}; the definition in ${definingFiles.head} is used"
             )
       }
+    end if
 
     if isContextCompilationUnit then
       trace(s"Looked up ${name} in ${compilationUnit.sourceFile.fileName} => ${foundSymbol}")

@@ -138,7 +138,11 @@ This phase also establishes scopes for packages, types, and methods so later pas
 - Definitions store type on their `SymbolInfo` (authoritative for `ModelDef`, seeded for `ValDef`).
 - Genuine type mismatches are collected as per-unit diagnostics (`CompilationUnit.typerErrors`); `CompilerOptions.failOnTypeErrors` turns them into compile failures.
 
-Ongoing work: unifying `dataType`/`tpe` into a single field (issue #71) and package-level scope management (issue #93); see issue #392 for the overall typing roadmap.
+**Name visibility (issue #93)**
+- Units declaring a named `package` are visible only within that package or through an `import`; standard-library presets and units without a package declaration are globally visible.
+- A top-level name defined in multiple visible files resolves deterministically (source file name order) and reports a duplicate-definition warning.
+
+Ongoing work: unifying `dataType`/`tpe` into a single field (issue #71); see issue #392 for the overall typing roadmap.
 
 ### 4) Normalization / Optimizations (ongoing)
 Tree rewrites are expressed via `RewriteRule` and applied with the `transform*` APIs on plans/exprs. Typical examples:

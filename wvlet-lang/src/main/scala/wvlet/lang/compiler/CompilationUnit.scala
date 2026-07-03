@@ -44,6 +44,18 @@ case class CompilationUnit(sourceFile: SourceFile, isPreset: Boolean = false)
 
   // Untyped plan tree
   var unresolvedPlan: LogicalPlan = LogicalPlan.empty
+
+  /**
+    * The package this unit belongs to, or an empty string when the unit has no package declaration
+    * (the shared default package)
+    */
+  def packageName: String =
+    unresolvedPlan match
+      case p: wvlet.lang.model.plan.PackageDef if p.name.nonEmpty =>
+        p.name.fullName
+      case _ =>
+        ""
+
   // Fully-typed plan tree
   var resolvedPlan: LogicalPlan        = LogicalPlan.empty
   var modelDependencies: DependencyDAG = DependencyDAG.empty
