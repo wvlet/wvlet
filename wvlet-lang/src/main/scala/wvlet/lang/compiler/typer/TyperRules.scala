@@ -13,7 +13,9 @@
  */
 package wvlet.lang.compiler.typer
 
+import wvlet.lang.api.WvletLangException
 import wvlet.lang.compiler.Context
+import wvlet.lang.compiler.analyzer.FunctionInliner
 import wvlet.lang.model.plan.*
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.Type
@@ -38,7 +40,7 @@ object TyperRules:
     */
   def exprRules(using ctx: Context): PartialFunction[Expression, Expression] =
     literalRules orElse identifierRules orElse binaryOpRules orElse castRules orElse
-      caseExprRules orElse dotRefRules orElse functionApplyRules
+      caseExprRules orElse parenRules orElse dotRefRules orElse functionApplyRules
 
   /**
     * All typing rules for relations. Sets tpe field from relationType.
@@ -93,9 +95,16 @@ object TyperRules:
               id.tpe = field.dataType
               id
             case None =>
-              // Unresolved identifier
-              id.tpe = ErrorType(s"Unresolved identifier: ${id.unquotedValue}")
-              id
+              // Consult RelationType.find as well, which also resolves virtual columns
+              // (e.g. aggregated array columns of a GroupBy input)
+              ctx.inputType.find(_.name == id.fullName) match
+                case Some(attr) =>
+                  id.tpe = attr.dataType
+                  id
+                case None =>
+                  // Unresolved identifier
+                  id.tpe = ErrorType(s"Unresolved identifier: ${id.unquotedValue}")
+                  id
   }
 
   /**
@@ -319,12 +328,36 @@ object TyperRules:
   }
 
   /**
-    * Rules for typing DotRef expressions (field access)
+    * Rule for propagating the child type through parenthesized expressions
+    */
+  def parenRules(using ctx: Context): PartialFunction[Expression, Expression] = {
+    case p: ParenthesizedExpression =>
+      if p.child.dataType.isResolved then
+        p.tpe = p.child.dataType
+      else if p.child.isTyped then
+        p.tpe = p.child.tpe
+      p
+  }
+
+  /**
+    * Rules for typing DotRef expressions: field access on a schema-typed qualifier, or a method
+    * reference (e.g. {{{x.to_double}}}) typed by the method's declared return type. Typing a method
+    * reference lets an enclosing call resolve its qualifier type without inlining the reference
     */
   def dotRefRules(using ctx: Context): PartialFunction[Expression, Expression] = {
     case dotRef: DotRef =>
       val qualifierType = dotRef.qualifier.tpe
       val fieldName     = dotRef.name.leafName
+
+      // Typing is best-effort: an ambiguous method reference (e.g. same-named defs in multiple
+      // types with a still-unresolved qualifier) is not a type, not a user error. The inlining
+      // path reports real ambiguity with a proper source location
+      def methodReturnType: Option[DataType] =
+        try
+          FunctionInliner.findFunctionDef(dotRef).map(_.ft.returnType).filter(_.isResolved)
+        catch
+          case _: WvletLangException =>
+            None
 
       qualifierType match
         case schema: SchemaType =>
@@ -333,19 +366,26 @@ object TyperRules:
             case Some(field) =>
               dotRef.tpe = field.dataType
             case None =>
-              dotRef.tpe = ErrorType(s"Field $fieldName not found in schema")
+              dotRef.tpe = methodReturnType.getOrElse(
+                ErrorType(s"Field $fieldName not found in schema")
+              )
 
         case NoType =>
-          // Qualifier not typed yet, keep as NoType
-          dotRef.tpe = NoType
+          // Qualifier not typed yet; a method reference may still resolve from the legacy
+          // dataType of the qualifier
+          methodReturnType.foreach { t =>
+            dotRef.tpe = t
+          }
 
         case _: ErrorType =>
-          // Propagate error from qualifier
-          dotRef.tpe = qualifierType
+          // Propagate error from qualifier unless this is a method reference
+          dotRef.tpe = methodReturnType.getOrElse(qualifierType)
 
         case _ =>
-          // If qualifier has been typed and is not a SchemaType, it's a type error
-          dotRef.tpe = ErrorType(s"Type ${qualifierType} does not support field access via '.'")
+          // A non-schema qualifier supports method references (e.g. primitive methods)
+          dotRef.tpe = methodReturnType.getOrElse(
+            ErrorType(s"Type ${qualifierType} does not support field access via '.'")
+          )
 
       dotRef
   }
