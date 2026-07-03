@@ -199,7 +199,14 @@ case class TableRef(name: QualifiedName, span: Span) extends TableInput:
   override def sqlExpr: Expression = name
   // TODO Fix to generate a correct Wvlet expression for double-quoted or dot-separated table names
   override def toString: String           = s"TableRef(${name})"
-  override val relationType: RelationType = UnresolvedRelationType(name.fullName)
+  override def relationType: RelationType =
+    // A reference to a locally-scoped relation (e.g. a CTE alias or a flow stage) keeps its
+    // TableRef node and carries the referenced relation type in the tpe field
+    tpe match
+      case r: RelationType if r.isResolved =>
+        r
+      case _ =>
+        UnresolvedRelationType(name.fullName)
 
 case class TableFunctionCall(name: NameExpr, args: List[FunctionArg], span: Span)
     extends TableInput:

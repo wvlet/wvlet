@@ -134,12 +134,10 @@ abstract trait QualifiedName extends NameExpr:
   * @param dataType
   * @param nodeLocation
   */
-case class DotRef(
-    qualifier: Expression,
-    name: NameExpr,
-    override val dataType: DataType,
-    span: Span
-) extends QualifiedName:
+case class DotRef(qualifier: Expression, name: NameExpr, givenDataType: DataType, span: Span)
+    extends QualifiedName:
+  override def dataType: DataType = typedOr(givenDataType)
+
   override def nameParts: List[String] =
     qualifier match
       case q: NameExpr =>
@@ -318,7 +316,7 @@ case class FunctionApply(
   override def children: Seq[Expression] =
     Seq(base) ++ args ++ window.toSeq ++ filter.toSeq ++ columnAliases.getOrElse(Nil)
 
-  override def dataType: DataType = base.dataType
+  override def dataType: DataType = typedOr(base.dataType)
 
 case class WindowApply(
     base: Expression,
@@ -327,7 +325,7 @@ case class WindowApply(
     span: Span
 ) extends Expression:
   override def children: Seq[Expression] = Seq(base, window)
-  override def dataType: DataType        = base.dataType
+  override def dataType: DataType        = typedOr(base.dataType)
 
 case class FunctionArg(
     name: Option[TermName] = None,

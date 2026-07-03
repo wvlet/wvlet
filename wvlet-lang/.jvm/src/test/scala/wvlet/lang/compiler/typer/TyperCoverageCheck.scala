@@ -17,7 +17,7 @@ import wvlet.uni.test.UniTest
 import wvlet.lang.compiler.{CompilationUnit, Compiler, CompilerOptions, WorkEnv}
 import wvlet.lang.model.DataType
 import wvlet.lang.model.plan.{LogicalPlan, Relation}
-import wvlet.lang.model.expr.Expression
+import wvlet.lang.model.expr.{Expression, Identifier}
 
 import java.io.File
 import scala.collection.mutable
@@ -69,14 +69,18 @@ class TyperCoverageCheck extends UniTest:
         else
           unresolvedRel(r.nodeName) += 1
       }
-      plan.traverseExpressions { case e: Expression =>
-        exprTotal += 1
-        if e.isTyped then
-          exprTpeSet += 1
-        if isTypedExpr(e) then
-          exprTyped += 1
-        else
-          untypedExpr(e.nodeName) += 1
+      plan.traverseExpressions {
+        case i: Identifier if i.isEmpty =>
+        // An empty name is a structural placeholder (e.g. an unnamed column slot), not an
+        // expression that could carry a type
+        case e: Expression =>
+          exprTotal += 1
+          if e.isTyped then
+            exprTpeSet += 1
+          if isTypedExpr(e) then
+            exprTyped += 1
+          else
+            untypedExpr(e.nodeName) += 1
       }
     }
     Coverage(
@@ -138,9 +142,9 @@ class TyperCoverageCheck extends UniTest:
     info(s"top unresolved relations: ${top(c.unresolvedRelations, 10)}")
     info(s"top untyped expressions:  ${top(c.untypedExprs, 10)}")
 
-    // Ratchet (2026-07-03: 71.8% / 74.6%). Raise these as coverage improves toward 1.0
-    val minRelationCoverage = 0.70
-    val minExprCoverage     = 0.73
+    // Ratchet (2026-07-03: 76.4% / 83.5%). Raise these as coverage improves toward 1.0
+    val minRelationCoverage = 0.75
+    val minExprCoverage     = 0.82
     if c.relationCoverage < minRelationCoverage then
       fail(
         f"Relation type coverage regressed: ${c.relationCoverage *

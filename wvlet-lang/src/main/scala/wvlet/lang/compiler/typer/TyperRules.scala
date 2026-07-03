@@ -81,6 +81,12 @@ object TyperRules:
     * Rules for typing identifiers
     */
   def identifierRules(using ctx: Context): PartialFunction[Expression, Expression] = {
+    case w: Wildcard =>
+      // A wildcard (*) selects the full input row, so it carries the input relation type
+      if ctx.inputType.isResolved then
+        w.tpe = ctx.inputType
+      w
+
     case id: Identifier =>
       // Look up symbol from scope, imports, and global scope
       ctx.findSymbolByName(id.toTermName) match

@@ -40,12 +40,19 @@ trait Expression extends SyntaxTreeNode with LogSupport:
     * report the type assigned to the tpe field by the Typer, bridging the legacy dataType field and
     * the in-place typing of the new Typer (issue #392)
     */
-  def dataType: DataType =
+  def dataType: DataType = typedOr(DataType.UnknownType)
+
+  /**
+    * Returns the resolved type assigned to the tpe field by the Typer, or the given structural
+    * fallback. dataType overrides use this so that in-place typing takes precedence over a
+    * structural computation that may be unresolved
+    */
+  protected def typedOr(fallback: => DataType): DataType =
     tpe match
       case dt: DataType if dt.isResolved =>
         dt
       case _ =>
-        DataType.UnknownType
+        fallback
 
   def isIdentifier: Boolean =
     this match
