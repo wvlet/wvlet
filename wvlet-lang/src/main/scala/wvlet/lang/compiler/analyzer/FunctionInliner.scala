@@ -156,6 +156,21 @@ object FunctionInliner extends ContextLogSupport:
   end findFunctionDef
 
   /**
+    * Find a native (compile-time evaluated) function body for the given unresolved identifier name,
+    * e.g. ulid_string
+    */
+  def findNativeFunction(context: Context, name: String): Option[NativeExpression] = context
+    .findTermSymbolByName(name)
+    .map(_.symbolInfo)
+    .collect { case m: MethodSymbolInfo =>
+      m.body
+    }
+    .flatten
+    .collect { case n: NativeExpression =>
+      n
+    }
+
+  /**
     * Inline the body of the function definition, substituting `this` and function arguments.
     * `activeFunctions` tracks the function symbols currently being inlined (innermost first) so
     * that recursive references are reported as user errors instead of looping forever.
