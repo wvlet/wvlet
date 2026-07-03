@@ -48,6 +48,7 @@ enum StatusCode(statusType: StatusType):
   case PARTIAL_QUERY_COLUMN_MISSING      extends StatusCode(StatusType.UserError)
   case PARTIAL_QUERY_INVALID_BODY        extends StatusCode(StatusType.UserError)
   case RECURSIVE_MODEL_REFERENCE         extends StatusCode(StatusType.UserError)
+  case CYCLIC_SYMBOL_REFERENCE           extends StatusCode(StatusType.UserError)
   case MODEL_EXPANSION_LIMIT_EXCEEDED    extends StatusCode(StatusType.UserError)
   case RECURSIVE_FUNCTION_REFERENCE      extends StatusCode(StatusType.UserError)
   case RECURSIVE_PARTIAL_QUERY_REFERENCE extends StatusCode(StatusType.UserError)

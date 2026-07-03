@@ -42,19 +42,21 @@ enum SymbolType:
   case FlowDef
 
 /**
-  * SymbolInfo is the result of resolving a name (Symbol) during the compilation phase.
+  * SymbolInfo is the result of resolving a name (Symbol) during the compilation phase. SymbolInfo
+  * is immutable: replacing the resolution result of a symbol (e.g., re-defining a model in REPL)
+  * assigns a new SymbolInfo to the Symbol instead of mutating the existing one
   *
   * @param symbol
   * @param owner
   * @param name
-  * @param dataType
+  * @param tpe
   */
 class SymbolInfo(
     val symbolType: SymbolType,
     val owner: Symbol,
     val symbol: Symbol,
     val name: Name,
-    private var _tpe: Type
+    val tpe: Type
 ):
   override def toString(): String =
     if owner.isDefined then
@@ -62,14 +64,11 @@ class SymbolInfo(
     else
       s"[${symbolType}] ${name}: ${tpe}"
 
-  private var _declScope: Scope | Null = null
-  def declScope: Scope                 = _declScope
-  def declScope_=(s: Scope): Unit      = _declScope = s
-
-  def tpe: Type                    = _tpe
-  def withType(t: Type): this.type =
-    _tpe = t
-    this
+  /**
+    * The scope of the symbols declared inside this symbol (e.g., models in a package, methods in a
+    * type definition)
+    */
+  def declScope: Scope = Scope.NoScope
 
   def dataType =
     tpe match
@@ -77,8 +76,6 @@ class SymbolInfo(
         t
       case _ =>
         DataType.UnknownType
-
-  def withDataType(d: DataType): this.type = withType(d)
 
   def findMember(name: Name): Symbol = NoSymbol
   def members: List[Symbol]          = Nil
@@ -93,7 +90,7 @@ class PackageSymbolInfo(
     override val tpe: PackageType,
     packageScope: Scope
 ) extends SymbolInfo(SymbolType.Package, owner, symbol, name, tpe):
-  this.declScope = packageScope
+  override def declScope: Scope = packageScope
 
   override def toString: String =
     if owner.isNoSymbol then
@@ -119,7 +116,7 @@ class TypeSymbolInfo(
     override val typeParams: Seq[DataType],
     typeScope: Scope
 ) extends SymbolInfo(SymbolType.TypeDef, symbol, owner, name, tpe):
-  this.declScope = typeScope
+  override def declScope: Scope = typeScope
 
   override def toString: String               = s"${owner}.${name}: ${dataType}"
   override def findMember(name: Name): Symbol = typeScope.lookupSymbol(name).getOrElse(NoSymbol)
