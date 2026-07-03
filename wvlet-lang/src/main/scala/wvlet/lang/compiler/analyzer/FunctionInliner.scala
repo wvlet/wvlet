@@ -83,10 +83,18 @@ object FunctionInliner extends ContextLogSupport:
           if qual.dataType.isResolved then
             qual.dataType
           else
-            DataType.AnyType
+            // The new Typer assigns types to the tpe field instead of rewriting nodes with
+            // resolved dataTypes, so fall back to tpe before giving up
+            qual.tpe match
+              case dt: DataType if dt.isResolved =>
+                dt
+              case _ =>
+                DataType.AnyType
 
-        val m: Option[MethodSymbolInfo] = lookupType(qualType.typeName, context)
-          .map { sym =>
+        def memberOf(baseType: DataType): Option[MethodSymbolInfo] = lookupType(
+          baseType.typeName,
+          context
+        ).map { sym =>
             // TODO: Resolve member with different arg types
             sym.symbolInfo.findMember(methodName).symbolInfo
           }
@@ -108,7 +116,7 @@ object FunctionInliner extends ContextLogSupport:
               case Some(ownerType: TypeSymbolInfo) =>
                 val typeMap: Map[TypeName, DataType] = ownerType
                   .typeParams
-                  .zipAll(qualType.typeParams, UnknownType, UnknownType)
+                  .zipAll(baseType.typeParams, UnknownType, UnknownType)
                   .collect { case (t1: TypeParameter, t2) =>
                     t1.typeName -> t2
                   }
@@ -123,9 +131,19 @@ object FunctionInliner extends ContextLogSupport:
                 mi
           }
           .map { m =>
-            context.logTrace(s"Resolved method ${qualType}.${methodName} => ${m}")
+            context.logTrace(s"Resolved method ${baseType}.${methodName} => ${m}")
             m
           }
+
+        // Retry with the any type when the method is not a member of the qualifier's type: with
+        // an unresolved qualifier this lookup has always consulted the any type, so typing the
+        // qualifier (as the new Typer does) must not narrow what could be resolved before
+        val m: Option[MethodSymbolInfo] = memberOf(qualType).orElse {
+          if qualType != DataType.AnyType then
+            memberOf(DataType.AnyType)
+          else
+            None
+        }
 
         if m.isEmpty then
           context.logTrace(s"Failed to find function `${methodName}` for ${qual}:${qual.dataType}")

@@ -17,10 +17,13 @@ import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.compiler.Context
 import wvlet.lang.compiler.Name
 import wvlet.lang.compiler.Phase
+import wvlet.lang.compiler.analyzer.AggregationResolver
 import wvlet.lang.compiler.analyzer.FunctionInliner
 import wvlet.lang.compiler.analyzer.RelationRefResolver
 import wvlet.lang.model.expr.DotRef
 import wvlet.lang.model.expr.FunctionApply
+import wvlet.lang.model.expr.Identifier
+import wvlet.lang.model.expr.ParenthesizedExpression
 import wvlet.lang.model.DataType
 import wvlet.lang.model.DataType.NamedType
 import wvlet.lang.model.DataType.SchemaType
@@ -42,6 +45,25 @@ import wvlet.uni.log.LogSupport
   *   2. Type: Bottom-up traversal with context-aware scope management
   */
 object Typer extends Phase("typer") with LogSupport:
+
+  /**
+    * The maximum number of function-resolution rounds per relation. Each round resolves at least
+    * one link of a chained method call, so chains longer than this are exceedingly unlikely
+    */
+  private inline val maxFunctionResolutionRounds = 10
+
+  /**
+    * Returns true if the expression already carries a resolved data type in either the dataType or
+    * tpe field. An ErrorType in tpe does not count, so a later pass may still resolve it
+    */
+  private def hasResolvedType(e: Expression): Boolean =
+    e.dataType.isResolved || (
+      e.tpe match
+        case dt: DataType if dt.isResolved =>
+          true
+        case _ =>
+          false
+    )
 
   override def run(unit: CompilationUnit, context: Context): CompilationUnit =
     trace(s"Running new typer on ${unit.sourceFile.fileName}")
@@ -137,6 +159,11 @@ object Typer extends Phase("typer") with LogSupport:
               case t: TypeDef =>
                 t.symbol.tree = t
               case _ =>
+            // Re-point relation alias symbols (select as ...) to the rewritten child relation so
+            // later references expand to the resolved query
+            typedStmt.traverse { case s: SelectAsAlias =>
+              s.symbol.tree = s.child
+            }
             typedStmt
           }
         val typedPackage = p.copy(statements = typedStatements)
@@ -201,25 +228,86 @@ object Typer extends Phase("typer") with LogSupport:
           .asInstanceOf[Relation]
         // Type the relation so that function qualifiers get concrete types
         typeRelation(pqInlined)
-        // Inline function applications, then no-arg member references (e.g. obj.method). These are
-        // separate passes: mixing them in one traversal would inline a member call's base DotRef
-        // before its enclosing FunctionApply and drop the arguments
-        val fnInlined = pqInlined
-          .transformUpExpressions { case f: FunctionApply =>
-            FunctionInliner.resolveFunctionApply(f)
-          }
-          .transformUpExpressions { case d: DotRef =>
-            FunctionInliner.findFunctionDef(d) match
-              case Some(m) =>
-                FunctionInliner.inlineFunctionBody(d, m, Nil)
-              case None =>
-                d
-          }
-          .asInstanceOf[Relation]
-        // Re-type so the inlined bodies get tpe assigned
-        if !(fnInlined eq pqInlined) then
-          typeRelation(fnInlined)
-        fnInlined
+        // Inline function calls and aggregation expressions. Chained method calls (e.g.
+        // x.to_double.round(1)) resolve one link per round, so iterate to a fixpoint
+        var current  = pqInlined
+        var continue = true
+        var rounds   = 0
+        while continue && rounds < maxFunctionResolutionRounds do
+          rounds += 1
+          // Type identifiers, parentheses, and method references from each relation's input
+          // type, so an enclosing call can resolve its qualifier type without inlining the
+          // reference (which would drop call arguments). Typing mutates the tpe field in place
+          // and every case returns the same node instance, so the tree structure is unchanged;
+          // the result is reassigned for safety should a case ever start rebuilding nodes
+          current = current
+            .transformUp { case rel: Relation =>
+              val inputType = rel.inputRelationType
+              rel
+                .childExpressions
+                .foreach { root =>
+                  root.transformUpExpression {
+                    case i: Identifier =>
+                      if !hasResolvedType(i) then
+                        inputType
+                          .find(_.name == i.fullName)
+                          .foreach { attr =>
+                            i.tpe = attr.dataType
+                          }
+                      i
+                    case p: ParenthesizedExpression =>
+                      // Propagate the child type through parentheses
+                      if !hasResolvedType(p) then
+                        if p.child.dataType.isResolved then
+                          p.tpe = p.child.dataType
+                        else if p.child.isTyped then
+                          p.tpe = p.child.tpe
+                      p
+                    case d: DotRef =>
+                      if !hasResolvedType(d) then
+                        FunctionInliner
+                          .findFunctionDef(d)
+                          .foreach { m =>
+                            if m.ft.returnType.isResolved then
+                              d.tpe = m.ft.returnType
+                          }
+                      d
+                  }
+                }
+              rel
+            }
+            .asInstanceOf[Relation]
+          // Inline function applications, then bare member references. Only no-arg methods are
+          // inlined from a bare DotRef: a DotRef with declared arguments is the base of an
+          // enclosing FunctionApply that must bind them first (possibly in a later round)
+          val fnInlined = current
+            .transformUpExpressions { case f: FunctionApply =>
+              FunctionInliner.resolveFunctionApply(f)
+            }
+            .transformUpExpressions { case d: DotRef =>
+              FunctionInliner.findFunctionDef(d) match
+                case Some(m) if m.ft.args.isEmpty =>
+                  FunctionInliner.inlineFunctionBody(d, m, Nil)
+                case _ =>
+                  d
+            }
+            .asInstanceOf[Relation]
+          // Inline aggregation functions applied via dot syntax (e.g. expr.sum) and expand
+          // grouping-key indexes (_1, _2, ...) in select clauses
+          val aggResolved = AggregationResolver
+            .resolveNoGroupByAggregations(fnInlined)
+            .transformUp { case p: AggSelect =>
+              AggregationResolver.resolveGroupingKeyIndexes(p)
+            }
+            .asInstanceOf[Relation]
+          if aggResolved eq current then
+            continue = false
+          else
+            // Re-type so the inlined bodies get tpe assigned for the next round
+            typeRelation(aggResolved)
+            current = aggResolved
+        end while
+        current
       // Default: bottom-up typing for other nodes
       case other =>
         val withTypedChildren = other.mapChildren(typePlan)
