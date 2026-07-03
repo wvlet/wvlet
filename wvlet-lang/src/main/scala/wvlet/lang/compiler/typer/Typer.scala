@@ -80,7 +80,8 @@ object Typer extends Phase("typer") with LogSupport:
     // Phase 2: Type the plan bottom-up with context-aware scope management
     val typed = typePlan(unit.unresolvedPlan)(using preScanCtx)
 
-    // Report any typing errors
+    // Attach the collected type errors to the unit as diagnostics and report them
+    unit.typerErrors = preScanCtx.typerErrors
     if preScanCtx.hasTyperErrors then
       warn(s"Typing errors in ${unit.sourceFile.fileName}:")
       preScanCtx
@@ -439,8 +440,22 @@ object Typer extends Phase("typer") with LogSupport:
         n.name.tpe = n.relationType
       case t: TableRef if t.relationType.isResolved =>
         t.name.tpe = t.relationType
+      case tf: TableFunctionCall if !tf.relationType.isResolved =>
+        // Table functions with a derivable schema, e.g. unnest(array(T)) yields one column
+        // of the element type T
+        BuiltinFunctions
+          .returnTypeOf(tf.name.fullName, tf.args)
+          .foreach { elem =>
+            tf.tpe = SchemaType(
+              parent = None,
+              typeName = Name.typeName(tf.name.leafName),
+              columnTypes = List(NamedType(Name.termName(tf.name.leafName), elem))
+            )
+          }
       case _ =>
         ()
+
+  end typeRelationNode
 
   /**
     * A single bottom-up rewrite that resolves table/model/file references into concrete scan nodes,

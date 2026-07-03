@@ -177,7 +177,7 @@ case class Context(
   /**
     * Add a typing error
     */
-  def addTyperError(err: TyperError): Context = copy(typerState = typerState.addError(err))
+  def addTyperError(err: TyperError): Unit = typerState.addError(err)
 
   /**
     * Check if there are any typing errors

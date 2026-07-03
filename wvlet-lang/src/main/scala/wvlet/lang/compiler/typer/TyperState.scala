@@ -28,7 +28,8 @@ import wvlet.lang.model.Type
   */
 case class TyperState(
     inputType: RelationType = EmptyRelationType,
-    private val errors: List[TyperError] = Nil
+    private val errors: scala.collection.mutable.ListBuffer[TyperError] =
+      scala.collection.mutable.ListBuffer.empty
 ):
 
   /**
@@ -47,9 +48,14 @@ case class TyperState(
         this
 
   /**
-    * Add a typing error
+    * Report a typing error. The error buffer is mutable and shared across the states derived from
+    * this one (following the reporter of Scala 3's TyperState), so errors reported deep inside
+    * typing rules surface at the compilation unit level. Repeated typing rounds report the same
+    * error again, so duplicates are dropped
     */
-  def addError(err: TyperError): TyperState = copy(errors = err :: errors)
+  def addError(err: TyperError): Unit =
+    if !errors.exists(e => e.span == err.span && e.message == err.message) then
+      errors += err
 
   /**
     * Check if there are any typing errors
@@ -59,7 +65,7 @@ case class TyperState(
   /**
     * Get errors in order they were added
     */
-  def errorsInOrder: List[TyperError] = errors.reverse
+  def errorsInOrder: List[TyperError] = errors.toList
 
 end TyperState
 
@@ -67,4 +73,4 @@ object TyperState:
   /**
     * Empty typer state with no input type and no errors
     */
-  val empty: TyperState = TyperState()
+  def empty: TyperState = TyperState()

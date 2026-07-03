@@ -53,6 +53,9 @@ case class CompilationUnit(sourceFile: SourceFile, isPreset: Boolean = false)
 
   var lastError: Option[Throwable] = None
 
+  // Type errors collected by the Typer phase (reported as diagnostics, not compile failures)
+  var typerErrors: List[wvlet.lang.compiler.typer.TyperError] = Nil
+
   // Plans generated for subscriptions
   var subscriptionPlans: List[LogicalPlan] = List.empty[LogicalPlan]
 
