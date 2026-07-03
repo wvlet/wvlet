@@ -182,6 +182,11 @@ object TyperRules:
           // Operands not typed yet - defer
           case (_, NoType, _) | (_, _, NoType) =>
             NoType
+          // Defer when either operand type is not fully resolved yet
+          case (_, l: DataType, _) if !l.isResolved =>
+            NoType
+          case (_, _, r: DataType) if !r.isResolved =>
+            NoType
 
           // Propagate operand errors
           case (_, e: ErrorType, _) =>
@@ -191,7 +196,6 @@ object TyperRules:
 
           // Type error between two resolved, incompatible operand types
           case _ =>
-            ctx.addTyperError(TypeMismatch(leftTpe, rightTpe, op))
             ErrorType(s"Type error in ${op.exprType}: $leftTpe ${op.exprType} $rightTpe")
 
       op
@@ -231,6 +235,10 @@ object TyperRules:
           // NoType means untyped yet - allow it
           case (NoType, _) | (_, NoType) =>
             BooleanType
+          // Defer when either operand type is not fully resolved yet (e.g. unknown columns,
+          // unbound generic type parameters, or pre-inlining aggregation shorthands)
+          case (l, r) if !l.isResolved || !r.isResolved =>
+            BooleanType
           // Propagate errors
           case (e: ErrorType, _) =>
             e
@@ -238,7 +246,6 @@ object TyperRules:
             e
           // Type mismatch
           case _ =>
-            ctx.addTyperError(TypeMismatch(leftTpe, rightTpe, op))
             ErrorType(s"Cannot compare $leftTpe < $rightTpe: incompatible types")
       op
 
@@ -258,12 +265,15 @@ object TyperRules:
             BooleanType
           case (NoType, _) | (_, NoType) =>
             BooleanType
+          // Defer when either operand type is not fully resolved yet (e.g. unknown columns,
+          // unbound generic type parameters, or pre-inlining aggregation shorthands)
+          case (l, r) if !l.isResolved || !r.isResolved =>
+            BooleanType
           case (e: ErrorType, _) =>
             e
           case (_, e: ErrorType) =>
             e
           case _ =>
-            ctx.addTyperError(TypeMismatch(leftTpe, rightTpe, op))
             ErrorType(s"Cannot compare $leftTpe <= $rightTpe: incompatible types")
       op
 
@@ -283,12 +293,15 @@ object TyperRules:
             BooleanType
           case (NoType, _) | (_, NoType) =>
             BooleanType
+          // Defer when either operand type is not fully resolved yet (e.g. unknown columns,
+          // unbound generic type parameters, or pre-inlining aggregation shorthands)
+          case (l, r) if !l.isResolved || !r.isResolved =>
+            BooleanType
           case (e: ErrorType, _) =>
             e
           case (_, e: ErrorType) =>
             e
           case _ =>
-            ctx.addTyperError(TypeMismatch(leftTpe, rightTpe, op))
             ErrorType(s"Cannot compare $leftTpe > $rightTpe: incompatible types")
       op
 
@@ -308,12 +321,15 @@ object TyperRules:
             BooleanType
           case (NoType, _) | (_, NoType) =>
             BooleanType
+          // Defer when either operand type is not fully resolved yet (e.g. unknown columns,
+          // unbound generic type parameters, or pre-inlining aggregation shorthands)
+          case (l, r) if !l.isResolved || !r.isResolved =>
+            BooleanType
           case (e: ErrorType, _) =>
             e
           case (_, e: ErrorType) =>
             e
           case _ =>
-            ctx.addTyperError(TypeMismatch(leftTpe, rightTpe, op))
             ErrorType(s"Cannot compare $leftTpe >= $rightTpe: incompatible types")
       op
 
@@ -329,12 +345,15 @@ object TyperRules:
           case (NoType, _) | (_, NoType) =>
             // Operands not typed yet - defer
             NoType
+          case (l: DataType, _) if !l.isResolved =>
+            NoType
+          case (_, r: DataType) if !r.isResolved =>
+            NoType
           case (e: ErrorType, _) =>
             e
           case (_, e: ErrorType) =>
             e
           case _ =>
-            ctx.addTyperError(TypeMismatch(BooleanType, leftTpe, op))
             ErrorType(s"Type error in AND: expected boolean operands, got $leftTpe AND $rightTpe")
 
       op
@@ -350,12 +369,15 @@ object TyperRules:
           case (NoType, _) | (_, NoType) =>
             // Operands not typed yet - defer
             NoType
+          case (l: DataType, _) if !l.isResolved =>
+            NoType
+          case (_, r: DataType) if !r.isResolved =>
+            NoType
           case (e: ErrorType, _) =>
             e
           case (_, e: ErrorType) =>
             e
           case _ =>
-            ctx.addTyperError(TypeMismatch(BooleanType, leftTpe, op))
             ErrorType(s"Type error in OR: expected boolean operands, got $leftTpe OR $rightTpe")
 
       op
