@@ -414,7 +414,9 @@ object TyperRules:
     case funcApply: FunctionApply =>
       // A call whose base is a plain function name passed through to the database engine
       // (e.g. count(*), regexp_matches(...)) is typed from the builtin signature table. The
-      // base name itself is typed as a function type of the builtin signature
+      // base name itself is typed as a function type of the builtin signature. Method-style
+      // calls of builtins (e.g. x.lower()) have a DotRef base and are looked up by the member
+      // name
       def builtinReturnType: Option[DataType] =
         funcApply.base match
           case id: Identifier =>
@@ -424,6 +426,8 @@ object TyperRules:
                 id.tpe = FunctionType(id.toTermName, Nil, ret, Nil)
                 ret
               }
+          case d: DotRef =>
+            BuiltinFunctions.returnTypeOf(d.name.leafName, funcApply.args)
           case _ =>
             None
 
@@ -431,6 +435,10 @@ object TyperRules:
       funcApply.base.tpe match
         case ft: Type.FunctionType =>
           funcApply.tpe = ft.returnType
+        case dt: DataType if dt.isResolved && funcApply.base.isInstanceOf[DotRef] =>
+          // A method reference typed by dotRefRules carries its declared return type, which
+          // is also the type of applying it
+          funcApply.tpe = dt
         case NoType =>
           // Base not typed yet
           builtinReturnType.foreach { t =>
