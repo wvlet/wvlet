@@ -431,6 +431,16 @@ object Typer extends Phase("typer") with LogSupport:
             typeExpression(expr)(using exprCtx)
           }
     rel.tpe = rel.relationType
+    // Type name expressions of aliases and local references as the relation type they denote
+    rel match
+      case a: AliasedRelation if a.relationType.isResolved =>
+        a.alias.tpe = a.relationType
+      case n: NamedRelation if n.relationType.isResolved =>
+        n.name.tpe = n.relationType
+      case t: TableRef if t.relationType.isResolved =>
+        t.name.tpe = t.relationType
+      case _ =>
+        ()
 
   /**
     * A single bottom-up rewrite that resolves table/model/file references into concrete scan nodes,

@@ -412,19 +412,38 @@ object TyperRules:
     */
   def functionApplyRules(using ctx: Context): PartialFunction[Expression, Expression] = {
     case funcApply: FunctionApply =>
+      // A call whose base is a plain function name passed through to the database engine
+      // (e.g. count(*), regexp_matches(...)) is typed from the builtin signature table. The
+      // base name itself is typed as a function type of the builtin signature
+      def builtinReturnType: Option[DataType] =
+        funcApply.base match
+          case id: Identifier =>
+            BuiltinFunctions
+              .returnTypeOf(id.fullName, funcApply.args)
+              .map { ret =>
+                id.tpe = FunctionType(id.toTermName, Nil, ret, Nil)
+                ret
+              }
+          case _ =>
+            None
+
       // The type of a function application is the function's return type
       funcApply.base.tpe match
         case ft: Type.FunctionType =>
           funcApply.tpe = ft.returnType
         case NoType =>
           // Base not typed yet
-          funcApply.tpe = NoType
+          builtinReturnType.foreach { t =>
+            funcApply.tpe = t
+          }
         case et: ErrorType =>
-          // Propagate error from base
-          funcApply.tpe = et
+          // Propagate error from base unless this is a known builtin function
+          funcApply.tpe = builtinReturnType.getOrElse(et)
         case other =>
           // Not a function type
-          funcApply.tpe = ErrorType(s"Cannot apply non-function type ${other}")
+          funcApply.tpe = builtinReturnType.getOrElse(
+            ErrorType(s"Cannot apply non-function type ${other}")
+          )
       funcApply
   }
 
