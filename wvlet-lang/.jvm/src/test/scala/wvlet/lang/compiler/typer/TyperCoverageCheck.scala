@@ -43,14 +43,9 @@ class TyperCoverageCheck extends UniTest:
     def relationCoverage: Double = relationResolved.toDouble / relationTotal.max(1)
     def exprCoverage: Double     = exprTyped.toDouble / exprTotal.max(1)
 
-  private def isTypedExpr(e: Expression): Boolean =
-    e.dataType.isResolved || (
-      e.tpe match
-        case dt: DataType =>
-          dt.isResolved
-        case _ =>
-          false
-    )
+  // An expression counts as typed when it carries any resolved type: a DataType for value
+  // expressions, or e.g. a FunctionType for references to functions
+  private def isTypedExpr(e: Expression): Boolean = e.dataType.isResolved || e.tpe.isResolved
 
   private def measure(plans: Seq[LogicalPlan]): Coverage =
     var relationTotal    = 0
@@ -142,9 +137,9 @@ class TyperCoverageCheck extends UniTest:
     info(s"top unresolved relations: ${top(c.unresolvedRelations, 10)}")
     info(s"top untyped expressions:  ${top(c.untypedExprs, 10)}")
 
-    // Ratchet (2026-07-03: 88.5% / 84.8%). Raise these as coverage improves toward 1.0
-    val minRelationCoverage = 0.87
-    val minExprCoverage     = 0.83
+    // Ratchet (2026-07-03: 89.6% / 86.8%). Raise these as coverage improves toward 1.0
+    val minRelationCoverage = 0.88
+    val minExprCoverage     = 0.85
     if c.relationCoverage < minRelationCoverage then
       fail(
         f"Relation type coverage regressed: ${c.relationCoverage *
