@@ -103,11 +103,12 @@ class TyperExecutionParityCheck extends UniTest:
     diffFiles.result().foreach(f => debug(s"[DIFF] ${f}"))
     crashFiles.result().foreach(f => debug(s"[CRASH] ${f}"))
 
-    // Current parity level (2026-07-02): ~84/102 measurable specs produce identical SQL (with a
+    // Current parity level (2026-07-02): ~98/102 measurable specs produce identical SQL (with a
     // one-spec allowance for shared-symbol-state flakiness across compiler runs in one JVM).
-    // Tighten as more TypeResolver behavior is ported
-    if same < 83 then
-      fail(s"Typer SQL parity regressed: same=${same} (expected >= 83)")
+    // Remaining diffs: chained aggregation methods (method_chain*, agg_col_type) and .wv file
+    // imports (read-wv). Tighten as more TypeResolver behavior is ported
+    if same < 96 then
+      fail(s"Typer SQL parity regressed: same=${same} (expected >= 96)")
     if newFailed > 0 then
       fail(s"Typer compilation crashes increased: newFailed=${newFailed} (expected 0)")
   }

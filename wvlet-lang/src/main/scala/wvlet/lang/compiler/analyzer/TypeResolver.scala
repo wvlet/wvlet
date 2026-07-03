@@ -338,38 +338,9 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
     * Resolve grouping key indexes _1, _2, .... in select clauses
     */
   private object resolveGroupingKeyIndexes extends RewriteRule:
-    // Find the first Aggregate node
-    private def findAggregate(r: Relation): Option[GroupBy] =
-      r match
-        case a: GroupBy =>
-          Some(a)
-        case f: FilteringRelation =>
-          findAggregate(f.child)
-        case p: Project =>
-          findAggregate(p.child)
-        case _ =>
-          None
-
     override def apply(context: Context): PlanRewriter = {
       case p: AggSelect if p.selectItems.exists(_.nameExpr.isGroupingKeyIndex) =>
-        findAggregate(p.child) match
-          case Some(agg) =>
-            p.transformChildExpressions {
-              case attr: SingleColumn if attr.nameExpr.isGroupingKeyIndex =>
-                val index = attr.nameExpr.fullName.stripPrefix("_").toInt - 1
-                if index >= agg.groupingKeys.length then
-                  throw StatusCode
-                    .SYNTAX_ERROR
-                    .newException(
-                      s"Invalid grouping key index: ${attr.nameExpr}",
-                      context.sourceLocationAt(attr.span)
-                    )
-
-                val referencedGroupingKey = agg.groupingKeys(index)
-                SingleColumn(referencedGroupingKey.name, expr = referencedGroupingKey, attr.span)
-            }
-          case None =>
-            p
+        AggregationResolver.resolveGroupingKeyIndexes(p)(using context)
     }
 
   end resolveGroupingKeyIndexes
@@ -549,44 +520,8 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
     * is applied like {{{(l_extendedprice * l_discount).sum}}}.
     */
   private object resolveNoGroupByAggregations extends RewriteRule:
-
-    private var aggregationFunctions: List[Symbol] = Nil
-
-    private def init(ctx: Context): Unit =
-      // TODO Support adding more methods to the array type
-      if aggregationFunctions.isEmpty then
-        aggregationFunctions = lookupType(Name.typeName("array"), ctx)
-          .map(_.symbolInfo)
-          .collect { case t: TypeSymbolInfo =>
-            t.members
-          }
-          .getOrElse(Nil)
-
-    private def resolveAggregationExpr(using
-        ctx: Context
-    ): PartialFunction[Expression, Expression] =
-      case e: ShouldExpr =>
-        // do not resolve aggregation expr in test expressions
-        e
-      case d: DotRef =>
-        val dd  = d.transformChildExpressions(resolveAggregationExpr)
-        val nme = dd.name.toTermName
-        aggregationFunctions
-          .find(_.name == nme)
-          .map(_.symbolInfo)
-          .collect { case m: MethodSymbolInfo =>
-            FunctionInliner.inlineFunctionBody(d, m, Nil)
-          }
-          .getOrElse(dd)
-      case other =>
-        other.transformChildExpressions(resolveAggregationExpr)
-    end resolveAggregationExpr
-
     override def apply(context: Context): PlanRewriter = { case q: Query =>
-      init(context)
-      q.transformUp { case s: GeneralSelection =>
-        s.transformChildExpressions(resolveAggregationExpr(using context))
-      }
+      AggregationResolver.resolveNoGroupByAggregations(q)(using context)
     }
 
   end resolveNoGroupByAggregations
