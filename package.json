@@ -21,7 +21,7 @@
   },
   "devDependencies": {
     "@rollup/plugin-replace": "^6.0.3",
-    "autoprefixer": "^10.4.27",
+    "autoprefixer": "^10.5.2",
     "esbuild": "^0.28.1",
     "jsdom": "29.1.1",
     "postcss": "^8.5.15",
