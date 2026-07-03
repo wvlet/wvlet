@@ -36,6 +36,9 @@ class TyperExecutionParityCheck extends UniTest:
   private val profile             = Profile.defaultDuckDBProfile
   private val dbConnectorProvider = DBConnectorProvider(workEnv)
   private val queryExecutor       = QueryExecutor(dbConnectorProvider, profile, workEnv)
+  // Resolve the catalog once and share it across all compiler instances to avoid querying the
+  // database connector for every spec file
+  private lazy val catalog = queryExecutor.getDBConnector(profile).getCatalog("memory", "main")
 
   override def afterAll: Unit =
     queryExecutor.close()
@@ -48,7 +51,7 @@ class TyperExecutionParityCheck extends UniTest:
         Compiler.withNewTyper(options)
       else
         Compiler(options)
-    compiler.setDefaultCatalog(queryExecutor.getDBConnector(profile).getCatalog("memory", "main"))
+    compiler.setDefaultCatalog(catalog)
     compiler
 
   private def generateSQL(compiler: Compiler, path: String): Either[String, String] =

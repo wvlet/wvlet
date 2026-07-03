@@ -78,7 +78,11 @@ object RelationRefResolver extends ContextLogSupport:
             sym.symbolInfo match
               case relAlias: RelationAliasSymbolInfo =>
                 // Replace alias to the referenced query
-                sym.tree.asInstanceOf[Relation]
+                sym.tree match
+                  case r: Relation =>
+                    r
+                  case _ =>
+                    ref
               case _ =>
                 ref
       case None =>
