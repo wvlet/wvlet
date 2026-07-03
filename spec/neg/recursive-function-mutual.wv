@@ -1,0 +1,6 @@
+-- Mutually recursive function references must be reported as a user error,
+-- not left unresolved or looping forever
+def fun_a(x: int): int = fun_b(x)
+def fun_b(x: int): int = fun_a(x)
+
+select fun_a(1)

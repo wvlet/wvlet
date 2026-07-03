@@ -1,0 +1,6 @@
+-- Mutually recursive partial query references must be reported as a user
+-- error, not looping forever
+def pq_a = where age >= 18 | pq_b
+def pq_b = where age <= 60 | pq_a
+
+from 'person.json' | pq_a

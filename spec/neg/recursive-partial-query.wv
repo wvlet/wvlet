@@ -1,0 +1,5 @@
+-- A self-recursive partial query reference must be reported as a user error,
+-- not looping forever
+def rec_pq = where age >= 18 | rec_pq
+
+from 'person.json' | rec_pq

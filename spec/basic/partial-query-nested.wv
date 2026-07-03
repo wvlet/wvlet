@@ -1,0 +1,8 @@
+-- Partial query bodies may apply other partial queries; parameters must be
+-- passed through to the nested partial query
+def pq_older_than(min_age: int) = where age > min_age
+def pq_adult_names(bound: int) = where name is not null | pq_older_than(bound) | select name
+
+from 'person.json' | pq_adult_names(18)
+test _.columns should be ["name"]
+test _.size should be 2
