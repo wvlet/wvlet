@@ -70,17 +70,23 @@ case class GlobalContext(compilerOptions: CompilerOptions):
 
   // Contexts sorted by source file name, cached until a new compilation unit is loaded, so
   // that global symbol lookup stays fast while scanning units in a deterministic order
-  private val sortedContextCache =
-    new java.util.concurrent.atomic.AtomicReference[(Int, List[Context])]((0, Nil))
+  private val sortedContextCache = java
+    .util
+    .concurrent
+    .atomic
+    .AtomicReference[(Int, List[Context])]((0, Nil))
 
   def getAllContextsSorted: List[Context] =
-    val size   = contextTable.size
     val cached = sortedContextCache.get()
-    if cached._1 == size then
+    if cached._1 == contextTable.size then
       cached._2
     else
-      val sorted = contextTable.values.toList.sortBy(_.compilationUnit.sourceFile.fileName)
-      sortedContextCache.set((size, sorted))
+      // Key the cache by the size of the snapshot that was actually sorted, so a concurrent
+      // insertion between reading the size and copying the values cannot leave the cache
+      // permanently inconsistent
+      val snapshot = contextTable.values.toList
+      val sorted   = snapshot.sortBy(_.compilationUnit.sourceFile.fileName)
+      sortedContextCache.set((snapshot.size, sorted))
       sorted
 
   // Globally available definitions (Name and Symbols)
