@@ -89,6 +89,9 @@ object Typer extends Phase("typer") with LogSupport:
         .foreach { err =>
           warn(s"  ${err.message} at ${err.sourceLocation(using context)}")
         }
+      if context.global.compilerOptions.failOnTypeErrors then
+        val first = preScanCtx.typerErrors.head
+        throw StatusCode.TYPE_ERROR.newException(first.message, first.sourceLocation(using context))
 
     // Store the typed plan in CompilationUnit
     unit.resolvedPlan = typed

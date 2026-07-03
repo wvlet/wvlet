@@ -38,10 +38,34 @@ object TyperRules:
   /**
     * All typing rules for expressions
     */
-  def exprRules(using ctx: Context): PartialFunction[Expression, Expression] =
+  def exprRules(using ctx: Context): PartialFunction[Expression, Expression] = (
     literalRules orElse identifierRules orElse binaryOpRules orElse castRules orElse
       caseExprRules orElse interpolatedStringRules orElse parenRules orElse dotRefRules orElse
-      functionApplyRules
+      functionApplyRules orElse materializeStructuralTypeRules
+  ) andThen materializeStructuralType
+
+  /**
+    * Record a structurally computed dataType in the tpe field so that tpe becomes the
+    * authoritative, per-node type record (the first step of unifying the two fields, #71 / issue
+    * #392). Applies to nodes with a structural dataType override (e.g. SingleColumn delegating to
+    * its expression) that no dedicated typing rule covers yet
+    */
+  private def materializeStructuralType(e: Expression): Expression =
+    if !e.isTyped then
+      val dt = e.dataType
+      if dt.isResolved then
+        e.tpe = dt
+    e
+
+  /**
+    * Catch-all rule so that the materialization above runs for expression classes that no dedicated
+    * typing rule matches
+    */
+  private def materializeStructuralTypeRules(using
+      ctx: Context
+  ): PartialFunction[Expression, Expression] = { case e: Expression =>
+    e
+  }
 
   /**
     * All typing rules for relations. Sets tpe field from relationType.
