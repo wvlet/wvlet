@@ -442,9 +442,12 @@ object GenSQL extends Phase("generate-sql"):
             newCtx.scope.add(argName, argSym)
           }
 
-        // Substitute the model arguments in the model body, and expand nested model references
+        // Resolve the model body first so that nested model references are concrete ModelScans
+        // regardless of how far the defining unit was compiled, then substitute the model
+        // arguments and expand those nested references
         // TODO: How to propagate comments in the model Query body?
-        expandRelation(md.child.body)(using newCtx)
+        val resolvedBody = Typer.resolveRelation(md.child.body)(using newCtx)
+        expandRelation(resolvedBody)(using newCtx)
       case other =>
         warn(s"Unknown model tree for ${m.name}: ${other}")
         m

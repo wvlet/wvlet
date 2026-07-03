@@ -1098,6 +1098,12 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
           )
         )
         selectAll(lateralViewExpr, block)
+      case m: ModelScan =>
+        // An unexpanded model reference must not reach the generic fallback below, which would
+        // re-dispatch the same leaf node forever. Print the model name as a table reference;
+        // executing the SQL then reports a clear missing-table error
+        warn(s"Unexpanded model reference in SQL generation: ${m.name.fullName}")
+        selectAll(text(m.name.fullName), block)
       case r: Relation =>
         selectExpr(
           // Start a new nested SQLBlock
