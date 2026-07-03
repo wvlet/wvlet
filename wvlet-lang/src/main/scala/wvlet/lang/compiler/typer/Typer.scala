@@ -21,6 +21,8 @@ import wvlet.lang.compiler.Phase
 import wvlet.lang.compiler.analyzer.AggregationResolver
 import wvlet.lang.compiler.analyzer.FunctionInliner
 import wvlet.lang.compiler.analyzer.RelationRefResolver
+import wvlet.lang.model.expr.ArithmeticBinaryExpr
+import wvlet.lang.model.expr.ConditionalExpression
 import wvlet.lang.model.expr.ContextInputRef
 import wvlet.lang.model.expr.DotRef
 import wvlet.lang.model.expr.FunctionApply
@@ -80,6 +82,11 @@ object Typer extends Phase("typer") with LogSupport:
     // Phase 2: Type the plan bottom-up with context-aware scope management
     val typed = typePlan(unit.unresolvedPlan)(using preScanCtx)
 
+    // Validate the settled tree: only mismatches that survived the typing fixpoint count,
+    // so intermediate states (pre-inlining aggregation shorthands, unresolved operands) do
+    // not produce false diagnostics
+    collectTypeMismatches(typed)(using preScanCtx)
+
     // Attach the collected type errors to the unit as diagnostics and report them
     unit.typerErrors = preScanCtx.typerErrors
     if preScanCtx.hasTyperErrors then
@@ -104,6 +111,47 @@ object Typer extends Phase("typer") with LogSupport:
     unit
 
   end run
+
+  /**
+    * Returns true for a concrete scalar SQL type. Type-mismatch diagnostics only fire when both
+    * operands are concrete scalars: aggregation contexts type their columns as virtual arrays by
+    * design, and unbound generic parameters can slip through isResolved, so anything beyond plain
+    * scalars would produce false diagnostics
+    */
+  private def isConcreteScalar(t: DataType): Boolean =
+    t match
+      case DataType.IntType | DataType.LongType | DataType.FloatType | DataType.DoubleType |
+          DataType.StringType | DataType.BooleanType | DataType.NullType | DataType.JsonType |
+          DataType.DateType =>
+        true
+      case d: DataType.DecimalType =>
+        d.isResolved
+      case t: DataType.TimestampType =>
+        true
+      case _ =>
+        false
+
+  /**
+    * Report type mismatches remaining in the fully typed tree. A binary operation whose result type
+    * is an ErrorType while both operand types are concrete scalars is a genuine user error; error
+    * results over unresolved or virtual operand types are deferred states, not diagnostics
+    */
+  private def collectTypeMismatches(plan: LogicalPlan)(using ctx: Context): Unit = plan
+    .traverseExpressions {
+      case op: ArithmeticBinaryExpr if op.tpe.isInstanceOf[Type.ErrorType] =>
+        if isConcreteScalar(op.left.dataType) && isConcreteScalar(op.right.dataType) then
+          ctx.addTyperError(TypeMismatch(op.left.dataType, op.right.dataType, op))
+      case op: ConditionalExpression if op.tpe.isInstanceOf[Type.ErrorType] =>
+        val types = op.children.map(_.dataType).toList
+        if types.nonEmpty && types.forall(isConcreteScalar) then
+          ctx.addTyperError(
+            TypeMismatch(
+              types.headOption.getOrElse(DataType.UnknownType),
+              types.lastOption.getOrElse(DataType.UnknownType),
+              op
+            )
+          )
+    }
 
   // ============================================
   // Phase 1: Pre-scanning for symbol registration

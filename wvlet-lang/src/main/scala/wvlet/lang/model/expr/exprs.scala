@@ -42,8 +42,7 @@ case class TypedExpression(child: Expression, targetType: DataType, span: Span)
     extends UnaryExpression:
   override def dataType: DataType = targetType
 
-case class TableAlias(name: NameExpr, alias: NameExpr, span: Span) extends LeafExpression:
-  override def dataType: DataType = DataType.UnknownType
+case class TableAlias(name: NameExpr, alias: NameExpr, span: Span) extends LeafExpression
 
 /**
   * variable name, function name, type name, etc. The name might have a qualifier.
@@ -352,7 +351,8 @@ case class ListExpr(exprs: List[Expression], span: Span) extends Expression:
 
 // Conditional expression
 sealed trait ConditionalExpression extends Expression:
-  override def dataType: DataType = DataType.BooleanType
+  // Statically known type, assigned at construction (issue #71)
+  this.tpe = DataType.BooleanType
 
 case class NoOp(span: Span) extends ConditionalExpression with LeafExpression
 
@@ -522,7 +522,8 @@ enum TestType(val expr: String):
 
 case class ShouldExpr(testType: TestType, left: Expression, right: Expression, span: Span)
     extends Expression:
-  override def dataType: DataType        = DataType.BooleanType
+  // Statically known type, assigned at construction (issue #71)
+  this.tpe = DataType.BooleanType
   override def children: Seq[Expression] = Seq(left, right)
 
 // Arithmetic expr
@@ -672,11 +673,13 @@ sealed trait Literal extends Expression:
   def unquotedValue: String = stringValue
 
 case class NullLiteral(span: Span) extends Literal with LeafExpression:
-  override def dataType: DataType  = DataType.NullType
+  // Statically known type, assigned at construction (issue #71)
+  this.tpe = DataType.NullType
   override def stringValue: String = "null"
 
 sealed trait BooleanLiteral extends Literal:
-  override def dataType: DataType = DataType.BooleanType
+  // Statically known type, assigned at construction (issue #71)
+  this.tpe = DataType.BooleanType
   def booleanValue: Boolean
 
 case class TrueLiteral(span: Span) extends BooleanLiteral with LeafExpression:
@@ -688,7 +691,8 @@ case class FalseLiteral(span: Span) extends BooleanLiteral with LeafExpression:
   override def booleanValue: Boolean = false
 
 sealed trait StringLiteral extends Literal with LeafExpression:
-  override def dataType: DataType = DataType.StringType
+  // Statically known type, assigned at construction (issue #71)
+  this.tpe = DataType.StringType
 
 object StringLiteral:
   def fromString(s: String, span: Span = NoSpan): StringLiteral =
@@ -728,19 +732,23 @@ case class TripleQuoteString(override val unquotedValue: String, span: Span) ext
     parts.mkString(" || ")
 
 case class StringPart(value: String, span: Span) extends Literal with LeafExpression:
-  override def dataType: DataType  = DataType.StringType
+  // Statically known type, assigned at construction (issue #71)
+  this.tpe = DataType.StringType
   override def stringValue: String = value
 
 case class JsonLiteral(value: String, span: Span) extends Literal with LeafExpression:
-  override def dataType: DataType  = DataType.JsonType
+  // Statically known type, assigned at construction (issue #71)
+  this.tpe = DataType.JsonType
   override def stringValue: String = value
 
 case class TimeLiteral(value: String, span: Span) extends Literal with LeafExpression:
-  override def dataType: DataType  = DataType.TimestampType(TimestampField.TIME, false)
+  // Statically known type, assigned at construction (issue #71)
+  this.tpe = DataType.TimestampType(TimestampField.TIME, false)
   override def stringValue: String = value
 
 case class TimestampLiteral(value: String, span: Span) extends Literal with LeafExpression:
-  override def dataType: DataType  = DataType.TimestampType(TimestampField.TIMESTAMP, false)
+  // Statically known type, assigned at construction (issue #71)
+  this.tpe = DataType.TimestampType(TimestampField.TIMESTAMP, false)
   override def stringValue: String = value
 
 case class DecimalLiteral(value: String, override val stringValue: String, span: Span)
@@ -761,20 +769,23 @@ case class DecimalLiteral(value: String, override val stringValue: String, span:
         )
 
 case class CharLiteral(value: String, span: Span) extends Literal with LeafExpression:
-  override def dataType: DataType  = DataType.CharType(None)
+  // Statically known type, assigned at construction (issue #71)
+  this.tpe = DataType.CharType(None)
   override def stringValue: String = value
 
 case class DoubleLiteral(value: Double, override val stringValue: String, span: Span)
     extends Literal
     with LeafExpression:
-  override def dataType: DataType = DataType.DoubleType
-  override def sqlExpr: String    = value.toString
+  // Statically known type, assigned at construction (issue #71)
+  this.tpe = DataType.DoubleType
+  override def sqlExpr: String = value.toString
 
 case class LongLiteral(value: Long, override val stringValue: String, span: Span)
     extends Literal
     with LeafExpression:
-  override def dataType: DataType = DataType.LongType
-  override def sqlExpr: String    = value.toString
+  // Statically known type, assigned at construction (issue #71)
+  this.tpe = DataType.LongType
+  override def sqlExpr: String = value.toString
 
 case class GenericLiteral(literalType: DataType, value: Literal, span: Span)
     extends Literal
@@ -990,8 +1001,7 @@ case class GroupingSets(groupingSets: List[List[GroupingKey]], span: Span) exten
     .flatMap(_.headOption)
     .getOrElse(NameExpr.EmptyName)
 
-  override def dataType: DataType = DataType.UnknownType
-  override def toString: String   =
+  override def toString: String =
     s"GROUPING SETS(${groupingSets.map(set => s"(${set.mkString(",")})").mkString(",")})"
 
   override lazy val resolved: Boolean    = groupingSets.forall(_.forall(_.resolved))
@@ -1001,7 +1011,6 @@ case class Cube(groupingKeys: List[GroupingKey], span: Span) extends GroupingKey
   override def name: NameExpr            = NameExpr.EmptyName
   override def index: Option[Int]        = None
   override def child: Expression         = groupingKeys.headOption.getOrElse(NameExpr.EmptyName)
-  override def dataType: DataType        = DataType.UnknownType
   override def toString: String          = s"CUBE(${groupingKeys.mkString(",")})"
   override lazy val resolved: Boolean    = groupingKeys.forall(_.resolved)
   override def children: Seq[Expression] = groupingKeys
@@ -1010,7 +1019,6 @@ case class Rollup(groupingKeys: List[GroupingKey], span: Span) extends GroupingK
   override def name: NameExpr            = NameExpr.EmptyName
   override def index: Option[Int]        = None
   override def child: Expression         = groupingKeys.headOption.getOrElse(NameExpr.EmptyName)
-  override def dataType: DataType        = DataType.UnknownType
   override def toString: String          = s"ROLLUP(${groupingKeys.mkString(",")})"
   override lazy val resolved: Boolean    = groupingKeys.forall(_.resolved)
   override def children: Seq[Expression] = groupingKeys
