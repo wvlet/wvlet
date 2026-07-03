@@ -290,8 +290,11 @@ case class Context(
       val importRefs                                    = importDefs.map(_.importRef.fullName)
       def isVisibleUnit(unit: CompilationUnit): Boolean =
         val pkg = unit.packageName
-        pkg.isEmpty || pkg == currentPackage || unit.isPreset ||
-        importRefs.exists(ref => ref == pkg || ref.startsWith(s"${pkg}."))
+        pkg.isEmpty || pkg == currentPackage || unit.isPreset || {
+          // Build the package prefix once per unit, not per import reference
+          val pkgPrefix = s"${pkg}."
+          importRefs.exists(ref => ref == pkg || ref.startsWith(pkgPrefix))
+        }
       for
         ctx <- global.getAllContextsSorted
         if foundSymbol.isEmpty && ctx.isGlobalContext && isVisibleUnit(ctx.compilationUnit)

@@ -106,6 +106,8 @@ case class CompilationUnit(sourceFile: SourceFile, isPreset: Boolean = false)
     finishedPhases = Set.empty
     lastError = None
     lastCompiledAt = None
+    // The unit will be re-parsed, so the package declaration may change
+    cachedPackageName = null
     this
 
   def text(span: Span): String =
