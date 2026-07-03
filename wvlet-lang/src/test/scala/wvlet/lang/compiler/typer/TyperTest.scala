@@ -54,12 +54,12 @@ class TyperTest extends UniTest:
   test("tpe field should be accessible on all SyntaxTreeNode instances"):
     val lit = LongLiteral(42, "42", Span.NoSpan)
 
-    // Should initially have NoType
-    lit.tpe.shouldBe(NoType)
+    // Literals carry their statically known type from construction (issue #71)
+    lit.tpe.shouldBe(LongType)
 
     // Should be settable
-    lit.tpe = LongType
-    lit.tpe.shouldBe(LongType)
+    lit.tpe = DataType.DoubleType
+    lit.tpe.shouldBe(DataType.DoubleType)
 
     // isTyped should work
     lit.isTyped.shouldBe(true)
