@@ -1,5 +1,26 @@
 -- Test task-oriented flow syntax (Phase 1)
 
+-- Table types referenced by the flows below, so that stage bodies type-check
+type users = {
+  name: string
+  segment_id: string
+}
+
+type source = {
+  id: string
+  value: string
+}
+
+type backup = {
+  id: string
+  value: string
+}
+
+type warehouse = {
+  id: string
+  value: string
+}
+
 -- Stage with config block
 flow ConfiguredStage = {
   stage extract with {

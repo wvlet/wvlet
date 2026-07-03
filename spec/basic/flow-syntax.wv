@@ -1,5 +1,21 @@
 -- Test flow syntax parsing (design only - execution support to be added later)
 
+-- Table types referenced by the flows below, so that stage bodies type-check
+type users = {
+  user_id: string
+  name: string
+  email: string
+  region: string
+  segment_id: string
+  age: int
+  active: boolean
+}
+
+type source = {
+  id: string
+  value: string
+}
+
 -- Basic flow definition with stages
 flow SimpleFlow = {
   stage entry = from users
