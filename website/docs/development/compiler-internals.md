@@ -81,11 +81,12 @@ Terminology:
 
 Symbols provide stable identifiers for definitions and queries across phases.
 
-- **Symbol**: unique ID + back‑pointer to the owning tree (set during labeling and updated on copies). See [Symbol.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/compiler/Symbol.scala).
-- **SymbolInfo**: phase‑mutable info attached to a symbol (see [SymbolInfo.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/compiler/Symbolnfo.scala)):
+- **Symbol**: unique ID + eagerly known `name` + back‑pointer to the defining tree (set during labeling and automatically re‑pointed when the defining node is copied during rewriting). See [Symbol.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/compiler/Symbol.scala).
+- **SymbolInfo**: an immutable description of the resolved symbol (see [SymbolInfo.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/compiler/Symbolnfo.scala)); re-resolving a symbol (e.g., re-defining a model in REPL) assigns a new SymbolInfo:
   - `symbolType`: `Package | Import | ModelDef | TypeDef | MethodDef | ValDef | Relation | Query | Expression`
   - `tpe` / `dataType`: the resolved `Type` (`DataType` for most symbols)
-  - scope/owner: used for name resolution
+  - scope/owner and `compilationUnit`: used for name resolution and locating the defining source
+- **SymbolCompleter**: computes a SymbolInfo on the first access (the lazy-completion design of the Scala 3 compiler's Namer). Model definitions without an explicit schema are completed on demand by typing the model body in its defining context (`ModelDefCompleter`), so cross‑unit references resolve independently of unit compilation order. `Symbol.symbolInfo` never returns null; cyclic completions raise `CYCLIC_SYMBOL_REFERENCE`, and resolution code can consult `Symbol.isCompleting` to defer recursive references (reported later as `RECURSIVE_MODEL_REFERENCE` with the full path).
 
 **Where symbols appear today**
 - Definitions: [PackageDef](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/plan.scala), [Import](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/plan.scala), [TypeDef](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/plan.scala), [TopLevelFunctionDef](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/plan.scala), [ModelDef](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/plan.scala), [ValDef](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/plan.scala), and the top‑level [Query](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/model/plan/relation.scala#L666) get symbols in [SymbolLabeler.scala](https://github.com/wvlet/wvlet/blob/main/wvlet-lang/src/main/scala/wvlet/lang/compiler/analyzer/SymbolLabeler.scala).
@@ -119,7 +120,7 @@ A few special cases:
 
 ### 2) Symbol Labeling
 `analyzer/SymbolLabeler.scala` assigns symbols and seeds `SymbolInfo`:
-- `ModelDef`: `ModelSymbolInfo` seeded with `givenRelationType.getOrElse(child.relationType)`.
+- `ModelDef`: `ModelSymbolInfo` with the declared schema when given; otherwise a lazy `ModelDefCompleter` that types the model body on demand in its defining context.
 - `ValDef`: `ValSymbolInfo` seeded from the parsed `v.dataType` and expression.
 - Top‑level queries/relations get `QuerySymbol`/`RelationAliasSymbolInfo` as appropriate.
 

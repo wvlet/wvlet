@@ -106,7 +106,14 @@ object SymbolLabeler extends Phase("symbol-labeler"):
                 RelationRefResolver.refineSchemaFromRows(s, arr.values)
               case _ =>
                 v.dataType
-          sym.symbolInfo = ValSymbolInfo(ctx.owner, sym, v.name, declaredType, v.expr)
+          sym.symbolInfo = ValSymbolInfo(
+            ctx.owner,
+            sym,
+            v.name,
+            declaredType,
+            v.expr,
+            ctx.compilationUnit
+          )
           v.symbol = sym
           sym.tree = v
           ctx.compilationUnit.enter(sym)
@@ -123,7 +130,12 @@ object SymbolLabeler extends Phase("symbol-labeler"):
           stmt match
             case q: Query =>
               val sym: Symbol = attachNewSymbol(q, ctx)
-              sym.symbolInfo = QuerySymbol(ctx.owner, sym, TermName.of(s"__query_${sym.id}"))
+              sym.symbolInfo = QuerySymbol(
+                ctx.owner,
+                sym,
+                TermName.of(s"__query_${sym.id}"),
+                ctx.compilationUnit
+              )
               q.traverseOnce {
                 case s: SelectAsAlias =>
                   iter(s.child, ctx)
@@ -152,7 +164,8 @@ object SymbolLabeler extends Phase("symbol-labeler"):
       name = t.functionDef.name,
       ft = toFunctionType(t.functionDef, Nil),
       body = t.functionDef.expr,
-      Nil
+      Nil,
+      ctx.compilationUnit
     )
     t.symbol = sym
     sym.tree = t
@@ -212,7 +225,7 @@ object SymbolLabeler extends Phase("symbol-labeler"):
   private def registerSave(s: Save)(using ctx: Context): Symbol =
     val targetName = Name.termName(s.targetName)
     val sym        = Symbol(ctx.global.newSymbolId, s.span)
-    sym.symbolInfo = SavedRelationSymbolInfo(ctx.owner, sym, targetName)
+    sym.symbolInfo = SavedRelationSymbolInfo(ctx.owner, sym, targetName, ctx.compilationUnit)
     s.symbol = sym
     sym.tree = s.child
     ctx.compilationUnit.enter(sym)
@@ -299,7 +312,8 @@ object SymbolLabeler extends Phase("symbol-labeler"):
                   f.name,
                   ft,
                   f.expr,
-                  t.defContexts ++ f.defContexts
+                  t.defContexts ++ f.defContexts,
+                  ctx.compilationUnit
                 )
                 if !funSym.hasSymbolInfo then
                   funSym.symbolInfo = methodSymbolInfo
@@ -335,7 +349,8 @@ object SymbolLabeler extends Phase("symbol-labeler"):
               f.name,
               ft,
               f.expr,
-              t.defContexts ++ f.defContexts
+              t.defContexts ++ f.defContexts,
+              ctx.compilationUnit
             )
             if !funSym.hasSymbolInfo then
               funSym.symbolInfo = newSymbolInfo
@@ -365,7 +380,8 @@ object SymbolLabeler extends Phase("symbol-labeler"):
           typeName,
           tpe,
           typeParams,
-          typeScope
+          typeScope,
+          ctx.compilationUnit
         )
 
         trace(s"Created type symbol ${sym}: ${tpe}")
@@ -392,7 +408,8 @@ object SymbolLabeler extends Phase("symbol-labeler"):
           typeName,
           DataType.UnknownType,
           Nil,
-          ctx.scope
+          ctx.scope,
+          ctx.compilationUnit
         )
         parent.symbol = sym
         sym
