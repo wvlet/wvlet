@@ -36,11 +36,17 @@ trait Expression extends SyntaxTreeNode with LogSupport:
   def dataTypeName: String  = dataType.typeDescription
 
   /**
-    * The data type of this expression. Expressions that do not compute their type structurally
-    * report the type assigned to the tpe field by the Typer, bridging the legacy dataType field and
-    * the in-place typing of the new Typer (issue #392)
+    * The data type of this expression: the type assigned to the tpe field by the Typer when
+    * resolved, or a structurally computed fallback. tpe is the single authoritative type record
+    * (issue #71 / #392); subclasses customize only the structural fallback
     */
-  def dataType: DataType = typedOr(DataType.UnknownType)
+  final def dataType: DataType = typedOr(structuralType)
+
+  /**
+    * The structural fallback type of this expression, used while the tpe field is not resolved yet
+    * (e.g. before or during typing)
+    */
+  protected def structuralType: DataType = DataType.UnknownType
 
   /**
     * Returns the resolved type assigned to the tpe field by the Typer, or the given structural
@@ -309,7 +315,7 @@ trait BinaryExpression extends Expression:
   def right: Expression
   def operatorName: String
 
-  override def dataType: DataType = DataType.BooleanType
+  override protected def structuralType: DataType = DataType.BooleanType
 
   override def children: Seq[Expression] = Seq(left, right)
   override def toString: String = s"${getClass.getSimpleName}(left:${left}, right:${right})"
