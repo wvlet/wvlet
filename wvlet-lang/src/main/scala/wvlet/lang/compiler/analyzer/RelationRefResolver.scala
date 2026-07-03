@@ -115,9 +115,10 @@ object RelationRefResolver extends ContextLogSupport:
 
   /**
     * Fill in unresolved column types of a table-value-constant schema from the literal values of
-    * the first row
+    * the first row. Also used by SymbolLabeler so that references through the val's symbol (e.g.
+    * alias-qualified columns in joins) see the refined column types
     */
-  private def refineSchemaFromRows(schema: SchemaType, rows: List[Expression]): SchemaType =
+  def refineSchemaFromRows(schema: SchemaType, rows: List[Expression]): SchemaType =
     if schema.isResolved then
       schema
     else

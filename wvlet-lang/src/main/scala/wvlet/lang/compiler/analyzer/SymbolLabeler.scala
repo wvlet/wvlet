@@ -36,6 +36,7 @@ import wvlet.lang.model.DataType.SchemaType
 import wvlet.lang.model.Type.FunctionType
 import wvlet.lang.model.Type.ImportType
 import wvlet.lang.model.Type.PackageType
+import wvlet.lang.model.expr.ArrayConstructor
 import wvlet.lang.model.expr.DotRef
 import wvlet.lang.model.expr.Identifier
 import wvlet.lang.model.expr.NameExpr
@@ -96,7 +97,15 @@ object SymbolLabeler extends Phase("symbol-labeler"):
           ctx
         case v: ValDef =>
           val sym = Symbol(ctx.global.newSymbolId, v.span)
-          sym.symbolInfo = ValSymbolInfo(ctx.owner, sym, v.name, v.dataType, v.expr)
+          // For table value constants (val t(id, name) = [[...]]), the declared schema has no
+          // column types, so refine them from the first row's values
+          val declaredType =
+            (v.dataType, v.expr) match
+              case (s: SchemaType, arr: ArrayConstructor) if !s.isResolved =>
+                RelationRefResolver.refineSchemaFromRows(s, arr.values)
+              case _ =>
+                v.dataType
+          sym.symbolInfo = ValSymbolInfo(ctx.owner, sym, v.name, declaredType, v.expr)
           v.symbol = sym
           sym.tree = v
           ctx.compilationUnit.enter(sym)

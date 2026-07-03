@@ -260,13 +260,11 @@ object Typer extends Phase("typer") with LogSupport:
     * after model expansion
     */
   def resolveRelation(r: Relation)(using ctx: Context): Relation =
-    // Resolve all structural references (tables, models, files, partial queries, underscores)
-    // in a single bottom-up pass
-    val prepared = r.transformUp(structuralResolutionRule).asInstanceOf[Relation]
-    // Type the relation in place so that function qualifiers get concrete types. The typing
-    // rules cover identifiers (from the input relation type), parenthesized expressions, and
-    // method references (typed by their declared return type without inlining)
-    typeRelation(prepared)
+    // Resolve structural references (tables, models, files, partial queries, underscores) and
+    // type each node's expressions in a single bottom-up pass. Interleaving resolution and
+    // typing matters: several relation nodes memoize their relationType on first access, so a
+    // parent must not read a child's relation type before the child's expressions are typed
+    val prepared = prepareRelation(r)
     // Inline function calls and aggregation expressions only when candidates are present.
     // Chained method calls (e.g. x.to_double.round(1)) resolve one link per round, so iterate
     // to a fixpoint
@@ -320,6 +318,41 @@ object Typer extends Phase("typer") with LogSupport:
   end resolveRelation
 
   /**
+    * A single bottom-up pass that resolves structural references and types each relation node's own
+    * expressions. Children are processed before their parents (including plans nested inside
+    * expressions), so a node's input relation type is fully typed by the time it is read
+    */
+  private def prepareRelation(r: Relation)(using ctx: Context): Relation = r
+    .transformUp { case plan: LogicalPlan =>
+      val resolved = structuralResolutionRule.applyOrElse(plan, identity[LogicalPlan])
+      resolved match
+        case rel: Relation =>
+          typeRelationNode(rel)
+          rel
+        case other =>
+          other
+    }
+    .asInstanceOf[Relation]
+
+  /**
+    * Type the direct child expressions of a single relation node (the node's children are expected
+    * to be typed already) and assign its own tpe
+    */
+  private def typeRelationNode(rel: Relation)(using ctx: Context): Unit =
+    val exprCtx = ctx.withInputType(rel.inputRelationType)
+    rel match
+      case t: TestRelation =>
+        // Test expressions are an assertion DSL over the tested query's result
+        typeTestExpression(t.testExpr)(using exprCtx)
+      case _ =>
+        rel
+          .childExpressions
+          .foreach { expr =>
+            typeExpression(expr)(using exprCtx)
+          }
+    rel.tpe = rel.relationType
+
+  /**
     * A single bottom-up rewrite that resolves table/model/file references into concrete scan nodes,
     * inlines partial query applications (with cycle detection), and resolves underscore (_)
     * references from the input relation of the enclosing operator
@@ -339,12 +372,13 @@ object Typer extends Phase("typer") with LogSupport:
       RelationRefResolver.resolveDataFileRef(f).getOrElse(f)
     case p: PartialQueryApply =>
       // The inlined body is spliced above the already-resolved child and is not revisited by
-      // the enclosing bottom-up traversal, so resolve the body recursively
+      // the enclosing bottom-up traversal, so resolve and type the body recursively
       val inlined = FunctionInliner.resolvePartialQuery(p)
-      if inlined eq p then
-        p
-      else
-        inlined.transformUp(structuralResolutionRule)
+      inlined match
+        case rel: Relation if !(inlined eq p) =>
+          prepareRelation(rel)
+        case _ =>
+          p
     case u: UnaryRelation if hasUnresolvedUnderscore(u) =>
       val contextType = u.inputRelation.relationType
       u.transformChildExpressions { case expr: Expression =>
@@ -353,6 +387,8 @@ object Typer extends Phase("typer") with LogSupport:
             ContextInputRef(dataType = contextType, ref.span)
         }
       }
+
+  end structuralResolutionRule
 
   /**
     * Returns true if the relation tree may contain function applications, method or native function
@@ -459,13 +495,48 @@ object Typer extends Phase("typer") with LogSupport:
 
     // Type direct child expressions with the input type context - in place
     val exprCtx = ctx.withInputType(inputType)
-    r.childExpressions
-      .foreach { expr =>
-        typeExpression(expr)(using exprCtx)
-      }
+    r match
+      case t: TestRelation =>
+        // Test expressions are an assertion DSL over the tested query's result
+        typeTestExpression(t.testExpr)(using exprCtx)
+      case _ =>
+        r.childExpressions
+          .foreach { expr =>
+            typeExpression(expr)(using exprCtx)
+          }
 
     // Set tpe from relationType
     r.tpe = r.relationType
+
+  /**
+    * Type a test expression. Tests inspect the result of the tested query through pseudo members of
+    * the underscore (_.size, _.columns, _.rows, _.output, _.json) that are evaluated by the test
+    * runner, so they are typed here rather than through the regular member lookup
+    */
+  private def typeTestExpression(e: Expression)(using ctx: Context): Unit =
+    e.children.foreach(typeTestExpression)
+    e match
+      case d @ DotRef(q: Identifier, name, _, _) if q.fullName == "_" =>
+        name.leafName match
+          case "size" =>
+            d.tpe = DataType.LongType
+          case "columns" =>
+            d.tpe = DataType.ArrayType(DataType.StringType)
+          case "rows" =>
+            d.tpe = DataType.ArrayType(DataType.ArrayType(DataType.AnyType))
+          case "output" | "json" =>
+            d.tpe = DataType.StringType
+          case _ =>
+            TyperRules.exprRules.applyOrElse(d, identity[Expression])
+      case i: Identifier if i.fullName == "_" && !hasResolvedType(i) =>
+        // The underscore denotes the full result of the tested query
+        ctx.inputType match
+          case dt: DataType if dt.isResolved =>
+            i.tpe = dt
+          case _ =>
+            ()
+      case other =>
+        TyperRules.exprRules.applyOrElse(other, identity[Expression])
 
   /**
     * Type an expression using TyperRules. Uses in-place traversal for efficiency - only updates
