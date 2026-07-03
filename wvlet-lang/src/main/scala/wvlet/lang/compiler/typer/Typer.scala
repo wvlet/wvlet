@@ -31,6 +31,7 @@ import wvlet.lang.model.expr.SubQueryExpression
 import wvlet.lang.model.expr.TupleInRelation
 import wvlet.lang.model.expr.TupleNotInRelation
 import wvlet.lang.model.DataType
+import wvlet.lang.model.RelationType
 import wvlet.lang.model.DataType.NamedType
 import wvlet.lang.model.DataType.SchemaType
 import wvlet.lang.model.expr.Expression
@@ -216,6 +217,9 @@ object Typer extends Phase("typer") with LogSupport:
               m
         TyperRules.typeStatement(typedModelDef)
         typedModelDef
+      // Handle FlowDef - resolve stage bodies with previously-defined stages in scope
+      case f: FlowDef =>
+        resolveFlowDef(f)
       // Handle Relation - propagate input type through relational operators
       case r: Relation =>
         resolveRelation(r)
@@ -322,17 +326,93 @@ object Typer extends Phase("typer") with LogSupport:
     * expressions. Children are processed before their parents (including plans nested inside
     * expressions), so a node's input relation type is fully typed by the time it is read
     */
-  private def prepareRelation(r: Relation)(using ctx: Context): Relation = r
-    .transformUp { case plan: LogicalPlan =>
-      val resolved = structuralResolutionRule.applyOrElse(plan, identity[LogicalPlan])
-      resolved match
-        case rel: Relation =>
-          typeRelationNode(rel)
-          rel
-        case other =>
-          other
-    }
+  private def prepareRelation(r: Relation)(using ctx: Context): Relation = prepare(r, Map.empty)
     .asInstanceOf[Relation]
+
+  /**
+    * Recursive worker for prepareRelation. The scope argument carries locally-defined relation
+    * names (CTE aliases from `with ... as`, flow stage names) that are visible only within the
+    * enclosing query, so references to them are typed in place without symbol registration
+    */
+  private def prepare(plan: LogicalPlan, scope: Map[String, RelationType])(using
+      ctx: Context
+  ): LogicalPlan =
+    plan match
+      case w: WithQuery =>
+        // Each CTE definition sees the aliases defined before it; the query body sees them all
+        var cteScope = scope
+        var changed  = false
+        val newDefs  = w
+          .queryDefs
+          .map { d =>
+            val resolved = prepare(d, cteScope).asInstanceOf[AliasedRelation]
+            if !(resolved eq d) then
+              changed = true
+            cteScope += resolved.alias.fullName -> resolved.relationType
+            resolved
+          }
+        val newBody      = prepare(w.queryBody, cteScope).asInstanceOf[Relation]
+        val resolvedWith =
+          if changed || !(newBody eq w.queryBody) then
+            val neww = w.copy(queryDefs = newDefs, queryBody = newBody)
+            neww.copyMetadataFrom(w)
+            neww
+          else
+            w
+        typeRelationNode(resolvedWith)
+        resolvedWith
+      case ref: TableRef if scope.contains(ref.name.fullName) =>
+        // A reference to a locally-defined relation (CTE alias or flow stage). The node stays a
+        // TableRef so that generated SQL keeps referencing the alias; only its type is assigned
+        ref.tpe = scope(ref.name.fullName)
+        typeRelationNode(ref)
+        ref
+      case other =>
+        val withChildren = other.mapChildren(c => prepare(c, scope))
+        val resolved     = structuralResolutionRule.applyOrElse(withChildren, identity[LogicalPlan])
+        resolved match
+          case rel: Relation =>
+            typeRelationNode(rel)
+            rel
+          case o =>
+            o
+
+  /**
+    * Resolve and type the body of each flow stage, making previously-defined stage names resolvable
+    * from subsequent stages (e.g. `stage output = from entry | ...`)
+    */
+  private def resolveFlowDef(f: FlowDef)(using ctx: Context): FlowDef =
+    var stageScope = Map.empty[String, RelationType]
+    var changed    = false
+    val newStages  = f
+      .stages
+      .map { s =>
+        val newBody     = s.body.map(b => prepare(b, stageScope).asInstanceOf[Relation])
+        val bodyChanged =
+          (newBody, s.body) match
+            case (Some(a), Some(b)) =>
+              !(a eq b)
+            case _ =>
+              false
+        val newStage =
+          if !bodyChanged then
+            s
+          else
+            changed = true
+            val ns = s.copy(body = newBody)
+            ns.copyMetadataFrom(s)
+            ns
+        stageScope += newStage.name.name -> newStage.relationType
+        newStage
+      }
+    if changed then
+      val nf = f.copy(stages = newStages)
+      nf.copyMetadataFrom(f)
+      nf
+    else
+      f
+
+  end resolveFlowDef
 
   /**
     * Type the direct child expressions of a single relation node (the node's children are expected
