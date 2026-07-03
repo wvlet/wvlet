@@ -101,9 +101,15 @@ case class CompilerOptions(
     // context database schema
     schema: Option[String] = None,
     // Database type (e.g., DuckDB, Trino)
-    dbType: DBType = DBType.DuckDB
+    dbType: DBType = DBType.DuckDB,
+    // When true, type mismatches found by the Typer fail the compilation instead of being
+    // reported as warning-level diagnostics
+    failOnTypeErrors: Boolean = false
 ):
-  def withDBType(dbType: DBType): CompilerOptions = copy(dbType = dbType)
+  def withDBType(dbType: DBType): CompilerOptions                      = copy(dbType = dbType)
+  def withFailOnTypeErrors(failOnTypeErrors: Boolean): CompilerOptions = copy(failOnTypeErrors =
+    failOnTypeErrors
+  )
 
 class Compiler(
     val compilerOptions: CompilerOptions,

@@ -137,9 +137,10 @@ class TyperCoverageCheck extends UniTest:
     info(s"top unresolved relations: ${top(c.unresolvedRelations, 10)}")
     info(s"top untyped expressions:  ${top(c.untypedExprs, 10)}")
 
-    // Ratchet (2026-07-03: 90.7% / 87.0%). Raise these as coverage improves toward 1.0
+    // Ratchet (2026-07-03: 90.7% / 87.1% / 89.1%). Raise these as coverage improves toward 1.0
     val minRelationCoverage = 0.89
     val minExprCoverage     = 0.86
+    val minTpeSetCoverage   = 0.88
     if c.relationCoverage < minRelationCoverage then
       fail(
         f"Relation type coverage regressed: ${c.relationCoverage *
@@ -149,6 +150,12 @@ class TyperCoverageCheck extends UniTest:
       fail(
         f"Expression type coverage regressed: ${c.exprCoverage *
             100}%.1f%% (expected >= ${minExprCoverage * 100}%.0f%%)"
+      )
+    val tpeSetCoverage = c.exprTpeSet.toDouble / c.exprTotal.max(1)
+    if tpeSetCoverage < minTpeSetCoverage then
+      fail(
+        f"tpe-field coverage regressed: ${tpeSetCoverage *
+            100}%.1f%% (expected >= ${minTpeSetCoverage * 100}%.0f%%)"
       )
   }
 

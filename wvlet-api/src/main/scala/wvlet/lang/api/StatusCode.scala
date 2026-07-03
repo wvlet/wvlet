@@ -35,6 +35,7 @@ enum StatusCode(statusType: StatusType):
 
   // User errors
   case SYNTAX_ERROR               extends StatusCode(StatusType.UserError)
+  case TYPE_ERROR                 extends StatusCode(StatusType.UserError)
   case UNEXPECTED_TOKEN           extends StatusCode(StatusType.UserError)
   case UNCLOSED_MULTILINE_LITERAL extends StatusCode(StatusType.UserError)
 

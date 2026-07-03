@@ -14,6 +14,7 @@
 package wvlet.lang.compiler.typer
 
 import wvlet.uni.test.UniTest
+import wvlet.lang.api.{StatusCode, WvletLangException}
 import wvlet.lang.compiler.{CompilationUnit, Compiler, CompilerOptions, WorkEnv}
 
 /**
@@ -54,6 +55,15 @@ class TyperDiagnosticsTest extends UniTest:
   test("not report mismatches for unresolved operands") {
     // unknown_col cannot resolve, so the arithmetic and comparison must stay silent
     compileErrors("from [[1]] as t(id) | where unknown_col + 1 > 2") shouldBe Nil
+  }
+
+  test("fail the compilation on type errors when failOnTypeErrors is set") {
+    val compiler = Compiler(CompilerOptions(workEnv = WorkEnv(".")).withFailOnTypeErrors(true))
+    val unit     = CompilationUnit.fromWvletString("select 1 - 'a' as v")
+    val e        = intercept[WvletLangException] {
+      compiler.compileSingleUnit(unit)
+    }
+    e.statusCode shouldBe StatusCode.TYPE_ERROR
   }
 
 end TyperDiagnosticsTest
