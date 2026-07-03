@@ -135,7 +135,7 @@ pnpm --filter website run build
 
 ## Testing Framework
 
-- Uses AirSpec testing framework https://wvlet.org/airspec/
+- Tests extend `wvlet.uni.test.UniTest` (AirSpec-style assertions: `shouldBe`, `shouldContain`, `shouldBeTheSameInstanceAs`, `intercept[...]`, `shouldMatch`). Importing `wvlet.airspec.AirSpec` in wvlet-lang fails to compile; check a neighboring test's imports first
 - Test files end with `Test.scala` or `Spec.scala`
 - Avoid using mock as it increases maintenance cost and creates brittle tests that break when internal implementation changes
 - Ensure tests cover new functionality and bug fixes with good test coverage
@@ -297,7 +297,7 @@ For error reporting, use WvletLangException and StatusCode enum. If necessary er
 - To monitor debug logs, use `-l debug` option. For example, ./sbt "langJVM/testOnly *Test -- -l debug"
 
 ## Testing Notes
-- Use `shouldContain "(keyword)"` for checking string fragment in AirSpec
+- Use `shouldContain "(keyword)"` for checking string fragment in UniTest
 - To debug SQL generator, add -L *GenSQL=trace to the test option
 - Typing coverage over spec/basic is guarded by a CI ratchet: `./sbt "langJVM/testOnly *TyperCoverageCheck"` (raise its thresholds when improving type resolution; never lower them)
 - For compiler performance work, compare before/after with `./sbt "langJVM/testOnly *TyperBench"` (log-only timing probe)
