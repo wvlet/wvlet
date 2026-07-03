@@ -56,9 +56,7 @@ case class GlobalContext(compilerOptions: CompilerOptions):
   private val duplicateDefinitionQueue =
     new java.util.concurrent.ConcurrentLinkedQueue[(Name, List[String])]()
 
-  def duplicateDefinitions: List[(Name, List[String])] =
-    import scala.jdk.CollectionConverters.*
-    duplicateDefinitionQueue.asScala.toList
+  def duplicateDefinitions: List[(Name, List[String])] = duplicateDefinitionQueue.asScala.toList
 
   /**
     * Record and return whether the given name still needs a duplicate-definition check. The check
