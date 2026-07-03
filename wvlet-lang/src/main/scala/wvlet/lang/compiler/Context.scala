@@ -50,6 +50,21 @@ case class GlobalContext(compilerOptions: CompilerOptions):
   // Loaded contexts for source .wv files
   private val contextTable = new ConcurrentHashMap[SourceFile, Context]().asScala
 
+  // Names already checked for duplicate top-level definitions across compilation units,
+  // and the confirmed duplicates (name -> defining file names)
+  private val duplicateCheckedNames = new ConcurrentHashMap[Name, Boolean]().asScala
+  var duplicateDefinitions: List[(Name, List[String])] = Nil
+
+  /**
+    * Record and return whether the given name still needs a duplicate-definition check. The check
+    * runs at most once per name to keep symbol lookup fast
+    */
+  def needsDuplicateCheck(name: Name): Boolean =
+    duplicateCheckedNames.putIfAbsent(name, true).isEmpty
+
+  def addDuplicateDefinition(name: Name, fileNames: List[String]): Unit =
+    duplicateDefinitions = (name, fileNames) :: duplicateDefinitions
+
   // Globally available definitions (Name and Symbols)
   var defs: GlobalDefinitions = scala.compiletime.uninitialized
 
@@ -251,6 +266,24 @@ case class Context(
         if foundSymbol.isEmpty
       do
         foundSymbol = ctx.compilationUnit.knownSymbols.find(_.name == name)
+      // The scan above takes the first match in an arbitrary unit order, so a top-level name
+      // defined in multiple files resolves nondeterministically (#93). Warn once per name
+      foundSymbol.foreach { sym =>
+        if global.needsDuplicateCheck(name) then
+          val definingFiles =
+            for
+              ctx <- global.getAllContexts.filter(_.isGlobalContext)
+              s   <- ctx.compilationUnit.knownSymbols
+              if s.name == name
+            yield ctx.compilationUnit.sourceFile.fileName
+          if definingFiles.distinct.size > 1 then
+            global.addDuplicateDefinition(name, definingFiles.distinct)
+            warn(
+              s"Duplicate top-level definition of '${name}' in ${definingFiles
+                  .distinct
+                  .mkString(", ")}; the definition in ${definingFiles.head} is used"
+            )
+      }
 
     if isContextCompilationUnit then
       trace(s"Looked up ${name} in ${compilationUnit.sourceFile.fileName} => ${foundSymbol}")
