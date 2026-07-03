@@ -43,6 +43,17 @@ class FunctionInlineTest extends UniTest:
     sql shouldContain "2 + 2"
   }
 
+  test("bind arguments of a member function call nested in a function body") {
+    // obj.method(args) inside a body: the enclosing FunctionApply must be inlined before its
+    // base DotRef, or the arguments would be dropped
+    val sql = generateSQL("""def fn_safe(x: int): int = x.or_else(0) + 1
+        |
+        |select fn_safe(10) as v
+        |""".stripMargin)
+    sql shouldContain "coalesce(10,0)"
+    sql shouldNotContain "other"
+  }
+
   test("report a user error for a self-recursive function reference") {
     val e = intercept[WvletLangException] {
       generateSQL("""def rec_f(x: int): int = rec_f(x)

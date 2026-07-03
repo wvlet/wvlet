@@ -801,13 +801,16 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
                   i
           }
           // Then inline function calls nested in the body, with this function on the active path
-          // so that self-referential or mutually recursive definitions are detected
+          // so that self-referential or mutually recursive definitions are detected. This must be
+          // a top-down traversal: a bottom-up one would visit the base DotRef of a member call
+          // like obj.method(args) before its enclosing FunctionApply and inline the method body
+          // without binding the arguments
           val nextActive =
             if fnSym.isNoSymbol then
               activeFunctions
             else
               fnSym :: activeFunctions
-          substituted.transformUpExpression {
+          substituted.transformExpression {
             case f: FunctionApply =>
               resolveFunctionApply(f, nextActive)
             case d: DotRef =>
