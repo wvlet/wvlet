@@ -68,7 +68,7 @@ class Symbol(val id: Int, val span: Span) extends LogSupport:
       "NoSymbol"
     else if _symbolInfo == null then
       // Do not force completion from toString (e.g., debug logs)
-      s"Symbol($id)"
+      s"Symbol(${id})"
     else
       _symbolInfo.name.name
 
