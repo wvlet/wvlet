@@ -115,7 +115,7 @@ class TypeSymbolInfo(
     tpe: DataType,
     override val typeParams: Seq[DataType],
     typeScope: Scope
-) extends SymbolInfo(SymbolType.TypeDef, symbol, owner, name, tpe):
+) extends SymbolInfo(SymbolType.TypeDef, owner, symbol, name, tpe):
   override def declScope: Scope = typeScope
 
   override def toString: String               = s"${owner}.${name}: ${dataType}"
@@ -143,7 +143,7 @@ case class ModelSymbolInfo(
     override val name: Name,
     override val tpe: DataType,
     compilationUnit: CompilationUnit
-) extends SymbolInfo(SymbolType.ModelDef, symbol, owner, name, tpe):
+) extends SymbolInfo(SymbolType.ModelDef, owner, symbol, name, tpe):
   override def toString: String = s"model ${owner}.${name}: ${dataType}"
 
 /**
@@ -179,7 +179,7 @@ case class ValSymbolInfo(
     override val name: Name,
     override val tpe: DataType,
     expr: Expression
-) extends SymbolInfo(SymbolType.ValDef, Symbol.NoSymbol, symbol, name, tpe):
+) extends SymbolInfo(SymbolType.ValDef, owner, symbol, name, tpe):
   override def toString: String =
     tpe match
       case schemaType: DataType.SchemaType =>
