@@ -1,0 +1,5 @@
+-- A self-recursive function reference must be reported as a user error,
+-- not left unresolved or looping forever
+def rec_f(x: int): int = rec_f(x)
+
+select rec_f(1)

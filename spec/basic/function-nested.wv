@@ -1,0 +1,14 @@
+-- Function bodies may call other functions; nested calls must be inlined
+-- recursively with the arguments resolved in the caller's frame
+def fn_double(x: int): int = x + x
+def fn_quad(x: int): int = fn_double(x) + fn_double(x)
+def fn_oct(x: int): int = fn_quad(x) + fn_quad(x)
+
+select fn_quad(3) as v
+test _.rows should be [[12]]
+;
+
+-- Three levels of nesting requires recursive inlining, not a fixed number of
+-- rewrite passes
+select fn_oct(2) as v
+test _.rows should be [[16]]

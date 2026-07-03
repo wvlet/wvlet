@@ -292,47 +292,82 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
   private object resolvePartialQueryApply extends RewriteRule:
     override def apply(context: Context): PlanRewriter =
       case p: PartialQueryApply =>
-        val partialQueryName = Name.termName(p.partialQueryRef.leafName)
-        lookupType(partialQueryName, context) match
-          case Some(sym) =>
-            sym.symbolInfo match
-              case pqInfo: PartialQuerySymbolInfo =>
-                // Check for argument count mismatch
-                if pqInfo.params.length != p.args.length then
-                  throw StatusCode
-                    .INVALID_ARGUMENT
-                    .newException(
-                      s"Partial query '${partialQueryName}' expects ${pqInfo
-                          .params
-                          .length} arguments, but ${p.args.length} were provided",
-                      context.sourceLocationAt(p.span)
-                    )
+        resolvePartialQuery(p, Nil)(using context)
 
-                // Inline the partial query body
-                val body = pqInfo.body
+    /**
+      * Inline the body of the partial query referenced by the given PartialQueryApply.
+      * `activeQueries` tracks the partial-query symbols currently being inlined (innermost first)
+      * so that recursive references are reported as user errors instead of looping forever.
+      */
+    private def resolvePartialQuery(p: PartialQueryApply, activeQueries: List[Symbol])(using
+        context: Context
+    ): Relation =
+      val partialQueryName = Name.termName(p.partialQueryRef.leafName)
+      lookupType(partialQueryName, context) match
+        case Some(sym) =>
+          sym.symbolInfo match
+            case pqInfo: PartialQuerySymbolInfo =>
+              if activeQueries.exists(_ eq sym) then
+                val cyclePath = (activeQueries.reverse.map(_.name.name) :+ partialQueryName.name)
+                  .mkString(" -> ")
+                throw StatusCode
+                  .RECURSIVE_PARTIAL_QUERY_REFERENCE
+                  .newException(
+                    s"Recursive partial query reference detected: ${cyclePath}",
+                    context.sourceLocationAt(p.span)
+                  )
+              if activeQueries.size >= maxInlineExpansionDepth then
+                // A safety net distinct from RECURSIVE_PARTIAL_QUERY_REFERENCE: the eq-based check
+                // above already catches every cycle, so this only fires for a legitimately deep
+                // chain of distinct partial queries
+                throw StatusCode
+                  .INLINE_EXPANSION_LIMIT_EXCEEDED
+                  .newException(
+                    s"Partial query inlining for ${partialQueryName} exceeded the maximum depth ${maxInlineExpansionDepth}",
+                    context.sourceLocationAt(p.span)
+                  )
 
-                // Substitute parameters if any
-                val substitutedBody =
-                  if pqInfo.params.nonEmpty then
-                    substituteParams(body, pqInfo.params, p.args)
-                  else
-                    body
+              // Check for argument count mismatch
+              if pqInfo.params.length != p.args.length then
+                throw StatusCode
+                  .INVALID_ARGUMENT
+                  .newException(
+                    s"Partial query '${partialQueryName}' expects ${pqInfo
+                        .params
+                        .length} arguments, but ${p.args.length} were provided",
+                    context.sourceLocationAt(p.span)
+                  )
 
-                // Replace EmptyRelation in the body with the input relation
-                val inlinedBody = inlinePartialQueryBody(p.child, substitutedBody)
+              // Inline the partial query body
+              val body = pqInfo.body
 
-                // Continue resolving the result
-                inlinedBody
-              case _ =>
-                // Not a partial query, keep as is (might be an error)
-                context.logWarn(s"'${partialQueryName}' is not a partial query definition")
-                p
-          case None =>
-            context.logWarn(s"Partial query '${partialQueryName}' not found")
-            p
-        end match
+              // Substitute parameters if any. Arguments were already resolved in the caller's
+              // frame by the bottom-up traversal, so substitute-first keeps caller-side scoping
+              val substitutedBody =
+                if pqInfo.params.nonEmpty then
+                  substituteParams(body, pqInfo.params, p.args)
+                else
+                  body
 
-    end apply
+              // Replace EmptyRelation in the body with the input relation
+              val inlinedBody = inlinePartialQueryBody(p.child, substitutedBody)
+
+              // Inline partial queries nested in the body, with this partial query on the active
+              // path so that self-referential or mutually recursive definitions are detected
+              inlinedBody
+                .transformUp { case np: PartialQueryApply =>
+                  resolvePartialQuery(np, sym :: activeQueries)
+                }
+                .asInstanceOf[Relation]
+            case _ =>
+              // Not a partial query, keep as is (might be an error)
+              context.logWarn(s"'${partialQueryName}' is not a partial query definition")
+              p
+        case None =>
+          context.logWarn(s"Partial query '${partialQueryName}' not found")
+          p
+      end match
+    end resolvePartialQuery
 
     /**
       * Replace EmptyRelation nodes in the partial query body with the input relation.
@@ -709,15 +744,47 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
 
   end resolveFunctionApply
 
+  /**
+    * The maximum depth of nested function/partial-query inlining, used as a safety net against
+    * runaway expansion. Mirrors the model expansion depth limit in GenSQL.
+    */
+  private inline val maxInlineExpansionDepth = 100
+
+  /**
+    * Inline the body of the function definition, substituting `this` and function arguments.
+    * `activeFunctions` tracks the function symbols currently being inlined (innermost first) so
+    * that recursive references are reported as user errors instead of looping forever.
+    */
   private def inlineFunctionBody(
       base: Expression,
       m: MethodSymbolInfo,
-      resolvedArgs: List[(TermName, Expression)]
+      resolvedArgs: List[(TermName, Expression)],
+      activeFunctions: List[Symbol] = Nil
   )(using context: Context): Expression =
+    val fnSym = m.symbol
+    if !fnSym.isNoSymbol && activeFunctions.exists(_ eq fnSym) then
+      val cyclePath = (activeFunctions.reverse.map(_.name.name) :+ m.name.name).mkString(" -> ")
+      throw StatusCode
+        .RECURSIVE_FUNCTION_REFERENCE
+        .newException(
+          s"Recursive function reference detected: ${cyclePath}",
+          context.sourceLocationAt(base.span)
+        )
+    if activeFunctions.size >= maxInlineExpansionDepth then
+      // A safety net distinct from RECURSIVE_FUNCTION_REFERENCE: the eq-based check above already
+      // catches every cycle, so this only fires for a legitimately deep chain of distinct functions
+      throw StatusCode
+        .INLINE_EXPANSION_LIMIT_EXCEEDED
+        .newException(
+          s"Function inlining for ${m.name} exceeded the maximum depth ${maxInlineExpansionDepth}",
+          context.sourceLocationAt(base.span)
+        )
+
     val newExpr: Expression =
       m.body match
         case Some(methodBody) =>
-          methodBody.transformUpExpression {
+          // Substitute-first: bind `this` and the arguments resolved in the caller's frame
+          val substituted = methodBody.transformUpExpression {
             case th: This =>
               base match
                 case d: DotRef =>
@@ -727,12 +794,28 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
                   th
             case i: Identifier =>
               // Replace function arguments to the resolved args
-              // TODO Handle nested function calls
               resolvedArgs.find(_._1 == i.toTermName) match
                 case Some((_, expr)) =>
                   expr
                 case None =>
                   i
+          }
+          // Then inline function calls nested in the body, with this function on the active path
+          // so that self-referential or mutually recursive definitions are detected
+          val nextActive =
+            if fnSym.isNoSymbol then
+              activeFunctions
+            else
+              fnSym :: activeFunctions
+          substituted.transformUpExpression {
+            case f: FunctionApply =>
+              resolveFunctionApply(f, nextActive)
+            case d: DotRef =>
+              findFunctionDef(d) match
+                case Some(mi: MethodSymbolInfo) =>
+                  inlineFunctionBody(d, mi, Nil, nextActive)
+                case _ =>
+                  d
           }
         case None =>
           // If the function definition has no body expression, return the original expression
@@ -745,7 +828,9 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
 
   end inlineFunctionBody
 
-  private def resolveFunctionApply(f: FunctionApply)(using context: Context) =
+  private def resolveFunctionApply(f: FunctionApply, activeFunctions: List[Symbol] = Nil)(using
+      context: Context
+  ) =
     findFunctionDef(f) match
       case Some(m: MethodSymbolInfo) =>
         val functionArgTypes = m.ft.args
@@ -794,7 +879,7 @@ object TypeResolver extends Phase("type-resolver") with ContextLogSupport:
 
         // Resolve identifiers in the function body with the given function arguments
         // context.logWarn(s"Resolved function args: ${f.base}")
-        val expr = inlineFunctionBody(f.base, m, resolvedArgs.result())
+        val expr = inlineFunctionBody(f.base, m, resolvedArgs.result(), activeFunctions)
 
         f.window match
           case Some(w) =>
