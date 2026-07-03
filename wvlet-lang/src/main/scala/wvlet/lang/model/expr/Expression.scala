@@ -34,7 +34,18 @@ trait Expression extends SyntaxTreeNode with LogSupport:
     */
   def attributeName: String = "?"
   def dataTypeName: String  = dataType.typeDescription
-  def dataType: DataType    = DataType.UnknownType
+
+  /**
+    * The data type of this expression. Expressions that do not compute their type structurally
+    * report the type assigned to the tpe field by the Typer, bridging the legacy dataType field and
+    * the in-place typing of the new Typer (issue #392)
+    */
+  def dataType: DataType =
+    tpe match
+      case dt: DataType if dt.isResolved =>
+        dt
+      case _ =>
+        DataType.UnknownType
 
   def isIdentifier: Boolean =
     this match

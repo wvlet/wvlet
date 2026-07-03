@@ -40,7 +40,8 @@ object TyperRules:
     */
   def exprRules(using ctx: Context): PartialFunction[Expression, Expression] =
     literalRules orElse identifierRules orElse binaryOpRules orElse castRules orElse
-      caseExprRules orElse parenRules orElse dotRefRules orElse functionApplyRules
+      caseExprRules orElse interpolatedStringRules orElse parenRules orElse dotRefRules orElse
+      functionApplyRules
 
   /**
     * All typing rules for relations. Sets tpe field from relationType.
@@ -325,6 +326,16 @@ object TyperRules:
         caseExpr.tpe = commonType
 
       caseExpr
+  }
+
+  /**
+    * Rule for typing string interpolations. An s"..." interpolation always yields a string, while
+    * sql"..." fragments have no statically known type
+    */
+  def interpolatedStringRules(using ctx: Context): PartialFunction[Expression, Expression] = {
+    case s: InterpolatedString if s.prefix.fullName == "s" =>
+      s.tpe = StringType
+      s
   }
 
   /**
