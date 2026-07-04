@@ -712,11 +712,16 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
           val window = expr(w.window)
           wl(base, window)
         case f: FunctionArg =>
-          // TODO handle arg name mapping
-          if f.isDistinct then
-            wl("distinct", expr(f.value))
-          else
-            expr(f.value)
+          val v =
+            if f.isDistinct then
+              wl("distinct", expr(f.value))
+            else
+              expr(f.value)
+          f.name match
+            case Some(name) =>
+              wl(text(name.name), text("="), v)
+            case None =>
+              v
         case w: Window =>
           val s = List.newBuilder[Doc]
           if w.partitionBy.nonEmpty then
