@@ -1309,4 +1309,79 @@ class FlowExecutorTest extends UniTest:
     id shouldBe 2L
   }
 
+  // --- Flow notification hooks ---
+
+  private class RecordingSink extends ActivationSink:
+    val requests              = ListBuffer.empty[(ActivationRequest, List[String])]
+    override def name: String = "test_notify"
+    override def activate(request: ActivationRequest): Unit =
+      val rows =
+        connector.runQuery(s"""select stage, state from "${request.table}" order by stage""") {
+          rs =>
+            val b = ListBuffer.empty[String]
+            while rs.next() do
+              b += s"${rs.getString(1)}:${rs.getString(2)}"
+            b.toList
+        }
+      requests += ((request, rows))
+
+  test("fire on_failure hooks with the run summary") {
+    val sink        = RecordingSink()
+    val (flow, ctx) = compileFlow(
+      """flow NotifyFailFlow with { on_failure: activate('test_notify', channel: 'ops') } = {
+        |  stage broken = from nonexistent_table_xyz
+        |  stage downstream = from broken | select *
+        |}""".stripMargin
+    )
+    val result =
+      FlowExecutor(connector, workEnv, activationSinks = List(sink)).execute(flow)(using ctx)
+    result.hasError shouldBe true
+    sink.requests.size shouldBe 1
+    val (req, rows) = sink.requests.head
+    req.params shouldBe Map("channel" -> "ops")
+    req.stageName shouldBe "NotifyFailFlow"
+    rows shouldBe List("broken:failed", "downstream:skipped")
+  }
+
+  test("fire on_success hooks only for successful runs") {
+    val sink        = RecordingSink()
+    val (flow, ctx) = compileFlow("""flow NotifyOkFlow with {
+        |  on_failure: activate('test_notify', kind: 'fail')
+        |  on_success: activate('test_notify', kind: 'ok')
+        |} = {
+        |  stage src = from [[1]] as t(id)
+        |}""".stripMargin)
+    val result =
+      FlowExecutor(connector, workEnv, activationSinks = List(sink)).execute(flow)(using ctx)
+    result.isSuccess shouldBe true
+    sink.requests.map(_._1.params) shouldBe List(Map("kind" -> "ok"))
+  }
+
+  test("fire on_finish hooks for both outcomes") {
+    val sink        = RecordingSink()
+    val (flow, ctx) = compileFlow(
+      """flow NotifyFinishFlow with { on_finish: activate('test_notify') } = {
+        |  stage src = from [[1]] as t(id)
+        |}""".stripMargin
+    )
+    FlowExecutor(connector, workEnv, activationSinks = List(sink)).execute(flow)(using ctx)
+    sink.requests.size shouldBe 1
+  }
+
+  test("keep the run result when a notification sink fails") {
+    val failingSink =
+      new ActivationSink:
+        override def name: String                               = "test_notify"
+        override def activate(request: ActivationRequest): Unit =
+          throw IllegalStateException("notification endpoint down")
+    val (flow, ctx) = compileFlow(
+      """flow NotifySinkDownFlow with { on_success: activate('test_notify') } = {
+        |  stage src = from [[1]] as t(id)
+        |}""".stripMargin
+    )
+    val result =
+      FlowExecutor(connector, workEnv, activationSinks = List(failingSink)).execute(flow)(using ctx)
+    result.isSuccess shouldBe true
+  }
+
 end FlowExecutorTest

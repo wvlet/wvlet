@@ -38,6 +38,92 @@ import wvlet.lang.model.plan.*
 /** An activation target with its named parameters */
 case class ActivationSpec(target: String, params: Map[String, String] = Map.empty)
 
+object ActivationSpec:
+  /**
+    * Extract an activation spec from an `activate('target', name: value, ...)` expression used as a
+    * flow config value (e.g. `on_failure: activate('webhook', url: '...')`)
+    */
+  def fromExpression(e: Expression): Option[ActivationSpec] =
+    e match
+      case f: FunctionApply =>
+        val isActivate =
+          f.base match
+            case n: NameExpr =>
+              n.fullName == "activate"
+            case _ =>
+              false
+        val target = f
+          .args
+          .collectFirst {
+            case arg: FunctionArg if arg.name.isEmpty =>
+              arg.value match
+                case s: StringLiteral =>
+                  s.unquotedValue
+                case other =>
+                  other.toString
+          }
+        if isActivate then
+          val params =
+            f.args
+              .collect {
+                case arg: FunctionArg if arg.name.isDefined =>
+                  val value =
+                    arg.value match
+                      case s: StringLiteral =>
+                        s.unquotedValue
+                      case l: Literal =>
+                        l.stringValue
+                      case other =>
+                        other.toString
+                  arg.name.get.name -> value
+              }
+              .toMap
+          target.map(ActivationSpec(_, params))
+        else
+          None
+      case _ =>
+        None
+
+end ActivationSpec
+
+/**
+  * Flow-level notification hooks extracted from the flow's `with { ... }` block: activation specs
+  * fired after a run reaches its terminal state. `on_failure` fires for failed runs, `on_success`
+  * for successful runs, and `on_finish` for both
+  */
+case class FlowNotifyConfig(
+    onFailure: List[ActivationSpec] = Nil,
+    onSuccess: List[ActivationSpec] = Nil,
+    onFinish: List[ActivationSpec] = Nil
+):
+  def isEmpty: Boolean = onFailure.isEmpty && onSuccess.isEmpty && onFinish.isEmpty
+
+  /** The hooks that apply to a run outcome */
+  def hooksFor(failed: Boolean): List[ActivationSpec] =
+    (
+      if failed then
+        onFailure
+      else
+        onSuccess
+    ) ++ onFinish
+
+object FlowNotifyConfig:
+  def fromFlow(flow: FlowDef): FlowNotifyConfig =
+    flow
+      .config
+      .foldLeft(FlowNotifyConfig()) { (c, item) =>
+        def spec = ActivationSpec.fromExpression(item.value)
+        item.key.unquotedValue match
+          case "on_failure" =>
+            spec.fold(c)(s => c.copy(onFailure = c.onFailure :+ s))
+          case "on_success" =>
+            spec.fold(c)(s => c.copy(onSuccess = c.onSuccess :+ s))
+          case "on_finish" =>
+            spec.fold(c)(s => c.copy(onFinish = c.onFinish :+ s))
+          case _ =>
+            c
+      }
+
 object FlowLowering:
 
   /**

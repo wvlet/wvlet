@@ -601,6 +601,27 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
   private def configValue(): Expression =
     val t = scanner.lookAhead()
     t.token match
+      case WvletToken.ACTIVATE =>
+        // An activation hook value, e.g. `on_failure: activate('webhook', url: '...')`,
+        // represented as a regular function-apply expression on the `activate` name
+        val at = consume(WvletToken.ACTIVATE)
+        consume(WvletToken.L_PAREN)
+        val target = FunctionArg(None, expression(), false, Nil, spanFrom(at))
+        val params =
+          if scanner.lookAhead().token == WvletToken.COMMA then
+            consume(WvletToken.COMMA)
+            activateParams()
+          else
+            Nil
+        consume(WvletToken.R_PAREN)
+        FunctionApply(
+          UnquotedIdentifier("activate", at.span),
+          target :: params,
+          None,
+          None,
+          None,
+          spanFrom(at)
+        )
       case WvletToken.INTEGER_LITERAL =>
         val numToken = consumeToken()
         val numValue = numToken.str.replaceAll("_", "").toLong
@@ -619,6 +640,9 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
             LongLiteral(numValue, numToken.str, spanFrom(numToken))
       case _ =>
         expression()
+    end match
+
+  end configValue
 
   /**
     * Parse a stage trigger: `if stage.failed` or `if stage.done`

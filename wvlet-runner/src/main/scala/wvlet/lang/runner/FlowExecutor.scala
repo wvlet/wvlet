@@ -900,6 +900,10 @@ class FlowExecutor(
     val result = FlowExecutionResult(flow.name.name, runId, stageResults)
     workEnv.info(s"Completed flow ${flow.name.name} (run: ${runId})")
 
+    // Fire the flow-level notification hooks now that the terminal snapshot is persisted.
+    // A notification failure is logged and never changes the run result
+    notifyRunResult(flow, result)
+
     // Trigger the control-only jumps recorded by successful stages, each as a new run of the
     // target flow. Jump chains are bounded by maxJumpDepth to terminate cycles (A -> B -> A)
     if pendingJumps.nonEmpty && !cancelled then
@@ -930,6 +934,85 @@ class FlowExecutor(
     result
 
   end executeInternal
+
+  /**
+    * Fire the flow-level notification hooks (`on_failure:` / `on_success:` / `on_finish:`) of a
+    * terminal run. The run summary (flow, run_id, stage, state, attempts, error) is materialized as
+    * a short-lived table so that the regular activation sinks (file, webhook, ServiceLoader) can
+    * deliver it like a stage output; any failure here is logged and never changes the run result
+    */
+  private def notifyRunResult(flow: FlowDef, result: FlowExecutionResult): Unit =
+    val hooks = FlowNotifyConfig.fromFlow(flow).hooksFor(result.hasError)
+    if hooks.nonEmpty then
+      val summaryTable              = s"__wv_flow_notify_${result.runId.toLowerCase}"
+      def sqlLit(s: String): String = s"'${s.replaceAll("'", "''")}'"
+      try
+        connector.withSession { conn =>
+          Using.resource(conn.createStatement()) { stmt =>
+            stmt.execute(
+              s"""create or replace table "${summaryTable}" ("flow" varchar, "run_id" varchar, "stage" varchar, "state" varchar, "attempts" bigint, "error" varchar)"""
+            )
+            if result.stageResults.nonEmpty then
+              val rows = result
+                .stageResults
+                .map { s =>
+                  val err = s.error.map(e => sqlLit(e.getMessage)).getOrElse("null")
+                  s"(${sqlLit(result.flowName)}, ${sqlLit(result.runId)}, ${sqlLit(
+                      s.name
+                    )}, ${sqlLit(s.state.stateName)}, ${s.attempts}, ${err})"
+                }
+                .mkString(", ")
+              stmt.execute(s"""insert into "${summaryTable}" values ${rows}""")
+          }
+        }
+        hooks.foreach { spec =>
+          try
+            activationSinks.find(_.name == spec.target) match
+              case Some(sink) =>
+                workEnv.info(
+                  s"[notify] flow ${result.flowName} (run: ${result
+                      .runId}): delivering the run summary to '${spec.target}'"
+                )
+                sink.activate(
+                  ActivationRequest(
+                    spec.target,
+                    spec.params,
+                    result.flowName,
+                    summaryTable,
+                    connector
+                  )
+                )
+              case None =>
+                workEnv.warn(
+                  s"[notify] flow ${result.flowName}: no activation sink named '${spec
+                      .target}' is registered"
+                )
+          catch
+            case NonFatal(e) =>
+              workEnv.warn(
+                s"[notify] flow ${result.flowName}: notification to '${spec.target}' failed: ${e
+                    .getMessage}"
+              )
+        }
+      catch
+        case NonFatal(e) =>
+          workEnv.warn(
+            s"[notify] flow ${result.flowName}: failed to prepare the run summary: ${e.getMessage}"
+          )
+      finally
+        try
+          connector.withSession { conn =>
+            Using.resource(conn.createStatement()) { stmt =>
+              stmt.execute(s"""drop table if exists "${summaryTable}"""")
+            }
+          }
+        catch
+          case NonFatal(_) =>
+        end try
+      end try
+    end if
+
+  end notifyRunResult
 
   /**
     * Execute the lowered stage body and materialize the result as a run-scoped table. References to
