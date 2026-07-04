@@ -287,14 +287,92 @@ class FlowExecutorTest extends UniTest:
   }
 
   test("fail a stage using unsupported flow operators without retrying") {
-    val result = runFlow("""flow JourneyFlow = {
+    val result = runFlow("""flow JumpFlow = {
         |  stage entry = from [[1]] as t(id)
-        |  stage delayed with { retries: 3 } = from entry | wait('7 days')
+        |  stage jump with { retries: 3 } = from entry | -> OtherFlow
         |}""".stripMargin)
-    val delayed = result.stageResult("delayed").get
-    delayed.state shouldBe StageState.Failed
+    val jump = result.stageResult("jump").get
+    jump.state shouldBe StageState.Failed
     // NOT_IMPLEMENTED errors are not retryable
-    delayed.attempts shouldBe 1
+    jump.attempts shouldBe 1
+  }
+
+  test("route rows to target stages with conditional predicates") {
+    val result = runFlow("""flow RouteFlow = {
+        |  stage src = from [[1, 25], [2, 15], [3, 40]] as t(id, age)
+        |  stage gate = from src | route {
+        |    case _.age >= 18 -> adult
+        |    else -> minor
+        |  }
+        |  stage adult = from gate | select id
+        |  stage minor = from gate | select id
+        |}""".stripMargin)
+    result.isSuccess shouldBe true
+    // The route stage materializes its full input; targets receive the routed subsets
+    countStageRows(result, "gate") shouldBe 3L
+    countStageRows(result, "adult") shouldBe 2L
+    countStageRows(result, "minor") shouldBe 1L
+  }
+
+  test("route rows deterministically with percentage buckets") {
+    val values = (1 to 100).map(i => s"[${i}]").mkString(", ")
+    val flowWv =
+      s"""flow ABTestFlow = {
+         |  stage src = from [${values}] as t(id)
+         |  stage split = from src | route by hash(id) {
+         |    case 50 -> variant_a
+         |    case 50 -> variant_b
+         |  }
+         |  stage variant_a = from split | select id
+         |  stage variant_b = from split | select id
+         |}""".stripMargin
+    val result1 = runFlow(flowWv)
+    result1.isSuccess shouldBe true
+    val a1 = countStageRows(result1, "variant_a")
+    val b1 = countStageRows(result1, "variant_b")
+    // Buckets partition the input: every row lands in exactly one variant
+    a1 + b1 shouldBe 100L
+    // Deterministic partitioning: a re-run produces the identical split
+    val result2 = runFlow(flowWv)
+    countStageRows(result2, "variant_a") shouldBe a1
+    countStageRows(result2, "variant_b") shouldBe b1
+  }
+
+  test("flatten fork stages and run them against the shared input") {
+    val result = runFlow("""flow ForkFlow = {
+        |  stage entry = from [[1], [2]] as t(id)
+        |  stage parallel = from entry | fork {
+        |    stage email = from entry | select id
+        |    stage sms = from entry | select id
+        |  }
+        |}""".stripMargin)
+    result.isSuccess shouldBe true
+    result.stageResults.map(_.name) shouldBe List("entry", "parallel", "email", "sms")
+    countStageRows(result, "email") shouldBe 2L
+    countStageRows(result, "sms") shouldBe 2L
+  }
+
+  test("delay a stage with the wait operator") {
+    val start  = System.nanoTime()
+    val result = runFlow("""flow WaitFlow = {
+        |  stage src = from [[1]] as t(id)
+        |  stage delayed = from src | wait('100 ms')
+        |}""".stripMargin)
+    val elapsedMillis = (System.nanoTime() - start) / 1000000L
+    result.isSuccess shouldBe true
+    elapsedMillis >= 100L shouldBe true
+    countStageRows(result, "delayed") shouldBe 1L
+  }
+
+  test("activate materializes its input and succeeds as a local stub") {
+    val result = runFlow("""flow ActivateFlow = {
+        |  stage src = from [[1], [2]] as t(id)
+        |  stage send = from src | activate('email')
+        |  stage done = from send | end()
+        |}""".stripMargin)
+    result.isSuccess shouldBe true
+    countStageRows(result, "send") shouldBe 2L
+    countStageRows(result, "done") shouldBe 2L
   }
 
   test("cancel remaining stages when cancellation is requested") {

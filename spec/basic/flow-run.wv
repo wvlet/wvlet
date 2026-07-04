@@ -68,3 +68,32 @@ run flow MergePipeline
 | where state = 'success'
 test _.size should be 3
 ;
+
+flow RoutedPipeline = {
+  stage src = from [[1, 25], [2, 15], [3, 40]] as t(id, age)
+  stage gate = from src | route {
+    case _.age >= 18 -> adult
+    else -> minor
+  }
+  stage adult = from gate | select id
+  stage minor = from gate | select id
+}
+
+-- Conditional routing lowers into filters over the route stage output
+run flow RoutedPipeline
+| where state = 'success'
+test _.size should be 4
+;
+
+flow JourneyPipeline = {
+  stage entry = from [[1], [2]] as t(id)
+  stage delayed = from entry | wait('10 ms')
+  stage send = from delayed | activate('email')
+  stage done = from send | end()
+}
+
+-- wait/activate/end operators are executable orchestration steps
+run flow JourneyPipeline
+| where state = 'success'
+test _.size should be 4
+;
