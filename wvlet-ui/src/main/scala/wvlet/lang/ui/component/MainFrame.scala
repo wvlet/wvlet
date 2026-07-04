@@ -25,12 +25,34 @@ object MainFrame extends RxComponent:
 
   val showSideBar = Rx.variable(false)
 
+  val PAGE_EDITOR    = "editor"
+  val PAGE_FLOW_RUNS = "flow-runs"
+
+  /** The page shown in the main content area, switched from the nav bar */
+  val currentPage = Rx.variable(PAGE_EDITOR)
+
   object NavBar extends RxElement:
     // Based on https://tailwindui.com/components/application-ui/navigation/navbars
 
     private def navItem(name: RxElement, isSelected: Boolean = false): RxElement = a(
       href -> "#",
       if isSelected then
+        cls -> "rounded-md bg-gray-900 px-3 py-2 text-sm font-medium text-white"
+      else
+        cls ->
+          "rounded-md px-3 py-2 text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white"
+      ,
+      name
+    )
+
+    /** A nav item switching the main content area to the given page */
+    private def pageNavItem(name: String, page: String, selected: String): RxElement = a(
+      href    -> "#",
+      onclick -> { (e: dom.MouseEvent) =>
+        e.preventDefault()
+        currentPage := page
+      },
+      if selected == page then
         cls -> "rounded-md bg-gray-900 px-3 py-2 text-sm font-medium text-white"
       else
         cls ->
@@ -68,19 +90,22 @@ object MainFrame extends RxComponent:
             // for desktop
             div(
               cls -> "md:block hidden",
-              div(
-                cls -> "flex space-x-4",
-                div(cls -> "pl-1 ml-1", wvletIcon),
-                navItem("Editor", isSelected = true),
-                navItem(
-                  a(
-                    href   -> "https://wvlet.org/wvlet/docs/syntax",
-                    target -> "_blank",
-                    "Query Syntax"
-                  )
-                ),
-                navItem(a(href -> "https://github.com/wvlet/wvlet", target -> "_blank", "GitHub"))
-              )
+              currentPage.map { page =>
+                div(
+                  cls -> "flex space-x-4",
+                  div(cls -> "pl-1 ml-1", wvletIcon),
+                  pageNavItem("Editor", PAGE_EDITOR, page),
+                  pageNavItem("Flow Runs", PAGE_FLOW_RUNS, page),
+                  navItem(
+                    a(
+                      href   -> "https://wvlet.org/wvlet/docs/syntax",
+                      target -> "_blank",
+                      "Query Syntax"
+                    )
+                  ),
+                  navItem(a(href -> "https://github.com/wvlet/wvlet", target -> "_blank", "GitHub"))
+                )
+              }
             )
           )
         )

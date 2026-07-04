@@ -648,6 +648,14 @@ Runs are managed with `wvlet flow session` subcommands:
   `__wv_flow_*` tables. With `--stale`, also remove running records whose liveness lease
   expired (crashed runs)
 
+### Flow Runs in the Web UI
+
+`wvlet ui -w <folder>` serves a read-only **Flow Runs** page next to the query editor:
+recent runs with state badges, and per-run stage states, attempts, and errors. The page
+reads the same run store as the `wvlet flow session` commands, so runs triggered from the
+CLI or a scheduler daemon on the same working folder appear as they happen. Cancelling and
+resuming runs stays in the CLI.
+
 ### Run Liveness Leases
 
 While a flow runs, the executor periodically refreshes a liveness lease on its run record

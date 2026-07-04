@@ -19,8 +19,9 @@ import wvlet.lang.api.v1.query.QueryError
 import wvlet.lang.ui.component.MainFrame
 import wvlet.lang.ui.component.editor.FileNav
 import wvlet.lang.ui.component.editor.WvletEditor
+import wvlet.lang.ui.component.flow.FlowRunsPage
 import wvlet.uni.design.Design
-import wvlet.uni.dom.all.renderTo
+import wvlet.uni.dom.all.{*, given}
 import wvlet.uni.http.Http
 import wvlet.uni.log.LogSupport
 import wvlet.uni.rx.Rx
@@ -46,8 +47,38 @@ object WvletUIMain extends LogSupport:
       info(s"Connected to the server: ${status}")
       val frame = MainFrame()
       // Let the uni Design build UI components for WvletEditor
-      val editor = design.newSession.build[WvletEditor]
-      frame(editor).renderTo("main")
+      val editor   = design.newSession.build[WvletEditor]
+      val flowRuns = FlowRunsPage(rpcClient)
+      // Both pages stay mounted (the editor keeps its state); the nav bar toggles visibility
+      val content = div(
+        div(
+          MainFrame
+            .currentPage
+            .map(page =>
+              cls -> (
+                if page == MainFrame.PAGE_EDITOR then
+                  ""
+                else
+                  "hidden"
+              )
+            ),
+          editor
+        ),
+        div(
+          MainFrame
+            .currentPage
+            .map(page =>
+              cls -> (
+                if page == MainFrame.PAGE_FLOW_RUNS then
+                  ""
+                else
+                  "hidden"
+              )
+            ),
+          flowRuns
+        )
+      )
+      frame(content).renderTo("main")
     }
     .run()
 
