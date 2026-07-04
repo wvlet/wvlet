@@ -54,7 +54,7 @@ class FlowExecutorTest extends UniTest:
       config: FlowExecutorConfig = FlowExecutorConfig(),
       stageRunner: Option[FlowStageRunner] = None,
       retryScheduler: Option[(Long, () => Unit) => Unit] = None,
-      registry: Option[FlowRunRegistry] = None
+      registry: Option[FlowRunStore] = None
   ): FlowExecutionResult =
     val (flow, ctx) = compileFlow(wv)
     FlowExecutor(connector, workEnv, config, stageRunner, retryScheduler, registry).execute(flow)(
@@ -677,6 +677,28 @@ class FlowExecutorTest extends UniTest:
     registry.get(result.runId).get.state shouldBe FlowRunRecord.STATE_CANCELLED
     // The marker is cleared once the run reaches a terminal state
     registry.cancelRequested(result.runId) shouldBe false
+  }
+
+  test("record and cancel flow runs with the SQLite-backed store") {
+    val store = SQLiteFlowRunStore(
+      java.nio.file.Files.createTempDirectory("wv-flow-sqlite").resolve("registry.db")
+    )
+    try
+      val result = runFlow(
+        """flow SqliteRecordedFlow = {
+          |  stage src = from [[1], [2]] as t(id)
+          |  stage out = from src | select id
+          |}""".stripMargin,
+        registry = Some(store)
+      )
+      result.isSuccess shouldBe true
+      val record = store.get(result.runId).get
+      record.flowName shouldBe "SqliteRecordedFlow"
+      record.state shouldBe FlowRunRecord.STATE_SUCCESS
+      record.stages.map(_.state).distinct shouldBe List("success")
+      store.latestRunOf("SqliteRecordedFlow").get.runId shouldBe result.runId
+    finally
+      store.close()
   }
 
   test("manage cancellation markers and record deletion in the registry") {

@@ -1,0 +1,175 @@
+package wvlet.lang.runner
+
+import wvlet.lang.api.StatusCode
+import wvlet.lang.api.WvletLangException
+import wvlet.lang.compiler.WorkEnv
+import wvlet.uni.test.UniTest
+
+import java.nio.file.Files
+
+/**
+  * Behavioral tests shared by the file-based and SQLite-backed flow run stores
+  */
+class FlowRunStoreTest extends UniTest:
+
+  private def newStores(): List[(String, FlowRunStore)] =
+    val dir = Files.createTempDirectory("wv-flow-store")
+    List(
+      "file"   -> FlowRunRegistry(dir.resolve("file")),
+      "sqlite" -> SQLiteFlowRunStore(dir.resolve("registry.db"))
+    )
+
+  private def withStores(body: (String, FlowRunStore) => Unit): Unit = newStores().foreach {
+    (kind, store) =>
+      try body(kind, store)
+      finally store.close()
+  }
+
+  private def record(
+      runId: String,
+      flowName: String,
+      state: String,
+      startedAt: Long
+  ): FlowRunRecord = FlowRunRecord(
+    runId,
+    flowName,
+    state,
+    startedAt,
+    finishedAtMillis =
+      if state == FlowRunRecord.STATE_RUNNING then
+        None
+      else
+        Some(startedAt + 10)
+    ,
+    stages = List(
+      StageRunRecord("src", "success", 1, None, Some(s"__wv_flow_${runId}_src")),
+      StageRunRecord("out", "failed", 2, Some("boom"), None)
+    )
+  )
+
+  test("save, get, and list runs most recent first") {
+    withStores { (kind, store) =>
+      store.save(record("run1", "FlowA", FlowRunRecord.STATE_FAILED, 100L))
+      store.save(record("run2", "FlowB", FlowRunRecord.STATE_RUNNING, 200L))
+      store.save(record("run3", "FlowA", FlowRunRecord.STATE_SUCCESS, 300L))
+
+      val r1 = store.get("run1").getOrElse(fail(s"run1 not found in ${kind} store"))
+      r1.flowName shouldBe "FlowA"
+      r1.state shouldBe FlowRunRecord.STATE_FAILED
+      r1.finishedAtMillis shouldBe Some(110L)
+      r1.stages.map(_.name) shouldBe List("src", "out")
+      r1.stages.head.table shouldBe Some("__wv_flow_run1_src")
+      r1.stages.last.error shouldBe Some("boom")
+
+      store.get("run2").get.finishedAtMillis shouldBe None
+      store.list().map(_.runId) shouldBe List("run3", "run2", "run1")
+      store.latestRunOf("FlowA").get.runId shouldBe "run3"
+      store.latestRunOf("NoSuchFlow") shouldBe None
+    }
+  }
+
+  test("overwrite a run record on save") {
+    withStores { (kind, store) =>
+      store.save(record("run1", "FlowA", FlowRunRecord.STATE_RUNNING, 100L))
+      val updated = record("run1", "FlowA", FlowRunRecord.STATE_SUCCESS, 100L).copy(stages =
+        List(StageRunRecord("src", "success", 1))
+      )
+      store.save(updated)
+      val r = store.get("run1").get
+      r.state shouldBe FlowRunRecord.STATE_SUCCESS
+      r.stages.size shouldBe 1
+      store.list().size shouldBe 1
+    }
+  }
+
+  test("track cancellation requests") {
+    withStores { (kind, store) =>
+      store.save(record("run1", "FlowA", FlowRunRecord.STATE_RUNNING, 100L))
+      store.cancelRequested("run1") shouldBe false
+      store.requestCancel("run1")
+      store.cancelRequested("run1") shouldBe true
+      store.clearCancelRequest("run1")
+      store.cancelRequested("run1") shouldBe false
+    }
+  }
+
+  test("delete run records") {
+    withStores { (kind, store) =>
+      store.save(record("run1", "FlowA", FlowRunRecord.STATE_SUCCESS, 100L))
+      store.requestCancel("run1")
+      store.delete("run1")
+      store.get("run1") shouldBe None
+      store.cancelRequested("run1") shouldBe false
+      store.list() shouldBe Nil
+    }
+  }
+
+  test("claim run slots up to the concurrency limit") {
+    withStores { (kind, store) =>
+      val first = record("run1", "FlowA", FlowRunRecord.STATE_RUNNING, 100L)
+      store.claimRunSlot(first, concurrencyLimit = 2) shouldBe true
+      store.get("run1").get.stages.map(_.name) shouldBe List("src", "out")
+      store.claimRunSlot(
+        record("run2", "FlowA", FlowRunRecord.STATE_RUNNING, 200L),
+        concurrencyLimit = 2
+      ) shouldBe true
+      // The limit is reached: the third concurrent run of FlowA is rejected
+      store.claimRunSlot(
+        record("run3", "FlowA", FlowRunRecord.STATE_RUNNING, 300L),
+        concurrencyLimit = 2
+      ) shouldBe false
+      store.get("run3") shouldBe None
+      // Other flows have their own slots
+      store.claimRunSlot(
+        record("runB", "FlowB", FlowRunRecord.STATE_RUNNING, 300L),
+        concurrencyLimit = 1
+      ) shouldBe true
+
+      // Finishing a run frees its slot
+      store.save(record("run1", "FlowA", FlowRunRecord.STATE_SUCCESS, 100L))
+      store.claimRunSlot(
+        record("run3", "FlowA", FlowRunRecord.STATE_RUNNING, 300L),
+        concurrencyLimit = 2
+      ) shouldBe true
+    }
+  }
+
+  test("share state between store instances on the same path") {
+    // Simulates cross-process observation: a second store instance sees runs and cancellation
+    // requests written by the first one
+    val dir = Files.createTempDirectory("wv-flow-store-shared")
+    List(
+      "file"   -> (() => FlowRunRegistry(dir.resolve("file"))),
+      "sqlite" -> (() => SQLiteFlowRunStore(dir.resolve("registry.db")))
+    ).foreach { (kind, newStore) =>
+      val writer = newStore()
+      val reader = newStore()
+      try
+        writer.save(record("run1", "FlowA", FlowRunRecord.STATE_RUNNING, 100L))
+        reader.get("run1").isDefined shouldBe true
+        reader.requestCancel("run1")
+        writer.cancelRequested("run1") shouldBe true
+      finally
+        writer.close()
+        reader.close()
+    }
+  }
+
+  test("create stores via the factory") {
+    val dir = Files.createTempDirectory("wv-flow-store-factory")
+    // A .wv file makes the folder a wvlet workspace, so targetFolder stays under this temp dir
+    Files.writeString(dir.resolve("dummy.wv"), "")
+    val workEnv = WorkEnv(dir.toString)
+    val file    = FlowRunStore.ofType(FlowRunStore.STORE_TYPE_FILE, workEnv)
+    file.close()
+    file.getClass shouldBe classOf[FlowRunRegistry]
+    val sqlite = FlowRunStore.ofType(FlowRunStore.STORE_TYPE_SQLITE, workEnv)
+    sqlite.close()
+    sqlite.getClass shouldBe classOf[SQLiteFlowRunStore]
+    val e = intercept[WvletLangException] {
+      FlowRunStore.ofType("bogus", workEnv)
+    }
+    e.statusCode shouldBe StatusCode.INVALID_ARGUMENT
+  }
+
+end FlowRunStoreTest

@@ -115,6 +115,21 @@ class WvletFlowCommandTest extends UniTest:
     FlowRunRegistry.forWorkEnv(WorkEnv(flowDir)).list() shouldBe Nil
   }
 
+  test("run a flow and inspect sessions with the SQLite run store") {
+    import wvlet.lang.compiler.WorkEnv
+    import wvlet.lang.runner.FlowRunStore
+    WvletMain.main(s"flow run SamplePipeline -w ${flowDir} --run-store sqlite")
+    WvletMain.main(s"flow session list -w ${flowDir} --run-store sqlite")
+    val store = FlowRunStore.ofType(FlowRunStore.STORE_TYPE_SQLITE, WorkEnv(flowDir))
+    try
+      val runs = store.list()
+      runs.nonEmpty shouldBe true
+      runs.head.flowName shouldBe "SamplePipeline"
+      WvletMain.main(s"flow session show ${runs.head.runId} -w ${flowDir} --run-store sqlite")
+    finally
+      store.close()
+  }
+
   test("report an error for an unknown flow name") {
     val e = intercept[WvletLangException] {
       WvletMain.main(s"flow run NoSuchFlow -w ${flowDir}")

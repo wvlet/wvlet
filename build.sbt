@@ -401,6 +401,8 @@ lazy val runner = project
         "com.github.ben-manes.caffeine" % "caffeine"     % "3.2.4",
         "org.apache.arrow"              % "arrow-vector" % "19.0.0",
         "org.duckdb"                    % "duckdb_jdbc"  % DUCKDB_JDBC_VERSION,
+        // SQLite-backed flow run store (cross-process cancellation and concurrency claims)
+        "org.xerial" % "sqlite-jdbc" % "3.49.1.0",
         // trino-jdbc removed in PR-D: TrinoConnector now talks the Trino REST protocol via uni's
         // HttpSyncClient (see wvlet-lang's TrinoSqlConnector). trino-testing stays in test scope
         // for the in-process TestingTrinoServer — that artifact doesn't pull in trino-jdbc.

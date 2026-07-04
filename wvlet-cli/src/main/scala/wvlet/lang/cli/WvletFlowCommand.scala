@@ -31,7 +31,7 @@ import wvlet.lang.model.plan.FlowDef
 import wvlet.lang.model.plan.FlowStatePredicate
 import wvlet.lang.runner.FlowExecutor
 import wvlet.lang.runner.FlowRunRecord
-import wvlet.lang.runner.FlowRunRegistry
+import wvlet.lang.runner.FlowRunStore
 import wvlet.lang.runner.connector.DBConnectorProvider
 import wvlet.uni.log.LogSupport
 
@@ -43,7 +43,9 @@ case class WvletFlowOption(
     @option(prefix = "--catalog", description = "Context database catalog to use")
     catalog: Option[String] = None,
     @option(prefix = "--schema", description = "Context database schema to use")
-    schema: Option[String] = None
+    schema: Option[String] = None,
+    @option(prefix = "--run-store", description = "Flow run store type: file (default) or sqlite")
+    runStore: Option[String] = None
 )
 
 /**
@@ -78,16 +80,23 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
           .withCompilationUnit(unit)
           .newContext(Symbol.NoSymbol)
 
-        val result = FlowExecutor(
-          connector,
-          workEnv,
-          registry = Some(FlowRunRegistry.forWorkEnv(workEnv))
-        ).execute(flow, resumeFrom)
-        println(result.toPrettyBox())
-        if result.hasError && !WvletMain.isInSbt then
-          System.exit(1)
+        Control.withResource(newRunStore(flowOption, workEnv)) { store =>
+          val result = FlowExecutor(connector, workEnv, registry = Some(store)).execute(
+            flow,
+            resumeFrom
+          )
+          println(result.toPrettyBox())
+          if result.hasError && !WvletMain.isInSbt then
+            System.exit(1)
+        }
       }
     }
+
+  /** Create the run store selected with --run-store (or the WVLET_FLOW_STORE environment) */
+  private def newRunStore(flowOption: WvletFlowOption, workEnv: WorkEnv): FlowRunStore = flowOption
+    .runStore
+    .map(FlowRunStore.ofType(_, workEnv))
+    .getOrElse(FlowRunStore.forWorkEnv(workEnv))
 
   @command(description = "List flows defined in the working folder")
   def list(flowOption: WvletFlowOption): Unit =
@@ -129,8 +138,7 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
       @argument(description = "Run id (required for show, cancel, and resume)")
       runId: Option[String] = None
   ): Unit =
-    val workEnv  = WorkEnv(flowOption.workFolder, opts.logLevel)
-    val registry = FlowRunRegistry.forWorkEnv(workEnv)
+    val workEnv = WorkEnv(flowOption.workFolder, opts.logLevel)
 
     def fmtTime(millis: Long): String        = java.time.Instant.ofEpochMilli(millis).toString
     def fmtElapsed(r: FlowRunRecord): String = r
@@ -142,79 +150,85 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
       throw StatusCode.INVALID_ARGUMENT.newException(s"Usage: wvlet flow session ${usage}")
     )
 
-    def recordOf(id: String): FlowRunRecord = registry
-      .get(id)
-      .getOrElse(throw StatusCode.INVALID_ARGUMENT.newException(s"Flow run '${id}' is not found"))
+    Control.withResource(newRunStore(flowOption, workEnv)) { registry =>
+      def recordOf(id: String): FlowRunRecord = registry
+        .get(id)
+        .getOrElse(throw StatusCode.INVALID_ARGUMENT.newException(s"Flow run '${id}' is not found"))
 
-    sub match
-      case "list" =>
-        registry
-          .list()
-          .foreach { r =>
-            println(
-              f"${r.runId}%-28s ${r.flowName}%-24s ${r.state}%-10s started: ${fmtTime(
-                  r.startedAtMillis
-                )} (${fmtElapsed(r)})"
-            )
-          }
-      case "show" =>
-        val r = recordOf(requireRunId("show <run_id>"))
-        println(s"run:      ${r.runId}")
-        println(s"flow:     ${r.flowName}")
-        println(s"state:    ${r.state}")
-        println(s"started:  ${fmtTime(r.startedAtMillis)}")
-        r.finishedAtMillis.foreach(f => println(s"finished: ${fmtTime(f)}"))
-        r.stages
-          .foreach { s =>
-            val err = s.error.map(e => s" - ${e}").getOrElse("")
-            println(f"  stage ${s.name}%-24s ${s.state}%-14s attempts: ${s.attempts}${err}")
-          }
-      case "cancel" =>
-        val id = requireRunId("cancel <run_id>")
-        val r  = recordOf(id)
-        if r.isTerminal then
-          println(s"Run ${id} is already ${r.state}")
-        else
-          registry.requestCancel(id)
-          println(s"Requested cancellation of run ${id}")
-      case "resume" =>
-        val id = requireRunId("resume <run_id>")
-        val r  = recordOf(id)
-        r.state match
-          case FlowRunRecord.STATE_RUNNING =>
-            throw StatusCode
-              .INVALID_ARGUMENT
-              .newException(s"Run ${id} is still running and cannot be resumed")
-          case FlowRunRecord.STATE_SUCCESS =>
-            println(s"Run ${id} already succeeded; nothing to resume")
-          case FlowRunRecord.STATE_SKIPPED =>
-            throw StatusCode
-              .INVALID_ARGUMENT
-              .newException(
-                s"Run ${id} was skipped (its dependency was not satisfied). Use wvlet flow run ${r
-                    .flowName} to start a new run"
+      sub match
+        case "list" =>
+          registry
+            .list()
+            .foreach { r =>
+              println(
+                f"${r.runId}%-28s ${r.flowName}%-24s ${r.state}%-10s started: ${fmtTime(
+                    r.startedAtMillis
+                  )} (${fmtElapsed(r)})"
               )
-          case _ =>
-            executeFlow(flowOption, r.flowName, resumeFrom = Some(r))
-      case "clean" =>
-        // Remove terminal run records and drop their run-scoped tables. Running flows are kept
-        val terminalRuns = registry.list().filter(_.isTerminal)
-        val profile = Profile.getProfile(flowOption.profile, flowOption.catalog, flowOption.schema)
-        Control.withResource(DBConnectorProvider(workEnv)) { dbConnectorProvider =>
-          val connector = dbConnectorProvider.getConnector(profile)
-          terminalRuns.foreach { r =>
-            FlowExecutor.dropRunTables(connector, r.runId, r.stages.map(_.name))
-            registry.delete(r.runId)
-          }
-        }
-        println(s"Removed ${terminalRuns.size} flow run record(s)")
-      case other =>
-        throw StatusCode
-          .INVALID_ARGUMENT
-          .newException(
-            s"Unknown session sub command: ${other}. Use list, show, cancel, resume, or clean"
+            }
+        case "show" =>
+          val r = recordOf(requireRunId("show <run_id>"))
+          println(s"run:      ${r.runId}")
+          println(s"flow:     ${r.flowName}")
+          println(s"state:    ${r.state}")
+          println(s"started:  ${fmtTime(r.startedAtMillis)}")
+          r.finishedAtMillis.foreach(f => println(s"finished: ${fmtTime(f)}"))
+          r.stages
+            .foreach { s =>
+              val err = s.error.map(e => s" - ${e}").getOrElse("")
+              println(f"  stage ${s.name}%-24s ${s.state}%-14s attempts: ${s.attempts}${err}")
+            }
+        case "cancel" =>
+          val id = requireRunId("cancel <run_id>")
+          val r  = recordOf(id)
+          if r.isTerminal then
+            println(s"Run ${id} is already ${r.state}")
+          else
+            registry.requestCancel(id)
+            println(s"Requested cancellation of run ${id}")
+        case "resume" =>
+          val id = requireRunId("resume <run_id>")
+          val r  = recordOf(id)
+          r.state match
+            case FlowRunRecord.STATE_RUNNING =>
+              throw StatusCode
+                .INVALID_ARGUMENT
+                .newException(s"Run ${id} is still running and cannot be resumed")
+            case FlowRunRecord.STATE_SUCCESS =>
+              println(s"Run ${id} already succeeded; nothing to resume")
+            case FlowRunRecord.STATE_SKIPPED =>
+              throw StatusCode
+                .INVALID_ARGUMENT
+                .newException(
+                  s"Run ${id} was skipped (its dependency was not satisfied). Use wvlet flow run ${r
+                      .flowName} to start a new run"
+                )
+            case _ =>
+              executeFlow(flowOption, r.flowName, resumeFrom = Some(r))
+        case "clean" =>
+          // Remove terminal run records and drop their run-scoped tables. Running flows are kept
+          val terminalRuns = registry.list().filter(_.isTerminal)
+          val profile      = Profile.getProfile(
+            flowOption.profile,
+            flowOption.catalog,
+            flowOption.schema
           )
-    end match
+          Control.withResource(DBConnectorProvider(workEnv)) { dbConnectorProvider =>
+            val connector = dbConnectorProvider.getConnector(profile)
+            terminalRuns.foreach { r =>
+              FlowExecutor.dropRunTables(connector, r.runId, r.stages.map(_.name))
+              registry.delete(r.runId)
+            }
+          }
+          println(s"Removed ${terminalRuns.size} flow run record(s)")
+        case other =>
+          throw StatusCode
+            .INVALID_ARGUMENT
+            .newException(
+              s"Unknown session sub command: ${other}. Use list, show, cancel, resume, or clean"
+            )
+      end match
+    }
   end session
 
   @command(description = "Show the plan of a flow")
