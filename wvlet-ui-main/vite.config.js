@@ -23,7 +23,9 @@ function isDev() {
 
 const scalaVersion = fs.readFileSync("../SCALA_VERSION").toString().trim();
 const suffix = isDev() ? "-fastopt" : "-opt";
-const scalaJsTarget= `./target/scala-${scalaVersion}/wvlet-ui-main${suffix}`;
+// sbt 2 emits Scala.js linker output under the root's <root>/target/out/sjs1/scala-<ver>/<proj>/
+// tree instead of per-project target/scala-<ver>/. Point Vite at the new location.
+const scalaJsTarget = `../target/out/sjs1/scala-${scalaVersion}/wvlet-ui-main/wvlet-ui-main${suffix}`;
 
 export default defineConfig({
   server: {

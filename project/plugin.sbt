@@ -1,12 +1,6 @@
-// Ignore binary incompatible errors for libraries using scala-xml.
-// sbt-scoverage upgraded to scala-xml 2.1.0, but other sbt-plugins and Scala compilier 2.12 uses scala-xml 1.x.x
-ThisBuild / libraryDependencySchemes ++=
-  Seq(
-    "org.scala-lang.modules" %% "scala-xml"                % "always",
-    "org.scala-lang.modules" %% "scala-parser-combinators" % "always"
-  )
-
 // ThisBuild / resolvers ++= Resolver.sonatypeOssRepos("snapshots")
+
+val UNI_VERSION = "2026.1.15"
 
 addSbtPlugin("org.scalameta" % "sbt-scalafmt"  % "2.6.1")
 addSbtPlugin("com.eed3si9n"  % "sbt-buildinfo" % "0.13.1")
@@ -14,20 +8,25 @@ addSbtPlugin("com.eed3si9n"  % "sbt-buildinfo" % "0.13.1")
 // For IntelliJ IDEA
 addSbtPlugin("org.jetbrains.scala" % "sbt-ide-settings" % "1.1.4")
 
-// For restarting servers with reStart sbt command as you edit source files
-addSbtPlugin("io.spray" % "sbt-revolver" % "0.10.0")
+// For restarting servers with uniRestart sbt command as you edit source files
+// (replaces sbt-revolver; not yet available for sbt 2)
+addSbtPlugin("org.wvlet.uni" % "sbt-uni" % UNI_VERSION)
 
 // For Scala.js
-val SCALAJS_VERSION                    = sys.env.getOrElse("SCALAJS_VERSION", "1.22.0")
-addSbtPlugin("org.scala-js"       % "sbt-scalajs"              % SCALAJS_VERSION)
-addSbtPlugin("org.portable-scala" % "sbt-scalajs-crossproject" % "1.3.2")
+val SCALAJS_VERSION = sys.env.getOrElse("SCALAJS_VERSION", "1.22.0")
+addSbtPlugin("org.scala-js" % "sbt-scalajs" % SCALAJS_VERSION)
 
 // For Scala Native
-addSbtPlugin("org.scala-native"   % "sbt-scala-native"              % "0.5.12")
-addSbtPlugin("org.portable-scala" % "sbt-scala-native-crossproject" % "1.3.2")
+addSbtPlugin("org.scala-native" % "sbt-scala-native" % "0.5.12")
 
-// For testing Scala.js code with Node.js
-libraryDependencies += "org.scala-js" %% "scalajs-env-jsdom-nodejs" % "1.1.1"
+// Cross-platform (JVM/JS/Native) crossProject support
+// (replaces org.portable-scala sbt-scalajs-crossproject & sbt-scala-native-crossproject
+// which have no sbt 2 build)
+addSbtPlugin("org.wvlet.uni" % "sbt-uni-crossproject" % UNI_VERSION)
+
+// Headless Chromium JSEnv for wvlet-ui tests (replaces scalajs-env-jsdom-nodejs, which is
+// only published for Scala 2.13 and conflicts with sbt 2's Scala 3 meta-build).
+addSbtPlugin("org.wvlet.uni" % "sbt-uni-playwright" % UNI_VERSION)
 
 addDependencyTreePlugin
 
@@ -35,10 +34,6 @@ addDependencyTreePlugin
 addSbtPlugin("com.github.sbt" % "sbt-dynver" % "5.1.1")
 
 // For packaging Scala project into a executable folder
-addSbtPlugin("org.xerial.sbt" % "sbt-pack" % "0.23")
-
-// For compiling model classes from SQL templates
-libraryDependencies += "org.duckdb" % "duckdb_jdbc" % "1.5.4.0"
-addSbtPlugin("org.xerial.sbt" % "sbt-sql" % "0.19")
+addSbtPlugin("org.xerial.sbt" % "sbt-pack" % "1.0.0")
 
 scalacOptions ++= Seq("-deprecation", "-feature")
