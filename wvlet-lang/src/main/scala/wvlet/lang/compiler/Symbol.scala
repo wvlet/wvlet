@@ -199,4 +199,15 @@ class Symbol(val id: Int, val span: Span) extends LogSupport:
 end Symbol
 
 case class TypeSymbol(override val id: Int, override val span: Span, sourceFile: SourceFile)
-    extends Symbol(id, span)
+    extends Symbol(id, span):
+  private var _typeScope: Scope | Null = null
+
+  /**
+    * The scope holding the methods declared in this type definition. Recorded at labeling time so
+    * that a context-specific re-definition (e.g., type x in duckdb) can add its methods without
+    * forcing a pending lazy completion, which would resolve parent types before all compilation
+    * units are labeled
+    */
+  def typeScope: Option[Scope] = Option(_typeScope)
+
+  def setTypeScope(scope: Scope): Unit = _typeScope = scope

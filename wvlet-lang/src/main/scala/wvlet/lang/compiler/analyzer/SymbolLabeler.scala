@@ -290,9 +290,20 @@ object SymbolLabeler extends Phase("symbol-labeler"):
         // Symbol is already assigned if context-specific types and functions (e.g., in duckdb, in trino) are defined
         t.symbol = sym
         trace(s"Attach symbol ${sym} to ${t.name} ${t.locationString(using ctx)}")
-        sym.symbolInfo match
-          case ts: TypeSymbolInfo =>
-            val typeScope = ts.declScope
+        // Locate the type scope without forcing a pending lazy completion: forcing here would
+        // resolve parent types before all compilation units are labeled
+        val knownTypeScope =
+          sym match
+            case ts: TypeSymbol if ts.typeScope.isDefined =>
+              ts.typeScope
+            case _ =>
+              sym.symbolInfo match
+                case ts: TypeSymbolInfo =>
+                  Some(ts.declScope)
+                case _ =>
+                  None
+        knownTypeScope match
+          case Some(typeScope) =>
             t.elems
               .collect { case f: FunctionDef =>
                 val ft             = toFunctionType(f, t.defContexts)
@@ -331,6 +342,7 @@ object SymbolLabeler extends Phase("symbol-labeler"):
         ctx.compilationUnit.enter(sym)
         val typeCtx   = ctx.newContext(sym)
         val typeScope = typeCtx.scope
+        sym.setTypeScope(typeScope)
         sym.setCompleter(typeName, s => computeTypeDefSymbolInfo(t, s, typeScope)(using ctx))
         sym.tree = t
 
@@ -389,14 +401,17 @@ object SymbolLabeler extends Phase("symbol-labeler"):
         NamedType(v.name, dt)
       }
 
-    val parentSymbol = t.parent.map(registerParentSymbols).getOrElse(ctx.owner)
-    val parentTpe    = parentSymbol.dataType
-    val tpe          = SchemaType(parent = Some(parentTpe), typeName, columns)
-    val typeParams   = t.params
+    // The schema parent is only the extended type (None when the type has no parent); the
+    // owner symbol falls back to the enclosing package
+    val parentTypeSymbol = t.parent.map(registerParentSymbols)
+    val parentTpe        = parentTypeSymbol.map(_.dataType)
+    val ownerSymbol      = parentTypeSymbol.getOrElse(ctx.owner)
+    val tpe              = SchemaType(parent = parentTpe, typeName, columns)
+    val typeParams       = t.params
 
     trace(s"Completed type symbol ${sym}: ${tpe}")
     TypeSymbolInfo(
-      owner = parentSymbol,
+      owner = ownerSymbol,
       sym,
       typeName,
       tpe,
