@@ -54,9 +54,10 @@ val scalajsJavaSecureRandom: ModuleID =
 // Scala Native's `@link("curl")` on `CurlBindings` only fires when the Extern object is
 // reachable through DCE — test binaries that don't touch the HTTP client would otherwise link
 // the shim without `-lcurl` and fail with `undefined reference to curl_easy_setopt`.
-val uniNativeCurlLinking = nativeConfig ~= { c =>
-  c.withLinkingOptions(c.linkingOptions :+ "-lcurl")
-}
+val uniNativeCurlLinking =
+  nativeConfig ~= { c =>
+    c.withLinkingOptions(c.linkingOptions :+ "-lcurl")
+  }
 
 lazy val jvmProjects: Seq[ProjectReference] = Seq(
   api.jvm,
@@ -118,7 +119,7 @@ lazy val api = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     name          := "wvlet-api",
     buildInfoKeys := Seq[BuildInfoKey](name, version, scalaVersion, sbtVersion),
     buildInfoOptions += BuildInfoOption.BuildTime,
-    buildInfoPackage                        := "wvlet.lang",
+    buildInfoPackage                       := "wvlet.lang",
     libraryDependencies += "org.wvlet.uni" %% "uni" % UNI_VERSION
   )
   .jsSettings(libraryDependencies += scalajsJavaSecureRandom)
@@ -200,10 +201,11 @@ lazy val lang = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     // Watch changes of example .wv files upon testing. In sbt 2, Seq[File] outputs are
     // rejected by the caching layer, so wrap the value in Def.uncached (same trick uni
     // uses for JSEnv).
-    Test / watchSources ++= Def.uncached(
-      ((ThisBuild / baseDirectory).value / "spec" ** "*.wv").get() ++
-        ((ThisBuild / baseDirectory).value / "wvlet-stdlib" ** "*.wv").get()
-    )
+    Test / watchSources ++=
+      Def.uncached(
+        ((ThisBuild / baseDirectory).value / "spec" ** "*.wv").get() ++
+          ((ThisBuild / baseDirectory).value / "wvlet-stdlib" ** "*.wv").get()
+      )
   )
   .jvmSettings(
     // scala3-compiler is JVM-only; kept out of the shared crossProject deps so `%%` on
@@ -229,10 +231,11 @@ val specRunnerSettings = Seq(
   Test / baseDirectory := (ThisBuild / baseDirectory).value,
   // Watch changes of example .wv files upon testing. Def.uncached wraps the Seq[File]
   // value so sbt 2's cached-task validator does not reject a non-serializable File output.
-  Test / watchSources ++= Def.uncached(
-    ((ThisBuild / baseDirectory).value / "spec" ** "*.wv").get() ++
-      ((ThisBuild / baseDirectory).value / "wvlet-lang" ** "*.wv").get()
-  )
+  Test / watchSources ++=
+    Def.uncached(
+      ((ThisBuild / baseDirectory).value / "spec" ** "*.wv").get() ++
+        ((ThisBuild / baseDirectory).value / "wvlet-lang" ** "*.wv").get()
+    )
 )
 
 lazy val wvc = project
@@ -328,37 +331,39 @@ lazy val cli = project
     // Need to fork a JVM to avoid DuckDB crash while running runner/cli test simultaneously
     Test / fork          := true,
     Test / baseDirectory := (ThisBuild / baseDirectory).value,
-    packQuick := Def.uncached {
-      // Run the default pack task
-      (Runtime / pack).value
-    },
-    pack := Def.uncached {
-      Def
-        .sequential(
-          Def.task[Unit] {
-            // Install pnpm dependencies
-            scala
-              .sys
-              .process
-              .Process(List("pnpm", "install", "--silent"), (ThisBuild / baseDirectory).value)
-              .!
-            // Trigger compilation from Scala.js to JS
-            val assetFiles = (uiMain / Compile / fullLinkJS).value
-            // Packaging the web assets using Vite.js
-            scala
-              .sys
-              .process
-              .Process(
-                List("pnpm", "run", "--silent", "build-ui"),
-                (ThisBuild / baseDirectory).value
-              )
-              .!
-          },
-          // Run the default pack task
-          (Runtime / pack).toTask
-        )
-        .value
-    },
+    packQuick            :=
+      Def.uncached {
+        // Run the default pack task
+        (Runtime / pack).value
+      },
+    pack :=
+      Def.uncached {
+        Def
+          .sequential(
+            Def.task[Unit] {
+              // Install pnpm dependencies
+              scala
+                .sys
+                .process
+                .Process(List("pnpm", "install", "--silent"), (ThisBuild / baseDirectory).value)
+                .!
+              // Trigger compilation from Scala.js to JS
+              val assetFiles = (uiMain / Compile / fullLinkJS).value
+              // Packaging the web assets using Vite.js
+              scala
+                .sys
+                .process
+                .Process(
+                  List("pnpm", "run", "--silent", "build-ui"),
+                  (ThisBuild / baseDirectory).value
+                )
+                .!
+            },
+            // Run the default pack task
+            (Runtime / pack).toTask
+          )
+          .value
+      },
     packMain :=
       Map(
         // Wvlet REPL launcher
@@ -536,8 +541,8 @@ lazy val ui = project
   .in(file("wvlet-ui"))
   .settings(
     buildSettings,
-    name         := "wvlet-ui",
-    description  := "UI components that can be testable with Node.js",
+    name        := "wvlet-ui",
+    description := "UI components that can be testable with Node.js",
     // TODO: restore JSDOMNodeJSEnv once scalajs-env-jsdom-nodejs is published for Scala 3
     Test / jsEnv := Def.uncached(new org.scalajs.jsenv.nodejs.NodeJSEnv()),
     libraryDependencies ++=
@@ -565,8 +570,8 @@ lazy val playground = project
   .settings(
     buildSettings,
     uiSettings,
-    name        := "wvlet-ui-playground",
-    description := "Online playground for wvlet",
+    name           := "wvlet-ui-playground",
+    description    := "Online playground for wvlet",
     sampleQueryGen := {
       val libDir     = baseDirectory.value / "src/main/wvlet/Examples"
       val targetFile = (Compile / sourceManaged).value /
