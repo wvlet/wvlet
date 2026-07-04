@@ -24,10 +24,9 @@ addSbtPlugin("org.scala-native" % "sbt-scala-native" % "0.5.12")
 // which have no sbt 2 build)
 addSbtPlugin("org.wvlet.uni" % "sbt-uni-crossproject" % UNI_VERSION)
 
-// Note: scalajs-env-jsdom-nodejs is only published for Scala 2.13 and conflicts with the
-// Scala 3 transitives that sbt-scalajs pulls into sbt 2's meta-build. Until a Scala 3 build
-// exists, wvlet-ui tests fall back to the default NodeJS env; DOM tests can be re-enabled
-// once an sbt 2 / Scala 3 compatible jsdom env is available.
+// Headless Chromium JSEnv for wvlet-ui tests (replaces scalajs-env-jsdom-nodejs, which is
+// only published for Scala 2.13 and conflicts with sbt 2's Scala 3 meta-build).
+addSbtPlugin("org.wvlet.uni" % "sbt-uni-playwright" % UNI_VERSION)
 
 addDependencyTreePlugin
 

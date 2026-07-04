@@ -543,8 +543,13 @@ lazy val ui = project
     buildSettings,
     name        := "wvlet-ui",
     description := "UI components that can be testable with Node.js",
-    // TODO: restore JSDOMNodeJSEnv once scalajs-env-jsdom-nodejs is published for Scala 3
-    Test / jsEnv := Def.uncached(new org.scalajs.jsenv.nodejs.NodeJSEnv()),
+    // Run UI tests in headless Chromium via Playwright — gives real DOM APIs plus ES-module
+    // support, unlike jsdom. Def.uncached wraps the JSEnv because it isn't JSON-serializable
+    // and sbt 2 caches setting values by default.
+    Test / jsEnv :=
+      Def.uncached(
+        new wvlet.uni.jsenv.playwright.PlaywrightJSEnv(browserName = "chromium", headless = true)
+      ),
     libraryDependencies ++=
       Seq(
         "org.wvlet.uni" %% "uni"         % UNI_VERSION,
