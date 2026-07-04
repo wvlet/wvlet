@@ -1233,6 +1233,76 @@ class FlowExecutorTest extends UniTest:
     e.getMessage shouldContain "expects string"
   }
 
+  test("record the resolved arguments and logical run time on the run record") {
+    val registry = FlowRunRegistry(java.nio.file.Files.createTempDirectory("wv-flow-reg"))
+    val runTime  = java.time.ZonedDateTime.of(2026, 7, 1, 2, 30, 0, 0, java.time.ZoneId.of("UTC"))
+    val result   = runFlow(
+      paramFlow,
+      registry = Some(registry),
+      args = List(namedArg("target_name", str("a"))),
+      runTime = Some(runTime)
+    )
+    result.isSuccess shouldBe true
+    val record = registry.get(result.runId).get
+    // The record captures the resolved bindings after defaults, rendered as wvlet literals
+    record.args shouldBe Map("target_name" -> "'a'", "min_id" -> "1")
+    record.runTimeMillis shouldBe Some(runTime.toInstant.toEpochMilli)
+    record.flowCallForm shouldBe "ParamFlow(min_id = 1, target_name = 'a')"
+  }
+
+  test("resume a parameterized flow re-binding its recorded arguments and run time") {
+    val registry = FlowRunRegistry(java.nio.file.Files.createTempDirectory("wv-flow-reg"))
+    val wv       =
+      """flow ResumeParamFlow(target_name: string) with {
+        |  timezone: 'UTC'
+        |} = {
+        |  stage src = from [[1, 'a'], [2, 'b'], [3, 'a']] as t(id, name)
+        |  stage out = from src cross join __wv_resume_param_dep as d
+        |    | where name = target_name
+        |    | select id, run_date as rd
+        |}""".stripMargin
+    connector.execute("drop table if exists __wv_resume_param_dep")
+    val originalRunTime = java
+      .time
+      .ZonedDateTime
+      .of(2020, 6, 15, 0, 0, 0, 0, java.time.ZoneId.of("UTC"))
+    val first = runFlow(
+      wv,
+      registry = Some(registry),
+      args = List(namedArg("target_name", str("a"))),
+      runTime = Some(originalRunTime)
+    )
+    first.isSuccess shouldBe false
+    first.stageResult("out").get.state shouldBe StageState.Failed
+
+    try
+      connector.execute("create or replace table __wv_resume_param_dep as select 10 as x")
+      val record = registry.get(first.runId).get
+      record.args shouldBe Map("target_name" -> "'a'")
+
+      // Resume passes no arguments and no run time: both are re-bound from the record
+      val (flow, ctx) = compileFlow(wv)
+      val resumed     =
+        FlowExecutor(connector, workEnv, registry = Some(registry)).execute(
+          flow,
+          resumeFrom = Some(record)
+        )(using ctx)
+      resumed.runId shouldBe first.runId
+      resumed.isSuccess shouldBe true
+      // The original argument filtered the rows, and the original run_date was substituted
+      // instead of today's wall clock
+      val table = resumed.stageResult("out").flatMap(_.table).get
+      val rows  =
+        connector.runQuery(s"""select count(*), min(cast(rd as varchar)) from "${table}"""") { rs =>
+          rs.next()
+          (rs.getLong(1), rs.getString(2))
+        }
+      rows._1 shouldBe 2L
+      rows._2 shouldBe "2020-06-15"
+    finally
+      connector.execute("drop table if exists __wv_resume_param_dep")
+  }
+
   test("substitute parameters into route predicates") {
     // Note: the parameter is written on the left of the comparison because a route condition
     // ending with a bare identifier would parse `<identifier> -> <target>` as a lambda
