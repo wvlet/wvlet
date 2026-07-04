@@ -464,7 +464,7 @@ class QueryExecutor(
             .util
             .Using
             .resource(FlowRunStore.forWorkEnv(workEnv)) { store =>
-              FlowExecutor(connector, workEnv, registry = Some(store)).execute(flow)
+              FlowExecutor(connector, workEnv, registry = Some(store)).execute(flow, args = rf.args)
             }
 
         given monitor: QueryProgressMonitor = context.queryProgressMonitor

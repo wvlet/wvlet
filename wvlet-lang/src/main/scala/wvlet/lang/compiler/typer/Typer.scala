@@ -24,6 +24,7 @@ import wvlet.lang.model.expr.NameExpr
 import wvlet.lang.compiler.analyzer.AggregationResolver
 import wvlet.lang.compiler.analyzer.FunctionInliner
 import wvlet.lang.compiler.analyzer.RelationRefResolver
+import wvlet.lang.compiler.transform.FlowParams
 import wvlet.lang.model.expr.ArithmeticBinaryExpr
 import wvlet.lang.model.expr.ConditionalExpression
 import wvlet.lang.model.expr.ContextInputRef
@@ -450,13 +451,15 @@ object Typer extends Phase("typer") with LogSupport:
         ref
       case r: RunFlow =>
         // Validate that the flow reference resolves to a flow definition
-        val isFlow = ctx
-          .findTermSymbolByName(r.flowName.fullName)
-          .exists(_.tree.isInstanceOf[FlowDef])
-        if !isFlow then
-          throw StatusCode
-            .FLOW_NOT_FOUND
-            .newException(s"Flow '${r.flowName.fullName}' is not found", r.sourceLocation)
+        ctx.findTermSymbolByName(r.flowName.fullName).map(_.tree) match
+          case Some(f: FlowDef) =>
+            // Validate the run-time arguments against the declared flow parameters, so that
+            // unknown/missing/mistyped arguments are reported at compile time
+            FlowParams.bind(f, r.args)
+          case _ =>
+            throw StatusCode
+              .FLOW_NOT_FOUND
+              .newException(s"Flow '${r.flowName.fullName}' is not found", r.sourceLocation)
         typeRelationNode(r)
         r
       case m: FlowMerge =>

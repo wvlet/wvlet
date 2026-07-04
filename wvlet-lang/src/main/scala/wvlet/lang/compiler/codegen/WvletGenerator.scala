@@ -454,7 +454,12 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
         }
       case r: RunFlow =>
         code(r) {
-          wl("run", "flow", expr(r.flowName))
+          val call =
+            if r.args.isEmpty then
+              expr(r.flowName)
+            else
+              expr(r.flowName) + paren(cl(r.args.map(a => expr(a))))
+          wl("run", "flow", call)
         }
       // Flow-related relations
       case s: StageDef =>

@@ -1,0 +1,7 @@
+-- Binding an argument that does not match any declared flow parameter must be reported
+flow KnownParamFlow(segment: string = 'a') = {
+  stage src = from [[1, 'a']] as t(id, name)
+  stage filtered = from src | where name = segment
+}
+
+run flow KnownParamFlow(no_such_param = 'x')

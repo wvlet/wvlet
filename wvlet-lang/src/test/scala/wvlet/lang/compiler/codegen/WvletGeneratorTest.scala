@@ -33,4 +33,18 @@ class WvletGeneratorTest extends UniTest:
     printed shouldContain "count(distinct user_id)"
   }
 
+  test("should print run flow arguments") {
+    val printed = print("run flow F('a', min_id = 10)")
+    printed shouldContain "run flow F('a', min_id = 10)"
+
+    // The printed statement should parse back to the same flow call
+    print(printed) shouldContain "run flow F('a', min_id = 10)"
+  }
+
+  test("should print a run flow statement without arguments as a bare name") {
+    val printed = print("run flow F")
+    printed shouldContain "run flow F"
+    printed.contains("F()") shouldBe false
+  }
+
 end WvletGeneratorTest

@@ -24,6 +24,11 @@ class WvletFlowCommandTest extends UniTest:
         |  stage primary = from nonexistent_table_xyz
         |  stage fallback if primary.failed = from [[0]] as t(id)
         |}
+        |
+        |flow ParamPipeline(target_name: string, min_id: int = 1) = {
+        |  stage src = from [[1, 'a'], [2, 'b'], [3, 'a']] as t(id, name)
+        |  stage filtered = from src | where name = target_name and id >= min_id
+        |}
         |""".stripMargin
     )
     dir.toAbsolutePath.toString
@@ -43,6 +48,27 @@ class WvletFlowCommandTest extends UniTest:
   test("run a flow with failing and fallback stages") {
     // In sbt, failing flows do not System.exit; this verifies fallback execution completes
     WvletMain.main(s"flow run FallbackPipeline -w ${flowDir}")
+  }
+
+  test("run a parameterized flow with a flow-call argument") {
+    WvletMain.main(Array("flow", "run", "ParamPipeline(target_name = 'a')", "-w", flowDir))
+  }
+
+  test("report an error when a required flow parameter is not bound") {
+    val e = intercept[WvletLangException] {
+      WvletMain.main(s"flow run ParamPipeline -w ${flowDir}")
+    }
+    e.statusCode shouldBe StatusCode.INVALID_ARGUMENT
+    e.getMessage shouldContain "target_name"
+  }
+
+  test("reject a flow argument that is not a plain flow call") {
+    val e = intercept[WvletLangException] {
+      WvletMain.main(
+        Array("flow", "run", "ParamPipeline(target_name = 'a') | select 1", "-w", flowDir)
+      )
+    }
+    e.statusCode shouldBe StatusCode.INVALID_ARGUMENT
   }
 
   test("list and show flow run sessions") {
