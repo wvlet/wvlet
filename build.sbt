@@ -2,6 +2,10 @@ import scala.scalanative.build.BuildTarget
 import scala.scalanative.build.GC
 import scala.scalanative.build.Mode
 import scala.scalanative.build.NativeConfig
+// sbt 2.x auto-caches task results. File / Seq[File] outputs need @transient task keys to opt out;
+// the keys live in project/Keys.scala so the annotation is respected by the sbt macro.
+import scala.language.implicitConversions
+import WvletBuildKeys.*
 
 val UNI_VERSION = "2026.1.15"
 
@@ -24,7 +28,7 @@ val buildSettings = Seq[Setting[?]](
   publishMavenStyle := true,
   scalacOptions ++= Seq("-deprecation", "-feature"),
   // Tell the runtime that we are running tests in SBT
-  Test / testOptions += Tests.Setup(_ => sys.props("wvlet.sbt.testing") = "true"),
+  Test / testOptions += Tests.Setup(() => sys.props("wvlet.sbt.testing") = "true"),
   Test / javaOptions += "-Dwvlet.sbt.testing=true",
   Test / parallelExecution := false,
   Test / logBuffered       := false,
@@ -32,7 +36,7 @@ val buildSettings = Seq[Setting[?]](
     Seq(
       // https://users.scala-lang.org/t/scala-js-with-3-7-0-package-scala-contains-object-and-package-with-same-name-caps/10786/5
       "org.scala-lang" %% "scala3-library" % scalaVersion.value,
-      "org.wvlet.uni" %%% "uni-test"       % UNI_VERSION % Test
+      "org.wvlet.uni" %% "uni-test"        % UNI_VERSION % Test
     ),
   testFrameworks += new TestFramework("wvlet.uni.test.Framework"),
   // Don't use pipelining as it tends to slowdown the build
@@ -116,14 +120,14 @@ lazy val api = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     buildInfoKeys := Seq[BuildInfoKey](name, version, scalaVersion, sbtVersion),
     buildInfoOptions += BuildInfoOption.BuildTime,
     buildInfoPackage                        := "wvlet.lang",
-    libraryDependencies += "org.wvlet.uni" %%% "uni" % UNI_VERSION
+    libraryDependencies += "org.wvlet.uni" %% "uni" % UNI_VERSION
   )
   .jsSettings(libraryDependencies += scalajsJavaSecureRandom)
   .nativeSettings(uniNativeCurlLinking)
 
 def generateWvletLib(path: File, packageName: String, className: String): String = {
   val srcDir      = path
-  val wvFiles     = (srcDir ** "*.wv").get
+  val wvFiles     = (srcDir ** "*.wv").get()
   val methodNames = Seq.newBuilder[String]
 
   def resourceDefs: String = wvFiles
@@ -181,28 +185,22 @@ lazy val lang = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     Compile / unmanagedResourceDirectories += (ThisBuild / baseDirectory).value / "wvlet-stdlib",
     libraryDependencies ++=
       Seq(
-        "org.wvlet.uni" %%% "uni" % UNI_VERSION,
+        "org.wvlet.uni" %% "uni" % UNI_VERSION,
         // For resolving parquet file schema
         "org.duckdb" % "duckdb_jdbc" % DUCKDB_JDBC_VERSION,
         // Add a reference implementation of the compiler
         "org.scala-lang" %% "scala3-compiler" % SCALA_3 % Test
       ),
-    Compile / sourceGenerators +=
-      Def
-        .task {
-          // Generate a Scala file containing all .wv files in wvlet-stdlib
-          val libDir     = (ThisBuild / baseDirectory).value / "wvlet-stdlib" / "module"
-          val targetFile = (Compile / sourceManaged).value / "stdlib.scala"
-          val body       = generateWvletLib(libDir, "wvlet.lang.stdlib", "StdLib")
-          state.value.log.debug(s"Generating stdlib.scala:\n${body}")
-          IO.write(targetFile, body)
-          Seq(targetFile)
-        }
-        .taskValue,
-    // Watch changes of example .wv files upon testing
-    Test / watchSources ++=
-      ((ThisBuild / baseDirectory).value / "spec" ** "*.wv").get ++
-        ((ThisBuild / baseDirectory).value / "wvlet-stdlib" ** "*.wv").get
+    stdlibGen := {
+      val libDir     = (ThisBuild / baseDirectory).value / "wvlet-stdlib" / "module"
+      val targetFile = (Compile / sourceManaged).value / "stdlib.scala"
+      val body       = generateWvletLib(libDir, "wvlet.lang.stdlib", "StdLib")
+      state.value.log.debug(s"Generating stdlib.scala:\n${body}")
+      IO.write(targetFile, body)
+      Seq(targetFile)
+    },
+    Compile / sourceGenerators += stdlibGen.taskValue,
+    // TEMP disabled: Test / watchSources ++= Seq[File] blocked by sbt 2 caching
   )
   .jsSettings(
     libraryDependencies += scalajsJavaSecureRandom,
@@ -222,9 +220,7 @@ val specRunnerSettings = Seq(
   // When forking, the base directory should be set to the root directory
   Test / baseDirectory := (ThisBuild / baseDirectory).value,
   // Watch changes of example .wv files upon testing
-  Test / watchSources ++=
-    ((ThisBuild / baseDirectory).value / "spec" ** "*.wv").get ++
-      ((ThisBuild / baseDirectory).value / "wvlet-lang" ** "*.wv").get
+  // TEMP disabled: Test / watchSources blocked by sbt 2 caching
 )
 
 lazy val wvc = project
@@ -258,18 +254,19 @@ lazy val wvcLib = project
   )
   .dependsOn(wvc)
 
-lazy val wvcLibStatic = project
-  .in(file("wvc-lib"))
-  .enablePlugins(ScalaNativePlugin)
-  .settings(
-    buildSettings,
-    name   := "wvc-lib",
-    target := target.value / "static",
-    nativeConfig ~= { c =>
-      c.withBuildTarget(BuildTarget.libraryStatic).withBaseName("wvlet")
-    }
-  )
-  .dependsOn(wvc)
+// wvcLibStatic temporarily disabled during sbt 2 migration; enable once we resolve
+// the ScalaNativePlugin caching interaction on projects sharing base dir with wvcLib.
+// lazy val wvcLibStatic = project
+//   .in(file("wvc-lib"))
+//   .enablePlugins(ScalaNativePlugin)
+//   .settings(
+//     buildSettings,
+//     name := "wvc-lib-static",
+//     nativeConfig ~= { c =>
+//       c.withBuildTarget(BuildTarget.libraryStatic).withBaseName("wvlet")
+//     }
+//   )
+//   .dependsOn(wvc)
 
 /**
   * @param name
@@ -288,7 +285,7 @@ def nativeCrossProject(
     .enablePlugins(ScalaNativePlugin)
     .settings(noPublish)
     .settings(
-      target := (ThisBuild / baseDirectory).value / id / "target",
+      target := Def.uncached((ThisBuild / baseDirectory).value / id / "target"),
       nativeConfig ~= { c =>
         c.withTargetTriple(llvmTriple)
           .withCompileOptions(c.compileOptions ++ compileOptions)
@@ -302,41 +299,12 @@ def nativeCrossProject(
 // Cross compile for different platforms
 // Native libraries (include headers in C) will be necessary for nativeLink,
 // So we may need to use https://github.com/dockcross/dockcross to cross build native libraries
-lazy val nativeCliMacArm = nativeCrossProject(
-  "mac-arm64",
-  "arm64-apple-darwin",
-  // Need to use LLD linker as the default linker never understands cross-build target
-  linkerOptions = Seq("-fuse-ld=ld64.lld")
-)
-
-// Note: macOS Intel (x86_64-apple-darwin) target removed - Apple no longer sells Intel Macs
-
-lazy val nativeCliLinuxIntel = nativeCrossProject(
-  "linux-x64",
-  "x86_64-unknown-linux-gnu",
-  linkerOptions = Seq("-fuse-ld=ld.lld")
-)
-
-val commonClangOptions = Seq(
-  "--sysroot=/usr/xcc/aarch64-unknown-linux-gnu/aarch64-unknown-linux-gnu/sysroot"
-)
-
-lazy val nativeCliLinuxArm = nativeCrossProject(
-  "linux-arm64",
-  "aarch64-unknown-linux-gnu",
-  compileOptions = commonClangOptions ++ Seq("-I/usr/xcc/aarch64-unknown-linux-gnu/include/"),
-  linkerOptions =
-    commonClangOptions ++
-      Seq(
-        "-fuse-ld=/usr/xcc/aarch64-unknown-linux-gnu/bin/aarch64-unknown-linux-gnu-ld",
-        "-L/usr/xcc/aarch64-unknown-linux-gnu/lib",
-        "-L/usr/xcc/aarch64-unknown-linux-gnu/aarch64-unknown-linux-gnu/sysroot",
-        "-L/usr/lib/aarch64-linux-gnu"
-      )
-)
-
-lazy val nativeCliWindowsArm   = nativeCrossProject("windows-arm64", "arm64-w64-windows-gnu")
-lazy val nativeCliWindowsIntel = nativeCrossProject("windows-x64", "x86_64-w64-windows-gnu")
+// DEBUG: temporarily commented out for sbt 2 migration
+// lazy val nativeCliMacArm = nativeCrossProject(...)
+// lazy val nativeCliLinuxIntel = ...
+// lazy val nativeCliLinuxArm = ...
+// lazy val nativeCliWindowsArm = ...
+// lazy val nativeCliWindowsIntel = ...
 
 val packQuick = taskKey[Unit]("Run pack task quickly for faster development")
 
@@ -349,10 +317,11 @@ lazy val cli = project
     // Need to fork a JVM to avoid DuckDB crash while running runner/cli test simultaneously
     Test / fork          := true,
     Test / baseDirectory := (ThisBuild / baseDirectory).value,
-    packQuick            :=
+    packQuick := Def.uncached {
       // Run the default pack task
-      (Runtime / pack).value,
-    pack :=
+      (Runtime / pack).value
+    },
+    pack := Def.uncached {
       Def
         .sequential(
           Def.task[Unit] {
@@ -377,7 +346,8 @@ lazy val cli = project
           // Run the default pack task
           (Runtime / pack).toTask
         )
-        .value,
+        .value
+    },
     packMain :=
       Map(
         // Wvlet REPL launcher
@@ -433,14 +403,14 @@ lazy val runner = project
         // tpc-h connector neesd to download GB's of jar, so excluding it
         "io.trino" % "trino-testing" % TRINO_VERSION % Test exclude ("io.trino", "trino-tpch"),
         // Trino uses trino-plugin packaging name in pom.xml, so we need to specify jar() package explicitly
-        "io.trino" % "trino-delta-lake" % TRINO_VERSION % Test exclude
-          ("io.trino", "trino-tpch") exclude
-          ("io.trino", "trino-hive") jar
-          (),
+        ("io.trino" % "trino-delta-lake" % TRINO_VERSION % Test)
+          .exclude("io.trino", "trino-tpch")
+          .exclude("io.trino", "trino-hive")
+          .jar(),
         // hive and hdfs are necessary for accessing delta lake tables
-        "io.trino" % "trino-hive" % TRINO_VERSION % Test exclude ("io.trino", "trino-tpch") jar (),
-        "io.trino" % "trino-hdfs" % TRINO_VERSION % Test jar (),
-        "io.trino" % "trino-memory" % TRINO_VERSION % Test exclude ("io.trino", "trino-tpch") jar ()
+        ("io.trino" % "trino-hive" % TRINO_VERSION % Test).exclude("io.trino", "trino-tpch").jar(),
+        ("io.trino" % "trino-hdfs" % TRINO_VERSION % Test).jar(),
+        ("io.trino" % "trino-memory" % TRINO_VERSION % Test).exclude("io.trino", "trino-tpch").jar()
         //        // Add Spark as a reference impl (Scala 2)
         //        "org.apache.spark" %% "spark-sql" % "3.5.1" % Test excludeAll (
         //          // exclude sbt-parser-combinators as it conflicts with Scala 3
@@ -533,7 +503,7 @@ lazy val server = project
     // Route SLF4J calls (e.g. from JDBC drivers) into java.util.logging so they share the
     // same handler as wvlet.uni.log.
     libraryDependencies += "org.slf4j" % "slf4j-jdk14" % "2.0.18",
-    reStart / baseDirectory           := (ThisBuild / baseDirectory).value
+    uniRestart / baseDirectory        := (ThisBuild / baseDirectory).value
   )
   .dependsOn(api.jvm, client.jvm, runner, httpServer, testUtil % Test)
 
@@ -557,11 +527,12 @@ lazy val ui = project
     buildSettings,
     name         := "wvlet-ui",
     description  := "UI components that can be testable with Node.js",
-    Test / jsEnv := new org.scalajs.jsenv.jsdomnodejs.JSDOMNodeJSEnv(),
+    // TODO: restore JSDOMNodeJSEnv once scalajs-env-jsdom-nodejs is published for Scala 3
+    Test / jsEnv := Def.uncached(new org.scalajs.jsenv.nodejs.NodeJSEnv()),
     libraryDependencies ++=
       Seq(
-        "org.wvlet.uni" %%% "uni"         % UNI_VERSION,
-        "org.scala-js"  %%% "scalajs-dom" % SCALAJS_DOM_VERSION
+        "org.wvlet.uni" %% "uni"         % UNI_VERSION,
+        "org.scala-js"  %% "scalajs-dom" % SCALAJS_DOM_VERSION
       )
   )
   .dependsOn(api.js, client.js)
@@ -585,24 +556,21 @@ lazy val playground = project
     uiSettings,
     name        := "wvlet-ui-playground",
     description := "Online playground for wvlet",
-    Compile / sourceGenerators +=
-      Def
-        .task {
-          // Generate a Scala file containing all .wv files in wvlet-stdlib
-          val libDir     = baseDirectory.value / "src/main/wvlet/Examples"
-          val targetFile = (Compile / sourceManaged).value /
-            "wvlet/lang/ui/playground/SampleQuery.scala"
-          val body = generateWvletLib(libDir, "wvlet.lang.ui.playground", "SampleQuery")
-          state.value.log.debug(s"Generating stdlib.scala:\n${body}")
-          IO.write(targetFile, body)
-          Seq(targetFile)
-        }
-        .taskValue
+    sampleQueryGen := {
+      val libDir     = baseDirectory.value / "src/main/wvlet/Examples"
+      val targetFile = (Compile / sourceManaged).value /
+        "wvlet/lang/ui/playground/SampleQuery.scala"
+      val body = generateWvletLib(libDir, "wvlet.lang.ui.playground", "SampleQuery")
+      state.value.log.debug(s"Generating SampleQuery.scala:\n${body}")
+      IO.write(targetFile, body)
+      Seq(targetFile)
+    },
+    Compile / sourceGenerators += sampleQueryGen.taskValue
   )
   .dependsOn(uiMain, lang.js)
 
 def uiSettings: Seq[Setting[?]] = Seq(
-  Test / jsEnv                    := new org.scalajs.jsenv.nodejs.NodeJSEnv(),
+  Test / jsEnv                    := Def.uncached(new org.scalajs.jsenv.nodejs.NodeJSEnv()),
   scalaJSUseMainModuleInitializer := true,
   scalaJSLinkerConfig ~= {
     linkerConfig(_)
