@@ -185,6 +185,30 @@ flow daily_etl with {
 | `timezone` | String | Timezone for schedule evaluation |
 | `concurrency` | Int | Max concurrent flow executions |
 | `timeout` | Duration | Total flow timeout |
+| `on_failure` | Activation | Notification hook fired when a run fails |
+| `on_success` | Activation | Notification hook fired when a run succeeds |
+| `on_finish` | Activation | Notification hook fired for both outcomes |
+
+### Run Notifications
+
+The `on_failure:`, `on_success:`, and `on_finish:` hooks deliver a **run summary** — one row
+per stage with `flow`, `run_id`, `stage`, `state`, `attempts`, and `error` columns — to an
+[activation target](#delivering-results-with-activate) after the run reaches its terminal
+state, so operators hear about failures without polling `wvlet flow session list`:
+
+```wvlet
+flow nightly_etl with {
+  schedule: cron('0 2 * * *')
+  on_failure: activate('webhook', url: 'https://alerts.example.com/wvlet')
+} = {
+  stage extract = from source | select *
+  stage load = from extract | save to warehouse
+}
+```
+
+The same targets as `activate` inside stages are available (`file`, `webhook`, and
+custom-registered sinks). A hook that fails to deliver is logged and never changes the
+result of the run.
 
 ### Combining Parameters and Configuration
 
