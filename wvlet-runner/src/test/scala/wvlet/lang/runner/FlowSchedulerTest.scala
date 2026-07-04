@@ -106,4 +106,81 @@ class FlowSchedulerTest extends UniTest:
     attempts shouldBe 2
   }
 
+  test("trigger only the flows matching the current minute with runOnce") {
+    val flow = compileFlow("""flow OnceFlow = {
+        |  stage src = from [[1]] as t(id)
+        |}""".stripMargin)
+    val matching    = ScheduledFlow(flow, CronSchedule.parse("5 0 * * *"), ZoneId.of("UTC"))
+    val notMatching = ScheduledFlow(flow, CronSchedule.parse("0 2 * * *"), ZoneId.of("UTC"))
+
+    val now       = Instant.parse("2026-01-01T00:05:42Z")
+    val triggered = ListBuffer.empty[String]
+    val scheduler = FlowScheduler(
+      List(matching, notMatching),
+      f => triggered += f.name.name,
+      () => now
+    )
+    // Both entries reference the same flow; only the schedule matching 00:05 fires
+    scheduler.runOnce() shouldBe List("OnceFlow")
+    triggered.size shouldBe 1
+  }
+
+  test("catch up flows whose latest scheduled fire was missed") {
+    val flow = compileFlow("""flow CatchUpFlow = {
+        |  stage src = from [[1]] as t(id)
+        |}""".stripMargin)
+    val sf = ScheduledFlow(flow, CronSchedule.parse("0 2 * * *"), ZoneId.of("UTC"))
+
+    val now       = Instant.parse("2026-01-01T10:00:00Z")
+    val triggered = ListBuffer.empty[String]
+    val scheduler = FlowScheduler(List(sf), f => triggered += f.name.name, () => now)
+
+    val prevFire = Instant.parse("2026-01-01T02:00:00Z").toEpochMilli
+
+    // A run recorded after the 02:00 fire: nothing was missed
+    scheduler.catchUp(_ => Some(prevFire + 1000)) shouldBe Nil
+    // The latest run predates the 02:00 fire: the flow is triggered
+    scheduler.catchUp(_ => Some(prevFire - 1000)) shouldBe List("CatchUpFlow")
+    // No run was ever recorded: the fire was missed as well
+    scheduler.catchUp(_ => None) shouldBe List("CatchUpFlow")
+    triggered.size shouldBe 2
+  }
+
+  test("reload schedules keeping pending fire times of unchanged flows") {
+    val flowA = compileFlow("""flow ReloadedFlowA = {
+        |  stage src = from [[1]] as t(id)
+        |}""".stripMargin)
+    val flowB = compileFlow("""flow ReloadedFlowB = {
+        |  stage src = from [[1]] as t(id)
+        |}""".stripMargin)
+    val sfA = ScheduledFlow(flowA, CronSchedule.parse("* * * * *"), ZoneId.of("UTC"))
+    val sfB = ScheduledFlow(flowB, CronSchedule.parse("* * * * *"), ZoneId.of("UTC"))
+
+    var now       = Instant.parse("2026-01-01T00:00:30Z")
+    val triggered = ListBuffer.empty[String]
+    val scheduler = FlowScheduler(List(sfA), f => triggered += f.name.name, () => now)
+
+    // Initialize the pending fire of A (00:01:00), then add B via reload
+    scheduler.tick()
+    scheduler.reload(List(sfA, sfB))
+    scheduler.scheduledFlows.map(_.name) shouldBe List("ReloadedFlowA", "ReloadedFlowB")
+
+    // A kept its pending fire and triggers; B initializes its first fire (00:02:00)
+    now = Instant.parse("2026-01-01T00:01:00Z")
+    scheduler.tick()
+    triggered.toList shouldBe List("ReloadedFlowA")
+
+    // Both flows fire on the next minute
+    now = Instant.parse("2026-01-01T00:02:00Z")
+    scheduler.tick()
+    triggered.toList shouldBe List("ReloadedFlowA", "ReloadedFlowA", "ReloadedFlowB")
+
+    // Removing A stops triggering it
+    scheduler.reload(List(sfB))
+    now = Instant.parse("2026-01-01T00:03:00Z")
+    scheduler.tick()
+    triggered.toList shouldBe
+      List("ReloadedFlowA", "ReloadedFlowA", "ReloadedFlowB", "ReloadedFlowB")
+  }
+
 end FlowSchedulerTest

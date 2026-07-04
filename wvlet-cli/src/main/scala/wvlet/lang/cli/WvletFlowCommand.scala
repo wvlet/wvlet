@@ -252,51 +252,85 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
   end session
 
   @command(description = "Start the scheduler daemon that runs flows on their cron schedules")
-  def scheduler(flowOption: WvletFlowOption): Unit =
-    withFlows(flowOption) { (flows, compileResult, workEnv) =>
-      val scheduled = flows.flatMap { (unit, f) =>
-        val config = FlowScheduleConfig.fromFlow(f)
-        config
-          .cron
-          .map { cronExpr =>
-            (unit, ScheduledFlow(f, CronSchedule.parse(cronExpr), config.zoneId))
-          }
-      }
-      if scheduled.isEmpty then
-        println("No flows with a schedule: config were found")
-      else
-        val profile = Profile.getProfile(flowOption.profile, flowOption.catalog, flowOption.schema)
-        Control.withResource(DBConnectorProvider(workEnv)) { dbConnectorProvider =>
-          val connector = dbConnectorProvider.getConnector(profile)
-          Control.withResource(newRunStore(flowOption, workEnv)) { store =>
-            val unitOf = scheduled.map((unit, sf) => sf.name -> unit).toMap
-            // Each triggered flow runs on its own thread so that a long flow does not delay
-            // other schedules; the executor enforces dependencies and concurrency limits
-            val pool = java
-              .util
-              .concurrent
-              .Executors
-              .newCachedThreadPool { (r: Runnable) =>
-                val t = Thread(r, "wvlet-flow-scheduler-run")
-                t.setDaemon(true)
-                t
-              }
-            val flowScheduler = FlowScheduler(
-              scheduled.map(_._2),
-              trigger =
-                flow =>
-                  pool.submit(
-                    new Runnable:
-                      override def run(): Unit =
-                        given ctx: Context = compileResult
-                          .context
-                          .withCompilationUnit(unitOf(flow.name.name))
-                          .newContext(Symbol.NoSymbol)
-                        val result = FlowExecutor(connector, workEnv, registry = Some(store))
-                          .execute(flow)
-                        println(result.toPrettyBox())
-                  )
+  def scheduler(
+      flowOption: WvletFlowOption,
+      @option(
+        prefix = "--once",
+        description = "Evaluate the schedules once against the current minute and exit"
+      )
+      once: Boolean = false,
+      @option(
+        prefix = "--catchup",
+        description =
+          "On startup, trigger flows whose most recent scheduled fire time has no recorded run"
+      )
+      catchup: Boolean = false,
+      @option(
+        prefix = "--reload-interval",
+        description = "Interval (seconds) for polling .wv file changes; 0 disables reloading"
+      )
+      reloadInterval: Int = 5
+  ): Unit =
+    val (flows, compileResult, workEnv) = loadFlows(flowOption)
+    val scheduled                       = scheduledFlowsOf(flows)
+    if scheduled.isEmpty then
+      println("No flows with a schedule: config were found")
+    else
+      val profile = Profile.getProfile(flowOption.profile, flowOption.catalog, flowOption.schema)
+      Control.withResource(DBConnectorProvider(workEnv)) { dbConnectorProvider =>
+        val connector = dbConnectorProvider.getConnector(profile)
+        Control.withResource(newRunStore(flowOption, workEnv)) { store =>
+          // The compile result and defining unit of each scheduled flow, replaced on reload
+          val compiled = java
+            .util
+            .concurrent
+            .atomic
+            .AtomicReference((compileResult, scheduled.map((unit, sf) => sf.name -> unit).toMap))
+          // Each triggered flow runs on its own thread so that a long flow does not delay
+          // other schedules; the executor enforces dependencies and concurrency limits
+          val pool = java
+            .util
+            .concurrent
+            .Executors
+            .newCachedThreadPool { (r: Runnable) =>
+              val t = Thread(r, "wvlet-flow-scheduler-run")
+              t.setDaemon(true)
+              t
+            }
+          val flowScheduler = FlowScheduler(
+            scheduled.map(_._2),
+            trigger =
+              flow =>
+                pool.submit(
+                  new Runnable:
+                    override def run(): Unit =
+                      val (result, unitOf) = compiled.get()
+
+                      given ctx: Context = result
+                        .context
+                        .withCompilationUnit(unitOf(flow.name.name))
+                        .newContext(Symbol.NoSymbol)
+
+                      val runResult = FlowExecutor(connector, workEnv, registry = Some(store))
+                        .execute(flow)
+                      println(runResult.toPrettyBox())
+                )
+          )
+          if catchup then
+            val fired = flowScheduler.catchUp(name =>
+              store.latestRunOf(name).map(_.startedAtMillis)
             )
+            if fired.nonEmpty then
+              println(s"Catch-up triggered ${fired.size} missed flow(s): ${fired.mkString(", ")}")
+          if once then
+            // Evaluate the current minute once and wait for the triggered runs to finish
+            val fired = flowScheduler.runOnce()
+            println(s"Triggered ${fired.size} scheduled flow(s)")
+            pool.shutdown()
+            pool.awaitTermination(365, java.util.concurrent.TimeUnit.DAYS)
+          else
+            if reloadInterval > 0 then
+              startReloader(flowOption, flowScheduler, compiled, reloadInterval)
             Runtime
               .getRuntime
               .addShutdownHook(
@@ -306,10 +340,46 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
               )
             try flowScheduler.runLoop()
             finally pool.shutdownNow()
-          }
+          end if
         }
-      end if
-    }
+      }
+    end if
+
+  end scheduler
+
+  /**
+    * Start a daemon thread that polls the .wv sources of the working folder and reloads the
+    * schedules when they change. A compile failure keeps the previously loaded schedules
+    */
+  private def startReloader(
+      flowOption: WvletFlowOption,
+      flowScheduler: FlowScheduler,
+      compiled: java.util.concurrent.atomic.AtomicReference[
+        (CompileResult, Map[String, CompilationUnit])
+      ],
+      reloadIntervalSeconds: Int
+  ): Unit =
+    val reloader = Thread(
+      () =>
+        var snapshot = sourceSnapshot(flowOption.workFolder)
+        while true do
+          Thread.sleep(reloadIntervalSeconds * 1000L)
+          val latest = sourceSnapshot(flowOption.workFolder)
+          if latest != snapshot then
+            snapshot = latest
+            try
+              val (newFlows, newResult, _) = loadFlows(flowOption)
+              val newScheduled             = scheduledFlowsOf(newFlows)
+              compiled.set((newResult, newScheduled.map((unit, sf) => sf.name -> unit).toMap))
+              flowScheduler.reload(newScheduled.map(_._2))
+            catch
+              case scala.util.control.NonFatal(e) =>
+                warn(s"Failed to reload flows; keeping the current schedules: ${e.getMessage}")
+      ,
+      "wvlet-flow-scheduler-reload"
+    )
+    reloader.setDaemon(true)
+    reloader.start()
 
   @command(description = "Show the plan of a flow")
   def show(
@@ -332,6 +402,13 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
   private def withFlows[A](flowOption: WvletFlowOption)(
       body: (List[(CompilationUnit, FlowDef)], CompileResult, WorkEnv) => A
   ): A =
+    val (flows, compileResult, workEnv) = loadFlows(flowOption)
+    body(flows, compileResult, workEnv)
+
+  /** Compile all .wv files in the working folder and collect flow definitions */
+  private def loadFlows(
+      flowOption: WvletFlowOption
+  ): (List[(CompilationUnit, FlowDef)], CompileResult, WorkEnv) =
     val workEnv  = WorkEnv(flowOption.workFolder, opts.logLevel)
     val compiler = Compiler(
       CompilerOptions(sourceFolders = List(flowOption.workFolder), workEnv = workEnv)
@@ -347,7 +424,38 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
             flows += unit -> f
           }
       }
-    body(flows.result(), compileResult, workEnv)
+    (flows.result(), compileResult, workEnv)
+
+  /** Extract the flows that have a cron schedule, paired with their defining units */
+  private def scheduledFlowsOf(
+      flows: List[(CompilationUnit, FlowDef)]
+  ): List[(CompilationUnit, ScheduledFlow)] = flows.flatMap { (unit, f) =>
+    val config = FlowScheduleConfig.fromFlow(f)
+    config
+      .cron
+      .map { cronExpr =>
+        (unit, ScheduledFlow(f, CronSchedule.parse(cronExpr), config.zoneId))
+      }
+  }
+
+  /**
+    * Snapshot of the .wv sources under the folder (path -> last modified millis), used to detect
+    * changes for scheduler reloading
+    */
+  private def sourceSnapshot(folder: String): Map[String, Long] =
+    val root = java.nio.file.Path.of(folder)
+    if !java.nio.file.Files.isDirectory(root) then
+      Map.empty
+    else
+      Control.withResource(java.nio.file.Files.walk(root)) { stream =>
+        import scala.jdk.CollectionConverters.*
+        stream
+          .iterator()
+          .asScala
+          .filter(p => p.toString.endsWith(".wv") && java.nio.file.Files.isRegularFile(p))
+          .map(p => p.toString -> java.nio.file.Files.getLastModifiedTime(p).toMillis)
+          .toMap
+      }
 
   private def findFlow(
       flows: List[(CompilationUnit, FlowDef)],

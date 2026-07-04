@@ -119,6 +119,9 @@ class FlowScheduler(
     clock: () => Instant = () => Instant.now()
 ) extends LogSupport:
 
+  @volatile
+  private var current: List[ScheduledFlow] = scheduled
+
   private val nextFire = mutable.Map.empty[String, ZonedDateTime]
 
   @volatile
@@ -126,22 +129,28 @@ class FlowScheduler(
 
   def stop(): Unit = stopped = true
 
+  /** The currently scheduled flows (replaced by [[reload]]) */
+  def scheduledFlows: List[ScheduledFlow] = current
+
+  private def fire(sf: ScheduledFlow, reason: String): Unit =
+    info(s"Triggering scheduled flow ${sf.name} (${reason})")
+    try
+      trigger(sf.flow)
+    catch
+      case NonFatal(e) =>
+        warn(s"Failed to trigger flow ${sf.name}: ${e.getMessage}")
+
   /**
     * Evaluate all schedules once: trigger the flows whose fire time has passed and return the
     * milliseconds until the earliest next fire
     */
-  def tick(): Long =
+  def tick(): Long = synchronized {
     val now = clock()
-    scheduled.foreach { sf =>
+    current.foreach { sf =>
       val zonedNow = now.atZone(sf.zone)
       val due      = nextFire.getOrElseUpdate(sf.name, sf.cron.nextAfter(zonedNow))
       if !due.toInstant.isAfter(now) then
-        info(s"Triggering scheduled flow ${sf.name} (due: ${due})")
-        try
-          trigger(sf.flow)
-        catch
-          case NonFatal(e) =>
-            warn(s"Failed to trigger flow ${sf.name}: ${e.getMessage}")
+        fire(sf, s"due: ${due}")
         nextFire(sf.name) = sf.cron.nextAfter(zonedNow)
     }
     val nowMillis = clock().toEpochMilli
@@ -150,13 +159,69 @@ class FlowScheduler(
       .map(t => (t.toInstant.toEpochMilli - nowMillis).max(0L))
       .minOption
       .getOrElse(60000L)
+  }
+
+  /**
+    * Replace the scheduled flows (e.g. after the .wv files of the working folder changed). Flows
+    * whose cron expression and time zone are unchanged keep their pending fire time; new or
+    * rescheduled flows are evaluated from the next tick
+    */
+  def reload(newScheduled: List[ScheduledFlow]): Unit = synchronized {
+    val oldByName = current.map(sf => sf.name -> sf).toMap
+    newScheduled.foreach { sf =>
+      oldByName.get(sf.name) match
+        case Some(prev) if prev.cron.expression == sf.cron.expression && prev.zone == sf.zone =>
+        // The schedule is unchanged: keep the pending fire time
+        case _ =>
+          nextFire.remove(sf.name)
+    }
+    (oldByName.keySet -- newScheduled.map(_.name)).foreach(nextFire.remove)
+    current = newScheduled
+    info(
+      s"Reloaded ${newScheduled.size} scheduled flow(s): ${newScheduled
+          .map(sf => s"${sf.name} [${sf.cron.expression}]")
+          .mkString(", ")}"
+    )
+  }
+
+  /**
+    * Trigger every flow whose cron expression matches the current minute and return their names.
+    * Used by `wvlet flow scheduler --once`, where an external scheduler (e.g. system cron) decides
+    * when to evaluate the schedules
+    */
+  def runOnce(): List[String] = synchronized {
+    val now   = clock()
+    val fired = current.filter(sf => sf.cron.matches(now.atZone(sf.zone)))
+    fired.foreach(sf => fire(sf, "once"))
+    fired.map(_.name)
+  }
+
+  /**
+    * Trigger the flows whose most recent scheduled fire time has no run recorded at or after it
+    * (i.e. the fire was missed, e.g. while the scheduler daemon was down) and return their names.
+    * `lastRunStartedAt` supplies the start time of the latest recorded run of a flow
+    */
+  def catchUp(lastRunStartedAt: String => Option[Long]): List[String] = synchronized {
+    val now    = clock()
+    val missed = current.filter { sf =>
+      try
+        val prev = sf.cron.prevAtOrBefore(now.atZone(sf.zone))
+        lastRunStartedAt(sf.name).forall(_ < prev.toInstant.toEpochMilli)
+      catch
+        case NonFatal(_) =>
+          // The cron expression has no fire time within the scan window: nothing was missed
+          false
+    }
+    missed.foreach(sf => fire(sf, "catch-up"))
+    missed.map(_.name)
+  }
 
   /** Run the scheduler loop until stop() is called */
   def runLoop(): Unit =
-    if scheduled.isEmpty then
+    if current.isEmpty then
       throw StatusCode.INVALID_ARGUMENT.newException("No scheduled flows to run")
     info(
-      s"Flow scheduler started with ${scheduled.size} scheduled flow(s): ${scheduled
+      s"Flow scheduler started with ${current.size} scheduled flow(s): ${current
           .map(sf => s"${sf.name} [${sf.cron.expression}]")
           .mkString(", ")}"
     )

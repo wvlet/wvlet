@@ -70,6 +70,24 @@ case class CronSchedule(
           .newException(s"Cron expression '${expression}' never fires")
     candidate
 
+  /** The most recent matching time at or before the given time */
+  def prevAtOrBefore(t: ZonedDateTime): ZonedDateTime =
+    var candidate = t.truncatedTo(ChronoUnit.MINUTES)
+    val limit     = t.minusYears(4)
+    while !matches(candidate) do
+      // Skip in day steps while the date cannot match to keep the scan cheap
+      candidate =
+        if !months.contains(candidate.getMonthValue) || !dayMatches(candidate) then
+          // The last minute of the previous day
+          candidate.truncatedTo(ChronoUnit.DAYS).minusMinutes(1)
+        else
+          candidate.minusMinutes(1)
+      if candidate.isBefore(limit) then
+        throw StatusCode
+          .INVALID_ARGUMENT
+          .newException(s"Cron expression '${expression}' never fires")
+    candidate
+
 end CronSchedule
 
 object CronSchedule:

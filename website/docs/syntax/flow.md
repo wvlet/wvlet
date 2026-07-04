@@ -330,6 +330,21 @@ through the regular flow executor, so cross-flow dependencies (`depends on`, `if
 still decide whether a triggered run actually executes: the schedule determines *when* to
 check, the dependency determines *if* the flow runs.
 
+The daemon polls the `.wv` files of the working folder (every 5 seconds by default,
+configurable with `--reload-interval <seconds>`, `0` disables it) and reloads the schedules
+when they change, so flows can be added, removed, or rescheduled without restarting. Flows
+whose schedule is unchanged keep their pending fire time across reloads; a compile error
+keeps the previously loaded schedules.
+
+Two flags cover scripting and missed windows:
+
+- `--once`: evaluate the schedules once against the current minute, run the matching flows,
+  and exit. Use this to drive wvlet schedules from an external scheduler such as system cron.
+- `--catchup`: on startup, trigger every scheduled flow whose most recent fire time has no
+  recorded run at or after it (e.g. the fire was missed while the daemon was down). Without
+  this flag, missed windows are skipped silently. Combine with `--once` for a one-shot
+  catch-up run.
+
 `concurrency: N` is enforced through the run store whenever a flow starts (scheduler, CLI, or
 `run flow`): a run atomically claims one of the flow's N slots and is recorded as `skipped`
 when all slots are taken by running runs. With the `sqlite` run store the claim is

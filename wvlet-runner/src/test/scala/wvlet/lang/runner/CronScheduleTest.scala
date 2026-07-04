@@ -76,4 +76,23 @@ class CronScheduleTest extends UniTest:
     e.statusCode shouldBe StatusCode.INVALID_ARGUMENT
   }
 
+  test("find the most recent fire at or before a time") {
+    val cron = CronSchedule.parse("0 2 * * *")
+    cron.prevAtOrBefore(at("2026-01-01T10:00:00Z")) shouldBe at("2026-01-01T02:00:00Z")
+    // A time before today's fire returns yesterday's fire
+    cron.prevAtOrBefore(at("2026-01-01T01:59:00Z")) shouldBe at("2025-12-31T02:00:00Z")
+    // An exact fire time returns itself (seconds are truncated to the minute)
+    cron.prevAtOrBefore(at("2026-01-01T02:00:45Z")) shouldBe at("2026-01-01T02:00:00Z")
+    // Month-restricted schedules skip back across months
+    CronSchedule.parse("30 6 15 3 *").prevAtOrBefore(at("2026-01-10T00:00:00Z")) shouldBe
+      at("2025-03-15T06:30:00Z")
+  }
+
+  test("report schedules that never fired in the past") {
+    val e = intercept[WvletLangException] {
+      CronSchedule.parse("0 0 30 2 *").prevAtOrBefore(at("2026-01-01T00:00:00Z"))
+    }
+    e.statusCode shouldBe StatusCode.INVALID_ARGUMENT
+  }
+
 end CronScheduleTest

@@ -221,6 +221,46 @@ class WvletFlowCommandTest extends UniTest:
     WvletMain.main(s"flow scheduler -w ${flowDir}")
   }
 
+  test("evaluate schedules once and exit with scheduler --once") {
+    import wvlet.lang.compiler.WorkEnv
+    import wvlet.lang.runner.FlowRunRegistry
+    val dir = Files.createTempDirectory("wvlet-flow-sched-once")
+    Files.writeString(
+      dir.resolve("scheduled.wv"),
+      """flow EveryMinutePipeline with {
+        |  schedule: cron('* * * * *')
+        |} = {
+        |  stage src = from [[1]] as t(id)
+        |}
+        |""".stripMargin
+    )
+    // The cron expression matches every minute, so a single evaluation triggers one run
+    WvletMain.main(s"flow scheduler --once -w ${dir}")
+    val runs = FlowRunRegistry.forWorkEnv(WorkEnv(dir.toString)).list()
+    runs.map(_.flowName) shouldBe List("EveryMinutePipeline")
+    runs.head.state shouldBe "success"
+  }
+
+  test("trigger a missed schedule with scheduler --catchup") {
+    import wvlet.lang.compiler.WorkEnv
+    import wvlet.lang.runner.FlowRunRegistry
+    val dir = Files.createTempDirectory("wvlet-flow-sched-catchup")
+    Files.writeString(
+      dir.resolve("scheduled.wv"),
+      """flow YearlyPipeline with {
+        |  schedule: cron('0 0 1 1 *')
+        |} = {
+        |  stage src = from [[1]] as t(id)
+        |}
+        |""".stripMargin
+    )
+    // No run of the flow is recorded, so the most recent Jan 1 fire counts as missed
+    WvletMain.main(s"flow scheduler --once --catchup -w ${dir}")
+    val runs = FlowRunRegistry.forWorkEnv(WorkEnv(dir.toString)).list()
+    runs.map(_.flowName).distinct shouldBe List("YearlyPipeline")
+    runs.map(_.state).distinct shouldBe List("success")
+  }
+
   test("report an error for an unknown flow name") {
     val e = intercept[WvletLangException] {
       WvletMain.main(s"flow run NoSuchFlow -w ${flowDir}")
