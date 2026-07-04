@@ -91,6 +91,32 @@ class FlowTypingTest extends UniTest:
     e.getMessage shouldContain "missing_stage"
   }
 
+  test("allow route targets to reference stages defined later") {
+    val f = compileFlow(s"""${userType}
+        |flow ForwardRoute = {
+        |  stage gate = from users | route {
+        |    case _.user_id = '1' -> matched
+        |    else -> unmatched
+        |  }
+        |  stage matched = from gate | select name
+        |  stage unmatched = from gate | select name
+        |}""".stripMargin)
+    f.stages.size shouldBe 3
+  }
+
+  test("report an error for a route targeting an undefined stage") {
+    val e = intercept[WvletLangException] {
+      compileFlow(s"""${userType}
+          |flow BrokenRoute = {
+          |  stage gate = from users | route {
+          |    case _.user_id = '1' -> missing_stage
+          |  }
+          |}""".stripMargin)
+    }
+    e.statusCode shouldBe StatusCode.STAGE_NOT_FOUND
+    e.getMessage shouldContain "missing_stage"
+  }
+
   test("report an error for a trigger referencing a stage defined later") {
     val e = intercept[WvletLangException] {
       compileFlow(s"""${userType}

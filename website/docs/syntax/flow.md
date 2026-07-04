@@ -341,9 +341,12 @@ wvlet flow run my_pipeline -w ./pipelines
 :::info Implementation status
 The flow executor implements this stage execution model with a DAG scheduler — independent
 stages run in parallel (bounded by executor parallelism), retries are scheduled asynchronously
-with the configured backoff, and `timeout` bounds each stage attempt. Flow-level schedules,
-cross-flow dependencies, `heartbeat` enforcement, and flow operators such as `route`, `fork`,
-`wait`, and `activate` are parsed but not yet executable.
+with the configured backoff, and `timeout` bounds each stage attempt. Flow operators are
+lowered before scheduling: `route` cases become filter predicates on target stages, `fork`
+stages are flattened into the DAG, `wait` delays materialization, `activate` is a local
+logging stub until sink connectors exist, and `end` is a pass-through. Flow-level schedules,
+cross-flow dependencies, `-> Flow` jumps, and `heartbeat` enforcement are parsed but not yet
+executable.
 :::
 
 Each stage progresses through a well-defined state machine:

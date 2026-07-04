@@ -507,6 +507,32 @@ object Typer extends Phase("typer") with LogSupport:
             ref.sourceLocation
           )
 
+    // All stage names of the flow, including fork-nested stages. Route targets may reference
+    // stages defined later in the flow (forward references), unlike triggers and merge sources
+    val allStageNames: Set[String] =
+      val names = Set.newBuilder[String]
+      f.stages
+        .foreach { s =>
+          names += s.name.name
+          s.body
+            .foreach {
+              _.traverse { case fork: FlowFork =>
+                fork.stages.foreach(ns => names += ns.name.name)
+              }
+            }
+        }
+      names.result()
+
+    def requireRouteTarget(ref: NameExpr, stageName: TermName): Unit =
+      if !allStageNames.contains(ref.fullName) then
+        throw StatusCode
+          .STAGE_NOT_FOUND
+          .newException(
+            s"Stage '${ref.fullName}' referenced as a route target of stage '${stageName
+                .name}' is not defined in flow '${f.name.name}'",
+            ref.sourceLocation
+          )
+
     val newStages = f
       .stages
       .map { s =>
@@ -515,8 +541,12 @@ object Typer extends Phase("typer") with LogSupport:
         s.trigger.foreach(t => stateRefsOf(t).foreach(ref => requireStage(ref, "trigger", s.name)))
         s.body
           .foreach {
-            _.traverse { case m: FlowMerge =>
-              m.sources.foreach(ref => requireStage(ref, "merge sources", s.name))
+            _.traverse {
+              case m: FlowMerge =>
+                m.sources.foreach(ref => requireStage(ref, "merge sources", s.name))
+              case r: FlowRoute =>
+                r.cases.foreach(c => requireRouteTarget(c.target, s.name))
+                r.elseTarget.foreach(t => requireRouteTarget(t, s.name))
             }
           }
         val newBody     = s.body.map(b => prepare(b, stageScope).asInstanceOf[Relation])

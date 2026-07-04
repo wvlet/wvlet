@@ -152,9 +152,13 @@ trait FlowStageRunner:
   * stage names never collide with real tables and concurrent runs do not interfere. Parallel stages
   * materialize through per-worker sessions sharing the same database instance.
   *
+  * Flow operators in stage bodies are lowered with [[FlowLowering]] before scheduling: fork stages
+  * are flattened, route cases become filter predicates on the target stages' reads, wait becomes a
+  * pre-materialization delay, activate is a local logging stub, and end is a pass-through.
+  *
   * Current limitations (to be lifted in future iterations):
   *   - `heartbeat` is parsed but not enforced.
-  *   - Flow operators such as route/fork/wait/activate/jump/end are not yet executable.
+  *   - `-> Flow` (jump) requires cross-flow orchestration and is not executable yet.
   *   - Flow-level schedules and cross-flow dependencies are not evaluated here.
   *
   * @param connector
@@ -192,24 +196,45 @@ class FlowExecutor(
     val runId = ULID.newULIDString
     workEnv.info(s"Executing flow ${flow.name.name} (run: ${runId})")
 
-    val stageNames                                      = flow.stages.map(_.name.name).toSet
+    // Lower flow operators (fork/route/wait/activate/end) into SQL-expressible stage bodies
+    // plus orchestration metadata
+    val lowered                                         = FlowLowering.lower(flow)
+    val flowStages                                      = lowered.stages
+    val stageNames                                      = lowered.stageNames
+    val routeFilters                                    = lowered.routeFilters
     val stageConfigs: Map[String, StageExecutionConfig] =
-      flow.stages.map(s => s.name.name -> StageExecutionConfig.fromConfigItems(s.config)).toMap
+      flowStages.map(ls => ls.name -> StageExecutionConfig.fromConfigItems(ls.stage.config)).toMap
 
     // Stages materialize into run-scoped tables so that concurrent runs and real tables with the
     // same name never collide
     def tableFor(stageName: String): String = FlowExecutor.stageTableName(runId, stageName)
 
-    val runBody: (StageDef, String) => Unit =
+    val runBody: (FlowLowering.LoweredStage, String) => Unit =
       stageRunner match
         case Some(r) =>
-          (s, table) => r.run(s, table)
+          (ls, table) => r.run(ls.stage, table)
         case None =>
-          (s, table) => materializeStage(s, stageNames, tableFor)
+          (ls, table) =>
+            // A wait operator delays the materialization of this stage. The sleep runs on a
+            // worker thread and is interruptible for cancellation
+            ls.waitMillis
+              .foreach { delay =>
+                workEnv.info(s"Stage ${ls.name} waits for ${delay}ms")
+                Thread.sleep(delay)
+              }
+            materializeStage(ls, stageNames, tableFor, routeFilters)
+            // Activation is a local stub until external sink connectors are available
+            ls.activateTargets
+              .foreach { target =>
+                workEnv.info(
+                  s"[activate] stage ${ls
+                      .name}: sending materialized output ${table} to '${target}'"
+                )
+              }
 
     // All mutable scheduler state below is owned by this (caller) thread; worker threads only
     // post events to the eventQueue
-    val states   = mutable.Map.from(flow.stages.map(s => s.name.name -> StageState.Pending))
+    val states   = mutable.Map.from(flowStages.map(ls => ls.name -> StageState.Pending))
     val attempts = mutable.Map.empty[String, Int].withDefaultValue(0)
     val errors   = mutable.Map.empty[String, Throwable]
     // (stage, attempt) pairs whose outcome has been decided (guards against duplicate events
@@ -262,11 +287,11 @@ class FlowExecutor(
 
     // Upstream stages referenced from this stage via from/merge/depends on. Names that do not
     // match a stage (e.g. real tables or models) impose no state dependency
-    def upstreamStagesOf(s: StageDef): List[String] =
+    def upstreamStagesOf(ls: FlowLowering.LoweredStage): List[String] =
       val refs = List.newBuilder[String]
-      s.inputRefs.foreach(r => refs += r.fullName)
-      s.dependsOn.foreach(r => refs += r.fullName)
-      s.body
+      ls.stage.inputRefs.foreach(r => refs += r.fullName)
+      ls.stage.dependsOn.foreach(r => refs += r.fullName)
+      ls.body
         .foreach {
           _.traverse { case m: FlowMerge =>
             m.sources.foreach(src => refs += src.fullName)
@@ -275,25 +300,27 @@ class FlowExecutor(
       refs.result().distinct.filter(stageNames.contains)
 
     // Stages whose terminal states this stage's scheduling decision depends on
-    def schedulingRefsOf(s: StageDef): List[String] =
-      s.trigger match
+    def schedulingRefsOf(ls: FlowLowering.LoweredStage): List[String] =
+      ls.stage.trigger match
         case Some(t) =>
           // An explicit trigger overrides the implicit success dependency
           triggerRefsOf(t).distinct.filter(stageNames.contains)
         case None =>
-          upstreamStagesOf(s)
+          upstreamStagesOf(ls)
 
-    def isDecidable(s: StageDef): Boolean = schedulingRefsOf(s).forall(n => states(n).isTerminal)
+    def isDecidable(ls: FlowLowering.LoweredStage): Boolean = schedulingRefsOf(ls).forall(n =>
+      states(n).isTerminal
+    )
 
-    def isReady(s: StageDef): Boolean =
-      s.trigger match
+    def isReady(ls: FlowLowering.LoweredStage): Boolean =
+      ls.stage.trigger match
         case Some(t) =>
           evalTrigger(t)
         case None =>
-          upstreamStagesOf(s).forall(up => states(up) == StageState.Success)
+          upstreamStagesOf(ls).forall(up => states(up) == StageState.Success)
 
-    def submitAttempt(s: StageDef, attempt: Int): Unit =
-      val name        = s.name.name
+    def submitAttempt(ls: FlowLowering.LoweredStage, attempt: Int): Unit =
+      val name        = ls.name
       val stageConfig = stageConfigs(name)
       states(name) = StageState.Running
       runningCount += 1
@@ -303,12 +330,12 @@ class FlowExecutor(
           override def run(): Unit =
             val error =
               try
-                runBody(s, tableFor(name))
+                runBody(ls, tableFor(name))
                 None
               catch
                 case NonFatal(e) =>
                   Some(e)
-            eventQueue.put(AttemptResult(s, attempt, error))
+            eventQueue.put(AttemptResult(ls, attempt, error))
       )
       // Bound the attempt duration with the configured timeout. The timed-out attempt is
       // reported as a retryable failure; a late completion event is ignored via handledAttempts
@@ -319,7 +346,7 @@ class FlowExecutor(
             new Runnable:
               override def run(): Unit = eventQueue.put(
                 AttemptResult(
-                  s,
+                  ls,
                   attempt,
                   Some(
                     StatusCode
@@ -342,29 +369,24 @@ class FlowExecutor(
       var progress = true
       while progress do
         progress = false
-        flow
-          .stages
-          .foreach { s =>
-            val name = s.name.name
-            if states(name) == StageState.Pending && isDecidable(s) then
-              if isReady(s) then
-                submitAttempt(s, attempts(name) + 1)
-              else
-                workEnv.info(s"Stage ${name} is skipped")
-                states(name) = StageState.Skipped
-                progress = true
-          }
+        flowStages.foreach { ls =>
+          val name = ls.name
+          if states(name) == StageState.Pending && isDecidable(ls) then
+            if isReady(ls) then
+              submitAttempt(ls, attempts(name) + 1)
+            else
+              workEnv.info(s"Stage ${name} is skipped")
+              states(name) = StageState.Skipped
+              progress = true
+        }
 
     def handleCancellation(): Unit =
       if !cancellationDone then
         cancellationDone = true
-        flow
-          .stages
-          .foreach { s =>
-            val name = s.name.name
-            if !states(name).isTerminal then
-              states(name) = StageState.Cancelled
-          }
+        flowStages.foreach { ls =>
+          if !states(ls.name).isTerminal then
+            states(ls.name) = StageState.Cancelled
+        }
 
     def allTerminal: Boolean = states.values.forall(_.isTerminal)
 
@@ -380,12 +402,11 @@ class FlowExecutor(
         else if runningCount == 0 && scheduledRetries == 0 then
           // Defensive: no outstanding work can change any state. This indicates a scheduling
           // bug (the stage DAG is acyclic by construction), so skip the undecidable remainder
-          flow
-            .stages
-            .filter(s => !states(s.name.name).isTerminal)
-            .foreach { s =>
-              workEnv.warn(s"Stage ${s.name.name} is unschedulable; marking as skipped")
-              states(s.name.name) = StageState.Skipped
+          flowStages
+            .filter(ls => !states(ls.name).isTerminal)
+            .foreach { ls =>
+              workEnv.warn(s"Stage ${ls.name} is unschedulable; marking as skipped")
+              states(ls.name) = StageState.Skipped
             }
           done = true
         else
@@ -394,10 +415,10 @@ class FlowExecutor(
             // handled at the top of the loop via the cancelled flag
             case RetryDue(s, attempt) =>
               scheduledRetries -= 1
-              if states(s.name.name) == StageState.Retrying then
+              if states(s.name) == StageState.Retrying then
                 submitAttempt(s, attempt)
             case AttemptResult(s, attempt, error) =>
-              val name = s.name.name
+              val name = s.name
               if !handledAttempts.contains((name, attempt)) then
                 handledAttempts += name -> attempt
                 runningCount -= 1
@@ -439,26 +460,24 @@ class FlowExecutor(
     end try
 
     // Report results in stage definition order for deterministic summaries
-    val stageResults = flow
-      .stages
-      .map { s =>
-        val name  = s.name.name
-        val state = states(name)
-        StageResult(
-          name,
-          state,
-          attempts(name),
-          if state == StageState.Failed then
-            errors.get(name)
-          else
-            None
-          ,
-          if state == StageState.Success then
-            Some(tableFor(name))
-          else
-            None
-        )
-      }
+    val stageResults = flowStages.map { ls =>
+      val name  = ls.name
+      val state = states(name)
+      StageResult(
+        name,
+        state,
+        attempts(name),
+        if state == StageState.Failed then
+          errors.get(name)
+        else
+          None
+        ,
+        if state == StageState.Success then
+          Some(tableFor(name))
+        else
+          None
+      )
+    }
     val result = FlowExecutionResult(flow.name.name, runId, stageResults)
     workEnv.info(s"Completed flow ${flow.name.name} (run: ${runId})")
     result
@@ -466,37 +485,42 @@ class FlowExecutor(
   end execute
 
   /**
-    * Execute the stage body and materialize the result as a run-scoped table. References to other
-    * stages in the body are rewritten to their run-scoped table names. Materialization runs on a
-    * dedicated session so that parallel stages do not contend on a single connection
+    * Execute the lowered stage body and materialize the result as a run-scoped table. References to
+    * other stages in the body are rewritten to their run-scoped table names (with routing
+    * predicates applied when this stage is a route target). Materialization runs on a dedicated
+    * session so that parallel stages do not contend on a single connection
     */
-  private def materializeStage(s: StageDef, stageNames: Set[String], tableFor: String => String)(
-      using ctx: Context
-  ): Unit =
-    val body = s
+  private def materializeStage(
+      ls: FlowLowering.LoweredStage,
+      stageNames: Set[String],
+      tableFor: String => String,
+      routeFilters: Map[(String, String), Expression]
+  )(using ctx: Context): Unit =
+    val body = ls
       .body
       .getOrElse(
-        throw StatusCode
-          .NOT_IMPLEMENTED
-          .newException(s"Stage ${s.name.name} has no executable body")
+        throw StatusCode.NOT_IMPLEMENTED.newException(s"Stage ${ls.name} has no executable body")
       )
 
-    // Reject flow operators that this executor cannot run yet
-    body.traverse {
-      case op: (FlowRoute | FlowFork | FlowWait | FlowActivate | FlowJump | FlowEnd) =>
-        throw StatusCode
-          .NOT_IMPLEMENTED
-          .newException(
-            s"Flow operator ${op.nodeName} in stage ${s
-                .name
-                .name} is not supported by the flow executor yet"
-          )
+    // Reject flow operators that lowering could not handle (e.g. cross-flow jumps)
+    body.traverse { case op: FlowJump =>
+      throw StatusCode
+        .NOT_IMPLEMENTED
+        .newException(
+          s"Flow operator ${op.nodeName} in stage ${ls
+              .name} is not supported by the flow executor yet"
+        )
     }
 
-    def stageTableRef(stageName: String, span: Span): Relation = TableRef(
-      DoubleQuotedIdentifier(tableFor(stageName), span),
-      span
-    )
+    // Reference a source stage's run-scoped table, filtered with the routing predicate when
+    // this stage is a route target of the source
+    def stageTableRef(stageName: String, span: Span): Relation =
+      val ref = TableRef(DoubleQuotedIdentifier(tableFor(stageName), span), span)
+      routeFilters.get((ls.name, stageName)) match
+        case Some(pred) =>
+          Filter(ref, pred, span)
+        case None =>
+          ref
 
     // Rewrite stage references to their run-scoped tables, and merge (fan-in) into union all
     val executable = body
@@ -517,8 +541,8 @@ class FlowExecutor(
     // Quote the table name: it contains a ULID and stage names may collide with SQL keywords.
     // The table is a regular (non-temp) table because parallel stages materialize on separate
     // sessions, and temp tables are session-scoped
-    val ddl = s"""create or replace table "${tableFor(s.name.name)}" as\n${sql}"""
-    debug(s"Materializing stage ${s.name.name}:\n${ddl}")
+    val ddl = s"""create or replace table "${tableFor(ls.name)}" as\n${sql}"""
+    debug(s"Materializing stage ${ls.name}:\n${ddl}")
     connector.withSession { conn =>
       Using.resource(conn.createStatement()) { stmt =>
         stmt.execute(ddl)
@@ -549,8 +573,8 @@ object FlowExecutor:
     }
 
   private enum FlowEvent:
-    case AttemptResult(stage: StageDef, attempt: Int, error: Option[Throwable])
-    case RetryDue(stage: StageDef, attempt: Int)
+    case AttemptResult(stage: FlowLowering.LoweredStage, attempt: Int, error: Option[Throwable])
+    case RetryDue(stage: FlowLowering.LoweredStage, attempt: Int)
     case CancelRequested
 
 end FlowExecutor
