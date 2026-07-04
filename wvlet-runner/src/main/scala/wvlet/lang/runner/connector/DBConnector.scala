@@ -31,9 +31,13 @@ import wvlet.lang.model.RelationType
 import wvlet.lang.model.plan.LogicalPlan
 import wvlet.lang.model.plan.*
 import wvlet.lang.api.StatusCode
+import wvlet.lang.runner.codec.JDBCCodec
 import wvlet.uni.log.LogSupport
+import wvlet.uni.weaver.Weaver
+import wvlet.uni.weaver.codec.PrimitiveWeaver.given
 
 import java.sql.Connection
+import scala.collection.immutable.ListMap
 import java.sql.ResultSet
 import java.sql.SQLException
 import java.sql.SQLWarning
@@ -61,6 +65,13 @@ case class DBConnection(jdbcConnection: Connection) extends AutoCloseable:
   def createStatement(): Statement             = jdbcConnection.createStatement()
   def getMetaData(): java.sql.DatabaseMetaData = jdbcConnection.getMetaData()
   def close(): Unit                            = jdbcConnection.close()
+
+/**
+  * A best-effort handle for cancelling an in-flight statement server-side (JDBC `Statement.cancel`
+  * or an HTTP query abort, depending on the connector)
+  */
+trait CancellableStatement:
+  def cancel(): Unit
 
 trait DBConnector(val dbType: DBType, workEnv: WorkEnv) extends AutoCloseable with LogSupport:
   private var queryScope: QueryScope = QueryScope.Global
@@ -102,6 +113,41 @@ trait DBConnector(val dbType: DBType, workEnv: WorkEnv) extends AutoCloseable wi
     val conn = newSession
     try body(conn)
     finally conn.close()
+
+  /**
+    * Execute a DDL/DML statement on a dedicated session, exposing a cancellation handle while the
+    * statement is in flight. The flow executor registers the handle so that stage timeouts and
+    * cross-process cancellation can stop the statement server-side; `deregister` runs when the
+    * statement finishes (successfully or not). Connectors without JDBC sessions (e.g. Trino over
+    * HTTP) override this with their own execution and cancellation mechanism
+    */
+  private[runner] def executeCancellable(
+      sql: String,
+      register: CancellableStatement => Unit,
+      deregister: () => Unit
+  ): Unit = withSession { conn =>
+    withResource(conn.createStatement()) { stmt =>
+      register(() => stmt.cancel())
+      try stmt.execute(sql)
+      finally deregister()
+    }
+  }
+
+  /**
+    * Run a query on a dedicated session and serialize each row as a JSON object string. Provides
+    * engine-independent row access for activation sinks and notification hooks; connectors without
+    * JDBC result sets (e.g. Trino over HTTP) override this
+    */
+  private[runner] def queryJsonRows(sql: String): List[String] = withSession { conn =>
+    withResource(conn.createStatement()) { stmt =>
+      withResource(stmt.executeQuery(sql)) { rs =>
+        val rowWeaver = summon[Weaver[ListMap[String, Any]]]
+        JDBCCodec(rs)
+          .mapMsgPackMapRows(msgpack => rowWeaver.toJson(rowWeaver.unweave(msgpack)))
+          .toList
+      }
+    }
+  }
 
   protected def withStatement[U](
       body: Statement => U

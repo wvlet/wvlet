@@ -14,18 +14,14 @@
 package wvlet.lang.runner
 
 import wvlet.lang.api.StatusCode
-import wvlet.lang.runner.codec.JDBCCodec
 import wvlet.lang.runner.connector.DBConnector
 import wvlet.uni.log.LogSupport
-import wvlet.uni.weaver.Weaver
-import wvlet.uni.weaver.codec.PrimitiveWeaver.given
 
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.time.Duration
-import scala.collection.immutable.ListMap
 import scala.util.Using
 
 /**
@@ -72,6 +68,15 @@ class FileActivationSink extends ActivationSink with LogSupport:
   override def name: String = "file"
 
   override def activate(request: ActivationRequest): Unit =
+    // COPY TO is DuckDB-specific: fail with a clear, non-retryable error on other engines
+    if !request.connector.dbType.supportSaveAsFile then
+      throw StatusCode
+        .NOT_IMPLEMENTED
+        .newException(
+          s"activate('file') of stage ${request.stageName} is not supported on ${request
+              .connector
+              .dbType}: local file export requires an engine with COPY TO support (e.g. DuckDB)"
+        )
     val path = request
       .params
       .getOrElse(
@@ -192,25 +197,14 @@ class WebhookActivationSink(httpClient: => HttpClient = WebhookActivationSink.de
 
   /** Read up to maxRows rows of the stage table as JSON objects, reporting truncation */
   private def readRows(request: ActivationRequest, maxRows: Int): (List[String], Boolean) =
-    val rowCodec = summon[Weaver[ListMap[String, Any]]]
-    request
+    // Read one extra row to detect truncation; queryJsonRows is engine-independent (JDBC or HTTP)
+    val rows = request
       .connector
-      .withSession { conn =>
-        Using.resource(conn.createStatement()) { stmt =>
-          Using.resource(
-            // Read one extra row to detect truncation
-            stmt.executeQuery(s"""select * from "${request.table}" limit ${maxRows + 1}""")
-          ) { rs =>
-            val codec = JDBCCodec(rs)
-            val it = codec.mapMsgPackMapRows(msgpack => rowCodec.toJson(rowCodec.unweave(msgpack)))
-            val rows = it.take(maxRows + 1).toList
-            if rows.size > maxRows then
-              (rows.take(maxRows), true)
-            else
-              (rows, false)
-          }
-        }
-      }
+      .queryJsonRows(s"""select * from "${request.table}" limit ${maxRows + 1}""")
+    if rows.size > maxRows then
+      (rows.take(maxRows), true)
+    else
+      (rows, false)
 
 end WebhookActivationSink
 

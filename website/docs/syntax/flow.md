@@ -352,7 +352,9 @@ stage delayed = from entry | wait('7 days')
 external target. Two sinks are built in:
 
 - `activate('file', path: 'out.csv')` exports to a local file. The format comes from the
-  path extension or a `format:` parameter (csv, parquet, or json)
+  path extension or a `format:` parameter (csv, parquet, or json). File export uses the
+  engine's `COPY TO` statement and is available on DuckDB only; on other engines the stage
+  fails with a clear error
 - `activate('webhook', url: 'https://...')` posts the rows to an HTTP endpoint as a JSON
   array, or as newline-delimited JSON with `format: 'ndjson'`. At most `max_rows:` rows
   (1000 by default) are sent
@@ -504,6 +506,15 @@ flow hourly_metrics with {
 
 Flow definitions are declarations: running a file that contains flows does not execute them.
 Flows are triggered explicitly with the `run flow` statement or the `wvlet flow` CLI.
+
+### Engine Support
+
+Flows run on DuckDB (the default) and on Trino, selected with `--profile` like regular
+queries. Stage materialization adapts to the engine automatically (e.g. Trino catalogs
+without `create or replace table` get an explicit drop-and-create), and stage timeouts and
+cancellation stop the running query server-side on both engines. Run-scoped
+`__wv_flow_*` tables are created in the profile's `catalog`/`schema`, which must exist and
+be writable (for example a `memory` catalog schema on Trino).
 
 ### run flow Statement
 

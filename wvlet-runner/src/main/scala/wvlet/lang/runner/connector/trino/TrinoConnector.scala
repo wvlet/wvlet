@@ -29,8 +29,11 @@ import wvlet.lang.compiler.query.QueryProgressMonitor
 import wvlet.lang.model.DataType
 import wvlet.lang.runner.connector.*
 import wvlet.uni.log.LogSupport
+import wvlet.uni.weaver.Weaver
+import wvlet.uni.weaver.codec.PrimitiveWeaver.given
 
 import java.sql.Statement
+import scala.collection.immutable.ListMap
 
 case class TrinoConfig(
     catalog: String,
@@ -146,6 +149,33 @@ class TrinoConnector(val config: TrinoConfig, workEnv: WorkEnv)
     monitor.newQuery(sql)
     try http(sql).columnCount > 0
     finally monitor.close()
+
+  /**
+    * Flow statements run through the HTTP query handle, whose `cancel()` issues a DELETE on the
+    * query so that stage timeouts and cancellations stop the query server-side, mirroring what JDBC
+    * `Statement.cancel` provides on other engines
+    */
+  override private[runner] def executeCancellable(
+      sql: String,
+      register: CancellableStatement => Unit,
+      deregister: () => Unit
+  ): Unit =
+    val handle = asSqlConnector.submit(sql)
+    try
+      register(() => handle.cancel())
+      val _ = handle.await()
+    finally
+      deregister()
+      handle.close()
+
+  override private[runner] def queryJsonRows(sql: String): List[String] =
+    val result    = http(sql)
+    val names     = result.columns.map(_.name.name)
+    val rowWeaver = summon[Weaver[ListMap[String, Any]]]
+    result
+      .rows
+      .map(row => rowWeaver.toJson(ListMap.from(names.zip(row.values.map(v => v.orNull: Any)))))
+      .toList
 
   override def createSchema(catalog: String, schema: String): TableSchema =
     http(s"create schema if not exists ${catalog}.${schema}")
