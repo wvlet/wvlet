@@ -1035,6 +1035,90 @@ class FlowExecutorTest extends UniTest:
     lines.get(0) shouldBe "id,name"
   }
 
+  /** Start a local HTTP server for webhook tests, passing its port to the body */
+  private def withHttpServer(status: Int, received: ListBuffer[(String, String)])(
+      body: Int => Unit
+  ): Unit =
+    val server = com
+      .sun
+      .net
+      .httpserver
+      .HttpServer
+      .create(java.net.InetSocketAddress("localhost", 0), 0)
+    server.createContext(
+      "/hook",
+      exchange =>
+        val requestBody = String(
+          exchange.getRequestBody.readAllBytes(),
+          java.nio.charset.StandardCharsets.UTF_8
+        )
+        received.synchronized {
+          received += exchange.getRequestHeaders.getFirst("Content-Type") -> requestBody
+        }
+        exchange.sendResponseHeaders(status, -1)
+        exchange.close()
+    )
+    server.start()
+    try body(server.getAddress.getPort)
+    finally server.stop(0)
+
+  test("post activated stage outputs to a webhook as a JSON array") {
+    val received = ListBuffer.empty[(String, String)]
+    withHttpServer(status = 200, received) { port =>
+      val result = runFlow(s"""flow WebhookFlow = {
+          |  stage src = from [[1, 'a'], [2, 'b']] as t(id, name)
+          |  stage send = from src | activate('webhook', url: 'http://localhost:${port}/hook')
+          |}""".stripMargin)
+      result.isSuccess shouldBe true
+      received.size shouldBe 1
+      val (contentType, body) = received.head
+      contentType shouldBe "application/json"
+      body shouldContain "\"id\":1"
+      body shouldContain "\"name\":\"a\""
+      body shouldContain "\"id\":2"
+      body.startsWith("[") shouldBe true
+      body.endsWith("]") shouldBe true
+    }
+  }
+
+  test("post newline-delimited rows to a webhook with the ndjson format") {
+    val received = ListBuffer.empty[(String, String)]
+    withHttpServer(status = 200, received) { port =>
+      val result = runFlow(s"""flow NdjsonWebhookFlow = {
+          |  stage src = from [[1], [2], [3]] as t(id)
+          |  stage send = from src |
+          |    activate('webhook', url: 'http://localhost:${port}/hook', format: 'ndjson', max_rows: 2)
+          |}""".stripMargin)
+      result.isSuccess shouldBe true
+      val (contentType, body) = received.head
+      contentType shouldBe "application/x-ndjson"
+      // max_rows bounds the batch: only the first two rows are delivered
+      body.trim.linesIterator.size shouldBe 2
+    }
+  }
+
+  test("fail the stage when the webhook responds with an error status") {
+    val received = ListBuffer.empty[(String, String)]
+    withHttpServer(status = 500, received) { port =>
+      val result = runFlow(s"""flow BrokenWebhookFlow = {
+          |  stage send = from [[1]] as t(id) |
+          |    activate('webhook', url: 'http://localhost:${port}/hook')
+          |}""".stripMargin)
+      result.isSuccess shouldBe false
+      val send = result.stageResult("send").get
+      send.state shouldBe StageState.Failed
+      send.error.get.getMessage shouldContain "status 500"
+    }
+  }
+
+  test("require a url parameter for the webhook sink") {
+    val result = runFlow("""flow UrllessWebhookFlow = {
+        |  stage send = from [[1]] as t(id) | activate('webhook')
+        |}""".stripMargin)
+    result.isSuccess shouldBe false
+    result.stageResult("send").get.error.get.getMessage shouldContain "requires a url"
+  }
+
   test("fail and retry a stage whose activation sink fails") {
     var calls = 0
     val sink  =

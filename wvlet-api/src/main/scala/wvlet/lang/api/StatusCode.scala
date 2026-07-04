@@ -72,6 +72,9 @@ enum StatusCode(statusType: StatusType):
   case TEST_FAILED extends StatusCode(StatusType.UserError)
 
   case INTERNAL_ERROR extends StatusCode(StatusType.InternalError)
+  // A flow activation sink failed to deliver the stage output (e.g. a webhook returned an
+  // error status); the stage attempt is retried per its retry policy
+  case ACTIVATION_FAILED extends StatusCode(StatusType.InternalError)
 
   case RESOURCE_EXHAUSTED extends StatusCode(StatusType.ResourceExhausted)
 
