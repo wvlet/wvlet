@@ -21,12 +21,14 @@ import wvlet.lang.compiler.Context
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.compiler.codegen.GenSQL
 import wvlet.lang.compiler.transform.FlowParams
+import wvlet.lang.model.DataType
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
 import wvlet.lang.runner.connector.DBConnector
 import wvlet.uni.log.LogSupport
 import wvlet.uni.util.ULID
 
+import java.time.ZonedDateTime
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue
@@ -287,17 +289,23 @@ class FlowExecutor(
     * materialized run-scoped tables and are not re-executed, and the remaining stages run with a
     * fresh retry budget. `args` binds the declared flow parameters (positional or named); declared
     * defaults fill in unbound parameters, and a missing required parameter fails the run before any
-    * stage executes
+    * stage executes.
+    *
+    * `runTime` is the logical time of the run: the schedule fire time for scheduler-triggered and
+    * backfill runs, and the current wall clock otherwise. Stage bodies can reference it through the
+    * implicit `run_time` (timestamp) and `run_date` (`'yyyy-MM-dd'` string) bindings; a declared
+    * flow parameter of the same name takes precedence
     */
   def execute(
       flow: FlowDef,
       resumeFrom: Option[FlowRunRecord] = None,
-      args: List[FunctionArg] = Nil
-  )(using ctx: Context): FlowExecutionResult = executeInternal(
-    FlowParams(flow, args),
-    resumeFrom,
-    jumpDepth = 0
-  )
+      args: List[FunctionArg] = Nil,
+      runTime: Option[ZonedDateTime] = None
+  )(using ctx: Context): FlowExecutionResult =
+    val bindings =
+      FlowExecutor.runTimeBindings(runTime.getOrElse(ZonedDateTime.now())) ++
+        FlowParams.bind(flow, args)
+    executeInternal(FlowParams.substitute(flow, bindings), resumeFrom, jumpDepth = 0)
 
   /** Resolve a flow referenced by a `-> Flow` jump through the compilation context */
   private def resolveJumpTarget(name: String)(using ctx: Context): FlowDef =
@@ -903,8 +911,12 @@ class FlowExecutor(
           else
             workEnv.info(s"Jumping from flow ${flow.name.name} to flow ${target}")
             // A jump carries no arguments, so the target flow runs with its parameter defaults
+            // and the current wall clock as its run time
+            val targetFlow = jumpTargetFlows(target)
+            val bindings   =
+              FlowExecutor.runTimeBindings(ZonedDateTime.now()) ++ FlowParams.bind(targetFlow, Nil)
             executeInternal(
-              FlowParams(jumpTargetFlows(target), Nil),
+              FlowParams.substitute(targetFlow, bindings),
               resumeFrom = None,
               jumpDepth = jumpDepth + 1
             )
@@ -996,6 +1008,23 @@ object FlowExecutor:
   def defaultActivationSinks: List[ActivationSink] =
     val loaded = java.util.ServiceLoader.load(classOf[ActivationSink]).iterator().asScala.toList
     loaded ++ List(FileActivationSink(), WebhookActivationSink())
+
+  private val runTimeFormat = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+  private val runDateFormat = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd")
+
+  /**
+    * The implicit parameter bindings derived from the logical run time: `run_time` as a timestamp
+    * literal and `run_date` as a `'yyyy-MM-dd'` string, both rendered in the zone of the given time
+    */
+  def runTimeBindings(runTime: ZonedDateTime): Map[String, Expression] = Map(
+    "run_time" ->
+      GenericLiteral(
+        DataType.TimestampType(DataType.TimestampField.TIMESTAMP, withTimeZone = false),
+        SingleQuoteString(runTime.format(runTimeFormat), Span.NoSpan),
+        Span.NoSpan
+      ),
+    "run_date" -> SingleQuoteString(runTime.format(runDateFormat), Span.NoSpan)
+  )
 
   /** The run-scoped table name holding the materialized result of a stage */
   def stageTableName(runId: String, stageName: String): String =

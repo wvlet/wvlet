@@ -132,6 +132,125 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
     .map(FlowRunStore.ofType(_, workEnv))
     .getOrElse(FlowRunStore.forWorkEnv(workEnv))
 
+  @command(description =
+    "Run a scheduled flow once per schedule window between --from and --to (sequentially)"
+  )
+  def backfill(
+      flowOption: WvletFlowOption,
+      @argument(description = "Flow to backfill: a name or a flow call like \"F(segment = 'a')\"")
+      name: String,
+      @option(
+        prefix = "--from",
+        description = "Start of the backfill range (inclusive): yyyy-MM-dd or yyyy-MM-ddTHH:mm"
+      )
+      from: String,
+      @option(
+        prefix = "--to",
+        description = "End of the backfill range (inclusive); defaults to the current time"
+      )
+      to: Option[String] = None
+  ): Unit =
+    val (flowName, args) = parseFlowCall(name)
+    withFlows(flowOption) { (flows, compileResult, workEnv) =>
+      val (unit, flow) = findFlow(flows, flowName)
+      val schedule     = FlowScheduleConfig.fromFlow(flow)
+      val cron         = CronSchedule.parse(
+        schedule
+          .cron
+          .getOrElse(
+            throw StatusCode
+              .INVALID_ARGUMENT
+              .newException(
+                s"Flow '${flowName}' has no schedule: config. Backfill derives its run windows from the cron schedule"
+              )
+          )
+      )
+      val zone     = schedule.zoneId
+      val fromTime = parseBackfillTime(from, zone, endOfDay = false)
+      val toTime   = to
+        .map(parseBackfillTime(_, zone, endOfDay = true))
+        .getOrElse(java.time.ZonedDateTime.now(zone))
+      if fromTime.isAfter(toTime) then
+        throw StatusCode
+          .INVALID_ARGUMENT
+          .newException(s"--from (${fromTime}) is after --to (${toTime})")
+
+      // Schedule fire times within [fromTime, toTime]
+      val windows = List.newBuilder[java.time.ZonedDateTime]
+      var t       =
+        val start = fromTime.truncatedTo(java.time.temporal.ChronoUnit.MINUTES)
+        if cron.matches(start) then
+          start
+        else
+          cron.nextAfter(fromTime)
+      while !t.isAfter(toTime) do
+        windows += t
+        t = cron.nextAfter(t)
+      val runTimes = windows.result()
+
+      if runTimes.isEmpty then
+        println(s"No schedule windows of ${flowName} between ${fromTime} and ${toTime}")
+      else
+        println(
+          s"Backfilling ${flowName}: ${runTimes.size} run(s) from ${runTimes.head} to ${runTimes
+              .last}"
+        )
+        val profile = Profile.getProfile(flowOption.profile, flowOption.catalog, flowOption.schema)
+        Control.withResource(DBConnectorProvider(workEnv)) { dbConnectorProvider =>
+          val connector = dbConnectorProvider.getConnector(profile)
+
+          given ctx: Context = compileResult
+            .context
+            .withCompilationUnit(unit)
+            .newContext(Symbol.NoSymbol)
+
+          Control.withResource(newRunStore(flowOption, workEnv)) { store =>
+            val executor = FlowExecutor(connector, workEnv, registry = Some(store))
+            val it       = runTimes.iterator
+            var failed   = false
+            while !failed && it.hasNext do
+              val runTime = it.next()
+              println(s"=== ${flowName} @ ${runTime}")
+              val result = executor.execute(flow, args = args, runTime = Some(runTime))
+              println(result.toPrettyBox())
+              if result.hasError then
+                // Later windows often depend on earlier ones, so stop at the first failure
+                failed = true
+                println(
+                  s"Backfill of ${flowName} aborted at window ${runTime}; resolve the failure and re-run with --from ${runTime
+                      .toLocalDate}"
+                )
+            if failed && !WvletMain.isInSbt then
+              System.exit(1)
+          }
+        }
+      end if
+    }
+
+  end backfill
+
+  /** Parse a --from/--to argument as a date (yyyy-MM-dd) or local date-time in the flow's zone */
+  private def parseBackfillTime(
+      s: String,
+      zone: java.time.ZoneId,
+      endOfDay: Boolean
+  ): java.time.ZonedDateTime =
+    try
+      val date = java.time.LocalDate.parse(s)
+      if endOfDay then
+        date.plusDays(1).atStartOfDay(zone).minusSeconds(1)
+      else
+        date.atStartOfDay(zone)
+    catch
+      case _: java.time.format.DateTimeParseException =>
+        try
+          java.time.LocalDateTime.parse(s).atZone(zone)
+        catch
+          case _: java.time.format.DateTimeParseException =>
+            throw StatusCode
+              .INVALID_ARGUMENT
+              .newException(s"Cannot parse time '${s}'. Use yyyy-MM-dd or yyyy-MM-ddTHH:mm[:ss]")
+
   @command(description = "List flows defined in the working folder")
   def list(flowOption: WvletFlowOption): Unit =
     withFlows(flowOption) { (flows, _, _) =>
@@ -330,7 +449,7 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
           val flowScheduler = FlowScheduler(
             scheduled.map(_._2),
             trigger =
-              flow =>
+              (flow, fireTime) =>
                 pool.submit(
                   new Runnable:
                     override def run(): Unit =
@@ -341,8 +460,10 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
                         .withCompilationUnit(unitOf(flow.name.name))
                         .newContext(Symbol.NoSymbol)
 
+                      // The schedule fire time is the logical run time: catch-up runs recompute
+                      // the window they missed instead of the current one
                       val runResult = FlowExecutor(connector, workEnv, registry = Some(store))
-                        .execute(flow)
+                        .execute(flow, runTime = Some(fireTime))
                       println(runResult.toPrettyBox())
                 )
           )
