@@ -48,6 +48,15 @@ trait FlowRunStore extends AutoCloseable:
   def claimRunSlot(record: FlowRunRecord, concurrencyLimit: Int): Boolean
 
   /**
+    * Extend the liveness lease of a running run. The executor refreshes the lease periodically
+    * while the run is in progress; a running record whose lease has expired belongs to a dead
+    * process and is treated as failed by [[claimRunSlot]] and cross-flow dependency evaluation
+    */
+  def refreshLease(runId: String, leaseExpiresAtMillis: Long): Unit = get(runId).foreach(r =>
+    save(r.copy(leaseExpiresAtMillis = Some(leaseExpiresAtMillis)))
+  )
+
+  /**
     * Request cancellation of a run. The marker is polled by the executor's event loop, so a run can
     * be cancelled from another process (e.g. `wvlet flow session cancel`)
     */

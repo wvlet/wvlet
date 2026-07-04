@@ -45,8 +45,19 @@ class SQLiteFlowRunStore(dbPath: Path) extends FlowRunStore with LogSupport:
         |  state            text not null,
         |  started_at       integer not null,
         |  finished_at      integer,
-        |  cancel_requested integer not null default 0
+        |  cancel_requested integer not null default 0,
+        |  lease_expires_at integer
         |)""".stripMargin)
+    // Migrate databases created before the lease column was introduced
+    val hasLeaseColumn =
+      Using.resource(stmt.executeQuery("pragma table_info(runs)")) { rs =>
+        Iterator
+          .continually(rs)
+          .takeWhile(_.next())
+          .exists(_.getString("name") == "lease_expires_at")
+      }
+    if !hasLeaseColumn then
+      stmt.execute("alter table runs add column lease_expires_at integer")
     stmt.execute("""create table if not exists stages(
         |  run_id     text not null,
         |  ordinal    integer not null,
@@ -63,23 +74,18 @@ class SQLiteFlowRunStore(dbPath: Path) extends FlowRunStore with LogSupport:
     conn.setAutoCommit(false)
     try
       Using.resource(
-        conn.prepareStatement("""insert into runs(run_id, flow_name, state, started_at, finished_at)
-            |values(?, ?, ?, ?, ?)
+        conn.prepareStatement(
+          """insert into runs(run_id, flow_name, state, started_at, finished_at, lease_expires_at)
+            |values(?, ?, ?, ?, ?, ?)
             |on conflict(run_id) do update set
             |  flow_name = excluded.flow_name,
             |  state = excluded.state,
             |  started_at = excluded.started_at,
-            |  finished_at = excluded.finished_at""".stripMargin)
+            |  finished_at = excluded.finished_at,
+            |  lease_expires_at = excluded.lease_expires_at""".stripMargin
+        )
       ) { ps =>
-        ps.setString(1, record.runId.toLowerCase)
-        ps.setString(2, record.flowName)
-        ps.setString(3, record.state)
-        ps.setLong(4, record.startedAtMillis)
-        record.finishedAtMillis match
-          case Some(f) =>
-            ps.setLong(5, f)
-          case None =>
-            ps.setNull(5, java.sql.Types.BIGINT)
+        bindRunColumns(ps, record)
         ps.executeUpdate()
       }
       saveStages(record)
@@ -91,6 +97,22 @@ class SQLiteFlowRunStore(dbPath: Path) extends FlowRunStore with LogSupport:
     finally
       conn.setAutoCommit(true)
   }
+
+  private def bindRunColumns(ps: java.sql.PreparedStatement, record: FlowRunRecord): Unit =
+    ps.setString(1, record.runId.toLowerCase)
+    ps.setString(2, record.flowName)
+    ps.setString(3, record.state)
+    ps.setLong(4, record.startedAtMillis)
+    record.finishedAtMillis match
+      case Some(f) =>
+        ps.setLong(5, f)
+      case None =>
+        ps.setNull(5, java.sql.Types.BIGINT)
+    record.leaseExpiresAtMillis match
+      case Some(l) =>
+        ps.setLong(6, l)
+      case None =>
+        ps.setNull(6, java.sql.Types.BIGINT)
 
   private def saveStages(record: FlowRunRecord): Unit =
     Using.resource(conn.prepareStatement("delete from stages where run_id = ?")) { ps =>
@@ -128,30 +150,37 @@ class SQLiteFlowRunStore(dbPath: Path) extends FlowRunStore with LogSupport:
 
   override def claimRunSlot(record: FlowRunRecord, concurrencyLimit: Int): Boolean = synchronized {
     // A single insert statement is atomic in SQLite, so the running-count check and the claim
-    // cannot interleave with claims from other processes
+    // cannot interleave with claims from other processes. Running records whose liveness lease
+    // has expired belong to dead processes and do not occupy a slot
     val claimed =
       Using.resource(
-        conn.prepareStatement("""insert into runs(run_id, flow_name, state, started_at, finished_at)
-          |select ?, ?, ?, ?, ?
-          |where (select count(*) from runs where flow_name = ? and state = ?) < ?""".stripMargin)
+        conn.prepareStatement(
+          """insert into runs(run_id, flow_name, state, started_at, finished_at, lease_expires_at)
+            |select ?, ?, ?, ?, ?, ?
+            |where (select count(*) from runs
+            |       where flow_name = ? and state = ?
+            |         and (lease_expires_at is null or lease_expires_at >= ?)) < ?""".stripMargin
+        )
       ) { ps =>
-        ps.setString(1, record.runId.toLowerCase)
-        ps.setString(2, record.flowName)
-        ps.setString(3, record.state)
-        ps.setLong(4, record.startedAtMillis)
-        record.finishedAtMillis match
-          case Some(f) =>
-            ps.setLong(5, f)
-          case None =>
-            ps.setNull(5, java.sql.Types.BIGINT)
-        ps.setString(6, record.flowName)
-        ps.setString(7, FlowRunRecord.STATE_RUNNING)
-        ps.setInt(8, concurrencyLimit)
+        bindRunColumns(ps, record)
+        ps.setString(7, record.flowName)
+        ps.setString(8, FlowRunRecord.STATE_RUNNING)
+        ps.setLong(9, System.currentTimeMillis())
+        ps.setInt(10, concurrencyLimit)
         ps.executeUpdate() == 1
       }
     if claimed then
       saveStages(record)
     claimed
+  }
+
+  override def refreshLease(runId: String, leaseExpiresAtMillis: Long): Unit = synchronized {
+    Using.resource(conn.prepareStatement("update runs set lease_expires_at = ? where run_id = ?")) {
+      ps =>
+        ps.setLong(1, leaseExpiresAtMillis)
+        ps.setString(2, runId.toLowerCase)
+        ps.executeUpdate()
+    }
   }
 
   override def requestCancel(runId: String): Unit = synchronized {
@@ -208,27 +237,30 @@ class SQLiteFlowRunStore(dbPath: Path) extends FlowRunStore with LogSupport:
     val runs =
       Using.resource(
         conn.prepareStatement(
-          s"select run_id, flow_name, state, started_at, finished_at from runs ${clause}"
+          s"select run_id, flow_name, state, started_at, finished_at, lease_expires_at from runs ${clause}"
         )
       ) { ps =>
         bind(ps)
         Using.resource(ps.executeQuery()) { rs =>
+          // wasNull refers to the immediately preceding column read
+          def nullableLong(column: Int): Option[Long] =
+            val v = rs.getLong(column)
+            if rs.wasNull() then
+              None
+            else
+              Some(v)
           val b = List.newBuilder[FlowRunRecord]
           while rs.next() do
-            val finishedAt = rs.getLong(5)
-            // wasNull refers to the immediately preceding getLong(5) read
-            val finishedAtOpt =
-              if rs.wasNull() then
-                None
-              else
-                Some(finishedAt)
+            val finishedAtOpt = nullableLong(5)
+            val leaseOpt      = nullableLong(6)
             b +=
               FlowRunRecord(
                 runId = rs.getString(1),
                 flowName = rs.getString(2),
                 state = rs.getString(3),
                 startedAtMillis = rs.getLong(4),
-                finishedAtMillis = finishedAtOpt
+                finishedAtMillis = finishedAtOpt,
+                leaseExpiresAtMillis = leaseOpt
               )
           b.result()
         }

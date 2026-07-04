@@ -403,7 +403,21 @@ Runs are managed with `wvlet flow session` subcommands:
 - `wvlet flow session resume <run_id>`: re-run a failed or cancelled run from its first
   non-successful stage, reusing the materialized tables of stages that already succeeded
 - `wvlet flow session clean`: delete terminal run records and drop their run-scoped
-  `__wv_flow_*` tables
+  `__wv_flow_*` tables. With `--stale`, also remove running records whose liveness lease
+  expired (crashed runs)
+
+### Run Liveness Leases
+
+While a flow runs, the executor periodically refreshes a liveness lease on its run record
+(60 seconds by default). A record left in the `running` state by a crashed process stops
+being refreshed, and once its lease expires the record is treated as failed everywhere it
+is observed:
+
+- it no longer occupies a `concurrency:` slot, so scheduled runs are not blocked forever
+- cross-flow dependencies see it as failed (`if X.failed` recovery flows fire; `depends on X`
+  stays unsatisfied)
+- `wvlet flow session list` marks it as `running (stale)`, `session resume <run_id>` accepts
+  it like a failed run, and `session clean --stale` removes it
 
 ## Stage Execution Model
 

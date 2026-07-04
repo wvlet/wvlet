@@ -699,6 +699,84 @@ class FlowExecutorTest extends UniTest:
     registry.latestRunOf("Orphan").get.state shouldBe FlowRunRecord.STATE_SKIPPED
   }
 
+  test("treat a stale running record as failed in cross-flow dependency evaluation") {
+    val registry     = FlowRunRegistry(java.nio.file.Files.createTempDirectory("wv-flow-reg"))
+    val (flows, ctx) = compileFlows("""flow LeaseUpstream = {
+        |  stage src = from [[1]] as t(id)
+        |}
+        |
+        |flow LeaseRecovery if LeaseUpstream.failed = {
+        |  stage alert = from [[1]] as t(id)
+        |}""".stripMargin)
+
+    def run(name: String): FlowExecutionResult =
+      FlowExecutor(connector, workEnv, registry = Some(registry)).execute(flows(name))(using ctx)
+
+    val now = System.currentTimeMillis()
+    // The upstream flow is running and holds a live lease: the recovery flow does not fire
+    registry.save(
+      FlowRunRecord(
+        "upstreamrun",
+        "LeaseUpstream",
+        FlowRunRecord.STATE_RUNNING,
+        now,
+        leaseExpiresAtMillis = Some(now + 60000)
+      )
+    )
+    run("LeaseRecovery").stageResults.map(_.state) shouldBe List(StageState.Skipped)
+
+    // The lease expired (the upstream process crashed): the phantom running record is observed
+    // as failed, so the recovery flow fires instead of waiting forever
+    registry.save(
+      FlowRunRecord(
+        "upstreamrun",
+        "LeaseUpstream",
+        FlowRunRecord.STATE_RUNNING,
+        now,
+        leaseExpiresAtMillis = Some(now - 10000)
+      )
+    )
+    run("LeaseRecovery").stageResults.map(_.state) shouldBe List(StageState.Success)
+  }
+
+  test("maintain a liveness lease on the run record while running") {
+    val registry = FlowRunRegistry(java.nio.file.Files.createTempDirectory("wv-flow-reg"))
+    @volatile
+    var leaseAtStart: Option[Long] = None
+    @volatile
+    var refreshedLease: Option[Long] = None
+    val runner                       =
+      new FlowStageRunner:
+        override def run(stage: StageDef, targetTable: String)(using Context): Unit =
+          def currentLease = registry.list().headOption.flatMap(_.leaseExpiresAtMillis)
+          leaseAtStart = currentLease
+          // The refresh interval is leaseTimeout / 3 = 50ms; wait until the timer extends the
+          // lease beyond the value observed at stage start
+          val deadline = System.currentTimeMillis() + 10000
+          var current  = currentLease
+          while current == leaseAtStart && System.currentTimeMillis() < deadline do
+            Thread.sleep(20)
+            current = currentLease
+          refreshedLease = current
+
+    val result = runFlow(
+      """flow LeasedFlow = {
+        |  stage src = from [[1]] as t(id)
+        |}""".stripMargin,
+      config = FlowExecutorConfig().withLeaseTimeoutMillis(150),
+      stageRunner = Some(runner),
+      registry = Some(registry)
+    )
+    result.isSuccess shouldBe true
+    // The run record carried a lease from the very first snapshot, and the timer refreshed it
+    leaseAtStart.isDefined shouldBe true
+    (refreshedLease.get > leaseAtStart.get) shouldBe true
+    // The terminal record carries no lease and is never considered stale
+    val terminal = registry.get(result.runId).get
+    terminal.leaseExpiresAtMillis shouldBe None
+    terminal.isStaleAt(System.currentTimeMillis() + 1000000) shouldBe false
+  }
+
   test("resume a failed run reusing successful stage materializations") {
     val registry = FlowRunRegistry(java.nio.file.Files.createTempDirectory("wv-flow-reg"))
     val wv       =

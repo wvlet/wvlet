@@ -132,11 +132,16 @@ end StageExecutionConfig
   *   Interval for polling the run registry for cross-process cancellation requests
   * @param maxJumpDepth
   *   Maximum depth of `-> Flow` jump chains; guards against jump cycles (flow A -> B -> A)
+  * @param leaseTimeoutMillis
+  *   Liveness lease duration of the run record. The executor refreshes the lease periodically while
+  *   running; a running record whose lease has expired (e.g. after a process crash) frees its
+  *   `concurrency:` slot and is treated as failed by cross-flow dependency evaluation
   */
 case class FlowExecutorConfig(
     maxParallelism: Int = 4,
     cancelPollIntervalMillis: Long = 500L,
-    maxJumpDepth: Int = 8
+    maxJumpDepth: Int = 8,
+    leaseTimeoutMillis: Long = 60_000L
 ):
   def withMaxParallelism(n: Int): FlowExecutorConfig                 = copy(maxParallelism = n)
   def withCancelPollIntervalMillis(millis: Long): FlowExecutorConfig = copy(
@@ -144,6 +149,8 @@ case class FlowExecutorConfig(
   )
 
   def withMaxJumpDepth(depth: Int): FlowExecutorConfig = copy(maxJumpDepth = depth)
+
+  def withLeaseTimeoutMillis(millis: Long): FlowExecutorConfig = copy(leaseTimeoutMillis = millis)
 
 /**
   * Runs the body of a single stage and materializes the result into the given target table.
@@ -257,13 +264,19 @@ class FlowExecutor(
             )
             false
           case Some(reg) =>
+            // A running record whose liveness lease expired belongs to a dead process and is
+            // observed as failed, so dependent flows are not blocked by a phantom run forever
+            val now                                         = System.currentTimeMillis()
+            def latestStateOf(name: String): Option[String] = reg
+              .latestRunOf(name)
+              .map(_.effectiveStateAt(now))
             dep match
               case DependsOnFlow(flowName, _) =>
-                reg.latestRunOf(flowName.fullName).exists(_.state == FlowRunRecord.STATE_SUCCESS)
+                latestStateOf(flowName.fullName).contains(FlowRunRecord.STATE_SUCCESS)
               case FlowStatePredicate(flowName, "failed", _) =>
-                reg.latestRunOf(flowName.fullName).exists(_.state == FlowRunRecord.STATE_FAILED)
+                latestStateOf(flowName.fullName).contains(FlowRunRecord.STATE_FAILED)
               case FlowStatePredicate(flowName, "done", _) =>
-                reg.latestRunOf(flowName.fullName).exists(_.isTerminal)
+                latestStateOf(flowName.fullName).exists(_ != FlowRunRecord.STATE_RUNNING)
               case FlowStatePredicate(_, _, _) =>
                 false
 
@@ -502,6 +515,23 @@ class FlowExecutor(
         interval,
         TimeUnit.MILLISECONDS
       )
+      // Refresh the run's liveness lease so that other processes can distinguish this run from
+      // one whose process died mid-run. Refresh well before expiry to tolerate delays
+      val leaseInterval = (config.leaseTimeoutMillis / 3).max(1L)
+      timer.scheduleAtFixedRate(
+        new Runnable:
+          override def run(): Unit =
+            // Keep the periodic task alive on transient store failures
+            try
+              reg.refreshLease(runId, System.currentTimeMillis() + config.leaseTimeoutMillis)
+            catch
+              case NonFatal(e) =>
+                warn(s"Failed to refresh the lease of run ${runId}: ${e.getMessage}")
+        ,
+        leaseInterval,
+        leaseInterval,
+        TimeUnit.MILLISECONDS
+      )
     }
     val scheduleRetry: (Long, () => Unit) => Unit = retryScheduler.getOrElse { (delay, action) =>
       timer.schedule(
@@ -544,7 +574,12 @@ class FlowExecutor(
         else
           None
         ,
-        stageRecords
+        stageRecords,
+        leaseExpiresAtMillis =
+          if finished then
+            None
+          else
+            Some(System.currentTimeMillis() + config.leaseTimeoutMillis)
       )
     end currentRecord
 
