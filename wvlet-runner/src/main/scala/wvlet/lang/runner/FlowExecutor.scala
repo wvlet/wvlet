@@ -124,12 +124,20 @@ end StageExecutionConfig
   *   Maximum number of stages that can run concurrently
   * @param cancelPollIntervalMillis
   *   Interval for polling the run registry for cross-process cancellation requests
+  * @param maxJumpDepth
+  *   Maximum depth of `-> Flow` jump chains; guards against jump cycles (flow A -> B -> A)
   */
-case class FlowExecutorConfig(maxParallelism: Int = 4, cancelPollIntervalMillis: Long = 500L):
+case class FlowExecutorConfig(
+    maxParallelism: Int = 4,
+    cancelPollIntervalMillis: Long = 500L,
+    maxJumpDepth: Int = 8
+):
   def withMaxParallelism(n: Int): FlowExecutorConfig                 = copy(maxParallelism = n)
   def withCancelPollIntervalMillis(millis: Long): FlowExecutorConfig = copy(
     cancelPollIntervalMillis = millis
   )
+
+  def withMaxJumpDepth(depth: Int): FlowExecutorConfig = copy(maxJumpDepth = depth)
 
 /**
   * Runs the body of a single stage and materializes the result into the given target table.
@@ -164,10 +172,13 @@ trait FlowStageRunner:
   * are flattened, route cases become filter predicates on the target stages' reads, wait becomes a
   * pre-materialization delay, activate is a local logging stub, and end is a pass-through.
   *
+  * A `-> Flow` jump transfers control only: when the jumping stage succeeds, the target flow is
+  * triggered as a new run (with its own run id) after the current flow completes. Jump chains are
+  * bounded by `maxJumpDepth` to guard against cycles (flow A -> B -> A).
+  *
   * Current limitations (to be lifted in future iterations):
   *   - `heartbeat` is parsed but not enforced.
-  *   - `-> Flow` (jump) requires cross-flow orchestration and is not executable yet.
-  *   - Flow-level schedules and cross-flow dependencies are not evaluated here.
+  *   - Flow-level cron schedules are not evaluated here.
   *
   * @param connector
   *   The database connector used to materialize stage results
@@ -241,6 +252,20 @@ class FlowExecutor(
     */
   def execute(flow: FlowDef, resumeFrom: Option[FlowRunRecord] = None)(using
       ctx: Context
+  ): FlowExecutionResult = executeInternal(flow, resumeFrom, jumpDepth = 0)
+
+  /** Resolve a flow referenced by a `-> Flow` jump through the compilation context */
+  private def resolveJumpTarget(name: String)(using ctx: Context): FlowDef =
+    ctx.findTermSymbolByName(name).map(_.tree) match
+      case Some(f: FlowDef) =>
+        f
+      case _ =>
+        throw StatusCode
+          .FLOW_NOT_FOUND
+          .newException(s"Flow '${name}' referenced by a -> jump is not found")
+
+  private def executeInternal(flow: FlowDef, resumeFrom: Option[FlowRunRecord], jumpDepth: Int)(
+      using ctx: Context
   ): FlowExecutionResult =
     val runId     = resumeFrom.map(_.runId).getOrElse(ULID.newULIDString)
     val startedAt = System.currentTimeMillis()
@@ -277,6 +302,11 @@ class FlowExecutor(
     val routeFilters                                    = lowered.routeFilters
     val stageConfigs: Map[String, StageExecutionConfig] =
       flowStages.map(ls => ls.name -> StageExecutionConfig.fromConfigItems(ls.stage.config)).toMap
+
+    // Resolve jump targets eagerly so that a reference to an undefined flow fails the run
+    // before any stage executes
+    val jumpTargetFlows: Map[String, FlowDef] =
+      flowStages.flatMap(_.jumpTargets).distinct.map(name => name -> resolveJumpTarget(name)).toMap
 
     // Stages materialize into run-scoped tables so that concurrent runs and real tables with the
     // same name never collide
@@ -381,6 +411,8 @@ class FlowExecutor(
     var scheduledRetries = 0
     var runningCount     = 0
     var cancellationDone = false
+    // Jump targets of successfully completed stages, triggered after this flow completes
+    val pendingJumps = mutable.ListBuffer.empty[String]
 
     val threadFactory =
       new ThreadFactory:
@@ -631,6 +663,7 @@ class FlowExecutor(
                   error match
                     case None =>
                       states(name) = StageState.Success
+                      pendingJumps ++= s.jumpTargets
                     case Some(e) =>
                       errors(name) = e
                       val stageConfig  = stageConfigs(name)
@@ -689,9 +722,26 @@ class FlowExecutor(
     }
     val result = FlowExecutionResult(flow.name.name, runId, stageResults)
     workEnv.info(s"Completed flow ${flow.name.name} (run: ${runId})")
+
+    // Trigger the control-only jumps recorded by successful stages, each as a new run of the
+    // target flow. Jump chains are bounded by maxJumpDepth to terminate cycles (A -> B -> A)
+    if pendingJumps.nonEmpty && !cancelled then
+      pendingJumps
+        .toList
+        .distinct
+        .foreach { target =>
+          if jumpDepth + 1 > config.maxJumpDepth then
+            workEnv.warn(
+              s"Skipping jump to flow ${target}: max jump depth (${config.maxJumpDepth}) reached"
+            )
+          else
+            workEnv.info(s"Jumping from flow ${flow.name.name} to flow ${target}")
+            executeInternal(jumpTargetFlows(target), resumeFrom = None, jumpDepth = jumpDepth + 1)
+        }
+
     result
 
-  end execute
+  end executeInternal
 
   /**
     * Execute the lowered stage body and materialize the result as a run-scoped table. References to
@@ -712,16 +762,6 @@ class FlowExecutor(
       .getOrElse(
         throw StatusCode.NOT_IMPLEMENTED.newException(s"Stage ${ls.name} has no executable body")
       )
-
-    // Reject flow operators that lowering could not handle (e.g. cross-flow jumps)
-    body.traverse { case op: FlowJump =>
-      throw StatusCode
-        .NOT_IMPLEMENTED
-        .newException(
-          s"Flow operator ${op.nodeName} in stage ${ls
-              .name} is not supported by the flow executor yet"
-        )
-    }
 
     // Reference a source stage's run-scoped table, filtered with the routing predicate when
     // this stage is a route target of the source
