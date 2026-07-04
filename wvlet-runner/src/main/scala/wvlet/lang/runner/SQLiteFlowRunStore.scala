@@ -14,6 +14,7 @@
 package wvlet.lang.runner
 
 import wvlet.uni.log.LogSupport
+import wvlet.uni.weaver.Weaver
 
 import java.nio.file.Files
 import java.nio.file.Path
@@ -34,6 +35,11 @@ import scala.util.control.NonFatal
 class SQLiteFlowRunStore(dbPath: Path) extends FlowRunStore with LogSupport:
   Option(dbPath.getParent).foreach(Files.createDirectories(_))
 
+  import SQLiteFlowRunStore.RunArgs
+
+  // Bound flow arguments are stored as a single JSON object column
+  private val argsWeaver = Weaver.of[RunArgs]
+
   private val conn: Connection = DriverManager.getConnection(s"jdbc:sqlite:${dbPath}")
 
   Using.resource(conn.createStatement()) { stmt =>
@@ -46,18 +52,20 @@ class SQLiteFlowRunStore(dbPath: Path) extends FlowRunStore with LogSupport:
         |  started_at       integer not null,
         |  finished_at      integer,
         |  cancel_requested integer not null default 0,
-        |  lease_expires_at integer
+        |  lease_expires_at integer,
+        |  args             text,
+        |  run_time         integer
         |)""".stripMargin)
-    // Migrate databases created before the lease column was introduced
-    val hasLeaseColumn =
+    // Migrate databases created before these columns were introduced
+    val existingColumns =
       Using.resource(stmt.executeQuery("pragma table_info(runs)")) { rs =>
-        Iterator
-          .continually(rs)
-          .takeWhile(_.next())
-          .exists(_.getString("name") == "lease_expires_at")
+        Iterator.continually(rs).takeWhile(_.next()).map(_.getString("name")).toSet
       }
-    if !hasLeaseColumn then
-      stmt.execute("alter table runs add column lease_expires_at integer")
+    List("lease_expires_at" -> "integer", "args" -> "text", "run_time" -> "integer").foreach {
+      (column, sqlType) =>
+        if !existingColumns.contains(column) then
+          stmt.execute(s"alter table runs add column ${column} ${sqlType}")
+    }
     stmt.execute("""create table if not exists stages(
         |  run_id     text not null,
         |  ordinal    integer not null,
@@ -75,14 +83,16 @@ class SQLiteFlowRunStore(dbPath: Path) extends FlowRunStore with LogSupport:
     try
       Using.resource(
         conn.prepareStatement(
-          """insert into runs(run_id, flow_name, state, started_at, finished_at, lease_expires_at)
-            |values(?, ?, ?, ?, ?, ?)
+          """insert into runs(run_id, flow_name, state, started_at, finished_at, lease_expires_at, args, run_time)
+            |values(?, ?, ?, ?, ?, ?, ?, ?)
             |on conflict(run_id) do update set
             |  flow_name = excluded.flow_name,
             |  state = excluded.state,
             |  started_at = excluded.started_at,
             |  finished_at = excluded.finished_at,
-            |  lease_expires_at = excluded.lease_expires_at""".stripMargin
+            |  lease_expires_at = excluded.lease_expires_at,
+            |  args = excluded.args,
+            |  run_time = excluded.run_time""".stripMargin
         )
       ) { ps =>
         bindRunColumns(ps, record)
@@ -113,6 +123,15 @@ class SQLiteFlowRunStore(dbPath: Path) extends FlowRunStore with LogSupport:
         ps.setLong(6, l)
       case None =>
         ps.setNull(6, java.sql.Types.BIGINT)
+    if record.args.isEmpty then
+      ps.setNull(7, java.sql.Types.VARCHAR)
+    else
+      ps.setString(7, argsWeaver.toJson(RunArgs(record.args)))
+    record.runTimeMillis match
+      case Some(t) =>
+        ps.setLong(8, t)
+      case None =>
+        ps.setNull(8, java.sql.Types.BIGINT)
 
   private def saveStages(record: FlowRunRecord): Unit =
     Using.resource(conn.prepareStatement("delete from stages where run_id = ?")) { ps =>
@@ -155,18 +174,18 @@ class SQLiteFlowRunStore(dbPath: Path) extends FlowRunStore with LogSupport:
     val claimed =
       Using.resource(
         conn.prepareStatement(
-          """insert into runs(run_id, flow_name, state, started_at, finished_at, lease_expires_at)
-            |select ?, ?, ?, ?, ?, ?
+          """insert into runs(run_id, flow_name, state, started_at, finished_at, lease_expires_at, args, run_time)
+            |select ?, ?, ?, ?, ?, ?, ?, ?
             |where (select count(*) from runs
             |       where flow_name = ? and state = ?
             |         and (lease_expires_at is null or lease_expires_at >= ?)) < ?""".stripMargin
         )
       ) { ps =>
         bindRunColumns(ps, record)
-        ps.setString(7, record.flowName)
-        ps.setString(8, FlowRunRecord.STATE_RUNNING)
-        ps.setLong(9, System.currentTimeMillis())
-        ps.setInt(10, concurrencyLimit)
+        ps.setString(9, record.flowName)
+        ps.setString(10, FlowRunRecord.STATE_RUNNING)
+        ps.setLong(11, System.currentTimeMillis())
+        ps.setInt(12, concurrencyLimit)
         ps.executeUpdate() == 1
       }
     if claimed then
@@ -237,7 +256,7 @@ class SQLiteFlowRunStore(dbPath: Path) extends FlowRunStore with LogSupport:
     val runs =
       Using.resource(
         conn.prepareStatement(
-          s"select run_id, flow_name, state, started_at, finished_at, lease_expires_at from runs ${clause}"
+          s"select run_id, flow_name, state, started_at, finished_at, lease_expires_at, args, run_time from runs ${clause}"
         )
       ) { ps =>
         bind(ps)
@@ -253,6 +272,8 @@ class SQLiteFlowRunStore(dbPath: Path) extends FlowRunStore with LogSupport:
           while rs.next() do
             val finishedAtOpt = nullableLong(5)
             val leaseOpt      = nullableLong(6)
+            val argsOpt       = Option(rs.getString(7))
+            val runTimeOpt    = nullableLong(8)
             b +=
               FlowRunRecord(
                 runId = rs.getString(1),
@@ -260,7 +281,9 @@ class SQLiteFlowRunStore(dbPath: Path) extends FlowRunStore with LogSupport:
                 state = rs.getString(3),
                 startedAtMillis = rs.getLong(4),
                 finishedAtMillis = finishedAtOpt,
-                leaseExpiresAtMillis = leaseOpt
+                leaseExpiresAtMillis = leaseOpt,
+                args = argsOpt.map(json => argsWeaver.fromJson(json).args).getOrElse(Map.empty),
+                runTimeMillis = runTimeOpt
               )
           b.result()
         }
@@ -292,3 +315,7 @@ class SQLiteFlowRunStore(dbPath: Path) extends FlowRunStore with LogSupport:
     }
 
 end SQLiteFlowRunStore
+
+object SQLiteFlowRunStore:
+  /** JSON envelope of the bound flow arguments stored in the `args` column */
+  private case class RunArgs(args: Map[String, String] = Map.empty)

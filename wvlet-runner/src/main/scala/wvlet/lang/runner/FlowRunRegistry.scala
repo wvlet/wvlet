@@ -57,6 +57,14 @@ case class StageRunRecord(
   *   Liveness lease of a running record, refreshed periodically by the executor. A running record
   *   whose lease has expired belongs to a dead process (e.g. a crash mid-run) and is treated as
   *   failed by run-slot claims and cross-flow dependency evaluation
+  * @param args
+  *   The resolved flow arguments of the run (after defaults), each rendered as a wvlet literal
+  *   (e.g. `segment -> 'a'`). Resume re-binds these values, and `session show` displays the run's
+  *   flow call form
+  * @param runTimeMillis
+  *   The logical run time of the run (epoch millis): the schedule fire time for scheduler-triggered
+  *   and backfill runs, the wall clock at start otherwise. Absent in records written by older
+  *   versions
   */
 case class FlowRunRecord(
     runId: String,
@@ -65,7 +73,9 @@ case class FlowRunRecord(
     startedAtMillis: Long,
     finishedAtMillis: Option[Long] = None,
     stages: List[StageRunRecord] = Nil,
-    leaseExpiresAtMillis: Option[Long] = None
+    leaseExpiresAtMillis: Option[Long] = None,
+    args: Map[String, String] = Map.empty,
+    runTimeMillis: Option[Long] = None
 ):
   def isTerminal: Boolean = state != FlowRunRecord.STATE_RUNNING
 
@@ -79,6 +89,18 @@ case class FlowRunRecord(
       FlowRunRecord.STATE_FAILED
     else
       state
+
+  /**
+    * The flow call form of the run reconstructed from the recorded arguments, e.g. `F(segment =
+    * 'a')`. Arguments are listed in name order for a deterministic rendering
+    */
+  def flowCallForm: String =
+    if args.isEmpty then
+      flowName
+    else
+      s"${flowName}(${args.toList.sortBy(_._1).map((k, v) => s"${k} = ${v}").mkString(", ")})"
+
+end FlowRunRecord
 
 object FlowRunRecord:
   val STATE_RUNNING   = "running"

@@ -622,12 +622,17 @@ executing any stage.
 
 Runs are managed with `wvlet flow session` subcommands:
 
-- `wvlet flow session list` / `show <run_id>`: inspect recorded runs and per-stage states
+- `wvlet flow session list` / `show <run_id>`: inspect recorded runs and per-stage states.
+  `show` displays how the run was invoked — its flow call form with the resolved arguments
+  (e.g. `customer_pipeline(segment = 'premium')`) and its logical `run_time` — so backfilled
+  and parameterized runs stay auditable
 - `wvlet flow session cancel <run_id>`: request cancellation of a running flow, even from
   another process. The executor polls the registry and stops in-flight stage attempts
   (cancelling their SQL statements server-side)
 - `wvlet flow session resume <run_id>`: re-run a failed or cancelled run from its first
-  non-successful stage, reusing the materialized tables of stages that already succeeded
+  non-successful stage, reusing the materialized tables of stages that already succeeded.
+  The run's recorded arguments and `run_time`/`run_date` are re-bound automatically, so a
+  parameterized or backfilled run resumes with exactly the values of its original invocation
 - `wvlet flow session clean`: delete terminal run records and drop their run-scoped
   `__wv_flow_*` tables. With `--stale`, also remove running records whose liveness lease
   expired (crashed runs)

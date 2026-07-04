@@ -17,9 +17,11 @@ import wvlet.lang.api.Span
 import wvlet.lang.api.StatusCode
 import wvlet.lang.api.WvletLangException
 import wvlet.lang.api.v1.flow.StageState
+import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.compiler.Context
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.compiler.codegen.GenSQL
+import wvlet.lang.compiler.parser.ParserPhase
 import wvlet.lang.compiler.transform.FlowParams
 import wvlet.lang.model.DataType
 import wvlet.lang.model.expr.*
@@ -294,7 +296,11 @@ class FlowExecutor(
     * `runTime` is the logical time of the run: the schedule fire time for scheduler-triggered and
     * backfill runs, and the current wall clock otherwise. Stage bodies can reference it through the
     * implicit `run_time` (timestamp) and `run_date` (`'yyyy-MM-dd'` string) bindings; a declared
-    * flow parameter of the same name takes precedence
+    * flow parameter of the same name takes precedence.
+    *
+    * The resolved bindings and the logical run time are persisted on the run record, so a resumed
+    * run re-binds the arguments and `run_time` of its original invocation when the caller passes
+    * neither explicitly
     */
   def execute(
       flow: FlowDef,
@@ -302,13 +308,32 @@ class FlowExecutor(
       args: List[FunctionArg] = Nil,
       runTime: Option[ZonedDateTime] = None
   )(using ctx: Context): FlowExecutionResult =
-    val bindings =
-      // A manual run evaluates "now" in the flow's configured timezone, so that run_date
-      // agrees with what the flow's schedule would produce
-      FlowExecutor.runTimeBindings(
-        runTime.getOrElse(ZonedDateTime.now(FlowScheduleConfig.fromFlow(flow).zoneId))
-      ) ++ FlowParams.bind(flow, args)
-    executeInternal(FlowParams.substitute(flow, bindings), resumeFrom, jumpDepth = 0)
+    val zoneId        = FlowScheduleConfig.fromFlow(flow).zoneId
+    val effectiveArgs =
+      if args.isEmpty then
+        resumeFrom.map(r => FlowExecutor.recordedArgsOf(flow, r)).getOrElse(Nil)
+      else
+        args
+    // A manual run evaluates "now" in the flow's configured timezone, so that run_date
+    // agrees with what the flow's schedule would produce
+    val resolvedRunTime = runTime
+      .orElse(
+        resumeFrom
+          .flatMap(_.runTimeMillis)
+          .map(millis => java.time.Instant.ofEpochMilli(millis).atZone(zoneId))
+      )
+      .getOrElse(ZonedDateTime.now(zoneId))
+    val paramBindings = FlowParams.bind(flow, effectiveArgs)
+    val bindings      = FlowExecutor.runTimeBindings(resolvedRunTime) ++ paramBindings
+    executeInternal(
+      FlowParams.substitute(flow, bindings),
+      resumeFrom,
+      jumpDepth = 0,
+      runArgs = FlowExecutor.renderBindings(paramBindings),
+      runTimeMillis = resolvedRunTime.toInstant.toEpochMilli
+    )
+
+  end execute
 
   /** Resolve a flow referenced by a `-> Flow` jump through the compilation context */
   private def resolveJumpTarget(name: String)(using ctx: Context): FlowDef =
@@ -320,9 +345,13 @@ class FlowExecutor(
           .FLOW_NOT_FOUND
           .newException(s"Flow '${name}' referenced by a -> jump is not found")
 
-  private def executeInternal(flow: FlowDef, resumeFrom: Option[FlowRunRecord], jumpDepth: Int)(
-      using ctx: Context
-  ): FlowExecutionResult =
+  private def executeInternal(
+      flow: FlowDef,
+      resumeFrom: Option[FlowRunRecord],
+      jumpDepth: Int,
+      runArgs: Map[String, String],
+      runTimeMillis: Long
+  )(using ctx: Context): FlowExecutionResult =
     val runId     = resumeFrom.map(_.runId).getOrElse(ULID.newULIDString)
     val startedAt = System.currentTimeMillis()
     workEnv.info(s"Executing flow ${flow.name.name} (run: ${runId})")
@@ -344,7 +373,9 @@ class FlowExecutor(
             FlowRunRecord.STATE_SKIPPED,
             startedAt,
             Some(System.currentTimeMillis()),
-            skipped.stageResults.map(r => StageRunRecord(r.name, r.state.stateName, r.attempts))
+            skipped.stageResults.map(r => StageRunRecord(r.name, r.state.stateName, r.attempts)),
+            args = runArgs,
+            runTimeMillis = Some(runTimeMillis)
           )
         )
       }
@@ -600,6 +631,9 @@ class FlowExecutor(
             None
           else
             Some(System.currentTimeMillis() + config.leaseTimeoutMillis)
+        ,
+        args = runArgs,
+        runTimeMillis = Some(runTimeMillis)
       )
     end currentRecord
 
@@ -919,15 +953,16 @@ class FlowExecutor(
             workEnv.info(s"Jumping from flow ${flow.name.name} to flow ${target}")
             // A jump carries no arguments, so the target flow runs with its parameter defaults
             // and the current wall clock as its run time
-            val targetFlow = jumpTargetFlows(target)
-            val bindings   =
-              FlowExecutor.runTimeBindings(
-                ZonedDateTime.now(FlowScheduleConfig.fromFlow(targetFlow).zoneId)
-              ) ++ FlowParams.bind(targetFlow, Nil)
+            val targetFlow    = jumpTargetFlows(target)
+            val jumpRunTime   = ZonedDateTime.now(FlowScheduleConfig.fromFlow(targetFlow).zoneId)
+            val paramBindings = FlowParams.bind(targetFlow, Nil)
+            val bindings      = FlowExecutor.runTimeBindings(jumpRunTime) ++ paramBindings
             executeInternal(
               FlowParams.substitute(targetFlow, bindings),
               resumeFrom = None,
-              jumpDepth = jumpDepth + 1
+              jumpDepth = jumpDepth + 1,
+              runArgs = FlowExecutor.renderBindings(paramBindings),
+              runTimeMillis = jumpRunTime.toInstant.toEpochMilli
             )
         }
 
@@ -1114,6 +1149,50 @@ object FlowExecutor:
       ),
     "run_date" -> SingleQuoteString(runTime.format(runDateFormat), Span.NoSpan)
   )
+
+  /**
+    * Render resolved parameter bindings as wvlet literals for persistence on the run record (e.g.
+    * `segment -> 'a'`), so that `session show` can display the flow call form and resume can
+    * re-bind the original values
+    */
+  def renderBindings(bindings: Map[String, Expression]): Map[String, String] = bindings.map(
+    (name, value) => name -> value.pp
+  )
+
+  /**
+    * Reconstruct the flow arguments persisted on a run record as named arguments, parsed with the
+    * regular flow-call grammar, so that resuming a parameterized run re-binds exactly the values
+    * its original invocation resolved. Recorded parameters that the flow no longer declares are
+    * dropped; parameters added since the run follow the regular default/missing-argument rules
+    */
+  def recordedArgsOf(flow: FlowDef, record: FlowRunRecord): List[FunctionArg] =
+    val recorded = flow
+      .params
+      .flatMap(p => record.args.get(p.name.name).map(v => s"${p.name.name} = ${v}"))
+    if recorded.isEmpty then
+      Nil
+    else
+      val call = s"${flow.name.name}(${recorded.mkString(", ")})"
+      try
+        val unit                    = CompilationUnit.fromWvletString(s"run flow ${call}")
+        val plan                    = ParserPhase.parseOnly(unit)
+        var args: List[FunctionArg] = Nil
+        plan.traverse { case q: Query =>
+          q.child match
+            case r: RunFlow =>
+              args = r.args
+            case _ =>
+        }
+        args
+      catch
+        case NonFatal(e) =>
+          throw StatusCode
+            .INVALID_ARGUMENT
+            .newException(
+              s"Cannot re-bind the recorded arguments of run ${record.runId} (${call}): ${e
+                  .getMessage}",
+              e
+            )
 
   /** The run-scoped table name holding the materialized result of a stage */
   def stageTableName(runId: String, stageName: String): String =

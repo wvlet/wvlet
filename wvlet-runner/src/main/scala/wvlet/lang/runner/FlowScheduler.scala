@@ -211,14 +211,15 @@ class FlowScheduler(
   /**
     * Trigger the flows whose most recent scheduled fire time has no run recorded at or after it
     * (i.e. the fire was missed, e.g. while the scheduler daemon was down) and return their names.
-    * `lastRunStartedAt` supplies the start time of the latest recorded run of a flow
+    * `lastRunTimeOf` supplies the logical run time (or, for records without one, the start time) of
+    * the latest recorded run of a flow
     */
-  def catchUp(lastRunStartedAt: String => Option[Long]): List[String] = synchronized {
+  def catchUp(lastRunTimeOf: String => Option[Long]): List[String] = synchronized {
     val now    = clock()
     val missed = current.flatMap { sf =>
       try
         val prev = sf.cron.prevAtOrBefore(now.atZone(sf.zone))
-        if lastRunStartedAt(sf.name).forall(_ < prev.toInstant.toEpochMilli) then
+        if lastRunTimeOf(sf.name).forall(_ < prev.toInstant.toEpochMilli) then
           Some((sf, prev))
         else
           None

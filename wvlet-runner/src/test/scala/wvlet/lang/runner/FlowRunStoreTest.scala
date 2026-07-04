@@ -190,6 +190,77 @@ class FlowRunStoreTest extends UniTest:
     }
   }
 
+  test("persist bound arguments and the logical run time") {
+    withStores { (kind, store) =>
+      val invoked = record("run1", "FlowA", FlowRunRecord.STATE_SUCCESS, 100L).copy(
+        args = Map("segment" -> "'a'", "min_id" -> "3"),
+        runTimeMillis = Some(1234L)
+      )
+      store.save(invoked)
+      val r = store.get("run1").getOrElse(fail(s"run1 not found in ${kind} store"))
+      r.args shouldBe Map("segment" -> "'a'", "min_id" -> "3")
+      r.runTimeMillis shouldBe Some(1234L)
+      r.flowCallForm shouldBe "FlowA(min_id = 3, segment = 'a')"
+
+      // Records without arguments keep an empty map and no run time
+      store.save(record("run2", "FlowB", FlowRunRecord.STATE_SUCCESS, 200L))
+      val plain = store.get("run2").get
+      plain.args shouldBe Map.empty
+      plain.runTimeMillis shouldBe None
+      plain.flowCallForm shouldBe "FlowB"
+
+      // claimRunSlot persists the invocation like save
+      val claimed = record("run3", "FlowC", FlowRunRecord.STATE_RUNNING, 300L).copy(
+        args = Map("segment" -> "'b'"),
+        runTimeMillis = Some(5678L)
+      )
+      store.claimRunSlot(claimed, concurrencyLimit = 1) shouldBe true
+      store.get("run3").get.args shouldBe Map("segment" -> "'b'")
+      store.get("run3").get.runTimeMillis shouldBe Some(5678L)
+    }
+  }
+
+  test("migrate a SQLite database created before the args and run_time columns") {
+    val dir    = Files.createTempDirectory("wv-flow-store-migrate")
+    val dbPath = dir.resolve("registry.db")
+    // Create a database with the pre-args schema and one row
+    val conn = java.sql.DriverManager.getConnection(s"jdbc:sqlite:${dbPath}")
+    try
+      val stmt = conn.createStatement()
+      stmt.execute("""create table runs(
+          |  run_id           text primary key,
+          |  flow_name        text not null,
+          |  state            text not null,
+          |  started_at       integer not null,
+          |  finished_at      integer,
+          |  cancel_requested integer not null default 0,
+          |  lease_expires_at integer
+          |)""".stripMargin)
+      stmt.execute(
+        "insert into runs(run_id, flow_name, state, started_at) values('old1', 'FlowA', 'success', 100)"
+      )
+      stmt.close()
+    finally
+      conn.close()
+
+    val store = SQLiteFlowRunStore(dbPath)
+    try
+      val old = store.get("old1").getOrElse(fail("old1 not found after migration"))
+      old.args shouldBe Map.empty
+      old.runTimeMillis shouldBe None
+      // New records persist the added columns
+      store.save(
+        record("new1", "FlowA", FlowRunRecord.STATE_SUCCESS, 200L).copy(
+          args = Map("segment" -> "'a'"),
+          runTimeMillis = Some(999L)
+        )
+      )
+      store.get("new1").get.args shouldBe Map("segment" -> "'a'")
+      store.get("new1").get.runTimeMillis shouldBe Some(999L)
+    finally
+      store.close()
+  }
+
   test("share state between store instances on the same path") {
     // Simulates cross-process observation: a second store instance sees runs and cancellation
     // requests written by the first one

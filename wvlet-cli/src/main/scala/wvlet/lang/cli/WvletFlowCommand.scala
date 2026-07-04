@@ -340,8 +340,9 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
         case "show" =>
           val r = recordOf(requireRunId("show <run_id>"))
           println(s"run:      ${r.runId}")
-          println(s"flow:     ${r.flowName}")
+          println(s"flow:     ${r.flowCallForm}")
           println(s"state:    ${r.state}")
+          r.runTimeMillis.foreach(t => println(s"run_time: ${fmtTime(t)}"))
           println(s"started:  ${fmtTime(r.startedAtMillis)}")
           r.finishedAtMillis.foreach(f => println(s"finished: ${fmtTime(f)}"))
           r.stages
@@ -497,8 +498,10 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
             sweepNow()
 
           if catchup then
+            // Compare against the logical run time when recorded: it equals the fire time of a
+            // scheduled run exactly, while startedAtMillis (older records) trails it slightly
             val fired = flowScheduler.catchUp(name =>
-              store.latestRunOf(name).map(_.startedAtMillis)
+              store.latestRunOf(name).map(r => r.runTimeMillis.getOrElse(r.startedAtMillis))
             )
             if fired.nonEmpty then
               println(s"Catch-up triggered ${fired.size} missed flow(s): ${fired.mkString(", ")}")

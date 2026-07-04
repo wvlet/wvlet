@@ -29,6 +29,11 @@ class WvletFlowCommandTest extends UniTest:
         |  stage src = from [[1, 'a'], [2, 'b'], [3, 'a']] as t(id, name)
         |  stage filtered = from src | where name = target_name and id >= min_id
         |}
+        |
+        |flow ParamFailPipeline(target_name: string) = {
+        |  stage src = from [[1, 'a'], [2, 'b']] as t(id, name) | where name = target_name
+        |  stage broken = from src cross join nonexistent_table_xyz
+        |}
         |""".stripMargin
     )
     dir.toAbsolutePath.toString
@@ -235,6 +240,23 @@ class WvletFlowCommandTest extends UniTest:
     // the same run record
     WvletMain.main(s"flow session resume ${failed.runId} -w ${flowDir}")
     registry.get(failed.runId).get.state shouldBe "failed"
+  }
+
+  test("resume a parameterized flow run re-binding its recorded arguments") {
+    import wvlet.lang.compiler.WorkEnv
+    import wvlet.lang.runner.FlowRunRegistry
+    WvletMain.main(Array("flow", "run", "ParamFailPipeline(target_name = 'a')", "-w", flowDir))
+    val registry = FlowRunRegistry.forWorkEnv(WorkEnv(flowDir))
+    val failed   =
+      registry.list().find(r => r.flowName == "ParamFailPipeline" && r.state == "failed").get
+    failed.args shouldBe Map("target_name" -> "'a'")
+    failed.flowCallForm shouldBe "ParamFailPipeline(target_name = 'a')"
+    // Resume passes no arguments: the recorded ones are re-bound instead of failing with
+    // a missing-parameter error. The broken stage fails again, which is fine here
+    WvletMain.main(s"flow session resume ${failed.runId} -w ${flowDir}")
+    val resumed = registry.get(failed.runId).get
+    resumed.state shouldBe "failed"
+    resumed.args shouldBe Map("target_name" -> "'a'")
   }
 
   test("reject resuming a run that never failed") {
