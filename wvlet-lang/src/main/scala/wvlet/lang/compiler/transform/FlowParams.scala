@@ -108,14 +108,10 @@ object FlowParams:
     if bindings.isEmpty then
       flow
     else
-      val rule: PartialFunction[Expression, Expression] =
-        case i: Identifier if bindings.contains(i.leafName) =>
-          bindings(i.leafName)
-
       val newStages = flow
         .stages
         .map { s =>
-          s.body.map(b => substituteInBody(b, rule)) match
+          s.body.map(b => substituteInBody(b, bindings)) match
             case Some(nb) if s.body.exists(b => !(nb eq b)) =>
               val ns = s.copy(body = Some(nb))
               ns.copyMetadataFrom(s)
@@ -133,47 +129,119 @@ object FlowParams:
     */
   def apply(flow: FlowDef, args: List[FunctionArg]): FlowDef = substitute(flow, bind(flow, args))
 
-  private def substituteInBody(
-      body: Relation,
-      rule: PartialFunction[Expression, Expression]
-  ): Relation = body
-    .transformUp {
-      case t: TableRef =>
-        // A `from <name>` source is a table or stage reference, never a parameter
-        t
-      case m: FlowMerge =>
-        // Merge sources are stage names
-        m
-      case j: FlowJump =>
-        // `-> Flow` targets are flow names
-        j
-      case s: StageDef =>
-        // A fork-nested stage: its body has already been transformed by the recursion; its
-        // inputRefs/trigger reference stage names and must not be substituted
-        s
-      case r: FlowRoute =>
-        // Substitute inside routing predicates only; case targets and elseTarget are stage names
-        val newBy    = r.byExpr.map(_.transformUpExpression(rule))
-        val newCases = r
-          .cases
-          .map(c => c.copy(condition = c.condition.map(_.transformUpExpression(rule))))
-        val changed =
-          r.byExpr.zip(newBy).exists((a, b) => !(a eq b)) ||
-            r.cases
-              .zip(newCases)
-              .exists((a, b) => a.condition.zip(b.condition).exists((x, y) => !(x eq y)))
-        if changed then
-          val nr = r.copy(byExpr = newBy, cases = newCases)
-          nr.copyMetadataFrom(r)
-          nr
-        else
-          r
-      case p: LogicalPlan =>
-        p.transformChildExpressions { case e: Expression =>
-          e.transformUpExpression(rule)
-        }
+  /**
+    * Collect the identifier instances of the body that occupy name positions rather than value
+    * positions — table/stage/flow references, qualified-name members (`t.segment`), output aliases
+    * (`select x as segment`, `as t(...)`), config keys, and lambda parameters. The substitution
+    * rule skips these instances (matched by object identity), so a flow parameter sharing a name
+    * with one of them never corrupts the plan structure. The walk follows the same product-based
+    * recursion as `transformUpExpressions`, so nested plans inside expressions (subqueries) are
+    * covered
+    */
+  private def collectProtectedNames(tree: Any): java.util.IdentityHashMap[Expression, Unit] =
+    val protectedNames               = java.util.IdentityHashMap[Expression, Unit]()
+    def protect(e: Expression): Unit = protectedNames.put(e, ())
+    def walk(arg: Any): Unit         =
+      arg match
+        case e: Expression =>
+          e match
+            case d: DotRef =>
+              protect(d.name)
+            case s: SingleColumn =>
+              protect(s.nameExpr)
+            case a: Alias =>
+              protect(a.nameExpr)
+            case c: ConfigItem =>
+              protect(c.key)
+            case l: LambdaExpr =>
+              l.args.foreach(protect)
+            case _ =>
+          e.productIterator.foreach(walk)
+        case p: LogicalPlan =>
+          p match
+            case t: TableRef =>
+              protect(t.name)
+            case a: AliasedRelation =>
+              protect(a.alias)
+            case m: FlowMerge =>
+              m.sources.foreach(protect)
+            case j: FlowJump =>
+              protect(j.targetFlow)
+            case r: RunFlow =>
+              protect(r.flowName)
+            case r: FlowRoute =>
+              r.cases.foreach(c => protect(c.target))
+              r.elseTarget.foreach(protect)
+            case s: StageDef =>
+              s.inputRefs.foreach(protect)
+              s.dependsOn.foreach(protect)
+            case _ =>
+          p.productIterator.foreach(walk)
+        case Some(x) =>
+          walk(x)
+        case s: Seq[?] =>
+          s.foreach(walk)
+        case r: FlowRouteCase =>
+          walk(r.condition)
+        case _ =>
+    walk(tree)
+    protectedNames
+
+  end collectProtectedNames
+
+  /**
+    * Substitute parameter references in a single expression tree with its own protected-name
+    * collection. Identifiers are leaf nodes, so the bottom-up transform applies the rule to the
+    * original instances and the identity-based protection stays valid
+    */
+  private def substituteExpr(e: Expression, bindings: Map[String, Expression]): Expression =
+    val protectedNames = collectProtectedNames(e)
+    e.transformUpExpression {
+      case i: Identifier if bindings.contains(i.leafName) && !protectedNames.containsKey(i) =>
+        bindings(i.leafName)
     }
-    .asInstanceOf[Relation]
+
+  private def substituteInBody(body: Relation, bindings: Map[String, Expression]): Relation =
+    val protectedNames                                = collectProtectedNames(body)
+    val rule: PartialFunction[Expression, Expression] =
+      case i: Identifier if bindings.contains(i.leafName) && !protectedNames.containsKey(i) =>
+        bindings(i.leafName)
+
+    // The generic expression pass runs first, while the collected identities are still valid:
+    // identifiers are leaves, so the bottom-up transform applies the rule to the original
+    // instances (any tree pass based on transformUp/mapChildren clones expression nodes
+    // unconditionally via Expression.transformPlan and would invalidate the identity set)
+    val generic = body.transformUpExpressions(rule).asInstanceOf[Relation]
+
+    // FlowRouteCase is opaque to the generic plan/expression traversal (it is neither an
+    // Expression nor a LogicalPlan), so routing predicates are substituted in a second pass,
+    // re-collecting the protected names per condition expression
+    var hasRoute = false
+    generic.traverse { case _: FlowRoute =>
+      hasRoute = true
+    }
+    if !hasRoute then
+      generic
+    else
+      generic
+        .transformUp { case r: FlowRoute =>
+          val newCases = r
+            .cases
+            .map(c => c.copy(condition = c.condition.map(e => substituteExpr(e, bindings))))
+          val changed = r
+            .cases
+            .zip(newCases)
+            .exists((a, b) => a.condition.zip(b.condition).exists((x, y) => !(x eq y)))
+          if changed then
+            val nr = r.copy(cases = newCases)
+            nr.copyMetadataFrom(r)
+            nr
+          else
+            r
+        }
+        .asInstanceOf[Relation]
+
+  end substituteInBody
 
   /**
     * A lightweight compatibility check between a declared parameter type and a literal argument.
