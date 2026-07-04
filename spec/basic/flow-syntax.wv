@@ -51,6 +51,14 @@ flow JourneyFlow = {
 }
 ;
 
+-- Flow with an event sensor: the stage proceeds once a row satisfies the condition
+flow SensorFlow = {
+  stage landing = from source
+  stage gate with { poll_interval: 30s, timeout: 1h } = from landing | wait until _.value = 'ready'
+  stage output = from gate | select id
+}
+;
+
 -- Flow with merge (fan-in)
 flow MergeFlow = {
   stage source_a = from users | where region = 'US'

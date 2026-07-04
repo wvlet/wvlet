@@ -1095,7 +1095,13 @@ class FlowExecutor(
         throw StatusCode.NOT_IMPLEMENTED.newException(s"Stage ${ls.name} has no executable body")
       )
 
-    val executable = FlowExecutor.rewriteStageRefs(body, ls.name, stageNames, tableFor, routeFilters)
+    val executable = FlowExecutor.rewriteStageRefs(
+      body,
+      ls.name,
+      stageNames,
+      tableFor,
+      routeFilters
+    )
 
     val sql = GenSQL.generateSQLFromRelation(executable, addHeader = false).sql
 
@@ -1186,9 +1192,16 @@ object FlowExecutor:
       readerStage: String
   )(using ctx: Context): String =
     val input = rewriteStageRefs(sensor.input, readerStage, stageNames, tableFor, routeFilters)
-    val sql   = GenSQL
-      .generateSQLFromRelation(Filter(input, sensor.condition, Span.NoSpan), addHeader = false)
-      .sql
+    // The braced input forces a subquery boundary, so a condition over an aggregated input
+    // (e.g. `select count(*) as cnt | wait until _.cnt > 0`) filters the aggregate's result
+    // instead of being merged into its where clause
+    val sql =
+      GenSQL
+        .generateSQLFromRelation(
+          Filter(BracedRelation(input, Span.NoSpan), sensor.condition, Span.NoSpan),
+          addHeader = false
+        )
+        .sql
     s"""select 1 from (\n${sql}\n) as "__wv_sensor" limit 1"""
 
   private val runTimeFormat = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")

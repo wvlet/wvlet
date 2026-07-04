@@ -346,6 +346,34 @@ flow notification_flow = {
 stage delayed = from entry | wait('7 days')
 ```
 
+### Event Sensors with wait until
+
+`wait until <condition>` waits for an *event* instead of a fixed time: the stage polls its
+input and proceeds once **at least one row satisfies the condition**. `_.column` in the
+condition refers to a row of the input (the same convention as `route` cases). The sensor
+only gates execution — it does not filter the rows the stage materializes.
+
+```wvlet
+flow load_orders = {
+  stage landing = from landing_files | where table_name = 'orders'
+  stage gate with {
+    poll_interval: 30s     -- how often the condition is re-checked (default: 10s)
+    timeout: 2h            -- give up like any other stage timeout
+  } = from landing | wait until _.status = 'ready'
+  stage load = from gate | save to orders
+}
+```
+
+To wait on an aggregate condition, aggregate in the pipeline before the sensor:
+
+```wvlet
+stage gate = from new_events | select count(*) as cnt | wait until _.cnt > 1000
+```
+
+Polling respects the stage's `heartbeat:` config (a polling sensor is never mistaken for a
+stalled attempt), and a `timeout:` expiry follows the stage's regular retry and failure
+policy.
+
 ### Delivering Results with activate
 
 `activate('<target>', param: value, ...)` delivers the materialized stage output to an

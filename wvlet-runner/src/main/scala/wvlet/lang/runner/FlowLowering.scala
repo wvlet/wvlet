@@ -130,9 +130,9 @@ object FlowNotifyConfig:
 object FlowLowering:
 
   /**
-    * An event sensor extracted from a `wait until <condition>` operator: the stage proceeds once
-    * at least one row of `input` satisfies `condition` (with `_.column` references resolved to
-    * plain columns)
+    * An event sensor extracted from a `wait until <condition>` operator: the stage proceeds once at
+    * least one row of `input` satisfies `condition` (with `_.column` references resolved to plain
+    * columns)
     */
   case class SensorSpec(input: Relation, condition: Expression)
 
