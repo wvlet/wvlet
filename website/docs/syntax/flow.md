@@ -353,7 +353,9 @@ executing any stage.
 :::info Implementation status
 The flow executor implements this stage execution model with a DAG scheduler — independent
 stages run in parallel (bounded by executor parallelism), retries are scheduled asynchronously
-with the configured backoff, and `timeout` bounds each stage attempt. Flow operators are
+with the configured backoff, and `timeout` bounds each stage attempt — on expiry (or flow
+cancellation) the running SQL statement is cancelled server-side and its worker slot is freed
+immediately. Flow operators are
 lowered before scheduling: `route` cases become filter predicates on target stages, `fork`
 stages are flattened into the DAG, `wait` delays materialization, `activate` is a local
 logging stub until sink connectors exist, and `end` is a pass-through. Flow runs are recorded
