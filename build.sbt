@@ -32,12 +32,11 @@ val buildSettings = Seq[Setting[?]](
   Test / javaOptions += "-Dwvlet.sbt.testing=true",
   Test / parallelExecution := false,
   Test / logBuffered       := false,
-  libraryDependencies ++=
-    Seq(
-      // https://users.scala-lang.org/t/scala-js-with-3-7-0-package-scala-contains-object-and-package-with-same-name-caps/10786/5
-      "org.scala-lang" %% "scala3-library" % scalaVersion.value,
-      "org.wvlet.uni" %% "uni-test"        % UNI_VERSION % Test
-    ),
+  libraryDependencies +=
+    // scala3-library is not published for Scala Native 0.5 (no _native0.5_3 artifact); the
+    // Scala.js workaround in the linked thread only applies to JS/JVM, so keep it out of the
+    // shared cross-project deps.
+    "org.wvlet.uni" %% "uni-test" % UNI_VERSION % Test,
   testFrameworks += new TestFramework("wvlet.uni.test.Framework"),
   // Don't use pipelining as it tends to slowdown the build
   usePipelining := false
@@ -187,9 +186,7 @@ lazy val lang = crossProject(JVMPlatform, JSPlatform, NativePlatform)
       Seq(
         "org.wvlet.uni" %% "uni" % UNI_VERSION,
         // For resolving parquet file schema
-        "org.duckdb" % "duckdb_jdbc" % DUCKDB_JDBC_VERSION,
-        // Add a reference implementation of the compiler
-        "org.scala-lang" %% "scala3-compiler" % SCALA_3 % Test
+        "org.duckdb" % "duckdb_jdbc" % DUCKDB_JDBC_VERSION
       ),
     stdlibGen := {
       val libDir     = (ThisBuild / baseDirectory).value / "wvlet-stdlib" / "module"
@@ -201,6 +198,11 @@ lazy val lang = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     },
     Compile / sourceGenerators += stdlibGen.taskValue,
     // TEMP disabled: Test / watchSources ++= Seq[File] blocked by sbt 2 caching
+  )
+  .jvmSettings(
+    // scala3-compiler is JVM-only; kept out of the shared crossProject deps so `%%` on
+    // Scala.js/Native doesn't try to resolve non-existent _sjs1_3 / _native0.5_3 artifacts.
+    libraryDependencies += "org.scala-lang" %% "scala3-compiler" % SCALA_3 % Test
   )
   .jsSettings(
     libraryDependencies += scalajsJavaSecureRandom,
