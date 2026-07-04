@@ -65,17 +65,20 @@ object ActivationSpec:
         if isActivate then
           val params =
             f.args
-              .collect {
-                case arg: FunctionArg if arg.name.isDefined =>
-                  val value =
-                    arg.value match
-                      case s: StringLiteral =>
-                        s.unquotedValue
-                      case l: Literal =>
-                        l.stringValue
-                      case other =>
-                        other.toString
-                  arg.name.get.name -> value
+              .flatMap { arg =>
+                arg
+                  .name
+                  .map { name =>
+                    val value =
+                      arg.value match
+                        case s: StringLiteral =>
+                          s.unquotedValue
+                        case l: Literal =>
+                          l.stringValue
+                        case other =>
+                          other.toString
+                    name.name -> value
+                  }
               }
               .toMap
           target.map(ActivationSpec(_, params))
@@ -342,17 +345,23 @@ object FlowLowering:
           other.toString
     val params =
       a.params
-        .collect {
-          case arg: FunctionArg if arg.name.isDefined =>
-            val value =
-              arg.value match
-                case s: StringLiteral =>
-                  s.unquotedValue
-                case l: Literal =>
-                  l.stringValue
-                case other =>
-                  other.toString
-            arg.name.get.name -> value
+        .flatMap {
+          case arg: FunctionArg =>
+            arg
+              .name
+              .map { name =>
+                val value =
+                  arg.value match
+                    case s: StringLiteral =>
+                      s.unquotedValue
+                    case l: Literal =>
+                      l.stringValue
+                    case other =>
+                      other.toString
+                name.name -> value
+              }
+          case _ =>
+            None
         }
         .toMap
     ActivationSpec(target, params)

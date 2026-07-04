@@ -124,6 +124,52 @@ class WvletFlowCommandTest extends UniTest:
     FlowRunRegistry.forWorkEnv(WorkEnv(dir.toString)).list().size shouldBe 1
   }
 
+  test("sweep runs beyond keep_runs at scheduler startup") {
+    import wvlet.lang.compiler.WorkEnv
+    import wvlet.lang.runner.FlowRunRecord
+    import wvlet.lang.runner.FlowRunRegistry
+    import wvlet.lang.runner.StageRunRecord
+    val dir = Files.createTempDirectory("wvlet-flow-retention")
+    Files.writeString(
+      dir.resolve("scheduled.wv"),
+      """flow RetainedPipeline with {
+        |  schedule: cron('* * * * *')
+        |  keep_runs: 1
+        |} = {
+        |  stage src = from [[1]] as t(id)
+        |}
+        |""".stripMargin
+    )
+    val registry = FlowRunRegistry.forWorkEnv(WorkEnv(dir.toString))
+    List(("old1", 1000L), ("old2", 2000L)).foreach { (id, at) =>
+      registry.save(
+        FlowRunRecord(
+          id,
+          "RetainedPipeline",
+          FlowRunRecord.STATE_SUCCESS,
+          at,
+          Some(at),
+          stages = List(StageRunRecord("src", "success", 1))
+        )
+      )
+    }
+
+    WvletMain.main(s"flow scheduler --once -w ${dir}")
+
+    // The startup sweep kept only the latest seeded run; --once then recorded one new run
+    val runs = registry.list().map(_.runId)
+    runs.contains("old1") shouldBe false
+    runs.contains("old2") shouldBe true
+    runs.size shouldBe 2
+  }
+
+  test("reject an unparseable --retention argument") {
+    val e = intercept[WvletLangException] {
+      WvletMain.main(s"flow scheduler --once --retention forever -w ${flowDir}")
+    }
+    e.statusCode shouldBe StatusCode.INVALID_ARGUMENT
+  }
+
   test("reject backfill of a flow without a schedule") {
     val e = intercept[WvletLangException] {
       WvletMain.main(
