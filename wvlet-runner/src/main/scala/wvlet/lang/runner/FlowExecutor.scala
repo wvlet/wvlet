@@ -26,11 +26,13 @@ import wvlet.lang.runner.connector.DBConnector
 import wvlet.uni.log.LogSupport
 import wvlet.uni.util.ULID
 
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.ThreadFactory
 import java.util.concurrent.TimeUnit
 import scala.collection.mutable
+import scala.jdk.CollectionConverters.*
 import scala.util.Using
 import scala.util.control.NonFatal
 
@@ -145,8 +147,9 @@ trait FlowStageRunner:
   *   - A failing attempt is retried up to `retries` times; retries are scheduled asynchronously
   *     with the configured backoff instead of blocking a worker thread.
   *   - A `timeout` config bounds each attempt: on expiry the attempt is treated as failed
-  *     (retryable). Note: the underlying SQL statement is not cancelled server-side yet, so a
-  *     timed-out attempt may keep occupying a worker slot until the statement completes.
+  *     (retryable), the underlying SQL statement is cancelled server-side (best-effort via JDBC
+  *     `Statement.cancel()`), and the worker thread is interrupted so that the worker slot is freed
+  *     immediately for other stages and retries.
   *
   * A successful stage is materialized as a run-scoped table (`__wv_flow_<run_id>_<stage>`), so
   * stage names never collide with real tables and concurrent runs do not interfere. Parallel stages
@@ -188,7 +191,11 @@ class FlowExecutor(
 
   private val eventQueue = LinkedBlockingQueue[FlowEvent]()
 
-  /** Request cancellation. Stages that have not started yet will end in the cancelled state */
+  /**
+    * Request cancellation. Stages that have not started yet will end in the cancelled state, and
+    * in-flight attempts are stopped: their SQL statements are cancelled server-side (best-effort)
+    * and their worker threads are interrupted
+    */
   def cancel(): Unit =
     cancelled = true
     eventQueue.put(CancelRequested)
@@ -261,12 +268,37 @@ class FlowExecutor(
     // same name never collide
     def tableFor(stageName: String): String = FlowExecutor.stageTableName(runId, stageName)
 
-    val runBody: (FlowLowering.LoweredStage, String) => Unit =
+    // In-flight attempt tracking, keyed by (stage, attempt). Worker threads register their
+    // active SQL statement while it executes; the scheduler thread cancels statements and
+    // interrupts workers on timeout or flow cancellation
+    val activeStatements = ConcurrentHashMap[(String, Int), java.sql.Statement]()
+    val activeFutures    = ConcurrentHashMap[(String, Int), java.util.concurrent.Future[?]]()
+
+    // Stop an in-flight attempt: cancel its SQL statement server-side (best-effort) and
+    // interrupt its worker thread so that the worker slot is freed immediately
+    def cancelAttempt(key: (String, Int)): Unit =
+      Option(activeStatements.remove(key)).foreach { stmt =>
+        try
+          stmt.cancel()
+        catch
+          case NonFatal(e) =>
+            debug(
+              s"Failed to cancel the statement of stage ${key._1} (attempt ${key._2}): ${e
+                  .getMessage}"
+            )
+      }
+      Option(activeFutures.remove(key)).foreach(_.cancel(true))
+
+    def clearAttempt(key: (String, Int)): Unit =
+      activeStatements.remove(key)
+      activeFutures.remove(key)
+
+    val runBody: (FlowLowering.LoweredStage, String, (String, Int)) => Unit =
       stageRunner match
         case Some(r) =>
-          (ls, table) => r.run(ls.stage, table)
+          (ls, table, _) => r.run(ls.stage, table)
         case None =>
-          (ls, table) =>
+          (ls, table, attemptKey) =>
             // A wait operator delays the materialization of this stage. The sleep runs on a
             // worker thread and is interruptible for cancellation
             ls.waitMillis
@@ -274,7 +306,14 @@ class FlowExecutor(
                 workEnv.info(s"Stage ${ls.name} waits for ${delay}ms")
                 Thread.sleep(delay)
               }
-            materializeStage(ls, stageNames, tableFor, routeFilters)
+            materializeStage(
+              ls,
+              stageNames,
+              tableFor,
+              routeFilters,
+              registerStatement = stmt => activeStatements.put(attemptKey, stmt),
+              deregisterStatement = () => activeStatements.remove(attemptKey)
+            )
             // Activation is a local stub until external sink connectors are available
             ls.activateTargets
               .foreach { target =>
@@ -414,18 +453,19 @@ class FlowExecutor(
       states(name) = StageState.Running
       runningCount += 1
       workEnv.info(s"Running stage ${name} (attempt ${attempt}/${stageConfig.retries + 1})")
-      workerPool.submit(
+      val future = workerPool.submit(
         new Runnable:
           override def run(): Unit =
             val error =
               try
-                runBody(ls, tableFor(name))
+                runBody(ls, tableFor(name), (name, attempt))
                 None
               catch
                 case NonFatal(e) =>
                   Some(e)
             eventQueue.put(AttemptResult(ls, attempt, error))
       )
+      activeFutures.put((name, attempt), future)
       // Bound the attempt duration with the configured timeout. The timed-out attempt is
       // reported as a retryable failure; a late completion event is ignored via handledAttempts
       stageConfig
@@ -441,7 +481,8 @@ class FlowExecutor(
                     StatusCode
                       .OPERATION_TIMED_OUT
                       .newException(s"Stage ${name} timed out after ${timeout}ms")
-                  )
+                  ),
+                  timedOut = true
                 )
               )
             ,
@@ -472,6 +513,10 @@ class FlowExecutor(
     def handleCancellation(): Unit =
       if !cancellationDone then
         cancellationDone = true
+        // Stop all in-flight attempts before marking the remaining stages cancelled
+        (activeStatements.keySet().asScala ++ activeFutures.keySet().asScala)
+          .toSet
+          .foreach(cancelAttempt)
         flowStages.foreach { ls =>
           if !states(ls.name).isTerminal then
             states(ls.name) = StageState.Cancelled
@@ -507,10 +552,16 @@ class FlowExecutor(
               scheduledRetries -= 1
               if states(s.name) == StageState.Retrying then
                 submitAttempt(s, attempt)
-            case AttemptResult(s, attempt, error) =>
+            case AttemptResult(s, attempt, error, timedOut) =>
               val name = s.name
               if !handledAttempts.contains((name, attempt)) then
                 handledAttempts += name -> attempt
+                // A timed-out attempt is still running: stop it so its worker slot is freed.
+                // A completed attempt only needs its tracking entries cleared
+                if timedOut then
+                  cancelAttempt((name, attempt))
+                else
+                  clearAttempt((name, attempt))
                 runningCount -= 1
                 attempts(name) = attempt
                 if states(name) == StageState.Running then
@@ -587,7 +638,9 @@ class FlowExecutor(
       ls: FlowLowering.LoweredStage,
       stageNames: Set[String],
       tableFor: String => String,
-      routeFilters: Map[(String, String), Expression]
+      routeFilters: Map[(String, String), Expression],
+      registerStatement: java.sql.Statement => Unit,
+      deregisterStatement: () => Unit
   )(using ctx: Context): Unit =
     val body = ls
       .body
@@ -638,7 +691,11 @@ class FlowExecutor(
     debug(s"Materializing stage ${ls.name}:\n${ddl}")
     connector.withSession { conn =>
       Using.resource(conn.createStatement()) { stmt =>
-        stmt.execute(ddl)
+        // Expose the statement to the scheduler so that a timeout or cancellation can stop
+        // it server-side while it is executing
+        registerStatement(stmt)
+        try stmt.execute(ddl)
+        finally deregisterStatement()
       }
     }
 
@@ -666,7 +723,13 @@ object FlowExecutor:
     }
 
   private enum FlowEvent:
-    case AttemptResult(stage: FlowLowering.LoweredStage, attempt: Int, error: Option[Throwable])
+    case AttemptResult(
+        stage: FlowLowering.LoweredStage,
+        attempt: Int,
+        error: Option[Throwable],
+        timedOut: Boolean = false
+    )
+
     case RetryDue(stage: FlowLowering.LoweredStage, attempt: Int)
     case CancelRequested
 

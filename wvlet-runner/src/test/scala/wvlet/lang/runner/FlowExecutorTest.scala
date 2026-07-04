@@ -246,6 +246,52 @@ class FlowExecutorTest extends UniTest:
     slow.error.get.getMessage shouldContain "timed out"
   }
 
+  test("free the worker slot when a timed-out attempt is interrupted") {
+    // The first stage blocks its worker indefinitely; with a single worker slot, the second
+    // stage can only run if the timed-out attempt is interrupted to free the slot
+    val blocked = CountDownLatch(1)
+    val runner  =
+      new FlowStageRunner:
+        override def run(stage: StageDef, targetTable: String)(using Context): Unit =
+          if stage.name.name == "slow" then
+            blocked.await()
+    val result = runFlow(
+      """flow TimeoutSlotFlow = {
+        |  stage slow with { timeout: 100ms } = from [[1]] as t(id)
+        |  stage fast = from [[2]] as t(id)
+        |}""".stripMargin,
+      config = FlowExecutorConfig(maxParallelism = 1),
+      stageRunner = Some(runner)
+    )
+    val slow = result.stageResult("slow").get
+    slow.state shouldBe StageState.Failed
+    slow.error.get.getMessage shouldContain "timed out"
+    result.stageResult("fast").get.state shouldBe StageState.Success
+  }
+
+  test("cancel a timed-out SQL statement server-side to free the worker slot") {
+    // A cross join large enough to run for minutes if not cancelled server-side. With a
+    // single worker slot, the second stage can only complete once the timed-out statement
+    // is actually stopped in the database
+    connector.execute(
+      "create or replace table __wv_slow_cross_src as select range as id from range(1000000)"
+    )
+    try
+      val result = runFlow(
+        """flow SqlCancelFlow = {
+          |  stage slow with { timeout: 500ms } = from __wv_slow_cross_src as a cross join __wv_slow_cross_src as b | select max(a.id * b.id) as m
+          |  stage fast = from [[1]] as t(id)
+          |}""".stripMargin,
+        config = FlowExecutorConfig(maxParallelism = 1)
+      )
+      val slow = result.stageResult("slow").get
+      slow.state shouldBe StageState.Failed
+      slow.error.get.getMessage shouldContain "timed out"
+      result.stageResult("fast").get.state shouldBe StageState.Success
+    finally
+      connector.execute("drop table if exists __wv_slow_cross_src")
+  }
+
   test("retry timed-out attempts until retries are exhausted") {
     val delays = ListBuffer.empty[Long]
     val runner =
