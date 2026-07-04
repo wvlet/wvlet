@@ -29,9 +29,13 @@ import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.model.plan.DependsOnFlow
 import wvlet.lang.model.plan.FlowDef
 import wvlet.lang.model.plan.FlowStatePredicate
+import wvlet.lang.runner.CronSchedule
 import wvlet.lang.runner.FlowExecutor
 import wvlet.lang.runner.FlowRunRecord
 import wvlet.lang.runner.FlowRunStore
+import wvlet.lang.runner.FlowScheduleConfig
+import wvlet.lang.runner.FlowScheduler
+import wvlet.lang.runner.ScheduledFlow
 import wvlet.lang.runner.connector.DBConnectorProvider
 import wvlet.uni.log.LogSupport
 
@@ -230,6 +234,66 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
       end match
     }
   end session
+
+  @command(description = "Start the scheduler daemon that runs flows on their cron schedules")
+  def scheduler(flowOption: WvletFlowOption): Unit =
+    withFlows(flowOption) { (flows, compileResult, workEnv) =>
+      val scheduled = flows.flatMap { (unit, f) =>
+        val config = FlowScheduleConfig.fromFlow(f)
+        config
+          .cron
+          .map { cronExpr =>
+            (unit, ScheduledFlow(f, CronSchedule.parse(cronExpr), config.zoneId))
+          }
+      }
+      if scheduled.isEmpty then
+        println("No flows with a schedule: config were found")
+      else
+        val profile = Profile.getProfile(flowOption.profile, flowOption.catalog, flowOption.schema)
+        Control.withResource(DBConnectorProvider(workEnv)) { dbConnectorProvider =>
+          val connector = dbConnectorProvider.getConnector(profile)
+          Control.withResource(newRunStore(flowOption, workEnv)) { store =>
+            val unitOf = scheduled.map((unit, sf) => sf.name -> unit).toMap
+            // Each triggered flow runs on its own thread so that a long flow does not delay
+            // other schedules; the executor enforces dependencies and concurrency limits
+            val pool = java
+              .util
+              .concurrent
+              .Executors
+              .newCachedThreadPool { (r: Runnable) =>
+                val t = Thread(r, "wvlet-flow-scheduler-run")
+                t.setDaemon(true)
+                t
+              }
+            val flowScheduler = FlowScheduler(
+              scheduled.map(_._2),
+              trigger =
+                flow =>
+                  pool.submit(
+                    new Runnable:
+                      override def run(): Unit =
+                        given ctx: Context = compileResult
+                          .context
+                          .withCompilationUnit(unitOf(flow.name.name))
+                          .newContext(Symbol.NoSymbol)
+                        val result = FlowExecutor(connector, workEnv, registry = Some(store))
+                          .execute(flow)
+                        println(result.toPrettyBox())
+                  )
+            )
+            Runtime
+              .getRuntime
+              .addShutdownHook(
+                Thread { () =>
+                  flowScheduler.stop()
+                }
+              )
+            try flowScheduler.runLoop()
+            finally pool.shutdownNow()
+          }
+        }
+      end if
+    }
 
   @command(description = "Show the plan of a flow")
   def show(

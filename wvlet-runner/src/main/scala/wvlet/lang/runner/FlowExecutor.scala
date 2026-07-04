@@ -176,9 +176,13 @@ trait FlowStageRunner:
   * triggered as a new run (with its own run id) after the current flow completes. Jump chains are
   * bounded by `maxJumpDepth` to guard against cycles (flow A -> B -> A).
   *
+  * A flow-level `concurrency: N` config is enforced through the run store: the executor atomically
+  * claims a run slot before scheduling any stage and records the run as skipped when the limit is
+  * already reached. Flow-level cron schedules are evaluated by [[FlowScheduler]], which triggers
+  * runs through this executor.
+  *
   * Current limitations (to be lifted in future iterations):
   *   - `heartbeat` is parsed but not enforced.
-  *   - Flow-level cron schedules are not evaluated here.
   *
   * @param connector
   *   The database connector used to materialize stage results
@@ -449,8 +453,8 @@ class FlowExecutor(
       )
     }
 
-    // Persist a snapshot of the run so that other processes (wvlet flow session) can observe it
-    def persistSnapshot(finished: Boolean = false): Unit = registry.foreach { reg =>
+    // The current run state as a persistable record
+    def currentRecord(finished: Boolean): FlowRunRecord =
       val stageRecords = flowStages.map { ls =>
         val name  = ls.name
         val state = states(name)
@@ -470,20 +474,23 @@ class FlowExecutor(
           FlowRunRecord.flowStateOf(states.values)
         else
           FlowRunRecord.STATE_RUNNING
-      reg.save(
-        FlowRunRecord(
-          runId,
-          flow.name.name,
-          flowState,
-          startedAt,
-          if finished then
-            Some(System.currentTimeMillis())
-          else
-            None
-          ,
-          stageRecords
-        )
+      FlowRunRecord(
+        runId,
+        flow.name.name,
+        flowState,
+        startedAt,
+        if finished then
+          Some(System.currentTimeMillis())
+        else
+          None
+        ,
+        stageRecords
       )
+    end currentRecord
+
+    // Persist a snapshot of the run so that other processes (wvlet flow session) can observe it
+    def persistSnapshot(finished: Boolean = false): Unit = registry.foreach { reg =>
+      reg.save(currentRecord(finished))
     }
 
     def evalTrigger(t: StageTrigger): Boolean =
@@ -619,7 +626,29 @@ class FlowExecutor(
 
     def allTerminal: Boolean = states.values.forall(_.isTerminal)
 
-    persistSnapshot()
+    // Enforce the flow-level concurrency limit by atomically claiming a run slot in the run
+    // store. Resumed runs already own their slot (their record is re-marked as running)
+    val slotClaimed =
+      (registry, FlowScheduleConfig.fromFlow(flow).concurrency) match
+        case (Some(reg), Some(limit)) if resumeFrom.isEmpty =>
+          reg.claimRunSlot(currentRecord(finished = false), limit)
+        case _ =>
+          persistSnapshot()
+          true
+    if !slotClaimed then
+      workEnv.info(s"Flow ${flow.name.name} reached its concurrency limit; skipping run ${runId}")
+      workerPool.shutdownNow()
+      timer.shutdownNow()
+      flowStages.foreach(ls => states(ls.name) = StageState.Skipped)
+      registry.foreach { reg =>
+        reg.save(currentRecord(finished = true).copy(state = FlowRunRecord.STATE_SKIPPED))
+      }
+      return FlowExecutionResult(
+        flow.name.name,
+        runId,
+        flowStages.map(ls => StageResult(ls.name, StageState.Skipped, 0))
+      )
+
     try
       var done = false
       while !done do
