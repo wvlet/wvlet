@@ -376,8 +376,11 @@ immediately. Flow operators are
 lowered before scheduling: `route` cases become filter predicates on target stages, `fork`
 stages are flattened into the DAG, `wait` delays materialization, `activate` is a local
 logging stub until sink connectors exist, and `end` is a pass-through. Flow runs are recorded
-in a local run registry, and cross-flow dependencies are evaluated against it. Flow-level cron
-schedules, `-> Flow` jumps, and `heartbeat` enforcement are parsed but not yet executable.
+in a local run registry, and cross-flow dependencies are evaluated against it. A `-> Flow`
+jump is a control-only transfer: when the jumping stage succeeds, the target flow is triggered
+as a new run (with its own run id) after the current flow completes, and jump chains are
+bounded by a configurable depth limit to terminate cycles. Flow-level cron schedules and
+`heartbeat` enforcement are parsed but not yet executable.
 :::
 
 Each stage progresses through a well-defined state machine:

@@ -32,8 +32,8 @@ import wvlet.lang.model.plan.*
   *   - `activate('target')` — recorded as an activation of the materialized stage output (local
   *     stub until sink connectors exist)
   *   - `end()` — pass-through terminal marker
-  *
-  * `-> OtherFlow` (jump) requires cross-flow orchestration and is not lowered yet.
+  *   - `-> OtherFlow` (jump) — recorded as a control-only jump target; the executor triggers the
+  *     target flow as a new run after the jumping stage's flow completes
   */
 object FlowLowering:
 
@@ -48,12 +48,15 @@ object FlowLowering:
     *   Delay to apply before materializing the stage
     * @param activateTargets
     *   External activation targets to notify with the materialized output
+    * @param jumpTargets
+    *   Flows to trigger as new runs when this stage succeeds (control-only transfer)
     */
   case class LoweredStage(
       stage: StageDef,
       body: Option[Relation],
       waitMillis: Option[Long] = None,
-      activateTargets: List[String] = Nil
+      activateTargets: List[String] = Nil,
+      jumpTargets: List[String] = Nil
   ):
     def name: String = stage.name.name
 
@@ -95,6 +98,7 @@ object FlowLowering:
     val lowered = flatStages.map { s =>
       var waitMillis: Option[Long] = None
       val activations              = List.newBuilder[String]
+      val jumps                    = List.newBuilder[String]
       val newBody                  = s
         .body
         .map {
@@ -114,10 +118,13 @@ object FlowLowering:
                 a.child
               case e: FlowEnd =>
                 e.child
+              case j: FlowJump =>
+                jumps += j.targetFlow.fullName
+                j.child
             }
             .asInstanceOf[Relation]
         }
-      LoweredStage(s, newBody, waitMillis, activations.result())
+      LoweredStage(s, newBody, waitMillis, activations.result(), jumps.result())
     }
     LoweredFlow(flow, lowered, routeFilters.result())
 

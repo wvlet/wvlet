@@ -349,15 +349,81 @@ class FlowExecutorTest extends UniTest:
     result.stageResult("merged").get.state shouldBe StageState.Skipped
   }
 
-  test("fail a stage using unsupported flow operators without retrying") {
-    val result = runFlow("""flow JumpFlow = {
-        |  stage entry = from [[1]] as t(id)
-        |  stage jump with { retries: 3 } = from entry | -> OtherFlow
-        |}""".stripMargin)
-    val jump = result.stageResult("jump").get
-    jump.state shouldBe StageState.Failed
-    // NOT_IMPLEMENTED errors are not retryable
-    jump.attempts shouldBe 1
+  test("fail fast when a jump references an undefined flow") {
+    val e = intercept[WvletLangException] {
+      runFlow("""flow JumpFlow = {
+          |  stage entry = from [[1]] as t(id)
+          |  stage jump = from entry | -> NoSuchFlow
+          |}""".stripMargin)
+    }
+    e.statusCode shouldBe StatusCode.FLOW_NOT_FOUND
+  }
+
+  test("trigger the jump target flow as a new run") {
+    val registry     = FlowRunRegistry(java.nio.file.Files.createTempDirectory("wv-flow-reg"))
+    val (flows, ctx) = compileFlows("""flow MainFlow = {
+        |  stage entry = from [[1], [2]] as t(id)
+        |  stage jump = from entry | -> Downstream
+        |}
+        |
+        |flow Downstream = {
+        |  stage report = from [[1], [2], [3]] as t(id)
+        |}
+        |""".stripMargin)
+    val result =
+      FlowExecutor(connector, workEnv, registry = Some(registry)).execute(flows("MainFlow"))(using
+        ctx
+      )
+    result.isSuccess shouldBe true
+    // The jumping stage materializes its input like a regular stage
+    countStageRows(result, "jump") shouldBe 2L
+    // The target flow ran as its own recorded run
+    val downstream = registry.latestRunOf("Downstream").get
+    downstream.state shouldBe FlowRunRecord.STATE_SUCCESS
+    downstream.runId shouldNotBe result.runId
+    countRows(downstream.stages.head.table.get) shouldBe 3L
+  }
+
+  test("skip jumps of failed stages") {
+    val registry     = FlowRunRegistry(java.nio.file.Files.createTempDirectory("wv-flow-reg"))
+    val (flows, ctx) = compileFlows("""flow BrokenJumpFlow = {
+        |  stage jump = from nonexistent_table_xyz | -> Downstream
+        |}
+        |
+        |flow Downstream = {
+        |  stage report = from [[1]] as t(id)
+        |}
+        |""".stripMargin)
+    val result =
+      FlowExecutor(connector, workEnv, registry = Some(registry)).execute(flows("BrokenJumpFlow"))(
+        using ctx
+      )
+    result.isSuccess shouldBe false
+    registry.latestRunOf("Downstream") shouldBe None
+  }
+
+  test("bound jump chains with the max jump depth") {
+    val registry     = FlowRunRegistry(java.nio.file.Files.createTempDirectory("wv-flow-reg"))
+    val (flows, ctx) = compileFlows("""flow PingFlow = {
+        |  stage ping = from [[1]] as t(id) | -> PongFlow
+        |}
+        |
+        |flow PongFlow = {
+        |  stage pong = from [[1]] as t(id) | -> PingFlow
+        |}
+        |""".stripMargin)
+    // Depth limit 3 permits runs at depths 0..3 and then stops the cycle
+    FlowExecutor(
+      connector,
+      workEnv,
+      config = FlowExecutorConfig(maxJumpDepth = 3),
+      registry = Some(registry)
+    ).execute(flows("PingFlow"))(using ctx)
+    val runs = registry.list()
+    runs.size shouldBe 4
+    runs.count(_.flowName == "PingFlow") shouldBe 2
+    runs.count(_.flowName == "PongFlow") shouldBe 2
+    runs.forall(_.state == FlowRunRecord.STATE_SUCCESS) shouldBe true
   }
 
   test("route rows to target stages with conditional predicates") {
