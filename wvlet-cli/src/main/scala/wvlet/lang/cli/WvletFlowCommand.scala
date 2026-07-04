@@ -30,6 +30,8 @@ import wvlet.lang.model.plan.DependsOnFlow
 import wvlet.lang.model.plan.FlowDef
 import wvlet.lang.model.plan.FlowStatePredicate
 import wvlet.lang.runner.FlowExecutor
+import wvlet.lang.runner.FlowRunRecord
+import wvlet.lang.runner.FlowRunRegistry
 import wvlet.lang.runner.connector.DBConnectorProvider
 import wvlet.uni.log.LogSupport
 
@@ -69,7 +71,11 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
           .withCompilationUnit(unit)
           .newContext(Symbol.NoSymbol)
 
-        val result = FlowExecutor(connector, workEnv).execute(flow)
+        val result = FlowExecutor(
+          connector,
+          workEnv,
+          registry = Some(FlowRunRegistry.forWorkEnv(workEnv))
+        ).execute(flow)
         println(result.toPrettyBox())
         if result.hasError && !WvletMain.isInSbt then
           System.exit(1)
@@ -105,6 +111,59 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
         )
       }
     }
+
+  @command(description = "Manage flow run sessions: session list | session show <run_id>")
+  def session(
+      flowOption: WvletFlowOption,
+      @argument(description = "Sub command: list | show")
+      sub: String = "list",
+      @argument(description = "Run id (required for show)")
+      runId: Option[String] = None
+  ): Unit =
+    val workEnv  = WorkEnv(flowOption.workFolder, opts.logLevel)
+    val registry = FlowRunRegistry.forWorkEnv(workEnv)
+
+    def fmtTime(millis: Long): String        = java.time.Instant.ofEpochMilli(millis).toString
+    def fmtElapsed(r: FlowRunRecord): String = r
+      .finishedAtMillis
+      .map(f => s"${f - r.startedAtMillis}ms")
+      .getOrElse("-")
+
+    sub match
+      case "list" =>
+        registry
+          .list()
+          .foreach { r =>
+            println(
+              f"${r.runId}%-28s ${r.flowName}%-24s ${r.state}%-10s started: ${fmtTime(
+                  r.startedAtMillis
+                )} (${fmtElapsed(r)})"
+            )
+          }
+      case "show" =>
+        val id = runId.getOrElse(
+          throw StatusCode.INVALID_ARGUMENT.newException("Usage: wvlet flow session show <run_id>")
+        )
+        registry.get(id) match
+          case Some(r) =>
+            println(s"run:      ${r.runId}")
+            println(s"flow:     ${r.flowName}")
+            println(s"state:    ${r.state}")
+            println(s"started:  ${fmtTime(r.startedAtMillis)}")
+            r.finishedAtMillis.foreach(f => println(s"finished: ${fmtTime(f)}"))
+            r.stages
+              .foreach { s =>
+                val err = s.error.map(e => s" - ${e}").getOrElse("")
+                println(f"  stage ${s.name}%-24s ${s.state}%-14s attempts: ${s.attempts}${err}")
+              }
+          case None =>
+            throw StatusCode.INVALID_ARGUMENT.newException(s"Flow run '${id}' is not found")
+      case other =>
+        throw StatusCode
+          .INVALID_ARGUMENT
+          .newException(s"Unknown session sub command: ${other}. Use list or show")
+    end match
+  end session
 
   @command(description = "Show the plan of a flow")
   def show(
