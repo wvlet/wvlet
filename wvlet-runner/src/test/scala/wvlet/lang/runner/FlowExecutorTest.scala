@@ -340,6 +340,37 @@ class FlowExecutorTest extends UniTest:
     countStageRows(result, "output") shouldBe 3L
   }
 
+  test("report a clear compile-time error when a merge source is a table, not a stage") {
+    // Merge sources must be stages: even when a real table with that name exists, the
+    // compiler rejects it upfront instead of failing at runtime with a missing-table error
+    connector.execute("create or replace table __wv_merge_real as select 1 as id")
+    try
+      val e = intercept[WvletLangException] {
+        runFlow("""flow MergeRealTable = {
+            |  stage src = from [[1]] as t(id)
+            |  stage merged = merge src, __wv_merge_real
+            |}""".stripMargin)
+      }
+      e.statusCode shouldBe StatusCode.STAGE_NOT_FOUND
+      e.getMessage shouldContain "__wv_merge_real"
+    finally
+      connector.execute("drop table if exists __wv_merge_real")
+  }
+
+  test("merge a real table by wrapping it in a stage") {
+    connector.execute("create or replace table __wv_merge_wrapped as select 10 as id")
+    try
+      val result = runFlow("""flow MergeWrappedTable = {
+          |  stage src = from [[1], [2]] as t(id)
+          |  stage tbl = from __wv_merge_wrapped
+          |  stage merged = merge src, tbl
+          |}""".stripMargin)
+      result.isSuccess shouldBe true
+      countStageRows(result, "merged") shouldBe 3L
+    finally
+      connector.execute("drop table if exists __wv_merge_wrapped")
+  }
+
   test("skip a merge stage when one of its sources failed") {
     val result = runFlow("""flow BrokenMergeFlow = {
         |  stage source_a = from [[1]] as t(id)
