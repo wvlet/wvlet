@@ -94,4 +94,45 @@ class FlowParamsTest extends UniTest:
     substitutedLiteral shouldBe true
   }
 
+  test("preserve select aliases and qualified member names that match a parameter") {
+    val f = parseFlow("""flow H(seg: string) = {
+        |  stage a = from t | where t.seg = seg | select seg = id
+        |}""".stripMargin)
+    val bound = FlowParams.substitute(
+      f,
+      FlowParams.bind(f, parseRunFlow("run flow H(seg = 'x')").args)
+    )
+    val printed = wvlet.lang.compiler.codegen.WvletGenerator().print(bound)
+    // The qualified member (t.seg) and the output alias (seg = id) keep their names;
+    // only the bare comparison value is substituted
+    printed shouldContain "t.seg = 'x'"
+    printed shouldContain "id as seg"
+  }
+
+  test("substitute inside subquery expressions while keeping subquery table names") {
+    val f = parseFlow("""flow S(seg: string) = {
+        |  stage a = from t | where exists { from seg | where name = seg }
+        |}""".stripMargin)
+    val bound = FlowParams.substitute(
+      f,
+      FlowParams.bind(f, parseRunFlow("run flow S(seg = 'x')").args)
+    )
+    val printed = wvlet.lang.compiler.codegen.WvletGenerator().print(bound)
+    printed shouldContain "from seg"
+    printed shouldContain "name = 'x'"
+  }
+
+  test("preserve relation aliases that match a parameter") {
+    val f = parseFlow("""flow A(t: string) = {
+        |  stage a = from [[1]] as t(id) | where id = t
+        |}""".stripMargin)
+    val bound = FlowParams.substitute(
+      f,
+      FlowParams.bind(f, parseRunFlow("run flow A(t = 'x')").args)
+    )
+    val printed = wvlet.lang.compiler.codegen.WvletGenerator().print(bound)
+    printed shouldContain "as t( id )"
+    printed shouldContain "id = 'x'"
+  }
+
 end FlowParamsTest
