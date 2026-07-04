@@ -20,6 +20,7 @@ import wvlet.lang.api.v1.flow.StageState
 import wvlet.lang.compiler.Context
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.compiler.codegen.GenSQL
+import wvlet.lang.compiler.transform.FlowParams
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
 import wvlet.lang.runner.connector.DBConnector
@@ -284,11 +285,19 @@ class FlowExecutor(
     * Execute the given flow. When `resumeFrom` holds the record of a previous failed or cancelled
     * run, the run is resumed under the same run id: stages recorded as successful keep their
     * materialized run-scoped tables and are not re-executed, and the remaining stages run with a
-    * fresh retry budget
+    * fresh retry budget. `args` binds the declared flow parameters (positional or named); declared
+    * defaults fill in unbound parameters, and a missing required parameter fails the run before any
+    * stage executes
     */
-  def execute(flow: FlowDef, resumeFrom: Option[FlowRunRecord] = None)(using
-      ctx: Context
-  ): FlowExecutionResult = executeInternal(flow, resumeFrom, jumpDepth = 0)
+  def execute(
+      flow: FlowDef,
+      resumeFrom: Option[FlowRunRecord] = None,
+      args: List[FunctionArg] = Nil
+  )(using ctx: Context): FlowExecutionResult = executeInternal(
+    FlowParams(flow, args),
+    resumeFrom,
+    jumpDepth = 0
+  )
 
   /** Resolve a flow referenced by a `-> Flow` jump through the compilation context */
   private def resolveJumpTarget(name: String)(using ctx: Context): FlowDef =
@@ -893,7 +902,12 @@ class FlowExecutor(
             )
           else
             workEnv.info(s"Jumping from flow ${flow.name.name} to flow ${target}")
-            executeInternal(jumpTargetFlows(target), resumeFrom = None, jumpDepth = jumpDepth + 1)
+            // A jump carries no arguments, so the target flow runs with its parameter defaults
+            executeInternal(
+              FlowParams(jumpTargetFlows(target), Nil),
+              resumeFrom = None,
+              jumpDepth = jumpDepth + 1
+            )
         }
 
     result

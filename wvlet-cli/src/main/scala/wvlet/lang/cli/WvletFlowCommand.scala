@@ -26,9 +26,13 @@ import wvlet.lang.compiler.CompilerOptions
 import wvlet.lang.compiler.Context
 import wvlet.lang.compiler.Symbol
 import wvlet.lang.compiler.WorkEnv
+import wvlet.lang.compiler.parser.ParserPhase
+import wvlet.lang.model.expr.FunctionArg
 import wvlet.lang.model.plan.DependsOnFlow
 import wvlet.lang.model.plan.FlowDef
 import wvlet.lang.model.plan.FlowStatePredicate
+import wvlet.lang.model.plan.Query
+import wvlet.lang.model.plan.RunFlow
 import wvlet.lang.runner.CronSchedule
 import wvlet.lang.runner.FlowExecutor
 import wvlet.lang.runner.FlowRunRecord
@@ -63,15 +67,40 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
   @command(description = "Run a flow defined in the working folder")
   def run(
       flowOption: WvletFlowOption,
-      @argument(description = "Name of the flow to run")
+      @argument(description = "Flow to run: a name or a flow call like \"F(segment = 'a')\"")
       name: String
-  ): Unit = executeFlow(flowOption, name, resumeFrom = None)
+  ): Unit =
+    val (flowName, args) = parseFlowCall(name)
+    executeFlow(flowOption, flowName, resumeFrom = None, args = args)
+
+  /**
+    * Parse the flow argument of `wvlet flow run` as a flow-call expression (`F` or `F(segment =
+    * 'a')`) with the regular wvlet parser, so the CLI and the `run flow` statement share one syntax
+    */
+  private def parseFlowCall(input: String): (String, List[FunctionArg]) =
+    val unit = CompilationUnit.fromWvletString(s"run flow ${input}")
+    val plan = ParserPhase.parseOnly(unit)
+    var parsed: Option[(String, List[FunctionArg])] = None
+    plan.traverse { case q: Query =>
+      q.child match
+        case r: RunFlow =>
+          parsed = Some((r.flowName.fullName, r.args))
+        case _ =>
+    }
+    parsed.getOrElse(
+      throw StatusCode
+        .INVALID_ARGUMENT
+        .newException(
+          s"Invalid flow reference '${input}': expected a flow name or a flow call like \"F(param = 'value')\""
+        )
+    )
 
   /** Compile the flows in the working folder and execute the given flow */
   private def executeFlow(
       flowOption: WvletFlowOption,
       name: String,
-      resumeFrom: Option[FlowRunRecord]
+      resumeFrom: Option[FlowRunRecord],
+      args: List[FunctionArg] = Nil
   ): Unit =
     withFlows(flowOption) { (flows, compileResult, workEnv) =>
       val (unit, flow) = findFlow(flows, name)
@@ -87,7 +116,8 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
         Control.withResource(newRunStore(flowOption, workEnv)) { store =>
           val result = FlowExecutor(connector, workEnv, registry = Some(store)).execute(
             flow,
-            resumeFrom
+            resumeFrom,
+            args
           )
           println(result.toPrettyBox())
           if result.hasError && !WvletMain.isInSbt then

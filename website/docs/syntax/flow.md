@@ -47,14 +47,26 @@ flow my_pipeline = {
 
 ### Flow with Parameters
 
-Flows can accept parameters, similar to functions:
+Flows can accept parameters, similar to functions. A parameter can declare a default value,
+which is used when no argument is bound at run time:
 
 ```wvlet
-flow customer_pipeline(segment: string) = {
-  stage entry = from users | where segment_id = segment
+flow customer_pipeline(segment: string, min_score: int = 0) = {
+  stage entry = from users | where segment_id = segment and score >= min_score
   stage output = from entry | select name, email
 }
 ```
+
+Arguments are bound when the flow is run, with the `run flow` statement or the
+`wvlet flow run` CLI (see [Running Flows](#running-flows)):
+
+```wvlet
+run flow customer_pipeline(segment = 'premium')
+```
+
+Inside stage bodies, a parameter name shadows a column of the same name, so pick parameter
+names that do not collide with the columns you query. Table and stage names (`from`, `merge`
+sources, route targets, and `->` jump targets) are never treated as parameter references.
 
 ### Flow Grammar
 
@@ -464,6 +476,25 @@ Each successful stage is materialized as a run-scoped temporary table
 (`__wv_flow_<run_id>_<stage>`), so stage names never collide with real tables and concurrent
 runs do not interfere with each other.
 
+#### Binding Flow Parameters
+
+A parameterized flow is run by passing arguments in the flow call, positionally or by name.
+Unbound parameters take their declared defaults; a missing required argument, an unknown
+argument name, or a mistyped literal is reported before any stage executes:
+
+```wvlet
+flow customer_pipeline(segment: string, min_score: int = 0) = {
+  stage entry = from users | where segment_id = segment and score >= min_score
+  stage output = from entry | select name, email
+}
+
+run flow customer_pipeline(segment = 'premium', min_score = 50)
+```
+
+Flow identity is by name only: `concurrency:` limits and cross-flow dependencies
+(`depends on X`, `if X.failed`) treat every run of a flow the same, regardless of the
+arguments it was run with.
+
 ### wvlet flow CLI
 
 Flows can be managed from the command line:
@@ -477,6 +508,9 @@ wvlet flow show my_pipeline -w ./pipelines
 
 # Run a flow and print its per-stage results (non-zero exit code when the flow fails)
 wvlet flow run my_pipeline -w ./pipelines
+
+# Run a parameterized flow with a flow call (the same syntax as the run flow statement)
+wvlet flow run "customer_pipeline(segment = 'premium')" -w ./pipelines
 
 # List recorded flow runs (most recent first)
 wvlet flow session list -w ./pipelines

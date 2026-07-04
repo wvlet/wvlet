@@ -1,5 +1,6 @@
 package wvlet.lang.runner
 
+import wvlet.lang.api.Span
 import wvlet.lang.api.StatusCode
 import wvlet.lang.api.WvletLangException
 import wvlet.lang.api.v1.flow.StageState
@@ -8,9 +9,14 @@ import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.compiler.Compiler
 import wvlet.lang.compiler.CompilerOptions
 import wvlet.lang.compiler.Context
+import wvlet.lang.compiler.Name
 import wvlet.lang.compiler.Symbol
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.compiler.planner.ExecutionPlanner
+import wvlet.lang.model.expr.Expression
+import wvlet.lang.model.expr.FunctionArg
+import wvlet.lang.model.expr.LongLiteral
+import wvlet.lang.model.expr.SingleQuoteString
 import wvlet.lang.model.plan.FlowDef
 import wvlet.lang.model.plan.StageDef
 import wvlet.lang.runner.connector.DBConnectorProvider
@@ -54,12 +60,15 @@ class FlowExecutorTest extends UniTest:
       config: FlowExecutorConfig = FlowExecutorConfig(),
       stageRunner: Option[FlowStageRunner] = None,
       retryScheduler: Option[(Long, () => Unit) => Unit] = None,
-      registry: Option[FlowRunStore] = None
+      registry: Option[FlowRunStore] = None,
+      args: List[FunctionArg] = Nil
   ): FlowExecutionResult =
     val (flow, ctx) = compileFlow(wv)
-    FlowExecutor(connector, workEnv, config, stageRunner, retryScheduler, registry).execute(flow)(
-      using ctx
-    )
+    FlowExecutor(connector, workEnv, config, stageRunner, retryScheduler, registry).execute(
+      flow,
+      resumeFrom = None,
+      args = args
+    )(using ctx)
 
   /** Compile a unit possibly containing multiple flows and return them by name */
   private def compileFlows(wv: String): (Map[String, FlowDef], Context) =
@@ -1154,6 +1163,92 @@ class FlowExecutorTest extends UniTest:
     base.retryDelayFor(2) shouldBe 200L
     base.retryDelayFor(4) shouldBe 800L
     base.withMaxRetryDelayMillis(150L).retryDelayFor(4) shouldBe 150L
+  }
+
+  // --- Runtime flow parameters ---
+
+  private def namedArg(name: String, value: Expression): FunctionArg = FunctionArg(
+    Some(Name.termName(name)),
+    value,
+    isDistinct = false,
+    Nil,
+    Span.NoSpan
+  )
+
+  private def positionalArg(value: Expression): FunctionArg = FunctionArg(
+    None,
+    value,
+    isDistinct = false,
+    Nil,
+    Span.NoSpan
+  )
+
+  private def str(v: String): Expression = SingleQuoteString(v, Span.NoSpan)
+  private def num(v: Long): Expression   = LongLiteral(v, v.toString, Span.NoSpan)
+
+  private val paramFlow =
+    """flow ParamFlow(target_name: string, min_id: int = 1) = {
+      |  stage src = from [[1, 'a'], [2, 'b'], [3, 'a']] as t(id, name)
+      |  stage filtered = from src | where name = target_name and id >= min_id
+      |}""".stripMargin
+
+  test("bind named flow arguments and fill unbound parameters with defaults") {
+    val result = runFlow(paramFlow, args = List(namedArg("target_name", str("a"))))
+    result.isSuccess shouldBe true
+    countStageRows(result, "filtered") shouldBe 2L
+  }
+
+  test("bind positional flow arguments") {
+    val result = runFlow(paramFlow, args = List(positionalArg(str("a")), positionalArg(num(3))))
+    result.isSuccess shouldBe true
+    countStageRows(result, "filtered") shouldBe 1L
+  }
+
+  test("fail before any stage runs when a required flow parameter is missing") {
+    val e = intercept[WvletLangException] {
+      runFlow(paramFlow)
+    }
+    e.statusCode shouldBe StatusCode.INVALID_ARGUMENT
+    e.getMessage shouldContain "target_name"
+  }
+
+  test("fail on an unknown flow argument name") {
+    val e = intercept[WvletLangException] {
+      runFlow(
+        paramFlow,
+        args = List(namedArg("target_name", str("a")), namedArg("no_such_param", str("x")))
+      )
+    }
+    e.statusCode shouldBe StatusCode.INVALID_ARGUMENT
+    e.getMessage shouldContain "no_such_param"
+  }
+
+  test("fail on a mistyped flow argument") {
+    val e = intercept[WvletLangException] {
+      runFlow(paramFlow, args = List(namedArg("target_name", num(1))))
+    }
+    e.statusCode shouldBe StatusCode.INVALID_ARGUMENT
+    e.getMessage shouldContain "expects string"
+  }
+
+  test("substitute parameters into route predicates") {
+    // Note: the parameter is written on the left of the comparison because a route condition
+    // ending with a bare identifier would parse `<identifier> -> <target>` as a lambda
+    val result = runFlow(
+      """flow RouteParamFlow(adult_age: int) = {
+        |  stage src = from [[1, 25], [2, 15], [3, 40]] as t(id, age)
+        |  stage gate = from src | route {
+        |    case adult_age <= _.age -> adult
+        |    else -> minor
+        |  }
+        |  stage adult = from gate | select id
+        |  stage minor = from gate | select id
+        |}""".stripMargin,
+      args = List(namedArg("adult_age", num(18)))
+    )
+    result.isSuccess shouldBe true
+    countStageRows(result, "adult") shouldBe 2L
+    countStageRows(result, "minor") shouldBe 1L
   }
 
 end FlowExecutorTest

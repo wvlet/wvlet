@@ -1,0 +1,7 @@
+-- Running a flow without binding a required parameter must be reported at compile time
+flow NeedsParamFlow(segment: string) = {
+  stage src = from [[1, 'a']] as t(id, name)
+  stage filtered = from src | where name = segment
+}
+
+run flow NeedsParamFlow

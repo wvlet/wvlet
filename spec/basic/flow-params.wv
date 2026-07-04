@@ -1,0 +1,31 @@
+-- Spec-driven tests for runtime flow parameters: `run flow F(param = value)` binds the
+-- declared flow parameters, and unbound parameters take their declared defaults
+
+flow ParamPipeline(target_name: string, min_id: int = 1) = {
+  stage src = from [[1, 'a'], [2, 'b'], [3, 'a']] as t(id, name)
+  stage filtered = from src | where name = target_name and id >= min_id
+  stage output = from filtered | select id
+}
+
+-- Named arguments bind flow parameters; min_id falls back to its default
+run flow ParamPipeline(target_name = 'a')
+| where state = 'success'
+test _.size should be 3
+;
+
+-- Positional arguments bind parameters in declaration order
+run flow ParamPipeline('a', 3)
+| where state = 'success'
+test _.size should be 3
+;
+
+-- A flow whose parameters all have defaults can run without arguments
+flow DefaultedPipeline(label: string = 'x') = {
+  stage src = from [[1, 'x'], [2, 'y']] as t(id, label_col)
+  stage tagged = from src | where label_col = label
+}
+
+run flow DefaultedPipeline
+| where state = 'success'
+test _.size should be 2
+;

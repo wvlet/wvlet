@@ -262,7 +262,8 @@ case class FlowMerge(sources: List[NameExpr], joinCondition: Option[Expression],
         EmptyRelationType
 
 /**
-  * RunFlow triggers the execution of a flow definition by name.
+  * RunFlow triggers the execution of a flow definition by name, optionally binding flow parameters:
+  * `run flow F(segment = 'a')`.
   *
   * It is a leaf relation whose output is the flow-run summary (one row per stage), so that the
   * result can be piped through query operators or verified with test statements:
@@ -273,10 +274,14 @@ case class FlowMerge(sources: List[NameExpr], joinCondition: Option[Expression],
   *
   * @param flowName
   *   The name of the flow to run
+  * @param args
+  *   Arguments bound to the flow parameters (positional or named)
   * @param span
   *   Source location
   */
-case class RunFlow(flowName: NameExpr, span: Span) extends Relation with LeafPlan:
+case class RunFlow(flowName: NameExpr, args: List[FunctionArg], span: Span)
+    extends Relation
+    with LeafPlan:
   override def children: List[LogicalPlan] = Nil
   override def relationType: RelationType  = RunFlow.summaryType
 
