@@ -129,3 +129,9 @@ case class ExecuteTest(test: TestRelation)                   extends ExecutionPl
 
 case class ExecuteDebug(debug: Debug, debugExecutionPlan: ExecutionPlan) extends ExecutionPlan
 case class ExecuteValDef(v: ValDef)                                      extends ExecutionPlan
+
+/**
+  * Execute a flow definition by running its stages with the stage execution model (state machine
+  * with triggers and retries)
+  */
+case class ExecuteFlow(flow: FlowDef) extends ExecutionPlan

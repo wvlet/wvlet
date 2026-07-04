@@ -1,0 +1,32 @@
+-- Stages can read from any source: other stages, tables, or inline values.
+-- Flow definitions are declarations: they are not executed on whole-file runs,
+-- so this spec only checks parsing and type resolution.
+
+-- Stage reading from inline values, with downstream stages referencing it
+flow ValuesFlow = {
+  stage src = from [[1, 'a'], [2, 'b'], [3, 'a']] as t(id, name)
+  stage filtered = from src | where name = 'a'
+  stage output = from filtered | select id
+}
+;
+
+-- Stage config and triggers combined with values sources
+flow OrchestratedFlow = {
+  stage primary with {
+    retries: 2
+    retry_delay: 10ms
+    backoff: 'exponential'
+  } = from [[1]] as t(id)
+  stage fallback if primary.failed = from [[0]] as t(id)
+  stage cleanup if primary.done and fallback.done = from [[1]] as t(id)
+}
+;
+
+-- Merge over values-based stages
+flow MergeValuesFlow = {
+  stage source_a = from [[1], [2]] as t(id)
+  stage source_b = from [[3]] as t(id)
+  stage merged = merge source_a, source_b
+  stage output = from merged | select id
+}
+;

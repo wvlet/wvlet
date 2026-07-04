@@ -472,17 +472,15 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     val t = scanner.lookAhead()
     t.token match
       case WvletToken.FROM =>
-        consume(WvletToken.FROM)
-        val inputRef = identifier()
-        // Create a TableRef to reference the stage
-        val tableRef = TableRef(inputRef, inputRef.span)
-        // Check for pipeline operators
-        val body =
-          if scanner.lookAhead().token == WvletToken.PIPE then
-            Some(queryBlock(tableRef))
-          else
-            Some(tableRef)
-        (List(inputRef), body)
+        // Parse a standard from-query so that stage inputs support any source: other stages,
+        // tables, files, or inline values. Stage data dependencies are derived from the table
+        // references found in the parsed body
+        val body      = querySingle()
+        val inputRefs = ListBuffer.empty[NameExpr]
+        body.traverse { case tr: TableRef =>
+          inputRefs += tr.name
+        }
+        (inputRefs.toList, Some(body))
       case WvletToken.MERGE =>
         consume(WvletToken.MERGE)
         val refs = parseNameList()

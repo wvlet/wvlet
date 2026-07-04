@@ -164,6 +164,9 @@ class QueryExecutor(
         case ExecuteCommand(e) =>
           // Command produces no QueryResult other than errors
           report(executeCommand(e))
+        case ExecuteFlow(flow) =>
+          val flowExecutor = FlowExecutor(getDBConnector(defaultProfile), workEnv)
+          report(flowExecutor.execute(flow))
         case ExecuteValDef(v) =>
           val expr = ExpressionEvaluator.eval(v.expr)(using context)
           v.symbol.symbolInfo = ValSymbolInfo(

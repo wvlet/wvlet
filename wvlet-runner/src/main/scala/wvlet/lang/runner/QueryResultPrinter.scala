@@ -194,6 +194,15 @@ object QueryResultPrinter extends LogSupport:
           else
             ""
         s"[failed]: ${nl}${e.msg} (${e.loc.locationString})${nl}"
+      case f: FlowExecutionResult =>
+        val stages = f
+          .stageResults
+          .map { s =>
+            val err = s.error.map(e => s": ${e.getMessage}").getOrElse("")
+            s"  stage ${s.name}: ${s.state.stateName} (attempts: ${s.attempts})${err}"
+          }
+          .mkString("\n")
+        s"flow ${f.flowName}:\n${stages}"
 
 end QueryResultPrinter
 

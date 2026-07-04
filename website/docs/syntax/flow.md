@@ -297,6 +297,14 @@ flow scheduled_flow with {
 
 ## Stage Execution Model
 
+:::info Implementation status
+Flow definitions are declarations: running a file that contains flows does not execute them.
+The initial flow executor implements this stage execution model — sequential stage execution
+with data/trigger dependencies, retries with backoff, and per-stage materialization. Flow-level
+schedules, cross-flow dependencies, `timeout`/`heartbeat` enforcement, and flow operators such
+as `route`, `fork`, `wait`, and `activate` are parsed but not yet executable.
+:::
+
 Each stage progresses through a well-defined state machine:
 
 ```mermaid

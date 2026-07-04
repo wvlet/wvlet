@@ -96,6 +96,11 @@ object ExecutionPlanner extends Phase("execution-plan"):
           ExecuteCommand(c)
         case v: ValDef =>
           ExecuteValDef(v)
+        case f: FlowDef if f eq targetPlan =>
+          // A flow runs only when its definition is the directly selected target statement.
+          // Flow definitions embedded in a compilation unit are declarations and do not run on
+          // whole-file execution; they are triggered explicitly, by schedules, or by dependencies
+          ExecuteFlow(f)
         case other =>
           if context.isContextCompilationUnit then
             trace(s"Unsupported logical plan: ${other}")

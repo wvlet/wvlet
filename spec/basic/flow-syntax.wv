@@ -73,12 +73,12 @@ flow ForkFlow = {
 -- Flow with route by (percentage-based routing with deterministic partitioning)
 flow ABTestFlow = {
   stage entry = from users
-  stage test = from entry | route by hash(user_id) {
+  stage ab_gate = from entry | route by hash(user_id) {
     case 50 -> variant_a
     case 50 -> variant_b
   }
-  stage variant_a = from test | activate('email_template_a')
-  stage variant_b = from test | activate('email_template_b')
+  stage variant_a = from ab_gate | activate('email_template_a')
+  stage variant_b = from ab_gate | activate('email_template_b')
 }
 ;
 

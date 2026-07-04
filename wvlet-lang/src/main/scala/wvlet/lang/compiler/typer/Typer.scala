@@ -19,6 +19,8 @@ import wvlet.lang.compiler.Context
 import wvlet.lang.compiler.ModelSymbolInfo
 import wvlet.lang.compiler.Name
 import wvlet.lang.compiler.Phase
+import wvlet.lang.compiler.TermName
+import wvlet.lang.model.expr.NameExpr
 import wvlet.lang.compiler.analyzer.AggregationResolver
 import wvlet.lang.compiler.analyzer.FunctionInliner
 import wvlet.lang.compiler.analyzer.RelationRefResolver
@@ -446,6 +448,17 @@ object Typer extends Phase("typer") with LogSupport:
         ref.tpe = scope(ref.name.fullName)
         typeRelationNode(ref)
         ref
+      case m: FlowMerge =>
+        // Fan-in of multiple flow stages. The merged relation takes the type of the first source
+        // that resolves in the stage scope (merge has union semantics over same-schema stages)
+        m.sources
+          .iterator
+          .map(s => scope.get(s.fullName))
+          .collectFirst { case Some(t) =>
+            m.tpe = t
+          }
+        typeRelationNode(m)
+        m
       case other =>
         val withChildren = other.mapChildren(c => prepare(c, scope))
         val resolved     = structuralResolutionRule.applyOrElse(withChildren, identity[LogicalPlan])
@@ -463,9 +476,38 @@ object Typer extends Phase("typer") with LogSupport:
   private def resolveFlowDef(f: FlowDef)(using ctx: Context): FlowDef =
     var stageScope = Map.empty[String, RelationType]
     var changed    = false
-    val newStages  = f
+
+    def stateRefsOf(t: StageTrigger): List[NameExpr] =
+      t match
+        case StatePredicate(stageName, _, _) =>
+          List(stageName)
+        case TriggerAnd(left, right, _) =>
+          stateRefsOf(left) ::: stateRefsOf(right)
+        case TriggerOr(left, right, _) =>
+          stateRefsOf(left) ::: stateRefsOf(right)
+
+    def requireStage(ref: NameExpr, usage: String, stageName: TermName): Unit =
+      if !stageScope.contains(ref.fullName) then
+        throw StatusCode
+          .STAGE_NOT_FOUND
+          .newException(
+            s"Stage '${ref.fullName}' referenced in the ${usage} of stage '${stageName
+                .name}' is not defined before it in flow '${f.name.name}'",
+            ref.sourceLocation
+          )
+
+    val newStages = f
       .stages
       .map { s =>
+        // Triggers and merge sources reference stage states, so they must refer to stages
+        // defined earlier in the flow
+        s.trigger.foreach(t => stateRefsOf(t).foreach(ref => requireStage(ref, "trigger", s.name)))
+        s.body
+          .foreach {
+            _.traverse { case m: FlowMerge =>
+              m.sources.foreach(ref => requireStage(ref, "merge sources", s.name))
+            }
+          }
         val newBody     = s.body.map(b => prepare(b, stageScope).asInstanceOf[Relation])
         val bodyChanged =
           (newBody, s.body) match
