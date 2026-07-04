@@ -105,6 +105,8 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
     withFlows(flowOption) { (flows, compileResult, workEnv) =>
       val (unit, flow) = findFlow(flows, name)
       val profile = Profile.getProfile(flowOption.profile, flowOption.catalog, flowOption.schema)
+      // System.exit is deferred until the resource blocks release the connector and run store
+      var failed = false
       Control.withResource(DBConnectorProvider(workEnv)) { dbConnectorProvider =>
         val connector = dbConnectorProvider.getConnector(profile)
 
@@ -120,10 +122,11 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
             args
           )
           println(result.toPrettyBox())
-          if result.hasError && !WvletMain.isInSbt then
-            System.exit(1)
+          failed = result.hasError
         }
       }
+      if failed && !WvletMain.isInSbt then
+        System.exit(1)
     }
 
   /** Create the run store selected with --run-store (or the WVLET_FLOW_STORE environment) */
@@ -175,11 +178,12 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
           .INVALID_ARGUMENT
           .newException(s"--from (${fromTime}) is after --to (${toTime})")
 
-      // Schedule fire times within [fromTime, toTime]
+      // Schedule fire times within [fromTime, toTime]. The truncated start only counts when it
+      // does not precede --from (e.g. --from 00:00:05 must not include the 00:00:00 fire)
       val windows = List.newBuilder[java.time.ZonedDateTime]
       var t       =
         val start = fromTime.truncatedTo(java.time.temporal.ChronoUnit.MINUTES)
-        if cron.matches(start) then
+        if cron.matches(start) && !start.isBefore(fromTime) then
           start
         else
           cron.nextAfter(fromTime)
@@ -196,6 +200,8 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
               .last}"
         )
         val profile = Profile.getProfile(flowOption.profile, flowOption.catalog, flowOption.schema)
+        // System.exit is deferred until the resource blocks release the connector and run store
+        var failed = false
         Control.withResource(DBConnectorProvider(workEnv)) { dbConnectorProvider =>
           val connector = dbConnectorProvider.getConnector(profile)
 
@@ -207,7 +213,6 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
           Control.withResource(newRunStore(flowOption, workEnv)) { store =>
             val executor = FlowExecutor(connector, workEnv, registry = Some(store))
             val it       = runTimes.iterator
-            var failed   = false
             while !failed && it.hasNext do
               val runTime = it.next()
               println(s"=== ${flowName} @ ${runTime}")
@@ -220,10 +225,10 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
                   s"Backfill of ${flowName} aborted at window ${runTime}; resolve the failure and re-run with --from ${runTime
                       .toLocalDate}"
                 )
-            if failed && !WvletMain.isInSbt then
-              System.exit(1)
           }
         }
+        if failed && !WvletMain.isInSbt then
+          System.exit(1)
       end if
     }
 

@@ -96,6 +96,34 @@ class WvletFlowCommandTest extends UniTest:
     runs.forall(_.stages.forall(_.state == "success")) shouldBe true
   }
 
+  test("exclude fire times before an intra-minute --from boundary") {
+    import wvlet.lang.compiler.WorkEnv
+    import wvlet.lang.runner.FlowRunRegistry
+    val dir = Files.createTempDirectory("wvlet-flow-backfill-boundary")
+    Files.writeString(
+      dir.resolve("daily.wv"),
+      """flow BoundaryPipeline with { schedule: cron('0 0 * * *') } = {
+        |  stage src = from [[1]] as t(id)
+        |}
+        |""".stripMargin
+    )
+    // --from lies 30s after the 07-01 00:00 fire, so only the 07-02 window runs
+    WvletMain.main(
+      Array(
+        "flow",
+        "backfill",
+        "BoundaryPipeline",
+        "--from",
+        "2026-07-01T00:00:30",
+        "--to",
+        "2026-07-02",
+        "-w",
+        dir.toString
+      )
+    )
+    FlowRunRegistry.forWorkEnv(WorkEnv(dir.toString)).list().size shouldBe 1
+  }
+
   test("reject backfill of a flow without a schedule") {
     val e = intercept[WvletLangException] {
       WvletMain.main(
