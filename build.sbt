@@ -331,40 +331,30 @@ lazy val cli = project
     // Need to fork a JVM to avoid DuckDB crash while running runner/cli test simultaneously
     Test / fork          := true,
     Test / baseDirectory := (ThisBuild / baseDirectory).value,
-    packQuick            :=
-      Def.uncached {
-        // Run the default pack task
-        (Runtime / pack).value
-      },
-    pack :=
-      Def.uncached {
-        Def
-          .sequential(
-            Def.task[Unit] {
-              // Install pnpm dependencies
-              scala
-                .sys
-                .process
-                .Process(List("pnpm", "install", "--silent"), (ThisBuild / baseDirectory).value)
-                .!
-              // Trigger compilation from Scala.js to JS
-              val assetFiles = (uiMain / Compile / fullLinkJS).value
-              // Packaging the web assets using Vite.js
-              scala
-                .sys
-                .process
-                .Process(
-                  List("pnpm", "run", "--silent", "build-ui"),
-                  (ThisBuild / baseDirectory).value
-                )
-                .!
-            },
-            // Run the default pack task
-            (Runtime / pack).toTask
-          )
-          .value
-      },
-    packMain :=
+    // Build the web UI assets (pnpm + Vite) before packing. In sbt 2, sbt-pack 1.0.0's
+    // `pack` no longer lives in the `Runtime` scope, so we can't wrap it via
+    // `(Runtime / pack).toTask`. Instead, run the asset build as a `pack`-time dependency
+    // through a dedicated task key.
+    packUiAssets := {
+      // Install pnpm dependencies
+      scala
+        .sys
+        .process
+        .Process(List("pnpm", "install", "--silent"), (ThisBuild / baseDirectory).value)
+        .!
+      // Trigger compilation from Scala.js to JS
+      val _ = (uiMain / Compile / fullLinkJS).value
+      // Package the web assets using Vite.js
+      scala
+        .sys
+        .process
+        .Process(List("pnpm", "run", "--silent", "build-ui"), (ThisBuild / baseDirectory).value)
+        .!
+    },
+    // Non-UI pack for faster development iteration
+    packQuick := Def.uncached(pack.value),
+    pack      := Def.uncached((pack dependsOn packUiAssets).value),
+    packMain  :=
       Map(
         // Wvlet REPL launcher
         "wv" -> "wvlet.lang.cli.WvletREPLMain",

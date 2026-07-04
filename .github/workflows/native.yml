@@ -83,16 +83,16 @@ jobs:
         run: |
           echo "Signing macOS library with ad-hoc signature..."
           # Sign the library
-          codesign --sign - --force wvc-lib/target/scala-${{ env.SCALA_VERSION }}/libwvlet.dylib
+          codesign --sign - --force target/out/native0.5/scala-${{ env.SCALA_VERSION }}/wvc-lib/libwvlet.dylib
 
           # Remove quarantine attribute if present
-          xattr -cr wvc-lib/target/scala-${{ env.SCALA_VERSION }}/libwvlet.dylib || true
+          xattr -cr target/out/native0.5/scala-${{ env.SCALA_VERSION }}/wvc-lib/libwvlet.dylib || true
 
           # Verify signature
-          codesign --verify --verbose wvc-lib/target/scala-${{ env.SCALA_VERSION }}/libwvlet.dylib
+          codesign --verify --verbose target/out/native0.5/scala-${{ env.SCALA_VERSION }}/wvc-lib/libwvlet.dylib
 
           # Display signature info
-          codesign --display --verbose=2 wvc-lib/target/scala-${{ env.SCALA_VERSION }}/libwvlet.dylib
+          codesign --display --verbose=2 target/out/native0.5/scala-${{ env.SCALA_VERSION }}/wvc-lib/libwvlet.dylib
       - name: Install Rust for native tests
         if: ${{ !matrix.skip && runner.os == 'Linux' }}
         run: rustup update
@@ -107,7 +107,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.name }}-${{ matrix.arch }}
-          path: wvc-lib/target/scala-${{ env.SCALA_VERSION }}/libwvlet.${{ matrix.suffix }}
+          path: target/out/native0.5/scala-${{ env.SCALA_VERSION }}/wvc-lib/libwvlet.${{ matrix.suffix }}
 
   build_windows:
     name: Build native on Windows (${{ matrix.arch }})
@@ -223,14 +223,14 @@ jobs:
         shell: cmd
       - name: List build outputs
         run: |
-          dir wvc-lib\target\scala-${{ env.SCALA_VERSION }}\
+          dir target\out\native0.5\scala-${{ env.SCALA_VERSION }}\wvc-lib\
         shell: cmd
       - name: Upload native binary
         uses: actions/upload-artifact@v7
         with:
           name: windows-${{ matrix.arch }}
           # Windows doesn't use lib prefix - Scala Native generates wvlet.dll
-          path: wvc-lib/target/scala-${{ env.SCALA_VERSION }}/wvlet.dll
+          path: target/out/native0.5/scala-${{ env.SCALA_VERSION }}/wvc-lib/wvlet.dll
 
   collect_artifact:
     name: Collect wvc dll

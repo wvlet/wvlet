@@ -10,3 +10,8 @@ object WvletBuildKeys:
 
   @transient
   lazy val sampleQueryGen = taskKey[Seq[File]]("Generate SampleQuery.scala for the playground")
+
+  @transient
+  lazy val packUiAssets = taskKey[Unit](
+    "Install pnpm deps, link uiMain via fullLinkJS, and run Vite build-ui"
+  )

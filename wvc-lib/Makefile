@@ -1,6 +1,9 @@
 TARGET=target
 SCALA_VERSION=$(shell cat ../SCALA_VERSION | xargs)
-OUT_DIR=$(TARGET)/scala-$(SCALA_VERSION)
+# sbt 2 emits the linked Scala Native library under the root's
+# target/out/native0.5/scala-<ver>/wvc-lib/ tree instead of the sbt 1
+# wvc-lib/target/scala-<ver>/ per-project location.
+OUT_DIR=../target/out/native0.5/scala-$(SCALA_VERSION)/wvc-lib
 
 ARGS:="--help"
 
