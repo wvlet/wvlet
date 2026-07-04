@@ -76,8 +76,12 @@ class TrinoFlowExecutorTest extends UniTest:
         |}""".stripMargin)
     val result = FlowExecutor(connector, workEnv).execute(flow)(using ctx)
     result.isSuccess shouldBe true
-    countRows(result.stageResult("filtered").flatMap(_.table).get) shouldBe 2L
-    countRows(result.stageResult("output").flatMap(_.table).get) shouldBe 2L
+    def tableOf(stage: String): String = result
+      .stageResult(stage)
+      .flatMap(_.table)
+      .getOrElse(fail(s"Stage ${stage} has no materialized table"))
+    countRows(tableOf("filtered")) shouldBe 2L
+    countRows(tableOf("output")) shouldBe 2L
 
     // Retrying a stage of the same run re-creates its table (drop + create table path)
     val again = FlowExecutor(connector, workEnv).execute(flow)(using ctx)
@@ -128,11 +132,12 @@ class TrinoFlowExecutorTest extends UniTest:
         |}""".stripMargin)
     val result = FlowExecutor(connector, workEnv).execute(flow)(using ctx)
     result.isSuccess shouldBe false
-    val exportStage = result.stageResult("export").get
+    val exportStage = result.stageResult("export").getOrElse(fail("export stage not found"))
     exportStage.state shouldBe StageState.Failed
     // NOT_IMPLEMENTED is non-retryable: the stage fails on the first attempt
     exportStage.attempts shouldBe 1
-    exportStage.error.get.getMessage shouldContain "not supported"
+    val error = exportStage.error.getOrElse(fail("export stage has no error"))
+    error.getMessage shouldContain "not supported"
     FlowExecutor.dropRunTables(connector, result.runId, result.stageResults.map(_.name))
   }
 
