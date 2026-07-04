@@ -46,7 +46,7 @@ flow ConditionalRouteFlow = {
 flow JourneyFlow = {
   stage entry = from users | select name, email
   stage delayed = from entry | wait('7 days')
-  stage send = from delayed | activate('email')
+  stage send = from delayed | activate('email', template: 'welcome_v1')
   stage done = from send | end()
 }
 ;

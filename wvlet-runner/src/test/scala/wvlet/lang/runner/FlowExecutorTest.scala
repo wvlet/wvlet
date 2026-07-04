@@ -892,6 +892,65 @@ class FlowExecutorTest extends UniTest:
     countStageRows(result, "delayed") shouldBe 2L
   }
 
+  test("deliver activated stage outputs to a matching sink with parameters") {
+    val requests = ListBuffer.empty[ActivationRequest]
+    val sink     =
+      new ActivationSink:
+        override def name: String                               = "collector"
+        override def activate(request: ActivationRequest): Unit = requests += request
+    val (flow, ctx) = compileFlow("""flow SinkFlow = {
+        |  stage src = from [[1], [2]] as t(id)
+        |  stage send = from src | activate('collector', channel: 'sales', batch: 10)
+        |}""".stripMargin)
+    val result =
+      FlowExecutor(connector, workEnv, activationSinks = List(sink)).execute(flow)(using ctx)
+    result.isSuccess shouldBe true
+    requests.size shouldBe 1
+    val r = requests.head
+    r.target shouldBe "collector"
+    r.stageName shouldBe "send"
+    r.params shouldBe Map("channel" -> "sales", "batch" -> "10")
+    // The sink receives the materialized run-scoped table of the activating stage
+    countRows(r.table) shouldBe 2L
+  }
+
+  test("export activated stage outputs with the built-in file sink") {
+    val out    = java.nio.file.Files.createTempDirectory("wv-activate").resolve("out.csv")
+    val result = runFlow(s"""flow ExportFlow = {
+        |  stage src = from [[1, 'a'], [2, 'b']] as t(id, name)
+        |  stage export = from src | activate('file', path: '${out}')
+        |}""".stripMargin)
+    result.isSuccess shouldBe true
+    val lines = java.nio.file.Files.readAllLines(out)
+    lines.size shouldBe 3
+    lines.get(0) shouldBe "id,name"
+  }
+
+  test("fail and retry a stage whose activation sink fails") {
+    var calls = 0
+    val sink  =
+      new ActivationSink:
+        override def name: String                               = "flaky_sink"
+        override def activate(request: ActivationRequest): Unit =
+          calls += 1
+          throw IllegalStateException("sink unavailable")
+    val (flow, ctx) = compileFlow("""flow SinkFailFlow = {
+        |  stage send with { retries: 1, retry_delay: 1ms } = from [[1]] as t(id) | activate('flaky_sink')
+        |}""".stripMargin)
+    val result =
+      FlowExecutor(
+        connector,
+        workEnv,
+        activationSinks = List(sink),
+        retryScheduler = Some((_, action) => action())
+      ).execute(flow)(using ctx)
+    val send = result.stageResult("send").get
+    send.state shouldBe StageState.Failed
+    send.attempts shouldBe 2
+    send.error.get.getMessage shouldContain "sink unavailable"
+    calls shouldBe 2
+  }
+
   test("compute retry delays for backoff strategies") {
     val base = StageExecutionConfig(retryDelayMillis = 100L)
     base.withBackoff("constant").retryDelayFor(1) shouldBe 100L

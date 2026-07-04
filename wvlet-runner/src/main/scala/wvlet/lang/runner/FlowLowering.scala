@@ -29,12 +29,15 @@ import wvlet.lang.model.plan.*
   *     unchanged; each *target* stage's read of the route stage is filtered with the case predicate
   *     (percentage cases become deterministic bucket predicates over the `by` expression)
   *   - `wait('30 minutes')` — recorded as a pre-materialization delay
-  *   - `activate('target')` — recorded as an activation of the materialized stage output (local
-  *     stub until sink connectors exist)
+  *   - `activate('target', param: value, ...)` — recorded as an activation of the materialized
+  *     stage output, delivered by the executor to the matching [[ActivationSink]]
   *   - `end()` — pass-through terminal marker
   *   - `-> OtherFlow` (jump) — recorded as a control-only jump target; the executor triggers the
   *     target flow as a new run after the jumping stage's flow completes
   */
+/** An activation target with its named parameters */
+case class ActivationSpec(target: String, params: Map[String, String] = Map.empty)
+
 object FlowLowering:
 
   /**
@@ -47,7 +50,7 @@ object FlowLowering:
     * @param waitMillis
     *   Delay to apply before materializing the stage
     * @param activateTargets
-    *   External activation targets to notify with the materialized output
+    *   External activation targets (with named parameters) to deliver the materialized output to
     * @param jumpTargets
     *   Flows to trigger as new runs when this stage succeeds (control-only transfer)
     */
@@ -55,7 +58,7 @@ object FlowLowering:
       stage: StageDef,
       body: Option[Relation],
       waitMillis: Option[Long] = None,
-      activateTargets: List[String] = Nil,
+      activateTargets: List[ActivationSpec] = Nil,
       jumpTargets: List[String] = Nil
   ):
     def name: String = stage.name.name
@@ -97,7 +100,7 @@ object FlowLowering:
 
     val lowered = flatStages.map { s =>
       var waitMillis: Option[Long] = None
-      val activations              = List.newBuilder[String]
+      val activations              = List.newBuilder[ActivationSpec]
       val jumps                    = List.newBuilder[String]
       val newBody                  = s
         .body
@@ -114,7 +117,7 @@ object FlowLowering:
                 waitMillis = Some(waitMillis.getOrElse(0L) + waitDurationMillis(w))
                 w.child
               case a: FlowActivate =>
-                activations += activationTargetOf(a)
+                activations += activationSpecOf(a)
                 a.child
               case e: FlowEnd =>
                 e.child
@@ -243,11 +246,29 @@ object FlowLowering:
       case _ =>
         throw StatusCode.NOT_IMPLEMENTED.newException(s"Cannot parse wait duration: '${s}'")
 
-  private def activationTargetOf(a: FlowActivate): String =
-    a.target match
-      case s: StringLiteral =>
-        s.unquotedValue
-      case other =>
-        other.toString
+  /** The activation target and its named parameters, e.g. activate('file', path: 'out.csv') */
+  private def activationSpecOf(a: FlowActivate): ActivationSpec =
+    val target =
+      a.target match
+        case s: StringLiteral =>
+          s.unquotedValue
+        case other =>
+          other.toString
+    val params =
+      a.params
+        .collect {
+          case arg: FunctionArg if arg.name.isDefined =>
+            val value =
+              arg.value match
+                case s: StringLiteral =>
+                  s.unquotedValue
+                case l: Literal =>
+                  l.stringValue
+                case other =>
+                  other.toString
+            arg.name.get.name -> value
+        }
+        .toMap
+    ActivationSpec(target, params)
 
 end FlowLowering

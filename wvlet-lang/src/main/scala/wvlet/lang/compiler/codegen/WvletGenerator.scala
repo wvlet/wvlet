@@ -521,8 +521,16 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
           }
       case a: FlowActivate =>
         val prev    = relation(a.child)
-        val allArgs = expr(a.target) :: a.params.map(p => expr(p))
-        val params  = paren(cl(allArgs))
+        val allArgs =
+          expr(a.target) ::
+            a.params
+              .map {
+                case f: FunctionArg if f.name.isDefined =>
+                  wl(text(s"${f.name.get.name}:"), expr(f.value))
+                case p =>
+                  expr(p)
+              }
+        val params = paren(cl(allArgs))
         prev /
           code(a) {
             group(wl("activate", params))

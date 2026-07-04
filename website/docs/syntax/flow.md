@@ -391,8 +391,12 @@ with the configured backoff, and `timeout` bounds each stage attempt — on expi
 cancellation) the running SQL statement is cancelled server-side and its worker slot is freed
 immediately. Flow operators are
 lowered before scheduling: `route` cases become filter predicates on target stages, `fork`
-stages are flattened into the DAG, `wait` delays materialization, `activate` is a local
-logging stub until sink connectors exist, and `end` is a pass-through. Flow runs are recorded
+stages are flattened into the DAG, `wait` delays materialization, and `end` is a pass-through.
+`activate('target', param: value, ...)` delivers the materialized stage output to the
+activation sink registered for the target name — local file export is built in
+(`activate('file', path: 'out.csv')`, with csv/parquet/json formats), unknown targets fall
+back to a logging stub, and a sink failure fails the attempt and follows the stage's retry
+policy. Flow runs are recorded
 in a local run registry, and cross-flow dependencies are evaluated against it. A `-> Flow`
 jump is a control-only transfer: when the jumping stage succeeds, the target flow is triggered
 as a new run (with its own run id) after the current flow completes, and jump chains are
