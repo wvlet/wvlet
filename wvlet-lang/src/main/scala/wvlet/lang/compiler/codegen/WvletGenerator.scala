@@ -524,6 +524,12 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
           code(w) {
             group(wl("wait", paren(expr(w.duration))))
           }
+      case w: FlowWaitUntil =>
+        val prev = relation(w.child)
+        prev /
+          code(w) {
+            group(wl("wait until", expr(w.condition)))
+          }
       case a: FlowActivate =>
         val prev    = relation(a.child)
         val allArgs =

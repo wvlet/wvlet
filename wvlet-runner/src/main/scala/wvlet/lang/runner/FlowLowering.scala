@@ -130,6 +130,13 @@ object FlowNotifyConfig:
 object FlowLowering:
 
   /**
+    * An event sensor extracted from a `wait until <condition>` operator: the stage proceeds once at
+    * least one row of `input` satisfies `condition` (with `_.column` references resolved to plain
+    * columns)
+    */
+  case class SensorSpec(input: Relation, condition: Expression)
+
+  /**
     * A stage with flow operators stripped from its body
     *
     * @param stage
@@ -138,6 +145,8 @@ object FlowLowering:
     *   The SQL-expressible stage body (pass-through where flow operators were removed)
     * @param waitMillis
     *   Delay to apply before materializing the stage
+    * @param waitUntil
+    *   Event sensors to poll (in pipeline order) before materializing the stage
     * @param activateTargets
     *   External activation targets (with named parameters) to deliver the materialized output to
     * @param jumpTargets
@@ -147,6 +156,7 @@ object FlowLowering:
       stage: StageDef,
       body: Option[Relation],
       waitMillis: Option[Long] = None,
+      waitUntil: List[SensorSpec] = Nil,
       activateTargets: List[ActivationSpec] = Nil,
       jumpTargets: List[String] = Nil
   ):
@@ -189,6 +199,7 @@ object FlowLowering:
 
     val lowered = flatStages.map { s =>
       var waitMillis: Option[Long] = None
+      val sensors                  = List.newBuilder[SensorSpec]
       val activations              = List.newBuilder[ActivationSpec]
       val jumps                    = List.newBuilder[String]
       val newBody                  = s
@@ -205,6 +216,10 @@ object FlowLowering:
               case w: FlowWait =>
                 waitMillis = Some(waitMillis.getOrElse(0L) + waitDurationMillis(w))
                 w.child
+              case w: FlowWaitUntil =>
+                // transformUp visits children first, so sensors accumulate in pipeline order
+                sensors += SensorSpec(w.child, resolveContextRefs(w.condition))
+                w.child
               case a: FlowActivate =>
                 activations += activationSpecOf(a)
                 a.child
@@ -216,7 +231,7 @@ object FlowLowering:
             }
             .asInstanceOf[Relation]
         }
-      LoweredStage(s, newBody, waitMillis, activations.result(), jumps.result())
+      LoweredStage(s, newBody, waitMillis, sensors.result(), activations.result(), jumps.result())
     }
     LoweredFlow(flow, lowered, routeFilters.result())
 

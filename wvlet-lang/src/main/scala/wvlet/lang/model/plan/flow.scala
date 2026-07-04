@@ -313,6 +313,14 @@ object RunFlow:
 case class FlowWait(child: Relation, duration: Expression, span: Span) extends UnaryFlowOp
 
 /**
+  * FlowWaitUntil is an event sensor: it polls its input until at least one row satisfies the
+  * condition, then lets the stage proceed. `_.column` in the condition refers to the input row.
+  *
+  * Example: `from landing_files | wait until _.status = 'ready'`
+  */
+case class FlowWaitUntil(child: Relation, condition: Expression, span: Span) extends UnaryFlowOp
+
+/**
   * FlowActivate represents sending data to an external system.
   *
   * Example: `activate('email', template: 'promo_v1')`

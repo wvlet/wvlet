@@ -1323,6 +1323,77 @@ class FlowExecutorTest extends UniTest:
     countStageRows(result, "minor") shouldBe 1L
   }
 
+  // --- Event sensors (wait until) ---
+
+  test("wait until the sensor condition holds before materializing the stage") {
+    connector.execute("drop table if exists __wv_sensor_dep")
+    connector.execute("create table __wv_sensor_dep as select 1 as x limit 0")
+    try
+      // Satisfy the sensor condition from another thread while the flow is polling
+      val feeder = Thread(
+        new Runnable:
+          override def run(): Unit =
+            Thread.sleep(300)
+            connector.execute("insert into __wv_sensor_dep values (10), (0)")
+      )
+      feeder.setDaemon(true)
+      feeder.start()
+
+      val startedAt = System.currentTimeMillis()
+      val result    = runFlow("""flow SensorFlow = {
+          |  stage gate with { poll_interval: 20ms } = from __wv_sensor_dep | wait until _.x > 5
+          |  stage out = from gate | select x
+          |}""".stripMargin)
+      result.isSuccess shouldBe true
+      // The sensor really waited for the feeder instead of proceeding immediately
+      (System.currentTimeMillis() - startedAt) >= 300 shouldBe true
+      // The gate materialized all input rows; the sensor only gates, it does not filter
+      countStageRows(result, "gate") shouldBe 2L
+      countStageRows(result, "out") shouldBe 2L
+    finally
+      connector.execute("drop table if exists __wv_sensor_dep")
+  }
+
+  test("fail a sensor stage when its timeout expires before the condition holds") {
+    connector.execute("drop table if exists __wv_sensor_empty")
+    connector.execute("create table __wv_sensor_empty as select 1 as x limit 0")
+    try
+      val result = runFlow("""flow SensorTimeoutFlow = {
+          |  stage gate with {
+          |    poll_interval: 10ms
+          |    timeout: 150ms
+          |  } = from __wv_sensor_empty | wait until _.x > 0
+          |  stage out = from gate | select x
+          |}""".stripMargin)
+      result.isSuccess shouldBe false
+      // The timed-out sensor follows the stage's regular failure policy (no retries here)
+      result.stageResult("gate").get.state shouldBe StageState.Failed
+      result.stageResult("out").get.state shouldBe StageState.Skipped
+    finally
+      connector.execute("drop table if exists __wv_sensor_empty")
+  }
+
+  test("wait until an aggregate sensor condition holds") {
+    // Aggregate conditions are phrased by aggregating in the pipeline before the sensor
+    val result = runFlow("""flow AggSensorFlow = {
+        |  stage src = from [[1], [2], [3]] as t(id)
+        |  stage gate = from src | select count(*) as cnt | wait until _.cnt > 2
+        |}""".stripMargin)
+    result.isSuccess shouldBe true
+    countStageRows(result, "gate") shouldBe 1L
+  }
+
+  test("poll a sensor over an upstream stage") {
+    // The sensor input references a stage, which resolves to its run-scoped table; the
+    // condition holds immediately, so the flow completes without external help
+    val result = runFlow("""flow StageSensorFlow = {
+        |  stage src = from [[1, 'ready'], [2, 'ready']] as t(id, status)
+        |  stage gate = from src | wait until _.status = 'ready'
+        |}""".stripMargin)
+    result.isSuccess shouldBe true
+    countStageRows(result, "gate") shouldBe 2L
+  }
+
   // --- Implicit run_time / run_date bindings ---
 
   private val utcRunTime = java
