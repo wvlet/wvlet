@@ -602,6 +602,98 @@ class FlowExecutorTest extends UniTest:
     registry.latestRunOf("Orphan").get.state shouldBe FlowRunRecord.STATE_SKIPPED
   }
 
+  test("resume a failed run reusing successful stage materializations") {
+    val registry = FlowRunRegistry(java.nio.file.Files.createTempDirectory("wv-flow-reg"))
+    val wv       =
+      """flow ResumableFlow = {
+        |  stage src = from [[1], [2]] as t(id)
+        |  stage out = from src cross join __wv_resume_dep as d | select id
+        |}""".stripMargin
+    connector.execute("drop table if exists __wv_resume_dep")
+    val first = runFlow(wv, registry = Some(registry))
+    first.isSuccess shouldBe false
+    first.stageResult("src").get.state shouldBe StageState.Success
+    first.stageResult("out").get.state shouldBe StageState.Failed
+
+    try
+      // Create the dependency that was missing in the first run, and tag the recorded src
+      // materialization so that re-execution of src would be detectable
+      connector.execute("create or replace table __wv_resume_dep as select 10 as x")
+      val srcTable = first.stageResult("src").get.table.get
+      connector.execute(s"""insert into "${srcTable}" values (99)""")
+
+      val record = registry.get(first.runId).get
+      record.state shouldBe FlowRunRecord.STATE_FAILED
+      val (flow, ctx) = compileFlow(wv)
+      val resumed     =
+        FlowExecutor(connector, workEnv, registry = Some(registry)).execute(
+          flow,
+          resumeFrom = Some(record)
+        )(using ctx)
+      resumed.runId shouldBe first.runId
+      resumed.isSuccess shouldBe true
+      resumed.stageResult("out").get.state shouldBe StageState.Success
+      // out read the src table recorded in the first run (2 rows + 1 tagged row), proving
+      // that the successful stage was reused instead of re-executed
+      countStageRows(resumed, "out") shouldBe 3L
+      registry.get(first.runId).get.state shouldBe FlowRunRecord.STATE_SUCCESS
+    finally
+      connector.execute("drop table if exists __wv_resume_dep")
+  }
+
+  test("cancel a run across processes via the registry cancel marker") {
+    val registry     = FlowRunRegistry(java.nio.file.Files.createTempDirectory("wv-flow-reg"))
+    val stageStarted = CountDownLatch(1)
+    val runner       =
+      new FlowStageRunner:
+        override def run(stage: StageDef, targetTable: String)(using Context): Unit =
+          stageStarted.countDown()
+          Thread.sleep(30000)
+    val (flow, ctx) = compileFlow("""flow MarkerCancelFlow = {
+        |  stage slow = from [[1]] as t(id)
+        |}""".stripMargin)
+    val executor = FlowExecutor(
+      connector,
+      workEnv,
+      config = FlowExecutorConfig(cancelPollIntervalMillis = 10L),
+      stageRunner = Some(runner),
+      registry = Some(registry)
+    )
+    // Simulate another process: locate the running record via the registry and place the
+    // cancellation marker
+    val canceller = Thread { () =>
+      stageStarted.await(10, TimeUnit.SECONDS)
+      var runId: Option[String] = None
+      while runId.isEmpty do
+        runId = registry.list().headOption.map(_.runId)
+        if runId.isEmpty then
+          Thread.sleep(10)
+      registry.requestCancel(runId.get)
+    }
+    canceller.start()
+    val result = executor.execute(flow)(using ctx)
+    canceller.join()
+    result.stageResults.map(_.state) shouldBe List(StageState.Cancelled)
+    registry.get(result.runId).get.state shouldBe FlowRunRecord.STATE_CANCELLED
+    // The marker is cleared once the run reaches a terminal state
+    registry.cancelRequested(result.runId) shouldBe false
+  }
+
+  test("manage cancellation markers and record deletion in the registry") {
+    val registry = FlowRunRegistry(java.nio.file.Files.createTempDirectory("wv-flow-reg"))
+    registry.save(FlowRunRecord("run1", "F", FlowRunRecord.STATE_RUNNING, 100L))
+    registry.cancelRequested("run1") shouldBe false
+    registry.requestCancel("run1")
+    registry.cancelRequested("run1") shouldBe true
+    registry.clearCancelRequest("run1")
+    registry.cancelRequested("run1") shouldBe false
+    registry.requestCancel("run1")
+    registry.delete("run1")
+    registry.get("run1") shouldBe None
+    registry.cancelRequested("run1") shouldBe false
+    registry.list() shouldBe Nil
+  }
+
   test("compute retry delays for backoff strategies") {
     val base = StageExecutionConfig(retryDelayMillis = 100L)
     base.withBackoff("constant").retryDelayFor(1) shouldBe 100L

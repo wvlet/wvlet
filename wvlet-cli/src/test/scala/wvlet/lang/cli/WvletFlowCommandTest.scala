@@ -64,6 +64,57 @@ class WvletFlowCommandTest extends UniTest:
     e.statusCode shouldBe StatusCode.INVALID_ARGUMENT
   }
 
+  test("report an error when cancelling an unknown run") {
+    val e = intercept[WvletLangException] {
+      WvletMain.main(s"flow session cancel nosuchrun -w ${flowDir}")
+    }
+    e.statusCode shouldBe StatusCode.INVALID_ARGUMENT
+  }
+
+  test("report the terminal state when cancelling a finished run") {
+    import wvlet.lang.compiler.WorkEnv
+    import wvlet.lang.runner.FlowRunRegistry
+    WvletMain.main(s"flow run SamplePipeline -w ${flowDir}")
+    val runs = FlowRunRegistry.forWorkEnv(WorkEnv(flowDir)).list()
+    // Cancelling an already-finished run reports its state without failing
+    WvletMain.main(s"flow session cancel ${runs.head.runId} -w ${flowDir}")
+  }
+
+  test("resume a failed flow run from the CLI") {
+    import wvlet.lang.compiler.WorkEnv
+    import wvlet.lang.runner.FlowRunRegistry
+    WvletMain.main(s"flow run FallbackPipeline -w ${flowDir}")
+    val registry = FlowRunRegistry.forWorkEnv(WorkEnv(flowDir))
+    val failed   =
+      registry.list().find(r => r.flowName == "FallbackPipeline" && r.state == "failed").get
+    // The primary stage fails again on resume, but the resume path completes and updates
+    // the same run record
+    WvletMain.main(s"flow session resume ${failed.runId} -w ${flowDir}")
+    registry.get(failed.runId).get.state shouldBe "failed"
+  }
+
+  test("reject resuming a run that never failed") {
+    import wvlet.lang.compiler.WorkEnv
+    import wvlet.lang.runner.FlowRunRegistry
+    WvletMain.main(s"flow run SamplePipeline -w ${flowDir}")
+    val succeeded =
+      FlowRunRegistry
+        .forWorkEnv(WorkEnv(flowDir))
+        .list()
+        .find(r => r.flowName == "SamplePipeline" && r.state == "success")
+        .get
+    // Resuming a successful run is a no-op message, not an error
+    WvletMain.main(s"flow session resume ${succeeded.runId} -w ${flowDir}")
+  }
+
+  test("clean terminal flow run records") {
+    import wvlet.lang.compiler.WorkEnv
+    import wvlet.lang.runner.FlowRunRegistry
+    WvletMain.main(s"flow run SamplePipeline -w ${flowDir}")
+    WvletMain.main(s"flow session clean -w ${flowDir}")
+    FlowRunRegistry.forWorkEnv(WorkEnv(flowDir)).list() shouldBe Nil
+  }
+
   test("report an error for an unknown flow name") {
     val e = intercept[WvletLangException] {
       WvletMain.main(s"flow run NoSuchFlow -w ${flowDir}")
