@@ -86,6 +86,29 @@ flow my_pipeline = {
 }
 ```
 
+### Merging Stages
+
+`merge` fans in multiple stages with union-all semantics. The merged stage runs after all of its sources succeed, and is skipped when any source fails:
+
+```wvlet
+flow my_pipeline = {
+  stage source_a = from events_us | select user_id, event_time
+  stage source_b = from events_eu | select user_id, event_time
+  stage merged = merge source_a, source_b
+  stage output = from merged | select user_id
+}
+```
+
+Merge sources must be stages defined earlier in the same flow; referencing a plain table is a compile-time error. To include a regular table in a merge, wrap it in a stage first:
+
+```wvlet
+flow my_pipeline = {
+  stage fresh = from [[1], [2]] as t(id)
+  stage archived = from archive_table        -- wrap the table in a stage
+  stage merged = merge fresh, archived
+}
+```
+
 ### Stage Grammar
 
 ```

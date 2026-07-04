@@ -902,7 +902,14 @@ class FlowExecutor(
           stageTableRef(t.name.fullName, t.span)
         case m: FlowMerge =>
           m.sources
-            .map(src => stageTableRef(src.fullName, src.span))
+            .map { src =>
+              // Only stage references map to run-scoped tables; other sources are regular
+              // tables and are read as-is, consistent with `from` inside a stage body
+              if stageNames.contains(src.fullName) then
+                stageTableRef(src.fullName, src.span)
+              else
+                TableRef(UnquotedIdentifier(src.fullName, src.span), src.span)
+            }
             .reduceLeft[Relation] { (l, r) =>
               Union(l, r, isDistinct = false, m.span)
             }
