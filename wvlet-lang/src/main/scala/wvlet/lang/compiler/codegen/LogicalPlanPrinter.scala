@@ -71,6 +71,46 @@ class LogicalPlanPrinter(using ctx: Context) extends LogSupport:
           "="
         ) + nest(linebreak + plan(m.child))
 
+      case f: FlowDef =>
+        val params =
+          if f.params.isEmpty then
+            None
+          else
+            Some(paren(cl(f.params.map(expr))))
+        val dependency = f
+          .dependency
+          .map {
+            case DependsOnFlow(flowName, _) =>
+              wl("depends on", expr(flowName))
+            case FlowStatePredicate(flowName, stateName, _) =>
+              wl("if", expr(flowName) + "." + stateName)
+          }
+        val config =
+          if f.config.isEmpty then
+            None
+          else
+            Some(wl("with", brace(cl(f.config.map(expr)))))
+        wl(s"FlowDef: ${lineLocOf(f)}", text(f.name.name) + params, dependency, config) +
+          nest(linebreak + concat(f.stages.map(plan), linebreak))
+      case s: StageDef =>
+        val trigger = s.trigger.map(t => wl("if", triggerExpr(t)))
+        val config  =
+          if s.config.isEmpty then
+            None
+          else
+            Some(wl("with", brace(cl(s.config.map(expr)))))
+        val inputs =
+          if s.inputRefs.isEmpty then
+            None
+          else
+            Some(wl("from", cl(s.inputRefs.map(expr))))
+        val deps =
+          if s.dependsOn.isEmpty then
+            None
+          else
+            Some(wl("depends on", cl(s.dependsOn.map(expr))))
+        wl(s"StageDef: ${lineLocOf(s)}", text(s.name.name), trigger, config, inputs, deps) +
+          s.body.map(b => nest(linebreak + plan(b)))
       case w: WithQuery =>
         val defs = concat(
           w.queryDefs
@@ -82,6 +122,19 @@ class LogicalPlanPrinter(using ctx: Context) extends LogSupport:
         defs + linebreak + plan(w.queryBody)
       case f: Filter =>
         node(f)
+      case r: FlowRoute =>
+        val by    = r.byExpr.map(b => wl("by", expr(b)))
+        val cases = r
+          .cases
+          .map { c =>
+            val cond = c.condition.map(expr).orElse(c.percentage.map(p => text(s"${p}")))
+            wl("case", cond, "->", expr(c.target))
+          }
+        val elseCase = r.elseTarget.map(t => wl("else", "->", expr(t)))
+        plan(r.child) + linebreak + text("↓ ") + (
+          wl(s"FlowRoute: ${lineLocOf(r)}", by) +
+            nest(linebreak + concat(cases ++ elseCase.toList, linebreak))
+        )
       case other: LogicalPlan =>
         node(other)
 
@@ -190,8 +243,21 @@ class LogicalPlanPrinter(using ctx: Context) extends LogSupport:
         text(s"$$${p.index}")
       case n: NamedParameter =>
         text(s"$$${n.name}")
+      case c: ConfigItem =>
+        text(c.key.unquotedValue) + ":" + ws + expr(c.value)
       case other =>
         node(other)
+
+  private def triggerExpr(
+      t: StageTrigger
+  )(using dataflowRank: LogicalPlanRankTable = LogicalPlanRankTable.empty): Doc =
+    t match
+      case StatePredicate(stageName, stateName, _) =>
+        text(stageName.fullName) + "." + stateName
+      case TriggerAnd(left, right, _) =>
+        wl(triggerExpr(left), "and", triggerExpr(right))
+      case TriggerOr(left, right, _) =>
+        wl(triggerExpr(left), "or", triggerExpr(right))
 
   private def node(n: SyntaxTreeNode)(using
       dataflowRank: LogicalPlanRankTable = LogicalPlanRankTable.empty

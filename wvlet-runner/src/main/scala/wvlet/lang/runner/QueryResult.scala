@@ -17,6 +17,7 @@ import wvlet.lang.api.StatusCode
 import wvlet.uni.weaver.Weaver
 import wvlet.uni.weaver.codec.PrimitiveWeaver.given
 import wvlet.lang.api.SourceLocation
+import wvlet.lang.api.v1.flow.StageState
 import wvlet.lang.model.DataType
 import wvlet.lang.model.RelationType
 import wvlet.lang.model.plan.LogicalPlan
@@ -97,3 +98,35 @@ case class TestFailure(msg: String, loc: SourceLocation) extends QueryResult:
   override val getError: Option[Throwable]  = Some(StatusCode.TEST_FAILED.newException(msg, loc))
   override def isTest: Boolean              = true
   override def getAllErrors: Seq[Throwable] = getError.toList
+
+/**
+  * The result of executing a single flow stage
+  *
+  * @param name
+  *   The stage name
+  * @param state
+  *   The terminal state the stage reached
+  * @param attempts
+  *   The number of execution attempts made (0 for skipped/cancelled stages)
+  * @param error
+  *   The last error if the stage failed
+  */
+case class StageResult(
+    name: String,
+    state: StageState,
+    attempts: Int,
+    error: Option[Throwable] = None
+)
+
+/**
+  * The result of executing a flow with the stage execution model. The flow is considered failed
+  * when any of its stages ends in the failed state
+  */
+case class FlowExecutionResult(flowName: String, stageResults: List[StageResult])
+    extends QueryResult:
+  def stageResult(stageName: String): Option[StageResult] = stageResults.find(_.name == stageName)
+
+  override def getError: Option[Throwable]  = getAllErrors.headOption
+  override def getAllErrors: Seq[Throwable] = stageResults
+    .filter(_.state == StageState.Failed)
+    .flatMap(_.error)

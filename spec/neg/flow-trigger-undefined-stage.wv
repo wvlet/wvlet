@@ -1,0 +1,5 @@
+-- A stage trigger referencing an undefined stage must be reported as a user error
+flow BrokenTriggerFlow = {
+  stage entry = from [[1]] as t(id)
+  stage fallback if missing_stage.failed = from [[0]] as t(id)
+}

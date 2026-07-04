@@ -252,7 +252,14 @@ case class FlowFork(child: Relation, stages: List[StageDef], span: Span) extends
 case class FlowMerge(sources: List[NameExpr], joinCondition: Option[Expression], span: Span)
     extends FlowOp:
   override def children: List[LogicalPlan] = Nil // Sources are name references, not plans
-  override def relationType: RelationType = EmptyRelationType // Resolved later
+  override def relationType: RelationType  =
+    // A fan-in of multiple stages takes the relation type of its first source, which the Typer
+    // resolves from the enclosing flow's stage scope and carries in the tpe field
+    tpe match
+      case r: RelationType if r.isResolved =>
+        r
+      case _ =>
+        EmptyRelationType
 
 /**
   * FlowWait represents a time-based delay in the flow.

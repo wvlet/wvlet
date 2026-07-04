@@ -1,0 +1,5 @@
+-- A merge referencing an undefined stage must be reported as a user error
+flow BrokenMergeFlow = {
+  stage source_a = from [[1]] as t(id)
+  stage merged = merge source_a, missing_stage
+}
