@@ -339,11 +339,11 @@ wvlet flow run my_pipeline -w ./pipelines
 ## Stage Execution Model
 
 :::info Implementation status
-The flow executor implements this stage execution model — sequential stage execution
-with data/trigger dependencies, retries with backoff, and run-scoped per-stage
-materialization. Flow-level schedules, cross-flow dependencies, `timeout`/`heartbeat`
-enforcement, and flow operators such as `route`, `fork`, `wait`, and `activate` are parsed but
-not yet executable.
+The flow executor implements this stage execution model with a DAG scheduler — independent
+stages run in parallel (bounded by executor parallelism), retries are scheduled asynchronously
+with the configured backoff, and `timeout` bounds each stage attempt. Flow-level schedules,
+cross-flow dependencies, `heartbeat` enforcement, and flow operators such as `route`, `fork`,
+`wait`, and `activate` are parsed but not yet executable.
 :::
 
 Each stage progresses through a well-defined state machine:
