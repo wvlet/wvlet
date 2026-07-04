@@ -202,7 +202,7 @@ object QueryResultPrinter extends LogSupport:
             s"  stage ${s.name}: ${s.state.stateName} (attempts: ${s.attempts})${err}"
           }
           .mkString("\n")
-        s"flow ${f.flowName}:\n${stages}"
+        s"flow ${f.flowName} (run: ${f.runId}):\n${stages}"
 
 end QueryResultPrinter
 

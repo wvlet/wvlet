@@ -424,11 +424,60 @@ class QueryExecutor(
 
   end executeSaveToLocalFileViaDuckDB
 
+  /**
+    * Resolve a `run flow <name>` reference to its flow definition via the symbol table
+    */
+  private def resolveFlow(rf: RunFlow)(using context: Context): FlowDef =
+    context.findTermSymbolByName(rf.flowName.fullName).map(_.tree) match
+      case Some(f: FlowDef) =>
+        f
+      case _ =>
+        throw StatusCode
+          .FLOW_NOT_FOUND
+          .newException(
+            s"Flow '${rf.flowName.fullName}' is not found",
+            rf.sourceLocation(using context)
+          )
+
+  /**
+    * Execute flow runs embedded in a query plan and replace each RunFlow node with a reference to a
+    * materialized flow-run summary table (stage, state, attempts, error), so that downstream query
+    * operators and test statements work on the summary rows via regular SQL
+    */
+  private def runEmbeddedFlows(q: Relation)(using context: Context): Relation =
+    def sqlLit(s: String): String = s"'${s.replaceAll("'", "''")}'"
+
+    q.transformUp { case rf: RunFlow =>
+        val flow       = resolveFlow(rf)
+        val connector  = getDBConnector(defaultProfile)
+        val flowResult = FlowExecutor(connector, workEnv).execute(flow)
+
+        given monitor: QueryProgressMonitor = context.queryProgressMonitor
+
+        val summaryTable = s"__wv_flow_run_${flowResult.runId.toLowerCase}"
+        connector.execute(
+          s"""create or replace temp table "${summaryTable}" ("stage" varchar, "state" varchar, "attempts" bigint, "error" varchar)"""
+        )
+        if flowResult.stageResults.nonEmpty then
+          val rows = flowResult
+            .stageResults
+            .map { s =>
+              val err = s.error.map(e => sqlLit(e.getMessage)).getOrElse("null")
+              s"(${sqlLit(s.name)}, ${sqlLit(s.state.stateName)}, ${s.attempts}, ${err})"
+            }
+            .mkString(", ")
+          connector.execute(s"""insert into "${summaryTable}" values ${rows}""")
+        TableRef(DoubleQuotedIdentifier(summaryTable, rf.span), rf.span)
+      }
+      .asInstanceOf[Relation]
+
   private def executeQuery(plan: LogicalPlan)(using context: Context): QueryResult =
     trace(s"Executing query: ${plan.pp}")
     workEnv.trace(s"Executing plan: ${plan.pp}")
     plan match
-      case q: Relation =>
+      case q0: Relation =>
+        // Execute any embedded flow runs first, replacing them with their summary tables
+        val q = runEmbeddedFlows(q0)
         // Decide whether to auto-switch to DuckDB for simple local file reads
         def isRemotePath(p: String): Boolean = p.startsWith("s3://") || p.startsWith("https://")
         def prefersDuckDBForLocalRead(r: Relation): Boolean =

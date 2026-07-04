@@ -110,19 +110,29 @@ case class TestFailure(msg: String, loc: SourceLocation) extends QueryResult:
   *   The number of execution attempts made (0 for skipped/cancelled stages)
   * @param error
   *   The last error if the stage failed
+  * @param table
+  *   The run-scoped table holding the materialized stage result (for successful stages)
   */
 case class StageResult(
     name: String,
     state: StageState,
     attempts: Int,
-    error: Option[Throwable] = None
+    error: Option[Throwable] = None,
+    table: Option[String] = None
 )
 
 /**
   * The result of executing a flow with the stage execution model. The flow is considered failed
   * when any of its stages ends in the failed state
+  *
+  * @param flowName
+  *   The name of the executed flow
+  * @param runId
+  *   A unique identifier of this flow run, used to scope stage materializations
+  * @param stageResults
+  *   Per-stage results in stage definition order
   */
-case class FlowExecutionResult(flowName: String, stageResults: List[StageResult])
+case class FlowExecutionResult(flowName: String, runId: String, stageResults: List[StageResult])
     extends QueryResult:
   def stageResult(stageName: String): Option[StageResult] = stageResults.find(_.name == stageName)
 

@@ -13,6 +13,7 @@
  */
 package wvlet.lang.runner
 
+import wvlet.lang.api.Span
 import wvlet.lang.api.StatusCode
 import wvlet.lang.api.WvletLangException
 import wvlet.lang.api.v1.flow.StageState
@@ -24,6 +25,7 @@ import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
 import wvlet.lang.runner.connector.DBConnector
 import wvlet.uni.log.LogSupport
+import wvlet.uni.util.ULID
 
 import scala.util.control.NonFatal
 
@@ -151,10 +153,15 @@ class FlowExecutor(
   def cancel(): Unit = cancelled = true
 
   def execute(flow: FlowDef)(using ctx: Context): FlowExecutionResult =
-    workEnv.info(s"Executing flow ${flow.name.name}")
+    val runId = ULID.newULIDString
+    workEnv.info(s"Executing flow ${flow.name.name} (run: ${runId})")
     val stageNames = flow.stages.map(_.name.name).toSet
     var states     = flow.stages.map(s => s.name.name -> StageState.Pending).to(Map)
     val results    = List.newBuilder[StageResult]
+
+    // Stages materialize into run-scoped tables so that concurrent runs and real tables with the
+    // same name never collide
+    def tableFor(stageName: String): String = FlowExecutor.stageTableName(runId, stageName)
 
     def evalTrigger(t: StageTrigger): Boolean =
       t match
@@ -199,15 +206,15 @@ class FlowExecutor(
                 case None =>
                   upstreamStagesOf(s).forall(up => states.get(up).contains(StageState.Success))
             if ready then
-              runStage(s)
+              runStage(s, stageNames, tableFor)
             else
               workEnv.info(s"Stage ${name} is skipped")
               StageResult(name, StageState.Skipped, 0)
         states += name -> stageResult.state
         results += stageResult
       }
-    val result = FlowExecutionResult(flow.name.name, results.result())
-    workEnv.info(s"Completed flow ${flow.name.name}")
+    val result = FlowExecutionResult(flow.name.name, runId, results.result())
+    workEnv.info(s"Completed flow ${flow.name.name} (run: ${runId})")
     result
 
   end execute
@@ -216,7 +223,9 @@ class FlowExecutor(
     * Run a single stage with retries: running -> success, or running -> attempt_failed -> (retrying
     * -> running)* -> failed
     */
-  private def runStage(s: StageDef)(using ctx: Context): StageResult =
+  private def runStage(s: StageDef, stageNames: Set[String], tableFor: String => String)(using
+      ctx: Context
+  ): StageResult =
     val name        = s.name.name
     val config      = StageExecutionConfig.fromConfigItems(s.config)
     val maxAttempts = config.retries + 1
@@ -230,7 +239,7 @@ class FlowExecutor(
       attempts += 1
       workEnv.info(s"Running stage ${name} (attempt ${attempts}/${maxAttempts})")
       try
-        materializeStage(s)
+        materializeStage(s, stageNames, tableFor)
         state = StageState.Success
       catch
         case e: WvletLangException if e.statusCode == StatusCode.NOT_IMPLEMENTED =>
@@ -258,14 +267,22 @@ class FlowExecutor(
         lastError
       else
         None
+      ,
+      if state == StageState.Success then
+        Some(tableFor(name))
+      else
+        None
     )
 
   end runStage
 
   /**
-    * Execute the stage body and materialize the result as a temporary table named after the stage
+    * Execute the stage body and materialize the result as a run-scoped temporary table. References
+    * to other stages in the body are rewritten to their run-scoped table names
     */
-  private def materializeStage(s: StageDef)(using ctx: Context): Unit =
+  private def materializeStage(s: StageDef, stageNames: Set[String], tableFor: String => String)(
+      using ctx: Context
+  ): Unit =
     val body = s
       .body
       .getOrElse(
@@ -286,14 +303,22 @@ class FlowExecutor(
           )
     }
 
-    // Rewrite merge (fan-in) into union all over the materialized stage tables
+    def stageTableRef(stageName: String, span: Span): Relation = TableRef(
+      DoubleQuotedIdentifier(tableFor(stageName), span),
+      span
+    )
+
+    // Rewrite stage references to their run-scoped tables, and merge (fan-in) into union all
     val executable = body
-      .transformUp { case m: FlowMerge =>
-        m.sources
-          .map(stageTableRef(_, m))
-          .reduceLeft[Relation] { (l, r) =>
-            Union(l, r, isDistinct = false, m.span)
-          }
+      .transformUp {
+        case t: TableRef if stageNames.contains(t.name.fullName) =>
+          stageTableRef(t.name.fullName, t.span)
+        case m: FlowMerge =>
+          m.sources
+            .map(src => stageTableRef(src.fullName, src.span))
+            .reduceLeft[Relation] { (l, r) =>
+              Union(l, r, isDistinct = false, m.span)
+            }
       }
       .asInstanceOf[Relation]
 
@@ -301,16 +326,16 @@ class FlowExecutor(
 
     given QueryProgressMonitor = ctx.queryProgressMonitor
 
-    // Quote the table name as stage names may collide with reserved SQL keywords (e.g. primary)
-    connector.execute(s"""create or replace temp table "${s.name.name}" as\n${sql}""")
+    // Quote the table name: it contains a ULID and stage names may collide with SQL keywords
+    val ddl = s"""create or replace temp table "${tableFor(s.name.name)}" as\n${sql}"""
+    debug(s"Materializing stage ${s.name.name}:\n${ddl}")
+    connector.execute(ddl)
 
   end materializeStage
 
-  private def stageTableRef(src: NameExpr, m: FlowMerge): Relation =
-    src match
-      case q: QualifiedName =>
-        TableRef(q, src.span)
-      case other =>
-        TableRef(UnquotedIdentifier(other.fullName, other.span), other.span)
-
 end FlowExecutor
+
+object FlowExecutor:
+  /** The run-scoped table name holding the materialized result of a stage */
+  def stageTableName(runId: String, stageName: String): String =
+    s"__wv_flow_${runId.toLowerCase}_${stageName}"

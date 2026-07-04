@@ -16,6 +16,7 @@ package wvlet.lang.compiler.analyzer
 import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.compiler.Context
 import wvlet.lang.compiler.Phase
+import wvlet.lang.model.plan.FlowDef
 import wvlet.lang.model.plan.ModelDef
 import wvlet.lang.model.plan.TypeDef
 
@@ -51,6 +52,10 @@ class RemoveUnusedQueries extends Phase("check-unused"):
           case p: TypeDef =>
             hasDef = true
           case m: ModelDef =>
+            hasDef = true
+          case f: FlowDef =>
+            // Flow definitions must remain compilable so they can be run by name
+            // (run flow <name> statements or the wvlet flow CLI)
             hasDef = true
         }
       if hasDef then

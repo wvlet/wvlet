@@ -366,6 +366,21 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
   }
 
   /**
+    * Parse a run-flow statement: `run flow Name`
+    *
+    * The statement produces a flow-run summary relation (one row per stage), so it can be followed
+    * by query operators or test statements like a regular query
+    */
+  def runFlowStatement(): LogicalPlan = node {
+    val t = consume(WvletToken.RUN)
+    consume(WvletToken.FLOW)
+    val name = identifier()
+    val r    = RunFlow(name, spanFrom(t))
+    val q    = queryBlock(r)
+    Query(q, spanFrom(t))
+  }
+
+  /**
     * Parse a flow definition: `flow Name(params) = { stage ... }`
     *
     * Supports:
@@ -804,6 +819,8 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         defStatement()
       case WvletToken.FLOW =>
         flowDef()
+      case WvletToken.RUN =>
+        runFlowStatement()
       case WvletToken.VAL =>
         valDef()
       case WvletToken.SHOW =>

@@ -1,0 +1,70 @@
+-- Spec-driven tests for flow execution: `run flow <name>` produces a flow-run summary
+-- relation (stage, state, attempts, error) that can be piped and verified with test statements
+
+flow ExecPipeline = {
+  stage src = from [[1, 'a'], [2, 'b'], [3, 'a']] as t(id, name)
+  stage filtered = from src | where name = 'a'
+  stage output = from filtered | select id
+}
+
+-- All stages of a healthy flow succeed
+run flow ExecPipeline
+test _.size should be 3
+test _.columns should contain 'stage'
+test _.columns should contain 'state'
+test _.columns should contain 'attempts'
+;
+
+-- The summary can be filtered with regular query operators
+run flow ExecPipeline
+| where state = 'success'
+test _.size should be 3
+;
+
+flow FallbackPipeline = {
+  stage broken = from nonexistent_table_xyz
+  stage fallback if broken.failed = from [[0]] as t(id)
+  stage downstream = from broken | select *
+}
+
+-- A failing stage triggers its fallback and skips downstream stages
+run flow FallbackPipeline
+| select stage, state
+test _.output should be """
+┌────────────┬─────────┐
+│   stage    │  state  │
+│   string   │ string  │
+├────────────┼─────────┤
+│ broken     │ failed  │
+│ fallback   │ success │
+│ downstream │ skipped │
+├────────────┴─────────┤
+│ 3 rows               │
+└──────────────────────┘
+"""
+;
+
+flow RetryPipeline = {
+  stage flaky with {
+    retries: 2
+    retry_delay: 1ms
+  } = from nonexistent_table_xyz
+}
+
+-- Retries are exhausted before reaching the failed state
+run flow RetryPipeline
+| where state = 'failed' and attempts = 3
+test _.size should be 1
+;
+
+flow MergePipeline = {
+  stage source_a = from [[1], [2]] as t(id)
+  stage source_b = from [[3]] as t(id)
+  stage merged = merge source_a, source_b
+}
+
+-- Merge (fan-in) stages run with union-all semantics
+run flow MergePipeline
+| where state = 'success'
+test _.size should be 3
+;

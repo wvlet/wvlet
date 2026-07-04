@@ -181,6 +181,27 @@ case class PartialQuerySymbolInfo(
 ) extends SymbolInfo(SymbolType.PartialQueryDef, owner, symbol, name, DataType.UnknownType):
   override def toString: String = s"partial ${owner}.${name}(${params.map(_.name).mkString(", ")})"
 
+/**
+  * Symbol info for flow definitions. Flows are orchestration containers of stages that are
+  * triggered explicitly (run flow), by schedules, or by dependencies.
+  *
+  * @param owner
+  *   The owning symbol (typically package)
+  * @param symbol
+  *   The symbol for this flow
+  * @param name
+  *   The name of the flow
+  * @param compilationUnit
+  *   The compilation unit where this flow is defined
+  */
+case class FlowSymbolInfo(
+    override val owner: Symbol,
+    override val symbol: Symbol,
+    override val name: Name,
+    override val compilationUnit: CompilationUnit
+) extends SymbolInfo(SymbolType.FlowDef, owner, symbol, name, DataType.UnknownType):
+  override def toString: String = s"flow ${owner}.${name}"
+
 case class ValSymbolInfo(
     override val owner: Symbol,
     override val symbol: Symbol,
