@@ -59,7 +59,7 @@ class FlowSchedulerTest extends UniTest:
 
     var now       = Instant.parse("2026-01-01T00:00:30Z")
     val triggered = ListBuffer.empty[String]
-    val scheduler = FlowScheduler(List(sf), f => triggered += f.name.name, () => now)
+    val scheduler = FlowScheduler(List(sf), (f, _) => triggered += f.name.name, () => now)
 
     // The first evaluation computes the next fire (00:01:00) without triggering
     val delay = scheduler.tick()
@@ -89,7 +89,7 @@ class FlowSchedulerTest extends UniTest:
     var attempts  = 0
     val scheduler = FlowScheduler(
       List(sf),
-      _ =>
+      (_, _) =>
         attempts += 1
         throw IllegalStateException("boom")
       ,
@@ -115,14 +115,20 @@ class FlowSchedulerTest extends UniTest:
 
     val now       = Instant.parse("2026-01-01T00:05:42Z")
     val triggered = ListBuffer.empty[String]
+    val fireTimes = ListBuffer.empty[String]
     val scheduler = FlowScheduler(
       List(matching, notMatching),
-      f => triggered += f.name.name,
+      (f, fireTime) =>
+        triggered += f.name.name
+        fireTimes += fireTime.toInstant.toString
+      ,
       () => now
     )
     // Both entries reference the same flow; only the schedule matching 00:05 fires
     scheduler.runOnce() shouldBe List("OnceFlow")
     triggered.size shouldBe 1
+    // The fire time is the evaluated minute, not the exact evaluation instant
+    fireTimes.toList shouldBe List("2026-01-01T00:05:00Z")
   }
 
   test("catch up flows whose latest scheduled fire was missed") {
@@ -133,7 +139,15 @@ class FlowSchedulerTest extends UniTest:
 
     val now       = Instant.parse("2026-01-01T10:00:00Z")
     val triggered = ListBuffer.empty[String]
-    val scheduler = FlowScheduler(List(sf), f => triggered += f.name.name, () => now)
+    val fireTimes = ListBuffer.empty[String]
+    val scheduler = FlowScheduler(
+      List(sf),
+      (f, fireTime) =>
+        triggered += f.name.name
+        fireTimes += fireTime.toInstant.toString
+      ,
+      () => now
+    )
 
     val prevFire = Instant.parse("2026-01-01T02:00:00Z").toEpochMilli
 
@@ -144,6 +158,8 @@ class FlowSchedulerTest extends UniTest:
     // No run was ever recorded: the fire was missed as well
     scheduler.catchUp(_ => None) shouldBe List("CatchUpFlow")
     triggered.size shouldBe 2
+    // Catch-up runs receive the missed fire time, not the current time
+    fireTimes.toList shouldBe List("2026-01-01T02:00:00Z", "2026-01-01T02:00:00Z")
   }
 
   test("reload schedules keeping pending fire times of unchanged flows") {
@@ -158,7 +174,7 @@ class FlowSchedulerTest extends UniTest:
 
     var now       = Instant.parse("2026-01-01T00:00:30Z")
     val triggered = ListBuffer.empty[String]
-    val scheduler = FlowScheduler(List(sfA), f => triggered += f.name.name, () => now)
+    val scheduler = FlowScheduler(List(sfA), (f, _) => triggered += f.name.name, () => now)
 
     // Initialize the pending fire of A (00:01:00), then add B via reload
     scheduler.tick()

@@ -62,6 +62,50 @@ class WvletFlowCommandTest extends UniTest:
     e.getMessage shouldContain "target_name"
   }
 
+  test("backfill a scheduled flow with one run per schedule window") {
+    import wvlet.lang.compiler.WorkEnv
+    import wvlet.lang.runner.FlowRunRegistry
+    // A separate folder: a flow with a schedule: config would keep the plain `flow scheduler`
+    // daemon test from exiting immediately
+    val dir = Files.createTempDirectory("wvlet-flow-backfill")
+    Files.writeString(
+      dir.resolve("daily.wv"),
+      """flow DailyPipeline with { schedule: cron('0 0 * * *') } = {
+        |  stage src = from [['2026-07-01'], ['2026-07-02'], ['2026-07-03']] as t(d)
+        |  stage window = from src | where d = run_date
+        |}
+        |""".stripMargin
+    )
+    WvletMain.main(
+      Array(
+        "flow",
+        "backfill",
+        "DailyPipeline",
+        "--from",
+        "2026-07-01",
+        "--to",
+        "2026-07-03",
+        "-w",
+        dir.toString
+      )
+    )
+    val runs = FlowRunRegistry.forWorkEnv(WorkEnv(dir.toString)).list()
+    runs.size shouldBe 3
+    runs.forall(_.state == "success") shouldBe true
+    // Each window materialized exactly its own date partition
+    runs.forall(_.stages.forall(_.state == "success")) shouldBe true
+  }
+
+  test("reject backfill of a flow without a schedule") {
+    val e = intercept[WvletLangException] {
+      WvletMain.main(
+        Array("flow", "backfill", "SamplePipeline", "--from", "2026-07-01", "-w", flowDir)
+      )
+    }
+    e.statusCode shouldBe StatusCode.INVALID_ARGUMENT
+    e.getMessage shouldContain "schedule"
+  }
+
   test("reject a flow argument that is not a plain flow call") {
     val e = intercept[WvletLangException] {
       WvletMain.main(

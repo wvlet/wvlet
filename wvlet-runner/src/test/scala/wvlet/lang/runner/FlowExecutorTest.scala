@@ -61,13 +61,15 @@ class FlowExecutorTest extends UniTest:
       stageRunner: Option[FlowStageRunner] = None,
       retryScheduler: Option[(Long, () => Unit) => Unit] = None,
       registry: Option[FlowRunStore] = None,
-      args: List[FunctionArg] = Nil
+      args: List[FunctionArg] = Nil,
+      runTime: Option[java.time.ZonedDateTime] = None
   ): FlowExecutionResult =
     val (flow, ctx) = compileFlow(wv)
     FlowExecutor(connector, workEnv, config, stageRunner, retryScheduler, registry).execute(
       flow,
       resumeFrom = None,
-      args = args
+      args = args,
+      runTime = runTime
     )(using ctx)
 
   /** Compile a unit possibly containing multiple flows and return them by name */
@@ -1249,6 +1251,62 @@ class FlowExecutorTest extends UniTest:
     result.isSuccess shouldBe true
     countStageRows(result, "adult") shouldBe 2L
     countStageRows(result, "minor") shouldBe 1L
+  }
+
+  // --- Implicit run_time / run_date bindings ---
+
+  private val utcRunTime = java
+    .time
+    .ZonedDateTime
+    .of(2026, 7, 3, 4, 5, 0, 0, java.time.ZoneId.of("UTC"))
+
+  test("bind the implicit run_date of the run") {
+    val result = runFlow(
+      """flow RunDateFlow = {
+        |  stage src = from [[1, '2026-07-03'], [2, '2026-07-04']] as t(id, d)
+        |  stage filtered = from src | where d = run_date
+        |}""".stripMargin,
+      runTime = Some(utcRunTime)
+    )
+    result.isSuccess shouldBe true
+    countStageRows(result, "filtered") shouldBe 1L
+  }
+
+  test("bind the implicit run_time as a timestamp") {
+    val result = runFlow(
+      """flow RunTimeFlow = {
+        |  stage src = from [[1]] as t(id)
+        |  stage stamped = from src | select id, ts = run_time
+        |}""".stripMargin,
+      runTime = Some(utcRunTime)
+    )
+    result.isSuccess shouldBe true
+    val table = result.stageResult("stamped").flatMap(_.table).get
+    val ts    =
+      connector.runQuery(s"""select cast(ts as varchar) from "${table}"""") { rs =>
+        rs.next()
+        rs.getString(1)
+      }
+    ts shouldBe "2026-07-03 04:05:00"
+  }
+
+  test("prefer a declared flow parameter over the implicit run binding") {
+    val result = runFlow(
+      """flow ShadowedRunDateFlow(run_date: string) = {
+        |  stage src = from [[1, '2026-07-03'], [2, '2026-07-04']] as t(id, d)
+        |  stage filtered = from src | where d = run_date
+        |}""".stripMargin,
+      args = List(namedArg("run_date", str("2026-07-04"))),
+      runTime = Some(utcRunTime)
+    )
+    result.isSuccess shouldBe true
+    val table = result.stageResult("filtered").flatMap(_.table).get
+    val id    =
+      connector.runQuery(s"""select id from "${table}"""") { rs =>
+        rs.next()
+        rs.getLong(1)
+      }
+    id shouldBe 2L
   }
 
 end FlowExecutorTest

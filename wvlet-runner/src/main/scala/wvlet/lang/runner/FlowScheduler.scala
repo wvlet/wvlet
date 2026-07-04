@@ -109,13 +109,14 @@ case class ScheduledFlow(flow: FlowDef, cron: CronSchedule, zone: ZoneId):
   * @param scheduled
   *   The flows with cron schedules to evaluate
   * @param trigger
-  *   Invoked for each flow whose schedule is due
+  *   Invoked for each flow whose schedule is due, with the schedule fire time of the run (bound as
+  *   the `run_time` of the triggered run)
   * @param clock
   *   Time source (injectable for testing)
   */
 class FlowScheduler(
     scheduled: List[ScheduledFlow],
-    trigger: FlowDef => Unit,
+    trigger: (FlowDef, ZonedDateTime) => Unit,
     clock: () => Instant = () => Instant.now()
 ) extends LogSupport:
 
@@ -132,10 +133,10 @@ class FlowScheduler(
   /** The currently scheduled flows (replaced by [[reload]]) */
   def scheduledFlows: List[ScheduledFlow] = current
 
-  private def fire(sf: ScheduledFlow, reason: String): Unit =
+  private def fire(sf: ScheduledFlow, fireTime: ZonedDateTime, reason: String): Unit =
     info(s"Triggering scheduled flow ${sf.name} (${reason})")
     try
-      trigger(sf.flow)
+      trigger(sf.flow, fireTime)
     catch
       case NonFatal(e) =>
         warn(s"Failed to trigger flow ${sf.name}: ${e.getMessage}")
@@ -150,7 +151,7 @@ class FlowScheduler(
       val zonedNow = now.atZone(sf.zone)
       val due      = nextFire.getOrElseUpdate(sf.name, sf.cron.nextAfter(zonedNow))
       if !due.toInstant.isAfter(now) then
-        fire(sf, s"due: ${due}")
+        fire(sf, due, s"due: ${due}")
         nextFire(sf.name) = sf.cron.nextAfter(zonedNow)
     }
     val nowMillis = clock().toEpochMilli
@@ -192,7 +193,9 @@ class FlowScheduler(
   def runOnce(): List[String] = synchronized {
     val now   = clock()
     val fired = current.filter(sf => sf.cron.matches(now.atZone(sf.zone)))
-    fired.foreach(sf => fire(sf, "once"))
+    fired.foreach { sf =>
+      fire(sf, now.atZone(sf.zone).truncatedTo(java.time.temporal.ChronoUnit.MINUTES), "once")
+    }
     fired.map(_.name)
   }
 
@@ -203,17 +206,22 @@ class FlowScheduler(
     */
   def catchUp(lastRunStartedAt: String => Option[Long]): List[String] = synchronized {
     val now    = clock()
-    val missed = current.filter { sf =>
+    val missed = current.flatMap { sf =>
       try
         val prev = sf.cron.prevAtOrBefore(now.atZone(sf.zone))
-        lastRunStartedAt(sf.name).forall(_ < prev.toInstant.toEpochMilli)
+        if lastRunStartedAt(sf.name).forall(_ < prev.toInstant.toEpochMilli) then
+          Some((sf, prev))
+        else
+          None
       catch
         case NonFatal(_) =>
           // The cron expression has no fire time within the scan window: nothing was missed
-          false
+          None
     }
-    missed.foreach(sf => fire(sf, "catch-up"))
-    missed.map(_.name)
+    // The missed fire time becomes the run_time of the catch-up run, so that the run computes
+    // the window it originally missed instead of the current one
+    missed.foreach((sf, prev) => fire(sf, prev, s"catch-up: ${prev}"))
+    missed.map(_._1.name)
   }
 
   /** Run the scheduler loop until stop() is called */

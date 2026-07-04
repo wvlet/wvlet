@@ -441,9 +441,11 @@ Two flags cover scripting and missed windows:
 - `--once`: evaluate the schedules once against the current minute, run the matching flows,
   and exit. Use this to drive wvlet schedules from an external scheduler such as system cron.
 - `--catchup`: on startup, trigger every scheduled flow whose most recent fire time has no
-  recorded run at or after it (e.g. the fire was missed while the daemon was down). Without
-  this flag, missed windows are skipped silently. Combine with `--once` for a one-shot
-  catch-up run.
+  recorded run at or after it (e.g. the fire was missed while the daemon was down). The
+  catch-up run binds the **missed** fire time as its `run_time`/`run_date` (see
+  [Run Time](#run-time-run_time-and-run_date)), so the run computes the window it originally
+  missed. Without this flag, missed windows are skipped silently. Combine with `--once` for a
+  one-shot catch-up run.
 
 `concurrency: N` is enforced through the run store whenever a flow starts (scheduler, CLI, or
 `run flow`): a run atomically claims one of the flow's N slots and is recorded as `skipped`
@@ -494,6 +496,45 @@ run flow customer_pipeline(segment = 'premium', min_score = 50)
 Flow identity is by name only: `concurrency:` limits and cross-flow dependencies
 (`depends on X`, `if X.failed`) treat every run of a flow the same, regardless of the
 arguments it was run with.
+
+#### Run Time: run_time and run_date
+
+Every run also binds two implicit values that stage bodies can reference like parameters:
+
+- `run_time`: the logical time of the run as a timestamp
+- `run_date`: the same time as a `'yyyy-MM-dd'` string
+
+For scheduler-triggered runs, the logical time is the **schedule fire time** (a `--catchup`
+run receives the fire time it missed, not the current time), so a daily flow can scope each
+run to its own window:
+
+```wvlet
+flow daily_sales with { schedule: cron('0 2 * * *') } = {
+  stage src = from sales | where sales_date = run_date
+  stage report = from src | group by region | agg _.sum(amount)
+}
+```
+
+Manual runs (`run flow`, `wvlet flow run`) bind the current time. A declared flow parameter
+named `run_time` or `run_date` takes precedence over the implicit binding.
+
+#### Backfill
+
+`wvlet flow backfill` re-runs a scheduled flow once per schedule window in a date range,
+binding each window's fire time as `run_time`/`run_date`:
+
+```bash
+# One run per day: 2026-07-01, 2026-07-02, ..., 2026-07-31
+wvlet flow backfill daily_sales --from 2026-07-01 --to 2026-07-31 -w ./pipelines
+
+# Arguments combine with windows; --to defaults to the current time
+wvlet flow backfill "daily_sales(region = 'us')" --from 2026-07-01 -w ./pipelines
+```
+
+Windows run **sequentially in chronological order**, and the backfill stops at the first
+failed run (later windows often depend on earlier ones); the printed message shows the
+`--from` value to resume with after fixing the failure. The flow must declare a
+`schedule: cron(...)` config, which defines the windows.
 
 ### wvlet flow CLI
 
