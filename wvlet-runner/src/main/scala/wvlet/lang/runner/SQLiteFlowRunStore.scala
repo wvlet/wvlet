@@ -59,7 +59,7 @@ class SQLiteFlowRunStore(dbPath: Path) extends FlowRunStore with LogSupport:
     // Migrate databases created before these columns were introduced
     val existingColumns =
       Using.resource(stmt.executeQuery("pragma table_info(runs)")) { rs =>
-        Iterator.continually(rs).takeWhile(_.next()).map(_.getString("name")).toSet
+        Iterator.continually(rs).takeWhile(_.next()).map(_.getString("name").toLowerCase).toSet
       }
     List("lease_expires_at" -> "integer", "args" -> "text", "run_time" -> "integer").foreach {
       (column, sqlType) =>

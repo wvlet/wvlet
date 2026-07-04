@@ -26,6 +26,7 @@ import wvlet.lang.compiler.transform.FlowParams
 import wvlet.lang.model.DataType
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
+import wvlet.lang.runner.connector.CancellableStatement
 import wvlet.lang.runner.connector.DBConnector
 import wvlet.uni.log.LogSupport
 import wvlet.uni.util.ULID
@@ -38,7 +39,6 @@ import java.util.concurrent.ThreadFactory
 import java.util.concurrent.TimeUnit
 import scala.collection.mutable
 import scala.jdk.CollectionConverters.*
-import scala.util.Using
 import scala.util.control.NonFatal
 
 /**
@@ -402,7 +402,7 @@ class FlowExecutor(
     // In-flight attempt tracking, keyed by (stage, attempt). Worker threads register their
     // active SQL statement while it executes; the scheduler thread cancels statements and
     // interrupts workers on timeout or flow cancellation
-    val activeStatements = ConcurrentHashMap[(String, Int), java.sql.Statement]()
+    val activeStatements = ConcurrentHashMap[(String, Int), CancellableStatement]()
     val activeFutures    = ConcurrentHashMap[(String, Int), java.util.concurrent.Future[?]]()
     // Liveness of in-flight attempts: last heartbeat per attempt, plus the periodic stall
     // checks scheduled for stages with a heartbeat: config
@@ -982,25 +982,25 @@ class FlowExecutor(
       val summaryTable              = s"__wv_flow_notify_${result.runId.toLowerCase}"
       def sqlLit(s: String): String = s"'${s.replaceAll("'", "''")}'"
       try
-        connector.withSession { conn =>
-          Using.resource(conn.createStatement()) { stmt =>
-            stmt.execute(
-              s"""create or replace table "${summaryTable}" ("flow" varchar, "run_id" varchar, "stage" varchar, "state" varchar, "attempts" bigint, "error" varchar)"""
-            )
-            if result.stageResults.nonEmpty then
-              val rows = result
-                .stageResults
-                .map { s =>
-                  // Exceptions like NullPointerException may carry a null message
-                  val err = s.error.flatMap(e => Option(e.getMessage)).map(sqlLit).getOrElse("null")
-                  s"(${sqlLit(result.flowName)}, ${sqlLit(result.runId)}, ${sqlLit(
-                      s.name
-                    )}, ${sqlLit(s.state.stateName)}, ${s.attempts}, ${err})"
-                }
-                .mkString(", ")
-              stmt.execute(s"""insert into "${summaryTable}" values ${rows}""")
-          }
-        }
+        val summaryColumns =
+          """("flow" varchar, "run_id" varchar, "stage" varchar, "state" varchar, "attempts" bigint, "error" varchar)"""
+        if connector.dbType.supportCreateOrReplace then
+          connector.execute(s"""create or replace table "${summaryTable}" ${summaryColumns}""")
+        else
+          connector.execute(s"""drop table if exists "${summaryTable}"""")
+          connector.execute(s"""create table "${summaryTable}" ${summaryColumns}""")
+        if result.stageResults.nonEmpty then
+          val rows = result
+            .stageResults
+            .map { s =>
+              // Exceptions like NullPointerException may carry a null message
+              val err = s.error.flatMap(e => Option(e.getMessage)).map(sqlLit).getOrElse("null")
+              s"(${sqlLit(result.flowName)}, ${sqlLit(result.runId)}, ${sqlLit(s.name)}, ${sqlLit(
+                  s.state.stateName
+                )}, ${s.attempts}, ${err})"
+            }
+            .mkString(", ")
+          connector.execute(s"""insert into "${summaryTable}" values ${rows}""")
         hooks.foreach { spec =>
           try
             activationSinks.find(_.name == spec.target) match
@@ -1037,11 +1037,7 @@ class FlowExecutor(
           )
       finally
         try
-          connector.withSession { conn =>
-            Using.resource(conn.createStatement()) { stmt =>
-              stmt.execute(s"""drop table if exists "${summaryTable}"""")
-            }
-          }
+          connector.execute(s"""drop table if exists "${summaryTable}"""")
         catch
           case NonFatal(_) =>
         end try
@@ -1061,7 +1057,7 @@ class FlowExecutor(
       stageNames: Set[String],
       tableFor: String => String,
       routeFilters: Map[(String, String), Expression],
-      registerStatement: java.sql.Statement => Unit,
+      registerStatement: CancellableStatement => Unit,
       deregisterStatement: () => Unit
   )(using ctx: Context): Unit =
     val body = ls
@@ -1105,18 +1101,20 @@ class FlowExecutor(
 
     // Quote the table name: it contains a ULID and stage names may collide with SQL keywords.
     // The table is a regular (non-temp) table because parallel stages materialize on separate
-    // sessions, and temp tables are session-scoped
-    val ddl = s"""create or replace table "${tableFor(ls.name)}" as\n${sql}"""
+    // sessions, and temp tables are session-scoped. Engines without `create or replace table`
+    // (e.g. Trino) get an explicit drop first: the run-scoped name is unique per run, so the
+    // drop only matters for re-executed attempts of this stage
+    val target = s""""${tableFor(ls.name)}""""
+    val ddl    =
+      if connector.dbType.supportCreateOrReplace then
+        s"""create or replace table ${target} as\n${sql}"""
+      else
+        connector.execute(s"drop table if exists ${target}")
+        s"""create table ${target} as\n${sql}"""
     debug(s"Materializing stage ${ls.name}:\n${ddl}")
-    connector.withSession { conn =>
-      Using.resource(conn.createStatement()) { stmt =>
-        // Expose the statement to the scheduler so that a timeout or cancellation can stop
-        // it server-side while it is executing
-        registerStatement(stmt)
-        try stmt.execute(ddl)
-        finally deregisterStatement()
-      }
-    }
+    // The registered handle lets the scheduler stop the statement server-side on a timeout
+    // or cancellation while it is executing
+    connector.executeCancellable(ddl, registerStatement, deregisterStatement)
 
   end materializeStage
 
@@ -1200,16 +1198,12 @@ object FlowExecutor:
 
   /** Drop the run-scoped tables of the given stages (best-effort cleanup) */
   def dropRunTables(connector: DBConnector, runId: String, stageNames: Seq[String]): Unit =
-    connector.withSession { conn =>
-      Using.resource(conn.createStatement()) { stmt =>
-        stageNames.foreach { name =>
-          try
-            stmt.execute(s"""drop table if exists "${stageTableName(runId, name)}"""")
-          catch
-            case NonFatal(e) =>
-          // best-effort cleanup
-        }
-      }
+    stageNames.foreach { name =>
+      try
+        connector.execute(s"""drop table if exists "${stageTableName(runId, name)}"""")
+      catch
+        case NonFatal(e) =>
+      // best-effort cleanup
     }
 
   private enum FlowEvent:
