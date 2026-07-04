@@ -26,8 +26,10 @@ Wvlet provides `flow` and `stage` constructs for defining data pipelines with or
 - [Configuration Blocks](#configuration-blocks)
 - [Duration Literals](#duration-literals)
 - [Stage Triggers](#stage-triggers)
+- [Flow Operators](#flow-operators)
 - [Flow Dependencies](#flow-dependencies)
 - [Flow Scheduling](#flow-scheduling)
+- [Running Flows](#running-flows)
 - [Stage Execution Model](#stage-execution-model)
 - [Complete Examples](#complete-examples)
 
@@ -261,6 +263,92 @@ flow complex_triggers = {
 }
 ```
 
+## Flow Operators
+
+Stage bodies can use flow operators in addition to regular query operators.
+
+### Conditional Routing with route
+
+`route` sends rows to different target stages based on conditions. Each target stage reads
+the routing stage and receives only its matching rows. Targets may reference stages defined
+later in the flow:
+
+```wvlet
+flow conditional_flow = {
+  stage check = from users | route {
+    case _.age > 18 -> adult
+    else -> minor
+  }
+  stage adult = from check | select name, 'adult' as category
+  stage minor = from check | select name, 'minor' as category
+}
+```
+
+A percentage-based form, `route by hash(user_id) { case 50 -> variant_a ... }`, splits rows
+deterministically for A/B testing.
+
+### Parallel Branches with fork
+
+`fork` defines nested stages that run as parallel branches of the flow:
+
+```wvlet
+flow notification_flow = {
+  stage entry = from users
+  stage parallel = from entry | fork {
+    stage email = from entry | activate('email')
+    stage sms = from entry | activate('sms')
+  }
+}
+```
+
+### Delayed Execution with wait
+
+`wait('<duration>')` delays the materialization of a stage:
+
+```wvlet
+stage delayed = from entry | wait('7 days')
+```
+
+### Delivering Results with activate
+
+`activate('<target>', param: value, ...)` delivers the materialized stage output to an
+external target. Two sinks are built in:
+
+- `activate('file', path: 'out.csv')` exports to a local file. The format comes from the
+  path extension or a `format:` parameter (csv, parquet, or json)
+- `activate('webhook', url: 'https://...')` posts the rows to an HTTP endpoint as a JSON
+  array, or as newline-delimited JSON with `format: 'ndjson'`. At most `max_rows:` rows
+  (1000 by default) are sent
+
+A sink failure fails the stage attempt and follows the stage's retry policy; targets with no
+registered sink log the delivery instead of failing. Custom sinks can be plugged in from
+external modules via the Java ServiceLoader (`wvlet.lang.runner.ActivationSink`).
+
+### Continuing in Another Flow with ->
+
+`-> AnotherFlow` transfers control to another flow: when the jumping stage succeeds, the
+target flow starts as a new run after the current flow completes. Jump chains stop at a
+depth limit, so mutually referencing flows cannot loop forever:
+
+```wvlet
+flow main_flow = {
+  stage check = from users | route {
+    case _.active -> active_path
+    else -> inactive_path
+  }
+  stage active_path = from check | activate('welcome')
+  stage inactive_path = from check | -> RetentionFlow
+}
+```
+
+### Explicit Termination with end
+
+`end()` marks an explicit terminal stage and passes its input through unchanged:
+
+```wvlet
+stage done = from send | end()
+```
+
 ## Flow Dependencies
 
 ### Success Dependencies
@@ -437,31 +525,11 @@ is observed:
 ## Stage Execution Model
 
 :::info Implementation status
-The flow executor implements this stage execution model with a DAG scheduler — independent
-stages run in parallel (bounded by executor parallelism), retries are scheduled asynchronously
-with the configured backoff, and `timeout` bounds each stage attempt — on expiry (or flow
-cancellation) the running SQL statement is cancelled server-side and its worker slot is freed
-immediately. Flow operators are
-lowered before scheduling: `route` cases become filter predicates on target stages, `fork`
-stages are flattened into the DAG, `wait` delays materialization, and `end` is a pass-through.
-`activate('target', param: value, ...)` delivers the materialized stage output to the
-activation sink registered for the target name — local file export
-(`activate('file', path: 'out.csv')`, with csv/parquet/json formats) and webhook delivery
-(`activate('webhook', url: 'https://...')`, posting rows as a JSON array or `format: 'ndjson'`,
-bounded by `max_rows:`, 1000 by default) are built in; external modules can register
-additional sinks through the Java ServiceLoader
-(`META-INF/services/wvlet.lang.runner.ActivationSink`), which take precedence over built-in
-target names. Unknown targets fall
-back to a logging stub, and a sink failure fails the attempt and follows the stage's retry
-policy. Flow runs are recorded
-in a local run registry, and cross-flow dependencies are evaluated against it. A `-> Flow`
-jump is a control-only transfer: when the jumping stage succeeds, the target flow is triggered
-as a new run (with its own run id) after the current flow completes, and jump chains are
-bounded by a configurable depth limit to terminate cycles. Flow-level cron schedules are
-evaluated by the `wvlet flow scheduler` daemon, and `concurrency:` limits are enforced through
-run-slot claims in the run store. A `heartbeat:` config bounds attempt liveness: an attempt
-that produces no heartbeat within the interval is treated as a retryable failure like a
-timeout, where an executing SQL statement counts as alive.
+The flow executor fully implements this model: independent stages run in parallel on a DAG
+scheduler, failed attempts retry with the configured backoff, and `timeout:` / `heartbeat:`
+bound each attempt, cancelling a running SQL statement server-side on expiry. See
+[Flow Operators](#flow-operators), [Flow Scheduling](#flow-scheduling), and
+[Running Flows](#running-flows) for the features built on top of it.
 :::
 
 Each stage progresses through a well-defined state machine:
