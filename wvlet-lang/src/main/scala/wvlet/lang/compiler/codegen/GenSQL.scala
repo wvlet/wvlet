@@ -417,6 +417,9 @@ object GenSQL extends Phase("generate-sql"):
           ctx.sourceLocationAt(m.span)
         )
 
+    // Force a pending lazy completion so that sym.tree is the typed model definition, with
+    // nested model references already resolved to concrete ModelScans
+    sym.symbolInfo
     sym.tree match
       case md: ModelDef =>
         if m.modelArgs.size > md.params.size then
@@ -450,12 +453,8 @@ object GenSQL extends Phase("generate-sql"):
             newCtx.scope.add(argName, argSym)
           }
 
-        // Resolve the model body first so that nested model references are concrete ModelScans
-        // regardless of how far the defining unit was compiled, then substitute the model
-        // arguments and expand those nested references
         // TODO: How to propagate comments in the model Query body?
-        val resolvedBody = Typer.resolveRelation(md.child.body)(using newCtx)
-        expandRelation(resolvedBody)(using newCtx)
+        expandRelation(md.child.body)(using newCtx)
       case other =>
         warn(s"Unknown model tree for ${m.name}: ${other}")
         m
