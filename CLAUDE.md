@@ -295,6 +295,7 @@ For error reporting, use WvletLangException and StatusCode enum. If necessary er
 
 ## Debugging
 - To monitor debug logs, use `-l debug` option. For example, ./sbt "langJVM/testOnly *Test -- -l debug"
+- After adding a new `@command` method to a CLI command class (e.g. WvletFlowCommand), run `./sbt cli/clean` once: the `Launcher.of/addModule` macro in WvletMain.scala is not re-expanded by incremental compilation, so the new subcommand fails at runtime with "Unknown command" until a clean build (touching the file does not help — Zinc hashes content)
 
 ## Testing Notes
 - Use `shouldContain "(keyword)"` for checking string fragment in UniTest
