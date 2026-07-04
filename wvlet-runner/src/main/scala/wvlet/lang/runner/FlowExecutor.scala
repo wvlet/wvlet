@@ -303,8 +303,11 @@ class FlowExecutor(
       runTime: Option[ZonedDateTime] = None
   )(using ctx: Context): FlowExecutionResult =
     val bindings =
-      FlowExecutor.runTimeBindings(runTime.getOrElse(ZonedDateTime.now())) ++
-        FlowParams.bind(flow, args)
+      // A manual run evaluates "now" in the flow's configured timezone, so that run_date
+      // agrees with what the flow's schedule would produce
+      FlowExecutor.runTimeBindings(
+        runTime.getOrElse(ZonedDateTime.now(FlowScheduleConfig.fromFlow(flow).zoneId))
+      ) ++ FlowParams.bind(flow, args)
     executeInternal(FlowParams.substitute(flow, bindings), resumeFrom, jumpDepth = 0)
 
   /** Resolve a flow referenced by a `-> Flow` jump through the compilation context */
@@ -914,7 +917,9 @@ class FlowExecutor(
             // and the current wall clock as its run time
             val targetFlow = jumpTargetFlows(target)
             val bindings   =
-              FlowExecutor.runTimeBindings(ZonedDateTime.now()) ++ FlowParams.bind(targetFlow, Nil)
+              FlowExecutor.runTimeBindings(
+                ZonedDateTime.now(FlowScheduleConfig.fromFlow(targetFlow).zoneId)
+              ) ++ FlowParams.bind(targetFlow, Nil)
             executeInternal(
               FlowParams.substitute(targetFlow, bindings),
               resumeFrom = None,
