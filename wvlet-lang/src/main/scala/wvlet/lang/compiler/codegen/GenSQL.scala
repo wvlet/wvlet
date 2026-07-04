@@ -464,14 +464,6 @@ object GenSQL extends Phase("generate-sql"):
   private def lookupType(name: Name, ctx: Context): Option[Symbol] = ctx
     .scope
     .lookupSymbol(name)
-    .orElse {
-      var result: Option[Symbol] = None
-      for
-        c <- ctx.global.getAllContexts
-        if result.isEmpty
-      do
-        result = c.compilationUnit.knownSymbols.find(_.name == name)
-      result
-    }
+    .orElse(ctx.global.symbolIndex.findFirstAnywhere(name).map(_.symbol))
 
 end GenSQL

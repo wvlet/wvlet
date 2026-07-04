@@ -211,6 +211,14 @@ class Compiler(
       else
         unit
     }
+    // Register a context for every unit up front, which also indexes the known symbols of
+    // units labeled in a previous compilation run (e.g., preset standard library units shared
+    // between compilers), independently of which phases run on them. Units whose known symbols
+    // changed since their registration snapshot (or were reset by a reload) are re-synced
+    refinedUnits.foreach { unit =>
+      globalContext.getContextOf(unit)
+      globalContext.symbolIndex.refresh(unit)
+    }
     for
       phaseGroup <- phases
       phase      <- phaseGroup

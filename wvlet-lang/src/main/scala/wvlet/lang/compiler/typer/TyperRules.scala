@@ -111,7 +111,9 @@ object TyperRules:
       w
 
     case id: Identifier =>
-      // Look up symbol from scope, imports, and global scope
+      // Look up symbol from scope, imports, and global scope. The lookup runs on every typing
+      // pass on purpose: a later pass may see a scope-local definition (e.g., a relation alias
+      // entered during typing) that must shadow a previously attached global symbol
       ctx.findSymbolByName(id.toTermName) match
         case Some(sym) =>
           id.symbol = sym // Attach symbol for named reference

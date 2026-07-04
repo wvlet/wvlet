@@ -124,7 +124,11 @@ case class CompilationUnit(sourceFile: SourceFile, isPreset: Boolean = false)
     // Extract the text in the span range
     sourceFile.getContent.slice(span.start, span.end).mkString
 
-  def enter(symbol: Symbol): Unit = knownSymbols = symbol :: knownSymbols
+  /**
+    * Record a top-level symbol of this unit. Use [[Context.enterGlobalSymbol]] instead when a
+    * Context is available, so the symbol is also registered to the global symbol index
+    */
+  private[compiler] def enter(symbol: Symbol): Unit = knownSymbols = symbol :: knownSymbols
 
   def toSourceLocation(nodeLocation: LinePosition) =
     val codeLineAt: String = nodeLocation

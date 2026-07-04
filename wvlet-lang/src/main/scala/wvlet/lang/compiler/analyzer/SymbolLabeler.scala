@@ -54,6 +54,9 @@ import wvlet.lang.model.Type
   */
 object SymbolLabeler extends Phase("symbol-labeler"):
   override def run(unit: CompilationUnit, context: Context): CompilationUnit =
+    // Drop any symbols of a previous compilation of this unit (e.g., after a reload) from the
+    // global index before the re-labeling below registers the new definitions
+    context.global.symbolIndex.remove(unit)
     label(unit.unresolvedPlan, context)
     unit
 
@@ -65,7 +68,6 @@ object SymbolLabeler extends Phase("symbol-labeler"):
       val sym = Symbol(ctx.global.newSymbolId, tree.span)
       tree.symbol = sym
       sym.tree = tree
-      ctx.compilationUnit.enter(sym)
       sym
 
     def iter(tree: LogicalPlan, ctx: Context): Context =
@@ -120,7 +122,7 @@ object SymbolLabeler extends Phase("symbol-labeler"):
           )
           v.symbol = sym
           sym.tree = v
-          ctx.compilationUnit.enter(sym)
+          ctx.enterGlobalSymbol(sym)
           ctx
         case s: Save if s.isForTable =>
           iter(s.child, ctx)
@@ -140,6 +142,7 @@ object SymbolLabeler extends Phase("symbol-labeler"):
                 TermName.of(s"__query_${sym.id}"),
                 ctx.compilationUnit
               )
+              ctx.enterGlobalSymbol(sym)
               q.traverseOnce {
                 case s: SelectAsAlias =>
                   iter(s.child, ctx)
@@ -150,6 +153,7 @@ object SymbolLabeler extends Phase("symbol-labeler"):
               ctx
             case c: Command =>
               val sym = attachNewSymbol(c, ctx)
+              ctx.enterGlobalSymbol(sym)
               ctx
             case _ =>
               ctx
@@ -173,7 +177,7 @@ object SymbolLabeler extends Phase("symbol-labeler"):
     )
     t.symbol = sym
     sym.tree = t
-    ctx.compilationUnit.enter(sym)
+    ctx.enterGlobalSymbol(sym)
     sym
 
   /**
@@ -184,7 +188,8 @@ object SymbolLabeler extends Phase("symbol-labeler"):
     val partialQueryName = p.name
     ctx.scope.lookupSymbol(partialQueryName) match
       case Some(s) =>
-        // Update existing symbol (for REPL)
+        // Update the existing symbol (for REPL), and re-enter it so the re-labeled unit stays
+        // visible to global symbol lookup
         s.tree = p
         s.symbolInfo = PartialQuerySymbolInfo(
           ctx.owner,
@@ -194,12 +199,12 @@ object SymbolLabeler extends Phase("symbol-labeler"):
           p.body,
           ctx.compilationUnit
         )
+        ctx.enterGlobalSymbol(s)
         p.symbol = s
         trace(s"Updated existing partial query symbol ${s} for ${partialQueryName}")
         s
       case None =>
         val sym = Symbol(ctx.global.newSymbolId, p.span)
-        ctx.compilationUnit.enter(sym)
         sym.tree = p
         sym.symbolInfo = PartialQuerySymbolInfo(
           ctx.owner,
@@ -209,6 +214,8 @@ object SymbolLabeler extends Phase("symbol-labeler"):
           p.body,
           ctx.compilationUnit
         )
+        // Enter after the SymbolInfo assignment so the symbol is indexed with its name
+        ctx.enterGlobalSymbol(sym)
         p.symbol = sym
         trace(s"Created new partial query symbol ${sym} for ${partialQueryName}")
         ctx.scope.add(partialQueryName, sym)
@@ -223,7 +230,7 @@ object SymbolLabeler extends Phase("symbol-labeler"):
     sym.symbolInfo = RelationAliasSymbolInfo(ctx.owner, sym, aliasName, ctx.compilationUnit)
     s.symbol = sym
     sym.tree = s.child
-    ctx.compilationUnit.enter(sym)
+    ctx.enterGlobalSymbol(sym)
     sym
 
   private def registerSave(s: Save)(using ctx: Context): Symbol =
@@ -232,7 +239,7 @@ object SymbolLabeler extends Phase("symbol-labeler"):
     sym.symbolInfo = SavedRelationSymbolInfo(ctx.owner, sym, targetName, ctx.compilationUnit)
     s.symbol = sym
     sym.tree = s.child
-    ctx.compilationUnit.enter(sym)
+    ctx.enterGlobalSymbol(sym)
     sym
 
   private def registerPackageSymbol(pkgName: NameExpr)(using ctx: Context): Symbol =
@@ -261,7 +268,7 @@ object SymbolLabeler extends Phase("symbol-labeler"):
             Scope.newScope(0)
           )
           sym.symbolInfo = pkgSymInfo
-          ctx.compilationUnit.enter(sym)
+          ctx.enterGlobalSymbol(sym)
           // pkgOwner.symbolInfo.declScope.add(pkgLeafName, sym)
           trace(s"Created package symbol for ${pkgName.fullName}, owner ${pkgOwner}")
           pkgOwner.symbolInfo.declScope.add(pkgLeafName, sym)
@@ -342,13 +349,14 @@ object SymbolLabeler extends Phase("symbol-labeler"):
         // Create a new type symbol. Method registration, field parsing, and parent-type
         // resolution are deferred to a completer, so a parent type defined in another
         // compilation unit resolves once all units are labeled, independent of unit order
-        val sym = TypeSymbol(ctx.global.newSymbolId, t.span, ctx.compilationUnit.sourceFile)
-        ctx.compilationUnit.enter(sym)
+        val sym       = TypeSymbol(ctx.global.newSymbolId, t.span, ctx.compilationUnit.sourceFile)
         val typeCtx   = ctx.newContext(sym)
         val typeScope = typeCtx.scope
         sym.setTypeScope(typeScope)
         sym.setCompleter(typeName, s => computeTypeDefSymbolInfo(t, s, typeScope)(using ctx))
         sym.tree = t
+        // Enter after the completer installation so the symbol is indexed with its name
+        ctx.enterGlobalSymbol(sym)
 
         t.symbol = sym
         ctx.scope.add(typeName, sym)
@@ -456,17 +464,19 @@ object SymbolLabeler extends Phase("symbol-labeler"):
 
     ctx.scope.lookupSymbol(flowName) match
       case Some(s) =>
-        // Update the existing flow symbol to avoid duplicates in REPL
+        // Update the existing flow symbol to avoid duplicates in REPL, and re-enter it so the
+        // re-labeled unit stays visible to global symbol lookup
         s.tree = f
         installSymbolInfo(s)
+        ctx.enterGlobalSymbol(s)
         f.symbol = s
         trace(s"Updated existing flow symbol ${s} for ${flowName}")
         s
       case None =>
         val sym = Symbol(ctx.global.newSymbolId, f.span)
-        ctx.compilationUnit.enter(sym)
         sym.tree = f
         installSymbolInfo(sym)
+        ctx.enterGlobalSymbol(sym)
         f.symbol = sym
         trace(s"Created a new flow symbol ${sym}")
         ctx.scope.add(flowName, sym)
@@ -491,17 +501,20 @@ object SymbolLabeler extends Phase("symbol-labeler"):
 
     ctx.scope.lookupSymbol(modelName) match
       case Some(s) =>
-        // Update the existing model symbol to avoid duplicates in REPL
+        // Update the existing model symbol to avoid duplicates in REPL, and re-enter it so
+        // the re-labeled unit (whose known symbols were reset on reload) stays visible to
+        // global symbol lookup
         s.tree = m
         installSymbolInfo(s)
+        ctx.enterGlobalSymbol(s)
         m.symbol = s
         trace(s"Updated existing model symbol ${s} for ${modelName}")
         s
       case None =>
         val sym = Symbol(ctx.global.newSymbolId, m.span)
-        ctx.compilationUnit.enter(sym)
         sym.tree = m
         installSymbolInfo(sym)
+        ctx.enterGlobalSymbol(sym)
         m.symbol = sym
         trace(s"Created a new model symbol ${sym}")
         ctx.scope.add(modelName, sym)
