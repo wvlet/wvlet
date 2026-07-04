@@ -44,8 +44,12 @@ case class StageExecutionConfig(
     retryDelayMillis: Long = 1000L,
     backoff: String = StageExecutionConfig.BACKOFF_EXPONENTIAL,
     maxRetryDelayMillis: Option[Long] = None,
-    timeoutMillis: Option[Long] = None
+    timeoutMillis: Option[Long] = None,
+    heartbeatMillis: Option[Long] = None
 ):
+  def withHeartbeatMillis(millis: Long): StageExecutionConfig = copy(heartbeatMillis = Some(millis))
+
+  def noHeartbeat(): StageExecutionConfig                           = copy(heartbeatMillis = None)
   def withRetries(retries: Int): StageExecutionConfig               = copy(retries = retries)
   def withRetryDelayMillis(delayMillis: Long): StageExecutionConfig = copy(retryDelayMillis =
     delayMillis
@@ -110,8 +114,10 @@ object StageExecutionConfig:
           durationMillis.fold(config)(config.withMaxRetryDelayMillis)
         case "timeout" =>
           durationMillis.fold(config)(config.withTimeoutMillis)
+        case "heartbeat" =>
+          durationMillis.fold(config)(config.withHeartbeatMillis)
         case _ =>
-          // Unknown or not-yet-supported properties (e.g. heartbeat) are ignored by this executor
+          // Unknown or not-yet-supported properties are ignored by this executor
           config
     }
 
@@ -146,6 +152,15 @@ case class FlowExecutorConfig(
 trait FlowStageRunner:
   def run(stage: StageDef, targetTable: String)(using ctx: Context): Unit
 
+  /**
+    * Run the stage body reporting liveness through the given heartbeat callback. Runners of
+    * long-running non-SQL work should invoke `heartbeat()` periodically when the stage has a
+    * `heartbeat:` config; the default implementation ignores the callback
+    */
+  def runWithHeartbeat(stage: StageDef, targetTable: String, heartbeat: () => Unit)(using
+      ctx: Context
+  ): Unit = run(stage, targetTable)
+
 /**
   * The flow executor implementing the stage execution model with a ready-set DAG scheduler.
   *
@@ -163,6 +178,9 @@ trait FlowStageRunner:
   *     (retryable), the underlying SQL statement is cancelled server-side (best-effort via JDBC
   *     `Statement.cancel()`), and the worker thread is interrupted so that the worker slot is freed
   *     immediately for other stages and retries.
+  *   - A `heartbeat` config bounds attempt liveness: an attempt that produces no heartbeat within
+  *     the interval is treated as a retryable failure like a timeout. An executing SQL statement
+  *     counts as alive; custom [[FlowStageRunner]]s report liveness through `runWithHeartbeat`.
   *
   * A successful stage is materialized as a run-scoped table (`__wv_flow_<run_id>_<stage>`), so
   * stage names never collide with real tables and concurrent runs do not interfere. Parallel stages
@@ -176,13 +194,10 @@ trait FlowStageRunner:
   * triggered as a new run (with its own run id) after the current flow completes. Jump chains are
   * bounded by `maxJumpDepth` to guard against cycles (flow A -> B -> A).
   *
-  * A flow-level `concurrency: N` config is enforced through the run store: the executor atomically
-  * claims a run slot before scheduling any stage and records the run as skipped when the limit is
-  * already reached. Flow-level cron schedules are evaluated by [[FlowScheduler]], which triggers
-  * runs through this executor.
-  *
-  * Current limitations (to be lifted in future iterations):
-  *   - `heartbeat` is parsed but not enforced.
+  * The flow-level `concurrency: N` config is enforced through the run store: the executor
+  * atomically claims a run slot before scheduling any stage and records the run as skipped when the
+  * limit is already reached. Flow-level cron schedules are evaluated by [[FlowScheduler]], which
+  * triggers runs through this executor.
   *
   * @param connector
   *   The database connector used to materialize stage results
@@ -321,6 +336,12 @@ class FlowExecutor(
     // interrupts workers on timeout or flow cancellation
     val activeStatements = ConcurrentHashMap[(String, Int), java.sql.Statement]()
     val activeFutures    = ConcurrentHashMap[(String, Int), java.util.concurrent.Future[?]]()
+    // Liveness of in-flight attempts: last heartbeat per attempt, plus the periodic stall
+    // checks scheduled for stages with a heartbeat: config
+    val lastBeats       = ConcurrentHashMap[(String, Int), java.lang.Long]()
+    val heartbeatChecks = ConcurrentHashMap[(String, Int), java.util.concurrent.Future[?]]()
+
+    def beat(key: (String, Int)): Unit = lastBeats.put(key, System.currentTimeMillis())
 
     // Stop an in-flight attempt: cancel its SQL statement server-side (best-effort) and
     // interrupt its worker thread so that the worker slot is freed immediately
@@ -336,31 +357,53 @@ class FlowExecutor(
             )
       }
       Option(activeFutures.remove(key)).foreach(_.cancel(true))
+      Option(heartbeatChecks.remove(key)).foreach(_.cancel(false))
+      lastBeats.remove(key)
 
     def clearAttempt(key: (String, Int)): Unit =
       activeStatements.remove(key)
       activeFutures.remove(key)
+      Option(heartbeatChecks.remove(key)).foreach(_.cancel(false))
+      lastBeats.remove(key)
 
     val runBody: (FlowLowering.LoweredStage, String, (String, Int)) => Unit =
       stageRunner match
         case Some(r) =>
-          (ls, table, _) => r.run(ls.stage, table)
+          (ls, table, attemptKey) => r.runWithHeartbeat(ls.stage, table, () => beat(attemptKey))
         case None =>
           (ls, table, attemptKey) =>
             // A wait operator delays the materialization of this stage. The sleep runs on a
-            // worker thread and is interruptible for cancellation
+            // worker thread in bounded slices (heartbeating each slice) and is interruptible
+            // for cancellation
             ls.waitMillis
               .foreach { delay =>
                 workEnv.info(s"Stage ${ls.name} waits for ${delay}ms")
-                Thread.sleep(delay)
+                // Sleep in slices no longer than half the heartbeat interval so that an
+                // intentional wait is never mistaken for a stalled attempt
+                val maxSlice = stageConfigs(ls.name)
+                  .heartbeatMillis
+                  .map(h => (h / 2).max(1L))
+                  .getOrElse(1000L)
+                  .min(1000L)
+                val deadline = System.currentTimeMillis() + delay
+                while System.currentTimeMillis() < deadline do
+                  Thread.sleep((deadline - System.currentTimeMillis()).max(1L).min(maxSlice))
+                  beat(attemptKey)
               }
             materializeStage(
               ls,
               stageNames,
               tableFor,
               routeFilters,
-              registerStatement = stmt => activeStatements.put(attemptKey, stmt),
-              deregisterStatement = () => activeStatements.remove(attemptKey)
+              registerStatement =
+                stmt =>
+                  beat(attemptKey)
+                  activeStatements.put(attemptKey, stmt)
+              ,
+              deregisterStatement =
+                () =>
+                  activeStatements.remove(attemptKey)
+                  beat(attemptKey)
             )
             // Activation is a local stub until external sink connectors are available
             ls.activateTargets
@@ -568,6 +611,39 @@ class FlowExecutor(
             eventQueue.put(AttemptResult(ls, attempt, error))
       )
       activeFutures.put((name, attempt), future)
+      beat((name, attempt))
+      // Enforce the heartbeat interval: an attempt that produced no heartbeat within the
+      // interval is treated as a retryable failure, like a timeout. An executing SQL statement
+      // counts as alive (statement-level liveness approximation for SQL stages)
+      stageConfig
+        .heartbeatMillis
+        .foreach { interval =>
+          val key   = (name, attempt)
+          val check = timer.scheduleAtFixedRate(
+            new Runnable:
+              override def run(): Unit =
+                val last     = Option(lastBeats.get(key)).map(_.longValue).getOrElse(0L)
+                val sqlAlive = activeStatements.containsKey(key)
+                if !sqlAlive && System.currentTimeMillis() - last > interval then
+                  eventQueue.put(
+                    AttemptResult(
+                      ls,
+                      attempt,
+                      Some(
+                        StatusCode
+                          .OPERATION_TIMED_OUT
+                          .newException(s"Stage ${name} produced no heartbeat within ${interval}ms")
+                      ),
+                      timedOut = true
+                    )
+                  )
+            ,
+            interval,
+            interval,
+            TimeUnit.MILLISECONDS
+          )
+          heartbeatChecks.put(key, check)
+        }
       // Bound the attempt duration with the configured timeout. The timed-out attempt is
       // reported as a retryable failure; a late completion event is ignored via handledAttempts
       stageConfig

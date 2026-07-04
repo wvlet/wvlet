@@ -398,7 +398,9 @@ jump is a control-only transfer: when the jumping stage succeeds, the target flo
 as a new run (with its own run id) after the current flow completes, and jump chains are
 bounded by a configurable depth limit to terminate cycles. Flow-level cron schedules are
 evaluated by the `wvlet flow scheduler` daemon, and `concurrency:` limits are enforced through
-run-slot claims in the run store. `heartbeat` enforcement is parsed but not yet executable.
+run-slot claims in the run store. A `heartbeat:` config bounds attempt liveness: an attempt
+that produces no heartbeat within the interval is treated as a retryable failure like a
+timeout, where an executing SQL statement counts as alive.
 :::
 
 Each stage progresses through a well-defined state machine:
