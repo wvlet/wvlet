@@ -778,11 +778,35 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     val params =
       if scanner.lookAhead().token == WvletToken.COMMA then
         consume(WvletToken.COMMA)
-        functionArgs()
+        activateParams()
       else
         Nil
     consume(WvletToken.R_PAREN)
     FlowActivate(input, target, params, spanFrom(t))
+  }
+
+  /** Parse activate parameters: `name: value` (config style), `name = value`, or positional */
+  private def activateParams(): List[FunctionArg] =
+    val arg = activateParam()
+    scanner.lookAhead().token match
+      case WvletToken.COMMA =>
+        consume(WvletToken.COMMA)
+        arg :: activateParams()
+      case _ =>
+        List(arg)
+
+  private def activateParam(): FunctionArg = node {
+    val t = scanner.lookAhead()
+    val e = expression()
+    e match
+      case i: Identifier if scanner.lookAhead().token == WvletToken.COLON =>
+        consume(WvletToken.COLON)
+        val value = expression()
+        FunctionArg(Some(Name.termName(i.leafName)), value, false, Nil, spanFrom(t))
+      case Eq(i: Identifier, v: Expression, _) =>
+        FunctionArg(Some(Name.termName(i.leafName)), v, false, Nil, spanFrom(t))
+      case other =>
+        FunctionArg(None, other, false, Nil, spanFrom(t))
   }
 
   /**

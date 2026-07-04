@@ -188,7 +188,10 @@ trait FlowStageRunner:
   *
   * Flow operators in stage bodies are lowered with [[FlowLowering]] before scheduling: fork stages
   * are flattened, route cases become filter predicates on the target stages' reads, wait becomes a
-  * pre-materialization delay, activate is a local logging stub, and end is a pass-through.
+  * pre-materialization delay, and end is a pass-through. Activate operators deliver the
+  * materialized stage output to the [[ActivationSink]] registered for the target name (local file
+  * export is built in), falling back to a logging stub for unknown targets; a sink failure fails
+  * the attempt and follows the stage's retry policy.
   *
   * A `-> Flow` jump transfers control only: when the jumping stage succeeds, the target flow is
   * triggered as a new run (with its own run id) after the current flow completes. Jump chains are
@@ -216,7 +219,8 @@ class FlowExecutor(
     config: FlowExecutorConfig = FlowExecutorConfig(),
     stageRunner: Option[FlowStageRunner] = None,
     retryScheduler: Option[(Long, () => Unit) => Unit] = None,
-    registry: Option[FlowRunStore] = None
+    registry: Option[FlowRunStore] = None,
+    activationSinks: List[ActivationSink] = FlowExecutor.defaultActivationSinks
 ) extends LogSupport:
   import FlowExecutor.FlowEvent
   import FlowExecutor.FlowEvent.*
@@ -405,13 +409,26 @@ class FlowExecutor(
                   activeStatements.remove(attemptKey)
                   beat(attemptKey)
             )
-            // Activation is a local stub until external sink connectors are available
+            // Deliver the materialized output to activation sinks. A missing sink logs the
+            // delivery instead of failing (local stub); a sink exception fails the attempt
+            // and follows the stage's retry policy
             ls.activateTargets
-              .foreach { target =>
-                workEnv.info(
-                  s"[activate] stage ${ls
-                      .name}: sending materialized output ${table} to '${target}'"
-                )
+              .foreach { spec =>
+                beat(attemptKey)
+                activationSinks.find(_.name == spec.target) match
+                  case Some(sink) =>
+                    workEnv.info(
+                      s"[activate] stage ${ls
+                          .name}: delivering materialized output ${table} to '${spec.target}'"
+                    )
+                    sink.activate(
+                      ActivationRequest(spec.target, spec.params, ls.name, table, connector)
+                    )
+                  case None =>
+                    workEnv.info(
+                      s"[activate] stage ${ls.name}: sending materialized output ${table} to '${spec
+                          .target}'"
+                    )
               }
 
     // Stages recorded as successful in the resumed run keep their materialized tables and are
@@ -914,6 +931,9 @@ class FlowExecutor(
 end FlowExecutor
 
 object FlowExecutor:
+  /** The activation sinks available by default: local file export via `activate('file', ...)` */
+  def defaultActivationSinks: List[ActivationSink] = List(FileActivationSink())
+
   /** The run-scoped table name holding the materialized result of a stage */
   def stageTableName(runId: String, stageName: String): String =
     s"__wv_flow_${runId.toLowerCase}_${stageName}"
