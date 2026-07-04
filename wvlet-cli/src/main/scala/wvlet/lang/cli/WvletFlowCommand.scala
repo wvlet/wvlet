@@ -531,23 +531,34 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
 
   /** Parse a --retention argument like 7d, 12h, 30m, or 45s into milliseconds */
   private def parseRetentionMillis(s: String): Long =
+    def fail(): Nothing =
+      throw StatusCode
+        .INVALID_ARGUMENT
+        .newException(s"Cannot parse retention '${s}'. Use a number with d/h/m/s, e.g. 7d")
+
     val m = "^(\\d+)([dhms])$".r
     s.trim match
       case m(n, unit) =>
-        val base = n.toLong
-        unit match
-          case "d" =>
-            base * 24L * 3600_000L
-          case "h" =>
-            base * 3600_000L
-          case "m" =>
-            base * 60_000L
-          case _ =>
-            base * 1000L
+        try
+          val base       = n.toLong
+          val unitMillis =
+            unit match
+              case "d" =>
+                24L * 3600_000L
+              case "h" =>
+                3600_000L
+              case "m" =>
+                60_000L
+              case _ =>
+                1000L
+          // An absurdly large value would overflow into a negative TTL, which would make
+          // every finished run look expired
+          Math.multiplyExact(base, unitMillis)
+        catch
+          case _: NumberFormatException | _: ArithmeticException =>
+            fail()
       case _ =>
-        throw StatusCode
-          .INVALID_ARGUMENT
-          .newException(s"Cannot parse retention '${s}'. Use a number with d/h/m/s, e.g. 7d")
+        fail()
 
   /** Start a daemon thread running the retention sweep periodically (every 5 minutes) */
   private def startSweeper(sweep: () => Unit): Unit =

@@ -105,8 +105,8 @@ class FlowRunRetentionTest extends UniTest:
     val summary = FlowRunRetention.sweep(store, connector, nowMillis = now)
     summary.finalizedStale shouldBe 1
     summary.deletedRuns shouldBe 0
-    store.get("stalerun").get.state shouldBe FlowRunRecord.STATE_FAILED
-    store.get("liverun").get.state shouldBe FlowRunRecord.STATE_RUNNING
+    store.get("stalerun").map(_.state) shouldBe Some(FlowRunRecord.STATE_FAILED)
+    store.get("liverun").map(_.state) shouldBe Some(FlowRunRecord.STATE_RUNNING)
   }
 
   test("retention applies to runs finalized in the same sweep") {

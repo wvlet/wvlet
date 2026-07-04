@@ -55,30 +55,27 @@ object FlowRunRetention extends LogSupport:
   ): SweepSummary =
     val all = store.list()
 
-    val stale = all.filter(_.isStaleAt(nowMillis))
-    stale.foreach { r =>
-      warn(s"Finalizing stale run ${r.runId} of flow ${r.flowName} as failed (lease expired)")
-      store.save(
-        r.copy(
-          state = FlowRunRecord.STATE_FAILED,
-          finishedAtMillis = Some(nowMillis),
-          leaseExpiresAtMillis = None
-        )
-      )
-    }
+    val finalized =
+      all
+        .filter(_.isStaleAt(nowMillis))
+        .map { r =>
+          warn(s"Finalizing stale run ${r.runId} of flow ${r.flowName} as failed (lease expired)")
+          val failed = r.copy(
+            state = FlowRunRecord.STATE_FAILED,
+            finishedAtMillis = Some(nowMillis),
+            leaseExpiresAtMillis = None
+          )
+          store.save(failed)
+          r.runId -> failed
+        }
+        .toMap
 
-    val terminal =
-      (
-        if stale.isEmpty then
-          all
-        else
-          store.list()
-      ).filter(_.isTerminal)
-    var deleted = 0
+    val terminal = all.map(r => finalized.getOrElse(r.runId, r)).filter(_.isTerminal)
+    var deleted  = 0
     terminal
       .groupBy(_.flowName)
       .foreach { (flowName, runs) =>
-        val newestFirst = runs.sortBy(-_.startedAtMillis)
+        val newestFirst = runs.sortBy(_.startedAtMillis)(using Ordering[Long].reverse)
         val keep        = keepRunsOf(flowName)
         // Rank 1 (the latest terminal run) is never deleted
         newestFirst
@@ -101,9 +98,11 @@ object FlowRunRetention extends LogSupport:
           }
       }
 
-    if stale.nonEmpty || deleted > 0 then
-      info(s"Retention sweep: finalized ${stale.size} stale run(s), deleted ${deleted} old run(s)")
-    SweepSummary(stale.size, deleted)
+    if finalized.nonEmpty || deleted > 0 then
+      info(
+        s"Retention sweep: finalized ${finalized.size} stale run(s), deleted ${deleted} old run(s)"
+      )
+    SweepSummary(finalized.size, deleted)
 
   end sweep
 
