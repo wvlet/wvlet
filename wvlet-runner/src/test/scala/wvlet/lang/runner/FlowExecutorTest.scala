@@ -12,9 +12,12 @@ import wvlet.lang.compiler.Symbol
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.compiler.planner.ExecutionPlanner
 import wvlet.lang.model.plan.FlowDef
+import wvlet.lang.model.plan.StageDef
 import wvlet.lang.runner.connector.DBConnectorProvider
 import wvlet.uni.test.UniTest
 
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import scala.collection.mutable.ListBuffer
 
 /**
@@ -46,9 +49,14 @@ class FlowExecutorTest extends UniTest:
     val (_, flow, ctx) = compileFlowUnit(wv)
     (flow, ctx)
 
-  private def runFlow(wv: String, sleeper: Long => Unit = _ => ()): FlowExecutionResult =
+  private def runFlow(
+      wv: String,
+      config: FlowExecutorConfig = FlowExecutorConfig(),
+      stageRunner: Option[FlowStageRunner] = None,
+      retryScheduler: Option[(Long, () => Unit) => Unit] = None
+  ): FlowExecutionResult =
     val (flow, ctx) = compileFlow(wv)
-    FlowExecutor(connector, workEnv, sleeper).execute(flow)(using ctx)
+    FlowExecutor(connector, workEnv, config, stageRunner, retryScheduler).execute(flow)(using ctx)
 
   private def countRows(table: String): Long =
     connector.runQuery(s"""select count(*) cnt from "${table}"""") { rs =>
@@ -136,13 +144,116 @@ class FlowExecutorTest extends UniTest:
         |    retry_delay: 10ms
         |  } = from nonexistent_table_xyz
         |}""".stripMargin,
-      sleeper = delays += _
+      retryScheduler = Some { (delay, action) =>
+        delays += delay
+        action()
+      }
     )
     val flaky = result.stageResult("flaky").get
     flaky.state shouldBe StageState.Failed
     flaky.attempts shouldBe 3
     // Default exponential backoff: 10ms, then 20ms
     delays.toList shouldBe List(10L, 20L)
+  }
+
+  test("run independent stages in parallel") {
+    // Each stage blocks until both stages have started; this only completes if the
+    // scheduler launches independent stages concurrently
+    val bothStarted = CountDownLatch(2)
+    val runner      =
+      new FlowStageRunner:
+        override def run(stage: StageDef, targetTable: String)(using Context): Unit =
+          bothStarted.countDown()
+          if !bothStarted.await(10, TimeUnit.SECONDS) then
+            throw IllegalStateException(s"Stage ${stage.name.name} did not run in parallel")
+    val result = runFlow(
+      """flow ParallelFlow = {
+        |  stage a = from [[1]] as t(id)
+        |  stage b = from [[2]] as t(id)
+        |}""".stripMargin,
+      stageRunner = Some(runner)
+    )
+    result.stageResults.map(_.state) shouldBe List(StageState.Success, StageState.Success)
+  }
+
+  test("run a diamond-shaped DAG respecting data dependencies") {
+    val result = runFlow("""flow DiamondFlow = {
+        |  stage root = from [[1], [2], [3]] as t(id)
+        |  stage left = from root | where id <= 2
+        |  stage right = from root | where id >= 2
+        |  stage merged = merge left, right
+        |}""".stripMargin)
+    result.isSuccess shouldBe true
+    result.stageResults.map(_.state).distinct shouldBe List(StageState.Success)
+    // left (2 rows) union all right (2 rows)
+    countStageRows(result, "merged") shouldBe 4L
+  }
+
+  test("cancel a flow while a stage is running") {
+    val stageStarted = CountDownLatch(1)
+    val runner       =
+      new FlowStageRunner:
+        override def run(stage: StageDef, targetTable: String)(using Context): Unit =
+          stageStarted.countDown()
+          Thread.sleep(10000)
+    val (flow, ctx) = compileFlow("""flow MidCancelFlow = {
+        |  stage slow = from [[1]] as t(id)
+        |  stage after = from slow | select *
+        |}""".stripMargin)
+    val executor  = FlowExecutor(connector, workEnv, stageRunner = Some(runner))
+    val canceller = Thread { () =>
+      stageStarted.await(10, TimeUnit.SECONDS)
+      executor.cancel()
+    }
+    canceller.start()
+    val result = executor.execute(flow)(using ctx)
+    canceller.join()
+    // The running stage and the pending downstream stage both end in cancelled
+    result.stageResults.map(_.state) shouldBe List(StageState.Cancelled, StageState.Cancelled)
+  }
+
+  test("time out a slow stage attempt") {
+    val runner =
+      new FlowStageRunner:
+        override def run(stage: StageDef, targetTable: String)(using Context): Unit = Thread.sleep(
+          10000
+        )
+    val result = runFlow(
+      """flow SlowFlow = {
+        |  stage slow with { timeout: 50ms } = from [[1]] as t(id)
+        |}""".stripMargin,
+      stageRunner = Some(runner)
+    )
+    val slow = result.stageResult("slow").get
+    slow.state shouldBe StageState.Failed
+    slow.error.get.getMessage shouldContain "timed out"
+  }
+
+  test("retry timed-out attempts until retries are exhausted") {
+    val delays = ListBuffer.empty[Long]
+    val runner =
+      new FlowStageRunner:
+        override def run(stage: StageDef, targetTable: String)(using Context): Unit = Thread.sleep(
+          10000
+        )
+    val result = runFlow(
+      """flow SlowRetryFlow = {
+        |  stage slow with {
+        |    timeout: 20ms
+        |    retries: 1
+        |    retry_delay: 1ms
+        |  } = from [[1]] as t(id)
+        |}""".stripMargin,
+      stageRunner = Some(runner),
+      retryScheduler = Some { (delay, action) =>
+        delays += delay
+        action()
+      }
+    )
+    val slow = result.stageResult("slow").get
+    slow.state shouldBe StageState.Failed
+    slow.attempts shouldBe 2
+    delays.toList shouldBe List(1L)
   }
 
   test("materialize stages whose names are reserved SQL keywords") {

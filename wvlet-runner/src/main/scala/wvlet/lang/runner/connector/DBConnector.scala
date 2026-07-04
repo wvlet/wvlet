@@ -88,6 +88,21 @@ trait DBConnector(val dbType: DBType, workEnv: WorkEnv) extends AutoCloseable wi
     try body(conn)
     finally conn.close()
 
+  /**
+    * Create a new session that shares the same database state as this connector's primary
+    * connection. Unlike `newConnection` (which for in-memory databases opens an independent
+    * database), sessions see the same catalogs and tables, so they can be used for concurrent
+    * statement execution (e.g. parallel flow stages). The returned connection must be closed by the
+    * caller
+    */
+  private[runner] def newSession: DBConnection = newConnection
+
+  /** Run the body with a dedicated session sharing this connector's database state */
+  private[runner] def withSession[U](body: DBConnection => U): U =
+    val conn = newSession
+    try body(conn)
+    finally conn.close()
+
   protected def withStatement[U](
       body: Statement => U
   )(using queryProgressMonitor: QueryProgressMonitor): U = withConnection: conn =>

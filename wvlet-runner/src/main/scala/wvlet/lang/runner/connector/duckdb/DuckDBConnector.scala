@@ -111,6 +111,15 @@ class DuckDBConnector(workEnv: WorkEnv, prepareTPCH: Boolean = false, prepareTPC
       case e: SQLException if e.getMessage.contains("403") =>
         throw StatusCode.PERMISSION_DENIED.newException(e.getMessage, e)
 
+  override private[runner] def newSession: DBConnection =
+    // duplicate() opens a new session over the same (in-memory) database instance, so that
+    // concurrent statements can run in parallel while seeing the same tables
+    getConnection.jdbcConnection match
+      case c: DuckDBConnection =>
+        DBConnection(c.duplicate())
+      case other =>
+        newConnection
+
   override def listFunctions(catalog: String): List[SQLFunction] =
     val functionList = List.newBuilder[SQLFunction]
 

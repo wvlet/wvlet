@@ -28,6 +28,8 @@ class GenericConnector(workEnv: WorkEnv) extends DBConnector(Generic, workEnv):
   override protected def withConnection[U](body: DBConnection => U): U = getConnector
     .withConnection(body)
 
+  override private[runner] def newSession: DBConnection = getConnector.newSession
+
   override def listFunctions(catalog: String): List[SQLFunction] = getConnector.listFunctions(
     catalog
   )
