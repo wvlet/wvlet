@@ -791,14 +791,28 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
   }
 
   /**
-    * Parse flow wait expression: `wait('7 days')`
+    * Parse a flow wait expression: a time-based delay `wait('7 days')` or an event sensor `wait
+    * until <condition>` (`until` is a soft keyword)
     */
-  def flowWaitExpr(input: Relation): FlowWait = node {
+  def flowWaitExpr(input: Relation): UnaryFlowOp = node {
     val t = consume(WvletToken.WAIT)
-    consume(WvletToken.L_PAREN)
-    val duration = expression()
-    consume(WvletToken.R_PAREN)
-    FlowWait(input, duration, spanFrom(t))
+    scanner.lookAhead().token match
+      case WvletToken.L_PAREN =>
+        consume(WvletToken.L_PAREN)
+        val duration = expression()
+        consume(WvletToken.R_PAREN)
+        FlowWait(input, duration, spanFrom(t))
+      case _ =>
+        val id = identifier()
+        if id.leafName != "until" then
+          throw StatusCode
+            .SYNTAX_ERROR
+            .newException(
+              s"Expected wait('<duration>') or wait until <condition>, but found: ${id.leafName}",
+              id.sourceLocationOfCompilationUnit
+            )
+        val condition = expression()
+        FlowWaitUntil(input, condition, spanFrom(t))
   }
 
   /**

@@ -50,9 +50,12 @@ case class StageExecutionConfig(
     backoff: String = StageExecutionConfig.BACKOFF_EXPONENTIAL,
     maxRetryDelayMillis: Option[Long] = None,
     timeoutMillis: Option[Long] = None,
-    heartbeatMillis: Option[Long] = None
+    heartbeatMillis: Option[Long] = None,
+    pollIntervalMillis: Long = StageExecutionConfig.DEFAULT_POLL_INTERVAL_MILLIS
 ):
   def withHeartbeatMillis(millis: Long): StageExecutionConfig = copy(heartbeatMillis = Some(millis))
+
+  def withPollIntervalMillis(millis: Long): StageExecutionConfig = copy(pollIntervalMillis = millis)
 
   def noHeartbeat(): StageExecutionConfig                           = copy(heartbeatMillis = None)
   def withRetries(retries: Int): StageExecutionConfig               = copy(retries = retries)
@@ -92,6 +95,9 @@ object StageExecutionConfig:
   val BACKOFF_LINEAR      = "linear"
   val BACKOFF_EXPONENTIAL = "exponential"
 
+  /** Default polling interval of `wait until` event sensors */
+  val DEFAULT_POLL_INTERVAL_MILLIS = 10_000L
+
   def fromConfigItems(items: List[ConfigItem]): StageExecutionConfig =
     items.foldLeft(StageExecutionConfig()) { (config, item) =>
       def durationMillis: Option[Long] =
@@ -121,6 +127,8 @@ object StageExecutionConfig:
           durationMillis.fold(config)(config.withTimeoutMillis)
         case "heartbeat" =>
           durationMillis.fold(config)(config.withHeartbeatMillis)
+        case "poll_interval" =>
+          durationMillis.fold(config)(config.withPollIntervalMillis)
         case _ =>
           // Unknown or not-yet-supported properties are ignored by this executor
           config
@@ -440,22 +448,43 @@ class FlowExecutor(
           (ls, table, attemptKey) => r.runWithHeartbeat(ls.stage, table, () => beat(attemptKey))
         case None =>
           (ls, table, attemptKey) =>
-            // A wait operator delays the materialization of this stage. The sleep runs on a
-            // worker thread in bounded slices (heartbeating each slice) and is interruptible
-            // for cancellation
+            // Sleep in slices no longer than half the heartbeat interval so that an
+            // intentional wait or sensor poll is never mistaken for a stalled attempt.
+            // Slices run on the worker thread and stay interruptible for cancellation
+            def maxSlice = stageConfigs(ls.name)
+              .heartbeatMillis
+              .map(h => (h / 2).max(1L))
+              .getOrElse(1000L)
+              .min(1000L)
+            def sleepWithHeartbeat(delay: Long): Unit =
+              val deadline = System.currentTimeMillis() + delay
+              while System.currentTimeMillis() < deadline do
+                Thread.sleep((deadline - System.currentTimeMillis()).max(1L).min(maxSlice))
+                beat(attemptKey)
+
+            // A wait operator delays the materialization of this stage
             ls.waitMillis
               .foreach { delay =>
                 workEnv.info(s"Stage ${ls.name} waits for ${delay}ms")
-                // Sleep in slices no longer than half the heartbeat interval so that an
-                // intentional wait is never mistaken for a stalled attempt
-                val maxSlice = stageConfigs(ls.name)
-                  .heartbeatMillis
-                  .map(h => (h / 2).max(1L))
-                  .getOrElse(1000L)
-                  .min(1000L)
-                val deadline = System.currentTimeMillis() + delay
-                while System.currentTimeMillis() < deadline do
-                  Thread.sleep((deadline - System.currentTimeMillis()).max(1L).min(maxSlice))
+                sleepWithHeartbeat(delay)
+              }
+            // Event sensors poll their condition until it holds. The stage's timeout: (and the
+            // regular retry/failure policy) bounds the polling like any other attempt work
+            ls.waitUntil
+              .foreach { sensor =>
+                val pollSql = FlowExecutor.sensorPollSql(
+                  sensor,
+                  stageNames,
+                  tableFor,
+                  routeFilters,
+                  ls.name
+                )
+                val interval = stageConfigs(ls.name).pollIntervalMillis.max(1L)
+                workEnv.info(s"Stage ${ls.name} waits until its sensor condition holds")
+                debug(s"Sensor poll of stage ${ls.name}:\n${pollSql}")
+                beat(attemptKey)
+                while connector.queryJsonRows(pollSql).isEmpty do
+                  sleepWithHeartbeat(interval)
                   beat(attemptKey)
               }
             materializeStage(
@@ -1066,36 +1095,7 @@ class FlowExecutor(
         throw StatusCode.NOT_IMPLEMENTED.newException(s"Stage ${ls.name} has no executable body")
       )
 
-    // Reference a source stage's run-scoped table, filtered with the routing predicate when
-    // this stage is a route target of the source
-    def stageTableRef(stageName: String, span: Span): Relation =
-      val ref = TableRef(DoubleQuotedIdentifier(tableFor(stageName), span), span)
-      routeFilters.get((ls.name, stageName)) match
-        case Some(pred) =>
-          Filter(ref, pred, span)
-        case None =>
-          ref
-
-    // Rewrite stage references to their run-scoped tables, and merge (fan-in) into union all
-    val executable = body
-      .transformUp {
-        case t: TableRef if stageNames.contains(t.name.fullName) =>
-          stageTableRef(t.name.fullName, t.span)
-        case m: FlowMerge =>
-          m.sources
-            .map { src =>
-              // Only stage references map to run-scoped tables; other sources are regular
-              // tables and are read as-is, consistent with `from` inside a stage body
-              if stageNames.contains(src.fullName) then
-                stageTableRef(src.fullName, src.span)
-              else
-                TableRef(UnquotedIdentifier(src.fullName, src.span), src.span)
-            }
-            .reduceLeft[Relation] { (l, r) =>
-              Union(l, r, isDistinct = false, m.span)
-            }
-      }
-      .asInstanceOf[Relation]
+    val executable = FlowExecutor.rewriteStageRefs(body, ls.name, stageNames, tableFor, routeFilters)
 
     val sql = GenSQL.generateSQLFromRelation(executable, addHeader = false).sql
 
@@ -1130,6 +1130,66 @@ object FlowExecutor:
   def defaultActivationSinks: List[ActivationSink] =
     val loaded = java.util.ServiceLoader.load(classOf[ActivationSink]).iterator().asScala.toList
     loaded ++ List(FileActivationSink(), WebhookActivationSink())
+
+  /**
+    * Rewrite stage references inside a stage's relation to their run-scoped tables (applying route
+    * predicates when the reading stage is a route target), and lower merge (fan-in) into union all
+    */
+  private[runner] def rewriteStageRefs(
+      body: Relation,
+      readerStage: String,
+      stageNames: Set[String],
+      tableFor: String => String,
+      routeFilters: Map[(String, String), Expression]
+  ): Relation =
+    // Reference a source stage's run-scoped table, filtered with the routing predicate when
+    // the reader stage is a route target of the source
+    def stageTableRef(stageName: String, span: Span): Relation =
+      val ref = TableRef(DoubleQuotedIdentifier(tableFor(stageName), span), span)
+      routeFilters.get((readerStage, stageName)) match
+        case Some(pred) =>
+          Filter(ref, pred, span)
+        case None =>
+          ref
+
+    body
+      .transformUp {
+        case t: TableRef if stageNames.contains(t.name.fullName) =>
+          stageTableRef(t.name.fullName, t.span)
+        case m: FlowMerge =>
+          m.sources
+            .map { src =>
+              // Only stage references map to run-scoped tables; other sources are regular
+              // tables and are read as-is, consistent with `from` inside a stage body
+              if stageNames.contains(src.fullName) then
+                stageTableRef(src.fullName, src.span)
+              else
+                TableRef(UnquotedIdentifier(src.fullName, src.span), src.span)
+            }
+            .reduceLeft[Relation] { (l, r) =>
+              Union(l, r, isDistinct = false, m.span)
+            }
+      }
+      .asInstanceOf[Relation]
+
+  end rewriteStageRefs
+
+  /**
+    * The polling query of a `wait until` sensor: selects one row from the sensor's input filtered
+    * by the condition, so a non-empty result means the condition holds for at least one row
+    */
+  private[runner] def sensorPollSql(
+      sensor: FlowLowering.SensorSpec,
+      stageNames: Set[String],
+      tableFor: String => String,
+      routeFilters: Map[(String, String), Expression],
+      readerStage: String
+  )(using ctx: Context): String =
+    val input = rewriteStageRefs(sensor.input, readerStage, stageNames, tableFor, routeFilters)
+    val sql   = GenSQL
+      .generateSQLFromRelation(Filter(input, sensor.condition, Span.NoSpan), addHeader = false)
+      .sql
+    s"""select 1 from (\n${sql}\n) as "__wv_sensor" limit 1"""
 
   private val runTimeFormat = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
   private val runDateFormat = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd")
