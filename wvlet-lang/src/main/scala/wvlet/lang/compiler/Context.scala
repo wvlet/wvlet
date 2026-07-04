@@ -28,7 +28,6 @@ import wvlet.lang.model.plan.Import
 import wvlet.uni.log.LogSupport
 
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicReference
 import scala.jdk.CollectionConverters.*
 
 /**
@@ -69,22 +68,9 @@ case class GlobalContext(compilerOptions: CompilerOptions):
   def addDuplicateDefinition(name: Name, fileNames: List[String]): Unit = duplicateDefinitionQueue
     .add(name -> fileNames)
 
-  // Contexts sorted by source file name, cached until a new compilation unit is loaded, so
-  // that global symbol lookup stays fast while scanning units in a deterministic order
-  private val sortedContextCache = AtomicReference[(Int, List[Context])]((0, Nil))
-
-  def getAllContextsSorted: List[Context] =
-    val cached = sortedContextCache.get()
-    if cached._1 == contextTable.size then
-      cached._2
-    else
-      // Key the cache by the size of the snapshot that was actually sorted, so a concurrent
-      // insertion between reading the size and copying the values cannot leave the cache
-      // permanently inconsistent
-      val snapshot = contextTable.values.toList
-      val sorted   = snapshot.sortBy(_.compilationUnit.sourceFile.fileName)
-      sortedContextCache.set((snapshot.size, sorted))
-      sorted
+  // Package-level index of the top-level symbols of all compilation units, used for global
+  // symbol lookup without scanning every unit (issue #1811)
+  val symbolIndex = GlobalSymbolIndex()
 
   // Globally available definitions (Name and Symbols)
   var defs: GlobalDefinitions = scala.compiletime.uninitialized
@@ -121,7 +107,14 @@ case class GlobalContext(compilerOptions: CompilerOptions):
     * @return
     */
   def getContextOf(unit: CompilationUnit, scope: Scope = Scope.NoScope): Context = contextTable
-    .getOrElseUpdate(unit.sourceFile, Context(global = this, scope = scope, compilationUnit = unit))
+    .getOrElseUpdate(
+      unit.sourceFile, {
+        // The unit may already have been labeled in a previous compilation run (e.g., preset
+        // standard library units shared between compilers), so index its known symbols
+        symbolIndex.addAll(unit)
+        Context(global = this, scope = scope, compilationUnit = unit)
+      }
+    )
 
   def getAllContexts: List[Context]                 = contextTable.values.toList
   def getAllCompilationUnits: List[CompilationUnit] = getAllContexts
@@ -245,6 +238,14 @@ case class Context(
 
   def enter(sym: Symbol): Unit = scope.enter(sym)(using this)
 
+  /**
+    * Register a top-level symbol of the current compilation unit, making it visible to global
+    * symbol lookup from other compilation units
+    */
+  def enterGlobalSymbol(sym: Symbol): Unit =
+    compilationUnit.enter(sym)
+    global.symbolIndex.add(compilationUnit, sym)
+
   def newContext(owner: Symbol): Context = Context(
     global = global,
     outer = this,
@@ -263,65 +264,29 @@ case class Context(
     // Search the current scope first
     var foundSymbol: Option[Symbol] = scope.lookupSymbol(name)
 
-    // Search the imported symbols
-    if foundSymbol.isEmpty then
-      importDefs.collectFirst {
-        case i: Import if i.importRef.leafName == name.name =>
-          for
-            ctx <- global.getAllContexts
-            if foundSymbol.isEmpty
-          do
-            ctx
-              .compilationUnit
-              .knownSymbols
-              .collectFirst {
-                case s: Symbol if s.name == name =>
-                  foundSymbol = Some(s)
-              }
-      }
+    // A name explicitly imported (e.g., import mypkg.model1) resolves across all packages
+    if foundSymbol.isEmpty && importDefs.exists(_.importRef.leafName == name.name) then
+      foundSymbol = global.symbolIndex.findFirstAnywhere(name).map(_.symbol)
 
     if foundSymbol.isEmpty then
-      // Search global symbols. Contexts are scanned in source file name order so that a name
-      // defined in multiple files resolves deterministically, and units in a named package are
-      // visible only within that package or through an import (#93). Preset (standard library)
-      // units and units without a package declaration stay globally visible
-      val currentPackage = compilationUnit.packageName
-      // Import references are materialized once per lookup; most units have no imports
-      val importRefs                                    = importDefs.map(_.importRef.fullName)
-      def isVisibleUnit(unit: CompilationUnit): Boolean =
-        val pkg = unit.packageName
-        pkg.isEmpty || pkg == currentPackage || unit.isPreset || {
-          // Build the package prefix once per unit, not per import reference
-          val pkgPrefix = s"${pkg}."
-          importRefs.exists(ref => ref == pkg || ref.startsWith(pkgPrefix))
-        }
-      for
-        ctx <- global.getAllContextsSorted
-        if foundSymbol.isEmpty && ctx.isGlobalContext && isVisibleUnit(ctx.compilationUnit)
-      do
-        foundSymbol = ctx.compilationUnit.knownSymbols.find(_.name == name)
+      // Search the global symbols visible from this unit's package (#93). The index returns
+      // the definitions in source file name order so that a name defined in multiple files
+      // resolves deterministically
+      val entries = global
+        .symbolIndex
+        .visibleEntries(name, compilationUnit.packageName, importDefs.map(_.importRef.fullName))
+      foundSymbol = entries.headOption.map(_.symbol)
       // A top-level name defined in multiple files still shadows the later definitions
       // (#93). Warn once per name
-      foundSymbol.foreach { sym =>
-        if global.needsDuplicateCheck(name) then
-          val definingFiles =
-            (
-              for
-                ctx <- global.getAllContextsSorted
-                if ctx.isGlobalContext && isVisibleUnit(ctx.compilationUnit)
-                s <- ctx.compilationUnit.knownSymbols
-                if s.name == name
-              yield ctx.compilationUnit.sourceFile.fileName
-            ).distinct
-          if definingFiles.size > 1 then
-            global.addDuplicateDefinition(name, definingFiles)
-            warn(
-              s"Duplicate top-level definition of '${name}' in ${definingFiles.mkString(
-                  ", "
-                )}; the definition in ${definingFiles.head} is used"
-            )
-      }
-    end if
+      if foundSymbol.isDefined && global.needsDuplicateCheck(name) then
+        val definingFiles = entries.map(_.fileName).distinct
+        if definingFiles.size > 1 then
+          global.addDuplicateDefinition(name, definingFiles)
+          warn(
+            s"Duplicate top-level definition of '${name}' in ${definingFiles.mkString(
+                ", "
+              )}; the definition in ${definingFiles.head} is used"
+          )
 
     if isContextCompilationUnit then
       trace(s"Looked up ${name} in ${compilationUnit.sourceFile.fileName} => ${foundSymbol}")

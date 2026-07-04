@@ -207,6 +207,9 @@ class Compiler(
     var refinedUnits = units.map { unit =>
       if unit.needsRecompile then
         trace(s"Reloading ${unit.sourceFile.fileName} for recompilation")
+        // Drop the unit's symbols from the global index before its known symbols are reset;
+        // re-labeling the reloaded unit will index the new definitions
+        globalContext.symbolIndex.remove(unit)
         unit.reload()
       else
         unit

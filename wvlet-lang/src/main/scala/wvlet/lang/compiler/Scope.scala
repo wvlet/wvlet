@@ -40,6 +40,14 @@ class Scope(outer: Scope | Null, val nestingLevel: Int) extends LogSupport:
     else
       Nil
 
+  // Name-keyed mirror of the entries for O(1) lookup. The immutable map snapshots the outer
+  // scope's map at construction, matching the snapshot semantics of the entries list
+  private var entryMap: Map[Name, ScopeEntry] =
+    if outer != null then
+      outer.entryMap
+    else
+      Map.empty
+
   def isEmpty: Boolean                = entries.isEmpty
   def getAllEntries: List[ScopeEntry] = entries
 
@@ -63,7 +71,7 @@ class Scope(outer: Scope | Null, val nestingLevel: Int) extends LogSupport:
 
   def isNoScope: Boolean = this eq Scope.NoScope
 
-  def lookupEntry(name: Name): Option[ScopeEntry] = entries.find(_.name == name)
+  def lookupEntry(name: Name): Option[ScopeEntry] = entryMap.get(name)
   def lookupSymbol(name: Name): Option[Symbol]    = lookupEntry(name).map(_.symbol)
 
   /**
@@ -92,7 +100,9 @@ class Scope(outer: Scope | Null, val nestingLevel: Int) extends LogSupport:
       throw StatusCode
         .UNEXPECTED_STATE
         .newException(s"Cannot add an entry ${name} -> ${symbol.id} to NoScope")
-    entries = ScopeEntry(name, symbol, this) :: entries
+    val entry = ScopeEntry(name, symbol, this)
+    entries = entry :: entries
+    entryMap = entryMap.updated(name, entry)
     symbol
 
   def newChildScope: Scope = Scope(outer = this, nestingLevel + 1)
