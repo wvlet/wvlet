@@ -197,7 +197,13 @@ lazy val lang = crossProject(JVMPlatform, JSPlatform, NativePlatform)
       Seq(targetFile)
     },
     Compile / sourceGenerators += stdlibGen.taskValue,
-    // TEMP disabled: Test / watchSources ++= Seq[File] blocked by sbt 2 caching
+    // Watch changes of example .wv files upon testing. In sbt 2, Seq[File] outputs are
+    // rejected by the caching layer, so wrap the value in Def.uncached (same trick uni
+    // uses for JSEnv).
+    Test / watchSources ++= Def.uncached(
+      ((ThisBuild / baseDirectory).value / "spec" ** "*.wv").get() ++
+        ((ThisBuild / baseDirectory).value / "wvlet-stdlib" ** "*.wv").get()
+    )
   )
   .jvmSettings(
     // scala3-compiler is JVM-only; kept out of the shared crossProject deps so `%%` on
@@ -221,8 +227,12 @@ val specRunnerSettings = Seq(
   Test / fork := true,
   // When forking, the base directory should be set to the root directory
   Test / baseDirectory := (ThisBuild / baseDirectory).value,
-  // Watch changes of example .wv files upon testing
-  // TEMP disabled: Test / watchSources blocked by sbt 2 caching
+  // Watch changes of example .wv files upon testing. Def.uncached wraps the Seq[File]
+  // value so sbt 2's cached-task validator does not reject a non-serializable File output.
+  Test / watchSources ++= Def.uncached(
+    ((ThisBuild / baseDirectory).value / "spec" ** "*.wv").get() ++
+      ((ThisBuild / baseDirectory).value / "wvlet-lang" ** "*.wv").get()
+  )
 )
 
 lazy val wvc = project
@@ -256,19 +266,18 @@ lazy val wvcLib = project
   )
   .dependsOn(wvc)
 
-// wvcLibStatic temporarily disabled during sbt 2 migration; enable once we resolve
-// the ScalaNativePlugin caching interaction on projects sharing base dir with wvcLib.
-// lazy val wvcLibStatic = project
-//   .in(file("wvc-lib"))
-//   .enablePlugins(ScalaNativePlugin)
-//   .settings(
-//     buildSettings,
-//     name := "wvc-lib-static",
-//     nativeConfig ~= { c =>
-//       c.withBuildTarget(BuildTarget.libraryStatic).withBaseName("wvlet")
-//     }
-//   )
-//   .dependsOn(wvc)
+lazy val wvcLibStatic = project
+  .in(file("wvc-lib"))
+  .enablePlugins(ScalaNativePlugin)
+  .settings(
+    buildSettings,
+    name   := "wvc-lib",
+    target := Def.uncached(target.value / "static"),
+    nativeConfig ~= { c =>
+      c.withBuildTarget(BuildTarget.libraryStatic).withBaseName("wvlet")
+    }
+  )
+  .dependsOn(wvc)
 
 /**
   * @param name
