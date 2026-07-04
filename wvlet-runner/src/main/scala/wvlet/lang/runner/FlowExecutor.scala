@@ -177,7 +177,8 @@ class FlowExecutor(
     workEnv: WorkEnv,
     config: FlowExecutorConfig = FlowExecutorConfig(),
     stageRunner: Option[FlowStageRunner] = None,
-    retryScheduler: Option[(Long, () => Unit) => Unit] = None
+    retryScheduler: Option[(Long, () => Unit) => Unit] = None,
+    registry: Option[FlowRunRegistry] = None
 ) extends LogSupport:
   import FlowExecutor.FlowEvent
   import FlowExecutor.FlowEvent.*
@@ -192,9 +193,60 @@ class FlowExecutor(
     cancelled = true
     eventQueue.put(CancelRequested)
 
+  /**
+    * Check whether the flow's cross-flow dependency (`depends on X` or `if X.failed/done`) is
+    * satisfied by the latest recorded run of the referenced flow
+    */
+  private def dependencySatisfied(flow: FlowDef): Boolean =
+    flow.dependency match
+      case None =>
+        true
+      case Some(dep) =>
+        registry match
+          case None =>
+            workEnv.warn(
+              s"Flow ${flow
+                  .name
+                  .name} has a cross-flow dependency, but no run registry is available; skipping"
+            )
+            false
+          case Some(reg) =>
+            dep match
+              case DependsOnFlow(flowName, _) =>
+                reg.latestRunOf(flowName.fullName).exists(_.state == FlowRunRecord.STATE_SUCCESS)
+              case FlowStatePredicate(flowName, "failed", _) =>
+                reg.latestRunOf(flowName.fullName).exists(_.state == FlowRunRecord.STATE_FAILED)
+              case FlowStatePredicate(flowName, "done", _) =>
+                reg.latestRunOf(flowName.fullName).exists(_.isTerminal)
+              case FlowStatePredicate(_, _, _) =>
+                false
+
   def execute(flow: FlowDef)(using ctx: Context): FlowExecutionResult =
-    val runId = ULID.newULIDString
+    val runId     = ULID.newULIDString
+    val startedAt = System.currentTimeMillis()
     workEnv.info(s"Executing flow ${flow.name.name} (run: ${runId})")
+
+    // Evaluate cross-flow dependencies against the run registry before scheduling any stage
+    if !dependencySatisfied(flow) then
+      workEnv.info(s"Flow ${flow.name.name} dependency is not satisfied; skipping all stages")
+      val skipped = FlowExecutionResult(
+        flow.name.name,
+        runId,
+        flow.stages.map(s => StageResult(s.name.name, StageState.Skipped, 0))
+      )
+      registry.foreach {
+        _.save(
+          FlowRunRecord(
+            runId,
+            flow.name.name,
+            FlowRunRecord.STATE_SKIPPED,
+            startedAt,
+            Some(System.currentTimeMillis()),
+            skipped.stageResults.map(r => StageRunRecord(r.name, r.state.stateName, r.attempts))
+          )
+        )
+      }
+      return skipped
 
     // Lower flow operators (fork/route/wait/activate/end) into SQL-expressible stage bodies
     // plus orchestration metadata
@@ -260,6 +312,43 @@ class FlowExecutor(
         ,
         delay,
         TimeUnit.MILLISECONDS
+      )
+    }
+
+    // Persist a snapshot of the run so that other processes (wvlet flow session) can observe it
+    def persistSnapshot(finished: Boolean = false): Unit = registry.foreach { reg =>
+      val stageRecords = flowStages.map { ls =>
+        val name  = ls.name
+        val state = states(name)
+        StageRunRecord(
+          name,
+          state.stateName,
+          attempts(name),
+          errors.get(name).map(_.getMessage),
+          if state == StageState.Success then
+            Some(tableFor(name))
+          else
+            None
+        )
+      }
+      val flowState =
+        if finished then
+          FlowRunRecord.flowStateOf(states.values)
+        else
+          FlowRunRecord.STATE_RUNNING
+      reg.save(
+        FlowRunRecord(
+          runId,
+          flow.name.name,
+          flowState,
+          startedAt,
+          if finished then
+            Some(System.currentTimeMillis())
+          else
+            None
+          ,
+          stageRecords
+        )
       )
     }
 
@@ -390,6 +479,7 @@ class FlowExecutor(
 
     def allTerminal: Boolean = states.values.forall(_.isTerminal)
 
+    persistSnapshot()
     try
       var done = false
       while !done do
@@ -453,11 +543,14 @@ class FlowExecutor(
                         scheduleRetry(delay, () => eventQueue.put(RetryDue(s, attempt + 1)))
               end if
         end if
+        persistSnapshot()
       end while
     finally
       workerPool.shutdownNow()
       timer.shutdownNow()
     end try
+
+    persistSnapshot(finished = true)
 
     // Report results in stage definition order for deterministic summaries
     val stageResults = flowStages.map { ls =>

@@ -53,10 +53,27 @@ class FlowExecutorTest extends UniTest:
       wv: String,
       config: FlowExecutorConfig = FlowExecutorConfig(),
       stageRunner: Option[FlowStageRunner] = None,
-      retryScheduler: Option[(Long, () => Unit) => Unit] = None
+      retryScheduler: Option[(Long, () => Unit) => Unit] = None,
+      registry: Option[FlowRunRegistry] = None
   ): FlowExecutionResult =
     val (flow, ctx) = compileFlow(wv)
-    FlowExecutor(connector, workEnv, config, stageRunner, retryScheduler).execute(flow)(using ctx)
+    FlowExecutor(connector, workEnv, config, stageRunner, retryScheduler, registry).execute(flow)(
+      using ctx
+    )
+
+  /** Compile a unit possibly containing multiple flows and return them by name */
+  private def compileFlows(wv: String): (Map[String, FlowDef], Context) =
+    val compiler = Compiler(CompilerOptions(workEnv = workEnv))
+    val unit     = CompilationUnit.fromWvletString(wv)
+    val result   = compiler.compileSingleUnit(unit)
+    val ctx      = result.context.withCompilationUnit(unit).newContext(Symbol.NoSymbol)
+    val flows    = Map.newBuilder[String, FlowDef]
+    unit
+      .resolvedPlan
+      .traverse { case f: FlowDef =>
+        flows += f.name.name -> f
+      }
+    (flows.result(), ctx)
 
   private def countRows(table: String): Long =
     connector.runQuery(s"""select count(*) cnt from "${table}"""") { rs =>
@@ -461,6 +478,82 @@ class FlowExecutorTest extends UniTest:
     // The flow contains a failing stage, but merely defining it must not run it
     val result = queryExecutor.execute(executionPlan, ctx)
     result.hasError shouldBe false
+  }
+
+  test("record flow runs in the registry") {
+    val registry = FlowRunRegistry(java.nio.file.Files.createTempDirectory("wv-flow-reg"))
+    val result   = runFlow(
+      """flow RecordedFlow = {
+        |  stage src = from [[1], [2]] as t(id)
+        |  stage out = from src | select id
+        |}""".stripMargin,
+      registry = Some(registry)
+    )
+    val record = registry.get(result.runId).get
+    record.flowName shouldBe "RecordedFlow"
+    record.state shouldBe FlowRunRecord.STATE_SUCCESS
+    record.finishedAtMillis.isDefined shouldBe true
+    record.stages.map(_.name) shouldBe List("src", "out")
+    record.stages.map(_.state).distinct shouldBe List("success")
+    registry.latestRunOf("RecordedFlow").get.runId shouldBe result.runId
+  }
+
+  test("record failed flow runs with stage errors") {
+    val registry = FlowRunRegistry(java.nio.file.Files.createTempDirectory("wv-flow-reg"))
+    val result   = runFlow(
+      """flow BrokenRecordedFlow = {
+        |  stage broken = from nonexistent_table_xyz
+        |}""".stripMargin,
+      registry = Some(registry)
+    )
+    val record = registry.get(result.runId).get
+    record.state shouldBe FlowRunRecord.STATE_FAILED
+    record.stages.head.state shouldBe "failed"
+    record.stages.head.error.isDefined shouldBe true
+  }
+
+  test("evaluate cross-flow dependencies against the run registry") {
+    val registry     = FlowRunRegistry(java.nio.file.Files.createTempDirectory("wv-flow-reg"))
+    val (flows, ctx) = compileFlows("""flow Upstream = {
+        |  stage src = from [[1]] as t(id)
+        |}
+        |
+        |flow Downstream depends on Upstream = {
+        |  stage report = from [[1]] as t(id)
+        |}
+        |
+        |flow Recovery if Upstream.failed = {
+        |  stage alert = from [[1]] as t(id)
+        |}
+        |
+        |flow Cleanup if Upstream.done = {
+        |  stage archive = from [[1]] as t(id)
+        |}
+        |
+        |flow Orphan depends on NeverRunFlow = {
+        |  stage x = from [[1]] as t(id)
+        |}
+        |""".stripMargin)
+
+    def run(name: String): FlowExecutionResult =
+      FlowExecutor(connector, workEnv, registry = Some(registry)).execute(flows(name))(using ctx)
+
+    // Before any upstream run, dependent flows are skipped entirely
+    run("Downstream").stageResults.map(_.state) shouldBe List(StageState.Skipped)
+
+    run("Upstream").isSuccess shouldBe true
+
+    // depends on: runs only after the upstream flow succeeded
+    run("Downstream").stageResults.map(_.state) shouldBe List(StageState.Success)
+    // if Upstream.failed: upstream succeeded, so the recovery flow is skipped
+    run("Recovery").stageResults.map(_.state) shouldBe List(StageState.Skipped)
+    // if Upstream.done: upstream reached a terminal state, so cleanup runs
+    run("Cleanup").stageResults.map(_.state) shouldBe List(StageState.Success)
+    // depends on a flow that never ran
+    run("Orphan").stageResults.map(_.state) shouldBe List(StageState.Skipped)
+
+    // Dependency-skipped runs are recorded with the skipped state
+    registry.latestRunOf("Orphan").get.state shouldBe FlowRunRecord.STATE_SKIPPED
   }
 
   test("compute retry delays for backoff strategies") {

@@ -334,7 +334,19 @@ wvlet flow show my_pipeline -w ./pipelines
 
 # Run a flow and print its per-stage results (non-zero exit code when the flow fails)
 wvlet flow run my_pipeline -w ./pipelines
+
+# List recorded flow runs (most recent first)
+wvlet flow session list -w ./pipelines
+
+# Show the per-stage details of a recorded run
+wvlet flow session show <run_id> -w ./pipelines
 ```
+
+Every flow run is recorded in a local run registry (`target/flow-runs/<run_id>.json` under the
+working folder), updated live as stages change state. Cross-flow dependencies (`depends on X`,
+`if X.failed`, `if X.done`) are evaluated against the latest recorded run of the referenced
+flow: when the dependency is not satisfied, the flow run is recorded as `skipped` without
+executing any stage.
 
 ## Stage Execution Model
 
@@ -344,9 +356,9 @@ stages run in parallel (bounded by executor parallelism), retries are scheduled 
 with the configured backoff, and `timeout` bounds each stage attempt. Flow operators are
 lowered before scheduling: `route` cases become filter predicates on target stages, `fork`
 stages are flattened into the DAG, `wait` delays materialization, `activate` is a local
-logging stub until sink connectors exist, and `end` is a pass-through. Flow-level schedules,
-cross-flow dependencies, `-> Flow` jumps, and `heartbeat` enforcement are parsed but not yet
-executable.
+logging stub until sink connectors exist, and `end` is a pass-through. Flow runs are recorded
+in a local run registry, and cross-flow dependencies are evaluated against it. Flow-level cron
+schedules, `-> Flow` jumps, and `heartbeat` enforcement are parsed but not yet executable.
 :::
 
 Each stage progresses through a well-defined state machine:

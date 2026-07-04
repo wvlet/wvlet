@@ -45,6 +45,25 @@ class WvletFlowCommandTest extends UniTest:
     WvletMain.main(s"flow run FallbackPipeline -w ${flowDir}")
   }
 
+  test("list and show flow run sessions") {
+    WvletMain.main(s"flow run SamplePipeline -w ${flowDir}")
+    WvletMain.main(s"flow session list -w ${flowDir}")
+
+    import wvlet.lang.compiler.WorkEnv
+    import wvlet.lang.runner.FlowRunRegistry
+    val runs = FlowRunRegistry.forWorkEnv(WorkEnv(flowDir)).list()
+    runs.nonEmpty shouldBe true
+    runs.head.flowName shouldBe "SamplePipeline"
+    WvletMain.main(s"flow session show ${runs.head.runId} -w ${flowDir}")
+  }
+
+  test("report an error for an unknown session sub command") {
+    val e = intercept[WvletLangException] {
+      WvletMain.main(s"flow session frobnicate -w ${flowDir}")
+    }
+    e.statusCode shouldBe StatusCode.INVALID_ARGUMENT
+  }
+
   test("report an error for an unknown flow name") {
     val e = intercept[WvletLangException] {
       WvletMain.main(s"flow run NoSuchFlow -w ${flowDir}")

@@ -165,7 +165,11 @@ class QueryExecutor(
           // Command produces no QueryResult other than errors
           report(executeCommand(e))
         case ExecuteFlow(flow) =>
-          val flowExecutor = FlowExecutor(getDBConnector(defaultProfile), workEnv)
+          val flowExecutor = FlowExecutor(
+            getDBConnector(defaultProfile),
+            workEnv,
+            registry = Some(FlowRunRegistry.forWorkEnv(workEnv))
+          )
           report(flowExecutor.execute(flow))
         case ExecuteValDef(v) =>
           val expr = ExpressionEvaluator.eval(v.expr)(using context)
@@ -450,7 +454,11 @@ class QueryExecutor(
     q.transformUp { case rf: RunFlow =>
         val flow       = resolveFlow(rf)
         val connector  = getDBConnector(defaultProfile)
-        val flowResult = FlowExecutor(connector, workEnv).execute(flow)
+        val flowResult = FlowExecutor(
+          connector,
+          workEnv,
+          registry = Some(FlowRunRegistry.forWorkEnv(workEnv))
+        ).execute(flow)
 
         given monitor: QueryProgressMonitor = context.queryProgressMonitor
 
@@ -470,6 +478,8 @@ class QueryExecutor(
         TableRef(DoubleQuotedIdentifier(summaryTable, rf.span), rf.span)
       }
       .asInstanceOf[Relation]
+
+  end runEmbeddedFlows
 
   private def executeQuery(plan: LogicalPlan)(using context: Context): QueryResult =
     trace(s"Executing query: ${plan.pp}")
