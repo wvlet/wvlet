@@ -829,6 +829,69 @@ class FlowExecutorTest extends UniTest:
     third.isSuccess shouldBe true
   }
 
+  test("fail an attempt that stops heartbeating and retry it") {
+    val blocked = CountDownLatch(1)
+    val delays  = ListBuffer.empty[Long]
+    val runner  =
+      new FlowStageRunner:
+        override def run(stage: StageDef, targetTable: String)(using Context): Unit = ()
+        override def runWithHeartbeat(stage: StageDef, targetTable: String, heartbeat: () => Unit)(
+            using Context
+        ): Unit =
+          heartbeat()
+          // Stop heartbeating: the attempt blocks until the stall detector interrupts it
+          blocked.await()
+    val result = runFlow(
+      """flow StalledFlow = {
+        |  stage stuck with {
+        |    heartbeat: 100ms
+        |    retries: 1
+        |    retry_delay: 1ms
+        |  } = from [[1]] as t(id)
+        |}""".stripMargin,
+      stageRunner = Some(runner),
+      retryScheduler = Some { (delay, action) =>
+        delays += delay
+        action()
+      }
+    )
+    val stuck = result.stageResult("stuck").get
+    stuck.state shouldBe StageState.Failed
+    stuck.attempts shouldBe 2
+    stuck.error.get.getMessage shouldContain "no heartbeat"
+  }
+
+  test("keep attempts alive while they heartbeat") {
+    val runner =
+      new FlowStageRunner:
+        override def run(stage: StageDef, targetTable: String)(using Context): Unit = ()
+        override def runWithHeartbeat(stage: StageDef, targetTable: String, heartbeat: () => Unit)(
+            using Context
+        ): Unit =
+          // Run well past the heartbeat interval, but report liveness frequently
+          (1 to 12).foreach { _ =>
+            Thread.sleep(50)
+            heartbeat()
+          }
+    val result = runFlow(
+      """flow BeatingFlow = {
+        |  stage steady with { heartbeat: 300ms } = from [[1]] as t(id)
+        |}""".stripMargin,
+      stageRunner = Some(runner)
+    )
+    result.stageResult("steady").get.state shouldBe StageState.Success
+  }
+
+  test("treat waits and executing SQL statements as alive under a heartbeat config") {
+    // The intentional wait exceeds the heartbeat interval; the sliced sleep and the
+    // statement-level liveness of the materializing SQL keep the attempt alive
+    val result = runFlow("""flow WaitingHeartbeatFlow = {
+        |  stage delayed with { heartbeat: 100ms } = from [[1], [2]] as t(id) | wait('400 ms')
+        |}""".stripMargin)
+    result.stageResult("delayed").get.state shouldBe StageState.Success
+    countStageRows(result, "delayed") shouldBe 2L
+  }
+
   test("compute retry delays for backoff strategies") {
     val base = StageExecutionConfig(retryDelayMillis = 100L)
     base.withBackoff("constant").retryDelayFor(1) shouldBe 100L
