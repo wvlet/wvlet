@@ -295,6 +295,23 @@ flow scheduled_flow with {
 }
 ```
 
+Schedules are evaluated by the scheduler daemon:
+
+```bash
+wvlet flow scheduler -w <dir>
+```
+
+The daemon evaluates the five-field cron expression of every scheduled flow in the working
+folder (in the flow's `timezone:`, defaulting to the system zone) and triggers due flows
+through the regular flow executor, so cross-flow dependencies (`depends on`, `if X.failed`)
+still decide whether a triggered run actually executes: the schedule determines *when* to
+check, the dependency determines *if* the flow runs.
+
+`concurrency: N` is enforced through the run store whenever a flow starts (scheduler, CLI, or
+`run flow`): a run atomically claims one of the flow's N slots and is recorded as `skipped`
+when all slots are taken by running runs. With the `sqlite` run store the claim is
+transactional across processes.
+
 ## Running Flows
 
 Flow definitions are declarations: running a file that contains flows does not execute them.
@@ -379,8 +396,9 @@ logging stub until sink connectors exist, and `end` is a pass-through. Flow runs
 in a local run registry, and cross-flow dependencies are evaluated against it. A `-> Flow`
 jump is a control-only transfer: when the jumping stage succeeds, the target flow is triggered
 as a new run (with its own run id) after the current flow completes, and jump chains are
-bounded by a configurable depth limit to terminate cycles. Flow-level cron schedules and
-`heartbeat` enforcement are parsed but not yet executable.
+bounded by a configurable depth limit to terminate cycles. Flow-level cron schedules are
+evaluated by the `wvlet flow scheduler` daemon, and `concurrency:` limits are enforced through
+run-slot claims in the run store. `heartbeat` enforcement is parsed but not yet executable.
 :::
 
 Each stage progresses through a well-defined state machine:

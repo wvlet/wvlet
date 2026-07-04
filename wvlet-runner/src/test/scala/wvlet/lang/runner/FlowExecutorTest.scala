@@ -782,6 +782,53 @@ class FlowExecutorTest extends UniTest:
     registry.list() shouldBe Nil
   }
 
+  test("enforce the flow-level concurrency limit through the run store") {
+    val registry = FlowRunRegistry(java.nio.file.Files.createTempDirectory("wv-flow-reg"))
+    val wv       =
+      """flow LimitedFlow with { concurrency: 1 } = {
+        |  stage src = from [[1]] as t(id)
+        |}""".stripMargin
+    val (flow, ctx) = compileFlow(wv)
+
+    val started        = CountDownLatch(1)
+    val release        = CountDownLatch(1)
+    val blockingRunner =
+      new FlowStageRunner:
+        override def run(stage: StageDef, targetTable: String)(using Context): Unit =
+          started.countDown()
+          release.await(30, TimeUnit.SECONDS)
+
+    // Hold the single run slot with a long-running first run
+    @volatile
+    var firstResult: Option[FlowExecutionResult] = None
+    val firstRun                                 = Thread { () =>
+      firstResult = Some(
+        FlowExecutor(
+          connector,
+          workEnv,
+          stageRunner = Some(blockingRunner),
+          registry = Some(registry)
+        ).execute(flow)(using ctx)
+      )
+    }
+    firstRun.start()
+    started.await(10, TimeUnit.SECONDS) shouldBe true
+
+    // A second run of the same flow cannot claim a slot and is recorded as skipped
+    val second =
+      FlowExecutor(connector, workEnv, registry = Some(registry)).execute(flow)(using ctx)
+    second.stageResults.map(_.state) shouldBe List(StageState.Skipped)
+    registry.get(second.runId).get.state shouldBe FlowRunRecord.STATE_SKIPPED
+
+    release.countDown()
+    firstRun.join(30000)
+    firstResult.get.isSuccess shouldBe true
+
+    // Once the first run finished, the slot is free again
+    val third = FlowExecutor(connector, workEnv, registry = Some(registry)).execute(flow)(using ctx)
+    third.isSuccess shouldBe true
+  }
+
   test("compute retry delays for backoff strategies") {
     val base = StageExecutionConfig(retryDelayMillis = 100L)
     base.withBackoff("constant").retryDelayFor(1) shouldBe 100L

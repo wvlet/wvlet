@@ -130,6 +130,11 @@ class WvletFlowCommandTest extends UniTest:
       store.close()
   }
 
+  test("report when no scheduled flows exist for the scheduler") {
+    // The working folder has no flows with a schedule: config, so the daemon exits immediately
+    WvletMain.main(s"flow scheduler -w ${flowDir}")
+  }
+
   test("report an error for an unknown flow name") {
     val e = intercept[WvletLangException] {
       WvletMain.main(s"flow run NoSuchFlow -w ${flowDir}")
