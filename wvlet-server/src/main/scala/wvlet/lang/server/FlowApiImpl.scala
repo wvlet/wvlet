@@ -18,21 +18,22 @@ import wvlet.lang.api.v1.flow.FlowApi.*
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.runner.FlowRunRecord
 import wvlet.lang.runner.FlowRunStore
-import wvlet.uni.control.Control
 import wvlet.uni.http.rpc.RPCStatus
 import wvlet.uni.log.LogSupport
 
 /**
   * Read-only [[FlowApi]] over the local flow run store of the server's working folder. The store is
-  * opened per request so the server always observes runs written by other processes (CLI runs,
-  * scheduler daemons) without holding a connection
+  * opened once per server session (both store backends read fresh state on every list/get, so runs
+  * written by other processes — CLI runs, scheduler daemons — stay visible) and closed with the DI
+  * session
   */
-class FlowApiImpl(workEnv: WorkEnv) extends FlowApi with LogSupport:
+class FlowApiImpl(workEnv: WorkEnv) extends FlowApi with AutoCloseable with LogSupport:
 
-  private def withStore[A](body: FlowRunStore => A): A =
-    Control.withResource(FlowRunStore.forWorkEnv(workEnv))(body)
+  private lazy val store: FlowRunStore = FlowRunStore.forWorkEnv(workEnv)
 
-  override def listRuns(request: FlowRunListRequest): List[FlowRunSummary] = withStore { store =>
+  override def close(): Unit = store.close()
+
+  override def listRuns(request: FlowRunListRequest): List[FlowRunSummary] =
     val now = System.currentTimeMillis()
     store
       .list()
@@ -41,9 +42,8 @@ class FlowApiImpl(workEnv: WorkEnv) extends FlowApi with LogSupport:
       .take(request.limit.max(0))
       .map(toSummary(_, now))
       .toList
-  }
 
-  override def getRun(request: FlowRunRequest): FlowRunDetail = withStore { store =>
+  override def getRun(request: FlowRunRequest): FlowRunDetail =
     store.get(request.runId) match
       case Some(r) =>
         FlowRunDetail(
@@ -52,7 +52,6 @@ class FlowApiImpl(workEnv: WorkEnv) extends FlowApi with LogSupport:
         )
       case None =>
         throw RPCStatus.NOT_FOUND_U5.newException(s"Flow run '${request.runId}' is not found")
-  }
 
   private def toSummary(r: FlowRunRecord, nowMillis: Long): FlowRunSummary = FlowRunSummary(
     runId = r.runId,

@@ -42,8 +42,14 @@ class FlowRunsPage(rpcClient: RPCAsyncClient) extends RxElement:
     .map { lst =>
       loadError := None
       runs      := lst
-      // Keep the selected run's details in sync with the refreshed list
-      selectedRun.get.foreach(d => showRun(d.run.runId))
+      // Keep the selected run's details in sync with the refreshed list. Terminal runs never
+      // change, so only a still-running selection is re-fetched
+      selectedRun
+        .get
+        .foreach { d =>
+          if d.run.state == "running" then
+            showRun(d.run.runId)
+        }
     }
     .recover { case e: Throwable =>
       loadError := Some(e.getMessage)
@@ -78,7 +84,17 @@ class FlowRunsPage(rpcClient: RPCAsyncClient) extends RxElement:
 
   private def fmtElapsed(r: FlowRunSummary): String = r
     .finishedAtMillis
-    .map(f => s"${f - r.startedAtMillis}ms")
+    .map { f =>
+      val millis = f - r.startedAtMillis
+      if millis < 1000 then
+        s"${millis}ms"
+      else if millis < 60_000 then
+        f"${millis / 1000.0}%.1fs"
+      else if millis < 3600_000 then
+        s"${millis / 60_000}m ${(millis % 60_000) / 1000}s"
+      else
+        s"${millis / 3600_000}h ${(millis % 3600_000) / 60_000}m"
+    }
     .getOrElse("-")
 
   private def headerCell(name: String) = th(
