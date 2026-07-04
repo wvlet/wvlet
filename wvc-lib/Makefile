@@ -30,8 +30,12 @@ LIBS:=-l$(LIB_NAME) -lpthread -lcrypto
 test: $(LIB_SHARED)
 	$(MAKE) rust c c++ ARGS="-q 'select 1'"
 
+# sbt 2 writes $(LIB_SHARED) to ../target/out/native0.5/scala-<ver>/wvc-lib/, so nothing
+# creates wvc-lib/target/ where rustc / gcc drop their test binaries. Order-only prereq.
+$(TARGET):
+	mkdir -p $@
+
 $(LIB_SHARED):
-	mkdir -p $(OUT_DIR) $(TARGET)
 	cd .. && ./sbt "wvcLib/nativeLink"
 
 # Ensure the static library is built
@@ -41,23 +45,23 @@ $(STATIC_LIB):
 rust: $(TARGET)/test-rust
 	$(RUN_OPTS) $< $(ARGS)
 
-$(TARGET)/test-rust: src/test/rust/test.rs $(LIB_SHARED)
+$(TARGET)/test-rust: src/test/rust/test.rs $(LIB_SHARED) | $(TARGET)
 	rustc $(LINKER_OPTS) $< $(LIBS) -o $@
 
 c++: $(TARGET)/test-c++
 	$(RUN_OPTS) $< $(ARGS)
 
-$(TARGET)/test-c++: src/test/c++/test.cpp $(LIB_SHARED)
+$(TARGET)/test-c++: src/test/c++/test.cpp $(LIB_SHARED) | $(TARGET)
 	g++ $(LINKER_OPTS) $< $(LIBS) -o $@
 
 c: $(TARGET)/test-c
 	$(RUN_OPTS) $< $(ARGS)
 
-$(TARGET)/test-c: src/test/c/test.c $(LIB_SHARED)
+$(TARGET)/test-c: src/test/c/test.c $(LIB_SHARED) | $(TARGET)
 	gcc $(LINKER_OPTS) $< $(LIBS) -o $@
 
 c-json: $(TARGET)/test-c-json
 	$(RUN_OPTS) $<
 
-$(TARGET)/test-c-json: src/test/c/test_json.c $(LIB_SHARED)
+$(TARGET)/test-c-json: src/test/c/test_json.c $(LIB_SHARED) | $(TARGET)
 	gcc $(LINKER_OPTS) $< $(LIBS) -o $@
