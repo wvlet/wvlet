@@ -12,7 +12,7 @@ import wvlet.uni.cli.launcher.option
 import wvlet.uni.control.Control.withResource
 import wvlet.uni.io.IO
 import wvlet.uni.design.{Design, Session}
-import wvlet.uni.http.netty.{NettyHttpServer, NettyServerConfig, RxHttpHandler}
+import wvlet.uni.http.netty.{NettyHttpServer, NettyServerConfig}
 import wvlet.uni.http.rpc.{RPCRoute, RPCRouter, RPCStatus}
 import wvlet.uni.http.{
   Http,
@@ -21,7 +21,8 @@ import wvlet.uni.http.{
   HttpStatus,
   JVMHttpChannelFactory,
   Request,
-  Response
+  Response,
+  RxHttpHandler
 }
 import wvlet.uni.log.LogSupport
 import wvlet.uni.rx.Rx

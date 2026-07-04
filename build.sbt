@@ -3,7 +3,7 @@ import scala.scalanative.build.GC
 import scala.scalanative.build.Mode
 import scala.scalanative.build.NativeConfig
 
-val UNI_VERSION = "2026.1.11"
+val UNI_VERSION = "2026.1.15"
 
 val TRINO_VERSION          = "476"
 val AWS_SDK_VERSION        = "2.20.146"
@@ -45,6 +45,15 @@ val buildSettings = Seq[Setting[?]](
 // against the Scala 2.13 binary ABI on Scala.js 1.x — `%%%` would not resolve under Scala 3.
 val scalajsJavaSecureRandom: ModuleID =
   "org.scala-js" % "scalajs-java-securerandom_sjs1_2.13" % "1.0.0"
+
+// uni-native ships `uni_curl_shim.c` in its resources, which is unconditionally compiled into
+// every downstream Scala Native binary and calls `curl_easy_setopt` / `curl_easy_getinfo`.
+// Scala Native's `@link("curl")` on `CurlBindings` only fires when the Extern object is
+// reachable through DCE — test binaries that don't touch the HTTP client would otherwise link
+// the shim without `-lcurl` and fail with `undefined reference to curl_easy_setopt`.
+val uniNativeCurlLinking = nativeConfig ~= { c =>
+  c.withLinkingOptions(c.linkingOptions :+ "-lcurl")
+}
 
 lazy val jvmProjects: Seq[ProjectReference] = Seq(
   api.jvm,
@@ -110,6 +119,7 @@ lazy val api = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     libraryDependencies += "org.wvlet.uni" %%% "uni" % UNI_VERSION
   )
   .jsSettings(libraryDependencies += scalajsJavaSecureRandom)
+  .nativeSettings(uniNativeCurlLinking)
 
 def generateWvletLib(path: File, packageName: String, className: String): String = {
   val srcDir      = path
@@ -203,6 +213,7 @@ lazy val lang = crossProject(JVMPlatform, JSPlatform, NativePlatform)
       _.withModuleKind(ModuleKind.CommonJSModule)
     }
   )
+  .nativeSettings(uniNativeCurlLinking)
   .dependsOn(api)
 
 val specRunnerSettings = Seq(
@@ -487,13 +498,15 @@ lazy val cliCore = crossProject(JVMPlatform, JSPlatform, NativePlatform)
       (ThisBuild / baseDirectory).value / "sdks" / "cli-node" / "lib"
   )
   .nativeSettings(
-    // The C wrapper in `lang.native`'s `src/main/resources/scala-native/` is unconditionally
-    // compiled and linked into every downstream Native binary, so its `duckdb_*` references
-    // need `-lduckdb` available at the final link step. Scala Native's `@link("duckdb")`
-    // annotation on `DuckDBApi` only triggers when that extern object is reachable, and
-    // cli-core tests / binaries typically don't reach the DuckDB code path. Add the flag
-    // explicitly here. (Local macOS linker tolerates the missing flag because the dylib is
-    // already on the search path; GNU ld on Linux is strict.)
+    // The C wrappers in `lang.native`'s `src/main/resources/scala-native/` (duckdb helpers)
+    // and uni-native's resources (`uni_curl_shim.c`) are unconditionally compiled and linked
+    // into every downstream Native binary, so their `duckdb_*` / `curl_easy_*` references
+    // need `-lduckdb` / `-lcurl` available at the final link step. Scala Native's
+    // `@link("duckdb")` / `@link("curl")` annotations only trigger when their extern objects
+    // are reachable, and cli-core tests / binaries typically don't reach those code paths.
+    // Add the flags explicitly here. (Local macOS linker tolerates the missing flags because
+    // the dylibs are already on the search path; GNU ld on Linux is strict.)
+    uniNativeCurlLinking,
     nativeConfig ~= { c =>
       c.withLinkingOptions(c.linkingOptions :+ "-lduckdb")
     }
