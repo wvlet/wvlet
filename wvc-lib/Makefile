@@ -31,7 +31,7 @@ test: $(LIB_SHARED)
 	$(MAKE) rust c c++ ARGS="-q 'select 1'"
 
 $(LIB_SHARED):
-	$(MAKE) -p $(OUT_DIR)
+	mkdir -p $(OUT_DIR) $(TARGET)
 	cd .. && ./sbt "wvcLib/nativeLink"
 
 # Ensure the static library is built
