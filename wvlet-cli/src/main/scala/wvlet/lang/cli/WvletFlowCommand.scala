@@ -133,14 +133,20 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
     }
 
   @command(description =
-    "Manage flow run sessions: session list | show <run_id> | cancel <run_id> | resume <run_id> | clean"
+    "Manage flow run sessions: session list | show <run_id> | cancel <run_id> | resume <run_id> | clean [--stale]"
   )
   def session(
       flowOption: WvletFlowOption,
       @argument(description = "Sub command: list | show | cancel | resume | clean")
       sub: String = "list",
       @argument(description = "Run id (required for show, cancel, and resume)")
-      runId: Option[String] = None
+      runId: Option[String] = None,
+      @option(
+        prefix = "--stale",
+        description =
+          "With clean: also remove running records whose liveness lease expired (crashed runs)"
+      )
+      stale: Boolean = false
   ): Unit =
     val workEnv = WorkEnv(flowOption.workFolder, opts.logLevel)
 
@@ -161,11 +167,17 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
 
       sub match
         case "list" =>
+          val now = System.currentTimeMillis()
           registry
             .list()
             .foreach { r =>
+              val state =
+                if r.isStaleAt(now) then
+                  s"${r.state} (stale)"
+                else
+                  r.state
               println(
-                f"${r.runId}%-28s ${r.flowName}%-24s ${r.state}%-10s started: ${fmtTime(
+                f"${r.runId}%-28s ${r.flowName}%-24s ${state}%-10s started: ${fmtTime(
                     r.startedAtMillis
                   )} (${fmtElapsed(r)})"
               )
@@ -194,7 +206,8 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
           val id = requireRunId("resume <run_id>")
           val r  = recordOf(id)
           r.state match
-            case FlowRunRecord.STATE_RUNNING =>
+            // A stale running record belongs to a crashed process and can be resumed
+            case FlowRunRecord.STATE_RUNNING if !r.isStaleAt(System.currentTimeMillis()) =>
               throw StatusCode
                 .INVALID_ARGUMENT
                 .newException(s"Run ${id} is still running and cannot be resumed")
@@ -211,20 +224,23 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
               executeFlow(flowOption, r.flowName, resumeFrom = Some(r))
         case "clean" =>
           // Remove terminal run records and drop their run-scoped tables. Running flows are kept
-          val terminalRuns = registry.list().filter(_.isTerminal)
-          val profile      = Profile.getProfile(
+          // unless --stale is given, which also removes runs whose liveness lease expired
+          // (their process died mid-run and left the record in the running state)
+          val now         = System.currentTimeMillis()
+          val cleanedRuns = registry.list().filter(r => r.isTerminal || (stale && r.isStaleAt(now)))
+          val profile     = Profile.getProfile(
             flowOption.profile,
             flowOption.catalog,
             flowOption.schema
           )
           Control.withResource(DBConnectorProvider(workEnv)) { dbConnectorProvider =>
             val connector = dbConnectorProvider.getConnector(profile)
-            terminalRuns.foreach { r =>
+            cleanedRuns.foreach { r =>
               FlowExecutor.dropRunTables(connector, r.runId, r.stages.map(_.name))
               registry.delete(r.runId)
             }
           }
-          println(s"Removed ${terminalRuns.size} flow run record(s)")
+          println(s"Removed ${cleanedRuns.size} flow run record(s)")
         case other =>
           throw StatusCode
             .INVALID_ARGUMENT

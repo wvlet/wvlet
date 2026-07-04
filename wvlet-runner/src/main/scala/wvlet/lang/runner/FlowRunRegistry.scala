@@ -53,6 +53,10 @@ case class StageRunRecord(
   *   Epoch millis when the run reached a terminal state
   * @param stages
   *   Per-stage records in stage definition order
+  * @param leaseExpiresAtMillis
+  *   Liveness lease of a running record, refreshed periodically by the executor. A running record
+  *   whose lease has expired belongs to a dead process (e.g. a crash mid-run) and is treated as
+  *   failed by run-slot claims and cross-flow dependency evaluation
   */
 case class FlowRunRecord(
     runId: String,
@@ -60,9 +64,21 @@ case class FlowRunRecord(
     state: String,
     startedAtMillis: Long,
     finishedAtMillis: Option[Long] = None,
-    stages: List[StageRunRecord] = Nil
+    stages: List[StageRunRecord] = Nil,
+    leaseExpiresAtMillis: Option[Long] = None
 ):
   def isTerminal: Boolean = state != FlowRunRecord.STATE_RUNNING
+
+  /** True when the record claims to be running but its liveness lease has expired */
+  def isStaleAt(nowMillis: Long): Boolean =
+    !isTerminal && leaseExpiresAtMillis.exists(_ < nowMillis)
+
+  /** The observable state at the given time: a stale running record is treated as failed */
+  def effectiveStateAt(nowMillis: Long): String =
+    if isStaleAt(nowMillis) then
+      FlowRunRecord.STATE_FAILED
+    else
+      state
 
 object FlowRunRecord:
   val STATE_RUNNING   = "running"
@@ -139,7 +155,10 @@ class FlowRunRegistry(registryDir: Path) extends FlowRunStore with LogSupport:
     // File-based claims cannot be made atomic across processes without lock files; this
     // best-effort implementation is atomic within a single process only
     synchronized {
-      val running = list().count(r => r.flowName == record.flowName && !r.isTerminal)
+      val now     = System.currentTimeMillis()
+      val running = list().count(r =>
+        r.flowName == record.flowName && !r.isTerminal && !r.isStaleAt(now)
+      )
       if running < concurrencyLimit then
         save(record)
         true

@@ -134,6 +134,62 @@ class FlowRunStoreTest extends UniTest:
     }
   }
 
+  test("persist and refresh run leases") {
+    withStores { (kind, store) =>
+      store.save(
+        record("run1", "FlowA", FlowRunRecord.STATE_RUNNING, 100L).copy(leaseExpiresAtMillis =
+          Some(1000L)
+        )
+      )
+      store.get("run1").get.leaseExpiresAtMillis shouldBe Some(1000L)
+
+      store.refreshLease("run1", 5000L)
+      val r = store.get("run1").get
+      r.leaseExpiresAtMillis shouldBe Some(5000L)
+      // The stage records survive a lease refresh
+      r.stages.map(_.name) shouldBe List("src", "out")
+      r.isStaleAt(4000L) shouldBe false
+      r.isStaleAt(6000L) shouldBe true
+      r.effectiveStateAt(6000L) shouldBe FlowRunRecord.STATE_FAILED
+
+      // Terminal records are never stale, regardless of their lease
+      store.save(
+        record("run2", "FlowA", FlowRunRecord.STATE_SUCCESS, 100L).copy(leaseExpiresAtMillis =
+          Some(10L)
+        )
+      )
+      store.get("run2").get.isStaleAt(6000L) shouldBe false
+      // A running record without a lease (e.g. written by an older version) is not stale
+      store.save(record("run3", "FlowA", FlowRunRecord.STATE_RUNNING, 100L))
+      store.get("run3").get.isStaleAt(6000L) shouldBe false
+    }
+  }
+
+  test("free the run slot of a running record whose lease expired") {
+    withStores { (kind, store) =>
+      val now = System.currentTimeMillis()
+      // A crashed process left this record running, but its lease has expired
+      store.save(
+        record("crashed", "FlowA", FlowRunRecord.STATE_RUNNING, 100L).copy(leaseExpiresAtMillis =
+          Some(now - 10000)
+        )
+      )
+      store.claimRunSlot(
+        record("run2", "FlowA", FlowRunRecord.STATE_RUNNING, 200L).copy(leaseExpiresAtMillis =
+          Some(now + 60000)
+        ),
+        concurrencyLimit = 1
+      ) shouldBe true
+      // A run holding a live lease still occupies its slot
+      store.claimRunSlot(
+        record("run3", "FlowA", FlowRunRecord.STATE_RUNNING, 300L).copy(leaseExpiresAtMillis =
+          Some(now + 60000)
+        ),
+        concurrencyLimit = 1
+      ) shouldBe false
+    }
+  }
+
   test("share state between store instances on the same path") {
     // Simulates cross-process observation: a second store instance sees runs and cancellation
     // requests written by the first one

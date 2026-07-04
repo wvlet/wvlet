@@ -115,6 +115,92 @@ class WvletFlowCommandTest extends UniTest:
     FlowRunRegistry.forWorkEnv(WorkEnv(flowDir)).list() shouldBe Nil
   }
 
+  test("clean stale running records with --stale") {
+    import wvlet.lang.compiler.WorkEnv
+    import wvlet.lang.runner.FlowRunRecord
+    import wvlet.lang.runner.FlowRunRegistry
+    val registry = FlowRunRegistry.forWorkEnv(WorkEnv(flowDir))
+    val now      = System.currentTimeMillis()
+    // A crashed process left this record running with an expired lease; another run is live
+    registry.save(
+      FlowRunRecord(
+        "stalerun",
+        "SamplePipeline",
+        FlowRunRecord.STATE_RUNNING,
+        now - 60000,
+        leaseExpiresAtMillis = Some(now - 30000)
+      )
+    )
+    registry.save(
+      FlowRunRecord(
+        "liverun",
+        "SamplePipeline",
+        FlowRunRecord.STATE_RUNNING,
+        now,
+        leaseExpiresAtMillis = Some(now + 60000)
+      )
+    )
+
+    // Plain clean keeps both running records
+    WvletMain.main(s"flow session clean -w ${flowDir}")
+    registry.get("stalerun").isDefined shouldBe true
+
+    // clean --stale removes the crashed run but keeps the live one
+    WvletMain.main(s"flow session clean --stale -w ${flowDir}")
+    registry.get("stalerun") shouldBe None
+    registry.get("liverun").isDefined shouldBe true
+    registry.delete("liverun")
+  }
+
+  test("resume a stale running record as a crashed run") {
+    import wvlet.lang.compiler.WorkEnv
+    import wvlet.lang.runner.FlowRunRecord
+    import wvlet.lang.runner.FlowRunRegistry
+    import wvlet.lang.runner.StageRunRecord
+    val registry = FlowRunRegistry.forWorkEnv(WorkEnv(flowDir))
+    val now      = System.currentTimeMillis()
+    registry.save(
+      FlowRunRecord(
+        "crashedrun",
+        "SamplePipeline",
+        FlowRunRecord.STATE_RUNNING,
+        now - 60000,
+        stages = List(StageRunRecord("src", "running", 1)),
+        leaseExpiresAtMillis = Some(now - 30000)
+      )
+    )
+    try
+      // A running record with an expired lease belongs to a dead process, so resume is allowed
+      WvletMain.main(s"flow session resume crashedrun -w ${flowDir}")
+      registry.get("crashedrun").get.state shouldBe FlowRunRecord.STATE_SUCCESS
+    finally
+      registry.delete("crashedrun")
+  }
+
+  test("reject resuming a run that is still running with a live lease") {
+    import wvlet.lang.compiler.WorkEnv
+    import wvlet.lang.runner.FlowRunRecord
+    import wvlet.lang.runner.FlowRunRegistry
+    val registry = FlowRunRegistry.forWorkEnv(WorkEnv(flowDir))
+    val now      = System.currentTimeMillis()
+    registry.save(
+      FlowRunRecord(
+        "activerun",
+        "SamplePipeline",
+        FlowRunRecord.STATE_RUNNING,
+        now,
+        leaseExpiresAtMillis = Some(now + 60000)
+      )
+    )
+    try
+      val e = intercept[WvletLangException] {
+        WvletMain.main(s"flow session resume activerun -w ${flowDir}")
+      }
+      e.statusCode shouldBe StatusCode.INVALID_ARGUMENT
+    finally
+      registry.delete("activerun")
+  }
+
   test("run a flow and inspect sessions with the SQLite run store") {
     import wvlet.lang.compiler.WorkEnv
     import wvlet.lang.runner.FlowRunStore
