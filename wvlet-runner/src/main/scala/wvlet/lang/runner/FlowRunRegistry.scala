@@ -93,6 +93,10 @@ class FlowRunRegistry(registryDir: Path) extends LogSupport:
 
   private def fileFor(runId: String): Path = registryDir.resolve(s"${runId.toLowerCase}.json")
 
+  private def cancelMarkerFor(runId: String): Path = registryDir.resolve(
+    s"${runId.toLowerCase}.cancel"
+  )
+
   /** Persist (create or overwrite) the record of a run */
   def save(record: FlowRunRecord): Unit =
     Files.createDirectories(registryDir)
@@ -122,6 +126,26 @@ class FlowRunRegistry(registryDir: Path) extends LogSupport:
 
   /** The most recent run of the given flow, if any */
   def latestRunOf(flowName: String): Option[FlowRunRecord] = list().find(_.flowName == flowName)
+
+  /**
+    * Request cancellation of a run by placing a marker file next to its record. The marker is
+    * polled by the executor's event loop, so a run can be cancelled from another process (e.g.
+    * `wvlet flow session cancel`)
+    */
+  def requestCancel(runId: String): Unit =
+    Files.createDirectories(registryDir)
+    Files.writeString(cancelMarkerFor(runId), "")
+
+  /** True if cancellation of the given run has been requested */
+  def cancelRequested(runId: String): Boolean = Files.exists(cancelMarkerFor(runId))
+
+  /** Remove the cancellation marker of a run (called when the run reaches a terminal state) */
+  def clearCancelRequest(runId: String): Unit = Files.deleteIfExists(cancelMarkerFor(runId))
+
+  /** Delete the record and any cancellation marker of a run */
+  def delete(runId: String): Unit =
+    Files.deleteIfExists(fileFor(runId))
+    Files.deleteIfExists(cancelMarkerFor(runId))
 
   private def readRecord(f: Path): Option[FlowRunRecord] =
     try

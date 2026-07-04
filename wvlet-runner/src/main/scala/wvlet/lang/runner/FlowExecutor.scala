@@ -122,9 +122,14 @@ end StageExecutionConfig
   *
   * @param maxParallelism
   *   Maximum number of stages that can run concurrently
+  * @param cancelPollIntervalMillis
+  *   Interval for polling the run registry for cross-process cancellation requests
   */
-case class FlowExecutorConfig(maxParallelism: Int = 4):
-  def withMaxParallelism(n: Int): FlowExecutorConfig = copy(maxParallelism = n)
+case class FlowExecutorConfig(maxParallelism: Int = 4, cancelPollIntervalMillis: Long = 500L):
+  def withMaxParallelism(n: Int): FlowExecutorConfig                 = copy(maxParallelism = n)
+  def withCancelPollIntervalMillis(millis: Long): FlowExecutorConfig = copy(
+    cancelPollIntervalMillis = millis
+  )
 
 /**
   * Runs the body of a single stage and materializes the result into the given target table.
@@ -228,13 +233,22 @@ class FlowExecutor(
               case FlowStatePredicate(_, _, _) =>
                 false
 
-  def execute(flow: FlowDef)(using ctx: Context): FlowExecutionResult =
-    val runId     = ULID.newULIDString
+  /**
+    * Execute the given flow. When `resumeFrom` holds the record of a previous failed or cancelled
+    * run, the run is resumed under the same run id: stages recorded as successful keep their
+    * materialized run-scoped tables and are not re-executed, and the remaining stages run with a
+    * fresh retry budget
+    */
+  def execute(flow: FlowDef, resumeFrom: Option[FlowRunRecord] = None)(using
+      ctx: Context
+  ): FlowExecutionResult =
+    val runId     = resumeFrom.map(_.runId).getOrElse(ULID.newULIDString)
     val startedAt = System.currentTimeMillis()
     workEnv.info(s"Executing flow ${flow.name.name} (run: ${runId})")
 
-    // Evaluate cross-flow dependencies against the run registry before scheduling any stage
-    if !dependencySatisfied(flow) then
+    // Evaluate cross-flow dependencies against the run registry before scheduling any stage.
+    // A resumed run already passed this gate when it originally started
+    if resumeFrom.isEmpty && !dependencySatisfied(flow) then
       workEnv.info(s"Flow ${flow.name.name} dependency is not satisfied; skipping all stages")
       val skipped = FlowExecutionResult(
         flow.name.name,
@@ -323,11 +337,44 @@ class FlowExecutor(
                 )
               }
 
+    // Stages recorded as successful in the resumed run keep their materialized tables and are
+    // not re-executed. Stage records that no longer match a stage of the flow are ignored
+    val resumedStages: Map[String, StageRunRecord] = resumeFrom
+      .map {
+        _.stages
+          .filter { s =>
+            s.state == StageState.Success.stateName && s.table.isDefined &&
+            stageNames.contains(s.name)
+          }
+          .map(s => s.name -> s)
+          .toMap
+      }
+      .getOrElse(Map.empty)
+    if resumedStages.nonEmpty then
+      workEnv.info(
+        s"Resuming run ${runId}: reusing ${resumedStages.size} successful stage(s): ${resumedStages
+            .keys
+            .mkString(", ")}"
+      )
+
     // All mutable scheduler state below is owned by this (caller) thread; worker threads only
     // post events to the eventQueue
-    val states   = mutable.Map.from(flowStages.map(ls => ls.name -> StageState.Pending))
+    val states = mutable
+      .Map
+      .from(
+        flowStages.map(ls =>
+          ls.name -> (
+            if resumedStages.contains(ls.name) then
+              StageState.Success
+            else
+              StageState.Pending
+          )
+        )
+      )
+    // Re-executed stages get a fresh retry budget; reused stages keep their recorded attempts
     val attempts = mutable.Map.empty[String, Int].withDefaultValue(0)
-    val errors   = mutable.Map.empty[String, Throwable]
+    resumedStages.foreach((name, s) => attempts(name) = s.attempts)
+    val errors = mutable.Map.empty[String, Throwable]
     // (stage, attempt) pairs whose outcome has been decided (guards against duplicate events
     // from a timed-out attempt completing later)
     val handledAttempts  = mutable.Set.empty[(String, Int)]
@@ -344,6 +391,22 @@ class FlowExecutor(
 
     val workerPool = Executors.newFixedThreadPool(config.maxParallelism.max(1), threadFactory)
     val timer      = Executors.newSingleThreadScheduledExecutor(threadFactory)
+
+    // Poll the registry for a cross-process cancellation request (wvlet flow session cancel)
+    registry.foreach { reg =>
+      val interval = config.cancelPollIntervalMillis.max(1L)
+      timer.scheduleAtFixedRate(
+        new Runnable:
+          override def run(): Unit =
+            if !cancelled && reg.cancelRequested(runId) then
+              workEnv.info(s"Cancellation of run ${runId} was requested; cancelling")
+              cancel()
+        ,
+        interval,
+        interval,
+        TimeUnit.MILLISECONDS
+      )
+    }
     val scheduleRetry: (Long, () => Unit) => Unit = retryScheduler.getOrElse { (delay, action) =>
       timer.schedule(
         new Runnable:
@@ -602,6 +665,8 @@ class FlowExecutor(
     end try
 
     persistSnapshot(finished = true)
+    // The run reached a terminal state; a pending cancellation request is no longer relevant
+    registry.foreach(_.clearCancelRequest(runId))
 
     // Report results in stage definition order for deterministic summaries
     val stageResults = flowStages.map { ls =>
