@@ -445,8 +445,13 @@ immediately. Flow operators are
 lowered before scheduling: `route` cases become filter predicates on target stages, `fork`
 stages are flattened into the DAG, `wait` delays materialization, and `end` is a pass-through.
 `activate('target', param: value, ...)` delivers the materialized stage output to the
-activation sink registered for the target name — local file export is built in
-(`activate('file', path: 'out.csv')`, with csv/parquet/json formats), unknown targets fall
+activation sink registered for the target name — local file export
+(`activate('file', path: 'out.csv')`, with csv/parquet/json formats) and webhook delivery
+(`activate('webhook', url: 'https://...')`, posting rows as a JSON array or `format: 'ndjson'`,
+bounded by `max_rows:`, 1000 by default) are built in; external modules can register
+additional sinks through the Java ServiceLoader
+(`META-INF/services/wvlet.lang.runner.ActivationSink`), which take precedence over built-in
+target names. Unknown targets fall
 back to a logging stub, and a sink failure fails the attempt and follows the stage's retry
 policy. Flow runs are recorded
 in a local run registry, and cross-flow dependencies are evaluated against it. A `-> Flow`

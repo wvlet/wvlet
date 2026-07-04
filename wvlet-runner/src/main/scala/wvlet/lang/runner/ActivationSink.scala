@@ -14,9 +14,18 @@
 package wvlet.lang.runner
 
 import wvlet.lang.api.StatusCode
+import wvlet.lang.runner.codec.JDBCCodec
 import wvlet.lang.runner.connector.DBConnector
 import wvlet.uni.log.LogSupport
+import wvlet.uni.weaver.Weaver
+import wvlet.uni.weaver.codec.PrimitiveWeaver.given
 
+import java.net.URI
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
+import java.time.Duration
+import scala.collection.immutable.ListMap
 import scala.util.Using
 
 /**
@@ -111,3 +120,102 @@ class FileActivationSink extends ActivationSink with LogSupport:
       None
 
 end FileActivationSink
+
+/**
+  * A built-in sink posting the stage output to an HTTP endpoint:
+  * `activate('webhook', url: 'https://...')`.
+  *
+  * Rows are serialized as a JSON array of objects (`format: 'json'`, the default) or as
+  * newline-delimited JSON (`format: 'ndjson'`) and sent in a single POST request with up to
+  * `max_rows:` rows (1000 by default; a larger result is truncated with a warning). A non-2xx
+  * response or a connection failure fails the stage attempt and follows its regular retry policy
+  */
+class WebhookActivationSink(httpClient: => HttpClient = WebhookActivationSink.defaultHttpClient)
+    extends ActivationSink
+    with LogSupport:
+
+  override def name: String = "webhook"
+
+  override def activate(request: ActivationRequest): Unit =
+    val url = request
+      .params
+      .getOrElse(
+        "url",
+        throw StatusCode
+          .INVALID_ARGUMENT
+          .newException(
+            s"activate('webhook') of stage ${request.stageName} requires a url: parameter"
+          )
+      )
+    val format = request.params.getOrElse("format", "json")
+    if format != "json" && format != "ndjson" then
+      throw StatusCode
+        .INVALID_ARGUMENT
+        .newException(
+          s"activate('webhook') of stage ${request
+              .stageName}: unsupported format '${format}'. Use json or ndjson"
+        )
+    val maxRows = request.params.get("max_rows").map(_.toInt).getOrElse(1000)
+
+    val (rows, truncated) = readRows(request, maxRows)
+    if truncated then
+      warn(
+        s"activate('webhook') of stage ${request
+            .stageName}: sending only the first ${maxRows} rows of ${request.table}"
+      )
+    val (contentType, body) =
+      format match
+        case "ndjson" =>
+          ("application/x-ndjson", rows.mkString("", "\n", "\n"))
+        case _ =>
+          ("application/json", rows.mkString("[", ",", "]"))
+
+    info(
+      s"Posting ${rows.size} row(s) of stage ${request.stageName} output ${request.table} to ${url}"
+    )
+    val httpRequest = HttpRequest
+      .newBuilder(URI.create(url))
+      .timeout(Duration.ofSeconds(30))
+      .header("Content-Type", contentType)
+      .POST(HttpRequest.BodyPublishers.ofString(body))
+      .build()
+    val response = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString())
+    if response.statusCode() < 200 || response.statusCode() >= 300 then
+      throw StatusCode
+        .ACTIVATION_FAILED
+        .newException(
+          s"activate('webhook') of stage ${request
+              .stageName}: ${url} responded with status ${response.statusCode()}"
+        )
+
+  end activate
+
+  /** Read up to maxRows rows of the stage table as JSON objects, reporting truncation */
+  private def readRows(request: ActivationRequest, maxRows: Int): (List[String], Boolean) =
+    val rowCodec = summon[Weaver[ListMap[String, Any]]]
+    request
+      .connector
+      .withSession { conn =>
+        Using.resource(conn.createStatement()) { stmt =>
+          Using.resource(
+            // Read one extra row to detect truncation
+            stmt.executeQuery(s"""select * from "${request.table}" limit ${maxRows + 1}""")
+          ) { rs =>
+            val codec = JDBCCodec(rs)
+            val it = codec.mapMsgPackMapRows(msgpack => rowCodec.toJson(rowCodec.unweave(msgpack)))
+            val rows = it.take(maxRows + 1).toList
+            if rows.size > maxRows then
+              (rows.take(maxRows), true)
+            else
+              (rows, false)
+          }
+        }
+      }
+
+end WebhookActivationSink
+
+object WebhookActivationSink:
+  private lazy val defaultHttpClient: HttpClient = HttpClient
+    .newBuilder()
+    .connectTimeout(Duration.ofSeconds(10))
+    .build()

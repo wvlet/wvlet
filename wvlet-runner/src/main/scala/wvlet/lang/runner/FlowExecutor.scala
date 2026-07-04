@@ -973,8 +973,15 @@ class FlowExecutor(
 end FlowExecutor
 
 object FlowExecutor:
-  /** The activation sinks available by default: local file export via `activate('file', ...)` */
-  def defaultActivationSinks: List[ActivationSink] = List(FileActivationSink())
+  /**
+    * The activation sinks available by default: sinks registered via the Java ServiceLoader
+    * (`META-INF/services/wvlet.lang.runner.ActivationSink`) followed by the built-in file export
+    * and webhook sinks. ServiceLoader sinks come first, so external modules can override a built-in
+    * target name without touching the executor
+    */
+  def defaultActivationSinks: List[ActivationSink] =
+    val loaded = java.util.ServiceLoader.load(classOf[ActivationSink]).iterator().asScala.toList
+    loaded ++ List(FileActivationSink(), WebhookActivationSink())
 
   /** The run-scoped table name holding the materialized result of a stage */
   def stageTableName(runId: String, stageName: String): String =
