@@ -16,6 +16,7 @@ package wvlet.lang.compiler.analyzer
 import wvlet.lang.compiler.ValSymbolInfo
 import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.compiler.Context
+import wvlet.lang.compiler.FlowSymbolInfo
 import wvlet.lang.compiler.MethodSymbolInfo
 import wvlet.lang.compiler.ModelSymbolInfo
 import wvlet.lang.compiler.MultipleSymbolInfo
@@ -90,6 +91,9 @@ object SymbolLabeler extends Phase("symbol-labeler"):
         case m: ModelDef =>
           registerModelSymbol(m)(using ctx)
           iter(m.child, ctx)
+        case f: FlowDef =>
+          registerFlowSymbol(f)(using ctx)
+          ctx
         case f: TopLevelFunctionDef =>
           registerTopLevelFunction(f)(using ctx)
           ctx
@@ -443,6 +447,32 @@ object SymbolLabeler extends Phase("symbol-labeler"):
         )
         parent.symbol = sym
         sym
+
+  private def registerFlowSymbol(f: FlowDef)(using ctx: Context): Symbol =
+    val flowName = Name.termName(f.name.name)
+
+    def installSymbolInfo(sym: Symbol): Unit =
+      sym.symbolInfo = FlowSymbolInfo(ctx.owner, sym, flowName, ctx.compilationUnit)
+
+    ctx.scope.lookupSymbol(flowName) match
+      case Some(s) =>
+        // Update the existing flow symbol to avoid duplicates in REPL
+        s.tree = f
+        installSymbolInfo(s)
+        f.symbol = s
+        trace(s"Updated existing flow symbol ${s} for ${flowName}")
+        s
+      case None =>
+        val sym = Symbol(ctx.global.newSymbolId, f.span)
+        ctx.compilationUnit.enter(sym)
+        sym.tree = f
+        installSymbolInfo(sym)
+        f.symbol = sym
+        trace(s"Created a new flow symbol ${sym}")
+        ctx.scope.add(flowName, sym)
+        sym
+
+  end registerFlowSymbol
 
   private def registerModelSymbol(m: ModelDef)(using ctx: Context): Symbol =
     val modelName = Name.termName(m.name.name)

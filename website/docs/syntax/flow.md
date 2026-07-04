@@ -295,14 +295,55 @@ flow scheduled_flow with {
 }
 ```
 
+## Running Flows
+
+Flow definitions are declarations: running a file that contains flows does not execute them.
+Flows are triggered explicitly with the `run flow` statement or the `wvlet flow` CLI.
+
+### run flow Statement
+
+`run flow <name>` executes a flow and produces a **flow-run summary** relation with one row per
+stage (`stage`, `state`, `attempts`, `error`). The summary can be piped through query operators
+or verified with test statements:
+
+```wvlet
+flow my_pipeline = {
+  stage src = from [[1, 'a'], [2, 'b']] as t(id, name)
+  stage filtered = from src | where name = 'a'
+}
+
+run flow my_pipeline
+| where state = 'success'
+test _.size should be 2
+```
+
+Each successful stage is materialized as a run-scoped temporary table
+(`__wv_flow_<run_id>_<stage>`), so stage names never collide with real tables and concurrent
+runs do not interfere with each other.
+
+### wvlet flow CLI
+
+Flows can be managed from the command line:
+
+```bash
+# List flows defined in the working folder
+wvlet flow list -w ./pipelines
+
+# Show the plan of a flow
+wvlet flow show my_pipeline -w ./pipelines
+
+# Run a flow and print its per-stage results (non-zero exit code when the flow fails)
+wvlet flow run my_pipeline -w ./pipelines
+```
+
 ## Stage Execution Model
 
 :::info Implementation status
-Flow definitions are declarations: running a file that contains flows does not execute them.
-The initial flow executor implements this stage execution model — sequential stage execution
-with data/trigger dependencies, retries with backoff, and per-stage materialization. Flow-level
-schedules, cross-flow dependencies, `timeout`/`heartbeat` enforcement, and flow operators such
-as `route`, `fork`, `wait`, and `activate` are parsed but not yet executable.
+The flow executor implements this stage execution model — sequential stage execution
+with data/trigger dependencies, retries with backoff, and run-scoped per-stage
+materialization. Flow-level schedules, cross-flow dependencies, `timeout`/`heartbeat`
+enforcement, and flow operators such as `route`, `fork`, `wait`, and `activate` are parsed but
+not yet executable.
 :::
 
 Each stage progresses through a well-defined state machine:

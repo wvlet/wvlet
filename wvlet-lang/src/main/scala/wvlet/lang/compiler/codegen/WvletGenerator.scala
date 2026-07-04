@@ -452,6 +452,10 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
         code(s) {
           wl("show", s.showType.toString, s.inExpr.map(x => wl("in", expr(x))))
         }
+      case r: RunFlow =>
+        code(r) {
+          wl("run", "flow", expr(r.flowName))
+        }
       // Flow-related relations
       case s: StageDef =>
         // Note: inputRefs are tracked for dependency analysis but the body already contains

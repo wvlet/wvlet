@@ -1,5 +1,7 @@
 package wvlet.lang.runner
 
+import wvlet.lang.api.StatusCode
+import wvlet.lang.api.WvletLangException
 import wvlet.lang.api.v1.flow.StageState
 import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.CompilationUnit
@@ -49,10 +51,18 @@ class FlowExecutorTest extends UniTest:
     FlowExecutor(connector, workEnv, sleeper).execute(flow)(using ctx)
 
   private def countRows(table: String): Long =
-    connector.runQuery(s"select count(*) cnt from ${table}") { rs =>
+    connector.runQuery(s"""select count(*) cnt from "${table}"""") { rs =>
       rs.next()
       rs.getLong(1)
     }
+
+  /** Count rows in the run-scoped materialization of the given stage */
+  private def countStageRows(result: FlowExecutionResult, stage: String): Long = countRows(
+    result
+      .stageResult(stage)
+      .flatMap(_.table)
+      .getOrElse(fail(s"Stage ${stage} has no materialized table"))
+  )
 
   test("run all stages of a successful flow in order") {
     val result = runFlow("""flow SimpleFlow = {
@@ -64,9 +74,10 @@ class FlowExecutorTest extends UniTest:
     result.stageResults.map(_.state) shouldBe
       List(StageState.Success, StageState.Success, StageState.Success)
     result.stageResults.map(_.attempts) shouldBe List(1, 1, 1)
-    // Each stage is materialized as a queryable temp table
-    countRows("filtered") shouldBe 2L
-    countRows("output") shouldBe 2L
+    // Each stage is materialized as a queryable run-scoped temp table
+    result.stageResults.forall(_.table.exists(_.contains(result.runId.toLowerCase))) shouldBe true
+    countStageRows(result, "filtered") shouldBe 2L
+    countStageRows(result, "output") shouldBe 2L
   }
 
   test("skip downstream stages when an upstream stage fails") {
@@ -151,8 +162,8 @@ class FlowExecutorTest extends UniTest:
         |  stage output = from merged | select id
         |}""".stripMargin)
     result.isSuccess shouldBe true
-    countRows("merged") shouldBe 3L
-    countRows("output") shouldBe 3L
+    countStageRows(result, "merged") shouldBe 3L
+    countStageRows(result, "output") shouldBe 3L
   }
 
   test("skip a merge stage when one of its sources failed") {
@@ -218,6 +229,38 @@ class FlowExecutorTest extends UniTest:
         f.stageResults.map(_.state) shouldBe List(StageState.Success, StageState.Success)
       case other =>
         fail(s"Expected FlowExecutionResult, but got: ${other}")
+  }
+
+  test("execute a flow with the run flow statement and query its summary") {
+    val (unit, _, ctx) = compileFlowUnit("""flow StmtFlow = {
+        |  stage src = from [[1], [2]] as t(id)
+        |  stage doubled = from src | select id * 2 as id2
+        |}
+        |
+        |run flow StmtFlow
+        |""".stripMargin)
+    val executionPlan = ExecutionPlanner.plan(unit, ctx)
+    val queryExecutor = QueryExecutor(dbConnectorProvider, profile, workEnv)
+    val result        = queryExecutor.execute(executionPlan, ctx)
+    result match
+      case t: TableRows =>
+        t.rows.size shouldBe 2
+        t.rows.map(_("stage")) shouldBe Seq("src", "doubled")
+        t.rows.map(_("state")) shouldBe Seq("success", "success")
+      case other =>
+        fail(s"Expected TableRows summary, but got: ${other}")
+  }
+
+  test("report an error when running an undefined flow") {
+    val e = intercept[WvletLangException] {
+      compileFlowUnit("""flow DefinedFlow = {
+          |  stage src = from [[1]] as t(id)
+          |}
+          |
+          |run flow NoSuchFlow
+          |""".stripMargin)
+    }
+    e.statusCode shouldBe StatusCode.FLOW_NOT_FOUND
   }
 
   test("not execute flow definitions on whole-file execution") {

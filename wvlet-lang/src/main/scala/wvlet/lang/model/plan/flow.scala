@@ -262,6 +262,43 @@ case class FlowMerge(sources: List[NameExpr], joinCondition: Option[Expression],
         EmptyRelationType
 
 /**
+  * RunFlow triggers the execution of a flow definition by name.
+  *
+  * It is a leaf relation whose output is the flow-run summary (one row per stage), so that the
+  * result can be piped through query operators or verified with test statements:
+  * {{{
+  * run flow my_pipeline
+  * test _.columns should contain 'state'
+  * }}}
+  *
+  * @param flowName
+  *   The name of the flow to run
+  * @param span
+  *   Source location
+  */
+case class RunFlow(flowName: NameExpr, span: Span) extends Relation with LeafPlan:
+  override def children: List[LogicalPlan] = Nil
+  override def relationType: RelationType  = RunFlow.summaryType
+
+object RunFlow:
+  import wvlet.lang.compiler.Name
+  import wvlet.lang.model.DataType
+
+  /**
+    * The relation type of a flow-run summary: one row per stage with its terminal state
+    */
+  val summaryType: SchemaType = SchemaType(
+    None,
+    Name.typeName("flow_run"),
+    List(
+      NamedType(Name.termName("stage"), DataType.StringType),
+      NamedType(Name.termName("state"), DataType.StringType),
+      NamedType(Name.termName("attempts"), DataType.LongType),
+      NamedType(Name.termName("error"), DataType.StringType)
+    )
+  )
+
+/**
   * FlowWait represents a time-based delay in the flow.
   *
   * Pauses execution for a specified duration.

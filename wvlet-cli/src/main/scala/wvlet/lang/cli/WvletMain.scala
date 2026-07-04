@@ -13,7 +13,9 @@ import wvlet.lang.server.WvletServerConfig
 import wvlet.uni.log.LogSupport
 
 object WvletMain:
-  private def launcher: Launcher = Launcher.of[WvletMain]
+  private def launcher: Launcher = Launcher
+    .of[WvletMain]
+    .addModule[WvletFlowCommand]("flow", "Manage and run flows")
 
   private def wrap(body: => Unit): Unit =
     def findCause(e: Throwable): Throwable =

@@ -448,6 +448,17 @@ object Typer extends Phase("typer") with LogSupport:
         ref.tpe = scope(ref.name.fullName)
         typeRelationNode(ref)
         ref
+      case r: RunFlow =>
+        // Validate that the flow reference resolves to a flow definition
+        val isFlow = ctx
+          .findTermSymbolByName(r.flowName.fullName)
+          .exists(_.tree.isInstanceOf[FlowDef])
+        if !isFlow then
+          throw StatusCode
+            .FLOW_NOT_FOUND
+            .newException(s"Flow '${r.flowName.fullName}' is not found", r.sourceLocation)
+        typeRelationNode(r)
+        r
       case m: FlowMerge =>
         // Fan-in of multiple flow stages. The merged relation takes the type of the first source
         // that resolves in the stage scope (merge has union semantics over same-schema stages)
