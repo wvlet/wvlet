@@ -167,13 +167,33 @@ jobs:
         run: |
           $triplet = if ("${{ matrix.arch }}" -eq "arm64") { "arm64-windows" } else { "x64-windows" }
           $libDir = "$env:VCPKG_INSTALLATION_ROOT\installed\$triplet\lib"
-          # Create symlinks for OpenSSL libraries (Scala Native looks for crypto.lib, vcpkg provides libcrypto.lib)
-          if (Test-Path "$libDir\libcrypto.lib") {
-            Copy-Item "$libDir\libcrypto.lib" "$libDir\crypto.lib" -Force
+
+          # Scala Native passes @link("X") to the linker as literal `X.lib`. vcpkg's Windows
+          # ports install some libs with a different name (upstream convention), so copy them
+          # under the name Scala Native's javalib / uni bindings request:
+          #   - crypto.lib / ssl.lib  <- OpenSSL   (libcrypto.lib / libssl.lib)
+          #   - curl.lib              <- libcurl   (libcurl.lib, from uni's CurlBindings)
+          #   - zlib.lib              <- zlib      (zlib1.lib if the port emits the versioned name)
+          $renames = @(
+            @{ Src = "libcrypto.lib"; Dst = "crypto.lib" },
+            @{ Src = "libssl.lib";    Dst = "ssl.lib"    },
+            @{ Src = "libcurl.lib";   Dst = "curl.lib"   },
+            @{ Src = "zlib1.lib";     Dst = "zlib.lib"   }
+          )
+          foreach ($r in $renames) {
+            $src = Join-Path $libDir $r.Src
+            $dst = Join-Path $libDir $r.Dst
+            if ((Test-Path $src) -and -not (Test-Path $dst)) {
+              Write-Host "Copying $($r.Src) -> $($r.Dst)"
+              Copy-Item $src $dst -Force
+            }
           }
-          if (Test-Path "$libDir\libssl.lib") {
-            Copy-Item "$libDir\libssl.lib" "$libDir\ssl.lib" -Force
-          }
+
+          # Log the lib directory contents so we can diagnose future missing-lib errors.
+          Write-Host "Contents of ${libDir}:"
+          Get-ChildItem -Path $libDir -Filter *.lib -ErrorAction SilentlyContinue |
+            Select-Object -ExpandProperty Name | Sort-Object
+
           echo "C_INCLUDE_PATH=$env:VCPKG_INSTALLATION_ROOT\installed\$triplet\include" >> $env:GITHUB_ENV
           echo "VCPKG_LIB_PATH=$libDir" >> $env:GITHUB_ENV
         shell: pwsh
