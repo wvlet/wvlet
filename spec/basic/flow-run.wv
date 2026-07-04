@@ -97,3 +97,18 @@ run flow JourneyPipeline
 | where state = 'success'
 test _.size should be 4
 ;
+
+flow JoinPipeline = {
+  stage orders = from [[1, 101, 120.50], [2, 102, -5.00], [3, 101, 89.99], [4, 103, 300.00]] as t(order_id, customer_id, amount)
+  stage customers = from [[101, 'Alice'], [102, 'Bob'], [103, 'Carol']] as t(customer_id, name)
+  stage clean = from orders | where amount > 0
+  stage enriched = from clean | join customers on clean.customer_id = customers.customer_id
+  stage totals = from enriched | group by name | select name, sum(amount) as total_amount
+}
+
+-- An ingest -> clean -> join -> aggregate scenario: qualified stage references in join
+-- conditions bind to the run-scoped stage tables
+run flow JoinPipeline
+| where state = 'success'
+test _.size should be 5
+;

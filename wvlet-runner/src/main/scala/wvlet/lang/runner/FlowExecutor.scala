@@ -1149,19 +1149,28 @@ object FlowExecutor:
       routeFilters: Map[(String, String), Expression]
   ): Relation =
     // Reference a source stage's run-scoped table, filtered with the routing predicate when
-    // the reader stage is a route target of the source
+    // the reader stage is a route target of the source. The result is aliased back to the
+    // stage name so that qualified column references (e.g. `clean.customer_id` in a join
+    // condition) still bind after the table is renamed to its run-scoped form
     def stageTableRef(stageName: String, span: Span): Relation =
       val ref = TableRef(DoubleQuotedIdentifier(tableFor(stageName), span), span)
-      routeFilters.get((readerStage, stageName)) match
-        case Some(pred) =>
-          Filter(ref, pred, span)
-        case None =>
-          ref
+      val src =
+        routeFilters.get((readerStage, stageName)) match
+          case Some(pred) =>
+            Filter(ref, pred, span)
+          case None =>
+            ref
+      AliasedRelation(src, UnquotedIdentifier(stageName, span), None, span)
 
     body
       .transformUp {
         case t: TableRef if stageNames.contains(t.name.fullName) =>
           stageTableRef(t.name.fullName, t.span)
+        // A user-provided alias (`from clean as c`) supersedes the stage-name alias the
+        // rewrite adds around the run-scoped table: collapse to keep the user's alias only
+        case a @ AliasedRelation(inner: AliasedRelation, _, _, _)
+            if inner.columnNames.isEmpty && stageNames.contains(inner.alias.fullName) =>
+          a.copy(child = inner.child)
         case m: FlowMerge =>
           m.sources
             .map { src =>
