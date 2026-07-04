@@ -36,6 +36,7 @@ import wvlet.lang.model.plan.RunFlow
 import wvlet.lang.runner.CronSchedule
 import wvlet.lang.runner.FlowExecutor
 import wvlet.lang.runner.FlowRunRecord
+import wvlet.lang.runner.FlowRunRetention
 import wvlet.lang.runner.FlowRunStore
 import wvlet.lang.runner.FlowScheduleConfig
 import wvlet.lang.runner.FlowScheduler
@@ -423,8 +424,16 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
         prefix = "--reload-interval",
         description = "Interval (seconds) for polling .wv file changes; 0 disables reloading"
       )
-      reloadInterval: Int = 5
+      reloadInterval: Int = 5,
+      @option(
+        prefix = "--retention",
+        description =
+          "Delete terminal run records (and their run tables) older than this age, e.g. 7d, 12h, 30m"
+      )
+      retention: Option[String] = None
   ): Unit =
+    // Validate the retention argument up front, before any flow is loaded or triggered
+    val ttlMillis                       = retention.map(parseRetentionMillis)
     val (flows, compileResult, workEnv) = loadFlows(flowOption)
     val scheduled                       = scheduledFlowsOf(flows)
     if scheduled.isEmpty then
@@ -472,6 +481,21 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
                       println(runResult.toPrettyBox())
                 )
           )
+          // Retention: the per-flow keep_runs: caps plus the daemon-wide --retention TTL.
+          // The sweep runs at startup (finalizing stale records frees concurrency slots
+          // before any schedule fires) and periodically in daemon mode
+          val keepRunsOf: Map[String, Option[Int]] =
+            flows.map((_, f) => f.name.name -> FlowScheduleConfig.fromFlow(f).keepRuns).toMap
+          val retentionActive  = ttlMillis.isDefined || keepRunsOf.values.exists(_.isDefined)
+          def sweepNow(): Unit = FlowRunRetention.sweep(
+            store,
+            connector,
+            name => keepRunsOf.getOrElse(name, None),
+            ttlMillis
+          )
+          if retentionActive then
+            sweepNow()
+
           if catchup then
             val fired = flowScheduler.catchUp(name =>
               store.latestRunOf(name).map(_.startedAtMillis)
@@ -487,6 +511,8 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
           else
             if reloadInterval > 0 then
               startReloader(flowOption, flowScheduler, compiled, reloadInterval)
+            if retentionActive then
+              startSweeper(sweepNow)
             Runtime
               .getRuntime
               .addShutdownHook(
@@ -502,6 +528,43 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
     end if
 
   end scheduler
+
+  /** Parse a --retention argument like 7d, 12h, 30m, or 45s into milliseconds */
+  private def parseRetentionMillis(s: String): Long =
+    val m = "^(\\d+)([dhms])$".r
+    s.trim match
+      case m(n, unit) =>
+        val base = n.toLong
+        unit match
+          case "d" =>
+            base * 24L * 3600_000L
+          case "h" =>
+            base * 3600_000L
+          case "m" =>
+            base * 60_000L
+          case _ =>
+            base * 1000L
+      case _ =>
+        throw StatusCode
+          .INVALID_ARGUMENT
+          .newException(s"Cannot parse retention '${s}'. Use a number with d/h/m/s, e.g. 7d")
+
+  /** Start a daemon thread running the retention sweep periodically (every 5 minutes) */
+  private def startSweeper(sweep: () => Unit): Unit =
+    val sweeper = Thread(
+      () =>
+        while true do
+          Thread.sleep(5 * 60 * 1000L)
+          try
+            sweep()
+          catch
+            case scala.util.control.NonFatal(e) =>
+              warn(s"Retention sweep failed: ${e.getMessage}")
+      ,
+      "wvlet-flow-retention-sweep"
+    )
+    sweeper.setDaemon(true)
+    sweeper.start()
 
   /**
     * Start a daemon thread that polls the .wv sources of the working folder and reloads the

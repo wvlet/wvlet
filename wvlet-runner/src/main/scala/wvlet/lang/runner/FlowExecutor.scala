@@ -956,7 +956,8 @@ class FlowExecutor(
               val rows = result
                 .stageResults
                 .map { s =>
-                  val err = s.error.map(e => sqlLit(e.getMessage)).getOrElse("null")
+                  // Exceptions like NullPointerException may carry a null message
+                  val err = s.error.flatMap(e => Option(e.getMessage)).map(sqlLit).getOrElse("null")
                   s"(${sqlLit(result.flowName)}, ${sqlLit(result.runId)}, ${sqlLit(
                       s.name
                     )}, ${sqlLit(s.state.stateName)}, ${s.attempts}, ${err})"

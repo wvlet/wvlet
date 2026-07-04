@@ -188,6 +188,7 @@ flow daily_etl with {
 | `on_failure` | Activation | Notification hook fired when a run fails |
 | `on_success` | Activation | Notification hook fired when a run succeeds |
 | `on_finish` | Activation | Notification hook fired for both outcomes |
+| `keep_runs` | Int | Retention cap: only the N most recent finished runs are kept |
 
 ### Run Notifications
 
@@ -475,6 +476,29 @@ Two flags cover scripting and missed windows:
 `run flow`): a run atomically claims one of the flow's N slots and is recorded as `skipped`
 when all slots are taken by running runs. With the `sqlite` run store the claim is
 transactional across processes.
+
+### Run Retention
+
+Run records and their run-scoped `__wv_flow_*` tables accumulate until cleaned. Besides the
+manual `wvlet flow session clean`, the scheduler sweeps them automatically — at startup and
+every few minutes while the daemon runs — when a retention policy is set:
+
+- `keep_runs: N` in a flow's config block keeps only the N most recent finished runs of that
+  flow
+- `wvlet flow scheduler --retention 7d` (also `12h`, `30m`) deletes finished runs older than
+  the given age, across all flows
+
+The sweep first marks crashed runs (running records whose liveness lease expired) as failed,
+then deletes finished runs beyond the policy together with their tables. The most recent
+finished run of each flow is always kept, because cross-flow dependencies (`depends on X`,
+`if X.failed`) are evaluated against it.
+
+```wvlet
+flow hourly_metrics with {
+  schedule: cron('0 * * * *')
+  keep_runs: 24
+} = { ... }
+```
 
 ## Running Flows
 
