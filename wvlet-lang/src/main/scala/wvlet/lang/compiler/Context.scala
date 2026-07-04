@@ -106,15 +106,22 @@ case class GlobalContext(compilerOptions: CompilerOptions):
     * @param scope
     * @return
     */
-  def getContextOf(unit: CompilationUnit, scope: Scope = Scope.NoScope): Context = contextTable
-    .getOrElseUpdate(
-      unit.sourceFile, {
-        // The unit may already have been labeled in a previous compilation run (e.g., preset
-        // standard library units shared between compilers), so index its known symbols
-        symbolIndex.addAll(unit)
-        Context(global = this, scope = scope, compilationUnit = unit)
-      }
-    )
+  def getContextOf(unit: CompilationUnit, scope: Scope = Scope.NoScope): Context =
+    contextTable.get(unit.sourceFile) match
+      case Some(ctx) =>
+        ctx
+      case None =>
+        val created = Context(global = this, scope = scope, compilationUnit = unit)
+        contextTable.putIfAbsent(unit.sourceFile, created) match
+          case None =>
+            // The unit may already have been labeled in a previous compilation run (e.g.,
+            // preset standard library units shared between compilers), so index its known
+            // symbols. Registering after winning putIfAbsent seeds the index exactly once
+            // even when multiple threads request the context concurrently
+            symbolIndex.addAll(unit)
+            created
+          case Some(existing) =>
+            existing
 
   def getAllContexts: List[Context]                 = contextTable.values.toList
   def getAllCompilationUnits: List[CompilationUnit] = getAllContexts
@@ -240,7 +247,8 @@ case class Context(
 
   /**
     * Register a top-level symbol of the current compilation unit, making it visible to global
-    * symbol lookup from other compilation units
+    * symbol lookup from other compilation units. The symbol's name must already be recorded (via
+    * its SymbolInfo or completer), since the global index is keyed by name at registration time
     */
   def enterGlobalSymbol(sym: Symbol): Unit =
     compilationUnit.enter(sym)
@@ -264,10 +272,6 @@ case class Context(
     // Search the current scope first
     var foundSymbol: Option[Symbol] = scope.lookupSymbol(name)
 
-    // A name explicitly imported (e.g., import mypkg.model1) resolves across all packages
-    if foundSymbol.isEmpty && importDefs.exists(_.importRef.leafName == name.name) then
-      foundSymbol = global.symbolIndex.findFirstAnywhere(name).map(_.symbol)
-
     if foundSymbol.isEmpty then
       // Search the global symbols visible from this unit's package (#93). The index returns
       // the definitions in source file name order so that a name defined in multiple files
@@ -287,6 +291,11 @@ case class Context(
                 ", "
               )}; the definition in ${definingFiles.head} is used"
           )
+
+    // As a last resort, a name imported by its own name (e.g., import model1) still resolves
+    // across all packages, regardless of package visibility
+    if foundSymbol.isEmpty && importDefs.exists(_.importRef.leafName == name.name) then
+      foundSymbol = global.symbolIndex.findFirstAnywhere(name).map(_.symbol)
 
     if isContextCompilationUnit then
       trace(s"Looked up ${name} in ${compilationUnit.sourceFile.fileName} => ${foundSymbol}")

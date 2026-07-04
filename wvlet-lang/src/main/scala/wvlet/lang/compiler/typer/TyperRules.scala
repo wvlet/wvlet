@@ -110,15 +110,10 @@ object TyperRules:
         w.tpe = ctx.inputType
       w
 
-    case id: Identifier if id.symbol.isDefined && id.symbol.name == id.toTermName =>
-      // The identifier was already resolved in a previous typing pass, so reuse the attached
-      // symbol instead of walking the scopes again (issue #1811). The name guard skips symbols
-      // attached for other purposes (e.g., a type name resolved by the symbol labeler)
-      id.tpe = id.symbol.dataType
-      id
-
     case id: Identifier =>
-      // Look up symbol from scope, imports, and global scope
+      // Look up symbol from scope, imports, and global scope. The lookup runs on every typing
+      // pass on purpose: a later pass may see a scope-local definition (e.g., a relation alias
+      // entered during typing) that must shadow a previously attached global symbol
       ctx.findSymbolByName(id.toTermName) match
         case Some(sym) =>
           id.symbol = sym // Attach symbol for named reference

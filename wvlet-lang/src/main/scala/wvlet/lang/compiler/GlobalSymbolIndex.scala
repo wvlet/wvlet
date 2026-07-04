@@ -23,7 +23,8 @@ object GlobalSymbolIndex:
     * @param symbol
     */
   case class Entry(unit: CompilationUnit, symbol: Symbol):
-    def fileName: String = unit.sourceFile.fileName
+    // Cached because the file name is the sort key of every lookup
+    val fileName: String = unit.fileName
 
 /**
   * A package-level index of the top-level symbols of all compilation units, following the
@@ -39,22 +40,16 @@ class GlobalSymbolIndex:
   import GlobalSymbolIndex.*
 
   /**
-    * Index of the top-level names defined in one package. The entries of each name are ordered by
-    * the defining source file name (newest definition first within the same unit) so that a name
-    * defined in multiple files resolves deterministically, regardless of the compilation order
+    * Index of the top-level names defined in one package. The entries of each name are kept
+    * newest-first (matching the order of CompilationUnit.knownSymbols); [[sortedByFileName]]
+    * restores the deterministic file-name resolution order on lookup
     */
   private class PackageIndex:
-    val members = new ConcurrentHashMap[Name, List[Entry]]()
+    val members = ConcurrentHashMap[Name, List[Entry]]()
 
     def add(entry: Entry): Unit = members.compute(
       entry.symbol.name,
-      (_, current) =>
-        val entries = Option(current).getOrElse(Nil)
-        // Insert ordered by file name. A new entry of an already-indexed unit is placed before
-        // the unit's existing entries, so the most recent definition in a unit wins, matching
-        // the newest-first order of CompilationUnit.knownSymbols
-        val (before, after) = entries.span(_.fileName < entry.fileName)
-        before ::: entry :: after
+      (_, current) => entry :: Option(current).getOrElse(Nil)
     )
 
     def get(name: Name): List[Entry] = Option(members.get(name)).getOrElse(Nil)
@@ -76,10 +71,20 @@ class GlobalSymbolIndex:
 
   end PackageIndex
 
+  /**
+    * Registration state of one unit: the bucket its symbols were added to (so removal targets the
+    * right bucket even if the unit's package declaration changes), and the knownSymbols list that
+    * was current at registration time (so [[refresh]] can cheaply detect an unchanged unit by
+    * reference, as knownSymbols is an immutable list replaced on every change)
+    */
+  private case class Registration(bucket: PackageIndex, knownSymbols: List[Symbol])
+
   // Top-level symbols of non-preset units, grouped by package name
-  private val packageIndexes = new ConcurrentHashMap[String, PackageIndex]()
+  private val packageIndexes = ConcurrentHashMap[String, PackageIndex]()
   // Top-level symbols of preset (standard library) units, visible from every package
   private val presetIndex = PackageIndex()
+  // The registration state of each indexed unit
+  private val registrations = ConcurrentHashMap[CompilationUnit, Registration]()
 
   private def indexOf(unit: CompilationUnit): PackageIndex =
     if unit.isPreset then
@@ -94,7 +99,9 @@ class GlobalSymbolIndex:
     */
   def add(unit: CompilationUnit, symbol: Symbol): Unit =
     if !symbol.name.isEmpty then
-      indexOf(unit).add(Entry(unit, symbol))
+      val index = indexOf(unit)
+      registrations.put(unit, Registration(index, unit.knownSymbols))
+      index.add(Entry(unit, symbol))
 
   /**
     * Register all known symbols of a unit that was already labeled in a previous compilation run
@@ -102,24 +109,29 @@ class GlobalSymbolIndex:
     * their original entry order
     */
   def addAll(unit: CompilationUnit): Unit =
-    if unit.knownSymbols.nonEmpty then
-      val index = indexOf(unit)
-      // knownSymbols is newest-first, so replay the entries in chronological order
-      unit
-        .knownSymbols
-        .reverseIterator
-        .foreach { symbol =>
-          if !symbol.name.isEmpty then
-            index.add(Entry(unit, symbol))
-        }
+    // knownSymbols is newest-first, so replay the entries in chronological order
+    unit.knownSymbols.reverseIterator.foreach(add(unit, _))
 
   /**
-    * Remove all symbols of the given unit from the index, e.g., before the unit is reloaded for
-    * recompilation
+    * Remove all symbols of the given unit from the index, e.g., when the unit is re-labeled after a
+    * reload
     */
-  def remove(unit: CompilationUnit): Unit =
-    presetIndex.removeUnit(unit)
-    packageIndexes.values().asScala.foreach(_.removeUnit(unit))
+  def remove(unit: CompilationUnit): Unit = Option(registrations.remove(unit)).foreach(
+    _.bucket.removeUnit(unit)
+  )
+
+  /**
+    * Re-index a unit whose known symbols changed since it was registered, e.g., a preset unit
+    * shared between compilers that was labeled after this index took its registration snapshot. A
+    * no-op when the unit's known symbols are unchanged
+    */
+  def refresh(unit: CompilationUnit): Unit =
+    val current = registrations.get(unit)
+    if (current == null && unit.knownSymbols.nonEmpty) ||
+      (current != null && (current.knownSymbols ne unit.knownSymbols))
+    then
+      remove(unit)
+      addAll(unit)
 
   /**
     * All definitions of the given name that are visible from a unit in `currentPackage` with the
@@ -141,25 +153,39 @@ class GlobalSymbolIndex:
         visiblePackages += ref.substring(0, dot)
         dot = ref.lastIndexOf('.', dot - 1)
     }
-    val entries = List.newBuilder[Entry]
-    entries ++= presetIndex.get(name)
-    visiblePackages
+    val visibleIndexes = visiblePackages
       .result()
       .distinct
-      .foreach { pkg =>
-        Option(packageIndexes.get(pkg)).foreach(index => entries ++= index.get(name))
-      }
-    // Each bucket is already ordered, so a stable sort restores the global file-name order
-    entries.result().sortBy(_.fileName)
+      .flatMap(pkg => Option(packageIndexes.get(pkg)))
+    sortedByFileName(entriesIn(name, visibleIndexes))
 
   /**
     * The first definition of the given name across all packages in file-name order, ignoring
     * package visibility. Used for names explicitly made visible by an import of the name itself
     */
-  def findFirstAnywhere(name: Name): Option[Entry] =
+  def findFirstAnywhere(name: Name): Option[Entry] = entriesIn(
+    name,
+    packageIndexes.values().asScala
+  ).minByOption(_.fileName)
+
+  /**
+    * All entries of the given name in the preset index and the given package indexes, in bucket
+    * order (newest definition first within a unit)
+    */
+  private def entriesIn(name: Name, indexes: IterableOnce[PackageIndex]): List[Entry] =
     val entries = List.newBuilder[Entry]
     entries ++= presetIndex.get(name)
-    packageIndexes.values().asScala.foreach(index => entries ++= index.get(name))
-    entries.result().sortBy(_.fileName).headOption
+    indexes.iterator.foreach(index => entries ++= index.get(name))
+    entries.result()
+
+  /**
+    * Order the merged bucket entries by the defining source file name. The sort is stable, so
+    * entries of the same unit stay newest-first
+    */
+  private def sortedByFileName(entries: List[Entry]): List[Entry] =
+    if entries.sizeIs <= 1 then
+      entries
+    else
+      entries.sortBy(_.fileName)
 
 end GlobalSymbolIndex

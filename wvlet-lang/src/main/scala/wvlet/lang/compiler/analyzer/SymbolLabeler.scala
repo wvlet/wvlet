@@ -54,6 +54,9 @@ import wvlet.lang.model.Type
   */
 object SymbolLabeler extends Phase("symbol-labeler"):
   override def run(unit: CompilationUnit, context: Context): CompilationUnit =
+    // Drop any symbols of a previous compilation of this unit (e.g., after a reload) from the
+    // global index before the re-labeling below registers the new definitions
+    context.global.symbolIndex.remove(unit)
     label(unit.unresolvedPlan, context)
     unit
 
@@ -185,7 +188,8 @@ object SymbolLabeler extends Phase("symbol-labeler"):
     val partialQueryName = p.name
     ctx.scope.lookupSymbol(partialQueryName) match
       case Some(s) =>
-        // Update existing symbol (for REPL)
+        // Update the existing symbol (for REPL), and re-enter it so the re-labeled unit stays
+        // visible to global symbol lookup
         s.tree = p
         s.symbolInfo = PartialQuerySymbolInfo(
           ctx.owner,
@@ -195,6 +199,7 @@ object SymbolLabeler extends Phase("symbol-labeler"):
           p.body,
           ctx.compilationUnit
         )
+        ctx.enterGlobalSymbol(s)
         p.symbol = s
         trace(s"Updated existing partial query symbol ${s} for ${partialQueryName}")
         s
@@ -459,9 +464,11 @@ object SymbolLabeler extends Phase("symbol-labeler"):
 
     ctx.scope.lookupSymbol(flowName) match
       case Some(s) =>
-        // Update the existing flow symbol to avoid duplicates in REPL
+        // Update the existing flow symbol to avoid duplicates in REPL, and re-enter it so the
+        // re-labeled unit stays visible to global symbol lookup
         s.tree = f
         installSymbolInfo(s)
+        ctx.enterGlobalSymbol(s)
         f.symbol = s
         trace(s"Updated existing flow symbol ${s} for ${flowName}")
         s
@@ -494,9 +501,12 @@ object SymbolLabeler extends Phase("symbol-labeler"):
 
     ctx.scope.lookupSymbol(modelName) match
       case Some(s) =>
-        // Update the existing model symbol to avoid duplicates in REPL
+        // Update the existing model symbol to avoid duplicates in REPL, and re-enter it so
+        // the re-labeled unit (whose known symbols were reset on reload) stays visible to
+        // global symbol lookup
         s.tree = m
         installSymbolInfo(s)
+        ctx.enterGlobalSymbol(s)
         m.symbol = s
         trace(s"Updated existing model symbol ${s} for ${modelName}")
         s
