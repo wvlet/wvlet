@@ -13,7 +13,7 @@
  */
 package wvlet.lang.api.v1.frontend
 
-import wvlet.lang.api.v1.frontend.client.{FileApiClient, FrontendApiClient}
+import wvlet.lang.api.v1.frontend.client.{FileApiClient, FlowApiClient, FrontendApiClient}
 import wvlet.uni.http.{HttpAsyncClient, HttpSyncClient}
 
 /**
@@ -32,12 +32,14 @@ object FrontendRPC:
   class RPCSyncClient(val http: HttpSyncClient) extends AutoCloseable:
     val FrontendApi: FrontendApiClient.SyncClient = new FrontendApiClient.SyncClient(http)
     val FileApi: FileApiClient.SyncClient         = new FileApiClient.SyncClient(http)
+    val FlowApi: FlowApiClient.SyncClient         = new FlowApiClient.SyncClient(http)
     override def close(): Unit                    = http.close()
   end RPCSyncClient
 
   class RPCAsyncClient(val http: HttpAsyncClient) extends AutoCloseable:
     val FrontendApi: FrontendApiClient.AsyncClient = new FrontendApiClient.AsyncClient(http)
     val FileApi: FileApiClient.AsyncClient         = new FileApiClient.AsyncClient(http)
+    val FlowApi: FlowApiClient.AsyncClient         = new FlowApiClient.AsyncClient(http)
     override def close(): Unit                     = http.close()
   end RPCAsyncClient
 

@@ -1,6 +1,7 @@
 package wvlet.lang.server
 
 import org.jline.nativ.OSInfo
+import wvlet.lang.api.v1.flow.FlowApi
 import wvlet.lang.api.v1.frontend.{FileApi, FrontendApi, FrontendRPC}
 import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.OS
@@ -186,13 +187,19 @@ object WvletServer extends LogSupport:
       .bindSingleton[QueryExecutor]
       .bindImpl[FrontendApi, FrontendApiImpl]
       .bindImpl[FileApi, FileApiImpl]
+      .bindImpl[FlowApi, FlowApiImpl]
       .bindSingleton[StaticContentApi]
       .bindProvider[Session, NettyHttpServer] { (session: Session) =>
         val frontendApi = session.build[FrontendApi]
         val fileApi     = session.build[FileApi]
+        val flowApi     = session.build[FlowApi]
         val staticApi   = session.build[StaticContentApi]
         val rpc         = MultiRpcHandler(
-          Seq(RPCRouter.of[FrontendApi](frontendApi), RPCRouter.of[FileApi](fileApi))
+          Seq(
+            RPCRouter.of[FrontendApi](frontendApi),
+            RPCRouter.of[FileApi](fileApi),
+            RPCRouter.of[FlowApi](flowApi)
+          )
         )
         val handler = withStaticFallback(rpc, staticApi)
         NettyHttpServer(
