@@ -342,8 +342,14 @@ wvlet flow session list -w ./pipelines
 wvlet flow session show <run_id> -w ./pipelines
 ```
 
-Every flow run is recorded in a local run registry (`target/flow-runs/<run_id>.json` under the
-working folder), updated live as stages change state. Cross-flow dependencies (`depends on X`,
+Every flow run is recorded in a local run store, updated live as stages change state. Two
+store backends are available and can be selected with `--run-store <type>` (or the
+`WVLET_FLOW_STORE` environment variable):
+
+- `file` (default): one JSON file per run (`target/flow-runs/<run_id>.json`), no dependencies
+- `sqlite`: a single SQLite database (`target/flow-runs/registry.db`) in WAL mode. Records are
+  transactional across processes, which a scheduler daemon needs for enforcing flow-level
+  `concurrency:` limits Cross-flow dependencies (`depends on X`,
 `if X.failed`, `if X.done`) are evaluated against the latest recorded run of the referenced
 flow: when the dependency is not satisfied, the flow run is recorded as `skipped` without
 executing any stage.

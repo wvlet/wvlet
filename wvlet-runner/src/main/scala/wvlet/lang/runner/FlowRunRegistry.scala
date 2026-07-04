@@ -21,6 +21,7 @@ import wvlet.uni.weaver.Weaver
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardCopyOption
 import scala.jdk.CollectionConverters.*
 import scala.util.control.NonFatal
 
@@ -83,11 +84,13 @@ object FlowRunRecord:
       STATE_RUNNING
 
 /**
-  * A file-based registry of flow runs. Each run is stored as a single JSON file
-  * (`<registryDir>/<runId>.json`), which keeps reads and writes atomic enough for a local,
-  * single-writer-per-run setup without a database dependency
+  * A file-based flow run store. Each run is stored as a single JSON file
+  * (`<registryDir>/<runId>.json`) written via an atomic rename, which keeps reads and writes safe
+  * for a local, single-writer-per-run setup without a database dependency. Run-slot claims are only
+  * atomic within a single process; use [[SQLiteFlowRunStore]] when cross-process concurrency
+  * enforcement is required
   */
-class FlowRunRegistry(registryDir: Path) extends LogSupport:
+class FlowRunRegistry(registryDir: Path) extends FlowRunStore with LogSupport:
 
   private val weaver = Weaver.of[FlowRunRecord]
 
@@ -97,21 +100,29 @@ class FlowRunRegistry(registryDir: Path) extends LogSupport:
     s"${runId.toLowerCase}.cancel"
   )
 
-  /** Persist (create or overwrite) the record of a run */
-  def save(record: FlowRunRecord): Unit =
+  override def save(record: FlowRunRecord): Unit =
     Files.createDirectories(registryDir)
-    Files.writeString(fileFor(record.runId), weaver.toJson(record))
+    // Write to a temp file first so that concurrent readers never observe a truncated record
+    val tmp = Files.createTempFile(registryDir, record.runId.toLowerCase, ".tmp")
+    try
+      Files.writeString(tmp, weaver.toJson(record))
+      Files.move(
+        tmp,
+        fileFor(record.runId),
+        StandardCopyOption.REPLACE_EXISTING,
+        StandardCopyOption.ATOMIC_MOVE
+      )
+    finally
+      Files.deleteIfExists(tmp)
 
-  /** Read the record of a specific run */
-  def get(runId: String): Option[FlowRunRecord] =
+  override def get(runId: String): Option[FlowRunRecord] =
     val f = fileFor(runId)
     if Files.exists(f) then
       readRecord(f)
     else
       None
 
-  /** List all recorded runs, most recent first */
-  def list(): List[FlowRunRecord] =
+  override def list(): List[FlowRunRecord] =
     if !Files.isDirectory(registryDir) then
       Nil
     else
@@ -124,26 +135,29 @@ class FlowRunRegistry(registryDir: Path) extends LogSupport:
         .toList
         .sortBy(-_.startedAtMillis)
 
-  /** The most recent run of the given flow, if any */
-  def latestRunOf(flowName: String): Option[FlowRunRecord] = list().find(_.flowName == flowName)
+  override def claimRunSlot(record: FlowRunRecord, concurrencyLimit: Int): Boolean =
+    // File-based claims cannot be made atomic across processes without lock files; this
+    // best-effort implementation is atomic within a single process only
+    synchronized {
+      val running = list().count(r => r.flowName == record.flowName && !r.isTerminal)
+      if running < concurrencyLimit then
+        save(record)
+        true
+      else
+        false
+    }
 
-  /**
-    * Request cancellation of a run by placing a marker file next to its record. The marker is
-    * polled by the executor's event loop, so a run can be cancelled from another process (e.g.
-    * `wvlet flow session cancel`)
-    */
-  def requestCancel(runId: String): Unit =
+  override def requestCancel(runId: String): Unit =
     Files.createDirectories(registryDir)
     Files.writeString(cancelMarkerFor(runId), "")
 
-  /** True if cancellation of the given run has been requested */
-  def cancelRequested(runId: String): Boolean = Files.exists(cancelMarkerFor(runId))
+  override def cancelRequested(runId: String): Boolean = Files.exists(cancelMarkerFor(runId))
 
-  /** Remove the cancellation marker of a run (called when the run reaches a terminal state) */
-  def clearCancelRequest(runId: String): Unit = Files.deleteIfExists(cancelMarkerFor(runId))
+  override def clearCancelRequest(runId: String): Unit = Files.deleteIfExists(
+    cancelMarkerFor(runId)
+  )
 
-  /** Delete the record and any cancellation marker of a run */
-  def delete(runId: String): Unit =
+  override def delete(runId: String): Unit =
     Files.deleteIfExists(fileFor(runId))
     Files.deleteIfExists(cancelMarkerFor(runId))
 

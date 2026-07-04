@@ -186,7 +186,7 @@ class FlowExecutor(
     config: FlowExecutorConfig = FlowExecutorConfig(),
     stageRunner: Option[FlowStageRunner] = None,
     retryScheduler: Option[(Long, () => Unit) => Unit] = None,
-    registry: Option[FlowRunRegistry] = None
+    registry: Option[FlowRunStore] = None
 ) extends LogSupport:
   import FlowExecutor.FlowEvent
   import FlowExecutor.FlowEvent.*

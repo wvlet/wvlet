@@ -165,12 +165,17 @@ class QueryExecutor(
           // Command produces no QueryResult other than errors
           report(executeCommand(e))
         case ExecuteFlow(flow) =>
-          val flowExecutor = FlowExecutor(
-            getDBConnector(defaultProfile),
-            workEnv,
-            registry = Some(FlowRunRegistry.forWorkEnv(workEnv))
-          )
-          report(flowExecutor.execute(flow))
+          scala
+            .util
+            .Using
+            .resource(FlowRunStore.forWorkEnv(workEnv)) { store =>
+              val flowExecutor = FlowExecutor(
+                getDBConnector(defaultProfile),
+                workEnv,
+                registry = Some(store)
+              )
+              report(flowExecutor.execute(flow))
+            }
         case ExecuteValDef(v) =>
           val expr = ExpressionEvaluator.eval(v.expr)(using context)
           v.symbol.symbolInfo = ValSymbolInfo(
@@ -454,11 +459,13 @@ class QueryExecutor(
     q.transformUp { case rf: RunFlow =>
         val flow       = resolveFlow(rf)
         val connector  = getDBConnector(defaultProfile)
-        val flowResult = FlowExecutor(
-          connector,
-          workEnv,
-          registry = Some(FlowRunRegistry.forWorkEnv(workEnv))
-        ).execute(flow)
+        val flowResult =
+          scala
+            .util
+            .Using
+            .resource(FlowRunStore.forWorkEnv(workEnv)) { store =>
+              FlowExecutor(connector, workEnv, registry = Some(store)).execute(flow)
+            }
 
         given monitor: QueryProgressMonitor = context.queryProgressMonitor
 
