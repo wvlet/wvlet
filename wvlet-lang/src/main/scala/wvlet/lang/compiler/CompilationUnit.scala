@@ -45,12 +45,6 @@ case class CompilationUnit(sourceFile: SourceFile, isPreset: Boolean = false)
   // Untyped plan tree
   var unresolvedPlan: LogicalPlan = LogicalPlan.empty
 
-  // Connector names referenced via `from <connector>.<table>` in this unit, recorded during
-  // name resolution so the executor can enforce single-engine execution until cross-connector
-  // staging lands (#1861 Phase 2)
-  val referencedConnectors: scala.collection.mutable.Set[String] =
-    scala.collection.mutable.Set.empty
-
   // Cached after parsing; symbol lookup reads this on a hot path
   private var cachedPackageName: String = null
 

@@ -72,7 +72,8 @@ class QueryExecutor(
   )
 
   // The engine statements execute on: the profile's default engine until a `use <connector>`
-  // statement switches it (#1861 Phase 2)
+  // statement switches it (#1861 Phase 2). Like the global default catalog/schema this is
+  // session-level state: concurrent sessions should use separate QueryExecutor instances
   private var activeEngine: ConnectorConfig = defaultProfile.defaultEngine
 
   private def activeDBConnector: DBConnector = dbConnectorProvider.getDBConnector(activeEngine)
@@ -110,11 +111,23 @@ class QueryExecutor(
               s"Invalid connector reference: ${parts.mkString(".")}. " +
                 "Expected format: <connector>, <connector>.<schema>, or <connector>.<catalog>.<schema>"
             )
+    val schema  = schemaName.getOrElse("main")
+    val catalog = catalogName.getOrElse(
+      // Without a catalog the switched engine could not drive name resolution or dialect
+      // selection, silently leaving the previous engine's catalog active
+      throw StatusCode
+        .INVALID_ARGUMENT
+        .newException(
+          s"Connector '${connectorName}' has no catalog configured. Add \"catalog\" to its " +
+            s"profile entry or switch with `use ${connectorName}.<catalog>.<schema>`"
+        )
+    )
+    // Resolve the connector and its catalog BEFORE committing any state, so a connection
+    // failure leaves the previous engine fully active
+    val connector  = dbConnectorProvider.getDBConnector(config)
+    val newCatalog = connector.getCatalog(catalog, schema)
     activeEngine = config
-    val schema = schemaName.getOrElse("main")
-    catalogName.foreach { catalog =>
-      context.global.defaultCatalog = activeDBConnector.getCatalog(catalog, schema)
-    }
+    context.global.defaultCatalog = newCatalog
     context.global.defaultSchema = schema
     workEnv.info(s"Switched to connector: ${connectorName}")
     QueryResult.empty
@@ -153,19 +166,6 @@ class QueryExecutor(
 
   def executeSingle(u: CompilationUnit, rootContext: Context): QueryResult =
     workEnv.info(s"Executing ${u.sourceFile.fileName}")
-    // Cross-connector staging is not implemented yet: every table referenced through a
-    // connector name must live on the active engine
-    val foreignConnectors = u.referencedConnectors.toSet - activeEngine.name
-    if foreignConnectors.nonEmpty then
-      throw StatusCode
-        .NOT_IMPLEMENTED
-        .newException(
-          s"Query references connector(s) ${foreignConnectors.mkString(
-              ", "
-            )} but the active engine is '${activeEngine
-              .name}'. Cross-connector queries are not supported yet; switch with `use ${foreignConnectors
-              .head}` to run on that connector"
-        )
     val ctx = rootContext.withCompilationUnit(u).newContext(Symbol.NoSymbol)
 
     // val executionPlan = u.executionPlan // ExecutionPlanner.plan(u, ctx)
@@ -555,6 +555,23 @@ class QueryExecutor(
   end runEmbeddedFlows
 
   private def executeQuery(plan: LogicalPlan)(using context: Context): QueryResult =
+    // Cross-connector staging is not implemented yet: every table resolved through a profile
+    // connector name must live on the engine that is active when this query runs (an in-file
+    // `use <connector>` earlier in the unit has already switched activeEngine by now)
+    val foreignConnectors = scala.collection.mutable.Set.empty[String]
+    plan.traverse { case t: TableScan =>
+      t.connectorName.filter(_ != activeEngine.name).foreach(foreignConnectors += _)
+    }
+    if foreignConnectors.nonEmpty then
+      throw StatusCode
+        .NOT_IMPLEMENTED
+        .newException(
+          s"Query references connector(s) ${foreignConnectors.mkString(
+              ", "
+            )} but the active engine is '${activeEngine
+              .name}'. Cross-connector queries are not supported yet; run `use ${foreignConnectors
+              .head}` first to execute on that connector"
+        )
     trace(s"Executing query: ${plan.pp}")
     workEnv.trace(s"Executing plan: ${plan.pp}")
     plan match

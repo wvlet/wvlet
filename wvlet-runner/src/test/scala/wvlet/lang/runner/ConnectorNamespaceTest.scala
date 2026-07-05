@@ -107,6 +107,16 @@ class ConnectorNamespaceTest extends UniTest:
     result.toTSV shouldContain "42"
   }
 
+  test("should run use and a connector-qualified query within a single unit") {
+    // The guard must evaluate against the engine active when the query runs, not when the
+    // unit starts — otherwise the documented `use x` + `from x.t` batch pattern breaks
+    run("use first") shouldBe QueryResult.empty
+    val result = run("""use second
+        |from second.events""".stripMargin)
+    result.toTSV shouldContain "42"
+    run("use first") shouldBe QueryResult.empty
+  }
+
   test("should fail with a clear error for an unknown connector in use") {
     val exception = intercept[WvletLangException] {
       run("use connector no_such_connector")

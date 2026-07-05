@@ -121,7 +121,9 @@ object RelationRefResolver extends ContextLogSupport:
     * default catalog.
     */
   private def resolveConnectorQualifiedRef(ref: TableRef, context: Context): Option[Relation] =
-    ref.name.fullName.split("\\.").toList match
+    // Decompose the DotRef structurally (not by splitting fullName) so quoted identifiers
+    // containing dots keep their boundaries
+    nameParts(ref.name) match
       case connectorName :: rest if rest.nonEmpty =>
         context
           .connectorCatalog(connectorName)
@@ -140,14 +142,34 @@ object RelationRefResolver extends ContextLogSupport:
                 .catalog
                 .findTable(schema, table)
                 .map { tbl =>
-                  context.compilationUnit.referencedConnectors += connectorName
                   val tableName = TableName(Some(entry.catalog.catalogName), Some(schema), table)
-                  TableScan(tableName, tbl.schemaType, tbl.schemaType.fields, ref.span)
+                  TableScan(
+                    tableName,
+                    tbl.schemaType,
+                    tbl.schemaType.fields,
+                    ref.span,
+                    connectorName = Some(connectorName)
+                  )
                 }
             }
           }
       case _ =>
         None
+
+  // The individual identifier parts of a qualified name, or Nil when the expression contains
+  // anything other than a plain identifier chain
+  private def nameParts(e: Expression): List[String] =
+    e match
+      case i: Identifier =>
+        List(i.leafName)
+      case DotRef(qualifier, name: Identifier, _, _) =>
+        nameParts(qualifier) match
+          case Nil =>
+            Nil
+          case parts =>
+            parts :+ name.leafName
+      case _ =>
+        Nil
 
   private def resolveFromDefaultCatalog(ref: TableRef, context: Context): Relation =
     val tableName = TableName.parse(ref.name.fullName)

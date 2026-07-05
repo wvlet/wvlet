@@ -1073,8 +1073,15 @@ case class LateralView(
   * @param columns
   *   projected columns
   */
-case class TableScan(name: TableName, schema: RelationType, columns: List[NamedType], span: Span)
-    extends TableInput
+case class TableScan(
+    name: TableName,
+    schema: RelationType,
+    columns: List[NamedType],
+    span: Span,
+    // Set when the reference was resolved through a profile connector name
+    // (`from <connector>.<table>`), so the executor can verify the query runs on that engine
+    connectorName: Option[String] = None
+) extends TableInput
     with HasTableName:
 
   override def sqlExpr: Expression = NameExpr.fromString(name.fullName, span)
