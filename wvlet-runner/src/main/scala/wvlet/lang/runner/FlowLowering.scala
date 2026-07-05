@@ -247,11 +247,14 @@ object FlowLowering:
     // conditions of all preceding cases
     val fromConditions: List[(String, Expression)] =
       var matchedSoFar: Option[Expression] = None
-      conditionCases.map { c =>
-        val cond = resolveContextRefs(c.condition.get)
-        val pred = matchedSoFar.map(p => And(Not(p, NoSpan), cond, NoSpan)).getOrElse(cond)
-        matchedSoFar = Some(matchedSoFar.map(p => Or(p, cond, NoSpan)).getOrElse(cond))
-        c.target.fullName -> pred
+      conditionCases.flatMap { c =>
+        c.condition
+          .map { rawCond =>
+            val cond = resolveContextRefs(rawCond)
+            val pred = matchedSoFar.map(p => And(Not(p, NoSpan), cond, NoSpan)).getOrElse(cond)
+            matchedSoFar = Some(matchedSoFar.map(p => Or(p, cond, NoSpan)).getOrElse(cond))
+            c.target.fullName -> pred
+          }
       }
 
     val fromPercentages: List[(String, Expression)] =
