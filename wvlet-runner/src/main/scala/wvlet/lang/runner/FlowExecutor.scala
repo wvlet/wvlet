@@ -438,6 +438,29 @@ class FlowExecutor(
     val jumpTargetFlows: Map[String, FlowDef] =
       flowStages.flatMap(_.jumpTargets).distinct.map(name => name -> resolveJumpTarget(name)).toMap
 
+    // Run tables live on the engine of the stage that produced them, so a stage can only read
+    // stage outputs materialized on its own engine. Fail eagerly with a clear message instead
+    // of a table-not-found error mid-run
+    val engineOfStage: Map[String, String] =
+      flowStages.map(ls => ls.name -> engineNameFor(ls)).toMap
+    flowStages.foreach { ls =>
+      ls.stage
+        .inputRefs
+        .map(_.fullName)
+        .filter(stageNames.contains)
+        .foreach { upstream =>
+          val upstreamEngine = engineOfStage(upstream)
+          if upstreamEngine != engineNameFor(ls) then
+            throw StatusCode
+              .INVALID_ARGUMENT
+              .newException(
+                s"Stage ${ls.name} runs on '${engineNameFor(ls)}' but reads stage ${upstream} " +
+                  s"materialized on '${upstreamEngine}'. Stages reading another stage's output " +
+                  "must run on the same engine"
+              )
+        }
+    }
+
     // Stages materialize into run-scoped tables so that concurrent runs and real tables with the
     // same name never collide
     def tableFor(stageName: String): String = FlowExecutor.stageTableName(runId, stageName)
@@ -999,6 +1022,20 @@ class FlowExecutor(
     val result = FlowExecutionResult(flow.name.name, runId, stageResults)
     workEnv.info(s"Completed flow ${flow.name.name} (run: ${runId})")
 
+    // Run tables of stages on non-default engines are unreachable for the retention job
+    // (it only holds the flow's default connector), so drop them once the whole run
+    // succeeded. Failed runs keep them so `flow resume` can reuse successful stages
+    if result.isSuccess then
+      flowStages
+        .filter(_.stage.engine.isDefined)
+        .foreach { ls =>
+          try
+            connectorFor(ls).execute(s"""drop table if exists "${tableFor(ls.name)}"""")
+          catch
+            case NonFatal(e) =>
+              debug(s"Failed to drop run table of stage ${ls.name}: ${e.getMessage}")
+        }
+
     // Fire the flow-level notification hooks now that the terminal snapshot is persisted.
     // A notification failure is logged and never changes the run result
     notifyRunResult(flow, result)
@@ -1144,7 +1181,13 @@ class FlowExecutor(
 
     // Materialize tables living on other connectors into run-scoped staging tables on this
     // stage's engine, and point the body at them
-    val staged = stageForeignTables(executable, engineName, stageConnector, tableFor, ls.name)
+    val (staged, stagingTables) = stageForeignTables(
+      executable,
+      engineName,
+      stageConnector,
+      tableFor,
+      ls.name
+    )
 
     val sql = GenSQL.generateSQLFromRelation(staged, addHeader = false).sql
 
@@ -1163,7 +1206,17 @@ class FlowExecutor(
     debug(s"Materializing stage ${ls.name}:\n${ddl}")
     // The registered handle lets the scheduler stop the statement server-side on a timeout
     // or cancellation while it is executing
-    stageConnector.executeCancellable(ddl, registerStatement, deregisterStatement)
+    try stageConnector.executeCancellable(ddl, registerStatement, deregisterStatement)
+    finally
+      // Staging tables only feed the CTAS above; drop them immediately (a retried attempt
+      // re-stages from the source)
+      stagingTables.foreach { staging =>
+        try
+          stageConnector.execute(s"""drop table if exists "${staging}"""")
+        catch
+          case NonFatal(e) =>
+            debug(s"Failed to drop staging table ${staging}: ${e.getMessage}")
+      }
 
   end materializeStage
 
@@ -1179,9 +1232,11 @@ class FlowExecutor(
       engine: DBConnector,
       tableFor: String => String,
       stageName: String
-  ): Relation =
+  ): (Relation, List[String]) =
     var stagedCount = 0
-    body
+    // One staging copy per distinct (connector, table), even when referenced multiple times
+    val stagedTables = scala.collection.mutable.Map.empty[(String, String), String]
+    val rewritten    = body
       .transformUp {
         case t: TableScan if t.connectorName.exists(_ != engineName) =>
           val sourceName = t.connectorName.get
@@ -1194,10 +1249,15 @@ class FlowExecutor(
                       .name
                       .name}': staging into non-DuckDB engines is not supported yet"
               )
-          val source = resolveEngine(sourceName)
-          stagedCount += 1
-          val stagingTable = tableFor(s"${stageName}__src${stagedCount}")
-          materializeForeignTable(source, t, stagingTable, engine)
+          val stagingTable = stagedTables.getOrElseUpdate(
+            (sourceName, t.name.fullName), {
+              val source = resolveEngine(sourceName)
+              stagedCount += 1
+              val staging = tableFor(s"${stageName}__src${stagedCount}")
+              materializeForeignTable(source, t, staging, engine)
+              staging
+            }
+          )
           val span = t.span
           AliasedRelation(
             TableRef(DoubleQuotedIdentifier(stagingTable, span), span),
@@ -1207,6 +1267,7 @@ class FlowExecutor(
           )
       }
       .asInstanceOf[Relation]
+    (rewritten, stagedTables.values.toList)
 
   end stageForeignTables
 
@@ -1217,7 +1278,11 @@ class FlowExecutor(
       stagingTable: String,
       engine: DBConnector
   ): Unit =
-    val rows = source.queryJsonRows(s"select * from ${table.name.fullName}")
+    // Quote each identifier part: source engines have their own casing/keyword rules
+    val qualifiedSource = (table.name.catalog.toList ++ table.name.schema.toList :+ table.name.name)
+      .map(part => s"\"${part}\"")
+      .mkString(".")
+    val rows = source.queryJsonRows(s"select * from ${qualifiedSource}")
     workEnv.info(
       s"Staging ${table.connectorName.getOrElse("")}.${table.name.name} (${rows
           .size} rows) as ${stagingTable}"

@@ -566,6 +566,9 @@ When a stage's body references a table on a different connector (e.g. a `local` 
 run-scoped staging table on the stage's engine before the stage materializes. Staging currently
 lands on DuckDB engines; staging into other engines is planned.
 
+A stage that reads another stage's output must run on the same engine as that stage (stage
+outputs are materialized on the engine that produced them).
+
 ### run flow Statement
 
 `run flow <name>` executes a flow and produces a **flow-run summary** relation with one row per
