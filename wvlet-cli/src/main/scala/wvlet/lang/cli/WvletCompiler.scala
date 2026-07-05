@@ -117,22 +117,24 @@ class WvletCompiler(
     currentProfile
       .connectors
       .foreach { c =>
-        val schema      = c.schema.getOrElse("main")
-        val catalogName = c.catalog.getOrElse(c.name)
+        val schema                                   = c.schema.getOrElse("main")
+        val catalogName                              = c.catalog.getOrElse(c.name)
+        def lazyCatalogOf(name: String): LazyCatalog = LazyCatalog(
+          name,
+          c.dbType,
+          () => ConnectorCatalogs.catalogOf(dbConnectorProvider.getConnector(c), c, name, schema)
+        )
         compiler.addConnectorCatalog(
           c.name,
-          LazyCatalog(
-            catalogName,
-            c.dbType,
-            () =>
-              ConnectorCatalogs.catalogOf(
-                dbConnectorProvider.getConnector(c),
-                c,
-                catalogName,
-                schema
-              )
-          ),
-          schema
+          lazyCatalogOf(catalogName),
+          schema,
+          // Engines may span multiple catalogs (e.g. Trino), addressable with 4-part
+          // <connector>.<catalog>.<schema>.<table> names
+          catalogProvider =
+            if dbConnectorProvider.isEngineType(c.`type`) then
+              Some(lazyCatalogOf)
+            else
+              None
         )
       }
 

@@ -60,16 +60,17 @@ class ConnectorNamespaceTest extends UniTest:
   profile
     .connectors
     .foreach { c =>
-      val schema      = c.schema.getOrElse("main")
-      val catalogName = c.catalog.get
+      val schema                                   = c.schema.getOrElse("main")
+      def lazyCatalogOf(name: String): LazyCatalog = LazyCatalog(
+        name,
+        c.dbType,
+        () => provider.getDBConnector(c).getCatalog(name, schema)
+      )
       compiler.addConnectorCatalog(
         c.name,
-        LazyCatalog(
-          catalogName,
-          c.dbType,
-          () => provider.getDBConnector(c).getCatalog(catalogName, schema)
-        ),
-        schema
+        lazyCatalogOf(c.catalog.get),
+        schema,
+        catalogProvider = Some(lazyCatalogOf)
       )
     }
 
@@ -78,6 +79,9 @@ class ConnectorNamespaceTest extends UniTest:
 
   // A table that only exists on the second connector's in-memory database
   provider.getDBConnector(second).execute("create table events as select 42 as id")
+  // A second catalog attached to the second connector, for 4-part name resolution
+  provider.getDBConnector(second).execute("attach ':memory:' as extra")
+  provider.getDBConnector(second).execute("create table extra.main.remote_events as select 7 as id")
 
   override def afterAll: Unit =
     executor.close()
@@ -123,6 +127,25 @@ class ConnectorNamespaceTest extends UniTest:
     }
     exception.statusCode shouldBe StatusCode.INVALID_ARGUMENT
     exception.message shouldContain "not defined in profile"
+  }
+
+  test("should resolve a 4-part reference to the connector's configured catalog") {
+    run("use second") shouldBe QueryResult.empty
+    run("from second.memory.main.events").toTSV shouldContain "42"
+  }
+
+  test("should resolve a 4-part reference to another catalog of the same connector") {
+    // `extra` is a second catalog attached to the second connector's database
+    run("from second.extra.main.remote_events").toTSV shouldContain "7"
+  }
+
+  test("should reject a 4-part cross-connector reference while another engine is active") {
+    run("use first") shouldBe QueryResult.empty
+    val exception = intercept[WvletLangException] {
+      run("from second.extra.main.remote_events")
+    }
+    exception.statusCode shouldBe StatusCode.NOT_IMPLEMENTED
+    exception.message shouldContain "use second"
   }
 
 end ConnectorNamespaceTest
