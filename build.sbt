@@ -420,7 +420,7 @@ lazy val runner = project
     Test / javaOptions ++= Seq("--enable-native-access=ALL-UNNAMED"),
     libraryDependencies ++=
       Seq(
-        "org.jline"        % "jline"        % "4.3.0",
+        "org.jline"        % "jline"        % "4.3.1",
         "org.apache.arrow" % "arrow-vector" % "19.0.0",
         // SQLite-backed flow run store (cross-process cancellation and concurrency claims)
         "org.xerial" % "sqlite-jdbc" % "3.53.2.0",
