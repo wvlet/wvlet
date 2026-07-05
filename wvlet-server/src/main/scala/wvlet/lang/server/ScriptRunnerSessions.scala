@@ -63,14 +63,19 @@ class ScriptRunnerSessions(
     */
   def runnerFor(sessionId: Option[String]): WvletScriptRunner =
     evictIdleSessions()
-    val key   = sessionId.getOrElse(ScriptRunnerSessions.DefaultSessionKey)
-    val entry = sessions.computeIfAbsent(
+    val key = sessionId.getOrElse(ScriptRunnerSessions.DefaultSessionKey)
+    // Create-or-touch atomically: compute and the eviction's computeIfPresent serialize on the
+    // same key, so an entry can never be touched after eviction closed it
+    val entry = sessions.compute(
       key,
-      _ =>
-        debug(s"Creating a new script-runner session: ${key}")
-        Entry(newRunner())
+      (k, existing) =>
+        if existing == null then
+          debug(s"Creating a new script-runner session: ${k}")
+          Entry(newRunner())
+        else
+          existing.touch()
+          existing
     )
-    entry.touch()
     entry.runner
 
   /** The number of live sessions (for monitoring and tests) */
@@ -88,18 +93,25 @@ class ScriptRunnerSessions(
   private def evictIdleSessions(): Unit =
     val cutoff = System.currentTimeMillis() - idleTimeout.toMillis
     sessions
-      .entrySet()
+      .keySet()
       .asScala
-      .foreach { e =>
-        val key   = e.getKey
-        val entry = e.getValue
+      .foreach { key =>
         // The default session stays: it is the compatibility path for id-less clients
-        if key != ScriptRunnerSessions.DefaultSessionKey && entry.lastAccessMillis < cutoff then
-          if sessions.remove(key, entry) then
-            debug(s"Evicting idle script-runner session: ${key}")
-            // Closing the runner is safe for in-flight queries: the underlying database
-            // connections belong to the shared ConnectorProvider and stay open
-            entry.runner.close()
+        if key != ScriptRunnerSessions.DefaultSessionKey then
+          // Re-check the idle time inside computeIfPresent: it serializes with runnerFor's
+          // compute on the same key, so a session touched concurrently is not evicted
+          sessions.computeIfPresent(
+            key,
+            (k, entry) =>
+              if entry.lastAccessMillis < cutoff then
+                debug(s"Evicting idle script-runner session: ${k}")
+                // Closing the runner is safe for in-flight queries: the underlying database
+                // connections belong to the shared ConnectorProvider and stay open
+                entry.runner.close()
+                null
+              else
+                entry
+          )
       }
 
 end ScriptRunnerSessions

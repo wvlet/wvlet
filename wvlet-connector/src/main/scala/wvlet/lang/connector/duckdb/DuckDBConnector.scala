@@ -106,7 +106,14 @@ class DuckDBConnector(workEnv: WorkEnv, prepareTPCH: Boolean = false, prepareTPC
 
   override def withConnection[U](body: DBConnection => U): U =
     try
-      body(getConnection)
+      val c = getConnection
+      // A DuckDB JDBC connection is not safe for concurrent statement execution: parallel use
+      // fails with "Attempting to execute an unsuccessful or closed pending query result".
+      // Serialize access to the shared primary connection; concurrent workloads (parallel flow
+      // stages, per-session server queries) use dedicated sessions via newSession instead
+      c.synchronized {
+        body(c)
+      }
     catch
       case e: SQLException if e.getMessage.contains("403") =>
         throw StatusCode.PERMISSION_DENIED.newException(e.getMessage, e)

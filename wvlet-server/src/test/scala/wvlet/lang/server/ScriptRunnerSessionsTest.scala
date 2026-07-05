@@ -19,6 +19,7 @@ import wvlet.lang.catalog.ConnectorConfig
 import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.compiler.query.QueryProgressMonitor
+import wvlet.lang.runner.QueryResult
 import wvlet.lang.runner.ThreadManager
 import wvlet.lang.runner.WvletScriptRunner
 import wvlet.lang.runner.WvletScriptRunnerConfig
@@ -120,12 +121,18 @@ class ScriptRunnerSessionsTest extends UniTest:
     try
       val futures = (0 until 4).map { i =>
         pool.submit(
-          new java.util.concurrent.Callable[Boolean]:
-            override def call(): Boolean =
-              run(sessions.runnerFor(Some(s"concurrent-${i}")), "select 1 as x").isSuccess
+          new java.util.concurrent.Callable[QueryResult]:
+            override def call(): QueryResult = run(
+              sessions.runnerFor(Some(s"concurrent-${i}")),
+              "select 1 as x"
+            )
         )
       }
-      futures.foreach(f => f.get() shouldBe true)
+      futures.foreach { f =>
+        val result = f.get()
+        result.getError.map(_.getMessage).getOrElse("") shouldBe ""
+        result.isSuccess shouldBe true
+      }
     finally
       pool.shutdownNow()
   }
