@@ -66,3 +66,14 @@ flow daily_report = {
 ```
 
 When `text:` is omitted, the first rows of the stage output are attached as JSON lines.
+
+## Posting messages ad hoc
+
+Outside of a flow, the `call` statement invokes a tool directly:
+
+```sql
+call slack.post_message(channel: '#reports', text: 'hello from wvlet')
+```
+
+See [Working with Multiple Connectors](connectors.md#calling-connector-tools) for details on
+`call`.

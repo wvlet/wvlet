@@ -68,3 +68,24 @@ use td.sample_datasets  -- switch connector and schema in one statement
 Bare names are resolved connector-first: `use analytics` switches to a connector named
 `analytics` when the profile defines one, and otherwise behaves like `use schema analytics`
 (see [CLI reference](cli-reference.md) for the schema forms).
+
+## Calling connector tools
+
+Connectors can expose callable tools (MCP-shaped methods) beyond tables and SQL execution. The
+`call` statement invokes a tool ad hoc, outside of a flow:
+
+```sql
+call slack.post_message(channel: '#reports', text: 'daily report done')
+```
+
+Arguments are named and take literal values, following the tool's input schema. The statement
+returns a single-row summary (`connector`, `tool`, `status`, `content`) that composes with query
+operators and `test` statements like any query:
+
+```sql
+call slack.post_message(channel: '#reports', text: 'ping')
+test _.columns should contain 'status'
+```
+
+Inside flows, use `activate('<connector>', tool: ...)` instead to deliver a stage's output
+through a tool (see [Flows](../syntax/flow.md)).

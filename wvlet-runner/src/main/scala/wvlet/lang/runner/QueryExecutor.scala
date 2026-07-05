@@ -40,6 +40,7 @@ import wvlet.lang.connector.DBConnector
 import wvlet.lang.connector.Connector
 import wvlet.lang.runner.connector.ConnectorProvider
 import wvlet.lang.runner.connector.SourceTableStaging
+import wvlet.uni.json.JSON
 import wvlet.uni.log.LogLevel
 import wvlet.uni.log.LogSupport
 import wvlet.uni.weaver.Weaver
@@ -638,6 +639,106 @@ class QueryExecutor(
 
   end runEmbeddedFlows
 
+  /**
+    * Execute ad-hoc connector tool calls (`call <connector>.<tool>(...)`) embedded in a query plan
+    * and replace each CallTool node with a reference to a materialized single-row invocation
+    * summary table (connector, tool, status, content), so that downstream query operators and test
+    * statements work on the result via regular SQL
+    */
+  private def runEmbeddedToolCalls(q: Relation)(using context: Context): Relation =
+    def sqlLit(s: String): String = s"'${s.replaceAll("'", "''")}'"
+
+    def jsonArgValue(toolName: String, e: Expression): JSON.JSONValue =
+      e match
+        case s: StringLiteral =>
+          JSON.JSONString(s.unquotedValue)
+        case l: LongLiteral =>
+          JSON.JSONLong(l.value)
+        case d: DoubleLiteral =>
+          JSON.JSONDouble(d.value)
+        case _: TrueLiteral =>
+          JSON.JSONBoolean(true)
+        case _: FalseLiteral =>
+          JSON.JSONBoolean(false)
+        case _: NullLiteral =>
+          JSON.JSONNull()
+        case l: Literal =>
+          JSON.JSONString(l.stringValue)
+        case other =>
+          throw StatusCode
+            .INVALID_ARGUMENT
+            .newException(s"Tool '${toolName}' arguments must be literal values, found: ${other}")
+
+    q.transformUp { case ct: CallTool =>
+        val connectorName = ct.connectorName.fullName
+        val toolName      = ct.toolName.fullName
+        val config        = defaultProfile
+          .connectors
+          .find(_.name == connectorName)
+          .getOrElse(
+            throw StatusCode
+              .INVALID_ARGUMENT
+              .newException(
+                s"Connector '${connectorName}' is not found in profile '${defaultProfile.name}'",
+                ct.sourceLocation(using context)
+              )
+          )
+        val target = dbConnectorProvider.getConnector(config)
+        if !target.tools.exists(_.name == toolName) then
+          throw StatusCode
+            .INVALID_ARGUMENT
+            .newException(
+              s"Connector '${connectorName}' has no tool '${toolName}' (available: ${target
+                  .tools
+                  .map(_.name)
+                  .mkString(", ")})",
+              ct.sourceLocation(using context)
+            )
+        val args = ct
+          .args
+          .map { arg =>
+            val name = arg
+              .name
+              .getOrElse(
+                throw StatusCode
+                  .INVALID_ARGUMENT
+                  .newException(
+                    s"Tool arguments must be named, e.g. ${toolName}(channel: '#general')",
+                    ct.sourceLocation(using context)
+                  )
+              )
+            name.name -> jsonArgValue(toolName, arg.value)
+          }
+        val result = target.invoke(toolName, JSON.JSONObject(args))
+        val status =
+          if result.isError then
+            "error"
+          else
+            "ok"
+        val content =
+          result.content match
+            case s: JSON.JSONString =>
+              s.v
+            case other =>
+              other.toJSON
+
+        given monitor: QueryProgressMonitor = context.queryProgressMonitor
+
+        val summaryTable = s"__wv_call_${wvlet.uni.util.ULID.newULIDString.toLowerCase}"
+        activeDBConnector.execute(
+          s"""create or replace temp table "${summaryTable}" ("connector" varchar, "tool" varchar, "status" varchar, "content" varchar)"""
+        )
+        activeDBConnector.execute(
+          s"""insert into "${summaryTable}" values (${sqlLit(connectorName)}, ${sqlLit(
+              toolName
+            )}, ${sqlLit(status)}, ${sqlLit(content)})"""
+        )
+        TableRef(DoubleQuotedIdentifier(summaryTable, ct.span), ct.span)
+      }
+      .asInstanceOf[Relation]
+
+  end runEmbeddedToolCalls
+
   private def executeQuery(plan0: LogicalPlan)(using context: Context): QueryResult =
     // Tables resolved through a profile connector name must live on the engine active when
     // this query runs (an in-file `use <connector>` earlier in the unit has already switched
@@ -686,8 +787,9 @@ class QueryExecutor(
     workEnv.trace(s"Executing plan: ${plan.pp}")
     plan match
       case q0: Relation =>
-        // Execute any embedded flow runs first, replacing them with their summary tables
-        val q = runEmbeddedFlows(q0)
+        // Execute any embedded flow runs and ad-hoc tool calls first, replacing them with their
+        // summary tables
+        val q = runEmbeddedToolCalls(runEmbeddedFlows(q0))
         // Decide whether to auto-switch to DuckDB for simple local file reads
         def isRemotePath(p: String): Boolean = p.startsWith("s3://") || p.startsWith("https://")
         def prefersDuckDBForLocalRead(r: Relation): Boolean =

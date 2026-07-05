@@ -1161,6 +1161,49 @@ case class IncrementalAppend(
 ) extends UnaryRelation:
   override def relationType: RelationType = child.relationType
 
+/**
+  * CallTool invokes an MCP-shaped tool of a profile connector ad hoc:
+  * {{{
+  * call slack.post_message(channel: '#reports', text: 'daily report done')
+  * }}}
+  *
+  * It is a leaf relation whose output is a single-row invocation summary (connector, tool, status,
+  * content), so the result can be piped through query operators or verified with test statements
+  *
+  * @param connectorName
+  *   The profile connector instance exposing the tool
+  * @param toolName
+  *   The tool to invoke
+  * @param args
+  *   Named arguments bound to the tool's input schema
+  * @param span
+  *   Source location
+  */
+case class CallTool(
+    connectorName: NameExpr,
+    toolName: NameExpr,
+    args: List[FunctionArg],
+    span: Span
+) extends Relation
+    with LeafPlan:
+  override def children: List[LogicalPlan] = Nil
+  override def relationType: RelationType  = CallTool.resultType
+
+object CallTool:
+  /**
+    * The relation type of a tool-call result: one row describing the invocation outcome
+    */
+  val resultType: SchemaType = SchemaType(
+    None,
+    Name.typeName("tool_call"),
+    List(
+      NamedType(Name.termName("connector"), DataType.StringType),
+      NamedType(Name.termName("tool"), DataType.StringType),
+      NamedType(Name.termName("status"), DataType.StringType),
+      NamedType(Name.termName("content"), DataType.StringType)
+    )
+  )
+
 enum ShowType:
   case models
   case tables
