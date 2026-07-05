@@ -656,12 +656,35 @@ class QueryExecutor(
           JSON.JSONLong(l.value)
         case d: DoubleLiteral =>
           JSON.JSONDouble(d.value)
+        case d: DecimalLiteral =>
+          JSON.JSONDouble(d.value.toDouble)
         case _: TrueLiteral =>
           JSON.JSONBoolean(true)
         case _: FalseLiteral =>
           JSON.JSONBoolean(false)
         case _: NullLiteral =>
           JSON.JSONNull()
+        // Negative (or explicitly signed) numbers parse as a unary expression over the literal
+        case a: ArithmeticUnaryExpr =>
+          jsonArgValue(toolName, a.child) match
+            case JSON.JSONLong(v) =>
+              JSON.JSONLong(
+                if a.sign == Sign.Negative then
+                  -v
+                else
+                  v
+              )
+            case JSON.JSONDouble(v) =>
+              JSON.JSONDouble(
+                if a.sign == Sign.Negative then
+                  -v
+                else
+                  v
+              )
+            case _ =>
+              throw StatusCode
+                .INVALID_ARGUMENT
+                .newException(s"Tool '${toolName}' arguments must be literal values, found: ${e}")
         case l: Literal =>
           JSON.JSONString(l.stringValue)
         case other =>

@@ -167,6 +167,15 @@ class SlackSourceQueryTest extends UniTest:
     result.isSuccess shouldBe true
   }
 
+  test("should accept negative numeric literal arguments in a call statement") {
+    fakeSlack.posted.clear()
+    val result = run(
+      "call slack.post_message(channel: '#general', text: 'with numbers', priority: -5, score: -1.5)"
+    )
+    result.isSuccess shouldBe true
+    fakeSlack.posted.toList shouldBe List("#general" -> "with numbers")
+  }
+
   test("should report an unknown tool in a call statement") {
     val e = intercept[Exception] {
       run("call slack.no_such_tool(text: 'x')")

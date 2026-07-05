@@ -464,7 +464,15 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
       case c: CallTool =>
         code(c) {
           val target = expr(c.connectorName) + text(".") + expr(c.toolName)
-          wl("call", target + paren(cl(c.args.map(a => expr(a)))))
+          val args   = c
+            .args
+            .map {
+              case f: FunctionArg if f.name.isDefined =>
+                wl(text(s"${f.name.get.name}:"), expr(f.value))
+              case a =>
+                expr(a)
+            }
+          wl("call", target + paren(cl(args)))
         }
       // Flow-related relations
       case s: StageDef =>
