@@ -11,7 +11,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package wvlet.lang.runner.connector
+package wvlet.lang.connector
 
 import wvlet.uni.control.Control.withResource
 import DBConnector.*
@@ -23,6 +23,7 @@ import wvlet.lang.catalog.Catalog.TableSchema
 import wvlet.lang.compiler.DBType
 import wvlet.lang.compiler.Name
 import wvlet.lang.compiler.WorkEnv
+import wvlet.lang.compiler.connector.SqlConnector
 import wvlet.lang.compiler.query.QueryProgressMonitor
 import wvlet.lang.model.DataType.NamedType
 import wvlet.lang.model.DataType.SchemaType
@@ -31,7 +32,7 @@ import wvlet.lang.model.RelationType
 import wvlet.lang.model.plan.LogicalPlan
 import wvlet.lang.model.plan.*
 import wvlet.lang.api.StatusCode
-import wvlet.lang.runner.codec.JDBCCodec
+import wvlet.lang.connector.codec.JDBCCodec
 import wvlet.uni.log.LogSupport
 import wvlet.uni.weaver.Weaver
 import wvlet.uni.weaver.codec.PrimitiveWeaver.given
@@ -73,10 +74,33 @@ case class DBConnection(jdbcConnection: Connection) extends AutoCloseable:
 trait CancellableStatement:
   def cancel(): Unit
 
-trait DBConnector(val dbType: DBType, workEnv: WorkEnv) extends AutoCloseable with LogSupport:
+trait DBConnector(val dbType: DBType, workEnv: WorkEnv)
+    extends Connector
+    with SqlEngine
+    with LogSupport:
   private var queryScope: QueryScope = QueryScope.Global
 
+  private var connectorName: String = dbType.toString.toLowerCase
+
   private val catalogs = new ConcurrentHashMap[String, ConnectorCatalog]().asScala
+
+  /** Instance name from the profile's connector config; defaults to the engine type */
+  override def name: String = connectorName
+
+  override def connectorType: String = dbType.toString.toLowerCase
+
+  /** Set the instance name from a profile's connector config (called by factories) */
+  def withName(newName: String): this.type =
+    connectorName = newName
+    this
+
+  final override def engine: Option[SqlEngine] = Some(this)
+
+  /**
+    * Cross-platform SQL connector view for engines that execute over HTTP instead of JDBC (e.g.
+    * Trino). Callers that need raw-row access without a JDBC ResultSet dispatch on this capability
+    */
+  def sqlConnector: Option[SqlConnector] = None
 
   def withQueryScope(scope: QueryScope): this.type =
     queryScope = scope
@@ -84,15 +108,16 @@ trait DBConnector(val dbType: DBType, workEnv: WorkEnv) extends AutoCloseable wi
 
   private[connector] def newConnection: DBConnection
 
-  def getCatalog(catalogName: String, defaultSchema: String): Catalog = catalogs.getOrElseUpdate(
-    catalogName,
-    new ConnectorCatalog(
-      catalogName = catalogName,
-      defaultSchema = defaultSchema,
-      dbConnector = this,
-      workEnv = workEnv
+  override def getCatalog(catalogName: String, defaultSchema: String): Catalog = catalogs
+    .getOrElseUpdate(
+      catalogName,
+      ConnectorCatalog(
+        catalogName = catalogName,
+        defaultSchema = defaultSchema,
+        dbConnector = this,
+        workEnv = workEnv
+      )
     )
-  )
 
   protected def withConnection[U](body: DBConnection => U): U =
     val conn = newConnection
@@ -106,10 +131,10 @@ trait DBConnector(val dbType: DBType, workEnv: WorkEnv) extends AutoCloseable wi
     * statement execution (e.g. parallel flow stages). The returned connection must be closed by the
     * caller
     */
-  private[runner] def newSession: DBConnection = newConnection
+  private[lang] def newSession: DBConnection = newConnection
 
   /** Run the body with a dedicated session sharing this connector's database state */
-  private[runner] def withSession[U](body: DBConnection => U): U =
+  private[lang] def withSession[U](body: DBConnection => U): U =
     val conn = newSession
     try body(conn)
     finally conn.close()
@@ -121,7 +146,7 @@ trait DBConnector(val dbType: DBType, workEnv: WorkEnv) extends AutoCloseable wi
     * statement finishes (successfully or not). Connectors without JDBC sessions (e.g. Trino over
     * HTTP) override this with their own execution and cancellation mechanism
     */
-  private[runner] def executeCancellable(
+  private[lang] def executeCancellable(
       sql: String,
       register: CancellableStatement => Unit,
       deregister: () => Unit
@@ -138,7 +163,7 @@ trait DBConnector(val dbType: DBType, workEnv: WorkEnv) extends AutoCloseable wi
     * engine-independent row access for activation sinks and notification hooks; connectors without
     * JDBC result sets (e.g. Trino over HTTP) override this
     */
-  private[runner] def queryJsonRows(sql: String): List[String] = withSession { conn =>
+  private[lang] def queryJsonRows(sql: String): List[String] = withSession { conn =>
     withResource(conn.createStatement()) { stmt =>
       withResource(stmt.executeQuery(sql)) { rs =>
         val rowWeaver = summon[Weaver[ListMap[String, Any]]]
@@ -172,19 +197,17 @@ trait DBConnector(val dbType: DBType, workEnv: WorkEnv) extends AutoCloseable wi
     finally
       progressMonitor.close()
 
-  def executeUpdate(
-      sql: String
-  )(using progressMonitor: QueryProgressMonitor = QueryProgressMonitor.noOp): Int = withStatement:
-    stmt => stmt.executeUpdate(sql)
+  override def executeUpdate(sql: String)(using progressMonitor: QueryProgressMonitor): Int =
+    withStatement: stmt =>
+      stmt.executeUpdate(sql)
 
-  def execute(sql: String)(using
-      progressMonitor: QueryProgressMonitor = QueryProgressMonitor.noOp
-  ): Boolean = withStatement: stmt =>
-    try
-      progressMonitor.newQuery(sql)
-      stmt.execute(sql)
-    finally
-      progressMonitor.close()
+  override def execute(sql: String)(using progressMonitor: QueryProgressMonitor): Boolean =
+    withStatement: stmt =>
+      try
+        progressMonitor.newQuery(sql)
+        stmt.execute(sql)
+      finally
+        progressMonitor.close()
 
   def processWarning(w: java.sql.SQLWarning): Unit =
     def showWarnings(w: SQLWarning): Unit =

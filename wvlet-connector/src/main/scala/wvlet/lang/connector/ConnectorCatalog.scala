@@ -11,7 +11,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package wvlet.lang.runner.connector
+package wvlet.lang.connector
 
 import com.github.benmanes.caffeine.cache.CacheLoader
 import com.github.benmanes.caffeine.cache.Caffeine
@@ -21,8 +21,6 @@ import wvlet.lang.catalog.Catalog
 import wvlet.lang.catalog.SQLFunction
 import wvlet.lang.compiler.DBType
 import wvlet.lang.compiler.WorkEnv
-import wvlet.lang.runner.ThreadManager
-import wvlet.lang.runner.ThreadUtil
 import wvlet.uni.log.LogSupport
 import wvlet.uni.weaver.Weaver
 import wvlet.uni.weaver.codec.PrimitiveWeaver.given
@@ -34,8 +32,7 @@ class ConnectorCatalog(
     val catalogName: String,
     defaultSchema: String,
     dbConnector: DBConnector,
-    workEnv: WorkEnv,
-    threadManager: ThreadManager = ThreadManager()
+    workEnv: WorkEnv
 ) extends Catalog
     with LogSupport:
 
@@ -75,7 +72,7 @@ class ConnectorCatalog(
       defs
     }
 
-  threadManager.runBackgroundTask(() => init())
+  ThreadUtil.runBackgroundTask(() => init())
 
   private def init(): Unit =
     // Pre-load tables in defaultSchema and information_schema

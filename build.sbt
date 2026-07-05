@@ -14,6 +14,7 @@ val AWS_SDK_VERSION        = "2.20.146"
 val SCALAJS_DOM_VERSION    = "2.8.1"
 val DUCKDB_JDBC_VERSION    = "1.5.4.0"
 val SNOWFLAKE_JDBC_VERSION = "4.3.1"
+val CAFFEINE_VERSION       = "3.2.4"
 
 val SCALA_3 = IO.read(file("SCALA_VERSION")).trim
 // ThisBuild / resolvers ++= Resolver.sonatypeOssRepos("snapshots")
@@ -64,6 +65,7 @@ lazy val jvmProjects: Seq[ProjectReference] = Seq(
   httpServer,
   server,
   lang.jvm,
+  connector,
   runner,
   client.jvm,
   spec,
@@ -387,6 +389,27 @@ lazy val testUtil = project
       Seq("org.wvlet.uni" %% "uni" % UNI_VERSION, "org.wvlet.uni" %% "uni-test" % UNI_VERSION)
   )
 
+// Capability-based Connector traits, the factory registry, and the built-in engine connectors
+// (DuckDB, Trino, Snowflake) extracted from wvlet-runner. One module for now; packages are kept
+// per-engine (wvlet.lang.connector.{duckdb,trino,snowflake}) so future service connectors with
+// heavy dependencies can split into their own modules mechanically.
+// See https://github.com/wvlet/wvlet/issues/1861
+lazy val connector = project
+  .in(file("wvlet-connector"))
+  .settings(
+    buildSettings,
+    name        := "wvlet-connector",
+    description := "Connector interface and built-in engine connectors for wvlet",
+    libraryDependencies ++=
+      Seq(
+        // ConnectorCatalog's table-schema cache
+        "com.github.ben-manes.caffeine" % "caffeine"       % CAFFEINE_VERSION,
+        "org.duckdb"                    % "duckdb_jdbc"    % DUCKDB_JDBC_VERSION,
+        "net.snowflake"                 % "snowflake-jdbc" % SNOWFLAKE_JDBC_VERSION
+      )
+  )
+  .dependsOn(lang.jvm)
+
 lazy val runner = project
   .in(file("wvlet-runner"))
   .settings(
@@ -397,16 +420,13 @@ lazy val runner = project
     Test / javaOptions ++= Seq("--enable-native-access=ALL-UNNAMED"),
     libraryDependencies ++=
       Seq(
-        "org.jline"                     % "jline"        % "4.3.0",
-        "com.github.ben-manes.caffeine" % "caffeine"     % "3.2.4",
-        "org.apache.arrow"              % "arrow-vector" % "19.0.0",
-        "org.duckdb"                    % "duckdb_jdbc"  % DUCKDB_JDBC_VERSION,
+        "org.jline"        % "jline"        % "4.3.0",
+        "org.apache.arrow" % "arrow-vector" % "19.0.0",
         // SQLite-backed flow run store (cross-process cancellation and concurrency claims)
         "org.xerial" % "sqlite-jdbc" % "3.53.2.0",
         // trino-jdbc removed in PR-D: TrinoConnector now talks the Trino REST protocol via uni's
         // HttpSyncClient (see wvlet-lang's TrinoSqlConnector). trino-testing stays in test scope
         // for the in-process TestingTrinoServer — that artifact doesn't pull in trino-jdbc.
-        "net.snowflake" % "snowflake-jdbc" % SNOWFLAKE_JDBC_VERSION,
         // exclude() and jar() are necessary to avoid https://github.com/sbt/sbt/issues/7407
         // tpc-h connector neesd to download GB's of jar, so excluding it
         "io.trino" % "trino-testing" % TRINO_VERSION % Test exclude ("io.trino", "trino-tpch"),
@@ -426,7 +446,7 @@ lazy val runner = project
         //        ) cross (CrossVersion.for3Use2_13)
       )
   )
-  .dependsOn(lang.jvm, testUtil % Test)
+  .dependsOn(lang.jvm, connector, testUtil % Test)
 
 lazy val spec = project
   .in(file("wvlet-spec"))

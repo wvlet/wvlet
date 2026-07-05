@@ -11,14 +11,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package wvlet.lang.runner.connector.snowflake
+package wvlet.lang.connector.snowflake
 
 import wvlet.lang.catalog.SQLFunction
 import wvlet.uni.control.Control
 import wvlet.lang.compiler.DBType
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.model.DataType
-import wvlet.lang.runner.connector.*
+import wvlet.lang.connector.*
 import wvlet.uni.log.LogSupport
 
 import java.sql.Connection

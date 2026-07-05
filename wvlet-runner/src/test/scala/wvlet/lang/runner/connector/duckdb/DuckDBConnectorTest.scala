@@ -13,6 +13,8 @@
  */
 package wvlet.lang.runner.connector.duckdb
 
+import wvlet.lang.connector.duckdb.DuckDBConnector
+
 import wvlet.lang.compiler.Name
 import wvlet.lang.model.DataType
 import wvlet.lang.model.DataType.NamedType

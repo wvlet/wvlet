@@ -15,9 +15,9 @@ import wvlet.uni.log.LogSupport
 
 /**
   * Compile-only frontend to the wvlet compiler. Mirrors the JVM `wvlet-cli/WvletCompiler`'s
-  * `generateSQL` / `generateWvlet` paths but skips `Profile` / `DBConnectorProvider` plumbing —
-  * those live in `wvlet-runner` (JVM-only) and are layered on top by the JVM CLI when the user
-  * passes `--profile`. This shared core works on JVM, Node.js, and Native.
+  * `generateSQL` / `generateWvlet` paths but skips `Profile` / `ConnectorProvider` plumbing — those
+  * live in `wvlet-runner` (JVM-only) and are layered on top by the JVM CLI when the user passes
+  * `--profile`. This shared core works on JVM, Node.js, and Native.
   */
 class WvletCliCompiler(opt: WvletCliCompileOption) extends LogSupport:
 

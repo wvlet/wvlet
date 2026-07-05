@@ -1,6 +1,7 @@
 package wvlet.lang.runner.connector.trino
 
 import wvlet.lang.api.v1.flow.StageState
+import wvlet.lang.catalog.ConnectorConfig
 import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.compiler.Compiler
@@ -12,7 +13,7 @@ import wvlet.lang.model.plan.FlowDef
 import wvlet.lang.runner.ActivationRequest
 import wvlet.lang.runner.ActivationSink
 import wvlet.lang.runner.FlowExecutor
-import wvlet.lang.runner.connector.DBConnectorProvider
+import wvlet.lang.runner.connector.ConnectorProvider
 import wvlet.uni.control.Control
 import wvlet.uni.test.UniTest
 
@@ -28,16 +29,21 @@ class TrinoFlowExecutorTest extends UniTest:
   private val workEnv = WorkEnv(".")
   private val profile = Profile(
     name = s"local-trino@${server.address}",
-    `type` = "trino",
-    user = Some("test"),
-    password = Some(""),
-    host = Some(server.address),
-    catalog = Some("memory"),
-    schema = Some("main"),
-    properties = Map("useSSL" -> false)
+    connectors = Seq(
+      ConnectorConfig(
+        name = "trino",
+        `type` = "trino",
+        user = Some("test"),
+        password = Some(""),
+        host = Some(server.address),
+        catalog = Some("memory"),
+        schema = Some("main"),
+        properties = Map("useSSL" -> false)
+      )
+    )
   )
 
-  private val dbConnectorProvider = DBConnectorProvider(workEnv)
+  private val dbConnectorProvider = ConnectorProvider(workEnv)
   private val connector           = dbConnectorProvider.getConnector(profile)
 
   // Run-scoped flow tables land in the profile's catalog/schema, which must exist and be writable

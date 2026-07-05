@@ -132,25 +132,38 @@ wvlet ui --no-browser
 
 ### Profile Configuration
 
-Create profiles in `~/.wvlet/config.yml`:
+Create profiles in `~/.wvlet/profiles.json` (parsed as JSONC: comments and trailing
+commas are allowed, and `${ENV_VAR}` references are expanded from the environment).
+A profile describes a working environment with one or more named connectors; the
+connector marked `"default": true` (or the first one) is the engine queries run on:
 
-```yaml
-profiles:
-  default:
-    type: duckdb
-    database: ":memory:"
-  
-  local_duckdb:
-    type: duckdb
-    database: /path/to/database.db
-  
-  production:
-    type: trino
-    host: trino.example.com
-    port: 8080
-    catalog: production
-    schema: analytics
-    user: myuser
+```jsonc
+{
+  "profiles": [
+    {
+      "name": "local",
+      "connectors": [
+        { "name": "duckdb", "type": "duckdb", "catalog": "memory", "schema": "main" }
+      ]
+    },
+    {
+      "name": "production",
+      "connectors": [
+        {
+          "name": "trino",
+          "type": "trino",
+          "default": true,
+          "host": "trino.example.com:8080",
+          "catalog": "production",
+          "schema": "analytics",
+          "user": "myuser",
+          "password": "${TRINO_PASSWORD}"
+        },
+        { "name": "local", "type": "duckdb", "catalog": "memory", "schema": "main" }
+      ]
+    }
+  ]
+}
 ```
 
 Use profiles with `--profile` option:

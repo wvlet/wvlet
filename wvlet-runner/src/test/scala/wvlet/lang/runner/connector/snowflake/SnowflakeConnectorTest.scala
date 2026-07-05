@@ -13,8 +13,11 @@
  */
 package wvlet.lang.runner.connector.snowflake
 
+import wvlet.lang.connector.snowflake.SnowflakeConfig
+import wvlet.lang.connector.snowflake.SnowflakeConnector
+
 import wvlet.lang.compiler.WorkEnv
-import wvlet.lang.runner.codec.JDBCCodec.ResultSetCodec
+import wvlet.lang.connector.codec.JDBCCodec.ResultSetCodec
 import wvlet.lang.test.WvletDITest
 
 /**

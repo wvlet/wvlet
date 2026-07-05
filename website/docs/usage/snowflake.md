@@ -11,16 +11,21 @@ To connect to Snowflake, create a profile in `~/.wvlet/profiles.json`. The file 
   "profiles": [
     {
       "name": "snowflake",
-      "type": "snowflake",
-      "user": "(your Snowflake user name)",
-      "password": "(your password)",
-      "host": "(your account identifier, e.g., myorg-myaccount)",
-      "catalog": "(your database name)",
-      "schema": "(your schema name, e.g., PUBLIC)",
-      "properties": {
-        "warehouse": "(your warehouse name)",
-        "role": "(your role name, optional)"
-      }
+      "connectors": [
+        {
+          "name": "snowflake",
+          "type": "snowflake",
+          "user": "(your Snowflake user name)",
+          "password": "(your password)",
+          "host": "(your account identifier, e.g., myorg-myaccount)",
+          "catalog": "(your database name)",
+          "schema": "(your schema name, e.g., PUBLIC)",
+          "properties": {
+            "warehouse": "(your warehouse name)",
+            "role": "(your role name, optional)"
+          }
+        }
+      ]
     }
   ]
 }

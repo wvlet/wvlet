@@ -20,8 +20,8 @@ import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.compiler.Compiler
 import wvlet.lang.compiler.CompilerOptions
 import wvlet.lang.compiler.WorkEnv
-import wvlet.lang.runner.connector.DBConnectorProvider
-import wvlet.lang.runner.connector.duckdb.DuckDBConnector
+import wvlet.lang.runner.connector.ConnectorProvider
+import wvlet.lang.connector.duckdb.DuckDBConnector
 
 import scala.util.control.NonFatal
 
@@ -38,7 +38,7 @@ trait RunnerSpec(
     .withProperty("prepareTPCH", prepareTPCH)
     .withProperty("prepareTPCDS", prepareTPCDS)
 
-  private val dbConnectorProvider = DBConnectorProvider(workEnv)
+  private val dbConnectorProvider = ConnectorProvider(workEnv)
   private val queryExecutor       = QueryExecutor(dbConnectorProvider, profile, workEnv)
   override def afterAll: Unit     =
     queryExecutor.close()

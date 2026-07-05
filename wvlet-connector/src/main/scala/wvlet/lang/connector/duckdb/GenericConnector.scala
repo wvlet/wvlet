@@ -1,10 +1,11 @@
-package wvlet.lang.runner.connector
+package wvlet.lang.connector.duckdb
 
 import wvlet.lang.api.StatusCode
 import wvlet.lang.catalog.SQLFunction
 import wvlet.lang.compiler.DBType.Generic
 import wvlet.lang.compiler.WorkEnv
-import wvlet.lang.runner.connector.duckdb.DuckDBConnector
+import wvlet.lang.connector.DBConnection
+import wvlet.lang.connector.DBConnector
 
 import java.sql.Connection
 
@@ -28,7 +29,7 @@ class GenericConnector(workEnv: WorkEnv) extends DBConnector(Generic, workEnv):
   override protected def withConnection[U](body: DBConnection => U): U = getConnector
     .withConnection(body)
 
-  override private[runner] def newSession: DBConnection = getConnector.newSession
+  override private[lang] def newSession: DBConnection = getConnector.newSession
 
   override def listFunctions(catalog: String): List[SQLFunction] = getConnector.listFunctions(
     catalog

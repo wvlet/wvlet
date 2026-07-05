@@ -1,5 +1,8 @@
 package wvlet.lang.runner.connector.trino
 
+import wvlet.lang.connector.trino.TrinoConfig
+import wvlet.lang.connector.trino.TrinoConnector
+
 import wvlet.lang.compiler.query.QueryProgressMonitor
 import wvlet.lang.test.WvletDITest
 

@@ -11,7 +11,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package wvlet.lang.runner.codec
+package wvlet.lang.connector.codec
 
 import wvlet.uni.log.LogSupport
 import wvlet.uni.msgpack.spi.MessagePack

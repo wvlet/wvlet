@@ -11,14 +11,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package wvlet.lang.runner
+package wvlet.lang.connector
 
-import org.apache.arrow.flatbuf.TimeUnit
 import wvlet.uni.util.ULID
-
-import java.util.concurrent
-import java.util.concurrent.Executors
-import java.util.concurrent.Future
 
 object ThreadUtil:
   def runBackgroundTask(f: () => Unit): Thread =
@@ -30,18 +25,3 @@ object ThreadUtil:
     t.setDaemon(true)
     t.start()
     t
-
-class ThreadManager() extends AutoCloseable:
-  private val executor = Executors.newCachedThreadPool(
-    wvlet.uni.util.ThreadUtil.newDaemonThreadFactory(s"wvlet-task-${ULID.newULID}")
-  )
-
-  override def close(): Unit =
-    executor.shutdownNow()
-    while !executor.awaitTermination(10, concurrent.TimeUnit.MILLISECONDS) do
-      Thread.sleep(10, TimeUnit.MILLISECOND)
-
-  def runBackgroundTask(f: () => Unit): Future[?] = executor.submit(
-    new Runnable:
-      override def run(): Unit = f()
-  )

@@ -26,8 +26,8 @@ import io.trino.spi.function.FunctionProvider
 import io.trino.spi.function.table.ReturnTypeSpecification.DescribedTable
 import io.trino.spi.function.table.*
 import wvlet.lang.compiler.WorkEnv
-import wvlet.lang.runner.codec.JDBCCodec.ResultSetCodec
-import wvlet.lang.runner.connector.duckdb.DuckDBConnector
+import wvlet.lang.connector.codec.JDBCCodec.ResultSetCodec
+import wvlet.lang.connector.duckdb.DuckDBConnector
 import wvlet.lang.runner.connector.trino.DuckDBSQLFunction.DuckDBFunctionHandle
 import wvlet.lang.runner.connector.trino.DuckDBSQLFunction.DuckDBQuerySplit
 import wvlet.uni.log.LogSupport

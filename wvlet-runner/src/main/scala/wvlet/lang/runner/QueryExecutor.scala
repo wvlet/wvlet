@@ -14,7 +14,7 @@
 package wvlet.lang.runner
 
 import wvlet.lang.api.v1.query.QuerySelection
-import wvlet.lang.runner.codec.JDBCCodec
+import wvlet.lang.connector.codec.JDBCCodec
 import wvlet.lang.api.LinePosition
 import wvlet.lang.api.StatusCode
 import wvlet.lang.api.WvletLangException
@@ -35,9 +35,8 @@ import wvlet.lang.model.DataType.UnresolvedType
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
 import wvlet.lang.compiler.connector.QueryResult as XPQueryResult
-import wvlet.lang.runner.connector.DBConnector
-import wvlet.lang.runner.connector.DBConnectorProvider
-import wvlet.lang.runner.connector.trino.TrinoConnector
+import wvlet.lang.connector.DBConnector
+import wvlet.lang.runner.connector.ConnectorProvider
 import wvlet.uni.log.LogLevel
 import wvlet.uni.log.LogSupport
 import wvlet.uni.weaver.Weaver
@@ -50,7 +49,7 @@ import scala.util.Try
 case class QueryExecutorConfig(rowLimit: Int = 40)
 
 class QueryExecutor(
-    dbConnectorProvider: DBConnectorProvider,
+    dbConnectorProvider: ConnectorProvider,
     defaultProfile: Profile,
     workEnv: WorkEnv,
     private var config: QueryExecutorConfig = QueryExecutorConfig()
@@ -393,11 +392,11 @@ class QueryExecutor(
     given monitor: QueryProgressMonitor = context.queryProgressMonitor
     val sourceConn                      = getDBConnector(defaultProfile)
     val n                               =
-      sourceConn match
-        case trino: TrinoConnector =>
-          // Trino flows through the HTTP path (PR-D): no JDBC ResultSet, materialize via SqlConnector.
-          writeJSONLFromXP(trino.asSqlConnector.execute(baseSQL.sql), jsonlFile)
-        case _ =>
+      sourceConn.sqlConnector match
+        case Some(sc) =>
+          // HTTP-based engines (e.g. Trino): no JDBC ResultSet, materialize via SqlConnector.
+          writeJSONLFromXP(sc.execute(baseSQL.sql), jsonlFile)
+        case None =>
           sourceConn.runQuery(baseSQL.sql) { rs =>
             writeJSONL(rs, jsonlFile)
           }
@@ -527,15 +526,15 @@ class QueryExecutor(
               getDBConnector(defaultProfile)
 
           val result =
-            connector match
-              case trino: TrinoConnector =>
+            connector.sqlConnector match
+              case Some(sc) =>
                 // PR-B: route Trino through the HTTP-backed SqlConnector view added in PR-A.
                 // No JDBC ResultSet, no `JDBCCodec` — `QueryResult.rows` already comes back as
                 // `Seq[Option[String]]` per column, which is the same shape DuckDB's
                 // `varchar`-coerced JDBC path produces downstream. DuckDB stays on the JDBC
                 // path below until it gets its own `SqlConnector` (PR-C+ in this series).
-                tableRowsFromXP(trino.asSqlConnector.execute(generatedSQL.sql))
-              case _ =>
+                tableRowsFromXP(sc.execute(generatedSQL.sql))
+              case None =>
                 connector.runQuery(generatedSQL.sql) { rs =>
                   val metadata = rs.getMetaData
                   val fields   =

@@ -7,7 +7,7 @@ import wvlet.lang.BuildInfo
 import wvlet.lang.api.WvletLangException
 import wvlet.lang.cli.WvletMain.isInSbt
 import wvlet.lang.compiler.WorkEnv
-import wvlet.lang.runner.connector.DBConnectorProvider
+import wvlet.lang.runner.connector.ConnectorProvider
 import wvlet.lang.server.WvletServer
 import wvlet.lang.server.WvletServerConfig
 import wvlet.uni.log.LogSupport
@@ -69,7 +69,7 @@ class WvletMain(opts: WvletGlobalOption) extends LogSupport:
     val workEnv = WorkEnv(compilerOptions.workFolder, opts.logLevel)
     Design
       .newSilentDesign
-      .bindInstance(WvletCompiler(opts, compilerOptions, workEnv, DBConnectorProvider(workEnv)))
+      .bindInstance(WvletCompiler(opts, compilerOptions, workEnv, ConnectorProvider(workEnv)))
 
   private def withCompiler[A](compilerOption: WvletCompilerOption)(f: WvletCompiler => A): A =
     design(compilerOption).run[WvletCompiler, A] { compiler =>
