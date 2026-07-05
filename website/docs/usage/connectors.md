@@ -46,8 +46,10 @@ precedence over schema names of the default catalog. Since you choose connector 
 rename the connector if it collides with a schema you need to address.
 
 Queries currently execute on one engine at a time: referencing a connector other than the active
-engine reports an error suggesting `use <connector>`. Combining tables from different connectors
-in a single query (cross-connector staging) is planned as a follow-up.
+engine reports an error suggesting `use <connector>`. Inside [flows](../syntax/flow.md),
+cross-connector references are staged automatically, and each stage can pick its engine with
+`stage <name> on <connector>`. Cross-connector joins in ad-hoc queries are planned as a
+follow-up.
 
 ## Switching connectors with `use`
 

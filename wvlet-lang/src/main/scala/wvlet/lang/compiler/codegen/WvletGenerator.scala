@@ -483,9 +483,11 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
             empty
           else
             wl("depends on", cl(s.dependsOn.map(d => expr(d))))
-        val body = s.body.map(b => flattenWithPipes(relation(b))).getOrElse(empty)
+        val engine = s.engine.map(e => wl("on", expr(e))).getOrElse(empty)
+        val body   = s.body.map(b => flattenWithPipes(relation(b))).getOrElse(empty)
         code(s) {
-          group(wl("stage", text(s.name.name), trigger, config, "=", deps, body))
+          // depends-on follows the body in the grammar (stage x = <body> depends on y)
+          group(wl("stage", text(s.name.name), trigger, config, engine, "=", body, deps))
         }
       case r: FlowRoute =>
         val prev     = relation(r.child)

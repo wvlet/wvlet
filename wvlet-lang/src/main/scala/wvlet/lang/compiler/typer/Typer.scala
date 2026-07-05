@@ -560,7 +560,9 @@ object Typer extends Phase("typer") with LogSupport:
                 r.elseTarget.foreach(t => requireRouteTarget(t, s.name))
             }
           }
-        val newBody     = s.body.map(b => prepare(b, stageScope).asInstanceOf[Relation])
+        val newBody = s.body.map(b => prepare(b, stageScope).asInstanceOf[Relation])
+        // The engine name in `stage x on <connector>` is a namespace reference
+        s.engine.foreach(markNamespaceRef)
         val bodyChanged =
           (newBody, s.body) match
             case (Some(a), Some(b)) =>

@@ -547,6 +547,28 @@ cancellation stop the running query server-side on both engines. Run-scoped
 connector, which must exist and be writable (for example a `memory` catalog schema on
 Trino).
 
+### Per-Stage Engines
+
+A stage can run on a different connector of the active profile with `on <connector>`:
+
+```sql
+flow daily = {
+  -- Runs on the profile's default engine
+  stage extract = from td.www_access | where time > current_date - interval '1 day'
+
+  -- Runs on the local DuckDB connector
+  stage report on local = from extract | select count(*) as pv
+}
+```
+
+When a stage's body references a table on a different connector (e.g. a `local` stage reading
+`td.www_access`), the rows are staged automatically: the source table is copied into a
+run-scoped staging table on the stage's engine before the stage materializes. Staging currently
+lands on DuckDB engines; staging into other engines is planned.
+
+A stage that reads another stage's output must run on the same engine as that stage (stage
+outputs are materialized on the engine that produced them).
+
 ### run flow Statement
 
 `run flow <name>` executes a flow and produces a **flow-run summary** relation with one row per

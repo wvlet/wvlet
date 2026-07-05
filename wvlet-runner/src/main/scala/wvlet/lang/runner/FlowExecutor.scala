@@ -19,6 +19,7 @@ import wvlet.lang.api.WvletLangException
 import wvlet.lang.api.v1.flow.StageState
 import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.compiler.Context
+import wvlet.lang.compiler.DBType
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.compiler.codegen.GenSQL
 import wvlet.lang.compiler.parser.ParserPhase
@@ -240,8 +241,42 @@ class FlowExecutor(
     stageRunner: Option[FlowStageRunner] = None,
     retryScheduler: Option[(Long, () => Unit) => Unit] = None,
     registry: Option[FlowRunStore] = None,
-    activationSinks: List[ActivationSink] = FlowExecutor.defaultActivationSinks
+    activationSinks: List[ActivationSink] = FlowExecutor.defaultActivationSinks,
+    // Resolve a profile connector name to a live engine, for `stage <name> on <connector>`
+    // and for reading connector-qualified tables of other engines (#1861 Phase 2)
+    engineResolver: Option[String => DBConnector] = None,
+    // The profile connector name of `connector`, used to decide which table references are
+    // foreign and need staging
+    defaultEngineName: String = "default"
 ) extends LogSupport:
+
+  private def resolveEngine(name: String): DBConnector =
+    if name == defaultEngineName then
+      connector
+    else
+      engineResolver
+        .map(_.apply(name))
+        .getOrElse(
+          throw StatusCode
+            .INVALID_ARGUMENT
+            .newException(
+              s"Stage engine '${name}' cannot be resolved: run the flow with a profile that defines it"
+            )
+        )
+
+  /** The engine a stage runs on: its `on <connector>` selection, or the flow's engine */
+  private def connectorFor(ls: FlowLowering.LoweredStage): DBConnector = ls
+    .stage
+    .engine
+    .map(e => resolveEngine(e.leafName))
+    .getOrElse(connector)
+
+  private def engineNameFor(ls: FlowLowering.LoweredStage): String = ls
+    .stage
+    .engine
+    .map(_.leafName)
+    .getOrElse(defaultEngineName)
+
   import FlowExecutor.FlowEvent
   import FlowExecutor.FlowEvent.*
 
@@ -403,6 +438,29 @@ class FlowExecutor(
     val jumpTargetFlows: Map[String, FlowDef] =
       flowStages.flatMap(_.jumpTargets).distinct.map(name => name -> resolveJumpTarget(name)).toMap
 
+    // Run tables live on the engine of the stage that produced them, so a stage can only read
+    // stage outputs materialized on its own engine. Fail eagerly with a clear message instead
+    // of a table-not-found error mid-run
+    val engineOfStage: Map[String, String] =
+      flowStages.map(ls => ls.name -> engineNameFor(ls)).toMap
+    flowStages.foreach { ls =>
+      ls.stage
+        .inputRefs
+        .map(_.fullName)
+        .filter(stageNames.contains)
+        .foreach { upstream =>
+          val upstreamEngine = engineOfStage(upstream)
+          if upstreamEngine != engineNameFor(ls) then
+            throw StatusCode
+              .INVALID_ARGUMENT
+              .newException(
+                s"Stage ${ls.name} runs on '${engineNameFor(ls)}' but reads stage ${upstream} " +
+                  s"materialized on '${upstreamEngine}'. Stages reading another stage's output " +
+                  "must run on the same engine"
+              )
+        }
+    }
+
     // Stages materialize into run-scoped tables so that concurrent runs and real tables with the
     // same name never collide
     def tableFor(stageName: String): String = FlowExecutor.stageTableName(runId, stageName)
@@ -483,7 +541,8 @@ class FlowExecutor(
                 workEnv.info(s"Stage ${ls.name} waits until its sensor condition holds")
                 debug(s"Sensor poll of stage ${ls.name}:\n${pollSql}")
                 beat(attemptKey)
-                while connector.queryJsonRows(pollSql).isEmpty do
+                val sensorConnector = connectorFor(ls)
+                while sensorConnector.queryJsonRows(pollSql).isEmpty do
                   sleepWithHeartbeat(interval)
                   beat(attemptKey)
               }
@@ -963,6 +1022,20 @@ class FlowExecutor(
     val result = FlowExecutionResult(flow.name.name, runId, stageResults)
     workEnv.info(s"Completed flow ${flow.name.name} (run: ${runId})")
 
+    // Run tables of stages on non-default engines are unreachable for the retention job
+    // (it only holds the flow's default connector), so drop them once the whole run
+    // succeeded. Failed runs keep them so `flow resume` can reuse successful stages
+    if result.isSuccess then
+      flowStages
+        .filter(_.stage.engine.isDefined)
+        .foreach { ls =>
+          try
+            connectorFor(ls).execute(s"""drop table if exists "${tableFor(ls.name)}"""")
+          catch
+            case NonFatal(e) =>
+              debug(s"Failed to drop run table of stage ${ls.name}: ${e.getMessage}")
+        }
+
     // Fire the flow-level notification hooks now that the terminal snapshot is persisted.
     // A notification failure is logged and never changes the run result
     notifyRunResult(flow, result)
@@ -1095,6 +1168,9 @@ class FlowExecutor(
         throw StatusCode.NOT_IMPLEMENTED.newException(s"Stage ${ls.name} has no executable body")
       )
 
+    val stageConnector = connectorFor(ls)
+    val engineName     = engineNameFor(ls)
+
     val executable = FlowExecutor.rewriteStageRefs(
       body,
       ls.name,
@@ -1103,7 +1179,17 @@ class FlowExecutor(
       routeFilters
     )
 
-    val sql = GenSQL.generateSQLFromRelation(executable, addHeader = false).sql
+    // Materialize tables living on other connectors into run-scoped staging tables on this
+    // stage's engine, and point the body at them
+    val (staged, stagingTables) = stageForeignTables(
+      executable,
+      engineName,
+      stageConnector,
+      tableFor,
+      ls.name
+    )
+
+    val sql = GenSQL.generateSQLFromRelation(staged, addHeader = false).sql
 
     // Quote the table name: it contains a ULID and stage names may collide with SQL keywords.
     // The table is a regular (non-temp) table because parallel stages materialize on separate
@@ -1112,21 +1198,152 @@ class FlowExecutor(
     // drop only matters for re-executed attempts of this stage
     val target = s""""${tableFor(ls.name)}""""
     val ddl    =
-      if connector.dbType.supportCreateOrReplace then
+      if stageConnector.dbType.supportCreateOrReplace then
         s"""create or replace table ${target} as\n${sql}"""
       else
-        connector.execute(s"drop table if exists ${target}")
+        stageConnector.execute(s"drop table if exists ${target}")
         s"""create table ${target} as\n${sql}"""
     debug(s"Materializing stage ${ls.name}:\n${ddl}")
     // The registered handle lets the scheduler stop the statement server-side on a timeout
     // or cancellation while it is executing
-    connector.executeCancellable(ddl, registerStatement, deregisterStatement)
+    try stageConnector.executeCancellable(ddl, registerStatement, deregisterStatement)
+    finally
+      // Staging tables only feed the CTAS above; drop them immediately (a retried attempt
+      // re-stages from the source)
+      stagingTables.foreach { staging =>
+        try
+          stageConnector.execute(s"""drop table if exists "${staging}"""")
+        catch
+          case NonFatal(e) =>
+            debug(s"Failed to drop staging table ${staging}: ${e.getMessage}")
+      }
 
   end materializeStage
+
+  /**
+    * Replace TableScans that were resolved through a different connector with run-scoped staging
+    * tables materialized on the stage's engine. Rows move engine-independently as JSON lines
+    * (DBConnector.queryJsonRows) and land via DuckDB's read_json_auto; staging into engines without
+    * JSON ingestion is a follow-up
+    */
+  private def stageForeignTables(
+      body: Relation,
+      engineName: String,
+      engine: DBConnector,
+      tableFor: String => String,
+      stageName: String
+  ): (Relation, List[String]) =
+    var stagedCount = 0
+    // One staging copy per distinct (connector, table), even when referenced multiple times
+    val stagedTables = scala.collection.mutable.Map.empty[(String, String), String]
+    val rewritten    = body
+      .transformUp {
+        case t @ TableScan(_, _, _, _, Some(sourceName)) if sourceName != engineName =>
+          if engine.dbType != DBType.DuckDB then
+            throw StatusCode
+              .NOT_IMPLEMENTED
+              .newException(
+                s"Stage ${stageName} runs on '${engineName}' (${engine.dbType}) and reads " +
+                  s"'${sourceName}.${t
+                      .name
+                      .name}': staging into non-DuckDB engines is not supported yet"
+              )
+          val stagingTable = stagedTables.getOrElseUpdate(
+            (sourceName, t.name.fullName), {
+              val source = resolveEngine(sourceName)
+              stagedCount += 1
+              val staging = tableFor(s"${stageName}__src${stagedCount}")
+              materializeForeignTable(source, t, staging, engine)
+              staging
+            }
+          )
+          val span = t.span
+          AliasedRelation(
+            TableRef(DoubleQuotedIdentifier(stagingTable, span), span),
+            UnquotedIdentifier(t.name.name, span),
+            None,
+            span
+          )
+      }
+      .asInstanceOf[Relation]
+    (rewritten, stagedTables.values.toList)
+
+  end stageForeignTables
+
+  // Copy a foreign connector's table into a staging table on the target engine via JSON lines
+  private def materializeForeignTable(
+      source: DBConnector,
+      table: TableScan,
+      stagingTable: String,
+      engine: DBConnector
+  ): Unit =
+    // Quote each identifier part: source engines have their own casing/keyword rules
+    val qualifiedSource = (table.name.catalog.toList ++ table.name.schema.toList :+ table.name.name)
+      .map(part => s"\"${part}\"")
+      .mkString(".")
+    val rows = source.queryJsonRows(s"select * from ${qualifiedSource}")
+    workEnv.info(
+      s"Staging ${table.connectorName.getOrElse("")}.${table.name.name} (${rows
+          .size} rows) as ${stagingTable}"
+    )
+    val file = java.nio.file.Files.createTempFile(s"wv_flow_staging_", ".jsonl")
+    // DuckDB accepts forward slashes on every platform; backslashes would need escaping in
+    // the SQL literal
+    val filePath = file.toAbsolutePath.toString.replace('\\', '/')
+    try
+      val writer = java
+        .nio
+        .file
+        .Files
+        .newBufferedWriter(file, java.nio.charset.StandardCharsets.UTF_8)
+      try rows.foreach { row =>
+          writer.write(row)
+          writer.newLine()
+        }
+      finally writer.close()
+      if rows.nonEmpty then
+        engine.execute(
+          s"""create or replace table "${stagingTable}" as select * from read_json_auto('${filePath}')"""
+        )
+      else
+        // read_json_auto cannot infer a schema from an empty file: create the empty staging
+        // table from the resolved column types instead
+        val columns = table
+          .schema
+          .fields
+          .map(f => s""""${f.name.name}" ${FlowExecutor.duckdbTypeOf(f.dataType)}""")
+          .mkString(", ")
+        engine.execute(s"""create or replace table "${stagingTable}" (${columns})""")
+    finally
+      java.nio.file.Files.deleteIfExists(file)
+
+  end materializeForeignTable
 
 end FlowExecutor
 
 object FlowExecutor:
+
+  // Best-effort mapping of resolved wvlet types to DuckDB column types for empty staging
+  // tables; anything uncommon degrades to VARCHAR (the staging table is empty anyway)
+  private[runner] def duckdbTypeOf(dataType: DataType): String =
+    dataType match
+      case DataType.IntType =>
+        "INTEGER"
+      case DataType.LongType =>
+        "BIGINT"
+      case DataType.FloatType =>
+        "FLOAT"
+      case DataType.DoubleType =>
+        "DOUBLE"
+      case DataType.BooleanType =>
+        "BOOLEAN"
+      case DataType.DateType =>
+        "DATE"
+      case _: DataType.TimestampType =>
+        "TIMESTAMP"
+      case _ =>
+        "VARCHAR"
+
   /**
     * The activation sinks available by default: sinks registered via the Java ServiceLoader
     * (`META-INF/services/wvlet.lang.runner.ActivationSink`) followed by the built-in file export

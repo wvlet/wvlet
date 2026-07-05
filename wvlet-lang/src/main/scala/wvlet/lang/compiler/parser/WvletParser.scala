@@ -472,6 +472,14 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     // Parse optional config block
     val config = parseConfigBlock()
 
+    // Parse optional engine selection: stage <name> on <connector> = ...
+    val engine: Option[NameExpr] =
+      if scanner.lookAhead().token == WvletToken.ON then
+        consume(WvletToken.ON)
+        Some(identifier())
+      else
+        None
+
     consume(WvletToken.EQ)
 
     // Parse input references (from or merge)
@@ -486,7 +494,16 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       else
         Nil
 
-    StageDef(Name.termName(name.leafName), inputRefs, dependsOn, trigger, config, body, spanFrom(t))
+    StageDef(
+      Name.termName(name.leafName),
+      inputRefs,
+      dependsOn,
+      trigger,
+      config,
+      body,
+      spanFrom(t),
+      engine = engine
+    )
   }
 
   /**

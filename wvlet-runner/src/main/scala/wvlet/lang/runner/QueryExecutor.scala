@@ -78,6 +78,21 @@ class QueryExecutor(
 
   private def activeDBConnector: DBConnector = dbConnectorProvider.getDBConnector(activeEngine)
 
+  // Resolve a profile connector name to a live engine, for per-stage `on <connector>` in flows
+  // and cross-connector staging
+  private def profileEngineResolver(name: String): DBConnector = defaultProfile
+    .connectors
+    .find(_.name == name)
+    .map(dbConnectorProvider.getDBConnector)
+    .getOrElse(
+      throw StatusCode
+        .INVALID_ARGUMENT
+        .newException(
+          s"Connector '${name}' is not defined in profile '${defaultProfile.name}' " +
+            s"(available: ${defaultProfile.connectors.map(_.name).mkString(", ")})"
+        )
+    )
+
   /**
     * Switch the active connector: `use <connector>[.<catalog>].<schema>`. Subsequent statements
     * plan and execute on the selected connector, and its catalog drives name resolution and the SQL
@@ -236,7 +251,13 @@ class QueryExecutor(
             .util
             .Using
             .resource(FlowRunStore.forWorkEnv(workEnv)) { store =>
-              val flowExecutor = FlowExecutor(activeDBConnector, workEnv, registry = Some(store))
+              val flowExecutor = FlowExecutor(
+                activeDBConnector,
+                workEnv,
+                registry = Some(store),
+                engineResolver = Some(profileEngineResolver),
+                defaultEngineName = activeEngine.name
+              )
               report(flowExecutor.execute(flow))
             }
         case ExecuteValDef(v) =>
@@ -530,7 +551,13 @@ class QueryExecutor(
             .util
             .Using
             .resource(FlowRunStore.forWorkEnv(workEnv)) { store =>
-              FlowExecutor(connector, workEnv, registry = Some(store)).execute(flow, args = rf.args)
+              FlowExecutor(
+                connector,
+                workEnv,
+                registry = Some(store),
+                engineResolver = Some(profileEngineResolver),
+                defaultEngineName = activeEngine.name
+              ).execute(flow, args = rf.args)
             }
 
         given monitor: QueryProgressMonitor = context.queryProgressMonitor
