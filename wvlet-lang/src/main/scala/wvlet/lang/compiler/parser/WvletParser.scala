@@ -390,6 +390,30 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
   }
 
   /**
+    * Parse a tool-call statement: `call <connector>.<tool>(name: value, ...)`
+    *
+    * The statement produces a single-row invocation summary relation (connector, tool, status,
+    * content), so it can be followed by query operators or test statements like a regular query
+    */
+  def callToolStatement(): LogicalPlan = node {
+    val t             = consume(WvletToken.CALL)
+    val connectorName = identifier()
+    consume(WvletToken.DOT)
+    val toolName = identifier()
+    consume(WvletToken.L_PAREN)
+    val args =
+      scanner.lookAhead().token match
+        case WvletToken.R_PAREN =>
+          Nil
+        case _ =>
+          activateParams()
+    consume(WvletToken.R_PAREN)
+    val c = CallTool(connectorName, toolName, args, spanFrom(t))
+    val q = queryBlock(c)
+    Query(q, spanFrom(t))
+  }
+
+  /**
     * Parse a flow definition: `flow Name(params) = { stage ... }`
     *
     * Supports:
@@ -909,6 +933,8 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         flowDef()
       case WvletToken.RUN =>
         runFlowStatement()
+      case WvletToken.CALL =>
+        callToolStatement()
       case WvletToken.VAL =>
         valDef()
       case WvletToken.SHOW =>

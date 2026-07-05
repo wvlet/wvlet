@@ -461,6 +461,19 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
               expr(r.flowName) + paren(cl(r.args.map(a => expr(a))))
           wl("run", "flow", call)
         }
+      case c: CallTool =>
+        code(c) {
+          val target = expr(c.connectorName) + text(".") + expr(c.toolName)
+          val args   = c
+            .args
+            .map {
+              case f: FunctionArg if f.name.isDefined =>
+                wl(text(s"${f.name.get.name}:"), expr(f.value))
+              case a =>
+                expr(a)
+            }
+          wl("call", target + paren(cl(args)))
+        }
       // Flow-related relations
       case s: StageDef =>
         // Note: inputRefs are tracked for dependency analysis but the body already contains

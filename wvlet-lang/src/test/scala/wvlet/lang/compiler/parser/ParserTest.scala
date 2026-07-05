@@ -14,6 +14,7 @@
 package wvlet.lang.compiler.parser
 
 import wvlet.lang.compiler.CompilationUnit
+import wvlet.lang.model.plan.CallTool
 import wvlet.lang.model.plan.PackageDef
 import wvlet.lang.model.plan.TableRef
 import wvlet.lang.model.plan.Query
@@ -39,3 +40,35 @@ class ParserTest extends UniTest:
     val plan = p.parse()
     debug(plan)
   }
+
+  test("should parse a call statement with named tool arguments") {
+    val p = WvletParser(
+      CompilationUnit.fromWvletString(
+        """call slack.post_message(channel: '#reports', text: 'hello')"""
+      )
+    )
+    val plan = p.parse()
+    debug(plan)
+    plan shouldMatch { case p: PackageDef =>
+      p.statements shouldMatch { case List(Query(c: CallTool, _)) =>
+        c.connectorName.fullName shouldBe "slack"
+        c.toolName.fullName shouldBe "post_message"
+        c.args.flatMap(_.name.map(_.name)) shouldBe List("channel", "text")
+      }
+    }
+  }
+
+  test("should parse a call statement with no arguments followed by query operators") {
+    val p = WvletParser(CompilationUnit.fromWvletString("""call slack.refresh()
+        |select status""".stripMargin))
+    val plan = p.parse()
+    debug(plan)
+    var found = false
+    plan.traverse { case c: CallTool =>
+      found = true
+      c.args shouldBe Nil
+    }
+    found shouldBe true
+  }
+
+end ParserTest

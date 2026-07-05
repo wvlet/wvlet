@@ -143,4 +143,59 @@ class SlackSourceQueryTest extends UniTest:
     fakeSlack.posted.head._2 shouldContain "channels"
   }
 
+  test("should invoke a connector tool ad hoc with a call statement") {
+    fakeSlack.posted.clear()
+    val result = run("call slack.post_message(channel: '#general', text: 'hello from wvlet')")
+    result.isSuccess shouldBe true
+    fakeSlack.posted.toList shouldBe List("#general" -> "hello from wvlet")
+    val tsv = result.toTSV
+    tsv shouldContain "post_message"
+    tsv shouldContain "ok"
+  }
+
+  test("should pipe a call statement result through query operators") {
+    val result = run("""call slack.post_message(channel: '#general', text: 'piped')
+        |select connector, tool, status
+        |""".stripMargin)
+    result.toTSV shouldContain "slack\tpost_message\tok"
+  }
+
+  test("should verify a call statement result with a test statement") {
+    val result = run("""call slack.post_message(channel: '#general', text: 'tested')
+        |test _.columns should contain 'status'
+        |""".stripMargin)
+    result.isSuccess shouldBe true
+  }
+
+  test("should accept negative numeric literal arguments in a call statement") {
+    fakeSlack.posted.clear()
+    val result = run(
+      "call slack.post_message(channel: '#general', text: 'with numbers', priority: -5, score: -1.5)"
+    )
+    result.isSuccess shouldBe true
+    fakeSlack.posted.toList shouldBe List("#general" -> "with numbers")
+  }
+
+  test("should report an unknown tool in a call statement") {
+    val e = intercept[Exception] {
+      run("call slack.no_such_tool(text: 'x')")
+    }
+    e.getMessage shouldContain "no tool 'no_such_tool'"
+    e.getMessage shouldContain "post_message"
+  }
+
+  test("should report an unknown connector in a call statement") {
+    val e = intercept[Exception] {
+      run("call nowhere.post_message(text: 'x')")
+    }
+    e.getMessage shouldContain "'nowhere' is not found"
+  }
+
+  test("should reject positional arguments in a call statement") {
+    val e = intercept[Exception] {
+      run("call slack.post_message('#general')")
+    }
+    e.getMessage shouldContain "must be named"
+  }
+
 end SlackSourceQueryTest

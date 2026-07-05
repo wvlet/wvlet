@@ -47,4 +47,12 @@ class WvletGeneratorTest extends UniTest:
     printed.contains("F()") shouldBe false
   }
 
+  test("should print call statement arguments in name: value form") {
+    val printed = print("call slack.post_message(channel: '#reports', text: 'hello')")
+    printed shouldContain "call slack.post_message(channel: '#reports', text: 'hello')"
+
+    // The printed statement should parse back to the same tool call
+    print(printed) shouldContain "call slack.post_message(channel: '#reports', text: 'hello')"
+  }
+
 end WvletGeneratorTest
