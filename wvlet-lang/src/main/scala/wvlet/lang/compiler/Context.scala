@@ -364,6 +364,10 @@ case class ConnectorCatalogEntry(
     defaultSchema: String,
     catalogProvider: Option[String => Catalog] = None
 ):
+  // Non-primary catalogs are cached per name so repeated 4-part resolutions reuse one Catalog
+  // instance (and its lazily fetched metadata) instead of rebuilding it on every reference
+  private val resolvedCatalogs = ConcurrentHashMap[String, Catalog]()
+
   /**
     * Resolve one of this connector's catalogs by name: the primary (configured) catalog, or another
     * catalog of the same connector when a multi-catalog provider is wired
@@ -372,4 +376,4 @@ case class ConnectorCatalogEntry(
     if name == catalog.catalogName then
       Some(catalog)
     else
-      catalogProvider.map(_(name))
+      catalogProvider.map(provider => resolvedCatalogs.computeIfAbsent(name, provider(_)))
