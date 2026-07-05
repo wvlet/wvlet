@@ -1238,8 +1238,7 @@ class FlowExecutor(
     val stagedTables = scala.collection.mutable.Map.empty[(String, String), String]
     val rewritten    = body
       .transformUp {
-        case t: TableScan if t.connectorName.exists(_ != engineName) =>
-          val sourceName = t.connectorName.get
+        case t @ TableScan(_, _, _, _, Some(sourceName)) if sourceName != engineName =>
           if engine.dbType != DBType.DuckDB then
             throw StatusCode
               .NOT_IMPLEMENTED
@@ -1288,16 +1287,23 @@ class FlowExecutor(
           .size} rows) as ${stagingTable}"
     )
     val file = java.nio.file.Files.createTempFile(s"wv_flow_staging_", ".jsonl")
+    // DuckDB accepts forward slashes on every platform; backslashes would need escaping in
+    // the SQL literal
+    val filePath = file.toAbsolutePath.toString.replace('\\', '/')
     try
-      java
+      val writer = java
         .nio
         .file
         .Files
-        .write(file, rows.mkString("\n").getBytes(java.nio.charset.StandardCharsets.UTF_8))
+        .newBufferedWriter(file, java.nio.charset.StandardCharsets.UTF_8)
+      try rows.foreach { row =>
+          writer.write(row)
+          writer.newLine()
+        }
+      finally writer.close()
       if rows.nonEmpty then
         engine.execute(
-          s"""create or replace table "${stagingTable}" as select * from read_json_auto('${file
-              .toAbsolutePath}')"""
+          s"""create or replace table "${stagingTable}" as select * from read_json_auto('${filePath}')"""
         )
       else
         // read_json_auto cannot infer a schema from an empty file: create the empty staging
