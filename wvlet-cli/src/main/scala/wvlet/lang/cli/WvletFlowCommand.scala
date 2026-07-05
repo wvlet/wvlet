@@ -41,6 +41,7 @@ import wvlet.lang.runner.FlowRunStore
 import wvlet.lang.runner.FlowScheduleConfig
 import wvlet.lang.runner.FlowScheduler
 import wvlet.lang.runner.ScheduledFlow
+import wvlet.lang.runner.ConnectorActivationSink
 import wvlet.lang.runner.connector.ConnectorProvider
 import wvlet.uni.log.LogSupport
 
@@ -125,14 +126,21 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
               profile
                 .connectors
                 .find(_.name == name)
-                .map(dbConnectorProvider.getDBConnector)
+                .map(dbConnectorProvider.getConnector)
                 .getOrElse(
                   throw StatusCode
                     .INVALID_ARGUMENT
                     .newException(s"Connector '${name}' is not defined in the profile")
                 )
             ),
-            defaultEngineName = profile.defaultEngine.name
+            defaultEngineName = profile.defaultEngine.name,
+            activationSinks =
+              FlowExecutor.defaultActivationSinks ++
+                profile
+                  .connectors
+                  .map(c =>
+                    ConnectorActivationSink(c.name, () => dbConnectorProvider.getConnector(c))
+                  )
           ).execute(flow, resumeFrom, args)
           println(result.toPrettyBox())
           failed = result.hasError
@@ -232,14 +240,21 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
                 profile
                   .connectors
                   .find(_.name == name)
-                  .map(dbConnectorProvider.getDBConnector)
+                  .map(dbConnectorProvider.getConnector)
                   .getOrElse(
                     throw StatusCode
                       .INVALID_ARGUMENT
                       .newException(s"Connector '${name}' is not defined in the profile")
                   )
               ),
-              defaultEngineName = profile.defaultEngine.name
+              defaultEngineName = profile.defaultEngine.name,
+              activationSinks =
+                FlowExecutor.defaultActivationSinks ++
+                  profile
+                    .connectors
+                    .map(c =>
+                      ConnectorActivationSink(c.name, () => dbConnectorProvider.getConnector(c))
+                    )
             )
             val it = runTimes.iterator
             while !failed && it.hasNext do
@@ -513,16 +528,27 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
                           profile
                             .connectors
                             .find(_.name == name)
-                            .map(dbConnectorProvider.getDBConnector)
+                            .map(dbConnectorProvider.getConnector)
                             .getOrElse(
                               throw StatusCode
                                 .INVALID_ARGUMENT
                                 .newException(s"Connector '${name}' is not defined in the profile")
                             )
                         ),
-                        defaultEngineName = profile.defaultEngine.name
+                        defaultEngineName = profile.defaultEngine.name,
+                        activationSinks =
+                          FlowExecutor.defaultActivationSinks ++
+                            profile
+                              .connectors
+                              .map(c =>
+                                ConnectorActivationSink(
+                                  c.name,
+                                  () => dbConnectorProvider.getConnector(c)
+                                )
+                              )
                       ).execute(flow, runTime = Some(fireTime))
                       println(runResult.toPrettyBox())
+                    end run
                 )
           )
           // Retention: the per-flow keep_runs: caps plus the daemon-wide --retention TTL.

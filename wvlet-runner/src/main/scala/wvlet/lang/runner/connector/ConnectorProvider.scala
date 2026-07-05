@@ -23,6 +23,7 @@ import wvlet.lang.connector.ConnectorFactory
 import wvlet.lang.connector.DBConnector
 import wvlet.lang.connector.duckdb.DuckDBConnectorFactory
 import wvlet.lang.connector.duckdb.GenericConnectorFactory
+import wvlet.lang.connector.slack.SlackConnectorFactory
 import wvlet.lang.connector.snowflake.SnowflakeConnectorFactory
 import wvlet.lang.connector.trino.TrinoConnectorFactory
 import wvlet.uni.log.LogSupport
@@ -52,6 +53,11 @@ class ConnectorProvider(
 
   // computeIfAbsent (not the Scala wrapper's getOrElseUpdate) so a race on first use cannot
   // create two live connectors and silently leak the losing one
+  /** Whether configs of this type create SQL engines, decided without instantiating one */
+  def isEngineType(connectorType: String): Boolean = factoryMap
+    .get(connectorType.toLowerCase)
+    .forall(_.isEngine)
+
   def getConnector(config: ConnectorConfig): Connector = connectorCache.computeIfAbsent(
     config,
     c => createConnector(c)
@@ -107,5 +113,6 @@ object ConnectorProvider:
     DuckDBConnectorFactory,
     GenericConnectorFactory,
     TrinoConnectorFactory,
-    SnowflakeConnectorFactory
+    SnowflakeConnectorFactory,
+    SlackConnectorFactory
   )

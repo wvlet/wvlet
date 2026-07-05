@@ -37,7 +37,9 @@ import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
 import wvlet.lang.compiler.connector.QueryResult as XPQueryResult
 import wvlet.lang.connector.DBConnector
+import wvlet.lang.connector.Connector
 import wvlet.lang.runner.connector.ConnectorProvider
+import wvlet.lang.runner.connector.SourceTableStaging
 import wvlet.uni.log.LogLevel
 import wvlet.uni.log.LogSupport
 import wvlet.uni.weaver.Weaver
@@ -71,6 +73,8 @@ class QueryExecutor(
     config
   )
 
+  def getConnector(config: ConnectorConfig): Connector = dbConnectorProvider.getConnector(config)
+
   // The engine statements execute on: the profile's default engine until a `use <connector>`
   // statement switches it (#1861 Phase 2). Like the global default catalog/schema this is
   // session-level state: concurrent sessions should use separate QueryExecutor instances
@@ -78,12 +82,12 @@ class QueryExecutor(
 
   private def activeDBConnector: DBConnector = dbConnectorProvider.getDBConnector(activeEngine)
 
-  // Resolve a profile connector name to a live engine, for per-stage `on <connector>` in flows
-  // and cross-connector staging
-  private def profileEngineResolver(name: String): DBConnector = defaultProfile
+  // Resolve a profile connector name to a live connector, for per-stage `on <connector>` in
+  // flows and cross-connector staging
+  private def profileEngineResolver(name: String): Connector = defaultProfile
     .connectors
     .find(_.name == name)
-    .map(dbConnectorProvider.getDBConnector)
+    .map(dbConnectorProvider.getConnector)
     .getOrElse(
       throw StatusCode
         .INVALID_ARGUMENT
@@ -148,6 +152,57 @@ class QueryExecutor(
     QueryResult.empty
 
   end switchConnector
+
+  // Every profile connector becomes an activation target under its instance name, delivering
+  // stage outputs through its MCP-shaped tools (e.g. activate('slack', tool: 'post_message'))
+  private def profileActivationSinks: List[ActivationSink] =
+    FlowExecutor.defaultActivationSinks ++
+      defaultProfile
+        .connectors
+        .map(c => ConnectorActivationSink(c.name, () => dbConnectorProvider.getConnector(c)))
+
+  /**
+    * Materialize tables of source connectors (non-engine connectors like Slack) referenced by the
+    * plan into session tables on the active engine, and point the plan at them
+    */
+  private def stageSourceTables(plan: LogicalPlan): (LogicalPlan, List[String]) =
+    val staged    = scala.collection.mutable.Map.empty[(String, String), String]
+    val rewritten = plan.transformUp {
+      case t @ TableScan(_, _, _, _, Some(sourceName)) if sourceName != activeEngine.name =>
+        val stagingTable = staged.getOrElseUpdate(
+          (sourceName, t.name.name), {
+            val source = profileEngineResolver(sourceName)
+            val rows   = SourceTableStaging.readTableAsJsonRows(source, List(t.name.name))
+            // ULID-suffixed so concurrent queries staging the same source never collide;
+            // the table is dropped when this query finishes
+            val staging =
+              s"__wv_src_${sourceName}_${t.name.name}_${wvlet
+                  .uni
+                  .util
+                  .ULID
+                  .newULIDString
+                  .toLowerCase}"
+            workEnv.info(s"Staging ${sourceName}.${t.name.name} (${rows.size} rows) as ${staging}")
+            SourceTableStaging.loadJsonRows(
+              activeDBConnector,
+              activeEngine.name,
+              staging,
+              rows,
+              t.schema.fields
+            )
+            staging
+          }
+        )
+        AliasedRelation(
+          TableRef(DoubleQuotedIdentifier(stagingTable, t.span), t.span),
+          UnquotedIdentifier(t.name.name, t.span),
+          None,
+          t.span
+        )
+    }
+    (rewritten, staged.values.toList)
+
+  end stageSourceTables
 
   def executeSingleSpec(sourceFolder: String, file: String): QueryResult =
     val compiler = Compiler(
@@ -256,7 +311,8 @@ class QueryExecutor(
                 workEnv,
                 registry = Some(store),
                 engineResolver = Some(profileEngineResolver),
-                defaultEngineName = activeEngine.name
+                defaultEngineName = activeEngine.name,
+                activationSinks = profileActivationSinks
               )
               report(flowExecutor.execute(flow))
             }
@@ -556,7 +612,8 @@ class QueryExecutor(
                 workEnv,
                 registry = Some(store),
                 engineResolver = Some(profileEngineResolver),
-                defaultEngineName = activeEngine.name
+                defaultEngineName = activeEngine.name,
+                activationSinks = profileActivationSinks
               ).execute(flow, args = rf.args)
             }
 
@@ -581,24 +638,50 @@ class QueryExecutor(
 
   end runEmbeddedFlows
 
-  private def executeQuery(plan: LogicalPlan)(using context: Context): QueryResult =
-    // Cross-connector staging is not implemented yet: every table resolved through a profile
-    // connector name must live on the engine that is active when this query runs (an in-file
-    // `use <connector>` earlier in the unit has already switched activeEngine by now)
-    val foreignConnectors = scala.collection.mutable.Set.empty[String]
-    plan.traverse { case t: TableScan =>
-      t.connectorName.filter(_ != activeEngine.name).foreach(foreignConnectors += _)
+  private def executeQuery(plan0: LogicalPlan)(using context: Context): QueryResult =
+    // Tables resolved through a profile connector name must live on the engine active when
+    // this query runs (an in-file `use <connector>` earlier in the unit has already switched
+    // activeEngine by now) — except source connectors (Slack etc.), whose tables are staged
+    // into the active engine below
+    val foreignEngines = scala.collection.mutable.Set.empty[String]
+    plan0.traverse { case t: TableScan =>
+      t.connectorName
+        .filter(_ != activeEngine.name)
+        // Classified from the config type: instantiating the connector here would open a
+        // connection just to reject the query
+        .filter(name =>
+          defaultProfile
+            .connectors
+            .find(_.name == name)
+            .forall(c => dbConnectorProvider.isEngineType(c.`type`))
+        )
+        .foreach(foreignEngines += _)
     }
-    if foreignConnectors.nonEmpty then
+    if foreignEngines.nonEmpty then
       throw StatusCode
         .NOT_IMPLEMENTED
         .newException(
-          s"Query references connector(s) ${foreignConnectors.mkString(
+          s"Query references connector(s) ${foreignEngines.mkString(
               ", "
             )} but the active engine is '${activeEngine
-              .name}'. Cross-connector queries are not supported yet; run `use ${foreignConnectors
+              .name}'. Cross-connector queries are not supported yet; run `use ${foreignEngines
               .head}` first to execute on that connector"
         )
+    val (plan, stagedTables) = stageSourceTables(plan0)
+    try executeQueryPlan(plan)
+    finally
+      // Staged source tables are per-query scratch space; drop them so persistent engine
+      // databases do not accumulate them
+      stagedTables.foreach { staging =>
+        try
+          activeDBConnector.execute(s"""drop table if exists "${staging}"""")
+        catch
+          case scala.util.control.NonFatal(e) =>
+            debug(s"Failed to drop staging table ${staging}: ${e.getMessage}")
+      }
+  end executeQuery
+
+  private def executeQueryPlan(plan: LogicalPlan)(using context: Context): QueryResult =
     trace(s"Executing query: ${plan.pp}")
     workEnv.trace(s"Executing plan: ${plan.pp}")
     plan match
@@ -690,7 +773,7 @@ class QueryExecutor(
         QueryResult.empty
     end match
 
-  end executeQuery
+  end executeQueryPlan
 
   /**
     * Adapt a cross-platform `XPQueryResult` (from `SqlConnector.execute`) into the runner's

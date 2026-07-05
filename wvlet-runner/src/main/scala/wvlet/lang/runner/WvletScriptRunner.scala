@@ -18,6 +18,7 @@ import wvlet.lang.api.WvletLangException
 import wvlet.lang.api.v1.query.QueryRequest
 import wvlet.lang.api.v1.query.QuerySelection
 import wvlet.lang.catalog.LazyCatalog
+import wvlet.lang.runner.connector.ConnectorCatalogs
 import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.*
 import wvlet.lang.compiler.query.QueryProgressMonitor
@@ -103,20 +104,23 @@ class WvletScriptRunner(
       .profile
       .connectors
       .foreach { conn =>
-        conn
-          .catalog
-          .foreach { catalogName =>
-            val connSchema = conn.schema.getOrElse("main")
-            c.addConnectorCatalog(
-              conn.name,
-              LazyCatalog(
+        val connSchema  = conn.schema.getOrElse("main")
+        val catalogName = conn.catalog.getOrElse(conn.name)
+        c.addConnectorCatalog(
+          conn.name,
+          LazyCatalog(
+            catalogName,
+            conn.dbType,
+            () =>
+              ConnectorCatalogs.catalogOf(
+                queryExecutor.getConnector(conn),
+                conn,
                 catalogName,
-                conn.dbType,
-                () => queryExecutor.getDBConnector(conn).getCatalog(catalogName, connSchema)
-              ),
-              connSchema
-            )
-          }
+                connSchema
+              )
+          ),
+          connSchema
+        )
       }
 
     // Pre-compile files in the source paths

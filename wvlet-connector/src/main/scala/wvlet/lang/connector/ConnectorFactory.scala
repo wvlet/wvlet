@@ -25,4 +25,10 @@ trait ConnectorFactory:
   /** The `type` value in the connector config this factory handles, e.g. "duckdb" */
   def connectorType: String
 
+  /**
+    * Whether the created connectors are SQL engines. Lets callers classify connectors from their
+    * config type without instantiating them (which may open a connection)
+    */
+  def isEngine: Boolean = true
+
   def create(config: ConnectorConfig, workEnv: WorkEnv): Connector

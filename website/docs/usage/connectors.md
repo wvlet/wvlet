@@ -45,10 +45,12 @@ Models, CTEs, and query aliases take precedence over connector names, and connec
 precedence over schema names of the default catalog. Since you choose connector names yourself,
 rename the connector if it collides with a schema you need to address.
 
-Queries currently execute on one engine at a time: referencing a connector other than the active
-engine reports an error suggesting `use <connector>`. Inside [flows](../syntax/flow.md),
-cross-connector references are staged automatically, and each stage can pick its engine with
-`stage <name> on <connector>`. Cross-connector joins in ad-hoc queries are planned as a
+Queries execute on one SQL engine at a time: referencing another *engine* connector reports an
+error suggesting `use <connector>`. Tables of *source* connectors (services without a SQL
+engine, like [Slack](slack.md)) are staged into the active engine automatically, so
+`from slack.channels` works from any engine. Inside [flows](../syntax/flow.md),
+cross-connector references are staged automatically too, and each stage can pick its engine
+with `stage <name> on <connector>`. Cross-engine joins in ad-hoc queries are planned as a
 follow-up.
 
 ## Switching connectors with `use`

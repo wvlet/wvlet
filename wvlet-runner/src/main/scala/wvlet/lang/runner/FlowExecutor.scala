@@ -28,7 +28,9 @@ import wvlet.lang.model.DataType
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
 import wvlet.lang.connector.CancellableStatement
+import wvlet.lang.connector.Connector
 import wvlet.lang.connector.DBConnector
+import wvlet.lang.runner.connector.SourceTableStaging
 import wvlet.uni.log.LogSupport
 import wvlet.uni.util.ULID
 
@@ -242,15 +244,15 @@ class FlowExecutor(
     retryScheduler: Option[(Long, () => Unit) => Unit] = None,
     registry: Option[FlowRunStore] = None,
     activationSinks: List[ActivationSink] = FlowExecutor.defaultActivationSinks,
-    // Resolve a profile connector name to a live engine, for `stage <name> on <connector>`
-    // and for reading connector-qualified tables of other engines (#1861 Phase 2)
-    engineResolver: Option[String => DBConnector] = None,
+    // Resolve a profile connector name to a live connector, for `stage <name> on <connector>`
+    // and for reading connector-qualified tables of other connectors (#1861 Phase 2/3)
+    engineResolver: Option[String => Connector] = None,
     // The profile connector name of `connector`, used to decide which table references are
     // foreign and need staging
     defaultEngineName: String = "default"
 ) extends LogSupport:
 
-  private def resolveEngine(name: String): DBConnector =
+  private def resolveConnector(name: String): Connector =
     if name == defaultEngineName then
       connector
     else
@@ -260,9 +262,21 @@ class FlowExecutor(
           throw StatusCode
             .INVALID_ARGUMENT
             .newException(
-              s"Stage engine '${name}' cannot be resolved: run the flow with a profile that defines it"
+              s"Connector '${name}' cannot be resolved: run the flow with a profile that defines it"
             )
         )
+
+  private def resolveEngine(name: String): DBConnector =
+    resolveConnector(name) match
+      case db: DBConnector =>
+        db
+      case other =>
+        throw StatusCode
+          .INVALID_ARGUMENT
+          .newException(
+            s"Connector '${name}' (${other
+                .connectorType}) is not a SQL engine and cannot run a stage"
+          )
 
   /** The engine a stage runs on: its `on <connector>` selection, or the flow's engine */
   private def connectorFor(ls: FlowLowering.LoweredStage): DBConnector = ls
@@ -1250,10 +1264,10 @@ class FlowExecutor(
               )
           val stagingTable = stagedTables.getOrElseUpdate(
             (sourceName, t.name.fullName), {
-              val source = resolveEngine(sourceName)
+              val source = resolveConnector(sourceName)
               stagedCount += 1
               val staging = tableFor(s"${stageName}__src${stagedCount}")
-              materializeForeignTable(source, t, staging, engine)
+              materializeForeignTable(source, t, staging, engine, engineName)
               staging
             }
           )
@@ -1272,77 +1286,25 @@ class FlowExecutor(
 
   // Copy a foreign connector's table into a staging table on the target engine via JSON lines
   private def materializeForeignTable(
-      source: DBConnector,
+      source: Connector,
       table: TableScan,
       stagingTable: String,
-      engine: DBConnector
+      engine: DBConnector,
+      engineName: String
   ): Unit =
-    // Quote each identifier part: source engines have their own casing/keyword rules
-    val qualifiedSource = (table.name.catalog.toList ++ table.name.schema.toList :+ table.name.name)
-      .map(part => s"\"${part}\"")
-      .mkString(".")
-    val rows = source.queryJsonRows(s"select * from ${qualifiedSource}")
+    val qualifiedName = table.name.catalog.toList ++ table.name.schema.toList :+ table.name.name
+    val rows          = SourceTableStaging.readTableAsJsonRows(source, qualifiedName)
     workEnv.info(
       s"Staging ${table.connectorName.getOrElse("")}.${table.name.name} (${rows
           .size} rows) as ${stagingTable}"
     )
-    val file = java.nio.file.Files.createTempFile(s"wv_flow_staging_", ".jsonl")
-    // DuckDB accepts forward slashes on every platform; backslashes would need escaping in
-    // the SQL literal
-    val filePath = file.toAbsolutePath.toString.replace('\\', '/')
-    try
-      val writer = java
-        .nio
-        .file
-        .Files
-        .newBufferedWriter(file, java.nio.charset.StandardCharsets.UTF_8)
-      try rows.foreach { row =>
-          writer.write(row)
-          writer.newLine()
-        }
-      finally writer.close()
-      if rows.nonEmpty then
-        engine.execute(
-          s"""create or replace table "${stagingTable}" as select * from read_json_auto('${filePath}')"""
-        )
-      else
-        // read_json_auto cannot infer a schema from an empty file: create the empty staging
-        // table from the resolved column types instead
-        val columns = table
-          .schema
-          .fields
-          .map(f => s""""${f.name.name}" ${FlowExecutor.duckdbTypeOf(f.dataType)}""")
-          .mkString(", ")
-        engine.execute(s"""create or replace table "${stagingTable}" (${columns})""")
-    finally
-      java.nio.file.Files.deleteIfExists(file)
+    SourceTableStaging.loadJsonRows(engine, engineName, stagingTable, rows, table.schema.fields)
 
   end materializeForeignTable
 
 end FlowExecutor
 
 object FlowExecutor:
-
-  // Best-effort mapping of resolved wvlet types to DuckDB column types for empty staging
-  // tables; anything uncommon degrades to VARCHAR (the staging table is empty anyway)
-  private[runner] def duckdbTypeOf(dataType: DataType): String =
-    dataType match
-      case DataType.IntType =>
-        "INTEGER"
-      case DataType.LongType =>
-        "BIGINT"
-      case DataType.FloatType =>
-        "FLOAT"
-      case DataType.DoubleType =>
-        "DOUBLE"
-      case DataType.BooleanType =>
-        "BOOLEAN"
-      case DataType.DateType =>
-        "DATE"
-      case _: DataType.TimestampType =>
-        "TIMESTAMP"
-      case _ =>
-        "VARCHAR"
 
   /**
     * The activation sinks available by default: sinks registered via the Java ServiceLoader
