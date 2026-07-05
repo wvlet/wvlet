@@ -53,12 +53,18 @@ trait Connector extends AutoCloseable:
 end Connector
 
 /**
-  * Table-exposure capability of a [[Connector]]. Phase-1 skeleton: `scan(table, filters)` for
-  * materializing source-connector tables into an engine lands with the first non-SQL connector
+  * Table-exposure capability of a [[Connector]]: the tables a source connector offers to queries,
+  * and a scan operation that materializes a table's rows for staging into an engine
   */
 trait CatalogProvider:
   def listTables: Seq[Catalog.TableName]
   def schemaOf(table: String): Option[RelationType]
+
+  /**
+    * Read every row of the table as a JSON object string (one per row, matching the shape of
+    * `DBConnector.queryJsonRows`). Filter/projection pushdown is a future extension
+    */
+  def scan(table: String): Seq[String]
 
 /**
   * MCP-compatible tool description: `inputSchema` is a JSON Schema object for the tool arguments

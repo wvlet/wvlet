@@ -21,6 +21,7 @@ import wvlet.lang.compiler.Symbol
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.runner.QueryExecutor
 import wvlet.lang.connector.DBConnector
+import wvlet.lang.runner.connector.ConnectorCatalogs
 import wvlet.lang.runner.connector.ConnectorProvider
 import wvlet.uni.log.LogSupport
 
@@ -116,19 +117,23 @@ class WvletCompiler(
     currentProfile
       .connectors
       .foreach { c =>
-        c.catalog
-          .foreach { catalogName =>
-            val schema = c.schema.getOrElse("main")
-            compiler.addConnectorCatalog(
-              c.name,
-              LazyCatalog(
+        val schema      = c.schema.getOrElse("main")
+        val catalogName = c.catalog.getOrElse(c.name)
+        compiler.addConnectorCatalog(
+          c.name,
+          LazyCatalog(
+            catalogName,
+            c.dbType,
+            () =>
+              ConnectorCatalogs.catalogOf(
+                dbConnectorProvider.getConnector(c),
+                c,
                 catalogName,
-                c.dbType,
-                () => dbConnectorProvider.getDBConnector(c).getCatalog(catalogName, schema)
-              ),
-              schema
-            )
-          }
+                schema
+              )
+          ),
+          schema
+        )
       }
 
     compiler

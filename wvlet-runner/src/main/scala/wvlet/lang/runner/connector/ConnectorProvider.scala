@@ -23,6 +23,7 @@ import wvlet.lang.connector.ConnectorFactory
 import wvlet.lang.connector.DBConnector
 import wvlet.lang.connector.duckdb.DuckDBConnectorFactory
 import wvlet.lang.connector.duckdb.GenericConnectorFactory
+import wvlet.lang.connector.slack.SlackConnectorFactory
 import wvlet.lang.connector.snowflake.SnowflakeConnectorFactory
 import wvlet.lang.connector.trino.TrinoConnectorFactory
 import wvlet.uni.log.LogSupport
@@ -107,5 +108,6 @@ object ConnectorProvider:
     DuckDBConnectorFactory,
     GenericConnectorFactory,
     TrinoConnectorFactory,
-    SnowflakeConnectorFactory
+    SnowflakeConnectorFactory,
+    SlackConnectorFactory
   )
