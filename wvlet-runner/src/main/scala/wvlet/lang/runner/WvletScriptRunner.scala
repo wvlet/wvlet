@@ -17,6 +17,7 @@ import org.jline.terminal.Terminal
 import wvlet.lang.api.WvletLangException
 import wvlet.lang.api.v1.query.QueryRequest
 import wvlet.lang.api.v1.query.QuerySelection
+import wvlet.lang.catalog.LazyCatalog
 import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.*
 import wvlet.lang.compiler.query.QueryProgressMonitor
@@ -94,6 +95,28 @@ class WvletScriptRunner(
       .schema
       .foreach { schema =>
         c.setDefaultSchema(schema)
+      }
+
+    // Register every profile connector by name for `from <connector>.<table>` and
+    // `use <connector>` (#1861 Phase 2); LazyCatalog defers connections to first use
+    config
+      .profile
+      .connectors
+      .foreach { conn =>
+        conn
+          .catalog
+          .foreach { catalogName =>
+            val connSchema = conn.schema.getOrElse("main")
+            c.addConnectorCatalog(
+              conn.name,
+              LazyCatalog(
+                catalogName,
+                conn.dbType,
+                () => queryExecutor.getDBConnector(conn).getCatalog(catalogName, connSchema)
+              ),
+              connSchema
+            )
+          }
       }
 
     // Pre-compile files in the source paths

@@ -921,16 +921,24 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
   }
   end statement
 
-  def use(): UseSchema = node {
+  def use(): Command = node {
     val t = consume(WvletToken.USE)
-    // Support both:
-    // - use <schema_name> (common case)
-    // - use schema <schema_name> (explicit form)
+    // Support:
+    // - use <name>                  (a connector name from the profile, or a schema)
+    // - use schema <schema_name>    (explicit schema form)
+    // - use connector <name>        (explicit connector form)
+    // Bare names are disambiguated at execution time: connector names of the active profile
+    // shadow schema names.
     val nextToken = scanner.lookAhead()
-    if nextToken.token == WvletToken.IDENTIFIER && nextToken.str == "schema" then
-      consume(WvletToken.IDENTIFIER) // consume optional "schema" keyword
-    val schema = qualifiedId()
-    UseSchema(schema, spanFrom(t))
+    if nextToken.token == WvletToken.IDENTIFIER && nextToken.str == "connector" then
+      consume(WvletToken.IDENTIFIER) // consume the "connector" soft keyword
+      val connector = qualifiedId()
+      UseConnector(connector, spanFrom(t))
+    else
+      if nextToken.token == WvletToken.IDENTIFIER && nextToken.str == "schema" then
+        consume(WvletToken.IDENTIFIER) // consume optional "schema" keyword
+      val schema = qualifiedId()
+      UseSchema(schema, spanFrom(t))
   }
 
   def showExpr(): LogicalPlan = node {

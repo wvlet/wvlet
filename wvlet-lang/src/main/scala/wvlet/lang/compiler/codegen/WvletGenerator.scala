@@ -665,6 +665,8 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
           group(wl("show", "query", expr(t.name)))
         case u: UseSchema =>
           group(wl("use", expr(u.schema)))
+        case u: UseConnector =>
+          group(wl("use", "connector", expr(u.connector)))
         case e: ExplainPlan =>
           group(wl("explain", render(e.child)))
         case other =>
