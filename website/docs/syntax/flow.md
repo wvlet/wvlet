@@ -307,8 +307,10 @@ Stage bodies can use flow operators in addition to regular query operators.
 ### Conditional Routing with route
 
 `route` sends rows to different target stages based on conditions. Each target stage reads
-the routing stage and receives only its matching rows. Targets may reference stages defined
-later in the flow:
+the routing stage and receives only its matching rows. Cases follow first-match semantics
+like a `case`/`when` expression: a row is routed to the first case whose condition holds,
+and `else` receives the rows matching no case — so overlapping conditions never send a row
+to more than one target. Targets may reference stages defined later in the flow:
 
 ```wvlet
 flow conditional_flow = {
