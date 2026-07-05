@@ -13,7 +13,7 @@
  */
 package wvlet.lang.runner
 
-import wvlet.lang.runner.connector.DBConnector
+import wvlet.lang.connector.DBConnector
 import wvlet.uni.log.LogSupport
 
 import scala.util.control.NonFatal

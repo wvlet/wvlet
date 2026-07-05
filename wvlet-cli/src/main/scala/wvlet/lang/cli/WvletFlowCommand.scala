@@ -41,7 +41,7 @@ import wvlet.lang.runner.FlowRunStore
 import wvlet.lang.runner.FlowScheduleConfig
 import wvlet.lang.runner.FlowScheduler
 import wvlet.lang.runner.ScheduledFlow
-import wvlet.lang.runner.connector.DBConnectorProvider
+import wvlet.lang.runner.connector.ConnectorProvider
 import wvlet.uni.log.LogSupport
 
 case class WvletFlowOption(
@@ -108,7 +108,7 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
       val profile = Profile.getProfile(flowOption.profile, flowOption.catalog, flowOption.schema)
       // System.exit is deferred until the resource blocks release the connector and run store
       var failed = false
-      Control.withResource(DBConnectorProvider(workEnv)) { dbConnectorProvider =>
+      Control.withResource(ConnectorProvider(workEnv)) { dbConnectorProvider =>
         val connector = dbConnectorProvider.getConnector(profile)
 
         given ctx: Context = compileResult
@@ -203,7 +203,7 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
         val profile = Profile.getProfile(flowOption.profile, flowOption.catalog, flowOption.schema)
         // System.exit is deferred until the resource blocks release the connector and run store
         var failed = false
-        Control.withResource(DBConnectorProvider(workEnv)) { dbConnectorProvider =>
+        Control.withResource(ConnectorProvider(workEnv)) { dbConnectorProvider =>
           val connector = dbConnectorProvider.getConnector(profile)
 
           given ctx: Context = compileResult
@@ -389,7 +389,7 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
             flowOption.catalog,
             flowOption.schema
           )
-          Control.withResource(DBConnectorProvider(workEnv)) { dbConnectorProvider =>
+          Control.withResource(ConnectorProvider(workEnv)) { dbConnectorProvider =>
             val connector = dbConnectorProvider.getConnector(profile)
             cleanedRuns.foreach { r =>
               FlowExecutor.dropRunTables(connector, r.runId, r.stages.map(_.name))
@@ -441,7 +441,7 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
       println("No flows with a schedule: config were found")
     else
       val profile = Profile.getProfile(flowOption.profile, flowOption.catalog, flowOption.schema)
-      Control.withResource(DBConnectorProvider(workEnv)) { dbConnectorProvider =>
+      Control.withResource(ConnectorProvider(workEnv)) { dbConnectorProvider =>
         val connector = dbConnectorProvider.getConnector(profile)
         Control.withResource(newRunStore(flowOption, workEnv)) { store =>
           // The compile result and defining unit of each scheduled flow, replaced on reload

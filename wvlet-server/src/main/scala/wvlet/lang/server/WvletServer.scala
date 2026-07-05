@@ -6,8 +6,7 @@ import wvlet.lang.api.v1.frontend.{FileApi, FrontendApi, FrontendRPC}
 import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.OS
 import wvlet.lang.compiler.WorkEnv
-import wvlet.lang.runner.connector.duckdb.DuckDBConnector
-import wvlet.lang.runner.connector.{DBConnector, DBConnectorProvider}
+import wvlet.lang.runner.connector.ConnectorProvider
 import wvlet.lang.runner.{QueryExecutor, WvletScriptRunnerConfig}
 import wvlet.uni.cli.launcher.option
 import wvlet.uni.control.Control.withResource
@@ -180,9 +179,14 @@ object WvletServer extends LogSupport:
         WvletScriptRunnerConfig(
           interactive = false,
           profile = profile,
-          catalog = profile.catalog,
-          schema = profile.schema
+          catalog = profile.defaultEngine.catalog,
+          schema = profile.defaultEngine.schema
         )
+      }
+      // Explicit provider: ConnectorProvider's `factories` parameter has a default the DI layer
+      // shouldn't try to resolve
+      .bindProvider[WorkEnv, ConnectorProvider] { (workEnv: WorkEnv) =>
+        ConnectorProvider(workEnv)
       }
       .bindSingleton[QueryExecutor]
       .bindImpl[FrontendApi, FrontendApiImpl]

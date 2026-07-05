@@ -2,14 +2,14 @@ package wvlet.lang.runner
 
 import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.WorkEnv
-import wvlet.lang.runner.connector.DBConnectorProvider
+import wvlet.lang.runner.connector.ConnectorProvider
 import wvlet.uni.test.UniTest
 
 import java.nio.file.Files
 
 class FlowRunRetentionTest extends UniTest:
   private val workEnv             = WorkEnv(".")
-  private val dbConnectorProvider = DBConnectorProvider(workEnv)
+  private val dbConnectorProvider = ConnectorProvider(workEnv)
   private val connector           = dbConnectorProvider.getConnector(Profile.defaultDuckDBProfile)
 
   override def afterAll: Unit = dbConnectorProvider.close()

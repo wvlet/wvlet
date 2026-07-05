@@ -19,8 +19,8 @@ import wvlet.lang.compiler.Phase
 import wvlet.lang.compiler.Symbol
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.runner.QueryExecutor
-import wvlet.lang.runner.connector.DBConnector
-import wvlet.lang.runner.connector.DBConnectorProvider
+import wvlet.lang.connector.DBConnector
+import wvlet.lang.runner.connector.ConnectorProvider
 import wvlet.uni.log.LogSupport
 
 case class WvletCompilerOption(
@@ -44,7 +44,7 @@ class WvletCompiler(
     opts: WvletGlobalOption,
     compilerOption: WvletCompilerOption,
     workEnv: WorkEnv,
-    dbConnectorProvider: DBConnectorProvider
+    dbConnectorProvider: ConnectorProvider
 ) extends LogSupport
     with AutoCloseable:
 
@@ -70,16 +70,21 @@ class WvletCompiler(
     _dbConnector
   }
 
-  override def close(): Unit = Option(_dbConnector).foreach(_.close())
+  // Closing the provider closes every cached connector, including _dbConnector and the
+  // scratch DuckDB connector QueryExecutor may have created for local file reads/exports
+  override def close(): Unit = dbConnectorProvider.close()
 
   private def createCompiler(parseOnly: Boolean = false): Compiler =
-    val dbType = compilerOption.targetDBType.map(DBType.fromString).getOrElse(currentProfile.dbType)
+    val dbType = compilerOption
+      .targetDBType
+      .map(DBType.fromString)
+      .getOrElse(currentProfile.defaultEngine.dbType)
 
     val options = CompilerOptions(
       sourceFolders = List(compilerOption.workFolder),
       workEnv = workEnv,
-      catalog = currentProfile.catalog,
-      schema = currentProfile.schema,
+      catalog = currentProfile.defaultEngine.catalog,
+      schema = currentProfile.defaultEngine.schema,
       dbType = dbType
     )
 
@@ -90,13 +95,15 @@ class WvletCompiler(
         Compiler(options)
     // Set catalog from connector
     currentProfile
+      .defaultEngine
       .catalog
       .foreach { catalog =>
-        val schema = currentProfile.schema.getOrElse("main")
+        val schema = currentProfile.defaultEngine.schema.getOrElse("main")
         compiler.setDefaultCatalog(getDBConnector.getCatalog(catalog, schema))
       }
 
     currentProfile
+      .defaultEngine
       .schema
       .foreach { schema =>
         compiler.setDefaultSchema(schema)

@@ -18,11 +18,11 @@ import wvlet.lang.compiler.Compiler
 import wvlet.lang.compiler.CompilerOptions
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.runner.QueryExecutor
-import wvlet.lang.runner.connector.trino.TrinoConfig
-import wvlet.lang.runner.connector.trino.TrinoConnector
+import wvlet.lang.connector.trino.TrinoConfig
+import wvlet.lang.connector.trino.TrinoConnector
 import wvlet.lang.api.StatusCode
 import wvlet.lang.api.WvletLangException
-import wvlet.lang.runner.connector.DBConnectorProvider
+import wvlet.lang.runner.connector.ConnectorProvider
 import wvlet.lang.test.WvletDITest
 
 trait TDTrinoSpecRunner(specPath: String) extends WvletDITest:
@@ -35,15 +35,16 @@ trait TDTrinoSpecRunner(specPath: String) extends WvletDITest:
       skip("Skip as td-dev profile is not found in ~/.wvlet/profiles.json").asInstanceOf[Profile]
     }
 
-  private val defaultCatalog = profile.catalog.getOrElse("td")
-  private val defaultSchema  = profile.schema.getOrElse("default")
+  private val defaultEngine  = profile.defaultEngine
+  private val defaultCatalog = defaultEngine.catalog.getOrElse("td")
+  private val defaultSchema  = defaultEngine.schema.getOrElse("default")
 
   private val config = TrinoConfig(
     catalog = defaultCatalog,
     schema = defaultSchema,
-    hostAndPort = profile.host.getOrElse("localhost"),
-    user = profile.user,
-    password = profile.password
+    hostAndPort = defaultEngine.host.getOrElse("localhost"),
+    user = defaultEngine.user,
+    password = defaultEngine.password
   )
 
   private val workEnv = WorkEnv(
@@ -51,7 +52,7 @@ trait TDTrinoSpecRunner(specPath: String) extends WvletDITest:
     logLevel = wvlet.uni.log.LogLevel(logger.getLogLevel.name)
   )
 
-  private val dbConnectorProvider = DBConnectorProvider(workEnv)
+  private val dbConnectorProvider = ConnectorProvider(workEnv)
   private val executor            = QueryExecutor(dbConnectorProvider, profile, workEnv)
 
   private val compiler = Compiler(

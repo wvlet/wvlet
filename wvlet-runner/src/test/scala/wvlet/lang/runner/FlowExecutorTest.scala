@@ -19,7 +19,7 @@ import wvlet.lang.model.expr.LongLiteral
 import wvlet.lang.model.expr.SingleQuoteString
 import wvlet.lang.model.plan.FlowDef
 import wvlet.lang.model.plan.StageDef
-import wvlet.lang.runner.connector.DBConnectorProvider
+import wvlet.lang.runner.connector.ConnectorProvider
 import wvlet.uni.test.UniTest
 
 import java.util.concurrent.CountDownLatch
@@ -32,7 +32,7 @@ import scala.collection.mutable.ListBuffer
 class FlowExecutorTest extends UniTest:
   private val workEnv             = WorkEnv(".")
   private val profile             = Profile.defaultDuckDBProfile
-  private val dbConnectorProvider = DBConnectorProvider(workEnv)
+  private val dbConnectorProvider = ConnectorProvider(workEnv)
   private val connector           = dbConnectorProvider.getConnector(profile)
 
   override def afterAll: Unit = dbConnectorProvider.close()

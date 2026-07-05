@@ -11,7 +11,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package wvlet.lang.runner.connector.duckdb
+package wvlet.lang.connector.duckdb
 
 import wvlet.lang.api.StatusCode
 import wvlet.lang.catalog.SQLFunction
@@ -21,9 +21,9 @@ import wvlet.lang.compiler.Name
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.model.DataType
 import wvlet.lang.model.DataType.NamedType
-import wvlet.lang.runner.ThreadUtil
-import wvlet.lang.runner.connector.DBConnection
-import wvlet.lang.runner.connector.DBConnector
+import wvlet.lang.connector.ThreadUtil
+import wvlet.lang.connector.DBConnection
+import wvlet.lang.connector.DBConnector
 import org.duckdb.DuckDBConnection
 import wvlet.uni.log.LogSupport
 import wvlet.uni.util.ElapsedTime
@@ -111,7 +111,7 @@ class DuckDBConnector(workEnv: WorkEnv, prepareTPCH: Boolean = false, prepareTPC
       case e: SQLException if e.getMessage.contains("403") =>
         throw StatusCode.PERMISSION_DENIED.newException(e.getMessage, e)
 
-  override private[runner] def newSession: DBConnection =
+  override private[lang] def newSession: DBConnection =
     // duplicate() opens a new session over the same (in-memory) database instance, so that
     // concurrent statements can run in parallel while seeing the same tables
     getConnection.jdbcConnection match

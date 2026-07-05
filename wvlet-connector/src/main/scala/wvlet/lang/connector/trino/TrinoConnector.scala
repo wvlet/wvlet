@@ -11,7 +11,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package wvlet.lang.runner.connector.trino
+package wvlet.lang.connector.trino
 
 import wvlet.lang.catalog.Catalog
 import wvlet.lang.catalog.Catalog.TableColumn
@@ -27,7 +27,7 @@ import wvlet.lang.compiler.connector.QueryResult
 import wvlet.lang.compiler.connector.SqlConnector
 import wvlet.lang.compiler.query.QueryProgressMonitor
 import wvlet.lang.model.DataType
-import wvlet.lang.runner.connector.*
+import wvlet.lang.connector.*
 import wvlet.uni.log.LogSupport
 import wvlet.uni.weaver.Weaver
 import wvlet.uni.weaver.codec.PrimitiveWeaver.given
@@ -47,7 +47,7 @@ case class TrinoConfig(
 /**
   * JVM `DBConnector` for Trino that no longer uses `trino-jdbc`. All SQL flows through the
   * cross-platform [[TrinoSqlConnector]] (uni's `HttpSyncClient`). The `DBConnector` superclass is
-  * still extended because callers (in particular `DBConnectorProvider` and `ConnectorCatalog`)
+  * still extended because callers (in particular `ConnectorProvider` and `ConnectorCatalog`)
   * dispatch on that type today, but every JDBC-shaped method (`runQuery`, `executeUpdate`,
   * `withStatement`, `newConnection`) either delegates to HTTP or throws — none of them touch
   * `java.sql.*` machinery anymore. The base class's JDBC `getCatalog` plumbing is bypassed by
@@ -62,6 +62,8 @@ class TrinoConnector(val config: TrinoConfig, workEnv: WorkEnv)
     with LogSupport:
 
   lazy val asSqlConnector: SqlConnector = TrinoSqlConnector(toCrossPlatformConfig)
+
+  override def sqlConnector: Option[SqlConnector] = Some(asSqlConnector)
 
   // Metadata methods (listSchemas, listTables, getTableDef, …) don't take a caller-supplied
   // QueryProgressMonitor because the base `DBConnector` doesn't either — so we feed the
@@ -155,7 +157,7 @@ class TrinoConnector(val config: TrinoConfig, workEnv: WorkEnv)
     * query so that stage timeouts and cancellations stop the query server-side, mirroring what JDBC
     * `Statement.cancel` provides on other engines
     */
-  override private[runner] def executeCancellable(
+  override private[lang] def executeCancellable(
       sql: String,
       register: CancellableStatement => Unit,
       deregister: () => Unit
@@ -168,7 +170,7 @@ class TrinoConnector(val config: TrinoConfig, workEnv: WorkEnv)
       deregister()
       handle.close()
 
-  override private[runner] def queryJsonRows(sql: String): List[String] =
+  override private[lang] def queryJsonRows(sql: String): List[String] =
     val result    = http(sql)
     val names     = result.columns.map(_.name.name)
     val rowWeaver = summon[Weaver[ListMap[String, Any]]]

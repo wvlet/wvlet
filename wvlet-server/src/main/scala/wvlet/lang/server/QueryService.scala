@@ -15,7 +15,7 @@ import wvlet.lang.api.v1.query.QueryStatus.RUNNING
 import wvlet.lang.compiler.query.QueryProgressMonitor
 import wvlet.lang.runner.QueryExecutor
 import wvlet.lang.runner.WvletScriptRunner
-import wvlet.lang.runner.connector.DBConnector
+import wvlet.lang.connector.DBConnector
 import wvlet.uni.log.LogSupport
 import wvlet.uni.util.ThreadUtil
 import wvlet.uni.util.ULID

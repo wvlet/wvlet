@@ -15,8 +15,7 @@ import wvlet.lang.cli.terminal.REPLTerminal
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.runner.WvletScriptRunner
 import wvlet.lang.runner.WvletScriptRunnerConfig
-import wvlet.lang.runner.connector.DBConnector
-import wvlet.lang.runner.connector.DBConnectorProvider
+import wvlet.lang.runner.connector.ConnectorProvider
 import wvlet.uni.io.IO
 import wvlet.uni.log.LogSupport
 
@@ -71,8 +70,8 @@ class WvletREPLMain(cliOption: WvletGlobalOption, replOpts: WvletREPLOption) ext
       Profile.defaultDuckDBProfile
     )
 
-    val selectedCatalog = currentProfile.catalog
-    val selectedSchema  = currentProfile.schema
+    val selectedCatalog = currentProfile.defaultEngine.catalog
+    val selectedSchema  = currentProfile.defaultEngine.schema
 
     val commandInputs = List.newBuilder[String]
     commandInputs ++= replOpts.commands
@@ -104,6 +103,11 @@ class WvletREPLMain(cliOption: WvletGlobalOption, replOpts: WvletREPLOption) ext
       }
       .bindInstance[Profile](currentProfile)
       .bindInstance[WorkEnv](WorkEnv(path = replOpts.workFolder, logLevel = cliOption.logLevel))
+      // Explicit provider: ConnectorProvider's `factories` parameter has a default the DI layer
+      // shouldn't try to resolve
+      .bindProvider[WorkEnv, ConnectorProvider] { (workEnv: WorkEnv) =>
+        ConnectorProvider(workEnv)
+      }
       .bindInstance[WvletScriptRunnerConfig](
         WvletScriptRunnerConfig(
           interactive = isInteractive,

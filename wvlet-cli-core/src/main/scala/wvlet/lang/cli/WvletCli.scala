@@ -45,10 +45,11 @@ class WvletCli(opts: WvletCliGlobalOption) extends LogSupport:
 
   private def executeAgainst(sql: String, opt: WvletCliRunOption): QueryResult =
     val profile = opt.profile.flatMap(Profile.getProfile)
-    // Effective backend: --target wins, then profile.type, then "duckdb".
+    val engine  = profile.map(_.defaultEngine)
+    // Effective backend: --target wins, then the profile's default engine type, then "duckdb".
     val backend = opt
       .targetDBType
-      .orElse(profile.map(_.`type`))
+      .orElse(engine.map(_.`type`))
       .map(_.toLowerCase)
       .getOrElse("duckdb")
     backend match
@@ -66,7 +67,7 @@ class WvletCli(opts: WvletCliGlobalOption) extends LogSupport:
         // was left at the default `false`.
         val host = opt
           .host
-          .orElse(profile.flatMap(_.host))
+          .orElse(engine.flatMap(_.host))
           .getOrElse(
             throw new IllegalArgumentException(
               "Trino host is required — pass --host or set 'host' on the profile"
@@ -76,21 +77,21 @@ class WvletCli(opts: WvletCliGlobalOption) extends LogSupport:
           if opt.useHttps then
             true
           else
-            profile.flatMap(_.useHttps).getOrElse(false)
+            engine.flatMap(_.useHttps).getOrElse(false)
         val cfg = TrinoConfig(
           host = host,
           port = opt
             .port
-            .orElse(profile.flatMap(_.port))
+            .orElse(engine.flatMap(_.port))
             .getOrElse(
               if useHttps then
                 443
               else
                 8080
             ),
-          user = opt.user.orElse(profile.flatMap(_.user)).getOrElse("wvlet"),
-          catalog = opt.catalog.orElse(profile.flatMap(_.catalog)),
-          schema = opt.schema.orElse(profile.flatMap(_.schema)),
+          user = opt.user.orElse(engine.flatMap(_.user)).getOrElse("wvlet"),
+          catalog = opt.catalog.orElse(engine.flatMap(_.catalog)),
+          schema = opt.schema.orElse(engine.flatMap(_.schema)),
           useHttps = useHttps
         )
         Trino.execute(sql, cfg)

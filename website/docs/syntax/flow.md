@@ -543,8 +543,9 @@ Flows run on DuckDB (the default) and on Trino, selected with `--profile` like r
 queries. Stage materialization adapts to the engine automatically (e.g. Trino catalogs
 without `create or replace table` get an explicit drop-and-create), and stage timeouts and
 cancellation stop the running query server-side on both engines. Run-scoped
-`__wv_flow_*` tables are created in the profile's `catalog`/`schema`, which must exist and
-be writable (for example a `memory` catalog schema on Trino).
+`__wv_flow_*` tables are created in the `catalog`/`schema` of the profile's default engine
+connector, which must exist and be writable (for example a `memory` catalog schema on
+Trino).
 
 ### run flow Statement
 

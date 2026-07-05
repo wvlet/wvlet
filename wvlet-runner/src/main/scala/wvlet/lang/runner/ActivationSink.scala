@@ -14,7 +14,7 @@
 package wvlet.lang.runner
 
 import wvlet.lang.api.StatusCode
-import wvlet.lang.runner.connector.DBConnector
+import wvlet.lang.connector.DBConnector
 import wvlet.uni.log.LogSupport
 
 import java.net.URI

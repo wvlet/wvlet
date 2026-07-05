@@ -26,8 +26,8 @@ import wvlet.lang.compiler.transform.FlowParams
 import wvlet.lang.model.DataType
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
-import wvlet.lang.runner.connector.CancellableStatement
-import wvlet.lang.runner.connector.DBConnector
+import wvlet.lang.connector.CancellableStatement
+import wvlet.lang.connector.DBConnector
 import wvlet.uni.log.LogSupport
 import wvlet.uni.util.ULID
 

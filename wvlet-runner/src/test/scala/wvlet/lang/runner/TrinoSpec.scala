@@ -15,13 +15,14 @@ package wvlet.lang.runner
 
 import wvlet.uni.test.UniTest
 import wvlet.lang.api.WvletLangException
+import wvlet.lang.catalog.ConnectorConfig
 import wvlet.lang.catalog.Profile
 import wvlet.uni.control.Control
 import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.compiler.Compiler
 import wvlet.lang.compiler.CompilerOptions
 import wvlet.lang.compiler.WorkEnv
-import wvlet.lang.runner.connector.DBConnectorProvider
+import wvlet.lang.runner.connector.ConnectorProvider
 import wvlet.lang.runner.connector.trino.TestTrinoServer
 
 import scala.util.control.NonFatal
@@ -33,16 +34,21 @@ trait TrinoSpecRunner(specPath: String) extends UniTest:
   private val workEnv = WorkEnv(path = specPath, logLevel = logger.getLogLevel)
   private val profile = Profile(
     name = s"local-trino@${server.address}",
-    `type` = "trino",
-    user = Some("test"),
-    password = Some(""),
-    host = Some(server.address),
-    catalog = Some("memory"),
-    schema = Some("main"),
-    properties = Map("useSSL" -> false)
+    connectors = Seq(
+      ConnectorConfig(
+        name = "trino",
+        `type` = "trino",
+        user = Some("test"),
+        password = Some(""),
+        host = Some(server.address),
+        catalog = Some("memory"),
+        schema = Some("main"),
+        properties = Map("useSSL" -> false)
+      )
+    )
   )
 
-  private val dbConnectorProvider = DBConnectorProvider(workEnv)
+  private val dbConnectorProvider = ConnectorProvider(workEnv)
   private val queryExecutor       = QueryExecutor(dbConnectorProvider, profile, workEnv)
 
   override def afterAll: Unit =

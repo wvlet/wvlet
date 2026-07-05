@@ -19,14 +19,21 @@ import wvlet.uni.json.JSON.JSONObject
 import wvlet.uni.json.JSON.JSONString
 import wvlet.uni.json.JSON.JSONValue
 import wvlet.uni.weaver.Weaver
+import wvlet.uni.weaver.codec.PrimitiveWeaver.given
 import wvlet.lang.api.StatusCode
 import wvlet.lang.compiler.DBType
 import wvlet.uni.log.LogSupport
 import wvlet.uni.io.IO
 
-case class Profile(
+/**
+  * A single named connection inside a [[Profile]]. The `name` is user-chosen and referenced from
+  * queries (e.g., `from td.table`); `type` selects the connector implementation ("duckdb", "trino",
+  * "snowflake", ...).
+  */
+case class ConnectorConfig(
     name: String,
     `type`: String,
+    default: Boolean = false,
     user: Option[String] = Some("user"),
     password: Option[String] = None,
     host: Option[String] = None,
@@ -36,10 +43,84 @@ case class Profile(
     useHttps: Option[Boolean] = None,
     properties: Map[String, Any] = Map.empty
 ):
-  def dbType: DBType                                 = DBType.fromString(`type`)
-  def withProperty(key: String, value: Any): Profile = copy(properties =
+  def dbType: DBType = DBType.fromString(`type`)
+
+  def withName(name: String): ConnectorConfig          = copy(name = name)
+  def withType(connectorType: String): ConnectorConfig = copy(`type` = connectorType)
+  def withDefault(default: Boolean): ConnectorConfig   = copy(default = default)
+  def withUser(user: String): ConnectorConfig          = copy(user = Some(user))
+  def noUser(): ConnectorConfig                        = copy(user = None)
+  def withPassword(password: String): ConnectorConfig  = copy(password = Some(password))
+  def noPassword(): ConnectorConfig                    = copy(password = None)
+  def withHost(host: String): ConnectorConfig          = copy(host = Some(host))
+  def noHost(): ConnectorConfig                        = copy(host = None)
+  def withPort(port: Int): ConnectorConfig             = copy(port = Some(port))
+  def noPort(): ConnectorConfig                        = copy(port = None)
+  def withCatalog(catalog: String): ConnectorConfig    = copy(catalog = Some(catalog))
+  def noCatalog(): ConnectorConfig                     = copy(catalog = None)
+  def withSchema(schema: String): ConnectorConfig      = copy(schema = Some(schema))
+  def noSchema(): ConnectorConfig                      = copy(schema = None)
+  def withUseHttps(useHttps: Boolean): ConnectorConfig = copy(useHttps = Some(useHttps))
+  def noUseHttps(): ConnectorConfig                    = copy(useHttps = None)
+  def withProperties(properties: Map[String, Any]): ConnectorConfig = copy(properties = properties)
+  def withProperty(key: String, value: Any): ConnectorConfig        = copy(properties =
     properties + (key -> value)
   )
+
+end ConnectorConfig
+
+/**
+  * A named environment activating a set of connectors simultaneously. Selected with `--profile`;
+  * one connector (explicit `default: true`, or the first one) is the default engine that queries
+  * compile against.
+  */
+case class Profile(name: String, connectors: Seq[ConnectorConfig]):
+  /**
+    * The engine queries compile and execute against: the connector marked `default: true`, or the
+    * first connector when none is marked.
+    */
+  def defaultEngine: ConnectorConfig = connectors
+    .find(_.default)
+    .orElse(connectors.headOption)
+    .getOrElse(
+      throw StatusCode.INVALID_ARGUMENT.newException(s"Profile '${name}' has no connectors")
+    )
+
+  def withName(name: String): Profile                           = copy(name = name)
+  def withConnectors(connectors: Seq[ConnectorConfig]): Profile = copy(connectors = connectors)
+
+  /**
+    * Apply CLI-level `--catalog`/`--schema` overrides to the default engine, leaving other
+    * connectors untouched.
+    */
+  def withEngineOverrides(catalog: Option[String], schema: Option[String]): Profile =
+    if catalog.isEmpty && schema.isEmpty then
+      this
+    else
+      updateDefaultEngine { engine =>
+        engine.copy(catalog = catalog.orElse(engine.catalog), schema = schema.orElse(engine.schema))
+      }
+
+  /** Add a property to the default engine's connector config */
+  def withProperty(key: String, value: Any): Profile = updateDefaultEngine(
+    _.withProperty(key, value)
+  )
+
+  // Replace the default engine in place (matched by reference identity so equal-but-distinct
+  // connector entries are left alone)
+  private def updateDefaultEngine(update: ConnectorConfig => ConnectorConfig): Profile =
+    val engine  = defaultEngine
+    val updated = update(engine)
+    copy(connectors =
+      connectors.map { c =>
+        if c eq engine then
+          updated
+        else
+          c
+      }
+    )
+
+end Profile
 
 object Profile extends LogSupport:
 
@@ -51,13 +132,29 @@ object Profile extends LogSupport:
   // Private to keep the on-disk schema an implementation detail.
   private case class ProfileConfig(profiles: Seq[Profile] = Seq.empty)
 
-  def defaultGenericProfile = Profile(name = "local", `type` = "generic")
+  // Weaver's derivation falls back to Surface-driven weavers for field types with no given in
+  // scope, and that runtime path decodes `Any` with a lossy fallback — every value in a
+  // connector's `properties` map would silently become null. Declaring the case-class weavers as
+  // givens lets the derivation macro compose them with PrimitiveWeaver's map/seq/any givens
+  // (imported above), which preserve primitive JSON values.
+  private given connectorConfigWeaver: Weaver[ConnectorConfig] = Weaver.of[ConnectorConfig]
+  private given profileWeaver: Weaver[Profile]                 = Weaver.of[Profile]
+
+  def defaultGenericProfile = Profile(
+    name = "local",
+    connectors = Seq(ConnectorConfig(name = "generic", `type` = "generic"))
+  )
 
   def defaultDuckDBProfile = Profile(
     name = "local",
-    `type` = "duckdb",
-    catalog = Some("memory"),
-    schema = Some("main")
+    connectors = Seq(
+      ConnectorConfig(
+        name = "duckdb",
+        `type` = "duckdb",
+        catalog = Some("memory"),
+        schema = Some("main")
+      )
+    )
   )
 
   def defaultProfileFor(dbType: DBType): Profile =
@@ -65,7 +162,8 @@ object Profile extends LogSupport:
       case DBType.DuckDB =>
         defaultDuckDBProfile
       case other =>
-        Profile(name = "local", `type` = other.toString.toLowerCase)
+        val tpe = other.toString.toLowerCase
+        Profile(name = "local", connectors = Seq(ConnectorConfig(name = tpe, `type` = tpe)))
 
   def getProfile(
       profile: Option[String],
@@ -88,10 +186,7 @@ object Profile extends LogSupport:
         default
       }
 
-    currentProfile.copy(
-      catalog = catalog.orElse(currentProfile.catalog),
-      schema = schema.orElse(currentProfile.schema)
-    )
+    currentProfile.withEngineOverrides(catalog, schema)
 
   end getProfile
 
@@ -139,10 +234,57 @@ object Profile extends LogSupport:
     }
 
   private def readProfileConfig(configPath: String): ProfileConfig =
-    val rawText  = IO.readString(configPath)
-    val parsed   = JSON.parse(rawText)
+    val rawText = IO.readString(configPath)
+    val parsed  = JSON.parse(rawText)
+    // Detect the pre-2026.2.0 flat shape BEFORE env-var expansion so the converted
+    // JSON in the error message preserves ${VAR} placeholders instead of leaking secrets.
+    failOnLegacyProfiles(parsed, configPath)
     val expanded = expandEnvVarsInStrings(parsed, configPath)
     Weaver.of[ProfileConfig].fromJSONValue(expanded)
+
+  // Pre-2026.2.0 profiles were flat connection records ({"name": ..., "type": "trino", ...}).
+  // 2026.2.0 made profiles multi-connector environments; instead of silently normalizing the
+  // old shape forever, fail with the exact converted JSON so users can copy-paste once.
+  private def failOnLegacyProfiles(parsed: JSONValue, configPath: String): Unit =
+    val legacyProfiles =
+      parsed match
+        case o: JSONObject =>
+          o.get("profiles") match
+            case Some(JSONArray(profiles)) =>
+              profiles.collect {
+                case p: JSONObject if p.get("type").nonEmpty && p.get("connectors").isEmpty =>
+                  p
+              }
+            case _ =>
+              Nil
+        case _ =>
+          Nil
+    if legacyProfiles.nonEmpty then
+      val converted = legacyProfiles.map(p => convertLegacyProfile(p).toJSON).mkString(",\n")
+      throw StatusCode
+        .INVALID_ARGUMENT
+        .newException(s"""${configPath} uses the pre-2026.2.0 flat profile format, which is no longer supported.
+             |Each profile now holds a `connectors` array of named connections. Replace the flat profile(s) with:
+             |${converted}""".stripMargin)
+
+  // Wrap all fields except `name` into a single connector named after the connection type.
+  private def convertLegacyProfile(profile: JSONObject): JSONObject =
+    val profileName = profile
+      .get("name")
+      .collect { case s: JSONString =>
+        s
+      }
+      .getOrElse(JSONString("default"))
+    val connectorName = profile
+      .get("type")
+      .collect { case JSONString(s) =>
+        s
+      }
+      .getOrElse("generic")
+    val connector = JSONObject(
+      ("name" -> JSONString(connectorName)) +: profile.v.filterNot(_._1 == "name")
+    )
+    JSONObject(Seq("name" -> profileName, "connectors" -> JSONArray(IndexedSeq(connector))))
 
   // Walk the parsed JSON and replace $VAR / ${VAR} occurrences inside string
   // values with values from the process env. Operating on the parsed tree (not

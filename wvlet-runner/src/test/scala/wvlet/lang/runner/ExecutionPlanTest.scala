@@ -16,10 +16,10 @@ package wvlet.lang.runner
 import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.compiler.parser.WvletParser
-import wvlet.lang.runner.connector.DBConnector
-import wvlet.lang.runner.connector.duckdb.DuckDBConnector
-import wvlet.lang.runner.connector.trino.TrinoConfig
-import wvlet.lang.runner.connector.trino.TrinoConnector
+import wvlet.lang.connector.DBConnector
+import wvlet.lang.connector.duckdb.DuckDBConnector
+import wvlet.lang.connector.trino.TrinoConfig
+import wvlet.lang.connector.trino.TrinoConnector
 import wvlet.uni.test.UniTest
 
 class ExecutionPlanTest extends UniTest:
