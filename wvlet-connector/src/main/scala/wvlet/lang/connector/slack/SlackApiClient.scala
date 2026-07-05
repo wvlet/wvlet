@@ -101,31 +101,38 @@ class HttpSlackApiClient(token: String, baseUrl: String = "https://slack.com/api
 
   end call
 
-  // Iterate a cursor-paginated list endpoint, collecting `field` arrays until the cursor runs out
+  // Iterate a cursor-paginated list endpoint, collecting `field` arrays until the cursor runs
+  // out, `maxItems` rows are collected, or the page cap is hit (a repeated or never-ending
+  // cursor from a misbehaving endpoint must not spin forever)
   private def paginate(
       method: String,
       params: Map[String, String],
-      field: String
+      field: String,
+      maxItems: Int = Int.MaxValue
   ): List[JSONObject] =
-    val results = List.newBuilder[JSONObject]
-    var cursor  = ""
-    var more    = true
-    while more do
+    val results   = List.newBuilder[JSONObject]
+    var collected = 0
+    var cursor    = ""
+    var pages     = 0
+    var more      = true
+    while more && collected < maxItems && pages < HttpSlackApiClient.MaxPages do
       val pageParams =
         if cursor.isEmpty then
           params
         else
           params + ("cursor" -> cursor)
       val page = call(method, pageParams)
+      pages += 1
       page.get(field) match
         case Some(JSONArray(items)) =>
           items.foreach {
             case o: JSONObject =>
               results += o
+              collected += 1
             case _ =>
           }
         case _ =>
-      cursor = page
+      val nextCursor = page
         .get("response_metadata")
         .collect { case m: JSONObject =>
           m
@@ -135,7 +142,8 @@ class HttpSlackApiClient(token: String, baseUrl: String = "https://slack.com/api
           s
         }
         .getOrElse("")
-      more = cursor.nonEmpty
+      more = nextCursor.nonEmpty && nextCursor != cursor
+      cursor = nextCursor
     results.result()
 
   end paginate
@@ -197,7 +205,8 @@ class HttpSlackApiClient(token: String, baseUrl: String = "https://slack.com/api
   override def channelHistory(channelId: String, limit: Int): List[SlackMessage] = paginate(
     "conversations.history",
     Map("channel" -> channelId, "limit" -> limit.min(200).toString),
-    "messages"
+    "messages",
+    maxItems = limit
   ).take(limit)
     .map { m =>
       SlackMessage(
@@ -219,3 +228,7 @@ class HttpSlackApiClient(token: String, baseUrl: String = "https://slack.com/api
   )
 
 end HttpSlackApiClient
+
+object HttpSlackApiClient:
+  /** Hard cap on pages per paginated call, guarding against never-ending cursors */
+  val MaxPages = 1000

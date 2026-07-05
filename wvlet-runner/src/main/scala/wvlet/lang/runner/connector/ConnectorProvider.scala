@@ -53,6 +53,11 @@ class ConnectorProvider(
 
   // computeIfAbsent (not the Scala wrapper's getOrElseUpdate) so a race on first use cannot
   // create two live connectors and silently leak the losing one
+  /** Whether configs of this type create SQL engines, decided without instantiating one */
+  def isEngineType(connectorType: String): Boolean = factoryMap
+    .get(connectorType.toLowerCase)
+    .forall(_.isEngine)
+
   def getConnector(config: ConnectorConfig): Connector = connectorCache.computeIfAbsent(
     config,
     c => createConnector(c)

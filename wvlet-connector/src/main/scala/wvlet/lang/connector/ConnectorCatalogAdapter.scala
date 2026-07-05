@@ -40,10 +40,12 @@ class ConnectorCatalogAdapter(override val catalogName: String, provider: Catalo
     Catalog.TableSchema(Some(catalogName), "main")
   )
 
-  override def getSchema(schemaName: String): Catalog.TableSchema = Catalog.TableSchema(
-    Some(catalogName),
-    schemaName
-  )
+  override def getSchema(schemaName: String): Catalog.TableSchema =
+    if !schemaExists(schemaName) then
+      throw StatusCode
+        .INVALID_ARGUMENT
+        .newException(s"Catalog '${catalogName}' has no schema '${schemaName}' (only 'main')")
+    Catalog.TableSchema(Some(catalogName), schemaName)
 
   override def schemaExists(schemaName: String): Boolean = schemaName == "main"
   override def createSchema(schema: Catalog.TableSchema, createMode: Catalog.CreateMode): Unit =
@@ -54,14 +56,17 @@ class ConnectorCatalogAdapter(override val catalogName: String, provider: Catalo
     .listTables
     .flatMap(t => findTable(schemaName, t.name))
 
-  override def findTable(schemaName: String, tableName: String): Option[Catalog.TableDef] = provider
-    .schemaOf(tableName)
-    .collect { case s: SchemaType =>
-      Catalog.TableDef(
-        TableName(Some(catalogName), Some("main"), tableName),
-        columns = s.fields.map(f => Catalog.TableColumn(f.name.name, f.dataType))
-      )
-    }
+  override def findTable(schemaName: String, tableName: String): Option[Catalog.TableDef] =
+    if schemaName != "main" then
+      return None
+    provider
+      .schemaOf(tableName)
+      .collect { case s: SchemaType =>
+        Catalog.TableDef(
+          TableName(Some(catalogName), Some("main"), tableName),
+          columns = s.fields.map(f => Catalog.TableColumn(f.name.name, f.dataType))
+        )
+      }
 
   override def getTable(schemaName: String, tableName: String): Catalog.TableDef = findTable(
     schemaName,

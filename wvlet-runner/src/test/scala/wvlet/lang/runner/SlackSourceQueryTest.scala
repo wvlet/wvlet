@@ -60,6 +60,7 @@ class SlackSourceQueryTest extends UniTest:
   // A factory returning the fake-backed connector, replacing the HTTP-based default
   private object FakeSlackFactory extends ConnectorFactory:
     override def connectorType: String                                        = "slack"
+    override def isEngine: Boolean                                            = false
     override def create(config: ConnectorConfig, workEnv: WorkEnv): Connector = SlackConnector(
       config.name,
       fakeSlack

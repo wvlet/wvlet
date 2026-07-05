@@ -138,17 +138,24 @@ class SlackConnector(
           client
             .listChannels()
             .flatMap { channel =>
-              client
-                .channelHistory(channel.id, messageFetchLimit)
-                .map { m =>
-                  row(
-                    "channel"   -> JSONString(channel.name),
-                    "user"      -> JSONString(m.user),
-                    "text"      -> JSONString(m.text),
-                    "ts"        -> JSONString(m.ts),
-                    "thread_ts" -> m.threadTs.map[JSONValue](JSONString(_)).getOrElse(JSONNull())
-                  )
-                }
+              // conversations.list returns channels the bot is not a member of; their history
+              // is not readable (not_in_channel), so skip them instead of failing the scan
+              val history =
+                try
+                  client.channelHistory(channel.id, messageFetchLimit)
+                catch
+                  case scala.util.control.NonFatal(e) =>
+                    warn(s"Skipping channel #${channel.name}: ${e.getMessage}")
+                    Nil
+              history.map { m =>
+                row(
+                  "channel"   -> JSONString(channel.name),
+                  "user"      -> JSONString(m.user),
+                  "text"      -> JSONString(m.text),
+                  "ts"        -> JSONString(m.ts),
+                  "thread_ts" -> m.threadTs.map[JSONValue](JSONString(_)).getOrElse(JSONNull())
+                )
+              }
             }
         case other =>
           throw StatusCode.TABLE_NOT_FOUND.newException(s"Slack connector has no table '${other}'")
@@ -206,6 +213,7 @@ end SlackConnector
 
 object SlackConnectorFactory extends ConnectorFactory:
   override def connectorType: String = "slack"
+  override def isEngine: Boolean     = false
 
   override def create(config: ConnectorConfig, workEnv: WorkEnv): Connector =
     val token = config

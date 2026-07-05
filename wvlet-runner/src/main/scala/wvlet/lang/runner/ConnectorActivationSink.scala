@@ -66,9 +66,17 @@ class ConnectorActivationSink(connectorName: String, connector: () => Connector)
       .map { case (k, v) =>
         k -> JSONString(v)
       }
-    // Attach the stage output as JSON lines when the tool accepts `text` and none was given
+    // Attach the stage output as JSON lines when the tool declares a top-level `text`
+    // property and none was given
+    val acceptsText = toolSpec
+      .inputSchema
+      .get("properties")
+      .collect { case o: JSONObject =>
+        o
+      }
+      .exists(_.get("text").isDefined)
     val args =
-      if request.params.contains("text") || !toolSpec.inputSchema.toJSON.contains("\"text\"") then
+      if request.params.contains("text") || !acceptsText then
         explicitArgs
       else
         val rows = request

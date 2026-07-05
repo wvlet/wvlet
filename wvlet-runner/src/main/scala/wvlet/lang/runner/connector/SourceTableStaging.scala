@@ -73,12 +73,15 @@ object SourceTableStaging extends LogSupport:
     // the SQL literal
     val filePath = file.toAbsolutePath.toString.replace('\\', '/')
     try
-      val writer = Files.newBufferedWriter(file, StandardCharsets.UTF_8)
-      try rows.foreach { row =>
-          writer.write(row)
-          writer.newLine()
+      scala
+        .util
+        .Using
+        .resource(Files.newBufferedWriter(file, StandardCharsets.UTF_8)) { writer =>
+          rows.foreach { row =>
+            writer.write(row)
+            writer.newLine()
+          }
         }
-      finally writer.close()
       if rows.nonEmpty then
         engine.execute(
           s"""create or replace table "${stagingTable}" as select * from read_json_auto('${filePath}')"""
