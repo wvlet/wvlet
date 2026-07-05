@@ -116,6 +116,27 @@ class FlowExecutorTest extends UniTest:
     countStageRows(result, "output") shouldBe 2L
   }
 
+  test("bind qualified stage references in join conditions to run-scoped tables") {
+    val result = runFlow("""flow JoinFlow = {
+        |  stage orders = from [[1, 101, 120.50], [2, 102, -5.00], [3, 101, 89.99]] as t(order_id, customer_id, amount)
+        |  stage customers = from [[101, 'Alice'], [102, 'Bob']] as t(customer_id, name)
+        |  stage clean = from orders | where amount > 0
+        |  stage enriched = from clean | join customers on clean.customer_id = customers.customer_id
+        |}""".stripMargin)
+    result.isSuccess shouldBe true
+    countStageRows(result, "enriched") shouldBe 2L
+  }
+
+  test("keep a user-provided alias on a stage reference in a join") {
+    val result = runFlow("""flow AliasedJoinFlow = {
+        |  stage src = from [[1, 'a'], [2, 'b']] as t(id, name)
+        |  stage lookup = from [[1, 'x']] as t(id, tag)
+        |  stage joined = from src as s | join lookup as l on s.id = l.id | select s.id, l.tag
+        |}""".stripMargin)
+    result.isSuccess shouldBe true
+    countStageRows(result, "joined") shouldBe 1L
+  }
+
   test("skip downstream stages when an upstream stage fails") {
     val result = runFlow("""flow FailingFlow = {
         |  stage primary = from nonexistent_table_xyz
