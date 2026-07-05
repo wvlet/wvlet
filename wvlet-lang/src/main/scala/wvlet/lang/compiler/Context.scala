@@ -354,6 +354,22 @@ object Context:
 
 /**
   * A catalog exposed under a connector name from the active profile, with the connector's
-  * configured default schema for resolving 2-part `<connector>.<table>` references
+  * configured default schema for resolving 2-part `<connector>.<table>` references. Engines that
+  * span multiple catalogs (e.g. Trino) additionally carry a catalogProvider so 4-part
+  * `<connector>.<catalog>.<schema>.<table>` references can address catalogs other than the
+  * configured one (#1867)
   */
-case class ConnectorCatalogEntry(catalog: Catalog, defaultSchema: String)
+case class ConnectorCatalogEntry(
+    catalog: Catalog,
+    defaultSchema: String,
+    catalogProvider: Option[String => Catalog] = None
+):
+  /**
+    * Resolve one of this connector's catalogs by name: the primary (configured) catalog, or another
+    * catalog of the same connector when a multi-catalog provider is wired
+    */
+  def catalogFor(name: String): Option[Catalog] =
+    if name == catalog.catalogName then
+      Some(catalog)
+    else
+      catalogProvider.map(_(name))

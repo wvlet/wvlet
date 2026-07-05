@@ -39,6 +39,10 @@ from td.www_access
 
 -- <connector>.<schema>.<table>
 from td.sample_datasets.www_access
+
+-- <connector>.<catalog>.<schema>.<table>: addresses a catalog other than the
+-- configured one, for engines spanning multiple catalogs (e.g. Trino)
+from trino.tpch.tiny.nation
 ```
 
 Models, CTEs, and query aliases take precedence over connector names, and connector names take

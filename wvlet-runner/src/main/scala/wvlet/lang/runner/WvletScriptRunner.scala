@@ -104,22 +104,25 @@ class WvletScriptRunner(
       .profile
       .connectors
       .foreach { conn =>
-        val connSchema  = conn.schema.getOrElse("main")
-        val catalogName = conn.catalog.getOrElse(conn.name)
+        val connSchema                               = conn.schema.getOrElse("main")
+        val catalogName                              = conn.catalog.getOrElse(conn.name)
+        def lazyCatalogOf(name: String): LazyCatalog = LazyCatalog(
+          name,
+          conn.dbType,
+          () =>
+            ConnectorCatalogs.catalogOf(queryExecutor.getConnector(conn), conn, name, connSchema)
+        )
         c.addConnectorCatalog(
           conn.name,
-          LazyCatalog(
-            catalogName,
-            conn.dbType,
-            () =>
-              ConnectorCatalogs.catalogOf(
-                queryExecutor.getConnector(conn),
-                conn,
-                catalogName,
-                connSchema
-              )
-          ),
-          connSchema
+          lazyCatalogOf(catalogName),
+          connSchema,
+          // Engines may span multiple catalogs (e.g. Trino), addressable with 4-part
+          // <connector>.<catalog>.<schema>.<table> names
+          catalogProvider =
+            if queryExecutor.isEngineConnector(conn) then
+              Some(lazyCatalogOf)
+            else
+              None
         )
       }
 

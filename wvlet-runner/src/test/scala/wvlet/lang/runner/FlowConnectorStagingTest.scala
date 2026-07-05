@@ -57,16 +57,17 @@ class FlowConnectorStagingTest extends UniTest:
   profile
     .connectors
     .foreach { c =>
-      val schema      = c.schema.getOrElse("main")
-      val catalogName = c.catalog.get
+      val schema                                   = c.schema.getOrElse("main")
+      def lazyCatalogOf(name: String): LazyCatalog = LazyCatalog(
+        name,
+        c.dbType,
+        () => provider.getDBConnector(c).getCatalog(name, schema)
+      )
       compiler.addConnectorCatalog(
         c.name,
-        LazyCatalog(
-          catalogName,
-          c.dbType,
-          () => provider.getDBConnector(c).getCatalog(catalogName, schema)
-        ),
-        schema
+        lazyCatalogOf(c.catalog.get),
+        schema,
+        catalogProvider = Some(lazyCatalogOf)
       )
     }
 
@@ -77,6 +78,12 @@ class FlowConnectorStagingTest extends UniTest:
   provider
     .getDBConnector(second)
     .execute("create table remote_events as select * from (values (1, 'a'), (2, 'b')) t(id, tag)")
+
+  // A second catalog attached to the second connector, for 4-part staged references
+  provider.getDBConnector(second).execute("attach ':memory:' as extra")
+  provider
+    .getDBConnector(second)
+    .execute("create table extra.main.extra_events as select * from (values (9, 'x')) t(id, tag)")
 
   override def afterAll: Unit =
     executor.close()
@@ -94,6 +101,16 @@ class FlowConnectorStagingTest extends UniTest:
         |}
         |
         |run flow staging_flow""".stripMargin)
+    result.isSuccess shouldBe true
+  }
+
+  test("should stage a 4-part cross-connector table into the stage's engine") {
+    val result = run("""flow four_part_flow = {
+        |  stage copied = from second.extra.main.extra_events
+        |  stage checked = from copied | select count(*) as cnt
+        |}
+        |
+        |run flow four_part_flow""".stripMargin)
     result.isSuccess shouldBe true
   }
 

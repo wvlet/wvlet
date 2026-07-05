@@ -75,6 +75,11 @@ class QueryExecutor(
 
   def getConnector(config: ConnectorConfig): Connector = dbConnectorProvider.getConnector(config)
 
+  /** True when the config names a SQL-engine connector (as opposed to a source connector) */
+  def isEngineConnector(config: ConnectorConfig): Boolean = dbConnectorProvider.isEngineType(
+    config.`type`
+  )
+
   // The engine statements execute on: the profile's default engine until a `use <connector>`
   // statement switches it (#1861 Phase 2). Like the global default catalog/schema this is
   // session-level state: concurrent sessions should use separate QueryExecutor instances

@@ -115,10 +115,12 @@ object RelationRefResolver extends ContextLogSupport:
   end resolveTableRef
 
   /**
-    * Resolve `from <connector>.<table>` / `from <connector>.<schema>.<table>` where the leading
-    * identifier names a connector activated by the current profile. Connector names are checked
-    * only after symbol lookup (models, CTEs, aliases) has failed, and shadow schema names of the
-    * default catalog.
+    * Resolve `from <connector>.<table>`, `from <connector>.<schema>.<table>`, or `from
+    * <connector>.<catalog>.<schema>.<table>` where the leading identifier names a connector
+    * activated by the current profile. Connector names are checked only after symbol lookup
+    * (models, CTEs, aliases) has failed, and shadow schema names of the default catalog. The 4-part
+    * form addresses engines spanning multiple catalogs (e.g. Trino) and resolves through the
+    * connector entry's catalog provider.
     */
   private def resolveConnectorQualifiedRef(ref: TableRef, context: Context): Option[Relation] =
     // Decompose the DotRef structurally (not by splitting fullName) so quoted identifiers
@@ -128,21 +130,22 @@ object RelationRefResolver extends ContextLogSupport:
         context
           .connectorCatalog(connectorName)
           .flatMap { entry =>
-            val schemaAndTable =
+            val target =
               rest match
                 case table :: Nil =>
-                  Some((entry.defaultSchema, table))
+                  Some((entry.catalog, entry.defaultSchema, table))
                 case schema :: table :: Nil =>
-                  Some((schema, table))
+                  Some((entry.catalog, schema, table))
+                case catalog :: schema :: table :: Nil =>
+                  // connector.catalog.schema.table (4-part, #1867)
+                  entry.catalogFor(catalog).map(cat => (cat, schema, table))
                 case _ =>
-                  // connector.catalog.schema.table (4-part) arrives with cross-connector staging
                   None
-            schemaAndTable.flatMap { (schema, table) =>
-              entry
-                .catalog
+            target.flatMap { (catalog, schema, table) =>
+              catalog
                 .findTable(schema, table)
                 .map { tbl =>
-                  val tableName = TableName(Some(entry.catalog.catalogName), Some(schema), table)
+                  val tableName = TableName(Some(catalog.catalogName), Some(schema), table)
                   TableScan(
                     tableName,
                     tbl.schemaType,
@@ -172,18 +175,24 @@ object RelationRefResolver extends ContextLogSupport:
         Nil
 
   private def resolveFromDefaultCatalog(ref: TableRef, context: Context): Relation =
-    val tableName = TableName.parse(ref.name.fullName)
-    context
-      .catalog
-      .findTable(tableName.schema.getOrElse(context.defaultSchema), tableName.name) match
-      case Some(tbl) =>
-        TableScan(tableName, tbl.schemaType, tbl.schemaType.fields, ref.span)
-      case None =>
-        context
-          .workEnv
-          .errorLogger
-          .debug(s"Unresolved table ref: ${ref.name.fullName}: ${context.scope.getAllEntries}")
-        ref
+    if nameParts(ref.name).length > 3 then
+      // A 4-part name resolves only through a connector (connector.catalog.schema.table); when
+      // that fails, leave the reference unresolved instead of failing TableName.parse, so the
+      // error reported downstream points at the reference itself
+      ref
+    else
+      val tableName = TableName.parse(ref.name.fullName)
+      context
+        .catalog
+        .findTable(tableName.schema.getOrElse(context.defaultSchema), tableName.name) match
+        case Some(tbl) =>
+          TableScan(tableName, tbl.schemaType, tbl.schemaType.fields, ref.span)
+        case None =>
+          context
+            .workEnv
+            .errorLogger
+            .debug(s"Unresolved table ref: ${ref.name.fullName}: ${context.scope.getAllEntries}")
+          ref
   end resolveFromDefaultCatalog
 
   /**
