@@ -1604,7 +1604,12 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       case i: IfExpr =>
         text("if") + paren(cl(expr(i.cond), expr(i.onTrue), expr(i.onFalse)))
       case n: Not =>
-        wl("not", expr(n.child))
+        // Parenthesize and/or children: `not a or b` binds as `(not a) or b` in SQL
+        n.child match
+          case c: LogicalConditionalExpression =>
+            wl("not", paren(expr(c)))
+          case other =>
+            wl("not", expr(other))
       case l: ListExpr =>
         cl(l.exprs.map(x => expr(x)))
       case d @ DotRef(qual: Expression, name: NameExpr, _, _) =>

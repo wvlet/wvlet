@@ -242,9 +242,17 @@ object FlowLowering:
     val conditionCases  = r.cases.filter(_.condition.isDefined)
     val percentageCases = r.cases.filter(_.percentage.isDefined)
 
-    val fromConditions: List[(String, Expression)] = conditionCases.map { c =>
-      c.target.fullName -> resolveContextRefs(c.condition.get)
-    }
+    // Condition cases follow first-match semantics like a case/when expression: a row is
+    // routed to the first case whose condition holds, so each case predicate excludes the
+    // conditions of all preceding cases
+    val fromConditions: List[(String, Expression)] =
+      var matchedSoFar: Option[Expression] = None
+      conditionCases.map { c =>
+        val cond = resolveContextRefs(c.condition.get)
+        val pred = matchedSoFar.map(p => And(Not(p, NoSpan), cond, NoSpan)).getOrElse(cond)
+        matchedSoFar = Some(matchedSoFar.map(p => Or(p, cond, NoSpan)).getOrElse(cond))
+        c.target.fullName -> pred
+      }
 
     val fromPercentages: List[(String, Expression)] =
       if percentageCases.isEmpty then

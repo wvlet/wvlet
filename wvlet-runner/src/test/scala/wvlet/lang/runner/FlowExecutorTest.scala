@@ -506,6 +506,25 @@ class FlowExecutorTest extends UniTest:
     countStageRows(result, "minor") shouldBe 1L
   }
 
+  test("route overlapping conditional cases with first-match semantics") {
+    val result = runFlow("""flow TieredRouteFlow = {
+        |  stage src = from [[1, 430], [2, 60], [3, 375], [4, 15], [5, 42]] as t(id, total)
+        |  stage gate = from src | route {
+        |    case _.total >= 300 -> vip
+        |    case _.total >= 50 -> regular
+        |    else -> occasional
+        |  }
+        |  stage vip = from gate | select id
+        |  stage regular = from gate | select id
+        |  stage occasional = from gate | select id
+        |}""".stripMargin)
+    result.isSuccess shouldBe true
+    // Each row lands in exactly one target: 430/375 -> vip, 60 -> regular, 15/42 -> occasional
+    countStageRows(result, "vip") shouldBe 2L
+    countStageRows(result, "regular") shouldBe 1L
+    countStageRows(result, "occasional") shouldBe 2L
+  }
+
   test("route rows deterministically with percentage buckets") {
     val values = (1 to 100).map(i => s"[${i}]").mkString(", ")
     val flowWv =
