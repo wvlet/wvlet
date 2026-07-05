@@ -18,6 +18,7 @@ import wvlet.lang.connector.codec.JDBCCodec
 import wvlet.lang.api.LinePosition
 import wvlet.lang.api.StatusCode
 import wvlet.lang.api.WvletLangException
+import wvlet.lang.catalog.ConnectorConfig
 import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.*
 import wvlet.lang.compiler.codegen.CodeFormatterConfig
@@ -66,6 +67,60 @@ class QueryExecutor(
 
   def getDBConnector(profile: Profile): DBConnector = dbConnectorProvider.getConnector(profile)
 
+  def getDBConnector(config: ConnectorConfig): DBConnector = dbConnectorProvider.getDBConnector(
+    config
+  )
+
+  // The engine statements execute on: the profile's default engine until a `use <connector>`
+  // statement switches it (#1861 Phase 2)
+  private var activeEngine: ConnectorConfig = defaultProfile.defaultEngine
+
+  private def activeDBConnector: DBConnector = dbConnectorProvider.getDBConnector(activeEngine)
+
+  /**
+    * Switch the active connector: `use <connector>[.<catalog>].<schema>`. Subsequent statements
+    * plan and execute on the selected connector, and its catalog drives name resolution and the SQL
+    * dialect
+    */
+  private def switchConnector(parts: List[String])(using context: Context): QueryResult =
+    val connectorName = parts.head
+    val config        = defaultProfile
+      .connectors
+      .find(_.name == connectorName)
+      .getOrElse(
+        throw StatusCode
+          .INVALID_ARGUMENT
+          .newException(
+            s"Connector '${connectorName}' is not defined in profile '${defaultProfile.name}' " +
+              s"(available: ${defaultProfile.connectors.map(_.name).mkString(", ")})"
+          )
+      )
+    val (catalogName, schemaName) =
+      parts.tail match
+        case Nil =>
+          (config.catalog, config.schema)
+        case schema :: Nil =>
+          (config.catalog, Some(schema))
+        case catalog :: schema :: Nil =>
+          (Some(catalog), Some(schema))
+        case _ =>
+          throw StatusCode
+            .SYNTAX_ERROR
+            .newException(
+              s"Invalid connector reference: ${parts.mkString(".")}. " +
+                "Expected format: <connector>, <connector>.<schema>, or <connector>.<catalog>.<schema>"
+            )
+    activeEngine = config
+    val schema = schemaName.getOrElse("main")
+    catalogName.foreach { catalog =>
+      context.global.defaultCatalog = activeDBConnector.getCatalog(catalog, schema)
+    }
+    context.global.defaultSchema = schema
+    workEnv.info(s"Switched to connector: ${connectorName}")
+    QueryResult.empty
+
+  end switchConnector
+
   def executeSingleSpec(sourceFolder: String, file: String): QueryResult =
     val compiler = Compiler(
       CompilerOptions(sourceFolders = List(sourceFolder), workEnv = WorkEnv(sourceFolder))
@@ -98,6 +153,19 @@ class QueryExecutor(
 
   def executeSingle(u: CompilationUnit, rootContext: Context): QueryResult =
     workEnv.info(s"Executing ${u.sourceFile.fileName}")
+    // Cross-connector staging is not implemented yet: every table referenced through a
+    // connector name must live on the active engine
+    val foreignConnectors = u.referencedConnectors.toSet - activeEngine.name
+    if foreignConnectors.nonEmpty then
+      throw StatusCode
+        .NOT_IMPLEMENTED
+        .newException(
+          s"Query references connector(s) ${foreignConnectors.mkString(
+              ", "
+            )} but the active engine is '${activeEngine
+              .name}'. Cross-connector queries are not supported yet; switch with `use ${foreignConnectors
+              .head}` to run on that connector"
+        )
     val ctx = rootContext.withCompilationUnit(u).newContext(Symbol.NoSymbol)
 
     // val executionPlan = u.executionPlan // ExecutionPlanner.plan(u, ctx)
@@ -168,11 +236,7 @@ class QueryExecutor(
             .util
             .Using
             .resource(FlowRunStore.forWorkEnv(workEnv)) { store =>
-              val flowExecutor = FlowExecutor(
-                getDBConnector(defaultProfile),
-                workEnv,
-                registry = Some(store)
-              )
+              val flowExecutor = FlowExecutor(activeDBConnector, workEnv, registry = Some(store))
               report(flowExecutor.execute(flow))
             }
         case ExecuteValDef(v) =>
@@ -208,7 +272,7 @@ class QueryExecutor(
       debug(s"Executing SQL:\n${sql}")
       given monitor: QueryProgressMonitor = context.queryProgressMonitor
       try
-        getDBConnector(defaultProfile).execute(sql)
+        activeDBConnector.execute(sql)
       catch
         case e: SQLException =>
           throw StatusCode.SYNTAX_ERROR.newException(s"${e.getMessage}\n[sql]\n${sql}", e)
@@ -262,21 +326,24 @@ class QueryExecutor(
             QueryResult.empty
           case None =>
             WarningResult(s"${s.name} is not found", s.sourceLocation(using context))
+      case u: UseConnector =>
+        switchConnector(u.connector.fullName.split("\\.").toList)(using context)
       case u: UseSchema =>
-        // Update the global context with the new schema/catalog
+        // Update the global context with the new schema/catalog. Connector names of the active
+        // profile shadow schema names, so `use td` switches the connector when `td` is one.
         val schemaName = u.schema
         val fullName   = schemaName.fullName
-        val parts      = fullName.split("\\.")
-        parts.length match
-          case 1 =>
+        val parts      = fullName.split("\\.").toList
+        parts match
+          case name :: rest if defaultProfile.connectors.exists(_.name == name) =>
+            switchConnector(parts)(using context)
+          case schema :: Nil =>
             // use schema <schema_name>
-            context.global.defaultSchema = fullName
-            workEnv.info(s"Switched to schema: ${fullName}")
+            context.global.defaultSchema = schema
+            workEnv.info(s"Switched to schema: ${schema}")
             QueryResult.empty
-          case 2 =>
+          case catalogName :: schema :: Nil =>
             // use schema <catalog_name>.<schema_name>
-            val catalogName = parts(0)
-            val schema      = parts(1)
             // For now, we only update the schema since catalog switching requires more complex handling
             context.global.defaultSchema = schema
             workEnv.info(s"Switched to schema: ${schema}")
@@ -390,7 +457,7 @@ class QueryExecutor(
     // 1) Execute on Trino (or current engine) and dump to JSONL
     val baseSQL = GenSQL.generateSQLFromRelation(save.child, addHeader = false)
     given monitor: QueryProgressMonitor = context.queryProgressMonitor
-    val sourceConn                      = getDBConnector(defaultProfile)
+    val sourceConn                      = activeDBConnector
     val n                               =
       sourceConn.sqlConnector match
         case Some(sc) =>
@@ -457,7 +524,7 @@ class QueryExecutor(
 
     q.transformUp { case rf: RunFlow =>
         val flow       = resolveFlow(rf)
-        val connector  = getDBConnector(defaultProfile)
+        val connector  = activeDBConnector
         val flowResult =
           scala
             .util
@@ -523,7 +590,7 @@ class QueryExecutor(
             if useDuck then
               dbConnectorProvider.getConnector(DBType.DuckDB, None)
             else
-              getDBConnector(defaultProfile)
+              activeDBConnector
 
           val result =
             connector.sqlConnector match

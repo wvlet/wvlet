@@ -28,5 +28,11 @@ case class ExplainPlan(
 ) extends Command
 
 case class UseSchema(schema: QualifiedName, span: Span) extends Command
-case class DescribeInput(name: NameExpr, span: Span)    extends Command
-case class DescribeOutput(name: NameExpr, span: Span)   extends Command
+
+/**
+  * Explicit `use connector <name>` form: switch the active connector (execution engine and default
+  * namespace) to a connector defined in the current profile
+  */
+case class UseConnector(connector: QualifiedName, span: Span) extends Command
+case class DescribeInput(name: NameExpr, span: Span)          extends Command
+case class DescribeOutput(name: NameExpr, span: Span)         extends Command

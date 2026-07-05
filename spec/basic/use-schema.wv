@@ -15,3 +15,12 @@ use main
 
 -- Test another schema switch with explicit syntax
 use schema production
+-- Test explicit connector switch syntax (the default DuckDB profile defines
+-- a connector named 'duckdb')
+use connector duckdb
+
+-- A bare name matching a profile connector switches the connector
+use duckdb
+
+-- connector.schema form selects a schema on that connector
+use duckdb.main

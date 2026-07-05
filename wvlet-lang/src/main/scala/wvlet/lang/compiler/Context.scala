@@ -78,6 +78,10 @@ case class GlobalContext(compilerOptions: CompilerOptions):
   var defaultCatalog: Catalog = loadCatalog(compilerOptions)
   var defaultSchema: String   = compilerOptions.schema.getOrElse("main")
 
+  // Connector-name -> catalog registry for resolving `from <connector>.<table>` references
+  // against the connectors activated by the current profile (#1861 Phase 2)
+  val connectorCatalogs = scala.collection.mutable.Map.empty[String, ConnectorCatalogEntry]
+
   var workEnv: WorkEnv = compilerOptions.workEnv
 
   def init(using rootContext: Context): Unit =
@@ -174,10 +178,14 @@ case class Context(
     .sourceFile
     .sourceLocationAt(span.start)
 
-  // Get the context catalog
-  // TODO support multiple catalogs
+  // Get the context catalog (the active engine's catalog)
   def catalog: Catalog = global.defaultCatalog
   def dbType: DBType   = catalog.dbType
+
+  /** Find a catalog registered under a connector name from the active profile */
+  def connectorCatalog(connectorName: String): Option[ConnectorCatalogEntry] = global
+    .connectorCatalogs
+    .get(connectorName)
 
   def defaultSchema: String = global.defaultSchema
 
@@ -343,3 +351,9 @@ object Context:
     // Need to initialize the global context before running the analysis phases
     global.init(using rootContext)
     global
+
+/**
+  * A catalog exposed under a connector name from the active profile, with the connector's
+  * configured default schema for resolving 2-part `<connector>.<table>` references
+  */
+case class ConnectorCatalogEntry(catalog: Catalog, defaultSchema: String)

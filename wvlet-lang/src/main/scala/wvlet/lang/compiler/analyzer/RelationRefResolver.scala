@@ -106,22 +106,63 @@ object RelationRefResolver extends ContextLogSupport:
             val tableName = TableName.parse(tblType.toTermName.name)
             TableScan(tableName, tpe, tpe.fields, ref.span)
           case _ =>
-            val tableName = TableName.parse(ref.name.fullName)
-            context
-              .catalog
-              .findTable(tableName.schema.getOrElse(context.defaultSchema), tableName.name) match
-              case Some(tbl) =>
-                TableScan(tableName, tbl.schemaType, tbl.schemaType.fields, ref.span)
+            resolveConnectorQualifiedRef(ref, context) match
+              case Some(resolved) =>
+                resolved
               case None =>
-                context
-                  .workEnv
-                  .errorLogger
-                  .debug(
-                    s"Unresolved table ref: ${ref.name.fullName}: ${context.scope.getAllEntries}"
-                  )
-                ref
+                resolveFromDefaultCatalog(ref, context)
     end match
   end resolveTableRef
+
+  /**
+    * Resolve `from <connector>.<table>` / `from <connector>.<schema>.<table>` where the leading
+    * identifier names a connector activated by the current profile. Connector names are checked
+    * only after symbol lookup (models, CTEs, aliases) has failed, and shadow schema names of the
+    * default catalog.
+    */
+  private def resolveConnectorQualifiedRef(ref: TableRef, context: Context): Option[Relation] =
+    ref.name.fullName.split("\\.").toList match
+      case connectorName :: rest if rest.nonEmpty =>
+        context
+          .connectorCatalog(connectorName)
+          .flatMap { entry =>
+            val schemaAndTable =
+              rest match
+                case table :: Nil =>
+                  Some((entry.defaultSchema, table))
+                case schema :: table :: Nil =>
+                  Some((schema, table))
+                case _ =>
+                  // connector.catalog.schema.table (4-part) arrives with cross-connector staging
+                  None
+            schemaAndTable.flatMap { (schema, table) =>
+              entry
+                .catalog
+                .findTable(schema, table)
+                .map { tbl =>
+                  context.compilationUnit.referencedConnectors += connectorName
+                  val tableName = TableName(Some(entry.catalog.catalogName), Some(schema), table)
+                  TableScan(tableName, tbl.schemaType, tbl.schemaType.fields, ref.span)
+                }
+            }
+          }
+      case _ =>
+        None
+
+  private def resolveFromDefaultCatalog(ref: TableRef, context: Context): Relation =
+    val tableName = TableName.parse(ref.name.fullName)
+    context
+      .catalog
+      .findTable(tableName.schema.getOrElse(context.defaultSchema), tableName.name) match
+      case Some(tbl) =>
+        TableScan(tableName, tbl.schemaType, tbl.schemaType.fields, ref.span)
+      case None =>
+        context
+          .workEnv
+          .errorLogger
+          .debug(s"Unresolved table ref: ${ref.name.fullName}: ${context.scope.getAllEntries}")
+        ref
+  end resolveFromDefaultCatalog
 
   /**
     * Fill in unresolved column types of a table-value-constant schema from the literal values of

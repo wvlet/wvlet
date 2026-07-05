@@ -294,6 +294,14 @@ object Typer extends Phase("typer") with LogSupport:
             copied
         TyperRules.typeStatement(typedValDef)
         typedValDef
+      case u: UseSchema =>
+        // The name in `use <schema>` is a namespace reference, not a value expression: mark it
+        // typed so it doesn't surface as an unresolved expression
+        markNamespaceRef(u.schema)
+        typeNode(u)
+      case u: UseConnector =>
+        markNamespaceRef(u.connector)
+        typeNode(u)
       // Default: bottom-up typing for other nodes
       case other =>
         val withTypedChildren = other.mapChildren(typePlan)
@@ -658,6 +666,12 @@ object Typer extends Phase("typer") with LogSupport:
       }
 
   end structuralResolutionRule
+
+  // Namespace references (schema/connector names in `use`) carry no value type; NullType marks
+  // them resolved for typing-coverage purposes
+  private def markNamespaceRef(name: Expression): Unit =
+    name.tpe = DataType.NullType
+    name.children.foreach(markNamespaceRef)
 
   /**
     * Returns true if the relation tree may contain function applications, method or native function

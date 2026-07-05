@@ -5,6 +5,7 @@ import wvlet.uni.cli.launcher.option
 import wvlet.uni.control.Control
 import wvlet.lang.api.StatusCode
 import wvlet.lang.api.v1.query.QuerySelection
+import wvlet.lang.catalog.LazyCatalog
 import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.codegen.CodeFormatterConfig
 import wvlet.lang.compiler.codegen.GenSQL
@@ -107,6 +108,27 @@ class WvletCompiler(
       .schema
       .foreach { schema =>
         compiler.setDefaultSchema(schema)
+      }
+
+    // Register every profile connector under its name so queries can reference
+    // `from <connector>.<table>` and switch engines with `use <connector>` (#1861 Phase 2).
+    // Non-default connectors get a LazyCatalog so they only connect on first reference.
+    currentProfile
+      .connectors
+      .foreach { c =>
+        c.catalog
+          .foreach { catalogName =>
+            val schema = c.schema.getOrElse("main")
+            compiler.addConnectorCatalog(
+              c.name,
+              LazyCatalog(
+                catalogName,
+                c.dbType,
+                () => dbConnectorProvider.getDBConnector(c).getCatalog(catalogName, schema)
+              ),
+              schema
+            )
+          }
       }
 
     compiler

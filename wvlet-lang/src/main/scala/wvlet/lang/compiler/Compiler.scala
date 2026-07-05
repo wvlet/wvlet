@@ -136,6 +136,10 @@ class Compiler(
   def setDefaultCatalog(catalog: Catalog): Unit = globalContext.defaultCatalog = catalog
   def setDefaultSchema(schema: String): Unit    = globalContext.defaultSchema = schema
 
+  /** Register a catalog under a connector name so queries can reference `<name>.<table>` */
+  def addConnectorCatalog(name: String, catalog: Catalog, defaultSchema: String): Unit =
+    globalContext.connectorCatalogs(name) = ConnectorCatalogEntry(catalog, defaultSchema)
+
   def getDefaultCatalog: Catalog = globalContext.defaultCatalog
   def getDefaultSchema: String   = globalContext.defaultSchema
 

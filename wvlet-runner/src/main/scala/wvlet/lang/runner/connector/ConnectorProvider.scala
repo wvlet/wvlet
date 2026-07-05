@@ -81,8 +81,11 @@ class ConnectorProvider(
           )
 
   /** Resolve the profile's default engine as a SQL engine connector */
-  def getConnector(profile: Profile): DBConnector =
-    getConnector(profile.defaultEngine) match
+  def getConnector(profile: Profile): DBConnector = getDBConnector(profile.defaultEngine)
+
+  /** Resolve a connector config as a SQL engine connector */
+  def getDBConnector(config: ConnectorConfig): DBConnector =
+    getConnector(config) match
       case db: DBConnector =>
         db
       case other =>
