@@ -117,11 +117,23 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
           .newContext(Symbol.NoSymbol)
 
         Control.withResource(newRunStore(flowOption, workEnv)) { store =>
-          val result = FlowExecutor(connector, workEnv, registry = Some(store)).execute(
-            flow,
-            resumeFrom,
-            args
-          )
+          val result = FlowExecutor(
+            connector,
+            workEnv,
+            registry = Some(store),
+            engineResolver = Some(name =>
+              profile
+                .connectors
+                .find(_.name == name)
+                .map(dbConnectorProvider.getDBConnector)
+                .getOrElse(
+                  throw StatusCode
+                    .INVALID_ARGUMENT
+                    .newException(s"Connector '${name}' is not defined in the profile")
+                )
+            ),
+            defaultEngineName = profile.defaultEngine.name
+          ).execute(flow, resumeFrom, args)
           println(result.toPrettyBox())
           failed = result.hasError
         }
@@ -212,8 +224,24 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
             .newContext(Symbol.NoSymbol)
 
           Control.withResource(newRunStore(flowOption, workEnv)) { store =>
-            val executor = FlowExecutor(connector, workEnv, registry = Some(store))
-            val it       = runTimes.iterator
+            val executor = FlowExecutor(
+              connector,
+              workEnv,
+              registry = Some(store),
+              engineResolver = Some(name =>
+                profile
+                  .connectors
+                  .find(_.name == name)
+                  .map(dbConnectorProvider.getDBConnector)
+                  .getOrElse(
+                    throw StatusCode
+                      .INVALID_ARGUMENT
+                      .newException(s"Connector '${name}' is not defined in the profile")
+                  )
+              ),
+              defaultEngineName = profile.defaultEngine.name
+            )
+            val it = runTimes.iterator
             while !failed && it.hasNext do
               val runTime = it.next()
               println(s"=== ${flowName} @ ${runTime}")
@@ -477,8 +505,23 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
 
                       // The schedule fire time is the logical run time: catch-up runs recompute
                       // the window they missed instead of the current one
-                      val runResult = FlowExecutor(connector, workEnv, registry = Some(store))
-                        .execute(flow, runTime = Some(fireTime))
+                      val runResult = FlowExecutor(
+                        connector,
+                        workEnv,
+                        registry = Some(store),
+                        engineResolver = Some(name =>
+                          profile
+                            .connectors
+                            .find(_.name == name)
+                            .map(dbConnectorProvider.getDBConnector)
+                            .getOrElse(
+                              throw StatusCode
+                                .INVALID_ARGUMENT
+                                .newException(s"Connector '${name}' is not defined in the profile")
+                            )
+                        ),
+                        defaultEngineName = profile.defaultEngine.name
+                      ).execute(flow, runTime = Some(fireTime))
                       println(runResult.toPrettyBox())
                 )
           )

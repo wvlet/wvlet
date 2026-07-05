@@ -136,7 +136,10 @@ case class StageDef(
     trigger: Option[StageTrigger],
     config: List[ConfigItem],
     body: Option[Relation],
-    span: Span
+    span: Span,
+    // `stage <name> on <connector> = ...`: run this stage on the named profile connector
+    // instead of the flow's default engine (#1861 Phase 2)
+    engine: Option[NameExpr] = None
 ) extends FlowOp:
   override def children: List[LogicalPlan] = body.toList
   override def relationType: RelationType  = body.map(_.relationType).getOrElse(EmptyRelationType)
