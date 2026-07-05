@@ -15,7 +15,6 @@ import wvlet.lang.cli.terminal.REPLTerminal
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.runner.WvletScriptRunner
 import wvlet.lang.runner.WvletScriptRunnerConfig
-import wvlet.lang.connector.DBConnector
 import wvlet.lang.runner.connector.ConnectorProvider
 import wvlet.uni.io.IO
 import wvlet.uni.log.LogSupport

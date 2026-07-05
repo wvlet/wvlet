@@ -116,7 +116,7 @@ pnpm --filter website run build
 
 ### Multi-Module SBT Structure
 - **Core Language**: `wvlet-lang` (compiler, parser, analyzer), `wvlet-api` (cross-platform APIs)
-- **Execution**: `wvlet-runner` (query executor with DB connectors), `wvlet-cli` (command-line interface)
+- **Execution**: `wvlet-connector` (Connector interface + DuckDB/Trino/Snowflake engine connectors), `wvlet-runner` (query executor), `wvlet-cli` (command-line interface)
 - **Web Stack**: `wvlet-server` (HTTP API), `wvlet-ui*` (React/Scala.js components)
 - **Multi-Platform**: JVM, JavaScript (Scala.js), Native (Scala Native) support
 - **Language Bindings**: `wvc-lib` for C/C++/Rust integration

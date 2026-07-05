@@ -18,10 +18,7 @@ import wvlet.uni.json.JSON.JSONArray
 import wvlet.uni.json.JSON.JSONObject
 import wvlet.uni.json.JSON.JSONString
 import wvlet.uni.json.JSON.JSONValue
-import wvlet.uni.weaver.MapWeaver
-import wvlet.uni.weaver.SeqWeaver
 import wvlet.uni.weaver.Weaver
-import wvlet.uni.weaver.codec.AnyWeaver
 import wvlet.uni.weaver.codec.PrimitiveWeaver.given
 import wvlet.lang.api.StatusCode
 import wvlet.lang.compiler.DBType
@@ -46,10 +43,31 @@ case class ConnectorConfig(
     useHttps: Option[Boolean] = None,
     properties: Map[String, Any] = Map.empty
 ):
-  def dbType: DBType                                         = DBType.fromString(`type`)
-  def withProperty(key: String, value: Any): ConnectorConfig = copy(properties =
+  def dbType: DBType = DBType.fromString(`type`)
+
+  def withName(name: String): ConnectorConfig          = copy(name = name)
+  def withType(connectorType: String): ConnectorConfig = copy(`type` = connectorType)
+  def withDefault(default: Boolean): ConnectorConfig   = copy(default = default)
+  def withUser(user: String): ConnectorConfig          = copy(user = Some(user))
+  def noUser(): ConnectorConfig                        = copy(user = None)
+  def withPassword(password: String): ConnectorConfig  = copy(password = Some(password))
+  def noPassword(): ConnectorConfig                    = copy(password = None)
+  def withHost(host: String): ConnectorConfig          = copy(host = Some(host))
+  def noHost(): ConnectorConfig                        = copy(host = None)
+  def withPort(port: Int): ConnectorConfig             = copy(port = Some(port))
+  def noPort(): ConnectorConfig                        = copy(port = None)
+  def withCatalog(catalog: String): ConnectorConfig    = copy(catalog = Some(catalog))
+  def noCatalog(): ConnectorConfig                     = copy(catalog = None)
+  def withSchema(schema: String): ConnectorConfig      = copy(schema = Some(schema))
+  def noSchema(): ConnectorConfig                      = copy(schema = None)
+  def withUseHttps(useHttps: Boolean): ConnectorConfig = copy(useHttps = Some(useHttps))
+  def noUseHttps(): ConnectorConfig                    = copy(useHttps = None)
+  def withProperties(properties: Map[String, Any]): ConnectorConfig = copy(properties = properties)
+  def withProperty(key: String, value: Any): ConnectorConfig        = copy(properties =
     properties + (key -> value)
   )
+
+end ConnectorConfig
 
 /**
   * A named environment activating a set of connectors simultaneously. Selected with `--profile`;
@@ -68,6 +86,9 @@ case class Profile(name: String, connectors: Seq[ConnectorConfig]):
       throw StatusCode.INVALID_ARGUMENT.newException(s"Profile '${name}' has no connectors")
     )
 
+  def withName(name: String): Profile                           = copy(name = name)
+  def withConnectors(connectors: Seq[ConnectorConfig]): Profile = copy(connectors = connectors)
+
   /**
     * Apply CLI-level `--catalog`/`--schema` overrides to the default engine, leaving other
     * connectors untouched.
@@ -76,24 +97,20 @@ case class Profile(name: String, connectors: Seq[ConnectorConfig]):
     if catalog.isEmpty && schema.isEmpty then
       this
     else
-      val engine  = defaultEngine
-      val updated = engine.copy(
-        catalog = catalog.orElse(engine.catalog),
-        schema = schema.orElse(engine.schema)
-      )
-      copy(connectors =
-        connectors.map { c =>
-          if c eq engine then
-            updated
-          else
-            c
-        }
-      )
+      updateDefaultEngine { engine =>
+        engine.copy(catalog = catalog.orElse(engine.catalog), schema = schema.orElse(engine.schema))
+      }
 
   /** Add a property to the default engine's connector config */
-  def withProperty(key: String, value: Any): Profile =
+  def withProperty(key: String, value: Any): Profile = updateDefaultEngine(
+    _.withProperty(key, value)
+  )
+
+  // Replace the default engine in place (matched by reference identity so equal-but-distinct
+  // connector entries are left alone)
+  private def updateDefaultEngine(update: ConnectorConfig => ConnectorConfig): Profile =
     val engine  = defaultEngine
-    val updated = engine.withProperty(key, value)
+    val updated = update(engine)
     copy(connectors =
       connectors.map { c =>
         if c eq engine then
@@ -117,23 +134,11 @@ object Profile extends LogSupport:
 
   // Weaver's derivation falls back to Surface-driven weavers for field types with no given in
   // scope, and that runtime path decodes `Any` with a lossy fallback — every value in a
-  // connector's `properties` map would silently become null. Provide the full given chain down
-  // to Map[String, Any] (with AnyWeaver, which preserves primitive JSON values) so the macro
-  // summons these instead.
-  private given mapWeaver: Weaver[Map[String, Any]] = MapWeaver(
-    summon[Weaver[String]],
-    AnyWeaver.default
-  ).asInstanceOf[Weaver[Map[String, Any]]]
-
-  private given connectorConfigWeaver: Weaver[ConnectorConfig]         = Weaver.of[ConnectorConfig]
-  private given connectorConfigSeqWeaver: Weaver[Seq[ConnectorConfig]] = SeqWeaver(
-    connectorConfigWeaver,
-    classOf[Seq[?]]
-  ).asInstanceOf[Weaver[Seq[ConnectorConfig]]]
-
-  private given profileWeaver: Weaver[Profile]         = Weaver.of[Profile]
-  private given profileSeqWeaver: Weaver[Seq[Profile]] = SeqWeaver(profileWeaver, classOf[Seq[?]])
-    .asInstanceOf[Weaver[Seq[Profile]]]
+  // connector's `properties` map would silently become null. Declaring the case-class weavers as
+  // givens lets the derivation macro compose them with PrimitiveWeaver's map/seq/any givens
+  // (imported above), which preserve primitive JSON values.
+  private given connectorConfigWeaver: Weaver[ConnectorConfig] = Weaver.of[ConnectorConfig]
+  private given profileWeaver: Weaver[Profile]                 = Weaver.of[Profile]
 
   def defaultGenericProfile = Profile(
     name = "local",

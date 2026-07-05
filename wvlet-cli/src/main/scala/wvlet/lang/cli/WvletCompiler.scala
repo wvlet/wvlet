@@ -70,7 +70,9 @@ class WvletCompiler(
     _dbConnector
   }
 
-  override def close(): Unit = Option(_dbConnector).foreach(_.close())
+  // Closing the provider closes every cached connector, including _dbConnector and the
+  // scratch DuckDB connector QueryExecutor may have created for local file reads/exports
+  override def close(): Unit = dbConnectorProvider.close()
 
   private def createCompiler(parseOnly: Boolean = false): Compiler =
     val dbType = compilerOption

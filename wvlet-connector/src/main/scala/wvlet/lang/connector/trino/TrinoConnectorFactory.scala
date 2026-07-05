@@ -22,12 +22,22 @@ object TrinoConnectorFactory extends ConnectorFactory:
   override def connectorType: String = "trino"
 
   override def create(config: ConnectorConfig, workEnv: WorkEnv): Connector =
-    val useSSL = config.properties.get("useSSL").flatMap(parseBoolean).getOrElse(true)
+    // The `useHttps` config field wins; the `useSSL` property is the legacy spelling
+    val useSSL = config
+      .useHttps
+      .orElse(config.properties.get("useSSL").flatMap(parseBoolean))
+      .getOrElse(true)
+    val host        = config.host.getOrElse("localhost")
+    val hostAndPort =
+      if host.contains(":") then
+        host
+      else
+        config.port.map(port => s"${host}:${port}").getOrElse(host)
     TrinoConnector(
       TrinoConfig(
         catalog = config.catalog.getOrElse("default"),
         schema = config.schema.getOrElse("default"),
-        hostAndPort = config.host.getOrElse("localhost"),
+        hostAndPort = hostAndPort,
         useSSL = useSSL,
         user = config.user,
         password = config.password

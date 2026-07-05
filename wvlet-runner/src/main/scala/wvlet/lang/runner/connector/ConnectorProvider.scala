@@ -46,13 +46,15 @@ class ConnectorProvider(
   // Keyed by ConnectorConfig value equality: precise (unlike whole-Profile keys, which fork a
   // connector on any unrelated profile edit) and sound (unlike name keys — differently configured
   // connectors may share a name across ad-hoc profiles).
-  private val connectorCache = new ConcurrentHashMap[ConnectorConfig, Connector]().asScala
+  private val connectorCache = ConcurrentHashMap[ConnectorConfig, Connector]()
 
-  override def close(): Unit = connectorCache.values.foreach(_.close())
+  override def close(): Unit = connectorCache.values().asScala.foreach(_.close())
 
-  def getConnector(config: ConnectorConfig): Connector = connectorCache.getOrElseUpdate(
+  // computeIfAbsent (not the Scala wrapper's getOrElseUpdate) so a race on first use cannot
+  // create two live connectors and silently leak the losing one
+  def getConnector(config: ConnectorConfig): Connector = connectorCache.computeIfAbsent(
     config,
-    createConnector(config)
+    c => createConnector(c)
   )
 
   private def createConnector(config: ConnectorConfig): Connector =

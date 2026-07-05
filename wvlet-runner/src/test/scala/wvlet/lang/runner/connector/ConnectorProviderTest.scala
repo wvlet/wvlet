@@ -72,9 +72,8 @@ class ConnectorProviderTest extends UniTest:
       c1 shouldBeTheSameInstanceAs c2
 
       // A differently configured connector gets its own instance
-      val c3       = provider.getConnector(config.copy(schema = Some("other")))
-      val distinct = !(c3 eq c1)
-      distinct shouldBe true
+      val c3 = provider.getConnector(config.copy(schema = Some("other")))
+      (c3 eq c1) shouldBe false
     finally
       provider.close()
   }
@@ -83,10 +82,9 @@ class ConnectorProviderTest extends UniTest:
     // Both default profiles are named "local"; the config-keyed cache must not conflate them
     val provider = newProvider()
     try
-      val duckdb   = provider.getConnector(Profile.defaultDuckDBProfile)
-      val generic  = provider.getConnector(Profile.defaultGenericProfile)
-      val distinct = !(duckdb eq generic)
-      distinct shouldBe true
+      val duckdb  = provider.getConnector(Profile.defaultDuckDBProfile)
+      val generic = provider.getConnector(Profile.defaultGenericProfile)
+      (duckdb eq generic) shouldBe false
       duckdb shouldMatch { case _: DuckDBConnector =>
       }
       generic shouldMatch { case _: GenericConnector =>
