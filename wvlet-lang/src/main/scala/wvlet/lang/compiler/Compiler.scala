@@ -16,7 +16,6 @@ package wvlet.lang.compiler
 import wvlet.lang.api.StatusCode
 import wvlet.lang.api.WvletLangException
 import wvlet.lang.catalog.Catalog
-import wvlet.lang.compiler.Compiler.presetLibraries
 import wvlet.lang.compiler.analyzer.EmptyTypeResolver
 import wvlet.lang.compiler.analyzer.ModelDependencyAnalyzer
 import wvlet.lang.compiler.analyzer.RemoveUnusedQueries
@@ -89,8 +88,6 @@ object Compiler extends LogSupport:
     List(ParserPhase, RemoveUnusedQueries(), EmptyTypeResolver)
   )
 
-  lazy val presetLibraries: List[CompilationUnit] = CompilationUnit.stdLib
-
 end Compiler
 
 case class CompilerOptions(
@@ -120,6 +117,11 @@ class Compiler(
 
   // A cache for skipping parsing the same file multiple times
   private val compilationUnitCache = CompilationUnitCache()
+
+  // Standard-library units are built per compiler: compilation units carry mutable state
+  // (symbols, resolved trees) tied to this compiler's global context, so sharing them between
+  // concurrently running compilers (e.g. per-session compilers on the server) is not safe
+  private lazy val presetLibraries: List[CompilationUnit] = CompilationUnit.stdLib
 
   // Compilation units in the given source folders (except preset-libraries)
   def localCompilationUnits = listLocalCompilationUnits(compilerOptions.sourceFolders)

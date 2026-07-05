@@ -7,7 +7,7 @@ import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.OS
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.runner.connector.ConnectorProvider
-import wvlet.lang.runner.{QueryExecutor, WvletScriptRunnerConfig}
+import wvlet.lang.runner.{ThreadManager, WvletScriptRunnerConfig}
 import wvlet.uni.cli.launcher.option
 import wvlet.uni.control.Control.withResource
 import wvlet.uni.io.IO
@@ -188,7 +188,24 @@ object WvletServer extends LogSupport:
       .bindProvider[WorkEnv, ConnectorProvider] { (workEnv: WorkEnv) =>
         ConnectorProvider(workEnv)
       }
-      .bindSingleton[QueryExecutor]
+      // One script runner (compiler + executor) per client session, so concurrent sessions
+      // racing `use` statements cannot corrupt each other's active engine (#1867). Explicit
+      // provider: the idle-timeout parameter should not be DI-resolved
+      .bindProvider {
+        (
+            workEnv: WorkEnv,
+            config: WvletScriptRunnerConfig,
+            connectorProvider: ConnectorProvider,
+            threadManager: ThreadManager
+        ) =>
+          ScriptRunnerSessions(
+            workEnv,
+            config,
+            connectorProvider,
+            threadManager,
+            ScriptRunnerSessions.DefaultIdleTimeout
+          )
+      }
       .bindImpl[FrontendApi, FrontendApiImpl]
       .bindImpl[FileApi, FileApiImpl]
       .bindImpl[FlowApi, FlowApiImpl]

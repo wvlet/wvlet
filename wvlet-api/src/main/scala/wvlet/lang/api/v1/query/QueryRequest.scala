@@ -14,6 +14,9 @@ case class QueryRequest(
     isDebugRun: Boolean = true,
     // Limit the max output rows for debug run
     maxRows: Option[Int] = None,
+    // Identifies the client session so `use` statements (active engine, catalog, schema) affect
+    // only this session on the server; requests without a session id share a default session
+    sessionId: Option[String] = None,
     requestId: ULID = ULID.newULID
 ):
   def queryLine: String =

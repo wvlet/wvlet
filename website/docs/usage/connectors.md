@@ -73,6 +73,9 @@ Bare names are resolved connector-first: `use analytics` switches to a connector
 `analytics` when the profile defines one, and otherwise behaves like `use schema analytics`
 (see [CLI reference](cli-reference.md) for the schema forms).
 
+The switch is scoped to your session: in the web UI each browser page is its own session, so
+`use` statements of one client never change the engine, catalog, or schema of another.
+
 ## Calling connector tools
 
 Connectors can expose callable tools (MCP-shaped methods) beyond tables and SQL execution. The

@@ -39,7 +39,11 @@ case class WvletScriptRunnerConfig(
     maxColWidth: Int = 150,
     profile: Profile,
     catalog: Option[String],
-    schema: Option[String]
+    schema: Option[String],
+    // Pre-compile the source folders in the background at startup. Disable for runners created
+    // on demand (per-session runners on the server): the background compilation would race the
+    // very statement that triggered the runner's creation within one compiler
+    precompileSourcePaths: Boolean = true
 )
 
 case class LastOutput(
@@ -127,12 +131,13 @@ class WvletScriptRunner(
       }
 
     // Pre-compile files in the source paths
-    threadManager.runBackgroundTask { () =>
-      val result = c.compileSourcePaths(contextFile = None)
-      // Report compilation errors in the initialization phases
-      if result.hasFailures then
-        workEnv.logError(result.failureException)
-    }
+    if config.precompileSourcePaths then
+      threadManager.runBackgroundTask { () =>
+        val result = c.compileSourcePaths(contextFile = None)
+        // Report compilation errors in the initialization phases
+        if result.hasFailures then
+          workEnv.logError(result.failureException)
+      }
     c
 
   end compiler
