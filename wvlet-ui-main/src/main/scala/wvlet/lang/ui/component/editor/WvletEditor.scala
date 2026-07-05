@@ -12,6 +12,7 @@ import wvlet.lang.api.v1.query.QuerySelection
 import wvlet.lang.api.v1.query.QuerySelection.Describe
 import wvlet.lang.ui.component.monaco.EditorBase
 import wvlet.lang.ui.component.MainFrame
+import wvlet.lang.ui.component.UISession
 import wvlet.lang.ui.component.WindowSize
 
 object WvletEditor:
@@ -74,7 +75,8 @@ class WvletMonacoEditor(
 
   private def processRequest(request: QueryRequest): Unit =
     ConsoleLog.write(s"Processing query with mode:${request.querySelection}\n${request.query}")
-    queryResultReader.submitQuery(request)
+    // Stamp this page load's session id so server-side `use` state stays scoped to this client
+    queryResultReader.submitQuery(request.copy(sessionId = Some(UISession.sessionId)))
 
   private var errorMonitor: Cancelable = Cancelable.empty
 

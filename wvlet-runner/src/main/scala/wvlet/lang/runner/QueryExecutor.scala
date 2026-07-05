@@ -83,7 +83,8 @@ class QueryExecutor(
 
   // The engine statements execute on: the profile's default engine until a `use <connector>`
   // statement switches it (#1861 Phase 2). Like the global default catalog/schema this is
-  // session-level state: concurrent sessions should use separate QueryExecutor instances
+  // session-level state: concurrent sessions must use separate QueryExecutor instances, as the
+  // server does by building one script runner per client session (ScriptRunnerSessions, #1867)
   private var activeEngine: ConnectorConfig = defaultProfile.defaultEngine
 
   private def activeDBConnector: DBConnector = dbConnectorProvider.getDBConnector(activeEngine)

@@ -13,9 +13,6 @@ import wvlet.lang.api.v1.query.QueryStatus
 import wvlet.lang.api.v1.query.QueryStatus.QUEUED
 import wvlet.lang.api.v1.query.QueryStatus.RUNNING
 import wvlet.lang.compiler.query.QueryProgressMonitor
-import wvlet.lang.runner.QueryExecutor
-import wvlet.lang.runner.WvletScriptRunner
-import wvlet.lang.connector.DBConnector
 import wvlet.uni.log.LogSupport
 import wvlet.uni.util.ThreadUtil
 import wvlet.uni.util.ULID
@@ -25,7 +22,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import scala.jdk.CollectionConverters.*
 
-class QueryService(scriptRunner: WvletScriptRunner) extends LogSupport with AutoCloseable:
+class QueryService(sessions: ScriptRunnerSessions) extends LogSupport with AutoCloseable:
 
   private val threadManager = Executors.newCachedThreadPool(
     ThreadUtil.newDaemonThreadFactory("wvlet-query-service")
@@ -74,7 +71,9 @@ class QueryService(scriptRunner: WvletScriptRunner) extends LogSupport with Auto
     )
     queryMap += queryId -> lastInfo
 
-    val queryResult = scriptRunner.runStatement(request)
+    // Route the query to the runner owning the client's session, so `use` statements switch
+    // the engine/catalog only for that session
+    val queryResult = sessions.runnerFor(request.sessionId).runStatement(request)
     if queryResult.isSuccess then
       // TODO Support pagination
       // TODO Return the query result
