@@ -76,13 +76,12 @@ jobs:
         run: |
           pnpm version ${{ inputs.version }} --no-git-tag-version
 
+      - name: Upgrade npm CLI for trusted publishing
+        run: npm install -g npm@latest
+
       - name: Publish to NPM
         working-directory: sdks/typescript
-        run: |
-          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > .npmrc
-          pnpm publish --no-git-checks --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --provenance --access public
 
   publish-cli-node:
     name: Publish @wvlet/cli (Node.js) to NPM
@@ -133,13 +132,12 @@ jobs:
         run: |
           pnpm version ${{ inputs.version }} --no-git-tag-version
 
+      - name: Upgrade npm CLI for trusted publishing
+        run: npm install -g npm@latest
+
       - name: Publish to NPM
         working-directory: sdks/cli-node
-        run: |
-          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > .npmrc
-          pnpm publish --no-git-checks --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --provenance --access public
 
   publish-prismjs:
     name: Publish Prism.js Wvlet extension to NPM
@@ -186,13 +184,12 @@ jobs:
         run: |
           pnpm version ${{ inputs.version }} --no-git-tag-version
 
+      - name: Upgrade npm CLI for trusted publishing
+        run: npm install -g npm@latest
+
       - name: Publish to NPM
         working-directory: prismjs-wvlet
-        run: |
-          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > .npmrc
-          pnpm publish --no-git-checks --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --provenance --access public
 
   publish-highlightjs:
     name: Publish highlight.js extension to NPM
@@ -242,10 +239,9 @@ jobs:
         run: |
           pnpm version ${{ inputs.version }} --no-git-tag-version
 
+      - name: Upgrade npm CLI for trusted publishing
+        run: npm install -g npm@latest
+
       - name: Publish to NPM
         working-directory: highlightjs-wvlet
-        run: |
-          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > .npmrc
-          pnpm publish --no-git-checks --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --provenance --access public
