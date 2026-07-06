@@ -19,7 +19,6 @@ import wvlet.uni.json.JSON.JSONObject
 import wvlet.uni.json.JSON.JSONString
 import wvlet.uni.json.JSON.JSONValue
 import wvlet.uni.weaver.Weaver
-import wvlet.uni.weaver.codec.PrimitiveWeaver.given
 import wvlet.lang.api.StatusCode
 import wvlet.lang.compiler.DBType
 import wvlet.uni.log.LogSupport
@@ -131,14 +130,6 @@ object Profile extends LogSupport:
   // Wraps the top-level shape of profiles.json: {"profiles": [Profile, ...]}.
   // Private to keep the on-disk schema an implementation detail.
   private case class ProfileConfig(profiles: Seq[Profile] = Seq.empty)
-
-  // Weaver's derivation falls back to Surface-driven weavers for field types with no given in
-  // scope, and that runtime path decodes `Any` with a lossy fallback — every value in a
-  // connector's `properties` map would silently become null. Declaring the case-class weavers as
-  // givens lets the derivation macro compose them with PrimitiveWeaver's map/seq/any givens
-  // (imported above), which preserve primitive JSON values.
-  private given connectorConfigWeaver: Weaver[ConnectorConfig] = Weaver.of[ConnectorConfig]
-  private given profileWeaver: Weaver[Profile]                 = Weaver.of[Profile]
 
   def defaultGenericProfile = Profile(
     name = "local",
