@@ -21,6 +21,7 @@ Install from the [VS Code Marketplace](https://marketplace.visualstudio.com/item
 - **Diagnostics**: Compilation errors are reported inline as you edit
 - **Document Outline**: Models, types, vals, and flows appear in the outline view
 - **Code Completion**: Context-aware suggestions as you type
+- **Hover Information**: Type and schema details when you hover over models and columns
 
 ## Code Completion
 
@@ -35,6 +36,18 @@ automatically as you type or on demand with `Ctrl+Space`, and offers:
 Column suggestions rely on type resolution, so they appear once the surrounding query
 is complete enough to be analyzed. Keyword and definition suggestions are always available,
 including while a query is still being written.
+
+## Hover Information
+
+Hover over a symbol to see its type information in a tooltip:
+
+- **Models**: The model signature — its name, parameters, and output schema (each column with its type)
+- **Columns**: The column name and its resolved data type, for example `name: string`
+- **Type definitions**: The declared fields of a type
+
+Hover relies on type resolution, so it appears once the surrounding query is complete
+enough to be analyzed. When the cursor is not on a symbol with a resolved type, no tooltip
+is shown.
 
 ## Example
 

@@ -13,6 +13,8 @@ import {
   Position,
   CompletionItem,
   CompletionItemKind,
+  Hover,
+  MarkupKind,
 } from 'vscode-languageserver/node';
 
 import { TextDocument } from 'vscode-languageserver-textdocument';
@@ -22,6 +24,7 @@ import type {
   LspDiagnostic,
   LspSymbol,
   LspCompletionItem,
+  LspHover,
 } from '../../sdks/typescript/src/types';
 
 // The Scala.js module exports WvletJS as a named export
@@ -70,6 +73,7 @@ connection.onInitialize((_params: InitializeParams): InitializeResult => {
       completionProvider: {
         triggerCharacters: ['.'],
       },
+      hoverProvider: true,
     },
   };
 });
@@ -213,6 +217,50 @@ connection.onCompletion(async (params): Promise<CompletionItem[]> => {
       `Completion error: ${e instanceof Error ? e.message : String(e)}`
     );
     return [];
+  }
+});
+
+connection.onHover(async (params): Promise<Hover | null> => {
+  const document = documents.get(params.textDocument.uri);
+  if (!document) {
+    return null;
+  }
+
+  const module = await getWvletJS();
+  if (!module) {
+    return null;
+  }
+
+  try {
+    // Convert from 0-based (LSP) to 1-based (Wvlet)
+    const line = params.position.line + 1;
+    const column = params.position.character + 1;
+    const resultJson = module.WvletJS.getHover(
+      document.getText(),
+      line,
+      column
+    );
+    const hover: LspHover | null = JSON.parse(resultJson);
+    if (!hover) {
+      return null;
+    }
+
+    return {
+      contents: {
+        kind: MarkupKind.Markdown,
+        value: hover.content,
+      },
+      range: {
+        // Convert from 1-based (Wvlet) to 0-based (LSP)
+        start: Position.create(hover.startLine - 1, hover.startColumn - 1),
+        end: Position.create(hover.endLine - 1, hover.endColumn - 1),
+      },
+    };
+  } catch (e) {
+    connection.console.error(
+      `Hover error: ${e instanceof Error ? e.message : String(e)}`
+    );
+    return null;
   }
 });
 

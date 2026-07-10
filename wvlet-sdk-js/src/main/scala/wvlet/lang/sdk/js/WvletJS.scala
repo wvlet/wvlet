@@ -19,6 +19,7 @@ import wvlet.lang.BuildInfo
 import wvlet.lang.compiler.parser.ParserPhase
 import wvlet.lang.compiler.lsp.CompletionItem
 import wvlet.lang.compiler.lsp.CompletionProvider
+import wvlet.lang.compiler.lsp.HoverProvider
 import wvlet.lang.model.plan.*
 import wvlet.uni.weaver.Weaver
 import wvlet.uni.weaver.codec.PrimitiveWeaver.given
@@ -287,6 +288,51 @@ object WvletJS:
 
   end getCompletionItems
 
+  // Cached compiler instance for hover (avoids repeated initialization and filesystem scans)
+  private lazy val hoverCompiler = Compiler(CompilerOptions(workEnv = WorkEnv(path = ".")))
+
+  /**
+    * Compute hover information (type / model signature) for the given source at the given cursor
+    * position.
+    *
+    * @param content
+    *   The Wvlet source code
+    * @param line
+    *   1-based line number of the cursor
+    * @param column
+    *   1-based column number of the cursor
+    * @return
+    *   JSON object `{content, startLine, startColumn, endLine, endColumn}` describing the hovered
+    *   node, or the JSON literal `null` when there is nothing to show (unknown position, unresolved
+    *   type, or incomplete input). `content` is markdown; line/column values are 1-based.
+    */
+  @JSExport
+  def getHover(content: String, line: Int, column: Int): String =
+    val result =
+      try
+        val sourceFile = CompilationUnit.fromWvletString(content).sourceFile
+        sourceFile.ensureLoaded
+        val offset = sourceFile.offsetAt(wvlet.lang.api.LinePosition(line, column))
+        HoverProvider.hover(content, offset, hoverCompiler)
+      catch
+        case _: Throwable =>
+          None
+
+    result match
+      case Some(h) =>
+        val hover = LspHover(
+          content = h.content,
+          startLine = h.startLine,
+          startColumn = h.startColumn,
+          endLine = h.endLine,
+          endColumn = h.endColumn
+        )
+        Weaver.of[LspHover].toJson(hover)
+      case None =>
+        "null"
+
+  end getHover
+
 end WvletJS
 
 /**
@@ -318,6 +364,12 @@ case class LspSymbol(
     endLine: Int,
     endColumn: Int
 )
+
+/**
+  * LSP hover representation for JSON serialization. `content` is markdown text; the line/column
+  * fields describe the 1-based source range of the hovered node.
+  */
+case class LspHover(content: String, startLine: Int, startColumn: Int, endLine: Int, endColumn: Int)
 
 /**
   * LSP SymbolKind constants (subset from the LSP specification)
