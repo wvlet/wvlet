@@ -2,6 +2,12 @@
 
 All notable changes to the Wvlet extension will be documented in this file.
 
+## [2026.2.0] - 2026-07-10
+
+### Changed
+- Stable release of the language server introduced in 2026.1.x. Includes all
+  fixes from the 2026.1.1 pre-release; no functional changes since 2026.1.1.
+
 ## [2026.1.1] - 2026-07-10 (Pre-release)
 
 ### Fixed
