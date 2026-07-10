@@ -85,8 +85,13 @@ object CompletionProvider:
     plan.collectAllNodes.filter(_.span.containsInclusive(offset)).sortBy(_.span.size).headOption
 
   /**
-    * Extract completion items for the definitions (models, types, vals, flows, ...) declared in the
-    * given plan.
+    * Extract completion items for the definitions (models, types, vals, flows, ...) declared at the
+    * top level of the given plan.
+    *
+    * This intentionally recurses only into `PackageDef` containers instead of walking the whole
+    * tree with `collectAllNodes`: definitions nested inside model/type bodies are not referenceable
+    * from other top-level statements, so surfacing them would only add noise (and a full-tree walk
+    * would also visit every expression node of the parse-only plan).
     */
   def definitionItems(plan: LogicalPlan): List[CompletionItem] =
     val buf                        = List.newBuilder[CompletionItem]
@@ -115,14 +120,16 @@ object CompletionProvider:
   /**
     * Extract column completion items visible at the given cursor offset. The columns come from the
     * input and output schema of the query relation that most tightly encloses the cursor; when no
-    * relation encloses the cursor (e.g. an incomplete pipeline), the widest relation in the plan is
-    * used as a fallback.
+    * relation encloses the cursor (e.g. a trailing space or newline at the end of the file), the
+    * relation nearest to the cursor is used as a fallback so that suggestions come from the query
+    * being edited rather than an unrelated definition elsewhere in the file.
     */
   def columnItems(plan: LogicalPlan, offset: Int): List[CompletionItem] =
     val relations = plan
       .collectAllNodes
-      .collect { case r: Relation =>
-        r
+      .collect {
+        case r: Relation if r.span.exists =>
+          r
       }
     if relations.isEmpty then
       Nil
@@ -131,7 +138,17 @@ object CompletionProvider:
         .filter(_.span.containsInclusive(offset))
         .sortBy(_.span.size)
         .headOption
-        .getOrElse(relations.maxBy(_.span.size))
+        .getOrElse {
+          // Nearest relation by span distance to the cursor
+          relations.minBy { r =>
+            if offset < r.span.start then
+              r.span.start - offset
+            else if offset > r.span.end then
+              offset - r.span.end
+            else
+              0
+          }
+        }
       val fields =
         try
           enclosing.inputRelationType.fields ++ enclosing.relationType.fields
@@ -142,6 +159,8 @@ object CompletionProvider:
         .filter(f => !f.name.isEmpty && f.name.name != "<NoName>")
         .map(f => CompletionItem(f.name.name, CompletionItemKind.Field, f.dataType.typeName.name))
         .distinct
+
+  end columnItems
 
   /**
     * Compute completion candidates for the given source at the given character offset.
