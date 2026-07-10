@@ -11,6 +11,7 @@
     "build": "pnpm run build:scalajs && tsc",
     "test": "vitest",
     "test:ci": "vitest run",
+    "corpus:smoke": "node scripts/corpus-smoke.mjs",
     "lint": "tsc --noEmit",
     "prepublishOnly": "pnpm run build"
   },

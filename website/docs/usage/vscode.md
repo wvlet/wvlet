@@ -61,6 +61,25 @@ Definitions are resolved within the current file only: the language server compi
 document standalone, so references to models or types defined in other files are not
 navigated. Cross-file and workspace-wide navigation is future work.
 
+## Known Limitations
+
+Language support is analyzed per file, so a few things are worth keeping in mind:
+
+- **Same-file scope**: Completion, hover, and Go to Definition only see models,
+  types, and other definitions in the file you are editing. References to
+  definitions in other files are not yet completed or navigated.
+- **Schema for database tables**: Column completion and hover show a schema only
+  when the language server can resolve it. Models defined in the same file get
+  full completion and hover (their columns and types are shown). Tables from your
+  database and file sources such as `from 'data.json'` do not yet carry a schema in
+  the editor, so hovering them or asking for their columns may return nothing.
+  Importing table schemas so they behave like in-file models is planned
+  ([#1881](https://github.com/wvlet/wvlet/issues/1881)).
+- **Requires an analyzable query**: Column completion and hover rely on type
+  resolution, so they appear once the surrounding query is complete enough to be
+  analyzed. While a query is still being written, keyword and definition-name
+  suggestions remain available.
+
 ## Example
 
 ![Wvlet syntax highlighting in VS Code](./vscode.png)
