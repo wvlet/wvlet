@@ -99,7 +99,15 @@ object HoverProvider:
           .sortBy(_.span.size)
         candidates
           .iterator
-          .flatMap(n => markdownFor(n).map(md => toResult(md, n, sourceFile)))
+          .flatMap { n =>
+            // Rendering a single candidate may fail while resolving its type on an
+            // incomplete/malformed AST; skip it so an enclosing candidate can still hover
+            try
+              markdownFor(n).map(md => toResult(md, n, sourceFile))
+            catch
+              case _: Throwable =>
+                None
+          }
           .nextOption()
     catch
       case _: Throwable =>
