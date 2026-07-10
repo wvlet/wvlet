@@ -145,3 +145,15 @@ export interface LspHover {
   endLine: number;
   endColumn: number;
 }
+
+/**
+ * LSP go-to-definition target from the Wvlet compiler.
+ * The line/column fields are the 1-based source range of the target
+ * model/type definition.
+ */
+export interface LspDefinition {
+  startLine: number;
+  startColumn: number;
+  endLine: number;
+  endColumn: number;
+}

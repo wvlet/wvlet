@@ -19,6 +19,7 @@ import wvlet.lang.BuildInfo
 import wvlet.lang.compiler.parser.ParserPhase
 import wvlet.lang.compiler.lsp.CompletionItem
 import wvlet.lang.compiler.lsp.CompletionProvider
+import wvlet.lang.compiler.lsp.DefinitionProvider
 import wvlet.lang.compiler.lsp.HoverProvider
 import wvlet.lang.model.plan.*
 import wvlet.uni.weaver.Weaver
@@ -333,6 +334,52 @@ object WvletJS:
 
   end getHover
 
+  // Cached compiler instance for go-to-definition (avoids repeated initialization and filesystem
+  // scans)
+  private lazy val definitionCompiler = Compiler(CompilerOptions(workEnv = WorkEnv(path = ".")))
+
+  /**
+    * Compute the go-to-definition target (the model / type definition) for the given source at the
+    * given cursor position.
+    *
+    * @param content
+    *   The Wvlet source code
+    * @param line
+    *   1-based line number of the cursor
+    * @param column
+    *   1-based column number of the cursor
+    * @return
+    *   JSON object `{startLine, startColumn, endLine, endColumn}` describing the 1-based source
+    *   range of the definition, or the JSON literal `null` when the cursor is not on a resolvable
+    *   model/type reference (unknown position, keyword, whitespace, the definition itself, or an
+    *   unknown name). Only same-document definitions are returned.
+    */
+  @JSExport
+  def getDefinition(content: String, line: Int, column: Int): String =
+    val result =
+      try
+        val sourceFile = CompilationUnit.fromWvletString(content).sourceFile
+        sourceFile.ensureLoaded
+        val offset = sourceFile.offsetAt(wvlet.lang.api.LinePosition(line, column))
+        DefinitionProvider.definition(content, offset, definitionCompiler)
+      catch
+        case _: Throwable =>
+          None
+
+    result match
+      case Some(d) =>
+        val definition = LspDefinition(
+          startLine = d.startLine,
+          startColumn = d.startColumn,
+          endLine = d.endLine,
+          endColumn = d.endColumn
+        )
+        Weaver.of[LspDefinition].toJson(definition)
+      case None =>
+        "null"
+
+  end getDefinition
+
 end WvletJS
 
 /**
@@ -370,6 +417,12 @@ case class LspSymbol(
   * fields describe the 1-based source range of the hovered node.
   */
 case class LspHover(content: String, startLine: Int, startColumn: Int, endLine: Int, endColumn: Int)
+
+/**
+  * LSP go-to-definition representation for JSON serialization. The line/column fields describe the
+  * 1-based source range of the target model/type definition.
+  */
+case class LspDefinition(startLine: Int, startColumn: Int, endLine: Int, endColumn: Int)
 
 /**
   * LSP SymbolKind constants (subset from the LSP specification)

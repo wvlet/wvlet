@@ -15,6 +15,7 @@ import {
   CompletionItemKind,
   Hover,
   MarkupKind,
+  Location,
 } from 'vscode-languageserver/node';
 
 import { TextDocument } from 'vscode-languageserver-textdocument';
@@ -25,6 +26,7 @@ import type {
   LspSymbol,
   LspCompletionItem,
   LspHover,
+  LspDefinition,
 } from '../../sdks/typescript/src/types';
 
 // The Scala.js module exports WvletJS as a named export
@@ -74,6 +76,7 @@ connection.onInitialize((_params: InitializeParams): InitializeResult => {
         triggerCharacters: ['.'],
       },
       hoverProvider: true,
+      definitionProvider: true,
     },
   };
 });
@@ -259,6 +262,51 @@ connection.onHover(async (params): Promise<Hover | null> => {
   } catch (e) {
     connection.console.error(
       `Hover error: ${e instanceof Error ? e.message : String(e)}`
+    );
+    return null;
+  }
+});
+
+connection.onDefinition(async (params): Promise<Location | null> => {
+  const document = documents.get(params.textDocument.uri);
+  if (!document) {
+    return null;
+  }
+
+  const module = await getWvletJS();
+  if (!module) {
+    return null;
+  }
+
+  try {
+    // Convert from 0-based (LSP) to 1-based (Wvlet)
+    const line = params.position.line + 1;
+    const column = params.position.character + 1;
+    const resultJson = module.WvletJS.getDefinition(
+      document.getText(),
+      line,
+      column
+    );
+    const definition: LspDefinition | null = JSON.parse(resultJson);
+    if (!definition) {
+      return null;
+    }
+
+    // Single-document scope: the definition lives in the same document
+    return {
+      uri: document.uri,
+      range: {
+        // Convert from 1-based (Wvlet) to 0-based (LSP)
+        start: Position.create(
+          definition.startLine - 1,
+          definition.startColumn - 1
+        ),
+        end: Position.create(definition.endLine - 1, definition.endColumn - 1),
+      },
+    };
+  } catch (e) {
+    connection.console.error(
+      `Definition error: ${e instanceof Error ? e.message : String(e)}`
     );
     return null;
   }

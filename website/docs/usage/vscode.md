@@ -22,6 +22,7 @@ Install from the [VS Code Marketplace](https://marketplace.visualstudio.com/item
 - **Document Outline**: Models, types, vals, and flows appear in the outline view
 - **Code Completion**: Context-aware suggestions as you type
 - **Hover Information**: Type and schema details when you hover over models and columns
+- **Go to Definition**: Jump from a model or type reference to its definition
 
 ## Code Completion
 
@@ -48,6 +49,17 @@ Hover over a symbol to see its type information in a tooltip:
 Hover relies on type resolution, so it appears once the surrounding query is complete
 enough to be analyzed. When the cursor is not on a symbol with a resolved type, no tooltip
 is shown.
+
+## Go to Definition
+
+Place the cursor on a model or type reference and use **Go to Definition** (`F12`, or
+`Cmd`/`Ctrl` + click) to jump to the `model` or `type` statement that defines it. For
+example, from `from my_model` you can jump to the `model my_model = ...` definition, and
+from a type reference to its `type` declaration.
+
+Definitions are resolved within the current file only: the language server compiles each
+document standalone, so references to models or types defined in other files are not
+navigated. Cross-file and workspace-wide navigation is future work.
 
 ## Example
 
