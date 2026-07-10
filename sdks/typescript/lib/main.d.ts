@@ -48,6 +48,15 @@ export interface WvletJSType {
    * @returns JSON object ({content, startLine, startColumn, endLine, endColumn}) or the literal `null` when there is nothing to show
    */
   getHover(content: string, line: number, column: number): string;
+
+  /**
+   * Compute the go-to-definition target (model / type definition) for a Wvlet source at the given cursor position as JSON
+   * @param content The Wvlet source code
+   * @param line 1-based line number of the cursor
+   * @param column 1-based column number of the cursor
+   * @returns JSON object ({startLine, startColumn, endLine, endColumn}) or the literal `null` when there is nothing to resolve
+   */
+  getDefinition(content: string, line: number, column: number): string;
 }
 
 export const WvletJS: WvletJSType;
