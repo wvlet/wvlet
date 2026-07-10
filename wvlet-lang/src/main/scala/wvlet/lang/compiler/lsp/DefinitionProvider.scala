@@ -78,39 +78,36 @@ object DefinitionProvider:
     */
   def definition(content: String, offset: Int, compiler: Compiler): Option[DefinitionResult] =
     try
+      val unit = CompilationUnit.fromWvletString(content)
+
       // Collect top-level model/type definitions with a parse-only pass (resilient to parse errors)
-      val parseUnit   = CompilationUnit.fromWvletString(content)
       val definitions =
         try
-          parseUnit.unresolvedPlan = ParserPhase.parseOnly(parseUnit)
-          collectDefinitions(parseUnit.unresolvedPlan)
+          unit.unresolvedPlan = ParserPhase.parseOnly(unit)
+          collectDefinitions(unit.unresolvedPlan)
         catch
           case _: Throwable =>
             Nil
 
-      // Best-effort full typing so that references carry resolved symbols. If typing fails, fall
-      // back to the parse-only plan so that name-based resolution still works.
-      val typedUnit  = CompilationUnit.fromWvletString(content)
-      val searchUnit =
-        try
-          compiler.compileSingleUnit(typedUnit)
-          if typedUnit.resolvedPlan.nonEmpty then
-            typedUnit
-          else
-            parseUnit
-        catch
-          case _: Throwable =>
-            parseUnit
+      // Best-effort full typing so that references carry resolved symbols. Compiling re-parses the
+      // unit, but the collected definition nodes stay valid: only their spans are used, and the
+      // spans index the same content. If typing fails, the unresolved (parse-only) plan below keeps
+      // name-based resolution working.
+      try
+        compiler.compileSingleUnit(unit)
+      catch
+        case _: Throwable =>
+        // Ignore compile errors — fall back to the parse-only plan
 
       val searchPlan =
-        if searchUnit eq typedUnit then
-          typedUnit.resolvedPlan
+        if unit.resolvedPlan.nonEmpty then
+          unit.resolvedPlan
         else
-          parseUnit.unresolvedPlan
+          unit.unresolvedPlan
       if searchPlan.isEmpty then
         None
       else
-        val sourceFile = searchUnit.sourceFile
+        val sourceFile = unit.sourceFile
         sourceFile.ensureLoaded
         // Candidate nodes covering the cursor, innermost (smallest span) first
         val candidates = searchPlan

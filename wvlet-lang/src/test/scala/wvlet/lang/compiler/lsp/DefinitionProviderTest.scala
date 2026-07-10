@@ -34,10 +34,9 @@ class DefinitionProviderTest extends UniTest:
     // Cursor on the `my_model` reference in the last line
     val offset = src.lastIndexOf("my_model") + 1
     val result = definition(src, offset)
-    result.isDefined shouldBe true
     // The `model my_model` definition starts on line 1
-    result.get.startLine shouldBe 1
-    result.get.startColumn shouldBe 1
+    result.map(_.startLine) shouldBe Some(1)
+    result.map(_.startColumn) shouldBe Some(1)
 
   test("should jump from a type reference to its type definition"):
     val src =
@@ -52,10 +51,9 @@ class DefinitionProviderTest extends UniTest:
     // Cursor on the first `point` reference in the `line` definition
     val offset = src.indexOf("start: point") + "start: ".length + 1
     val result = definition(src, offset)
-    result.isDefined shouldBe true
     // The `type point` definition starts on line 1
-    result.get.startLine shouldBe 1
-    result.get.startColumn shouldBe 1
+    result.map(_.startLine) shouldBe Some(1)
+    result.map(_.startColumn) shouldBe Some(1)
 
   test("should resolve a model reference by name when later typing fails"):
     // The second query references an unknown column, so full typing fails; the model reference must
@@ -69,8 +67,7 @@ class DefinitionProviderTest extends UniTest:
         |select does_not_exist""".stripMargin
     val offset = src.indexOf("from my_model") + "from ".length + 1
     val result = definition(src, offset)
-    result.isDefined shouldBe true
-    result.get.startLine shouldBe 1
+    result.map(_.startLine) shouldBe Some(1)
 
   test("should return None when the cursor is on the definition itself"):
     val src =
