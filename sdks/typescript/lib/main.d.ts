@@ -30,6 +30,15 @@ export interface WvletJSType {
    * @returns JSON array of symbols
    */
   getDocumentSymbols(content: string): string;
+
+  /**
+   * Compute code completion candidates for a Wvlet source at the given cursor position as JSON
+   * @param content The Wvlet source code
+   * @param line 1-based line number of the cursor
+   * @param column 1-based column number of the cursor
+   * @returns JSON array of completion items ({label, kind, detail})
+   */
+  getCompletionItems(content: string, line: number, column: number): string;
 }
 
 export const WvletJS: WvletJSType;

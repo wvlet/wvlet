@@ -17,6 +17,8 @@ import wvlet.lang.api.v1.compile.CompileError
 import wvlet.lang.api.v1.compile.ErrorLocation
 import wvlet.lang.BuildInfo
 import wvlet.lang.compiler.parser.ParserPhase
+import wvlet.lang.compiler.lsp.CompletionItem
+import wvlet.lang.compiler.lsp.CompletionProvider
 import wvlet.lang.model.plan.*
 import wvlet.uni.weaver.Weaver
 import wvlet.uni.weaver.codec.PrimitiveWeaver.given
@@ -249,6 +251,41 @@ object WvletJS:
     summon[Weaver[List[LspSymbol]]].toJson(symbols.toList)
 
   end getDocumentSymbols
+
+  // Cached compiler instance for completion (avoids repeated initialization and filesystem scans)
+  private lazy val completionCompiler = Compiler(CompilerOptions(workEnv = WorkEnv(path = ".")))
+
+  /**
+    * Compute code completion candidates for the given source at the given cursor position.
+    *
+    * @param content
+    *   The Wvlet source code
+    * @param line
+    *   1-based line number of the cursor
+    * @param column
+    *   1-based column number of the cursor
+    * @return
+    *   JSON array of completion items: [{label, kind, detail}]. `kind` is an LSP
+    *   `CompletionItemKind` numeric value. Returns at least keyword candidates even for invalid or
+    *   incomplete input.
+    */
+  @JSExport
+  def getCompletionItems(content: String, line: Int, column: Int): String =
+    val items =
+      try
+        val sourceFile = CompilationUnit.fromWvletString(content).sourceFile
+        sourceFile.ensureLoaded
+        val offset = sourceFile.offsetAt(wvlet.lang.api.LinePosition(line, column))
+        CompletionProvider.complete(content, offset, completionCompiler)
+      catch
+        case _: Throwable =>
+          // Fall back to keyword candidates if the position cannot be resolved
+          CompletionProvider.keywordItems
+
+    given Weaver[CompletionItem] = Weaver.of[CompletionItem]
+    summon[Weaver[List[CompletionItem]]].toJson(items)
+
+  end getCompletionItems
 
 end WvletJS
 
