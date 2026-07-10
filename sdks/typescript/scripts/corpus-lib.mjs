@@ -9,7 +9,7 @@
 // stays free of Scala.js coupling and can be imported from both a plain Node script
 // and a vitest test.
 
-import { readFileSync, globSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 /** Absolute path to the repository root (three levels up from sdks/typescript/scripts). */
@@ -19,9 +19,26 @@ export const REPO_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
  * List the real `.wv` corpus files, sorted for determinism.
  * Covers core functionality (spec/basic), TPC-H (spec/tpch), CDP behavior
  * (spec/cdp_*), and intentionally-failing inputs (spec/neg).
+ *
+ * Implemented with readdirSync rather than fs.globSync so the harness works on
+ * every Node version allowed by this package's `engines` field (>=20.0.0);
+ * fs.globSync only exists in newer Node releases.
  */
 export function listCorpusFiles() {
-  return globSync('spec/{basic,tpch,cdp_*,neg}/*.wv', { cwd: REPO_ROOT }).sort();
+  const corpusDirs = readdirSync(REPO_ROOT + 'spec', { withFileTypes: true })
+    .filter(
+      (e) =>
+        e.isDirectory() &&
+        (e.name === 'basic' || e.name === 'tpch' || e.name === 'neg' || e.name.startsWith('cdp_'))
+    )
+    .map((e) => e.name);
+  const files = [];
+  for (const dir of corpusDirs) {
+    for (const name of readdirSync(`${REPO_ROOT}spec/${dir}`)) {
+      if (name.endsWith('.wv')) files.push(`spec/${dir}/${name}`);
+    }
+  }
+  return files.sort();
 }
 
 /**

@@ -29,7 +29,9 @@ if (!process.env.CORPUS_VERBOSE) {
   const noise = /\bwarn \[(Typer|Context)\]/;
   const origWrite = process.stdout.write.bind(process.stdout);
   process.stdout.write = (chunk, ...rest) => {
-    if (typeof chunk === 'string' && noise.test(chunk)) return true;
+    // chunk may be a string or a Buffer; normalize before matching.
+    const text = typeof chunk === 'string' ? chunk : (chunk?.toString('utf8') ?? '');
+    if (noise.test(text)) return true;
     return origWrite(chunk, ...rest);
   };
 }
