@@ -122,3 +122,13 @@ export interface LspSymbol {
   endLine: number;
   endColumn: number;
 }
+
+/**
+ * LSP completion item from the Wvlet compiler.
+ * `kind` is an LSP `CompletionItemKind` numeric value.
+ */
+export interface LspCompletionItem {
+  label: string;
+  kind: number;
+  detail: string;
+}

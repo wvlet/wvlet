@@ -11,12 +11,18 @@ import {
   SymbolKind,
   Range,
   Position,
+  CompletionItem,
+  CompletionItemKind,
 } from 'vscode-languageserver/node';
 
 import { TextDocument } from 'vscode-languageserver-textdocument';
 
 import type { WvletJSType } from '../../sdks/typescript/lib/main';
-import type { LspDiagnostic, LspSymbol } from '../../sdks/typescript/src/types';
+import type {
+  LspDiagnostic,
+  LspSymbol,
+  LspCompletionItem,
+} from '../../sdks/typescript/src/types';
 
 // The Scala.js module exports WvletJS as a named export
 interface WvletJSModule {
@@ -61,6 +67,9 @@ connection.onInitialize((_params: InitializeParams): InitializeResult => {
     capabilities: {
       textDocumentSync: TextDocumentSyncKind.Incremental,
       documentSymbolProvider: true,
+      completionProvider: {
+        triggerCharacters: ['.'],
+      },
     },
   };
 });
@@ -165,6 +174,43 @@ connection.onDocumentSymbol(async (params) => {
   } catch (e) {
     connection.console.error(
       `Document symbol error: ${e instanceof Error ? e.message : String(e)}`
+    );
+    return [];
+  }
+});
+
+connection.onCompletion(async (params): Promise<CompletionItem[]> => {
+  const document = documents.get(params.textDocument.uri);
+  if (!document) {
+    return [];
+  }
+
+  const module = await getWvletJS();
+  if (!module) {
+    return [];
+  }
+
+  try {
+    // Convert from 0-based (LSP) to 1-based (Wvlet)
+    const line = params.position.line + 1;
+    const column = params.position.character + 1;
+    const resultJson = module.WvletJS.getCompletionItems(
+      document.getText(),
+      line,
+      column
+    );
+    const items: LspCompletionItem[] = JSON.parse(resultJson);
+
+    return items.map(
+      (item): CompletionItem => ({
+        label: item.label,
+        kind: item.kind as CompletionItemKind,
+        detail: item.detail,
+      })
+    );
+  } catch (e) {
+    connection.console.error(
+      `Completion error: ${e instanceof Error ? e.message : String(e)}`
     );
     return [];
   }

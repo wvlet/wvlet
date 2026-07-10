@@ -17,6 +17,11 @@ This extension provides syntax highlighting and language support for the Wvlet q
   - Comment toggling
   - Word pattern recognition
 
+- **Language Server**:
+  - Inline compilation diagnostics
+  - Document outline (models, types, vals, and flows)
+  - Code completion for keywords, in-file definitions, and column names
+
 ## Supported File Extensions
 
 - `.wv` - Wvlet query files
