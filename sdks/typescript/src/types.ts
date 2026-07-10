@@ -132,3 +132,16 @@ export interface LspCompletionItem {
   kind: number;
   detail: string;
 }
+
+/**
+ * LSP hover information from the Wvlet compiler.
+ * `content` is markdown text; the line/column fields are the 1-based source
+ * range of the hovered node.
+ */
+export interface LspHover {
+  content: string;
+  startLine: number;
+  startColumn: number;
+  endLine: number;
+  endColumn: number;
+}
