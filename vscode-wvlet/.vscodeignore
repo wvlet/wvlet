@@ -6,6 +6,7 @@ npm-debug.log*
 .git/
 .gitignore
 *.vsix
+out/**/*.map
 package-lock.json
 tsconfig.json
 esbuild.js
