@@ -18,9 +18,13 @@ This extension provides syntax highlighting and language support for the Wvlet q
   - Word pattern recognition
 
 - **Language Server**:
-  - Inline compilation diagnostics
+  - Inline compilation diagnostics (errors and warnings as you type)
   - Document outline (models, types, vals, and flows)
-  - Code completion for keywords, in-file definitions, and column names
+  - Code completion for keywords, in-file models, and column names
+  - Hover with type information for columns and expressions, and signatures for models and types
+  - Go-to-definition for models and types
+
+  Language server features currently resolve symbols within the same file only.
 
 ## Supported File Extensions
 
