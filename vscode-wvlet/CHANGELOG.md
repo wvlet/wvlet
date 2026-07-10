@@ -2,6 +2,25 @@
 
 All notable changes to the Wvlet extension will be documented in this file.
 
+## [2026.1.0] - 2026-07-10
+
+### Added
+- Language server for the Wvlet language, powered by the Scala.js Wvlet compiler:
+  - Error and warning diagnostics reported inline as you type
+  - Document outline for models, types, vals, and flows
+  - Code completion for keywords, in-file models, and column names
+  - Hover with type information for columns and expressions, and signatures for models and types
+  - Go-to-definition for models and types
+
+Language server features currently resolve symbols within the same file only;
+cross-file references are not yet followed.
+
+### Fixed
+- Packaged the Scala.js compiler bundle into the language server so the
+  installed extension can load it without any external files or native
+  dependencies (the DuckDB `koffi` FFI, which the language server never uses, is
+  stubbed out so it no longer breaks the bundle).
+
 ## [2025.2.0] - 2025-01-29
 
 ### Changed

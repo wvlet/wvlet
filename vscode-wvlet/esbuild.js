@@ -2,6 +2,26 @@ const esbuild = require('esbuild');
 
 const isWatch = process.argv.includes('--watch');
 
+// The Scala.js compiler bundle (sdks/typescript/lib/main.js) statically imports
+// `koffi`, the native FFI used only by the DuckDB query connector. The language
+// server never executes queries, so that binding is never referenced. Bundling
+// koffi as CJS breaks it (its `createRequire(import.meta.url)` resolves to
+// undefined, and its native `.node` addons cannot be inlined). Replace koffi
+// with an empty stub so the bundle stays self-contained and side-effect free.
+const stubKoffiPlugin = {
+  name: 'stub-koffi',
+  setup(build) {
+    build.onResolve({ filter: /^koffi$/ }, () => ({
+      path: 'koffi',
+      namespace: 'stub-koffi',
+    }));
+    build.onLoad({ filter: /.*/, namespace: 'stub-koffi' }, () => ({
+      contents: 'export default {};',
+      loader: 'js',
+    }));
+  },
+};
+
 /** @type {import('esbuild').BuildOptions} */
 const extensionConfig = {
   entryPoints: ['src/extension.ts'],
@@ -23,6 +43,7 @@ const serverConfig = {
   platform: 'node',
   target: 'node18',
   sourcemap: true,
+  plugins: [stubKoffiPlugin],
 };
 
 async function build() {
