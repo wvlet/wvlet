@@ -2,7 +2,7 @@
   "name": "wvlet",
   "displayName": "Wvlet",
   "description": "Wvlet query language support for Visual Studio Code",
-  "version": "2026.1.0",
+  "version": "2026.1.1",
   "engines": {
     "vscode": "^1.116.0"
   },
