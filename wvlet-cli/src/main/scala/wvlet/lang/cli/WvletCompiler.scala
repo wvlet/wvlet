@@ -39,7 +39,9 @@ case class WvletCompilerOption(
     @option(prefix = "--catalog", description = "Context database catalog to use")
     catalog: Option[String] = None,
     @option(prefix = "--schema", description = "Context database schema to use")
-    schema: Option[String] = None
+    schema: Option[String] = None,
+    @option(prefix = "--strict", description = "Fail compilation on typing errors")
+    strict: Boolean = false
 )
 
 class WvletCompiler(
@@ -87,7 +89,8 @@ class WvletCompiler(
       workEnv = workEnv,
       catalog = currentProfile.defaultEngine.catalog,
       schema = currentProfile.defaultEngine.schema,
-      dbType = dbType
+      dbType = dbType,
+      failOnTypeErrors = compilerOption.strict
     )
 
     val compiler =
