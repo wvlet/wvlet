@@ -48,4 +48,6 @@ trait SourceIOCompat:
     target.parent.foreach(IO.createDirectoryIfNotExists)
     IO.writeString(target, content, WriteMode.Create)
 
+  def deleteFile(path: String): Unit = IO.deleteIfExists(IOPath.parse(path))
+
 end SourceIOCompat

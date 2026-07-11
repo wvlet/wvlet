@@ -48,6 +48,7 @@ wvlet compile [options] [query]
 | `-t, --target <type>` | Target database type (duckdb, trino) |
 | `--catalog <name>` | Use specific catalog |
 | `--schema <name>` | Use specific schema |
+| `--strict` | Fail compilation on typing errors |
 
 **Examples:**
 
@@ -61,6 +62,34 @@ wvlet compile -f queries/analysis.wv
 # Compile for specific target
 wvlet compile -f query.wv --target trino
 
+```
+
+### `wvlet catalog import`
+
+Import database table schemas as Wvlet type definitions for offline query validation.
+See [Importing Database Catalogs](./catalog-import.md).
+
+```bash
+wvlet catalog import [options]
+```
+
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `--profile <name>` | Profile to connect with |
+| `--catalog <name>` | Catalog to import (default: profile catalog) |
+| `--schema <name>` | Import only the specified schema |
+| `--path <folder>` | Output folder (default: `catalog`) |
+
+**Examples:**
+
+```bash
+# Import all schemas of the profile's catalog
+wvlet catalog import --profile production
+
+# Import a single schema
+wvlet catalog import --profile production --schema sales
 ```
 
 ### `wvlet run`

@@ -130,15 +130,13 @@ class Compiler(
     val units = sourceFolders.flatMap { path =>
       CompilationUnit.fromPath(path, compilationUnitCache)
     }
-    // The catalog folder (the `wv catalog import` target, #1881) is always loaded so that
+    // The catalog folder (the `wvlet catalog import` target, #1881) is always loaded so that
     // schema-bound table types are available for offline query validation. The regular source
-    // scan may miss it: catalog/<name>/ subfolders have no source files at the top level.
-    // The shared compilationUnitCache returns identical instances for files found by both
-    // scans, so duplicates are removed by identity
+    // scan may miss it: catalog/<name>/ subfolders have no source files at the top level
     val catalogUnits = sourceFolders.flatMap { path =>
       CompilationUnit.fromCatalogPath(s"${path}/catalog", compilationUnitCache)
     }
-    (units ++ catalogUnits).distinct
+    (units ++ catalogUnits).distinctBy(_.sourceFile.file.path).sorted
 
   def compilationUnitsInSourcePaths = presetLibraries ++ localCompilationUnits
 

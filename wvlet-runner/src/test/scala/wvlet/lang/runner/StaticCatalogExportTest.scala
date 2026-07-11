@@ -50,12 +50,13 @@ class StaticCatalogExportTest extends UniTest:
           |)""".stripMargin)
       duckdb.executeUpdate("create table sales.customers (customer_id bigint, name varchar)")
 
-      // Scan the database directly, as `wv catalog import` does
+      // Scan the database directly, as `wvlet catalog import` does
       def exportSales(): List[String] = StaticCatalogExporter.exportSchemas(
         "memory",
         List("sales"),
         schema => duckdb.listTableDefs("memory", schema),
-        targetDir
+        targetDir,
+        pruneStale = true
       )
       val written = exportSales()
       written shouldBe List(s"${targetDir}/memory/sales.wv")
@@ -70,6 +71,20 @@ class StaticCatalogExportTest extends UniTest:
       // Re-running the export produces identical output (deterministic sync)
       exportSales()
       SourceIO.readAsString(written.head) shouldBe source
+
+      // A re-export prunes generated files of schemas dropped from the database, but
+      // keeps hand-written files
+      val staleFile = s"${targetDir}/memory/dropped_schema.wv"
+      SourceIO.writeString(
+        staleFile,
+        s"${StaticCatalogExporter
+            .generatedFileHeader}\ntype gone in memory.dropped_schema = {\n  id: int\n}\n"
+      )
+      val handWrittenFile = s"${targetDir}/memory/my_types.wv"
+      SourceIO.writeString(handWrittenFile, "type my_type = {\n  id: int\n}\n")
+      exportSales()
+      SourceIO.existsFile(staleFile) shouldBe false
+      SourceIO.existsFile(handWrittenFile) shouldBe true
 
       // A query in the project folder compiles offline, without any catalog connection:
       // the compiler discovers catalog/<name>/<schema>.wv through the well-known folder scan

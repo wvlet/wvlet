@@ -72,6 +72,28 @@ class StaticCatalogExporterTest extends UniTest:
     source shouldContain "`1col`: int"
   }
 
+  test("backquote columns named with non-reserved keywords") {
+    // The type-body field grammar accepts only plain identifiers, so a bare keyword column
+    // like `count` would make the generated file unparseable
+    val stats  = tableDef("sales", "stats", "count" -> "long", "end" -> "string")
+    val source = StaticCatalogExporter.generateSchemaSource("mydb", "sales", List(stats))
+    source shouldContain "`count`: long"
+    source shouldContain "`end`: string"
+
+    val compiler  = Compiler(CompilerOptions(sourceFolders = Nil, workEnv = WorkEnv(".")))
+    val typeUnit  = CompilationUnit.fromWvletString(source)
+    val queryUnit = CompilationUnit.fromWvletString("from sales.stats\n")
+    val result    = compiler.compileMultipleUnits(List(typeUnit), queryUnit)
+    result.hasFailures shouldBe false
+  }
+
+  test("skip tables with backquotes or control characters in names") {
+    val bad    = tableDef("sales", "bad", "a`b" -> "int")
+    val source = StaticCatalogExporter.generateSchemaSource("mydb", "sales", List(bad, orders))
+    source shouldNotContain "a`b"
+    source shouldContain "type orders"
+  }
+
   test("skip tables without columns") {
     val empty  = TableDef(TableName(Some("mydb"), Some("sales"), "empty_table"), Nil)
     val source = StaticCatalogExporter.generateSchemaSource("mydb", "sales", List(empty, orders))
@@ -81,7 +103,7 @@ class StaticCatalogExporterTest extends UniTest:
 
   test("generated source compiles and resolves qualified references offline") {
     val source    = StaticCatalogExporter.generateSchemaSource("mydb", "sales", List(orders))
-    val compiler  = Compiler(CompilerOptions(workEnv = WorkEnv(".")))
+    val compiler  = Compiler(CompilerOptions(sourceFolders = Nil, workEnv = WorkEnv(".")))
     val typeUnit  = CompilationUnit.fromWvletString(source)
     val queryUnit = CompilationUnit.fromWvletString("from sales.orders select order_id, price\n")
     val result    = compiler.compileMultipleUnits(List(typeUnit), queryUnit)
@@ -93,8 +115,22 @@ class StaticCatalogExporterTest extends UniTest:
 
   test("reject catalog or schema names that escape the target folder") {
     intercept[IllegalArgumentException] {
-      StaticCatalogExporter.exportCatalog(
-        InMemoryCatalog("../evil", Nil),
+      StaticCatalogExporter.exportSchemas(
+        "../evil",
+        List("sales"),
+        _ => List(orders),
+        "target/static-catalog-test"
+      )
+    }
+  }
+
+  test("reject catalog names that the source scan would skip") {
+    // catalog/target would silently never load back: the folder scan ignores target/
+    intercept[IllegalArgumentException] {
+      StaticCatalogExporter.exportSchemas(
+        "target",
+        List("sales"),
+        _ => List(orders),
         "target/static-catalog-test"
       )
     }

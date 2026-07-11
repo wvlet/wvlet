@@ -34,14 +34,21 @@ object SourceIO extends SourceIOCompat with LogSupport:
     * source-file-gated scan of [[listSourceFiles]] would skip them
     */
   def listSourceFilesRecursively(path: String): Seq[VirtualFile] = listSourceFilesRecursively(
-    LocalFile(path)
+    LocalFile(path),
+    level = 0
   )
 
-  private def listSourceFilesRecursively(path: VirtualFile): Seq[VirtualFile] =
+  // Bounds the traversal depth as a symlink-cycle guard
+  private val maxScanDepth = 32
+
+  private def listSourceFilesRecursively(path: VirtualFile, level: Int): Seq[VirtualFile] =
     val lst = Seq.newBuilder[VirtualFile]
-    if path.isDirectory && !ignoredFolders.contains(path.name) && !path.name.startsWith(".") then
+    if level >= maxScanDepth then
+      warn(s"Skipping ${path.path}: folder nesting exceeds ${maxScanDepth} levels")
+    else if path.isDirectory && !ignoredFolders.contains(path.name) && !path.name.startsWith(".")
+    then
       for f <- path.listFiles do
-        lst ++= listSourceFilesRecursively(f)
+        lst ++= listSourceFilesRecursively(f, level + 1)
     else if path.isSourceFile then
       lst += path
     lst.result()
