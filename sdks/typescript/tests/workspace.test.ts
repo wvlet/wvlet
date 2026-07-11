@@ -33,7 +33,9 @@ beforeAll(() => {
 afterAll(() => {
   // Restore the default so other test files keep seeing an empty workspace
   WvletJS.setWorkspacePath('.');
-  rmSync(projectDir, { recursive: true, force: true });
+  if (projectDir) {
+    rmSync(projectDir, { recursive: true, force: true });
+  }
 });
 
 describe('WvletJS.setWorkspacePath', () => {

@@ -95,4 +95,39 @@ class CompletionProviderTest extends UniTest:
     val emptyPlan = wvlet.lang.model.plan.LogicalPlan.empty
     CompletionProvider.nodeAt(emptyPlan, 5) shouldBe None
 
+  test("should not retain stale document snapshots across requests"):
+    // A long-lived compiler (editor session) serves many document snapshots; symbols of an
+    // earlier snapshot must not leak into (or shadow) later requests
+    val compiler = newCompiler
+    val v1       =
+      """model snapshot_model = {
+        |  from [[1]] as t(v1_col)
+        |}
+        |""".stripMargin
+    CompletionProvider.complete(v1, v1.length, compiler)
+
+    // The definition existed only in the previous snapshot, so it must not resolve here
+    val query  = "from snapshot_model\n"
+    val labels = CompletionProvider.complete(query, query.length, compiler).map(_.label).toSet
+    labels shouldNotContain "v1_col"
+
+  test("should serve the updated schema after a document changes"):
+    val compiler = newCompiler
+    val v1       =
+      """model edited_model = {
+        |  from [[1]] as t(old_col)
+        |}
+        |from edited_model
+        |""".stripMargin
+    CompletionProvider.complete(v1, v1.length, compiler).map(_.label).toSet shouldContain "old_col"
+
+    val v2 =
+      """model edited_model = {
+        |  from [[1, 2]] as t(old_col, new_col)
+        |}
+        |from edited_model
+        |""".stripMargin
+    val labels = CompletionProvider.complete(v2, v2.length, compiler).map(_.label).toSet
+    labels shouldContain "new_col"
+
 end CompletionProviderTest

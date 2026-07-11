@@ -134,7 +134,8 @@ object WvletJS:
     */
   @JSExport
   def setWorkspacePath(path: String): Unit =
-    if path.nonEmpty && path != workspacePath then
+    // The path can be null/undefined when called from the JS side
+    if path != null && path.nonEmpty && path != workspacePath then
       workspacePath = path
       cachedLspCompiler = None
 
@@ -176,16 +177,20 @@ object WvletJS:
   @JSExport
   def analyzeDiagnostics(content: String): String =
     val diagnostics = ListBuffer.empty[LspDiagnostic]
+    val inputUnit   = CompilationUnit.fromWvletString(content)
     try
-      val inputUnit = CompilationUnit.fromWvletString(content)
-      val result    = lspCompiler.compileSingleUnit(inputUnit)
-      // Report only this document's errors: with workspace sources loaded, a broken file
-      // elsewhere must not surface as a diagnostic of the current document
-      result.reportErrorsInContextUnit
+      // compileSingleUnit throws only for errors of the context unit itself: with workspace
+      // sources loaded, a broken file elsewhere must not surface as a diagnostic of the
+      // current document
+      lspCompiler.compileSingleUnit(inputUnit)
     catch
       case e: WvletLangException =>
         val loc = e.sourceLocation
-        if loc != SourceLocation.NoSourceLocation then
+        // Use the reported position only when it points into this document: an error can
+        // carry a location in another workspace file (e.g. raised while lazily typing a
+        // model defined elsewhere)
+        if loc != SourceLocation.NoSourceLocation && loc.fileName == inputUnit.sourceFile.fileName
+        then
           diagnostics +=
             makeDiagnostic(
               loc.position.line,
@@ -207,6 +212,10 @@ object WvletJS:
             Option(e.getMessage).getOrElse(e.getClass.getName),
             StatusCode.INTERNAL_ERROR.toString
           )
+    finally
+      // Evict the transient snapshot so repeated requests on the long-lived compiler do not
+      // accumulate stale symbols that shadow the workspace files
+      lspCompiler.releaseUnit(inputUnit)
     end try
 
     given Weaver[LspDiagnostic] = Weaver.of[LspDiagnostic]

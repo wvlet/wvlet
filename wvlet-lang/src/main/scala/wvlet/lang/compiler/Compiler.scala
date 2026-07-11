@@ -144,6 +144,13 @@ class Compiler(
   def setDefaultSchema(schema: String): Unit    = globalContext.defaultSchema = schema
 
   /**
+    * Release a transient compilation unit (e.g. an in-memory LSP document snapshot) from this
+    * compiler's global state, so repeated single-document compiles on a long-lived compiler do not
+    * accumulate stale symbols that shadow workspace files
+    */
+  def releaseUnit(unit: CompilationUnit): Unit = globalContext.releaseUnit(unit)
+
+  /**
     * Register a catalog under a connector name so queries can reference `<name>.<table>`. Engines
     * spanning multiple catalogs pass a catalogProvider so 4-part
     * `<name>.<catalog>.<schema>.<table>` references resolve against catalogs other than the
