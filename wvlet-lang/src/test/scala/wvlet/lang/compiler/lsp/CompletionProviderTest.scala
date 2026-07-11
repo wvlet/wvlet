@@ -111,6 +111,63 @@ class CompletionProviderTest extends UniTest:
     val labels = CompletionProvider.complete(query, query.length, compiler).map(_.label).toSet
     labels shouldNotContain "v1_col"
 
+  test("should complete only columns of the aliased relation after a dot"):
+    val src =
+      """from [[1, "alice", 10]] as person(id, name, age)
+        |select person.""".stripMargin
+    val items  = complete(src, src.length)
+    val labels = items.map(_.label).toSet
+    labels shouldContain "id"
+    labels shouldContain "name"
+    labels shouldContain "age"
+    // A member-access context must not include keywords
+    labels shouldNotContain "select"
+
+  test("should complete columns after a dot with a partial member name"):
+    val src =
+      """from [[1, "alice"]] as person(id, name)
+        |select person.na""".stripMargin
+    val labels = complete(src, src.length).map(_.label).toSet
+    labels shouldContain "name"
+    labels shouldNotContain "from"
+
+  test("should complete table types bound to the schema after a dot"):
+    val src =
+      """type orders in mydb.sales = {
+        |  order_id: long
+        |}
+        |type customers in mydb.sales = {
+        |  customer_id: long
+        |}
+        |from sales.""".stripMargin
+    val labels = complete(src, src.length).map(_.label).toSet
+    labels shouldContain "orders"
+    labels shouldContain "customers"
+    labels shouldNotContain "select"
+
+  test("should complete columns of a schema-bound table reference after a dot"):
+    val src =
+      """type orders in mydb.sales = {
+        |  order_id: long
+        |  status: string
+        |}
+        |from sales.orders
+        |select orders.""".stripMargin
+    val labels = complete(src, src.length).map(_.label).toSet
+    labels shouldContain "order_id"
+    labels shouldContain "status"
+
+  test("should not treat decimal literals as member access"):
+    val src    = "from [[1.5]] as t(x)\nselect 1."
+    val labels = complete(src, src.length).map(_.label).toSet
+    // Falls back to general completion (keywords present)
+    labels shouldContain "select"
+
+  test("should offer well-known SQL function names"):
+    val labels = complete("from [[1]] as t(x)\n", 0).map(_.label).toSet
+    labels shouldContain "count"
+    labels shouldContain "regexp_replace"
+
   test("should serve the updated schema after a document changes"):
     val compiler = newCompiler
     val v1       =

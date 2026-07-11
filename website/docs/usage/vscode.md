@@ -31,8 +31,15 @@ automatically as you type or on demand with `Ctrl+Space`, and offers:
 
 - **Keywords**: Wvlet language keywords such as `from`, `select`, and `where`
 - **Model & definition names**: Models, types, vals, and flows defined in the current file
+  and in other workspace files, including table types from an imported catalog
 - **Column names**: Columns available at the cursor, resolved from the query's input relation
   (for example, after `from` and inside `select` or `where`)
+- **Function names**: Well-known SQL functions such as `count` and `regexp_replace`
+
+Typing `.` after a table alias or table name suggests only that relation's columns, and
+typing `.` after a schema name suggests the tables of that schema (from an imported
+catalog) — for example `orders.` lists the order columns, and `sales.` lists the tables of
+the `sales` schema.
 
 Column suggestions rely on type resolution, so they appear once the surrounding query
 is complete enough to be analyzed. Keyword and definition suggestions are always available,

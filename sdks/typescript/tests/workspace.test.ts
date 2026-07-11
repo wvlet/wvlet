@@ -47,13 +47,34 @@ describe('WvletJS.setWorkspacePath', () => {
   });
 
   it('completes column names of a catalog table', () => {
-    const src = 'from sales.orders\n';
+    const src = 'from sales.orders\nselect status';
     const items: LspCompletionItem[] = JSON.parse(
-      WvletJS.getCompletionItems(src, 1, src.length)
+      WvletJS.getCompletionItems(src, 2, 'select status'.length + 1)
     );
     const columns = items.filter((i) => i.kind === 5).map((i) => i.label);
     expect(columns).toContain('order_id');
     expect(columns).toContain('status');
+  });
+
+  it('completes catalog table names when typing a dot after the schema', () => {
+    const src = 'from sales.';
+    const items: LspCompletionItem[] = JSON.parse(
+      WvletJS.getCompletionItems(src, 1, src.length + 1)
+    );
+    const labels = items.map((i) => i.label);
+    expect(labels).toContain('orders');
+    // Member-access completion does not include keywords
+    expect(labels).not.toContain('select');
+  });
+
+  it('completes columns when typing a dot after a table reference', () => {
+    const src = 'from sales.orders\nselect orders.';
+    const items: LspCompletionItem[] = JSON.parse(
+      WvletJS.getCompletionItems(src, 2, 'select orders.'.length + 1)
+    );
+    const labels = items.map((i) => i.label);
+    expect(labels).toContain('order_id');
+    expect(labels).toContain('status');
   });
 
   it('resolves models defined in other workspace files', () => {

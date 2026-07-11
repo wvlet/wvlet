@@ -80,6 +80,13 @@ object BuiltinFunctions:
   )
 
   /**
+    * All well-known SQL function names, used for code completion
+    */
+  lazy val allFunctionNames: Set[String] =
+    longFunctions ++ booleanFunctions ++ stringFunctions ++ doubleFunctions ++
+      firstArgTypeFunctions + "unnest"
+
+  /**
     * Returns the return type of a well-known SQL function, or None when the function is not
     * recognized or its return type cannot be derived from the arguments
     */
