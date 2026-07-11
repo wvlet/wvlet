@@ -15,6 +15,7 @@ package wvlet.lang.compiler.analyzer
 
 import wvlet.uni.test.UniTest
 import wvlet.lang.compiler.CompilationUnit
+import wvlet.lang.compiler.CompileResult
 import wvlet.lang.compiler.Compiler
 import wvlet.lang.compiler.CompilerOptions
 import wvlet.lang.compiler.Name
@@ -23,7 +24,7 @@ import wvlet.lang.compiler.codegen.GenSQL
 import wvlet.lang.model.plan.TypeDef
 
 /**
-  * Schema-bound table types (`type <name> in [<catalog>.]<schema> = {...}`, #1881) let queries
+  * Schema-bound table types (`type <name> in <catalog>.<schema> = {...}`, #1881) let queries
   * against database tables type-check without a live catalog connection, and compile into scans of
   * the bound table location
   */
@@ -36,55 +37,73 @@ class TypeTableBindingTest extends UniTest:
       |}
       |""".stripMargin
 
-  private def compileQuery(typeDefs: String, query: String): (String, wvlet.lang.compiler.Context) =
+  private def compile(typeDefs: String, query: String): CompileResult =
     val compiler  = Compiler(CompilerOptions(workEnv = WorkEnv(".")))
     val typeUnit  = CompilationUnit.fromWvletString(typeDefs)
     val queryUnit = CompilationUnit.fromWvletString(query)
+    compiler.compileMultipleUnits(List(typeUnit), queryUnit)
+
+  private def compileToSQL(typeDefs: String, query: String): String =
+    val queryUnit = CompilationUnit.fromWvletString(query)
+    val compiler  = Compiler(CompilerOptions(workEnv = WorkEnv(".")))
+    val typeUnit  = CompilationUnit.fromWvletString(typeDefs)
     val result    = compiler.compileMultipleUnits(List(typeUnit), queryUnit)
-    val sql       = GenSQL.generateSQL(queryUnit)(using result.context)
-    (sql, result.context)
+    GenSQL.generateSQL(queryUnit)(using result.context)
 
   test("parse a catalog.schema binding in the type definition context") {
-    val (_, context) = compileQuery(ordersType, "from sales.orders\n")
-    val sym          = context.findSymbolByName(Name.typeName("orders"))
-    sym.isDefined shouldBe true
-    sym.get.tree match
-      case t: TypeDef =>
+    val result = compile(ordersType, "from sales.orders\n")
+    result.context.findSymbolByName(Name.typeName("orders")).map(_.tree) match
+      case Some(t: TypeDef) =>
         t.defContexts.map(_.contextType.fullName) shouldBe List("mydb.sales")
       case other =>
         fail(s"Expected a TypeDef tree, but got: ${other}")
   }
 
+  test("reject bindings with more than two name parts") {
+    val result = compile(
+      "type orders in mycat.sales.extra = {\n  order_id: bigint\n}\n",
+      "from orders\n"
+    )
+    result.hasFailures shouldBe true
+    result.failureReport.values.exists(_.getMessage.contains("<catalog>.<schema>")) shouldBe true
+  }
+
   test("resolve a schema-qualified reference through the bound type") {
-    val (sql, _) = compileQuery(ordersType, "from sales.orders select order_id\n")
+    val sql = compileToSQL(ordersType, "from sales.orders select order_id\n")
     sql shouldContain "mydb.sales.orders"
     sql shouldContain "order_id"
   }
 
   test("resolve a catalog-qualified reference through the bound type") {
-    val (sql, _) = compileQuery(ordersType, "from mydb.sales.orders\n")
+    val sql = compileToSQL(ordersType, "from mydb.sales.orders\n")
+    sql shouldContain "mydb.sales.orders"
+  }
+
+  test("match catalog and schema names case-insensitively") {
+    val sql = compileToSQL(ordersType, "from MyDB.SALES.orders\n")
     sql shouldContain "mydb.sales.orders"
   }
 
   test("leave references to other schemas unresolved by the bound type") {
-    val (sql, _) = compileQuery(ordersType, "from archive.orders\n")
+    val sql = compileToSQL(ordersType, "from archive.orders\n")
     sql shouldContain "archive.orders"
     sql shouldNotContain "mydb.sales.orders"
   }
 
   test("skip bare references when the binding points outside the default schema") {
-    val (sql, _) = compileQuery(ordersType, "from orders\n")
+    val sql = compileToSQL(ordersType, "from orders\n")
     sql shouldNotContain "sales"
   }
 
-  test("resolve bare references when the binding matches the default schema") {
+  test("resolve bare references when the binding matches the default catalog and schema") {
+    // The compiler's default catalog/schema is memory/main when not configured
     val typeDef =
-      """type orders in main = {
+      """type orders in memory.main = {
         |  order_id: bigint
         |}
         |""".stripMargin
-    val (sql, _) = compileQuery(typeDef, "from orders\n")
-    sql shouldContain "main.orders"
+    val sql = compileToSQL(typeDef, "from orders\n")
+    sql shouldContain "memory.main.orders"
   }
 
   test("keep plain table types matching only bare references") {
@@ -93,23 +112,32 @@ class TypeTableBindingTest extends UniTest:
         |  event_id: bigint
         |}
         |""".stripMargin
-    val (bareSql, _) = compileQuery(typeDef, "from events\n")
+    val bareSql = compileToSQL(typeDef, "from events\n")
     bareSql shouldContain "events"
 
     // A qualified reference must not resolve through an unbound type by its leaf name
-    val (qualifiedSql, _) = compileQuery(typeDef, "from staging.events\n")
+    val qualifiedSql = compileToSQL(typeDef, "from staging.events\n")
     qualifiedSql shouldContain "staging.events"
   }
 
-  test("keep dialect contexts as non-binding scopes") {
+  test("keep single-part contexts as non-binding dialect scopes") {
+    // Dialect contexts are an open set (e.g. `type td_trino extends trino` in the stdlib),
+    // so any single-part context keeps the previous unbound-type behavior
     val typeDef =
       """type metrics in duckdb = {
         |  value: double
         |}
+        |type points in custom_dialect = {
+        |  x: double
+        |}
         |""".stripMargin
-    val (sql, _) = compileQuery(typeDef, "from metrics\n")
+    val sql = compileToSQL(typeDef, "from metrics\n")
     sql shouldContain "metrics"
     sql shouldNotContain "duckdb.metrics"
+
+    val customSql = compileToSQL(typeDef, "from points\n")
+    customSql shouldContain "points"
+    customSql shouldNotContain "custom_dialect"
   }
 
 end TypeTableBindingTest

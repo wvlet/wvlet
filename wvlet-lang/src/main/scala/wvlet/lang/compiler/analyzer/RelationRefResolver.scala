@@ -16,7 +16,6 @@ package wvlet.lang.compiler.analyzer
 import wvlet.lang.catalog.Catalog.TableName
 import wvlet.lang.compiler.Context
 import wvlet.lang.compiler.ContextLogSupport
-import wvlet.lang.compiler.DBType
 import wvlet.lang.compiler.ModelSymbolInfo
 import wvlet.lang.compiler.Name
 import wvlet.lang.compiler.RelationAliasSymbolInfo
@@ -100,15 +99,9 @@ object RelationRefResolver extends ContextLogSupport:
           case _ =>
             ref
       case None =>
-        resolveTableType(ref, context) match
-          case Some(resolved) =>
-            resolved
-          case None =>
-            resolveConnectorQualifiedRef(ref, context) match
-              case Some(resolved) =>
-                resolved
-              case None =>
-                resolveFromDefaultCatalog(ref, context)
+        resolveTableType(ref, context)
+          .orElse(resolveConnectorQualifiedRef(ref, context))
+          .getOrElse(resolveFromDefaultCatalog(ref, context))
     end match
   end resolveTableRef
 
@@ -116,23 +109,27 @@ object RelationRefResolver extends ContextLogSupport:
     * Resolve a table reference through a type definition, so table schemas described as source
     * (e.g. an imported static catalog, #1881) type-check without a live catalog connection. A plain
     * `type orders = {...}` matches only a bare `from orders` reference; a schema-bound
-    * `type orders in [<catalog>.]<schema> = {...}` also matches schema/catalog-qualified references
+    * `type orders in <catalog>.<schema> = {...}` also matches schema/catalog-qualified references
     * and compiles to a scan of the bound location
     */
   private def resolveTableType(ref: TableRef, context: Context): Option[Relation] =
     nameParts(ref.name) match
       case Nil =>
         None
-      case parts =>
-        val leaf      = parts.last
-        val qualifier = parts.dropRight(1)
+      case qualifier :+ leaf
+          if qualifier.headOption.exists(context.connectorCatalog(_).isDefined) =>
+        // Connector names shadow catalog/schema names, and connector-qualified scans carry
+        // routing metadata (connectorName) that bound types must not drop; leave the
+        // reference to resolveConnectorQualifiedRef
+        None
+      case qualifier :+ leaf =>
         lookupType(Name.typeName(leaf), context).flatMap { sym =>
           sym.symbolInfo.dataType match
             case tpe: SchemaType =>
               tableBindingOf(sym) match
                 case Some(binding) if bindingMatches(qualifier, binding, context) =>
                   context.logTrace(s"Found a table type for ${leaf} bound to ${binding}")
-                  val tableName = TableName(binding.catalog, Some(binding.schema), leaf)
+                  val tableName = TableName(Some(binding.catalog), Some(binding.schema), leaf)
                   Some(TableScan(tableName, tpe, tpe.fields, ref.span))
                 case None if qualifier.isEmpty =>
                   context.logTrace(s"Found a table type for ${leaf}: ${tpe}")
@@ -146,12 +143,12 @@ object RelationRefResolver extends ContextLogSupport:
         }
 
   /**
-    * The table location that a type is bound to via `type <name> in [<catalog>.]<schema>`.
-    * Single-part contexts naming a known database type (e.g. `type string in duckdb`) are dialect
-    * scopes, not table bindings
+    * The table location that a type is bound to via `type <name> in <catalog>.<schema>`.
+    * Single-part contexts (e.g. `type string in duckdb`, or dialects extending them like
+    * `td_trino`) keep their dialect-scope meaning and never bind tables
     */
-  private case class TableBinding(catalog: Option[String], schema: String):
-    override def toString: String = (catalog.toList :+ schema).mkString(".")
+  private case class TableBinding(catalog: String, schema: String):
+    override def toString: String = s"${catalog}.${schema}"
 
   private def tableBindingOf(sym: Symbol): Option[TableBinding] =
     sym.tree match
@@ -159,34 +156,29 @@ object RelationRefResolver extends ContextLogSupport:
         t.defContexts
           .iterator
           .map(d => nameParts(d.contextType))
-          .collectFirst {
-            case schema :: Nil if !isDBTypeName(schema) =>
-              TableBinding(None, schema)
-            case catalog :: schema :: Nil =>
-              TableBinding(Some(catalog), schema)
+          .collectFirst { case catalog :: schema :: Nil =>
+            TableBinding(catalog, schema)
           }
       case _ =>
         None
-
-  private def isDBTypeName(s: String): Boolean = DBType
-    .values
-    .exists(_.toString.equalsIgnoreCase(s))
 
   private def bindingMatches(
       qualifier: List[String],
       binding: TableBinding,
       context: Context
   ): Boolean =
+    // Catalog/schema names are matched case-insensitively, following SQL identifier semantics
+    def sameName(a: String, b: String): Boolean = a.equalsIgnoreCase(b)
     qualifier match
       case Nil =>
         // A bare reference resolves through a bound type only when the binding points to the
         // context's current catalog/schema, mirroring SQL search-path behavior
-        binding.schema == context.defaultSchema &&
-        binding.catalog.forall(_ == context.catalog.catalogName)
+        sameName(binding.schema, context.defaultSchema) &&
+        sameName(binding.catalog, context.catalog.catalogName)
       case schema :: Nil =>
-        schema == binding.schema
+        sameName(schema, binding.schema)
       case catalog :: schema :: Nil =>
-        binding.catalog.contains(catalog) && schema == binding.schema
+        sameName(catalog, binding.catalog) && sameName(schema, binding.schema)
       case _ =>
         false
 

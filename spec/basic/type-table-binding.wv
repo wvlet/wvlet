@@ -1,4 +1,4 @@
--- Schema-bound table types (#1881): `type <name> in [<catalog>.]<schema>` binds a type to a
+-- Schema-bound table types (#1881): `type <name> in <catalog>.<schema>` binds a type to a
 -- table location so that references type-check without a live catalog connection and compile
 -- to qualified table scans
 
@@ -22,8 +22,8 @@ from memory.binding_test.bound_orders
 where id = 1
 test _.size should be 1
 
--- A type bound to the default schema resolves bare references
-type bound_products in main = {
+-- A type bound to the default catalog and schema resolves bare references
+type bound_products in memory.main = {
   id: int
   name: string
 }
