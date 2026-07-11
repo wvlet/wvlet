@@ -16,6 +16,7 @@ package wvlet.lang.compiler.analyzer
 import wvlet.lang.catalog.Catalog.TableName
 import wvlet.lang.compiler.Context
 import wvlet.lang.compiler.ContextLogSupport
+import wvlet.lang.compiler.DBType
 import wvlet.lang.compiler.ModelSymbolInfo
 import wvlet.lang.compiler.Name
 import wvlet.lang.compiler.RelationAliasSymbolInfo
@@ -44,7 +45,8 @@ object RelationRefResolver extends ContextLogSupport:
       case i: Identifier =>
         lookupType(i.toTermName, context)
       case d: DotRef =>
-        // TODO Load table schema from the given qualified name
+        // Qualified names resolve through schema-bound table types (resolveTableType),
+        // connector-qualified references, or the default catalog
         None
       case _ =>
         None
@@ -98,14 +100,10 @@ object RelationRefResolver extends ContextLogSupport:
           case _ =>
             ref
       case None =>
-        // Lookup known types
-        val tblType = Name.typeName(ref.name.leafName)
-        lookupType(tblType, context).map(_.symbolInfo.dataType) match
-          case Some(tpe: SchemaType) =>
-            context.logTrace(s"Found a table type for ${tblType}: ${tpe}")
-            val tableName = TableName.parse(tblType.toTermName.name)
-            TableScan(tableName, tpe, tpe.fields, ref.span)
-          case _ =>
+        resolveTableType(ref, context) match
+          case Some(resolved) =>
+            resolved
+          case None =>
             resolveConnectorQualifiedRef(ref, context) match
               case Some(resolved) =>
                 resolved
@@ -113,6 +111,84 @@ object RelationRefResolver extends ContextLogSupport:
                 resolveFromDefaultCatalog(ref, context)
     end match
   end resolveTableRef
+
+  /**
+    * Resolve a table reference through a type definition, so table schemas described as source
+    * (e.g. an imported static catalog, #1881) type-check without a live catalog connection. A plain
+    * `type orders = {...}` matches only a bare `from orders` reference; a schema-bound
+    * `type orders in [<catalog>.]<schema> = {...}` also matches schema/catalog-qualified references
+    * and compiles to a scan of the bound location
+    */
+  private def resolveTableType(ref: TableRef, context: Context): Option[Relation] =
+    nameParts(ref.name) match
+      case Nil =>
+        None
+      case parts =>
+        val leaf      = parts.last
+        val qualifier = parts.dropRight(1)
+        lookupType(Name.typeName(leaf), context).flatMap { sym =>
+          sym.symbolInfo.dataType match
+            case tpe: SchemaType =>
+              tableBindingOf(sym) match
+                case Some(binding) if bindingMatches(qualifier, binding, context) =>
+                  context.logTrace(s"Found a table type for ${leaf} bound to ${binding}")
+                  val tableName = TableName(binding.catalog, Some(binding.schema), leaf)
+                  Some(TableScan(tableName, tpe, tpe.fields, ref.span))
+                case None if qualifier.isEmpty =>
+                  context.logTrace(s"Found a table type for ${leaf}: ${tpe}")
+                  Some(TableScan(TableName(None, None, leaf), tpe, tpe.fields, ref.span))
+                case _ =>
+                  // The reference qualifier does not point to the type's bound location;
+                  // leave it to connector/catalog resolution
+                  None
+            case _ =>
+              None
+        }
+
+  /**
+    * The table location that a type is bound to via `type <name> in [<catalog>.]<schema>`.
+    * Single-part contexts naming a known database type (e.g. `type string in duckdb`) are dialect
+    * scopes, not table bindings
+    */
+  private case class TableBinding(catalog: Option[String], schema: String):
+    override def toString: String = (catalog.toList :+ schema).mkString(".")
+
+  private def tableBindingOf(sym: Symbol): Option[TableBinding] =
+    sym.tree match
+      case t: TypeDef =>
+        t.defContexts
+          .iterator
+          .map(d => nameParts(d.contextType))
+          .collectFirst {
+            case schema :: Nil if !isDBTypeName(schema) =>
+              TableBinding(None, schema)
+            case catalog :: schema :: Nil =>
+              TableBinding(Some(catalog), schema)
+          }
+      case _ =>
+        None
+
+  private def isDBTypeName(s: String): Boolean = DBType
+    .values
+    .exists(_.toString.equalsIgnoreCase(s))
+
+  private def bindingMatches(
+      qualifier: List[String],
+      binding: TableBinding,
+      context: Context
+  ): Boolean =
+    qualifier match
+      case Nil =>
+        // A bare reference resolves through a bound type only when the binding points to the
+        // context's current catalog/schema, mirroring SQL search-path behavior
+        binding.schema == context.defaultSchema &&
+        binding.catalog.forall(_ == context.catalog.catalogName)
+      case schema :: Nil =>
+        schema == binding.schema
+      case catalog :: schema :: Nil =>
+        binding.catalog.contains(catalog) && schema == binding.schema
+      case _ =>
+        false
 
   /**
     * Resolve `from <connector>.<table>`, `from <connector>.<schema>.<table>`, or `from

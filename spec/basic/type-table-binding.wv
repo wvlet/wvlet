@@ -1,0 +1,36 @@
+-- Schema-bound table types (#1881): `type <name> in [<catalog>.]<schema>` binds a type to a
+-- table location so that references type-check without a live catalog connection and compile
+-- to qualified table scans
+
+execute sql"create schema if not exists binding_test"
+
+from [[1, 'apple'], [2, 'banana']] as t(id, name)
+save to binding_test.bound_orders
+
+type bound_orders in memory.binding_test = {
+  id: int
+  name: string
+}
+
+-- A schema-qualified reference resolves through the bound type
+from binding_test.bound_orders
+test _.size should be 2
+test _.columns should contain 'name'
+
+-- A catalog-qualified reference also matches the binding
+from memory.binding_test.bound_orders
+where id = 1
+test _.size should be 1
+
+-- A type bound to the default schema resolves bare references
+type bound_products in main = {
+  id: int
+  name: string
+}
+
+from [[1, 'pen']] as p(id, name)
+save to bound_products
+
+from bound_products
+test _.size should be 1
+test _.columns should contain 'id'
