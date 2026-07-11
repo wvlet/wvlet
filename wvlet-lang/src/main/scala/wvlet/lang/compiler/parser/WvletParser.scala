@@ -1402,9 +1402,28 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
             case WvletToken.COLON | WvletToken.EQ | WvletToken.EXTENDS =>
             // ok
             case _ =>
-              val nameOrType = identifier()
+              // A context is either a dialect name (in duckdb) or a catalog.schema table
+              // location for schema-bound table types (in mydb.sales)
+              var nameOrType: NameExpr = identifier()
+              if scanner.lookAhead().token == WvletToken.DOT then
+                consume(WvletToken.DOT)
+                nameOrType = DotRef(
+                  nameOrType,
+                  identifierSingle(),
+                  DataType.UnknownType,
+                  spanFrom(t)
+                )
+                if scanner.lookAhead().token == WvletToken.DOT then
+                  throw StatusCode
+                    .SYNTAX_ERROR
+                    .newException(
+                      s"context must be a dialect name or <catalog>.<schema>: ${nameOrType
+                          .fullName}",
+                      t.sourceLocation
+                    )
               scopes += DefContext(None, nameOrType, spanFrom(t))
               nextScope
+        end nextScope
         nextScope
         scopes.result()
       case _ =>
