@@ -133,11 +133,15 @@ object WvletJS:
     * document, enabling offline table/column resolution and cross-file references
     */
   @JSExport
-  def setWorkspacePath(path: String): Unit =
-    // The path can be null/undefined when called from the JS side
-    if path != null && path.nonEmpty && path != workspacePath then
-      workspacePath = path
-      cachedLspCompiler = None
+  def setWorkspacePath(path: js.UndefOr[String]): Unit =
+    // The path can be null or undefined when called from the JS side
+    path
+      .toOption
+      .filter(p => p != null && p.nonEmpty && p != workspacePath)
+      .foreach { p =>
+        workspacePath = p
+        cachedLspCompiler = None
+      }
 
   // Cached compiler shared by the LSP features (avoids repeated initialization); rebuilt when
   // the workspace path changes. Workspace files themselves are re-scanned on every compile

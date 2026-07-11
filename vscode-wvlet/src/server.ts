@@ -86,6 +86,10 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
       connection.console.warn(`Ignoring non-file workspace root: ${rootUri}`);
     }
   }
+  if (!workspacePath && params.rootPath) {
+    // Fallback for clients that pass a plain path instead of a file:// URI
+    workspacePath = params.rootPath;
+  }
   return {
     capabilities: {
       textDocumentSync: TextDocumentSyncKind.Incremental,
