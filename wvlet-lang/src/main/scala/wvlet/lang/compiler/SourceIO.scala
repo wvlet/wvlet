@@ -27,4 +27,23 @@ object SourceIO extends SourceIOCompat with LogSupport:
       lst += path
     lst.result()
 
+  /**
+    * List all source files under the path, descending into every subfolder except ignored and
+    * hidden ones. Used for well-known folders like `catalog/` (#1881) whose nested layout
+    * (`catalog/<name>/<schema>.wv`) has no source files at the intermediate levels, so the
+    * source-file-gated scan of [[listSourceFiles]] would skip them
+    */
+  def listSourceFilesRecursively(path: String): Seq[VirtualFile] = listSourceFilesRecursively(
+    LocalFile(path)
+  )
+
+  private def listSourceFilesRecursively(path: VirtualFile): Seq[VirtualFile] =
+    val lst = Seq.newBuilder[VirtualFile]
+    if path.isDirectory && !ignoredFolders.contains(path.name) && !path.name.startsWith(".") then
+      for f <- path.listFiles do
+        lst ++= listSourceFilesRecursively(f)
+    else if path.isSourceFile then
+      lst += path
+    lst.result()
+
 end SourceIO

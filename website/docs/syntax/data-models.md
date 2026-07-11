@@ -67,3 +67,6 @@ Notes on how bound types resolve:
 - Type definitions take precedence over the live database catalog, so committed type files act
   like a lockfile: the compile-time schema stays deterministic even when the database changes,
   while queries still execute against the real tables.
+
+Instead of writing these definitions by hand, you can generate them from a live database with
+[`wv catalog import`](../usage/catalog-import.md).

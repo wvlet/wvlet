@@ -16,6 +16,10 @@ object WvletMain:
   private def launcher: Launcher = Launcher
     .of[WvletMain]
     .addModule[WvletFlowCommand]("flow", "Manage and run flows")
+    .addModule[WvletCatalogCommand](
+      "catalog",
+      "Import database table schemas as Wvlet type definitions"
+    )
 
   private def wrap(body: => Unit): Unit =
     def findCause(e: Throwable): Throwable =
@@ -39,6 +43,8 @@ object WvletMain:
   def main(argLine: String): Unit     = wrap(launcher.execute(argLine))
 
   def isInSbt: Boolean = sys.props.getOrElse("wvlet.sbt.testing", "false").toBoolean
+
+end WvletMain
 
 /**
   * 'wvlet' command line interface

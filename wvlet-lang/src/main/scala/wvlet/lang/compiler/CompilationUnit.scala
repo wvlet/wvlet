@@ -174,7 +174,19 @@ object CompilationUnit extends LogSupport:
       cache: CompilationUnitCache = CompilationUnitCache()
   ): List[CompilationUnit] =
     // List all *.wv and .sql files under the path
-    val files = SourceIO.listSourceFiles(path)
+    toUnits(SourceIO.listSourceFiles(path), cache)
+
+  /**
+    * Load all source files of a `catalog/` folder (#1881). Unlike [[fromPath]], every subfolder is
+    * scanned, since the catalog layout (`catalog/<name>/<schema>.wv`) has no source files at the
+    * intermediate levels
+    */
+  def fromCatalogPath(
+      path: String,
+      cache: CompilationUnitCache = CompilationUnitCache()
+  ): List[CompilationUnit] = toUnits(SourceIO.listSourceFilesRecursively(path), cache)
+
+  private def toUnits(files: Seq[VirtualFile], cache: CompilationUnitCache): List[CompilationUnit] =
     val units =
       files
         .map { file =>
