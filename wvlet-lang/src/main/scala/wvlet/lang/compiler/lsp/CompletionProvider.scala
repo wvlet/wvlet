@@ -201,16 +201,13 @@ object CompletionProvider:
       case _: Throwable =>
       // Ignore parse errors — offer whatever we could extract
 
-    // Tier 3: column names via a best-effort full typing pass, plus definitions from the
-    // other workspace files parsed during the same pass (models, table types from an
-    // imported catalog, functions)
+    // Tier 3: column names via a best-effort full typing pass
     val typedUnit = CompilationUnit.fromWvletString(content)
     try
       compiler.compileSingleUnit(typedUnit)
       val plan = typedUnit.resolvedPlan
       if plan.nonEmpty then
         items ++= columnItems(plan, offset)
-      items ++= workspaceDefinitionItems(compiler)
     catch
       case _: Throwable =>
       // Ignore typing errors — column completion is opportunistic
@@ -218,6 +215,11 @@ object CompletionProvider:
       // Evict the transient snapshot so repeated requests on a long-lived compiler do not
       // accumulate stale symbols that shadow the workspace files
       compiler.releaseUnit(typedUnit)
+
+    // Definitions from the other workspace files (models, table types from an imported
+    // catalog, functions). Deliberately outside the typing pass above: a parse error in the
+    // current document must not drop them
+    items ++= workspaceDefinitionItems(compiler)
 
     // Tier 4: well-known SQL function names
     items ++= builtinFunctionItems
@@ -260,8 +262,47 @@ object CompletionProvider:
   private[lsp] case class DotContext(qualifier: List[String], prefix: String, dotOffset: Int)
 
   /**
+    * True when the position lies inside a single-line string literal, backquoted identifier, or
+    * line comment on its line, where member completion must not trigger (e.g. while typing a file
+    * path such as `from 'data.json'`)
+    */
+  private def inStringOrComment(content: String, pos: Int): Boolean =
+    var lineStart = pos
+    while lineStart > 0 && content(lineStart - 1) != '\n' do
+      lineStart -= 1
+    var i           = lineStart
+    var inSingle    = false
+    var inDouble    = false
+    var inBackquote = false
+    var comment     = false
+    while i < pos && !comment do
+      val c = content(i)
+      if inSingle then
+        inSingle = c != '\''
+      else if inDouble then
+        inDouble = c != '"'
+      else if inBackquote then
+        inBackquote = c != '`'
+      else
+        c match
+          case '\'' =>
+            inSingle = true
+          case '"' =>
+            inDouble = true
+          case '`' =>
+            inBackquote = true
+          case '-' if i + 1 < pos && content(i + 1) == '-' =>
+            comment = true
+          case _ =>
+      i += 1
+    inSingle || inDouble || inBackquote || comment
+
+  end inStringOrComment
+
+  /**
     * Detect a member-access context at the cursor. Returns None when the cursor is not right after
-    * `qualifier.[prefix]`, or for decimal literals like `1.5`
+    * `qualifier.[prefix]`, for decimal literals like `1.5`, or when the dot lies inside a string
+    * literal or comment
     */
   private[lsp] def dotContextAt(content: String, offset: Int): Option[DotContext] =
     def isIdentChar(c: Char): Boolean = c.isLetterOrDigit || c == '_'
@@ -270,7 +311,7 @@ object CompletionProvider:
     var i = at
     while i > 0 && isIdentChar(content(i - 1)) do
       i -= 1
-    if i == 0 || content(i - 1) != '.' then
+    if i == 0 || content(i - 1) != '.' || inStringOrComment(content, i - 1) then
       None
     else
       val prefix    = content.substring(i, at)
@@ -322,17 +363,18 @@ object CompletionProvider:
         if plan.isEmpty then
           Nil
         else
-          relationFieldsFor(plan, qualifier)
+          relationFieldsFor(plan, qualifier, offset)
       if columns.nonEmpty then
         columns
       else
         val tables = boundTableItems(compiler, typedUnit, dotCtx.qualifier)
         if tables.nonEmpty then
           tables
-        else if plan.nonEmpty then
-          // Fallback: columns of the relation enclosing the cursor (also covers `_.`)
+        else if plan.nonEmpty && qualifier == "_" then
+          // `_.` refers to the query input: offer the enclosing relation's columns
           columnItems(plan, offset)
         else
+          // Unknown qualifier: an empty member list is better than misleading suggestions
           Nil
     catch
       case _: Throwable =>
@@ -344,28 +386,66 @@ object CompletionProvider:
 
   /**
     * The columns of the relation that the given name refers to in the plan: a relation alias (`from
-    * orders as o ... o.`), or a scanned table/model name
+    * orders as o ... o.`), or a scanned table/model name. When several relations match (e.g. the
+    * same alias in multiple queries of one file), the one nearest to the cursor wins. Names are
+    * matched case-insensitively, following SQL identifier semantics
     */
-  private def relationFieldsFor(plan: LogicalPlan, name: String): List[CompletionItem] =
-    val nodes  = plan.collectAllNodes
-    val fields = nodes
-      .collectFirst {
-        case a: AliasedRelation if a.alias.leafName == name =>
-          a.relationType.fields
-      }
-      .orElse {
-        nodes.collectFirst {
-          case t: TableScan if t.name.name == name =>
-            t.columns
-          case m: ModelScan if m.name.name == name =>
-            m.relationType.fields
-        }
-      }
-    fields
+  private def relationFieldsFor(
+      plan: LogicalPlan,
+      name: String,
+      offset: Int
+  ): List[CompletionItem] =
+    def sameName(a: String, b: String): Boolean  = a.equalsIgnoreCase(b)
+    def distance(span: wvlet.lang.api.Span): Int =
+      if !span.exists then
+        Int.MaxValue
+      else if offset < span.start then
+        span.start - offset
+      else if offset > span.end then
+        offset - span.end
+      else
+        0
+    def nearestFields(
+        matches: List[(wvlet.lang.api.Span, () => Seq[wvlet.lang.model.DataType.NamedType])]
+    ): Option[Seq[wvlet.lang.model.DataType.NamedType]] = matches
+      .sortBy((span, _) => distance(span))
+      .iterator
+      .flatMap((_, fields) => scala.util.Try(fields()).toOption)
+      .nextOption()
+
+    // Search only the statement nearest the cursor: an alias or table of an unrelated
+    // statement in the same file must not shadow the qualifier
+    val searchPlan =
+      plan match
+        case pkg: PackageDef =>
+          pkg
+            .statements
+            .filter(_.span.exists)
+            .minByOption(stmt => distance(stmt.span))
+            .getOrElse(plan)
+        case _ =>
+          plan
+    val nodes = searchPlan.collectAllNodes
+    // Aliases take precedence over table/model names
+    val aliasMatches = nodes.collect {
+      case a: AliasedRelation if sameName(a.alias.leafName, name) =>
+        (a.span, () => a.relationType.fields)
+    }
+    val scanMatches = nodes.collect {
+      case t: TableScan if sameName(t.name.name, name) =>
+        (t.span, () => t.columns: Seq[wvlet.lang.model.DataType.NamedType])
+      case m: ModelScan if sameName(m.name.name, name) =>
+        (m.span, () => m.relationType.fields)
+    }
+    nearestFields(aliasMatches)
+      .orElse(nearestFields(scanMatches))
       .getOrElse(Nil)
       .filter(f => !f.name.isEmpty && f.name.name != "<NoName>")
       .map(f => CompletionItem(f.name.name, CompletionItemKind.Field, f.dataType.typeName.name))
       .distinct
+      .toList
+
+  end relationFieldsFor
 
   /**
     * The table types bound to the schema (or catalog.schema) named by the qualifier, collected from
@@ -414,7 +494,15 @@ object CompletionProvider:
       buf.result()
     try
       val workspaceUnits = compiler.compilationUnitsInSourcePaths.filterNot(_.isPreset)
-      (currentUnit :: workspaceUnits).flatMap(u => tableTypes(u.resolvedPlan))
+      (currentUnit :: workspaceUnits).flatMap { u =>
+        // Type definitions are syntactic, so fall back to the parsed plan when typing failed
+        val plan =
+          if u.resolvedPlan.nonEmpty then
+            u.resolvedPlan
+          else
+            u.unresolvedPlan
+        tableTypes(plan)
+      }
     catch
       case _: Throwable =>
         Nil

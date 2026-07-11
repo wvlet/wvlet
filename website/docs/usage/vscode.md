@@ -42,8 +42,8 @@ catalog) — for example `orders.` lists the order columns, and `sales.` lists t
 the `sales` schema.
 
 Column suggestions rely on type resolution, so they appear once the surrounding query
-is complete enough to be analyzed. Keyword and definition suggestions are always available,
-including while a query is still being written.
+is complete enough to be analyzed. Outside member-access contexts, keyword and definition
+suggestions are always available, including while a query is still being written.
 
 ## Hover Information
 

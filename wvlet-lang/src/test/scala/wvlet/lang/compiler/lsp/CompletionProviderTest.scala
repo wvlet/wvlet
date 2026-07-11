@@ -163,6 +163,41 @@ class CompletionProviderTest extends UniTest:
     // Falls back to general completion (keywords present)
     labels shouldContain "select"
 
+  test("should not treat dots inside string literals as member access"):
+    // Typing a quoted file path must keep the general suggestions
+    val src    = "from 'data."
+    val labels = complete(src, src.length).map(_.label).toSet
+    labels shouldContain "from"
+
+  test("should not treat dots inside comments as member access"):
+    val src    = "-- see foo.\nfrom [[1]] as t(secret_col)"
+    val labels = complete(src, 11).map(_.label).toSet
+    labels shouldContain "from"
+
+  test("should return no members for an unknown qualifier"):
+    val src   = "from [[1]] as t(x)\nselect unknown_alias."
+    val items = complete(src, src.length)
+    items shouldBe Nil
+
+  test("should keep workspace-independent suggestions when the document does not parse"):
+    // An incomplete `from ` must still offer keywords and function names
+    val src    = "from "
+    val labels = complete(src, src.length).map(_.label).toSet
+    labels shouldContain "count"
+    labels shouldContain "select"
+
+  test("should prefer the schema over an alias of an unrelated statement"):
+    val src =
+      """type orders in mydb.sales = {
+        |  order_id: long
+        |}
+        |from [[1]] as sales(alias_col)
+        |
+        |from sales.""".stripMargin
+    val labels = complete(src, src.length).map(_.label).toSet
+    labels shouldContain "orders"
+    labels shouldNotContain "alias_col"
+
   test("should offer well-known SQL function names"):
     val labels = complete("from [[1]] as t(x)\n", 0).map(_.label).toSet
     labels shouldContain "count"
