@@ -13,6 +13,7 @@
  */
 package wvlet.lang.catalog
 
+import wvlet.lang.api.StatusCode
 import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.compiler.SourceIO
 import wvlet.lang.compiler.parser.ParserPhase
@@ -191,6 +192,8 @@ object StaticCatalogExporter extends LogSupport:
 
   private def validatePathName(name: String): Unit =
     if !isValidFolderName(name) then
-      throw IllegalArgumentException(s"Name '${name}' cannot be used as a catalog folder name")
+      throw StatusCode
+        .INVALID_ARGUMENT
+        .newException(s"Name '${name}' cannot be used as a catalog folder name")
 
 end StaticCatalogExporter

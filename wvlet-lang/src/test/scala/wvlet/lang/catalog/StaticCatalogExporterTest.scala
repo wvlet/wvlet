@@ -14,6 +14,7 @@
 package wvlet.lang.catalog
 
 import wvlet.uni.test.UniTest
+import wvlet.lang.api.WvletLangException
 import wvlet.lang.catalog.Catalog.TableColumn
 import wvlet.lang.catalog.Catalog.TableDef
 import wvlet.lang.catalog.Catalog.TableName
@@ -114,7 +115,7 @@ class StaticCatalogExporterTest extends UniTest:
   }
 
   test("reject catalog or schema names that escape the target folder") {
-    intercept[IllegalArgumentException] {
+    intercept[WvletLangException] {
       StaticCatalogExporter.exportSchemas(
         "../evil",
         List("sales"),
@@ -126,7 +127,7 @@ class StaticCatalogExporterTest extends UniTest:
 
   test("reject catalog names that the source scan would skip") {
     // catalog/target would silently never load back: the folder scan ignores target/
-    intercept[IllegalArgumentException] {
+    intercept[WvletLangException] {
       StaticCatalogExporter.exportSchemas(
         "target",
         List("sales"),
