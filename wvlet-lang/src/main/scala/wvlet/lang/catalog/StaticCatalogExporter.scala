@@ -104,14 +104,17 @@ object StaticCatalogExporter extends LogSupport:
     validatePathName(catalogName)
     val written = List.newBuilder[String]
     schemaNames.foreach { schemaName =>
-      validatePathName(schemaName)
-      val tables = tablesOf(schemaName)
-      if tables.isEmpty then
-        debug(s"Skipping schema ${catalogName}.${schemaName}: no tables")
+      if !isValidFolderName(schemaName) then
+        // Skip only the offending schema so the rest of the catalog still imports
+        warn(s"Skipping schema ${catalogName}.${schemaName}: unsupported schema name")
       else
-        val path = s"${basePath}/${catalogName}/${schemaName}.wv"
-        SourceIO.writeString(path, generateSchemaSource(catalogName, schemaName, tables))
-        written += path
+        val tables = tablesOf(schemaName)
+        if tables.isEmpty then
+          debug(s"Skipping schema ${catalogName}.${schemaName}: no tables")
+        else
+          val path = s"${basePath}/${catalogName}/${schemaName}.wv"
+          SourceIO.writeString(path, generateSchemaSource(catalogName, schemaName, tables))
+          written += path
     }
     val writtenPaths = written.result()
     if pruneStale then
@@ -177,14 +180,17 @@ object StaticCatalogExporter extends LogSupport:
     else
       s"any -- original type: ${expr}"
 
+  /**
+    * A name is usable as a catalog folder name when it cannot escape the target folder and the
+    * compiler's catalog folder scan will find it again: the scan skips ignored and hidden folders,
+    * so an export with such a name would silently never load back
+    */
+  private def isValidFolderName(name: String): Boolean =
+    name.nonEmpty && !name.contains("/") && !name.contains("\\") && !name.contains("..") &&
+      !name.startsWith(".") && !SourceIO.ignoredFolders.contains(name)
+
   private def validatePathName(name: String): Unit =
-    if name.isEmpty || name.contains("/") || name.contains("\\") || name.contains("..") then
-      throw IllegalArgumentException(s"Invalid catalog/schema name: ${name}")
-    // The compiler's catalog folder scan skips ignored and hidden folders, so an export with
-    // such a name would silently never load back
-    if name.startsWith(".") || SourceIO.ignoredFolders.contains(name) then
-      throw IllegalArgumentException(
-        s"Catalog/schema name '${name}' cannot be used as a catalog folder name"
-      )
+    if !isValidFolderName(name) then
+      throw IllegalArgumentException(s"Name '${name}' cannot be used as a catalog folder name")
 
 end StaticCatalogExporter
