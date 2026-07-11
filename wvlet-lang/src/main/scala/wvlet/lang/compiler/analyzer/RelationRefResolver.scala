@@ -116,8 +116,7 @@ object RelationRefResolver extends ContextLogSupport:
     nameParts(ref.name) match
       case Nil =>
         None
-      case qualifier :+ leaf
-          if qualifier.headOption.exists(context.connectorCatalog(_).isDefined) =>
+      case qualifier :+ leaf if qualifier.headOption.flatMap(context.connectorCatalog).isDefined =>
         // Connector names shadow catalog/schema names, and connector-qualified scans carry
         // routing metadata (connectorName) that bound types must not drop; leave the
         // reference to resolveConnectorQualifiedRef
