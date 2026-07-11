@@ -192,8 +192,8 @@ object CompletionProvider:
       // Ignore parse errors — offer whatever we could extract
 
     // Tier 3: column names via a best-effort full typing pass
+    val typedUnit = CompilationUnit.fromWvletString(content)
     try
-      val typedUnit = CompilationUnit.fromWvletString(content)
       compiler.compileSingleUnit(typedUnit)
       val plan = typedUnit.resolvedPlan
       if plan.nonEmpty then
@@ -201,6 +201,10 @@ object CompletionProvider:
     catch
       case _: Throwable =>
       // Ignore typing errors — column completion is opportunistic
+    finally
+      // Evict the transient snapshot so repeated requests on a long-lived compiler do not
+      // accumulate stale symbols that shadow the workspace files
+      compiler.releaseUnit(typedUnit)
 
     dedup(items.result())
 

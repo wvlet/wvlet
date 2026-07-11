@@ -127,6 +127,16 @@ case class GlobalContext(compilerOptions: CompilerOptions):
           case Some(existing) =>
             existing
 
+  /**
+    * Release a transient compilation unit (e.g. an in-memory LSP document snapshot) from the global
+    * symbol index and context table. Long-lived compilers compile a fresh snapshot per editor
+    * request; without eviction the stale snapshots accumulate, and their symbols shadow the
+    * definitions of the real workspace files
+    */
+  def releaseUnit(unit: CompilationUnit): Unit =
+    symbolIndex.remove(unit)
+    contextTable.remove(unit.sourceFile)
+
   def getAllContexts: List[Context]                 = contextTable.values.toList
   def getAllCompilationUnits: List[CompilationUnit] = getAllContexts
     .map(_.compilationUnit)

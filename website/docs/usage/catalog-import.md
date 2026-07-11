@@ -73,6 +73,12 @@ detects:
     done
 ```
 
+## Editor support
+
+The [VS Code extension](./vscode.md) loads the `catalog/` folder of your workspace
+automatically: after an import, table references resolve in the editor — diagnostics,
+column completion, and hover work offline against the imported schemas.
+
 ## Notes
 
 - Table and column names that are not plain identifiers are written as backquoted identifiers

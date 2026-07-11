@@ -83,8 +83,8 @@ object HoverProvider:
     *   A compiler used for the best-effort full typing pass that resolves types and symbols
     */
   def hover(content: String, offset: Int, compiler: Compiler): Option[HoverResult] =
+    val unit = CompilationUnit.fromWvletString(content)
     try
-      val unit = CompilationUnit.fromWvletString(content)
       compiler.compileSingleUnit(unit)
       val plan = unit.resolvedPlan
       if plan.isEmpty then
@@ -113,6 +113,11 @@ object HoverProvider:
       case _: Throwable =>
         // Hover is opportunistic: never surface a compile error to the editor
         None
+    finally
+      // Evict the transient snapshot so repeated requests on a long-lived compiler do not
+      // accumulate stale symbols that shadow the workspace files
+      compiler.releaseUnit(unit)
+    end try
 
   end hover
 

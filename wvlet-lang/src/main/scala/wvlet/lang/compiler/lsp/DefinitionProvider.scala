@@ -77,9 +77,8 @@ object DefinitionProvider:
     *   A compiler used for the best-effort full typing pass that resolves symbols
     */
   def definition(content: String, offset: Int, compiler: Compiler): Option[DefinitionResult] =
+    val unit = CompilationUnit.fromWvletString(content)
     try
-      val unit = CompilationUnit.fromWvletString(content)
-
       // Collect top-level model/type definitions with a parse-only pass (resilient to parse errors)
       val definitions =
         try
@@ -130,6 +129,11 @@ object DefinitionProvider:
       case _: Throwable =>
         // Go-to-definition is opportunistic: never surface a compile error to the editor
         None
+    finally
+      // Evict the transient snapshot so repeated requests on a long-lived compiler do not
+      // accumulate stale symbols that shadow the workspace files
+      compiler.releaseUnit(unit)
+    end try
 
   end definition
 
