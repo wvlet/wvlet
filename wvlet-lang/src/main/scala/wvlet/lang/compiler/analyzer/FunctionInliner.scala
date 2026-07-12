@@ -198,6 +198,12 @@ object FunctionInliner extends ContextLogSupport:
       resolvedArgs: List[(TermName, Expression)],
       activeFunctions: List[Symbol] = Nil
   )(using context: Context): Expression =
+    if isEngineNative(m) then
+      // An engine-native body must never be inlined (its NativeExpression has no compile-time
+      // evaluation): keep the reference as written so it compiles to plain SQL. This also
+      // covers the DotRef member paths that bypass resolveFunctionApply
+      return base
+
     val fnSym = m.symbol
     if !fnSym.isNoSymbol && activeFunctions.exists(_ eq fnSym) then
       val cyclePath = (activeFunctions.reverse.map(_.name.name) :+ m.name.name).mkString(" -> ")

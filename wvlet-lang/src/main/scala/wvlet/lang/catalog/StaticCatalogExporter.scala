@@ -97,7 +97,8 @@ object StaticCatalogExporter extends LogSupport:
     * Export the given schemas as Wvlet sources under `<basePath>/<catalogName>/<schemaName>.wv`,
     * loading each schema's tables with `tablesOf`. When `pruneStale` is set (full-catalog exports),
     * previously generated files that were not re-generated in this run — e.g. of schemas dropped
-    * from the database — are deleted; hand-written files are kept. Returns the written file paths
+    * from the database — are deleted; hand-written files and generated files listed in `keepPaths`
+    * (e.g. a functions.wv written by [[exportFunctions]]) are kept. Returns the written file paths
     */
   def exportSchemas(
       catalogName: String,
@@ -167,15 +168,13 @@ object StaticCatalogExporter extends LogSupport:
          |-- Functions of the ${contextName} engine, bound for offline query validation.
          |-- Re-run `wvlet catalog import` to refresh; add hand-written defs in your own files."""
         .stripMargin
-    // Caches the per-def grammar check within this export
-    val defCache = mutable.Map.empty[String, Boolean]
-    val defs     = functions
+    val defs = functions
       .filter(f => isExportable(f))
       .groupBy(_.name.toLowerCase)
       .toSeq
       .sortBy(_._1)
       .flatMap { case (name, overloads) =>
-        renderFunctionDef(name, contextName, overloads, defCache)
+        renderFunctionDef(name, contextName, overloads)
       }
     if defs.isEmpty then
       ""
@@ -191,10 +190,9 @@ object StaticCatalogExporter extends LogSupport:
   private def renderFunctionDef(
       name: String,
       contextName: String,
-      overloads: Seq[SQLFunction],
-      defCache: mutable.Map[String, Boolean]
+      overloads: Seq[SQLFunction]
   ): Option[String] =
-    def render(argTypes: Seq[String], retType: Option[String]): String =
+    def render(argTypes: Seq[String], retType: String): String =
       val args =
         if argTypes.isEmpty then
           ""
@@ -205,23 +203,19 @@ object StaticCatalogExporter extends LogSupport:
               s"a${i + 1}: ${t}"
             }
             .mkString("(", ", ", ")")
-      val ret = retType.map(t => s": ${t}").getOrElse("")
-      s"def ${name}${args} in ${contextName}${ret} = native"
+      s"def ${name}${args} in ${contextName}: ${retType} = native"
 
-    def parses(defSource: String): Boolean = defCache.getOrElseUpdate(
-      defSource,
-      Try(ParserPhase.parseOnly(CompilationUnit.fromWvletString(s"${defSource}\n"))).isSuccess
-    )
+    def parses(defSource: String): Boolean = parseProbe(s"${defSource}\n")
 
     val returnTypes = overloads.map(_.returnType.wvExpr).distinct
     val retType     =
       returnTypes match
         case Seq(single) =>
-          Some(single)
+          single
         case _ =>
           // Overloads disagree on the return type; `any` keeps calls typed without
           // committing to a wrong type
-          Some("any")
+          "any"
     val argTypes =
       if overloads.size == 1 then
         overloads.head.args.map(_.wvExpr)
@@ -230,20 +224,19 @@ object StaticCatalogExporter extends LogSupport:
         // can start failing on an argument-type mismatch
         Seq.fill(overloads.map(_.args.size).max)("any")
 
-    // Degrade gracefully when a type does not round-trip through the Wvlet def grammar:
-    // first the argument types, then the return type, fall back to `any`
+    // Degrade gracefully when a type does not round-trip through the Wvlet def grammar,
+    // falling back to `any` for the argument types and the return type independently
     val candidates =
       Seq(
         render(argTypes, retType),
         render(argTypes.map(_ => "any"), retType),
-        render(argTypes.map(_ => "any"), retType.map(_ => "any"))
+        render(argTypes, "any"),
+        render(argTypes.map(_ => "any"), "any")
       ).distinct
-    candidates.find(parses) match
-      case some @ Some(_) =>
-        some
-      case None =>
-        warn(s"Skipping function ${name}: signature does not fit the Wvlet def grammar")
-        None
+    val rendered = candidates.find(parses)
+    if rendered.isEmpty then
+      warn(s"Skipping function ${name}: signature does not fit the Wvlet def grammar")
+    rendered
 
   end renderFunctionDef
 
@@ -254,9 +247,8 @@ object StaticCatalogExporter extends LogSupport:
     */
   private def isExportable(f: SQLFunction): Boolean =
     val name = f.name.toLowerCase
-    exportableFunctionTypes.contains(f.functionType) && identifierPattern.matches(f.name) &&
-    !keywords.contains(name) && !BuiltinFunctions.allFunctionNames.contains(name) &&
-    !stdlibFunctionNames.contains(name)
+    exportableFunctionTypes.contains(f.functionType) && isPlainIdentifier(f.name) &&
+    !BuiltinFunctions.allFunctionNames.contains(name) && !stdlibFunctionNames.contains(name)
 
   /** TABLE, PRAGMA, and MACRO functions use a different call syntax and are not exported */
   private val exportableFunctionTypes: Set[FunctionType] = Set(
@@ -265,23 +257,23 @@ object StaticCatalogExporter extends LogSupport:
     FunctionType.WINDOW
   )
 
-  /** Top-level function names defined in the standard library (e.g. ulid_string) */
+  /**
+    * Top-level function names defined in the standard library (e.g. ulid_string). The stdlib ships
+    * with the compiler, so a parse failure here is a compiler bug and fails the export loudly
+    * instead of silently emitting colliding definitions
+    */
   private lazy val stdlibFunctionNames: Set[String] =
     CompilationUnit
       .stdLib
       .flatMap { unit =>
-        Try(ParserPhase.parseOnly(unit))
-          .toOption
-          .toList
-          .flatMap {
-            case p: PackageDef =>
-              p.statements
-                .collect { case t: TopLevelFunctionDef =>
-                  t.functionDef.name.name.toLowerCase
-                }
-            case _ =>
-              Nil
-          }
+        ParserPhase.parseOnly(unit) match
+          case p: PackageDef =>
+            p.statements
+              .collect { case t: TopLevelFunctionDef =>
+                t.functionDef.name.name.toLowerCase
+              }
+          case _ =>
+            Nil
       }
       .toSet
 
@@ -322,11 +314,19 @@ object StaticCatalogExporter extends LogSupport:
           )
           false
 
+  /** True when the name is a plain identifier that is not a (reserved or non-reserved) keyword */
+  private def isPlainIdentifier(name: String): Boolean =
+    identifierPattern.matches(name) && !keywords.contains(name.toLowerCase)
+
   private def quote(name: String): String =
-    if identifierPattern.matches(name) && !keywords.contains(name.toLowerCase) then
+    if isPlainIdentifier(name) then
       name
     else
       s"`${name}`"
+
+  /** True when the given Wvlet source parses, used to validate generated definitions */
+  private def parseProbe(source: String): Boolean =
+    Try(ParserPhase.parseOnly(CompilationUnit.fromWvletString(source))).isSuccess
 
   /**
     * The Wvlet type expression of a column. Falls back to `any` (keeping the original type in a
@@ -334,11 +334,7 @@ object StaticCatalogExporter extends LogSupport:
     */
   private def fieldType(dataType: DataType, typeCache: mutable.Map[String, Boolean]): String =
     val expr    = dataType.wvExpr
-    val isValid = typeCache.getOrElseUpdate(
-      expr,
-      Try(ParserPhase.parseOnly(CompilationUnit.fromWvletString(s"type t = {\n  c: ${expr}\n}\n")))
-        .isSuccess
-    )
+    val isValid = typeCache.getOrElseUpdate(expr, parseProbe(s"type t = {\n  c: ${expr}\n}\n"))
     if isValid then
       expr
     else

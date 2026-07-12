@@ -62,6 +62,47 @@ class EngineNativeFunctionTest extends UniTest:
     sql shouldContain "regexp_extract_xyz(x, 'a', 1, 'extra')"
   }
 
+  test("inline a user-defined function nested in an engine-native call") {
+    val sql = generateSQL(
+      s"""def regexp_extract_xyz(a1: string, a2: string) in duckdb: string = native
+         |def my_pattern(p: string): string = concat('[', p, ']')
+         |
+         |from [['a']] as t(x)
+         |select regexp_extract_xyz(x, my_pattern('0-9')) as r
+         |""".stripMargin
+    )
+    sql shouldContain "regexp_extract_xyz(x, concat('[', '0-9', ']'))"
+  }
+
+  test("pass through an engine-native call nested in a user-defined function body") {
+    val sql = generateSQL(
+      s"""def regexp_extract_xyz(a1: string, a2: string) in duckdb: string = native
+         |def digits_of(v: string): string = regexp_extract_xyz(v, '[0-9]+')
+         |
+         |from [['a1']] as t(x)
+         |select digits_of(x) as r
+         |""".stripMargin
+    )
+    sql shouldContain "regexp_extract_xyz(x, '[0-9]+')"
+  }
+
+  test("prefer an input column over an imported function of the same name") {
+    // DuckDB exports functions with common column names (age, sign, version, ...); a bare
+    // identifier in a query must keep denoting the column
+    val baseline = generateSQL("""from [[25]] as t(age)
+        |where age > 20
+        |select age
+        |""".stripMargin)
+    val withDef = generateSQL(s"""def age(a1: any) in duckdb: string = native
+         |
+         |from [[25]] as t(age)
+         |where age > 20
+         |select age
+         |""".stripMargin)
+    withDef shouldBe baseline
+    withDef shouldContain "age > 20"
+  }
+
   test("keep evaluating compiler-implemented native functions at compile time") {
     val sql = generateSQL("select ulid_string as id\n")
     // The generated ULID literal replaces the function reference

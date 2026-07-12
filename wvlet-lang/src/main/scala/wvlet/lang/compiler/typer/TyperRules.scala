@@ -16,6 +16,7 @@ package wvlet.lang.compiler.typer
 import wvlet.lang.api.WvletLangException
 import wvlet.lang.compiler.Context
 import wvlet.lang.compiler.MethodSymbolInfo
+import wvlet.lang.compiler.Symbol
 import wvlet.lang.compiler.analyzer.FunctionInliner
 import wvlet.lang.model.plan.*
 import wvlet.lang.model.expr.*
@@ -115,13 +116,26 @@ object TyperRules:
       // Look up symbol from scope, imports, and global scope. The lookup runs on every typing
       // pass on purpose: a later pass may see a scope-local definition (e.g., a relation alias
       // entered during typing) that must shadow a previously attached global symbol
+      def isFunctionDef(sym: Symbol): Boolean =
+        !sym.isCompleting && sym.symbolInfo.isInstanceOf[MethodSymbolInfo]
+      def inputColumn = ctx.inputType.fields.find(_.name.name == id.unquotedValue)
       ctx.findSymbolByName(id.toTermName) match
+        case Some(sym) if isFunctionDef(sym) && inputColumn.isDefined =>
+          // A column of the input relation shadows a function definition of the same name:
+          // a bare identifier in a query denotes the column (function calls use parentheses),
+          // so an imported engine function named like a column (e.g. age) must not steal its
+          // typing
+          id.tpe = inputColumn.get.dataType
+          id
+
         case Some(sym) =>
           id.symbol = sym // Attach symbol for named reference
           // A reference to a function definition carries the full function signature (not a
           // DataType), so an enclosing FunctionApply can take its return type
           id.tpe =
             if sym.isCompleting then
+              // The symbol's own completion is running (e.g. a self-referencing definition),
+              // so its type is not known yet
               DataType.UnknownType
             else
               sym.symbolInfo match
@@ -133,7 +147,7 @@ object TyperRules:
 
         case None =>
           // Check input relation for column
-          ctx.inputType.fields.find(_.name.name == id.unquotedValue) match
+          inputColumn match
             case Some(field) =>
               id.tpe = field.dataType
               id
@@ -148,6 +162,7 @@ object TyperRules:
                   // Unresolved identifier
                   id.tpe = ErrorType(s"Unresolved identifier: ${id.unquotedValue}")
                   id
+      end match
   }
 
   /**

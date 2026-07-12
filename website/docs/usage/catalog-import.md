@@ -76,6 +76,9 @@ A few notes on what gets imported:
   the compiler accepts every call the engine would.
 - Pass `--no-functions` to skip the functions import (a later full import without the flag
   refreshes the file; with the flag it is removed again).
+- If one of your own files defines a function with the same name, the compiler reports a
+  duplicate-definition warning and deterministically uses the definition from the first file
+  in source-file name order. Rename one of them to remove the ambiguity.
 
 ## Keeping catalogs up to date
 
