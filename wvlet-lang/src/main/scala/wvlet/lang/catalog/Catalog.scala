@@ -23,6 +23,8 @@ import wvlet.lang.model.DataType.NamedType
 import wvlet.lang.model.DataType.SchemaType
 import wvlet.lang.compiler.DBType
 import wvlet.lang.compiler.Name
+import wvlet.uni.weaver.Weaver
+import wvlet.uni.weaver.codec.PrimitiveWeaver.given
 
 import java.lang.invoke.MethodHandles.loop
 
@@ -185,6 +187,13 @@ object Catalog:
       }
 
   case class TableColumn(name: String, dataType: DataType, properties: Map[String, Any] = Map.empty)
+
+  /**
+    * Weavers derived where DataType's string codec is in scope, so that JSON/MessagePack
+    * serialization of table metadata preserves concrete column types (#1891)
+    */
+  given tableColumnWeaver: Weaver[TableColumn] = Weaver.of[TableColumn]
+  given tableDefWeaver: Weaver[TableDef]       = Weaver.of[TableDef]
 
   sealed trait CreateMode
 

@@ -26,6 +26,12 @@ import wvlet.lang.model.DataType.PrimitiveType
 import wvlet.lang.model.DataType.TypeParameter
 import wvlet.lang.model.expr.NameExpr
 import wvlet.uni.log.LogSupport
+import wvlet.uni.msgpack.spi.Packer
+import wvlet.uni.msgpack.spi.Unpacker
+import wvlet.uni.msgpack.spi.ValueType
+import wvlet.uni.weaver.Weaver
+import wvlet.uni.weaver.WeaverConfig
+import wvlet.uni.weaver.WeaverContext
 
 import scala.util.Try
 import scala.util.control.NonFatal
@@ -125,6 +131,38 @@ case class RelationTypeList(override val typeName: TypeName, inputRelationTypes:
   }
 
 object DataType extends LogSupport:
+  /**
+    * Serialize DataType as a single parseable string so that JSON/MessagePack round-trips preserve
+    * the concrete type (e.g., decimal(10,2), array(string), timestamp with time zone). Without
+    * this, derived weavers fall back to a structural encoding of the abstract class that degrades
+    * to a bare type name on read (#1891). `toString` is used because it keeps timestamp time-zone
+    * information, unlike `sqlExpr`; the trailing `?` that `typeDescription` appends for unresolved
+    * types is stripped before parsing.
+    */
+  given weaver: Weaver[DataType] =
+    new Weaver[DataType]:
+      override def pack(p: Packer, v: DataType, config: WeaverConfig): Unit = p.packString(
+        v.toString
+      )
+
+      override def unpack(u: Unpacker, context: WeaverContext): Unit =
+        u.getNextValueType match
+          case ValueType.STRING =>
+            try
+              val s = u.unpackString
+              context.setObject(parse(s.stripSuffix("?")))
+            catch
+              case NonFatal(e) =>
+                context.setError(e)
+          case ValueType.NIL =>
+            u.unpackNil
+            context.setNull
+          case other =>
+            u.skipValue
+            context.setError(
+              IllegalArgumentException(s"Cannot convert ${other} to DataType, expected STRING")
+            )
+
   def parse(s: String): DataType =
     try
       if s == null || s.isEmpty then
@@ -436,7 +474,10 @@ object DataType extends LogSupport:
 
   val knownTypeNames: Set[String] = (
     primitiveTypeTable.map(_._1.name) ++ knownGenericTypeNames.map(_.name) ++
-      Set("array", "map", "row", "struct")
+      // decimal and time are parsed with dedicated grammar rules, so they are not in the
+      // primitive type table, but they must not be mistaken for type variables when they
+      // appear nested in type parameters, e.g., array(decimal(10,2))
+      Set("array", "map", "row", "struct", "decimal", "time")
   ).toSet
 
   def isKnownTypeName(s: String): Boolean = knownTypeNames.contains(s)

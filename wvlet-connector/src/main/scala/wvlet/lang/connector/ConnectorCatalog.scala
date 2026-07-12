@@ -36,8 +36,8 @@ class ConnectorCatalog(
 ) extends Catalog
     with LogSupport:
 
-  private given Weaver[Catalog.TableDef] = Weaver.of[Catalog.TableDef]
-  private val tableDefCodec              = summon[Weaver[List[Catalog.TableDef]]]
+  // Resolves via Catalog.tableDefWeaver, which preserves concrete column DataTypes (#1891)
+  private val tableDefCodec = summon[Weaver[List[Catalog.TableDef]]]
 
   private val tablesInSchemaCache = Caffeine
     .newBuilder()
