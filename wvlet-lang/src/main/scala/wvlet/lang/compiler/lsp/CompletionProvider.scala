@@ -105,7 +105,12 @@ object CompletionProvider:
         case t: TypeDef =>
           buf += CompletionItem(t.name.name, CompletionItemKind.Struct, "type")
         case f: TopLevelFunctionDef =>
-          buf += CompletionItem(f.functionDef.name.name, CompletionItemKind.Function, "function")
+          buf +=
+            CompletionItem(
+              f.functionDef.name.name,
+              CompletionItemKind.Function,
+              functionDetail(f.functionDef)
+            )
         case v: ValDef =>
           buf += CompletionItem(v.name.name, CompletionItemKind.Variable, "val")
         case p: PartialQueryDef =>
@@ -117,6 +122,23 @@ object CompletionProvider:
     buf.result()
 
   end definitionItems
+
+  /**
+    * The completion detail of a function definition, rendered as its signature `(args): ret` (e.g.
+    * `(a1: string, a2: string): string`) so the suggestion shows how to call the function. Falls
+    * back to the plain `function` label when the def declares neither arguments nor a return type
+    */
+  private def functionDetail(f: FunctionDef): String =
+    val args =
+      if f.args.isEmpty then
+        ""
+      else
+        f.args.map(a => s"${a.name.name}: ${a.dataType.wvExpr}").mkString("(", ", ", ")")
+    val ret = f.retType.map(t => s": ${t.wvExpr}").getOrElse("")
+    if args.isEmpty && ret.isEmpty then
+      "function"
+    else
+      s"${args}${ret}"
 
   /**
     * Extract column completion items visible at the given cursor offset. The columns come from the

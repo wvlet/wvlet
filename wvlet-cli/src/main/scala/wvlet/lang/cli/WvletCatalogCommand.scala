@@ -39,7 +39,9 @@ case class WvletCatalogOption(
       prefix = "--path",
       description = "Folder to write the generated .wv files (default: catalog)"
     )
-    path: String = "catalog"
+    path: String = "catalog",
+    @option(prefix = "--no-functions", description = "Skip importing engine functions")
+    noFunctions: Boolean = false
 )
 
 /**
@@ -86,20 +88,38 @@ class WvletCatalogCommand(opts: WvletGlobalOption) extends LogSupport:
           catalogOpts.path
         else
           s"${catalogOpts.workFolder}/${catalogOpts.path}"
+      val functionsPath =
+        if catalogOpts.noFunctions then
+          None
+        else
+          // The Generic engine runs on an in-process DuckDB, so its functions are DuckDB's
+          val contextName =
+            if engine.dbType == DBType.Generic then
+              DBType.DuckDB.toString.toLowerCase
+            else
+              engine.dbType.toString.toLowerCase
+          StaticCatalogExporter.exportFunctions(
+            catalogName,
+            contextName,
+            connector.listFunctions(catalogName),
+            basePath
+          )
       val written = StaticCatalogExporter.exportSchemas(
         catalogName,
         schemaNames,
         schemaName => connector.listTableDefs(catalogName, schemaName),
         basePath,
-        // A full-catalog import removes generated files of schemas dropped from the database
-        pruneStale = catalogOpts.schema.isEmpty
+        // A full-catalog import removes generated files of schemas dropped from the database.
+        // With --no-functions, this also removes a previously generated functions.wv
+        pruneStale = catalogOpts.schema.isEmpty,
+        keepPaths = functionsPath.toList
       )
-      if written.isEmpty then
+      if written.isEmpty && functionsPath.isEmpty then
         warn(
           s"No tables found in catalog ${catalogName}. Check the --profile, --catalog, and --schema options"
         )
       else
-        written.foreach(path => info(s"Generated ${path}"))
+        (functionsPath.toList ++ written).foreach(path => info(s"Generated ${path}"))
         info(s"Imported ${written.size} schema(s) from catalog ${catalogName}")
     }
   end `import`

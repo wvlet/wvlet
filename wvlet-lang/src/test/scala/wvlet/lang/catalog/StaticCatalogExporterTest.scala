@@ -114,6 +114,120 @@ class StaticCatalogExporterTest extends UniTest:
     sql shouldContain "order_id"
   }
 
+  private def fn(name: String, ret: String, args: String*): SQLFunction = SQLFunction(
+    name,
+    SQLFunction.FunctionType.SCALAR,
+    args.map(DataType.parse).toSeq,
+    DataType.parse(ret)
+  )
+
+  test("generate engine function definitions in deterministic order") {
+    val functions = List(
+      fn("regexp_extract", "string", "string", "string"),
+      fn("date_trunc", "timestamp", "string", "timestamp"),
+      fn("pi", "double")
+    )
+    val source = StaticCatalogExporter.generateFunctionsSource("duckdb", functions)
+    source shouldContain StaticCatalogExporter.generatedFileHeader
+    source shouldContain "def date_trunc(a1: string, a2: timestamp) in duckdb: timestamp = native"
+    source shouldContain "def regexp_extract(a1: string, a2: string) in duckdb: string = native"
+    source shouldContain "def pi in duckdb: double = native"
+    source.indexOf("def date_trunc") < source.indexOf("def pi") shouldBe true
+    source.indexOf("def pi") < source.indexOf("def regexp_extract") shouldBe true
+
+    // Regenerating from a different input order produces identical output
+    StaticCatalogExporter.generateFunctionsSource("duckdb", functions.reverse) shouldBe source
+  }
+
+  test("skip function names that could collide with the Wvlet syntax or builtin typing") {
+    val functions = List(
+      // Keywords cannot be backquoted usefully as call syntax
+      fn("end", "string", "string"),
+      // Builtin functions already have typing rules
+      fn("count", "long"),
+      fn("upper", "string", "string"),
+      // Standard library defines this function
+      fn("ulid_string", "string"),
+      // Operators are not plain identifiers
+      fn("+", "long", "long", "long"),
+      fn("regexp_extract", "string", "string", "string")
+    )
+    val source = StaticCatalogExporter.generateFunctionsSource("duckdb", functions)
+    source shouldContain "def regexp_extract"
+    source shouldNotContain "def end"
+    source shouldNotContain "def count"
+    source shouldNotContain "def upper"
+    source shouldNotContain "def ulid_string"
+    source shouldNotContain "def +"
+  }
+
+  test("skip functions with a non-plain-call syntax") {
+    val source = StaticCatalogExporter.generateFunctionsSource(
+      "duckdb",
+      List(
+        SQLFunction(
+          "read_csv",
+          SQLFunction.FunctionType.TABLE,
+          Seq(DataType.StringType),
+          DataType.AnyType
+        ),
+        SQLFunction("database_list", SQLFunction.FunctionType.PRAGMA, Nil, DataType.AnyType),
+        SQLFunction("add_macro", SQLFunction.FunctionType.MACRO, Nil, DataType.AnyType)
+      )
+    )
+    source shouldBe ""
+  }
+
+  test("collapse overloads to a single def with any arguments") {
+    val source = StaticCatalogExporter.generateFunctionsSource(
+      "duckdb",
+      List(
+        fn("date_trunc", "timestamp", "string", "timestamp"),
+        fn("date_trunc", "timestamp", "string", "date")
+      )
+    )
+    source shouldContain "def date_trunc(a1: any, a2: any) in duckdb: timestamp = native"
+  }
+
+  test("keep the return type of an overloaded function only when all overloads agree") {
+    val source = StaticCatalogExporter.generateFunctionsSource(
+      "duckdb",
+      List(fn("array_slice", "string", "string", "int"), fn("array_slice", "int", "int", "int"))
+    )
+    source shouldContain "def array_slice(a1: any, a2: any) in duckdb: any = native"
+  }
+
+  test("fall back to any for types that do not fit the def grammar") {
+    val source = StaticCatalogExporter.generateFunctionsSource(
+      "duckdb",
+      List(
+        SQLFunction(
+          "weird_fn",
+          SQLFunction.FunctionType.SCALAR,
+          Seq(DataType.UnknownType),
+          DataType.StringType
+        )
+      )
+    )
+    source shouldContain "def weird_fn(a1: any) in duckdb: string = native"
+  }
+
+  test("generated function definitions compile and pass calls through to SQL") {
+    val source = StaticCatalogExporter.generateFunctionsSource(
+      "duckdb",
+      List(fn("regexp_extract", "string", "string", "string"))
+    )
+    val compiler  = Compiler(CompilerOptions(sourceFolders = Nil, workEnv = WorkEnv(".")))
+    val fnUnit    = CompilationUnit.fromWvletString(source)
+    val queryUnit = CompilationUnit.fromWvletString(
+      "from [['a1']] as t(x)\nselect regexp_extract(x, '[0-9]+') as digits\n"
+    )
+    val result = compiler.compileMultipleUnits(List(fnUnit), queryUnit)
+    result.hasFailures shouldBe false
+    val sql = GenSQL.generateSQL(queryUnit)(using result.context)
+    sql shouldContain "regexp_extract(x, '[0-9]+')"
+  }
+
   test("reject catalog or schema names that escape the target folder") {
     intercept[WvletLangException] {
       StaticCatalogExporter.exportSchemas(

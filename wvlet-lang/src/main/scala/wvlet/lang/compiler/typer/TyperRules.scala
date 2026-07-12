@@ -15,6 +15,7 @@ package wvlet.lang.compiler.typer
 
 import wvlet.lang.api.WvletLangException
 import wvlet.lang.compiler.Context
+import wvlet.lang.compiler.MethodSymbolInfo
 import wvlet.lang.compiler.analyzer.FunctionInliner
 import wvlet.lang.model.plan.*
 import wvlet.lang.model.expr.*
@@ -117,7 +118,17 @@ object TyperRules:
       ctx.findSymbolByName(id.toTermName) match
         case Some(sym) =>
           id.symbol = sym // Attach symbol for named reference
-          id.tpe = sym.dataType
+          // A reference to a function definition carries the full function signature (not a
+          // DataType), so an enclosing FunctionApply can take its return type
+          id.tpe =
+            if sym.isCompleting then
+              DataType.UnknownType
+            else
+              sym.symbolInfo match
+                case m: MethodSymbolInfo =>
+                  m.ft
+                case info =>
+                  info.dataType
           id
 
         case None =>

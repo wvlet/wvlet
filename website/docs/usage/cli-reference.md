@@ -66,7 +66,8 @@ wvlet compile -f query.wv --target trino
 
 ### `wvlet catalog import`
 
-Import database table schemas as Wvlet type definitions for offline query validation.
+Import database table schemas as Wvlet type definitions, and engine functions as Wvlet
+function definitions, for offline query validation.
 See [Importing Database Catalogs](./catalog-import.md).
 
 ```bash
@@ -81,6 +82,7 @@ wvlet catalog import [options]
 | `--catalog <name>` | Catalog to import (default: profile catalog) |
 | `--schema <name>` | Import only the specified schema |
 | `--path <folder>` | Output folder (default: `catalog`) |
+| `--no-functions` | Skip importing engine functions |
 
 **Examples:**
 
