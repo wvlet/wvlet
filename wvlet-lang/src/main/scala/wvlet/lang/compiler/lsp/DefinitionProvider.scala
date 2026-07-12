@@ -183,7 +183,11 @@ object DefinitionProvider:
     * Collect the top-level `model`/`type` definitions of the workspace units loaded by the
     * compiler, so that references resolve across files. Preset units (the built-in stdlib) are
     * skipped: their in-memory sources have no file the editor could open. A workspace unit that has
-    * not been compiled yet is parsed on the fly, without mutating its cached state.
+    * not been compiled yet (e.g. when the best-effort compile aborted early) is parsed on the fly,
+    * and the plan is cached back into the unit — the same assignment [[ParserPhase.run]] performs —
+    * so repeated definition requests do not re-parse it. A later compile still re-parses the unit
+    * (the parser phase is not marked finished), and [[CompilationUnit.reload]] discards the cached
+    * plan when the file changes.
     */
   private def workspaceDefinitions(
       compiler: Compiler,
@@ -199,7 +203,8 @@ object DefinitionProvider:
           else if u.unresolvedPlan.nonEmpty then
             u.unresolvedPlan
           else
-            ParserPhase.parseOnly(u, isContextUnit = false)
+            u.unresolvedPlan = ParserPhase.parseOnly(u, isContextUnit = false)
+            u.unresolvedPlan
         collectDefinitions(plan, u)
       catch
         case _: Throwable =>

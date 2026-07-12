@@ -327,7 +327,12 @@ connection.onDefinition(async (params): Promise<Location | null> => {
       // buffer of that file is targeted instead of its on-disk copy
       let sameFile = false;
       try {
-        sameFile = definitionPath === fileURLToPath(document.uri);
+        const docPath = fileURLToPath(document.uri);
+        // Windows paths are case-insensitive (e.g. drive-letter casing C:\ vs c:\)
+        sameFile =
+          process.platform === 'win32'
+            ? definitionPath.toLowerCase() === docPath.toLowerCase()
+            : definitionPath === docPath;
       } catch {
         // Not a file:// URI (e.g. an untitled buffer): navigate to the definition file
       }
