@@ -56,6 +56,19 @@ Wvlet can be compiled to a native library using Scala Native, which compiles Sca
 To build native libraries, you need to install `clang`, `llvm`, `libstdc++-12-dev`, and `libgc` (Boehm GC) on your system. See also [Scala Native Setup](https://scala-native.org/en/latest/user/setup.html). 
 :::
 
+### DuckDB Dependency
+
+Native binaries link [libduckdb](https://duckdb.org/docs/installation/) dynamically, so both `duckdb.h` and the libduckdb shared library must be visible to the C compiler and linker. Installing DuckDB with a package manager (e.g. `brew install duckdb` on macOS) is usually enough. If they are installed in a non-standard location, point the standard clang environment variables at them before building:
+
+```bash
+# Directory containing duckdb.h
+export CPATH=/path/to/duckdb/include
+# Directory containing libduckdb.dylib (macOS) or libduckdb.so (Linux)
+export LIBRARY_PATH=/path/to/duckdb/lib
+```
+
+At runtime, the built binaries look up libduckdb in the standard loader locations plus `/opt/homebrew/lib` and `/usr/local/lib`, which are embedded as rpath entries. To run with a libduckdb installed elsewhere, either set `WVLET_NATIVE_LIB_PATH=/path/to/duckdb/lib` at **build time** (the directory is embedded as an additional `-L`/rpath entry), or set `DYLD_LIBRARY_PATH` (macOS) / `LD_LIBRARY_PATH` (Linux) when launching the binary.
+
 To build libwvlet.so (Linux) or libwvlet.dylib (macOS), run the following command:
 
 ```bash
