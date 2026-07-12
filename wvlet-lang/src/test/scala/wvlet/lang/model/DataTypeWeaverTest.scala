@@ -54,6 +54,11 @@ class DataTypeWeaverTest extends UniTest:
     roundTrip("map(string,int)")
     roundTrip("map(string,decimal(10,2))")
     roundTrip("array(timestamp with time zone)")
+    // record and interval parse as GenericType (no dedicated grammar), but must round-trip
+    // and be recognized when nested in type parameters
+    roundTrip("record(int,string)")
+    roundTrip("array(record(int,string))")
+    roundTrip("array(interval)")
   }
 
   test("round-trip timestamp types") {

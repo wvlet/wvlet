@@ -141,9 +141,11 @@ object DataType extends LogSupport:
     */
   given weaver: Weaver[DataType] =
     new Weaver[DataType]:
-      override def pack(p: Packer, v: DataType, config: WeaverConfig): Unit = p.packString(
-        v.toString
-      )
+      override def pack(p: Packer, v: DataType, config: WeaverConfig): Unit =
+        if v == null then
+          p.packNil
+        else
+          p.packString(v.toString)
 
       override def unpack(u: Unpacker, context: WeaverContext): Unit =
         u.getNextValueType match
@@ -476,8 +478,10 @@ object DataType extends LogSupport:
     primitiveTypeTable.map(_._1.name) ++ knownGenericTypeNames.map(_.name) ++
       // decimal and time are parsed with dedicated grammar rules, so they are not in the
       // primitive type table, but they must not be mistaken for type variables when they
-      // appear nested in type parameters, e.g., array(decimal(10,2))
-      Set("array", "map", "row", "struct", "decimal", "time")
+      // appear nested in type parameters, e.g., array(decimal(10,2)). record and interval
+      // have no dedicated grammar (they parse as GenericType), but recognizing the names
+      // keeps nested forms like array(record(int,string)) parseable
+      Set("array", "map", "row", "struct", "decimal", "time", "record", "interval")
   ).toSet
 
   def isKnownTypeName(s: String): Boolean = knownTypeNames.contains(s)
