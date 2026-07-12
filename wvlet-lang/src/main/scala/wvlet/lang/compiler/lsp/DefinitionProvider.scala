@@ -119,8 +119,9 @@ object DefinitionProvider:
         // Ignore compile errors — fall back to the parse-only plan
 
       // Current-document definitions come first so they shadow same-named workspace definitions,
-      // matching the compiler's duplicate-name resolution
-      val definitions = localDefinitions ++ workspaceDefinitions(compiler, unit)
+      // matching the compiler's duplicate-name resolution. Lazy (memoized) so that workspace
+      // definitions are only collected when a candidate actually needs the name fallback
+      lazy val definitions = localDefinitions ++ workspaceDefinitions(compiler, unit)
 
       val searchPlan =
         if unit.resolvedPlan.nonEmpty then
@@ -226,7 +227,9 @@ object DefinitionProvider:
     */
   private def definitionFor(
       node: SyntaxTreeNode,
-      definitions: List[DefinitionEntry],
+      // Call-by-name so the caller's lazy (memoized) definition list is only forced when the
+      // name fallback below is reached
+      definitions: => List[DefinitionEntry],
       offset: Int,
       currentUnit: CompilationUnit
   ): Option[DefinitionTarget] =
