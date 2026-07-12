@@ -126,30 +126,36 @@ object TyperRules:
         .find(_.name.name == id.unquotedValue)
         .orElse(ctx.inputType.find(_.name == id.fullName))
       ctx.findSymbolByName(id.toTermName) match
-        case Some(sym) if isFunctionDef(sym) && inputColumn.isDefined =>
-          // A column of the input relation shadows a function definition of the same name:
-          // a bare identifier in a query denotes the column (function calls use parentheses),
-          // so an imported engine function named like a column (e.g. age) must not steal its
-          // typing
-          id.tpe = inputColumn.get.dataType
-          id
-
         case Some(sym) =>
-          id.symbol = sym // Attach symbol for named reference
-          // A reference to a function definition carries the full function signature (not a
-          // DataType), so an enclosing FunctionApply can take its return type
-          id.tpe =
-            if sym.isCompleting then
-              // The symbol's own completion is running (e.g. a self-referencing definition),
-              // so its type is not known yet
-              DataType.UnknownType
+          val shadowingColumn =
+            if isFunctionDef(sym) then
+              inputColumn
             else
-              sym.symbolInfo match
-                case m: MethodSymbolInfo =>
-                  m.ft
-                case info =>
-                  info.dataType
-          id
+              None
+          shadowingColumn match
+            case Some(column) =>
+              // A column of the input relation shadows a function definition of the same
+              // name: a bare identifier in a query denotes the column (function calls use
+              // parentheses), so an imported engine function named like a column (e.g. age)
+              // must not steal its typing
+              id.tpe = column.dataType
+              id
+            case None =>
+              id.symbol = sym // Attach symbol for named reference
+              // A reference to a function definition carries the full function signature
+              // (not a DataType), so an enclosing FunctionApply can take its return type
+              id.tpe =
+                if sym.isCompleting then
+                  // The symbol's own completion is running (e.g. a self-referencing
+                  // definition), so its type is not known yet
+                  DataType.UnknownType
+                else
+                  sym.symbolInfo match
+                    case m: MethodSymbolInfo =>
+                      m.ft
+                    case info =>
+                      info.dataType
+              id
 
         case None =>
           // Check input relation for column
