@@ -118,7 +118,13 @@ object TyperRules:
       // entered during typing) that must shadow a previously attached global symbol
       def isFunctionDef(sym: Symbol): Boolean =
         !sym.isCompleting && sym.symbolInfo.isInstanceOf[MethodSymbolInfo]
-      def inputColumn = ctx.inputType.fields.find(_.name.name == id.unquotedValue)
+      // Direct columns of the input relation, or virtual columns resolved through
+      // RelationType.find (e.g. aggregated array columns of a GroupBy input)
+      def inputColumn = ctx
+        .inputType
+        .fields
+        .find(_.name.name == id.unquotedValue)
+        .orElse(ctx.inputType.find(_.name == id.fullName))
       ctx.findSymbolByName(id.toTermName) match
         case Some(sym) if isFunctionDef(sym) && inputColumn.isDefined =>
           // A column of the input relation shadows a function definition of the same name:
@@ -152,16 +158,9 @@ object TyperRules:
               id.tpe = field.dataType
               id
             case None =>
-              // Consult RelationType.find as well, which also resolves virtual columns
-              // (e.g. aggregated array columns of a GroupBy input)
-              ctx.inputType.find(_.name == id.fullName) match
-                case Some(attr) =>
-                  id.tpe = attr.dataType
-                  id
-                case None =>
-                  // Unresolved identifier
-                  id.tpe = ErrorType(s"Unresolved identifier: ${id.unquotedValue}")
-                  id
+              // Unresolved identifier
+              id.tpe = ErrorType(s"Unresolved identifier: ${id.unquotedValue}")
+              id
       end match
   }
 
@@ -222,6 +221,11 @@ object TyperRules:
           case (_, _, e: ErrorType) =>
             e
 
+          // A function reference operand (a def symbol, not a value type) - defer, keeping
+          // the passthrough behavior of unresolved function references
+          case (_, _: Type.FunctionType, _) | (_, _, _: Type.FunctionType) =>
+            NoType
+
           // Type error between two resolved, incompatible operand types
           case _ =>
             ErrorType(s"Type error in ${op.exprType}: $leftTpe ${op.exprType} $rightTpe")
@@ -273,6 +277,9 @@ object TyperRules:
           case (_, e: ErrorType) =>
             e
           // Type mismatch
+          // A function reference operand (a def symbol, not a value type) - defer
+          case (_: Type.FunctionType, _) | (_, _: Type.FunctionType) =>
+            BooleanType
           case _ =>
             ErrorType(s"Cannot compare $leftTpe < $rightTpe: incompatible types")
       op
@@ -301,6 +308,9 @@ object TyperRules:
             e
           case (_, e: ErrorType) =>
             e
+          // A function reference operand (a def symbol, not a value type) - defer
+          case (_: Type.FunctionType, _) | (_, _: Type.FunctionType) =>
+            BooleanType
           case _ =>
             ErrorType(s"Cannot compare $leftTpe <= $rightTpe: incompatible types")
       op
@@ -329,6 +339,9 @@ object TyperRules:
             e
           case (_, e: ErrorType) =>
             e
+          // A function reference operand (a def symbol, not a value type) - defer
+          case (_: Type.FunctionType, _) | (_, _: Type.FunctionType) =>
+            BooleanType
           case _ =>
             ErrorType(s"Cannot compare $leftTpe > $rightTpe: incompatible types")
       op
@@ -357,6 +370,9 @@ object TyperRules:
             e
           case (_, e: ErrorType) =>
             e
+          // A function reference operand (a def symbol, not a value type) - defer
+          case (_: Type.FunctionType, _) | (_, _: Type.FunctionType) =>
+            BooleanType
           case _ =>
             ErrorType(s"Cannot compare $leftTpe >= $rightTpe: incompatible types")
       op
@@ -381,6 +397,9 @@ object TyperRules:
             e
           case (_, e: ErrorType) =>
             e
+          // A function reference operand (a def symbol, not a value type) - defer
+          case (_: Type.FunctionType, _) | (_, _: Type.FunctionType) =>
+            NoType
           case _ =>
             ErrorType(s"Type error in AND: expected boolean operands, got $leftTpe AND $rightTpe")
 
@@ -405,6 +424,9 @@ object TyperRules:
             e
           case (_, e: ErrorType) =>
             e
+          // A function reference operand (a def symbol, not a value type) - defer
+          case (_: Type.FunctionType, _) | (_, _: Type.FunctionType) =>
+            NoType
           case _ =>
             ErrorType(s"Type error in OR: expected boolean operands, got $leftTpe OR $rightTpe")
 

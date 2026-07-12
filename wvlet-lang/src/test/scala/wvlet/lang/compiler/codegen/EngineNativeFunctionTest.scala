@@ -103,6 +103,21 @@ class EngineNativeFunctionTest extends UniTest:
     withDef shouldContain "age > 20"
   }
 
+  test("prefer a grouped virtual column over an imported function of the same name") {
+    // After group by, non-key columns resolve as virtual aggregated columns through
+    // RelationType.find; those must also shadow imported functions
+    val query =
+      """from [[1, 10]] as t(k, epoch)
+        |group by k
+        |select k, epoch
+        |""".stripMargin
+    val baseline = generateSQL(query)
+    val withDef  = generateSQL(s"""def epoch(a1: any) in duckdb: long = native
+         |
+         |${query}""".stripMargin)
+    withDef shouldBe baseline
+  }
+
   test("keep evaluating compiler-implemented native functions at compile time") {
     val sql = generateSQL("select ulid_string as id\n")
     // The generated ULID literal replaces the function reference
