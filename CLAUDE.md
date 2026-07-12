@@ -25,6 +25,12 @@ sbt:wvlet> wvc/nativeLink
 
 Note: The `wv` command is implemented in WvletREPLMain, while `wvlet` is implemented in WvletMain.
 
+Native builds also need DuckDB's C API: `duckdb.h` on the include path and libduckdb on the
+library path (`brew install duckdb`, or set `CPATH` / `LIBRARY_PATH` for non-standard
+locations). Built binaries embed `/opt/homebrew/lib` and `/usr/local/lib` as rpath entries for
+locating libduckdb at runtime; set `WVLET_NATIVE_LIB_PATH=<dir>` at build time to embed an
+additional lookup directory (see `nativeLibRpathLinking` in build.sbt).
+
 ### Code Formatting
 
 Ensure the code is formatted with `scalafmtAll` command for consistent code style. CI will check formatting on pull requests.

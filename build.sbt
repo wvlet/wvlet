@@ -60,6 +60,39 @@ val uniNativeCurlLinking =
     c.withLinkingOptions(c.linkingOptions :+ "-lcurl")
   }
 
+// libduckdb is linked dynamically (macOS install name `@rpath/libduckdb.dylib`), but Scala
+// Native bakes no rpath into the produced binaries. On machines where libduckdb lives outside
+// the loader's default search path (e.g. Homebrew's /opt/homebrew/lib), the binary then fails
+// at load time for every command — even ones that never touch DuckDB — with
+// `dyld: Library not loaded: @rpath/libduckdb.dylib ... Reason: no LC_RPATH's found`.
+// Embed the common install prefixes as rpath entries, plus any extra directories given via the
+// path-separated WVLET_NATIVE_LIB_PATH environment variable (also added as `-L` link paths so
+// a single variable covers both link-time and run-time lookup of a custom libduckdb).
+// Windows has no rpath concept and `-Wl,-rpath` breaks its link step, so skip it there.
+val nativeLibRpathLinking =
+  nativeConfig ~= { c =>
+    val targetsWindows = c
+      .targetTriple
+      .orElse(sys.env.get("SCALANATIVE_TARGET_TRIPLE"))
+      .map(_.contains("windows"))
+      .getOrElse(scala.util.Properties.isWin)
+    if (targetsWindows)
+      c
+    else {
+      val extraDirs = sys
+        .env
+        .get("WVLET_NATIVE_LIB_PATH")
+        .toSeq
+        .flatMap(_.split(java.io.File.pathSeparator))
+        .map(_.trim)
+        .filter(_.nonEmpty)
+      val rpathDirs = (extraDirs ++ Seq("/opt/homebrew/lib", "/usr/local/lib")).distinct
+      val options = extraDirs.map(dir => s"-L${dir}") ++
+        rpathDirs.map(dir => s"-Wl,-rpath,${dir}")
+      c.withLinkingOptions(c.linkingOptions ++ options)
+    }
+  }
+
 lazy val jvmProjects: Seq[ProjectReference] = Seq(
   api.jvm,
   httpServer,
@@ -243,7 +276,7 @@ val specRunnerSettings = Seq(
 lazy val wvc = project
   .enablePlugins(ScalaNativePlugin)
   .in(file("wvc"))
-  .settings(buildSettings, name := "wvc")
+  .settings(buildSettings, name := "wvc", nativeLibRpathLinking)
   .dependsOn(lang.native, cliCore.native)
 
 lazy val wvcLib = project
@@ -267,7 +300,9 @@ lazy val wvcLib = project
         case None =>
           baseConfig
       }
-    }
+    },
+    // Applied after the target-triple override above so the Windows gate sees the final triple
+    nativeLibRpathLinking
   )
   .dependsOn(wvc)
 
@@ -307,7 +342,9 @@ def nativeCrossProject(
           .withCompileOptions(c.compileOptions ++ compileOptions)
           .withLinkingOptions(c.linkingOptions ++ linkerOptions)
           .withBuildTarget(BuildTarget.libraryDynamic)
-      }
+      },
+      // Applied after the target-triple override above so the Windows gate sees the final triple
+      nativeLibRpathLinking
     )
     .dependsOn(wvcLib)
 }
@@ -507,7 +544,8 @@ lazy val cliCore = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     uniNativeCurlLinking,
     nativeConfig ~= { c =>
       c.withLinkingOptions(c.linkingOptions :+ "-lduckdb")
-    }
+    },
+    nativeLibRpathLinking
   )
   .dependsOn(lang)
 
