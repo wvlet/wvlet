@@ -39,7 +39,9 @@ case class WvletCatalogOption(
       prefix = "--path",
       description = "Folder to write the generated .wv files (default: catalog)"
     )
-    path: String = "catalog"
+    path: String = "catalog",
+    @option(prefix = "--no-functions", description = "Skip importing engine functions")
+    noFunctions: Boolean = false
 )
 
 /**
@@ -86,20 +88,49 @@ class WvletCatalogCommand(opts: WvletGlobalOption) extends LogSupport:
           catalogOpts.path
         else
           s"${catalogOpts.workFolder}/${catalogOpts.path}"
+      val functionsPath =
+        if catalogOpts.noFunctions then
+          None
+        else if schemaNames.exists(_.equalsIgnoreCase("functions")) then
+          // The functions file would collide with the schema file of a schema literally
+          // named functions; the table schemas win
+          warn(
+            s"Skipping the functions import: catalog ${catalogName} has a schema named 'functions'"
+          )
+          None
+        else
+          // The Generic engine runs on an in-process DuckDB, so its functions are DuckDB's
+          val contextDBType =
+            if engine.dbType == DBType.Generic then
+              DBType.DuckDB
+            else
+              engine.dbType
+          val contextName = contextDBType.toString.toLowerCase
+          StaticCatalogExporter.exportFunctions(
+            catalogName,
+            contextName,
+            connector.listFunctions(catalogName),
+            basePath
+          )
       val written = StaticCatalogExporter.exportSchemas(
         catalogName,
         schemaNames,
         schemaName => connector.listTableDefs(catalogName, schemaName),
         basePath,
-        // A full-catalog import removes generated files of schemas dropped from the database
-        pruneStale = catalogOpts.schema.isEmpty
+        // A full-catalog import removes generated files of schemas dropped from the database.
+        // With --no-functions, this also removes a previously generated functions.wv
+        pruneStale = catalogOpts.schema.isEmpty,
+        keepPaths = functionsPath.toList
       )
       if written.isEmpty then
+        // Engine functions are listed independently of the catalog name, so an empty table
+        // import warns even when functions were generated
         warn(
           s"No tables found in catalog ${catalogName}. Check the --profile, --catalog, and --schema options"
         )
-      else
-        written.foreach(path => info(s"Generated ${path}"))
+      functionsPath.foreach(path => info(s"Generated ${path}"))
+      written.foreach(path => info(s"Generated ${path}"))
+      if written.nonEmpty || functionsPath.nonEmpty then
         info(s"Imported ${written.size} schema(s) from catalog ${catalogName}")
     }
   end `import`

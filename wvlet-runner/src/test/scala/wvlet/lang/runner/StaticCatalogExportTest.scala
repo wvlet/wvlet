@@ -103,4 +103,64 @@ class StaticCatalogExportTest extends UniTest:
     end try
   }
 
+  test("export DuckDB functions as Wvlet defs and compile a call offline") {
+    val workEnv = WorkEnv()
+    val duckdb  = DuckDBConnector(workEnv)
+    Files.createDirectories(Path.of("target"))
+    val projectDir = Files.createTempDirectory(Path.of("target"), "static-functions").toString
+    val targetDir  = s"${projectDir}/catalog"
+    try
+      def exportFunctions(): Option[String] = StaticCatalogExporter.exportFunctions(
+        "memory",
+        "duckdb",
+        duckdb.listFunctions("memory"),
+        targetDir
+      )
+      val written = exportFunctions()
+      written shouldBe Some(s"${targetDir}/memory/functions.wv")
+
+      val source = SourceIO.readAsString(written.get)
+      // Engine functions without builtin typing rules are exported with the dialect tag
+      source shouldContain "def regexp_extract("
+      source shouldContain " in duckdb"
+      // Builtins, keywords, and table functions are skipped (count_if etc. still export)
+      source shouldNotContain "def count("
+      source shouldNotContain "def upper("
+      source shouldNotContain "def read_csv("
+
+      // Re-running the export produces identical output (deterministic sync)
+      exportFunctions()
+      SourceIO.readAsString(written.get) shouldBe source
+
+      // A call to an imported function compiles offline into a plain SQL call, typed with
+      // the declared return type
+      val compiler = Compiler(
+        CompilerOptions(sourceFolders = List(projectDir), workEnv = WorkEnv(projectDir))
+      )
+      val queryUnit = CompilationUnit.fromWvletString(
+        "from [['abc123']] as t(x)\nselect regexp_extract(x, '[0-9]+') as digits\n"
+      )
+      val result = compiler.compileSingleUnit(queryUnit)
+      result.hasFailures shouldBe false
+      val sql = GenSQL.generateSQL(queryUnit)(using result.context)
+      sql shouldContain "regexp_extract(x, '[0-9]+')"
+
+      // A full-catalog re-import keeps functions.wv only when it was re-generated: schema
+      // pruning removes it when the import ran with --no-functions
+      StaticCatalogExporter.exportSchemas(
+        "memory",
+        Nil,
+        _ => Nil,
+        targetDir,
+        pruneStale = true,
+        keepPaths = written.toList
+      )
+      SourceIO.existsFile(written.get) shouldBe true
+      StaticCatalogExporter.exportSchemas("memory", Nil, _ => Nil, targetDir, pruneStale = true)
+      SourceIO.existsFile(written.get) shouldBe false
+    finally
+      duckdb.close()
+    end try
+  }
+
 end StaticCatalogExportTest
