@@ -58,11 +58,12 @@ export interface WvletJSType {
   getHover(content: string, line: number, column: number): string;
 
   /**
-   * Compute the go-to-definition target (model / type definition) for a Wvlet source at the given cursor position as JSON
+   * Compute the go-to-definition target (model / type definition) for a Wvlet source at the given cursor position as JSON.
+   * The definition may live in another workspace file (see setWorkspacePath); in that case `path` carries the defining file's local path
    * @param content The Wvlet source code
    * @param line 1-based line number of the cursor
    * @param column 1-based column number of the cursor
-   * @returns JSON object ({startLine, startColumn, endLine, endColumn}) or the literal `null` when there is nothing to resolve
+   * @returns JSON object ({startLine, startColumn, endLine, endColumn, path?}) or the literal `null` when there is nothing to resolve. `path` is absent when the definition is in the requested document itself
    */
   getDefinition(content: string, line: number, column: number): string;
 }

@@ -22,8 +22,17 @@ class DefinitionProviderTest extends UniTest:
 
   private def newCompiler: Compiler = Compiler(CompilerOptions(workEnv = WorkEnv(path = ".")))
 
+  // A compiler whose workspace contains spec/lsp/defs.wv (defines `shared_model` and
+  // `shared_point`), used for cross-file navigation tests
+  private def workspaceCompiler: Compiler = Compiler(
+    CompilerOptions(sourceFolders = List("spec/lsp"), workEnv = WorkEnv(path = "spec/lsp"))
+  )
+
   private def definition(content: String, offset: Int): Option[DefinitionResult] =
     DefinitionProvider.definition(content, offset, newCompiler)
+
+  private def workspaceDefinition(content: String, offset: Int): Option[DefinitionResult] =
+    DefinitionProvider.definition(content, offset, workspaceCompiler)
 
   test("should jump from a model reference to its model definition"):
     val src =
@@ -37,6 +46,8 @@ class DefinitionProviderTest extends UniTest:
     // The `model my_model` definition starts on line 1
     result.map(_.startLine) shouldBe Some(1)
     result.map(_.startColumn) shouldBe Some(1)
+    // Same-document definitions carry no file path
+    result.flatMap(_.path) shouldBe None
 
   test("should jump from a type reference to its type definition"):
     val src =
@@ -104,5 +115,46 @@ class DefinitionProviderTest extends UniTest:
 
   test("should return None for an empty source"):
     definition("", 0) shouldBe None
+
+  test("should jump to a model defined in another workspace file"):
+    val src    = "from shared_model"
+    val offset = src.indexOf("shared_model") + 1
+    val result = workspaceDefinition(src, offset)
+    // `model shared_model` is defined on line 2 of spec/lsp/defs.wv
+    result.flatMap(_.path).exists(_.endsWith("defs.wv")) shouldBe true
+    result.map(_.startLine) shouldBe Some(2)
+
+  test("should jump to a type defined in another workspace file"):
+    val src =
+      """type my_line = {
+        |  start: shared_point
+        |  stop: shared_point
+        |}""".stripMargin
+    val offset = src.indexOf("start: shared_point") + "start: ".length + 1
+    val result = workspaceDefinition(src, offset)
+    // `type shared_point` is defined on line 6 of spec/lsp/defs.wv
+    result.flatMap(_.path).exists(_.endsWith("defs.wv")) shouldBe true
+    result.map(_.startLine) shouldBe Some(6)
+
+  test("should prefer a same-document definition that shadows a workspace model"):
+    val src =
+      """model shared_model = {
+        |  from [[2, "bob", 20]] as person(id, name, age)
+        |}
+        |from shared_model""".stripMargin
+    val offset = src.lastIndexOf("shared_model") + 1
+    val result = workspaceDefinition(src, offset)
+    // The redefinition in the current document wins over spec/lsp/defs.wv
+    result.map(_.startLine) shouldBe Some(1)
+    result.flatMap(_.path) shouldBe None
+
+  test("should not navigate to a preset stdlib definition"):
+    // `long` resolves to a stdlib type, which has no local file the editor could open
+    val src =
+      """type my_point = {
+        |  x: long
+        |}""".stripMargin
+    val offset = src.indexOf("x: long") + "x: ".length + 1
+    definition(src, offset) shouldBe None
 
 end DefinitionProviderTest

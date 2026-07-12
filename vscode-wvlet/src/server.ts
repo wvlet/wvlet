@@ -19,7 +19,8 @@ import {
 } from 'vscode-languageserver/node';
 
 import { TextDocument } from 'vscode-languageserver-textdocument';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { isAbsolute, resolve } from 'node:path';
 
 import type { WvletJSType } from '../../sdks/typescript/lib/main';
 import type {
@@ -314,9 +315,28 @@ connection.onDefinition(async (params): Promise<Location | null> => {
       return null;
     }
 
-    // Single-document scope: the definition lives in the same document
+    // Without a path the definition is in the requested document itself (this also covers
+    // unsaved buffers: the compiler sees the document as an in-memory snapshot). With a path,
+    // the definition lives in another workspace file.
+    let uri = document.uri;
+    if (definition.path) {
+      const definitionPath = isAbsolute(definition.path)
+        ? definition.path
+        : resolve(workspacePath ?? '.', definition.path);
+      // Prefer the open document's URI when it denotes the same file, so a dirty (unsaved)
+      // buffer of that file is targeted instead of its on-disk copy
+      let sameFile = false;
+      try {
+        sameFile = definitionPath === fileURLToPath(document.uri);
+      } catch {
+        // Not a file:// URI (e.g. an untitled buffer): navigate to the definition file
+      }
+      if (!sameFile) {
+        uri = pathToFileURL(definitionPath).toString();
+      }
+    }
     return {
-      uri: document.uri,
+      uri,
       range: {
         // Convert from 1-based (Wvlet) to 0-based (LSP)
         start: Position.create(

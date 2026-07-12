@@ -15,7 +15,7 @@ package wvlet.lang.compiler.lsp
 
 import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.compiler.Compiler
-import wvlet.lang.compiler.SourceFile
+import wvlet.lang.compiler.LocalFile
 import wvlet.lang.compiler.parser.ParserPhase
 import wvlet.lang.model.SyntaxTreeNode
 import wvlet.lang.model.expr.NameExpr
@@ -23,8 +23,9 @@ import wvlet.lang.model.plan.*
 
 /**
   * The result of a go-to-definition request: the 1-based source range of the definition the cursor
-  * resolves to. Only same-document definitions are returned, so the editor navigates within the
-  * current file.
+  * resolves to. When `path` is empty, the definition is in the requested document itself; when set,
+  * it is the local file path of the workspace file that contains the definition, so the editor can
+  * navigate across files.
   *
   * @param startLine
   *   1-based line of the definition range start
@@ -34,8 +35,17 @@ import wvlet.lang.model.plan.*
   *   1-based line of the definition range end
   * @param endColumn
   *   1-based column of the definition range end
+  * @param path
+  *   Path of the file containing the definition, or `None` when the definition is in the requested
+  *   document
   */
-case class DefinitionResult(startLine: Int, startColumn: Int, endLine: Int, endColumn: Int)
+case class DefinitionResult(
+    startLine: Int,
+    startColumn: Int,
+    endLine: Int,
+    endColumn: Int,
+    path: Option[String] = None
+)
 
 /**
   * Provides go-to-definition for the Wvlet language: given a cursor on a model or type reference,
@@ -47,19 +57,28 @@ case class DefinitionResult(startLine: Int, startColumn: Int, endLine: Int, endC
   * any failure yields `None` rather than throwing.
   *
   * Resolution combines two strategies for robustness:
-  *   - The resolved symbol chain: when full typing succeeds, a reference node carries a symbol
-  *     whose `tree` is the defining `ModelDef`/`TypeDef`.
-  *   - A name fallback: the referenced identifier is matched against the top-level `model`/`type`
-  *     names collected from a parse-only pass, so navigation keeps working when full typing fails
-  *     (e.g. a later statement has an error).
+  *   - The resolved symbol chain: when a reference node carries a symbol whose `tree` is the
+  *     defining `ModelDef`/`TypeDef`, the symbol also records its defining compilation unit.
+  *   - A name lookup: the referenced identifier is matched against the top-level `model`/`type`
+  *     names of the current document (collected from a parse-only pass, so navigation keeps working
+  *     when full typing fails) and then against those of the other workspace units loaded by the
+  *     compiler.
   *
-  * This is single-document only: the language server compiles each document standalone, so
-  * definitions resolve within the same file. Cross-file / workspace navigation is future work.
+  * The document is compiled together with the other workspace sources (including the `catalog/`
+  * folder), so a definition may live in another file: such results carry the defining file's path.
+  * Current-document definitions always take precedence, matching the compiler's shadowing rule for
+  * duplicate top-level names.
   */
 object DefinitionProvider:
 
-  /** A top-level model or type definition collected from a parse-only pass. */
-  private case class DefinitionEntry(name: String, node: SyntaxTreeNode)
+  /**
+    * A top-level model or type definition, paired with the compilation unit that contains it so
+    * that cross-file targets can report the defining file
+    */
+  private case class DefinitionEntry(name: String, node: SyntaxTreeNode, unit: CompilationUnit)
+
+  /** A resolved definition node paired with the compilation unit that defines it. */
+  private case class DefinitionTarget(node: SyntaxTreeNode, unit: CompilationUnit)
 
   /**
     * Compute the definition target for the given source at the given character offset.
@@ -79,11 +98,12 @@ object DefinitionProvider:
   def definition(content: String, offset: Int, compiler: Compiler): Option[DefinitionResult] =
     val unit = CompilationUnit.fromWvletString(content)
     try
-      // Collect top-level model/type definitions with a parse-only pass (resilient to parse errors)
-      val definitions =
+      // Collect top-level model/type definitions of the current document with a parse-only pass
+      // (resilient to parse errors)
+      val localDefinitions =
         try
           unit.unresolvedPlan = ParserPhase.parseOnly(unit)
-          collectDefinitions(unit.unresolvedPlan)
+          collectDefinitions(unit.unresolvedPlan, unit)
         catch
           case _: Throwable =>
             Nil
@@ -98,6 +118,10 @@ object DefinitionProvider:
         case _: Throwable =>
         // Ignore compile errors — fall back to the parse-only plan
 
+      // Current-document definitions come first so they shadow same-named workspace definitions,
+      // matching the compiler's duplicate-name resolution
+      val definitions = localDefinitions ++ workspaceDefinitions(compiler, unit)
+
       val searchPlan =
         if unit.resolvedPlan.nonEmpty then
           unit.resolvedPlan
@@ -106,8 +130,7 @@ object DefinitionProvider:
       if searchPlan.isEmpty then
         None
       else
-        val sourceFile = unit.sourceFile
-        sourceFile.ensureLoaded
+        unit.sourceFile.ensureLoaded
         // Candidate nodes covering the cursor, innermost (smallest span) first
         val candidates = searchPlan
           .collectAllNodes
@@ -119,7 +142,7 @@ object DefinitionProvider:
             // Resolving a single candidate may fail on an incomplete/malformed AST; skip it so an
             // enclosing candidate can still resolve.
             try
-              definitionFor(n, definitions, offset).map(d => toResult(d, sourceFile))
+              definitionFor(n, definitions, offset, unit).flatMap(t => toResult(t, unit))
             catch
               case _: Throwable =>
                 None
@@ -142,43 +165,81 @@ object DefinitionProvider:
     * [[CompletionProvider.definitionItems]], this recurses only into `PackageDef` containers, since
     * only top-level definitions are referenceable from other statements.
     */
-  private def collectDefinitions(plan: LogicalPlan): List[DefinitionEntry] =
+  private def collectDefinitions(plan: LogicalPlan, unit: CompilationUnit): List[DefinitionEntry] =
     val buf                        = List.newBuilder[DefinitionEntry]
     def loop(p: LogicalPlan): Unit =
       p match
         case pkg: PackageDef =>
           pkg.statements.foreach(loop)
         case m: ModelDef =>
-          buf += DefinitionEntry(m.name.name, m)
+          buf += DefinitionEntry(m.name.name, m, unit)
         case t: TypeDef =>
-          buf += DefinitionEntry(t.name.name, t)
+          buf += DefinitionEntry(t.name.name, t, unit)
         case _ =>
     loop(plan)
     buf.result()
 
   /**
+    * Collect the top-level `model`/`type` definitions of the workspace units loaded by the
+    * compiler, so that references resolve across files. Preset units (the built-in stdlib) are
+    * skipped: their in-memory sources have no file the editor could open. A workspace unit that has
+    * not been compiled yet is parsed on the fly, without mutating its cached state.
+    */
+  private def workspaceDefinitions(
+      compiler: Compiler,
+      currentUnit: CompilationUnit
+  ): List[DefinitionEntry] = compiler
+    .compilationUnitsInSourcePaths
+    .filter(u => !u.isPreset && !(u.sourceFile eq currentUnit.sourceFile))
+    .flatMap { u =>
+      try
+        val plan =
+          if u.resolvedPlan.nonEmpty then
+            u.resolvedPlan
+          else if u.unresolvedPlan.nonEmpty then
+            u.unresolvedPlan
+          else
+            ParserPhase.parseOnly(u, isContextUnit = false)
+        collectDefinitions(plan, u)
+      catch
+        case _: Throwable =>
+          // A workspace file that fails to parse contributes no definitions
+          Nil
+    }
+
+  /**
     * Resolve the defining `ModelDef`/`TypeDef` for a single candidate node, or `None` if the node
     * is not a model/type reference. The resolved symbol's definition tree is preferred; the
-    * collected definition names are used as a fallback when typing did not resolve the symbol.
+    * collected definition names (current document first, then the other workspace files) are used
+    * as a fallback when typing did not resolve the symbol. Either way the definition may live in
+    * another workspace file.
     *
-    * A definition whose span contains the cursor is treated as "already at the definition" and
-    * yields `None`, so navigating from the definition itself (or a keyword/name within it) does not
-    * jump to itself.
+    * A same-document definition whose span contains the cursor is treated as "already at the
+    * definition" and yields `None`, so navigating from the definition itself (or a keyword/name
+    * within it) does not jump to itself. The check is skipped for cross-file targets: their spans
+    * index a different file, so containing the cursor offset is coincidental.
     */
   private def definitionFor(
       node: SyntaxTreeNode,
       definitions: List[DefinitionEntry],
-      offset: Int
-  ): Option[SyntaxTreeNode] =
+      offset: Int,
+      currentUnit: CompilationUnit
+  ): Option[DefinitionTarget] =
     val bySymbol =
       try
         val sym = node.symbol
         if sym.isDefined then
           sym.tree match
-            case d: ModelDef =>
-              Some(d)
-            case d: TypeDef =>
-              Some(d)
+            case d @ (_: ModelDef | _: TypeDef) =>
+              // Symbols not tied to a single source definition report CompilationUnit.empty;
+              // treat those as defined in the current document
+              val definingUnit = sym.compilationUnit
+              val unit         =
+                if definingUnit.isEmpty then
+                  currentUnit
+                else
+                  definingUnit
+              Some(DefinitionTarget(d, unit))
             case _ =>
               None
         else
@@ -190,10 +251,15 @@ object DefinitionProvider:
     bySymbol
       .orElse {
         referenceName(node).flatMap { name =>
-          definitions.find(_.name == name).map(_.node)
+          definitions.find(_.name == name).map(d => DefinitionTarget(d.node, d.unit))
         }
       }
-      .filter(d => d.span.exists && !d.span.containsInclusive(offset))
+      .filter { t =>
+        val sameDocument = t.unit.sourceFile eq currentUnit.sourceFile
+        t.node.span.exists && !(sameDocument && t.node.span.containsInclusive(offset))
+      }
+
+  end definitionFor
 
   /**
     * The referenced model/type name carried by a node, or `None` if the node is not a name-like
@@ -211,14 +277,39 @@ object DefinitionProvider:
       case _ =>
         None
 
-  /** Convert a definition node's span into a 1-based [[DefinitionResult]]. */
-  private def toResult(node: SyntaxTreeNode, sourceFile: SourceFile): DefinitionResult =
-    val span = node.span
-    DefinitionResult(
-      startLine = sourceFile.offsetToLine(span.start) + 1,
-      startColumn = sourceFile.offsetToColumn(span.start),
-      endLine = sourceFile.offsetToLine(span.end) + 1,
-      endColumn = sourceFile.offsetToColumn(span.end)
-    )
+  /**
+    * Convert a definition target's span into a 1-based [[DefinitionResult]], using the defining
+    * unit's source file so that cross-file spans map to the correct lines. Cross-file targets carry
+    * the defining file's path; targets in a file the editor cannot open (preset stdlib or other
+    * in-memory sources) yield `None`.
+    */
+  private def toResult(
+      target: DefinitionTarget,
+      currentUnit: CompilationUnit
+  ): Option[DefinitionResult] =
+    val sourceFile   = target.unit.sourceFile
+    val sameDocument = sourceFile eq currentUnit.sourceFile
+    val path         =
+      if sameDocument then
+        // The definition is in the requested document (which may be an unsaved buffer)
+        Some(None)
+      else
+        sourceFile.file match
+          case f: LocalFile =>
+            Some(Some(f.path))
+          case _ =>
+            // Preset stdlib or other non-local sources have no file the editor can navigate to
+            None
+    path.map { p =>
+      sourceFile.ensureLoaded
+      val span = target.node.span
+      DefinitionResult(
+        startLine = sourceFile.offsetToLine(span.start) + 1,
+        startColumn = sourceFile.offsetToColumn(span.start),
+        endLine = sourceFile.offsetToLine(span.end) + 1,
+        endColumn = sourceFile.offsetToColumn(span.end),
+        path = p
+      )
+    }
 
 end DefinitionProvider

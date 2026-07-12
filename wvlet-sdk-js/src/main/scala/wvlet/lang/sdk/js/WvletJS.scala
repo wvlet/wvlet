@@ -378,10 +378,11 @@ object WvletJS:
     * @param column
     *   1-based column number of the cursor
     * @return
-    *   JSON object `{startLine, startColumn, endLine, endColumn}` describing the 1-based source
-    *   range of the definition, or the JSON literal `null` when the cursor is not on a resolvable
-    *   model/type reference (unknown position, keyword, whitespace, the definition itself, or an
-    *   unknown name). Only same-document definitions are returned.
+    *   JSON object `{startLine, startColumn, endLine, endColumn, path?}` describing the 1-based
+    *   source range of the definition, or the JSON literal `null` when the cursor is not on a
+    *   resolvable model/type reference (unknown position, keyword, whitespace, the definition
+    *   itself, or an unknown name). `path` is the local path of the workspace file containing the
+    *   definition; it is absent when the definition is in the requested document itself.
     */
   @JSExport
   def getDefinition(content: String, line: Int, column: Int): String =
@@ -401,7 +402,8 @@ object WvletJS:
           startLine = d.startLine,
           startColumn = d.startColumn,
           endLine = d.endLine,
-          endColumn = d.endColumn
+          endColumn = d.endColumn,
+          path = d.path
         )
         Weaver.of[LspDefinition].toJson(definition)
       case None =>
@@ -449,9 +451,17 @@ case class LspHover(content: String, startLine: Int, startColumn: Int, endLine: 
 
 /**
   * LSP go-to-definition representation for JSON serialization. The line/column fields describe the
-  * 1-based source range of the target model/type definition.
+  * 1-based source range of the target model/type definition. `path` is the local path of the
+  * workspace file containing the definition; it is `None` (absent in JSON) when the definition is
+  * in the requested document itself.
   */
-case class LspDefinition(startLine: Int, startColumn: Int, endLine: Int, endColumn: Int)
+case class LspDefinition(
+    startLine: Int,
+    startColumn: Int,
+    endLine: Int,
+    endColumn: Int,
+    path: Option[String] = None
+)
 
 /**
   * LSP SymbolKind constants (subset from the LSP specification)
