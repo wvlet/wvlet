@@ -21,6 +21,8 @@ import wvlet.lang.compiler.CompilerOptions
 import wvlet.lang.compiler.Name
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.compiler.codegen.GenSQL
+import wvlet.lang.compiler.typer.DuplicateTypeDefinition
+import wvlet.lang.compiler.typer.TyperError
 import wvlet.lang.model.plan.TypeDef
 
 /**
@@ -118,6 +120,96 @@ class TypeTableBindingTest extends UniTest:
     // A qualified reference must not resolve through an unbound type by its leaf name
     val qualifiedSql = compileToSQL(typeDef, "from staging.events\n")
     qualifiedSql shouldContain "staging.events"
+  }
+
+  private val marketingOrdersType =
+    """type orders in mydb.marketing = {
+      |  order_id: bigint
+      |  channel: string
+      |}
+      |""".stripMargin
+
+  private def compileUnits(typeDefsList: List[String], query: String): List[CompilationUnit] =
+    val compiler  = Compiler(CompilerOptions(workEnv = WorkEnv(".")))
+    val typeUnits = typeDefsList.map(CompilationUnit.fromWvletString)
+    val queryUnit = CompilationUnit.fromWvletString(query)
+    compiler.compileMultipleUnits(typeUnits, queryUnit)
+    typeUnits
+
+  private def duplicateWarnings(units: List[CompilationUnit]): List[DuplicateTypeDefinition] = units
+    .flatMap(_.typerErrors)
+    .collect { case d: DuplicateTypeDefinition =>
+      d
+    }
+
+  test("warn when the same type name is bound to different schemas in different files") {
+    val typeUnits = compileUnits(List(ordersType, marketingOrdersType), "from sales.orders\n")
+    val warnings  = duplicateWarnings(typeUnits)
+    warnings.size shouldBe 1
+    val w = warnings.head
+    w.severity shouldBe TyperError.Severity.Warning
+    w.message shouldContain "Duplicate type definition 'orders'"
+    w.message shouldContain "mydb.sales"
+    w.message shouldContain "mydb.marketing"
+    // The warning surfaces on the unit labeled after the first definition
+    duplicateWarnings(List(typeUnits(1))).size shouldBe 1
+    // Name lookup uses the file-name-sorted head; in-memory units are named by
+    // creation-ordered ULIDs, so the first unit wins
+    w.winnerFileName shouldBe typeUnits.head.sourceFile.fileName
+  }
+
+  test("not warn when the same type name has an identical binding across files") {
+    val upperCased = ordersType.replace("mydb.sales", "MYDB.SALES")
+    val typeUnits  = compileUnits(List(ordersType, upperCased), "from sales.orders\n")
+    duplicateWarnings(typeUnits) shouldBe Nil
+  }
+
+  test("not warn for dialect extensions or duplicated single-part contexts") {
+    // A base type extended for a dialect in the same file (like stdlib's `type string` +
+    // `type string in duckdb`) is intentional and never a table-binding conflict
+    val dialectExtension =
+      """type mystr = {
+        |  v: string
+        |}
+        |type mystr in duckdb = {
+        |  v: string
+        |}
+        |""".stripMargin
+    duplicateWarnings(compileUnits(List(dialectExtension), "from [[1]] as t(id)\n")) shouldBe Nil
+
+    // Single-part contexts are dialect scopes, not table bindings, in separate files too
+    val duckdbMetrics  = "type metrics in duckdb = {\n  value: double\n}\n"
+    val trinoMetrics   = "type metrics in trino = {\n  value: double\n}\n"
+    val singlePartOnly = compileUnits(List(duckdbMetrics, trinoMetrics), "from [[1]] as t(id)\n")
+    duplicateWarnings(singlePartOnly) shouldBe Nil
+  }
+
+  test("warn when a schema-bound type shares its name with an unbound type") {
+    val unbound   = "type orders = {\n  order_id: bigint\n}\n"
+    val typeUnits = compileUnits(List(unbound, ordersType), "from sales.orders\n")
+    val warnings  = duplicateWarnings(typeUnits)
+    warnings.size shouldBe 1
+    warnings.head.message shouldContain "no table binding"
+    warnings.head.message shouldContain "mydb.sales"
+  }
+
+  test("warn when one file binds the same type name to different schemas") {
+    val sameFile  = ordersType + marketingOrdersType
+    val typeUnits = compileUnits(List(sameFile), "from sales.orders\n")
+    val warnings  = duplicateWarnings(typeUnits)
+    warnings.size shouldBe 1
+    warnings.head.message shouldContain "mydb.sales"
+    warnings.head.message shouldContain "mydb.marketing"
+  }
+
+  test("not fail strict compilation on duplicate type definition warnings") {
+    val compiler  = Compiler(CompilerOptions(workEnv = WorkEnv(".")).withFailOnTypeErrors(true))
+    val typeUnits = List(ordersType, marketingOrdersType).map(CompilationUnit.fromWvletString)
+    val queryUnit = CompilationUnit.fromWvletString("from sales.orders\n")
+    // Duplicate-definition diagnostics are warnings and must not fail even in strict mode
+    val result = compiler.compileMultipleUnits(typeUnits, queryUnit)
+    result.hasFailures shouldBe false
+    duplicateWarnings(typeUnits).size shouldBe 1
   }
 
   test("keep single-part contexts as non-binding dialect scopes") {

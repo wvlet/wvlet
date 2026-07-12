@@ -32,6 +32,7 @@ import wvlet.lang.compiler.Symbol
 import wvlet.lang.compiler.TermName
 import wvlet.lang.compiler.TypeSymbol
 import wvlet.lang.compiler.TypeSymbolInfo
+import wvlet.lang.compiler.typer.DuplicateTypeDefinition
 import wvlet.lang.compiler.typer.ModelDefCompleter
 import wvlet.lang.model.DataType.NamedType
 import wvlet.lang.model.DataType.SchemaType
@@ -295,6 +296,55 @@ object SymbolLabeler extends Phase("symbol-labeler"):
       contextNames = defContexts.map(x => Name.typeName(x.contextType.leafName))
     )
 
+  /**
+    * True when two same-name type definitions carry conflicting table bindings: the bindings differ
+    * case-insensitively and at least one side is a two-part `<catalog>.<schema>` binding. Unbound
+    * duplicates (including single-part dialect scopes like `in duckdb`) merge intentionally and
+    * never conflict
+    */
+  private def bindingsConflict(a: Option[(String, String)], b: Option[(String, String)]): Boolean =
+    def norm(x: Option[(String, String)]) = x.map((c, s) => (c.toLowerCase, s.toLowerCase))
+    (a.isDefined || b.isDefined) && norm(a) != norm(b)
+
+  private def bindingString(t: TypeDef): Option[String] = t.tableBinding.map((c, s) => s"${c}.${s}")
+
+  /**
+    * Warn when the freshly indexed type definition shares its name with a definition in another
+    * (non-preset) compilation unit under a conflicting table binding. Name lookup resolves such
+    * duplicates silently by file-name order (#93), so the shadowed schema binding never matches
+    */
+  private def warnCrossFileDuplicateTypeDefs(t: TypeDef)(using ctx: Context): Unit =
+    if !ctx.compilationUnit.isPreset then
+      val entries = ctx
+        .global
+        .symbolIndex
+        .visibleEntries(
+          t.name,
+          ctx.compilationUnit.packageName,
+          ctx.importDefs.map(_.importRef.fullName)
+        )
+      if entries.sizeIs > 1 then
+        // visibleEntries is file-name-sorted and includes this unit's fresh entry, so the head
+        // is the definition that findSymbolByName actually uses
+        val winnerFileName = entries.head.fileName
+        entries
+          .withFilter(e => !(e.unit eq ctx.compilationUnit) && !e.unit.isPreset)
+          .foreach { e =>
+            e.symbol.tree match
+              case other: TypeDef if bindingsConflict(other.tableBinding, t.tableBinding) =>
+                ctx.addTyperError(
+                  DuplicateTypeDefinition(
+                    typeName = t.name.name,
+                    thisBinding = bindingString(t),
+                    otherBinding = bindingString(other),
+                    otherLocation = e.unit.sourceFile.sourceLocationAt(other.span.start),
+                    winnerFileName = winnerFileName,
+                    span = t.span
+                  )
+                )
+              case _ =>
+          }
+
   private def registerTypeDefSymbol(t: TypeDef)(using ctx: Context): Symbol =
     val typeName = t.name
 
@@ -303,6 +353,22 @@ object SymbolLabeler extends Phase("symbol-labeler"):
         // Symbol is already assigned if context-specific types and functions (e.g., in duckdb, in trino) are defined
         t.symbol = sym
         trace(s"Attach symbol ${sym} to ${t.name} ${t.locationString(using ctx)}")
+        // Same-name definitions merge into one symbol on purpose (dialect extensions like
+        // `type string in duckdb`), but conflicting table bindings would shadow each other
+        sym.tree match
+          case prev: TypeDef
+              if (prev ne t) && bindingsConflict(prev.tableBinding, t.tableBinding) =>
+            ctx.addTyperError(
+              DuplicateTypeDefinition(
+                typeName = typeName.name,
+                thisBinding = bindingString(t),
+                otherBinding = bindingString(prev),
+                otherLocation = ctx.sourceLocationAt(prev.span),
+                winnerFileName = ctx.compilationUnit.sourceFile.fileName,
+                span = t.span
+              )
+            )
+          case _ =>
         // Locate the type scope without forcing a pending lazy completion: forcing here would
         // resolve parent types before all compilation units are labeled
         val knownTypeScope =
@@ -359,6 +425,7 @@ object SymbolLabeler extends Phase("symbol-labeler"):
         sym.tree = t
         // Enter after the completer installation so the symbol is indexed with its name
         ctx.enterGlobalSymbol(sym)
+        warnCrossFileDuplicateTypeDefs(t)
 
         t.symbol = sym
         ctx.scope.add(typeName, sym)

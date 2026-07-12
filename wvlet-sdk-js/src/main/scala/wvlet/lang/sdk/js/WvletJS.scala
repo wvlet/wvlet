@@ -21,6 +21,7 @@ import wvlet.lang.compiler.lsp.CompletionItem
 import wvlet.lang.compiler.lsp.CompletionProvider
 import wvlet.lang.compiler.lsp.DefinitionProvider
 import wvlet.lang.compiler.lsp.HoverProvider
+import wvlet.lang.compiler.typer.TyperError
 import wvlet.lang.model.plan.*
 import wvlet.uni.weaver.Weaver
 import wvlet.uni.weaver.codec.PrimitiveWeaver.given
@@ -221,6 +222,32 @@ object WvletJS:
       // accumulate stale symbols that shadow the workspace files
       lspCompiler.releaseUnit(inputUnit)
     end try
+
+    // Surface the structured typer diagnostics of this document (typerErrors survives
+    // releaseUnit): duplicate-definition warnings and type errors (e.g. TypeMismatch), each
+    // with its own severity
+    val sourceFile = inputUnit.sourceFile
+    inputUnit
+      .typerErrors
+      .filter(_.span.exists)
+      .foreach { err =>
+        val severity =
+          err.severity match
+            case TyperError.Severity.Warning =>
+              "warning"
+            case TyperError.Severity.Error =>
+              "error"
+        diagnostics +=
+          LspDiagnostic(
+            line = sourceFile.offsetToLine(err.span.start) + 1,
+            column = sourceFile.offsetToColumn(err.span.start),
+            endLine = sourceFile.offsetToLine(err.span.end) + 1,
+            endColumn = sourceFile.offsetToColumn(err.span.end),
+            message = err.message,
+            severity = severity,
+            statusCode = err.getClass.getSimpleName
+          )
+      }
 
     given Weaver[LspDiagnostic] = Weaver.of[LspDiagnostic]
     summon[Weaver[List[LspDiagnostic]]].toJson(diagnostics.toList)

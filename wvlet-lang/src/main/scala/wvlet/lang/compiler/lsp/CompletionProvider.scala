@@ -479,28 +479,13 @@ object CompletionProvider:
       currentUnit: CompilationUnit,
       qualifier: List[String]
   ): List[CompletionItem] =
-    def nameParts(e: wvlet.lang.model.expr.Expression): List[String] =
-      e match
-        case i: wvlet.lang.model.expr.Identifier =>
-          List(i.leafName)
-        case wvlet.lang.model.expr.DotRef(q, name: wvlet.lang.model.expr.Identifier, _, _) =>
-          nameParts(q) match
-            case Nil =>
-              Nil
-            case parts =>
-              parts :+ name.leafName
-        case _ =>
-          Nil
-    def bindingMatches(contextParts: List[String]): Boolean =
-      contextParts match
-        case catalog :: schema :: Nil =>
-          qualifier match
-            case s :: Nil =>
-              s.equalsIgnoreCase(schema)
-            case c :: s :: Nil =>
-              c.equalsIgnoreCase(catalog) && s.equalsIgnoreCase(schema)
-            case _ =>
-              false
+    def bindingMatches(binding: (String, String)): Boolean =
+      val (catalog, schema) = binding
+      qualifier match
+        case s :: Nil =>
+          s.equalsIgnoreCase(schema)
+        case c :: s :: Nil =>
+          c.equalsIgnoreCase(catalog) && s.equalsIgnoreCase(schema)
         case _ =>
           false
     def tableTypes(plan: LogicalPlan): List[CompletionItem] =
@@ -509,7 +494,7 @@ object CompletionProvider:
         p match
           case pkg: PackageDef =>
             pkg.statements.foreach(loop)
-          case t: TypeDef if t.defContexts.exists(d => bindingMatches(nameParts(d.contextType))) =>
+          case t: TypeDef if t.tableBinding.exists(bindingMatches) =>
             buf += CompletionItem(t.name.name, CompletionItemKind.Struct, "table")
           case _ =>
       loop(plan)
