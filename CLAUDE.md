@@ -229,7 +229,11 @@ test _.output should be """
 
 ## Release Process
 
-The project follows semantic versioning and uses SBT plugins for cross-platform publishing. Check `project/release.rb` for release automation scripts.
+The project uses SBT plugins for cross-platform publishing. Check `project/release.rb` for release automation scripts.
+
+### Versioning
+
+Wvlet follows semi-calendar versioning: `YYYY.(milestone month).(patch)` — e.g., `2026.3.0` is the first release of the 2026 month-3 milestone. The middle segment is the milestone month (not a semver minor), and the patch increments within a milestone. This scheme applies across release artifacts (Scala artifacts, npm packages, the VS Code extension).
 
 ## Git & Development Workflow
 
