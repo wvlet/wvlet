@@ -87,8 +87,7 @@ val nativeLibRpathLinking =
         .map(_.trim)
         .filter(_.nonEmpty)
       val rpathDirs = (extraDirs ++ Seq("/opt/homebrew/lib", "/usr/local/lib")).distinct
-      val options = extraDirs.map(dir => s"-L${dir}") ++
-        rpathDirs.map(dir => s"-Wl,-rpath,${dir}")
+      val options = extraDirs.map(dir => s"-L${dir}") ++ rpathDirs.map(dir => s"-Wl,-rpath,${dir}")
       c.withLinkingOptions(c.linkingOptions ++ options)
     }
   }
@@ -490,6 +489,18 @@ lazy val spec = project
   .settings(buildSettings, specRunnerSettings, noPublish, name := "wvlet-spec")
   .dependsOn(runner, testUtil % Test)
 
+// The Scala.js linker owns its output directory and deletes unknown files on every link,
+// so the hand-written type declarations of the TypeScript SDK are kept in types/ and
+// copied back into lib/ after each link. The .link-mode marker records whether the
+// current bundle is the fast (dev) or full (optimized) output, so the npm packaging
+// guard can refuse to publish a dev bundle (#1894)
+def copySdkTypeDeclarations(baseDir: File, linkMode: String): Unit = {
+  val sdkDir = baseDir / "sdks" / "typescript"
+  IO.copyFile(sdkDir / "types" / "main.d.ts", sdkDir / "lib" / "main.d.ts")
+  IO.copyFile(sdkDir / "types" / "README.md", sdkDir / "lib" / "README.md")
+  IO.write(sdkDir / "lib" / ".link-mode", linkMode)
+}
+
 lazy val sdkJs = project
   .in(file("wvlet-sdk-js"))
   .enablePlugins(ScalaJSPlugin)
@@ -504,7 +515,19 @@ lazy val sdkJs = project
     Compile / fastLinkJS / scalaJSLinkerOutputDirectory :=
       (ThisBuild / baseDirectory).value / "sdks" / "typescript" / "lib",
     Compile / fullLinkJS / scalaJSLinkerOutputDirectory :=
-      (ThisBuild / baseDirectory).value / "sdks" / "typescript" / "lib"
+      (ThisBuild / baseDirectory).value / "sdks" / "typescript" / "lib",
+    Compile / fastLinkJS :=
+      Def.uncached {
+        val report = (Compile / fastLinkJS).value
+        copySdkTypeDeclarations((ThisBuild / baseDirectory).value, linkMode = "fast")
+        report
+      },
+    Compile / fullLinkJS :=
+      Def.uncached {
+        val report = (Compile / fullLinkJS).value
+        copySdkTypeDeclarations((ThisBuild / baseDirectory).value, linkMode = "full")
+        report
+      }
   )
   .dependsOn(lang.js)
 

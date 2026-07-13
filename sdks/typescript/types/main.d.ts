@@ -1,5 +1,9 @@
 /**
  * Type definitions for Scala.js generated WvletJS module
+ *
+ * This file is the hand-written source of truth. It lives in types/ because the
+ * Scala.js linker owns lib/ and deletes unknown files on every link; the sbt link
+ * tasks copy it into lib/main.d.ts next to the generated bundle (#1894).
  */
 
 export interface WvletJSType {
