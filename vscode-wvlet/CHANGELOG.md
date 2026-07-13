@@ -2,6 +2,24 @@
 
 All notable changes to the Wvlet extension will be documented in this file.
 
+## [2026.3.0] - 2026-07-13
+
+### Added
+- Workspace-aware language server: each file is analyzed together with the other
+  `.wv` sources of the workspace, including table types imported into the
+  `catalog/` folder by `wvlet catalog import`, so table references resolve
+  offline in diagnostics, hover, and completion
+- Go to Definition works across workspace files: jump from a model or type
+  reference to its definition in another `.wv` file, including imported catalog
+  types
+- Dot-triggered member completion: typing `.` after a table or alias suggests
+  its columns; after a schema name, the tables of that schema. General
+  completion adds workspace definitions and SQL function names, including
+  engine functions imported via `wvlet catalog import`
+- Typing diagnostics: type errors and warnings are now reported inline in the
+  editor (previously only the first syntax error was shown), including a new
+  warning when the same type name is bound to different database schemas
+
 ## [2026.2.0] - 2026-07-10
 
 ### Changed
