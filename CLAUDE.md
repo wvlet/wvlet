@@ -235,6 +235,15 @@ The project uses SBT plugins for cross-platform publishing. Check `project/relea
 
 Wvlet follows semi-calendar versioning: `YYYY.(milestone month).(patch)` — e.g., `2026.3.0` is the first release of the 2026 month-3 milestone. The middle segment is the milestone month (not a semver minor), and the patch increments within a milestone. This scheme applies across release artifacts (Scala artifacts, npm packages, the VS Code extension).
 
+### Unified release cycle
+
+Pushing a release tag `vX.Y.Z` publishes all artifacts, including npm packages and the VS Code extension. For the extension:
+- The tag version must equal `vscode-wvlet/package.json` — bump it (plus CHANGELOG) in the release commit, or the publish job fails loudly
+- A suffixed tag (e.g. `v2026.4.0-rc1`) publishes the extension as a Marketplace pre-release; plain tags publish stable
+- Versions already on the Marketplace are skipped, so re-running a tag pipeline is safe
+- Every build smoke-tests the packaged vsix over LSP stdio (`vscode-wvlet/scripts/lsp-smoke.mjs`) before it can be published — never bypass this gate
+- Manual out-of-band extension releases remain possible via the "VS Code" workflow dispatch with publish=true (patch != 0 publishes as pre-release)
+
 ## Git & Development Workflow
 
 ### Development Process
