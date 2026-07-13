@@ -22,7 +22,7 @@ Install from the [VS Code Marketplace](https://marketplace.visualstudio.com/item
 - **Document Outline**: Models, types, vals, and flows appear in the outline view
 - **Code Completion**: Context-aware suggestions as you type
 - **Hover Information**: Type and schema details when you hover over models and columns
-- **Go to Definition**: Jump from a model or type reference to its definition
+- **Go to Definition**: Jump from a model or type reference to its definition, also across workspace files
 
 ## Code Completion
 
@@ -64,9 +64,11 @@ Place the cursor on a model or type reference and use **Go to Definition** (`F12
 example, from `from my_model` you can jump to the `model my_model = ...` definition, and
 from a type reference to its `type` declaration.
 
-Go to Definition jumps within the current file. References to models or types defined in
-other workspace files resolve for diagnostics, completion, and hover, but navigating to
-their defining file is future work.
+Go to Definition works across the files of your workspace: a reference to a model or type
+defined in another `.wv` file — including table types imported into the `catalog/` folder by
+[`wvlet catalog import`](./catalog-import.md) — opens the defining file at the definition.
+When the same name is defined both in the current file and elsewhere, the definition in the
+current file wins.
 
 ## Working with Database Tables
 
@@ -88,8 +90,6 @@ sources are found.
   known — from a `model`/`type` definition in the workspace or from an imported catalog
   (see above). File sources such as `from 'data.json'` do not yet carry a schema in the
   editor.
-- **Same-file navigation**: Go to Definition only jumps to definitions in the file you are
-  editing; cross-file navigation is future work.
 - **Requires an analyzable query**: Column completion and hover rely on type
   resolution, so they appear once the surrounding query is complete enough to be
   analyzed. While a query is still being written, keyword and definition-name

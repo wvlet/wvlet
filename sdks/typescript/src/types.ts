@@ -156,4 +156,9 @@ export interface LspDefinition {
   startColumn: number;
   endLine: number;
   endColumn: number;
+  /**
+   * Path of the workspace file containing the definition;
+   * absent when the definition is in the requested document itself.
+   */
+  path?: string | null;
 }

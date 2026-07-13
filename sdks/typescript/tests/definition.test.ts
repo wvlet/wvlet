@@ -1,4 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 // The go-to-definition API is exposed directly on the Scala.js WvletJS module used by the LSP server.
 import { WvletJS } from '../lib/main.js';
 import type { LspDefinition } from '../src/types.js';
@@ -44,5 +47,50 @@ describe('WvletJS.getDefinition', () => {
 
   it('should not throw on incomplete input', () => {
     expect(definition('from ', 1, 6)).toBeNull();
+  });
+});
+
+// Cross-file navigation: once setWorkspacePath points at a project folder, definitions in
+// other workspace files resolve and carry the defining file's path.
+describe('WvletJS.getDefinition across workspace files', () => {
+  const defsSource =
+    'model shared_model = {\n  from [[1, "alice", 10]] as person(id, name, age)\n}\n';
+
+  let projectDir: string;
+  let defsPath: string;
+
+  beforeAll(() => {
+    projectDir = mkdtempSync(join(tmpdir(), 'wvlet-definition-'));
+    defsPath = join(projectDir, 'defs.wv');
+    writeFileSync(defsPath, defsSource);
+    WvletJS.setWorkspacePath(projectDir);
+  });
+
+  afterAll(() => {
+    // Restore the default so other test files keep seeing an empty workspace
+    WvletJS.setWorkspacePath('.');
+    if (projectDir) {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it('should report the defining file path for a model in another workspace file', () => {
+    // Cursor on `shared_model` (line 1, column 7)
+    const result = definition('from shared_model', 1, 7);
+    expect(result).not.toBeNull();
+    expect(result?.path).toBe(defsPath);
+    // `model shared_model` starts on line 1 of defs.wv
+    expect(result?.startLine).toBe(1);
+    expect(result?.startColumn).toBe(1);
+  });
+
+  it('should not report a path for a same-document definition', () => {
+    const src =
+      'model my_model = {\n  from shared_model\n}\nfrom my_model';
+    // Cursor on `my_model` in the last line (line 4, column 7)
+    const result = definition(src, 4, 7);
+    expect(result).not.toBeNull();
+    expect(result?.startLine).toBe(1);
+    expect(result?.path ?? null).toBeNull();
   });
 });

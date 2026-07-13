@@ -1,0 +1,9 @@
+-- Workspace definitions referenced by LSP cross-file navigation tests
+model shared_model = {
+  from [[1, "alice", 10]] as person(id, name, age)
+}
+
+type shared_point = {
+  x: long
+  y: long
+}
