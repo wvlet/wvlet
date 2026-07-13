@@ -3,6 +3,10 @@ name: VS Code
 on:
   push:
     branches: [ main ]
+    # Release tags publish the extension together with the other artifacts (npm, Maven).
+    # The tag must match vscode-wvlet/package.json; a -rc/-pre suffix publishes a pre-release.
+    tags:
+      - 'v*.*.*'
   pull_request:
     branches: [ main ]
   workflow_dispatch:
@@ -21,10 +25,12 @@ jobs:
   changes:
     runs-on: ubuntu-latest
     outputs:
-      vscode: ${{ steps.filter.outputs.vscode }}
+      # Tag pushes always build (the path filter has no base to diff against on a tag)
+      vscode: ${{ startsWith(github.ref, 'refs/tags/') && 'true' || steps.filter.outputs.vscode }}
     steps:
       - uses: actions/checkout@v7
       - uses: dorny/paths-filter@v4
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         id: filter
         with:
           filters: |
@@ -72,6 +78,16 @@ jobs:
     - name: Package extension
       run: pnpm run build-vscode-extension
 
+    # Drive the exact packaged artifact over LSP stdio (initialize, go-to-definition,
+    # hover). 2026.1.0 shipped with a silently dead language server; this gate makes
+    # that class of packaging regression fail the build instead.
+    - name: Smoke test packaged extension
+      run: |
+        VSIX=$(ls vscode-wvlet/*.vsix)
+        rm -rf /tmp/vsix-smoke && mkdir -p /tmp/vsix-smoke
+        unzip -q "$VSIX" -d /tmp/vsix-smoke
+        node vscode-wvlet/scripts/lsp-smoke.mjs /tmp/vsix-smoke/extension/out/server.js
+
     - name: Upload VSIX artifact
       uses: actions/upload-artifact@v7
       with:
@@ -79,25 +95,53 @@ jobs:
         path: vscode-wvlet/*.vsix
         retention-days: 30
 
-    - name: Determine release type
-      if: github.event.inputs.publish == 'true'
-      id: release_type
+    # Two publish paths share the steps below:
+    #   - Release tag vX.Y.Z: publish stable; vX.Y.Z-rc1 etc.: publish pre-release.
+    #     The numeric tag version must equal vscode-wvlet/package.json (fail loudly on
+    #     mismatch rather than publish a stale version). Versions already on the
+    #     Marketplace are skipped, so re-running a tag pipeline is idempotent.
+    #   - Manual dispatch with publish=true: legacy path for out-of-band releases;
+    #     patch != 0 publishes as pre-release (unchanged behavior).
+    - name: Plan Marketplace release
+      if: github.event.inputs.publish == 'true' || startsWith(github.ref, 'refs/tags/v')
+      id: release_plan
       run: |
         VERSION=$(node -p "require('./vscode-wvlet/package.json').version")
-        PATCH=$(echo $VERSION | cut -d'.' -f3)
-        if [ "$PATCH" = "0" ]; then
-          echo "type=stable" >> $GITHUB_OUTPUT
-          echo "Release type: stable (version $VERSION)"
+        PUBLISH=true
+        TYPE=stable
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          PATCH=$(echo "$VERSION" | cut -d'.' -f3)
+          if [ "$PATCH" != "0" ]; then
+            TYPE=pre-release
+          fi
         else
-          echo "type=pre-release" >> $GITHUB_OUTPUT
-          echo "Release type: pre-release (version $VERSION)"
+          TAG="${GITHUB_REF#refs/tags/v}"
+          BASE="${TAG%%-*}"
+          if [ "$BASE" != "$VERSION" ]; then
+            echo "::error::Release tag v${TAG} does not match vscode-wvlet/package.json version ${VERSION}. Bump the extension version in the release commit."
+            exit 1
+          fi
+          if [ "$TAG" != "$BASE" ]; then
+            TYPE=pre-release
+          fi
         fi
+        PUBLISHED=$(curl -sf "https://marketplace.visualstudio.com/_apis/public/gallery/extensionquery" \
+          -H "Content-Type: application/json" -H "Accept: application/json;api-version=3.0-preview.1" \
+          -d '{"filters":[{"criteria":[{"filterType":7,"value":"wvlet.wvlet"}]}],"flags":1}' \
+          | jq -r --arg v "$VERSION" '[.results[0].extensions[0].versions[].version] | contains([$v])' || echo "unknown")
+        if [ "$PUBLISHED" = "true" ]; then
+          echo "::notice::wvlet.wvlet ${VERSION} is already on the Marketplace; skipping publish."
+          PUBLISH=false
+        fi
+        echo "publish=$PUBLISH" >> "$GITHUB_OUTPUT"
+        echo "type=$TYPE" >> "$GITHUB_OUTPUT"
+        echo "Release plan: publish=$PUBLISH type=$TYPE version=$VERSION"
 
     - name: Publish to VS Code Marketplace
-      if: github.event.inputs.publish == 'true'
+      if: steps.release_plan.outputs.publish == 'true'
       run: |
         cd vscode-wvlet
-        if [ "${{ steps.release_type.outputs.type }}" = "pre-release" ]; then
+        if [ "${{ steps.release_plan.outputs.type }}" = "pre-release" ]; then
           pnpm exec vsce publish --no-dependencies --pre-release --pat ${{ secrets.VSCE_PAT }}
         else
           pnpm exec vsce publish --no-dependencies --pat ${{ secrets.VSCE_PAT }}
