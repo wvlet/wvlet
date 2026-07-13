@@ -19,17 +19,20 @@ const server = spawn('node', [serverPath, '--stdio']);
 let buf = Buffer.alloc(0);
 const pending = new Map();
 let nextId = 1;
+// Set before every intentional termination; any other server exit is a failure
+let finished = false;
 
 const timeout = setTimeout(() => {
   console.error('LSP smoke test timed out after 60s');
+  finished = true;
   server.kill();
   process.exit(1);
 }, 60_000);
 
 server.stderr.on('data', (d) => process.stderr.write(d));
 server.on('exit', (code) => {
-  if (pending.size > 0) {
-    console.error(`server exited early (code ${code}) with requests in flight`);
+  if (!finished) {
+    console.error(`server exited unexpectedly (code ${code})`);
     process.exit(1);
   }
 });
@@ -114,6 +117,7 @@ const hoverText = JSON.stringify(hover.result?.contents ?? '');
 check('hover types a column through the model', hoverText.includes('long'), hoverText.slice(0, 120));
 
 clearTimeout(timeout);
+finished = true;
 server.kill();
 if (failures.length > 0) {
   console.error(`LSP smoke test failed: ${failures.length} check(s)`);
