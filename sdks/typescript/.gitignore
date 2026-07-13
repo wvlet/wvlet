@@ -1,7 +1,8 @@
 node_modules/
 dist/
-lib/*.js
-lib/*.js.map
+# lib/ is owned by the Scala.js linker (build output only); the hand-written
+# main.d.ts and README.md live in types/ and are copied in after each link
+lib/
 *.log
 .DS_Store
 coverage/

@@ -8,12 +8,16 @@
   "type": "module",
   "scripts": {
     "build:scalajs": "cd ../.. && ./sbt sdkJs/fastLinkJS",
-    "build": "pnpm run build:scalajs && tsc",
+    "build:scalajs:release": "cd ../.. && ./sbt sdkJs/fullLinkJS",
+    "build:ts": "node -e \"fs.rmSync('dist', { recursive: true, force: true })\" && tsc",
+    "build": "pnpm run build:scalajs && pnpm run build:ts",
+    "build:release": "pnpm run build:scalajs:release && pnpm run build:ts",
     "test": "vitest",
     "test:ci": "vitest run",
     "corpus:smoke": "node scripts/corpus-smoke.mjs",
     "lint": "tsc --noEmit",
-    "prepublishOnly": "pnpm run build"
+    "verify-package": "node scripts/verify-package.mjs",
+    "prepublishOnly": "node scripts/verify-package.mjs"
   },
   "files": [
     "dist",

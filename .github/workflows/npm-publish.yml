@@ -51,15 +51,18 @@ jobs:
           cache: 'pnpm'
           cache-dependency-path: pnpm-lock.yaml
 
-      - name: Build Scala.js SDK
+      - name: Build Scala.js SDK (optimized)
         run: ./sbt "sdkJs/fullLinkJS"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # build:ts only — `run build` would re-link with fastLinkJS and overwrite the
+      # optimized bundle (#1894). prepublishOnly verifies the package contents.
       - name: Build TypeScript
-        run: pnpm --filter @wvlet/wvlet run build
+        run: pnpm --filter @wvlet/wvlet run build:ts
 
+      # The tests import lib/main.js, so this exercises the optimized bundle that ships
       - name: Run tests
         run: pnpm --filter @wvlet/wvlet run test:ci
 
