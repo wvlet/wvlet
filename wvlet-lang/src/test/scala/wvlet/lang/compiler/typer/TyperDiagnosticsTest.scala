@@ -57,6 +57,17 @@ class TyperDiagnosticsTest extends UniTest:
     compileErrors("from [[1]] as t(id) | where unknown_col + 1 > 2") shouldBe Nil
   }
 
+  test("report type mismatches with error severity") {
+    val errors     = compileErrors("select 1 - 'a' as v")
+    val mismatches = errors.collect { case t: TypeMismatch =>
+      t
+    }
+    mismatches.nonEmpty shouldBe true
+    mismatches.foreach { m =>
+      m.severity shouldBe TyperError.Severity.Error
+    }
+  }
+
   test("fail the compilation on type errors when failOnTypeErrors is set") {
     val compiler = Compiler(CompilerOptions(workEnv = WorkEnv(".")).withFailOnTypeErrors(true))
     val unit     = CompilationUnit.fromWvletString("select 1 - 'a' as v")

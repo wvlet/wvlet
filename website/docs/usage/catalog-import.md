@@ -80,6 +80,24 @@ A few notes on what gets imported:
   duplicate-definition warning and deterministically uses the definition from the first file
   in source-file name order. Rename one of them to remove the ambiguity.
 
+## Duplicate type names across schemas
+
+When two schemas define a table with the same name (e.g. `mydb.sales.orders` and
+`mydb.marketing.orders`), the import writes a `type orders in ...` definition into both schema
+files. The compiler can only resolve the name through one of them, so it reports a warning:
+
+```
+[warning] Duplicate type definition 'orders' (bound to mydb.marketing): also defined at
+catalog/mydb/sales.wv:1:1 (bound to mydb.sales). Only the definition in catalog/mydb/sales.wv
+is used for name lookup.
+```
+
+Queries that reference the winning definition keep working; references to the other schema's
+table may not resolve to the schema you expect. To fix the warning, keep only the schema you
+query (`wvlet catalog import --schema sales`), or remove one of the definitions — for
+hand-written types, rename one of them. The warning never fails the compilation, even with
+`wvlet compile --strict`.
+
 ## Keeping catalogs up to date
 
 Re-running `wvlet catalog import` overwrites the generated files. The output is deterministic —

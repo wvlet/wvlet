@@ -94,16 +94,24 @@ object Typer extends Phase("typer") with LogSupport:
     // Attach the collected type errors to the unit as diagnostics and report them
     unit.typerErrors = preScanCtx.typerErrors
     if preScanCtx.hasTyperErrors then
-      warn(s"Typing errors in ${unit.sourceFile.fileName}:")
+      warn(s"Typing diagnostics in ${unit.sourceFile.fileName}:")
       preScanCtx
         .typerErrors
         .foreach { err =>
-          warn(s"  ${err.message} at ${err.sourceLocation(using context)}")
+          val label =
+            err.severity match
+              case TyperError.Severity.Warning =>
+                "[warning]"
+              case TyperError.Severity.Error =>
+                "[error]"
+          warn(s"  ${label} ${err.message} at ${err.sourceLocation(using context)}")
         }
+      // Warnings (e.g., duplicate type definitions) never fail the compilation, even in
+      // strict mode
       if context.global.compilerOptions.failOnTypeErrors then
         preScanCtx
           .typerErrors
-          .headOption
+          .find(_.severity == TyperError.Severity.Error)
           .foreach { first =>
             throw StatusCode
               .TYPE_ERROR

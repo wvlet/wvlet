@@ -69,7 +69,18 @@ case class TypeDef(
     parent: Option[NameExpr],
     elems: List[TypeElem],
     span: Span
-) extends LanguageStatement
+) extends LanguageStatement:
+
+  /**
+    * The `<catalog>.<schema>` table binding of `type <name> in <catalog>.<schema>`. Single-part
+    * contexts (e.g. `in duckdb`) are dialect scopes, never table bindings
+    */
+  def tableBinding: Option[(String, String)] = defContexts
+    .iterator
+    .map(_.contextType.nameParts)
+    .collectFirst { case catalog :: schema :: Nil =>
+      (catalog, schema)
+    }
 
 // type elements (def or column (field) definition)
 sealed trait TypeElem extends Expression

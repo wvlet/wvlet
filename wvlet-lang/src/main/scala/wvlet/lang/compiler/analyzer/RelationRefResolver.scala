@@ -152,12 +152,7 @@ object RelationRefResolver extends ContextLogSupport:
   private def tableBindingOf(sym: Symbol): Option[TableBinding] =
     sym.tree match
       case t: TypeDef =>
-        t.defContexts
-          .iterator
-          .map(d => nameParts(d.contextType))
-          .collectFirst { case catalog :: schema :: Nil =>
-            TableBinding(catalog, schema)
-          }
+        t.tableBinding.map((catalog, schema) => TableBinding(catalog, schema))
       case _ =>
         None
 
