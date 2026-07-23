@@ -7,12 +7,12 @@ import scala.scalanative.build.NativeConfig
 import scala.language.implicitConversions
 import WvletBuildKeys.*
 
-val UNI_VERSION = "2026.1.20"
+val UNI_VERSION = "2026.1.21"
 
 val TRINO_VERSION          = "476"
 val AWS_SDK_VERSION        = "2.20.146"
 val SCALAJS_DOM_VERSION    = "2.8.1"
-val DUCKDB_JDBC_VERSION    = "1.5.4.0"
+val DUCKDB_JDBC_VERSION    = "1.5.5.0"
 val SNOWFLAKE_JDBC_VERSION = "4.3.2"
 val CAFFEINE_VERSION       = "3.2.4"
 
@@ -459,7 +459,7 @@ lazy val runner = project
         "org.jline"        % "jline"        % "4.3.1",
         "org.apache.arrow" % "arrow-vector" % "19.0.0",
         // SQLite-backed flow run store (cross-process cancellation and concurrency claims)
-        "org.xerial" % "sqlite-jdbc" % "3.53.2.0",
+        "org.xerial" % "sqlite-jdbc" % "3.53.2.1",
         // trino-jdbc removed in PR-D: TrinoConnector now talks the Trino REST protocol via uni's
         // HttpSyncClient (see wvlet-lang's TrinoSqlConnector). trino-testing stays in test scope
         // for the in-process TestingTrinoServer — that artifact doesn't pull in trino-jdbc.

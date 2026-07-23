@@ -1,8 +1,8 @@
 // ThisBuild / resolvers ++= Resolver.sonatypeOssRepos("snapshots")
 
-val UNI_VERSION = "2026.1.20"
+val UNI_VERSION = "2026.1.21"
 
-addSbtPlugin("org.scalameta" % "sbt-scalafmt"  % "2.6.1")
+addSbtPlugin("org.scalameta" % "sbt-scalafmt"  % "2.6.2")
 addSbtPlugin("com.eed3si9n"  % "sbt-buildinfo" % "0.13.1")
 
 // For IntelliJ IDEA
