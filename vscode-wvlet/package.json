@@ -4,7 +4,7 @@
   "description": "Wvlet query language support for Visual Studio Code",
   "version": "2026.3.0",
   "engines": {
-    "vscode": "^1.116.0"
+    "vscode": "^1.125.0"
   },
   "main": "./out/extension.js",
   "categories": [
