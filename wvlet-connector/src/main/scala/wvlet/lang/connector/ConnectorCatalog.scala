@@ -26,7 +26,6 @@ import wvlet.uni.weaver.Weaver
 import wvlet.uni.weaver.codec.PrimitiveWeaver.given
 
 import java.util.concurrent.TimeUnit
-import scala.jdk.CollectionConverters.*
 
 class ConnectorCatalog(
     val catalogName: String,
@@ -75,8 +74,10 @@ class ConnectorCatalog(
   ThreadUtil.runBackgroundTask(() => init())
 
   private def init(): Unit =
-    // Pre-load tables in defaultSchema and information_schema
-    tablesInSchemaCache.getAll(List(defaultSchema, "information_schema").asJava)
+    // Pre-load tables in defaultSchema and information_schema. Load keys one by one:
+    // getAll requires a CacheLoader with a loadAll implementation, which the lambda-based
+    // loader lacks, and would fail with UnsupportedOperationException
+    List(defaultSchema, "information_schema").foreach(schema => tablesInSchemaCache.get(schema))
 
   override def dbType: DBType = dbConnector.dbType
 

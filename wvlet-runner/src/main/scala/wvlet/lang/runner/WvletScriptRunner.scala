@@ -130,17 +130,38 @@ class WvletScriptRunner(
         )
       }
 
-    // Pre-compile files in the source paths
-    if config.precompileSourcePaths then
-      threadManager.runBackgroundTask { () =>
-        val result = c.compileSourcePaths(contextFile = None)
-        // Report compilation errors in the initialization phases
-        if result.hasFailures then
-          workEnv.logError(result.failureException)
-      }
     c
 
   end compiler
+
+  // Warm up the compiler by pre-compiling files in the source paths while the REPL is starting
+  // up. The compiler's symbol table is not thread-safe, so runStatement must join this task
+  // before compiling a statement; otherwise the two compilations race and fail with spurious
+  // cyclic-reference errors
+  private val precompileTask: Option[java.util.concurrent.Future[?]] =
+    if config.precompileSourcePaths then
+      Some(
+        threadManager.runBackgroundTask { () =>
+          val result = compiler.compileSourcePaths(contextFile = None)
+          // Report compilation errors in the initialization phases
+          if result.hasFailures then
+            workEnv.logError(result.failureException)
+        }
+      )
+    else
+      None
+
+  private def awaitPrecompile(): Unit = precompileTask.foreach { task =>
+    try
+      task.get()
+    catch
+      case _: InterruptedException =>
+        Thread.currentThread().interrupt()
+      // Compilation failures are already logged inside the task. Any other failure will
+      // resurface when the statement itself is compiled, so only record it for debugging
+      case e: Exception =>
+        debug(e)
+  }
 
   def runStatement(request: QueryRequest)(using
       queryProgressMonitor: QueryProgressMonitor
@@ -148,6 +169,8 @@ class WvletScriptRunner(
     val newUnit = CompilationUnit.fromWvletString(request.query)
     units = newUnit :: units
 
+    // The compiler must not be used concurrently with the background warm-up compilation
+    awaitPrecompile()
     try
       queryProgressMonitor.startCompile(newUnit)
       val compileResult = compiler.compileSingleUnit(contextUnit = newUnit)
