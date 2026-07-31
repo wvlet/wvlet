@@ -31,6 +31,6 @@
     "vite-plugin-monaco-editor": "^1.1.0"
   },
   "optionalDependencies": {
-    "lightningcss-linux-x64-gnu": "^1.32.0"
+    "lightningcss-linux-x64-gnu": "^1.33.0"
   }
 }
