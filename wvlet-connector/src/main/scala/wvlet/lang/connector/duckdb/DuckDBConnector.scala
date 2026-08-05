@@ -21,6 +21,11 @@ import wvlet.lang.compiler.Name
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.model.DataType
 import wvlet.lang.model.DataType.NamedType
+import wvlet.lang.compiler.analyzer.duckdb.DuckDB as DuckDBFacade
+import wvlet.lang.compiler.analyzer.duckdb.DuckDBSqlConnector
+import wvlet.lang.compiler.connector.QueryHandle
+import wvlet.lang.compiler.connector.SqlConnector
+import wvlet.lang.compiler.query.QueryProgressMonitor
 import wvlet.lang.connector.ThreadUtil
 import wvlet.lang.connector.DBConnection
 import wvlet.lang.connector.DBConnector
@@ -73,6 +78,34 @@ class DuckDBConnector(workEnv: WorkEnv, prepareTPCH: Boolean = false, prepareTPC
       stmt.execute("install tpcds")
       stmt.execute("load tpcds")
       stmt.execute("call dsdgen(sf = 0.01)")
+
+  /**
+    * Cross-platform [[SqlConnector]] view over this connector's long-lived connection. Unlike the
+    * stateless [[DuckDBSqlConnector]], which opens a fresh in-memory DuckDB per submit, every
+    * statement here runs through [[withConnection]], so in-memory tables persist across submits —
+    * the session state the runner and REPL rely on.
+    *
+    * DuckDB executes in-process and synchronously, so `submit` returns an already-finished handle
+    * and `cancel` is a no-op. Closing the view is also a no-op: the connection lifecycle stays
+    * owned by this connector.
+    *
+    * Deliberately NOT exposed via the [[DBConnector.sqlConnector]] capability: that hook routes
+    * `QueryExecutor`'s display path through varchar-coerced cross-platform rows, which would
+    * downgrade DuckDB's typed JDBC results to strings (breaking typed `test _.rows` spec assertions
+    * and typed web-UI values). Callers that want the cross-platform surface use this accessor
+    * explicitly.
+    */
+  lazy val asSqlConnector: SqlConnector =
+    new SqlConnector:
+      override def submit(sql: String)(using QueryProgressMonitor): QueryHandle =
+        val result = withConnection { conn =>
+          Using.resource(conn.createStatement()) { stmt =>
+            DuckDBFacade.executeStatement(stmt, sql)
+          }
+        }
+        DuckDBSqlConnector.completedHandle(result)
+
+      override def close(): Unit = ()
 
   override private[connector] def newConnection: DBConnection =
     // For in-memory DuckDB, the connection will be created only once

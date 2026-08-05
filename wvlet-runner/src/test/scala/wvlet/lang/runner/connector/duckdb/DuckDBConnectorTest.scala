@@ -16,6 +16,8 @@ package wvlet.lang.runner.connector.duckdb
 import wvlet.lang.connector.duckdb.DuckDBConnector
 
 import wvlet.lang.compiler.Name
+import wvlet.lang.compiler.connector.QueryState
+import wvlet.lang.compiler.query.QueryProgressMonitor
 import wvlet.lang.model.DataType
 import wvlet.lang.model.DataType.NamedType
 import wvlet.lang.test.WvletDITest
@@ -66,5 +68,38 @@ class DuckDBConnectorTest extends WvletDITest:
     val duckdb    = dep[DuckDBConnector]
     val functions = duckdb.listFunctions("memory")
     functions shouldNotBe empty
+
+  test("should preserve in-memory tables across asSqlConnector submits"):
+    given QueryProgressMonitor = QueryProgressMonitor.noOp
+    val duckdb                 = dep[DuckDBConnector]
+    val sc                     = duckdb.asSqlConnector
+
+    sc.execute("create table sql_connector_state(id bigint)")
+    sc.execute("insert into sql_connector_state values (1), (2), (3)")
+    val r = sc.execute("select count(*) as cnt from sql_connector_state")
+    r.rowCount shouldBe 1
+    r.rows.head.values.head shouldBe Some("3")
+
+    // The view shares the connector's long-lived connection, so the table is also visible
+    // through the JDBC-side metadata methods
+    duckdb.getTableDef("memory", "main", "sql_connector_state") shouldBe defined
+    duckdb.dropTable("memory", "main", "sql_connector_state")
+
+  test("should keep the typed JDBC path as the default query route"):
+    // The stateful view is opt-in: exposing it via the `sqlConnector` capability would switch
+    // QueryExecutor to varchar-coerced cross-platform rows and lose typed results
+    val duckdb = dep[DuckDBConnector]
+    duckdb.sqlConnector shouldBe empty
+
+  test("should return an already-finished handle from asSqlConnector.submit"):
+    given QueryProgressMonitor = QueryProgressMonitor.noOp
+    val duckdb                 = dep[DuckDBConnector]
+    val h                      = duckdb.asSqlConnector.submit("select 1 as one")
+    h.state shouldBe QueryState.Finished
+    h.queryId shouldBe None
+    // cancel is a no-op after completion; await stays idempotent
+    h.cancel()
+    h.await().rows.head.values.head shouldBe Some("1")
+    h.close()
 
 end DuckDBConnectorTest

@@ -34,9 +34,9 @@ import wvlet.lang.compiler.query.QueryProgressMonitor
   *
   * Each `submit` invokes `DuckDB.execute(sql)`, which on JVM opens a fresh in-memory `jdbc:duckdb:`
   * connection per call; in-memory tables don't persist across calls. The runner's JVM
-  * `DuckDBConnector` keeps using its long-lived JDBC connection for that reason; this
-  * cross-platform `SqlConnector` is the right tool for one-shot CLI queries against ephemeral
-  * DuckDB instances.
+  * `DuckDBConnector` exposes a stateful `asSqlConnector` view over its long-lived connection for
+  * session-preserving execution; this cross-platform `SqlConnector` is the right tool for one-shot
+  * CLI queries against ephemeral DuckDB instances.
   */
 class DuckDBSqlConnector extends SqlConnector:
 
@@ -53,9 +53,9 @@ object DuckDBSqlConnector:
   /**
     * Build a [[QueryHandle]] that wraps an already-materialized [[QueryResult]]. Used for backends
     * (DuckDB today) whose `submit` is synchronous so callers still see the trait's submit/await/
-    * cancel surface.
+    * cancel surface. Also reused by the runner's stateful `DuckDBConnector.asSqlConnector` view.
     */
-  private[duckdb] def completedHandle(result: QueryResult): QueryHandle =
+  private[lang] def completedHandle(result: QueryResult): QueryHandle =
     new QueryHandle:
       override def queryId: Option[String] = None
       override def state: QueryState       = QueryState.Finished
