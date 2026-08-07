@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@duckdb/duckdb-wasm": "^1.32.0",
-    "@tailwindcss/postcss": "^4.3.1",
+    "@tailwindcss/postcss": "^4.3.3",
     "@tailwindcss/vite": "^4.3.3",
     "apache-arrow": "^21.1.0",
     "koffi": "^3.1.2",
