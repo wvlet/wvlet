@@ -853,11 +853,11 @@ class QueryExecutor(
           val result =
             connector.sqlConnector match
               case Some(sc) =>
-                // PR-B: route Trino through the HTTP-backed SqlConnector view added in PR-A.
-                // No JDBC ResultSet, no `JDBCCodec` — `QueryResult.rows` already comes back as
-                // `Seq[Option[String]]` per column, which is the same shape DuckDB's
-                // `varchar`-coerced JDBC path produces downstream. DuckDB stays on the JDBC
-                // path below until it gets its own `SqlConnector` (PR-C+ in this series).
+                // Engines that execute over HTTP instead of JDBC (Trino) return rows as
+                // `Seq[Option[String]]` per column — no JDBC ResultSet, no `JDBCCodec`. DuckDB
+                // deliberately stays on the JDBC branch below even though it has a stateful
+                // `asSqlConnector` view: the cross-platform rows are varchar-coerced, and the
+                // JDBC path preserves typed values for `test _.rows` assertions and the web UI.
                 tableRowsFromXP(sc.execute(generatedSQL.sql))
               case None =>
                 connector.runQuery(generatedSQL.sql) { rs =>

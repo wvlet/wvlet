@@ -53,21 +53,30 @@ trait DuckDBCompat:
     */
   def execute(sql: String): QueryResult = withConnection { conn =>
     withResource(conn.createStatement()) { stmt =>
-      // JDBC's executeQuery() rejects statements that produce no ResultSet, so dispatch on
-      // execute() and fall back to the update count for COPY/DDL statements.
-      if stmt.execute(sql) then
-        withResource(stmt.getResultSet)(readResult)
-      else
-        val count = stmt.getUpdateCount
-        if count < 0 then
-          QueryResult(Nil, Nil)
-        else
-          QueryResult(
-            List(NamedType(Name.termName("Count"), DataType.LongType)),
-            List(QueryResultRow(List(Some(count.toString))))
-          )
+      executeStatement(stmt, sql)
     }
   }
+
+  /**
+    * Run `sql` on a caller-provided JDBC statement and materialize the result. Shared by the
+    * fresh-connection [[execute]] above and the runner's stateful `DuckDBConnector.asSqlConnector`
+    * view, which supplies a statement bound to its long-lived connection so in-memory tables
+    * persist across calls.
+    */
+  private[lang] def executeStatement(stmt: java.sql.Statement, sql: String): QueryResult =
+    // JDBC's executeQuery() rejects statements that produce no ResultSet, so dispatch on
+    // execute() and fall back to the update count for COPY/DDL statements.
+    if stmt.execute(sql) then
+      withResource(stmt.getResultSet)(readResult)
+    else
+      val count = stmt.getUpdateCount
+      if count < 0 then
+        QueryResult(Nil, Nil)
+      else
+        QueryResult(
+          List(NamedType(Name.termName("Count"), DataType.LongType)),
+          List(QueryResultRow(List(Some(count.toString))))
+        )
 
   private def readResult(rs: ResultSet): QueryResult =
     val metadata = rs.getMetaData
