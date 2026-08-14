@@ -29,10 +29,10 @@
   },
   "homepage": "https://wvlet.org",
   "peerDependencies": {
-    "highlight.js": "^11.0.0"
+    "highlight.js": "^11.11.2"
   },
   "devDependencies": {
-    "highlight.js": "^11.0.0",
+    "highlight.js": "^11.11.2",
     "mocha": "^11.8.0",
     "should": "^13.2.3"
   },
