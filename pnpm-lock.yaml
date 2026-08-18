@@ -90,15 +90,6 @@ importers:
         specifier: ^1.33.0
         version: 1.33.0
 
-  flow-runtime:
-    devDependencies:
-      '@types/node':
-        specifier: ^26.1.2
-        version: 26.1.2
-      typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
-
   highlightjs-wvlet:
     devDependencies:
       highlight.js:
@@ -128,6 +119,15 @@ importers:
       koffi:
         specifier: ^3.1.4
         version: 3.1.4
+
+  sdks/flow-runtime:
+    devDependencies:
+      '@types/node':
+        specifier: ^26.1.2
+        version: 26.1.2
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
 
   sdks/typescript:
     devDependencies:

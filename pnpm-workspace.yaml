@@ -1,5 +1,4 @@
 packages:
-  - 'flow-runtime'
   - 'wvlet-ui-main'
   - 'wvlet-ui-playground'
   - 'vscode-wvlet'
@@ -8,6 +7,7 @@ packages:
   - 'prismjs-wvlet'
   - 'sdks/typescript'
   - 'sdks/cli-node'
+  - 'sdks/flow-runtime'
 
 overrides:
   dompurify: ^3.4.13
