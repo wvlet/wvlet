@@ -1,0 +1,39 @@
+{
+  "name": "@wvlet/flow-runtime",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Experimental contract package for executing Wvlet agent flows: SQLite bus schema, canonical bus operations, FlowPlan interchange types, and the stage state machine as data",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "sql",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\" && tsc",
+    "lint": "tsc --noEmit",
+    "test": "pnpm run build && node --experimental-sqlite --test test/*.test.mjs"
+  },
+  "keywords": [
+    "wvlet",
+    "flow",
+    "agent",
+    "orchestration"
+  ],
+  "author": "wvlet.org",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wvlet/wvlet.git",
+    "directory": "flow-runtime"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.2",
+    "typescript": "^7.0.2"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  }
+}

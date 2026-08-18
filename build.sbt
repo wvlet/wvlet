@@ -97,6 +97,7 @@ lazy val jvmProjects: Seq[ProjectReference] = Seq(
   httpServer,
   server,
   lang.jvm,
+  flowCore.jvm,
   connector,
   runner,
   client.jvm,
@@ -110,6 +111,7 @@ lazy val jsProjects: Seq[ProjectReference] = Seq(
   api.js,
   client.js,
   lang.js,
+  flowCore.js,
   ui,
   uiMain,
   playground,
@@ -257,6 +259,26 @@ lazy val lang = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   )
   .nativeSettings(uniNativeCurlLinking)
   .dependsOn(api)
+
+// Portable flow scheduler skeleton: runs a FlowDef's stage DAG against a host-provided
+// FlowEnginePort (SQL, agent invocation, bus append, persistence). Cross-built for JVM and
+// Scala.js so external hosts like Treasure Work (Electron) can embed it; keep it free of
+// JDBC and other JVM-only APIs.
+lazy val flowCore = crossProject(JVMPlatform, JSPlatform)
+  .crossType(CrossType.Pure)
+  .in(file("wvlet-flow-core"))
+  .settings(
+    buildSettings,
+    name        := "wvlet-flow-core",
+    description := "Portable flow scheduler over a host-provided execution port (FlowEnginePort)"
+  )
+  .jsSettings(
+    libraryDependencies += scalajsJavaSecureRandom,
+    scalaJSLinkerConfig ~= {
+      _.withModuleKind(ModuleKind.CommonJSModule)
+    }
+  )
+  .dependsOn(lang)
 
 val specRunnerSettings = Seq(
   // Fork JVM to enable JVM options for Trino

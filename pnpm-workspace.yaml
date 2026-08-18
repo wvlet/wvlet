@@ -1,4 +1,5 @@
 packages:
+  - 'flow-runtime'
   - 'wvlet-ui-main'
   - 'wvlet-ui-playground'
   - 'vscode-wvlet'
