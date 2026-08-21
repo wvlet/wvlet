@@ -126,6 +126,7 @@ pnpm --filter website run build
 - **Web Stack**: `wvlet-server` (HTTP API), `wvlet-ui*` (React/Scala.js components)
 - **Multi-Platform**: JVM, JavaScript (Scala.js), Native (Scala Native) support
 - **Language Bindings**: `wvc-lib` for C/C++/Rust integration
+- **Agent Flow (prototype)**: `wvlet-flow-core` (portable flow scheduler over a host-provided `FlowEnginePort`; JVM + Scala.js cross module, test with `./sbt flowCoreJVM/test` and compile-check JS with `./sbt flowCoreJS/Test/compile`), `sdks/flow-runtime` (npm contract package for external flow executors: SQLite bus schema, FlowPlan interchange types, stage state machine as data; test with `pnpm --filter @wvlet/flow-runtime test`)
 
 ### Compiler Pipeline
 1. **Parser**: Wvlet syntax (.wv files) → AST using custom parser combinators
