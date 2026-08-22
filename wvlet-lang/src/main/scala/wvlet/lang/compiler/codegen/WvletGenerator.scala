@@ -120,12 +120,14 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
       else
         lines(n.comments.reverse.map(c => text(c.str))) / d
 
+    // Wvlet has no block comments, so a `--` comment printed inline would swallow any code
+    // rendered after it on the same line (e.g. the rest of an expression). Print trailing
+    // comments on their own line before the node instead, each followed by a hard line break
+    // that enclosing groups cannot collapse back onto one line
     if n.postComments.isEmpty then
       dd
-    else if n.postComments.size > 1 then
-      dd + wsOrNL + concat(n.postComments.reverse.map(c => text(c.str)), linebreak)
     else
-      wl(dd, wl(n.postComments.map(c => text(c.str))))
+      concat(n.postComments.reverse.map(c => text(c.str) + linebreak)) + dd
 
   /**
     * Flatten a Doc tree replacing VList (newlines) with explicit pipe operators. This is used for
@@ -265,6 +267,13 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
               group(wl("from", tableInput(t)) + wsOrNL + "as" + ws + tableAlias)
             case v: Values =>
               group(values(v) + wsOrNL + "as" + ws + tableAlias)
+            case _ if sc.inFromClause =>
+              // A subquery appearing as a join item: emit only the braced subquery, as a
+              // leading `from` here would start a nested lateral query
+              group(
+                indentedBrace(relation(a.child)(using InSubQuery)) +
+                  nest(ws + "as" + ws + tableAlias)
+              )
             case _ =>
               group(
                 wl("from", indentedBrace(relation(a.child)(using InSubQuery))) +
@@ -688,6 +697,20 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
           unsupportedNode(s"statement ${other.nodeName}", other.span)
     }
 
+  /**
+    * Print an expression appearing as an operand of a larger expression. Wvlet's `case` and `if`
+    * expressions have no closing keyword (no `end`), so their last then/else expression parses
+    * greedily: printed bare inside another expression (e.g. `case ... else null > x`), the operator
+    * and everything after it would be re-parsed as part of the last branch. Wrap them in
+    * parentheses to preserve the expression boundary
+    */
+  private def operand(e: Expression)(using sc: SyntaxContext): Doc =
+    e match
+      case _: CaseExpr | _: IfExpr =>
+        paren(expr(e))
+      case _ =>
+        expr(e)
+
   private def expr(e: Expression)(using sc: SyntaxContext): Doc =
     code(e) {
       e match
@@ -762,17 +785,17 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
             }
           wl("over", paren(wl(s.result())))
         case Eq(left, n: NullLiteral, _) =>
-          wl(expr(left), "is", expr(n))
+          wl(operand(left), "is", expr(n))
         case NotEq(left, n: NullLiteral, _) =>
-          wl(expr(left), "is not", expr(n))
+          wl(operand(left), "is not", expr(n))
         case IsNull(child, _) =>
-          wl(expr(child), "is null")
+          wl(operand(child), "is null")
         case IsNotNull(child, _) =>
-          wl(expr(child), "is not null")
+          wl(operand(child), "is not null")
         case DistinctFrom(left, right, _) =>
-          wl(expr(left), "!=", expr(right))
+          wl(operand(left), "!=", operand(right))
         case NotDistinctFrom(left, right, _) =>
-          wl(expr(left), "=", expr(right))
+          wl(operand(left), "=", operand(right))
         case a: ArithmeticUnaryExpr =>
           a.sign match
             case Sign.NoSign =>
@@ -784,7 +807,7 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
         case l: LikeExpression =>
           // Handle LIKE and NOT LIKE with optional ESCAPE clause
           val escapeClause = l.escape.map(e => ws + text("escape") + ws + expr(e)).getOrElse(empty)
-          expr(l.left) + ws + text(l.operatorName) + ws + expr(l.right) + escapeClause
+          operand(l.left) + ws + text(l.operatorName) + ws + operand(l.right) + escapeClause
         case r: RLikeExpression =>
           // Wvlet doesn't have native RLIKE, translate to regexp_matches
           r match
@@ -793,9 +816,9 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
             case _: NotRLike =>
               text("not") + ws + text("regexp_matches") + paren(cl(expr(r.left), expr(r.right)))
         case c: LogicalConditionalExpression =>
-          expr(c.left) + wsOrNL + text(c.operatorName) + ws + expr(c.right)
+          operand(c.left) + wsOrNL + text(c.operatorName) + ws + operand(c.right)
         case b: BinaryExpression =>
-          wl(expr(b.left), b.operatorName, expr(b.right))
+          wl(operand(b.left), b.operatorName, operand(b.right))
         case s: StringPart =>
           text(s.stringValue)
         case i: IntervalLiteral =>
@@ -828,7 +851,7 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
           text(i.toWvletAttributeName)
         case s: SortItem =>
           wl(
-            expr(s.sortKey),
+            operand(s.sortKey),
             s.ordering.map(x => text(x.expr)),
             s.nullOrdering.map(x => text(x.expr))
           )
@@ -886,17 +909,17 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
         case i: IfExpr =>
           wl("if", expr(i.cond), "then", block(expr(i.onTrue)), "else", block(expr(i.onFalse)))
         case n: Not =>
-          wl("not", expr(n.child))
+          wl("not", operand(n.child))
         case l: ListExpr =>
           cl(l.exprs.map(x => expr(x)))
         case d @ DotRef(qual: Expression, name: NameExpr, _, _) =>
-          expr(qual) + text(".") + expr(name)
+          operand(qual) + text(".") + expr(name)
         case in: In =>
-          val left  = expr(in.a)
+          val left  = operand(in.a)
           val right = cl(in.list.map(x => expr(x)))
           wl(left, "in", paren(right))
         case notIn: NotIn =>
-          val left  = expr(notIn.a)
+          val left  = operand(notIn.a)
           val right = cl(notIn.list.map(x => expr(x)))
           wl(left, "not in", paren(right))
         case tupleIn: TupleIn =>
@@ -922,7 +945,7 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
         case r: RowConstructor =>
           paren(cl(r.values.map(x => expr(x))))
         case a: ArrayAccess =>
-          expr(a.arrayExpr) + text("[") + expr(a.index) + text("]")
+          operand(a.arrayExpr) + text("[") + expr(a.index) + text("]")
         case c: CaseExpr =>
           wl(
             wl("case", c.target.map(expr)),
@@ -957,13 +980,16 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
             }
           wl("map", brace(cl(entries)))
         case b: Between =>
-          wl(expr(b.e), "between", expr(b.a), "and", expr(b.b))
+          wl(operand(b.e), "between", operand(b.a), "and", operand(b.b))
         case b: NotBetween =>
-          wl(expr(b.e), "not between", expr(b.a), "and", expr(b.b))
+          wl(operand(b.e), "not between", operand(b.a), "and", operand(b.b))
+        case c: Cast if c.tryCast =>
+          operand(c.child) + text(".") + text(s"to_${c.castType.typeName}")
         case c: Cast =>
-          expr(c.child) + text(".") + text(s"to_${c.castType.typeName}")
+          // `::` cast keeps type parameters (e.g. decimal[7,2]), which `.to_xxx` cannot express
+          operand(c.child) + text("::") + text(c.castType.wvExpr)
         case a: AtTimeZone =>
-          expr(a.expr) + text(".atTimeZone") + paren(expr(a.timezone))
+          operand(a.expr) + text(".atTimeZone") + paren(expr(a.timezone))
         case n: NativeExpression =>
           expr(ExpressionEvaluator.eval(n))
         case p: PivotKey =>
@@ -991,6 +1017,11 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
         case e: Extract =>
           // Convert EXTRACT(field FROM expr) to expr.extract(field)
           expr(e.expr) + text(".extract") + paren(text(s"'${e.interval.toString.toLowerCase}'"))
+        case r: Rollup =>
+          // Print as a function-style grouping key; SQL generators emit it back as ROLLUP(...)
+          text("rollup") + paren(cl(r.groupingKeys.map(x => expr(x))))
+        case c: Cube =>
+          text("cube") + paren(cl(c.groupingKeys.map(x => expr(x))))
         case other =>
           unsupportedNode(s"expression ${other}", other.span)
     }

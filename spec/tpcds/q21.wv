@@ -1,0 +1,32 @@
+from {
+  {
+    from inventory, warehouse , item , date_dim 
+    where 
+      i_current_price between 0.99 and 1.49
+      and i_item_sk = inv_item_sk
+      and inv_warehouse_sk = w_warehouse_sk
+      and inv_date_sk = d_date_sk
+      and d_date between '2000-02-10'::date and '2000-04-10'::date
+    group by w_warehouse_name, i_item_id
+    select 
+      w_warehouse_name,
+      i_item_id,
+      sum(
+        case 
+          when (d_date::date < '2000-03-11'::date) then inv_quantity_on_hand 
+          else 0
+      )
+      as inv_before,
+      sum(
+        case 
+          when (d_date::date >= '2000-03-11'::date) then inv_quantity_on_hand 
+          else 0
+      )
+      as inv_after
+  }
+} as x
+where 
+  (case  when inv_before > 0 then (inv_after * 1.000) / inv_before  else null) between 2.000 / 3.000 and 3.000 / 2.000
+select *
+order by w_warehouse_name nulls first, i_item_id nulls first
+limit 100

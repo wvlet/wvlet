@@ -1,0 +1,68 @@
+from {
+  {
+    from {
+      {
+        from {
+          {
+            from {
+            from store_sales
+            } as ss1
+            where ss_store_sk = 4
+            group by ss_item_sk
+            where 
+              avg(ss_net_profit) > 0.9 * {
+                from store_sales
+                where ss_store_sk = 4 and ss_addr_sk is null
+                group by ss_store_sk
+                select avg(ss_net_profit) as rank_col
+              }
+            select ss_item_sk as item_sk, avg(ss_net_profit) as rank_col
+          }
+        } as V1
+        select item_sk, rank() over (order by rank_col asc) as rnk
+      }
+    } as V11
+    where rnk < 11
+    select *
+  }
+} as asceding, {
+  {
+    from {
+      {
+        from {
+          {
+            from {
+            from store_sales
+            } as ss1
+            where ss_store_sk = 4
+            group by ss_item_sk
+            where 
+              avg(ss_net_profit) > 0.9 * {
+                from store_sales
+                where ss_store_sk = 4 and ss_addr_sk is null
+                group by ss_store_sk
+                select avg(ss_net_profit) as rank_col
+              }
+            select ss_item_sk as item_sk, avg(ss_net_profit) as rank_col
+          }
+        } as V2
+        select item_sk, rank() over (order by rank_col desc) as rnk
+      }
+    } as V21
+    where rnk < 11
+    select *
+  }
+} as descending
+  , item as i1
+  , item as i2
+  
+where 
+  asceding.rnk = descending.rnk
+  and i1.i_item_sk = asceding.item_sk
+  and i2.i_item_sk = descending.item_sk
+select 
+  asceding.rnk,
+  i1.i_product_name as best_performing,
+  i2.i_product_name as worst_performing
+order by asceding.rnk
+limit 100

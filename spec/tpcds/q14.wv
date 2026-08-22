@@ -1,0 +1,136 @@
+with cross_items as {
+  from item, {
+    {
+      from store_sales, item as iss , date_dim as d1 
+      where 
+        ss_item_sk = iss.i_item_sk
+        and ss_sold_date_sk = d1.d_date_sk
+        and d1.d_year between 1999 and 1999 + 2
+      select 
+        iss.i_brand_id as brand_id,
+        iss.i_class_id as class_id,
+        iss.i_category_id as category_id
+      intersect
+      {
+        from catalog_sales, item as ics , date_dim as d2 
+        where 
+          cs_item_sk = ics.i_item_sk
+          and cs_sold_date_sk = d2.d_date_sk
+          and d2.d_year between 1999 and 1999 + 2
+        select ics.i_brand_id, ics.i_class_id, ics.i_category_id
+        intersect
+        {
+          from web_sales, item as iws , date_dim as d3 
+          where 
+            ws_item_sk = iws.i_item_sk
+            and ws_sold_date_sk = d3.d_date_sk
+            and d3.d_year between 1999 and 1999 + 2
+          select iws.i_brand_id, iws.i_class_id, iws.i_category_id
+        }
+      }
+    }
+  } as sq1
+    
+  where 
+    i_brand_id = brand_id
+    and i_class_id = class_id
+    and i_category_id = category_id
+  select i_item_sk as ss_item_sk
+}
+with avg_sales as {
+  from {
+    {
+      from store_sales, date_dim 
+      where ss_sold_date_sk = d_date_sk and d_year between 1999 and 1999 + 2
+      select ss_quantity as quantity, ss_list_price as list_price
+      concat
+      {
+        from catalog_sales, date_dim 
+        where cs_sold_date_sk = d_date_sk and d_year between 1999 and 1999 + 2
+        select cs_quantity as quantity, cs_list_price as list_price
+        concat
+        {
+          from web_sales, date_dim 
+          where ws_sold_date_sk = d_date_sk and d_year between 1999 and 1999 + 2
+          select ws_quantity as quantity, ws_list_price as list_price
+        }
+      }
+    }
+  } as sq2
+  select avg(quantity * list_price) as average_sales
+}
+from {
+  {
+    from store_sales, item , date_dim 
+    where 
+      ss_item_sk in ({ from cross_items select ss_item_sk })
+      and ss_item_sk = i_item_sk
+      and ss_sold_date_sk = d_date_sk
+      and d_year = 1999 + 2
+      and d_moy = 11
+    group by i_brand_id, i_class_id, i_category_id
+    where 
+      sum(ss_quantity * ss_list_price) > { from avg_sales select average_sales }
+    select 
+      'store' as channel,
+      i_brand_id,
+      i_class_id,
+      i_category_id,
+      sum(ss_quantity * ss_list_price) as sales,
+      count(*) as number_sales
+    concat
+    {
+      from catalog_sales, item , date_dim 
+      where 
+        cs_item_sk in ({ from cross_items select ss_item_sk })
+        and cs_item_sk = i_item_sk
+        and cs_sold_date_sk = d_date_sk
+        and d_year = 1999 + 2
+        and d_moy = 11
+      group by i_brand_id, i_class_id, i_category_id
+      where 
+        sum(cs_quantity * cs_list_price) > { from avg_sales select average_sales }
+      select 
+        'catalog' as channel,
+        i_brand_id,
+        i_class_id,
+        i_category_id,
+        sum(cs_quantity * cs_list_price) as sales,
+        count(*) as number_sales
+      concat
+      {
+        from web_sales, item , date_dim 
+        where 
+          ws_item_sk in ({ from cross_items select ss_item_sk })
+          and ws_item_sk = i_item_sk
+          and ws_sold_date_sk = d_date_sk
+          and d_year = 1999 + 2
+          and d_moy = 11
+        group by i_brand_id, i_class_id, i_category_id
+        where 
+          sum(ws_quantity * ws_list_price) > { from avg_sales select average_sales }
+        select 
+          'web' as channel,
+          i_brand_id,
+          i_class_id,
+          i_category_id,
+          sum(ws_quantity * ws_list_price) as sales,
+          count(*) as number_sales
+      }
+    }
+  }
+} as y
+group by rollup(channel, i_brand_id, i_class_id, i_category_id)
+select 
+  channel,
+  i_brand_id,
+  i_class_id,
+  i_category_id,
+  sum(sales) as sum_sales,
+  sum(number_sales) as sum_number_sales
+order by 
+  channel nulls first,
+  i_brand_id nulls first,
+  i_class_id nulls first,
+  i_category_id nulls first
+limit 100

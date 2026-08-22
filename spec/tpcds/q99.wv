@@ -1,0 +1,45 @@
+from catalog_sales, {
+  { from warehouse select SUBSTRING(w_warehouse_name, 1, 20) as w_substr, * }
+} as sq1
+  , ship_mode
+  , call_center
+  , date_dim
+  
+where 
+  d_month_seq between 1200 and 1200 + 11
+  and cs_ship_date_sk = d_date_sk
+  and cs_warehouse_sk = w_warehouse_sk
+  and cs_ship_mode_sk = sm_ship_mode_sk
+  and cs_call_center_sk = cc_call_center_sk
+group by w_substr, sm_type, cc_name
+select 
+  w_substr,
+  sm_type,
+  LOWER(cc_name) as cc_name_lower,
+  sum(case  when (cs_ship_date_sk - cs_sold_date_sk <= 30) then 1  else 0)
+  as `30 days`,
+  sum(
+    case 
+      when (cs_ship_date_sk - cs_sold_date_sk > 30)
+      and (cs_ship_date_sk - cs_sold_date_sk <= 60) then 1 
+      else 0
+  )
+  as `31-60 days`,
+  sum(
+    case 
+      when (cs_ship_date_sk - cs_sold_date_sk > 60)
+      and (cs_ship_date_sk - cs_sold_date_sk <= 90) then 1 
+      else 0
+  )
+  as `61-90 days`,
+  sum(
+    case 
+      when (cs_ship_date_sk - cs_sold_date_sk > 90)
+      and (cs_ship_date_sk - cs_sold_date_sk <= 120) then 1 
+      else 0
+  )
+  as `91-120 days`,
+  sum(case  when (cs_ship_date_sk - cs_sold_date_sk > 120) then 1  else 0)
+  as `>120 days`
+order by w_substr nulls first, sm_type nulls first, cc_name_lower nulls first
+limit 100

@@ -24,6 +24,8 @@ class ParserSpecCDPBehavior extends ParserSpec("spec/cdp_behavior")
 
 // TPC-H queries translated into Wvlet
 class ParserSpecTPCH extends ParserSpec("spec/tpch")
+// TPC-DS queries translated into Wvlet
+class ParserSpecTPCDS extends ParserSpec("spec/tpcds")
 // Trino queries written in Wvlet
 class ParserSpecTrino extends ParserSpec("spec/trino")
 // TD-Trino specific queries
