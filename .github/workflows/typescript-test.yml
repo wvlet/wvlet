@@ -4,14 +4,12 @@ on:
   pull_request:
     paths:
       - 'sdks/typescript/**'
-      - 'wvlet-sdk-js/**'
       - '.github/workflows/typescript-test.yml'
   push:
     branches:
       - main
     paths:
       - 'sdks/typescript/**'
-      - 'wvlet-sdk-js/**'
       - '.github/workflows/typescript-test.yml'
 
 jobs:

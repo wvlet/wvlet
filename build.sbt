@@ -501,12 +501,18 @@ def copySdkTypeDeclarations(baseDir: File, linkMode: String): Unit = {
   IO.write(sdkDir / "lib" / ".link-mode", linkMode)
 }
 
+// Scala.js facade of the compiler for the TypeScript SDK. Lives inside sdks/typescript so the
+// whole SDK — Scala.js facade, hand-written .d.ts, TypeScript wrapper, tests, and npm packaging —
+// is a single directory tree; the linked bundle lands in sdks/typescript/lib next to it.
 lazy val sdkJs = project
-  .in(file("wvlet-sdk-js"))
+  .in(file("sdks/typescript/scalajs"))
   .enablePlugins(ScalaJSPlugin)
   .settings(
     buildSettings,
-    name := "wvlet-sdk-js",
+    noPublish,
+    // noPublish disables IDE import; re-enable it so WvletJS.scala stays editable in IDEs
+    ideSkipProject := false,
+    name           := "wvlet-sdk-js",
     // Configure Scala.js output as ES module
     scalaJSLinkerConfig ~= {
       _.withModuleKind(ModuleKind.ESModule)
