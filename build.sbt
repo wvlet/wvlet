@@ -98,7 +98,7 @@ lazy val jvmProjects: Seq[ProjectReference] = Seq(
   server,
   lang.jvm,
   connector,
-  runner,
+  runner.jvm,
   client.jvm,
   spec,
   cli,
@@ -110,6 +110,7 @@ lazy val jsProjects: Seq[ProjectReference] = Seq(
   api.js,
   client.js,
   lang.js,
+  runner.js,
   ui,
   uiMain,
   playground,
@@ -120,6 +121,7 @@ lazy val jsProjects: Seq[ProjectReference] = Seq(
 lazy val nativeProjects: Seq[ProjectReference] = Seq(
   api.native,
   lang.native,
+  runner.native,
   cliCore.native,
   wvc,
   wvcLib
@@ -446,13 +448,28 @@ lazy val connector = project
   )
   .dependsOn(lang.jvm)
 
-lazy val runner = project
+// Cross-platform query runner. Shared sources (wvlet-runner/src) hold the engine-agnostic
+// runtime built on SqlConnector — usable from JVM, Node.js, and Native CLIs. The JVM-only
+// runtime (QueryExecutor, flows, scheduler, run stores, JDBC connectors via wvlet-connector,
+// jline, arrow) lives in wvlet-runner/.jvm/src.
+lazy val runner = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
   .in(file("wvlet-runner"))
   .settings(
     buildSettings,
-    specRunnerSettings,
     name        := "wvlet-runner",
-    description := "wvlet query executor using trino, duckdb, etc.",
+    description := "wvlet query executor using trino, duckdb, etc."
+  )
+  .jsSettings(
+    libraryDependencies += scalajsJavaSecureRandom,
+    // Node.js target, same as wvlet-lang.js — uni.io needs a real ModuleKind for @JSImport.
+    scalaJSLinkerConfig ~= {
+      _.withModuleKind(ModuleKind.CommonJSModule)
+    }
+  )
+  .nativeSettings(uniNativeCurlLinking)
+  .jvmSettings(
+    specRunnerSettings,
     Test / javaOptions ++= Seq("--enable-native-access=ALL-UNNAMED"),
     libraryDependencies ++=
       Seq(
@@ -482,12 +499,13 @@ lazy val runner = project
         //        ) cross (CrossVersion.for3Use2_13)
       )
   )
-  .dependsOn(lang.jvm, connector, testUtil % Test)
+  .dependsOn(lang)
+  .jvmConfigure(_.dependsOn(connector, testUtil % Test))
 
 lazy val spec = project
   .in(file("wvlet-spec"))
   .settings(buildSettings, specRunnerSettings, noPublish, name := "wvlet-spec")
-  .dependsOn(runner, testUtil % Test)
+  .dependsOn(runner.jvm, testUtil % Test)
 
 // The Scala.js linker owns its output directory and deletes unknown files on every link,
 // so the hand-written type declarations of the TypeScript SDK are kept in types/ and
@@ -537,9 +555,10 @@ lazy val sdkJs = project
   )
   .dependsOn(lang.js)
 
-// Cross-platform wvlet CLI surface. Same `version` / `compile` / `to_wvlet` commands across
-// JVM, Node.js, and Scala Native. Compile-only — does not pull in wvlet-runner / wvlet-server,
-// so JS and Native bundles stay slim. The full-featured `wvlet` JVM command (run / ui / REPL)
+// Cross-platform wvlet CLI surface. Same `version` / `compile` / `to_wvlet` / `run` commands
+// across JVM, Node.js, and Scala Native. Depends on wvlet-runner's SHARED sources only
+// (SqlConnector-based execution) — the JVM-only runtime (wvlet-server, flows, JDBC connectors)
+// stays out of the JS/Native bundles. The full-featured `wvlet` JVM command (run / ui / REPL)
 // is still produced by wvlet-cli, which can layer on top of this.
 lazy val cliCore = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
@@ -576,7 +595,7 @@ lazy val cliCore = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     },
     nativeLibRpathLinking
   )
-  .dependsOn(lang)
+  .dependsOn(lang, runner)
 
 // JVM-only host for HTTP server bits that wvlet maintains. Hosts the few pieces uni doesn't
 // ship (e.g. StaticContent) and re-exports uni-netty as a transitive runtime for downstream
@@ -600,7 +619,7 @@ lazy val server = project
     libraryDependencies += "org.slf4j" % "slf4j-jdk14" % "2.0.18",
     uniRestart / baseDirectory        := (ThisBuild / baseDirectory).value
   )
-  .dependsOn(api.jvm, client.jvm, runner, httpServer, testUtil % Test)
+  .dependsOn(api.jvm, client.jvm, runner.jvm, httpServer, testUtil % Test)
 
 // Hand-written uni-RPC clients live in wvlet-client/{shared,jvm,js}/src/main/scala. The
 // FrontendRPC shim aggregates the per-service clients so consumers see a single surface.

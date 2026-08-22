@@ -49,7 +49,7 @@ Ensure the code is formatted with `scalafmtAll` command for consistent code styl
 ./sbt test
 
 # Run specific module tests
-./sbt "runner/test"
+./sbt "runnerJVM/test"
 ./sbt "langJVM/test"
 
 # Test specific module for Scala.js
@@ -67,22 +67,22 @@ Ensure the code is formatted with `scalafmtAll` command for consistent code styl
 ./sbt "langJVM/testOnly *ParserSpecSqlBasic -- spec:sql:basic:query.sql"
 
 # Run test spec queries in spec/basic folder 
-./sbt "runner/testOnly *RunnerSpecBasic"
+./sbt "runnerJVM/testOnly *RunnerSpecBasic"
 
 # Run a specific .wv spec file 
-./sbt "runner/testOnly *RunnerSpecBasic -- spec:basic:hello.wv"
+./sbt "runnerJVM/testOnly *RunnerSpecBasic -- spec:basic:hello.wv"
 
 # Run a specific .wv spec files with wild card pattern
-./sbt "runner/testOnly *RunnerSpecBasic -- spec:basic:query*.wv"
+./sbt "runnerJVM/testOnly *RunnerSpecBasic -- spec:basic:query*.wv"
 
 # Run a specific .sql spec file 
-./sbt "runner/testOnly *RunnerSpecSqlBasic -- spec:sql:basic:query.sql"
+./sbt "runnerJVM/testOnly *RunnerSpecSqlBasic -- spec:sql:basic:query.sql"
 
 # Run TPC-DS benchmark specs (Wvlet queries in spec/tpcds, executed on DuckDB)
-./sbt "runner/testOnly *RunnerSpecTPCDS"
+./sbt "runnerJVM/testOnly *RunnerSpecTPCDS"
 
 # Run TPC-DS SQL specs (SQL queries in spec/sql/tpc-ds, full compile + DuckDB execution)
-./sbt "runner/testOnly *RunnerSpecSqlTPCDS"
+./sbt "runnerJVM/testOnly *RunnerSpecSqlTPCDS"
 
 # Regenerate spec/tpcds/*.wv from spec/sql/tpc-ds/*.sql (SQL-to-Wvlet conversion)
 ./sbt "langJVM/Test/runMain wvlet.lang.compiler.codegen.TPCDSWvletSpecGenerator"
@@ -90,7 +90,7 @@ Ensure the code is formatted with `scalafmtAll` command for consistent code styl
 # Run test and stay in SBT shell
 ./sbt
 sbt:wvlet> test
-sbt:wvlet> runner/test
+sbt:wvlet> runnerJVM/test
 sbt:wvlet> testOnly *SpecRunner*
 
 # Test native library with various languages
