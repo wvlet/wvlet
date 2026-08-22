@@ -14,6 +14,8 @@ val AWS_SDK_VERSION        = "2.20.146"
 val SCALAJS_DOM_VERSION    = "2.8.1"
 val DUCKDB_JDBC_VERSION    = "1.5.5.1"
 val SNOWFLAKE_JDBC_VERSION = "4.3.3"
+val SQLITE_JDBC_VERSION    = "3.53.2.1"
+val POSTGRES_JDBC_VERSION  = "42.7.7"
 val CAFFEINE_VERSION       = "3.2.4"
 
 val SCALA_3 = IO.read(file("SCALA_VERSION")).trim
@@ -103,6 +105,7 @@ lazy val jvmProjects: Seq[ProjectReference] = Seq(
   spec,
   cli,
   cliCore.jvm,
+  tableStore,
   testUtil
 )
 
@@ -445,6 +448,28 @@ lazy val connector = project
       )
   )
   .dependsOn(lang.jvm)
+
+// Portable analytical table store (see plans/2026-08-21-wvlet-table-store.md): a transactional
+// SQL catalog over immutable data files, with leased background merge and lazy schema escalation.
+// Package boundaries mirror the four Uni modules from the design note (object-store / catalog /
+// table-format / table-store) so they can be extracted mechanically later.
+lazy val tableStore = project
+  .in(file("wvlet-table-store"))
+  .settings(
+    buildSettings,
+    name        := "wvlet-table-store",
+    description := "Portable analytical table store: SQL catalog + immutable object-store files",
+    libraryDependencies ++=
+      Seq(
+        // Embedded catalog drivers. Postgres is the production driver; SQLite/DuckDB serve the
+        // embedded profile (single-writer serialized semantics). duckdb_jdbc also produces
+        // Parquet output for merged files through DuckDB's COPY.
+        "org.xerial"     % "sqlite-jdbc" % SQLITE_JDBC_VERSION,
+        "org.duckdb"     % "duckdb_jdbc" % DUCKDB_JDBC_VERSION,
+        "org.postgresql" % "postgresql"  % POSTGRES_JDBC_VERSION
+      )
+  )
+  .dependsOn(api.jvm)
 
 lazy val runner = project
   .in(file("wvlet-runner"))
