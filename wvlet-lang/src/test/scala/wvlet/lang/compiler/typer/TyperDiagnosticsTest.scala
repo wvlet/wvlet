@@ -28,6 +28,12 @@ class TyperDiagnosticsTest extends UniTest:
     compiler.compileSingleUnit(unit)
     unit.typerErrors
 
+  private def compileSqlErrors(sql: String): List[TyperError] =
+    val compiler = Compiler(CompilerOptions(workEnv = WorkEnv(".")))
+    val unit     = CompilationUnit.fromSqlString(sql)
+    compiler.compileSingleUnit(unit)
+    unit.typerErrors
+
   test("report a mismatch between resolved incompatible operand types") {
     val errors = compileErrors("select 1 - 'a' as v")
     errors.exists {
@@ -66,6 +72,30 @@ class TyperDiagnosticsTest extends UniTest:
     mismatches.foreach { m =>
       m.severity shouldBe TyperError.Severity.Error
     }
+  }
+
+  test("report a genuine mismatch only at its origin, not at enclosing conjuncts") {
+    // The inner comparison is the only origin; the surrounding AND chain propagates its
+    // ErrorType and must not add duplicate "expected boolean, got boolean" diagnostics
+    val errors = compileErrors("select (1 < 'a') and true and true as v")
+    errors
+      .collect { case t: TypeMismatch =>
+        t
+      }
+      .size shouldBe 1
+  }
+
+  test("not report mismatches for case-insensitive parameterized cast types (TPC-DS q75)") {
+    // CAST(x AS DECIMAL(17,2)) must type as decimal(17,2); a case-sensitive type lookup turned
+    // it into an opaque generic type, making every comparison against it a false mismatch
+    val errors = compileSqlErrors("""SELECT 1 AS v
+        |FROM t1 curr_yr, t1 prev_yr
+        |WHERE curr_yr.a = prev_yr.a
+        |  AND CAST(curr_yr.b AS DECIMAL(17,2)) / CAST(prev_yr.b AS DECIMAL(17,2)) < 0.9
+        |""".stripMargin)
+    errors.collect { case t: TypeMismatch =>
+      t
+    } shouldBe Nil
   }
 
   test("fail the compilation on type errors when failOnTypeErrors is set") {

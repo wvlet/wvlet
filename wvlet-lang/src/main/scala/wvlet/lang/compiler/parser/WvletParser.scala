@@ -2551,150 +2551,193 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     booleanExpression()
   }
 
+  // Boolean and arithmetic operators parse with standard precedence, each level
+  // left-associative: OR < AND < NOT < comparison/IS/IN/LIKE/BETWEEN < +,- < *,/,% < unary +/-
   def booleanExpression(): Expression = node {
+    var expr     = andExpression()
+    var continue = true
+    while continue do
+      val t = scanner.lookAhead()
+      t.token match
+        case WvletToken.OR =>
+          consume(WvletToken.OR)
+          expr = Or(expr, andExpression(), spanFrom(t))
+        case _ =>
+          continue = false
+    expr
+  }
+
+  private def andExpression(): Expression = node {
+    var expr     = notExpression()
+    var continue = true
+    while continue do
+      val t = scanner.lookAhead()
+      t.token match
+        case WvletToken.AND =>
+          consume(WvletToken.AND)
+          expr = And(expr, notExpression(), spanFrom(t))
+        case _ =>
+          continue = false
+    expr
+  }
+
+  private def notExpression(): Expression = node {
     val t = scanner.lookAhead()
     t.token match
       case WvletToken.EXCLAMATION | WvletToken.NOT =>
         consume(t.token)
-        val expr = valueExpression()
-        booleanExpressionRest(Not(expr, spanFrom(t)))
+        Not(valueExpression(), spanFrom(t))
       case _ =>
-        val expr = valueExpression()
-        booleanExpressionRest(expr)
-  }
-
-  def booleanExpressionRest(expression: Expression): Expression = node {
-    val t = scanner.lookAhead()
-    t.token match
-      case WvletToken.AND =>
-        consume(WvletToken.AND)
-        val right = booleanExpression()
-        And(expression, right, spanFrom(t))
-      case WvletToken.OR =>
-        consume(WvletToken.OR)
-        val right = booleanExpression()
-        Or(expression, right, spanFrom(t))
-      case _ =>
-        expression
+        valueExpression()
   }
 
   def valueExpression(): Expression = node {
-    val t    = scanner.lookAhead()
-    val expr =
+    valueExpressionRest(additiveExpression())
+  }
+
+  private def additiveExpression(): Expression = node {
+    var expr     = multiplicativeExpression()
+    var continue = true
+    while continue do
+      val t = scanner.lookAhead()
       t.token match
         case WvletToken.PLUS =>
           consume(WvletToken.PLUS)
-          val right = valueExpression()
-          ArithmeticUnaryExpr(Sign.Positive, right, spanFrom(t))
+          expr = ArithmeticBinaryExpr(
+            BinaryExprType.Add,
+            expr,
+            multiplicativeExpression(),
+            spanFrom(t)
+          )
         case WvletToken.MINUS =>
           consume(WvletToken.MINUS)
-          val right = valueExpression()
-          ArithmeticUnaryExpr(Sign.Negative, right, spanFrom(t))
+          expr = ArithmeticBinaryExpr(
+            BinaryExprType.Subtract,
+            expr,
+            multiplicativeExpression(),
+            spanFrom(t)
+          )
         case _ =>
-          primaryExpression()
+          continue = false
+    expr
+  }
 
-    valueExpressionRest(expr)
+  private def multiplicativeExpression(): Expression = node {
+    var expr     = unaryExpression()
+    var continue = true
+    while continue do
+      val t = scanner.lookAhead()
+      t.token match
+        case WvletToken.STAR =>
+          consume(WvletToken.STAR)
+          expr = ArithmeticBinaryExpr(BinaryExprType.Multiply, expr, unaryExpression(), spanFrom(t))
+        case WvletToken.DIV =>
+          consume(WvletToken.DIV)
+          expr = ArithmeticBinaryExpr(BinaryExprType.Divide, expr, unaryExpression(), spanFrom(t))
+        case WvletToken.MOD =>
+          consume(WvletToken.MOD)
+          expr = ArithmeticBinaryExpr(BinaryExprType.Modulus, expr, unaryExpression(), spanFrom(t))
+        case _ =>
+          continue = false
+    expr
+  }
+
+  private def unaryExpression(): Expression = node {
+    val t = scanner.lookAhead()
+    t.token match
+      case WvletToken.PLUS =>
+        consume(WvletToken.PLUS)
+        ArithmeticUnaryExpr(Sign.Positive, unaryExpression(), spanFrom(t))
+      case WvletToken.MINUS =>
+        consume(WvletToken.MINUS)
+        ArithmeticUnaryExpr(Sign.Negative, unaryExpression(), spanFrom(t))
+      case _ =>
+        primaryExpression()
   }
 
   def valueExpressionRest(expr: Expression): Expression = node {
     val t = scanner.lookAhead()
     t.token match
-      case WvletToken.PLUS =>
-        consume(WvletToken.PLUS)
-        val right = valueExpression()
-        ArithmeticBinaryExpr(BinaryExprType.Add, expr, right, spanFrom(t))
-      case WvletToken.MINUS =>
-        consume(WvletToken.MINUS)
-        val right = valueExpression()
-        ArithmeticBinaryExpr(BinaryExprType.Subtract, expr, right, spanFrom(t))
-      case WvletToken.STAR =>
-        consume(WvletToken.STAR)
-        val right = valueExpression()
-        ArithmeticBinaryExpr(BinaryExprType.Multiply, expr, right, spanFrom(t))
-      case WvletToken.DIV =>
-        consume(WvletToken.DIV)
-        val right = valueExpression()
-        ArithmeticBinaryExpr(BinaryExprType.Divide, expr, right, spanFrom(t))
-      case WvletToken.MOD =>
-        consume(WvletToken.MOD)
-        val right = valueExpression()
-        ArithmeticBinaryExpr(BinaryExprType.Modulus, expr, right, spanFrom(t))
       case WvletToken.EQ =>
         consume(WvletToken.EQ)
         scanner.lookAhead().token match
           case WvletToken.EQ =>
             consume(WvletToken.EQ)
           case _ =>
-        val right = valueExpression()
-        Eq(expr, right, spanFrom(t))
+        val right = additiveExpression()
+        valueExpressionRest(Eq(expr, right, spanFrom(t)))
       case WvletToken.NEQ =>
         consume(WvletToken.NEQ)
-        val right = valueExpression()
-        NotEq(expr, right, spanFrom(t))
+        val right = additiveExpression()
+        valueExpressionRest(NotEq(expr, right, spanFrom(t)))
       case WvletToken.IS =>
         consume(WvletToken.IS)
         scanner.lookAhead().token match
           case WvletToken.NOT =>
             consume(WvletToken.NOT)
-            val right = valueExpression()
-            NotEq(expr, right, spanFrom(t))
+            val right = additiveExpression()
+            valueExpressionRest(NotEq(expr, right, spanFrom(t)))
           case _ =>
-            val right = valueExpression()
-            Eq(expr, right, spanFrom(t))
+            val right = additiveExpression()
+            valueExpressionRest(Eq(expr, right, spanFrom(t)))
       case WvletToken.LT =>
         consume(WvletToken.LT)
-        val right = valueExpression()
-        LessThan(expr, right, spanFrom(t))
+        val right = additiveExpression()
+        valueExpressionRest(LessThan(expr, right, spanFrom(t)))
       case WvletToken.GT =>
         consume(WvletToken.GT)
-        val right = valueExpression()
-        GreaterThan(expr, right, spanFrom(t))
+        val right = additiveExpression()
+        valueExpressionRest(GreaterThan(expr, right, spanFrom(t)))
       case WvletToken.LTEQ =>
         consume(WvletToken.LTEQ)
-        val right = valueExpression()
-        LessThanOrEq(expr, right, spanFrom(t))
+        val right = additiveExpression()
+        valueExpressionRest(LessThanOrEq(expr, right, spanFrom(t)))
       case WvletToken.GTEQ =>
         consume(WvletToken.GTEQ)
-        val right = valueExpression()
-        GreaterThanOrEq(expr, right, spanFrom(t))
+        val right = additiveExpression()
+        valueExpressionRest(GreaterThanOrEq(expr, right, spanFrom(t)))
       case WvletToken.IN =>
         consume(WvletToken.IN)
         val valueList = inExprList()
-        expr match
-          case RowConstructor(_, _) =>
-            TupleIn(expr, valueList, spanFrom(t))
-          case _ =>
-            In(expr, valueList, spanFrom(t))
+        val in        =
+          expr match
+            case RowConstructor(_, _) =>
+              TupleIn(expr, valueList, spanFrom(t))
+            case _ =>
+              In(expr, valueList, spanFrom(t))
+        valueExpressionRest(in)
       case WvletToken.LIKE =>
         consume(WvletToken.LIKE)
-        val right  = valueExpression()
+        val right  = additiveExpression()
         val escape = parseEscapeClause()
-        Like(expr, right, escape, spanFrom(t))
+        valueExpressionRest(Like(expr, right, escape, spanFrom(t)))
       case WvletToken.NOT =>
         consume(WvletToken.NOT)
         val t2 = scanner.lookAhead()
         t2.token match
           case WvletToken.LIKE =>
             consume(WvletToken.LIKE)
-            val right  = valueExpression()
+            val right  = additiveExpression()
             val escape = parseEscapeClause()
-            NotLike(expr, right, escape, spanFrom(t))
+            valueExpressionRest(NotLike(expr, right, escape, spanFrom(t)))
           case WvletToken.IN =>
             consume(WvletToken.IN)
             val valueList = inExprList()
-            expr match
-              case RowConstructor(_, _) =>
-                TupleNotIn(expr, valueList, spanFrom(t))
-              case _ =>
-                NotIn(expr, valueList, spanFrom(t))
+            val notIn     =
+              expr match
+                case RowConstructor(_, _) =>
+                  TupleNotIn(expr, valueList, spanFrom(t))
+                case _ =>
+                  NotIn(expr, valueList, spanFrom(t))
+            valueExpressionRest(notIn)
           case other =>
             unexpected(t2)
       case WvletToken.BETWEEN =>
         consume(WvletToken.BETWEEN)
-        val left = valueExpression()
+        val left = additiveExpression()
         consume(WvletToken.AND)
-        val right = valueExpression()
-        Between(expr, left, right, spanFrom(t))
+        val right = additiveExpression()
+        valueExpressionRest(Between(expr, left, right, spanFrom(t)))
       case WvletToken.SHOULD =>
         consume(WvletToken.SHOULD)
         val not =

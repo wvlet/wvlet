@@ -71,7 +71,7 @@ where
   and curr_yr.i_manufact_id = prev_yr.i_manufact_id
   and curr_yr.d_year = 2002
   and prev_yr.d_year = 2002 - 1
-  and curr_yr.sales_cnt::DECIMAL[17,2] / prev_yr.sales_cnt::DECIMAL[17,2] < 0.9
+  and curr_yr.sales_cnt::decimal[17,2] / prev_yr.sales_cnt::decimal[17,2] < 0.9
 select 
   prev_yr.d_year as prev_year,
   curr_yr.d_year as year_,
