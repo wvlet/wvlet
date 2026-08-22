@@ -27,7 +27,7 @@ import wvlet.uni.log.LogSupport
   * functions are exported as engine-native defs (`def f(...) in duckdb = native`) that compile to
   * plain SQL calls.
   *
-  * Run with: ./sbt "runner/Test/runMain wvlet.lang.runner.StdLibFunctionCatalogGenerator"
+  * Run with: ./sbt "runnerJVM/Test/runMain wvlet.lang.runner.StdLibFunctionCatalogGenerator"
   */
 object StdLibFunctionCatalogGenerator extends LogSupport:
   def main(args: Array[String]): Unit =
@@ -41,7 +41,7 @@ object StdLibFunctionCatalogGenerator extends LogSupport:
         functions = functions,
         excludedNames = StaticCatalogExporter.handWrittenStdlibFunctionNames,
         refreshNote =
-          "Re-run `./sbt \"runner/Test/runMain wvlet.lang.runner.StdLibFunctionCatalogGenerator\"` to refresh."
+          "Re-run `./sbt \"runnerJVM/Test/runMain wvlet.lang.runner.StdLibFunctionCatalogGenerator\"` to refresh."
       )
       val body = s"package wvlet.standard\n\n${source}"
       SourceIO.writeString(targetPath, body)
