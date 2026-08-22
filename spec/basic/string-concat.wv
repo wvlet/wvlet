@@ -41,7 +41,7 @@ test _.output should be """
 select "hello" + " wvlet" + " and airframe!"
 test _.output should be """
 ┌─────────────────────────────────────────────────────┐
-│ concat('hello', concat(' wvlet', ' and airframe!')) │
+│ concat(concat('hello', ' wvlet'), ' and airframe!') │
 │                       string                        │
 ├─────────────────────────────────────────────────────┤
 │ hello wvlet and airframe!                           │

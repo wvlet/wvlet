@@ -148,12 +148,19 @@ object Typer extends Phase("typer") with LogSupport:
     * is an ErrorType while both operand types are concrete scalars is a genuine user error; error
     * results over unresolved or virtual operand types are deferred states, not diagnostics
     */
-  private def collectTypeMismatches(plan: LogicalPlan)(using ctx: Context): Unit = plan
-    .traverseExpressions {
-      case op: ArithmeticBinaryExpr if op.tpe.isInstanceOf[Type.ErrorType] =>
+  private def collectTypeMismatches(plan: LogicalPlan)(using ctx: Context): Unit =
+    // An ErrorType inherited from an operand is a propagated state, not a new mismatch: only
+    // the node where the error originated reports a diagnostic. Without this check, a single
+    // mismatch under an AND-chain reports once per enclosing conjunct, each time with the
+    // boolean operand types of the AND ("expected boolean, got boolean")
+    def isErrorOrigin(op: Expression): Boolean =
+      !op.children.exists(_.tpe.isInstanceOf[Type.ErrorType])
+
+    plan.traverseExpressions {
+      case op: ArithmeticBinaryExpr if op.tpe.isInstanceOf[Type.ErrorType] && isErrorOrigin(op) =>
         if isConcreteScalar(op.left.dataType) && isConcreteScalar(op.right.dataType) then
           ctx.addTyperError(TypeMismatch(op.left.dataType, op.right.dataType, op))
-      case op: ConditionalExpression if op.tpe.isInstanceOf[Type.ErrorType] =>
+      case op: ConditionalExpression if op.tpe.isInstanceOf[Type.ErrorType] && isErrorOrigin(op) =>
         val types = op.children.map(_.dataType).toList
         if types.nonEmpty && types.forall(isConcreteScalar) then
           ctx.addTyperError(

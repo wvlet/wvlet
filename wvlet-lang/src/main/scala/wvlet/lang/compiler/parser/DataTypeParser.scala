@@ -55,9 +55,11 @@ object DataTypeParser extends LogSupport:
     .newException(msg)
 
   private def toDataType(typeName: String, params: List[DataType]): DataType =
-    typeName match
+    // SQL type names are case-insensitive: CAST(x AS DECIMAL(17,2)) must produce the same
+    // DecimalType as decimal(17,2), not fall through to an opaque GenericType
+    typeName.toLowerCase match
       case p if params.isEmpty && DataType.isPrimitiveTypeName(p) =>
-        DataType.getPrimitiveType(typeName)
+        DataType.getPrimitiveType(p)
       case "varchar" if params.size <= 1 =>
         if params.isEmpty then
           DataType.getPrimitiveType("varchar")

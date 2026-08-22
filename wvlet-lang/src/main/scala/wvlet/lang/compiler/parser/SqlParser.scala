@@ -1992,69 +1992,55 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
 
   def expression(): Expression = booleanExpression()
 
+  // Boolean and arithmetic operators parse with standard SQL precedence, each level
+  // left-associative: OR < AND < NOT < comparison/IS/IN/LIKE/BETWEEN < +,- < *,/,% < unary +/-
   def booleanExpression(): Expression =
-    def booleanExpressionRest(expr: Expression): Expression =
+    var expr     = andExpression()
+    var continue = true
+    while continue do
+      val t = scanner.lookAhead()
+      t.token match
+        case SqlToken.OR =>
+          consume(SqlToken.OR)
+          expr = Or(expr, andExpression(), spanFrom(t))
+        case _ =>
+          continue = false
+    expr
+
+  private def andExpression(): Expression =
+    var expr     = notExpression()
+    var continue = true
+    while continue do
       val t = scanner.lookAhead()
       t.token match
         case SqlToken.AND =>
           consume(SqlToken.AND)
-          val right = booleanExpression()
-          And(expr, right, spanFrom(t))
-        case SqlToken.OR =>
-          consume(SqlToken.OR)
-          val right = booleanExpression()
-          Or(expr, right, spanFrom(t))
+          expr = And(expr, notExpression(), spanFrom(t))
         case _ =>
-          expr
+          continue = false
+    expr
 
+  private def notExpression(): Expression =
     val t = scanner.lookAhead()
     t.token match
       case SqlToken.EXCLAMATION | SqlToken.NOT =>
         consume(t.token)
-        val e = valueExpression()
-        booleanExpressionRest(Not(e, spanFrom(t)))
+        Not(valueExpression(), spanFrom(t))
       case _ =>
-        val expr = valueExpression()
-        booleanExpressionRest(expr)
+        valueExpression()
 
   def valueExpression(): Expression =
     def valueExpressionRest(expr: Expression): Expression =
       val t = scanner.lookAhead()
       t.token match
-        case SqlToken.PLUS =>
-          consume(SqlToken.PLUS)
-          val right = valueExpression()
-          ArithmeticBinaryExpr(BinaryExprType.Add, expr, right, spanFrom(t))
-        case SqlToken.MINUS =>
-          consume(SqlToken.MINUS)
-          val right = valueExpression()
-          ArithmeticBinaryExpr(BinaryExprType.Subtract, expr, right, spanFrom(t))
-        case SqlToken.STAR =>
-          consume(SqlToken.STAR)
-          val right = valueExpression()
-          ArithmeticBinaryExpr(BinaryExprType.Multiply, expr, right, spanFrom(t))
-        case SqlToken.DIV =>
-          consume(SqlToken.DIV)
-          val right = valueExpression()
-          ArithmeticBinaryExpr(BinaryExprType.Divide, expr, right, spanFrom(t))
-        case SqlToken.MOD =>
-          consume(SqlToken.MOD)
-          val right = valueExpression()
-          ArithmeticBinaryExpr(BinaryExprType.Modulus, expr, right, spanFrom(t))
-        case token
-            if token == SqlToken.DIV_INT || (token.isIdentifier && t.str.toUpperCase == "DIV") =>
-          // Support DIV keyword (Hive/MySQL) and // operator (DuckDB) for integer division
-          consumeToken()
-          val right = valueExpression()
-          ArithmeticBinaryExpr(BinaryExprType.DivideInt, expr, right, spanFrom(t))
         case SqlToken.EQ =>
           consume(SqlToken.EQ)
-          val right = valueExpression()
-          Eq(expr, right, spanFrom(t))
+          val right = additiveExpression()
+          valueExpressionRest(Eq(expr, right, spanFrom(t)))
         case SqlToken.NEQ | SqlToken.NEQ2 =>
           consumeToken()
-          val right = valueExpression()
-          NotEq(expr, right, spanFrom(t))
+          val right = additiveExpression()
+          valueExpressionRest(NotEq(expr, right, spanFrom(t)))
         case SqlToken.IS =>
           consume(SqlToken.IS)
           scanner.lookAhead().token match
@@ -2063,103 +2049,157 @@ class SqlParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends L
               scanner.lookAhead().token match
                 case SqlToken.NULL =>
                   consume(SqlToken.NULL)
-                  IsNotNull(expr, spanFrom(t))
+                  valueExpressionRest(IsNotNull(expr, spanFrom(t)))
                 case SqlToken.DISTINCT =>
                   consume(SqlToken.DISTINCT)
                   consume(SqlToken.FROM)
-                  val right = valueExpression()
-                  NotDistinctFrom(expr, right, spanFrom(t))
+                  val right = additiveExpression()
+                  valueExpressionRest(NotDistinctFrom(expr, right, spanFrom(t)))
                 case _ =>
-                  val right = valueExpression()
-                  NotEq(expr, right, spanFrom(t))
+                  val right = additiveExpression()
+                  valueExpressionRest(NotEq(expr, right, spanFrom(t)))
             case SqlToken.NULL =>
               consume(SqlToken.NULL)
-              IsNull(expr, spanFrom(t))
+              valueExpressionRest(IsNull(expr, spanFrom(t)))
             case SqlToken.DISTINCT =>
               consume(SqlToken.DISTINCT)
               consume(SqlToken.FROM)
-              val right = valueExpression()
-              DistinctFrom(expr, right, spanFrom(t))
+              val right = additiveExpression()
+              valueExpressionRest(DistinctFrom(expr, right, spanFrom(t)))
             case _ =>
-              val right = valueExpression()
-              Eq(expr, right, spanFrom(t))
+              val right = additiveExpression()
+              valueExpressionRest(Eq(expr, right, spanFrom(t)))
         case SqlToken.LT =>
           consume(SqlToken.LT)
-          val right = valueExpression()
-          LessThan(expr, right, spanFrom(t))
+          val right = additiveExpression()
+          valueExpressionRest(LessThan(expr, right, spanFrom(t)))
         case SqlToken.GT =>
           consume(SqlToken.GT)
-          val right = valueExpression()
-          GreaterThan(expr, right, spanFrom(t))
+          val right = additiveExpression()
+          valueExpressionRest(GreaterThan(expr, right, spanFrom(t)))
         case SqlToken.LTEQ =>
           consume(SqlToken.LTEQ)
-          val right = valueExpression()
-          LessThanOrEq(expr, right, spanFrom(t))
+          val right = additiveExpression()
+          valueExpressionRest(LessThanOrEq(expr, right, spanFrom(t)))
         case SqlToken.GTEQ =>
           consume(SqlToken.GTEQ)
-          val right = valueExpression()
-          GreaterThanOrEq(expr, right, spanFrom(t))
+          val right = additiveExpression()
+          valueExpressionRest(GreaterThanOrEq(expr, right, spanFrom(t)))
         case SqlToken.IN =>
           consume(SqlToken.IN)
           val values = inExprList()
-          In(expr, values, spanFrom(t))
+          valueExpressionRest(In(expr, values, spanFrom(t)))
         case SqlToken.LIKE =>
           consume(SqlToken.LIKE)
-          val right  = valueExpression()
+          val right  = additiveExpression()
           val escape = parseEscapeClause()
-          Like(expr, right, escape, spanFrom(t))
+          valueExpressionRest(Like(expr, right, escape, spanFrom(t)))
         case SqlToken.RLIKE =>
           consume(SqlToken.RLIKE)
-          val right = valueExpression()
-          RLike(expr, right, spanFrom(t))
+          val right = additiveExpression()
+          valueExpressionRest(RLike(expr, right, spanFrom(t)))
         case SqlToken.NOT =>
           consume(SqlToken.NOT)
           val t2 = scanner.lookAhead()
           t2.token match
             case SqlToken.LIKE =>
               consume(SqlToken.LIKE)
-              val right  = valueExpression()
+              val right  = additiveExpression()
               val escape = parseEscapeClause()
-              NotLike(expr, right, escape, spanFrom(t))
+              valueExpressionRest(NotLike(expr, right, escape, spanFrom(t)))
             case SqlToken.RLIKE =>
               consume(SqlToken.RLIKE)
-              val right = valueExpression()
-              NotRLike(expr, right, spanFrom(t))
+              val right = additiveExpression()
+              valueExpressionRest(NotRLike(expr, right, spanFrom(t)))
             case SqlToken.IN =>
               consume(SqlToken.IN)
               val values = inExprList()
-              NotIn(expr, values, spanFrom(t))
+              valueExpressionRest(NotIn(expr, values, spanFrom(t)))
             case _ =>
               unexpected(t2)
         case SqlToken.BETWEEN =>
           consume(SqlToken.BETWEEN)
-          val start = valueExpression()
+          val start = additiveExpression()
           consume(SqlToken.AND)
-          val end = valueExpression()
-          Between(expr, start, end, spanFrom(t))
+          val end = additiveExpression()
+          valueExpressionRest(Between(expr, start, end, spanFrom(t)))
         case _ =>
           expr
       end match
     end valueExpressionRest
 
-    val t    = scanner.lookAhead()
-    val expr =
+    valueExpressionRest(additiveExpression())
+
+  end valueExpression
+
+  private def additiveExpression(): Expression =
+    var expr     = multiplicativeExpression()
+    var continue = true
+    while continue do
+      val t = scanner.lookAhead()
       t.token match
         case SqlToken.PLUS =>
           consume(SqlToken.PLUS)
-          val v = valueExpression()
-          ArithmeticUnaryExpr(Sign.Positive, v, spanFrom(t))
+          expr = ArithmeticBinaryExpr(
+            BinaryExprType.Add,
+            expr,
+            multiplicativeExpression(),
+            spanFrom(t)
+          )
         case SqlToken.MINUS =>
           consume(SqlToken.MINUS)
-          val v = valueExpression()
-          ArithmeticUnaryExpr(Sign.Negative, v, spanFrom(t))
-        case SqlToken.QUESTION | SqlToken.DOLLAR =>
-          queryParameter()
+          expr = ArithmeticBinaryExpr(
+            BinaryExprType.Subtract,
+            expr,
+            multiplicativeExpression(),
+            spanFrom(t)
+          )
         case _ =>
-          primaryExpression()
-    valueExpressionRest(expr)
+          continue = false
+    expr
 
-  end valueExpression
+  private def multiplicativeExpression(): Expression =
+    var expr     = unaryExpression()
+    var continue = true
+    while continue do
+      val t = scanner.lookAhead()
+      t.token match
+        case SqlToken.STAR =>
+          consume(SqlToken.STAR)
+          expr = ArithmeticBinaryExpr(BinaryExprType.Multiply, expr, unaryExpression(), spanFrom(t))
+        case SqlToken.DIV =>
+          consume(SqlToken.DIV)
+          expr = ArithmeticBinaryExpr(BinaryExprType.Divide, expr, unaryExpression(), spanFrom(t))
+        case SqlToken.MOD =>
+          consume(SqlToken.MOD)
+          expr = ArithmeticBinaryExpr(BinaryExprType.Modulus, expr, unaryExpression(), spanFrom(t))
+        case token
+            if token == SqlToken.DIV_INT || (token.isIdentifier && t.str.toUpperCase == "DIV") =>
+          // Support DIV keyword (Hive/MySQL) and // operator (DuckDB) for integer division
+          consumeToken()
+          expr = ArithmeticBinaryExpr(
+            BinaryExprType.DivideInt,
+            expr,
+            unaryExpression(),
+            spanFrom(t)
+          )
+        case _ =>
+          continue = false
+    expr
+
+  private def unaryExpression(): Expression =
+    val t = scanner.lookAhead()
+    t.token match
+      case SqlToken.PLUS =>
+        consume(SqlToken.PLUS)
+        ArithmeticUnaryExpr(Sign.Positive, unaryExpression(), spanFrom(t))
+      case SqlToken.MINUS =>
+        consume(SqlToken.MINUS)
+        ArithmeticUnaryExpr(Sign.Negative, unaryExpression(), spanFrom(t))
+      case SqlToken.QUESTION | SqlToken.DOLLAR =>
+        queryParameter()
+      case _ =>
+        primaryExpression()
 
   def inExprList(): List[Expression] =
     @tailrec
