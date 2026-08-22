@@ -1,0 +1,63 @@
+from reason
+where r_reason_sk = 1
+select 
+  case 
+    when { from store_sales where ss_quantity between 1 and 20 select count(*) } > 74129 then {
+      from store_sales
+      where ss_quantity between 1 and 20
+      select avg(ss_ext_discount_amt)
+    } 
+    else {
+      from store_sales
+      where ss_quantity between 1 and 20
+      select avg(ss_net_paid)
+    }
+  as bucket1,
+  case 
+    when { from store_sales where ss_quantity between 21 and 40 select count(*) } > 122840 then {
+      from store_sales
+      where ss_quantity between 21 and 40
+      select avg(ss_ext_discount_amt)
+    } 
+    else {
+      from store_sales
+      where ss_quantity between 21 and 40
+      select avg(ss_net_paid)
+    }
+  as bucket2,
+  case 
+    when { from store_sales where ss_quantity between 41 and 60 select count(*) } > 56580 then {
+      from store_sales
+      where ss_quantity between 41 and 60
+      select avg(ss_ext_discount_amt)
+    } 
+    else {
+      from store_sales
+      where ss_quantity between 41 and 60
+      select avg(ss_net_paid)
+    }
+  as bucket3,
+  case 
+    when { from store_sales where ss_quantity between 61 and 80 select count(*) } > 10097 then {
+      from store_sales
+      where ss_quantity between 61 and 80
+      select avg(ss_ext_discount_amt)
+    } 
+    else {
+      from store_sales
+      where ss_quantity between 61 and 80
+      select avg(ss_net_paid)
+    }
+  as bucket4,
+  case 
+    when { from store_sales where ss_quantity between 81 and 100 select count(*) } > 165306 then {
+      from store_sales
+      where ss_quantity between 81 and 100
+      select avg(ss_ext_discount_amt)
+    } 
+    else {
+      from store_sales
+      where ss_quantity between 81 and 100
+      select avg(ss_net_paid)
+    }
+  as bucket5

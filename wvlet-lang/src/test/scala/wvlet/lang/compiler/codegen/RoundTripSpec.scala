@@ -54,6 +54,7 @@ end RoundTripSpec
 
 class RoundTripSpecBasic extends RoundTripSpec("spec/basic")
 class RoundTripSpecTPCH  extends RoundTripSpec("spec/tpch")
+class RoundTripSpecTPCDS extends RoundTripSpec("spec/tpcds")
 //class WvletRoundTripSpecSqlBasic
 //    extends RoundTripSpec(
 //      "spec/sql/basic",

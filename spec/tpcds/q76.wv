@@ -1,0 +1,62 @@
+from {
+  {
+    from store_sales, item , date_dim 
+    where 
+      ss_store_sk is null
+      and ss_sold_date_sk = d_date_sk
+      and ss_item_sk = i_item_sk
+    select 
+      'store' as channel,
+      'ss_store_sk' as col_name,
+      d_year,
+      d_qoy,
+      i_category,
+      ss_ext_sales_price as ext_sales_price
+    concat
+    {
+      from web_sales, item , date_dim 
+      where 
+        ws_ship_customer_sk is null
+        and ws_sold_date_sk = d_date_sk
+        and ws_item_sk = i_item_sk
+      select 
+        'web' as channel,
+        'ws_ship_customer_sk' as col_name,
+        d_year,
+        d_qoy,
+        i_category,
+        ws_ext_sales_price as ext_sales_price
+      concat
+      {
+        from catalog_sales, item , date_dim 
+        where 
+          cs_ship_addr_sk is null
+          and cs_sold_date_sk = d_date_sk
+          and cs_item_sk = i_item_sk
+        select 
+          'catalog' as channel,
+          'cs_ship_addr_sk' as col_name,
+          d_year,
+          d_qoy,
+          i_category,
+          cs_ext_sales_price as ext_sales_price
+      }
+    }
+  }
+} as foo
+group by channel, col_name, d_year, d_qoy, i_category
+select 
+  channel,
+  col_name,
+  d_year,
+  d_qoy,
+  i_category,
+  COUNT(*) as sales_cnt,
+  SUM(ext_sales_price) as sales_amt
+order by 
+  channel nulls first,
+  col_name nulls first,
+  d_year nulls first,
+  d_qoy nulls first,
+  i_category nulls first
+limit 100
