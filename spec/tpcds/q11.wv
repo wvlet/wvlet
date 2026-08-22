@@ -1,0 +1,86 @@
+with year_total as {
+  from customer, store_sales , date_dim 
+  where c_customer_sk = ss_customer_sk and ss_sold_date_sk = d_date_sk
+  group by 
+    c_customer_id,
+    c_first_name,
+    c_last_name,
+    c_preferred_cust_flag,
+    c_birth_country,
+    c_login,
+    c_email_address,
+    d_year
+  select 
+    c_customer_id as customer_id,
+    c_first_name as customer_first_name,
+    c_last_name as customer_last_name,
+    c_preferred_cust_flag as customer_preferred_cust_flag,
+    c_birth_country as customer_birth_country,
+    c_login as customer_login,
+    c_email_address as customer_email_address,
+    d_year as dyear,
+    sum(ss_ext_list_price - ss_ext_discount_amt) as year_total,
+    's' as sale_type
+  concat
+  {
+    from customer, web_sales , date_dim 
+    where c_customer_sk = ws_bill_customer_sk and ws_sold_date_sk = d_date_sk
+    group by 
+      c_customer_id,
+      c_first_name,
+      c_last_name,
+      c_preferred_cust_flag,
+      c_birth_country,
+      c_login,
+      c_email_address,
+      d_year
+    select 
+      c_customer_id as customer_id,
+      c_first_name as customer_first_name,
+      c_last_name as customer_last_name,
+      c_preferred_cust_flag as customer_preferred_cust_flag,
+      c_birth_country as customer_birth_country,
+      c_login as customer_login,
+      c_email_address as customer_email_address,
+      d_year as dyear,
+      sum(ws_ext_list_price - ws_ext_discount_amt) as year_total,
+      'w' as sale_type
+  }
+}
+from year_total as t_s_firstyear, year_total as t_s_secyear , year_total as t_w_firstyear
+  , year_total as t_w_secyear
+  
+where 
+  t_s_secyear.customer_id = t_s_firstyear.customer_id
+  and t_s_firstyear.customer_id = t_w_secyear.customer_id
+  and t_s_firstyear.customer_id = t_w_firstyear.customer_id
+  and t_s_firstyear.sale_type = 's'
+  and t_w_firstyear.sale_type = 'w'
+  and t_s_secyear.sale_type = 's'
+  and t_w_secyear.sale_type = 'w'
+  and t_s_firstyear.dyear = 2001
+  and t_s_secyear.dyear = 2001 + 1
+  and t_w_firstyear.dyear = 2001
+  and t_w_secyear.dyear = 2001 + 1
+  and t_s_firstyear.year_total > 0
+  and t_w_firstyear.year_total > 0
+  and (
+    case 
+      when t_w_firstyear.year_total > 0 then (t_w_secyear.year_total * 1.0000) / t_w_firstyear.year_total 
+      else 0.0
+  ) > (
+    case 
+      when t_s_firstyear.year_total > 0 then (t_s_secyear.year_total * 1.0000) / t_s_firstyear.year_total 
+      else 0.0
+  )
+select 
+  t_s_secyear.customer_id,
+  t_s_secyear.customer_first_name,
+  t_s_secyear.customer_last_name,
+  t_s_secyear.customer_preferred_cust_flag
+order by 
+  t_s_secyear.customer_id nulls first,
+  t_s_secyear.customer_first_name nulls first,
+  t_s_secyear.customer_last_name nulls first,
+  t_s_secyear.customer_preferred_cust_flag nulls first
+limit 100

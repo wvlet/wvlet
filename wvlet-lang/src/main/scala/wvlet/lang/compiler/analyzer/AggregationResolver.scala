@@ -41,26 +41,24 @@ object AggregationResolver extends ContextLogSupport:
     }
     .getOrElse(Nil)
 
+  /**
+    * A single-node rewrite rule applied through a bottom-up traversal (transformUpExpression), so
+    * child expressions are already resolved when the rule fires. The rule must not re-traverse its
+    * subtree: doing so doubles the work at every tree level, which is exponential on deeply nested
+    * expressions (e.g. TPC-DS q4 never finishes)
+    */
   private def resolveAggregationExpr(aggFunctions: List[Symbol])(using
       ctx: Context
   ): PartialFunction[Expression, Expression] =
-    case e: ShouldExpr =>
-      // do not resolve aggregation expr in test expressions
-      e
     case d: DotRef =>
-      val dd  = d.transformChildExpressions(resolveAggregationExpr(aggFunctions))
-      val nme = dd.name.toTermName
+      val nme = d.name.toTermName
       aggFunctions
         .find(_.name == nme)
         .map(_.symbolInfo)
         .collect { case m: MethodSymbolInfo =>
-          // Inline with the transformed DotRef so aggregations already resolved in the
-          // qualifier's child expressions are preserved
-          FunctionInliner.inlineFunctionBody(dd, m, Nil)
+          FunctionInliner.inlineFunctionBody(d, m, Nil)
         }
-        .getOrElse(dd)
-    case other =>
-      other.transformChildExpressions(resolveAggregationExpr(aggFunctions))
+        .getOrElse(d)
 
   /**
     * Resolve aggregation expressions in a single traversal: inline aggregation functions applied
@@ -75,7 +73,12 @@ object AggregationResolver extends ContextLogSupport:
         val withAgg =
           r match
             case s: GeneralSelection =>
-              s.transformChildExpressions(resolveAggregationExpr(aggFunctions))
+              // Resolve within each direct expression of this node only; nested relations are
+              // rewritten by their own transformUp visit, and test expressions stay as written
+              // because TestRelation is not a GeneralSelection
+              s.transformChildExpressions { case e: Expression =>
+                  e.transformUpExpression(resolveAggregationExpr(aggFunctions))
+                }
                 .asInstanceOf[Relation]
             case _ =>
               r

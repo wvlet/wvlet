@@ -99,7 +99,13 @@ object NameExpr:
   val EmptyName: Identifier                                = UnquotedIdentifier("<empty>", NoSpan)
   def fromString(s: String, span: Span = NoSpan): NameExpr = UnquotedIdentifier(s, span)
 
-  private val sqlKeywords = SqlToken.keywords.map(_.str).toSet
+  // Grouping-operation names must stay unquoted: engines recognize grouping(...) or
+  // rollup(...) only as bare keywords, and a quoted "grouping"(...) is looked up (and fails)
+  // as a regular scalar function. Other non-reserved keywords keep their quotes, as engines
+  // like Trino still reject them as bare identifiers in expressions (e.g. a column named
+  // `table`)
+  private val groupingOperationNames = Set("grouping", "rollup", "cube")
+  private val sqlKeywords            = SqlToken.keywords.map(_.str).toSet -- groupingOperationNames
 
   def requiresQuotation(s: String): Boolean =
     !s.matches("^[\\*_a-zA-Z][_a-zA-Z0-9\\*\\.]*$") || sqlKeywords.contains(s)

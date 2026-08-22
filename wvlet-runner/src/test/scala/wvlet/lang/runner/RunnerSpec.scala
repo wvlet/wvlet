@@ -101,6 +101,8 @@ class RunnerSpecBasic
 
 class RunnerSpecTPCH extends RunnerSpec("spec/tpch", prepareTPCH = true)
 
+class RunnerSpecTPCDS extends RunnerSpec("spec/tpcds", prepareTPCDS = true)
+
 // Negative tests, expecting some errors
 class RunnerSpecNeg extends RunnerSpec("spec/neg"):
   override protected def handleError: Throwable => Unit =
@@ -134,5 +136,4 @@ class RunnerSpecSqlBenchmark extends RunnerSpec("spec/sql/benchmark")
 
 class RunnerSpecSqlTPCH extends RunnerSpec("spec/sql/tpc-h", parseOnly = true, prepareTPCH = true)
 
-class RunnerSpecSqlTPCDS
-    extends RunnerSpec("spec/sql/tpc-ds", parseOnly = true, prepareTPCDS = true)
+class RunnerSpecSqlTPCDS extends RunnerSpec("spec/sql/tpc-ds", prepareTPCDS = true)

@@ -78,6 +78,15 @@ Ensure the code is formatted with `scalafmtAll` command for consistent code styl
 # Run a specific .sql spec file 
 ./sbt "runner/testOnly *RunnerSpecSqlBasic -- spec:sql:basic:query.sql"
 
+# Run TPC-DS benchmark specs (Wvlet queries in spec/tpcds, executed on DuckDB)
+./sbt "runner/testOnly *RunnerSpecTPCDS"
+
+# Run TPC-DS SQL specs (SQL queries in spec/sql/tpc-ds, full compile + DuckDB execution)
+./sbt "runner/testOnly *RunnerSpecSqlTPCDS"
+
+# Regenerate spec/tpcds/*.wv from spec/sql/tpc-ds/*.sql (SQL-to-Wvlet conversion)
+./sbt "langJVM/Test/runMain wvlet.lang.compiler.codegen.TPCDSWvletSpecGenerator"
+
 # Run test and stay in SBT shell
 ./sbt
 sbt:wvlet> test

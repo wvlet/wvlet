@@ -1,0 +1,70 @@
+with results as {
+  from store_sales, date_dim as d1 , item , store 
+  where 
+    d1.d_year = 2001
+    and d1.d_date_sk = ss_sold_date_sk
+    and i_item_sk = ss_item_sk
+    and s_store_sk = ss_store_sk
+    and s_state = 'TN'
+  group by i_category, i_class
+  select 
+    sum(ss_net_profit) as ss_net_profit,
+    sum(ss_ext_sales_price) as ss_ext_sales_price,
+    (sum(ss_net_profit) * 1.0000) / sum(ss_ext_sales_price) as gross_margin,
+    i_category,
+    i_class,
+    0 as g_category,
+    0 as g_class
+}
+with results_rollup as {
+  from results
+  select 
+    gross_margin,
+    i_category,
+    i_class,
+    0 as t_category,
+    0 as t_class,
+    0 as lochierarchy
+  concat
+  {
+    from results
+    group by i_category
+    select 
+      (sum(ss_net_profit) * 1.0000) / sum(ss_ext_sales_price) as gross_margin,
+      i_category,
+      null as i_class,
+      0 as t_category,
+      1 as t_class,
+      1 as lochierarchy
+    concat
+    {
+      from results
+      select 
+        (sum(ss_net_profit) * 1.0000) / sum(ss_ext_sales_price) as gross_margin,
+        null as i_category,
+        null as i_class,
+        1 as t_category,
+        1 as t_class,
+        2 as lochierarchy
+    }
+    dedup
+  }
+  dedup
+}
+from results_rollup
+select 
+  gross_margin,
+  i_category,
+  i_class,
+  lochierarchy,
+  rank() over (
+    partition by lochierarchy,
+    case 
+      when t_class = 0 then i_category order by gross_margin asc
+  )
+  as rank_within_parent
+order by 
+  lochierarchy desc nulls first,
+  (case  when lochierarchy = 0 then i_category) nulls first,
+  rank_within_parent nulls first
+limit 100

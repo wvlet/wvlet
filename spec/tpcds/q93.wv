@@ -1,0 +1,21 @@
+from {
+  {
+    from store_sales
+    left join store_returns
+      on (sr_item_sk = ss_item_sk and sr_ticket_number = ss_ticket_number), reason
+      
+    where sr_reason_sk = r_reason_sk and r_reason_desc = 'reason 28'
+    select 
+      ss_item_sk,
+      ss_ticket_number,
+      ss_customer_sk,
+      case 
+        when sr_return_quantity is not null then (ss_quantity - sr_return_quantity) * ss_sales_price 
+        else (ss_quantity * ss_sales_price)
+      as act_sales
+  }
+} as t
+group by ss_customer_sk
+select ss_customer_sk, sum(act_sales) as sumsales
+order by sumsales nulls first, ss_customer_sk nulls first
+limit 100
