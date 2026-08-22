@@ -1,0 +1,11 @@
+-- Standard library json functions (on strings holding JSON text)
+select '{"store": {"name": "Wvlet", "count": 42}}' as j
+select
+  j.json_extract_string('$.store.name') as name,
+  j.json_extract('$.store.count').to_string as cnt,
+
+test _.size should be 1
+test _.rows should be [[
+  'Wvlet',
+  '42',
+]]

@@ -14,6 +14,7 @@
 package wvlet.lang.runner
 
 import wvlet.uni.test.UniTest
+import wvlet.lang.catalog.SQLFunction
 import wvlet.lang.catalog.StaticCatalogExporter
 import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.compiler.Compiler
@@ -21,6 +22,7 @@ import wvlet.lang.compiler.CompilerOptions
 import wvlet.lang.compiler.SourceIO
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.compiler.codegen.GenSQL
+import wvlet.lang.model.DataType
 import wvlet.lang.connector.duckdb.DuckDBConnector
 
 import java.nio.file.Files
@@ -110,30 +112,8 @@ class StaticCatalogExportTest extends UniTest:
     val projectDir = Files.createTempDirectory(Path.of("target"), "static-functions").toString
     val targetDir  = s"${projectDir}/catalog"
     try
-      def exportFunctions(): Option[String] = StaticCatalogExporter.exportFunctions(
-        "memory",
-        "duckdb",
-        duckdb.listFunctions("memory"),
-        targetDir
-      )
-      val written = exportFunctions()
-      written shouldBe Some(s"${targetDir}/memory/functions.wv")
-
-      val source = SourceIO.readAsString(written.get)
-      // Engine functions without builtin typing rules are exported with the dialect tag
-      source shouldContain "def regexp_extract("
-      source shouldContain " in duckdb"
-      // Builtins, keywords, and table functions are skipped (count_if etc. still export)
-      source shouldNotContain "def count("
-      source shouldNotContain "def upper("
-      source shouldNotContain "def read_csv("
-
-      // Re-running the export produces identical output (deterministic sync)
-      exportFunctions()
-      SourceIO.readAsString(written.get) shouldBe source
-
-      // A call to an imported function compiles offline into a plain SQL call, typed with
-      // the declared return type
+      // The standard library bundles the DuckDB function catalog, so calls to engine
+      // functions compile offline into plain SQL calls without any project-level import
       val compiler = Compiler(
         CompilerOptions(sourceFolders = List(projectDir), workEnv = WorkEnv(projectDir))
       )
@@ -144,6 +124,35 @@ class StaticCatalogExportTest extends UniTest:
       result.hasFailures shouldBe false
       val sql = GenSQL.generateSQL(queryUnit)(using result.context)
       sql shouldContain "regexp_extract(x, '[0-9]+')"
+
+      // Functions covered by the bundled stdlib catalog are not re-exported; only functions
+      // unknown to the stdlib (e.g. user-defined engine UDFs) are written
+      val customFn = SQLFunction(
+        "my_custom_udf",
+        SQLFunction.FunctionType.SCALAR,
+        Seq(DataType.StringType),
+        DataType.StringType
+      )
+      def exportFunctions(): Option[String] = StaticCatalogExporter.exportFunctions(
+        "memory",
+        "duckdb",
+        duckdb.listFunctions("memory") :+ customFn,
+        targetDir
+      )
+      val written = exportFunctions()
+      written shouldBe Some(s"${targetDir}/memory/functions.wv")
+
+      val source = SourceIO.readAsString(written.get)
+      source shouldContain "def my_custom_udf(a1: string) in duckdb: string = native"
+      // Bundled stdlib functions, builtins, keywords, and table functions are skipped
+      source shouldNotContain "def regexp_extract("
+      source shouldNotContain "def count("
+      source shouldNotContain "def upper("
+      source shouldNotContain "def read_csv("
+
+      // Re-running the export produces identical output (deterministic sync)
+      exportFunctions()
+      SourceIO.readAsString(written.get) shouldBe source
 
       // A full-catalog re-import keeps functions.wv only when it was re-generated: schema
       // pruning removes it when the import ran with --no-functions

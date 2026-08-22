@@ -52,12 +52,25 @@ object AggregationResolver extends ContextLogSupport:
   ): PartialFunction[Expression, Expression] =
     case d: DotRef =>
       val nme = d.name.toTermName
+
+      // A member of the qualifier's own type (e.g. map.size, string.split) resolves through
+      // the typed member path with dialect selection, so the aggregation shorthand must not
+      // shadow it
+      def hasOwnMember: Boolean =
+        val qualType = d.qualifier.dataType
+        qualType.isResolved &&
+        ctx
+          .findSymbolByName(qualType.typeName)
+          .exists(sym => !sym.symbolInfo.findMember(nme).isNoSymbol)
+
       aggFunctions
         .find(_.name == nme)
-        .map(_.symbolInfo)
-        .collect { case m: MethodSymbolInfo =>
-          FunctionInliner.inlineFunctionBody(d, m, Nil)
-        }
+        .filterNot(_ => hasOwnMember)
+        .flatMap(sym => FunctionInliner.selectMethodVariant(List(sym.symbolInfo), Nil, ctx))
+        // Members with parameters (e.g. count_if, min_by) are bound by their enclosing
+        // FunctionApply; inlining them here would drop the arguments
+        .filter(_.ft.args.isEmpty)
+        .map(m => FunctionInliner.inlineFunctionBody(d, m, Nil))
         .getOrElse(d)
 
   /**

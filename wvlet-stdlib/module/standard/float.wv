@@ -1,0 +1,61 @@
+package wvlet.standard
+
+type float = {
+  def to_int: int = sql"cast(${this} as bigint)"
+  def to_long: long = sql"cast(${this} as bigint)"
+  def to_float: float = sql"cast(${this} as double)"
+  def to_double: double = sql"cast(${this} as double)"
+  def to_boolean: boolean = sql"cast(${this} as boolean)"
+  def to_string: string = sql"cast(${this} as varchar)"
+
+  def or_else(other:float): float = sql"coalesce(${this},${other})"
+
+  def round(decimal:int=0): double = sql"round(${this},${decimal})"
+
+  def abs: float = sql"abs(${this})"
+  def ceil: float = sql"ceil(${this})"
+  def floor: float = sql"floor(${this})"
+  def sqrt: double = sql"sqrt(${this})"
+  def exp: double = sql"exp(${this})"
+  def ln: double = sql"ln(${this})"
+  def log10: double = sql"log10(${this})"
+  def log2: double = sql"log2(${this})"
+  def power(exponent:double): double = sql"power(${this},${exponent})"
+  def sign: int = sql"sign(${this})"
+
+  def is_nan in duckdb: boolean = sql"isnan(${this})"
+  def is_nan in trino: boolean = sql"is_nan(${this})"
+  def is_finite in duckdb: boolean = sql"isfinite(${this})"
+  def is_finite in trino: boolean = sql"is_finite(${this})"
+  def is_infinite in duckdb: boolean = sql"isinf(${this})"
+  def is_infinite in trino: boolean = sql"is_infinite(${this})"
+
+  def in(v:any*): boolean = sql"${this} in (${v})"
+  def not_in(v:any*): boolean = sql"${this} not in (${v})"
+
+  def between(l:float, r:float): boolean = sql"${this} between ${l} and ${r}"
+}
+
+-- `real` is a distinct primitive type (e.g. 4-byte floating point columns)
+type real = {
+  def to_int: int = sql"cast(${this} as bigint)"
+  def to_long: long = sql"cast(${this} as bigint)"
+  def to_float: float = sql"cast(${this} as double)"
+  def to_double: double = sql"cast(${this} as double)"
+  def to_boolean: boolean = sql"cast(${this} as boolean)"
+  def to_string: string = sql"cast(${this} as varchar)"
+
+  def or_else(other:real): real = sql"coalesce(${this},${other})"
+  def round(decimal:int=0): double = sql"round(${this},${decimal})"
+
+  def abs: real = sql"abs(${this})"
+  def ceil: real = sql"ceil(${this})"
+  def floor: real = sql"floor(${this})"
+  def sqrt: double = sql"sqrt(${this})"
+  def sign: int = sql"sign(${this})"
+
+  def in(v:any*): boolean = sql"${this} in (${v})"
+  def not_in(v:any*): boolean = sql"${this} not in (${v})"
+
+  def between(l:real, r:real): boolean = sql"${this} between ${l} and ${r}"
+}

@@ -127,7 +127,12 @@ class StaticCatalogExporterTest extends UniTest:
       fn("date_trunc", "timestamp", "string", "timestamp"),
       fn("pi", "double")
     )
-    val source = StaticCatalogExporter.generateFunctionsSource("duckdb", functions)
+    def render(fns: List[SQLFunction]): String = StaticCatalogExporter.generateFunctionsSource(
+      "duckdb",
+      fns,
+      excludedNames = StaticCatalogExporter.handWrittenStdlibFunctionNames
+    )
+    val source = render(functions)
     source shouldContain StaticCatalogExporter.generatedFileHeader
     source shouldContain "def date_trunc(a1: string, a2: timestamp) in duckdb: timestamp = native"
     source shouldContain "def regexp_extract(a1: string, a2: string) in duckdb: string = native"
@@ -136,7 +141,7 @@ class StaticCatalogExporterTest extends UniTest:
     source.indexOf("def pi") < source.indexOf("def regexp_extract") shouldBe true
 
     // Regenerating from a different input order produces identical output
-    StaticCatalogExporter.generateFunctionsSource("duckdb", functions.reverse) shouldBe source
+    render(functions.reverse) shouldBe source
   }
 
   test("skip function names that could collide with the Wvlet syntax or builtin typing") {
@@ -152,13 +157,27 @@ class StaticCatalogExporterTest extends UniTest:
       fn("+", "long", "long", "long"),
       fn("regexp_extract", "string", "string", "string")
     )
-    val source = StaticCatalogExporter.generateFunctionsSource("duckdb", functions)
+    val source = StaticCatalogExporter.generateFunctionsSource(
+      "duckdb",
+      functions,
+      excludedNames = StaticCatalogExporter.handWrittenStdlibFunctionNames
+    )
     source shouldContain "def regexp_extract"
     source shouldNotContain "def end"
     source shouldNotContain "def count"
     source shouldNotContain "def upper"
     source shouldNotContain "def ulid_string"
     source shouldNotContain "def +"
+  }
+
+  test("skip functions already bundled in the stdlib engine catalog by default") {
+    // bit_count comes from the generated module/standard/duckdb/functions.wv catalog, so a
+    // project-level `wvlet catalog import` no longer needs to re-export it
+    val source = StaticCatalogExporter.generateFunctionsSource(
+      "duckdb",
+      List(fn("bit_count", "long", "long"))
+    )
+    source shouldBe ""
   }
 
   test("skip functions with a non-plain-call syntax") {
@@ -184,7 +203,8 @@ class StaticCatalogExporterTest extends UniTest:
       List(
         fn("date_trunc", "timestamp", "string", "timestamp"),
         fn("date_trunc", "timestamp", "string", "date")
-      )
+      ),
+      excludedNames = StaticCatalogExporter.handWrittenStdlibFunctionNames
     )
     source shouldContain "def date_trunc(a1: any, a2: any) in duckdb: timestamp = native"
   }
@@ -192,7 +212,8 @@ class StaticCatalogExporterTest extends UniTest:
   test("keep the return type of an overloaded function only when all overloads agree") {
     val source = StaticCatalogExporter.generateFunctionsSource(
       "duckdb",
-      List(fn("array_slice", "string", "string", "int"), fn("array_slice", "int", "int", "int"))
+      List(fn("array_slice", "string", "string", "int"), fn("array_slice", "int", "int", "int")),
+      excludedNames = StaticCatalogExporter.handWrittenStdlibFunctionNames
     )
     source shouldContain "def array_slice(a1: any, a2: any) in duckdb: any = native"
   }

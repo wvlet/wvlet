@@ -1191,9 +1191,25 @@ class QueryExecutor(
         case b: BooleanLiteral =>
           b.booleanValue
         case d: DecimalLiteral =>
-          d.value
+          // Compare decimal literals numerically (e.g. `2.0` equals a double value 2.0)
+          BigDecimal(d.value)
         case n: NullLiteral =>
           null
+        case u: ArithmeticUnaryExpr =>
+          // Negative literals in expected values (e.g. -1)
+          val v = evalOp(u.child)
+          if u.sign == Sign.Negative then
+            v match
+              case l: Long =>
+                -l
+              case d: Double =>
+                -d
+              case b: BigDecimal =>
+                -b
+              case other =>
+                other
+          else
+            v
         case a: ArrayConstructor =>
           a.values.map(evalOp)
         case m: MapValue =>

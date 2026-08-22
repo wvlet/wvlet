@@ -290,8 +290,8 @@ case class Context(
   /**
     * All visible definitions of the given name: the current scope's symbol (if any) followed by
     * every globally visible top-level definition in source file name order. Used for dialect-aware
-    * function resolution, where the same function name may be defined once per target engine
-    * across compilation units (e.g. per-engine standard library files)
+    * function resolution, where the same function name may be defined once per target engine across
+    * compilation units (e.g. per-engine standard library files)
     */
   def findAllSymbolsByName(name: Name): List[Symbol] =
     val fromScope = scope.lookupSymbol(name).toList

@@ -7,6 +7,7 @@ type string = {
   def to_double: double = sql"cast(${this} as double)"
   def to_boolean: boolean = sql"cast(${this} as boolean)"
   def to_date: date = sql"cast(${this} as date)"
+  def to_timestamp: timestamp = sql"cast(${this} as timestamp)"
 
   -- if the string is null, return the default value
   def or_else(other:string): string = sql"coalesce(${this},${other})"
@@ -14,11 +15,37 @@ type string = {
   -- TODO: Decide how to handle infix operators
   -- def +(other:string): string = sql"${this} || ${other}"
   def length: int = sql"length(${this})"
+  def upper: string = sql"upper(${this})"
+  def lower: string = sql"lower(${this})"
   def trim: string = sql"trim(${this})"
+  def ltrim: string = sql"ltrim(${this})"
+  def rtrim: string = sql"rtrim(${this})"
+  def reverse: string = sql"reverse(${this})"
+
+  -- Concatenate the given string after this string
+  def concat(other:string): string = sql"${this} || ${other}"
+
+  -- Replace all occurrences of the search string with the replacement string
+  def replace(search:string, replacement:string): string = sql"replace(${this},${search},${replacement})"
+
+  -- Pad the string to the given length by prepending (lpad) or appending (rpad) the pad string
+  def lpad(length:int, pad:string): string = sql"lpad(${this},${length},${pad})"
+  def rpad(length:int, pad:string): string = sql"rpad(${this},${length},${pad})"
+
+  -- 1-origin position of the first occurrence of the substring (0 if not found)
+  def strpos(substr:string): int = sql"strpos(${this},${substr})"
 
   def like(pattern:string): boolean = sql"${this} like ${pattern}"
 
-  def substring(start:int,end:int): string = sql"substring(${this},${start},${end})"
+  -- Substring from the 1-origin start position (to the end, or of the given length)
+  def substring(start:int): string = sql"substring(${this},${start})"
+  def substring(start:int,length:int): string = sql"substring(${this},${start},${length})"
+
+  -- Extract the first substring matching the regular expression
+  def regexp_extract(pattern:string): string = sql"regexp_extract(${this},${pattern})"
+  def regexp_extract(pattern:string, group_index:int): string = sql"regexp_extract(${this},${pattern},${group_index})"
+
+  def starts_with(prefix:string): boolean = sql"starts_with(${this},${prefix})"
 
   def in(v:any*): boolean = sql"${this} in (${v})"
   def not_in(expr:any*): boolean = sql"${this} not in (${expr})"
@@ -26,15 +53,37 @@ type string = {
 
 -- Using query engine specific dialects
 type string in duckdb = {
-  -- TODO support context-specific functions
-  -- def substring(start:int): string = sql"substring(${this},{start},strlen({this}))"
   def regexp_like(pattern:string): boolean = sql"regexp_matches(${this},${pattern})"
+  -- Replace every substring matching the regular expression with the replacement
+  def regexp_replace(pattern:string, replacement:string): string = sql"regexp_replace(${this},${pattern},${replacement},'g')"
+  def contains(substr:string): boolean = sql"contains(${this},${substr})"
+  def ends_with(suffix:string): boolean = sql"ends_with(${this},${suffix})"
+  -- Split the string by the separator into an array of strings
+  def split(separator:string): array[string] = sql"string_split(${this},${separator})"
+  -- Hex-encoded digest strings
+  def md5: string = sql"md5(${this})"
+  def sha256: string = sql"sha256(${this})"
+  -- Edit distance between two strings
+  def levenshtein(other:string): int = sql"levenshtein(${this},${other})"
+  -- Extract a JSON value from a string holding JSON text
+  def json_extract(path:string): json = sql"json_extract(${this},${path})"
+  def json_extract_string(path:string): string = sql"json_extract_string(${this},${path})"
 }
-
 
 type string in trino = {
-  -- TODO support context-specific functions
-  -- def substring(start:int, end:int): string = sql"substring(${this},{start},{end})"
   def regexp_like(pattern:string): boolean = sql"regexp_like(${this},${pattern})"
+  -- Replace every substring matching the regular expression with the replacement
+  def regexp_replace(pattern:string, replacement:string): string = sql"regexp_replace(${this},${pattern},${replacement})"
+  def contains(substr:string): boolean = sql"strpos(${this},${substr}) > 0"
+  def ends_with(suffix:string): boolean = sql"substr(${this},-length(${suffix})) = ${suffix}"
+  -- Split the string by the separator into an array of strings
+  def split(separator:string): array[string] = sql"split(${this},${separator})"
+  -- Hex-encoded digest strings
+  def md5: string = sql"lower(to_hex(md5(to_utf8(${this}))))"
+  def sha256: string = sql"lower(to_hex(sha256(to_utf8(${this}))))"
+  -- Edit distance between two strings
+  def levenshtein(other:string): int = sql"levenshtein_distance(${this},${other})"
+  -- Extract a JSON value from a string holding JSON text
+  def json_extract(path:string): json = sql"json_extract(${this},${path})"
+  def json_extract_string(path:string): string = sql"json_extract_scalar(${this},${path})"
 }
-

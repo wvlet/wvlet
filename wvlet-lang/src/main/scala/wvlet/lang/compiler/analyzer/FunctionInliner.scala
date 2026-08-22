@@ -87,18 +87,19 @@ object FunctionInliner extends ContextLogSupport:
     *     catalog import`), preserving the duplicate-name shadowing contract of issue #93
     *   - a variant scoped to the target engine wins over a dialect-neutral one
     */
-  private def variantRank(m: MethodSymbolInfo, context: Context): (Int, Int, Int) =
-    (
-      if m.compilationUnit.isPreset then
-        1
-      else
-        0,
-      if isEngineNative(m) then
-        1
-      else
-        0,
-      -dialectScore(m, context)
-    )
+  private def variantRank(m: MethodSymbolInfo, context: Context): (Int, Int, Int) = (
+    if m.compilationUnit.isPreset then
+      1
+    else
+      0
+    ,
+    if isEngineNative(m) then
+      1
+    else
+      0
+    ,
+    -dialectScore(m, context)
+  )
 
   /**
     * Select the method definition that fits the compile target among same-name variants (dialect
@@ -106,10 +107,10 @@ object FunctionInliner extends ContextLogSupport:
     * compatibility is applied first so that an overload for a different arity never shadows a
     * matching one, then variants scoped to a different engine are dropped, and the remaining
     * candidates are ranked by [[variantRank]]. When nothing matches the target dialect (e.g. a
-    * td_trino-only function compiled for DuckDB) the first variant is kept, preserving the
-    * previous lenient behavior for single definitions.
+    * td_trino-only function compiled for DuckDB) the first variant is kept, preserving the previous
+    * lenient behavior for single definitions.
     */
-  private def selectMethodVariant(
+  private[analyzer] def selectMethodVariant(
       symbolInfos: List[SymbolInfo],
       knownArgs: List[FunctionArg],
       context: Context
@@ -140,15 +141,13 @@ object FunctionInliner extends ContextLogSupport:
         val dialectPool     = preferNonZero(arityCompatible, dialectScore(_, context))
         // A stable sort keeps the lookup order (locals, then source file name order) among
         // equally ranked variants
-        dialectPool
-          .sortBy(m => (variantRank(m, context), -arityScore(m)))
-          .headOption
+        dialectPool.sortBy(m => (variantRank(m, context), -arityScore(m))).headOption
   end selectMethodVariant
 
   /**
-    * Select the method definition for a bare member reference (a DotRef with no argument list,
-    * e.g. `expr.upper`). Returns a definition only when none of the dialect-compatible variants
-    * takes arguments: in the bottom-up inlining pass a DotRef that is the base of an enclosing
+    * Select the method definition for a bare member reference (a DotRef with no argument list, e.g.
+    * `expr.upper`). Returns a definition only when none of the dialect-compatible variants takes
+    * arguments: in the bottom-up inlining pass a DotRef that is the base of an enclosing
     * FunctionApply is indistinguishable from a bare reference, so resolving a no-arg variant of an
     * arity-overloaded member here would swallow the arguments of the enclosing call.
     */
@@ -174,16 +173,18 @@ object FunctionInliner extends ContextLogSupport:
   inline val maxInlineExpansionDepth = 100
 
   /**
-    * Find a corresponding MethodSymbolInfo for the given function expression. With `bareMember`
-    * the expression is treated as a member reference without an argument list, which resolves only
-    * to no-arg definitions (see [[selectBareMethodVariant]])
+    * Find a corresponding MethodSymbolInfo for the given function expression. With `bareMember` the
+    * expression is treated as a member reference without an argument list, which resolves only to
+    * no-arg definitions (see [[selectBareMethodVariant]])
     * @param f
     * @param context
     * @return
     */
-  def findFunctionDef(f: Expression, knownArgs: List[FunctionArg] = Nil, bareMember: Boolean = false)(
-      using context: Context
-  ): Option[MethodSymbolInfo] =
+  def findFunctionDef(
+      f: Expression,
+      knownArgs: List[FunctionArg] = Nil,
+      bareMember: Boolean = false
+  )(using context: Context): Option[MethodSymbolInfo] =
 
     f match
       case fa: FunctionApply =>
@@ -377,10 +378,12 @@ object FunctionInliner extends ContextLogSupport:
           // If the function definition has no body expression, return the original expression
           base
     context.logTrace(s"Resolving ${base} => ${newExpr}: ${m.ft.returnType}")
-    if newExpr.resolved || !m.ft.returnType.isResolved then
-      newExpr
-    else
-      newExpr.withDataType(m.ft.returnType)
+    // Always record the declared return type when it is known: the inlined SQL body itself
+    // carries no type, and a chained method call on the result (e.g. a.distinct.sort) needs
+    // the qualifier's type to resolve its next member
+    if m.ft.returnType.isResolved && !newExpr.tpe.isResolved then
+      newExpr.tpe = m.ft.returnType
+    newExpr
 
   end inlineFunctionBody
 

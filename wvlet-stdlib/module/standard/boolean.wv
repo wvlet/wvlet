@@ -1,0 +1,10 @@
+package wvlet.standard
+
+type boolean = {
+  def to_int: int = sql"cast(${this} as bigint)"
+  def to_long: long = sql"cast(${this} as bigint)"
+  def to_string: string = sql"cast(${this} as varchar)"
+
+  -- if the value is null, return the given default value
+  def or_else(other:boolean): boolean = sql"coalesce(${this},${other})"
+}

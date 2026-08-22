@@ -7,6 +7,6 @@ type null = {
   def to_double: double = sql"cast(${this} as double)"
   def to_boolean: boolean = sql"cast(${this} as boolean)"
   def to_date: date = sql"cast(${this} as date)"
+  def to_timestamp: timestamp = sql"cast(${this} as timestamp)"
   def to_string: string = sql"cast(${this} as varchar)"
 }
-

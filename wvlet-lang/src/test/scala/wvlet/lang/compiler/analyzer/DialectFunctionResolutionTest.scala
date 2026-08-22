@@ -22,11 +22,10 @@ import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.compiler.codegen.GenSQL
 
 /**
-  * Standard library functions can define multiple variants of the same function scoped to
-  * different database dialects (e.g. `def regexp_like in duckdb` and `def regexp_like in trino`).
-  * These tests verify that the variant matching the compile target is selected, with fallback to
-  * the dialect-neutral definition, and that overloads with different arities resolve by argument
-  * count.
+  * Standard library functions can define multiple variants of the same function scoped to different
+  * database dialects (e.g. `def regexp_like in duckdb` and `def regexp_like in trino`). These tests
+  * verify that the variant matching the compile target is selected, with fallback to the
+  * dialect-neutral definition, and that overloads with different arities resolve by argument count.
   */
 class DialectFunctionResolutionTest extends UniTest:
 
@@ -65,6 +64,16 @@ class DialectFunctionResolutionTest extends UniTest:
         |""".stripMargin
     generateSQL(query, DBType.DuckDB) shouldContain "v + 1"
     generateSQL(query, DBType.Trino) shouldContain "v + 2"
+  }
+
+  test("pass through engine functions from the bundled DuckDB catalog") {
+    // bit_count is not part of the hand-written stdlib; it comes from the generated
+    // module/standard/duckdb/functions.wv catalog and must compile to a plain SQL call
+    val query =
+      """from [[5]] as t(i)
+        |select bit_count(i) as b
+        |""".stripMargin
+    generateSQL(query, DBType.DuckDB) shouldContain "bit_count(i)"
   }
 
   test("resolve method overloads by argument count") {

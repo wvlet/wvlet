@@ -11,7 +11,22 @@ type long = {
   def or_else(other:long): long = sql"coalesce(${this},${other})"
   def round(decimal:int=0): double = sql"round(${this},${decimal})"
 
+  def abs: long = sql"abs(${this})"
+  def ceil: long = sql"ceil(${this})"
   def floor: long = sql"floor(${this})"
+  def sqrt: double = sql"sqrt(${this})"
+  def cbrt: double = sql"cbrt(${this})"
+  def exp: double = sql"exp(${this})"
+  def ln: double = sql"ln(${this})"
+  def log10: double = sql"log10(${this})"
+  def log2: double = sql"log2(${this})"
+  def power(exponent:double): double = sql"power(${this},${exponent})"
+  def mod(divisor:long): long = sql"mod(${this},${divisor})"
+  def sign: int = sql"sign(${this})"
+
+  -- Interpret this value as a unix epoch second (in UTC)
+  def from_unixtime in duckdb: timestamp = sql"make_timestamp(cast(${this} as bigint) * 1000000)"
+  def from_unixtime in trino: timestamp = sql"from_unixtime(${this})"
 
   def in(v:any*): boolean = sql"${this} in (${v})"
   def not_in(v:any*): boolean = sql"${this} not in (${v})"

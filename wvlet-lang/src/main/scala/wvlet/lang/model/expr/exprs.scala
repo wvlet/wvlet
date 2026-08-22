@@ -912,6 +912,28 @@ case class StructField(name: String, value: Expression, span: Span) extends Expr
   override def children: Seq[Expression] = Seq(value)
 
 case class MapValue(entries: List[MapEntry], span: Span) extends Expression:
+  private def mergedType(types: List[DataType]): DataType =
+    // Map literal keys may parse as plain identifiers without a resolved type; `any` keeps the
+    // map type itself resolved so that map functions can be looked up
+    types
+      .map(t =>
+        if t.isResolved then
+          t
+        else
+          AnyType
+      )
+      .distinct match
+      case t :: Nil =>
+        t
+      case _ =>
+        AnyType
+
+  override protected def structuralType: DataType =
+    if entries.isEmpty then
+      MapType(AnyType, AnyType)
+    else
+      MapType(mergedType(entries.map(_.key.dataType)), mergedType(entries.map(_.value.dataType)))
+
   override def children: Seq[Expression] = entries
 
 case class MapEntry(key: Expression, value: Expression, span: Span) extends Expression:
