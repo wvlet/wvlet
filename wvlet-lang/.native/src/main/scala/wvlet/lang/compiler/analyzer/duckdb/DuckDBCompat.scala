@@ -90,20 +90,54 @@ trait DuckDBCompat:
     * small C wrapper `wvlet_duckdb_fetch_chunk(duckdb_result *)` from `wvlet_duckdb_helpers.c` to
     * forward by-value internally on the C side.
     */
-  def execute(sql: String): QueryResult = Zone {
-    val db  = stackalloc[DuckDBApi.duckdb_database]()
-    val con = stackalloc[DuckDBApi.duckdb_connection]()
-    if DuckDBApi.duckdb_open(null, db) != 0 then
+  def execute(sql: String): QueryResult =
+    val session = newSession(None)
+    try session.execute(sql)
+    finally session.close()
+
+  /**
+    * Open a persistent session holding one `duckdb_database` + `duckdb_connection` pair; every
+    * `session.execute(sql)` runs on that connection, so in-memory tables and other session state
+    * survive across calls. `path` opens a file-backed database; `None` opens an in-memory one.
+    *
+    * The opaque C handles are plain pointer values, so they can outlive the `stackalloc`ed out-
+    * parameter slots used here; `close()` writes them back into fresh slots for `duckdb_disconnect`
+    * / `duckdb_close`.
+    */
+  def newSession(path: Option[String] = None): DuckDBSession = Zone {
+    val db    = stackalloc[DuckDBApi.duckdb_database]()
+    val con   = stackalloc[DuckDBApi.duckdb_connection]()
+    val cPath = path.map(p => toCString(p)).getOrElse(null)
+    if DuckDBApi.duckdb_open(cPath, db) != 0 then
       throw StatusCode.NOT_IMPLEMENTED.newException("duckdb_open failed")
-    try
-      if DuckDBApi.duckdb_connect(!db, con) != 0 then
-        throw StatusCode.NOT_IMPLEMENTED.newException("duckdb_connect failed")
-      try runQuery(!con, sql)
-      finally DuckDBApi.duckdb_disconnect(con)
-    finally
+    if DuckDBApi.duckdb_connect(!db, con) != 0 then
       DuckDBApi.duckdb_close(db)
-    end try
+      throw StatusCode.NOT_IMPLEMENTED.newException("duckdb_connect failed")
+    NativeDuckDBSession(!db, !con)
   }
+
+  private class NativeDuckDBSession(db: DuckDBApi.duckdb_database, con: DuckDBApi.duckdb_connection)
+      extends DuckDBSession:
+    private var closed = false
+
+    override def execute(sql: String): QueryResult =
+      if closed then
+        throw new IllegalStateException("DuckDB session is already closed")
+      Zone {
+        runQuery(con, sql)
+      }
+
+    override def close(): Unit =
+      if !closed then
+        closed = true
+        val conSlot = stackalloc[DuckDBApi.duckdb_connection]()
+        !conSlot = con
+        DuckDBApi.duckdb_disconnect(conSlot)
+        val dbSlot = stackalloc[DuckDBApi.duckdb_database]()
+        !dbSlot = db
+        DuckDBApi.duckdb_close(dbSlot)
+
+  end NativeDuckDBSession
 
   private def runQuery(con: DuckDBApi.duckdb_connection, sql: String)(using Zone): QueryResult =
     val result = stackalloc[DuckDBApi.duckdb_result]()

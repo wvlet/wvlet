@@ -32,23 +32,34 @@ import wvlet.lang.compiler.query.QueryProgressMonitor
   * (JDBC on JVM, libduckdb on Native, koffi on JS) don't surface per-batch stats today, but the
   * monitor is reserved for the same role when they do.
   *
-  * Each `submit` invokes `DuckDB.execute(sql)`, which on JVM opens a fresh in-memory `jdbc:duckdb:`
-  * connection per call; in-memory tables don't persist across calls. The runner's JVM
-  * `DuckDBConnector` exposes a stateful `asSqlConnector` view over its long-lived connection for
-  * session-preserving execution; this cross-platform `SqlConnector` is the right tool for one-shot
-  * CLI queries against ephemeral DuckDB instances.
+  * Without a session, each `submit` invokes `DuckDB.execute(sql)`, which opens a fresh in-memory
+  * database per call — in-memory tables don't persist across calls; that mode is the right tool for
+  * one-shot CLI queries. Pass a [[DuckDBSession]] (from [[DuckDB.newSession]]) to run every
+  * statement on the same connection so temp tables, models, and multi-statement scripts work; the
+  * connector then owns the session and closes it in `close()`. The runner's JVM `DuckDBConnector`
+  * exposes an equivalent stateful `asSqlConnector` view over its long-lived JDBC connection.
   */
-class DuckDBSqlConnector extends SqlConnector:
+class DuckDBSqlConnector(session: Option[DuckDBSession] = None) extends SqlConnector:
 
   override def submit(sql: String)(using QueryProgressMonitor): QueryHandle =
-    val result = DuckDB.execute(sql)
+    val result =
+      session match
+        case Some(s) =>
+          s.execute(sql)
+        case None =>
+          DuckDB.execute(sql)
     DuckDBSqlConnector.completedHandle(result)
 
-  override def close(): Unit = ()
+  override def close(): Unit = session.foreach(_.close())
 
 end DuckDBSqlConnector
 
 object DuckDBSqlConnector:
+
+  /** A connector over a fresh persistent session (in-memory, or file-backed when `path` is set). */
+  def withNewSession(path: Option[String] = None): DuckDBSqlConnector = DuckDBSqlConnector(
+    Some(DuckDB.newSession(path))
+  )
 
   /**
     * Build a [[QueryHandle]] that wraps an already-materialized [[QueryResult]]. Used for backends

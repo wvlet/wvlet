@@ -67,21 +67,51 @@ trait DuckDBCompat:
         executeWith(api, sql)
 
   private def executeWith(api: DuckDBApi, sql: String): QueryResult =
-    val dbBox = js.Array[js.Any](null)
-    if asInt(api.duckdb_open.call(null, null, dbBox)) != 0 then
+    val session = openSession(api, None)
+    try session.execute(sql)
+    finally session.close()
+
+  /**
+    * Open a persistent session holding one koffi database + connection handle pair; every
+    * `session.execute(sql)` runs on that connection, so in-memory tables and other session state
+    * survive across calls. `path` opens a file-backed database; `None` opens an in-memory one.
+    */
+  def newSession(path: Option[String] = None): DuckDBSession =
+    DuckDBApi.instance match
+      case None =>
+        throw new UnsupportedOperationException(
+          "libduckdb is not available; set WVLET_LIBDUCKDB to its absolute path or install it via your platform package manager"
+        )
+      case Some(api) =>
+        openSession(api, path)
+
+  private def openSession(api: DuckDBApi, path: Option[String]): DuckDBSession =
+    val dbBox         = js.Array[js.Any](null)
+    val cPath: js.Any = path.map(js.Any.fromString).getOrElse(null)
+    if asInt(api.duckdb_open.call(null, cPath, dbBox)) != 0 then
       throw StatusCode.NOT_IMPLEMENTED.newException("duckdb_open failed")
-    val db = dbBox(0)
-    try
-      val conBox = js.Array[js.Any](null)
-      if asInt(api.duckdb_connect.call(null, db, conBox)) != 0 then
-        throw StatusCode.NOT_IMPLEMENTED.newException("duckdb_connect failed")
-      val con = conBox(0)
-      try runQuery(api, con, sql)
-      finally api.duckdb_disconnect.call(null, js.Array[js.Any](con))
-    finally
+    val db     = dbBox(0)
+    val conBox = js.Array[js.Any](null)
+    if asInt(api.duckdb_connect.call(null, db, conBox)) != 0 then
       api.duckdb_close.call(null, js.Array[js.Any](db))
-    end try
-  end executeWith
+      throw StatusCode.NOT_IMPLEMENTED.newException("duckdb_connect failed")
+    val con = conBox(0)
+
+    new DuckDBSession:
+      private var closed = false
+
+      override def execute(sql: String): QueryResult =
+        if closed then
+          throw new IllegalStateException("DuckDB session is already closed")
+        runQuery(api, con, sql)
+
+      override def close(): Unit =
+        if !closed then
+          closed = true
+          api.duckdb_disconnect.call(null, js.Array[js.Any](con))
+          api.duckdb_close.call(null, js.Array[js.Any](db))
+
+  end openSession
 
   private def runQuery(api: DuckDBApi, con: js.Any, sql: String): QueryResult =
     val result = js.Object()

@@ -103,11 +103,35 @@ trait DuckDBCompat:
       rows += QueryResultRow(values)
     QueryResult(columns, rows.result())
 
-  private def withConnection[U](f: DuckDBConnection => U): U =
+  /**
+    * Open a persistent session — a single long-lived JDBC connection that every
+    * `session.execute(sql)` runs on, so in-memory tables and other session state survive across
+    * calls. `path` opens a file-backed database; `None` opens an in-memory one.
+    */
+  def newSession(path: Option[String] = None): DuckDBSession =
+    val conn = openConnection(path)
+    new DuckDBSession:
+      private var closed = false
+
+      override def execute(sql: String): QueryResult =
+        if closed then
+          throw new IllegalStateException("DuckDB session is already closed")
+        withResource(conn.createStatement()) { stmt =>
+          executeStatement(stmt, sql)
+        }
+
+      override def close(): Unit =
+        if !closed then
+          closed = true
+          conn.close()
+
+  private def withConnection[U](f: DuckDBConnection => U): U = withResource(openConnection(None))(f)
+
+  private def openConnection(path: Option[String]): DuckDBConnection =
     Class.forName("org.duckdb.DuckDBDriver")
-    DriverManager.getConnection("jdbc:duckdb:") match
+    DriverManager.getConnection(s"jdbc:duckdb:${path.getOrElse("")}") match
       case conn: DuckDBConnection =>
-        withResource(conn)(f)
+        conn
       case _ =>
         throw StatusCode.NOT_IMPLEMENTED.newException("duckdb connection is unavailable")
 
