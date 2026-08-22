@@ -17,7 +17,16 @@ import wvlet.lang.api.StatusCode
 import wvlet.lang.catalog.Catalog.CreateMode
 import wvlet.lang.compiler.DBType
 
-class InMemoryCatalog(val catalogName: String, functions: Seq[SQLFunction]) extends Catalog:
+/**
+  * A catalog holding schemas and tables in memory. `catalogDBType` records the SQL dialect the
+  * catalog targets (e.g. the dbType given in CompilerOptions), so offline compilation can select
+  * dialect-specific standard library functions and SQL syntax without a live connector
+  */
+class InMemoryCatalog(
+    val catalogName: String,
+    functions: Seq[SQLFunction],
+    catalogDBType: DBType = DBType.InMemory
+) extends Catalog:
   // schemaName name -> DatabaseHolder
   private val schemas = collection.mutable.Map.empty[String, SchemaHolder]
 
@@ -30,7 +39,7 @@ class InMemoryCatalog(val catalogName: String, functions: Seq[SQLFunction]) exte
       newDb.tables ++= tables
       newDb
 
-  override def dbType: DBType = DBType.InMemory
+  override def dbType: DBType = catalogDBType
 
   override def listSchemaNames: Seq[String] = synchronized {
     schemas.values.map(_.schema.name).toSeq
