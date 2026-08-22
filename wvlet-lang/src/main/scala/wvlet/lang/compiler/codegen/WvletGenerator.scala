@@ -122,11 +122,12 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
 
     // Wvlet has no block comments, so a `--` comment printed inline would swallow any code
     // rendered after it on the same line (e.g. the rest of an expression). Print trailing
-    // comments on their own line before the node instead
+    // comments on their own line before the node instead, each followed by a hard line break
+    // that enclosing groups cannot collapse back onto one line
     if n.postComments.isEmpty then
       dd
     else
-      lines(n.postComments.reverse.map(c => text(c.str))) / dd
+      concat(n.postComments.reverse.map(c => text(c.str) + linebreak)) + dd
 
   /**
     * Flatten a Doc tree replacing VList (newlines) with explicit pipe operators. This is used for
