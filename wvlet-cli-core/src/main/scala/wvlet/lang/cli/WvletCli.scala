@@ -1,11 +1,11 @@
 package wvlet.lang.cli
 
+import wvlet.lang.catalog.ConnectorConfig
 import wvlet.lang.catalog.Profile
-import wvlet.lang.compiler.analyzer.duckdb.DuckDB
 import wvlet.lang.compiler.analyzer.duckdb.QueryResultPrinter
-import wvlet.lang.compiler.analyzer.trino.Trino
-import wvlet.lang.compiler.analyzer.trino.TrinoConfig
 import wvlet.lang.compiler.connector.QueryResult
+import wvlet.lang.compiler.query.QueryProgressMonitor
+import wvlet.lang.runner.connector.SqlConnectorProvider
 import wvlet.uni.cli.launcher.argument
 import wvlet.uni.cli.launcher.command
 import wvlet.uni.cli.launcher.option
@@ -52,52 +52,28 @@ class WvletCli(opts: WvletCliGlobalOption) extends LogSupport:
       .orElse(engine.map(_.`type`))
       .map(_.toLowerCase)
       .getOrElse("duckdb")
-    backend match
-      case "duckdb" =>
-        if !DuckDB.canExecute then
-          throw new UnsupportedOperationException(
-            "DuckDB execution is not available on this platform. " +
-              "Ensure libduckdb is installed and discoverable, or set WVLET_LIBDUCKDB."
-          )
-        DuckDB.execute(sql)
-      case "trino" =>
-        // CLI flags override the matching profile field; missing host is a hard error since
-        // there's no sensible default. `--https` (a Boolean flag) can't distinguish "user passed
-        // false" from "user didn't pass it", so the profile setting only applies when the flag
-        // was left at the default `false`.
-        val host = opt
-          .host
-          .orElse(engine.flatMap(_.host))
-          .getOrElse(
-            throw new IllegalArgumentException(
-              "Trino host is required — pass --host or set 'host' on the profile"
-            )
-          )
-        val useHttps =
-          if opt.useHttps then
-            true
-          else
-            engine.flatMap(_.useHttps).getOrElse(false)
-        val cfg = TrinoConfig(
-          host = host,
-          port = opt
-            .port
-            .orElse(engine.flatMap(_.port))
-            .getOrElse(
-              if useHttps then
-                443
-              else
-                8080
-            ),
-          user = opt.user.orElse(engine.flatMap(_.user)).getOrElse("wvlet"),
-          catalog = opt.catalog.orElse(engine.flatMap(_.catalog)),
-          schema = opt.schema.orElse(engine.flatMap(_.schema)),
-          useHttps = useHttps
-        )
-        Trino.execute(sql, cfg)
-      case other =>
-        throw new IllegalArgumentException(s"Unsupported --target for `run`: ${other}")
-    end match
+    // CLI flags override the matching profile field. `--https` (a Boolean flag) can't
+    // distinguish "user passed false" from "user didn't pass it", so the profile setting only
+    // applies when the flag was left at the default `false`.
+    val config = ConnectorConfig(
+      name = backend,
+      `type` = backend,
+      user = opt.user.orElse(engine.flatMap(_.user)),
+      host = opt.host.orElse(engine.flatMap(_.host)),
+      port = opt.port.orElse(engine.flatMap(_.port)),
+      catalog = opt.catalog.orElse(engine.flatMap(_.catalog)),
+      schema = opt.schema.orElse(engine.flatMap(_.schema)),
+      useHttps = Some(
+        if opt.useHttps then
+          true
+        else
+          engine.flatMap(_.useHttps).getOrElse(false)
+      )
+    )
+    given QueryProgressMonitor = QueryProgressMonitor.noOp
+    val provider               = SqlConnectorProvider()
+    try provider.getConnector(config).execute(sql)
+    finally provider.close()
 
   end executeAgainst
 
