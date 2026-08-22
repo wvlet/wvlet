@@ -70,3 +70,36 @@ Exact struct/array widening rules, predicate-rewrite spec, fileset manifest sche
 - `./sbt tableStore/test` green (plus `scalafmtAll`, `compile`).
 - All protocol invariants above covered by named failing-if-broken tests.
 - Module documented (package README or scaladoc) including honest embedded-profile caveats.
+
+## Outcome (2026-08-21 — shipped as wvlet#1959)
+
+All of the above landed; 31/31 tests green locally and in CI (Scala 3 / format / JS / Native jobs).
+
+Deviations and learnings from the original plan:
+
+- **Isolation levels not load-bearing.** Retiring transactions enforce fencing and no-double-retire
+  with predicate-based conditional updates asserted by row count (`UPDATE … WHERE fencing_token = ?
+  AND expires_at > now`, `UPDATE … SET end_snapshot = ? WHERE … AND end_snapshot IS NULL`), so the
+  same statements are correct on SQLite, DuckDB, and Postgres regardless of isolation level.
+- **Sequence emulation detail.** `counters(scope, next_value)` upsert allocates ranges inside the
+  caller's transaction; fresh rows insert `amount + 1` so ids start at 1 (0 would blur "no snapshot
+  yet" sentinels such as `schema_version_head = 0`).
+- **Parquet via DuckDB COPY** with explicit `columns={…}` on `read_json` and aliased CAST
+  projections — DuckDB names projection columns by expression text unless aliased, which initially
+  produced columns literally named `CAST(user_id AS BIGINT)`.
+- **JSONL is compact JSON per line**: uni's `JSON.format` pretty-prints, so encoders use `.toJSON`.
+- **Escalation guardrail semantics settled**: quarantine decisions are per column but applied at
+  file granularity (pass 1 flags outliers, pass 2 refolds over survivors); a brand-new column seen
+  by < threshold of batch rows quarantines its introducing files; escalation never narrows an
+  already-published type.
+- **Embedded concurrency**: one JDBC connection + monitor lock, matching the single-process
+  single-writer contract; correctness confidence comes from the deterministic fault-injection suite
+  run against both embedded backends.
+- Follow-ups unchanged: `CREATE TABLE … USING wvlet` wiring, filesets, retention/erasure runner,
+  DuckLake projection, export/import tool, S3 drivers.
+
+## ADRs
+
+- `adr/2026-08-21-table-store-catalog-portability.md` — why conditional-update assertions instead
+  of isolation levels / FOR UPDATE, and the counter-based sequence emulation.
+

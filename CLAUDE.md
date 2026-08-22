@@ -301,6 +301,10 @@ For error reporting, use WvletLangException and StatusCode enum. If necessary er
 ## Development Checklist
 - Before commiting changes, confirm compilation passes for src/main, src/test, and Scala.js
 
+## Architecture Decision Records
+- Non-obvious, durable design decisions are captured in `adr/YYYY-MM-DD-(topic).md`. Check there before reverse-engineering intent from commits.
+- `adr/2026-08-21-table-store-catalog-portability.md`: why the `wvlet-table-store` catalog enforces fencing/retirement with conditional-update row-count assertions (not isolation levels / FOR UPDATE), and how monotonic sequences are emulated portably.
+
 ## Memory
 - For creating temporary files, use target folder, which will be ignored in git
 - `vscode-wvlet` is VS Code plugin folder
