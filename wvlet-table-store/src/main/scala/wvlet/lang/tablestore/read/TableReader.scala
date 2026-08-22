@@ -27,16 +27,13 @@ import wvlet.lang.tablestore.objectstore.ObjectStore
 import wvlet.lang.tablestore.schema.{ColumnType, ObservedSchema, TableSchema}
 import wvlet.uni.log.LogSupport
 
-import java.sql.DriverManager
-
 /** One planned cast of a file column toward the published schema */
 case class CastSpec(
     column: String,
     targetType: ColumnType,
     /** None when the file lacks the column entirely — the scan fills NULL */
     sourceType: Option[ColumnType]
-):
-  def isFillNull: Boolean = sourceType.isEmpty
+)
 
 /** A file selected for scanning together with its cast plan */
 case class PlannedFile(entry: FileEntry, casts: Seq[CastSpec])

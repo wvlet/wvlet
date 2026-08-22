@@ -14,7 +14,6 @@
 package wvlet.lang.tablestore
 
 import wvlet.lang.tablestore.catalog.PendingColumnStat
-import wvlet.lang.tablestore.read.Scalar
 import wvlet.lang.tablestore.schema.{ColumnType, TableSchema}
 import wvlet.uni.json.JSON
 
@@ -95,23 +94,5 @@ object ColumnStats:
         x.toString
       case other =>
         other.toJSON
-
-  /** Build a scalar literal from a typed value, e.g. for predicates over the same column space */
-  def toScalar(t: ColumnType, v: JSON.JSONValue): Option[Scalar] =
-    v match
-      case JSON.JSONLong(x) =>
-        t match
-          case ColumnType.DoubleType =>
-            Some(Scalar.SDouble(x.toDouble))
-          case _ =>
-            Some(Scalar.SLong(x))
-      case JSON.JSONDouble(x) =>
-        Some(Scalar.SDouble(x))
-      case JSON.JSONString(x) =>
-        Some(Scalar.SString(x))
-      case JSON.JSONBoolean(x) =>
-        Some(Scalar.SBoolean(x))
-      case _ =>
-        None
 
 end ColumnStats

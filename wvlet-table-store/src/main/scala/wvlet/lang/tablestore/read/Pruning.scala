@@ -107,18 +107,6 @@ object Pruning:
       case _ =>
         encoded
 
-  /** Canonical encoding of stat values — must round-trip through [[decode]] */
-  def encode(t: ColumnType, s: Scalar): Option[String] =
-    s match
-      case Scalar.SLong(v) =>
-        Some(v.toString)
-      case Scalar.SDouble(v) =>
-        Some(v.toString)
-      case Scalar.SString(v) =>
-        Some(v)
-      case Scalar.SBoolean(v) =>
-        Some(v.toString)
-
   private def asComparable(s: Scalar, t: ColumnType): Comparable[?] =
     (t, s) match
       case (_, Scalar.SBoolean(v)) =>
