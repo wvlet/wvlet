@@ -51,8 +51,9 @@ SQL string and dispatches on a hardcoded `"duckdb" | "trino"` match. Everything
 Both are plain sbt `project`s (`build.sbt:433-485`). Bindings: `java.sql.*`
 (`DBConnector`), caffeine (`ConnectorCatalog`), jline (`QueryResultPrinter` uses
 `org.jline.utils.WCWidth`), arrow-vector, sqlite-jdbc (`SQLiteFlowRunStore`),
-`java.util.concurrent` (scheduler, thread pools). A wholesale crossProject conversion
-is neither feasible nor desirable — flows/scheduler/REPL are legitimately JVM features.
+`java.util.concurrent` (scheduler, thread pools). Flows/scheduler/REPL are
+legitimately JVM features — the crossProject conversion must keep them in
+`.jvm/src`, not port them.
 
 ### G3. No persistent DuckDB session on JS/Native
 `DuckDBCompat.execute` (all three platforms) opens a database, runs one statement
@@ -84,29 +85,39 @@ this design; an `AsyncSqlConnector` mirror is future work.
 
 ## Target architecture
 
-Keep `wvlet-runner` (JVM) as the full-featured runtime; extract its engine-agnostic
-core into a new cross-platform module that both the JVM runner and the thin
-CLIs consume:
+> **Revision (2026-08-22, user feedback):** no separate `wvlet-runner-core` module.
+> `wvlet-runner` itself becomes a `crossProject(JVM, JS, Native)` with
+> `CrossType.Pure` — the same layout `wvlet-lang` uses: shared code stays in
+> `wvlet-runner/src`, and the JVM-only pieces move into `wvlet-runner/.jvm/src`.
+> The JVM platform keeps its `wvlet-connector` dependency via `.jvmConfigure`
+> (per-platform `dependsOn`), so no new artifact and no package renames are needed.
+
+Convert `wvlet-runner` to a crossProject whose shared sources hold the
+engine-agnostic runtime, consumed by both the JVM CLI/server stack and the thin
+Node/Native CLIs:
 
 ```
   wvlet-cli (JVM: REPL, ui, flows)          wvc (Native)      @wvlet/cli (Node)
         │                                          │                │
-  wvlet-runner (JVM-only)                          └───────┬────────┘
-   flows, scheduler, run stores, staging,                  │
-   activation sinks, JDBC connectors,              wvlet-cli-core (X)
-   arrow, ConnectorCatalog                                 │
+        │                                          └───────┬────────┘
+        │                                                  │
+        │                                          wvlet-cli-core (X)
         │                                                  │
         └────────────────┬─────────────────────────────────┘
                          │
-              wvlet-runner-core (NEW, crossProject JVM/JS/Native)
-                PlanExecutor   — ExecutionPlan interpreter over SqlConnector
-                TestEvaluator  — `test` statement evaluation (moved from QueryExecutor)
-                QueryResult ADT + printer (jline-free width handling)
-                SqlConnectorProvider — ConnectorConfig → SqlConnector registry
+              wvlet-runner (converted to crossProject JVM/JS/Native, CrossType.Pure)
+                src/ (shared):
+                  PlanExecutor   — ExecutionPlan interpreter over SqlConnector
+                  TestEvaluator  — `test` statement evaluation (moved from QueryExecutor)
+                  QueryResult ADT + printer (jline-free width handling)
+                  SqlConnectorProvider — ConnectorConfig → SqlConnector registry
+                .jvm/src/ (JVM-only, depends on wvlet-connector via .jvmConfigure):
+                  QueryExecutor (extends PlanExecutor), flows, scheduler, run stores,
+                  staging, activation sinks, arrow, jline REPL support
                          │
               wvlet-lang (X, existing)
                 SqlConnector / QueryHandle / QueryState / QueryStats
-                DuckDB compat (JDBC / koffi / C API) + DuckDBSqlConnector
+                DuckDB compat (JDBC / koffi / C API) + DuckDBSqlConnector + DuckDBSession
                 Trino REST client + TrinoSqlConnector
                 Profile / ConnectorConfig (cross-platform JSONC + env expansion)
 ```
@@ -140,7 +151,7 @@ single-query calls.
 
 ### C2. Cross-platform `SqlConnectorProvider` (partial G1, enables profiles)
 
-In `wvlet-runner-core`: resolve a `ConnectorConfig` (from the cross-platform
+In shared `wvlet-runner` sources: resolve a `ConnectorConfig` (from the cross-platform
 `Profile`) to a `SqlConnector`:
 
 | `type` | Connector | Availability |
@@ -158,7 +169,7 @@ equality (same key rule as the JVM provider, decision D5 of
 
 Split `QueryExecutor` along the `SqlConnector` seam:
 
-- **Moves to `wvlet-runner-core`** (verified platform-clean):
+- **Moves to shared `wvlet-runner/src`** (verified platform-clean):
   - The `ExecutionPlan` walk (`execute`/`process`/`report`,
     QueryExecutor.scala:254-351) for `ExecuteQuery`, `ExecuteStatement` lists,
     `ExecuteTest`, `ExecuteValDef`, `ExecuteCommand` subset (`ExecuteExpr`,
@@ -177,7 +188,7 @@ Split `QueryExecutor` along the `SqlConnector` seam:
   (`runEmbeddedFlows`/`runEmbeddedToolCalls`), source-table staging across
   connectors, `DBConnector`/JDBC result paths, arrow export, catalog registration.
 
-Shape: `class PlanExecutor(connectorProvider, profile)` in runner-core with
+Shape: `class PlanExecutor(connectorProvider, profile)` in shared runner sources with
 `protected def executeUnsupported(plan): QueryResult` hooks;
 `QueryExecutor extends PlanExecutor` overrides them with the JVM implementations.
 `wvlet-cli-core`'s `run` switches from "generate one SQL string" to
@@ -198,7 +209,7 @@ Server side:
 Client side:
 4. Add `NativePlatform` to the `wvlet-client` crossProject — it depends only on
    `wvlet-api` + uni RPC, both of which already cross-build to Native.
-5. New `WvletServerSqlConnector extends SqlConnector` in runner-core: `submit` →
+5. New `WvletServerSqlConnector extends SqlConnector` in shared runner sources: `submit` →
    `FrontendApi.submitQuery`, `await` → poll `getQueryInfo` + drain pages, `cancel` →
    `cancelQuery`. Registered as connector `type: "wvlet"` with
    `host`/`port`/`useHttps` from `ConnectorConfig`.
@@ -230,10 +241,12 @@ client sends `Authorization: Basic …` (password requires `useHttps`) or
 1. **PR1 — DuckDB sessions (C1)**: `DuckDBSession` on all three platforms +
    session-backed `DuckDBSqlConnector` + cross-platform tests (temp table survives
    across `execute` calls; gated on `DuckDB.canExecute` like `DuckDBExecuteTest`).
-2. **PR2 — runner-core skeleton + provider (C2)**: new
-   `crossProject wvlet-runner-core`; move the runner `QueryResult` ADT + a
-   jline-free printer; `SqlConnectorProvider`; route `WvletCli.run` through it
-   (profile-driven backend selection preserved, `-t` still wins).
+2. **PR2 — runner crossProject conversion + provider (C2)**: convert
+   `wvlet-runner` to `crossProject(JVM, JS, Native)` with `CrossType.Pure`,
+   moving the JVM-only sources into `.jvm/src` (mechanical, no package changes);
+   keep the runner `QueryResult` ADT + a jline-free printer in shared sources;
+   add `SqlConnectorProvider`; route `WvletCli.run` through it (profile-driven
+   backend selection preserved, `-t` still wins).
 3. **PR3 — PlanExecutor extraction (C3)**: the big refactor. `QueryExecutor` keeps
    its public surface; JVM `runner/test`, RunnerSpec suites, and TyperCoverageCheck
    guard the move. cliCore `run` executes plans; add native/Node smoke specs for
@@ -255,7 +268,7 @@ PR2+ the three-platform smoke (`cliCoreJVM/run`, `node sdks/cli-node/bin/wvlet.j
 - **QueryExecutor entanglement**: `Context`/catalog access inside the interpreter may
   drag JVM-only catalog types; the seam must pass capabilities in, not reach out
   (mitigation: PR3 lands behind the existing JVM test suites, which are extensive).
-- **New published artifact** (`wvlet-runner-core` ×3 platforms): release automation
+- **`wvlet-runner` published for 3 platforms** (was JVM-only): release automation
   aggregates `projectJVM/JS/Native`, so inclusion is automatic, but npm/native binary
   size will grow — watch `wvc` link time and `@wvlet/cli` bundle size.
 - **uni `HttpSyncClient` thread-safety** — single-threaded on Node/Native; the
