@@ -1,0 +1,44 @@
+-- Phase 3 catalog statements: flow-style row updates and keyed append (insert-or-update)
+
+table ddl3_accounts = {
+  id: int
+  name: string
+  status: string
+}
+
+create table ddl3_accounts
+
+append to ddl3_accounts {
+  from [[1, 'alice', 'active'], [2, 'bob', 'active']] as t(id, name, status)
+}
+
+-- Flow update: select the rows first, then say what changes
+from ddl3_accounts
+where id = 2
+update status = 'dormant'
+
+from ddl3_accounts
+where status = 'dormant'
+test _.size should be 1
+
+-- Keyed append: rows whose keys match update their non-key columns; the rest insert
+append to ddl3_accounts on id {
+  from [[2, 'bobby', 'active'], [3, 'carol', 'new']] as t(id, name, status)
+}
+
+from ddl3_accounts
+test _.size should be 3
+
+from ddl3_accounts
+where id = 2
+test _.rows should be [[2, 'bobby', 'active']]
+
+-- An unfiltered update touches every row
+from ddl3_accounts
+update status = 'archived'
+
+from ddl3_accounts
+where status = 'archived'
+test _.size should be 3
+
+drop table ddl3_accounts

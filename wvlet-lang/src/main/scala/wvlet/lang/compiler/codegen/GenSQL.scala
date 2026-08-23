@@ -238,6 +238,73 @@ object GenSQL extends Phase("generate-sql"):
               .mkString("(", ", ", ")")
             s"${copySQL} ${opts}"
         statements += withHeader(sql, s.sourceLocation)
+      case a: AppendTo if a.isForTable && a.keyColumns.nonEmpty =>
+        // Keyed append (`append to t on k1, k2`): insert-or-update, lowered to MERGE INTO.
+        // Rows whose keys match an existing row replace its non-key columns; the rest insert
+        val baseSQL       = GenSQL.generateSQLFromRelation(save.inputRelation, addHeader = false)
+        val tbl           = TableName.parse(a.targetName)
+        val schema        = tbl.schema.getOrElse(context.defaultSchema)
+        val fullTableName = s"${schema}.${tbl.name}"
+        context.catalog.getTable(TableName.parse(fullTableName)) match
+          case Some(t) =>
+            val keys    = a.keyColumns.map(_.leafName)
+            val badKeys = keys.filterNot(k => t.columns.exists(_.name == k))
+            if badKeys.nonEmpty then
+              throw StatusCode
+                .SYNTAX_ERROR
+                .newException(
+                  s"Key column(s) ${badKeys.mkString(", ")} not found in table ${fullTableName}",
+                  a.sourceLocation
+                )
+            val allColumns    = t.columns.map(_.name).toList
+            val updateColumns = allColumns.filterNot(keys.contains)
+            val onCond        = keys.map(k => s"t.${k} = src.${k}").mkString(" and ")
+            val updateSet     = updateColumns.map(c => s"${c} = src.${c}").mkString(", ")
+            val insertCols    = allColumns.mkString(", ")
+            val insertVals    = allColumns.map(c => s"src.${c}").mkString(", ")
+            val whenMatched   =
+              if updateColumns.isEmpty then
+                ""
+              else
+                s"\nwhen matched then update set ${updateSet}"
+            val mergeSQL =
+              s"""merge into ${fullTableName} as t using (
+                 |${baseSQL.sql}
+                 |) as src on ${onCond}${whenMatched}
+                 |when not matched then insert (${insertCols}) values (${insertVals})""".stripMargin
+            statements += withHeader(mergeSQL, a.sourceLocation)
+          case None =>
+            // No existing table: nothing to merge with, so the keyed append reduces to a create
+            statements +=
+              withHeader(s"create table ${fullTableName} as\n${baseSQL.sql}", a.sourceLocation)
+        end match
+      case u: UpdateColumns =>
+        val gen = sqlGeneratorFor(context.dbType)
+
+        def filterExpr(x: Relation): List[String] =
+          x match
+            case q: Query =>
+              filterExpr(q.child)
+            case f: Filter =>
+              gen.print(f.filterExpr) :: filterExpr(f.child)
+            case l: LeafPlan =>
+              Nil
+            case other =>
+              throw StatusCode
+                .SYNTAX_ERROR
+                .newException(s"Unsupported update input: ${other.nodeName}", other.sourceLocation)
+
+        val setClause = u
+          .assignments
+          .map { a =>
+            s"${a.target.fullName} = ${gen.print(a.expr)}"
+          }
+          .mkString(", ")
+        val filters = filterExpr(u.inputRelation)
+        var sql     = s"update ${u.targetName} set ${setClause}"
+        if filters.nonEmpty then
+          sql += s"\nwhere ${filters.reverse.mkString(" and ")}"
+        statements += withHeader(sql, u.sourceLocation)
       case a: AppendTo if a.isForTable =>
         val baseSQL       = GenSQL.generateSQLFromRelation(save.inputRelation, addHeader = false)
         val tbl           = TableName.parse(a.targetName)

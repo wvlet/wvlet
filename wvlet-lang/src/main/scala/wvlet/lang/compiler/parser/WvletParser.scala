@@ -1210,7 +1210,8 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         consume(WvletToken.TO)
         val target  = literalOrQualifiedName()
         val columns = appendColumnList()
-        AppendTo(blockQuery(), target, columns, spanFrom(t))
+        val keys    = appendKeyColumns()
+        AppendTo(blockQuery(), target, columns, spanFrom(t), keyColumns = keys)
       case _ =>
         unexpected(t)
   }
@@ -1893,34 +1894,69 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         consume(WvletToken.TO)
         val target: StringLiteral | QualifiedName = literalOrQualifiedName()
         val columns                               = appendColumnList()
-        flowOrBlock(child => AppendTo(child, target, columns, spanFrom(t)))
+        val keys                                  = appendKeyColumns()
+        flowOrBlock(child => AppendTo(child, target, columns, spanFrom(t), keyColumns = keys))
       case WvletToken.DELETE =>
         consume(WvletToken.DELETE)
+        Delete(r, updateTargetOf(r, "delete", t), spanFrom(t))
+      case WvletToken.UPDATE =>
+        consume(WvletToken.UPDATE)
+        val assignments = List.newBuilder[UpdateAssignment]
 
-        def iter(x: Relation): Relation =
-          x match
-            case f: FilteringRelation =>
-              iter(f.child)
-            case TableRef(qname: QualifiedName, _) =>
-              Delete(r, qname, spanFrom(t))
-            case f: FileRef =>
-              Delete(r, f.path, spanFrom(t))
-            case f: FileScan =>
-              Delete(r, f.path, spanFrom(t))
-            case other =>
-              throw StatusCode
-                .SYNTAX_ERROR
-                .newException(
-                  s"delete statement can't have ${other.nodeName} operator",
-                  t.sourceLocation
-                )
+        def nextAssignment(): Unit =
+          val it  = scanner.lookAhead()
+          val col = identifier()
+          consume(WvletToken.EQ)
+          val value = expression()
+          assignments += UpdateAssignment(col, value, spanFrom(it))
+          if scanner.lookAhead().token == WvletToken.COMMA then
+            consume(WvletToken.COMMA)
+            nextAssignment()
 
-        iter(r)
+        nextAssignment()
+        UpdateColumns(r, updateTargetOf(r, "update", t), assignments.result(), spanFrom(t))
       case _ =>
         r
     end match
   }
   end updateOpsIfExists
+
+  /** Parse the optional conflict keys of a keyed append: `on k1, k2` */
+  private def appendKeyColumns(): List[NameExpr] =
+    scanner.lookAhead().token match
+      case WvletToken.ON =>
+        consume(WvletToken.ON)
+        val keys = List.newBuilder[NameExpr]
+
+        def loop(): Unit =
+          keys += identifier()
+          if scanner.lookAhead().token == WvletToken.COMMA then
+            consume(WvletToken.COMMA)
+            loop()
+
+        loop()
+        keys.result()
+      case _ =>
+        Nil
+
+  /**
+    * Extract the target table of a flow-form delete/update: the input must be a chain of filtering
+    * operators over a single table or file reference
+    */
+  private def updateTargetOf(x: Relation, op: String, t: TokenData[WvletToken]): TableOrFileName =
+    x match
+      case f: FilteringRelation =>
+        updateTargetOf(f.child, op, t)
+      case TableRef(qname: QualifiedName, _) =>
+        qname
+      case f: FileRef =>
+        f.path
+      case f: FileScan =>
+        f.path
+      case other =>
+        throw StatusCode
+          .SYNTAX_ERROR
+          .newException(s"${op} statement can't have ${other.nodeName} operator", t.sourceLocation)
 
   def querySingle(): Relation = node {
     def readRest(input: Relation): Relation = node {

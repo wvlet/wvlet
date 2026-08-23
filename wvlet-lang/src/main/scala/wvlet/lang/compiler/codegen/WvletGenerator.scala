@@ -274,6 +274,8 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
         relation(s)
       case a: AppendTo =>
         relation(a)
+      case u: UpdateColumns =>
+        relation(u)
       case t: Truncate =>
         code(t) {
           group(wl("truncate", expr(t.target)))
@@ -519,7 +521,17 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
                 group(wl("append to", expr(a.target)) + paren(cl(a.columns.map(_.fullName))))
               else
                 group(wl("append to", expr(a.target)))
-            targetExpr
+            val keys =
+              if a.keyColumns.isEmpty then
+                None
+              else
+                Some(ws + wl("on", cl(a.keyColumns.map(expr))))
+            group(targetExpr + keys)
+          }
+      case u: UpdateColumns =>
+        relation(u.child) /
+          code(u) {
+            group(wl("update", cl(u.assignments.map(a => wl(expr(a.target), "=", expr(a.expr))))))
           }
       case s: SaveTo =>
         val prev = relation(s.child)

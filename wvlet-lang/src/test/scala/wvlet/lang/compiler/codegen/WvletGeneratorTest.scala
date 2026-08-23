@@ -130,6 +130,21 @@ class WvletGeneratorTest extends UniTest:
     print(printed) shouldContain "drop view v1 if exists"
   }
 
+  test("should round-trip a flow update") {
+    val printed = print("""from users
+        |where id = 2
+        |update status = 'dormant', name = 'x'""".stripMargin)
+    printed shouldContain "update status = 'dormant', name = 'x'"
+    print(printed) shouldContain "update status = 'dormant', name = 'x'"
+  }
+
+  test("should round-trip keyed append") {
+    val printed = print("""from staged
+        |append to users on id, name""".stripMargin)
+    printed shouldContain "append to users on id, name"
+    print(printed) shouldContain "append to users on id, name"
+  }
+
   test("should parse block-form save and append statements") {
     val printed = print("""save to snapshot {
         |  from t
