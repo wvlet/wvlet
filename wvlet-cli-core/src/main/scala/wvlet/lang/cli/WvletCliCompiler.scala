@@ -62,6 +62,22 @@ class WvletCliCompiler(opt: WvletCliCompileOption) extends LogSupport:
     val ctx       = compileInternal(inputUnit)
     GenSQL.generateSQL(inputUnit)(using ctx)
 
+  /**
+    * Compile for execution: unlike [[generateSQL]], the debug path stays enabled so `test` and
+    * `debug` statements are planned and evaluated by the runner.
+    */
+  def compileForRun: (CompilationUnit, Context) =
+    val inputUnit     = getInputUnit(forSQL = false)
+    val compiler      = createCompiler()
+    val compileResult = compiler.compileSingleUnit(inputUnit)
+    compileResult.reportAllErrors
+    val ctx = compileResult
+      .context
+      .withCompilationUnit(inputUnit)
+      .withDebugRun(true)
+      .newContext(Symbol.NoSymbol)
+    (inputUnit, ctx)
+
   def generateWvlet: String =
     val inputUnit = getInputUnit(forSQL = true)
     val ctx       = compileInternal(inputUnit, parseOnly = inputUnit.sourceFile.isSQL)

@@ -13,7 +13,6 @@
  */
 package wvlet.lang.runner
 
-import org.jline.utils.WCWidth
 import wvlet.uni.log.LogSupport
 import QueryResultFormat.*
 
@@ -21,7 +20,9 @@ object QueryResultFormat:
   /**
     * ANSI escape sequence pattern for stripping color codes and other control sequences
     */
-  private val ansiEscapePattern = java.util.regex.Pattern.compile("\\u001B\\[[;\\d]*m")
+  // The ESC character uses a Scala-level string escape (compile-time) rather than a regex
+  // \uXXXX escape, which Scala Native's regex engine does not support
+  private val ansiEscapePattern = java.util.regex.Pattern.compile("\u001b\\[[;\\d]*m")
 
   /**
     * Strip ANSI escape sequences from a string
@@ -37,7 +38,7 @@ object QueryResultFormat:
     * @param ch
     * @return
     */
-  def wcWidth(ch: Char): Int  = WCWidth.wcwidth(ch)
+  def wcWidth(ch: Char): Int  = TextWidth.wcwidth(ch)
   def wcWidth(s: String): Int = stripAnsiCodes(s).map(wcWidth).sum
 
   def trimToWidth(s: String, colSize: Int): String =
