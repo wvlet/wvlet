@@ -2,9 +2,16 @@ package wvlet.lang.cli
 
 import wvlet.lang.catalog.ConnectorConfig
 import wvlet.lang.catalog.Profile
-import wvlet.lang.compiler.analyzer.duckdb.QueryResultPrinter
-import wvlet.lang.compiler.connector.QueryResult
-import wvlet.lang.compiler.query.QueryProgressMonitor
+import wvlet.lang.compiler.WorkEnv
+import wvlet.lang.compiler.analyzer.duckdb.QueryResultPrinter as CsvPrinter
+import wvlet.lang.compiler.connector.QueryResult as XPQueryResult
+import wvlet.lang.compiler.connector.QueryResultRow
+import wvlet.lang.compiler.planner.ExecutionPlanner
+import wvlet.lang.runner.PlanExecutor
+import wvlet.lang.runner.PlanResult
+import wvlet.lang.runner.QueryResult
+import wvlet.lang.runner.QueryResultList
+import wvlet.lang.runner.TableRows
 import wvlet.lang.runner.connector.SqlConnectorProvider
 import wvlet.uni.cli.launcher.argument
 import wvlet.uni.cli.launcher.command
@@ -31,19 +38,21 @@ class WvletCli(opts: WvletCliGlobalOption) extends LogSupport:
 
   @command(description = "Compile and execute a wvlet query against DuckDB or Trino")
   def run(opt: WvletCliRunOption): Unit =
-    val sql    = WvletCliCompiler(opt.toCompileOption).generateSQL
-    val result = executeAgainst(sql, opt)
+    val result = executeAgainst(opt)
     val output =
       opt.format.toLowerCase match
         case "csv" =>
-          QueryResultPrinter.toCsv(result)
+          // CSV covers the final tabular result; test/command outcomes have no tabular shape
+          lastTableRows(result).map(t => CsvPrinter.toCsv(toXPResult(t))).getOrElse("")
         case "box" | "" =>
-          QueryResultPrinter.toBox(result)
+          result.toPrettyBox()
         case other =>
           throw new IllegalArgumentException(s"Unknown --format: ${other} (supported: box, csv)")
     print(output)
+    // Surface test failures and execution errors as a non-zero exit after showing all results
+    result.getError.foreach(e => throw e)
 
-  private def executeAgainst(sql: String, opt: WvletCliRunOption): QueryResult =
+  private def executeAgainst(opt: WvletCliRunOption): QueryResult =
     val profile = opt.profile.flatMap(Profile.getProfile)
     val engine  = profile.map(_.defaultEngine)
     // Effective backend: --target wins, then the profile's default engine type, then "duckdb".
@@ -58,6 +67,7 @@ class WvletCli(opts: WvletCliGlobalOption) extends LogSupport:
     val config = ConnectorConfig(
       name = backend,
       `type` = backend,
+      default = true,
       user = opt.user.orElse(engine.flatMap(_.user)),
       host = opt.host.orElse(engine.flatMap(_.host)),
       port = opt.port.orElse(engine.flatMap(_.port)),
@@ -70,12 +80,55 @@ class WvletCli(opts: WvletCliGlobalOption) extends LogSupport:
           engine.flatMap(_.useHttps).getOrElse(false)
       )
     )
-    given QueryProgressMonitor = QueryProgressMonitor.noOp
-    val provider               = SqlConnectorProvider()
-    try provider.getConnector(config).execute(sql)
-    finally provider.close()
+    // The effective profile: the merged config is the default engine; the other profile
+    // connectors stay addressable via `use <name>`
+    val runProfile = Profile(
+      name = profile.map(_.name).getOrElse("default"),
+      connectors =
+        config +:
+          profile
+            .map(_.connectors.filterNot(_.name == config.name).map(_.withDefault(false)))
+            .getOrElse(Nil)
+    )
+    val (unit, ctx) = WvletCliCompiler(opt.toCompileOption).compileForRun
+    val provider    = SqlConnectorProvider(runProfile)
+    try
+      val executor = PlanExecutor(
+        provider,
+        runProfile,
+        // WARN keeps per-statement "Executing SQL" progress logs out of the CLI output;
+        // query results and test outcomes are printed separately below
+        WorkEnv(opt.workFolder, logLevel = wvlet.uni.log.LogLevel.WARN),
+        // The CLI prints every returned row (for piping); no interactive truncation
+        rowLimit = Int.MaxValue
+      )
+      val plan = ExecutionPlanner.plan(unit, ctx)
+      executor.execute(plan, ctx)
+    finally
+      provider.close()
 
   end executeAgainst
+
+  private def lastTableRows(r: QueryResult): Option[TableRows] =
+    r match
+      case t: TableRows =>
+        Some(t)
+      case l: QueryResultList =>
+        l.list.reverseIterator.flatMap(x => lastTableRows(x)).nextOption()
+      case p: PlanResult =>
+        lastTableRows(p.result)
+      case _ =>
+        None
+
+  private def toXPResult(t: TableRows): XPQueryResult =
+    val columns = t.schema.fields.toList
+    val rows    =
+      t.rows
+        .map { row =>
+          QueryResultRow(columns.map(c => Option(row.getOrElse(c.name.name, null)).map(_.toString)))
+        }
+        .toList
+    XPQueryResult(columns, rows)
 
 end WvletCli
 

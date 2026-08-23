@@ -18,6 +18,7 @@ import wvlet.uni.weaver.Weaver
 import wvlet.uni.weaver.codec.PrimitiveWeaver.given
 import wvlet.lang.api.SourceLocation
 import wvlet.lang.api.v1.flow.StageState
+import wvlet.lang.compiler.Name
 import wvlet.lang.model.DataType
 import wvlet.lang.model.RelationType
 import wvlet.lang.model.plan.LogicalPlan
@@ -83,6 +84,39 @@ case class TableRows(schema: RelationType, rows: Seq[ListMap[String, Any]], tota
       }
       .mkString("\n")
     jsonLines
+
+object TableRows:
+  /**
+    * Adapt a cross-platform [[wvlet.lang.compiler.connector.QueryResult]] (from
+    * `SqlConnector.execute`) into the runner's [[TableRows]]. Rows come back as
+    * `Seq[Option[String]]`; we zip with the declared column names to build the
+    * `ListMap[String, Any]` shape downstream renderers (web UI, REPL printer) already expect.
+    * `None` cells map to `null` to match the JDBC path, where `rs.getString` + `wasNull()` produces
+    * the same effective representation.
+    */
+  def fromCrossPlatformResult(
+      r: wvlet.lang.compiler.connector.QueryResult,
+      rowLimit: Int
+  ): TableRows =
+    val outputType    = DataType.SchemaType(None, Name.NoTypeName, r.columns.toList)
+    val columnNames   = r.columns.map(_.name.name)
+    val truncatedRows =
+      r.rows
+        .iterator
+        .take(rowLimit)
+        .map { row =>
+          val pairs = columnNames
+            .iterator
+            .zip(row.values.iterator)
+            .map { case (name, value) =>
+              name -> value.orNull.asInstanceOf[Any]
+            }
+          ListMap.from(pairs)
+        }
+        .toList
+    TableRows(outputType, truncatedRows, r.rowCount)
+
+end TableRows
 
 case class WarningResult(msg: String, loc: SourceLocation) extends QueryResult:
   override def getWarning: Option[String] = Some(msg)
