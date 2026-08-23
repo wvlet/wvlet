@@ -33,26 +33,33 @@ import scala.util.control.NonFatal
   *   Time zone in which the cron expression is evaluated (defaults to the system zone)
   * @param concurrency
   *   Maximum number of concurrent runs of this flow
+  * @param timeoutMillis
+  *   Total flow timeout: a run exceeding it fails, cancelling its in-flight and pending stages
   */
 case class FlowScheduleConfig(
     cron: Option[String] = None,
     timezone: Option[String] = None,
     concurrency: Option[Int] = None,
-    keepRuns: Option[Int] = None
+    keepRuns: Option[Int] = None,
+    timeoutMillis: Option[Long] = None
 ):
-  def withCron(cron: String): FlowScheduleConfig      = copy(cron = Some(cron))
-  def noCron(): FlowScheduleConfig                    = copy(cron = None)
-  def withTimezone(tz: String): FlowScheduleConfig    = copy(timezone = Some(tz))
-  def noTimezone(): FlowScheduleConfig                = copy(timezone = None)
-  def withConcurrency(limit: Int): FlowScheduleConfig = copy(concurrency = Some(limit))
-  def noConcurrency(): FlowScheduleConfig             = copy(concurrency = None)
-  def withKeepRuns(n: Int): FlowScheduleConfig        = copy(keepRuns = Some(n))
-  def noKeepRuns(): FlowScheduleConfig                = copy(keepRuns = None)
+  def withCron(cron: String): FlowScheduleConfig          = copy(cron = Some(cron))
+  def noCron(): FlowScheduleConfig                        = copy(cron = None)
+  def withTimezone(tz: String): FlowScheduleConfig        = copy(timezone = Some(tz))
+  def noTimezone(): FlowScheduleConfig                    = copy(timezone = None)
+  def withConcurrency(limit: Int): FlowScheduleConfig     = copy(concurrency = Some(limit))
+  def noConcurrency(): FlowScheduleConfig                 = copy(concurrency = None)
+  def withKeepRuns(n: Int): FlowScheduleConfig            = copy(keepRuns = Some(n))
+  def noKeepRuns(): FlowScheduleConfig                    = copy(keepRuns = None)
+  def withTimeoutMillis(millis: Long): FlowScheduleConfig = copy(timeoutMillis = Some(millis))
+  def noTimeoutMillis(): FlowScheduleConfig               = copy(timeoutMillis = None)
 
   def zoneId: ZoneId = timezone.map(ZoneId.of).getOrElse(ZoneId.systemDefault())
 
 object FlowScheduleConfig:
-  /** Extract schedule, timezone, concurrency, and keep_runs from the flow's config items */
+  /**
+    * Extract schedule, timezone, concurrency, keep_runs, and timeout from the flow's config items
+    */
   def fromFlow(flow: FlowDef): FlowScheduleConfig =
     flow
       .config
@@ -94,6 +101,12 @@ object FlowScheduleConfig:
             item.value match
               case l: LongLiteral =>
                 config.withKeepRuns(l.value.toInt)
+              case _ =>
+                config
+          case "timeout" =>
+            item.value match
+              case d: DurationLiteral =>
+                config.withTimeoutMillis(d.toMillis)
               case _ =>
                 config
           case _ =>

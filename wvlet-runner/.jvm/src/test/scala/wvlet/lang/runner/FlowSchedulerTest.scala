@@ -26,11 +26,12 @@ class FlowSchedulerTest extends UniTest:
       }
     flow.getOrElse(fail("No FlowDef found"))
 
-  test("extract schedule, timezone, and concurrency from the flow config") {
+  test("extract schedule, timezone, concurrency, and timeout from the flow config") {
     val flow = compileFlow("""flow NightlyFlow with {
         |  schedule: cron('0 2 * * *')
         |  timezone: 'UTC'
         |  concurrency: 2
+        |  timeout: 5m
         |} = {
         |  stage src = from [[1]] as t(id)
         |}""".stripMargin)
@@ -39,6 +40,7 @@ class FlowSchedulerTest extends UniTest:
     config.timezone shouldBe Some("UTC")
     config.zoneId shouldBe ZoneId.of("UTC")
     config.concurrency shouldBe Some(2)
+    config.timeoutMillis shouldBe Some(5 * 60 * 1000L)
   }
 
   test("extract empty schedule config from an unconfigured flow") {
@@ -49,6 +51,7 @@ class FlowSchedulerTest extends UniTest:
     config.cron shouldBe None
     config.timezone shouldBe None
     config.concurrency shouldBe None
+    config.timeoutMillis shouldBe None
   }
 
   test("trigger due flows once per schedule fire") {

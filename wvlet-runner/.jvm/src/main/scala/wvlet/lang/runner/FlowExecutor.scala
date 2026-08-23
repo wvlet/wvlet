@@ -908,12 +908,33 @@ class FlowExecutor(
             states(ls.name) = StageState.Cancelled
         }
 
+    // The flow-level `timeout:` deadline expired. A timeout is an error, not an operator
+    // cancel: in-flight attempts are stopped like a cancellation, but every non-terminal stage
+    // is marked failed with the flow-timeout error, so the run records as failed and the
+    // on_failure hooks fire. An already-processed cancellation takes precedence
+    var flowTimeoutDone                              = false
+    def handleFlowTimeout(timeoutMillis: Long): Unit =
+      if !flowTimeoutDone && !cancellationDone then
+        flowTimeoutDone = true
+        val message = s"Flow ${flow.name.name} timed out after ${timeoutMillis}ms (run: ${runId})"
+        workEnv.error(message)
+        (activeStatements.keySet().asScala ++ activeFutures.keySet().asScala)
+          .toSet
+          .foreach(cancelAttempt)
+        flowStages.foreach { ls =>
+          if !states(ls.name).isTerminal then
+            errors(ls.name) = StatusCode.OPERATION_TIMED_OUT.newException(message)
+            states(ls.name) = StageState.Failed
+        }
+
     def allTerminal: Boolean = states.values.forall(_.isTerminal)
+
+    val scheduleConfig = FlowScheduleConfig.fromFlow(flow)
 
     // Enforce the flow-level concurrency limit by atomically claiming a run slot in the run
     // store. Resumed runs already own their slot (their record is re-marked as running)
     val slotClaimed =
-      (registry, FlowScheduleConfig.fromFlow(flow).concurrency) match
+      (registry, scheduleConfig.concurrency) match
         case (Some(reg), Some(limit)) if resumeFrom.isEmpty =>
           reg.claimRunSlot(currentRecord(finished = false), limit)
         case _ =>
@@ -932,6 +953,21 @@ class FlowExecutor(
         runId,
         flowStages.map(ls => StageResult(ls.name, StageState.Skipped, 0))
       )
+
+    // Bound the whole run with the flow-level timeout. The deadline is armed when the run
+    // starts executing, so a resumed run gets the full budget from its resume start rather
+    // than the original invocation
+    scheduleConfig
+      .timeoutMillis
+      .foreach { timeout =>
+        timer.schedule(
+          new Runnable:
+            override def run(): Unit = eventQueue.put(FlowDeadlineExceeded)
+          ,
+          timeout,
+          TimeUnit.MILLISECONDS
+        )
+      }
 
     try
       var done = false
@@ -956,6 +992,8 @@ class FlowExecutor(
           eventQueue.take() match
             case CancelRequested =>
             // handled at the top of the loop via the cancelled flag
+            case FlowDeadlineExceeded =>
+              handleFlowTimeout(scheduleConfig.timeoutMillis.getOrElse(0L))
             case RetryDue(s, attempt) =>
               scheduledRetries -= 1
               if states(s.name) == StageState.Retrying then
@@ -1055,8 +1093,9 @@ class FlowExecutor(
     notifyRunResult(flow, result)
 
     // Trigger the control-only jumps recorded by successful stages, each as a new run of the
-    // target flow. Jump chains are bounded by maxJumpDepth to terminate cycles (A -> B -> A)
-    if pendingJumps.nonEmpty && !cancelled then
+    // target flow. Jump chains are bounded by maxJumpDepth to terminate cycles (A -> B -> A).
+    // A timed-out run does not jump: its deadline already expired
+    if pendingJumps.nonEmpty && !cancelled && !flowTimeoutDone then
       pendingJumps
         .toList
         .distinct
@@ -1477,5 +1516,7 @@ object FlowExecutor:
 
     case RetryDue(stage: FlowLowering.LoweredStage, attempt: Int)
     case CancelRequested
+    // The flow-level timeout: deadline expired; the run fails with all non-terminal stages
+    case FlowDeadlineExceeded
 
 end FlowExecutor
