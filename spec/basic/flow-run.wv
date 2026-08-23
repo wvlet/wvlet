@@ -112,3 +112,14 @@ run flow JoinPipeline
 | where state = 'success'
 test _.size should be 5
 ;
+
+flow CountPipeline = {
+  stage events = from [[1], [2], [3]] as t(id)
+  stage counted = from events | agg _.count as cnt
+}
+
+-- Aggregation shorthands (agg _.count) resolve inside stage bodies just like top-level queries
+run flow CountPipeline
+| where state = 'success'
+test _.size should be 2
+;

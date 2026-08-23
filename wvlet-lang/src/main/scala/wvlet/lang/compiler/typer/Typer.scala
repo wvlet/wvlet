@@ -445,12 +445,21 @@ object Typer extends Phase("typer") with LogSupport:
     * aggregation expressions, and in-place typing. Also used by GenSQL to re-resolve model bodies
     * after model expansion
     */
-  def resolveRelation(r: Relation)(using ctx: Context): Relation =
+  def resolveRelation(r: Relation)(using ctx: Context): Relation = resolveRelation(r, Map.empty)
+
+  /**
+    * Scope-taking variant of resolveRelation. The scope carries locally-defined relation names
+    * (e.g. flow stage names) visible only within the enclosing definition, so their references are
+    * typed in place without symbol registration
+    */
+  private def resolveRelation(r: Relation, scope: Map[String, RelationType])(using
+      ctx: Context
+  ): Relation =
     // Resolve structural references (tables, models, files, partial queries, underscores) and
     // type each node's expressions in a single bottom-up pass. Interleaving resolution and
     // typing matters: several relation nodes memoize their relationType on first access, so a
     // parent must not read a child's relation type before the child's expressions are typed
-    val prepared = prepareRelation(r)
+    val prepared = prepare(r, scope).asInstanceOf[Relation]
     // Inline function calls and aggregation expressions only when candidates are present.
     // Chained method calls (e.g. x.to_double.round(1)) resolve one link per round, so iterate
     // to a fixpoint
@@ -707,7 +716,9 @@ object Typer extends Phase("typer") with LogSupport:
                 r.elseTarget.foreach(t => requireRouteTarget(t, s.name))
             }
           }
-        val newBody = s.body.map(b => prepare(b, stageScope).asInstanceOf[Relation])
+        // Stage bodies go through the same full resolution path as top-level queries (function
+        // inlining, aggregation shorthands like `agg _.count`), with prior stage names in scope
+        val newBody = s.body.map(b => resolveRelation(b, stageScope))
         // The engine name in `stage x on <connector>` is a namespace reference
         s.engine.foreach(markNamespaceRef)
         val bodyChanged =

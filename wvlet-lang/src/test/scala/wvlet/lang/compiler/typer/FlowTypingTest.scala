@@ -7,6 +7,7 @@ import wvlet.lang.compiler.Compiler
 import wvlet.lang.compiler.CompilerOptions
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.model.DataType.SchemaType
+import wvlet.lang.model.expr.DotRef
 import wvlet.lang.model.plan.FlowDef
 import wvlet.uni.test.UniTest
 
@@ -115,6 +116,52 @@ class FlowTypingTest extends UniTest:
     }
     e.statusCode shouldBe StatusCode.STAGE_NOT_FOUND
     e.getMessage shouldContain "missing_stage"
+  }
+
+  test("resolve aggregation shorthands inside stage bodies") {
+    val f = compileFlow(s"""${userType}
+        |flow AggFlow = {
+        |  stage entry = from users
+        |  stage counted = from entry | agg _.count as cnt
+        |}""".stripMargin)
+    val counted = f.stages.find(_.name.name == "counted").get
+    counted.relationType.isResolved shouldBe true
+    counted.relationType.fields.map(_.name.name) shouldBe List("cnt")
+    // `_.count` must be inlined into count(*); no bare member reference survives in the body
+    var bareCountRefs = 0
+    counted
+      .body
+      .get
+      .traverseExpressions {
+        case d: DotRef if d.name.fullName == "count" =>
+          bareCountRefs += 1
+      }
+    bareCountRefs shouldBe 0
+  }
+
+  test("resolve aggregation shorthands before an event sensor") {
+    val f = compileFlow(s"""${userType}
+        |flow SensorFlow = {
+        |  stage entry = from users
+        |  stage gate = from entry | agg _.count as cnt | wait until _.cnt > 1000
+        |}""".stripMargin)
+    val gate = f.stages.find(_.name.name == "gate").get
+    gate.relationType.isResolved shouldBe true
+    gate.relationType.fields.map(_.name.name) shouldBe List("cnt")
+  }
+
+  test("inline chained function calls inside stage bodies") {
+    val f = compileFlow(s"""type events = {
+        |  id: string
+        |  amount: double
+        |}
+        |flow ChainFlow = {
+        |  stage entry = from events
+        |  stage rounded = from entry | select id, amount.round(1) as amt
+        |}""".stripMargin)
+    val rounded = f.stages.find(_.name.name == "rounded").get
+    rounded.relationType.isResolved shouldBe true
+    rounded.relationType.fields.map(_.name.name) shouldBe List("id", "amt")
   }
 
   test("report an error for a trigger referencing a stage defined later") {
