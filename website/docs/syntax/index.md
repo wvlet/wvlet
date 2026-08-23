@@ -19,6 +19,8 @@ New to Wvlet? Check out the [Quick Start](./quick-start.md) tutorial for a hands
 - [Joining & Combining Data](#joining--combining-data)
 - [Sorting & Transformation](#sorting--transformation)
 - [Advanced Operations](#advanced-operations)
+- [Update Operations](#update-operations)
+- [Table Management](#table-management)
 - [Comments](#comments)
 - [Expressions](#expressions)
 - [Common Query Patterns](#common-query-patterns)
@@ -198,14 +200,35 @@ These operators provide advanced functionality for testing and debugging.
 
 ## Update Operations
 
-These operators allow you to save or modify data.
+These operators allow you to save or modify data. Each also has a block form that leads with the
+effect (`save to t { query }`); see [Managing Tables and Schemas](table-management.md).
 
 | Operator | Description | Notes |
 |----------|-------------|-------|
 | __save to__ `table` | Create new table | Overwrites if exists |
+| __save to__ `table` __if not exists__ | Seed a table once | No-op when the table exists |
 | __save to__ `'file.parquet'` | Save to file | Supports various formats |
-| __append to__ `table` | Append to existing table | Creates if not exists |
+| __save as view__ `name` | Create or replace a view | Exports the query to SQL consumers |
+| __append to__ `table` | Append to existing table | Creates the table if missing (declared shape wins) |
+| __append to__ `table` __on__ `keys` | Insert-or-update by key | Lowered to `MERGE INTO` |
+| __update__ `col = expr, ...` | Update matching rows | From source table, like `delete` |
 | __delete__ | Delete matching rows | From source table |
+
+## Table Management
+
+Native statements for schemas, tables, and views — see
+[Managing Tables and Schemas](table-management.md) for the full guide.
+
+| Statement | Description |
+|-----------|-------------|
+| `table users = { id: int, ... }` | Declare a table shape (side-effect-free; used for type checking and auto-creation) |
+| `create schema s [if not exists]` / `drop schema s [if exists]` | Schema lifecycle |
+| `create table t` / `... if not exists` / `create or replace table t` | SQL-equivalent table creation from a declaration |
+| `drop table t [if exists]` / `truncate t` | Remove a table / delete all rows |
+| `reshape t { add c: type / rename a as b / exclude c }` | Evolve a table's columns |
+| `rename table a to b` / `rename schema a to b` | Rename catalog objects |
+| `drop view v [if exists]` | Remove a view |
+| `use 'file.duckdb' as name` | Attach an external database under an alias |
 
 ## Inspection Commands
 
