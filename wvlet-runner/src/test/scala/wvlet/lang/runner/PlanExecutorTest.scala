@@ -71,6 +71,16 @@ class PlanExecutorTest extends UniTest:
     tables.head.schema.fields.map(_.name.name) shouldBe List("id", "name")
   }
 
+  test("preserve newlines of triple-quoted string literals") {
+    skipIfNoDuckDB()
+    val result = run("select \"\"\"hello\nworld\"\"\" as greeting")
+    val tables =
+      collect(result) { case t: TableRows =>
+        t
+      }
+    tables.head.rows.head.values.head shouldBe "hello\nworld"
+  }
+
   test("evaluate passing and failing test statements") {
     skipIfNoDuckDB()
     val passing = run("""from [[1], [2]] as t(a) select a
