@@ -26,6 +26,20 @@ object ExecutionPlanner extends Phase("execution-plan"):
       }
       ExecuteQuery(queryWithoutTests)
 
+    // Collect a trailing chain of test relations (in source order) and the tested relation below it
+    def collectTestChain(t: TestRelation): (List[TestRelation], Option[Relation]) =
+      val tests                               = List.newBuilder[TestRelation]
+      def iter(r: Relation): Option[Relation] =
+        r match
+          case tr: TestRelation =>
+            val ret = iter(tr.child)
+            tests += tr
+            ret
+          case other =>
+            Some(other)
+      val nonTestChild = iter(t)
+      (tests.result(), nonTestChild)
+
     def plan(l: LogicalPlan, evalQuery: Boolean): ExecutionPlan =
       l match
         case p: PackageDef =>
@@ -40,37 +54,38 @@ object ExecutionPlanner extends Phase("execution-plan"):
           val debugPlan = plan(d.debugExpr, evalQuery = true)
           ExecuteDebug(d, debugPlan)
         case t: TestRelation =>
-          val plans = List.newBuilder[ExecutionPlan]
-          val tests = List.newBuilder[TestRelation]
-
-          def findNonTestRel(r: Relation): Option[Relation] =
-            r match
-              case tr: TestRelation =>
-                val ret = findNonTestRel(tr.child)
-                tests += tr
-                ret
-              case other =>
-                Some(other)
-          val nonTestChild = findNonTestRel(t.child)
-          tests += t
-
-          // For evaluating the test, need to evaluate the sub query
+          val (tests, nonTestChild) = collectTestChain(t)
+          val plans                 = List.newBuilder[ExecutionPlan]
+          // Execute the tested query only when its result is consumed: this test chain is the
+          // selected execution target, or the tests will read the result in a debug-run.
+          // Otherwise just recurse to plan nested test/debug statements
           nonTestChild.foreach { c =>
-            plans += plan(c, evalQuery = true)
+            plans += plan(c, evalQuery = evalQuery || context.isDebugRun)
           }
           if context.isDebugRun then
-            plans ++= tests.result().map(ExecuteTest(_))
+            plans ++= tests.map(ExecuteTest(_))
           ExecutionPlan(plans.result())
         case save: Save =>
           val queryPlan = plan(save.inputRelation, evalQuery = false)
           ExecuteSave(save, queryPlan)
         case q: Query =>
           val plans = List.newBuilder[ExecutionPlan]
-          if evalQuery then
-            plans += queryExecutePlan(q)
-
-          // Evaluate inner query, debug, and test expressions
-          plans += plan(q.child, false)
+          q.child match
+            case t: TestRelation if evalQuery && context.isDebugRun =>
+              // Trailing tests read this query's own result: plan nested test/debug statements
+              // first, run the (test-stripped) query once, then evaluate the trailing tests
+              // against that result — instead of executing the same query a second time
+              val (tests, nonTestChild) = collectTestChain(t)
+              nonTestChild.foreach { c =>
+                plans += plan(c, evalQuery = false)
+              }
+              plans += queryExecutePlan(q)
+              plans ++= tests.map(ExecuteTest(_))
+            case _ =>
+              if evalQuery then
+                plans += queryExecutePlan(q)
+              // Evaluate inner query, debug, and test expressions
+              plans += plan(q.child, false)
           ExecutionPlan(plans.result())
         case r: Relation =>
           val plans = List.newBuilder[ExecutionPlan]
