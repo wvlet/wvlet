@@ -59,6 +59,9 @@ class WvletCli(opts: WvletCliGlobalOption) extends LogSupport:
       name = backend,
       `type` = backend,
       user = opt.user.orElse(engine.flatMap(_.user)),
+      // Credentials come from the profile only (with ${ENV} interpolation) — never CLI flags
+      password = engine.flatMap(_.password),
+      properties = engine.map(_.properties).getOrElse(Map.empty),
       host = opt.host.orElse(engine.flatMap(_.host)),
       port = opt.port.orElse(engine.flatMap(_.port)),
       catalog = opt.catalog.orElse(engine.flatMap(_.catalog)),
