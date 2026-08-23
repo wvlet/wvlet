@@ -48,7 +48,11 @@ case class AppendTo(
     child: Relation,
     target: TableOrFileName,
     columns: List[NameExpr] = Nil,
-    span: Span
+    span: Span,
+    // `append to t on k1, k2`: keyed insert-or-update. Rows whose key columns match an
+    // existing row replace its non-key columns; the rest insert (lowered to MERGE INTO).
+    // Empty = plain insert
+    keyColumns: List[NameExpr] = Nil
 ) extends Save
 
 /**
@@ -58,6 +62,17 @@ case class AppendTo(
   * @param span
   */
 case class Delete(child: Relation, target: TableOrFileName, span: Span) extends Save
+
+/**
+  * Flow-style row update: `from t where ... update col = expr, ...`. Like Delete, the child must
+  * reduce to filters over a single table reference (validated at parse time)
+  */
+case class UpdateColumns(
+    child: Relation,
+    target: TableOrFileName,
+    assignments: List[UpdateAssignment],
+    span: Span
+) extends Save
 
 case class Truncate(target: TableOrFileName, span: Span) extends Update with LeafPlan
 

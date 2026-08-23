@@ -269,6 +269,7 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   case SAVE     extends WvletToken(Keyword, "save")
   case APPEND   extends WvletToken(Keyword, "append")
   case DELETE   extends WvletToken(Keyword, "delete")
+  case UPDATE   extends WvletToken(Keyword, "update")
   case TRUNCATE extends WvletToken(Keyword, "truncate")
 
   // Flow/workflow keywords

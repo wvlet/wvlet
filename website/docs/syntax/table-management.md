@@ -93,6 +93,32 @@ save to calendar if not exists {
 | `append to t` | Rows are appended |
 | `create table t` | No-op (idempotent) |
 
+## Updating Rows
+
+The `update` operator follows the same pattern as `delete`: select the rows first with
+`where`, then say what changes. The input must be filters over a single table.
+
+```wvlet
+from users
+where last_login < current_date() - '1 year':interval
+update status = 'dormant', updated_at = now()
+```
+
+## Keyed Append (Insert or Update)
+
+`append to ... on <keys>` is insert-or-update: rows whose key columns match an existing
+row replace its non-key columns; the rest insert. Plain `append to` stays pure insert.
+It works in both flow and block forms and compiles to `MERGE INTO`:
+
+```wvlet
+from staged_users
+append to users on user_id
+
+append to metrics on date, metric_name {
+  from daily_metrics
+}
+```
+
 ## Changing a Table's Columns
 
 The `reshape` statement evolves a table's schema using the same column operators you already
