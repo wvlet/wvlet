@@ -13,59 +13,55 @@
  */
 package wvlet.lang.runner
 
+import wvlet.lang.api.StatusCode
 import wvlet.uni.log.LogSupport
 import wvlet.uni.weaver.Weaver
 
-import java.nio.file.Files
-import java.nio.file.Path
 import java.sql.Connection
 import java.sql.DriverManager
-import java.sql.ResultSet
+import java.util.Properties
 import scala.util.Using
 import scala.util.control.NonFatal
 
 /**
-  * A SQLite-backed flow run store (`<targetFolder>/flow-runs/registry.db`). Unlike the JSON file
-  * store, records are transactional across processes: WAL mode supports a writer concurrent with
-  * readers (e.g. a scheduler daemon plus CLI commands), and run-slot claims for `concurrency:`
-  * enforcement are atomic single-statement inserts.
+  * A PostgreSQL-backed flow run store, sharing run records across machines: flow-level
+  * `concurrency:` limits, scheduler catch-up, and the web UI observe runs recorded by any process
+  * pointing at the same database.
+  *
+  * The schema mirrors [[SQLiteFlowRunStore]] (`runs` + `stages` with a JSON `args` column). Unlike
+  * SQLite, PostgreSQL does not serialize writers, so [[claimRunSlot]] takes a transaction-scoped
+  * advisory lock keyed on the flow name before its guarded insert — two concurrent claims of the
+  * same flow are evaluated one after the other, on any number of hosts.
   *
   * The store keeps one connection per instance; all operations are synchronized on it
   */
-class SQLiteFlowRunStore(dbPath: Path) extends FlowRunStore with LogSupport:
-  Option(dbPath.getParent).foreach(Files.createDirectories(_))
+class PostgresFlowRunStore(jdbcUrl: String, user: String, password: String)
+    extends FlowRunStore
+    with LogSupport:
 
   import SQLiteFlowRunStore.RunArgs
 
   // Bound flow arguments are stored as a single JSON object column
   private val argsWeaver = Weaver.of[RunArgs]
 
-  private val conn: Connection = DriverManager.getConnection(s"jdbc:sqlite:${dbPath}")
+  private val conn: Connection =
+    val props = Properties()
+    props.setProperty("user", user)
+    props.setProperty("password", password)
+    DriverManager.getConnection(jdbcUrl, props)
 
   Using.resource(conn.createStatement()) { stmt =>
-    stmt.execute("pragma journal_mode = WAL")
-    stmt.execute("pragma busy_timeout = 10000")
     stmt.execute("""create table if not exists runs(
         |  run_id           text primary key,
         |  flow_name        text not null,
         |  state            text not null,
-        |  started_at       integer not null,
-        |  finished_at      integer,
+        |  started_at       bigint not null,
+        |  finished_at      bigint,
         |  cancel_requested integer not null default 0,
-        |  lease_expires_at integer,
+        |  lease_expires_at bigint,
         |  args             text,
-        |  run_time         integer
+        |  run_time         bigint
         |)""".stripMargin)
-    // Migrate databases created before these columns were introduced
-    val existingColumns =
-      Using.resource(stmt.executeQuery("pragma table_info(runs)")) { rs =>
-        Iterator.continually(rs).takeWhile(_.next()).map(_.getString("name").toLowerCase).toSet
-      }
-    List("lease_expires_at" -> "integer", "args" -> "text", "run_time" -> "integer").foreach {
-      (column, sqlType) =>
-        if !existingColumns.contains(column) then
-          stmt.execute(s"alter table runs add column ${column} ${sqlType}")
-    }
     stmt.execute("""create table if not exists stages(
         |  run_id        text not null,
         |  ordinal       integer not null,
@@ -74,24 +70,14 @@ class SQLiteFlowRunStore(dbPath: Path) extends FlowRunStore with LogSupport:
         |  attempts      integer not null,
         |  error         text,
         |  table_name    text,
-        |  waiting_since integer,
-        |  last_poll_at  integer,
+        |  waiting_since bigint,
+        |  last_poll_at  bigint,
         |  primary key(run_id, ordinal)
         |)""".stripMargin)
-    // Migrate stage tables created before the sensor-liveness columns were introduced
-    val existingStageColumns =
-      Using.resource(stmt.executeQuery("pragma table_info(stages)")) { rs =>
-        Iterator.continually(rs).takeWhile(_.next()).map(_.getString("name").toLowerCase).toSet
-      }
-    List("waiting_since" -> "integer", "last_poll_at" -> "integer").foreach { (column, sqlType) =>
-      if !existingStageColumns.contains(column) then
-        stmt.execute(s"alter table stages add column ${column} ${sqlType}")
-    }
   }
 
   override def save(record: FlowRunRecord): Unit = synchronized {
-    conn.setAutoCommit(false)
-    try
+    inTransaction {
       Using.resource(
         conn.prepareStatement(
           """insert into runs(run_id, flow_name, state, started_at, finished_at, lease_expires_at, args, run_time)
@@ -110,14 +96,21 @@ class SQLiteFlowRunStore(dbPath: Path) extends FlowRunStore with LogSupport:
         ps.executeUpdate()
       }
       saveStages(record)
+    }
+  }
+
+  private def inTransaction[A](body: => A): A =
+    conn.setAutoCommit(false)
+    try
+      val result = body
       conn.commit()
+      result
     catch
       case NonFatal(e) =>
         conn.rollback()
         throw e
     finally
       conn.setAutoCommit(true)
-  }
 
   private def bindRunColumns(ps: java.sql.PreparedStatement, record: FlowRunRecord): Unit =
     ps.setString(1, record.runId.toLowerCase)
@@ -189,29 +182,36 @@ class SQLiteFlowRunStore(dbPath: Path) extends FlowRunStore with LogSupport:
   }
 
   override def claimRunSlot(record: FlowRunRecord, concurrencyLimit: Int): Boolean = synchronized {
-    // A single insert statement is atomic in SQLite, so the running-count check and the claim
-    // cannot interleave with claims from other processes. Running records whose liveness lease
-    // has expired belong to dead processes and do not occupy a slot
-    val claimed =
-      Using.resource(
-        conn.prepareStatement(
-          """insert into runs(run_id, flow_name, state, started_at, finished_at, lease_expires_at, args, run_time)
-            |select ?, ?, ?, ?, ?, ?, ?, ?
-            |where (select count(*) from runs
-            |       where flow_name = ? and state = ?
-            |         and (lease_expires_at is null or lease_expires_at >= ?)) < ?""".stripMargin
-        )
-      ) { ps =>
-        bindRunColumns(ps, record)
-        ps.setString(9, record.flowName)
-        ps.setString(10, FlowRunRecord.STATE_RUNNING)
-        ps.setLong(11, System.currentTimeMillis())
-        ps.setInt(12, concurrencyLimit)
-        ps.executeUpdate() == 1
+    // Serialize claims of the same flow across processes with a transaction-scoped advisory
+    // lock: unlike SQLite, PostgreSQL evaluates the count subquery against a snapshot, so two
+    // concurrent guarded inserts could otherwise both pass the check. Running records whose
+    // liveness lease has expired belong to dead processes and do not occupy a slot
+    inTransaction {
+      Using.resource(conn.prepareStatement("select pg_advisory_xact_lock(hashtext(?))")) { ps =>
+        ps.setString(1, record.flowName)
+        ps.execute()
       }
-    if claimed then
-      saveStages(record)
-    claimed
+      val claimed =
+        Using.resource(
+          conn.prepareStatement(
+            """insert into runs(run_id, flow_name, state, started_at, finished_at, lease_expires_at, args, run_time)
+              |select ?, ?, ?, ?, ?, ?, ?, ?
+              |where (select count(*) from runs
+              |       where flow_name = ? and state = ?
+              |         and (lease_expires_at is null or lease_expires_at >= ?)) < ?""".stripMargin
+          )
+        ) { ps =>
+          bindRunColumns(ps, record)
+          ps.setString(9, record.flowName)
+          ps.setString(10, FlowRunRecord.STATE_RUNNING)
+          ps.setLong(11, System.currentTimeMillis())
+          ps.setInt(12, concurrencyLimit)
+          ps.executeUpdate() == 1
+        }
+      if claimed then
+        saveStages(record)
+      claimed
+    }
   }
 
   override def refreshLease(runId: String, leaseExpiresAtMillis: Long): Unit = synchronized {
@@ -343,11 +343,38 @@ class SQLiteFlowRunStore(dbPath: Path) extends FlowRunStore with LogSupport:
       }
     }
 
-end SQLiteFlowRunStore
+end PostgresFlowRunStore
 
-object SQLiteFlowRunStore:
+object PostgresFlowRunStore:
+  /** JDBC URL of the shared run-store database, e.g. jdbc:postgresql://host:5432/wvlet */
+  val URL_ENV = "WVLET_FLOW_STORE_PG_URL"
+
+  /** User of the run-store database (default: postgres) */
+  val USER_ENV = "WVLET_FLOW_STORE_PG_USER"
+
+  /** Password of the run-store database (default: empty) */
+  val PASSWORD_ENV = "WVLET_FLOW_STORE_PG_PASSWORD"
+
   /**
-    * JSON envelope of the bound flow arguments stored in the `args` column (shared with
-    * [[PostgresFlowRunStore]], which uses the same schema shape)
+    * Create a store from the WVLET_FLOW_STORE_PG_* environment variables. The connection settings
+    * come from the environment only — never from CLI flags — so that credentials stay out of the
+    * process list
     */
-  private[runner] case class RunArgs(args: Map[String, String] = Map.empty)
+  def fromEnv(): PostgresFlowRunStore =
+    val url = sys
+      .env
+      .getOrElse(
+        URL_ENV,
+        throw StatusCode
+          .INVALID_ARGUMENT
+          .newException(
+            s"The postgres run store requires the ${URL_ENV} environment variable (e.g. jdbc:postgresql://host:5432/wvlet)"
+          )
+      )
+    PostgresFlowRunStore(
+      url,
+      sys.env.getOrElse(USER_ENV, "postgres"),
+      sys.env.getOrElse(PASSWORD_ENV, "")
+    )
+
+end PostgresFlowRunStore

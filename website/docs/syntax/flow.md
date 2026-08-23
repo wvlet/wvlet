@@ -682,14 +682,24 @@ wvlet flow session list -w ./pipelines
 wvlet flow session show <run_id> -w ./pipelines
 ```
 
-Every flow run is recorded in a local run store, updated live as stages change state. Two
+Every flow run is recorded in a run store, updated live as stages change state. Three
 store backends are available and can be selected with `--run-store <type>` (or the
 `WVLET_FLOW_STORE` environment variable):
 
 - `file` (default): one JSON file per run (`target/flow-runs/<run_id>.json`), no dependencies
 - `sqlite`: a single SQLite database (`target/flow-runs/registry.db`) in WAL mode. Records are
   transactional across processes, which a scheduler daemon needs for enforcing flow-level
-  `concurrency:` limits Cross-flow dependencies (`depends on X`,
+  `concurrency:` limits
+- `postgres`: a shared PostgreSQL database, so `concurrency:` enforcement, scheduler
+  catch-up, `session` commands, and the web UI observe runs recorded on **any machine**
+  pointing at the same database. The connection comes from environment variables only —
+  never CLI flags — keeping credentials out of the process list:
+  `WVLET_FLOW_STORE_PG_URL` (e.g. `jdbc:postgresql://host:5432/wvlet`), and optionally
+  `WVLET_FLOW_STORE_PG_USER` (default `postgres`) and `WVLET_FLOW_STORE_PG_PASSWORD`.
+  Concurrent slot claims are serialized with a per-flow advisory lock, so a `concurrency:`
+  limit holds across hosts
+
+Cross-flow dependencies (`depends on X`,
 `if X.failed`, `if X.done`) are evaluated against the latest recorded run of the referenced
 flow: when the dependency is not satisfied, the flow run is recorded as `skipped` without
 executing any stage.

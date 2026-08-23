@@ -22,10 +22,11 @@ import java.nio.file.Path
   * Persistent store of flow run records, observable across processes so that `wvlet flow session`
   * commands and schedulers can inspect, cancel, and resume runs.
   *
-  * Two implementations exist: [[FlowRunRegistry]] (one JSON file per run, no dependencies) and
-  * [[SQLiteFlowRunStore]] (a single SQLite database, transactional across processes). The file
-  * store is the default; select the SQLite store with `--run-store sqlite` or the
-  * `WVLET_FLOW_STORE` environment variable
+  * Three implementations exist: [[FlowRunRegistry]] (one JSON file per run, no dependencies),
+  * [[SQLiteFlowRunStore]] (a single SQLite database, transactional across processes on one
+  * machine), and [[PostgresFlowRunStore]] (a shared PostgreSQL database, observable across
+  * machines). The file store is the default; select another with `--run-store sqlite|postgres` or
+  * the `WVLET_FLOW_STORE` environment variable
   */
 trait FlowRunStore extends AutoCloseable:
   /** Persist (create or overwrite) the record of a run */
@@ -76,8 +77,9 @@ trait FlowRunStore extends AutoCloseable:
 end FlowRunStore
 
 object FlowRunStore:
-  val STORE_TYPE_FILE   = "file"
-  val STORE_TYPE_SQLITE = "sqlite"
+  val STORE_TYPE_FILE     = "file"
+  val STORE_TYPE_SQLITE   = "sqlite"
+  val STORE_TYPE_POSTGRES = "postgres"
 
   /** The environment variable overriding the default run store type */
   val STORE_TYPE_ENV = "WVLET_FLOW_STORE"
@@ -91,7 +93,7 @@ object FlowRunStore:
     workEnv
   )
 
-  /** Create a run store of the given type (file or sqlite) under the work environment */
+  /** Create a run store of the given type (file, sqlite, or postgres) under the work environment */
   def ofType(storeType: String, workEnv: WorkEnv): FlowRunStore =
     val dir = Path.of(workEnv.targetFolder, "flow-runs")
     storeType match
@@ -99,9 +101,13 @@ object FlowRunStore:
         FlowRunRegistry(dir)
       case STORE_TYPE_SQLITE =>
         SQLiteFlowRunStore(dir.resolve("registry.db"))
+      case STORE_TYPE_POSTGRES =>
+        // Connection settings come from WVLET_FLOW_STORE_PG_* environment variables only, so
+        // that credentials never appear in the process list
+        PostgresFlowRunStore.fromEnv()
       case other =>
         throw StatusCode
           .INVALID_ARGUMENT
-          .newException(s"Unknown flow run store type: ${other}. Use file or sqlite")
+          .newException(s"Unknown flow run store type: ${other}. Use file, sqlite, or postgres")
 
 end FlowRunStore
