@@ -162,7 +162,9 @@ class WvletCli(opts: WvletCliGlobalOption) extends LogSupport:
     val client = WvletServerClient(
       baseUri = s"${scheme}://${host}:${port}",
       // The server resolves this name in ITS profiles.json; unset runs on the server default
-      profile = engine.flatMap(_.properties.get("remoteProfile")).map(_.toString)
+      profile = engine.flatMap(_.properties.get("remoteProfile")).map(_.toString),
+      // Credentials come from the profile only (with ${ENV} interpolation) — never CLI flags
+      token = engine.flatMap(_.properties.get("token")).map(_.toString)
     )
     try client.runQuery(query)
     finally client.close()

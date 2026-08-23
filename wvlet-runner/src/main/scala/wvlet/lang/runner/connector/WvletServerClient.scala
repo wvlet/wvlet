@@ -50,6 +50,8 @@ class WvletServerClient(
     baseUri: String,
     // Server-side profile to run under; None uses the server's default profile
     profile: Option[String] = None,
+    // Bearer token sent as `Authorization: Bearer <token>` when the server requires authentication
+    token: Option[String] = None,
     maxRows: Int = WvletServerClient.DefaultMaxRows,
     pollIntervalMillis: Long = 100
 ) extends AutoCloseable
@@ -61,7 +63,10 @@ class WvletServerClient(
       .withBaseUri(baseUri)
       // The Native (libcurl) channel does not transparently decompress gzip responses the way
       // the JVM client does; ask the server for identity encoding so all platforms decode alike
-      .withRequestFilter(req => req.setHeader("Accept-Encoding", "identity"))
+      .withRequestFilter { req =>
+        val r = req.setHeader("Accept-Encoding", "identity")
+        token.map(t => r.setHeader("Authorization", s"Bearer ${t}")).getOrElse(r)
+      }
       .newSyncClient
   )
 

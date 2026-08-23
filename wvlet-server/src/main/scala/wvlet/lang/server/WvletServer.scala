@@ -47,9 +47,18 @@ case class WvletServerConfig(
     )
     quitImmediately: Boolean = false,
     @option(prefix = "--tpch", description = "Load a small demo TPC-H data (DuckDB only)")
-    prepareTPCH: Boolean = false
+    prepareTPCH: Boolean = false,
+    @option(
+      prefix = "--auth-token",
+      description =
+        "Require this bearer token on RPC requests. Prefer the WVLET_SERVER_TOKEN environment variable to keep the secret out of the process list"
+    )
+    authToken: Option[String] = None
 ):
   lazy val workEnv: WorkEnv = WorkEnv(path = workDir)
+
+  /** The effective bearer token: the explicit option, else the WVLET_SERVER_TOKEN env variable */
+  def resolvedAuthToken: Option[String] = authToken.orElse(sys.env.get("WVLET_SERVER_TOKEN"))
 
 object WvletServer extends LogSupport:
 
@@ -109,6 +118,36 @@ object WvletServer extends LogSupport:
           RPCStatus.INTERNAL_ERROR_I0.newException(e.getMessage, e).toResponse
 
   end MultiRpcHandler
+
+  /**
+    * Require `Authorization: Bearer <token>` on RPC (POST) requests. Non-POST requests pass through
+    * untouched so the static Web UI assets stay reachable; every RPC endpoint — queries, files,
+    * flows — rejects with UNAUTHENTICATED unless the token matches (constant-time comparison).
+    */
+  private def withBearerAuth(rpc: RxHttpHandler, token: String): RxHttpHandler =
+    val expected = token.getBytes(java.nio.charset.StandardCharsets.UTF_8)
+    (request) =>
+      if request.method != HttpMethod.POST then
+        rpc.handle(request)
+      else
+        val authorized = request
+          .header(HttpHeader.Authorization)
+          .exists { h =>
+            h.startsWith("Bearer ") &&
+            java
+              .security
+              .MessageDigest
+              .isEqual(
+                h.stripPrefix("Bearer ").getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                expected
+              )
+          }
+        if authorized then
+          rpc.handle(request)
+        else
+          Rx.single(
+            RPCStatus.UNAUTHENTICATED_U13.newException("Missing or invalid bearer token").toResponse
+          )
 
   // Wrap an RPC handler with a static-content fallback. uni's path matcher doesn't support
   // airframe's "/*splat" pattern, so we cannot register a catch-all controller endpoint.
@@ -222,7 +261,14 @@ object WvletServer extends LogSupport:
             RPCRouter.of[FlowApi](flowApi)
           )
         )
-        val handler = withStaticFallback(rpc, staticApi)
+        val guardedRpc = resolvedConf
+          .resolvedAuthToken
+          .map { token =>
+            info("Bearer-token authentication is enabled for RPC requests")
+            withBearerAuth(rpc, token)
+          }
+          .getOrElse(rpc)
+        val handler = withStaticFallback(guardedRpc, staticApi)
         NettyHttpServer(
           NettyServerConfig().withName("wvlet-ui").withPort(port).withRxHandler(handler)
         )
@@ -234,7 +280,9 @@ object WvletServer extends LogSupport:
 
   // Bind port = 0 so the design's unusedPortFrom helper acquires whichever local
   // port the OS hands back — same effect the dropped airframe IOUtil.unusedPort had.
-  def testDesign: Design = design(WvletServerConfig(port = 0)).bindProvider {
+  def testDesign: Design = testDesign(WvletServerConfig(port = 0))
+
+  def testDesign(config: WvletServerConfig): Design = design(config.copy(port = 0)).bindProvider {
     (server: NettyHttpServer) =>
       // Force the JVM HTTP channel factory before constructing the client.
       // HttpCompat (which auto-registers the factory) is package-private, so we
