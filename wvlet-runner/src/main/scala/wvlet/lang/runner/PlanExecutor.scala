@@ -15,8 +15,10 @@ package wvlet.lang.runner
 
 import wvlet.lang.api.StatusCode
 import wvlet.lang.catalog.ConnectorConfig
+import wvlet.lang.catalog.InMemoryCatalog
 import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.Context
+import wvlet.lang.compiler.DBType
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.compiler.codegen.GenSQL
 import wvlet.lang.compiler.connector.SqlConnector
@@ -30,8 +32,10 @@ import wvlet.lang.runner.connector.SqlConnectorProvider
   * DuckDB, Trino over REST) on JVM, Node.js, and Native alike. JVM-only plan nodes (save-to files,
   * flows) inherit [[BasePlanExecutor]]'s not-supported error.
   *
-  * Unlike the JVM `QueryExecutor`, `use <connector>` here switches the execution engine only — the
-  * thin CLIs compile catalog-free, so no catalog registration or SQL-dialect switch happens.
+  * `use <connector>` switches the execution engine AND the SQL dialect of subsequent statements
+  * (SQL is generated at execution time). Unlike the JVM `QueryExecutor`, no live catalog metadata
+  * is registered — the thin CLIs compile catalog-free, so the switched engine gets an in-memory
+  * catalog carrying its dialect and catalog/schema names.
   */
 class PlanExecutor(
     connectorProvider: SqlConnectorProvider,
@@ -108,14 +112,14 @@ class PlanExecutor(
               s"(available: ${defaultProfile.connectors.map(_.name).mkString(", ")})"
           )
       )
-    val schemaName =
+    val (catalogName, schemaName) =
       parts.tail match
         case Nil =>
-          config.schema
+          (config.catalog, config.schema)
         case schema :: Nil =>
-          Some(schema)
-        case _ :: schema :: Nil =>
-          Some(schema)
+          (config.catalog, Some(schema))
+        case catalog :: schema :: Nil =>
+          (Some(catalog), Some(schema))
         case _ =>
           throw StatusCode
             .SYNTAX_ERROR
@@ -127,10 +131,21 @@ class PlanExecutor(
     // failure leaves the previous engine fully active
     connectorProvider.getConnector(config)
     activeConfig = config
+    // Switch the SQL dialect along with the engine: SQL is generated at execution time from
+    // context.dbType (= defaultCatalog.dbType), so replacing the default catalog makes every
+    // statement after this `use` compile to the new engine's dialect. The thin CLIs run
+    // catalog-free, so an in-memory catalog carrying the dialect (and catalog/schema names for
+    // qualification) is all the switched engine needs
+    val newDBType = DBType.fromString(config.`type`)
+    context.global.defaultCatalog = InMemoryCatalog(
+      catalogName = catalogName.getOrElse(connectorName),
+      functions = Nil,
+      catalogDBType = newDBType
+    )
     schemaName.foreach { schema =>
       context.global.defaultSchema = schema
     }
-    workEnv.info(s"Switched to connector: ${connectorName}")
+    workEnv.info(s"Switched to connector: ${connectorName} (dialect: ${newDBType})")
     QueryResult.empty
 
   end switchConnector

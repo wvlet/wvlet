@@ -100,8 +100,11 @@ class WvletCli(opts: WvletCliGlobalOption) extends LogSupport:
             .map(_.connectors.filterNot(_.name == config.name).map(_.withDefault(false)))
             .getOrElse(Nil)
     )
-    val (unit, ctx) = WvletCliCompiler(opt.toCompileOption).compileForRun
-    val provider    = SqlConnectorProvider(runProfile)
+    // Compile with the EFFECTIVE backend's dialect: without this, `-p trino-profile` (no -t)
+    // would compile DuckDB SQL and execute it on Trino
+    val (unit, ctx) =
+      WvletCliCompiler(opt.toCompileOption.copy(targetDBType = Some(backend))).compileForRun
+    val provider = SqlConnectorProvider(runProfile)
     try
       val executor = PlanExecutor(
         provider,
