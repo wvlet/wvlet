@@ -109,6 +109,13 @@ object ExecutionPlanner extends Phase("execution-plan"):
           ExecutionPlan(plans.result())
         case c: Command =>
           ExecuteCommand(c)
+        // DDL executes only for Wvlet sources. SQL files (spec/sql corpora) keep their
+        // historical parse-only planning: many contain engine-specific DDL forms that are
+        // not runnable on the active engine
+        case d: DDL if !unit.sourceFile.isSQL =>
+          ExecuteDDL(d)
+        case t: Truncate if !unit.sourceFile.isSQL =>
+          ExecuteDDL(t)
         case v: ValDef =>
           ExecuteValDef(v)
         case f: FlowDef if f eq targetPlan =>

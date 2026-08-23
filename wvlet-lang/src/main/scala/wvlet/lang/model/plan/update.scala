@@ -38,7 +38,10 @@ case class SaveTo(
     child: Relation,
     target: TableOrFileName,
     saveOptions: List[SaveOption],
-    span: Span
+    span: Span,
+    // `save to t if not exists`: seed-once semantics (CREATE TABLE IF NOT EXISTS ... AS);
+    // false = create-or-replace, the save-to default
+    ifNotExists: Boolean = false
 ) extends Save
 
 case class AppendTo(

@@ -958,11 +958,147 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         ExplainPlan(r, span = spanFrom(t))
       case WvletToken.USE =>
         use()
+      case WvletToken.CREATE =>
+        createStatement()
+      case WvletToken.DROP =>
+        dropStatement()
+      case WvletToken.TRUNCATE =>
+        val tt     = consume(WvletToken.TRUNCATE)
+        val target = qualifiedId()
+        Truncate(target, spanFrom(tt))
+      case WvletToken.SAVE | WvletToken.APPEND =>
+        saveBlockStatement()
+      case WvletToken.IDENTIFIER if t.str == "table" =>
+        tableShapeDef()
       case _ =>
         unexpected(t)
     end match
   }
   end statement
+
+  /**
+    * Parse a side-effect-free table shape declaration:
+    * {{{
+    *   table <name> [in <catalog>.<schema>] = { <fields and def members> }
+    * }}}
+    * The declaration shares the TypeDef machinery (isTableDef = true): the relation type registers
+    * in the same namespace as `type` definitions, and `create table <name>` actions read the shape
+    * from it. `table` is a soft keyword, matched only at statement head.
+    */
+  def tableShapeDef(): TypeDef = node {
+    val t      = consume(WvletToken.IDENTIFIER) // the `table` soft keyword
+    val name   = Name.typeName(identifier().leafName)
+    val scopes = context()
+    consume(WvletToken.EQ)
+    consume(WvletToken.L_BRACE)
+    val elems = typeElems()
+    consume(WvletToken.R_BRACE)
+    TypeDef(name, Nil, scopes, None, elems, spanFrom(t), isTableDef = true)
+  }
+
+  /** Parse a trailing `if not exists` modifier */
+  private def ifNotExistsModifier(): Boolean =
+    scanner.lookAhead().token match
+      case WvletToken.IF =>
+        consume(WvletToken.IF)
+        consume(WvletToken.NOT)
+        consume(WvletToken.EXISTS)
+        true
+      case _ =>
+        false
+
+  /** Parse a trailing `if exists` modifier */
+  private def ifExistsModifier(): Boolean =
+    scanner.lookAhead().token match
+      case WvletToken.IF =>
+        consume(WvletToken.IF)
+        consume(WvletToken.EXISTS)
+        true
+      case _ =>
+        false
+
+  /**
+    * createStatement := 'create' 'schema' qualifiedId ('if' 'not' 'exists')? | 'create' 'table'
+    * qualifiedId
+    *
+    * `create table` takes nothing after the name: the shape comes from a `table` declaration in
+    * scope, and the action is create-if-missing (idempotent), so no modifier is accepted.
+    */
+  def createStatement(): LogicalPlan = node {
+    val t    = consume(WvletToken.CREATE)
+    val kind = identifierSingle()
+    kind.leafName match
+      case "schema" =>
+        val name = qualifiedId()
+        CreateSchema(name, ifNotExistsModifier(), None, spanFrom(t))
+      case "table" =>
+        val name = qualifiedId()
+        // tableElems are filled from the `table` declaration in scope at typing time
+        CreateTable(name, ifNotExists = true, tableElems = Nil, span = spanFrom(t))
+      case other =>
+        throw StatusCode
+          .SYNTAX_ERROR
+          .newException(
+            s"Unknown create target '${other}'. Expected 'schema' or 'table'",
+            t.sourceLocation
+          )
+  }
+
+  /**
+    * dropStatement := 'drop' ('schema' | 'table') qualifiedId ('if' 'exists')?
+    */
+  def dropStatement(): LogicalPlan = node {
+    val t    = consume(WvletToken.DROP)
+    val kind = identifierSingle()
+    kind.leafName match
+      case "schema" =>
+        val name = qualifiedId()
+        DropSchema(name, ifExistsModifier(), spanFrom(t))
+      case "table" =>
+        val name = qualifiedId()
+        DropTable(name, ifExistsModifier(), spanFrom(t))
+      case other =>
+        throw StatusCode
+          .SYNTAX_ERROR
+          .newException(
+            s"Unknown drop target '${other}'. Expected 'schema' or 'table'",
+            t.sourceLocation
+          )
+  }
+
+  /**
+    * Explicit top-level block forms of the save-family flow suffixes, leading with the effect:
+    * {{{
+    *   save to <target> [if not exists] [with k: v, ...] { <query> }
+    *   append to <target> [(columns)] { <query> }
+    * }}}
+    * These lower to the same plan nodes as the flow-suffix forms.
+    */
+  def saveBlockStatement(): Relation = node {
+    def blockQuery(): Relation =
+      val bt = consume(WvletToken.L_BRACE)
+      val q  = queryBody()
+      consume(WvletToken.R_BRACE)
+      Query(q, spanFrom(bt))
+
+    val t = scanner.lookAhead()
+    t.token match
+      case WvletToken.SAVE =>
+        consume(WvletToken.SAVE)
+        consume(WvletToken.TO)
+        val target      = literalOrQualifiedName()
+        val ifNotExists = ifNotExistsModifier()
+        val opts        = saveOptions()
+        SaveTo(blockQuery(), target, opts, spanFrom(t), ifNotExists = ifNotExists)
+      case WvletToken.APPEND =>
+        consume(WvletToken.APPEND)
+        consume(WvletToken.TO)
+        val target  = literalOrQualifiedName()
+        val columns = appendColumnList()
+        AppendTo(blockQuery(), target, columns, spanFrom(t))
+      case _ =>
+        unexpected(t)
+  }
 
   def use(): Command = node {
     val t = consume(WvletToken.USE)
@@ -1536,80 +1672,82 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
   }
   end query
 
+  private def saveOptions(): List[SaveOption] =
+    val t = scanner.lookAhead()
+    t.token match
+      case WvletToken.WITH =>
+        consume(WvletToken.WITH)
+        val options = List.newBuilder[SaveOption]
+
+        def nextOption: Unit =
+          val t = scanner.lookAhead()
+          t.token match
+            case WvletToken.COMMA =>
+              consume(WvletToken.COMMA)
+              nextOption
+            case WvletToken.IDENTIFIER =>
+              val key = identifierSingle()
+              consume(WvletToken.COLON)
+              val value = expression()
+              options += SaveOption(key, value, key.span.extendTo(value.span))
+              nextOption
+            case _ =>
+        // finish
+        nextOption
+        options.result()
+      case _ =>
+        List.empty
+
+  private def literalOrQualifiedName(): StringLiteral | QualifiedName =
+    scanner.lookAhead().token match
+      case s if s.isStringLiteral =>
+        stringLiteral()
+      case _ =>
+        qualifiedId()
+
+  /** Parse an optional column list like: append to users(id, email) */
+  private def appendColumnList(): List[NameExpr] =
+    if scanner.lookAhead().token == WvletToken.L_PAREN then
+      consume(WvletToken.L_PAREN)
+      def parseColumns(): List[NameExpr] =
+        // Use tail-recursive loop to avoid StackOverflowError with many columns
+        @annotation.tailrec
+        def loop(acc: List[NameExpr]): List[NameExpr] =
+          val id = identifier()
+          scanner.lookAhead().token match
+            case WvletToken.COMMA =>
+              consume(WvletToken.COMMA)
+              loop(id :: acc)
+            case _ =>
+              (id :: acc).reverse
+
+        // Handle empty column list
+        if scanner.lookAhead().token == WvletToken.R_PAREN then
+          Nil
+        else
+          loop(Nil)
+
+      val cols = parseColumns()
+      consume(WvletToken.R_PAREN)
+      cols
+    else
+      Nil
+
   def updateOpsIfExists(r: Relation): Relation = node {
-
-    def saveOptions(): List[SaveOption] =
-      val t = scanner.lookAhead()
-      t.token match
-        case WvletToken.WITH =>
-          consume(WvletToken.WITH)
-          val options = List.newBuilder[SaveOption]
-
-          def nextOption: Unit =
-            val t = scanner.lookAhead()
-            t.token match
-              case WvletToken.COMMA =>
-                consume(WvletToken.COMMA)
-                nextOption
-              case WvletToken.IDENTIFIER =>
-                val key = identifierSingle()
-                consume(WvletToken.COLON)
-                val value = expression()
-                options += SaveOption(key, value, key.span.extendTo(value.span))
-                nextOption
-              case _ =>
-          // finish
-          nextOption
-          options.result()
-        case _ =>
-          List.empty
-
-    def literalOrQualifiedName(): StringLiteral | QualifiedName =
-      scanner.lookAhead().token match
-        case s if s.isStringLiteral =>
-          stringLiteral()
-        case _ =>
-          qualifiedId()
-
     val t = scanner.lookAhead()
     t.token match
       case WvletToken.SAVE =>
         consume(WvletToken.SAVE)
         consume(WvletToken.TO)
         val target: StringLiteral | QualifiedName = literalOrQualifiedName()
+        val ifNotExists                           = ifNotExistsModifier()
         val opts                                  = saveOptions()
-        SaveTo(r, target, opts, spanFrom(t))
+        SaveTo(r, target, opts, spanFrom(t), ifNotExists = ifNotExists)
       case WvletToken.APPEND =>
         consume(WvletToken.APPEND)
         consume(WvletToken.TO)
         val target: StringLiteral | QualifiedName = literalOrQualifiedName()
-        // Handle optional column list like: append to users(id, email)
-        val columns =
-          if scanner.lookAhead().token == WvletToken.L_PAREN then
-            consume(WvletToken.L_PAREN)
-            def parseColumns(): List[NameExpr] =
-              // Use tail-recursive loop to avoid StackOverflowError with many columns
-              @annotation.tailrec
-              def loop(acc: List[NameExpr]): List[NameExpr] =
-                val id = identifier()
-                scanner.lookAhead().token match
-                  case WvletToken.COMMA =>
-                    consume(WvletToken.COMMA)
-                    loop(id :: acc)
-                  case _ =>
-                    (id :: acc).reverse
-
-              // Handle empty column list
-              if scanner.lookAhead().token == WvletToken.R_PAREN then
-                Nil
-              else
-                loop(Nil)
-
-            val cols = parseColumns()
-            consume(WvletToken.R_PAREN)
-            cols
-          else
-            Nil
+        val columns                               = appendColumnList()
         AppendTo(r, target, columns, spanFrom(t))
       case WvletToken.DELETE =>
         consume(WvletToken.DELETE)

@@ -68,7 +68,10 @@ case class TypeDef(
     defContexts: List[DefContext],
     parent: Option[NameExpr],
     elems: List[TypeElem],
-    span: Span
+    span: Span,
+    // true for `table <name> [in ...] = { ... }` table-shape declarations, which share the
+    // TypeDef machinery but print back as `table` and can seed `create table <name>` actions
+    isTableDef: Boolean = false
 ) extends LanguageStatement:
 
   /**

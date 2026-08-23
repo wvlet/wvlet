@@ -155,6 +155,47 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
 
   private def ddl(d: DDL)(using sc: SyntaxContext): Doc =
     d match
+      case c: CreateSchema =>
+        code(c) {
+          group(
+            wl(
+              "create schema",
+              expr(c.schema),
+              Option.when(c.ifNotExists) {
+                "if not exists"
+              }
+            )
+          )
+        }
+      case s: DropSchema =>
+        code(s) {
+          group(
+            wl(
+              "drop schema",
+              expr(s.schema),
+              Option.when(s.ifExists) {
+                "if exists"
+              }
+            )
+          )
+        }
+      case c: CreateTable if c.tableElems.isEmpty =>
+        // The action form: the table shape lives in the `table` declaration
+        code(c) {
+          group(wl("create table", expr(c.table)))
+        }
+      case t: DropTable =>
+        code(t) {
+          group(
+            wl(
+              "drop table",
+              expr(t.table),
+              Option.when(t.ifExists) {
+                "if exists"
+              }
+            )
+          )
+        }
       case _ =>
         val sqlGen = SqlGenerator(formatter.config)
         val doc    = sqlGen.render(d)
@@ -190,6 +231,10 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
         relation(s)
       case a: AppendTo =>
         relation(a)
+      case t: Truncate =>
+        code(t) {
+          group(wl("truncate", expr(t.target)))
+        }
       case _ =>
         val sqlGen = SqlGenerator(formatter.config)
         val d      = sqlGen.render(u)
@@ -441,9 +486,13 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
                 expr(x)
               }
             Some(ws + "with" + nest(wsOrNL + cl(lst)))
+        val ifNotExists =
+          Option.when(s.ifNotExists) {
+            ws + "if not exists"
+          }
         prev /
           code(s) {
-            group(wl("save to", path) + opts)
+            group(wl("save to", path) + ifNotExists + opts)
           }
       case e: EmptyRelation =>
         empty
@@ -655,7 +704,12 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
               empty
             else
               "= "
-          group(wl("type", text(t.name.name) + typeParams, defContexts, parent, sep)) +
+          val keyword =
+            if t.isTableDef then
+              "table"
+            else
+              "type"
+          group(wl(keyword, text(t.name.name) + typeParams, defContexts, parent, sep)) +
             indentedBrace(concat(t.elems.map(e => group(expr(e))), linebreak))
         case p: PartialQueryDef =>
           val params =
