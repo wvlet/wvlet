@@ -54,7 +54,11 @@ case class WvletFlowOption(
     catalog: Option[String] = None,
     @option(prefix = "--schema", description = "Context database schema to use")
     schema: Option[String] = None,
-    @option(prefix = "--run-store", description = "Flow run store type: file (default) or sqlite")
+    @option(
+      prefix = "--run-store",
+      description =
+        "Flow run store type: file (default), sqlite, or postgres (connection via WVLET_FLOW_STORE_PG_* env)"
+    )
     runStore: Option[String] = None
 )
 

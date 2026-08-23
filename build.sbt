@@ -478,6 +478,15 @@ lazy val runner = crossProject(JVMPlatform, JSPlatform, NativePlatform)
         "org.apache.arrow" % "arrow-vector" % "19.0.0",
         // SQLite-backed flow run store (cross-process cancellation and concurrency claims)
         "org.xerial" % "sqlite-jdbc" % "3.53.2.1",
+        // Postgres-backed flow run store (shared across machines: concurrency claims,
+        // scheduler catch-up, and the web UI observe runs from any process)
+        "org.postgresql" % "postgresql" % "42.7.7",
+        // In-process real PostgreSQL for run-store tests (no Docker needed), mirroring the
+        // TestingTrinoServer pattern below. Binaries are resolved as jar dependencies per
+        // platform, so tests run offline after the first sbt update
+        "io.zonky.test"          % "embedded-postgres"                       % "2.1.0"  % Test,
+        "io.zonky.test.postgres" % "embedded-postgres-binaries-darwin-arm64v8" % "17.5.0" % Test,
+        "io.zonky.test.postgres" % "embedded-postgres-binaries-linux-amd64" % "17.5.0" % Test,
         // trino-jdbc removed in PR-D: TrinoConnector now talks the Trino REST protocol via uni's
         // HttpSyncClient (see wvlet-lang's TrinoSqlConnector). trino-testing stays in test scope
         // for the in-process TestingTrinoServer — that artifact doesn't pull in trino-jdbc.
