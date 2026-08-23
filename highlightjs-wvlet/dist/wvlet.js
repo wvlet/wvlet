@@ -27,7 +27,8 @@ return function(hljs) {
              'pivot unpivot partition over rows range ' +
              'add prepend exclude rename shift drop describe ' +
              'concat dedup intersect except all distinct ' +
-             'save append delete truncate ' +
+             'save append delete truncate update ' +
+             'create replace reshape table schema view ' +
              'import export package execute use run ' +
              'test should be contain debug ' +
              'show explain sample count ' +
