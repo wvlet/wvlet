@@ -232,6 +232,41 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             expr(c.schema)
           )
         )
+      case a: AttachDatabase =>
+        // The database engine type is self-described by the path's URI scheme; explicit
+        // options from `with k: v` ride along, with `k: true` printed as a bare flag.
+        // `engine: '<name>'` overrides scheme inference (`type` is a hard Wvlet keyword)
+        val path         = a.path.unquotedValue
+        val inferredType =
+          if a.options.exists(_.key.leafName.equalsIgnoreCase("engine")) then
+            None
+          else
+            path.takeWhile(_ != ':') match
+              case "postgres" | "postgresql" if path.contains("://") =>
+                Some(text("TYPE postgres"))
+              case "mysql" if path.contains("://") =>
+                Some(text("TYPE mysql"))
+              case _ =>
+                None
+        val userOpts = a
+          .options
+          .map { opt =>
+            opt.value match
+              case _: TrueLiteral =>
+                text(opt.key.leafName.toUpperCase)
+              case s: StringLiteral if opt.key.leafName.equalsIgnoreCase("engine") =>
+                // The engine name maps to ATTACH's TYPE option, which takes an identifier
+                wl("TYPE", text(s.unquotedValue))
+              case v =>
+                wl(text(opt.key.leafName.toUpperCase), expr(v))
+          }
+        val allOpts = inferredType.toList ++ userOpts
+        val optsDoc =
+          if allOpts.isEmpty then
+            None
+          else
+            Some(paren(cl(allOpts)))
+        group(wl("attach", expr(a.path), "as", expr(a.alias), optsDoc))
       case d: DropSchema =>
         group(
           wl(

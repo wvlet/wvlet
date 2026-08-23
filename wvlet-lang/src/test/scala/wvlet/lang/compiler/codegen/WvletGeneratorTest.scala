@@ -145,6 +145,24 @@ class WvletGeneratorTest extends UniTest:
     print(printed) shouldContain "append to users on id, name"
   }
 
+  test("should round-trip a database attachment") {
+    val printed = print("use 'archive.duckdb' as archive")
+    printed shouldContain "use 'archive.duckdb' as archive"
+    print(printed) shouldContain "use 'archive.duckdb' as archive"
+  }
+
+  test("should round-trip a database attachment with options") {
+    val printed = print("use 'postgres://host/db' as pg with read_only: true")
+    printed shouldContain "use 'postgres://host/db' as pg with read_only: true"
+    print(printed) shouldContain "use 'postgres://host/db' as pg with read_only: true"
+  }
+
+  test("should keep plain use statements as schema/connector switches") {
+    val printed = print("use memory.main")
+    printed shouldContain "use memory.main"
+    printed.contains("attach") shouldBe false
+  }
+
   test("should parse block-form save and append statements") {
     val printed = print("""save to snapshot {
         |  from t

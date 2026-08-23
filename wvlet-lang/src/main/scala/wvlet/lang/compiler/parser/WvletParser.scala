@@ -1226,16 +1226,22 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         .SYNTAX_ERROR
         .newException(s"Expected 'view' after 'save as', but found '${v.str}'", v.sourceLocation)
 
-  def use(): Command = node {
+  def use(): TopLevelStatement = node {
     val t = consume(WvletToken.USE)
     // Support:
     // - use <name>                  (a connector name from the profile, or a schema)
     // - use schema <schema_name>    (explicit schema form)
     // - use connector <name>        (explicit connector form)
+    // - use 'file.duckdb' as name   (attach an external database under an alias)
     // Bare names are disambiguated at execution time: connector names of the active profile
     // shadow schema names.
     val nextToken = scanner.lookAhead()
-    if nextToken.token == WvletToken.IDENTIFIER && nextToken.str == "connector" then
+    if nextToken.token.isStringLiteral then
+      val path = stringLiteral()
+      consume(WvletToken.AS)
+      val alias = identifierSingle()
+      AttachDatabase(path, alias, saveOptions(), spanFrom(t))
+    else if nextToken.token == WvletToken.IDENTIFIER && nextToken.str == "connector" then
       consume(WvletToken.IDENTIFIER) // consume the "connector" soft keyword
       val connector = qualifiedId()
       UseConnector(connector, spanFrom(t))

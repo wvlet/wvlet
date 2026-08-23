@@ -1,0 +1,14 @@
+-- Attach an external database under an alias with `use '<path>' as <name>`.
+-- An in-memory database keeps this spec free of filesystem side effects
+use ':memory:' as ddl4_mem
+
+-- Write into the attached database through its alias
+save to ddl4_mem.ddl4_items {
+  from [[1, 'apple'], [2, 'banana']] as t(id, name)
+}
+
+-- Read back through the alias
+from ddl4_mem.ddl4_items
+order by id
+test _.size should be 2
+test _.columns should contain 'name'
