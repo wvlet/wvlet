@@ -9,4 +9,5 @@ type null = {
   def to_date: date = sql"cast(${this} as date)"
   def to_timestamp: timestamp = sql"cast(${this} as timestamp)"
   def to_string: string = sql"cast(${this} as varchar)"
+  def to_string in hive: string = sql"cast(${this} as string)"
 }

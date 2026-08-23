@@ -7,6 +7,7 @@ type double = {
   def to_double: double = sql"cast(${this} as double)"
   def to_boolean: boolean = sql"cast(${this} as boolean)"
   def to_string: string = sql"cast(${this} as varchar)"
+  def to_string in hive: string = sql"cast(${this} as string)"
 
   def or_else(other:double): double = sql"coalesce(${this},${other})"
 
@@ -36,6 +37,7 @@ type double = {
   -- Drop the fractional part of this value
   def truncate in duckdb: double = sql"trunc(${this})"
   def truncate in trino: double = sql"truncate(${this})"
+  def truncate in hive: double = sql"cast(cast(${this} as bigint) as double)"
 
   def is_nan in duckdb: boolean = sql"isnan(${this})"
   def is_nan in trino: boolean = sql"is_nan(${this})"

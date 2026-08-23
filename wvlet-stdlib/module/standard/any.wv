@@ -36,3 +36,8 @@ type any in duckdb = {
 type any in trino = {
   def to_json: json = sql"cast(${this} as json)"
 }
+
+type any in hive = {
+  -- Hive rejects `varchar` without a length in casts; its string type is `string`
+  def to_string: string = sql"cast(${this} as string)"
+}

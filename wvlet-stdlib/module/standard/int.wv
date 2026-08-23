@@ -7,6 +7,7 @@ type int = {
   def to_double: double = sql"cast(${this} as double)"
   def to_boolean: boolean = sql"cast(${this} as boolean)"
   def to_string: string = sql"cast(${this} as varchar)"
+  def to_string in hive: string = sql"cast(${this} as string)"
 
   def or_else(other:int): int = sql"coalesce(${this},${other})"
   def round(decimal:int=0): double = sql"round(${this},${decimal})"
@@ -27,6 +28,7 @@ type int = {
   -- Interpret this value as a unix epoch second (in UTC)
   def from_unixtime in duckdb: timestamp = sql"make_timestamp(cast(${this} as bigint) * 1000000)"
   def from_unixtime in trino: timestamp = sql"cast(from_unixtime(${this}) AT TIME ZONE 'UTC' as timestamp)"
+  def from_unixtime in hive: timestamp = sql"cast(from_unixtime(${this}) as timestamp)"
 
   def in(v:any*): boolean = sql"${this} in (${v})"
   def not_in(v:any*): boolean = sql"${this} not in (${v})"
