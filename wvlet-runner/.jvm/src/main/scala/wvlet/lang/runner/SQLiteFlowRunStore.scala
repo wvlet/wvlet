@@ -67,15 +67,26 @@ class SQLiteFlowRunStore(dbPath: Path) extends FlowRunStore with LogSupport:
           stmt.execute(s"alter table runs add column ${column} ${sqlType}")
     }
     stmt.execute("""create table if not exists stages(
-        |  run_id     text not null,
-        |  ordinal    integer not null,
-        |  name       text not null,
-        |  state      text not null,
-        |  attempts   integer not null,
-        |  error      text,
-        |  table_name text,
+        |  run_id        text not null,
+        |  ordinal       integer not null,
+        |  name          text not null,
+        |  state         text not null,
+        |  attempts      integer not null,
+        |  error         text,
+        |  table_name    text,
+        |  waiting_since integer,
+        |  last_poll_at  integer,
         |  primary key(run_id, ordinal)
         |)""".stripMargin)
+    // Migrate stage tables created before the sensor-liveness columns were introduced
+    val existingStageColumns =
+      Using.resource(stmt.executeQuery("pragma table_info(stages)")) { rs =>
+        Iterator.continually(rs).takeWhile(_.next()).map(_.getString("name").toLowerCase).toSet
+      }
+    List("waiting_since" -> "integer", "last_poll_at" -> "integer").foreach { (column, sqlType) =>
+      if !existingStageColumns.contains(column) then
+        stmt.execute(s"alter table stages add column ${column} ${sqlType}")
+    }
   }
 
   override def save(record: FlowRunRecord): Unit = synchronized {
@@ -140,9 +151,15 @@ class SQLiteFlowRunStore(dbPath: Path) extends FlowRunStore with LogSupport:
     }
     Using.resource(
       conn.prepareStatement(
-        "insert into stages(run_id, ordinal, name, state, attempts, error, table_name) values(?, ?, ?, ?, ?, ?, ?)"
+        "insert into stages(run_id, ordinal, name, state, attempts, error, table_name, waiting_since, last_poll_at) values(?, ?, ?, ?, ?, ?, ?, ?, ?)"
       )
     ) { ps =>
+      def setLongOpt(index: Int, value: Option[Long]): Unit =
+        value match
+          case Some(v) =>
+            ps.setLong(index, v)
+          case None =>
+            ps.setNull(index, java.sql.Types.BIGINT)
       record
         .stages
         .zipWithIndex
@@ -154,10 +171,14 @@ class SQLiteFlowRunStore(dbPath: Path) extends FlowRunStore with LogSupport:
           ps.setInt(5, s.attempts)
           ps.setString(6, s.error.orNull)
           ps.setString(7, s.table.orNull)
+          setLongOpt(8, s.waitingSinceMillis)
+          setLongOpt(9, s.lastPollAtMillis)
           ps.addBatch()
         }
       ps.executeBatch()
     }
+
+  end saveStages
 
   override def get(runId: String): Option[FlowRunRecord] = synchronized {
     queryRuns("where run_id = ?", _.setString(1, runId.toLowerCase)).headOption
@@ -295,11 +316,17 @@ class SQLiteFlowRunStore(dbPath: Path) extends FlowRunStore with LogSupport:
   private def stagesOf(runId: String): List[StageRunRecord] =
     Using.resource(
       conn.prepareStatement(
-        "select name, state, attempts, error, table_name from stages where run_id = ? order by ordinal"
+        "select name, state, attempts, error, table_name, waiting_since, last_poll_at from stages where run_id = ? order by ordinal"
       )
     ) { ps =>
       ps.setString(1, runId.toLowerCase)
       Using.resource(ps.executeQuery()) { rs =>
+        def getLongOpt(index: Int): Option[Long] =
+          val v = rs.getLong(index)
+          if rs.wasNull() then
+            None
+          else
+            Some(v)
         val b = List.newBuilder[StageRunRecord]
         while rs.next() do
           b +=
@@ -308,7 +335,9 @@ class SQLiteFlowRunStore(dbPath: Path) extends FlowRunStore with LogSupport:
               state = rs.getString(2),
               attempts = rs.getInt(3),
               error = Option(rs.getString(4)),
-              table = Option(rs.getString(5))
+              table = Option(rs.getString(5)),
+              waitingSinceMillis = getLongOpt(6),
+              lastPollAtMillis = getLongOpt(7)
             )
         b.result()
       }

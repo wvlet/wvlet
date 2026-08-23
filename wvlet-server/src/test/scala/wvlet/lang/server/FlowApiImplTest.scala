@@ -42,6 +42,25 @@ class FlowApiImplTest extends WvletDITest:
         stages = List(StageRunRecord("broken", "failed", 3, Some("boom"), None))
       )
     )
+    registry.save(
+      FlowRunRecord(
+        runId = "run3",
+        flowName = "FlowC",
+        state = FlowRunRecord.STATE_RUNNING,
+        startedAtMillis = 300L,
+        finishedAtMillis = None,
+        leaseExpiresAtMillis = Some(Long.MaxValue),
+        stages = List(
+          StageRunRecord(
+            "gate",
+            "running",
+            1,
+            waitingSinceMillis = Some(310L),
+            lastPollAtMillis = Some(320L)
+          )
+        )
+      )
+    )
     dir.toString
 
   end workDir
@@ -52,7 +71,7 @@ class FlowApiImplTest extends WvletDITest:
   test("list recorded runs most recent first") {
     val api  = dep[FlowApi]
     val runs = api.listRuns(FlowApi.FlowRunListRequest())
-    runs.map(_.runId) shouldBe List("run2", "run1")
+    runs.map(_.runId) shouldBe List("run3", "run2", "run1")
     val r1 = runs.last
     r1.flowName shouldBe "FlowA"
     r1.flowCall shouldBe "FlowA(segment = 'a')"
@@ -66,7 +85,7 @@ class FlowApiImplTest extends WvletDITest:
     val api = dep[FlowApi]
     api.listRuns(FlowApi.FlowRunListRequest(flowName = Some("FlowA"))).map(_.runId) shouldBe
       List("run1")
-    api.listRuns(FlowApi.FlowRunListRequest(limit = 1)).map(_.runId) shouldBe List("run2")
+    api.listRuns(FlowApi.FlowRunListRequest(limit = 1)).map(_.runId) shouldBe List("run3")
     api.listRuns(FlowApi.FlowRunListRequest(flowName = Some("NoSuchFlow"))) shouldBe Nil
   }
 
@@ -81,6 +100,15 @@ class FlowApiImplTest extends WvletDITest:
     stage.state shouldBe "failed"
     stage.attempts shouldBe 3
     stage.error shouldBe Some("boom")
+  }
+
+  test("surface sensor liveness of a waiting stage") {
+    val api   = dep[FlowApi]
+    val stage = api.getRun(FlowApi.FlowRunRequest("run3")).stages.head
+    stage.name shouldBe "gate"
+    stage.state shouldBe "running"
+    stage.waitingSinceMillis shouldBe Some(310L)
+    stage.lastPollAtMillis shouldBe Some(320L)
   }
 
   test("report an unknown run id as not found") {

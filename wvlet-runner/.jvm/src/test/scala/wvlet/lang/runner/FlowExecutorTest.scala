@@ -1482,6 +1482,53 @@ class FlowExecutorTest extends UniTest:
       connector.execute("drop table if exists __wv_sensor_dep")
   }
 
+  test("surface sensor liveness on the run record while a stage is waiting") {
+    connector.execute("drop table if exists __wv_sensor_live")
+    connector.execute("create table __wv_sensor_live as select 1 as x limit 0")
+    try
+      val registry = FlowRunRegistry(java.nio.file.Files.createTempDirectory("wv-flow-sensor"))
+      // Observe the persisted snapshot while the sensor polls, then satisfy the condition
+      @volatile
+      var observed: Option[StageRunRecord] = None
+      val feeder                           = Thread(
+        new Runnable:
+          override def run(): Unit =
+            val deadline = System.currentTimeMillis() + 10000
+            while observed.isEmpty && System.currentTimeMillis() < deadline do
+              registry
+                .list()
+                .headOption
+                .flatMap(_.stages.find(_.name == "gate"))
+                .filter(_.waitingSinceMillis.isDefined)
+                .foreach(s => observed = Some(s))
+              Thread.sleep(10)
+            connector.execute("insert into __wv_sensor_live values (10)")
+      )
+      feeder.setDaemon(true)
+      feeder.start()
+      val result = runFlow(
+        """flow SensorLivenessFlow = {
+          |  stage gate with { poll_interval: 20ms } = from __wv_sensor_live | wait until _.x > 5
+          |}""".stripMargin,
+        registry = Some(registry)
+      )
+      feeder.join()
+      result.isSuccess shouldBe true
+      // While polling, the persisted snapshot carried the waiting markers of the running stage
+      val waiting = observed.getOrElse(fail("No waiting snapshot was observed"))
+      waiting.state shouldBe "running"
+      waiting.waitingSinceMillis.isDefined shouldBe true
+      waiting.lastPollAtMillis.isDefined shouldBe true
+      // The terminal record no longer reports the stage as waiting
+      val finalStage = registry.get(result.runId).get.stages.find(_.name == "gate").get
+      finalStage.state shouldBe "success"
+      finalStage.waitingSinceMillis shouldBe None
+      finalStage.lastPollAtMillis shouldBe None
+    finally
+      connector.execute("drop table if exists __wv_sensor_live")
+    end try
+  }
+
   test("fail a sensor stage when its timeout expires before the condition holds") {
     connector.execute("drop table if exists __wv_sensor_empty")
     connector.execute("create table __wv_sensor_empty as select 1 as x limit 0")

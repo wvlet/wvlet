@@ -353,6 +353,14 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
       .finishedAtMillis
       .map(f => s"${f - r.startedAtMillis}ms")
       .getOrElse("-")
+    def fmtDuration(millis: Long): String =
+      val seconds = (millis / 1000).max(0L)
+      if seconds < 60 then
+        s"${seconds}s"
+      else if seconds < 3600 then
+        s"${seconds / 60}m${seconds % 60}s"
+      else
+        s"${seconds / 3600}h${(seconds % 3600) / 60}m"
 
     def requireRunId(usage: String): String = runId.getOrElse(
       throw StatusCode.INVALID_ARGUMENT.newException(s"Usage: wvlet flow session ${usage}")
@@ -388,10 +396,24 @@ class WvletFlowCommand(opts: WvletGlobalOption) extends LogSupport:
           r.runTimeMillis.foreach(t => println(s"run_time: ${fmtTime(t)}"))
           println(s"started:  ${fmtTime(r.startedAtMillis)}")
           r.finishedAtMillis.foreach(f => println(s"finished: ${fmtTime(f)}"))
+          val now = System.currentTimeMillis()
           r.stages
             .foreach { s =>
               val err = s.error.map(e => s" - ${e}").getOrElse("")
-              println(f"  stage ${s.name}%-24s ${s.state}%-14s attempts: ${s.attempts}${err}")
+              // A polling `wait until` sensor is shown distinctly from running query work
+              val waiting = s
+                .waitingSinceMillis
+                .map { since =>
+                  val lastPoll = s
+                    .lastPollAtMillis
+                    .map(p => s", last poll ${fmtDuration(now - p)} ago")
+                    .getOrElse("")
+                  s" [waiting for ${fmtDuration(now - since)}${lastPoll}]"
+                }
+                .getOrElse("")
+              println(
+                f"  stage ${s.name}%-24s ${s.state}%-14s attempts: ${s.attempts}${waiting}${err}"
+              )
             }
         case "cancel" =>
           val id = requireRunId("cancel <run_id>")

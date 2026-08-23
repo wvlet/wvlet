@@ -27,13 +27,20 @@ import scala.util.control.NonFatal
 
 /**
   * The persisted state of a single stage within a flow run
+  *
+  * @param waitingSinceMillis
+  *   Set while a running `wait until` sensor stage is polling: when the wait began
+  * @param lastPollAtMillis
+  *   Set while a running sensor stage is polling: the time of its latest condition check
   */
 case class StageRunRecord(
     name: String,
     state: String,
     attempts: Int,
     error: Option[String] = None,
-    table: Option[String] = None
+    table: Option[String] = None,
+    waitingSinceMillis: Option[Long] = None,
+    lastPollAtMillis: Option[Long] = None
 )
 
 /**
