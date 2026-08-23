@@ -120,6 +120,7 @@ lazy val jsProjects: Seq[ProjectReference] = Seq(
 
 lazy val nativeProjects: Seq[ProjectReference] = Seq(
   api.native,
+  client.native,
   lang.native,
   runner.native,
   cliCore.native,
@@ -499,7 +500,8 @@ lazy val runner = crossProject(JVMPlatform, JSPlatform, NativePlatform)
         //        ) cross (CrossVersion.for3Use2_13)
       )
   )
-  .dependsOn(lang)
+  // `client` provides the RPC client for the remote wvlet-server backend (WvletServerClient)
+  .dependsOn(lang, client)
   .jvmConfigure(_.dependsOn(connector, testUtil % Test))
 
 lazy val spec = project
@@ -621,12 +623,15 @@ lazy val server = project
   )
   .dependsOn(api.jvm, client.jvm, runner.jvm, httpServer, testUtil % Test)
 
-// Hand-written uni-RPC clients live in wvlet-client/{shared,jvm,js}/src/main/scala. The
-// FrontendRPC shim aggregates the per-service clients so consumers see a single surface.
-lazy val client = crossProject(JVMPlatform, JSPlatform)
+// Hand-written uni-RPC clients live in wvlet-client/src/main/scala. The FrontendRPC shim
+// aggregates the per-service clients so consumers see a single surface. Cross-builds for all
+// three platforms so the runner's remote wvlet-server backend works from wvc and the Node CLI.
+lazy val client = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
   .in(file("wvlet-client"))
   .settings(buildSettings)
   .jsSettings(libraryDependencies += scalajsJavaSecureRandom)
+  .nativeSettings(uniNativeCurlLinking)
   .dependsOn(api)
 
 import org.scalajs.linker.interface.OutputPatterns

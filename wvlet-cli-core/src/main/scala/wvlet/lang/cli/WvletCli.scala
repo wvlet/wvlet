@@ -13,6 +13,7 @@ import wvlet.lang.runner.QueryResult
 import wvlet.lang.runner.QueryResultList
 import wvlet.lang.runner.TableRows
 import wvlet.lang.runner.connector.SqlConnectorProvider
+import wvlet.lang.runner.connector.WvletServerClient
 import wvlet.uni.cli.launcher.argument
 import wvlet.uni.cli.launcher.command
 import wvlet.uni.cli.launcher.option
@@ -36,7 +37,9 @@ class WvletCli(opts: WvletCliGlobalOption) extends LogSupport:
   @command(description = "Convert SQL to wvlet flow-style query")
   def to_wvlet(opt: WvletCliCompileOption): Unit = println(WvletCliCompiler(opt).generateWvlet)
 
-  @command(description = "Compile and execute a wvlet query against DuckDB or Trino")
+  @command(description =
+    "Compile and execute a wvlet query against DuckDB, Trino, or a remote wvlet server"
+  )
   def run(opt: WvletCliRunOption): Unit =
     val result = executeAgainst(opt)
     val output =
@@ -61,6 +64,10 @@ class WvletCli(opts: WvletCliGlobalOption) extends LogSupport:
       .orElse(engine.map(_.`type`))
       .map(_.toLowerCase)
       .getOrElse("duckdb")
+    if backend == "wvlet" then
+      // Remote execution: the server compiles and runs the ORIGINAL wvlet text with its own
+      // profile, catalogs, and credentials — no local engine or compilation involved
+      return executeOnRemoteServer(opt, engine)
     // CLI flags override the matching profile field. `--https` (a Boolean flag) can't
     // distinguish "user passed false" from "user didn't pass it", so the profile setting only
     // applies when the flag was left at the default `false`.
@@ -112,6 +119,56 @@ class WvletCli(opts: WvletCliGlobalOption) extends LogSupport:
 
   end executeAgainst
 
+  private def executeOnRemoteServer(
+      opt: WvletCliRunOption,
+      engine: Option[ConnectorConfig]
+  ): QueryResult =
+    val host = opt
+      .host
+      .orElse(engine.flatMap(_.host))
+      .getOrElse(
+        throw new IllegalArgumentException(
+          "wvlet server host is required — pass --host or set 'host' on the profile"
+        )
+      )
+    val useHttps =
+      if opt.useHttps then
+        true
+      else
+        engine.flatMap(_.useHttps).getOrElse(false)
+    val port = opt
+      .port
+      .orElse(engine.flatMap(_.port))
+      .getOrElse(
+        if useHttps then
+          443
+        else
+          // The wvlet server's default port
+          9090
+      )
+    val scheme =
+      if useHttps then
+        "https"
+      else
+        "http"
+    val query =
+      (opt.file, opt.query) match
+        case (Some(f), None) =>
+          wvlet.lang.compiler.SourceIO.readAsString(s"${opt.workFolder}/${f}".stripPrefix("./"))
+        case (None, Some(q)) =>
+          q
+        case _ =>
+          throw new IllegalArgumentException("Specify either --file or a query argument")
+    val client = WvletServerClient(
+      baseUri = s"${scheme}://${host}:${port}",
+      // The server resolves this name in ITS profiles.json; unset runs on the server default
+      profile = engine.flatMap(_.properties.get("remoteProfile")).map(_.toString)
+    )
+    try client.runQuery(query)
+    finally client.close()
+
+  end executeOnRemoteServer
+
   private def lastTableRows(r: QueryResult): Option[TableRows] =
     r match
       case t: TableRows =>
@@ -160,7 +217,10 @@ case class WvletCliRunOption(
     query: Option[String] = None,
     @option(prefix = "-p,--profile", description = "Profile name from ~/.wvlet/profiles.json")
     profile: Option[String] = None,
-    @option(prefix = "-t,--target", description = "Backend: duckdb (default) or trino")
+    @option(
+      prefix = "-t,--target",
+      description = "Backend: duckdb (default), trino, or wvlet (remote server)"
+    )
     targetDBType: Option[String] = None,
     @option(prefix = "--format", description = "Output format: box (default), csv")
     format: String = "box",

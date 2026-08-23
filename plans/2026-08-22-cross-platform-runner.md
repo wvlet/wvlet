@@ -209,10 +209,15 @@ Server side:
 Client side:
 4. Add `NativePlatform` to the `wvlet-client` crossProject — it depends only on
    `wvlet-api` + uni RPC, both of which already cross-build to Native.
-5. New `WvletServerSqlConnector extends SqlConnector` in shared runner sources: `submit` →
-   `FrontendApi.submitQuery`, `await` → poll `getQueryInfo` + drain pages, `cancel` →
-   `cancelQuery`. Registered as connector `type: "wvlet"` with
-   `host`/`port`/`useHttps` from `ConnectorConfig`.
+5. New `WvletServerClient` in shared runner sources: submit → poll `getQueryInfo` →
+   adapt the structured result; cancel → `cancelQuery`. `-t wvlet` on the CLI
+   sends the **original wvlet text** and skips local compilation entirely.
+   > **Revision (phase-5 implementation):** not a `SqlConnector`. Wrapping the
+   > server in `SqlConnector.submit(sql)` and routing through `PlanExecutor`
+   > would compile locally, generate SQL, and have the server re-compile that
+   > text — double compilation with mismatched contexts. The server owns the
+   > compilation (its profiles, catalogs, credentials), so the client stays a
+   > raw-text remote runner with one server session per client instance.
 
 This gives thin native/Node clients a REST path to every engine the JVM server
 supports (including Snowflake JDBC and multi-connector staging) without porting any
