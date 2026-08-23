@@ -321,8 +321,10 @@ object Typer extends Phase("typer") with LogSupport:
       case u: UseConnector =>
         markNamespaceRef(u.connector)
         typeNode(u)
-      case c: CreateTable if c.tableElems.isEmpty =>
-        // `create table <name>` action: the columns come from the `table` declaration in scope
+      // `create table <name>` action (Wvlet sources only): the columns come from the `table`
+      // declaration in scope. SQL sources may legitimately have column-less CREATE TABLE forms
+      // (e.g. Trino's CREATE TABLE ... WITH (properties)), which are left as parsed
+      case c: CreateTable if c.tableElems.isEmpty && !ctx.compilationUnit.sourceFile.isSQL =>
         markNamespaceRef(c.table)
         val typeName = Name.typeName(c.table.leafName)
         val cols     = ctx
