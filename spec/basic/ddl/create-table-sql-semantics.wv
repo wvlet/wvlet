@@ -1,0 +1,40 @@
+-- SQL-equivalent create table semantics, and declaration-based auto-create on append
+
+table ddl5_items = {
+  id: int
+  name: string
+}
+
+-- Appending to a missing declared table auto-creates it with the declared shape
+append to ddl5_items {
+  from [[1, 'pen'], [2, 'book']] as t(id, name)
+}
+
+from ddl5_items
+test _.size should be 2
+test _.columns should contain 'name'
+
+-- if not exists skips silently when the table already exists; data remains
+create table ddl5_items if not exists
+
+from ddl5_items
+test _.size should be 2
+
+-- or replace drops and recreates from the declaration; the table becomes empty
+create or replace table ddl5_items
+
+from ddl5_items
+test _.size should be 0
+
+-- The bare form creates a fresh table from its declaration
+table ddl5_fresh = {
+  id: int
+}
+
+create table ddl5_fresh
+
+from ddl5_fresh
+test _.size should be 0
+
+drop table ddl5_items
+drop table ddl5_fresh

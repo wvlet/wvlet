@@ -199,6 +199,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
         group(
           wl(
             "create",
+            Option.when(c.replace)("or replace"),
             "table",
             if c.ifNotExists then
               Some("if not exists")

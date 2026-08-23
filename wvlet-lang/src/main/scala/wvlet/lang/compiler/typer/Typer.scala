@@ -83,6 +83,25 @@ object Typer extends Phase("typer") with LogSupport:
           false
     )
 
+  /**
+    * Columns of the `table` shape declaration registered for the given table name, if any. Used to
+    * fill `create table` actions and to auto-create declared tables on `append to`
+    */
+  def declaredTableColumns(tableName: String)(using ctx: Context): List[ColumnDef] = ctx
+    .findSymbolByName(Name.typeName(tableName))
+    .map(_.tree)
+    .collect { case td: TypeDef =>
+      td.elems
+        .collect { case f: FieldDef =>
+          ColumnDef(
+            UnquotedIdentifier(f.name.name, f.span),
+            DataTypeParser.parse(f.fieldType.fullName),
+            f.span
+          )
+        }
+    }
+    .getOrElse(Nil)
+
   override def run(unit: CompilationUnit, context: Context): CompilationUnit =
     trace(s"Running new typer on ${unit.sourceFile.fileName}")
 
@@ -328,21 +347,7 @@ object Typer extends Phase("typer") with LogSupport:
       // (e.g. Trino's CREATE TABLE ... WITH (properties)), which are left as parsed
       case c: CreateTable if c.tableElems.isEmpty && !ctx.compilationUnit.sourceFile.isSQL =>
         markNamespaceRef(c.table)
-        val typeName = Name.typeName(c.table.leafName)
-        val cols     = ctx
-          .findSymbolByName(typeName)
-          .map(_.tree)
-          .collect { case td: TypeDef =>
-            td.elems
-              .collect { case f: FieldDef =>
-                ColumnDef(
-                  UnquotedIdentifier(f.name.name, f.span),
-                  DataTypeParser.parse(f.fieldType.fullName),
-                  f.span
-                )
-              }
-          }
-          .getOrElse(Nil)
+        val cols = Typer.declaredTableColumns(c.table.leafName)
         if cols.isEmpty then
           throw StatusCode
             .TABLE_NOT_FOUND

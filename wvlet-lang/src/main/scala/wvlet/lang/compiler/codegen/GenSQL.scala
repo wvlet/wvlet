@@ -153,6 +153,12 @@ object GenSQL extends Phase("generate-sql"):
                 .dbType}",
             a.sourceLocation
           )
+      case c: CreateTable if c.replace && !context.dbType.supportCreateOrReplace =>
+        // Engines without CREATE OR REPLACE decompose it into an explicit drop + create
+        List(
+          withHeader(s"drop table if exists ${c.table.fullName}", c.sourceLocation),
+          withHeader(gen.print(c.copy(replace = false)), c.sourceLocation)
+        )
       case a: AlterTable if a.operations.size > 1 =>
         // A reshape block carries multiple operations; emit one ALTER TABLE statement per
         // operation so each runs as its own SQL statement
@@ -165,6 +171,47 @@ object GenSQL extends Phase("generate-sql"):
           }
       case _ =>
         List(withHeader(gen.print(ddl), ddl.sourceLocation))
+
+  end generateDDLSQL
+
+  /**
+    * SQL for appending into a table that does not exist yet. When a `table` shape declaration is in
+    * scope, the table is created from the declared columns (so declared types win over the query's
+    * inferred ones) and the rows are inserted into it; otherwise the append reduces to CREATE TABLE
+    * AS with the query's shape
+    */
+  private def appendToNewTableSQL(a: AppendTo, fullTableName: String, baseSQL: String)(using
+      context: Context
+  ): List[String] =
+    val declaredCols = Typer.declaredTableColumns(TableName.parse(a.targetName).name)
+    if declaredCols.nonEmpty then
+      val gen       = sqlGeneratorFor(context.dbType)
+      val createSQL = gen.print(
+        CreateTable(
+          UnquotedIdentifier(fullTableName, a.span),
+          ifNotExists = true,
+          tableElems = declaredCols,
+          span = a.span
+        )
+      )
+      val columnNames =
+        if a.columns.nonEmpty then
+          a.columns.map(_.fullName)
+        else
+          a.child.relationType.fields.map(_.name.name)
+      val columnList =
+        if columnNames.nonEmpty then
+          s" (${columnNames.mkString(", ")})"
+        else
+          ""
+      List(
+        withHeader(createSQL, a.sourceLocation),
+        withHeader(s"insert into ${fullTableName}${columnList}\n${baseSQL}", a.sourceLocation)
+      )
+    else
+      List(withHeader(s"create table ${fullTableName} as\n${baseSQL}", a.sourceLocation))
+
+  end appendToNewTableSQL
 
   def generateSaveSQL(save: Save, context: Context): List[String] =
     given Context  = context
@@ -283,8 +330,7 @@ object GenSQL extends Phase("generate-sql"):
             statements += withHeader(mergeSQL, a.sourceLocation)
           case None =>
             // No existing table: nothing to merge with, so the keyed append reduces to a create
-            statements +=
-              withHeader(s"create table ${fullTableName} as\n${baseSQL.sql}", a.sourceLocation)
+            statements ++= appendToNewTableSQL(a, fullTableName, baseSQL.sql)
         end match
       case u: UpdateColumns =>
         val gen = sqlGeneratorFor(context.dbType)
@@ -318,18 +364,20 @@ object GenSQL extends Phase("generate-sql"):
         val tbl           = TableName.parse(a.targetName)
         val schema        = tbl.schema.getOrElse(context.defaultSchema)
         val fullTableName = s"${schema}.${tbl.name}"
-        val insertSQL     =
-          context.catalog.getTable(TableName.parse(fullTableName)) match
-            case Some(t) =>
-              val columnList =
-                if a.columns.nonEmpty then
-                  s" (${a.columns.map(_.fullName).mkString(", ")})"
-                else
-                  ""
-              s"insert into ${fullTableName}${columnList}\n${baseSQL.sql}"
-            case None =>
-              s"create table ${fullTableName} as\n${baseSQL.sql}"
-        statements += withHeader(insertSQL, save.sourceLocation)
+        context.catalog.getTable(TableName.parse(fullTableName)) match
+          case Some(t) =>
+            val columnList =
+              if a.columns.nonEmpty then
+                s" (${a.columns.map(_.fullName).mkString(", ")})"
+              else
+                ""
+            statements +=
+              withHeader(
+                s"insert into ${fullTableName}${columnList}\n${baseSQL.sql}",
+                save.sourceLocation
+              )
+          case None =>
+            statements ++= appendToNewTableSQL(a, fullTableName, baseSQL.sql)
       case a: AppendTo if a.isForFile && context.dbType == DBType.DuckDB =>
         val baseSQL    = GenSQL.generateSQLFromRelation(save.inputRelation, addHeader = false)
         val targetPath = context.dataFilePath(a.targetName)

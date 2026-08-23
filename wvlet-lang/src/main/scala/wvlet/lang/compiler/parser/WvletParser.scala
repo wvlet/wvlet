@@ -1128,16 +1128,43 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     * scope, and the action is create-if-missing (idempotent), so no modifier is accepted.
     */
   def createStatement(): LogicalPlan = node {
-    val t    = consume(WvletToken.CREATE)
+    val t = consume(WvletToken.CREATE)
+    // `create or replace table t` follows SQL's own spelling and semantics (drop-and-recreate)
+    val replace =
+      if scanner.lookAhead().token == WvletToken.OR then
+        consume(WvletToken.OR)
+        val r = identifierSingle()
+        if r.leafName != "replace" then
+          throw StatusCode
+            .SYNTAX_ERROR
+            .newException(
+              s"Expected 'replace' after 'create or', but found '${r.leafName}'",
+              t.sourceLocation
+            )
+        true
+      else
+        false
     val kind = identifierSingle()
     kind.leafName match
       case "schema" =>
+        if replace then
+          throw StatusCode
+            .SYNTAX_ERROR
+            .newException("create or replace is not supported for schemas", t.sourceLocation)
         val name = qualifiedId()
         CreateSchema(name, ifNotExistsModifier(), None, spanFrom(t))
       case "table" =>
         val name = qualifiedId()
-        // tableElems are filled from the `table` declaration in scope at typing time
-        CreateTable(name, ifNotExists = true, tableElems = Nil, span = spanFrom(t))
+        // tableElems are filled from the `table` declaration in scope at typing time.
+        // SQL semantics: the bare form fails if the table exists; `if not exists` skips silently
+        val ifNotExists = !replace && ifNotExistsModifier()
+        CreateTable(
+          name,
+          ifNotExists = ifNotExists,
+          tableElems = Nil,
+          span = spanFrom(t),
+          replace = replace
+        )
       case other =>
         throw StatusCode
           .SYNTAX_ERROR

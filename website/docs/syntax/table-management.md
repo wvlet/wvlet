@@ -34,11 +34,13 @@ table users = {
 ## Creating and Dropping Tables
 
 The `create table` action materializes a declared shape in the target database. It takes
-nothing after the table name — the columns come from the `table` declaration — and it is
-idempotent: if the table already exists, the statement is a no-op.
+nothing after the table name — the columns come from the `table` declaration — and it
+follows SQL semantics exactly, so there is nothing new to learn:
 
 ```wvlet
-create table users     -- creates the table from its declaration if missing
+create table users                  -- fresh create; error if the table already exists
+create table users if not exists   -- create if missing; silently skip otherwise
+create or replace table users      -- drop and recreate (empties the table)
 
 drop table users
 drop table users if exists
@@ -48,6 +50,10 @@ truncate users         -- delete all rows, keep the table
 
 Running `create table` without a matching `table` declaration in scope is a compile-time
 error.
+
+In most pipelines an explicit `create table` is unnecessary: writing to a declared table
+with `save to` or `append to` creates it automatically (see below). `create table` exists
+for tables that only external systems write to.
 
 ## Writing Query Results to Tables
 
@@ -86,12 +92,35 @@ save to calendar if not exists {
 }
 ```
 
-| Statement | Behavior when the table exists |
-|-----------|-------------------------------|
-| `save to t` | Replaced with the new query result |
-| `save to t if not exists` | No-op (seed once) |
-| `append to t` | Rows are appended |
-| `create table t` | No-op (idempotent) |
+### Automatic Table Creation
+
+Writing to a table that does not exist yet creates it — no `create table` step is needed.
+`save to` always creates (or replaces) the target. `append to` creates the missing table
+before inserting; when a `table` declaration is in scope, the table is created with the
+*declared* column types, so the declaration — not the first query's inferred types — decides
+the shape:
+
+```wvlet
+table events = {
+  id: long
+  name: string
+}
+
+-- Runs in a completely fresh database: creates `events` with (id: long, name: string),
+-- then inserts the rows
+append to events {
+  from [[1, 'click'], [2, 'view']] as t(id, name)
+}
+```
+
+| Statement | Table missing | Table exists |
+|-----------|---------------|--------------|
+| `save to t` | Created from the query | Replaced with the new query result |
+| `save to t if not exists` | Created from the query | No-op (seed once) |
+| `append to t` | Created (declared shape if available), then rows inserted | Rows are appended |
+| `create table t` | Created from the declaration | Error (SQL semantics) |
+| `create table t if not exists` | Created from the declaration | No-op |
+| `create or replace table t` | Created from the declaration | Dropped and recreated empty |
 
 ## Updating Rows
 

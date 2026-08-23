@@ -1,0 +1,8 @@
+-- create table follows SQL semantics: creating a table that already exists is an error
+
+table ddl_neg_dup = {
+  id: int
+}
+
+create table ddl_neg_dup
+create table ddl_neg_dup

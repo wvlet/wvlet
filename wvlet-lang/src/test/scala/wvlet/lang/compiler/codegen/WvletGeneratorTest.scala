@@ -145,6 +145,14 @@ class WvletGeneratorTest extends UniTest:
     print(printed) shouldContain "append to users on id, name"
   }
 
+  test("should round-trip SQL-equivalent create table forms") {
+    val printed = print("""create table users if not exists
+        |create or replace table users""".stripMargin)
+    printed shouldContain "create table users if not exists"
+    printed shouldContain "create or replace table users"
+    print(printed) shouldContain "create or replace table users"
+  }
+
   test("should round-trip a database attachment") {
     val printed = print("use 'archive.duckdb' as archive")
     printed shouldContain "use 'archive.duckdb' as archive"
