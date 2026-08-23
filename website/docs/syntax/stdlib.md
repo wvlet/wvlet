@@ -132,7 +132,7 @@ On array values (e.g. from `split`, array literals, or `array_agg`):
 | `a.distinct` | Remove duplicates |
 | `a.concat(other)` | Concatenate arrays |
 | `a.flatten` | Flatten an array of arrays |
-| `a.mk_string(separator)` | Join elements into a string |
+| `a.mk_string` / `a.mk_string(separator)` | Join elements into a string |
 
 ## Map Functions
 
@@ -174,6 +174,32 @@ agg
   amount.sum as total,
   amount.approx_quantile(0.95) as p95,
   product.string_agg(',') as products
+```
+
+## Window Functions
+
+Window (analytic) functions compute a value over a set of rows related to the current row, selected with an `over(...)` clause:
+
+| Function | Description |
+|----------|-------------|
+| `row_number()` | Sequential row number within the window (1, 2, 3, ...) |
+| `rank()` / `dense_rank()` | Rank with / without gaps after ties |
+| `percent_rank()` / `cume_dist()` | Relative rank / cumulative distribution |
+| `ntile(n)` | Bucket number when the window is divided into `n` groups |
+| `c.lag` / `c.lag(offset)` / `c.lag(offset, default)` | Value from a preceding row |
+| `c.lead` / `c.lead(offset)` / `c.lead(offset, default)` | Value from a following row |
+| `c.first_value` / `c.last_value` / `c.nth_value(n)` | Value at a window position |
+
+Aggregation functions (`sum`, `avg`, `count`, ...) also accept an `over(...)` clause. The window clause supports `partition by`, `order by`, and row frames (`rows[-1, 0]`):
+
+```wvlet
+from orders
+select
+  customer_id,
+  order_date,
+  row_number() over (partition by customer_id order by order_date) as nth_order,
+  amount.lag over (partition by customer_id order by order_date) as prev_amount,
+  amount.sum over (partition by customer_id) as customer_total
 ```
 
 ## Engine-Specific Functions

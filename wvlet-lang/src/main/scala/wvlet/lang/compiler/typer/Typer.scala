@@ -30,7 +30,9 @@ import wvlet.lang.model.expr.ConditionalExpression
 import wvlet.lang.model.expr.ContextInputRef
 import wvlet.lang.model.expr.DotRef
 import wvlet.lang.model.expr.FunctionApply
+import wvlet.lang.model.expr.FunctionArg
 import wvlet.lang.model.expr.Identifier
+import wvlet.lang.model.expr.Window
 import wvlet.lang.model.expr.InRelation
 import wvlet.lang.model.expr.NotInRelation
 import wvlet.lang.model.expr.SubQueryExpression
@@ -459,21 +461,76 @@ object Typer extends Phase("typer") with LogSupport:
       while continue && rounds < maxFunctionResolutionRounds do
         rounds += 1
         // Inline function applications, bare member references, and native function
-        // references in a single bottom-up pass. Only no-arg methods are inlined from a bare
-        // DotRef: a DotRef with declared arguments is the base of an enclosing FunctionApply
-        // that must bind them first (possibly in a later round)
-        val inlineRule: PartialFunction[Expression, Expression] =
-          case f: FunctionApply =>
-            FunctionInliner.resolveFunctionApply(f)
-          case d: DotRef =>
-            FunctionInliner.findFunctionDef(d, bareMember = true) match
-              case Some(m) if m.ft.args.isEmpty =>
-                FunctionInliner.inlineFunctionBody(d, m, Nil)
-              case _ =>
-                d
-          case id: Identifier if id.unresolved && id.nonEmpty && !hasResolvedType(id) =>
-            // Replace references to native (compile-time evaluated) functions
-            FunctionInliner.findNativeFunction(ctx, id.fullName).getOrElse(id)
+        // references in a single bottom-up pass. A FunctionApply and its base DotRef are
+        // resolved as one unit: the member name belongs to the apply, so the bare-member rule
+        // never sees it. This lets a name mix no-arg and arg-taking variants (e.g. mk_string
+        // and mk_string(separator)) — a bare DotRef reached directly is genuinely bare and
+        // resolves only to a no-arg variant
+        def inlineExpr(e: Expression): Expression =
+          e match
+            case f: FunctionApply =>
+              val newBase =
+                f.base match
+                  case d: DotRef =>
+                    // Only the qualifier is a free expression; the member name is bound by
+                    // this apply
+                    val q = inlineExpr(d.qualifier)
+                    if q eq d.qualifier then
+                      d
+                    else
+                      d.copy(qualifier = q)
+                  case other =>
+                    inlineExpr(other)
+              val newArgs = f
+                .args
+                .map { a =>
+                  inlineExpr(a) match
+                    case fa: FunctionArg =>
+                      fa
+                    case _ =>
+                      a
+                }
+              val newWindow = f
+                .window
+                .map { w =>
+                  inlineExpr(w) match
+                    case nw: Window =>
+                      nw
+                    case _ =>
+                      w
+                }
+              val newFilter = f.filter.map(inlineExpr)
+              val changed   =
+                !(newBase eq f.base) || newArgs.lazyZip(f.args).exists(_ ne _) ||
+                  newWindow.lazyZip(f.window).exists(_ ne _) ||
+                  newFilter.lazyZip(f.filter).exists(_ ne _)
+              val fa =
+                if changed then
+                  f.copy(base = newBase, args = newArgs, window = newWindow, filter = newFilter)
+                else
+                  f
+              FunctionInliner.resolveFunctionApply(fa)
+            case d: DotRef =>
+              val q  = inlineExpr(d.qualifier)
+              val nd =
+                if q eq d.qualifier then
+                  d
+                else
+                  d.copy(qualifier = q)
+              FunctionInliner.findFunctionDef(nd, bareMember = true) match
+                case Some(m) if m.ft.args.isEmpty =>
+                  FunctionInliner.inlineFunctionBody(nd, m, Nil)
+                case _ =>
+                  nd
+            case other =>
+              other.mapChildExpressions(inlineExpr) match
+                case id: Identifier if id.unresolved && id.nonEmpty && !hasResolvedType(id) =>
+                  // Replace references to native (compile-time evaluated) functions
+                  FunctionInliner.findNativeFunction(ctx, id.fullName).getOrElse(id)
+                case done =>
+                  done
+          end match
+        end inlineExpr
         val fnInlined = current
           .transformUp {
             // Test expressions form an assertion DSL evaluated by the test runner, so keep
@@ -482,7 +539,7 @@ object Typer extends Phase("typer") with LogSupport:
               t
             case r: Relation =>
               r.transformChildExpressions { case e: Expression =>
-                e.transformUpExpression(inlineRule)
+                inlineExpr(e)
               }
           }
           .asInstanceOf[Relation]
