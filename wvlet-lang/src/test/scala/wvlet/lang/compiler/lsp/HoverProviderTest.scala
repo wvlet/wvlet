@@ -79,4 +79,40 @@ class HoverProviderTest extends UniTest:
     // Must not throw regardless of whether a hover can be produced
     hover(src, src.length)
 
+  test("should show the stdlib signature and doc when hovering a member function"):
+    val src    = "from [[1, \"alice\"]] as person(id, name)\nselect name.substring(2)"
+    val offset = src.lastIndexOf("substring") + 1
+    val result = hover(src, offset)
+    result.isDefined shouldBe true
+    val content = result.get.content
+    content shouldContain "member of string"
+    content shouldContain "def substring(start: int): string"
+    content shouldContain "def substring(start: int, length: int): string"
+    content shouldContain "1-origin start position"
+
+  test("should show every owning type when hovering a shared member name"):
+    val src    = "from [[1, \"alice\"]] as person(id, name)\nselect name.length"
+    val offset = src.lastIndexOf("length") + 1
+    val result = hover(src, offset)
+    result.isDefined shouldBe true
+    val content = result.get.content
+    content shouldContain "member of string"
+    content shouldContain "member of array"
+
+  test("should show the stdlib doc when hovering a top-level window function"):
+    val src    = "from [[1, 10]] as t(k, v)\nselect row_number() over (order by k) as rn"
+    val offset = src.indexOf("row_number") + 1
+    val result = hover(src, offset)
+    result.isDefined shouldBe true
+    val content = result.get.content
+    content shouldContain "def row_number: long"
+    content shouldContain "Sequential row number"
+
+  test("should hover the column, not a stdlib function, for an alias-qualified column"):
+    // `t.year` accesses a column named like a stdlib function through a relation alias
+    val src    = "from [[2024, 1]] as t(year, v)\nselect t.year"
+    val offset = src.lastIndexOf("year") + 1
+    val result = hover(src, offset)
+    result.foreach(r => r.content shouldNotContain "member of")
+
 end HoverProviderTest

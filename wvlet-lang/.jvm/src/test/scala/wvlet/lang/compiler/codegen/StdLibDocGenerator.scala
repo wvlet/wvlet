@@ -13,13 +13,9 @@
  */
 package wvlet.lang.compiler.codegen
 
-import wvlet.lang.catalog.StaticCatalogExporter
-import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.compiler.SourceIO
-import wvlet.lang.compiler.parser.ParserPhase
-import wvlet.lang.model.DataType
-import wvlet.lang.model.DataType.VarArgType
-import wvlet.lang.model.plan.*
+import wvlet.lang.compiler.lsp.StdLibFunctionDoc
+import wvlet.lang.compiler.lsp.StdLibIndex
 import wvlet.uni.log.LogSupport
 
 import scala.collection.mutable
@@ -38,61 +34,6 @@ object StdLibDocGenerator extends LogSupport:
 
   /** Regeneration command shown in the page header and in freshness-check failures */
   val regenCommand = "./sbt \"langJVM/Test/runMain wvlet.lang.compiler.codegen.StdLibDocGenerator\""
-
-  /** One function definition collected from the stdlib sources */
-  private case class DefEntry(
-      typeName: String,
-      fn: FunctionDef,
-      // dialect scopes of the enclosing type block (e.g. `type any in duckdb`)
-      typeContexts: List[String],
-      description: String
-  ):
-    /** Dialect names this definition is scoped to; empty for a dialect-neutral definition */
-    def dialects: List[String] =
-      val own = fn.defContexts.map(_.contextType.leafName.toLowerCase)
-      (typeContexts ++ own).distinct
-
-    /** Signature key: same name and arity merge into one documented row */
-    def signature: String =
-      if fn.args.isEmpty then
-        fn.name.name
-      else
-        s"${fn.name.name}(${fn
-            .args
-            .map(a => s"${a.name.name}: ${typeStr(a.givenDataType)}")
-            .mkString(", ")})"
-
-  private def typeStr(dt: DataType): String =
-    dt match
-      case VarArgType(elem) =>
-        s"${typeStr(elem)}*"
-      case _: DataType.DecimalType =>
-        // Parsed `decimal` carries default precision/scale parameters; render the plain name
-        "decimal"
-      case _ if dt.typeParams.isEmpty =>
-        dt.typeName.name
-      case _ =>
-        s"${dt.typeName.name}[${dt.typeParams.map(typeStr).mkString(",")}]"
-
-  /**
-    * The doc comment of a definition: the run of `--` comment lines immediately above it. Comment
-    * lines separated by a blank line (file headers, section notes) are not part of the doc
-    */
-  private def commentText(
-      sf: wvlet.lang.compiler.SourceFile,
-      t: wvlet.lang.model.SyntaxTreeNode
-  ): String =
-    var expected = sf.offsetToLine(t.span.start) - 1
-    val adjacent = List.newBuilder[String]
-    // comments are stored innermost-last; walk upward from the definition line
-    t.comments
-      .foreach { c =>
-        val line = sf.offsetToLine(c.offset)
-        if line == expected then
-          adjacent += c.str.trim.stripPrefix("--").trim
-          expected = line - 1
-      }
-    adjacent.result().reverse.filter(_.nonEmpty).mkString(" ")
 
   /** Section order and human titles of the reference page */
   private val typeSections: List[(String, String, String)] = List(
@@ -123,42 +64,8 @@ object StdLibDocGenerator extends LogSupport:
   )
 
   def generateMarkdown(): String =
-    val handWritten = CompilationUnit
-      .stdLib
-      .filterNot(
-        _.sourceFile.getContentAsString.contains(StaticCatalogExporter.generatedFileHeader)
-      )
-      .sortBy(_.sourceFile.fileName)
-
-    val memberDefs   = mutable.ListBuffer.empty[DefEntry]
-    val topLevelDefs = mutable.ListBuffer.empty[DefEntry]
-
-    handWritten.foreach { unit =>
-      val sf = unit.sourceFile
-      ParserPhase.parseOnly(unit) match
-        case p: PackageDef =>
-          p.statements
-            .foreach {
-              case t: TypeDef =>
-                val typeContexts = t.defContexts.map(_.contextType.leafName.toLowerCase)
-                t.elems
-                  .foreach {
-                    case f: FunctionDef =>
-                      memberDefs += DefEntry(t.name.name, f, typeContexts, commentText(sf, f))
-                    case _ =>
-                  }
-              case t: TopLevelFunctionDef =>
-                val desc =
-                  commentText(sf, t) match
-                    case "" =>
-                      commentText(sf, t.functionDef)
-                    case s =>
-                      s
-                topLevelDefs += DefEntry("", t.functionDef, Nil, desc)
-              case _ =>
-            }
-        case _ =>
-    }
+    val memberDefs   = StdLibIndex.allFunctions.filter(_.ownerType.nonEmpty)
+    val topLevelDefs = StdLibIndex.allFunctions.filter(_.ownerType.isEmpty)
 
     val sb = StringBuilder()
     sb ++= s"""---
@@ -181,15 +88,15 @@ object StdLibDocGenerator extends LogSupport:
          |target.
          |""".stripMargin
 
-    def renderRows(entries: List[DefEntry]): Unit =
+    def renderRows(entries: List[StdLibFunctionDoc]): Unit =
       sb ++= "\n| Function | Returns | Engines | Description |\n"
       sb ++= "|----------|---------|---------|-------------|\n"
       // Merge same-signature dialect variants into one row, keeping source order
-      val seen = mutable.LinkedHashMap.empty[String, mutable.ListBuffer[DefEntry]]
+      val seen = mutable.LinkedHashMap.empty[String, mutable.ListBuffer[StdLibFunctionDoc]]
       entries.foreach(e => seen.getOrElseUpdate(e.signature, mutable.ListBuffer.empty) += e)
       def cell(s: String): String = s.replace("|", "\\|")
       seen.foreach { case (signature, defs) =>
-        val returns = defs.flatMap(_.fn.retType).headOption.map(typeStr).getOrElse("")
+        val returns = defs.map(_.returnType).find(_.nonEmpty).getOrElse("")
         val engines =
           if defs.exists(_.dialects.isEmpty) then
             "all"
@@ -208,7 +115,7 @@ object StdLibDocGenerator extends LogSupport:
       }
 
     typeSections.foreach { case (typeName, title, intro) =>
-      val entries = memberDefs.filter(_.typeName == typeName).toList
+      val entries = memberDefs.filter(_.ownerType == typeName)
       if entries.nonEmpty then
         sb ++= s"\n## ${title}\n"
         if intro.nonEmpty then
@@ -218,9 +125,9 @@ object StdLibDocGenerator extends LogSupport:
 
     // Types not covered by the curated section list (e.g. dialect-only extension types)
     val knownSections = typeSections.map(_._1).toSet
-    val leftoverTypes = memberDefs.map(_.typeName).distinct.filterNot(knownSections.contains)
+    val leftoverTypes = memberDefs.map(_.ownerType).distinct.filterNot(knownSections.contains)
     leftoverTypes.foreach { typeName =>
-      val entries = memberDefs.filter(_.typeName == typeName).toList
+      val entries = memberDefs.filter(_.ownerType == typeName)
       sb ++= s"\n## ${typeName} Values\n"
       renderRows(entries)
     }
@@ -228,7 +135,7 @@ object StdLibDocGenerator extends LogSupport:
     if topLevelDefs.nonEmpty then
       sb ++= "\n## Top-Level Functions\n"
       sb ++= "\nCalled without a receiver value (window functions require an `over(...)` clause).\n"
-      renderRows(topLevelDefs.toList)
+      renderRows(topLevelDefs)
 
     sb.result()
   end generateMarkdown
