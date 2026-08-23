@@ -252,15 +252,25 @@ object FunctionInliner extends ContextLogSupport:
             m
           }
 
-        // Retry with the any type when the method is not a member of the qualifier's type: with
-        // an unresolved qualifier this lookup has always consulted the any type, so typing the
-        // qualifier (as the new Typer does) must not narrow what could be resolved before
-        val m: Option[MethodSymbolInfo] = memberOf(qualType).orElse {
-          if qualType != DataType.AnyType then
-            memberOf(DataType.AnyType)
-          else
-            None
-        }
+        // Fall back along the widening chain when the method is not a member of the qualifier's
+        // own type: numeric values (int, long, float, real, double, decimal) consult the shared
+        // `numeric` type next, so common math functions need only one definition, and every
+        // lookup ends at the any type (with an unresolved qualifier this lookup has always
+        // consulted the any type, so typing the qualifier must not narrow what could be
+        // resolved before)
+        val m: Option[MethodSymbolInfo] = memberOf(qualType)
+          .orElse {
+            if qualType.isNumeric then
+              memberOf(DataType.GenericType(Name.typeName("numeric")))
+            else
+              None
+          }
+          .orElse {
+            if qualType != DataType.AnyType then
+              memberOf(DataType.AnyType)
+            else
+              None
+          }
 
         if m.isEmpty then
           context.logTrace(s"Failed to find function `${methodName}` for ${qual}:${qual.dataType}")
