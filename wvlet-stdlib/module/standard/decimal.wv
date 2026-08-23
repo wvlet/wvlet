@@ -7,6 +7,7 @@ type decimal = {
   def to_double: double = sql"cast(${this} as double)"
   def to_boolean: boolean = sql"cast(${this} as boolean)"
   def to_string: string = sql"cast(${this} as varchar)"
+  def to_string in hive: string = sql"cast(${this} as string)"
 
   def or_else(other:decimal): decimal = sql"coalesce(${this},${other})"
 
@@ -28,6 +29,7 @@ type decimal = {
   -- Drop the fractional part of this value
   def truncate in duckdb: decimal = sql"trunc(${this})"
   def truncate in trino: decimal = sql"truncate(${this})"
+  def truncate in hive: decimal = sql"cast(${this} as bigint)"
 
   def in(v:any*): boolean = sql"${this} in (${v})"
   def not_in(v:any*): boolean = sql"${this} not in (${v})"

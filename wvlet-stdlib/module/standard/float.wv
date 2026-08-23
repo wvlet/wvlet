@@ -7,6 +7,7 @@ type float = {
   def to_double: double = sql"cast(${this} as double)"
   def to_boolean: boolean = sql"cast(${this} as boolean)"
   def to_string: string = sql"cast(${this} as varchar)"
+  def to_string in hive: string = sql"cast(${this} as string)"
 
   def or_else(other:float): float = sql"coalesce(${this},${other})"
 
@@ -44,6 +45,7 @@ type real = {
   def to_double: double = sql"cast(${this} as double)"
   def to_boolean: boolean = sql"cast(${this} as boolean)"
   def to_string: string = sql"cast(${this} as varchar)"
+  def to_string in hive: string = sql"cast(${this} as string)"
 
   def or_else(other:real): real = sql"coalesce(${this},${other})"
   def round(decimal:int=0): double = sql"round(${this},${decimal})"

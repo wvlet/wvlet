@@ -5,12 +5,17 @@ package wvlet.standard
 type array[A] = {
   def length in duckdb: int = sql"length(${this})"
   def length in trino: int = sql"cardinality(${this})"
+  def length in hive: int = sql"size(${this})"
   def size in duckdb: int = sql"length(${this})"
   def size in trino: int = sql"cardinality(${this})"
+  def size in hive: int = sql"size(${this})"
   def get(index: int): A = sql"${this}[${index}]"
+  -- Hive arrays are 0-indexed, so shift the 1-origin index
+  def get(index: int) in hive: A = sql"${this}[${index} - 1]"
   def count: int = sql"count(*)"
   def count_distinct: int = sql"count(distinct ${this})"
   def count_if(cond:boolean): int = sql"count_if(${cond})"
+  def count_if(cond:boolean) in hive: int = sql"cast(sum(if(${cond},1,0)) as bigint)"
 
   -- Fast and memory-efficient approximate counting of distinct elements
   def count_approx_distinct in trino: int = sql"approx_distinct(${this})"
@@ -26,14 +31,18 @@ type array[A] = {
   def max_by(expr: sql): A = sql"max_by(${this}, ${expr})"
 
   def to_array: array[A] = sql"array_agg(${this})"
+  def to_array in hive: array[A] = sql"collect_list(${this})"
 
   -- Aggregate boolean values of a grouped column
   def bool_and: boolean = sql"bool_and(${this})"
+  def bool_and in hive: boolean = sql"min(${this})"
   def bool_or: boolean = sql"bool_or(${this})"
+  def bool_or in hive: boolean = sql"max(${this})"
 
   -- Concatenate grouped string values with the separator
   def string_agg(separator:string) in duckdb: string = sql"string_agg(${this},${separator})"
   def string_agg(separator:string) in trino: string = sql"array_join(array_agg(${this}),${separator})"
+  def string_agg(separator:string) in hive: string = sql"concat_ws(${separator},collect_list(${this}))"
 
   def exclude(arr: sql) in duckdb: array[A] = sql"array_filter(${this}, x -> NOT array_contains(${arr}, x))"
   def exclude(arr: sql) in trino: array[A] = sql"array_except(${this}, ${arr})"
@@ -43,10 +52,12 @@ type array[A] = {
 
   -- True if the array contains the given element
   def contains(elem:A): boolean = sql"contains(${this},${elem})"
+  def contains(elem:A) in hive: boolean = sql"array_contains(${this},${elem})"
 
   -- Concatenate the array elements into a string with the separator
   def mk_string(separator:string) in duckdb: string = sql"array_to_string(${this},${separator})"
   def mk_string(separator:string) in trino: string = sql"array_join(${this},${separator})"
+  def mk_string(separator:string) in hive: string = sql"concat_ws(${separator},${this})"
 
   -- Remove duplicate elements
   def distinct: array[A] = sql"array_distinct(${this})"
@@ -56,6 +67,7 @@ type array[A] = {
 
   def sort in duckdb: array[A] = sql"list_sort(${this})"
   def sort in trino: array[A] = sql"array_sort(${this})"
+  def sort in hive: array[A] = sql"sort_array(${this})"
 
   def reverse in duckdb: array[A] = sql"list_reverse(${this})"
   def reverse in trino: array[A] = sql"reverse(${this})"
@@ -74,6 +86,7 @@ type array[A of numeric] = {
   def avg: A = sql"avg(${this})"
   def median: A = sql"median(${this})"
   def median in trino: A = sql"approx_percentile(${this}, 0.5)"
+  def median in hive: A = sql"percentile_approx(${this}, 0.5)"
   def variance: A = sql"variance(${this})"
   def stddev: A = sql"stddev(${this})"
   def stddev_pop: A = sql"stddev_pop(${this})"
@@ -83,4 +96,5 @@ type array[A of numeric] = {
 
   def approx_quantile(pos:double) in trino: A = sql"approx_percentile(${this}, ${pos})"
   def approx_quantile(pos:double) in duckdb: A = sql"approx_quantile(${this}, ${pos})"
+  def approx_quantile(pos:double) in hive: A = sql"percentile_approx(${this}, ${pos})"
 }

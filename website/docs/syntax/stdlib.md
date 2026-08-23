@@ -1,6 +1,6 @@
 # Standard Library Functions
 
-Wvlet ships with a standard library of functions that you call with dot syntax on column values, e.g. `name.upper` or `price.round(2)`. Functions compile to the SQL of the target database engine: when engines differ (e.g. DuckDB and Trino), Wvlet picks the right SQL for the engine you are compiling for, so the same query works across engines.
+Wvlet ships with a standard library of functions that you call with dot syntax on column values, e.g. `name.upper` or `price.round(2)`. Functions compile to the SQL of the target database engine: when engines differ (e.g. DuckDB, Trino, and Hive), Wvlet picks the right SQL for the engine you are compiling for, so the same query works across engines.
 
 ```wvlet
 from orders
@@ -186,5 +186,7 @@ def bit_count(x: long) in duckdb: int = sql"bit_count(${x})"
 -- Selected when compiling for Trino
 def bit_count(x: long) in trino: int = sql"bitwise_bit_count(${x})"
 ```
+
+Supported dialect contexts include `duckdb`, `trino`, and `hive`. Note that pattern strings remain engine-specific even when the function name is mapped: `format` takes a strftime-style pattern on DuckDB (`'%Y-%m-%d'`), a MySQL-style pattern on Trino (`'%Y-%m-%d'` with `%i` for minutes), and a Java SimpleDateFormat pattern on Hive (`'yyyy-MM-dd'`); similarly, Hive's `split` treats the separator as a regular expression.
 
 All DuckDB and Trino engine functions are bundled with the standard library, so calls like `bit_count(x)` type-check offline out of the box and compile to the SQL of the engine you target. For other databases, or engine-specific UDFs, import the engine's function catalog with [`wvlet catalog import`](../usage/catalog-import.md).

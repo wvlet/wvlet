@@ -87,3 +87,25 @@ type string in trino = {
   def json_extract(path:string): json = sql"json_extract(${this},${path})"
   def json_extract_string(path:string): string = sql"json_extract_scalar(${this},${path})"
 }
+
+type string in hive = {
+  def regexp_like(pattern:string): boolean = sql"${this} rlike ${pattern}"
+  -- Replace every substring matching the regular expression with the replacement
+  def regexp_replace(pattern:string, replacement:string): string = sql"regexp_replace(${this},${pattern},${replacement})"
+  -- 1-origin position of the first occurrence of the substring (0 if not found)
+  def strpos(substr:string): int = sql"instr(${this},${substr})"
+  def contains(substr:string): boolean = sql"instr(${this},${substr}) > 0"
+  def starts_with(prefix:string): boolean = sql"instr(${this},${prefix}) = 1"
+  def ends_with(suffix:string): boolean = sql"substr(${this},-length(${suffix})) = ${suffix}"
+  -- Split the string by the separator into an array of strings. Note: Hive treats the
+  -- separator as a regular expression
+  def split(separator:string): array[string] = sql"split(${this},${separator})"
+  -- Hex-encoded digest strings
+  def md5: string = sql"md5(${this})"
+  def sha256: string = sql"sha2(${this},256)"
+  -- Edit distance between two strings
+  def levenshtein(other:string): int = sql"levenshtein(${this},${other})"
+  -- Extract a JSON value from a string holding JSON text (JSONPath, e.g. '$.a.b')
+  def json_extract(path:string): json = sql"get_json_object(${this},${path})"
+  def json_extract_string(path:string): string = sql"get_json_object(${this},${path})"
+}

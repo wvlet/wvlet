@@ -53,3 +53,29 @@ type date in trino = {
   -- The last day of the month of this date
   def last_day: date = sql"last_day_of_month(${this})"
 }
+
+type date in hive = {
+  def week: int = sql"weekofyear(${this})"
+  def quarter: int = sql"quarter(${this})"
+
+  -- ISO day of week (1 = Monday, 7 = Sunday) and day of year
+  def day_of_week: int = sql"pmod(dayofweek(${this}) + 5, 7) + 1"
+  def day_of_year: int = sql"cast(date_format(${this},'D') as int)"
+
+  -- Truncate with Hive's trunc() unit tokens ('YYYY', 'MM', 'Q')
+  def truncate_to(unit:string): date = sql"cast(trunc(${this},${unit}) as date)"
+
+  def add_days(n:int): date = sql"date_add(${this},${n})"
+  def add_months(n:int): date = sql"cast(add_months(${this},${n}) as date)"
+  def add_years(n:int): date = sql"cast(add_months(${this},${n} * 12) as date)"
+
+  def diff_days(other:date): long = sql"cast(datediff(${other},${this}) as bigint)"
+  def diff_months(other:date): long = sql"cast(months_between(${other},${this}) as bigint)"
+  def diff_years(other:date): long = sql"cast(months_between(${other},${this}) / 12 as bigint)"
+
+  -- Format the date with a Java SimpleDateFormat pattern (e.g. 'yyyy-MM-dd')
+  def format(pattern:string): string = sql"date_format(${this},${pattern})"
+
+  -- The last day of the month of this date
+  def last_day: date = sql"cast(last_day(${this}) as date)"
+}

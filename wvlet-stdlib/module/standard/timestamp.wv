@@ -73,3 +73,23 @@ type timestamp in trino = {
   -- DuckDB's default timestamp rendering instead of Trino's trailing '.000'
   def to_string: string = sql"date_format(${this},'%Y-%m-%d %H:%i:%s')"
 }
+
+type timestamp in hive = {
+  -- ISO day of week (1 = Monday, 7 = Sunday) and day of year
+  def day_of_week: int = sql"pmod(dayofweek(${this}) + 5, 7) + 1"
+  def day_of_year: int = sql"cast(date_format(${this},'D') as int)"
+
+  -- Timestamp arithmetic via unix epoch seconds (Hive has no timestamp interval functions)
+  def add_seconds(n:int): timestamp = sql"cast(from_unixtime(unix_timestamp(${this}) + ${n}) as timestamp)"
+  def add_minutes(n:int): timestamp = sql"cast(from_unixtime(unix_timestamp(${this}) + ${n} * 60) as timestamp)"
+  def add_hours(n:int): timestamp = sql"cast(from_unixtime(unix_timestamp(${this}) + ${n} * 3600) as timestamp)"
+  def add_days(n:int): timestamp = sql"cast(from_unixtime(unix_timestamp(${this}) + ${n} * 86400) as timestamp)"
+
+  -- Format the timestamp with a Java SimpleDateFormat pattern (e.g. 'yyyy-MM-dd HH:mm:ss')
+  def format(pattern:string): string = sql"date_format(${this},${pattern})"
+
+  -- Unix epoch seconds of this timestamp, evaluated in the session time zone
+  def to_unixtime: long = sql"cast(unix_timestamp(${this}) as bigint)"
+
+  def to_string: string = sql"cast(${this} as string)"
+}
