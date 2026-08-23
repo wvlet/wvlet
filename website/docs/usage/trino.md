@@ -33,6 +33,37 @@ $ wv --profile trino
 wv>
 ```
 
+## Authentication
+
+Two authentication methods are supported. Values support `${ENV_VAR}` interpolation, so secrets can stay out of `profiles.json`:
+
+- **Password (basic auth)** — set `"password"` on the connector. Requires `"useHttps": true`; Trino coordinators reject password credentials over insecure connections.
+- **Bearer token (JWT / OAuth2)** — set a `"token"` property. Takes the place of a password (setting both is rejected).
+
+```jsonc title='~/.wvlet/profiles.json'
+{
+  "profiles": [
+    {
+      "name": "trino-jwt",
+      "connectors": [
+        {
+          "name": "trino",
+          "type": "trino",
+          "host": "trino.example.com",
+          "useHttps": true,
+          "catalog": "hive",
+          "schema": "default",
+          "properties": {
+            "token": "${TRINO_ACCESS_TOKEN}"
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+The `Authorization` header is sent on every request of the query lifecycle (initial submission, result pagination, and cancellation), so gateways that authenticate each request work out of the box.
 
 ## Connecting to Trino at Treasure Data 
 

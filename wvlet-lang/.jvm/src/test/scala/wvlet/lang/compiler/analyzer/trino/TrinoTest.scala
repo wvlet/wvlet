@@ -84,6 +84,34 @@ class TrinoTest extends UniTest:
     }
   }
 
+  test("send the bearer token on the initial POST and every follow-up GET") {
+    val page1 =
+      """{
+      |  "id": "q9",
+      |  "columns": [{"name": "x", "type": "integer"}],
+      |  "data": [[1]],
+      |  "nextUri": "__SERVER__/v1/statement/q9/2",
+      |  "stats": {"state": "RUNNING"}
+      |}""".stripMargin
+    val page2 =
+      """{
+      |  "id": "q9",
+      |  "data": [[2]],
+      |  "stats": {"state": "FINISHED"}
+      |}""".stripMargin
+    withFakeTrino(Seq(page1, page2)) { (port, calls) =>
+      val cfg = TrinoConfig(host = "localhost", port = port, user = "u").withToken("jwt-xyz")
+      val r   = Trino.execute("select x from t", cfg)
+      r.rows.map(_.values.head) shouldBe List(Some("1"), Some("2"))
+      val recorded = calls()
+      recorded.map(_.method) shouldBe List("POST", "GET")
+      // Gateways authenticate every request, so the token must ride follow-up GETs too
+      recorded.foreach { r =>
+        r.headers.get("authorization") shouldBe Some("Bearer jwt-xyz")
+      }
+    }
+  }
+
   test("execute falls back to any for compound / unknown column types") {
     val body =
       """{

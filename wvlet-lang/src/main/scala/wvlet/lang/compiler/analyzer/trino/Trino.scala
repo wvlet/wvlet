@@ -93,7 +93,40 @@ object Trino extends LogSupport:
   private[trino] def withTrinoHeaders(req: Request, config: TrinoConfig): Request =
     val base = req.setHeader("X-Trino-User", config.user).setHeader("X-Trino-Source", config.source)
     val withCatalog = config.catalog.foldLeft(base)((r, c) => r.setHeader("X-Trino-Catalog", c))
-    config.schema.foldLeft(withCatalog)((r, s) => r.setHeader("X-Trino-Schema", s))
+    val withSchema = config.schema.foldLeft(withCatalog)((r, s) => r.setHeader("X-Trino-Schema", s))
+    authorizationHeader(config).foldLeft(withSchema)((r, v) => r.setHeader("Authorization", v))
+
+  /**
+    * The `Authorization` header for the configured credentials: `Bearer <token>` for token auth,
+    * `Basic <base64(user:password)>` for password auth. Password credentials require HTTPS — Trino
+    * coordinators reject them over insecure connections, so failing here gives a clearer error than
+    * the server's would. Setting both is ambiguous and rejected.
+    */
+  private[trino] def authorizationHeader(config: TrinoConfig): Option[String] =
+    (config.token, config.password) match
+      case (Some(_), Some(_)) =>
+        throw StatusCode
+          .INVALID_ARGUMENT
+          .newException(
+            "Trino auth accepts either a bearer token or a password, not both — unset one"
+          )
+      case (Some(token), None) =>
+        Some(s"Bearer ${token}")
+      case (None, Some(password)) =>
+        if !config.useHttps then
+          throw StatusCode
+            .INVALID_ARGUMENT
+            .newException(
+              "Trino password authentication requires HTTPS — set useHttps on the connection"
+            )
+        val credential = java
+          .util
+          .Base64
+          .getEncoder
+          .encodeToString(s"${config.user}:${password}".getBytes("UTF-8"))
+        Some(s"Basic ${credential}")
+      case (None, None) =>
+        None
 
   /**
     * Send `req` and surface non-2xx responses as exceptions. `HttpSyncClient` already throws on
