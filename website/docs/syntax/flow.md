@@ -369,7 +369,7 @@ flow load_orders = {
 To wait on an aggregate condition, aggregate in the pipeline before the sensor:
 
 ```wvlet
-stage gate = from new_events | select count(*) as cnt | wait until _.cnt > 1000
+stage gate = from new_events | agg _.count as cnt | wait until _.cnt > 1000
 ```
 
 Polling respects the stage's `heartbeat:` config (a polling sensor is never mistaken for a
