@@ -4,9 +4,9 @@ import scala.scalajs.js
 
 private[runner] trait SleepCompatImpl:
   /**
-    * Node.js has no `Thread.sleep`; block on `Atomics.wait` against a throwaway
-    * `SharedArrayBuffer` (the primitive uni's Node sync HTTP channel is built on). Falls back to
-    * a busy wait where `SharedArrayBuffer` is unavailable.
+    * Node.js has no `Thread.sleep`; block on `Atomics.wait` against a throwaway `SharedArrayBuffer`
+    * (the primitive uni's Node sync HTTP channel is built on). Falls back to a busy wait where
+    * `SharedArrayBuffer` is unavailable.
     */
   def sleepMillis(millis: Long): Unit =
     try
@@ -17,4 +17,6 @@ private[runner] trait SleepCompatImpl:
     catch
       case _: Throwable =>
         val deadline = System.currentTimeMillis() + millis
-        while System.currentTimeMillis() < deadline do ()
+        while System.currentTimeMillis() < deadline do
+          (
+        )

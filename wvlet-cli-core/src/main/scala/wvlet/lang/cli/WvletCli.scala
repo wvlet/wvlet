@@ -37,7 +37,9 @@ class WvletCli(opts: WvletCliGlobalOption) extends LogSupport:
   @command(description = "Convert SQL to wvlet flow-style query")
   def to_wvlet(opt: WvletCliCompileOption): Unit = println(WvletCliCompiler(opt).generateWvlet)
 
-  @command(description = "Compile and execute a wvlet query against DuckDB, Trino, or a remote wvlet server")
+  @command(description =
+    "Compile and execute a wvlet query against DuckDB, Trino, or a remote wvlet server"
+  )
   def run(opt: WvletCliRunOption): Unit =
     val result = executeAgainst(opt)
     val output =
@@ -162,10 +164,8 @@ class WvletCli(opts: WvletCliGlobalOption) extends LogSupport:
       // The server resolves this name in ITS profiles.json; unset runs on the server default
       profile = engine.flatMap(_.properties.get("remoteProfile")).map(_.toString)
     )
-    try
-      client.runQuery(query)
-    finally
-      client.close()
+    try client.runQuery(query)
+    finally client.close()
 
   end executeOnRemoteServer
 
@@ -217,7 +217,10 @@ case class WvletCliRunOption(
     query: Option[String] = None,
     @option(prefix = "-p,--profile", description = "Profile name from ~/.wvlet/profiles.json")
     profile: Option[String] = None,
-    @option(prefix = "-t,--target", description = "Backend: duckdb (default), trino, or wvlet (remote server)")
+    @option(
+      prefix = "-t,--target",
+      description = "Backend: duckdb (default), trino, or wvlet (remote server)"
+    )
     targetDBType: Option[String] = None,
     @option(prefix = "--format", description = "Output format: box (default), csv")
     format: String = "box",

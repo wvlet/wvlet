@@ -37,10 +37,10 @@ import scala.collection.immutable.ListMap
 import scala.util.Try
 
 /**
-  * Remote execution against a wvlet server: submits the ORIGINAL wvlet query text over the
-  * server's RPC API, polls until a terminal state, and adapts the structured result into the
-  * runner's [[QueryResult]] shape. The server compiles and runs the query with its own profile,
-  * catalogs, and credentials — thin clients (wvc, the Node CLI) need no local engine at all.
+  * Remote execution against a wvlet server: submits the ORIGINAL wvlet query text over the server's
+  * RPC API, polls until a terminal state, and adapts the structured result into the runner's
+  * [[QueryResult]] shape. The server compiles and runs the query with its own profile, catalogs,
+  * and credentials — thin clients (wvc, the Node CLI) need no local engine at all.
   *
   * One server-side session is held per client instance (a fresh ULID session id), so `use`
   * statements and temp tables persist across [[runQuery]] calls. Built purely on uni's sync HTTP
@@ -74,18 +74,19 @@ class WvletServerClient(
   def runQuery(wvletQuery: String): QueryResult = toQueryResult(awaitCompletion(submit(wvletQuery)))
 
   /** Submit a wvlet query and return its server-side query id without waiting. */
-  def submit(wvletQuery: String): ULID = rpc
-    .FrontendApi
-    .submitQuery(
-      QueryRequest(
-        query = wvletQuery,
-        querySelection = QuerySelection.All,
-        profile = profile,
-        maxRows = Some(maxRows),
-        sessionId = Some(sessionId)
+  def submit(wvletQuery: String): ULID =
+    rpc
+      .FrontendApi
+      .submitQuery(
+        QueryRequest(
+          query = wvletQuery,
+          querySelection = QuerySelection.All,
+          profile = profile,
+          maxRows = Some(maxRows),
+          sessionId = Some(sessionId)
+        )
       )
-    )
-    .queryId
+      .queryId
 
   /** Poll the server until the query reaches a terminal state. */
   def awaitCompletion(queryId: ULID): QueryInfo =
@@ -104,15 +105,15 @@ class WvletServerClient(
         info
           .result
           .map { r =>
-            val fields = r
-              .schema
-              .map { c =>
-                NamedType(
-                  Name.termName(c.name),
-                  Try(DataType.parse(c.typeName)).getOrElse(DataType.AnyType)
-                )
-              }
-              .toList
+            val fields =
+              r.schema
+                .map { c =>
+                  NamedType(
+                    Name.termName(c.name),
+                    Try(DataType.parse(c.typeName)).getOrElse(DataType.AnyType)
+                  )
+                }
+                .toList
             val names = fields.map(_.name.name)
             val rows  = r.rows.map(row => ListMap.from(names.zip(row))).toList
             TableRows(
