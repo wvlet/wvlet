@@ -1,7 +1,8 @@
 -- Standard library aggregation functions over grouped columns
 from [
   [1, true, 'x', 1.0],
-  [1, false, 'y', 3.0],
+  [1, false, 'y', 2.0],
+  [1, true, 'z', 3.0],
 ] as t(id, b, s, vv)
 select id, b, s, vv.to_double as v
 group by id
@@ -11,7 +12,7 @@ agg
   s.string_agg('-') as sa,
   s.count_approx_distinct as ndv,
   v.median as med,
-  v.stddev_pop as sp,
+  v.stddev as sd,
   v.var_samp as vs,
 
 test _.size should be 1
@@ -19,9 +20,9 @@ test _.rows should be [[
   1,
   false,
   true,
-  'x-y',
-  2,
+  'x-y-z',
+  3,
   2.0,
   1.0,
-  2.0,
+  1.0,
 ]]

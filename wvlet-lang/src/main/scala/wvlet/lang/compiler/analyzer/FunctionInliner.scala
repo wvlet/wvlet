@@ -206,6 +206,15 @@ object FunctionInliner extends ContextLogSupport:
             qual.tpe match
               case dt: DataType if dt.isResolved =>
                 dt
+              case dt: DataType if lookupType(dt.typeName, context).isDefined =>
+                // A generic type with unbound type parameters (e.g. array[A] returned from an
+                // inlined function) is not fully resolved, but its members can still be looked
+                // up by the type name so that chained calls like a.sort.mk_string(',') resolve
+                dt
+              case _ if lookupType(qual.dataType.typeName, context).isDefined =>
+                // Same for a generic dataType recorded by resolveFunctionApply's withDataType
+                // (e.g. a.concat([9]).mk_string(',') where concat declares array[A])
+                qual.dataType
               case _ =>
                 DataType.AnyType
 
@@ -380,9 +389,13 @@ object FunctionInliner extends ContextLogSupport:
     context.logTrace(s"Resolving ${base} => ${newExpr}: ${m.ft.returnType}")
     // Always record the declared return type when it is known: the inlined SQL body itself
     // carries no type, and a chained method call on the result (e.g. a.distinct.sort) needs
-    // the qualifier's type to resolve its next member
-    if m.ft.returnType.isResolved && !newExpr.tpe.isResolved then
-      newExpr.tpe = m.ft.returnType
+    // the qualifier's type to resolve its next member. A generic return type with unbound
+    // type parameters (e.g. array[K] of map.keys) is recorded too when its type symbol is
+    // known, so a chained member call like m.keys.mk_string(',') can still find the member
+    if !newExpr.tpe.isResolved then
+      val rt = m.ft.returnType
+      if rt.isResolved || lookupType(rt.typeName, context).isDefined then
+        newExpr.tpe = rt
     newExpr
 
   end inlineFunctionBody

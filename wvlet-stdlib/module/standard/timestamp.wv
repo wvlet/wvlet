@@ -45,6 +45,9 @@ type timestamp in duckdb = {
 
   -- Unix epoch seconds of this timestamp
   def to_unixtime: long = sql"cast(epoch(${this}) as bigint)"
+
+  -- Render as 'YYYY-MM-DD HH:MM:SS'. Overridden per engine so the rendering is identical
+  def to_string: string = sql"cast(${this} as varchar)"
 }
 
 type timestamp in trino = {
@@ -62,6 +65,11 @@ type timestamp in trino = {
   -- Format the timestamp with a MySQL-style pattern (e.g. '%Y-%m-%d %H:%i:%S')
   def format(pattern:string): string = sql"date_format(${this},${pattern})"
 
-  -- Unix epoch seconds of this timestamp
-  def to_unixtime: long = sql"cast(to_unixtime(${this}) as bigint)"
+  -- Unix epoch seconds of this timestamp. The bare timestamp is interpreted as UTC
+  -- regardless of the session time zone, matching DuckDB's epoch() semantics
+  def to_unixtime: long = sql"cast(to_unixtime(with_timezone(${this},'UTC')) as bigint)"
+
+  -- Render without the sub-second part (e.g. '2024-03-15 10:30:45'), matching
+  -- DuckDB's default timestamp rendering instead of Trino's trailing '.000'
+  def to_string: string = sql"date_format(${this},'%Y-%m-%d %H:%i:%s')"
 }

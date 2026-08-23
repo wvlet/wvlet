@@ -62,4 +62,22 @@ class StdLibProbeTest extends UniTest:
     sql shouldContain "list_sort(array_distinct("
   }
 
+  test("probe a member call with args chained on an inlined array member") {
+    val sql = generateSQL("from [[1]] as t(i)\nselect [3, 1, 2].sort.mk_string(',') as s\n")
+    info(sql)
+    sql shouldContain "array_to_string(list_sort("
+  }
+
+  test("probe a member call with args chained on an arg-taking member") {
+    val sql = generateSQL("from [[1]] as t(i)\nselect [3, 1, 2].concat([9]).mk_string(',') as s\n")
+    info(sql)
+    sql shouldContain "array_to_string(list_concat("
+  }
+
+  test("probe a member call with args chained on map keys") {
+    val sql = generateSQL("select map {\"a\": 1} as m\nselect m.keys.mk_string(',') as ks\n")
+    info(sql)
+    sql shouldContain "array_to_string(map_keys(m)"
+  }
+
 end StdLibProbeTest
