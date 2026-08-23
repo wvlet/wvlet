@@ -150,7 +150,19 @@ object GenSQL extends Phase("generate-sql"):
   def generateDDLSQL(ddl: TopLevelStatement, context: Context): List[String] =
     given Context = context
     val gen       = sqlGeneratorFor(context.dbType)
-    List(withHeader(gen.print(ddl), ddl.sourceLocation))
+    ddl match
+      case a: AlterTable if a.operations.size > 1 =>
+        // A reshape block carries multiple operations; emit one ALTER TABLE statement per
+        // operation so each runs as its own SQL statement
+        a.operations
+          .map { op =>
+            withHeader(
+              gen.print(AlterTable(a.table, a.ifExists, List(op), a.span)),
+              a.sourceLocation
+            )
+          }
+      case _ =>
+        List(withHeader(gen.print(ddl), ddl.sourceLocation))
 
   def generateSaveSQL(save: Save, context: Context): List[String] =
     given Context  = context
@@ -174,6 +186,14 @@ object GenSQL extends Phase("generate-sql"):
 
         val ctasSQL = withHeader(s"${ctasCmd} ${c.targetName} as\n${baseSQL.sql}", c.sourceLocation)
         statements += ctasSQL
+      case c: CreateView =>
+        val baseSQL = generateSQLFromRelation(c.inputRelation, addHeader = false)
+        val cmd     =
+          if c.replace then
+            "create or replace view"
+          else
+            "create view"
+        statements += withHeader(s"${cmd} ${c.targetName} as\n${baseSQL.sql}", c.sourceLocation)
       case s: SaveTo if s.isForTable =>
         val baseSQL           = generateSQLFromRelation(save.inputRelation, addHeader = false)
         var needsTableCleanup = false

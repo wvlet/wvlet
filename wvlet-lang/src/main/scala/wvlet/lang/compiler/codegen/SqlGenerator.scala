@@ -207,20 +207,6 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             expr(c.table) + columns
           )
         )
-      case c: CreateView =>
-        val sql = query(c.query, SQLBlock())(using InStatement)
-        group(
-          wl(
-            "create",
-            Option.when(c.replace) {
-              "or replace"
-            },
-            "view",
-            expr(c.viewName),
-            "as",
-            linebreak + sql
-          )
-        )
       case d: DropView =>
         group(
           wl(
@@ -305,7 +291,7 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             case null =>
               unsupportedNode(s"alter table operation (null)", d.span)
 
-        group(
+        def alterStmt(op: AlterTableOps): Doc = group(
           wl(
             "alter",
             "table",
@@ -313,9 +299,11 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
               "if exists"
             },
             expr(a.table),
-            group(alterOp(a.operation))
+            group(alterOp(op))
           )
         )
+        // One ALTER TABLE statement per operation (portable across engines)
+        concat(a.operations.map(alterStmt), text(";") + linebreak)
       case p: PrepareStatement =>
         group(wl("prepare", expr(p.name), "as", render(p.statement)))
       case e: ExecuteStatement =>
@@ -391,6 +379,21 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
 
       case t: Truncate =>
         group(wl("truncate", "table", expr(t.target)))
+
+      case c: CreateView =>
+        val sql = query(c.child, SQLBlock())(using InStatement)
+        group(
+          wl(
+            "create",
+            Option.when(c.replace) {
+              "or replace"
+            },
+            "view",
+            expr(c.target),
+            "as",
+            linebreak + sql
+          )
+        )
 
       case _ =>
         unsupportedNode(s"Update ${u.nodeName}", u.span)

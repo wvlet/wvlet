@@ -61,6 +61,15 @@ case class Delete(child: Relation, target: TableOrFileName, span: Span) extends 
 
 case class Truncate(target: TableOrFileName, span: Span) extends Update with LeafPlan
 
+/**
+  * Create or replace a view from a query: flow form `from ... save as view v` or block form
+  * `save as view v { query }`. A row-consuming statement, so it lives in the save family;
+  * semantically DDL (defines a catalog object)
+  */
+case class CreateView(target: TableOrFileName, replace: Boolean, child: Relation, span: Span)
+    extends Save:
+  override def category: StatementCategory = StatementCategory.DDL
+
 // SQL equivalent operators
 
 enum CreateMode:

@@ -64,9 +64,19 @@ case class CreateTable(
 
 case class DropTable(table: NameExpr, ifExists: Boolean, span: Span) extends DDL
 
-// Unified ALTER TABLE structure
-case class AlterTable(table: NameExpr, ifExists: Boolean, operation: AlterTableOps, span: Span)
-    extends DDL
+// Unified ALTER TABLE structure. A `reshape t { ... }` block carries multiple operations;
+// SQL emits one ALTER TABLE statement per operation
+case class AlterTable(
+    table: NameExpr,
+    ifExists: Boolean,
+    operations: List[AlterTableOps],
+    span: Span
+) extends DDL
+
+object AlterTable:
+  /** Single-operation form used by the SQL parser (one op per ALTER TABLE statement) */
+  def apply(table: NameExpr, ifExists: Boolean, operation: AlterTableOps, span: Span): AlterTable =
+    AlterTable(table, ifExists, List(operation), span)
 
 // ALTER TABLE operations
 sealed trait AlterTableOps:
@@ -119,7 +129,5 @@ case class ExecuteOp(
     where: Option[Expression] = None,
     span: Span
 ) extends AlterTableOps
-
-case class CreateView(viewName: NameExpr, replace: Boolean, query: Relation, span: Span) extends DDL
 
 case class DropView(viewName: NameExpr, ifExists: Boolean, span: Span) extends DDL

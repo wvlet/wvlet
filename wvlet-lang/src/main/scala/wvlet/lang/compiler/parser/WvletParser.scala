@@ -40,6 +40,14 @@ import scala.util.Try
   * Wvlet Language Parser. The grammar is described in `docs/internal/grammar.md` file.
   * @param unit
   */
+object WvletParser:
+  /**
+    * Soft keywords that begin a statement (`table <name> = { ... }`, `reshape <name> { ... }`).
+    * They are plain identifiers everywhere else, but a bare occurrence after a query terminates the
+    * query block instead of being read as a partial query application
+    */
+  val statementHeadSoftKeywords: Set[String] = Set("table", "reshape")
+
 class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends LogSupport:
 
   given src: SourceFile                  = unit.sourceFile
@@ -280,6 +288,10 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     * statements := statement+
     * @return
     */
+  // A statement parsed while a query block was being read (e.g. `rename table ... to ...`
+  // directly following a query). statements() drains it right after the enclosing statement
+  private var pendingStatement: Option[LogicalPlan] = None
+
   def statements(): List[LogicalPlan] =
     val t = scanner.lookAhead()
     t.token match
@@ -290,7 +302,9 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         statements()
       case _ =>
         val stmt: LogicalPlan = statement()
-        stmt :: statements()
+        val pending           = pendingStatement.toList
+        pendingStatement = None
+        (stmt :: pending) ::: statements()
 
   /**
     * Parse a def statement, which can be either a regular function def or a partial query def. If
@@ -968,13 +982,102 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         Truncate(target, spanFrom(tt))
       case WvletToken.SAVE | WvletToken.APPEND =>
         saveBlockStatement()
+      case WvletToken.RENAME =>
+        renameStatement()
       case WvletToken.IDENTIFIER if t.str == "table" =>
         tableShapeDef()
+      case WvletToken.IDENTIFIER if t.str == "reshape" =>
+        reshapeStatement()
       case _ =>
         unexpected(t)
     end match
   }
   end statement
+
+  /**
+    * Schema evolution with the query column operators, enclosed in a block:
+    * {{{
+    *   reshape <table> {
+    *     add <column>: <type>
+    *     rename <column> as <new name>
+    *     exclude <column>
+    *   }
+    * }}}
+    * Each operation lowers to one AlterTableOps case; SQL generation emits one ALTER TABLE
+    * statement per operation. `reshape` is a soft keyword, matched only at statement head.
+    */
+  def reshapeStatement(): LogicalPlan = node {
+    val t      = consume(WvletToken.IDENTIFIER) // the `reshape` soft keyword
+    val target = qualifiedId()
+    consume(WvletToken.L_BRACE)
+    val ops = List.newBuilder[AlterTableOps]
+
+    def nextOp(): Unit =
+      val tk = scanner.lookAhead()
+      tk.token match
+        case WvletToken.ADD =>
+          consume(WvletToken.ADD)
+          val colName = identifier()
+          consume(WvletToken.COLON)
+          val tpe = dataType()
+          ops += AddColumnOp(ColumnDef(colName, tpe, spanFrom(tk)), span = spanFrom(tk))
+          nextOp()
+        case WvletToken.RENAME =>
+          consume(WvletToken.RENAME)
+          val oldName = identifier()
+          consume(WvletToken.AS)
+          val newName = identifier()
+          ops += RenameColumnOp(oldName, newName, span = spanFrom(tk))
+          nextOp()
+        case WvletToken.EXCLUDE =>
+          consume(WvletToken.EXCLUDE)
+          val colName = identifier()
+          ops += DropColumnOp(colName, span = spanFrom(tk))
+          nextOp()
+        case WvletToken.R_BRACE =>
+        // end of block
+        case _ =>
+          throw StatusCode
+            .SYNTAX_ERROR
+            .newException(
+              s"Invalid reshape operation. Expected 'add <column>: <type>', 'rename <column> as <name>', or 'exclude <column>'",
+              tk.sourceLocation
+            )
+    end nextOp
+
+    nextOp()
+    consume(WvletToken.R_BRACE)
+    AlterTable(target, false, ops.result(), spanFrom(t))
+  }
+
+  /**
+    * renameStatement := 'rename' ('table' | 'schema') qualifiedId 'to' qualifiedId
+    *
+    * Renaming changes an object's identity, not its shape, so it is a direct statement rather than
+    * a reshape operation.
+    */
+  def renameStatement(): LogicalPlan = node {
+    val t    = consume(WvletToken.RENAME)
+    val kind = identifierSingle()
+    kind.leafName match
+      case "table" =>
+        val name = qualifiedId()
+        consume(WvletToken.TO)
+        val newName = qualifiedId()
+        AlterTable(name, false, List(RenameTableOp(newName, spanFrom(t))), spanFrom(t))
+      case "schema" =>
+        val name = qualifiedId()
+        consume(WvletToken.TO)
+        val newName = qualifiedId()
+        RenameDatabase(name, newName, spanFrom(t))
+      case other =>
+        throw StatusCode
+          .SYNTAX_ERROR
+          .newException(
+            s"Unknown rename target '${other}'. Expected 'table' or 'schema'",
+            t.sourceLocation
+          )
+  }
 
   /**
     * Parse a side-effect-free table shape declaration:
@@ -1057,11 +1160,14 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       case "table" =>
         val name = qualifiedId()
         DropTable(name, ifExistsModifier(), spanFrom(t))
+      case "view" =>
+        val name = qualifiedId()
+        DropView(name, ifExistsModifier(), spanFrom(t))
       case other =>
         throw StatusCode
           .SYNTAX_ERROR
           .newException(
-            s"Unknown drop target '${other}'. Expected 'schema' or 'table'",
+            s"Unknown drop target '${other}'. Expected 'schema', 'table', or 'view'",
             t.sourceLocation
           )
   }
@@ -1074,22 +1180,31 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     * }}}
     * These lower to the same plan nodes as the flow-suffix forms.
     */
-  def saveBlockStatement(): Relation = node {
-    def blockQuery(): Relation =
-      val bt = consume(WvletToken.L_BRACE)
-      val q  = queryBody()
-      consume(WvletToken.R_BRACE)
-      Query(q, spanFrom(bt))
+  /** Parse `{ <query> }` used as the body of a block-form save/append statement */
+  private def blockQuery(): Relation =
+    val bt = consume(WvletToken.L_BRACE)
+    val q  = queryBody()
+    consume(WvletToken.R_BRACE)
+    Query(q, spanFrom(bt))
 
+  def saveBlockStatement(): Relation = node {
     val t = scanner.lookAhead()
     t.token match
       case WvletToken.SAVE =>
         consume(WvletToken.SAVE)
-        consume(WvletToken.TO)
-        val target      = literalOrQualifiedName()
-        val ifNotExists = ifNotExistsModifier()
-        val opts        = saveOptions()
-        SaveTo(blockQuery(), target, opts, spanFrom(t), ifNotExists = ifNotExists)
+        scanner.lookAhead().token match
+          case WvletToken.AS =>
+            // save as view <name> { <query> }
+            consume(WvletToken.AS)
+            consumeViewKeyword()
+            val viewName = qualifiedId()
+            CreateView(viewName, replace = true, child = blockQuery(), spanFrom(t))
+          case _ =>
+            consume(WvletToken.TO)
+            val target      = literalOrQualifiedName()
+            val ifNotExists = ifNotExistsModifier()
+            val opts        = saveOptions()
+            SaveTo(blockQuery(), target, opts, spanFrom(t), ifNotExists = ifNotExists)
       case WvletToken.APPEND =>
         consume(WvletToken.APPEND)
         consume(WvletToken.TO)
@@ -1099,6 +1214,16 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       case _ =>
         unexpected(t)
   }
+
+  /** Consume the soft keyword `view` after `save as` */
+  private def consumeViewKeyword(): Unit =
+    val v = scanner.lookAhead()
+    if v.token == WvletToken.IDENTIFIER && v.str == "view" then
+      consume(WvletToken.IDENTIFIER)
+    else
+      throw StatusCode
+        .SYNTAX_ERROR
+        .newException(s"Expected 'view' after 'save as', but found '${v.str}'", v.sourceLocation)
 
   def use(): Command = node {
     val t = consume(WvletToken.USE)
@@ -1734,21 +1859,41 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       Nil
 
   def updateOpsIfExists(r: Relation): Relation = node {
+    // A `{` after the save/append target means the block form: the statement carries its own
+    // query, and the preceding query statement is already complete. The parsed block statement
+    // is handed to statements() through pendingStatement
+    def flowOrBlock(makeStatement: Relation => Relation): Relation =
+      if scanner.lookAhead().token == WvletToken.L_BRACE then
+        pendingStatement = Some(makeStatement(blockQuery()))
+        r
+      else
+        makeStatement(r)
+
     val t = scanner.lookAhead()
     t.token match
       case WvletToken.SAVE =>
         consume(WvletToken.SAVE)
-        consume(WvletToken.TO)
-        val target: StringLiteral | QualifiedName = literalOrQualifiedName()
-        val ifNotExists                           = ifNotExistsModifier()
-        val opts                                  = saveOptions()
-        SaveTo(r, target, opts, spanFrom(t), ifNotExists = ifNotExists)
+        scanner.lookAhead().token match
+          case WvletToken.AS =>
+            // from ... save as view <name>
+            consume(WvletToken.AS)
+            consumeViewKeyword()
+            val viewName = qualifiedId()
+            flowOrBlock(child => CreateView(viewName, replace = true, child, spanFrom(t)))
+          case _ =>
+            consume(WvletToken.TO)
+            val target: StringLiteral | QualifiedName = literalOrQualifiedName()
+            val ifNotExists                           = ifNotExistsModifier()
+            val opts                                  = saveOptions()
+            flowOrBlock(child =>
+              SaveTo(child, target, opts, spanFrom(t), ifNotExists = ifNotExists)
+            )
       case WvletToken.APPEND =>
         consume(WvletToken.APPEND)
         consume(WvletToken.TO)
         val target: StringLiteral | QualifiedName = literalOrQualifiedName()
         val columns                               = appendColumnList()
-        AppendTo(r, target, columns, spanFrom(t))
+        flowOrBlock(child => AppendTo(child, target, columns, spanFrom(t)))
       case WvletToken.DELETE =>
         consume(WvletToken.DELETE)
 
@@ -1937,7 +2082,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
       case WvletToken.EXCLUDE =>
         excludeColumnExpr(input)
       case WvletToken.RENAME =>
-        renameColumnExpr(input)
+        renameColumnOrStatement(input)
       case WvletToken.SHIFT =>
         shiftColumnsExpr(input)
       case WvletToken.GROUP =>
@@ -2012,6 +2157,10 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         flowEndExpr(input)
       case WvletToken.R_ARROW =>
         flowJumpExpr(input)
+      case id if id.isIdentifier && WvletParser.statementHeadSoftKeywords.contains(t.str) =>
+        // Soft statement heads (`table <name> = { ... }`, `reshape <name> { ... }`) terminate
+        // the query: they start a new statement, never a partial query application
+        input
       case id if id.isIdentifier =>
         // Potential partial query application: `relation | partial_query` or `relation | partial_query(args)`
         val name = identifier()
@@ -2136,6 +2285,60 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     nextItem
     ExcludeColumnsFromRelation(input, items.result, spanFrom(t))
   }
+
+  /**
+    * `rename` after a query is both the column-rename operator (`rename col as alias`) and the head
+    * of the rename statements (`rename table t to u`, `rename schema s to u`). Disambiguate after
+    * the first identifier: `as` continues the column operator; a further identifier after
+    * `table`/`schema` is a rename statement. A query block cannot return a statement, so the parsed
+    * statement is handed to statements() through pendingStatement and the query ends here.
+    */
+  def renameColumnOrStatement(input: Relation): Relation =
+    val t     = consume(WvletToken.RENAME)
+    val first = scanner.lookAhead()
+    first.token match
+      case WvletToken.IDENTIFIER | WvletToken.BACKQUOTED_IDENTIFIER =>
+        val name              = identifierSingle()
+        val next              = scanner.lookAhead()
+        val isRenameStatement =
+          (name.leafName == "table" || name.leafName == "schema") && next.token.isIdentifier
+        if isRenameStatement then
+          val target = qualifiedId()
+          consume(WvletToken.TO)
+          val newName = qualifiedId()
+          pendingStatement = Some(
+            if name.leafName == "table" then
+              AlterTable(target, false, List(RenameTableOp(newName, spanFrom(t))), spanFrom(t))
+            else
+              RenameDatabase(target, newName, spanFrom(t))
+          )
+          input
+        else
+          consume(WvletToken.AS)
+          val alias = identifierSingle()
+          val items = List.newBuilder[Alias]
+          items += Alias(alias, name, spanFrom(first))
+
+          def nextItem(): Unit =
+            val tk = scanner.lookAhead()
+            tk.token match
+              case WvletToken.COMMA =>
+                consume(WvletToken.COMMA)
+                val it = scanner.lookAhead()
+                val n  = identifierSingle()
+                consume(WvletToken.AS)
+                val a = identifierSingle()
+                items += Alias(a, n, spanFrom(it))
+                nextItem()
+              case _ =>
+          // finish
+          nextItem()
+          RenameColumnsFromRelation(input, items.result(), spanFrom(t))
+        end if
+      case _ =>
+        unexpected(first)
+    end match
+  end renameColumnOrStatement
 
   def renameColumnExpr(relation: Relation): RenameColumnsFromRelation = node {
     val t     = consume(WvletToken.RENAME)

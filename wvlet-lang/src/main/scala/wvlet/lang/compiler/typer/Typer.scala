@@ -363,7 +363,28 @@ object Typer extends Phase("typer") with LogSupport:
             markNamespaceRef(dt.table)
           case ct: CreateTable =>
             markNamespaceRef(ct.table)
+          case v: DropView =>
+            markNamespaceRef(v.viewName)
+          case r: RenameDatabase =>
+            markNamespaceRef(r.database)
+            markNamespaceRef(r.renameTo)
+          case a: AlterTable =>
+            markNamespaceRef(a.table)
+            a.operations
+              .foreach {
+                case c: AddColumnOp =>
+                  markNamespaceRef(c.column.columnName)
+                case r: RenameColumnOp =>
+                  markNamespaceRef(r.oldName)
+                  markNamespaceRef(r.newName)
+                case dc: DropColumnOp =>
+                  markNamespaceRef(dc.column)
+                case r: RenameTableOp =>
+                  markNamespaceRef(r.newName)
+                case _ =>
+              }
           case _ =>
+        end match
         typeNode(d)
       case t: Truncate =>
         t.target match
