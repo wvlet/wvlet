@@ -975,33 +975,64 @@ class QueryExecutor(
         case _ =>
           s"${pp(l)}\n${op}\n${pp(r)}"
 
+    // Numeric values are compared by value, not by representation: the JDBC driver may
+    // return java.math.BigDecimal for a decimal column while the expected literal
+    // evaluates to a scala BigDecimal, Long, or Double (e.g. `1.2` vs DECIMAL '1.2')
+    def valueEquals(l: Any, r: Any): Boolean =
+      (l, r) match
+        case (a: Seq[?], b: Seq[?]) =>
+          a.size == b.size &&
+          a.lazyZip(b)
+            .forall { (x, y) =>
+              valueEquals(x, y)
+            }
+        case (a: java.lang.Number, b: java.lang.Number) =>
+          try
+            BigDecimal(a.toString).compare(BigDecimal(b.toString)) == 0
+          catch
+            case _: NumberFormatException =>
+              // NaN, Infinity, etc.
+              a == b
+        // Some column values arrive as strings (e.g. decimal columns through the JDBC codec),
+        // so a string is compared numerically against an expected number when it parses
+        case (a: String, b: java.lang.Number) =>
+          try
+            BigDecimal(a).compare(BigDecimal(b.toString)) == 0
+          catch
+            case _: NumberFormatException =>
+              false
+        case (a: java.lang.Number, b: String) =>
+          valueEquals(b, a)
+        case _ =>
+          l == r
+
     def eval(e: Expression): QueryResult =
       e match
         case ShouldExpr(TestType.ShouldBe, left, right, _) =>
           val leftValue  = trim(evalOp(left))
           val rightValue = trim(evalOp(right))
-          if leftValue != rightValue then
+          if !valueEquals(leftValue, rightValue) then
             TestFailure(cmpMsg("was not equal to", leftValue, rightValue), e.sourceLocation)
           else
             TestSuccess(cmpMsg("was equal to", leftValue, rightValue), e.sourceLocation)
         case Eq(left, right, _) =>
           val leftValue  = trim(evalOp(left))
           val rightValue = trim(evalOp(right))
-          if leftValue != rightValue then
+          if !valueEquals(leftValue, rightValue) then
             TestFailure(cmpMsg("was not equal to", leftValue, rightValue), e.sourceLocation)
           else
             TestSuccess(cmpMsg("was equal to", leftValue, rightValue), e.sourceLocation)
         case ShouldExpr(TestType.ShouldNotBe, left, right, _) =>
           val leftValue  = trim(evalOp(left))
           val rightValue = trim(evalOp(right))
-          if leftValue == rightValue then
+          if valueEquals(leftValue, rightValue) then
             TestFailure(cmpMsg("was equal to", leftValue, rightValue), e.sourceLocation)
           else
             TestSuccess(cmpMsg("was not equal to", leftValue, rightValue), e.sourceLocation)
         case NotEq(left, right, _) =>
           val leftValue  = trim(evalOp(left))
           val rightValue = trim(evalOp(right))
-          if leftValue == rightValue then
+          if valueEquals(leftValue, rightValue) then
             TestFailure(cmpMsg("was equal to", leftValue, rightValue), e.sourceLocation)
           else
             TestSuccess(cmpMsg("was not equal to", leftValue, rightValue), e.sourceLocation)
