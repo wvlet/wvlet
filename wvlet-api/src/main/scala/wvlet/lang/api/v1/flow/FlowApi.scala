@@ -65,8 +65,22 @@ object FlowApi extends RxRouterProvider:
       runTimeMillis: Option[Long] = None
   )
 
-  /** Per-stage state of a recorded run */
-  case class StageRunInfo(name: String, state: String, attempts: Int, error: Option[String] = None)
+  /**
+    * Per-stage state of a recorded run
+    *
+    * @param waitingSinceMillis
+    *   Set while a running `wait until` sensor stage is polling: when the wait began
+    * @param lastPollAtMillis
+    *   Set while a running sensor stage is polling: the time of its latest condition check
+    */
+  case class StageRunInfo(
+      name: String,
+      state: String,
+      attempts: Int,
+      error: Option[String] = None,
+      waitingSinceMillis: Option[Long] = None,
+      lastPollAtMillis: Option[Long] = None
+  )
 
   /** A recorded run with its per-stage states, attempts, and errors */
   case class FlowRunDetail(run: FlowRunSummary, stages: List[StageRunInfo])

@@ -542,24 +542,35 @@ class FlowExecutor(
               }
             // Event sensors poll their condition until it holds. The stage's timeout: (and the
             // regular retry/failure policy) bounds the polling like any other attempt work
-            ls.waitUntil
-              .foreach { sensor =>
-                val pollSql = FlowExecutor.sensorPollSql(
-                  sensor,
-                  stageNames,
-                  tableFor,
-                  routeFilters,
-                  ls.name
-                )
-                val interval = stageConfigs(ls.name).pollIntervalMillis.max(1L)
-                workEnv.info(s"Stage ${ls.name} waits until its sensor condition holds")
-                debug(s"Sensor poll of stage ${ls.name}:\n${pollSql}")
-                beat(attemptKey)
-                val sensorConnector = connectorFor(ls)
-                while sensorConnector.queryJsonRows(pollSql).isEmpty do
-                  sleepWithHeartbeat(interval)
+            if ls.waitUntil.nonEmpty then
+              // Report sensor liveness to the scheduler on every poll, so run snapshots can
+              // show "waiting since / last poll" instead of an indistinguishable running state
+              val waitingSinceMillis = System.currentTimeMillis()
+              def reportPoll(): Unit = eventQueue.put(
+                SensorWaiting(ls.name, waitingSinceMillis, System.currentTimeMillis())
+              )
+              ls.waitUntil
+                .foreach { sensor =>
+                  val pollSql = FlowExecutor.sensorPollSql(
+                    sensor,
+                    stageNames,
+                    tableFor,
+                    routeFilters,
+                    ls.name
+                  )
+                  val interval = stageConfigs(ls.name).pollIntervalMillis.max(1L)
+                  workEnv.info(s"Stage ${ls.name} waits until its sensor condition holds")
+                  debug(s"Sensor poll of stage ${ls.name}:\n${pollSql}")
                   beat(attemptKey)
-              }
+                  reportPoll()
+                  val sensorConnector = connectorFor(ls)
+                  while sensorConnector.queryJsonRows(pollSql).isEmpty do
+                    sleepWithHeartbeat(interval)
+                    beat(attemptKey)
+                    reportPoll()
+                }
+              // All sensors passed: the stage now does real work, no longer waiting
+              eventQueue.put(SensorCleared(ls.name))
             materializeStage(
               ls,
               stageNames,
@@ -635,6 +646,10 @@ class FlowExecutor(
     val attempts = mutable.Map.empty[String, Int].withDefaultValue(0)
     resumedStages.foreach((name, s) => attempts(name) = s.attempts)
     val errors = mutable.Map.empty[String, Throwable]
+    // Sensor liveness of polling `wait until` stages, updated via SensorWaiting/SensorCleared
+    // events. Snapshots surface these so operators can tell a waiting sensor from a running query
+    val waitingSince = mutable.Map.empty[String, Long]
+    val lastPollAt   = mutable.Map.empty[String, Long]
     // (stage, attempt) pairs whose outcome has been decided (guards against duplicate events
     // from a timed-out attempt completing later)
     val handledAttempts  = mutable.Set.empty[(String, Int)]
@@ -710,6 +725,19 @@ class FlowExecutor(
             Some(tableFor(name))
           else
             None
+          ,
+          // Sensor liveness only applies while the stage is actually running its poll loop
+          waitingSinceMillis =
+            if state == StageState.Running then
+              waitingSince.get(name)
+            else
+              None
+          ,
+          lastPollAtMillis =
+            if state == StageState.Running then
+              lastPollAt.get(name)
+            else
+              None
         )
       }
       val flowState =
@@ -994,6 +1022,12 @@ class FlowExecutor(
             // handled at the top of the loop via the cancelled flag
             case FlowDeadlineExceeded =>
               handleFlowTimeout(scheduleConfig.timeoutMillis.getOrElse(0L))
+            case SensorWaiting(stage, since, lastPoll) =>
+              waitingSince(stage) = since
+              lastPollAt(stage) = lastPoll
+            case SensorCleared(stage) =>
+              waitingSince.remove(stage)
+              lastPollAt.remove(stage)
             case RetryDue(s, attempt) =>
               scheduledRetries -= 1
               if states(s.name) == StageState.Retrying then
@@ -1010,6 +1044,9 @@ class FlowExecutor(
                   clearAttempt((name, attempt))
                 runningCount -= 1
                 attempts(name) = attempt
+                // The attempt reached an outcome; any sensor-waiting marker is stale now
+                waitingSince.remove(name)
+                lastPollAt.remove(name)
                 if states(name) == StageState.Running then
                   error match
                     case None =>
@@ -1518,5 +1555,10 @@ object FlowExecutor:
     case CancelRequested
     // The flow-level timeout: deadline expired; the run fails with all non-terminal stages
     case FlowDeadlineExceeded
+    // A polling `wait until` stage reports when it started waiting and its latest poll time,
+    // so run snapshots can render the waiting state distinctly from running work
+    case SensorWaiting(stage: String, sinceMillis: Long, lastPollMillis: Long)
+    // The stage's sensors all passed; it is no longer waiting
+    case SensorCleared(stage: String)
 
 end FlowExecutor

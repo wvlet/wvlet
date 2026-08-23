@@ -381,6 +381,11 @@ Polling respects the stage's `heartbeat:` config (a polling sensor is never mist
 stalled attempt), and a `timeout:` expiry follows the stage's regular retry and failure
 policy.
 
+While a sensor is polling, `wvlet flow session show` and the web UI runs view report the
+stage as **waiting** — with how long it has been waiting and when it last checked the
+condition — so a stage blocked on upstream data is never mistaken for an expensive query
+that is still executing.
+
 ### Delivering Results with activate
 
 `activate('<target>', param: value, ...)` delivers the materialized stage output to an

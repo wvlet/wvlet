@@ -18,6 +18,7 @@ import wvlet.lang.api.v1.flow.FlowApi.FlowRunDetail
 import wvlet.lang.api.v1.flow.FlowApi.FlowRunListRequest
 import wvlet.lang.api.v1.flow.FlowApi.FlowRunRequest
 import wvlet.lang.api.v1.flow.FlowApi.FlowRunSummary
+import wvlet.lang.api.v1.flow.FlowApi.StageRunInfo
 import wvlet.lang.api.v1.frontend.FrontendRPC.RPCAsyncClient
 import wvlet.lang.ui.component.MainFrame
 import wvlet.uni.dom.RxElement
@@ -82,20 +83,45 @@ class FlowRunsPage(rpcClient: RPCAsyncClient) extends RxElement:
 
   private def fmtTime(millis: Long): String = new js.Date(millis.toDouble).toISOString()
 
+  private def fmtDuration(millis: Long): String =
+    if millis < 1000 then
+      s"${millis}ms"
+    else if millis < 60_000 then
+      f"${millis / 1000.0}%.1fs"
+    else if millis < 3600_000 then
+      s"${millis / 60_000}m ${(millis % 60_000) / 1000}s"
+    else
+      s"${millis / 3600_000}h ${(millis % 3600_000) / 60_000}m"
+
   private def fmtElapsed(r: FlowRunSummary): String = r
     .finishedAtMillis
-    .map { f =>
-      val millis = f - r.startedAtMillis
-      if millis < 1000 then
-        s"${millis}ms"
-      else if millis < 60_000 then
-        f"${millis / 1000.0}%.1fs"
-      else if millis < 3600_000 then
-        s"${millis / 60_000}m ${(millis % 60_000) / 1000}s"
-      else
-        s"${millis / 3600_000}h ${(millis % 3600_000) / 60_000}m"
-    }
+    .map(f => fmtDuration(f - r.startedAtMillis))
     .getOrElse("-")
+
+  /**
+    * The state cell of a stage row. A polling `wait until` sensor renders a distinct waiting badge
+    * with how long it has been waiting, so it is not mistaken for a running query
+    */
+  private def stageStateCell(s: StageRunInfo): RxElement =
+    s.waitingSinceMillis match
+      case Some(since) =>
+        val now      = js.Date.now().toLong
+        val lastPoll = s
+          .lastPollAtMillis
+          .map(p => s", last poll ${fmtDuration((now - p).max(0L))} ago")
+          .getOrElse("")
+        span(
+          span(
+            cls -> "rounded-md px-2 py-0.5 text-xs font-medium bg-violet-800 text-violet-100",
+            "waiting"
+          ),
+          span(
+            cls -> "pl-2 text-xs text-gray-400",
+            s"for ${fmtDuration((now - since).max(0L))}${lastPoll}"
+          )
+        )
+      case None =>
+        stateBadge(s.state)
 
   private def headerCell(name: String) = th(
     cls -> "px-3 py-2 text-left text-xs font-semibold text-gray-400",
@@ -169,7 +195,7 @@ class FlowRunsPage(rpcClient: RPCAsyncClient) extends RxElement:
               .map { s =>
                 tr(
                   cell(span(s.name)),
-                  cell(stateBadge(s.state)),
+                  cell(stageStateCell(s)),
                   cell(span(s.attempts.toString)),
                   td(cls -> "px-3 py-1.5 text-sm text-red-300", span(s.error.getOrElse("")))
                 )

@@ -48,7 +48,18 @@ class FlowApiImpl(workEnv: WorkEnv) extends FlowApi with AutoCloseable with LogS
       case Some(r) =>
         FlowRunDetail(
           run = toSummary(r, System.currentTimeMillis()),
-          stages = r.stages.map(s => StageRunInfo(s.name, s.state, s.attempts, s.error))
+          stages = r
+            .stages
+            .map(s =>
+              StageRunInfo(
+                s.name,
+                s.state,
+                s.attempts,
+                s.error,
+                waitingSinceMillis = s.waitingSinceMillis,
+                lastPollAtMillis = s.lastPollAtMillis
+              )
+            )
         )
       case None =>
         throw RPCStatus.NOT_FOUND_U5.newException(s"Flow run '${request.runId}' is not found")

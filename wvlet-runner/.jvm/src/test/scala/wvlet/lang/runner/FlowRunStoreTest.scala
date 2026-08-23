@@ -220,6 +220,83 @@ class FlowRunStoreTest extends UniTest:
     }
   }
 
+  test("round-trip sensor liveness fields of waiting stages") {
+    withStores { (kind, store) =>
+      val waiting = record("run1", "FlowA", FlowRunRecord.STATE_RUNNING, 100L).copy(stages =
+        List(
+          StageRunRecord(
+            "gate",
+            "running",
+            1,
+            waitingSinceMillis = Some(150L),
+            lastPollAtMillis = Some(170L)
+          ),
+          StageRunRecord("out", "pending", 0)
+        )
+      )
+      store.save(waiting)
+      val r = store.get("run1").getOrElse(fail(s"run1 not found in ${kind} store"))
+      r.stages.head.waitingSinceMillis shouldBe Some(150L)
+      r.stages.head.lastPollAtMillis shouldBe Some(170L)
+      r.stages.last.waitingSinceMillis shouldBe None
+      r.stages.last.lastPollAtMillis shouldBe None
+    }
+  }
+
+  test("migrate a SQLite stages table created before the sensor-liveness columns") {
+    val dir    = Files.createTempDirectory("wv-flow-store-migrate-stages")
+    val dbPath = dir.resolve("registry.db")
+    // Create a database whose stages table predates the waiting_since / last_poll_at columns
+    val conn = java.sql.DriverManager.getConnection(s"jdbc:sqlite:${dbPath}")
+    try
+      val stmt = conn.createStatement()
+      stmt.execute("""create table runs(
+          |  run_id           text primary key,
+          |  flow_name        text not null,
+          |  state            text not null,
+          |  started_at       integer not null,
+          |  finished_at      integer,
+          |  cancel_requested integer not null default 0,
+          |  lease_expires_at integer,
+          |  args             text,
+          |  run_time         integer
+          |)""".stripMargin)
+      stmt.execute("""create table stages(
+          |  run_id     text not null,
+          |  ordinal    integer not null,
+          |  name       text not null,
+          |  state      text not null,
+          |  attempts   integer not null,
+          |  error      text,
+          |  table_name text,
+          |  primary key(run_id, ordinal)
+          |)""".stripMargin)
+      stmt.execute(
+        "insert into runs(run_id, flow_name, state, started_at) values('old1', 'FlowA', 'success', 100)"
+      )
+      stmt.execute(
+        "insert into stages(run_id, ordinal, name, state, attempts) values('old1', 0, 'src', 'success', 1)"
+      )
+      stmt.close()
+    finally
+      conn.close()
+    end try
+
+    val store = SQLiteFlowRunStore(dbPath)
+    try
+      val old = store.get("old1").getOrElse(fail("old1 not found after migration"))
+      old.stages.head.waitingSinceMillis shouldBe None
+      // New records persist the added stage columns
+      store.save(
+        record("new1", "FlowA", FlowRunRecord.STATE_RUNNING, 200L).copy(stages =
+          List(StageRunRecord("gate", "running", 1, waitingSinceMillis = Some(250L)))
+        )
+      )
+      store.get("new1").get.stages.head.waitingSinceMillis shouldBe Some(250L)
+    finally
+      store.close()
+  }
+
   test("migrate a SQLite database created before the args and run_time columns") {
     val dir    = Files.createTempDirectory("wv-flow-store-migrate")
     val dbPath = dir.resolve("registry.db")
