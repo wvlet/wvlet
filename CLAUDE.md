@@ -329,5 +329,6 @@ For error reporting, use WvletLangException and StatusCode enum. If necessary er
 - Use `shouldContain "(keyword)"` for checking string fragment in UniTest
 - To debug SQL generator, add -L *GenSQL=trace to the test option
 - Typing coverage over spec/basic is guarded by a CI ratchet: `./sbt "langJVM/testOnly *TyperCoverageCheck"` (raise its thresholds when improving type resolution; never lower them)
+- The stdlib is freshness-gated in CI: after changing `wvlet-stdlib/module/standard/*.wv` or bumping an engine dependency, regenerate the engine catalogs (`./sbt "runnerJVM/Test/runMain wvlet.lang.runner.StdLibFunctionCatalogGenerator"` for DuckDB, `...StdLibTrinoFunctionCatalogGenerator` for Trino) and the docs reference page (`./sbt "langJVM/Test/runMain wvlet.lang.compiler.codegen.StdLibDocGenerator"`); `StdLibCatalogFreshnessTest` and `StdLibDocFreshnessTest` fail on drift with the exact command to run
 - For compiler performance work, compare before/after with `./sbt "langJVM/testOnly *TyperBench"` (log-only timing probe)
 
