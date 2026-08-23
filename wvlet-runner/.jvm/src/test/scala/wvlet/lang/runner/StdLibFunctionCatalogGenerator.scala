@@ -30,21 +30,29 @@ import wvlet.uni.log.LogSupport
   * Run with: ./sbt "runnerJVM/Test/runMain wvlet.lang.runner.StdLibFunctionCatalogGenerator"
   */
 object StdLibFunctionCatalogGenerator extends LogSupport:
+  /** Path of the bundled catalog, relative to the repository root */
+  val targetPath = "wvlet-stdlib/module/standard/duckdb/functions.wv"
+
+  /** Regeneration command shown in the catalog header and in freshness-check failures */
+  val regenCommand =
+    "./sbt \"runnerJVM/Test/runMain wvlet.lang.runner.StdLibFunctionCatalogGenerator\""
+
+  /** Generate the catalog source from the functions reported by the given DuckDB engine */
+  def generateCatalogSource(duckdb: DuckDBConnector): String =
+    val functions = duckdb.listFunctions("memory")
+    info(s"Found ${functions.size} DuckDB functions")
+    val source = StaticCatalogExporter.generateFunctionsSource(
+      contextName = "duckdb",
+      functions = functions,
+      excludedNames = StaticCatalogExporter.handWrittenStdlibFunctionNames,
+      refreshNote = s"Re-run `${regenCommand}` to refresh."
+    )
+    s"package wvlet.standard\n\n${source}"
+
   def main(args: Array[String]): Unit =
-    val targetPath = "wvlet-stdlib/module/standard/duckdb/functions.wv"
-    val duckdb     = DuckDBConnector(WorkEnv("."))
+    val duckdb = DuckDBConnector(WorkEnv("."))
     try
-      val functions = duckdb.listFunctions("memory")
-      info(s"Found ${functions.size} DuckDB functions")
-      val source = StaticCatalogExporter.generateFunctionsSource(
-        contextName = "duckdb",
-        functions = functions,
-        excludedNames = StaticCatalogExporter.handWrittenStdlibFunctionNames,
-        refreshNote =
-          "Re-run `./sbt \"runnerJVM/Test/runMain wvlet.lang.runner.StdLibFunctionCatalogGenerator\"` to refresh."
-      )
-      val body = s"package wvlet.standard\n\n${source}"
-      SourceIO.writeString(targetPath, body)
+      SourceIO.writeString(targetPath, generateCatalogSource(duckdb))
       info(s"Wrote ${targetPath}")
     finally
       duckdb.close()

@@ -623,7 +623,7 @@ run to its own window:
 ```wvlet
 flow daily_sales with { schedule: cron('0 2 * * *') } = {
   stage src = from sales | where sales_date = run_date
-  stage report = from src | group by region | agg _.sum(amount)
+  stage report = from src | group by region | agg amount.sum as total
 }
 ```
 

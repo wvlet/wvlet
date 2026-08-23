@@ -22,6 +22,15 @@ flow OrchestratedFlow = {
 }
 ;
 
+-- Aggregation shorthands and stdlib functions resolve inside stage bodies
+flow AggregateFlow = {
+  stage src = from [[1, 'a'], [2, 'b'], [3, 'a']] as t(id, name)
+  stage stats = from src | group by name | agg _.count as cnt, id.sum as total
+  stage counted = from src | agg _.count as cnt
+  stage renamed = from src | select id, upper_name = name.upper
+}
+;
+
 -- Merge over values-based stages
 flow MergeValuesFlow = {
   stage source_a = from [[1], [2]] as t(id)

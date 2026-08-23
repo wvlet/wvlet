@@ -33,32 +33,43 @@ import wvlet.uni.log.LogSupport
   * Run with: ./sbt "runnerJVM/Test/runMain wvlet.lang.runner.StdLibTrinoFunctionCatalogGenerator"
   */
 object StdLibTrinoFunctionCatalogGenerator extends LogSupport:
-  def main(args: Array[String]): Unit =
-    val targetPath = "wvlet-stdlib/module/standard/trino/functions.wv"
-    val server     = TestTrinoServer().withCustomMemoryPlugin
-    val trino      = TrinoConnector(
-      TrinoConfig(
-        catalog = "memory",
-        schema = "main",
-        hostAndPort = server.address,
-        useSSL = false,
-        user = Some("test"),
-        password = Some("")
-      ),
-      WorkEnv(".")
+  /** Path of the bundled catalog, relative to the repository root */
+  val targetPath = "wvlet-stdlib/module/standard/trino/functions.wv"
+
+  /** Regeneration command shown in the catalog header and in freshness-check failures */
+  val regenCommand =
+    "./sbt \"runnerJVM/Test/runMain wvlet.lang.runner.StdLibTrinoFunctionCatalogGenerator\""
+
+  /** Connect to the given embedded Trino server for reading its function catalog */
+  def newTrinoConnector(server: TestTrinoServer): TrinoConnector = TrinoConnector(
+    TrinoConfig(
+      catalog = "memory",
+      schema = "main",
+      hostAndPort = server.address,
+      useSSL = false,
+      user = Some("test"),
+      password = Some("")
+    ),
+    WorkEnv(".")
+  )
+
+  /** Generate the catalog source from the functions reported by the given Trino server */
+  def generateCatalogSource(trino: TrinoConnector): String =
+    val functions = trino.listFunctions("memory")
+    info(s"Found ${functions.size} Trino functions")
+    val source = StaticCatalogExporter.generateFunctionsSource(
+      contextName = "trino",
+      functions = functions,
+      excludedNames = StaticCatalogExporter.handWrittenStdlibFunctionNames,
+      refreshNote = s"Re-run `${regenCommand}` to refresh."
     )
+    s"package wvlet.standard\n\n${source}"
+
+  def main(args: Array[String]): Unit =
+    val server = TestTrinoServer().withCustomMemoryPlugin
+    val trino  = newTrinoConnector(server)
     try
-      val functions = trino.listFunctions("memory")
-      info(s"Found ${functions.size} Trino functions")
-      val source = StaticCatalogExporter.generateFunctionsSource(
-        contextName = "trino",
-        functions = functions,
-        excludedNames = StaticCatalogExporter.handWrittenStdlibFunctionNames,
-        refreshNote =
-          "Re-run `./sbt \"runnerJVM/Test/runMain wvlet.lang.runner.StdLibTrinoFunctionCatalogGenerator\"` to refresh."
-      )
-      val body = s"package wvlet.standard\n\n${source}"
-      SourceIO.writeString(targetPath, body)
+      SourceIO.writeString(targetPath, generateCatalogSource(trino))
       info(s"Wrote ${targetPath}")
     finally
       Control.closeResources(trino, server)
