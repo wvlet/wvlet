@@ -109,3 +109,55 @@ type string in hive = {
   def json_extract(path:string): json = sql"get_json_object(${this},${path})"
   def json_extract_string(path:string): string = sql"get_json_object(${this},${path})"
 }
+
+type string in snowflake = {
+  -- Snowflake's REGEXP_LIKE matches the entire string, so use REGEXP_INSTR for the
+  -- partial-match semantics of the other engines
+  def regexp_like(pattern:string): boolean = sql"regexp_instr(${this},${pattern}) > 0"
+  -- Replace every substring matching the regular expression with the replacement
+  def regexp_replace(pattern:string, replacement:string): string = sql"regexp_replace(${this},${pattern},${replacement})"
+  -- Extract the first substring matching the regular expression
+  def regexp_extract(pattern:string): string = sql"regexp_substr(${this},${pattern})"
+  def regexp_extract(pattern:string, group_index:int): string = sql"regexp_substr(${this},${pattern},1,1,'c',${group_index})"
+  -- 1-origin position of the first occurrence of the substring (0 if not found)
+  def strpos(substr:string): int = sql"charindex(${substr},${this})"
+  def contains(substr:string): boolean = sql"contains(${this},${substr})"
+  def starts_with(prefix:string): boolean = sql"startswith(${this},${prefix})"
+  def ends_with(suffix:string): boolean = sql"endswith(${this},${suffix})"
+  -- Split the string by the separator into an array of strings
+  def split(separator:string): array[string] = sql"split(${this},${separator})"
+  -- Hex-encoded digest strings
+  def md5: string = sql"md5(${this})"
+  def sha256: string = sql"sha2(${this},256)"
+  -- Edit distance between two strings
+  def levenshtein(other:string): int = sql"editdistance(${this},${other})"
+  -- Extract a JSON value from a string holding JSON text. Note: Snowflake paths omit the
+  -- leading '$.' (e.g. 'a.b' instead of '$.a.b')
+  def json_extract(path:string): json = sql"get_path(parse_json(${this}),${path})"
+  def json_extract_string(path:string): string = sql"json_extract_path_text(${this},${path})"
+}
+
+type string in bigquery = {
+  -- BigQuery cast type names differ from the other engines
+  def to_int: int = sql"cast(${this} as int64)"
+  def to_long: long = sql"cast(${this} as int64)"
+  def to_float: float = sql"cast(${this} as float64)"
+  def to_double: double = sql"cast(${this} as float64)"
+  def to_boolean: boolean = sql"cast(${this} as bool)"
+
+  def regexp_like(pattern:string): boolean = sql"regexp_contains(${this},${pattern})"
+  -- Replace every substring matching the regular expression with the replacement
+  def regexp_replace(pattern:string, replacement:string): string = sql"regexp_replace(${this},${pattern},${replacement})"
+  def contains(substr:string): boolean = sql"strpos(${this},${substr}) > 0"
+  def ends_with(suffix:string): boolean = sql"ends_with(${this},${suffix})"
+  -- Split the string by the separator into an array of strings
+  def split(separator:string): array[string] = sql"split(${this},${separator})"
+  -- Hex-encoded digest strings (BigQuery digests return BYTES)
+  def md5: string = sql"lower(to_hex(md5(${this})))"
+  def sha256: string = sql"lower(to_hex(sha256(${this})))"
+  -- Edit distance between two strings
+  def levenshtein(other:string): int = sql"edit_distance(${this},${other})"
+  -- Extract a JSON value from a string holding JSON text (JSONPath, e.g. '$.a.b')
+  def json_extract(path:string): json = sql"json_extract(${this},${path})"
+  def json_extract_string(path:string): string = sql"json_extract_scalar(${this},${path})"
+}

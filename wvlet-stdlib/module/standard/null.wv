@@ -2,12 +2,18 @@ package wvlet.standard
 
 type null = {
   def to_int: int = sql"cast(${this} as bigint)"
+  def to_int in bigquery: int = sql"cast(${this} as int64)"
   def to_long: long = sql"cast(${this} as bigint)"
+  def to_long in bigquery: long = sql"cast(${this} as int64)"
   def to_float: float = sql"cast(${this} as double)"
+  def to_float in bigquery: float = sql"cast(${this} as float64)"
   def to_double: double = sql"cast(${this} as double)"
+  def to_double in bigquery: double = sql"cast(${this} as float64)"
   def to_boolean: boolean = sql"cast(${this} as boolean)"
+  def to_boolean in bigquery: boolean = sql"cast(${this} as bool)"
   def to_date: date = sql"cast(${this} as date)"
   def to_timestamp: timestamp = sql"cast(${this} as timestamp)"
   def to_string: string = sql"cast(${this} as varchar)"
   def to_string in hive: string = sql"cast(${this} as string)"
+  def to_string in bigquery: string = sql"cast(${this} as string)"
 }

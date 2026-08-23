@@ -93,3 +93,55 @@ type timestamp in hive = {
 
   def to_string: string = sql"cast(${this} as string)"
 }
+
+type timestamp in snowflake = {
+  -- ISO day of week (1 = Monday, 7 = Sunday) and day of year
+  def day_of_week: int = sql"dayofweekiso(${this})"
+  def day_of_year: int = sql"dayofyear(${this})"
+
+  def add_seconds(n:int): timestamp = sql"dateadd('second',${n},${this})"
+  def add_minutes(n:int): timestamp = sql"dateadd('minute',${n},${this})"
+  def add_hours(n:int): timestamp = sql"dateadd('hour',${n},${this})"
+  def add_days(n:int): timestamp = sql"dateadd('day',${n},${this})"
+  def add_months(n:int): timestamp = sql"dateadd('month',${n},${this})"
+  def add_years(n:int): timestamp = sql"dateadd('year',${n},${this})"
+
+  -- Format the timestamp with a SQL format model (e.g. 'YYYY-MM-DD HH24:MI:SS')
+  def format(pattern:string): string = sql"to_char(${this},${pattern})"
+
+  def diff_seconds(other:timestamp): long = sql"datediff('second',${this},${other})"
+  def diff_minutes(other:timestamp): long = sql"datediff('minute',${this},${other})"
+  def diff_hours(other:timestamp): long = sql"datediff('hour',${this},${other})"
+  def diff_days(other:timestamp): long = sql"datediff('day',${this},${other})"
+
+  -- Unix epoch seconds of this timestamp
+  def to_unixtime: long = sql"cast(date_part('epoch_second',${this}) as bigint)"
+
+  -- Render without the sub-second part, matching the other engines
+  def to_string: string = sql"to_char(${this},'YYYY-MM-DD HH24:MI:SS')"
+}
+
+type timestamp in bigquery = {
+  -- ISO day of week (1 = Monday, 7 = Sunday; BigQuery's DAYOFWEEK starts at 1 = Sunday)
+  def day_of_week: int = sql"mod(extract(dayofweek from ${this}) + 5, 7) + 1"
+  def day_of_year: int = sql"extract(dayofyear from ${this})"
+
+  def add_seconds(n:int): timestamp = sql"timestamp_add(${this}, interval (${n}) second)"
+  def add_minutes(n:int): timestamp = sql"timestamp_add(${this}, interval (${n}) minute)"
+  def add_hours(n:int): timestamp = sql"timestamp_add(${this}, interval (${n}) hour)"
+  def add_days(n:int): timestamp = sql"timestamp_add(${this}, interval (${n}) day)"
+
+  -- Format the timestamp with a strftime-style pattern (e.g. '%Y-%m-%d %H:%M:%S')
+  def format(pattern:string): string = sql"format_timestamp(${pattern},${this})"
+
+  def diff_seconds(other:timestamp): long = sql"timestamp_diff(${other},${this},second)"
+  def diff_minutes(other:timestamp): long = sql"timestamp_diff(${other},${this},minute)"
+  def diff_hours(other:timestamp): long = sql"timestamp_diff(${other},${this},hour)"
+  def diff_days(other:timestamp): long = sql"timestamp_diff(${other},${this},day)"
+
+  -- Unix epoch seconds of this timestamp
+  def to_unixtime: long = sql"unix_seconds(${this})"
+
+  -- Render without the sub-second part, matching the other engines
+  def to_string: string = sql"format_timestamp('%Y-%m-%d %H:%M:%S',${this})"
+}

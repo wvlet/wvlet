@@ -2,12 +2,18 @@ package wvlet.standard
 
 type decimal = {
   def to_int: int = sql"cast(${this} as bigint)"
+  def to_int in bigquery: int = sql"cast(${this} as int64)"
   def to_long: long = sql"cast(${this} as bigint)"
+  def to_long in bigquery: long = sql"cast(${this} as int64)"
   def to_float: float = sql"cast(${this} as double)"
+  def to_float in bigquery: float = sql"cast(${this} as float64)"
   def to_double: double = sql"cast(${this} as double)"
+  def to_double in bigquery: double = sql"cast(${this} as float64)"
   def to_boolean: boolean = sql"cast(${this} as boolean)"
+  def to_boolean in bigquery: boolean = sql"cast(${this} as bool)"
   def to_string: string = sql"cast(${this} as varchar)"
   def to_string in hive: string = sql"cast(${this} as string)"
+  def to_string in bigquery: string = sql"cast(${this} as string)"
 
   def or_else(other:decimal): decimal = sql"coalesce(${this},${other})"
 
@@ -21,7 +27,10 @@ type decimal = {
   def exp: double = sql"exp(${this})"
   def ln: double = sql"ln(${this})"
   def log10: double = sql"log10(${this})"
+  def log10 in snowflake: double = sql"log(10,${this})"
   def log2: double = sql"log2(${this})"
+  def log2 in snowflake: double = sql"log(2,${this})"
+  def log2 in bigquery: double = sql"log(${this}, 2)"
   def power(exponent:double): double = sql"power(${this},${exponent})"
   def mod(divisor:decimal): decimal = sql"mod(${this},${divisor})"
   def sign: int = sql"sign(${this})"
@@ -30,6 +39,8 @@ type decimal = {
   def truncate in duckdb: decimal = sql"trunc(${this})"
   def truncate in trino: decimal = sql"truncate(${this})"
   def truncate in hive: decimal = sql"cast(${this} as bigint)"
+  def truncate in snowflake: decimal = sql"trunc(${this})"
+  def truncate in bigquery: decimal = sql"trunc(${this})"
 
   def in(v:any*): boolean = sql"${this} in (${v})"
   def not_in(v:any*): boolean = sql"${this} not in (${v})"
