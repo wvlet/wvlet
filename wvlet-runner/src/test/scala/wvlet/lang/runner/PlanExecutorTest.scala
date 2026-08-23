@@ -75,6 +75,10 @@ class PlanExecutorTest extends UniTest:
       t
     }.size shouldBe 1
     passing.hasError shouldBe false
+    // The tested query runs exactly once; the trailing test reads its result directly
+    collect(passing) { case t: TableRows =>
+      t
+    }.size shouldBe 1
 
     val failing = run("""from [[1]] as t(a) select a
                         |test _.size should be 5""".stripMargin)
