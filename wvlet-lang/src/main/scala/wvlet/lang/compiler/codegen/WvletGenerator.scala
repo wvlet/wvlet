@@ -190,7 +190,20 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
       case c: CreateTable if c.tableElems.isEmpty =>
         // The action form: the table shape lives in the `table` declaration
         code(c) {
-          group(wl("create table", expr(c.table)))
+          val verb =
+            if c.replace then
+              "create or replace table"
+            else
+              "create table"
+          group(
+            wl(
+              verb,
+              expr(c.table),
+              Option.when(c.ifNotExists) {
+                "if not exists"
+              }
+            )
+          )
         }
       case t: DropTable =>
         code(t) {

@@ -59,7 +59,9 @@ case class CreateTable(
     ifNotExists: Boolean,
     tableElems: List[TableElement],
     properties: List[(NameExpr, Expression)] = Nil,
-    span: Span
+    span: Span,
+    // `create or replace table t`: drop-and-recreate, following SQL semantics exactly
+    replace: Boolean = false
 ) extends DDL
 
 case class DropTable(table: NameExpr, ifExists: Boolean, span: Span) extends DDL

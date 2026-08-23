@@ -9,9 +9,10 @@ table ddl_people = {
   name: string
 }
 
--- The create action reads the shape from the declaration (create-if-missing, idempotent)
+-- The create action reads the shape from the declaration; SQL semantics (fresh create)
 create table ddl_people
-create table ddl_people
+-- The if not exists modifier skips silently when the table already exists (SQL semantics)
+create table ddl_people if not exists
 
 -- Explicit block form of append: effect-first spelling for pipeline scripts
 append to ddl_people {
