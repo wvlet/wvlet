@@ -370,6 +370,8 @@ object Typer extends Phase("typer") with LogSupport:
           case r: RenameDatabase =>
             markNamespaceRef(r.database)
             markNamespaceRef(r.renameTo)
+          case a: AttachDatabase =>
+            markNamespaceRef(a.alias)
           case a: AlterTable =>
             markNamespaceRef(a.table)
             a.operations

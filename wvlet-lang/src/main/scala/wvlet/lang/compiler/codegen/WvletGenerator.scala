@@ -220,6 +220,15 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
         code(r) {
           group(wl("rename schema", expr(r.database), "to", expr(r.renameTo)))
         }
+      case a: AttachDatabase =>
+        code(a) {
+          val opts =
+            if a.options.isEmpty then
+              None
+            else
+              Some(ws + "with" + nest(wsOrNL + cl(a.options.map(o => expr(o)))))
+          group(wl("use", expr(a.path), "as", expr(a.alias)) + opts)
+        }
       case a: AlterTable if a.operations.forall(isReshapeOp) =>
         a.operations match
           case List(r: RenameTableOp) =>

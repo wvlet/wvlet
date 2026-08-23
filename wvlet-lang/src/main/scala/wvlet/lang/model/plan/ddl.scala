@@ -64,6 +64,18 @@ case class CreateTable(
 
 case class DropTable(table: NameExpr, ifExists: Boolean, span: Span) extends DDL
 
+/**
+  * Attach an external database under an alias: `use 'file.duckdb' as archive [with read_only:
+  * true]`. The path is self-describing (file extension or URI scheme selects the engine type);
+  * engine-specific modifiers ride in the trailing `with` options
+  */
+case class AttachDatabase(
+    path: StringLiteral,
+    alias: NameExpr,
+    options: List[SaveOption],
+    span: Span
+) extends DDL
+
 // Unified ALTER TABLE structure. A `reshape t { ... }` block carries multiple operations;
 // SQL emits one ALTER TABLE statement per operation
 case class AlterTable(

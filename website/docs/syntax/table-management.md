@@ -162,3 +162,27 @@ save as view active_users {
 drop view active_users
 drop view active_users if exists
 ```
+
+## Attaching External Databases
+
+`use '<path>' as <name>` attaches an external database under an alias, making its tables
+addressable as `<name>.<table>`. The path is self-describing: a file path attaches a database
+file, and a URI scheme such as `postgres://` selects the matching engine automatically.
+
+```wvlet
+-- Attach a local DuckDB file
+use 'archive.duckdb' as archive
+
+from archive.events
+where year = 2025
+
+-- Attach a remote PostgreSQL database (engine inferred from the scheme)
+use 'postgres://host/mydb' as pg
+
+-- Engine-specific modifiers ride in trailing options
+use 'archive.duckdb' as archive with read_only: true
+```
+
+Attachment is currently supported on DuckDB. Options are passed through to the engine
+(`read_only: true` becomes `READ_ONLY`); `engine: '<name>'` overrides the engine type
+inferred from the path.

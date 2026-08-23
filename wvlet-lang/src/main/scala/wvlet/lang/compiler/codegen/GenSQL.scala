@@ -145,6 +145,14 @@ object GenSQL extends Phase("generate-sql"):
     given Context = context
     val gen       = sqlGeneratorFor(context.dbType)
     ddl match
+      case a: AttachDatabase if context.dbType != DBType.DuckDB =>
+        throw StatusCode
+          .NOT_IMPLEMENTED
+          .newException(
+            s"use '...' as ${a.alias.fullName} (database attachment) is not supported on ${context
+                .dbType}",
+            a.sourceLocation
+          )
       case a: AlterTable if a.operations.size > 1 =>
         // A reshape block carries multiple operations; emit one ALTER TABLE statement per
         // operation so each runs as its own SQL statement
