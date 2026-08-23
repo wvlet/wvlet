@@ -153,6 +153,14 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
       case _ =>
         d
 
+  /** AlterTable operations expressible with the wvlet reshape / rename statements */
+  private def isReshapeOp(op: AlterTableOps): Boolean =
+    op match
+      case _: AddColumnOp | _: RenameColumnOp | _: DropColumnOp | _: RenameTableOp =>
+        true
+      case _ =>
+        false
+
   private def ddl(d: DDL)(using sc: SyntaxContext): Doc =
     d match
       case c: CreateSchema =>
@@ -196,6 +204,41 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
             )
           )
         }
+      case v: DropView =>
+        code(v) {
+          group(
+            wl(
+              "drop view",
+              expr(v.viewName),
+              Option.when(v.ifExists) {
+                "if exists"
+              }
+            )
+          )
+        }
+      case r: RenameDatabase =>
+        code(r) {
+          group(wl("rename schema", expr(r.database), "to", expr(r.renameTo)))
+        }
+      case a: AlterTable if a.operations.forall(isReshapeOp) =>
+        a.operations match
+          case List(r: RenameTableOp) =>
+            code(a) {
+              group(wl("rename table", expr(a.table), "to", expr(r.newName)))
+            }
+          case ops =>
+            val opDocs = ops.collect {
+              case c: AddColumnOp =>
+                wl("add", text(c.column.columnName.leafName) + ":", c.column.columnType.wvExpr)
+              case r: RenameColumnOp =>
+                wl("rename", expr(r.oldName), "as", expr(r.newName))
+              case d: DropColumnOp =>
+                wl("exclude", expr(d.column))
+            }
+            code(a) {
+              group(wl("reshape", expr(a.table), "{")) + nest(linebreak + lines(opDocs)) +
+                linebreak + "}"
+            }
       case _ =>
         val sqlGen = SqlGenerator(formatter.config)
         val doc    = sqlGen.render(d)
@@ -235,6 +278,11 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
         code(t) {
           group(wl("truncate", expr(t.target)))
         }
+      case c: CreateView =>
+        relation(c.child) /
+          code(c) {
+            group(wl("save as view", expr(c.target)))
+          }
       case _ =>
         val sqlGen = SqlGenerator(formatter.config)
         val d      = sqlGen.render(u)

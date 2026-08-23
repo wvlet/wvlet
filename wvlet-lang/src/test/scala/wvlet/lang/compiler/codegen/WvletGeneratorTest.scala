@@ -91,6 +91,45 @@ class WvletGeneratorTest extends UniTest:
     print(printed) shouldContain "save to snapshot if not exists"
   }
 
+  test("should round-trip a reshape block") {
+    val printed = print("""reshape users {
+        |  add email: string
+        |  rename name as full_name
+        |  exclude age
+        |}""".stripMargin)
+    printed shouldContain "reshape users"
+    printed shouldContain "add email: string"
+    printed shouldContain "rename name as full_name"
+    printed shouldContain "exclude age"
+    print(printed) shouldContain "reshape users"
+  }
+
+  test("should round-trip rename statements") {
+    val printed = print("""rename table users to customers
+        |rename schema staging to archive""".stripMargin)
+    printed shouldContain "rename table users to customers"
+    printed shouldContain "rename schema staging to archive"
+    print(printed) shouldContain "rename table users to customers"
+  }
+
+  test("should round-trip save as view in flow and block forms") {
+    val printed = print("""from t
+        |save as view active_users""".stripMargin)
+    printed shouldContain "save as view active_users"
+    print(printed) shouldContain "save as view active_users"
+
+    val block = print("""save as view v2 {
+        |  from t
+        |}""".stripMargin)
+    block shouldContain "save as view v2"
+  }
+
+  test("should round-trip drop view") {
+    val printed = print("drop view v1 if exists")
+    printed shouldContain "drop view v1 if exists"
+    print(printed) shouldContain "drop view v1 if exists"
+  }
+
   test("should parse block-form save and append statements") {
     val printed = print("""save to snapshot {
         |  from t

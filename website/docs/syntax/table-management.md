@@ -92,3 +92,47 @@ save to calendar if not exists {
 | `save to t if not exists` | No-op (seed once) |
 | `append to t` | Rows are appended |
 | `create table t` | No-op (idempotent) |
+
+## Changing a Table's Columns
+
+The `reshape` statement evolves a table's schema using the same column operators you already
+use in queries — `add`, `rename ... as`, and `exclude` — enclosed in a block. Operations run
+in order, one `ALTER TABLE` statement each:
+
+```wvlet
+reshape users {
+  add email: string
+  rename name as full_name
+  exclude age
+}
+```
+
+## Renaming Tables and Schemas
+
+Renaming changes an object's identity rather than its shape, so it is a direct statement:
+
+```wvlet
+rename table users to customers
+rename schema staging to archive
+```
+
+## Views
+
+A view exports a query to engine-side consumers (BI tools, other SQL users). Like `save to`,
+view creation works in both spellings and is create-or-replace:
+
+```wvlet
+-- Flow form: develop the query, then persist it
+from users
+where active = true
+save as view active_users
+
+-- Block form: lead with the effect in pipeline scripts
+save as view active_users {
+  from users
+  where active = true
+}
+
+drop view active_users
+drop view active_users if exists
+```

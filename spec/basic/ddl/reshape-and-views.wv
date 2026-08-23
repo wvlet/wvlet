@@ -1,0 +1,55 @@
+-- Phase 2 catalog statements: reshape blocks, rename statements, and views
+
+table ddl2_items = {
+  id: int
+  name: string
+}
+
+create table ddl2_items
+
+append to ddl2_items {
+  from [[1, 'pen'], [2, 'book']] as t(id, name)
+}
+
+-- Reshape: the query column operators applied to a table's schema, in an explicit block
+reshape ddl2_items {
+  add price: double
+  rename name as item_name
+}
+
+from ddl2_items
+test _.columns should contain 'price'
+test _.columns should contain 'item_name'
+
+reshape ddl2_items {
+  exclude price
+}
+
+from ddl2_items
+test _.size should be 2
+
+-- Renaming changes identity, not shape: a direct statement, not a reshape operation
+rename table ddl2_items to ddl2_products
+
+from ddl2_products
+test _.size should be 2
+
+-- Views: the save family owns row-writes; flow and block spellings compile identically
+from ddl2_products
+where id = 1
+save as view ddl2_first_item
+
+from ddl2_first_item
+test _.size should be 1
+
+save as view ddl2_all_items {
+  from ddl2_products
+}
+
+from ddl2_all_items
+test _.size should be 2
+
+drop view ddl2_first_item
+drop view ddl2_all_items
+drop view ddl2_all_items if exists
+drop table ddl2_products
