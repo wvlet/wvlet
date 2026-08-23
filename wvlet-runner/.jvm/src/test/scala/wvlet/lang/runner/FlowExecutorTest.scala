@@ -301,6 +301,94 @@ class FlowExecutorTest extends UniTest:
     result.stageResult("fast").get.state shouldBe StageState.Success
   }
 
+  test("fail the run when the flow-level timeout expires") {
+    val runner =
+      new FlowStageRunner:
+        override def run(stage: StageDef, targetTable: String)(using Context): Unit = Thread.sleep(
+          10000
+        )
+    val result = runFlow(
+      """flow FlowTimeoutFlow with { timeout: 100ms } = {
+        |  stage slow = from [[1]] as t(id)
+        |  stage after = from slow | select *
+        |}""".stripMargin,
+      stageRunner = Some(runner)
+    )
+    // A flow timeout is an error: the in-flight stage and the pending downstream stage both
+    // fail with the flow-timeout message (unlike an operator cancel, which marks them cancelled)
+    result.hasError shouldBe true
+    val slow = result.stageResult("slow").get
+    slow.state shouldBe StageState.Failed
+    slow.error.get.getMessage shouldContain "timed out"
+    val after = result.stageResult("after").get
+    after.state shouldBe StageState.Failed
+    after.error.get.getMessage shouldContain "timed out"
+  }
+
+  test("leave a fast flow unaffected by the flow-level timeout") {
+    val result = runFlow("""flow FastFlowWithDeadline with { timeout: 30s } = {
+        |  stage src = from [[1]] as t(id)
+        |  stage out = from src | select *
+        |}""".stripMargin)
+    result.isSuccess shouldBe true
+  }
+
+  test("record a timed-out run as failed and fire on_failure hooks") {
+    val sink   = RecordingSink()
+    val runner =
+      new FlowStageRunner:
+        override def run(stage: StageDef, targetTable: String)(using Context): Unit = Thread.sleep(
+          10000
+        )
+    val registry    = FlowRunRegistry(java.nio.file.Files.createTempDirectory("wv-flow-timeout"))
+    val (flow, ctx) = compileFlow("""flow NotifyTimeoutFlow with {
+        |  timeout: 100ms
+        |  on_failure: activate('test_notify')
+        |} = {
+        |  stage slow = from [[1]] as t(id)
+        |}""".stripMargin)
+    val result =
+      FlowExecutor(
+        connector,
+        workEnv,
+        stageRunner = Some(runner),
+        registry = Some(registry),
+        activationSinks = List(sink)
+      ).execute(flow)(using ctx)
+    result.hasError shouldBe true
+    val record = registry.get(result.runId).get
+    record.state shouldBe FlowRunRecord.STATE_FAILED
+    record.stages.head.error.get shouldContain "timed out"
+    sink.requests.size shouldBe 1
+    sink.requests.head._2 shouldBe List("slow:failed")
+  }
+
+  test("give a resumed run the full flow-timeout budget from its resume start") {
+    val registry = FlowRunRegistry(java.nio.file.Files.createTempDirectory("wv-flow-timeout"))
+    val stalling =
+      new FlowStageRunner:
+        override def run(stage: StageDef, targetTable: String)(using Context): Unit = Thread.sleep(
+          10000
+        )
+    val (flow, ctx) = compileFlow("""flow ResumeTimeoutFlow with { timeout: 200ms } = {
+        |  stage src = from [[1]] as t(id)
+        |}""".stripMargin)
+    val first =
+      FlowExecutor(connector, workEnv, stageRunner = Some(stalling), registry = Some(registry))
+        .execute(flow)(using ctx)
+    first.hasError shouldBe true
+    val record = registry.get(first.runId).get
+    record.state shouldBe FlowRunRecord.STATE_FAILED
+    // The resume is well past the original deadline in wall-clock terms, but its budget
+    // restarts from the resume start, so the (now fast) stage completes
+    val resumed =
+      FlowExecutor(connector, workEnv, registry = Some(registry)).execute(
+        flow,
+        resumeFrom = Some(record)
+      )(using ctx)
+    resumed.isSuccess shouldBe true
+  }
+
   test("cancel a timed-out SQL statement server-side to free the worker slot") {
     // A cross join large enough to run for minutes if not cancelled server-side. With a
     // single worker slot, the second stage can only complete once the timed-out statement

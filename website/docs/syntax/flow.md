@@ -190,6 +190,11 @@ flow daily_etl with {
 | `on_finish` | Activation | Notification hook fired for both outcomes |
 | `keep_runs` | Int | Retention cap: only the N most recent finished runs are kept |
 
+A flow-level `timeout:` bounds the whole run. When the deadline expires, in-flight stage
+attempts are stopped and every unfinished stage fails with a flow-timeout error, so the run
+is recorded as `failed` (not cancelled) and `on_failure:` hooks fire with the summary. A
+resumed run gets the full timeout budget again, measured from the resume start.
+
 ### Run Notifications
 
 The `on_failure:`, `on_success:`, and `on_finish:` hooks deliver a **run summary** — one row
