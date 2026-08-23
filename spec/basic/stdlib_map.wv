@@ -1,0 +1,19 @@
+-- Standard library map functions
+select map {"a": 1, "b": 2} as m
+select
+  m.size as sz,
+  m.keys as ks,
+  m.values as vs,
+  m.contains_key('a') as ck,
+  m.contains_key('z') as nk,
+  m.get('b') as vb,
+
+test _.size should be 1
+test _.rows should be [[
+  2,
+  ['a', 'b'],
+  [1, 2],
+  true,
+  false,
+  2,
+]]

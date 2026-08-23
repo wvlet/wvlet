@@ -1,0 +1,67 @@
+package wvlet.standard
+
+type timestamp = {
+  def extract(field:string): int = sql"extract(${field} from ${this})"
+
+  def year: int = sql"extract(year from ${this})"
+  def month: int = sql"extract(month from ${this})"
+  def day: int = sql"extract(day from ${this})"
+  def hour: int = sql"extract(hour from ${this})"
+  def minute: int = sql"extract(minute from ${this})"
+  def second: int = sql"extract(second from ${this})"
+  def quarter: int = sql"extract(quarter from ${this})"
+  def week: int = sql"extract(week from ${this})"
+
+  def or_else(other:timestamp): timestamp = sql"coalesce(${this},${other})"
+
+  def to_date: date = sql"cast(${this} as date)"
+
+  -- Truncate to the given unit ('year', 'month', 'day', 'hour', 'minute', 'second')
+  def truncate_to(unit:string): timestamp = sql"date_trunc(${unit},${this})"
+
+  -- Difference between this and the other timestamp, in the given unit
+  def diff_seconds(other:timestamp): long = sql"date_diff('second',${this},${other})"
+  def diff_minutes(other:timestamp): long = sql"date_diff('minute',${this},${other})"
+  def diff_hours(other:timestamp): long = sql"date_diff('hour',${this},${other})"
+  def diff_days(other:timestamp): long = sql"date_diff('day',${this},${other})"
+
+  def between(l:timestamp, r:timestamp): boolean = sql"${this} between ${l} and ${r}"
+}
+
+type timestamp in duckdb = {
+  -- ISO day of week (1 = Monday, 7 = Sunday) and day of year
+  def day_of_week: int = sql"extract(isodow from ${this})"
+  def day_of_year: int = sql"extract(dayofyear from ${this})"
+
+  def add_seconds(n:int): timestamp = sql"${this} + INTERVAL (${n}) SECOND"
+  def add_minutes(n:int): timestamp = sql"${this} + INTERVAL (${n}) MINUTE"
+  def add_hours(n:int): timestamp = sql"${this} + INTERVAL (${n}) HOUR"
+  def add_days(n:int): timestamp = sql"${this} + INTERVAL (${n}) DAY"
+  def add_months(n:int): timestamp = sql"${this} + INTERVAL (${n}) MONTH"
+  def add_years(n:int): timestamp = sql"${this} + INTERVAL (${n}) YEAR"
+
+  -- Format the timestamp with a strftime-style pattern (e.g. '%Y-%m-%d %H:%M:%S')
+  def format(pattern:string): string = sql"strftime(${this},${pattern})"
+
+  -- Unix epoch seconds of this timestamp
+  def to_unixtime: long = sql"cast(epoch(${this}) as bigint)"
+}
+
+type timestamp in trino = {
+  -- ISO day of week (1 = Monday, 7 = Sunday) and day of year
+  def day_of_week: int = sql"day_of_week(${this})"
+  def day_of_year: int = sql"day_of_year(${this})"
+
+  def add_seconds(n:int): timestamp = sql"date_add('second',${n},${this})"
+  def add_minutes(n:int): timestamp = sql"date_add('minute',${n},${this})"
+  def add_hours(n:int): timestamp = sql"date_add('hour',${n},${this})"
+  def add_days(n:int): timestamp = sql"date_add('day',${n},${this})"
+  def add_months(n:int): timestamp = sql"date_add('month',${n},${this})"
+  def add_years(n:int): timestamp = sql"date_add('year',${n},${this})"
+
+  -- Format the timestamp with a MySQL-style pattern (e.g. '%Y-%m-%d %H:%i:%S')
+  def format(pattern:string): string = sql"date_format(${this},${pattern})"
+
+  -- Unix epoch seconds of this timestamp
+  def to_unixtime: long = sql"cast(to_unixtime(${this}) as bigint)"
+}

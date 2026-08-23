@@ -8,11 +8,29 @@ type decimal = {
   def to_boolean: boolean = sql"cast(${this} as boolean)"
   def to_string: string = sql"cast(${this} as varchar)"
 
-  def or_else(other:deicmal): decimal = sql"coalesce(${this},${other})"
+  def or_else(other:decimal): decimal = sql"coalesce(${this},${other})"
 
   def round(decimal:int=0): double = sql"round(${this},${decimal})"
 
+  def abs: decimal = sql"abs(${this})"
+  def ceil: decimal = sql"ceil(${this})"
+  def floor: decimal = sql"floor(${this})"
+  def sqrt: double = sql"sqrt(${this})"
+  def cbrt: double = sql"cbrt(${this})"
+  def exp: double = sql"exp(${this})"
+  def ln: double = sql"ln(${this})"
+  def log10: double = sql"log10(${this})"
+  def log2: double = sql"log2(${this})"
+  def power(exponent:double): double = sql"power(${this},${exponent})"
+  def mod(divisor:decimal): decimal = sql"mod(${this},${divisor})"
+  def sign: int = sql"sign(${this})"
+
+  -- Drop the fractional part of this value
+  def truncate in duckdb: decimal = sql"trunc(${this})"
+  def truncate in trino: decimal = sql"truncate(${this})"
+
   def in(v:any*): boolean = sql"${this} in (${v})"
   def not_in(v:any*): boolean = sql"${this} not in (${v})"
-}
 
+  def between(l:decimal, r:decimal): boolean = sql"${this} between ${l} and ${r}"
+}

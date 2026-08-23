@@ -1,0 +1,28 @@
+-- Standard library null handling, boolean, and conversion functions
+from [
+  [1, 'a', true],
+  [null, null, null],
+] as t(id, s, b)
+select
+  id.is_null as inul,
+  id.is_not_null as inn,
+  id.or_else(0) as oe,
+  s.or_else('-') as soe,
+  id.null_if(1) as nif,
+  b.or_else(false) as bo,
+  b.to_int as bi,
+  b.to_string as bs,
+order by inul
+
+test _.size should be 2
+test _.rows should be [
+  [false, true, 1, 'a', null, true, 1, 'true'],
+  [true, false, 0, '-', null, false, null, null],
+]
+
+from [[1710498645]] as t(epoch_sec)
+select
+  epoch_sec.from_unixtime.to_string as ts,
+  epoch_sec.from_unixtime.to_unixtime as roundtrip,
+
+test _.rows should be [['2024-03-15 10:30:45', 1710498645]]

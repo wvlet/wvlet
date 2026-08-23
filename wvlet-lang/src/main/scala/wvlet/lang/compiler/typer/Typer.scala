@@ -391,7 +391,7 @@ object Typer extends Phase("typer") with LogSupport:
           case f: FunctionApply =>
             FunctionInliner.resolveFunctionApply(f)
           case d: DotRef =>
-            FunctionInliner.findFunctionDef(d) match
+            FunctionInliner.findFunctionDef(d, bareMember = true) match
               case Some(m) if m.ft.args.isEmpty =>
                 FunctionInliner.inlineFunctionBody(d, m, Nil)
               case _ =>

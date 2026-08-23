@@ -174,6 +174,11 @@ object TyperRules:
     * Rules for typing binary operations
     */
   def binaryOpRules(using ctx: Context): PartialFunction[Expression, Expression] = {
+    // A sign prefix (e.g. -5) keeps the numeric type of its operand
+    case op: ArithmeticUnaryExpr =>
+      op.tpe = op.child.tpe
+      op
+
     // Arithmetic binary expressions
     case op: ArithmeticBinaryExpr =>
       val leftTpe  = op.left.tpe

@@ -10,9 +10,29 @@ type any = {
 
   -- SQL types
   def to_date: date = sql"cast(${this} as date)"
+  def to_timestamp: timestamp = sql"cast(${this} as timestamp)"
   -- TODO Support type args
   -- def to_decimal[P,S]: decimal[P,S] = sql"cast(${this} as decimal(${type[P]},${type[S]}))"
 
   -- TODO Support generic type cast
   --def cast_as[A]: A = sql"cast(${this} as ${type[A]})"
+
+  def is_null: boolean = sql"${this} is null"
+  def is_not_null: boolean = sql"${this} is not null"
+
+  -- Return the other value if this value is null
+  def or_else(other:any): any = sql"coalesce(${this},${other})"
+  -- Return null if this value equals the given value
+  def null_if(v:any): any = sql"nullif(${this},${v})"
+
+  -- Name of the runtime type of this value
+  def type_of: string = sql"typeof(${this})"
+}
+
+type any in duckdb = {
+  def to_json: json = sql"to_json(${this})"
+}
+
+type any in trino = {
+  def to_json: json = sql"cast(${this} as json)"
 }

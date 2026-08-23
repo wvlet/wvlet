@@ -36,6 +36,17 @@ enum DBType(
     val supportRLike: Boolean = false
 ):
 
+  /**
+    * The db_context name of this engine in the standard library, used to select `def ... in
+    * <context>` function variants. The in-memory engine follows the DuckDB dialect
+    */
+  def dialectContextName: String =
+    this match
+      case DBType.InMemory =>
+        "duckdb"
+      case other =>
+        other.toString.toLowerCase
+
   case DuckDB
       extends DBType(
         supportCreateOrReplace = true,

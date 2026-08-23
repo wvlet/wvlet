@@ -1,0 +1,42 @@
+-- Standard library math functions
+from [[-5, 1.75, 16.0]] as t(i, dd, xx)
+select i, dd.to_double as d, xx.to_double as x
+select
+  i.abs as ab,
+  i.sign as sg,
+  i.mod(3) as md,
+  i.power(2.0) as pw,
+  d.round(1) as rd,
+  d.ceil as ce,
+  d.floor as fl,
+  d.truncate as tr,
+  x.sqrt as sq,
+  x.log2 as l2,
+  x.between(1.0, 20.0) as bw,
+  100.0.to_double.log10 as l10,
+  0.0.to_double.exp as ex,
+  1.0.to_double.ln as ln0,
+  d.is_nan as nn,
+  d.is_finite as fin,
+  d.is_infinite as inf,
+
+test _.size should be 1
+test _.rows should be [[
+  5,
+  -1,
+  -2,
+  25.0,
+  1.8,
+  2.0,
+  1.0,
+  1.0,
+  4.0,
+  4.0,
+  true,
+  2.0,
+  1.0,
+  0.0,
+  false,
+  true,
+  false,
+]]

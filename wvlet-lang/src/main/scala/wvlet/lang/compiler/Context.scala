@@ -101,7 +101,8 @@ case class GlobalContext(compilerOptions: CompilerOptions):
 
   private def loadCatalog(compilerOptions: CompilerOptions): Catalog = InMemoryCatalog(
     catalogName = compilerOptions.catalog.getOrElse("memory"),
-    functions = Nil
+    functions = Nil,
+    catalogDBType = compilerOptions.dbType
   )
 
   /**
@@ -286,6 +287,20 @@ case class Context(
 
   def findTermSymbolByName(name: String): Option[Symbol] = findSymbolByName(Name.termName(name))
 
+  /**
+    * All visible definitions of the given name: the current scope's symbol (if any) followed by
+    * every globally visible top-level definition in source file name order. Used for dialect-aware
+    * function resolution, where the same function name may be defined once per target engine across
+    * compilation units (e.g. per-engine standard library files)
+    */
+  def findAllSymbolsByName(name: Name): List[Symbol] =
+    val fromScope = scope.lookupSymbol(name).toList
+    val fromIndex = global
+      .symbolIndex
+      .visibleEntries(name, compilationUnit.packageName, importDefs.map(_.importRef.fullName))
+      .map(_.symbol)
+    (fromScope ++ fromIndex).distinct
+
   def findSymbolByName(name: Name): Option[Symbol] =
     // Search the current scope first
     var foundSymbol: Option[Symbol] = scope.lookupSymbol(name)
@@ -301,7 +316,9 @@ case class Context(
       // A top-level name defined in multiple files still shadows the later definitions
       // (#93). Warn once per name
       if foundSymbol.isDefined && global.needsDuplicateCheck(name) then
-        val definingFiles = entries.map(_.fileName).distinct
+        // Preset (standard library) units define the same function name once per target
+        // engine on purpose, so they never count as user-visible duplicates
+        val definingFiles = entries.filterNot(_.unit.isPreset).map(_.fileName).distinct
         if definingFiles.size > 1 then
           global.addDuplicateDefinition(name, definingFiles)
           warn(

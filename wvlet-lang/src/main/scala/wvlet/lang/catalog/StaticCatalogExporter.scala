@@ -162,14 +162,19 @@ object StaticCatalogExporter extends LogSupport:
     * skipped, and overloaded functions collapse to a single signature with `any` argument types.
     * Returns an empty string when no function is exportable
     */
-  def generateFunctionsSource(contextName: String, functions: Seq[SQLFunction]): String =
+  def generateFunctionsSource(
+      contextName: String,
+      functions: Seq[SQLFunction],
+      excludedNames: Set[String] = stdlibFunctionNames,
+      refreshNote: String =
+        "Re-run `wvlet catalog import` to refresh; add hand-written defs in your own files."
+  ): String =
     val header =
       s"""${generatedFileHeader}
          |-- Functions of the ${contextName} engine, bound for offline query validation.
-         |-- Re-run `wvlet catalog import` to refresh; add hand-written defs in your own files."""
-        .stripMargin
+         |-- ${refreshNote}""".stripMargin
     val defs = functions
-      .filter(f => isExportable(f))
+      .filter(f => isExportable(f, excludedNames))
       .groupBy(_.name.toLowerCase)
       .toSeq
       .sortBy(_._1)
@@ -245,10 +250,10 @@ object StaticCatalogExporter extends LogSupport:
     * collide with the Wvlet syntax (keywords cannot be backquoted usefully as call syntax), the
     * builtin function typing rules, or the standard library definitions
     */
-  private def isExportable(f: SQLFunction): Boolean =
+  private def isExportable(f: SQLFunction, excludedNames: Set[String]): Boolean =
     val name = f.name.toLowerCase
     exportableFunctionTypes.contains(f.functionType) && isPlainIdentifier(f.name) &&
-    !BuiltinFunctions.allFunctionNames.contains(name) && !stdlibFunctionNames.contains(name)
+    !BuiltinFunctions.allFunctionNames.contains(name) && !excludedNames.contains(name)
 
   /** TABLE, PRAGMA, and MACRO functions use a different call syntax and are not exported */
   private val exportableFunctionTypes: Set[FunctionType] = Set(
@@ -262,9 +267,20 @@ object StaticCatalogExporter extends LogSupport:
     * with the compiler, so a parse failure here is a compiler bug and fails the export loudly
     * instead of silently emitting colliding definitions
     */
-  private lazy val stdlibFunctionNames: Set[String] =
-    CompilationUnit
-      .stdLib
+  private lazy val stdlibFunctionNames: Set[String] = topLevelFunctionNames(CompilationUnit.stdLib)
+
+  /**
+    * Top-level function names of the hand-written standard library files, excluding generated
+    * engine function catalogs bundled in the stdlib. Used when regenerating those bundled catalogs
+    * so that a previously generated file does not exclude its own entries
+    */
+  def handWrittenStdlibFunctionNames: Set[String] = topLevelFunctionNames(
+    // A generated stdlib catalog carries the generated-file header after its package clause
+    CompilationUnit.stdLib.filterNot(_.sourceFile.getContentAsString.contains(generatedFileHeader))
+  )
+
+  private def topLevelFunctionNames(units: List[CompilationUnit]): Set[String] =
+    units
       .flatMap { unit =>
         ParserPhase.parseOnly(unit) match
           case p: PackageDef =>

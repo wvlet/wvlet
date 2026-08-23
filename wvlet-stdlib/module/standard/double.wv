@@ -12,9 +12,40 @@ type double = {
 
   def round(decimal:int=0): double = sql"round(${this},${decimal})"
 
+  def abs: double = sql"abs(${this})"
+  def ceil: double = sql"ceil(${this})"
+  def floor: double = sql"floor(${this})"
+  def sqrt: double = sql"sqrt(${this})"
+  def cbrt: double = sql"cbrt(${this})"
+  def exp: double = sql"exp(${this})"
+  def ln: double = sql"ln(${this})"
+  def log10: double = sql"log10(${this})"
+  def log2: double = sql"log2(${this})"
+  def power(exponent:double): double = sql"power(${this},${exponent})"
+  def sign: int = sql"sign(${this})"
+
+  def degrees: double = sql"degrees(${this})"
+  def radians: double = sql"radians(${this})"
+  def sin: double = sql"sin(${this})"
+  def cos: double = sql"cos(${this})"
+  def tan: double = sql"tan(${this})"
+  def asin: double = sql"asin(${this})"
+  def acos: double = sql"acos(${this})"
+  def atan: double = sql"atan(${this})"
+
+  -- Drop the fractional part of this value
+  def truncate in duckdb: double = sql"trunc(${this})"
+  def truncate in trino: double = sql"truncate(${this})"
+
+  def is_nan in duckdb: boolean = sql"isnan(${this})"
+  def is_nan in trino: boolean = sql"is_nan(${this})"
+  def is_finite in duckdb: boolean = sql"isfinite(${this})"
+  def is_finite in trino: boolean = sql"is_finite(${this})"
+  def is_infinite in duckdb: boolean = sql"isinf(${this})"
+  def is_infinite in trino: boolean = sql"is_infinite(${this})"
+
   def in(v:any*): boolean = sql"${this} in (${v})"
   def not_in(v:any*): boolean = sql"${this} not in (${v})"
 
-  -- TODO Add between(int, int), etc.
   def between(l:double, r:double): boolean = sql"${this} between ${l} and ${r}"
 }
