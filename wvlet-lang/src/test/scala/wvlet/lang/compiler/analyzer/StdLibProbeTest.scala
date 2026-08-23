@@ -74,6 +74,23 @@ class StdLibProbeTest extends UniTest:
     sql shouldContain "array_to_string(list_concat("
   }
 
+  test("resolve a member name mixing no-arg and arg-taking variants") {
+    val bare = generateSQL("from [[1]] as t(i)\nselect [3, 1, 2].mk_string as s\n")
+    bare shouldContain "array_to_string([3, 1, 2],'')"
+    val applied = generateSQL("from [[1]] as t(i)\nselect [3, 1, 2].mk_string('-') as s\n")
+    applied shouldContain "array_to_string([3, 1, 2],'-')"
+  }
+
+  test("resolve window functions with over clauses") {
+    val wv =
+      """from [[1, 10]] as t(k, v)
+        |select row_number() over (order by k) as rn, v.lag(1) over (order by k) as lg
+        |""".stripMargin
+    val sql = generateSQL(wv)
+    sql shouldContain "row_number() over (order by k)"
+    sql shouldContain "lag(v,1) over (order by k)"
+  }
+
   test("probe a member call with args chained on map keys") {
     val sql = generateSQL("select map {\"a\": 1} as m\nselect m.keys.mk_string(',') as ks\n")
     info(sql)

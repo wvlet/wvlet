@@ -1,0 +1,26 @@
+-- Standard library window (analytic) functions
+from [
+  [1, 'a', 10],
+  [1, 'b', 20],
+  [2, 'c', 30],
+] as t(g, k, v)
+select
+  k,
+  row_number() over (order by k) as rn,
+  rank() over (order by g) as rk,
+  dense_rank() over (order by g) as dr,
+  percent_rank() over (order by g) as pr,
+  ntile(2) over (order by k) as nt,
+  v.lag over (order by k) as lg,
+  v.lead over (order by k) as ld,
+  v.lag(2) over (order by k) as lg2,
+  v.first_value over (partition by g order by k) as fv,
+  v.sum over (partition by g) as gs,
+order by k
+
+test _.size should be 3
+test _.rows should be [
+  ['a', 1, 1, 1, 0.0, 1, null, 20, null, 10, 30],
+  ['b', 2, 1, 1, 0.0, 1, 10, 30, null, 10, 30],
+  ['c', 3, 3, 2, 1.0, 2, 20, null, 10, 30, 30],
+]

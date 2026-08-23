@@ -21,6 +21,7 @@ import wvlet.lang.compiler.Name
 import wvlet.lang.compiler.Symbol
 import wvlet.lang.compiler.TypeSymbolInfo
 import wvlet.lang.compiler.ContextUtil.*
+import wvlet.lang.model.DataType.VarArgType
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
 
@@ -42,36 +43,97 @@ object AggregationResolver extends ContextLogSupport:
     .getOrElse(Nil)
 
   /**
-    * A single-node rewrite rule applied through a bottom-up traversal (transformUpExpression), so
-    * child expressions are already resolved when the rule fires. The rule must not re-traverse its
-    * subtree: doing so doubles the work at every tree level, which is exponential on deeply nested
-    * expressions (e.g. TPC-DS q4 never finishes)
+    * Select an aggregation-shorthand definition for the member reference `d` with the given call
+    * arguments: the name must be a member of the array type, and must not be a member of the
+    * qualifier's own type (e.g. map.size, string.split), which resolves through the typed member
+    * path with dialect selection instead.
     */
-  private def resolveAggregationExpr(aggFunctions: List[Symbol])(using
+  private def findAggShorthand(aggFunctions: List[Symbol], d: DotRef, knownArgs: List[FunctionArg])(
+      using ctx: Context
+  ): Option[MethodSymbolInfo] =
+    val nme = d.name.toTermName
+
+    def hasOwnMember: Boolean =
+      val qualType = d.qualifier.dataType
+      qualType.isResolved &&
+      ctx
+        .findSymbolByName(qualType.typeName)
+        .exists(sym => !sym.symbolInfo.findMember(nme).isNoSymbol)
+
+    aggFunctions
+      .find(_.name == nme)
+      .filterNot(_ => hasOwnMember)
+      .flatMap(sym => FunctionInliner.selectMethodVariant(List(sym.symbolInfo), knownArgs, ctx))
+
+  /**
+    * Resolve aggregation shorthands in a single-visit recursion. A FunctionApply and its base
+    * DotRef are handled as one unit so that a no-arg variant never shadows an arg-taking overload
+    * of the same member (e.g. lag and lag(offset)); parameterized members (count_if, min_by,
+    * lag(offset)) bind their arguments here. Each node is visited exactly once — re-traversing
+    * subtrees would be exponential on deeply nested expressions (e.g. TPC-DS q4 never finishes)
+    */
+  private def resolveAggregationExpr(aggFunctions: List[Symbol], e: Expression)(using
       ctx: Context
-  ): PartialFunction[Expression, Expression] =
-    case d: DotRef =>
-      val nme = d.name.toTermName
-
-      // A member of the qualifier's own type (e.g. map.size, string.split) resolves through
-      // the typed member path with dialect selection, so the aggregation shorthand must not
-      // shadow it
-      def hasOwnMember: Boolean =
-        val qualType = d.qualifier.dataType
-        qualType.isResolved &&
-        ctx
-          .findSymbolByName(qualType.typeName)
-          .exists(sym => !sym.symbolInfo.findMember(nme).isNoSymbol)
-
-      aggFunctions
-        .find(_.name == nme)
-        .filterNot(_ => hasOwnMember)
-        .flatMap(sym => FunctionInliner.selectMethodVariant(List(sym.symbolInfo), Nil, ctx))
-        // Members with parameters (e.g. count_if, min_by) are bound by their enclosing
-        // FunctionApply; inlining them here would drop the arguments
-        .filter(_.ft.args.isEmpty)
-        .map(m => FunctionInliner.inlineFunctionBody(d, m, Nil))
-        .getOrElse(d)
+  ): Expression =
+    e match
+      case f @ FunctionApply(d: DotRef, _, _, _, _, _) =>
+        // Resolve the apply and its base member as a unit; only the qualifier is a free
+        // expression
+        val q       = resolveAggregationExpr(aggFunctions, d.qualifier)
+        val newBase =
+          if q eq d.qualifier then
+            d
+          else
+            d.copy(qualifier = q)
+        val newArgs = f
+          .args
+          .map { a =>
+            resolveAggregationExpr(aggFunctions, a) match
+              case fa: FunctionArg =>
+                fa
+              case _ =>
+                a
+          }
+        val newWindow = f
+          .window
+          .map { w =>
+            resolveAggregationExpr(aggFunctions, w) match
+              case nw: Window =>
+                nw
+              case _ =>
+                w
+          }
+        val changed =
+          !(newBase eq d) || newArgs.lazyZip(f.args).exists(_ ne _) ||
+            newWindow.lazyZip(f.window).exists(_ ne _)
+        val nf =
+          if changed then
+            f.copy(base = newBase, args = newArgs, window = newWindow)
+          else
+            f
+        findAggShorthand(aggFunctions, newBase, nf.args) match
+          case Some(m)
+              if nf.args.size <= m.ft.args.size ||
+                m.ft.args.exists(_.dataType.isInstanceOf[VarArgType]) =>
+            FunctionInliner.inlineFunctionApply(nf, m)
+          case _ =>
+            nf
+      case d: DotRef =>
+        val q  = resolveAggregationExpr(aggFunctions, d.qualifier)
+        val nd =
+          if q eq d.qualifier then
+            d
+          else
+            d.copy(qualifier = q)
+        findAggShorthand(aggFunctions, nd, Nil)
+          // A genuinely bare member resolves only to a no-arg variant
+          .filter(_.ft.args.isEmpty)
+          .map(m => FunctionInliner.inlineFunctionBody(nd, m, Nil))
+          .getOrElse(nd)
+      case other =>
+        other.mapChildExpressions(e => resolveAggregationExpr(aggFunctions, e))
+    end match
+  end resolveAggregationExpr
 
   /**
     * Resolve aggregation expressions in a single traversal: inline aggregation functions applied
@@ -90,7 +152,7 @@ object AggregationResolver extends ContextLogSupport:
               // rewritten by their own transformUp visit, and test expressions stay as written
               // because TestRelation is not a GeneralSelection
               s.transformChildExpressions { case e: Expression =>
-                  e.transformUpExpression(resolveAggregationExpr(aggFunctions))
+                  resolveAggregationExpr(aggFunctions, e)
                 }
                 .asInstanceOf[Relation]
             case _ =>

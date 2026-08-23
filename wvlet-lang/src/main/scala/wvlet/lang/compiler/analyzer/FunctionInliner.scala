@@ -146,10 +146,10 @@ object FunctionInliner extends ContextLogSupport:
 
   /**
     * Select the method definition for a bare member reference (a DotRef with no argument list, e.g.
-    * `expr.upper`). Returns a definition only when none of the dialect-compatible variants takes
-    * arguments: in the bottom-up inlining pass a DotRef that is the base of an enclosing
-    * FunctionApply is indistinguishable from a bare reference, so resolving a no-arg variant of an
-    * arity-overloaded member here would swallow the arguments of the enclosing call.
+    * `expr.upper`). Only no-arg variants are considered, but they may coexist with arg-taking
+    * overloads of the same name (e.g. `mk_string` and `mk_string(separator)`): the Typer resolves a
+    * FunctionApply and its base DotRef as one unit, so a DotRef reaching this path is genuinely
+    * bare and can never swallow an enclosing call's arguments.
     */
   private def selectBareMethodVariant(
       symbolInfos: List[SymbolInfo],
@@ -160,11 +160,8 @@ object FunctionInliner extends ContextLogSupport:
       .collect { case m: MethodSymbolInfo =>
         m
       }
-    val pool = preferNonZero(candidates, dialectScore(_, context))
-    if pool.nonEmpty && pool.forall(_.ft.args.isEmpty) then
-      pool.sortBy(variantRank(_, context)).headOption
-    else
-      None
+    val pool = preferNonZero(candidates, dialectScore(_, context)).filter(_.ft.args.isEmpty)
+    pool.sortBy(variantRank(_, context)).headOption
 
   /**
     * The maximum depth of nested function/partial-query inlining, used as a safety net against
@@ -408,11 +405,28 @@ object FunctionInliner extends ContextLogSupport:
       context: Context
   ): Expression =
     findFunctionDef(f) match
-      case Some(m: MethodSymbolInfo) if isEngineNative(m) =>
+      case Some(m: MethodSymbolInfo) =>
+        inlineFunctionApply(f, m, activeFunctions)
+      case _ =>
+        f
+
+  /**
+    * Inline a function application with an already-selected method definition, binding the call
+    * arguments to the definition's parameters. Used by [[resolveFunctionApply]] and by the
+    * aggregation shorthand (AggregationResolver), which finds the definition through the array-type
+    * member lookup instead of the qualifier's own type.
+    */
+  private[analyzer] def inlineFunctionApply(
+      f: FunctionApply,
+      m0: MethodSymbolInfo,
+      activeFunctions: List[Symbol] = Nil
+  )(using context: Context): Expression =
+    m0 match
+      case m: MethodSymbolInfo if isEngineNative(m) =>
         // Keep the call as written so it compiles to a plain SQL function call; the typing
         // rules assign the return type declared by the def to the FunctionApply node
         f
-      case Some(m: MethodSymbolInfo) =>
+      case m: MethodSymbolInfo =>
         val functionArgTypes = m.ft.args
         // Mapping function arguments aligned to the function definition
         var index        = 0
@@ -465,10 +479,8 @@ object FunctionInliner extends ContextLogSupport:
             WindowApply(expr.withDataType(m.ft.returnType), w, None, expr.span)
           case None =>
             expr.withDataType(m.ft.returnType)
-      case _ =>
-        f
     end match
-  end resolveFunctionApply
+  end inlineFunctionApply
 
   /**
     * Inline the body of the partial query referenced by the given PartialQueryApply.

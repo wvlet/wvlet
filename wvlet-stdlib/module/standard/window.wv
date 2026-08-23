@@ -1,0 +1,23 @@
+package wvlet.standard
+
+-- Window (analytic) ranking functions, used with an over(...) clause,
+-- e.g. row_number() over (partition by g order by k).
+-- These are ANSI SQL functions with the same name on every supported engine.
+
+-- Sequential row number within the window (1, 2, 3, ...)
+def row_number: long = sql"row_number()"
+
+-- Rank with gaps after ties (1, 1, 3, ...)
+def rank: long = sql"rank()"
+
+-- Rank without gaps after ties (1, 1, 2, ...)
+def dense_rank: long = sql"dense_rank()"
+
+-- Relative rank in [0, 1]: (rank - 1) / (rows - 1)
+def percent_rank: double = sql"percent_rank()"
+
+-- Cumulative distribution in (0, 1]: rows preceding or peer / rows
+def cume_dist: double = sql"cume_dist()"
+
+-- Bucket number when the window is divided into n groups
+def ntile(n:int): long = sql"ntile(${n})"

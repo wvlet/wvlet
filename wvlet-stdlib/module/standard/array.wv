@@ -75,6 +75,13 @@ type array[A] = {
   def contains(elem:A) in snowflake: boolean = sql"array_contains(to_variant(${elem}),${this})"
   def contains(elem:A) in bigquery: boolean = sql"${elem} in unnest(${this})"
 
+  -- Concatenate the array elements into a string without a separator
+  def mk_string in duckdb: string = sql"array_to_string(${this},'')"
+  def mk_string in trino: string = sql"array_join(${this},'')"
+  def mk_string in hive: string = sql"concat_ws('',${this})"
+  def mk_string in snowflake: string = sql"array_to_string(${this},'')"
+  def mk_string in bigquery: string = sql"array_to_string(${this},'')"
+
   -- Concatenate the array elements into a string with the separator
   def mk_string(separator:string) in duckdb: string = sql"array_to_string(${this},${separator})"
   def mk_string(separator:string) in trino: string = sql"array_join(${this},${separator})"
@@ -107,6 +114,18 @@ type array[A] = {
   def concat(other:any) in trino: array[A] = sql"concat(${this},${other})"
   def concat(other:any) in snowflake: array[A] = sql"array_cat(${this},${other})"
   def concat(other:any) in bigquery: array[A] = sql"array_concat(${this},${other})"
+
+  -- Window (analytic) functions, applied to a column with an over(...) clause,
+  -- e.g. v.lag(1) over (partition by g order by k)
+  def lag: A = sql"lag(${this})"
+  def lag(offset:int): A = sql"lag(${this},${offset})"
+  def lag(offset:int, default:any): A = sql"lag(${this},${offset},${default})"
+  def lead: A = sql"lead(${this})"
+  def lead(offset:int): A = sql"lead(${this},${offset})"
+  def lead(offset:int, default:any): A = sql"lead(${this},${offset},${default})"
+  def first_value: A = sql"first_value(${this})"
+  def last_value: A = sql"last_value(${this})"
+  def nth_value(n:int): A = sql"nth_value(${this},${n})"
 }
 
 -- array functions specific to numeric elements

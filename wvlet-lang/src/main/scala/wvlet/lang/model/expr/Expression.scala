@@ -205,6 +205,47 @@ trait Expression extends SyntaxTreeNode with LogSupport:
 
   end transformUpExpression
 
+  /**
+    * Apply the function to each direct child expression (one level, no recursion into the results)
+    * and rebuild this node when any child changes. Callers drive their own recursion, which enables
+    * traversals that resolve certain parent-child pairs as a unit (e.g. a FunctionApply and its
+    * base DotRef in the Typer's function inlining). A LogicalPlan child (e.g. a subquery
+    * expression's plan) has the function applied to each of its nodes' direct expressions.
+    */
+  def mapChildExpressions(f: Expression => Expression): Expression =
+    var changed                = false
+    def iter(arg: Any): AnyRef =
+      arg match
+        case e: Expression =>
+          val newExpr = f(e)
+          if !(newExpr eq e) then
+            changed = true
+          newExpr
+        case l: LogicalPlan =>
+          val newPlan = l.transformUp { case n: LogicalPlan =>
+            n.transformChildExpressions { case e: Expression =>
+              f(e)
+            }
+          }
+          if !(newPlan eq l) then
+            changed = true
+          newPlan
+        case Some(x) =>
+          Some(iter(x))
+        case s: Seq[?] =>
+          s.map(iter)
+        case other: AnyRef =>
+          other
+        case null =>
+          null
+    val newArgs = productIterator.map(iter).toIndexedSeq
+    if changed then
+      copyInstance(newArgs)
+    else
+      this
+
+  end mapChildExpressions
+
   def transformChildExpressions(rule: PartialFunction[Expression, Expression]): this.type =
     var changed = false
 
