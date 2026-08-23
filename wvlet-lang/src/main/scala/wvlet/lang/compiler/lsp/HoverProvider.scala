@@ -83,6 +83,12 @@ object HoverProvider:
     *   A compiler used for the best-effort full typing pass that resolves types and symbols
     */
   def hover(content: String, offset: Int, compiler: Compiler): Option[HoverResult] =
+    // A member name of a value.function call (e.g. the `upper` of `name.upper`) hovers the
+    // stdlib signatures and docs. This runs on a parse-only pass first: after typing, stdlib
+    // calls are inlined into SQL fragments and their reference nodes no longer exist
+    stdlibFunctionHover(content, offset).orElse(typedHover(content, offset, compiler))
+
+  private def typedHover(content: String, offset: Int, compiler: Compiler): Option[HoverResult] =
     val unit = CompilationUnit.fromWvletString(content)
     try
       compiler.compileSingleUnit(unit)
@@ -119,7 +125,137 @@ object HoverProvider:
       compiler.releaseUnit(unit)
     end try
 
-  end hover
+  end typedHover
+
+  /**
+    * Hover result for a stdlib function reference: the member name of a `value.function` access
+    * (e.g. `upper` in `name.upper`) or the base name of a top-level call (e.g. `row_number()`).
+    * Shows every overload's signature with its doc comment, grouped by the owning type.
+    *
+    * Fires only when the hovered name is defined in the standard library and the qualifier is not a
+    * relation alias or table name (so `t.year` on an alias hovers the column, not the function)
+    */
+  private def stdlibFunctionHover(content: String, offset: Int): Option[HoverResult] =
+    try
+      val unit = CompilationUnit.fromWvletString(content)
+      val plan = wvlet.lang.compiler.parser.ParserPhase.parseOnly(unit)
+      val sf   = unit.sourceFile
+      sf.ensureLoaded
+      val nodes = plan.collectAllNodes
+
+      // Relation aliases and scanned table names of the file: member access through them is
+      // column access, not a stdlib function call
+      val relationNames: Set[String] =
+        nodes
+          .collect {
+            case a: AliasedRelation =>
+              a.alias.leafName.toLowerCase
+            case t: TableRef =>
+              t.name.fullName.toLowerCase
+          }
+          .toSet
+
+      def qualifierName(e: wvlet.lang.model.expr.Expression): String =
+        e match
+          case n: NameExpr =>
+            n.leafName.toLowerCase
+          case _ =>
+            ""
+
+      // The member name of a DotRef under the cursor (e.g. `upper` of name.upper)
+      val memberHit =
+        nodes
+          .collect {
+            case d: wvlet.lang.model.expr.DotRef
+                if d.name.span.exists && d.name.span.containsInclusive(offset) &&
+                  !relationNames.contains(qualifierName(d.qualifier)) =>
+              d.name
+          }
+          .headOption
+      // The base name of a top-level function call under the cursor (e.g. row_number())
+      val topLevelHit =
+        nodes
+          .collect { case f: wvlet.lang.model.expr.FunctionApply =>
+            f.base match
+              case i: wvlet.lang.model.expr.Identifier
+                  if i.span.exists && i.span.containsInclusive(offset) &&
+                    StdLibIndex.topLevelFunctionsByName.contains(i.leafName.toLowerCase) =>
+                Some(i)
+              case _ =>
+                None
+          }
+          .flatten
+          .headOption
+
+      memberHit
+        .orElse(topLevelHit)
+        .flatMap { name =>
+          val docs = StdLibIndex.functionsNamed(name.leafName)
+          if docs.isEmpty then
+            None
+          else
+            Some(toResult(stdlibMarkdown(docs), name, sf))
+        }
+    catch
+      case _: Throwable =>
+        // Hover is opportunistic: never surface a parse error to the editor
+        None
+
+  end stdlibFunctionHover
+
+  /** Maximum number of owning-type groups rendered in a stdlib function hover */
+  private val MaxHoverGroups: Int = 3
+
+  /**
+    * Render stdlib function docs as markdown: for each owning type, a fenced code block listing the
+    * distinct overload signatures, followed by the function's doc comment
+    */
+  private def stdlibMarkdown(docs: List[StdLibFunctionDoc]): String =
+    val groups = docs
+      .groupBy(_.ownerType)
+      .toList
+      .sortBy((owner, _) => docs.indexWhere(_.ownerType == owner))
+    val rendered = groups
+      .take(MaxHoverGroups)
+      .map { case (owner, defs) =>
+        val header =
+          if owner.isEmpty then
+            "-- function"
+          else
+            s"-- member of ${owner}"
+        // Merge dialect variants of one signature into a single line
+        val sigLines =
+          defs
+            .map { d =>
+              val ret =
+                if d.returnType.nonEmpty then
+                  s": ${d.returnType}"
+                else
+                  ""
+              s"def ${d.signature}${ret}"
+            }
+            .distinct
+        // A dialect variant's comment explains that engine's quirk; prefer the neutral doc
+        val desc = defs
+          .filter(_.dialects.isEmpty)
+          .map(_.description)
+          .find(_.nonEmpty)
+          .orElse(defs.map(_.description).find(_.nonEmpty))
+          .getOrElse("")
+        val block = codeBlock((header :: sigLines).mkString("\n"))
+        if desc.isEmpty then
+          block
+        else
+          s"${block}\n${desc}"
+      }
+    val more =
+      if groups.size > MaxHoverGroups then
+        s"\n\n… ${groups.size - MaxHoverGroups} more"
+      else
+        ""
+    rendered.mkString("\n\n") + more
+
+  end stdlibMarkdown
 
   /**
     * Build the markdown description for a single node, or `None` if the node carries no useful type

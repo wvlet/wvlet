@@ -235,4 +235,48 @@ class CompletionProviderTest extends UniTest:
     val labels = CompletionProvider.complete(v2, v2.length, compiler).map(_.label).toSet
     labels shouldContain "new_col"
 
+  test("should suggest stdlib members of a string column after a dot"):
+    val src    = "from [[1, \"alice\"]] as person(id, name)\nselect name."
+    val items  = complete(src, src.length)
+    val labels = items.map(_.label).toSet
+    labels shouldContain "upper"
+    labels shouldContain "trim"
+    // any-type members apply to every value
+    labels shouldContain "is_null"
+    // string members must not leak numeric-only functions
+    labels shouldNotContain "sqrt"
+
+  test("should suggest numeric-widened stdlib members of an int column after a dot"):
+    val src    = "from [[1, \"alice\"]] as person(id, name)\nselect id."
+    val items  = complete(src, src.length)
+    val labels = items.map(_.label).toSet
+    // int's own member, the shared numeric member, and the any-type member
+    labels shouldContain "abs"
+    labels shouldContain "sqrt"
+    labels shouldContain "to_string"
+    labels shouldNotContain "upper"
+
+  test("should offer each stdlib overload as its own completion item"):
+    val src     = "from [[1, \"alice\"]] as person(id, name)\nselect name."
+    val items   = complete(src, src.length)
+    val details = items.filter(_.label == "substring").map(_.detail).toSet
+    details shouldContain "(start: int): string"
+    details shouldContain "(start: int, length: int): string"
+
+  test("should suggest aggregation shorthands after an underscore dot"):
+    val src    = "from [[1, \"alice\"]] as person(id, name)\ngroup by name\nagg _."
+    val items  = complete(src, src.length)
+    val labels = items.map(_.label).toSet
+    labels shouldContain "count"
+    labels shouldContain "count_distinct"
+
+  test("should offer stdlib top-level functions with signatures"):
+    val src   = "from [[1]] as t(x)\n"
+    val items = complete(src, src.length)
+    val rn    = items.find(_.label == "row_number")
+    rn.map(_.kind) shouldBe Some(CompletionItemKind.Function)
+    rn.map(_.detail) shouldBe Some(": long")
+    val ntile = items.find(_.label == "ntile")
+    ntile.map(_.detail) shouldBe Some("(n: int): long")
+
 end CompletionProviderTest

@@ -243,7 +243,9 @@ object CompletionProvider:
     // current document must not drop them
     items ++= workspaceDefinitionItems(compiler)
 
-    // Tier 4: well-known SQL function names
+    // Tier 4: stdlib top-level functions (window ranking functions, ulid_string, ...) with
+    // their signatures, then well-known SQL function names
+    items ++= stdlibTopLevelItems
     items ++= builtinFunctionItems
 
     items.result()
@@ -269,6 +271,96 @@ object CompletionProvider:
     .toList
     .sorted
     .map(name => CompletionItem(name, CompletionItemKind.Function, "function"))
+
+  /**
+    * The completion detail of a stdlib function entry: its argument list and return type, e.g.
+    * `(start: int): string` for an overload taking arguments or `: string` for a bare member
+    */
+  private def stdlibDetail(d: StdLibFunctionDoc): String =
+    val args = d.signature.stripPrefix(d.name)
+    val ret  =
+      if d.returnType.nonEmpty then
+        s": ${d.returnType}"
+      else
+        ""
+    if args.isEmpty && ret.isEmpty then
+      "function"
+    else
+      s"${args}${ret}"
+
+  /** Numeric type names whose member lookup widens to the shared `numeric` type */
+  private val numericTypeNames = Set("int", "long", "float", "real", "double", "decimal")
+
+  /**
+    * Stdlib member completion items for a value of the given types, one item per distinct overload
+    * signature (dialect variants of one signature merge into a single item)
+    */
+  private def stdlibMemberItemsOf(typeNames: List[String]): List[CompletionItem] =
+    val widened = typeNames.flatMap { t =>
+      if numericTypeNames.contains(t) then
+        List(t, "numeric")
+      else
+        List(t)
+    }
+    (widened :+ "any")
+      .distinct
+      .flatMap(t => StdLibIndex.membersByType.getOrElse(t, Nil))
+      .map(d => CompletionItem(d.name, CompletionItemKind.Function, stdlibDetail(d)))
+      .distinct
+
+  /** All stdlib top-level functions (e.g. row_number, ulid_string) with their signatures */
+  private lazy val stdlibTopLevelItems: List[CompletionItem] =
+    StdLibIndex
+      .allFunctions
+      .filter(_.ownerType.isEmpty)
+      .map(d => CompletionItem(d.name, CompletionItemKind.Function, stdlibDetail(d)))
+      .distinct
+
+  /**
+    * The data type name of the column named by the qualifier in the relation enclosing the cursor,
+    * used to pick which type's stdlib members to offer after `column.`
+    */
+  private def qualifierColumnType(plan: LogicalPlan, name: String, offset: Int): Option[String] =
+    val relations = plan
+      .collectAllNodes
+      .collect {
+        case r: Relation if r.span.exists =>
+          r
+      }
+    def fieldTypeIn(r: Relation): Option[String] =
+      val fields =
+        try
+          r.inputRelationType.fields ++ r.relationType.fields
+        catch
+          case _: Throwable =>
+            Nil
+      fields
+        .find(f => f.name.name.equalsIgnoreCase(name))
+        // An unresolved column (e.g. a reference to an unknown name) has no member set to offer
+        .filter(_.dataType.isResolved)
+        .map(_.dataType.typeName.name)
+    val enclosing  = relations.filter(_.span.containsInclusive(offset)).sortBy(_.span.size)
+    val candidates =
+      if enclosing.nonEmpty then
+        enclosing
+      else if relations.nonEmpty then
+        // The cursor may sit past the relation being edited (e.g. a trailing `select name.`):
+        // fall back to the relation nearest to the cursor
+        List(
+          relations.minBy { r =>
+            if offset < r.span.start then
+              r.span.start - offset
+            else if offset > r.span.end then
+              offset - r.span.end
+            else
+              0
+          }
+        )
+      else
+        Nil
+    candidates.iterator.flatMap(fieldTypeIn).nextOption()
+
+  end qualifierColumnType
 
   /**
     * The member-access context of the cursor: the identifier chain ending at a `.` right before the
@@ -393,16 +485,29 @@ object CompletionProvider:
         if tables.nonEmpty then
           tables
         else if plan.nonEmpty && qualifier == "_" then
-          // `_.` refers to the query input: offer the enclosing relation's columns
-          columnItems(plan, offset)
+          // `_.` refers to the query input: offer the enclosing relation's columns, plus the
+          // aggregation shorthands (array members like count/sum) that apply to `_`
+          columnItems(plan, offset) ++ stdlibMemberItemsOf(List("array"))
         else
-          // Unknown qualifier: an empty member list is better than misleading suggestions
-          Nil
+          // A column qualifier gets the stdlib members of its type (e.g. `name.` on a string
+          // column suggests upper, trim, ...); the members widen through `numeric` and `any`
+          val columnType =
+            if plan.isEmpty then
+              None
+            else
+              qualifierColumnType(plan, qualifier, offset)
+          columnType match
+            case Some(t) =>
+              stdlibMemberItemsOf(List(t))
+            case None =>
+              // Unknown qualifier: an empty member list is better than misleading suggestions
+              Nil
     catch
       case _: Throwable =>
         Nil
     finally
       compiler.releaseUnit(typedUnit)
+    end try
 
   end memberItems
 
@@ -517,15 +622,16 @@ object CompletionProvider:
   end boundTableItems
 
   /**
-    * Remove duplicate candidates, keeping the first occurrence of each label. Column and definition
-    * candidates (added later) therefore never shadow one another, and keyword duplicates are
-    * dropped.
+    * Remove duplicate candidates, keeping the first occurrence of each label+detail pair. Column
+    * and definition candidates (added later) therefore never shadow one another, keyword duplicates
+    * are dropped, and per-overload function entries (same label, different signature detail) all
+    * survive.
     */
   private def dedup(items: List[CompletionItem]): List[CompletionItem] =
-    val seen   = scala.collection.mutable.HashSet.empty[String]
+    val seen   = scala.collection.mutable.HashSet.empty[(String, String)]
     val result = List.newBuilder[CompletionItem]
     items.foreach { item =>
-      if seen.add(item.label) then
+      if seen.add((item.label, item.detail)) then
         result += item
     }
     result.result()
