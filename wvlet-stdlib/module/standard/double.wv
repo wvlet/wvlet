@@ -17,22 +17,9 @@ type double = {
 
   def or_else(other:double): double = sql"coalesce(${this},${other})"
 
-  def round(decimal:int=0): double = sql"round(${this},${decimal})"
-
   def abs: double = sql"abs(${this})"
   def ceil: double = sql"ceil(${this})"
   def floor: double = sql"floor(${this})"
-  def sqrt: double = sql"sqrt(${this})"
-  def cbrt: double = sql"cbrt(${this})"
-  def exp: double = sql"exp(${this})"
-  def ln: double = sql"ln(${this})"
-  def log10: double = sql"log10(${this})"
-  def log10 in snowflake: double = sql"log(10,${this})"
-  def log2: double = sql"log2(${this})"
-  def log2 in snowflake: double = sql"log(2,${this})"
-  def log2 in bigquery: double = sql"log(${this}, 2)"
-  def power(exponent:double): double = sql"power(${this},${exponent})"
-  def sign: int = sql"sign(${this})"
 
   def degrees: double = sql"degrees(${this})"
   def radians: double = sql"radians(${this})"
@@ -59,9 +46,6 @@ type double = {
   def is_infinite in duckdb: boolean = sql"isinf(${this})"
   def is_infinite in trino: boolean = sql"is_infinite(${this})"
   def is_infinite in bigquery: boolean = sql"is_inf(${this})"
-
-  def in(v:any*): boolean = sql"${this} in (${v})"
-  def not_in(v:any*): boolean = sql"${this} not in (${v})"
 
   def between(l:double, r:double): boolean = sql"${this} between ${l} and ${r}"
 }

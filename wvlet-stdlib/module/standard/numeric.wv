@@ -1,0 +1,26 @@
+package wvlet.standard
+
+-- Functions shared by all numeric types (int, long, float, real, double, decimal).
+-- Member lookup on a numeric value falls back to this type when the value's own type
+-- does not define the member, so common math functions need only one definition here.
+-- Functions whose return type follows the value's own type (abs, ceil, floor, mod,
+-- truncate, or_else, between) stay defined per type.
+type numeric = {
+  -- Round to the given number of decimal places
+  def round(decimal:int=0): double = sql"round(${this},${decimal})"
+
+  def sqrt: double = sql"sqrt(${this})"
+  def cbrt: double = sql"cbrt(${this})"
+  def exp: double = sql"exp(${this})"
+  def ln: double = sql"ln(${this})"
+  def log10: double = sql"log10(${this})"
+  def log10 in snowflake: double = sql"log(10,${this})"
+  def log2: double = sql"log2(${this})"
+  def log2 in snowflake: double = sql"log(2,${this})"
+  def log2 in bigquery: double = sql"log(${this}, 2)"
+  def power(exponent:double): double = sql"power(${this},${exponent})"
+  def sign: int = sql"sign(${this})"
+
+  def in(v:any*): boolean = sql"${this} in (${v})"
+  def not_in(v:any*): boolean = sql"${this} not in (${v})"
+}

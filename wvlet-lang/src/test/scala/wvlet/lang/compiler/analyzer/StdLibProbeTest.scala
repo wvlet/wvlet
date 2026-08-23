@@ -34,6 +34,30 @@ class StdLibProbeTest extends UniTest:
     sql shouldContain "trunc(d)"
   }
 
+  test("resolve shared numeric members on every numeric type") {
+    // round/sqrt/power/sign live once on the numeric type; each qualifier type falls back to it
+    val sql = generateSQL("""from [[1, 10000000000, 1.75, 2.5e0]] as t(i, l, d, f)
+        |select i.sqrt as a, l.round(2) as b, d.power(2.0) as c, f.sign as e, d.ln as g
+        |""".stripMargin)
+    sql shouldContain "sqrt(i)"
+    sql shouldContain "round(l,2)"
+    sql shouldContain "power(d,2.0)"
+    sql shouldContain "sign(f)"
+    sql shouldContain "ln(d)"
+  }
+
+  test("resolve a type's own members alongside the numeric fallback") {
+    // decimal's own members (truncate, abs) resolve first; round comes from the numeric type
+    val sql = generateSQL("from [[1.75]] as t(d)\nselect d.truncate as tr, d.abs.round(1) as r\n")
+    sql shouldContain "trunc(d)"
+    sql shouldContain "round(abs(d),1)"
+  }
+
+  test("resolve dialect-scoped variants defined on the shared numeric type") {
+    val sql = generateSQL("from [[1.75]] as t(d)\nselect d.log2 as l\n", DBType.Snowflake)
+    sql shouldContain "log(2,d)"
+  }
+
   test("resolve dialect-scoped defs through a method chain") {
     val sql = generateSQL("from [[1.75]] as t(d)\nselect d.to_double.is_finite as fi\n")
     sql shouldContain "isfinite(cast(d as double))"

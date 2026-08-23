@@ -40,3 +40,25 @@ test _.rows should be [[
   true,
   false,
 ]]
+;
+
+-- Decimal literals type as decimal: shared math functions resolve through the numeric type
+-- without per-type duplication (round/sqrt/power/sign/log live once on `type numeric`)
+from [[1.75, 4.25]] as t(d, e)
+select
+  d.round(1) as rd,
+  e.sqrt.round(1) as sq,
+  d.power(2.0).round(4) as pw,
+  d.sign as sg,
+  e.ln.round(2) as ln0,
+  d.between(1.0, 2.0) as bw,
+
+test _.size should be 1
+test _.rows should be [[
+  1.8,
+  2.1,
+  3.0625,
+  1,
+  1.45,
+  true,
+]]
