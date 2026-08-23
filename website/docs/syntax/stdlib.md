@@ -187,4 +187,4 @@ def bit_count(x: long) in duckdb: int = sql"bit_count(${x})"
 def bit_count(x: long) in trino: int = sql"bitwise_bit_count(${x})"
 ```
 
-All DuckDB engine functions are bundled with the standard library, so calls like `bit_count(x)` type-check offline out of the box. For other databases, or engine-specific UDFs, import the engine's function catalog with [`wvlet catalog import`](../usage/catalog-import.md).
+All DuckDB and Trino engine functions are bundled with the standard library, so calls like `bit_count(x)` type-check offline out of the box and compile to the SQL of the engine you target. For other databases, or engine-specific UDFs, import the engine's function catalog with [`wvlet catalog import`](../usage/catalog-import.md).

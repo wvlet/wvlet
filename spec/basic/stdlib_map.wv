@@ -2,8 +2,9 @@
 select map {"a": 1, "b": 2} as m
 select
   m.size as sz,
-  m.keys as ks,
-  m.values as vs,
+  -- Arrays are joined to strings so the expected value is engine-independent
+  m.keys.mk_string(',') as ks,
+  m.values.mk_string(',') as vs,
   m.contains_key('a') as ck,
   m.contains_key('z') as nk,
   m.get('b') as vb,
@@ -11,8 +12,8 @@ select
 test _.size should be 1
 test _.rows should be [[
   2,
-  ['a', 'b'],
-  [1, 2],
+  'a,b',
+  '1,2',
   true,
   false,
   2,

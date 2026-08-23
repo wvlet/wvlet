@@ -3,8 +3,10 @@ package wvlet.standard
 -- Functions of array values. A column reference after 'group by' also has an array type,
 -- so aggregation functions (count, sum, max_by, etc.) are defined here as well
 type array[A] = {
-  def length: int = sql"length(${this})"
-  def size: int = sql"length(${this})"
+  def length in duckdb: int = sql"length(${this})"
+  def length in trino: int = sql"cardinality(${this})"
+  def size in duckdb: int = sql"length(${this})"
+  def size in trino: int = sql"cardinality(${this})"
   def get(index: int): A = sql"${this}[${index}]"
   def count: int = sql"count(*)"
   def count_distinct: int = sql"count(distinct ${this})"

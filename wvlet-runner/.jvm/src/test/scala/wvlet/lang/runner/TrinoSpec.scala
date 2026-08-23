@@ -27,7 +27,7 @@ import wvlet.lang.runner.connector.trino.TestTrinoServer
 
 import scala.util.control.NonFatal
 
-trait TrinoSpecRunner(specPath: String) extends UniTest:
+trait TrinoSpecRunner(specPath: String, specFilter: String => Boolean = _ => true) extends UniTest:
 
   // Launch embedded Trino with an in-memory catalog
   private val server  = TestTrinoServer().withCustomMemoryPlugin
@@ -67,8 +67,11 @@ trait TrinoSpecRunner(specPath: String) extends UniTest:
   // Ensure the compiler knows we are targeting Trino
   compiler.setDefaultCatalog(dbConnectorProvider.getConnector(profile).getCatalog("memory", "main"))
 
-  // Compile .wv files and run only local-* specs in the folder
-  for unit <- compiler.localCompilationUnits do
+  // Compile .wv files and run the specs in the folder matching specFilter
+  for
+    unit <- compiler.localCompilationUnits
+    if specFilter(unit.sourceFile.fileName)
+  do
     test(unit.sourceFile.relativeFilePath.replaceAll("/", ":")) {
       try
         handleResult(runSpec(unit))
@@ -110,3 +113,10 @@ end TrinoSpecRunner
   * Specs evaluated with a local Trino server
   */
 class LocalTrinoSpec extends TrinoSpecRunner("spec/trino")
+
+/**
+  * Run the standard-library specs (spec/basic/stdlib_*.wv) against a real Trino server so the `in
+  * trino` SQL mappings are verified by execution, not only by generated-SQL comparison. The specs
+  * use only literal tables, so no fixture data is needed.
+  */
+class TrinoStdLibSpec extends TrinoSpecRunner("spec/basic", _.startsWith("stdlib_"))

@@ -5,10 +5,11 @@ select
   a.get(1) as first,
   a.contains(2) as has,
   a.index_of(2) as idx,
-  a.sort as sorted,
-  a.distinct.sort as dist,
-  a.reverse as rev,
-  a.concat([9]) as cc,
+  -- Array results are joined to strings so the expected value is engine-independent
+  a.sort.mk_string(',') as sorted,
+  a.distinct.sort.mk_string(',') as dist,
+  a.reverse.mk_string(',') as rev,
+  a.concat([9]).mk_string(',') as cc,
   a.mk_string('-') as st,
 
 test _.size should be 1
@@ -17,9 +18,9 @@ test _.rows should be [[
   3,
   true,
   3,
-  [1, 2, 2, 3],
-  [1, 2, 3],
-  [2, 2, 1, 3],
-  [3, 1, 2, 2, 9],
+  '1,2,2,3',
+  '1,2,3',
+  '2,2,1,3',
+  '3,1,2,2,9',
   '3-1-2-2',
 ]]

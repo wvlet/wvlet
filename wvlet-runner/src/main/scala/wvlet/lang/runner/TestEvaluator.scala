@@ -92,6 +92,11 @@ object TestEvaluator:
               false
         case (a: java.lang.Number, b: String) =>
           valueEquals(b, a)
+        // Booleans arrive as strings through the Trino REST protocol
+        case (a: String, b: Boolean) =>
+          a.toBooleanOption.contains(b)
+        case (a: Boolean, b: String) =>
+          valueEquals(b, a)
         case _ =>
           l == r
 
