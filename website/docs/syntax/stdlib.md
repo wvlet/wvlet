@@ -2,6 +2,8 @@
 
 Wvlet ships with a standard library of functions that you call with dot syntax on column values, e.g. `name.upper` or `price.round(2)`. Functions compile to the SQL of the target database engine: when engines differ (e.g. DuckDB, Trino, Hive, Snowflake, and BigQuery), Wvlet picks the right SQL for the engine you are compiling for, so the same query works across engines.
 
+This page is a guided tour of the most common functions. For the complete listing generated from the library sources, see the [Standard Library Reference](stdlib-reference.md).
+
 ```wvlet
 from orders
 select

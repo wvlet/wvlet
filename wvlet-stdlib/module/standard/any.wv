@@ -13,15 +13,12 @@ type any = {
   def to_boolean: boolean = sql"cast(${this} as boolean)"
   def to_boolean in bigquery: boolean = sql"cast(${this} as bool)"
 
-  -- SQL types
+  -- Cast to the SQL date type
   def to_date: date = sql"cast(${this} as date)"
+  -- Cast to the SQL timestamp type
   def to_timestamp: timestamp = sql"cast(${this} as timestamp)"
-  -- TODO Support type args
-  -- def to_decimal[P,S]: decimal[P,S] = sql"cast(${this} as decimal(${type[P]},${type[S]}))"
 
-  -- TODO Support generic type cast
-  --def cast_as[A]: A = sql"cast(${this} as ${type[A]})"
-
+  -- True if this value is null
   def is_null: boolean = sql"${this} is null"
   def is_not_null: boolean = sql"${this} is not null"
 
@@ -32,6 +29,9 @@ type any = {
 
   -- Name of the runtime type of this value
   def type_of: string = sql"typeof(${this})"
+
+  -- TODO Support type args: def to_decimal[P,S]: decimal[P,S]
+  -- TODO Support generic type cast: def cast_as[A]: A = sql"cast(${this} as ${type[A]})"
 }
 
 type any in duckdb = {
