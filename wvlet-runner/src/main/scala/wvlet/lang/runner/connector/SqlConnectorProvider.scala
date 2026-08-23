@@ -90,7 +90,12 @@ class SqlConnectorProvider(profile: Profile = Profile.defaultDuckDBProfile)
             user = config.user.getOrElse("wvlet"),
             catalog = config.catalog,
             schema = config.schema,
-            useHttps = useHttps
+            useHttps = useHttps,
+            // Basic auth from the standard password field; bearer tokens (JWT / OAuth2) from
+            // the `token` property. Profile values support ${ENV} interpolation, so secrets
+            // stay out of profiles.json itself
+            password = config.password,
+            token = config.properties.get("token").map(_.toString)
           )
         )
       case other =>

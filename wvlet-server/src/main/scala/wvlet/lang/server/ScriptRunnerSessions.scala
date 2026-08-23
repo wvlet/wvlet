@@ -13,6 +13,8 @@
  */
 package wvlet.lang.server
 
+import wvlet.lang.api.StatusCode
+import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.runner.QueryExecutor
 import wvlet.lang.runner.ThreadManager
@@ -59,11 +61,24 @@ class ScriptRunnerSessions(
 
   /**
     * The runner of the given session, creating it on first use. Requests without a session id share
-    * the default session
+    * the default session. A request naming a profile other than the server's default gets a runner
+    * bound to that profile, isolated under a profile-qualified session key.
     */
-  def runnerFor(sessionId: Option[String]): WvletScriptRunner =
+  def runnerFor(sessionId: Option[String], profileName: Option[String] = None): WvletScriptRunner =
     evictIdleSessions()
-    val key = sessionId.getOrElse(ScriptRunnerSessions.DefaultSessionKey)
+    val requestedProfile = profileName.filter(_ != config.profile.name)
+    val profile          =
+      requestedProfile match
+        case None =>
+          config.profile
+        case Some(name) =>
+          Profile
+            .getProfile(name)
+            .getOrElse {
+              throw StatusCode.INVALID_ARGUMENT.newException(s"Unknown profile: ${name}")
+            }
+    val baseKey = sessionId.getOrElse(ScriptRunnerSessions.DefaultSessionKey)
+    val key     = requestedProfile.map(p => s"${baseKey}@${p}").getOrElse(baseKey)
     // Create-or-touch atomically: compute and the eviction's computeIfPresent serialize on the
     // same key, so an entry can never be touched after eviction closed it
     val entry = sessions.compute(
@@ -71,7 +86,7 @@ class ScriptRunnerSessions(
       (k, existing) =>
         if existing == null then
           debug(s"Creating a new script-runner session: ${k}")
-          Entry(newRunner())
+          Entry(newRunner(profile))
         else
           existing.touch()
           existing
@@ -81,14 +96,26 @@ class ScriptRunnerSessions(
   /** The number of live sessions (for monitoring and tests) */
   def sessionCount: Int = sessions.size()
 
-  private def newRunner(): WvletScriptRunner = WvletScriptRunner(
-    workEnv,
-    // Session runners are created on demand by the first request, so a background source
-    // pre-compilation would race that request's own compilation within one compiler
-    config.copy(precompileSourcePaths = false),
-    QueryExecutor(connectorProvider, config.profile, workEnv),
-    threadManager
-  )
+  private def newRunner(profile: Profile): WvletScriptRunner =
+    val sessionConfig =
+      if profile eq config.profile then
+        // Session runners are created on demand by the first request, so a background source
+        // pre-compilation would race that request's own compilation within one compiler
+        config.copy(precompileSourcePaths = false)
+      else
+        // A request-selected profile also drives the runner's default catalog/schema
+        config.copy(
+          precompileSourcePaths = false,
+          profile = profile,
+          catalog = profile.defaultEngine.catalog,
+          schema = profile.defaultEngine.schema
+        )
+    WvletScriptRunner(
+      workEnv,
+      sessionConfig,
+      QueryExecutor(connectorProvider, profile, workEnv),
+      threadManager
+    )
 
   private def evictIdleSessions(): Unit =
     val cutoff = System.currentTimeMillis() - idleTimeout.toMillis

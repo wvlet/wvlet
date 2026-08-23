@@ -57,8 +57,7 @@ class QueryExecutor(
     defaultProfile: Profile,
     workEnv: WorkEnv,
     private var config: QueryExecutorConfig = QueryExecutorConfig()
-) extends LogSupport
-    with AutoCloseable:
+) extends BasePlanExecutor(workEnv):
 
   def setRowLimit(limit: Int): QueryExecutor =
     config = config.copy(rowLimit = limit)
@@ -251,107 +250,8 @@ class QueryExecutor(
     workEnv.info(s"Completed ${u.sourceFile.fileName}")
     result
 
-  def execute(executionPlan: ExecutionPlan, context: Context): QueryResult =
-    var lastResult: QueryResult = QueryResult.empty
-    val results                 = List.newBuilder[QueryResult]
-
-    // TODO: Use an external reporting object to collect the results
-    def report(r: QueryResult): QueryResult =
-      if !r.isEmpty then
-        results += r
-        // Update the last result only when there is no error
-        if r.isSuccessfulQueryResult then
-          // TODO Add a unique name to the last result
-          trace(s"last result is updated:\n${r}")
-          lastResult = r
-        // log results
-        def isMultiline(s: String): Boolean = s.split("\n").size > 1
-
-        r match
-          case t: TestSuccess =>
-            if isMultiline(t.msg) then
-              workEnv.debug(s"Test passed: (${t.loc.locationString})\n${t.msg}")
-            else
-              workEnv.debug(s"Test passed: ${t.msg} (${t.loc.locationString})")
-          case t: TestFailure =>
-            if isMultiline(t.msg) then
-              workEnv.error(s"Test failed: (${t.loc.locationString})\n${t.msg}")
-            else
-              workEnv.error(s"Test failed: ${t.msg} (${t.loc.locationString})")
-          case w: WarningResult =>
-            warn(s"${w.msg} (${w.loc.locationString})")
-            workEnv.warn(s"Warning: ${w.msg}")
-          case _ =>
-
-      r
-
-    def process(e: ExecutionPlan)(using Context): QueryResult =
-      e match
-        case ExecuteQuery(plan) =>
-          report(executeQuery(plan))
-        case ExecuteSave(save, queryPlan) =>
-          // Evaluate test/debug if exists
-          report(process(queryPlan))
-          report(executeSave(save))
-        case d @ ExecuteDebug(debugPlan, debugExecutionPlan) =>
-          val debugInput = lastResult
-          executeDebug(d, lastResult)
-          debugInput
-        case ExecuteTest(test) =>
-          trace(s"run test: ${test.testExpr}")
-          report(executeTest(test, lastResult))
-        case ExecuteTasks(tasks) =>
-          val results = tasks.map { task =>
-            process(task)
-          }
-          QueryResult.fromList(results)
-        case ExecuteCommand(e) =>
-          // Command produces no QueryResult other than errors
-          report(executeCommand(e))
-        case ExecuteFlow(flow) =>
-          scala
-            .util
-            .Using
-            .resource(FlowRunStore.forWorkEnv(workEnv)) { store =>
-              val flowExecutor = FlowExecutor(
-                activeDBConnector,
-                workEnv,
-                registry = Some(store),
-                engineResolver = Some(profileEngineResolver),
-                defaultEngineName = activeEngine.name,
-                activationSinks = profileActivationSinks
-              )
-              report(flowExecutor.execute(flow))
-            }
-        case ExecuteValDef(v) =>
-          val expr = ExpressionEvaluator.eval(v.expr)(using context)
-          v.symbol.symbolInfo = ValSymbolInfo(
-            context.owner,
-            v.symbol,
-            v.name,
-            expr.dataType,
-            expr,
-            context.compilationUnit
-          )
-          context.enter(v.symbol)
-          QueryResult.empty
-        case ExecuteNothing =>
-          report(QueryResult.empty)
-
-    process(executionPlan)(using context)
-    // Prefer the last successful result when no results were accumulated.
-    // This guards against execution paths that update `lastResult` but do not
-    // add to the `results` builder (e.g., nested task flows).
-    val aggregated = QueryResult.fromList(results.result())
-    if aggregated.isEmpty && !lastResult.isEmpty then
-      lastResult
-    else
-      aggregated
-
-  end execute
-
-  private def executeStatement(sqls: List[String])(using context: Context): Unit = sqls.foreach:
-    sql =>
+  override protected def runStatements(sqls: List[String])(using context: Context): Unit = sqls
+    .foreach: sql =>
       workEnv.info(s"Executing SQL:\n${sql}")
       debug(s"Executing SQL:\n${sql}")
       given monitor: QueryProgressMonitor = context.queryProgressMonitor
@@ -361,98 +261,53 @@ class QueryExecutor(
         case e: SQLException =>
           throw StatusCode.SYNTAX_ERROR.newException(s"${e.getMessage}\n[sql]\n${sql}", e)
 
-  private def executeCommand(cmd: Command)(using context: Context): QueryResult =
-    given monitor: QueryProgressMonitor = context.queryProgressMonitor
-    cmd match
-      case e: ExecuteExpr =>
-        val cmd = GenSQL.generateExecute(e.expr)
-        executeStatement(List(cmd))
-        QueryResult.empty
-      case e: ExplainPlan =>
-        // Expand RawSQL to a logical plan
-        val plan = e
-          .child
-          .transformUp { case r: RawSQL =>
-            val sql     = SqlGenerator(CodeFormatterConfig(sqlDBType = context.dbType)).print(r.sql)
-            val unit    = CompilationUnit.fromSqlString(sql)
-            val sqlPlan = SqlParser(unit).parse()
-            var query: Option[Query] = None
-            sqlPlan.traverseOnce { case q: Query =>
-              query = Some(q)
-            }
-            query.getOrElse {
-              throw StatusCode.SYNTAX_ERROR.newException(s"Failed to find query within SQL: ${sql}")
-            }
-          }
-        val logicalPlanString = plan.pp
-        println(s"\n${logicalPlanString}")
-        QueryResult.empty
-      case s: ShowQuery =>
-        context.findTermSymbolByName(s.name.fullName) match
-          case Some(sym) =>
-            sym.tree match
-              case md: ModelDef =>
-                sym.symbolInfo match
-                  case m: ModelSymbolInfo =>
-                    val query = m
-                      .compilationUnit
-                      .text(md.child.span)
-                      // Remove indentation
-                      .split("\n")
-                      .map(_.trim)
-                      .mkString("\n")
+  override protected def executeFlow(flow: FlowDef)(using context: Context): QueryResult =
+    scala
+      .util
+      .Using
+      .resource(FlowRunStore.forWorkEnv(workEnv)) { store =>
+        val flowExecutor = FlowExecutor(
+          activeDBConnector,
+          workEnv,
+          registry = Some(store),
+          engineResolver = Some(profileEngineResolver),
+          defaultEngineName = activeEngine.name,
+          activationSinks = profileActivationSinks
+        )
+        flowExecutor.execute(flow)
+      }
 
-                    // TODO Report query in the provided output
-                    println(query)
-                  case _ =>
-              // TODO Support SelectAsAlias, already resolved models, etc.
-              case _ =>
-            QueryResult.empty
-          case None =>
-            WarningResult(s"${s.name} is not found", s.sourceLocation(using context))
-      case u: UseConnector =>
-        switchConnector(u.connector.fullName.split("\\.").toList)(using context)
-      case u: UseSchema =>
-        // Update the global context with the new schema/catalog. Connector names of the active
-        // profile shadow schema names, so `use td` switches the connector when `td` is one.
-        val schemaName = u.schema
-        val fullName   = schemaName.fullName
-        val parts      = fullName.split("\\.").toList
-        parts match
-          case name :: rest if defaultProfile.connectors.exists(_.name == name) =>
-            switchConnector(parts)(using context)
-          case schema :: Nil =>
-            // use schema <schema_name>
-            context.global.defaultSchema = schema
-            workEnv.info(s"Switched to schema: ${schema}")
-            QueryResult.empty
-          case catalogName :: schema :: Nil =>
-            // use schema <catalog_name>.<schema_name>
-            // For now, we only update the schema since catalog switching requires more complex handling
-            context.global.defaultSchema = schema
-            workEnv.info(s"Switched to schema: ${schema}")
-            QueryResult.empty
-          case _ =>
-            throw StatusCode
-              .SYNTAX_ERROR
-              .newException(
-                s"Invalid schema name: ${fullName}. Expected format: <schema_name> or <catalog_name>.<schema_name>"
-              )
-      case d: DescribeInput =>
-        // For now, just return empty result since DESCRIBE INPUT is mainly for parsing validation
-        // In a full implementation, this would query the prepared statement input metadata
-        workEnv.info(s"DESCRIBE INPUT ${d.name.fullName}")
-        QueryResult.empty
-      case d: DescribeOutput =>
-        // For now, just return empty result since DESCRIBE OUTPUT is mainly for parsing validation
-        // In a full implementation, this would query the prepared statement output metadata
-        workEnv.info(s"DESCRIBE OUTPUT ${d.name.fullName}")
-        QueryResult.empty
-    end match
+  override protected def executeUseConnector(u: UseConnector)(using context: Context): QueryResult =
+    switchConnector(u.connector.fullName.split("\\.").toList)(using context)
 
-  end executeCommand
+  override protected def executeUseSchema(u: UseSchema)(using context: Context): QueryResult =
+    // Update the global context with the new schema/catalog. Connector names of the active
+    // profile shadow schema names, so `use td` switches the connector when `td` is one.
+    val schemaName = u.schema
+    val fullName   = schemaName.fullName
+    val parts      = fullName.split("\\.").toList
+    parts match
+      case name :: rest if defaultProfile.connectors.exists(_.name == name) =>
+        switchConnector(parts)(using context)
+      case schema :: Nil =>
+        // use schema <schema_name>
+        context.global.defaultSchema = schema
+        workEnv.info(s"Switched to schema: ${schema}")
+        QueryResult.empty
+      case catalogName :: schema :: Nil =>
+        // use schema <catalog_name>.<schema_name>
+        // For now, we only update the schema since catalog switching requires more complex handling
+        context.global.defaultSchema = schema
+        workEnv.info(s"Switched to schema: ${schema}")
+        QueryResult.empty
+      case _ =>
+        throw StatusCode
+          .SYNTAX_ERROR
+          .newException(
+            s"Invalid schema name: ${fullName}. Expected format: <schema_name> or <catalog_name>.<schema_name>"
+          )
 
-  private def executeSave(save: Save)(using context: Context): QueryResult =
+  override protected def executeSave(save: Save)(using context: Context): QueryResult =
     trace(s"Executing save:\n${save.pp}")
     workEnv.trace(s"Executing save: ${save.pp}")
     save match
@@ -461,7 +316,7 @@ class QueryExecutor(
         executeSaveToLocalFileViaDuckDB(s)
       case _ =>
         val statements = GenSQL.generateSaveSQL(save, context)
-        executeStatement(statements)
+        runStatements(statements)
         QueryResult.empty
 
   /**
@@ -768,7 +623,7 @@ class QueryExecutor(
 
   end runEmbeddedToolCalls
 
-  private def executeQuery(plan0: LogicalPlan)(using context: Context): QueryResult =
+  override protected def executeQuery(plan0: LogicalPlan)(using context: Context): QueryResult =
     // Tables resolved through a profile connector name must live on the engine active when
     // this query runs (an in-file `use <connector>` earlier in the unit has already switched
     // activeEngine by now) — except source connectors (Slack etc.), whose tables are staged
@@ -858,7 +713,7 @@ class QueryExecutor(
                 // deliberately stays on the JDBC branch below even though it has a stateful
                 // `asSqlConnector` view: the cross-platform rows are varchar-coerced, and the
                 // JDBC path preserves typed values for `test _.rows` assertions and the web UI.
-                tableRowsFromXP(sc.execute(generatedSQL.sql))
+                TableRows.fromCrossPlatformResult(sc.execute(generatedSQL.sql), config.rowLimit)
               case None =>
                 connector.runQuery(generatedSQL.sql) { rs =>
                   val metadata = rs.getMetaData
@@ -905,367 +760,5 @@ class QueryExecutor(
     end match
 
   end executeQueryPlan
-
-  /**
-    * Adapt a cross-platform `XPQueryResult` (from `SqlConnector.execute`) into the runner's
-    * `TableRows`. Rows come back as `Seq[Option[String]]`; we zip with the declared column names to
-    * build the `ListMap[String, Any]` shape downstream renderers (web UI, REPL printer) already
-    * expect. `None` cells map to `null` to match the JDBC path, where `rs.getString` + `wasNull()`
-    * produces the same effective representation.
-    */
-  private def tableRowsFromXP(r: XPQueryResult): TableRows =
-    val outputType    = SchemaType(None, Name.NoTypeName, r.columns.toList)
-    val columnNames   = r.columns.map(_.name.name)
-    val truncatedRows =
-      r.rows
-        .iterator
-        .take(config.rowLimit)
-        .map { row =>
-          val pairs = columnNames
-            .iterator
-            .zip(row.values.iterator)
-            .map { case (name, value) =>
-              name -> value.orNull.asInstanceOf[Any]
-            }
-          ListMap.from(pairs)
-        }
-        .toList
-    TableRows(outputType, truncatedRows, r.rowCount)
-
-  private def executeDebug(debugPlan: ExecuteDebug, lastResult: QueryResult)(using
-      context: Context
-  ): QueryResult =
-    val result = execute(debugPlan.debugExecutionPlan, context)
-    // TODO: Output to REPL
-    workEnv.info(result)
-    QueryResult.empty
-
-  private def executeTest(test: TestRelation, lastResult: QueryResult)(using
-      context: Context
-  ): QueryResult =
-
-    given unit: CompilationUnit = context.compilationUnit
-
-    def isShortString(x: Any): Boolean =
-      def fitToSingleLine(x: String): Boolean = x != null && x.length < 30 && !x.contains("\n")
-
-      x match
-        case s: String =>
-          fitToSingleLine(s)
-        case null =>
-          true
-        case x if fitToSingleLine(x.toString) =>
-          true
-        case _ =>
-          false
-
-    def pp(x: Any): String =
-      x match
-        case s: Seq[?] =>
-          s"[${s.map(pp).mkString(", ")}]"
-        case null =>
-          "null"
-        case _ =>
-          x.toString
-
-    def cmpMsg(op: String, l: Any, r: Any): String =
-      (l, r) match
-        case (l: Any, r: Any) if isShortString(l) && isShortString(r) =>
-          s"${pp(l)} ${op} ${pp(r)}"
-        case _ =>
-          s"${pp(l)}\n${op}\n${pp(r)}"
-
-    // Numeric values are compared by value, not by representation: the JDBC driver may
-    // return java.math.BigDecimal for a decimal column while the expected literal
-    // evaluates to a scala BigDecimal, Long, or Double (e.g. `1.2` vs DECIMAL '1.2')
-    def valueEquals(l: Any, r: Any): Boolean =
-      (l, r) match
-        case (a: Seq[?], b: Seq[?]) =>
-          a.size == b.size &&
-          a.lazyZip(b)
-            .forall { (x, y) =>
-              valueEquals(x, y)
-            }
-        case (a: java.lang.Number, b: java.lang.Number) =>
-          try
-            BigDecimal(a.toString).compare(BigDecimal(b.toString)) == 0
-          catch
-            case _: NumberFormatException =>
-              // NaN, Infinity, etc.
-              a == b
-        // Some column values arrive as strings (e.g. decimal columns through the JDBC codec),
-        // so a string is compared numerically against an expected number when it parses
-        case (a: String, b: java.lang.Number) =>
-          try
-            BigDecimal(a).compare(BigDecimal(b.toString)) == 0
-          catch
-            case _: NumberFormatException =>
-              false
-        case (a: java.lang.Number, b: String) =>
-          valueEquals(b, a)
-        case _ =>
-          l == r
-
-    def eval(e: Expression): QueryResult =
-      e match
-        case ShouldExpr(TestType.ShouldBe, left, right, _) =>
-          val leftValue  = trim(evalOp(left))
-          val rightValue = trim(evalOp(right))
-          if !valueEquals(leftValue, rightValue) then
-            TestFailure(cmpMsg("was not equal to", leftValue, rightValue), e.sourceLocation)
-          else
-            TestSuccess(cmpMsg("was equal to", leftValue, rightValue), e.sourceLocation)
-        case Eq(left, right, _) =>
-          val leftValue  = trim(evalOp(left))
-          val rightValue = trim(evalOp(right))
-          if !valueEquals(leftValue, rightValue) then
-            TestFailure(cmpMsg("was not equal to", leftValue, rightValue), e.sourceLocation)
-          else
-            TestSuccess(cmpMsg("was equal to", leftValue, rightValue), e.sourceLocation)
-        case ShouldExpr(TestType.ShouldNotBe, left, right, _) =>
-          val leftValue  = trim(evalOp(left))
-          val rightValue = trim(evalOp(right))
-          if valueEquals(leftValue, rightValue) then
-            TestFailure(cmpMsg("was equal to", leftValue, rightValue), e.sourceLocation)
-          else
-            TestSuccess(cmpMsg("was not equal to", leftValue, rightValue), e.sourceLocation)
-        case NotEq(left, right, _) =>
-          val leftValue  = trim(evalOp(left))
-          val rightValue = trim(evalOp(right))
-          if valueEquals(leftValue, rightValue) then
-            TestFailure(cmpMsg("was equal to", leftValue, rightValue), e.sourceLocation)
-          else
-            TestSuccess(cmpMsg("was not equal to", leftValue, rightValue), e.sourceLocation)
-        case IsNull(left, _) =>
-          val leftValue  = trim(evalOp(left))
-          val rightValue = null
-          if leftValue != rightValue then
-            TestFailure(s"${pp(leftValue)} was not null", e.sourceLocation)
-          else
-            TestSuccess(s"${pp(leftValue)} was null", e.sourceLocation)
-        case IsNotNull(left, _) =>
-          val leftValue  = trim(evalOp(left))
-          val rightValue = null
-          if leftValue == rightValue then
-            TestFailure(s"${pp(leftValue)} was null", e.sourceLocation)
-          else
-            TestSuccess(s"${pp(leftValue)} was not null", e.sourceLocation)
-        case ShouldExpr(TestType.ShouldContain, left, right, _) =>
-          val leftValue  = trim(evalOp(left))
-          val rightValue = trim(evalOp(right))
-          (leftValue, rightValue) match
-            case (l: String, r: String) =>
-              if l.contains(r) then
-                TestSuccess(cmpMsg("contained", leftValue, rightValue), e.sourceLocation)
-              else
-                TestFailure(cmpMsg("did not contain", leftValue, rightValue), e.sourceLocation)
-            case (l: List[?], r: Any) =>
-              if l.contains(r) then
-                TestSuccess(cmpMsg("contained", leftValue, rightValue), e.sourceLocation)
-              else
-                TestFailure(cmpMsg("did not contain", leftValue, rightValue), e.sourceLocation)
-            case _ =>
-              WarningResult(
-                s"`contain` operator is not supported for: ${leftValue} and ${rightValue}",
-                e.sourceLocation
-              )
-        case ShouldExpr(TestType.ShouldNotContain, left, right, _) =>
-          val leftValue  = trim(evalOp(left))
-          val rightValue = trim(evalOp(right))
-          (leftValue, rightValue) match
-            case (l: String, r: String) =>
-              if l.contains(r) then
-                TestFailure(cmpMsg("contained", leftValue, rightValue), e.sourceLocation)
-              else
-                TestSuccess(cmpMsg("did not contain", leftValue, rightValue), e.sourceLocation)
-            case (l: List[?], r: Any) =>
-              if l.contains(r) then
-                TestFailure(cmpMsg("contained", leftValue, rightValue), e.sourceLocation)
-              else
-                TestSuccess(cmpMsg("did not contain", leftValue, rightValue), e.sourceLocation)
-            case _ =>
-              WarningResult(
-                s"`contain` operator is not supported for: ${leftValue} and ${rightValue}",
-                e.sourceLocation
-              )
-        case LessThanOrEq(left, right, _) =>
-          val leftValue  = trim(evalOp(left))
-          val rightValue = trim(evalOp(right))
-          cmpAny(leftValue, rightValue)
-            .map {
-              case x if x <= 0 =>
-                TestSuccess(
-                  cmpMsg("was less than or equal to", leftValue, rightValue),
-                  e.sourceLocation
-                )
-              case _ =>
-                TestFailure(
-                  cmpMsg("was not less than or equal to", leftValue, rightValue),
-                  e.sourceLocation
-                )
-            }
-            .getOrElse {
-              WarningResult(s"Can't compare ${leftValue} and ${rightValue}", e.sourceLocation)
-            }
-        case LessThan(left, right, _) =>
-          val leftValue  = trim(evalOp(left))
-          val rightValue = trim(evalOp(right))
-          cmpAny(leftValue, rightValue)
-            .map {
-              case x if x < 0 =>
-                TestSuccess(cmpMsg("was less than", leftValue, rightValue), e.sourceLocation)
-              case _ =>
-                TestFailure(cmpMsg("was not less than", leftValue, rightValue), e.sourceLocation)
-            }
-            .getOrElse {
-              WarningResult(s"Can't compare ${leftValue} and ${rightValue}", e.sourceLocation)
-            }
-        case GreaterThanOrEq(left, right, _) =>
-          val leftValue  = trim(evalOp(left))
-          val rightValue = trim(evalOp(right))
-          cmpAny(leftValue, rightValue)
-            .map {
-              case x if x >= 0 =>
-                TestSuccess(
-                  cmpMsg("was greater than or equal to", leftValue, rightValue),
-                  e.sourceLocation
-                )
-              case _ =>
-                TestFailure(
-                  cmpMsg("was not greater than or equal to", leftValue, rightValue),
-                  e.sourceLocation
-                )
-            }
-            .getOrElse {
-              WarningResult(s"Can't compare ${leftValue} and ${rightValue}", e.sourceLocation)
-            }
-        case GreaterThan(left, right, _) =>
-          val leftValue  = trim(evalOp(left))
-          val rightValue = trim(evalOp(right))
-          cmpAny(leftValue, rightValue)
-            .map {
-              case x if x > 0 =>
-                TestSuccess(cmpMsg("was greater than", leftValue, rightValue), e.sourceLocation)
-              case _ =>
-                TestFailure(cmpMsg("was not greater than", leftValue, rightValue), e.sourceLocation)
-            }
-            .getOrElse {
-              WarningResult(s"Can't compare ${leftValue} and ${rightValue}", e.sourceLocation)
-            }
-        case _ =>
-          WarningResult(s"Unsupported test expression: ${e}", e.sourceLocation)
-
-    def cmpAny(l: Any, r: Any): Option[Int] =
-      (l, r) match
-        case (l: String, r: String) =>
-          Some(l.compareTo(r))
-        case (l: Int, r: Int) =>
-          Some(l.compareTo(r))
-        case (l: Int, r: Long) =>
-          Some(l.toLong.compareTo(r))
-        case (l: Long, r: Long) =>
-          Some(l.compareTo(r))
-        case (l: Long, r: Int) =>
-          Some(l.compareTo(r.toLong))
-        case (l: Float, r: Float) =>
-          Some(l.compareTo(r))
-        case (l: Double, r: Double) =>
-          Some(l.compareTo(r))
-        case (l: Boolean, r: Boolean) =>
-          Some(l.compareTo(r))
-        case (l: BigDecimal, r: BigDecimal) =>
-          Some(l.compareTo(r))
-        case _ =>
-          None
-
-    def evalOp(e: Expression): Any =
-      e match
-        case DotRef(i: Identifier, name, _, _) if i.fullName == "_" =>
-          name.leafName match
-            case "output" =>
-              lastResult.toPrettyBox()
-            case "columns" =>
-              lastResult match
-                case t: TableRows =>
-                  t.schema.fields.map(_.name.name).toList
-                case _ =>
-                  List.empty
-            case "size" =>
-              lastResult match
-                case t: TableRows =>
-                  t.totalRows
-                case _ =>
-                  0
-            case "json" =>
-              lastResult match
-                case t: TableRows =>
-                  t.toJsonLines
-                case _ =>
-                  ""
-            case "rows" =>
-              lastResult match
-                case t: TableRows =>
-                  t.rows.map(_.values.toList).toList
-                case _ =>
-                  List.empty
-            case other =>
-              throw StatusCode
-                .TEST_FAILED
-                .newException(s"Unsupported result inspection function: _.${other}")
-          end match
-        case l: StringLiteral =>
-          l.unquotedValue
-        case l: LongLiteral =>
-          l.value
-        case d: DoubleLiteral =>
-          d.value
-        case b: BooleanLiteral =>
-          b.booleanValue
-        case d: DecimalLiteral =>
-          // Compare decimal literals numerically (e.g. `2.0` equals a double value 2.0)
-          BigDecimal(d.value)
-        case n: NullLiteral =>
-          null
-        case u: ArithmeticUnaryExpr =>
-          // Negative literals in expected values (e.g. -1)
-          val v = evalOp(u.child)
-          if u.sign == Sign.Negative then
-            v match
-              case l: Long =>
-                -l
-              case d: Double =>
-                -d
-              case b: BigDecimal =>
-                -b
-              case other =>
-                other
-          else
-            v
-        case a: ArrayConstructor =>
-          a.values.map(evalOp)
-        case m: MapValue =>
-          m.entries
-            .map { x =>
-              evalOp(x.key) -> evalOp(x.value)
-            }
-            .toMap
-        case other =>
-          workEnv.warn(s"Test expression ${e} is not supported yet.")
-          ()
-
-    def trim(v: Any): Any =
-      v match
-        case s: String =>
-          s.trim
-        case _ =>
-          v
-
-    try
-      eval(test.testExpr)
-    catch
-      case e: WvletLangException =>
-        TestFailure(e.getMessage, test.sourceLocation)
-
-  end executeTest
 
 end QueryExecutor

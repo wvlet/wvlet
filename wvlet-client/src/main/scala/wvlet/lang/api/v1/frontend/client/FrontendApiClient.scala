@@ -14,7 +14,12 @@
 package wvlet.lang.api.v1.frontend.client
 
 import wvlet.lang.api.v1.frontend.FrontendApi
-import wvlet.lang.api.v1.frontend.FrontendApi.{QueryInfoRequest, QueryResponse, ServerStatus}
+import wvlet.lang.api.v1.frontend.FrontendApi.{
+  QueryCancelRequest,
+  QueryInfoRequest,
+  QueryResponse,
+  ServerStatus
+}
 import wvlet.lang.api.v1.query.{QueryInfo, QueryRequest}
 import wvlet.uni.http.*
 import wvlet.uni.http.rpc.RPCClient
@@ -25,6 +30,7 @@ import wvlet.uni.surface.Surface
   * Hand-written RPC client for [[FrontendApi]]. Mirrors the shape of
   * `wvlet.uni.http.codegen.client.RPCClientGenerator` output so it can be regenerated later by
   * uni's codegen without affecting consumers. Replaces the previous airframe-codegen'd FrontendRPC.
+  * Covers status/submitQuery/getQueryInfo/cancelQuery.
   */
 object FrontendApiClient:
   private val rpc = RPCClient.build(Surface.of[FrontendApi], Surface.methodsOf[FrontendApi])
@@ -43,6 +49,12 @@ object FrontendApiClient:
       Seq(request)
     )
 
+    def cancelQuery(request: QueryCancelRequest): QueryInfo = rpc.callSync(
+      client,
+      "cancelQuery",
+      Seq(request)
+    )
+
   end SyncClient
 
   class AsyncClient(client: HttpAsyncClient):
@@ -56,6 +68,12 @@ object FrontendApiClient:
     def getQueryInfo(request: QueryInfoRequest): Rx[QueryInfo] = rpc.callAsync(
       client,
       "getQueryInfo",
+      Seq(request)
+    )
+
+    def cancelQuery(request: QueryCancelRequest): Rx[QueryInfo] = rpc.callAsync(
+      client,
+      "cancelQuery",
       Seq(request)
     )
 

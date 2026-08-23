@@ -13,7 +13,12 @@ case class TrinoConfig(
     catalog: Option[String] = None,
     schema: Option[String] = None,
     useHttps: Boolean = false,
-    source: String = "wvlet"
+    source: String = "wvlet",
+    // Basic authentication (user + password). Requires useHttps — Trino coordinators reject
+    // password credentials over insecure connections
+    password: Option[String] = None,
+    // Bearer-token authentication (JWT / OAuth2 access token). Mutually exclusive with password
+    token: Option[String] = None
 ):
   def withHost(host: String): TrinoConfig            = copy(host = host)
   def withPort(port: Int): TrinoConfig               = copy(port = port)
@@ -24,6 +29,10 @@ case class TrinoConfig(
   def noSchema(): TrinoConfig                        = copy(schema = None)
   def withHttps(enable: Boolean = true): TrinoConfig = copy(useHttps = enable)
   def withSource(source: String): TrinoConfig        = copy(source = source)
+  def withPassword(password: String): TrinoConfig    = copy(password = Some(password))
+  def noPassword(): TrinoConfig                      = copy(password = None)
+  def withToken(token: String): TrinoConfig          = copy(token = Some(token))
+  def noToken(): TrinoConfig                         = copy(token = None)
 
   def baseUri: String =
     val scheme =
