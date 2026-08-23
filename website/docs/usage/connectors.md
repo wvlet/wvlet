@@ -76,6 +76,11 @@ Bare names are resolved connector-first: `use analytics` switches to a connector
 The switch is scoped to your session: in the web UI each browser page is its own session, so
 `use` statements of one client never change the engine, catalog, or schema of another.
 
+`use` works the same way in the lightweight CLIs (the native `wv` binary and the Node.js
+`npx @wvlet/cli`): it switches both the execution engine and the SQL dialect of the statements
+that follow. These thin clients compile without live catalog metadata, so table names should be
+written fully qualified when switching engines mid-script.
+
 ## Calling connector tools
 
 Connectors can expose callable tools (MCP-shaped methods) beyond tables and SQL execution. The

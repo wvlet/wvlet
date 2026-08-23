@@ -5,6 +5,8 @@ import wvlet.lang.catalog.Profile
 import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.compiler.Compiler
 import wvlet.lang.compiler.CompilerOptions
+import wvlet.lang.compiler.Context
+import wvlet.lang.compiler.DBType
 import wvlet.lang.compiler.Symbol
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.compiler.analyzer.duckdb.DuckDB
@@ -30,7 +32,9 @@ class PlanExecutorTest extends UniTest:
     List(ConnectorConfig(name = "duckdb", `type` = "duckdb", default = true))
   )
 
-  private def run(query: String): QueryResult =
+  private def run(query: String): QueryResult = runWithContext(query, profile)._1
+
+  private def runWithContext(query: String, profile: Profile): (QueryResult, Context) =
     val workEnv       = WorkEnv(".", logLevel = LogLevel.WARN)
     val compiler      = Compiler(CompilerOptions(sourceFolders = List("."), workEnv = workEnv))
     val unit          = CompilationUnit.fromWvletString(query)
@@ -44,7 +48,7 @@ class PlanExecutorTest extends UniTest:
     val provider = SqlConnectorProvider(profile)
     try
       val executor = PlanExecutor(provider, profile, workEnv)
-      executor.execute(ExecutionPlanner.plan(unit, ctx), ctx)
+      (executor.execute(ExecutionPlanner.plan(unit, ctx), ctx), ctx)
     finally
       provider.close()
 
@@ -102,6 +106,74 @@ class PlanExecutorTest extends UniTest:
     // SqlConnector-backed results are string-coerced
     tables(0).rows.head.values.head shouldBe "10"
     tables(1).rows.head.values.head shouldBe "20"
+  }
+
+  private val multiEngineProfile = Profile(
+    "multi",
+    List(
+      ConnectorConfig(name = "duckdb", `type` = "duckdb", default = true),
+      // Construction is lazy — no coordinator needed to switch the dialect
+      ConnectorConfig(
+        name = "trino",
+        `type` = "trino",
+        host = Some("localhost"),
+        port = Some(1),
+        catalog = Some("hive"),
+        schema = Some("sales")
+      )
+    )
+  )
+
+  test("switch the SQL dialect and default catalog/schema on use connector") {
+    skipIfNoDuckDB()
+    val (result, ctx) = runWithContext(
+      """select 10 as x;
+        |use trino""".stripMargin,
+      multiEngineProfile
+    )
+    result.hasError shouldBe false
+    // Statements after `use trino` generate Trino SQL and qualify against its catalog/schema
+    ctx.dbType shouldBe DBType.Trino
+    ctx.catalog.catalogName shouldBe "hive"
+    ctx.global.defaultSchema shouldBe "sales"
+  }
+
+  test("switch dialect back and keep executing on the restored engine") {
+    skipIfNoDuckDB()
+    val (result, ctx) = runWithContext(
+      """use trino;
+        |use duckdb;
+        |select 42 as answer""".stripMargin,
+      multiEngineProfile
+    )
+    result.hasError shouldBe false
+    ctx.dbType shouldBe DBType.DuckDB
+    val tables =
+      collect(result) { case t: TableRows =>
+        t
+      }
+    tables.last.rows.head.values.head shouldBe "42"
+  }
+
+  test("honor catalog and schema parts in use connector references") {
+    skipIfNoDuckDB()
+    val (result, ctx) = runWithContext("use trino.iceberg.web", multiEngineProfile)
+    result.hasError shouldBe false
+    ctx.catalog.catalogName shouldBe "iceberg"
+    ctx.global.defaultSchema shouldBe "web"
+    ctx.dbType shouldBe DBType.Trino
+  }
+
+  test("raise a clear error when switching to an unsupported connector type") {
+    skipIfNoDuckDB()
+    val unsupportedProfile = multiEngineProfile.copy(connectors =
+      multiEngineProfile.connectors :+
+        ConnectorConfig(name = "sf", `type` = "snowflake", host = Some("example"))
+    )
+    val e = intercept[Exception] {
+      runWithContext("use sf", unsupportedProfile)
+    }
+    e.getMessage shouldContain "not supported"
   }
 
   test("share session state across statements") {
