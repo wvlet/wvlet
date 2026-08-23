@@ -2,12 +2,18 @@ package wvlet.standard
 
 type double = {
   def to_int: int = sql"cast(${this} as bigint)"
+  def to_int in bigquery: int = sql"cast(${this} as int64)"
   def to_long: long = sql"cast(${this} as bigint)"
+  def to_long in bigquery: long = sql"cast(${this} as int64)"
   def to_float: float = sql"cast(${this} as double)"
+  def to_float in bigquery: float = sql"cast(${this} as float64)"
   def to_double: double = sql"cast(${this} as double)"
+  def to_double in bigquery: double = sql"cast(${this} as float64)"
   def to_boolean: boolean = sql"cast(${this} as boolean)"
+  def to_boolean in bigquery: boolean = sql"cast(${this} as bool)"
   def to_string: string = sql"cast(${this} as varchar)"
   def to_string in hive: string = sql"cast(${this} as string)"
+  def to_string in bigquery: string = sql"cast(${this} as string)"
 
   def or_else(other:double): double = sql"coalesce(${this},${other})"
 
@@ -21,7 +27,10 @@ type double = {
   def exp: double = sql"exp(${this})"
   def ln: double = sql"ln(${this})"
   def log10: double = sql"log10(${this})"
+  def log10 in snowflake: double = sql"log(10,${this})"
   def log2: double = sql"log2(${this})"
+  def log2 in snowflake: double = sql"log(2,${this})"
+  def log2 in bigquery: double = sql"log(${this}, 2)"
   def power(exponent:double): double = sql"power(${this},${exponent})"
   def sign: int = sql"sign(${this})"
 
@@ -38,13 +47,18 @@ type double = {
   def truncate in duckdb: double = sql"trunc(${this})"
   def truncate in trino: double = sql"truncate(${this})"
   def truncate in hive: double = sql"cast(cast(${this} as bigint) as double)"
+  def truncate in snowflake: double = sql"trunc(${this})"
+  def truncate in bigquery: double = sql"trunc(${this})"
 
   def is_nan in duckdb: boolean = sql"isnan(${this})"
   def is_nan in trino: boolean = sql"is_nan(${this})"
+  def is_nan in bigquery: boolean = sql"is_nan(${this})"
   def is_finite in duckdb: boolean = sql"isfinite(${this})"
   def is_finite in trino: boolean = sql"is_finite(${this})"
+  def is_finite in bigquery: boolean = sql"(not is_nan(${this}) and not is_inf(${this}))"
   def is_infinite in duckdb: boolean = sql"isinf(${this})"
   def is_infinite in trino: boolean = sql"is_infinite(${this})"
+  def is_infinite in bigquery: boolean = sql"is_inf(${this})"
 
   def in(v:any*): boolean = sql"${this} in (${v})"
   def not_in(v:any*): boolean = sql"${this} not in (${v})"

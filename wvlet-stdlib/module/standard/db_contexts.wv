@@ -8,6 +8,10 @@ type trino extends db_context
 
 type hive extends db_context
 
+type snowflake extends db_context
+
+type bigquery extends db_context
+
 -- Contexts for defining Treasure Data specific Trino/Hive dialects.
 -- It can also use extensions for standard Trino/Hive
 type td_trino extends trino

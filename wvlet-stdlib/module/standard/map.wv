@@ -13,8 +13,12 @@ type map[K,V] = {
   def contains_key(key:K): boolean = sql"contains(map_keys(${this}),${key})"
   def contains_key(key:K) in hive: boolean = sql"array_contains(map_keys(${this}),${key})"
 
+  def size in snowflake: int = sql"map_size(${this})"
+  def contains_key(key:K) in snowflake: boolean = sql"map_contains_key(${key},${this})"
+
   -- The value for the given key, or null if the key is absent
   def get(key:K) in duckdb: V = sql"${this}[${key}]"
   def get(key:K) in trino: V = sql"element_at(${this},${key})"
   def get(key:K) in hive: V = sql"${this}[${key}]"
+  def get(key:K) in snowflake: V = sql"${this}[${key}]"
 }

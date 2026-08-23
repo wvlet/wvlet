@@ -79,3 +79,43 @@ type date in hive = {
   -- The last day of the month of this date
   def last_day: date = sql"cast(last_day(${this}) as date)"
 }
+
+type date in snowflake = {
+  -- ISO day of week (1 = Monday, 7 = Sunday) and day of year
+  def day_of_week: int = sql"dayofweekiso(${this})"
+  def day_of_year: int = sql"dayofyear(${this})"
+
+  def add_days(n:int): date = sql"dateadd('day',${n},${this})"
+  def add_months(n:int): date = sql"dateadd('month',${n},${this})"
+  def add_years(n:int): date = sql"dateadd('year',${n},${this})"
+
+  def diff_days(other:date): long = sql"datediff('day',${this},${other})"
+  def diff_months(other:date): long = sql"datediff('month',${this},${other})"
+  def diff_years(other:date): long = sql"datediff('year',${this},${other})"
+
+  -- Format the date with a SQL format model (e.g. 'YYYY-MM-DD')
+  def format(pattern:string): string = sql"to_char(${this},${pattern})"
+
+  -- The last day of the month of this date
+  def last_day: date = sql"last_day(${this})"
+}
+
+type date in bigquery = {
+  -- ISO day of week (1 = Monday, 7 = Sunday; BigQuery's DAYOFWEEK starts at 1 = Sunday)
+  def day_of_week: int = sql"mod(extract(dayofweek from ${this}) + 5, 7) + 1"
+  def day_of_year: int = sql"extract(dayofyear from ${this})"
+
+  def add_days(n:int): date = sql"date_add(${this}, interval (${n}) day)"
+  def add_months(n:int): date = sql"date_add(${this}, interval (${n}) month)"
+  def add_years(n:int): date = sql"date_add(${this}, interval (${n}) year)"
+
+  def diff_days(other:date): long = sql"date_diff(${other},${this},day)"
+  def diff_months(other:date): long = sql"date_diff(${other},${this},month)"
+  def diff_years(other:date): long = sql"date_diff(${other},${this},year)"
+
+  -- Format the date with a strftime-style pattern (e.g. '%Y-%m-%d')
+  def format(pattern:string): string = sql"format_date(${pattern},${this})"
+
+  -- The last day of the month of this date
+  def last_day: date = sql"last_day(${this})"
+}
