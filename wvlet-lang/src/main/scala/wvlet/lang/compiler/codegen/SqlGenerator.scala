@@ -36,7 +36,8 @@ object SqlGenerator:
     if identifierPattern.matches(s) then
       s
     else
-      s""""${s}""""
+      // Escape embedded double quotes by doubling them, as in `my"col` -> "my""col" (#1697)
+      s""""${s.replace("\"", "\"\"")}""""
 
   /**
     * A block corresponding to a single SQL SELECT statement
@@ -1575,8 +1576,9 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
       case l: Literal =>
         text(l.sqlExpr)
       case bq: BackQuotedIdentifier =>
-        // SQL needs to use double quotes for back-quoted identifiers, which represents table or column names
-        text("\"") + bq.unquotedValue + text("\"")
+        // SQL needs to use double quotes for back-quoted identifiers, which represents table or
+        // column names. Embedded double quotes are escaped by doubling them (#1697)
+        text("\"") + bq.unquotedValue.replace("\"", "\"\"") + text("\"")
       case i: Identifier =>
         text(i.toSQLAttributeName)
       case s: SortItem =>

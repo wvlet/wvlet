@@ -29,17 +29,21 @@ trait DuckDBCompat:
       // doubles single quotes so paths like `O'Reilly.parquet` produce valid SQL.
       val sql = s"select * from '${DuckDB.escapeSqlString(path)}' limit 0"
       withConnection { conn =>
-        withResource(conn.createStatement().executeQuery(sql)) { rs =>
-          val metadata = rs.getMetaData
-          val columns  = (1 to metadata.getColumnCount)
-            .map { i =>
-              val name     = metadata.getColumnName(i)
-              val dataType = metadata.getColumnTypeName(i).toLowerCase
-              // TODO support non-primitive type parsing
-              NamedType(Name.termName(name), DataType.parse(dataType))
-            }
-            .toList
-          SchemaType(None, Name.typeName(RelationType.newRelationTypeName), columns)
+        // Close the Statement too — wrapping only the ResultSet leaks the statement handle
+        // (and its server-side cursor) until the connection itself is closed (#1699)
+        withResource(conn.createStatement()) { stmt =>
+          withResource(stmt.executeQuery(sql)) { rs =>
+            val metadata = rs.getMetaData
+            val columns  = (1 to metadata.getColumnCount)
+              .map { i =>
+                val name     = metadata.getColumnName(i)
+                val dataType = metadata.getColumnTypeName(i).toLowerCase
+                // TODO support non-primitive type parsing
+                NamedType(Name.termName(name), DataType.parse(dataType))
+              }
+              .toList
+            SchemaType(None, Name.typeName(RelationType.newRelationTypeName), columns)
+          }
         }
       }
 

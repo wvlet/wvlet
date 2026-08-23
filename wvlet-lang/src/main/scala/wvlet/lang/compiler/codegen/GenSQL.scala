@@ -39,12 +39,6 @@ case class GeneratedSQL(sql: String, plan: Relation)
 
 object GenSQL extends Phase("generate-sql"):
 
-  private def doubleQuoteIfNecessary(s: String): String =
-    if s.matches("^[_a-zA-Z][_a-zA-Z0-9]*$") then
-      s
-    else
-      s""""${s}""""
-
   override def run(unit: CompilationUnit, context: Context): CompilationUnit =
     // Generate SQL from the resolved plan
     // generateSQL(unit.resolvedPlan)

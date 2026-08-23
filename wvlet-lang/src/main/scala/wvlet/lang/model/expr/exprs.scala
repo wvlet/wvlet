@@ -76,7 +76,8 @@ sealed trait NameExpr extends Expression:
       if s.startsWith("\"") && s.endsWith("\"") then
         s
       else if requiresQuotation(s) then
-        s""""${s}""""
+        // Escape embedded double quotes by doubling them, as in `my"col` -> "my""col" (#1697)
+        s""""${s.replace("\"", "\"\"")}""""
       else
         s
     }
@@ -734,16 +735,17 @@ case class DoubleQuoteString(override val unquotedValue: String, span: Span) ext
 case class TripleQuoteString(override val unquotedValue: String, span: Span) extends StringLiteral:
   override def stringValue: String = s"\"\"\"${unquotedValue}\"\"\""
   override def sqlExpr: String     =
-    // SQL doesn't support multi-line triple quotes,
-    // So split the string into multiple lines
-    val lines               = unquotedValue.split("\n")
+    // SQL doesn't support multi-line triple quotes, so split the string into one literal per
+    // line, gluing them with chr(10) so the newlines survive in the result (#1698).
+    // The -1 limit keeps trailing empty lines, preserving trailing newlines too
+    val lines               = unquotedValue.split("\n", -1)
     val parts: List[String] =
       lines
         .map { line =>
           StringLiteral.fromString(line, span).sqlExpr
         }
         .toList
-    parts.mkString(" || ")
+    parts.mkString(" || chr(10) || ")
 
 case class StringPart(value: String, span: Span) extends Literal with LeafExpression:
   // Statically known type, assigned at construction (issue #71)
