@@ -184,7 +184,9 @@ class WvletScriptRunner(
           .withQueryProgressMonitor(queryProgressMonitor)
 
         val queryResult = queryExecutor
-          .setRowLimit(resultRowLimits)
+          // A request-level maxRows (e.g. remote clients fetching structured results)
+          // overrides the runner's interactive row limit
+          .setRowLimit(request.maxRows.getOrElse(resultRowLimits))
           .executeSelectedStatement(newUnit, request.querySelection, request.linePosition, ctx)
         queryResult
       else

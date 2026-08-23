@@ -25,4 +25,8 @@ class FrontendApiImpl(queryService: QueryService, workEnv: WorkEnv)
     debug(request)
     queryService.fetchNext(request)
 
+  override def cancelQuery(request: QueryCancelRequest): QueryInfo =
+    debug(request)
+    queryService.cancel(request.queryId)
+
 end FrontendApiImpl

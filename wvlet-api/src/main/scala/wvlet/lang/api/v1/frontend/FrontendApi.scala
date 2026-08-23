@@ -42,11 +42,20 @@ trait FrontendApi:
     */
   def getQueryInfo(request: QueryInfoRequest): QueryInfo
 
+  /**
+    * Cancel a running (or queued) query. Best-effort: the terminal status transitions to CANCELED
+    * immediately and any later completion of the underlying statement is discarded. Cancelling an
+    * already-finished query is a no-op returning its final state.
+    */
+  def cancelQuery(request: QueryCancelRequest): QueryInfo
+
 object FrontendApi extends RxRouterProvider:
   override def router = RxRouter.of[FrontendApi]
 
   case class ServerStatus(version: String = BuildInfo.version, upTime: ElapsedTime)
 
   case class QueryInfoRequest(queryId: ULID, pageToken: String)
+
+  case class QueryCancelRequest(queryId: ULID)
 
   case class QueryResponse(queryId: ULID, requestId: ULID)
