@@ -55,4 +55,52 @@ class WvletGeneratorTest extends UniTest:
     print(printed) shouldContain "call slack.post_message(channel: '#reports', text: 'hello')"
   }
 
+  test("should round-trip schema statements with trailing modifiers") {
+    val printed = print("""create schema staging if not exists
+        |drop schema staging if exists""".stripMargin)
+    printed shouldContain "create schema staging if not exists"
+    printed shouldContain "drop schema staging if exists"
+    print(printed) shouldContain "create schema staging if not exists"
+  }
+
+  test("should round-trip a table shape declaration as `table`, not `type`") {
+    val printed = print("""table users = {
+        |  id: int
+        |  name: string
+        |}""".stripMargin)
+    printed shouldContain "table users"
+    printed shouldContain "id: int"
+    printed.contains("type users") shouldBe false
+    print(printed) shouldContain "table users"
+  }
+
+  test("should round-trip table actions") {
+    val printed = print("""create table users
+        |truncate users
+        |drop table users if exists""".stripMargin)
+    printed shouldContain "create table users"
+    printed shouldContain "truncate users"
+    printed shouldContain "drop table users if exists"
+    print(printed) shouldContain "drop table users if exists"
+  }
+
+  test("should round-trip save to with the if not exists modifier") {
+    val printed = print("""from t
+        |save to snapshot if not exists""".stripMargin)
+    printed shouldContain "save to snapshot if not exists"
+    print(printed) shouldContain "save to snapshot if not exists"
+  }
+
+  test("should parse block-form save and append statements") {
+    val printed = print("""save to snapshot {
+        |  from t
+        |}""".stripMargin)
+    printed shouldContain "save to snapshot"
+
+    val appended = print("""append to users(id, name) {
+        |  from t
+        |}""".stripMargin)
+    appended shouldContain "append to users(id, name)"
+  }
+
 end WvletGeneratorTest

@@ -389,6 +389,9 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
 
         group(wl("delete", "from", expr(d.target), filteringQuery))
 
+      case t: Truncate =>
+        group(wl("truncate", "table", expr(t.target)))
+
       case _ =>
         unsupportedNode(s"Update ${u.nodeName}", u.span)
 

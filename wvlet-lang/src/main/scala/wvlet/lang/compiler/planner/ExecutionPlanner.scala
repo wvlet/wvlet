@@ -109,6 +109,10 @@ object ExecutionPlanner extends Phase("execution-plan"):
           ExecutionPlan(plans.result())
         case c: Command =>
           ExecuteCommand(c)
+        case d: DDL =>
+          ExecuteDDL(d)
+        case t: Truncate =>
+          ExecuteDDL(t)
         case v: ValDef =>
           ExecuteValDef(v)
         case f: FlowDef if f eq targetPlan =>

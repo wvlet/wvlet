@@ -48,6 +48,12 @@ abstract class BasePlanExecutor(val workEnv: WorkEnv) extends LogSupport with Au
   protected def executeSave(save: Save)(using Context): QueryResult =
     throw notSupported("save statements")
 
+  /** Run a catalog statement (create/drop schema or table, truncate) as SQL on the engine */
+  protected def executeDDL(ddl: TopLevelStatement)(using ctx: Context): QueryResult =
+    val statements = GenSQL.generateDDLSQL(ddl, ctx)
+    runStatements(statements)
+    QueryResult.empty
+
   protected def executeFlow(flow: FlowDef)(using Context): QueryResult =
     throw notSupported("flow execution")
 
@@ -112,6 +118,8 @@ abstract class BasePlanExecutor(val workEnv: WorkEnv) extends LogSupport with Au
         case ExecuteCommand(e) =>
           // Command produces no QueryResult other than errors
           report(executeCommand(e))
+        case ExecuteDDL(ddl) =>
+          report(executeDDL(ddl))
         case ExecuteFlow(flow) =>
           report(executeFlow(flow))
         case ExecuteValDef(v) =>

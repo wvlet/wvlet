@@ -40,7 +40,11 @@ import wvlet.lang.model.DataType
 import wvlet.lang.model.RelationType
 import wvlet.lang.model.DataType.NamedType
 import wvlet.lang.model.DataType.SchemaType
+import wvlet.lang.model.expr.ColumnDef
 import wvlet.lang.model.expr.Expression
+import wvlet.lang.model.expr.QualifiedName
+import wvlet.lang.model.expr.UnquotedIdentifier
+import wvlet.lang.compiler.parser.DataTypeParser
 import wvlet.lang.model.plan.*
 import wvlet.lang.model.Type
 import wvlet.lang.model.Type.NoType
@@ -317,6 +321,54 @@ object Typer extends Phase("typer") with LogSupport:
       case u: UseConnector =>
         markNamespaceRef(u.connector)
         typeNode(u)
+      case c: CreateTable if c.tableElems.isEmpty =>
+        // `create table <name>` action: the columns come from the `table` declaration in scope
+        markNamespaceRef(c.table)
+        val typeName = Name.typeName(c.table.leafName)
+        val cols     = ctx
+          .findSymbolByName(typeName)
+          .map(_.tree)
+          .collect { case td: TypeDef =>
+            td.elems
+              .collect { case f: FieldDef =>
+                ColumnDef(
+                  UnquotedIdentifier(f.name.name, f.span),
+                  DataTypeParser.parse(f.fieldType.fullName),
+                  f.span
+                )
+              }
+          }
+          .getOrElse(Nil)
+        if cols.isEmpty then
+          throw StatusCode
+            .TABLE_NOT_FOUND
+            .newException(
+              s"No table declaration found for 'create table ${c.table.fullName}'. " +
+                s"Declare its shape first: table ${c.table.leafName} = { <column>: <type>, ... }",
+              c.sourceLocation
+            )
+        val typed = c.copy(tableElems = cols)
+        typed.copyMetadataFrom(c)
+        typeNode(typed)
+      case d: DDL =>
+        // DDL statement names are catalog references, not value expressions
+        d match
+          case c: CreateSchema =>
+            markNamespaceRef(c.schema)
+          case s: DropSchema =>
+            markNamespaceRef(s.schema)
+          case dt: DropTable =>
+            markNamespaceRef(dt.table)
+          case ct: CreateTable =>
+            markNamespaceRef(ct.table)
+          case _ =>
+        typeNode(d)
+      case t: Truncate =>
+        t.target match
+          case q: QualifiedName =>
+            markNamespaceRef(q)
+          case _ =>
+        typeNode(t)
       // Default: bottom-up typing for other nodes
       case other =>
         val withTypedChildren = other.mapChildren(typePlan)

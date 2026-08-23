@@ -220,6 +220,7 @@ enum WvletToken(val tokenType: TokenType, val str: String):
   case RENAME   extends WvletToken(Keyword, "rename")
   case SHIFT    extends WvletToken(Keyword, "shift")
   case DROP     extends WvletToken(Keyword, "drop")
+  case CREATE   extends WvletToken(Keyword, "create")
   case DESCRIBE extends WvletToken(Keyword, "describe")
 
   // set operators

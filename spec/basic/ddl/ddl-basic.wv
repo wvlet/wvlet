@@ -1,0 +1,49 @@
+-- Native catalog statements (Phase 1): schema and table lifecycle without `execute sql` escapes
+
+create schema staging if not exists
+drop schema staging if exists
+
+-- A side-effect-free table shape declaration: registers the type; never executes by itself
+table ddl_people = {
+  id: int
+  name: string
+}
+
+-- The create action reads the shape from the declaration (create-if-missing, idempotent)
+create table ddl_people
+create table ddl_people
+
+-- Explicit block form of append: effect-first spelling for pipeline scripts
+append to ddl_people {
+  from [[1, 'alice'], [2, 'bob']] as t(id, name)
+}
+
+from ddl_people
+test _.size should be 2
+test _.columns should contain 'name'
+
+-- Block form of save to (create-or-replace)
+save to ddl_people_snapshot {
+  from ddl_people
+}
+
+from ddl_people_snapshot
+test _.size should be 2
+
+-- Seed-once semantics: a no-op because the table already exists
+save to ddl_people_snapshot if not exists {
+  from ddl_people
+  limit 1
+}
+
+from ddl_people_snapshot
+test _.size should be 2
+
+truncate ddl_people
+
+from ddl_people
+test _.size should be 0
+
+drop table ddl_people_snapshot
+drop table ddl_people
+drop table ddl_people if exists

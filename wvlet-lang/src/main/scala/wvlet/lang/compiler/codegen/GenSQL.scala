@@ -92,6 +92,8 @@ object GenSQL extends Phase("generate-sql"):
               statements += sql
             case _ =>
               warn(s"Unsupported command: ${cmd}")
+        case ExecuteDDL(ddl) =>
+          statements ++= generateDDLSQL(ddl, ctx)
         case ExecuteNothing =>
         // ok
         case other =>
@@ -144,6 +146,12 @@ object GenSQL extends Phase("generate-sql"):
     trace(s"[plan]\n${expanded.pp}\n[SQL]\n${query}")
     GeneratedSQL(query, expanded)
 
+  /** Render a side-effecting catalog statement (create/drop schema or table, truncate) as SQL */
+  def generateDDLSQL(ddl: TopLevelStatement, context: Context): List[String] =
+    given Context = context
+    val gen       = sqlGeneratorFor(context.dbType)
+    List(withHeader(gen.print(ddl), ddl.sourceLocation))
+
   def generateSaveSQL(save: Save, context: Context): List[String] =
     given Context  = context
     val statements = List.newBuilder[String]
@@ -170,7 +178,10 @@ object GenSQL extends Phase("generate-sql"):
         val baseSQL           = generateSQLFromRelation(save.inputRelation, addHeader = false)
         var needsTableCleanup = false
         val ctasCmd           =
-          if context.dbType.supportCreateOrReplace then
+          if s.ifNotExists then
+            // `save to t if not exists`: seed once, no-op when the table exists
+            "create table if not exists"
+          else if context.dbType.supportCreateOrReplace then
             s"create or replace table"
           else
             needsTableCleanup = true
