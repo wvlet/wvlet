@@ -110,17 +110,24 @@ trait to a `<catalog>.<schema>` location is an error (declare a `table` instead)
 
 #### `table` vs `trait` vs `type`
 
-The three declarations answer one question each: **columns live in `table`, methods live in
-`trait` (or travel with a `table`), and `type` is for aliases.**
+Everything the family declares is a type — as in Scala, where traits and classes all introduce
+types while the `type` keyword itself covers the general forms. `table` and `trait` are
+specialized kinds of type that add a commitment on top; `type` remains for declarations that
+make neither:
 
-- **`table`** — anything that denotes a stored relation: columns, an optional
-  `in <catalog>.<schema>` location, optional row methods.
-- **`trait`** — a method interface: new value domains (`trait ip_address extends string`) and
-  engine-dialect method packages (`trait any in duckdb`). Never storage.
-- **`type`** — aliases and marker types (e.g. `type td_trino extends trino`). The braces-body
-  `type` forms are deprecated: a columns-carrying `type` that resolves a table reference warns
-  toward `table`, and a def-only `type` warns toward `trait`; both will be removed in a future
-  release.
+- **`table`** — a type committed to storage: a stored relation with columns, an optional
+  `in <catalog>.<schema>` location, and optional row methods.
+- **`trait`** — a type committed to being a method interface: new value domains
+  (`trait ip_address extends string`) and engine-dialect method packages
+  (`trait any in duckdb`). Never storage.
+- **`type`** — the general form, making no commitment: aliases and marker types
+  (`type td_trino extends trino`), and structural row or value shapes used as column or
+  parameter types (`type point = { x: long, y: long }` with `start: point`).
+
+Only the commitment-claiming `type` spellings are deprecated, each warning toward its
+specialized keyword: a columns-carrying `type` that resolves a table reference is a storage
+claim and warns toward `table`, and a def-only `type` is a method interface and warns toward
+`trait`. Structural types, aliases, and markers are the permanent `type` usage and never warn.
 
 The `in` clause is unambiguous across the family: on a `trait` or `def` it always names an
 engine dialect; on a `table` declaration, `create schema`, or `use` it always names a storage
