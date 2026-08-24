@@ -156,7 +156,8 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
   /** AlterTable operations expressible with the wvlet reshape / rename statements */
   private def isReshapeOp(op: AlterTableOps): Boolean =
     op match
-      case _: AddColumnOp | _: RenameColumnOp | _: DropColumnOp | _: RenameTableOp =>
+      case _: AddColumnOp | _: RenameColumnOp | _: DropColumnOp | _: RenameTableOp |
+          _: AlterColumnSetDataTypeOp =>
         true
       case _ =>
         false
@@ -266,6 +267,8 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
                 wl("rename", expr(r.oldName), "as", expr(r.newName))
               case d: DropColumnOp =>
                 wl("exclude", expr(d.column))
+              case c: AlterColumnSetDataTypeOp =>
+                wl("cast", expr(c.column), "as", c.dataType.wvExpr)
             }
             code(a) {
               group(wl("reshape", expr(a.table), "{")) + nest(linebreak + lines(opDocs)) +

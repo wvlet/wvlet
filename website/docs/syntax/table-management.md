@@ -222,16 +222,20 @@ append to metrics on date, metric_name {
 ## Changing a Table's Columns
 
 The `reshape` statement evolves a table's schema using the same column operators you already
-use in queries — `add`, `rename ... as`, and `exclude` — enclosed in a block. Operations run
-in order, one `ALTER TABLE` statement each:
+use in queries — `add`, `rename ... as`, `exclude`, and `cast ... as` — enclosed in a block.
+Operations run in order, one `ALTER TABLE` statement each:
 
 ```wvlet
 reshape users {
   add email: string
   rename name as full_name
   exclude age
+  cast user_id as long
 }
 ```
+
+Each operation is retry-safe: `add` is a no-op when the column already exists with that type,
+`exclude` when it is already gone, and `cast` when the column already has the target type.
 
 ## Renaming Tables and Schemas
 

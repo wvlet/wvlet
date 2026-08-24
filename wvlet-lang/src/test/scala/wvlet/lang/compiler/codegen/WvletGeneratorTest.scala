@@ -142,12 +142,14 @@ class WvletGeneratorTest extends UniTest:
         |  add email: string
         |  rename name as full_name
         |  exclude age
+        |  cast age as long
         |}""".stripMargin)
     printed shouldContain "reshape users"
     printed shouldContain "add email: string"
     printed shouldContain "rename name as full_name"
     printed shouldContain "exclude age"
-    print(printed) shouldContain "reshape users"
+    printed shouldContain "cast age as long"
+    print(printed) shouldContain "cast age as long"
   }
 
   test("should round-trip rename statements") {
