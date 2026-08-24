@@ -114,16 +114,19 @@ object TableBindings:
     * composed shape. Mixed-in columns come before own body columns, and a column reached through
     * multiple mixin paths dedupes to its first occurrence, mirroring SymbolLabeler's composition
     * rules. A reference cycle or an unknown source resolves to no columns (SymbolLabeler reports
-    * the error)
+    * the error). Also used by the schema drift check (#1994) so drift is computed against the same
+    * columns writes materialize
     */
-  private def declaredColumns(td: TypeDef)(using ctx: Context): List[ColumnDef] =
+  def declaredColumns(td: TypeDef)(using ctx: Context): List[ColumnDef] =
     def loop(current: TypeDef, visited: Set[String]): List[ColumnDef] =
       val own = current
         .elems
         .collect { case f: FieldDef =>
           ColumnDef(
             UnquotedIdentifier(f.name.name, f.span),
-            DataTypeParser.parse(f.fieldType.fullName),
+            // Field types carry their parameters separately (e.g. decimal[10,2] parses as
+            // fieldType decimal + params [10, 2]), so pass both to keep parameterized types
+            DataTypeParser.parse(f.fieldType.fullName, f.params),
             f.span
           )
         }

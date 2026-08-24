@@ -334,7 +334,8 @@ object StaticCatalogExporter extends LogSupport:
   private def isPlainIdentifier(name: String): Boolean =
     identifierPattern.matches(name) && !keywords.contains(name.toLowerCase)
 
-  private def quote(name: String): String =
+  /** Backquote a name when it does not parse as a plain identifier (shared with the drift check) */
+  private[catalog] def quote(name: String): String =
     if isPlainIdentifier(name) then
       name
     else

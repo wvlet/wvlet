@@ -269,6 +269,9 @@ reshape users {
 
 Each operation is retry-safe: `add` is a no-op when the column already exists with that type,
 `exclude` when it is already gone, and `cast` when the column already has the target type.
+When a table declaration and the database schema have drifted apart,
+[`wvlet catalog diff`](../usage/catalog-import.md#detecting-schema-drift) generates a
+ready-to-run `reshape` block for the migration.
 
 ## Renaming Tables and Schemas
 
