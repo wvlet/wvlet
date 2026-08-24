@@ -115,4 +115,56 @@ class HoverProviderTest extends UniTest:
     val result = hover(src, offset)
     result.foreach(r => r.content shouldNotContain "member of")
 
+  test("should show the def signature when hovering a user-defined row method"):
+    val src =
+      """table hv_users = {
+        |  id: int
+        |  deleted_at: string
+        |  def is_active: boolean = deleted_at.is_null
+        |}
+        |from hv_users
+        |where _.is_active""".stripMargin
+    val offset = src.lastIndexOf("is_active") + 1
+    val result = hover(src, offset)
+    result.isDefined shouldBe true
+    val content = result.get.content
+    content shouldContain "member of hv_users"
+    content shouldContain "def is_active: boolean"
+
+  test("should show the owning trait when hovering a mixed-in method"):
+    val src =
+      """trait hv_audit = {
+        |  def audit_tag: string = created_at.upper()
+        |}
+        |table hv_events extends hv_audit = {
+        |  id: int
+        |  created_at: string
+        |}
+        |from hv_events
+        |select id, _.audit_tag as tag""".stripMargin
+    val offset = src.lastIndexOf("audit_tag") + 1
+    val result = hover(src, offset)
+    result.isDefined shouldBe true
+    val content = result.get.content
+    content shouldContain "member of hv_audit"
+    content shouldContain "def audit_tag: string"
+
+  test("should show the trait method signature when hovering through a trait-typed column"):
+    val src =
+      """trait hv_masked extends string = {
+        |  def masked: string = sql"'***'"
+        |}
+        |table hv_secrets = {
+        |  id: int
+        |  secret: hv_masked
+        |}
+        |from hv_secrets
+        |select secret.masked""".stripMargin
+    val offset = src.lastIndexOf("masked") + 1
+    val result = hover(src, offset)
+    result.isDefined shouldBe true
+    val content = result.get.content
+    content shouldContain "member of hv_masked"
+    content shouldContain "def masked: string"
+
 end HoverProviderTest

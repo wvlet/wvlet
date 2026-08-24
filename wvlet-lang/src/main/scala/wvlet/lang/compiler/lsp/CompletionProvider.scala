@@ -13,12 +13,19 @@
  */
 package wvlet.lang.compiler.lsp
 
+import wvlet.lang.api.Span
 import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.compiler.Compiler
+import wvlet.lang.compiler.Context
+import wvlet.lang.compiler.MethodSymbolInfo
+import wvlet.lang.compiler.Name
+import wvlet.lang.compiler.analyzer.FunctionInliner
 import wvlet.lang.compiler.parser.ParserPhase
 import wvlet.lang.compiler.parser.WvletParser
 import wvlet.lang.compiler.parser.WvletToken
 import wvlet.lang.compiler.typer.BuiltinFunctions
+import wvlet.lang.model.DataType
+import wvlet.lang.model.DataType.NamedType
 import wvlet.lang.model.SyntaxTreeNode
 import wvlet.lang.model.plan.*
 
@@ -158,6 +165,26 @@ object CompletionProvider:
     * being edited rather than an unrelated definition elsewhere in the file.
     */
   def columnItems(plan: LogicalPlan, offset: Int): List[CompletionItem] =
+    enclosingRelation(plan, offset) match
+      case None =>
+        Nil
+      case Some(enclosing) =>
+        val fields =
+          try
+            enclosing.inputRelationType.fields ++ enclosing.relationType.fields
+          catch
+            case _: Throwable =>
+              Nil
+        fields
+          .filter(f => !f.name.isEmpty && f.name.name != "<NoName>")
+          .map(f => CompletionItem(f.name.name, CompletionItemKind.Field, f.dataType.typeName.name))
+          .distinct
+
+  /**
+    * The query relation that most tightly encloses the cursor, falling back to the relation nearest
+    * to the cursor when none contains it (e.g. a trailing space or newline at the end of the file)
+    */
+  private def enclosingRelation(plan: LogicalPlan, offset: Int): Option[Relation] =
     val relations = plan
       .collectAllNodes
       .collect {
@@ -165,35 +192,25 @@ object CompletionProvider:
           r
       }
     if relations.isEmpty then
-      Nil
+      None
     else
-      val enclosing = relations
+      relations
         .filter(_.span.containsInclusive(offset))
         .sortBy(_.span.size)
         .headOption
-        .getOrElse {
+        .orElse {
           // Nearest relation by span distance to the cursor
-          relations.minBy { r =>
-            if offset < r.span.start then
-              r.span.start - offset
-            else if offset > r.span.end then
-              offset - r.span.end
-            else
-              0
-          }
+          Some(
+            relations.minBy { r =>
+              if offset < r.span.start then
+                r.span.start - offset
+              else if offset > r.span.end then
+                offset - r.span.end
+              else
+                0
+            }
+          )
         }
-      val fields =
-        try
-          enclosing.inputRelationType.fields ++ enclosing.relationType.fields
-        catch
-          case _: Throwable =>
-            Nil
-      fields
-        .filter(f => !f.name.isEmpty && f.name.name != "<NoName>")
-        .map(f => CompletionItem(f.name.name, CompletionItemKind.Field, f.dataType.typeName.name))
-        .distinct
-
-  end columnItems
 
   /**
     * Compute completion candidates for the given source at the given character offset.
@@ -480,27 +497,34 @@ object CompletionProvider:
 
     val typedUnit = CompilationUnit.fromWvletString(cleaned)
     try
-      compiler.compileSingleUnit(typedUnit)
-      val plan      = typedUnit.resolvedPlan
-      val qualifier = dotCtx.qualifier.last
-      val columns   =
+      val result                      = compiler.compileSingleUnit(typedUnit)
+      val plan                        = typedUnit.resolvedPlan
+      val qualifier                   = dotCtx.qualifier.last
+      val (columns, relationTypeName) =
         if plan.isEmpty then
-          Nil
+          (Nil, None)
         else
           relationFieldsFor(plan, qualifier, offset)
       if columns.nonEmpty then
-        columns
+        // A relation qualifier offers its columns plus the user-defined methods declared in
+        // (or mixed into) the relation's table/type declaration (#2018)
+        columns ++ userMethodItems(relationTypeName, result.context)
       else
         val tables = boundTableItems(compiler, typedUnit, dotCtx.qualifier)
         if tables.nonEmpty then
           tables
         else if plan.nonEmpty && qualifier == "_" then
-          // `_.` refers to the query input: offer the enclosing relation's columns, plus the
+          // `_.` refers to the query input: offer the enclosing relation's columns, the
+          // user-defined methods of the input relation's declared type (#2018), plus the
           // aggregation shorthands (array members like count/sum) that apply to `_`
-          columnItems(plan, offset) ++ stdlibMemberItemsOf(List("array"))
+          columnItems(plan, offset) ++
+            userMethodItems(contextInputTypeName(plan, offset), result.context) ++
+            stdlibMemberItemsOf(List("array"))
         else
-          // A column qualifier gets the stdlib members of its type (e.g. `name.` on a string
-          // column suggests upper, trim, ...); the members widen through `numeric` and `any`
+          // A column qualifier gets the user-defined methods of its declared type (e.g. a
+          // trait-typed column suggests the trait's defs, #2018) and the stdlib members of its
+          // type (e.g. `name.` on a string column suggests upper, trim, ...); the stdlib
+          // members widen through `numeric` and `any`
           val columnType =
             if plan.isEmpty then
               None
@@ -508,10 +532,11 @@ object CompletionProvider:
               qualifierColumnType(plan, qualifier, offset)
           columnType match
             case Some(t) =>
-              stdlibMemberItemsOf(List(t))
+              userMethodItems(Some(t), result.context) ++ stdlibMemberItemsOf(List(t))
             case None =>
               // Unknown qualifier: an empty member list is better than misleading suggestions
               Nil
+      end if
     catch
       case _: Throwable =>
         Nil
@@ -522,18 +547,20 @@ object CompletionProvider:
   end memberItems
 
   /**
-    * The columns of the relation that the given name refers to in the plan: a relation alias (`from
-    * orders as o ... o.`), or a scanned table/model name. When several relations match (e.g. the
-    * same alias in multiple queries of one file), the one nearest to the cursor wins. Names are
-    * matched case-insensitively, following SQL identifier semantics
+    * The columns of the relation that the given name refers to in the plan — a relation alias
+    * (`from orders as o ... o.`), or a scanned table/model name — paired with the relation's
+    * declared type name (when it has a usable one) so user-defined method members can be offered
+    * alongside the columns (#2018). When several relations match (e.g. the same alias in multiple
+    * queries of one file), the one nearest to the cursor wins. Names are matched
+    * case-insensitively, following SQL identifier semantics
     */
   private def relationFieldsFor(
       plan: LogicalPlan,
       name: String,
       offset: Int
-  ): List[CompletionItem] =
-    def sameName(a: String, b: String): Boolean  = a.equalsIgnoreCase(b)
-    def distance(span: wvlet.lang.api.Span): Int =
+  ): (List[CompletionItem], Option[String]) =
+    def sameName(a: String, b: String): Boolean = a.equalsIgnoreCase(b)
+    def distance(span: Span): Int               =
       if !span.exists then
         Int.MaxValue
       else if offset < span.start then
@@ -542,9 +569,9 @@ object CompletionProvider:
         offset - span.end
       else
         0
-    def nearestFields(
-        matches: List[(wvlet.lang.api.Span, () => Seq[wvlet.lang.model.DataType.NamedType])]
-    ): Option[Seq[wvlet.lang.model.DataType.NamedType]] = matches
+    def nearestMatch(
+        matches: List[(Span, () => (Seq[NamedType], String))]
+    ): Option[(Seq[NamedType], String)] = matches
       .sortBy((span, _) => distance(span))
       .iterator
       .flatMap((_, fields) => scala.util.Try(fields()).toOption)
@@ -563,26 +590,131 @@ object CompletionProvider:
         case _ =>
           plan
     val nodes = searchPlan.collectAllNodes
-    // Aliases take precedence over table/model names
+    // Aliases take precedence over table/model names. The relation type's typeName names the
+    // underlying declared type even through an alias (AliasedType keeps its base type's name)
     val aliasMatches = nodes.collect {
       case a: AliasedRelation if sameName(a.alias.leafName, name) =>
-        (a.span, () => a.relationType.fields)
+        (a.span, () => (a.relationType.fields, a.relationType.typeName.name))
     }
     val scanMatches = nodes.collect {
       case t: TableScan if sameName(t.name.name, name) =>
-        (t.span, () => t.columns: Seq[wvlet.lang.model.DataType.NamedType])
+        (t.span, () => (t.columns: Seq[NamedType], t.relationType.typeName.name))
       case m: ModelScan if sameName(m.name.name, name) =>
-        (m.span, () => m.relationType.fields)
+        (m.span, () => (m.relationType.fields, m.relationType.typeName.name))
     }
-    nearestFields(aliasMatches)
-      .orElse(nearestFields(scanMatches))
-      .getOrElse(Nil)
-      .filter(f => !f.name.isEmpty && f.name.name != "<NoName>")
-      .map(f => CompletionItem(f.name.name, CompletionItemKind.Field, f.dataType.typeName.name))
-      .distinct
-      .toList
+    val matched = nearestMatch(aliasMatches).orElse(nearestMatch(scanMatches))
+    val items   =
+      matched
+        .map(_._1)
+        .getOrElse(Nil)
+        .filter(f => !f.name.isEmpty && f.name.name != "<NoName>")
+        .map(f => CompletionItem(f.name.name, CompletionItemKind.Field, f.dataType.typeName.name))
+        .distinct
+        .toList
+    (items, matched.map(_._2).flatMap(declaredTypeName))
 
   end relationFieldsFor
+
+  /** A usable declared type name: non-empty and not an internal placeholder like `<empty>` */
+  private def declaredTypeName(name: String): Option[String] = Option(name).filter(n =>
+    n.nonEmpty && !n.startsWith("<")
+  )
+
+  /**
+    * The declared type name of the query input that `_.` refers to at the cursor: the input
+    * relation type name of the enclosing relation (e.g. `events` after `from events`), used to look
+    * up user-defined method members (#2018)
+    */
+  private def contextInputTypeName(plan: LogicalPlan, offset: Int): Option[String] =
+    enclosingRelation(plan, offset).flatMap { r =>
+      try
+        declaredTypeName(r.inputRelationType.typeName.name)
+      catch
+        case _: Throwable =>
+          None
+    }
+
+  /**
+    * Resolve the qualifier of a member access to the name of a declared type whose method members
+    * apply: the input relation type for `_`, the scanned/aliased relation's declared type, or the
+    * qualifier column's type. Shared with [[HoverProvider]] (#2018)
+    */
+  private[lsp] def qualifierTypeName(
+      plan: LogicalPlan,
+      qualifier: String,
+      offset: Int
+  ): Option[String] =
+    if qualifier == "_" then
+      contextInputTypeName(plan, offset)
+    else
+      relationFieldsFor(plan, qualifier, offset)
+        ._2
+        .orElse(qualifierColumnType(plan, qualifier, offset))
+
+  /**
+    * Completion items for the user-defined method members (`def`s in `table` / `trait` / `type`
+    * bodies, #2018) of the type named by the qualifier. Methods mixed in through `extends` parents
+    * are included via the same hierarchy walk the compiler uses to resolve method calls
+    * ([[FunctionInliner.memberMethodsInHierarchy]]); methods inherited from stdlib parents (e.g. a
+    * trait extending `string`) surface through the stdlib index instead, so their details and docs
+    * match the stdlib items
+    */
+  private def userMethodItems(typeName: Option[String], context: Context): List[CompletionItem] =
+    typeName
+      .flatMap(declaredTypeName)
+      .toList
+      .flatMap { t =>
+        try
+          val methods = FunctionInliner.memberMethodsInHierarchy(Name.typeName(t), context)
+          val (preset, userDefined) = methods.partition(_.compilationUnit.isPreset)
+          val userItems             = userDefined.map(m =>
+            CompletionItem(m.name.name, CompletionItemKind.Function, methodDetail(m))
+          )
+          val inheritedStdlibItems =
+            val owners = preset.map(_.owner.name.name).distinct
+            if owners.isEmpty then
+              Nil
+            else
+              stdlibMemberItemsOf(owners)
+          userItems ++ inheritedStdlibItems
+        catch
+          case _: Throwable =>
+            Nil
+      }
+      .distinct
+
+  /**
+    * The completion detail of a user-defined method: its `(args): ret` signature rendered from the
+    * resolved FunctionType, matching the shape of the stdlib member details
+    */
+  private def methodDetail(m: MethodSymbolInfo): String =
+    val sig = methodSignatureOf(m)
+    if sig.isEmpty then
+      "function"
+    else
+      sig
+
+  /**
+    * The `(args): ret` signature of a method definition (empty when the def declares neither
+    * arguments nor a resolved return type). Also used by [[HoverProvider]] for user-defined method
+    * hovers
+    */
+  private[lsp] def methodSignatureOf(m: MethodSymbolInfo): String =
+    val args =
+      if m.ft.args.isEmpty then
+        ""
+      else
+        m.ft
+          .args
+          .map(a => s"${a.name.name}: ${a.dataType.typeDescription}")
+          .mkString("(", ", ", ")")
+    val ret =
+      m.ft.returnType match
+        case DataType.UnknownType =>
+          ""
+        case rt =>
+          s": ${rt.typeDescription}"
+    s"${args}${ret}"
 
   /**
     * The table types bound to the schema (or catalog.schema) named by the qualifier, collected from

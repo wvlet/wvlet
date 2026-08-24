@@ -285,4 +285,89 @@ class CompletionProviderTest extends UniTest:
     val ntile = items.find(_.label == "ntile")
     ntile.map(_.detail) shouldBe Some("(n: int): long")
 
+  test("should suggest user-defined row methods after an underscore dot"):
+    val src =
+      """table cm_users = {
+        |  id: int
+        |  deleted_at: string
+        |  def is_active: boolean = deleted_at.is_null
+        |}
+        |from cm_users
+        |where _.""".stripMargin
+    val items = complete(src, src.length)
+    val m     = items.find(_.label == "is_active")
+    m.map(_.kind) shouldBe Some(CompletionItemKind.Function)
+    m.map(_.detail) shouldBe Some(": boolean")
+    // Columns of the input relation stay present
+    items.map(_.label).toSet shouldContain "deleted_at"
+
+  test("should suggest trait methods mixed in through extends parents"):
+    val src =
+      """type cm_ts = {
+        |  created_at: string
+        |}
+        |trait cm_audit = {
+        |  def audit_tag: string = created_at.upper()
+        |}
+        |table cm_events extends cm_ts, cm_audit = {
+        |  id: int
+        |}
+        |from cm_events
+        |where _.""".stripMargin
+    val items = complete(src, src.length)
+    val m     = items.find(_.label == "audit_tag")
+    m.map(_.kind) shouldBe Some(CompletionItemKind.Function)
+    m.map(_.detail) shouldBe Some(": string")
+    // The mixed-in column is offered too (already covered by the composed schema)
+    items.map(_.label).toSet shouldContain "created_at"
+
+  test("should suggest row methods after an aliased relation dot"):
+    val src =
+      """table cm_users2 = {
+        |  id: int
+        |  deleted_at: string
+        |  def is_active: boolean = deleted_at.is_null
+        |}
+        |from cm_users2 as u
+        |select u.""".stripMargin
+    val items  = complete(src, src.length)
+    val labels = items.map(_.label).toSet
+    labels shouldContain "id"
+    labels shouldContain "is_active"
+    items.find(_.label == "is_active").map(_.detail) shouldBe Some(": boolean")
+
+  test("should suggest trait methods of a trait-typed column after a dot"):
+    val src =
+      """trait cm_masked extends string = {
+        |  def masked: string = sql"'***'"
+        |}
+        |table cm_secrets = {
+        |  id: int
+        |  secret: cm_masked
+        |}
+        |from cm_secrets
+        |select secret.""".stripMargin
+    val items = complete(src, src.length)
+    val m     = items.find(_.label == "masked")
+    m.map(_.kind) shouldBe Some(CompletionItemKind.Function)
+    m.map(_.detail) shouldBe Some(": string")
+    // Members inherited from the stdlib parent (string) widen through the stdlib index
+    val labels = items.map(_.label).toSet
+    labels shouldContain "upper"
+    labels shouldNotContain "sqrt"
+
+  test("should prefer method variants of the target dialect after a dot"):
+    // The default compile target is DuckDB, so the trino-scoped variant must not surface
+    val src =
+      """table cm_dialect = {
+        |  x: int
+        |  def fmt in duckdb: string = sql"'d'"
+        |  def fmt in trino: int = sql"1"
+        |}
+        |from cm_dialect
+        |where _.""".stripMargin
+    val details = complete(src, src.length).filter(_.label == "fmt").map(_.detail).toSet
+    details shouldContain ": string"
+    details shouldNotContain ": int"
+
 end CompletionProviderTest

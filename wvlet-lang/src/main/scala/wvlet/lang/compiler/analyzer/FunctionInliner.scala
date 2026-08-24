@@ -80,6 +80,59 @@ object FunctionInliner extends ContextLogSupport:
         case _ =>
           None
 
+  /**
+    * Collect every method member callable on the type named `typeName`, for LSP member completion
+    * and hover (#2018). Mirrors the precedence of [[findMemberInHierarchy]]: the type's own defs
+    * come first and shadow mixed-in ones, then `extends` parents are consulted right-to-left,
+    * depth-first, cycle-guarded. Among same-name variants of one scope, definitions scoped to an
+    * engine other than the compile target are dropped when a variant matching the target (or a
+    * dialect-neutral one) exists; arity overloads are all kept.
+    */
+  private[compiler] def memberMethodsInHierarchy(
+      typeName: Name,
+      context: Context
+  ): List[MethodSymbolInfo] =
+    val visited   = scala.collection.mutable.Set[Name](typeName)
+    val seenNames = scala.collection.mutable.Set.empty[Name]
+    val buf       = List.newBuilder[MethodSymbolInfo]
+
+    def loop(sym: Symbol): Unit =
+      val ownMethods = sym
+        .symbolInfo
+        .members
+        .flatMap(m => flattenSymbolInfos(m.symbolInfo))
+        .collect { case m: MethodSymbolInfo =>
+          m
+        }
+      // A name already collected at an inner (higher-precedence) level shadows this scope's
+      // definition of the same name
+      val fresh = ownMethods.filterNot(m => seenNames.contains(m.name))
+      seenNames ++= fresh.map(_.name)
+      fresh
+        .map(_.name)
+        .distinct
+        .foreach { name =>
+          val variants = fresh.filter(_.name == name)
+          buf ++= preferNonZero(variants, dialectScore(_, context))
+        }
+      sym.tree match
+        case td: TypeDef =>
+          td.parents
+            .reverse
+            .foreach { p =>
+              val parentName = Name.typeName(p.leafName)
+              if !visited.contains(parentName) then
+                visited += parentName
+                lookupType(parentName, context).foreach(loop)
+            }
+        case _ =>
+    end loop
+
+    lookupType(typeName, context).foreach(loop)
+    buf.result()
+
+  end memberMethodsInHierarchy
+
   private def flattenSymbolInfos(si: SymbolInfo): List[SymbolInfo] =
     si match
       case MultipleSymbolInfo(s1, s2) =>
