@@ -47,6 +47,39 @@ object FunctionInliner extends ContextLogSupport:
     name
   )
 
+  /**
+    * Find a member of a type, walking its `extends` parents (#2012) when the member is not defined
+    * in the type's own scope. Own defs shadow mixed-in ones, and later parents take precedence
+    * (`extends a, b` means b refines a), so parents are consulted right-to-left, depth-first.
+    * Cycle-guarded by the visited set of type names.
+    */
+  private def findMemberInHierarchy(
+      sym: Symbol,
+      methodName: TermName,
+      visited: Set[Name],
+      context: Context
+  ): Option[SymbolInfo] =
+    val ownMember = sym.symbolInfo.findMember(methodName)
+    if ownMember != Symbol.NoSymbol then
+      Some(ownMember.symbolInfo)
+    else
+      sym.tree match
+        case td: TypeDef =>
+          td.parents
+            .reverseIterator
+            .flatMap { p =>
+              val parentName = Name.typeName(p.leafName)
+              if visited.contains(parentName) then
+                None
+              else
+                lookupType(parentName, context).flatMap { parentSym =>
+                  findMemberInHierarchy(parentSym, methodName, visited + parentName, context)
+                }
+            }
+            .nextOption()
+        case _ =>
+          None
+
   private def flattenSymbolInfos(si: SymbolInfo): List[SymbolInfo] =
     si match
       case MultipleSymbolInfo(s1, s2) =>
@@ -218,8 +251,8 @@ object FunctionInliner extends ContextLogSupport:
         def memberOf(baseType: DataType): Option[MethodSymbolInfo] = lookupType(
           baseType.typeName,
           context
-        ).map { sym =>
-            sym.symbolInfo.findMember(methodName).symbolInfo
+        ).flatMap { sym =>
+            findMemberInHierarchy(sym, methodName, Set(baseType.typeName), context)
           }
           .flatMap { si =>
             if bareMember then

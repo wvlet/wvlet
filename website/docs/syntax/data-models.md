@@ -136,3 +136,34 @@ claim and warns toward `table`, and a def-only `type` is a method interface and 
 The `in` clause is unambiguous across the family: on a `trait` or `def` it always names an
 engine dialect; on a `table` declaration, `create schema`, or `use` it always names a storage
 location.
+
+#### Composing Declarations with Mixins
+
+Since `table` and `trait` are kinds of type, a declaration can compose others with a
+comma-separated `extends` list: structural `type` shapes and `table` declarations contribute
+their columns, and `trait` parents contribute their `def` members (including dialect-scoped
+variants):
+
+```wvlet
+type timestamped = { created_at: timestamp, updated_at: timestamp }
+trait auditable = { def is_recent: boolean = created_at > now() - interval '7 days' }
+
+table events extends timestamped, auditable = {
+  id: int
+  label: string
+}
+
+from events
+select created_at, id, _.is_recent
+```
+
+The composed shape places mixed-in columns before own body columns, in parent-list order.
+A column reached through multiple parents with the same type appears once, so diamond mixins
+are fine; the same name with conflicting types is a compile-time error. Method precedence
+follows Scala 3's intuition: own body defs shadow mixed-in ones, and among parents the later
+one wins (`extends a, b` means b refines a).
+
+Because a trait never describes storage, a `trait` cannot extend a column-carrying
+declaration — that is a compile-time error pointing toward `table`. A `table` extending a
+trait gains its methods; the single-parent forms (`trait ip_address extends string`,
+`type td_trino extends trino`) are unchanged as the one-element case of the same list.

@@ -1,0 +1,17 @@
+-- A trait carries def members only (#2001), so extending a column-bearing declaration
+-- would smuggle storage into the trait: rejected at type composition (#2012)
+
+type neg_timestamped = {
+  created_at: string
+}
+
+trait neg_auditable extends neg_timestamped = {
+  def tag: string = sql"'a'"
+}
+
+table neg_events extends neg_auditable = {
+  id: int
+}
+
+from neg_events
+select id

@@ -794,7 +794,11 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
             else
               bracket(cl(t.params.map(_.wvExpr)))
           val defContexts = wl(t.defContexts.map(x => wl("in", expr(x.contextType))))
-          val parent      = t.parent.map(p => wl("extends", expr(p)))
+          val parent      =
+            if t.parents.isEmpty then
+              None
+            else
+              Some(wl("extends", cl(t.parents.map(p => expr(p)))))
 
           val sep =
             if t.elems.isEmpty then

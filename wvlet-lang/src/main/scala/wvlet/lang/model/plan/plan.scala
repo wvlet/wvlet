@@ -66,7 +66,12 @@ case class TypeDef(
     name: TypeName,
     params: List[TypeParameter],
     defContexts: List[DefContext],
-    parent: Option[NameExpr],
+    // The `extends` parent list (#2012). Multiple parents compose mixins: structural
+    // types/tables contribute columns, traits contribute def members. The first parent also
+    // serves as the subtype-chain parent (owner symbol, SchemaType parent), preserving the
+    // single-parent semantics of scalar traits (`trait ip_address extends string`) and dialect
+    // markers (`type duckdb extends db_context`)
+    parents: List[NameExpr],
     elems: List[TypeElem],
     span: Span,
     // true for `table <name> [in ...] = { ... }` table-shape declarations, which share the
@@ -90,6 +95,8 @@ case class TypeDef(
     .collectFirst { case catalog :: schema :: Nil =>
       (catalog, schema)
     }
+
+end TypeDef
 
 // type elements (def or column (field) definition)
 sealed trait TypeElem extends Expression

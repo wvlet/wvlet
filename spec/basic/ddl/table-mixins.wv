@@ -1,0 +1,36 @@
+-- Mixin declarations in DDL (#2012): `create table` and append auto-creation read the full
+-- composed shape, and a diamond mixin (the same base reached through two parents) dedupes
+-- to the first occurrence
+
+type tmd_base = {
+  id: int
+}
+
+type tmd_created extends tmd_base = {
+  created_at: string
+}
+
+type tmd_labeled extends tmd_base = {
+  label: string
+}
+
+table tmd_items extends tmd_created, tmd_labeled = {
+  own_score: int
+}
+
+-- `id` arrives through both parents but appears once, before own body columns
+create table tmd_items
+from tmd_items
+test _.columns should be ['id', 'created_at', 'label', 'own_score']
+
+-- Append auto-creation reads the same composed shape
+table tmd_copy extends tmd_created, tmd_labeled = {
+  own_score: int
+}
+
+from [[1, 'jan', 'a', 10]] as t(id, created_at, label, own_score)
+append to tmd_copy
+
+from tmd_copy
+test _.size should be 1
+test _.columns should be ['id', 'created_at', 'label', 'own_score']

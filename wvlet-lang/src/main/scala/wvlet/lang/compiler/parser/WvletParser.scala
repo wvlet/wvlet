@@ -1096,27 +1096,38 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
   /**
     * Parse a side-effect-free table shape declaration:
     * {{{
-    *   table <name> [in <catalog>.<schema>] = { <fields and def members> }
+    *   table <name> [in <catalog>.<schema>] [extends <type>, ...] = { <fields and def members> }
     * }}}
     * The declaration shares the TypeDef machinery (isTableDef = true): the relation type registers
     * in the same namespace as `type` definitions, and `create table <name>` actions read the shape
     * from it. `table` is a soft keyword, matched only at statement head.
     */
   def tableShapeDef(): TypeDef = node {
-    val t      = consume(WvletToken.IDENTIFIER) // the `table` soft keyword
-    val name   = Name.typeName(identifier().leafName)
-    val scopes = context()
+    val t       = consume(WvletToken.IDENTIFIER) // the `table` soft keyword
+    val name    = Name.typeName(identifier().leafName)
+    val scopes  = context()
+    val parents = typeExtends()
     scanner.lookAhead().token match
       case WvletToken.LIKE =>
         // `table <name> like <source>` (#1995): declaration-side shape reuse, so a shape is
-        // written exactly once. The columns resolve from the referenced declaration lazily
+        // written exactly once. The columns resolve from the referenced declaration lazily.
+        // `like` is the exact-copy form; composing partial shapes is what `extends` is for,
+        // so the two cannot combine on one declaration
+        if parents.nonEmpty then
+          throw StatusCode
+            .SYNTAX_ERROR
+            .newException(
+              s"'table ${name.name}' cannot combine 'extends' with 'like': 'like' copies one " +
+                s"declaration exactly; use 'extends' with a body to compose shapes",
+              t.sourceLocation
+            )
         consume(WvletToken.LIKE)
         val source = identifier()
         TypeDef(
           name,
           Nil,
           scopes,
-          None,
+          Nil,
           Nil,
           spanFrom(t),
           isTableDef = true,
@@ -1127,7 +1138,8 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         consume(WvletToken.L_BRACE)
         val elems = typeElems()
         consume(WvletToken.R_BRACE)
-        TypeDef(name, Nil, scopes, None, elems, spanFrom(t), isTableDef = true)
+        TypeDef(name, Nil, scopes, parents, elems, spanFrom(t), isTableDef = true)
+    end match
   }
 
   /**
@@ -1146,15 +1158,6 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     val tp      = typeParams()
     val scopes  = context()
     val parents = typeExtends()
-    if parents.size > 1 then
-      throw StatusCode
-        .SYNTAX_ERROR
-        .newException(
-          s"extending multiple types is not supported: ${name} extends ${parents
-              .map(_.fullName)
-              .mkString(", ")}",
-          t.sourceLocation
-        )
     scopes
       .find(_.contextType.nameParts.sizeIs > 1)
       .foreach { c =>
@@ -1189,7 +1192,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
             t.sourceLocation
           )
       }
-    TypeDef(name, tp, scopes, parents.headOption, elems, spanFrom(t), isTrait = true)
+    TypeDef(name, tp, scopes, parents, elems, spanFrom(t), isTrait = true)
   }
 
   /** Parse a trailing `if not exists` modifier */
@@ -1555,18 +1558,9 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
         consume(WvletToken.L_BRACE)
         elems = typeElems()
         consume(WvletToken.R_BRACE)
-        if parents.size > 1 then
-          throw StatusCode
-            .SYNTAX_ERROR
-            .newException(
-              s"extending multiple types is not supported: ${name} extends ${parents
-                  .map(_.fullName)
-                  .mkString(", ")}",
-              t.sourceLocation
-            )
       case _ =>
       // no body
-    TypeDef(name, tp, scopes, parents.headOption, elems, spanFrom(t))
+    TypeDef(name, tp, scopes, parents, elems, spanFrom(t))
   }
 
   def typeParams(): List[TypeParameter] =
@@ -1615,7 +1609,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
             case WvletToken.COMMA =>
               consume(WvletToken.COMMA)
               nextParent
-            case WvletToken.EQ | WvletToken.EOF =>
+            case WvletToken.EQ | WvletToken.EOF | WvletToken.LIKE =>
             // ok
             case _ =>
               parents += identifier()

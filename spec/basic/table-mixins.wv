@@ -1,0 +1,39 @@
+-- Mixin declarations (#2012): `extends a, b` composes structural types (columns) and
+-- traits (def members) into a table declaration with one uniform, comma-separated spelling
+
+type tmx_timestamped = {
+  created_at: string
+}
+
+trait tmx_auditable = {
+  def audit_tag: string = created_at.upper()
+}
+
+table tmx_events extends tmx_timestamped, tmx_auditable = {
+  id: int
+  label: string
+}
+
+from [['jan', 1, 'a'], ['feb', 2, 'b']] as t(created_at, id, label)
+save to tmx_events
+
+-- The composed shape places mixed-in columns before own body columns
+from tmx_events
+test _.columns should be ['created_at', 'id', 'label']
+test _.size should be 2
+
+-- A trait method mixed into the table resolves on a direct scan (#2010) and can
+-- reference columns of the composing table
+from tmx_events
+where id = 1
+select id, _.audit_tag as tag
+test _.output should be """
+┌─────┬────────┐
+│ id  │  tag   │
+│ int │ string │
+├─────┼────────┤
+│   1 │ JAN    │
+├─────┴────────┤
+│ 1 rows       │
+└──────────────┘
+"""

@@ -13,6 +13,7 @@
  */
 package wvlet.lang.compiler.analyzer
 
+import wvlet.lang.api.StatusCode
 import wvlet.lang.compiler.ValSymbolInfo
 import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.compiler.Context
@@ -527,22 +528,68 @@ object SymbolLabeler extends Phase("symbol-labeler"):
             Nil
       }
 
-    val columns =
-      likeColumns ++
-        t.elems
-          .collect { case v: FieldDef =>
-            // Resolve simple primitive types earlier.
-            // TODO: DataType.parse(typeName) for complex types, including UnknownTypes
-            val dt = DataType.parse(v.fieldType.fullName, v.params)
-            NamedType(v.name, dt)
-          }
+    // Mixin composition (#2012): each `extends` parent contributes its columns (structural
+    // types and table shapes carry fields; traits carry none — their def members resolve
+    // through the parent symbols at method-lookup time). Forcing a parent's completion here
+    // resolves cross-unit references; a completion already in progress signals an `extends`
+    // cycle, whose columns resolve empty (Symbol.dataType yields UnknownType while completing)
+    val parentTypeSymbols: List[(NameExpr, Symbol)] = t
+      .parents
+      .map(p => p -> registerParentSymbols(p))
+    val mixinColumns: List[NamedType] = parentTypeSymbols.flatMap { (p, psym) =>
+      psym.dataType match
+        case s: SchemaType =>
+          if t.isTrait && s.fields.nonEmpty then
+            throw StatusCode
+              .TYPE_ERROR
+              .newException(
+                s"trait ${typeName.name} cannot extend '${p.leafName}', which declares " +
+                  s"columns: traits carry def members only. Declare stored relations with " +
+                  s"'table ${typeName.name} extends ${p.leafName} = {...}'",
+                ctx.sourceLocationAt(t.span)
+              )
+          s.fields
+        case _ =>
+          Nil
+    }
 
-    // The schema parent is only the extended type (None when the type has no parent); the
+    val ownColumns = t
+      .elems
+      .collect { case v: FieldDef =>
+        // Resolve simple primitive types earlier.
+        // TODO: DataType.parse(typeName) for complex types, including UnknownTypes
+        val dt = DataType.parse(v.fieldType.fullName, v.params)
+        NamedType(v.name, dt)
+      }
+
+    // Compose mixed-in columns before own body columns (mirroring how `like` prepends the
+    // source's columns). A column reappearing with the same type dedupes to its first
+    // occurrence, so diamond mixins are fine; the same name with a conflicting type is an error
+    val columns     = List.newBuilder[NamedType]
+    val seenColumns = collection.mutable.Map.empty[String, NamedType]
+    (mixinColumns ++ likeColumns ++ ownColumns).foreach { c =>
+      seenColumns.get(c.name.name) match
+        case None =>
+          seenColumns += c.name.name -> c
+          columns += c
+        case Some(prev) if prev.dataType == c.dataType =>
+        // same column reached through multiple mixin paths: keep the first occurrence
+        case Some(prev) =>
+          throw StatusCode
+            .TYPE_ERROR
+            .newException(
+              s"Conflicting column types for '${c.name.name}' in ${typeName.name}: " +
+                s"${prev.dataType.typeDescription} and ${c.dataType.typeDescription}",
+              ctx.sourceLocationAt(t.span)
+            )
+    }
+
+    // The schema parent is the first extended type (None when the type has no parent); the
     // owner symbol falls back to the enclosing package
-    val parentTypeSymbol = t.parent.map(registerParentSymbols)
+    val parentTypeSymbol = parentTypeSymbols.headOption.map(_._2)
     val parentTpe        = parentTypeSymbol.map(_.dataType)
     val ownerSymbol      = parentTypeSymbol.getOrElse(ctx.owner)
-    val tpe              = SchemaType(parent = parentTpe, typeName, columns)
+    val tpe              = SchemaType(parent = parentTpe, typeName, columns.result())
     val typeParams       = t.params
 
     trace(s"Completed type symbol ${sym}: ${tpe}")
