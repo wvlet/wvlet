@@ -59,6 +59,7 @@ enum StatusCode(statusType: StatusType):
   case NOT_A_RELATION                    extends StatusCode(StatusType.UserError)
   case FILE_NOT_FOUND                    extends StatusCode(StatusType.UserError)
   case SCHEMA_ALREADY_EXISTS             extends StatusCode(StatusType.UserError)
+  case SCHEMA_DRIFT_DETECTED             extends StatusCode(StatusType.UserError)
   case TABLE_ALREADY_EXISTS              extends StatusCode(StatusType.UserError)
   case UNAUTHENTICATED                   extends StatusCode(StatusType.UserError)
   case PERMISSION_DENIED                 extends StatusCode(StatusType.UserError)
