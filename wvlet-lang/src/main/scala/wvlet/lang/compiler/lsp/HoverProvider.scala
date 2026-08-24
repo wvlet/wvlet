@@ -15,7 +15,10 @@ package wvlet.lang.compiler.lsp
 
 import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.compiler.Compiler
+import wvlet.lang.compiler.MethodSymbolInfo
 import wvlet.lang.compiler.ModelSymbolInfo
+import wvlet.lang.compiler.Name
+import wvlet.lang.compiler.analyzer.FunctionInliner
 import wvlet.lang.model.DataType
 import wvlet.lang.model.DataType.NamedType
 import wvlet.lang.model.RelationType
@@ -85,8 +88,11 @@ object HoverProvider:
   def hover(content: String, offset: Int, compiler: Compiler): Option[HoverResult] =
     // A member name of a value.function call (e.g. the `upper` of `name.upper`) hovers the
     // stdlib signatures and docs. This runs on a parse-only pass first: after typing, stdlib
-    // calls are inlined into SQL fragments and their reference nodes no longer exist
-    stdlibFunctionHover(content, offset).orElse(typedHover(content, offset, compiler))
+    // calls are inlined into SQL fragments and their reference nodes no longer exist. Member
+    // names not defined in the stdlib then try the user-defined method members (#2018)
+    stdlibFunctionHover(content, offset)
+      .orElse(userMethodHover(content, offset, compiler))
+      .orElse(typedHover(content, offset, compiler))
 
   private def typedHover(content: String, offset: Int, compiler: Compiler): Option[HoverResult] =
     val unit = CompilationUnit.fromWvletString(content)
@@ -202,6 +208,83 @@ object HoverProvider:
         None
 
   end stdlibFunctionHover
+
+  /**
+    * Hover result for a user-defined method reference (#2018): the member name of a `value.method`
+    * access where the method is a `def` declared in a user `table` / `trait` / `type` body, own or
+    * mixed in through `extends` parents. The definition is found with the same hierarchy walk the
+    * compiler uses to resolve method calls. The member location comes from a parse-only pass (typed
+    * plans inline user method calls, so their reference nodes no longer exist), then a typed pass
+    * resolves the qualifier's declared type
+    */
+  private def userMethodHover(
+      content: String,
+      offset: Int,
+      compiler: Compiler
+  ): Option[HoverResult] =
+    try
+      val unit       = CompilationUnit.fromWvletString(content)
+      val parsedPlan = wvlet.lang.compiler.parser.ParserPhase.parseOnly(unit)
+      val sf         = unit.sourceFile
+      sf.ensureLoaded
+      val memberHit =
+        parsedPlan
+          .collectAllNodes
+          .collect {
+            case d: wvlet.lang.model.expr.DotRef
+                if d.name.span.exists && d.name.span.containsInclusive(offset) =>
+              (d.qualifier, d.name)
+          }
+          .headOption
+      memberHit.flatMap { (qualifier, name) =>
+        val qualifierName =
+          qualifier match
+            case n: NameExpr =>
+              n.leafName
+            case _ =>
+              ""
+        if qualifierName.isEmpty then
+          None
+        else
+          val typedUnit = CompilationUnit.fromWvletString(content)
+          try
+            val result = compiler.compileSingleUnit(typedUnit)
+            val plan   = typedUnit.resolvedPlan
+            if plan.isEmpty then
+              None
+            else
+              CompletionProvider
+                .qualifierTypeName(plan, qualifierName, offset)
+                .flatMap { t =>
+                  val methods = FunctionInliner
+                    .memberMethodsInHierarchy(Name.typeName(t), result.context)
+                    .filter(m => m.name.name.equalsIgnoreCase(name.leafName))
+                    // Stdlib members are rendered with their docs by stdlibFunctionHover
+                    .filterNot(_.compilationUnit.isPreset)
+                  if methods.isEmpty then
+                    None
+                  else
+                    Some(toResult(userMethodMarkdown(methods), name, sf))
+                }
+          finally
+            compiler.releaseUnit(typedUnit)
+      }
+    catch
+      case _: Throwable =>
+        // Hover is opportunistic: never surface a parse or compile error to the editor
+        None
+
+  end userMethodHover
+
+  /**
+    * Render user-defined method definitions as markdown: a fenced code block with the owning type
+    * and the distinct signatures of the definition's variants
+    */
+  private def userMethodMarkdown(methods: List[MethodSymbolInfo]): String =
+    val header   = s"-- member of ${methods.head.owner.name.name}"
+    val sigLines =
+      methods.map(m => s"def ${m.name.name}${CompletionProvider.methodSignatureOf(m)}").distinct
+    codeBlock((header :: sigLines).mkString("\n"))
 
   /** Maximum number of owning-type groups rendered in a stdlib function hover */
   private val MaxHoverGroups: Int = 3
