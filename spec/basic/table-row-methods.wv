@@ -1,6 +1,6 @@
 -- Row methods on table declarations (#1998): `def` members travel with the table shape,
 -- so reusable predicates and expressions live next to the columns they read. Methods
--- resolve through relations annotated with the declared type (same as `type` methods)
+-- resolve directly on scans of the declared table (#2010)
 
 table rm_users = {
   id: int
@@ -13,6 +13,12 @@ table rm_users = {
 from [[1, 'alice', null], [2, 'bob', 'gone']] as t(id, name, deleted_at)
 save to rm_users
 
+from rm_users
+where _.is_active
+test _.size should be 1
+test _.columns should contain 'name'
+
+-- Regression: methods also resolve through a model annotated with the declared type
 model rm_all: rm_users = {
   from rm_users
 }

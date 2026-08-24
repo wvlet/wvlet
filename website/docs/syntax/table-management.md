@@ -85,8 +85,9 @@ of your database.
 ### Row Methods
 
 A declaration body can also carry `def` members — reusable expressions over the table's
-columns — so behavior travels with the table declaration. Methods resolve through relations
-annotated with the declared type:
+columns — so behavior travels with the table declaration. Methods resolve on any relation
+that carries the declared type: a direct scan of the table, or a model annotated with the
+type (`model all_users: users = { ... }`):
 
 ```wvlet
 table users = {
@@ -97,11 +98,7 @@ table users = {
   def is_active: boolean = deleted_at is null
 }
 
-model all_users: users = {
-  from users
-}
-
-from all_users
+from users
 where _.is_active
 ```
 

@@ -25,6 +25,7 @@ import wvlet.lang.compiler.ContextUtil.*
 import wvlet.lang.compiler.typer.TableShapeDeclaredAsType
 import wvlet.lang.model.DataType
 import wvlet.lang.model.DataType.SchemaType
+import wvlet.lang.model.DataType.UnresolvedRelationType
 import wvlet.lang.model.RelationType
 import wvlet.lang.model.expr.*
 import wvlet.lang.model.plan.*
@@ -56,6 +57,10 @@ object RelationRefResolver extends ContextLogSupport:
     * TableScan using the symbols in scope and the catalog
     */
   def resolveTableRef(ref: TableRef)(using context: Context): Relation =
+    def resolveAsTable: Relation = resolveTableType(ref, context)
+      .orElse(resolveConnectorQualifiedRef(ref, context))
+      .getOrElse(resolveFromDefaultCatalog(ref, context))
+
     lookup(ref.name, context) match
       case Some(sym) if sym.isCompleting =>
         // A reference to a definition whose lazy completion is in progress, i.e. a recursive
@@ -69,7 +74,12 @@ object RelationRefResolver extends ContextLogSupport:
           case mi: ModelSymbolInfo =>
             mi.dataType match
               case r: RelationType =>
-                ModelScan(TableName(ref.name.fullName), Nil, r, ref.span)
+                ModelScan(
+                  TableName(ref.name.fullName),
+                  Nil,
+                  resolveNominalRelationType(r, context),
+                  ref.span
+                )
               case _ =>
                 ref
           case v: ValSymbolInfo =>
@@ -98,13 +108,32 @@ object RelationRefResolver extends ContextLogSupport:
               case _ =>
                 ref
           case _ =>
-            ref
+            // The name resolved to a term symbol that is not a relation definition, e.g. the
+            // target of a `save to <table>` statement. Such a symbol carries no schema, so
+            // resolve through the table declaration or the catalog instead; otherwise row and
+            // trait methods of a declared table would not resolve on a direct scan (#2010)
+            resolveAsTable
       case None =>
-        resolveTableType(ref, context)
-          .orElse(resolveConnectorQualifiedRef(ref, context))
-          .getOrElse(resolveFromDefaultCatalog(ref, context))
+        resolveAsTable
     end match
   end resolveTableRef
+
+  /**
+    * Expand a nominal relation type (e.g. a model's declared type annotation `model m: users`)
+    * through the referenced type declaration, so a scan of the model carries the declared columns
+    * and resolves them (and the declaration's row/trait methods) like a direct table scan (#2010)
+    */
+  private def resolveNominalRelationType(r: RelationType, context: Context): RelationType =
+    r match
+      case u: UnresolvedRelationType if u.typeName != Name.NoTypeName =>
+        lookupType(u.typeName, context)
+          .map(_.symbolInfo.dataType)
+          .collectFirst { case tpe: SchemaType =>
+            tpe
+          }
+          .getOrElse(r)
+      case _ =>
+        r
 
   /**
     * Resolve a table reference through a type definition, so table schemas described as source
@@ -303,7 +332,12 @@ object RelationRefResolver extends ContextLogSupport:
         si.tpe match
           case r: RelationType =>
             context.logTrace(s"Resolved model ref: ${ref.name.fullName} as ${r}")
-            ModelScan(TableName(sym.name.name), ref.args, r, ref.span)
+            ModelScan(
+              TableName(sym.name.name),
+              ref.args,
+              resolveNominalRelationType(r, context),
+              ref.span
+            )
           case _ =>
             ref
       case None =>
@@ -319,7 +353,7 @@ object RelationRefResolver extends ContextLogSupport:
         // isModelDef forces the lazy completion, so sym.tree is the typed model definition
         sym.tree match
           case md: ModelDef =>
-            val newModelScan = m.copy(schema = md.relationType)
+            val newModelScan = m.copy(schema = resolveNominalRelationType(md.relationType, context))
             newModelScan.symbol = md.child.symbol
             newModelScan
           case _ =>
