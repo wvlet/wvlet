@@ -59,7 +59,13 @@ case class WvletCatalogDiffOption(
       prefix = "--schema",
       description = "Default schema of unbound table declarations (default: profile schema)"
     )
-    schema: Option[String] = None
+    schema: Option[String] = None,
+    @option(
+      prefix = "--apply",
+      description =
+        "Run the generated reshape migrations against the database (exclude drops columns!)"
+    )
+    apply: Boolean = false
 )
 
 /**
@@ -212,12 +218,46 @@ class WvletCatalogCommand(opts: WvletGlobalOption) extends LogSupport:
         .foreach { drift =>
           println(SchemaDriftDetector.render(drift))
         }
-      if report.hasDrift then
+      if !report.hasDrift then
+        info(s"No schema drift detected (checked ${report.checkedTables} table(s))")
+      else if diffOpts.apply then
+        SchemaDriftChecker.applyMigrations(
+          drifts = report.drifted,
+          sourceFolders = List(diffOpts.workFolder),
+          workEnv = workEnv,
+          connectorProvider = connectorProvider,
+          profile = profile,
+          defaultCatalog = catalogName,
+          defaultSchema = schemaName,
+          dbType = dbType
+        )
+        // Re-diff after applying: a clean result proves the migrations converged the catalog
+        // to the declarations
+        val recheck = SchemaDriftChecker.check(
+          sourceFolders = List(diffOpts.workFolder),
+          workEnv = workEnv,
+          connector = connector,
+          defaultCatalog = catalogName,
+          defaultSchema = schemaName,
+          dbType = dbType
+        )
+        if recheck.hasDrift then
+          throw StatusCode
+            .SCHEMA_DRIFT_DETECTED
+            .newException(
+              s"Schema drift remains in ${recheck
+                  .drifted
+                  .size} table(s) after applying the migrations"
+            )
+        info(s"Applied ${report.drifted.size} migration(s); the catalog matches the declarations")
+      else
         // A non-zero exit code so the check can gate CI
         throw StatusCode
           .SCHEMA_DRIFT_DETECTED
-          .newException(s"Schema drift detected in ${report.drifted.size} table(s)")
-      info(s"No schema drift detected (checked ${report.checkedTables} table(s))")
+          .newException(
+            s"Schema drift detected in ${report.drifted.size} table(s). Run with --apply to migrate"
+          )
+      end if
     }
   }
 

@@ -13,6 +13,7 @@
  */
 package wvlet.lang.runner
 
+import wvlet.lang.catalog.Profile
 import wvlet.lang.catalog.SchemaDriftDetector
 import wvlet.lang.catalog.SchemaDriftDetector.TableDrift
 import wvlet.lang.compiler.analyzer.SymbolLabeler
@@ -24,9 +25,12 @@ import wvlet.lang.compiler.CompilerOptions
 import wvlet.lang.compiler.Context
 import wvlet.lang.compiler.DBType
 import wvlet.lang.compiler.WorkEnv
+import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.connector.DBConnector
 import wvlet.lang.model.plan.PackageDef
 import wvlet.lang.model.plan.TypeDef
+import wvlet.lang.runner.connector.ConnectorProvider
+import wvlet.uni.control.Control
 import wvlet.uni.log.LogSupport
 
 /**
@@ -128,5 +132,44 @@ object SchemaDriftChecker extends LogSupport:
       }
     SchemaDriftReport(checkedTables, missingTables.result(), drifted.result())
   end check
+
+  /**
+    * Execute the generated `reshape` migrations of the given drifts against the connected catalog
+    * (`--apply`, sqldef/`db:migrate` style). The migrations run through the regular compile-and-
+    * execute path — exactly what pasting the generated blocks into a script would do — with the
+    * project's declarations in scope. Note that `exclude` drops columns (and their data); callers
+    * should surface the generated blocks before applying
+    */
+  def applyMigrations(
+      drifts: List[TableDrift],
+      sourceFolders: List[String],
+      workEnv: WorkEnv,
+      connectorProvider: ConnectorProvider,
+      profile: Profile,
+      defaultCatalog: String,
+      defaultSchema: String,
+      dbType: DBType
+  ): Unit =
+    if drifts.nonEmpty then
+      val compiler = Compiler(
+        CompilerOptions(
+          sourceFolders = sourceFolders,
+          workEnv = workEnv,
+          catalog = Some(defaultCatalog),
+          schema = Some(defaultSchema),
+          dbType = dbType
+        )
+      )
+      val connector = connectorProvider.getConnector(profile)
+      compiler.setDefaultCatalog(connector.getCatalog(defaultCatalog, defaultSchema))
+      compiler.setDefaultSchema(defaultSchema)
+
+      val source = drifts.map(SchemaDriftDetector.migrationSource).mkString("\n")
+      val unit   = CompilationUnit.fromWvletString(source)
+      val result = compiler.compileSingleUnit(unit)
+      result.reportAllErrors
+      Control.withResource(QueryExecutor(connectorProvider, profile, workEnv)) { executor =>
+        executor.executeSingle(unit, result.context)
+      }
 
 end SchemaDriftChecker

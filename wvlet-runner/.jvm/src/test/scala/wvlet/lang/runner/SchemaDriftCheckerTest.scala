@@ -14,6 +14,7 @@
 package wvlet.lang.runner
 
 import wvlet.uni.test.UniTest
+import wvlet.lang.catalog.Profile
 import wvlet.lang.catalog.SchemaDriftDetector
 import wvlet.lang.catalog.StaticCatalogExporter
 import wvlet.lang.compiler.parser.ParserPhase
@@ -181,6 +182,70 @@ class SchemaDriftCheckerTest extends UniTest:
       drifted.drifted.map(_.tableName) shouldBe List("memory.sales.customers")
       drifted.drifted.head.excludeColumns shouldBe List("vip")
     }
+  }
+
+  test("apply generated migrations and converge the catalog to the declarations") {
+    import wvlet.lang.runner.connector.ConnectorProvider
+    val workEnv  = WorkEnv()
+    val provider = ConnectorProvider(workEnv)
+    val profile  = Profile.defaultDuckDBProfile
+    Files.createDirectories(Path.of("target"))
+    val projectDir = Files.createTempDirectory(Path.of("target"), "schema-drift-apply").toString
+    try
+      // The provider caches the profile's connector: the checker, the migration executor, and
+      // this test all see the same in-memory DuckDB
+      val duckdb = provider.getConnector(profile)
+      duckdb.executeUpdate(
+        "create table users (user_id bigint, name varchar, status bigint, legacy_flag boolean)"
+      )
+      duckdb.executeUpdate("insert into users values (1, 'alice', 3, true)")
+      SourceIO.writeString(
+        s"${projectDir}/tables.wv",
+        """table users = {
+          |  user_id: int
+          |  name: string
+          |  status: string
+          |  created_at: timestamp
+          |}
+          |""".stripMargin
+      )
+      def runCheck(): SchemaDriftReport = SchemaDriftChecker.check(
+        sourceFolders = List(projectDir),
+        workEnv = WorkEnv(projectDir),
+        connector = duckdb,
+        defaultCatalog = "memory",
+        defaultSchema = "main",
+        dbType = DBType.DuckDB
+      )
+      val report = runCheck()
+      report.hasDrift shouldBe true
+
+      SchemaDriftChecker.applyMigrations(
+        drifts = report.drifted,
+        sourceFolders = List(projectDir),
+        workEnv = WorkEnv(projectDir),
+        connectorProvider = provider,
+        profile = profile,
+        defaultCatalog = "memory",
+        defaultSchema = "main",
+        dbType = DBType.DuckDB
+      )
+
+      // The catalog now matches the declarations, and re-applying would be a no-op
+      runCheck().hasDrift shouldBe false
+
+      // Existing rows survive the migration: add/cast preserve data, exclude drops its column
+      val migrated = duckdb.getTableDef("memory", "main", "users").get
+      migrated.columns.map(_.name) shouldBe List("user_id", "name", "status", "created_at")
+      duckdb.runQuery("select user_id, name, status from users") { rs =>
+        rs.next() shouldBe true
+        rs.getLong("user_id") shouldBe 1L
+        rs.getString("name") shouldBe "alice"
+        rs.getString("status") shouldBe "3"
+      }
+    finally
+      provider.close()
+    end try
   }
 
 end SchemaDriftCheckerTest

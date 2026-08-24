@@ -122,8 +122,12 @@ object SchemaDriftDetector:
       case _ =>
         StaticCatalogExporter.quote(name)
 
-  /** Render one table's drift as a message with a ready-to-paste `reshape` migration block */
-  def render(drift: TableDrift): String =
+  /**
+    * The runnable `reshape` statement of a drift, without the surrounding message. Comment lines
+    * (the previous type of a `cast`, the rename hint) are part of the statement text and parse as
+    * trivia, so the source can be executed as-is
+    */
+  def migrationSource(drift: TableDrift): String =
     val quote = StaticCatalogExporter.quote
     val ops   = List.newBuilder[String]
     drift
@@ -150,12 +154,16 @@ object SchemaDriftDetector:
     if drift.addColumns.nonEmpty && drift.excludeColumns.nonEmpty then
       ops +=
         "-- If an exclude/add pair is actually a rename, use `rename <old> as <new>` instead to preserve data"
-    val body = ops.result().map(op => s"    ${op}").mkString("\n")
-    s"""table ${drift.tableName} has drifted from its declaration. To migrate, run:
-       |  reshape ${drift.tableName} {
+    val body = ops.result().map(op => s"  ${op}").mkString("\n")
+    s"""reshape ${drift.tableName} {
        |${body}
-       |  }""".stripMargin
+       |}""".stripMargin
 
-  end render
+  end migrationSource
+
+  /** Render one table's drift as a message with a ready-to-paste `reshape` migration block */
+  def render(drift: TableDrift): String =
+    val block = migrationSource(drift).linesIterator.map(line => s"  ${line}").mkString("\n")
+    s"table ${drift.tableName} has drifted from its declaration. To migrate, run:\n${block}"
 
 end SchemaDriftDetector

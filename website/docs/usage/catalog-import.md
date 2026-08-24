@@ -150,6 +150,28 @@ The command exits with a non-zero status when any drift is found, so it can gate
   run: wvlet catalog diff --profile production
 ```
 
+### Applying the migrations
+
+Pass `--apply` to run the generated `reshape` blocks against the database (sqldef /
+`db:migrate` style). The migrations execute through the regular compile-and-run path — exactly
+what pasting the blocks into a script would do — and the command re-diffs afterwards, exiting
+zero only when the catalog now matches the declarations:
+
+```bash
+$ wvlet catalog diff --profile production --apply
+table users has drifted from its declaration. To migrate, run:
+  reshape users {
+    add created_at: timestamp
+    exclude legacy_flag
+  }
+[info] Applied 1 migration(s); the catalog matches the declarations
+```
+
+Review the printed blocks before reaching for `--apply` on a production database: `exclude`
+drops the column *and its data*, and a rename always diffs as an exclude/add pair — apply a
+hand-written `rename <old> as <new>` first when that is what actually happened. A typical
+workflow gates CI with the plain check and runs `--apply` as an explicit deploy step.
+
 ## Validating queries in CI
 
 Because the catalog is plain source, query compilation needs no database credentials. Compile
