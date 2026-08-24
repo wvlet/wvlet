@@ -18,6 +18,7 @@ import wvlet.lang.api.SourceLocation
 import wvlet.lang.api.StatusCode
 import wvlet.lang.catalog.Catalog.TableName
 import wvlet.lang.compiler.planner.ExecutionPlanner
+import wvlet.lang.compiler.analyzer.TableBindings
 import wvlet.lang.compiler.typer.Typer
 import wvlet.lang.compiler.transform.ExpressionEvaluator
 import wvlet.lang.compiler.transform.PreprocessLocalExpr
@@ -179,15 +180,35 @@ object GenSQL extends Phase("generate-sql"):
   end generateDDLSQL
 
   /**
+    * The effective write target and declared columns for an `append to`/`save to` table name. A
+    * `table ... in <catalog>.<schema>` declaration matching the reference qualifies the target with
+    * its binding — so writes land where reads of the declared name resolve — while other names keep
+    * the current default-schema qualification
+    */
+  private def writeTargetOf(targetName: String)(using
+      context: Context
+  ): (TableName, List[ColumnDef]) =
+    val decl = TableBindings.declarationFor(targetName)
+    val cols = decl.map(_.columns).getOrElse(Nil)
+    decl.flatMap(_.boundName) match
+      case Some(bound) =>
+        (bound, cols)
+      case None =>
+        val tbl = TableName.parse(targetName)
+        (TableName(tbl.catalog, Some(tbl.schema.getOrElse(context.defaultSchema)), tbl.name), cols)
+
+  /**
     * SQL for appending into a table that does not exist yet. When a `table` shape declaration is in
     * scope, the table is created from the declared columns (so declared types win over the query's
     * inferred ones) and the rows are inserted into it; otherwise the append reduces to CREATE TABLE
     * AS with the query's shape
     */
-  private def appendToNewTableSQL(a: AppendTo, fullTableName: String, baseSQL: String)(using
-      context: Context
-  ): List[String] =
-    val declaredCols = Typer.declaredTableColumns(TableName.parse(a.targetName).name)
+  private def appendToNewTableSQL(
+      a: AppendTo,
+      fullTableName: String,
+      declaredCols: List[ColumnDef],
+      baseSQL: String
+  )(using context: Context): List[String] =
     if declaredCols.nonEmpty then
       val gen       = sqlGeneratorFor(context.dbType)
       val createSQL = gen.print(
@@ -248,7 +269,14 @@ object GenSQL extends Phase("generate-sql"):
             "create view"
         statements += withHeader(s"${cmd} ${c.targetName} as\n${baseSQL.sql}", c.sourceLocation)
       case s: SaveTo if s.isForTable =>
-        val baseSQL           = generateSQLFromRelation(save.inputRelation, addHeader = false)
+        val baseSQL = generateSQLFromRelation(save.inputRelation, addHeader = false)
+        // A binding-matched `table ... in <catalog>.<schema>` declaration redirects the save
+        // target to its bound location; other names keep their written spelling
+        val targetName = TableBindings
+          .declarationFor(s.targetName)(using context)
+          .flatMap(_.boundName)
+          .map(_.fullName)
+          .getOrElse(s.targetName)
         var needsTableCleanup = false
         val ctasCmd           =
           if s.ifNotExists then
@@ -270,12 +298,12 @@ object GenSQL extends Phase("generate-sql"):
           else
             ""
         val ctasSQL = withHeader(
-          s"${ctasCmd} ${s.targetName}${options} as\n${baseSQL.sql}",
+          s"${ctasCmd} ${targetName}${options} as\n${baseSQL.sql}",
           s.sourceLocation
         )
 
         if needsTableCleanup then
-          val dropSQL = s"drop table if exists ${s.targetName}"
+          val dropSQL = s"drop table if exists ${targetName}"
           // TODO: May need to wrap drop-ctas in a transaction
           statements += withHeader(dropSQL, s.sourceLocation)
 
@@ -300,11 +328,10 @@ object GenSQL extends Phase("generate-sql"):
       case a: AppendTo if a.isForTable && a.keyColumns.nonEmpty =>
         // Keyed append (`append to t on k1, k2`): insert-or-update, lowered to MERGE INTO.
         // Rows whose keys match an existing row replace its non-key columns; the rest insert
-        val baseSQL       = GenSQL.generateSQLFromRelation(save.inputRelation, addHeader = false)
-        val tbl           = TableName.parse(a.targetName)
-        val schema        = tbl.schema.getOrElse(context.defaultSchema)
-        val fullTableName = s"${schema}.${tbl.name}"
-        context.catalog.getTable(TableName.parse(fullTableName)) match
+        val baseSQL = GenSQL.generateSQLFromRelation(save.inputRelation, addHeader = false)
+        val (targetTable, declaredCols) = writeTargetOf(a.targetName)(using context)
+        val fullTableName               = targetTable.fullName
+        context.catalog.getTable(targetTable) match
           case Some(t) =>
             val keys    = a.keyColumns.map(_.leafName)
             val badKeys = keys.filterNot(k => t.columns.exists(_.name == k))
@@ -334,7 +361,7 @@ object GenSQL extends Phase("generate-sql"):
             statements += withHeader(mergeSQL, a.sourceLocation)
           case None =>
             // No existing table: nothing to merge with, so the keyed append reduces to a create
-            statements ++= appendToNewTableSQL(a, fullTableName, baseSQL.sql)
+            statements ++= appendToNewTableSQL(a, fullTableName, declaredCols, baseSQL.sql)
         end match
       case u: UpdateColumns =>
         val gen = sqlGeneratorFor(context.dbType)
@@ -364,11 +391,10 @@ object GenSQL extends Phase("generate-sql"):
           sql += s"\nwhere ${filters.reverse.mkString(" and ")}"
         statements += withHeader(sql, u.sourceLocation)
       case a: AppendTo if a.isForTable =>
-        val baseSQL       = GenSQL.generateSQLFromRelation(save.inputRelation, addHeader = false)
-        val tbl           = TableName.parse(a.targetName)
-        val schema        = tbl.schema.getOrElse(context.defaultSchema)
-        val fullTableName = s"${schema}.${tbl.name}"
-        context.catalog.getTable(TableName.parse(fullTableName)) match
+        val baseSQL = GenSQL.generateSQLFromRelation(save.inputRelation, addHeader = false)
+        val (targetTable, declaredCols) = writeTargetOf(a.targetName)(using context)
+        val fullTableName               = targetTable.fullName
+        context.catalog.getTable(targetTable) match
           case Some(t) =>
             val columnList =
               if a.columns.nonEmpty then
@@ -381,7 +407,7 @@ object GenSQL extends Phase("generate-sql"):
                 save.sourceLocation
               )
           case None =>
-            statements ++= appendToNewTableSQL(a, fullTableName, baseSQL.sql)
+            statements ++= appendToNewTableSQL(a, fullTableName, declaredCols, baseSQL.sql)
       case a: AppendTo if a.isForFile && context.dbType == DBType.DuckDB =>
         val baseSQL    = GenSQL.generateSQLFromRelation(save.inputRelation, addHeader = false)
         val targetPath = context.dataFilePath(a.targetName)

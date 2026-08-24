@@ -89,6 +89,27 @@ case class GenericTyperError(message: String, span: Span) extends TyperError
   * @param span
   *   the span of the type definition in the unit receiving the warning
   */
+/**
+  * Deprecation warning for table shapes declared with the `type` keyword (#1998). A `type` whose
+  * body carries columns and resolves a table reference declares a stored relation, whose canonical
+  * spelling is `table <name> [in <catalog>.<schema>] = {...}`; `type` remains for method interfaces
+  * and aliases
+  *
+  * @param binding
+  *   the `catalog.schema` binding of the definition, when it carries one
+  * @param span
+  *   the span of the table reference that resolved through the `type` definition
+  */
+case class TableShapeDeclaredAsType(typeName: String, binding: Option[String], span: Span)
+    extends TyperError:
+  override def severity: TyperError.Severity = TyperError.Severity.Warning
+
+  def message: String =
+    val inClause = binding.map(b => s" in ${b}").getOrElse("")
+    s"Table shape '${typeName}' is declared with 'type'. Declare stored relations as " +
+      s"'table ${typeName}${inClause} = {...}'; relation-shaped 'type' declarations " +
+      s"will be removed in a future release"
+
 case class DuplicateTypeDefinition(
     typeName: String,
     thisBinding: Option[String],

@@ -1,6 +1,6 @@
 package cdp
 
-type td_sdk_log = {
+table td_sdk_log = {
   td_client_id: string
   td_host: string
   td_path: string
@@ -101,7 +101,7 @@ type url in duckdb extends string = {
 }
 
 
-type weblog_users = {
+table weblog_users = {
   td_client_id: string
   name: string
   age: int
@@ -113,21 +113,21 @@ type weblog_users = {
   time: int
 }
 
-type weblog_user_attr3 = {
+table weblog_user_attr3 = {
   td_client_id: string
   age: int
   very_long_attr_for_test_cdp_465: string
   time: int
 }
 
-type weblog_user_attr2 = {
+table weblog_user_attr2 = {
   td_client_id: string
   td_language: string
   td_os: string
   time: int
 }
 
-type weblog_users_first_purchased_at = {
+table weblog_users_first_purchased_at = {
   naid: string
   first_purchased_at: int
   time: int

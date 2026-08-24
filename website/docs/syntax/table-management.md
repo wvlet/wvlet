@@ -31,6 +31,49 @@ table users = {
 }
 ```
 
+### Binding a Declaration to a Location
+
+`in <catalog>.<schema>` binds a declaration to the table's location, so references type-check
+and compile to qualified scans without a live catalog connection, and writes land at the bound
+location (see [Data Models](data-models.md) for the resolution rules):
+
+```wvlet
+table events in mydb.analytics = {
+  id: int
+  label: string
+}
+
+-- Reads and writes both resolve to mydb.analytics.events
+from analytics.events
+create table analytics.events if not exists
+```
+
+This is the form [`wvlet catalog import`](../usage/catalog-import.md) generates for every table
+of your database.
+
+### Row Methods
+
+A declaration body can also carry `def` members — reusable expressions over the table's
+columns — so behavior travels with the table declaration. Methods resolve through relations
+annotated with the declared type:
+
+```wvlet
+table users = {
+  id: int
+  name: string
+  deleted_at: timestamp
+
+  def is_active: boolean = deleted_at is null
+}
+
+model all_users: users = {
+  from users
+}
+
+from all_users
+where _.is_active
+```
+
 ## Creating and Dropping Tables
 
 The `create table` action materializes a declared shape in the target database. It takes

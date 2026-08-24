@@ -1,0 +1,58 @@
+-- Schema-bound table declarations (#1881, #1998): `table <name> in <catalog>.<schema>` binds a
+-- declaration to a table location so that references type-check without a live catalog
+-- connection, compile to qualified table scans, and writes land at the bound location
+
+create schema binding_test if not exists
+
+from [[1, 'apple'], [2, 'banana']] as t(id, name)
+save to binding_test.bound_orders
+
+table bound_orders in memory.binding_test = {
+  id: int
+  name: string
+}
+
+-- A schema-qualified reference resolves through the bound declaration
+from binding_test.bound_orders
+test _.size should be 2
+test _.columns should contain 'name'
+
+-- A catalog-qualified reference also matches the binding
+from memory.binding_test.bound_orders
+where id = 1
+test _.size should be 1
+
+-- A declaration bound to the default catalog and schema resolves bare references
+table bound_products in memory.main = {
+  id: int
+  name: string
+}
+
+from [[1, 'pen']] as p(id, name)
+save to bound_products
+
+from bound_products
+test _.size should be 1
+test _.columns should contain 'id'
+
+-- A qualified write matching the binding auto-creates the table at the bound location
+-- from the declared columns (#1998)
+table bound_events in memory.binding_test = {
+  id: int
+  label: string
+}
+
+from [[10, 'click'], [11, 'view']] as e(id, label)
+append to binding_test.bound_events
+
+from binding_test.bound_events
+test _.size should be 2
+test _.columns should contain 'label'
+
+-- `create table` on a bound declaration targets the bound location, so re-creating
+-- the existing table is a no-op with `if not exists`
+create table binding_test.bound_events if not exists
+
+from memory.binding_test.bound_events
+where id = 10
+test _.size should be 1

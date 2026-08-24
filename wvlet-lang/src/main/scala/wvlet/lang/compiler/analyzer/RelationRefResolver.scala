@@ -22,6 +22,7 @@ import wvlet.lang.compiler.RelationAliasSymbolInfo
 import wvlet.lang.compiler.Symbol
 import wvlet.lang.compiler.ValSymbolInfo
 import wvlet.lang.compiler.ContextUtil.*
+import wvlet.lang.compiler.typer.TableShapeDeclaredAsType
 import wvlet.lang.model.DataType
 import wvlet.lang.model.DataType.SchemaType
 import wvlet.lang.model.RelationType
@@ -128,10 +129,12 @@ object RelationRefResolver extends ContextLogSupport:
               tableBindingOf(sym) match
                 case Some(binding) if bindingMatches(qualifier, binding, context) =>
                   context.logTrace(s"Found a table type for ${leaf} bound to ${binding}")
+                  warnTypeSpelledTableShape(sym, leaf, ref, context)
                   val tableName = TableName(Some(binding.catalog), Some(binding.schema), leaf)
                   Some(TableScan(tableName, tpe, tpe.fields, ref.span))
                 case None if qualifier.isEmpty =>
                   context.logTrace(s"Found a table type for ${leaf}: ${tpe}")
+                  warnTypeSpelledTableShape(sym, leaf, ref, context)
                   Some(TableScan(TableName(None, None, leaf), tpe, tpe.fields, ref.span))
                 case _ =>
                   // The reference qualifier does not point to the type's bound location;
@@ -140,6 +143,25 @@ object RelationRefResolver extends ContextLogSupport:
             case _ =>
               None
         }
+
+  /**
+    * Deprecation warning when a table reference resolves through a relation-shaped `type`
+    * definition (#1998): `table <name> [in <catalog>.<schema>] = {...}` is the canonical spelling
+    * for stored-relation declarations. Method-only `type` definitions (interfaces) never trigger
+    * this — only bodies that carry columns do
+    */
+  private def warnTypeSpelledTableShape(
+      sym: Symbol,
+      leaf: String,
+      ref: TableRef,
+      context: Context
+  ): Unit =
+    sym.tree match
+      case t: TypeDef if !t.isTableDef && t.elems.exists(_.isInstanceOf[FieldDef]) =>
+        context.addTyperError(
+          TableShapeDeclaredAsType(leaf, t.tableBinding.map((c, s) => s"${c}.${s}"), ref.span)
+        )
+      case _ =>
 
   /**
     * The table location that a type is bound to via `type <name> in <catalog>.<schema>`.
@@ -161,20 +183,7 @@ object RelationRefResolver extends ContextLogSupport:
       binding: TableBinding,
       context: Context
   ): Boolean =
-    // Catalog/schema names are matched case-insensitively, following SQL identifier semantics
-    def sameName(a: String, b: String): Boolean = a.equalsIgnoreCase(b)
-    qualifier match
-      case Nil =>
-        // A bare reference resolves through a bound type only when the binding points to the
-        // context's current catalog/schema, mirroring SQL search-path behavior
-        sameName(binding.schema, context.defaultSchema) &&
-        sameName(binding.catalog, context.catalog.catalogName)
-      case schema :: Nil =>
-        sameName(schema, binding.schema)
-      case catalog :: schema :: Nil =>
-        sameName(catalog, binding.catalog) && sameName(schema, binding.schema)
-      case _ =>
-        false
+    TableBindings.qualifierMatches(qualifier, (binding.catalog, binding.schema))(using context)
 
   /**
     * Resolve `from <connector>.<table>`, `from <connector>.<schema>.<table>`, or `from

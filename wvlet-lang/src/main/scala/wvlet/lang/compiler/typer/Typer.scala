@@ -24,6 +24,7 @@ import wvlet.lang.model.expr.NameExpr
 import wvlet.lang.compiler.analyzer.AggregationResolver
 import wvlet.lang.compiler.analyzer.FunctionInliner
 import wvlet.lang.compiler.analyzer.RelationRefResolver
+import wvlet.lang.compiler.analyzer.TableBindings
 import wvlet.lang.compiler.transform.FlowParams
 import wvlet.lang.model.expr.ArithmeticBinaryExpr
 import wvlet.lang.model.expr.ConditionalExpression
@@ -82,25 +83,6 @@ object Typer extends Phase("typer") with LogSupport:
         case _ =>
           false
     )
-
-  /**
-    * Columns of the `table` shape declaration registered for the given table name, if any. Used to
-    * fill `create table` actions and to auto-create declared tables on `append to`
-    */
-  def declaredTableColumns(tableName: String)(using ctx: Context): List[ColumnDef] = ctx
-    .findSymbolByName(Name.typeName(tableName))
-    .map(_.tree)
-    .collect { case td: TypeDef =>
-      td.elems
-        .collect { case f: FieldDef =>
-          ColumnDef(
-            UnquotedIdentifier(f.name.name, f.span),
-            DataTypeParser.parse(f.fieldType.fullName),
-            f.span
-          )
-        }
-    }
-    .getOrElse(Nil)
 
   override def run(unit: CompilationUnit, context: Context): CompilationUnit =
     trace(s"Running new typer on ${unit.sourceFile.fileName}")
@@ -347,18 +329,31 @@ object Typer extends Phase("typer") with LogSupport:
       // (e.g. Trino's CREATE TABLE ... WITH (properties)), which are left as parsed
       case c: CreateTable if c.tableElems.isEmpty && !ctx.compilationUnit.sourceFile.isSQL =>
         markNamespaceRef(c.table)
-        val cols = Typer.declaredTableColumns(c.table.leafName)
-        if cols.isEmpty then
-          throw StatusCode
-            .TABLE_NOT_FOUND
-            .newException(
-              s"No table declaration found for 'create table ${c.table.fullName}'. " +
-                s"Declare its shape first: table ${c.table.leafName} = { <column>: <type>, ... }",
-              c.sourceLocation
-            )
-        val typed = c.copy(tableElems = cols)
-        typed.copyMetadataFrom(c)
-        typeNode(typed)
+        TableBindings.declarationFor(c.table.fullName) match
+          case Some(decl) =>
+            // A declaration bound with `in <catalog>.<schema>` qualifies the create target, so
+            // the created table lands where reads of the declared name resolve
+            val tableExpr = decl.boundName.map(_.toExpr).getOrElse(c.table)
+            markNamespaceRef(tableExpr)
+            val typed = c.copy(table = tableExpr, tableElems = decl.columns)
+            typed.copyMetadataFrom(c)
+            typeNode(typed)
+          case None =>
+            val hint = TableBindings
+              .declaredBindingOf(c.table.leafName)
+              .map { (catalog, schema) =>
+                s"The declaration of '${c.table.leafName}' is bound to ${catalog}.${schema}; " +
+                  s"reference it as ${catalog}.${schema}.${c.table.leafName}"
+              }
+              .getOrElse(
+                s"Declare its shape first: table ${c.table.leafName} = { <column>: <type>, ... }"
+              )
+            throw StatusCode
+              .TABLE_NOT_FOUND
+              .newException(
+                s"No table declaration found for 'create table ${c.table.fullName}'. ${hint}",
+                c.sourceLocation
+              )
       case d: DDL =>
         // DDL statement names are catalog references, not value expressions
         d match

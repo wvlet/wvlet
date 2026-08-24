@@ -43,19 +43,19 @@ class StaticCatalogExporterTest extends UniTest:
 
   private val customers = tableDef("sales", "customers", "customer_id" -> "bigint")
 
-  test("generate schema-bound type definitions in deterministic order") {
+  test("generate schema-bound table declarations in deterministic order") {
     // Tables are sorted by name regardless of the input order
     val source = StaticCatalogExporter.generateSchemaSource(
       "mydb",
       "sales",
       List(orders, customers)
     )
-    source shouldContain "type customers in mydb.sales = {"
-    source shouldContain "type orders in mydb.sales = {"
+    source shouldContain "table customers in mydb.sales = {"
+    source shouldContain "table orders in mydb.sales = {"
     source shouldContain "  order_id: long"
     source shouldContain "  price: decimal[10,2]"
     source shouldContain StaticCatalogExporter.generatedFileHeader
-    source.indexOf("type customers") < source.indexOf("type orders") shouldBe true
+    source.indexOf("table customers") < source.indexOf("table orders") shouldBe true
 
     val regenerated = StaticCatalogExporter.generateSchemaSource(
       "mydb",
@@ -68,7 +68,7 @@ class StaticCatalogExporterTest extends UniTest:
   test("backquote names that are not plain identifiers") {
     val weird  = tableDef("sales", "weird-table", "select" -> "string", "1col" -> "int")
     val source = StaticCatalogExporter.generateSchemaSource("mydb", "sales", List(weird))
-    source shouldContain "type `weird-table` in mydb.sales = {"
+    source shouldContain "table `weird-table` in mydb.sales = {"
     source shouldContain "`select`: string"
     source shouldContain "`1col`: int"
   }
@@ -92,14 +92,14 @@ class StaticCatalogExporterTest extends UniTest:
     val bad    = tableDef("sales", "bad", "a`b" -> "int")
     val source = StaticCatalogExporter.generateSchemaSource("mydb", "sales", List(bad, orders))
     source shouldNotContain "a`b"
-    source shouldContain "type orders"
+    source shouldContain "table orders"
   }
 
   test("skip tables without columns") {
     val empty  = TableDef(TableName(Some("mydb"), Some("sales"), "empty_table"), Nil)
     val source = StaticCatalogExporter.generateSchemaSource("mydb", "sales", List(empty, orders))
     source shouldNotContain "empty_table"
-    source shouldContain "type orders"
+    source shouldContain "table orders"
   }
 
   test("generated source compiles and resolves qualified references offline") {
