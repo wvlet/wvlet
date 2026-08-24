@@ -1,0 +1,24 @@
+-- `table <name> like <source>` (#1995): declaration-side shape reuse, so a shape is
+-- written exactly once and all actions/auto-creation work unchanged
+
+table tl_users = {
+  id: int
+  name: string
+}
+
+table tl_users_backup like tl_users
+
+-- The like-declared table auto-creates from the source's columns on a write
+from [[1, 'alice'], [2, 'bob']] as t(id, name)
+append to tl_users_backup
+
+from tl_users_backup
+test _.size should be 2
+test _.columns should contain 'name'
+
+-- `create table` reads the columns through the like chain as well
+create table tl_users_backup if not exists
+
+from tl_users_backup
+where id = 1
+test _.size should be 1

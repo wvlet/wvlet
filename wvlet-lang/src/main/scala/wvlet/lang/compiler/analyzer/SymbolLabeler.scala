@@ -33,6 +33,7 @@ import wvlet.lang.compiler.TermName
 import wvlet.lang.compiler.TypeSymbol
 import wvlet.lang.compiler.TypeSymbolInfo
 import wvlet.lang.compiler.typer.DuplicateTypeDefinition
+import wvlet.lang.compiler.typer.GenericTyperError
 import wvlet.lang.compiler.typer.MethodInterfaceDeclaredAsType
 import wvlet.lang.compiler.typer.ModelDefCompleter
 import wvlet.lang.model.DataType.NamedType
@@ -488,14 +489,53 @@ object SymbolLabeler extends Phase("symbol-labeler"):
         ft
       }
 
-    val columns = t
-      .elems
-      .collect { case v: FieldDef =>
-        // Resolve simple primitive types earlier.
-        // TODO: DataType.parse(typeName) for complex types, including UnknownTypes
-        val dt = DataType.parse(v.fieldType.fullName, v.params)
-        NamedType(v.name, dt)
+    // `table <name> like <source>` (#1995) copies the source declaration's columns. This runs
+    // from a completer after all units are labeled, so forcing the source's completion here
+    // resolves cross-unit references; a completion already in progress signals a reference
+    // cycle (`table a like b` + `table b like a`), which resolves to no columns with an error
+    val likeColumns: List[NamedType] = t
+      .likeSource
+      .toList
+      .flatMap { src =>
+        val srcName = Name.typeName(src.leafName)
+        ctx
+          .scope
+          .lookupSymbol(srcName)
+          .orElse(ctx.findSymbolByName(srcName))
+          .filterNot(_.isCompleting) match
+          case Some(srcSym) =>
+            srcSym.symbolInfo.dataType match
+              case s: SchemaType =>
+                s.fields
+              case _ =>
+                ctx.addTyperError(
+                  GenericTyperError(
+                    s"'${src.leafName}' referenced by 'table ${typeName.name} like " +
+                      s"${src.leafName}' is not a table declaration",
+                    t.span
+                  )
+                )
+                Nil
+          case None =>
+            ctx.addTyperError(
+              GenericTyperError(
+                s"Unknown table declaration '${src.leafName}' referenced by " +
+                  s"'table ${typeName.name} like ${src.leafName}'",
+                t.span
+              )
+            )
+            Nil
       }
+
+    val columns =
+      likeColumns ++
+        t.elems
+          .collect { case v: FieldDef =>
+            // Resolve simple primitive types earlier.
+            // TODO: DataType.parse(typeName) for complex types, including UnknownTypes
+            val dt = DataType.parse(v.fieldType.fullName, v.params)
+            NamedType(v.name, dt)
+          }
 
     // The schema parent is only the extended type (None when the type has no parent); the
     // owner symbol falls back to the enclosing package

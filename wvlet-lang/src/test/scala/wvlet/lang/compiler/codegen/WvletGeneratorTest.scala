@@ -82,6 +82,26 @@ class WvletGeneratorTest extends UniTest:
     print(printed) shouldContain "model rm_all: rm_users"
   }
 
+  test("should round-trip schema locations, schema options, and cascade drops") {
+    val printed = print(
+      """create schema sales in 's3://bucket/sales/' if not exists with owner: 'etl'
+        |drop schema staging if exists with cascade: true""".stripMargin
+    )
+    printed shouldContain
+      "create schema sales in 's3://bucket/sales/' if not exists with owner: 'etl'"
+    printed shouldContain "drop schema staging if exists with cascade: true"
+    print(printed) shouldContain "drop schema staging if exists with cascade: true"
+  }
+
+  test("should round-trip a like-based table declaration") {
+    val printed = print("""table users = {
+        |  id: int
+        |}
+        |table users_backup like users""".stripMargin)
+    printed shouldContain "table users_backup like users"
+    print(printed) shouldContain "table users_backup like users"
+  }
+
   test("should round-trip a trait declaration as `trait`, not `type`") {
     val printed = print("""trait ip_address in duckdb extends string = {
         |  def country_name: string = sql"'N/A'"

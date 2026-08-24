@@ -223,7 +223,8 @@ Native statements for schemas, tables, and views — see
 |-----------|-------------|
 | `table users = { id: int, ... }` | Declare a table shape (side-effect-free; used for type checking and auto-creation) |
 | `trait ip_address extends string = { def ... }` | Declare a method interface attached to a type — see [Data Models](data-models.md) |
-| `create schema s [if not exists]` / `drop schema s [if exists]` | Schema lifecycle |
+| `table backup like users` | Declare a second table with the same columns |
+| `create schema s [in 'uri'] [if not exists] [with k: v]` / `drop schema s [if exists] [with cascade: true]` | Schema lifecycle, locations, and engine options |
 | `create table t` / `... if not exists` / `create or replace table t` | SQL-equivalent table creation from a declaration |
 | `drop table t [if exists]` / `truncate t` | Remove a table / delete all rows |
 | `reshape t { add c: type / rename a as b / exclude c }` | Evolve a table's columns |

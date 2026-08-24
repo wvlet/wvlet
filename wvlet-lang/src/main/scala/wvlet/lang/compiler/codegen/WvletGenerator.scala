@@ -165,13 +165,20 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
     d match
       case c: CreateSchema =>
         code(c) {
+          val opts =
+            if c.options.isEmpty then
+              None
+            else
+              Some(wl("with", cl(c.options.map(o => expr(o)))))
           group(
             wl(
               "create schema",
               expr(c.schema),
+              c.location.map(l => wl("in", expr(l))),
               Option.when(c.ifNotExists) {
                 "if not exists"
-              }
+              },
+              opts
             )
           )
         }
@@ -183,6 +190,9 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
               expr(s.schema),
               Option.when(s.ifExists) {
                 "if exists"
+              },
+              Option.when(s.cascade) {
+                "with cascade: true"
               }
             )
           )
@@ -795,8 +805,13 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
               "trait"
             else
               "type"
-          group(wl(keyword, text(t.name.name) + typeParams, defContexts, parent, sep)) +
-            indentedBrace(concat(t.elems.map(e => group(expr(e))), linebreak))
+          t.likeSource match
+            case Some(source) =>
+              // `table <name> like <source>` carries no body of its own
+              group(wl(keyword, text(t.name.name), defContexts, "like", expr(source)))
+            case None =>
+              group(wl(keyword, text(t.name.name) + typeParams, defContexts, parent, sep)) +
+                indentedBrace(concat(t.elems.map(e => group(expr(e))), linebreak))
         case p: PartialQueryDef =>
           val params =
             if p.params.isEmpty then

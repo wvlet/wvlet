@@ -16,6 +16,23 @@ drop schema staging
 drop schema staging if exists
 ```
 
+A schema can carry a self-describing storage location with `in '<uri>'`, and engine
+properties with `with key: value` options. Both render as schema properties on engines that
+support them (e.g. Trino's `WITH (location = ...)`) and are rejected with a clear error on
+engines that don't (e.g. DuckDB):
+
+```wvlet
+create schema sales in 's3://bucket/sales/' if not exists
+create schema sales in 's3://bucket/sales/' with owner: 'etl'
+```
+
+To drop a schema together with the objects it contains, pass `cascade: true` — an engine
+modifier riding in an option, keeping the keyword surface flat:
+
+```wvlet
+drop schema staging if exists with cascade: true
+```
+
 ## Declaring a Table Shape
 
 A `table` declaration describes a table's columns using the same `name: type` notation as
@@ -29,6 +46,20 @@ table users = {
   name: string
   created_at: timestamp
 }
+```
+
+### Reusing a Shape with `like`
+
+`table <name> like <source>` declares a second table with the same columns as an existing
+declaration, so a shape is written exactly once. Everything that works for a normal
+declaration — type checking, `create table`, automatic creation on write — reads its columns
+through the `like` reference:
+
+```wvlet
+table users_backup like users
+
+from users
+append to users_backup   -- auto-creates users_backup with users' columns if missing
 ```
 
 ### Binding a Declaration to a Location

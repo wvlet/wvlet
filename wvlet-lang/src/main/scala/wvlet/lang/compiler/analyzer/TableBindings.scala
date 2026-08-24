@@ -108,14 +108,29 @@ object TableBindings:
       td
     }
 
-  private def declaredColumns(td: TypeDef): List[ColumnDef] = td
-    .elems
-    .collect { case f: FieldDef =>
-      ColumnDef(
-        UnquotedIdentifier(f.name.name, f.span),
-        DataTypeParser.parse(f.fieldType.fullName),
-        f.span
-      )
-    }
+  /**
+    * The declared columns of a table declaration, following `table <name> like <source>` chains
+    * (#1995) so like-declared tables auto-create with the source's columns. A reference cycle or an
+    * unknown source resolves to no columns (SymbolLabeler reports the error)
+    */
+  private def declaredColumns(td: TypeDef)(using ctx: Context): List[ColumnDef] =
+    def loop(current: TypeDef, visited: Set[String]): List[ColumnDef] =
+      val own = current
+        .elems
+        .collect { case f: FieldDef =>
+          ColumnDef(
+            UnquotedIdentifier(f.name.name, f.span),
+            DataTypeParser.parse(f.fieldType.fullName),
+            f.span
+          )
+        }
+      current.likeSource match
+        case Some(src) if !visited.contains(src.leafName) =>
+          declarationOf(src.leafName)
+            .map(srcTd => loop(srcTd, visited + src.leafName) ++ own)
+            .getOrElse(own)
+        case _ =>
+          own
+    loop(td, Set(td.name.name))
 
 end TableBindings
