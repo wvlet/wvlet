@@ -759,19 +759,21 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
               text(name) + ": " + v.dataType.typeName.toString
           group(wl("val", nameAndType, "=", body))
         case m: ModelDef =>
-          group(
-            wl(
-              "model",
-              text(m.name.fullName) + {
-                if m.params.isEmpty then
-                  None
-                else
-                  Some(paren(cl(m.params.map(x => expr(x)))))
-              },
-              m.givenRelationType.map(t => wl(": ", t.typeName)),
-              "= {"
-            )
-          ) + nest(linebreak + relation(m.child)) + linebreak + "}" + linebreak
+          val modelName =
+            text(m.name.fullName) + {
+              if m.params.isEmpty then
+                None
+              else
+                Some(paren(cl(m.params.map(x => expr(x)))))
+            }
+          // The type annotation attaches to the name (`model m: t = ...`). TypeName is not a
+          // Doc-convertible value, so its name string must be passed explicitly
+          val nameAndType = m
+            .givenRelationType
+            .map(t => modelName + ": " + t.typeName.name)
+            .getOrElse(modelName)
+          group(wl("model", nameAndType, "= {")) + nest(linebreak + relation(m.child)) + linebreak +
+            "}" + linebreak
         case t: TypeDef =>
           val typeParams =
             if t.params.isEmpty then

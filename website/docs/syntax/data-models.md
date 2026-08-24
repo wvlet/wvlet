@@ -78,11 +78,11 @@ Instead of writing these declarations by hand, you can generate them from a live
 #### `table` vs `type`
 
 Use `table` for anything that denotes a stored relation, and `type` for reusable types that make
-no claim about storage: scalar domains with methods (e.g. `type ip_address extends string =
-{ def country_name: string = ... }`), engine-dialect method extensions (`type any in duckdb =
-{ ... }`), and abstract row shapes used only as column or parameter types. On a `type` or `def`,
-`in <name>` always means an engine dialect; on a `table` declaration it always means a
-`<catalog>.<schema>` storage location.
+no claim about storage: scalar domains with methods (e.g. `type ip_address extends string`
+with `def` members), engine-dialect method extensions (e.g. `type any in duckdb`), and abstract
+row shapes used only as column or parameter types. On a `type` or `def`, `in <name>` always
+means an engine dialect; on a `table` declaration it always means a `<catalog>.<schema>`
+storage location.
 
 Declaring a table's shape with `type` (the pre-2026 spelling `type orders in mydb.sales = ...`)
 still resolves, but reports a deprecation warning steering to the `table` spelling, and will be

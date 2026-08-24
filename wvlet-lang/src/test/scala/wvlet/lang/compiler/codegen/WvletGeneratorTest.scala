@@ -74,6 +74,14 @@ class WvletGeneratorTest extends UniTest:
     print(printed) shouldContain "table users"
   }
 
+  test("should round-trip a model with a type annotation") {
+    val printed = print("""model rm_all: rm_users = {
+        |  from rm_users
+        |}""".stripMargin)
+    printed shouldContain "model rm_all: rm_users"
+    print(printed) shouldContain "model rm_all: rm_users"
+  }
+
   test("should round-trip a table declaration with an `in` binding") {
     val printed = print("""table events in mydb.analytics = {
         |  id: int
