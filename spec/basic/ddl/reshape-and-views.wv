@@ -28,6 +28,19 @@ reshape ddl2_items {
 from ddl2_items
 test _.size should be 2
 
+-- Cast: change a column's type in place (#1996); re-running the same cast is a no-op
+reshape ddl2_items {
+  cast id as long
+}
+
+from ddl2_items
+where id = 1
+test _.size should be 1
+
+reshape ddl2_items {
+  cast id as long
+}
+
 -- Renaming changes identity, not shape: a direct statement, not a reshape operation
 rename table ddl2_items to ddl2_products
 

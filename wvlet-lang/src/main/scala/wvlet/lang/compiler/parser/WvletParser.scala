@@ -1036,15 +1036,27 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
           val colName = identifier()
           ops += DropColumnOp(colName, span = spanFrom(tk))
           nextOp()
+        case WvletToken.IDENTIFIER if tk.str == "cast" =>
+          // `cast <column> as <type>` (#1996): change a column's type in place. Casting to the
+          // type a column already has is a no-op on the engine side, so the operation is
+          // retry-safe like the other reshape ops
+          consume(WvletToken.IDENTIFIER)
+          val colName = identifier()
+          consume(WvletToken.AS)
+          val tpe = dataType()
+          ops += AlterColumnSetDataTypeOp(colName, tpe, span = spanFrom(tk))
+          nextOp()
         case WvletToken.R_BRACE =>
         // end of block
         case _ =>
           throw StatusCode
             .SYNTAX_ERROR
             .newException(
-              s"Invalid reshape operation. Expected 'add <column>: <type>', 'rename <column> as <name>', or 'exclude <column>'",
+              s"Invalid reshape operation. Expected 'add <column>: <type>', " +
+                s"'rename <column> as <name>', 'exclude <column>', or 'cast <column> as <type>'",
               tk.sourceLocation
             )
+      end match
     end nextOp
 
     nextOp()
