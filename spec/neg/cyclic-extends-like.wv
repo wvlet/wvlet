@@ -1,0 +1,11 @@
+-- A reference cycle closed across `extends` and `like` (#2017): completing cyc_ext
+-- forces cyc_like, whose `like` source is cyc_ext again
+
+table cyc_ext extends cyc_like = {
+  a: int
+}
+
+table cyc_like like cyc_ext
+
+from cyc_ext
+select a

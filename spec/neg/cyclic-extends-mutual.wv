@@ -1,0 +1,13 @@
+-- A cycle in the `extends` chain must be reported as a compile-time error (#2017),
+-- not silently resolve the mixin columns to empty
+
+table cyc_a extends cyc_b = {
+  a: int
+}
+
+table cyc_b extends cyc_a = {
+  b: int
+}
+
+from cyc_a
+select a
