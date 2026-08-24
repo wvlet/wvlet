@@ -16,6 +16,7 @@ package wvlet.lang.compiler.lsp
 import wvlet.lang.compiler.CompilationUnit
 import wvlet.lang.compiler.Compiler
 import wvlet.lang.compiler.parser.ParserPhase
+import wvlet.lang.compiler.parser.WvletParser
 import wvlet.lang.compiler.parser.WvletToken
 import wvlet.lang.compiler.typer.BuiltinFunctions
 import wvlet.lang.model.SyntaxTreeNode
@@ -63,13 +64,22 @@ object CompletionItemKind:
 object CompletionProvider:
 
   /**
-    * Keyword candidates. These are always available regardless of the cursor position.
+    * Keyword candidates. These are always available regardless of the cursor position. Soft
+    * statement heads (`table`, `trait`, `reshape`, #1999) are identifier tokens to the scanner, so
+    * they are appended explicitly — WvletToken.keywords cannot see them
     */
   def keywordItems: List[CompletionItem] =
-    WvletToken
-      .keywords
-      .map(k => CompletionItem(k.str, CompletionItemKind.Keyword, "keyword"))
+    val hardKeywords =
+      WvletToken
+        .keywords
+        .map(k => CompletionItem(k.str, CompletionItemKind.Keyword, "keyword"))
+        .toList
+    val softKeywords = WvletParser
+      .statementHeadSoftKeywords
       .toList
+      .sorted
+      .map(k => CompletionItem(k, CompletionItemKind.Keyword, "keyword"))
+    hardKeywords ++ softKeywords
 
   /**
     * Find the innermost syntax tree node whose span contains the given character offset.

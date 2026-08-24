@@ -31,8 +31,14 @@ class CompletionProviderTest extends UniTest:
     labels shouldContain "from"
     labels shouldContain "select"
     labels shouldContain "where"
+    // Soft statement heads complete like keywords even though the scanner treats them as
+    // identifiers (#1999)
+    labels shouldContain "table"
+    labels shouldContain "trait"
+    labels shouldContain "reshape"
     // Keywords carry the Keyword kind
     items.find(_.label == "from").map(_.kind) shouldBe Some(CompletionItemKind.Keyword)
+    items.find(_.label == "table").map(_.kind) shouldBe Some(CompletionItemKind.Keyword)
 
   test("should complete in-file model names"):
     val src =
