@@ -1,6 +1,6 @@
 package wvlet.standard
 
-type string = {
+trait string = {
   def to_int: int = sql"cast(${this} as bigint)"
   def to_long: long = sql"cast(${this} as bigint)"
   def to_float: float = sql"cast(${this} as double)"
@@ -54,7 +54,7 @@ type string = {
 }
 
 -- Using query engine specific dialects
-type string in duckdb = {
+trait string in duckdb = {
   def regexp_like(pattern:string): boolean = sql"regexp_matches(${this},${pattern})"
   -- Replace every substring matching the regular expression with the replacement
   def regexp_replace(pattern:string, replacement:string): string = sql"regexp_replace(${this},${pattern},${replacement},'g')"
@@ -72,7 +72,7 @@ type string in duckdb = {
   def json_extract_string(path:string): string = sql"json_extract_string(${this},${path})"
 }
 
-type string in trino = {
+trait string in trino = {
   def regexp_like(pattern:string): boolean = sql"regexp_like(${this},${pattern})"
   -- Replace every substring matching the regular expression with the replacement
   def regexp_replace(pattern:string, replacement:string): string = sql"regexp_replace(${this},${pattern},${replacement})"
@@ -90,7 +90,7 @@ type string in trino = {
   def json_extract_string(path:string): string = sql"json_extract_scalar(${this},${path})"
 }
 
-type string in hive = {
+trait string in hive = {
   def regexp_like(pattern:string): boolean = sql"${this} rlike ${pattern}"
   -- Replace every substring matching the regular expression with the replacement
   def regexp_replace(pattern:string, replacement:string): string = sql"regexp_replace(${this},${pattern},${replacement})"
@@ -112,7 +112,7 @@ type string in hive = {
   def json_extract_string(path:string): string = sql"get_json_object(${this},${path})"
 }
 
-type string in snowflake = {
+trait string in snowflake = {
   -- Snowflake's REGEXP_LIKE matches the entire string, so use REGEXP_INSTR for the
   -- partial-match semantics of the other engines
   def regexp_like(pattern:string): boolean = sql"regexp_instr(${this},${pattern}) > 0"
@@ -139,7 +139,7 @@ type string in snowflake = {
   def json_extract_string(path:string): string = sql"json_extract_path_text(${this},${path})"
 }
 
-type string in bigquery = {
+trait string in bigquery = {
   -- BigQuery cast type names differ from the other engines
   def to_int: int = sql"cast(${this} as int64)"
   def to_long: long = sql"cast(${this} as int64)"

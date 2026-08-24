@@ -1,6 +1,6 @@
 package wvlet.standard
 
-type date = {
+trait date = {
   def extract(field:string): int = sql"extract(${field} from ${this})"
 
   def year: int = sql"extract(year from ${this})"
@@ -22,7 +22,7 @@ type date = {
   def between(l:date, r:date): boolean = sql"${this} between ${l} and ${r}"
 }
 
-type date in duckdb = {
+trait date in duckdb = {
   -- ISO day of week (1 = Monday, 7 = Sunday) and day of year
   def day_of_week: int = sql"extract(isodow from ${this})"
   def day_of_year: int = sql"extract(dayofyear from ${this})"
@@ -38,7 +38,7 @@ type date in duckdb = {
   def last_day: date = sql"last_day(${this})"
 }
 
-type date in trino = {
+trait date in trino = {
   -- ISO day of week (1 = Monday, 7 = Sunday) and day of year
   def day_of_week: int = sql"day_of_week(${this})"
   def day_of_year: int = sql"day_of_year(${this})"
@@ -54,7 +54,7 @@ type date in trino = {
   def last_day: date = sql"last_day_of_month(${this})"
 }
 
-type date in hive = {
+trait date in hive = {
   def week: int = sql"weekofyear(${this})"
   def quarter: int = sql"quarter(${this})"
 
@@ -80,7 +80,7 @@ type date in hive = {
   def last_day: date = sql"cast(last_day(${this}) as date)"
 }
 
-type date in snowflake = {
+trait date in snowflake = {
   -- ISO day of week (1 = Monday, 7 = Sunday) and day of year
   def day_of_week: int = sql"dayofweekiso(${this})"
   def day_of_year: int = sql"dayofyear(${this})"
@@ -100,7 +100,7 @@ type date in snowflake = {
   def last_day: date = sql"last_day(${this})"
 }
 
-type date in bigquery = {
+trait date in bigquery = {
   -- ISO day of week (1 = Monday, 7 = Sunday; BigQuery's DAYOFWEEK starts at 1 = Sunday)
   def day_of_week: int = sql"mod(extract(dayofweek from ${this}) + 5, 7) + 1"
   def day_of_year: int = sql"extract(dayofyear from ${this})"

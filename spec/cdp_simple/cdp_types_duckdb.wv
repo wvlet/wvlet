@@ -39,7 +39,7 @@ table td_sdk_log = {
 
 }
 
-type ip_address in duckdb extends string = {
+trait ip_address in duckdb extends string = {
   def country_name: string = sql"'N/A'"
   def city_name: string = sql"'N/A'"
   def city_latitude: string = sql"'N/A'"
@@ -54,7 +54,7 @@ type ip_address in duckdb extends string = {
   def domain: string = sql"'N/A'"
 }
 
-type user_agent in duckdb extends string = {
+trait user_agent in duckdb extends string = {
   def category: string = sql"'N/A'"
   def name: string = sql"'N/A'"
   def os: string = sql"'N/A'"
@@ -63,7 +63,7 @@ type user_agent in duckdb extends string = {
   def version: string = sql"'N/A'"
 }
 
-type url in duckdb extends string = {
+trait url in duckdb extends string = {
   def utm_campaign: string = sql"'N/A'"
   def utm_medium: string = sql"'N/A'"
   def utm_source: string = sql"'N/A'"

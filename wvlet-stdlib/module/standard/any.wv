@@ -1,6 +1,6 @@
 package wvlet.standard
 
-type any = {
+trait any = {
   def to_string: string = sql"cast(${this} as varchar)"
   def to_int: int = sql"cast(${this} as bigint)"
   def to_int in bigquery: int = sql"cast(${this} as int64)"
@@ -34,20 +34,20 @@ type any = {
   -- TODO Support generic type cast: def cast_as[A]: A = sql"cast(${this} as ${type[A]})"
 }
 
-type any in duckdb = {
+trait any in duckdb = {
   def to_json: json = sql"to_json(${this})"
 }
 
-type any in trino = {
+trait any in trino = {
   def to_json: json = sql"cast(${this} as json)"
 }
 
-type any in hive = {
+trait any in hive = {
   -- Hive rejects `varchar` without a length in casts; its string type is `string`
   def to_string: string = sql"cast(${this} as string)"
 }
 
-type any in bigquery = {
+trait any in bigquery = {
   -- BigQuery's string type is `string`, not `varchar`
   def to_string: string = sql"cast(${this} as string)"
 }

@@ -71,7 +71,10 @@ case class TypeDef(
     span: Span,
     // true for `table <name> [in ...] = { ... }` table-shape declarations, which share the
     // TypeDef machinery but print back as `table` and can seed `create table <name>` actions
-    isTableDef: Boolean = false
+    isTableDef: Boolean = false,
+    // true for `trait <name> [in <dialect>] [extends <type>] = { ... }` method-interface
+    // declarations (#2001): def members only, never storage, printed back as `trait`
+    isTrait: Boolean = false
 ) extends LanguageStatement:
 
   /**

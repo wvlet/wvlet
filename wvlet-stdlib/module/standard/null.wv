@@ -1,6 +1,6 @@
 package wvlet.standard
 
-type null = {
+trait null = {
   def to_int: int = sql"cast(${this} as bigint)"
   def to_int in bigquery: int = sql"cast(${this} as int64)"
   def to_long: long = sql"cast(${this} as bigint)"

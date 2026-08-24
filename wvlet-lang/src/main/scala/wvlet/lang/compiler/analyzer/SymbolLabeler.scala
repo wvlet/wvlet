@@ -33,6 +33,7 @@ import wvlet.lang.compiler.TermName
 import wvlet.lang.compiler.TypeSymbol
 import wvlet.lang.compiler.TypeSymbolInfo
 import wvlet.lang.compiler.typer.DuplicateTypeDefinition
+import wvlet.lang.compiler.typer.MethodInterfaceDeclaredAsType
 import wvlet.lang.compiler.typer.ModelDefCompleter
 import wvlet.lang.model.DataType.NamedType
 import wvlet.lang.model.DataType.SchemaType
@@ -313,6 +314,19 @@ object SymbolLabeler extends Phase("symbol-labeler"):
     * (non-preset) compilation unit under a conflicting table binding. Name lookup resolves such
     * duplicates silently by file-name order (#93), so the shadowed schema binding never matches
     */
+  /**
+    * Deprecation warning for method interfaces declared with the `type` keyword (#2001): a `type`
+    * whose body carries only `def` members is a method interface, whose canonical spelling is
+    * `trait <name> [in <dialect>] [extends <type>] = {...}`. Body-less types (aliases, dialect
+    * markers) and column-carrying types (covered by the #1998 table warning at resolution time)
+    * never trigger this, and neither do the bundled stdlib presets
+    */
+  private def warnMethodInterfaceDeclaredAsType(t: TypeDef)(using ctx: Context): Unit =
+    if !t.isTrait && !t.isTableDef && !ctx.compilationUnit.isPreset && t.elems.nonEmpty &&
+      !t.elems.exists(_.isInstanceOf[FieldDef])
+    then
+      ctx.addTyperError(MethodInterfaceDeclaredAsType(t.name.name, t.span))
+
   private def warnCrossFileDuplicateTypeDefs(t: TypeDef)(using ctx: Context): Unit =
     if !ctx.compilationUnit.isPreset then
       val entries = ctx
@@ -347,6 +361,7 @@ object SymbolLabeler extends Phase("symbol-labeler"):
 
   private def registerTypeDefSymbol(t: TypeDef)(using ctx: Context): Symbol =
     val typeName = t.name
+    warnMethodInterfaceDeclaredAsType(t)
 
     ctx.scope.lookupSymbol(typeName) match
       case Some(sym) =>

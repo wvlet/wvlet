@@ -791,6 +791,8 @@ class WvletGenerator(config: CodeFormatterConfig = CodeFormatterConfig())(using
           val keyword =
             if t.isTableDef then
               "table"
+            else if t.isTrait then
+              "trait"
             else
               "type"
           group(wl(keyword, text(t.name.name) + typeParams, defContexts, parent, sep)) +

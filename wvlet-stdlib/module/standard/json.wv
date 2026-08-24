@@ -2,7 +2,7 @@ package wvlet.standard
 
 -- Functions of json values. The same functions are also available on strings holding JSON
 -- text (see string.wv)
-type json = {
+trait json = {
   -- Extract the JSON value at the JSONPath expression (e.g. '$.store.book')
   def json_extract(path:string): json = sql"json_extract(${this},${path})"
 

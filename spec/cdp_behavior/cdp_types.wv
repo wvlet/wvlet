@@ -39,7 +39,7 @@ table td_sdk_log = {
     and td_host is not 'gtm-msr.appspot.com'
 }
 
-type ip_address in trino extends string = {
+trait ip_address in trino extends string = {
   def country_name: string = sql"td_ip_to_country_name(${this})"
   def city_name: string = sql"td_ip_to_city_name(${this})"
   def city_latitude: string = sql"td_ip_to_latitude(${this})"
@@ -54,7 +54,7 @@ type ip_address in trino extends string = {
   def domain: string = sql"td_ip_to_domain(${this})"
 }
 
-type ip_address in duckdb extends string = {
+trait ip_address in duckdb extends string = {
   def country_name: string = sql"'N/A'"
   def city_name: string = sql"'N/A'"
   def city_latitude: string = sql"'N/A'"
@@ -69,7 +69,7 @@ type ip_address in duckdb extends string = {
   def domain: string = sql"'N/A'"
 }
 
-type user_agent in trino extends string = {
+trait user_agent in trino extends string = {
   def category: string = sql"td_parse_agent(${this})('category')"
   def name: string = sql"td_parse_agent(${this})('name')"
   def os: string = sql"td_parse_agent(${this})('os')"
@@ -78,7 +78,7 @@ type user_agent in trino extends string = {
   def version: string = sql"td_parse_agent(${this})('version')"
 }
 
-type user_agent in duckdb extends string = {
+trait user_agent in duckdb extends string = {
   def category: string = sql"'N/A'"
   def name: string = sql"'N/A'"
   def os: string = sql"'N/A'"
@@ -87,14 +87,14 @@ type user_agent in duckdb extends string = {
   def version: string = sql"'N/A'"
 }
 
-type url in trino extends string = {
+trait url in trino extends string = {
   def utm_campaign: string = sql"parse_url(${this}, 'QUERY', 'utm_campaign')"
   def utm_medium: string = sql"parse_url(${this}, 'QUERY', 'utm_medium')"
   def utm_source: string = sql"parse_url(${this}, 'QUERY', 'utm_source')"
 }
 
 
-type url in duckdb extends string = {
+trait url in duckdb extends string = {
   def utm_campaign: string = sql"'N/A'"
   def utm_medium: string = sql"'N/A'"
   def utm_source: string = sql"'N/A'"

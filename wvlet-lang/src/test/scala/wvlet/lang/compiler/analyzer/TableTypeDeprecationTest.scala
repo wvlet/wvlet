@@ -20,6 +20,7 @@ import wvlet.lang.compiler.Compiler
 import wvlet.lang.compiler.CompilerOptions
 import wvlet.lang.compiler.WorkEnv
 import wvlet.lang.compiler.codegen.GenSQL
+import wvlet.lang.compiler.typer.MethodInterfaceDeclaredAsType
 import wvlet.lang.compiler.typer.TableShapeDeclaredAsType
 import wvlet.lang.compiler.typer.TyperError
 
@@ -103,5 +104,47 @@ class TableTypeDeprecationTest extends UniTest:
     createSQL shouldContain "create table mydb.sales.orders"
     createSQL shouldContain "order_id"
   }
+
+  test("warn when a method interface is declared with type, steering to trait") {
+    val defs =
+      """type masked in duckdb extends string = {
+        |  def hidden: string = sql"'***'"
+        |}
+        |""".stripMargin
+    val (_, defsUnit) = compileDefs(defs)
+    val warnings      = defsUnit
+      .typerErrors
+      .collect { case w: MethodInterfaceDeclaredAsType =>
+        w
+      }
+    warnings.size shouldBe 1
+    warnings.head.severity shouldBe TyperError.Severity.Warning
+    warnings.head.message shouldContain "trait masked = {...}"
+  }
+
+  test("not warn for trait declarations or body-less types") {
+    val defs =
+      """trait masked extends string = {
+        |  def hidden: string = sql"'***'"
+        |}
+        |
+        |type td_duckdb extends duckdb
+        |""".stripMargin
+    val (_, defsUnit) = compileDefs(defs)
+    defsUnit
+      .typerErrors
+      .collect { case w: MethodInterfaceDeclaredAsType =>
+        w
+      } shouldBe Nil
+  }
+
+  private def compileDefs(defs: String): (CompileResult, CompilationUnit) =
+    val compiler = Compiler(CompilerOptions(workEnv = WorkEnv(".")))
+    val defsUnit = CompilationUnit.fromWvletString(defs)
+    val result   = compiler.compileMultipleUnits(
+      List(defsUnit),
+      CompilationUnit.fromWvletString("from [[1]] as t(id)\n")
+    )
+    (result, defsUnit)
 
 end TableTypeDeprecationTest
