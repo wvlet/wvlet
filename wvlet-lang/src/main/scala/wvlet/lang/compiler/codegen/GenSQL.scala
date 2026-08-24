@@ -145,7 +145,10 @@ object GenSQL extends Phase("generate-sql"):
     given Context = context
     val gen       = sqlGeneratorFor(context.dbType)
     ddl match
-      case a: AttachDatabase if context.dbType != DBType.DuckDB =>
+      // Attachment runs on DuckDB. Generic is the CLI's default (no explicit profile) context
+      // type while the default execution engine is DuckDB, so it must pass the guard too
+      case a: AttachDatabase
+          if context.dbType != DBType.DuckDB && context.dbType != DBType.Generic =>
         throw StatusCode
           .NOT_IMPLEMENTED
           .newException(
@@ -171,6 +174,7 @@ object GenSQL extends Phase("generate-sql"):
           }
       case _ =>
         List(withHeader(gen.print(ddl), ddl.sourceLocation))
+    end match
 
   end generateDDLSQL
 

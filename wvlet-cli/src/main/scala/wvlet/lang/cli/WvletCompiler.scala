@@ -64,7 +64,16 @@ class WvletCompiler(
         debug(s"Using syntax for ${resolvedDBType}")
         Profile.defaultProfileFor(resolvedDBType)
       case _ =>
-        Profile.getProfile(compilerOption.profile, compilerOption.catalog, compilerOption.schema)
+        // Default to the DuckDB profile, matching the wv REPL and the actual default execution
+        // engine. The generic profile carries no catalog, which silently breaks catalog-dependent
+        // lowering (keyed append needs the target's columns; append auto-creation needs table
+        // existence). A dialect-neutral compile is still available with `-t generic`
+        Profile.getProfile(
+          compilerOption.profile,
+          compilerOption.catalog,
+          compilerOption.schema,
+          default = Profile.defaultDuckDBProfile
+        )
 
   private var _dbConnector: DBConnector = null
 
