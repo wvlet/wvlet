@@ -111,6 +111,25 @@ class WvletGeneratorTest extends UniTest:
     print(printed) shouldContain "trait ip_address in duckdb extends string"
   }
 
+  test("should round-trip comma-separated mixin parent lists (#2012)") {
+    val printed = print("""type timestamped = {
+        |  created_at: string
+        |}
+        |trait auditable = {
+        |  def tag: string = sql"'a'"
+        |}
+        |table events extends timestamped, auditable = {
+        |  id: int
+        |}
+        |trait combined extends auditable, string = {
+        |  def tag2: string = sql"'b'"
+        |}""".stripMargin)
+    printed shouldContain "table events extends timestamped, auditable"
+    printed shouldContain "trait combined extends auditable, string"
+    print(printed) shouldContain "table events extends timestamped, auditable"
+    print(printed) shouldContain "trait combined extends auditable, string"
+  }
+
   test("should round-trip a table declaration with an `in` binding") {
     val printed = print("""table events in mydb.analytics = {
         |  id: int

@@ -62,6 +62,39 @@ from users
 append to users_backup   -- auto-creates users_backup with users' columns if missing
 ```
 
+### Composing Shapes with `extends`
+
+Where `like` copies one declaration exactly, `extends a, b, c` composes partial shapes: each
+parent in the comma-separated list contributes its columns (structural `type` shapes and
+`table` declarations) or its methods (`trait` parents), followed by the declaration's own
+body columns:
+
+```wvlet
+type timestamped = {
+  created_at: timestamp
+  updated_at: timestamp
+}
+
+trait auditable = {
+  def is_recent: boolean = created_at > now() - interval '7 days'
+}
+
+table events extends timestamped, auditable = {
+  id: int
+  label: string
+}
+
+-- events has columns (created_at, updated_at, id, label), and auditable's methods
+from events
+where _.is_recent
+```
+
+Mixed-in columns come before own body columns, in parent-list order. A column arriving
+through two parents with the same type (a diamond) appears once; the same name with
+conflicting types is a compile-time error. `create table` and automatic creation on write
+materialize the full composed shape. `extends` and `like` cannot combine on one declaration —
+`like` is the exact-copy form.
+
 ### Binding a Declaration to a Location
 
 `in <catalog>.<schema>` binds a declaration to the table's location, so references type-check

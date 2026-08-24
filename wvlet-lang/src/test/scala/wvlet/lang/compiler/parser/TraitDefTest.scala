@@ -47,7 +47,7 @@ class TraitDefTest extends UniTest:
     t.isTableDef shouldBe false
     t.name.name shouldBe "ip_address"
     t.defContexts.map(_.contextType.fullName) shouldBe List("duckdb")
-    t.parent.map(_.fullName) shouldBe Some("string")
+    t.parents.map(_.fullName) shouldBe List("string")
   }
 
   test("parse a trait with type parameters") {
@@ -57,6 +57,32 @@ class TraitDefTest extends UniTest:
         |""".stripMargin))
     t.isTrait shouldBe true
     t.params.size shouldBe 1
+  }
+
+  test("parse a comma-separated mixin parent list (#2012)") {
+    val t = firstTypeDef(parse("""trait auditable extends recent, labeled = {
+        |  def tag: string = sql"'a'"
+        |}
+        |""".stripMargin))
+    t.isTrait shouldBe true
+    t.parents.map(_.fullName) shouldBe List("recent", "labeled")
+  }
+
+  test("parse mixin parents on a table declaration (#2012)") {
+    val t = firstTypeDef(parse("""table events extends timestamped, auditable = {
+        |  id: int
+        |}
+        |""".stripMargin))
+    t.isTableDef shouldBe true
+    t.parents.map(_.fullName) shouldBe List("timestamped", "auditable")
+  }
+
+  test("reject combining extends with like on a table declaration") {
+    val e = intercept[WvletLangException] {
+      parse("""table events extends timestamped like users
+          |""".stripMargin)
+    }
+    e.getMessage shouldContain "cannot combine 'extends' with 'like'"
   }
 
   test("reject column fields in a trait body") {

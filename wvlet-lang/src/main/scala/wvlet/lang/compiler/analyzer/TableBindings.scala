@@ -110,8 +110,11 @@ object TableBindings:
 
   /**
     * The declared columns of a table declaration, following `table <name> like <source>` chains
-    * (#1995) so like-declared tables auto-create with the source's columns. A reference cycle or an
-    * unknown source resolves to no columns (SymbolLabeler reports the error)
+    * (#1995) and `extends` mixin parents (#2012) so declared tables auto-create with the full
+    * composed shape. Mixed-in columns come before own body columns, and a column reached through
+    * multiple mixin paths dedupes to its first occurrence, mirroring SymbolLabeler's composition
+    * rules. A reference cycle or an unknown source resolves to no columns (SymbolLabeler reports
+    * the error)
     */
   private def declaredColumns(td: TypeDef)(using ctx: Context): List[ColumnDef] =
     def loop(current: TypeDef, visited: Set[String]): List[ColumnDef] =
@@ -124,13 +127,16 @@ object TableBindings:
             f.span
           )
         }
-      current.likeSource match
-        case Some(src) if !visited.contains(src.leafName) =>
-          declarationOf(src.leafName)
-            .map(srcTd => loop(srcTd, visited + src.leafName) ++ own)
-            .getOrElse(own)
-        case _ =>
-          own
-    loop(td, Set(td.name.name))
+      val inherited = (current.parents.map(_.leafName) ++ current.likeSource.map(_.leafName))
+        .flatMap { src =>
+          if visited.contains(src) then
+            Nil
+          else
+            declarationOf(src).map(srcTd => loop(srcTd, visited + src)).getOrElse(Nil)
+        }
+      inherited ++ own
+    val composed = loop(td, Set(td.name.name))
+    val seen     = scala.collection.mutable.Set.empty[String]
+    composed.filter(c => seen.add(c.columnName.leafName))
 
 end TableBindings
