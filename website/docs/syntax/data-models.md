@@ -93,6 +93,10 @@ table access_logs = {
   -- Row methods can call trait methods of the declared column types
   def client_country: string = client_ip.country_name
 }
+
+-- Both trait and row methods resolve directly on a scan of the declared table
+from access_logs
+select time, client_ip.country_name, _.client_country
 ```
 
 A trait re-opening an existing type with a *dialect scope* provides engine-specific

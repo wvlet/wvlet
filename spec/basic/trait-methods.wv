@@ -1,6 +1,7 @@
 -- Traits (#2001): a method interface attached to a type. Columns typed with a trait get its
 -- def members inside the table declaration's own row methods (the cdp pattern), so domain
--- behavior composes: trait methods -> row methods -> queries
+-- behavior composes: trait methods -> row methods -> queries. Both resolve directly on a
+-- scan of the declared table (#2010)
 
 trait masked_str extends string = {
   def masked: string = sql"'***'"
@@ -16,11 +17,8 @@ table trm_users = {
 from [[1, 'pw1'], [2, 'pw2']] as t(id, secret)
 save to trm_users
 
-model trm_all: trm_users = {
-  from trm_users
-}
-
-from trm_all
-select id, _.secret_masked as m
+from trm_users
+select id, _.secret_masked as m, secret.masked as m2
 test _.size should be 2
 test _.columns should contain 'm'
+test _.columns should contain 'm2'
