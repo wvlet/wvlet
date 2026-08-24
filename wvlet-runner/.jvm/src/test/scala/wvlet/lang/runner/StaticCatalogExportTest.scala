@@ -30,11 +30,11 @@ import java.nio.file.Path
 
 /**
   * End-to-end check of `wv catalog import`: export table schemas of a live DuckDB database as Wvlet
-  * type definitions, then compile a query offline against the generated files
+  * table declarations, then compile a query offline against the generated files
   */
 class StaticCatalogExportTest extends UniTest:
 
-  test("export DuckDB table schemas as Wvlet types and compile a query offline") {
+  test("export DuckDB table schemas as Wvlet table declarations and compile a query offline") {
     val workEnv = WorkEnv()
     val duckdb  = DuckDBConnector(workEnv)
     Files.createDirectories(Path.of("target"))
@@ -64,8 +64,8 @@ class StaticCatalogExportTest extends UniTest:
       written shouldBe List(s"${targetDir}/memory/sales.wv")
 
       val source = SourceIO.readAsString(written.head)
-      source shouldContain "type customers in memory.sales = {"
-      source shouldContain "type orders in memory.sales = {"
+      source shouldContain "table customers in memory.sales = {"
+      source shouldContain "table orders in memory.sales = {"
       source shouldContain "order_id: long"
       source shouldContain "price: decimal[10,2]"
       source shouldContain "tags: array[string]"

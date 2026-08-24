@@ -1,0 +1,23 @@
+-- Row methods on table declarations (#1998): `def` members travel with the table shape,
+-- so reusable predicates and expressions live next to the columns they read. Methods
+-- resolve through relations annotated with the declared type (same as `type` methods)
+
+table rm_users = {
+  id: int
+  name: string
+  deleted_at: string
+
+  def is_active: boolean = deleted_at is null
+}
+
+from [[1, 'alice', null], [2, 'bob', 'gone']] as t(id, name, deleted_at)
+save to rm_users
+
+model rm_all: rm_users = {
+  from rm_users
+}
+
+from rm_all
+where _.is_active
+test _.size should be 1
+test _.columns should contain 'name'

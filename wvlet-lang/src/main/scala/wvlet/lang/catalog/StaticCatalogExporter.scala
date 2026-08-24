@@ -61,8 +61,8 @@ object StaticCatalogExporter extends LogSupport:
   private val systemSchemas = Set("information_schema", "pg_catalog", "system")
 
   /**
-    * Render the tables of a single schema as Wvlet type definitions bound to
-    * `<catalogName>.<schemaName>`
+    * Render the tables of a single schema as Wvlet table declarations bound to
+    * `<catalogName>.<schemaName>` (#1998)
     */
   def generateSchemaSource(
       catalogName: String,
@@ -72,12 +72,12 @@ object StaticCatalogExporter extends LogSupport:
     val location = s"${quote(catalogName)}.${quote(schemaName)}"
     val header   =
       s"""${generatedFileHeader}
-         |-- Table types of ${catalogName}.${schemaName}, bound for offline query validation.
-         |-- Re-run `wvlet catalog import` to refresh; add hand-written types in your own files."""
+         |-- Table declarations of ${catalogName}.${schemaName}, bound for offline query validation.
+         |-- Re-run `wvlet catalog import` to refresh; add hand-written declarations in your own files."""
         .stripMargin
     // Caches the per-type grammar check within this export
     val typeCache = mutable.Map.empty[String, Boolean]
-    val typeDefs  = tables
+    val tableDefs = tables
       .filter(t => isExportable(t))
       .sortBy(_.name)
       .map { table =>
@@ -87,11 +87,11 @@ object StaticCatalogExporter extends LogSupport:
             s"  ${quote(c.name)}: ${fieldType(c.dataType, typeCache)}"
           }
           .mkString("\n")
-        s"""type ${quote(table.name)} in ${location} = {
+        s"""table ${quote(table.name)} in ${location} = {
            |${columns}
            |}""".stripMargin
       }
-    (header +: typeDefs).mkString("", "\n\n", "\n")
+    (header +: tableDefs).mkString("", "\n\n", "\n")
 
   /**
     * Export the given schemas as Wvlet sources under `<basePath>/<catalogName>/<schemaName>.wv`,

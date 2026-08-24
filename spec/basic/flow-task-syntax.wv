@@ -1,22 +1,22 @@
 -- Test task-oriented flow syntax (Phase 1)
 
 -- Table types referenced by the flows below, so that stage bodies type-check
-type users = {
+table users = {
   name: string
   segment_id: string
 }
 
-type source = {
+table source = {
   id: string
   value: string
 }
 
-type backup = {
+table backup = {
   id: string
   value: string
 }
 
-type warehouse = {
+table warehouse = {
   id: string
   value: string
 }

@@ -1,7 +1,7 @@
 -- Test flow syntax parsing (design only - execution support to be added later)
 
 -- Table types referenced by the flows below, so that stage bodies type-check
-type users = {
+table users = {
   user_id: string
   name: string
   email: string
@@ -11,7 +11,7 @@ type users = {
   active: boolean
 }
 
-type source = {
+table source = {
   id: string
   value: string
 }

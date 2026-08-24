@@ -1,6 +1,6 @@
 package cdp
 
-type td_sdk_log = {
+table td_sdk_log = {
   td_client_id: string
   td_host: string
   td_path: string

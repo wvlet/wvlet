@@ -74,6 +74,15 @@ class WvletGeneratorTest extends UniTest:
     print(printed) shouldContain "table users"
   }
 
+  test("should round-trip a table declaration with an `in` binding") {
+    val printed = print("""table events in mydb.analytics = {
+        |  id: int
+        |  label: string
+        |}""".stripMargin)
+    printed shouldContain "table events in mydb.analytics"
+    print(printed) shouldContain "table events in mydb.analytics"
+  }
+
   test("should round-trip table actions") {
     val printed = print("""create table users
         |truncate users
