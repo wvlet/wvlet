@@ -74,7 +74,10 @@ case class TypeDef(
     isTableDef: Boolean = false,
     // true for `trait <name> [in <dialect>] [extends <type>] = { ... }` method-interface
     // declarations (#2001): def members only, never storage, printed back as `trait`
-    isTrait: Boolean = false
+    isTrait: Boolean = false,
+    // `table <name> like <source>` (#1995): declaration-side shape reuse. The columns come from
+    // the referenced table declaration, resolved lazily at symbol-completion time
+    likeSource: Option[NameExpr] = None
 ) extends LanguageStatement:
 
   /**

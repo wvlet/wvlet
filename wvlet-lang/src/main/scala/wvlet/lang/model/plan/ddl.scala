@@ -44,10 +44,21 @@ case class CreateSchema(
     schema: NameExpr,
     ifNotExists: Boolean,
     properties: Option[Seq[SchemaProperty]],
-    span: Span
+    span: Span,
+    // `create schema s in '<uri>'` (#1995): a self-describing storage location, rendered as a
+    // schema property (e.g. Trino's WITH (location = ...)) on engines that support one
+    location: Option[StringLiteral] = None,
+    // `with key: value, ...` engine properties riding outside the keyword budget
+    options: List[SaveOption] = Nil
 ) extends DDL
 
-case class DropSchema(schema: NameExpr, ifExists: Boolean, span: Span) extends DDL
+case class DropSchema(
+    schema: NameExpr,
+    ifExists: Boolean,
+    span: Span,
+    // `drop schema s with cascade: true` (#1995): drop the contained objects as well
+    cascade: Boolean = false
+) extends DDL
 
 case class DropDatabase(database: NameExpr, ifExists: Boolean, cascade: Boolean, span: Span)
     extends DDL

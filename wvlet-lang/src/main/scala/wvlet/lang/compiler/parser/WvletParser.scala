@@ -1094,11 +1094,28 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     val t      = consume(WvletToken.IDENTIFIER) // the `table` soft keyword
     val name   = Name.typeName(identifier().leafName)
     val scopes = context()
-    consume(WvletToken.EQ)
-    consume(WvletToken.L_BRACE)
-    val elems = typeElems()
-    consume(WvletToken.R_BRACE)
-    TypeDef(name, Nil, scopes, None, elems, spanFrom(t), isTableDef = true)
+    scanner.lookAhead().token match
+      case WvletToken.LIKE =>
+        // `table <name> like <source>` (#1995): declaration-side shape reuse, so a shape is
+        // written exactly once. The columns resolve from the referenced declaration lazily
+        consume(WvletToken.LIKE)
+        val source = identifier()
+        TypeDef(
+          name,
+          Nil,
+          scopes,
+          None,
+          Nil,
+          spanFrom(t),
+          isTableDef = true,
+          likeSource = Some(source)
+        )
+      case _ =>
+        consume(WvletToken.EQ)
+        consume(WvletToken.L_BRACE)
+        val elems = typeElems()
+        consume(WvletToken.R_BRACE)
+        TypeDef(name, Nil, scopes, None, elems, spanFrom(t), isTableDef = true)
   }
 
   /**
@@ -1216,7 +1233,23 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
             .SYNTAX_ERROR
             .newException("create or replace is not supported for schemas", t.sourceLocation)
         val name = qualifiedId()
-        CreateSchema(name, ifNotExistsModifier(), None, spanFrom(t))
+        // `in '<uri>'` (#1995): a storage location needs no label — schemas bind to places
+        // the same way `use '<path>' as <alias>` and `table ... in ...` do
+        val location =
+          scanner.lookAhead().token match
+            case WvletToken.IN =>
+              consume(WvletToken.IN)
+              Some(stringLiteral())
+            case _ =>
+              None
+        CreateSchema(
+          name,
+          ifNotExistsModifier(),
+          None,
+          spanFrom(t),
+          location = location,
+          options = saveOptions()
+        )
       case "table" =>
         val name = qualifiedId()
         // tableElems are filled from the `table` declaration in scope at typing time.
@@ -1236,6 +1269,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
             s"Unknown create target '${other}'. Expected 'schema' or 'table'",
             t.sourceLocation
           )
+    end match
   }
 
   /**
@@ -1246,8 +1280,31 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
     val kind = identifierSingle()
     kind.leafName match
       case "schema" =>
-        val name = qualifiedId()
-        DropSchema(name, ifExistsModifier(), spanFrom(t))
+        val name     = qualifiedId()
+        val ifExists = ifExistsModifier()
+        // `with cascade: true` (#1995): the engine modifier rides in an option so the keyword
+        // budget stays flat. Only `cascade` with a boolean value is meaningful here
+        val cascade = saveOptions()
+          .map { opt =>
+            (opt.key.leafName.toLowerCase, opt.value) match
+              case ("cascade", _: TrueLiteral) =>
+                true
+              case ("cascade", _: FalseLiteral) =>
+                false
+              case ("cascade", _) =>
+                throw StatusCode
+                  .SYNTAX_ERROR
+                  .newException("cascade expects a boolean value: cascade: true", t.sourceLocation)
+              case (other, _) =>
+                throw StatusCode
+                  .SYNTAX_ERROR
+                  .newException(
+                    s"Unknown drop schema option '${other}'. Supported: cascade: true|false",
+                    t.sourceLocation
+                  )
+          }
+          .contains(true)
+        DropSchema(name, ifExists, spanFrom(t), cascade = cascade)
       case "table" =>
         val name = qualifiedId()
         DropTable(name, ifExistsModifier(), spanFrom(t))
@@ -1261,6 +1318,7 @@ class WvletParser(unit: CompilationUnit, isContextUnit: Boolean = false) extends
             s"Unknown drop target '${other}'. Expected 'schema', 'table', or 'view'",
             t.sourceLocation
           )
+    end match
   }
 
   /**

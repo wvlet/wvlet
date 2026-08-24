@@ -221,6 +221,17 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
           )
         )
       case c: CreateSchema =>
+        // The `in '<uri>'` location and `with k: v` options render as schema properties
+        // (Trino's WITH (...) spelling); engines without schema properties reject them in
+        // GenSQL before printing
+        val props =
+          c.location.map(l => wl("location", "=", expr(l))).toList ++
+            c.options.map(opt => wl(text(opt.key.leafName), "=", expr(opt.value)))
+        val propsDoc =
+          if props.isEmpty then
+            None
+          else
+            Some(wl("with", paren(cl(props))))
         group(
           wl(
             "create",
@@ -230,7 +241,8 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             else
               None
             ,
-            expr(c.schema)
+            expr(c.schema),
+            propsDoc
           )
         )
       case a: AttachDatabase =>
@@ -278,7 +290,8 @@ class SqlGenerator(config: CodeFormatterConfig)(using ctx: Context = Context.NoC
             else
               None
             ,
-            expr(d.schema)
+            expr(d.schema),
+            Option.when(d.cascade)("cascade")
           )
         )
       case r: RenameDatabase =>

@@ -1,0 +1,17 @@
+-- `drop schema ... with cascade: true` (#1995): drop a schema together with its objects
+
+create schema cascade_test if not exists
+
+from [[1, 'x']] as t(id, v)
+save to cascade_test.items
+
+from cascade_test.items
+test _.size should be 1
+
+-- Without cascade, DuckDB refuses to drop a non-empty schema; with it, schema and
+-- contents go together
+drop schema cascade_test with cascade: true
+
+-- The schema can be recreated empty afterwards
+create schema cascade_test if not exists
+drop schema cascade_test if exists with cascade: true

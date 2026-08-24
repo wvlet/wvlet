@@ -157,6 +157,19 @@ object GenSQL extends Phase("generate-sql"):
                 .dbType}",
             a.sourceLocation
           )
+      // Schema locations and properties render as Trino's WITH (...) clause; engines without
+      // schema properties (e.g. DuckDB) reject them loudly instead of dropping the semantics.
+      // Generic stays dialect-neutral and prints the Trino spelling
+      case c: CreateSchema
+          if (c.location.nonEmpty || c.options.nonEmpty) && context.dbType != DBType.Trino &&
+            context.dbType != DBType.Generic =>
+        throw StatusCode
+          .NOT_IMPLEMENTED
+          .newException(
+            s"create schema ${c.schema.fullName} with a location or options is not supported " +
+              s"on ${context.dbType}",
+            c.sourceLocation
+          )
       case c: CreateTable if c.replace && !context.dbType.supportCreateOrReplace =>
         // Engines without CREATE OR REPLACE decompose it into an explicit drop + create
         List(
